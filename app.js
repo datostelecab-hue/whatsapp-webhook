@@ -6,7 +6,7 @@ const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 
 // URL de tu Apps Script (cámbiala por la nueva)
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz0vaRjZ73_QZhNR7IX2dD7PphRyBNfl8-gEnn5QO0NsAtS0ckjEPwrxgkYU-jzGFkM/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyUTX9tGnB-ViBoxKOOIyN7TNKiR3JBhhv_o5fI7k1GZ9v-LmCtUlAHScxrWSHTYd7h/exec';
 
 // ============================================================
 // VERIFICACIÓN DEL WEBHOOK (Meta)
