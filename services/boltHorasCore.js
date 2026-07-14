@@ -576,4 +576,87 @@ function obtenerDatosPanel() {
   }
 }
 
+// ============================================================
+// VISOR EN VIVO - MÉTRICAS UNIFICADAS
+// ============================================================
+
+async function obtenerMetricasVisor() {
+  const ahora = new Date();
+  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+  const startTs = Math.floor(inicioMes.getTime() / 1000);
+  const endTs = Math.floor(ahora.getTime() / 1000);
+
+  const flotas = [63530, 143626];
+
+  // 1. State logs de ambas flotas
+  let allStateLogs = [];
+  for (const flotaId of flotas) {
+    const logs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
+      company_id: flotaId, start_ts: startTs, end_ts: endTs
+    }, 'state_logs', 1000);
+    allStateLogs.push(...logs);
+  }
+
+  const logsPorDriver = {};
+  allStateLogs.forEach(log => {
+    const duuid = log.driver_uuid || 'unknown';
+    if (!logsPorDriver[duuid]) logsPorDriver[duuid] = [];
+    logsPorDriver[duuid].push(log);
+  });
+
+  let horasWaiting = 0;
+  let horasHasOrder = 0;
+
+  Object.values(logsPorDriver).forEach(logs => {
+    logs.sort((a, b) => a.created - b.created);
+
+    for (let i = 0; i < logs.length; i++) {
+      const estado = logs[i].state;
+      if (estado !== 'waiting_orders' && estado !== 'has_order') continue;
+
+      const inicio = logs[i].created;
+      const fin = (i < logs.length - 1) ? logs[i + 1].created : endTs;
+      const duracion = fin - inicio;
+
+      if (duracion > 0) {
+        if (estado === 'waiting_orders') horasWaiting += duracion;
+        else horasHasOrder += duracion;
+      }
+    }
+  });
+
+  // 2. Facturación de ambas flotas
+  let facturacion = 0;
+  for (const flotaId of flotas) {
+    const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders', {
+      company_ids: [flotaId], start_ts: startTs, end_ts: endTs,
+      time_range_filter_type: 'created'
+    }, 'orders', 500);
+
+    ordenes.forEach(order => {
+      if (order.order_price && order.order_price.net_earnings) {
+        facturacion += order.order_price.net_earnings;
+      }
+    });
+  }
+
+  // 3. Calcular métricas
+  const horasEfectivas = (horasWaiting + horasHasOrder) / 3600;
+  const utilizacion = horasEfectivas > 0 ? ((horasHasOrder / 3600) / horasEfectivas) * 100 : 0;
+  const eurosHora = horasEfectivas > 0 ? facturacion / (horasEfectivas) : 0;
+
+  return {
+    horasEfectivas: Math.round(horasEfectivas),
+    horasEfectivasStr: Math.round(horasEfectivas) + ' h',
+    utilizacion: Math.round(utilizacion),
+    utilizacionStr: Math.round(utilizacion) + ' %',
+    eurosHora: eurosHora.toFixed(2),
+    eurosHoraStr: eurosHora.toFixed(2) + ' €/h',
+    neto: facturacion.toFixed(2),
+    netoStr: Number(facturacion).toLocaleString('es-ES', { minimumFractionDigits: 2 }) + ' €',
+    fecha: new Date().toLocaleString('es-ES')
+  };
+}
+
+
 module.exports = { procesarYUnificar, obtenerMetricasVisor };
