@@ -216,10 +216,10 @@ function calcularSegundosNocturnosEnIntervalo(inicio, fin) {
 
   while (cts < fin) {
     const fecha = new Date(cts * 1000);
-    const hora = fecha.getHours();
-    const dia = fecha.getDate();
-    const mes = fecha.getMonth();
-    const ano = fecha.getFullYear();
+    const hora = fecha.getUTCHours();
+    const dia = fecha.getUTCDate();
+    const mes = fecha.getUTCMonth();
+    const ano = fecha.getUTCFullYear();
 
     let finBloque;
     if (hora >= 22) {
