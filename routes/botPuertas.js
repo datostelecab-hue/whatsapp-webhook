@@ -6,7 +6,7 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzyYKcT23Vu4tlz
 const WHATSAPP_TOKEN = 'EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7NqaKcKN1F3HBGxGw4eLOUQd0kqZCbRW3hMr3ZCYZBFJy94oxL0Pn9DBV092umEPhdgJ9HW4eV2Vh7CxhJJGHZCrBNbpRWSQ9whmqLKtVpAZBnx3Hdv8h3wuICs86P11R8w5ZA7Y2CgaITa0XgZDZD';
 const PHONE_NUMBER_ID = '1256923474160518';
 const WHATSAPP_VERSION = 'v25.0';
-
+const MAPON_API_KEY = 'd1ff9336961ee25a46091c08663de3612d6a4955';
 // Mapa de sesiones: guarda matrícula actual por conductor
 const sesiones = {};
 
@@ -218,6 +218,82 @@ async function callAppsScript(accion, params = {}) {
   console.log(`📞 Apps Script: ${accion}`, params);
   const response = await fetch(url.toString());
   return await response.json();
+}
+
+// ============================================================
+// BUSCAR MATRÍCULA EN MAPON DIRECTAMENTE
+// ============================================================
+async function buscarEnMapon(matricula) {
+  const url = `https://www.mapon.com/api/v1/unit/list.json?key=${MAPON_API_KEY}`;
+  
+  try {
+    const response = await fetch(url);
+    const json = await response.json();
+    const units = json.data.units;
+    
+    const matriculaLimpia = matricula.replace(/\s/g, '').toUpperCase();
+    
+    console.log(`🔍 Buscando "${matriculaLimpia}" entre ${units.length} unidades...`);
+    
+    // 1. Búsqueda exacta sin espacios
+    for (const u of units) {
+      const numLimpio = (u.number || '').replace(/\s/g, '').toUpperCase();
+      if (numLimpio === matriculaLimpia) {
+        console.log(`✅ Encontrado exacto: ${u.number}`);
+        return {
+          encontrado: true,
+          unit_id: u.unit_id,
+          vehiculo: `${u.make || ''} ${u.modelo || ''}`.trim() || u.label || 'Vehículo',
+          matricula: u.number
+        };
+      }
+    }
+    
+    // 2. Búsqueda parcial
+    for (const u of units) {
+      const numLimpio = (u.number || '').replace(/\s/g, '').toUpperCase();
+      if (numLimpio.includes(matriculaLimpia) || matriculaLimpia.includes(numLimpio)) {
+        console.log(`✅ Encontrado parcial: ${u.number}`);
+        return {
+          encontrado: true,
+          unit_id: u.unit_id,
+          vehiculo: `${u.make || ''} ${u.modelo || ''}`.trim() || u.label || 'Vehículo',
+          matricula: u.number
+        };
+      }
+    }
+    
+    // 3. Búsqueda por label
+    for (const u of units) {
+      const labelLimpio = (u.label || '').replace(/\s/g, '').toUpperCase();
+      if (labelLimpio.includes(matriculaLimpia)) {
+        console.log(`✅ Encontrado por label: ${u.label}`);
+        return {
+          encontrado: true,
+          unit_id: u.unit_id,
+          vehiculo: `${u.make || ''} ${u.modelo || ''}`.trim() || u.label || 'Vehículo',
+          matricula: u.number
+        };
+      }
+    }
+    
+    // Mostrar matrículas similares para debug
+    const similares = units
+      .filter(u => (u.number || '').replace(/\s/g, '').toUpperCase().includes(matriculaLimpia.substring(0, 4)))
+      .slice(0, 5)
+      .map(u => u.number);
+    
+    console.log(`❌ No encontrado. Similares: ${similares.join(', ')}`);
+    
+    return {
+      encontrado: false,
+      similares
+    };
+    
+  } catch (error) {
+    console.error('Error buscando en Mapon:', error);
+    return { encontrado: false, error: error.message };
+  }
 }
 
 module.exports = router;
