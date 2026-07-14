@@ -1,7 +1,16 @@
 const express = require('express');
+const path = require('path');
+const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Configurar EJS con layouts
+app.use(expressLayouts);
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.set('layout', 'layout');  // Layout base
 
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;

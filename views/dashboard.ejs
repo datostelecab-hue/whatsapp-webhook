@@ -1,0 +1,84 @@
+<% const ahora = new Date(); %>
+
+<!-- Mensaje de éxito -->
+<% if (locals.msg) { %>
+  <div class="bg-green-900/50 border border-green-500 text-green-400 px-6 py-4 rounded-lg mb-6">
+    <i class="fas fa-check-circle mr-2"></i><%= msg %>
+  </div>
+<% } %>
+
+<!-- Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-telecab-card p-6 rounded-xl border border-telecab-border card-hover">
+    <h3 class="text-telecab-red font-semibold mb-2"><i class="fas fa-users mr-2"></i>Conductores</h3>
+    <div class="text-3xl font-bold"><%= filas.filter(f => f[1]).length %></div>
+    <div class="text-telecab-muted text-xs mt-1">En hoja actual</div>
+  </div>
+  
+  <div class="bg-telecab-card p-6 rounded-xl border border-telecab-border card-hover">
+    <h3 class="text-telecab-red font-semibold mb-2"><i class="fab fa-whatsapp mr-2"></i>Bot Puertas</h3>
+    <div class="text-3xl font-bold text-green-500">Activo</div>
+    <div class="text-telecab-muted text-xs mt-1">WhatsApp conectado</div>
+  </div>
+  
+  <div class="bg-telecab-card p-6 rounded-xl border border-telecab-border card-hover">
+    <h3 class="text-telecab-red font-semibold mb-2"><i class="fas fa-rotate mr-2"></i>Cron Horas</h3>
+    <div class="text-3xl font-bold text-green-500">C/hora</div>
+    <div class="text-telecab-muted text-xs mt-1">Próxima: minuto 0</div>
+  </div>
+  
+  <div class="bg-telecab-card p-6 rounded-xl border border-telecab-border card-hover">
+    <h3 class="text-telecab-red font-semibold mb-2"><i class="far fa-calendar mr-2"></i>Mes Actual</h3>
+    <div class="text-3xl font-bold"><%= mesActual %>/<%= anoActual %></div>
+    <div class="text-telecab-muted text-xs mt-1"><%= meses.find(m => m.numero == mesActual).nombre %></div>
+  </div>
+</div>
+
+<!-- Acciones -->
+<div class="flex flex-wrap gap-4 mb-8">
+  <form action="/dashboard/actualizar" method="POST" onsubmit="return confirm('¿Actualizar datos del mes actual?')">
+    <button type="submit" class="btn bg-telecab-red hover:bg-telecab-red-hover text-white font-bold py-3 px-6 rounded-lg">
+      <i class="fas fa-sync-alt mr-2"></i>Actualizar Mes Actual
+    </button>
+  </form>
+  
+  <form action="/dashboard/actualizar-mes" method="POST" onsubmit="return confirm('¿Generar datos para este mes?')" class="flex gap-3 items-center">
+    <select name="mes" required class="bg-telecab-card text-white border border-telecab-border rounded-lg px-4 py-3">
+      <% meses.forEach(function(m) { %>
+        <option value="<%= m.numero %>" <%= m.numero === mesActual ? 'selected' : '' %>><%= m.nombre %></option>
+      <% }); %>
+    </select>
+    <input type="number" name="ano" value="<%= anoActual %>" min="2020" max="2030" required class="bg-telecab-card text-white border border-telecab-border rounded-lg px-4 py-3 w-28">
+    <button type="submit" class="btn bg-telecab-border hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg">
+      <i class="fas fa-calendar-plus mr-2"></i>Generar Mes
+    </button>
+  </form>
+</div>
+
+<!-- Tabla -->
+<div class="bg-telecab-card rounded-xl border border-telecab-border overflow-hidden">
+  <div class="table-scroll">
+    <table class="w-full text-xs">
+      <thead>
+        <tr class="bg-[#16212e]">
+          <% headers.forEach(function(h) { %>
+            <th class="py-3 px-2 font-semibold text-telecab-red whitespace-nowrap"><%= h %></th>
+          <% }); %>
+        </tr>
+      </thead>
+      <tbody>
+        <% filas.forEach(function(fila) { %>
+          <tr class="border-b border-telecab-border/50">
+            <% fila.forEach(function(celda) { %>
+              <td class="py-2 px-2 whitespace-nowrap"><%= celda || '' %></td>
+            <% }); %>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="text-telecab-muted text-xs mt-4 text-right">
+  Última actualización: <%= ultimaActualizacion %> | <a href="https://docs.google.com/spreadsheets/d/1Mx8RDwsrnVszd0bRJwz_hxQtnxfM8uVTqwiGYf7mQ04" target="_blank" class="text-telecab-red hover:underline">Ver en Sheets <i class="fas fa-external-link-alt ml-1"></i></a>
+</div>

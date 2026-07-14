@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telecab | <%= titulo || 'Dashboard' %></title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'telecab': {
+              'dark': '#0f1923',
+              'card': '#1a2733',
+              'border': '#2a3a4a',
+              'red': '#e94560',
+              'red-hover': '#c73652',
+              'green': '#2ecc71',
+              'text': '#e0e0e0',
+              'muted': '#888888'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- Iconos (Font Awesome) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Estilos globales -->
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-scroll table { min-width: 1200px; }
+    .table-scroll th { position: sticky; top: 0; z-index: 10; }
+    .btn { transition: all 0.2s ease; }
+    .btn:active { transform: scale(0.97); }
+    .card-hover:hover { border-color: #e94560; transition: border-color 0.3s; }
+    tr:hover td { background: rgba(233, 69, 96, 0.05); }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1a2733; }
+    ::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-telecab-dark text-telecab-text min-h-screen">
+
+  <!-- HEADER GLOBAL -->
+  <header class="bg-telecab-card border-b-2 border-telecab-red px-6 py-4">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+      <a href="/dashboard" class="text-2xl font-bold text-telecab-red hover:text-telecab-red-hover">
+        <i class="fas fa-car mr-2"></i>Telecab Fleet
+      </a>
+      <div class="flex items-center gap-6">
+        <nav class="hidden md:flex gap-6">
+          <a href="/dashboard" class="hover:text-telecab-red transition-colors">
+            <i class="fas fa-home mr-1"></i>Dashboard
+          </a>
+          <a href="/dashboard/puertas" class="hover:text-telecab-red transition-colors">
+            <i class="fas fa-door-open mr-1"></i>Puertas
+          </a>
+          <a href="/dashboard/horas" class="hover:text-telecab-red transition-colors">
+            <i class="fas fa-clock mr-1"></i>Horas
+          </a>
+        </nav>
+        <span class="text-telecab-muted text-sm hidden md:block">
+          <i class="far fa-clock mr-1"></i><%= new Date().toLocaleString('es-ES', {hour:'2-digit', minute:'2-digit'}) %>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENIDO DINÁMICO -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <%- body %>
+  </main>
+
+  <!-- FOOTER GLOBAL -->
+  <footer class="bg-telecab-card border-t border-telecab-border mt-12 py-4 text-center text-telecab-muted text-sm">
+    <p>Telecab Fleet Manager &copy; <%= new Date().getFullYear() %> | Render Standard</p>
+  </footer>
+
+</body>
+</html>
