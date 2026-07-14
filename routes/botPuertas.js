@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzyYKcT23Vu4tlziAWRYlGkpNQE361CakLkeCECjUBKbdubLhMdpvyPUqcZxBHlQON-/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPJUuuWtrR-r_kV3ADry2FyTFQAvGmW94wsYO5MohqTFLOQ1YTusKOdjOjLa5ggv50/exec';
 
 const WHATSAPP_TOKEN = 'EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7NqaKcKN1F3HBGxGw4eLOUQd0kqZCbRW3hMr3ZCYZBFJy94oxL0Pn9DBV092umEPhdgJ9HW4eV2Vh7CxhJJGHZCrBNbpRWSQ9whmqLKtVpAZBnx3Hdv8h3wuICs86P11R8w5ZA7Y2CgaITa0XgZDZD';
 const PHONE_NUMBER_ID = '1256923474160518';
@@ -64,7 +64,7 @@ async function handleText(phone, text) {
     console.log(`${nombre} busca matrícula: ${matricula}`);
 
     // Buscar en Mapon
-    const resultado = await callAppsScript('buscar_por_matricula', { matricula });
+  const resultado = await buscarEnMapon(matricula);
 
     if (!resultado || !resultado.encontrado) {
       await sendText(phone, `❌ Matrícula "${matricula}" no encontrada en Mapon.\n\nIndica otra matrícula (ej: 1234ABC):`);
