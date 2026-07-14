@@ -65,6 +65,9 @@ async function handleText(phone, text) {
 
     // Buscar en Mapon
   const resultado = await buscarEnMapon(matricula);
+  console.log(`🔍 Buscando matrícula ${matricula} directamente en Mapon...`);
+const resultado = await buscarEnMapon(matricula);
+console.log(`📋 Resultado Mapon:`, JSON.stringify(resultado));
 
     if (!resultado || !resultado.encontrado) {
       await sendText(phone, `❌ Matrícula "${matricula}" no encontrada en Mapon.\n\nIndica otra matrícula (ej: 1234ABC):`);
@@ -230,7 +233,7 @@ async function buscarEnMapon(matricula) {
     const response = await fetch(url);
     const json = await response.json();
     const units = json.data.units;
-    
+    console.log(`📊 Total unidades recibidas: ${units.length}`);
     const matriculaLimpia = matricula.replace(/\s/g, '').toUpperCase();
     
     console.log(`🔍 Buscando "${matriculaLimpia}" entre ${units.length} unidades...`);
