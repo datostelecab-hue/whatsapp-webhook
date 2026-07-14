@@ -109,4 +109,28 @@ router.post('/actualizar-mes', async (req, res) => {
   }
 });
 
+const { procesarYUnificar, obtenerMetricasVisor } = require('../services/boltHorasCore');
+
+// ============================================================
+// VISOR EN VIVO - PÁGINA PRINCIPAL
+// ============================================================
+router.get('/visor', async (req, res) => {
+  try {
+    const metricas = await obtenerMetricasVisor();
+    
+    res.render('visor', {
+      titulo: 'Flota Telecab Madrid',
+      metricas,
+      layout: false  // Sin layout global, usa su propio HTML
+    });
+  } catch (error) {
+    res.render('visor', {
+      titulo: 'Flota Telecab Madrid',
+      metricas: null,
+      error: error.message,
+      layout: false
+    });
+  }
+});
+
 module.exports = router;

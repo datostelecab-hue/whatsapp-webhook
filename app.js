@@ -35,6 +35,18 @@ app.get('/', (req, res) => {
   }
 });
 
+// Redirigir raíz al visor
+app.get('/', (req, res) => {
+  const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': token } = req.query;
+
+  if (mode === 'subscribe' && token === verifyToken) {
+    console.log('WEBHOOK VERIFIED');
+    res.status(200).send(challenge);
+  } else {
+    res.redirect('/dashboard/visor');  // ← Redirigir al visor
+  }
+});
+
 // ============================================================
 // RUTAS
 // ============================================================
@@ -57,6 +69,7 @@ cron.schedule('0 * * * *', async () => {
     console.error(`❌ [CRON] Error: ${error.message}`);
   }
 });
+
 
 // ============================================================
 // INICIAR SERVIDOR

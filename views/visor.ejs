@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLOTA TELECAB MADRID</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            fondo: '#0d1117',
+            card: '#1a202c',
+            borde: '#2d3748',
+            verde: '#00ff88',
+            dorado: '#f59e0b',
+            purpura: '#c084fc',
+            gris: '#94a3b8'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .grafico-wrapper {
+      aspect-ratio: 16 / 9;
+      background-color: #1a202c;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      border: 1px solid #2d3748;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .grafico-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background-color: #0d1117;
+    }
+  </style>
+</head>
+<body class="bg-[#0d1117] text-white min-h-screen p-3 font-sans">
+  <div class="max-w-lg mx-auto">
+    
+    <h1 class="text-center text-xl sm:text-2xl font-bold mb-4">🚗 FLOTA TELECAB MADRID</h1>
+    
+    <% if (error) { %>
+      <div class="text-center text-red-400 py-12 text-lg">❌ <%= error %></div>
+    <% } else if (metricas) { %>
+      <div id="contenido">
+        <div class="bg-[#1a202c] rounded-xl p-4 border-2 border-[#c084fc]">
+          
+          <div class="flex justify-between items-center py-3 border-b border-[#2d3748]">
+            <span class="text-gray-400 text-sm">⏱️ Horas Efectivas</span>
+            <span class="text-dorado text-xl sm:text-2xl font-bold"><%= metricas.horasEfectivasStr %></span>
+          </div>
+          
+          <div class="flex justify-between items-center py-3 border-b border-[#2d3748]">
+            <span class="text-gray-400 text-sm">📈 % Utilización</span>
+            <span class="text-dorado text-xl sm:text-2xl font-bold"><%= metricas.utilizacionStr %></span>
+          </div>
+          
+          <div class="flex justify-between items-center py-3 border-b border-[#2d3748]">
+            <span class="text-gray-400 text-sm">💰 Euros/Hora</span>
+            <span class="text-dorado text-xl sm:text-2xl font-bold"><%= metricas.eurosHoraStr %></span>
+          </div>
+          
+          <div class="flex justify-between items-center py-3">
+            <span class="text-gray-400 text-sm">💵 Neto Total</span>
+            <span class="text-dorado text-xl sm:text-2xl font-bold"><%= metricas.netoStr %></span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- GRÁFICOS -->
+      <div class="grafico-wrapper mt-3">
+        <img src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSZJr79liOK37_nGxmSvN3MSDNcP8r6KplDTpg_WVw-uGB4dXawe2KFnkNi6_0pR6xzTuiA5IqJqc6i/pubchart?oid=1196418210&format=image&t=<%= Date.now() %>" 
+             alt="Gráfico 1" onerror="this.parentElement.style.display='none'">
+      </div>
+      
+      <div class="grafico-wrapper mt-3">
+        <img src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSZJr79liOK37_nGxmSvN3MSDNcP8r6KplDTpg_WVw-uGB4dXawe2KFnkNi6_0pR6xzTuiA5IqJqc6i/pubchart?oid=382075626&format=image&t=<%= Date.now() %>" 
+             alt="Gráfico 2" onerror="this.parentElement.style.display='none'">
+      </div>
+      
+      <div class="grafico-wrapper mt-3">
+        <img src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSZJr79liOK37_nGxmSvN3MSDNcP8r6KplDTpg_WVw-uGB4dXawe2KFnkNi6_0pR6xzTuiA5IqJqc6i/pubchart?oid=2038113053&format=image&t=<%= Date.now() %>" 
+             alt="Gráfico 3" onerror="this.parentElement.style.display='none'">
+      </div>
+      
+      <div class="grafico-wrapper mt-3">
+        <img src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSZJr79liOK37_nGxmSvN3MSDNcP8r6KplDTpg_WVw-uGB4dXawe2KFnkNi6_0pR6xzTuiA5IqJqc6i/pubchart?oid=1928370901&format=image&t=<%= Date.now() %>" 
+             alt="Gráfico 4" onerror="this.parentElement.style.display='none'">
+      </div>
+    <% } else { %>
+      <div class="text-center text-gray-500 py-12 text-lg">⏳ Cargando datos...</div>
+    <% } %>
+    
+    <button onclick="location.reload()" 
+            class="w-full mt-4 py-3 bg-[#2d3748] text-white border border-[#4a5568] rounded-xl font-bold text-sm active:bg-[#4a5568] transition-colors">
+      🔄 Refrescar datos
+    </button>
+    
+    <div class="text-center text-xs text-gray-600 mt-4">🕐 <%= metricas ? metricas.fecha : '' %></div>
+  </div>
+
+  <script>
+    // Refresco automático cada 5 minutos
+    setTimeout(() => location.reload(), 300000);
+  </script>
+</body>
+</html>
