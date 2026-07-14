@@ -9,12 +9,17 @@ const { SPREADSHEET_ID } = require('../services/turnos');
 // ============================================================
 router.get('/', async (req, res) => {
   try {
-    const data = await readSheet(SPREADSHEET_ID, 'TODAS_LAS_FLOTAS!A1:Z200');
+    const data = await readSheet(SPREADSHEET_ID, 'TODAS_LAS_FLOTAS!A1:AM250');
     
     const ahora = new Date();
     const mesActual = ahora.getMonth() + 1;
     const anoActual = ahora.getFullYear();
-    
+    const diasDelMes = new Date(anoActual, mesActual, 0).getDate();
+
+    const numColumnas = 3 + diasDelMes + 5;
+    const letraColumna = numeroALetra(numColumnas);
+    const rango = `TODAS_LAS_FLOTAS!A1:${letraColumna}250`;
+
     const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     
@@ -22,7 +27,6 @@ router.get('/', async (req, res) => {
     for (let m = 1; m <= mesActual; m++) {
       meses.push({ numero: m, nombre: mesesNombres[m - 1] });
     }
-    
     // Mensaje de query string
     const msg = req.query.msg === 'actualizado' 
       ? '✅ Datos del mes actual actualizados correctamente'
@@ -48,6 +52,18 @@ router.get('/', async (req, res) => {
     });
   }
 });
+
+
+function numeroALetra(n) {
+  let letra = '';
+  while (n > 0) {
+    n--;
+    letra = String.fromCharCode(65 + (n % 26)) + letra;
+    n = Math.floor(n / 26);
+  }
+  return letra;
+}
+
 
 // ============================================================
 // ACTUALIZAR MES ACTUAL

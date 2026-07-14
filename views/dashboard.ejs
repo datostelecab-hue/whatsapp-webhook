@@ -79,6 +79,36 @@
   </div>
 </div>
 
+<!-- Paginación -->
+<% if (totalPaginas > 1) { %>
+  <div class="flex justify-center items-center gap-2 mt-4 pb-4">
+    <% if (pagina > 1) { %>
+      <a href="/dashboard?pagina=<%= pagina - 1 %>&limite=<%= limite %>" class="bg-telecab-border hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+        <i class="fas fa-chevron-left"></i>
+      </a>
+    <% } %>
+    
+    <span class="text-telecab-muted px-4">
+      Página <%= pagina %> de <%= totalPaginas %> 
+      (<%= totalConductores %> conductores)
+    </span>
+    
+    <% if (pagina < totalPaginas) { %>
+      <a href="/dashboard?pagina=<%= pagina + 1 %>&limite=<%= limite %>" class="bg-telecab-border hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+        <i class="fas fa-chevron-right"></i>
+      </a>
+    <% } %>
+  </div>
+<% } %>
+
+<!-- Selector de límite -->
+<div class="text-center mt-2 pb-4">
+  <span class="text-telecab-muted text-sm">Mostrar:</span>
+  <a href="/dashboard?limite=25&pagina=1" class="text-sm mx-1 <%= limite == 25 ? 'text-telecab-red font-bold' : 'text-telecab-muted' %>">25</a>
+  <a href="/dashboard?limite=50&pagina=1" class="text-sm mx-1 <%= limite == 50 ? 'text-telecab-red font-bold' : 'text-telecab-muted' %>">50</a>
+  <a href="/dashboard?limite=100&pagina=1" class="text-sm mx-1 <%= limite == 100 ? 'text-telecab-red font-bold' : 'text-telecab-muted' %>">100</a>
+</div>
+
 <div class="text-telecab-muted text-xs mt-4 text-right">
   Última actualización: <%= ultimaActualizacion %> | <a href="https://docs.google.com/spreadsheets/d/1Mx8RDwsrnVszd0bRJwz_hxQtnxfM8uVTqwiGYf7mQ04" target="_blank" class="text-telecab-red hover:underline">Ver en Sheets <i class="fas fa-external-link-alt ml-1"></i></a>
 </div>
