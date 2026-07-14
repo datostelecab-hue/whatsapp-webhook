@@ -7,7 +7,7 @@ const WHATSAPP_TOKEN = 'EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7
 const PHONE_NUMBER_ID = '1256923474160518';
 const WHATSAPP_VERSION = 'v25.0';
 const MAPON_API_KEY = 'd1ff9336961ee25a46091c08663de3612d6a4955';
-// Mapa de sesiones: guarda matrícula actual por conductor
+
 const sesiones = {};
 
 // ============================================================
@@ -23,13 +23,11 @@ router.post('/', async (req, res) => {
 
     const from = message.from;
 
-    // Botón pulsado
     if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
       const buttonId = message.interactive.button_reply.id;
       console.log(`Botón: ${buttonId} de ${from}`);
       await handleButton(from, buttonId);
     } else {
-      // Texto libre
       const text = message.text?.body?.trim() || '';
       console.log(`Texto: "${text}" de ${from}`);
       await handleText(from, text);
@@ -46,7 +44,6 @@ router.post('/', async (req, res) => {
 // TEXTO RECIBIDO
 // ============================================================
 async function handleText(phone, text) {
-  // Buscar conductor por teléfono
   const conductor = await callAppsScript('buscar_conductor', { telefono: phone });
 
   if (!conductor || !conductor.encontrado) {
@@ -56,43 +53,34 @@ async function handleText(phone, text) {
 
   const nombre = conductor.nombre;
 
-  // Ver si el texto es una matrícula (6-7 caracteres alfanuméricos)
   const matriculaRegex = /^[A-Za-z0-9]{4,8}$/;
   
   if (matriculaRegex.test(text)) {
     const matricula = text.toUpperCase();
     console.log(`${nombre} busca matrícula: ${matricula}`);
 
-    // Buscar en Mapon
-  const resultado = await buscarEnMapon(matricula);
-  console.log(`🔍 Buscando matrícula ${matricula} directamente en Mapon...`);
-const resultado = await buscarEnMapon(matricula);
-console.log(`📋 Resultado Mapon:`, JSON.stringify(resultado));
+    const resultado = await buscarEnMapon(matricula);
+    console.log(`📋 Resultado Mapon:`, JSON.stringify(resultado));
 
     if (!resultado || !resultado.encontrado) {
       await sendText(phone, `❌ Matrícula "${matricula}" no encontrada en Mapon.\n\nIndica otra matrícula (ej: 1234ABC):`);
       return;
     }
 
-    // Guardar sesión
     sesiones[phone] = {
       nombre,
-      matricula,
+      matricula: resultado.matricula,
       unitId: resultado.unit_id,
       vehiculo: resultado.vehiculo
     };
 
-    // Mostrar botones (puerta cerrada por defecto)
-    await sendButtonsEstado(phone, nombre, matricula, resultado.vehiculo, 'cerrada');
+    await sendButtonsEstado(phone, nombre, resultado.matricula, resultado.vehiculo, 'cerrada');
 
   } else {
-    // No es matrícula, pedirla
     if (sesiones[phone]) {
-      // Ya tiene sesión, mostrar botones
       const s = sesiones[phone];
       await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, 'cerrada');
     } else {
-      // Primera vez
       await sendText(phone, `👋 Hola ${nombre}, indica la matrícula del vehículo que quieres abrir/cerrar.\n\nEjemplo: 1888LTJ`);
     }
   }
@@ -234,8 +222,8 @@ async function buscarEnMapon(matricula) {
     const json = await response.json();
     const units = json.data.units;
     console.log(`📊 Total unidades recibidas: ${units.length}`);
-    const matriculaLimpia = matricula.replace(/\s/g, '').toUpperCase();
     
+    const matriculaLimpia = matricula.replace(/\s/g, '').toUpperCase();
     console.log(`🔍 Buscando "${matriculaLimpia}" entre ${units.length} unidades...`);
     
     // 1. Búsqueda exacta sin espacios
@@ -280,7 +268,6 @@ async function buscarEnMapon(matricula) {
       }
     }
     
-    // Mostrar matrículas similares para debug
     const similares = units
       .filter(u => (u.number || '').replace(/\s/g, '').toUpperCase().includes(matriculaLimpia.substring(0, 4)))
       .slice(0, 5)
@@ -288,10 +275,7 @@ async function buscarEnMapon(matricula) {
     
     console.log(`❌ No encontrado. Similares: ${similares.join(', ')}`);
     
-    return {
-      encontrado: false,
-      similares
-    };
+    return { encontrado: false, similares };
     
   } catch (error) {
     console.error('Error buscando en Mapon:', error);
