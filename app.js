@@ -10,7 +10,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(expressLayouts);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-app.set('layout', 'layout');  // Layout base
+app.set('layout', 'layout');
 
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
@@ -18,6 +18,7 @@ const verifyToken = process.env.VERIFY_TOKEN;
 // Importar rutas
 const botPuertas = require('./routes/botPuertas');
 const boltHoras = require('./routes/boltHoras');
+const dashboardRoutes = require('./routes/dashboard');  // ← AÑADIR ESTA LÍNEA
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -37,11 +38,12 @@ app.get('/', (req, res) => {
 // ============================================================
 // RUTAS
 // ============================================================
-app.post('/', botPuertas);           // Webhook de WhatsApp (bot puertas)
-app.use('/horas', boltHoras);        // Endpoints del sistema de horas
+app.post('/', botPuertas);
+app.use('/horas', boltHoras);
+app.use('/dashboard', dashboardRoutes);  // ← AÑADIR ESTA LÍNEA
 
 // ============================================================
-// CRON: Procesar horas cada hora
+// CRON
 // ============================================================
 cron.schedule('0 * * * *', async () => {
   const ahora = new Date();
@@ -61,6 +63,7 @@ cron.schedule('0 * * * *', async () => {
 // ============================================================
 app.listen(port, () => {
   console.log(`🚀 Servidor escuchando en puerto ${port}`);
+  console.log(`   Dashboard: http://localhost:${port}/dashboard`);
   console.log(`   Bot puertas: POST /`);
   console.log(`   Horas: GET /horas/procesar`);
   console.log(`   Cron: Cada hora (minuto 0)`);
