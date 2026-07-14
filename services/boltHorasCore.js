@@ -389,7 +389,7 @@ async function escribirHojaUnificada(todosConductores, mes, ano) {
   console.log(`✅ Hoja TODAS_LAS_FLOTAS actualizada: ${values.length} filas`);
 }
 
-module.exports = { procesarYUnificar };
+
 
 // ============================================
 // VISOR EN VIVO (UNIFICADO)
@@ -575,3 +575,5 @@ function obtenerDatosPanel() {
     return { error: e.toString() };
   }
 }
+
+module.exports = { procesarYUnificar, obtenerMetricasVisor };
