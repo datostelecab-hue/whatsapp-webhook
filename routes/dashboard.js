@@ -108,9 +108,6 @@ router.post('/actualizar-mes', async (req, res) => {
     res.render('error', { titulo: 'Error', mensaje: error.message });
   }
 });
-
-const { procesarYUnificar, obtenerMetricasVisor } = require('../services/boltHorasCore');
-
 // ============================================================
 // VISOR EN VIVO - PÁGINA PRINCIPAL
 // ============================================================
