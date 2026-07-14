@@ -7,124 +7,147 @@ const WHATSAPP_TOKEN = 'EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7
 const PHONE_NUMBER_ID = '1256923474160518';
 const WHATSAPP_VERSION = 'v25.0';
 
+// Mapa de sesiones: guarda matrícula actual por conductor
+const sesiones = {};
+
 // ============================================================
-// RECIBIR MENSAJES DE WHATSAPP
+// RECIBIR MENSAJES
 // ============================================================
 router.post('/', async (req, res) => {
   console.log('\n=== WEBHOOK RECIBIDO ===');
   console.log(JSON.stringify(req.body, null, 2));
 
   try {
-    const entry = req.body?.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const messages = value?.messages;
+    const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!message) return res.status(200).end();
 
-    if (!messages || !messages[0]) {
-      console.log('No hay mensajes (puede ser un estado)');
-      return res.status(200).end();
-    }
-
-    const message = messages[0];
     const from = message.from;
 
+    // Botón pulsado
     if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
       const buttonId = message.interactive.button_reply.id;
-      console.log(`Botón pulsado: ${buttonId} por ${from}`);
+      console.log(`Botón: ${buttonId} de ${from}`);
       await handleButton(from, buttonId);
     } else {
-      const text = message.text?.body || '';
-      console.log(`Mensaje de texto: "${text}" de ${from}`);
-      await handleFirstMessage(from);
+      // Texto libre
+      const text = message.text?.body?.trim() || '';
+      console.log(`Texto: "${text}" de ${from}`);
+      await handleText(from, text);
     }
 
   } catch (error) {
-    console.error('Error procesando webhook:', error);
+    console.error('Error:', error);
   }
 
   res.status(200).end();
 });
 
 // ============================================================
-// PRIMER MENSAJE
+// TEXTO RECIBIDO
 // ============================================================
-async function handleFirstMessage(phone) {
+async function handleText(phone, text) {
+  // Buscar conductor por teléfono
   const conductor = await callAppsScript('buscar_conductor', { telefono: phone });
 
   if (!conductor || !conductor.encontrado) {
-    await sendText(phone, '❌ No estás autorizado. Contacta con administración.');
+    await sendText(phone, '❌ No estás autorizado. Tu número no está en la base de datos.');
     return;
   }
 
   const nombre = conductor.nombre;
-  const matricula = conductor.matricula;
 
-  console.log(`Conductor encontrado: ${nombre} → ${matricula}`);
+  // Ver si el texto es una matrícula (6-7 caracteres alfanuméricos)
+  const matriculaRegex = /^[A-Za-z0-9]{4,8}$/;
+  
+  if (matriculaRegex.test(text)) {
+    const matricula = text.toUpperCase();
+    console.log(`${nombre} busca matrícula: ${matricula}`);
 
-  const turno = await callAppsScript('verificar_turno', { nombre: nombre });
+    // Buscar en Mapon
+    const resultado = await callAppsScript('buscar_por_matricula', { matricula });
 
-  if (!turno || !turno.en_turno) {
-    await sendText(phone, '⛔ Estás fuera de tu turno. Contacta con tráfico.');
-    return;
+    if (!resultado || !resultado.encontrado) {
+      await sendText(phone, `❌ Matrícula "${matricula}" no encontrada en Mapon.\n\nIndica otra matrícula (ej: 1234ABC):`);
+      return;
+    }
+
+    // Guardar sesión
+    sesiones[phone] = {
+      nombre,
+      matricula,
+      unitId: resultado.unit_id,
+      vehiculo: resultado.vehiculo
+    };
+
+    // Mostrar botones (puerta cerrada por defecto)
+    await sendButtonsEstado(phone, nombre, matricula, resultado.vehiculo, 'cerrada');
+
+  } else {
+    // No es matrícula, pedirla
+    if (sesiones[phone]) {
+      // Ya tiene sesión, mostrar botones
+      const s = sesiones[phone];
+      await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, 'cerrada');
+    } else {
+      // Primera vez
+      await sendText(phone, `👋 Hola ${nombre}, indica la matrícula del vehículo que quieres abrir/cerrar.\n\nEjemplo: 1888LTJ`);
+    }
   }
-
-  console.log(`Turno verificado: ${turno.turno}`);
-  await sendButtonsEstado(phone, nombre, matricula, 'cerrada');
 }
 
 // ============================================================
 // BOTÓN PULSADO
 // ============================================================
 async function handleButton(phone, buttonId) {
-  const conductor = await callAppsScript('buscar_conductor', { telefono: phone });
-  if (!conductor || !conductor.encontrado) {
-    await sendText(phone, '❌ No estás autorizado.');
-    return;
-  }
-
-  const turno = await callAppsScript('verificar_turno', { nombre: conductor.nombre });
-  if (!turno || !turno.en_turno) {
-    await sendText(phone, '⛔ Tu turno ha terminado. Contacta con tráfico.');
+  const sesion = sesiones[phone];
+  
+  if (!sesion) {
+    await sendText(phone, '⚠️ Primero indica una matrícula (ej: 1888LTJ).');
     return;
   }
 
   if (buttonId === 'abrir_puertas') {
-    console.log(`🔓 Abriendo puertas para ${conductor.nombre} (${conductor.matricula})`);
+    console.log(`🔓 Abriendo: ${sesion.vehiculo} (${sesion.matricula})`);
 
     const result = await callAppsScript('ejecutar_comando', {
-      matricula: conductor.matricula,
+      matricula: sesion.matricula,
       comando: 'open_doors'
     });
 
     if (result.status === 'ok') {
-      await sendButtonsEstado(phone, conductor.nombre, conductor.matricula, 'abierta');
+      await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, 'abierta');
     } else {
       await sendText(phone, '❌ Error al abrir puertas. Inténtalo de nuevo.');
     }
+
   } else if (buttonId === 'cerrar_puertas') {
-    console.log(`🔒 Cerrando puertas para ${conductor.nombre} (${conductor.matricula})`);
+    console.log(`🔒 Cerrando: ${sesion.vehiculo} (${sesion.matricula})`);
 
     const result = await callAppsScript('ejecutar_comando', {
-      matricula: conductor.matricula,
+      matricula: sesion.matricula,
       comando: 'close_doors'
     });
 
     if (result.status === 'ok') {
-      await sendButtonsEstado(phone, conductor.nombre, conductor.matricula, 'cerrada');
+      await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, 'cerrada');
     } else {
       await sendText(phone, '❌ Error al cerrar puertas. Inténtalo de nuevo.');
     }
+
+  } else if (buttonId === 'cambiar_matricula') {
+    delete sesiones[phone];
+    await sendText(phone, '🔄 Indica la nueva matrícula (ej: 1888LTJ):');
   }
 }
 
 // ============================================================
-// ENVIAR BOTÓN SEGÚN ESTADO
+// ENVIAR BOTONES SEGÚN ESTADO
 // ============================================================
-async function sendButtonsEstado(to, nombre, matricula, estado) {
+async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
   const puertaAbierta = estado === 'abierta';
   const emoji = puertaAbierta ? '🔓' : '🔒';
   const textoEstado = puertaAbierta ? 'PUERTA ABIERTA' : 'PUERTA CERRADA';
-  const botonId = puertaAbierta ? 'cerrar_puertas' : 'abrir_puertas';
+  const botonAccion = puertaAbierta ? 'cerrar_puertas' : 'abrir_puertas';
   const botonTexto = puertaAbierta ? '🔒 Cerrar puertas' : '🔓 Abrir puertas';
 
   const url = `https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`;
@@ -135,21 +158,24 @@ async function sendButtonsEstado(to, nombre, matricula, estado) {
     interactive: {
       type: 'button',
       body: {
-        text: `🚗 ${nombre}\n🚘 ${matricula}\n${emoji} ${textoEstado}`
+        text: `🚗 ${nombre}\n🚘 ${vehiculo} (${matricula})\n${emoji} ${textoEstado}`
       },
       action: {
-        buttons: [{
-          type: 'reply',
-          reply: {
-            id: botonId,
-            title: botonTexto
+        buttons: [
+          {
+            type: 'reply',
+            reply: { id: botonAccion, title: botonTexto }
+          },
+          {
+            type: 'reply',
+            reply: { id: 'cambiar_matricula', title: '🔄 Cambiar matrícula' }
           }
-        }]
+        ]
       }
     }
   };
 
-  const response = await fetch(url, {
+  await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
@@ -158,9 +184,7 @@ async function sendButtonsEstado(to, nombre, matricula, estado) {
     body: JSON.stringify(payload)
   });
 
-  const data = await response.json();
-  console.log('WhatsApp sendButtons:', JSON.stringify(data));
-  return data;
+  console.log(`📱 Botones enviados a ${nombre}: ${textoEstado}`);
 }
 
 // ============================================================
@@ -168,25 +192,19 @@ async function sendButtonsEstado(to, nombre, matricula, estado) {
 // ============================================================
 async function sendText(to, text) {
   const url = `https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`;
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: to,
-    type: 'text',
-    text: { body: text }
-  };
-
-  const response = await fetch(url, {
+  await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: to,
+      type: 'text',
+      text: { body: text }
+    })
   });
-
-  const data = await response.json();
-  console.log('WhatsApp sendText:', JSON.stringify(data));
-  return data;
 }
 
 // ============================================================
@@ -197,12 +215,9 @@ async function callAppsScript(accion, params = {}) {
   url.searchParams.set('accion', accion);
   Object.keys(params).forEach(key => url.searchParams.set(key, params[key]));
 
-  console.log(`Llamando a Apps Script: ${url.toString()}`);
-
+  console.log(`📞 Apps Script: ${accion}`, params);
   const response = await fetch(url.toString());
-  const data = await response.json();
-  console.log('Respuesta Apps Script:', JSON.stringify(data));
-  return data;
+  return await response.json();
 }
 
 module.exports = router;
