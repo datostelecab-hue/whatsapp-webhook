@@ -1,11 +1,15 @@
 const express = require('express');
+const cron = require('node-cron');
 const app = express();
 app.use(express.json());
 
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzyYKcT23Vu4tlziAWRYlGkpNQE361CakLkeCECjUBKbdubLhMdpvyPUqcZxBHlQON-/exec';
+// Importar rutas
+const botPuertas = require('./routes/botPuertas');
+const boltHoras = require('./routes/boltHoras');
+const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
 // VERIFICACIÓN DEL WEBHOOK (Meta)
@@ -22,214 +26,33 @@ app.get('/', (req, res) => {
 });
 
 // ============================================================
-// RECIBIR MENSAJES DE WHATSAPP
+// RUTAS
 // ============================================================
-app.post('/', async (req, res) => {
-  console.log('\n=== WEBHOOK RECIBIDO ===');
-  console.log(JSON.stringify(req.body, null, 2));
+app.post('/', botPuertas);           // Webhook de WhatsApp (bot puertas)
+app.use('/horas', boltHoras);        // Endpoints del sistema de horas
 
+// ============================================================
+// CRON: Procesar horas cada hora
+// ============================================================
+cron.schedule('0 * * * *', async () => {
+  const ahora = new Date();
+  const mes = ahora.getMonth() + 1;
+  const ano = ahora.getFullYear();
+  console.log(`⏰ [CRON] Ejecutando procesarYUnificar(${mes}, ${ano})...`);
   try {
-    const entry = req.body?.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const messages = value?.messages;
-
-    if (!messages || !messages[0]) {
-      console.log('No hay mensajes (puede ser un estado)');
-      return res.status(200).end();
-    }
-
-    const message = messages[0];
-    const from = message.from;
-
-    if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
-      const buttonId = message.interactive.button_reply.id;
-      console.log(`Botón pulsado: ${buttonId} por ${from}`);
-      await handleButton(from, buttonId);
-    } else {
-      const text = message.text?.body || '';
-      console.log(`Mensaje de texto: "${text}" de ${from}`);
-      await handleFirstMessage(from);
-    }
-
+    const result = await procesarYUnificar(mes, ano);
+    console.log(`✅ [CRON] Completado: ${result.conductores} conductores`);
   } catch (error) {
-    console.error('Error procesando webhook:', error);
+    console.error(`❌ [CRON] Error: ${error.message}`);
   }
-
-  res.status(200).end();
 });
-
-// ============================================================
-// PRIMER MENSAJE: BUSCAR CONDUCTOR, VERIFICAR TURNO, ENVIAR BOTONES
-// ============================================================
-async function handleFirstMessage(phone) {
-  const conductor = await callAppsScript('buscar_conductor', { telefono: phone });
-
-  if (!conductor || !conductor.encontrado) {
-    await sendText(phone, '❌ No estás autorizado. Contacta con administración.');
-    return;
-  }
-
-  const nombre = conductor.nombre;
-  const matricula = conductor.matricula;
-
-  console.log(`Conductor encontrado: ${nombre} → ${matricula}`);
-
-  const turno = await callAppsScript('verificar_turno', { nombre: nombre });
-
-  if (!turno || !turno.en_turno) {
-    await sendText(phone, '⛔ Estás fuera de tu turno. Contacta con tráfico.');
-    return;
-  }
-
-  console.log(`Turno verificado: ${turno.turno}`);
-
-  // Estado inicial: puerta cerrada → botón Abrir activo, Cerrar inactivo
-  await sendButtonsEstado(phone, nombre, matricula, 'cerrada');
-}
-
-// ============================================================
-// BOTÓN PULSADO: EJECUTAR COMANDO Y CAMBIAR BOTONES
-// ============================================================
-async function handleButton(phone, buttonId) {
-  const conductor = await callAppsScript('buscar_conductor', { telefono: phone });
-  if (!conductor || !conductor.encontrado) {
-    await sendText(phone, '❌ No estás autorizado.');
-    return;
-  }
-
-  const turno = await callAppsScript('verificar_turno', { nombre: conductor.nombre });
-  if (!turno || !turno.en_turno) {
-    await sendText(phone, '⛔ Tu turno ha terminado. Contacta con tráfico.');
-    return;
-  }
-
-  if (buttonId === 'abrir_puertas') {
-    console.log(`🔓 Abriendo puertas para ${conductor.nombre} (${conductor.matricula})`);
-
-    const result = await callAppsScript('ejecutar_comando', {
-      matricula: conductor.matricula,
-      comando: 'open_doors'
-    });
-
-    if (result.status === 'ok') {
-      // Puerta ABIERTA → desactivar Abrir, activar Cerrar
-      await sendButtonsEstado(phone, conductor.nombre, conductor.matricula, 'abierta');
-    } else {
-      await sendText(phone, '❌ Error al abrir puertas. Inténtalo de nuevo.');
-    }
-  } else if (buttonId === 'cerrar_puertas') {
-    console.log(`🔒 Cerrando puertas para ${conductor.nombre} (${conductor.matricula})`);
-
-    const result = await callAppsScript('ejecutar_comando', {
-      matricula: conductor.matricula,
-      comando: 'close_doors'
-    });
-
-    if (result.status === 'ok') {
-      // Puerta CERRADA → activar Abrir, desactivar Cerrar
-      await sendButtonsEstado(phone, conductor.nombre, conductor.matricula, 'cerrada');
-    } else {
-      await sendText(phone, '❌ Error al cerrar puertas. Inténtalo de nuevo.');
-    }
-  }
-}
-
-// ============================================================
-// ENVIAR BOTÓN SEGÚN ESTADO DE LA PUERTA (SOLO UN BOTÓN)
-// ============================================================
-async function sendButtonsEstado(to, nombre, matricula, estado) {
-  const puertaAbierta = estado === 'abierta';
-
-  const emoji = puertaAbierta ? '🔓' : '🔒';
-  const textoEstado = puertaAbierta ? 'PUERTA ABIERTA' : 'PUERTA CERRADA';
-  const botonId = puertaAbierta ? 'cerrar_puertas' : 'abrir_puertas';
-  const botonTexto = puertaAbierta ? '🔒 Cerrar puertas' : '🔓 Abrir puertas';
-
-  const url = `https://graph.facebook.com/v25.0/1256923474160518/messages`;
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: to,
-    type: 'interactive',
-    interactive: {
-      type: 'button',
-      body: {
-        text: `🚗 ${nombre}\n🚘 ${matricula}\n${emoji} ${textoEstado}`
-      },
-      action: {
-        buttons: [
-          {
-            type: 'reply',
-            reply: {
-              id: botonId,
-              title: botonTexto
-            }
-          }
-        ]
-      }
-    }
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7NqaKcKN1F3HBGxGw4eLOUQd0kqZCbRW3hMr3ZCYZBFJy94oxL0Pn9DBV092umEPhdgJ9HW4eV2Vh7CxhJJGHZCrBNbpRWSQ9whmqLKtVpAZBnx3Hdv8h3wuICs86P11R8w5ZA7Y2CgaITa0XgZDZD`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const data = await response.json();
-  console.log('WhatsApp sendButtons:', JSON.stringify(data));
-  return data;
-}
-// ============================================================
-// FUNCIONES DE WHATSAPP
-// ============================================================
-
-async function sendText(to, text) {
-  const url = `https://graph.facebook.com/v25.0/1256923474160518/messages`;
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: to,
-    type: 'text',
-    text: { body: text }
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7NqaKcKN1F3HBGxGw4eLOUQd0kqZCbRW3hMr3ZCYZBFJy94oxL0Pn9DBV092umEPhdgJ9HW4eV2Vh7CxhJJGHZCrBNbpRWSQ9whmqLKtVpAZBnx3Hdv8h3wuICs86P11R8w5ZA7Y2CgaITa0XgZDZD`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const data = await response.json();
-  console.log('WhatsApp sendText:', JSON.stringify(data));
-  return data;
-}
-
-// ============================================================
-// LLAMAR A APPS SCRIPT
-// ============================================================
-
-async function callAppsScript(accion, params = {}) {
-  const url = new URL(APPS_SCRIPT_URL);
-  url.searchParams.set('accion', accion);
-  Object.keys(params).forEach(key => url.searchParams.set(key, params[key]));
-
-  console.log(`Llamando a Apps Script: ${url.toString()}`);
-
-  const response = await fetch(url.toString());
-  const data = await response.json();
-  console.log('Respuesta Apps Script:', JSON.stringify(data));
-  return data;
-}
 
 // ============================================================
 // INICIAR SERVIDOR
 // ============================================================
 app.listen(port, () => {
-  console.log(`Bot de puertas escuchando en puerto ${port}`);
+  console.log(`🚀 Servidor escuchando en puerto ${port}`);
+  console.log(`   Bot puertas: POST /`);
+  console.log(`   Horas: GET /horas/procesar`);
+  console.log(`   Cron: Cada hora (minuto 0)`);
 });
