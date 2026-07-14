@@ -136,14 +136,15 @@ async function handleButton(phone, buttonId) {
 }
 
 // ============================================================
-// ENVIAR BOTONES SEGÚN ESTADO DE LA PUERTA
+// ENVIAR BOTÓN SEGÚN ESTADO DE LA PUERTA (SOLO UN BOTÓN)
 // ============================================================
 async function sendButtonsEstado(to, nombre, matricula, estado) {
-  // estado: 'abierta' o 'cerrada'
   const puertaAbierta = estado === 'abierta';
 
   const emoji = puertaAbierta ? '🔓' : '🔒';
   const textoEstado = puertaAbierta ? 'PUERTA ABIERTA' : 'PUERTA CERRADA';
+  const botonId = puertaAbierta ? 'cerrar_puertas' : 'abrir_puertas';
+  const botonTexto = puertaAbierta ? '🔒 Cerrar puertas' : '🔓 Abrir puertas';
 
   const url = `https://graph.facebook.com/v25.0/1256923474160518/messages`;
   const payload = {
@@ -153,22 +154,15 @@ async function sendButtonsEstado(to, nombre, matricula, estado) {
     interactive: {
       type: 'button',
       body: {
-        text: `🚗 ${nombre}\n🚘 ${matricula}\n${emoji} ${textoEstado}\n¿Qué deseas hacer?`
+        text: `🚗 ${nombre}\n🚘 ${matricula}\n${emoji} ${textoEstado}`
       },
       action: {
         buttons: [
           {
             type: 'reply',
             reply: {
-              id: 'abrir_puertas',
-              title: puertaAbierta ? '✅ Ya está abierta' : '🔓 Abrir'
-            }
-          },
-          {
-            type: 'reply',
-            reply: {
-              id: 'cerrar_puertas',
-              title: puertaAbierta ? '🔒 Cerrar' : '✅ Ya está cerrada'
+              id: botonId,
+              title: botonTexto
             }
           }
         ]
@@ -189,7 +183,6 @@ async function sendButtonsEstado(to, nombre, matricula, estado) {
   console.log('WhatsApp sendButtons:', JSON.stringify(data));
   return data;
 }
-
 // ============================================================
 // FUNCIONES DE WHATSAPP
 // ============================================================
