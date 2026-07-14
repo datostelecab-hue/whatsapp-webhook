@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
     const anoActual = ahora.getFullYear();
     const diasDelMes = new Date(anoActual, mesActual, 0).getDate();
 
-    const numColumnas = 3 + diasDelMes + 5;
+    const numColumnas = 3 + diasDelMes + 31;
     const letraColumna = numeroALetra(numColumnas);
     const rango = `TODAS_LAS_FLOTAS!A1:${letraColumna}250`;
 
