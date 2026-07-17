@@ -31,16 +31,22 @@ async function actualizarTodo() {
     const primerDia = Math.min(...diasFaltantes);
     const ultimoDia = Math.max(...diasFaltantes);
 
-    const startTs = Math.floor(new Date(ano, mes - 1, primerDia, 0, 0, 0).getTime() / 1000);
-    const endTs = Math.floor(new Date(ano, mes - 1, ultimoDia, 23, 59, 59).getTime() / 1000);
+const startTs = Math.floor(new Date(ano, mes - 1, primerDia, 0, 0, 0).getTime() / 1000);
+// Para el día actual: hasta AHORA. Para días pasados: hasta 23:59:59
+const endTs = (ultimoDia === diaActual) 
+  ? Math.floor(ahora.getTime() / 1000)  // AHORA
+  : Math.floor(new Date(ano, mes - 1, ultimoDia, 23, 59, 59).getTime() / 1000); // Fin del día
 
     console.log(`🔍 Bolt: días ${primerDia} → ${ultimoDia}`);
 
     const flotas = [{ id: 63530 }, { id: 143626 }];
 
-// Solo reiniciar días que NO sean el día actual (el día actual se acumula)
 for (const d of diasFaltantes) {
-  if (d !== diaActual) {
+  if (d === diaActual) {
+    // Día actual: empezar de 0 y sumar lo que venga
+    cache[d] = { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
+  } else {
+    // Días pasados: también sobrescribir para corregir datos
     cache[d] = { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
   }
 }
@@ -86,7 +92,7 @@ for (const d of diasFaltantes) {
       }, 'orders', 500);
       
       // Solo asignar al primer día del período (simplificado)
-      const diaAsignar = diasFaltantes[0];
+      const diaAsignar = diaActual;
       ordenes.forEach(o => {
         if (o.order_price?.net_earnings) cache[diaAsignar].facturacion += o.order_price.net_earnings;
         if (o.order_status === 'finished') cache[diaAsignar].viajes++;
