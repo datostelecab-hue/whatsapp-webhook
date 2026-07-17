@@ -2,7 +2,7 @@ const { CONFIG_BOLT, fetchAllPaginated } = require('./bolt');
 const { writeSheet, clearSheet } = require('./sheets');
 
 const STATE_VIAJE = ['has_order', 'waiting_orders'];
-const SPREADSHEET_ID = '1TRkpcje_wfxDDvJ4PBviCzfPHtJgepNTAyDZH3pXB90';
+const SPREADSHEET_ID = '1ixCx1SHICLv_VjrrOs030YswcNSOBbiET2_T_f1Gkm8';
 
 // ============================================================
 // OBTENER RANGO MES CURSANTE
