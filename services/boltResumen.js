@@ -108,7 +108,7 @@ async function actualizarUltimos15Dias() {
   const ahora = new Date();
 
   const fechaFin = new Date(ahora);
-  fechaFin.setDate(fechaFin.getDate() - 1);
+  fechaFin.setDate(fechaFin.getDate());
   fechaFin.setHours(23, 59, 59, 999);
 
   const fechaInicio = new Date(fechaFin);
