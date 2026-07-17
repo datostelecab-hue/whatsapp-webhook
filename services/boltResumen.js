@@ -78,8 +78,6 @@ async function actualizarTodo() {
             }
         }
 
-        let viajesCompletadosNuevos = 0;
-
         for (const flotaId of [63530, 143626]) {
             const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders', {
                 company_ids: [flotaId], start_ts: startTs, end_ts: endTs,
@@ -101,11 +99,9 @@ async function actualizarTodo() {
         horasWaitingTotal += (datos.waiting || 0);
         horasHasOrderTotal += (datos.hasOrder || 0);
     }
-
     const facturacionAnterior = await leerFacturacionAcumulada();
     const facturacionTotal = facturacionAnterior + facturacionNueva;
-    const viajesAnteriores = await leerViajesAcumulados();
-    const viajesTotales = viajesAnteriores + viajesCompletadosNuevos;
+  
 
     console.log(`💰 Fact: anterior=${facturacionAnterior.toFixed(2)} + nueva=${facturacionNueva.toFixed(2)} = ${facturacionTotal.toFixed(2)}`);
 
@@ -243,17 +239,14 @@ async function leerCacheHorasPorDia() {
     }
 }
 
-// ============================================================
-// LEER FACTURACIÓN ACUMULADA
-// ============================================================
 async function leerFacturacionAcumulada() {
-    try {
-        const data = await readSheet(SPREADSHEET_ID, 'Flotas Unificadas!A:C');
-        if (data.length >= 2 && data[1][2]) {
-            return parseFloat(data[1][2]) || 0;
-        }
-    } catch (e) { }
-    return 0;
+  try {
+    const data = await readSheet(SPREADSHEET_ID, 'Flotas Unificadas!A:E');
+    if (data.length >= 2 && data[1][4]) {  // ← Columna E (índice 4)
+      return parseFloat(data[1][4]) || 0;
+    }
+  } catch (e) { }
+  return 0;
 }
 
 async function leerViajesAcumulados() {
