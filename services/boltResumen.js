@@ -13,24 +13,19 @@ async function actualizarTodo() {
   const hora = ahora.getHours();
   const diasDelMes = new Date(ano, mes, 0).getDate();
 
-  // 1. Leer caché
-  const cache = await leerCacheHorasPorDia();
+  // 1. Leer caché COMPLETA (incluye waiting, hasOrder, facturacion, viajes)
+  const cache = await leerCacheCompleta();
   const diasCalculados = Object.keys(cache).map(Number);
 
   // Días a recalcular
   const diasFaltantes = [];
   for (let d = 1; d <= diaActual; d++) {
-    // Recalcular SIEMPRE el día actual
-    // Si es entre 00:00-00:59, recalcular también ayer (para cerrarlo)
     if (!diasCalculados.includes(d) || d === diaActual || (hora === 0 && d === diaActual - 1)) {
       diasFaltantes.push(d);
     }
   }
 
   console.log(`📊 Caché: ${diasCalculados.length} días | Recalculando: ${diasFaltantes.join(',')}`);
-
-  let facturacionPeriodo = 0;
-  let viajesPeriodo = 0;
 
   if (diasFaltantes.length > 0) {
     const primerDia = Math.min(...diasFaltantes);
@@ -42,6 +37,11 @@ async function actualizarTodo() {
     console.log(`🔍 Bolt: días ${primerDia} → ${ultimoDia}`);
 
     const flotas = [{ id: 63530 }, { id: 143626 }];
+
+    // Reiniciar los días que vamos a recalcular (para sobrescribir, no sumar)
+    for (const d of diasFaltantes) {
+      cache[d] = { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
+    }
 
     for (const flota of flotas) {
       const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
@@ -67,7 +67,6 @@ async function actualizarTodo() {
           if (duracion <= 0) continue;
           if (!diasFaltantes.includes(dia)) continue;
 
-          if (!cache[dia]) cache[dia] = { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0 };
           if (flota.id === 63530) cache[dia].flota63530 += duracion;
           else cache[dia].flota143626 += duracion;
 
@@ -77,47 +76,49 @@ async function actualizarTodo() {
       }
     }
 
-    // Facturación y viajes SOLO del período consultado
+    // Facturación y viajes SOLO del período
     for (const flotaId of [63530, 143626]) {
       const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders', {
         company_ids: [flotaId], start_ts: startTs, end_ts: endTs,
         time_range_filter_type: 'created'
       }, 'orders', 500);
+      
+      // Solo asignar al primer día del período (simplificado)
+      const diaAsignar = diasFaltantes[0];
       ordenes.forEach(o => {
-        if (o.order_price?.net_earnings) facturacionPeriodo += o.order_price.net_earnings;
-        if (o.order_status === 'finished') viajesPeriodo++;
+        if (o.order_price?.net_earnings) cache[diaAsignar].facturacion += o.order_price.net_earnings;
+        if (o.order_status === 'finished') cache[diaAsignar].viajes++;
       });
     }
   }
 
-  // 2. Sumar todo el mes desde caché
+  // 2. Calcular totales SUMANDO TODA la caché
   let horasWaitingTotal = 0, horasHasOrderTotal = 0;
+  let facturacionTotal = 0, viajesTotales = 0;
+
   for (const datos of Object.values(cache)) {
     horasWaitingTotal += (datos.waiting || 0);
     horasHasOrderTotal += (datos.hasOrder || 0);
+    facturacionTotal += (datos.facturacion || 0);
+    viajesTotales += (datos.viajes || 0);
   }
 
-  // Para facturación/viajes: leer los acumulados anteriores y sumar el nuevo período
-  const acumulados = await leerAcumulados();
-  const facturacionTotal = acumulados.facturacion + facturacionPeriodo;
-  const viajesTotales = acumulados.viajes + viajesPeriodo;
+  console.log(`💰 Total mes: Fact=${facturacionTotal.toFixed(2)} | Viajes=${viajesTotales}`);
 
-  console.log(`💰 Fact total: ${facturacionTotal.toFixed(2)} | Viajes: ${viajesTotales}`);
-
-  // 3. Escribir HORAS_POR_DIA
+  // 3. Escribir HORAS_POR_DIA (con columnas WAITING, HAS_ORDER, FACTURACION, VIAJES)
   const ultimoDiaMostrar = Math.min(diaActual + DIAS_VENTANA_FUTURA, diasDelMes);
   await ensureSheet(SPREADSHEET_ID, 'HORAS_POR_DIA');
 
-  const valuesPorDia = [['DÍA', 'FLOTA 63530', 'FLOTA 143626', 'TOTAL', 'ACUMULADO POR DÍA']];
+  const valuesPorDia = [['DÍA', 'FLOTA 63530', 'FLOTA 143626', 'TOTAL', 'WAITING', 'HAS_ORDER', 'FACTURACIÓN', 'VIAJES', 'ACUMULADO POR DÍA']];
   let acumulado = 0;
 
   for (let d = 0; d <= ultimoDiaMostrar; d++) {
-    const datos = cache[d] || { flota63530: 0, flota143626: 0 };
+    const datos = cache[d] || { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
     const esFuturo = d > diaActual;
     const esHoy = d === diaActual;
 
     if (esFuturo) {
-      valuesPorDia.push([d.toString(), '', '', '', '']);
+      valuesPorDia.push([d.toString(), '', '', '', '', '', '', '', '']);
     } else {
       const h63530 = datos.flota63530 / 3600;
       const h143626 = datos.flota143626 / 3600;
@@ -129,6 +130,10 @@ async function actualizarTodo() {
         h63530.toFixed(1),
         h143626.toFixed(1),
         total.toFixed(1),
+        (datos.waiting / 3600).toFixed(1),
+        (datos.hasOrder / 3600).toFixed(1),
+        datos.facturacion > 0 ? datos.facturacion.toFixed(2) : '',
+        datos.viajes > 0 ? datos.viajes.toString() : '',
         esHoy ? '' : acumulado.toFixed(1)
       ]);
     }
@@ -137,7 +142,7 @@ async function actualizarTodo() {
   await clearSheet(SPREADSHEET_ID, 'HORAS_POR_DIA!A:Z');
   await writeSheet(SPREADSHEET_ID, 'HORAS_POR_DIA!A1', valuesPorDia);
 
-  // 4. Escribir HORAS_15_DIAS
+  // 4. HORAS_15_DIAS (sin cambios)
   await ensureSheet(SPREADSHEET_ID, 'HORAS_15_DIAS');
   const fechaFin = new Date(ahora); fechaFin.setDate(fechaFin.getDate() - 1);
   const fechaInicio = new Date(fechaFin); fechaInicio.setDate(fechaInicio.getDate() - 14);
@@ -157,7 +162,7 @@ async function actualizarTodo() {
   await clearSheet(SPREADSHEET_ID, 'HORAS_15_DIAS!A:Z');
   await writeSheet(SPREADSHEET_ID, 'HORAS_15_DIAS!A1', values15dias);
 
-  // 5. Escribir FLOTAS UNIFICADAS
+  // 5. FLOTAS UNIFICADAS (suma de toda la caché)
   await ensureSheet(SPREADSHEET_ID, 'Flotas Unificadas');
   const horasTotal = (horasWaitingTotal + horasHasOrderTotal) / 3600;
   const viajesPorHora = horasTotal > 0 ? (viajesTotales / horasTotal).toFixed(2) : '0.00';
@@ -175,41 +180,31 @@ async function actualizarTodo() {
 
   await clearSheet(SPREADSHEET_ID, 'Flotas Unificadas!A:F');
   await writeSheet(SPREADSHEET_ID, 'Flotas Unificadas!A1', valuesUnificadas);
-  console.log(`✅ Unificadas: W=${(horasWaitingTotal/3600).toFixed(2)} | HO=${(horasHasOrderTotal/3600).toFixed(2)} | V=${viajesTotales} | €=${facturacionTotal.toFixed(2)} | V/h=${viajesPorHora}`);
+  console.log(`✅ Unificadas: W=${(horasWaitingTotal/3600).toFixed(2)} | HO=${(horasHasOrderTotal/3600).toFixed(2)} | V=${viajesTotales} | €=${facturacionTotal.toFixed(2)}`);
 
   return { diasCache: diasCalculados.length, diasNuevos: diasFaltantes.length };
 }
 
 // ═══════════════════════════════
-async function leerCacheHorasPorDia() {
+async function leerCacheCompleta() {
   try {
-    const data = await readSheet(SPREADSHEET_ID, 'HORAS_POR_DIA!A:E');
+    const data = await readSheet(SPREADSHEET_ID, 'HORAS_POR_DIA!A:I');
     const cache = {};
     for (let i = 1; i < data.length; i++) {
       const dia = parseInt(data[i][0]);
-      if (isNaN(dia)) continue;
-      const h63530 = parseFloat(data[i][1]) || 0;
-      const h143626 = parseFloat(data[i][2]) || 0;
-      if (h63530 > 0 || h143626 > 0) {
-        cache[dia] = { flota63530: h63530 * 3600, flota143626: h143626 * 3600, waiting: 0, hasOrder: 0 };
-      }
-    }
-    console.log(`📋 Caché: ${Object.keys(cache).length} días`);
-    return cache;
-  } catch (e) { return {}; }
-}
-
-async function leerAcumulados() {
-  try {
-    const data = await readSheet(SPREADSHEET_ID, 'Flotas Unificadas!A:E');
-    if (data.length >= 2) {
-      return {
-        viajes: parseInt(data[1][2]) || 0,
-        facturacion: parseFloat(data[1][3]) || 0
+      if (isNaN(dia) || dia === 0) continue;
+      cache[dia] = {
+        flota63530: (parseFloat(data[i][1]) || 0) * 3600,
+        flota143626: (parseFloat(data[i][2]) || 0) * 3600,
+        waiting: (parseFloat(data[i][4]) || 0) * 3600,
+        hasOrder: (parseFloat(data[i][5]) || 0) * 3600,
+        facturacion: parseFloat(data[i][6]) || 0,
+        viajes: parseInt(data[i][7]) || 0
       };
     }
-  } catch (e) {}
-  return { viajes: 0, facturacion: 0 };
+    console.log(`📋 Caché completa: ${Object.keys(cache).length} días`);
+    return cache;
+  } catch (e) { return {}; }
 }
 
 module.exports = { actualizarTodo };
