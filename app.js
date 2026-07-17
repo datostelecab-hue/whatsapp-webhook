@@ -48,16 +48,30 @@ app.use('/resumen', resumenRoutes);
 // ============================================================
 // CRON
 // ============================================================
+
+// Horas de conductores: cada hora en punto
 cron.schedule('0 * * * *', async () => {
   const ahora = new Date();
   const mes = ahora.getMonth() + 1;
   const ano = ahora.getFullYear();
-  console.log(`⏰ [CRON] Ejecutando procesarYUnificar(${mes}, ${ano})...`);
+  console.log(`⏰ [CRON Horas] procesarYUnificar(${mes}, ${ano})...`);
   try {
     const result = await procesarYUnificar(mes, ano);
-    console.log(`✅ [CRON] Completado: ${result.conductores} conductores`);
+    console.log(`✅ [CRON Horas] Completado: ${result.conductores} conductores`);
   } catch (error) {
-    console.error(`❌ [CRON] Error: ${error.message}`);
+    console.error(`❌ [CRON Horas] Error: ${error.message}`);
+  }
+});
+
+// Resumen de flotas: cada hora al minuto 15
+cron.schedule('15 * * * *', async () => {
+  console.log('⏰ [CRON Resumen] actualizarTodo()...');
+  try {
+    const { actualizarTodo } = require('./services/boltResumen');
+    const result = await actualizarTodo();
+    console.log(`✅ [CRON Resumen] Completado: ${JSON.stringify(result)}`);
+  } catch (error) {
+    console.error(`❌ [CRON Resumen] Error: ${error.message}`);
   }
 });
 

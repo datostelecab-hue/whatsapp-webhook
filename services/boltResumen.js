@@ -102,7 +102,7 @@ async function actualizarHorasPorDia() {
 }
 
 // ============================================================
-// ÚLTIMOS 15 DÍAS
+// ÚLTIMOS 15 DÍAS (MISMA LÓGICA QUE HORAS_POR_DIA)
 // ============================================================
 async function actualizarUltimos15Dias() {
   const ahora = new Date();
@@ -125,15 +125,18 @@ async function actualizarUltimos15Dias() {
     { id: 143626, nombre: 'Flota 143626' }
   ];
 
+  // Inicializar: mismo formato que horasPorDia (por número de día)
   const horasPorDia = {};
   const fechaTemp = new Date(fechaInicio);
 
   while (fechaTemp <= fechaFin) {
+    const diaNum = fechaTemp.getDate(); // número del día
     const fechaKey = fechaTemp.toISOString().split('T')[0];
-    horasPorDia[fechaKey] = { total: 0, flota63530: 0, flota143626: 0 };
+    horasPorDia[fechaKey] = { total: 0, flota63530: 0, flota143626: 0, diaNum };
     fechaTemp.setDate(fechaTemp.getDate() + 1);
   }
 
+  // Misma lógica que actualizarHorasPorDia
   for (const flota of flotas) {
     const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
       company_id: flota.id, start_ts: startTs, end_ts: endTs
@@ -198,7 +201,7 @@ async function actualizarUltimos15Dias() {
   await clearSheet(SPREADSHEET_ID, 'HORAS_15_DIAS!A:Z');
   await writeSheet(SPREADSHEET_ID, 'HORAS_15_DIAS!A1', values);
 
-  console.log(`✅ HORAS_15_DIAS actualizada: ${fechasOrdenadas.length} días`);
+  console.log(`✅ HORAS_15_DIAS actualizada: ${fechasOrdenadas.length} días, acumulado=${acumulado.toFixed(2)}h`);
   return { dias: fechasOrdenadas.length, acumulado: acumulado.toFixed(2) };
 }
 
