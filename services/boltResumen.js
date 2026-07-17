@@ -85,7 +85,7 @@ async function actualizarTodo() {
             }, 'orders', 500);
             ordenes.forEach(o => {
                 if (o.order_price?.net_earnings) facturacionNueva += o.order_price.net_earnings;
-                if (o.status === 'completed') viajesCompletadosNuevos++;
+                if (o.order_status === 'finished') viajesCompletadosNuevos++;
             });
         }
     }
