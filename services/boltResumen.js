@@ -38,10 +38,12 @@ async function actualizarTodo() {
 
     const flotas = [{ id: 63530 }, { id: 143626 }];
 
-    // Reiniciar los días que vamos a recalcular (para sobrescribir, no sumar)
-    for (const d of diasFaltantes) {
-      cache[d] = { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
-    }
+// Solo reiniciar días que NO sean el día actual (el día actual se acumula)
+for (const d of diasFaltantes) {
+  if (d !== diaActual) {
+    cache[d] = { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
+  }
+}
 
     for (const flota of flotas) {
       const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
