@@ -51,14 +51,11 @@ async function actualizarTodo() {
 
     const flotas = [{ id: 63530 }, { id: 143626 }];
 
-    // Preparar caché: días pasados se sobrescriben, día actual NO (suma)
-    for (const d of diasFaltantes) {
-      if (d === diaActual && hora !== 0) {
-        if (!cache[d]) cache[d] = crearCacheVacio();
-      } else {
-        cache[d] = crearCacheVacio();
-      }
-    }
+// Todos los días recalculados se sobrescriben
+// El día actual se recalcula DESDE 00:00 hasta AHORA (endTs ya lo hace)
+for (const d of diasFaltantes) {
+  cache[d] = crearCacheVacio();
+}
 
     // ═══════════════════════════════════
     // STATE LOGS (horas, waiting, has_order)
