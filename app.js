@@ -18,33 +18,23 @@ const verifyToken = process.env.VERIFY_TOKEN;
 // Importar rutas
 const botPuertas = require('./routes/botPuertas');
 const boltHoras = require('./routes/boltHoras');
-const dashboardRoutes = require('./routes/dashboard');  // ← AÑADIR ESTA LÍNEA
+const dashboardRoutes = require('./routes/dashboard');
+const resumenRoutes = require('./routes/resumen');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
-// VERIFICACIÓN DEL WEBHOOK (Meta)
+// VERIFICACIÓN DEL WEBHOOK (Meta) + REDIRECCIÓN AL VISOR
 // ============================================================
 app.get('/', (req, res) => {
   const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': token } = req.query;
 
   if (mode === 'subscribe' && token === verifyToken) {
     console.log('WEBHOOK VERIFIED');
-    res.status(200).send(challenge);
-  } else {
-    res.status(403).end();
+    return res.status(200).send(challenge);
   }
-});
-
-// Redirigir raíz al visor
-app.get('/', (req, res) => {
-  const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': token } = req.query;
-
-  if (mode === 'subscribe' && token === verifyToken) {
-    console.log('WEBHOOK VERIFIED');
-    res.status(200).send(challenge);
-  } else {
-    res.redirect('/dashboard/visor');  // ← Redirigir al visor
-  }
+  
+  // Si no es verificación de Meta, redirigir al visor
+  res.redirect('/dashboard/visor');
 });
 
 // ============================================================
@@ -52,7 +42,8 @@ app.get('/', (req, res) => {
 // ============================================================
 app.post('/', botPuertas);
 app.use('/horas', boltHoras);
-app.use('/dashboard', dashboardRoutes);  // ← AÑADIR ESTA LÍNEA
+app.use('/dashboard', dashboardRoutes);
+app.use('/resumen', resumenRoutes);
 
 // ============================================================
 // CRON
@@ -70,7 +61,6 @@ cron.schedule('0 * * * *', async () => {
   }
 });
 
-
 // ============================================================
 // INICIAR SERVIDOR
 // ============================================================
@@ -79,5 +69,6 @@ app.listen(port, () => {
   console.log(`   Dashboard: http://localhost:${port}/dashboard`);
   console.log(`   Bot puertas: POST /`);
   console.log(`   Horas: GET /horas/procesar`);
+  console.log(`   Resumen: POST /resumen/todo`);
   console.log(`   Cron: Cada hora (minuto 0)`);
 });
