@@ -42,4 +42,20 @@ async function clearSheet(spreadsheetId, range) {
   });
 }
 
-module.exports = { readSheet, writeSheet, clearSheet };
+async function ensureSheet(spreadsheetId, sheetName) {
+  const sheets = getSheetsClient();
+  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
+  const exists = spreadsheet.data.sheets.some(s => s.properties.title === sheetName);
+  
+  if (!exists) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{ addSheet: { properties: { title: sheetName } } }]
+      }
+    });
+    console.log(`📄 Hoja "${sheetName}" creada`);
+  }
+}
+
+module.exports = { readSheet, writeSheet, clearSheet, ensureSheet };

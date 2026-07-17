@@ -1,33 +1,38 @@
 const express = require('express');
 const router = express.Router();
-const { escribirResultadosUnificados, procesarUltimos15Dias } = require('../services/boltResumen');
+const { actualizarHorasPorDia, actualizarUltimos15Dias, actualizarFlotasUnificadas, actualizarTodo } = require('../services/boltResumen');
 
-// Procesar flotas unificadas
 router.post('/unificadas', async (req, res) => {
   try {
-    const result = await escribirResultadosUnificados();
+    const result = await actualizarFlotasUnificadas();
     res.json({ status: 'ok', result });
   } catch (error) {
     res.status(500).json({ status: 'error', msg: error.message });
   }
 });
 
-// Procesar últimos 15 días
 router.post('/15dias', async (req, res) => {
   try {
-    const result = await procesarUltimos15Dias();
+    const result = await actualizarUltimos15Dias();
     res.json({ status: 'ok', result });
   } catch (error) {
     res.status(500).json({ status: 'error', msg: error.message });
   }
 });
 
-// Procesar todo
+router.post('/pordia', async (req, res) => {
+  try {
+    const result = await actualizarHorasPorDia();
+    res.json({ status: 'ok', result });
+  } catch (error) {
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
 router.post('/todo', async (req, res) => {
   try {
-    const unificadas = await escribirResultadosUnificados();
-    const quinceDias = await procesarUltimos15Dias();
-    res.json({ status: 'ok', unificadas, quinceDias });
+    const result = await actualizarTodo();
+    res.json({ status: 'ok', result });
   } catch (error) {
     res.status(500).json({ status: 'error', msg: error.message });
   }
