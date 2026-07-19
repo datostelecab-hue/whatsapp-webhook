@@ -131,15 +131,10 @@ async function handleButton(phone, buttonId) {
   }
 }
 
-// ============================================================
-// ENVIAR BOTONES SEGÚN ESTADO
-// ============================================================
 async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
   const puertaAbierta = estado === 'abierta';
   const emoji = puertaAbierta ? '🔓' : '🔒';
   const textoEstado = puertaAbierta ? 'PUERTA ABIERTA' : 'PUERTA CERRADA';
-  const botonAccion = puertaAbierta ? 'cerrar_puertas' : 'abrir_puertas';
-  const botonTexto = puertaAbierta ? '🔒 Cerrar puertas' : '🔓 Abrir puertas';
 
   const url = `https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`;
   const payload = {
@@ -155,11 +150,11 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
         buttons: [
           {
             type: 'reply',
-            reply: { id: botonAccion, title: botonTexto }
+            reply: { id: 'abrir_puertas', title: '🔓 Abrir' }
           },
           {
             type: 'reply',
-            reply: { id: 'cambiar_matricula', title: '🔄 Cambiar matrícula' }
+            reply: { id: 'cerrar_puertas', title: '🔒 Cerrar' }
           }
         ]
       }
@@ -175,7 +170,37 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
     body: JSON.stringify(payload)
   });
 
-  console.log(`📱 Botones enviados a ${nombre}: ${textoEstado}`);
+  // Enviar botón de "Cambiar matrícula" aparte (WhatsApp solo permite 3 botones, pero así queda separado)
+  const payload2 = {
+    messaging_product: 'whatsapp',
+    to: to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: {
+        text: `🔄 ¿Gestionar otro vehículo?`
+      },
+      action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: { id: 'cambiar_matricula', title: '🔄 Cambiar matrícula' }
+          }
+        ]
+      }
+    }
+  };
+
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload2)
+  });
+
+  console.log(`📱 Botones enviados: ${textoEstado}`);
 }
 
 // ============================================================
