@@ -1,4 +1,4 @@
-const { CONFIG_BOLT, fetchAllPaginated, fetchPorBloques } = require('./bolt');
+const { CONFIG_BOLT, fetchAllPaginated, sleep } = require('./bolt');
 const { readSheet, writeSheet, clearSheet, ensureSheet } = require('./sheets');
 const { SPREADSHEET_ID, normalizarNombre, leerTurnos, leerPostMortem, buscarEnDiccionario } = require('./turnos');
 
@@ -104,14 +104,14 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
   }
 
   try {
-    const drivers = await fetchPorBloques(
-      '/fleetIntegration/v1/getDrivers',
-      { company_id: companyId },
-      'drivers',
-      startTs,
-      endTs,
-      { pausaMs, claveId: 'driver_uuid' }
-    );
+    // Una única consulta por mes, igual que en el mes en curso. Trocear el
+    // rango en bloques hacía que se perdieran los datos de todos los días
+    // menos los del último bloque.
+    const drivers = await fetchAllPaginated('/fleetIntegration/v1/getDrivers', {
+      company_id: companyId, start_ts: startTs, end_ts: endTs
+    }, 'drivers', 1000);
+
+    if (pausaMs) await sleep(pausaMs);
 
     const driverInfo = {};
 
@@ -155,19 +155,9 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
       }
     });
 
-    const stateLogs = await fetchPorBloques(
-      '/fleetIntegration/v1/getFleetStateLogs',
-      { company_id: companyId },
-      'state_logs',
-      startTs,
-      endTs,
-      {
-        pausaMs,
-        // Un mismo log puede llegar en dos bloques contiguos; lo identificamos
-        // por conductor + instante + estado para no contar el tramo dos veces.
-        claveId: log => `${log.driver_uuid}|${log.created}|${log.state}`
-      }
-    );
+    const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
+      company_id: companyId, start_ts: startTs, end_ts: endTs
+    }, 'state_logs', 1000);
 
     const logsByDriver = {};
     stateLogs.forEach(log => {

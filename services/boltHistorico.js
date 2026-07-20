@@ -12,10 +12,10 @@ const MESES_SLUG = [
 const LIMITE_MESES_API = 16;
 const MARGEN_DIAS_SEGURIDAD = 5;
 
-// Pausas para no saturar la API entre meses (dentro de cada mes, bolt.js ya
-// pausa entre bloques de 30 días).
+// Pausas para no saturar la API: entre meses y entre las dos consultas que se
+// hacen dentro de cada mes (conductores y state logs).
 const PAUSA_ENTRE_MESES_MS = 8000;
-const PAUSA_ENTRE_BLOQUES_MS = 1500;
+const PAUSA_ENTRE_LLAMADAS_MS = 1500;
 
 // Rango por defecto del backfill: mayo y junio de 2026 ya están hechos.
 const RANGO_DEFECTO = {
@@ -102,7 +102,7 @@ async function procesarHistorico(opciones = {}) {
   const desde = opciones.desde || RANGO_DEFECTO.desde;
   const hasta = opciones.hasta || RANGO_DEFECTO.hasta;
   const pausaMeses = opciones.pausaMeses !== undefined ? opciones.pausaMeses : PAUSA_ENTRE_MESES_MS;
-  const pausaBloques = opciones.pausaBloques !== undefined ? opciones.pausaBloques : PAUSA_ENTRE_BLOQUES_MS;
+  const pausaLlamadas = opciones.pausaLlamadas !== undefined ? opciones.pausaLlamadas : PAUSA_ENTRE_LLAMADAS_MS;
 
   const meses = listarMeses(desde, hasta);
 
@@ -147,7 +147,7 @@ async function procesarHistorico(opciones = {}) {
     try {
       const result = await procesarYUnificar(mes, ano, {
         hojaDestino: hoja,
-        pausaMs: pausaBloques,
+        pausaMs: pausaLlamadas,
         // El histórico lleva a todos los conductores con sus cifras reales,
         // despedidos incluidos. Filtrar por estado es cosa del mes en curso.
         incluirTodos: true
