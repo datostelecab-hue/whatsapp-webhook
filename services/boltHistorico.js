@@ -117,7 +117,11 @@ async function procesarHistorico(opciones = {}) {
   const pausaMeses = opciones.pausaMeses !== undefined ? opciones.pausaMeses : PAUSA_ENTRE_MESES_MS;
   const pausaLlamadas = opciones.pausaLlamadas !== undefined ? opciones.pausaLlamadas : PAUSA_ENTRE_LLAMADAS_MS;
 
-  const meses = listarMeses(desde, hasta);
+  // Se puede pasar una lista suelta de meses (para repetir solo los que
+  // fallaron) o un rango continuo.
+  const meses = opciones.meses && opciones.meses.length
+    ? opciones.meses
+    : listarMeses(desde, hasta);
 
   if (meses.length === 0) {
     return {
@@ -143,7 +147,7 @@ async function procesarHistorico(opciones = {}) {
 
   console.log(
     `📚 [HISTÓRICO] ${meses.length} meses: ` +
-    `${nombreHojaMes(desde.mes, desde.ano)} → ${nombreHojaMes(hasta.mes, hasta.ano)}`
+    meses.map(m => nombreHojaMes(m.mes, m.ano)).join(', ')
   );
 
   for (let i = 0; i < meses.length; i++) {
@@ -179,7 +183,9 @@ async function procesarHistorico(opciones = {}) {
       });
 
       const segundos = Math.round((Date.now() - t0) / 1000);
-      console.log(`✅ [HISTÓRICO] ${hoja}: ${result.conductores} conductores (${segundos}s)`);
+      const mb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+      console.log(`✅ [HISTÓRICO] ${hoja}: ${result.conductores} conductores ` +
+                  `(${segundos}s, RSS ${mb} MB)`);
 
       estado.resultados.push({
         hoja, mes, ano,

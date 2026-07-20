@@ -1,4 +1,4 @@
-const { CONFIG_BOLT, fetchAllPaginated, sleep } = require('./bolt');
+const { CONFIG_BOLT, fetchAllPaginated, fetchRangoCompleto, sleep } = require('./bolt');
 const { readSheet, writeSheet, clearSheet, ensureSheet } = require('./sheets');
 const { SPREADSHEET_ID, normalizarNombre, leerTurnos, leerPostMortem, buscarEnDiccionario } = require('./turnos');
 
@@ -191,8 +191,8 @@ function volcarDrivers(mapa, drivers) {
  * han tenido actividad este mes. Como getDrivers filtra por fecha de ALTA, un
  * solo rango nunca los cubre a todos, así que se combinan tres fuentes y se
  * acumulan entre meses:
- *   1. ventana ancha (una vez por flota)  → los dados de alta hace poco
- *   2. el rango del propio mes            → los dados de alta ese mes
+ *   1. el rango del propio mes            → los dados de alta ese mes
+ *   2. (acumulado de los meses ya procesados en esta misma pasada)
  *   3. getFleetOrders del mes             → driver_name viene en cada pedido,
  *                                            que es lo que rescata a los veteranos
  */
@@ -204,28 +204,16 @@ async function resolverNombres(companyId, mes, ano, uuidsNecesarios, etiqueta, p
   const startTs = Math.floor(new Date(ano, mes - 1, 1, 0, 0, 0).getTime() / 1000);
   const endTs = Math.floor(new Date(ano, mes - 1, diasDelMes, 23, 59, 59).getTime() / 1000);
 
-  // 1. Ventana ancha, solo la primera vez de cada flota
-  if (Object.keys(mapa).length === 0) {
-    const ahora = new Date();
-    const desde = new Date();
-    desde.setMonth(desde.getMonth() - 15);  // margen ante INVALID_START_DATE
-    desde.setDate(desde.getDate() + 2);
-
-    const amplio = await fetchAllPaginated('/fleetIntegration/v1/getDrivers', {
-      company_id: companyId,
-      start_ts: Math.floor(desde.getTime() / 1000),
-      end_ts: Math.floor(ahora.getTime() / 1000)
-    }, 'drivers', 1000, etiqueta);
-    console.log(`👥 [${etiqueta}] Padrón (ventana ancha): +${volcarDrivers(mapa, amplio)}`);
-    if (pausaMs) await sleep(pausaMs);
-  }
-
-  // 2. Altas del propio mes
+  // 1. Altas del propio mes. No se pide una ventana ancha de varios meses:
+  //    getDrivers aplica el mismo límite de rango que el resto de endpoints y
+  //    responde 498806 INVALID_DATE_RANGE. El padrón se acumula mes a mes.
   if (faltan().length > 0) {
-    const delMes = await fetchAllPaginated('/fleetIntegration/v1/getDrivers', {
-      company_id: companyId, start_ts: startTs, end_ts: endTs
-    }, 'drivers', 1000, etiqueta);
-    console.log(`👥 [${etiqueta}] Padrón (altas del mes): +${volcarDrivers(mapa, delMes)}`);
+    const delMes = await fetchRangoCompleto(
+      '/fleetIntegration/v1/getDrivers',
+      { company_id: companyId }, 'drivers', startTs, endTs, 1000, etiqueta
+    );
+    console.log(`👥 [${etiqueta}] Padrón (altas del mes): +${volcarDrivers(mapa, delMes)} ` +
+                `(acumulado: ${Object.keys(mapa).length})`);
     if (pausaMs) await sleep(pausaMs);
   }
 
@@ -286,9 +274,10 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
 
   try {
     // ---- 1. TODOS los state logs del mes ----
-    const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
-      company_id: companyId, start_ts: startTs, end_ts: endTs
-    }, 'state_logs', 1000, tag);
+    const stateLogs = await fetchRangoCompleto(
+      '/fleetIntegration/v1/getFleetStateLogs',
+      { company_id: companyId }, 'state_logs', startTs, endTs, 1000, tag
+    );
 
     const diagLogs = fetchAllPaginated.ultimoDiagnostico;
     console.log(`📄 [${tag}] ${stateLogs.length} logs de ${diagLogs.totalRows ?? '?'} ` +
@@ -315,10 +304,11 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
     if (pausaMs) await sleep(pausaMs);
 
     // ---- 3. Pedidos del mes: dinero por conductor + nombres de rescate ----
-    const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders', {
-      company_ids: [companyId], company_id: companyId,
-      start_ts: startTs, end_ts: endTs, time_range_filter_type: 'created'
-    }, 'orders', 1000, tag);
+    const ordenes = await fetchRangoCompleto(
+      '/fleetIntegration/v1/getFleetOrders',
+      { company_ids: [companyId], company_id: companyId, time_range_filter_type: 'created' },
+      'orders', startTs, endTs, 1000, tag
+    );
 
     const diagOrd = fetchAllPaginated.ultimoDiagnostico;
     console.log(`💶 [${tag}] ${ordenes.length} pedidos de ${diagOrd.totalRows ?? '?'} ` +
@@ -570,13 +560,20 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     const uuidsDesconocidos = new Set();
 
     Object.entries(logsByDriver).forEach(([duuid, logs]) => {
-      const info = driverInfo[duuid];
+      let info = driverInfo[duuid];
+
       if (!info) {
-        // El conductor tiene actividad pero no vino en getDrivers (p. ej. ya
-        // no pertenece a la flota). Sus horas se pierden por completo.
+        // El conductor tiene actividad pero no vino en getDrivers, que filtra
+        // por fecha de alta y no por actividad. Antes se descartaban todos sus
+        // logs y desaparecía de la hoja; ahora sale identificado por su uuid
+        // con las horas intactas, que es preferible a perderlas.
         logsDescartados += logs.length;
         uuidsDesconocidos.add(duuid);
-        return;
+        info = {
+          nombre: `⚠️ UUID ${duuid.slice(0, 8)}`,
+          estado: 'activo',
+          turno: '?'
+        };
       }
 
       const nombreReal = info.nombre;
@@ -626,9 +623,9 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     });
 
     if (logsDescartados > 0) {
-      console.error(
-        `❌ [${tag}] ${logsDescartados} logs DESCARTADOS de ${uuidsDesconocidos.size} ` +
-        `conductores que no vinieron en getDrivers — sus horas no se contarán`
+      console.log(
+        `⚠️  [${tag}] ${logsDescartados} logs de ${uuidsDesconocidos.size} conductores ` +
+        `que no vinieron en getDrivers: salen identificados por uuid, con sus horas contadas`
       );
     }
 

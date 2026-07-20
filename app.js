@@ -15,6 +15,33 @@ app.set('layout', 'layout');
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 
+// ============================================================
+// RED DE SEGURIDAD
+// ============================================================
+// Node mata el proceso ante una promesa rechazada sin capturar, y en Render
+// eso reinicia la instancia: cualquier tarea larga en marcha (el backfill del
+// histórico) moriría sin dejar rastro del motivo. Aquí se registra la causa y
+// se deja el proceso vivo.
+process.on('unhandledRejection', (motivo) => {
+  console.error('❌ PROMESA RECHAZADA SIN CAPTURAR — el proceso sigue vivo');
+  console.error(motivo instanceof Error ? motivo.stack : motivo);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ EXCEPCIÓN NO CAPTURADA — el proceso sigue vivo');
+  console.error(error.stack || error);
+});
+
+// Si Render corta el contenedor (memoria, redespliegue), esto queda escrito
+// justo antes y sabremos que fue una parada externa y no un fallo del código.
+['SIGTERM', 'SIGINT'].forEach(senal => {
+  process.on(senal, () => {
+    const mb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    console.error(`🛑 Recibida ${senal}: el contenedor se está deteniendo (RSS ${mb} MB)`);
+    process.exit(0);
+  });
+});
+
 // Importar rutas
 const botPuertas = require('./routes/botPuertas');
 const boltHoras = require('./routes/boltHoras');

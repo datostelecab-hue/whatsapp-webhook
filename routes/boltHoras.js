@@ -68,7 +68,22 @@ router.get('/historico', (req, res) => {
     });
   }
 
-  const meses = listarMeses(desde, hasta);
+  // ?meses=10-2025,12-2025,3-2026 → repite solo esos, sin tocar los demás.
+  let meses;
+  if (req.query.meses) {
+    const partes = req.query.meses.split(',').map(s => s.trim()).filter(Boolean);
+    meses = partes.map(parsearMesAno);
+    const malos = partes.filter((_, i) => !meses[i]);
+    if (malos.length) {
+      return res.status(400).json({
+        status: 'error',
+        msg: `Meses no válidos: ${malos.join(', ')}. Formato: mes-año, p. ej. 10-2025`
+      });
+    }
+  } else {
+    meses = listarMeses(desde, hasta);
+  }
+
   if (meses.length === 0) {
     return res.status(400).json({
       status: 'error',
@@ -76,7 +91,7 @@ router.get('/historico', (req, res) => {
     });
   }
 
-  procesarHistorico({ desde, hasta }).catch(error => {
+  procesarHistorico({ desde, hasta, meses }).catch(error => {
     console.error(`❌ [HISTÓRICO] Fallo general: ${error.message}`);
   });
 
