@@ -22,14 +22,22 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
   const hojaDestino = opciones.hojaDestino || HOJA_MES_ACTUAL;
   const pausaMs = opciones.pausaMs;
   const incluirTodos = opciones.incluirTodos === true;
+  // El dinero (propinas, peajes, neto) solo se saca en el histórico.
+  const incluirDinero = opciones.modoHistorico === true;
 
   const turnosDB = await leerTurnos();
   const postMortem = await leerPostMortem();
 
   const todosConductores = {};
 
+  // El mes en curso sigue usando exactamente la lógica de siempre; solo el
+  // histórico estrena el camino de "logs primero, nombres después".
+  const calcular = opciones.modoHistorico
+    ? calcularHorasFlotaHistorico
+    : calcularHorasFlota;
+
   for (const flota of CONFIG_BOLT.flotas) {
-    const datos = await calcularHorasFlota(flota.id, mes, ano, turnosDB, postMortem, { pausaMs });
+    const datos = await calcular(flota.id, mes, ano, turnosDB, postMortem, { pausaMs });
 
     Object.entries(datos.horas).forEach(([nombre, diasObj]) => {
       const info = datos.infoConductores[nombre] || {};
@@ -73,9 +81,32 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
         }
       });
     }
+
+    // Propinas, peajes y neto: se suman entre flotas igual que las horas.
+    // Un conductor puede facturar sin tener state logs, así que si no existe
+    // la fila todavía se crea aquí.
+    if (datos.dinero) {
+      Object.entries(datos.dinero).forEach(([nombre, d]) => {
+        if (!todosConductores[nombre]) {
+          todosConductores[nombre] = {
+            turno: datos.infoConductores[nombre]?.turno || '?',
+            estado: datos.infoConductores[nombre]?.estado || 'activo',
+            horasNocturnas: 0
+          };
+          for (let dia = 1; dia <= datos.diasDelMes; dia++) {
+            todosConductores[nombre][dia] = 0;
+          }
+        }
+        const acc = todosConductores[nombre];
+        acc.propinas = (acc.propinas || 0) + d.propinas;
+        acc.peajes = (acc.peajes || 0) + d.peajes;
+        acc.neto = (acc.neto || 0) + d.neto;
+        acc.viajes = (acc.viajes || 0) + d.viajes;
+      });
+    }
   }
 
-  await escribirHojaUnificada(todosConductores, mes, ano, hojaDestino, { incluirTodos });
+  await escribirHojaUnificada(todosConductores, mes, ano, hojaDestino, { incluirTodos, incluirDinero });
   console.log(`✅ Mes ${mes}/${ano} procesado → hoja "${hojaDestino}"`);
   return {
     status: 'ok',
@@ -84,6 +115,321 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
     hoja: hojaDestino,
     conductores: Object.keys(todosConductores).length
   };
+}
+
+// ============================================================
+// CALCULAR HORAS FLOTA — MODO HISTÓRICO
+// ============================================================
+// Camino aparte del mes en curso, que funciona bien y no se toca.
+//
+// Aquí el orden se invierte: primero se traen TODOS los state logs del mes y
+// se agrupan por driver_uuid, y solo después se les pone nombre. El motivo es
+// que getDrivers filtra por fecha de ALTA del conductor, no por actividad
+// ("find drivers which created time is after this timestamp"), así que pedirlo
+// con el rango del mes solo devuelve a quienes se dieron de alta ese mes. Al
+// usar esa lista para decidir qué logs valían, se descartaban meses enteros.
+//
+// Ningún log se tira: si no se logra averiguar el nombre, el conductor sale
+// identificado por su uuid antes que perder sus horas.
+
+// Los nombres no cambian entre meses, así que se piden una vez por flota y se
+// reutilizan durante toda la pasada del histórico.
+const cacheDrivers = new Map();
+const TTL_CACHE_DRIVERS_MS = 6 * 60 * 60 * 1000;
+
+function limpiarCacheDrivers() {
+  cacheDrivers.clear();
+}
+
+/**
+ * Diccionario uuid → { nombre, estado } lo más completo posible. Se pide con
+ * la ventana más ancha que admite la API (16 meses) en vez de con el mes
+ * concreto, para que entren también los conductores dados de alta hace tiempo.
+ */
+function getPadron(companyId) {
+  const enCache = cacheDrivers.get(companyId);
+  if (enCache && Date.now() - enCache.ts < TTL_CACHE_DRIVERS_MS) return enCache.mapa;
+  const mapa = {};
+  cacheDrivers.set(companyId, { ts: Date.now(), mapa });
+  return mapa;
+}
+
+/** Vuelca una tanda de getDrivers en el padrón acumulado. */
+function volcarDrivers(mapa, drivers) {
+  let nuevos = 0;
+  drivers.forEach(d => {
+    if (!d.driver_uuid || mapa[d.driver_uuid]) return;
+    const nombre = ((d.first_name || '') + ' ' + (d.last_name || '')).trim();
+    if (!nombre) return;
+    mapa[d.driver_uuid] = {
+      nombre,
+      estado: MAPEO_ESTADOS_BOLT[d.state || 'active'] || 'activo'
+    };
+    nuevos++;
+  });
+  return nuevos;
+}
+
+/**
+ * Construye el diccionario uuid → { nombre, estado } para los conductores que
+ * han tenido actividad este mes. Como getDrivers filtra por fecha de ALTA, un
+ * solo rango nunca los cubre a todos, así que se combinan tres fuentes y se
+ * acumulan entre meses:
+ *   1. ventana ancha (una vez por flota)  → los dados de alta hace poco
+ *   2. el rango del propio mes            → los dados de alta ese mes
+ *   3. getFleetOrders del mes             → driver_name viene en cada pedido,
+ *                                            que es lo que rescata a los veteranos
+ */
+async function resolverNombres(companyId, mes, ano, uuidsNecesarios, etiqueta, pausaMs, ordenes) {
+  const mapa = getPadron(companyId);
+  const faltan = () => [...uuidsNecesarios].filter(u => !mapa[u]);
+
+  const diasDelMes = new Date(ano, mes, 0).getDate();
+  const startTs = Math.floor(new Date(ano, mes - 1, 1, 0, 0, 0).getTime() / 1000);
+  const endTs = Math.floor(new Date(ano, mes - 1, diasDelMes, 23, 59, 59).getTime() / 1000);
+
+  // 1. Ventana ancha, solo la primera vez de cada flota
+  if (Object.keys(mapa).length === 0) {
+    const ahora = new Date();
+    const desde = new Date();
+    desde.setMonth(desde.getMonth() - 15);  // margen ante INVALID_START_DATE
+    desde.setDate(desde.getDate() + 2);
+
+    const amplio = await fetchAllPaginated('/fleetIntegration/v1/getDrivers', {
+      company_id: companyId,
+      start_ts: Math.floor(desde.getTime() / 1000),
+      end_ts: Math.floor(ahora.getTime() / 1000)
+    }, 'drivers', 1000, etiqueta);
+    console.log(`👥 [${etiqueta}] Padrón (ventana ancha): +${volcarDrivers(mapa, amplio)}`);
+    if (pausaMs) await sleep(pausaMs);
+  }
+
+  // 2. Altas del propio mes
+  if (faltan().length > 0) {
+    const delMes = await fetchAllPaginated('/fleetIntegration/v1/getDrivers', {
+      company_id: companyId, start_ts: startTs, end_ts: endTs
+    }, 'drivers', 1000, etiqueta);
+    console.log(`👥 [${etiqueta}] Padrón (altas del mes): +${volcarDrivers(mapa, delMes)}`);
+    if (pausaMs) await sleep(pausaMs);
+  }
+
+  // 3. Los pedidos del mes traen driver_uuid y driver_name juntos
+  let rescatados = 0;
+  ordenes.forEach(o => {
+    if (!o.driver_uuid || mapa[o.driver_uuid]) return;
+    const nombre = (o.driver_name || '').trim();
+    if (!nombre) return;
+    mapa[o.driver_uuid] = { nombre, estado: 'activo' };
+    rescatados++;
+  });
+  if (rescatados > 0 || faltan().length > 0) {
+    console.log(`🔎 [${etiqueta}] Rescatados por pedidos: +${rescatados} ` +
+                `(quedan ${faltan().length} sin nombre)`);
+  }
+
+  return mapa;
+}
+
+/**
+ * Agrega propinas, peajes y facturación neta por conductor a partir de los
+ * pedidos del mes. Los tres campos vienen dentro de `order_price` de cada
+ * pedido, junto al driver_uuid, así que se agrupa por uuid igual que las horas.
+ */
+function agregarDineroPorUuid(ordenes) {
+  const porUuid = {};
+
+  ordenes.forEach(o => {
+    const uuid = o.driver_uuid;
+    if (!uuid) return;
+
+    if (!porUuid[uuid]) {
+      porUuid[uuid] = { propinas: 0, peajes: 0, neto: 0, viajes: 0 };
+    }
+
+    const p = o.order_price || {};
+    porUuid[uuid].propinas += p.tip || 0;
+    porUuid[uuid].peajes += p.toll_fee || 0;
+    porUuid[uuid].neto += p.net_earnings || 0;
+    if (o.order_status === 'finished') porUuid[uuid].viajes++;
+  });
+
+  return porUuid;
+}
+
+async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMortem, opciones = {}) {
+  const pausaMs = opciones.pausaMs;
+  const diasDelMes = new Date(ano, mes, 0).getDate();
+  const startTs = Math.floor(new Date(ano, mes - 1, 1, 0, 0, 0).getTime() / 1000);
+  const endTs = Math.floor(new Date(ano, mes - 1, diasDelMes, 23, 59, 59).getTime() / 1000);
+
+  const tag = `${companyId} ${String(mes).padStart(2, '0')}/${ano}`;
+  const fmt = ts => new Date(ts * 1000).toLocaleString('es-ES');
+  console.log(`🔍 [${tag}] HISTÓRICO — rango: ${fmt(startTs)} → ${fmt(endTs)}`);
+
+  const vacio = { horas: {}, horasNocturnas: {}, diasDelMes, diaLimite: diasDelMes, infoConductores: {} };
+
+  try {
+    // ---- 1. TODOS los state logs del mes ----
+    const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
+      company_id: companyId, start_ts: startTs, end_ts: endTs
+    }, 'state_logs', 1000, tag);
+
+    const diagLogs = fetchAllPaginated.ultimoDiagnostico;
+    console.log(`📄 [${tag}] ${stateLogs.length} logs de ${diagLogs.totalRows ?? '?'} ` +
+                `(${diagLogs.paginas} pág., code=${diagLogs.codigoCuerpo}, corte: ${diagLogs.motivo})`);
+
+    if (stateLogs.length === 0) {
+      console.error(`❌ [${tag}] Sin logs: code=${diagLogs.codigoCuerpo} ` +
+                    `message="${diagLogs.mensajeCuerpo}"`);
+      return vacio;
+    }
+
+    const tiempos = stateLogs.map(l => l.created);
+    console.log(`📅 [${tag}] Cobertura real: ${fmt(Math.min(...tiempos))} → ${fmt(Math.max(...tiempos))}`);
+
+    // ---- 2. Agrupar por driver_uuid ----
+    const logsByDriver = {};
+    stateLogs.forEach(log => {
+      const duuid = log.driver_uuid || 'sin-uuid';
+      if (!logsByDriver[duuid]) logsByDriver[duuid] = [];
+      logsByDriver[duuid].push(log);
+    });
+    console.log(`🚗 [${tag}] ${Object.keys(logsByDriver).length} conductores con actividad`);
+
+    if (pausaMs) await sleep(pausaMs);
+
+    // ---- 3. Pedidos del mes: dinero por conductor + nombres de rescate ----
+    const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders', {
+      company_ids: [companyId], company_id: companyId,
+      start_ts: startTs, end_ts: endTs, time_range_filter_type: 'created'
+    }, 'orders', 1000, tag);
+
+    const diagOrd = fetchAllPaginated.ultimoDiagnostico;
+    console.log(`💶 [${tag}] ${ordenes.length} pedidos de ${diagOrd.totalRows ?? '?'} ` +
+                `(${diagOrd.paginas} pág., code=${diagOrd.codigoCuerpo})`);
+
+    const dineroPorUuid = agregarDineroPorUuid(ordenes);
+
+    if (pausaMs) await sleep(pausaMs);
+
+    // ---- 4. Ponerles nombre ----
+    const padron = await resolverNombres(
+      companyId, mes, ano, new Set(Object.keys(logsByDriver)), tag, pausaMs, ordenes
+    );
+
+    const dictPostMortem = {};
+    postMortem.forEach(({ nombre, turno }) => {
+      dictPostMortem[nombre.toLowerCase()] = { turno, estado: 'despedido' };
+    });
+
+    const horasPorConductor = {};
+    const horasNocturnasPorConductor = {};
+    const infoConductores = {};
+    const dineroPorConductor = {};
+    let sinNombre = 0;
+
+    // El dinero se agrupa por uuid; aquí se pasa a nombre para poder cruzarlo
+    // con las horas y con la otra flota.
+    const nombreDeUuid = (uuid) =>
+      padron[uuid] ? padron[uuid].nombre : `⚠️ UUID ${uuid.slice(0, 8)}`;
+
+    Object.entries(dineroPorUuid).forEach(([uuid, d]) => {
+      const nombre = nombreDeUuid(uuid);
+      if (!dineroPorConductor[nombre]) {
+        dineroPorConductor[nombre] = { propinas: 0, peajes: 0, neto: 0, viajes: 0 };
+      }
+      dineroPorConductor[nombre].propinas += d.propinas;
+      dineroPorConductor[nombre].peajes += d.peajes;
+      dineroPorConductor[nombre].neto += d.neto;
+      dineroPorConductor[nombre].viajes += d.viajes;
+    });
+
+    Object.entries(logsByDriver).forEach(([duuid, logs]) => {
+      const delPadron = padron[duuid];
+
+      // Sin nombre no se descarta: se identifica por uuid para no perder horas.
+      let nombreReal = delPadron ? delPadron.nombre : `⚠️ UUID ${duuid.slice(0, 8)}`;
+      let estado = delPadron ? delPadron.estado : 'activo';
+      if (!delPadron) sinNombre++;
+
+      const infoTurno = buscarEnDiccionario(nombreReal, turnosDB);
+      let turno = infoTurno ? infoTurno.turno : '?';
+
+      const pm = buscarEnDiccionario(nombreReal, dictPostMortem);
+      if (pm) {
+        estado = 'despedido';
+        if (turno === '?') turno = pm.turno;
+      }
+
+      infoConductores[nombreReal] = { turno, estado };
+
+      if (!horasPorConductor[nombreReal]) {
+        horasPorConductor[nombreReal] = {};
+        for (let d = 1; d <= diasDelMes; d++) horasPorConductor[nombreReal][d] = 0;
+        horasNocturnasPorConductor[nombreReal] = 0;
+      }
+
+      logs.sort((a, b) => a.created - b.created);
+
+      for (let i = 0; i < logs.length; i++) {
+        if (!STATE_VIAJE.includes(logs[i].state)) continue;
+        const siguiente = logs[i + 1];
+        if (!siguiente) continue;
+
+        const inicio = logs[i].created;
+        const fin = siguiente.created;
+        if (fin - inicio <= 0) continue;
+
+        if (turno === 'noche') {
+          distribuirHorasTurnoNoche(horasPorConductor[nombreReal], inicio, fin);
+        } else {
+          distribuirHorasTurnoDia(horasPorConductor[nombreReal], inicio, fin);
+        }
+
+        horasNocturnasPorConductor[nombreReal] += calcularSegundosNocturnosEnIntervalo(inicio, fin);
+      }
+    });
+
+    if (sinNombre > 0) {
+      console.log(`⚠️  [${tag}] ${sinNombre} conductores sin nombre en el padrón: ` +
+                  `salen identificados por uuid, con sus horas intactas`);
+    }
+
+    // ---- 4. Resumen de cobertura ----
+    const diasConHoras = [];
+    for (let d = 1; d <= diasDelMes; d++) {
+      const total = Object.values(horasPorConductor).reduce((s, dias) => s + (dias[d] || 0), 0);
+      if (total > 0) diasConHoras.push(d);
+    }
+
+    if (diasConHoras.length === 0) {
+      console.error(`❌ [${tag}] RESULTADO: 0 horas en todo el mes`);
+    } else {
+      console.log(`📊 [${tag}] RESULTADO: días ${diasConHoras[0]}–` +
+                  `${diasConHoras[diasConHoras.length - 1]} ` +
+                  `(${diasConHoras.length}/${diasDelMes} con horas)`);
+      if (diasConHoras[0] > 1) {
+        console.error(`❌ [${tag}] Los días 1–${diasConHoras[0] - 1} salen a cero`);
+      }
+    }
+
+    const totalNeto = Object.values(dineroPorConductor).reduce((s, d) => s + d.neto, 0);
+    console.log(`💶 [${tag}] Facturación neta del mes: ${totalNeto.toFixed(2)} €`);
+
+    return {
+      horas: horasPorConductor,
+      horasNocturnas: horasNocturnasPorConductor,
+      dinero: dineroPorConductor,
+      diasDelMes,
+      diaLimite: diasDelMes,
+      infoConductores
+    };
+
+  } catch (error) {
+    console.error(`❌ [${tag}] EXCEPCIÓN: ${error.message}`);
+    console.error(error.stack);
+    return vacio;
+  }
 }
 
 // ============================================================
@@ -408,6 +754,7 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
   // despedidos: sus horas nocturnas se muestran y suman igual que las del
   // resto. El filtro por estado solo aplica al seguimiento del mes en curso.
   const incluirTodos = opciones.incluirTodos === true;
+  const incluirDinero = opciones.incluirDinero === true;
   const ahora = new Date();
   const diasDelMes = new Date(ano, mes, 0).getDate();
   const diaLimite = (mes === ahora.getMonth() + 1 && ano === ahora.getFullYear())
@@ -423,6 +770,10 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
   const headers = ['Estado', 'Conductor', 'Turno'];
   for (let d = 1; d <= diasDelMes; d++) headers.push(d.toString());
   headers.push('TOTAL', '🌙 Noc', 'Días', 'Meta', 'Debe');
+  // Las columnas de dinero van AL FINAL a propósito: cualquier fórmula que
+  // apunte por posición a las anteriores (los VLOOKUP de la nómina) sigue
+  // funcionando igual.
+  if (incluirDinero) headers.push('Propinas €', 'Peajes €', 'Neto €', 'Viajes');
   values.push(headers);
 
   const activos = [], inactivos = [], despedidos = [];
@@ -437,6 +788,7 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
   const todosOrdenados = [...activos, ...inactivos, ...despedidos];
 
   let granTotalSeg = 0, granTotalNocturno = 0, granDiasTrab = 0;
+  let granPropinas = 0, granPeajes = 0, granNeto = 0, granViajes = 0;
   const totalesPorDia = new Array(diasDelMes + 1).fill(0);
 
   todosOrdenados.forEach(([nombre, data]) => {
@@ -479,6 +831,19 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
     row.push((metaMesSeg / 3600).toFixed(1));
     row.push(diferenciaSeg === 0 ? '✓' : (diferenciaSeg / 3600).toFixed(1));
 
+    if (incluirDinero) {
+      row.push(
+        (data.propinas || 0).toFixed(2),
+        (data.peajes || 0).toFixed(2),
+        (data.neto || 0).toFixed(2),
+        (data.viajes || 0).toString()
+      );
+      granPropinas += data.propinas || 0;
+      granPeajes += data.peajes || 0;
+      granNeto += data.neto || 0;
+      granViajes += data.viajes || 0;
+    }
+
     values.push(row);
 
     granTotalSeg += totalSeg;
@@ -498,6 +863,15 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
   totalRow.push(granDiasTrab.toString());
   totalRow.push((metaTotal / 3600).toFixed(1));
   totalRow.push(debeTotal > 0 ? '-' + (debeTotal / 3600).toFixed(1) : '✓');
+  if (incluirDinero) {
+    totalRow.push(
+      granPropinas.toFixed(2),
+      granPeajes.toFixed(2),
+      granNeto.toFixed(2),
+      granViajes.toString()
+    );
+  }
+
   values.push(totalRow);
 
   // El nombre va entrecomillado: en notación A1, "abril-2025!A1" sin comillas
@@ -593,4 +967,4 @@ async function obtenerMetricasVisor() {
   };
 }
 
-module.exports = { procesarYUnificar, obtenerMetricasVisor };
+module.exports = { procesarYUnificar, obtenerMetricasVisor, limpiarCacheDrivers };

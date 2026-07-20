@@ -1,4 +1,4 @@
-const { procesarYUnificar } = require('./boltHorasCore');
+const { procesarYUnificar, limpiarCacheDrivers } = require('./boltHorasCore');
 const { sleep } = require('./bolt');
 
 // Nombre de las hojas: abril-2025, mayo-2025, ...
@@ -26,6 +26,7 @@ const RANGO_DEFECTO = {
 // Estado en memoria para poder consultar el progreso mientras corre.
 let estado = {
   enCurso: false,
+  cancelado: false,
   iniciado: null,
   terminado: null,
   totalMeses: 0,
@@ -33,6 +34,18 @@ let estado = {
   actual: null,
   resultados: []
 };
+
+/**
+ * Pide que el backfill pare. No corta el mes que se esté procesando ahora
+ * mismo (dejarlo a medias escribiría una hoja incompleta): termina ese y no
+ * arranca el siguiente.
+ */
+function cancelar() {
+  if (!estado.enCurso) return { status: 'nada-que-parar' };
+  estado.cancelado = true;
+  console.log(`🛑 [HISTÓRICO] Cancelación pedida — se parará al terminar ${estado.actual}`);
+  return { status: 'cancelando', terminandoMes: estado.actual, procesados: estado.procesados };
+}
 
 function nombreHojaMes(mes, ano) {
   return `${MESES_SLUG[mes - 1]}-${ano}`;
@@ -115,6 +128,7 @@ async function procesarHistorico(opciones = {}) {
 
   estado = {
     enCurso: true,
+    cancelado: false,
     iniciado: new Date().toISOString(),
     terminado: null,
     totalMeses: meses.length,
@@ -123,12 +137,21 @@ async function procesarHistorico(opciones = {}) {
     resultados: []
   };
 
+  // El padrón de conductores se recarga en cada pasada, no vale el de la
+  // anterior por si ha entrado gente nueva.
+  limpiarCacheDrivers();
+
   console.log(
     `📚 [HISTÓRICO] ${meses.length} meses: ` +
     `${nombreHojaMes(desde.mes, desde.ano)} → ${nombreHojaMes(hasta.mes, hasta.ano)}`
   );
 
   for (let i = 0; i < meses.length; i++) {
+    if (estado.cancelado) {
+      console.log(`🛑 [HISTÓRICO] Cancelado tras ${estado.procesados} meses`);
+      break;
+    }
+
     const { mes, ano } = meses[i];
     const hoja = nombreHojaMes(mes, ano);
     estado.actual = hoja;
@@ -150,7 +173,9 @@ async function procesarHistorico(opciones = {}) {
         pausaMs: pausaLlamadas,
         // El histórico lleva a todos los conductores con sus cifras reales,
         // despedidos incluidos. Filtrar por estado es cosa del mes en curso.
-        incluirTodos: true
+        incluirTodos: true,
+        // Logs primero, nombres después: ver boltHorasCore.
+        modoHistorico: true
       });
 
       const segundos = Math.round((Date.now() - t0) / 1000);
@@ -190,6 +215,7 @@ async function procesarHistorico(opciones = {}) {
 
 module.exports = {
   procesarHistorico,
+  cancelar,
   getEstado,
   nombreHojaMes,
   listarMeses,

@@ -75,6 +75,9 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
   let paginas = 0;
   let motivo = 'fin-de-datos';
   let errorHttp = null;
+  let codigoCuerpo = null;
+  let mensajeCuerpo = null;
+  let totalRows = null;
 
   for (let page = 0; page < MAX_PAGINAS; page++) {
     const body = { ...baseBody, limit: pageSize, offset };
@@ -92,8 +95,28 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
       break;
     }
 
+    // Bolt responde HTTP 200 aunque haya error: el código real viene en el
+    // cuerpo (498805 INVALID_START_DATE, 498806 INVALID_DATE_RANGE,
+    // 498809 COMPANY_NOT_ACTIVE...). Si no lo miramos, un error se confunde
+    // con "no hay datos" y el mes se escribe vacío sin avisar.
+    codigoCuerpo = result.data?.code;
+    mensajeCuerpo = result.data?.message;
+    if (totalRows === null && result.data?.data?.total_rows !== undefined) {
+      totalRows = result.data.data.total_rows;
+    }
+
     const batch = result.data?.data?.[dataKey] || result.data?.[dataKey] || [];
-    if (batch.length === 0) break;
+
+    if (batch.length === 0) {
+      if (paginas === 1) {
+        motivo = 'sin-datos';
+        console.error(
+          `⚠️  [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} devolvió 0 registros ` +
+          `— code=${codigoCuerpo} message="${mensajeCuerpo}" total_rows=${totalRows}`
+        );
+      }
+      break;
+    }
 
     allData.push(...batch);
     offset += pageSize;
@@ -109,8 +132,18 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
     }
   }
 
+  // total_rows nos dice cuántos registros existen de verdad: si hemos leído
+  // menos, es que la paginación se ha quedado corta.
+  if (totalRows !== null && allData.length < totalRows) {
+    console.error(
+      `❌ [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} INCOMPLETO: ` +
+      `leídos ${allData.length} de ${totalRows} registros (motivo: ${motivo})`
+    );
+  }
+
   fetchAllPaginated.ultimoDiagnostico = {
-    endpoint, dataKey, paginas, registros: allData.length, motivo, errorHttp
+    endpoint, dataKey, paginas, registros: allData.length,
+    motivo, errorHttp, codigoCuerpo, mensajeCuerpo, totalRows
   };
 
   return allData;

@@ -4,6 +4,7 @@ const { procesarYUnificar } = require('../services/boltHorasCore');
 const {
   procesarHistorico,
   getEstado,
+  cancelar,
   nombreHojaMes,
   listarMeses,
   RANGO_DEFECTO
@@ -44,6 +45,12 @@ router.get('/procesar', async (req, res) => {
 // intente resolver "estado" como un parámetro de rango.
 router.get('/historico/estado', (req, res) => {
   res.json(getEstado());
+});
+
+// Detiene el backfill. Deja terminar el mes en curso para no dejar una hoja
+// a medias, y no arranca los siguientes.
+router.get('/historico/detener', (req, res) => {
+  res.json(cancelar());
 });
 
 // Lanza el backfill en segundo plano y responde al momento: procesar 13 meses
@@ -94,7 +101,7 @@ router.get('/mes/:mes/:ano', async (req, res) => {
 
     const hoja = nombreHojaMes(mes, ano);
     console.log(`🔄 Procesando ${mes}/${ano} → hoja "${hoja}"...`);
-    const result = await procesarYUnificar(mes, ano, { hojaDestino: hoja, incluirTodos: true });
+    const result = await procesarYUnificar(mes, ano, { hojaDestino: hoja, incluirTodos: true, modoHistorico: true });
 
     res.json(result);
   } catch (error) {
