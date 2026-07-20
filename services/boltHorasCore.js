@@ -103,13 +103,26 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     endTs = Math.floor(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 23, 59, 59).getTime() / 1000);
   }
 
+  // Etiqueta para poder seguir en los logs qué flota y qué mes falla.
+  const tag = `${companyId} ${String(mes).padStart(2, '0')}/${ano}`;
+  const fmt = ts => new Date(ts * 1000).toLocaleString('es-ES');
+  console.log(`🔍 [${tag}] Rango pedido: ${fmt(startTs)} → ${fmt(endTs)}`);
+
   try {
     // Una única consulta por mes, igual que en el mes en curso. Trocear el
     // rango en bloques hacía que se perdieran los datos de todos los días
     // menos los del último bloque.
     const drivers = await fetchAllPaginated('/fleetIntegration/v1/getDrivers', {
       company_id: companyId, start_ts: startTs, end_ts: endTs
-    }, 'drivers', 1000);
+    }, 'drivers', 1000, tag);
+
+    const diagDrivers = fetchAllPaginated.ultimoDiagnostico;
+    console.log(`👥 [${tag}] getDrivers: ${drivers.length} conductores ` +
+                `(${diagDrivers.paginas} pág., corte: ${diagDrivers.motivo})`);
+    if (drivers.length === 0) {
+      console.error(`❌ [${tag}] getDrivers NO devolvió conductores: ` +
+                    `todas las horas de este mes se perderán`);
+    }
 
     if (pausaMs) await sleep(pausaMs);
 
@@ -157,7 +170,30 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
 
     const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
       company_id: companyId, start_ts: startTs, end_ts: endTs
-    }, 'state_logs', 1000);
+    }, 'state_logs', 1000, tag);
+
+    const diagLogs = fetchAllPaginated.ultimoDiagnostico;
+    console.log(`📄 [${tag}] getFleetStateLogs: ${stateLogs.length} logs ` +
+                `(${diagLogs.paginas} pág., corte: ${diagLogs.motivo})`);
+
+    // Cobertura real: si la API devuelve del más nuevo al más viejo y se corta
+    // la paginación, aquí se ve porque el primer log recibido no es del día 1.
+    if (stateLogs.length > 0) {
+      const tiempos = stateLogs.map(l => l.created);
+      const minTs = Math.min(...tiempos);
+      const maxTs = Math.max(...tiempos);
+      console.log(`📅 [${tag}] Logs recibidos: ${fmt(minTs)} → ${fmt(maxTs)}`);
+
+      const diaPrimero = new Date(minTs * 1000).getDate();
+      const faltanDiasIniciales = minTs > startTs + 86400;
+      if (faltanDiasIniciales) {
+        console.error(`❌ [${tag}] FALTAN LOS PRIMEROS DÍAS: el log más antiguo es ` +
+                      `del día ${diaPrimero}, pero el mes empieza el 1. ` +
+                      `Probable corte de paginación (motivo: ${diagLogs.motivo})`);
+      }
+    } else {
+      console.error(`❌ [${tag}] getFleetStateLogs NO devolvió ningún log`);
+    }
 
     const logsByDriver = {};
     stateLogs.forEach(log => {
@@ -170,9 +206,18 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     const horasNocturnasPorConductor = {};
     const infoConductores = {};
 
+    let logsDescartados = 0;
+    const uuidsDesconocidos = new Set();
+
     Object.entries(logsByDriver).forEach(([duuid, logs]) => {
       const info = driverInfo[duuid];
-      if (!info) return;
+      if (!info) {
+        // El conductor tiene actividad pero no vino en getDrivers (p. ej. ya
+        // no pertenece a la flota). Sus horas se pierden por completo.
+        logsDescartados += logs.length;
+        uuidsDesconocidos.add(duuid);
+        return;
+      }
 
       const nombreReal = info.nombre;
       const turno = info.turno;
@@ -220,6 +265,35 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
       }
     });
 
+    if (logsDescartados > 0) {
+      console.error(
+        `❌ [${tag}] ${logsDescartados} logs DESCARTADOS de ${uuidsDesconocidos.size} ` +
+        `conductores que no vinieron en getDrivers — sus horas no se contarán`
+      );
+    }
+
+    // Resumen de cobertura: qué días acabaron con horas y cuáles a cero.
+    const diasConHoras = [];
+    for (let d = 1; d <= diasDelMes; d++) {
+      const total = Object.values(horasPorConductor)
+        .reduce((sum, dias) => sum + (dias[d] || 0), 0);
+      if (total > 0) diasConHoras.push(d);
+    }
+
+    if (diasConHoras.length === 0) {
+      console.error(`❌ [${tag}] RESULTADO: 0 horas en TODO el mes`);
+    } else {
+      const aCero = diasDelMes - diasConHoras.length;
+      console.log(
+        `📊 [${tag}] RESULTADO: días con horas ${diasConHoras[0]}–` +
+        `${diasConHoras[diasConHoras.length - 1]} ` +
+        `(${diasConHoras.length}/${diasDelMes}, ${aCero} a cero)`
+      );
+      if (diasConHoras[0] > 1) {
+        console.error(`❌ [${tag}] Los días 1–${diasConHoras[0] - 1} salen a cero`);
+      }
+    }
+
     Object.entries(driverInfo).forEach(([duuid, info]) => {
       if (!horasPorConductor[info.nombre]) {
         infoConductores[info.nombre] = { turno: info.turno, estado: info.estado };
@@ -240,7 +314,8 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     };
 
   } catch (error) {
-    console.error('Error en flota ' + companyId + ':', error.message);
+    console.error(`❌ [${tag}] EXCEPCIÓN: ${error.message}`);
+    console.error(error.stack);
     return { horas: {}, horasNocturnas: {}, diasDelMes, diaLimite, infoConductores: {} };
   }
 }

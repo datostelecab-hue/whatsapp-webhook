@@ -60,22 +60,58 @@ async function apiRequest(endpoint, method = 'POST', body = null) {
   return { httpCode: response.status, data: await response.json() };
 }
 
-async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000) {
+// Tope de páginas. Antes eran 100 (100.000 registros): un mes movido de dos
+// flotas puede superarlo, y como la API devuelve los logs del más reciente al
+// más antiguo, al cortar se perdían justo los primeros días del mes.
+const MAX_PAGINAS = 2000;
+
+/**
+ * Además de los datos, deja en `fetchAllPaginated.ultimoDiagnostico` el detalle
+ * de lo ocurrido (páginas, cortes, errores HTTP) para poder registrarlo.
+ */
+async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, etiqueta = '') {
   const allData = [];
   let offset = 0;
+  let paginas = 0;
+  let motivo = 'fin-de-datos';
+  let errorHttp = null;
 
-  for (let page = 0; page < 100; page++) {
+  for (let page = 0; page < MAX_PAGINAS; page++) {
     const body = { ...baseBody, limit: pageSize, offset };
     const result = await apiRequest(endpoint, 'POST', body);
-    if (result.httpCode !== 200) break;
+    paginas++;
+
+    if (result.httpCode !== 200) {
+      // Antes se cortaba en silencio y el mes se escribía incompleto sin avisar.
+      motivo = 'error-http';
+      errorHttp = result.httpCode;
+      console.error(
+        `❌ [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} HTTP ${result.httpCode} ` +
+        `en página ${paginas} (offset ${offset}) — se devuelven ${allData.length} registros PARCIALES`
+      );
+      break;
+    }
 
     const batch = result.data?.data?.[dataKey] || result.data?.[dataKey] || [];
     if (batch.length === 0) break;
 
     allData.push(...batch);
     offset += pageSize;
+
     if (batch.length < pageSize) break;
+
+    if (page === MAX_PAGINAS - 1) {
+      motivo = 'tope-paginas';
+      console.error(
+        `❌ [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} alcanzó el tope de ` +
+        `${MAX_PAGINAS} páginas — HAY DATOS SIN LEER (${allData.length} registros)`
+      );
+    }
   }
+
+  fetchAllPaginated.ultimoDiagnostico = {
+    endpoint, dataKey, paginas, registros: allData.length, motivo, errorHttp
+  };
 
   return allData;
 }
