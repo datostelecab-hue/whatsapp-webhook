@@ -15,6 +15,22 @@ const META_SEGUNDOS = CONFIG_BOLT.metaDiariaHoras * 3600;
 // Al fusionar flotas nos quedamos con el estado más "vivo" del conductor.
 const PRIORIDAD_ESTADO = { despedido: 0, inactivo: 1, activo: 2 };
 
+/**
+ * Mínimo y máximo de un array recorriéndolo, no con Math.min(...array): un mes
+ * real trae más de 130.000 logs y el spread los pasa como argumentos de la
+ * llamada, lo que desborda la pila ("Maximum call stack size exceeded").
+ */
+function minMax(valores) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < valores.length; i++) {
+    const v = valores[i];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return { min, max };
+}
+
 // ============================================================
 // PROCESAR Y UNIFICAR
 // ============================================================
@@ -284,8 +300,8 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
       return vacio;
     }
 
-    const tiempos = stateLogs.map(l => l.created);
-    console.log(`📅 [${tag}] Cobertura real: ${fmt(Math.min(...tiempos))} → ${fmt(Math.max(...tiempos))}`);
+    const rango = minMax(stateLogs.map(l => l.created));
+    console.log(`📅 [${tag}] Cobertura real: ${fmt(rango.min)} → ${fmt(rango.max)}`);
 
     // ---- 2. Agrupar por driver_uuid ----
     const logsByDriver = {};
@@ -525,9 +541,7 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     // Cobertura real: si la API devuelve del más nuevo al más viejo y se corta
     // la paginación, aquí se ve porque el primer log recibido no es del día 1.
     if (stateLogs.length > 0) {
-      const tiempos = stateLogs.map(l => l.created);
-      const minTs = Math.min(...tiempos);
-      const maxTs = Math.max(...tiempos);
+      const { min: minTs, max: maxTs } = minMax(stateLogs.map(l => l.created));
       console.log(`📅 [${tag}] Logs recibidos: ${fmt(minTs)} → ${fmt(maxTs)}`);
 
       const diaPrimero = new Date(minTs * 1000).getDate();
@@ -903,7 +917,9 @@ async function obtenerMetricasVisor() {
     const logs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
       company_id: flotaId, start_ts: startTs, end_ts: endTs
     }, 'state_logs', 1000);
-    allStateLogs.push(...logs);
+    // concat en vez de push(...logs): un mes real supera los 130.000 registros
+    // y pasarlos como argumentos desbordaría la pila.
+    allStateLogs = allStateLogs.concat(logs);
   }
 
   const logsPorDriver = {};
