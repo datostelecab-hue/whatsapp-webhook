@@ -69,6 +69,21 @@ const MAX_PAGINAS = 2000;
 const MAX_REINTENTOS_429 = 4;
 const ESPERA_BASE_429_MS = 5000;
 
+// Bolt devuelve HTTP 200 con el error dentro del cuerpo. Los 498xxx son
+// errores de negocio (rango inválido, empresa inactiva) y no tiene sentido
+// insistir; estos otros son fallos pasajeros del servidor y sí se reintentan.
+const CODIGOS_TRANSITORIOS = new Set([998, 999]);
+
+// Un timeout se reintenta UNA vez y corto: significa que el rango pesa
+// demasiado, así que insistir con el mismo rango sale caro y no suele servir.
+// Lo que lo arregla es partirlo, y de eso se encarga fetchRangoCompleto.
+const MAX_REINTENTOS_TIMEOUT = 1;
+const ESPERA_TIMEOUT_MS = 3000;
+
+function esCodigoTransitorio(codigo) {
+  return CODIGOS_TRANSITORIOS.has(codigo);
+}
+
 /**
  * Además de los datos, deja en `fetchAllPaginated.ultimoDiagnostico` el detalle
  * de lo ocurrido (páginas, cortes, errores HTTP) para poder registrarlo.
@@ -83,6 +98,7 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
   let mensajeCuerpo = null;
   let totalRows = null;
   let reintentos = 0;
+  let reintentosTimeout = 0;
 
   for (let page = 0; page < MAX_PAGINAS; page++) {
     const body = { ...baseBody, limit: pageSize, offset };
@@ -115,7 +131,7 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
       break;
     }
 
-    reintentos = 0;   // la página ha entrado bien
+    reintentos = 0;   // la respuesta HTTP ha entrado bien
 
     // Bolt responde HTTP 200 aunque haya error: el código real viene en el
     // cuerpo (498805 INVALID_START_DATE, 498806 INVALID_DATE_RANGE,
@@ -133,8 +149,22 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
     const batch = result.data?.data?.[dataKey] || result.data?.[dataKey] || [];
 
     if (batch.length === 0) {
+      // CLIENT_TIMEOUT y similares llegan como HTTP 200 con 0 registros: si no
+      // se reintentan, se pierde el tramo entero creyendo que no había datos.
+      if (esCodigoTransitorio(codigoCuerpo) && reintentosTimeout < MAX_REINTENTOS_TIMEOUT) {
+        reintentosTimeout++;
+        console.error(
+          `⏳ [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} code=${codigoCuerpo} ` +
+          `"${mensajeCuerpo}" en página ${paginas} — reintento en ${ESPERA_TIMEOUT_MS / 1000}s`
+        );
+        await sleep(ESPERA_TIMEOUT_MS);
+        page--;
+        paginas--;
+        continue;
+      }
+
       if (paginas === 1) {
-        motivo = 'sin-datos';
+        motivo = esCodigoTransitorio(codigoCuerpo) ? 'timeout' : 'sin-datos';
         console.error(
           `⚠️  [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} devolvió 0 registros ` +
           `— code=${codigoCuerpo} message="${mensajeCuerpo}" total_rows=${totalRows}`
@@ -142,6 +172,11 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
       }
       break;
     }
+
+    // Solo aquí se sabe que la página trajo datos de verdad. Resetear el
+    // contador antes sería un bucle infinito: CLIENT_TIMEOUT viaja con HTTP
+    // 200, así que la respuesta "entra bien" aunque no traiga nada.
+    reintentosTimeout = 0;
 
     allData.push(...batch);
     offset += pageSize;
@@ -190,32 +225,56 @@ const LIMITE_RANGO_SEG = 31 * 86400 - 3600;   // 31 días menos 1 h de margen
  * fusionan ANTES de procesar nada, así que un turno que cruce el corte se
  * sigue midiendo entero.
  */
-async function fetchRangoCompleto(endpoint, baseBody, dataKey, startTs, endTs, pageSize, etiqueta) {
-  if (endTs - startTs <= LIMITE_RANGO_SEG) {
-    return fetchAllPaginated(
+const MAX_PARTICIONES = 4;              // hasta 16 tramos
+const RANGO_MINIMO_SEG = 6 * 3600;      // no se parte por debajo de 6 h
+
+async function fetchRangoCompleto(endpoint, baseBody, dataKey, startTs, endTs, pageSize, etiqueta, nivel = 0) {
+  const duracion = endTs - startTs;
+
+  // Rango dentro de lo permitido: una sola petición.
+  if (duracion <= LIMITE_RANGO_SEG) {
+    const datos = await fetchAllPaginated(
       endpoint, { ...baseBody, start_ts: startTs, end_ts: endTs }, dataKey, pageSize, etiqueta
     );
+    const diag = fetchAllPaginated.ultimoDiagnostico;
+
+    // Un timeout del servidor significa que el rango pesa demasiado para una
+    // sola consulta: insistir con el mismo rango volvería a fallar, así que se
+    // parte por la mitad.
+    const debePartirse = diag.motivo === 'timeout' && datos.length === 0 &&
+                         nivel < MAX_PARTICIONES && duracion > RANGO_MINIMO_SEG;
+
+    if (debePartirse) {
+      console.log(`✂️  [${etiqueta}] Timeout con ${(duracion / 86400).toFixed(2)} días: ` +
+                  `se parte por la mitad (nivel ${nivel + 1})`);
+      return partirRango(endpoint, baseBody, dataKey, startTs, endTs,
+                         startTs + Math.floor(duracion / 2), pageSize, etiqueta, nivel + 1);
+    }
+
+    return datos;
   }
 
-  const dias = ((endTs - startTs) / 86400).toFixed(2);
-  const corte = startTs + LIMITE_RANGO_SEG;
-  console.log(`✂️  [${etiqueta}] Rango de ${dias} días: supera el máximo de la API, se pide en 2 tramos`);
+  // Por encima del máximo que acepta la API: pasa en octubre, cuando el mes
+  // mide 31 días y una hora por el cambio de horario.
+  console.log(`✂️  [${etiqueta}] Rango de ${(duracion / 86400).toFixed(2)} días: ` +
+              `supera el máximo de la API, se pide en 2 tramos`);
+  return partirRango(endpoint, baseBody, dataKey, startTs, endTs,
+                     startTs + LIMITE_RANGO_SEG, pageSize, etiqueta, nivel);
+}
 
-  const tramo1 = await fetchAllPaginated(
-    endpoint, { ...baseBody, start_ts: startTs, end_ts: corte }, dataKey, pageSize, etiqueta
-  );
+/** Pide [inicio, corte] y [corte+1, fin] y junta los resultados. */
+async function partirRango(endpoint, baseBody, dataKey, startTs, endTs, corte, pageSize, etiqueta, nivel) {
+  const tramo1 = await fetchRangoCompleto(endpoint, baseBody, dataKey, startTs, corte, pageSize, etiqueta, nivel);
   const diag1 = { ...fetchAllPaginated.ultimoDiagnostico };
 
   await sleep(1500);
 
-  const tramo2 = await fetchAllPaginated(
-    endpoint, { ...baseBody, start_ts: corte + 1, end_ts: endTs }, dataKey, pageSize, etiqueta
-  );
+  const tramo2 = await fetchRangoCompleto(endpoint, baseBody, dataKey, corte + 1, endTs, pageSize, etiqueta, nivel);
   const diag2 = fetchAllPaginated.ultimoDiagnostico;
 
   fetchAllPaginated.ultimoDiagnostico = {
     ...diag2,
-    paginas: diag1.paginas + diag2.paginas,
+    paginas: (diag1.paginas || 0) + (diag2.paginas || 0),
     registros: tramo1.length + tramo2.length,
     totalRows: (diag1.totalRows || 0) + (diag2.totalRows || 0),
     motivo: diag1.motivo === 'fin-de-datos' ? diag2.motivo : diag1.motivo
