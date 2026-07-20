@@ -1,6 +1,8 @@
-const { CONFIG_BOLT, fetchAllPaginated } = require('./bolt');
-const { readSheet, writeSheet, clearSheet } = require('./sheets');
+const { CONFIG_BOLT, fetchAllPaginated, fetchPorBloques } = require('./bolt');
+const { readSheet, writeSheet, clearSheet, ensureSheet } = require('./sheets');
 const { SPREADSHEET_ID, normalizarNombre, leerTurnos, leerPostMortem, buscarEnDiccionario } = require('./turnos');
+
+const HOJA_MES_ACTUAL = 'TODAS_LAS_FLOTAS';
 
 const MAPEO_ESTADOS_BOLT = {
   'active': 'activo',
@@ -10,27 +12,49 @@ const MAPEO_ESTADOS_BOLT = {
 const STATE_VIAJE = ['has_order', 'waiting_orders'];
 const META_SEGUNDOS = CONFIG_BOLT.metaDiariaHoras * 3600;
 
+// Al fusionar flotas nos quedamos con el estado más "vivo" del conductor.
+const PRIORIDAD_ESTADO = { despedido: 0, inactivo: 1, activo: 2 };
+
 // ============================================================
 // PROCESAR Y UNIFICAR
 // ============================================================
-async function procesarYUnificar(mes, ano) {
+async function procesarYUnificar(mes, ano, opciones = {}) {
+  const hojaDestino = opciones.hojaDestino || HOJA_MES_ACTUAL;
+  const pausaMs = opciones.pausaMs;
+  const incluirTodos = opciones.incluirTodos === true;
+
   const turnosDB = await leerTurnos();
   const postMortem = await leerPostMortem();
 
   const todosConductores = {};
 
   for (const flota of CONFIG_BOLT.flotas) {
-    const datos = await calcularHorasFlota(flota.id, mes, ano, turnosDB, postMortem);
+    const datos = await calcularHorasFlota(flota.id, mes, ano, turnosDB, postMortem, { pausaMs });
 
     Object.entries(datos.horas).forEach(([nombre, diasObj]) => {
+      const info = datos.infoConductores[nombre] || {};
+
       if (!todosConductores[nombre]) {
         todosConductores[nombre] = {
-          turno: datos.infoConductores[nombre]?.turno || '?',
-          estado: datos.infoConductores[nombre]?.estado || 'activo',
+          turno: info.turno || '?',
+          estado: info.estado || 'activo',
           horasNocturnas: 0
         };
         for (let d = 1; d <= datos.diasDelMes; d++) {
           todosConductores[nombre][d] = 0;
+        }
+      } else {
+        // El conductor aparece en más de una flota. La 63530 está cerrada, así
+        // que sus conductores figuran como dados de baja en Bolt: si nos
+        // quedáramos con el primer estado que llega, marcaríamos como
+        // despedido a quien sigue trabajando en la 143626. Nos quedamos con el
+        // estado más activo de todas las flotas.
+        const acumulado = todosConductores[nombre];
+        if (PRIORIDAD_ESTADO[info.estado] > PRIORIDAD_ESTADO[acumulado.estado]) {
+          acumulado.estado = info.estado;
+        }
+        if (acumulado.turno === '?' && info.turno && info.turno !== '?') {
+          acumulado.turno = info.turno;
         }
       }
 
@@ -51,15 +75,22 @@ async function procesarYUnificar(mes, ano) {
     }
   }
 
-  await escribirHojaUnificada(todosConductores, mes, ano);
-  console.log(`✅ Mes ${mes}/${ano} procesado`);
-  return { status: 'ok', mes, ano, conductores: Object.keys(todosConductores).length };
+  await escribirHojaUnificada(todosConductores, mes, ano, hojaDestino, { incluirTodos });
+  console.log(`✅ Mes ${mes}/${ano} procesado → hoja "${hojaDestino}"`);
+  return {
+    status: 'ok',
+    mes,
+    ano,
+    hoja: hojaDestino,
+    conductores: Object.keys(todosConductores).length
+  };
 }
 
 // ============================================================
 // CALCULAR HORAS FLOTA
 // ============================================================
-async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem) {
+async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opciones = {}) {
+  const pausaMs = opciones.pausaMs;
   const ahora = new Date();
   const diasDelMes = new Date(ano, mes, 0).getDate();
   const diaLimite = (mes === ahora.getMonth() + 1 && ano === ahora.getFullYear())
@@ -73,9 +104,14 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem) {
   }
 
   try {
-    const drivers = await fetchAllPaginated('/fleetIntegration/v1/getDrivers', {
-      company_id: companyId, start_ts: startTs, end_ts: endTs
-    }, 'drivers', 1000);
+    const drivers = await fetchPorBloques(
+      '/fleetIntegration/v1/getDrivers',
+      { company_id: companyId },
+      'drivers',
+      startTs,
+      endTs,
+      { pausaMs, claveId: 'driver_uuid' }
+    );
 
     const driverInfo = {};
 
@@ -119,9 +155,19 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem) {
       }
     });
 
-    const stateLogs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
-      company_id: companyId, start_ts: startTs, end_ts: endTs
-    }, 'state_logs', 1000);
+    const stateLogs = await fetchPorBloques(
+      '/fleetIntegration/v1/getFleetStateLogs',
+      { company_id: companyId },
+      'state_logs',
+      startTs,
+      endTs,
+      {
+        pausaMs,
+        // Un mismo log puede llegar en dos bloques contiguos; lo identificamos
+        // por conductor + instante + estado para no contar el tramo dos veces.
+        claveId: log => `${log.driver_uuid}|${log.created}|${log.state}`
+      }
+    );
 
     const logsByDriver = {};
     stateLogs.forEach(log => {
@@ -175,10 +221,12 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem) {
           distribuirHorasTurnoDia(horasPorConductor[nombreReal], inicioIntervalo, finIntervalo);
         }
 
-        if (estado !== 'despedido') {
-          const segNocturnos = calcularSegundosNocturnosEnIntervalo(inicioIntervalo, finIntervalo);
-          horasNocturnasPorConductor[nombreReal] += segNocturnos;
-        }
+        // Las nocturnas se calculan siempre para todo el mundo. Quién las ve
+        // reflejadas se decide al escribir la hoja, con el estado ya fusionado
+        // entre flotas: el histórico las muestra a todos y el mes en curso
+        // deja a los despedidos en "N/A".
+        const segNocturnos = calcularSegundosNocturnosEnIntervalo(inicioIntervalo, finIntervalo);
+        horasNocturnasPorConductor[nombreReal] += segNocturnos;
       }
     });
 
@@ -290,7 +338,11 @@ function distribuirHorasTurnoNoche(horasConductor, inicio, fin) {
 // ============================================================
 // ESCRIBIR HOJA UNIFICADA
 // ============================================================
-async function escribirHojaUnificada(todosConductores, mes, ano) {
+async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HOJA_MES_ACTUAL, opciones = {}) {
+  // En el histórico queremos el dato de todo el mundo, incluidos los
+  // despedidos: sus horas nocturnas se muestran y suman igual que las del
+  // resto. El filtro por estado solo aplica al seguimiento del mes en curso.
+  const incluirTodos = opciones.incluirTodos === true;
   const ahora = new Date();
   const diasDelMes = new Date(ano, mes, 0).getDate();
   const diaLimite = (mes === ahora.getMonth() + 1 && ano === ahora.getFullYear())
@@ -357,7 +409,7 @@ async function escribirHojaUnificada(todosConductores, mes, ano) {
     const diferenciaSeg = totalSeg - metaMesSeg;
 
     row.push((totalSeg / 3600).toFixed(1));
-    row.push(estado === 'despedido' ? 'N/A' : (horasNocturnas / 3600).toFixed(1));
+    row.push(!incluirTodos && estado === 'despedido' ? 'N/A' : (horasNocturnas / 3600).toFixed(1));
     row.push(diasTrabajados.toString());
     row.push((metaMesSeg / 3600).toFixed(1));
     row.push(diferenciaSeg === 0 ? '✓' : (diferenciaSeg / 3600).toFixed(1));
@@ -365,7 +417,7 @@ async function escribirHojaUnificada(todosConductores, mes, ano) {
     values.push(row);
 
     granTotalSeg += totalSeg;
-    if (estado !== 'despedido') granTotalNocturno += horasNocturnas;
+    if (incluirTodos || estado !== 'despedido') granTotalNocturno += horasNocturnas;
     granDiasTrab += diasTrabajados;
   });
 
@@ -383,10 +435,15 @@ async function escribirHojaUnificada(todosConductores, mes, ano) {
   totalRow.push(debeTotal > 0 ? '-' + (debeTotal / 3600).toFixed(1) : '✓');
   values.push(totalRow);
 
-  await clearSheet(SPREADSHEET_ID, 'TODAS_LAS_FLOTAS!A:Z');
-  await writeSheet(SPREADSHEET_ID, 'TODAS_LAS_FLOTAS!A1', values);
+  // El nombre va entrecomillado: en notación A1, "abril-2025!A1" sin comillas
+  // se interpreta mal por el guion.
+  const hojaRef = `'${nombreHoja.replace(/'/g, "''")}'`;
 
-  console.log(`✅ Hoja TODAS_LAS_FLOTAS actualizada: ${values.length} filas`);
+  await ensureSheet(SPREADSHEET_ID, nombreHoja);
+  await clearSheet(SPREADSHEET_ID, `${hojaRef}!A:Z`);
+  await writeSheet(SPREADSHEET_ID, `${hojaRef}!A1`, values);
+
+  console.log(`✅ Hoja ${nombreHoja} actualizada: ${values.length} filas`);
 }
 
 // ============================================================

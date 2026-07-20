@@ -3,7 +3,12 @@ const CONFIG_BOLT = {
   clientSecret: '6iLLheyzrPsgwgumCi-I_ixlMadTVoWvh8X9daYtSQW-GvqQLysUfEt0RbiD8TX2m0aM1Noo5FZ_yEGvaSunWQ',
   tokenUrl: 'https://oidc.bolt.eu/token',
   apiBaseUrl: 'https://node.bolt.eu/fleet-integration-gateway',
-  flotas: [{ id: 143626, nombre: 'Flota 143626' }],
+  // 63530 ya no está operativa, pero conserva histórico de horas hasta junio;
+  // se mantiene en la lista para que los meses antiguos salgan completos.
+  flotas: [
+    { id: 63530, nombre: 'Flota 63530' },
+    { id: 143626, nombre: 'Flota 143626' }
+  ],
   metaDiariaHoras: 8
 };
 
@@ -75,4 +80,69 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000) {
   return allData;
 }
 
-module.exports = { CONFIG_BOLT, getAccessToken, apiRequest, fetchAllPaginated };
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Bolt rechaza rangos de más de 31 días. Un mes natural cabe justo, pero en
+// octubre el cambio de hora añade 60 minutos al rango y lo deja por encima del
+// límite, así que troceamos siempre en bloques de 30 días.
+const MAX_DIAS_BLOQUE = 30;
+const PAUSA_ENTRE_BLOQUES_MS = 1200;
+
+/**
+ * Recorre [startTs, endTs] en bloques de como mucho `maxDias` días y devuelve
+ * todos los registros juntos. Los bloques son contiguos y los resultados se
+ * fusionan antes de usarlos, así que un intervalo que cruce la frontera entre
+ * dos bloques sigue quedando completo (importante para los state logs, que se
+ * emparejan log-a-log para medir duraciones).
+ */
+async function fetchPorBloques(endpoint, baseBody, dataKey, startTs, endTs, opciones = {}) {
+  const maxDias = opciones.maxDias || MAX_DIAS_BLOQUE;
+  const pausaMs = opciones.pausaMs !== undefined ? opciones.pausaMs : PAUSA_ENTRE_BLOQUES_MS;
+  const pageSize = opciones.pageSize || 1000;
+  const claveId = opciones.claveId || null;
+
+  const maxSegundos = maxDias * 86400;
+  const bloques = [];
+  let desde = startTs;
+  while (desde <= endTs) {
+    const hasta = Math.min(desde + maxSegundos - 1, endTs);
+    bloques.push([desde, hasta]);
+    desde = hasta + 1;
+  }
+
+  const todos = [];
+  for (let i = 0; i < bloques.length; i++) {
+    const [bDesde, bHasta] = bloques[i];
+    const lote = await fetchAllPaginated(
+      endpoint,
+      { ...baseBody, start_ts: bDesde, end_ts: bHasta },
+      dataKey,
+      pageSize
+    );
+    todos.push(...lote);
+
+    if (i < bloques.length - 1 && pausaMs > 0) await sleep(pausaMs);
+  }
+
+  if (!claveId) return todos;
+
+  const vistos = new Set();
+  return todos.filter(item => {
+    const clave = typeof claveId === 'function' ? claveId(item) : item[claveId];
+    if (clave === undefined || clave === null) return true;
+    if (vistos.has(clave)) return false;
+    vistos.add(clave);
+    return true;
+  });
+}
+
+module.exports = {
+  CONFIG_BOLT,
+  getAccessToken,
+  apiRequest,
+  fetchAllPaginated,
+  fetchPorBloques,
+  sleep
+};
