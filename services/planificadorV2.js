@@ -566,13 +566,14 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     .filter(c => c.estadoCalculado === ESTADO_PENDIENTE)
     .map(c => {
       const coord = parseCoords(c.coordenadas);
-      if (!coord || !bases.length) return { ...c, distancias: [], baseCercana: null };
+      if (!coord || !bases.length) {
+        return { ...c, distancias: [], baseCercana: null, sinCoordenadas: !coord };
+      }
       const distancias = bases.map(b => ({
         nombre: b.nombre,
         km: Math.round(haversine(coord.lat, coord.lng, b.lat, b.lng) * 100) / 100
-      }));
-      const baseCercana = distancias.reduce((a, b) => (b.km < a.km ? b : a));
-      return { ...c, distancias, baseCercana };
+      })).sort((a, b) => a.km - b.km);
+      return { ...c, distancias, baseCercana: distancias[0], sinCoordenadas: false };
     });
 
   // ---- 7. Demanda, global y por zona ----
@@ -630,10 +631,135 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     })
     .sort((a, b) => b.totalFaltan - a.totalFaltan);
 
+  // ---- 7bis. Cobertura semanal y relevos ----
+  // La semana de un coche son 14 tramos encadenados (7 días × día/noche). Un
+  // relevo es el paso de un tramo al siguiente cambiando de conductor: es lo
+  // que hay que saber para decirle a cada uno a quién le entrega las llaves.
+  const nombreDe = id => (porId.get(id) ? porId.get(id).nombre : '') || id;
+
+  coches.forEach(coche => {
+    const tramos = [];
+    for (let d = 0; d < 7; d++) {
+      TURNOS.forEach(turno => {
+        const lista = coche._grid[`${d}|${turno}`] || [];
+        // Qué plaza ocupa quien conduce ese tramo (Día, CT1 Noche…)
+        const persona = coche.personas.find(p => p.id && lista.includes(p.id) && p.turno === turno);
+        tramos.push({
+          dia: d,
+          diaNombre: DIAS_SEM[d],
+          turno,
+          ids: lista,
+          id: lista.length === 1 ? lista[0] : null,
+          nombre: lista.length === 1 ? nombreDe(lista[0]) : '',
+          plaza: persona ? persona.etiqueta : '',
+          vacio: lista.length === 0,
+          conflicto: lista.length > 1
+        });
+      });
+    }
+    coche.semana = tramos;
+
+    if (!coche.operativo) { coche.relevos = []; return; }
+
+    // Se recorre la semana enlazando cada tramo ocupado con el anterior
+    // ocupado. Si por medio quedaron tramos vacíos, el coche estuvo parado y se
+    // dice, porque el que entra no lo recibe en mano: lo recoge donde quedó.
+    const relevos = [];
+    const ocupados = tramos.map((t, i) => ({ ...t, i })).filter(t => t.id);
+
+    ocupados.forEach((tramo, n) => {
+      const anterior = n === 0 ? ocupados[ocupados.length - 1] : ocupados[n - 1];
+      if (!anterior || anterior.id === tramo.id) return;
+
+      // Huecos entre ambos: si el índice no es consecutivo (con vuelta al
+      // principio en el cierre de semana), el coche se quedó parado.
+      const salto = (tramo.i - anterior.i + tramos.length) % tramos.length;
+      relevos.push({
+        matricula: coche.matricula,
+        zona: coche.zona,
+        entrega: { id: anterior.id, nombre: anterior.nombre, plaza: anterior.plaza, dia: anterior.diaNombre, turno: anterior.turno },
+        recibe: { id: tramo.id, nombre: tramo.nombre, plaza: tramo.plaza, dia: tramo.diaNombre, turno: tramo.turno },
+        directo: salto === 1,
+        tramosParado: salto - 1,
+        cierraSemana: n === 0
+      });
+    });
+
+    coche.relevos = relevos;
+  });
+
+  // Cobertura por día y turno, para responder "¿quién sale el sábado de noche?"
+  const cobertura = [];
+  for (let d = 0; d < 7; d++) {
+    TURNOS.forEach(turno => {
+      const enCalle = [];
+      const sinConductor = [];
+      coches.forEach(coche => {
+        if (!coche.operativo || !coche.matricula) return;
+        const tramo = coche.semana[d * 2 + TURNOS.indexOf(turno)];
+        if (tramo.id) enCalle.push({ matricula: coche.matricula, zona: coche.zona, id: tramo.id, nombre: tramo.nombre, plaza: tramo.plaza });
+        else if (tramo.conflicto) sinConductor.push({ matricula: coche.matricula, zona: coche.zona, motivo: 'conflicto' });
+        else sinConductor.push({ matricula: coche.matricula, zona: coche.zona, motivo: 'sin conductor' });
+      });
+      cobertura.push({
+        dia: d, diaNombre: DIAS_SEM[d], turno,
+        enCalle: enCalle.sort((a, b) => a.matricula.localeCompare(b.matricula)),
+        sinConductor: sinConductor.sort((a, b) => a.matricula.localeCompare(b.matricula))
+      });
+    });
+  }
+
+  // ---- 8. Sugerencias: cruzar quién está libre con dónde falta gente ----
+  // Una tabla de distancias no dice qué hacer; esto sí: para cada conductor
+  // pendiente, las zonas que tienen hueco EN SU TURNO, de más cerca a más lejos.
+  const huecoPorZonaTurno = new Map();   // "zona|turno" → nº de plazas vacías
+  coches.forEach(coche => {
+    if (!coche.operativo || !coche.zona) return;
+    const anota = (turno, n) => {
+      const k = `${coche.zona}|${turno}`;
+      huecoPorZonaTurno.set(k, (huecoPorZonaTurno.get(k) || 0) + n);
+    };
+    anota('Día', (coche.personas[0].id ? 0 : 1) +
+                 (coche.personas[2].id ? 0 : 1) + (coche.personas[4].id ? 0 : 1));
+    anota('Noche', (coche.personas[1].id ? 0 : 1) +
+                   (coche.personas[3].id ? 0 : 1) + (coche.personas[5].id ? 0 : 1));
+  });
+
+  const sugerencias = pendientes.map(c => {
+    const opciones = c.distancias
+      .map(d => ({
+        zona: d.nombre,
+        km: d.km,
+        plazasLibres: huecoPorZonaTurno.get(`${d.nombre}|${c.turno}`) || 0
+      }))
+      .filter(o => o.plazasLibres > 0);
+
+    return {
+      id: c.id,
+      nombre: c.nombre,
+      turno: c.turno,
+      contrato: c.contrato,
+      telefono: c.telefono,
+      diasLibres: c.diasLaborables - c.diasCubiertos,
+      sinCoordenadas: c.sinCoordenadas,
+      opciones,
+      mejor: opciones[0] || null
+    };
+  }).sort((a, b) => {
+    // Primero quien tiene una opción clara y cerca; al final, los que no
+    // encajan en ningún sitio (por coordenadas o porque no hay plazas).
+    if (!a.mejor && !b.mejor) return 0;
+    if (!a.mejor) return 1;
+    if (!b.mejor) return -1;
+    return a.mejor.km - b.mejor.km;
+  });
+
   return {
     coches,
     conductores,
     pendientes,
+    sugerencias,
+    cobertura,
     bases,
     avisos,
     resumen: {

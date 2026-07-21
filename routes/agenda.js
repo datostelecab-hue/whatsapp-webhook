@@ -10,6 +10,8 @@ const {
 router.get('/', (req, res) => {
   res.render('agenda', {
     titulo: 'Agenda',
+    seccion: 'agenda',
+    layout: 'layout-gestion',
     estadosConductor: ESTADOS_CONDUCTOR,
     diasSem: DIAS_SEM,
     turnos: TURNOS,

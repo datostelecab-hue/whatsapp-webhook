@@ -1,0 +1,227 @@
+<div class="max-w-[1600px] mx-auto px-4 py-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Cobertura semanal</h1>
+      <p id="resumen" class="text-telecab-muted text-sm">—</p>
+    </div>
+    <button id="btn-recargar" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
+      <i class="fa-solid fa-rotate mr-1"></i> Recargar
+    </button>
+  </div>
+
+  <div class="flex gap-1 mb-5 border-b border-telecab-border overflow-x-auto">
+    <button data-tab="dias" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-red border-b-2 border-telecab-red">
+      Por día
+    </button>
+    <button data-tab="relevos" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
+      Relevos por coche
+    </button>
+    <button data-tab="personas" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
+      Por conductor
+    </button>
+  </div>
+
+  <div id="cargando" class="text-center py-16 text-telecab-muted">
+    <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i>
+    <p class="mt-3">Calculando la semana…</p>
+  </div>
+
+  <!-- ══ POR DÍA ══ -->
+  <section id="panel-dias" class="space-y-3"></section>
+
+  <!-- ══ RELEVOS POR COCHE ══ -->
+  <section id="panel-relevos" class="hidden">
+    <input id="f-coche" type="search" placeholder="Matrícula, zona o conductor…"
+           class="w-full max-w-md mb-4 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-red">
+    <div id="lista-coches" class="grid gap-3 xl:grid-cols-2"></div>
+  </section>
+
+  <!-- ══ POR CONDUCTOR ══ -->
+  <section id="panel-personas" class="hidden">
+    <input id="f-persona" type="search" placeholder="Nombre o ID del conductor…"
+           class="w-full max-w-md mb-4 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-red">
+    <div id="lista-personas" class="grid gap-3 lg:grid-cols-2"></div>
+  </section>
+</div>
+
+<script type="application/json" id="datos-servidor">
+  <%- JSON.stringify({ diasSem: diasSem, turnos: turnos }) %>
+</script>
+
+<script>
+const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
+const DIAS_SEM = CFG.diasSem;
+
+let D = null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const icono = t => t === 'Día' ? '☀️' : '🌙';
+
+async function cargar() {
+  $('#cargando').classList.remove('hidden');
+  try {
+    const r = await fetch('/cobertura/api/datos');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.msg);
+    D = d;
+    pintar();
+  } catch (e) {
+    $('#cargando').innerHTML = '<p class="text-telecab-red">' + esc(e.message) + '</p>';
+    return;
+  }
+  $('#cargando').classList.add('hidden');
+}
+
+function pintar() {
+  const totalRelevos = D.relevos.length;
+  const totalHuecos = D.cobertura.reduce((n, c) => n + c.sinConductor.length, 0);
+  $('#resumen').textContent =
+    `${D.coches.length} coches operativos · ${totalRelevos} relevos a la semana · ${totalHuecos} turnos sin conductor`;
+  pintarDias();
+  pintarCoches();
+  pintarPersonas();
+}
+
+// ════════ Por día ════════
+function pintarDias() {
+  const porDia = {};
+  D.cobertura.forEach(c => { (porDia[c.diaNombre] = porDia[c.diaNombre] || []).push(c); });
+
+  $('#panel-dias').innerHTML = DIAS_SEM.map(dia => {
+    const turnos = porDia[dia] || [];
+    return `
+    <div class="rounded-xl bg-telecab-card border border-telecab-border overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-telecab-border font-semibold text-telecab-text">${esc(dia)}</div>
+      <div class="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-telecab-border">
+        ${turnos.map(t => `
+          <div class="p-4">
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-sm text-telecab-text">${icono(t.turno)} ${esc(t.turno)}</span>
+              <span class="text-xs">
+                <span class="text-telecab-green">${t.enCalle.length} en la calle</span>
+                ${t.sinConductor.length ? ` · <span class="text-telecab-red">${t.sinConductor.length} parados</span>` : ''}
+              </span>
+            </div>
+            ${t.sinConductor.length ? `
+              <details class="text-xs">
+                <summary class="cursor-pointer text-telecab-red hover:underline">Ver coches sin conductor</summary>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  ${t.sinConductor.map(c => `
+                    <span class="px-2 py-0.5 rounded bg-telecab-red/15 text-telecab-red" title="${esc(c.zona || 'sin zona')}">
+                      ${esc(c.matricula)}</span>`).join('')}
+                </div>
+              </details>` : '<p class="text-xs text-telecab-green">Todos los coches con conductor</p>'}
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════════ Relevos por coche ════════
+function pintarCoches() {
+  const texto = $('#f-coche').value.trim().toLowerCase();
+
+  const visibles = D.coches.filter(c => {
+    if (!texto) return true;
+    const heno = [c.matricula, c.zona, ...c.semana.map(t => t.nombre + ' ' + t.id)].join(' ').toLowerCase();
+    return heno.includes(texto);
+  });
+
+  $('#lista-coches').innerHTML = visibles.map(c => `
+    <div class="rounded-xl bg-telecab-card border ${c.hayError ? 'border-telecab-red' : 'border-telecab-border'} p-4">
+      <div class="flex items-baseline justify-between mb-3">
+        <span class="font-semibold text-telecab-text">${esc(c.matricula)}</span>
+        <span class="text-xs text-telecab-muted">${esc(c.zona || 'sin zona')} · ${c.relevos.length} relevos</span>
+      </div>
+      ${c.relevos.length ? `<div class="space-y-2">${c.relevos.map(frase).join('')}</div>`
+        : `<p class="text-sm text-telecab-muted">Sin relevos: lo lleva siempre la misma persona o está sin cubrir.</p>`}
+    </div>`).join('') || '<p class="text-telecab-muted">Ningún coche coincide.</p>';
+}
+
+/** "CT2 Carlos recibe de Valentina el 8888LLL — sábado, de día a noche" */
+function frase(r) {
+  const parado = r.tramosParado > 0
+    ? `<span class="text-amber-400"> · el coche queda parado ${r.tramosParado} turno${r.tramosParado === 1 ? '' : 's'}</span>`
+    : '';
+  const cierre = r.cierraSemana
+    ? '<span class="text-telecab-muted"> · cierre de semana</span>' : '';
+
+  return `
+  <div class="text-sm border-l-2 border-telecab-border pl-3">
+    <span class="text-telecab-muted text-xs">${esc(r.recibe.plaza || '')}</span>
+    <span class="text-telecab-text font-medium">${esc(r.recibe.nombre)}</span>
+    <span class="text-telecab-muted">recibe de</span>
+    <span class="text-telecab-text font-medium">${esc(r.entrega.nombre)}</span>
+    <span class="text-telecab-muted">el</span>
+    <span class="text-telecab-text">${esc(r.matricula)}</span>
+    <div class="text-xs text-telecab-muted mt-0.5">
+      ${esc(r.entrega.dia)} ${icono(r.entrega.turno)} ${esc(r.entrega.turno)}
+      →
+      ${esc(r.recibe.dia)} ${icono(r.recibe.turno)} ${esc(r.recibe.turno)}${parado}${cierre}
+    </div>
+  </div>`;
+}
+
+// ════════ Por conductor ════════
+function pintarPersonas() {
+  const texto = $('#f-persona').value.trim().toLowerCase();
+
+  const porPersona = new Map();
+  const anota = (id, nombre, clave, relevo) => {
+    if (!porPersona.has(id)) porPersona.set(id, { id, nombre, entrega: [], recibe: [] });
+    porPersona.get(id)[clave].push(relevo);
+  };
+  D.relevos.forEach(r => {
+    anota(r.entrega.id, r.entrega.nombre, 'entrega', r);
+    anota(r.recibe.id, r.recibe.nombre, 'recibe', r);
+  });
+
+  const visibles = [...porPersona.values()]
+    .filter(p => !texto || `${p.nombre} ${p.id}`.toLowerCase().includes(texto))
+    .sort((a, b) => (a.nombre || a.id).localeCompare(b.nombre || b.id));
+
+  $('#lista-personas').innerHTML = visibles.map(p => `
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="mb-3">
+        <div class="text-telecab-text font-medium">${esc(p.nombre || p.id)}</div>
+        <div class="text-xs text-telecab-muted">${esc(p.id)}</div>
+      </div>
+      <div class="space-y-1.5 text-sm">
+        ${p.recibe.map(r => `
+          <div class="text-telecab-text">
+            <i class="fa-solid fa-arrow-right text-telecab-green text-xs mr-1"></i>
+            Recoge el <span class="font-medium">${esc(r.matricula)}</span> de
+            <span class="font-medium">${esc(r.entrega.nombre)}</span>
+            <span class="text-telecab-muted">— ${esc(r.recibe.dia)} ${icono(r.recibe.turno)}</span>
+          </div>`).join('')}
+        ${p.entrega.map(r => `
+          <div class="text-telecab-text">
+            <i class="fa-solid fa-arrow-left text-amber-400 text-xs mr-1"></i>
+            Entrega el <span class="font-medium">${esc(r.matricula)}</span> a
+            <span class="font-medium">${esc(r.recibe.nombre)}</span>
+            <span class="text-telecab-muted">— ${esc(r.entrega.dia)} ${icono(r.entrega.turno)}</span>
+          </div>`).join('')}
+      </div>
+    </div>`).join('') || '<p class="text-telecab-muted">Ningún conductor coincide.</p>';
+}
+
+// ════════ Pestañas y filtros ════════
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => {
+    const activa = x === t;
+    x.className = 'tab whitespace-nowrap px-5 py-2.5 font-medium border-b-2 ' +
+      (activa ? 'text-telecab-red border-telecab-red' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+  });
+  ['dias', 'relevos', 'personas'].forEach(p =>
+    $('#panel-' + p).classList.toggle('hidden', t.dataset.tab !== p));
+}));
+
+$('#f-coche').addEventListener('input', pintarCoches);
+$('#f-persona').addEventListener('input', pintarPersonas);
+$('#btn-recargar').addEventListener('click', cargar);
+cargar();
+</script>

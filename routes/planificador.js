@@ -114,6 +114,8 @@ router.get('/api/tablero', async (req, res) => {
 router.get('/', (req, res) => {
   res.render('planificador', {
     titulo: 'Planificador',
+    seccion: 'planificador',
+    layout: 'layout-gestion',
     diasSem: DIAS_SEM,
     letrasDia: LETRAS_DIA,
     estadosVehiculo: ESTADOS_VEHICULO

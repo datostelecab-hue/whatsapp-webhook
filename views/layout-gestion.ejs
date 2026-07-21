@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telecab | <%= titulo || 'Gestión' %></title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'telecab': {
+              'dark': '#0f1923', 'card': '#1a2733', 'border': '#2a3a4a',
+              'red': '#e94560', 'red-hover': '#c73652', 'green': '#2ecc71',
+              'text': '#e0e0e0', 'muted': '#888888'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1a2733; }
+    ::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-telecab-dark text-telecab-text min-h-screen">
+
+<div class="flex min-h-screen">
+
+  <!-- ══════════ MENÚ LATERAL ══════════ -->
+  <aside id="menu"
+         class="fixed lg:sticky top-0 left-0 z-40 h-screen w-60 shrink-0 bg-telecab-card border-r border-telecab-border
+                flex flex-col -translate-x-full lg:translate-x-0 transition-transform duration-200">
+
+    <a href="/planificador" class="px-5 py-5 border-b border-telecab-border block">
+      <span class="text-xl font-bold text-telecab-red"><i class="fas fa-car mr-2"></i>Telecab</span>
+      <span class="block text-xs text-telecab-muted mt-0.5">Gestión de flota</span>
+    </a>
+
+    <nav class="flex-1 p-3 space-y-1">
+      <%
+        const seccionActiva = typeof seccion !== 'undefined' ? seccion : '';
+        const enlaces = [
+          { href: '/planificador', icono: 'fa-table-cells-large', texto: 'Planificador', id: 'planificador' },
+          { href: '/agenda',       icono: 'fa-users',             texto: 'Agenda',       id: 'agenda' },
+          { href: '/cobertura',    icono: 'fa-calendar-week',     texto: 'Cobertura',    id: 'cobertura' },
+          { href: '/matching',     icono: 'fa-location-dot',      texto: 'Matching',     id: 'matching' }
+        ];
+      %>
+      <% enlaces.forEach(function (e) { %>
+        <a href="<%= e.href %>"
+           class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition
+                  <%= seccionActiva === e.id
+                        ? 'bg-telecab-red/15 text-telecab-red font-medium'
+                        : 'text-telecab-text hover:bg-telecab-dark' %>">
+          <i class="fa-solid <%= e.icono %> w-5 text-center"></i>
+          <span><%= e.texto %></span>
+        </a>
+      <% }); %>
+    </nav>
+
+    <div class="p-3 border-t border-telecab-border">
+      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2 rounded-lg text-telecab-muted hover:bg-telecab-dark transition text-sm">
+        <i class="fa-solid fa-chart-line w-5 text-center"></i>
+        <span>Horas de Bolt</span>
+      </a>
+      <p class="px-3 pt-3 text-xs text-telecab-muted">© <%= new Date().getFullYear() %> Telecab</p>
+    </div>
+  </aside>
+
+  <!-- Capa oscura para cerrar el menú en móvil -->
+  <div id="menu-fondo" class="hidden fixed inset-0 z-30 bg-black/60 lg:hidden"></div>
+
+  <!-- ══════════ CONTENIDO ══════════ -->
+  <div class="flex-1 min-w-0">
+    <button id="menu-abrir"
+            class="lg:hidden fixed bottom-5 right-5 z-30 w-12 h-12 rounded-full bg-telecab-red text-white shadow-lg">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+
+    <main><%- body %></main>
+  </div>
+</div>
+
+<script>
+  const menu = document.getElementById('menu');
+  const fondo = document.getElementById('menu-fondo');
+  const abrir = () => { menu.classList.remove('-translate-x-full'); fondo.classList.remove('hidden'); };
+  const cerrar = () => { menu.classList.add('-translate-x-full'); fondo.classList.add('hidden'); };
+  document.getElementById('menu-abrir').addEventListener('click', abrir);
+  fondo.addEventListener('click', cerrar);
+  menu.querySelectorAll('a').forEach(a => a.addEventListener('click', cerrar));
+</script>
+
+</body>
+</html>

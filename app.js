@@ -49,6 +49,8 @@ const dashboardRoutes = require('./routes/dashboard');
 const resumenRoutes = require('./routes/resumen');
 const planificadorRoutes = require('./routes/planificador');
 const agendaRoutes = require('./routes/agenda');
+const matchingRoutes = require('./routes/matching');
+const coberturaRoutes = require('./routes/cobertura');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -75,6 +77,8 @@ app.use('/dashboard', dashboardRoutes);
 app.use('/resumen', resumenRoutes);
 app.use('/planificador', planificadorRoutes);
 app.use('/agenda', agendaRoutes);
+app.use('/matching', matchingRoutes);
+app.use('/cobertura', coberturaRoutes);
 
 // ============================================================
 // CRON
