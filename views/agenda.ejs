@@ -10,6 +10,9 @@
       <a href="/planificador" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
         <i class="fa-solid fa-table-cells mr-1"></i> Planificador
       </a>
+      <button id="btn-nuevo" class="px-4 py-2 rounded-lg bg-telecab-red hover:bg-telecab-red-hover text-white font-semibold transition">
+        <i class="fa-solid fa-user-plus mr-1"></i> Nuevo conductor
+      </button>
       <button id="btn-recargar" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
         <i class="fa-solid fa-rotate mr-1"></i> Recargar
       </button>
@@ -58,7 +61,9 @@
             <th class="text-left px-3 py-3">Estado</th>
             <th class="text-left px-3 py-3">Coche</th>
             <th class="text-center px-3 py-3" id="cab-dias"></th>
+            <th class="text-center px-3 py-3">Libra</th>
             <th class="text-left px-3 py-3">Cobertura</th>
+            <th class="px-3 py-3"></th>
           </tr>
         </thead>
         <tbody id="tabla-agenda"></tbody>
@@ -92,16 +97,43 @@
   </section>
 </div>
 
+<!-- ══════════ FICHA DEL CONDUCTOR ══════════ -->
+<div id="ficha" class="hidden fixed inset-0 z-50 bg-black/60 flex justify-end">
+  <div class="w-full max-w-lg h-full bg-telecab-dark border-l border-telecab-border overflow-y-auto">
+    <div class="sticky top-0 bg-telecab-dark border-b border-telecab-border px-5 py-4 flex items-center justify-between">
+      <h2 id="ficha-titulo" class="text-lg font-bold text-white">Ficha</h2>
+      <button id="ficha-cerrar" class="text-telecab-muted hover:text-white text-xl px-2">&times;</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <p id="ficha-error" class="hidden rounded-lg border border-telecab-red/50 bg-telecab-red/10 px-3 py-2 text-sm text-telecab-red"></p>
+      <div id="ficha-campos" class="space-y-4"></div>
+      <div class="flex gap-3 pt-2">
+        <button id="ficha-guardar"
+                class="flex-1 px-4 py-2.5 rounded-lg bg-telecab-red hover:bg-telecab-red-hover text-white font-semibold transition">
+          Guardar
+        </button>
+        <button id="ficha-cancelar"
+                class="px-4 py-2.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Los datos del servidor van en un bloque JSON aparte, no interpolados
      dentro del código: así el editor puede analizarlo como JavaScript normal. -->
 <script type="application/json" id="datos-servidor">
-  <%- JSON.stringify({ estadosConductor: estadosConductor, diasSem: diasSem }) %>
+  <%- JSON.stringify({ estadosConductor: estadosConductor, diasSem: diasSem, turnos: turnos, contratos: contratos }) %>
 </script>
 
 <script>
 const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
 const ESTADOS = CFG.estadosConductor;
 const DIAS_SEM = CFG.diasSem;
+const TURNOS = CFG.turnos;
+const CONTRATOS = CFG.contratos;
+const CAMPOS_LIB = ['libLun','libMar','libMie','libJue','libVie','libSab','libDom'];
 
 let DATOS = null;
 let ARCHIVO = null;
@@ -204,8 +236,15 @@ function pintarTabla() {
       </td>
       <td class="px-3 py-2.5 text-telecab-text">${esc(c.matricula || '—')}</td>
       <td class="px-3 py-2.5 text-center whitespace-nowrap">${dias}</td>
+      <td class="px-3 py-2.5 text-center whitespace-nowrap">${libranza(c)}</td>
       <td class="px-3 py-2.5 text-xs ${c.diasCubiertos === c.diasLaborables ? 'text-telecab-green' : 'text-amber-400'}">
         ${c.diasCubiertos}/${c.diasLaborables} días
+      </td>
+      <td class="px-3 py-2.5 text-right">
+        <button data-ficha="${esc(c.id)}" title="Ver ficha"
+                class="px-2 py-1 rounded text-telecab-muted hover:text-white hover:bg-telecab-card transition">
+          <i class="fa-solid fa-pen"></i>
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -233,6 +272,187 @@ function pintarArchivo() {
     </tr>`).join('');
   $('#sin-archivo').classList.toggle('hidden', ARCHIVO.length > 0);
 }
+
+/** Casillas de libranza editables en la propia tabla. */
+function libranza(c) {
+  return c.libra.map((v, d) => `
+    <label class="inline-block w-8" title="${esc(DIAS_SEM[d])}">
+      <input type="checkbox" ${v ? 'checked' : ''} class="accent-telecab-red cursor-pointer"
+             data-libranza="${d}">
+    </label>`).join('');
+}
+
+// ════════ Libranza en línea ════════
+$('#tabla-agenda').addEventListener('change', async e => {
+  const dia = e.target.dataset.libranza;
+  if (dia === undefined) return;
+
+  const id = e.target.closest('tr').dataset.id;
+  aviso('Guardando libranza…');
+  e.target.disabled = true;
+  try {
+    await guardarCampos(id, { [CAMPOS_LIB[Number(dia)]]: e.target.checked });
+    aviso(`${id}: libranza actualizada`, 'ok');
+    await cargar();
+  } catch (err) {
+    aviso(err.message, 'error');
+    e.target.checked = !e.target.checked;
+    e.target.disabled = false;
+  }
+});
+
+async function guardarCampos(id, campos) {
+  const r = await fetch('/agenda/api/conductor/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ campos })
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.msg);
+  return d;
+}
+
+// ════════ Ficha del conductor ════════
+let fichaId = null;   // null = alta nueva
+
+const CAMPOS_FICHA = [
+  { g: 'Identificación', campos: [
+    { k: 'nombre', etq: 'Nombre y apellidos', tipo: 'texto' },
+    { k: 'dni', etq: 'DNI / NIE', tipo: 'texto' },
+    { k: 'naf', etq: 'NAF', tipo: 'texto' },
+    { k: 'fechaAlta', etq: 'Fecha de alta', tipo: 'texto', ayuda: 'dd/mm/aaaa' }
+  ]},
+  { g: 'Trabajo', campos: [
+    { k: 'turno', etq: 'Turno', tipo: 'lista', valores: TURNOS },
+    { k: 'contrato', etq: 'Contrato', tipo: 'lista', valores: CONTRATOS },
+    { k: 'recomendador', etq: 'Recomendado por', tipo: 'texto' },
+    { k: 'activo', etq: 'Activo', tipo: 'bool' }
+  ]},
+  { g: 'Contacto', campos: [
+    { k: 'telefono', etq: 'Teléfono', tipo: 'texto' },
+    { k: 'telEmergencia', etq: 'Teléfono de emergencia', tipo: 'texto' },
+    { k: 'direccion', etq: 'Dirección', tipo: 'texto' },
+    { k: 'coordenadas', etq: 'Coordenadas', tipo: 'texto', ayuda: '40.41, -3.70 · se usan para el matching con las bases' }
+  ]},
+  { g: 'Otros', campos: [
+    { k: 'observaciones', etq: 'Observaciones', tipo: 'area' }
+  ]}
+];
+
+function abrirFicha(id) {
+  fichaId = id;
+  const c = id ? DATOS.conductores.find(x => x.id === id) : {};
+  $('#ficha-error').classList.add('hidden');
+  $('#ficha-titulo').textContent = id ? (c.nombre || id) : 'Nuevo conductor';
+
+  const campoId = id
+    ? `<div class="text-xs text-telecab-muted">ID de Bolt: <span class="text-telecab-text">${esc(id)}</span>
+         · no se puede cambiar, es la referencia que usa el planificador</div>`
+    : `<div>
+         <label class="block text-xs text-telecab-muted mb-1">ID de Bolt *</label>
+         <input data-campo="id" class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+       </div>`;
+
+  const grupos = CAMPOS_FICHA.map(g => `
+    <div>
+      <h3 class="text-xs uppercase tracking-wide text-telecab-muted mb-2">${esc(g.g)}</h3>
+      <div class="space-y-3">
+        ${g.campos.map(f => campoFicha(f, c[f.k])).join('')}
+      </div>
+    </div>`).join('');
+
+  const libra = `
+    <div>
+      <h3 class="text-xs uppercase tracking-wide text-telecab-muted mb-2">Días de libranza</h3>
+      <div class="flex gap-2">
+        ${DIAS_SEM.map((d, i) => `
+          <label class="flex-1 text-center cursor-pointer">
+            <input type="checkbox" data-campo="${CAMPOS_LIB[i]}" class="accent-telecab-red"
+                   ${(c.libra || [])[i] ? 'checked' : ''}>
+            <div class="text-xs text-telecab-muted mt-1">${esc(d)}</div>
+          </label>`).join('')}
+      </div>
+      <p class="text-xs text-telecab-muted mt-2">Los días marcados son los que NO trabaja.</p>
+    </div>`;
+
+  $('#ficha-campos').innerHTML = campoId + grupos + libra;
+  $('#ficha').classList.remove('hidden');
+}
+
+function campoFicha(f, valor) {
+  const base = 'w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text';
+  const ayuda = f.ayuda ? `<p class="text-xs text-telecab-muted mt-1">${esc(f.ayuda)}</p>` : '';
+
+  if (f.tipo === 'bool') {
+    return `<label class="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" data-campo="${f.k}" class="accent-telecab-red" ${valor ? 'checked' : ''}>
+      <span class="text-sm text-telecab-text">${esc(f.etq)}</span></label>`;
+  }
+  if (f.tipo === 'lista') {
+    return `<div><label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
+      <select data-campo="${f.k}" class="${base}">
+        <option value=""></option>
+        ${f.valores.map(v => `<option ${v === valor ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+      </select>${ayuda}</div>`;
+  }
+  if (f.tipo === 'area') {
+    return `<div><label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
+      <textarea data-campo="${f.k}" rows="3" class="${base}">${esc(valor || '')}</textarea>${ayuda}</div>`;
+  }
+  return `<div><label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
+    <input data-campo="${f.k}" value="${esc(valor || '')}" class="${base}">${ayuda}</div>`;
+}
+
+function cerrarFicha() {
+  $('#ficha').classList.add('hidden');
+  fichaId = null;
+}
+
+$('#tabla-agenda').addEventListener('click', e => {
+  const btn = e.target.closest('[data-ficha]');
+  if (btn) abrirFicha(btn.dataset.ficha);
+});
+$('#btn-nuevo').addEventListener('click', () => abrirFicha(null));
+$('#ficha-cerrar').addEventListener('click', cerrarFicha);
+$('#ficha-cancelar').addEventListener('click', cerrarFicha);
+$('#ficha').addEventListener('click', e => { if (e.target.id === 'ficha') cerrarFicha(); });
+
+$('#ficha-guardar').addEventListener('click', async () => {
+  const btn = $('#ficha-guardar');
+  const err = $('#ficha-error');
+  err.classList.add('hidden');
+
+  const campos = {};
+  $('#ficha-campos').querySelectorAll('[data-campo]').forEach(el => {
+    campos[el.dataset.campo] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+  try {
+    if (fichaId) {
+      delete campos.id;
+      await guardarCampos(fichaId, campos);
+      aviso(`${fichaId} actualizado`, 'ok');
+    } else {
+      const r = await fetch('/agenda/api/conductor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(campos)
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.msg);
+      aviso(`${d.id} dado de alta`, 'ok');
+    }
+    cerrarFicha();
+    await cargar();
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Guardar';
+});
 
 // ════════ Cambio de estado ════════
 $('#tabla-agenda').addEventListener('change', async e => {

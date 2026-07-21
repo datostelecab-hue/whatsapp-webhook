@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const {
   leerTablero, leerOut, cambiarEstados, migrarBajasEmpresa, restaurarDesdeOut,
-  ESTADOS_CONDUCTOR, DIAS_SEM
+  actualizarConductor, crearConductor,
+  ESTADOS_CONDUCTOR, DIAS_SEM, TURNOS
 } = require('../services/planificadorV2');
 
 /** La interfaz. */
@@ -10,7 +11,9 @@ router.get('/', (req, res) => {
   res.render('agenda', {
     titulo: 'Agenda',
     estadosConductor: ESTADOS_CONDUCTOR,
-    diasSem: DIAS_SEM
+    diasSem: DIAS_SEM,
+    turnos: TURNOS,
+    contratos: ['40h Fijo', '32h Correturno']
   });
 });
 
@@ -75,6 +78,30 @@ router.post('/api/restaurar', async (req, res) => {
   } catch (error) {
     console.error('❌ [AGENDA] /api/restaurar:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+/** Edita los datos de un conductor (libranza, teléfono, turno, dirección…). */
+router.put('/api/conductor/:id', async (req, res) => {
+  try {
+    const r = await actualizarConductor(req.params.id, req.body && req.body.campos);
+    console.log(`✏️  [AGENDA] ${r.id}: ${r.camposActualizados.join(', ')}`);
+    res.json({ status: 'ok', id: r.id, camposActualizados: r.camposActualizados });
+  } catch (error) {
+    console.error('❌ [AGENDA] PUT conductor:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+/** Da de alta a un conductor nuevo. */
+router.post('/api/conductor', async (req, res) => {
+  try {
+    const r = await crearConductor(req.body);
+    console.log(`➕ [AGENDA] Alta: ${r.id} · ${r.nombre}`);
+    res.json({ status: 'ok', ...r });
+  } catch (error) {
+    console.error('❌ [AGENDA] POST conductor:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 

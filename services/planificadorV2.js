@@ -134,23 +134,36 @@ function diasALetras(dias) {
   return dias.map((v, i) => (v ? LETRAS_DIA[i] : null)).filter(Boolean).join(' ');
 }
 
+/**
+ * Acepta "40.41 -3.70", "40.41, -3.70" y el formato europeo "40,41 -3,70".
+ *
+ * El europeo se detecta ANTES que nada: si no, la expresión regular general
+ * lee "40,41 -3,70" como latitud 40 y longitud 41 —tomando la coma decimal por
+ * separador— y coloca a un conductor de Madrid a 3.000 km, sin dar ningún
+ * error. Como estas coordenadas alimentan el cálculo de distancia a las bases,
+ * el fallo pasaría desapercibido hasta que alguien mirase el matching.
+ */
 function parseCoords(txt) {
   if (txt == null || txt === '') return null;
   const s = String(txt).trim();
+
+  // Dos comas entre dígitos ⇒ son decimales, no separadores.
+  const comasDecimales = (s.match(/\d,\d/g) || []).length;
+  if (comasDecimales === 2) {
+    const partes = s.split(/\s+/);
+    if (partes.length >= 2) {
+      const a = parseFloat(partes[0].replace(',', '.'));
+      const b = parseFloat(partes[1].replace(',', '.'));
+      if (!isNaN(a) && !isNaN(b)) return { lat: a, lng: b };
+    }
+    return null;
+  }
 
   const m = s.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
   if (m) {
     const la = parseFloat(m[1]);
     const lo = parseFloat(m[2]);
     if (!isNaN(la) && !isNaN(lo)) return { lat: la, lng: lo };
-  }
-
-  // Coma decimal europea: "40,39 -3,60"
-  const partes = s.split(/\s+/);
-  if (partes.length >= 2) {
-    const a = parseFloat(partes[0].replace(',', '.'));
-    const b = parseFloat(partes[1].replace(',', '.'));
-    if (!isNaN(a) && !isNaN(b)) return { lat: a, lng: b };
   }
   return null;
 }
@@ -190,11 +203,21 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     const info = {
       fila: idx + 2,                     // fila real en la hoja
       id,
+      activo: esCheck(v[A.ACTIVO - 1]),
       nombre: txt(v[A.NOMBRE - 1]),
+      dni: txt(v[A.DNI - 1]),
+      naf: txt(v[A.NAF - 1]),
+      fechaAlta: txt(v[A.FECHA_ALTA - 1]),
+      finPrueba: txt(v[A.FIN_PRUEBA - 1]),
+      enPrueba: txt(v[A.EN_PRUEBA - 1]),
+      recomendador: txt(v[A.RECOMENDADOR - 1]),
       turno: txt(v[A.TURNO - 1]),
       contrato: txt(v[A.CONTRATO - 1]),
       estado: txt(v[A.ESTADO - 1]),
       telefono: txt(v[A.TELEFONO - 1]),
+      telEmergencia: txt(v[A.TEL_EMERG - 1]),
+      direccion: txt(v[A.DIRECCION - 1]),
+      observaciones: txt(v[A.OBSERVACIONES - 1]),
       coordenadas: txt(v[A.COORDENADAS - 1]),
       libra,
       trabaja: libra.map(l => !l)
@@ -552,15 +575,60 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       return { ...c, distancias, baseCercana };
     });
 
-  // ---- 7. Demanda ----
-  const demanda = { fijosDia: 0, fijosNoche: 0, ctDia: 0, ctNoche: 0 };
+  // ---- 7. Demanda, global y por zona ----
+  // Por zona es lo que sirve para reclutar: saber que faltan 2 correturnos de
+  // día en Getafe es accionable; saber que faltan 9 en total, no tanto.
+  const demanda = { coches: 0, fijosDia: 0, fijosNoche: 0, ctDia: 0, ctNoche: 0, huecos: 0, conError: 0 };
+  const porZona = new Map();
+
+  const sumar = (acc, coche) => {
+    acc.coches++;
+    if (!coche.personas[0].id) acc.fijosDia++;
+    if (!coche.personas[1].id) acc.fijosNoche++;
+    if (!coche.personas[2].id && !coche.personas[4].id) acc.ctDia++;
+    if (!coche.personas[3].id && !coche.personas[5].id) acc.ctNoche++;
+    acc.huecos += coche.numLibres || 0;
+    if (coche.hayError) acc.conError++;
+  };
+
   coches.forEach(coche => {
     if (!coche.operativo) return;
-    if (!coche.personas[0].id) demanda.fijosDia++;
-    if (!coche.personas[1].id) demanda.fijosNoche++;
-    if (!coche.personas[2].id && !coche.personas[4].id) demanda.ctDia++;
-    if (!coche.personas[3].id && !coche.personas[5].id) demanda.ctNoche++;
+
+    sumar(demanda, coche);
+
+    const zona = coche.zona || '(sin zona)';
+    if (!porZona.has(zona)) {
+      porZona.set(zona, {
+        zona, coches: 0, fijosDia: 0, fijosNoche: 0,
+        ctDia: 0, ctNoche: 0, huecos: 0, conError: 0
+      });
+    }
+    sumar(porZona.get(zona), coche);
   });
+
+  // Conductores libres por zona: solo cuentan los pendientes, y su zona es la
+  // del coche donde ya estén (un correturno a medio asignar sigue disponible).
+  const zonaDeConductor = new Map();
+  coches.forEach(coche => {
+    if (!coche.zona) return;
+    coche.personas.forEach(p => {
+      if (p.id && !zonaDeConductor.has(p.id)) zonaDeConductor.set(p.id, coche.zona);
+    });
+  });
+
+  const demandaPorZona = [...porZona.values()]
+    .map(z => {
+      // demanda.coches lo suma `sumar`, pero aquí sobra el contador global
+      const pendientes = conductores.filter(c =>
+        c.estadoCalculado === ESTADO_PENDIENTE && zonaDeConductor.get(c.id) === z.zona);
+      return {
+        ...z,
+        disponiblesDia: pendientes.filter(c => c.turno === 'Día').length,
+        disponiblesNoche: pendientes.filter(c => c.turno === 'Noche').length,
+        totalFaltan: z.fijosDia + z.fijosNoche + z.ctDia + z.ctNoche
+      };
+    })
+    .sort((a, b) => b.totalFaltan - a.totalFaltan);
 
   return {
     coches,
@@ -572,6 +640,7 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       salen,
       estadoAutos,
       demanda,
+      demandaPorZona,
       cochesOperativos: estadoAutos['✓'],
       totalHuecos: coches.reduce((n, c) => n + (c.numLibres || 0), 0),
       cochesConError: coches.filter(c => c.hayError).length
@@ -835,6 +904,145 @@ const COL_FECHA_BAJA = A_HEADERS.length + 1;  // 34 → AH
 const ESTADO_BAJA_EMPRESA = 'Baja Empresa';
 
 /**
+ * Campos que se pueden editar desde la interfaz.
+ *
+ * Fuera de esta lista quedan a propósito:
+ *   · ID_BOLT — es la clave con la que el planificador referencia a la persona.
+ *     Cambiarlo dejaría su plaza apuntando a un fantasma, así que solo se fija
+ *     al crear la ficha.
+ *   · FIN_PERIODO_PRUEBA, EN_PRUEBA, MATRICULA, BINOMIO y los siete ASG_*
+ *     los calcula el motor; escribirlos a mano duraría hasta el siguiente
+ *     recálculo y solo generaría confusión.
+ */
+const CAMPOS_EDITABLES = {
+  activo: { col: A.ACTIVO, tipo: 'bool' },
+  nombre: { col: A.NOMBRE, tipo: 'texto' },
+  dni: { col: A.DNI, tipo: 'texto' },
+  naf: { col: A.NAF, tipo: 'texto' },
+  fechaAlta: { col: A.FECHA_ALTA, tipo: 'texto' },
+  recomendador: { col: A.RECOMENDADOR, tipo: 'texto' },
+  turno: { col: A.TURNO, tipo: 'lista', valores: TURNOS },
+  contrato: { col: A.CONTRATO, tipo: 'lista', valores: ['40h Fijo', '32h Correturno'] },
+  coordenadas: { col: A.COORDENADAS, tipo: 'coords' },
+  direccion: { col: A.DIRECCION, tipo: 'texto' },
+  telefono: { col: A.TELEFONO, tipo: 'texto' },
+  telEmergencia: { col: A.TEL_EMERG, tipo: 'texto' },
+  observaciones: { col: A.OBSERVACIONES, tipo: 'texto' },
+  libLun: { col: A.L_LUN, tipo: 'bool' },
+  libMar: { col: A.L_MAR, tipo: 'bool' },
+  libMie: { col: A.L_MIE, tipo: 'bool' },
+  libJue: { col: A.L_JUE, tipo: 'bool' },
+  libVie: { col: A.L_VIE, tipo: 'bool' },
+  libSab: { col: A.L_SAB, tipo: 'bool' },
+  libDom: { col: A.L_DOM, tipo: 'bool' }
+};
+
+const CAMPOS_LIBRANZA = ['libLun', 'libMar', 'libMie', 'libJue', 'libVie', 'libSab', 'libDom'];
+
+/** Comprueba y normaliza un valor según el tipo de su campo. */
+function validarCampo(nombre, valor) {
+  const def = CAMPOS_EDITABLES[nombre];
+  if (!def) throw new Error(`El campo "${nombre}" no se puede editar desde aquí`);
+
+  if (def.tipo === 'bool') return valor === true || valor === 'true' || valor === 'TRUE';
+
+  if (def.tipo === 'lista') {
+    const v = txt(valor);
+    if (v && !def.valores.includes(v)) {
+      throw new Error(`"${v}" no vale para ${nombre}. Opciones: ${def.valores.join(', ')}`);
+    }
+    return v;
+  }
+
+  if (def.tipo === 'coords') {
+    const v = txt(valor);
+    if (!v) return '';
+    const c = parseCoords(v);
+    if (!c) throw new Error(`Coordenadas no reconocidas: "${v}". Usa "40.41, -3.70"`);
+    // Se guardan canónicas para que el matching no dependa del formato tecleado
+    return `${Math.round(c.lat * 1e8) / 1e8}, ${Math.round(c.lng * 1e8) / 1e8}`;
+  }
+
+  return txt(valor);
+}
+
+/** Edita los datos de un conductor ya existente. */
+async function actualizarConductor(id, campos) {
+  const idBusca = txt(id);
+  if (!idBusca) throw new Error('Falta el ID del conductor');
+  if (!campos || !Object.keys(campos).length) throw new Error('No se ha recibido ningún cambio');
+
+  const [agendaFilas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
+  let fila = null;
+  agendaFilas.slice(1).forEach((f, i) => {
+    if (txt(f[A.ID_BOLT - 1]) === idBusca) fila = i + 2;
+  });
+  if (!fila) throw new Error(`El conductor "${idBusca}" no está en la agenda`);
+
+  // Se valida primero TODO y después se escribe: así un campo prohibido o un
+  // valor inválido aborta la operación entera en vez de dejarla a medias.
+  const datos = Object.entries(campos).map(([nombre, valor]) => {
+    const limpio = validarCampo(nombre, valor);
+    return {
+      range: `${HOJAS.AGENDA}!${colLetra(CAMPOS_EDITABLES[nombre].col)}${fila}`,
+      values: [[limpio]]
+    };
+  });
+
+  await writeMany(SPREADSHEET_PLANIFICADOR, datos);
+
+  // Tocar la libranza o el turno cambia lo que cubre esa persona, así que se
+  // recalcula el planificador para que huecos y estados queden al día.
+  const tablero = await leerTablero();
+  if (tablero.esquema.ok) await guardarTablero(tablero);
+
+  return { id: idBusca, fila, camposActualizados: Object.keys(campos), tablero };
+}
+
+/** Da de alta a un conductor nuevo. */
+async function crearConductor(datos) {
+  const id = txt(datos && datos.id);
+  if (!id) throw new Error('El ID de Bolt es obligatorio');
+  if (!txt(datos.nombre)) throw new Error('El nombre es obligatorio');
+  if (!txt(datos.turno)) throw new Error('El turno es obligatorio');
+
+  const [agendaFilas, outFilas] = await readMany(
+    SPREADSHEET_PLANIFICADOR, [RANGOS.agenda, RANGO_OUT]);
+
+  const existe = agendaFilas.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id);
+  if (existe) throw new Error(`Ya hay un conductor con el ID "${id}" en la agenda`);
+
+  const archivado = outFilas.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id);
+  if (archivado) {
+    throw new Error(
+      `"${id}" está archivado en ${HOJA_OUT}. Restáuralo desde la pestaña Archivo ` +
+      `en vez de crearlo de nuevo, así conserva su historial.`
+    );
+  }
+
+  const fila = Array(A_HEADERS.length).fill('');
+  fila[A.ID_BOLT - 1] = id;
+  fila[A.ESTADO - 1] = ESTADO_PENDIENTE;
+  fila[A.ACTIVO - 1] = true;
+
+  Object.entries(datos).forEach(([nombre, valor]) => {
+    if (nombre === 'id') return;
+    if (!CAMPOS_EDITABLES[nombre]) return;
+    fila[CAMPOS_EDITABLES[nombre].col - 1] = validarCampo(nombre, valor);
+  });
+
+  await appendRows(SPREADSHEET_PLANIFICADOR, `${HOJAS.AGENDA}!A1`, [fila]);
+
+  // Verificar que ha entrado antes de dar el alta por buena
+  const [despues] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
+  if (!despues.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id)) {
+    throw new Error(`No se ha podido crear a "${id}" en la agenda`);
+  }
+
+  return { id, nombre: txt(datos.nombre) };
+}
+
+/**
  * Cambia el estado de uno o varios conductores en la agenda.
  * Si alguno queda en "Baja Empresa", se migra a CONDUCTORES_OUT acto seguido.
  */
@@ -1030,7 +1238,8 @@ module.exports = {
   SPREADSHEET_PLANIFICADOR,
   HOJA_OUT, RANGO_OUT, ESTADO_BAJA_EMPRESA,
   leerOut, migrarBajasEmpresa, restaurarDesdeOut, cambiarEstados,
-  ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO,
+  actualizarConductor, crearConductor, CAMPOS_EDITABLES, CAMPOS_LIBRANZA, validarCampo,
+  ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
   validarEsquema, leerCrudo, leerTablero, guardarTablero,
   aplicarCambios, guardarCambios,
