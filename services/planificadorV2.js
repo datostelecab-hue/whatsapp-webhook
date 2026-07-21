@@ -712,26 +712,41 @@ function calcularTablero(agendaVals, planVals, bases = []) {
   // ---- 8. Sugerencias: cruzar quién está libre con dónde falta gente ----
   // Una tabla de distancias no dice qué hacer; esto sí: para cada conductor
   // pendiente, las zonas que tienen hueco EN SU TURNO, de más cerca a más lejos.
-  const huecoPorZonaTurno = new Map();   // "zona|turno" → nº de plazas vacías
+  // Plazas vacías concretas por zona y turno, no un simple contador: hacen
+  // falta la matrícula y el slot para poder asignar desde la propia pantalla.
+  const plazasPorZonaTurno = new Map();   // "zona|turno" → [{coche, matricula, slot…}]
   coches.forEach(coche => {
     if (!coche.operativo || !coche.zona) return;
-    const anota = (turno, n) => {
-      const k = `${coche.zona}|${turno}`;
-      huecoPorZonaTurno.set(k, (huecoPorZonaTurno.get(k) || 0) + n);
-    };
-    anota('Día', (coche.personas[0].id ? 0 : 1) +
-                 (coche.personas[2].id ? 0 : 1) + (coche.personas[4].id ? 0 : 1));
-    anota('Noche', (coche.personas[1].id ? 0 : 1) +
-                   (coche.personas[3].id ? 0 : 1) + (coche.personas[5].id ? 0 : 1));
+    coche.personas.forEach(p => {
+      if (p.id) return;
+      const k = `${coche.zona}|${p.turno}`;
+      if (!plazasPorZonaTurno.has(k)) plazasPorZonaTurno.set(k, []);
+      plazasPorZonaTurno.get(k).push({
+        coche: coche.idx,
+        matricula: coche.matricula,
+        slot: p.slot,
+        etiqueta: p.etiqueta,
+        rol: p.rol,
+        // Días que ese coche tiene sin cubrir en este turno
+        huecos: coche.huecos.filter(h => h.turno === p.turno).map(h => h.dia)
+      });
+    });
   });
 
   const sugerencias = pendientes.map(c => {
     const opciones = c.distancias
-      .map(d => ({
-        zona: d.nombre,
-        km: d.km,
-        plazasLibres: huecoPorZonaTurno.get(`${d.nombre}|${c.turno}`) || 0
-      }))
+      .map(d => {
+        const plazas = (plazasPorZonaTurno.get(`${d.nombre}|${c.turno}`) || []).map(pl => ({
+          ...pl,
+          // Para un correturno se propone cubrir los huecos del coche que esa
+          // persona puede hacer de verdad, quitando sus días de libranza.
+          diasSugeridos: pl.rol === 'CT'
+            ? diasALetras(Array.from({ length: 7 }, (_, d2) =>
+                pl.huecos.includes(d2) && c.trabaja[d2]))
+            : ''
+        }));
+        return { zona: d.nombre, km: d.km, plazasLibres: plazas.length, plazas };
+      })
       .filter(o => o.plazasLibres > 0);
 
     return {

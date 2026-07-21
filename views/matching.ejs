@@ -115,13 +115,20 @@ function pintarSugerencias() {
         No hay plazas libres de ${esc(s.turno.toLowerCase())} en ninguna zona.
       </p>`;
     } else {
-      cuerpo = `<div class="space-y-1.5">` + s.opciones.slice(0, 4).map((o, i) => `
-        <div class="flex items-center justify-between text-sm ${i === 0 ? 'text-telecab-text' : 'text-telecab-muted'}">
-          <span>
-            ${i === 0 ? '<i class="fa-solid fa-star text-telecab-red mr-1 text-xs"></i>' : '<span class="inline-block w-4"></span>'}
-            ${esc(o.zona)}
-          </span>
-          <span>${o.km} km · ${o.plazasLibres} plaza${o.plazasLibres === 1 ? '' : 's'}</span>
+      cuerpo = `<div class="space-y-3">` + s.opciones.slice(0, 3).map((o, i) => `
+        <div>
+          <div class="flex items-center justify-between text-sm mb-1.5">
+            <span class="${i === 0 ? 'text-telecab-text font-medium' : 'text-telecab-muted'}">
+              ${i === 0 ? '<i class="fa-solid fa-star text-telecab-red mr-1 text-xs"></i>' : ''}
+              ${esc(o.zona)}
+            </span>
+            <span class="text-xs text-telecab-muted">${o.km} km</span>
+          </div>
+          <div class="space-y-1">
+            ${o.plazas.slice(0, 4).map(pl => plazaAsignable(s, pl)).join('')}
+            ${o.plazas.length > 4
+              ? `<div class="text-xs text-telecab-muted pl-1">y ${o.plazas.length - 4} plazas más…</div>` : ''}
+          </div>
         </div>`).join('') + `</div>`;
     }
 
@@ -146,6 +153,73 @@ function pintarSugerencias() {
 
   $('#sin-resultados').classList.toggle('hidden', visibles.length > 0);
 }
+
+/**
+ * Una plaza concreta, lista para asignar.
+ * En los correturnos se muestran los días propuestos —los huecos del coche que
+ * esa persona puede cubrir sin pisar su libranza— y se pueden retocar antes de
+ * confirmar. Los fijos no los llevan: sus días salen de la libranza.
+ */
+function plazaAsignable(s, pl) {
+  const campoDias = pl.rol === 'CT'
+    ? `<input value="${esc(pl.diasSugeridos)}" placeholder="L M X…" maxlength="20"
+              class="w-24 px-1.5 py-1 rounded bg-telecab-dark border border-telecab-border
+                     text-telecab-text text-xs text-center uppercase"
+              data-dias title="Días que cubrirá en este coche">`
+    : '';
+
+  return `
+  <div class="flex items-center gap-2 pl-1" data-plaza data-coche="${pl.coche}" data-slot="${pl.slot}"
+       data-conductor="${esc(s.id)}" data-rol="${pl.rol}">
+    <span class="text-xs text-telecab-text font-medium w-20">${esc(pl.matricula)}</span>
+    <span class="text-xs text-telecab-muted flex-1">${esc(pl.etiqueta)}</span>
+    ${campoDias}
+    <button data-asignar
+            class="px-2.5 py-1 rounded bg-telecab-red/15 text-telecab-red hover:bg-telecab-red hover:text-white
+                   transition text-xs font-medium whitespace-nowrap">
+      Asignar
+    </button>
+  </div>`;
+}
+
+$('#sugerencias').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-asignar]');
+  if (!btn) return;
+
+  const fila = btn.closest('[data-plaza]');
+  const id = fila.dataset.conductor;
+  const coche = Number(fila.dataset.coche);
+  const slot = Number(fila.dataset.slot);
+  const campoDias = fila.querySelector('[data-dias]');
+  const dias = campoDias ? campoDias.value.trim() : '';
+
+  if (fila.dataset.rol === 'CT' && !dias &&
+      !confirm('Sin días asignados este correturno no cubrirá nada. ¿Continuar igualmente?')) return;
+
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const r = await fetch('/matching/api/asignar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, coche, slot, dias })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.msg);
+
+    // El motor puede haber detectado un problema al recalcular (por ejemplo,
+    // días que chocan con otro conductor del mismo coche): se avisa en vez de
+    // dar el cambio por bueno sin más.
+    if (d.conflictos.length) {
+      alert(`Asignado a ${d.matricula}, pero revisa:\n\n` + d.conflictos.map(c => '· ' + c.msg).join('\n'));
+    }
+    await cargar();
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Asignar';
+  }
+});
 
 ['#f-buscar', '#f-turno', '#f-encajan'].forEach(s => $(s).addEventListener('input', pintarSugerencias));
 $('#btn-recargar').addEventListener('click', cargar);

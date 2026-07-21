@@ -12,6 +12,19 @@ const MAPEO_ESTADOS_BOLT = {
 const STATE_VIAJE = ['has_order', 'waiting_orders'];
 const META_SEGUNDOS = CONFIG_BOLT.metaDiariaHoras * 3600;
 
+// Tope de duración de un tramo. La duración de un estado se deduce del hueco
+// hasta el siguiente log, pero si la app deja de reportar sin pasar por
+// 'inactive' ese hueco no es tiempo trabajado: Bolt cierra la sesión con la
+// telemetría del móvil, que nosotros no vemos.
+//
+// El valor sale de contrastar el 20/07/2026 con el informe de Bolt, coche a
+// coche: la espera legítima más larga medida fue de 4,54 h (7759-MCH, que Bolt
+// contó casi entera) y el caso patológico más claro, 16,1 h (1096-MJY, al que
+// Bolt contó 3,76 h de las 9,74 que medíamos). 6 h separa ambos con margen.
+// Es un umbral empírico de UN día: si aparecen turnos legítimos más largos,
+// súbelo; ningún valor reproduce a Bolt exactamente.
+const MAX_TRAMO_SEG = 6 * 3600;
+
 // Al fusionar flotas nos quedamos con el estado más "vivo" del conductor.
 const PRIORIDAD_ESTADO = { despedido: 0, inactivo: 1, activo: 2 };
 
@@ -911,9 +924,16 @@ async function obtenerMetricasVisor() {
   // 1. State logs de ambas flotas
   let allStateLogs = [];
   for (const flotaId of flotas) {
-    const logs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs', {
-      company_id: flotaId, start_ts: startTs, end_ts: endTs
-    }, 'state_logs', 1000);
+    // fetchRangoCompleto y no fetchAllPaginated: parte el rango si la API da
+    // timeout o lo rechaza por largo. Con fetchAllPaginated un mes movido
+    // devolvía datos parciales y el visor mostraba menos horas sin avisar.
+    const logs = await fetchRangoCompleto(
+      '/fleetIntegration/v1/getFleetStateLogs', { company_id: flotaId },
+      'state_logs', startTs, endTs, 1000, 'visor-logs-' + flotaId
+    );
+    // Se marca la flota de origen para poder desglosar el total después: el
+    // informe que descarga Bolt es por empresa, y el visor suma las dos.
+    logs.forEach(l => { l.__flota = flotaId; });
     // concat en vez de push(...logs): un mes real supera los 130.000 registros
     // y pasarlos como argumentos desbordaría la pila.
     allStateLogs = allStateLogs.concat(logs);
@@ -928,6 +948,10 @@ async function obtenerMetricasVisor() {
 
   let horasWaiting = 0;
   let horasHasOrder = 0;
+  let segRecortados = 0;      // tiempo descartado por el tope
+  let nRecortados = 0;
+  let segColas = 0;           // de lo anterior, en tramos sin log de cierre
+  const segPorFlota = {};     // desglose para cuadrar con el informe de Bolt
 
   Object.values(logsPorDriver).forEach(logs => {
     logs.sort((a, b) => a.created - b.created);
@@ -937,23 +961,51 @@ async function obtenerMetricasVisor() {
       if (estado !== 'waiting_orders' && estado !== 'has_order') continue;
 
       const inicio = logs[i].created;
-      const fin = (i < logs.length - 1) ? logs[i + 1].created : endTs;
-      const duracion = fin - inicio;
+      const esUltimo = (i === logs.length - 1);
+      // El último tramo de cada conductor se cerraba en endTs (= AHORA). Un
+      // conductor cuyo último log del mes fuera 'waiting_orders' sumaba desde
+      // ese momento hasta ahora: días enteros en algunos casos.
+      const fin = esUltimo ? endTs : logs[i + 1].created;
+      let duracion = fin - inicio;
+
+      if (duracion > MAX_TRAMO_SEG) {
+        segRecortados += duracion - MAX_TRAMO_SEG;
+        nRecortados++;
+        if (esUltimo) segColas += duracion - MAX_TRAMO_SEG;
+        duracion = MAX_TRAMO_SEG;
+      }
 
       if (duracion > 0) {
         if (estado === 'waiting_orders') horasWaiting += duracion;
         else horasHasOrder += duracion;
+        const f = logs[i].__flota || 'desconocida';
+        segPorFlota[f] = (segPorFlota[f] || 0) + duracion;
       }
     }
   });
 
+  console.log('📊 [visor] Horas por flota (el informe de Bolt se descarga por empresa):');
+  Object.keys(segPorFlota).forEach(f => {
+    console.log(`     flota ${f}: ${(segPorFlota[f] / 3600).toFixed(1)} h`);
+  });
+
+  if (segRecortados > 0) {
+    console.log(
+      `✂️  [visor] Tope de ${MAX_TRAMO_SEG / 3600} h aplicado a ${nRecortados} tramos: ` +
+      `${(segRecortados / 3600).toFixed(1)} h descartadas ` +
+      `(${(segColas / 3600).toFixed(1)} h eran colas sin log de cierre). ` +
+      `Sin el tope el visor mostraría ${((horasWaiting + horasHasOrder + segRecortados) / 3600).toFixed(0)} h.`
+    );
+  }
+
   // 2. Facturación de ambas flotas
   let facturacion = 0;
   for (const flotaId of flotas) {
-    const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders', {
-      company_ids: [flotaId], start_ts: startTs, end_ts: endTs,
-      time_range_filter_type: 'created'
-    }, 'orders', 500);
+    const ordenes = await fetchRangoCompleto(
+      '/fleetIntegration/v1/getFleetOrders',
+      { company_ids: [flotaId], time_range_filter_type: 'created' },
+      'orders', startTs, endTs, 500, 'visor-ordenes-' + flotaId
+    );
 
     ordenes.forEach(order => {
       if (order.order_price && order.order_price.net_earnings) {
