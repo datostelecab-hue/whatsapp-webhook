@@ -1,0 +1,326 @@
+<div class="max-w-[1600px] mx-auto px-4 py-6">
+
+  <!-- ══ Cabecera y resumen ══ -->
+  <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Planificador</h1>
+      <p class="text-telecab-muted text-sm">
+        <span id="stat-coches">—</span> coches operativos ·
+        <span id="stat-huecos">—</span> turnos libres ·
+        <span id="stat-errores">—</span> con conflicto
+      </p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="estado-guardado" class="text-sm text-telecab-muted"></span>
+      <button id="btn-recargar"
+              class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
+        <i class="fa-solid fa-rotate mr-1"></i> Recargar
+      </button>
+      <button id="btn-guardar" disabled
+              class="px-5 py-2 rounded-lg bg-telecab-red hover:bg-telecab-red-hover text-white font-semibold
+                     transition disabled:opacity-40 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-floppy-disk mr-1"></i>
+        Guardar <span id="num-cambios"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ Avisos del motor ══ -->
+  <div id="avisos" class="hidden mb-5 rounded-lg border border-amber-600/50 bg-amber-900/20 p-4 text-sm"></div>
+
+  <!-- ══ Demanda ══ -->
+  <div id="demanda" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+
+  <!-- ══ Filtros ══ -->
+  <div class="flex flex-wrap items-center gap-3 mb-5">
+    <input id="f-buscar" type="search" placeholder="Matrícula, conductor o ID…"
+           class="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-red">
+    <select id="f-zona" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+      <option value="">Todas las zonas</option>
+    </select>
+    <select id="f-estado" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+      <option value="">Cualquier estado</option>
+    </select>
+    <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer">
+      <input id="f-huecos" type="checkbox" class="accent-telecab-red"> Solo con huecos
+    </label>
+    <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer">
+      <input id="f-errores" type="checkbox" class="accent-telecab-red"> Solo con conflictos
+    </label>
+  </div>
+
+  <!-- Una sola lista de opciones por turno, compartida por todos los campos:
+       522 desplegables con 242 conductores cada uno colapsarían el navegador. -->
+  <datalist id="lista-dia"></datalist>
+  <datalist id="lista-noche"></datalist>
+
+  <div id="cargando" class="text-center py-16 text-telecab-muted">
+    <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i>
+    <p class="mt-3">Leyendo la hoja…</p>
+  </div>
+
+  <div id="coches" class="grid gap-4 xl:grid-cols-2"></div>
+  <p id="sin-resultados" class="hidden text-center py-10 text-telecab-muted">Ningún coche coincide con el filtro.</p>
+</div>
+
+<!-- Los datos del servidor viajan en un bloque JSON, no interpolados dentro
+     del JavaScript. Así el editor puede analizar el código como JS normal (las
+     etiquetas EJS mezcladas con el código le hacen marcar errores falsos) y de
+     paso no hay forma de que un valor se escape del contexto de cadena. -->
+<script type="application/json" id="datos-servidor">
+  <%- JSON.stringify({ diasSem: diasSem, letrasDia: letrasDia, estadosVehiculo: estadosVehiculo }) %>
+</script>
+
+<script>
+const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
+const DIAS_SEM = CFG.diasSem;
+const LETRAS_DIA = CFG.letrasDia;
+const ESTADOS_VEHICULO = CFG.estadosVehiculo;
+
+let TABLERO = null;
+const cambios = new Map();   // idxCoche → {coche, estadoVeh?, matricula?, zona?, slots:Map}
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// ════════ Carga ════════
+async function cargar() {
+  $('#cargando').classList.remove('hidden');
+  $('#coches').innerHTML = '';
+  try {
+    const r = await fetch('/planificador/api/tablero');
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.msg || 'Error al leer');
+    TABLERO = data;
+    cambios.clear();
+    refrescarBotonGuardar();
+    pintarTodo();
+  } catch (e) {
+    $('#cargando').innerHTML = '<p class="text-telecab-red">' + esc(e.message) + '</p>';
+    return;
+  }
+  $('#cargando').classList.add('hidden');
+}
+
+function pintarTodo() {
+  pintarResumen();
+  pintarAvisos();
+  pintarListas();
+  pintarFiltros();
+  pintarCoches();
+}
+
+function pintarResumen() {
+  const r = TABLERO.resumen;
+  $('#stat-coches').textContent = r.cochesOperativos;
+  $('#stat-huecos').textContent = r.totalHuecos;
+  $('#stat-errores').textContent = r.cochesConError;
+
+  const d = r.demanda;
+  const tarjeta = (etq, n) => `
+    <div class="rounded-lg bg-telecab-card border border-telecab-border p-4">
+      <div class="text-2xl font-bold ${n > 0 ? 'text-telecab-red' : 'text-telecab-green'}">${n}</div>
+      <div class="text-xs text-telecab-muted mt-1">${etq}</div>
+    </div>`;
+  $('#demanda').innerHTML =
+    tarjeta('Fijos día por cubrir', d.fijosDia) +
+    tarjeta('Fijos noche por cubrir', d.fijosNoche) +
+    tarjeta('Correturnos día', d.ctDia) +
+    tarjeta('Correturnos noche', d.ctNoche);
+}
+
+function pintarAvisos() {
+  const box = $('#avisos');
+  if (!TABLERO.avisos.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<strong class="text-amber-400">Revisar:</strong><ul class="mt-2 space-y-1 text-amber-200/90">' +
+    TABLERO.avisos.map(a => '<li>· ' + esc(a.msg) + '</li>').join('') + '</ul>';
+}
+
+function pintarListas() {
+  const opciones = turno => TABLERO.conductores
+    .filter(c => c.turno === turno)
+    .map(c => `<option value="${esc(c.id)}">${esc(c.nombre)} — ${esc(c.estadoCalculado)}</option>`)
+    .join('');
+  $('#lista-dia').innerHTML = opciones('Día');
+  $('#lista-noche').innerHTML = opciones('Noche');
+}
+
+function pintarFiltros() {
+  const zonas = [...new Set(TABLERO.coches.map(c => c.zona).filter(Boolean))].sort();
+  $('#f-zona').innerHTML = '<option value="">Todas las zonas</option>' +
+    zonas.map(z => `<option>${esc(z)}</option>`).join('');
+  const estados = [...new Set(TABLERO.coches.map(c => c.estadoVeh).filter(Boolean))];
+  $('#f-estado').innerHTML = '<option value="">Cualquier estado</option>' +
+    estados.map(e => `<option>${esc(e)}</option>`).join('');
+}
+
+// ════════ Tarjeta de coche ════════
+function pintarCoches() {
+  const texto = $('#f-buscar').value.trim().toLowerCase();
+  const zona = $('#f-zona').value;
+  const estado = $('#f-estado').value;
+  const soloHuecos = $('#f-huecos').checked;
+  const soloErrores = $('#f-errores').checked;
+
+  const visibles = TABLERO.coches.filter(c => {
+    if (zona && c.zona !== zona) return false;
+    if (estado && c.estadoVeh !== estado) return false;
+    if (soloHuecos && !(c.numLibres > 0)) return false;
+    if (soloErrores && !c.hayError) return false;
+    if (texto) {
+      const heno = [c.matricula, c.zona, ...c.personas.map(p => p.id + ' ' + p.nombre)]
+        .join(' ').toLowerCase();
+      if (!heno.includes(texto)) return false;
+    }
+    return true;
+  });
+
+  $('#coches').innerHTML = visibles.map(tarjetaCoche).join('');
+  $('#sin-resultados').classList.toggle('hidden', visibles.length > 0);
+}
+
+function tarjetaCoche(c) {
+  const borde = c.hayError ? 'border-telecab-red'
+    : (c.numLibres > 0 ? 'border-amber-600/60' : 'border-telecab-border');
+
+  const estadoOpts = ESTADOS_VEHICULO
+    .map(e => `<option ${e === c.estadoVeh ? 'selected' : ''}>${esc(e)}</option>`).join('');
+
+  const zonaOpts = ['', ...TABLERO.bases.map(b => b.nombre)]
+    .map(z => `<option value="${esc(z)}" ${z === c.zona ? 'selected' : ''}>${esc(z || '— sin zona —')}</option>`)
+    .join('');
+
+  const filas = c.personas.map(p => filaSlot(c, p)).join('');
+
+  const pie = c.hayError
+    ? `<div class="mt-3 text-sm text-telecab-red"><i class="fa-solid fa-triangle-exclamation mr-1"></i>
+         ${c.conflictos.map(x => esc(x.msg)).join('<br>')}</div>`
+    : (c.numLibres > 0
+      ? `<div class="mt-3 text-sm text-amber-400"><i class="fa-regular fa-clock mr-1"></i>
+           ${c.numLibres} libres: ${esc(c.textoLibres)}</div>`
+      : (c.operativo ? '<div class="mt-3 text-sm text-telecab-green"><i class="fa-solid fa-check mr-1"></i> Completo</div>' : ''));
+
+  return `
+  <div class="rounded-xl bg-telecab-card border ${borde} p-4" data-coche="${c.idx}">
+    <div class="flex items-center gap-2 mb-3">
+      <select class="w-16 text-center px-2 py-1.5 rounded bg-telecab-dark border border-telecab-border text-telecab-text"
+              data-campo="estadoVeh">${estadoOpts}</select>
+      <input value="${esc(c.matricula)}" placeholder="Matrícula" maxlength="10"
+             class="w-32 px-2 py-1.5 rounded bg-telecab-dark border border-telecab-border text-white font-semibold uppercase"
+             data-campo="matricula">
+      <select class="flex-1 px-2 py-1.5 rounded bg-telecab-dark border border-telecab-border text-telecab-text"
+              data-campo="zona">${zonaOpts}</select>
+    </div>
+    <div class="space-y-1.5">${filas}</div>
+    ${pie}
+  </div>`;
+}
+
+function filaSlot(c, p) {
+  const lista = p.turno === 'Día' ? 'lista-dia' : 'lista-noche';
+  const esCT = p.rol === 'CT';
+  const marca = p.huerfano ? 'border-telecab-red' : 'border-telecab-border';
+
+  // Los días del fijo los calcula el motor y no se editan: salen de la
+  // libranza menos lo que le quite el correturno.
+  const campoDias = esCT
+    ? `<input value="${esc(p.diasTexto || '')}" placeholder="L M X…" maxlength="20"
+              class="w-28 px-2 py-1 rounded bg-telecab-dark border border-telecab-border text-telecab-text text-center uppercase"
+              data-campo="dias" data-slot="${p.slot}" title="Días que cubre en este coche">`
+    : `<span class="w-28 px-2 py-1 text-center text-telecab-muted text-sm" title="Calculado desde la libranza">
+         ${esc(p.diasTexto || '—')}</span>`;
+
+  return `
+  <div class="flex items-center gap-2">
+    <span class="w-20 text-xs ${esCT ? 'text-telecab-muted' : 'text-telecab-text font-medium'}">${esc(p.etiqueta)}</span>
+    <input value="${esc(p.id)}" list="${lista}" placeholder="ID conductor"
+           class="flex-1 px-2 py-1 rounded bg-telecab-dark border ${marca} text-telecab-text"
+           data-campo="id" data-slot="${p.slot}">
+    <span class="w-40 truncate text-xs ${p.huerfano ? 'text-telecab-red' : 'text-telecab-muted'}"
+          title="${esc(p.nombre)}">${esc(p.huerfano ? 'no está en la agenda' : p.nombre)}</span>
+    ${campoDias}
+  </div>`;
+}
+
+// ════════ Registro de cambios ════════
+function registrar(idx, campo, valor, slot) {
+  if (!cambios.has(idx)) cambios.set(idx, { coche: idx, slots: new Map() });
+  const c = cambios.get(idx);
+  if (slot === undefined) c[campo] = valor;
+  else {
+    if (!c.slots.has(slot)) c.slots.set(slot, { slot });
+    c.slots.get(slot)[campo] = valor;
+  }
+  refrescarBotonGuardar();
+}
+
+function refrescarBotonGuardar() {
+  const n = cambios.size;
+  $('#btn-guardar').disabled = n === 0;
+  $('#num-cambios').textContent = n ? `(${n})` : '';
+  $('#estado-guardado').textContent = n ? 'Cambios sin guardar' : '';
+  $('#estado-guardado').className = 'text-sm ' + (n ? 'text-amber-400' : 'text-telecab-muted');
+}
+
+$('#coches').addEventListener('input', e => {
+  const campo = e.target.dataset.campo;
+  if (!campo) return;
+  const idx = Number(e.target.closest('[data-coche]').dataset.coche);
+  const slot = e.target.dataset.slot !== undefined ? Number(e.target.dataset.slot) : undefined;
+  registrar(idx, campo, e.target.value, slot);
+});
+
+// ════════ Guardar ════════
+$('#btn-guardar').addEventListener('click', async () => {
+  const btn = $('#btn-guardar');
+  btn.disabled = true;
+  $('#estado-guardado').textContent = 'Guardando…';
+  $('#estado-guardado').className = 'text-sm text-telecab-muted';
+
+  const cuerpo = [...cambios.values()].map(c => ({
+    coche: c.coche,
+    estadoVeh: c.estadoVeh,
+    matricula: c.matricula,
+    zona: c.zona,
+    slots: [...c.slots.values()]
+  }));
+
+  try {
+    const r = await fetch('/planificador/api/guardar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cambios: cuerpo })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.msg || 'Error al guardar');
+
+    TABLERO = data.tablero;
+    cambios.clear();
+    pintarTodo();
+    refrescarBotonGuardar();
+    $('#estado-guardado').textContent = `Guardado · ${data.escritura.updatedCells} celdas`;
+    $('#estado-guardado').className = 'text-sm text-telecab-green';
+  } catch (e) {
+    $('#estado-guardado').textContent = e.message;
+    $('#estado-guardado').className = 'text-sm text-telecab-red';
+    btn.disabled = false;
+  }
+});
+
+$('#btn-recargar').addEventListener('click', () => {
+  if (cambios.size && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+  cargar();
+});
+
+['#f-buscar', '#f-zona', '#f-estado', '#f-huecos', '#f-errores']
+  .forEach(s => $(s).addEventListener('input', pintarCoches));
+
+window.addEventListener('beforeunload', e => {
+  if (cambios.size) { e.preventDefault(); e.returnValue = ''; }
+});
+
+cargar();
+</script>

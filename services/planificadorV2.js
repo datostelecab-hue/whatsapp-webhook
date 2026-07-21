@@ -90,22 +90,43 @@ const ESTADO_OPERATIVO = '✓';
  * en vez de "no trabaja ningún día". Esa distinción es la que separa a un
  * binomio fijo (celda vacía) de un correturno (días escritos a mano).
  */
-function parseDiasTrabaja(txt) {
-  if (txt == null) return null;
+const MAPA_DIA = { L: 0, M: 1, X: 2, J: 3, V: 4, S: 5, D: 6 };
+
+/**
+ * Analiza el texto de días y dice además si se ha entendido.
+ *
+ * Acepta "L M X", "L,M,X" y "LMX", pero RECHAZA texto libre. El parser
+ * original recorría carácter a carácter y aceptaba cualquier letra suelta que
+ * encontrara: escribir "sabado domingo" acababa guardando "M S D", porque la M
+ * venía de "doMingo". Un martes fantasma en la planificación no lo detecta
+ * nadie hasta que falta un conductor, así que ahora se prefiere avisar.
+ */
+function analizarDias(txt) {
+  if (txt == null) return { dias: null, valido: true, vacio: true };
   const s = String(txt).trim();
-  if (s === '') return null;
+  if (s === '') return { dias: null, valido: true, vacio: true };
 
-  const mapa = { L: 0, M: 1, X: 2, J: 3, V: 4, S: 5, D: 6 };
+  const up = s.toUpperCase();
+  const tokens = up.split(/[\s,;/|.\-_]+/).filter(Boolean);
   const res = [false, false, false, false, false, false, false];
-  let encontrado = false;
 
-  for (const ch of s.toUpperCase()) {
-    if (Object.prototype.hasOwnProperty.call(mapa, ch)) {
-      res[mapa[ch]] = true;
-      encontrado = true;
-    }
+  // "L M X" o "L,M,X": cada trozo es una letra válida
+  if (tokens.length && tokens.every(t => t.length === 1 && t in MAPA_DIA)) {
+    tokens.forEach(t => { res[MAPA_DIA[t]] = true; });
+    return { dias: res, valido: true, vacio: false };
   }
-  return encontrado ? res : null;
+
+  // "LMX": todo pegado, como mucho 7 letras y todas válidas
+  if (tokens.length === 1 && tokens[0].length <= 7 && [...tokens[0]].every(ch => ch in MAPA_DIA)) {
+    [...tokens[0]].forEach(ch => { res[MAPA_DIA[ch]] = true; });
+    return { dias: res, valido: true, vacio: false };
+  }
+
+  return { dias: null, valido: false, vacio: false, texto: s };
+}
+
+function parseDiasTrabaja(txt) {
+  return analizarDias(txt).dias;
 }
 
 function diasALetras(dias) {
@@ -192,6 +213,7 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     for (let k = 0; k < FILAS_POR_COCHE; k++) {
       const fila = planVals[base + k] || [];
       const id = txt(fila[P.ID_BOLT - 1]);
+      const dias = analizarDias(fila[P.DIAS_TRABAJA - 1]);
       personas.push({
         slot: k,
         etiqueta: SLOTS[k].etiqueta,
@@ -199,7 +221,8 @@ function calcularTablero(agendaVals, planVals, bases = []) {
         rol: SLOTS[k].rol,
         filaHoja: PLAN_FILA_INI + base + k,
         id,
-        diasManual: parseDiasTrabaja(fila[P.DIAS_TRABAJA - 1]),
+        diasManual: dias.dias,
+        diasIlegibles: dias.valido ? null : dias.texto,
         nombre: id && porId.has(id) ? porId.get(id).nombre : '',
         // Un ID que ya no está en la agenda es un dato huérfano: se avisa.
         huerfano: Boolean(id) && !porId.has(id)
@@ -284,13 +307,23 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     coche.huecos = [];
     coche.conflictos = [];
 
+    const nombreCoche = coche.matricula || '#' + (coche.idx + 1);
     coche.personas.forEach(p => {
       if (p.huerfano) {
         avisos.push({
           tipo: 'huerfano',
           matricula: coche.matricula,
           id: p.id,
-          msg: `El ID "${p.id}" del coche ${coche.matricula || '#' + (coche.idx + 1)} no existe en la agenda`
+          msg: `El ID "${p.id}" del coche ${nombreCoche} no existe en la agenda`
+        });
+      }
+      if (p.diasIlegibles) {
+        avisos.push({
+          tipo: 'dias-ilegibles',
+          matricula: coche.matricula,
+          id: p.id,
+          msg: `Coche ${nombreCoche}, ${p.etiqueta}: "${p.diasIlegibles}" no se entiende como días. ` +
+               `Usa las letras L M X J V S D (ej. "S D"). No se cuenta ningún día.`
         });
       }
     });
@@ -427,7 +460,7 @@ const { readMany, writeMany } = require('./sheets');
 const ULTIMA_FILA_PLAN = PLAN_FILA_INI + N_MAT * FILAS_POR_COCHE - 1;
 
 const RANGOS = {
-  agenda: `${HOJAS.AGENDA}!A1:AG400`,
+  agenda: `${HOJAS.AGENDA}!A1:AG1000`,
   plan: `${HOJAS.PLAN}!A${PLAN_FILA_CAB}:J${ULTIMA_FILA_PLAN}`,
   bases: `${HOJAS.BASES}!A1:D60`
 };
@@ -477,14 +510,12 @@ function validarEsquema(agendaFilas, planFilas) {
   return { ok: problemas.length === 0, problemas };
 }
 
-/** Lee las tres hojas en una sola petición y devuelve el tablero ya calculado. */
-async function leerTablero() {
+/** Lee las tres hojas en una sola petición, sin interpretar nada. */
+async function leerCrudo() {
   const [agendaFilas, planFilas, basesFilas] = await readMany(
     SPREADSHEET_PLANIFICADOR,
     [RANGOS.agenda, RANGOS.plan, RANGOS.bases]
   );
-
-  const esquema = validarEsquema(agendaFilas, planFilas);
 
   const bases = basesFilas.slice(1)
     .map(f => {
@@ -494,9 +525,103 @@ async function leerTablero() {
     })
     .filter(Boolean);
 
-  const tablero = calcularTablero(agendaFilas.slice(1), planFilas.slice(1), bases);
-  tablero.esquema = esquema;
+  return {
+    agendaFilas,
+    planFilas,
+    bases,
+    esquema: validarEsquema(agendaFilas, planFilas)
+  };
+}
+
+/** Lee y devuelve el tablero ya calculado. */
+async function leerTablero() {
+  const crudo = await leerCrudo();
+  const tablero = calcularTablero(crudo.agendaFilas.slice(1), crudo.planFilas.slice(1), crudo.bases);
+  tablero.esquema = crudo.esquema;
   return tablero;
+}
+
+/**
+ * Aplica los cambios de la interfaz sobre las filas crudas del planificador.
+ *
+ * Se trabaja sobre una lectura FRESCA de la hoja, no sobre lo que tenía la
+ * pantalla del navegador: así, si alguien tocó otro coche mientras tanto, no se
+ * lo pisamos. Solo se sobrescribe lo que el usuario ha cambiado de verdad.
+ */
+function aplicarCambios(planFilas, cambios) {
+  const datos = planFilas.slice(1);   // sin la cabecera
+  const aplicados = [];
+
+  (cambios || []).forEach(cambio => {
+    const c = Number(cambio.coche);
+    if (!Number.isInteger(c) || c < 0 || c >= N_MAT) {
+      throw new Error(`Índice de coche fuera de rango: ${cambio.coche}`);
+    }
+    const base = c * FILAS_POR_COCHE;
+
+    const asegurarFila = i => {
+      while (datos.length <= i) datos.push([]);
+      if (!datos[i]) datos[i] = [];
+      while (datos[i].length < P_HEADERS.length) datos[i].push('');
+      return datos[i];
+    };
+
+    if (cambio.estadoVeh !== undefined) {
+      asegurarFila(base)[P.ESTADO_VEH - 1] = txt(cambio.estadoVeh);
+    }
+    if (cambio.matricula !== undefined) {
+      asegurarFila(base)[P.MATRICULA - 1] = txt(cambio.matricula);
+    }
+    if (cambio.zona !== undefined) {
+      asegurarFila(base)[P.ZONA - 1] = txt(cambio.zona);
+    }
+
+    (cambio.slots || []).forEach(s => {
+      const k = Number(s.slot);
+      if (!Number.isInteger(k) || k < 0 || k >= FILAS_POR_COCHE) {
+        throw new Error(`Slot fuera de rango: ${s.slot}`);
+      }
+      const fila = asegurarFila(base + k);
+      if (s.id !== undefined) fila[P.ID_BOLT - 1] = txt(s.id);
+      if (s.dias !== undefined) {
+        // Se rechaza aquí, no en la hoja: quien está escribiendo ve el error en
+        // el momento, en vez de descubrir semanas después que a ese coche le
+        // faltaba un turno porque su texto no se entendió.
+        const analisis = analizarDias(s.dias);
+        if (!analisis.valido) {
+          throw new Error(
+            `Coche ${c + 1}, ${SLOTS[k].etiqueta}: "${analisis.texto}" no se entiende como días. ` +
+            `Usa las letras L M X J V S D (por ejemplo "S D").`
+          );
+        }
+        fila[P.DIAS_TRABAJA - 1] = diasALetras(analisis.dias);
+      }
+    });
+
+    aplicados.push(c);
+  });
+
+  return { datos, aplicados };
+}
+
+/**
+ * Ciclo completo de guardado: relee, aplica, recalcula y escribe.
+ * Devuelve el tablero recalculado para que la interfaz se refresque sin
+ * tener que volver a pedirlo.
+ */
+async function guardarCambios(cambios) {
+  const crudo = await leerCrudo();
+
+  if (!crudo.esquema.ok) {
+    throw new Error('El esquema de la hoja no coincide: ' + crudo.esquema.problemas.join(' | '));
+  }
+
+  const { datos, aplicados } = aplicarCambios(crudo.planFilas, cambios);
+  const tablero = calcularTablero(crudo.agendaFilas.slice(1), datos, crudo.bases);
+  tablero.esquema = crudo.esquema;
+
+  const res = await guardarTablero(tablero);
+  return { tablero, escritura: res, cochesAplicados: aplicados };
 }
 
 /**
@@ -561,12 +686,13 @@ async function guardarTablero(tablero, opciones = {}) {
 module.exports = {
   SPREADSHEET_PLANIFICADOR,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
-  validarEsquema, leerTablero, guardarTablero,
+  validarEsquema, leerCrudo, leerTablero, guardarTablero,
+  aplicarCambios, guardarCambios,
   HOJAS,
   PLAN_FILA_CAB, PLAN_FILA_INI, FILAS_POR_COCHE, N_MAT,
   P, A, A_HEADERS, P_HEADERS, LIB_COL, ASG_COL, SLOTS,
   DIAS_SEM, LETRAS_DIA, TURNOS,
   ESTADOS_CONDUCTOR, ESTADOS_VEHICULO, ESTADO_PENDIENTE, ESTADO_ACTIVO, ESTADO_OPERATIVO,
-  parseDiasTrabaja, diasALetras, parseCoords, haversine,
+  parseDiasTrabaja, analizarDias, diasALetras, parseCoords, haversine,
   calcularTablero
 };

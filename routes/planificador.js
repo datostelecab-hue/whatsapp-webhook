@@ -4,7 +4,8 @@ const {
   SPREADSHEET_PLANIFICADOR, RANGOS,
   N_MAT, PLAN_FILA_INI, PLAN_FILA_CAB, FILAS_POR_COCHE,
   A_HEADERS, P_HEADERS, SLOTS,
-  validarEsquema, leerTablero, colLetra
+  validarEsquema, leerTablero, guardarCambios, colLetra,
+  DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO
 } = require('../services/planificadorV2');
 const { readMany } = require('../services/sheets');
 
@@ -105,6 +106,56 @@ router.get('/api/tablero', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ [PLANIFICADOR] /api/tablero:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+/** La interfaz. */
+router.get('/', (req, res) => {
+  res.render('planificador', {
+    titulo: 'Planificador',
+    diasSem: DIAS_SEM,
+    letrasDia: LETRAS_DIA,
+    estadosVehiculo: ESTADOS_VEHICULO
+  });
+});
+
+/**
+ * Guarda los cambios de la interfaz.
+ * Relee la hoja, aplica encima solo lo que cambió el usuario, recalcula y
+ * escribe todo en una única petición a Google.
+ */
+router.post('/api/guardar', async (req, res) => {
+  try {
+    const cambios = req.body && req.body.cambios;
+    if (!Array.isArray(cambios) || cambios.length === 0) {
+      return res.status(400).json({ status: 'error', msg: 'No se ha recibido ningún cambio' });
+    }
+
+    const t0 = Date.now();
+    const { tablero, escritura, cochesAplicados } = await guardarCambios(cambios);
+    const segundos = ((Date.now() - t0) / 1000).toFixed(1);
+
+    console.log(`💾 [PLANIFICADOR] ${cochesAplicados.length} coches · ` +
+                `${escritura.updatedCells} celdas · ${escritura.rangos} rangos · ${segundos}s`);
+
+    res.json({
+      status: 'ok',
+      escritura,
+      cochesAplicados,
+      segundos,
+      tablero: {
+        esquema: tablero.esquema,
+        resumen: tablero.resumen,
+        avisos: tablero.avisos,
+        coches: tablero.coches.filter(c => c.matricula || c.personas.some(p => p.id)),
+        conductores: tablero.conductores,
+        pendientes: tablero.pendientes,
+        bases: tablero.bases
+      }
+    });
+  } catch (error) {
+    console.error('❌ [PLANIFICADOR] /api/guardar:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
   }
 });
