@@ -229,27 +229,111 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       });
     }
 
+    const estadoVeh = txt(filaTop[P.ESTADO_VEH - 1]);
     coches.push({
       idx: c,
       filaTop: PLAN_FILA_INI + base,
-      estadoVeh: txt(filaTop[P.ESTADO_VEH - 1]),
+      estadoVeh,
+      // Se resuelve aquí porque la cobertura ya depende de ello: un coche que
+      // no sale a la calle no asigna días ni matrícula a nadie.
+      operativo: estadoVeh === ESTADO_OPERATIVO,
       matricula: txt(filaTop[P.MATRICULA - 1]),
       zona: txt(filaTop[P.ZONA - 1]),
       personas
     });
   }
 
-  // ---- 3. Días que cubre cada persona ----
+  // ---- 3. Validaciones previas y días que cubre cada persona ----
   // Ocupación global, para detectar a la misma persona en dos coches a la vez.
   const ocupacionGlobal = new Map();   // "id|dia|turno" → Set(matriculas)
   const asignacionPorDia = new Map();  // id → [7] matrícula
+  const problemas = [];                // se convierten en avisos más abajo
+
+  // Matrículas repetidas: dos coches con la misma placa descuadran cualquier
+  // asignación, porque la agenda no sabría a cuál se refiere.
+  const vistasMatriculas = new Map();
+  coches.forEach(coche => {
+    if (!coche.matricula) return;
+    if (vistasMatriculas.has(coche.matricula)) {
+      problemas.push({
+        tipo: 'matricula-duplicada', idx: coche.idx, matricula: coche.matricula,
+        msg: `La matrícula ${coche.matricula} está en dos coches (posiciones ` +
+             `${vistasMatriculas.get(coche.matricula) + 1} y ${coche.idx + 1})`
+      });
+    } else {
+      vistasMatriculas.set(coche.matricula, coche.idx);
+    }
+  });
 
   coches.forEach(coche => {
+    const nombreCoche = coche.matricula || '#' + (coche.idx + 1);
+
+    // ---- 3a. Personas que no deben seguir en el planificador ----
+    coche.personas.forEach(p => {
+      if (!p.id) return;
+      const info = porId.get(p.id);
+      if (!info) return;
+
+      // Vacaciones, bajas o suspensión: la plaza se libera. Se marca aquí y al
+      // guardar se escribe vacío en la hoja.
+      if (ESTADOS_ESPECIALES.includes(info.estado)) {
+        p.retirar = true;
+        p.motivoRetiro = info.estado;
+        problemas.push({
+          tipo: 'estado-retira', idx: coche.idx, matricula: coche.matricula, id: p.id,
+          msg: `${info.nombre || p.id} está en "${info.estado}": se libera su plaza en ` +
+               `${nombreCoche} (${p.etiqueta}) y se borran sus días`
+        });
+      }
+
+      // Ocupa plaza en un coche que no sale a la calle: sigue pendiente.
+      if (!coche.operativo && !ESTADOS_ESPECIALES.includes(info.estado)) {
+        problemas.push({
+          tipo: 'coche-parado', idx: coche.idx, matricula: coche.matricula, id: p.id,
+          msg: `${info.nombre || p.id} está en ${nombreCoche}, que no está operativo ` +
+               `(${coche.estadoVeh || 'sin estado'}): sigue como pendiente de asignar`
+        });
+      }
+
+      // Turno cruzado: un conductor de día no puede ocupar una plaza de noche.
+      if (!info.turno) {
+        problemas.push({
+          tipo: 'sin-turno', idx: coche.idx, matricula: coche.matricula, id: p.id,
+          msg: `${info.nombre || p.id} no tiene TURNO en la agenda: no se puede ` +
+               `comprobar si encaja en ${nombreCoche} (${p.etiqueta})`
+        });
+      } else if (info.turno !== p.turno) {
+        p.turnoIncorrecto = true;
+        problemas.push({
+          tipo: 'turno-cruzado', idx: coche.idx, matricula: coche.matricula, id: p.id,
+          msg: `${info.nombre || p.id} es de turno ${info.turno} y está puesto en ` +
+               `${p.etiqueta} de ${nombreCoche}: no cubre ese turno`
+        });
+      }
+    });
+
+    // ---- 3b. La misma persona repetida en el mismo coche ----
+    const cuenta = new Map();
+    coche.personas.forEach(p => {
+      if (!p.id) return;
+      cuenta.set(p.id, (cuenta.get(p.id) || 0) + 1);
+    });
+    cuenta.forEach((n, id) => {
+      if (n > 1) {
+        problemas.push({
+          tipo: 'repetido-en-coche', idx: coche.idx, matricula: coche.matricula, id,
+          msg: `${id} aparece ${n} veces en ${nombreCoche}: revisa si es intencionado`
+        });
+      }
+    });
+
     // Los correturnos mandan: los días que ellos cubren se los quitan al fijo
     // del mismo turno, que es lo que hace que el binomio no duplique jornada.
+    // Solo cuentan los que de verdad van a cubrirlos.
     const tomadosPorCT = { 'Día': Array(7).fill(false), 'Noche': Array(7).fill(false) };
     coche.personas.forEach(p => {
       if (!p.id || p.rol !== 'CT' || !p.diasManual) return;
+      if (p.retirar || p.turnoIncorrecto || p.huerfano) return;
       p.diasManual.forEach((v, d) => { if (v) tomadosPorCT[p.turno][d] = true; });
     });
 
@@ -262,9 +346,36 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       const info = porId.get(p.id);
       if (!info) return;   // huérfano: no cubre nada, ya está marcado
 
+      // Quien está de vacaciones o en el turno equivocado no cubre nada: así el
+      // hueco aflora en vez de quedar tapado por alguien que no va a ir.
+      if (p.retirar || p.turnoIncorrecto) {
+        p.diasTexto = '';
+        return;
+      }
+
       if (p.rol === 'CT') {
         // El correturno cubre exactamente lo que tenga escrito, ni más ni menos.
         p.diasCubre = p.diasManual ? p.diasManual.slice() : Array(7).fill(false);
+
+        if (!p.diasManual) {
+          problemas.push({
+            tipo: 'ct-sin-dias', idx: coche.idx, matricula: coche.matricula, id: p.id,
+            msg: `${info.nombre || p.id} ocupa ${p.etiqueta} de ${nombreCoche} sin días asignados: no cubre nada`
+          });
+        } else {
+          // Un correturno puesto a trabajar el día que libra según su agenda.
+          const enLibranza = p.diasManual
+            .map((v, d) => (v && info.libra[d] ? DIAS_SEM[d] : null))
+            .filter(Boolean);
+          if (enLibranza.length) {
+            p.diasEnLibranza = enLibranza;
+            problemas.push({
+              tipo: 'trabaja-en-libranza', idx: coche.idx, matricula: coche.matricula, id: p.id,
+              msg: `${info.nombre || p.id} tiene libranza el ${enLibranza.join(' y ')} ` +
+                   `pero en ${nombreCoche} (${p.etiqueta}) se le asignan esos días`
+            });
+          }
+        }
       } else {
         const partida = p.diasManual ? p.diasManual : info.trabaja;
         p.diasCubre = partida.map((v, d) => v && !tomadosPorCT[p.turno][d]);
@@ -277,6 +388,11 @@ function calcularTablero(agendaVals, planVals, bases = []) {
 
         const key = `${d}|${p.turno}`;
         (grid[key] = grid[key] || []).push(p.id);
+
+        // Un coche en taller, siniestrado o de baja no cuenta: quien esté en él
+        // sigue como "Pendiente Asignar" y no recibe ni días ni matrícula,
+        // porque en la práctica no tiene coche con el que salir.
+        if (!coche.operativo) return;
 
         if (coche.matricula) {
           if (!asignacionPorDia.has(p.id)) asignacionPorDia.set(p.id, Array(7).fill(''));
@@ -303,7 +419,6 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       estadoAutos[coche.estadoVeh]++;
     }
 
-    coche.operativo = coche.estadoVeh === ESTADO_OPERATIVO;
     coche.huecos = [];
     coche.conflictos = [];
 
@@ -327,6 +442,16 @@ function calcularTablero(agendaVals, planVals, bases = []) {
         });
       }
     });
+
+    // Los problemas detectados arriba marcan el coche en rojo. Se listan en sus
+    // conflictos para que se vean en la propia tarjeta, no solo en los avisos.
+    problemas
+      .filter(x => x.idx === coche.idx)
+      .forEach(x => {
+        if (['turno-cruzado', 'estado-retira', 'trabaja-en-libranza', 'matricula-duplicada'].includes(x.tipo)) {
+          coche.conflictos.push({ tipo: x.tipo, msg: x.msg });
+        }
+      });
 
     if (!coche.operativo) return;
 
@@ -373,12 +498,15 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     coche.textoLibres = '';
   });
 
+  // Todo lo detectado en las validaciones sube a la lista de avisos.
+  problemas.forEach(x => avisos.push(x));
+
   // ---- 5. Estado derivado de cada conductor ----
   const matriculaPrincipal = new Map();
   const binomio = new Map();
 
   coches.forEach(coche => {
-    if (!coche.matricula) return;
+    if (!coche.matricula || !coche.operativo) return;
     const idDia = coche.personas[0].id;
     const idNoche = coche.personas[1].id;
     coche.personas.forEach(p => {
@@ -455,7 +583,7 @@ function calcularTablero(agendaVals, planVals, bases = []) {
 // LECTURA / ESCRITURA CONTRA LA HOJA
 // ============================================================
 
-const { readMany, writeMany } = require('./sheets');
+const { readMany, writeMany, getSheetIds, appendRows, deleteRows } = require('./sheets');
 
 const ULTIMA_FILA_PLAN = PLAN_FILA_INI + N_MAT * FILAS_POR_COCHE - 1;
 
@@ -582,7 +710,12 @@ function aplicarCambios(planFilas, cambios) {
         throw new Error(`Slot fuera de rango: ${s.slot}`);
       }
       const fila = asegurarFila(base + k);
-      if (s.id !== undefined) fila[P.ID_BOLT - 1] = txt(s.id);
+      if (s.id !== undefined) {
+        fila[P.ID_BOLT - 1] = txt(s.id);
+        // Al quitar al conductor se van sus días con él: si se quedaran, el
+        // siguiente que entre heredaría una jornada que nadie le ha asignado.
+        if (!txt(s.id)) fila[P.DIAS_TRABAJA - 1] = '';
+      }
       if (s.dias !== undefined) {
         // Se rechaza aquí, no en la hoja: quien está escribiendo ve el error en
         // el momento, en vez de descubrir semanas después que a ese coche le
@@ -645,10 +778,19 @@ async function guardarTablero(tablero, opciones = {}) {
   const colDias = [];
   tablero.coches.forEach(coche => {
     coche.personas.forEach(p => {
+      // Vacaciones, baja o suspensión liberan la plaza: se va la persona y se
+      // van sus días con ella. Dejar los días sueltos haría creer que ese turno
+      // sigue cubierto.
+      if (p.retirar) {
+        colIds.push(['']);
+        colDias.push(['']);
+        return;
+      }
       colIds.push([p.id || '']);
-      // En las filas de correturno se respeta lo que escribió la persona;
-      // en las de fijo se pone lo que ha calculado el motor.
-      colDias.push([p.rol === 'CT' ? diasALetras(p.diasManual) : (p.diasTexto || '')]);
+      // Sin conductor no hay días que guardar. En las filas de correturno se
+      // respeta lo que escribió la persona; en las de fijo, lo que calcula el motor.
+      if (!p.id) colDias.push(['']);
+      else colDias.push([p.rol === 'CT' ? diasALetras(p.diasManual) : (p.diasTexto || '')]);
     });
   });
   datos.push({ range: `${HOJAS.PLAN}!${colLetra(P.ID_BOLT)}${P_ini}:${colLetra(P.ID_BOLT)}${ULTIMA_FILA_PLAN}`, values: colIds });
@@ -683,8 +825,212 @@ async function guardarTablero(tablero, opciones = {}) {
   return { ...res, rangos: datos.length };
 }
 
+// ============================================================
+// CONDUCTORES_OUT — bajas de empresa y restauración
+// ============================================================
+
+const HOJA_OUT = 'CONDUCTORES_OUT';
+const RANGO_OUT = `${HOJA_OUT}!A1:AH1000`;   // AG + FECHA_BAJA
+const COL_FECHA_BAJA = A_HEADERS.length + 1;  // 34 → AH
+const ESTADO_BAJA_EMPRESA = 'Baja Empresa';
+
+/**
+ * Cambia el estado de uno o varios conductores en la agenda.
+ * Si alguno queda en "Baja Empresa", se migra a CONDUCTORES_OUT acto seguido.
+ */
+async function cambiarEstados(cambios) {
+  if (!Array.isArray(cambios) || !cambios.length) {
+    throw new Error('No se ha recibido ningún cambio de estado');
+  }
+
+  const [agendaFilas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
+  const filaDe = new Map();
+  agendaFilas.slice(1).forEach((f, i) => {
+    const id = txt(f[A.ID_BOLT - 1]);
+    if (id) filaDe.set(id, i + 2);
+  });
+
+  const datos = [];
+  const aplicados = [];
+
+  cambios.forEach(c => {
+    const id = txt(c.id);
+    const estado = txt(c.estado);
+    if (!filaDe.has(id)) throw new Error(`El conductor "${id}" no está en la agenda`);
+    if (!ESTADOS_CONDUCTOR.includes(estado)) {
+      throw new Error(`Estado no válido: "${estado}". Debe ser uno de: ${ESTADOS_CONDUCTOR.join(', ')}`);
+    }
+    datos.push({
+      range: `${HOJAS.AGENDA}!${colLetra(A.ESTADO)}${filaDe.get(id)}`,
+      values: [[estado]]
+    });
+    aplicados.push({ id, estado });
+  });
+
+  await writeMany(SPREADSHEET_PLANIFICADOR, datos);
+
+  // El cambio de estado puede haber liberado plazas del planificador: se
+  // recalcula y se guarda para que la hoja quede coherente al momento.
+  const tablero = await leerTablero();
+  if (tablero.esquema.ok) await guardarTablero(tablero);
+
+  let migracion = null;
+  if (aplicados.some(a => a.estado === ESTADO_BAJA_EMPRESA)) {
+    migracion = await migrarBajasEmpresa();
+  }
+
+  return { aplicados, migracion };
+}
+
+/** Lee CONDUCTORES_OUT y devuelve las fichas archivadas. */
+async function leerOut() {
+  const [filas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGO_OUT]);
+  const cabecera = filas[0] || [];
+
+  const fichas = filas.slice(1)
+    .map((f, i) => {
+      const id = txt(f[A.ID_BOLT - 1]);
+      if (!id) return null;
+      return {
+        fila: i + 2,
+        id,
+        nombre: txt(f[A.NOMBRE - 1]),
+        dni: txt(f[A.DNI - 1]),
+        turno: txt(f[A.TURNO - 1]),
+        telefono: txt(f[A.TELEFONO - 1]),
+        estado: txt(f[A.ESTADO - 1]),
+        fechaAlta: txt(f[A.FECHA_ALTA - 1]),
+        fechaBaja: txt(f[COL_FECHA_BAJA - 1]),
+        datos: f
+      };
+    })
+    .filter(Boolean);
+
+  return { cabecera, fichas };
+}
+
+/**
+ * Mueve a CONDUCTORES_OUT a todo el que esté en "Baja Empresa".
+ *
+ * El orden importa y es innegociable: primero se copia, después se comprueba
+ * releyendo que la copia está de verdad, y solo entonces se borra de la agenda.
+ * Si el borrado fuera primero y fallara la copia, se perdería la ficha entera
+ * de alguien que llevas meses rellenando a mano.
+ */
+async function migrarBajasEmpresa() {
+  const crudo = await leerCrudo();
+  if (!crudo.esquema.ok) {
+    throw new Error('El esquema de la hoja no coincide: ' + crudo.esquema.problemas.join(' | '));
+  }
+
+  const candidatos = crudo.agendaFilas.slice(1)
+    .map((f, i) => ({ fila: i + 2, id: txt(f[A.ID_BOLT - 1]), estado: txt(f[A.ESTADO - 1]), datos: f }))
+    .filter(x => x.id && x.estado === ESTADO_BAJA_EMPRESA);
+
+  if (!candidatos.length) return { migrados: [], omitidos: [], msg: 'No hay nadie en Baja Empresa' };
+
+  const out = await leerOut();
+  const yaArchivados = new Set(out.fichas.map(f => f.id));
+
+  const nuevos = candidatos.filter(c => !yaArchivados.has(c.id));
+  const omitidos = candidatos.filter(c => yaArchivados.has(c.id)).map(c => c.id);
+
+  // ---- 1. Copiar ----
+  if (nuevos.length) {
+    const hoy = new Date().toLocaleDateString('es-ES');
+    const filas = nuevos.map(c => {
+      const fila = c.datos.slice(0, A_HEADERS.length);
+      while (fila.length < A_HEADERS.length) fila.push('');
+      fila.push(hoy);
+      return fila;
+    });
+    await appendRows(SPREADSHEET_PLANIFICADOR, `${HOJA_OUT}!A1`, filas);
+
+    // ---- 2. Verificar que la copia está antes de borrar nada ----
+    const comprobacion = await leerOut();
+    const archivadosAhora = new Set(comprobacion.fichas.map(f => f.id));
+    const noLlegaron = nuevos.filter(c => !archivadosAhora.has(c.id)).map(c => c.id);
+    if (noLlegaron.length) {
+      throw new Error(
+        `No se ha podido archivar a ${noLlegaron.join(', ')} en ${HOJA_OUT}. ` +
+        `NO se ha borrado nada de la agenda.`
+      );
+    }
+  }
+
+  // ---- 3. Ahora sí, borrar de la agenda ----
+  const hojas = await getSheetIds(SPREADSHEET_PLANIFICADOR);
+  const idAgenda = hojas[HOJAS.AGENDA];
+  if (idAgenda === undefined) throw new Error(`No se encuentra la hoja ${HOJAS.AGENDA}`);
+
+  await deleteRows(SPREADSHEET_PLANIFICADOR, idAgenda, candidatos.map(c => c.fila));
+
+  return {
+    migrados: nuevos.map(c => ({ id: c.id, nombre: txt(c.datos[A.NOMBRE - 1]) })),
+    omitidos,
+    filasBorradas: candidatos.length
+  };
+}
+
+/**
+ * Devuelve a la agenda a quien estaba archivado.
+ * Vuelve como "Pendiente Asignar" y sin rastro de su asignación anterior:
+ * matrícula, binomio y los siete días se limpian, porque el coche que tenía
+ * hace meses seguramente ya es de otro.
+ */
+async function restaurarDesdeOut(ids) {
+  if (!Array.isArray(ids) || !ids.length) throw new Error('No se ha indicado a quién restaurar');
+
+  const out = await leerOut();
+  const aRestaurar = out.fichas.filter(f => ids.includes(f.id));
+  if (!aRestaurar.length) throw new Error('Ninguno de esos IDs está en ' + HOJA_OUT);
+
+  const [agendaFilas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
+  const yaEnAgenda = new Set(agendaFilas.slice(1).map(f => txt(f[A.ID_BOLT - 1])).filter(Boolean));
+
+  const duplicados = aRestaurar.filter(f => yaEnAgenda.has(f.id)).map(f => f.id);
+  if (duplicados.length) {
+    throw new Error(`${duplicados.join(', ')} ya está en la agenda. No se restaura para no duplicarlo.`);
+  }
+
+  // ---- 1. Copiar de vuelta, ya limpio ----
+  const filas = aRestaurar.map(f => {
+    const fila = f.datos.slice(0, A_HEADERS.length);
+    while (fila.length < A_HEADERS.length) fila.push('');
+    fila[A.ESTADO - 1] = ESTADO_PENDIENTE;
+    fila[A.MATRICULA - 1] = '';
+    fila[A.BINOMIO - 1] = '';
+    ASG_COL.forEach(c => { fila[c - 1] = ''; });
+    return fila;
+  });
+  await appendRows(SPREADSHEET_PLANIFICADOR, `${HOJAS.AGENDA}!A1`, filas);
+
+  // ---- 2. Verificar antes de borrar del archivo ----
+  const [agendaDespues] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
+  const enAgendaAhora = new Set(agendaDespues.slice(1).map(f => txt(f[A.ID_BOLT - 1])).filter(Boolean));
+  const noLlegaron = aRestaurar.filter(f => !enAgendaAhora.has(f.id)).map(f => f.id);
+  if (noLlegaron.length) {
+    throw new Error(
+      `No se ha podido devolver a ${noLlegaron.join(', ')} a la agenda. ` +
+      `NO se ha borrado nada de ${HOJA_OUT}.`
+    );
+  }
+
+  // ---- 3. Quitar del archivo ----
+  const hojas = await getSheetIds(SPREADSHEET_PLANIFICADOR);
+  const idOut = hojas[HOJA_OUT];
+  if (idOut === undefined) throw new Error(`No se encuentra la hoja ${HOJA_OUT}`);
+
+  await deleteRows(SPREADSHEET_PLANIFICADOR, idOut, aRestaurar.map(f => f.fila));
+
+  return { restaurados: aRestaurar.map(f => ({ id: f.id, nombre: f.nombre })) };
+}
+
 module.exports = {
   SPREADSHEET_PLANIFICADOR,
+  HOJA_OUT, RANGO_OUT, ESTADO_BAJA_EMPRESA,
+  leerOut, migrarBajasEmpresa, restaurarDesdeOut, cambiarEstados,
+  ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
   validarEsquema, leerCrudo, leerTablero, guardarTablero,
   aplicarCambios, guardarCambios,

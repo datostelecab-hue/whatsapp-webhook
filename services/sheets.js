@@ -90,4 +90,55 @@ async function writeMany(spreadsheetId, datos) {
   };
 }
 
-module.exports = { readSheet, writeSheet, clearSheet, ensureSheet, readMany, writeMany };
+/** Mapa nombre de hoja → id numérico (necesario para borrar filas). */
+async function getSheetIds(spreadsheetId) {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const mapa = {};
+  (meta.data.sheets || []).forEach(s => {
+    mapa[s.properties.title] = s.properties.sheetId;
+  });
+  return mapa;
+}
+
+/** Añade filas al final de una hoja. */
+async function appendRows(spreadsheetId, range, values) {
+  if (!values.length) return { updatedRows: 0 };
+  const sheets = getSheetsClient();
+  const response = await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values }
+  });
+  return { updatedRows: (response.data.updates || {}).updatedRows || 0 };
+}
+
+/**
+ * Borra filas por número de fila (1-based, como se ven en la hoja).
+ * Se ordenan de mayor a menor: borrar de abajo arriba evita que el borrado de
+ * una fila desplace a las siguientes y se acabe eliminando la equivocada.
+ */
+async function deleteRows(spreadsheetId, sheetId, filas) {
+  if (!filas.length) return { borradas: 0 };
+  const sheets = getSheetsClient();
+  const ordenadas = [...new Set(filas)].sort((a, b) => b - a);
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: ordenadas.map(fila => ({
+        deleteDimension: {
+          range: { sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila }
+        }
+      }))
+    }
+  });
+  return { borradas: ordenadas.length, filas: ordenadas };
+}
+
+module.exports = {
+  readSheet, writeSheet, clearSheet, ensureSheet,
+  readMany, writeMany, getSheetIds, appendRows, deleteRows
+};

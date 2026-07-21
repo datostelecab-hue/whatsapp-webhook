@@ -48,6 +48,7 @@ const boltHoras = require('./routes/boltHoras');
 const dashboardRoutes = require('./routes/dashboard');
 const resumenRoutes = require('./routes/resumen');
 const planificadorRoutes = require('./routes/planificador');
+const agendaRoutes = require('./routes/agenda');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -73,6 +74,7 @@ app.use('/horas', boltHoras);
 app.use('/dashboard', dashboardRoutes);
 app.use('/resumen', resumenRoutes);
 app.use('/planificador', planificadorRoutes);
+app.use('/agenda', agendaRoutes);
 
 // ============================================================
 // CRON

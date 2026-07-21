@@ -1,0 +1,308 @@
+<div class="max-w-[1600px] mx-auto px-4 py-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Agenda</h1>
+      <p id="resumen" class="text-telecab-muted text-sm">—</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="estado-op" class="text-sm text-telecab-muted"></span>
+      <a href="/planificador" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
+        <i class="fa-solid fa-table-cells mr-1"></i> Planificador
+      </a>
+      <button id="btn-recargar" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
+        <i class="fa-solid fa-rotate mr-1"></i> Recargar
+      </button>
+    </div>
+  </div>
+
+  <!-- Pestañas -->
+  <div class="flex gap-1 mb-5 border-b border-telecab-border">
+    <button data-tab="agenda" class="tab px-5 py-2.5 font-medium text-telecab-red border-b-2 border-telecab-red">
+      Conductores <span id="n-agenda" class="text-xs text-telecab-muted"></span>
+    </button>
+    <button data-tab="out" class="tab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
+      Archivo <span id="n-out" class="text-xs"></span>
+    </button>
+  </div>
+
+  <div id="avisos" class="hidden mb-5 rounded-lg border border-amber-600/50 bg-amber-900/20 p-4 text-sm"></div>
+
+  <!-- ══════════ PESTAÑA CONDUCTORES ══════════ -->
+  <section id="panel-agenda">
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <input id="f-buscar" type="search" placeholder="Nombre, ID o matrícula…"
+             class="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+                    text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-red">
+      <select id="f-estado" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+        <option value="">Todos los estados</option>
+      </select>
+      <select id="f-turno" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+        <option value="">Ambos turnos</option>
+        <option>Día</option>
+        <option>Noche</option>
+      </select>
+    </div>
+
+    <div id="cargando" class="text-center py-16 text-telecab-muted">
+      <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i>
+      <p class="mt-3">Leyendo la agenda…</p>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border border-telecab-border">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card text-telecab-muted text-xs uppercase">
+          <tr>
+            <th class="text-left px-3 py-3">Conductor</th>
+            <th class="text-left px-3 py-3">Turno</th>
+            <th class="text-left px-3 py-3">Estado</th>
+            <th class="text-left px-3 py-3">Coche</th>
+            <th class="text-center px-3 py-3" id="cab-dias"></th>
+            <th class="text-left px-3 py-3">Cobertura</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-agenda"></tbody>
+      </table>
+    </div>
+    <p id="sin-resultados" class="hidden text-center py-10 text-telecab-muted">Ningún conductor coincide.</p>
+  </section>
+
+  <!-- ══════════ PESTAÑA ARCHIVO ══════════ -->
+  <section id="panel-out" class="hidden">
+    <p class="text-telecab-muted text-sm mb-4">
+      Bajas de empresa. Al restaurar, la persona vuelve a la agenda como
+      <strong class="text-telecab-text">Pendiente Asignar</strong>, sin la matrícula ni los días que tuviera antes.
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-telecab-border">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card text-telecab-muted text-xs uppercase">
+          <tr>
+            <th class="text-left px-3 py-3">Conductor</th>
+            <th class="text-left px-3 py-3">DNI/NIE</th>
+            <th class="text-left px-3 py-3">Turno</th>
+            <th class="text-left px-3 py-3">Teléfono</th>
+            <th class="text-left px-3 py-3">Fecha de baja</th>
+            <th class="text-right px-3 py-3"></th>
+          </tr>
+        </thead>
+        <tbody id="tabla-out"></tbody>
+      </table>
+    </div>
+    <p id="sin-archivo" class="hidden text-center py-10 text-telecab-muted">No hay nadie archivado.</p>
+  </section>
+</div>
+
+<!-- Los datos del servidor van en un bloque JSON aparte, no interpolados
+     dentro del código: así el editor puede analizarlo como JavaScript normal. -->
+<script type="application/json" id="datos-servidor">
+  <%- JSON.stringify({ estadosConductor: estadosConductor, diasSem: diasSem }) %>
+</script>
+
+<script>
+const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
+const ESTADOS = CFG.estadosConductor;
+const DIAS_SEM = CFG.diasSem;
+
+let DATOS = null;
+let ARCHIVO = null;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const COLOR_ESTADO = {
+  'Activo': 'text-telecab-green',
+  'Pendiente Asignar': 'text-amber-400',
+  'Vacaciones': 'text-sky-400',
+  'Baja Médica': 'text-orange-400',
+  'Suspendido': 'text-telecab-red',
+  'Baja Empresa': 'text-telecab-muted'
+};
+
+function aviso(texto, tipo) {
+  $('#estado-op').textContent = texto;
+  $('#estado-op').className = 'text-sm ' +
+    (tipo === 'error' ? 'text-telecab-red' : tipo === 'ok' ? 'text-telecab-green' : 'text-telecab-muted');
+}
+
+// ════════ Carga ════════
+async function cargar() {
+  $('#cargando').classList.remove('hidden');
+  try {
+    const [rA, rO] = await Promise.all([fetch('/agenda/api/datos'), fetch('/agenda/api/out')]);
+    const dA = await rA.json();
+    const dO = await rO.json();
+    if (!rA.ok) throw new Error(dA.msg);
+    if (!rO.ok) throw new Error(dO.msg);
+    DATOS = dA;
+    ARCHIVO = dO.fichas;
+    pintarTodo();
+  } catch (e) {
+    aviso(e.message, 'error');
+  }
+  $('#cargando').classList.add('hidden');
+}
+
+function pintarTodo() {
+  const r = DATOS.resumen;
+  $('#resumen').textContent = Object.entries(r.porEstado)
+    .map(([e, n]) => `${n} ${e.toLowerCase()}`).join(' · ') || 'sin conductores';
+  $('#n-agenda').textContent = `(${r.total})`;
+  $('#n-out').textContent = `(${ARCHIVO.length})`;
+  $('#cab-dias').innerHTML = DIAS_SEM.map(d => `<span class="inline-block w-10">${esc(d)}</span>`).join('');
+
+  const estados = [...new Set(DATOS.conductores.map(c => c.estadoCalculado))];
+  const actual = $('#f-estado').value;
+  $('#f-estado').innerHTML = '<option value="">Todos los estados</option>' +
+    estados.map(e => `<option ${e === actual ? 'selected' : ''}>${esc(e)}</option>`).join('');
+
+  pintarAvisos();
+  pintarTabla();
+  pintarArchivo();
+}
+
+function pintarAvisos() {
+  const box = $('#avisos');
+  if (!DATOS.avisos.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<strong class="text-amber-400">Revisar:</strong><ul class="mt-2 space-y-1 text-amber-200/90">' +
+    DATOS.avisos.map(a => '<li>· ' + esc(a.msg) + '</li>').join('') + '</ul>';
+}
+
+function pintarTabla() {
+  const texto = $('#f-buscar').value.trim().toLowerCase();
+  const estado = $('#f-estado').value;
+  const turno = $('#f-turno').value;
+
+  const visibles = DATOS.conductores.filter(c => {
+    if (estado && c.estadoCalculado !== estado) return false;
+    if (turno && c.turno !== turno) return false;
+    if (texto && !`${c.nombre} ${c.id} ${c.matricula}`.toLowerCase().includes(texto)) return false;
+    return true;
+  });
+
+  $('#tabla-agenda').innerHTML = visibles.map(c => {
+    const dias = c.asignacion.map(v => {
+      if (v === 'L') return '<span class="inline-block w-10 text-telecab-muted" title="Libra">L</span>';
+      if (!v) return '<span class="inline-block w-10 text-telecab-red" title="Sin asignar">·</span>';
+      return `<span class="inline-block w-10 text-telecab-green" title="${esc(v)}">✓</span>`;
+    }).join('');
+
+    const opciones = ESTADOS
+      .map(e => `<option ${e === c.estadoCalculado ? 'selected' : ''}>${esc(e)}</option>`).join('');
+
+    return `
+    <tr class="border-t border-telecab-border hover:bg-telecab-card/50" data-id="${esc(c.id)}">
+      <td class="px-3 py-2.5">
+        <div class="text-telecab-text font-medium">${esc(c.nombre || c.id)}</div>
+        <div class="text-xs text-telecab-muted">${esc(c.id)}</div>
+      </td>
+      <td class="px-3 py-2.5 text-telecab-muted">${esc(c.turno || '—')}</td>
+      <td class="px-3 py-2.5">
+        <select class="px-2 py-1 rounded bg-telecab-dark border border-telecab-border ${COLOR_ESTADO[c.estadoCalculado] || 'text-telecab-text'}"
+                data-estado>${opciones}</select>
+      </td>
+      <td class="px-3 py-2.5 text-telecab-text">${esc(c.matricula || '—')}</td>
+      <td class="px-3 py-2.5 text-center whitespace-nowrap">${dias}</td>
+      <td class="px-3 py-2.5 text-xs ${c.diasCubiertos === c.diasLaborables ? 'text-telecab-green' : 'text-amber-400'}">
+        ${c.diasCubiertos}/${c.diasLaborables} días
+      </td>
+    </tr>`;
+  }).join('');
+
+  $('#sin-resultados').classList.toggle('hidden', visibles.length > 0);
+}
+
+function pintarArchivo() {
+  $('#tabla-out').innerHTML = ARCHIVO.map(f => `
+    <tr class="border-t border-telecab-border hover:bg-telecab-card/50">
+      <td class="px-3 py-2.5">
+        <div class="text-telecab-text font-medium">${esc(f.nombre || f.id)}</div>
+        <div class="text-xs text-telecab-muted">${esc(f.id)}</div>
+      </td>
+      <td class="px-3 py-2.5 text-telecab-muted">${esc(f.dni || '—')}</td>
+      <td class="px-3 py-2.5 text-telecab-muted">${esc(f.turno || '—')}</td>
+      <td class="px-3 py-2.5 text-telecab-muted">${esc(f.telefono || '—')}</td>
+      <td class="px-3 py-2.5 text-telecab-muted">${esc(f.fechaBaja || '—')}</td>
+      <td class="px-3 py-2.5 text-right">
+        <button data-restaurar="${esc(f.id)}"
+                class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition text-xs">
+          <i class="fa-solid fa-rotate-left mr-1"></i> Restaurar
+        </button>
+      </td>
+    </tr>`).join('');
+  $('#sin-archivo').classList.toggle('hidden', ARCHIVO.length > 0);
+}
+
+// ════════ Cambio de estado ════════
+$('#tabla-agenda').addEventListener('change', async e => {
+  if (!e.target.hasAttribute('data-estado')) return;
+  const id = e.target.closest('tr').dataset.id;
+  const estado = e.target.value;
+
+  if (estado === 'Baja Empresa' &&
+      !confirm(`${id} pasará a Baja Empresa: se archiva en CONDUCTORES_OUT y sale de la agenda.\n\n` +
+               `Se puede recuperar desde la pestaña Archivo. ¿Continuar?`)) {
+    cargar();
+    return;
+  }
+
+  aviso('Guardando…');
+  try {
+    const r = await fetch('/agenda/api/estado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cambios: [{ id, estado }] })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.msg);
+    const n = d.migracion ? d.migracion.migrados.length : 0;
+    aviso(n ? `${id} archivado en CONDUCTORES_OUT` : `${id} → ${estado}`, 'ok');
+    await cargar();
+  } catch (err) {
+    aviso(err.message, 'error');
+    cargar();
+  }
+});
+
+// ════════ Restaurar ════════
+$('#tabla-out').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-restaurar]');
+  if (!btn) return;
+  const id = btn.dataset.restaurar;
+  if (!confirm(`${id} volverá a la agenda como "Pendiente Asignar", sin su coche ni sus días anteriores. ¿Continuar?`)) return;
+
+  btn.disabled = true;
+  aviso('Restaurando…');
+  try {
+    const r = await fetch('/agenda/api/restaurar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [id] })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.msg);
+    aviso(`${id} de vuelta en la agenda`, 'ok');
+    await cargar();
+  } catch (err) {
+    aviso(err.message, 'error');
+    btn.disabled = false;
+  }
+});
+
+// ════════ Pestañas y filtros ════════
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => {
+    const activa = x === t;
+    x.className = 'tab px-5 py-2.5 font-medium border-b-2 ' +
+      (activa ? 'text-telecab-red border-telecab-red' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+  });
+  $('#panel-agenda').classList.toggle('hidden', t.dataset.tab !== 'agenda');
+  $('#panel-out').classList.toggle('hidden', t.dataset.tab !== 'out');
+}));
+
+['#f-buscar', '#f-estado', '#f-turno'].forEach(s => $(s).addEventListener('input', pintarTabla));
+$('#btn-recargar').addEventListener('click', cargar);
+
+cargar();
+</script>

@@ -7,7 +7,8 @@
       <p class="text-telecab-muted text-sm">
         <span id="stat-coches">—</span> coches operativos ·
         <span id="stat-huecos">—</span> turnos libres ·
-        <span id="stat-errores">—</span> con conflicto
+        <span id="stat-errores">—</span> con conflicto ·
+        <span id="stat-disponibles">—</span> pendientes de asignar
       </p>
     </div>
     <div class="flex items-center gap-3">
@@ -139,13 +140,24 @@ function pintarAvisos() {
     TABLERO.avisos.map(a => '<li>· ' + esc(a.msg) + '</li>').join('') + '</ul>';
 }
 
+// Solo se ofrecen los que están Pendiente Asignar y son del turno de la plaza.
+// Un correturno con días libres sigue estando pendiente, así que se le puede
+// repartir entre varios coches; en cuanto cubre toda su semana pasa a Activo y
+// desaparece de las listas.
 function pintarListas() {
   const opciones = turno => TABLERO.conductores
-    .filter(c => c.turno === turno)
-    .map(c => `<option value="${esc(c.id)}">${esc(c.nombre)} — ${esc(c.estadoCalculado)}</option>`)
+    .filter(c => c.turno === turno && c.estadoCalculado === 'Pendiente Asignar')
+    .map(c => {
+      const faltan = c.diasLaborables - c.diasCubiertos;
+      return `<option value="${esc(c.id)}">${esc(c.nombre)} — faltan ${faltan} día${faltan === 1 ? '' : 's'}</option>`;
+    })
     .join('');
   $('#lista-dia').innerHTML = opciones('Día');
   $('#lista-noche').innerHTML = opciones('Noche');
+
+  const nDia = TABLERO.conductores.filter(c => c.turno === 'Día' && c.estadoCalculado === 'Pendiente Asignar').length;
+  const nNoche = TABLERO.conductores.filter(c => c.turno === 'Noche' && c.estadoCalculado === 'Pendiente Asignar').length;
+  $('#stat-disponibles').textContent = `${nDia} día / ${nNoche} noche`;
 }
 
 function pintarFiltros() {
