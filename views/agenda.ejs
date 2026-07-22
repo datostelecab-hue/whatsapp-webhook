@@ -472,9 +472,11 @@ async function initDocumentos() {
     const est = await (await fetch('/documentos/api/estado')).json();
     if (!est.configurado) {
       $('#docs-aviso').classList.remove('hidden');
-      $('#docs-aviso').innerHTML =
-        'El almacén de documentos aún no está configurado. Falta crear una carpeta en Drive, ' +
-        'compartirla con la cuenta de servicio y definir <b>DRIVE_DOCS_FOLDER_ID</b> en Render.';
+      $('#docs-aviso').innerHTML = est.puedeConectar
+        ? 'Drive aún no está conectado. <a href="/documentos/auth" target="_blank" ' +
+          'class="underline font-semibold">Conectar mi cuenta de Google →</a>'
+        : 'El almacén de documentos aún no está configurado: falta crear el cliente OAuth y ' +
+          'definir <b>GOOGLE_OAUTH_CLIENT_ID</b> y <b>GOOGLE_OAUTH_CLIENT_SECRET</b> en Render.';
       $('#docs-lista').innerHTML = '';
       $('#docs-drop').classList.add('opacity-50', 'pointer-events-none');
       return;
