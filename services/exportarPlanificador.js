@@ -15,11 +15,15 @@
 const ExcelJS = require('exceljs');
 const { DIAS_SEM } = require('./planificadorV2');
 
-const NEGRO = 'FF0E1116';
-const DORADO = 'FFE8B84B';
-const DORADO_SUAVE = 'FF3A3020';
-const BORDE = 'FF3A4250';
-const TEXTO = 'FFE6E8EC';
+const AZUL = 'FF1F4E79';        // cabecera principal
+const AZUL_MEDIO = 'FF2E75B6';  // títulos de grupo
+const AMARILLO = 'FFFFFF00';    // turno sin conductor
+const BLANCO = 'FFFFFFFF';
+const NEGRO = 'FF000000';
+const BORDE = 'FF808080';
+
+const relleno = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+const centrado = { vertical: 'middle', horizontal: 'center', wrapText: true };
 
 const COLUMNAS = [
   { cab: 'Nº', ancho: 5 },
@@ -123,12 +127,12 @@ async function exportar(tablero) {
   COLUMNAS.forEach((c, i) => {
     const cel = cab.getCell(i + 1);
     cel.value = c.cab;
-    cel.font = { bold: true, color: { argb: DORADO }, size: 11 };
-    cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NEGRO } };
-    cel.alignment = { vertical: 'middle', horizontal: 'center' };
+    cel.font = { bold: true, color: { argb: BLANCO }, size: 11 };
+    cel.fill = relleno(AZUL);
+    cel.alignment = centrado;
     cel.border = borde();
   });
-  cab.height = 22;
+  cab.height = 24;
 
   const conMatricula = tablero.coches.filter(c => c.matricula);
   const { grupos, sueltos } = agruparPorCorreturno(conMatricula);
@@ -152,11 +156,16 @@ async function exportar(tablero) {
 
     for (let c = 1; c <= 7; c++) {
       const cel = r.getCell(c);
-      cel.alignment = { vertical: 'top', horizontal: c <= 3 ? 'center' : 'left', wrapText: true };
-      cel.font = { color: { argb: TEXTO }, size: 10 };
+      cel.alignment = centrado;
+      cel.font = { color: { argb: NEGRO }, size: 10 };
       cel.border = borde();
+      // Las columnas de turno (fijo día/noche, CT día/noche) sin conductor se
+      // pintan de amarillo para ver de un vistazo las plazas por cubrir.
+      const esTurno = c >= 4;
+      const vacio = !String(cel.value || '').trim();
+      cel.fill = relleno(esTurno && vacio ? AMARILLO : BLANCO);
     }
-    r.getCell(3).font = { bold: true, color: { argb: DORADO }, size: 10 };
+    r.getCell(3).font = { bold: true, color: { argb: NEGRO }, size: 10 };
     fila++;
   };
 
@@ -166,13 +175,7 @@ async function exportar(tablero) {
     const nombresCT = [...grupo.ctIds].map(id => (porId.get(id) || {}).nombre || id).join(' · ');
 
     // Título del grupo (fila combinada A:G)
-    ws.mergeCells(fila, 1, fila, 7);
-    const tz = ws.getRow(fila).getCell(1);
-    tz.value = `CORRETURNO ${numGrupo++}${zona ? ' · ' + zona.toUpperCase() : ''}${nombresCT ? '   —   ' + nombresCT : ''}`;
-    tz.font = { bold: true, color: { argb: DORADO }, size: 11 };
-    tz.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DORADO_SUAVE } };
-    tz.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    ws.getRow(fila).height = 20;
+    escribirTitulo(ws, fila, `CORRETURNO ${numGrupo++}${zona ? ' · ' + zona.toUpperCase() : ''}${nombresCT ? '   —   ' + nombresCT : ''}`);
     fila++;
 
     const filaIni = fila;
@@ -187,18 +190,24 @@ async function exportar(tablero) {
 
   // Coches sin correturno asignado, al final.
   if (sueltos.length) {
-    ws.mergeCells(fila, 1, fila, 7);
-    const tz = ws.getRow(fila).getCell(1);
-    tz.value = 'SIN CORRETURNO ASIGNADO';
-    tz.font = { bold: true, color: { argb: DORADO }, size: 11 };
-    tz.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DORADO_SUAVE } };
-    tz.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    ws.getRow(fila).height = 20;
+    escribirTitulo(ws, fila, 'SIN CORRETURNO ASIGNADO');
     fila++;
     sueltos.forEach(escribirCocheBase);
   }
 
   return wb.xlsx.writeBuffer();
+}
+
+/** Fila-título de grupo: combinada A:G, azul con texto blanco, centrado. */
+function escribirTitulo(ws, fila, texto) {
+  ws.mergeCells(fila, 1, fila, 7);
+  const cel = ws.getRow(fila).getCell(1);
+  cel.value = texto;
+  cel.font = { bold: true, color: { argb: BLANCO }, size: 11 };
+  cel.fill = relleno(AZUL_MEDIO);
+  cel.alignment = centrado;
+  cel.border = borde();
+  ws.getRow(fila).height = 20;
 }
 
 /** Combina en vertical las celdas de una columna con idéntico texto (no vacío). */
@@ -210,7 +219,7 @@ function combinarIguales(ws, col, ini, fin) {
     if (actual !== previo) {
       if (f - 1 > bloqueIni && previo) {
         ws.mergeCells(bloqueIni, col, f - 1, col);
-        ws.getRow(bloqueIni).getCell(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        ws.getRow(bloqueIni).getCell(col).alignment = centrado;
       }
       bloqueIni = f;
     }
