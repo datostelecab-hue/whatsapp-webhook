@@ -793,7 +793,47 @@ function calcularTablero(agendaVals, planVals, bases = []) {
 // LECTURA / ESCRITURA CONTRA LA HOJA
 // ============================================================
 
-const { readMany, writeMany, getSheetIds, appendRows, deleteRows } = require('./sheets');
+const { readMany, writeMany, getSheetIds, deleteRows } = require('./sheets');
+
+/**
+ * Añade filas justo debajo del último registro real de una hoja.
+ *
+ * No se usa values.append de Google porque no busca la última fila con datos,
+ * sino la última que "parece" parte de la tabla: como la agenda se creó con
+ * checkboxes y validaciones en cientos de filas vacías, append las cuenta como
+ * ocupadas y escribe al fondo (fila 1000), dejando un hueco enorme por medio.
+ *
+ * Aquí la última fila se calcula mirando la columna clave (la del ID), que solo
+ * tiene valor donde hay un conductor de verdad, y se escribe en la siguiente.
+ *
+ * @param filasActuales  lo ya leído de la hoja, cabecera incluida
+ * @param colClave       columna 1-based que marca "esta fila tiene un registro"
+ */
+async function anadirDebajo(hoja, filasActuales, colClave, nuevasFilas, anchoFila) {
+  if (!nuevasFilas.length) return { primeraFila: null, filas: 0 };
+
+  // Última fila (1-based) que tiene algo en la columna clave.
+  let ultima = 1;   // al menos la cabecera
+  for (let i = 1; i < filasActuales.length; i++) {
+    if (txt((filasActuales[i] || [])[colClave - 1])) ultima = i + 1;
+  }
+
+  const primeraFila = ultima + 1;
+  const hojaRef = `'${hoja.replace(/'/g, "''")}'`;
+  const colFin = colLetra(anchoFila);
+
+  const datos = nuevasFilas.map((fila, i) => {
+    const completa = fila.slice(0, anchoFila);
+    while (completa.length < anchoFila) completa.push('');
+    return {
+      range: `${hojaRef}!A${primeraFila + i}:${colFin}${primeraFila + i}`,
+      values: [completa]
+    };
+  });
+
+  await writeMany(SPREADSHEET_PLANIFICADOR, datos);
+  return { primeraFila, filas: nuevasFilas.length };
+}
 
 const ULTIMA_FILA_PLAN = PLAN_FILA_INI + N_MAT * FILAS_POR_COCHE - 1;
 
@@ -1172,7 +1212,7 @@ async function crearConductor(datos) {
     fila[CAMPOS_EDITABLES[nombre].col - 1] = validarCampo(nombre, valor);
   });
 
-  await appendRows(SPREADSHEET_PLANIFICADOR, `${HOJAS.AGENDA}!A1`, [fila]);
+  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.ID_BOLT, [fila], A_HEADERS.length);
 
   // Verificar que ha entrado antes de dar el alta por buena
   const [despues] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
@@ -1278,8 +1318,8 @@ async function migrarBajasEmpresa() {
 
   if (!candidatos.length) return { migrados: [], omitidos: [], msg: 'No hay nadie en Baja Empresa' };
 
-  const out = await leerOut();
-  const yaArchivados = new Set(out.fichas.map(f => f.id));
+  const [outFilas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGO_OUT]);
+  const yaArchivados = new Set(outFilas.slice(1).map(f => txt(f[A.ID_BOLT - 1])).filter(Boolean));
 
   const nuevos = candidatos.filter(c => !yaArchivados.has(c.id));
   const omitidos = candidatos.filter(c => yaArchivados.has(c.id)).map(c => c.id);
@@ -1293,7 +1333,7 @@ async function migrarBajasEmpresa() {
       fila.push(hoy);
       return fila;
     });
-    await appendRows(SPREADSHEET_PLANIFICADOR, `${HOJA_OUT}!A1`, filas);
+    await anadirDebajo(HOJA_OUT, outFilas, A.ID_BOLT, filas, A_HEADERS.length + 1);
 
     // ---- 2. Verificar que la copia está antes de borrar nada ----
     const comprobacion = await leerOut();
@@ -1352,7 +1392,7 @@ async function restaurarDesdeOut(ids) {
     ASG_COL.forEach(c => { fila[c - 1] = ''; });
     return fila;
   });
-  await appendRows(SPREADSHEET_PLANIFICADOR, `${HOJAS.AGENDA}!A1`, filas);
+  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.ID_BOLT, filas, A_HEADERS.length);
 
   // ---- 2. Verificar antes de borrar del archivo ----
   const [agendaDespues] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
