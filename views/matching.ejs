@@ -25,14 +25,14 @@
     <div class="flex items-center gap-3">
       <input id="f-buscar" type="search" placeholder="Nombre o ID…"
              class="px-3 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text
-                    placeholder:text-telecab-muted text-sm focus:outline-none focus:border-telecab-red">
+                    placeholder:text-telecab-muted text-sm focus:outline-none focus:border-telecab-gold">
       <select id="f-turno" class="px-3 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm">
         <option value="">Ambos turnos</option>
         <option>Día</option>
         <option>Noche</option>
       </select>
       <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer">
-        <input id="f-encajan" type="checkbox" class="accent-telecab-red" checked> Solo los que encajan
+        <input id="f-encajan" type="checkbox" class="accent-telecab-gold" checked> Solo los que encajan
       </label>
     </div>
   </div>
@@ -119,7 +119,7 @@ function pintarSugerencias() {
         <div>
           <div class="flex items-center justify-between text-sm mb-1.5">
             <span class="${i === 0 ? 'text-telecab-text font-medium' : 'text-telecab-muted'}">
-              ${i === 0 ? '<i class="fa-solid fa-star text-telecab-red mr-1 text-xs"></i>' : ''}
+              ${i === 0 ? '<i class="fa-solid fa-star text-telecab-gold mr-1 text-xs"></i>' : ''}
               ${esc(o.zona)}
             </span>
             <span class="text-xs text-telecab-muted">${o.km} km</span>
@@ -175,7 +175,7 @@ function plazaAsignable(s, pl) {
     <span class="text-xs text-telecab-muted flex-1">${esc(pl.etiqueta)}</span>
     ${campoDias}
     <button data-asignar
-            class="px-2.5 py-1 rounded bg-telecab-red/15 text-telecab-red hover:bg-telecab-red hover:text-white
+            class="px-2.5 py-1 rounded bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold hover:text-telecab-dark
                    transition text-xs font-medium whitespace-nowrap">
       Asignar
     </button>

@@ -6,6 +6,10 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Archivos estáticos (logo, vídeo de marca…). Se cachean un día: son
+// inmutables en la práctica y no tiene sentido volver a pedirlos en cada página.
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '1d' }));
+
 // Configurar EJS con layouts
 app.use(expressLayouts);
 app.set('view engine', 'ejs');

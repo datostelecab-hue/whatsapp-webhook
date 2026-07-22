@@ -11,7 +11,7 @@
   </div>
 
   <div class="flex gap-1 mb-5 border-b border-telecab-border overflow-x-auto">
-    <button data-tab="dias" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-red border-b-2 border-telecab-red">
+    <button data-tab="dias" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">
       Por día
     </button>
     <button data-tab="relevos" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
@@ -34,7 +34,7 @@
   <section id="panel-relevos" class="hidden">
     <input id="f-coche" type="search" placeholder="Matrícula, zona o conductor…"
            class="w-full max-w-md mb-4 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
-                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-red">
+                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
     <div id="lista-coches" class="grid gap-3 xl:grid-cols-2"></div>
   </section>
 
@@ -42,7 +42,7 @@
   <section id="panel-personas" class="hidden">
     <input id="f-persona" type="search" placeholder="Nombre o ID del conductor…"
            class="w-full max-w-md mb-4 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
-                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-red">
+                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
     <div id="lista-personas" class="grid gap-3 lg:grid-cols-2"></div>
   </section>
 </div>
@@ -214,7 +214,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   document.querySelectorAll('.tab').forEach(x => {
     const activa = x === t;
     x.className = 'tab whitespace-nowrap px-5 py-2.5 font-medium border-b-2 ' +
-      (activa ? 'text-telecab-red border-telecab-red' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+      (activa ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
   });
   ['dias', 'relevos', 'personas'].forEach(p =>
     $('#panel-' + p).classList.toggle('hidden', t.dataset.tab !== p));

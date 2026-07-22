@@ -10,7 +10,7 @@
       <a href="/planificador" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
         <i class="fa-solid fa-table-cells mr-1"></i> Planificador
       </a>
-      <button id="btn-nuevo" class="px-4 py-2 rounded-lg bg-telecab-red hover:bg-telecab-red-hover text-white font-semibold transition">
+      <button id="btn-nuevo" class="px-4 py-2 rounded-lg bg-telecab-gold hover:bg-telecab-gold-soft text-telecab-dark font-semibold transition">
         <i class="fa-solid fa-user-plus mr-1"></i> Nuevo conductor
       </button>
       <button id="btn-recargar" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
@@ -21,7 +21,7 @@
 
   <!-- Pestañas -->
   <div class="flex gap-1 mb-5 border-b border-telecab-border">
-    <button data-tab="agenda" class="tab px-5 py-2.5 font-medium text-telecab-red border-b-2 border-telecab-red">
+    <button data-tab="agenda" class="tab px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">
       Conductores <span id="n-agenda" class="text-xs text-telecab-muted"></span>
     </button>
     <button data-tab="out" class="tab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
@@ -36,7 +36,7 @@
     <div class="flex flex-wrap items-center gap-3 mb-4">
       <input id="f-buscar" type="search" placeholder="Nombre, ID o matrícula…"
              class="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
-                    text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-red">
+                    text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
       <select id="f-estado" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
         <option value="">Todos los estados</option>
       </select>
@@ -109,7 +109,7 @@
       <div id="ficha-campos" class="space-y-4"></div>
       <div class="flex gap-3 pt-2">
         <button id="ficha-guardar"
-                class="flex-1 px-4 py-2.5 rounded-lg bg-telecab-red hover:bg-telecab-red-hover text-white font-semibold transition">
+                class="flex-1 px-4 py-2.5 rounded-lg bg-telecab-gold hover:bg-telecab-gold-soft text-telecab-dark font-semibold transition">
           Guardar
         </button>
         <button id="ficha-cancelar"
@@ -277,7 +277,7 @@ function pintarArchivo() {
 function libranza(c) {
   return c.libra.map((v, d) => `
     <label class="inline-block w-8" title="${esc(DIAS_SEM[d])}">
-      <input type="checkbox" ${v ? 'checked' : ''} class="accent-telecab-red cursor-pointer"
+      <input type="checkbox" ${v ? 'checked' : ''} class="accent-telecab-gold cursor-pointer"
              data-libranza="${d}">
     </label>`).join('');
 }
@@ -367,7 +367,7 @@ function abrirFicha(id) {
       <div class="flex gap-2">
         ${DIAS_SEM.map((d, i) => `
           <label class="flex-1 text-center cursor-pointer">
-            <input type="checkbox" data-campo="${CAMPOS_LIB[i]}" class="accent-telecab-red"
+            <input type="checkbox" data-campo="${CAMPOS_LIB[i]}" class="accent-telecab-gold"
                    ${(c.libra || [])[i] ? 'checked' : ''}>
             <div class="text-xs text-telecab-muted mt-1">${esc(d)}</div>
           </label>`).join('')}
@@ -385,7 +385,7 @@ function campoFicha(f, valor) {
 
   if (f.tipo === 'bool') {
     return `<label class="flex items-center gap-2 cursor-pointer">
-      <input type="checkbox" data-campo="${f.k}" class="accent-telecab-red" ${valor ? 'checked' : ''}>
+      <input type="checkbox" data-campo="${f.k}" class="accent-telecab-gold" ${valor ? 'checked' : ''}>
       <span class="text-sm text-telecab-text">${esc(f.etq)}</span></label>`;
   }
   if (f.tipo === 'lista') {
@@ -515,7 +515,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   document.querySelectorAll('.tab').forEach(x => {
     const activa = x === t;
     x.className = 'tab px-5 py-2.5 font-medium border-b-2 ' +
-      (activa ? 'text-telecab-red border-telecab-red' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+      (activa ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
   });
   $('#panel-agenda').classList.toggle('hidden', t.dataset.tab !== 'agenda');
   $('#panel-out').classList.toggle('hidden', t.dataset.tab !== 'out');
