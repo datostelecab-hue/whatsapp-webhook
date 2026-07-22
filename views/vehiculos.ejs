@@ -1,0 +1,397 @@
+<%
+  // Leyenda de estados de vehículo (mismo criterio que el planificador)
+  const LEYENDA = {
+    '✓': 'Operativo', 'S': 'Siniestro', 'T': 'Transporte',
+    'X': 'En taller', 'R': 'Reservado', 'B': 'Baja'
+  };
+%>
+
+<div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
+
+  <!-- Encabezado + acciones -->
+  <div class="flex flex-wrap items-center gap-3 mb-5">
+    <div>
+      <h2 class="text-xl font-bold flex items-center gap-2">
+        <i class="fa-solid fa-car-side text-telecab-gold"></i> Flota
+      </h2>
+      <p class="text-sm text-telecab-muted mt-0.5" id="v-resumen">Cargando…</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
+        <input id="v-buscar" placeholder="Buscar matrícula, modelo…"
+               class="pl-8 pr-3 py-2 w-48 sm:w-64 bg-telecab-card border border-telecab-border rounded-xl text-sm
+                      focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
+      </div>
+      <button id="v-nuevo"
+              class="flex items-center gap-2 px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm
+                     hover:bg-telecab-gold-soft transition shadow-gold">
+        <i class="fa-solid fa-plus"></i> Nuevo vehículo
+      </button>
+    </div>
+  </div>
+
+  <!-- Tarjetas resumen -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" id="v-kpis"></div>
+
+  <!-- Aviso: matrículas del planificador sin ficha -->
+  <div id="v-sinficha" class="hidden mb-5 rounded-xl border border-telecab-gold/30 bg-telecab-gold/5 p-4"></div>
+
+  <!-- Filtro por estado -->
+  <div class="flex flex-wrap gap-2 mb-4" id="v-filtros"></div>
+
+  <!-- Tabla -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
+          <tr>
+            <th class="text-left font-semibold px-4 py-3">Matrícula</th>
+            <th class="text-left font-semibold px-4 py-3">Modelo</th>
+            <th class="text-left font-semibold px-4 py-3">Estado</th>
+            <th class="text-left font-semibold px-4 py-3">ITV</th>
+            <th class="text-left font-semibold px-4 py-3">Seguro</th>
+            <th class="text-left font-semibold px-4 py-3">Zona</th>
+            <th class="text-left font-semibold px-4 py-3">Plan.</th>
+            <th class="text-right font-semibold px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody id="v-tbody" class="divide-y divide-telecab-border/60"></tbody>
+      </table>
+    </div>
+    <div id="v-vacio" class="hidden p-10 text-center text-telecab-muted">
+      <i class="fa-solid fa-car-side text-3xl mb-2 opacity-40"></i>
+      <p>No hay vehículos que coincidan.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL FICHA ══════════ -->
+<div id="ficha" class="hidden fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-lg my-8">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
+      <h3 id="ficha-titulo" class="font-bold text-lg">Vehículo</h3>
+      <button id="ficha-cerrar" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted transition">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <form id="ficha-form" class="p-5 space-y-4">
+      <input type="hidden" id="f-fila">
+      <div class="grid grid-cols-2 gap-4">
+        <div class="col-span-2 sm:col-span-1">
+          <label class="block text-xs text-telecab-muted mb-1">Matrícula *</label>
+          <input id="f-matricula" required
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm uppercase
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div class="col-span-2 sm:col-span-1">
+          <label class="block text-xs text-telecab-muted mb-1">Estado</label>
+          <select id="f-estado"
+                  class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                         focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+            <option value="">—</option>
+            <% estadosVehiculo.forEach(e => { %>
+              <option value="<%= e %>"><%= e %> · <%= LEYENDA[e] || e %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="col-span-2">
+          <label class="block text-xs text-telecab-muted mb-1">Marca y modelo</label>
+          <input id="f-marcaModelo" placeholder="Ej. Toyota Corolla"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Año</label>
+          <input id="f-anio" inputmode="numeric" placeholder="2022"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Fecha matriculación</label>
+          <input id="f-matriculacion" placeholder="dd/mm/aaaa"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">ITV (vence)</label>
+          <input id="f-itv" placeholder="dd/mm/aaaa"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Km</label>
+          <input id="f-km" inputmode="numeric" placeholder="0"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Aseguradora</label>
+          <input id="f-aseguradora" placeholder="Ej. Mapfre"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Seguro (vence)</label>
+          <input id="f-venceSeguro" placeholder="dd/mm/aaaa"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div class="col-span-2">
+          <label class="block text-xs text-telecab-muted mb-1">Zona / base</label>
+          <input id="f-zona" list="zonas-list" placeholder="Zona de la flota"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+          <datalist id="zonas-list">
+            <% (zonas || []).forEach(z => { %><option value="<%= z %>"></option><% }) %>
+          </datalist>
+        </div>
+        <div class="col-span-2">
+          <label class="block text-xs text-telecab-muted mb-1">Notas</label>
+          <textarea id="f-notas" rows="2"
+                    class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm resize-none
+                           focus:outline-none focus:ring-2 focus:ring-telecab-gold/40"></textarea>
+        </div>
+      </div>
+
+      <p id="ficha-error" class="hidden text-sm text-telecab-red"></p>
+
+      <div class="flex items-center gap-2 pt-1">
+        <button type="button" id="ficha-borrar"
+                class="hidden mr-auto px-3 py-2 rounded-lg text-telecab-red hover:bg-telecab-red/10 transition text-sm">
+          <i class="fa-solid fa-trash"></i> Borrar
+        </button>
+        <button type="button" id="ficha-cancelar"
+                class="px-4 py-2 rounded-lg border border-telecab-border hover:bg-telecab-card2 transition text-sm">
+          Cancelar
+        </button>
+        <button type="submit" id="ficha-guardar"
+                class="px-4 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold hover:bg-telecab-gold-soft transition text-sm">
+          Guardar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const LEYENDA = <%- JSON.stringify(LEYENDA) %>;
+const $ = s => document.querySelector(s);
+let VEHICULOS = [], SINFICHA = [], filtroEstado = '', textoBusqueda = '';
+
+const badge = (txt, cls) =>
+  `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${cls}">${txt}</span>`;
+
+// Color del chip de estado del vehículo
+function chipEstado(e) {
+  const map = {
+    '✓': 'bg-telecab-green/15 text-telecab-green',
+    'X': 'bg-telecab-red/15 text-telecab-red',
+    'S': 'bg-telecab-red/15 text-telecab-red',
+    'B': 'bg-telecab-muted/20 text-telecab-muted',
+    'T': 'bg-telecab-gold/15 text-telecab-gold',
+    'R': 'bg-telecab-gold/15 text-telecab-gold'
+  };
+  if (!e) return badge('—', 'bg-telecab-muted/20 text-telecab-muted');
+  return badge(`${e} · ${LEYENDA[e] || ''}`, map[e] || 'bg-telecab-card2 text-telecab-text');
+}
+
+// Celda de una fecha de vencimiento (ITV / seguro) con color según urgencia
+function celdaVencimiento(valor, estado) {
+  if (!valor) return `<span class="text-telecab-muted">—</span>`;
+  const clases = {
+    vencido: 'text-telecab-red font-semibold',
+    proximo: 'text-telecab-gold font-semibold',
+    ok: 'text-telecab-text'
+  };
+  const icono = estado === 'vencido' ? '<i class="fa-solid fa-triangle-exclamation mr-1"></i>'
+              : estado === 'proximo' ? '<i class="fa-solid fa-clock mr-1"></i>' : '';
+  return `<span class="${clases[estado] || 'text-telecab-text'}">${icono}${valor}</span>`;
+}
+
+function pintarKpis() {
+  const total = VEHICULOS.length;
+  const operativos = VEHICULOS.filter(v => v.estado === '✓').length;
+  const taller = VEHICULOS.filter(v => v.estado === 'X' || v.estado === 'S').length;
+  const alertas = VEHICULOS.filter(v => v.itvEstado === 'vencido' || v.itvEstado === 'proximo'
+                                     || v.seguroEstado === 'vencido' || v.seguroEstado === 'proximo').length;
+  const kpi = (n, txt, cls) => `
+    <div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
+      <div class="text-2xl font-bold ${cls}">${n}</div>
+      <div class="text-xs text-telecab-muted mt-0.5">${txt}</div>
+    </div>`;
+  $('#v-kpis').innerHTML =
+    kpi(total, 'Vehículos', 'text-telecab-text') +
+    kpi(operativos, 'Operativos', 'text-telecab-green') +
+    kpi(taller, 'Taller / siniestro', 'text-telecab-red') +
+    kpi(alertas, 'ITV/seguro por vencer', 'text-telecab-gold');
+}
+
+function pintarFiltros() {
+  const estados = ['', '✓', 'X', 'S', 'T', 'R', 'B'];
+  $('#v-filtros').innerHTML = estados.map(e => {
+    const on = filtroEstado === e;
+    const txt = e === '' ? 'Todos' : `${e} · ${LEYENDA[e] || ''}`;
+    return `<button data-estado="${e}"
+      class="px-3 py-1.5 rounded-lg text-xs font-medium transition border
+             ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+                  : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${txt}</button>`;
+  }).join('');
+  $('#v-filtros').querySelectorAll('button').forEach(b =>
+    b.onclick = () => { filtroEstado = b.dataset.estado; pintar(); });
+}
+
+function pintarSinFicha() {
+  const box = $('#v-sinficha');
+  if (!SINFICHA.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `
+    <div class="flex items-start gap-3">
+      <i class="fa-solid fa-circle-info text-telecab-gold mt-0.5"></i>
+      <div class="text-sm">
+        <p class="font-semibold text-telecab-gold mb-1">${SINFICHA.length} matrícula(s) en el planificador sin ficha de vehículo</p>
+        <p class="text-telecab-muted mb-2">Créales una ficha para llevar su ITV, seguro y estado.</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${SINFICHA.map(m => `<button data-mat="${m}"
+             class="px-2 py-1 rounded-md bg-telecab-card2 border border-telecab-border text-xs
+                    hover:border-telecab-gold/50 transition">${m} <i class="fa-solid fa-plus text-[10px] ml-0.5"></i></button>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  box.querySelectorAll('button[data-mat]').forEach(b =>
+    b.onclick = () => abrirFicha(null, b.dataset.mat));
+}
+
+function pintar() {
+  const t = textoBusqueda.toLowerCase();
+  const lista = VEHICULOS.filter(v => {
+    if (filtroEstado && v.estado !== filtroEstado) return false;
+    if (t && !(`${v.matricula} ${v.marcaModelo} ${v.zona} ${v.aseguradora}`.toLowerCase().includes(t))) return false;
+    return true;
+  });
+
+  $('#v-vacio').classList.toggle('hidden', lista.length > 0);
+  $('#v-tbody').innerHTML = lista.map(v => `
+    <tr class="hover:bg-telecab-card2/50 transition cursor-pointer" data-fila="${v.fila}">
+      <td class="px-4 py-3 font-semibold">${v.matricula}</td>
+      <td class="px-4 py-3 text-telecab-muted">${v.marcaModelo || '—'}${v.anio ? ` <span class="text-xs">(${v.anio})</span>` : ''}</td>
+      <td class="px-4 py-3">${chipEstado(v.estado)}</td>
+      <td class="px-4 py-3">${celdaVencimiento(v.itv, v.itvEstado)}</td>
+      <td class="px-4 py-3">${celdaVencimiento(v.venceSeguro, v.seguroEstado)}</td>
+      <td class="px-4 py-3 text-telecab-muted">${v.zona || '—'}</td>
+      <td class="px-4 py-3">${v.enPlanificador
+          ? badge('En uso', 'bg-telecab-green/15 text-telecab-green')
+          : badge('No', 'bg-telecab-muted/15 text-telecab-muted')}</td>
+      <td class="px-4 py-3 text-right"><i class="fa-solid fa-pen text-telecab-muted text-xs"></i></td>
+    </tr>`).join('');
+
+  $('#v-tbody').querySelectorAll('tr').forEach(tr =>
+    tr.onclick = () => abrirFicha(VEHICULOS.find(v => v.fila == tr.dataset.fila)));
+}
+
+// ---------- Modal ----------
+function abrirFicha(v, matriculaNueva) {
+  $('#ficha-error').classList.add('hidden');
+  $('#f-fila').value = v ? v.fila : '';
+  $('#f-matricula').value = v ? v.matricula : (matriculaNueva || '');
+  $('#f-matricula').disabled = !!v;   // la matrícula no se cambia en edición
+  $('#f-estado').value = v ? v.estado : '';
+  $('#f-marcaModelo').value = v ? v.marcaModelo : '';
+  $('#f-anio').value = v ? v.anio : '';
+  $('#f-matriculacion').value = v ? v.matriculacion : '';
+  $('#f-itv').value = v ? v.itv : '';
+  $('#f-km').value = v ? v.km : '';
+  $('#f-aseguradora').value = v ? v.aseguradora : '';
+  $('#f-venceSeguro').value = v ? v.venceSeguro : '';
+  $('#f-zona').value = v ? v.zona : '';
+  $('#f-notas').value = v ? v.notas : '';
+  $('#ficha-titulo').textContent = v ? `Vehículo ${v.matricula}` : 'Nuevo vehículo';
+  $('#ficha-borrar').classList.toggle('hidden', !v);
+  $('#ficha').classList.remove('hidden');
+}
+function cerrarFicha() { $('#ficha').classList.add('hidden'); }
+
+async function guardar(e) {
+  e.preventDefault();
+  const btn = $('#ficha-guardar');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  $('#ficha-error').classList.add('hidden');
+  const fila = $('#f-fila').value;
+  const campos = {
+    estado: $('#f-estado').value, marcaModelo: $('#f-marcaModelo').value,
+    anio: $('#f-anio').value, matriculacion: $('#f-matriculacion').value,
+    itv: $('#f-itv').value, km: $('#f-km').value,
+    aseguradora: $('#f-aseguradora').value, venceSeguro: $('#f-venceSeguro').value,
+    zona: $('#f-zona').value, notas: $('#f-notas').value
+  };
+  try {
+    let r;
+    if (fila) {
+      r = await fetch('/vehiculos/api/vehiculo', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fila: Number(fila), campos })
+      });
+    } else {
+      r = await fetch('/vehiculos/api/vehiculo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matricula: $('#f-matricula').value, ...campos })
+      });
+    }
+    const data = await r.json();
+    if (data.status !== 'ok') throw new Error(data.msg || 'Error al guardar');
+    cerrarFicha();
+    await cargar();
+  } catch (err) {
+    $('#ficha-error').textContent = err.message;
+    $('#ficha-error').classList.remove('hidden');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar';
+  }
+}
+
+async function borrar() {
+  const fila = $('#f-fila').value;
+  if (!fila) return;
+  if (!confirm(`¿Borrar la ficha del vehículo ${$('#f-matricula').value}? Esta acción elimina la fila de la hoja.`)) return;
+  const btn = $('#ficha-borrar');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/vehiculos/api/vehiculo/' + fila, { method: 'DELETE' });
+    const data = await r.json();
+    if (data.status !== 'ok') throw new Error(data.msg || 'Error al borrar');
+    cerrarFicha();
+    await cargar();
+  } catch (err) {
+    $('#ficha-error').textContent = err.message;
+    $('#ficha-error').classList.remove('hidden');
+  } finally { btn.disabled = false; }
+}
+
+async function cargar() {
+  try {
+    const r = await fetch('/vehiculos/api/datos');
+    const data = await r.json();
+    if (data.status === 'error') throw new Error(data.msg);
+    VEHICULOS = data.vehiculos || [];
+    SINFICHA = data.sinFicha || [];
+    $('#v-resumen').textContent = `${VEHICULOS.length} vehículo(s) en la flota`;
+    pintarKpis(); pintarFiltros(); pintarSinFicha(); pintar();
+  } catch (err) {
+    $('#v-resumen').textContent = 'Error al cargar: ' + err.message;
+  }
+}
+
+// Listeners
+$('#v-nuevo').onclick = () => abrirFicha(null);
+$('#ficha-cerrar').onclick = cerrarFicha;
+$('#ficha-cancelar').onclick = cerrarFicha;
+$('#ficha-borrar').onclick = borrar;
+$('#ficha-form').onsubmit = guardar;
+$('#v-buscar').oninput = e => { textoBusqueda = e.target.value; pintar(); };
+// A propósito NO se cierra al hacer clic fuera: se perderían los datos a medio
+// rellenar. Solo cierran la X, Cancelar, Escape o un guardado correcto.
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarFicha(); });
+
+cargar();
+</script>

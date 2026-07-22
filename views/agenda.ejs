@@ -438,8 +438,133 @@ function abrirFicha(fila) {
       <p class="text-xs text-telecab-muted mt-2">Los días marcados son los que NO trabaja.</p>
     </div>`;
 
-  $('#ficha-campos').innerHTML = campoId + grupos + libra;
+  // Documentación en Drive: solo para conductores ya existentes (necesitamos
+  // una clave estable para su carpeta: ID de Bolt, DNI o, en su defecto, nombre).
+  const claveDocs = fila ? (c.idBolt || c.dni || c.nombre || '') : '';
+  const docs = fila ? `
+    <div id="docs-seccion" data-clave="${esc(claveDocs)}">
+      <h3 class="text-xs uppercase tracking-wide text-telecab-muted mb-2">Documentación</h3>
+      <div id="docs-aviso" class="hidden rounded-lg border border-telecab-gold/40 bg-telecab-gold/5 px-3 py-2 text-xs text-telecab-gold mb-2"></div>
+      <div id="docs-lista" class="space-y-2 mb-3 text-sm text-telecab-muted">Cargando…</div>
+      <label id="docs-drop"
+             class="flex items-center justify-center gap-2 px-3 py-4 rounded-lg border border-dashed border-telecab-border
+                    text-sm text-telecab-muted cursor-pointer hover:border-telecab-gold/50 hover:text-telecab-text transition">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+        <span>Subir documentos (DNI, carnet, permiso…)</span>
+        <input type="file" id="docs-input" class="hidden" multiple>
+      </label>
+      <p id="docs-estado" class="hidden text-xs text-telecab-muted mt-1"></p>
+    </div>` : '';
+
+  $('#ficha-campos').innerHTML = campoId + grupos + libra + docs;
   $('#ficha').classList.remove('hidden');
+  if (fila) initDocumentos();
+}
+
+// ---------- Documentación (Google Drive) ----------
+async function initDocumentos() {
+  const clave = $('#docs-seccion')?.dataset.clave;
+  if (!clave) {
+    $('#docs-lista').textContent = 'Este conductor no tiene aún un identificador (ID de Bolt / DNI) para guardar documentos.';
+    return;
+  }
+  try {
+    const est = await (await fetch('/documentos/api/estado')).json();
+    if (!est.configurado) {
+      $('#docs-aviso').classList.remove('hidden');
+      $('#docs-aviso').innerHTML =
+        'El almacén de documentos aún no está configurado. Falta crear una carpeta en Drive, ' +
+        'compartirla con la cuenta de servicio y definir <b>DRIVE_DOCS_FOLDER_ID</b> en Render.';
+      $('#docs-lista').innerHTML = '';
+      $('#docs-drop').classList.add('opacity-50', 'pointer-events-none');
+      return;
+    }
+  } catch (e) { /* si falla el chequeo, se intenta igual */ }
+
+  $('#docs-input').addEventListener('change', e => subirDocumentos(e.target.files, clave));
+  await cargarDocumentos(clave);
+}
+
+function iconoDoc(mime) {
+  if (/pdf/.test(mime)) return 'fa-file-pdf';
+  if (/image/.test(mime)) return 'fa-file-image';
+  if (/word|document/.test(mime)) return 'fa-file-word';
+  if (/sheet|excel/.test(mime)) return 'fa-file-excel';
+  return 'fa-file';
+}
+function tamano(bytes) {
+  if (!bytes) return '';
+  const kb = bytes / 1024;
+  return kb < 1024 ? `${Math.round(kb)} KB` : `${(kb / 1024).toFixed(1)} MB`;
+}
+
+async function cargarDocumentos(clave) {
+  const cont = $('#docs-lista');
+  cont.textContent = 'Cargando…';
+  try {
+    const r = await (await fetch('/documentos/api/lista?clave=' + encodeURIComponent(clave))).json();
+    if (r.status !== 'ok') throw new Error(r.msg);
+    if (!r.archivos.length) { cont.innerHTML = '<p class="text-xs text-telecab-muted">Sin documentos todavía.</p>'; return; }
+    cont.innerHTML = r.archivos.map(a => `
+      <div class="flex items-center gap-2 rounded-lg bg-telecab-card border border-telecab-border px-3 py-2">
+        <i class="fa-solid ${iconoDoc(a.mimeType)} text-telecab-gold"></i>
+        <a href="${esc(a.webViewLink || '#')}" target="_blank" rel="noopener"
+           class="flex-1 text-sm text-telecab-text hover:text-telecab-gold truncate">${esc(a.name)}</a>
+        <span class="text-xs text-telecab-muted">${tamano(a.size)}</span>
+        <button type="button" data-id="${esc(a.id)}" title="Borrar"
+                class="doc-borrar text-telecab-muted hover:text-telecab-red px-1"><i class="fa-solid fa-trash text-xs"></i></button>
+      </div>`).join('');
+    cont.querySelectorAll('.doc-borrar').forEach(b =>
+      b.addEventListener('click', () => borrarDocumento(b.dataset.id, clave)));
+  } catch (e) {
+    cont.innerHTML = `<p class="text-xs text-telecab-red">Error al cargar: ${esc(e.message)}</p>`;
+  }
+}
+
+function leerBase64(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(',')[1]);   // quita el prefijo data:
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+async function subirDocumentos(fileList, clave) {
+  const files = [...(fileList || [])];
+  if (!files.length) return;
+  const estado = $('#docs-estado');
+  estado.classList.remove('hidden');
+  let n = 0;
+  for (const file of files) {
+    n++;
+    estado.textContent = `Subiendo ${n}/${files.length}: ${file.name}…`;
+    try {
+      const base64 = await leerBase64(file);
+      const r = await (await fetch('/documentos/api/subir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave, nombre: file.name, mime: file.type, base64 })
+      })).json();
+      if (r.status !== 'ok') throw new Error(r.msg);
+    } catch (e) {
+      estado.textContent = `Error con ${file.name}: ${e.message}`;
+      await new Promise(res => setTimeout(res, 2500));
+    }
+  }
+  estado.classList.add('hidden');
+  $('#docs-input').value = '';
+  await cargarDocumentos(clave);
+}
+
+async function borrarDocumento(id, clave) {
+  if (!confirm('¿Borrar este documento de Drive? No se puede deshacer.')) return;
+  try {
+    const r = await (await fetch('/documentos/api/archivo/' + id, { method: 'DELETE' })).json();
+    if (r.status !== 'ok') throw new Error(r.msg);
+    await cargarDocumentos(clave);
+  } catch (e) {
+    alert('No se pudo borrar: ' + e.message);
+  }
 }
 
 function campoFicha(f, valor) {
@@ -491,7 +616,8 @@ $('#tabla-agenda').addEventListener('click', e => {
 $('#btn-nuevo').addEventListener('click', () => abrirFicha(null));
 $('#ficha-cerrar').addEventListener('click', cerrarFicha);
 $('#ficha-cancelar').addEventListener('click', cerrarFicha);
-$('#ficha').addEventListener('click', e => { if (e.target.id === 'ficha') cerrarFicha(); });
+// A propósito NO se cierra al hacer clic fuera: se perdían los datos a medio
+// rellenar. Solo cierran la X, Cancelar o un guardado correcto.
 
 // Geocodificar desde la ficha: coge la dirección y el CP escritos.
 $('#ficha-campos').addEventListener('click', async e => {
