@@ -122,6 +122,24 @@ router.get('/', (req, res) => {
   });
 });
 
+/** Descarga el planificador en el formato ANEXO (.xlsx), agrupado por zona. */
+router.get('/descargar', async (req, res) => {
+  try {
+    const { exportar } = require('../services/exportarPlanificador');
+    const tablero = await leerTablero();
+    const buffer = await exportar(tablero);
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Planificador ${hoy}.xlsx"`);
+    res.send(Buffer.from(buffer));
+    console.log(`📤 [PLANIFICADOR] Descarga generada (${tablero.coches.filter(c => c.matricula).length} coches)`);
+  } catch (error) {
+    console.error('❌ [PLANIFICADOR] /descargar:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
 /**
  * Guarda los cambios de la interfaz.
  * Relee la hoja, aplica encima solo lo que cambió el usuario, recalcula y

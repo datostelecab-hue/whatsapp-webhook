@@ -72,6 +72,7 @@ const SLOTS = [
 const DIAS_SEM = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const LETRAS_DIA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const TURNOS = ['Día', 'Noche'];
+const CONTRATOS = ['32h', '40h', '32h ETT', '40h ETT'];
 
 const ESTADOS_CONDUCTOR = ['Activo', 'Pendiente Asignar', 'Vacaciones', 'Baja Médica', 'Baja Empresa', 'Suspendido'];
 const ESTADOS_ESPECIALES = ['Vacaciones', 'Baja Médica', 'Baja Empresa', 'Suspendido'];
@@ -191,20 +192,27 @@ const txt = v => String(v == null ? '' : v).trim();
  * @returns tablero resuelto: coches, conductores, avisos y resumen
  */
 function calcularTablero(agendaVals, planVals, bases = []) {
-  // ---- 1. Índice de conductores por ID ----
+  // ---- 1. Índice de conductores ----
+  // porId indexa solo a los que tienen ID de Bolt: son los únicos que se pueden
+  // vincular con el planificador. `conductores` incluye a TODOS los que tengan
+  // nombre, aunque aún no tengan ID de Bolt, para que aparezcan en la agenda y
+  // se les puedan completar los datos.
   const porId = new Map();
   const conductores = [];
 
   agendaVals.forEach((v, idx) => {
-    const id = txt(v[A.ID_BOLT - 1]);
-    if (!id) return;
+    const idBolt = txt(v[A.ID_BOLT - 1]);
+    const nombre = txt(v[A.NOMBRE - 1]);
+    // Fila realmente vacía: ni ID ni nombre. Se ignora.
+    if (!idBolt && !nombre) return;
 
     const libra = LIB_COL.map(c => esCheck(v[c - 1]));
     const info = {
       fila: idx + 2,                     // fila real en la hoja
-      id,
+      idBolt,
+      id: idBolt,                        // el planificador enlaza por este campo
       activo: esCheck(v[A.ACTIVO - 1]),
-      nombre: txt(v[A.NOMBRE - 1]),
+      nombre,
       dni: txt(v[A.DNI - 1]),
       naf: txt(v[A.NAF - 1]),
       fechaAlta: txt(v[A.FECHA_ALTA - 1]),
@@ -222,7 +230,7 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       libra,
       trabaja: libra.map(l => !l)
     };
-    porId.set(id, info);
+    if (idBolt) porId.set(idBolt, info);
     conductores.push(info);
   });
 
@@ -555,10 +563,24 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     info.diasCubiertos = cubiertos;
     info.estadoCalculado = info.estado;
 
-    if (!especial && laborables > 0) {
+    // El estado solo se recalcula si el conductor es planificable. Sin ID de
+    // Bolt no entra al planificador, así que su estado (lo que haya en la hoja,
+    // normalmente "Pendiente Asignar") se respeta tal cual.
+    if (info.idBolt && !especial && laborables > 0) {
       info.estadoCalculado = cubiertos === laborables ? ESTADO_ACTIVO : ESTADO_PENDIENTE;
     }
     info.estadoCambia = info.estadoCalculado !== info.estado;
+
+    // Qué le falta para poder trabajar. Sin ID de Bolt o sin turno no se puede
+    // ni planificar; sin coordenadas no entra en el matching por zona.
+    const faltan = [];
+    if (!info.idBolt) faltan.push('ID de Bolt');
+    if (!info.turno) faltan.push('turno');
+    if (!parseCoords(info.coordenadas)) faltan.push('coordenadas');
+    if (!info.dni) faltan.push('DNI/NIE');
+    if (!info.telefono) faltan.push('teléfono');
+    info.faltan = faltan;
+    info.listoParaPlanificar = Boolean(info.idBolt && info.turno);
   });
 
   // ---- 6. Matching contra bases ----
@@ -1103,7 +1125,7 @@ const CAMPOS_EDITABLES = {
   fechaAlta: { col: A.FECHA_ALTA, tipo: 'texto' },
   recomendador: { col: A.RECOMENDADOR, tipo: 'texto' },
   turno: { col: A.TURNO, tipo: 'lista', valores: TURNOS },
-  contrato: { col: A.CONTRATO, tipo: 'lista', valores: ['40h Fijo', '32h Correturno'] },
+  contrato: { col: A.CONTRATO, tipo: 'lista', valores: CONTRATOS },
   coordenadas: { col: A.COORDENADAS, tipo: 'coords' },
   direccion: { col: A.DIRECCION, tipo: 'texto' },
   telefono: { col: A.TELEFONO, tipo: 'texto' },
@@ -1147,18 +1169,58 @@ function validarCampo(nombre, valor) {
   return txt(valor);
 }
 
-/** Edita los datos de un conductor ya existente. */
-async function actualizarConductor(id, campos) {
-  const idBusca = txt(id);
-  if (!idBusca) throw new Error('Falta el ID del conductor');
-  if (!campos || !Object.keys(campos).length) throw new Error('No se ha recibido ningún cambio');
+/**
+ * Localiza la fila de un conductor. El selector puede ser:
+ *   · un número         → esa fila de la hoja (para editar a quien aún no tiene
+ *                          ID de Bolt, la interfaz manda la fila)
+ *   · un string         → su ID de Bolt
+ *   · { fila } / { id } → lo mismo, explícito
+ */
+function localizarFila(agendaFilas, selector) {
+  const porFila = typeof selector === 'number' ? selector
+    : (selector && selector.fila !== undefined) ? Number(selector.fila) : null;
 
-  const [agendaFilas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
+  if (porFila) {
+    const f = agendaFilas[porFila - 1];
+    if (!f || (!txt(f[A.ID_BOLT - 1]) && !txt(f[A.NOMBRE - 1]))) {
+      throw new Error(`La fila ${porFila} no tiene ningún conductor`);
+    }
+    return porFila;
+  }
+
+  const idBusca = txt(typeof selector === 'string' ? selector : (selector && selector.id));
+  if (!idBusca) throw new Error('Falta identificar al conductor (fila o ID)');
   let fila = null;
   agendaFilas.slice(1).forEach((f, i) => {
     if (txt(f[A.ID_BOLT - 1]) === idBusca) fila = i + 2;
   });
   if (!fila) throw new Error(`El conductor "${idBusca}" no está en la agenda`);
+  return fila;
+}
+
+/** Edita los datos de un conductor ya existente. */
+async function actualizarConductor(selector, campos) {
+  if (!campos || !Object.keys(campos).length) throw new Error('No se ha recibido ningún cambio');
+
+  const [agendaFilas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
+  const fila = localizarFila(agendaFilas, selector);
+
+  // El ID de Bolt tiene reglas propias: se puede COMPLETAR si está vacío (el
+  // caso de un alta que aún no lo tenía), pero no cambiar si ya existe, porque
+  // es la referencia con la que el planificador localiza a la persona.
+  const datosIdBolt = [];
+  if (campos.idBolt !== undefined) {
+    const nuevo = txt(campos.idBolt);
+    const actual = txt(agendaFilas[fila - 1][A.ID_BOLT - 1]);
+    if (nuevo !== actual) {
+      if (actual) throw new Error('El ID de Bolt ya está puesto y no se puede cambiar');
+      if (nuevo && agendaFilas.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === nuevo)) {
+        throw new Error(`El ID de Bolt "${nuevo}" ya lo tiene otro conductor`);
+      }
+      datosIdBolt.push({ range: `${HOJAS.AGENDA}!${colLetra(A.ID_BOLT)}${fila}`, values: [[nuevo]] });
+    }
+    delete campos.idBolt;
+  }
 
   // Se valida primero TODO y después se escribe: así un campo prohibido o un
   // valor inválido aborta la operación entera en vez de dejarla a medias.
@@ -1168,8 +1230,9 @@ async function actualizarConductor(id, campos) {
       range: `${HOJAS.AGENDA}!${colLetra(CAMPOS_EDITABLES[nombre].col)}${fila}`,
       values: [[limpio]]
     };
-  });
+  }).concat(datosIdBolt);
 
+  if (!datos.length) throw new Error('No se ha recibido ningún cambio');
   await writeMany(SPREADSHEET_PLANIFICADOR, datos);
 
   // Tocar la libranza o el turno cambia lo que cubre esa persona, así que se
@@ -1177,28 +1240,40 @@ async function actualizarConductor(id, campos) {
   const tablero = await leerTablero();
   if (tablero.esquema.ok) await guardarTablero(tablero);
 
-  return { id: idBusca, fila, camposActualizados: Object.keys(campos), tablero };
+  const cambiados = Object.keys(campos);
+  if (datosIdBolt.length) cambiados.push('idBolt');
+  return { id: txt((datosIdBolt[0] && datosIdBolt[0].values[0][0]) || agendaFilas[fila - 1][A.ID_BOLT - 1]), fila, camposActualizados: cambiados, tablero };
 }
 
-/** Da de alta a un conductor nuevo. */
+/**
+ * Da de alta a un conductor nuevo.
+ *
+ * El ID de Bolt NO es obligatorio: en el momento del alta (desde el anexo de
+ * incorporación) todavía no se tiene. Sin él, el conductor vive en la agenda y
+ * aparece en "Faltan datos", pero no se puede planificar hasta que se le añada.
+ * El anti-duplicado se hace por ID de Bolt si lo hay y, si no, por DNI.
+ */
 async function crearConductor(datos) {
   const id = txt(datos && datos.id);
-  if (!id) throw new Error('El ID de Bolt es obligatorio');
+  const dni = txt(datos && datos.dni);
   if (!txt(datos.nombre)) throw new Error('El nombre es obligatorio');
-  if (!txt(datos.turno)) throw new Error('El turno es obligatorio');
 
   const [agendaFilas, outFilas] = await readMany(
     SPREADSHEET_PLANIFICADOR, [RANGOS.agenda, RANGO_OUT]);
 
-  const existe = agendaFilas.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id);
-  if (existe) throw new Error(`Ya hay un conductor con el ID "${id}" en la agenda`);
-
-  const archivado = outFilas.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id);
-  if (archivado) {
-    throw new Error(
-      `"${id}" está archivado en ${HOJA_OUT}. Restáuralo desde la pestaña Archivo ` +
-      `en vez de crearlo de nuevo, así conserva su historial.`
-    );
+  if (id) {
+    if (agendaFilas.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id)) {
+      throw new Error(`Ya hay un conductor con el ID "${id}" en la agenda`);
+    }
+    if (outFilas.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id)) {
+      throw new Error(
+        `"${id}" está archivado en ${HOJA_OUT}. Restáuralo desde la pestaña Archivo ` +
+        `en vez de crearlo de nuevo, así conserva su historial.`
+      );
+    }
+  }
+  if (dni && agendaFilas.slice(1).some(f => txt(f[A.DNI - 1]) === dni)) {
+    throw new Error(`Ya hay un conductor con el DNI/NIE "${dni}" en la agenda`);
   }
 
   const fila = Array(A_HEADERS.length).fill('');
@@ -1212,15 +1287,56 @@ async function crearConductor(datos) {
     fila[CAMPOS_EDITABLES[nombre].col - 1] = validarCampo(nombre, valor);
   });
 
-  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.ID_BOLT, [fila], A_HEADERS.length);
+  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.NOMBRE, [fila], A_HEADERS.length);
 
-  // Verificar que ha entrado antes de dar el alta por buena
+  // Verificar que ha entrado antes de dar el alta por buena. Como puede no
+  // tener ID de Bolt, se comprueba por ID si lo hay y, si no, por nombre.
   const [despues] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
-  if (!despues.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id)) {
-    throw new Error(`No se ha podido crear a "${id}" en la agenda`);
-  }
+  const entro = id
+    ? despues.slice(1).some(f => txt(f[A.ID_BOLT - 1]) === id)
+    : despues.slice(1).some(f => txt(f[A.NOMBRE - 1]) === txt(datos.nombre) && !txt(f[A.ID_BOLT - 1]));
+  if (!entro) throw new Error(`No se ha podido crear a "${txt(datos.nombre)}" en la agenda`);
 
   return { id, nombre: txt(datos.nombre) };
+}
+
+/**
+ * Alta masiva desde el anexo de incorporación.
+ *
+ * Crea a cada conductor y, si trae dirección pero no coordenadas, intenta
+ * geocodificarla. Cada uno es independiente: si uno falla (DNI duplicado, por
+ * ejemplo) se registra y se sigue con el resto, en vez de abortar el lote.
+ */
+async function importarConductores(lista, opciones = {}) {
+  if (!Array.isArray(lista) || !lista.length) throw new Error('No se han recibido conductores');
+
+  const geo = opciones.geocodificar;   // función inyectada (o ninguna)
+  const resultados = [];
+
+  for (const datos of lista) {
+    const nombre = txt(datos.nombre);
+    try {
+      // Geocodificar antes de crear, para guardar las coordenadas de una vez.
+      let geocodificado = null;
+      if (geo && !txt(datos.coordenadas) && txt(datos.direccion)) {
+        const g = await geo(datos.direccion, datos.codigoPostal);
+        if (g && !g.error) {
+          datos.coordenadas = `${g.lat}, ${g.lng}`;
+          geocodificado = g.precision;
+        }
+      }
+      await crearConductor(datos);
+      resultados.push({ nombre, estado: 'creado', geocodificado });
+    } catch (error) {
+      resultados.push({ nombre, estado: 'error', msg: error.message });
+    }
+  }
+
+  return {
+    creados: resultados.filter(r => r.estado === 'creado').length,
+    errores: resultados.filter(r => r.estado === 'error').length,
+    resultados
+  };
 }
 
 /**
@@ -1233,27 +1349,22 @@ async function cambiarEstados(cambios) {
   }
 
   const [agendaFilas] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
-  const filaDe = new Map();
-  agendaFilas.slice(1).forEach((f, i) => {
-    const id = txt(f[A.ID_BOLT - 1]);
-    if (id) filaDe.set(id, i + 2);
-  });
 
   const datos = [];
   const aplicados = [];
 
   cambios.forEach(c => {
-    const id = txt(c.id);
     const estado = txt(c.estado);
-    if (!filaDe.has(id)) throw new Error(`El conductor "${id}" no está en la agenda`);
     if (!ESTADOS_CONDUCTOR.includes(estado)) {
       throw new Error(`Estado no válido: "${estado}". Debe ser uno de: ${ESTADOS_CONDUCTOR.join(', ')}`);
     }
+    // Por fila (los que no tienen ID de Bolt) o por ID de Bolt.
+    const fila = localizarFila(agendaFilas, c.fila !== undefined ? { fila: c.fila } : c.id);
     datos.push({
-      range: `${HOJAS.AGENDA}!${colLetra(A.ESTADO)}${filaDe.get(id)}`,
+      range: `${HOJAS.AGENDA}!${colLetra(A.ESTADO)}${fila}`,
       values: [[estado]]
     });
-    aplicados.push({ id, estado });
+    aplicados.push({ id: txt(c.id), fila, estado });
   });
 
   await writeMany(SPREADSHEET_PLANIFICADOR, datos);
@@ -1333,7 +1444,7 @@ async function migrarBajasEmpresa() {
       fila.push(hoy);
       return fila;
     });
-    await anadirDebajo(HOJA_OUT, outFilas, A.ID_BOLT, filas, A_HEADERS.length + 1);
+    await anadirDebajo(HOJA_OUT, outFilas, A.NOMBRE, filas, A_HEADERS.length + 1);
 
     // ---- 2. Verificar que la copia está antes de borrar nada ----
     const comprobacion = await leerOut();
@@ -1392,7 +1503,7 @@ async function restaurarDesdeOut(ids) {
     ASG_COL.forEach(c => { fila[c - 1] = ''; });
     return fila;
   });
-  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.ID_BOLT, filas, A_HEADERS.length);
+  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.NOMBRE, filas, A_HEADERS.length);
 
   // ---- 2. Verificar antes de borrar del archivo ----
   const [agendaDespues] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
@@ -1419,8 +1530,8 @@ module.exports = {
   SPREADSHEET_PLANIFICADOR,
   HOJA_OUT, RANGO_OUT, ESTADO_BAJA_EMPRESA,
   leerOut, migrarBajasEmpresa, restaurarDesdeOut, cambiarEstados,
-  actualizarConductor, crearConductor, CAMPOS_EDITABLES, CAMPOS_LIBRANZA, validarCampo,
-  ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS,
+  actualizarConductor, crearConductor, importarConductores, CAMPOS_EDITABLES, CAMPOS_LIBRANZA, validarCampo,
+  ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS, CONTRATOS,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
   validarEsquema, leerCrudo, leerTablero, guardarTablero,
   aplicarCambios, guardarCambios,

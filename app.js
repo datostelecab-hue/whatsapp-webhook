@@ -3,7 +3,7 @@ const path = require('path');
 const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Archivos estáticos (logo, vídeo de marca…). Se cachean un día: son

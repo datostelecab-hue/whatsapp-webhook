@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const {
   leerTablero, leerOut, cambiarEstados, migrarBajasEmpresa, restaurarDesdeOut,
-  actualizarConductor, crearConductor,
-  ESTADOS_CONDUCTOR, DIAS_SEM, TURNOS
+  actualizarConductor, crearConductor, importarConductores,
+  ESTADOS_CONDUCTOR, DIAS_SEM, TURNOS, CONTRATOS
 } = require('../services/planificadorV2');
+const { geocodificar } = require('../services/geocoding');
 
 /** La interfaz. */
 router.get('/', (req, res) => {
@@ -15,7 +16,7 @@ router.get('/', (req, res) => {
     estadosConductor: ESTADOS_CONDUCTOR,
     diasSem: DIAS_SEM,
     turnos: TURNOS,
-    contratos: ['40h Fijo', '32h Correturno']
+    contratos: CONTRATOS
   });
 });
 
@@ -83,14 +84,47 @@ router.post('/api/restaurar', async (req, res) => {
   }
 });
 
-/** Edita los datos de un conductor (libranza, teléfono, turno, dirección…). */
-router.put('/api/conductor/:id', async (req, res) => {
+/**
+ * Edita los datos de un conductor. Se identifica por su número de fila (así
+ * también se puede editar a quien aún no tiene ID de Bolt) o por el ID.
+ */
+router.put('/api/conductor', async (req, res) => {
   try {
-    const r = await actualizarConductor(req.params.id, req.body && req.body.campos);
-    console.log(`✏️  [AGENDA] ${r.id}: ${r.camposActualizados.join(', ')}`);
-    res.json({ status: 'ok', id: r.id, camposActualizados: r.camposActualizados });
+    const { fila, id, campos } = req.body || {};
+    const selector = fila !== undefined ? { fila } : id;
+    const r = await actualizarConductor(selector, campos);
+    console.log(`✏️  [AGENDA] fila ${r.fila}: ${r.camposActualizados.join(', ')}`);
+    res.json({ status: 'ok', id: r.id, fila: r.fila, camposActualizados: r.camposActualizados });
   } catch (error) {
     console.error('❌ [AGENDA] PUT conductor:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+/** Geocodifica una dirección suelta (botón "obtener coordenadas" en la ficha). */
+router.post('/api/geocodificar', async (req, res) => {
+  try {
+    const { direccion, codigoPostal } = req.body || {};
+    const r = await geocodificar(direccion, codigoPostal);
+    if (!r) return res.json({ status: 'ok', encontrado: false });
+    if (r.error) return res.status(502).json({ status: 'error', msg: r.mensaje });
+    res.json({ status: 'ok', encontrado: true, ...r, coordenadas: `${r.lat}, ${r.lng}` });
+  } catch (error) {
+    console.error('❌ [AGENDA] /api/geocodificar:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+/** Alta masiva desde el anexo (el cliente ya ha parseado el xlsx). */
+router.post('/api/importar', async (req, res) => {
+  try {
+    const lista = req.body && req.body.conductores;
+    const conGeo = !req.body || req.body.geocodificar !== false;
+    const r = await importarConductores(lista, { geocodificar: conGeo ? geocodificar : null });
+    console.log(`📥 [AGENDA] Importados: ${r.creados} creados, ${r.errores} con error`);
+    res.json({ status: 'ok', ...r });
+  } catch (error) {
+    console.error('❌ [AGENDA] /api/importar:', error.message);
     res.status(400).json({ status: 'error', msg: error.message });
   }
 });

@@ -10,6 +10,10 @@
       <a href="/planificador" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
         <i class="fa-solid fa-table-cells mr-1"></i> Planificador
       </a>
+      <button id="btn-importar" class="px-4 py-2 rounded-lg border border-telecab-gold/50 text-telecab-gold hover:bg-telecab-gold/10 transition font-medium">
+        <i class="fa-solid fa-file-arrow-up mr-1"></i> Importar anexo
+      </button>
+      <input id="file-anexo" type="file" accept=".xlsx,.xls" class="hidden">
       <button id="btn-nuevo" class="px-4 py-2 rounded-lg bg-telecab-gold hover:bg-telecab-gold-soft text-telecab-dark font-semibold transition">
         <i class="fa-solid fa-user-plus mr-1"></i> Nuevo conductor
       </button>
@@ -45,6 +49,12 @@
         <option>Día</option>
         <option>Noche</option>
       </select>
+      <select id="f-contrato" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+        <option value="">Todos los contratos</option>
+      </select>
+      <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer whitespace-nowrap">
+        <input id="f-incompletos" type="checkbox" class="accent-telecab-gold"> Solo con datos incompletos
+      </label>
     </div>
 
     <div id="cargando" class="text-center py-16 text-telecab-muted">
@@ -63,6 +73,7 @@
             <th class="text-center px-3 py-3" id="cab-dias"></th>
             <th class="text-center px-3 py-3">Libra</th>
             <th class="text-left px-3 py-3">Cobertura</th>
+            <th class="text-left px-3 py-3">Datos</th>
             <th class="px-3 py-3"></th>
           </tr>
         </thead>
@@ -120,6 +131,34 @@
     </div>
   </div>
 </div>
+
+<!-- ══════════ IMPORTAR ANEXO ══════════ -->
+<div id="import" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+  <div class="w-full max-w-4xl max-h-[85vh] bg-telecab-dark border border-telecab-border rounded-2xl flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
+      <h2 class="text-lg font-bold text-white">Importar anexo de altas</h2>
+      <button id="import-cerrar" class="text-telecab-muted hover:text-white text-xl px-2">&times;</button>
+    </div>
+    <div class="p-5 overflow-y-auto">
+      <p id="import-resumen" class="text-sm text-telecab-muted mb-3"></p>
+      <div id="import-tabla" class="overflow-x-auto rounded-lg border border-telecab-border"></div>
+      <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer mt-4">
+        <input id="import-geo" type="checkbox" class="accent-telecab-gold" checked>
+        Obtener coordenadas de la dirección automáticamente (tarda ~1 s por conductor)
+      </label>
+      <div id="import-progreso" class="hidden mt-3 text-sm text-telecab-gold"></div>
+    </div>
+    <div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-telecab-border">
+      <button id="import-cancelar" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">Cancelar</button>
+      <button id="import-confirmar" class="px-5 py-2 rounded-lg bg-telecab-gold hover:bg-telecab-gold-soft text-telecab-dark font-semibold transition">
+        Crear <span id="import-n"></span> conductores
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SheetJS para leer el .xlsx en el propio navegador (no se sube el binario) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <!-- Los datos del servidor van en un bloque JSON aparte, no interpolados
      dentro del código: así el editor puede analizarlo como JavaScript normal. -->
@@ -188,6 +227,13 @@ function pintarTodo() {
   $('#f-estado').innerHTML = '<option value="">Todos los estados</option>' +
     estados.map(e => `<option ${e === actual ? 'selected' : ''}>${esc(e)}</option>`).join('');
 
+  const conActual = $('#f-contrato').value;
+  $('#f-contrato').innerHTML = '<option value="">Todos los contratos</option>' +
+    CONTRATOS.map(c => `<option ${c === conActual ? 'selected' : ''}>${esc(c)}</option>`).join('');
+
+  const incompletos = DATOS.conductores.filter(c => c.faltan && c.faltan.length).length;
+  $('#resumen').textContent += incompletos ? ` · ${incompletos} con datos incompletos` : '';
+
   pintarAvisos();
   pintarTabla();
   pintarArchivo();
@@ -205,11 +251,15 @@ function pintarTabla() {
   const texto = $('#f-buscar').value.trim().toLowerCase();
   const estado = $('#f-estado').value;
   const turno = $('#f-turno').value;
+  const contrato = $('#f-contrato').value;
+  const soloIncompletos = $('#f-incompletos').checked;
 
   const visibles = DATOS.conductores.filter(c => {
     if (estado && c.estadoCalculado !== estado) return false;
     if (turno && c.turno !== turno) return false;
-    if (texto && !`${c.nombre} ${c.id} ${c.matricula}`.toLowerCase().includes(texto)) return false;
+    if (contrato && c.contrato !== contrato) return false;
+    if (soloIncompletos && !(c.faltan && c.faltan.length)) return false;
+    if (texto && !`${c.nombre} ${c.id} ${c.dni} ${c.matricula}`.toLowerCase().includes(texto)) return false;
     return true;
   });
 
@@ -223,11 +273,18 @@ function pintarTabla() {
     const opciones = ESTADOS
       .map(e => `<option ${e === c.estadoCalculado ? 'selected' : ''}>${esc(e)}</option>`).join('');
 
+    const faltan = (c.faltan && c.faltan.length)
+      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-xs"
+              title="Falta: ${esc(c.faltan.join(', '))}">
+           <i class="fa-solid fa-triangle-exclamation text-[10px]"></i> ${c.faltan.length}
+         </span>`
+      : '<span class="text-telecab-green text-xs"><i class="fa-solid fa-check"></i></span>';
+
     return `
-    <tr class="border-t border-telecab-border hover:bg-telecab-card/50" data-id="${esc(c.id)}">
+    <tr class="border-t border-telecab-border hover:bg-telecab-card/50" data-fila="${c.fila}">
       <td class="px-3 py-2.5">
-        <div class="text-telecab-text font-medium">${esc(c.nombre || c.id)}</div>
-        <div class="text-xs text-telecab-muted">${esc(c.id)}</div>
+        <div class="text-telecab-text font-medium">${esc(c.nombre || '(sin nombre)')}</div>
+        <div class="text-xs text-telecab-muted">${esc(c.id || 'sin ID de Bolt')}</div>
       </td>
       <td class="px-3 py-2.5 text-telecab-muted">${esc(c.turno || '—')}</td>
       <td class="px-3 py-2.5">
@@ -240,8 +297,9 @@ function pintarTabla() {
       <td class="px-3 py-2.5 text-xs ${c.diasCubiertos === c.diasLaborables ? 'text-telecab-green' : 'text-amber-400'}">
         ${c.diasCubiertos}/${c.diasLaborables} días
       </td>
+      <td class="px-3 py-2.5">${faltan}</td>
       <td class="px-3 py-2.5 text-right">
-        <button data-ficha="${esc(c.id)}" title="Ver ficha"
+        <button data-ficha="${c.fila}" title="Ver ficha"
                 class="px-2 py-1 rounded text-telecab-muted hover:text-white hover:bg-telecab-card transition">
           <i class="fa-solid fa-pen"></i>
         </button>
@@ -287,12 +345,12 @@ $('#tabla-agenda').addEventListener('change', async e => {
   const dia = e.target.dataset.libranza;
   if (dia === undefined) return;
 
-  const id = e.target.closest('tr').dataset.id;
+  const fila = Number(e.target.closest('tr').dataset.fila);
   aviso('Guardando libranza…');
   e.target.disabled = true;
   try {
-    await guardarCampos(id, { [CAMPOS_LIB[Number(dia)]]: e.target.checked });
-    aviso(`${id}: libranza actualizada`, 'ok');
+    await guardarCampos(fila, { [CAMPOS_LIB[Number(dia)]]: e.target.checked });
+    aviso('Libranza actualizada', 'ok');
     await cargar();
   } catch (err) {
     aviso(err.message, 'error');
@@ -301,11 +359,12 @@ $('#tabla-agenda').addEventListener('change', async e => {
   }
 });
 
-async function guardarCampos(id, campos) {
-  const r = await fetch('/agenda/api/conductor/' + encodeURIComponent(id), {
+// Edita por número de fila: así funciona también con quien aún no tiene ID.
+async function guardarCampos(fila, campos) {
+  const r = await fetch('/agenda/api/conductor', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ campos })
+    body: JSON.stringify({ fila, campos })
   });
   const d = await r.json();
   if (!r.ok) throw new Error(d.msg);
@@ -313,7 +372,7 @@ async function guardarCampos(id, campos) {
 }
 
 // ════════ Ficha del conductor ════════
-let fichaId = null;   // null = alta nueva
+let fichaFila = null;   // null = alta nueva; si no, la fila que se edita
 
 const CAMPOS_FICHA = [
   { g: 'Identificación', campos: [
@@ -332,25 +391,29 @@ const CAMPOS_FICHA = [
     { k: 'telefono', etq: 'Teléfono', tipo: 'texto' },
     { k: 'telEmergencia', etq: 'Teléfono de emergencia', tipo: 'texto' },
     { k: 'direccion', etq: 'Dirección', tipo: 'texto' },
-    { k: 'coordenadas', etq: 'Coordenadas', tipo: 'texto', ayuda: '40.41, -3.70 · se usan para el matching con las bases' }
+    { k: 'codigoPostal', etq: 'Código postal', tipo: 'texto', ayuda: 'ayuda a localizar mejor las coordenadas', noPersiste: true },
+    { k: 'coordenadas', etq: 'Coordenadas', tipo: 'coords' }
   ]},
   { g: 'Otros', campos: [
     { k: 'observaciones', etq: 'Observaciones', tipo: 'area' }
   ]}
 ];
 
-function abrirFicha(id) {
-  fichaId = id;
-  const c = id ? DATOS.conductores.find(x => x.id === id) : {};
+function abrirFicha(fila) {
+  fichaFila = fila;
+  const c = fila ? DATOS.conductores.find(x => x.fila === fila) : {};
   $('#ficha-error').classList.add('hidden');
-  $('#ficha-titulo').textContent = id ? (c.nombre || id) : 'Nuevo conductor';
+  $('#ficha-titulo').textContent = fila ? (c.nombre || 'Ficha') : 'Nuevo conductor';
 
-  const campoId = id
-    ? `<div class="text-xs text-telecab-muted">ID de Bolt: <span class="text-telecab-text">${esc(id)}</span>
+  // El ID de Bolt: si ya lo tiene, se muestra fijo (es la referencia del
+  // planificador y no se cambia). Si no, se ofrece un campo para completarlo.
+  const campoId = (fila && c.idBolt)
+    ? `<div class="text-xs text-telecab-muted">ID de Bolt: <span class="text-telecab-text">${esc(c.idBolt)}</span>
          · no se puede cambiar, es la referencia que usa el planificador</div>`
     : `<div>
-         <label class="block text-xs text-telecab-muted mb-1">ID de Bolt *</label>
-         <input data-campo="id" class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+         <label class="block text-xs text-telecab-muted mb-1">ID de Bolt ${fila ? '(pendiente)' : '(opcional al alta)'}</label>
+         <input data-campo="${fila ? 'idBolt' : 'id'}" value="${esc((c && c.idBolt) || '')}"
+                class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
        </div>`;
 
   const grupos = CAMPOS_FICHA.map(g => `
@@ -399,23 +462,61 @@ function campoFicha(f, valor) {
     return `<div><label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
       <textarea data-campo="${f.k}" rows="3" class="${base}">${esc(valor || '')}</textarea>${ayuda}</div>`;
   }
+  if (f.tipo === 'coords') {
+    return `<div>
+      <label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
+      <div class="flex gap-2">
+        <input data-campo="${f.k}" value="${esc(valor || '')}" placeholder="40.41, -3.70" class="${base}">
+        <button type="button" id="btn-geo" title="Obtener de la dirección"
+                class="shrink-0 px-3 rounded-lg border border-telecab-gold/50 text-telecab-gold hover:bg-telecab-gold/10 transition">
+          <i class="fa-solid fa-location-crosshairs"></i>
+        </button>
+      </div>
+      <p class="text-xs text-telecab-muted mt-1">Se usan para el matching con las bases.</p>
+    </div>`;
+  }
   return `<div><label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
     <input data-campo="${f.k}" value="${esc(valor || '')}" class="${base}">${ayuda}</div>`;
 }
 
 function cerrarFicha() {
   $('#ficha').classList.add('hidden');
-  fichaId = null;
+  fichaFila = null;
 }
 
 $('#tabla-agenda').addEventListener('click', e => {
   const btn = e.target.closest('[data-ficha]');
-  if (btn) abrirFicha(btn.dataset.ficha);
+  if (btn) abrirFicha(Number(btn.dataset.ficha));
 });
 $('#btn-nuevo').addEventListener('click', () => abrirFicha(null));
 $('#ficha-cerrar').addEventListener('click', cerrarFicha);
 $('#ficha-cancelar').addEventListener('click', cerrarFicha);
 $('#ficha').addEventListener('click', e => { if (e.target.id === 'ficha') cerrarFicha(); });
+
+// Geocodificar desde la ficha: coge la dirección y el CP escritos.
+$('#ficha-campos').addEventListener('click', async e => {
+  if (!e.target.closest('#btn-geo')) return;
+  const dir = $('#ficha-campos').querySelector('[data-campo="direccion"]').value;
+  const cp = ($('#ficha-campos').querySelector('[data-campo="codigoPostal"]') || {}).value || '';
+  if (!dir.trim()) { aviso('Escribe primero la dirección', 'error'); return; }
+
+  const btn = e.target.closest('#btn-geo');
+  btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+  try {
+    const r = await fetch('/agenda/api/geocodificar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direccion: dir, codigoPostal: cp })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.msg);
+    if (!d.encontrado) { aviso('No se encontró la dirección', 'error'); }
+    else {
+      $('#ficha-campos').querySelector('[data-campo="coordenadas"]').value = d.coordenadas;
+      aviso(`Coordenadas obtenidas (${d.precision})`, 'ok');
+    }
+  } catch (err) { aviso(err.message, 'error'); }
+  btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i>';
+});
 
 $('#ficha-guardar').addEventListener('click', async () => {
   const btn = $('#ficha-guardar');
@@ -426,23 +527,23 @@ $('#ficha-guardar').addEventListener('click', async () => {
   $('#ficha-campos').querySelectorAll('[data-campo]').forEach(el => {
     campos[el.dataset.campo] = el.type === 'checkbox' ? el.checked : el.value;
   });
+  delete campos.codigoPostal;   // solo sirve para geocodificar, no se guarda
 
   btn.disabled = true;
   btn.textContent = 'Guardando…';
   try {
-    if (fichaId) {
+    if (fichaFila) {
       delete campos.id;
-      await guardarCampos(fichaId, campos);
-      aviso(`${fichaId} actualizado`, 'ok');
+      await guardarCampos(fichaFila, campos);
+      aviso('Conductor actualizado', 'ok');
     } else {
       const r = await fetch('/agenda/api/conductor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(campos)
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.msg);
-      aviso(`${d.id} dado de alta`, 'ok');
+      aviso(`${d.nombre} dado de alta`, 'ok');
     }
     cerrarFicha();
     await cargar();
@@ -457,12 +558,12 @@ $('#ficha-guardar').addEventListener('click', async () => {
 // ════════ Cambio de estado ════════
 $('#tabla-agenda').addEventListener('change', async e => {
   if (!e.target.hasAttribute('data-estado')) return;
-  const id = e.target.closest('tr').dataset.id;
+  const fila = Number(e.target.closest('tr').dataset.fila);
   const estado = e.target.value;
 
   if (estado === 'Baja Empresa' &&
-      !confirm(`${id} pasará a Baja Empresa: se archiva en CONDUCTORES_OUT y sale de la agenda.\n\n` +
-               `Se puede recuperar desde la pestaña Archivo. ¿Continuar?`)) {
+      !confirm('Pasará a Baja Empresa: se archiva en CONDUCTORES_OUT y sale de la agenda.\n\n' +
+               'Se puede recuperar desde la pestaña Archivo. ¿Continuar?')) {
     cargar();
     return;
   }
@@ -472,12 +573,12 @@ $('#tabla-agenda').addEventListener('change', async e => {
     const r = await fetch('/agenda/api/estado', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cambios: [{ id, estado }] })
+      body: JSON.stringify({ cambios: [{ fila, estado }] })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.msg);
     const n = d.migracion ? d.migracion.migrados.length : 0;
-    aviso(n ? `${id} archivado en CONDUCTORES_OUT` : `${id} → ${estado}`, 'ok');
+    aviso(n ? 'Archivado en CONDUCTORES_OUT' : `Estado → ${estado}`, 'ok');
     await cargar();
   } catch (err) {
     aviso(err.message, 'error');
@@ -521,8 +622,150 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   $('#panel-out').classList.toggle('hidden', t.dataset.tab !== 'out');
 }));
 
-['#f-buscar', '#f-estado', '#f-turno'].forEach(s => $(s).addEventListener('input', pintarTabla));
+['#f-buscar', '#f-estado', '#f-turno', '#f-contrato', '#f-incompletos']
+  .forEach(s => $(s).addEventListener('input', pintarTabla));
 $('#btn-recargar').addEventListener('click', cargar);
+
+// ════════ Importar anexo (.xlsx) ════════
+// El xlsx trae estas columnas; se mapean a los campos de la agenda. Lo que no
+// tiene hueco propio (email, IBAN, nacionalidad, fecha de nacimiento) se
+// concatena en Observaciones para no perderlo.
+let IMPORT_LISTA = [];
+
+$('#btn-importar').addEventListener('click', () => $('#file-anexo').click());
+
+$('#file-anexo').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    // cellDates: las fechas llegan como Date en vez de texto en formato inglés.
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    const filas = [];
+    wb.SheetNames.forEach(n => {
+      XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: '', raw: true }).forEach(r => filas.push(r));
+    });
+    IMPORT_LISTA = filas.map(mapearFilaAnexo).filter(c => c.nombre);
+    mostrarImport();
+  } catch (err) {
+    aviso('No se pudo leer el archivo: ' + err.message, 'error');
+  }
+  e.target.value = '';   // permite re-subir el mismo archivo
+});
+
+function campoXlsx(fila, ...nombres) {
+  for (const n of nombres) {
+    const k = Object.keys(fila).find(x => x.trim().toLowerCase() === n.toLowerCase());
+    if (k && fila[k] !== '' && fila[k] != null) return fila[k];
+  }
+  return '';
+}
+
+/** dd/mm/aaaa, que es como guarda la fecha la hoja. Acepta Date o texto. */
+function fechaES(v) {
+  const d = v instanceof Date ? v : (v ? new Date(v) : null);
+  if (!d || isNaN(d.getTime())) return v ? String(v).trim() : '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function mapearFilaAnexo(fila) {
+  const str = (...n) => String(campoXlsx(fila, ...n) || '').trim();
+
+  const cb = str('Modalidad contrato', 'Contrato').toUpperCase();
+  const contrato = cb.includes('40') ? (cb.includes('ETT') ? '40h ETT' : '40h')
+                 : cb.includes('32') ? (cb.includes('ETT') ? '32h ETT' : '32h') : '';
+
+  const extra = [
+    ['Email', str('Correo electrónico', 'Email')],
+    ['IBAN', str('Iban bancario', 'IBAN')],
+    ['Nacionalidad', str('Nacionalidad')],
+    ['Fecha nac.', fechaES(campoXlsx(fila, 'Fecha nacimiento'))]
+  ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' · ');
+
+  return {
+    nombre: str('Nombre y apellidos', 'Nombre'),
+    dni: str('DNI NIE', 'DNI/NIE', 'DNI'),
+    naf: str('NºSS', 'N°SS', 'NAF'),
+    fechaAlta: fechaES(campoXlsx(fila, 'Fecha de alta')),
+    contrato,
+    telefono: str('Teléfono', 'Telefono').replace(/\s+/g, ''),
+    direccion: str('Dirección completa', 'Dirección', 'Direccion'),
+    codigoPostal: str('Código postal', 'Codigo postal', 'CP'),
+    observaciones: extra
+  };
+}
+
+function mostrarImport() {
+  if (!IMPORT_LISTA.length) { aviso('El archivo no tiene conductores reconocibles', 'error'); return; }
+
+  const yaExiste = dni => DATOS.conductores.some(c => c.dni && c.dni === dni);
+  let duplicados = 0;
+
+  $('#import-resumen').textContent =
+    `${IMPORT_LISTA.length} conductores en el anexo. Revisa antes de crear.`;
+
+  $('#import-tabla').innerHTML = `
+    <table class="w-full text-sm">
+      <thead class="bg-telecab-card text-telecab-muted text-xs uppercase">
+        <tr><th class="text-left px-3 py-2">Nombre</th><th class="text-left px-3 py-2">DNI</th>
+        <th class="text-left px-3 py-2">Contrato</th><th class="text-left px-3 py-2">Teléfono</th>
+        <th class="text-left px-3 py-2">Dirección</th><th class="px-3 py-2"></th></tr>
+      </thead>
+      <tbody>
+        ${IMPORT_LISTA.map(c => {
+          const dup = c.dni && yaExiste(c.dni);
+          if (dup) duplicados++;
+          return `<tr class="border-t border-telecab-border ${dup ? 'opacity-50' : ''}">
+            <td class="px-3 py-2 text-telecab-text">${esc(c.nombre)}</td>
+            <td class="px-3 py-2 text-telecab-muted">${esc(c.dni || '—')}</td>
+            <td class="px-3 py-2 text-telecab-muted">${esc(c.contrato || '—')}</td>
+            <td class="px-3 py-2 text-telecab-muted">${esc(c.telefono || '—')}</td>
+            <td class="px-3 py-2 text-telecab-muted text-xs">${esc((c.direccion || '').slice(0, 40))}</td>
+            <td class="px-3 py-2 text-right">${dup
+              ? '<span class="text-amber-400 text-xs">ya existe</span>'
+              : '<span class="text-telecab-green text-xs">nuevo</span>'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  // Los duplicados no se envían.
+  IMPORT_LISTA = IMPORT_LISTA.filter(c => !(c.dni && yaExiste(c.dni)));
+  $('#import-n').textContent = IMPORT_LISTA.length;
+  $('#import-confirmar').disabled = IMPORT_LISTA.length === 0;
+  if (duplicados) $('#import-resumen').textContent += ` ${duplicados} ya están en la agenda y se omitirán.`;
+  $('#import').classList.remove('hidden');
+}
+
+$('#import-cerrar').addEventListener('click', () => $('#import').classList.add('hidden'));
+$('#import-cancelar').addEventListener('click', () => $('#import').classList.add('hidden'));
+
+$('#import-confirmar').addEventListener('click', async () => {
+  const btn = $('#import-confirmar');
+  btn.disabled = true;
+  const geo = $('#import-geo').checked;
+  $('#import-progreso').classList.remove('hidden');
+  $('#import-progreso').textContent = geo
+    ? `Creando ${IMPORT_LISTA.length} conductores y geocodificando direcciones… (~${IMPORT_LISTA.length}s)`
+    : `Creando ${IMPORT_LISTA.length} conductores…`;
+
+  try {
+    const r = await fetch('/agenda/api/importar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conductores: IMPORT_LISTA, geocodificar: geo })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.msg);
+    $('#import').classList.add('hidden');
+    const errs = d.resultados.filter(x => x.estado === 'error');
+    aviso(`Importados ${d.creados}${d.errores ? `, ${d.errores} con error` : ''}`, d.errores ? 'error' : 'ok');
+    if (errs.length) console.warn('Altas con error:', errs);
+    await cargar();
+  } catch (err) {
+    $('#import-progreso').textContent = err.message;
+    btn.disabled = false;
+  }
+});
 
 cargar();
 </script>
