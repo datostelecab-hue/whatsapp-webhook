@@ -1,16 +1,9 @@
-const { CONFIG_BOLT, fetchRangoCompleto, sleep } = require('./bolt');
+const { CONFIG_BOLT, fetchRangoCompleto, apiRequest, sleep } = require('./bolt');
 const { readSheet, writeSheet, clearSheet, ensureSheet } = require('./sheets');
 
 const STATE_VIAJE = ['has_order', 'waiting_orders'];
 const SPREADSHEET_ID = '1ixCx1SHICLv_VjrrOs030YswcNSOBbiET2_T_f1Gkm8';
 const DIAS_VENTANA_FUTURA = 7;
-
-// La caché vive en su propia hoja y en SEGUNDOS. Antes se releía HORAS_POR_DIA,
-// que se escribe con toFixed(1): cada día quedaba con una resolución de 6
-// minutos y ese redondeo se reinyectaba como fuente de verdad para el resto del
-// mes. Además las columnas de flota y las de estado se redondeaban por separado,
-// así que TOTAL no tenía por qué cuadrar con WAITING + HAS_ORDER.
-const HOJA_CACHE = 'CACHE_SEGUNDOS';
 
 // Un estado dura hasta el siguiente log, pero si la app deja de reportar sin
 // pasar por 'inactive' ese hueco no es tiempo trabajado: Bolt cierra la sesión
@@ -23,8 +16,37 @@ const MAX_TRAMO_SEG = 6 * 3600;
 // que ya venía en curso al cruzar la medianoche.
 const MARGEN_ANTES_SEG = 6 * 3600;
 
+// ─── Regiones ────────────────────────────────────────────────────────
+// Cada región tiene sus flotas y sus hojas. Madrid conserva los nombres de
+// siempre (hay IMPORTRANGE y visor colgando de ellos); Barcelona estrena hojas.
+const FLOTAS_MADRID = [63530, 143626];
+
+// ID de la flota de Barcelona. null = autodetectar con getCompanies: todas las
+// empresas a las que llega el token menos las de Madrid. Si Bolt os da acceso a
+// más empresas en el futuro, fija aquí el ID a mano.
+const FLOTA_BARCELONA = null;
+
+const REGION_MADRID = {
+  nombre: 'Madrid',
+  flotas: FLOTAS_MADRID,
+  hojaPorDia: 'HORAS_POR_DIA',
+  hoja15: 'HORAS_15_DIAS',
+  hojaUnificadas: 'Flotas Unificadas',
+  hojaCache: 'CACHE_SEGUNDOS'
+};
+
+const REGION_BARCELONA = {
+  nombre: 'Barcelona',
+  flotas: null,                       // se resuelve en tiempo de ejecución
+  hojaPorDia: 'FlotaBarcelona',
+  hoja15: 'HORAS_15_DIAS_BARCELONA',
+  hojaUnificadas: 'Flotas Unificadas Barcelona',
+  hojaCache: 'CACHE_SEGUNDOS_BARCELONA'
+};
+
 let ultimaEjecucion = 0;
 const COOLDOWN = 60;
+let flotasBarcelonaDetectadas = null;
 
 async function actualizarTodo() {
   const ahora = new Date();
@@ -36,16 +58,62 @@ async function actualizarTodo() {
   }
   ultimaEjecucion = ahoraMs;
 
+  const regiones = [REGION_MADRID];
+
+  // Barcelona solo si conocemos su flota. Un fallo aquí no debe tumbar Madrid.
+  try {
+    const flotasBcn = await resolverFlotasBarcelona();
+    if (flotasBcn.length > 0) {
+      regiones.push({ ...REGION_BARCELONA, flotas: flotasBcn });
+    } else {
+      console.log('🏙️ [Barcelona] Sin flota detectada: se omite esta región');
+    }
+  } catch (e) {
+    console.error(`❌ [Barcelona] No se pudo resolver la flota: ${e.message}`);
+  }
+
+  const resultado = {};
+  for (const region of regiones) {
+    try {
+      resultado[region.nombre] = await actualizarRegion(region, ahora);
+    } catch (e) {
+      // Que un fallo en una región no impida actualizar la otra.
+      console.error(`❌ [${region.nombre}] ${e.message}`);
+      resultado[region.nombre] = { error: e.message };
+    }
+  }
+  return resultado;
+}
+
+async function resolverFlotasBarcelona() {
+  if (FLOTA_BARCELONA) return [FLOTA_BARCELONA];
+  if (flotasBarcelonaDetectadas) return flotasBarcelonaDetectadas;
+
+  const r = await apiRequest('/fleetIntegration/v1/getCompanies', 'GET');
+  const ids = (r.data && r.data.data && r.data.data.company_ids) || [];
+  const otras = ids.filter(id => !FLOTAS_MADRID.includes(id));
+  console.log(`🏙️ getCompanies → [${ids.join(', ')}] | Barcelona: [${otras.join(', ') || 'ninguna'}]`);
+
+  flotasBarcelonaDetectadas = otras;
+  return otras;
+}
+
+
+// ═══════════════════════════════
+// UNA REGIÓN COMPLETA
+// ═══════════════════════════════
+
+async function actualizarRegion(region, ahora) {
+  const tag = region.nombre;
   const mes = ahora.getMonth() + 1;
   const ano = ahora.getFullYear();
   const diaActual = ahora.getDate();
   const hora = ahora.getHours();
   const diasDelMes = new Date(ano, mes, 0).getDate();
 
-  // 1. Caché del mes en curso. Si la hoja trae otro mes se ignora: antes, en la
-  // primera ejecución de cada mes, se sumaban los días del mes anterior que aún
-  // seguían escritos y "Flotas Unificadas" mostraba casi el doble durante una hora.
-  const cache = await leerCache(mes, ano);
+  // Caché del mes en curso, en SEGUNDOS y con sello de mes/año: sin redondeos
+  // reinyectados y sin arrastrar el mes anterior en la primera ejecución.
+  const cache = await leerCache(region, mes, ano);
   const diasCalculados = Object.keys(cache).map(Number);
 
   const diasFaltantes = [];
@@ -55,7 +123,7 @@ async function actualizarTodo() {
     }
   }
 
-  console.log(`📊 Caché: ${diasCalculados.length} días | Recalculando: ${diasFaltantes.join(',')}`);
+  console.log(`📊 [${tag}] Caché: ${diasCalculados.length} días | Recalculando: ${diasFaltantes.join(',')}`);
 
   if (diasFaltantes.length > 0) {
     const primerDia = Math.min(...diasFaltantes);
@@ -64,41 +132,30 @@ async function actualizarTodo() {
     const inicioTs = Math.floor(new Date(ano, mes - 1, primerDia, 0, 0, 0).getTime() / 1000);
     const startTs = inicioTs - MARGEN_ANTES_SEG;
     const endTs = (ultimoDia === diaActual)
-      ? Math.floor(ahoraMs / 1000)
+      ? Math.floor(ahora.getTime() / 1000)
       : Math.floor(new Date(ano, mes - 1, ultimoDia + 1, 0, 0, 0).getTime() / 1000);
 
-    console.log(`🔍 Bolt: días ${primerDia} → ${ultimoDia}`);
+    for (const d of diasFaltantes) cache[d] = crearCacheVacio(region);
 
-    for (const d of diasFaltantes) cache[d] = crearCacheVacio();
-
-    // ═══════════════════════════════════
-    // STATE LOGS (horas, waiting, has_order)
-    // ═══════════════════════════════════
-    for (const flota of CONFIG_BOLT.flotas) {
-      // fetchRangoCompleto y no fetchAllPaginated: parte el rango si la API lo
-      // rechaza por largo (498806) o da timeout. Antes, en la primera ejecución
-      // de un mes se pedían hasta 31 días de golpe y un fallo devolvía datos
-      // parciales que se congelaban en la caché para siempre.
+    // ---- State logs (horas) ----
+    for (const flotaId of region.flotas) {
       const stateLogs = await fetchRangoCompleto(
-        '/fleetIntegration/v1/getFleetStateLogs', { company_id: flota.id },
-        'state_logs', startTs, endTs, 1000, 'resumen-logs-' + flota.id
+        '/fleetIntegration/v1/getFleetStateLogs', { company_id: flotaId },
+        'state_logs', startTs, endTs, 1000, `${tag}-logs-${flotaId}`
       );
       await sleep(1000);
 
-      acumularHoras(stateLogs, flota.id, cache, diasFaltantes, mes, ano, endTs);
+      acumularHoras(stateLogs, flotaId, cache, region, diasFaltantes, mes, ano, endTs);
     }
 
-    // ═══════════════════════════════════
-    // FACTURACIÓN Y VIAJES POR DÍA
-    // ═══════════════════════════════════
-    for (const flota of CONFIG_BOLT.flotas) {
+    // ---- Facturación y viajes ----
+    for (const flotaId of region.flotas) {
       // Un día hacia atrás de margen: getFleetOrders filtra por fecha de
-      // creación, pero el día se asigna por la de finalización. Sin margen, una
-      // carrera creada a las 23:50 y terminada a las 00:20 no se pedía nunca.
+      // creación pero el día se asigna por la de finalización.
       const ordenes = await fetchRangoCompleto(
         '/fleetIntegration/v1/getFleetOrders',
-        { company_ids: [flota.id], company_id: flota.id, time_range_filter_type: 'created' },
-        'orders', startTs - 86400, endTs, 500, 'resumen-ordenes-' + flota.id
+        { company_ids: [flotaId], company_id: flotaId, time_range_filter_type: 'created' },
+        'orders', startTs - 86400, endTs, 500, `${tag}-ordenes-${flotaId}`
       );
       await sleep(1000);
 
@@ -111,7 +168,7 @@ async function actualizarTodo() {
 
         const diaOrden = f.getDate();
         if (!diasFaltantes.includes(diaOrden)) return;
-        if (!cache[diaOrden]) cache[diaOrden] = crearCacheVacio();
+        if (!cache[diaOrden]) cache[diaOrden] = crearCacheVacio(region);
 
         if (o.order_price && o.order_price.net_earnings) {
           cache[diaOrden].facturacion += o.order_price.net_earnings;
@@ -120,10 +177,10 @@ async function actualizarTodo() {
       });
     }
 
-    await guardarCache(cache, mes, ano);
+    await guardarCache(region, cache, mes, ano);
   }
 
-  // 2. Totales sumando TODA la caché (en segundos, sin redondeos intermedios)
+  // ---- Totales del mes ----
   let totalW = 0, totalHO = 0, totalFact = 0, totalViajes = 0;
   for (const datos of Object.values(cache)) {
     totalW += (datos.waiting || 0);
@@ -132,32 +189,35 @@ async function actualizarTodo() {
     totalViajes += (datos.viajes || 0);
   }
 
-  console.log(`💰 Total: W=${(totalW / 3600).toFixed(1)}h | HO=${(totalHO / 3600).toFixed(1)}h | Fact=${totalFact.toFixed(2)}€ | Viajes=${totalViajes}`);
+  console.log(`💰 [${tag}] W=${(totalW / 3600).toFixed(1)}h | HO=${(totalHO / 3600).toFixed(1)}h | ` +
+    `Fact=${totalFact.toFixed(2)}€ | Viajes=${totalViajes}`);
 
-  // 3. HORAS_POR_DIA (9 columnas, formato intacto)
+  // ---- Hoja de horas por día ----
   const ultimoDiaMostrar = Math.min(diaActual + DIAS_VENTANA_FUTURA, diasDelMes);
-  await ensureSheet(SPREADSHEET_ID, 'HORAS_POR_DIA');
+  await ensureSheet(SPREADSHEET_ID, region.hojaPorDia);
 
-  const valuesPorDia = [['DÍA', 'FLOTA 63530', 'FLOTA 143626', 'TOTAL', 'WAITING', 'HAS_ORDER', 'FACTURACIÓN', 'VIAJES', 'ACUMULADO POR DÍA']];
+  const cabecera = ['DÍA'];
+  region.flotas.forEach(f => cabecera.push('FLOTA ' + f));
+  cabecera.push('TOTAL', 'WAITING', 'HAS_ORDER', 'FACTURACIÓN', 'VIAJES', 'ACUMULADO POR DÍA');
+
+  const valuesPorDia = [cabecera];
   let acumulado = 0;
 
   for (let d = 0; d <= ultimoDiaMostrar; d++) {
-    const dat = cache[d] || crearCacheVacio();
+    const dat = cache[d] || crearCacheVacio(region);
     const esFuturo = d > diaActual;
     const esHoy = d === diaActual;
 
     if (esFuturo) {
-      valuesPorDia.push([d.toString(), '', '', '', '', '', '', '', '']);
+      valuesPorDia.push([d.toString()].concat(new Array(cabecera.length - 1).fill('')));
     } else {
-      const h63530 = dat.flota63530 / 3600;
-      const h143626 = dat.flota143626 / 3600;
-      const total = h63530 + h143626;
+      const porFlota = region.flotas.map(f => (dat.porFlota[f] || 0) / 3600);
+      const total = porFlota.reduce((s, h) => s + h, 0);
       if (!esHoy) acumulado += total;
 
       valuesPorDia.push([
         d.toString(),
-        h63530.toFixed(1),
-        h143626.toFixed(1),
+        ...porFlota.map(h => h.toFixed(1)),
         total.toFixed(1),
         (dat.waiting / 3600).toFixed(1),
         (dat.hasOrder / 3600).toFixed(1),
@@ -168,31 +228,42 @@ async function actualizarTodo() {
     }
   }
 
-  await clearSheet(SPREADSHEET_ID, 'HORAS_POR_DIA!A:Z');
-  await writeSheet(SPREADSHEET_ID, 'HORAS_POR_DIA!A1', valuesPorDia);
+  await clearSheet(SPREADSHEET_ID, `${region.hojaPorDia}!A:Z`);
+  await writeSheet(SPREADSHEET_ID, `${region.hojaPorDia}!A1`, valuesPorDia);
 
-  // 4. HORAS_15_DIAS
-  await ensureSheet(SPREADSHEET_ID, 'HORAS_15_DIAS');
+  // ---- Últimos 15 días ----
+  await ensureSheet(SPREADSHEET_ID, region.hoja15);
   const fechaFin = new Date(ahora); fechaFin.setDate(fechaFin.getDate() - 1);
   const fechaInicio = new Date(fechaFin); fechaInicio.setDate(fechaInicio.getDate() - 14);
   const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  const values15 = [['FECHA', 'FLOTA 63530', 'FLOTA 143626', 'TOTAL', 'ACUMULADO']];
+
+  const cabecera15 = ['FECHA'];
+  region.flotas.forEach(f => cabecera15.push('FLOTA ' + f));
+  cabecera15.push('TOTAL', 'ACUMULADO');
+
+  const values15 = [cabecera15];
   let ac15 = 0;
   const ft = new Date(fechaInicio);
   while (ft <= fechaFin) {
     const d = ft.getDate();
     const em = ft.getMonth() === ahora.getMonth() && ft.getFullYear() === ahora.getFullYear();
-    const dat = em ? (cache[d] || crearCacheVacio()) : crearCacheVacio();
-    const t = (dat.flota63530 + dat.flota143626) / 3600;
+    const dat = em ? (cache[d] || crearCacheVacio(region)) : crearCacheVacio(region);
+    const porFlota = region.flotas.map(f => (dat.porFlota[f] || 0) / 3600);
+    const t = porFlota.reduce((s, h) => s + h, 0);
     ac15 += t;
-    values15.push([`${meses[ft.getMonth()]} ${d}`, (dat.flota63530 / 3600).toFixed(2), (dat.flota143626 / 3600).toFixed(2), t.toFixed(2), ac15.toFixed(2)]);
+    values15.push([
+      `${meses[ft.getMonth()]} ${d}`,
+      ...porFlota.map(h => h.toFixed(2)),
+      t.toFixed(2),
+      ac15.toFixed(2)
+    ]);
     ft.setDate(ft.getDate() + 1);
   }
-  await clearSheet(SPREADSHEET_ID, 'HORAS_15_DIAS!A:Z');
-  await writeSheet(SPREADSHEET_ID, 'HORAS_15_DIAS!A1', values15);
+  await clearSheet(SPREADSHEET_ID, `${region.hoja15}!A:Z`);
+  await writeSheet(SPREADSHEET_ID, `${region.hoja15}!A1`, values15);
 
-  // 5. FLOTAS UNIFICADAS
-  await ensureSheet(SPREADSHEET_ID, 'Flotas Unificadas');
+  // ---- Unificadas ----
+  await ensureSheet(SPREADSHEET_ID, region.hojaUnificadas);
   const horasTotal = (totalW + totalHO) / 3600;
   const vph = horasTotal > 0 ? (totalViajes / horasTotal).toFixed(2) : '0.00';
 
@@ -201,9 +272,10 @@ async function actualizarTodo() {
     [(totalW / 3600).toFixed(2), (totalHO / 3600).toFixed(2), totalViajes, totalFact.toFixed(2), vph]
   ];
 
-  await clearSheet(SPREADSHEET_ID, 'Flotas Unificadas!A:F');
-  await writeSheet(SPREADSHEET_ID, 'Flotas Unificadas!A1', valuesUni);
-  console.log(`✅ Unificadas: W=${(totalW / 3600).toFixed(1)} | HO=${(totalHO / 3600).toFixed(1)} | V=${totalViajes} | €=${totalFact.toFixed(2)} | V/h=${vph}`);
+  await clearSheet(SPREADSHEET_ID, `${region.hojaUnificadas}!A:F`);
+  await writeSheet(SPREADSHEET_ID, `${region.hojaUnificadas}!A1`, valuesUni);
+  console.log(`✅ [${tag}] ${region.hojaUnificadas}: W=${(totalW / 3600).toFixed(1)} | ` +
+    `HO=${(totalHO / 3600).toFixed(1)} | V=${totalViajes} | €=${totalFact.toFixed(2)} | V/h=${vph}`);
 
   return { diasCache: diasCalculados.length, diasNuevos: diasFaltantes.length };
 }
@@ -214,17 +286,13 @@ async function actualizarTodo() {
 // ═══════════════════════════════
 
 /**
- * Convierte los state logs en segundos por día, flota y estado.
- *
- * Tres diferencias con la versión anterior:
- *  · el último tramo de cada conductor ya no se descarta (antes: `if (i+1 >=
- *    logs.length) continue`), se cierra al final de la ventana
- *  · los tramos se reparten por medianoche en vez de imputarse enteros al día
- *    del log inicial, así que un turno de 23:40 a 00:50 ya no suma 70 min al día
- *    anterior
- *  · se aplica MAX_TRAMO_SEG a los huecos sin telemetría
+ * State logs → segundos por día, flota y estado.
+ *  · el último tramo de cada conductor se cierra al final de la ventana (no se
+ *    descarta, como hacía la versión antigua)
+ *  · los tramos se reparten por medianoche
+ *  · los huecos sin telemetría se recortan a MAX_TRAMO_SEG
  */
-function acumularHoras(stateLogs, flotaId, cache, diasFaltantes, mes, ano, cierreTs) {
+function acumularHoras(stateLogs, flotaId, cache, region, diasFaltantes, mes, ano, cierreTs) {
   const logsPorDriver = {};
   stateLogs.forEach(log => {
     const duuid = log.driver_uuid || 'unknown';
@@ -254,11 +322,9 @@ function acumularHoras(stateLogs, flotaId, cache, diasFaltantes, mes, ano, cierr
       repartirPorDias(inicio, fin, (dia, seg, mesTramo, anoTramo) => {
         if (mesTramo !== mes || anoTramo !== ano) return;
         if (!diasFaltantes.includes(dia)) return;
-        if (!cache[dia]) cache[dia] = crearCacheVacio();
+        if (!cache[dia]) cache[dia] = crearCacheVacio(region);
 
-        if (flotaId === 63530) cache[dia].flota63530 += seg;
-        else cache[dia].flota143626 += seg;
-
+        cache[dia].porFlota[flotaId] = (cache[dia].porFlota[flotaId] || 0) + seg;
         if (estado === 'waiting_orders') cache[dia].waiting += seg;
         else cache[dia].hasOrder += seg;
       });
@@ -288,56 +354,67 @@ function repartirPorDias(inicio, fin, cb) {
 
 
 // ═══════════════════════════════
-// CACHÉ EN SEGUNDOS
+// CACHÉ EN SEGUNDOS (una hoja por región)
 // ═══════════════════════════════
 
-function crearCacheVacio() {
-  return { flota63530: 0, flota143626: 0, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
+function crearCacheVacio(region) {
+  const c = { porFlota: {}, waiting: 0, hasOrder: 0, facturacion: 0, viajes: 0 };
+  region.flotas.forEach(f => c.porFlota[f] = 0);
+  return c;
 }
 
-async function leerCache(mes, ano) {
+async function leerCache(region, mes, ano) {
   try {
-    const data = await readSheet(SPREADSHEET_ID, `${HOJA_CACHE}!A:I`);
+    const data = await readSheet(SPREADSHEET_ID, `${region.hojaCache}!A:Z`);
     const cache = {};
+    const nFlotas = region.flotas.length;
+
     for (let i = 1; i < data.length; i++) {
       const fila = data[i];
       const dia = parseInt(fila[0]);
       if (isNaN(dia) || dia === 0) continue;
-      // Solo el mes en curso: así la primera ejecución de cada mes no arrastra
+      // Solo el mes en curso: la primera ejecución de cada mes no debe arrastrar
       // los días del anterior.
       if (parseInt(fila[1]) !== mes || parseInt(fila[2]) !== ano) continue;
 
-      cache[dia] = {
-        flota63530: parseFloat(fila[3]) || 0,
-        flota143626: parseFloat(fila[4]) || 0,
-        waiting: parseFloat(fila[5]) || 0,
-        hasOrder: parseFloat(fila[6]) || 0,
-        facturacion: parseFloat(fila[7]) || 0,
-        viajes: parseInt(fila[8]) || 0
-      };
+      const c = crearCacheVacio(region);
+      region.flotas.forEach((f, idx) => { c.porFlota[f] = parseFloat(fila[3 + idx]) || 0; });
+      c.waiting = parseFloat(fila[3 + nFlotas]) || 0;
+      c.hasOrder = parseFloat(fila[4 + nFlotas]) || 0;
+      c.facturacion = parseFloat(fila[5 + nFlotas]) || 0;
+      c.viajes = parseInt(fila[6 + nFlotas]) || 0;
+      cache[dia] = c;
     }
-    console.log(`📋 Caché: ${Object.keys(cache).length} días de ${mes}/${ano}`);
+    console.log(`📋 [${region.nombre}] Caché: ${Object.keys(cache).length} días de ${mes}/${ano}`);
     return cache;
   } catch (e) {
-    console.log(`📋 Caché vacía (${e.message})`);
+    console.log(`📋 [${region.nombre}] Caché vacía (${e.message})`);
     return {};
   }
 }
 
-async function guardarCache(cache, mes, ano) {
-  await ensureSheet(SPREADSHEET_ID, HOJA_CACHE);
+async function guardarCache(region, cache, mes, ano) {
+  await ensureSheet(SPREADSHEET_ID, region.hojaCache);
 
-  const filas = [['DIA', 'MES', 'ANO', 'F63530_SEG', 'F143626_SEG', 'WAITING_SEG', 'HASORDER_SEG', 'FACTURACION', 'VIAJES']];
+  const cabecera = ['DIA', 'MES', 'ANO'];
+  region.flotas.forEach(f => cabecera.push(`F${f}_SEG`));
+  cabecera.push('WAITING_SEG', 'HASORDER_SEG', 'FACTURACION', 'VIAJES');
+
+  const filas = [cabecera];
   Object.keys(cache)
     .map(Number)
     .sort((a, b) => a - b)
     .forEach(d => {
       const c = cache[d];
-      filas.push([d, mes, ano, c.flota63530, c.flota143626, c.waiting, c.hasOrder, c.facturacion, c.viajes]);
+      filas.push([
+        d, mes, ano,
+        ...region.flotas.map(f => c.porFlota[f] || 0),
+        c.waiting, c.hasOrder, c.facturacion, c.viajes
+      ]);
     });
 
-  await clearSheet(SPREADSHEET_ID, `${HOJA_CACHE}!A:Z`);
-  await writeSheet(SPREADSHEET_ID, `${HOJA_CACHE}!A1`, filas);
+  await clearSheet(SPREADSHEET_ID, `${region.hojaCache}!A:Z`);
+  await writeSheet(SPREADSHEET_ID, `${region.hojaCache}!A1`, filas);
 }
 
 module.exports = { actualizarTodo };
