@@ -206,14 +206,15 @@ async function actualizarRegion(region, ahora) {
   for (let d = 0; d <= ultimoDiaMostrar; d++) {
     const dat = cache[d] || crearCacheVacio(region);
     const esFuturo = d > diaActual;
-    const esHoy = d === diaActual;
 
     if (esFuturo) {
       valuesPorDia.push([d.toString()].concat(new Array(cabecera.length - 1).fill('')));
     } else {
       const porFlota = region.flotas.map(f => (dat.porFlota[f] || 0) / 3600);
       const total = porFlota.reduce((s, h) => s + h, 0);
-      if (!esHoy) acumulado += total;
+      // El día en curso también acumula: el visor debe estar "en vivo" hasta la
+      // última pasada del cron, no congelado en ayer.
+      acumulado += total;
 
       valuesPorDia.push([
         d.toString(),
@@ -223,7 +224,7 @@ async function actualizarRegion(region, ahora) {
         (dat.hasOrder / 3600).toFixed(1),
         dat.facturacion > 0 ? dat.facturacion.toFixed(2) : '',
         dat.viajes > 0 ? dat.viajes.toString() : '',
-        esHoy ? '' : acumulado.toFixed(1)
+        acumulado.toFixed(1)
       ]);
     }
   }
@@ -233,7 +234,8 @@ async function actualizarRegion(region, ahora) {
 
   // ---- Últimos 15 días ----
   await ensureSheet(SPREADSHEET_ID, region.hoja15);
-  const fechaFin = new Date(ahora); fechaFin.setDate(fechaFin.getDate() - 1);
+  // Termina en HOY (en curso hasta la última pasada del cron), no en ayer.
+  const fechaFin = new Date(ahora);
   const fechaInicio = new Date(fechaFin); fechaInicio.setDate(fechaInicio.getDate() - 14);
   const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
