@@ -1,13 +1,13 @@
 // ============================================================
 // CONTROL DE TRÁFICO: tablero en vivo de conductores
 // ============================================================
-// Junta dos fuentes, sin llamar a la API de Bolt (para que cargue rápido):
-//   · AGENDA_V2 / PLANIFICADOR_V2 (leerTablero): quién es, turno, libranza y a
-//     qué matrícula está asignado cada día → de aquí sale "quién DEBÍA salir".
+// Junta, sin llamar a la API de Bolt (para que cargue rápido):
+//   · AGENDA_V2 / PLANIFICADOR_V2 (leerTablero): turno, libranza y matrícula
+//     asignada cada día → "quién DEBÍA salir".
 //   · Datos_API (hoja GestionConductores, se refresca cada hora): horas por
-//     conductor y día → de aquí sale "cuántas horas lleva".
-// El cruce es por el nombre de Bolt (columna ID_BOLT de la agenda == nombre de
-// Datos_API), normalizado.
+//     conductor y día → "cuántas horas hizo".
+//   · DB_CONDUCTORES (misma hoja): teléfonos que faltan en la agenda.
+// Todo se cruza por el NOMBRE DE BOLT (columna ID_BOLT de la agenda), normalizado.
 
 const { leerTablero } = require('./planificadorV2');
 const { normClave } = require('./conductores');
@@ -15,10 +15,12 @@ const { readSheet } = require('./sheets');
 
 const ID_GESTION = '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';
 const HOJA_DATOS = 'Datos_API';
+const HOJA_DB = 'DB_CONDUCTORES';
 const TZ = 'Europe/Madrid';
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 function hoyMadrid() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -32,12 +34,7 @@ function numero(v) {
   return isNaN(n) ? null : n;
 }
 
-/**
- * Lee Datos_API y devuelve:
- *   { mes, ano, horas: Map(claveNombre -> { diaDelMes: horas }) }
- * Replica la disposición que usa el Apps Script: fila 0 cabecera con "Mes AAAA"
- * en A1, datos desde la fila 4, col B = nombre, col D (índice 3) = día 1.
- */
+/** Datos_API → { mes, ano, horas: Map(clave -> { diaDelMes: horas }) }. */
 async function leerHorasDatosApi() {
   const filas = await readSheet(ID_GESTION, `${HOJA_DATOS}!A:AZ`);
   const horas = new Map();
@@ -54,7 +51,6 @@ async function leerHorasDatosApi() {
     if (!nombre || nombre.toUpperCase().includes('TOTAL')) continue;
     const clave = normClave(nombre);
     if (!clave) continue;
-
     const porDia = {};
     for (let d = 0; d < 31; d++) {
       const v = numero(filas[i][3 + d]);
@@ -62,81 +58,105 @@ async function leerHorasDatosApi() {
     }
     if (!horas.has(clave)) horas.set(clave, porDia);
   }
-
   return { mes, ano, horas };
 }
 
-function estadoControl({ libraHoy, debiaSalir, horasHoy }) {
-  if (libraHoy) return 'libranza';
+/** DB_CONDUCTORES → Map(clave -> teléfono). Col G (7) nombre Bolt, col I (9) teléfono. */
+async function leerTelefonosDB() {
+  const filas = await readSheet(ID_GESTION, `${HOJA_DB}!A:I`);
+  const tel = new Map();
+  for (let i = 1; i < filas.length; i++) {
+    const nombre = (filas[i][6] || '').toString().trim();     // col G
+    const telefono = (filas[i][8] || '').toString().trim();   // col I
+    if (!nombre || !telefono) continue;
+    const clave = normClave(nombre);
+    if (clave && !tel.has(clave)) tel.set(clave, telefono);
+  }
+  return tel;
+}
+
+function estadoControl({ libra, debiaSalir, horas }) {
+  if (libra) return 'libranza';
   if (!debiaSalir) return 'no_tocaba';
-  if (horasHoy != null && horasHoy > 0) return 'trabajando';
-  return 'no_salido';                       // asignado, no libra y 0 h
+  if (horas != null && horas > 0) return 'trabajando';
+  return 'no_salido';
 }
 
 /**
- * Tablero para tráfico: una fila por conductor de la agenda, con turno,
- * matrícula de hoy, horas de hoy y de ayer, y el estado calculado.
+ * Tablero para tráfico. Cada conductor trae su situación de HOY y de AYER
+ * (calculadas con la libranza/asignación del día correspondiente, no solo la de
+ * hoy), más las horas de cada día.
  */
 async function tableroControl() {
   const [Y, M, D] = hoyMadrid().split('-').map(Number);
   const base = new Date(Date.UTC(Y, M - 1, D, 12));
-  const diaIdx = (base.getUTCDay() + 6) % 7;   // Lun=0 … Dom=6, como libra/asignacion
+  const idxHoy = (base.getUTCDay() + 6) % 7;      // Lun=0 … Dom=6
+  const idxAyer = (idxHoy + 6) % 7;
+  const Dayer = D - 1;
 
   const tablero = await leerTablero();
   const conductores = (tablero && tablero.conductores) || [];
   const datos = await leerHorasDatosApi();
+  const telefonos = await leerTelefonosDB();
 
-  // ¿Datos_API es del mes actual? Si no, las horas están obsoletas.
   const horasVigentes = datos.mes === M && datos.ano === Y;
-  const diaAyer = D - 1;                        // solo válido dentro del mes en curso
+
+  function diaInfo(c, idx, diaMes, porDia) {
+    const libra = !!(c.libra && c.libra[idx]);
+    const mat = c.asignacion ? c.asignacion[idx] : '';
+    const debiaSalir = !!mat && mat !== 'L';
+    const horas = (horasVigentes && diaMes >= 1 && porDia) ? (porDia[diaMes] ?? 0) : null;
+    return { libra, matricula: debiaSalir ? mat : '', debiaSalir, horas };
+  }
 
   const filas = conductores.map(c => {
-    const clave = normClave(c.idBolt);           // ID_BOLT == nombre de Bolt
+    const clave = normClave(c.idBolt);
     const porDia = (clave && datos.horas.get(clave)) || null;
 
-    const horasHoy = (horasVigentes && porDia) ? (porDia[D] ?? 0) : null;
-    const horasAyer = (horasVigentes && diaAyer >= 1 && porDia) ? (porDia[diaAyer] ?? 0) : null;
+    const hoy = diaInfo(c, idxHoy, D, porDia);
+    hoy.estadoControl = estadoControl(hoy);
+    const ayer = diaInfo(c, idxAyer, Dayer, porDia);
 
-    const libraHoy = !!(c.libra && c.libra[diaIdx]);
-    const matriculaHoy = c.asignacion ? c.asignacion[diaIdx] : '';
-    const debiaSalir = !!matriculaHoy && matriculaHoy !== 'L';
+    const telefono = (c.telefono && c.telefono.trim())
+      || (clave && telefonos.get(clave)) || '';
 
     return {
-      nombre: c.nombre,
-      idBolt: c.idBolt || '',
+      // Se muestra el NOMBRE DE BOLT (ID_BOLT). La seguridad social queda de apoyo.
+      nombre: (c.idBolt || '').trim() || c.nombre || '(sin ID_BOLT)',
+      nombreSS: c.nombre || '',
+      tieneIdBolt: !!(c.idBolt && c.idBolt.trim()),
       turno: c.turno || '',
       estado: c.estadoCalculado || c.estado || '',
-      telefono: c.telefono || '',
-      matriculaHoy: debiaSalir ? matriculaHoy : '',
-      libraHoy,
-      debiaSalir,
+      telefono,
       enDatos: !!porDia,
-      horasHoy,
-      horasAyer,
-      estadoControl: estadoControl({ libraHoy, debiaSalir, horasHoy })
+      hoy, ayer
     };
   });
 
-  // Resumen por turno (solo cuenta a quien debía salir hoy)
-  const resumen = {};
-  ['Día', 'Noche'].forEach(t => {
-    const delTurno = filas.filter(f => f.turno === t);
-    const esperados = delTurno.filter(f => f.debiaSalir);
-    resumen[t] = {
-      total: delTurno.length,
-      esperados: esperados.length,
-      trabajando: esperados.filter(f => f.estadoControl === 'trabajando').length,
-      noSalido: esperados.filter(f => f.estadoControl === 'no_salido').length,
-      libranza: delTurno.filter(f => f.libraHoy).length
-    };
-  });
+  const resumenDe = sel => {
+    const r = {};
+    ['Día', 'Noche'].forEach(t => {
+      const del = filas.filter(f => f.turno === t);
+      const esperados = del.filter(f => sel(f).debiaSalir);
+      const trabajaron = esperados.filter(f => (sel(f).horas ?? 0) > 0).length;
+      r[t] = {
+        esperados: esperados.length,
+        trabajaron,
+        noTrabajaron: esperados.length - trabajaron,
+        libranza: del.filter(f => sel(f).libra).length
+      };
+    });
+    return r;
+  };
 
   return {
-    fecha: hoyMadrid(),
-    diaSemana: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][diaIdx],
+    fecha: `${String(D).padStart(2, '0')}/${String(M).padStart(2, '0')}/${Y}`,
+    diaSemana: DIAS[idxHoy],
+    diaSemanaAyer: DIAS[idxAyer],
+    ayerDisponible: Dayer >= 1 && horasVigentes,
     horasVigentes,
     mesDatos: datos.mes ? `${MESES[datos.mes - 1]} ${datos.ano}` : null,
-    resumen,
+    resumen: { hoy: resumenDe(f => f.hoy), ayer: resumenDe(f => f.ayer) },
     conductores: filas
   };
 }

@@ -13,13 +13,10 @@
     </div>
   </div>
 
-  <!-- Aviso de datos obsoletos -->
   <div id="aviso-stale" class="hidden mb-5 rounded-lg border border-amber-600/50 bg-amber-900/20 p-3 text-sm text-amber-200"></div>
 
-  <!-- Resumen -->
   <div id="resumen" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
 
-  <!-- Pestañas Hoy / Ayer -->
   <div class="flex gap-1 mb-4 border-b border-telecab-border">
     <button data-vista="hoy" class="vtab px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">Hoy</button>
     <button data-vista="ayer" class="vtab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">Ayer</button>
@@ -29,7 +26,7 @@
     <input id="f-buscar" type="search" placeholder="Nombre o matrícula…"
            class="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
     <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer whitespace-nowrap">
-      <input id="f-problemas" type="checkbox" class="accent-telecab-gold"> Solo los que no han salido
+      <input id="f-problemas" type="checkbox" class="accent-telecab-gold"> Solo los que faltan
     </label>
   </div>
 
@@ -68,16 +65,10 @@ async function cargar() {
   $('#cargando').classList.add('hidden');
 }
 
-function tarjetaResumen(turno, r) {
-  return `<div class="rounded-xl border border-telecab-border bg-telecab-card p-4">
-    <div class="text-xs uppercase text-telecab-muted mb-1">${turno}</div>
-    <div class="text-2xl font-bold text-telecab-text">${r.trabajando}<span class="text-telecab-muted text-base font-normal">/${r.esperados}</span></div>
-    <div class="text-xs text-telecab-muted mt-1">han salido · <span class="text-red-400">${r.noSalido} sin salir</span> · ${r.libranza} libran</div>
-  </div>`;
-}
-
 function pintar() {
-  $('#subtitulo').textContent = `${DATOS.diaSemana} ${DATOS.fecha}`;
+  $('#subtitulo').textContent = VISTA === 'hoy'
+    ? `${DATOS.diaSemana} ${DATOS.fecha}`
+    : `Ayer · ${DATOS.diaSemanaAyer}`;
   $('#reloj').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES');
 
   const stale = $('#aviso-stale');
@@ -86,72 +77,106 @@ function pintar() {
     stale.textContent = `⚠️ Datos_API es de ${DATOS.mesDatos || 'otro mes'}, no del mes actual: las horas pueden no estar al día.`;
   } else stale.classList.add('hidden');
 
-  $('#resumen').innerHTML =
-    tarjetaResumen('Día', DATOS.resumen['Día']) + tarjetaResumen('Noche', DATOS.resumen['Noche']);
-
+  pintarResumen();
   pintarSecciones();
 }
 
-function pintarSecciones() {
-  const texto = $('#f-buscar').value.trim().toLowerCase();
-  const soloProblemas = $('#f-problemas').checked;
-  const cont = $('#secciones');
-  cont.innerHTML = '';
-
-  ['Día', 'Noche'].forEach(turno => {
-    let filas = DATOS.conductores.filter(c => c.turno === turno);
-    // En "hoy" y "ayer" solo interesan los que debían salir ese turno.
-    filas = filas.filter(c => c.debiaSalir || c.libraHoy);
-    if (soloProblemas) filas = filas.filter(c => c.estadoControl === 'no_salido');
-    if (texto) filas = filas.filter(c =>
-      (c.nombre || '').toLowerCase().includes(texto) || (c.matriculaHoy || '').toLowerCase().includes(texto));
-
-    // Orden: primero los que no han salido, luego por horas descendente.
-    const rank = { no_salido: 0, trabajando: 1, libranza: 2, no_tocaba: 3 };
-    filas.sort((a, b) => (rank[a.estadoControl] - rank[b.estadoControl])
-      || ((horasDe(b) ?? -1) - (horasDe(a) ?? -1)));
-
-    cont.insertAdjacentHTML('beforeend', seccionHtml(turno, filas));
-  });
+function pintarResumen() {
+  const r = DATOS.resumen[VISTA];
+  const verbo = VISTA === 'hoy' ? 'han salido' : 'trabajaron';
+  const falta = VISTA === 'hoy' ? 'sin salir' : 'no trabajaron';
+  $('#resumen').innerHTML = ['Día', 'Noche'].map(t => `
+    <div class="rounded-xl border border-telecab-border bg-telecab-card p-4">
+      <div class="text-xs uppercase text-telecab-muted mb-1">${t}</div>
+      <div class="text-2xl font-bold text-telecab-text">${r[t].trabajaron}<span class="text-telecab-muted text-base font-normal">/${r[t].esperados}</span></div>
+      <div class="text-xs text-telecab-muted mt-1">${verbo} · <span class="text-red-400">${r[t].noTrabajaron} ${falta}</span> · ${r[t].libranza} libran</div>
+    </div>`).join('') + `
+    <div class="rounded-xl border border-telecab-border bg-telecab-card p-4 col-span-2 md:col-span-2 flex items-center justify-center text-center">
+      <div><div class="text-3xl font-bold text-red-400">${r['Día'].noTrabajaron + r['Noche'].noTrabajaron}</div>
+      <div class="text-xs text-telecab-muted mt-1">${VISTA === 'hoy' ? 'sin salir en total' : 'no trabajaron en total'}</div></div>
+    </div>`;
 }
 
-function horasDe(c) { return VISTA === 'hoy' ? c.horasHoy : c.horasAyer; }
+function filtrar(lista) {
+  const texto = $('#f-buscar').value.trim().toLowerCase();
+  if (!texto) return lista;
+  return lista.filter(c =>
+    (c.nombre || '').toLowerCase().includes(texto) ||
+    (c.dia.matricula || '').toLowerCase().includes(texto));
+}
 
-function seccionHtml(turno, filas) {
-  const icono = turno === 'Día' ? '☀️' : '🌙';
-  const cuerpo = filas.length ? filas.map(c => {
-    const h = horasDe(c);
-    const badge = c.libraHoy ? BADGE.libranza
-      : (VISTA === 'hoy' ? BADGE[c.estadoControl]
-        : (h != null && h > 0 ? BADGE.trabajando : BADGE.no_salido));
-    const horasTxt = h == null ? '—' : h.toFixed(1) + ' h';
-    const horasCls = (h != null && h > 0) ? 'text-telecab-text' : 'text-red-400';
-    return `<tr class="border-t border-telecab-border">
-      <td class="px-3 py-2 text-telecab-text">${esc(c.nombre)}${c.enDatos ? '' : ' <span class="text-amber-400 text-xs" title="Sin datos de horas en Datos_API">⚠︎</span>'}</td>
-      <td class="px-3 py-2 text-telecab-muted">${esc(c.matriculaHoy || (c.libraHoy ? 'Libra' : '—'))}</td>
-      <td class="px-3 py-2 text-right font-semibold ${horasCls}">${horasTxt}</td>
-      <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${badge.cls}">${badge.txt}</span></td>
-      <td class="px-3 py-2 text-telecab-muted text-xs">${esc(c.telefono)}</td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="5" class="px-3 py-6 text-center text-telecab-muted">Nadie en este turno.</td></tr>`;
+function filaHtml(c, mostrarBadge) {
+  const h = c.dia.horas;
+  const horasTxt = h == null ? '—' : h.toFixed(1) + ' h';
+  const horasCls = (h != null && h > 0) ? 'text-telecab-text' : 'text-red-400';
+  const alerta = c.enDatos ? '' : ' <span class="text-amber-400 text-xs" title="Sin horas en Datos_API (nombre no cruza)">⚠︎</span>';
+  const badge = mostrarBadge
+    ? `<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${BADGE[c.dia.estadoControl].cls}">${BADGE[c.dia.estadoControl].txt}</span></td>`
+    : '';
+  return `<tr class="border-t border-telecab-border">
+    <td class="px-3 py-2 text-telecab-text">${esc(c.nombre)}${alerta}</td>
+    <td class="px-3 py-2 text-telecab-muted">${esc(c.dia.matricula || (c.dia.libra ? 'Libra' : '—'))}</td>
+    <td class="px-3 py-2 text-right font-semibold ${horasCls}">${horasTxt}</td>
+    ${badge}
+    <td class="px-3 py-2 text-telecab-muted text-xs">${esc(c.telefono) || '<span class="text-amber-400/70">sin teléfono</span>'}</td>
+  </tr>`;
+}
 
-  return `<section>
-    <h2 class="text-lg font-semibold text-telecab-text mb-3">${icono} Turno ${turno} <span class="text-telecab-muted text-sm">(${filas.length})</span></h2>
-    <div class="overflow-x-auto rounded-xl border border-telecab-border">
-      <table class="w-full text-sm">
-        <thead class="bg-telecab-card text-telecab-muted text-xs uppercase">
-          <tr>
-            <th class="text-left px-3 py-3">Conductor</th>
-            <th class="text-left px-3 py-3">Matrícula</th>
-            <th class="text-right px-3 py-3">${VISTA === 'hoy' ? 'Horas hoy' : 'Horas ayer'}</th>
-            <th class="text-left px-3 py-3">Estado</th>
-            <th class="text-left px-3 py-3">Teléfono</th>
-          </tr>
-        </thead>
-        <tbody>${cuerpo}</tbody>
-      </table>
-    </div>
-  </section>`;
+function tabla(filas, mostrarBadge, vacio) {
+  const cuerpo = filas.length ? filas.map(c => filaHtml(c, mostrarBadge)).join('')
+    : `<tr><td colspan="${mostrarBadge ? 5 : 4}" class="px-3 py-6 text-center text-telecab-muted">${vacio}</td></tr>`;
+  return `<div class="overflow-x-auto rounded-xl border border-telecab-border">
+    <table class="w-full text-sm">
+      <thead class="bg-telecab-card text-telecab-muted text-xs uppercase"><tr>
+        <th class="text-left px-3 py-3">Conductor</th>
+        <th class="text-left px-3 py-3">Matrícula</th>
+        <th class="text-right px-3 py-3">Horas</th>
+        ${mostrarBadge ? '<th class="text-left px-3 py-3">Estado</th>' : ''}
+        <th class="text-left px-3 py-3">Teléfono</th>
+      </tr></thead>
+      <tbody>${cuerpo}</tbody>
+    </table></div>`;
+}
+
+function pintarSecciones() {
+  const cont = $('#secciones');
+  const soloFaltan = $('#f-problemas').checked;
+  cont.innerHTML = '';
+
+  if (VISTA === 'ayer' && !DATOS.ayerDisponible) {
+    cont.innerHTML = `<p class="text-center py-10 text-telecab-muted">No hay datos de ayer (primer día del mes o Datos_API no vigente).</p>`;
+    return;
+  }
+
+  ['Día', 'Noche'].forEach(turno => {
+    // Cada conductor se acompaña del día activo (hoy o ayer) en c.dia.
+    const base = DATOS.conductores
+      .filter(c => c.turno === turno)
+      .map(c => ({ ...c, dia: VISTA === 'hoy' ? c.hoy : c.ayer }));
+
+    const icono = turno === 'Día' ? '☀️' : '🌙';
+    let html = `<section><h2 class="text-lg font-semibold text-telecab-text mb-3">${icono} Turno ${turno}</h2>`;
+
+    if (VISTA === 'hoy') {
+      let filas = filtrar(base.filter(c => c.dia.debiaSalir || c.dia.libra));
+      if (soloFaltan) filas = filas.filter(c => c.dia.estadoControl === 'no_salido');
+      const rank = { no_salido: 0, trabajando: 1, libranza: 2, no_tocaba: 3 };
+      filas.sort((a, b) => (rank[a.dia.estadoControl] - rank[b.dia.estadoControl]) || ((b.dia.horas ?? -1) - (a.dia.horas ?? -1)));
+      html += tabla(filas, true, 'Nadie en este turno.');
+    } else {
+      const esperados = filtrar(base.filter(c => c.dia.debiaSalir));
+      const noTrab = esperados.filter(c => !((c.dia.horas ?? 0) > 0)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+      const trab = esperados.filter(c => (c.dia.horas ?? 0) > 0).sort((a, b) => (b.dia.horas ?? 0) - (a.dia.horas ?? 0));
+      html += `<div class="mb-2 text-sm font-medium text-red-400">No trabajaron (${noTrab.length})</div>`;
+      html += tabla(noTrab, false, 'Ninguno.');
+      if (!soloFaltan) {
+        html += `<div class="mt-5 mb-2 text-sm font-medium text-green-400">Trabajaron (${trab.length})</div>`;
+        html += tabla(trab, false, 'Ninguno.');
+      }
+    }
+    html += '</section>';
+    cont.insertAdjacentHTML('beforeend', html);
+  });
 }
 
 document.querySelectorAll('.vtab').forEach(t => t.addEventListener('click', () => {
@@ -160,7 +185,7 @@ document.querySelectorAll('.vtab').forEach(t => t.addEventListener('click', () =
       (x === t ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
   });
   VISTA = t.dataset.vista;
-  pintarSecciones();
+  pintar();
 }));
 
 $('#btn-refrescar').addEventListener('click', cargar);
@@ -168,5 +193,5 @@ $('#f-buscar').addEventListener('input', pintarSecciones);
 $('#f-problemas').addEventListener('change', pintarSecciones);
 
 cargar();
-setInterval(cargar, 5 * 60 * 1000);   // refresco automático cada 5 min
+setInterval(cargar, 5 * 60 * 1000);
 </script>
