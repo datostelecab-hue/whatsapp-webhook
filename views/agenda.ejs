@@ -31,6 +31,9 @@
     <button data-tab="out" class="tab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
       Archivo <span id="n-out" class="text-xs"></span>
     </button>
+    <button data-tab="pendientes" class="tab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
+      Pendientes de asignar ID <span id="n-pendientes" class="text-xs"></span>
+    </button>
   </div>
 
   <div id="avisos" class="hidden mb-5 rounded-lg border border-amber-600/50 bg-amber-900/20 p-4 text-sm"></div>
@@ -105,6 +108,26 @@
       </table>
     </div>
     <p id="sin-archivo" class="hidden text-center py-10 text-telecab-muted">No hay nadie archivado.</p>
+  </section>
+
+  <!-- ══════════ PESTAÑA PENDIENTES DE ASIGNAR ID ══════════ -->
+  <section id="panel-pendientes" class="hidden">
+    <p class="text-telecab-muted text-sm mb-4">
+      Conductores en la agenda <strong class="text-telecab-text">sin ID_BOLT</strong>. Sin ese nombre de Bolt
+      no se les pueden pegar las horas ni cruzarlos con la plataforma.
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-telecab-border">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card text-telecab-muted text-xs uppercase">
+          <tr>
+            <th class="text-left px-3 py-3 w-20">Fila</th>
+            <th class="text-left px-3 py-3">Conductor</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-pendientes"></tbody>
+      </table>
+    </div>
+    <p id="sin-pendientes" class="hidden text-center py-10 text-telecab-muted">Todos los conductores tienen ID_BOLT.</p>
   </section>
 </div>
 
@@ -220,6 +243,7 @@ function pintarTodo() {
     .map(([e, n]) => `${n} ${e.toLowerCase()}`).join(' · ') || 'sin conductores';
   $('#n-agenda').textContent = `(${r.total})`;
   $('#n-out').textContent = `(${ARCHIVO.length})`;
+  $('#n-pendientes').textContent = `(${(DATOS.pendientes || []).length})`;
   $('#cab-dias').innerHTML = DIAS_SEM.map(d => `<span class="inline-block w-10">${esc(d)}</span>`).join('');
 
   const estados = [...new Set(DATOS.conductores.map(c => c.estadoCalculado))];
@@ -237,6 +261,7 @@ function pintarTodo() {
   pintarAvisos();
   pintarTabla();
   pintarArchivo();
+  pintarPendientes();
 }
 
 function pintarAvisos() {
@@ -245,6 +270,16 @@ function pintarAvisos() {
   box.classList.remove('hidden');
   box.innerHTML = '<strong class="text-amber-400">Revisar:</strong><ul class="mt-2 space-y-1 text-amber-200/90">' +
     DATOS.avisos.map(a => '<li>· ' + esc(a.msg) + '</li>').join('') + '</ul>';
+}
+
+function pintarPendientes() {
+  const filas = DATOS.pendientes || [];
+  $('#sin-pendientes').classList.toggle('hidden', filas.length > 0);
+  $('#tabla-pendientes').innerHTML = filas.map(p =>
+    '<tr class="border-t border-telecab-border">' +
+    '<td class="px-3 py-2 text-telecab-muted">' + p.fila + '</td>' +
+    '<td class="px-3 py-2 text-telecab-text">' + esc(p.nombre) + '</td></tr>'
+  ).join('');
 }
 
 function pintarTabla() {
@@ -748,6 +783,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   });
   $('#panel-agenda').classList.toggle('hidden', t.dataset.tab !== 'agenda');
   $('#panel-out').classList.toggle('hidden', t.dataset.tab !== 'out');
+  $('#panel-pendientes').classList.toggle('hidden', t.dataset.tab !== 'pendientes');
 }));
 
 ['#f-buscar', '#f-estado', '#f-turno', '#f-contrato', '#f-incompletos']

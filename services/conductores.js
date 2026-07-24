@@ -166,4 +166,55 @@ async function auditarAgenda() {
   return resultado;
 }
 
-module.exports = { verificarIdBolt, auditarAgenda };
+/**
+ * Avisos propios de la AGENDA (distintos de los del planificador): quién no
+ * tiene ID_BOLT, ID_BOLT repetido y nombre repetido. Trabaja sobre los
+ * conductores que ya trae leerTablero(), sin releer ni llamar a Bolt, para que
+ * sirva en la carga de la página. Devuelve { avisos, pendientes }.
+ */
+function avisosAgenda(conductores) {
+  const porId = new Map();
+  const porNombre = new Map();
+  const pendientes = [];
+
+  (conductores || []).forEach(c => {
+    const id = (c.idBolt || '').toString().trim();
+    const nom = normNombre(c.nombre);
+
+    if (id) {
+      if (!porId.has(id)) porId.set(id, []);
+      porId.get(id).push(c);
+    } else {
+      pendientes.push({ fila: c.fila, nombre: c.nombre || '(sin nombre)' });
+    }
+    if (nom) {
+      if (!porNombre.has(nom)) porNombre.set(nom, []);
+      porNombre.get(nom).push(c);
+    }
+  });
+
+  const avisos = [];
+  if (pendientes.length) {
+    avisos.push({
+      tipo: 'sin-id',
+      msg: `${pendientes.length} conductor(es) sin ID_BOLT — ver pestaña "Pendientes de asignar ID"`
+    });
+  }
+  [...porId.entries()].filter(([, v]) => v.length > 1).forEach(([id, v]) => {
+    avisos.push({
+      tipo: 'id-duplicado',
+      msg: `ID_BOLT repetido "${id}" en filas ${v.map(x => x.fila).join(', ')} ` +
+           `(${v.map(x => x.nombre || '—').join(' / ')})`
+    });
+  });
+  [...porNombre.entries()].filter(([, v]) => v.length > 1).forEach(([, v]) => {
+    avisos.push({
+      tipo: 'nombre-duplicado',
+      msg: `Nombre repetido "${v[0].nombre}" en filas ${v.map(x => x.fila).join(', ')}`
+    });
+  });
+
+  return { avisos, pendientes: pendientes.sort((a, b) => a.fila - b.fila) };
+}
+
+module.exports = { verificarIdBolt, auditarAgenda, avisosAgenda };

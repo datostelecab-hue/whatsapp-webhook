@@ -6,6 +6,7 @@ const {
   ESTADOS_CONDUCTOR, DIAS_SEM, TURNOS, CONTRATOS
 } = require('../services/planificadorV2');
 const { geocodificar } = require('../services/geocoding');
+const { avisosAgenda } = require('../services/conductores');
 
 /** La interfaz. */
 router.get('/', (req, res) => {
@@ -24,10 +25,14 @@ router.get('/', (req, res) => {
 router.get('/api/datos', async (req, res) => {
   try {
     const t = await leerTablero();
+    // Avisos PROPIOS de la agenda (sin ID_BOLT, duplicados). Los avisos del
+    // planificador (coches/turnos/asignación) se quedan en el planificador.
+    const { avisos, pendientes } = avisosAgenda(t.conductores);
     res.json({
       esquema: t.esquema,
       conductores: t.conductores,
-      avisos: t.avisos,
+      avisos,
+      pendientes,
       resumen: {
         total: t.conductores.length,
         porEstado: t.conductores.reduce((acc, c) => {
