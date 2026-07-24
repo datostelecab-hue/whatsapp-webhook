@@ -1,7 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { sincronizarLibranzas, diagnosticarLibranzas } = require('../services/libranzas');
-const { verificarIdBolt } = require('../services/conductores');
+const { verificarIdBolt, auditarAgenda } = require('../services/conductores');
+
+// Audita AGENDA_V2: duplicados por ID_BOLT, duplicados por nombre y quién no
+// tiene ID_BOLT, con el número de fila real. No escribe.
+router.get('/agenda-audit', async (req, res) => {
+  try {
+    const r = await auditarAgenda();
+    res.json({ status: 'ok', ...r });
+  } catch (error) {
+    console.error('❌ [Conductores] /agenda-audit:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
 
 // Comprueba si los ID_BOLT de AGENDA_V2 casan con los conductores de la API de
 // Bolt. Decide si podemos unir horas por ID en vez de por nombre. No escribe.

@@ -4,8 +4,6 @@
 // Maestro = AGENDA_V2 (planificador). De aquí salen los conductores, su turno,
 // su libranza y su matrícula. Las HORAS salen de la API de Bolt y se unen por
 // ID_BOLT (no por nombre), para no repetir el desajuste de nombres.
-//
-// Este primer paso solo COMPRUEBA que ese join por ID es viable.
 
 const { leerTablero } = require('./planificadorV2');
 const { CONFIG_BOLT, fetchRangoCompleto } = require('./bolt');
@@ -13,16 +11,14 @@ const { CONFIG_BOLT, fetchRangoCompleto } = require('./bolt');
 /**
  * Cruza los ID_BOLT de AGENDA_V2 contra los conductores reales de la API de
  * Bolt. Dice cuántos casan por driver_uuid, por partner_uuid o por ninguno, y
- * muestra ejemplos con el nombre de cada lado (para ver que es la misma persona).
- * No escribe nada.
+ * muestra ejemplos con el nombre de cada lado. No escribe nada.
  */
 async function verificarIdBolt() {
-  // 1. Agenda
   const tablero = await leerTablero();
   const agenda = (tablero && tablero.conductores) || [];
   const conId = agenda.filter(c => (c.idBolt || '').toString().trim());
 
-  // 2. Conductores de Bolt (ventana ancha: getDrivers filtra por fecha de alta)
+  // getDrivers filtra por fecha de alta: ventana ancha para traerlos a todos.
   const finTs = Math.floor(Date.now() / 1000);
   const iniTs = finTs - 3 * 365 * 86400;
   const porUuid = new Map();
@@ -40,7 +36,6 @@ async function verificarIdBolt() {
     });
   }
 
-  // 3. Cruce
   let mUuid = 0, mPartner = 0, mNone = 0;
   const muestra = [];
   const sinMatch = [];
@@ -75,4 +70,69 @@ async function verificarIdBolt() {
   return resultado;
 }
 
-module.exports = { verificarIdBolt };
+// Normaliza para detectar duplicados: sin tildes, sin comas/paréntesis,
+// espacios colapsados, minúsculas.
+function normNombre(n) {
+  return (n || '').toString()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[,()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim().toLowerCase();
+}
+
+/**
+ * Audita AGENDA_V2: duplicados por ID_BOLT, duplicados por nombre y quién no
+ * tiene ID_BOLT. Cada entrada trae la fila real de la hoja. No escribe nada.
+ */
+async function auditarAgenda() {
+  const tablero = await leerTablero();
+  const agenda = (tablero && tablero.conductores) || [];
+
+  const porId = new Map();
+  const porNombre = new Map();
+  const sinId = [];
+
+  agenda.forEach(c => {
+    const id = (c.idBolt || '').toString().trim();
+    const nom = normNombre(c.nombre);
+
+    if (id) {
+      if (!porId.has(id)) porId.set(id, []);
+      porId.get(id).push({ fila: c.fila, nombre: c.nombre });
+    } else {
+      sinId.push({ fila: c.fila, nombre: c.nombre || '(sin nombre)' });
+    }
+
+    if (nom) {
+      if (!porNombre.has(nom)) porNombre.set(nom, []);
+      porNombre.get(nom).push({ fila: c.fila, nombre: c.nombre, idBolt: id || '' });
+    }
+  });
+
+  const duplicadosPorIdBolt = [...porId.entries()]
+    .filter(([, v]) => v.length > 1)
+    .map(([id, v]) => ({ idBolt: id, filas: v.map(x => x.fila), nombres: v.map(x => x.nombre) }));
+
+  const duplicadosPorNombre = [...porNombre.entries()]
+    .filter(([, v]) => v.length > 1)
+    .map(([, v]) => ({
+      nombre: v[0].nombre,
+      filas: v.map(x => x.fila),
+      idsBolt: v.map(x => x.idBolt || '(vacío)')
+    }));
+
+  const resultado = {
+    total: agenda.length,
+    conIdBolt: agenda.length - sinId.length,
+    sinIdBolt: sinId.length,
+    duplicadosPorIdBolt,
+    duplicadosPorNombre,
+    listaSinIdBolt: sinId.sort((a, b) => a.fila - b.fila)
+  };
+
+  console.log(`🧹 [Conductores] AGENDA_V2: ${agenda.length} filas · ${sinId.length} sin ID · ` +
+    `${duplicadosPorIdBolt.length} IDs repetidos · ${duplicadosPorNombre.length} nombres repetidos`);
+  return resultado;
+}
+
+module.exports = { verificarIdBolt, auditarAgenda };
