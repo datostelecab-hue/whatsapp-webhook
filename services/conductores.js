@@ -217,4 +217,4 @@ function avisosAgenda(conductores) {
   return { avisos, pendientes: pendientes.sort((a, b) => a.fila - b.fila) };
 }
 
-module.exports = { verificarIdBolt, auditarAgenda, avisosAgenda };
+module.exports = { verificarIdBolt, auditarAgenda, avisosAgenda, normClave };

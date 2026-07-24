@@ -1,0 +1,172 @@
+<div class="max-w-7xl mx-auto px-4 py-6">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text">Control de tráfico</h1>
+      <p id="subtitulo" class="text-sm text-telecab-muted mt-1">Cargando…</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="reloj" class="text-sm text-telecab-muted"></span>
+      <button id="btn-refrescar" class="px-4 py-2 rounded-lg bg-telecab-gold/10 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/20">
+        <i class="fa-solid fa-rotate mr-1"></i> Refrescar
+      </button>
+    </div>
+  </div>
+
+  <!-- Aviso de datos obsoletos -->
+  <div id="aviso-stale" class="hidden mb-5 rounded-lg border border-amber-600/50 bg-amber-900/20 p-3 text-sm text-amber-200"></div>
+
+  <!-- Resumen -->
+  <div id="resumen" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+
+  <!-- Pestañas Hoy / Ayer -->
+  <div class="flex gap-1 mb-4 border-b border-telecab-border">
+    <button data-vista="hoy" class="vtab px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">Hoy</button>
+    <button data-vista="ayer" class="vtab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">Ayer</button>
+  </div>
+
+  <div class="flex flex-wrap items-center gap-3 mb-4">
+    <input id="f-buscar" type="search" placeholder="Nombre o matrícula…"
+           class="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
+    <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer whitespace-nowrap">
+      <input id="f-problemas" type="checkbox" class="accent-telecab-gold"> Solo los que no han salido
+    </label>
+  </div>
+
+  <div id="cargando" class="text-center py-16 text-telecab-muted">
+    <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i>
+    <p class="mt-3">Leyendo el tablero…</p>
+  </div>
+
+  <div id="secciones" class="space-y-8"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s ?? '').toString().replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+let DATOS = null;
+let VISTA = 'hoy';
+
+const BADGE = {
+  trabajando: { txt: 'Trabajando', cls: 'bg-green-500/15 text-green-400' },
+  no_salido:  { txt: 'No ha salido', cls: 'bg-red-500/15 text-red-400' },
+  libranza:   { txt: 'Libranza', cls: 'bg-indigo-500/15 text-indigo-300' },
+  no_tocaba:  { txt: 'No le tocaba', cls: 'bg-telecab-card2 text-telecab-muted' }
+};
+
+async function cargar() {
+  $('#cargando').classList.remove('hidden');
+  try {
+    const r = await fetch('/control/api/datos');
+    const d = await r.json();
+    if (!r.ok || d.status !== 'ok') throw new Error(d.msg || 'error');
+    DATOS = d;
+    pintar();
+  } catch (e) {
+    $('#subtitulo').textContent = 'Error: ' + e.message;
+  }
+  $('#cargando').classList.add('hidden');
+}
+
+function tarjetaResumen(turno, r) {
+  return `<div class="rounded-xl border border-telecab-border bg-telecab-card p-4">
+    <div class="text-xs uppercase text-telecab-muted mb-1">${turno}</div>
+    <div class="text-2xl font-bold text-telecab-text">${r.trabajando}<span class="text-telecab-muted text-base font-normal">/${r.esperados}</span></div>
+    <div class="text-xs text-telecab-muted mt-1">han salido · <span class="text-red-400">${r.noSalido} sin salir</span> · ${r.libranza} libran</div>
+  </div>`;
+}
+
+function pintar() {
+  $('#subtitulo').textContent = `${DATOS.diaSemana} ${DATOS.fecha}`;
+  $('#reloj').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES');
+
+  const stale = $('#aviso-stale');
+  if (!DATOS.horasVigentes) {
+    stale.classList.remove('hidden');
+    stale.textContent = `⚠️ Datos_API es de ${DATOS.mesDatos || 'otro mes'}, no del mes actual: las horas pueden no estar al día.`;
+  } else stale.classList.add('hidden');
+
+  $('#resumen').innerHTML =
+    tarjetaResumen('Día', DATOS.resumen['Día']) + tarjetaResumen('Noche', DATOS.resumen['Noche']);
+
+  pintarSecciones();
+}
+
+function pintarSecciones() {
+  const texto = $('#f-buscar').value.trim().toLowerCase();
+  const soloProblemas = $('#f-problemas').checked;
+  const cont = $('#secciones');
+  cont.innerHTML = '';
+
+  ['Día', 'Noche'].forEach(turno => {
+    let filas = DATOS.conductores.filter(c => c.turno === turno);
+    // En "hoy" y "ayer" solo interesan los que debían salir ese turno.
+    filas = filas.filter(c => c.debiaSalir || c.libraHoy);
+    if (soloProblemas) filas = filas.filter(c => c.estadoControl === 'no_salido');
+    if (texto) filas = filas.filter(c =>
+      (c.nombre || '').toLowerCase().includes(texto) || (c.matriculaHoy || '').toLowerCase().includes(texto));
+
+    // Orden: primero los que no han salido, luego por horas descendente.
+    const rank = { no_salido: 0, trabajando: 1, libranza: 2, no_tocaba: 3 };
+    filas.sort((a, b) => (rank[a.estadoControl] - rank[b.estadoControl])
+      || ((horasDe(b) ?? -1) - (horasDe(a) ?? -1)));
+
+    cont.insertAdjacentHTML('beforeend', seccionHtml(turno, filas));
+  });
+}
+
+function horasDe(c) { return VISTA === 'hoy' ? c.horasHoy : c.horasAyer; }
+
+function seccionHtml(turno, filas) {
+  const icono = turno === 'Día' ? '☀️' : '🌙';
+  const cuerpo = filas.length ? filas.map(c => {
+    const h = horasDe(c);
+    const badge = c.libraHoy ? BADGE.libranza
+      : (VISTA === 'hoy' ? BADGE[c.estadoControl]
+        : (h != null && h > 0 ? BADGE.trabajando : BADGE.no_salido));
+    const horasTxt = h == null ? '—' : h.toFixed(1) + ' h';
+    const horasCls = (h != null && h > 0) ? 'text-telecab-text' : 'text-red-400';
+    return `<tr class="border-t border-telecab-border">
+      <td class="px-3 py-2 text-telecab-text">${esc(c.nombre)}${c.enDatos ? '' : ' <span class="text-amber-400 text-xs" title="Sin datos de horas en Datos_API">⚠︎</span>'}</td>
+      <td class="px-3 py-2 text-telecab-muted">${esc(c.matriculaHoy || (c.libraHoy ? 'Libra' : '—'))}</td>
+      <td class="px-3 py-2 text-right font-semibold ${horasCls}">${horasTxt}</td>
+      <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${badge.cls}">${badge.txt}</span></td>
+      <td class="px-3 py-2 text-telecab-muted text-xs">${esc(c.telefono)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" class="px-3 py-6 text-center text-telecab-muted">Nadie en este turno.</td></tr>`;
+
+  return `<section>
+    <h2 class="text-lg font-semibold text-telecab-text mb-3">${icono} Turno ${turno} <span class="text-telecab-muted text-sm">(${filas.length})</span></h2>
+    <div class="overflow-x-auto rounded-xl border border-telecab-border">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card text-telecab-muted text-xs uppercase">
+          <tr>
+            <th class="text-left px-3 py-3">Conductor</th>
+            <th class="text-left px-3 py-3">Matrícula</th>
+            <th class="text-right px-3 py-3">${VISTA === 'hoy' ? 'Horas hoy' : 'Horas ayer'}</th>
+            <th class="text-left px-3 py-3">Estado</th>
+            <th class="text-left px-3 py-3">Teléfono</th>
+          </tr>
+        </thead>
+        <tbody>${cuerpo}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+document.querySelectorAll('.vtab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.vtab').forEach(x => {
+    x.className = 'vtab px-5 py-2.5 font-medium border-b-2 ' +
+      (x === t ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+  });
+  VISTA = t.dataset.vista;
+  pintarSecciones();
+}));
+
+$('#btn-refrescar').addEventListener('click', cargar);
+$('#f-buscar').addEventListener('input', pintarSecciones);
+$('#f-problemas').addEventListener('change', pintarSecciones);
+
+cargar();
+setInterval(cargar, 5 * 60 * 1000);   // refresco automático cada 5 min
+</script>

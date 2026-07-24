@@ -58,6 +58,7 @@ const coberturaRoutes = require('./routes/cobertura');
 const vehiculosRoutes = require('./routes/vehiculos');
 const documentosRoutes = require('./routes/documentos');
 const libranzasRoutes = require('./routes/libranzas');
+const controlRoutes = require('./routes/control');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -89,6 +90,7 @@ app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
 app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
+app.use('/control', controlRoutes);
 
 // ============================================================
 // CRON
