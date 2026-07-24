@@ -34,6 +34,20 @@ async function writeSheet(spreadsheetId, range, values) {
   });
 }
 
+// Como writeSheet pero SIN que Sheets interprete los valores: 'YYYY-MM-DD' se
+// queda como texto y no se convierte a fecha con formato local. Se usa para
+// cabeceras que son claves (L_Acumuladas), donde el texto debe sobrevivir al
+// ida y vuelta.
+async function writeSheetRaw(spreadsheetId, range, values) {
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range,
+    valueInputOption: 'RAW',
+    requestBody: { values }
+  });
+}
+
 async function clearSheet(spreadsheetId, range) {
   const sheets = getSheetsClient();
   await sheets.spreadsheets.values.clear({
@@ -139,6 +153,6 @@ async function deleteRows(spreadsheetId, sheetId, filas) {
 }
 
 module.exports = {
-  readSheet, writeSheet, clearSheet, ensureSheet,
+  readSheet, writeSheet, writeSheetRaw, clearSheet, ensureSheet,
   readMany, writeMany, getSheetIds, appendRows, deleteRows
 };

@@ -57,6 +57,7 @@ const matchingRoutes = require('./routes/matching');
 const coberturaRoutes = require('./routes/cobertura');
 const vehiculosRoutes = require('./routes/vehiculos');
 const documentosRoutes = require('./routes/documentos');
+const libranzasRoutes = require('./routes/libranzas');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -87,6 +88,7 @@ app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
 app.use('/documentos', documentosRoutes);
+app.use('/libranzas', libranzasRoutes);
 
 // ============================================================
 // CRON
@@ -117,6 +119,27 @@ cron.schedule('15 * * * *', async () => {
     console.error(`❌ [CRON Resumen] Error: ${error.message}`);
   }
 });
+
+// Libranzas: AGENDA_V2 → L_Acumuladas, cada hora al minuto 30.
+// APAGADO por defecto. Actívalo con LIBRANZAS_CRON=on en Render SOLO después de
+// neutralizar acumularLSemanales en el Apps Script, o ambos escribirán
+// L_Acumuladas y se pisarán. La ruta POST /libranzas/sync funciona igualmente
+// para pruebas manuales aunque el cron esté apagado.
+if (process.env.LIBRANZAS_CRON === 'on') {
+  cron.schedule('30 * * * *', async () => {
+    console.log('⏰ [CRON Libranzas] sincronizarLibranzas()...');
+    try {
+      const { sincronizarLibranzas } = require('./services/libranzas');
+      const result = await sincronizarLibranzas();
+      console.log(`✅ [CRON Libranzas] Completado: ${JSON.stringify(result)}`);
+    } catch (error) {
+      console.error(`❌ [CRON Libranzas] Error: ${error.message}`);
+    }
+  });
+  console.log('   Cron Libranzas: ACTIVO (minuto 30)');
+} else {
+  console.log('   Cron Libranzas: apagado (LIBRANZAS_CRON!=on)');
+}
 
 // ============================================================
 // INICIAR SERVIDOR
