@@ -133,19 +133,25 @@ async function tableroControl() {
     };
   });
 
+  const r1 = n => Math.round(n * 10) / 10;
   const resumenDe = sel => {
     const r = {};
+    let horasTotal = 0;
     ['Día', 'Noche'].forEach(t => {
       const del = filas.filter(f => f.turno === t);
       const esperados = del.filter(f => sel(f).debiaSalir);
       const trabajaron = esperados.filter(f => (sel(f).horas ?? 0) > 0).length;
+      const horas = del.reduce((s, f) => s + (sel(f).horas ?? 0), 0);
+      horasTotal += horas;
       r[t] = {
         esperados: esperados.length,
         trabajaron,
         noTrabajaron: esperados.length - trabajaron,
-        libranza: del.filter(f => sel(f).libra).length
+        libranza: del.filter(f => sel(f).libra).length,
+        horas: r1(horas)
       };
     });
+    r.horasTotal = r1(horasTotal);
     return r;
   };
 

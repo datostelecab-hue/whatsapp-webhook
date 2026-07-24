@@ -15,7 +15,10 @@
 
   <div id="aviso-stale" class="hidden mb-5 rounded-lg border border-amber-600/50 bg-amber-900/20 p-3 text-sm text-amber-200"></div>
 
-  <div id="resumen" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+  <div id="resumen" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
+
+  <!-- Sumatoria de horas por turno + total -->
+  <div id="sumatoria" class="grid grid-cols-3 gap-3 mb-6"></div>
 
   <div class="flex gap-1 mb-4 border-b border-telecab-border">
     <button data-vista="hoy" class="vtab px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">Hoy</button>
@@ -78,7 +81,22 @@ function pintar() {
   } else stale.classList.add('hidden');
 
   pintarResumen();
+  pintarSumatoria();
   pintarSecciones();
+}
+
+function pintarSumatoria() {
+  const r = DATOS.resumen[VISTA];
+  const etiqueta = VISTA === 'hoy' ? 'hoy' : 'ayer';
+  const card = (titulo, horas, resaltar) => `
+    <div class="rounded-xl border ${resaltar ? 'border-telecab-gold/40 bg-telecab-gold/5' : 'border-telecab-border bg-telecab-card'} p-4 text-center">
+      <div class="text-xs uppercase text-telecab-muted mb-1">${titulo}</div>
+      <div class="text-2xl font-bold ${resaltar ? 'text-telecab-gold' : 'text-telecab-text'}">${horas.toFixed(1)} <span class="text-base font-normal text-telecab-muted">h</span></div>
+    </div>`;
+  $('#sumatoria').innerHTML =
+    card(`Horas Día (${etiqueta})`, r['Día'].horas, false) +
+    card(`Horas Noche (${etiqueta})`, r['Noche'].horas, false) +
+    card(`Total ${etiqueta}`, r.horasTotal, true);
 }
 
 function pintarResumen() {
