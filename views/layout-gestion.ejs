@@ -257,6 +257,9 @@
 
   pop.addEventListener('mousedown', e => e.preventDefault());  // no robar el foco del input
   pop.addEventListener('click', e => {
+    // Sin esto, al navegar de mes render() reemplaza el HTML y saca del DOM el
+    // botón pulsado; el detector de "clic fuera" lo ve fuera y cierra el calendario.
+    e.stopPropagation();
     const nav = e.target.closest('[data-nav]');
     if (nav) { vista = new Date(vista.getFullYear(), vista.getMonth() + Number(nav.dataset.nav), 1); render(); return; }
     const day = e.target.closest('[data-d]');
