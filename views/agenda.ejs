@@ -414,14 +414,14 @@ const CAMPOS_FICHA = [
     { k: 'nombre', etq: 'Nombre y apellidos', tipo: 'texto' },
     { k: 'dni', etq: 'DNI / NIE', tipo: 'texto' },
     { k: 'naf', etq: 'NAF', tipo: 'texto' },
-    { k: 'fechaAlta', etq: 'Fecha de alta', tipo: 'texto', ayuda: 'dd/mm/aaaa' }
+    { k: 'fechaAlta', etq: 'Fecha de alta', tipo: 'fecha' }
   ]},
   { g: 'Trabajo', campos: [
     { k: 'turno', etq: 'Turno', tipo: 'lista', valores: TURNOS },
     { k: 'contrato', etq: 'Contrato', tipo: 'lista', valores: CONTRATOS },
     { k: 'recomendador', etq: 'Recomendado por', tipo: 'texto' },
     { k: 'activo', etq: 'Activo', tipo: 'bool' },
-    { k: 'reincorporacion', etq: 'Reincorporación', tipo: 'texto', ayuda: 'dd/mm/aaaa · vuelta de baja/vacaciones' }
+    { k: 'reincorporacion', etq: 'Reincorporación', tipo: 'fecha', ayuda: 'vuelta de baja/vacaciones' }
   ]},
   { g: 'Contacto', campos: [
     { k: 'telefono', etq: 'Teléfono', tipo: 'texto' },
@@ -637,6 +637,14 @@ function campoFicha(f, valor) {
       </div>
       <p class="text-xs text-telecab-muted mt-1">Se usan para el matching con las bases.</p>
     </div>`;
+  }
+  if (f.tipo === 'fecha') {
+    return `<div><label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
+      <div class="relative">
+        <input data-campo="${f.k}" value="${esc(valor || '')}" readonly placeholder="dd/mm/aaaa"
+               class="js-fecha ${base} pr-9 hover:border-telecab-gold/50 transition">
+        <i class="fa-solid fa-calendar-days absolute right-3 top-1/2 -translate-y-1/2 text-telecab-muted pointer-events-none"></i>
+      </div>${ayuda}</div>`;
   }
   return `<div><label class="block text-xs text-telecab-muted mb-1">${esc(f.etq)}</label>
     <input data-campo="${f.k}" value="${esc(valor || '')}" class="${base}">${ayuda}</div>`;

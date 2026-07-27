@@ -173,5 +173,112 @@
   menu.querySelectorAll('a').forEach(a => a.addEventListener('click', cerrar));
 </script>
 
+<!-- ══════════ Selector de fechas (calendario propio, a juego con el tema) ══════════ -->
+<style>
+  .fp-pop { animation: fpIn .12s cubic-bezier(.2,.8,.2,1); }
+  @keyframes fpIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+  input.js-fecha { cursor: pointer; }
+  input.js-fecha::placeholder { color: #8b93a1; }
+</style>
+<script>
+(function () {
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
+  function parse(v) {
+    if (!v) return null;
+    const s = String(v).trim();
+    let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if (m) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return new Date(y, +m[2] - 1, +m[1]); }
+    m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    return null;
+  }
+
+  const pop = document.createElement('div');
+  pop.className = 'fp-pop hidden fixed z-[120] w-72 rounded-2xl border border-telecab-border bg-telecab-card2 shadow-soft p-3 text-telecab-text select-none';
+  document.body.appendChild(pop);
+  let target = null, vista = null;
+
+  function render() {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const sel = target ? parse(target.value) : null;
+    const y = vista.getFullYear(), mo = vista.getMonth();
+    const offset = (new Date(y, mo, 1).getDay() + 6) % 7;
+    const total = new Date(y, mo + 1, 0).getDate();
+    let celdas = '';
+    for (let i = 0; i < offset; i++) celdas += '<div></div>';
+    for (let d = 1; d <= total; d++) {
+      const f = new Date(y, mo, d);
+      const esSel = sel && f.getTime() === sel.getTime();
+      const esHoy = f.getTime() === hoy.getTime();
+      const cls = esSel ? 'bg-telecab-gold text-telecab-dark font-semibold shadow-gold'
+        : esHoy ? 'ring-1 ring-telecab-gold/60 text-telecab-gold'
+        : 'text-telecab-text hover:bg-telecab-card';
+      celdas += `<button type="button" data-d="${d}" class="h-9 rounded-lg text-sm transition ${cls}">${d}</button>`;
+    }
+    pop.innerHTML =
+      '<div class="flex items-center justify-between mb-2">' +
+        '<button type="button" data-nav="-1" class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card hover:text-telecab-text transition">‹</button>' +
+        '<div class="text-sm font-semibold">' + MESES[mo] + ' ' + y + '</div>' +
+        '<button type="button" data-nav="1" class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card hover:text-telecab-text transition">›</button>' +
+      '</div>' +
+      '<div class="grid grid-cols-7 gap-1 mb-1 text-[11px] font-medium text-telecab-muted text-center">' + DIAS.map(x => '<div>' + x + '</div>').join('') + '</div>' +
+      '<div class="grid grid-cols-7 gap-1 text-center">' + celdas + '</div>' +
+      '<div class="flex items-center justify-between mt-3 pt-2 border-t border-telecab-border text-xs">' +
+        '<button type="button" data-hoy class="px-2.5 py-1 rounded-lg text-telecab-gold hover:bg-telecab-gold/10 transition">Hoy</button>' +
+        '<button type="button" data-borrar class="px-2.5 py-1 rounded-lg text-telecab-muted hover:text-telecab-red transition">Borrar</button>' +
+      '</div>';
+  }
+
+  function abrir(input) {
+    target = input;
+    const base = parse(input.value) || new Date();
+    vista = new Date(base.getFullYear(), base.getMonth(), 1);
+    render();
+    pop.classList.remove('hidden');
+    const r = input.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    let left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+  function cerrar() { pop.classList.add('hidden'); target = null; }
+  function fijar(fecha) {
+    if (!target) return;
+    target.value = fecha ? fmt(fecha) : '';
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+    cerrar();
+  }
+
+  pop.addEventListener('mousedown', e => e.preventDefault());  // no robar el foco del input
+  pop.addEventListener('click', e => {
+    const nav = e.target.closest('[data-nav]');
+    if (nav) { vista = new Date(vista.getFullYear(), vista.getMonth() + Number(nav.dataset.nav), 1); render(); return; }
+    const day = e.target.closest('[data-d]');
+    if (day) { fijar(new Date(vista.getFullYear(), vista.getMonth(), Number(day.dataset.d))); return; }
+    if (e.target.closest('[data-hoy]')) { fijar(new Date()); return; }
+    if (e.target.closest('[data-borrar]')) { fijar(null); return; }
+  });
+
+  document.addEventListener('click', e => {
+    if (pop.contains(e.target)) return;
+    const inp = e.target.closest('input.js-fecha');
+    if (inp) abrir(inp); else cerrar();
+  });
+  document.addEventListener('focusin', e => {
+    const inp = e.target.closest('input.js-fecha');
+    if (inp) abrir(inp);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
+  window.addEventListener('resize', cerrar);
+  window.addEventListener('scroll', () => { if (target) cerrar(); }, true);
+})();
+</script>
+
 </body>
 </html>
