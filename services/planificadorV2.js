@@ -29,7 +29,9 @@ const N_MAT = 120;
 const P = {
   TURNO: 1, ESTADO_VEH: 2, MATRICULA: 3, ID_BOLT: 4, ZONA: 5,
   DIAS_TRABAJA: 6, TURNOS_LIBRES: 7, NUM_LIBRES: 8,
-  ESTADO_FLAT: 9, MATRICULA_FLAT: 10
+  ESTADO_FLAT: 9, MATRICULA_FLAT: 10,
+  // Ventana de vigencia de la asignación (opcionales). Columnas K y L.
+  DESDE: 11, HASTA: 12
 };
 
 // Columnas de AGENDA_V2 (1-based)
@@ -39,7 +41,9 @@ const A = {
   L_LUN: 13, L_MAR: 14, L_MIE: 15, L_JUE: 16, L_VIE: 17, L_SAB: 18, L_DOM: 19,
   MATRICULA: 20, BINOMIO: 21, COORDENADAS: 22, DIRECCION: 23, TELEFONO: 24,
   TEL_EMERG: 25, OBSERVACIONES: 26,
-  ASG_LUN: 27, ASG_MAR: 28, ASG_MIE: 29, ASG_JUE: 30, ASG_VIE: 31, ASG_SAB: 32, ASG_DOM: 33
+  ASG_LUN: 27, ASG_MAR: 28, ASG_MIE: 29, ASG_JUE: 30, ASG_VIE: 31, ASG_SAB: 32, ASG_DOM: 33,
+  // Fecha de reincorporación para ausencias temporales (opcional). Columna AH.
+  REINCORPORACION: 34
 };
 
 const A_HEADERS = [
@@ -183,6 +187,69 @@ const esCheck = v => v === true || v === 'TRUE' || v === 'VERDADERO';
 const txt = v => String(v == null ? '' : v).trim();
 
 // ============================================================
+// FECHAS — ventanas de vigencia (alta, reincorporación, desde/hasta)
+// ============================================================
+
+// Estados de ausencia TEMPORAL: el conductor sigue en su plaza pero no cuenta
+// hasta reincorporarse (lo cubre el CT2). "Baja Empresa" es definitiva y no entra.
+const AUSENCIAS_TEMPORALES = ['Vacaciones', 'Baja Médica', 'Suspendido'];
+
+/**
+ * Fecha desde una celda: acepta dd/mm/aaaa, aaaa-mm-dd, un Date, o lo que
+ * devuelva Sheets. Se fija a mediodía UTC para que comparar por día no baile
+ * con el cambio de hora. Devuelve null si no se entiende (campo opcional).
+ */
+function parseFecha(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date && !isNaN(v)) return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate(), 12));
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);   // dd/mm/aaaa
+  if (m) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return new Date(Date.UTC(y, +m[2] - 1, +m[1], 12)); }
+  m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);         // aaaa-mm-dd
+  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  // Fallback (formatos raros, p.ej. con hora): normalizar también a mediodía UTC
+  // del día que salga, para no romper la invariante de comparar por día.
+  const d = new Date(s);
+  return isNaN(d) ? null : new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 12));
+}
+
+/**
+ * Días (mediodía UTC) de lunes a domingo de la semana actual en la zona de la
+ * flota. La planificación es semanal, así que las ventanas de fecha se evalúan
+ * contra los días reales de ESTA semana.
+ */
+function fechasSemanaActual() {
+  const str = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
+  const [Y, M, D] = str.split('-').map(Number);
+  const hoy = new Date(Date.UTC(Y, M - 1, D, 12));
+  const offLun = (hoy.getUTCDay() + 6) % 7;
+  const lunes = new Date(hoy); lunes.setUTCDate(hoy.getUTCDate() - offLun);
+  const dias = [];
+  for (let i = 0; i < 7; i++) { const f = new Date(lunes); f.setUTCDate(lunes.getUTCDate() + i); dias.push(f); }
+  return { dias, hoy };
+}
+
+/**
+ * ¿Cuenta esta persona en su plaza en una fecha dada? Considera el "desde"
+ * (explícito o su fecha de alta), el "hasta" de la asignación y las ausencias
+ * temporales (no cuenta hasta la reincorporación). Devuelve el motivo si no.
+ */
+function activoEnFecha(p, info, fecha) {
+  // El "desde" efectivo es la fecha MÁS TARDÍA entre el alta del conductor y el
+  // desde de la asignación: no puede empezar antes de ninguna de las dos.
+  const cand = [p.desdeD, info && info.fechaAltaD].filter(Boolean);
+  const desde = cand.length ? new Date(Math.max.apply(null, cand.map(d => d.getTime()))) : null;
+  if (desde && fecha < desde) return { activo: false, motivo: 'pre-alta' };
+  if (p.hastaD && fecha > p.hastaD) return { activo: false, motivo: 'hasta-vencido' };
+  if (info && info.ausenteTemporal && (!info.reincorporacionD || fecha < info.reincorporacionD)) {
+    return { activo: false, motivo: 'ausente' };
+  }
+  return { activo: true };
+}
+
+// ============================================================
 // MOTOR — función pura, sin red
 // ============================================================
 
@@ -193,6 +260,9 @@ const txt = v => String(v == null ? '' : v).trim();
  * @returns tablero resuelto: coches, conductores, avisos y resumen
  */
 function calcularTablero(agendaVals, planVals, bases = []) {
+  // Días reales de esta semana, para evaluar las ventanas de fecha.
+  const { dias: fechasSemana, hoy: fechaHoy } = fechasSemanaActual();
+
   // ---- 1. Índice de conductores ----
   // porId indexa solo a los que tienen ID de Bolt: son los únicos que se pueden
   // vincular con el planificador. `conductores` incluye a TODOS los que tengan
@@ -229,8 +299,14 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       observaciones: txt(v[A.OBSERVACIONES - 1]),
       coordenadas: txt(v[A.COORDENADAS - 1]),
       libra,
-      trabaja: libra.map(l => !l)
+      trabaja: libra.map(l => !l),
+      // Ventana del conductor: alta como "desde" por defecto; reincorporación
+      // para volver de una ausencia temporal.
+      fechaAltaD: parseFecha(txt(v[A.FECHA_ALTA - 1])),
+      reincorporacion: txt(v[A.REINCORPORACION - 1]),
+      reincorporacionD: parseFecha(txt(v[A.REINCORPORACION - 1]))
     };
+    info.ausenteTemporal = AUSENCIAS_TEMPORALES.includes(info.estado);
     if (idBolt) porId.set(idBolt, info);
     conductores.push(info);
   });
@@ -257,7 +333,10 @@ function calcularTablero(agendaVals, planVals, bases = []) {
         diasIlegibles: dias.valido ? null : dias.texto,
         nombre: id && porId.has(id) ? porId.get(id).nombre : '',
         // Un ID que ya no está en la agenda es un dato huérfano: se avisa.
-        huerfano: Boolean(id) && !porId.has(id)
+        huerfano: Boolean(id) && !porId.has(id),
+        // Ventana de vigencia de ESTA asignación (opcional; sustituto temporal).
+        desdeD: parseFecha(fila[P.DESDE - 1]),
+        hastaD: parseFecha(fila[P.HASTA - 1])
       });
     }
 
@@ -308,13 +387,23 @@ function calcularTablero(agendaVals, planVals, bases = []) {
 
       // Vacaciones, bajas o suspensión: la plaza se libera. Se marca aquí y al
       // guardar se escribe vacío en la hoja.
-      if (ESTADOS_ESPECIALES.includes(info.estado)) {
+      if (info.estado === 'Baja Empresa') {
+        // Definitiva: se libera la plaza (y luego se archiva).
         p.retirar = true;
         p.motivoRetiro = info.estado;
         problemas.push({
           tipo: 'estado-retira', idx: coche.idx, matricula: coche.matricula, id: p.id,
-          msg: `${info.nombre || p.id} está en "${info.estado}": se libera su plaza en ` +
+          msg: `${info.nombre || p.id} está en "Baja Empresa": se libera su plaza en ` +
                `${nombreCoche} (${p.etiqueta}) y se borran sus días`
+        });
+      } else if (AUSENCIAS_TEMPORALES.includes(info.estado)) {
+        // Temporal: NO se libera la plaza. Sigue en su sitio pero no cuenta sus
+        // días (lo cubre el CT2); vuelve solo al llegar la reincorporación.
+        problemas.push({
+          tipo: 'ausencia-temporal', idx: coche.idx, matricula: coche.matricula, id: p.id,
+          msg: `${info.nombre || p.id} está en "${info.estado}"` +
+               `${info.reincorporacion ? `, vuelve el ${info.reincorporacion}` : ''}: ` +
+               `no cuenta en ${nombreCoche} (${p.etiqueta}) mientras tanto; cúbrelo en el CT2`
         });
       }
 
@@ -366,7 +455,15 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     coche.personas.forEach(p => {
       if (!p.id || p.rol !== 'CT' || !p.diasManual) return;
       if (p.retirar || p.turnoIncorrecto || p.huerfano) return;
-      p.diasManual.forEach((v, d) => { if (v) tomadosPorCT[p.turno][d] = true; });
+      const infoCT = porId.get(p.id);
+      p.diasManual.forEach((v, d) => {
+        if (!v) return;
+        // Un CT fuera de su ventana de fecha (vacaciones, desde futuro, hasta
+        // vencido) NO reserva el día: si no, se lo robaría al fijo y quedaría un
+        // hueco fantasma que nadie cubre.
+        if (!activoEnFecha(p, infoCT, fechasSemana[d]).activo) return;
+        tomadosPorCT[p.turno][d] = true;
+      });
     });
 
     const grid = {};   // "dia|turno" → [ids]
@@ -429,6 +526,13 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       turnosCubre.forEach(turnoCubre => {
         baseDias.forEach((cubre, d) => {
           if (!cubre) return;
+          // Ventana de fechas: no cuenta antes del alta/desde, tras el hasta, ni
+          // durante una ausencia temporal (hasta la reincorporación).
+          const gate = activoEnFecha(p, info, fechasSemana[d]);
+          if (!gate.activo) {
+            (p.inactivoPorDia = p.inactivoPorDia || {})[d] = gate.motivo;
+            return;
+          }
           // El correturno del turno manda sobre el fijo (incluido el TodoTurno).
           if (p.rol !== 'CT' && tomadosPorCT[turnoCubre][d]) return;
 
@@ -455,10 +559,51 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     coche._grid = grid;
   });
 
+  // Se declara aquí (y no en la sección 4) porque el bloque 3c de abajo ya
+  // empuja avisos; con const, usarla antes de declararla la deja en la zona
+  // muerta temporal y reventaría todo el cálculo.
+  const avisos = [];
+
+  // ---- 3c. Alertas de fechas ----
+  // Vencimientos (avisar un día antes y el día), altas futuras y
+  // reincorporaciones que ya pasaron pero el estado sigue en ausencia.
+  const UN_DIA = 86400000;
+  const fmtF = d => d
+    ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`
+    : '';
+  coches.forEach(coche => {
+    coche.personas.forEach(p => {
+      if (!p.id) return;
+      const info = porId.get(p.id);
+      const quien = (info && info.nombre) || p.id;
+      const nombreCoche = coche.matricula || '#' + (coche.idx + 1);
+
+      if (p.hastaD) {
+        const dif = Math.round((p.hastaD - fechaHoy) / UN_DIA);
+        if (dif === 1) avisos.push({ tipo: 'fecha-hasta-manana', matricula: coche.matricula, id: p.id,
+          msg: `${quien} deja ${p.etiqueta} de ${nombreCoche} MAÑANA (${fmtF(p.hastaD)}): reasignar` });
+        else if (dif === 0) avisos.push({ tipo: 'fecha-hasta-hoy', matricula: coche.matricula, id: p.id,
+          msg: `${quien} deja ${p.etiqueta} de ${nombreCoche} HOY (${fmtF(p.hastaD)}): reasignar` });
+        else if (dif < 0) avisos.push({ tipo: 'fecha-hasta-vencida', matricula: coche.matricula, id: p.id,
+          msg: `La asignación de ${quien} en ${nombreCoche} (${p.etiqueta}) venció el ${fmtF(p.hastaD)}` });
+      }
+
+      if (info && info.fechaAltaD && info.fechaAltaD > fechaHoy) {
+        avisos.push({ tipo: 'fecha-alta-futura', matricula: coche.matricula, id: p.id,
+          msg: `${quien} en ${nombreCoche} (${p.etiqueta}) se incorpora el ${fmtF(info.fechaAltaD)}: aún no cuenta` });
+      }
+
+      if (info && info.ausenteTemporal && info.reincorporacionD && info.reincorporacionD <= fechaHoy) {
+        avisos.push({ tipo: 'fecha-reincorporacion-pasada', matricula: coche.matricula, id: p.id,
+          msg: `${quien} debía reincorporarse el ${fmtF(info.reincorporacionD)} pero sigue en "${info.estado}": revisar estado` });
+      }
+    });
+  });
+
   // ---- 4. Huecos, solapes y resumen ----
   const salen = { 'Día': Array(7).fill(0), 'Noche': Array(7).fill(0) };
   const estadoAutos = { '✓': 0, 'X': 0, 'T': 0, 'S': 0, 'R': 0, 'B': 0 };
-  const avisos = [];
+  // avisos ya está declarado más arriba (antes de la sección 3c).
 
   coches.forEach(coche => {
     if (coche.estadoVeh && estadoAutos[coche.estadoVeh] !== undefined) {
@@ -729,6 +874,24 @@ function calcularTablero(agendaVals, planVals, bases = []) {
   // conductor ese día. El motivo va en cada entrada para poder verlo al abrir.
   const MOTIVO_VEH = { S: 'Siniestro', T: 'Transporte', X: 'En taller', R: 'Reservado', B: 'Baja' };
 
+  // Si un día/turno queda vacío porque su titular está fuera por FECHA (alta
+  // futura, baja hasta X, asignación vencida), lo explica en el hueco.
+  function motivoHuecoFecha(coche, d, turno) {
+    const p = coche.personas.find(x => x.id && x.inactivoPorDia && x.inactivoPorDia[d] &&
+      (x.turno === turno || (x.turnosCubre && x.turnosCubre.includes(turno))));
+    if (!p) return null;
+    const info = porId.get(p.id);
+    const quien = (info && info.nombre) || p.id;
+    const cod = p.inactivoPorDia[d];
+    if (cod === 'pre-alta') return { tipo: 'titular-pre-alta',
+      motivo: `${quien} aún no incorporado${info && info.fechaAltaD ? ` (alta ${fmtF(info.fechaAltaD)})` : ''}` };
+    if (cod === 'ausente') return { tipo: 'titular-ausente',
+      motivo: `${quien} en ${info ? info.estado : 'ausencia'}${info && info.reincorporacionD ? ` hasta ${fmtF(info.reincorporacionD)}` : ''}` };
+    if (cod === 'hasta-vencido') return { tipo: 'asignacion-vencida',
+      motivo: `Asignación de ${quien} terminó${p.hastaD ? ` el ${fmtF(p.hastaD)}` : ''}` };
+    return null;
+  }
+
   // Cobertura por día y turno, para responder "¿quién sale el sábado de noche?"
   const cobertura = [];
   for (let d = 0; d < 7; d++) {
@@ -748,7 +911,14 @@ function calcularTablero(agendaVals, planVals, bases = []) {
         const tramo = coche.semana[d * 2 + TURNOS.indexOf(turno)];
         if (tramo.id) enCalle.push({ matricula: coche.matricula, zona: coche.zona, id: tramo.id, nombre: tramo.nombre, plaza: tramo.plaza });
         else if (tramo.conflicto) sinConductor.push({ matricula: coche.matricula, zona: coche.zona, tipo: 'conflicto', motivo: 'Conflicto de asignación' });
-        else sinConductor.push({ matricula: coche.matricula, zona: coche.zona, tipo: 'sin_conductor', motivo: 'Sin conductor asignado ese día' });
+        else {
+          const ficha = motivoHuecoFecha(coche, d, turno);
+          sinConductor.push({
+            matricula: coche.matricula, zona: coche.zona,
+            tipo: ficha ? ficha.tipo : 'sin_conductor',
+            motivo: ficha ? ficha.motivo : 'Sin conductor asignado ese día'
+          });
+        }
       });
       cobertura.push({
         dia: d, diaNombre: DIAS_SEM[d], turno,
@@ -887,8 +1057,9 @@ async function anadirDebajo(hoja, filasActuales, colClave, nuevasFilas, anchoFil
 const ULTIMA_FILA_PLAN = PLAN_FILA_INI + N_MAT * FILAS_POR_COCHE - 1;
 
 const RANGOS = {
-  agenda: `${HOJAS.AGENDA}!A1:AG1000`,
-  plan: `${HOJAS.PLAN}!A${PLAN_FILA_CAB}:J${ULTIMA_FILA_PLAN}`,
+  // Ampliado a AH / L para leer las columnas de fechas nuevas (si existen).
+  agenda: `${HOJAS.AGENDA}!A1:AH1000`,
+  plan: `${HOJAS.PLAN}!A${PLAN_FILA_CAB}:L${ULTIMA_FILA_PLAN}`,
   bases: `${HOJAS.BASES}!A1:D60`
 };
 
