@@ -273,6 +273,12 @@ function filaSlot(c, p) {
     <span class="w-40 truncate text-xs ${p.huerfano ? 'text-telecab-red' : 'text-telecab-muted'}"
           title="${esc(p.nombre)}">${esc(p.huerfano ? 'no está en la agenda' : p.nombre)}</span>
     ${campoDias}
+    <input value="${esc(p.desde || '')}" placeholder="Desde" maxlength="10"
+           class="w-24 px-2 py-1 rounded bg-telecab-dark border border-telecab-border text-telecab-muted text-center text-xs"
+           data-campo="desde" data-slot="${p.slot}" title="Desde (dd/mm/aaaa, opcional)">
+    <input value="${esc(p.hasta || '')}" placeholder="Hasta" maxlength="10"
+           class="w-24 px-2 py-1 rounded bg-telecab-dark border border-telecab-border text-telecab-muted text-center text-xs"
+           data-campo="hasta" data-slot="${p.slot}" title="Hasta (dd/mm/aaaa, opcional). Al pasar, la plaza queda libre">
   </div>`;
 }
 

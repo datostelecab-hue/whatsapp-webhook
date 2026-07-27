@@ -218,17 +218,18 @@ function parseFecha(v) {
  * flota. La planificación es semanal, así que las ventanas de fecha se evalúan
  * contra los días reales de ESTA semana.
  */
-function fechasSemanaActual() {
+function fechasSemanaActual(offsetSemanas = 0) {
   const str = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
   const [Y, M, D] = str.split('-').map(Number);
-  const hoy = new Date(Date.UTC(Y, M - 1, D, 12));
+  const hoy = new Date(Date.UTC(Y, M - 1, D, 12));   // el día REAL, no cambia con el offset
   const offLun = (hoy.getUTCDay() + 6) % 7;
-  const lunes = new Date(hoy); lunes.setUTCDate(hoy.getUTCDate() - offLun);
+  const lunes = new Date(hoy);
+  lunes.setUTCDate(hoy.getUTCDate() - offLun + (Number(offsetSemanas) || 0) * 7);
   const dias = [];
   for (let i = 0; i < 7; i++) { const f = new Date(lunes); f.setUTCDate(lunes.getUTCDate() + i); dias.push(f); }
-  return { dias, hoy };
+  return { dias, hoy, lunes };
 }
 
 /**
@@ -259,9 +260,11 @@ function activoEnFecha(p, info, fecha) {
  * @param {Array}   bases       [{nombre, lat, lng}]
  * @returns tablero resuelto: coches, conductores, avisos y resumen
  */
-function calcularTablero(agendaVals, planVals, bases = []) {
-  // Días reales de esta semana, para evaluar las ventanas de fecha.
-  const { dias: fechasSemana, hoy: fechaHoy } = fechasSemanaActual();
+function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
+  // Semana a mostrar (offset 0 = actual; >0 = futuro, para "ver el futuro" en
+  // cobertura). "hoy" es siempre el día real, así las alertas no se desplazan.
+  const offsetSemana = Number(opciones.offsetSemana) || 0;
+  const { dias: fechasSemana, hoy: fechaHoy, lunes: lunesSemana } = fechasSemanaActual(offsetSemana);
 
   // ---- 1. Índice de conductores ----
   // porId indexa solo a los que tienen ID de Bolt: son los únicos que se pueden
@@ -335,6 +338,8 @@ function calcularTablero(agendaVals, planVals, bases = []) {
         // Un ID que ya no está en la agenda es un dato huérfano: se avisa.
         huerfano: Boolean(id) && !porId.has(id),
         // Ventana de vigencia de ESTA asignación (opcional; sustituto temporal).
+        desde: txt(fila[P.DESDE - 1]),
+        hasta: txt(fila[P.HASTA - 1]),
         desdeD: parseFecha(fila[P.DESDE - 1]),
         hastaD: parseFecha(fila[P.HASTA - 1])
       });
@@ -900,12 +905,12 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       const sinConductor = [];
       coches.forEach(coche => {
         if (!coche.matricula) return;
-        // Coche fuera de servicio (siniestro, taller, baja…): no sale ningún día.
+        // No operativo: solo se muestran los de Transporte (T). Siniestro,
+        // taller, reservado y baja se sabe que no salen y no ensucian la lista.
         if (!coche.operativo) {
-          sinConductor.push({
-            matricula: coche.matricula, zona: coche.zona, tipo: 'vehiculo',
-            motivo: MOTIVO_VEH[coche.estadoVeh] || 'Fuera de servicio'
-          });
+          if (coche.estadoVeh === 'T') {
+            sinConductor.push({ matricula: coche.matricula, zona: coche.zona, tipo: 'vehiculo', motivo: 'Transporte' });
+          }
           return;
         }
         const tramo = coche.semana[d * 2 + TURNOS.indexOf(turno)];
@@ -996,6 +1001,12 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     cobertura,
     bases,
     avisos,
+    semanaInfo: {
+      offset: offsetSemana,
+      esActual: offsetSemana === 0,
+      inicio: lunesSemana,
+      fin: fechasSemana[6]
+    },
     resumen: {
       salen,
       estadoAutos,
@@ -1132,9 +1143,9 @@ async function leerCrudo() {
 }
 
 /** Lee y devuelve el tablero ya calculado. */
-async function leerTablero() {
+async function leerTablero(opciones = {}) {
   const crudo = await leerCrudo();
-  const tablero = calcularTablero(crudo.agendaFilas.slice(1), crudo.planFilas.slice(1), crudo.bases);
+  const tablero = calcularTablero(crudo.agendaFilas.slice(1), crudo.planFilas.slice(1), crudo.bases, opciones);
   tablero.esquema = crudo.esquema;
   return tablero;
 }
@@ -1199,6 +1210,9 @@ function aplicarCambios(planFilas, cambios) {
         }
         fila[P.DIAS_TRABAJA - 1] = diasALetras(analisis.dias);
       }
+      // Ventana de la asignación (opcional). Texto tal cual; el motor lo parsea.
+      if (s.desde !== undefined) fila[P.DESDE - 1] = txt(s.desde);
+      if (s.hasta !== undefined) fila[P.HASTA - 1] = txt(s.hasta);
     });
 
     aplicados.push(c);
@@ -1246,25 +1260,33 @@ async function guardarTablero(tablero, opciones = {}) {
   // --- Planificador: columnas NO combinadas, en bloque ---
   const colIds = [];
   const colDias = [];
+  const colDesde = [];
+  const colHasta = [];
   tablero.coches.forEach(coche => {
     coche.personas.forEach(p => {
       // Vacaciones, baja o suspensión liberan la plaza: se va la persona y se
       // van sus días con ella. Dejar los días sueltos haría creer que ese turno
       // sigue cubierto.
-      if (p.retirar) {
-        colIds.push(['']);
+      if (p.retirar || !p.id) {
+        colIds.push([p.retirar ? '' : (p.id || '')]);
         colDias.push(['']);
+        colDesde.push(['']);
+        colHasta.push(['']);
         return;
       }
-      colIds.push([p.id || '']);
-      // Sin conductor no hay días que guardar. En las filas de correturno se
-      // respeta lo que escribió la persona; en las de fijo, lo que calcula el motor.
-      if (!p.id) colDias.push(['']);
-      else colDias.push([p.rol === 'CT' ? diasALetras(p.diasManual) : (p.diasTexto || '')]);
+      colIds.push([p.id]);
+      // En las filas de correturno se respeta lo que escribió la persona; en las
+      // de fijo, lo que calcula el motor.
+      colDias.push([p.rol === 'CT' ? diasALetras(p.diasManual) : (p.diasTexto || '')]);
+      // Ventana de la asignación: se reescribe tal cual (round-trip), no se pierde.
+      colDesde.push([p.desde || '']);
+      colHasta.push([p.hasta || '']);
     });
   });
   datos.push({ range: `${HOJAS.PLAN}!${colLetra(P.ID_BOLT)}${P_ini}:${colLetra(P.ID_BOLT)}${ULTIMA_FILA_PLAN}`, values: colIds });
   datos.push({ range: `${HOJAS.PLAN}!${colLetra(P.DIAS_TRABAJA)}${P_ini}:${colLetra(P.DIAS_TRABAJA)}${ULTIMA_FILA_PLAN}`, values: colDias });
+  datos.push({ range: `${HOJAS.PLAN}!${colLetra(P.DESDE)}${P_ini}:${colLetra(P.DESDE)}${ULTIMA_FILA_PLAN}`, values: colDesde });
+  datos.push({ range: `${HOJAS.PLAN}!${colLetra(P.HASTA)}${P_ini}:${colLetra(P.HASTA)}${ULTIMA_FILA_PLAN}`, values: colHasta });
 
   // --- Planificador: columnas combinadas, celda superior de cada coche ---
   tablero.coches.forEach(coche => {
@@ -1321,6 +1343,7 @@ const CAMPOS_EDITABLES = {
   dni: { col: A.DNI, tipo: 'texto' },
   naf: { col: A.NAF, tipo: 'texto' },
   fechaAlta: { col: A.FECHA_ALTA, tipo: 'texto' },
+  reincorporacion: { col: A.REINCORPORACION, tipo: 'texto' },
   recomendador: { col: A.RECOMENDADOR, tipo: 'texto' },
   turno: { col: A.TURNO, tipo: 'lista', valores: TURNOS_CONDUCTOR },
   contrato: { col: A.CONTRATO, tipo: 'lista', valores: CONTRATOS },

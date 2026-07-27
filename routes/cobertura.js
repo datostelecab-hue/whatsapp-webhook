@@ -14,7 +14,9 @@ router.get('/', (req, res) => {
 
 router.get('/api/datos', async (req, res) => {
   try {
-    const t = await leerTablero();
+    // ?semana=N: 0 = actual, 1 = la que viene, etc. Para "ver el futuro".
+    const offsetSemana = Math.max(0, Math.min(8, parseInt(req.query.semana) || 0));
+    const t = await leerTablero({ offsetSemana });
 
     // Los relevos de todos los coches, en una sola lista para poder filtrarlos
     // por persona: cada conductor quiere saber a quién entrega y de quién recibe.
@@ -22,6 +24,7 @@ router.get('/api/datos', async (req, res) => {
     t.coches.forEach(c => (c.relevos || []).forEach(r => relevos.push(r)));
 
     res.json({
+      semanaInfo: t.semanaInfo,
       cobertura: t.cobertura,
       relevos,
       coches: t.coches

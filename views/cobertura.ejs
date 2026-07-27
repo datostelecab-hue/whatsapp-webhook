@@ -10,6 +10,14 @@
     </button>
   </div>
 
+  <div class="flex flex-wrap items-center gap-3 mb-5">
+    <button id="sem-prev" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card disabled:opacity-40" title="Semana anterior">◀</button>
+    <span id="sem-label" class="text-sm text-telecab-text font-medium min-w-[240px] text-center">—</span>
+    <button id="sem-next" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card" title="Semana siguiente">▶</button>
+    <button id="sem-hoy" class="px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:bg-telecab-card text-sm">Esta semana</button>
+    <span class="text-xs text-telecab-muted">Adelanta semanas para ver quién saldrá según altas, bajas y sustituciones.</span>
+  </div>
+
   <div class="flex gap-1 mb-5 border-b border-telecab-border overflow-x-auto">
     <button data-tab="dias" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">
       Por día
@@ -61,13 +69,21 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icono = t => t === 'Día' ? '☀️' : '🌙';
 
+let SEMANA = 0;
+const fmtDia = v => { const d = new Date(v); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
+
 async function cargar() {
   $('#cargando').classList.remove('hidden');
   try {
-    const r = await fetch('/cobertura/api/datos');
+    const r = await fetch('/cobertura/api/datos?semana=' + SEMANA);
     const d = await r.json();
     if (!r.ok) throw new Error(d.msg);
     D = d;
+    const s = D.semanaInfo || {};
+    $('#sem-label').textContent = s.inicio
+      ? `Semana ${fmtDia(s.inicio)} – ${fmtDia(s.fin)}` + (s.esActual ? ' (actual)' : '')
+      : '—';
+    $('#sem-prev').disabled = SEMANA === 0;
     pintar();
   } catch (e) {
     $('#cargando').innerHTML = '<p class="text-telecab-red">' + esc(e.message) + '</p>';
@@ -231,5 +247,8 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 $('#f-coche').addEventListener('input', pintarCoches);
 $('#f-persona').addEventListener('input', pintarPersonas);
 $('#btn-recargar').addEventListener('click', cargar);
+$('#sem-prev').addEventListener('click', () => { if (SEMANA > 0) { SEMANA--; cargar(); } });
+$('#sem-next').addEventListener('click', () => { if (SEMANA < 8) { SEMANA++; cargar(); } });
+$('#sem-hoy').addEventListener('click', () => { if (SEMANA !== 0) { SEMANA = 0; cargar(); } });
 cargar();
 </script>
