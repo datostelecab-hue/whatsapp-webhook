@@ -137,7 +137,7 @@ async function tableroControl() {
   const resumenDe = sel => {
     const r = {};
     let horasTotal = 0;
-    ['Día', 'Noche'].forEach(t => {
+    ['Día', 'Noche', 'TodoTurno'].forEach(t => {
       const del = filas.filter(f => f.turno === t);
       const esperados = del.filter(f => sel(f).debiaSalir);
       const trabajaron = esperados.filter(f => (sel(f).horas ?? 0) > 0).length;

@@ -108,12 +108,18 @@ function pintarDias() {
             </div>
             ${t.sinConductor.length ? `
               <details class="text-xs">
-                <summary class="cursor-pointer text-telecab-red hover:underline">Ver coches sin conductor</summary>
-                <div class="mt-2 flex flex-wrap gap-1.5">
-                  ${t.sinConductor.map(c => `
-                    <span class="px-2 py-0.5 rounded bg-telecab-red/15 text-telecab-red" title="${esc(c.zona || 'sin zona')}">
-                      ${esc(c.matricula)}</span>`).join('')}
-                </div>
+                <summary class="cursor-pointer text-telecab-red hover:underline">Ver por qué no salen (${t.sinConductor.length})</summary>
+                <ul class="mt-2 space-y-1">
+                  ${t.sinConductor.map(c => {
+                    const col = c.tipo === 'vehiculo' ? 'text-amber-400'
+                              : c.tipo === 'conflicto' ? 'text-telecab-red' : 'text-telecab-muted';
+                    return `<li class="flex items-baseline gap-2">
+                      <span class="font-medium text-telecab-text">${esc(c.matricula)}</span>
+                      <span class="${col}">${esc(c.motivo)}</span>
+                      ${c.zona ? `<span class="text-telecab-muted/70">· ${esc(c.zona)}</span>` : ''}
+                    </li>`;
+                  }).join('')}
+                </ul>
               </details>` : '<p class="text-xs text-telecab-green">Todos los coches con conductor</p>'}
           </div>`).join('')}
       </div>

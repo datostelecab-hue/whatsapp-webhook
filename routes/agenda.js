@@ -3,7 +3,7 @@ const router = express.Router();
 const {
   leerTablero, leerOut, cambiarEstados, migrarBajasEmpresa, restaurarDesdeOut,
   actualizarConductor, crearConductor, importarConductores,
-  ESTADOS_CONDUCTOR, DIAS_SEM, TURNOS, CONTRATOS
+  ESTADOS_CONDUCTOR, DIAS_SEM, TURNOS_CONDUCTOR, CONTRATOS
 } = require('../services/planificadorV2');
 const { geocodificar } = require('../services/geocoding');
 const { avisosAgenda } = require('../services/conductores');
@@ -16,7 +16,7 @@ router.get('/', (req, res) => {
     layout: 'layout-gestion',
     estadosConductor: ESTADOS_CONDUCTOR,
     diasSem: DIAS_SEM,
-    turnos: TURNOS,
+    turnos: TURNOS_CONDUCTOR,
     contratos: CONTRATOS
   });
 });

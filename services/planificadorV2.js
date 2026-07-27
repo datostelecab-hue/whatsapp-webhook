@@ -71,7 +71,8 @@ const SLOTS = [
 
 const DIAS_SEM = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const LETRAS_DIA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-const TURNOS = ['Día', 'Noche'];
+const TURNOS = ['Día', 'Noche'];                        // turnos de una plaza de coche
+const TURNOS_CONDUCTOR = ['Día', 'Noche', 'TodoTurno']; // turno que puede tener un conductor
 const CONTRATOS = ['32h', '40h', '32h ETT', '40h ETT'];
 
 const ESTADOS_CONDUCTOR = ['Activo', 'Pendiente Asignar', 'Vacaciones', 'Baja Médica', 'Baja Empresa', 'Suspendido'];
@@ -333,7 +334,7 @@ function calcularTablero(agendaVals, planVals, bases = []) {
           msg: `${info.nombre || p.id} no tiene TURNO en la agenda: no se puede ` +
                `comprobar si encaja en ${nombreCoche} (${p.etiqueta})`
         });
-      } else if (info.turno !== p.turno) {
+      } else if (info.turno !== 'TodoTurno' && info.turno !== p.turno) {
         p.turnoIncorrecto = true;
         problemas.push({
           tipo: 'turno-cruzado', idx: coche.idx, matricula: coche.matricula, id: p.id,
@@ -384,6 +385,10 @@ function calcularTablero(agendaVals, planVals, bases = []) {
         return;
       }
 
+      // Turnos que ocupa esta persona: el de su plaza; salvo un fijo TodoTurno,
+      // que ocupa día Y noche del mismo coche.
+      let turnosCubre = [p.turno];
+
       if (p.rol === 'CT') {
         // El correturno cubre exactamente lo que tenga escrito, ni más ni menos.
         p.diasCubre = p.diasManual ? p.diasManual.slice() : Array(7).fill(false);
@@ -410,30 +415,40 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       } else {
         const partida = p.diasManual ? p.diasManual : info.trabaja;
         p.diasCubre = partida.map((v, d) => v && !tomadosPorCT[p.turno][d]);
+        if (info.turno === 'TodoTurno') turnosCubre = ['Día', 'Noche'];
       }
 
       p.diasTexto = diasALetras(p.diasCubre);
+      p.turnosCubre = turnosCubre;
 
-      p.diasCubre.forEach((cubre, d) => {
-        if (!cubre) return;
+      // Base de días antes de recortar por el CT de cada turno.
+      const baseDias = p.rol === 'CT'
+        ? p.diasCubre
+        : (p.diasManual ? p.diasManual : info.trabaja);
 
-        const key = `${d}|${p.turno}`;
-        (grid[key] = grid[key] || []).push(p.id);
+      turnosCubre.forEach(turnoCubre => {
+        baseDias.forEach((cubre, d) => {
+          if (!cubre) return;
+          // El correturno del turno manda sobre el fijo (incluido el TodoTurno).
+          if (p.rol !== 'CT' && tomadosPorCT[turnoCubre][d]) return;
 
-        // Un coche en taller, siniestrado o de baja no cuenta: quien esté en él
-        // sigue como "Pendiente Asignar" y no recibe ni días ni matrícula,
-        // porque en la práctica no tiene coche con el que salir.
-        if (!coche.operativo) return;
+          const key = `${d}|${turnoCubre}`;
+          (grid[key] = grid[key] || []).push(p.id);
 
-        if (coche.matricula) {
-          if (!asignacionPorDia.has(p.id)) asignacionPorDia.set(p.id, Array(7).fill(''));
-          const asg = asignacionPorDia.get(p.id);
-          if (!asg[d]) asg[d] = coche.matricula;
-        }
+          // Un coche en taller, siniestrado o de baja no cuenta: quien esté en él
+          // sigue como "Pendiente Asignar" y no recibe ni días ni matrícula.
+          if (!coche.operativo) return;
 
-        const gk = `${p.id}|${d}|${p.turno}`;
-        if (!ocupacionGlobal.has(gk)) ocupacionGlobal.set(gk, new Set());
-        ocupacionGlobal.get(gk).add(coche.matricula || `coche#${coche.idx + 1}`);
+          if (coche.matricula) {
+            if (!asignacionPorDia.has(p.id)) asignacionPorDia.set(p.id, Array(7).fill(''));
+            const asg = asignacionPorDia.get(p.id);
+            if (!asg[d]) asg[d] = coche.matricula;
+          }
+
+          const gk = `${p.id}|${d}|${turnoCubre}`;
+          if (!ocupacionGlobal.has(gk)) ocupacionGlobal.set(gk, new Set());
+          ocupacionGlobal.get(gk).add(coche.matricula || `coche#${coche.idx + 1}`);
+        });
       });
     });
 
@@ -710,6 +725,10 @@ function calcularTablero(agendaVals, planVals, bases = []) {
     coche.relevos = relevos;
   });
 
+  // Por qué un coche no sale: estado del vehículo (no operativo) o falta de
+  // conductor ese día. El motivo va en cada entrada para poder verlo al abrir.
+  const MOTIVO_VEH = { S: 'Siniestro', T: 'Transporte', X: 'En taller', R: 'Reservado', B: 'Baja' };
+
   // Cobertura por día y turno, para responder "¿quién sale el sábado de noche?"
   const cobertura = [];
   for (let d = 0; d < 7; d++) {
@@ -717,11 +736,19 @@ function calcularTablero(agendaVals, planVals, bases = []) {
       const enCalle = [];
       const sinConductor = [];
       coches.forEach(coche => {
-        if (!coche.operativo || !coche.matricula) return;
+        if (!coche.matricula) return;
+        // Coche fuera de servicio (siniestro, taller, baja…): no sale ningún día.
+        if (!coche.operativo) {
+          sinConductor.push({
+            matricula: coche.matricula, zona: coche.zona, tipo: 'vehiculo',
+            motivo: MOTIVO_VEH[coche.estadoVeh] || 'Fuera de servicio'
+          });
+          return;
+        }
         const tramo = coche.semana[d * 2 + TURNOS.indexOf(turno)];
         if (tramo.id) enCalle.push({ matricula: coche.matricula, zona: coche.zona, id: tramo.id, nombre: tramo.nombre, plaza: tramo.plaza });
-        else if (tramo.conflicto) sinConductor.push({ matricula: coche.matricula, zona: coche.zona, motivo: 'conflicto' });
-        else sinConductor.push({ matricula: coche.matricula, zona: coche.zona, motivo: 'sin conductor' });
+        else if (tramo.conflicto) sinConductor.push({ matricula: coche.matricula, zona: coche.zona, tipo: 'conflicto', motivo: 'Conflicto de asignación' });
+        else sinConductor.push({ matricula: coche.matricula, zona: coche.zona, tipo: 'sin_conductor', motivo: 'Sin conductor asignado ese día' });
       });
       cobertura.push({
         dia: d, diaNombre: DIAS_SEM[d], turno,
@@ -1124,7 +1151,7 @@ const CAMPOS_EDITABLES = {
   naf: { col: A.NAF, tipo: 'texto' },
   fechaAlta: { col: A.FECHA_ALTA, tipo: 'texto' },
   recomendador: { col: A.RECOMENDADOR, tipo: 'texto' },
-  turno: { col: A.TURNO, tipo: 'lista', valores: TURNOS },
+  turno: { col: A.TURNO, tipo: 'lista', valores: TURNOS_CONDUCTOR },
   contrato: { col: A.CONTRATO, tipo: 'lista', valores: CONTRATOS },
   coordenadas: { col: A.COORDENADAS, tipo: 'coords' },
   direccion: { col: A.DIRECCION, tipo: 'texto' },
@@ -1531,7 +1558,7 @@ module.exports = {
   HOJA_OUT, RANGO_OUT, ESTADO_BAJA_EMPRESA,
   leerOut, migrarBajasEmpresa, restaurarDesdeOut, cambiarEstados,
   actualizarConductor, crearConductor, importarConductores, CAMPOS_EDITABLES, CAMPOS_LIBRANZA, validarCampo,
-  ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS, CONTRATOS,
+  ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS, TURNOS_CONDUCTOR, CONTRATOS,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
   validarEsquema, leerCrudo, leerTablero, guardarTablero,
   aplicarCambios, guardarCambios,
