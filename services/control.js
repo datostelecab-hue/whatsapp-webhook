@@ -167,4 +167,4 @@ async function tableroControl() {
   };
 }
 
-module.exports = { tableroControl };
+module.exports = { tableroControl, leerHorasDatosApi };

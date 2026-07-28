@@ -92,6 +92,20 @@ app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
 
+// Reconstrucción manual de VISTA_FINAL (para probar sin esperar al cron).
+app.get('/vista-final/reconstruir', async (req, res) => {
+  console.log('🔧 [VISTA_FINAL] reconstruirVistaFinal() manual...');
+  try {
+    const { reconstruirVistaFinal } = require('./services/vistaFinal');
+    const r = await reconstruirVistaFinal();
+    console.log(`✅ [VISTA_FINAL] ${JSON.stringify(r)}`);
+    res.json({ ok: true, ...r });
+  } catch (error) {
+    console.error(`❌ [VISTA_FINAL] Error: ${error.stack || error.message}`);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // ============================================================
 // CRON
 // ============================================================
@@ -142,6 +156,19 @@ if (process.env.LIBRANZAS_CRON === 'on') {
 } else {
   console.log('   Cron Libranzas: apagado (LIBRANZAS_CRON!=on)');
 }
+
+// VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
+// hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
+cron.schedule('45 * * * *', async () => {
+  console.log('⏰ [CRON VISTA_FINAL] reconstruirVistaFinal()...');
+  try {
+    const { reconstruirVistaFinal } = require('./services/vistaFinal');
+    const result = await reconstruirVistaFinal();
+    console.log(`✅ [CRON VISTA_FINAL] Completado: ${JSON.stringify(result)}`);
+  } catch (error) {
+    console.error(`❌ [CRON VISTA_FINAL] Error: ${error.stack || error.message}`);
+  }
+});
 
 // ============================================================
 // INICIAR SERVIDOR

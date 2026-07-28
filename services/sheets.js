@@ -15,11 +15,15 @@ function getSheetsClient() {
   return sheetsClient;
 }
 
-async function readSheet(spreadsheetId, range) {
+async function readSheet(spreadsheetId, range, options = {}) {
   const sheets = getSheetsClient();
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range
+    range,
+    // Por defecto Google devuelve el valor tal como se ve (con coma decimal,
+    // fechas formateadas…). Con UNFORMATTED_VALUE los números vuelven como
+    // números y sobreviven al ida y vuelta sin depender del idioma de la hoja.
+    valueRenderOption: options.valueRenderOption
   });
   return response.data.values || [];
 }
