@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   leerTablero, leerOut, cambiarEstados, migrarBajasEmpresa, restaurarDesdeOut,
-  actualizarConductor, crearConductor, importarConductores,
+  actualizarConductor,
   ESTADOS_CONDUCTOR, DIAS_SEM, TURNOS_CONDUCTOR, CONTRATOS
 } = require('../services/planificadorV2');
 const { geocodificar } = require('../services/geocoding');
@@ -120,31 +120,9 @@ router.post('/api/geocodificar', async (req, res) => {
   }
 });
 
-/** Alta masiva desde el anexo (el cliente ya ha parseado el xlsx). */
-router.post('/api/importar', async (req, res) => {
-  try {
-    const lista = req.body && req.body.conductores;
-    const conGeo = !req.body || req.body.geocodificar !== false;
-    const r = await importarConductores(lista, { geocodificar: conGeo ? geocodificar : null });
-    console.log(`📥 [AGENDA] Importados: ${r.creados} creados, ${r.errores} con error`);
-    res.json({ status: 'ok', ...r });
-  } catch (error) {
-    console.error('❌ [AGENDA] /api/importar:', error.message);
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
-
-/** Da de alta a un conductor nuevo. */
-router.post('/api/conductor', async (req, res) => {
-  try {
-    const r = await crearConductor(req.body);
-    console.log(`➕ [AGENDA] Alta: ${r.id} · ${r.nombre}`);
-    res.json({ status: 'ok', ...r });
-  } catch (error) {
-    console.error('❌ [AGENDA] POST conductor:', error.message);
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
+// Altas e importación de conductores se hacen desde Selección/RRHH (pipeline de
+// tickets), ya no desde la Agenda. Por eso aquí NO hay POST /api/conductor ni
+// /api/importar; la Agenda solo edita (PUT) conductores que ya existen.
 
 /** Archiva a quien ya estuviera marcado como Baja Empresa en la hoja. */
 router.post('/api/migrar', async (req, res) => {

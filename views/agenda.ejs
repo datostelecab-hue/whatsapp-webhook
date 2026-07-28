@@ -10,13 +10,8 @@
       <a href="/planificador" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
         <i class="fa-solid fa-table-cells mr-1"></i> Planificador
       </a>
-      <button id="btn-importar" class="px-4 py-2 rounded-lg border border-telecab-gold/50 text-telecab-gold hover:bg-telecab-gold/10 transition font-medium">
-        <i class="fa-solid fa-file-arrow-up mr-1"></i> Importar anexo
-      </button>
-      <input id="file-anexo" type="file" accept=".xlsx,.xls" class="hidden">
-      <button id="btn-nuevo" class="px-4 py-2 rounded-lg bg-telecab-gold hover:bg-telecab-gold-soft text-telecab-dark font-semibold transition">
-        <i class="fa-solid fa-user-plus mr-1"></i> Nuevo conductor
-      </button>
+      <!-- Altas e importación de conductores ya NO se hacen aquí: las hace
+           Selección/RRHH por el pipeline. Tráfico solo edita libranzas/turnos. -->
       <button id="btn-recargar" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
         <i class="fa-solid fa-rotate mr-1"></i> Recargar
       </button>
@@ -154,34 +149,6 @@
     </div>
   </div>
 </div>
-
-<!-- ══════════ IMPORTAR ANEXO ══════════ -->
-<div id="import" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-  <div class="w-full max-w-4xl max-h-[85vh] bg-telecab-dark border border-telecab-border rounded-2xl flex flex-col">
-    <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
-      <h2 class="text-lg font-bold text-white">Importar anexo de altas</h2>
-      <button id="import-cerrar" class="text-telecab-muted hover:text-white text-xl px-2">&times;</button>
-    </div>
-    <div class="p-5 overflow-y-auto">
-      <p id="import-resumen" class="text-sm text-telecab-muted mb-3"></p>
-      <div id="import-tabla" class="overflow-x-auto rounded-lg border border-telecab-border"></div>
-      <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer mt-4">
-        <input id="import-geo" type="checkbox" class="accent-telecab-gold" checked>
-        Obtener coordenadas de la dirección automáticamente (tarda ~1 s por conductor)
-      </label>
-      <div id="import-progreso" class="hidden mt-3 text-sm text-telecab-gold"></div>
-    </div>
-    <div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-telecab-border">
-      <button id="import-cancelar" class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">Cancelar</button>
-      <button id="import-confirmar" class="px-5 py-2 rounded-lg bg-telecab-gold hover:bg-telecab-gold-soft text-telecab-dark font-semibold transition">
-        Crear <span id="import-n"></span> conductores
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- SheetJS para leer el .xlsx en el propio navegador (no se sube el binario) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <!-- Los datos del servidor van en un bloque JSON aparte, no interpolados
      dentro del código: así el editor puede analizarlo como JavaScript normal. -->
@@ -659,7 +626,6 @@ $('#tabla-agenda').addEventListener('click', e => {
   const btn = e.target.closest('[data-ficha]');
   if (btn) abrirFicha(Number(btn.dataset.ficha));
 });
-$('#btn-nuevo').addEventListener('click', () => abrirFicha(null));
 $('#ficha-cerrar').addEventListener('click', cerrarFicha);
 $('#ficha-cancelar').addEventListener('click', cerrarFicha);
 // A propósito NO se cierra al hacer clic fuera: se perdían los datos a medio
@@ -704,19 +670,11 @@ $('#ficha-guardar').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'Guardando…';
   try {
-    if (fichaFila) {
-      delete campos.id;
-      await guardarCampos(fichaFila, campos);
-      aviso('Conductor actualizado', 'ok');
-    } else {
-      const r = await fetch('/agenda/api/conductor', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(campos)
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.msg);
-      aviso(`${d.nombre} dado de alta`, 'ok');
-    }
+    // La Agenda solo EDITA conductores existentes. Las altas las hace RRHH.
+    if (!fichaFila) throw new Error('Las altas se hacen desde Selección/RRHH, no desde la Agenda');
+    delete campos.id;
+    await guardarCampos(fichaFila, campos);
+    aviso('Conductor actualizado', 'ok');
     cerrarFicha();
     await cargar();
   } catch (e) {
@@ -798,147 +756,6 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 ['#f-buscar', '#f-estado', '#f-turno', '#f-contrato', '#f-incompletos']
   .forEach(s => $(s).addEventListener('input', pintarTabla));
 $('#btn-recargar').addEventListener('click', cargar);
-
-// ════════ Importar anexo (.xlsx) ════════
-// El xlsx trae estas columnas; se mapean a los campos de la agenda. Lo que no
-// tiene hueco propio (email, IBAN, nacionalidad, fecha de nacimiento) se
-// concatena en Observaciones para no perderlo.
-let IMPORT_LISTA = [];
-
-$('#btn-importar').addEventListener('click', () => $('#file-anexo').click());
-
-$('#file-anexo').addEventListener('change', async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  try {
-    const buf = await file.arrayBuffer();
-    // cellDates: las fechas llegan como Date en vez de texto en formato inglés.
-    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
-    const filas = [];
-    wb.SheetNames.forEach(n => {
-      XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: '', raw: true }).forEach(r => filas.push(r));
-    });
-    IMPORT_LISTA = filas.map(mapearFilaAnexo).filter(c => c.nombre);
-    mostrarImport();
-  } catch (err) {
-    aviso('No se pudo leer el archivo: ' + err.message, 'error');
-  }
-  e.target.value = '';   // permite re-subir el mismo archivo
-});
-
-function campoXlsx(fila, ...nombres) {
-  for (const n of nombres) {
-    const k = Object.keys(fila).find(x => x.trim().toLowerCase() === n.toLowerCase());
-    if (k && fila[k] !== '' && fila[k] != null) return fila[k];
-  }
-  return '';
-}
-
-/** dd/mm/aaaa, que es como guarda la fecha la hoja. Acepta Date o texto. */
-function fechaES(v) {
-  const d = v instanceof Date ? v : (v ? new Date(v) : null);
-  if (!d || isNaN(d.getTime())) return v ? String(v).trim() : '';
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
-
-function mapearFilaAnexo(fila) {
-  const str = (...n) => String(campoXlsx(fila, ...n) || '').trim();
-
-  const cb = str('Modalidad contrato', 'Contrato').toUpperCase();
-  const contrato = cb.includes('40') ? (cb.includes('ETT') ? '40h ETT' : '40h')
-                 : cb.includes('32') ? (cb.includes('ETT') ? '32h ETT' : '32h') : '';
-
-  const extra = [
-    ['Email', str('Correo electrónico', 'Email')],
-    ['IBAN', str('Iban bancario', 'IBAN')],
-    ['Nacionalidad', str('Nacionalidad')],
-    ['Fecha nac.', fechaES(campoXlsx(fila, 'Fecha nacimiento'))]
-  ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' · ');
-
-  return {
-    nombre: str('Nombre y apellidos', 'Nombre'),
-    dni: str('DNI NIE', 'DNI/NIE', 'DNI'),
-    naf: str('NºSS', 'N°SS', 'NAF'),
-    fechaAlta: fechaES(campoXlsx(fila, 'Fecha de alta')),
-    contrato,
-    telefono: str('Teléfono', 'Telefono').replace(/\s+/g, ''),
-    direccion: str('Dirección completa', 'Dirección', 'Direccion'),
-    codigoPostal: str('Código postal', 'Codigo postal', 'CP'),
-    observaciones: extra
-  };
-}
-
-function mostrarImport() {
-  if (!IMPORT_LISTA.length) { aviso('El archivo no tiene conductores reconocibles', 'error'); return; }
-
-  const yaExiste = dni => DATOS.conductores.some(c => c.dni && c.dni === dni);
-  let duplicados = 0;
-
-  $('#import-resumen').textContent =
-    `${IMPORT_LISTA.length} conductores en el anexo. Revisa antes de crear.`;
-
-  $('#import-tabla').innerHTML = `
-    <table class="w-full text-sm">
-      <thead class="bg-telecab-card text-telecab-muted text-xs uppercase">
-        <tr><th class="text-left px-3 py-2">Nombre</th><th class="text-left px-3 py-2">DNI</th>
-        <th class="text-left px-3 py-2">Contrato</th><th class="text-left px-3 py-2">Teléfono</th>
-        <th class="text-left px-3 py-2">Dirección</th><th class="px-3 py-2"></th></tr>
-      </thead>
-      <tbody>
-        ${IMPORT_LISTA.map(c => {
-          const dup = c.dni && yaExiste(c.dni);
-          if (dup) duplicados++;
-          return `<tr class="border-t border-telecab-border ${dup ? 'opacity-50' : ''}">
-            <td class="px-3 py-2 text-telecab-text">${esc(c.nombre)}</td>
-            <td class="px-3 py-2 text-telecab-muted">${esc(c.dni || '—')}</td>
-            <td class="px-3 py-2 text-telecab-muted">${esc(c.contrato || '—')}</td>
-            <td class="px-3 py-2 text-telecab-muted">${esc(c.telefono || '—')}</td>
-            <td class="px-3 py-2 text-telecab-muted text-xs">${esc((c.direccion || '').slice(0, 40))}</td>
-            <td class="px-3 py-2 text-right">${dup
-              ? '<span class="text-amber-400 text-xs">ya existe</span>'
-              : '<span class="text-telecab-green text-xs">nuevo</span>'}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>`;
-
-  // Los duplicados no se envían.
-  IMPORT_LISTA = IMPORT_LISTA.filter(c => !(c.dni && yaExiste(c.dni)));
-  $('#import-n').textContent = IMPORT_LISTA.length;
-  $('#import-confirmar').disabled = IMPORT_LISTA.length === 0;
-  if (duplicados) $('#import-resumen').textContent += ` ${duplicados} ya están en la agenda y se omitirán.`;
-  $('#import').classList.remove('hidden');
-}
-
-$('#import-cerrar').addEventListener('click', () => $('#import').classList.add('hidden'));
-$('#import-cancelar').addEventListener('click', () => $('#import').classList.add('hidden'));
-
-$('#import-confirmar').addEventListener('click', async () => {
-  const btn = $('#import-confirmar');
-  btn.disabled = true;
-  const geo = $('#import-geo').checked;
-  $('#import-progreso').classList.remove('hidden');
-  $('#import-progreso').textContent = geo
-    ? `Creando ${IMPORT_LISTA.length} conductores y geocodificando direcciones… (~${IMPORT_LISTA.length}s)`
-    : `Creando ${IMPORT_LISTA.length} conductores…`;
-
-  try {
-    const r = await fetch('/agenda/api/importar', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conductores: IMPORT_LISTA, geocodificar: geo })
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.msg);
-    $('#import').classList.add('hidden');
-    const errs = d.resultados.filter(x => x.estado === 'error');
-    aviso(`Importados ${d.creados}${d.errores ? `, ${d.errores} con error` : ''}`, d.errores ? 'error' : 'ok');
-    if (errs.length) console.warn('Altas con error:', errs);
-    await cargar();
-  } catch (err) {
-    $('#import-progreso').textContent = err.message;
-    btn.disabled = false;
-  }
-});
 
 cargar();
 </script>

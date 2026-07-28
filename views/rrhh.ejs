@@ -1,0 +1,146 @@
+<div class="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
+
+  <!-- Contadores -->
+  <div class="grid grid-cols-3 gap-3">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Por tramitar</p>
+      <p id="c-tram" class="text-2xl font-bold text-telecab-gold">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Altas hechas</p>
+      <p id="c-altas" class="text-2xl font-bold text-telecab-green">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">No realizadas</p>
+      <p id="c-noalta" class="text-2xl font-bold text-telecab-muted">–</p>
+    </div>
+  </div>
+
+  <!-- Ficha de alta -->
+  <div id="ficha" class="bg-telecab-card border border-telecab-border rounded-2xl p-5 hidden">
+    <div class="flex items-center justify-between mb-1">
+      <h2 id="ficha-nombre" class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-user-check text-telecab-green"></i> <span></span>
+      </h2>
+      <span class="text-xs px-2.5 py-1 rounded-full bg-telecab-green/10 text-telecab-green border border-telecab-green/30">Aprobado en BOLT</span>
+    </div>
+    <p id="ficha-sub" class="text-sm text-telecab-muted mb-4"></p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Fecha de alta en Seguridad Social</label>
+        <input class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
+               data-campo="fecha_alta" readonly placeholder="dd/mm/aaaa">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Habilitado para trabajar desde <span class="text-telecab-muted/70">(la usa el planificador)</span></label>
+        <input class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
+               data-campo="fecha_habilitado" readonly placeholder="dd/mm/aaaa">
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 mt-3 text-xs text-telecab-muted">
+      <i class="fa-solid fa-circle-arrow-right text-telecab-gold"></i>
+      Al procesar el alta se crea su ficha en la Agenda como <b class="text-telecab-text">Pendiente Asignar</b> para que Tráfico lo asigne.
+    </div>
+
+    <div class="flex flex-wrap gap-2 mt-5">
+      <button id="btn-alta" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold">
+        <i class="fa-solid fa-user-plus mr-1"></i> Alta procesada → Tráfico
+      </button>
+      <button id="btn-no" class="px-4 py-2.5 rounded-xl bg-telecab-red/10 border border-telecab-red/40 text-telecab-red hover:bg-telecab-red/20 transition font-medium ml-auto">
+        <i class="fa-solid fa-ban mr-1"></i> No continuar
+      </button>
+    </div>
+    <p id="ficha-msg" class="text-xs mt-3 hidden"></p>
+  </div>
+
+  <!-- Lista: por tramitar -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-bell text-telecab-gold"></i> Nuevos en BOLT — pendientes de alta
+    </h2>
+    <div id="lista-tram" class="space-y-1.5"><p class="text-telecab-muted text-sm">Cargando…</p></div>
+  </div>
+
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  let ticketActual = null;
+
+  async function api(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+  function msg(texto, ok) {
+    const el = $('#ficha-msg');
+    el.textContent = texto;
+    el.className = 'text-xs mt-3 ' + (ok ? 'text-telecab-green' : 'text-telecab-red');
+    el.classList.remove('hidden');
+  }
+
+  function abrirFicha(t) {
+    ticketActual = t;
+    $('#ficha').classList.remove('hidden');
+    $('#ficha-nombre').querySelector('span').textContent = t.nombre || '(sin nombre)';
+    const bits = [t.id];
+    if (t.zona) bits.push(t.zona);
+    if (t.canal) bits.push(t.canal);
+    if (t.fecha_deteccion) bits.push('detectado ' + t.fecha_deteccion);
+    $('#ficha-sub').textContent = bits.join(' · ');
+    $('[data-campo="fecha_alta"]').value = t.fecha_alta || '';
+    $('[data-campo="fecha_habilitado"]').value = t.fecha_habilitado || '';
+    $('#ficha-msg').classList.add('hidden');
+    $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('#btn-alta').addEventListener('click', async () => {
+    if (!ticketActual) return;
+    const fecha_alta = $('[data-campo="fecha_alta"]').value.trim();
+    const fecha_habilitado = $('[data-campo="fecha_habilitado"]').value.trim();
+    if (!fecha_alta || !fecha_habilitado) { msg('Rellena las dos fechas.', false); return; }
+    const btn = $('#btn-alta'); btn.disabled = true;
+    const r = await api('/rrhh/alta', { tel: ticketActual.id, fecha_alta, fecha_habilitado });
+    btn.disabled = false;
+    if (r.status === 'ok') { msg('Alta procesada. Creado en la Agenda como Pendiente Asignar.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
+    else msg(r.msg || 'No se pudo procesar el alta', false);
+  });
+
+  $('#btn-no').addEventListener('click', async () => {
+    if (!ticketActual) return;
+    const motivo = prompt('Motivo para no continuar con el alta:');
+    if (motivo === null) return;
+    const r = await api('/rrhh/no-continuar', { tel: ticketActual.id, motivo });
+    if (r.status === 'ok') { $('#ficha').classList.add('hidden'); cargar(); }
+    else msg(r.msg || 'Error', false);
+  });
+
+  function fila(t) {
+    const el = document.createElement('button');
+    el.className = 'w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-border transition';
+    el.innerHTML =
+      `<span class="w-8 h-8 rounded-lg bg-telecab-green/15 text-telecab-green flex items-center justify-center shrink-0"><i class="fa-solid fa-user-check"></i></span>
+       <span class="min-w-0 flex-1">
+         <span class="block text-sm text-telecab-text truncate">${t.nombre || '<span class=\"text-telecab-muted\">(sin nombre)</span>'}</span>
+         <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}</span>
+       </span>
+       ${t.fecha_deteccion ? `<span class="text-[11px] text-telecab-muted whitespace-nowrap">${t.fecha_deteccion}</span>` : ''}`;
+    el.addEventListener('click', () => abrirFicha(t));
+    return el;
+  }
+
+  async function cargar() {
+    const r = await (await fetch('/rrhh/api/datos')).json();
+    if (r.status !== 'ok') return;
+    $('#c-tram').textContent = r.contadores.porTramitar;
+    $('#c-altas').textContent = r.contadores.altas;
+    $('#c-noalta').textContent = r.contadores.noAlta;
+    const cont = $('#lista-tram'); cont.innerHTML = '';
+    if (!r.porTramitar.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">Nadie pendiente de alta.</p>'; return; }
+    r.porTramitar.sort((a, b) => (a.fecha_deteccion || '').localeCompare(b.fecha_deteccion || ''));
+    r.porTramitar.forEach(t => cont.appendChild(fila(t)));
+  }
+
+  cargar();
+</script>

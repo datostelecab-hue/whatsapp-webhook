@@ -1363,6 +1363,14 @@ const CAMPOS_EDITABLES = {
 
 const CAMPOS_LIBRANZA = ['libLun', 'libMar', 'libMie', 'libJue', 'libVie', 'libSab', 'libDom'];
 
+// Reparto de permisos para cuando existan login/roles (TODAVÍA NO se aplica; es
+// solo preparación). Cuando estén los roles:
+//   · operativo → lo edita Tráfico en el día a día: turno + libranzas.
+//   · sensible  → datos personales/contractuales/estado: exclusivo de RRHH.
+// Tráfico podrá VER los sensibles pero no editarlos.
+const CAMPOS_OPERATIVOS = ['turno', ...CAMPOS_LIBRANZA];
+const CAMPOS_SENSIBLES = Object.keys(CAMPOS_EDITABLES).filter(k => !CAMPOS_OPERATIVOS.includes(k));
+
 /** Comprueba y normaliza un valor según el tipo de su campo. */
 function validarCampo(nombre, valor) {
   const def = CAMPOS_EDITABLES[nombre];
@@ -1751,7 +1759,8 @@ module.exports = {
   SPREADSHEET_PLANIFICADOR,
   HOJA_OUT, RANGO_OUT, ESTADO_BAJA_EMPRESA,
   leerOut, migrarBajasEmpresa, restaurarDesdeOut, cambiarEstados,
-  actualizarConductor, crearConductor, importarConductores, CAMPOS_EDITABLES, CAMPOS_LIBRANZA, validarCampo,
+  actualizarConductor, crearConductor, importarConductores, CAMPOS_EDITABLES, CAMPOS_LIBRANZA,
+  CAMPOS_OPERATIVOS, CAMPOS_SENSIBLES, validarCampo,
   ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS, TURNOS_CONDUCTOR, CONTRATOS,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
   validarEsquema, leerCrudo, leerTablero, guardarTablero,

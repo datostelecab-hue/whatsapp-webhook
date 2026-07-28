@@ -59,8 +59,10 @@ const vehiculosRoutes = require('./routes/vehiculos');
 const documentosRoutes = require('./routes/documentos');
 const libranzasRoutes = require('./routes/libranzas');
 const controlRoutes = require('./routes/control');
+const vacantesRoutes = require('./routes/vacantes');
 const seleccionRoutes = require('./routes/seleccion');
 const pendientesBoltRoutes = require('./routes/pendientesBolt');
+const rrhhRoutes = require('./routes/rrhh');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -93,8 +95,10 @@ app.use('/vehiculos', vehiculosRoutes);
 app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
+app.use('/vacantes', vacantesRoutes);
 app.use('/seleccion', seleccionRoutes);
 app.use('/pendientes-bolt', pendientesBoltRoutes);
+app.use('/rrhh', rrhhRoutes);
 
 // Actualización manual del padrón CONDUCTORES_BOLT (para probar sin esperar al cron).
 app.get('/conductores-bolt/actualizar', async (req, res) => {

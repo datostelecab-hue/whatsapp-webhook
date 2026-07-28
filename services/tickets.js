@@ -11,6 +11,7 @@
 
 const { readSheet, writeSheetRaw, ensureSheet } = require('./sheets');
 const { leerPadron } = require('./conductoresBolt');
+const { crearConductor } = require('./planificadorV2');
 
 const ID_PLANIFICADOR = '1Fe2LHbzf4_OyJkk3W08yJcm_1xJrZXG6U_z6-sIF35o';
 const HOJA = 'TICKETS';
@@ -38,32 +39,56 @@ const COL = {
   fecha_asignado: 17,  // Tráfico: vehículo + turno
   fecha_baja: 18,      // retorno / baja / descarte
   motivo: 19,          // motivo del retorno / baja / descarte
-  fecha_deteccion: 20  // cuándo el padrón detectó al conductor ya en BOLT
+  fecha_deteccion: 20, // cuándo el padrón detectó al conductor ya en BOLT
+  // Datos que recopila Selección durante el funnel:
+  dni: 21,             // DNI / NIE
+  email: 22,
+  contacto_emergencia: 23,
+  fecha_nacimiento: 24,
+  turno: 25,           // turno de la vacante que se cubre (Día/Noche/TodoTurno)
+  iban: 26,            // certificado bancario (IBAN / nº cuenta)
+  direccion: 27,
+  coordenadas: 28
 };
-const N_COLS = 21;
+const N_COLS = 29;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
   'carne_vtc', 'prueba_conduccion', 'apto_medico', 'driver_uuid', 'responsable',
   'notas', 'fecha_creacion', 'fecha_apto', 'fecha_alta', 'fecha_habilitado',
-  'fecha_asignado', 'fecha_baja', 'motivo', 'fecha_deteccion'
+  'fecha_asignado', 'fecha_baja', 'motivo', 'fecha_deteccion',
+  'dni', 'email', 'contacto_emergencia', 'fecha_nacimiento', 'turno', 'iban',
+  'direccion', 'coordenadas'
 ];
 
 const ESTADOS = {
-  CRIBA: 'En criba',
+  // Funnel de candidatura (etapa Selección), en orden:
+  PRESELECCION: 'Preselección',
+  COORD_ENTREVISTA: 'Coordinación de entrevista',
+  ENTREVISTADO: 'Entrevistado',
+  REC_MEDICO: 'Reconocimiento médico',
+  RELEVAMIENTO: 'Relevamiento de datos',
+  // Salidas:
   DESCARTADO: 'Descartado',
-  PENDIENTE_BOLT: 'Pendiente en BOLT',   // APTO: Selección lo mandó a BOLT, esperando
+  PENDIENTE_BOLT: 'Pendiente en BOLT',   // enviado a BOLT, esperando aprobación
   APROBADO_BOLT: 'Aprobado en BOLT',     // el padrón lo detectó → alerta a RRHH
   RECHAZADO_BOLT: 'Rechazado en BOLT',   // BOLT lo rechazó (marcado a mano)
   ALTA: 'Alta procesada - habilitado',
+  NO_ALTA: 'Alta no realizada',          // RRHH decide no continuar con el alta
   ASIGNADO: 'Asignado',
   NO_PRUEBA: 'No supera periodo de prueba',
   BAJA: 'Baja empresa',
   AUSENTE: 'Ausente notificado',
   DESPIDO: 'Despido procedente'
 };
+// Orden del funnel de Selección. El "enviar a BOLT" solo se habilita al llegar
+// a la última etapa (relevamiento de datos hecho).
+const ETAPAS_CANDIDATURA = [
+  ESTADOS.PRESELECCION, ESTADOS.COORD_ENTREVISTA, ESTADOS.ENTREVISTADO,
+  ESTADOS.REC_MEDICO, ESTADOS.RELEVAMIENTO
+];
 const ETAPAS = { SELECCION: 'Selección', BOLT: 'BOLT', RRHH: 'RRHH', TRAFICO: 'Tráfico' };
-const CANALES = ['Referido', 'Web/Landing', 'Infojobs', 'RRSS', 'Otro'];
+const CANALES = ['Referido', 'ETT', 'Web/Landing', 'Infojobs', 'RRSS', 'Otro'];
 
 // --- utilidades -------------------------------------------------------------
 
@@ -105,7 +130,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:U`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AC`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -139,43 +164,54 @@ async function guardarTicket(datos = {}) {
   let t = porTel.get(tel);
   if (!t) {
     t = {
-      id: tel, nombre: '', estado: ESTADOS.CRIBA, etapa: ETAPAS.SELECCION,
+      id: tel, nombre: '', estado: ESTADOS.PRESELECCION, etapa: ETAPAS.SELECCION,
       canal: '', zona: '', experiencia: 'No', carne_vtc: 'No', prueba: 'No',
       medico: 'No', driver_uuid: '', responsable: '', notas: '',
       fecha_creacion: ahora(), fecha_apto: '', fecha_alta: '', fecha_habilitado: '',
-      fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: ''
+      fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: '',
+      dni: '', email: '', contacto_emergencia: '', fecha_nacimiento: '',
+      turno: '', iban: '', direccion: '', coordenadas: ''
     };
     porTel.set(tel, t);
   }
 
-  // Campos editables desde Selección.
-  if (datos.nombre !== undefined) t.nombre = String(datos.nombre).trim();
-  if (datos.canal !== undefined) t.canal = String(datos.canal).trim();
-  if (datos.zona !== undefined) t.zona = String(datos.zona).trim();
+  // Campos de texto editables desde Selección.
+  ['nombre', 'canal', 'zona', 'turno', 'responsable', 'notas', 'dni', 'email',
+   'contacto_emergencia', 'fecha_nacimiento', 'iban', 'direccion', 'coordenadas']
+    .forEach(k => { if (datos[k] !== undefined) t[k] = String(datos[k]).trim(); });
   if (datos.experiencia !== undefined) t.experiencia = siNo(datos.experiencia);
   if (datos.carne_vtc !== undefined) t.carne_vtc = siNo(datos.carne_vtc);
-  if (datos.prueba !== undefined) t.prueba = siNo(datos.prueba);
-  if (datos.medico !== undefined) t.medico = siNo(datos.medico);
-  if (datos.responsable !== undefined) t.responsable = String(datos.responsable).trim();
-  if (datos.notas !== undefined) t.notas = String(datos.notas).trim();
 
   await guardarTodos(porTel, filas);
   return t;
 }
 
+/** Mueve el ticket a otra etapa del funnel de candidatura (adelante o atrás). */
+async function cambiarEtapaCandidatura(tel, estado) {
+  tel = normalizarTel(tel);
+  if (!ETAPAS_CANDIDATURA.includes(estado)) throw new Error('Etapa de candidatura no válida');
+  const { porTel, filas } = await leerTickets();
+  const t = porTel.get(tel);
+  if (!t) throw new Error('No existe un ticket con ese teléfono');
+  t.estado = estado;
+  t.etapa = ETAPAS.SELECCION;
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
 /**
- * Declara APTO a un candidato: exige prueba de conducción y apto médico. Aquí
- * TERMINA Selección: el candidato se manda a BOLT y el ticket queda "Pendiente
- * en BOLT". No pasa a RRHH todavía — eso lo dispara la conciliación cuando BOLT
- * aprueba y el conductor aparece en el padrón.
+ * Envía la solicitud de alta a BOLT. Aquí TERMINA Selección: solo se puede
+ * cuando el candidato completó el funnel (última etapa: "Relevamiento de datos").
+ * El ticket queda "Pendiente en BOLT"; RRHH se entera cuando la conciliación
+ * detecta al conductor ya creado en BOLT.
  */
-async function declararApto(tel) {
+async function enviarABolt(tel) {
   tel = normalizarTel(tel);
   const { porTel, filas } = await leerTickets();
   const t = porTel.get(tel);
   if (!t) throw new Error('No existe un ticket con ese teléfono');
-  if (siNo(t.prueba) !== 'Sí' || siNo(t.medico) !== 'Sí') {
-    throw new Error('Para declarar APTO hacen falta la prueba de conducción y el apto médico');
+  if (t.estado !== ESTADOS.RELEVAMIENTO) {
+    throw new Error('Antes de enviar a BOLT hay que completar el funnel hasta "Relevamiento de datos"');
   }
   t.estado = ESTADOS.PENDIENTE_BOLT;
   t.etapa = ETAPAS.BOLT;
@@ -257,8 +293,88 @@ async function descartar(tel, motivo) {
   return t;
 }
 
+/**
+ * RRHH tramita el alta: registra la fecha del alta en Seguridad Social y la
+ * fecha desde la que el conductor queda habilitado, y hace el HANDOFF creando la
+ * ficha en AGENDA_V2 como "Pendiente Asignar" (reutiliza crearConductor del
+ * planificador). El ID_BOLT de la agenda = el nombre de Bolt del padrón; la
+ * FECHA_ALTA de la agenda = la fecha de habilitación (desde cuándo puede salir).
+ * Primero se crea en la agenda y solo si eso va bien se avanza el ticket.
+ */
+async function procesarAltaRRHH(tel, datos = {}) {
+  tel = normalizarTel(tel);
+  const fechaAlta = (datos.fecha_alta || '').toString().trim();
+  const fechaHab = (datos.fecha_habilitado || '').toString().trim();
+  if (!fechaAlta || !fechaHab) throw new Error('Faltan la fecha de alta y la fecha de habilitación');
+
+  const { porTel, filas } = await leerTickets();
+  const t = porTel.get(tel);
+  if (!t) throw new Error('No existe un ticket con ese teléfono');
+  if (t.etapa !== ETAPAS.RRHH) throw new Error('Este ticket no está en RRHH');
+
+  // Nombre de Bolt (ID_BOLT) desde el padrón, vía driver_uuid.
+  let boltNombre = '';
+  if (t.driver_uuid) {
+    try {
+      const { db } = await leerPadron();
+      const d = db.get(t.driver_uuid);
+      if (d) boltNombre = (d.nombre || '').trim();
+    } catch (_) { /* si el padrón falla, se crea sin ID_BOLT */ }
+  }
+  const nombre = boltNombre || t.nombre;
+  if (!nombre) throw new Error('El conductor no tiene nombre para crear la ficha en la agenda');
+
+  const obs = [
+    `Alta RRHH ${fechaAlta}`,
+    t.canal ? `Canal: ${t.canal}` : '',
+    t.email ? `Email: ${t.email}` : '',
+    t.iban ? `IBAN: ${t.iban}` : '',
+    t.fecha_nacimiento ? `Nac.: ${t.fecha_nacimiento}` : ''
+  ].filter(Boolean).join(' · ');
+
+  // Solo se pasan campos con valor (validarCampo del planificador rechaza vacíos
+  // en turno/coordenadas). FECHA_ALTA de la agenda = fecha de habilitación.
+  const datosAgenda = {
+    id: boltNombre || '', nombre, telefono: tel, fechaAlta: fechaHab, observaciones: obs
+  };
+  if (t.dni) datosAgenda.dni = t.dni;
+  if (t.contacto_emergencia) datosAgenda.telEmergencia = t.contacto_emergencia;
+  if (t.turno) datosAgenda.turno = t.turno;           // turno de la vacante cubierta
+  if (t.direccion) datosAgenda.direccion = t.direccion;
+  if (t.coordenadas) datosAgenda.coordenadas = t.coordenadas;
+
+  try {
+    await crearConductor(datosAgenda);
+  } catch (e) {
+    // Si ya estaba en la agenda, seguimos y marcamos el alta igual. Cualquier
+    // otro error (archivado en OUT, DNI duplicado…) se propaga a RRHH.
+    if (!/Ya hay un conductor con el ID/i.test(e.message)) throw e;
+  }
+
+  t.estado = ESTADOS.ALTA;
+  t.etapa = ETAPAS.TRAFICO;
+  t.fecha_alta = fechaAlta;
+  t.fecha_habilitado = fechaHab;
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
+/** RRHH decide no continuar con el alta, dejándolo registrado. */
+async function noContinuarRRHH(tel, motivo) {
+  tel = normalizarTel(tel);
+  const { porTel, filas } = await leerTickets();
+  const t = porTel.get(tel);
+  if (!t) throw new Error('No existe un ticket con ese teléfono');
+  t.estado = ESTADOS.NO_ALTA;
+  t.motivo = (motivo || '').toString().trim() || 'RRHH decide no continuar';
+  t.fecha_baja = ahora();
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
 module.exports = {
-  leerTickets, guardarTicket, declararApto, descartar,
+  leerTickets, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
   conciliarTicketsBolt, marcarRechazadoBolt,
-  normalizarTel, telValido, ESTADOS, ETAPAS, CANALES, COL
+  procesarAltaRRHH, noContinuarRRHH,
+  normalizarTel, telValido, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL
 };

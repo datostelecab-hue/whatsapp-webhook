@@ -1,0 +1,78 @@
+<div class="p-4 lg:p-6 max-w-4xl mx-auto space-y-5">
+
+  <!-- Totales -->
+  <div class="grid grid-cols-3 gap-3">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Faltan Día ☀️</p>
+      <p id="t-dia" class="text-2xl font-bold text-telecab-gold">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Faltan Noche 🌙</p>
+      <p id="t-noche" class="text-2xl font-bold text-telecab-gold">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Total a cubrir</p>
+      <p id="t-todo" class="text-2xl font-bold text-telecab-text">–</p>
+    </div>
+  </div>
+
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-location-dot text-telecab-gold"></i> Vacantes por zona
+      </h2>
+      <button id="btn-recargar" class="text-xs px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
+        <i class="fa-solid fa-rotate mr-1"></i> Recargar
+      </button>
+    </div>
+    <p class="text-xs text-telecab-muted mb-3">Sale en vivo de la cobertura: plazas fijas y correturnos sin conductor. Es lo que Selección debe buscar.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-telecab-muted text-xs uppercase border-b border-telecab-border">
+          <tr>
+            <th class="text-left py-2 px-2">Zona</th>
+            <th class="text-center py-2 px-2">Faltan Día</th>
+            <th class="text-center py-2 px-2">Faltan Noche</th>
+            <th class="text-center py-2 px-2">Pendientes Día</th>
+            <th class="text-center py-2 px-2">Pendientes Noche</th>
+          </tr>
+        </thead>
+        <tbody id="tabla"><tr><td colspan="5" class="py-4 text-telecab-muted">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+
+  function celdaFaltan(n) {
+    if (!n) return '<span class="text-telecab-muted">0</span>';
+    const c = n >= 3 ? 'text-telecab-red' : 'text-telecab-gold';
+    return `<span class="${c} font-semibold">${n}</span>`;
+  }
+
+  async function cargar() {
+    const r = await (await fetch('/vacantes/api/datos')).json();
+    if (r.status !== 'ok') return;
+    $('#t-dia').textContent = r.total.dia;
+    $('#t-noche').textContent = r.total.noche;
+    $('#t-todo').textContent = r.total.todo;
+
+    const tbody = $('#tabla');
+    const conFalta = r.vacantes.filter(v => v.faltanTotal > 0);
+    if (!conFalta.length) { tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-telecab-green">Todo cubierto 🎉</td></tr>'; return; }
+    tbody.innerHTML = conFalta.map(v => `
+      <tr class="border-b border-telecab-border/50">
+        <td class="py-2.5 px-2 text-telecab-text font-medium">${v.zona}</td>
+        <td class="py-2.5 px-2 text-center">${celdaFaltan(v.faltanDia)}</td>
+        <td class="py-2.5 px-2 text-center">${celdaFaltan(v.faltanNoche)}</td>
+        <td class="py-2.5 px-2 text-center text-telecab-muted">${v.disponiblesDia || 0}</td>
+        <td class="py-2.5 px-2 text-center text-telecab-muted">${v.disponiblesNoche || 0}</td>
+      </tr>`).join('');
+  }
+
+  $('#btn-recargar').addEventListener('click', cargar);
+  cargar();
+</script>

@@ -1,46 +1,49 @@
 const express = require('express');
 const router = express.Router();
-const { leerTablero } = require('../services/planificadorV2');
+const { TURNOS_CONDUCTOR } = require('../services/planificadorV2');
+const { vacantesPorZona } = require('../services/vacantes');
+const { geocodificar } = require('../services/geocoding');
 const {
-  leerTickets, guardarTicket, declararApto, descartar, CANALES, ESTADOS
+  leerTickets, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
+  CANALES, ETAPAS_CANDIDATURA, ESTADOS, ETAPAS
 } = require('../services/tickets');
 
-/** Zonas operativas reales (las de los coches del planificador), ordenadas. */
-async function zonasOperativas() {
-  const t = await leerTablero();
-  const set = new Set();
-  (t.coches || []).forEach(c => { if (c.zona) set.add(c.zona.toString().trim()); });
-  return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
-}
-
-// Vista de Selección.
+// Vista de Selección (funnel de candidatos).
 router.get('/', async (req, res) => {
-  let zonas = [];
-  try { zonas = await zonasOperativas(); }
-  catch (e) { console.error('❌ [Selección] zonas:', e.message); }
+  let vacantes = [];
+  try { vacantes = await vacantesPorZona(); }
+  catch (e) { console.error('❌ [Selección] vacantes:', e.message); }
   res.render('seleccion', {
     titulo: 'Selección',
     seccion: 'seleccion',
     layout: 'layout-gestion',
     canales: CANALES,
-    zonas
+    turnos: TURNOS_CONDUCTOR,
+    etapas: ETAPAS_CANDIDATURA,
+    vacantes
   });
 });
 
-// Tickets en JSON. El front lo pide al cargar y tras cada acción.
+// Candidatos del funnel, agrupados por etapa de candidatura.
 router.get('/api/datos', async (req, res) => {
   try {
     const { lista } = await leerTickets();
-    const enCriba = lista.filter(t => t.estado === ESTADOS.CRIBA);
-    const pendienteBolt = lista.filter(t => t.estado === ESTADOS.PENDIENTE_BOLT);
-    const descartados = lista.filter(t => t.estado === ESTADOS.DESCARTADO);
+    const enFunnel = lista.filter(t => t.etapa === ETAPAS.SELECCION
+      && ETAPAS_CANDIDATURA.includes(t.estado));
+    const porEtapa = {};
+    ETAPAS_CANDIDATURA.forEach(e => { porEtapa[e] = []; });
+    enFunnel.forEach(t => porEtapa[t.estado].push(t));
+
+    const pendienteBolt = lista.filter(t => t.estado === ESTADOS.PENDIENTE_BOLT).length;
+    const descartados = lista.filter(t => t.estado === ESTADOS.DESCARTADO).length;
+
     res.json({
       status: 'ok',
-      enCriba, pendienteBolt, descartados,
+      porEtapa,
       contadores: {
-        enCriba: enCriba.length,
-        pendienteBolt: pendienteBolt.length,
-        descartados: descartados.length
+        funnel: enFunnel.length,
+        porEtapa: ETAPAS_CANDIDATURA.reduce((a, e) => (a[e] = porEtapa[e].length, a), {}),
+        pendienteBolt, descartados
       }
     });
   } catch (error) {
@@ -49,7 +52,7 @@ router.get('/api/datos', async (req, res) => {
   }
 });
 
-// Un ticket concreto por teléfono (para cargarlo en el formulario).
+// Un ticket concreto por teléfono (para cargarlo en la ficha).
 router.get('/api/ticket/:tel', async (req, res) => {
   try {
     const { porTel } = await leerTickets();
@@ -71,17 +74,28 @@ router.post('/ticket', async (req, res) => {
   }
 });
 
-// Declarar APTO (exige prueba + médico) → pasa a RRHH.
-router.post('/apto', async (req, res) => {
+// Mover de etapa dentro del funnel.
+router.post('/etapa', async (req, res) => {
   try {
-    const t = await declararApto((req.body || {}).tel);
+    const b = req.body || {};
+    const t = await cambiarEtapaCandidatura(b.tel, b.estado);
     res.json({ status: 'ok', ticket: t });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 
-// Descartar candidato en Selección.
+// Enviar la solicitud a BOLT (solo tras completar el funnel).
+router.post('/bolt', async (req, res) => {
+  try {
+    const t = await enviarABolt((req.body || {}).tel);
+    res.json({ status: 'ok', ticket: t });
+  } catch (error) {
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Descartar candidato.
 router.post('/descartar', async (req, res) => {
   try {
     const b = req.body || {};
@@ -89,6 +103,19 @@ router.post('/descartar', async (req, res) => {
     res.json({ status: 'ok', ticket: t });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Geocodifica una dirección (mismo servicio que la Agenda).
+router.post('/geocodificar', async (req, res) => {
+  try {
+    const { direccion, codigoPostal } = req.body || {};
+    const r = await geocodificar(direccion, codigoPostal);
+    if (!r) return res.json({ status: 'ok', encontrado: false });
+    if (r.error) return res.status(502).json({ status: 'error', msg: r.mensaje });
+    res.json({ status: 'ok', encontrado: true, ...r, coordenadas: `${r.lat}, ${r.lng}` });
+  } catch (error) {
+    res.status(500).json({ status: 'error', msg: error.message });
   }
 });
 
