@@ -67,6 +67,7 @@ async function traerDriversBolt() {
 
   const porUuid = new Map();
   for (const f of CONFIG_BOLT.flotas) {
+    const antes = porUuid.size;
     for (const [startTs, endTs] of ventanas) {
       const drivers = await fetchAllPaginated(
         '/fleetIntegration/v1/getDrivers',
@@ -90,6 +91,8 @@ async function traerDriversBolt() {
         else if (prev.state !== 'active' && rec.state === 'active') porUuid.set(uuid, rec);
       });
     }
+    console.log(`👥 [padron-${f.id}] ${porUuid.size - antes} conductores nuevos en esta flota ` +
+                `(acumulado ${porUuid.size})`);
   }
   return porUuid;
 }

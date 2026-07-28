@@ -1,0 +1,272 @@
+<div class="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
+
+  <!-- Contadores -->
+  <div class="grid grid-cols-3 gap-3">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">En criba</p>
+      <p id="c-criba" class="text-2xl font-bold text-telecab-text">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Aptos → RRHH</p>
+      <p id="c-aptos" class="text-2xl font-bold text-telecab-green">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Descartados</p>
+      <p id="c-descartados" class="text-2xl font-bold text-telecab-muted">–</p>
+    </div>
+  </div>
+
+  <!-- Buscar / crear por teléfono -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <label class="block text-sm text-telecab-muted mb-2">Teléfono del candidato (9 dígitos)</label>
+    <div class="flex gap-2">
+      <input id="tel-input" inputmode="numeric" maxlength="14" placeholder="6XX XXX XXX"
+             class="flex-1 bg-telecab-dark border border-telecab-border rounded-xl px-4 py-2.5
+                    text-telecab-text placeholder:text-telecab-muted/60 focus:outline-none
+                    focus:border-telecab-gold transition font-mono tracking-wider">
+      <button id="btn-abrir"
+              class="px-5 py-2.5 rounded-xl bg-telecab-gold text-telecab-dark font-semibold
+                     hover:bg-telecab-gold-soft transition whitespace-nowrap">
+        <i class="fa-solid fa-id-card mr-1"></i> Abrir / crear
+      </button>
+    </div>
+    <p id="tel-error" class="text-telecab-red text-xs mt-2 hidden"></p>
+  </div>
+
+  <!-- Ficha del ticket -->
+  <div id="ficha" class="bg-telecab-card border border-telecab-border rounded-2xl p-5 hidden">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+          <i class="fa-solid fa-user-plus text-telecab-gold"></i>
+          <span id="ficha-titulo">Nuevo candidato</span>
+        </h2>
+        <p class="text-sm text-telecab-muted font-mono" id="ficha-tel"></p>
+      </div>
+      <span id="ficha-estado" class="text-xs px-2.5 py-1 rounded-full border border-telecab-border text-telecab-muted"></span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Nombre</label>
+        <input data-campo="nombre" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Canal de origen</label>
+        <select data-campo="canal" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition">
+          <option value="">—</option>
+          <% (canales || []).forEach(function (c) { %><option value="<%= c %>"><%= c %></option><% }); %>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Zona donde vive</label>
+        <select data-campo="zona" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition">
+          <option value="">—</option>
+          <% (zonas || []).forEach(function (z) { %><option value="<%= z %>"><%= z %></option><% }); %>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Responsable (Selección)</label>
+        <input data-campo="responsable" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition">
+      </div>
+    </div>
+
+    <!-- Criba: Sí/No -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+      <% [
+           { k:'experiencia', t:'Experiencia' },
+           { k:'carne_vtc',   t:'Carné VTC' },
+           { k:'prueba',      t:'Prueba conducción' },
+           { k:'medico',      t:'Apto médico' }
+         ].forEach(function (f) { %>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1"><%= f.t %></label>
+          <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden w-full" data-toggle="<%= f.k %>">
+            <button type="button" data-val="Sí" class="flex-1 px-3 py-2 text-sm transition">Sí</button>
+            <button type="button" data-val="No" class="flex-1 px-3 py-2 text-sm transition border-l border-telecab-border">No</button>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+
+    <div class="mt-4">
+      <label class="block text-xs text-telecab-muted mb-1">Notas</label>
+      <textarea data-campo="notas" rows="2" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition resize-none"></textarea>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mt-5">
+      <button id="btn-guardar" class="px-4 py-2.5 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition font-medium">
+        <i class="fa-solid fa-floppy-disk mr-1"></i> Guardar
+      </button>
+      <button id="btn-apto" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-circle-check mr-1"></i> APTO → RRHH
+      </button>
+      <button id="btn-descartar" class="px-4 py-2.5 rounded-xl bg-telecab-red/10 border border-telecab-red/40 text-telecab-red hover:bg-telecab-red/20 transition font-medium ml-auto">
+        <i class="fa-solid fa-user-xmark mr-1"></i> Descartar
+      </button>
+    </div>
+    <p id="ficha-msg" class="text-xs mt-3 hidden"></p>
+  </div>
+
+  <!-- Lista: En criba -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-filter text-telecab-gold"></i> En criba
+    </h2>
+    <div id="lista-criba" class="space-y-1.5">
+      <p class="text-telecab-muted text-sm">Cargando…</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const CANALES = <%- JSON.stringify(canales || []) %>;
+  const estado = { experiencia: 'No', carne_vtc: 'No', prueba: 'No', medico: 'No' };
+  let ticketActual = null;
+
+  const $ = s => document.querySelector(s);
+  const norm = v => String(v || '').replace(/\D/g, '').slice(-9);
+
+  // ---- Toggles Sí/No ----
+  function pintarToggle(campo) {
+    document.querySelectorAll(`[data-toggle="${campo}"] [data-val]`).forEach(b => {
+      const on = b.dataset.val === estado[campo];
+      b.className = 'flex-1 px-3 py-2 text-sm transition' +
+        (b.dataset.val === 'No' ? ' border-l border-telecab-border' : '') +
+        (on
+          ? (estado[campo] === 'Sí' ? ' bg-telecab-green/20 text-telecab-green font-semibold'
+                                    : ' bg-telecab-card2 text-telecab-text font-semibold')
+          : ' text-telecab-muted hover:bg-telecab-card2');
+    });
+  }
+  function setToggle(campo, val) { estado[campo] = val; pintarToggle(campo); actualizarApto(); }
+  document.querySelectorAll('[data-toggle]').forEach(g => {
+    const campo = g.dataset.toggle;
+    g.querySelectorAll('[data-val]').forEach(b => b.addEventListener('click', () => setToggle(campo, b.dataset.val)));
+  });
+
+  function actualizarApto() {
+    $('#btn-apto').disabled = !(estado.prueba === 'Sí' && estado.medico === 'Sí');
+  }
+
+  // ---- Cargar ficha ----
+  function abrirFicha(t, tel) {
+    ticketActual = t;
+    $('#ficha').classList.remove('hidden');
+    $('#ficha-tel').textContent = (t ? t.id : tel);
+    $('#ficha-titulo').textContent = t && t.nombre ? t.nombre : 'Nuevo candidato';
+    $('#ficha-estado').textContent = t ? t.estado : 'Nuevo';
+    $('[data-campo="nombre"]').value = t ? (t.nombre || '') : '';
+    $('[data-campo="canal"]').value = t ? (t.canal || '') : '';
+    $('[data-campo="zona"]').value = t ? (t.zona || '') : '';
+    $('[data-campo="responsable"]').value = t ? (t.responsable || '') : '';
+    $('[data-campo="notas"]').value = t ? (t.notas || '') : '';
+    ['experiencia', 'carne_vtc', 'prueba', 'medico'].forEach(k => {
+      estado[k] = (t && t[k] === 'Sí') ? 'Sí' : 'No';
+      pintarToggle(k);
+    });
+    actualizarApto();
+    $('#ficha-msg').classList.add('hidden');
+    $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function msg(texto, ok) {
+    const el = $('#ficha-msg');
+    el.textContent = texto;
+    el.className = 'text-xs mt-3 ' + (ok ? 'text-telecab-green' : 'text-telecab-red');
+    el.classList.remove('hidden');
+  }
+
+  function datosFicha() {
+    return {
+      tel: $('#ficha-tel').textContent.trim(),
+      nombre: $('[data-campo="nombre"]').value,
+      canal: $('[data-campo="canal"]').value,
+      zona: $('[data-campo="zona"]').value,
+      responsable: $('[data-campo="responsable"]').value,
+      notas: $('[data-campo="notas"]').value,
+      experiencia: estado.experiencia, carne_vtc: estado.carne_vtc,
+      prueba: estado.prueba, medico: estado.medico
+    };
+  }
+
+  async function api(url, body) {
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return r.json();
+  }
+
+  // ---- Abrir / crear ----
+  $('#btn-abrir').addEventListener('click', async () => {
+    const tel = norm($('#tel-input').value);
+    const err = $('#tel-error');
+    if (tel.length !== 9) { err.textContent = 'El teléfono debe tener 9 dígitos.'; err.classList.remove('hidden'); return; }
+    err.classList.add('hidden');
+    const r = await (await fetch('/seleccion/api/ticket/' + tel)).json();
+    abrirFicha(r.ticket, tel);
+  });
+  $('#tel-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btn-abrir').click(); });
+
+  // ---- Guardar ----
+  $('#btn-guardar').addEventListener('click', async () => {
+    const r = await api('/seleccion/ticket', datosFicha());
+    if (r.status === 'ok') { abrirFicha(r.ticket); msg('Guardado.', true); cargar(); }
+    else msg(r.msg || 'Error al guardar', false);
+  });
+
+  // ---- APTO ----
+  $('#btn-apto').addEventListener('click', async () => {
+    await api('/seleccion/ticket', datosFicha());   // guarda lo pendiente
+    const r = await api('/seleccion/apto', { tel: datosFicha().tel });
+    if (r.status === 'ok') { msg('APTO. Pasó a RRHH.', true); $('#ficha').classList.add('hidden'); cargar(); }
+    else msg(r.msg || 'No se pudo declarar APTO', false);
+  });
+
+  // ---- Descartar ----
+  $('#btn-descartar').addEventListener('click', async () => {
+    const motivo = prompt('Motivo del descarte:');
+    if (motivo === null) return;
+    const r = await api('/seleccion/descartar', { tel: datosFicha().tel, motivo });
+    if (r.status === 'ok') { msg('Descartado.', true); $('#ficha').classList.add('hidden'); cargar(); }
+    else msg(r.msg || 'No se pudo descartar', false);
+  });
+
+  // ---- Lista ----
+  function tarjeta(t) {
+    const criba = [];
+    if (t.experiencia === 'Sí') criba.push('Exp.');
+    if (t.carne_vtc === 'Sí') criba.push('VTC');
+    if (t.prueba === 'Sí') criba.push('Prueba');
+    if (t.medico === 'Sí') criba.push('Médico');
+    const chips = criba.map(c => `<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-green/15 text-telecab-green">${c}</span>`).join(' ');
+    const el = document.createElement('button');
+    el.className = 'w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-border transition';
+    el.innerHTML =
+      `<span class="w-8 h-8 rounded-lg bg-telecab-gold/15 text-telecab-gold flex items-center justify-center shrink-0"><i class="fa-solid fa-user"></i></span>
+       <span class="min-w-0 flex-1">
+         <span class="block text-sm text-telecab-text truncate">${t.nombre || '<span class="text-telecab-muted">(sin nombre)</span>'}</span>
+         <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}${t.canal ? ' · ' + t.canal : ''}</span>
+       </span>
+       <span class="flex gap-1 shrink-0">${chips}</span>`;
+    el.addEventListener('click', () => abrirFicha(t));
+    return el;
+  }
+
+  async function cargar() {
+    const r = await (await fetch('/seleccion/api/datos')).json();
+    if (r.status !== 'ok') return;
+    $('#c-criba').textContent = r.contadores.enCriba;
+    $('#c-aptos').textContent = r.contadores.aptos;
+    $('#c-descartados').textContent = r.contadores.descartados;
+    const cont = $('#lista-criba');
+    cont.innerHTML = '';
+    if (!r.enCriba.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">No hay candidatos en criba.</p>'; return; }
+    r.enCriba.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+    r.enCriba.forEach(t => cont.appendChild(tarjeta(t)));
+  }
+
+  cargar();
+</script>
