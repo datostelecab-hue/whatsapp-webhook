@@ -22,16 +22,20 @@
 // (El bug "coordenadas fuera de las dimensiones" del .gs desaparece solo: la API
 //  de Sheets expande la hoja sola al escribir.)
 
-const { CONFIG_BOLT, fetchRangoCompleto } = require('./bolt');
+const { CONFIG_BOLT, fetchAllPaginated } = require('./bolt');
 const { readSheet, writeSheetRaw, ensureSheet } = require('./sheets');
 
 const ID_PLANIFICADOR = '1Fe2LHbzf4_OyJkk3W08yJcm_1xJrZXG6U_z6-sIF35o';
 const HOJA = 'CONDUCTORES_BOLT';
 const TZ = 'Europe/Madrid';
 
-// getDrivers filtra por fecha de ALTA del conductor, así que pedimos una ventana
-// ancha para traerlos a todos de una sola vez.
-const VENTANA_DIAS = 3 * 365;
+// La API de getDrivers solo acepta rangos de ~31 días (LIMITE_RANGO_SEG) y no
+// sirve más de ~16 meses atrás. Por eso NO se pide una ventana ancha (eso daba
+// 498805 INVALID_START_DATE y una cascada de troceos). Se piden 2 ventanas de 30
+// días (≈ mes actual + anterior), que devuelven el padrón completo, igual que
+// hace el sistema de horas para el mes en curso.
+const VENTANA_SEG = 30 * 86400;   // 30 días < límite de la API
+const NUM_VENTANAS = 2;           // ~60 días de cobertura
 
 const CABECERA = [
   'driver_uuid', 'partner_uuid', 'nombre', 'email', 'phone', 'state', 'flota',
@@ -54,31 +58,38 @@ function ahoraMadrid() {
  * a quien sigue trabajando en otra flota.
  */
 async function traerDriversBolt() {
-  const finTs = Math.floor(Date.now() / 1000);
-  const iniTs = finTs - VENTANA_DIAS * 86400;
-  const porUuid = new Map();
+  const ahoraSeg = Math.floor(Date.now() / 1000);
+  const ventanas = [];
+  for (let k = 0; k < NUM_VENTANAS; k++) {
+    const fin = ahoraSeg - k * VENTANA_SEG;
+    ventanas.push([fin - VENTANA_SEG, fin]);
+  }
 
+  const porUuid = new Map();
   for (const f of CONFIG_BOLT.flotas) {
-    const drivers = await fetchRangoCompleto(
-      '/fleetIntegration/v1/getDrivers', { company_id: f.id },
-      'drivers', iniTs, finTs, 1000, 'padron-' + f.id
-    );
-    drivers.forEach(d => {
-      const uuid = d.driver_uuid ? String(d.driver_uuid) : null;
-      if (!uuid) return;
-      const rec = {
-        driver_uuid: uuid,
-        partner_uuid: d.partner_uuid ? String(d.partner_uuid) : '',
-        nombre: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
-        email: (d.email || '').toString().trim(),
-        phone: (d.phone || '').toString().trim(),
-        state: (d.state || '').toString().trim(),
-        flota: f.nombre || String(f.id)
-      };
-      const prev = porUuid.get(uuid);
-      if (!prev) porUuid.set(uuid, rec);
-      else if (prev.state !== 'active' && rec.state === 'active') porUuid.set(uuid, rec);
-    });
+    for (const [startTs, endTs] of ventanas) {
+      const drivers = await fetchAllPaginated(
+        '/fleetIntegration/v1/getDrivers',
+        { company_id: f.id, start_ts: startTs, end_ts: endTs },
+        'drivers', 1000, `padron-${f.id}`
+      );
+      drivers.forEach(d => {
+        const uuid = d.driver_uuid ? String(d.driver_uuid) : null;
+        if (!uuid) return;
+        const rec = {
+          driver_uuid: uuid,
+          partner_uuid: d.partner_uuid ? String(d.partner_uuid) : '',
+          nombre: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
+          email: (d.email || '').toString().trim(),
+          phone: (d.phone || '').toString().trim(),
+          state: (d.state || '').toString().trim(),
+          flota: f.nombre || String(f.id)
+        };
+        const prev = porUuid.get(uuid);
+        if (!prev) porUuid.set(uuid, rec);
+        else if (prev.state !== 'active' && rec.state === 'active') porUuid.set(uuid, rec);
+      });
+    }
   }
   return porUuid;
 }
