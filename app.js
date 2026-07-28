@@ -92,6 +92,19 @@ app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
 
+// Actualización manual del padrón CONDUCTORES_BOLT (para probar sin esperar al cron).
+app.get('/conductores-bolt/actualizar', async (req, res) => {
+  console.log('🔧 [CONDUCTORES_BOLT] actualizarConductoresBolt() manual...');
+  try {
+    const { actualizarConductoresBolt } = require('./services/conductoresBolt');
+    const r = await actualizarConductoresBolt();
+    res.json(r);
+  } catch (error) {
+    console.error(`❌ [CONDUCTORES_BOLT] Error: ${error.stack || error.message}`);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // Reconstrucción manual de VISTA_FINAL (para probar sin esperar al cron).
 app.get('/vista-final/reconstruir', async (req, res) => {
   console.log('🔧 [VISTA_FINAL] reconstruirVistaFinal() manual...');
@@ -156,6 +169,19 @@ if (process.env.LIBRANZAS_CRON === 'on') {
 } else {
   console.log('   Cron Libranzas: apagado (LIBRANZAS_CRON!=on)');
 }
+
+// CONDUCTORES_BOLT: padrón de creación de conductores, cada media hora (:10 y
+// :40, para no chocar con los otros crons). Sella el created_at propio.
+cron.schedule('10,40 * * * *', async () => {
+  console.log('⏰ [CRON CONDUCTORES_BOLT] actualizarConductoresBolt()...');
+  try {
+    const { actualizarConductoresBolt } = require('./services/conductoresBolt');
+    const result = await actualizarConductoresBolt();
+    console.log(`✅ [CRON CONDUCTORES_BOLT] ${JSON.stringify(result)}`);
+  } catch (error) {
+    console.error(`❌ [CRON CONDUCTORES_BOLT] Error: ${error.stack || error.message}`);
+  }
+});
 
 // VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
 // hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
