@@ -108,6 +108,29 @@ async function writeMany(spreadsheetId, datos) {
   };
 }
 
+/**
+ * Oculta / muestra tramos de filas (hiddenByUser). Un tramo es
+ * { startIndex, endIndex, hidden } con índices 0-based y endIndex exclusivo.
+ * Todo en una sola petición.
+ */
+async function setRowVisibility(spreadsheetId, sheetId, tramos) {
+  const reqs = (tramos || []).filter(t => t.endIndex > t.startIndex);
+  if (!reqs.length) return;
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: reqs.map(t => ({
+        updateDimensionProperties: {
+          range: { sheetId, dimension: 'ROWS', startIndex: t.startIndex, endIndex: t.endIndex },
+          properties: { hiddenByUser: !!t.hidden },
+          fields: 'hiddenByUser'
+        }
+      }))
+    }
+  });
+}
+
 /** Mapa nombre de hoja → id numérico (necesario para borrar filas). */
 async function getSheetIds(spreadsheetId) {
   const sheets = getSheetsClient();
@@ -158,5 +181,5 @@ async function deleteRows(spreadsheetId, sheetId, filas) {
 
 module.exports = {
   readSheet, writeSheet, writeSheetRaw, clearSheet, ensureSheet,
-  readMany, writeMany, getSheetIds, appendRows, deleteRows
+  readMany, writeMany, getSheetIds, appendRows, deleteRows, setRowVisibility
 };

@@ -22,10 +22,10 @@
 // completo (incluidas filas sobrantes viejas → en blanco) en una sola escritura,
 // así nunca queda un hueco si algo falla a mitad.
 
-const { leerTablero } = require('./planificadorV2');
+const { leerTablero, leerOut } = require('./planificadorV2');
 const { normClave } = require('./conductores');
 const { leerHorasDatosApi } = require('./control');
-const { readSheet, writeSheet } = require('./sheets');
+const { readSheet, writeSheet, getSheetIds, setRowVisibility } = require('./sheets');
 
 const ID_GESTION = '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';
 const HOJA = 'VISTA_FINAL';
@@ -46,6 +46,7 @@ const EST = {
   'Suspendido': '⛔ Suspendido'
 };
 const TUR = { 'Día': '☀️ Día', 'Noche': '🌙 Noche', 'TodoTurno': '🔄 TodoTurno' };
+const EST_SIN_MAPEAR = '🚫 Sin mapear';
 
 function hoyMadrid() {
   const s = new Intl.DateTimeFormat('en-CA', {
@@ -114,6 +115,19 @@ async function reconstruirVistaFinal() {
   const datos = await leerHorasDatosApi();
   const horasVigentes = datos.mes === hoyM && datos.ano === hoyY;
 
+  // 3b) Registro de bajas (CONDUCTORES_OUT) para clasificar a quien ya no está
+  //     en la agenda: si está en el registro es "out"; si no, "Sin mapear".
+  let outPorClave = new Map();
+  try {
+    const out = await leerOut();
+    (out.fichas || []).forEach(f => {
+      const k = clave(f.id || f.nombre);
+      if (k && !outPorClave.has(k)) outPorClave.set(k, f);
+    });
+  } catch (e) {
+    console.warn(`⚠️ [VISTA_FINAL] No se pudo leer CONDUCTORES_OUT: ${e.message}`);
+  }
+
   // Valor de una celda (día `idx`, fecha `f`) para un conductor de la agenda.
   function celdaAgenda(c, f, idx, viejo) {
     const esMesActual = f.getUTCFullYear() === hoyY && (f.getUTCMonth() + 1) === hoyM;
@@ -141,7 +155,16 @@ async function reconstruirVistaFinal() {
   const filaFec = ['', '', '', ...fechas.map(isoFecha)];
   const salida = [filaNum, filaSem, filaFec];
 
-  // 5) Filas de conductores de la agenda.
+  // Conserva los días del histórico de una fila vieja (junio y anteriores, o lo
+  // que ya hubiera). No recalcula nada: es histórico congelado.
+  const diasViejos = v => {
+    const dias = [];
+    for (let idx = 0; idx < nDias; idx++) dias.push((v && v.fila[3 + idx]) ?? '');
+    return dias;
+  };
+
+  // 5) Conductores de la AGENDA (arriba). El estado SIEMPRE sale de la agenda.
+  const filasAgenda = [];
   const escritas = new Set();
   roster.forEach(c => {
     const k = clave(c.idBolt || c.nombre);
@@ -154,19 +177,32 @@ async function reconstruirVistaFinal() {
       TUR[c.turno] || c.turno || ''
     ];
     fechas.forEach((f, idx) => fila.push(celdaAgenda(c, f, idx, viejo)));
-    salida.push(fila);
+    filasAgenda.push(fila);
   });
 
-  // 6) Conductores que ya no están en la agenda: se conserva su fila completa
-  //    (histórico intacto), no se recalcula nada.
-  let conservados = 0;
+  // 6) Quien ya no está en la agenda se clasifica por el registro:
+  //    · en CONDUCTORES_OUT → "out": se queda ABAJO, visible, con su fecha de baja.
+  //    · en ninguno         → "Sin mapear": va al final y se OCULTA.
+  //    En ambos casos el histórico de días se conserva intacto.
+  const filasOut = [];
+  const filasSinMapear = [];
   viejoPorClave.forEach((v, k) => {
     if (escritas.has(k)) return;
-    conservados++;
-    const fila = [v.estado, v.nombre, v.turno];
-    for (let idx = 0; idx < nDias; idx++) fila.push(v.fila[3 + idx] ?? '');
-    salida.push(fila);
+    const ficha = outPorClave.get(k);
+    if (ficha) {
+      const estado = `📦 Out${ficha.fechaBaja ? ' ' + ficha.fechaBaja : ''}`;
+      const nombre = (ficha.id || '').trim() || v.nombre;
+      filasOut.push([estado, nombre, TUR[ficha.turno] || ficha.turno || v.turno, ...diasViejos(v)]);
+    } else {
+      filasSinMapear.push([EST_SIN_MAPEAR, v.nombre, v.turno, ...diasViejos(v)]);
+    }
   });
+
+  // Orden final: cabeceras → agenda → out (abajo, visibles) → sin mapear (ocultos).
+  salida.push(...filasAgenda, ...filasOut, ...filasSinMapear);
+
+  // Fila (0-based) donde empiezan las que hay que ocultar (sin mapear + relleno).
+  const inicioOcultas = salida.length - filasSinMapear.length;
 
   // 7) Rellenar con filas en blanco hasta cubrir todas las filas viejas, para
   //    que la escritura sobrescriba cualquier fila sobrante (sin borrar la hoja).
@@ -184,9 +220,28 @@ async function reconstruirVistaFinal() {
   //    fecha, 'L'/'0' quedan como están). No se limpia la hoja antes.
   await writeSheet(ID_GESTION, `${HOJA}!A1`, grid);
 
+  // 9) Ocultar las filas "Sin mapear" (y el relleno) y asegurar visibles el
+  //    resto. Se hace determinista en cada corrida: no depende de cómo quedaron
+  //    antes. Si falla (p. ej. protección), no se rompe la reconstrucción.
+  let ocultadas = 0;
+  try {
+    const sheetId = (await getSheetIds(ID_GESTION))[HOJA];
+    if (sheetId !== undefined) {
+      ocultadas = grid.length - inicioOcultas;
+      await setRowVisibility(ID_GESTION, sheetId, [
+        { startIndex: 0, endIndex: inicioOcultas, hidden: false },
+        { startIndex: inicioOcultas, endIndex: grid.length, hidden: true }
+      ]);
+    }
+  } catch (e) {
+    console.warn(`⚠️ [VISTA_FINAL] No se pudieron ocultar filas: ${e.message}`);
+  }
+
   return {
     conductoresAgenda: roster.length,
-    conservados,
+    out: filasOut.length,
+    sinMapear: filasSinMapear.length,
+    ocultadas,
     filasEscritas: grid.length,
     dias: nDias,
     mesHoras: datos.mes ? `${datos.mes}/${datos.ano}` : null,
