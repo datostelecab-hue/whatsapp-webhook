@@ -60,6 +60,7 @@ const documentosRoutes = require('./routes/documentos');
 const libranzasRoutes = require('./routes/libranzas');
 const controlRoutes = require('./routes/control');
 const seleccionRoutes = require('./routes/seleccion');
+const pendientesBoltRoutes = require('./routes/pendientesBolt');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -93,6 +94,7 @@ app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
 app.use('/seleccion', seleccionRoutes);
+app.use('/pendientes-bolt', pendientesBoltRoutes);
 
 // Actualización manual del padrón CONDUCTORES_BOLT (para probar sin esperar al cron).
 app.get('/conductores-bolt/actualizar', async (req, res) => {
@@ -180,6 +182,12 @@ cron.schedule('10,40 * * * *', async () => {
     const { actualizarConductoresBolt } = require('./services/conductoresBolt');
     const result = await actualizarConductoresBolt();
     console.log(`✅ [CRON CONDUCTORES_BOLT] ${JSON.stringify(result)}`);
+
+    // Tras refrescar el padrón, cruzar los tickets "Pendiente en BOLT": los que
+    // ya aparecen en BOLT pasan a "Aprobado en BOLT" y alertan a RRHH.
+    const { conciliarTicketsBolt } = require('./services/tickets');
+    const conc = await conciliarTicketsBolt();
+    if (conc.total) console.log(`🔔 [CRON CONDUCTORES_BOLT] ${conc.total} conductor(es) detectado(s) en BOLT → RRHH`);
   } catch (error) {
     console.error(`❌ [CRON CONDUCTORES_BOLT] Error: ${error.stack || error.message}`);
   }

@@ -32,12 +32,16 @@ router.get('/api/datos', async (req, res) => {
   try {
     const { lista } = await leerTickets();
     const enCriba = lista.filter(t => t.estado === ESTADOS.CRIBA);
-    const aptos = lista.filter(t => t.estado === ESTADOS.APTO);
+    const pendienteBolt = lista.filter(t => t.estado === ESTADOS.PENDIENTE_BOLT);
     const descartados = lista.filter(t => t.estado === ESTADOS.DESCARTADO);
     res.json({
       status: 'ok',
-      enCriba, aptos, descartados,
-      contadores: { enCriba: enCriba.length, aptos: aptos.length, descartados: descartados.length }
+      enCriba, pendienteBolt, descartados,
+      contadores: {
+        enCriba: enCriba.length,
+        pendienteBolt: pendienteBolt.length,
+        descartados: descartados.length
+      }
     });
   } catch (error) {
     console.error('❌ [Selección] /api/datos:', error.message);

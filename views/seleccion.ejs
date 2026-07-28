@@ -6,10 +6,10 @@
       <p class="text-[11px] uppercase tracking-wide text-telecab-muted">En criba</p>
       <p id="c-criba" class="text-2xl font-bold text-telecab-text">–</p>
     </div>
-    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
-      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Aptos → RRHH</p>
-      <p id="c-aptos" class="text-2xl font-bold text-telecab-green">–</p>
-    </div>
+    <a href="/pendientes-bolt" class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3 hover:border-telecab-gold transition block">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Pendientes en BOLT <i class="fa-solid fa-arrow-up-right-from-square ml-0.5 opacity-60"></i></p>
+      <p id="c-pendiente" class="text-2xl font-bold text-telecab-gold">–</p>
+    </a>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
       <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Descartados</p>
       <p id="c-descartados" class="text-2xl font-bold text-telecab-muted">–</p>
@@ -99,7 +99,7 @@
         <i class="fa-solid fa-floppy-disk mr-1"></i> Guardar
       </button>
       <button id="btn-apto" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
-        <i class="fa-solid fa-circle-check mr-1"></i> APTO → RRHH
+        <i class="fa-solid fa-circle-check mr-1"></i> APTO → a BOLT
       </button>
       <button id="btn-descartar" class="px-4 py-2.5 rounded-xl bg-telecab-red/10 border border-telecab-red/40 text-telecab-red hover:bg-telecab-red/20 transition font-medium ml-auto">
         <i class="fa-solid fa-user-xmark mr-1"></i> Descartar
@@ -221,7 +221,7 @@
   $('#btn-apto').addEventListener('click', async () => {
     await api('/seleccion/ticket', datosFicha());   // guarda lo pendiente
     const r = await api('/seleccion/apto', { tel: datosFicha().tel });
-    if (r.status === 'ok') { msg('APTO. Pasó a RRHH.', true); $('#ficha').classList.add('hidden'); cargar(); }
+    if (r.status === 'ok') { msg('APTO. Enviado a BOLT — pendiente de aprobación.', true); $('#ficha').classList.add('hidden'); cargar(); }
     else msg(r.msg || 'No se pudo declarar APTO', false);
   });
 
@@ -259,7 +259,7 @@
     const r = await (await fetch('/seleccion/api/datos')).json();
     if (r.status !== 'ok') return;
     $('#c-criba').textContent = r.contadores.enCriba;
-    $('#c-aptos').textContent = r.contadores.aptos;
+    $('#c-pendiente').textContent = r.contadores.pendienteBolt;
     $('#c-descartados').textContent = r.contadores.descartados;
     const cont = $('#lista-criba');
     cont.innerHTML = '';

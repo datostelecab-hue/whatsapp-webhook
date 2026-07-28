@@ -10,6 +10,7 @@
 // las suyas sin cambiar el esquema.
 
 const { readSheet, writeSheetRaw, ensureSheet } = require('./sheets');
+const { leerPadron } = require('./conductoresBolt');
 
 const ID_PLANIFICADOR = '1Fe2LHbzf4_OyJkk3W08yJcm_1xJrZXG6U_z6-sIF35o';
 const HOJA = 'TICKETS';
@@ -27,30 +28,33 @@ const COL = {
   carne_vtc: 7,        // Sí / No
   prueba: 8,           // Sí / No — prueba de conducción
   medico: 9,           // Sí / No — apto médico
-  driver_uuid: 10,     // enlace al padrón CONDUCTORES_BOLT (se rellena en RRHH)
+  driver_uuid: 10,     // enlace al padrón CONDUCTORES_BOLT (lo rellena la conciliación)
   responsable: 11,
   notas: 12,
   fecha_creacion: 13,
-  fecha_apto: 14,      // Selección → RRHH
+  fecha_apto: 14,      // Selección declara APTO y manda a BOLT
   fecha_alta: 15,      // RRHH: alta en Seguridad Social procesada
   fecha_habilitado: 16,// RRHH: desde cuándo puede trabajar
   fecha_asignado: 17,  // Tráfico: vehículo + turno
   fecha_baja: 18,      // retorno / baja / descarte
-  motivo: 19           // motivo del retorno / baja / descarte
+  motivo: 19,          // motivo del retorno / baja / descarte
+  fecha_deteccion: 20  // cuándo el padrón detectó al conductor ya en BOLT
 };
-const N_COLS = 20;
+const N_COLS = 21;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
   'carne_vtc', 'prueba_conduccion', 'apto_medico', 'driver_uuid', 'responsable',
   'notas', 'fecha_creacion', 'fecha_apto', 'fecha_alta', 'fecha_habilitado',
-  'fecha_asignado', 'fecha_baja', 'motivo'
+  'fecha_asignado', 'fecha_baja', 'motivo', 'fecha_deteccion'
 ];
 
 const ESTADOS = {
   CRIBA: 'En criba',
   DESCARTADO: 'Descartado',
-  APTO: 'Apto - pendiente de alta',
+  PENDIENTE_BOLT: 'Pendiente en BOLT',   // APTO: Selección lo mandó a BOLT, esperando
+  APROBADO_BOLT: 'Aprobado en BOLT',     // el padrón lo detectó → alerta a RRHH
+  RECHAZADO_BOLT: 'Rechazado en BOLT',   // BOLT lo rechazó (marcado a mano)
   ALTA: 'Alta procesada - habilitado',
   ASIGNADO: 'Asignado',
   NO_PRUEBA: 'No supera periodo de prueba',
@@ -58,7 +62,7 @@ const ESTADOS = {
   AUSENTE: 'Ausente notificado',
   DESPIDO: 'Despido procedente'
 };
-const ETAPAS = { SELECCION: 'Selección', RRHH: 'RRHH', TRAFICO: 'Tráfico' };
+const ETAPAS = { SELECCION: 'Selección', BOLT: 'BOLT', RRHH: 'RRHH', TRAFICO: 'Tráfico' };
 const CANALES = ['Referido', 'Web/Landing', 'Infojobs', 'RRSS', 'Otro'];
 
 // --- utilidades -------------------------------------------------------------
@@ -101,7 +105,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:T`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:U`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -139,7 +143,7 @@ async function guardarTicket(datos = {}) {
       canal: '', zona: '', experiencia: 'No', carne_vtc: 'No', prueba: 'No',
       medico: 'No', driver_uuid: '', responsable: '', notas: '',
       fecha_creacion: ahora(), fecha_apto: '', fecha_alta: '', fecha_habilitado: '',
-      fecha_asignado: '', fecha_baja: '', motivo: ''
+      fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: ''
     };
     porTel.set(tel, t);
   }
@@ -160,8 +164,10 @@ async function guardarTicket(datos = {}) {
 }
 
 /**
- * Declara APTO a un candidato: exige prueba de conducción y apto médico. Pasa el
- * ticket a "Apto - pendiente de alta" y a la etapa RRHH.
+ * Declara APTO a un candidato: exige prueba de conducción y apto médico. Aquí
+ * TERMINA Selección: el candidato se manda a BOLT y el ticket queda "Pendiente
+ * en BOLT". No pasa a RRHH todavía — eso lo dispara la conciliación cuando BOLT
+ * aprueba y el conductor aparece en el padrón.
  */
 async function declararApto(tel) {
   tel = normalizarTel(tel);
@@ -171,9 +177,69 @@ async function declararApto(tel) {
   if (siNo(t.prueba) !== 'Sí' || siNo(t.medico) !== 'Sí') {
     throw new Error('Para declarar APTO hacen falta la prueba de conducción y el apto médico');
   }
-  t.estado = ESTADOS.APTO;
-  t.etapa = ETAPAS.RRHH;
+  t.estado = ESTADOS.PENDIENTE_BOLT;
+  t.etapa = ETAPAS.BOLT;
   t.fecha_apto = ahora();
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
+/** Parsea 'dd/mm/aaaa HH:mm(:ss)' → ms UTC comparables (null si no casa). */
+function parseFecha(s) {
+  const m = String(s || '').match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  return Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0));
+}
+
+/**
+ * Cruza los tickets "Pendiente en BOLT" contra el padrón CONDUCTORES_BOLT por
+ * teléfono. Si el conductor ya apareció en BOLT (y su alta es POSTERIOR al apto,
+ * para no casar con un registro viejo de un reincorporado), pasa el ticket a
+ * "Aprobado en BOLT" / etapa RRHH y vincula su driver_uuid. Pensado para correr
+ * justo detrás del cron del padrón.
+ */
+async function conciliarTicketsBolt() {
+  const { db } = await leerPadron();
+  const porTelPadron = new Map();
+  db.forEach(d => {
+    const t = normalizarTel(d.phone);
+    if (t && !porTelPadron.has(t)) porTelPadron.set(t, d);
+  });
+
+  const { porTel, filas } = await leerTickets();
+  const ahoraTxt = ahora();
+  const detectados = [];
+
+  [...porTel.values()].forEach(tk => {
+    if (tk.estado !== ESTADOS.PENDIENTE_BOLT) return;
+    const d = porTelPadron.get(normalizarTel(tk.id));
+    if (!d) return;
+    // El conductor debe haber aparecido en BOLT DESPUÉS del apto (evita casar con
+    // el registro viejo de un reincorporado que ya estaba en el padrón).
+    const apto = parseFecha(tk.fecha_apto), creado = parseFecha(d.created_at);
+    if (apto != null && creado != null && creado < apto) return;
+
+    tk.driver_uuid = d.driver_uuid || '';
+    tk.estado = ESTADOS.APROBADO_BOLT;
+    tk.etapa = ETAPAS.RRHH;
+    tk.fecha_deteccion = ahoraTxt;
+    if (!tk.nombre && d.nombre) tk.nombre = d.nombre;
+    detectados.push({ tel: tk.id, nombre: tk.nombre, driver_uuid: tk.driver_uuid });
+  });
+
+  if (detectados.length) await guardarTodos(porTel, filas);
+  return { detectados, total: detectados.length };
+}
+
+/** Marca un ticket como rechazado por BOLT (detección manual desde la plataforma). */
+async function marcarRechazadoBolt(tel, motivo) {
+  tel = normalizarTel(tel);
+  const { porTel, filas } = await leerTickets();
+  const t = porTel.get(tel);
+  if (!t) throw new Error('No existe un ticket con ese teléfono');
+  t.estado = ESTADOS.RECHAZADO_BOLT;
+  t.motivo = (motivo || '').toString().trim() || 'Rechazado en BOLT';
+  t.fecha_baja = ahora();
   await guardarTodos(porTel, filas);
   return t;
 }
@@ -193,5 +259,6 @@ async function descartar(tel, motivo) {
 
 module.exports = {
   leerTickets, guardarTicket, declararApto, descartar,
+  conciliarTicketsBolt, marcarRechazadoBolt,
   normalizarTel, telValido, ESTADOS, ETAPAS, CANALES, COL
 };
