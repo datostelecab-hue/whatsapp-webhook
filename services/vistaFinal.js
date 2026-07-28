@@ -25,7 +25,7 @@
 const { leerTablero, leerOut } = require('./planificadorV2');
 const { normClave } = require('./conductores');
 const { leerHorasDatosApi } = require('./control');
-const { readSheet, writeSheet, getSheetIds, setRowVisibility } = require('./sheets');
+const { readSheet, writeSheet, getSheetIds, batchUpdate } = require('./sheets');
 
 const ID_GESTION = '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';
 const HOJA = 'VISTA_FINAL';
@@ -47,6 +47,70 @@ const EST = {
 };
 const TUR = { 'Día': '☀️ Día', 'Noche': '🌙 Noche', 'TodoTurno': '🔄 TodoTurno' };
 const EST_SIN_MAPEAR = '🚫 Sin mapear';
+
+// Paleta para repintar las columnas ESTADO y TURNO cada corrida (si no, la
+// celda hereda el fondo del valor anterior: un Activo en negro de despedido).
+const BLANCO = { bg: '#ffffff', fg: '#000000' };
+const COLOR_ESTADO = [
+  { has: 'Sin mapear',  bg: '#d1d5db', fg: '#374151' },
+  { has: 'Out',         bg: '#111827', fg: '#ffffff' },
+  { has: 'Activo',      bg: '#1e7e34', fg: '#ffffff' },
+  { has: 'Pendiente',   bg: '#e8b84b', fg: '#1a1a1a' },
+  { has: 'Vacaciones',  bg: '#3b82f6', fg: '#ffffff' },
+  { has: 'Médica',      bg: '#f59e0b', fg: '#1a1a1a' },
+  { has: 'Empresa',     bg: '#dc2626', fg: '#ffffff' },
+  { has: 'Suspendido',  bg: '#6b7280', fg: '#ffffff' }
+];
+const COLOR_TURNO = [
+  { has: 'TodoTurno',   bg: '#7c5cbf', fg: '#ffffff' },
+  { has: 'Noche',       bg: '#1f2a44', fg: '#ffffff' },
+  { has: 'Día',         bg: '#ffe08a', fg: '#1a1a1a' }
+];
+
+function rgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return { red: ((n >> 16) & 255) / 255, green: ((n >> 8) & 255) / 255, blue: (n & 255) / 255 };
+}
+function colorDe(valor, tabla) {
+  const s = (valor || '').toString();
+  return tabla.find(c => s.includes(c.has)) || BLANCO;
+}
+/** CellData con solo fondo + color de texto (no toca el valor ya escrito). */
+function celdaColor(c) {
+  return {
+    userEnteredFormat: { backgroundColor: rgb(c.bg), textFormat: { foregroundColor: rgb(c.fg) } }
+  };
+}
+/** Request updateCells que repinta una columna entera de datos. */
+function reqColumna(sheetId, colIndex, startRow, colores) {
+  if (!colores.length) return null;
+  return {
+    updateCells: {
+      range: {
+        sheetId, startRowIndex: startRow, endRowIndex: startRow + colores.length,
+        startColumnIndex: colIndex, endColumnIndex: colIndex + 1
+      },
+      rows: colores.map(c => ({ values: [celdaColor(c)] })),
+      fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.foregroundColor'
+    }
+  };
+}
+
+/** Request para ocultar/mostrar un tramo de filas (null si está vacío). */
+function reqVisibilidad(sheetId, startIndex, endIndex, hidden) {
+  if (endIndex <= startIndex) return null;
+  return {
+    updateDimensionProperties: {
+      range: { sheetId, dimension: 'ROWS', startIndex, endIndex },
+      properties: { hiddenByUser: hidden },
+      fields: 'hiddenByUser'
+    }
+  };
+}
+
+// Borde para marcar "hizo horas en día de libranza": grueso y rosa. El borde es
+// lo único que el formato condicional de la hoja NO puede tapar.
+const BORDE_LIBRANZA = { style: 'SOLID_THICK', color: rgb('#ff2d95') };
 
 function hoyMadrid() {
   const s = new Intl.DateTimeFormat('en-CA', {
@@ -129,24 +193,30 @@ async function reconstruirVistaFinal() {
   }
 
   // Valor de una celda (día `idx`, fecha `f`) para un conductor de la agenda.
+  // Devuelve { valor, especial } — especial = hizo horas un día que libraba.
   function celdaAgenda(c, f, idx, viejo) {
     const esMesActual = f.getUTCFullYear() === hoyY && (f.getUTCMonth() + 1) === hoyM;
     // Se conserva lo que ya hubiera cuando NO es el mes en curso (junio y antes,
     // o meses futuros) o cuando Datos_API no trae el mes en curso (desfasado /
     // cambio de mes): así nada reescribe el mes con ceros por accidente.
     if (!esMesActual || !horasVigentes) {
-      return viejo ? (viejo.fila[3 + idx] ?? '') : '';
+      return { valor: viejo ? (viejo.fila[3 + idx] ?? '') : '' };
     }
     // Mes en curso con horas vigentes:
-    if (f >= lunes && f <= domingo) {            // libranza solo de la semana viva
-      const wd = (f.getUTCDay() + 6) % 7;
-      if (c.libra && c.libra[wd]) return 'L';
-    }
+    const wd = (f.getUTCDay() + 6) % 7;
+    const esLibranza = !!(c.libra && c.libra[wd]);
     const porDia = datos.horas.get(clave(c.idBolt || c.nombre));
     const h = porDia ? porDia[f.getUTCDate()] : null;
-    if (h != null && h > 0) return h;
-    if (f <= hoy) return 0;                       // pasado/hoy sin horas → 0
-    return '';                                    // futuro del mes → en blanco
+    const trabajo = h != null && h > 0;
+    const enSemanaViva = f >= lunes && f <= domingo;
+
+    // Trabajó un día que libraba → salen las HORAS, marcadas (borde especial).
+    if (esLibranza && trabajo) return { valor: h, especial: true };
+    // Libró de verdad: 'L' solo en la semana viva; en el resto del mes → 0.
+    if (esLibranza) return { valor: enSemanaViva ? 'L' : (f <= hoy ? 0 : '') };
+    if (trabajo) return { valor: h };
+    if (f <= hoy) return { valor: 0 };            // pasado/hoy sin horas → 0
+    return { valor: '' };                          // futuro del mes → en blanco
   }
 
   // 4) Cabeceras.
@@ -166,7 +236,9 @@ async function reconstruirVistaFinal() {
   // 5) Conductores de la AGENDA (arriba). El estado SIEMPRE sale de la agenda.
   const filasAgenda = [];
   const escritas = new Set();
-  roster.forEach(c => {
+  const marcas = [];   // celdas (fila/col 0-based) con horas en día de libranza
+  roster.forEach((c, i) => {
+    const filaIdx = 3 + i;   // fila 0-based en el grid (tras las 3 cabeceras)
     const k = clave(c.idBolt || c.nombre);
     escritas.add(k);
     const viejo = viejoPorClave.get(k);
@@ -176,7 +248,11 @@ async function reconstruirVistaFinal() {
       nombre,
       TUR[c.turno] || c.turno || ''
     ];
-    fechas.forEach((f, idx) => fila.push(celdaAgenda(c, f, idx, viejo)));
+    fechas.forEach((f, idx) => {
+      const r = celdaAgenda(c, f, idx, viejo);
+      fila.push(r.valor);
+      if (r.especial) marcas.push({ row: filaIdx, col: 3 + idx });
+    });
     filasAgenda.push(fila);
   });
 
@@ -220,27 +296,90 @@ async function reconstruirVistaFinal() {
   //    fecha, 'L'/'0' quedan como están). No se limpia la hoja antes.
   await writeSheet(ID_GESTION, `${HOJA}!A1`, grid);
 
-  // 9) Ocultar las filas "Sin mapear" (y el relleno) y asegurar visibles el
-  //    resto. Se hace determinista en cada corrida: no depende de cómo quedaron
-  //    antes. Si falla (p. ej. protección), no se rompe la reconstrucción.
+  // 9) Formato en una sola tanda (todo determinista en cada corrida):
+  //    · Ocultar "Sin mapear" (+ relleno) y asegurar visible el resto.
+  //    · Repintar ESTADO (col A) y TURNO (col C) según el valor.
+  //    · Marcar con borde rosa las horas hechas en día de libranza (y limpiar
+  //      antes el bloque del mes en curso para no dejar marcas viejas).
+  //    Si falla (p. ej. protección), no se rompe la reconstrucción.
   let ocultadas = 0;
+  const marcadas = marcas.length;
   try {
     const sheetId = (await getSheetIds(ID_GESTION))[HOJA];
     if (sheetId !== undefined) {
+      // Rango de columnas del mes en curso (para limpiar/marcar las libranzas).
+      let mesMin = -1, mesMax = -1;
+      fechas.forEach((f, idx) => {
+        if (f.getUTCFullYear() === hoyY && (f.getUTCMonth() + 1) === hoyM) {
+          if (mesMin < 0) mesMin = idx;
+          mesMax = idx;
+        }
+      });
+
+      // Colores de ESTADO y TURNO fila a fila (datos, sin cabeceras).
+      const estCols = [], turCols = [];
+      for (let r = 3; r < grid.length; r++) {
+        estCols.push(colorDe(grid[r][0], COLOR_ESTADO));
+        turCols.push(colorDe(grid[r][2], COLOR_TURNO));
+      }
+
+      const reqs = [
+        reqVisibilidad(sheetId, 0, inicioOcultas, false),
+        reqVisibilidad(sheetId, inicioOcultas, grid.length, true),
+        reqColumna(sheetId, 0, 3, estCols),
+        reqColumna(sheetId, 2, 3, turCols)
+      ];
+
+      // Limpieza del bloque del mes en curso (TODAS las filas de datos): quita
+      // bordes y negrita para que no queden marcas de libranza de corridas
+      // anteriores, aunque una fila haya cambiado de dueño. No toca el fondo (lo
+      // gobierna tu formato condicional). Los meses pasados no se tocan: sus
+      // marcas quedan congeladas como el resto del histórico.
+      if (grid.length > 3 && mesMin >= 0) {
+        reqs.push({
+          repeatCell: {
+            range: {
+              sheetId, startRowIndex: 3, endRowIndex: grid.length,
+              startColumnIndex: 3 + mesMin, endColumnIndex: 3 + mesMax + 1
+            },
+            cell: { userEnteredFormat: { textFormat: { bold: false } } },
+            fields: 'userEnteredFormat.borders,userEnteredFormat.textFormat.bold'
+          }
+        });
+      }
+
+      // Marca cada celda de "horas en día de libranza".
+      marcas.forEach(m => reqs.push({
+        repeatCell: {
+          range: {
+            sheetId, startRowIndex: m.row, endRowIndex: m.row + 1,
+            startColumnIndex: m.col, endColumnIndex: m.col + 1
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: { bold: true },
+              borders: {
+                top: BORDE_LIBRANZA, bottom: BORDE_LIBRANZA,
+                left: BORDE_LIBRANZA, right: BORDE_LIBRANZA
+              }
+            }
+          },
+          fields: 'userEnteredFormat.borders,userEnteredFormat.textFormat.bold'
+        }
+      }));
+
+      await batchUpdate(ID_GESTION, reqs);
       ocultadas = grid.length - inicioOcultas;
-      await setRowVisibility(ID_GESTION, sheetId, [
-        { startIndex: 0, endIndex: inicioOcultas, hidden: false },
-        { startIndex: inicioOcultas, endIndex: grid.length, hidden: true }
-      ]);
     }
   } catch (e) {
-    console.warn(`⚠️ [VISTA_FINAL] No se pudieron ocultar filas: ${e.message}`);
+    console.warn(`⚠️ [VISTA_FINAL] No se pudo aplicar formato/ocultado: ${e.message}`);
   }
 
   return {
     conductoresAgenda: roster.length,
     out: filasOut.length,
     sinMapear: filasSinMapear.length,
+    marcadasLibranza: marcadas,
     ocultadas,
     filasEscritas: grid.length,
     dias: nDias,

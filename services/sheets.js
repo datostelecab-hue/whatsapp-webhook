@@ -108,6 +108,14 @@ async function writeMany(spreadsheetId, datos) {
   };
 }
 
+/** Envía requests crudas a spreadsheets.batchUpdate (formato, visibilidad…). */
+async function batchUpdate(spreadsheetId, requests) {
+  const reqs = (requests || []).filter(Boolean);
+  if (!reqs.length) return;
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: reqs } });
+}
+
 /**
  * Oculta / muestra tramos de filas (hiddenByUser). Un tramo es
  * { startIndex, endIndex, hidden } con índices 0-based y endIndex exclusivo.
@@ -181,5 +189,6 @@ async function deleteRows(spreadsheetId, sheetId, filas) {
 
 module.exports = {
   readSheet, writeSheet, writeSheetRaw, clearSheet, ensureSheet,
-  readMany, writeMany, getSheetIds, appendRows, deleteRows, setRowVisibility
+  readMany, writeMany, getSheetIds, appendRows, deleteRows, setRowVisibility,
+  batchUpdate
 };
