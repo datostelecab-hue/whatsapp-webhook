@@ -110,29 +110,45 @@
     <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
       <%
         const seccionActiva = typeof seccion !== 'undefined' ? seccion : '';
-        const enlaces = [
-          { href: '/vacantes',       icono: 'fa-location-dot',       texto: 'Vacantes',       id: 'vacantes' },
-          { href: '/seleccion',      icono: 'fa-user-plus',         texto: 'Selección',      id: 'seleccion' },
-          { href: '/pendientes-bolt',icono: 'fa-hourglass-half',    texto: 'Pendientes BOLT',id: 'pendientes-bolt' },
-          { href: '/rrhh',           icono: 'fa-id-badge',          texto: 'RRHH',           id: 'rrhh' },
-          { href: '/planificador',   icono: 'fa-table-cells-large', texto: 'Planificador',   id: 'planificador' },
-          { href: '/agenda',       icono: 'fa-users',             texto: 'Agenda',       id: 'agenda' },
-          { href: '/control',      icono: 'fa-satellite-dish',    texto: 'Control',      id: 'control' },
-          { href: '/cobertura',    icono: 'fa-calendar-week',     texto: 'Cobertura',    id: 'cobertura' },
-          { href: '/generador',    icono: 'fa-wand-magic-sparkles', texto: 'Generar vacantes', id: 'generador' },
-          { href: '/matching',     icono: 'fa-location-dot',      texto: 'Matching',     id: 'matching' },
-          { href: '/vehiculos',    icono: 'fa-car-side',          texto: 'Vehículos',    id: 'vehiculos' }
+        // Módulos agrupados por departamento (provisional, hasta el login por roles).
+        const grupos = [
+          { nombre: 'Contratación', icono: 'fa-user-tie', items: [
+            { href: '/vacantes',       icono: 'fa-location-dot',    texto: 'Vacantes',       id: 'vacantes' },
+            { href: '/seleccion',      icono: 'fa-user-plus',       texto: 'Selección',      id: 'seleccion' },
+            { href: '/pendientes-bolt',icono: 'fa-hourglass-half',  texto: 'Pendientes BOLT',id: 'pendientes-bolt' },
+            { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' }
+          ] },
+          { nombre: 'Tráfico', icono: 'fa-satellite-dish', items: [
+            { href: '/planificador', icono: 'fa-table-cells-large',  texto: 'Planificador',     id: 'planificador' },
+            { href: '/agenda',       icono: 'fa-users',              texto: 'Agenda',           id: 'agenda' },
+            { href: '/control',      icono: 'fa-satellite-dish',     texto: 'Control',          id: 'control' },
+            { href: '/cobertura',    icono: 'fa-calendar-week',      texto: 'Cobertura',        id: 'cobertura' },
+            { href: '/generador',    icono: 'fa-wand-magic-sparkles',texto: 'Generar vacantes', id: 'generador' }
+          ] },
+          { nombre: 'Flota', icono: 'fa-car-side', items: [
+            { href: '/matching',  icono: 'fa-location-dot', texto: 'Matching',  id: 'matching' },
+            { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' }
+          ] }
         ];
       %>
-      <% enlaces.forEach(function (e) { const on = seccionActiva === e.id; %>
-        <a href="<%= e.href %>"
-           class="nav-item <%= on ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition
-                  <%= on
-                        ? 'bg-telecab-gold/10 text-telecab-gold font-semibold'
-                        : 'text-telecab-text hover:bg-telecab-card2' %>">
-          <i class="fa-solid <%= e.icono %> w-5 text-center <%= on ? '' : 'text-telecab-muted' %>"></i>
-          <span class="text-sm"><%= e.texto %></span>
-        </a>
+      <% grupos.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
+        <div class="nav-grupo">
+          <button type="button" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
+            <i class="fa-solid <%= g.icono %> w-5 text-center text-telecab-muted"></i>
+            <span class="text-sm font-semibold flex-1 text-left"><%= g.nombre %></span>
+            <i class="fa-solid fa-chevron-down text-[10px] text-telecab-muted grupo-chev transition <%= abierto ? 'rotate-180' : '' %>"></i>
+          </button>
+          <div class="grupo-items <%= abierto ? '' : 'hidden' %> mt-0.5 ml-3 pl-3 border-l border-telecab-border/60 space-y-0.5">
+            <% g.items.forEach(function (e) { const on = seccionActiva === e.id; %>
+              <a href="<%= e.href %>"
+                 class="nav-item <%= on ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition
+                        <%= on ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+                <i class="fa-solid <%= e.icono %> w-5 text-center <%= on ? '' : 'text-telecab-muted' %>"></i>
+                <span class="text-sm"><%= e.texto %></span>
+              </a>
+            <% }); %>
+          </div>
+        </div>
       <% }); %>
     </nav>
 
@@ -176,6 +192,14 @@
   document.getElementById('menu-abrir').addEventListener('click', abrir);
   fondo.addEventListener('click', cerrar);
   menu.querySelectorAll('a').forEach(a => a.addEventListener('click', cerrar));
+
+  // Desplegables de departamento en el menú.
+  document.querySelectorAll('.grupo-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.nextElementSibling.classList.toggle('hidden');
+      btn.querySelector('.grupo-chev').classList.toggle('rotate-180');
+    });
+  });
 </script>
 
 <!-- ══════════ Selector de fechas (calendario propio, a juego con el tema) ══════════ -->
@@ -333,6 +357,38 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
   window.addEventListener('resize', cerrar);
   window.addEventListener('scroll', () => { if (target) cerrar(); }, true);
+})();
+</script>
+
+<!-- ══════════ Overlay de carga (evita dobles clics en acciones) ══════════ -->
+<div id="cargando-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-telecab-dark/75 backdrop-blur-sm">
+  <div class="flex flex-col items-center gap-3">
+    <span class="brand-ring shrink-0">
+      <span class="block w-20 h-20 rounded-full overflow-hidden bg-telecab-dark">
+        <video class="w-full h-full object-cover" autoplay muted loop playsinline preload="metadata"
+               poster="/assets/logo-128.png"
+               onerror="this.replaceWith(Object.assign(new Image(),{src:'/assets/logo-128.png',className:'w-full h-full object-cover'}))">
+          <source src="/assets/telecab.mp4" type="video/mp4">
+        </video>
+      </span>
+    </span>
+    <p class="text-telecab-gold text-sm font-medium animate-pulse">Cargando…</p>
+  </div>
+</div>
+<script>
+(function () {
+  const overlay = document.getElementById('cargando-overlay');
+  let activos = 0, timer = null;
+  function ocultar() { if (timer) { clearTimeout(timer); timer = null; } overlay.classList.add('hidden'); }
+  const origFetch = window.fetch;
+  // Solo se cubre en acciones (POST/PUT/DELETE): un clic no recibido no se repite.
+  window.fetch = function (url, opt) {
+    const metodo = ((opt && opt.method) || 'GET').toUpperCase();
+    const accion = metodo !== 'GET' && metodo !== 'HEAD';
+    if (accion) { activos++; if (activos === 1) { timer = setTimeout(() => { overlay.classList.remove('hidden'); timer = null; }, 200); } }
+    const fin = () => { if (accion) { activos = Math.max(0, activos - 1); if (activos === 0) ocultar(); } };
+    return origFetch(url, opt).then(r => { fin(); return r; }, e => { fin(); throw e; });
+  };
 })();
 </script>
 

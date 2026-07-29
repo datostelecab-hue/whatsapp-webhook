@@ -193,4 +193,22 @@ async function actualizarConductoresBolt() {
   return resumen;
 }
 
-module.exports = { actualizarConductoresBolt, leerPadron };
+function last9(v) {
+  const d = String(v == null ? '' : v).replace(/\D/g, '');
+  return d.length > 9 ? d.slice(-9) : d;
+}
+
+/** Busca en el padrón un conductor por teléfono (últimos 9 díg). null si no está. */
+async function buscarPorTelefono(tel) {
+  const t = last9(tel);
+  if (t.length !== 9) return null;
+  const { db } = await leerPadron();
+  for (const d of db.values()) {
+    if (last9(d.phone) === t) {
+      return { driver_uuid: d.driver_uuid, nombre: d.nombre, estado: d.state, phone: d.phone };
+    }
+  }
+  return null;
+}
+
+module.exports = { actualizarConductoresBolt, leerPadron, buscarPorTelefono };

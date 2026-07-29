@@ -38,6 +38,10 @@
       </div>
     </div>
 
+    <div id="banner-bolt" class="hidden mb-3 rounded-xl border border-telecab-green/40 bg-telecab-green/10 p-3 text-xs text-telecab-green">
+      <i class="fa-solid fa-circle-check mr-1"></i> Este conductor ya pertenece a nuestra base de datos en BOLT. Puede seguir el proceso igual; el link de alta no será obligatorio.
+    </div>
+
     <!-- Funnel stepper -->
     <div class="flex flex-wrap gap-1.5 mb-4" id="stepper">
       <% (etapas || []).forEach(function (e, i) { %>
@@ -116,6 +120,12 @@
         <label class="block text-xs text-telecab-muted mb-1">Notas</label>
         <textarea data-campo="notas" rows="2" class="inp resize-none"></textarea>
       </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-xs text-telecab-muted mb-1">Link de alta BOLT <span class="text-telecab-muted/70">(se enviará al conductor por WhatsApp)</span></label>
+        <input data-campo="link_bolt" type="url" class="inp font-mono" placeholder="https://…">
+        <p class="text-[11px] text-telecab-muted mt-1">Habilita "Enviar solicitud a BOLT". Si el conductor ya está en el histórico, no es obligatorio. <span class="text-telecab-gold">Envío por WhatsApp: pendiente de la plantilla de Meta.</span></p>
+      </div>
     </div>
 
     <!-- Atributos rápidos -->
@@ -157,9 +167,10 @@
 
 <script>
   const ETAPAS = <%- JSON.stringify(etapas || []) %>;
-  const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas'];
+  const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt'];
   const estado = { experiencia: 'No', carne_vtc: 'No' };
   let ticketActual = null;
+  let EN_BOLT = false;   // ¿el teléfono ya está en nuestro histórico de BOLT?
 
   const $ = s => document.querySelector(s);
   const norm = v => String(v || '').replace(/\D/g, '').slice(-9);
@@ -188,9 +199,18 @@
          : done ? 'border-telecab-green/40 bg-telecab-green/10 text-telecab-green'
          : 'border-telecab-border text-telecab-muted hover:border-telecab-gold');
     });
-    // "Enviar a BOLT" solo en la última etapa
-    $('#btn-bolt').disabled = estadoActual !== ETAPAS[ETAPAS.length - 1];
+    actualizarBotonBolt();
   }
+
+  // "Enviar a BOLT": solo en la última etapa Y con el link puesto (o si el
+  // conductor ya está en el histórico de BOLT, donde el link no es obligatorio).
+  function actualizarBotonBolt() {
+    const estadoActual = ticketActual ? ticketActual.estado : '';
+    const enUltima = estadoActual === ETAPAS[ETAPAS.length - 1];
+    const link = ($('[data-campo="link_bolt"]').value || '').trim();
+    $('#btn-bolt').disabled = !(enUltima && (link || EN_BOLT));
+  }
+  $('[data-campo="link_bolt"]').addEventListener('input', actualizarBotonBolt);
 
   async function api(url, body) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -242,6 +262,8 @@
     if (tel.length !== 9) { err.textContent = 'El teléfono debe tener 9 dígitos.'; err.classList.remove('hidden'); return; }
     err.classList.add('hidden');
     const r = await (await fetch('/seleccion/api/ticket/' + tel)).json();
+    EN_BOLT = !!r.enBolt;
+    $('#banner-bolt').classList.toggle('hidden', !EN_BOLT);
     abrirFicha(r.ticket, tel);
   });
   $('#tel-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btn-abrir').click(); });
@@ -250,7 +272,7 @@
   // Guardar
   $('#btn-guardar').addEventListener('click', async () => {
     const r = await api('/seleccion/ticket', datosFicha());
-    if (r.status === 'ok') { ticketActual = r.ticket; abrirFicha(r.ticket); msg('Guardado.', true); cargar(); }
+    if (r.status === 'ok') { $('#ficha').classList.add('hidden'); cargar(); }
     else msg(r.msg || 'Error al guardar', false);
   });
 
@@ -301,7 +323,12 @@
          <span class="block text-sm text-telecab-text truncate">${t.nombre || '<span class=\"text-telecab-muted\">(sin nombre)</span>'}</span>
          <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}${t.turno ? ' ' + t.turno : ''}${t.canal ? ' · ' + t.canal : ''}</span>
        </span>`;
-    el.addEventListener('click', () => abrirFicha(t));
+    el.addEventListener('click', async () => {
+      const r = await (await fetch('/seleccion/api/ticket/' + t.id)).json();
+      EN_BOLT = !!(r && r.enBolt);
+      $('#banner-bolt').classList.toggle('hidden', !EN_BOLT);
+      abrirFicha((r && r.ticket) || t, t.id);
+    });
     return el;
   }
 

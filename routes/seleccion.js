@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { leerVacantesGuardadas } = require('../services/vacantes');
+const { buscarPorTelefono } = require('../services/conductoresBolt');
 const { geocodificar } = require('../services/geocoding');
 const {
   leerTickets, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
@@ -55,10 +56,13 @@ router.get('/api/datos', async (req, res) => {
 // Un ticket concreto por teléfono (para cargarlo en la ficha).
 router.get('/api/ticket/:tel', async (req, res) => {
   try {
-    const { porTel } = await leerTickets();
     const { normalizarTel } = require('../services/tickets');
-    const t = porTel.get(normalizarTel(req.params.tel)) || null;
-    res.json({ status: 'ok', ticket: t });
+    const tel = normalizarTel(req.params.tel);
+    const { porTel } = await leerTickets();
+    const t = porTel.get(tel) || null;
+    let bolt = null;
+    try { bolt = await buscarPorTelefono(tel); } catch (_) { /* histórico opcional */ }
+    res.json({ status: 'ok', ticket: t, enBolt: !!bolt, boltNombre: bolt ? bolt.nombre : '' });
   } catch (error) {
     res.status(500).json({ status: 'error', msg: error.message });
   }

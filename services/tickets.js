@@ -10,7 +10,7 @@
 // las suyas sin cambiar el esquema.
 
 const { readSheet, writeSheetRaw, ensureSheet } = require('./sheets');
-const { leerPadron } = require('./conductoresBolt');
+const { leerPadron, buscarPorTelefono } = require('./conductoresBolt');
 const { crearConductor } = require('./planificadorV2');
 
 const ID_PLANIFICADOR = '1Fe2LHbzf4_OyJkk3W08yJcm_1xJrZXG6U_z6-sIF35o';
@@ -49,9 +49,10 @@ const COL = {
   iban: 26,            // certificado bancario (IBAN / nº cuenta)
   direccion: 27,
   coordenadas: 28,
-  vacante: 29          // id de la vacante guardada que se recluta
+  vacante: 29,         // id de la vacante guardada que se recluta
+  link_bolt: 30        // link del proceso de alta que da BOLT (se envía al conductor)
 };
-const N_COLS = 30;
+const N_COLS = 31;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -59,7 +60,7 @@ const CABECERA = [
   'notas', 'fecha_creacion', 'fecha_apto', 'fecha_alta', 'fecha_habilitado',
   'fecha_asignado', 'fecha_baja', 'motivo', 'fecha_deteccion',
   'dni', 'email', 'contacto_emergencia', 'fecha_nacimiento', 'turno', 'iban',
-  'direccion', 'coordenadas', 'vacante'
+  'direccion', 'coordenadas', 'vacante', 'link_bolt'
 ];
 
 const ESTADOS = {
@@ -137,7 +138,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AD`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AE`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -177,14 +178,15 @@ async function guardarTicket(datos = {}) {
       fecha_creacion: ahora(), fecha_apto: '', fecha_alta: '', fecha_habilitado: '',
       fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: '',
       dni: '', email: '', contacto_emergencia: '', fecha_nacimiento: '',
-      turno: '', iban: '', direccion: '', coordenadas: '', vacante: ''
+      turno: '', iban: '', direccion: '', coordenadas: '', vacante: '', link_bolt: ''
     };
     porTel.set(tel, t);
   }
 
   // Campos de texto editables desde Selección.
   ['nombre', 'canal', 'zona', 'turno', 'responsable', 'notas', 'dni', 'email',
-   'contacto_emergencia', 'fecha_nacimiento', 'iban', 'direccion', 'coordenadas', 'vacante']
+   'contacto_emergencia', 'fecha_nacimiento', 'iban', 'direccion', 'coordenadas',
+   'vacante', 'link_bolt']
     .forEach(k => { if (datos[k] !== undefined) t[k] = String(datos[k]).trim(); });
   if (datos.experiencia !== undefined) t.experiencia = siNo(datos.experiencia);
   if (datos.carne_vtc !== undefined) t.carne_vtc = siNo(datos.carne_vtc);
@@ -219,6 +221,15 @@ async function enviarABolt(tel) {
   if (!t) throw new Error('No existe un ticket con ese teléfono');
   if (t.estado !== ESTADOS.RELEVAMIENTO) {
     throw new Error('Antes de enviar a BOLT hay que completar el funnel hasta "Relevamiento de datos"');
+  }
+  // El link de alta de BOLT es obligatorio, SALVO que el conductor ya esté en
+  // nuestro histórico de BOLT (ya fue dado de alta antes → no hace falta crearlo).
+  if (!t.link_bolt) {
+    let enHistorico = null;
+    try { enHistorico = await buscarPorTelefono(tel); } catch (_) {}
+    if (!enHistorico) {
+      throw new Error('Falta el link de alta de BOLT (o que el conductor ya esté en el histórico)');
+    }
   }
   t.estado = ESTADOS.PENDIENTE_BOLT;
   t.etapa = ETAPAS.BOLT;
