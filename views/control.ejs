@@ -3,7 +3,7 @@
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div>
       <h1 class="text-2xl font-bold text-telecab-text">Control de tráfico</h1>
-      <p id="subtitulo" class="text-sm text-telecab-muted mt-1">Cargando…</p>
+      <p id="subtitulo" class="text-sm text-telecab-muted mt-1"></p>
     </div>
     <div class="flex items-center gap-3">
       <span id="reloj" class="text-sm text-telecab-muted"></span>
@@ -48,10 +48,8 @@
     </label>
   </div>
 
-  <div id="cargando" class="text-center py-16 text-telecab-muted">
-    <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i>
-    <p class="mt-3">Leyendo el tablero…</p>
-  </div>
+  <!-- El logo del layout hace de indicador de carga; este div queda solo para errores. -->
+  <div id="cargando" class="hidden text-center py-16 text-telecab-muted"></div>
 
   <div id="secciones" class="space-y-8"></div>
 </div>

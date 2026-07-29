@@ -83,9 +83,9 @@
 <!-- ══════════ Overlay de carga (una sola pieza; la heredan TODOS los módulos) ══════════ -->
 <!-- Va al principio del body para envolver window.fetch ANTES de que corran los
      scripts de cada módulo: así hasta la primera consulta ya muestra el vídeo. -->
-<div id="cargando-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-telecab-dark/75 backdrop-blur-sm">
-  <div class="flex flex-col items-center gap-4">
-    <%- include('partials/logo-video', { tam: 'w-[120px] h-[120px]' }) %>
+<div id="cargando-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-telecab-dark/70 backdrop-blur-md">
+  <div class="flex flex-col items-center gap-6">
+    <%- include('partials/logo-video', { tam: 'w-[240px] h-[240px]' }) %>
     <p class="text-telecab-gold text-sm font-medium animate-pulse">Cargando…</p>
   </div>
 </div>
@@ -93,51 +93,47 @@
 (function () {
   const overlay = document.getElementById('cargando-overlay');
   const video   = overlay.querySelector('video');
-  let activos = 0, ultima = performance.now(), safety = null;
+  let activos = 0, ultima = performance.now(), inicial = true;
 
   const reproducir = () => {
     if (!video || !video.play) return;
-    try { const p = video.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}   // sigue el bucle, sin re-seek
+    try { video.playbackRate = 2; const p = video.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
   };
-  const show = () => { overlay.classList.remove('hidden'); reproducir(); };
-  const hide = () => {
-    if (activos > 0) return;
-    activos = 0;
+  const mostrar = () => { overlay.classList.remove('hidden'); reproducir(); };
+  const ocultar = () => {
     overlay.classList.add('hidden');
     if (video && video.pause) { try { video.pause(); } catch (_) {} }
   };
+  const ocultarSiLibre = () => { if (activos <= 0) { activos = 0; ocultar(); } };
 
-  // Cada interacción del usuario —y la propia carga de la página— cuenta como "acción".
-  // Así el vídeo tapa en la carga inicial y en consultar/guardar/editar/eliminar,
-  // pero NO en los auto-refrescos de fondo (p. ej. Control cada 5 min).
-  const marcar = () => { ultima = performance.now(); };
-  document.addEventListener('pointerdown', marcar, true);
-  document.addEventListener('DOMContentLoaded', marcar);
+  // CARGA INICIAL: el logo tapa desde el primer pintado, en lugar de los textos
+  // "Leyendo el tablero…", "Calculando la semana…", etc., y se mantiene hasta que
+  // llegan TODOS los datos del módulo. Red de seguridad a los 15 s por si algo cuelga.
+  mostrar();
+  setTimeout(() => { inicial = false; activos = 0; ocultar(); }, 15000);
 
+  document.addEventListener('pointerdown', () => { ultima = performance.now(); }, true);
+
+  // Mientras haya consultas en vuelo, mantener el logo. Cuenta como "acción" la carga
+  // inicial y cualquier fetch cerca de un clic (consultar/guardar/editar/eliminar).
+  // Los auto-refrescos de fondo (p. ej. Control cada 5 min) NO tapan.
   const origFetch = window.fetch;
   window.fetch = function (url, opt) {
-    const usuario = (performance.now() - ultima) < 1200;   // cerca de un clic o de la carga → acción
-    if (usuario) { activos++; show(); if (safety) { clearTimeout(safety); safety = null; } }
-    const fin = () => { if (usuario) { activos = Math.max(0, activos - 1); hide(); } };
+    const usuario = inicial || (performance.now() - ultima) < 1200;
+    if (usuario) { activos++; mostrar(); }
+    const fin = () => { if (usuario) { activos = Math.max(0, activos - 1); ocultarSiLibre(); } };
     return origFetch(url, opt).then(r => { fin(); return r; }, e => { fin(); throw e; });
   };
 
-  // Navegación entre módulos: al pulsar un enlace interno, cubrir ya mismo.
-  document.addEventListener('click', e => {
-    const a = e.target.closest('a[href]');
-    if (!a || e.defaultPrevented) return;
-    const href = a.getAttribute('href');
-    if (!href || href[0] === '#' || a.target === '_blank' || a.hasAttribute('download')) return;
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // abrir en pestaña nueva
-    let u; try { u = new URL(a.href, location.href); } catch (_) { return; }
-    if (u.origin !== location.origin) return;
-    show();
-    if (safety) clearTimeout(safety);
-    safety = setTimeout(() => { if (activos <= 0) overlay.classList.add('hidden'); }, 12000);  // por si no navega
-  });
+  // Cuando la página termina de cargar dejamos de tratar todo como carga inicial;
+  // si ya no queda ninguna consulta en vuelo, ocultamos.
+  window.addEventListener('load', () => setTimeout(() => { inicial = false; ocultarSiLibre(); }, 300));
 
-  // Al volver por el historial (bfcache) no dejar la pantalla tapada.
-  window.addEventListener('pageshow', () => { activos = 0; overlay.classList.add('hidden'); });
+  // Nota: NO tapamos al pulsar un enlace de módulo; el logo sale ya en la página
+  // destino mientras carga sus datos (evita que el logo aparezca "dos veces").
+
+  // Al volver por el historial (bfcache) los datos ya están: no tapar.
+  window.addEventListener('pageshow', (e) => { if (e.persisted) { activos = 0; inicial = false; ocultar(); } });
 })();
 </script>
 

@@ -55,10 +55,8 @@
       </label>
     </div>
 
-    <div id="cargando" class="text-center py-16 text-telecab-muted">
-      <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i>
-      <p class="mt-3">Leyendo la agenda…</p>
-    </div>
+    <!-- El logo del layout hace de indicador de carga; este div queda solo para errores. -->
+    <div id="cargando" class="hidden text-center py-16 text-telecab-muted"></div>
 
     <div class="overflow-x-auto rounded-xl border border-telecab-border">
       <table class="w-full text-sm">
@@ -448,7 +446,7 @@ function abrirFicha(fila) {
     <div id="docs-seccion" data-clave="${esc(claveDocs)}">
       <h3 class="text-xs uppercase tracking-wide text-telecab-muted mb-2">Documentación</h3>
       <div id="docs-aviso" class="hidden rounded-lg border border-telecab-gold/40 bg-telecab-gold/5 px-3 py-2 text-xs text-telecab-gold mb-2"></div>
-      <div id="docs-lista" class="space-y-2 mb-3 text-sm text-telecab-muted">Cargando…</div>
+      <div id="docs-lista" class="space-y-2 mb-3 text-sm text-telecab-muted"></div>
       <label id="docs-drop"
              class="flex items-center justify-center gap-2 px-3 py-4 rounded-lg border border-dashed border-telecab-border
                     text-sm text-telecab-muted cursor-pointer hover:border-telecab-gold/50 hover:text-telecab-text transition">
@@ -505,7 +503,7 @@ function tamano(bytes) {
 
 async function cargarDocumentos(clave) {
   const cont = $('#docs-lista');
-  cont.textContent = 'Cargando…';
+  cont.textContent = '';
   try {
     const r = await (await fetch('/documentos/api/lista?clave=' + encodeURIComponent(clave))).json();
     if (r.status !== 'ok') throw new Error(r.msg);
