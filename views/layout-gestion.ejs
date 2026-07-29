@@ -80,6 +80,67 @@
 </head>
 <body class="app-bg text-telecab-text min-h-screen">
 
+<!-- ══════════ Overlay de carga (una sola pieza; la heredan TODOS los módulos) ══════════ -->
+<!-- Va al principio del body para envolver window.fetch ANTES de que corran los
+     scripts de cada módulo: así hasta la primera consulta ya muestra el vídeo. -->
+<div id="cargando-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-telecab-dark/75 backdrop-blur-sm">
+  <div class="flex flex-col items-center gap-4">
+    <%- include('partials/logo-video', { tam: 'w-[120px] h-[120px]' }) %>
+    <p class="text-telecab-gold text-sm font-medium animate-pulse">Cargando…</p>
+  </div>
+</div>
+<script>
+(function () {
+  const overlay = document.getElementById('cargando-overlay');
+  const video   = overlay.querySelector('video');
+  let activos = 0, ultima = performance.now(), safety = null;
+
+  const reproducir = () => {
+    if (!video || !video.play) return;
+    try { const p = video.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}   // sigue el bucle, sin re-seek
+  };
+  const show = () => { overlay.classList.remove('hidden'); reproducir(); };
+  const hide = () => {
+    if (activos > 0) return;
+    activos = 0;
+    overlay.classList.add('hidden');
+    if (video && video.pause) { try { video.pause(); } catch (_) {} }
+  };
+
+  // Cada interacción del usuario —y la propia carga de la página— cuenta como "acción".
+  // Así el vídeo tapa en la carga inicial y en consultar/guardar/editar/eliminar,
+  // pero NO en los auto-refrescos de fondo (p. ej. Control cada 5 min).
+  const marcar = () => { ultima = performance.now(); };
+  document.addEventListener('pointerdown', marcar, true);
+  document.addEventListener('DOMContentLoaded', marcar);
+
+  const origFetch = window.fetch;
+  window.fetch = function (url, opt) {
+    const usuario = (performance.now() - ultima) < 1200;   // cerca de un clic o de la carga → acción
+    if (usuario) { activos++; show(); if (safety) { clearTimeout(safety); safety = null; } }
+    const fin = () => { if (usuario) { activos = Math.max(0, activos - 1); hide(); } };
+    return origFetch(url, opt).then(r => { fin(); return r; }, e => { fin(); throw e; });
+  };
+
+  // Navegación entre módulos: al pulsar un enlace interno, cubrir ya mismo.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented) return;
+    const href = a.getAttribute('href');
+    if (!href || href[0] === '#' || a.target === '_blank' || a.hasAttribute('download')) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // abrir en pestaña nueva
+    let u; try { u = new URL(a.href, location.href); } catch (_) { return; }
+    if (u.origin !== location.origin) return;
+    show();
+    if (safety) clearTimeout(safety);
+    safety = setTimeout(() => { if (activos <= 0) overlay.classList.add('hidden'); }, 12000);  // por si no navega
+  });
+
+  // Al volver por el historial (bfcache) no dejar la pantalla tapada.
+  window.addEventListener('pageshow', () => { activos = 0; overlay.classList.add('hidden'); });
+})();
+</script>
+
 <div class="flex min-h-screen">
 
   <!-- ══════════ MENÚ LATERAL ══════════ -->
@@ -90,16 +151,7 @@
 
     <!-- Marca -->
     <a href="/planificador" class="flex items-center gap-3 px-5 py-5 border-b border-telecab-border/70">
-      <span class="brand-ring shrink-0">
-        <span class="block w-12 h-12 rounded-full overflow-hidden bg-telecab-dark">
-          <!-- Vídeo de marca; si no carga o el navegador lo bloquea, queda el logo debajo -->
-          <video class="w-full h-full object-cover" autoplay muted loop playsinline preload="metadata"
-                 poster="/assets/logo-128.png"
-                 onerror="this.replaceWith(Object.assign(new Image(),{src:'/assets/logo-128.png',className:'w-full h-full object-cover'}))">
-            <source src="/assets/telecab.mp4" type="video/mp4">
-          </video>
-        </span>
-      </span>
+      <%- include('partials/logo-video', { tam: 'w-12 h-12' }) %>
       <span class="leading-tight">
         <span class="block text-lg font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
         <span class="block text-[11px] text-telecab-muted">Gestión de flota</span>
@@ -357,57 +409,6 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
   window.addEventListener('resize', cerrar);
   window.addEventListener('scroll', () => { if (target) cerrar(); }, true);
-})();
-</script>
-
-<!-- ══════════ Overlay de carga (evita dobles clics en acciones) ══════════ -->
-<div id="cargando-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-telecab-dark/75 backdrop-blur-sm">
-  <div class="flex flex-col items-center gap-3">
-    <span class="brand-ring shrink-0">
-      <span class="block w-20 h-20 rounded-full overflow-hidden bg-telecab-dark">
-        <video class="w-full h-full object-cover" autoplay muted loop playsinline preload="metadata"
-               poster="/assets/logo-128.png"
-               onerror="this.replaceWith(Object.assign(new Image(),{src:'/assets/logo-128.png',className:'w-full h-full object-cover'}))">
-          <source src="/assets/telecab.mp4" type="video/mp4">
-        </video>
-      </span>
-    </span>
-    <p class="text-telecab-gold text-sm font-medium animate-pulse">Cargando…</p>
-  </div>
-</div>
-<script>
-(function () {
-  const overlay = document.getElementById('cargando-overlay');
-  let activos = 0, ultima = 0, safety = null;
-  const show = () => overlay.classList.remove('hidden');
-  const hide = () => { if (activos <= 0) { activos = 0; overlay.classList.add('hidden'); } };
-  // Marca cada interacción del usuario: así distinguimos un fetch de un clic de
-  // uno de fondo (auto-refresco), que NO debe tapar la pantalla.
-  document.addEventListener('pointerdown', () => { ultima = performance.now(); }, true);
-
-  const origFetch = window.fetch;
-  window.fetch = function (url, opt) {
-    const usuario = (performance.now() - ultima) < 1000;   // cerca de un clic → acción del usuario
-    if (usuario) { activos++; show(); if (safety) { clearTimeout(safety); safety = null; } }
-    const fin = () => { if (usuario) { activos = Math.max(0, activos - 1); hide(); } };
-    return origFetch(url, opt).then(r => { fin(); return r; }, e => { fin(); throw e; });
-  };
-
-  // Navegación entre módulos: al hacer clic en un enlace interno, cubrir ya mismo.
-  document.addEventListener('click', e => {
-    const a = e.target.closest('a[href]');
-    if (!a || e.defaultPrevented) return;
-    const href = a.getAttribute('href');
-    if (!href || href[0] === '#' || a.target === '_blank' || a.hasAttribute('download')) return;
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // abrir en pestaña nueva
-    let u; try { u = new URL(a.href, location.href); } catch (_) { return; }
-    if (u.origin !== location.origin) return;
-    show();
-    if (safety) clearTimeout(safety);
-    safety = setTimeout(() => { if (activos <= 0) overlay.classList.add('hidden'); }, 12000);  // por si no navega
-  });
-  // Al volver por el historial (bfcache) no dejar la pantalla tapada.
-  window.addEventListener('pageshow', () => { activos = 0; overlay.classList.add('hidden'); });
 })();
 </script>
 

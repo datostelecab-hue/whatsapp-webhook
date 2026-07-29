@@ -1,0 +1,18 @@
+<%
+  /* Logo animado de Telecab. Una sola pieza reutilizable en cualquier módulo.
+     Params (locals):
+       tam    → clases de tamaño del círculo (por defecto w-12 h-12)
+       anillo → envolver en el anillo dorado brand-ring (por defecto true)
+     Nota: solo vídeo (sin poster fijo), a 2× y con logo estático solo como
+     fallback si el navegador bloquea el vídeo. */
+  var _tam = typeof tam !== 'undefined' ? tam : 'w-12 h-12';
+  var _anillo = typeof anillo === 'undefined' ? true : anillo;
+%>
+<% if (_anillo) { %><span class="brand-ring shrink-0"><% } %>
+  <span class="block <%= _tam %> rounded-full overflow-hidden bg-telecab-dark">
+    <video class="logo-video w-full h-full object-cover" autoplay muted loop playsinline preload="auto"
+           onerror="this.replaceWith(Object.assign(new Image(),{src:'/assets/logo-128.png',className:'w-full h-full object-cover'}))">
+      <source src="/assets/telecab.mp4" type="video/mp4">
+    </video>
+  </span>
+<% if (_anillo) { %></span><% } %>
