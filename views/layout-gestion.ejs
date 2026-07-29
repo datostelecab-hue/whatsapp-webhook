@@ -378,17 +378,36 @@
 <script>
 (function () {
   const overlay = document.getElementById('cargando-overlay');
-  let activos = 0, timer = null;
-  function ocultar() { if (timer) { clearTimeout(timer); timer = null; } overlay.classList.add('hidden'); }
+  let activos = 0, ultima = 0, safety = null;
+  const show = () => overlay.classList.remove('hidden');
+  const hide = () => { if (activos <= 0) { activos = 0; overlay.classList.add('hidden'); } };
+  // Marca cada interacción del usuario: así distinguimos un fetch de un clic de
+  // uno de fondo (auto-refresco), que NO debe tapar la pantalla.
+  document.addEventListener('pointerdown', () => { ultima = performance.now(); }, true);
+
   const origFetch = window.fetch;
-  // Solo se cubre en acciones (POST/PUT/DELETE): un clic no recibido no se repite.
   window.fetch = function (url, opt) {
-    const metodo = ((opt && opt.method) || 'GET').toUpperCase();
-    const accion = metodo !== 'GET' && metodo !== 'HEAD';
-    if (accion) { activos++; if (activos === 1) { timer = setTimeout(() => { overlay.classList.remove('hidden'); timer = null; }, 200); } }
-    const fin = () => { if (accion) { activos = Math.max(0, activos - 1); if (activos === 0) ocultar(); } };
+    const usuario = (performance.now() - ultima) < 1000;   // cerca de un clic → acción del usuario
+    if (usuario) { activos++; show(); if (safety) { clearTimeout(safety); safety = null; } }
+    const fin = () => { if (usuario) { activos = Math.max(0, activos - 1); hide(); } };
     return origFetch(url, opt).then(r => { fin(); return r; }, e => { fin(); throw e; });
   };
+
+  // Navegación entre módulos: al hacer clic en un enlace interno, cubrir ya mismo.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented) return;
+    const href = a.getAttribute('href');
+    if (!href || href[0] === '#' || a.target === '_blank' || a.hasAttribute('download')) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // abrir en pestaña nueva
+    let u; try { u = new URL(a.href, location.href); } catch (_) { return; }
+    if (u.origin !== location.origin) return;
+    show();
+    if (safety) clearTimeout(safety);
+    safety = setTimeout(() => { if (activos <= 0) overlay.classList.add('hidden'); }, 12000);  // por si no navega
+  });
+  // Al volver por el historial (bfcache) no dejar la pantalla tapada.
+  window.addEventListener('pageshow', () => { activos = 0; overlay.classList.add('hidden'); });
 })();
 </script>
 
