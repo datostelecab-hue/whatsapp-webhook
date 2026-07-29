@@ -2,6 +2,13 @@
 
   <!-- Controles -->
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <div class="mb-4">
+      <label class="block text-xs text-telecab-muted mb-1">Tipo de vacante</label>
+      <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden" id="tg-tipo">
+        <button type="button" data-val="CT" class="px-4 py-2 text-sm">Correturno (varias matrículas)</button>
+        <button type="button" data-val="Fijo" class="px-4 py-2 text-sm border-l border-telecab-border">Fijo (una matrícula)</button>
+      </div>
+    </div>
     <div class="grid md:grid-cols-4 gap-4">
       <div>
         <label class="block text-xs text-telecab-muted mb-1">Zona</label>
@@ -14,7 +21,7 @@
           <button type="button" data-val="Noche" class="flex-1 px-3 py-2 text-sm border-l border-telecab-border">🌙 Noche</button>
         </div>
       </div>
-      <div>
+      <div id="wrap-dias">
         <label class="block text-xs text-telecab-muted mb-1">Días de la vacante</label>
         <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden w-full" id="tg-dias">
           <button type="button" data-val="4" class="flex-1 px-3 py-2 text-sm">4 días</button>
@@ -22,7 +29,7 @@
         </div>
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Matrícula de partida</label>
+        <label class="block text-xs text-telecab-muted mb-1" id="lbl-matricula">Matrícula de partida</label>
         <select id="sel-matricula" class="inp"><option value="">—</option></select>
       </div>
     </div>
@@ -32,6 +39,13 @@
       </button>
       <p id="msg" class="text-xs hidden"></p>
     </div>
+  </div>
+
+  <!-- Pendientes de generar: huecos sin vacante guardada -->
+  <div id="pendientes-wrap" class="bg-telecab-card border border-telecab-border rounded-2xl p-4 hidden">
+    <h2 class="text-sm font-semibold text-telecab-text mb-1"><i class="fa-solid fa-bell text-telecab-gold mr-1"></i> Pendientes de generar <span id="pend-turno" class="text-telecab-muted font-normal"></span></h2>
+    <p class="text-[11px] text-telecab-muted mb-2">Huecos que aún NO tienen vacante guardada. Clic para prepararla y generar.</p>
+    <div id="pendientes" class="grid gap-1.5 sm:grid-cols-2"></div>
   </div>
 
   <!-- Resultado interactivo -->
@@ -68,6 +82,20 @@
     </div>
   </div>
 
+  <!-- Resultado FIJO (una sola matrícula) -->
+  <div id="resultado-fijo" class="hidden">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 id="fijo-titulo" class="text-sm font-semibold text-telecab-text"></h2>
+        <button id="btn-guardar-fijo" class="px-4 py-2 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition text-sm font-semibold whitespace-nowrap">
+          <i class="fa-solid fa-floppy-disk mr-1"></i> Guardar vacante
+        </button>
+      </div>
+      <div id="fijo-detalle"></div>
+      <p id="msg-fijo" class="text-xs mt-2 hidden"></p>
+    </div>
+  </div>
+
 </div>
 
 <style>
@@ -78,12 +106,14 @@
 <script>
   const $ = s => document.querySelector(s);
   let DATOS = { zonas: [] };
-  const estado = { turno: 'Día', dias: 6 };
+  const estado = { tipo: 'CT', turno: 'Día', dias: 6 };
   const LETRA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
   const DIAS_NOM = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const fijosTexto = b => `Fijo día: ${b.fijoDia || 'no asignado'} · Fijo noche: ${b.fijoNoche || 'no asignado'}`;
 
-  // Estado del resultado interactivo.
+  // Estado del resultado interactivo (CT) y de la vacante fija.
   let POOL = {}, POOL_ARR = [], SEL = new Set(), OBJETIVO = 6, TURNO = 'Día', ZONA = '';
+  let FIJO = null;
 
   function pintarToggle(id, val) {
     document.querySelectorAll(`#${id} [data-val]`).forEach(b => {
@@ -92,8 +122,23 @@
         (on ? ' bg-telecab-gold/20 text-telecab-gold font-semibold' : ' text-telecab-muted hover:bg-telecab-card2');
     });
   }
-  $('#tg-turno').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.turno = b.dataset.val; pintarToggle('tg-turno', estado.turno); llenarMatriculas(); });
+  $('#tg-turno').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.turno = b.dataset.val; pintarToggle('tg-turno', estado.turno); llenarMatriculas(); pintarPendientes(); });
   $('#tg-dias').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.dias = Number(b.dataset.val); pintarToggle('tg-dias', estado.dias); });
+
+  function pintarTipo() {
+    document.querySelectorAll('#tg-tipo [data-val]').forEach(b => {
+      const on = b.dataset.val === estado.tipo;
+      b.className = 'px-4 py-2 text-sm transition' + (b.previousElementSibling ? ' border-l border-telecab-border' : '') +
+        (on ? ' bg-telecab-gold/20 text-telecab-gold font-semibold' : ' text-telecab-muted hover:bg-telecab-card2');
+    });
+    const fijo = estado.tipo === 'Fijo';
+    $('#wrap-dias').classList.toggle('hidden', fijo);
+    $('#lbl-matricula').textContent = fijo ? 'Matrícula del fijo' : 'Matrícula de partida';
+    $('#resultado').classList.add('hidden');
+    $('#resultado-fijo').classList.add('hidden');
+    llenarMatriculas();
+  }
+  $('#tg-tipo').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.tipo = b.dataset.val; pintarTipo(); });
 
   function huecosDe(mat) { return estado.turno === 'Día' ? (mat.dia || []) : (mat.noche || []); }
 
@@ -102,16 +147,65 @@
     const z = DATOS.zonas.find(x => x.zona === zona);
     const sel = $('#sel-matricula');
     sel.innerHTML = '<option value="">—</option>';
-    if (z) z.matriculas.filter(m => huecosDe(m).length).forEach(m => {
-      const o = document.createElement('option');
-      o.value = m.matricula;
-      o.textContent = `${m.matricula} (huecos: ${huecosDe(m).map(d => LETRA[d]).join('')})`;
-      sel.appendChild(o);
-    });
+    if (z) {
+      // Fijo: matrículas cuyo fijo de ese turno está SIN asignar. CT: con huecos.
+      const fijoVacio = m => estado.turno === 'Día' ? !m.fijoDia : !m.fijoNoche;
+      z.matriculas
+        .filter(m => estado.tipo === 'Fijo' ? fijoVacio(m) : huecosDe(m).length)
+        .forEach(m => {
+          const o = document.createElement('option');
+          o.value = m.matricula;
+          o.textContent = estado.tipo === 'Fijo'
+            ? m.matricula
+            : `${m.matricula} (huecos: ${huecosDe(m).map(d => LETRA[d]).join('')})`;
+          sel.appendChild(o);
+        });
+    }
     $('#btn-generar').disabled = !sel.value;
   }
   $('#sel-zona').addEventListener('change', llenarMatriculas);
   $('#sel-matricula').addEventListener('change', () => { $('#btn-generar').disabled = !$('#sel-matricula').value; });
+
+  // ---- Pendientes de generar (huecos sin vacante guardada) ----
+  function huecosTurno(m) { return estado.turno === 'Día' ? (m.dia || []) : (m.noche || []); }
+  function enVacanteTurno(m) { return estado.turno === 'Día' ? m.enVacanteDia : m.enVacanteNoche; }
+  function fijoTurnoVacio(m) { return estado.turno === 'Día' ? !m.fijoDia : !m.fijoNoche; }
+
+  function pintarPendientes() {
+    const pend = [];
+    DATOS.zonas.forEach(z => z.matriculas.forEach(m => {
+      if (huecosTurno(m).length && !enVacanteTurno(m)) pend.push({ ...m, zona: z.zona });
+    }));
+    $('#pend-turno').textContent = `(${estado.turno}: ${pend.length})`;
+    const wrap = $('#pendientes-wrap');
+    if (!pend.length) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    $('#pendientes').innerHTML = pend.map(m => {
+      const huecos = huecosTurno(m).map(d => LETRA[d]).join('');
+      const esFijo = fijoTurnoVacio(m);
+      const tag = esFijo
+        ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-gold/15 text-telecab-gold shrink-0">fijo</span>'
+        : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted shrink-0">CT</span>';
+      return `<button data-pend="${m.zona}|${m.matricula}|${esFijo ? 'Fijo' : 'CT'}" class="w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-border transition">
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-mono text-telecab-text">${m.matricula} <span class="text-telecab-gold text-xs">${huecos}</span></span>
+            <span class="block text-[11px] text-telecab-muted truncate">${m.zona} · ${fijosTexto(m)}</span></span>
+          ${tag}</button>`;
+    }).join('');
+  }
+
+  $('#pendientes').addEventListener('click', e => {
+    const b = e.target.closest('[data-pend]'); if (!b) return;
+    const [zona, matricula, tipo] = b.dataset.pend.split('|');
+    $('#sel-zona').value = zona;
+    estado.tipo = tipo; pintarTipo();               // fija tipo + llenarMatriculas (con zona ya puesta)
+    $('#sel-matricula').value = matricula; $('#btn-generar').disabled = !matricula;
+    generar();
+  });
+
+  async function refrescarPendientes() {
+    try { const r = await (await fetch('/generador/api/datos')).json(); if (r.status === 'ok') { DATOS = r; pintarPendientes(); } } catch (_) {}
+  }
 
   function msg(t, ok) { const el = $('#msg'); el.textContent = t; el.className = 'text-xs ' + (ok ? 'text-telecab-green' : 'text-telecab-red'); el.classList.remove('hidden'); }
 
@@ -128,7 +222,7 @@
     const cls = b.sugerido ? 'border-sky-500/50 bg-sky-500/15' : 'border-telecab-gold/50 bg-telecab-gold/15';
     return `<div class="rounded-lg border ${cls} px-2 py-3 text-center">
         <div class="text-[10px] text-telecab-muted uppercase">${DIAS_NOM[d]}</div>
-        <div class="text-xs font-mono text-telecab-text mt-1 truncate" title="${m} · ${b.zona}${b.fijo ? ' · ' + b.fijo : ''}">${m}</div>
+        <div class="text-xs font-mono text-telecab-text mt-1 truncate" title="${m} · ${b.zona} · ${fijosTexto(b)}">${m}</div>
         ${b.sugerido ? '<div class="text-[9px] text-sky-400 truncate">' + b.zona + '</div>' : ''}</div>`;
   }
 
@@ -144,8 +238,8 @@
     return `<div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40">
         <span class="w-8 h-8 rounded-lg bg-telecab-card2 text-telecab-text flex items-center justify-center shrink-0"><i class="fa-solid fa-car-side text-xs"></i></span>
         <span class="flex-1 min-w-0">
-          <span class="block text-sm font-mono text-telecab-text">${m} <span class="text-telecab-muted font-sans text-xs">· fijo: ${b.fijo || '—'}</span></span>
-          <span class="block text-xs text-telecab-muted">${dias}</span></span>
+          <span class="block text-sm font-mono text-telecab-text">${m} <span class="text-telecab-muted font-sans text-xs">· ${dias}</span></span>
+          <span class="block text-xs text-telecab-muted">${fijosTexto(b)}</span></span>
         ${badge}${btn}</div>`;
   }
 
@@ -179,14 +273,46 @@
   $('#btn-guardar-vac').addEventListener('click', async () => {
     const mv = $('#msg-vac');
     if (!SEL.size) { mv.textContent = 'La vacante no tiene matrículas.'; mv.className = 'text-xs mt-2 text-telecab-red'; return; }
-    const matriculas = [...SEL].map(m => ({ matricula: m, zona: POOL[m].zona, dias: POOL[m].dias.map(x => x.dia), fijo: POOL[m].fijo }));
+    const matriculas = [...SEL].map(m => ({ matricula: m, zona: POOL[m].zona, dias: POOL[m].dias.map(x => x.dia), fijoDia: POOL[m].fijoDia, fijoNoche: POOL[m].fijoNoche }));
     const btn = $('#btn-guardar-vac'); btn.disabled = true;
     const r = await (await fetch('/generador/api/guardar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ turno: TURNO, objetivo: OBJETIVO, matriculas })
     })).json();
     btn.disabled = false;
-    if (r.status === 'ok') { mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; }
+    if (r.status === 'ok') { mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; refrescarPendientes(); }
+    else { mv.textContent = r.msg || 'No se pudo guardar'; mv.className = 'text-xs mt-2 text-telecab-red'; }
+    mv.classList.remove('hidden');
+  });
+
+  function renderFijo(zona, matricula) {
+    const z = DATOS.zonas.find(x => x.zona === zona);
+    const m = z && z.matriculas.find(x => x.matricula === matricula);
+    if (!m) { msg('Matrícula no encontrada.', false); return; }
+    FIJO = { matricula, zona, turno: estado.turno, fijoDia: m.fijoDia || '', fijoNoche: m.fijoNoche || '' };
+    $('#fijo-titulo').textContent = `Vacante Fijo ${estado.turno} · zona ${zona}`;
+    $('#fijo-detalle').innerHTML =
+      `<div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40">
+        <span class="w-8 h-8 rounded-lg bg-telecab-card2 text-telecab-text flex items-center justify-center shrink-0"><i class="fa-solid fa-car-side text-xs"></i></span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-sm font-mono text-telecab-text">${matricula}</span>
+          <span class="block text-xs text-telecab-muted">${fijosTexto(m)}</span>
+          <span class="block text-[11px] text-telecab-muted">Trabaja toda la semana (${estado.turno}); librá 2 días a definir.</span></span>
+      </div>`;
+    $('#msg-fijo').classList.add('hidden');
+    $('#resultado').classList.add('hidden');
+    $('#resultado-fijo').classList.remove('hidden');
+    $('#resultado-fijo').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('#btn-guardar-fijo').addEventListener('click', async () => {
+    if (!FIJO) return;
+    const mv = $('#msg-fijo');
+    const r = await (await fetch('/generador/api/guardar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'fijo', turno: FIJO.turno, matriculas: [{ matricula: FIJO.matricula, zona: FIJO.zona, dias: [], fijoDia: FIJO.fijoDia, fijoNoche: FIJO.fijoNoche }] })
+    })).json();
+    if (r.status === 'ok') { mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; refrescarPendientes(); }
     else { mv.textContent = r.msg || 'No se pudo guardar'; mv.className = 'text-xs mt-2 text-telecab-red'; }
     mv.classList.remove('hidden');
   });
@@ -195,6 +321,7 @@
     const zona = $('#sel-zona').value, matricula = $('#sel-matricula').value;
     if (!zona || !matricula) { msg('Elige zona y matrícula.', false); return; }
     $('#msg').classList.add('hidden');
+    if (estado.tipo === 'Fijo') { renderFijo(zona, matricula); return; }
     const btn = $('#btn-generar'); btn.disabled = true;
     const r = await (await fetch('/generador/api/generar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -221,6 +348,8 @@
       DATOS.zonas.map(z => `<option value="${z.zona}">${z.zona}</option>`).join('');
     pintarToggle('tg-turno', estado.turno);
     pintarToggle('tg-dias', estado.dias);
+    pintarTipo();
+    pintarPendientes();
   }
   cargar();
 </script>

@@ -80,27 +80,32 @@ async function guardarVacante(data = {}) {
   const filas = await readSheet(ID_PLANIFICADOR, `${HOJA_VAC}!A:K`);
   if (!filas.length) await writeSheetRaw(ID_PLANIFICADOR, `${HOJA_VAC}!A1`, [CAB_VAC]);
 
+  const tipoFijo = data.tipo === 'fijo';   // un fijo = una sola matrícula, día o noche
   const mats = (data.matriculas || [])
     .map(m => ({
       m: (m.matricula || '').toString().trim(),
       d: (m.dias || []).slice().sort((a, b) => a - b),
-      fijo: (m.fijo || '').toString(), zona: (m.zona || '').toString()
+      fijoDia: (m.fijoDia || '').toString(), fijoNoche: (m.fijoNoche || '').toString(),
+      zona: (m.zona || '').toString()
     }))
-    .filter(m => m.m && m.d.length);
-  if (!mats.length) throw new Error('La vacante no tiene matrículas con huecos');
+    .filter(m => m.m);
+  if (!mats.length) throw new Error('La vacante no tiene matrículas');
 
   const turno = data.turno === 'Noche' ? 'Noche' : 'Día';
   const cubiertos = new Set(mats.flatMap(m => m.d));
-  const libranzas = [0, 1, 2, 3, 4, 5, 6].filter(d => !cubiertos.has(d)).map(d => LETRA[d]).join(' ');
   const zonas = [...new Set(mats.map(m => m.zona).filter(Boolean))].join(' - ');
-  const puesto = (mats.length > 1 ? 'CT' : 'Fijo') + ' ' + turno;   // correturno vs fijo
+  const puesto = tipoFijo ? `Fijo ${turno}` : ((mats.length > 1 ? 'CT' : 'Fijo') + ' ' + turno);
+  // El fijo libra 2 días a definir; el CT deja el hueco de los días no cubiertos.
+  const libranzas = tipoFijo ? 'a definir'
+    : [0, 1, 2, 3, 4, 5, 6].filter(d => !cubiertos.has(d)).map(d => LETRA[d]).join(' ');
+  const dias = tipoFijo ? '' : cubiertos.size;
   const id = 'V' + Date.now().toString(36).toUpperCase();
 
   const fila = [id, 'Abierta', puesto, turno, zonas, JSON.stringify(mats),
-    libranzas, cubiertos.size, Number(data.objetivo) || cubiertos.size, ahora(), ''];
+    libranzas, dias, Number(data.objetivo) || dias || '', ahora(), ''];
   await appendRows(ID_PLANIFICADOR, `${HOJA_VAC}!A:K`, [fila]);
 
-  return { id, puesto, turno, zonas, libranzas, dias: cubiertos.size };
+  return { id, puesto, turno, zonas, libranzas, dias: tipoFijo ? '—' : cubiertos.size };
 }
 
 module.exports = { vacantesPorZona, leerVacantesGuardadas, guardarVacante };

@@ -10,6 +10,7 @@
 // zona más cercana (por coordenadas de BASES), y Tráfico decide si la toma.
 
 const { leerTablero, DIAS_SEM } = require('./planificadorV2');
+const { leerVacantesGuardadas } = require('./vacantes');
 
 function haversine(la1, lo1, la2, lo2) {
   const R = 6371, rad = Math.PI / 180;
@@ -26,18 +27,22 @@ async function cargarCochesBases() {
   return { coches, bases: t.bases || [] };
 }
 
-/** Bloque por matrícula = sus días de hueco de ese turno, con el fijo del coche. */
+/** Nombre de los DOS fijos de un coche (día y noche); '' si no tiene. */
+function fijosDe(coche) {
+  const nombre = t => {
+    const p = (coche.personas || []).find(x => x.rol === 'FIJO' && x.turno === t && x.id);
+    return p ? (p.nombre || p.id) : '';
+  };
+  return { fijoDia: nombre('Día'), fijoNoche: nombre('Noche') };
+}
+
+/** Bloque por matrícula = sus días de hueco de ese turno, con AMBOS fijos. */
 function bloquesDe(coches, turno) {
   return coches.map(c => {
     const dias = (c.huecos || []).filter(h => h.turno === turno)
       .map(h => h.dia).sort((a, b) => a - b);
     if (!dias.length) return null;
-    // El fijo de ese turno es quien libra esos días (a quien cubre el correturno).
-    const fijoP = (c.personas || []).find(p => p.rol === 'FIJO' && p.turno === turno && p.id);
-    return {
-      matricula: c.matricula, zona: c.zona || '(sin zona)', dias,
-      fijo: fijoP ? (fijoP.nombre || fijoP.id) : ''
-    };
+    return { matricula: c.matricula, zona: c.zona || '(sin zona)', dias, ...fijosDe(c) };
   }).filter(Boolean);
 }
 
@@ -114,11 +119,11 @@ async function generarVacante(opt = {}) {
   const exacto = buscarExacto(inicio, candidatos, objetivo);
   const elegidos = exacto || rellenoParcial(inicio, candidatos, objetivo);
 
-  // Cada bloque en formato de salida (matrícula · fijo · días · zona/km).
+  // Cada bloque en formato de salida (matrícula · ambos fijos · días · zona/km).
   const aSalida = b => ({
     matricula: b.matricula,
     zona: b.zona,
-    fijo: b.fijo,
+    fijoDia: b.fijoDia, fijoNoche: b.fijoNoche,
     sugerido: b.zona !== zona,
     km: b.zona !== zona ? Math.round(dist(zona, b.zona) * 10) / 10 : 0,
     dias: b.dias.map(d => ({ dia: d, nombre: DIAS_SEM[d] }))
@@ -135,9 +140,22 @@ async function generarVacante(opt = {}) {
   };
 }
 
-/** Datos para la interfaz: zonas → matrículas con sus huecos (por turno). */
+/** Datos para la interfaz: zonas → matrículas con sus huecos (por turno) y si ya
+ *  están dentro de una vacante guardada (para saber qué queda pendiente). */
 async function datosGenerador() {
   const { coches } = await cargarCochesBases();
+
+  // Matrículas ya cubiertas por una vacante abierta, por turno.
+  const cubDia = new Set(), cubNoche = new Set();
+  try {
+    (await leerVacantesGuardadas())
+      .filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta')
+      .forEach(v => {
+        const set = v.turno === 'Noche' ? cubNoche : cubDia;
+        (v.matriculas || []).forEach(m => set.add(m.m));
+      });
+  } catch (_) { /* si no se puede leer, se muestra todo como pendiente */ }
+
   const zonasMap = new Map();
   coches.forEach(c => {
     const z = c.zona || '(sin zona)';
@@ -145,7 +163,10 @@ async function datosGenerador() {
     const noche = (c.huecos || []).filter(h => h.turno === 'Noche').map(h => h.dia);
     if (!dia.length && !noche.length) return;
     if (!zonasMap.has(z)) zonasMap.set(z, []);
-    zonasMap.get(z).push({ matricula: c.matricula, dia, noche });
+    zonasMap.get(z).push({
+      matricula: c.matricula, dia, noche, ...fijosDe(c),
+      enVacanteDia: cubDia.has(c.matricula), enVacanteNoche: cubNoche.has(c.matricula)
+    });
   });
   const zonas = [...zonasMap.entries()]
     .map(([zona, matriculas]) => ({ zona, matriculas: matriculas.sort((a, b) => a.matricula.localeCompare(b.matricula)) }))

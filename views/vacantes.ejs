@@ -44,7 +44,7 @@
       <p class="text-sm text-telecab-muted mb-2"><i class="fa-solid fa-location-dot mr-1 text-telecab-gold/70"></i> ${esc(v.zonas || '—')}</p>
       <div class="mb-2"><span class="text-xs text-telecab-muted">Matrículas:</span><br>${mats || '<span class="text-telecab-muted text-sm">—</span>'}</div>
       <p class="text-sm text-telecab-text">Libranzas: <span class="font-mono text-telecab-muted">${esc(v.libranzas || '—')}</span>
-        <span class="text-telecab-muted">· ${v.dias || 0} días</span></p>
+        <span class="text-telecab-muted">· ${/^Fijo/.test(v.puesto || '') ? 'toda la semana' : (v.dias || 0) + ' días'}</span></p>
       <p class="text-[11px] text-telecab-muted mt-2">${esc(v.fecha || '')} · ${esc(v.id)}</p>
     </div>`;
   }
