@@ -13,6 +13,10 @@
     </div>
     <div class="flex items-center gap-3">
       <span id="estado-guardado" class="text-sm text-telecab-muted"></span>
+      <button id="btn-alertas"
+              class="px-4 py-2 rounded-lg border border-telecab-border text-telecab-text hover:bg-telecab-card transition">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i> Alertas <span id="n-alertas" class="text-telecab-gold font-semibold"></span>
+      </button>
       <a href="/planificador/descargar"
          class="px-4 py-2 rounded-lg border border-telecab-gold/50 text-telecab-gold hover:bg-telecab-gold/10 transition font-medium">
         <i class="fa-solid fa-file-arrow-down mr-1"></i> Descargar anexo
@@ -30,8 +34,11 @@
     </div>
   </div>
 
-  <!-- ══ Avisos del motor ══ -->
-  <div id="avisos" class="hidden mb-5 rounded-lg border border-amber-600/50 bg-amber-900/20 p-4 text-sm"></div>
+  <!-- ══ Panel de alertas (colapsable): bajas/vacaciones próximas + conflictos ══ -->
+  <div id="panel-alertas" class="hidden mb-5 space-y-3">
+    <div id="alertas-vb"></div>
+    <div id="avisos" class="hidden rounded-lg border border-amber-600/50 bg-amber-900/20 p-4 text-sm"></div>
+  </div>
 
   <!-- ══ Demanda ══ -->
   <div id="demanda" class="grid gap-3 mb-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
@@ -102,6 +109,7 @@ async function cargar() {
     cambios.clear();
     refrescarBotonGuardar();
     pintarTodo();
+    cargarAlertas();
   } catch (e) {
     $('#cargando').innerHTML = '<p class="text-telecab-red">' + esc(e.message) + '</p>';
     return;
@@ -151,12 +159,42 @@ function pintarResumen() {
     </div>`).join('') || '<p class="text-telecab-muted col-span-full">Sin coches operativos.</p>';
 }
 
+let ALERTAS_VB = [];
+
 function pintarAvisos() {
   const box = $('#avisos');
-  if (!TABLERO.avisos.length) { box.classList.add('hidden'); return; }
+  if (!TABLERO.avisos.length) { box.classList.add('hidden'); contarAlertas(); return; }
   box.classList.remove('hidden');
-  box.innerHTML = '<strong class="text-amber-400">Revisar:</strong><ul class="mt-2 space-y-1 text-amber-200/90">' +
+  box.innerHTML = '<strong class="text-amber-400">Conflictos del planificador:</strong><ul class="mt-2 space-y-1 text-amber-200/90">' +
     TABLERO.avisos.map(a => '<li>· ' + esc(a.msg) + '</li>').join('') + '</ul>';
+  contarAlertas();
+}
+
+function contarAlertas() {
+  const n = ALERTAS_VB.length + ((TABLERO && TABLERO.avisos) ? TABLERO.avisos.length : 0);
+  $('#n-alertas').textContent = n ? '(' + n + ')' : '';
+}
+
+// Bajas / vacaciones próximas leídas de VISTA_FINAL (marcadas a mano).
+function pintarAlertasVB() {
+  const box = $('#alertas-vb');
+  if (!ALERTAS_VB.length) { box.innerHTML = ''; contarAlertas(); return; }
+  box.innerHTML = '<div class="rounded-lg border border-telecab-red/40 bg-telecab-red/10 p-4 text-sm">' +
+    '<strong class="text-telecab-red"><i class="fa-solid fa-user-clock mr-1"></i> Bajas / vacaciones próximas:</strong>' +
+    '<ul class="mt-2 space-y-1 text-telecab-text">' +
+    ALERTAS_VB.map(a => '<li>· <b>' + esc(a.conductor) + '</b> — ' + esc(a.motivo) + ' ' +
+      (a.dias === 1 ? 'mañana' : 'en ' + a.dias + ' días') +
+      ' <span class="text-telecab-muted">(' + esc(a.fecha) + ')</span> · toca reemplazar</li>').join('') +
+    '</ul></div>';
+  contarAlertas();
+}
+
+async function cargarAlertas() {
+  try {
+    const r = await (await fetch('/planificador/api/alertas')).json();
+    ALERTAS_VB = (r.status === 'ok' && r.alertas) ? r.alertas : [];
+  } catch (e) { ALERTAS_VB = []; }
+  pintarAlertasVB();
 }
 
 // Solo se ofrecen los que están Pendiente Asignar y son del turno de la plaza.
@@ -362,6 +400,8 @@ $('#btn-recargar').addEventListener('click', () => {
   if (cambios.size && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
   cargar();
 });
+
+$('#btn-alertas').addEventListener('click', () => $('#panel-alertas').classList.toggle('hidden'));
 
 ['#f-buscar', '#f-zona', '#f-estado', '#f-huecos', '#f-errores']
   .forEach(s => $(s).addEventListener('input', pintarCoches));

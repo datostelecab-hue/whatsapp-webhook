@@ -48,9 +48,10 @@ const COL = {
   turno: 25,           // turno de la vacante que se cubre (Día/Noche/TodoTurno)
   iban: 26,            // certificado bancario (IBAN / nº cuenta)
   direccion: 27,
-  coordenadas: 28
+  coordenadas: 28,
+  vacante: 29          // id de la vacante guardada que se recluta
 };
-const N_COLS = 29;
+const N_COLS = 30;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -58,7 +59,7 @@ const CABECERA = [
   'notas', 'fecha_creacion', 'fecha_apto', 'fecha_alta', 'fecha_habilitado',
   'fecha_asignado', 'fecha_baja', 'motivo', 'fecha_deteccion',
   'dni', 'email', 'contacto_emergencia', 'fecha_nacimiento', 'turno', 'iban',
-  'direccion', 'coordenadas'
+  'direccion', 'coordenadas', 'vacante'
 ];
 
 const ESTADOS = {
@@ -88,7 +89,13 @@ const ETAPAS_CANDIDATURA = [
   ESTADOS.REC_MEDICO, ESTADOS.RELEVAMIENTO
 ];
 const ETAPAS = { SELECCION: 'Selección', BOLT: 'BOLT', RRHH: 'RRHH', TRAFICO: 'Tráfico' };
-const CANALES = ['Referido', 'ETT', 'Web/Landing', 'Infojobs', 'RRSS', 'Otro'];
+// Leads de dónde viene la gente. Se guarda para poder analizar el origen luego.
+// "Bolsa de Empleo (ETT)" es la vía por la que pueden salir contratos 40h/32h ETT.
+const CANALES = [
+  'InfoJobs', 'LinkedIn', 'Indeed', 'Milanuncios', 'Referido',
+  'JobToday (HH)', 'InfoJobs (HH)', 'Publicación', 'Wallapop',
+  'Bolsa de Empleo (ETT)', 'JobToday', 'Nextdoor', 'Redes Sociales', 'Otro'
+];
 
 // --- utilidades -------------------------------------------------------------
 
@@ -130,7 +137,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AC`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AD`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -170,14 +177,14 @@ async function guardarTicket(datos = {}) {
       fecha_creacion: ahora(), fecha_apto: '', fecha_alta: '', fecha_habilitado: '',
       fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: '',
       dni: '', email: '', contacto_emergencia: '', fecha_nacimiento: '',
-      turno: '', iban: '', direccion: '', coordenadas: ''
+      turno: '', iban: '', direccion: '', coordenadas: '', vacante: ''
     };
     porTel.set(tel, t);
   }
 
   // Campos de texto editables desde Selección.
   ['nombre', 'canal', 'zona', 'turno', 'responsable', 'notas', 'dni', 'email',
-   'contacto_emergencia', 'fecha_nacimiento', 'iban', 'direccion', 'coordenadas']
+   'contacto_emergencia', 'fecha_nacimiento', 'iban', 'direccion', 'coordenadas', 'vacante']
     .forEach(k => { if (datos[k] !== undefined) t[k] = String(datos[k]).trim(); });
   if (datos.experiencia !== undefined) t.experiencia = siNo(datos.experiencia);
   if (datos.carne_vtc !== undefined) t.carne_vtc = siNo(datos.carne_vtc);
@@ -346,9 +353,14 @@ async function procesarAltaRRHH(tel, datos = {}) {
   try {
     await crearConductor(datosAgenda);
   } catch (e) {
-    // Si ya estaba en la agenda, seguimos y marcamos el alta igual. Cualquier
-    // otro error (archivado en OUT, DNI duplicado…) se propaga a RRHH.
-    if (!/Ya hay un conductor con el ID/i.test(e.message)) throw e;
+    const m = e.message || '';
+    // Duplicado (mismo ID_BOLT o DNI, o archivado en OUT): no se crea la ficha.
+    // Se avisa CLARO y NO se avanza el ticket, para no dejar el alta a medias.
+    if (/Ya hay un conductor|está archivado/i.test(m)) {
+      throw new Error(m + ' · Si es una ficha de prueba, bórrala de AGENDA_V2 '
+        + '(y de CONDUCTORES_OUT si estaba archivada) y reintenta.');
+    }
+    throw e;
   }
 
   t.estado = ESTADOS.ALTA;

@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { TURNOS_CONDUCTOR } = require('../services/planificadorV2');
-const { vacantesPorZona } = require('../services/vacantes');
+const { leerVacantesGuardadas } = require('../services/vacantes');
 const { geocodificar } = require('../services/geocoding');
 const {
   leerTickets, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
@@ -11,14 +10,15 @@ const {
 // Vista de Selección (funnel de candidatos).
 router.get('/', async (req, res) => {
   let vacantes = [];
-  try { vacantes = await vacantesPorZona(); }
-  catch (e) { console.error('❌ [Selección] vacantes:', e.message); }
+  try {
+    vacantes = (await leerVacantesGuardadas())
+      .filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta');
+  } catch (e) { console.error('❌ [Selección] vacantes:', e.message); }
   res.render('seleccion', {
     titulo: 'Selección',
     seccion: 'seleccion',
     layout: 'layout-gestion',
     canales: CANALES,
-    turnos: TURNOS_CONDUCTOR,
     etapas: ETAPAS_CANDIDATURA,
     vacantes
   });

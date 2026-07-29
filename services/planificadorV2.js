@@ -493,7 +493,8 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
 
       if (p.rol === 'CT') {
         // El correturno cubre exactamente lo que tenga escrito, ni más ni menos.
-        p.diasCubre = p.diasManual ? p.diasManual.slice() : Array(7).fill(false);
+        p.diasCubre = (p.diasManual ? p.diasManual.slice() : Array(7).fill(false))
+          .map((v, d) => v && activoEnFecha(p, info, fechasSemana[d]).activo);
 
         if (!p.diasManual) {
           problemas.push({
@@ -516,7 +517,11 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
         }
       } else {
         const partida = p.diasManual ? p.diasManual : info.trabaja;
-        p.diasCubre = partida.map((v, d) => v && !tomadosPorCT[p.turno][d]);
+        // Un estado especial (vacaciones, baja médica, suspensión…) o estar fuera
+        // de su ventana de fecha significa que NO cubre esos días: se muestran como
+        // hueco en el planificador, no como turno cubierto.
+        p.diasCubre = partida.map((v, d) => v && !tomadosPorCT[p.turno][d]
+          && activoEnFecha(p, info, fechasSemana[d]).activo);
         if (info.turno === 'TodoTurno') turnosCubre = ['Día', 'Noche'];
       }
 

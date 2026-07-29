@@ -202,6 +202,10 @@ async function reconstruirVistaFinal() {
     if (!esMesActual || !horasVigentes) {
       return { valor: viejo ? (viejo.fila[3 + idx] ?? '') : '' };
     }
+    // Preservar marcas manuales V (vacaciones) / B (baja) aunque sea el mes en
+    // curso: se ponen a mano en Trafico2 y alimentan las alertas del planificador.
+    const marca = viejo ? String(viejo.fila[3 + idx] ?? '').trim().toUpperCase() : '';
+    if (marca === 'V' || marca === 'B') return { valor: viejo.fila[3 + idx] };
     // Mes en curso con horas vigentes:
     const wd = (f.getUTCDay() + 6) % 7;
     const esLibranza = !!(c.libra && c.libra[wd]);
@@ -389,4 +393,40 @@ async function reconstruirVistaFinal() {
   };
 }
 
-module.exports = { reconstruirVistaFinal };
+/**
+ * Alertas de VISTA_FINAL: conductores marcados a mano con 'V' (vacaciones) o 'B'
+ * (baja) en los próximos `horizonte` días → "toca reemplazarlo". Solo lectura.
+ * Las columnas de día van desde col D (índice 3) = INICIO, correlativas por día.
+ */
+async function alertasVistaFinal(horizonte = 4) {
+  const hoy = hoyMadrid();
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const objetivos = [];
+  for (let n = 1; n <= horizonte; n++) {
+    const f = new Date(hoy); f.setUTCDate(hoy.getUTCDate() + n);
+    const col = 3 + Math.round((f.getTime() - inicioMs) / 86400000);
+    if (col >= 3) objetivos.push({ n, fecha: f, col });
+  }
+
+  const filas = await readSheet(ID_GESTION, `${HOJA}!A:ZZ`,
+    { valueRenderOption: 'UNFORMATTED_VALUE' });
+
+  const TIPO = { V: 'Vacaciones', B: 'Baja' };
+  const alertas = [];
+  for (let i = 3; i < filas.length; i++) {            // datos desde la fila 4 (3 cabeceras)
+    const nombre = (filas[i][1] || '').toString().trim();
+    if (!nombre || nombre.toUpperCase() === 'CONDUCTOR') continue;
+    objetivos.forEach(o => {
+      const v = String(filas[i][o.col] ?? '').trim().toUpperCase();
+      if (v === 'V' || v === 'B') {
+        alertas.push({
+          conductor: nombre, tipo: v, motivo: TIPO[v],
+          dias: o.n, fecha: isoFecha(o.fecha)
+        });
+      }
+    });
+  }
+  return alertas.sort((a, b) => a.dias - b.dias);
+}
+
+module.exports = { reconstruirVistaFinal, alertasVistaFinal };

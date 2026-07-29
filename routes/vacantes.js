@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { vacantesPorZona } = require('../services/vacantes');
+const { leerVacantesGuardadas } = require('../services/vacantes');
 
-// Qué zonas + turnos hay que cubrir (en vivo desde la cobertura).
+// Vacantes que Tráfico guardó desde el generador. Son las que Selección recluta.
 router.get('/', (req, res) => {
   res.render('vacantes', {
     titulo: 'Vacantes',
@@ -13,13 +13,16 @@ router.get('/', (req, res) => {
 
 router.get('/api/datos', async (req, res) => {
   try {
-    const vacantes = await vacantesPorZona();
-    const tot = vacantes.reduce((a, v) => {
-      a.dia += v.faltanDia; a.noche += v.faltanNoche; return a;
-    }, { dia: 0, noche: 0 });
+    const todas = await leerVacantesGuardadas();
+    const abiertas = todas.filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta');
     res.json({
-      status: 'ok', vacantes,
-      total: { dia: tot.dia, noche: tot.noche, todo: tot.dia + tot.noche }
+      status: 'ok',
+      vacantes: abiertas,
+      contadores: {
+        abiertas: abiertas.length,
+        dia: abiertas.filter(v => v.turno === 'Día').length,
+        noche: abiertas.filter(v => v.turno === 'Noche').length
+      }
     });
   } catch (error) {
     console.error('❌ [Vacantes] /api/datos:', error.message);

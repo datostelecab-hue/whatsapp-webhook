@@ -119,6 +119,7 @@
           { href: '/agenda',       icono: 'fa-users',             texto: 'Agenda',       id: 'agenda' },
           { href: '/control',      icono: 'fa-satellite-dish',    texto: 'Control',      id: 'control' },
           { href: '/cobertura',    icono: 'fa-calendar-week',     texto: 'Cobertura',    id: 'cobertura' },
+          { href: '/generador',    icono: 'fa-wand-magic-sparkles', texto: 'Generar vacantes', id: 'generador' },
           { href: '/matching',     icono: 'fa-location-dot',      texto: 'Matching',     id: 'matching' },
           { href: '/vehiculos',    icono: 'fa-car-side',          texto: 'Vehículos',    id: 'vehiculos' }
         ];
@@ -203,12 +204,51 @@
   const pop = document.createElement('div');
   pop.className = 'fp-pop hidden fixed z-[120] w-72 rounded-2xl border border-telecab-border bg-telecab-card2 shadow-soft p-3 text-telecab-text select-none';
   document.body.appendChild(pop);
-  let target = null, vista = null;
+  let target = null, vista = null, modo = 'dias';   // 'dias' | 'meses' | 'anios'
+
+  const flecha = n => '<button type="button" data-nav="' + n + '" class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card hover:text-telecab-text transition">' + (n < 0 ? '‹' : '›') + '</button>';
+  const pie =
+    '<div class="flex items-center justify-between mt-3 pt-2 border-t border-telecab-border text-xs">' +
+      '<button type="button" data-hoy class="px-2.5 py-1 rounded-lg text-telecab-gold hover:bg-telecab-gold/10 transition">Hoy</button>' +
+      '<button type="button" data-borrar class="px-2.5 py-1 rounded-lg text-telecab-muted hover:text-telecab-red transition">Borrar</button>' +
+    '</div>';
 
   function render() {
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
     const sel = target ? parse(target.value) : null;
     const y = vista.getFullYear(), mo = vista.getMonth();
+
+    // Vista de años: rejilla de 12 años; las flechas saltan de 12 en 12.
+    if (modo === 'anios') {
+      const base = Math.floor(y / 12) * 12;
+      let celdas = '';
+      for (let a = base; a < base + 12; a++) {
+        const cls = a === y ? 'bg-telecab-gold text-telecab-dark font-semibold' : 'text-telecab-text hover:bg-telecab-card';
+        celdas += `<button type="button" data-anio="${a}" class="h-10 rounded-lg text-sm transition ${cls}">${a}</button>`;
+      }
+      pop.innerHTML =
+        '<div class="flex items-center justify-between mb-2">' + flecha(-1) +
+          '<div class="text-sm font-semibold">' + base + ' – ' + (base + 11) + '</div>' + flecha(1) + '</div>' +
+        '<div class="grid grid-cols-3 gap-1">' + celdas + '</div>' + pie;
+      return;
+    }
+
+    // Vista de meses: rejilla de 12 meses; las flechas cambian de año.
+    if (modo === 'meses') {
+      let celdas = '';
+      MESES.forEach((m, i) => {
+        const cls = i === mo ? 'bg-telecab-gold text-telecab-dark font-semibold' : 'text-telecab-text hover:bg-telecab-card';
+        celdas += `<button type="button" data-mes="${i}" class="h-10 rounded-lg text-sm transition ${cls}">${m.slice(0, 3)}</button>`;
+      });
+      pop.innerHTML =
+        '<div class="flex items-center justify-between mb-2">' + flecha(-1) +
+          '<button type="button" data-modo="anios" class="text-sm font-semibold px-2 py-1 rounded-lg hover:bg-telecab-card transition">' + y + '</button>' +
+          flecha(1) + '</div>' +
+        '<div class="grid grid-cols-3 gap-1">' + celdas + '</div>' + pie;
+      return;
+    }
+
+    // Vista de días (por defecto). El mes y el año del encabezado abren su rejilla.
     const offset = (new Date(y, mo, 1).getDay() + 6) % 7;
     const total = new Date(y, mo + 1, 0).getDate();
     let celdas = '';
@@ -223,23 +263,20 @@
       celdas += `<button type="button" data-d="${d}" class="h-9 rounded-lg text-sm transition ${cls}">${d}</button>`;
     }
     pop.innerHTML =
-      '<div class="flex items-center justify-between mb-2">' +
-        '<button type="button" data-nav="-1" class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card hover:text-telecab-text transition">‹</button>' +
-        '<div class="text-sm font-semibold">' + MESES[mo] + ' ' + y + '</div>' +
-        '<button type="button" data-nav="1" class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card hover:text-telecab-text transition">›</button>' +
-      '</div>' +
+      '<div class="flex items-center justify-between mb-2">' + flecha(-1) +
+        '<div class="flex items-center gap-1">' +
+          '<button type="button" data-modo="meses" class="text-sm font-semibold px-2 py-1 rounded-lg hover:bg-telecab-card transition">' + MESES[mo] + '</button>' +
+          '<button type="button" data-modo="anios" class="text-sm font-semibold px-2 py-1 rounded-lg hover:bg-telecab-card transition">' + y + '</button>' +
+        '</div>' + flecha(1) + '</div>' +
       '<div class="grid grid-cols-7 gap-1 mb-1 text-[11px] font-medium text-telecab-muted text-center">' + DIAS.map(x => '<div>' + x + '</div>').join('') + '</div>' +
-      '<div class="grid grid-cols-7 gap-1 text-center">' + celdas + '</div>' +
-      '<div class="flex items-center justify-between mt-3 pt-2 border-t border-telecab-border text-xs">' +
-        '<button type="button" data-hoy class="px-2.5 py-1 rounded-lg text-telecab-gold hover:bg-telecab-gold/10 transition">Hoy</button>' +
-        '<button type="button" data-borrar class="px-2.5 py-1 rounded-lg text-telecab-muted hover:text-telecab-red transition">Borrar</button>' +
-      '</div>';
+      '<div class="grid grid-cols-7 gap-1 text-center">' + celdas + '</div>' + pie;
   }
 
   function abrir(input) {
     target = input;
     const base = parse(input.value) || new Date();
     vista = new Date(base.getFullYear(), base.getMonth(), 1);
+    modo = 'dias';
     render();
     pop.classList.remove('hidden');
     const r = input.getBoundingClientRect();
@@ -264,8 +301,20 @@
     // Sin esto, al navegar de mes render() reemplaza el HTML y saca del DOM el
     // botón pulsado; el detector de "clic fuera" lo ve fuera y cierra el calendario.
     e.stopPropagation();
+    const modoBtn = e.target.closest('[data-modo]');
+    if (modoBtn) { modo = modoBtn.dataset.modo; render(); return; }
     const nav = e.target.closest('[data-nav]');
-    if (nav) { vista = new Date(vista.getFullYear(), vista.getMonth() + Number(nav.dataset.nav), 1); render(); return; }
+    if (nav) {
+      const paso = Number(nav.dataset.nav);
+      if (modo === 'anios') vista.setFullYear(vista.getFullYear() + paso * 12);
+      else if (modo === 'meses') vista.setFullYear(vista.getFullYear() + paso);
+      else vista = new Date(vista.getFullYear(), vista.getMonth() + paso, 1);
+      render(); return;
+    }
+    const anio = e.target.closest('[data-anio]');
+    if (anio) { vista.setFullYear(Number(anio.dataset.anio)); modo = 'dias'; render(); return; }
+    const mes = e.target.closest('[data-mes]');
+    if (mes) { vista.setMonth(Number(mes.dataset.mes)); modo = 'dias'; render(); return; }
     const day = e.target.closest('[data-d]');
     if (day) { fijar(new Date(vista.getFullYear(), vista.getMonth(), Number(day.dataset.d))); return; }
     if (e.target.closest('[data-hoy]')) { fijar(new Date()); return; }

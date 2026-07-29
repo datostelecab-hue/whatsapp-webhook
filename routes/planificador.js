@@ -110,6 +110,19 @@ router.get('/api/tablero', async (req, res) => {
   }
 });
 
+/** Alertas de VISTA_FINAL: bajas/vacaciones marcadas a mano en los próximos días. */
+router.get('/api/alertas', async (req, res) => {
+  try {
+    const { alertasVistaFinal } = require('../services/vistaFinal');
+    const dias = Math.max(1, Math.min(14, parseInt(req.query.dias) || 4));
+    const alertas = await alertasVistaFinal(dias);
+    res.json({ status: 'ok', alertas, horizonte: dias });
+  } catch (error) {
+    console.error('❌ [PLANIFICADOR] /api/alertas:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
 /** La interfaz. */
 router.get('/', (req, res) => {
   res.render('planificador', {
