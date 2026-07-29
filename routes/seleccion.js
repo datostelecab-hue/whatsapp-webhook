@@ -1,12 +1,26 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 const { leerVacantesGuardadas } = require('../services/vacantes');
 const { buscarPorTelefono } = require('../services/conductoresBolt');
 const { geocodificar } = require('../services/geocoding');
+const drive = require('../services/drive');
+const { generarFichaPDF } = require('../services/fichaAlta');
 const {
-  leerTickets, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
-  CANALES, ETAPAS_CANDIDATURA, ESTADOS, ETAPAS
+  leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
+  guardarDocumento, parseDoc,
+  CANALES, ETAPAS_CANDIDATURA, ESTADOS, ETAPAS, DOCUMENTOS, normalizarTel
 } = require('../services/tickets');
+
+// Los archivos llegan como multipart (no JSON), así que esquivan el límite global
+// de 2 MB de app.js. En memoria; hasta 25 MB por archivo.
+const subida = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+// Clave estable para la carpeta de Drive del candidato. Se prefiere el DNI (que
+// también usará la agenda cuando pase a activo), luego el nombre, luego el tel.
+function claveDe(t) {
+  return (t.dni || t.nombre || t.id || '').toString().trim();
+}
 
 // Vista de Selección (funnel de candidatos).
 router.get('/', async (req, res) => {
@@ -120,6 +134,83 @@ router.post('/geocodificar', async (req, res) => {
     res.json({ status: 'ok', encontrado: true, ...r, coordenadas: `${r.lat}, ${r.lng}` });
   } catch (error) {
     res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Sube UNO de los 5 documentos de la ficha a Drive y guarda su enlace en el
+// ticket. multipart: campo 'archivo' + campos de texto tel y tipo.
+router.post('/documento', subida.single('archivo'), async (req, res) => {
+  try {
+    const tel = normalizarTel((req.body || {}).tel);
+    const tipo = (req.body || {}).tipo;
+    const def = DOCUMENTOS.find(d => d.key === tipo);
+    if (!def) return res.status(400).json({ status: 'error', msg: 'Tipo de documento no válido' });
+    if (!req.file) return res.status(400).json({ status: 'error', msg: 'No llegó ningún archivo' });
+
+    const t = await leerTicket(tel);
+    if (!t) return res.status(400).json({ status: 'error', msg: 'Primero guarda el candidato (no existe su ticket)' });
+
+    const nombre = `${tipo.toUpperCase()} — ${req.file.originalname}`;
+    const archivo = await drive.subir(claveDe(t), {
+      nombre, mime: req.file.mimetype, base64: req.file.buffer.toString('base64')
+    });
+    const doc = { id: archivo.id, link: archivo.webViewLink, nombre: archivo.name, mime: archivo.mimeType };
+    await guardarDocumento(tel, tipo, doc);
+    res.json({ status: 'ok', doc });
+  } catch (error) {
+    console.error('❌ [Selección] documento:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Quita un documento (lo borra de Drive y limpia la celda del ticket).
+router.delete('/documento', async (req, res) => {
+  try {
+    const tel = normalizarTel((req.body || {}).tel);
+    const tipo = (req.body || {}).tipo;
+    const def = DOCUMENTOS.find(d => d.key === tipo);
+    if (!def) return res.status(400).json({ status: 'error', msg: 'Tipo de documento no válido' });
+    const t = await leerTicket(tel);
+    const doc = t ? parseDoc(t[def.col]) : null;
+    if (doc && doc.id) { try { await drive.borrar(doc.id); } catch (_) { /* ya no estaba */ } }
+    await guardarDocumento(tel, tipo, null);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    console.error('❌ [Selección] borrar documento:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Genera la FICHA DE ALTA (PDF): formulario + cada documento adjunto. La guarda
+// en la carpeta de Drive del candidato y devuelve el enlace para abrirla.
+router.post('/ficha', async (req, res) => {
+  try {
+    const tel = normalizarTel((req.body || {}).tel);
+    const t = await leerTicket(tel);
+    if (!t) return res.status(400).json({ status: 'error', msg: 'No existe el ticket' });
+
+    // Descarga los documentos ya subidos para incrustarlos.
+    const documentos = [];
+    for (const def of DOCUMENTOS) {
+      const doc = parseDoc(t[def.col]);
+      if (!doc || !doc.id) continue;
+      try {
+        const { bytes, mime } = await drive.descargar(doc.id);
+        documentos.push({ label: def.label, bytes, mime });
+      } catch (e) {
+        console.error(`❌ [Selección] no se pudo descargar ${def.key}:`, e.message);
+      }
+    }
+
+    const pdf = await generarFichaPDF(t, documentos);
+    const nombreFicha = `FICHA DE ALTA - ${(t.nombre || tel).toString().trim()}.pdf`;
+    const archivo = await drive.subir(claveDe(t), {
+      nombre: nombreFicha, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64')
+    });
+    res.json({ status: 'ok', link: archivo.webViewLink, nombre: nombreFicha, adjuntos: documentos.length });
+  } catch (error) {
+    console.error('❌ [Selección] ficha:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 

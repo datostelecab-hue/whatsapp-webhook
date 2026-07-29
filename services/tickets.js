@@ -50,9 +50,27 @@ const COL = {
   direccion: 27,
   coordenadas: 28,
   vacante: 29,         // id de la vacante guardada que se recluta
-  link_bolt: 30        // link del proceso de alta que da BOLT (se envía al conductor)
+  link_bolt: 30,       // link del proceso de alta que da BOLT (se envía al conductor)
+  // --- Ficha de alta (relevamiento de datos para la FICHA DE ALTA en PDF) ---
+  apellidos: 31,
+  codigo_postal: 32,
+  localidad: 33,       // por defecto MADRID
+  provincia: 34,       // por defecto Madrid
+  estado_civil: 35,
+  num_hijos: 36,
+  num_seg_social: 37,  // Nº Seguridad Social
+  tipo_carnet: 38,     // por defecto B
+  carnet_expedicion: 39,
+  carnet_caducidad: 40,
+  fecha_inicio: 41,    // fecha de inicio del contrato
+  // --- Documentos: cada celda guarda un JSON {id, link, nombre, mime} de Drive ---
+  doc_dni: 42,
+  doc_carnet: 43,
+  doc_bancario: 44,
+  doc_seg_social: 45,  // certificado SS o 1ª página de la vida laboral
+  doc_penales: 46      // certificado de delitos sexuales
 };
-const N_COLS = 31;
+const N_COLS = 47;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -60,7 +78,21 @@ const CABECERA = [
   'notas', 'fecha_creacion', 'fecha_apto', 'fecha_alta', 'fecha_habilitado',
   'fecha_asignado', 'fecha_baja', 'motivo', 'fecha_deteccion',
   'dni', 'email', 'contacto_emergencia', 'fecha_nacimiento', 'turno', 'iban',
-  'direccion', 'coordenadas', 'vacante', 'link_bolt'
+  'direccion', 'coordenadas', 'vacante', 'link_bolt',
+  'apellidos', 'codigo_postal', 'localidad', 'provincia', 'estado_civil',
+  'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
+  'carnet_caducidad', 'fecha_inicio',
+  'doc_dni', 'doc_carnet', 'doc_bancario', 'doc_seg_social', 'doc_penales'
+];
+
+// Los 5 documentos de la ficha de alta. `key` es el identificador en la API/UI,
+// `col` la columna de TICKETS y `label` el título tal cual sale en el PDF.
+const DOCUMENTOS = [
+  { key: 'dni',       col: 'doc_dni',        label: 'DNI/NIE' },
+  { key: 'carnet',    col: 'doc_carnet',     label: 'CARNET DE CONDUCIR' },
+  { key: 'bancario',  col: 'doc_bancario',   label: 'CERTIFICADO BANCARIO' },
+  { key: 'seg_social',col: 'doc_seg_social', label: 'CERTIFICADO SEGURIDAD SOCIAL / VIDA LABORAL' },
+  { key: 'penales',   col: 'doc_penales',    label: 'CERTIFICADO DE DELITOS SEXUALES' }
 ];
 
 const ESTADOS = {
@@ -138,7 +170,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AE`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AU`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -178,7 +210,11 @@ async function guardarTicket(datos = {}) {
       fecha_creacion: ahora(), fecha_apto: '', fecha_alta: '', fecha_habilitado: '',
       fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: '',
       dni: '', email: '', contacto_emergencia: '', fecha_nacimiento: '',
-      turno: '', iban: '', direccion: '', coordenadas: '', vacante: '', link_bolt: ''
+      turno: '', iban: '', direccion: '', coordenadas: '', vacante: '', link_bolt: '',
+      apellidos: '', codigo_postal: '', localidad: '', provincia: '', estado_civil: '',
+      num_hijos: '', num_seg_social: '', tipo_carnet: '', carnet_expedicion: '',
+      carnet_caducidad: '', fecha_inicio: '',
+      doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: ''
     };
     porTel.set(tel, t);
   }
@@ -186,7 +222,10 @@ async function guardarTicket(datos = {}) {
   // Campos de texto editables desde Selección.
   ['nombre', 'canal', 'zona', 'turno', 'responsable', 'notas', 'dni', 'email',
    'contacto_emergencia', 'fecha_nacimiento', 'iban', 'direccion', 'coordenadas',
-   'vacante', 'link_bolt']
+   'vacante', 'link_bolt',
+   'apellidos', 'codigo_postal', 'localidad', 'provincia', 'estado_civil',
+   'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
+   'carnet_caducidad', 'fecha_inicio']
     .forEach(k => { if (datos[k] !== undefined) t[k] = String(datos[k]).trim(); });
   if (datos.experiencia !== undefined) t.experiencia = siNo(datos.experiencia);
   if (datos.carne_vtc !== undefined) t.carne_vtc = siNo(datos.carne_vtc);
@@ -395,9 +434,39 @@ async function noContinuarRRHH(tel, motivo) {
   return t;
 }
 
+/**
+ * Guarda (o quita) el enlace de un documento en su columna. `tipo` es el `key`
+ * de DOCUMENTOS (dni, carnet, bancario, seg_social, penales). `doc` es el objeto
+ * {id, link, nombre, mime} que devuelve Drive; pasar null lo borra.
+ */
+async function guardarDocumento(tel, tipo, doc) {
+  tel = normalizarTel(tel);
+  const def = DOCUMENTOS.find(d => d.key === tipo);
+  if (!def) throw new Error('Tipo de documento no válido: ' + tipo);
+  const { porTel, filas } = await leerTickets();
+  const t = porTel.get(tel);
+  if (!t) throw new Error('No existe un ticket con ese teléfono');
+  t[def.col] = doc ? JSON.stringify(doc) : '';
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
+/** Devuelve el ticket como objeto (o null) por teléfono. */
+async function leerTicket(tel) {
+  const { porTel } = await leerTickets();
+  return porTel.get(normalizarTel(tel)) || null;
+}
+
+/** Parsea la celda de un documento ({id, link, nombre, mime}) o null. */
+function parseDoc(valor) {
+  if (!valor) return null;
+  try { return JSON.parse(valor); } catch (_) { return null; }
+}
+
 module.exports = {
-  leerTickets, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
+  leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
   conciliarTicketsBolt, marcarRechazadoBolt,
   procesarAltaRRHH, noContinuarRRHH,
-  normalizarTel, telValido, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL
+  guardarDocumento, parseDoc,
+  normalizarTel, telValido, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS
 };

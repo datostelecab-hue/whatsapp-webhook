@@ -128,6 +128,71 @@
       </div>
     </div>
 
+    <!-- ══════════ FICHA DE ALTA: datos + documentos ══════════ -->
+    <div class="mt-5 pt-4 border-t border-telecab-border">
+      <h3 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-file-signature text-telecab-gold"></i> Ficha de alta
+        <span class="text-[11px] text-telecab-muted font-normal">— datos y documentos para la FICHA DE ALTA en PDF</span>
+      </h3>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Apellidos</label>
+          <input data-campo="apellidos" class="inp">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Código postal</label>
+          <input data-campo="codigo_postal" class="inp">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Localidad</label>
+          <input data-campo="localidad" class="inp" placeholder="MADRID">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Provincia</label>
+          <input data-campo="provincia" class="inp" placeholder="Madrid">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Estado civil</label>
+          <input data-campo="estado_civil" class="inp" placeholder="SOLTERO">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Nº de hijos</label>
+          <input data-campo="num_hijos" class="inp">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Nº Seguridad Social</label>
+          <input data-campo="num_seg_social" class="inp font-mono">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Tipo de carnet</label>
+          <input data-campo="tipo_carnet" class="inp" placeholder="B">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Carnet · fecha expedición</label>
+          <input data-campo="carnet_expedicion" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Carnet · fecha caducidad</label>
+          <input data-campo="carnet_caducidad" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Fecha de inicio (contrato)</label>
+          <input data-campo="fecha_inicio" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+        </div>
+      </div>
+
+      <p class="text-xs uppercase tracking-wide text-telecab-muted mt-5 mb-2">Documentos <span class="normal-case text-telecab-muted/70">— arrastra un archivo, pega un pantallazo (Ctrl+V) o haz clic para examinar</span></p>
+      <div id="drive-aviso" class="hidden rounded-lg border border-telecab-gold/40 bg-telecab-gold/5 px-3 py-2 text-xs text-telecab-gold mb-2"></div>
+      <div id="dropzones" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+
+      <div class="mt-4 flex items-center gap-3 flex-wrap">
+        <button id="btn-ficha" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
+          <i class="fa-solid fa-file-pdf mr-1"></i> Generar FICHA DE ALTA (PDF)
+        </button>
+        <p id="ficha-pdf-msg" class="text-xs hidden"></p>
+      </div>
+    </div>
+
     <!-- Atributos rápidos -->
     <div class="flex flex-wrap gap-4 mt-4">
       <% [{k:'experiencia',t:'Experiencia'},{k:'carne_vtc',t:'Carné VTC'}].forEach(function (f) { %>
@@ -167,7 +232,8 @@
 
 <script>
   const ETAPAS = <%- JSON.stringify(etapas || []) %>;
-  const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt'];
+  const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt',
+    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio'];
   const estado = { experiencia: 'No', carne_vtc: 'No' };
   let ticketActual = null;
   let EN_BOLT = false;   // ¿el teléfono ya está en nuestro histórico de BOLT?
@@ -232,6 +298,7 @@
     ['experiencia', 'carne_vtc'].forEach(k => { estado[k] = (t && t[k] === 'Sí') ? 'Sí' : 'No'; pintarToggle(k); });
     pintarStepper(ticketActual.estado);
     pintarVacInfo();
+    refrescarDocs();
     $('#nota-ett').classList.toggle('hidden', ($('[data-campo="canal"]').value !== 'Bolsa de Empleo (ETT)'));
     $('#ficha-msg').classList.add('hidden');
     $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -353,5 +420,155 @@
     });
   }
 
+  // ---------- Documentos de la ficha de alta (Drive) ----------
+  const DOCS = [
+    { key: 'dni', label: 'DNI / NIE' },
+    { key: 'carnet', label: 'Carnet de conducir' },
+    { key: 'bancario', label: 'Certificado bancario' },
+    { key: 'seg_social', label: 'Cert. Seg. Social / vida laboral' },
+    { key: 'penales', label: 'Cert. de delitos sexuales' }
+  ];
+  let dzActiva = null;   // última zona apuntada (para pegar con Ctrl+V)
+
+  const iconoMime = m => /pdf/.test(m || '') ? 'fa-file-pdf' : (/image/.test(m || '') ? 'fa-file-image' : 'fa-file');
+
+  function pintarDoc(tipo, doc) {
+    const zona = document.querySelector(`.dz[data-tipo="${tipo}"]`);
+    if (!zona) return;
+    const body = zona.querySelector('.dz-body');
+    if (doc && doc.id) {
+      zona.classList.add('dz-ok');
+      const nombre = String(doc.nombre || 'documento').replace(/^[A-Z_]+ — /, '');
+      body.innerHTML =
+        `<div class="flex items-center gap-2 w-full">
+           <i class="fa-solid ${iconoMime(doc.mime)} text-telecab-green"></i>
+           <a href="${doc.link || '#'}" target="_blank" rel="noopener" class="flex-1 text-left text-xs text-telecab-text hover:text-telecab-gold truncate">${nombre}</a>
+           <button type="button" class="dz-quitar text-telecab-muted hover:text-telecab-red px-1" title="Quitar"><i class="fa-solid fa-xmark"></i></button>
+         </div>`;
+      body.querySelector('.dz-quitar').addEventListener('click', ev => { ev.stopPropagation(); quitarDoc(tipo); });
+    } else {
+      zona.classList.remove('dz-ok');
+      body.innerHTML = '<span class="text-[11px] text-telecab-muted">Arrastra, pega o haz clic</span>';
+    }
+  }
+
+  function refrescarDocs() {
+    DOCS.forEach(d => {
+      let doc = null;
+      const raw = ticketActual ? ticketActual['doc_' + d.key] : '';
+      if (raw) { try { doc = JSON.parse(raw); } catch (_) {} }
+      pintarDoc(d.key, doc);
+    });
+    $('#ficha-pdf-msg').classList.add('hidden');
+  }
+
+  async function subirDoc(tipo, file) {
+    if (!file || !ticketActual) return;
+    const zona = document.querySelector(`.dz[data-tipo="${tipo}"]`);
+    zona.querySelector('.dz-body').innerHTML = '<span class="text-[11px] text-telecab-muted"><i class="fa-solid fa-circle-notch fa-spin"></i> Subiendo…</span>';
+    try {
+      await api('/seleccion/ticket', datosFicha());          // asegura que el ticket existe
+      const fd = new FormData();
+      fd.append('tel', ticketActual.id);
+      fd.append('tipo', tipo);
+      fd.append('archivo', file, file.name || (tipo + '.png'));
+      const r = await (await fetch('/seleccion/documento', { method: 'POST', body: fd })).json();
+      if (r.status !== 'ok') throw new Error(r.msg);
+      ticketActual['doc_' + tipo] = JSON.stringify(r.doc);
+      pintarDoc(tipo, r.doc);
+    } catch (e) {
+      pintarDoc(tipo, null);
+      msg('No se pudo subir el documento: ' + e.message, false);
+    }
+  }
+
+  async function quitarDoc(tipo) {
+    if (!ticketActual) return;
+    try {
+      const r = await (await fetch('/seleccion/documento', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tel: ticketActual.id, tipo })
+      })).json();
+      if (r.status !== 'ok') throw new Error(r.msg);
+      ticketActual['doc_' + tipo] = '';
+      pintarDoc(tipo, null);
+    } catch (e) { msg('No se pudo quitar: ' + e.message, false); }
+  }
+
+  function initDropzones() {
+    const cont = $('#dropzones');
+    cont.innerHTML = DOCS.map(d => `
+      <div class="dz relative rounded-xl border border-dashed border-telecab-border p-3 min-h-[92px] flex flex-col cursor-pointer transition focus:outline-none focus:border-telecab-gold" data-tipo="${d.key}" tabindex="0">
+        <span class="text-xs font-medium text-telecab-text mb-1">${d.label}</span>
+        <div class="dz-body flex-1 flex items-center justify-center text-center"></div>
+        <input type="file" class="hidden dz-input" accept="image/*,application/pdf,.pdf">
+      </div>`).join('');
+
+    cont.querySelectorAll('.dz').forEach(zona => {
+      const tipo = zona.dataset.tipo;
+      const input = zona.querySelector('.dz-input');
+      pintarDoc(tipo, null);
+      zona.addEventListener('click', e => { if (e.target.closest('a,button')) return; input.click(); });
+      zona.addEventListener('focus', () => { dzActiva = tipo; });
+      zona.addEventListener('mouseenter', () => { dzActiva = tipo; });
+      input.addEventListener('change', () => { if (input.files[0]) subirDoc(tipo, input.files[0]); input.value = ''; });
+      zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('border-telecab-gold'); });
+      zona.addEventListener('dragleave', () => zona.classList.remove('border-telecab-gold'));
+      zona.addEventListener('drop', e => {
+        e.preventDefault(); zona.classList.remove('border-telecab-gold');
+        const f = e.dataTransfer.files[0]; if (f) subirDoc(tipo, f);
+      });
+    });
+  }
+
+  // Pegar (Ctrl+V) una imagen → va a la última zona apuntada.
+  document.addEventListener('paste', e => {
+    if (!dzActiva || !ticketActual) return;
+    const item = [...((e.clipboardData || {}).items || [])].find(i => i.type.indexOf('image/') === 0);
+    if (!item) return;
+    const f = item.getAsFile();
+    if (f) { e.preventDefault(); subirDoc(dzActiva, f); }
+  });
+
+  // Aviso si Drive aún no está conectado.
+  (async () => {
+    try {
+      const est = await (await fetch('/documentos/api/estado')).json();
+      if (!est.configurado) {
+        const a = $('#drive-aviso');
+        a.classList.remove('hidden');
+        a.innerHTML = est.puedeConectar
+          ? 'Drive aún no está conectado. <a href="/documentos/auth" target="_blank" class="underline font-semibold">Conectar cuenta de Google →</a>'
+          : 'Falta configurar el cliente OAuth de Drive (GOOGLE_OAUTH_CLIENT_ID / SECRET en Render).';
+      }
+    } catch (_) {}
+  })();
+
+  // Generar la FICHA DE ALTA en PDF.
+  $('#btn-ficha').addEventListener('click', async () => {
+    if (!ticketActual) return;
+    const el = $('#ficha-pdf-msg');
+    el.className = 'text-xs text-telecab-muted'; el.textContent = 'Generando la ficha…'; el.classList.remove('hidden');
+    try {
+      await api('/seleccion/ticket', datosFicha());
+      const r = await (await fetch('/seleccion/ficha', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tel: ticketActual.id })
+      })).json();
+      if (r.status !== 'ok') throw new Error(r.msg);
+      el.className = 'text-xs text-telecab-green';
+      el.innerHTML = `Ficha generada (${r.adjuntos} doc.). <a href="${r.link}" target="_blank" rel="noopener" class="underline font-semibold">Abrir PDF →</a>`;
+      if (r.link) window.open(r.link, '_blank');
+    } catch (e) {
+      el.className = 'text-xs text-telecab-red'; el.textContent = 'No se pudo generar: ' + e.message;
+    }
+  });
+
+  initDropzones();
   cargar();
 </script>
+
+<style>
+  .dz.dz-ok { border-style: solid; border-color: rgba(62,207,142,.5); }
+  .dz:hover { border-color: rgba(232,184,75,.5); }
+</style>

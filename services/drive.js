@@ -190,6 +190,15 @@ async function borrar(fileId) {
   return { borrado: fileId };
 }
 
+/** Descarga un archivo por id → { bytes: Buffer, mime, nombre }. */
+async function descargar(fileId) {
+  if (!fileId) throw new Error('Falta el ID del archivo');
+  const drive = getDrive();
+  const meta = await drive.files.get({ fileId, fields: 'mimeType,name' });
+  const resp = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+  return { bytes: Buffer.from(resp.data), mime: meta.data.mimeType, nombre: meta.data.name };
+}
+
 /** ¿Está la cuenta conectada (hay refresh token)? */
 function configurado() {
   return Boolean(
@@ -205,6 +214,6 @@ function puedeConectar() {
 }
 
 module.exports = {
-  subir, listar, borrar, carpetaConductor, configurado, puedeConectar,
+  subir, descargar, listar, borrar, carpetaConductor, configurado, puedeConectar,
   normClave, authUrl, exchangeCode
 };
