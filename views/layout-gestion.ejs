@@ -134,6 +134,13 @@
 
   // Al volver por el historial (bfcache) los datos ya están: no tapar.
   window.addEventListener('pageshow', (e) => { if (e.persisted) { activos = 0; inicial = false; ocultar(); } });
+
+  // Control manual para acciones que NO pasan por un fetch cerca de un clic
+  // (p. ej. subir un archivo soltado o pegado). abrir()/cerrar() se equilibran.
+  window.telecabCarga = {
+    abrir() { activos++; mostrar(); },
+    cerrar() { activos = Math.max(0, activos - 1); ocultarSiLibre(); }
+  };
 })();
 </script>
 

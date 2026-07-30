@@ -132,18 +132,30 @@ async function carpetaConductor(clave) {
   return id;
 }
 
-/** Sube un documento (base64 tal cual lo manda el navegador). */
-async function subir(clave, { nombre, mime, base64 }) {
+/**
+ * Sube un documento (base64 tal cual lo manda el navegador). Si se pasa `fileId`
+ * y sigue existiendo, SOBREScribe ese archivo (mantiene su id y su enlace); si no,
+ * crea uno nuevo en la carpeta del conductor. Así no se acumulan duplicados.
+ */
+async function subir(clave, { nombre, mime, base64, fileId }) {
   if (!nombre) throw new Error('Falta el nombre del archivo');
   if (!base64) throw new Error('El archivo llegó vacío');
   const drive = getDrive();
-  const carpeta = await carpetaConductor(clave);
+  const buf = Buffer.from(base64, 'base64');
+  const media = () => ({ mimeType: mime || 'application/octet-stream', body: Readable.from(buf) });
+  const fields = 'id,name,mimeType,size,createdTime,webViewLink,iconLink';
 
-  const stream = Readable.from(Buffer.from(base64, 'base64'));
+  if (fileId) {
+    try {
+      const { data } = await drive.files.update({ fileId, requestBody: { name: nombre }, media: media(), fields });
+      return data;
+    } catch (_) { /* el archivo ya no está (borrado a mano) → se crea uno nuevo */ }
+  }
+  const carpeta = await carpetaConductor(clave);
   const { data } = await drive.files.create({
     requestBody: { name: nombre, parents: [carpeta] },
-    media: { mimeType: mime || 'application/octet-stream', body: stream },
-    fields: 'id,name,mimeType,size,createdTime,webViewLink,iconLink'
+    media: media(),
+    fields
   });
   return data;
 }

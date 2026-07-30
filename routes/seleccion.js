@@ -8,7 +8,7 @@ const drive = require('../services/drive');
 const { generarFichaPDF } = require('../services/fichaAlta');
 const {
   leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
-  guardarDocumento, parseDoc,
+  guardarDocumento, guardarCelda, parseDoc,
   CANALES, ETAPAS_CANDIDATURA, ESTADOS, ETAPAS, DOCUMENTOS, normalizarTel
 } = require('../services/tickets');
 
@@ -147,12 +147,17 @@ router.post('/documento', subida.single('archivo'), async (req, res) => {
     if (!def) return res.status(400).json({ status: 'error', msg: 'Tipo de documento no válido' });
     if (!req.file) return res.status(400).json({ status: 'error', msg: 'No llegó ningún archivo' });
 
-    const t = await leerTicket(tel);
-    if (!t) return res.status(400).json({ status: 'error', msg: 'Primero guarda el candidato (no existe su ticket)' });
+    // El ticket se crea solo si aún no existía (sin pisar nada: guardarDocumento
+    // escribe luego únicamente la celda del documento).
+    let t = await leerTicket(tel);
+    if (!t) { await guardarTicket({ tel }); t = await leerTicket(tel); }
 
+    // Si ya había un documento de este tipo, se sobrescribe (mismo archivo/enlace).
+    const previo = parseDoc(t[def.col]);
     const nombre = `${tipo.toUpperCase()} — ${req.file.originalname}`;
     const archivo = await drive.subir(claveDe(t), {
-      nombre, mime: req.file.mimetype, base64: req.file.buffer.toString('base64')
+      nombre, mime: req.file.mimetype, base64: req.file.buffer.toString('base64'),
+      fileId: previo && previo.id
     });
     const doc = { id: archivo.id, link: archivo.webViewLink, nombre: archivo.name, mime: archivo.mimeType };
     await guardarDocumento(tel, tipo, doc);
@@ -204,10 +209,15 @@ router.post('/ficha', async (req, res) => {
 
     const pdf = await generarFichaPDF(t, documentos);
     const nombreFicha = `FICHA DE ALTA - ${(t.nombre || tel).toString().trim()}.pdf`;
+    // Si ya se había generado, se sobrescribe el mismo PDF (mismo enlace).
+    const fichaPrev = parseDoc(t.ficha_pdf);
     const archivo = await drive.subir(claveDe(t), {
-      nombre: nombreFicha, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64')
+      nombre: nombreFicha, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64'),
+      fileId: fichaPrev && fichaPrev.id
     });
-    res.json({ status: 'ok', link: archivo.webViewLink, nombre: nombreFicha, adjuntos: documentos.length });
+    const ficha = { id: archivo.id, link: archivo.webViewLink, nombre: archivo.name, mime: 'application/pdf' };
+    await guardarCelda(tel, 'ficha_pdf', JSON.stringify(ficha));
+    res.json({ status: 'ok', ficha, link: archivo.webViewLink, nombre: nombreFicha, adjuntos: documentos.length });
   } catch (error) {
     console.error('❌ [Selección] ficha:', error.message);
     res.status(400).json({ status: 'error', msg: error.message });

@@ -68,9 +68,13 @@ const COL = {
   doc_carnet: 43,
   doc_bancario: 44,
   doc_seg_social: 45,  // certificado SS o 1ª página de la vida laboral
-  doc_penales: 46      // certificado de delitos sexuales
+  doc_penales: 46,     // certificado de delitos sexuales
+  // Datos laborales editables (el resto son fijos de empresa):
+  tipo_contrato: 47,
+  jornada: 48,         // 40 HORAS / 32 HORAS — determina el salario en el PDF
+  ficha_pdf: 49        // JSON {id, link, nombre} de la FICHA DE ALTA generada en Drive
 };
-const N_COLS = 47;
+const N_COLS = 50;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -82,7 +86,8 @@ const CABECERA = [
   'apellidos', 'codigo_postal', 'localidad', 'provincia', 'estado_civil',
   'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
   'carnet_caducidad', 'fecha_inicio',
-  'doc_dni', 'doc_carnet', 'doc_bancario', 'doc_seg_social', 'doc_penales'
+  'doc_dni', 'doc_carnet', 'doc_bancario', 'doc_seg_social', 'doc_penales',
+  'tipo_contrato', 'jornada', 'ficha_pdf'
 ];
 
 // Los 5 documentos de la ficha de alta. `key` es el identificador en la API/UI,
@@ -94,6 +99,29 @@ const DOCUMENTOS = [
   { key: 'seg_social',col: 'doc_seg_social', label: 'CERTIFICADO SEGURIDAD SOCIAL / VIDA LABORAL' },
   { key: 'penales',   col: 'doc_penales',    label: 'CERTIFICADO DE DELITOS SEXUALES' }
 ];
+
+// Datos mínimos que deben estar completos y guardados ANTES de enviar a BOLT, para
+// que cuando el candidato llegue a RRHH la ficha esté entera. Los campos con valor
+// por defecto (localidad, provincia, tipo de carnet, contrato, jornada, nº hijos)
+// no se exigen porque el PDF ya los rellena.
+const REQUERIDOS_ALTA = [
+  ['nombre', 'Nombre'], ['apellidos', 'Apellidos'], ['dni', 'DNI/NIE'],
+  ['fecha_nacimiento', 'Fecha de nacimiento'], ['email', 'Correo'],
+  ['direccion', 'Dirección'], ['codigo_postal', 'Código postal'],
+  ['estado_civil', 'Estado civil'], ['num_seg_social', 'Nº Seguridad Social'],
+  ['iban', 'Certificado bancario (IBAN)'],
+  ['carnet_expedicion', 'Carnet: fecha de expedición'],
+  ['carnet_caducidad', 'Carnet: fecha de caducidad'],
+  ['fecha_inicio', 'Fecha de inicio'],
+  ['doc_dni', 'Documento: DNI/NIE'], ['doc_carnet', 'Documento: Carnet de conducir'],
+  ['doc_bancario', 'Documento: Certificado bancario'],
+  ['doc_seg_social', 'Documento: Seg. Social / vida laboral'],
+  ['doc_penales', 'Documento: Certificado de delitos sexuales']
+];
+/** Devuelve las etiquetas de los campos requeridos que están vacíos en el ticket. */
+function faltantesAlta(t) {
+  return REQUERIDOS_ALTA.filter(([c]) => !String((t || {})[c] || '').trim()).map(([, l]) => l);
+}
 
 const ESTADOS = {
   // Funnel de candidatura (etapa Selección), en orden:
@@ -170,7 +198,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:AU`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:BA`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -214,7 +242,8 @@ async function guardarTicket(datos = {}) {
       apellidos: '', codigo_postal: '', localidad: '', provincia: '', estado_civil: '',
       num_hijos: '', num_seg_social: '', tipo_carnet: '', carnet_expedicion: '',
       carnet_caducidad: '', fecha_inicio: '',
-      doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: ''
+      doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: '',
+      tipo_contrato: '', jornada: '', ficha_pdf: ''
     };
     porTel.set(tel, t);
   }
@@ -225,7 +254,7 @@ async function guardarTicket(datos = {}) {
    'vacante', 'link_bolt',
    'apellidos', 'codigo_postal', 'localidad', 'provincia', 'estado_civil',
    'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
-   'carnet_caducidad', 'fecha_inicio']
+   'carnet_caducidad', 'fecha_inicio', 'tipo_contrato', 'jornada']
     .forEach(k => { if (datos[k] !== undefined) t[k] = String(datos[k]).trim(); });
   if (datos.experiencia !== undefined) t.experiencia = siNo(datos.experiencia);
   if (datos.carne_vtc !== undefined) t.carne_vtc = siNo(datos.carne_vtc);
@@ -260,6 +289,11 @@ async function enviarABolt(tel) {
   if (!t) throw new Error('No existe un ticket con ese teléfono');
   if (t.estado !== ESTADOS.RELEVAMIENTO) {
     throw new Error('Antes de enviar a BOLT hay que completar el funnel hasta "Relevamiento de datos"');
+  }
+  // La ficha (datos + documentos) debe estar completa: así RRHH la recibe entera.
+  const faltan = faltantesAlta(t);
+  if (faltan.length) {
+    throw new Error('Antes de enviar a BOLT faltan datos de la ficha: ' + faltan.join(', '));
   }
   // El link de alta de BOLT es obligatorio, SALVO que el conductor ya esté en
   // nuestro histórico de BOLT (ya fue dado de alta antes → no hace falta crearlo).
@@ -324,17 +358,28 @@ async function conciliarTicketsBolt() {
   return { detectados, total: detectados.length };
 }
 
-/** Marca un ticket como rechazado por BOLT (detección manual desde la plataforma). */
-async function marcarRechazadoBolt(tel, motivo) {
+/**
+ * Devuelve una ficha a "Relevamiento de datos" (Selección). Se usa siempre que
+ * una ficha se DEVUELVE desde cualquier punto del proceso: se reabre en Selección
+ * para revisar/corregir y volver a enviar. El motivo queda anotado en las notas.
+ */
+async function devolverARelevamiento(tel, motivo) {
   tel = normalizarTel(tel);
   const { porTel, filas } = await leerTickets();
   const t = porTel.get(tel);
   if (!t) throw new Error('No existe un ticket con ese teléfono');
-  t.estado = ESTADOS.RECHAZADO_BOLT;
-  t.motivo = (motivo || '').toString().trim() || 'Rechazado en BOLT';
-  t.fecha_baja = ahora();
+  t.estado = ESTADOS.RELEVAMIENTO;
+  t.etapa = ETAPAS.SELECCION;
+  const nota = (motivo || '').toString().trim();
+  if (nota) t.notas = t.notas ? `${t.notas}\n[Devuelto ${ahora()}] ${nota}` : `[Devuelto ${ahora()}] ${nota}`;
+  t.fecha_apto = '';   // se reabre en Selección; se re-sella al reenviar a BOLT
   await guardarTodos(porTel, filas);
   return t;
+}
+
+/** BOLT rechazó al candidato: se devuelve a "Relevamiento de datos" para corregir y reintentar. */
+async function marcarRechazadoBolt(tel, motivo) {
+  return devolverARelevamiento(tel, 'Rechazado en BOLT' + (motivo ? `: ${motivo}` : ''));
 }
 
 /** Descarta un candidato en Selección, con motivo. */
@@ -434,21 +479,40 @@ async function noContinuarRRHH(tel, motivo) {
   return t;
 }
 
+// Índice de columna 0-based → letra(s) de Sheets (0→A, 26→AA, 42→AQ…).
+function idxACol(n) {
+  let s = '';
+  for (n = Number(n); n >= 0; n = Math.floor(n / 26) - 1) {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+  }
+  return s;
+}
+
 /**
- * Guarda (o quita) el enlace de un documento en su columna. `tipo` es el `key`
- * de DOCUMENTOS (dni, carnet, bancario, seg_social, penales). `doc` es el objeto
- * {id, link, nombre, mime} que devuelve Drive; pasar null lo borra.
+ * Escribe SOLO una celda del ticket (localizado por teléfono). Es clave que sea
+ * una escritura puntual y no una reescritura de toda la hoja: así varias
+ * escrituras a la vez no se pisan entre sí ni revierten otras columnas con una
+ * lectura antigua. `campo` es una clave de COL.
  */
-async function guardarDocumento(tel, tipo, doc) {
+async function guardarCelda(tel, campo, valor) {
   tel = normalizarTel(tel);
+  if (!(campo in COL)) throw new Error('Campo no válido: ' + campo);
+  await ensureSheet(ID_PLANIFICADOR, HOJA);
+  const colA = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:A`);
+  let fila = -1;
+  for (let i = 1; i < colA.length; i++) {
+    if (normalizarTel((colA[i] || [])[0]) === tel) { fila = i + 1; break; }   // 1-based
+  }
+  if (fila === -1) throw new Error('No existe un ticket con ese teléfono');
+  await writeSheetRaw(ID_PLANIFICADOR, `${HOJA}!${idxACol(COL[campo])}${fila}`, [[valor == null ? '' : valor]]);
+  return { tel, campo, fila };
+}
+
+/** Guarda (o quita) el enlace de un documento. `tipo` es el `key` de DOCUMENTOS. */
+async function guardarDocumento(tel, tipo, doc) {
   const def = DOCUMENTOS.find(d => d.key === tipo);
   if (!def) throw new Error('Tipo de documento no válido: ' + tipo);
-  const { porTel, filas } = await leerTickets();
-  const t = porTel.get(tel);
-  if (!t) throw new Error('No existe un ticket con ese teléfono');
-  t[def.col] = doc ? JSON.stringify(doc) : '';
-  await guardarTodos(porTel, filas);
-  return t;
+  return guardarCelda(tel, def.col, doc ? JSON.stringify(doc) : '');
 }
 
 /** Devuelve el ticket como objeto (o null) por teléfono. */
@@ -465,8 +529,8 @@ function parseDoc(valor) {
 
 module.exports = {
   leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
-  conciliarTicketsBolt, marcarRechazadoBolt,
+  conciliarTicketsBolt, marcarRechazadoBolt, devolverARelevamiento,
   procesarAltaRRHH, noContinuarRRHH,
-  guardarDocumento, parseDoc,
-  normalizarTel, telValido, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS
+  guardarDocumento, guardarCelda, parseDoc, faltantesAlta,
+  normalizarTel, telValido, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS, REQUERIDOS_ALTA
 };

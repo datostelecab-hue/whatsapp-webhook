@@ -53,8 +53,12 @@
 
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Nombre y apellidos</label>
+        <label class="block text-xs text-telecab-muted mb-1">Nombre</label>
         <input data-campo="nombre" class="inp">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Apellidos</label>
+        <input data-campo="apellidos" class="inp">
       </div>
       <div>
         <label class="block text-xs text-telecab-muted mb-1">DNI / NIE</label>
@@ -136,10 +140,6 @@
       </h3>
       <div class="grid md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-xs text-telecab-muted mb-1">Apellidos</label>
-          <input data-campo="apellidos" class="inp">
-        </div>
-        <div>
           <label class="block text-xs text-telecab-muted mb-1">Código postal</label>
           <input data-campo="codigo_postal" class="inp">
         </div>
@@ -178,6 +178,18 @@
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Fecha de inicio (contrato)</label>
           <input data-campo="fecha_inicio" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Tipo de contrato</label>
+          <input data-campo="tipo_contrato" class="inp" placeholder="INDEFINIDO">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Jornada</label>
+          <select data-campo="jornada" class="inp">
+            <option value="40 HORAS">40 horas</option>
+            <option value="32 HORAS">32 horas</option>
+          </select>
+          <p id="salario-nota" class="text-[11px] text-telecab-gold mt-1"></p>
         </div>
       </div>
 
@@ -233,7 +245,7 @@
 <script>
   const ETAPAS = <%- JSON.stringify(etapas || []) %>;
   const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt',
-    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio'];
+    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio','tipo_contrato','jornada'];
   const estado = { experiencia: 'No', carne_vtc: 'No' };
   let ticketActual = null;
   let EN_BOLT = false;   // ¿el teléfono ya está en nuestro histórico de BOLT?
@@ -299,6 +311,9 @@
     pintarStepper(ticketActual.estado);
     pintarVacInfo();
     refrescarDocs();
+    const _tc = $('[data-campo="tipo_contrato"]'); if (_tc && !_tc.value) _tc.value = 'INDEFINIDO';
+    const _j = $('[data-campo="jornada"]'); if (_j && !_j.value) _j.value = '40 HORAS';
+    actualizarSalario();
     $('#nota-ett').classList.toggle('hidden', ($('[data-campo="canal"]').value !== 'Bolsa de Empleo (ETT)'));
     $('#ficha-msg').classList.add('hidden');
     $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -314,6 +329,37 @@
     return d;
   }
 
+  // Cola de subida de documentos. Guardar el formulario reescribe TODA la hoja,
+  // así que primero se espera a que terminen las subidas (que escriben celdas
+  // sueltas) para no revertirlas con una lectura antigua.
+  let colaDocs = Promise.resolve();
+  async function guardarFormulario() {
+    await colaDocs;
+    return api('/seleccion/ticket', datosFicha());
+  }
+
+  // Campos y documentos obligatorios antes de enviar a BOLT (deben coincidir con
+  // REQUERIDOS_ALTA del servidor, que es quien lo impone de verdad).
+  const REQ_FICHA = [
+    ['nombre', 'Nombre'], ['apellidos', 'Apellidos'], ['dni', 'DNI/NIE'],
+    ['fecha_nacimiento', 'Fecha de nacimiento'], ['email', 'Correo'],
+    ['direccion', 'Dirección'], ['codigo_postal', 'Código postal'],
+    ['estado_civil', 'Estado civil'], ['num_seg_social', 'Nº Seguridad Social'],
+    ['iban', 'Certificado bancario (IBAN)'],
+    ['carnet_expedicion', 'Carnet: expedición'], ['carnet_caducidad', 'Carnet: caducidad'],
+    ['fecha_inicio', 'Fecha de inicio']
+  ];
+  const REQ_DOCS = [
+    ['dni', 'Doc: DNI/NIE'], ['carnet', 'Doc: Carnet'], ['bancario', 'Doc: Cert. bancario'],
+    ['seg_social', 'Doc: Seg. Social/vida laboral'], ['penales', 'Doc: Delitos sexuales']
+  ];
+  function faltanFicha() {
+    const d = datosFicha();
+    const faltan = REQ_FICHA.filter(([c]) => !String(d[c] || '').trim()).map(([, l]) => l);
+    REQ_DOCS.forEach(([k, l]) => { if (!(ticketActual && ticketActual['doc_' + k])) faltan.push(l); });
+    return faltan;
+  }
+
   function pintarVacInfo() {
     const opt = $('[data-campo="vacante"]').selectedOptions[0];
     const info = $('#vac-info');
@@ -321,6 +367,17 @@
     else info.classList.add('hidden');
   }
   $('[data-campo="vacante"]').addEventListener('change', pintarVacInfo);
+
+  // Salario según la jornada (40 h → 1.442,14 · 32 h → 1.154,39). Solo informativo
+  // en la ficha; el PDF lo vuelve a calcular igual en el servidor.
+  const SALARIOS = { '40': '1.442,14', '32': '1.154,39' };
+  function actualizarSalario() {
+    const jn = $('[data-campo="jornada"]');
+    const h = (jn ? jn.value : '').replace(/\D/g, '');
+    const nota = $('#salario-nota');
+    if (nota) nota.textContent = 'Salario bruto mensual: ' + (SALARIOS[h] || SALARIOS['40']) + ' €';
+  }
+  { const jn = $('[data-campo="jornada"]'); if (jn) jn.addEventListener('change', actualizarSalario); }
 
   // Abrir / crear
   $('#btn-abrir').addEventListener('click', async () => {
@@ -338,7 +395,7 @@
 
   // Guardar
   $('#btn-guardar').addEventListener('click', async () => {
-    const r = await api('/seleccion/ticket', datosFicha());
+    const r = await guardarFormulario();
     if (r.status === 'ok') { $('#ficha').classList.add('hidden'); cargar(); }
     else msg(r.msg || 'Error al guardar', false);
   });
@@ -346,7 +403,7 @@
   // Mover de etapa (stepper)
   $('#stepper').addEventListener('click', async e => {
     const b = e.target.closest('.step'); if (!b || !ticketActual) return;
-    await api('/seleccion/ticket', datosFicha());              // guarda lo escrito
+    await guardarFormulario();              // guarda lo escrito
     const r = await api('/seleccion/etapa', { tel: ticketActual.id, estado: b.dataset.etapa });
     if (r.status === 'ok') { ticketActual = r.ticket; pintarStepper(r.ticket.estado); cargar(); }
     else msg(r.msg || 'No se pudo mover de etapa', false);
@@ -354,7 +411,9 @@
 
   // Enviar a BOLT
   $('#btn-bolt').addEventListener('click', async () => {
-    await api('/seleccion/ticket', datosFicha());
+    await guardarFormulario();                 // guarda lo tecleado antes de validar
+    const faltan = faltanFicha();
+    if (faltan.length) { msg('Completa la ficha antes de enviar a BOLT — falta: ' + faltan.join(', '), false); return; }
     const r = await api('/seleccion/bolt', { tel: ticketActual.id });
     if (r.status === 'ok') { msg('Solicitud enviada a BOLT — pendiente de aprobación.', true); $('#ficha').classList.add('hidden'); cargar(); }
     else msg(r.msg || 'No se pudo enviar a BOLT', false);
@@ -459,26 +518,44 @@
       if (raw) { try { doc = JSON.parse(raw); } catch (_) {} }
       pintarDoc(d.key, doc);
     });
-    $('#ficha-pdf-msg').classList.add('hidden');
+    // Ficha ya generada: mostrar el enlace al PDF actual.
+    const el = $('#ficha-pdf-msg');
+    let fp = null;
+    if (ticketActual && ticketActual.ficha_pdf) { try { fp = JSON.parse(ticketActual.ficha_pdf); } catch (_) {} }
+    if (fp && fp.link) {
+      el.className = 'text-xs text-telecab-muted';
+      el.innerHTML = 'Ficha actual: <a href="' + fp.link + '" target="_blank" rel="noopener" class="underline text-telecab-gold font-semibold">Abrir PDF →</a>';
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
   }
 
-  async function subirDoc(tipo, file) {
+  // Los documentos se suben de UNO EN UNO (cola): así el servidor escribe cada
+  // celda sin solaparse. El ticket lo crea el propio endpoint si no existía.
+  function subirDoc(tipo, file) {
     if (!file || !ticketActual) return;
+    const tel = ticketActual.id;
     const zona = document.querySelector(`.dz[data-tipo="${tipo}"]`);
     zona.querySelector('.dz-body').innerHTML = '<span class="text-[11px] text-telecab-muted"><i class="fa-solid fa-circle-notch fa-spin"></i> Subiendo…</span>';
+    if (window.telecabCarga) window.telecabCarga.abrir();   // tapa la pantalla mientras sube
+    colaDocs = colaDocs.then(() => enviarDoc(tipo, file, tel));
+  }
+  async function enviarDoc(tipo, file, tel) {
     try {
-      await api('/seleccion/ticket', datosFicha());          // asegura que el ticket existe
       const fd = new FormData();
-      fd.append('tel', ticketActual.id);
+      fd.append('tel', tel);
       fd.append('tipo', tipo);
       fd.append('archivo', file, file.name || (tipo + '.png'));
       const r = await (await fetch('/seleccion/documento', { method: 'POST', body: fd })).json();
       if (r.status !== 'ok') throw new Error(r.msg);
-      ticketActual['doc_' + tipo] = JSON.stringify(r.doc);
+      if (ticketActual && ticketActual.id === tel) ticketActual['doc_' + tipo] = JSON.stringify(r.doc);
       pintarDoc(tipo, r.doc);
     } catch (e) {
       pintarDoc(tipo, null);
       msg('No se pudo subir el documento: ' + e.message, false);
+    } finally {
+      if (window.telecabCarga) window.telecabCarga.cerrar();
     }
   }
 
@@ -550,12 +627,13 @@
     const el = $('#ficha-pdf-msg');
     el.className = 'text-xs text-telecab-muted'; el.textContent = 'Generando la ficha…'; el.classList.remove('hidden');
     try {
-      await api('/seleccion/ticket', datosFicha());
+      await guardarFormulario();
       const r = await (await fetch('/seleccion/ficha', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tel: ticketActual.id })
       })).json();
       if (r.status !== 'ok') throw new Error(r.msg);
+      if (r.ficha) ticketActual.ficha_pdf = JSON.stringify(r.ficha);   // recordar el PDF actual
       el.className = 'text-xs text-telecab-green';
       el.innerHTML = `Ficha generada (${r.adjuntos} doc.). <a href="${r.link}" target="_blank" rel="noopener" class="underline font-semibold">Abrir PDF →</a>`;
       if (r.link) window.open(r.link, '_blank');

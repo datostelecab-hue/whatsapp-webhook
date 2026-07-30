@@ -41,6 +41,14 @@ function limpio(s) {
   return String(s == null ? '' : s).replace(/ /g, ' ');
 }
 
+// Salario bruto mensual según la jornada: 32 h → 1.154,39 · resto (40 h) →
+// 1.442,14. Un valor explícito en ficha.salario tiene prioridad.
+function salarioDe(ficha) {
+  if (ficha.salario) return limpio(ficha.salario);
+  const h = String(ficha.jornada || FIJOS.jornada).replace(/\D/g, '');
+  return h === '32' ? '1.154,39' : '1.442,14';
+}
+
 // Dibuja texto encogiéndolo hasta que quepa en maxW.
 function texto(page, s, x, baseline, font, size, color, maxW) {
   s = limpio(s);
@@ -196,7 +204,7 @@ async function generarFichaPDF(ficha = {}, documentos = []) {
   y = filaAncha(page, y, HF, 'OBSERVACIONES:', g('observaciones'), fonts);
   y = filaAncha(page, y, HF, 'EMPRESA:', of('empresa'), fonts);
   y = filaAncha(page, y, HF, 'CENTRO DE TRABAJO:', of('centro'), fonts);
-  y = filaAncha(page, y, HF, 'SALARIO BRUTO MENSUAL (PAGAS EXTRAS PRORRATEADAS):', of('salario'), fonts);
+  y = filaAncha(page, y, HF, 'SALARIO BRUTO MENSUAL (PAGAS EXTRAS PRORRATEADAS):', salarioDe(ficha), fonts);
 
   y -= 18;
   texto(page, '* Es obligatorio rellenar todos los campos', M, y, fonts.bold, 8.5, ROJO_NOTA);

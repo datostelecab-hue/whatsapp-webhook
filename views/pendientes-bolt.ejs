@@ -1,7 +1,7 @@
 <div class="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
 
   <!-- Contadores -->
-  <div class="grid grid-cols-3 gap-3">
+  <div class="grid grid-cols-2 gap-3">
     <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
       <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Pendientes en BOLT</p>
       <p id="c-pend" class="text-2xl font-bold text-telecab-gold">–</p>
@@ -10,10 +10,6 @@
       <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Aprobados → RRHH</p>
       <p id="c-aprob" class="text-2xl font-bold text-telecab-green">–</p>
     </div>
-    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
-      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Rechazados</p>
-      <p id="c-rech" class="text-2xl font-bold text-telecab-red">–</p>
-    </div>
   </div>
 
   <!-- Aviso + conciliar -->
@@ -21,7 +17,8 @@
     <i class="fa-solid fa-circle-info text-telecab-gold mt-0.5"></i>
     <div class="flex-1 text-sm text-telecab-muted">
       BOLT no avisa por la API cuando <b class="text-telecab-text">rechaza</b> a un conductor.
-      Revisa esta lista a diario en la plataforma de BOLT: al que veas rechazado, márcalo aquí.
+      Revisa esta lista a diario en la plataforma de BOLT: al que veas rechazado, márcalo aquí y
+      <b class="text-telecab-text">volverá a "Relevamiento de datos"</b> en Selección para corregir y reintentar.
       A los aprobados los detecta el cron solo (cada 30 min).
     </div>
     <button id="btn-conciliar" class="shrink-0 px-3 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm">
@@ -80,9 +77,9 @@
          <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}${t.canal ? ' · ' + t.canal : ''}</span>
        </span>
        ${chipDias(dias(t.fecha_apto))}
-       <button data-rech="${t.id}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-red hover:bg-telecab-red/10 border border-telecab-red/30 text-xs transition">Rechazado</button>`;
+       <button data-rech="${t.id}" title="BOLT lo rechazó → vuelve a Selección" class="shrink-0 px-2.5 py-1.5 rounded-lg text-telecab-red hover:bg-telecab-red/10 border border-telecab-red/30 text-xs transition">Rechazado → Selección</button>`;
     el.querySelector('[data-rech]').addEventListener('click', async () => {
-      const motivo = prompt('Motivo del rechazo en BOLT (opcional):') || '';
+      const motivo = prompt('BOLT lo rechazó — motivo (opcional).\nEl candidato volverá a "Relevamiento de datos" en Selección para corregir y reintentar:') || '';
       const r = await api('/pendientes-bolt/rechazar', { tel: t.id, motivo });
       if (r.status === 'ok') cargar(); else alert(r.msg || 'Error');
     });
@@ -107,7 +104,6 @@
     if (r.status !== 'ok') return;
     $('#c-pend').textContent = r.contadores.pendientes;
     $('#c-aprob').textContent = r.contadores.aprobados;
-    $('#c-rech').textContent = r.contadores.rechazados;
 
     const cp = $('#lista-pend'); cp.innerHTML = '';
     if (!r.pendientes.length) cp.innerHTML = '<p class="text-telecab-muted text-sm">Nadie esperando aprobación.</p>';
