@@ -705,6 +705,12 @@
 
   initDropzones();
   cargar();
+
+  // Abre directamente una ficha si viene ?tel= (desde Pendientes / la campana).
+  (function () {
+    const tel = new URLSearchParams(location.search).get('tel');
+    if (tel && /^\d{9}$/.test(tel)) abrirPorTel(tel);
+  })();
 </script>
 
 <style>

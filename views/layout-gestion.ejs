@@ -167,29 +167,36 @@
         const seccionActiva = typeof seccion !== 'undefined' ? seccion : '';
         // Módulos agrupados por departamento (provisional, hasta el login por roles).
         const grupos = [
-          { nombre: 'Contratación', icono: 'fa-user-tie', items: [
+          { nombre: 'Contratación', icono: 'fa-user-tie', rol: 'reclutador', items: [
             { href: '/vacantes',       icono: 'fa-location-dot',    texto: 'Vacantes',       id: 'vacantes' },
             { href: '/seleccion',      icono: 'fa-user-plus',       texto: 'Selección',      id: 'seleccion' },
             { href: '/pendientes-bolt',icono: 'fa-hourglass-half',  texto: 'Pendientes BOLT',id: 'pendientes-bolt' }
           ] },
-          { nombre: 'RRHH', icono: 'fa-id-badge', items: [
+          { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'rrhh', items: [
             { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' }
           ] },
-          { nombre: 'Tráfico', icono: 'fa-satellite-dish', items: [
+          { nombre: 'Tráfico', icono: 'fa-satellite-dish', rol: 'trafico', items: [
             { href: '/planificador', icono: 'fa-table-cells-large',  texto: 'Planificador',     id: 'planificador' },
             { href: '/agenda',       icono: 'fa-users',              texto: 'Agenda',           id: 'agenda' },
             { href: '/control',      icono: 'fa-satellite-dish',     texto: 'Control',          id: 'control' },
             { href: '/cobertura',    icono: 'fa-calendar-week',      texto: 'Cobertura',        id: 'cobertura' },
             { href: '/generador',    icono: 'fa-wand-magic-sparkles',texto: 'Generar vacantes', id: 'generador' }
           ] },
-          { nombre: 'Flota', icono: 'fa-car-side', items: [
+          { nombre: 'Flota', icono: 'fa-car-side', rol: 'trafico', items: [
             { href: '/matching',  icono: 'fa-location-dot', texto: 'Matching',  id: 'matching' },
             { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' }
           ] }
         ];
       %>
+      <a href="/pendientes" class="nav-item <%= seccionActiva === 'pendientes' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'pendientes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-inbox w-5 text-center <%= seccionActiva === 'pendientes' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Pendientes</span>
+        <span id="nav-pend-badge" class="hidden min-w-[18px] h-[18px] px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center"></span>
+      </a>
+
       <% grupos.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
-        <div class="nav-grupo">
+        <div class="nav-grupo" data-rol="<%= g.rol || '' %>">
           <button type="button" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
             <i class="fa-solid <%= g.icono %> w-5 text-center text-telecab-muted"></i>
             <span class="text-sm font-semibold flex-1 text-left"><%= g.nombre %></span>
@@ -231,10 +238,33 @@
         <i class="fa-solid fa-bars"></i>
       </button>
       <h1 class="font-semibold text-telecab-text"><%= titulo || 'Gestión' %></h1>
-      <span class="ml-auto text-xs text-telecab-muted hidden sm:flex items-center gap-2">
-        <i class="far fa-clock"></i>
-        <%= new Date().toLocaleString('es-ES', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) %>
-      </span>
+
+      <div class="ml-auto flex items-center gap-2">
+        <!-- Entrar como… (rol, sin login) -->
+        <select id="rol-sel" title="Entrar como…" class="bg-telecab-card2 border border-telecab-border rounded-lg text-xs text-telecab-text px-2 py-1.5 focus:outline-none focus:border-telecab-gold cursor-pointer">
+          <option value="general">👤 Invitado</option>
+          <option value="reclutador">🧑‍💼 Reclutador</option>
+          <option value="rrhh">📋 RRHH</option>
+          <option value="trafico">🚕 Tráfico</option>
+        </select>
+
+        <!-- Buzón de pendientes -->
+        <div class="relative">
+          <button id="notif-btn" title="Pendientes" class="relative w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center">
+            <i class="fa-solid fa-bell text-telecab-text"></i>
+            <span id="notif-badge" class="hidden absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center">0</span>
+          </button>
+          <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto bg-telecab-card border border-telecab-border rounded-xl shadow-soft z-50 p-2">
+            <p class="text-[11px] uppercase tracking-wide font-semibold text-telecab-muted px-2 py-1">Buzón de pendientes</p>
+            <div id="notif-lista" class="space-y-0.5"></div>
+          </div>
+        </div>
+
+        <span class="text-xs text-telecab-muted hidden lg:flex items-center gap-2">
+          <i class="far fa-clock"></i>
+          <%= new Date().toLocaleString('es-ES', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) %>
+        </span>
+      </div>
     </header>
 
     <main class="flex-1"><%- body %></main>
@@ -257,6 +287,79 @@
       btn.querySelector('.grupo-chev').classList.toggle('rotate-180');
     });
   });
+</script>
+
+<!-- ══════════ Roles (sin login) + buzón de pendientes por departamento ══════════ -->
+<script>
+(function () {
+  const sel = document.getElementById('rol-sel');
+  const btn = document.getElementById('notif-btn');
+  const panel = document.getElementById('notif-panel');
+  const badge = document.getElementById('notif-badge');
+  const lista = document.getElementById('notif-lista');
+  if (!sel || !btn) return;
+
+  const DEPS = { general: ['reclutador', 'rrhh', 'trafico'], reclutador: ['reclutador'], rrhh: ['rrhh'], trafico: ['trafico'] };
+  const NOMBRE = { reclutador: 'Reclutador', rrhh: 'RRHH', trafico: 'Tráfico' };
+
+  let rol = localStorage.getItem('telecab-rol') || 'general';
+  if (!DEPS[rol]) rol = 'general';
+  sel.value = rol;
+  let datos = null;
+
+  // Filtra los grupos del menú por rol (general = todos). El grupo de la sección
+  // activa se deja SIEMPRE visible para no dejar al usuario sin salida.
+  function aplicarRolNav() {
+    document.querySelectorAll('.nav-grupo[data-rol]').forEach(g => {
+      const gr = g.getAttribute('data-rol');
+      const activo = !!g.querySelector('.nav-item.activo');
+      g.classList.toggle('hidden', !(rol === 'general' || gr === rol || activo));
+    });
+  }
+
+  function pintar() {
+    if (!datos || datos.status !== 'ok') return;
+    const deps = DEPS[rol] || DEPS.general;
+    let total = 0;
+    lista.innerHTML = '';
+    deps.forEach(dep => {
+      const d = datos[dep] || { total: 0, items: [] };
+      total += d.total;
+      (d.items || []).forEach(it => {
+        const a = document.createElement('a');
+        a.href = it.href;
+        a.className = 'block px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition';
+        a.innerHTML =
+          (rol === 'general' ? `<span class="block text-[10px] uppercase tracking-wide text-telecab-gold">${NOMBRE[dep]}</span>` : '') +
+          `<span class="block text-xs text-telecab-text">${it.texto}</span>` +
+          (it.detalle ? `<span class="block text-[11px] text-telecab-muted truncate">${it.detalle}</span>` : '');
+        lista.appendChild(a);
+      });
+    });
+    if (!lista.children.length) lista.innerHTML = '<p class="text-xs text-telecab-muted px-2 py-4 text-center">Sin pendientes 🎉</p>';
+    const txt = total > 99 ? '99+' : String(total);
+    [badge, document.getElementById('nav-pend-badge')].forEach(b => {
+      if (!b) return;
+      if (total > 0) { b.textContent = txt; b.classList.remove('hidden'); } else b.classList.add('hidden');
+    });
+  }
+
+  async function cargar() {
+    try { const r = await fetch('/notificaciones'); datos = await r.json(); pintar(); } catch (_) {}
+  }
+
+  sel.addEventListener('change', () => {
+    rol = sel.value; localStorage.setItem('telecab-rol', rol);
+    aplicarRolNav(); pintar();
+  });
+  btn.addEventListener('click', e => { e.stopPropagation(); panel.classList.toggle('hidden'); });
+  document.addEventListener('click', e => { if (panel && !panel.contains(e.target) && !btn.contains(e.target)) panel.classList.add('hidden'); });
+
+  aplicarRolNav();
+  // Con retraso para que la campana NO entre en el overlay de carga inicial.
+  setTimeout(cargar, 1500);
+  setInterval(cargar, 120000);   // refresca cada 2 min (en segundo plano)
+})();
 </script>
 
 <!-- ══════════ Selector de fechas (calendario propio, a juego con el tema) ══════════ -->

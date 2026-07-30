@@ -85,6 +85,7 @@
 <script>
   const $ = s => document.querySelector(s);
   let ticketActual = null;
+  let autoAbierto = false;   // para abrir una sola vez la ficha que llega por ?tel=
 
   async function api(url, body) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -171,6 +172,13 @@
     if (!r.porTramitar.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">Nadie pendiente de alta.</p>'; return; }
     r.porTramitar.sort((a, b) => (a.fecha_deteccion || '').localeCompare(b.fecha_deteccion || ''));
     r.porTramitar.forEach(t => cont.appendChild(fila(t)));
+
+    // Abre directamente la ficha que llega por ?tel= (una sola vez, desde Pendientes).
+    if (!autoAbierto) {
+      const tel = new URLSearchParams(location.search).get('tel');
+      const t = tel && r.porTramitar.find(x => String(x.id) === tel);
+      if (t) { autoAbierto = true; abrirFicha(t); }
+    }
   }
 
   // ---- Excel de Altas ----
