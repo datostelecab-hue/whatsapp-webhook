@@ -28,6 +28,40 @@ const MAX_TRAMO_SEG = 6 * 3600;
 // Al fusionar flotas nos quedamos con el estado más "vivo" del conductor.
 const PRIORIDAD_ESTADO = { despedido: 0, inactivo: 1, activo: 2 };
 
+// Turno de la AGENDA_V2 (planificador) → código interno.
+const MAP_TURNO_AGENDA = { 'Día': 'dia', 'Dia': 'dia', 'Noche': 'noche', 'TodoTurno': 'todoturno' };
+
+// Hora (0-23) de corte del día operativo por turno. Día y Noche: el día va de las
+// 5:00 a las 5:00, así el turno de noche (17:00→05:00) cae ENTERO en su día y
+// cuadra con Bolt. TodoTurno: de 2:00 a 2:00. Desconocido: como día.
+const CORTE_TURNO = { dia: 5, noche: 5, todoturno: 2 };
+const CORTE_DEFECTO = 5;
+
+/**
+ * Turno de cada conductor desde la agenda ACTUAL (AGENDA_V2, vía el planificador),
+ * NO desde la vieja TurnosDB. La clave es el nombre de Bolt (ID_BOLT) normalizado,
+ * para cruzarlo con los nombres que devuelve la API de Bolt.
+ */
+async function leerTurnosAgenda() {
+  try {
+    const { leerTablero } = require('./planificadorV2');
+    const tablero = await leerTablero();
+    const dict = {};
+    ((tablero && tablero.conductores) || []).forEach(c => {
+      const nombre = (c.idBolt || c.nombre || '').toString().trim();
+      if (!nombre) return;
+      dict[normalizarNombre(nombre).toLowerCase()] = {
+        turno: MAP_TURNO_AGENDA[(c.turno || '').toString().trim()] || '?'
+      };
+    });
+    console.log(`📋 Turnos desde la agenda (AGENDA_V2): ${Object.keys(dict).length}`);
+    return dict;
+  } catch (e) {
+    console.error('Error leyendo turnos de la agenda:', e.message);
+    return {};
+  }
+}
+
 /**
  * Mínimo y máximo de un array recorriéndolo, no con Math.min(...array): un mes
  * real trae más de 130.000 logs y el spread los pasa como argumentos de la
@@ -54,8 +88,8 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
   // El dinero (propinas, peajes, neto) solo se saca en el histórico.
   const incluirDinero = opciones.modoHistorico === true;
 
-  const turnosDB = await leerTurnos();
-  const postMortem = await leerPostMortem();
+  const turnosDB = await leerTurnosAgenda();   // turnos desde AGENDA_V2 (no TurnosDB / "operaciones 1")
+  const postMortem = [];                        // el postmortem se gestiona ahora en VISTA_FINAL
 
   const todosConductores = {};
 
@@ -399,11 +433,8 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
         const fin = siguiente.created;
         if (fin - inicio <= 0) continue;
 
-        if (turno === 'noche') {
-          distribuirHorasTurnoNoche(horasPorConductor[nombreReal], inicio, fin);
-        } else {
-          distribuirHorasTurnoDia(horasPorConductor[nombreReal], inicio, fin);
-        }
+        distribuirHoras(horasPorConductor[nombreReal], inicio, fin,
+          CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO);
 
         horasNocturnasPorConductor[nombreReal] += calcularSegundosNocturnosEnIntervalo(inicio, fin);
       }
@@ -620,11 +651,8 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
         const duracion = finIntervalo - inicioIntervalo;
         if (duracion <= 0) continue;
 
-        if (turno === 'noche') {
-          distribuirHorasTurnoNoche(horasPorConductor[nombreReal], inicioIntervalo, finIntervalo);
-        } else {
-          distribuirHorasTurnoDia(horasPorConductor[nombreReal], inicioIntervalo, finIntervalo);
-        }
+        distribuirHoras(horasPorConductor[nombreReal], inicioIntervalo, finIntervalo,
+          CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO);
 
         // Las nocturnas se calculan siempre para todo el mundo. Quién las ve
         // reflejadas se decide al escribir la hoja, con el estado ya fusionado
@@ -724,48 +752,23 @@ function calcularSegundosNocturnosEnIntervalo(inicio, fin) {
   return totalNocturno;
 }
 
-function distribuirHorasTurnoDia(horasConductor, inicio, fin) {
+/**
+ * Reparte un intervalo [inicio, fin] (epoch en s) entre días operativos según la
+ * hora de `corte` del turno. El día operativo empieza a las `corte`:00, así que
+ * todo lo trabajado entre las `corte`:00 de un día y las `corte`:00 del siguiente
+ * cuenta para el PRIMER día. Un solo mecanismo para día, noche y todoturno.
+ */
+function distribuirHoras(horasConductor, inicio, fin, corte) {
   let cts = inicio;
   while (cts < fin) {
-    const fecha = new Date(cts * 1000);
-    const dia = fecha.getDate();
-    const midnight = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() + 1).getTime() / 1000;
-    const endSegment = Math.min(midnight, fin);
+    const f = new Date(cts * 1000);
+    const y = f.getFullYear(), m = f.getMonth(), d = f.getDate();
+    const antesDelCorte = f.getHours() < corte;
+    const diaAsignar = antesDelCorte ? d - 1 : d;         // aún es el día operativo anterior
+    const proximoCorte = new Date(y, m, antesDelCorte ? d : d + 1, corte, 0, 0).getTime() / 1000;
+    const endSegment = Math.min(proximoCorte, fin);
     const seg = endSegment - cts;
-    if (horasConductor[dia] !== undefined && seg > 0) {
-      horasConductor[dia] += seg;
-    }
-    cts = endSegment;
-  }
-}
-
-function distribuirHorasTurnoNoche(horasConductor, inicio, fin) {
-  let cts = inicio;
-  while (cts < fin) {
-    const fecha = new Date(cts * 1000);
-    const dia = fecha.getDate();
-    const mes = fecha.getMonth();
-    const ano = fecha.getFullYear();
-    const mediodiaHoy = new Date(ano, mes, dia, 12, 0, 0).getTime() / 1000;
-    const mediodiaManana = new Date(ano, mes, dia + 1, 12, 0, 0).getTime() / 1000;
-
-    let diaAsignar, endSegment;
-    if (cts >= mediodiaHoy && cts < mediodiaManana) {
-      diaAsignar = dia;
-      endSegment = Math.min(mediodiaManana, fin);
-    } else if (cts < mediodiaHoy) {
-      diaAsignar = dia - 1;
-      endSegment = Math.min(mediodiaHoy, fin);
-    } else {
-      diaAsignar = dia + 1;
-      const mediodiaPasado = new Date(ano, mes, dia + 2, 12, 0, 0).getTime() / 1000;
-      endSegment = Math.min(mediodiaPasado, fin);
-    }
-
-    const seg = endSegment - cts;
-    if (horasConductor[diaAsignar] !== undefined && seg > 0) {
-      horasConductor[diaAsignar] += seg;
-    }
+    if (horasConductor[diaAsignar] !== undefined && seg > 0) horasConductor[diaAsignar] += seg;
     cts = endSegment;
   }
 }
@@ -827,8 +830,8 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
       default: estadoEmoji = '❓'; estadoTexto = estado;
     }
 
-    const emojiTurno = turno === 'noche' ? '🌙' : turno === 'dia' ? '☀️' : '❓';
-    const textoTurno = turno === 'noche' ? 'Noche' : turno === 'dia' ? 'Día' : '?';
+    const emojiTurno = turno === 'noche' ? '🌙' : turno === 'dia' ? '☀️' : turno === 'todoturno' ? '🔄' : '❓';
+    const textoTurno = turno === 'noche' ? 'Noche' : turno === 'dia' ? 'Día' : turno === 'todoturno' ? 'TodoTurno' : '?';
 
     const row = [estadoEmoji + ' ' + estadoTexto, nombre, emojiTurno + ' ' + textoTurno];
     let totalSeg = 0, diasTrabajados = 0;
