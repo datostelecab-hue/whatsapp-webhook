@@ -292,6 +292,11 @@
 </div>
 
 <script>
+// IIFE para NO filtrar estos nombres al ámbito global: los scripts de cada vista
+// (bitácora, fichas…) también corren en global y declaran su propia función
+// `abrir`; sin este aislamiento chocaban ("Identifier 'abrir' already declared")
+// y ese error rompía el enganche de los desplegables de departamento.
+(function () {
   const menu = document.getElementById('menu');
   const fondo = document.getElementById('menu-fondo');
   const abrir = () => { menu.classList.remove('-translate-x-full'); fondo.classList.remove('hidden'); };
@@ -307,6 +312,7 @@
       btn.querySelector('.grupo-chev').classList.toggle('rotate-180');
     });
   });
+})();
 </script>
 
 <!-- ══════════ Roles (sin login) + buzón de pendientes por departamento ══════════ -->
