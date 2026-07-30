@@ -22,10 +22,10 @@
 // completo (incluidas filas sobrantes viejas → en blanco) en una sola escritura,
 // así nunca queda un hueco si algo falla a mitad.
 
-const { leerTablero, leerOut } = require('./planificadorV2');
+const { leerTablero, leerOut, cambiarEstados } = require('./planificadorV2');
 const { normClave } = require('./conductores');
 const { leerHorasDatosApi } = require('./control');
-const { readSheet, writeSheet, getSheetIds, batchUpdate } = require('./sheets');
+const { readSheet, writeSheet, writeMany, getSheetIds, batchUpdate } = require('./sheets');
 
 const ID_GESTION = '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';
 const HOJA = 'VISTA_FINAL';
@@ -42,6 +42,7 @@ const EST = {
   'Pendiente Asignar': '🏷️ Pendiente Asignar',
   'Vacaciones': '🏖️ Vacaciones',
   'Baja Médica': '🩹 Baja Médica',
+  'Permiso Retribuido': '🎫 Permiso Retribuido',
   'Baja Empresa': '⚰️ Baja Empresa',
   'Suspendido': '⛔ Suspendido'
 };
@@ -58,6 +59,7 @@ const COLOR_ESTADO = [
   { has: 'Pendiente',   bg: '#e8b84b', fg: '#1a1a1a' },
   { has: 'Vacaciones',  bg: '#3b82f6', fg: '#ffffff' },
   { has: 'Médica',      bg: '#f59e0b', fg: '#1a1a1a' },
+  { has: 'Permiso',     bg: '#a855f7', fg: '#ffffff' },
   { has: 'Empresa',     bg: '#dc2626', fg: '#ffffff' },
   { has: 'Suspendido',  bg: '#6b7280', fg: '#ffffff' }
 ];
@@ -125,6 +127,12 @@ function isoFecha(d) {
   return `${d.getUTCFullYear()}-${M}-${D}`;
 }
 const clave = n => normClave(n || '');
+// Índice de columna 0-based → letra(s) de Sheets (para escribir celdas sueltas).
+function colLetra0(n) {
+  let s = '';
+  for (n = Number(n); n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s;
+  return s;
+}
 
 /**
  * Reconstruye VISTA_FINAL. Devuelve un resumen de lo escrito.
@@ -202,10 +210,11 @@ async function reconstruirVistaFinal() {
     if (!esMesActual || !horasVigentes) {
       return { valor: viejo ? (viejo.fila[3 + idx] ?? '') : '' };
     }
-    // Preservar marcas manuales V (vacaciones) / B (baja) aunque sea el mes en
-    // curso: se ponen a mano en Trafico2 y alimentan las alertas del planificador.
+    // Preservar marcas manuales V (vacaciones) / B (baja médica) / P (permiso
+    // retribuido) aunque sea el mes en curso: se ponen a mano en Trafico2 y
+    // alimentan las alertas y el auto-estado del planificador.
     const marca = viejo ? String(viejo.fila[3 + idx] ?? '').trim().toUpperCase() : '';
-    if (marca === 'V' || marca === 'B') return { valor: viejo.fila[3 + idx] };
+    if (marca === 'V' || marca === 'B' || marca === 'P') return { valor: viejo.fila[3 + idx] };
     // Mes en curso con horas vigentes:
     const wd = (f.getUTCDay() + 6) % 7;
     const esLibranza = !!(c.libra && c.libra[wd]);
@@ -411,22 +420,124 @@ async function alertasVistaFinal(horizonte = 4) {
   const filas = await readSheet(ID_GESTION, `${HOJA}!A:ZZ`,
     { valueRenderOption: 'UNFORMATTED_VALUE' });
 
-  const TIPO = { V: 'Vacaciones', B: 'Baja' };
+  const TIPO = { V: 'Vacaciones', B: 'Baja médica', P: 'Permiso retribuido' };
+  // Si el conductor YA está fuera (col A = estado), no se alerta: ya está gestionado.
+  const YA_FUERA = ['Vacaciones', 'Baja', 'Permiso', 'Suspendido', 'Out', 'mapear'];
   const alertas = [];
   for (let i = 3; i < filas.length; i++) {            // datos desde la fila 4 (3 cabeceras)
     const nombre = (filas[i][1] || '').toString().trim();
     if (!nombre || nombre.toUpperCase() === 'CONDUCTOR') continue;
-    objetivos.forEach(o => {
+    const estadoCol = (filas[i][0] || '').toString();
+    if (YA_FUERA.some(s => estadoCol.includes(s))) continue;
+    // UNA sola alerta por conductor: la primera V/B/P más próxima (no una por día).
+    let hit = null;
+    for (const o of objetivos) {
       const v = String(filas[i][o.col] ?? '').trim().toUpperCase();
-      if (v === 'V' || v === 'B') {
-        alertas.push({
-          conductor: nombre, tipo: v, motivo: TIPO[v],
-          dias: o.n, fecha: isoFecha(o.fecha)
-        });
-      }
-    });
+      if (v === 'V' || v === 'B' || v === 'P') { hit = { o, v }; break; }
+    }
+    if (hit) {
+      alertas.push({
+        conductor: nombre, tipo: hit.v, motivo: TIPO[hit.v],
+        dias: hit.o.n, fecha: isoFecha(hit.o.fecha)
+      });
+    }
   }
   return alertas.sort((a, b) => a.dias - b.dias);
 }
 
-module.exports = { reconstruirVistaFinal, alertasVistaFinal };
+// Letra de la bitácora (VISTA_FINAL) → estado del conductor en la agenda.
+const LETRA_ESTADO = { V: 'Vacaciones', B: 'Baja Médica', P: 'Permiso Retribuido' };
+
+/**
+ * Cuando un conductor tiene 'V'/'B'/'P' en la celda de HOY en VISTA_FINAL y aún no
+ * tiene ese estado en la agenda, se le pone automáticamente: V→Vacaciones,
+ * B→Baja Médica, P→Permiso Retribuido. (En vacaciones se libera su plaza; en baja
+ * médica / permiso conserva la matrícula pero esos días el coche no sale.)
+ * La reincorporación NO es automática: se hace a mano cuando el conductor vuelve.
+ */
+async function aplicarAusenciasAutomaticas() {
+  const hoy = hoyMadrid();
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const colHoy = 3 + Math.round((hoy.getTime() - inicioMs) / 86400000);
+  if (colHoy < 3) return { aplicados: 0, conductores: [] };
+
+  const [filas, tablero] = await Promise.all([
+    readSheet(ID_GESTION, `${HOJA}!A:ZZ`, { valueRenderOption: 'UNFORMATTED_VALUE' }),
+    leerTablero()
+  ]);
+  const porId = new Map();
+  ((tablero && tablero.conductores) || []).forEach(c => {
+    const id = (c.idBolt || '').toString().trim();
+    if (id) porId.set(clave(id), c);
+  });
+
+  const cambios = [];
+  for (let i = 3; i < filas.length; i++) {
+    const idBolt = (filas[i][1] || '').toString().trim();
+    if (!idBolt || idBolt.toUpperCase() === 'CONDUCTOR') continue;
+    const estado = LETRA_ESTADO[String(filas[i][colHoy] ?? '').trim().toUpperCase()];
+    if (!estado) continue;                          // hoy no tiene V/B/P
+    const c = porId.get(clave(idBolt));
+    if (!c || c.estado === estado) continue;        // no está en la agenda, o ya marcado
+    cambios.push({ id: idBolt, estado });
+  }
+
+  if (!cambios.length) return { aplicados: 0, conductores: [] };
+  await cambiarEstados(cambios);
+  return { aplicados: cambios.length, conductores: cambios.map(c => `${c.id} → ${c.estado}`) };
+}
+
+// Estado de ausencia → letra de la bitácora (inverso de LETRA_ESTADO).
+const ESTADO_LETRA = Object.fromEntries(Object.entries(LETRA_ESTADO).map(([l, e]) => [e, l]));
+
+/**
+ * Al haber una fecha de reincorporación en un conductor ausente (Vacaciones / Baja
+ * Médica / Permiso Retribuido), rellena su letra (V/B/P) en la bitácora desde HOY
+ * hasta la víspera de esa fecha, solo en celdas vacías o ya marcadas (nunca pisa
+ * horas). Así la bitácora refleja todo el periodo de ausencia sin teclearlo día a
+ * día, y las alertas / la cobertura quedan coherentes.
+ */
+async function escribirLetrasAusencia() {
+  const hoy = hoyMadrid();
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const finMs = Date.UTC(FIN.y, FIN.m, FIN.d, 12);
+  const hoyMs = Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate(), 12);
+
+  const [filas, tablero] = await Promise.all([
+    readSheet(ID_GESTION, `${HOJA}!A:ZZ`, { valueRenderOption: 'UNFORMATTED_VALUE' }),
+    leerTablero()
+  ]);
+
+  const filaPorId = new Map();   // clave(ID_BOLT) → fila 0-based en VISTA_FINAL
+  for (let i = 3; i < filas.length; i++) {
+    const id = (filas[i][1] || '').toString().trim();
+    if (id && !filaPorId.has(clave(id))) filaPorId.set(clave(id), i);
+  }
+
+  const writes = [];
+  const tocados = [];
+  ((tablero && tablero.conductores) || []).forEach(c => {
+    const letra = ESTADO_LETRA[c.estado];
+    if (!letra || !c.reincorporacionD) return;
+    const fila = filaPorId.get(clave(c.idBolt || ''));
+    if (fila === undefined) return;
+    const reincorpMs = c.reincorporacionD.getTime();
+    let n = 0;
+    for (let t = hoyMs; t < reincorpMs && t <= finMs; t += 86400000) {
+      if (t < inicioMs) continue;
+      const col = 3 + Math.round((t - inicioMs) / 86400000);
+      const actual = String(filas[fila][col] ?? '').trim().toUpperCase();
+      // Solo celdas vacías o ya marcadas (V/B/P): nunca se pisan horas.
+      if ((actual === '' || actual === 'V' || actual === 'B' || actual === 'P') && actual !== letra) {
+        writes.push({ range: `${HOJA}!${colLetra0(col)}${fila + 1}`, values: [[letra]] });
+        n++;
+      }
+    }
+    if (n) tocados.push(`${c.idBolt} ${letra}×${n}`);
+  });
+
+  if (writes.length) await writeMany(ID_GESTION, writes);
+  return { celdas: writes.length, conductores: tocados };
+}
+
+module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia };

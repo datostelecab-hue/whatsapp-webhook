@@ -115,6 +115,21 @@ app.get('/conductores-bolt/actualizar', async (req, res) => {
   }
 });
 
+// Procesado manual de ausencias V/B/P (auto-estado + letras) sin esperar al cron.
+app.get('/vista-final/ausencias-auto', async (req, res) => {
+  console.log('🔧 [VISTA_FINAL] ausencias (auto-estado + letras) manual...');
+  try {
+    const { aplicarAusenciasAutomaticas, escribirLetrasAusencia } = require('./services/vistaFinal');
+    const estado = await aplicarAusenciasAutomaticas();
+    const letras = await escribirLetrasAusencia();
+    console.log(`✅ [VISTA_FINAL] ausencias: ${JSON.stringify({ estado, letras })}`);
+    res.json({ ok: true, estado, letras });
+  } catch (error) {
+    console.error(`❌ [VISTA_FINAL] Error: ${error.stack || error.message}`);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // Reconstrucción manual de VISTA_FINAL (para probar sin esperar al cron).
 app.get('/vista-final/reconstruir', async (req, res) => {
   console.log('🔧 [VISTA_FINAL] reconstruirVistaFinal() manual...');
@@ -202,9 +217,15 @@ cron.schedule('10,40 * * * *', async () => {
 // VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
 // hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
 cron.schedule('45 * * * *', async () => {
-  console.log('⏰ [CRON VISTA_FINAL] reconstruirVistaFinal()...');
+  console.log('⏰ [CRON VISTA_FINAL] vacaciones automáticas + reconstruirVistaFinal()...');
   try {
-    const { reconstruirVistaFinal } = require('./services/vistaFinal');
+    const { reconstruirVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia } = require('./services/vistaFinal');
+    // 1) A quien le empieza/corre hoy una ausencia (V/B/P) → estado automático.
+    const aus = await aplicarAusenciasAutomaticas();
+    if (aus.aplicados) console.log(`🏖️ [CRON VISTA_FINAL] ${aus.aplicados} ausencia(s): ${aus.conductores.join(', ')}`);
+    // 2) Con fecha de reincorporación → rellenar las letras del periodo en la bitácora.
+    const let2 = await escribirLetrasAusencia();
+    if (let2.celdas) console.log(`📝 [CRON VISTA_FINAL] ${let2.celdas} celda(s) de ausencia: ${let2.conductores.join(', ')}`);
     const result = await reconstruirVistaFinal();
     console.log(`✅ [CRON VISTA_FINAL] Completado: ${JSON.stringify(result)}`);
   } catch (error) {

@@ -79,8 +79,8 @@ const TURNOS = ['Día', 'Noche'];                        // turnos de una plaza 
 const TURNOS_CONDUCTOR = ['Día', 'Noche', 'TodoTurno']; // turno que puede tener un conductor
 const CONTRATOS = ['32h', '40h', '32h ETT', '40h ETT'];
 
-const ESTADOS_CONDUCTOR = ['Activo', 'Pendiente Asignar', 'Vacaciones', 'Baja Médica', 'Baja Empresa', 'Suspendido'];
-const ESTADOS_ESPECIALES = ['Vacaciones', 'Baja Médica', 'Baja Empresa', 'Suspendido'];
+const ESTADOS_CONDUCTOR = ['Activo', 'Pendiente Asignar', 'Vacaciones', 'Baja Médica', 'Permiso Retribuido', 'Baja Empresa', 'Suspendido'];
+const ESTADOS_ESPECIALES = ['Vacaciones', 'Baja Médica', 'Permiso Retribuido', 'Baja Empresa', 'Suspendido'];
 const ESTADO_PENDIENTE = 'Pendiente Asignar';
 const ESTADO_ACTIVO = 'Activo';
 const ESTADOS_VEHICULO = ['✓', 'S', 'T', 'X', 'R', 'B'];
@@ -192,7 +192,7 @@ const txt = v => String(v == null ? '' : v).trim();
 
 // Estados de ausencia TEMPORAL: el conductor sigue en su plaza pero no cuenta
 // hasta reincorporarse (lo cubre el CT2). "Baja Empresa" es definitiva y no entra.
-const AUSENCIAS_TEMPORALES = ['Vacaciones', 'Baja Médica', 'Suspendido'];
+const AUSENCIAS_TEMPORALES = ['Vacaciones', 'Baja Médica', 'Permiso Retribuido', 'Suspendido'];
 
 /**
  * Fecha desde una celda: acepta dd/mm/aaaa, aaaa-mm-dd, un Date, o lo que
@@ -402,13 +402,14 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
                `${nombreCoche} (${p.etiqueta}) y se borran sus días`
         });
       } else if (AUSENCIAS_TEMPORALES.includes(info.estado)) {
-        // Temporal: NO se libera la plaza. Sigue en su sitio pero no cuenta sus
-        // días (lo cubre el CT2); vuelve solo al llegar la reincorporación.
+        // Temporal: NO se libera la plaza. Sigue en su sitio con su matrícula,
+        // pero esos días el coche no sale hasta la reincorporación.
+        const quien = info.nombre || p.id;
+        const msg = info.reincorporacion
+          ? `${quien} está en "${info.estado}" y se reincorpora el ${info.reincorporacion}: esos días ${nombreCoche} (${p.etiqueta}) no sale; organiza su cobertura.`
+          : `${quien} está en "${info.estado}" y está planificado en ${nombreCoche} (${p.etiqueta}): añade la fecha de reincorporación.`;
         problemas.push({
-          tipo: 'ausencia-temporal', idx: coche.idx, matricula: coche.matricula, id: p.id,
-          msg: `${info.nombre || p.id} está en "${info.estado}"` +
-               `${info.reincorporacion ? `, vuelve el ${info.reincorporacion}` : ''}: ` +
-               `no cuenta en ${nombreCoche} (${p.etiqueta}) mientras tanto; cúbrelo en el CT2`
+          tipo: 'ausencia-temporal', idx: coche.idx, matricula: coche.matricula, id: p.id, msg
         });
       }
 
