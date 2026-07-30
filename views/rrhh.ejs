@@ -41,12 +41,13 @@
 
     <div class="flex items-center gap-2 mt-3 text-xs text-telecab-muted">
       <i class="fa-solid fa-circle-arrow-right text-telecab-gold"></i>
-      Al procesar el alta se crea su ficha en la Agenda como <b class="text-telecab-text">Pendiente Asignar</b> para que Tráfico lo asigne.
+      Al procesar el alta la ficha pasa a <b class="text-telecab-text">Administración</b> para crear el PIN de Ballenoil. Solo entonces se crea en la Agenda como Pendiente Asignar.
     </div>
+    <p id="nota-excel" class="text-xs mt-2"></p>
 
     <div class="flex flex-wrap gap-2 mt-5">
-      <button id="btn-alta" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold">
-        <i class="fa-solid fa-user-plus mr-1"></i> Alta procesada → Tráfico
+      <button id="btn-alta" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-user-plus mr-1"></i> Alta procesada → Administración
       </button>
       <button id="btn-devolver" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-medium">
         <i class="fa-solid fa-rotate-left mr-1"></i> Devolver a Selección
@@ -109,6 +110,18 @@
     $('#ficha-sub').textContent = bits.join(' · ');
     $('[data-campo="fecha_alta"]').value = t.fecha_alta || '';
     $('[data-campo="fecha_habilitado"]').value = t.fecha_habilitado || '';
+    // Candado del Excel: no se da el alta si la ficha no ha ido en un Excel de altas.
+    const enExcel = (t.excel_alta || '').toString().trim();
+    const notaExcel = $('#nota-excel');
+    if (enExcel) {
+      $('#btn-alta').disabled = false;
+      notaExcel.innerHTML = '<i class="fa-solid fa-file-excel mr-1"></i> Incluida en el Excel del ' + enExcel + '.';
+      notaExcel.className = 'text-xs mt-2 text-telecab-green';
+    } else {
+      $('#btn-alta').disabled = true;
+      notaExcel.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Aún no está en ningún Excel de altas — inclúyela arriba (márcala + fecha → Generar) antes de dar el alta.';
+      notaExcel.className = 'text-xs mt-2 text-telecab-gold';
+    }
     $('#ficha-msg').classList.add('hidden');
     $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
@@ -121,7 +134,7 @@
     const btn = $('#btn-alta'); btn.disabled = true;
     const r = await api('/rrhh/alta', { tel: ticketActual.id, fecha_alta, fecha_habilitado });
     btn.disabled = false;
-    if (r.status === 'ok') { msg('Alta procesada. Creado en la Agenda como Pendiente Asignar.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
+    if (r.status === 'ok') { msg('Alta procesada. Pasa a Administración para crear el PIN de Ballenoil.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
     else msg(r.msg || 'No se pudo procesar el alta', false);
   });
 

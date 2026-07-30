@@ -88,7 +88,11 @@ router.get('/validar', async (req, res) => {
 /** Tablero completo ya calculado, en JSON. Solo lectura. */
 router.get('/api/tablero', async (req, res) => {
   try {
-    const t = await leerTablero();
+    const { reservasPorMatricula } = require('../services/vacantes');
+    const [t, reservasVacantes] = await Promise.all([
+      leerTablero(),
+      reservasPorMatricula().catch(() => ({}))
+    ]);
 
     // Por defecto solo los coches con matrícula, que son los que se usan.
     const coches = req.query.todos === '1'
@@ -102,7 +106,8 @@ router.get('/api/tablero', async (req, res) => {
       coches,
       conductores: t.conductores,
       pendientes: t.pendientes,
-      bases: t.bases
+      bases: t.bases,
+      reservasVacantes
     });
   } catch (error) {
     console.error('❌ [PLANIFICADOR] /api/tablero:', error.message);
@@ -165,8 +170,12 @@ router.post('/api/guardar', async (req, res) => {
       return res.status(400).json({ status: 'error', msg: 'No se ha recibido ningún cambio' });
     }
 
+    const { reservasPorMatricula } = require('../services/vacantes');
     const t0 = Date.now();
-    const { tablero, escritura, cochesAplicados } = await guardarCambios(cambios);
+    const [{ tablero, escritura, cochesAplicados }, reservasVacantes] = await Promise.all([
+      guardarCambios(cambios),
+      reservasPorMatricula().catch(() => ({}))
+    ]);
     const segundos = ((Date.now() - t0) / 1000).toFixed(1);
 
     console.log(`💾 [PLANIFICADOR] ${cochesAplicados.length} coches · ` +
@@ -184,7 +193,8 @@ router.post('/api/guardar', async (req, res) => {
         coches: tablero.coches.filter(c => c.matricula || c.personas.some(p => p.id)),
         conductores: tablero.conductores,
         pendientes: tablero.pendientes,
-        bases: tablero.bases
+        bases: tablero.bases,
+        reservasVacantes
       }
     });
   } catch (error) {

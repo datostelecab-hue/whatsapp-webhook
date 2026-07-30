@@ -1,0 +1,186 @@
+<div class="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
+
+  <!-- Intro -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5">
+    <h1 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+      <i class="fa-solid fa-gas-pump text-telecab-gold"></i> PIN de Ballenoil
+    </h1>
+    <p class="text-sm text-telecab-muted mt-1">
+      Último paso del alta. Copia el <b class="text-telecab-text">nombre que sale en BOLT</b>, el teléfono y el correo para solicitarle el PIN a Ballenoil; luego digítalo aquí. Hasta que no tenga el PIN, el conductor no pasa al planificador (Tráfico).
+    </p>
+  </div>
+
+  <!-- Contadores -->
+  <div class="grid grid-cols-2 gap-3">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Pendientes de alta en Ballenoil</p>
+      <p id="c-pend" class="text-2xl font-bold text-telecab-gold">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">PIN creados</p>
+      <p id="c-hechos" class="text-2xl font-bold text-telecab-green">–</p>
+    </div>
+  </div>
+
+  <!-- Ficha: crear PIN -->
+  <div id="ficha" class="bg-telecab-card border border-telecab-border rounded-2xl p-5 hidden">
+    <div class="flex items-center justify-between mb-3">
+      <h2 id="ficha-nombre" class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-id-card text-telecab-gold"></i> <span></span>
+      </h2>
+      <span class="text-xs px-2.5 py-1 rounded-full bg-telecab-gold/10 text-telecab-gold border border-telecab-gold/30">Pendiente de alta en Ballenoil</span>
+    </div>
+
+    <!-- Datos para Ballenoil: nombre (ID), teléfono, correo -->
+    <div class="grid md:grid-cols-3 gap-3 mb-4">
+      <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5">
+        <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Nombre (tal como sale en BOLT)</p>
+        <button type="button" class="js-copy text-left text-sm text-telecab-text font-medium flex items-center gap-1.5 w-full" data-copy="nombre">
+          <span id="d-nombre" class="truncate">–</span><i class="fa-regular fa-copy text-telecab-muted text-xs shrink-0"></i>
+        </button>
+      </div>
+      <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5">
+        <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Teléfono</p>
+        <button type="button" class="js-copy text-left text-sm text-telecab-text font-mono flex items-center gap-1.5 w-full" data-copy="telefono">
+          <span id="d-tel" class="truncate">–</span><i class="fa-regular fa-copy text-telecab-muted text-xs shrink-0"></i>
+        </button>
+      </div>
+      <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5">
+        <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Correo</p>
+        <button type="button" class="js-copy text-left text-sm text-telecab-text flex items-center gap-1.5 w-full" data-copy="email">
+          <span id="d-email" class="truncate">–</span><i class="fa-regular fa-copy text-telecab-muted text-xs shrink-0"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 items-end">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">PIN de Ballenoil</label>
+        <input id="pin" inputmode="numeric" autocomplete="off"
+               class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text tracking-widest focus:outline-none focus:border-telecab-gold transition"
+               placeholder="Ej. 4821">
+      </div>
+      <button id="btn-pin" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40">
+        <i class="fa-solid fa-key mr-1"></i> Guardar PIN → Tráfico
+      </button>
+    </div>
+    <div class="flex items-center gap-2 mt-3 text-xs text-telecab-muted">
+      <i class="fa-solid fa-circle-arrow-right text-telecab-gold"></i>
+      Al guardar el PIN se crea su ficha en la Agenda como <b class="text-telecab-text">Pendiente Asignar</b> para que Tráfico lo asigne.
+    </div>
+    <p id="ficha-msg" class="text-xs mt-3 hidden"></p>
+  </div>
+
+  <!-- Lista: pendientes de PIN -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-hourglass-half text-telecab-gold"></i> Pendientes de alta en Ballenoil
+    </h2>
+    <div id="lista-pend" class="space-y-1.5"></div>
+  </div>
+
+  <!-- Historial: PIN creados -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-clock-rotate-left text-telecab-muted"></i> PIN ya creados
+    </h2>
+    <div id="lista-hechos" class="space-y-1.5"></div>
+  </div>
+
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  let fichaActual = null;
+  let autoAbierto = false;
+
+  async function api(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+  function msg(texto, ok) {
+    const el = $('#ficha-msg');
+    el.textContent = texto;
+    el.className = 'text-xs mt-3 ' + (ok ? 'text-telecab-green' : 'text-telecab-red');
+    el.classList.remove('hidden');
+  }
+  const nomCompleto = t => `${t.nombre || '(sin nombre)'}${t.apellidos ? ' ' + t.apellidos : ''}`;
+
+  function abrirFicha(t) {
+    fichaActual = t;
+    $('#ficha').classList.remove('hidden');
+    $('#ficha-nombre').querySelector('span').textContent = nomCompleto(t);
+    $('#d-nombre').textContent = nomCompleto(t);
+    $('#d-tel').textContent = t.telefono || t.id || '–';
+    $('#d-email').textContent = t.email || '—';
+    $('#pin').value = t.pin_ballenoil || '';
+    $('#ficha-msg').classList.add('hidden');
+    $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => $('#pin').focus(), 250);
+  }
+
+  // Copiar al portapapeles los datos que van a Ballenoil.
+  document.querySelectorAll('.js-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!fichaActual) return;
+      const campo = btn.dataset.copy;
+      const val = campo === 'nombre' ? nomCompleto(fichaActual) : (fichaActual[campo] || fichaActual.id || '');
+      if (!val) return;
+      navigator.clipboard && navigator.clipboard.writeText(val);
+      const ic = btn.querySelector('i');
+      const prev = ic.className; ic.className = 'fa-solid fa-check text-telecab-green text-xs shrink-0';
+      setTimeout(() => { ic.className = prev; }, 1000);
+    });
+  });
+
+  $('#btn-pin').addEventListener('click', async () => {
+    if (!fichaActual) return;
+    const pin = $('#pin').value.trim();
+    if (!pin) { msg('Escribe el PIN de Ballenoil.', false); return; }
+    const btn = $('#btn-pin'); btn.disabled = true;
+    const r = await api('/administracion/pin', { tel: fichaActual.id, pin });
+    btn.disabled = false;
+    if (r.status === 'ok') { msg('PIN guardado. Creado en la Agenda como Pendiente Asignar.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
+    else msg(r.msg || 'No se pudo guardar el PIN', false);
+  });
+
+  function fila(t, hecho) {
+    const el = document.createElement('div');
+    el.className = 'flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40 border border-transparent hover:border-telecab-border transition cursor-pointer';
+    const icon = hecho ? 'fa-circle-check text-telecab-green' : 'fa-hourglass-half text-telecab-gold';
+    const box = hecho ? 'bg-telecab-green/15' : 'bg-telecab-gold/15';
+    el.innerHTML =
+      `<span class="w-8 h-8 rounded-lg ${box} flex items-center justify-center shrink-0"><i class="fa-solid ${icon}"></i></span>
+       <span class="min-w-0 flex-1">
+         <span class="block text-sm text-telecab-text truncate">${nomCompleto(t)}</span>
+         <span class="block text-xs text-telecab-muted font-mono">${t.telefono || t.id}${t.email ? ' · ' + t.email : ''}</span>
+       </span>
+       ${hecho ? `<span class="text-xs px-2 py-1 rounded-lg bg-telecab-green/10 text-telecab-green border border-telecab-green/25 font-mono whitespace-nowrap">PIN ${t.pin_ballenoil}</span>` : '<i class="fa-solid fa-chevron-right text-telecab-muted text-xs"></i>'}`;
+    if (!hecho) el.addEventListener('click', () => abrirFicha(t));
+    return el;
+  }
+
+  async function cargar() {
+    const r = await (await fetch('/administracion/api/datos')).json();
+    if (r.status !== 'ok') return;
+    $('#c-pend').textContent = r.contadores.pendientes;
+    $('#c-hechos').textContent = r.contadores.hechos;
+
+    const cont = $('#lista-pend'); cont.innerHTML = '';
+    if (!r.pendientes.length) cont.innerHTML = '<p class="text-telecab-muted text-sm">Nadie pendiente de PIN.</p>';
+    else r.pendientes.forEach(t => cont.appendChild(fila(t, false)));
+
+    const hist = $('#lista-hechos'); hist.innerHTML = '';
+    if (!r.hechos.length) hist.innerHTML = '<p class="text-telecab-muted text-sm">Todavía no se ha creado ningún PIN.</p>';
+    else r.hechos.slice(-30).reverse().forEach(t => hist.appendChild(fila(t, true)));
+
+    // Abre directamente la ficha que llega por ?tel= (una sola vez, desde Pendientes).
+    if (!autoAbierto) {
+      const tel = new URLSearchParams(location.search).get('tel');
+      const t = tel && r.pendientes.find(x => String(x.id) === tel);
+      if (t) { autoAbierto = true; abrirFicha(t); }
+    }
+  }
+
+  cargar();
+</script>

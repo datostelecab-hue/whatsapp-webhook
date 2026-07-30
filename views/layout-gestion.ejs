@@ -173,7 +173,9 @@
             { href: '/pendientes-bolt',icono: 'fa-hourglass-half',  texto: 'Pendientes BOLT',id: 'pendientes-bolt' }
           ] },
           { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'rrhh', items: [
-            { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' }
+            { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' },
+            { href: '/administracion', icono: 'fa-gas-pump',         texto: 'Administración', id: 'administracion' },
+            { href: '/plantilla',      icono: 'fa-address-book',     texto: 'Plantilla',      id: 'plantilla' }
           ] },
           { nombre: 'Tráfico', icono: 'fa-satellite-dish', rol: 'trafico', items: [
             { href: '/planificador', icono: 'fa-table-cells-large',  texto: 'Planificador',     id: 'planificador' },
@@ -193,6 +195,12 @@
         <i class="fa-solid fa-inbox w-5 text-center <%= seccionActiva === 'pendientes' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Pendientes</span>
         <span id="nav-pend-badge" class="hidden min-w-[18px] h-[18px] px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center"></span>
+      </a>
+
+      <a href="/peticiones" class="nav-item <%= seccionActiva === 'peticiones' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'peticiones' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-clipboard-list w-5 text-center <%= seccionActiva === 'peticiones' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Peticiones</span>
       </a>
 
       <% grupos.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>

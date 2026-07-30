@@ -27,6 +27,20 @@ async function cargarCochesBases() {
   return { coches, bases: t.bases || [] };
 }
 
+/** Matrículas ya reservadas en una vacante ABIERTA, por turno (Set por turno). */
+async function reservadasPorTurno() {
+  const dia = new Set(), noche = new Set();
+  try {
+    (await leerVacantesGuardadas())
+      .filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta')
+      .forEach(v => {
+        const set = v.turno === 'Noche' ? noche : dia;
+        (v.matriculas || []).forEach(m => set.add(m.m));
+      });
+  } catch (_) { /* si no se puede leer, no se reserva nada */ }
+  return { dia, noche };
+}
+
 /** Nombre de los DOS fijos de un coche (día y noche); '' si no tiene. */
 function fijosDe(coche) {
   const nombre = t => {
@@ -103,7 +117,13 @@ async function generarVacante(opt = {}) {
   if (!zona || !matricula) throw new Error('Faltan la zona y la matrícula de partida');
 
   const { coches, bases } = await cargarCochesBases();
-  const bloques = bloquesDe(coches, turno);
+  // Una matrícula ya reservada en otra vacante abierta NO se puede reutilizar (si
+  // no, se crearían dos vacantes para el mismo coche/turno).
+  const reservadas = (await reservadasPorTurno())[turno === 'Noche' ? 'noche' : 'dia'];
+  if (reservadas.has(matricula)) {
+    throw new Error(`La matrícula ${matricula} ya está reservada en una vacante abierta de ${turno}`);
+  }
+  const bloques = bloquesDe(coches, turno).filter(b => !reservadas.has(b.matricula));
   const inicio = bloques.find(b => b.matricula === matricula && b.zona === zona);
   if (!inicio) throw new Error(`La matrícula ${matricula} no tiene huecos de ${turno} en ${zona}`);
 
@@ -145,16 +165,8 @@ async function generarVacante(opt = {}) {
 async function datosGenerador() {
   const { coches } = await cargarCochesBases();
 
-  // Matrículas ya cubiertas por una vacante abierta, por turno.
-  const cubDia = new Set(), cubNoche = new Set();
-  try {
-    (await leerVacantesGuardadas())
-      .filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta')
-      .forEach(v => {
-        const set = v.turno === 'Noche' ? cubNoche : cubDia;
-        (v.matriculas || []).forEach(m => set.add(m.m));
-      });
-  } catch (_) { /* si no se puede leer, se muestra todo como pendiente */ }
+  // Matrículas ya reservadas por una vacante abierta, por turno.
+  const { dia: cubDia, noche: cubNoche } = await reservadasPorTurno();
 
   const zonasMap = new Map();
   coches.forEach(c => {

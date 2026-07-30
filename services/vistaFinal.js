@@ -540,4 +540,42 @@ async function escribirLetrasAusencia() {
   return { celdas: writes.length, conductores: tocados };
 }
 
-module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia };
+/**
+ * Escribe una letra (V/B/P) en la bitácora de un conductor (por ID_BOLT) para el
+ * rango [desde, hasta] (dd/mm/aaaa), solo en celdas vacías o ya marcadas. Lo usa
+ * la aprobación de peticiones en RRHH: al confirmar una ausencia, botcito rellena
+ * el periodo aprobado.
+ */
+async function escribirLetrasRango(idBolt, letra, desdeStr, hastaStr) {
+  const parse = s => {
+    const m = String(s || '').match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+    return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], 12) : null;
+  };
+  const desde = parse(desdeStr), hasta = parse(hastaStr);
+  const L = String(letra || '').trim().toUpperCase();
+  if (desde == null || hasta == null || hasta < desde || !['V', 'B', 'P'].includes(L)) return { celdas: 0 };
+
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const finMs = Date.UTC(FIN.y, FIN.m, FIN.d, 12);
+  const filas = await readSheet(ID_GESTION, `${HOJA}!A:ZZ`, { valueRenderOption: 'UNFORMATTED_VALUE' });
+
+  let fila = -1;
+  for (let i = 3; i < filas.length; i++) {
+    if (clave((filas[i][1] || '').toString().trim()) === clave(idBolt)) { fila = i; break; }
+  }
+  if (fila === -1) return { celdas: 0 };
+
+  const writes = [];
+  for (let t = desde; t <= hasta && t <= finMs; t += 86400000) {
+    if (t < inicioMs) continue;
+    const col = 3 + Math.round((t - inicioMs) / 86400000);
+    const actual = String(filas[fila][col] ?? '').trim().toUpperCase();
+    if ((actual === '' || actual === 'V' || actual === 'B' || actual === 'P') && actual !== L) {
+      writes.push({ range: `${HOJA}!${colLetra0(col)}${fila + 1}`, values: [[L]] });
+    }
+  }
+  if (writes.length) await writeMany(ID_GESTION, writes);
+  return { celdas: writes.length };
+}
+
+module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia, escribirLetrasRango };

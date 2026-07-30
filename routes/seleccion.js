@@ -139,7 +139,7 @@ router.post('/geocodificar', async (req, res) => {
   }
 });
 
-// Sube UNO de los 5 documentos de la ficha a Drive y guarda su enlace en el
+// Sube UNO de los 7 documentos de la ficha a Drive y guarda su enlace en el
 // ticket. multipart: campo 'archivo' + campos de texto tel y tipo.
 router.post('/documento', subida.single('archivo'), async (req, res) => {
   try {

@@ -1,0 +1,198 @@
+<div class="p-4 lg:p-6 max-w-4xl mx-auto space-y-5">
+
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <h1 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-clipboard-list text-telecab-gold"></i> Peticiones a RRHH
+      </h1>
+      <p class="text-xs text-telecab-muted mt-0.5">Tráfico solicita bajas y ausencias; RRHH las aprueba o rechaza. Las ausencias aprobadas rellenan la bitácora automáticamente.</p>
+    </div>
+    <button id="btn-recargar" class="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
+      <i class="fa-solid fa-rotate mr-1"></i> Recargar
+    </button>
+  </div>
+
+  <!-- Crear petición (Tráfico) -->
+  <div id="card-crear" class="bg-telecab-card border border-telecab-border rounded-2xl p-4 hidden">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2"><i class="fa-solid fa-plus text-telecab-gold"></i> Nueva petición</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Conductor</label>
+        <select id="f-conductor" class="inp"><option value="">— elige —</option></select>
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Tipo</label>
+        <select id="f-tipo" class="inp">
+          <% (tipos || []).forEach(function (t) { %><option value="<%= t %>"><%= t %></option><% }); %>
+        </select>
+      </div>
+      <div id="f-desde-wrap">
+        <label class="block text-xs text-telecab-muted mb-1">Desde</label>
+        <input id="f-desde" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+      </div>
+      <div id="f-hasta-wrap">
+        <label class="block text-xs text-telecab-muted mb-1">Hasta</label>
+        <input id="f-hasta" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+      </div>
+      <div class="md:col-span-2">
+        <label class="block text-xs text-telecab-muted mb-1">Motivo</label>
+        <textarea id="f-motivo" rows="2" class="inp resize-none" placeholder="Motivo de la baja / ausencia"></textarea>
+      </div>
+    </div>
+    <div class="mt-4 flex items-center gap-3">
+      <button id="btn-crear" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
+        <i class="fa-solid fa-paper-plane mr-1"></i> Enviar petición a RRHH
+      </button>
+      <p id="crear-msg" class="text-xs hidden"></p>
+    </div>
+  </div>
+
+  <!-- Pendientes de resolver (RRHH) -->
+  <div id="card-pend" class="bg-telecab-card border border-telecab-border rounded-2xl p-4 hidden">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2"><i class="fa-solid fa-clipboard-check text-telecab-gold"></i> Pendientes de resolver <span id="c-pend" class="text-telecab-muted font-normal"></span></h2>
+    <div id="lista-pend" class="space-y-2"></div>
+  </div>
+
+  <!-- Historial -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-telecab-muted"></i> Historial</h2>
+    <div id="lista-hist" class="space-y-1.5"></div>
+  </div>
+
+</div>
+
+<style>
+  .inp { width:100%; background:#0e1116; border:1px solid #282e39; border-radius:.75rem; padding:.5rem .75rem; color:#e6e8ec; transition:border-color .15s; }
+  .inp:focus { outline:none; border-color:#e8b84b; }
+</style>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const rol = localStorage.getItem('telecab-rol') || 'general';
+  const puedeCrear = rol === 'trafico' || rol === 'general';
+  const puedeResolver = rol === 'rrhh' || rol === 'general';
+
+  const COLOR = { 'Pendiente': 'text-telecab-gold', 'Aprobada': 'text-telecab-green', 'Rechazada': 'text-telecab-red' };
+  const ICONO = { 'Baja': 'fa-user-slash', 'Vacaciones': 'fa-umbrella-beach', 'Baja Médica': 'fa-briefcase-medical', 'Permiso Retribuido': 'fa-ticket' };
+
+  async function api(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+
+  // Mostrar/ocultar las fechas según el tipo (Baja no lleva Desde/Hasta).
+  function pintarFechas() {
+    const baja = $('#f-tipo').value === 'Baja';
+    $('#f-desde-wrap').classList.toggle('hidden', baja);
+    $('#f-hasta-wrap').classList.toggle('hidden', baja);
+  }
+
+  function tarjetaPend(p) {
+    const el = document.createElement('div');
+    el.className = 'rounded-xl bg-telecab-dark/40 border border-telecab-border p-3';
+    const ausencia = p.tipo !== 'Baja';
+    el.innerHTML =
+      `<div class="flex items-center gap-2 mb-2">
+         <i class="fa-solid ${ICONO[p.tipo] || 'fa-file'} text-telecab-gold"></i>
+         <span class="text-sm font-semibold text-telecab-text">${esc(p.tipo)}</span>
+         <span class="text-sm text-telecab-text">· ${esc(p.conductor || p.id_conductor)}</span>
+         <span class="ml-auto text-[11px] text-telecab-muted">${esc(p.fecha_solicitud)} · ${esc(p.solicitante)}</span>
+       </div>
+       ${p.motivo ? `<p class="text-xs text-telecab-muted mb-2">Motivo: ${esc(p.motivo)}</p>` : ''}
+       ${ausencia ? `<div class="flex flex-wrap items-end gap-2 mb-2">
+          <div><label class="block text-[11px] text-telecab-muted mb-0.5">Desde</label><input class="pp-desde inp !w-32 text-sm" value="${esc(p.desde)}" placeholder="dd/mm/aaaa"></div>
+          <div><label class="block text-[11px] text-telecab-muted mb-0.5">Hasta</label><input class="pp-hasta inp !w-32 text-sm" value="${esc(p.hasta)}" placeholder="dd/mm/aaaa"></div>
+        </div>` : ''}
+       <div class="flex gap-2">
+         <button class="pp-ap px-3 py-1.5 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold hover:bg-telecab-green/25 transition"><i class="fa-solid fa-check mr-1"></i> Aprobar</button>
+         <button class="pp-rz px-3 py-1.5 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs hover:bg-telecab-red/20 transition"><i class="fa-solid fa-xmark mr-1"></i> Rechazar</button>
+       </div>`;
+    el.querySelector('.pp-ap').addEventListener('click', async () => {
+      const desde = ausencia ? el.querySelector('.pp-desde').value.trim() : '';
+      const hasta = ausencia ? el.querySelector('.pp-hasta').value.trim() : '';
+      const r = await api('/peticiones/aprobar', { id: p.id, desde, hasta });
+      if (r.status === 'ok') cargar(); else alert(r.msg || 'No se pudo aprobar');
+    });
+    el.querySelector('.pp-rz').addEventListener('click', async () => {
+      const motivo = prompt('Motivo del rechazo (se avisa a Tráfico):');
+      if (motivo === null) return;
+      const r = await api('/peticiones/rechazar', { id: p.id, motivo });
+      if (r.status === 'ok') cargar(); else alert(r.msg || 'No se pudo rechazar');
+    });
+    return el;
+  }
+
+  function filaHist(p) {
+    const el = document.createElement('div');
+    el.className = 'flex items-center gap-3 px-3 py-2 rounded-lg bg-telecab-dark/30';
+    const rango = p.desde ? ` · ${esc(p.desde)}→${esc(p.hasta)}` : '';
+    el.innerHTML =
+      `<i class="fa-solid ${ICONO[p.tipo] || 'fa-file'} text-telecab-muted shrink-0"></i>
+       <span class="min-w-0 flex-1">
+         <span class="block text-sm text-telecab-text truncate">${esc(p.tipo)} · ${esc(p.conductor || p.id_conductor)}${rango}</span>
+         ${p.estado === 'Rechazada' && p.motivo_rechazo ? `<span class="block text-[11px] text-telecab-red/80 truncate">${esc(p.motivo_rechazo)}</span>` : ''}
+       </span>
+       <span class="text-xs font-semibold ${COLOR[p.estado] || 'text-telecab-muted'} whitespace-nowrap shrink-0">${esc(p.estado)}</span>`;
+    return el;
+  }
+
+  async function cargar() {
+    const r = await (await fetch('/peticiones/api/datos')).json();
+    if (r.status !== 'ok') return;
+
+    // Selector de conductores (solo Tráfico/general).
+    if (puedeCrear) {
+      const sel = $('#f-conductor');
+      const val = sel.value;
+      sel.innerHTML = '<option value="">— elige —</option>' +
+        (r.conductores || []).map(c => `<option value="${esc(c.id)}" data-nombre="${esc(c.nombre)}">${esc(c.nombre)}${c.turno ? ' · ' + esc(c.turno) : ''}</option>`).join('');
+      sel.value = val;
+    }
+
+    const pend = (r.peticiones || []).filter(p => p.estado === 'Pendiente');
+    const resto = (r.peticiones || []).filter(p => p.estado !== 'Pendiente')
+      .sort((a, b) => (b.fecha_resolucion || '').localeCompare(a.fecha_resolucion || ''));
+
+    // Pendientes (resolver): solo RRHH/general.
+    if (puedeResolver) {
+      $('#c-pend').textContent = pend.length ? '(' + pend.length + ')' : '';
+      const cont = $('#lista-pend'); cont.innerHTML = '';
+      if (!pend.length) cont.innerHTML = '<p class="text-telecab-muted text-sm">No hay peticiones pendientes.</p>';
+      else pend.forEach(p => cont.appendChild(tarjetaPend(p)));
+    }
+
+    const hist = $('#lista-hist'); hist.innerHTML = '';
+    const historial = puedeResolver ? resto : (r.peticiones || []).slice().sort((a, b) => (b.fecha_solicitud || '').localeCompare(a.fecha_solicitud || ''));
+    if (!historial.length) hist.innerHTML = '<p class="text-telecab-muted text-sm">Aún no hay peticiones.</p>';
+    else historial.forEach(p => hist.appendChild(filaHist(p)));
+  }
+
+  // Visibilidad según rol.
+  $('#card-crear').classList.toggle('hidden', !puedeCrear);
+  $('#card-pend').classList.toggle('hidden', !puedeResolver);
+
+  if (puedeCrear) {
+    $('#f-tipo').addEventListener('change', pintarFechas);
+    pintarFechas();
+    $('#btn-crear').addEventListener('click', async () => {
+      const msg = $('#crear-msg');
+      const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs ' + cls; msg.classList.remove('hidden'); };
+      const opt = $('#f-conductor').selectedOptions[0];
+      const id_conductor = $('#f-conductor').value;
+      if (!id_conductor) return aviso('Elige un conductor.', 'text-telecab-red');
+      const tipo = $('#f-tipo').value;
+      const body = {
+        id_conductor, conductor: opt ? opt.dataset.nombre : '', tipo,
+        desde: $('#f-desde').value.trim(), hasta: $('#f-hasta').value.trim(),
+        motivo: $('#f-motivo').value.trim()
+      };
+      const r = await api('/peticiones/crear', body);
+      if (r.status === 'ok') { aviso('Petición enviada a RRHH.', 'text-telecab-green'); $('#f-motivo').value = ''; $('#f-desde').value = ''; $('#f-hasta').value = ''; cargar(); }
+      else aviso(r.msg || 'No se pudo enviar', 'text-telecab-red');
+    });
+  }
+
+  $('#btn-recargar').addEventListener('click', cargar);
+  cargar();
+</script>

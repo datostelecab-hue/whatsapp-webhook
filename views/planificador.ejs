@@ -262,6 +262,19 @@ function tarjetaCoche(c) {
 
   const filas = c.personas.map(p => filaSlot(c, p)).join('');
 
+  // Aviso: esta matrícula/hueco ya está reservado en una vacante abierta (en
+  // pleno reclutamiento). Así Tráfico no asigna a mano una plaza que ya está
+  // comprometida para alguien que se está reclutando.
+  const reservas = (TABLERO.reservasVacantes && c.matricula)
+    ? (TABLERO.reservasVacantes[c.matricula.trim().toUpperCase()] || [])
+    : [];
+  const notaReserva = reservas.length ? `
+    <div class="mt-3 text-sm text-telecab-gold bg-telecab-gold/5 border border-telecab-gold/30 rounded-lg px-3 py-2">
+      <i class="fa-solid fa-bookmark mr-1"></i> Reservado en vacante (reclutando):
+      ${reservas.map(r => `<span class="whitespace-nowrap"><b>${esc(r.turno)}</b> ${esc(r.letras || '—')}</span>
+        <span class="text-telecab-muted">(${esc(r.id)}${r.puesto ? ' · ' + esc(r.puesto) : ''})</span>`).join(' · ')}
+    </div>` : '';
+
   const pie = c.hayError
     ? `<div class="mt-3 text-sm text-telecab-red"><i class="fa-solid fa-triangle-exclamation mr-1"></i>
          ${c.conflictos.map(x => esc(x.msg)).join('<br>')}</div>`
@@ -282,6 +295,7 @@ function tarjetaCoche(c) {
               data-campo="zona">${zonaOpts}</select>
     </div>
     <div class="space-y-1.5">${filas}</div>
+    ${notaReserva}
     ${pie}
   </div>`;
 }

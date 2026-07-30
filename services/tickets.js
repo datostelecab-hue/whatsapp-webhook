@@ -64,8 +64,8 @@ const COL = {
   carnet_caducidad: 40,
   fecha_inicio: 41,    // fecha de inicio del contrato
   // --- Documentos: cada celda guarda un JSON {id, link, nombre, mime} de Drive ---
-  doc_dni: 42,
-  doc_carnet: 43,
+  doc_dni: 42,         // DNI/NIE — frente (el reverso va en doc_dni_reverso)
+  doc_carnet: 43,      // Carnet de conducir — frente (el reverso va en doc_carnet_reverso)
   doc_bancario: 44,
   doc_seg_social: 45,  // certificado SS o 1ª página de la vida laboral
   doc_penales: 46,     // certificado de delitos sexuales
@@ -73,9 +73,14 @@ const COL = {
   tipo_contrato: 47,
   jornada: 48,         // 40 HORAS / 32 HORAS — determina salario y modalidad (CT-100/CT-200)
   ficha_pdf: 49,       // JSON {id, link, nombre} de la FICHA DE ALTA generada en Drive
-  nacionalidad: 50     // se captura en Selección para el Excel de Altas (col N)
+  nacionalidad: 50,    // se captura en Selección para el Excel de Altas (col N)
+  excel_alta: 51,      // fecha del Excel de Altas en el que se incluyó (solo uno)
+  pin_ballenoil: 52,   // Administración: PIN de Ballenoil (combustible). Último paso antes del planificador
+  // Reversos de DNI/NIE y carnet (el frente sigue en doc_dni / doc_carnet):
+  doc_dni_reverso: 53,
+  doc_carnet_reverso: 54
 };
-const N_COLS = 51;
+const N_COLS = 55;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -88,17 +93,21 @@ const CABECERA = [
   'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
   'carnet_caducidad', 'fecha_inicio',
   'doc_dni', 'doc_carnet', 'doc_bancario', 'doc_seg_social', 'doc_penales',
-  'tipo_contrato', 'jornada', 'ficha_pdf', 'nacionalidad'
+  'tipo_contrato', 'jornada', 'ficha_pdf', 'nacionalidad', 'excel_alta',
+  'pin_ballenoil', 'doc_dni_reverso', 'doc_carnet_reverso'
 ];
 
-// Los 5 documentos de la ficha de alta. `key` es el identificador en la API/UI,
-// `col` la columna de TICKETS y `label` el título tal cual sale en el PDF.
+// Los documentos de la ficha de alta (7 por conductor: DNI y carnet por las dos
+// caras). `key` es el identificador en la API/UI, `col` la columna de TICKETS y
+// `label` el título tal cual sale en el PDF.
 const DOCUMENTOS = [
-  { key: 'dni',       col: 'doc_dni',        label: 'DNI/NIE' },
-  { key: 'carnet',    col: 'doc_carnet',     label: 'CARNET DE CONDUCIR' },
-  { key: 'bancario',  col: 'doc_bancario',   label: 'CERTIFICADO BANCARIO' },
-  { key: 'seg_social',col: 'doc_seg_social', label: 'CERTIFICADO SEGURIDAD SOCIAL / VIDA LABORAL' },
-  { key: 'penales',   col: 'doc_penales',    label: 'CERTIFICADO DE DELITOS SEXUALES' }
+  { key: 'dni',            col: 'doc_dni',            label: 'DNI/NIE (FRENTE)' },
+  { key: 'dni_reverso',    col: 'doc_dni_reverso',    label: 'DNI/NIE (REVERSO)' },
+  { key: 'carnet',         col: 'doc_carnet',         label: 'CARNET DE CONDUCIR (FRENTE)' },
+  { key: 'carnet_reverso', col: 'doc_carnet_reverso', label: 'CARNET DE CONDUCIR (REVERSO)' },
+  { key: 'bancario',       col: 'doc_bancario',       label: 'CERTIFICADO BANCARIO' },
+  { key: 'seg_social',     col: 'doc_seg_social',     label: 'CERTIFICADO SEGURIDAD SOCIAL / VIDA LABORAL' },
+  { key: 'penales',        col: 'doc_penales',        label: 'CERTIFICADO DE DELITOS SEXUALES' }
 ];
 
 // Datos mínimos que deben estar completos y guardados ANTES de enviar a BOLT, para
@@ -114,7 +123,8 @@ const REQUERIDOS_ALTA = [
   ['carnet_expedicion', 'Carnet: fecha de expedición'],
   ['carnet_caducidad', 'Carnet: fecha de caducidad'],
   ['fecha_inicio', 'Fecha de inicio'],
-  ['doc_dni', 'Documento: DNI/NIE'], ['doc_carnet', 'Documento: Carnet de conducir'],
+  ['doc_dni', 'Documento: DNI/NIE (frente)'], ['doc_dni_reverso', 'Documento: DNI/NIE (reverso)'],
+  ['doc_carnet', 'Documento: Carnet (frente)'], ['doc_carnet_reverso', 'Documento: Carnet (reverso)'],
   ['doc_bancario', 'Documento: Certificado bancario'],
   ['doc_seg_social', 'Documento: Seg. Social / vida laboral'],
   ['doc_penales', 'Documento: Certificado de delitos sexuales']
@@ -136,6 +146,7 @@ const ESTADOS = {
   PENDIENTE_BOLT: 'Pendiente en BOLT',   // enviado a BOLT, esperando aprobación
   APROBADO_BOLT: 'Aprobado en BOLT',     // el padrón lo detectó → alerta a RRHH
   RECHAZADO_BOLT: 'Rechazado en BOLT',   // BOLT lo rechazó (marcado a mano)
+  PENDIENTE_PIN: 'Pendiente de alta en Ballenoil',  // RRHH ya dio el alta; Administración debe crear el PIN de Ballenoil
   ALTA: 'Alta procesada - habilitado',
   NO_ALTA: 'Alta no realizada',          // RRHH decide no continuar con el alta
   RECHAZADO_RRHH: 'Rechazado RRHH',      // RRHH devuelve la ficha a Selección con motivo
@@ -151,7 +162,7 @@ const ETAPAS_CANDIDATURA = [
   ESTADOS.PRESELECCION, ESTADOS.COORD_ENTREVISTA, ESTADOS.ENTREVISTADO,
   ESTADOS.REC_MEDICO, ESTADOS.RELEVAMIENTO
 ];
-const ETAPAS = { SELECCION: 'Selección', BOLT: 'BOLT', RRHH: 'RRHH', TRAFICO: 'Tráfico' };
+const ETAPAS = { SELECCION: 'Selección', BOLT: 'BOLT', RRHH: 'RRHH', ADMINISTRACION: 'Administración', TRAFICO: 'Tráfico' };
 // Leads de dónde viene la gente. Se guarda para poder analizar el origen luego.
 // "Bolsa de Empleo (ETT)" es la vía por la que pueden salir contratos 40h/32h ETT.
 const CANALES = [
@@ -208,7 +219,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:BA`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:BF`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -253,7 +264,8 @@ async function guardarTicket(datos = {}) {
       num_hijos: '', num_seg_social: '', tipo_carnet: '', carnet_expedicion: '',
       carnet_caducidad: '', fecha_inicio: '',
       doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: '',
-      tipo_contrato: '', jornada: '', ficha_pdf: '', nacionalidad: ''
+      tipo_contrato: '', jornada: '', ficha_pdf: '', nacionalidad: '', excel_alta: '',
+      pin_ballenoil: '', doc_dni_reverso: '', doc_carnet_reverso: ''
     };
     porTel.set(tel, t);
   }
@@ -418,12 +430,10 @@ async function descartar(tel, motivo) {
 }
 
 /**
- * RRHH tramita el alta: registra la fecha del alta en Seguridad Social y la
- * fecha desde la que el conductor queda habilitado, y hace el HANDOFF creando la
- * ficha en AGENDA_V2 como "Pendiente Asignar" (reutiliza crearConductor del
- * planificador). El ID_BOLT de la agenda = el nombre de Bolt del padrón; la
- * FECHA_ALTA de la agenda = la fecha de habilitación (desde cuándo puede salir).
- * Primero se crea en la agenda y solo si eso va bien se avanza el ticket.
+ * RRHH tramita el alta: registra la fecha del alta en Seguridad Social y la fecha
+ * desde la que el conductor queda habilitado. El HANDOFF al planificador YA NO se
+ * hace aquí: la ficha pasa a ADMINISTRACIÓN para que cree el PIN de Ballenoil
+ * (último paso). Solo al guardar ese PIN se crea la ficha en la agenda.
  */
 async function procesarAltaRRHH(tel, datos = {}) {
   tel = normalizarTel(tel);
@@ -436,32 +446,75 @@ async function procesarAltaRRHH(tel, datos = {}) {
   if (!t) throw new Error('No existe un ticket con ese teléfono');
   if (t.etapa !== ETAPAS.RRHH) throw new Error('Este ticket no está en RRHH');
 
-  // Nombre de Bolt (ID_BOLT) y ESTADO desde el padrón. El estado es un candado de
-  // seguridad: si el conductor no está ACTIVO en BOLT, RRHH NO debe darlo de alta
-  // en la Seguridad Social (empezaría a cobrar sin poder trabajar). Pasa sobre
-  // todo con reincorporaciones (venían de un proceso anterior y hay que activarlos
-  // a mano en BOLT).
-  let boltNombre = '', boltEstado = '';
+  // No se puede dar el alta si la ficha no ha ido antes en un Excel de altas: así
+  // RRHH controla que no se repitan altas.
+  if (!t.excel_alta) {
+    throw new Error('Esta ficha aún no está en ningún Excel de altas. Inclúyela primero en un Excel (RRHH) y luego procesa el alta.');
+  }
+
+  // Candado de seguridad: si el conductor no está ACTIVO en BOLT, RRHH NO debe
+  // darlo de alta en la Seguridad Social (empezaría a cobrar sin poder trabajar).
+  // Pasa sobre todo con reincorporaciones (hay que activarlos a mano en BOLT).
+  let boltEstado = '';
   try {
     const { db } = await leerPadron();
     let d = t.driver_uuid ? db.get(t.driver_uuid) : null;
     if (!d) { try { d = await buscarPorTelefono(tel); } catch (_) {} }
-    if (d) {
-      boltNombre = (d.nombre || '').trim();
-      boltEstado = (d.state || d.estado || '').toString().toLowerCase();
-    }
-  } catch (_) { /* si el padrón falla, se sigue sin ID_BOLT ni comprobación */ }
+    if (d) boltEstado = (d.state || d.estado || '').toString().toLowerCase();
+  } catch (_) { /* si el padrón falla, se sigue sin comprobación */ }
 
   if (boltEstado && boltEstado !== 'active') {
     throw new Error(`El conductor aún no está ACTIVO en BOLT (estado: ${boltEstado}). `
       + 'Actívalo en BOLT antes de procesar el alta — si no, cobraría sin poder trabajar.');
   }
 
+  if (!(t.nombre || '').trim()) throw new Error('El conductor no tiene nombre para la ficha');
+
+  // Se registra el alta, pero la ficha NO va aún al planificador: pasa a
+  // Administración para crear el PIN de Ballenoil.
+  t.estado = ESTADOS.PENDIENTE_PIN;
+  t.etapa = ETAPAS.ADMINISTRACION;
+  t.fecha_alta = fechaAlta;
+  t.fecha_habilitado = fechaHab;
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
+/**
+ * ADMINISTRACIÓN crea el PIN de Ballenoil (tarjeta de combustible) — ÚLTIMO paso
+ * del alta. Con el nombre en Ballenoil (el "ID de Ballenoil"), el teléfono y el
+ * correo de la ficha, Administración genera el PIN en Ballenoil y lo guarda aquí.
+ * Recién entonces se hace el HANDOFF al planificador: se crea la ficha en
+ * AGENDA_V2 como "Pendiente Asignar" (reutiliza crearConductor). El ID_BOLT de la
+ * agenda = el nombre de Bolt del padrón; la FECHA_ALTA de la agenda = la fecha de
+ * habilitación. Primero se crea en la agenda y solo si eso va bien se guarda el
+ * PIN y se avanza el ticket a Tráfico.
+ */
+async function crearPinAdmin(tel, pin) {
+  tel = normalizarTel(tel);
+  pin = (pin == null ? '' : pin).toString().trim();
+  if (!pin) throw new Error('Falta el PIN de Ballenoil');
+
+  const { porTel, filas } = await leerTickets();
+  const t = porTel.get(tel);
+  if (!t) throw new Error('No existe un ticket con ese teléfono');
+  if (t.etapa !== ETAPAS.ADMINISTRACION) throw new Error('Esta ficha no está en Administración');
+
+  // Nombre de Bolt (ID_BOLT) desde el padrón, para la ficha de la agenda.
+  let boltNombre = '';
+  try {
+    const { db } = await leerPadron();
+    let d = t.driver_uuid ? db.get(t.driver_uuid) : null;
+    if (!d) { try { d = await buscarPorTelefono(tel); } catch (_) {} }
+    if (d) boltNombre = (d.nombre || '').trim();
+  } catch (_) { /* si el padrón falla, se sigue sin ID_BOLT */ }
+
   const nombre = boltNombre || t.nombre;
   if (!nombre) throw new Error('El conductor no tiene nombre para crear la ficha en la agenda');
 
   const obs = [
-    `Alta RRHH ${fechaAlta}`,
+    t.fecha_alta ? `Alta RRHH ${t.fecha_alta}` : '',
+    `PIN Ballenoil ${pin}`,
     t.canal ? `Canal: ${t.canal}` : '',
     t.email ? `Email: ${t.email}` : '',
     t.iban ? `IBAN: ${t.iban}` : '',
@@ -471,7 +524,8 @@ async function procesarAltaRRHH(tel, datos = {}) {
   // Solo se pasan campos con valor (validarCampo del planificador rechaza vacíos
   // en turno/coordenadas). FECHA_ALTA de la agenda = fecha de habilitación.
   const datosAgenda = {
-    id: boltNombre || '', nombre, telefono: tel, fechaAlta: fechaHab, observaciones: obs
+    id: boltNombre || '', nombre, telefono: tel,
+    fechaAlta: t.fecha_habilitado || t.fecha_alta, observaciones: obs
   };
   if (t.dni) datosAgenda.dni = t.dni;
   if (t.num_seg_social) datosAgenda.naf = t.num_seg_social;   // NAF = nº de la Seguridad Social
@@ -495,10 +549,9 @@ async function procesarAltaRRHH(tel, datos = {}) {
     throw e;
   }
 
+  t.pin_ballenoil = pin;
   t.estado = ESTADOS.ALTA;
   t.etapa = ETAPAS.TRAFICO;
-  t.fecha_alta = fechaAlta;
-  t.fecha_habilitado = fechaHab;
   await guardarTodos(porTel, filas);
   return t;
 }
@@ -585,7 +638,7 @@ function parseDoc(valor) {
 module.exports = {
   leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
   conciliarTicketsBolt, marcarRechazadoBolt, devolverARelevamiento,
-  procesarAltaRRHH, noContinuarRRHH, devolverRRHH,
+  procesarAltaRRHH, crearPinAdmin, noContinuarRRHH, devolverRRHH,
   guardarDocumento, guardarCelda, parseDoc, faltantesAlta,
-  normalizarTel, telValido, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS, REQUERIDOS_ALTA
+  normalizarTel, telValido, contratoAgenda, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS, REQUERIDOS_ALTA
 };

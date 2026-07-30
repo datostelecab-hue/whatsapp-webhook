@@ -108,4 +108,28 @@ async function guardarVacante(data = {}) {
   return { id, puesto, turno, zonas, libranzas, dias: tipoFijo ? '—' : cubiertos.size };
 }
 
-module.exports = { vacantesPorZona, leerVacantesGuardadas, guardarVacante };
+/**
+ * Reservas de huecos por matrícula desde las vacantes ABIERTAS (en pleno
+ * reclutamiento). Devuelve { MATRICULA: [ {id, turno, puesto, dias:[0..6], letras} ] }.
+ * Sirve para avisar en el planificador de que esa matrícula/hueco ya está
+ * comprometida en una vacante, para no asignar dos veces la misma plaza.
+ */
+async function reservasPorMatricula() {
+  const vac = await leerVacantesGuardadas();
+  const abiertas = vac.filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta');
+  const mapa = {};
+  abiertas.forEach(v => {
+    (v.matriculas || []).forEach(m => {
+      const key = (m.m || '').toString().trim().toUpperCase();
+      if (!key) return;
+      (mapa[key] = mapa[key] || []).push({
+        id: v.id, turno: v.turno, puesto: v.puesto,
+        dias: (m.d || []).slice(),
+        letras: m.letras || (m.d || []).map(d => LETRA[d]).join('')
+      });
+    });
+  });
+  return mapa;
+}
+
+module.exports = { vacantesPorZona, leerVacantesGuardadas, guardarVacante, reservasPorMatricula };

@@ -1,0 +1,184 @@
+<div class="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
+
+  <!-- Contadores -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Excels de altas</p>
+      <p id="c-excels" class="text-2xl font-bold text-telecab-gold">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Fichas en altas</p>
+      <p id="c-altas" class="text-2xl font-bold text-telecab-text">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Plantilla activa</p>
+      <p id="c-activos" class="text-2xl font-bold text-telecab-green">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Bajas</p>
+      <p id="c-bajas" class="text-2xl font-bold text-telecab-red">–</p>
+    </div>
+  </div>
+
+  <!-- Pestañas -->
+  <div class="flex gap-1 bg-telecab-card border border-telecab-border rounded-2xl p-1">
+    <button data-tab="altas"   class="tab-btn flex-1 px-3 py-2 rounded-xl text-sm font-medium transition"><i class="fa-solid fa-file-excel mr-1.5"></i>Altas por Excel</button>
+    <button data-tab="activos" class="tab-btn flex-1 px-3 py-2 rounded-xl text-sm font-medium transition"><i class="fa-solid fa-users mr-1.5"></i>Activos</button>
+    <button data-tab="bajas"   class="tab-btn flex-1 px-3 py-2 rounded-xl text-sm font-medium transition"><i class="fa-solid fa-user-slash mr-1.5"></i>Bajas</button>
+  </div>
+
+  <p id="cargando" class="text-telecab-muted text-sm">Cargando…</p>
+
+  <!-- Pestaña: Altas por Excel -->
+  <div id="pane-altas" class="tab-pane space-y-3 hidden"></div>
+
+  <!-- Pestaña: Activos -->
+  <div id="pane-activos" class="tab-pane space-y-3 hidden">
+    <div id="resumen-activos" class="flex flex-wrap gap-2"></div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+      <div id="lista-activos" class="space-y-1.5"></div>
+    </div>
+  </div>
+
+  <!-- Pestaña: Bajas -->
+  <div id="pane-bajas" class="tab-pane space-y-3 hidden">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+      <div id="lista-bajas" class="space-y-1.5"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // Badge de contrato: la ETT se resalta en ámbar; la propia en tono neutro.
+  function badgeContrato(contrato) {
+    const c = (contrato || '').trim();
+    if (!c) return '<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-dark text-telecab-muted border border-telecab-border">sin contrato</span>';
+    const ett = /ETT/i.test(c);
+    const cls = ett
+      ? 'bg-amber-500/15 text-amber-400 border-amber-500/40'
+      : 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30';
+    return `<span class="text-xs px-2 py-0.5 rounded-lg border ${cls} font-medium whitespace-nowrap">${esc(c)}</span>`;
+  }
+
+  // ---- Pestañas ----
+  function activar(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      const on = b.dataset.tab === tab;
+      b.className = 'tab-btn flex-1 px-3 py-2 rounded-xl text-sm font-medium transition ' +
+        (on ? 'bg-telecab-gold/15 text-telecab-gold' : 'text-telecab-muted hover:text-telecab-text');
+    });
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
+    $('#pane-' + tab).classList.remove('hidden');
+    try { localStorage.setItem('telecab-plantilla-tab', tab); } catch (_) {}
+  }
+  document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => activar(b.dataset.tab)));
+
+  // ---- Render ----
+  function pintarAltas(altas) {
+    const cont = $('#pane-altas'); cont.innerHTML = '';
+    if (!altas.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">Todavía no se ha generado ningún Excel de altas.</p>'; return; }
+    altas.forEach(g => {
+      const card = document.createElement('div');
+      card.className = 'bg-telecab-card border border-telecab-border rounded-2xl p-4';
+      const filas = g.fichas.map(f => {
+        const nom = `${esc(f.nombre)}${f.apellidos ? ' ' + esc(f.apellidos) : ''}` || '(sin nombre)';
+        return `<div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40">
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm text-telecab-text truncate">${nom}</span>
+              <span class="block text-xs text-telecab-muted font-mono">${esc(f.id)}${f.dni ? ' · ' + esc(f.dni) : ''}${f.fecha_inicio ? ' · inicio ' + esc(f.fecha_inicio) : ''}</span>
+            </span>
+            ${badgeContrato(f.contrato)}
+          </div>`;
+      }).join('');
+      card.innerHTML =
+        `<div class="flex items-center justify-between mb-3">
+           <h3 class="text-sm font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-file-excel text-telecab-gold"></i> Excel del ${esc(g.excel)}</h3>
+           <span class="text-xs text-telecab-muted">${g.total} ficha${g.total === 1 ? '' : 's'}</span>
+         </div>
+         <div class="space-y-1.5">${filas}</div>`;
+      cont.appendChild(card);
+    });
+  }
+
+  function pintarActivos(activos, resumen, ettTotal) {
+    // Resumen por contrato + total ETT.
+    const chips = $('#resumen-activos'); chips.innerHTML = '';
+    const orden = ['40h', '32h', '40h ETT', '32h ETT'];
+    const claves = Object.keys(resumen).sort((a, b) => {
+      const ia = orden.indexOf(a), ib = orden.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+    claves.forEach(k => {
+      const ett = /ETT/i.test(k);
+      const el = document.createElement('span');
+      el.className = 'text-xs px-3 py-1.5 rounded-xl border ' +
+        (ett ? 'bg-amber-500/15 text-amber-400 border-amber-500/40' : 'bg-telecab-card text-telecab-text border-telecab-border');
+      el.innerHTML = `${esc(k)} · <b>${resumen[k]}</b>`;
+      chips.appendChild(el);
+    });
+    if (ettTotal) {
+      const el = document.createElement('span');
+      el.className = 'text-xs px-3 py-1.5 rounded-xl border bg-amber-500/10 text-amber-400 border-amber-500/40';
+      el.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i>ETT en total · <b>${ettTotal}</b>`;
+      chips.appendChild(el);
+    }
+
+    const cont = $('#lista-activos'); cont.innerHTML = '';
+    if (!activos.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">No hay conductores activos (¿no cargó la agenda?).</p>'; return; }
+    activos.forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40';
+      el.innerHTML =
+        `<span class="w-8 h-8 rounded-lg bg-telecab-green/15 text-telecab-green flex items-center justify-center shrink-0"><i class="fa-solid fa-user"></i></span>
+         <span class="min-w-0 flex-1">
+           <span class="block text-sm text-telecab-text truncate">${esc(a.nombre)}</span>
+           <span class="block text-xs text-telecab-muted">${esc(a.turno || '—')}${a.estado ? ' · ' + esc(a.estado) : ''}</span>
+         </span>
+         ${badgeContrato(a.contrato)}`;
+      cont.appendChild(el);
+    });
+  }
+
+  function pintarBajas(bajas) {
+    const cont = $('#lista-bajas'); cont.innerHTML = '';
+    if (!bajas.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">No hay bajas archivadas.</p>'; return; }
+    bajas.forEach(b => {
+      const el = document.createElement('div');
+      el.className = 'flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40';
+      el.innerHTML =
+        `<span class="w-8 h-8 rounded-lg bg-telecab-red/10 text-telecab-red flex items-center justify-center shrink-0"><i class="fa-solid fa-user-slash"></i></span>
+         <span class="min-w-0 flex-1">
+           <span class="block text-sm text-telecab-text truncate">${esc(b.nombre)}</span>
+           <span class="block text-xs text-telecab-muted">${esc(b.turno || '—')}${b.fechaBaja ? ' · baja ' + esc(b.fechaBaja) : ''}${b.estado ? ' · ' + esc(b.estado) : ''}</span>
+         </span>
+         ${badgeContrato(b.contrato)}`;
+      cont.appendChild(el);
+    });
+  }
+
+  async function cargar() {
+    try {
+      const r = await (await fetch('/plantilla/api/datos')).json();
+      $('#cargando').classList.add('hidden');
+      if (r.status !== 'ok') return;
+      $('#c-excels').textContent = r.contadores.excels;
+      $('#c-altas').textContent = r.contadores.altas;
+      $('#c-activos').textContent = r.agendaError ? '?' : r.contadores.activos;
+      $('#c-bajas').textContent = r.contadores.bajas;
+      pintarAltas(r.altas || []);
+      pintarActivos(r.activos || [], r.resumen || {}, r.ettTotal || 0);
+      pintarBajas(r.bajas || []);
+      let tab = 'altas';
+      try { tab = localStorage.getItem('telecab-plantilla-tab') || 'altas'; } catch (_) {}
+      activar(tab);
+    } catch (e) {
+      $('#cargando').textContent = 'No se pudieron cargar los datos: ' + e.message;
+    }
+  }
+
+  cargar();
+</script>

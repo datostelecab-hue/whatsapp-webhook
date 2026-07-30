@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
-  leerTickets, procesarAltaRRHH, noContinuarRRHH, devolverRRHH, ESTADOS
+  leerTickets, procesarAltaRRHH, noContinuarRRHH, devolverRRHH, guardarCelda, ESTADOS
 } = require('../services/tickets');
 const { generarAltasExcel } = require('../services/altasExcel');
 
@@ -72,12 +72,30 @@ router.post('/altas-excel', async (req, res) => {
     if (!Array.isArray(tels) || !tels.length) {
       return res.status(400).json({ status: 'error', msg: 'No hay fichas seleccionadas' });
     }
+    if (!fecha || !String(fecha).trim()) {
+      return res.status(400).json({ status: 'error', msg: 'Elige la fecha del grupo de altas' });
+    }
     const { lista } = await leerTickets();
     const pedidos = new Set(tels.map(t => String(t)));
     const fichas = (lista || []).filter(t => pedidos.has(String(t.id)));
     if (!fichas.length) return res.status(400).json({ status: 'error', msg: 'No se encontraron esas fichas' });
 
+    // Una ficha solo puede ir en UN Excel: si alguna ya está en otro (fecha
+    // distinta), se avisa y no se genera, para no repetir altas.
+    const yaEnOtro = fichas.filter(t => t.excel_alta && String(t.excel_alta).trim() !== String(fecha).trim());
+    if (yaEnOtro.length) {
+      return res.status(400).json({ status: 'error',
+        msg: 'Ya están en otro Excel: ' + yaEnOtro.map(t => `${t.nombre || t.id} (${t.excel_alta})`).join(', ') });
+    }
+
     const buffer = await generarAltasExcel(fichas, fecha);
+    // Marca cada ficha con este Excel (habilita el alta y evita repetir).
+    for (const t of fichas) {
+      if (String(t.excel_alta || '').trim() !== String(fecha).trim()) {
+        try { await guardarCelda(t.id, 'excel_alta', fecha); }
+        catch (e) { console.error('❌ [RRHH] marcar excel_alta:', e.message); }
+      }
+    }
     const etiqueta = String(fecha || '').replace(/[\/]/g, '-') || 'grupo';
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="Altas ${etiqueta}.xlsx"`);

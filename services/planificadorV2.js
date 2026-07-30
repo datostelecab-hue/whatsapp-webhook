@@ -1632,6 +1632,7 @@ async function leerOut() {
         nombre: txt(f[A.NOMBRE - 1]),
         dni: txt(f[A.DNI - 1]),
         turno: txt(f[A.TURNO - 1]),
+        contrato: txt(f[A.CONTRATO - 1]),
         telefono: txt(f[A.TELEFONO - 1]),
         estado: txt(f[A.ESTADO - 1]),
         fechaAlta: txt(f[A.FECHA_ALTA - 1]),

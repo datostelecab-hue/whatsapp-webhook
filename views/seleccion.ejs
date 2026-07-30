@@ -374,7 +374,9 @@
     ['fecha_inicio', 'Fecha de inicio']
   ];
   const REQ_DOCS = [
-    ['dni', 'Doc: DNI/NIE'], ['carnet', 'Doc: Carnet'], ['bancario', 'Doc: Cert. bancario'],
+    ['dni', 'Doc: DNI/NIE (frente)'], ['dni_reverso', 'Doc: DNI/NIE (reverso)'],
+    ['carnet', 'Doc: Carnet (frente)'], ['carnet_reverso', 'Doc: Carnet (reverso)'],
+    ['bancario', 'Doc: Cert. bancario'],
     ['seg_social', 'Doc: Seg. Social/vida laboral'], ['penales', 'Doc: Delitos sexuales']
   ];
   function faltanFicha() {
@@ -542,8 +544,10 @@
 
   // ---------- Documentos de la ficha de alta (Drive) ----------
   const DOCS = [
-    { key: 'dni', label: 'DNI / NIE' },
-    { key: 'carnet', label: 'Carnet de conducir' },
+    { key: 'dni', label: 'DNI / NIE (frente)' },
+    { key: 'dni_reverso', label: 'DNI / NIE (reverso)' },
+    { key: 'carnet', label: 'Carnet de conducir (frente)' },
+    { key: 'carnet_reverso', label: 'Carnet de conducir (reverso)' },
     { key: 'bancario', label: 'Certificado bancario' },
     { key: 'seg_social', label: 'Cert. Seg. Social / vida laboral' },
     { key: 'penales', label: 'Cert. de delitos sexuales' }
