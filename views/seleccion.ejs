@@ -290,7 +290,12 @@
     const estadoActual = ticketActual ? ticketActual.estado : '';
     const enUltima = estadoActual === ETAPAS[ETAPAS.length - 1];
     const link = ($('[data-campo="link_bolt"]').value || '').trim();
-    $('#btn-bolt').disabled = !(enUltima && (link || EN_BOLT));
+    const btn = $('#btn-bolt');
+    btn.disabled = !(enUltima && (link || EN_BOLT));
+    // Si ya está en BOLT no se "envía solicitud": va directo a RRHH.
+    btn.innerHTML = EN_BOLT
+      ? '<i class="fa-solid fa-forward mr-1"></i> Pasar directo a RRHH'
+      : '<i class="fa-solid fa-paper-plane mr-1"></i> Enviar solicitud a BOLT';
   }
   $('[data-campo="link_bolt"]').addEventListener('input', actualizarBotonBolt);
 
@@ -426,7 +431,12 @@
     const faltan = faltanFicha();
     if (faltan.length) { msg('Completa la ficha antes de enviar a BOLT — falta: ' + faltan.join(', '), false); return; }
     const r = await api('/seleccion/bolt', { tel: ticketActual.id });
-    if (r.status === 'ok') { msg('Solicitud enviada a BOLT — pendiente de aprobación.', true); $('#ficha').classList.add('hidden'); cargar(); }
+    if (r.status === 'ok') {
+      const directo = r.ticket && r.ticket.estado === 'Aprobado en BOLT';
+      msg(directo ? 'Ya estaba en BOLT — pasado directo a RRHH. Recuerda activarlo en BOLT.'
+                  : 'Solicitud enviada a BOLT — pendiente de aprobación.', true);
+      $('#ficha').classList.add('hidden'); cargar();
+    }
     else msg(r.msg || 'No se pudo enviar a BOLT', false);
   });
 

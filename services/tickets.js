@@ -297,14 +297,26 @@ async function enviarABolt(tel) {
   if (faltan.length) {
     throw new Error('Antes de enviar a BOLT faltan datos de la ficha: ' + faltan.join(', '));
   }
-  // El link de alta de BOLT es obligatorio, SALVO que el conductor ya esté en
-  // nuestro histórico de BOLT (ya fue dado de alta antes → no hace falta crearlo).
+  // ¿Ya está en NUESTRA base de datos de BOLT (viene de un proceso anterior)?
+  let enBolt = null;
+  try { enBolt = await buscarPorTelefono(tel); } catch (_) {}
+
+  if (enBolt) {
+    // No hay que crearlo en BOLT: va DIRECTO a RRHH (solo hay que activarlo en la
+    // plataforma y darle el alta en Seguridad Social). NO pasa por "Pendiente BOLT".
+    t.driver_uuid = enBolt.driver_uuid || t.driver_uuid || '';
+    if (!t.nombre && enBolt.nombre) t.nombre = enBolt.nombre;
+    t.estado = ESTADOS.APROBADO_BOLT;
+    t.etapa = ETAPAS.RRHH;
+    t.fecha_apto = ahora();
+    t.fecha_deteccion = ahora();
+    await guardarTodos(porTel, filas);
+    return t;
+  }
+
+  // Conductor NUEVO en BOLT: hace falta el link de alta y esperar la aprobación.
   if (!t.link_bolt) {
-    let enHistorico = null;
-    try { enHistorico = await buscarPorTelefono(tel); } catch (_) {}
-    if (!enHistorico) {
-      throw new Error('Falta el link de alta de BOLT (o que el conductor ya esté en el histórico)');
-    }
+    throw new Error('Falta el link de alta de BOLT (o que el conductor ya esté en el histórico)');
   }
   t.estado = ESTADOS.PENDIENTE_BOLT;
   t.etapa = ETAPAS.BOLT;
