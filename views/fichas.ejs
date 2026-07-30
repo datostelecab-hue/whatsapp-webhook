@@ -1,0 +1,160 @@
+<div class="flex flex-col lg:flex-row lg:h-[calc(100vh-3.5rem)]">
+
+  <!-- ═══════ Lista de fichas ═══════ -->
+  <aside class="lg:w-80 shrink-0 border-b lg:border-b-0 lg:border-r border-telecab-border flex flex-col lg:h-full">
+    <div class="p-3 border-b border-telecab-border">
+      <h1 class="text-sm font-semibold text-telecab-text flex items-center gap-2 mb-2">
+        <i class="fa-solid fa-address-card text-telecab-gold"></i> Fichas de conductores
+      </h1>
+      <input id="f-buscar" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text focus:outline-none focus:border-telecab-gold transition"
+             placeholder="Buscar por nombre o DNI…" autocomplete="off">
+      <p id="f-count" class="text-[11px] text-telecab-muted mt-1.5"></p>
+    </div>
+    <div id="lista" class="flex-1 overflow-y-auto p-2 space-y-1 lg:max-h-none max-h-[40vh]"></div>
+  </aside>
+
+  <!-- ═══════ Detalle ═══════ -->
+  <section class="flex-1 overflow-y-auto lg:h-full">
+    <div id="detalle-vacio" class="h-full min-h-[50vh] flex items-center justify-center text-center text-telecab-muted p-8">
+      <div>
+        <i class="fa-regular fa-address-card text-4xl mb-3 opacity-40"></i>
+        <p class="text-sm">Elige una ficha de la lista para ver todos sus datos y documentos.</p>
+      </div>
+    </div>
+    <div id="detalle" class="hidden max-w-3xl mx-auto p-5 lg:p-8"></div>
+  </section>
+
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let FICHAS = [];
+  let sel = null;
+
+  // Grupos de campos del detalle (clave en la ficha → etiqueta).
+  const GRUPOS = [
+    { g: 'Datos personales', campos: [['nombre','Nombre'],['apellidos','Apellidos'],['dni','DNI / NIE'],['nacionalidad','Nacionalidad'],['fecha_nacimiento','Fecha de nacimiento'],['estado_civil','Estado civil'],['num_hijos','Nº de hijos']] },
+    { g: 'Contacto', campos: [['email','Correo'],['id','Teléfono'],['contacto_emergencia','Contacto de emergencia'],['direccion','Dirección'],['codigo_postal','Código postal'],['localidad','Localidad'],['provincia','Provincia']] },
+    { g: 'Datos laborales', campos: [['num_seg_social','Nº Seguridad Social'],['tipo_carnet','Tipo de carnet'],['carnet_expedicion','Carnet · expedición'],['carnet_caducidad','Carnet · caducidad'],['fecha_inicio','Fecha de inicio'],['jornada','Jornada'],['tipo_contrato','Tipo de contrato'],['turno','Turno'],['canal','Canal / origen'],['pin_ballenoil','PIN Ballenoil'],['iban','IBAN / cuenta']] },
+    { g: 'Proceso', campos: [['estado','Estado'],['etapa','Etapa'],['excel_alta','Excel de alta'],['fecha_creacion','Creado'],['fecha_apto','Apto'],['fecha_alta','Alta S. Social'],['fecha_habilitado','Habilitado desde']] }
+  ];
+
+  const nombreDe = f => `${f.nombre || ''}${f.apellidos ? ' ' + f.apellidos : ''}`.trim() || '(sin nombre)';
+
+  function fila(f) {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'w-full text-left flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-telecab-card2 transition';
+    el.dataset.tel = f.id;
+    const dot = f.completa
+      ? '<span class="w-2 h-2 rounded-full bg-telecab-green shrink-0" title="Ficha completa"></span>'
+      : '<span class="w-2 h-2 rounded-full bg-amber-400 shrink-0" title="Ficha incompleta"></span>';
+    el.innerHTML =
+      `${dot}
+       <span class="min-w-0 flex-1">
+         <span class="block text-sm text-telecab-text truncate">${esc(nombreDe(f))}</span>
+         <span class="block text-[11px] text-telecab-muted font-mono truncate">${esc(f.dni || f.id || '')}</span>
+       </span>`;
+    el.addEventListener('click', () => abrir(f.id));
+    return el;
+  }
+
+  function campoHTML(f, k, etq) {
+    const v = (f[k] == null ? '' : String(f[k])).trim();
+    return `<div>
+        <dt class="text-[11px] uppercase tracking-wide text-telecab-muted">${esc(etq)}</dt>
+        <dd class="text-sm ${v ? 'text-telecab-text' : 'text-telecab-muted/50'} break-words">${v ? esc(v) : '—'}</dd>
+      </div>`;
+  }
+
+  function docHTML(d) {
+    if (d.link) {
+      return `<a href="${esc(d.link)}" target="_blank" rel="noopener"
+                 class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-telecab-dark/40 border border-telecab-border hover:border-telecab-gold transition">
+          <i class="fa-solid fa-file-lines text-telecab-green shrink-0"></i>
+          <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(d.label)}</span>
+          <span class="text-[11px] text-telecab-gold shrink-0"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Abrir</span>
+        </a>`;
+    }
+    return `<div class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-telecab-dark/20 border border-dashed border-telecab-border/60">
+        <i class="fa-regular fa-file text-telecab-muted/60 shrink-0"></i>
+        <span class="min-w-0 flex-1 text-sm text-telecab-muted truncate">${esc(d.label)}</span>
+        <span class="text-[11px] text-amber-400 shrink-0">falta</span>
+      </div>`;
+  }
+
+  function abrir(tel) {
+    const f = FICHAS.find(x => String(x.id) === String(tel));
+    if (!f) return;
+    sel = f.id;
+    document.querySelectorAll('#lista [data-tel]').forEach(b =>
+      b.classList.toggle('bg-telecab-card2', String(b.dataset.tel) === String(tel)));
+
+    const estadoBadge = f.completa
+      ? '<span class="text-xs px-2.5 py-1 rounded-full bg-telecab-green/10 text-telecab-green border border-telecab-green/30"><i class="fa-solid fa-circle-check mr-1"></i>Ficha completa</span>'
+      : `<span class="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30" title="Falta: ${esc((f.faltan||[]).join(', '))}"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Faltan ${f.faltan.length}</span>`;
+
+    const grupos = GRUPOS.map(gr => `
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-telecab-gold mb-3">${esc(gr.g)}</h3>
+        <dl class="grid sm:grid-cols-2 gap-x-5 gap-y-3">
+          ${gr.campos.map(([k, etq]) => campoHTML(f, k, etq)).join('')}
+        </dl>
+      </div>`).join('');
+
+    const docsPresentes = (f.documentos || []).filter(d => d.link).length;
+    const documentos = `
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-telecab-gold">Documentos</h3>
+          <span class="text-[11px] text-telecab-muted">${docsPresentes}/${(f.documentos||[]).length}</span>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-2">${(f.documentos || []).map(docHTML).join('')}</div>
+        ${f.ficha_pdf_link ? `<a href="${esc(f.ficha_pdf_link)}" target="_blank" rel="noopener"
+             class="mt-3 inline-flex items-center gap-2 text-sm text-telecab-gold hover:underline">
+             <i class="fa-solid fa-file-pdf"></i> Abrir FICHA DE ALTA (PDF)</a>` : ''}
+      </div>`;
+
+    $('#detalle').innerHTML =
+      `<div class="mb-5">
+         <div class="flex items-start justify-between gap-3 flex-wrap">
+           <h2 class="text-2xl font-bold text-telecab-text">${esc(nombreDe(f))}</h2>
+           ${estadoBadge}
+         </div>
+         <p class="text-sm text-telecab-muted mt-1 font-mono">${esc(f.dni || '')}${f.dni && f.id ? ' · ' : ''}${esc(f.id || '')}</p>
+       </div>
+       <div class="space-y-4">${grupos}${documentos}</div>`;
+    $('#detalle-vacio').classList.add('hidden');
+    $('#detalle').classList.remove('hidden');
+    $('#detalle').parentElement.scrollTop = 0;
+  }
+
+  function pintarLista() {
+    const q = $('#f-buscar').value.trim().toLowerCase();
+    const vis = FICHAS.filter(f => !q ||
+      `${f.nombre} ${f.apellidos} ${f.dni} ${f.id}`.toLowerCase().includes(q));
+    const cont = $('#lista'); cont.innerHTML = '';
+    if (!vis.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm p-3">Sin resultados.</p>'; }
+    else vis.forEach(f => cont.appendChild(fila(f)));
+    const incompletas = FICHAS.filter(f => !f.completa).length;
+    $('#f-count').textContent = `${vis.length} de ${FICHAS.length}` + (incompletas ? ` · ${incompletas} incompleta${incompletas === 1 ? '' : 's'}` : '');
+    // Reaplica el resaltado de la selección actual.
+    if (sel) document.querySelectorAll('#lista [data-tel]').forEach(b =>
+      b.classList.toggle('bg-telecab-card2', String(b.dataset.tel) === String(sel)));
+  }
+
+  async function cargar() {
+    try {
+      const r = await (await fetch('/fichas/api/datos')).json();
+      if (r.status !== 'ok') return;
+      FICHAS = r.fichas || [];
+      pintarLista();
+    } catch (e) {
+      $('#lista').innerHTML = '<p class="text-telecab-red text-sm p-3">No se pudieron cargar las fichas: ' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#f-buscar').addEventListener('input', pintarLista);
+  cargar();
+</script>

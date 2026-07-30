@@ -5,7 +5,7 @@
       <h1 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
         <i class="fa-solid fa-clipboard-list text-telecab-gold"></i> Peticiones a RRHH
       </h1>
-      <p class="text-xs text-telecab-muted mt-0.5">Tráfico solicita bajas y ausencias; RRHH las aprueba o rechaza. Las ausencias aprobadas rellenan la bitácora automáticamente.</p>
+      <p class="text-xs text-telecab-muted mt-0.5">Tráfico solicita bajas y ausencias (con Desde–Hasta); RRHH las aprueba/rechaza o las crea y aplica directo. Al aplicarse, el estado cambia al momento y la bitácora se rellena en el rango.</p>
     </div>
     <button id="btn-recargar" class="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
       <i class="fa-solid fa-rotate mr-1"></i> Recargar
@@ -17,8 +17,9 @@
     <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2"><i class="fa-solid fa-plus text-telecab-gold"></i> Nueva petición</h2>
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Conductor</label>
-        <select id="f-conductor" class="inp"><option value="">— elige —</option></select>
+        <label class="block text-xs text-telecab-muted mb-1">Conductor <span class="text-telecab-muted/70">(escribe para buscar)</span></label>
+        <input id="f-conductor-txt" class="inp" list="dl-conductores" placeholder="Nombre o ID del conductor…" autocomplete="off">
+        <datalist id="dl-conductores"></datalist>
       </div>
       <div>
         <label class="block text-xs text-telecab-muted mb-1">Tipo</label>
@@ -35,13 +36,20 @@
         <input id="f-hasta" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
       </div>
       <div class="md:col-span-2">
+        <label class="block text-xs text-telecab-muted mb-1">Responsable <span class="text-telecab-muted/70">(quién lo hace)</span></label>
+        <input id="f-solicitante" class="inp" placeholder="Tu nombre">
+      </div>
+      <div class="md:col-span-2">
         <label class="block text-xs text-telecab-muted mb-1">Motivo</label>
         <textarea id="f-motivo" rows="2" class="inp resize-none" placeholder="Motivo de la baja / ausencia"></textarea>
       </div>
     </div>
-    <div class="mt-4 flex items-center gap-3">
-      <button id="btn-crear" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
+    <div class="mt-4 flex flex-wrap items-center gap-3">
+      <button id="btn-crear" class="hidden px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
         <i class="fa-solid fa-paper-plane mr-1"></i> Enviar petición a RRHH
+      </button>
+      <button id="btn-crear-directa" class="hidden px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold">
+        <i class="fa-solid fa-bolt mr-1"></i> Crear y aplicar
       </button>
       <p id="crear-msg" class="text-xs hidden"></p>
     </div>
@@ -70,28 +78,51 @@
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const rol = localStorage.getItem('telecab-rol') || 'general';
-  const puedeCrear = rol === 'trafico' || rol === 'general';
-  const puedeResolver = rol === 'rrhh' || rol === 'general';
+  const esTrafico = rol === 'trafico' || rol === 'general';   // crea petición (queda pendiente)
+  const esRRHH = rol === 'rrhh' || rol === 'general';         // resuelve + crea y aplica directo
+  const puedeCrear = esTrafico || esRRHH;                     // ve el formulario de alta
+  const puedeResolver = esRRHH;
 
   const COLOR = { 'Pendiente': 'text-telecab-gold', 'Aprobada': 'text-telecab-green', 'Rechazada': 'text-telecab-red' };
-  const ICONO = { 'Baja': 'fa-user-slash', 'Vacaciones': 'fa-umbrella-beach', 'Baja Médica': 'fa-briefcase-medical', 'Permiso Retribuido': 'fa-ticket' };
+  const ICONO = { 'Baja Empresa': 'fa-user-slash', 'Vacaciones': 'fa-umbrella-beach', 'Baja Médica': 'fa-briefcase-medical', 'Permiso Retribuido': 'fa-ticket', 'Reingreso': 'fa-arrow-rotate-left' };
+
+  // Conductores para el autocompletado (300+). La fuente cambia según el tipo:
+  //   · Reingreso → archivados (CONDUCTORES_OUT)   · resto → agenda activa.
+  let ACTIVOS = [], ARCHIVADOS = [], CONDUCTORES = [];
+  const esReingreso = () => $('#f-tipo').value === 'Reingreso';
+  const dispCond = c => `${c.nombre}${c.turno ? ' · ' + c.turno : ''}`;
+  function pintarDatalist() {
+    const dl = $('#dl-conductores');
+    if (dl) dl.innerHTML = CONDUCTORES.map(c => `<option value="${esc(dispCond(c))}"></option>`).join('');
+  }
+  function resolverConductor(txt) {
+    txt = (txt || '').trim().toLowerCase();
+    if (!txt) return null;
+    return CONDUCTORES.find(c => dispCond(c).toLowerCase() === txt)
+        || CONDUCTORES.find(c => (c.nombre || '').toLowerCase() === txt)
+        || CONDUCTORES.find(c => String(c.id).toLowerCase() === txt)
+        || null;
+  }
+  // Al cambiar el tipo: reingreso oculta las fechas (es inmediato) y usa el archivo.
+  function onTipoChange() {
+    const rein = esReingreso();
+    const dw = $('#f-desde-wrap'), hw = $('#f-hasta-wrap');
+    if (dw) dw.classList.toggle('hidden', rein);
+    if (hw) hw.classList.toggle('hidden', rein);
+    CONDUCTORES = rein ? ARCHIVADOS : ACTIVOS;
+    const inp = $('#f-conductor-txt'); if (inp) inp.value = '';
+    pintarDatalist();
+  }
 
   async function api(url, body) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     return r.json();
   }
 
-  // Mostrar/ocultar las fechas según el tipo (Baja no lleva Desde/Hasta).
-  function pintarFechas() {
-    const baja = $('#f-tipo').value === 'Baja';
-    $('#f-desde-wrap').classList.toggle('hidden', baja);
-    $('#f-hasta-wrap').classList.toggle('hidden', baja);
-  }
-
   function tarjetaPend(p) {
     const el = document.createElement('div');
     el.className = 'rounded-xl bg-telecab-dark/40 border border-telecab-border p-3';
-    const ausencia = p.tipo !== 'Baja';
+    const rein = p.tipo === 'Reingreso';
     el.innerHTML =
       `<div class="flex items-center gap-2 mb-2">
          <i class="fa-solid ${ICONO[p.tipo] || 'fa-file'} text-telecab-gold"></i>
@@ -100,24 +131,37 @@
          <span class="ml-auto text-[11px] text-telecab-muted">${esc(p.fecha_solicitud)} · ${esc(p.solicitante)}</span>
        </div>
        ${p.motivo ? `<p class="text-xs text-telecab-muted mb-2">Motivo: ${esc(p.motivo)}</p>` : ''}
-       ${ausencia ? `<div class="flex flex-wrap items-end gap-2 mb-2">
+       ${rein ? `<p class="text-xs text-telecab-muted mb-2"><i class="fa-solid fa-arrow-rotate-left mr-1 text-telecab-gold"></i>Reingreso inmediato: al aprobar vuelve a la agenda como <b class="text-telecab-text">Pendiente Asignar</b>.</p>` : `<div class="flex flex-wrap items-end gap-2 mb-2">
           <div><label class="block text-[11px] text-telecab-muted mb-0.5">Desde</label><input class="pp-desde inp !w-32 text-sm" value="${esc(p.desde)}" placeholder="dd/mm/aaaa"></div>
           <div><label class="block text-[11px] text-telecab-muted mb-0.5">Hasta</label><input class="pp-hasta inp !w-32 text-sm" value="${esc(p.hasta)}" placeholder="dd/mm/aaaa"></div>
-        </div>` : ''}
+        </div>`}
+       <div class="mb-2">
+         <label class="block text-[11px] text-telecab-muted mb-0.5">Responsable RRHH <span class="text-telecab-muted/70">(quién resuelve)</span></label>
+         <input class="pp-resp inp !w-56 text-sm" placeholder="Tu nombre">
+       </div>
        <div class="flex gap-2">
          <button class="pp-ap px-3 py-1.5 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold hover:bg-telecab-green/25 transition"><i class="fa-solid fa-check mr-1"></i> Aprobar</button>
          <button class="pp-rz px-3 py-1.5 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs hover:bg-telecab-red/20 transition"><i class="fa-solid fa-xmark mr-1"></i> Rechazar</button>
        </div>`;
+    const responsable = () => el.querySelector('.pp-resp').value.trim();
     el.querySelector('.pp-ap').addEventListener('click', async () => {
-      const desde = ausencia ? el.querySelector('.pp-desde').value.trim() : '';
-      const hasta = ausencia ? el.querySelector('.pp-hasta').value.trim() : '';
-      const r = await api('/peticiones/aprobar', { id: p.id, desde, hasta });
+      const resuelto_por = responsable();
+      if (!resuelto_por) { alert('Escribe quién de RRHH resuelve la petición.'); return; }
+      let desde = '', hasta = '';
+      if (!rein) {
+        desde = el.querySelector('.pp-desde').value.trim();
+        hasta = el.querySelector('.pp-hasta').value.trim();
+        if (!desde || !hasta) { alert('Pon las fechas Desde y Hasta.'); return; }
+      }
+      const r = await api('/peticiones/aprobar', { id: p.id, desde, hasta, resuelto_por });
       if (r.status === 'ok') cargar(); else alert(r.msg || 'No se pudo aprobar');
     });
     el.querySelector('.pp-rz').addEventListener('click', async () => {
+      const resuelto_por = responsable();
+      if (!resuelto_por) { alert('Escribe quién de RRHH resuelve la petición.'); return; }
       const motivo = prompt('Motivo del rechazo (se avisa a Tráfico):');
       if (motivo === null) return;
-      const r = await api('/peticiones/rechazar', { id: p.id, motivo });
+      const r = await api('/peticiones/rechazar', { id: p.id, motivo, resuelto_por });
       if (r.status === 'ok') cargar(); else alert(r.msg || 'No se pudo rechazar');
     });
     return el;
@@ -131,6 +175,7 @@
       `<i class="fa-solid ${ICONO[p.tipo] || 'fa-file'} text-telecab-muted shrink-0"></i>
        <span class="min-w-0 flex-1">
          <span class="block text-sm text-telecab-text truncate">${esc(p.tipo)} · ${esc(p.conductor || p.id_conductor)}${rango}</span>
+         <span class="block text-[11px] text-telecab-muted truncate">Solicitó: ${esc(p.solicitante || '—')}${p.resuelto_por ? ' · Resolvió: ' + esc(p.resuelto_por) : ''}</span>
          ${p.estado === 'Rechazada' && p.motivo_rechazo ? `<span class="block text-[11px] text-telecab-red/80 truncate">${esc(p.motivo_rechazo)}</span>` : ''}
        </span>
        <span class="text-xs font-semibold ${COLOR[p.estado] || 'text-telecab-muted'} whitespace-nowrap shrink-0">${esc(p.estado)}</span>`;
@@ -141,13 +186,12 @@
     const r = await (await fetch('/peticiones/api/datos')).json();
     if (r.status !== 'ok') return;
 
-    // Selector de conductores (solo Tráfico/general).
+    // Autocompletado de conductores (input texteable; solo quien puede crear).
     if (puedeCrear) {
-      const sel = $('#f-conductor');
-      const val = sel.value;
-      sel.innerHTML = '<option value="">— elige —</option>' +
-        (r.conductores || []).map(c => `<option value="${esc(c.id)}" data-nombre="${esc(c.nombre)}">${esc(c.nombre)}${c.turno ? ' · ' + esc(c.turno) : ''}</option>`).join('');
-      sel.value = val;
+      ACTIVOS = r.conductores || [];
+      ARCHIVADOS = r.archivados || [];
+      CONDUCTORES = esReingreso() ? ARCHIVADOS : ACTIVOS;
+      pintarDatalist();
     }
 
     const pend = (r.peticiones || []).filter(p => p.estado === 'Pendiente');
@@ -173,23 +217,40 @@
   $('#card-pend').classList.toggle('hidden', !puedeResolver);
 
   if (puedeCrear) {
-    $('#f-tipo').addEventListener('change', pintarFechas);
-    pintarFechas();
+    // Tráfico envía petición (queda pendiente); RRHH crea y aplica directo.
+    $('#btn-crear').classList.toggle('hidden', !esTrafico);
+    $('#btn-crear-directa').classList.toggle('hidden', !esRRHH);
+
+    const msg = $('#crear-msg');
+    const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs ' + cls; msg.classList.remove('hidden'); };
+    const recolectar = () => {
+      const c = resolverConductor($('#f-conductor-txt').value);
+      if (!c) { aviso('Escribe y elige un conductor de la lista.', 'text-telecab-red'); return null; }
+      const responsable = $('#f-solicitante').value.trim();
+      if (!responsable) { aviso('Escribe el responsable.', 'text-telecab-red'); return null; }
+      const rein = esReingreso();
+      const desde = rein ? '' : $('#f-desde').value.trim();
+      const hasta = rein ? '' : $('#f-hasta').value.trim();
+      if (!rein && (!desde || !hasta)) { aviso('Pon las fechas Desde y Hasta.', 'text-telecab-red'); return null; }
+      return { id_conductor: c.id, conductor: c.nombre, tipo: $('#f-tipo').value,
+        desde, hasta, motivo: $('#f-motivo').value.trim(), responsable };
+    };
+    const limpiar = () => { $('#f-motivo').value = ''; $('#f-desde').value = ''; $('#f-hasta').value = ''; $('#f-conductor-txt').value = ''; };
+
+    $('#f-tipo').addEventListener('change', onTipoChange);
+    onTipoChange();
+
     $('#btn-crear').addEventListener('click', async () => {
-      const msg = $('#crear-msg');
-      const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs ' + cls; msg.classList.remove('hidden'); };
-      const opt = $('#f-conductor').selectedOptions[0];
-      const id_conductor = $('#f-conductor').value;
-      if (!id_conductor) return aviso('Elige un conductor.', 'text-telecab-red');
-      const tipo = $('#f-tipo').value;
-      const body = {
-        id_conductor, conductor: opt ? opt.dataset.nombre : '', tipo,
-        desde: $('#f-desde').value.trim(), hasta: $('#f-hasta').value.trim(),
-        motivo: $('#f-motivo').value.trim()
-      };
-      const r = await api('/peticiones/crear', body);
-      if (r.status === 'ok') { aviso('Petición enviada a RRHH.', 'text-telecab-green'); $('#f-motivo').value = ''; $('#f-desde').value = ''; $('#f-hasta').value = ''; cargar(); }
+      const b = recolectar(); if (!b) return;
+      const r = await api('/peticiones/crear', { ...b, solicitante: b.responsable });
+      if (r.status === 'ok') { aviso('Petición enviada a RRHH.', 'text-telecab-green'); limpiar(); cargar(); }
       else aviso(r.msg || 'No se pudo enviar', 'text-telecab-red');
+    });
+    $('#btn-crear-directa').addEventListener('click', async () => {
+      const b = recolectar(); if (!b) return;
+      const r = await api('/peticiones/crear-directa', b);
+      if (r.status === 'ok') { aviso('Aplicada: estado y bitácora actualizados.', 'text-telecab-green'); limpiar(); cargar(); }
+      else aviso(r.msg || 'No se pudo aplicar', 'text-telecab-red');
     });
   }
 

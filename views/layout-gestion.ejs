@@ -203,6 +203,18 @@
         <span class="text-sm flex-1">Peticiones</span>
       </a>
 
+      <a href="/fichas" data-rol-not="trafico" class="nav-item <%= seccionActiva === 'fichas' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'fichas' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-address-card w-5 text-center <%= seccionActiva === 'fichas' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Fichas</span>
+      </a>
+
+      <a href="/bitacora" class="nav-item <%= seccionActiva === 'bitacora' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'bitacora' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-book w-5 text-center <%= seccionActiva === 'bitacora' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Bitácora</span>
+      </a>
+
       <% grupos.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
         <div class="nav-grupo" data-rol="<%= g.rol || '' %>">
           <button type="button" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
@@ -322,6 +334,11 @@
       const gr = g.getAttribute('data-rol');
       const activo = !!g.querySelector('.nav-item.activo');
       g.classList.toggle('hidden', !(rol === 'general' || gr === rol || activo));
+    });
+    // Ítems sueltos ocultos para ciertos roles (p. ej. Fichas no es para Tráfico).
+    document.querySelectorAll('[data-rol-not]').forEach(el => {
+      const veta = el.getAttribute('data-rol-not').split(',').map(s => s.trim());
+      el.classList.toggle('hidden', veta.includes(rol) && !el.classList.contains('activo'));
     });
   }
 

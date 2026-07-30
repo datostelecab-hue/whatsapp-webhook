@@ -270,9 +270,6 @@ function pintarTabla() {
       return `<span class="inline-block w-10 text-telecab-green" title="${esc(v)}">✓</span>`;
     }).join('');
 
-    const opciones = ESTADOS
-      .map(e => `<option ${e === c.estadoCalculado ? 'selected' : ''}>${esc(e)}</option>`).join('');
-
     const faltan = (c.faltan && c.faltan.length)
       ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-xs"
               title="Falta: ${esc(c.faltan.join(', '))}">
@@ -288,8 +285,8 @@ function pintarTabla() {
       </td>
       <td class="px-3 py-2.5 text-telecab-muted">${esc(c.turno || '—')}</td>
       <td class="px-3 py-2.5">
-        <select class="px-2 py-1 rounded bg-telecab-dark border border-telecab-border ${COLOR_ESTADO[c.estadoCalculado] || 'text-telecab-text'}"
-                data-estado>${opciones}</select>
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs border border-telecab-border/60 bg-telecab-dark ${COLOR_ESTADO[c.estadoCalculado] || 'text-telecab-text'}"
+              title="El estado lo gestiona el sistema: se cambia solo cuando RRHH aprueba una petición y el día del evento. No se edita a mano.">${esc(c.estadoCalculado || '—')}</span>
       </td>
       <td class="px-3 py-2.5 text-telecab-text">${esc(c.matricula || '—')}</td>
       <td class="px-3 py-2.5 text-center whitespace-nowrap">${dias}</td>
@@ -385,8 +382,9 @@ const CAMPOS_FICHA = [
     { k: 'turno', etq: 'Turno', tipo: 'lista', valores: TURNOS },
     { k: 'contrato', etq: 'Contrato', tipo: 'lista', valores: CONTRATOS },
     { k: 'recomendador', etq: 'Recomendado por', tipo: 'texto' },
-    { k: 'activo', etq: 'Activo', tipo: 'bool' },
-    { k: 'reincorporacion', etq: 'Reincorporación', tipo: 'fecha', ayuda: 'vuelta de baja/vacaciones' }
+    { k: 'activo', etq: 'Activo', tipo: 'bool' }
+    // La reincorporación ya no se teclea a mano: la fija el sistema desde el
+    // "Hasta" de la petición de ausencia (peticiones.js · aplicarEfecto).
   ]},
   { g: 'Contacto', campos: [
     { k: 'telefono', etq: 'Teléfono', tipo: 'texto' },
@@ -558,36 +556,11 @@ $('#ficha-guardar').addEventListener('click', async () => {
   btn.textContent = 'Guardar';
 });
 
-// ════════ Cambio de estado ════════
-$('#tabla-agenda').addEventListener('change', async e => {
-  if (!e.target.hasAttribute('data-estado')) return;
-  const fila = Number(e.target.closest('tr').dataset.fila);
-  const estado = e.target.value;
-
-  if (estado === 'Baja Empresa' &&
-      !confirm('Pasará a Baja Empresa: se archiva en CONDUCTORES_OUT y sale de la agenda.\n\n' +
-               'Se puede recuperar desde la pestaña Archivo. ¿Continuar?')) {
-    cargar();
-    return;
-  }
-
-  aviso('Guardando…');
-  try {
-    const r = await fetch('/agenda/api/estado', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cambios: [{ fila, estado }] })
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.msg);
-    const n = d.migracion ? d.migracion.migrados.length : 0;
-    aviso(n ? 'Archivado en CONDUCTORES_OUT' : `Estado → ${estado}`, 'ok');
-    await cargar();
-  } catch (err) {
-    aviso(err.message, 'error');
-    cargar();
-  }
-});
+// ════════ Estado: solo lectura ════════
+// El estado del conductor NO se cambia a mano desde la agenda. Lo gestiona el
+// sistema: cuando RRHH aprueba una petición (Baja / Vacaciones / Baja Médica /
+// Permiso) y el día en que empieza el evento (aplicarAusenciasAutomaticas). Por
+// eso aquí ya no hay desplegable ni handler: el estado se muestra como insignia.
 
 // ════════ Restaurar ════════
 $('#tabla-out').addEventListener('click', async e => {
