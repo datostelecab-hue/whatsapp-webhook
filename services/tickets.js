@@ -184,6 +184,14 @@ function siNo(v) {
   return v ? 'Sí' : 'No';
 }
 
+// Contrato para la agenda (32h/40h, +ETT si el canal fue una ETT), a partir de la
+// jornada y el canal de la ficha. Debe casar con CONTRATOS del planificador.
+function contratoAgenda(t) {
+  const h = String((t && t.jornada) || '').replace(/\D/g, '');
+  const base = h === '32' ? '32h' : '40h';
+  return /ETT/i.test((t && t.canal) || '') ? base + ' ETT' : base;
+}
+
 function filaAObjeto(row) {
   const o = {};
   for (const [k, i] of Object.entries(COL)) o[k] = (row[i] == null ? '' : row[i]).toString();
@@ -466,8 +474,11 @@ async function procesarAltaRRHH(tel, datos = {}) {
     id: boltNombre || '', nombre, telefono: tel, fechaAlta: fechaHab, observaciones: obs
   };
   if (t.dni) datosAgenda.dni = t.dni;
+  if (t.num_seg_social) datosAgenda.naf = t.num_seg_social;   // NAF = nº de la Seguridad Social
   if (t.contacto_emergencia) datosAgenda.telEmergencia = t.contacto_emergencia;
-  if (t.turno) datosAgenda.turno = t.turno;           // turno de la vacante cubierta
+  if (t.turno) datosAgenda.turno = t.turno;                   // Día / Noche / TodoTurno
+  const contrato = contratoAgenda(t);                          // 32h / 40h (+ ETT)
+  if (contrato) datosAgenda.contrato = contrato;
   if (t.direccion) datosAgenda.direccion = t.direccion;
   if (t.coordenadas) datosAgenda.coordenadas = t.coordenadas;
 

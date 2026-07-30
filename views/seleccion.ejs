@@ -188,6 +188,15 @@
           <input data-campo="nacionalidad" class="inp" placeholder="Española">
         </div>
         <div>
+          <label class="block text-xs text-telecab-muted mb-1">Turno <span class="text-telecab-muted/70">(se sugiere desde la vacante)</span></label>
+          <select data-campo="turno" class="inp">
+            <option value="">— sin asignar —</option>
+            <option value="Día">Día</option>
+            <option value="Noche">Noche</option>
+            <option value="TodoTurno">TodoTurno</option>
+          </select>
+        </div>
+        <div>
           <label class="block text-xs text-telecab-muted mb-1">Jornada</label>
           <select data-campo="jornada" class="inp">
             <option value="40 HORAS">40 horas</option>
@@ -249,7 +258,7 @@
 <script>
   const ETAPAS = <%- JSON.stringify(etapas || []) %>;
   const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt',
-    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio','jornada','nacionalidad'];
+    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio','jornada','nacionalidad','turno'];
   const estado = { experiencia: 'No', carne_vtc: 'No' };
   let ticketActual = null;
   let EN_BOLT = false;   // ¿el teléfono ya está en nuestro histórico de BOLT?
@@ -338,10 +347,9 @@
   function datosFicha() {
     const d = { tel: ticketActual.id, experiencia: estado.experiencia, carne_vtc: estado.carne_vtc };
     CAMPOS.forEach(k => { const el = $(`[data-campo="${k}"]`); if (el) d[k] = el.value; });
-    // Zona y turno se derivan de la vacante elegida (los pone Tráfico, no Selección).
+    // La zona se deriva de la vacante; el turno lo lleva su propio selector (CAMPOS).
     const opt = $('[data-campo="vacante"]').selectedOptions[0];
     d.zona = opt ? (opt.dataset.zonas || '') : '';
-    d.turno = opt ? (opt.dataset.turno || '') : '';
     return d;
   }
 
@@ -382,7 +390,14 @@
     if (opt && opt.value) { info.textContent = `Zona: ${opt.dataset.zonas || '—'} · Turno: ${opt.dataset.turno || '—'}`; info.classList.remove('hidden'); }
     else info.classList.add('hidden');
   }
-  $('[data-campo="vacante"]').addEventListener('change', pintarVacInfo);
+  $('[data-campo="vacante"]').addEventListener('change', () => {
+    pintarVacInfo();
+    // Al elegir vacante se sugiere su turno (el reclutador puede cambiarlo).
+    const opt = $('[data-campo="vacante"]').selectedOptions[0];
+    const tno = opt && opt.dataset.turno;
+    const sel = $('[data-campo="turno"]');
+    if (tno && sel && [...sel.options].some(o => o.value === tno)) sel.value = tno;
+  });
 
   // Salario según la jornada (40 h → 1.442,14 · 32 h → 1.154,39). Solo informativo
   // en la ficha; el PDF lo vuelve a calcular igual en el servidor.
