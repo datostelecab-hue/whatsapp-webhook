@@ -12,6 +12,10 @@
       <p class="text-[10px] uppercase tracking-wide text-telecab-muted">Pendientes BOLT <i class="fa-solid fa-arrow-up-right-from-square opacity-60"></i></p>
       <p id="c-pendiente" class="text-xl font-bold text-telecab-gold">–</p>
     </a>
+    <div class="min-w-[130px] bg-telecab-card border border-telecab-border rounded-xl px-3 py-2">
+      <p class="text-[10px] uppercase tracking-wide text-telecab-muted">Rechazados RRHH</p>
+      <p id="c-rechrrhh" class="text-xl font-bold text-telecab-red">–</p>
+    </div>
   </div>
 
   <!-- Buscar / crear por teléfono -->
@@ -38,8 +42,8 @@
       </div>
     </div>
 
-    <div id="banner-bolt" class="hidden mb-3 rounded-xl border border-telecab-green/40 bg-telecab-green/10 p-3 text-xs text-telecab-green">
-      <i class="fa-solid fa-circle-check mr-1"></i> Este conductor ya pertenece a nuestra base de datos en BOLT. Puede seguir el proceso igual; el link de alta no será obligatorio.
+    <div id="banner-bolt" class="hidden mb-3 rounded-xl border border-telecab-gold/50 bg-telecab-gold/10 p-3 text-xs text-telecab-gold">
+      <i class="fa-solid fa-triangle-exclamation mr-1"></i> <b>Este conductor YA está en BOLT</b> (viene de un proceso anterior). No hay que crearlo: <b>actívalo YA en BOLT</b> para continuar — sin estar activo en BOLT no puede trabajar y RRHH no podrá darlo de alta. Revisa bien la ficha; el link de alta no es obligatorio.
     </div>
 
     <!-- Funnel stepper -->
@@ -180,8 +184,8 @@
           <input data-campo="fecha_inicio" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
         </div>
         <div>
-          <label class="block text-xs text-telecab-muted mb-1">Tipo de contrato</label>
-          <input data-campo="tipo_contrato" class="inp" placeholder="INDEFINIDO">
+          <label class="block text-xs text-telecab-muted mb-1">Nacionalidad <span class="text-telecab-muted/70">(del DNI/NIE)</span></label>
+          <input data-campo="nacionalidad" class="inp" placeholder="Española">
         </div>
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Jornada</label>
@@ -245,7 +249,7 @@
 <script>
   const ETAPAS = <%- JSON.stringify(etapas || []) %>;
   const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt',
-    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio','tipo_contrato','jornada'];
+    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio','jornada','nacionalidad'];
   const estado = { experiencia: 'No', carne_vtc: 'No' };
   let ticketActual = null;
   let EN_BOLT = false;   // ¿el teléfono ya está en nuestro histórico de BOLT?
@@ -311,12 +315,19 @@
     pintarStepper(ticketActual.estado);
     pintarVacInfo();
     refrescarDocs();
-    const _tc = $('[data-campo="tipo_contrato"]'); if (_tc && !_tc.value) _tc.value = 'INDEFINIDO';
     const _j = $('[data-campo="jornada"]'); if (_j && !_j.value) _j.value = '40 HORAS';
     actualizarSalario();
     $('#nota-ett').classList.toggle('hidden', ($('[data-campo="canal"]').value !== 'Bolsa de Empleo (ETT)'));
     $('#ficha-msg').classList.add('hidden');
     $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Reabre una ficha por teléfono (cargando datos del servidor + banner de BOLT).
+  async function abrirPorTel(tel) {
+    const r = await (await fetch('/seleccion/api/ticket/' + tel)).json();
+    EN_BOLT = !!(r && r.enBolt);
+    $('#banner-bolt').classList.toggle('hidden', !EN_BOLT);
+    abrirFicha((r && r.ticket) || { id: tel }, tel);
   }
 
   function datosFicha() {
@@ -375,7 +386,7 @@
     const jn = $('[data-campo="jornada"]');
     const h = (jn ? jn.value : '').replace(/\D/g, '');
     const nota = $('#salario-nota');
-    if (nota) nota.textContent = 'Salario bruto mensual: ' + (SALARIOS[h] || SALARIOS['40']) + ' €';
+    if (nota) nota.textContent = 'Salario: ' + (SALARIOS[h] || SALARIOS['40']) + ' € · Contrato: ' + (h === '32' ? 'CT-200' : 'CT-100');
   }
   { const jn = $('[data-campo="jornada"]'); if (jn) jn.addEventListener('change', actualizarSalario); }
 
@@ -463,8 +474,33 @@
     if (r.status !== 'ok') return;
     ETAPAS.forEach(e => { const el = document.querySelector(`[data-cont-etapa="${e}"]`); if (el) el.textContent = r.contadores.porEtapa[e] || 0; });
     $('#c-pendiente').textContent = r.contadores.pendienteBolt;
+    $('#c-rechrrhh').textContent = r.contadores.rechazadosRRHH || 0;
 
     const board = $('#board'); board.innerHTML = '';
+
+    // Rechazados por RRHH (si hay): arriba, con el motivo, para reabrir y corregir.
+    const rech = r.rechazadosRRHH || [];
+    if (rech.length) {
+      const sec = document.createElement('div');
+      sec.className = 'bg-telecab-red/5 border border-telecab-red/40 rounded-2xl p-4';
+      sec.innerHTML = `<h2 class="text-sm font-semibold text-telecab-red mb-2 flex items-center gap-2"><i class="fa-solid fa-rotate-left"></i> Rechazados por RRHH <span class="text-telecab-muted font-normal">(${rech.length})</span></h2>`;
+      const cont = document.createElement('div'); cont.className = 'space-y-1';
+      rech.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es')).forEach(t => {
+        const el = document.createElement('button');
+        el.className = 'w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-red/40 transition';
+        el.innerHTML =
+          `<span class="w-7 h-7 rounded-lg bg-telecab-red/15 text-telecab-red flex items-center justify-center shrink-0 text-xs"><i class="fa-solid fa-user-xmark"></i></span>
+           <span class="min-w-0 flex-1">
+             <span class="block text-sm text-telecab-text truncate">${t.nombre || '(sin nombre)'}</span>
+             <span class="block text-xs text-telecab-red/80 truncate">${t.motivo || 'Devuelto por RRHH'}</span>
+           </span>
+           <span class="block text-xs text-telecab-muted font-mono shrink-0">${t.id}</span>`;
+        el.addEventListener('click', () => abrirPorTel(t.id));
+        cont.appendChild(el);
+      });
+      sec.appendChild(cont); board.appendChild(sec);
+    }
+
     ETAPAS.forEach((e, i) => {
       const lista = r.porEtapa[e] || [];
       const sec = document.createElement('div');

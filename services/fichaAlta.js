@@ -49,6 +49,12 @@ function salarioDe(ficha) {
   return h === '32' ? '1.154,39' : '1.442,14';
 }
 
+// Modalidad de contrato según la jornada: 32 h → CT - 200 · 40 h (o resto) → CT - 100.
+function contratoDe(ficha) {
+  const h = String(ficha.jornada || FIJOS.jornada).replace(/\D/g, '');
+  return h === '32' ? 'CT - 200' : 'CT - 100';
+}
+
 // Dibuja texto encogiéndolo hasta que quepa en maxW.
 function texto(page, s, x, baseline, font, size, color, maxW) {
   s = limpio(s);
@@ -194,7 +200,7 @@ async function generarFichaPDF(ficha = {}, documentos = []) {
   y = fila(page, y, HF, [{ label: 'TIPO DE CARNET', value: of('tipo_carnet'), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [{ label: 'FECHA EXPEDICIÓN', value: g('carnet_expedicion'), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [{ label: 'FECHA CADUCIDAD', value: g('carnet_caducidad'), lw: 130, vw: 385 }], fonts);
-  y = fila(page, y, HF, [{ label: 'TIPO DE CONTRATO', value: of('tipo_contrato'), lw: 130, vw: 385 }], fonts);
+  y = fila(page, y, HF, [{ label: 'TIPO DE CONTRATO', value: contratoDe(ficha), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [{ label: 'JORNADA SEMANAL', value: of('jornada'), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [{ label: 'MOTIVO DEL CONTRATO', value: of('motivo'), lw: 130, vw: 385 }], fonts);
   y = fila(page, y, HF, [
@@ -220,4 +226,4 @@ async function generarFichaPDF(ficha = {}, documentos = []) {
   return pdf.save();
 }
 
-module.exports = { generarFichaPDF, FIJOS };
+module.exports = { generarFichaPDF, FIJOS, contratoDe, salarioDe };

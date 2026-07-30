@@ -71,10 +71,11 @@ const COL = {
   doc_penales: 46,     // certificado de delitos sexuales
   // Datos laborales editables (el resto son fijos de empresa):
   tipo_contrato: 47,
-  jornada: 48,         // 40 HORAS / 32 HORAS — determina el salario en el PDF
-  ficha_pdf: 49        // JSON {id, link, nombre} de la FICHA DE ALTA generada en Drive
+  jornada: 48,         // 40 HORAS / 32 HORAS — determina salario y modalidad (CT-100/CT-200)
+  ficha_pdf: 49,       // JSON {id, link, nombre} de la FICHA DE ALTA generada en Drive
+  nacionalidad: 50     // se captura en Selección para el Excel de Altas (col N)
 };
-const N_COLS = 50;
+const N_COLS = 51;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -87,7 +88,7 @@ const CABECERA = [
   'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
   'carnet_caducidad', 'fecha_inicio',
   'doc_dni', 'doc_carnet', 'doc_bancario', 'doc_seg_social', 'doc_penales',
-  'tipo_contrato', 'jornada', 'ficha_pdf'
+  'tipo_contrato', 'jornada', 'ficha_pdf', 'nacionalidad'
 ];
 
 // Los 5 documentos de la ficha de alta. `key` es el identificador en la API/UI,
@@ -137,6 +138,7 @@ const ESTADOS = {
   RECHAZADO_BOLT: 'Rechazado en BOLT',   // BOLT lo rechazó (marcado a mano)
   ALTA: 'Alta procesada - habilitado',
   NO_ALTA: 'Alta no realizada',          // RRHH decide no continuar con el alta
+  RECHAZADO_RRHH: 'Rechazado RRHH',      // RRHH devuelve la ficha a Selección con motivo
   ASIGNADO: 'Asignado',
   NO_PRUEBA: 'No supera periodo de prueba',
   BAJA: 'Baja empresa',
@@ -243,7 +245,7 @@ async function guardarTicket(datos = {}) {
       num_hijos: '', num_seg_social: '', tipo_carnet: '', carnet_expedicion: '',
       carnet_caducidad: '', fecha_inicio: '',
       doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: '',
-      tipo_contrato: '', jornada: '', ficha_pdf: ''
+      tipo_contrato: '', jornada: '', ficha_pdf: '', nacionalidad: ''
     };
     porTel.set(tel, t);
   }
@@ -254,7 +256,7 @@ async function guardarTicket(datos = {}) {
    'vacante', 'link_bolt',
    'apellidos', 'codigo_postal', 'localidad', 'provincia', 'estado_civil',
    'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
-   'carnet_caducidad', 'fecha_inicio', 'tipo_contrato', 'jornada']
+   'carnet_caducidad', 'fecha_inicio', 'tipo_contrato', 'jornada', 'nacionalidad']
     .forEach(k => { if (datos[k] !== undefined) t[k] = String(datos[k]).trim(); });
   if (datos.experiencia !== undefined) t.experiencia = siNo(datos.experiencia);
   if (datos.carne_vtc !== undefined) t.carne_vtc = siNo(datos.carne_vtc);
@@ -414,15 +416,27 @@ async function procesarAltaRRHH(tel, datos = {}) {
   if (!t) throw new Error('No existe un ticket con ese teléfono');
   if (t.etapa !== ETAPAS.RRHH) throw new Error('Este ticket no está en RRHH');
 
-  // Nombre de Bolt (ID_BOLT) desde el padrón, vía driver_uuid.
-  let boltNombre = '';
-  if (t.driver_uuid) {
-    try {
-      const { db } = await leerPadron();
-      const d = db.get(t.driver_uuid);
-      if (d) boltNombre = (d.nombre || '').trim();
-    } catch (_) { /* si el padrón falla, se crea sin ID_BOLT */ }
+  // Nombre de Bolt (ID_BOLT) y ESTADO desde el padrón. El estado es un candado de
+  // seguridad: si el conductor no está ACTIVO en BOLT, RRHH NO debe darlo de alta
+  // en la Seguridad Social (empezaría a cobrar sin poder trabajar). Pasa sobre
+  // todo con reincorporaciones (venían de un proceso anterior y hay que activarlos
+  // a mano en BOLT).
+  let boltNombre = '', boltEstado = '';
+  try {
+    const { db } = await leerPadron();
+    let d = t.driver_uuid ? db.get(t.driver_uuid) : null;
+    if (!d) { try { d = await buscarPorTelefono(tel); } catch (_) {} }
+    if (d) {
+      boltNombre = (d.nombre || '').trim();
+      boltEstado = (d.state || d.estado || '').toString().toLowerCase();
+    }
+  } catch (_) { /* si el padrón falla, se sigue sin ID_BOLT ni comprobación */ }
+
+  if (boltEstado && boltEstado !== 'active') {
+    throw new Error(`El conductor aún no está ACTIVO en BOLT (estado: ${boltEstado}). `
+      + 'Actívalo en BOLT antes de procesar el alta — si no, cobraría sin poder trabajar.');
   }
+
   const nombre = boltNombre || t.nombre;
   if (!nombre) throw new Error('El conductor no tiene nombre para crear la ficha en la agenda');
 
@@ -479,6 +493,24 @@ async function noContinuarRRHH(tel, motivo) {
   return t;
 }
 
+/**
+ * RRHH devuelve la ficha a Selección por algún inconveniente: pasa a "Rechazado
+ * RRHH" (etapa Selección) con el motivo, para que Selección sepa por qué volvió y
+ * pueda corregir y reenviar.
+ */
+async function devolverRRHH(tel, motivo) {
+  tel = normalizarTel(tel);
+  const { porTel, filas } = await leerTickets();
+  const t = porTel.get(tel);
+  if (!t) throw new Error('No existe un ticket con ese teléfono');
+  t.estado = ESTADOS.RECHAZADO_RRHH;
+  t.etapa = ETAPAS.SELECCION;
+  t.motivo = (motivo || '').toString().trim() || 'Devuelto por RRHH';
+  t.notas = t.notas ? `${t.notas}\n[Devuelto por RRHH ${ahora()}] ${t.motivo}` : `[Devuelto por RRHH ${ahora()}] ${t.motivo}`;
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
 // Índice de columna 0-based → letra(s) de Sheets (0→A, 26→AA, 42→AQ…).
 function idxACol(n) {
   let s = '';
@@ -530,7 +562,7 @@ function parseDoc(valor) {
 module.exports = {
   leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
   conciliarTicketsBolt, marcarRechazadoBolt, devolverARelevamiento,
-  procesarAltaRRHH, noContinuarRRHH,
+  procesarAltaRRHH, noContinuarRRHH, devolverRRHH,
   guardarDocumento, guardarCelda, parseDoc, faltantesAlta,
   normalizarTel, telValido, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS, REQUERIDOS_ALTA
 };

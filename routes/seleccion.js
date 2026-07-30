@@ -51,14 +51,16 @@ router.get('/api/datos', async (req, res) => {
 
     const pendienteBolt = lista.filter(t => t.estado === ESTADOS.PENDIENTE_BOLT).length;
     const descartados = lista.filter(t => t.estado === ESTADOS.DESCARTADO).length;
+    // Fichas que RRHH devolvió a Selección, con su motivo, para revisarlas.
+    const rechazadosRRHH = lista.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
 
     res.json({
       status: 'ok',
-      porEtapa,
+      porEtapa, rechazadosRRHH,
       contadores: {
         funnel: enFunnel.length,
         porEtapa: ETAPAS_CANDIDATURA.reduce((a, e) => (a[e] = porEtapa[e].length, a), {}),
-        pendienteBolt, descartados
+        pendienteBolt, descartados, rechazadosRRHH: rechazadosRRHH.length
       }
     });
   } catch (error) {

@@ -48,6 +48,9 @@
       <button id="btn-alta" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold">
         <i class="fa-solid fa-user-plus mr-1"></i> Alta procesada → Tráfico
       </button>
+      <button id="btn-devolver" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-medium">
+        <i class="fa-solid fa-rotate-left mr-1"></i> Devolver a Selección
+      </button>
       <button id="btn-no" class="px-4 py-2.5 rounded-xl bg-telecab-red/10 border border-telecab-red/40 text-telecab-red hover:bg-telecab-red/20 transition font-medium ml-auto">
         <i class="fa-solid fa-ban mr-1"></i> No continuar
       </button>
@@ -55,10 +58,24 @@
     <p id="ficha-msg" class="text-xs mt-3 hidden"></p>
   </div>
 
+  <!-- Generar Excel de Altas (grupo de fichas + fecha) -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 flex flex-wrap items-end gap-3">
+    <div>
+      <label class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas</label>
+      <input id="fecha-altas" class="js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
+    </div>
+    <button id="btn-excel" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
+      <i class="fa-solid fa-file-excel mr-1"></i> Generar Excel de Altas
+    </button>
+    <label class="text-xs text-telecab-muted flex items-center gap-1.5 cursor-pointer"><input id="chk-todos" type="checkbox" class="accent-telecab-gold"> marcar todos</label>
+    <p id="excel-msg" class="text-xs w-full hidden"></p>
+  </div>
+
   <!-- Lista: por tramitar -->
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
     <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
       <i class="fa-solid fa-bell text-telecab-gold"></i> Nuevos en BOLT — pendientes de alta
+      <span class="text-telecab-muted font-normal text-xs">(marca las que van al Excel)</span>
     </h2>
     <div id="lista-tram" class="space-y-1.5"></div>
   </div>
@@ -116,17 +133,31 @@
     else msg(r.msg || 'Error', false);
   });
 
+  $('#btn-devolver').addEventListener('click', async () => {
+    if (!ticketActual) return;
+    const motivo = prompt('Motivo por el que se devuelve a Selección:');
+    if (motivo === null) return;
+    if (!motivo.trim()) { msg('Escribe el motivo de la devolución.', false); return; }
+    const r = await api('/rrhh/devolver', { tel: ticketActual.id, motivo });
+    if (r.status === 'ok') { msg('Ficha devuelta a Selección (Rechazado RRHH).', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
+    else msg(r.msg || 'No se pudo devolver', false);
+  });
+
   function fila(t) {
-    const el = document.createElement('button');
-    el.className = 'w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-border transition';
+    const el = document.createElement('div');
+    el.className = 'flex items-center gap-2 px-3 py-2.5 rounded-xl bg-telecab-dark/40 border border-transparent hover:border-telecab-border transition';
+    const nom = `${t.nombre || '(sin nombre)'}${t.apellidos ? ' ' + t.apellidos : ''}`;
     el.innerHTML =
-      `<span class="w-8 h-8 rounded-lg bg-telecab-green/15 text-telecab-green flex items-center justify-center shrink-0"><i class="fa-solid fa-user-check"></i></span>
-       <span class="min-w-0 flex-1">
-         <span class="block text-sm text-telecab-text truncate">${t.nombre || '<span class=\"text-telecab-muted\">(sin nombre)</span>'}</span>
-         <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}</span>
-       </span>
+      `<input type="checkbox" class="chk-alta accent-telecab-gold shrink-0 w-4 h-4" data-tel="${t.id}">
+       <button type="button" class="min-w-0 flex-1 text-left flex items-center gap-3">
+         <span class="w-8 h-8 rounded-lg bg-telecab-green/15 text-telecab-green flex items-center justify-center shrink-0"><i class="fa-solid fa-user-check"></i></span>
+         <span class="min-w-0 flex-1">
+           <span class="block text-sm text-telecab-text truncate">${nom}</span>
+           <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}</span>
+         </span>
+       </button>
        ${t.fecha_deteccion ? `<span class="text-[11px] text-telecab-muted whitespace-nowrap">${t.fecha_deteccion}</span>` : ''}`;
-    el.addEventListener('click', () => abrirFicha(t));
+    el.querySelector('button').addEventListener('click', () => abrirFicha(t));
     return el;
   }
 
@@ -141,6 +172,34 @@
     r.porTramitar.sort((a, b) => (a.fecha_deteccion || '').localeCompare(b.fecha_deteccion || ''));
     r.porTramitar.forEach(t => cont.appendChild(fila(t)));
   }
+
+  // ---- Excel de Altas ----
+  $('#chk-todos').addEventListener('change', e => {
+    document.querySelectorAll('.chk-alta').forEach(c => { c.checked = e.target.checked; });
+  });
+  $('#btn-excel').addEventListener('click', async () => {
+    const el = $('#excel-msg');
+    const aviso = (txt, cls) => { el.textContent = txt; el.className = 'text-xs w-full ' + cls; el.classList.remove('hidden'); };
+    const tels = [...document.querySelectorAll('.chk-alta:checked')].map(c => c.dataset.tel);
+    const fecha = $('#fecha-altas').value.trim();
+    if (!tels.length) return aviso('Marca al menos una ficha.', 'text-telecab-red');
+    if (!fecha) return aviso('Elige la fecha del grupo de altas.', 'text-telecab-red');
+    aviso('Generando el Excel…', 'text-telecab-muted');
+    try {
+      const r = await fetch('/rrhh/altas-excel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tels, fecha })
+      });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.msg || 'Error al generar'); }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'Altas ' + fecha.replace(/\//g, '-') + '.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      aviso('Excel generado (' + tels.length + ' fichas). Revisa tu carpeta de descargas.', 'text-telecab-green');
+    } catch (e) { aviso('No se pudo generar: ' + e.message, 'text-telecab-red'); }
+  });
 
   cargar();
 </script>
