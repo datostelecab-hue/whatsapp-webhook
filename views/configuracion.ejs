@@ -1,0 +1,64 @@
+<div class="p-4 lg:p-6 max-w-3xl mx-auto space-y-5">
+
+  <div>
+    <h1 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+      <i class="fa-solid fa-gear text-telecab-gold"></i> Configuración del sistema
+    </h1>
+    <p class="text-xs text-telecab-muted mt-0.5">Preferencias de la plataforma. Por ahora se guardan en este dispositivo.</p>
+  </div>
+
+  <!-- Tema -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5">
+    <h2 class="text-sm font-semibold text-telecab-text mb-1">Apariencia</h2>
+    <p class="text-xs text-telecab-muted mb-4">Elige el tema. El automático sigue la configuración de tu sistema.</p>
+    <div class="grid grid-cols-3 gap-3">
+      <button data-tema="dark" class="tema flex flex-col items-center gap-2 px-3 py-4 rounded-xl border border-telecab-border hover:border-telecab-gold/50 transition text-telecab-muted">
+        <i class="fa-solid fa-moon text-xl"></i><span class="text-sm">Oscuro</span>
+      </button>
+      <button data-tema="light" class="tema flex flex-col items-center gap-2 px-3 py-4 rounded-xl border border-telecab-border hover:border-telecab-gold/50 transition text-telecab-muted">
+        <i class="fa-solid fa-sun text-xl"></i><span class="text-sm">Claro</span>
+      </button>
+      <button data-tema="auto" class="tema flex flex-col items-center gap-2 px-3 py-4 rounded-xl border border-telecab-border hover:border-telecab-gold/50 transition text-telecab-muted">
+        <i class="fa-solid fa-circle-half-stroke text-xl"></i><span class="text-sm">Automático</span>
+      </button>
+    </div>
+    <p id="tema-msg" class="text-xs text-telecab-muted mt-3"></p>
+  </div>
+
+</div>
+
+<script>
+  const KEY = 'telecab-tema';
+  const resolver = pref => pref === 'auto'
+    ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : (pref === 'light' ? 'light' : 'dark');
+  const NOMBRE = { dark: 'Oscuro', light: 'Claro', auto: 'Automático' };
+
+  function aplicar(pref) { document.documentElement.setAttribute('data-theme', resolver(pref)); }
+  function pintar(sel) {
+    document.querySelectorAll('.tema').forEach(b => {
+      const on = b.dataset.tema === sel;
+      b.classList.toggle('border-telecab-gold', on);
+      b.classList.toggle('bg-telecab-gold/10', on);
+      b.classList.toggle('text-telecab-gold', on);
+      b.classList.toggle('text-telecab-muted', !on);
+    });
+    const el = document.getElementById('tema-msg');
+    el.textContent = sel === 'auto'
+      ? `Automático — ahora mismo se ve ${resolver('auto') === 'light' ? 'claro' : 'oscuro'}.`
+      : `Tema ${NOMBRE[sel].toLowerCase()} activo.`;
+  }
+
+  let actual = localStorage.getItem(KEY) || 'dark';
+  document.querySelectorAll('.tema').forEach(b => b.addEventListener('click', () => {
+    actual = b.dataset.tema;
+    localStorage.setItem(KEY, actual);
+    aplicar(actual); pintar(actual);
+  }));
+  pintar(actual);
+
+  // Si está en "automático", seguir al sistema en vivo.
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+    if ((localStorage.getItem(KEY) || 'dark') === 'auto') { aplicar('auto'); pintar('auto'); }
+  });
+</script>

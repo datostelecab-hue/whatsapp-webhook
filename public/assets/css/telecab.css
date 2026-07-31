@@ -1,0 +1,114 @@
+/* ============================================================
+   TELECAB — design tokens globales + base
+   ============================================================
+   Los colores se definen como CANALES RGB ("r g b") para que Tailwind pueda
+   aplicarles opacidad (bg-telecab-gold/15, border-telecab-green/40, …) vía
+   rgb(var(--tc-*) / <alpha-value>). Cambiar de tema = cambiar estas variables;
+   NINGUNA vista necesita colores propios. */
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --tc-dark: 14 17 22;
+  --tc-card: 23 27 34;
+  --tc-card2: 30 35 44;
+  --tc-border: 40 46 57;
+  --tc-gold: 232 184 75;
+  --tc-gold-soft: 243 208 114;
+  --tc-gold-deep: 201 150 47;
+  --tc-red: 229 72 77;
+  --tc-red-hover: 201 59 64;
+  --tc-green: 62 207 142;
+  --tc-text: 230 232 236;
+  --tc-muted: 139 147 161;
+  --tc-scroll: 46 53 66;
+  --tc-scroll-hover: 58 66 80;
+  --tc-halo1: 232 184 75;   /* dorado */
+  --tc-halo2: 62 207 142;   /* verde  */
+  --tc-halo1-a: 0.06;
+  --tc-halo2-a: 0.04;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --tc-dark: 244 246 249;   /* fondo de página / campos hundidos */
+  --tc-card: 255 255 255;
+  --tc-card2: 239 242 246;
+  --tc-border: 223 228 235;
+  --tc-gold: 183 130 24;    /* dorado más profundo: legible sobre claro */
+  --tc-gold-soft: 210 165 80;
+  --tc-gold-deep: 150 106 18;
+  --tc-red: 214 55 62;
+  --tc-red-hover: 185 42 48;
+  --tc-green: 20 155 110;
+  --tc-text: 24 31 44;
+  --tc-muted: 96 112 136;
+  --tc-scroll: 203 209 218;
+  --tc-scroll-hover: 176 184 196;
+  --tc-halo1: 183 130 24;
+  --tc-halo2: 20 155 110;
+  --tc-halo1-a: 0.05;
+  --tc-halo2-a: 0.035;
+}
+
+/* ===== Base ===== */
+body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+
+.app-bg {
+  background:
+    radial-gradient(60rem 40rem at -10% -10%, rgb(var(--tc-halo1) / var(--tc-halo1-a)), transparent 60%),
+    radial-gradient(50rem 40rem at 110% 0%, rgb(var(--tc-halo2) / var(--tc-halo2-a)), transparent 55%),
+    rgb(var(--tc-dark));
+}
+
+.brand-ring {
+  background: conic-gradient(from 180deg,
+    rgb(var(--tc-gold-deep)), rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)),
+    rgb(var(--tc-gold)), rgb(var(--tc-gold-deep)));
+  padding: 2px; border-radius: 9999px;
+  box-shadow: 0 0 24px -6px rgb(var(--tc-gold) / 0.5);
+}
+.gold-text {
+  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* Barra dorada del ítem activo del menú */
+.nav-item { position: relative; }
+.nav-item.activo::before {
+  content: ''; position: absolute; left: 0; top: 20%; bottom: 20%;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)));
+}
+
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--tc-scroll)); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--tc-scroll-hover)); }
+
+@keyframes tc-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+main > * { animation: tc-fade-in .3s ease; }
+@media (prefers-reduced-motion: reduce) { main > * { animation: none; } }
+
+/* ============================================================
+   Componentes compartidos (sustituyen los <style> por vista)
+   ============================================================ */
+
+/* Campo de formulario estándar */
+.inp {
+  width: 100%;
+  background: rgb(var(--tc-dark));
+  border: 1px solid rgb(var(--tc-border));
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  color: rgb(var(--tc-text));
+  transition: border-color .15s;
+}
+.inp:focus { outline: none; border-color: rgb(var(--tc-gold)); }
+.inp::placeholder { color: rgb(var(--tc-muted)); }
+
+/* Solo para lectores de pantalla */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

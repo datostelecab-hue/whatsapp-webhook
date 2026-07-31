@@ -6,6 +6,20 @@
   <title>Telecab · <%= titulo || 'Gestión' %></title>
   <link rel="icon" type="image/png" href="/assets/logo-64.png">
 
+  <!-- Tema (oscuro/claro/automático) ANTES de pintar, para que no haya parpadeo. -->
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem('telecab-tema') || 'dark';
+        var tema = pref === 'auto'
+          ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+          : (pref === 'light' ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', tema);
+      } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+    })();
+  </script>
+  <link rel="stylesheet" href="/assets/css/telecab.css">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,15 +32,22 @@
         extend: {
           fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
           colors: {
+            // Apuntan a los tokens CSS (public/assets/css/telecab.css). El
+            // <alpha-value> conserva los modificadores de opacidad (bg-…/15,
+            // border-…/40). Cambiar de tema solo cambia las variables.
             'telecab': {
-              // Superficies: negro cálido, como el fondo del logo
-              'dark': '#0e1116', 'card': '#171b22', 'card2': '#1e232c',
-              'border': '#282e39',
-              // Acento de marca: el dorado del logo
-              'gold': '#e8b84b', 'gold-soft': '#f3d072', 'gold-deep': '#c9962f',
-              // Rojo reservado para acciones destructivas / peligro
-              'red': '#e5484d', 'red-hover': '#c93b40',
-              'green': '#3ecf8e', 'text': '#e6e8ec', 'muted': '#8b93a1'
+              'dark': 'rgb(var(--tc-dark) / <alpha-value>)',
+              'card': 'rgb(var(--tc-card) / <alpha-value>)',
+              'card2': 'rgb(var(--tc-card2) / <alpha-value>)',
+              'border': 'rgb(var(--tc-border) / <alpha-value>)',
+              'gold': 'rgb(var(--tc-gold) / <alpha-value>)',
+              'gold-soft': 'rgb(var(--tc-gold-soft) / <alpha-value>)',
+              'gold-deep': 'rgb(var(--tc-gold-deep) / <alpha-value>)',
+              'red': 'rgb(var(--tc-red) / <alpha-value>)',
+              'red-hover': 'rgb(var(--tc-red-hover) / <alpha-value>)',
+              'green': 'rgb(var(--tc-green) / <alpha-value>)',
+              'text': 'rgb(var(--tc-text) / <alpha-value>)',
+              'muted': 'rgb(var(--tc-muted) / <alpha-value>)'
             }
           },
           boxShadow: {
@@ -38,45 +59,6 @@
     }
   </script>
 
-  <style>
-    :root { color-scheme: dark; }
-    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-
-    /* Fondo con un halo dorado muy tenue arriba a la izquierda */
-    .app-bg {
-      background:
-        radial-gradient(60rem 40rem at -10% -10%, rgba(232,184,75,.06), transparent 60%),
-        radial-gradient(50rem 40rem at 110% 0%, rgba(62,207,142,.04), transparent 55%),
-        #0e1116;
-    }
-
-    /* Marca del sidebar: anillo dorado con brillo suave */
-    .brand-ring {
-      background: conic-gradient(from 180deg, #c9962f, #f3d072, #c9962f, #e8b84b, #c9962f);
-      padding: 2px; border-radius: 9999px;
-      box-shadow: 0 0 24px -6px rgba(232,184,75,.5);
-    }
-    .gold-text {
-      background: linear-gradient(135deg, #f3d072, #c9962f);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-    }
-
-    /* Barra dorada del ítem activo del menú */
-    .nav-item { position: relative; }
-    .nav-item.activo::before {
-      content: ''; position: absolute; left: 0; top: 20%; bottom: 20%;
-      width: 3px; border-radius: 0 3px 3px 0;
-      background: linear-gradient(180deg, #f3d072, #c9962f);
-    }
-
-    ::-webkit-scrollbar { width: 7px; height: 7px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2e3542; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #3a4250; }
-
-    @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-    main > * { animation: fade-in .3s ease; }
-  </style>
 </head>
 <body class="app-bg text-telecab-text min-h-screen">
 
@@ -214,6 +196,12 @@
                 <%= seccionActiva === 'bitacora' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-book w-5 text-center <%= seccionActiva === 'bitacora' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Bitácora</span>
+      </a>
+
+      <a href="/configuracion" class="nav-item <%= seccionActiva === 'configuracion' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'configuracion' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-gear w-5 text-center <%= seccionActiva === 'configuracion' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Configuración</span>
       </a>
 
       <% grupos.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
