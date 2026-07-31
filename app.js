@@ -49,7 +49,6 @@ process.on('uncaughtException', (error) => {
 // Importar rutas
 const botPuertas = require('./routes/botPuertas');
 const boltHoras = require('./routes/boltHoras');
-const dashboardRoutes = require('./routes/dashboard');
 const resumenRoutes = require('./routes/resumen');
 const planificadorRoutes = require('./routes/planificador');
 const agendaRoutes = require('./routes/agenda');
@@ -83,7 +82,7 @@ const { procesarYUnificar } = require('./services/boltHorasCore');
 app.use(sesion.cargarSesion);
 
 // ============================================================
-// VERIFICACIÓN DEL WEBHOOK (Meta) + REDIRECCIÓN AL VISOR
+// VERIFICACIÓN DEL WEBHOOK (Meta) + ENTRADA A LA APP
 // ============================================================
 app.get('/', (req, res) => {
   const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': token } = req.query;
@@ -92,9 +91,9 @@ app.get('/', (req, res) => {
     console.log('WEBHOOK VERIFIED');
     return res.status(200).send(challenge);
   }
-  
-  // Si no es verificación de Meta, redirigir al visor
-  res.redirect('/dashboard/visor');
+
+  // Si no es verificación de Meta, a la app: con sesión al inicio, si no al login.
+  return res.redirect(req.usuario ? '/pendientes' : '/login');
 });
 
 // ============================================================
@@ -113,7 +112,6 @@ app.use(sesion.controlAcceso);
 app.use('/usuarios', usuariosRoutes);
 
 app.use('/horas', boltHoras);
-app.use('/dashboard', dashboardRoutes);
 app.use('/resumen', resumenRoutes);
 app.use('/planificador', planificadorRoutes);
 app.use('/agenda', agendaRoutes);

@@ -12,9 +12,9 @@ router.get('/api/datos', async (req, res) => {
     const { lista } = await usuarios.leerUsuarios();
     // Nunca se devuelve el hash.
     const limpia = lista.map(u => ({
-      email: u.email, nombre: u.nombre, rol: u.rol, estado: u.estado,
-      debe_cambiar: u.debe_cambiar === 'si', creado_por: u.creado_por,
-      fecha_creacion: u.fecha_creacion, ultimo_acceso: u.ultimo_acceso
+      email: u.email, nombre: u.nombre, apellidos: u.apellidos, telefono: u.telefono,
+      rol: u.rol, estado: u.estado, debe_cambiar: u.debe_cambiar === 'si',
+      creado_por: u.creado_por, fecha_creacion: u.fecha_creacion, ultimo_acceso: u.ultimo_acceso
     }));
     res.json({ status: 'ok', usuarios: limpia, roles: usuarios.ROLES, yo: req.usuario.email });
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
@@ -24,8 +24,10 @@ router.get('/api/datos', async (req, res) => {
 router.post('/crear', async (req, res) => {
   try {
     const b = req.body || {};
+    if (!String(b.apellidos || '').trim()) throw new Error('Faltan los apellidos');
+    if (!String(b.telefono || '').trim()) throw new Error('Falta el teléfono');
     const { usuario, passwordProvisional } = await usuarios.crearUsuario({
-      email: b.email, nombre: b.nombre, rol: b.rol, creado_por: req.usuario.email
+      email: b.email, nombre: b.nombre, apellidos: b.apellidos, telefono: b.telefono, rol: b.rol, creado_por: req.usuario.email
     });
     const r = await enviarCorreo({
       to: usuario.email, subject: 'Acceso a la plataforma Telecab',

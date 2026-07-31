@@ -7,6 +7,22 @@
     <p class="text-xs text-telecab-muted mt-0.5">Preferencias de la plataforma. Por ahora se guardan en este dispositivo.</p>
   </div>
 
+  <!-- Mi perfil (todos): nombre, apellidos y teléfono = tu firma en el sistema -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5" id="card-perfil">
+    <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-id-card text-telecab-gold"></i> Mi perfil</h2>
+    <p class="text-xs text-telecab-muted mb-4">Tu nombre, apellidos y teléfono se usan como <b>firma</b> en las acciones que registras. Tu correo (<b><%= (typeof usuario !== 'undefined' && usuario && usuario.email) || '' %></b>) y tu rol los gestiona el administrador.</p>
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div><label class="block text-xs text-telecab-muted mb-1">Nombre</label><input id="p-nombre" class="inp" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) || '' %>"></div>
+      <div><label class="block text-xs text-telecab-muted mb-1">Apellidos</label><input id="p-apellidos" class="inp" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.apellidos) || '' %>"></div>
+      <div><label class="block text-xs text-telecab-muted mb-1">Teléfono</label><input id="p-telefono" class="inp" inputmode="tel" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.telefono) || '' %>"></div>
+    </div>
+    <div class="flex items-center gap-3 mt-3">
+      <button id="p-guardar" class="px-4 py-2 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold text-sm"><i class="fa-solid fa-floppy-disk mr-1"></i> Guardar</button>
+      <a href="/cambiar-password" class="text-xs text-telecab-muted hover:text-telecab-gold transition">Cambiar mi contraseña</a>
+      <span id="p-msg" class="text-xs ml-auto hidden"></span>
+    </div>
+  </div>
+
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5">
     <h2 class="text-sm font-semibold text-telecab-text mb-1">Apariencia</h2>
     <p class="text-xs text-telecab-muted mb-4">Elige un tema. El automático sigue la configuración de tu sistema.</p>
@@ -20,10 +36,12 @@
     <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-users-gear text-telecab-gold"></i> Usuarios</h2>
     <p class="text-xs text-telecab-muted mb-4">Crea accesos y asigna roles. Al crear un usuario se le envía una contraseña provisional a su correo; en su primer acceso elige la suya.</p>
 
-    <div class="grid sm:grid-cols-4 gap-2">
-      <input id="u-nombre" class="inp sm:col-span-1" placeholder="Nombre">
-      <input id="u-email" type="email" class="inp sm:col-span-2" placeholder="correo@telecab.es" autocomplete="off">
-      <select id="u-rol" class="inp sm:col-span-1">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <input id="u-nombre" class="inp" placeholder="Nombre">
+      <input id="u-apellidos" class="inp" placeholder="Apellidos">
+      <input id="u-telefono" class="inp" placeholder="Teléfono" inputmode="tel">
+      <input id="u-email" type="email" class="inp lg:col-span-2" placeholder="correo@telecab.es" autocomplete="off">
+      <select id="u-rol" class="inp">
         <option value="oficina">Oficina</option>
         <option value="trafico">Tráfico</option>
         <option value="superadmin">Superadmin</option>
@@ -44,7 +62,7 @@
   <% if (typeof rol !== 'undefined' && rol === 'superadmin') { %>
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5" id="card-correo">
     <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-envelope-circle-check text-telecab-gold"></i> Correo para procesos</h2>
-    <p class="text-xs text-telecab-muted mb-4">Cuenta desde la que la plataforma envía los correos (accesos, avisos, auditoría). La contraseña se guarda <b>cifrada</b>. Para telecab.es (DonDominio): servidor <b>smtp.dondominio.com</b>, puerto <b>587</b>, usuario = tu correo completo.</p>
+    <p class="text-xs text-telecab-muted mb-4">Cuenta desde la que la plataforma envía los correos (accesos, avisos, auditoría). La contraseña se guarda <b>cifrada</b>. Para telecab.es (DonDominio): servidor <b>smtp.dondominio.com</b>, puerto <b>587</b>, usuario = tu correo completo. El <b>«De:» debe ser una dirección @telecab.es</b> (puedes enviar a cualquier destinatario, pero no <i>como</i> un gmail ajeno).</p>
     <div class="grid sm:grid-cols-2 gap-3">
       <div>
         <label class="block text-xs text-telecab-muted mb-1">Servidor SMTP</label>
@@ -59,7 +77,7 @@
         <input id="c-user" class="inp" placeholder="datos@telecab.es" autocomplete="off">
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Remitente «De:»</label>
+        <label class="block text-xs text-telecab-muted mb-1">Remitente «De:» <span class="text-telecab-muted/70">(@telecab.es)</span></label>
         <input id="c-from" class="inp" placeholder="noreply@telecab.es">
       </div>
       <div class="sm:col-span-2">
@@ -184,8 +202,8 @@
     const yo = u.email === YO;
     el.innerHTML =
       `<span class="min-w-0 flex-1">
-         <span class="block text-sm text-telecab-text truncate">${esc(u.nombre)} ${yo ? '<span class="text-[10px] text-telecab-gold">(tú)</span>' : ''} ${u.debe_cambiar ? '<span class="text-[10px] text-telecab-muted">· provisional</span>' : ''}</span>
-         <span class="block text-[11px] text-telecab-muted font-mono truncate">${esc(u.email)}${u.ultimo_acceso ? ' · último: ' + esc(u.ultimo_acceso) : ' · nunca ha entrado'}</span>
+         <span class="block text-sm text-telecab-text truncate">${esc(u.nombre)} ${esc(u.apellidos || '')} ${yo ? '<span class="text-[10px] text-telecab-gold">(tú)</span>' : ''} ${u.debe_cambiar ? '<span class="text-[10px] text-telecab-muted">· provisional</span>' : ''}</span>
+         <span class="block text-[11px] text-telecab-muted font-mono truncate">${esc(u.email)}${u.telefono ? ' · ' + esc(u.telefono) : ''}${u.ultimo_acceso ? ' · último: ' + esc(u.ultimo_acceso) : ' · nunca ha entrado'}</span>
        </span>
        <select class="u-rol inp !w-32 text-xs !py-1" data-email="${esc(u.email)}">
          ${['superadmin', 'oficina', 'trafico'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROLN[r]}</option>`).join('')}
@@ -207,13 +225,14 @@
 
   document.getElementById('u-crear').addEventListener('click', async () => {
     const nombre = document.getElementById('u-nombre').value.trim();
+    const apellidos = document.getElementById('u-apellidos').value.trim();
+    const telefono = document.getElementById('u-telefono').value.trim();
     const email = document.getElementById('u-email').value.trim();
     const rol = document.getElementById('u-rol').value;
-    if (!nombre || !email) return aviso('Pon nombre y correo.', 'text-telecab-red');
-    const r = await api('/usuarios/crear', { nombre, email, rol });
+    if (!nombre || !apellidos || !telefono || !email) return aviso('Completa nombre, apellidos, teléfono y correo.', 'text-telecab-red');
+    const r = await api('/usuarios/crear', { nombre, apellidos, telefono, email, rol });
     if (r.status !== 'ok') return aviso(r.msg || 'No se pudo crear', 'text-telecab-red');
-    document.getElementById('u-nombre').value = '';
-    document.getElementById('u-email').value = '';
+    ['u-nombre', 'u-apellidos', 'u-telefono', 'u-email'].forEach(id => { document.getElementById(id).value = ''; });
     if (r.correoEnviado) aviso('Usuario creado. Se le envió la contraseña provisional por correo.', 'text-telecab-green');
     else aviso('Usuario creado. El correo aún no está configurado → contraseña provisional: ' + r.passwordProvisional + ' (pásasela tú).', 'text-telecab-gold');
     cargar();
@@ -285,5 +304,25 @@
     else aviso('No se pudo enviar: ' + (r.msg || 'revisa los datos'), 'text-telecab-red');
   });
   cargar();
+})();
+</script>
+
+<!-- Mi perfil: cada usuario completa su nombre/apellidos/teléfono (su firma). -->
+<script>
+(function () {
+  const card = document.getElementById('card-perfil');
+  if (!card) return;
+  const $ = id => document.getElementById(id);
+  const msg = $('p-msg');
+  const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs ml-auto ' + cls; msg.classList.remove('hidden'); };
+  $('p-guardar').addEventListener('click', async () => {
+    const body = { nombre: $('p-nombre').value.trim(), apellidos: $('p-apellidos').value.trim(), telefono: $('p-telefono').value.trim() };
+    if (!body.nombre) return aviso('Pon tu nombre.', 'text-telecab-red');
+    try {
+      const r = await (await fetch('/configuracion/mi-perfil', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+      if (r.status !== 'ok') return aviso(r.msg || 'No se pudo guardar', 'text-telecab-red');
+      aviso('Guardado.', 'text-telecab-green');
+    } catch (_) { aviso('No se pudo guardar', 'text-telecab-red'); }
+  });
 })();
 </script>

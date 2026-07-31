@@ -33,11 +33,14 @@ const COL = {
   token_expira: 7,   // epoch ms hasta cuando vale el token
   creado_por: 8,     // email del superadmin que lo dio de alta
   fecha_creacion: 9,
-  ultimo_acceso: 10
+  ultimo_acceso: 10,
+  // Añadidas AL FINAL (para no desalinear las filas ya existentes en la hoja):
+  apellidos: 11,     // para la "firma" (atribución de acciones)
+  telefono: 12
 };
-const N_COLS = 11;
+const N_COLS = 13;
 const CABECERA = ['email', 'nombre', 'rol', 'hash', 'estado', 'debe_cambiar',
-  'token_reset', 'token_expira', 'creado_por', 'fecha_creacion', 'ultimo_acceso'];
+  'token_reset', 'token_expira', 'creado_por', 'fecha_creacion', 'ultimo_acceso', 'apellidos', 'telefono'];
 
 function ahora() {
   const p = new Intl.DateTimeFormat('en-GB', {
@@ -89,7 +92,7 @@ function objetoAFila(o) {
 
 async function leerUsuarios() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:K`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:M`);
   const lista = [];
   for (let i = 1; i < filas.length; i++) {
     const email = normalizarEmail(filas[i][COL.email]);
@@ -112,7 +115,7 @@ async function buscarUsuario(email) {
 }
 
 /** Da de alta un usuario y devuelve { usuario, passwordProvisional } (para el correo). */
-async function crearUsuario({ email, nombre, rol, creado_por }) {
+async function crearUsuario({ email, nombre, apellidos, telefono, rol, creado_por }) {
   const e = normalizarEmail(email);
   if (!esEmail(e)) throw new Error('Email no válido');
   if (!ROLES.includes(rol)) throw new Error('Rol no válido');
@@ -123,7 +126,8 @@ async function crearUsuario({ email, nombre, rol, creado_por }) {
 
   const provisional = generarPasswordProvisional();
   const usuario = {
-    email: e, nombre: String(nombre).trim(), rol,
+    email: e, nombre: String(nombre).trim(),
+    apellidos: String(apellidos || '').trim(), telefono: String(telefono || '').trim(), rol,
     hash: hashPassword(provisional),
     estado: ESTADOS_U.PROVISIONAL, debe_cambiar: 'si',
     token_reset: '', token_expira: '',

@@ -63,7 +63,7 @@ const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept')
 /** Emite la cookie de sesión para un usuario. */
 function ponerSesion(res, u) {
   const payload = {
-    email: u.email, nombre: u.nombre, rol: u.rol,
+    email: u.email, nombre: u.nombre, apellidos: u.apellidos || '', telefono: u.telefono || '', rol: u.rol,
     debe_cambiar: u.debe_cambiar === 'si' || u.debe_cambiar === true,
     iat: Date.now(), exp: Date.now() + DURACION_MS
   };

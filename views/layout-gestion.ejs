@@ -269,7 +269,7 @@
         <!-- Usuario en sesión + salir -->
         <div class="flex items-center gap-2 pl-2 ml-1 border-l border-telecab-border">
           <div class="hidden sm:block text-right leading-tight">
-            <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) || '' %></span>
+            <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '' %></span>
             <span class="block text-[10px] uppercase tracking-wide text-telecab-gold"><%= (typeof usuario !== 'undefined' && usuario && (ROL_NOMBRE[usuario.rol] || usuario.rol)) || '' %></span>
           </div>
           <a href="/logout" title="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
