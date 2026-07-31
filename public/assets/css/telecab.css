@@ -51,6 +51,93 @@
   --tc-halo2-a: 0.035;
 }
 
+/* ===== Temas oscuros (heredan text/muted/red/green del oscuro; cambian superficie + acento) ===== */
+:root[data-theme='azul'] {
+  --tc-dark: 11 15 24; --tc-card: 19 25 39; --tc-card2: 27 35 53; --tc-border: 41 52 74;
+  --tc-gold: 96 165 250; --tc-gold-soft: 147 197 253; --tc-gold-deep: 59 130 220;
+  --tc-halo1: 96 165 250; --tc-halo2: 62 207 142;
+}
+:root[data-theme='verde'] {
+  --tc-dark: 10 20 16; --tc-card: 16 29 24; --tc-card2: 24 40 33; --tc-border: 38 58 49;
+  --tc-gold: 52 211 153; --tc-gold-soft: 110 231 183; --tc-gold-deep: 16 160 110;
+  --tc-halo1: 52 211 153; --tc-halo2: 96 165 250;
+}
+:root[data-theme='purpura'] {
+  --tc-dark: 17 13 25; --tc-card: 26 20 37; --tc-card2: 35 28 51; --tc-border: 52 42 74;
+  --tc-gold: 167 139 250; --tc-gold-soft: 196 181 253; --tc-gold-deep: 124 92 220;
+  --tc-halo1: 167 139 250; --tc-halo2: 244 114 182;
+}
+:root[data-theme='rosa'] {
+  --tc-dark: 22 12 18; --tc-card: 33 20 28; --tc-card2: 46 29 39; --tc-border: 66 43 57;
+  --tc-gold: 244 114 182; --tc-gold-soft: 249 168 212; --tc-gold-deep: 214 60 145;
+  --tc-halo1: 244 114 182; --tc-halo2: 167 139 250;
+}
+:root[data-theme='cian'] {
+  --tc-dark: 9 20 22; --tc-card: 15 30 33; --tc-card2: 22 43 47; --tc-border: 34 62 68;
+  --tc-gold: 45 212 205; --tc-gold-soft: 103 232 226; --tc-gold-deep: 20 165 160;
+  --tc-halo1: 45 212 205; --tc-halo2: 62 207 142;
+}
+:root[data-theme='naranja'] {
+  --tc-dark: 23 16 10; --tc-card: 34 24 16; --tc-card2: 47 34 23; --tc-border: 68 50 35;
+  --tc-gold: 251 146 60; --tc-gold-soft: 253 186 116; --tc-gold-deep: 220 110 30;
+  --tc-halo1: 251 146 60; --tc-halo2: 229 72 77;
+}
+:root[data-theme='contraste'] {
+  color-scheme: dark;
+  --tc-dark: 0 0 0; --tc-card: 18 18 18; --tc-card2: 32 32 32; --tc-border: 74 74 74;
+  --tc-text: 255 255 255; --tc-muted: 201 201 201;
+  --tc-gold: 255 214 10; --tc-gold-soft: 255 229 92; --tc-gold-deep: 224 179 0;
+  --tc-green: 74 222 128; --tc-red: 248 113 113;
+  --tc-halo1: 255 214 10; --tc-halo2: 255 214 10; --tc-halo1-a: 0; --tc-halo2-a: 0;
+}
+
+/* ===== Temas claros con acento de color (superficie clara + texto oscuro + acento profundo, legible sobre blanco) ===== */
+:root[data-theme='claro-azul'] {
+  color-scheme: light;
+  --tc-dark: 242 246 251; --tc-card: 255 255 255; --tc-card2: 235 241 249; --tc-border: 217 226 238;
+  --tc-gold: 37 99 235; --tc-gold-soft: 96 145 240; --tc-gold-deep: 29 78 200;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-text: 22 31 46; --tc-muted: 90 106 130;
+  --tc-scroll: 203 209 218; --tc-scroll-hover: 176 184 196;
+  --tc-halo1: 37 99 235; --tc-halo2: 20 155 110; --tc-halo1-a: 0.05; --tc-halo2-a: 0.035;
+}
+:root[data-theme='claro-verde'] {
+  color-scheme: light;
+  --tc-dark: 243 248 244; --tc-card: 255 255 255; --tc-card2: 236 244 238; --tc-border: 216 231 221;
+  --tc-gold: 21 128 61; --tc-gold-soft: 34 160 82; --tc-gold-deep: 15 100 48;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 21 128 61;
+  --tc-text: 24 34 28; --tc-muted: 92 112 100;
+  --tc-scroll: 203 214 206; --tc-scroll-hover: 176 190 180;
+  --tc-halo1: 21 128 61; --tc-halo2: 37 99 235; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
+}
+:root[data-theme='claro-rosa'] {
+  color-scheme: light;
+  --tc-dark: 251 244 248; --tc-card: 255 255 255; --tc-card2: 249 236 242; --tc-border: 238 217 227;
+  --tc-gold: 200 29 104; --tc-gold-soft: 224 74 142; --tc-gold-deep: 165 22 85;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-text: 40 26 34; --tc-muted: 122 96 108;
+  --tc-scroll: 214 203 209; --tc-scroll-hover: 190 176 183;
+  --tc-halo1: 200 29 104; --tc-halo2: 124 58 237; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
+}
+:root[data-theme='claro-purpura'] {
+  color-scheme: light;
+  --tc-dark: 247 245 252; --tc-card: 255 255 255; --tc-card2: 240 236 249; --tc-border: 226 219 240;
+  --tc-gold: 124 58 237; --tc-gold-soft: 155 100 245; --tc-gold-deep: 100 45 200;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-text: 30 26 44; --tc-muted: 104 96 128;
+  --tc-scroll: 209 203 218; --tc-scroll-hover: 184 176 196;
+  --tc-halo1: 124 58 237; --tc-halo2: 200 29 104; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
+}
+:root[data-theme='claro-naranja'] {
+  color-scheme: light;
+  --tc-dark: 251 246 241; --tc-card: 255 255 255; --tc-card2: 249 240 233; --tc-border: 238 226 214;
+  --tc-gold: 194 65 12; --tc-gold-soft: 224 100 40; --tc-gold-deep: 160 52 8;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-text: 40 30 22; --tc-muted: 120 104 92;
+  --tc-scroll: 214 206 199; --tc-scroll-hover: 190 180 172;
+  --tc-halo1: 194 65 12; --tc-halo2: 20 155 110; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
+}
+
 /* ===== Base ===== */
 body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 
@@ -112,3 +199,20 @@ main > * { animation: tc-fade-in .3s ease; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
+/* Colores semánticos de ausencia (mismos en ambos temas; leen bien sobre claro y oscuro) */
+:root {
+  --tc-vac: 59 130 246;      /* azul  · vacaciones */
+  --tc-med: 245 158 11;      /* ámbar · baja médica */
+  --tc-permiso: 168 85 247;  /* morado · permiso */
+}
+
+/* Selector de fecha (js-fecha) */
+.fp-pop { animation: fpIn .12s cubic-bezier(.2, .8, .2, 1); }
+@keyframes fpIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+input.js-fecha { cursor: pointer; }
+input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
+
+/* Zona de subida de documentos (dropzone de Selección) */
+.dz.dz-ok { border-style: solid; border-color: rgb(var(--tc-green) / .5); }
+.dz:hover { border-color: rgb(var(--tc-gold) / .5); }

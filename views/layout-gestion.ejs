@@ -13,7 +13,7 @@
         var pref = localStorage.getItem('telecab-tema') || 'dark';
         var tema = pref === 'auto'
           ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-          : (pref === 'light' ? 'light' : 'dark');
+          : pref;
         document.documentElement.setAttribute('data-theme', tema);
       } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
     })();
@@ -52,7 +52,7 @@
           },
           boxShadow: {
             'soft': '0 1px 3px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5)',
-            'gold': '0 4px 20px -6px rgba(232,184,75,.35)'
+            'gold': '0 4px 20px -6px rgb(var(--tc-gold) / .35)'
           }
         }
       }
@@ -198,12 +198,6 @@
         <span class="text-sm flex-1">Bitácora</span>
       </a>
 
-      <a href="/configuracion" class="nav-item <%= seccionActiva === 'configuracion' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
-                <%= seccionActiva === 'configuracion' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
-        <i class="fa-solid fa-gear w-5 text-center <%= seccionActiva === 'configuracion' ? '' : 'text-telecab-muted' %>"></i>
-        <span class="text-sm flex-1">Configuración</span>
-      </a>
-
       <% grupos.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
         <div class="nav-grupo" data-rol="<%= g.rol || '' %>">
           <button type="button" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
@@ -227,9 +221,10 @@
 
     <!-- Pie -->
     <div class="p-3 border-t border-telecab-border/70">
-      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2 rounded-xl text-telecab-muted hover:bg-telecab-card2 transition text-sm">
-        <i class="fa-solid fa-chart-line w-5 text-center"></i>
-        <span>Horas de Bolt</span>
+      <a href="/configuracion" class="nav-item <%= seccionActiva === 'configuracion' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm
+                <%= seccionActiva === 'configuracion' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-muted hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-gear w-5 text-center"></i>
+        <span>Configuración</span>
       </a>
       <p class="px-3 pt-3 text-[11px] text-telecab-muted">© <%= new Date().getFullYear() %> Telecab</p>
     </div>
@@ -383,12 +378,6 @@
 </script>
 
 <!-- ══════════ Selector de fechas (calendario propio, a juego con el tema) ══════════ -->
-<style>
-  .fp-pop { animation: fpIn .12s cubic-bezier(.2,.8,.2,1); }
-  @keyframes fpIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
-  input.js-fecha { cursor: pointer; }
-  input.js-fecha::placeholder { color: #8b93a1; }
-</style>
 <script>
 (function () {
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];

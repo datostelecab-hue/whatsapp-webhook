@@ -3,7 +3,7 @@
   <!-- ══ Cabecera y resumen ══ -->
   <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
     <div>
-      <h1 class="text-2xl font-bold text-white">Planificador</h1>
+      <h1 class="text-2xl font-bold text-telecab-text">Planificador</h1>
       <p class="text-telecab-muted text-sm">
         <span id="stat-coches">—</span> coches operativos ·
         <span id="stat-huecos">—</span> turnos libres ·
@@ -289,7 +289,7 @@ function tarjetaCoche(c) {
       <select class="w-16 text-center px-2 py-1.5 rounded bg-telecab-dark border border-telecab-border text-telecab-text"
               data-campo="estadoVeh">${estadoOpts}</select>
       <input value="${esc(c.matricula)}" placeholder="Matrícula" maxlength="10"
-             class="w-32 px-2 py-1.5 rounded bg-telecab-dark border border-telecab-border text-white font-semibold uppercase"
+             class="w-32 px-2 py-1.5 rounded bg-telecab-dark border border-telecab-border text-telecab-text font-semibold uppercase"
              data-campo="matricula">
       <select class="flex-1 px-2 py-1.5 rounded bg-telecab-dark border border-telecab-border text-telecab-text"
               data-campo="zona">${zonaOpts}</select>

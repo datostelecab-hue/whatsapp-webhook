@@ -7,58 +7,94 @@
     <p class="text-xs text-telecab-muted mt-0.5">Preferencias de la plataforma. Por ahora se guardan en este dispositivo.</p>
   </div>
 
-  <!-- Tema -->
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5">
     <h2 class="text-sm font-semibold text-telecab-text mb-1">Apariencia</h2>
-    <p class="text-xs text-telecab-muted mb-4">Elige el tema. El automático sigue la configuración de tu sistema.</p>
-    <div class="grid grid-cols-3 gap-3">
-      <button data-tema="dark" class="tema flex flex-col items-center gap-2 px-3 py-4 rounded-xl border border-telecab-border hover:border-telecab-gold/50 transition text-telecab-muted">
-        <i class="fa-solid fa-moon text-xl"></i><span class="text-sm">Oscuro</span>
-      </button>
-      <button data-tema="light" class="tema flex flex-col items-center gap-2 px-3 py-4 rounded-xl border border-telecab-border hover:border-telecab-gold/50 transition text-telecab-muted">
-        <i class="fa-solid fa-sun text-xl"></i><span class="text-sm">Claro</span>
-      </button>
-      <button data-tema="auto" class="tema flex flex-col items-center gap-2 px-3 py-4 rounded-xl border border-telecab-border hover:border-telecab-gold/50 transition text-telecab-muted">
-        <i class="fa-solid fa-circle-half-stroke text-xl"></i><span class="text-sm">Automático</span>
-      </button>
-    </div>
-    <p id="tema-msg" class="text-xs text-telecab-muted mt-3"></p>
+    <p class="text-xs text-telecab-muted mb-4">Elige un tema. El automático sigue la configuración de tu sistema.</p>
+    <div id="temas" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+    <p id="tema-msg" class="text-xs text-telecab-muted mt-4"></p>
   </div>
 
 </div>
 
 <script>
   const KEY = 'telecab-tema';
+  // Cada tema: clave (= data-theme), nombre, y colores de la mini-vista-previa.
+  const TEMAS = [
+    { k: 'dark',       n: 'Oscuro',          bg: '#171b22', ac: '#e8b84b', tx: '#e6e8ec', claro: false },
+    { k: 'azul',       n: 'Azul',            bg: '#131927', ac: '#60a5fa', tx: '#e6e8ec', claro: false },
+    { k: 'verde',      n: 'Verde',           bg: '#101d18', ac: '#34d399', tx: '#e6e8ec', claro: false },
+    { k: 'purpura',    n: 'Púrpura',         bg: '#1a1425', ac: '#a78bfa', tx: '#e6e8ec', claro: false },
+    { k: 'rosa',       n: 'Rosa',            bg: '#21141c', ac: '#f472b6', tx: '#e6e8ec', claro: false },
+    { k: 'cian',       n: 'Cian',            bg: '#0f1e21', ac: '#2dd4cd', tx: '#e6e8ec', claro: false },
+    { k: 'naranja',    n: 'Naranja',         bg: '#221810', ac: '#fb923c', tx: '#e6e8ec', claro: false },
+    { k: 'contraste',  n: 'Alto contraste',  bg: '#000000', ac: '#ffd60a', tx: '#ffffff', claro: false },
+    { k: 'light',         n: 'Claro',           bg: '#ffffff', ac: '#b78218', tx: '#181f2c', claro: true },
+    { k: 'claro-azul',    n: 'Claro azul',      bg: '#ffffff', ac: '#2563eb', tx: '#161f2e', claro: true },
+    { k: 'claro-verde',   n: 'Claro verde',     bg: '#ffffff', ac: '#15803d', tx: '#18221c', claro: true },
+    { k: 'claro-rosa',    n: 'Claro rosa',      bg: '#ffffff', ac: '#c81d68', tx: '#281a22', claro: true },
+    { k: 'claro-purpura', n: 'Claro púrpura',   bg: '#ffffff', ac: '#7c3aed', tx: '#1e1a2c', claro: true },
+    { k: 'claro-naranja', n: 'Claro naranja',   bg: '#ffffff', ac: '#c2410c', tx: '#281e16', claro: true },
+    { k: 'auto',          n: 'Automático',      bg: 'auto',    ac: '#8b93a1', tx: '#8b93a1', claro: false }
+  ];
+
   const resolver = pref => pref === 'auto'
     ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-    : (pref === 'light' ? 'light' : 'dark');
-  const NOMBRE = { dark: 'Oscuro', light: 'Claro', auto: 'Automático' };
+    : pref;
+  const aplicar = pref => document.documentElement.setAttribute('data-theme', resolver(pref));
 
-  function aplicar(pref) { document.documentElement.setAttribute('data-theme', resolver(pref)); }
-  function pintar(sel) {
+  function preview(t) {
+    if (t.k === 'auto') {
+      // Mitad oscuro / mitad claro para representar "automático".
+      return `<div style="height:52px;border-radius:8px;overflow:hidden;display:flex;">
+          <div style="flex:1;background:#171b22;display:flex;align-items:center;justify-content:center;">
+            <span style="width:12px;height:12px;border-radius:50%;background:#e8b84b;"></span></div>
+          <div style="flex:1;background:#ffffff;display:flex;align-items:center;justify-content:center;">
+            <span style="width:12px;height:12px;border-radius:50%;background:#b78218;"></span></div>
+        </div>`;
+    }
+    return `<div style="height:52px;border-radius:8px;background:${t.bg};border:1px solid ${t.claro ? '#e2e8f0' : '#2a3140'};padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:5px;">
+          <span style="width:11px;height:11px;border-radius:50%;background:${t.ac};"></span>
+          <span style="height:5px;width:38%;border-radius:3px;background:${t.tx};opacity:.85;"></span>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span style="height:4px;width:55%;border-radius:3px;background:${t.tx};opacity:.35;"></span>
+          <span style="height:14px;width:22px;border-radius:5px;background:${t.ac};opacity:.22;border:1px solid ${t.ac};"></span>
+        </div>
+      </div>`;
+  }
+
+  function pintarSel(sel) {
     document.querySelectorAll('.tema').forEach(b => {
       const on = b.dataset.tema === sel;
       b.classList.toggle('border-telecab-gold', on);
-      b.classList.toggle('bg-telecab-gold/10', on);
-      b.classList.toggle('text-telecab-gold', on);
-      b.classList.toggle('text-telecab-muted', !on);
+      b.classList.toggle('border-2', on);
+      b.classList.toggle('border-telecab-border', !on);
     });
+    const t = TEMAS.find(x => x.k === sel);
     const el = document.getElementById('tema-msg');
     el.textContent = sel === 'auto'
       ? `Automático — ahora mismo se ve ${resolver('auto') === 'light' ? 'claro' : 'oscuro'}.`
-      : `Tema ${NOMBRE[sel].toLowerCase()} activo.`;
+      : `Tema “${(t && t.n) || sel}” activo.`;
   }
+
+  const cont = document.getElementById('temas');
+  cont.innerHTML = TEMAS.map(t =>
+    `<button data-tema="${t.k}" class="tema text-left p-2 rounded-xl border border-telecab-border hover:border-telecab-gold/50 transition">
+       ${preview(t)}
+       <span class="block text-xs text-telecab-text mt-2 px-0.5">${t.n}</span>
+     </button>`).join('');
 
   let actual = localStorage.getItem(KEY) || 'dark';
   document.querySelectorAll('.tema').forEach(b => b.addEventListener('click', () => {
     actual = b.dataset.tema;
     localStorage.setItem(KEY, actual);
-    aplicar(actual); pintar(actual);
+    aplicar(actual); pintarSel(actual);
   }));
-  pintar(actual);
+  pintarSel(actual);
 
   // Si está en "automático", seguir al sistema en vivo.
   matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
-    if ((localStorage.getItem(KEY) || 'dark') === 'auto') { aplicar('auto'); pintar('auto'); }
+    if ((localStorage.getItem(KEY) || 'dark') === 'auto') { aplicar('auto'); pintarSel('auto'); }
   });
 </script>
