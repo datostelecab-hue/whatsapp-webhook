@@ -5,6 +5,7 @@
     <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
       <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Por tramitar</p>
       <p id="c-tram" class="text-2xl font-bold text-telecab-gold">–</p>
+      <p id="c-tram-split" class="text-[11px] text-telecab-muted"></p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
       <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Altas hechas</p>
@@ -16,16 +17,35 @@
     </div>
   </div>
 
-  <!-- Ficha de alta -->
+  <!-- Ficha de alta + verificación -->
   <div id="ficha" class="bg-telecab-card border border-telecab-border rounded-2xl p-5 hidden">
     <div class="flex items-center justify-between mb-1">
       <h2 id="ficha-nombre" class="text-lg font-semibold text-telecab-text flex items-center gap-2">
         <i class="fa-solid fa-user-check text-telecab-green"></i> <span></span>
+        <span id="ficha-ett" class="hidden text-[11px] px-2 py-0.5 rounded-full bg-telecab-gold/15 text-telecab-gold border border-telecab-gold/30">ETT</span>
       </h2>
       <span class="text-xs px-2.5 py-1 rounded-full bg-telecab-green/10 text-telecab-green border border-telecab-green/30">Aprobado en BOLT</span>
     </div>
     <p id="ficha-sub" class="text-sm text-telecab-muted mb-4"></p>
 
+    <!-- Verificación: todos los datos de Selección -->
+    <div class="rounded-xl border border-telecab-border bg-telecab-dark/20 p-4 mb-4">
+      <h3 class="text-xs font-semibold text-telecab-text uppercase tracking-wide mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-clipboard-check text-telecab-gold"></i> Datos recopilados en Selección
+      </h3>
+      <div id="ficha-datos" class="grid md:grid-cols-3 gap-x-6 gap-y-0"></div>
+    </div>
+
+    <!-- Verificación: documentos y PDF -->
+    <div class="rounded-xl border border-telecab-border bg-telecab-dark/20 p-4 mb-4">
+      <h3 class="text-xs font-semibold text-telecab-text uppercase tracking-wide mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-images text-telecab-gold"></i> Documentos <span class="text-telecab-muted font-normal normal-case">(pulsa para ampliar)</span>
+      </h3>
+      <div id="ficha-docs" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5"></div>
+      <div id="ficha-pdf" class="mt-3"></div>
+    </div>
+
+    <!-- Fechas del alta -->
     <div class="grid md:grid-cols-2 gap-4">
       <div>
         <label class="block text-xs text-telecab-muted mb-1">Fecha de alta en Seguridad Social</label>
@@ -39,11 +59,18 @@
       </div>
     </div>
 
+    <p id="nota-excel" class="text-xs mt-3"></p>
+
+    <!-- Candado de verificación: RRHH confirma que todo está bien antes del alta -->
+    <label class="flex items-start gap-2 mt-3 p-3 rounded-xl border border-telecab-border bg-telecab-dark/30 cursor-pointer">
+      <input id="chk-verificado" type="checkbox" class="accent-telecab-green mt-0.5 w-4 h-4 shrink-0">
+      <span class="text-xs text-telecab-text">He verificado que <b>los datos, los documentos y el PDF</b> de la ficha de alta son correctos.</span>
+    </label>
+
     <div class="flex items-center gap-2 mt-3 text-xs text-telecab-muted">
       <i class="fa-solid fa-circle-arrow-right text-telecab-gold"></i>
       Al procesar el alta la ficha pasa a <b class="text-telecab-text">Administración</b> para crear el PIN de Ballenoil. Solo entonces se crea en la Agenda como Pendiente Asignar.
     </div>
-    <p id="nota-excel" class="text-xs mt-2"></p>
 
     <div class="flex flex-wrap gap-2 mt-5">
       <button id="btn-alta" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
@@ -59,26 +86,48 @@
     <p id="ficha-msg" class="text-xs mt-3 hidden"></p>
   </div>
 
-  <!-- Generar Excel de Altas (grupo de fichas + fecha) -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 flex flex-wrap items-end gap-3">
-    <div>
-      <label class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas</label>
-      <input id="fecha-altas" class="js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
+  <!-- Sección ETT -->
+  <div class="seccion-altas bg-telecab-card border border-telecab-border rounded-2xl p-4" data-tipo="ett">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <h2 class="text-sm font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-building-user text-telecab-gold"></i> ETT — pendientes de alta
+        <span class="cnt text-telecab-muted font-normal text-xs"></span>
+      </h2>
     </div>
-    <button id="btn-excel" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
-      <i class="fa-solid fa-file-excel mr-1"></i> Generar Excel de Altas
-    </button>
-    <label class="text-xs text-telecab-muted flex items-center gap-1.5 cursor-pointer"><input id="chk-todos" type="checkbox" class="accent-telecab-gold"> marcar todos</label>
-    <p id="excel-msg" class="text-xs w-full hidden"></p>
+    <div class="flex flex-wrap items-end gap-3 mb-3 pb-3 border-b border-telecab-border/50">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas ETT</label>
+        <input class="fecha-altas js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
+      </div>
+      <button class="btn-excel px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
+        <i class="fa-solid fa-file-excel mr-1"></i> Generar Excel ETT
+      </button>
+      <label class="text-xs text-telecab-muted flex items-center gap-1.5 cursor-pointer"><input class="chk-todos accent-telecab-gold" type="checkbox"> marcar todos</label>
+      <p class="excel-msg text-xs w-full hidden"></p>
+    </div>
+    <div class="lista space-y-1.5"></div>
   </div>
 
-  <!-- Lista: por tramitar -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
-    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
-      <i class="fa-solid fa-bell text-telecab-gold"></i> Nuevos en BOLT — pendientes de alta
-      <span class="text-telecab-muted font-normal text-xs">(marca las que van al Excel)</span>
-    </h2>
-    <div id="lista-tram" class="space-y-1.5"></div>
+  <!-- Sección Nuestros (general) -->
+  <div class="seccion-altas bg-telecab-card border border-telecab-border rounded-2xl p-4" data-tipo="general">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <h2 class="text-sm font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-users text-telecab-gold"></i> Nuestros — pendientes de alta
+        <span class="cnt text-telecab-muted font-normal text-xs"></span>
+      </h2>
+    </div>
+    <div class="flex flex-wrap items-end gap-3 mb-3 pb-3 border-b border-telecab-border/50">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Fecha del grupo de altas</label>
+        <input class="fecha-altas js-fecha w-40 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" readonly placeholder="dd/mm/aaaa">
+      </div>
+      <button class="btn-excel px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
+        <i class="fa-solid fa-file-excel mr-1"></i> Generar Excel de Altas
+      </button>
+      <label class="text-xs text-telecab-muted flex items-center gap-1.5 cursor-pointer"><input class="chk-todos accent-telecab-gold" type="checkbox"> marcar todos</label>
+      <p class="excel-msg text-xs w-full hidden"></p>
+    </div>
+    <div class="lista space-y-1.5"></div>
   </div>
 
 </div>
@@ -87,6 +136,7 @@
   const $ = s => document.querySelector(s);
   let ticketActual = null;
   let autoAbierto = false;   // para abrir una sola vez la ficha que llega por ?tel=
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   async function api(url, body) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -99,43 +149,126 @@
     el.classList.remove('hidden');
   }
 
-  function abrirFicha(t) {
+  // Campos de Selección que RRHH tiene que revisar antes del alta.
+  const CAMPOS = [
+    ['Datos personales', [
+      ['nombre', 'Nombre'], ['apellidos', 'Apellidos'], ['dni', 'DNI / NIE'],
+      ['fecha_nacimiento', 'F. nacimiento'], ['nacionalidad', 'Nacionalidad'],
+      ['estado_civil', 'Estado civil'], ['num_hijos', 'Nº hijos'],
+      ['email', 'Email'], ['id', 'Teléfono'], ['contacto_emergencia', 'Contacto emergencia']
+    ]],
+    ['Dirección', [
+      ['direccion', 'Dirección'], ['codigo_postal', 'C.P.'],
+      ['localidad', 'Localidad'], ['provincia', 'Provincia']
+    ]],
+    ['Datos laborales', [
+      ['num_seg_social', 'Nº Seg. Social'], ['iban', 'IBAN'],
+      ['tipo_carnet', 'Tipo carnet'], ['carnet_expedicion', 'Carnet exped.'], ['carnet_caducidad', 'Carnet cad.'],
+      ['tipo_contrato', 'Tipo contrato'], ['jornada', 'Jornada'], ['turno', 'Turno'],
+      ['zona', 'Zona'], ['canal', 'Canal']
+    ]]
+  ];
+
+  function pintarDatos(t) {
+    $('#ficha-datos').innerHTML = CAMPOS.map(([grupo, campos]) =>
+      `<div class="min-w-0">
+         <p class="text-[10px] uppercase tracking-wide text-telecab-gold/80 mb-1 mt-2">${grupo}</p>
+         ${campos.map(([k, label]) => {
+           const val = t[k];
+           const vacio = !val || !String(val).trim();
+           return `<div class="flex justify-between gap-3 py-1 border-b border-telecab-border/30">
+               <span class="text-xs text-telecab-muted shrink-0">${label}</span>
+               <span class="text-xs text-right min-w-0 break-words ${vacio ? 'text-telecab-red/80 italic' : 'text-telecab-text'}">${vacio ? '— falta' : esc(val)}</span>
+             </div>`;
+         }).join('')}
+       </div>`).join('');
+  }
+
+  function pintarDocs(t) {
+    const docs = t.documentos || [];
+    $('#ficha-docs').innerHTML = docs.map(d => {
+      const url = `/rrhh/doc?tel=${encodeURIComponent(t.id)}&tipo=${d.key}`;
+      if (!d.tiene) {
+        return `<div class="rounded-xl border border-telecab-red/30 bg-telecab-red/5 p-2 flex flex-col">
+            <span class="text-[10px] text-telecab-muted leading-tight mb-1">${esc(d.label)}</span>
+            <span class="text-xs text-telecab-red flex items-center gap-1 mt-auto"><i class="fa-solid fa-triangle-exclamation"></i> Falta</span>
+          </div>`;
+      }
+      const esImg = /^image\//.test(d.mime || '');
+      const cuerpo = esImg
+        ? `<a href="${url}" target="_blank" rel="noopener" class="block"><img src="${url}" loading="lazy" class="w-full h-24 object-cover rounded-lg border border-telecab-border bg-telecab-dark" alt="${esc(d.label)}"></a>`
+        : `<a href="${url}" target="_blank" rel="noopener" class="flex flex-col items-center justify-center gap-1 h-24 rounded-lg border border-telecab-border bg-telecab-dark/40 text-telecab-gold text-xs"><i class="fa-solid fa-file-pdf text-lg"></i> Abrir</a>`;
+      return `<div class="rounded-xl border border-telecab-border bg-telecab-dark/30 p-2 flex flex-col gap-1.5">
+          <span class="text-[10px] text-telecab-muted leading-tight">${esc(d.label)}</span>
+          ${cuerpo}
+        </div>`;
+    }).join('');
+
+    const pdf = $('#ficha-pdf');
+    if (t.ficha_pdf_link) {
+      pdf.innerHTML = `<a href="/rrhh/doc?tel=${encodeURIComponent(t.id)}&tipo=ficha_pdf" target="_blank" rel="noopener"
+          class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-green/10 border border-telecab-green/40 text-telecab-green text-xs font-medium hover:bg-telecab-green/20 transition">
+          <i class="fa-solid fa-file-contract"></i> Ver FICHA DE ALTA (PDF)</a>`;
+    } else {
+      pdf.innerHTML = `<span class="inline-flex items-center gap-2 text-xs text-telecab-red"><i class="fa-solid fa-triangle-exclamation"></i> Falta la FICHA DE ALTA en PDF.</span>`;
+    }
+  }
+
+  // El alta solo se habilita si la ficha va en un Excel Y RRHH la ha verificado.
+  function actualizarBtnAlta() {
+    const enExcel = (ticketActual && ticketActual.excel_alta || '').toString().trim();
+    const verificado = $('#chk-verificado').checked;
+    $('#btn-alta').disabled = !(enExcel && verificado);
+  }
+
+  function abrirFicha(t, sinScroll) {
     ticketActual = t;
+    // Cada ficha exige verificación fresca; en la reapertura silenciosa (tras generar
+    // el Excel) se conserva lo que RRHH ya había marcado.
+    if (!sinScroll) $('#chk-verificado').checked = false;
     $('#ficha').classList.remove('hidden');
-    $('#ficha-nombre').querySelector('span').textContent = t.nombre || '(sin nombre)';
+    $('#ficha-nombre').querySelector('span').textContent = `${t.nombre || '(sin nombre)'}${t.apellidos ? ' ' + t.apellidos : ''}`;
+    $('#ficha-ett').classList.toggle('hidden', !t.ett);
     const bits = [t.id];
     if (t.zona) bits.push(t.zona);
     if (t.canal) bits.push(t.canal);
     if (t.fecha_deteccion) bits.push('detectado ' + t.fecha_deteccion);
     $('#ficha-sub').textContent = bits.join(' · ');
+
+    pintarDatos(t);
+    pintarDocs(t);
+
     $('[data-campo="fecha_alta"]').value = t.fecha_alta || '';
     $('[data-campo="fecha_habilitado"]').value = t.fecha_habilitado || '';
+
     // Candado del Excel: no se da el alta si la ficha no ha ido en un Excel de altas.
     const enExcel = (t.excel_alta || '').toString().trim();
     const notaExcel = $('#nota-excel');
     if (enExcel) {
-      $('#btn-alta').disabled = false;
-      notaExcel.innerHTML = '<i class="fa-solid fa-file-excel mr-1"></i> Incluida en el Excel del ' + enExcel + '.';
-      notaExcel.className = 'text-xs mt-2 text-telecab-green';
+      notaExcel.innerHTML = '<i class="fa-solid fa-file-excel mr-1"></i> Incluida en el Excel «' + esc(enExcel) + '».';
+      notaExcel.className = 'text-xs mt-3 text-telecab-green';
     } else {
-      $('#btn-alta').disabled = true;
-      notaExcel.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Aún no está en ningún Excel de altas — inclúyela arriba (márcala + fecha → Generar) antes de dar el alta.';
-      notaExcel.className = 'text-xs mt-2 text-telecab-gold';
+      const tipo = t.ett ? 'ETT' : 'de nuestro grupo';
+      notaExcel.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Aún no está en ningún Excel de altas — inclúyela en el Excel ' + tipo + ' (márcala + fecha → Generar) antes del alta.';
+      notaExcel.className = 'text-xs mt-3 text-telecab-gold';
     }
+    actualizarBtnAlta();
     $('#ficha-msg').classList.add('hidden');
-    $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (!sinScroll) $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
+
+  $('#chk-verificado').addEventListener('change', actualizarBtnAlta);
 
   $('#btn-alta').addEventListener('click', async () => {
     if (!ticketActual) return;
     const fecha_alta = $('[data-campo="fecha_alta"]').value.trim();
     const fecha_habilitado = $('[data-campo="fecha_habilitado"]').value.trim();
     if (!fecha_alta || !fecha_habilitado) { msg('Rellena las dos fechas.', false); return; }
+    if (!$('#chk-verificado').checked) { msg('Marca la casilla de verificación antes de dar el alta.', false); return; }
     const btn = $('#btn-alta'); btn.disabled = true;
     const r = await api('/rrhh/alta', { tel: ticketActual.id, fecha_alta, fecha_habilitado });
-    btn.disabled = false;
-    if (r.status === 'ok') { msg('Alta procesada. Pasa a Administración para crear el PIN de Ballenoil.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
-    else msg(r.msg || 'No se pudo procesar el alta', false);
+    if (r.status === 'ok') { msg('Alta procesada. Pasa a Administración para crear el PIN de Ballenoil.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); ticketActual = null; cargar(); }, 900); }
+    else { btn.disabled = false; msg(r.msg || 'No se pudo procesar el alta', false); }
   });
 
   $('#btn-no').addEventListener('click', async () => {
@@ -143,7 +276,7 @@
     const motivo = prompt('Motivo para no continuar con el alta:');
     if (motivo === null) return;
     const r = await api('/rrhh/no-continuar', { tel: ticketActual.id, motivo });
-    if (r.status === 'ok') { $('#ficha').classList.add('hidden'); cargar(); }
+    if (r.status === 'ok') { $('#ficha').classList.add('hidden'); ticketActual = null; cargar(); }
     else msg(r.msg || 'Error', false);
   });
 
@@ -153,7 +286,7 @@
     if (motivo === null) return;
     if (!motivo.trim()) { msg('Escribe el motivo de la devolución.', false); return; }
     const r = await api('/rrhh/devolver', { tel: ticketActual.id, motivo });
-    if (r.status === 'ok') { msg('Ficha devuelta a Selección (Rechazado RRHH).', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
+    if (r.status === 'ok') { msg('Ficha devuelta a Selección (Rechazado RRHH).', true); setTimeout(() => { $('#ficha').classList.add('hidden'); ticketActual = null; cargar(); }, 900); }
     else msg(r.msg || 'No se pudo devolver', false);
   });
 
@@ -161,18 +294,28 @@
     const el = document.createElement('div');
     el.className = 'flex items-center gap-2 px-3 py-2.5 rounded-xl bg-telecab-dark/40 border border-transparent hover:border-telecab-border transition';
     const nom = `${t.nombre || '(sin nombre)'}${t.apellidos ? ' ' + t.apellidos : ''}`;
+    const enExcel = (t.excel_alta || '').toString().trim();
     el.innerHTML =
       `<input type="checkbox" class="chk-alta accent-telecab-gold shrink-0 w-4 h-4" data-tel="${t.id}">
        <button type="button" class="min-w-0 flex-1 text-left flex items-center gap-3">
          <span class="w-8 h-8 rounded-lg bg-telecab-green/15 text-telecab-green flex items-center justify-center shrink-0"><i class="fa-solid fa-user-check"></i></span>
          <span class="min-w-0 flex-1">
-           <span class="block text-sm text-telecab-text truncate">${nom}</span>
-           <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}</span>
+           <span class="block text-sm text-telecab-text truncate">${esc(nom)}</span>
+           <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + esc(t.zona) : ''}</span>
          </span>
        </button>
-       ${t.fecha_deteccion ? `<span class="text-[11px] text-telecab-muted whitespace-nowrap">${t.fecha_deteccion}</span>` : ''}`;
+       ${enExcel ? `<span class="text-[11px] text-telecab-green whitespace-nowrap" title="Ya en un Excel"><i class="fa-solid fa-file-excel"></i></span>` : ''}
+       ${t.fecha_deteccion ? `<span class="text-[11px] text-telecab-muted whitespace-nowrap">${esc(t.fecha_deteccion)}</span>` : ''}`;
     el.querySelector('button').addEventListener('click', () => abrirFicha(t));
     return el;
+  }
+
+  function pintarLista(sel, arr) {
+    const cont = document.querySelector(`.seccion-altas[data-tipo="${sel}"] .lista`);
+    cont.innerHTML = '';
+    if (!arr.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">Nadie pendiente aquí.</p>'; return; }
+    arr.sort((a, b) => (a.fecha_deteccion || '').localeCompare(b.fecha_deteccion || ''));
+    arr.forEach(t => cont.appendChild(fila(t)));
   }
 
   async function cargar() {
@@ -181,10 +324,21 @@
     $('#c-tram').textContent = r.contadores.porTramitar;
     $('#c-altas').textContent = r.contadores.altas;
     $('#c-noalta').textContent = r.contadores.noAlta;
-    const cont = $('#lista-tram'); cont.innerHTML = '';
-    if (!r.porTramitar.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm">Nadie pendiente de alta.</p>'; return; }
-    r.porTramitar.sort((a, b) => (a.fecha_deteccion || '').localeCompare(b.fecha_deteccion || ''));
-    r.porTramitar.forEach(t => cont.appendChild(fila(t)));
+    $('#c-tram-split').textContent = `ETT ${r.contadores.ett} · Nuestros ${r.contadores.general}`;
+
+    const ett = r.porTramitar.filter(t => t.ett);
+    const general = r.porTramitar.filter(t => !t.ett);
+    pintarLista('ett', ett);
+    pintarLista('general', general);
+    document.querySelector('.seccion-altas[data-tipo="ett"] .cnt').textContent = `(${ett.length})`;
+    document.querySelector('.seccion-altas[data-tipo="general"] .cnt').textContent = `(${general.length})`;
+
+    // Reabre la ficha abierta con los datos frescos (p. ej. tras generar el Excel,
+    // así se actualiza el candado y se puede dar el alta sin recargar a mano).
+    if (ticketActual) {
+      const t2 = r.porTramitar.find(x => String(x.id) === String(ticketActual.id));
+      if (t2) abrirFicha(t2, true);
+    }
 
     // Abre directamente la ficha que llega por ?tel= (una sola vez, desde Pendientes).
     if (!autoAbierto) {
@@ -194,32 +348,42 @@
     }
   }
 
-  // ---- Excel de Altas ----
-  $('#chk-todos').addEventListener('change', e => {
-    document.querySelectorAll('.chk-alta').forEach(c => { c.checked = e.target.checked; });
-  });
-  $('#btn-excel').addEventListener('click', async () => {
-    const el = $('#excel-msg');
-    const aviso = (txt, cls) => { el.textContent = txt; el.className = 'text-xs w-full ' + cls; el.classList.remove('hidden'); };
-    const tels = [...document.querySelectorAll('.chk-alta:checked')].map(c => c.dataset.tel);
-    const fecha = $('#fecha-altas').value.trim();
-    if (!tels.length) return aviso('Marca al menos una ficha.', 'text-telecab-red');
-    if (!fecha) return aviso('Elige la fecha del grupo de altas.', 'text-telecab-red');
-    aviso('Generando el Excel…', 'text-telecab-muted');
-    try {
-      const r = await fetch('/rrhh/altas-excel', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tels, fecha })
-      });
-      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.msg || 'Error al generar'); }
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'Altas ' + fecha.replace(/\//g, '-') + '.xlsx';
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      aviso('Excel generado (' + tels.length + ' fichas). Revisa tu carpeta de descargas.', 'text-telecab-green');
-    } catch (e) { aviso('No se pudo generar: ' + e.message, 'text-telecab-red'); }
+  // ---- Excel de Altas: cada sección (ETT / general) genera su propio Excel ----
+  document.querySelectorAll('.seccion-altas').forEach(sec => {
+    const tipo = sec.dataset.tipo;
+    const chkTodos = sec.querySelector('.chk-todos');
+    const btnExcel = sec.querySelector('.btn-excel');
+    const inpFecha = sec.querySelector('.fecha-altas');
+    const el = sec.querySelector('.excel-msg');
+    const aviso = (txt, cls) => { el.textContent = txt; el.className = 'excel-msg text-xs w-full ' + cls; el.classList.remove('hidden'); };
+
+    chkTodos.addEventListener('change', e => {
+      sec.querySelectorAll('.chk-alta').forEach(c => { c.checked = e.target.checked; });
+    });
+
+    btnExcel.addEventListener('click', async () => {
+      const tels = [...sec.querySelectorAll('.chk-alta:checked')].map(c => c.dataset.tel);
+      const fecha = inpFecha.value.trim();
+      if (!tels.length) return aviso('Marca al menos una ficha.', 'text-telecab-red');
+      if (!fecha) return aviso('Elige la fecha del grupo de altas.', 'text-telecab-red');
+      aviso('Generando el Excel…', 'text-telecab-muted');
+      try {
+        const r = await fetch('/rrhh/altas-excel', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tels, fecha, tipo })
+        });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.msg || 'Error al generar'); }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'Altas' + (tipo === 'ett' ? ' ETT' : '') + ' ' + fecha.replace(/\//g, '-') + '.xlsx';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        aviso('Excel generado (' + tels.length + ' fichas). Revisa tu carpeta de descargas.', 'text-telecab-green');
+        chkTodos.checked = false;
+        cargar();   // refresca la lista y la ficha: ya salen marcadas como "en Excel"
+      } catch (e) { aviso('No se pudo generar: ' + e.message, 'text-telecab-red'); }
+    });
   });
 
   cargar();
