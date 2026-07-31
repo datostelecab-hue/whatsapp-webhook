@@ -50,12 +50,12 @@
       <div>
         <label class="block text-xs text-telecab-muted mb-1">Fecha de alta en Seguridad Social</label>
         <input class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
-               data-campo="fecha_alta" readonly placeholder="dd/mm/aaaa">
+               data-campo="fecha_alta" readonly placeholder="dd/mm/aaaa" data-min="today">
       </div>
       <div>
         <label class="block text-xs text-telecab-muted mb-1">Habilitado para trabajar desde <span class="text-telecab-muted/70">(la usa el planificador)</span></label>
         <input class="js-fecha w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition"
-               data-campo="fecha_habilitado" readonly placeholder="dd/mm/aaaa">
+               data-campo="fecha_habilitado" readonly placeholder="dd/mm/aaaa" data-min="today" data-min-field="fecha_alta">
       </div>
     </div>
 

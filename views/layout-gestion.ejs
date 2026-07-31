@@ -170,6 +170,9 @@
           { nombre: 'Flota', icono: 'fa-car-side', rol: 'trafico', items: [
             { href: '/matching',  icono: 'fa-location-dot', texto: 'Matching',  id: 'matching' },
             { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' }
+          ] },
+          { nombre: 'Operaciones', icono: 'fa-triangle-exclamation', rol: 'operaciones', items: [
+            { href: '/operaciones', icono: 'fa-tower-broadcast', texto: 'Alertas Mapon', id: 'operaciones' }
           ] }
         ];
       %>
@@ -250,6 +253,7 @@
           <option value="reclutador">🧑‍💼 Reclutador</option>
           <option value="rrhh">📋 RRHH</option>
           <option value="trafico">🚕 Tráfico</option>
+          <option value="operaciones">🚨 Operaciones</option>
         </select>
 
         <!-- Buzón de pendientes -->
@@ -309,8 +313,11 @@
   const lista = document.getElementById('notif-lista');
   if (!sel || !btn) return;
 
-  const DEPS = { general: ['reclutador', 'rrhh', 'trafico'], reclutador: ['reclutador'], rrhh: ['rrhh'], trafico: ['trafico'] };
-  const NOMBRE = { reclutador: 'Reclutador', rrhh: 'RRHH', trafico: 'Tráfico' };
+  // Operaciones aún no alimenta el buzón de pendientes: /notificaciones no
+  // devuelve esa clave y pinta 0, pero tiene que estar en DEPS o al recargar se
+  // perdería el rol elegido y el menú volvería a "Invitado".
+  const DEPS = { general: ['reclutador', 'rrhh', 'trafico', 'operaciones'], reclutador: ['reclutador'], rrhh: ['rrhh'], trafico: ['trafico'], operaciones: ['operaciones'] };
+  const NOMBRE = { reclutador: 'Reclutador', rrhh: 'RRHH', trafico: 'Tráfico', operaciones: 'Operaciones' };
 
   let rol = localStorage.getItem('telecab-rol') || 'general';
   if (!DEPS[rol]) rol = 'general';
@@ -393,6 +400,50 @@
     if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
     return null;
   }
+  const norm = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+
+  // ── Rango permitido de un campo (validación de fechas) ────────────────────
+  // Se declara con atributos en el <input>:
+  //   data-min / data-max        → 'today', 'today+3', 'today-2' o una fecha fija.
+  //   data-min-field / data-max-field (+ *-offset en días) → otro campo (por
+  //     data-campo o id), p. ej. caducidad ≥ expedición+1. El límite efectivo es
+  //     el más restrictivo de ambos.
+  function resolverLimite(spec) {
+    if (!spec) return null;
+    const s = String(spec).trim();
+    const m = s.match(/^today\s*([+-]\s*\d+)?$/i);
+    if (m) { const off = m[1] ? parseInt(m[1].replace(/\s/g, ''), 10) : 0; const d = norm(new Date()); d.setDate(d.getDate() + off); return d; }
+    const p = parse(s); return p ? norm(p) : null;
+  }
+  function limiteCampo(input, cual) {
+    const ref = input.getAttribute('data-' + cual + '-field');
+    if (!ref) return null;
+    const otro = document.querySelector('[data-campo="' + ref + '"], #' + (window.CSS && CSS.escape ? CSS.escape(ref) : ref));
+    if (!otro) return null;
+    const base = parse(otro.value); if (!base) return null;
+    const off = parseInt(input.getAttribute('data-' + cual + '-offset') || '0', 10);
+    const d = norm(base); d.setDate(d.getDate() + off); return d;
+  }
+  function rango(input) {
+    if (!input) return { min: null, max: null };
+    const mins = [resolverLimite(input.getAttribute('data-min')), limiteCampo(input, 'min')].filter(Boolean);
+    const maxs = [resolverLimite(input.getAttribute('data-max')), limiteCampo(input, 'max')].filter(Boolean);
+    return {
+      min: mins.length ? new Date(Math.max(...mins.map(d => d.getTime()))) : null,
+      max: maxs.length ? new Date(Math.min(...maxs.map(d => d.getTime()))) : null
+    };
+  }
+  const fuera = (f, r) => (r.min && f < r.min) || (r.max && f > r.max);
+  // Marca en rojo el input si la fecha tecleada queda fuera de su rango.
+  function marcarValidez(inp) {
+    const d = inp.value.trim() ? parse(inp.value) : null;
+    const mal = d && fuera(norm(d), rango(inp));
+    inp.classList.toggle('!border-telecab-red', !!mal);
+    inp.classList.toggle('ring-1', !!mal);
+    inp.classList.toggle('ring-telecab-red', !!mal);
+    if (mal) { const r = rango(inp); inp.title = 'Fecha fuera de rango' + (r.min ? ' · desde ' + fmt(r.min) : '') + (r.max ? ' · hasta ' + fmt(r.max) : ''); }
+    else inp.removeAttribute('title');
+  }
 
   const pop = document.createElement('div');
   pop.className = 'fp-pop hidden fixed z-[120] w-72 rounded-2xl border border-telecab-border bg-telecab-card2 shadow-soft p-3 text-telecab-text select-none';
@@ -444,10 +495,12 @@
     // Vista de días (por defecto). El mes y el año del encabezado abren su rejilla.
     const offset = (new Date(y, mo, 1).getDay() + 6) % 7;
     const total = new Date(y, mo + 1, 0).getDate();
+    const r = rango(target);
     let celdas = '';
     for (let i = 0; i < offset; i++) celdas += '<div></div>';
     for (let d = 1; d <= total; d++) {
       const f = new Date(y, mo, d);
+      if (fuera(norm(f), r)) { celdas += `<div class="h-9 rounded-lg text-sm flex items-center justify-center text-telecab-muted/25 line-through cursor-not-allowed">${d}</div>`; continue; }
       const esSel = sel && f.getTime() === sel.getTime();
       const esHoy = f.getTime() === hoy.getTime();
       const cls = esSel ? 'bg-telecab-gold text-telecab-dark font-semibold shadow-gold'
@@ -483,7 +536,9 @@
   function cerrar() { pop.classList.add('hidden'); target = null; }
   function fijar(fecha) {
     if (!target) return;
+    if (fecha && fuera(norm(fecha), rango(target))) return;   // no se fija una fecha fuera de rango
     target.value = fecha ? fmt(fecha) : '';
+    marcarValidez(target);
     target.dispatchEvent(new Event('input', { bubbles: true }));
     target.dispatchEvent(new Event('change', { bubbles: true }));
     cerrar();
@@ -521,9 +576,36 @@
   });
   document.addEventListener('focusin', e => {
     const inp = e.target.closest('input.js-fecha');
-    if (inp) abrir(inp);
+    // Se puede teclear la fecha a mano (además del calendario): al enfocar se
+    // quita el readonly para permitir escribir, y se abre el calendario a juego.
+    if (inp) { inp.removeAttribute('readonly'); abrir(inp); }
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
+  // Formateo al teclear: solo dígitos, insertando las barras (dd/mm/aaaa) solo.
+  document.addEventListener('input', e => {
+    const inp = e.target.closest && e.target.closest('input.js-fecha');
+    if (!inp) return;
+    let v = inp.value.replace(/\D/g, '').slice(0, 8);
+    if (v.length >= 5) v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+    else if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
+    inp.value = v;
+    marcarValidez(inp);
+    const d = parse(inp.value);
+    if (d && target === inp) { vista = new Date(d.getFullYear(), d.getMonth(), 1); render(); }   // el calendario sigue lo tecleado
+  });
+  // Al salir del campo: formato inválido → se limpia; válido → se normaliza y valida.
+  document.addEventListener('focusout', e => {
+    const inp = e.target.closest && e.target.closest('input.js-fecha');
+    if (!inp) return;
+    if (!inp.value.trim()) { marcarValidez(inp); return; }
+    const d = parse(inp.value);
+    if (!d) { inp.value = ''; marcarValidez(inp); return; }
+    inp.value = fmt(d);
+    marcarValidez(inp);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') cerrar();
+    if (e.key === 'Enter' && e.target.closest && e.target.closest('input.js-fecha')) cerrar();
+  });
   window.addEventListener('resize', cerrar);
   window.addEventListener('scroll', () => { if (target) cerrar(); }, true);
 })();

@@ -33,7 +33,7 @@
       </div>
       <div id="f-hasta-wrap">
         <label class="block text-xs text-telecab-muted mb-1">Hasta</label>
-        <input id="f-hasta" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+        <input id="f-hasta" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-min-field="f-desde">
       </div>
       <div class="md:col-span-2">
         <label class="block text-xs text-telecab-muted mb-1">Responsable <span class="text-telecab-muted/70">(quién lo hace)</span></label>
@@ -81,11 +81,14 @@
 
   const COLOR = { 'Pendiente': 'text-telecab-gold', 'Aprobada': 'text-telecab-green', 'Rechazada': 'text-telecab-red' };
   const ICONO = { 'Baja Empresa': 'fa-user-slash', 'Vacaciones': 'fa-umbrella-beach', 'Baja Médica': 'fa-briefcase-medical', 'Permiso Retribuido': 'fa-ticket', 'Reingreso': 'fa-arrow-rotate-left' };
+  // El despido (Baja Empresa) es permanente: lleva solo la fecha de efecto, sin "Hasta".
+  const SIN_HASTA = ['Baja Empresa'];
 
   // Conductores para el autocompletado (300+). La fuente cambia según el tipo:
   //   · Reingreso → archivados (CONDUCTORES_OUT)   · resto → agenda activa.
   let ACTIVOS = [], ARCHIVADOS = [], CONDUCTORES = [];
   const esReingreso = () => $('#f-tipo').value === 'Reingreso';
+  const sinHasta = () => SIN_HASTA.includes($('#f-tipo').value);
   const dispCond = c => `${c.nombre}${c.turno ? ' · ' + c.turno : ''}`;
   function pintarDatalist() {
     const dl = $('#dl-conductores');
@@ -104,7 +107,9 @@
     const rein = esReingreso();
     const dw = $('#f-desde-wrap'), hw = $('#f-hasta-wrap');
     if (dw) dw.classList.toggle('hidden', rein);
-    if (hw) hw.classList.toggle('hidden', rein);
+    // El despido oculta "Hasta" (permanente); el reingreso oculta ambas (inmediato).
+    if (hw) hw.classList.toggle('hidden', rein || sinHasta());
+    const lblDesde = $('#f-desde-wrap label'); if (lblDesde) lblDesde.textContent = sinHasta() ? 'Fecha de efecto' : 'Desde';
     CONDUCTORES = rein ? ARCHIVADOS : ACTIVOS;
     const inp = $('#f-conductor-txt'); if (inp) inp.value = '';
     pintarDatalist();
@@ -119,6 +124,13 @@
     const el = document.createElement('div');
     el.className = 'rounded-xl bg-telecab-dark/40 border border-telecab-border p-3';
     const rein = p.tipo === 'Reingreso';
+    const sh = SIN_HASTA.includes(p.tipo);   // despido: solo fecha de efecto
+    const bloqueFechas = rein
+      ? `<p class="text-xs text-telecab-muted mb-2"><i class="fa-solid fa-arrow-rotate-left mr-1 text-telecab-gold"></i>Reingreso inmediato: al aprobar vuelve a la agenda como <b class="text-telecab-text">Pendiente Asignar</b>.</p>`
+      : `<div class="flex flex-wrap items-end gap-2 mb-2">
+          <div><label class="block text-[11px] text-telecab-muted mb-0.5">${sh ? 'Fecha de efecto' : 'Desde'}</label><input class="pp-desde js-fecha inp !w-32 text-sm" value="${esc(p.desde)}" placeholder="dd/mm/aaaa"></div>
+          ${sh ? '' : `<div><label class="block text-[11px] text-telecab-muted mb-0.5">Hasta</label><input class="pp-hasta js-fecha inp !w-32 text-sm" value="${esc(p.hasta)}" placeholder="dd/mm/aaaa"></div>`}
+        </div>`;
     el.innerHTML =
       `<div class="flex items-center gap-2 mb-2">
          <i class="fa-solid ${ICONO[p.tipo] || 'fa-file'} text-telecab-gold"></i>
@@ -127,10 +139,7 @@
          <span class="ml-auto text-[11px] text-telecab-muted">${esc(p.fecha_solicitud)} · ${esc(p.solicitante)}</span>
        </div>
        ${p.motivo ? `<p class="text-xs text-telecab-muted mb-2">Motivo: ${esc(p.motivo)}</p>` : ''}
-       ${rein ? `<p class="text-xs text-telecab-muted mb-2"><i class="fa-solid fa-arrow-rotate-left mr-1 text-telecab-gold"></i>Reingreso inmediato: al aprobar vuelve a la agenda como <b class="text-telecab-text">Pendiente Asignar</b>.</p>` : `<div class="flex flex-wrap items-end gap-2 mb-2">
-          <div><label class="block text-[11px] text-telecab-muted mb-0.5">Desde</label><input class="pp-desde inp !w-32 text-sm" value="${esc(p.desde)}" placeholder="dd/mm/aaaa"></div>
-          <div><label class="block text-[11px] text-telecab-muted mb-0.5">Hasta</label><input class="pp-hasta inp !w-32 text-sm" value="${esc(p.hasta)}" placeholder="dd/mm/aaaa"></div>
-        </div>`}
+       ${bloqueFechas}
        <div class="mb-2">
          <label class="block text-[11px] text-telecab-muted mb-0.5">Responsable RRHH <span class="text-telecab-muted/70">(quién resuelve)</span></label>
          <input class="pp-resp inp !w-56 text-sm" placeholder="Tu nombre">
@@ -146,8 +155,8 @@
       let desde = '', hasta = '';
       if (!rein) {
         desde = el.querySelector('.pp-desde').value.trim();
-        hasta = el.querySelector('.pp-hasta').value.trim();
-        if (!desde || !hasta) { alert('Pon las fechas Desde y Hasta.'); return; }
+        hasta = sh ? '' : el.querySelector('.pp-hasta').value.trim();
+        if (!desde || (!sh && !hasta)) { alert(sh ? 'Pon la fecha de efecto.' : 'Pon las fechas Desde y Hasta.'); return; }
       }
       const r = await api('/peticiones/aprobar', { id: p.id, desde, hasta, resuelto_por });
       if (r.status === 'ok') cargar(); else alert(r.msg || 'No se pudo aprobar');
@@ -225,9 +234,11 @@
       const responsable = $('#f-solicitante').value.trim();
       if (!responsable) { aviso('Escribe el responsable.', 'text-telecab-red'); return null; }
       const rein = esReingreso();
+      const sh = sinHasta();
       const desde = rein ? '' : $('#f-desde').value.trim();
-      const hasta = rein ? '' : $('#f-hasta').value.trim();
-      if (!rein && (!desde || !hasta)) { aviso('Pon las fechas Desde y Hasta.', 'text-telecab-red'); return null; }
+      const hasta = (rein || sh) ? '' : $('#f-hasta').value.trim();
+      if (!rein && !desde) { aviso(sh ? 'Pon la fecha de efecto.' : 'Pon las fechas Desde y Hasta.', 'text-telecab-red'); return null; }
+      if (!rein && !sh && !hasta) { aviso('Pon las fechas Desde y Hasta.', 'text-telecab-red'); return null; }
       return { id_conductor: c.id, conductor: c.nombre, tipo: $('#f-tipo').value,
         desde, hasta, motivo: $('#f-motivo').value.trim(), responsable };
     };

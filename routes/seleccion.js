@@ -3,7 +3,7 @@ const multer = require('multer');
 const router = express.Router();
 const { leerVacantesGuardadas, vacanteDisponible } = require('../services/vacantes');
 const { buscarPorTelefono } = require('../services/conductoresBolt');
-const { geocodificar } = require('../services/geocoding');
+const { geocodificar, geocodificarEstructurado } = require('../services/geocoding');
 const drive = require('../services/drive');
 const { generarFichaPDF } = require('../services/fichaAlta');
 const {
@@ -127,11 +127,19 @@ router.post('/descartar', async (req, res) => {
   }
 });
 
-// Geocodifica una dirección (mismo servicio que la Agenda).
+// Geocodifica una dirección. Si llegan las partes (via/numero/CP/localidad/…),
+// usa la búsqueda estructurada (más fiable); si no, la libre por compatibilidad.
 router.post('/geocodificar', async (req, res) => {
   try {
-    const { direccion, codigoPostal } = req.body || {};
-    const r = await geocodificar(direccion, codigoPostal);
+    const b = req.body || {};
+    // Estructurada solo si hay nombre de vía; si no (p. ej. dirección pegada entera),
+    // búsqueda libre para no perder la calle.
+    const r = (b.via && b.via.trim())
+      ? await geocodificarEstructurado({
+          tipo_via: b.tipo_via, via: b.via, numero: b.numero,
+          codigo_postal: b.codigo_postal, localidad: b.localidad, provincia: b.provincia
+        })
+      : await geocodificar(b.direccion, b.codigoPostal || b.codigo_postal);
     if (!r) return res.json({ status: 'ok', encontrado: false });
     if (r.error) return res.status(502).json({ status: 'error', msg: r.mensaje });
     res.json({ status: 'ok', encontrado: true, ...r, coordenadas: `${r.lat}, ${r.lng}` });

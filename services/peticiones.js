@@ -5,7 +5,8 @@
 // agenda. Hay dos caminos:
 //   · Tráfico crea una PETICIÓN (queda Pendiente) → RRHH la aprueba o la rechaza.
 //   · RRHH la crea y la aplica directamente (sin pasar por Tráfico).
-// TODAS las peticiones llevan rango Desde–Hasta (lo pone RRHH). Al aplicarse:
+// Las ausencias llevan rango Desde–Hasta (lo pone RRHH); el despido solo la fecha
+// de efecto (Desde) y el reingreso ninguna. Al aplicarse:
 //   · Baja      → el conductor pasa a "Baja Empresa" (se archiva en OUT).
 //   · Ausencia  → estado de la ausencia AL MOMENTO + reincorporación (Hasta+1) +
 //                 letras (V/B/P) en la bitácora del rango.
@@ -30,6 +31,8 @@ const CABECERA = ['id', 'fecha_solicitud', 'solicitante', 'tipo', 'id_conductor'
 const TIPOS = ['Baja Empresa', 'Vacaciones', 'Baja Médica', 'Permiso Retribuido', 'Reingreso'];
 // El reingreso restaura desde el archivo; no cambia estado ni escribe letras.
 const SIN_FECHAS = ['Reingreso'];
+// El despido (Baja Empresa) es permanente: lleva solo fecha de efecto (Desde), sin Hasta.
+const SIN_HASTA = ['Baja Empresa'];
 const LETRA = { 'Vacaciones': 'V', 'Baja Médica': 'B', 'Permiso Retribuido': 'P' };  // ausencias
 // Tipo de petición → estado en la agenda (debe casar con ESTADOS_CONDUCTOR).
 const ESTADO_AGENDA = {
@@ -92,8 +95,11 @@ function validarBase(datos) {
   // El reingreso es inmediato, sin rango de fechas; el resto sí lo lleva.
   if (SIN_FECHAS.includes(tipo)) return { tipo, id_conductor, desde: '', hasta: '' };
   const desde = (datos.desde || '').toString().trim();
+  if (!desde) throw new Error('Falta la fecha (Desde)');
+  // El despido solo lleva la fecha de efecto (Desde); el resto, rango Desde–Hasta.
+  if (SIN_HASTA.includes(tipo)) return { tipo, id_conductor, desde, hasta: '' };
   const hasta = (datos.hasta || '').toString().trim();
-  if (!desde || !hasta) throw new Error('Faltan las fechas Desde/Hasta');
+  if (!hasta) throw new Error('Faltan las fechas Desde/Hasta');
   return { tipo, id_conductor, desde, hasta };
 }
 
@@ -172,9 +178,15 @@ async function aprobarPeticion(id, opciones = {}) {
   // RRHH pone/ajusta las fechas (salvo el reingreso, que es inmediato sin rango).
   if (!SIN_FECHAS.includes(pet.tipo)) {
     const desde = (opciones.desde || pet.desde || '').toString().trim();
-    const hasta = (opciones.hasta || pet.hasta || '').toString().trim();
-    if (!desde || !hasta) throw new Error('Faltan las fechas Desde/Hasta para aprobar');
-    pet.desde = desde; pet.hasta = hasta;
+    if (!desde) throw new Error('Falta la fecha para aprobar');
+    pet.desde = desde;
+    if (SIN_HASTA.includes(pet.tipo)) {
+      pet.hasta = '';   // despido: sin Hasta
+    } else {
+      const hasta = (opciones.hasta || pet.hasta || '').toString().trim();
+      if (!hasta) throw new Error('Faltan las fechas Desde/Hasta para aprobar');
+      pet.hasta = hasta;
+    }
   }
 
   await aplicarEfecto(pet);

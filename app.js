@@ -73,6 +73,7 @@ const configuracionRoutes = require('./routes/configuracion');
 const notificacionesRoutes = require('./routes/notificaciones');
 const pendientesRoutes = require('./routes/pendientes');
 const peticionesRoutes = require('./routes/peticiones');
+const operacionesRoutes = require('./routes/operaciones');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // ============================================================
@@ -119,6 +120,7 @@ app.use('/configuracion', configuracionRoutes);
 app.use('/notificaciones', notificacionesRoutes);
 app.use('/pendientes', pendientesRoutes);
 app.use('/peticiones', peticionesRoutes);
+app.use('/operaciones', operacionesRoutes);
 
 // Actualización manual del padrón CONDUCTORES_BOLT (para probar sin esperar al cron).
 app.get('/conductores-bolt/actualizar', async (req, res) => {

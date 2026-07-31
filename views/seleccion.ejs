@@ -86,7 +86,7 @@
       </div>
       <div>
         <label class="block text-xs text-telecab-muted mb-1">Fecha de nacimiento</label>
-        <input data-campo="fecha_nacimiento" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+        <input data-campo="fecha_nacimiento" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-max="today">
       </div>
 
       <!-- Vacante que se cubre (la arma Tráfico en el generador) -->
@@ -111,17 +111,29 @@
       </div>
 
       <div class="md:col-span-2">
-        <label class="block text-xs text-telecab-muted mb-1">Dirección</label>
-        <div class="flex gap-2">
-          <input data-campo="direccion" class="inp flex-1">
-          <button id="btn-geo" type="button" class="px-3 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition whitespace-nowrap text-sm">
-            <i class="fa-solid fa-location-crosshairs mr-1"></i> Coordenadas
-          </button>
+        <label class="block text-xs text-telecab-muted mb-1">Dirección <span class="text-telecab-muted/70">(en partes: geocodifica mejor)</span></label>
+        <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
+          <select id="dir-tipovia" class="inp sm:col-span-2">
+            <option>Calle</option><option>Avenida</option><option>Paseo</option><option>Plaza</option>
+            <option>Camino</option><option>Carretera</option><option>Ronda</option><option>Travesía</option>
+            <option>Callejón</option><option>Glorieta</option><option>Vía</option><option>Otra</option>
+          </select>
+          <input id="dir-via" class="inp col-span-2 sm:col-span-3" placeholder="Nombre de la vía">
+          <input id="dir-numero" class="inp sm:col-span-1" placeholder="Nº" inputmode="numeric">
         </div>
+        <input id="dir-resto" class="inp mt-2" placeholder="Piso / puerta / escalera (opcional)">
+        <input data-campo="direccion" class="inp mt-2" placeholder="Dirección completa (se arma con las partes; editable)">
+        <p class="text-[11px] text-telecab-muted mt-1">El código postal, la localidad y la provincia se toman de la <b>Ficha de alta</b> (abajo) para geocodificar con precisión.</p>
       </div>
       <div class="md:col-span-2">
         <label class="block text-xs text-telecab-muted mb-1">Coordenadas</label>
-        <input data-campo="coordenadas" class="inp font-mono" placeholder="lat, lng">
+        <div class="flex gap-2">
+          <input data-campo="coordenadas" class="inp font-mono flex-1" placeholder="lat, lng">
+          <button id="btn-geo" type="button" class="px-3 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition whitespace-nowrap text-sm">
+            <i class="fa-solid fa-location-crosshairs mr-1"></i> Obtener
+          </button>
+        </div>
+        <p id="geo-info" class="text-[11px] mt-1 hidden"></p>
       </div>
 
       <div class="md:col-span-2">
@@ -173,19 +185,20 @@
         </div>
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Carnet · fecha expedición</label>
-          <input data-campo="carnet_expedicion" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+          <input data-campo="carnet_expedicion" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-max="today" data-max-field="carnet_caducidad" data-max-offset="-1">
         </div>
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Carnet · fecha caducidad</label>
-          <input data-campo="carnet_caducidad" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+          <input data-campo="carnet_caducidad" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-min="today" data-min-field="carnet_expedicion" data-min-offset="1">
         </div>
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Fecha tentativa de incorporación</label>
-          <input data-campo="fecha_inicio" class="js-fecha inp" readonly placeholder="dd/mm/aaaa">
+          <input data-campo="fecha_inicio" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-min="today">
         </div>
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Nacionalidad <span class="text-telecab-muted/70">(del DNI/NIE)</span></label>
-          <input data-campo="nacionalidad" class="inp" placeholder="Española">
+          <input data-campo="nacionalidad" class="inp" list="dl-nacionalidades" placeholder="Escribe o elige…" autocomplete="off">
+          <datalist id="dl-nacionalidades"></datalist>
         </div>
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Turno <span class="text-telecab-muted/70">(se sugiere desde la vacante)</span></label>
@@ -251,6 +264,7 @@
 </div>
 
 
+<script src="/assets/js/nacionalidades.js"></script>
 <script>
   const ETAPAS = <%- JSON.stringify(etapas || []) %>;
   const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt',
@@ -321,6 +335,7 @@
     $('#ficha-tel').textContent = ticketActual.id;
     $('#ficha-titulo').textContent = (t && t.nombre) ? t.nombre : 'Nuevo candidato';
     CAMPOS.forEach(k => { const el = $(`[data-campo="${k}"]`); if (el) el.value = t ? (t[k] || '') : ''; });
+    descomponerDireccion(t ? (t.direccion || '') : '');   // parte la dirección en tipo/vía/número
     ['experiencia', 'carne_vtc'].forEach(k => { estado[k] = (t && t[k] === 'Sí') ? 'Sí' : 'No'; pintarToggle(k); });
     pintarStepper(ticketActual.estado);
     pintarVacInfo();
@@ -461,16 +476,71 @@
     else msg(r.msg || 'No se pudo descartar', false);
   });
 
-  // Geocodificar
+  // ── Dirección estructurada + geocodificación fiable ──────────────────────
+  const TIPOS_VIA = ['Calle', 'Avenida', 'Paseo', 'Plaza', 'Camino', 'Carretera', 'Ronda', 'Travesía', 'Callejón', 'Glorieta', 'Vía'];
+  // Arma la "Dirección completa" (lo que se guarda) a partir de las partes.
+  function componerDireccion() {
+    const tipo = $('#dir-tipovia').value, via = $('#dir-via').value.trim();
+    const num = $('#dir-numero').value.trim(), resto = $('#dir-resto').value.trim();
+    if (!via && !num && !resto) return;   // sin partes no se pisa lo ya escrito
+    // Si el nombre de la vía ya empieza por un tipo (o "Gran Vía"), no se antepone otro.
+    const yaLleva = /^(calle|avenida|avda|av|paseo|plaza|pza|camino|carretera|ctra|ronda|travesía|callejón|glorieta|vía|gran vía)\b/i.test(via);
+    const calle = [(via && !yaLleva ? tipo : ''), via, num].filter(Boolean).join(' ').trim();
+    $('[data-campo="direccion"]').value = [calle, resto].filter(Boolean).join(', ');
+  }
+  // Al cargar una ficha, reparte la dirección guardada en tipo/vía/número (aprox.).
+  function descomponerDireccion(valor) {
+    const set = (t, v, n, r) => { $('#dir-tipovia').value = t; $('#dir-via').value = v; $('#dir-numero').value = n; $('#dir-resto').value = r; };
+    set('Calle', '', '', '');
+    const s = String(valor || '').trim();
+    if (!s) return;
+    const partes = s.split(',');
+    const calle = (partes.shift() || '').trim();
+    const resto = partes.join(',').trim();
+    const m = calle.match(/^(\p{L}+)\s+(.*?)\s+(\d+\S*)$/u);
+    const tipo = m && TIPOS_VIA.find(t => t.toLowerCase() === m[1].toLowerCase());
+    if (tipo) set(tipo, m[2].trim(), m[3].trim(), resto);
+    else set('Calle', calle, '', resto);   // no casó: se conserva todo en la vía
+  }
+  ['#dir-tipovia', '#dir-via', '#dir-numero', '#dir-resto'].forEach(sel => {
+    const el = $(sel); if (!el) return;
+    el.addEventListener('input', componerDireccion);
+    el.addEventListener('change', componerDireccion);
+  });
+
+  // Sugerencias de nacionalidad (ISO 3166) en el datalist.
+  (function () {
+    const dl = document.getElementById('dl-nacionalidades');
+    if (dl && window.NACIONALIDADES) dl.innerHTML = window.NACIONALIDADES.map(n => `<option value="${n}"></option>`).join('');
+  })();
+
+  // Geocodificar: envía las partes + CP/localidad/provincia de la ficha (búsqueda
+  // estructurada de Nominatim, más fiable) y avisa de la precisión del resultado.
   $('#btn-geo').addEventListener('click', async () => {
-    const dir = $('[data-campo="direccion"]').value.trim();
-    if (!dir) { msg('Escribe primero la dirección.', false); return; }
+    const payload = {
+      tipo_via: $('#dir-tipovia').value, via: $('#dir-via').value.trim(), numero: $('#dir-numero').value.trim(),
+      direccion: $('[data-campo="direccion"]').value.trim(),
+      codigo_postal: $('[data-campo="codigo_postal"]').value.trim(),
+      localidad: $('[data-campo="localidad"]').value.trim(),
+      provincia: $('[data-campo="provincia"]').value.trim()
+    };
+    if (!payload.via && !payload.direccion) { msg('Escribe primero la dirección.', false); return; }
     const btn = $('#btn-geo'); const html = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
-    const r = await api('/seleccion/geocodificar', { direccion: dir });
+    const r = await api('/seleccion/geocodificar', payload);
     btn.innerHTML = html;
-    if (r.status === 'ok' && r.encontrado) { $('[data-campo="coordenadas"]').value = r.coordenadas; msg('Coordenadas obtenidas (' + r.precision + ').', true); }
-    else msg(r.msg || 'No se encontró la dirección.', false);
+    const info = $('#geo-info');
+    if (r.status === 'ok' && r.encontrado) {
+      $('[data-campo="coordenadas"]').value = r.coordenadas;
+      const fina = /house|building|address|amenity|shop|place/i.test(r.precision || '');
+      info.textContent = (fina ? '✓ Portal exacto' : '≈ Aproximado (' + (r.precision || 'zona') + ') — revisa número y CP') + (r.etiqueta ? ' · ' + r.etiqueta : '');
+      info.className = 'text-[11px] mt-1 ' + (fina ? 'text-telecab-green' : 'text-telecab-gold');
+      info.classList.remove('hidden');
+      msg('Coordenadas obtenidas (' + (r.precision || '—') + ').', true);
+    } else {
+      info.classList.add('hidden');
+      msg(r.msg || 'No se encontró la dirección. Revisa vía, número y CP.', false);
+    }
   });
 
   // Board por etapa
