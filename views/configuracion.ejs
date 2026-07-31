@@ -14,6 +14,68 @@
     <p id="tema-msg" class="text-xs text-telecab-muted mt-4"></p>
   </div>
 
+  <!-- Gestión de usuarios (solo superadmin) -->
+  <% if (typeof rol !== 'undefined' && rol === 'superadmin') { %>
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5" id="card-usuarios">
+    <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-users-gear text-telecab-gold"></i> Usuarios</h2>
+    <p class="text-xs text-telecab-muted mb-4">Crea accesos y asigna roles. Al crear un usuario se le envía una contraseña provisional a su correo; en su primer acceso elige la suya.</p>
+
+    <div class="grid sm:grid-cols-4 gap-2">
+      <input id="u-nombre" class="inp sm:col-span-1" placeholder="Nombre">
+      <input id="u-email" type="email" class="inp sm:col-span-2" placeholder="correo@telecab.es" autocomplete="off">
+      <select id="u-rol" class="inp sm:col-span-1">
+        <option value="oficina">Oficina</option>
+        <option value="trafico">Tráfico</option>
+        <option value="superadmin">Superadmin</option>
+      </select>
+    </div>
+    <button id="u-crear" class="mt-2 px-4 py-2 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold text-sm">
+      <i class="fa-solid fa-user-plus mr-1"></i> Crear y enviar acceso
+    </button>
+    <p id="u-msg" class="text-xs mt-2 hidden"></p>
+
+    <div class="mt-4 border-t border-telecab-border pt-3">
+      <div id="u-lista" class="space-y-1.5"></div>
+    </div>
+  </div>
+  <% } %>
+
+  <!-- Correo para procesos (solo superadmin) -->
+  <% if (typeof rol !== 'undefined' && rol === 'superadmin') { %>
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5" id="card-correo">
+    <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-envelope-circle-check text-telecab-gold"></i> Correo para procesos</h2>
+    <p class="text-xs text-telecab-muted mb-4">Cuenta desde la que la plataforma envía los correos (accesos, avisos, auditoría). La contraseña se guarda <b>cifrada</b>. Para telecab.es (DonDominio): servidor <b>smtp.dondominio.com</b>, puerto <b>587</b>, usuario = tu correo completo.</p>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Servidor SMTP</label>
+        <input id="c-host" class="inp" placeholder="smtp.dondominio.com" autocomplete="off">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Puerto</label>
+        <input id="c-port" class="inp" placeholder="587" inputmode="numeric">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Usuario (correo)</label>
+        <input id="c-user" class="inp" placeholder="datos@telecab.es" autocomplete="off">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Remitente «De:»</label>
+        <input id="c-from" class="inp" placeholder="noreply@telecab.es">
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-xs text-telecab-muted mb-1">Contraseña <span id="c-pass-nota" class="text-telecab-muted/70"></span></label>
+        <input id="c-pass" type="password" class="inp" placeholder="••••••••" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 mt-3">
+      <button id="c-guardar" class="px-4 py-2 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold text-sm"><i class="fa-solid fa-floppy-disk mr-1"></i> Guardar</button>
+      <button id="c-prueba" class="px-4 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Enviar prueba</button>
+      <span id="c-estado" class="text-xs text-telecab-muted ml-auto"></span>
+    </div>
+    <p id="c-msg" class="text-xs mt-2 hidden"></p>
+  </div>
+  <% } %>
+
 </div>
 
 <script>
@@ -97,4 +159,131 @@
   matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
     if ((localStorage.getItem(KEY) || 'dark') === 'auto') { aplicar('auto'); pintarSel('auto'); }
   });
+</script>
+
+<!-- Gestión de usuarios (solo se activa si el superadmin ve la tarjeta). -->
+<script>
+(function () {
+  const card = document.getElementById('card-usuarios');
+  if (!card) return;   // no es superadmin → no hay tarjeta
+  const ROLN = { superadmin: 'Superadmin', oficina: 'Oficina', trafico: 'Tráfico' };
+  const lista = document.getElementById('u-lista');
+  const msg = document.getElementById('u-msg');
+  let YO = '';
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs mt-2 ' + cls; msg.classList.remove('hidden'); };
+  async function api(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+
+  function fila(u) {
+    const el = document.createElement('div');
+    el.className = 'flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl bg-telecab-dark/40 border border-telecab-border';
+    const bloqueado = u.estado === 'bloqueado';
+    const yo = u.email === YO;
+    el.innerHTML =
+      `<span class="min-w-0 flex-1">
+         <span class="block text-sm text-telecab-text truncate">${esc(u.nombre)} ${yo ? '<span class="text-[10px] text-telecab-gold">(tú)</span>' : ''} ${u.debe_cambiar ? '<span class="text-[10px] text-telecab-muted">· provisional</span>' : ''}</span>
+         <span class="block text-[11px] text-telecab-muted font-mono truncate">${esc(u.email)}${u.ultimo_acceso ? ' · último: ' + esc(u.ultimo_acceso) : ' · nunca ha entrado'}</span>
+       </span>
+       <select class="u-rol inp !w-32 text-xs !py-1" data-email="${esc(u.email)}">
+         ${['superadmin', 'oficina', 'trafico'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROLN[r]}</option>`).join('')}
+       </select>
+       <button class="u-estado text-xs px-2 py-1 rounded-lg border ${bloqueado ? 'border-telecab-red/40 text-telecab-red' : 'border-telecab-green/40 text-telecab-green'}" data-email="${esc(u.email)}" data-estado="${bloqueado ? 'activo' : 'bloqueado'}">${bloqueado ? 'Activar' : 'Desactivar'}</button>
+       <button class="u-reset text-xs px-2 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold" data-email="${esc(u.email)}" title="Enviar nueva contraseña provisional"><i class="fa-solid fa-key"></i></button>`;
+    return el;
+  }
+
+  async function cargar() {
+    try {
+      const r = await (await fetch('/usuarios/api/datos')).json();
+      if (r.status !== 'ok') return aviso(r.msg || 'No se pudo cargar la lista', 'text-telecab-red');
+      YO = r.yo || '';
+      lista.innerHTML = '';
+      (r.usuarios || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es')).forEach(u => lista.appendChild(fila(u)));
+    } catch (_) {}
+  }
+
+  document.getElementById('u-crear').addEventListener('click', async () => {
+    const nombre = document.getElementById('u-nombre').value.trim();
+    const email = document.getElementById('u-email').value.trim();
+    const rol = document.getElementById('u-rol').value;
+    if (!nombre || !email) return aviso('Pon nombre y correo.', 'text-telecab-red');
+    const r = await api('/usuarios/crear', { nombre, email, rol });
+    if (r.status !== 'ok') return aviso(r.msg || 'No se pudo crear', 'text-telecab-red');
+    document.getElementById('u-nombre').value = '';
+    document.getElementById('u-email').value = '';
+    if (r.correoEnviado) aviso('Usuario creado. Se le envió la contraseña provisional por correo.', 'text-telecab-green');
+    else aviso('Usuario creado. El correo aún no está configurado → contraseña provisional: ' + r.passwordProvisional + ' (pásasela tú).', 'text-telecab-gold');
+    cargar();
+  });
+
+  lista.addEventListener('change', async e => {
+    const sel = e.target.closest('.u-rol');
+    if (!sel) return;
+    const r = await api('/usuarios/rol', { email: sel.dataset.email, rol: sel.value });
+    if (r.status !== 'ok') aviso(r.msg || 'No se pudo cambiar el rol', 'text-telecab-red');
+    cargar();
+  });
+
+  lista.addEventListener('click', async e => {
+    const est = e.target.closest('.u-estado');
+    const res = e.target.closest('.u-reset');
+    if (est) {
+      const r = await api('/usuarios/estado', { email: est.dataset.email, estado: est.dataset.estado });
+      if (r.status !== 'ok') aviso(r.msg || 'No se pudo cambiar el estado', 'text-telecab-red');
+      cargar();
+    } else if (res) {
+      if (!confirm('¿Enviar una nueva contraseña provisional a ' + res.dataset.email + '?')) return;
+      const r = await api('/usuarios/reset', { email: res.dataset.email });
+      if (r.status !== 'ok') return aviso(r.msg || 'No se pudo resetear', 'text-telecab-red');
+      if (r.correoEnviado) aviso('Nueva provisional enviada por correo a ' + res.dataset.email + '.', 'text-telecab-green');
+      else aviso('Nueva provisional (correo sin configurar) de ' + res.dataset.email + ': ' + r.passwordProvisional, 'text-telecab-gold');
+    }
+  });
+
+  cargar();
+})();
+</script>
+
+<!-- Correo para procesos (solo se activa si el superadmin ve la tarjeta). -->
+<script>
+(function () {
+  const card = document.getElementById('card-correo');
+  if (!card) return;
+  const $ = id => document.getElementById(id);
+  const msg = $('c-msg');
+  const aviso = (t, cls) => { msg.textContent = t; msg.className = 'text-xs mt-2 ' + cls; msg.classList.remove('hidden'); };
+  async function post(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+  function pintar(e) {
+    $('c-host').value = e.host || '';
+    $('c-port').value = e.port || '587';
+    $('c-user').value = e.user || '';
+    $('c-from').value = e.from || '';
+    $('c-pass-nota').textContent = e.tienePass ? '(guardada — déjala vacía para no cambiarla)' : '(requerida)';
+    $('c-estado').innerHTML = e.activo
+      ? '<span class="text-telecab-green"><i class="fa-solid fa-circle-check"></i> Envío activo</span>'
+      : (e.envCredenciales ? '<span class="text-telecab-gold">Usando credenciales del servidor</span>' : '<span class="text-telecab-muted">Sin configurar</span>');
+  }
+  async function cargar() { try { const r = await (await fetch('/configuracion/correo')).json(); if (r.status === 'ok') pintar(r.estado); } catch (_) {} }
+
+  $('c-guardar').addEventListener('click', async () => {
+    const body = { host: $('c-host').value.trim(), port: $('c-port').value.trim(), user: $('c-user').value.trim(), from: $('c-from').value.trim() };
+    if ($('c-pass').value) body.pass = $('c-pass').value;
+    const r = await post('/configuracion/correo', body);
+    if (r.status !== 'ok') return aviso(r.msg || 'No se pudo guardar', 'text-telecab-red');
+    $('c-pass').value = ''; pintar(r.estado); aviso('Guardado.', 'text-telecab-green');
+  });
+  $('c-prueba').addEventListener('click', async () => {
+    aviso('Enviando prueba…', 'text-telecab-muted');
+    const r = await post('/configuracion/correo/prueba', {});
+    if (r.enviado) aviso('Prueba enviada. Revisa tu bandeja de entrada.', 'text-telecab-green');
+    else aviso('No se pudo enviar: ' + (r.msg || 'revisa los datos'), 'text-telecab-red');
+  });
+  cargar();
+})();
 </script>

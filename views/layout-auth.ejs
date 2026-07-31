@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telecab · <%= titulo || 'Acceso' %></title>
+  <link rel="icon" type="image/png" href="/assets/logo-64.png">
+
+  <!-- Tema antes de pintar, para que no parpadee. -->
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem('telecab-tema') || 'dark';
+        var tema = pref === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : pref;
+        document.documentElement.setAttribute('data-theme', tema);
+      } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+    })();
+  </script>
+  <link rel="stylesheet" href="/assets/css/telecab.css">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        colors: { 'telecab': {
+          'dark': 'rgb(var(--tc-dark) / <alpha-value>)', 'card': 'rgb(var(--tc-card) / <alpha-value>)',
+          'card2': 'rgb(var(--tc-card2) / <alpha-value>)', 'border': 'rgb(var(--tc-border) / <alpha-value>)',
+          'gold': 'rgb(var(--tc-gold) / <alpha-value>)', 'gold-soft': 'rgb(var(--tc-gold-soft) / <alpha-value>)',
+          'gold-deep': 'rgb(var(--tc-gold-deep) / <alpha-value>)', 'red': 'rgb(var(--tc-red) / <alpha-value>)',
+          'green': 'rgb(var(--tc-green) / <alpha-value>)', 'text': 'rgb(var(--tc-text) / <alpha-value>)',
+          'muted': 'rgb(var(--tc-muted) / <alpha-value>)'
+        } },
+        boxShadow: { 'soft': '0 1px 3px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5)', 'gold': '0 4px 20px -6px rgb(var(--tc-gold) / .35)' }
+      } }
+    }
+  </script>
+</head>
+<body class="app-bg min-h-screen flex items-center justify-center p-4 font-sans text-telecab-text">
+  <div class="w-full max-w-sm">
+    <div class="flex flex-col items-center mb-6">
+      <img src="/assets/logo-64.png" class="w-14 h-14 mb-2" alt="Telecab" onerror="this.style.display='none'">
+      <span class="text-telecab-gold font-semibold tracking-wide">TELECAB</span>
+    </div>
+    <%- body %>
+    <p class="text-center text-[11px] text-telecab-muted mt-6">Acceso restringido · plataforma interna</p>
+  </div>
+</body>
+</html>

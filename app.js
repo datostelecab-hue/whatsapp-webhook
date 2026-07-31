@@ -74,7 +74,13 @@ const notificacionesRoutes = require('./routes/notificaciones');
 const pendientesRoutes = require('./routes/pendientes');
 const peticionesRoutes = require('./routes/peticiones');
 const operacionesRoutes = require('./routes/operaciones');
+const authRoutes = require('./routes/auth');
+const usuariosRoutes = require('./routes/usuarios');
+const sesion = require('./services/sesion');
 const { procesarYUnificar } = require('./services/boltHorasCore');
+
+// Carga la sesión (si hay cookie) en req.usuario / res.locals para todas las peticiones.
+app.use(sesion.cargarSesion);
 
 // ============================================================
 // VERIFICACIÓN DEL WEBHOOK (Meta) + REDIRECCIÓN AL VISOR
@@ -95,6 +101,17 @@ app.get('/', (req, res) => {
 // RUTAS
 // ============================================================
 app.post('/', botPuertas);
+
+// ── Autenticación (rutas públicas): login, logout, cambio y recuperación ──────
+app.use('/', authRoutes);
+
+// ── A partir de aquí TODO exige sesión + rol (el webhook y /assets quedan arriba,
+//    públicos). Sin sesión → redirige a /login; API → 401. ─────────────────────
+app.use(sesion.protegido);
+app.use(sesion.forzarCambio);
+app.use(sesion.controlAcceso);
+app.use('/usuarios', usuariosRoutes);
+
 app.use('/horas', boltHoras);
 app.use('/dashboard', dashboardRoutes);
 app.use('/resumen', resumenRoutes);
@@ -263,4 +280,6 @@ app.listen(port, () => {
   console.log(`   Horas: GET /horas/procesar`);
   console.log(`   Resumen: POST /resumen/todo`);
   console.log(`   Cron: Cada hora (minuto 0)`);
+  // Siembra el primer superadmin si SUPERADMIN_EMAIL está definido y aún no existe.
+  sesion.sembrarSuperadmin();
 });

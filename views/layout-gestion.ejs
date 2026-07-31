@@ -147,14 +147,14 @@
     <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
       <%
         const seccionActiva = typeof seccion !== 'undefined' ? seccion : '';
-        // Módulos agrupados por departamento (provisional, hasta el login por roles).
+        // Módulos agrupados por departamento. El menú se filtra por el rol de la sesión.
         const grupos = [
-          { nombre: 'Contratación', icono: 'fa-user-tie', rol: 'reclutador', items: [
+          { nombre: 'Contratación', icono: 'fa-user-tie', rol: 'oficina', items: [
             { href: '/vacantes',       icono: 'fa-location-dot',    texto: 'Vacantes',       id: 'vacantes' },
             { href: '/seleccion',      icono: 'fa-user-plus',       texto: 'Selección',      id: 'seleccion' },
             { href: '/pendientes-bolt',icono: 'fa-hourglass-half',  texto: 'Pendientes BOLT',id: 'pendientes-bolt' }
           ] },
-          { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'rrhh', items: [
+          { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'oficina', items: [
             { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' },
             { href: '/administracion', icono: 'fa-gas-pump',         texto: 'Administración', id: 'administracion' },
             { href: '/plantilla',      icono: 'fa-address-book',     texto: 'Plantilla',      id: 'plantilla' }
@@ -171,7 +171,7 @@
             { href: '/matching',  icono: 'fa-location-dot', texto: 'Matching',  id: 'matching' },
             { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' }
           ] },
-          { nombre: 'Operaciones', icono: 'fa-triangle-exclamation', rol: 'operaciones', items: [
+          { nombre: 'Operaciones', icono: 'fa-triangle-exclamation', rol: 'trafico', items: [
             { href: '/operaciones', icono: 'fa-tower-broadcast', texto: 'Alertas Mapon', id: 'operaciones' }
           ] }
         ];
@@ -246,15 +246,8 @@
       </button>
       <h1 class="font-semibold text-telecab-text"><%= titulo || 'Gestión' %></h1>
 
+      <% const ROL_NOMBRE = { superadmin: 'Superadmin', oficina: 'Oficina', trafico: 'Tráfico' }; %>
       <div class="ml-auto flex items-center gap-2">
-        <!-- Entrar como… (rol, sin login) -->
-        <select id="rol-sel" title="Entrar como…" class="bg-telecab-card2 border border-telecab-border rounded-lg text-xs text-telecab-text px-2 py-1.5 focus:outline-none focus:border-telecab-gold cursor-pointer">
-          <option value="general">👤 Invitado</option>
-          <option value="reclutador">🧑‍💼 Reclutador</option>
-          <option value="rrhh">📋 RRHH</option>
-          <option value="trafico">🚕 Tráfico</option>
-          <option value="operaciones">🚨 Operaciones</option>
-        </select>
 
         <!-- Buzón de pendientes -->
         <div class="relative">
@@ -272,6 +265,17 @@
           <i class="far fa-clock"></i>
           <%= new Date().toLocaleString('es-ES', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) %>
         </span>
+
+        <!-- Usuario en sesión + salir -->
+        <div class="flex items-center gap-2 pl-2 ml-1 border-l border-telecab-border">
+          <div class="hidden sm:block text-right leading-tight">
+            <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) || '' %></span>
+            <span class="block text-[10px] uppercase tracking-wide text-telecab-gold"><%= (typeof usuario !== 'undefined' && usuario && (ROL_NOMBRE[usuario.rol] || usuario.rol)) || '' %></span>
+          </div>
+          <a href="/logout" title="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          </a>
+        </div>
       </div>
     </header>
 
@@ -303,25 +307,23 @@
 })();
 </script>
 
-<!-- ══════════ Roles (sin login) + buzón de pendientes por departamento ══════════ -->
+<!-- ══════════ Roles (según sesión) + buzón de pendientes por departamento ══════════ -->
 <script>
 (function () {
-  const sel = document.getElementById('rol-sel');
   const btn = document.getElementById('notif-btn');
   const panel = document.getElementById('notif-panel');
   const badge = document.getElementById('notif-badge');
   const lista = document.getElementById('notif-lista');
-  if (!sel || !btn) return;
 
-  // Operaciones aún no alimenta el buzón de pendientes: /notificaciones no
-  // devuelve esa clave y pinta 0, pero tiene que estar en DEPS o al recargar se
-  // perdería el rol elegido y el menú volvería a "Invitado".
-  const DEPS = { general: ['reclutador', 'rrhh', 'trafico', 'operaciones'], reclutador: ['reclutador'], rrhh: ['rrhh'], trafico: ['trafico'], operaciones: ['operaciones'] };
+  // Rol REAL de la sesión (lo inyecta el servidor). superadmin ve todo.
+  const rol = '<%= rol || "" %>';
+  // Departamentos que alimentan el buzón de pendientes, por rol.
+  const DEPS = {
+    superadmin: ['reclutador', 'rrhh', 'trafico', 'operaciones'],
+    oficina: ['reclutador', 'rrhh'],
+    trafico: ['trafico', 'operaciones']
+  };
   const NOMBRE = { reclutador: 'Reclutador', rrhh: 'RRHH', trafico: 'Tráfico', operaciones: 'Operaciones' };
-
-  let rol = localStorage.getItem('telecab-rol') || 'general';
-  if (!DEPS[rol]) rol = 'general';
-  sel.value = rol;
   let datos = null;
 
   // Filtra los grupos del menú por rol (general = todos). El grupo de la sección
@@ -330,7 +332,7 @@
     document.querySelectorAll('.nav-grupo[data-rol]').forEach(g => {
       const gr = g.getAttribute('data-rol');
       const activo = !!g.querySelector('.nav-item.activo');
-      g.classList.toggle('hidden', !(rol === 'general' || gr === rol || activo));
+      g.classList.toggle('hidden', !(rol === 'superadmin' || gr === rol || activo));
     });
     // Ítems sueltos ocultos para ciertos roles (p. ej. Fichas no es para Tráfico).
     document.querySelectorAll('[data-rol-not]').forEach(el => {
@@ -341,7 +343,7 @@
 
   function pintar() {
     if (!datos || datos.status !== 'ok') return;
-    const deps = DEPS[rol] || DEPS.general;
+    const deps = DEPS[rol] || [];
     let total = 0;
     lista.innerHTML = '';
     deps.forEach(dep => {
@@ -352,7 +354,7 @@
         a.href = it.href;
         a.className = 'block px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition';
         a.innerHTML =
-          (rol === 'general' ? `<span class="block text-[10px] uppercase tracking-wide text-telecab-gold">${NOMBRE[dep]}</span>` : '') +
+          (deps.length > 1 ? `<span class="block text-[10px] uppercase tracking-wide text-telecab-gold">${NOMBRE[dep]}</span>` : '') +
           `<span class="block text-xs text-telecab-text">${it.texto}</span>` +
           (it.detalle ? `<span class="block text-[11px] text-telecab-muted truncate">${it.detalle}</span>` : '');
         lista.appendChild(a);
@@ -370,12 +372,10 @@
     try { const r = await fetch('/notificaciones'); datos = await r.json(); pintar(); } catch (_) {}
   }
 
-  sel.addEventListener('change', () => {
-    rol = sel.value; localStorage.setItem('telecab-rol', rol);
-    aplicarRolNav(); pintar();
-  });
-  btn.addEventListener('click', e => { e.stopPropagation(); panel.classList.toggle('hidden'); });
-  document.addEventListener('click', e => { if (panel && !panel.contains(e.target) && !btn.contains(e.target)) panel.classList.add('hidden'); });
+  if (btn) {
+    btn.addEventListener('click', e => { e.stopPropagation(); panel.classList.toggle('hidden'); });
+    document.addEventListener('click', e => { if (panel && !panel.contains(e.target) && !btn.contains(e.target)) panel.classList.add('hidden'); });
+  }
 
   aplicarRolNav();
   // Con retraso para que la campana NO entre en el overlay de carga inicial.
