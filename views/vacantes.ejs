@@ -25,12 +25,24 @@
 
   <div id="lista" class="grid gap-3 sm:grid-cols-2"></div>
 
+  <div id="resueltas-wrap" class="hidden mt-6">
+    <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-circle-check text-telecab-green"></i> Vacantes resueltas <span id="t-resueltas" class="text-telecab-muted font-normal"></span>
+    </h2>
+    <div id="lista-resueltas" class="grid gap-3 sm:grid-cols-2 opacity-80"></div>
+  </div>
+
 </div>
 
 <script>
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  const COLOR_VAC = {
+    'Abierta': 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30',
+    'En proceso de alta': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+    'Cerrada': 'bg-telecab-green/10 text-telecab-green border-telecab-green/30'
+  };
   const COLOR_ETAPA = {
     'Preselección': 'text-telecab-muted', 'Coordinación de entrevista': 'text-sky-400',
     'Entrevistado': 'text-telecab-gold', 'Reconocimiento médico': 'text-orange-400',
@@ -55,7 +67,7 @@
     return `<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
       <div class="flex items-center justify-between mb-2">
         <h3 class="text-base font-semibold text-telecab-text"><i class="fa-solid fa-briefcase text-telecab-gold mr-1"></i> ${esc(v.puesto)}</h3>
-        <span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-green/10 text-telecab-green border border-telecab-green/30">${esc(v.estado || 'Abierta')}</span>
+        <span class="text-[11px] px-2 py-0.5 rounded-full border ${COLOR_VAC[v.estado] || COLOR_VAC['Abierta']}">${esc(v.estado || 'Abierta')}</span>
       </div>
       <p class="text-sm text-telecab-muted mb-2"><i class="fa-solid fa-location-dot mr-1 text-telecab-gold/70"></i> ${esc(v.zonas || '—')}</p>
       <div class="mb-2"><span class="text-xs text-telecab-muted">Matrículas:</span><br>${mats || '<span class="text-telecab-muted text-sm">—</span>'}</div>
@@ -73,8 +85,13 @@
     $('#t-dia').textContent = r.contadores.dia;
     $('#t-noche').textContent = r.contadores.noche;
     const cont = $('#lista');
-    if (!r.vacantes.length) { cont.innerHTML = '<p class="text-telecab-muted col-span-full">Aún no hay vacantes guardadas. Tráfico las arma en el Generador de vacantes.</p>'; return; }
-    cont.innerHTML = r.vacantes.map(ficha).join('');
+    if (!r.vacantes.length) cont.innerHTML = '<p class="text-telecab-muted col-span-full">No hay vacantes pendientes. Tráfico las arma en el Generador de vacantes.</p>';
+    else cont.innerHTML = r.vacantes.map(ficha).join('');
+
+    const res = r.resueltas || [];
+    $('#resueltas-wrap').classList.toggle('hidden', !res.length);
+    $('#t-resueltas').textContent = res.length ? '(' + res.length + ')' : '';
+    $('#lista-resueltas').innerHTML = res.map(ficha).join('');
   }
 
   $('#btn-recargar').addEventListener('click', cargar);

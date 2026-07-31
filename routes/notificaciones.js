@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { leerTickets, ESTADOS } = require('../services/tickets');
+const { leerTickets, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
 const { leerVacantesGuardadas } = require('../services/vacantes');
 const { leerPeticiones } = require('../services/peticiones');
@@ -23,10 +23,16 @@ async function calcular() {
   const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT);
   const pendientesPin = L.filter(t => t.estado === ESTADOS.PENDIENTE_PIN);
   const petPendientes = (peticiones || []).filter(p => p.estado === 'Pendiente');
+  // Incorporaciones recién llegadas a Tráfico (deciden Aceptar / Asignar manual).
+  const incorporaciones = L.filter(t => t.etapa === ETAPAS.TRAFICO && t.estado === ESTADOS.ALTA);
+  const incIds = new Set(incorporaciones.map(t => (t.id_bolt || '').trim()).filter(Boolean));
+  // Pendientes de asignar coche/turno, EXCLUYENDO las incorporaciones (esas salen aparte).
   const pendienteAsignar = ((tablero && tablero.conductores) || [])
-    .filter(c => c.estadoCalculado === ESTADO_PENDIENTE);
+    .filter(c => c.estadoCalculado === ESTADO_PENDIENTE && !incIds.has((c.idBolt || '').trim()));
   // Vacantes abiertas que Selección debe reclutar.
-  const vacantesAbiertas = (vacantesAll || []).filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta');
+  // "Por reclutar" = solo las disponibles (excluye En proceso de alta / Cerrada / Cubierta).
+  const vacantesAbiertas = (vacantesAll || []).filter(v =>
+    v.estado !== 'Cerrada' && v.estado !== 'Cubierta' && v.estado !== 'En proceso de alta');
 
   return {
     // Reclutador (Selección): vacantes abiertas por llenar + fichas que RRHH
@@ -63,13 +69,20 @@ async function calcular() {
         }))
       ]
     },
-    // Tráfico: conductores dados de alta que esperan coche/turno.
+    // Tráfico: incorporaciones recién llegadas (por aceptar/asignar) + los que
+    // esperan coche/turno en el planificador.
     trafico: {
-      total: pendienteAsignar.length,
-      items: pendienteAsignar.map(c => ({
-        texto: `${c.nombre || c.id} — pendiente de asignar coche/turno`,
-        detalle: c.turno ? `Turno: ${c.turno}` : '', href: '/planificador'
-      }))
+      total: incorporaciones.length + pendienteAsignar.length,
+      items: [
+        ...incorporaciones.map(t => ({
+          texto: `${t.id_bolt || t.nombre || t.id} — incorporación por asignar`,
+          detalle: t.turno ? `Turno: ${t.turno}` : 'Llegó de Administración', href: '/incorporaciones'
+        })),
+        ...pendienteAsignar.map(c => ({
+          texto: `${c.nombre || c.id} — pendiente de asignar coche/turno`,
+          detalle: c.turno ? `Turno: ${c.turno}` : '', href: '/planificador'
+        }))
+      ]
     }
   };
 }

@@ -31,12 +31,19 @@
       <span class="text-xs px-2.5 py-1 rounded-full bg-telecab-gold/10 text-telecab-gold border border-telecab-gold/30">Pendiente de alta en Ballenoil</span>
     </div>
 
-    <!-- Datos para Ballenoil: nombre (ID), teléfono, correo -->
-    <div class="grid md:grid-cols-3 gap-3 mb-4">
+    <!-- Datos para Ballenoil: nombre (ID), DNI, teléfono, correo -->
+    <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5 mb-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Nombre en BOLT <span class="text-telecab-muted/60 normal-case tracking-normal">(= ID en la agenda)</span></p>
+      <div class="flex items-center gap-1.5">
+        <input id="d-nombre" class="flex-1 min-w-0 bg-transparent text-sm text-telecab-text font-medium focus:outline-none" placeholder="Nombre completo en BOLT">
+        <button type="button" class="js-copy text-telecab-muted hover:text-telecab-gold shrink-0" data-copy="nombre" title="Copiar"><i class="fa-regular fa-copy text-xs"></i></button>
+      </div>
+    </div>
+    <div class="grid md:grid-cols-3 gap-3 mb-3">
       <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5">
-        <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Nombre (tal como sale en BOLT)</p>
-        <button type="button" class="js-copy text-left text-sm text-telecab-text font-medium flex items-center gap-1.5 w-full" data-copy="nombre">
-          <span id="d-nombre" class="truncate">–</span><i class="fa-regular fa-copy text-telecab-muted text-xs shrink-0"></i>
+        <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">DNI / NIE</p>
+        <button type="button" class="js-copy text-left text-sm text-telecab-text font-mono flex items-center gap-1.5 w-full" data-copy="dni">
+          <span id="d-dni" class="truncate">–</span><i class="fa-regular fa-copy text-telecab-muted text-xs shrink-0"></i>
         </button>
       </div>
       <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5">
@@ -51,6 +58,10 @@
           <span id="d-email" class="truncate">–</span><i class="fa-regular fa-copy text-telecab-muted text-xs shrink-0"></i>
         </button>
       </div>
+    </div>
+    <div class="mb-4">
+      <label class="block text-xs text-telecab-muted mb-1">Observaciones de Ballenoil <span class="text-telecab-muted/60">(opcional)</span></label>
+      <textarea id="obs-ball" rows="2" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text resize-none focus:outline-none focus:border-telecab-gold transition" placeholder="Notas para Ballenoil (opcional)"></textarea>
     </div>
 
     <div class="grid md:grid-cols-2 gap-4 items-end">
@@ -104,16 +115,20 @@
     el.className = 'text-xs mt-3 ' + (ok ? 'text-telecab-green' : 'text-telecab-red');
     el.classList.remove('hidden');
   }
-  const nomCompleto = t => `${t.nombre || '(sin nombre)'}${t.apellidos ? ' ' + t.apellidos : ''}`;
+  // Nombre para MOSTRAR (el de la ficha de Selección). El "Nombre en BOLT" (= ID)
+  // va en el input editable #d-nombre, prellenado con lo resuelto del padrón.
+  const nomCompleto = t => (t.ficha || t.nombre || '(sin nombre)');
 
   function abrirFicha(t) {
     fichaActual = t;
     $('#ficha').classList.remove('hidden');
     $('#ficha-nombre').querySelector('span').textContent = nomCompleto(t);
-    $('#d-nombre').textContent = nomCompleto(t);
+    $('#d-nombre').value = t.nombre || '';
+    $('#d-dni').textContent = t.dni || '—';
     $('#d-tel').textContent = t.telefono || t.id || '–';
     $('#d-email').textContent = t.email || '—';
     $('#pin').value = t.pin_ballenoil || '';
+    $('#obs-ball').value = t.obs_ballenoil || '';
     $('#ficha-msg').classList.add('hidden');
     $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     setTimeout(() => $('#pin').focus(), 250);
@@ -124,7 +139,7 @@
     btn.addEventListener('click', () => {
       if (!fichaActual) return;
       const campo = btn.dataset.copy;
-      const val = campo === 'nombre' ? nomCompleto(fichaActual) : (fichaActual[campo] || fichaActual.id || '');
+      const val = campo === 'nombre' ? $('#d-nombre').value.trim() : (fichaActual[campo] || fichaActual.id || '');
       if (!val) return;
       navigator.clipboard && navigator.clipboard.writeText(val);
       const ic = btn.querySelector('i');
@@ -137,8 +152,11 @@
     if (!fichaActual) return;
     const pin = $('#pin').value.trim();
     if (!pin) { msg('Escribe el PIN de Ballenoil.', false); return; }
+    const id_bolt = $('#d-nombre').value.trim();
+    if (!id_bolt) { msg('Escribe el nombre tal como sale en BOLT (será su ID en la agenda).', false); return; }
+    const obs_ballenoil = $('#obs-ball').value.trim();
     const btn = $('#btn-pin'); btn.disabled = true;
-    const r = await api('/administracion/pin', { tel: fichaActual.id, pin });
+    const r = await api('/administracion/pin', { tel: fichaActual.id, pin, id_bolt, obs_ballenoil });
     btn.disabled = false;
     if (r.status === 'ok') { msg('PIN guardado. Creado en la Agenda como Pendiente Asignar.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); cargar(); }, 900); }
     else msg(r.msg || 'No se pudo guardar el PIN', false);

@@ -78,9 +78,11 @@ const COL = {
   pin_ballenoil: 52,   // Administración: PIN de Ballenoil (combustible). Último paso antes del planificador
   // Reversos de DNI/NIE y carnet (el frente sigue en doc_dni / doc_carnet):
   doc_dni_reverso: 53,
-  doc_carnet_reverso: 54
+  doc_carnet_reverso: 54,
+  id_bolt: 55,         // nombre completo tal como sale en BOLT (col C de CONDUCTORES_BOLT) = ID_BOLT en la agenda
+  obs_ballenoil: 56    // Administración: observaciones de Ballenoil (opcional)
 };
-const N_COLS = 55;
+const N_COLS = 57;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -94,7 +96,7 @@ const CABECERA = [
   'carnet_caducidad', 'fecha_inicio',
   'doc_dni', 'doc_carnet', 'doc_bancario', 'doc_seg_social', 'doc_penales',
   'tipo_contrato', 'jornada', 'ficha_pdf', 'nacionalidad', 'excel_alta',
-  'pin_ballenoil', 'doc_dni_reverso', 'doc_carnet_reverso'
+  'pin_ballenoil', 'doc_dni_reverso', 'doc_carnet_reverso', 'id_bolt', 'obs_ballenoil'
 ];
 
 // Los documentos de la ficha de alta (7 por conductor: DNI y carnet por las dos
@@ -219,7 +221,7 @@ function objetoAFila(o) {
 /** Lee todos los tickets → { lista: [obj], porTel: Map(tel -> obj), filas }. */
 async function leerTickets() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:BF`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:BJ`);
   const lista = [];
   const porTel = new Map();
   for (let i = 1; i < filas.length; i++) {
@@ -237,6 +239,21 @@ async function guardarTodos(porTel, filasViejas) {
   const grid = [CABECERA, ...[...porTel.values()].map(objetoAFila)];
   while (grid.length < filasViejas) grid.push(new Array(N_COLS).fill(''));
   await writeSheetRaw(ID_PLANIFICADOR, `${HOJA}!A1`, grid);
+}
+
+// Estados de la vacante ligada a un ticket (deben casar con ESTADO_VAC de vacantes.js).
+const VAC = { PROCESO: 'En proceso de alta', ABIERTA: 'Abierta', CERRADA: 'Cerrada' };
+
+/**
+ * Sincroniza la vacante ligada al ticket con su fase: al llegar a RRHH se bloquea
+ * ("En proceso de alta"); si el candidato se cae (rechazo/descarte) vuelve a
+ * "Abierta". No bloquea el flujo del ticket si la actualización falla.
+ */
+async function marcarVacante(t, estado) {
+  const vId = ((t && t.vacante) || '').toString().trim();
+  if (!vId) return;
+  try { await require('./vacantes').actualizarEstadoVacante(vId, estado); }
+  catch (e) { console.error(`❌ [Tickets] vacante ${vId} → ${estado}: ${e.message}`); }
 }
 
 // --- operaciones ------------------------------------------------------------
@@ -265,7 +282,7 @@ async function guardarTicket(datos = {}) {
       carnet_caducidad: '', fecha_inicio: '',
       doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: '',
       tipo_contrato: '', jornada: '', ficha_pdf: '', nacionalidad: '', excel_alta: '',
-      pin_ballenoil: '', doc_dni_reverso: '', doc_carnet_reverso: ''
+      pin_ballenoil: '', doc_dni_reverso: '', doc_carnet_reverso: '', id_bolt: '', obs_ballenoil: ''
     };
     porTel.set(tel, t);
   }
@@ -326,11 +343,15 @@ async function enviarABolt(tel) {
     // plataforma y darle el alta en Seguridad Social). NO pasa por "Pendiente BOLT".
     t.driver_uuid = enBolt.driver_uuid || t.driver_uuid || '';
     if (!t.nombre && enBolt.nombre) t.nombre = enBolt.nombre;
+    // El ID_BOLT (nombre completo tal como sale en BOLT) se captura AQUÍ, cuando el
+    // padrón sí lo tiene, para no depender de una re-búsqueda que podría fallar.
+    if (enBolt.nombre) t.id_bolt = enBolt.nombre;
     t.estado = ESTADOS.APROBADO_BOLT;
     t.etapa = ETAPAS.RRHH;
     t.fecha_apto = ahora();
     t.fecha_deteccion = ahora();
     await guardarTodos(porTel, filas);
+    await marcarVacante(t, VAC.PROCESO);   // su vacante queda bloqueada mientras se tramita
     return t;
   }
 
@@ -370,6 +391,7 @@ async function conciliarTicketsBolt() {
   const { porTel, filas } = await leerTickets();
   const ahoraTxt = ahora();
   const detectados = [];
+  const detectadosTk = [];
 
   [...porTel.values()].forEach(tk => {
     if (tk.estado !== ESTADOS.PENDIENTE_BOLT) return;
@@ -385,10 +407,15 @@ async function conciliarTicketsBolt() {
     tk.etapa = ETAPAS.RRHH;
     tk.fecha_deteccion = ahoraTxt;
     if (!tk.nombre && d.nombre) tk.nombre = d.nombre;
+    if (d.nombre) tk.id_bolt = d.nombre;   // captura el ID_BOLT (nombre completo de BOLT) al detectarlo
     detectados.push({ tel: tk.id, nombre: tk.nombre, driver_uuid: tk.driver_uuid });
+    detectadosTk.push(tk);
   });
 
-  if (detectados.length) await guardarTodos(porTel, filas);
+  if (detectados.length) {
+    await guardarTodos(porTel, filas);
+    for (const tk of detectadosTk) await marcarVacante(tk, VAC.PROCESO);   // su vacante se bloquea
+  }
   return { detectados, total: detectados.length };
 }
 
@@ -408,6 +435,7 @@ async function devolverARelevamiento(tel, motivo) {
   if (nota) t.notas = t.notas ? `${t.notas}\n[Devuelto ${ahora()}] ${nota}` : `[Devuelto ${ahora()}] ${nota}`;
   t.fecha_apto = '';   // se reabre en Selección; se re-sella al reenviar a BOLT
   await guardarTodos(porTel, filas);
+  await marcarVacante(t, VAC.ABIERTA);   // nadie se colocó: la vacante vuelve a estar disponible
   return t;
 }
 
@@ -426,6 +454,7 @@ async function descartar(tel, motivo) {
   t.motivo = (motivo || '').toString().trim();
   t.fecha_baja = ahora();
   await guardarTodos(porTel, filas);
+  await marcarVacante(t, VAC.ABIERTA);   // el candidato se descarta: la vacante vuelve a estar disponible
   return t;
 }
 
@@ -490,31 +519,40 @@ async function procesarAltaRRHH(tel, datos = {}) {
  * habilitación. Primero se crea en la agenda y solo si eso va bien se guarda el
  * PIN y se avanza el ticket a Tráfico.
  */
-async function crearPinAdmin(tel, pin) {
+async function crearPinAdmin(tel, pin, idBolt, obsBallenoil) {
   tel = normalizarTel(tel);
   pin = (pin == null ? '' : pin).toString().trim();
   if (!pin) throw new Error('Falta el PIN de Ballenoil');
+  const obsBall = (obsBallenoil == null ? '' : obsBallenoil).toString().trim();
 
   const { porTel, filas } = await leerTickets();
   const t = porTel.get(tel);
   if (!t) throw new Error('No existe un ticket con ese teléfono');
   if (t.etapa !== ETAPAS.ADMINISTRACION) throw new Error('Esta ficha no está en Administración');
 
-  // Nombre de Bolt (ID_BOLT) desde el padrón, para la ficha de la agenda.
-  let boltNombre = '';
-  try {
-    const { db } = await leerPadron();
-    let d = t.driver_uuid ? db.get(t.driver_uuid) : null;
-    if (!d) { try { d = await buscarPorTelefono(tel); } catch (_) {} }
-    if (d) boltNombre = (d.nombre || '').trim();
-  } catch (_) { /* si el padrón falla, se sigue sin ID_BOLT */ }
-
-  const nombre = boltNombre || t.nombre;
-  if (!nombre) throw new Error('El conductor no tiene nombre para crear la ficha en la agenda');
+  // ID_BOLT (nombre completo tal como sale en BOLT) por orden de fiabilidad:
+  //  1) el que confirma Administración,  2) el capturado al detectarlo en BOLT,
+  //  3) una re-búsqueda en el padrón (por driver_uuid o teléfono).
+  let boltNombre = (idBolt == null ? '' : idBolt).toString().trim() || (t.id_bolt || '').trim();
+  if (!boltNombre) {
+    try {
+      const { db } = await leerPadron();
+      let d = t.driver_uuid ? db.get(t.driver_uuid) : null;
+      if (!d) { try { d = await buscarPorTelefono(tel); } catch (_) {} }
+      if (d) boltNombre = (d.nombre || '').trim();
+    } catch (_) { /* si el padrón falla, se sigue sin ID_BOLT */ }
+  }
+  // El ID_BOLT es obligatorio: el planificador enlaza a los conductores por él, así
+  // que sin él la ficha llegaría "coja" a la agenda. Administración lo confirma.
+  if (!boltNombre) {
+    throw new Error('Falta el nombre tal como sale en BOLT (será el ID del conductor en la agenda). Escríbelo en el campo "Nombre en BOLT".');
+  }
+  const nombre = boltNombre;
 
   const obs = [
     t.fecha_alta ? `Alta RRHH ${t.fecha_alta}` : '',
     `PIN Ballenoil ${pin}`,
+    obsBall ? `Obs. Ballenoil: ${obsBall}` : '',
     t.canal ? `Canal: ${t.canal}` : '',
     t.email ? `Email: ${t.email}` : '',
     t.iban ? `IBAN: ${t.iban}` : '',
@@ -550,6 +588,8 @@ async function crearPinAdmin(tel, pin) {
   }
 
   t.pin_ballenoil = pin;
+  t.id_bolt = boltNombre;   // deja registrado el ID_BOLT definitivo que fue a la agenda
+  t.obs_ballenoil = obsBall;
   t.estado = ESTADOS.ALTA;
   t.etapa = ETAPAS.TRAFICO;
   await guardarTodos(porTel, filas);
@@ -566,6 +606,7 @@ async function noContinuarRRHH(tel, motivo) {
   t.motivo = (motivo || '').toString().trim() || 'RRHH decide no continuar';
   t.fecha_baja = ahora();
   await guardarTodos(porTel, filas);
+  await marcarVacante(t, VAC.ABIERTA);   // no se colocó a nadie: la vacante vuelve a estar disponible
   return t;
 }
 
@@ -584,6 +625,7 @@ async function devolverRRHH(tel, motivo) {
   t.motivo = (motivo || '').toString().trim() || 'Devuelto por RRHH';
   t.notas = t.notas ? `${t.notas}\n[Devuelto por RRHH ${ahora()}] ${t.motivo}` : `[Devuelto por RRHH ${ahora()}] ${t.motivo}`;
   await guardarTodos(porTel, filas);
+  await marcarVacante(t, VAC.ABIERTA);   // devuelta a Selección: la vacante vuelve a estar disponible
   return t;
 }
 

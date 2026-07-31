@@ -132,4 +132,35 @@ async function reservasPorMatricula() {
   return mapa;
 }
 
-module.exports = { vacantesPorZona, leerVacantesGuardadas, guardarVacante, reservasPorMatricula };
+// Ciclo de vida de una vacante (es única): se genera Abierta; cuando un candidato
+// llega a RRHH se bloquea "En proceso de alta" (no admite otro candidato); cuando
+// Tráfico la resuelve se Cierra (pasa a "resueltas"). Si el candidato se cae antes
+// de completar, vuelve a Abierta (nunca se colocó a nadie).
+const ESTADO_VAC = { ABIERTA: 'Abierta', PROCESO: 'En proceso de alta', CERRADA: 'Cerrada' };
+
+// Una vacante se puede reclutar/asignar solo si NO está ya comprometida o resuelta.
+function vacanteDisponible(v) {
+  const e = (v && v.estado || '').toString().trim();
+  return e !== ESTADO_VAC.PROCESO && e !== ESTADO_VAC.CERRADA && e !== 'Cubierta';
+}
+
+/** Cambia el estado de una vacante (por id). Escritura puntual de la celda estado. */
+async function actualizarEstadoVacante(id, estado, notas) {
+  id = (id == null ? '' : id).toString().trim();
+  if (!id) return { ok: false, motivo: 'sin id' };
+  await ensureSheet(ID_PLANIFICADOR, HOJA_VAC);
+  const colA = await readSheet(ID_PLANIFICADOR, `${HOJA_VAC}!A:A`);
+  let fila = -1;
+  for (let i = 1; i < colA.length; i++) {
+    if (((colA[i] || [])[0] || '').toString().trim() === id) { fila = i + 1; break; }  // 1-based
+  }
+  if (fila === -1) return { ok: false, motivo: 'no existe' };
+  await writeSheetRaw(ID_PLANIFICADOR, `${HOJA_VAC}!B${fila}`, [[estado]]);   // col B = estado
+  if (notas !== undefined) await writeSheetRaw(ID_PLANIFICADOR, `${HOJA_VAC}!K${fila}`, [[notas]]);  // col K = notas
+  return { ok: true, fila, id, estado };
+}
+
+module.exports = {
+  vacantesPorZona, leerVacantesGuardadas, guardarVacante, reservasPorMatricula,
+  actualizarEstadoVacante, vacanteDisponible, ESTADO_VAC
+};

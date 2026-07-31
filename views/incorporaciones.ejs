@@ -1,0 +1,83 @@
+<div class="p-4 lg:p-6 max-w-4xl mx-auto space-y-5">
+
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <h1 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-user-plus text-telecab-gold"></i> Incorporaciones
+      </h1>
+      <p class="text-xs text-telecab-muted mt-0.5">Conductores que llegaron de Administración esperando plaza. Acéptalos en su vacante o colócalos a mano.</p>
+    </div>
+    <button id="btn-recargar" class="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
+      <i class="fa-solid fa-rotate mr-1"></i> Recargar
+    </button>
+  </div>
+
+  <div id="lista" class="space-y-3"></div>
+  <p id="vacio" class="hidden text-telecab-muted text-sm text-center py-10">No hay incorporaciones pendientes.</p>
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  async function api(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+
+  function textoVacante(v) {
+    if (!v) return '<span class="text-telecab-muted">Sin vacante ligada — colócalo a mano.</span>';
+    const mats = (v.matriculas || []).map(m =>
+      `<span class="font-mono text-telecab-text">${esc(m.m)}</span>${m.letras ? ' <span class="text-telecab-muted">(' + esc(m.letras) + ')</span>' : ''}`).join(', ');
+    const libra = v.libranzas && !/definir/i.test(v.libranzas) ? ` · libra <b class="text-telecab-text">${esc(v.libranzas)}</b>` : (/definir/i.test(v.libranzas || '') ? ' · libranza a definir' : '');
+    return `<b class="text-telecab-gold">${esc(v.puesto || v.turno)}</b> · ${(v.matriculas || []).length > 1 ? 'matrículas ' : 'matrícula '}${mats}${libra}`;
+  }
+
+  function tarjeta(inc) {
+    const el = document.createElement('div');
+    el.className = 'rounded-2xl bg-telecab-card border border-telecab-border p-4';
+    const conVac = !!inc.vacante;
+    el.innerHTML =
+      `<div class="flex items-start gap-3 mb-3">
+         <span class="w-9 h-9 rounded-lg bg-telecab-gold/15 text-telecab-gold flex items-center justify-center shrink-0"><i class="fa-solid fa-user"></i></span>
+         <div class="min-w-0 flex-1">
+           <p class="text-sm font-semibold text-telecab-text truncate">${esc(inc.nombre)}</p>
+           <p class="text-xs text-telecab-muted">${esc(inc.turno || '')}${inc.fecha_alta ? ' · alta ' + esc(inc.fecha_alta) : ''}</p>
+         </div>
+       </div>
+       <div class="text-sm text-telecab-muted bg-telecab-dark/40 rounded-xl px-3 py-2.5 mb-3">
+         <i class="fa-solid fa-location-dot text-telecab-gold mr-1"></i> ${textoVacante(inc.vacante)}
+       </div>
+       <div class="flex flex-wrap gap-2">
+         ${conVac ? `<button class="ip-aceptar px-4 py-2 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-sm font-semibold hover:bg-telecab-green/25 transition"><i class="fa-solid fa-check mr-1"></i> Aceptar y asignar</button>` : ''}
+         <button class="ip-manual px-4 py-2 rounded-xl bg-telecab-gold/10 border border-telecab-gold/40 text-telecab-gold text-sm hover:bg-telecab-gold/20 transition"><i class="fa-solid fa-hand-pointer mr-1"></i> Asignar manualmente</button>
+         <p class="ip-msg text-xs w-full hidden mt-1"></p>
+       </div>`;
+
+    const aviso = (t, cls) => { const m = el.querySelector('.ip-msg'); m.textContent = t; m.className = 'ip-msg text-xs w-full mt-1 ' + cls; m.classList.remove('hidden'); };
+    const resolver = async (url, btns) => {
+      btns.forEach(b => b && (b.disabled = true));
+      const r = await api(url, { tel: inc.tel });
+      if (r.status === 'ok') { aviso(r.aviso || 'Hecho.', r.auto === false ? 'text-telecab-gold' : 'text-telecab-green'); setTimeout(cargar, 1100); }
+      else { aviso(r.msg || 'No se pudo resolver', 'text-telecab-red'); btns.forEach(b => b && (b.disabled = false)); }
+    };
+    const bAcc = el.querySelector('.ip-aceptar'), bMan = el.querySelector('.ip-manual');
+    if (bAcc) bAcc.addEventListener('click', () => resolver('/incorporaciones/aceptar', [bAcc, bMan]));
+    bMan.addEventListener('click', () => resolver('/incorporaciones/manual', [bAcc, bMan]));
+    return el;
+  }
+
+  async function cargar() {
+    try {
+      const r = await (await fetch('/incorporaciones/api/datos')).json();
+      const cont = $('#lista'); cont.innerHTML = '';
+      const list = (r.incorporaciones || []);
+      $('#vacio').classList.toggle('hidden', list.length > 0);
+      list.forEach(inc => cont.appendChild(tarjeta(inc)));
+    } catch (e) {
+      $('#lista').innerHTML = '<p class="text-telecab-red text-sm">No se pudo cargar: ' + esc(e.message) + '</p>';
+    }
+  }
+  $('#btn-recargar').addEventListener('click', cargar);
+  cargar();
+</script>

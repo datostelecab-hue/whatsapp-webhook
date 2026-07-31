@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const router = express.Router();
-const { leerVacantesGuardadas } = require('../services/vacantes');
+const { leerVacantesGuardadas, vacanteDisponible } = require('../services/vacantes');
 const { buscarPorTelefono } = require('../services/conductoresBolt');
 const { geocodificar } = require('../services/geocoding');
 const drive = require('../services/drive');
@@ -26,8 +26,9 @@ function claveDe(t) {
 router.get('/', async (req, res) => {
   let vacantes = [];
   try {
-    vacantes = (await leerVacantesGuardadas())
-      .filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta');
+    // Solo vacantes DISPONIBLES: las "En proceso de alta" ya tienen un candidato
+    // y las Cerradas están resueltas, así que no se pueden volver a reclutar.
+    vacantes = (await leerVacantesGuardadas()).filter(vacanteDisponible);
   } catch (e) { console.error('❌ [Selección] vacantes:', e.message); }
   res.render('seleccion', {
     titulo: 'Selección',
