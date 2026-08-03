@@ -69,10 +69,12 @@ router.post('/correo/prueba', sesion.requiereSuperadmin, async (req, res) => {
   try {
     const to = ((req.body && req.body.to) || req.usuario.email || '').trim();
     if (!to) throw new Error('Sin destinatario');
+    console.log(`🧪 [CORREO] Prueba pedida por ${req.usuario.email} → ${to}`);
     const r = await correo.enviarCorreo({
       to, subject: 'Prueba de correo — Telecab',
       text: 'Correo de prueba de la plataforma Telecab. Si lo recibes, el envío está bien configurado.'
     });
+    console.log(`🧪 [CORREO] Prueba resultado: enviado=${r.enviado}${r.motivo ? ' · ' + r.motivo : ''}`);
     res.json({ status: r.enviado ? 'ok' : 'error', enviado: !!r.enviado, msg: r.motivo || '' });
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });

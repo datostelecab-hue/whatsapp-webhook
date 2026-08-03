@@ -56,19 +56,26 @@ async function enviarCorreo({ to, subject, text, html } = {}) {
   try {
     const a = await ajustesEnvio();
     if (!a) {
-      console.log(`✉️  [CORREO pendiente de configurar] → ${to} · ${subject}\n${text || ''}`);
-      return { enviado: false, motivo: 'sin credenciales' };
+      console.log(`✉️  [CORREO] Sin configurar → no se envía a ${to} · «${subject}» (revisa "Correo para procesos" y la variable CRED_KEY)`);
+      return { enviado: false, motivo: 'sin credenciales (revisa Correo para procesos / CRED_KEY)' };
     }
-    // Lazy require: la app arranca aunque nodemailer no esté instalado todavía.
-    const nodemailer = require('nodemailer');
+    // Log de diagnóstico (sin la contraseña): de dónde salen los ajustes y a dónde va.
+    console.log(`✉️  [CORREO] Enviando (origen ${a.origen}) por ${a.host}:${a.port} secure=${a.secure} user=${a.user} from=${a.from} → ${to}`);
+    const nodemailer = require('nodemailer');   // lazy: la app arranca aunque no esté instalado
     const transport = nodemailer.createTransport({
-      host: a.host, port: a.port, secure: a.secure, auth: { user: a.user, pass: a.pass }
+      host: a.host, port: a.port, secure: a.secure,
+      requireTLS: !a.secure,                     // en 587 fuerza STARTTLS (nunca manda en claro)
+      auth: { user: a.user, pass: a.pass },
+      connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000
     });
-    await transport.sendMail({ from: a.from, to, subject, text, html });
-    return { enviado: true };
+    const info = await transport.sendMail({ from: a.from, to, subject, text, html });
+    console.log(`✅ [CORREO] Enviado a ${to} · id=${info.messageId || '?'} · ${info.response || ''}`);
+    return { enviado: true, id: info.messageId };
   } catch (e) {
-    console.error('❌ [CORREO]:', e.message);
-    return { enviado: false, motivo: e.message };
+    // Detalle SMTP completo para diagnosticar (código, respuesta del servidor…).
+    const detalle = [e.message, e.code && `code=${e.code}`, e.responseCode && `smtp=${e.responseCode}`, e.response && `«${e.response}»`].filter(Boolean).join(' · ');
+    console.error(`❌ [CORREO] Fallo enviando a ${to}: ${detalle}`);
+    return { enviado: false, motivo: detalle || 'error desconocido' };
   }
 }
 
