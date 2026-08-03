@@ -1,4 +1,4 @@
-<div class="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
+<div class="p-4 lg:p-6 max-w-[1500px] mx-auto space-y-5">
 
   <!-- ══════════ VISTA TABLA (maestro) ══════════ -->
   <div id="vista-tabla" class="space-y-5">
@@ -30,11 +30,7 @@
         <button data-tab="bajas"   class="tab-btn px-3 py-2 rounded-xl text-sm font-medium transition"><i class="fa-solid fa-user-slash mr-1.5"></i>Bajas</button>
         <button data-tab="altas"   class="tab-btn px-3 py-2 rounded-xl text-sm font-medium transition"><i class="fa-solid fa-file-excel mr-1.5"></i>Altas por Excel</button>
       </div>
-      <button id="crear-todas" class="text-xs px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-medium">
-        <i class="fa-solid fa-user-plus mr-1"></i> Crear fichas de todos
-      </button>
     </div>
-    <p id="crear-msg" class="text-xs hidden leading-snug"></p>
 
     <p id="cargando" class="text-telecab-muted text-sm">Cargando…</p>
 
@@ -45,7 +41,7 @@
   </div>
 
   <!-- ══════════ VISTA DETALLE (ficha de un conductor) ══════════ -->
-  <div id="vista-detalle" class="hidden">
+  <div id="vista-detalle" class="hidden max-w-4xl mx-auto">
     <button id="volver" class="mb-4 inline-flex items-center gap-2 text-sm text-telecab-muted hover:text-telecab-gold transition">
       <i class="fa-solid fa-arrow-left"></i> Volver a la tabla
     </button>
@@ -219,23 +215,36 @@
   });
 
   // ═══════════ TABLA (maestro) con filtros por columna + export ═══════════
+  const contratoFmt = v => (v || '').trim() || '(sin contrato)';
+  const COL_FALTAN = {
+    key: 'estadoFicha', label: 'Faltan datos', tipo: 'select', fmt: (v, f) => f.estadoFicha || '',
+    render: f => {
+      if (f.estadoFicha === 'Completa') return '<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-green/15 text-telecab-green border border-telecab-green/40 whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Completa</span>';
+      if (f.estadoFicha === 'Sin ficha') return '<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-red/10 text-telecab-red border border-telecab-red/40 whitespace-nowrap">Sin ficha</span>';
+      return `<span title="Falta: ${esc((f.faltanLista || []).join(', '))}" class="text-xs px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/40 whitespace-nowrap cursor-help"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Faltan ${f.faltanN}</span>`;
+    }
+  };
   const COLS_ACTIVOS = [
     { key: 'nombreSS', label: 'SS (Seg. Social)', tipo: 'text', link: true },
     { key: 'id', label: 'ID_BOLT', tipo: 'text', link: true },
     { key: 'estado', label: 'Estado', tipo: 'select' },
     { key: 'ett', label: 'ALTA', tipo: 'select', fmt: v => v ? 'ETT' : 'Tibus' },
-    { key: 'contrato', label: 'Contrato', tipo: 'select' },
+    { key: 'contrato', label: 'Contrato', tipo: 'select', fmt: contratoFmt },
     { key: 'libranzas', label: 'Libranzas', tipo: 'text' },
-    { key: 'zona', label: 'Zona', tipo: 'select' }
+    { key: 'zona', label: 'Zona', tipo: 'select' },
+    COL_FALTAN
   ];
   const COLS_BAJAS = [
     { key: 'nombreSS', label: 'SS (Seg. Social)', tipo: 'text', link: true },
     { key: 'id', label: 'ID_BOLT', tipo: 'text', link: true },
     { key: 'estado', label: 'Estado', tipo: 'select' },
     { key: 'ett', label: 'ALTA', tipo: 'select', fmt: v => v ? 'ETT' : 'Tibus' },
-    { key: 'contrato', label: 'Contrato', tipo: 'select' },
-    { key: 'fechaBaja', label: 'F. baja', tipo: 'text' }
+    { key: 'contrato', label: 'Contrato', tipo: 'select', fmt: contratoFmt },
+    { key: 'fechaBaja', label: 'F. baja', tipo: 'text' },
+    COL_FALTAN
   ];
+
+  let tablaActivos = null;
 
   function construirTabla(paneSel, cols, filas, cfg) {
     const pane = $(paneSel);
@@ -249,36 +258,47 @@
       return c.tipo === 'select' ? cell === val : cell.includes(val);
     });
 
-    const ths = cols.map(c => `<th class="px-3 py-2 text-left text-[11px] uppercase tracking-wide text-telecab-muted font-semibold whitespace-nowrap">${esc(c.label)}</th>`).join('');
+    const ths = cols.map(c => `<th class="px-4 py-3 text-left text-[11px] uppercase tracking-wide text-telecab-muted font-semibold whitespace-nowrap bg-telecab-card border-b border-telecab-border">${esc(c.label)}</th>`).join('');
     const filtroCells = cols.map(c => c.tipo === 'select'
-      ? `<th class="px-2 py-1"><select data-filtro="${c.key}" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded px-1.5 py-1 text-telecab-text"><option value="">Todos</option>${unicos(c.key).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></th>`
-      : `<th class="px-2 py-1"><input data-filtro="${c.key}" placeholder="filtrar" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded px-1.5 py-1 text-telecab-text"></th>`).join('');
+      ? `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><select data-filtro="${c.key}" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text focus:outline-none focus:border-telecab-gold transition"><option value="">Todos</option>${unicos(c.key).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></th>`
+      : `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><input data-filtro="${c.key}" placeholder="filtrar…" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text focus:outline-none focus:border-telecab-gold transition"></th>`).join('');
 
     pane.innerHTML =
-      `<div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
-         <span data-count class="text-xs text-telecab-muted"></span>
-         <button data-export class="text-xs px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-medium"><i class="fa-solid fa-file-excel mr-1"></i> Exportar a Excel (con filtros)</button>
+      `<div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+         <span data-count class="text-sm text-telecab-muted"></span>
+         <div class="flex items-center gap-2">
+           <button data-limpiar class="text-xs px-2.5 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/50 transition"><i class="fa-solid fa-filter-circle-xmark mr-1"></i>Limpiar filtros</button>
+           <button data-export class="text-xs px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-medium"><i class="fa-solid fa-file-excel mr-1"></i> Exportar a Excel</button>
+         </div>
        </div>
-       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-x-auto">
-         <table class="w-full text-sm">
-           <thead><tr class="border-b border-telecab-border">${ths}</tr><tr class="bg-telecab-dark/30">${filtroCells}</tr></thead>
+       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-auto max-h-[calc(100vh-16rem)]">
+         <table class="w-full text-sm border-separate border-spacing-0">
+           <thead class="sticky top-0 z-10"><tr>${ths}</tr><tr>${filtroCells}</tr></thead>
            <tbody data-body></tbody>
          </table>
        </div>`;
     const tbody = pane.querySelector('[data-body]');
     function render() {
       const vis = filas.filter(pasa);
-      tbody.innerHTML = vis.length ? vis.map(f => `<tr class="border-t border-telecab-border/30 hover:bg-telecab-dark/30">${cols.map(c => {
+      tbody.innerHTML = vis.length ? vis.map((f, i) => `<tr class="${i % 2 ? 'bg-telecab-dark/15' : ''} hover:bg-telecab-gold/5 transition">${cols.map(c => {
+        if (c.render) return `<td class="px-4 py-2.5 border-b border-telecab-border/20">${c.render(f)}</td>`;
         const txt = esc(celda(f, c.key));
-        if (c.link) return `<td class="px-3 py-2"><button data-idbolt="${esc(f.id || '')}" class="text-telecab-gold hover:underline text-left font-medium">${txt || '—'}</button></td>`;
-        return `<td class="px-3 py-2 text-telecab-text whitespace-nowrap">${txt || '<span class="text-telecab-muted/40">—</span>'}</td>`;
-      }).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" class="px-3 py-8 text-center text-telecab-muted">Sin resultados.</td></tr>`;
-      pane.querySelector('[data-count]').textContent = `${vis.length} de ${filas.length}`;
+        if (c.link) return `<td class="px-4 py-2.5 border-b border-telecab-border/20 whitespace-nowrap"><button data-idbolt="${esc(f.id || '')}" class="text-telecab-gold hover:underline text-left font-medium">${txt || '—'}</button></td>`;
+        return `<td class="px-4 py-2.5 border-b border-telecab-border/20 text-telecab-text whitespace-nowrap">${txt || '<span class="text-telecab-muted/40">—</span>'}</td>`;
+      }).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" class="px-4 py-10 text-center text-telecab-muted">Sin resultados con esos filtros.</td></tr>`;
+      pane.querySelector('[data-count]').innerHTML = `<b class="text-telecab-text">${vis.length}</b> de ${filas.length}`;
       tbody.querySelectorAll('[data-idbolt]').forEach(b => b.addEventListener('click', () => abrirDetalle(b.dataset.idbolt)));
     }
+    function setFiltros(map) {
+      pane.querySelectorAll('[data-filtro]').forEach(el => { el.value = ''; filtros[el.dataset.filtro] = ''; });
+      Object.entries(map || {}).forEach(([k, v]) => { const el = pane.querySelector(`[data-filtro="${k}"]`); if (el) el.value = v; filtros[k] = v; });
+      render();
+    }
     pane.querySelectorAll('[data-filtro]').forEach(el => el.addEventListener('input', () => { filtros[el.dataset.filtro] = el.value; render(); }));
+    pane.querySelector('[data-limpiar]').addEventListener('click', () => setFiltros({}));
     pane.querySelector('[data-export]').addEventListener('click', () => exportarExcel(cfg.titulo, cols, filas.filter(pasa)));
     render();
+    return { setFiltros };
   }
 
   async function exportarExcel(titulo, cols, filas) {
@@ -295,15 +315,28 @@
 
   function pintarResumen(resumen, ettTotal) {
     const chips = $('#resumen-activos'); chips.innerHTML = '';
+    const hint = document.createElement('span');
+    hint.className = 'text-xs text-telecab-muted self-center mr-1';
+    hint.innerHTML = '<i class="fa-solid fa-hand-pointer mr-1"></i>Filtrar por:';
+    chips.appendChild(hint);
     const orden = ['40h', '32h', '40h ETT', '32h ETT'];
     Object.keys(resumen).sort((a, b) => { const ia = orden.indexOf(a), ib = orden.indexOf(b); return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib); }).forEach(k => {
       const ett = /ETT/i.test(k);
-      const el = document.createElement('span');
-      el.className = 'text-xs px-3 py-1.5 rounded-xl border ' + (ett ? 'bg-amber-500/15 text-amber-400 border-amber-500/40' : 'bg-telecab-card text-telecab-text border-telecab-border');
+      const el = document.createElement('button');
+      el.className = 'text-xs px-3 py-1.5 rounded-xl border transition hover:border-telecab-gold ' + (ett ? 'bg-amber-500/15 text-amber-400 border-amber-500/40' : 'bg-telecab-card text-telecab-text border-telecab-border');
       el.innerHTML = `${esc(k)} · <b>${resumen[k]}</b>`;
+      el.title = `Ver los ${resumen[k]} de «${k}»`;
+      el.addEventListener('click', () => { activar('activos'); if (tablaActivos) tablaActivos.setFiltros({ contrato: k }); });
       chips.appendChild(el);
     });
-    if (ettTotal) { const el = document.createElement('span'); el.className = 'text-xs px-3 py-1.5 rounded-xl border bg-amber-500/10 text-amber-400 border-amber-500/40'; el.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i>ETT en total · <b>${ettTotal}</b>`; chips.appendChild(el); }
+    if (ettTotal) {
+      const el = document.createElement('button');
+      el.className = 'text-xs px-3 py-1.5 rounded-xl border bg-amber-500/10 text-amber-400 border-amber-500/40 hover:border-amber-400 transition';
+      el.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i>ETT en total · <b>${ettTotal}</b>`;
+      el.title = 'Ver todos los ETT';
+      el.addEventListener('click', () => { activar('activos'); if (tablaActivos) tablaActivos.setFiltros({ ett: 'ETT' }); });
+      chips.appendChild(el);
+    }
   }
 
   function pintarAltas(altas) {
@@ -344,31 +377,15 @@
       $('#c-altas').textContent = r.contadores.altas;
       $('#c-activos').textContent = r.agendaError ? '?' : r.contadores.activos;
       $('#c-bajas').textContent = r.contadores.bajas;
-      pintarResumen(r.resumen || {}, r.ettTotal || 0);
-      construirTabla('#pane-activos', COLS_ACTIVOS, r.activos || [], { titulo: 'Plantilla activa' });
+      tablaActivos = construirTabla('#pane-activos', COLS_ACTIVOS, r.activos || [], { titulo: 'Plantilla activa' });
       construirTabla('#pane-bajas', COLS_BAJAS, r.bajas || [], { titulo: 'Bajas' });
+      pintarResumen(r.resumen || {}, r.ettTotal || 0);
       pintarAltas(r.altas || []);
       let tab = 'activos';
       try { tab = localStorage.getItem('telecab-plantilla-tab') || 'activos'; } catch (_) {}
       activar(tab);
     } catch (e) { $('#cargando').textContent = 'No se pudieron cargar los datos: ' + e.message; }
   }
-
-  // Crear las fichas de todos los conductores que falten.
-  $('#crear-todas').addEventListener('click', async () => {
-    const b = $('#crear-todas'), msg = $('#crear-msg');
-    const aviso = (t, cls) => { msg.innerHTML = t; msg.className = 'text-xs leading-snug ' + cls; msg.classList.remove('hidden'); };
-    if (!confirm('¿Crear las fichas de todos los conductores que aún no la tengan, con los datos de la agenda?')) return;
-    b.disabled = true; aviso('Creando…', 'text-telecab-muted');
-    try {
-      const r = await (await fetch('/fichas/crear-todas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
-      if (r.status !== 'ok') throw new Error(r.msg || 'error');
-      let t = `Creadas <b>${r.creadas}</b>. Ya tenían ${r.yaTenian}.`;
-      if (r.sinTelefono && r.sinTelefono.length) t += `<br><span class="text-telecab-gold">Sin teléfono (${r.sinTelefono.length}): ${esc(r.sinTelefono.slice(0, 12).join(', '))}${r.sinTelefono.length > 12 ? '…' : ''}</span>`;
-      aviso(t, r.sinTelefono && r.sinTelefono.length ? 'text-telecab-text' : 'text-telecab-green');
-    } catch (e) { aviso('No se pudo: ' + esc(e.message), 'text-telecab-red'); }
-    b.disabled = false;
-  });
 
   cargar();
 </script>

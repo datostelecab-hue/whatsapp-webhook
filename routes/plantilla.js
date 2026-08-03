@@ -1,7 +1,7 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
 const router = express.Router();
-const { leerTickets, contratoAgenda } = require('../services/tickets');
+const { leerTickets, contratoAgenda, faltantesAlta } = require('../services/tickets');
 const { leerTablero, leerOut, ESTADO_BAJA_EMPRESA } = require('../services/planificadorV2');
 
 // Histórico de RRHH: qué fichas/Excels se han dado de alta, la plantilla activa de
@@ -58,14 +58,24 @@ router.get('/api/datos', async (req, res) => {
       zonaPorId.get(p.id).add(z);
     }));
     const libranzasDe = c => (c.libra || []).map((rest, i) => rest ? DIAS_LIB[i] : '').filter(Boolean).join(' ');
-    const soloHoras = contrato => (contrato || '').replace(/\s*ETT/i, '').trim();   // "40h ETT" → "40h"
+
+    // Estado de la ficha (datos sensibles + documentos) por ID_BOLT → columna "Faltan".
+    const fichaPorIdBolt = new Map();
+    L.forEach(t => { const k = (t.id_bolt || '').trim().toLowerCase(); if (k && !fichaPorIdBolt.has(k)) fichaPorIdBolt.set(k, t); });
+    const estadoFichaDe = idBolt => {
+      const t = fichaPorIdBolt.get((idBolt || '').trim().toLowerCase());
+      if (!t) return { estadoFicha: 'Sin ficha', faltanN: -1, faltanLista: [] };
+      const faltan = faltantesAlta(t) || [];
+      return { estadoFicha: faltan.length ? 'Incompleta' : 'Completa', faltanN: faltan.length, faltanLista: faltan };
+    };
 
     const activosRaw = conductores.filter(c => c.idBolt && c.estado !== ESTADO_BAJA_EMPRESA);
     const activos = activosRaw.map(c => ({
       id: c.idBolt, nombreSS: c.nombre || '', turno: c.turno || '', telefono: c.telefono || '',
-      contrato: soloHoras(c.contrato), ett: /ETT/i.test(c.contrato || ''),
+      contrato: (c.contrato || '').trim(), ett: /ETT/i.test(c.contrato || ''),
       estado: c.estadoCalculado || c.estado || '',
-      libranzas: libranzasDe(c), zona: [...(zonaPorId.get(c.idBolt) || [])].join(', ')
+      libranzas: libranzasDe(c), zona: [...(zonaPorId.get(c.idBolt) || [])].join(', '),
+      ...estadoFichaDe(c.idBolt)
     })).sort((a, b) => (a.nombreSS || a.id).localeCompare(b.nombreSS || b.id, 'es'));
 
     // Resumen por contrato completo (con la ETT), para los chips del desglose.
@@ -77,8 +87,9 @@ router.get('/api/datos', async (req, res) => {
     const bajas = ((out && out.fichas) || [])
       .map(f => ({
         id: f.id, nombreSS: f.nombre || '', turno: f.turno || '', telefono: f.telefono || '',
-        contrato: soloHoras(f.contrato), ett: /ETT/i.test(f.contrato || ''),
-        estado: f.estado || '', fechaAlta: f.fechaAlta || '', fechaBaja: f.fechaBaja || ''
+        contrato: (f.contrato || '').trim(), ett: /ETT/i.test(f.contrato || ''),
+        estado: f.estado || '', fechaAlta: f.fechaAlta || '', fechaBaja: f.fechaBaja || '',
+        ...estadoFichaDe(f.id)
       }))
       .sort((a, b) => claveFecha(b.fechaBaja) - claveFecha(a.fechaBaja));
 
