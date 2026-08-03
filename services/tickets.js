@@ -262,30 +262,32 @@ async function marcarVacante(t, estado) {
  * Crea o actualiza un ticket por teléfono. Solo toca los campos que llegan en
  * `datos` (upsert parcial). Un ticket nuevo entra en "En criba" / etapa Selección.
  */
+/** Estructura base de un ticket/ficha vacío (todos los campos en su valor por defecto). */
+function ticketVacio(tel) {
+  return {
+    id: tel, nombre: '', estado: ESTADOS.PRESELECCION, etapa: ETAPAS.SELECCION,
+    canal: '', zona: '', experiencia: 'No', carne_vtc: 'No', prueba: 'No',
+    medico: 'No', driver_uuid: '', responsable: '', notas: '',
+    fecha_creacion: ahora(), fecha_apto: '', fecha_alta: '', fecha_habilitado: '',
+    fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: '',
+    dni: '', email: '', contacto_emergencia: '', fecha_nacimiento: '',
+    turno: '', iban: '', direccion: '', coordenadas: '', vacante: '', link_bolt: '',
+    apellidos: '', codigo_postal: '', localidad: '', provincia: '', estado_civil: '',
+    num_hijos: '', num_seg_social: '', tipo_carnet: '', carnet_expedicion: '',
+    carnet_caducidad: '', fecha_inicio: '',
+    doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: '',
+    tipo_contrato: '', jornada: '', ficha_pdf: '', nacionalidad: '', excel_alta: '',
+    pin_ballenoil: '', doc_dni_reverso: '', doc_carnet_reverso: '', id_bolt: '', obs_ballenoil: ''
+  };
+}
+
 async function guardarTicket(datos = {}) {
   const tel = normalizarTel(datos.tel || datos.telefono || datos.id);
   if (!telValido(tel)) throw new Error('Teléfono inválido: deben ser 9 dígitos');
 
   const { porTel, filas } = await leerTickets();
   let t = porTel.get(tel);
-  if (!t) {
-    t = {
-      id: tel, nombre: '', estado: ESTADOS.PRESELECCION, etapa: ETAPAS.SELECCION,
-      canal: '', zona: '', experiencia: 'No', carne_vtc: 'No', prueba: 'No',
-      medico: 'No', driver_uuid: '', responsable: '', notas: '',
-      fecha_creacion: ahora(), fecha_apto: '', fecha_alta: '', fecha_habilitado: '',
-      fecha_asignado: '', fecha_baja: '', motivo: '', fecha_deteccion: '',
-      dni: '', email: '', contacto_emergencia: '', fecha_nacimiento: '',
-      turno: '', iban: '', direccion: '', coordenadas: '', vacante: '', link_bolt: '',
-      apellidos: '', codigo_postal: '', localidad: '', provincia: '', estado_civil: '',
-      num_hijos: '', num_seg_social: '', tipo_carnet: '', carnet_expedicion: '',
-      carnet_caducidad: '', fecha_inicio: '',
-      doc_dni: '', doc_carnet: '', doc_bancario: '', doc_seg_social: '', doc_penales: '',
-      tipo_contrato: '', jornada: '', ficha_pdf: '', nacionalidad: '', excel_alta: '',
-      pin_ballenoil: '', doc_dni_reverso: '', doc_carnet_reverso: '', id_bolt: '', obs_ballenoil: ''
-    };
-    porTel.set(tel, t);
-  }
+  if (!t) { t = ticketVacio(tel); porTel.set(tel, t); }
 
   // Campos de texto editables desde Selección.
   ['nombre', 'canal', 'zona', 'turno', 'responsable', 'notas', 'dni', 'email',
@@ -677,10 +679,63 @@ function parseDoc(valor) {
   try { return JSON.parse(valor); } catch (_) { return null; }
 }
 
+// ── Fichas de conductores YA ACTIVOS (creadas desde la agenda) ──────────────
+// Campos que se traen de la agenda al crear la ficha; el resto queda vacío para
+// completarlo luego. La ficha NO entra en el funnel de Selección (queda Asignado).
+const CAMPOS_DESDE_AGENDA = ['nombre', 'apellidos', 'dni', 'id_bolt', 'num_seg_social',
+  'turno', 'jornada', 'zona', 'direccion', 'canal', 'fecha_alta'];
+
+function rellenarFicha(t, datos) {
+  t.estado = ESTADOS.ASIGNADO;   // ya es conductor, no candidato → no sale en Selección
+  t.etapa = ETAPAS.TRAFICO;
+  CAMPOS_DESDE_AGENDA.forEach(k => { if (datos[k] != null && String(datos[k]).trim()) t[k] = String(datos[k]).trim(); });
+  return t;
+}
+
+/** Busca un ticket/ficha por su ID_BOLT (o null). */
+async function buscarPorIdBolt(idBolt) {
+  const clave = String(idBolt || '').trim().toLowerCase();
+  if (!clave) return null;
+  const { lista } = await leerTickets();
+  return (lista || []).find(t => String(t.id_bolt || '').trim().toLowerCase() === clave) || null;
+}
+
+/** Crea la ficha de UN conductor activo (si no existe ya por teléfono). Devuelve el ticket. */
+async function crearFichaConductor(datos = {}) {
+  const tel = normalizarTel(datos.tel || datos.telefono);
+  if (!telValido(tel)) throw new Error('El conductor no tiene teléfono válido (9 dígitos)');
+  const { porTel, filas } = await leerTickets();
+  if (porTel.has(tel)) return porTel.get(tel);
+  const t = rellenarFicha(ticketVacio(tel), datos);
+  porTel.set(tel, t);
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
+/**
+ * Crea EN LOTE (una sola escritura) las fichas que falten. Se salta las que ya
+ * existen (por teléfono) y devuelve aparte las que no tienen teléfono válido.
+ */
+async function crearFichasConductores(listaDatos = []) {
+  const { porTel, filas } = await leerTickets();
+  let creadas = 0;
+  const sinTelefono = [];
+  for (const datos of (listaDatos || [])) {
+    const tel = normalizarTel(datos.tel || datos.telefono);
+    if (!telValido(tel)) { sinTelefono.push(datos.nombre || datos.id_bolt || '(sin nombre)'); continue; }
+    if (porTel.has(tel)) continue;
+    porTel.set(tel, rellenarFicha(ticketVacio(tel), datos));
+    creadas++;
+  }
+  if (creadas) await guardarTodos(porTel, filas);
+  return { creadas, sinTelefono };
+}
+
 module.exports = {
   leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
   conciliarTicketsBolt, marcarRechazadoBolt, devolverARelevamiento,
   procesarAltaRRHH, crearPinAdmin, noContinuarRRHH, devolverRRHH,
   guardarDocumento, guardarCelda, parseDoc, faltantesAlta,
+  buscarPorIdBolt, crearFichaConductor, crearFichasConductores,
   normalizarTel, telValido, contratoAgenda, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS, REQUERIDOS_ALTA
 };

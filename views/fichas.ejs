@@ -9,6 +9,10 @@
       <input id="f-buscar" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text focus:outline-none focus:border-telecab-gold transition"
              placeholder="Buscar por nombre o DNI…" autocomplete="off">
       <p id="f-count" class="text-[11px] text-telecab-muted mt-1.5"></p>
+      <button id="f-crear-todas" class="w-full mt-2 text-xs px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-medium">
+        <i class="fa-solid fa-user-plus mr-1"></i> Crear fichas de todos
+      </button>
+      <p id="f-crear-msg" class="text-[11px] mt-1 hidden leading-snug"></p>
     </div>
     <div id="lista" class="flex-1 overflow-y-auto p-2 space-y-1 lg:max-h-none max-h-[40vh]"></div>
   </aside>
@@ -42,6 +46,81 @@
 
   const nombreDe = f => `${f.nombre || ''}${f.apellidos ? ' ' + f.apellidos : ''}`.trim() || '(sin nombre)';
 
+  // ── Edición del detalle ────────────────────────────────────────────────────
+  const EDITABLES = new Set(['nombre', 'apellidos', 'dni', 'nacionalidad', 'fecha_nacimiento', 'estado_civil',
+    'num_hijos', 'email', 'contacto_emergencia', 'direccion', 'codigo_postal', 'localidad', 'provincia',
+    'num_seg_social', 'tipo_carnet', 'carnet_expedicion', 'carnet_caducidad', 'fecha_inicio', 'jornada',
+    'tipo_contrato', 'turno', 'canal', 'iban']);
+  const FECHAS = { fecha_nacimiento: 'data-max="today"', carnet_expedicion: 'data-max="today"', carnet_caducidad: 'data-min="today"', fecha_inicio: '' };
+  const SELECTS = { jornada: ['40 HORAS', '32 HORAS'], turno: ['', 'Día', 'Noche', 'TodoTurno'] };
+  const INP = 'w-full text-sm bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text focus:outline-none focus:border-telecab-gold transition';
+  function control(k, val) {
+    const v = esc(val || '');
+    if (k in FECHAS) return `<input data-edit="${k}" value="${v}" placeholder="dd/mm/aaaa" readonly ${FECHAS[k]} class="js-fecha ${INP}">`;
+    if (SELECTS[k]) return `<select data-edit="${k}" class="${INP}">${SELECTS[k].map(o => `<option value="${esc(o)}" ${String(val || '') === o ? 'selected' : ''}>${o || '—'}</option>`).join('')}</select>`;
+    return `<input data-edit="${k}" value="${v}" placeholder="—" class="${INP}">`;
+  }
+
+  const ESTADOS_OP = ['Activo', 'Pendiente Asignar', 'Suspendido', 'Baja Empresa'];
+  function estadoOpHTML(f) {
+    if (!f.id_bolt) return '';   // sin ID_BOLT no está en la agenda
+    const actual = f.estado_agenda || '';
+    return `<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 mb-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs uppercase tracking-wide text-telecab-gold font-semibold">Estado operativo</span>
+          <span class="text-sm text-telecab-text">${esc(actual || '—')}</span>
+          ${f.en_agenda ? `<select id="d-estado" class="ml-auto text-sm bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text">
+              ${ESTADOS_OP.map(o => `<option value="${o}" ${o === actual ? 'selected' : ''}>${o}</option>`).join('')}
+            </select>
+            <button id="d-estado-btn" class="text-sm px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition">Cambiar</button>`
+        : '<span class="ml-auto text-[11px] text-telecab-muted">Archivado (baja). El reingreso se hace desde Peticiones.</span>'}
+        </div>
+        <p class="text-[11px] text-telecab-muted mt-1.5">Para Vacaciones / Baja Médica / Permiso usa <b>Peticiones</b> (llevan fechas y bitácora).</p>
+      </div>`;
+  }
+
+  const recogerEdits = () => {
+    const d = {};
+    document.querySelectorAll('#detalle [data-edit]').forEach(el => { d[el.dataset.edit] = (el.value || '').trim(); });
+    return d;
+  };
+  function avisoD(t, cls) { const m = $('#d-msg'); if (!m) return; m.textContent = t; m.className = 'text-xs ' + cls; m.classList.remove('hidden'); }
+  async function guardarEdits(f) {
+    const edits = recogerEdits();
+    const r = await (await fetch('/seleccion/ticket', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tel: f.id, ...edits }) })).json();
+    if (r && r.status === 'ok') Object.assign(f, edits);
+    return r;
+  }
+  async function guardarFicha(f) {
+    avisoD('Guardando…', 'text-telecab-muted');
+    try { const r = await guardarEdits(f); if (r.status !== 'ok') throw new Error(r.msg || 'error'); avisoD('Cambios guardados.', 'text-telecab-green'); cargar(); }
+    catch (e) { avisoD('No se pudo guardar: ' + e.message, 'text-telecab-red'); }
+  }
+  async function regenerarFicha(f) {
+    avisoD('Guardando y regenerando…', 'text-telecab-muted');
+    try {
+      const g = await guardarEdits(f); if (g.status !== 'ok') throw new Error(g.msg || 'error');
+      const r = await (await fetch('/seleccion/ficha', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tel: f.id }) })).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      f.ficha_pdf_link = (r.ficha && r.ficha.link) || r.link || f.ficha_pdf_link;
+      avisoD('FICHA regenerada.', 'text-telecab-green');
+      if (r.link) window.open(r.link, '_blank');
+      abrir(f.id);
+    } catch (e) { avisoD('No se pudo: ' + e.message, 'text-telecab-red'); }
+  }
+  async function cambiarEstadoFicha(f) {
+    const estado = $('#d-estado').value;
+    if (!confirm(`¿Cambiar el estado operativo de ${nombreDe(f)} a "${estado}"?` + (estado === 'Baja Empresa' ? ' (se archiva en bajas)' : ''))) return;
+    avisoD('Cambiando estado…', 'text-telecab-muted');
+    try {
+      const r = await (await fetch('/fichas/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idBolt: f.id_bolt, estado }) })).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      f.estado_agenda = estado; if (estado === 'Baja Empresa') f.en_agenda = false;
+      avisoD('Estado cambiado a ' + estado + '.', 'text-telecab-green');
+      abrir(f.id);
+    } catch (e) { avisoD('No se pudo cambiar: ' + e.message, 'text-telecab-red'); }
+  }
+
   function fila(f) {
     const el = document.createElement('button');
     el.type = 'button';
@@ -61,10 +140,14 @@
   }
 
   function campoHTML(f, k, etq) {
+    const editable = EDITABLES.has(k);
     const v = (f[k] == null ? '' : String(f[k])).trim();
+    const valor = editable
+      ? control(k, f[k])
+      : `<dd class="text-sm ${v ? 'text-telecab-text' : 'text-telecab-muted/50'} break-words">${v ? esc(v) : '—'}</dd>`;
     return `<div>
-        <dt class="text-[11px] uppercase tracking-wide text-telecab-muted">${esc(etq)}</dt>
-        <dd class="text-sm ${v ? 'text-telecab-text' : 'text-telecab-muted/50'} break-words">${v ? esc(v) : '—'}</dd>
+        <dt class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">${esc(etq)}</dt>
+        ${valor}
       </div>`;
   }
 
@@ -117,17 +200,28 @@
       </div>`;
 
     $('#detalle').innerHTML =
-      `<div class="mb-5">
+      `<div class="mb-4">
          <div class="flex items-start justify-between gap-3 flex-wrap">
-           <h2 class="text-2xl font-bold text-telecab-text">${esc(nombreDe(f))}</h2>
+           <h2 class="text-2xl font-bold text-telecab-text">${esc(f.id_bolt || nombreDe(f))}</h2>
            ${estadoBadge}
          </div>
-         <p class="text-sm text-telecab-muted mt-1 font-mono">${esc(f.dni || '')}${f.dni && f.id ? ' · ' : ''}${esc(f.id || '')}</p>
+         <p class="text-sm text-telecab-muted mt-1">${esc(nombreDe(f))} <span class="font-mono">· ${esc(f.dni || '')}${f.dni && f.id ? ' · ' : ''}${esc(f.id || '')}</span></p>
+       </div>
+       ${estadoOpHTML(f)}
+       <div class="flex flex-wrap items-center gap-2 mb-4">
+         <button id="d-guardar" class="px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition text-sm font-medium"><i class="fa-solid fa-floppy-disk mr-1"></i> Guardar cambios</button>
+         <button id="d-regenerar" class="px-3 py-1.5 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition text-sm font-medium"><i class="fa-solid fa-arrows-rotate mr-1"></i> Regenerar PDF</button>
+         <span id="d-msg" class="text-xs hidden"></span>
        </div>
        <div class="space-y-4">${grupos}${documentos}</div>`;
     $('#detalle-vacio').classList.add('hidden');
     $('#detalle').classList.remove('hidden');
     $('#detalle').parentElement.scrollTop = 0;
+
+    // Handlers del detalle (los elementos se recrean en cada abrir).
+    $('#d-guardar').addEventListener('click', () => guardarFicha(f));
+    $('#d-regenerar').addEventListener('click', () => regenerarFicha(f));
+    const eb = $('#d-estado-btn'); if (eb) eb.addEventListener('click', () => cambiarEstadoFicha(f));
   }
 
   function pintarLista() {
@@ -156,5 +250,23 @@
   }
 
   $('#f-buscar').addEventListener('input', pintarLista);
+
+  // Crear de una vez las fichas de todos los conductores (agenda + bajas) que falten.
+  $('#f-crear-todas').addEventListener('click', async () => {
+    const b = $('#f-crear-todas'), msg = $('#f-crear-msg');
+    const aviso = (t, cls) => { msg.innerHTML = t; msg.className = 'text-[11px] mt-1 leading-snug ' + cls; msg.classList.remove('hidden'); };
+    if (!confirm('¿Crear las fichas de todos los conductores que aún no la tengan, con los datos que haya en la agenda?')) return;
+    b.disabled = true; aviso('Creando…', 'text-telecab-muted');
+    try {
+      const r = await (await fetch('/fichas/crear-todas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      let t = `Creadas <b>${r.creadas}</b>. Ya tenían ${r.yaTenian}.`;
+      if (r.sinTelefono && r.sinTelefono.length) t += `<br><span class="text-telecab-gold">Sin teléfono (${r.sinTelefono.length}): ${esc(r.sinTelefono.slice(0, 10).join(', '))}${r.sinTelefono.length > 10 ? '…' : ''}</span>`;
+      aviso(t, r.sinTelefono && r.sinTelefono.length ? 'text-telecab-text' : 'text-telecab-green');
+      cargar();
+    } catch (e) { aviso('No se pudo: ' + esc(e.message), 'text-telecab-red'); }
+    b.disabled = false;
+  });
+
   cargar();
 </script>

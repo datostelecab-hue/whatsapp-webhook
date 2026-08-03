@@ -1,4 +1,5 @@
 const express = require('express');
+const ExcelJS = require('exceljs');
 const router = express.Router();
 const { leerTickets, contratoAgenda } = require('../services/tickets');
 const { leerTablero, leerOut, ESTADO_BAJA_EMPRESA } = require('../services/planificadorV2');
@@ -44,29 +45,40 @@ router.get('/api/datos', async (req, res) => {
       .sort((a, b) => claveFecha(b.excel) - claveFecha(a.excel));
 
     // --- 2. Plantilla activa: los conductores de la agenda (no archivados ni en
-    // Baja Empresa). La ETT se ve en su contrato (40h ETT / 32h ETT). ---
+    // Baja Empresa). SS (nombre) e ID_BOLT separados; la ETT es su propia columna. ---
     const conductores = (tablero && tablero.conductores) || [];
-    const activos = conductores
-      .filter(c => c.idBolt && c.estado !== ESTADO_BAJA_EMPRESA)
-      .map(c => ({
-        id: c.idBolt, nombre: c.nombre || c.idBolt, turno: c.turno || '',
-        contrato: c.contrato || '', telefono: c.telefono || '',
-        estado: c.estadoCalculado || c.estado || '', ett: /ETT/i.test(c.contrato || '')
-      }))
-      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+    const coches = (tablero && tablero.coches) || [];
+    const DIAS_LIB = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    // Zona(s) de cada conductor: de los coches donde está asignado.
+    const zonaPorId = new Map();
+    coches.forEach(co => (co.personas || []).forEach(p => {
+      const z = (co.zona || '').trim();
+      if (!p.id || !z) return;
+      if (!zonaPorId.has(p.id)) zonaPorId.set(p.id, new Set());
+      zonaPorId.get(p.id).add(z);
+    }));
+    const libranzasDe = c => (c.libra || []).map((rest, i) => rest ? DIAS_LIB[i] : '').filter(Boolean).join(' ');
+    const soloHoras = contrato => (contrato || '').replace(/\s*ETT/i, '').trim();   // "40h ETT" → "40h"
 
-    // Resumen por contrato (para el desglose, con la ETT separada).
+    const activosRaw = conductores.filter(c => c.idBolt && c.estado !== ESTADO_BAJA_EMPRESA);
+    const activos = activosRaw.map(c => ({
+      id: c.idBolt, nombreSS: c.nombre || '', turno: c.turno || '', telefono: c.telefono || '',
+      contrato: soloHoras(c.contrato), ett: /ETT/i.test(c.contrato || ''),
+      estado: c.estadoCalculado || c.estado || '',
+      libranzas: libranzasDe(c), zona: [...(zonaPorId.get(c.idBolt) || [])].join(', ')
+    })).sort((a, b) => (a.nombreSS || a.id).localeCompare(b.nombreSS || b.id, 'es'));
+
+    // Resumen por contrato completo (con la ETT), para los chips del desglose.
     const resumen = {};
-    activos.forEach(a => { const k = (a.contrato || '').trim() || '(sin contrato)'; resumen[k] = (resumen[k] || 0) + 1; });
-    const ettTotal = activos.filter(a => a.ett).length;
+    activosRaw.forEach(c => { const k = (c.contrato || '').trim() || '(sin contrato)'; resumen[k] = (resumen[k] || 0) + 1; });
+    const ettTotal = activosRaw.filter(c => /ETT/i.test(c.contrato || '')).length;
 
     // --- 3. Bajas: fichas archivadas en CONDUCTORES_OUT ---
     const bajas = ((out && out.fichas) || [])
       .map(f => ({
-        id: f.id, nombre: f.nombre || f.id, turno: f.turno || '',
-        contrato: f.contrato || '', telefono: f.telefono || '',
-        estado: f.estado || '', fechaAlta: f.fechaAlta || '', fechaBaja: f.fechaBaja || '',
-        ett: /ETT/i.test(f.contrato || '')
+        id: f.id, nombreSS: f.nombre || '', turno: f.turno || '', telefono: f.telefono || '',
+        contrato: soloHoras(f.contrato), ett: /ETT/i.test(f.contrato || ''),
+        estado: f.estado || '', fechaAlta: f.fechaAlta || '', fechaBaja: f.fechaBaja || ''
       }))
       .sort((a, b) => claveFecha(b.fechaBaja) - claveFecha(a.fechaBaja));
 
@@ -83,6 +95,32 @@ router.get('/api/datos', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ [Plantilla] /api/datos:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Exporta a Excel las filas (ya filtradas en el cliente) con las columnas dadas.
+router.post('/excel', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const columnas = Array.isArray(b.columnas) ? b.columnas : [];
+    const filas = Array.isArray(b.filas) ? b.filas : [];
+    if (!columnas.length) throw new Error('Sin columnas');
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Plantilla');
+    ws.columns = columnas.map(c => ({ header: String(c.label || c.key), key: String(c.key), width: 22 }));
+    filas.forEach(f => ws.addRow(f));
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).alignment = { vertical: 'middle' };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const nombre = String(b.titulo || 'plantilla').replace(/[^\w\-]+/g, '_');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('❌ [Plantilla] /excel:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
   }
 });
