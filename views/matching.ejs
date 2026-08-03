@@ -134,7 +134,7 @@ function pintarSugerencias() {
     <div class="rounded-xl bg-telecab-card border ${s.mejor ? 'border-telecab-border' : 'border-amber-600/40'} p-4">
       <div class="flex items-start justify-between gap-3 mb-3">
         <div>
-          <div class="text-telecab-text font-medium">${esc(s.nombre || s.id)}</div>
+          <div class="text-telecab-text font-medium">${esc(s.id || s.nombre)}</div>
           <div class="text-xs text-telecab-muted">
             ${esc(s.id)} · ${esc(s.turno || 'sin turno')}${s.contrato ? ' · ' + esc(s.contrato) : ''}
           </div>

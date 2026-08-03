@@ -280,7 +280,7 @@ function pintarTabla() {
     return `
     <tr class="border-t border-telecab-border hover:bg-telecab-card/50" data-fila="${c.fila}">
       <td class="px-3 py-2.5">
-        <div class="text-telecab-text font-medium">${esc(c.nombre || '(sin nombre)')}</div>
+        <div class="text-telecab-text font-medium">${esc(c.idBolt || c.nombre || '(sin nombre)')}</div>
         <div class="text-xs text-telecab-muted">${esc(c.id || 'sin ID de Bolt')}</div>
       </td>
       <td class="px-3 py-2.5 text-telecab-muted">${esc(c.turno || '—')}</td>
@@ -311,7 +311,7 @@ function pintarArchivo() {
   $('#tabla-out').innerHTML = ARCHIVO.map(f => `
     <tr class="border-t border-telecab-border hover:bg-telecab-card/50">
       <td class="px-3 py-2.5">
-        <div class="text-telecab-text font-medium">${esc(f.nombre || f.id)}</div>
+        <div class="text-telecab-text font-medium">${esc(f.id || f.nombre)}</div>
         <div class="text-xs text-telecab-muted">${esc(f.id)}</div>
       </td>
       <td class="px-3 py-2.5 text-telecab-muted">${esc(f.dni || '—')}</td>
@@ -402,7 +402,7 @@ function abrirFicha(fila) {
   fichaFila = fila;
   const c = fila ? DATOS.conductores.find(x => x.fila === fila) : {};
   $('#ficha-error').classList.add('hidden');
-  $('#ficha-titulo').textContent = fila ? (c.nombre || 'Ficha') : 'Nuevo conductor';
+  $('#ficha-titulo').textContent = fila ? (c.idBolt || c.nombre || 'Ficha') : 'Nuevo conductor';
 
   // El ID de Bolt: si ya lo tiene, se muestra fijo (es la referencia del
   // planificador y no se cambia). Si no, se ofrece un campo para completarlo.

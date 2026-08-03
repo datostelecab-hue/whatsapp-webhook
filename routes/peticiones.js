@@ -20,14 +20,16 @@ router.get('/api/datos', async (req, res) => {
       leerOut().catch(() => ({ fichas: [] }))
     ]);
     // Conductores de la agenda, para bajas/ausencias.
+    // Se muestra e identifica por ID_BOLT (el nombre de la plataforma de Bolt), no
+    // por el nombre de SS. Así la petición guarda el ID_BOLT y todo casa después.
     const conductores = ((tablero && tablero.conductores) || [])
       .filter(c => c.idBolt || c.nombre)
-      .map(c => ({ id: c.idBolt || c.nombre, nombre: c.nombre || c.idBolt, turno: c.turno || '', estado: c.estado || '' }))
+      .map(c => ({ id: c.idBolt || c.nombre, nombre: c.idBolt || c.nombre, turno: c.turno || '', estado: c.estado || '' }))
       .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
     // Conductores archivados (CONDUCTORES_OUT), para el reingreso.
     const archivados = ((out && out.fichas) || [])
       .filter(f => f.id || f.nombre)
-      .map(f => ({ id: f.id || f.nombre, nombre: f.nombre || f.id, turno: f.turno || '', estado: f.estado || '' }))
+      .map(f => ({ id: f.id || f.nombre, nombre: f.id || f.nombre, turno: f.turno || '', estado: f.estado || '' }))
       .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
     res.json({ status: 'ok', peticiones: lista, conductores, archivados });
   } catch (error) {

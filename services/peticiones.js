@@ -118,21 +118,59 @@ async function aplicarEfecto(pet) {
     await planif.restaurarDesdeOut([pet.id_conductor]);
     return;
   }
+
+  // El conductor está en la agenda activa: se resuelve su ID_BOLT REAL (la petición
+  // pudo guardarse con el nombre viejo de SS cuando el ID_BOLT aún no estaba). Todo
+  // el sistema referencia por ID_BOLT; sin esto, los cambios no casaban con la fila
+  // y NO pasaba nada (fallo silencioso). Si no se encuentra, se avisa.
+  const idBolt = await resolverIdBolt(planif, pet.id_conductor);
+  if (!idBolt) throw new Error(`No encuentro a "${pet.conductor || pet.id_conductor}" en la agenda por su ID_BOLT. Revisa el ID_BOLT del conductor.`);
+
   const estadoAgenda = ESTADO_AGENDA[pet.tipo];
   if (pet.tipo === 'Baja Empresa') {
     // Baja de empresa: cambia el estado y se archiva. Las fechas quedan de registro.
-    await planif.cambiarEstados([{ id: pet.id_conductor, estado: estadoAgenda }]);
+    await planif.cambiarEstados([{ id: idBolt, estado: estadoAgenda }]);
     return;
   }
-  // Ausencia: el sistema fija la reincorporación (Hasta+1) — ya no se teclea a mano
-  // en la agenda — y rellena las letras de la bitácora en el rango.
-  try { await planif.actualizarConductor(pet.id_conductor, { reincorporacion: sumarDias(pet.hasta, 1) }); } catch (_) {}
+
+  // Ausencia (Vacaciones / Baja Médica / Permiso Retribuido):
   const vf = require('./vistaFinal');
-  await vf.escribirLetrasRango(pet.id_conductor, LETRA[pet.tipo], pet.desde, pet.hasta);
-  // El estado cambia el DÍA en que empieza la ausencia (o al momento si Desde es
-  // hoy): aplicarAusenciasAutomaticas mira la letra de HOY. Antes de esa fecha la
-  // bitácora ya queda marcada, pero la cobertura no saca al conductor todavía.
-  try { await vf.aplicarAusenciasAutomaticas(); } catch (_) {}
+  await planif.actualizarConductor(idBolt, { reincorporacion: sumarDias(pet.hasta, 1) });   // cuándo vuelve
+  await vf.escribirLetrasRango(idBolt, LETRA[pet.tipo], pet.desde, pet.hasta);               // letras V/B/P en la bitácora
+  // Si la ausencia YA está vigente hoy, se cambia el estado al momento → libera la
+  // plaza en el planificador. Si empieza en el futuro, lo hará el cron el día que
+  // arranque (aplicarAusenciasAutomaticas mira la letra de HOY).
+  if (vigenteHoy(pet.desde, pet.hasta)) {
+    await planif.cambiarEstados([{ id: idBolt, estado: estadoAgenda }]);
+  }
+  try { await vf.aplicarAusenciasAutomaticas(); } catch (e) { console.error('⚠️ [Peticiones] aplicarAusenciasAutomaticas:', e.message); }
+}
+
+/**
+ * Resuelve el ID_BOLT vigente de un conductor a partir de lo que guardó la petición
+ * (que puede ser el ID_BOLT o el nombre de SS antiguo). Devuelve '' si no lo halla.
+ */
+async function resolverIdBolt(planif, ref) {
+  const r = String(ref || '').trim();
+  if (!r) return '';
+  const norm = s => String(s || '').trim().toLowerCase();
+  let conductores;
+  try { conductores = ((await planif.leerTablero()) || {}).conductores || []; }
+  catch (e) { console.error('⚠️ [Peticiones] resolverIdBolt/leerTablero:', e.message); return r; }  // último recurso
+  const porId = conductores.find(c => c.idBolt && norm(c.idBolt) === norm(r));
+  if (porId) return porId.idBolt;
+  const porNombre = conductores.find(c => c.idBolt && norm(c.nombre) === norm(r));
+  return porNombre ? porNombre.idBolt : '';
+}
+
+/** ¿La ausencia está vigente hoy? (Desde ≤ hoy ≤ Hasta). */
+function vigenteHoy(desdeStr, hastaStr) {
+  const p = s => { const m = String(s || '').match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], 12) : null; };
+  const d = p(desdeStr), h = p(hastaStr);
+  if (d == null) return false;
+  const hoy = new Date();
+  const hoyMs = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 12);
+  return d <= hoyMs && (h == null || hoyMs <= h);
 }
 
 function avisarTrafico(asunto, texto) {

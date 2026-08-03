@@ -204,7 +204,7 @@ function pintarListas() {
     .filter(c => c.turno === turno && c.estadoCalculado === 'Pendiente Asignar')
     .map(c => {
       const faltan = c.diasLaborables - c.diasCubiertos;
-      return `<option value="${esc(c.id)}">${esc(c.nombre)} — faltan ${faltan} día${faltan === 1 ? '' : 's'}</option>`;
+      return `<option value="${esc(c.id)}">${esc(c.id || c.nombre)} — faltan ${faltan} día${faltan === 1 ? '' : 's'}</option>`;
     })
     .join('');
   $('#lista-dia').innerHTML = opciones('Día');

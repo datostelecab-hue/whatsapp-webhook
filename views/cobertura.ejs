@@ -209,7 +209,7 @@ function pintarPersonas() {
   $('#lista-personas').innerHTML = visibles.map(p => `
     <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
       <div class="mb-3">
-        <div class="text-telecab-text font-medium">${esc(p.nombre || p.id)}</div>
+        <div class="text-telecab-text font-medium">${esc(p.id || p.nombre)}</div>
         <div class="text-xs text-telecab-muted">${esc(p.id)}</div>
       </div>
       <div class="space-y-1.5 text-sm">
