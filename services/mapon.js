@@ -17,10 +17,9 @@
 
 const API = 'https://mapon.com/api/v1';
 
-// Mientras las credenciales no estén en variables de entorno de Render, se deja
-// la clave actual como respaldo para no romper lo que ya funciona. Defínela en
-// el panel como MAPON_API_KEY y este fichero deja de tener el secreto escrito.
-const KEY = process.env.MAPON_API_KEY || 'd1ff9336961ee25a46091c08663de3612d6a4955';
+// La clave vive en la variable de entorno MAPON_API_KEY (Render). Ya no se guarda
+// en el código: si falta, las alertas de Mapon simplemente no se piden.
+const KEY = process.env.MAPON_API_KEY || '';
 
 // Velocidad a partir de la cual una alerta se considera grave (la que en su día
 // disparará el aviso por WhatsApp). Ajustable sin tocar código.

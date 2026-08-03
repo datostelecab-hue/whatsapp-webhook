@@ -3,10 +3,10 @@ const router = express.Router();
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPJUuuWtrR-r_kV3ADry2FyTFQAvGmW94wsYO5MohqTFLOQ1YTusKOdjOjLa5ggv50/exec';
 
-const WHATSAPP_TOKEN = 'EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7NqaKcKN1F3HBGxGw4eLOUQd0kqZCbRW3hMr3ZCYZBFJy94oxL0Pn9DBV092umEPhdgJ9HW4eV2Vh7CxhJJGHZCrBNbpRWSQ9whmqLKtVpAZBnx3Hdv8h3wuICs86P11R8w5ZA7Y2CgaITa0XgZDZD';
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const PHONE_NUMBER_ID = '1256923474160518';
 const WHATSAPP_VERSION = 'v25.0';
-const MAPON_API_KEY = 'd1ff9336961ee25a46091c08663de3612d6a4955';
+const MAPON_API_KEY = process.env.MAPON_API_KEY || '';
 
 const sesiones = {};
 

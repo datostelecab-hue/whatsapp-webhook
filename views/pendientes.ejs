@@ -5,7 +5,7 @@
       <h1 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
         <i class="fa-solid fa-inbox text-telecab-gold"></i> Pendientes
       </h1>
-      <p class="text-xs text-telecab-muted mt-0.5">Lo que le toca resolver a cada departamento. Filtra por el rol que elijas arriba. Cada tarjeta te lleva directo a resolverlo.</p>
+      <p class="text-xs text-telecab-muted mt-0.5">Lo que le toca resolver a tu departamento. Cada tarjeta te lleva directo a resolverlo.</p>
     </div>
     <button id="btn-recargar" class="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
       <i class="fa-solid fa-rotate mr-1"></i> Recargar
@@ -20,15 +20,23 @@
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  const DEPS = { general: ['reclutador', 'rrhh', 'trafico'], reclutador: ['reclutador'], rrhh: ['rrhh'], trafico: ['trafico'] };
+  // Departamentos que ve cada rol (igual que el buzón de la barra superior).
+  const DEPS = {
+    superadmin: ['reclutador', 'rrhh', 'trafico', 'operaciones'],
+    oficina: ['reclutador', 'rrhh'],
+    trafico: ['trafico', 'operaciones']
+  };
   const META = {
     reclutador: { nombre: 'Reclutador · Selección', icono: 'fa-user-plus' },
     rrhh: { nombre: 'RRHH', icono: 'fa-id-badge' },
-    trafico: { nombre: 'Tráfico', icono: 'fa-satellite-dish' }
+    trafico: { nombre: 'Tráfico', icono: 'fa-satellite-dish' },
+    operaciones: { nombre: 'Operaciones', icono: 'fa-triangle-exclamation' }
   };
+  // Rol REAL de la sesión (lo inyecta el servidor); ya no se elige en el navegador.
+  const ROL = '<%= rol || "" %>';
 
   async function cargar() {
-    const rol = localStorage.getItem('telecab-rol') || 'general';
+    const rol = ROL;
     const cont = $('#pend-cont');
     cont.innerHTML = '<p class="text-telecab-muted text-sm">Cargando pendientes…</p>';
     let d;
@@ -36,7 +44,7 @@
     catch (e) { cont.innerHTML = '<p class="text-telecab-red text-sm">No se pudieron cargar los pendientes.</p>'; return; }
     if (d.status !== 'ok') { cont.innerHTML = '<p class="text-telecab-red text-sm">Error al cargar.</p>'; return; }
 
-    const deps = DEPS[rol] || DEPS.general;
+    const deps = DEPS[rol] || [];
     cont.innerHTML = '';
     let total = 0;
 

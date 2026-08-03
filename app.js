@@ -6,6 +6,17 @@ const app = express();
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Cabeceras de seguridad en todas las respuestas (anti-clickjacking, anti MIME-sniffing…).
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 // Archivos estáticos (logo, vídeo de marca…). Se cachean un día: son
 // inmutables en la práctica y no tiene sentido volver a pedirlos en cada página.
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { maxAge: '1d' }));

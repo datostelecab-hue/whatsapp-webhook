@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const usuarios = require('../services/usuarios');
 const sesion = require('../services/sesion');
+const limite = require('../services/limiteIntentos');
 const { enviarCorreo } = require('../services/correo');
 
 const LAYOUT = 'layout-auth';
@@ -17,12 +18,24 @@ router.get('/login', (req, res) => {
 router.post('/login', async (req, res) => {
   const b = req.body || {};
   const email = usuarios.normalizarEmail(b.email);
+  const ip = ((req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || 'ip?';
   const next = b.next || '/';
   const fallo = msg => res.status(401).render('login', { titulo: 'Acceso', layout: LAYOUT, error: msg, next });
+
+  // Anti fuerza bruta: si la IP o el email acumulan fallos, se frena un rato.
+  const espera = Math.max(limite.segundosBloqueo('ip:' + ip), limite.segundosBloqueo('mail:' + email));
+  if (espera > 0) return fallo(`Demasiados intentos fallidos. Espera ${Math.ceil(espera / 60)} min e inténtalo de nuevo.`);
+
   try {
     const u = await usuarios.buscarUsuario(email);
-    if (!u || !usuarios.verificarHash(String(b.password || ''), u.hash)) return fallo('Correo o contraseña incorrectos.');
+    if (!u || !usuarios.verificarHash(String(b.password || ''), u.hash)) {
+      limite.registrarFallo('ip:' + ip);
+      limite.registrarFallo('mail:' + email);
+      return fallo('Correo o contraseña incorrectos.');
+    }
     if (u.estado === usuarios.ESTADOS_U.BLOQUEADO) return fallo('Tu cuenta está desactivada. Contacta con el administrador.');
+    limite.limpiar('ip:' + ip);
+    limite.limpiar('mail:' + email);
     sesion.ponerSesion(res, u);
     usuarios.registrarAcceso(email);
     if (u.debe_cambiar === 'si') return res.redirect('/cambiar-password');

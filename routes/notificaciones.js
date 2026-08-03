@@ -87,10 +87,21 @@ async function calcular() {
   };
 }
 
+// Qué departamentos ve cada rol (defensa en profundidad: además del filtro del
+// cliente, el servidor solo devuelve lo que a ese rol le corresponde).
+const DEPS_ROL = {
+  superadmin: ['reclutador', 'rrhh', 'trafico'],
+  oficina: ['reclutador', 'rrhh'],
+  trafico: ['trafico']
+};
+
 router.get('/', async (req, res) => {
   try {
     if (!cache || Date.now() - cacheTs > TTL) { cache = await calcular(); cacheTs = Date.now(); }
-    res.json({ status: 'ok', ...cache });
+    const permitidos = DEPS_ROL[req.usuario && req.usuario.rol] || [];
+    const salida = {};
+    permitidos.forEach(k => { if (cache[k]) salida[k] = cache[k]; });
+    res.json({ status: 'ok', ...salida });
   } catch (error) {
     console.error('❌ [Notificaciones]:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });

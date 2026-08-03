@@ -30,7 +30,7 @@
 <script>
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const rol = localStorage.getItem('telecab-rol') || 'general';
+  const rol = '<%= rol || "" %>';   // rol REAL de la sesión (lo inyecta el servidor)
 
   // Colores desde los tokens globales (canales RGB → se pueden teñir y cambian con el tema).
   const CH = { V: 'var(--tc-vac)', B: 'var(--tc-med)', P: 'var(--tc-permiso)' };

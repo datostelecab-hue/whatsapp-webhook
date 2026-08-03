@@ -73,10 +73,10 @@
 <script>
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const rol = localStorage.getItem('telecab-rol') || 'general';
-  const esTrafico = rol === 'trafico' || rol === 'general';   // crea petición (queda pendiente)
-  const esRRHH = rol === 'rrhh' || rol === 'general';         // resuelve + crea y aplica directo
-  const puedeCrear = esTrafico || esRRHH;                     // ve el formulario de alta
+  const rol = '<%= rol || "" %>';                                // rol REAL de la sesión
+  const esTrafico = rol === 'trafico' || rol === 'superadmin';   // crea petición (queda pendiente)
+  const esRRHH = rol === 'oficina' || rol === 'superadmin';      // resuelve + crea y aplica directo
+  const puedeCrear = esTrafico || esRRHH;                        // ve el formulario de alta
   const puedeResolver = esRRHH;
 
   const COLOR = { 'Pendiente': 'text-telecab-gold', 'Aprobada': 'text-telecab-green', 'Rechazada': 'text-telecab-red' };

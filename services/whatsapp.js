@@ -3,7 +3,7 @@
 // ============================================================
 // Mismo número/token que usa botPuertas. El token es permanente (System User).
 
-const TOKEN = 'EAAZBBQk7ZCDvkBR0jkEmoVjGn07x2OdgQzjtIWAZAlSJrFnsexsfZC7NqaKcKN1F3HBGxGw4eLOUQd0kqZCbRW3hMr3ZCYZBFJy94oxL0Pn9DBV092umEPhdgJ9HW4eV2Vh7CxhJJGHZCrBNbpRWSQ9whmqLKtVpAZBnx3Hdv8h3wuICs86P11R8w5ZA7Y2CgaITa0XgZDZD';
+const TOKEN = process.env.WHATSAPP_TOKEN || '';
 const PHONE_NUMBER_ID = '1256923474160518';
 const VERSION = 'v25.0';
 
