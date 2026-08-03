@@ -4,6 +4,7 @@ const { readSheet, writeSheet, clearSheet, ensureSheet } = require('./sheets');
 const STATE_VIAJE = ['has_order', 'waiting_orders'];
 const SPREADSHEET_ID = '1ixCx1SHICLv_VjrrOs030YswcNSOBbiET2_T_f1Gkm8';
 const DIAS_VENTANA_FUTURA = 7;
+const DIAS_HISTORICO_MANTENER = 45;   // días que se conservan en el histórico diario
 
 // Un estado dura hasta el siguiente log, pero si la app deja de reportar sin
 // pasar por 'inactive' ese hueco no es tiempo trabajado: Bolt cierra la sesión
@@ -19,7 +20,7 @@ const MARGEN_ANTES_SEG = 6 * 3600;
 // ─── Regiones ────────────────────────────────────────────────────────
 // Cada región tiene sus flotas y sus hojas. Madrid conserva los nombres de
 // siempre (hay IMPORTRANGE y visor colgando de ellos); Barcelona estrena hojas.
-const FLOTAS_MADRID = [63530, 143626];
+const FLOTAS_MADRID = [143626];
 
 // ID de la flota de Barcelona. null = autodetectar con getCompanies: todas las
 // empresas a las que llega el token menos las de Madrid. Si Bolt os da acceso a
@@ -32,7 +33,8 @@ const REGION_MADRID = {
   hojaPorDia: 'HORAS_POR_DIA',
   hoja15: 'HORAS_15_DIAS',
   hojaUnificadas: 'Flotas Unificadas',
-  hojaCache: 'CACHE_SEGUNDOS'
+  hojaCache: 'CACHE_SEGUNDOS',
+  hojaHistorico: 'HISTORICO_DIARIO'
 };
 
 const REGION_BARCELONA = {
@@ -41,7 +43,8 @@ const REGION_BARCELONA = {
   hojaPorDia: 'FlotaBarcelona',
   hoja15: 'HORAS_15_DIAS_BARCELONA',
   hojaUnificadas: 'Flotas Unificadas Barcelona',
-  hojaCache: 'CACHE_SEGUNDOS_BARCELONA'
+  hojaCache: 'CACHE_SEGUNDOS_BARCELONA',
+  hojaHistorico: 'HISTORICO_DIARIO_BARCELONA'
 };
 
 let ultimaEjecucion = 0;
@@ -205,15 +208,15 @@ async function actualizarRegion(region, ahora) {
 
   for (let d = 0; d <= ultimoDiaMostrar; d++) {
     const dat = cache[d] || crearCacheVacio(region);
-    const esFuturo = d > diaActual;
+    const esFuturo = d >= diaActual;   // HOY también se deja en blanco (día a medias)
 
     if (esFuturo) {
       valuesPorDia.push([d.toString()].concat(new Array(cabecera.length - 1).fill('')));
     } else {
       const porFlota = region.flotas.map(f => (dat.porFlota[f] || 0) / 3600);
       const total = porFlota.reduce((s, h) => s + h, 0);
-      // El día en curso también acumula: el visor debe estar "en vivo" hasta la
-      // última pasada del cron, no congelado en ayer.
+      // Solo días ya cerrados (hoy queda en blanco): la serie no arrastra un día a
+      // medias, que en los gráficos dibuja una bajada.
       acumulado += total;
 
       valuesPorDia.push([
@@ -232,35 +235,62 @@ async function actualizarRegion(region, ahora) {
   await clearSheet(SPREADSHEET_ID, `${region.hojaPorDia}!A:Z`);
   await writeSheet(SPREADSHEET_ID, `${region.hojaPorDia}!A1`, valuesPorDia);
 
-  // ---- Últimos 15 días ----
-  await ensureSheet(SPREADSHEET_ID, region.hoja15);
-  // Termina en HOY (en curso hasta la última pasada del cron), no en ayer.
-  const fechaFin = new Date(ahora);
-  const fechaInicio = new Date(fechaFin); fechaInicio.setDate(fechaInicio.getDate() - 14);
+  // ---- Últimos 15 días (independiente del mes: histórico diario propio) ----
+  // El resumen de 15 días NO depende del caché mensual (se vacía cada mes y por eso
+  // a principios de mes solo salían 2-3 días). Se mantiene un HISTÓRICO DIARIO propio,
+  // por fecha completa, que cruza meses: se vuelcan los días ya cerrados del mes en
+  // curso y lo que falte (p. ej. el mes anterior la 1ª vez) se trae UNA vez de la API.
+  // HOY no entra en la serie (un día a medias dibuja una bajada); su valor en curso va
+  // en una columna aparte, para poder pintarlo como un punto suelto en el gráfico.
   const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const hist = await leerHistorico(region);
 
+  // 1) Vuelca al histórico los días YA COMPLETOS del mes en curso (todos menos hoy).
+  for (let d = 1; d < diaActual; d++) {
+    const c = cache[d];
+    if (!c) continue;
+    const porFlota = {}; let total = 0;
+    region.flotas.forEach(f => { const h = (c.porFlota[f] || 0) / 3600; porFlota[f] = h; total += h; });
+    hist[claveFecha(ano, mes, d)] = { porFlota, total };
+  }
+
+  // 2) Ventana: los 15 días ANTERIORES a hoy (termina ayer).
+  const hoy0 = new Date(ano, mes - 1, diaActual);
+  const fechasVentana = [];
+  for (let i = 15; i >= 1; i--) { const f = new Date(hoy0); f.setDate(f.getDate() - i); fechasVentana.push(f); }
+
+  // 3) Lo que falte en el histórico (típicamente el mes anterior la 1ª vez) → API.
+  const faltan = fechasVentana.filter(f => !hist[claveFecha(f.getFullYear(), f.getMonth() + 1, f.getDate())]);
+  if (faltan.length) {
+    console.log(`🕳️ [${tag}] 15 días: faltan ${faltan.length} día(s) en el histórico → backfill desde la API`);
+    Object.assign(hist, await backfillFechas(region, faltan, ahora, tag));
+  }
+  await guardarHistorico(region, hist);
+
+  // 4) HOY en curso: un solo valor, en columna aparte (la serie no lo cuenta).
+  const cHoy = cache[diaActual];
+  const hoyTotal = cHoy ? region.flotas.reduce((s, f) => s + (cHoy.porFlota[f] || 0) / 3600, 0) : 0;
+
+  // 5) Escribe la hoja de 15 días.
+  await ensureSheet(SPREADSHEET_ID, region.hoja15);
+  const nF = region.flotas.length;
   const cabecera15 = ['FECHA'];
   region.flotas.forEach(f => cabecera15.push('FLOTA ' + f));
-  cabecera15.push('TOTAL', 'ACUMULADO');
+  cabecera15.push('TOTAL', 'ACUMULADO', '', `HOY (${meses[ahora.getMonth()]} ${diaActual})`);
 
   const values15 = [cabecera15];
   let ac15 = 0;
-  const ft = new Date(fechaInicio);
-  while (ft <= fechaFin) {
-    const d = ft.getDate();
-    const em = ft.getMonth() === ahora.getMonth() && ft.getFullYear() === ahora.getFullYear();
-    const dat = em ? (cache[d] || crearCacheVacio(region)) : crearCacheVacio(region);
-    const porFlota = region.flotas.map(f => (dat.porFlota[f] || 0) / 3600);
-    const t = porFlota.reduce((s, h) => s + h, 0);
-    ac15 += t;
-    values15.push([
-      `${meses[ft.getMonth()]} ${d}`,
-      ...porFlota.map(h => h.toFixed(2)),
-      t.toFixed(2),
-      ac15.toFixed(2)
-    ]);
-    ft.setDate(ft.getDate() + 1);
-  }
+  fechasVentana.forEach((f, idx) => {
+    const h = hist[claveFecha(f.getFullYear(), f.getMonth() + 1, f.getDate())] || { porFlota: {}, total: 0 };
+    ac15 += h.total;
+    const fila = new Array(cabecera15.length).fill('');
+    fila[0] = `${meses[f.getMonth()]} ${f.getDate()}`;
+    region.flotas.forEach((fl, k) => { fila[1 + k] = (h.porFlota[fl] || 0).toFixed(2); });
+    fila[1 + nF] = h.total.toFixed(2);
+    fila[2 + nF] = ac15.toFixed(2);
+    if (idx === 0) fila[4 + nF] = hoyTotal.toFixed(2);   // valor de HOY, en su columna autónoma
+    values15.push(fila);
+  });
   await clearSheet(SPREADSHEET_ID, `${region.hoja15}!A:Z`);
   await writeSheet(SPREADSHEET_ID, `${region.hoja15}!A1`, values15);
 
@@ -368,6 +398,14 @@ function crearCacheVacio(region) {
 async function leerCache(region, mes, ano) {
   try {
     const data = await readSheet(SPREADSHEET_ID, `${region.hojaCache}!A:Z`);
+    // Si el caché guardado tiene OTRAS flotas (p. ej. se quitó una), sus columnas
+    // ya no cuadran con las actuales y se desalinearía todo: se ignora y se
+    // recalcula limpio desde la API en esta pasada.
+    const flotasG = (data[0] || []).map(String).filter(c => /^F\d+_SEG$/i.test(c)).map(c => parseInt(c.match(/\d+/)[0], 10));
+    if (data.length > 1 && !(flotasG.length === region.flotas.length && region.flotas.every(f => flotasG.includes(f)))) {
+      console.log(`♻️  [${region.nombre}] Caché con flotas [${flotasG.join(',')}] ≠ [${region.flotas.join(',')}] → se recalcula el mes`);
+      return {};
+    }
     const cache = {};
     const nFlotas = region.flotas.length;
 
@@ -417,6 +455,108 @@ async function guardarCache(region, cache, mes, ano) {
 
   await clearSheet(SPREADSHEET_ID, `${region.hojaCache}!A:Z`);
   await writeSheet(SPREADSHEET_ID, `${region.hojaCache}!A1`, filas);
+}
+
+
+// ═══════════════════════════════
+// HISTÓRICO DIARIO (cruza meses; alimenta el resumen de 15 días)
+// ═══════════════════════════════
+
+const claveFecha = (ano, mes, dia) => `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+
+async function leerHistorico(region) {
+  try {
+    const data = await readSheet(SPREADSHEET_ID, `${region.hojaHistorico}!A:Z`);
+    // Igual que el caché: si el histórico se escribió con otras flotas, se ignora
+    // y se reconstruye (backfill) con la lista actual, para no desalinear columnas.
+    const flotasG = (data[0] || []).map(String).filter(c => /^FLOTA\s+\d+$/i.test(c)).map(c => parseInt(c.match(/\d+/)[0], 10));
+    if (data.length > 1 && !(flotasG.length === region.flotas.length && region.flotas.every(f => flotasG.includes(f)))) {
+      console.log(`♻️  [${region.nombre}] Histórico con flotas [${flotasG.join(',')}] ≠ actuales → se reconstruye`);
+      return {};
+    }
+    const hist = {};
+    const nF = region.flotas.length;
+    for (let i = 1; i < data.length; i++) {
+      const fila = data[i];
+      const fecha = (fila[0] || '').toString().trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) continue;
+      const porFlota = {};
+      region.flotas.forEach((f, idx) => { porFlota[f] = parseFloat(fila[1 + idx]) || 0; });
+      hist[fecha] = { porFlota, total: parseFloat(fila[1 + nF]) || 0 };
+    }
+    return hist;
+  } catch (e) {
+    console.log(`📅 [${region.nombre}] Histórico diario vacío (${e.message})`);
+    return {};
+  }
+}
+
+async function guardarHistorico(region, hist) {
+  await ensureSheet(SPREADSHEET_ID, region.hojaHistorico);
+  const cab = ['FECHA'];
+  region.flotas.forEach(f => cab.push('FLOTA ' + f));
+  cab.push('TOTAL');
+  // Ordena por fecha y conserva solo los últimos días (acota el tamaño de la hoja).
+  const recientes = Object.keys(hist).sort().slice(-DIAS_HISTORICO_MANTENER);
+  const filas = [cab];
+  recientes.forEach(fk => {
+    const h = hist[fk];
+    filas.push([fk, ...region.flotas.map(f => +((h.porFlota[f] || 0).toFixed(4))), +(h.total.toFixed(4))]);
+  });
+  await clearSheet(SPREADSHEET_ID, `${region.hojaHistorico}!A:Z`);
+  await writeSheet(SPREADSHEET_ID, `${region.hojaHistorico}!A1`, filas);
+}
+
+/**
+ * Trae de la API las horas por flota de unas fechas concretas y las deja en formato
+ * de histórico { 'YYYY-MM-DD': { porFlota:{id:horas}, total } }. Se usa solo para
+ * rellenar lo que aún no está en el histórico (bootstrap y tras cambiar de mes).
+ */
+async function backfillFechas(region, fechas, ahora, tag) {
+  const orden = fechas.slice().sort((a, b) => a - b);
+  const primera = orden[0], ultima = orden[orden.length - 1];
+  const startTs = Math.floor(new Date(primera.getFullYear(), primera.getMonth(), primera.getDate(), 0, 0, 0).getTime() / 1000) - MARGEN_ANTES_SEG;
+  const finExcl = new Date(ultima.getFullYear(), ultima.getMonth(), ultima.getDate() + 1, 0, 0, 0);
+  const endTs = Math.min(Math.floor(finExcl.getTime() / 1000), Math.floor(ahora.getTime() / 1000));
+  const quiero = new Set(fechas.map(f => claveFecha(f.getFullYear(), f.getMonth() + 1, f.getDate())));
+
+  const seg = {};   // 'YYYY-MM-DD' → { flotaId: segundos }
+  for (const flotaId of region.flotas) {
+    const logs = await fetchRangoCompleto(
+      '/fleetIntegration/v1/getFleetStateLogs', { company_id: flotaId },
+      'state_logs', startTs, endTs, 1000, `${tag}-hist-${flotaId}`
+    );
+    await sleep(1000);
+
+    const porDriver = {};
+    logs.forEach(l => { const k = l.driver_uuid || 'u'; (porDriver[k] = porDriver[k] || []).push(l); });
+    for (const arr of Object.values(porDriver)) {
+      arr.sort((a, b) => a.created - b.created);
+      for (let i = 0; i < arr.length; i++) {
+        if (!STATE_VIAJE.includes(arr[i].state)) continue;
+        const ini = arr[i].created;
+        let fin = (i + 1 < arr.length) ? arr[i + 1].created : endTs;
+        if (fin - ini > MAX_TRAMO_SEG) fin = ini + MAX_TRAMO_SEG;
+        if (fin <= ini) continue;
+        repartirPorDias(ini, fin, (dia, s, m, a) => {
+          const key = claveFecha(a, m, dia);
+          if (!quiero.has(key)) return;
+          if (!seg[key]) seg[key] = {};
+          seg[key][flotaId] = (seg[key][flotaId] || 0) + s;
+        });
+      }
+    }
+  }
+
+  // Segundos → horas. Se registran TODAS las fechas pedidas (aunque den 0) para no
+  // volver a pedirlas a la API en cada pasada.
+  const out = {};
+  for (const key of quiero) {
+    const porFlota = {}; let total = 0;
+    region.flotas.forEach(f => { const h = ((seg[key] && seg[key][f]) || 0) / 3600; porFlota[f] = h; total += h; });
+    out[key] = { porFlota, total };
+  }
+  return out;
 }
 
 module.exports = { actualizarTodo };

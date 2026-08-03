@@ -73,7 +73,7 @@
         <input id="c-port" class="inp" placeholder="587" inputmode="numeric">
       </div>
       <div>
-        <label class="block text-xs text-telecab-muted mb-1">Usuario (correo)</label>
+        <label class="block text-xs text-telecab-muted mb-1">Usuario — buzón que envía <span class="text-telecab-muted/70">(@telecab.es, no un gmail)</span></label>
         <input id="c-user" class="inp" placeholder="datos@telecab.es" autocomplete="off">
       </div>
       <div>
@@ -85,8 +85,12 @@
         <input id="c-pass" type="password" class="inp" placeholder="••••••••" autocomplete="new-password">
       </div>
     </div>
-    <div class="flex flex-wrap items-center gap-2 mt-3">
+    <div class="flex flex-wrap items-end gap-2 mt-3">
       <button id="c-guardar" class="px-4 py-2 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold text-sm"><i class="fa-solid fa-floppy-disk mr-1"></i> Guardar</button>
+      <div>
+        <label class="block text-[11px] text-telecab-muted mb-0.5">Enviar prueba a</label>
+        <input id="c-prueba-to" class="inp !w-52 text-sm" placeholder="tu@correo.com" value="<%= (typeof usuario !== 'undefined' && usuario && usuario.email) || '' %>">
+      </div>
       <button id="c-prueba" class="px-4 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm"><i class="fa-solid fa-paper-plane mr-1"></i> Enviar prueba</button>
       <span id="c-estado" class="text-xs text-telecab-muted ml-auto"></span>
     </div>
@@ -299,8 +303,9 @@
   });
   $('c-prueba').addEventListener('click', async () => {
     aviso('Enviando prueba…', 'text-telecab-muted');
-    const r = await post('/configuracion/correo/prueba', {});
-    if (r.enviado) aviso('Prueba enviada. Revisa tu bandeja de entrada.', 'text-telecab-green');
+    const to = $('c-prueba-to').value.trim();
+    const r = await post('/configuracion/correo/prueba', to ? { to } : {});
+    if (r.enviado) aviso('Prueba enviada a ' + (to || 'tu correo') + '. Revísalo (mira también spam).', 'text-telecab-green');
     else aviso('No se pudo enviar: ' + (r.msg || 'revisa los datos'), 'text-telecab-red');
   });
   cargar();
