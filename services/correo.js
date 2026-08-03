@@ -79,9 +79,45 @@ async function enviarCorreo({ to, subject, text, html } = {}) {
   }
 }
 
+/**
+ * Envía un correo COMO un usuario concreto (desde su propio buzón @telecab.es), para
+ * la trazabilidad: se sabe quién hizo cada proceso. Autentica con la contraseña de
+ * correo CIFRADA guardada en su ficha. El SMTP es el mismo para todos (@telecab.es):
+ * host/puerto salen de "correo para procesos" o, por defecto, de DonDominio.
+ */
+async function enviarComoUsuario(emailRemitente, { to, subject, text, html } = {}) {
+  try {
+    const usuarios = require('./usuarios');
+    const u = await usuarios.buscarUsuario(emailRemitente);
+    if (!u) return { enviado: false, motivo: `El remitente ${emailRemitente} no existe` };
+    const pass = usuarios.descifrarPassCorreo(u);
+    if (!pass) return { enviado: false, motivo: `${emailRemitente} no tiene contraseña de correo configurada (Configuración → Mi perfil)` };
+
+    const c = await configApp.leerConfig().catch(() => ({}));
+    const host = c.correo_host || 'smtp.dondominio.com';
+    const port = Number(c.correo_port) || 587;
+    const from = u.email;   // se envía SIEMPRE como el propio usuario
+
+    console.log(`✉️  [CORREO] Como ${from} por ${host}:${port} → ${to}`);
+    const nodemailer = require('nodemailer');
+    const transport = nodemailer.createTransport({
+      host, port, secure: port === 465, requireTLS: port !== 465,
+      auth: { user: from, pass },
+      connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000
+    });
+    const info = await transport.sendMail({ from, to, subject, text, html });
+    console.log(`✅ [CORREO] Enviado como ${from} → ${to} · id=${info.messageId || '?'}`);
+    return { enviado: true, id: info.messageId, from };
+  } catch (e) {
+    const detalle = [e.message, e.code && `code=${e.code}`, e.responseCode && `smtp=${e.responseCode}`, e.response && `«${e.response}»`].filter(Boolean).join(' · ');
+    console.error(`❌ [CORREO] Fallo enviando como ${emailRemitente}: ${detalle}`);
+    return { enviado: false, motivo: detalle || 'error desconocido' };
+  }
+}
+
 // Compatibilidad: indica si hay credenciales por entorno (uso heredado).
 function configurado() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-module.exports = { enviarCorreo, estadoCorreo, ajustesEnvio, configurado, CORREO_TRAFICO };
+module.exports = { enviarCorreo, enviarComoUsuario, estadoCorreo, ajustesEnvio, configurado, CORREO_TRAFICO };

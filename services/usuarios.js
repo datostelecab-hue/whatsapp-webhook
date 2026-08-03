@@ -13,6 +13,7 @@
 //   · trafico    → Tráfico + Flota + Operaciones.
 
 const crypto = require('crypto');
+const cripto = require('./cripto');   // cifrado reversible (AES) para la contraseña de correo
 const { readSheet, writeSheetRaw, ensureSheet } = require('./sheets');
 
 const ID_PLANIFICADOR = '1Fe2LHbzf4_OyJkk3W08yJcm_1xJrZXG6U_z6-sIF35o';
@@ -36,11 +37,16 @@ const COL = {
   ultimo_acceso: 10,
   // Añadidas AL FINAL (para no desalinear las filas ya existentes en la hoja):
   apellidos: 11,     // para la "firma" (atribución de acciones)
-  telefono: 12
+  telefono: 12,
+  // Contraseña del BUZÓN de correo del usuario, CIFRADA (reversible, AES): hace falta
+  // poder descifrarla para autenticarse en el SMTP y enviar los correos COMO él. No
+  // confundir con `hash` (la de login de la plataforma, que va hasheada e irreversible).
+  pass_correo: 13,
+  tema: 14           // tema de la interfaz del usuario (sigue al usuario entre dispositivos)
 };
-const N_COLS = 13;
+const N_COLS = 15;
 const CABECERA = ['email', 'nombre', 'rol', 'hash', 'estado', 'debe_cambiar',
-  'token_reset', 'token_expira', 'creado_por', 'fecha_creacion', 'ultimo_acceso', 'apellidos', 'telefono'];
+  'token_reset', 'token_expira', 'creado_por', 'fecha_creacion', 'ultimo_acceso', 'apellidos', 'telefono', 'pass_correo', 'tema'];
 
 function ahora() {
   const p = new Intl.DateTimeFormat('en-GB', {
@@ -92,7 +98,7 @@ function objetoAFila(o) {
 
 async function leerUsuarios() {
   await ensureSheet(ID_PLANIFICADOR, HOJA);
-  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:M`);
+  const filas = await readSheet(ID_PLANIFICADOR, `${HOJA}!A:O`);
   const lista = [];
   for (let i = 1; i < filas.length; i++) {
     const email = normalizarEmail(filas[i][COL.email]);
@@ -177,10 +183,25 @@ async function registrarAcceso(email) {
   try { await actualizarUsuario(email, { ultimo_acceso: ahora() }); } catch (_) {}
 }
 
+// ── Contraseña de correo del usuario (CIFRADA, reversible) ──────────────────
+/** Guarda cifrada la contraseña del buzón del usuario, para poder enviar como él. */
+async function guardarPassCorreo(email, passPlano) {
+  const p = String(passPlano || '');
+  if (!p) throw new Error('La contraseña de correo está vacía');
+  if (!cripto.configurada()) throw new Error('Falta CRED_KEY en el servidor para cifrar la contraseña de correo');
+  return actualizarUsuario(email, { pass_correo: cripto.cifrar(p) });
+}
+/** Descifra la contraseña de correo de un usuario (objeto leído de la hoja); null si no hay. */
+function descifrarPassCorreo(u) {
+  return (u && u.pass_correo) ? cripto.descifrar(u.pass_correo) : null;
+}
+const tienePassCorreo = u => !!(u && u.pass_correo);
+
 module.exports = {
   ROLES, ESTADOS_U, COL,
   leerUsuarios, buscarUsuario, crearUsuario, actualizarUsuario,
   fijarPassword, generarTokenReset, tokenResetValido, registrarAcceso,
+  guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,
   hashPassword, verificarHash, generarPasswordProvisional,
   normalizarEmail, esEmail
 };

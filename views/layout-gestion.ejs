@@ -6,15 +6,18 @@
   <title>Telecab · <%= titulo || 'Gestión' %></title>
   <link rel="icon" type="image/png" href="/assets/logo-64.png">
 
-  <!-- Tema (oscuro/claro/automático) ANTES de pintar, para que no haya parpadeo. -->
+  <!-- Tema del PERFIL (lo inyecta el servidor) ANTES de pintar, sin parpadeo. Si no
+       hay (o falla), cae al localStorage del dispositivo. -->
   <script>
     (function () {
       try {
-        var pref = localStorage.getItem('telecab-tema') || 'dark';
-        var tema = pref === 'auto'
+        var perfil = '<%= (typeof tema !== "undefined" && tema) ? tema : "" %>';
+        var pref = perfil || localStorage.getItem('telecab-tema') || 'dark';
+        if (perfil) localStorage.setItem('telecab-tema', perfil);   // el dispositivo sigue al perfil
+        var t = pref === 'auto'
           ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
           : pref;
-        document.documentElement.setAttribute('data-theme', tema);
+        document.documentElement.setAttribute('data-theme', t);
       } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
     })();
   </script>

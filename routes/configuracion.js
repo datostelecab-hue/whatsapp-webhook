@@ -21,9 +21,51 @@ router.post('/mi-perfil', async (req, res) => {
     const actualizado = await usuarios.actualizarUsuario(req.usuario.email, {
       nombre, apellidos: String(b.apellidos || '').trim(), telefono: String(b.telefono || '').trim()
     });
+    // Contraseña de correo (CIFRADA) — solo si el usuario ha escrito una nueva.
+    if (b.pass_correo) await usuarios.guardarPassCorreo(req.usuario.email, b.pass_correo);
     sesion.ponerSesion(res, actualizado);   // refresca la firma en la cookie de sesión
-    res.json({ status: 'ok', usuario: { nombre: actualizado.nombre, apellidos: actualizado.apellidos, telefono: actualizado.telefono } });
+    res.json({
+      status: 'ok',
+      usuario: { nombre: actualizado.nombre, apellidos: actualizado.apellidos, telefono: actualizado.telefono },
+      tieneCorreo: b.pass_correo ? true : usuarios.tienePassCorreo(actualizado)
+    });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
+// Guarda el tema de la interfaz en el perfil del usuario y lo mete en la sesión
+// (así se pinta desde el servidor sin depender del localStorage y sigue al usuario).
+router.post('/mi-tema', async (req, res) => {
+  try {
+    if (!req.usuario) return res.status(401).json({ status: 'error', msg: 'Sesión requerida' });
+    const tema = String((req.body || {}).tema || '').trim().slice(0, 24);
+    if (!tema) throw new Error('Tema vacío');
+    const actualizado = await usuarios.actualizarUsuario(req.usuario.email, { tema });
+    sesion.ponerSesion(res, actualizado);   // re-emite la cookie con el tema nuevo
+    res.json({ status: 'ok', tema });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
+// ¿El usuario tiene su contraseña de correo configurada?
+router.get('/mi-correo', async (req, res) => {
+  try {
+    if (!req.usuario) return res.status(401).json({ status: 'error', msg: 'Sesión requerida' });
+    const u = await usuarios.buscarUsuario(req.usuario.email);
+    res.json({ status: 'ok', email: req.usuario.email, tieneCorreo: usuarios.tienePassCorreo(u) });
+  } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
+// Prueba: envía un correo COMO el propio usuario (desde su buzón) a un destino.
+router.post('/mi-perfil/probar-correo', async (req, res) => {
+  try {
+    if (!req.usuario) return res.status(401).json({ status: 'error', msg: 'Sesión requerida' });
+    const to = ((req.body && req.body.to) || req.usuario.email || '').trim();
+    if (!to) throw new Error('Sin destinatario');
+    const r = await correo.enviarComoUsuario(req.usuario.email, {
+      to, subject: 'Prueba de tu correo — Telecab',
+      text: `Prueba de envío desde tu propio correo (${req.usuario.email}). Si lo recibes, tu contraseña de correo está bien configurada.`
+    });
+    res.json({ status: r.enviado ? 'ok' : 'error', enviado: !!r.enviado, msg: r.motivo || '' });
+  } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
 // ── Correo para procesos (solo superadmin) ───────────────────────────────────

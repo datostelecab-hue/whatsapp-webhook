@@ -64,6 +64,7 @@ const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept')
 function ponerSesion(res, u) {
   const payload = {
     email: u.email, nombre: u.nombre, apellidos: u.apellidos || '', telefono: u.telefono || '', rol: u.rol,
+    tema: u.tema || '',
     debe_cambiar: u.debe_cambiar === 'si' || u.debe_cambiar === true,
     iat: Date.now(), exp: Date.now() + DURACION_MS
   };
@@ -80,6 +81,7 @@ function cargarSesion(req, res, next) {
   req.usuario = u || null;
   res.locals.usuario = u || null;
   res.locals.rol = u ? u.rol : null;
+  res.locals.tema = u ? (u.tema || '') : null;   // tema del perfil (para pintar sin parpadeo)
   next();
 }
 
