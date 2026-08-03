@@ -105,11 +105,14 @@ function forzarCambio(req, res, next) {
   next();
 }
 
+// Roles con acceso TOTAL al sistema (el desarrollador es un superadmin + su ticketera IT).
+const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
+
 // Control de acceso por rol según el prefijo de la ruta.
 function controlAcceso(req, res, next) {
   const u = req.usuario;
   if (!u) return next();               // ya lo cubre `protegido`
-  if (u.rol === 'superadmin') return next();
+  if (ADMIN_TOTAL.includes(u.rol)) return next();
   const seg = '/' + (req.path.split('/')[1] || '');
   const permitidos = ACCESO[seg];
   if (permitidos && !permitidos.includes(u.rol)) {
@@ -120,8 +123,16 @@ function controlAcceso(req, res, next) {
 }
 
 function requiereSuperadmin(req, res, next) {
-  if (req.usuario && req.usuario.rol === 'superadmin') return next();
+  // El desarrollador tiene todos los poderes del superadmin.
+  if (req.usuario && ADMIN_TOTAL.includes(req.usuario.rol)) return next();
   if (esApi(req)) return res.status(403).json({ status: 'error', msg: 'Solo el superadmin' });
+  return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
+}
+
+// Solo el desarrollador (excluye incluso al superadmin): para "Tickets Telecab".
+function requiereDesarrollador(req, res, next) {
+  if (req.usuario && req.usuario.rol === 'desarrollador') return next();
+  if (esApi(req)) return res.status(403).json({ status: 'error', msg: 'Solo el desarrollador' });
   return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
 }
 
@@ -151,6 +162,6 @@ async function sembrarSuperadmin() {
 module.exports = {
   COOKIE, ACCESO,
   ponerSesion, cerrarSesion,
-  cargarSesion, protegido, forzarCambio, controlAcceso, requiereSuperadmin,
+  cargarSesion, protegido, forzarCambio, controlAcceso, requiereSuperadmin, requiereDesarrollador,
   sembrarSuperadmin
 };

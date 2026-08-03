@@ -3,7 +3,14 @@ const path = require('path');
 const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+// Parser JSON global (2mb). Las rutas que suben archivos en base64 (documentos de
+// conductores y adjuntos de soporte) se SALTAN este parser y aplican su propio
+// límite mayor dentro de su router; si no, este 2mb las capaba silenciosamente.
+const jsonGlobal = express.json({ limit: '2mb' });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/documentos') || req.path.startsWith('/soporte')) return next();
+  return jsonGlobal(req, res, next);
+});
 app.use(express.urlencoded({ extended: true }));
 
 // Cabeceras de seguridad en todas las respuestas (anti-clickjacking, anti MIME-sniffing…).
@@ -78,6 +85,8 @@ const administracionRoutes = require('./routes/administracion');
 const plantillaRoutes = require('./routes/plantilla');
 const fichasRoutes = require('./routes/fichas');
 const ticketeraRoutes = require('./routes/ticketera');
+const soporteRoutes = require('./routes/soporte');
+const ticketsTelecabRoutes = require('./routes/ticketsTelecab');
 const bitacoraRoutes = require('./routes/bitacora');
 const incorporacionesRoutes = require('./routes/incorporaciones');
 const configuracionRoutes = require('./routes/configuracion');
@@ -142,6 +151,8 @@ app.use('/administracion', administracionRoutes);
 app.use('/plantilla', plantillaRoutes);
 app.use('/fichas', fichasRoutes);
 app.use('/ticketera', ticketeraRoutes);
+app.use('/soporte', soporteRoutes);
+app.use('/tickets-telecab', ticketsTelecabRoutes);
 app.use('/bitacora', bitacoraRoutes);
 app.use('/incorporaciones', incorporacionesRoutes);
 app.use('/configuracion', configuracionRoutes);

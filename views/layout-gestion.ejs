@@ -222,6 +222,19 @@
 
     <!-- Pie -->
     <div class="p-3 border-t border-telecab-border/70">
+      <% if (typeof rol !== 'undefined' && rol === 'desarrollador') { %>
+      <a href="/tickets-telecab" class="nav-item <%= seccionActiva === 'tickets-telecab' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm mb-1
+                <%= seccionActiva === 'tickets-telecab' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-ticket w-5 text-center <%= seccionActiva === 'tickets-telecab' ? '' : 'text-telecab-muted' %>"></i>
+        <span>Tickets Telecab</span>
+      </a>
+      <% } else { %>
+      <a href="/soporte" class="nav-item <%= seccionActiva === 'soporte' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm mb-1
+                <%= seccionActiva === 'soporte' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-headset w-5 text-center <%= seccionActiva === 'soporte' ? '' : 'text-telecab-muted' %>"></i>
+        <span>Soporte técnico</span>
+      </a>
+      <% } %>
       <a href="/configuracion" class="nav-item <%= seccionActiva === 'configuracion' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2 rounded-xl transition text-sm
                 <%= seccionActiva === 'configuracion' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-muted hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-gear w-5 text-center"></i>
@@ -244,7 +257,7 @@
       </button>
       <h1 class="font-semibold text-telecab-text"><%= titulo || 'Gestión' %></h1>
 
-      <% const ROL_NOMBRE = { superadmin: 'Superadmin', oficina: 'Oficina', trafico: 'Tráfico' }; %>
+      <% const ROL_NOMBRE = { superadmin: 'Superadmin', desarrollador: 'Desarrollador', oficina: 'Oficina', trafico: 'Tráfico' }; %>
       <div class="ml-auto flex items-center gap-2">
 
         <!-- Buzón de pendientes -->
@@ -318,6 +331,7 @@
   // Departamentos que alimentan el buzón de pendientes, por rol.
   const DEPS = {
     superadmin: ['reclutador', 'rrhh', 'trafico', 'operaciones'],
+    desarrollador: ['reclutador', 'rrhh', 'trafico', 'operaciones'],
     oficina: ['reclutador', 'rrhh'],
     trafico: ['trafico', 'operaciones']
   };
@@ -330,7 +344,7 @@
     document.querySelectorAll('.nav-grupo[data-rol]').forEach(g => {
       const gr = g.getAttribute('data-rol');
       const activo = !!g.querySelector('.nav-item.activo');
-      g.classList.toggle('hidden', !(rol === 'superadmin' || gr === rol || activo));
+      g.classList.toggle('hidden', !(rol === 'superadmin' || rol === 'desarrollador' || gr === rol || activo));
     });
     // Ítems sueltos ocultos para ciertos roles (p. ej. Fichas no es para Tráfico).
     document.querySelectorAll('[data-rol-not]').forEach(el => {

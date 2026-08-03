@@ -1,0 +1,194 @@
+<div class="p-4 lg:p-6 max-w-[1500px] mx-auto space-y-5">
+
+  <div id="vista-tabla" class="space-y-5">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3"><p class="text-[11px] uppercase tracking-wide text-telecab-muted">Total</p><p id="c-total" class="text-2xl font-bold text-telecab-text">–</p></div>
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3"><p class="text-[11px] uppercase tracking-wide text-telecab-muted">Abiertos</p><p id="c-abiertos" class="text-2xl font-bold text-telecab-gold">–</p></div>
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3"><p class="text-[11px] uppercase tracking-wide text-telecab-muted">Nuevos</p><p id="c-nuevos" class="text-2xl font-bold text-telecab-green">–</p></div>
+    </div>
+
+    <div id="chips" class="flex flex-wrap gap-2"></div>
+    <p id="cargando" class="text-telecab-muted text-sm">Cargando…</p>
+    <div id="pane"></div>
+  </div>
+
+  <div id="vista-detalle" class="hidden max-w-3xl mx-auto">
+    <button id="volver" class="mb-4 inline-flex items-center gap-2 text-sm text-telecab-muted hover:text-telecab-gold transition"><i class="fa-solid fa-arrow-left"></i> Volver a la lista</button>
+    <div id="detalle"></div>
+  </div>
+
+</div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const INP = 'w-full text-sm bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text focus:outline-none focus:border-telecab-gold transition';
+  let DATOS = { tickets: [], opciones: { estados: [], tipos: [], prioridades: [] } };
+  let tabla = null;
+
+  const badgeEstado = e => {
+    const map = { 'Nuevo': 'bg-telecab-gold/15 text-telecab-gold border-telecab-gold/40', 'En curso': 'bg-sky-500/15 text-sky-400 border-sky-500/40',
+      'Resuelto': 'bg-telecab-green/15 text-telecab-green border-telecab-green/40', 'Descartado': 'bg-telecab-dark text-telecab-muted border-telecab-border' };
+    return `<span class="text-xs px-2 py-0.5 rounded-lg border whitespace-nowrap ${map[e] || 'bg-telecab-dark text-telecab-muted border-telecab-border'}">${esc(e || '—')}</span>`;
+  };
+  const badgePrio = p => {
+    const map = { 'Alta': 'bg-telecab-red/10 text-telecab-red border-telecab-red/40', 'Media': 'bg-amber-500/15 text-amber-400 border-amber-500/40', 'Baja': 'bg-telecab-dark text-telecab-muted border-telecab-border' };
+    return `<span class="text-xs px-2 py-0.5 rounded-lg border whitespace-nowrap ${map[p] || 'bg-telecab-dark text-telecab-muted border-telecab-border'}">${esc(p || '—')}</span>`;
+  };
+
+  const COLS = [
+    { key: 'fecha_creacion', label: 'Creado', tipo: 'text' },
+    { key: 'titulo', label: 'Título', tipo: 'text', link: true },
+    { key: 'tipo', label: 'Tipo', tipo: 'select' },
+    { key: 'prioridad', label: 'Prioridad', tipo: 'select', render: t => badgePrio(t.prioridad) },
+    { key: 'solicitante_nombre', label: 'Solicitante', tipo: 'text' },
+    { key: 'solicitante_rol', label: 'Rol', tipo: 'select' },
+    { key: 'estado', label: 'Estado', tipo: 'select', render: t => badgeEstado(t.estado) },
+    { key: 'adjuntos', label: 'Adj.', tipo: 'text', fmt: (v, t) => String((t.adjuntos || []).length || ''), render: t => (t.adjuntos || []).length ? `<span class="text-telecab-muted"><i class="fa-solid fa-paperclip"></i> ${t.adjuntos.length}</span>` : '' }
+  ];
+
+  function construirTabla(paneSel, cols, filas) {
+    const pane = $(paneSel);
+    const filtros = {};
+    const celda = (f, k) => { const c = cols.find(x => x.key === k); const v = f[k]; return String(c && c.fmt ? c.fmt(v, f) : (v == null ? '' : v)); };
+    const unicos = k => [...new Set(filas.map(f => celda(f, k)).filter(v => v.trim()))].sort((a, b) => a.localeCompare(b, 'es'));
+    const pasa = f => cols.every(c => { const val = String(filtros[c.key] || '').trim().toLowerCase(); if (!val) return true; const cell = celda(f, c.key).toLowerCase(); return c.tipo === 'select' ? cell === val : cell.includes(val); });
+
+    const ths = cols.map(c => `<th class="px-4 py-3 text-left text-[11px] uppercase tracking-wide text-telecab-muted font-semibold whitespace-nowrap bg-telecab-card border-b border-telecab-border">${esc(c.label)}</th>`).join('');
+    const filtroCells = cols.map(c => c.tipo === 'select'
+      ? `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><select data-filtro="${c.key}" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text"><option value="">Todos</option>${unicos(c.key).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></th>`
+      : `<th class="px-2 py-1.5 bg-telecab-card2 border-b border-telecab-border"><input data-filtro="${c.key}" placeholder="filtrar…" class="w-full text-xs bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text"></th>`).join('');
+
+    pane.innerHTML =
+      `<div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+         <span data-count class="text-sm text-telecab-muted"></span>
+         <button data-limpiar class="text-xs px-2.5 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/50 transition"><i class="fa-solid fa-filter-circle-xmark mr-1"></i>Limpiar filtros</button>
+       </div>
+       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-auto max-h-[calc(100vh-17rem)]">
+         <table class="w-full text-sm border-separate border-spacing-0">
+           <thead class="sticky top-0 z-10"><tr>${ths}</tr><tr>${filtroCells}</tr></thead>
+           <tbody data-body></tbody>
+         </table>
+       </div>`;
+    const tbody = pane.querySelector('[data-body]');
+    function render() {
+      const vis = filas.filter(pasa);
+      tbody.innerHTML = vis.length ? vis.map((f, i) => `<tr class="${i % 2 ? 'bg-telecab-dark/15' : ''} hover:bg-telecab-gold/5 transition">${cols.map(c => {
+        if (c.render) return `<td class="px-4 py-2.5 border-b border-telecab-border/20">${c.render(f)}</td>`;
+        const txt = esc(celda(f, c.key));
+        if (c.link) return `<td class="px-4 py-2.5 border-b border-telecab-border/20"><button data-id="${esc(f.id || '')}" class="text-telecab-gold hover:underline text-left font-medium">${txt || '—'}</button></td>`;
+        return `<td class="px-4 py-2.5 border-b border-telecab-border/20 text-telecab-text whitespace-nowrap">${txt || '<span class="text-telecab-muted/40">—</span>'}</td>`;
+      }).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" class="px-4 py-10 text-center text-telecab-muted">Sin resultados.</td></tr>`;
+      pane.querySelector('[data-count]').innerHTML = `<b class="text-telecab-text">${vis.length}</b> de ${filas.length}`;
+      tbody.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => abrirDetalle(b.dataset.id)));
+    }
+    function setFiltros(map) {
+      pane.querySelectorAll('[data-filtro]').forEach(el => { el.value = ''; filtros[el.dataset.filtro] = ''; });
+      Object.entries(map || {}).forEach(([k, v]) => { const el = pane.querySelector(`[data-filtro="${k}"]`); if (el) el.value = v; filtros[k] = v; });
+      render();
+    }
+    pane.querySelectorAll('[data-filtro]').forEach(el => el.addEventListener('input', () => { filtros[el.dataset.filtro] = el.value; render(); }));
+    pane.querySelector('[data-limpiar]').addEventListener('click', () => setFiltros({}));
+    render();
+    return { setFiltros };
+  }
+
+  function pintarChips(porEstado, porTipo) {
+    const cont = $('#chips'); cont.innerHTML = '';
+    const add = (label, map, key) => Object.keys(map || {}).filter(k => k && k !== '—').sort((a, b) => map[b] - map[a]).forEach(k => {
+      const el = document.createElement('button');
+      el.className = 'text-xs px-3 py-1.5 rounded-xl border transition hover:border-telecab-gold bg-telecab-card text-telecab-text border-telecab-border';
+      el.innerHTML = `${esc(k)} · <b>${map[k]}</b>`;
+      el.addEventListener('click', () => { if (tabla) tabla.setFiltros({ [key]: k }); });
+      cont.appendChild(el);
+    });
+    const h = document.createElement('span'); h.className = 'text-xs text-telecab-muted self-center mr-1'; h.innerHTML = '<i class="fa-solid fa-hand-pointer mr-1"></i>Filtrar:'; cont.appendChild(h);
+    add('estado', porEstado, 'estado');
+    add('tipo', porTipo, 'tipo');
+  }
+
+  // ── Detalle ──
+  function avisoD(t, cls) { const m = $('#d-msg'); if (!m) return; m.textContent = t; m.className = 'text-xs ' + cls; m.classList.remove('hidden'); }
+  async function post(url, body) { const r = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); if (r.status !== 'ok') throw new Error(r.msg || 'error'); return r; }
+
+  function abrirDetalle(id) {
+    const t = DATOS.tickets.find(x => x.id === id); if (!t) return;
+    pintarDetalle(t);
+    $('#vista-tabla').classList.add('hidden'); $('#vista-detalle').classList.remove('hidden'); window.scrollTo(0, 0);
+  }
+  $('#volver').addEventListener('click', () => { $('#vista-detalle').classList.add('hidden'); $('#vista-tabla').classList.remove('hidden'); });
+
+  function pintarDetalle(t) {
+    const adj = (t.adjuntos || []).map(a => `<a href="${esc(a.link)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-dark/40 border border-telecab-border hover:border-telecab-gold transition text-sm text-telecab-text">
+        <i class="fa-solid ${/^image\//.test(a.mime || '') ? 'fa-image' : 'fa-file'} text-telecab-green"></i>${esc(a.nombre || 'archivo')}</a>`).join('');
+    const estados = DATOS.opciones.estados || [];
+    $('#detalle').innerHTML =
+      `<div class="mb-4">
+         <div class="flex items-start justify-between gap-3 flex-wrap">
+           <div><h2 class="text-2xl font-bold text-telecab-text">${esc(t.titulo)}</h2><p class="text-sm text-telecab-muted mt-1 font-mono">${esc(t.id)}</p></div>
+           <div class="flex items-center gap-2">${badgePrio(t.prioridad)} ${badgeEstado(t.estado)}</div>
+         </div>
+       </div>
+       <div class="space-y-4">
+         <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+           <h3 class="text-xs font-semibold uppercase tracking-wide text-telecab-gold mb-3">Solicitante</h3>
+           <dl class="grid sm:grid-cols-2 gap-x-5 gap-y-3">
+             <div><dt class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Nombre</dt><dd class="text-sm text-telecab-text">${esc(t.solicitante_nombre || '—')}</dd></div>
+             <div><dt class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Correo</dt><dd class="text-sm text-telecab-text font-mono">${esc(t.solicitante_email || '—')}</dd></div>
+             <div><dt class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Rol</dt><dd class="text-sm text-telecab-text">${esc(t.solicitante_rol || '—')}</dd></div>
+             <div><dt class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Tipo</dt><dd class="text-sm text-telecab-text">${esc(t.tipo)}</dd></div>
+             <div><dt class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Creado</dt><dd class="text-sm text-telecab-text">${esc(t.fecha_creacion)}</dd></div>
+             ${t.fecha_resolucion ? `<div><dt class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Cerrado</dt><dd class="text-sm text-telecab-text">${esc(t.fecha_resolucion)}</dd></div>` : ''}
+           </dl>
+         </div>
+         <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+           <h3 class="text-xs font-semibold uppercase tracking-wide text-telecab-gold mb-2">Descripción</h3>
+           <p class="text-sm text-telecab-text whitespace-pre-wrap break-words">${esc(t.descripcion || '—')}</p>
+           ${adj ? `<div class="mt-3 pt-3 border-t border-telecab-border/60"><p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-2">Adjuntos</p><div class="flex flex-wrap gap-2">${adj}</div></div>` : ''}
+         </div>
+         <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 space-y-4">
+           <h3 class="text-xs font-semibold uppercase tracking-wide text-telecab-gold">Gestión</h3>
+           <div class="flex flex-wrap items-center gap-2">
+             <label class="text-xs text-telecab-muted">Estado:</label>
+             <select id="d-estado" class="text-sm bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-telecab-text">${estados.map(e => `<option ${e === t.estado ? 'selected' : ''}>${e}</option>`).join('')}</select>
+             <button id="d-estado-btn" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm">Cambiar</button>
+           </div>
+           <div>
+             <label class="text-[11px] uppercase tracking-wide text-telecab-muted">Respuesta / notas (la ve el solicitante)</label>
+             <textarea id="d-notas" rows="3" class="${INP}" placeholder="Qué se hizo, cuándo estará, etc.">${esc(t.notas_dev || '')}</textarea>
+             <button id="d-notas-btn" class="mt-2 px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition text-sm font-medium"><i class="fa-solid fa-floppy-disk mr-1"></i> Guardar respuesta</button>
+           </div>
+           <span id="d-msg" class="text-xs hidden block"></span>
+         </div>
+       </div>`;
+
+    $('#d-estado-btn').addEventListener('click', () => accion(() => post('/tickets-telecab/estado', { id: t.id, estado: $('#d-estado').value }), t.id, 'Estado actualizado'));
+    $('#d-notas-btn').addEventListener('click', () => accion(() => post('/tickets-telecab/notas', { id: t.id, notas: $('#d-notas').value }), t.id, 'Respuesta guardada'));
+  }
+
+  async function accion(fn, id, okMsg) {
+    avisoD('Guardando…', 'text-telecab-muted');
+    try {
+      await fn(); await recargar(); avisoD(okMsg, 'text-telecab-green');
+      const sigue = DATOS.tickets.find(x => x.id === id);
+      if (sigue) pintarDetalle(sigue);
+    } catch (e) { avisoD('No se pudo: ' + e.message, 'text-telecab-red'); }
+  }
+
+  async function recargar() {
+    const r = await (await fetch('/tickets-telecab/api/datos')).json();
+    if (r.status !== 'ok') throw new Error(r.msg || 'error');
+    DATOS = r;
+    $('#c-total').textContent = r.contadores.total;
+    $('#c-abiertos').textContent = r.contadores.abiertos;
+    $('#c-nuevos').textContent = r.contadores.nuevos;
+    tabla = construirTabla('#pane', COLS, r.tickets || []);
+    pintarChips(r.porEstado, r.porTipo);
+  }
+
+  async function cargar() {
+    try { await recargar(); $('#cargando').classList.add('hidden'); }
+    catch (e) { $('#cargando').textContent = 'No se pudieron cargar los tickets: ' + e.message; }
+  }
+  cargar();
+</script>

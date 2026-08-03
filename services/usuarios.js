@@ -8,9 +8,10 @@
 // nosotros podemos leerlas.
 //
 // Roles:
-//   · superadmin → todo el sistema + gestión de usuarios (es todos los roles).
-//   · oficina    → Contratación + RRHH + Administración (reclutamiento y personal).
-//   · trafico    → Tráfico + Flota + Operaciones.
+//   · superadmin    → todo el sistema + gestión de usuarios (es todos los roles).
+//   · desarrollador → todo lo de superadmin + la ticketera IT "Tickets Telecab" (solo él la ve).
+//   · oficina       → Contratación + RRHH + Administración (reclutamiento y personal).
+//   · trafico       → Tráfico + Flota + Operaciones.
 
 const crypto = require('crypto');
 const cripto = require('./cripto');   // cifrado reversible (AES) para la contraseña de correo
@@ -20,7 +21,7 @@ const ID_PLANIFICADOR = '1Fe2LHbzf4_OyJkk3W08yJcm_1xJrZXG6U_z6-sIF35o';
 const HOJA = 'USUARIOS';
 const TZ = 'Europe/Madrid';
 
-const ROLES = ['superadmin', 'oficina', 'trafico'];
+const ROLES = ['superadmin', 'desarrollador', 'oficina', 'trafico'];
 const ESTADOS_U = { PROVISIONAL: 'provisional', ACTIVO: 'activo', BLOQUEADO: 'bloqueado' };
 
 const COL = {

@@ -42,8 +42,13 @@ router.post('/rol', async (req, res) => {
     const b = req.body || {};
     const email = usuarios.normalizarEmail(b.email);
     if (!usuarios.ROLES.includes(b.rol)) throw new Error('Rol no válido');
-    if (email === req.usuario.email && b.rol !== 'superadmin') throw new Error('No puedes quitarte a ti mismo el rol de superadmin');
-    await usuarios.actualizarUsuario(email, { rol: b.rol });
+    // No puedes DEGRADARTE fuera de los roles con acceso total; pasar entre superadmin
+    // y desarrollador sí se permite (el desarrollador es superadmin + su ticketera IT).
+    if (email === req.usuario.email && b.rol !== 'superadmin' && b.rol !== 'desarrollador') {
+      throw new Error('No puedes quitarte a ti mismo el rol de administrador');
+    }
+    const actualizado = await usuarios.actualizarUsuario(email, { rol: b.rol });
+    if (email === req.usuario.email) sesion.ponerSesion(res, actualizado);   // aplica tu nuevo rol al instante
     res.json({ status: 'ok' });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
