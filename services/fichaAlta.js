@@ -52,7 +52,7 @@ function salarioDe(ficha) {
 // Modalidad de contrato según la jornada: 32 h → CT - 200 · 40 h (o resto) → CT - 100.
 function contratoDe(ficha) {
   const h = String(ficha.jornada || FIJOS.jornada).replace(/\D/g, '');
-  return h === '32' ? 'CT - 200' : 'CT - 100';
+  return h === '32' ? 'INDEFINIDO CT - 200' : 'INDEFINIDO CT - 100';
 }
 
 // Dibuja texto encogiéndolo hasta que quepa en maxW.
