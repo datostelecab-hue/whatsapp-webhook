@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { leerTablero, DIAS_SEM, TURNOS } = require('../services/planificadorV2');
+const { instruccionesPorConductor } = require('../services/turnosConductor');
 
 router.get('/', (req, res) => {
   res.render('cobertura', {
@@ -27,6 +28,7 @@ router.get('/api/datos', async (req, res) => {
       semanaInfo: t.semanaInfo,
       cobertura: t.cobertura,
       relevos,
+      porConductor: instruccionesPorConductor(t),
       coches: t.coches
         .filter(c => c.matricula && c.operativo)
         .map(c => ({

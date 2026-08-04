@@ -10,6 +10,18 @@ const MAPON_API_KEY = process.env.MAPON_API_KEY || '';
 
 const sesiones = {};
 
+// Instructivo de repostaje (combustible) que acompaña al PIN de Ballenoil.
+const INSTRUCTIVO_REPOSTAJE =
+`⛽ *Cómo repostar*
+1️⃣ En el surtidor selecciona *DNI&Go*.
+2️⃣ Introduce tu *DNI/NIE* y tu PIN.
+3️⃣ Indica el *kilometraje exacto* y la *matrícula* del vehículo.
+4️⃣ Selecciona *Gasolina 95 (verde)*.
+5️⃣ El sistema autorizará hasta *50 €* de combustible.
+
+⚠️ Es *obligatorio* introducir bien el kilometraje y la matrícula; un dato incorrecto puede acarrear sanción.
+🚗 Al terminar el turno, entrega el vehículo con el *depósito lleno*.`;
+
 // ============================================================
 // RECIBIR MENSAJES
 // ============================================================
@@ -27,6 +39,11 @@ router.post('/', async (req, res) => {
       const buttonId = message.interactive.button_reply.id;
       console.log(`Botón: ${buttonId} de ${from}`);
       await handleButton(from, buttonId);
+    } else if (message.type === 'button') {
+      // Botón de una PLANTILLA (quick reply) → llega como type:button con button.text/payload.
+      const label = (message.button?.payload || message.button?.text || '').trim();
+      console.log(`Botón plantilla: "${label}" de ${from}`);
+      await handleTemplateButton(from, label);
     } else {
       const text = message.text?.body?.trim() || '';
       console.log(`Texto: "${text}" de ${from}`);
@@ -52,6 +69,18 @@ async function handleText(phone, text) {
   }
 
   const nombre = conductor.nombre;
+
+  // Palabra clave para pedir el PIN de repostaje (además del botón de la plantilla).
+  if (/^(ver\s+)?pin(\s+ballenoil)?$|^ballenoil$/i.test(text.trim())) {
+    await enviarPinBallenoil(phone);
+    return;
+  }
+
+  // Palabra clave para ver los turnos/relevos de la semana (además del botón).
+  if (/^(ver\s+)?(mis\s+)?turnos?$|^relevos?$/i.test(text.trim())) {
+    await enviarTurnos(phone, nombre);
+    return;
+  }
 
   const matriculaRegex = /^[A-Za-z0-9]{4,8}$/;
   
@@ -153,6 +182,59 @@ async function handleButton(phone, buttonId) {
     }
     // Re-muestra el menú para que pueda seguir operando.
     await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
+
+  } else if (buttonId === 'ver_turnos') {
+    console.log(`📅 Turnos solicitados por ${phone}`);
+    await enviarTurnos(phone, sesion.nombre);
+    await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
+  }
+}
+
+// Envía al conductor sus turnos/relevos de la semana (texto libre). Resuelve su
+// ID_BOLT por teléfono y compone el mensaje desde el tablero del planificador.
+async function enviarTurnos(phone, nombreSesion) {
+  let idBolt = (nombreSesion || '').trim();
+  try {
+    const c = await require('../services/conductoresBolt').buscarPorTelefono(phone);
+    if (c && (c.nombre || '').trim()) idBolt = c.nombre.trim();
+  } catch (e) { console.error('⚠️ [Turnos] buscarPorTelefono:', e.message); }
+
+  try {
+    const planif = require('../services/planificadorV2');
+    const { instruccionesPorConductor, mensajeTurnos } = require('../services/turnosConductor');
+    const tablero = await planif.leerTablero();
+    const norm = s => String(s || '').trim().toLowerCase();
+    const entrada = instruccionesPorConductor(tablero).find(e => norm(e.id) === norm(idBolt));
+    await sendText(phone, mensajeTurnos(entrada));
+  } catch (e) {
+    console.error('❌ [Turnos] enviarTurnos:', e.message);
+    await sendText(phone, 'No pude cargar tus turnos ahora mismo. Inténtalo en un momento, por favor.');
+  }
+}
+
+// Botón de una PLANTILLA (quick reply). El de la bienvenida de Ballenoil pide el PIN.
+async function handleTemplateButton(phone, label) {
+  const l = (label || '').toUpperCase();
+  if (l.includes('PIN') || l.includes('BALLENOIL')) {
+    await enviarPinBallenoil(phone);
+  } else {
+    await handleText(phone, '');   // etiqueta desconocida → saludo/menú normal
+  }
+}
+
+// Entrega al conductor su PIN de repostaje (de su ficha) + el instructivo. Va en texto
+// libre porque su pulsación/mensaje abre la ventana de 24 h (no hace falta plantilla).
+async function enviarPinBallenoil(phone) {
+  const tel = String(phone).replace(/\D/g, '').slice(-9);
+  let t = null;
+  try { t = await require('../services/tickets').leerTicket(tel); }
+  catch (e) { console.error('❌ [Ballenoil PIN] leerTicket:', e.message); }
+  const pin = (t && (t.pin_ballenoil || '')).toString().trim();
+  const nombre = (t && ((t.id_bolt || '').trim() || `${t.nombre || ''} ${t.apellidos || ''}`.trim())) || '';
+  if (pin) {
+    await sendText(phone, `${nombre ? 'Hola ' + nombre + '. ' : ''}🔑 Tu *PIN de repostaje Ballenoil* es *${pin}*.\nEs personal e intransferible.\n\n${INSTRUCTIVO_REPOSTAJE}`);
+  } else {
+    await sendText(phone, '🔑 Todavía no tengo tu PIN de repostaje registrado. Contacta con tráfico para que te lo generen.');
   }
 }
 
@@ -203,10 +285,14 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
     interactive: {
       type: 'button',
       body: {
-        text: `👇 Más opciones`
+        text: `🔧 Otras opciones`
       },
       action: {
         buttons: [
+          {
+            type: 'reply',
+            reply: { id: 'ver_turnos', title: '📅 Ver mis turnos' }
+          },
           {
             type: 'reply',
             reply: { id: 'codigo_lavado', title: '💧 Código lavado' }

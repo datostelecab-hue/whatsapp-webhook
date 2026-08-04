@@ -191,44 +191,47 @@ function frase(r) {
 // ════════ Por conductor ════════
 function pintarPersonas() {
   const texto = $('#f-persona').value.trim().toLowerCase();
+  const lista = (D.porConductor || [])
+    .filter(p => !texto || `${p.nombre} ${p.id} ${p.telefono}`.toLowerCase().includes(texto));
 
-  const porPersona = new Map();
-  const anota = (id, nombre, clave, relevo) => {
-    if (!porPersona.has(id)) porPersona.set(id, { id, nombre, entrega: [], recibe: [] });
-    porPersona.get(id)[clave].push(relevo);
+  const recibeTxt = d => {
+    if (d.recibeDe && d.recibeDe.directo) return `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}`;
+    if (d.recibeDe) return `Coge el coche donde quedó <span class="text-telecab-muted">(lo dejó ${esc(d.recibeDe.nombre)})</span>`;
+    return 'Coge el coche donde quedó aparcado';
   };
-  D.relevos.forEach(r => {
-    anota(r.entrega.id, r.entrega.nombre, 'entrega', r);
-    anota(r.recibe.id, r.recibe.nombre, 'recibe', r);
-  });
+  const entregaTxt = d => {
+    if (d.entregaA && d.entregaA.directo) return `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}`;
+    if (d.entregaA) return `Deja el coche aparcado <span class="text-telecab-muted">(luego lo coge ${esc(d.entregaA.nombre)})</span>`;
+    return 'Deja el coche aparcado al terminar';
+  };
 
-  const visibles = [...porPersona.values()]
-    .filter(p => !texto || `${p.nombre} ${p.id}`.toLowerCase().includes(texto))
-    .sort((a, b) => (a.nombre || a.id).localeCompare(b.nombre || b.id));
-
-  $('#lista-personas').innerHTML = visibles.map(p => `
-    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="mb-3">
-        <div class="text-telecab-text font-medium">${esc(p.id || p.nombre)}</div>
-        <div class="text-xs text-telecab-muted">${esc(p.id)}</div>
-      </div>
-      <div class="space-y-1.5 text-sm">
-        ${p.recibe.map(r => `
-          <div class="text-telecab-text">
-            <i class="fa-solid fa-arrow-right text-telecab-green text-xs mr-1"></i>
-            Recoge el <span class="font-medium">${esc(r.matricula)}</span> de
-            <span class="font-medium">${esc(r.entrega.nombre)}</span>
-            <span class="text-telecab-muted">— ${esc(r.recibe.dia)} ${icono(r.recibe.turno)}</span>
-          </div>`).join('')}
-        ${p.entrega.map(r => `
-          <div class="text-telecab-text">
-            <i class="fa-solid fa-arrow-left text-amber-400 text-xs mr-1"></i>
-            Entrega el <span class="font-medium">${esc(r.matricula)}</span> a
-            <span class="font-medium">${esc(r.recibe.nombre)}</span>
-            <span class="text-telecab-muted">— ${esc(r.entrega.dia)} ${icono(r.entrega.turno)}</span>
-          </div>`).join('')}
-      </div>
-    </div>`).join('') || '<p class="text-telecab-muted">Ningún conductor coincide.</p>';
+  $('#lista-personas').innerHTML = lista.map(p => {
+    const dias = p.dias.map(d => {
+      if (!d.trabaja) return `
+        <div class="flex items-baseline gap-3 text-sm py-1">
+          <span class="w-24 shrink-0 font-medium text-telecab-muted">${esc(d.diaNombre)}</span>
+          <span class="text-telecab-muted/60">Libra</span>
+        </div>`;
+      return `
+        <div class="text-sm border-l-2 border-telecab-gold/40 pl-3 py-1">
+          <div class="flex items-baseline gap-2 flex-wrap">
+            <span class="w-20 shrink-0 font-semibold text-telecab-text">${esc(d.diaNombre)}</span>
+            <span class="text-xs text-telecab-muted">🕐 ${esc(d.turno)}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded bg-telecab-dark text-telecab-text font-mono">${esc(d.matricula)}</span>
+          </div>
+          <div class="text-telecab-muted text-[13px] mt-0.5 ml-1"><i class="fa-solid fa-arrow-right text-telecab-green text-[10px] mr-1"></i>${recibeTxt(d)}</div>
+          <div class="text-telecab-muted text-[13px] ml-1"><i class="fa-solid fa-arrow-left text-amber-400 text-[10px] mr-1"></i>${entregaTxt(d)}</div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+        <div class="mb-3">
+          <div class="text-telecab-text font-semibold">${esc(p.nombre || p.id)}</div>
+          <div class="text-xs text-telecab-muted">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''}</div>
+        </div>
+        <div class="space-y-1">${dias}</div>
+      </div>`;
+  }).join('') || '<p class="text-telecab-muted">Ningún conductor coincide.</p>';
 }
 
 // ════════ Pestañas y filtros ════════
