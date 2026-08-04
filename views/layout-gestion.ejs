@@ -331,11 +331,11 @@
   // Departamentos que alimentan el buzón de pendientes, por rol.
   const DEPS = {
     superadmin: ['reclutador', 'rrhh', 'trafico', 'operaciones'],
-    desarrollador: ['reclutador', 'rrhh', 'trafico', 'operaciones'],
+    desarrollador: ['soporte'],   // el dev ve como pendientes sus tickets IT
     oficina: ['reclutador', 'rrhh'],
     trafico: ['trafico', 'operaciones']
   };
-  const NOMBRE = { reclutador: 'Reclutador', rrhh: 'RRHH', trafico: 'Tráfico', operaciones: 'Operaciones' };
+  const NOMBRE = { reclutador: 'Reclutador', rrhh: 'RRHH', trafico: 'Tráfico', operaciones: 'Operaciones', soporte: 'Tickets IT' };
   let datos = null;
 
   // Filtra los grupos del menú por rol (general = todos). El grupo de la sección

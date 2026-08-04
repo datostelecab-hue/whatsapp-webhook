@@ -71,7 +71,8 @@ async function handleText(phone, text) {
       nombre,
       matricula: resultado.matricula,
       unitId: resultado.unit_id,
-      vehiculo: resultado.vehiculo
+      vehiculo: resultado.vehiculo,
+      estado: 'cerrada'
     };
 
     await sendButtonsEstado(phone, nombre, resultado.matricula, resultado.vehiculo, 'cerrada');
@@ -79,7 +80,7 @@ async function handleText(phone, text) {
   } else {
     if (sesiones[phone]) {
       const s = sesiones[phone];
-      await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, 'cerrada');
+      await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, s.estado || 'cerrada');
     } else {
       await sendText(phone, `👋 Hola ${nombre}, indica la matrícula del vehículo que quieres abrir/cerrar.\n\nEjemplo: 1888LTJ`);
     }
@@ -106,6 +107,7 @@ async function handleButton(phone, buttonId) {
     });
 
     if (result.status === 'ok') {
+      sesion.estado = 'abierta';
       await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, 'abierta');
     } else {
       await sendText(phone, '❌ Error al abrir puertas. Inténtalo de nuevo.');
@@ -120,6 +122,7 @@ async function handleButton(phone, buttonId) {
     });
 
     if (result.status === 'ok') {
+      sesion.estado = 'cerrada';
       await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, 'cerrada');
     } else {
       await sendText(phone, '❌ Error al cerrar puertas. Inténtalo de nuevo.');
@@ -128,6 +131,28 @@ async function handleButton(phone, buttonId) {
   } else if (buttonId === 'cambiar_matricula') {
     delete sesiones[phone];
     await sendText(phone, '🔄 Indica la nueva matrícula (ej: 1888LTJ):');
+
+  } else if (buttonId === 'codigo_lavado') {
+    console.log(`💧 Código de lavado solicitado por ${phone}`);
+    const codigos = require('../services/codigosBallenoil');
+    // ID_BOLT = nombre tal como sale en BOLT (del padrón por teléfono); si no, el de la sesión.
+    let idBolt = sesion.nombre || '';
+    try {
+      const c = await require('../services/conductoresBolt').buscarPorTelefono(phone);
+      if (c && (c.nombre || '').trim()) idBolt = c.nombre.trim();
+    } catch (e) { console.error('⚠️ [Ballenoil] buscarPorTelefono:', e.message); }
+
+    let r = null;
+    try { r = await codigos.solicitarCodigo({ telefono: phone, idBolt }); }
+    catch (e) { console.error('❌ [Ballenoil] solicitarCodigo:', e.message); }
+
+    if (r && r.codigo) {
+      await sendText(phone, `💧 *Código de lavado Ballenoil*\n\nTu código: *${r.codigo}*${r.fecha_vencimiento ? `\nVálido hasta: ${r.fecha_vencimiento}` : ''}\n\n${codigos.INSTRUCTIVO}\n\n_Este código es de un solo uso; no lo compartas._`);
+    } else {
+      await sendText(phone, '😕 Ahora mismo no hay códigos de lavado disponibles. Avisa a la oficina, por favor.');
+    }
+    // Re-muestra el menú para que pueda seguir operando.
+    await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
   }
 }
 
@@ -170,7 +195,7 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
     body: JSON.stringify(payload)
   });
 
-  // Enviar botón de "Cambiar matrícula" aparte (WhatsApp solo permite 3 botones, pero así queda separado)
+  // Segundo mensaje con las opciones extra (WhatsApp permite hasta 3 botones por mensaje).
   const payload2 = {
     messaging_product: 'whatsapp',
     to: to,
@@ -178,10 +203,14 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
     interactive: {
       type: 'button',
       body: {
-        text: `🔄 ¿Gestionar otro vehículo?`
+        text: `👇 Más opciones`
       },
       action: {
         buttons: [
+          {
+            type: 'reply',
+            reply: { id: 'codigo_lavado', title: '💧 Código lavado' }
+          },
           {
             type: 'reply',
             reply: { id: 'cambiar_matricula', title: '🔄 Cambiar matrícula' }

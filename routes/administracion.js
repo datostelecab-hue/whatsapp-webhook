@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { leerTickets, crearPinAdmin, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerPadron } = require('../services/conductoresBolt');
+const codigos = require('../services/codigosBallenoil');
 
 // Tablero de Administración: recibe las fichas que RRHH ya dio de alta y que
 // esperan el PIN de Ballenoil (último paso antes del planificador).
@@ -55,6 +56,31 @@ router.get('/api/datos', async (req, res) => {
     console.error('❌ [Administración] /api/datos:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
   }
+});
+
+// ── Códigos de lavado Ballenoil (un solo uso; los reparte el bot de WhatsApp) ──
+router.get('/codigos/api', async (req, res) => {
+  try {
+    const [resumen, lista] = await Promise.all([codigos.resumen(), codigos.listar()]);
+    res.json({ status: 'ok', resumen, lista });
+  } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
+// Importa el pegado de dos columnas (Código + Fecha de vencimiento).
+router.post('/codigos/importar', async (req, res) => {
+  try {
+    const r = await codigos.importar((req.body || {}).texto);
+    console.log(`💧 [Ballenoil] Importados ${r.añadidos} códigos (${r.duplicados} dup., ${r.invalidos} inválidos)`);
+    res.json({ status: 'ok', ...r });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
+// Borra los códigos NO usados que ya vencieron (los usados se conservan de histórico).
+router.post('/codigos/purgar', async (req, res) => {
+  try {
+    const r = await codigos.purgarVencidos();
+    res.json({ status: 'ok', ...r });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 
 // Guarda el PIN de Ballenoil → crea la ficha en AGENDA_V2 y pasa a Tráfico.

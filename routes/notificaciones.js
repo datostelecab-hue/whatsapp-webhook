@@ -4,6 +4,7 @@ const { leerTickets, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
 const { leerVacantesGuardadas } = require('../services/vacantes');
 const { leerPeticiones } = require('../services/peticiones');
+const ticketsIT = require('../services/ticketsIT');
 
 // El tablero es caro de recalcular, así que se cachea un minuto: aunque cada
 // página pida las notificaciones al cargar, solo se recalcula una vez por minuto.
@@ -11,13 +12,16 @@ let cache = null, cacheTs = 0;
 const TTL = 60 * 1000;
 
 async function calcular() {
-  const [{ lista }, tablero, vacantesAll, peticiones] = await Promise.all([
+  const [{ lista }, tablero, vacantesAll, peticiones, ticketsItLista] = await Promise.all([
     leerTickets(),
     leerTablero().catch(() => null),
     leerVacantesGuardadas().catch(() => []),
-    leerPeticiones().then(r => r.lista).catch(() => [])
+    leerPeticiones().then(r => r.lista).catch(() => []),
+    ticketsIT.leerTickets().catch(() => [])
   ]);
   const L = lista || [];
+  // Tickets IT sin resolver: son los pendientes del desarrollador.
+  const itAbiertos = (ticketsItLista || []).filter(t => t.estado === 'Nuevo' || t.estado === 'En curso');
 
   const rechazadosRRHH = L.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
   const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT);
@@ -83,6 +87,15 @@ async function calcular() {
           detalle: c.turno ? `Turno: ${c.turno}` : '', href: '/planificador'
         }))
       ]
+    },
+    // Soporte IT (solo el desarrollador): tickets abiertos que la gente ha reportado.
+    soporte: {
+      total: itAbiertos.length,
+      items: itAbiertos.map(t => ({
+        texto: t.titulo || t.id,
+        detalle: `${t.tipo || ''}${t.prioridad ? ' · ' + t.prioridad : ''}${t.solicitante_nombre ? ' · ' + t.solicitante_nombre : ''}`,
+        href: '/tickets-telecab'
+      }))
     }
   };
 }
@@ -91,6 +104,7 @@ async function calcular() {
 // cliente, el servidor solo devuelve lo que a ese rol le corresponde).
 const DEPS_ROL = {
   superadmin: ['reclutador', 'rrhh', 'trafico'],
+  desarrollador: ['soporte'],   // sus pendientes son los tickets IT
   oficina: ['reclutador', 'rrhh'],
   trafico: ['trafico']
 };

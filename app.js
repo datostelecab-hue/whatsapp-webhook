@@ -273,6 +273,18 @@ cron.schedule('10,40 * * * *', async () => {
   }
 });
 
+// Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
+// vencieron (los usados se conservan siempre, como histórico).
+cron.schedule('20 4 * * *', async () => {
+  try {
+    const { purgarVencidos } = require('./services/codigosBallenoil');
+    const r = await purgarVencidos();
+    if (r.borrados) console.log(`💧 [CRON Ballenoil] Purgados ${r.borrados} código(s) vencidos sin usar`);
+  } catch (error) {
+    console.error(`❌ [CRON Ballenoil] Error: ${error.message}`);
+  }
+});
+
 // VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
 // hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
 cron.schedule('45 * * * *', async () => {

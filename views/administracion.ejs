@@ -98,6 +98,30 @@
     <div id="lista-hechos" class="space-y-1.5"></div>
   </div>
 
+  <!-- Códigos de lavado Ballenoil (los reparte el bot de WhatsApp) -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5">
+    <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-droplet text-telecab-gold"></i> Códigos de lavado Ballenoil</h2>
+    <p class="text-sm text-telecab-muted mt-1 mb-4">Pega la lista de <b>Código</b> + <b>Fecha de vencimiento</b> (dos columnas) y guárdala. El bot de WhatsApp entrega uno a cada conductor que lo pida y lo marca <b>Usado</b> — no se reparte dos veces.</p>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5"><p class="text-[11px] uppercase tracking-wide text-telecab-muted">Total</p><p id="cb-total" class="text-xl font-bold text-telecab-text">–</p></div>
+      <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5"><p class="text-[11px] uppercase tracking-wide text-telecab-muted">Disponibles</p><p id="cb-disp" class="text-xl font-bold text-telecab-green">–</p></div>
+      <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5"><p class="text-[11px] uppercase tracking-wide text-telecab-muted">Usados</p><p id="cb-usad" class="text-xl font-bold text-telecab-muted">–</p></div>
+      <div class="bg-telecab-dark/50 border border-telecab-border rounded-xl px-3 py-2.5"><p class="text-[11px] uppercase tracking-wide text-telecab-muted">Vencidos</p><p id="cb-venc" class="text-xl font-bold text-telecab-red">–</p></div>
+    </div>
+
+    <label class="block text-xs text-telecab-muted mb-1">Pega aquí — Código y Fecha de vencimiento</label>
+    <textarea id="cb-texto" rows="6" class="w-full text-xs font-mono bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold transition" placeholder="Codigo&#9;Fecha Vencimiento&#10;26416900&#9;16/08/2026&#10;26976997&#9;16/08/2026"></textarea>
+    <div class="flex items-center gap-3 mt-3">
+      <button id="cb-importar" class="px-4 py-2 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold text-sm"><i class="fa-solid fa-file-import mr-1"></i> Importar</button>
+      <button id="cb-toggle" class="text-xs text-telecab-muted hover:text-telecab-gold transition">Ver códigos</button>
+      <button id="cb-purgar" class="text-xs text-telecab-muted hover:text-telecab-red transition" title="Borra los no usados que ya vencieron (los usados se conservan)">Borrar vencidos</button>
+      <span id="cb-msg" class="text-xs ml-auto hidden"></span>
+    </div>
+
+    <div id="cb-lista" class="hidden mt-4 bg-telecab-dark/30 border border-telecab-border rounded-xl overflow-auto max-h-72"></div>
+  </div>
+
 </div>
 
 <script>
@@ -201,4 +225,74 @@
   }
 
   cargar();
+</script>
+
+<!-- Códigos de lavado Ballenoil (IIFE aparte para no chocar con el script del tablero de PINs) -->
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  if (!$('#cb-importar')) return;
+  const msg = (t, cls) => { const m = $('#cb-msg'); m.textContent = t; m.className = 'text-xs ml-auto ' + cls; m.classList.remove('hidden'); };
+  let abierto = false;
+
+  function pintarLista(lista) {
+    const cont = $('#cb-lista');
+    if (!lista.length) { cont.innerHTML = '<p class="text-xs text-telecab-muted p-3">Aún no hay códigos.</p>'; return; }
+    const badge = c => c.estado === 'Usado'
+      ? '<span class="text-[11px] px-1.5 py-0.5 rounded bg-telecab-dark text-telecab-muted border border-telecab-border">Usado</span>'
+      : (c.vencido ? '<span class="text-[11px] px-1.5 py-0.5 rounded bg-telecab-red/10 text-telecab-red border border-telecab-red/30">Vencido</span>'
+                   : '<span class="text-[11px] px-1.5 py-0.5 rounded bg-telecab-green/15 text-telecab-green border border-telecab-green/30">Disponible</span>');
+    cont.innerHTML = `<table class="w-full text-xs"><thead><tr class="text-telecab-muted"><th class="text-left px-3 py-2">Código</th><th class="text-left px-3 py-2">Vence</th><th class="text-left px-3 py-2">Estado</th><th class="text-left px-3 py-2">Usado por</th></tr></thead><tbody>${
+      lista.map(c => `<tr class="border-t border-telecab-border/30"><td class="px-3 py-1.5 font-mono text-telecab-text">${esc(c.codigo)}</td><td class="px-3 py-1.5 text-telecab-muted">${esc(c.fecha_vencimiento)}</td><td class="px-3 py-1.5">${badge(c)}</td><td class="px-3 py-1.5 text-telecab-muted">${esc(c.id_bolt || '')}${c.telefono ? ' · ' + esc(c.telefono) : ''}${c.fecha_uso ? ' · ' + esc(c.fecha_uso) : ''}</td></tr>`).join('')
+    }</tbody></table>`;
+  }
+
+  async function cargar() {
+    try {
+      const r = await (await fetch('/administracion/codigos/api')).json();
+      if (r.status !== 'ok') return;
+      $('#cb-total').textContent = r.resumen.total;
+      $('#cb-disp').textContent = r.resumen.disponibles;
+      $('#cb-usad').textContent = r.resumen.usados;
+      $('#cb-venc').textContent = r.resumen.vencidos;
+      if (abierto) pintarLista(r.lista);
+    } catch (_) {}
+  }
+
+  $('#cb-importar').addEventListener('click', async () => {
+    const texto = $('#cb-texto').value.trim();
+    if (!texto) return msg('Pega la lista primero.', 'text-telecab-red');
+    const btn = $('#cb-importar'); btn.disabled = true; msg('Importando…', 'text-telecab-muted');
+    try {
+      const r = await (await fetch('/administracion/codigos/importar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto }) })).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      msg(`Añadidos ${r.añadidos}${r.duplicados ? ` · ${r.duplicados} repetidos` : ''}${r.invalidos ? ` · ${r.invalidos} inválidos` : ''}.`, 'text-telecab-green');
+      $('#cb-texto').value = '';
+      abierto = true; $('#cb-lista').classList.remove('hidden'); $('#cb-toggle').textContent = 'Ocultar códigos';
+      cargar();
+    } catch (e) { msg('No se pudo: ' + e.message, 'text-telecab-red'); }
+    btn.disabled = false;
+  });
+
+  $('#cb-toggle').addEventListener('click', () => {
+    abierto = !abierto;
+    $('#cb-lista').classList.toggle('hidden', !abierto);
+    $('#cb-toggle').textContent = abierto ? 'Ocultar códigos' : 'Ver códigos';
+    if (abierto) cargar();
+  });
+
+  $('#cb-purgar').addEventListener('click', async () => {
+    if (!confirm('¿Borrar los códigos NO usados que ya vencieron? Los usados se conservan como histórico.')) return;
+    msg('Borrando…', 'text-telecab-muted');
+    try {
+      const r = await (await fetch('/administracion/codigos/purgar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      msg(`Borrados ${r.borrados} vencidos sin usar.`, 'text-telecab-green');
+      cargar();
+    } catch (e) { msg('No se pudo: ' + e.message, 'text-telecab-red'); }
+  });
+
+  cargar();
+})();
 </script>
