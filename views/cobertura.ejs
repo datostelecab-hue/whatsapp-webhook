@@ -194,16 +194,8 @@ function pintarPersonas() {
   const lista = (D.porConductor || [])
     .filter(p => !texto || `${p.nombre} ${p.id} ${p.telefono}`.toLowerCase().includes(texto));
 
-  const recibeTxt = d => {
-    if (d.recibeDe && d.recibeDe.directo) return `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}`;
-    if (d.recibeDe) return `Coge el coche donde quedó <span class="text-telecab-muted">(lo dejó ${esc(d.recibeDe.nombre)})</span>`;
-    return 'Coge el coche donde quedó aparcado';
-  };
-  const entregaTxt = d => {
-    if (d.entregaA && d.entregaA.directo) return `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}`;
-    if (d.entregaA) return `Deja el coche aparcado <span class="text-telecab-muted">(luego lo coge ${esc(d.entregaA.nombre)})</span>`;
-    return 'Deja el coche aparcado al terminar';
-  };
+  const recibeTxt = d => d.recibeDe ? `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}` : '';
+  const entregaTxt = d => d.entregaA ? `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}` : '';
 
   $('#lista-personas').innerHTML = lista.map(p => {
     const dias = p.dias.map(d => {
@@ -212,6 +204,7 @@ function pintarPersonas() {
           <span class="w-24 shrink-0 font-medium text-telecab-muted">${esc(d.diaNombre)}</span>
           <span class="text-telecab-muted/60">Libra</span>
         </div>`;
+      const rec = recibeTxt(d), ent = entregaTxt(d);
       return `
         <div class="text-sm border-l-2 border-telecab-gold/40 pl-3 py-1">
           <div class="flex items-baseline gap-2 flex-wrap">
@@ -219,8 +212,8 @@ function pintarPersonas() {
             <span class="text-xs text-telecab-muted">🕐 ${esc(d.turno)}</span>
             <span class="text-xs px-1.5 py-0.5 rounded bg-telecab-dark text-telecab-text font-mono">${esc(d.matricula)}</span>
           </div>
-          <div class="text-telecab-muted text-[13px] mt-0.5 ml-1"><i class="fa-solid fa-arrow-right text-telecab-green text-[10px] mr-1"></i>${recibeTxt(d)}</div>
-          <div class="text-telecab-muted text-[13px] ml-1"><i class="fa-solid fa-arrow-left text-amber-400 text-[10px] mr-1"></i>${entregaTxt(d)}</div>
+          ${rec ? `<div class="text-telecab-muted text-[13px] mt-0.5 ml-1"><i class="fa-solid fa-arrow-right text-telecab-green text-[10px] mr-1"></i>${rec}</div>` : ''}
+          ${ent ? `<div class="text-telecab-muted text-[13px] ml-1"><i class="fa-solid fa-arrow-left text-amber-400 text-[10px] mr-1"></i>${ent}</div>` : ''}
         </div>`;
     }).join('');
     return `

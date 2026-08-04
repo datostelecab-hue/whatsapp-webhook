@@ -86,20 +86,8 @@ function mensajeTurnos(entrada) {
       i = j; continue;
     }
     L.push(`📅 *${diaLargo(d.diaNombre)}* · turno de ${d.turno} · coche *${d.matricula}*`);
-    if (d.recibeDe) {
-      L.push(d.recibeDe.directo
-        ? `   🔑 Recibes el coche de *${d.recibeDe.nombre}*${tel(d.recibeDe)}`
-        : `   🔑 Coges el coche donde quedó (lo dejó *${d.recibeDe.nombre}*)`);
-    } else {
-      L.push('   🔑 Coges el coche donde quedó aparcado');
-    }
-    if (d.entregaA) {
-      L.push(d.entregaA.directo
-        ? `   🤝 Al terminar tu turno, lo entregas a *${d.entregaA.nombre}*${tel(d.entregaA)}`
-        : `   🅿️ Al terminar, deja el coche aparcado (luego lo coge *${d.entregaA.nombre}*)`);
-    } else {
-      L.push('   🅿️ Al terminar tu turno, dejas el coche aparcado');
-    }
+    if (d.recibeDe) L.push(`   🔑 Recibes el coche de *${d.recibeDe.nombre}*${tel(d.recibeDe)}`);
+    if (d.entregaA) L.push(`   🤝 Al terminar tu turno, lo entregas a *${d.entregaA.nombre}*${tel(d.entregaA)}`);
     L.push('');
     i++;
   }

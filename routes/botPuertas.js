@@ -348,7 +348,16 @@ async function callAppsScript(accion, params = {}) {
 
   console.log(`📞 Apps Script: ${accion}`, params);
   const response = await fetch(url.toString());
-  return await response.json();
+  const texto = await response.text();
+  try {
+    return JSON.parse(texto);
+  } catch (_) {
+    // El Apps Script devolvió HTML (normalmente una excepción no controlada dentro
+    // de la acción → Google sirve su página de error). No reventamos: lo registramos
+    // y devolvemos un error manejable para que el conductor reciba un aviso claro.
+    console.error(`❌ Apps Script "${accion}" no devolvió JSON (HTTP ${response.status}). Inicio de la respuesta: ${texto.slice(0, 300).replace(/\s+/g, ' ')}`);
+    return { status: 'error', msg: 'El servicio de comandos no respondió (revisa el Apps Script)', _sinJson: true };
+  }
 }
 
 // ============================================================
