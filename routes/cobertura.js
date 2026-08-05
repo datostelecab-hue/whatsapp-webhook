@@ -27,6 +27,7 @@ router.get('/api/datos', async (req, res) => {
     res.json({
       semanaInfo: t.semanaInfo,
       cobertura: t.cobertura,
+      ausentesEnPlaza: t.ausentesEnPlaza || [],
       relevos,
       porConductor: instruccionesPorConductor(t),
       coches: t.coches

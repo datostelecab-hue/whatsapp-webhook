@@ -1050,12 +1050,38 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     return a.mejor.km - b.mejor.km;
   });
 
+  // Titulares que SIGUEN en su plaza estando de Vacaciones / Baja Médica / etc. (aún
+  // no se les ha quitado): esos turnos NO salen hasta que vuelvan o se libere la plaza.
+  // Se listan aparte para destacarlos en Cobertura.
+  const ausentesEnPlaza = [];
+  coches.forEach(coche => {
+    if (!coche.matricula || !coche.operativo) return;
+    coche.personas.forEach(p => {
+      if (!p.id) return;
+      const info = porId.get(p.id);
+      if (!info || !info.ausenteTemporal) return;
+      const dias = p.inactivoPorDia
+        ? Object.keys(p.inactivoPorDia).filter(d => p.inactivoPorDia[d] === 'ausente')
+            .map(Number).sort((a, b) => a - b).map(d => DIAS_SEM[d])
+        : [];
+      ausentesEnPlaza.push({
+        matricula: coche.matricula, zona: coche.zona || '',
+        plaza: p.etiqueta, turno: p.turno,
+        id: p.id, nombre: info.nombre || p.id,
+        estado: info.estado,
+        reincorporacion: info.reincorporacion || '',
+        dias
+      });
+    });
+  });
+
   return {
     coches,
     conductores,
     pendientes,
     sugerencias,
     cobertura,
+    ausentesEnPlaza,
     bases,
     avisos,
     semanaInfo: {

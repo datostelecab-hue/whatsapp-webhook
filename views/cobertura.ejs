@@ -30,6 +30,9 @@
     </button>
   </div>
 
+  <!-- ══ Titulares de vacaciones/baja que siguen en su plaza (esos turnos NO salen) ══ -->
+  <div id="ausentes-plaza" class="mb-5"></div>
+
   <!-- El logo del layout hace de indicador de carga; este div queda solo para errores. -->
   <div id="cargando" class="hidden text-center py-16 text-telecab-muted"></div>
 
@@ -95,9 +98,35 @@ function pintar() {
   const totalHuecos = D.cobertura.reduce((n, c) => n + c.sinConductor.length, 0);
   $('#resumen').textContent =
     `${D.coches.length} coches operativos · ${totalRelevos} relevos a la semana · ${totalHuecos} turnos sin conductor`;
+  pintarAusentes();
   pintarDias();
   pintarCoches();
   pintarPersonas();
+}
+
+// ════════ No salen: titular de vacaciones/baja AÚN en la plaza ════════
+function pintarAusentes() {
+  const box = $('#ausentes-plaza');
+  const lista = D.ausentesEnPlaza || [];
+  if (!lista.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div class="rounded-xl border border-amber-600/50 bg-amber-900/20 p-4">
+      <div class="flex items-center gap-2 mb-2 text-amber-300 font-semibold">
+        <i class="fa-solid fa-umbrella-beach"></i>
+        No salen — titular de vacaciones/baja aún en la plaza (${lista.length})
+      </div>
+      <ul class="space-y-1 text-sm">
+        ${lista.map(a => `
+          <li class="flex flex-wrap items-baseline gap-x-2">
+            <span class="font-medium text-telecab-text">${esc(a.matricula)}</span>
+            <span class="text-telecab-muted">(${esc(a.plaza)})</span>
+            <span class="text-telecab-text">${esc(a.nombre)}</span>
+            <span class="text-amber-400">· ${esc(a.estado)}${a.reincorporacion ? ' hasta ' + esc(a.reincorporacion) : ''}</span>
+            ${a.dias && a.dias.length ? `<span class="text-telecab-muted/80">· no sale ${a.dias.map(esc).join(' ')}</span>` : ''}
+            ${a.zona ? `<span class="text-telecab-muted/60">· ${esc(a.zona)}</span>` : ''}
+          </li>`).join('')}
+      </ul>
+    </div>`;
 }
 
 // ════════ Por día ════════
