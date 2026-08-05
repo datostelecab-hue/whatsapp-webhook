@@ -185,6 +185,8 @@ function haversine(la1, lo1, la2, lo2) {
 
 const esCheck = v => v === true || v === 'TRUE' || v === 'VERDADERO';
 const txt = v => String(v == null ? '' : v).trim();
+// Date (UTC) → "dd/mm/aaaa", para mostrar la reincorporación derivada de la bitácora.
+const fmtFecha = d => d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}` : '';
 
 // ============================================================
 // FECHAS — ventanas de vigencia (alta, reincorporación, desde/hasta)
@@ -266,6 +268,12 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
   const offsetSemana = Number(opciones.offsetSemana) || 0;
   const { dias: fechasSemana, hoy: fechaHoy, lunes: lunesSemana } = fechasSemanaActual(offsetSemana);
 
+  // Reincorporación derivada de la bitácora (VISTA_FINAL): clave(nombreBolt) → Date.
+  // La pasa leerTablero. normClave se pide en diferido porque conductores.js importa
+  // este módulo (evita el ciclo de require).
+  const finAusencias = opciones.finAusencias || new Map();
+  const { normClave } = require('./conductores');
+
   // ---- 1. Índice de conductores ----
   // porId indexa solo a los que tienen ID de Bolt: son los únicos que se pueden
   // vincular con el planificador. `conductores` incluye a TODOS los que tengan
@@ -281,6 +289,8 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     if (!idBolt && !nombre) return;
 
     const libra = LIB_COL.map(c => esCheck(v[c - 1]));
+    // Reincorporación derivada de la bitácora si no hay una puesta a mano.
+    const reincAuto = finAusencias.get(normClave(idBolt)) || null;
     const info = {
       fila: idx + 2,                     // fila real en la hoja
       idBolt,
@@ -306,8 +316,8 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
       // Ventana del conductor: alta como "desde" por defecto; reincorporación
       // para volver de una ausencia temporal.
       fechaAltaD: parseFecha(txt(v[A.FECHA_ALTA - 1])),
-      reincorporacion: txt(v[A.REINCORPORACION - 1]),
-      reincorporacionD: parseFecha(txt(v[A.REINCORPORACION - 1]))
+      reincorporacion: txt(v[A.REINCORPORACION - 1]) || fmtFecha(reincAuto),
+      reincorporacionD: parseFecha(txt(v[A.REINCORPORACION - 1])) || reincAuto
     };
     info.ausenteTemporal = AUSENCIAS_TEMPORALES.includes(info.estado);
     if (idBolt) porId.set(idBolt, info);
@@ -527,6 +537,11 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
       }
 
       p.diasTexto = diasALetras(p.diasCubre);
+      // Días CRUDOS asignados (lo que el usuario escribió en DIAS_TRABAJA). El input
+      // editable del correturno debe mostrar ESTO, no diasTexto (los calculados): si
+      // no, al guardar se re-envía la versión recortada por el Desde/Hasta y los días
+      // se van borrando poco a poco.
+      p.diasManualTexto = p.diasManual ? diasALetras(p.diasManual) : '';
       p.turnosCubre = turnosCubre;
 
       // Base de días antes de recortar por el CT de cada turno.
@@ -1181,7 +1196,17 @@ async function leerCrudo() {
 /** Lee y devuelve el tablero ya calculado. */
 async function leerTablero(opciones = {}) {
   const crudo = await leerCrudo();
-  const tablero = calcularTablero(crudo.agendaFilas.slice(1), crudo.planFilas.slice(1), crudo.bases, opciones);
+  // Reincorporaciones automáticas desde la bitácora (VISTA_FINAL). Require diferido:
+  // vistaFinal importa este módulo. Si la lectura falla, se sigue sin ellas (se cae a
+  // la columna REINCORPORACION manual).
+  let finAusencias = new Map();
+  try {
+    finAusencias = await require('./vistaFinal').leerFinAusencias();
+  } catch (e) {
+    console.error('⚠️ [PLANIFICADOR] No se pudieron leer reincorporaciones de VISTA_FINAL:', e.message);
+  }
+  const tablero = calcularTablero(crudo.agendaFilas.slice(1), crudo.planFilas.slice(1), crudo.bases,
+    { ...opciones, finAusencias });
   tablero.esquema = crudo.esquema;
   return tablero;
 }

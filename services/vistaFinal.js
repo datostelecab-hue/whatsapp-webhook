@@ -487,6 +487,36 @@ async function aplicarAusenciasAutomaticas() {
   return { aplicados: cambios.length, conductores: cambios.map(c => `${c.id} → ${c.estado}`) };
 }
 
+/**
+ * Reincorporación AUTOMÁTICA desde la bitácora. Para cada conductor con ausencia
+ * (V/B/P) en la celda de HOY, avanza hasta la ÚLTIMA V/B/P consecutiva y devuelve el
+ * día siguiente (primer día ya operativo) como fecha de reincorporación. Así el
+ * planificador ya no depende de la columna REINCORPORACION a mano: RRHH mete el
+ * desde/hasta (peticiones), las letras caen en VISTA_FINAL y aquí se lee hasta la
+ * última V. Solo lectura.
+ * @returns Map(clave(nombreBolt) -> Date UTC del primer día sin ausencia)
+ */
+async function leerFinAusencias() {
+  const hoy = hoyMadrid();
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const colHoy = 3 + Math.round((hoy.getTime() - inicioMs) / 86400000);
+  const out = new Map();
+  if (colHoy < 3) return out;
+
+  const filas = await readSheet(ID_GESTION, `${HOJA}!A:ZZ`, { valueRenderOption: 'UNFORMATTED_VALUE' });
+  const esAusencia = v => { const s = String(v ?? '').trim().toUpperCase(); return s === 'V' || s === 'B' || s === 'P'; };
+
+  for (let i = 3; i < filas.length; i++) {                 // datos desde la fila 4 (3 cabeceras)
+    const nombre = (filas[i][1] || '').toString().trim();
+    if (!nombre || nombre.toUpperCase() === 'CONDUCTOR') continue;
+    if (!esAusencia(filas[i][colHoy])) continue;           // hoy no está ausente en la bitácora
+    let col = colHoy;
+    while (esAusencia(filas[i][col])) col++;                // avanza hasta la primera celda sin ausencia
+    out.set(clave(nombre), new Date(inicioMs + (col - 3) * 86400000));
+  }
+  return out;
+}
+
 // Estado de ausencia → letra de la bitácora (inverso de LETRA_ESTADO).
 const ESTADO_LETRA = Object.fromEntries(Object.entries(LETRA_ESTADO).map(([l, e]) => [e, l]));
 
@@ -578,4 +608,4 @@ async function escribirLetrasRango(idBolt, letra, desdeStr, hastaStr) {
   return { celdas: writes.length };
 }
 
-module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia, escribirLetrasRango };
+module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia, escribirLetrasRango, leerFinAusencias };

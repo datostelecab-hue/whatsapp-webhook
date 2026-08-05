@@ -313,9 +313,9 @@ function filaSlot(c, p) {
   // Los días del fijo los calcula el motor y no se editan: salen de la
   // libranza menos lo que le quite el correturno.
   const campoDias = esCT
-    ? `<input value="${esc(p.diasTexto || '')}" placeholder="L M X…" maxlength="20"
+    ? `<input value="${esc(p.diasManualTexto || '')}" placeholder="L M X…" maxlength="20"
               class="w-28 px-2 py-1 rounded bg-telecab-dark border border-telecab-border text-telecab-text text-center uppercase"
-              data-campo="dias" data-slot="${p.slot}" title="Días que cubre en este coche">`
+              data-campo="dias" data-slot="${p.slot}" title="Días asignados a este correturno (L M X…). Vacío = todos los que trabaja. No se recorta por el Desde/Hasta.">`
     : `<span class="w-28 px-2 py-1 text-center text-telecab-muted text-sm" title="Calculado desde la libranza">
          ${esc(p.diasTexto || '—')}</span>`;
 
