@@ -85,6 +85,36 @@ async function enviarCorreo({ to, subject, text, html } = {}) {
  * correo CIFRADA guardada en su ficha. El SMTP es el mismo para todos (@telecab.es):
  * host/puerto salen de "correo para procesos" o, por defecto, de DonDominio.
  */
+// Guarda una copia del mensaje (RFC822 crudo) en la carpeta "Enviados" por IMAP,
+// porque enviar por SMTP NO la deja ahí (eso lo hace el cliente aparte). Busca la
+// carpeta por su marca especial \Sent y, si no, por nombre (Sent/Enviados).
+async function guardarEnEnviados({ user, pass, host, port = 993 }, raw) {
+  const { ImapFlow } = require('imapflow');
+  const client = new ImapFlow({ host, port, secure: port === 993, auth: { user, pass }, logger: false, emitLogs: false });
+  await client.connect();
+  try {
+    let carpeta = 'Sent';
+    try {
+      const list = await client.list();
+      const bySpecial = list.find(m => m.specialUse === '\\Sent');
+      const byName = list.find(m => /(^|[./])(sent|enviados)$/i.test(m.path || '') || /^(sent|enviados)$/i.test(m.name || ''));
+      carpeta = (bySpecial && bySpecial.path) || (byName && byName.path) || 'Sent';
+    } catch (_) { /* sin LIST: probamos con "Sent" */ }
+    await client.append(carpeta, raw, ['\\Seen']);
+    return carpeta;
+  } finally {
+    await client.logout().catch(() => {});
+  }
+}
+
+// Construye el mensaje crudo (RFC822) que se guardará en Enviados.
+function componerRaw(mail) {
+  const MailComposer = require('nodemailer/lib/mail-composer');
+  return new Promise((resolve, reject) => {
+    new MailComposer(mail).compile().build((err, message) => err ? reject(err) : resolve(message));
+  });
+}
+
 async function enviarComoUsuario(emailRemitente, { to, subject, text, html, attachments } = {}) {
   try {
     const usuarios = require('./usuarios');
@@ -107,6 +137,16 @@ async function enviarComoUsuario(emailRemitente, { to, subject, text, html, atta
     });
     const info = await transport.sendMail({ from, to, subject, text, html, attachments });
     console.log(`✅ [CORREO] Enviado como ${from} → ${to} · id=${info.messageId || '?'}${attachments && attachments.length ? ` · ${attachments.length} adj.` : ''}`);
+
+    // Deja copia en "Enviados" por IMAP. Si falla, el correo YA salió: solo se avisa.
+    try {
+      const raw = await componerRaw({ from, to, subject, text, html, attachments, messageId: info.messageId });
+      const imapHost = (c.correo_imap_host || '').trim() || host.replace(/^smtp\./i, 'imap.');
+      const carpeta = await guardarEnEnviados({ user: from, pass, host: imapHost }, raw);
+      console.log(`📥 [CORREO] Copia guardada en "${carpeta}" de ${from}`);
+    } catch (e) {
+      console.error(`⚠️ [CORREO] No se pudo guardar copia en Enviados: ${e.message}`);
+    }
     return { enviado: true, id: info.messageId, from };
   } catch (e) {
     const detalle = [e.message, e.code && `code=${e.code}`, e.responseCode && `smtp=${e.responseCode}`, e.response && `«${e.response}»`].filter(Boolean).join(' · ');
