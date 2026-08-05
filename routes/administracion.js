@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { leerTickets, crearPinAdmin, guardarCelda, leerTicket, ESTADOS, ETAPAS } = require('../services/tickets');
+const { leerTickets, crearPinAdmin, guardarCelda, guardarPinConductor, leerTicket, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerPadron } = require('../services/conductoresBolt');
 const { enviarBallenoil } = require('../services/whatsapp');
 const codigos = require('../services/codigosBallenoil');
@@ -118,6 +118,80 @@ router.post('/ballenoil/reenviar', async (req, res) => {
     const t = await leerTicket(tel);
     const env = await enviarBallenoil(tel, nombreSaludo(t));
     if (!env.ok) console.error(`⚠️ [Ballenoil] Reenvío NO entregado a ${tel}: ${env.error}`);
+    res.json({ status: 'ok', enviado: env.ok, envioError: env.ok ? null : env.error });
+  } catch (error) {
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// ── PIN a CUALQUIER conductor (independiente de selección) ─────────────────────
+// Lista: conductores de la AGENDA (con ficha) + gente del padrón de BOLT SIN ficha
+// (para crearla al vuelo). A cada uno se le puede asignar/actualizar el PIN.
+router.get('/conductores', async (req, res) => {
+  try {
+    const { leerTablero } = require('../services/planificadorV2');
+    const l9 = v => { const d = String(v == null ? '' : v).replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
+    const [tablero, tks, padron] = await Promise.all([
+      leerTablero(),
+      leerTickets(),
+      leerPadron().catch(() => ({ db: new Map() }))
+    ]);
+    // PIN por teléfono (de las fichas) + teléfonos que YA tienen ficha (ticket).
+    const pinPorTel = new Map();
+    const telConFicha = new Set();
+    (tks.lista || []).forEach(t => { const k = l9(t.id); if (k) { pinPorTel.set(k, t.pin_ballenoil || ''); telConFicha.add(k); } });
+    (tablero.conductores || []).forEach(c => { const k = l9(c.telefono); if (k) telConFicha.add(k); });
+
+    const out = [];
+    const vistos = new Set();
+    // 1) Agenda: conductores con ficha operativa.
+    (tablero.conductores || []).forEach(c => {
+      const tel = l9(c.telefono);
+      const key = tel || 'bolt:' + ((c.idBolt || c.id || '').toLowerCase());
+      if (vistos.has(key)) return; vistos.add(key);
+      out.push({
+        id_bolt: c.idBolt || c.id || '', nombre: c.nombre || '',
+        telefono: (c.telefono || '').toString().trim(), turno: c.turno || '',
+        pin_ballenoil: tel ? (pinPorTel.get(tel) || '') : '', con_ficha: true
+      });
+    });
+    // 2) Padrón de BOLT (activos) SIN ficha: para crear ficha + PIN de una vez.
+    (padron.db || new Map()).forEach(d => {
+      if ((d.state || '').toLowerCase() !== 'active') return;
+      const tel = l9(d.phone);
+      if (!tel || vistos.has(tel) || telConFicha.has(tel)) return;
+      vistos.add(tel);
+      out.push({
+        id_bolt: (d.nombre || '').trim(), nombre: (d.nombre || '').trim(),
+        telefono: (d.phone || '').toString().trim(), turno: '',
+        pin_ballenoil: '', con_ficha: false
+      });
+    });
+    out.sort((a, b) => (a.con_ficha === b.con_ficha ? 0 : a.con_ficha ? -1 : 1)
+      || (a.nombre || a.id_bolt).localeCompare(b.nombre || b.id_bolt));
+    res.json({
+      status: 'ok', conductores: out,
+      contadores: { conFicha: out.filter(c => c.con_ficha).length, sinFicha: out.filter(c => !c.con_ficha).length }
+    });
+  } catch (e) {
+    console.error('❌ [Administración] /conductores:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
+// Asigna/actualiza el PIN a cualquier conductor (crea la ficha si no la tiene) y le
+// envía la bienvenida de Ballenoil. Dos procesos de una vez: ficha + PIN.
+router.post('/ballenoil/conductor', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const tel = (b.tel || '').toString();
+    const pin = (b.pin == null ? '' : b.pin).toString().trim();
+    const nombre = (b.nombre || '').toString().trim();
+    if (!tel) throw new Error('Falta el teléfono del conductor');
+    if (!pin) throw new Error('Escribe el PIN de Ballenoil');
+    const t = await guardarPinConductor(tel, pin, nombre);
+    const env = await enviarBallenoil(tel, nombreSaludo(t) || nombre);
+    if (!env.ok) console.error(`⚠️ [Ballenoil] Bienvenida NO enviada a ${tel}: ${env.error}`);
     res.json({ status: 'ok', enviado: env.ok, envioError: env.ok ? null : env.error });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });

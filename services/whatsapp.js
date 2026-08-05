@@ -7,9 +7,12 @@ const TOKEN = process.env.WHATSAPP_TOKEN || '';
 const PHONE_NUMBER_ID = '1256923474160518';
 const VERSION = 'v25.0';
 
-/** Deja el teléfono en solo dígitos (34XXXXXXXXX). */
+/** Deja el teléfono en solo dígitos (34XXXXXXXXX). Si viene con 9 dígitos (sin
+ *  prefijo, como en la agenda), le añade el 34 de España: WhatsApp lo exige. */
 function limpiarTelefono(t) {
-  return (t || '').toString().replace(/[\s+\-()]/g, '');
+  let n = (t || '').toString().replace(/[\s+\-()]/g, '');
+  if (n.length === 9) n = '34' + n;
+  return n;
 }
 
 /**

@@ -122,6 +122,41 @@
     <div id="cb-lista" class="hidden mt-4 bg-telecab-dark/30 border border-telecab-border rounded-xl overflow-auto max-h-72"></div>
   </div>
 
+  <!-- ══ PIN a CUALQUIER conductor (independiente de selección) ══ -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5">
+    <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-id-card-clip text-telecab-gold"></i> PIN a cualquier conductor</h2>
+    <p class="text-sm text-telecab-muted mt-1">
+      Asigna o <b class="text-telecab-text">actualiza</b> el PIN de Ballenoil a cualquier conductor (el PIN cambia a veces); al guardar se le <b class="text-telecab-text">reenvía la bienvenida</b> por WhatsApp. Los que aún no tienen ficha salen como <span class="text-amber-400">Sin ficha</span>: al asignarles el PIN se les <b class="text-telecab-text">crea la ficha</b> a la vez.
+    </p>
+
+    <input id="cq-buscar" type="search" placeholder="Buscar por nombre, ID de BOLT o teléfono…"
+           class="w-full mt-4 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text focus:outline-none focus:border-telecab-gold transition">
+
+    <div id="cq-panel" class="hidden mt-4 rounded-xl border border-telecab-gold/30 bg-telecab-gold/5 p-4">
+      <div class="flex items-end justify-between gap-3 flex-wrap">
+        <div class="min-w-0">
+          <p id="cq-nombre" class="font-semibold text-telecab-text truncate"></p>
+          <p id="cq-tel" class="text-xs text-telecab-muted font-mono"></p>
+          <p id="cq-estado" class="text-xs mt-0.5"></p>
+        </div>
+        <div class="flex items-end gap-2">
+          <div>
+            <label class="block text-xs text-telecab-muted mb-1">PIN de Ballenoil</label>
+            <input id="cq-pin" inputmode="numeric" autocomplete="off" placeholder="Ej. 4821"
+                   class="w-32 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text tracking-widest focus:outline-none focus:border-telecab-gold transition">
+          </div>
+          <button id="cq-enviar" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40">
+            <i class="fa-solid fa-paper-plane mr-1"></i> <span id="cq-btn-txt">Guardar y enviar</span>
+          </button>
+        </div>
+      </div>
+      <p id="cq-msg" class="text-xs mt-2 hidden"></p>
+    </div>
+
+    <div id="cq-lista" class="mt-4 grid gap-1.5 max-h-[26rem] overflow-auto pr-1"></div>
+    <p id="cq-vacio" class="text-sm text-telecab-muted mt-3 hidden">Cargando conductores…</p>
+  </div>
+
 </div>
 
 <script>
@@ -313,6 +348,88 @@
       msg(`Borrados ${r.borrados} vencidos sin usar.`, 'text-telecab-green');
       cargar();
     } catch (e) { msg('No se pudo: ' + e.message, 'text-telecab-red'); }
+  });
+
+  cargar();
+})();
+</script>
+
+<!-- PIN a cualquier conductor (IIFE aparte) -->
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let LISTA = [], sel = null;
+
+  async function cargar() {
+    $('#cq-vacio').textContent = 'Cargando conductores…'; $('#cq-vacio').classList.remove('hidden');
+    try {
+      const r = await (await fetch('/administracion/conductores')).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      LISTA = r.conductores || [];
+      $('#cq-vacio').classList.add('hidden');
+      pintar();
+    } catch (e) { $('#cq-vacio').textContent = 'No se pudo cargar: ' + esc(e.message); }
+  }
+
+  function pintar() {
+    const q = ($('#cq-buscar').value || '').trim().toLowerCase();
+    const fil = LISTA.filter(c => !q || (`${c.nombre} ${c.id_bolt} ${c.telefono}`).toLowerCase().includes(q));
+    const cont = $('#cq-lista');
+    if (!fil.length) { cont.innerHTML = '<p class="text-sm text-telecab-muted px-1 py-4">Sin conductores que coincidan.</p>'; return; }
+    cont.innerHTML = fil.slice(0, 100).map(c => `
+      <button type="button" data-i="${LISTA.indexOf(c)}"
+              class="cq-row w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-telecab-dark/40 border border-transparent hover:border-telecab-gold/40 transition text-left">
+        <span class="min-w-0 flex-1">
+          <span class="block text-sm text-telecab-text truncate">${esc(c.nombre || c.id_bolt || '(sin nombre)')}</span>
+          <span class="block text-xs text-telecab-muted font-mono">${esc(c.telefono || 'sin teléfono')}${c.turno ? ' · ' + esc(c.turno) : ''}</span>
+        </span>
+        ${c.con_ficha
+          ? (c.pin_ballenoil
+              ? `<span class="text-xs px-2 py-1 rounded-lg bg-telecab-green/10 text-telecab-green border border-telecab-green/25 font-mono whitespace-nowrap">PIN ${esc(c.pin_ballenoil)}</span>`
+              : '<span class="text-xs text-telecab-muted/60 whitespace-nowrap">sin PIN</span>')
+          : '<span class="text-xs px-2 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/25 whitespace-nowrap">Sin ficha</span>'}
+      </button>`).join('') + (fil.length > 100 ? `<p class="text-xs text-telecab-muted px-1 pt-1">… y ${fil.length - 100} más. Afina la búsqueda.</p>` : '');
+    cont.querySelectorAll('.cq-row').forEach(b => b.addEventListener('click', () => elegir(LISTA[+b.dataset.i])));
+  }
+
+  function elegir(c) {
+    if (!c) return;
+    if (!c.telefono) { alert('Ese conductor no tiene teléfono; no se le puede enviar el PIN.'); return; }
+    sel = c;
+    $('#cq-nombre').textContent = c.nombre || c.id_bolt || '(sin nombre)';
+    $('#cq-tel').textContent = c.telefono;
+    $('#cq-estado').innerHTML = c.con_ficha
+      ? '<span class="text-telecab-green">Con ficha</span>'
+      : '<span class="text-amber-400">Sin ficha — se creará al guardar</span>';
+    $('#cq-pin').value = c.pin_ballenoil || '';
+    $('#cq-btn-txt').textContent = c.con_ficha ? 'Guardar y enviar' : 'Crear ficha, guardar y enviar';
+    $('#cq-msg').classList.add('hidden');
+    $('#cq-panel').classList.remove('hidden');
+    setTimeout(() => $('#cq-pin').focus(), 100);
+  }
+
+  function msg(t, ok) { const m = $('#cq-msg'); m.textContent = t; m.className = 'text-xs mt-2 ' + (ok ? 'text-telecab-green' : 'text-telecab-red'); m.classList.remove('hidden'); }
+
+  $('#cq-buscar').addEventListener('input', pintar);
+
+  $('#cq-enviar').addEventListener('click', async () => {
+    if (!sel) return;
+    const pin = $('#cq-pin').value.trim();
+    if (!pin) return msg('Escribe el PIN.', false);
+    const btn = $('#cq-enviar'); btn.disabled = true;
+    try {
+      const r = await (await fetch('/administracion/ballenoil/conductor', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tel: sel.telefono, pin, nombre: sel.id_bolt || sel.nombre })
+      })).json();
+      if (r.status === 'ok') {
+        const base = sel.con_ficha ? 'PIN guardado.' : 'Ficha creada y PIN guardado.';
+        msg(r.enviado ? `✅ ${base} Bienvenida enviada por WhatsApp.` : `${base} ⚠️ Pero la bienvenida NO se envió (${esc(r.envioError || 'revisa el número')}).`, r.enviado === true);
+        cargar();
+      } else msg(r.msg || 'No se pudo guardar', false);
+    } catch (e) { msg('Error: ' + esc(e.message), false); }
+    btn.disabled = false;
   });
 
   cargar();

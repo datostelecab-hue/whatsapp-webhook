@@ -660,6 +660,31 @@ async function guardarCelda(tel, campo, valor) {
   return { tel, campo, fila };
 }
 
+/**
+ * Guarda/actualiza el PIN de Ballenoil por TELÉFONO para CUALQUIER conductor (no solo
+ * los del funnel de selección). Si no tiene ficha, crea una mínima FUERA del funnel
+ * (etapa TRÁFICO) solo para almacenar el PIN, así el bot puede entregarlo al pulsar
+ * "VER PIN BALLENOIL". No re-crea nada en la agenda: es un upsert del PIN.
+ */
+async function guardarPinConductor(tel, pin, nombre) {
+  tel = normalizarTel(tel);
+  if (!telValido(tel)) throw new Error('Teléfono inválido: deben ser 9 dígitos');
+  pin = (pin == null ? '' : pin).toString().trim();
+  const { porTel, filas } = await leerTickets();
+  let t = porTel.get(tel);
+  if (!t) {
+    t = ticketVacio(tel);
+    t.etapa = ETAPAS.TRAFICO;   // fuera del funnel de selección: la ficha solo guarda el PIN
+    porTel.set(tel, t);
+  }
+  t.pin_ballenoil = pin;
+  const nom = (nombre || '').toString().trim();
+  if (nom && !t.id_bolt) t.id_bolt = nom;
+  if (nom && !t.nombre) t.nombre = nom;
+  await guardarTodos(porTel, filas);
+  return t;
+}
+
 /** Guarda (o quita) el enlace de un documento. `tipo` es el `key` de DOCUMENTOS. */
 async function guardarDocumento(tel, tipo, doc) {
   const def = DOCUMENTOS.find(d => d.key === tipo);
@@ -735,7 +760,7 @@ module.exports = {
   leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
   conciliarTicketsBolt, marcarRechazadoBolt, devolverARelevamiento,
   procesarAltaRRHH, crearPinAdmin, noContinuarRRHH, devolverRRHH,
-  guardarDocumento, guardarCelda, parseDoc, faltantesAlta,
+  guardarDocumento, guardarCelda, guardarPinConductor, parseDoc, faltantesAlta,
   buscarPorIdBolt, crearFichaConductor, crearFichasConductores,
   normalizarTel, telValido, contratoAgenda, ESTADOS, ETAPAS, ETAPAS_CANDIDATURA, CANALES, COL, DOCUMENTOS, REQUERIDOS_ALTA
 };
