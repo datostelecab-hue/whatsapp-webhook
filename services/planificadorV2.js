@@ -718,27 +718,57 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     if (idNoche) binomio.set(idNoche, idDia || '');
   });
 
+  // Ventanas de presencia de cada conductor = Desde/Hasta de TODAS sus plazas (puede
+  // estar en dos coches con fechas que se relevan). Sirve para NO marcarlo "Pendiente"
+  // por días fuera de su ventana: los previos a su primer "Desde" (aún no llega) o
+  // posteriores a su "Hasta" (ya se fue) son transiciones planificadas, no huecos suyos.
+  // Un conductor SIN plaza sí necesita coche para toda su semana.
+  const ventanasPorConductor = new Map();
+  coches.forEach(coche => coche.personas.forEach(p => {
+    if (!p.id) return;
+    if (!ventanasPorConductor.has(p.id)) ventanasPorConductor.set(p.id, []);
+    ventanasPorConductor.get(p.id).push({ desdeD: p.desdeD, hastaD: p.hastaD });
+  }));
+
   conductores.forEach(info => {
     const asg = asignacionPorDia.get(info.id) || Array(7).fill('');
     info.matricula = matriculaPrincipal.get(info.id) || '';
     info.binomio = binomio.get(info.id) || '';
     info.asignacion = info.libra.map((libra, d) => (libra ? 'L' : (asg[d] || '')));
 
-    // Activo solo si cada día laborable tiene coche. Los estados especiales
-    // (vacaciones, bajas, suspendido) los pone una persona y no se tocan.
+    // Activo solo si cada día laborable DENTRO de su ventana de presencia tiene
+    // coche. Los días fuera de ventana (antes de su "Desde" o después de su "Hasta")
+    // no cuentan como hueco suyo: son transiciones (relevo, salida por vacaciones…).
+    // Los estados especiales (vacaciones, bajas, suspendido) los pone una persona.
     const especial = ESTADOS_ESPECIALES.includes(info.estado);
-    const laborables = info.libra.filter(l => !l).length;
-    const cubiertos = info.libra.reduce((n, l, d) => n + (!l && asg[d] ? 1 : 0), 0);
+    const ventanas = ventanasPorConductor.get(info.id) || [];
+    const tienePlaza = ventanas.length > 0;
 
-    info.diasLaborables = laborables;
+    // ¿El día d entra en alguna ventana Desde/Hasta del conductor? El "desde" efectivo
+    // es el más tardío entre su alta y el Desde de la asignación (igual que activoEnFecha).
+    // Sin plaza, todos sus días laborables cuentan: necesita coche.
+    const dentroVentana = d => !tienePlaza || ventanas.some(w => {
+      const cand = [w.desdeD, info.fechaAltaD].filter(Boolean);
+      const desdeEff = cand.length ? new Date(Math.max.apply(null, cand.map(x => x.getTime()))) : null;
+      return (!desdeEff || fechasSemana[d] >= desdeEff) && (!w.hastaD || fechasSemana[d] <= w.hastaD);
+    });
+
+    let esperados = 0, cubiertos = 0;
+    info.libra.forEach((libra, d) => {
+      if (libra || !dentroVentana(d)) return;   // libranza o fuera de ventana: no cuenta
+      esperados++;
+      if (asg[d]) cubiertos++;
+    });
+
+    info.diasLaborables = esperados;
     info.diasCubiertos = cubiertos;
     info.estadoCalculado = info.estado;
 
-    // El estado solo se recalcula si el conductor es planificable. Sin ID de
-    // Bolt no entra al planificador, así que su estado (lo que haya en la hoja,
-    // normalmente "Pendiente Asignar") se respeta tal cual.
-    if (info.idBolt && !especial && laborables > 0) {
-      info.estadoCalculado = cubiertos === laborables ? ESTADO_ACTIVO : ESTADO_PENDIENTE;
+    // Solo se recalcula si es planificable y se le espera algún día (dentro de ventana).
+    // Sin días esperados (p. ej. una asignación que empieza la semana que viene) se
+    // respeta su estado de la hoja: no se marca "Pendiente" por adelantado.
+    if (info.idBolt && !especial && esperados > 0) {
+      info.estadoCalculado = cubiertos === esperados ? ESTADO_ACTIVO : ESTADO_PENDIENTE;
     }
     info.estadoCambia = info.estadoCalculado !== info.estado;
 

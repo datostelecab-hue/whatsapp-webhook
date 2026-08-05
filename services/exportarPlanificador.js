@@ -40,12 +40,45 @@ function diasLibranza(conductor) {
   return conductor.libra.map((v, i) => (v ? DIAS_SEM[i] : null)).filter(Boolean).join('/');
 }
 
-function fichaTexto(conductor) {
-  if (!conductor) return '';
-  const lineas = [conductor.nombre || conductor.id];
-  if (conductor.telefono) lineas.push('Tel: ' + conductor.telefono);
-  if (conductor.direccion) lineas.push(conductor.direccion);
-  return lineas.join('\n');
+// Estado del vehículo, para anotar (mini) los coches no operativos que se mantienen
+// en el anexo por tener conductores. El bueno ('✓') no se anota.
+const MOTIVO_VEH = { S: 'Siniestro', T: 'Transporte', X: 'En taller', R: 'Reservado', B: 'Baja' };
+
+// "08/08/2026" → "8/8" (anotación compacta de Desde/Hasta).
+function cortoFecha(s) {
+  if (!s) return '';
+  const t = String(s).trim();
+  let m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})/);
+  if (m) return `${+m[1]}/${+m[2]}`;
+  m = t.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  if (m) return `${+m[3]}/${+m[2]}`;
+  return t;
+}
+
+// Texto plano de una celda, sea string o richText (para comparar/medir vacío).
+const celdaTexto = v => v == null ? '' : (v.richText ? v.richText.map(t => t.text).join('') : String(v));
+
+// Normaliza un nombre para cruzar con la base de BOLT (trim, espacios, minúsculas).
+const normNom = s => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLowerCase();
+
+// Teléfonos desde la base de BOLT (hoja CONDUCTORES_BOLT): el ID_BOLT de la agenda
+// ES el nombre de Bolt, así que se cruza por nombre — sin margen de error. Muchos
+// conductores no están en la agenda, pero su teléfono sí está aquí. Si falla la
+// lectura, se devuelve un mapa vacío y se cae al teléfono de la agenda.
+async function mapaTelefonosBolt() {
+  try {
+    const { leerPadron } = require('./conductoresBolt');
+    const { db } = await leerPadron();
+    const m = new Map();
+    for (const d of db.values()) {
+      const k = normNom(d.nombre);
+      if (k && d.phone) m.set(k, String(d.phone).trim());
+    }
+    return m;
+  } catch (e) {
+    console.error('⚠️ [ANEXO] No se pudieron leer teléfonos de CONDUCTORES_BOLT:', e.message);
+    return new Map();
+  }
 }
 
 const borde = () => {
@@ -122,6 +155,9 @@ async function exportar(tablero) {
   tablero.conductores.forEach(c => { if (c.id) porId.set(c.id, c); });
   const cond = p => (p && p.id ? porId.get(p.id) : null);
 
+  // Teléfonos desde la base de BOLT, cruzados por nombre (= ID_BOLT).
+  const telBolt = await mapaTelefonosBolt();
+
   ws.columns = COLUMNAS.map(c => ({ width: c.ancho }));
   const cab = ws.getRow(1);
   COLUMNAS.forEach((c, i) => {
@@ -134,11 +170,44 @@ async function exportar(tablero) {
   });
   cab.height = 24;
 
-  const conMatricula = tablero.coches.filter(c => c.matricula);
+  // Solo coches con estado bueno (operativo). Los de estado distinto entran únicamente
+  // si tienen conductores asignados (se anota su estado bajo la matrícula).
+  const tieneConductores = c => (c.personas || []).some(p => p.id);
+  const conMatricula = tablero.coches.filter(c => c.matricula && (c.operativo || tieneConductores(c)));
   const { grupos, sueltos } = agruparPorCorreturno(conMatricula);
 
   let fila = 2;
   let n = 1;
+
+  // Ficha de una plaza como tramos de texto: nombre (10), teléfono (9) y, super
+  // pequeña, la anotación de ventana Desde/Hasta del relevo (8, cursiva ámbar).
+  const AMBAR = 'FF9C5A00';
+  const fichaRuns = (p) => {
+    const c = cond(p);
+    const runs = [];
+    if (p && p.id) {
+      // p.id = nombre de Bolt (ID_BOLT). El nombre sale de la agenda si está y, si no,
+      // del propio ID_BOLT (muchos conductores del plan no están en la agenda).
+      const nombre = (c && c.nombre) || p.id;
+      // Teléfono: primero la base de BOLT (cruce por nombre), luego el de la agenda.
+      const tel = telBolt.get(normNom(p.id)) || (c && telBolt.get(normNom(c.nombre))) || (c && c.telefono) || '';
+      runs.push({ text: nombre, font: { size: 10, color: { argb: NEGRO } } });
+      if (tel) runs.push({ text: '\nTel: ' + tel, font: { size: 9, color: { argb: NEGRO } } });
+      if (c && c.direccion) runs.push({ text: '\n' + c.direccion, font: { size: 8, color: { argb: NEGRO } } });
+    }
+    const vent = [];
+    if (p && p.desde) vent.push('desde ' + cortoFecha(p.desde));
+    if (p && p.hasta) vent.push('hasta ' + cortoFecha(p.hasta));
+    if (vent.length) runs.push({ text: (runs.length ? '\n' : '') + vent.join(' · '), font: { size: 8, italic: true, color: { argb: AMBAR } } });
+    return runs;
+  };
+  const wrap = runs => runs.length ? { richText: runs } : '';
+  const sepRun = { text: '\n──\n', font: { size: 8, color: { argb: BORDE } } };
+  const juntar = (...listas) => {
+    const out = [];
+    listas.filter(l => l.length).forEach((l, i) => { if (i) out.push(sepRun); out.push(...l); });
+    return out;
+  };
 
   const escribirCocheBase = (coche) => {
     const r = ws.getRow(fila);
@@ -147,25 +216,32 @@ async function exportar(tablero) {
 
     r.getCell(1).value = n++;
     r.getCell(2).value = diasLibranza(fijoDia) || diasLibranza(fijoNoche);
-    r.getCell(3).value = coche.matricula;
-    r.getCell(4).value = fichaTexto(fijoDia);
-    r.getCell(5).value = fichaTexto(fijoNoche);
+    // Matrícula: si el coche NO está operativo (pero tiene conductores), se anota su
+    // estado super pequeño, en rojo, debajo de la matrícula.
+    r.getCell(3).value = coche.operativo
+      ? coche.matricula
+      : { richText: [
+          { text: coche.matricula, font: { bold: true, size: 10, color: { argb: NEGRO } } },
+          { text: '\n' + (MOTIVO_VEH[coche.estadoVeh] || 'no operativo'), font: { size: 8, italic: true, color: { argb: 'FFC00000' } } }
+        ] };
+    r.getCell(4).value = wrap(fichaRuns(coche.personas[0]));
+    r.getCell(5).value = wrap(fichaRuns(coche.personas[1]));
     // Los correturnos de este coche, por si el bloque no los combina (grupo de 1).
-    r.getCell(6).value = [coche.personas[2], coche.personas[4]].map(p => fichaTexto(cond(p))).filter(Boolean).join('\n──\n');
-    r.getCell(7).value = [coche.personas[3], coche.personas[5]].map(p => fichaTexto(cond(p))).filter(Boolean).join('\n──\n');
+    r.getCell(6).value = wrap(juntar(fichaRuns(coche.personas[2]), fichaRuns(coche.personas[4])));
+    r.getCell(7).value = wrap(juntar(fichaRuns(coche.personas[3]), fichaRuns(coche.personas[5])));
 
     for (let c = 1; c <= 7; c++) {
       const cel = r.getCell(c);
       cel.alignment = centrado;
-      cel.font = { color: { argb: NEGRO }, size: 10 };
       cel.border = borde();
-      // Las columnas de turno (fijo día/noche, CT día/noche) sin conductor se
-      // pintan de amarillo para ver de un vistazo las plazas por cubrir.
+      // Las celdas con richText ya llevan su fuente por tramo; el resto, fuente base.
+      if (!(cel.value && cel.value.richText)) cel.font = { color: { argb: NEGRO }, size: 10 };
+      // Columnas de turno sin conductor → amarillo (plazas por cubrir).
       const esTurno = c >= 4;
-      const vacio = !String(cel.value || '').trim();
+      const vacio = !celdaTexto(cel.value).trim();
       cel.fill = relleno(esTurno && vacio ? AMARILLO : BLANCO);
     }
-    r.getCell(3).font = { bold: true, color: { argb: NEGRO }, size: 10 };
+    if (coche.operativo) r.getCell(3).font = { bold: true, color: { argb: NEGRO }, size: 10 };
     fila++;
   };
 
@@ -214,8 +290,8 @@ function escribirTitulo(ws, fila, texto) {
 function combinarIguales(ws, col, ini, fin) {
   let bloqueIni = ini;
   for (let f = ini + 1; f <= fin + 1; f++) {
-    const actual = f <= fin ? String(ws.getRow(f).getCell(col).value || '') : null;
-    const previo = String(ws.getRow(bloqueIni).getCell(col).value || '');
+    const actual = f <= fin ? celdaTexto(ws.getRow(f).getCell(col).value) : null;
+    const previo = celdaTexto(ws.getRow(bloqueIni).getCell(col).value);
     if (actual !== previo) {
       if (f - 1 > bloqueIni && previo) {
         ws.mergeCells(bloqueIni, col, f - 1, col);

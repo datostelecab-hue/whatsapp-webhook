@@ -195,16 +195,21 @@ async function cargarAlertas() {
   pintarAlertasVB();
 }
 
-// Solo se ofrecen los que están Pendiente Asignar y son del turno de la plaza.
-// Un correturno con días libres sigue estando pendiente, así que se le puede
-// repartir entre varios coches; en cuanto cubre toda su semana pasa a Activo y
-// desaparece de las listas.
+// Se ofrecen TODOS los planificables del turno, no solo los Pendiente: así se puede
+// poner al mismo conductor en un segundo coche con su Desde/Hasta (relevo: coche X
+// hasta el 8, coche Y desde el 9). Los Pendiente salen primero (son los que aún
+// necesitan coche); los ya asignados quedan como "relevo".
 function pintarListas() {
   const opciones = turno => TABLERO.conductores
-    .filter(c => c.turno === turno && c.estadoCalculado === 'Pendiente Asignar')
+    .filter(c => c.listoParaPlanificar && c.turno === turno)
+    .sort((a, b) => (a.estadoCalculado === 'Pendiente Asignar' ? 0 : 1)
+                  - (b.estadoCalculado === 'Pendiente Asignar' ? 0 : 1))
     .map(c => {
       const faltan = c.diasLaborables - c.diasCubiertos;
-      return `<option value="${esc(c.id)}">${esc(c.id || c.nombre)} — faltan ${faltan} día${faltan === 1 ? '' : 's'}</option>`;
+      const hint = c.estadoCalculado === 'Pendiente Asignar'
+        ? `faltan ${faltan} día${faltan === 1 ? '' : 's'}`
+        : (c.estadoCalculado === 'Activo' ? 'asignado · relevo' : c.estadoCalculado);
+      return `<option value="${esc(c.id)}">${esc(c.id || c.nombre)} — ${esc(hint)}</option>`;
     })
     .join('');
   $('#lista-dia').innerHTML = opciones('Día');
