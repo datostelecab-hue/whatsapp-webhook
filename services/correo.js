@@ -85,7 +85,7 @@ async function enviarCorreo({ to, subject, text, html } = {}) {
  * correo CIFRADA guardada en su ficha. El SMTP es el mismo para todos (@telecab.es):
  * host/puerto salen de "correo para procesos" o, por defecto, de DonDominio.
  */
-async function enviarComoUsuario(emailRemitente, { to, subject, text, html } = {}) {
+async function enviarComoUsuario(emailRemitente, { to, subject, text, html, attachments } = {}) {
   try {
     const usuarios = require('./usuarios');
     const u = await usuarios.buscarUsuario(emailRemitente);
@@ -105,8 +105,8 @@ async function enviarComoUsuario(emailRemitente, { to, subject, text, html } = {
       auth: { user: from, pass },
       connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000
     });
-    const info = await transport.sendMail({ from, to, subject, text, html });
-    console.log(`✅ [CORREO] Enviado como ${from} → ${to} · id=${info.messageId || '?'}`);
+    const info = await transport.sendMail({ from, to, subject, text, html, attachments });
+    console.log(`✅ [CORREO] Enviado como ${from} → ${to} · id=${info.messageId || '?'}${attachments && attachments.length ? ` · ${attachments.length} adj.` : ''}`);
     return { enviado: true, id: info.messageId, from };
   } catch (e) {
     const detalle = [e.message, e.code && `code=${e.code}`, e.responseCode && `smtp=${e.responseCode}`, e.response && `«${e.response}»`].filter(Boolean).join(' · ');

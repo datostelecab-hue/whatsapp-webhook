@@ -1,0 +1,103 @@
+<div class="p-4 lg:p-6 max-w-4xl mx-auto space-y-5">
+
+  <div>
+    <h1 class="text-lg font-bold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-file-lines text-telecab-gold"></i> Reportes</h1>
+    <p class="text-sm text-telecab-muted mt-1">Informes para descargar o enviar. Los correos salen <b>desde tu propio correo</b> (configúralo en Configuración → Mi perfil).</p>
+  </div>
+
+  <!-- ══ Horas de ayer — ETT ══ -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div>
+        <h2 class="text-base font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-clock text-telecab-gold"></i> Horas de ayer — ETT</h2>
+        <p class="text-xs text-telecab-muted mt-1">Horas de los conductores <b>ETT</b> del día anterior, con turno y sus datos. Descárgalo o envíalo a la ETT.</p>
+      </div>
+      <span id="r-fecha" class="text-sm text-telecab-muted"></span>
+    </div>
+
+    <div class="flex flex-wrap items-end gap-3 mt-4">
+      <div class="flex-1 min-w-[220px]">
+        <label class="block text-xs text-telecab-muted mb-1">Correo de la ETT</label>
+        <input id="r-destinatario" type="email" class="w-full text-sm bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-telecab-text focus:outline-none focus:border-telecab-gold" placeholder="correo@ett.com">
+      </div>
+      <button id="r-descargar" class="px-4 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition text-sm font-medium"><i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel</button>
+      <button id="r-enviar" class="px-4 py-2 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition text-sm font-semibold"><i class="fa-solid fa-paper-plane mr-1"></i> Enviar a la ETT</button>
+    </div>
+    <p id="r-msg" class="text-xs mt-3 hidden"></p>
+
+    <div id="r-preview" class="mt-4"><p class="text-sm text-telecab-muted">Cargando…</p></div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const msg = (t, cls) => { const m = $('#r-msg'); m.innerHTML = t; m.className = 'text-xs mt-3 ' + cls; m.classList.remove('hidden'); };
+  let DATOS = null;
+
+  async function cargar() {
+    try {
+      const r = await (await fetch('/reportes/api/horas-ett-ayer')).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      DATOS = r;
+      $('#r-fecha').textContent = `${r.diaSemana} ${r.fecha}`;
+      if (r.destinatario && !$('#r-destinatario').value) $('#r-destinatario').value = r.destinatario;
+      pintar();
+    } catch (e) { $('#r-preview').innerHTML = `<p class="text-sm text-telecab-red">No se pudo cargar: ${esc(e.message)}</p>`; }
+  }
+
+  function pintar() {
+    if (!DATOS.disponible) {
+      $('#r-preview').innerHTML = `<p class="text-sm text-amber-400">No hay horas de ayer en Datos_API (fuera del mes en curso o no vigente).</p>`;
+      return;
+    }
+    if (!DATOS.filas.length) {
+      $('#r-preview').innerHTML = `<p class="text-sm text-telecab-muted">No hay conductores ETT en la agenda.</p>`;
+      return;
+    }
+    const filas = DATOS.filas.map(f => `<tr class="border-t border-telecab-border/30">
+        <td class="px-3 py-1.5 text-telecab-text">${esc(f.nombre)}</td>
+        <td class="px-3 py-1.5 text-telecab-muted">${esc(f.turno || '—')}</td>
+        <td class="px-3 py-1.5 text-telecab-muted">${esc(f.contrato || '—')}</td>
+        <td class="px-3 py-1.5 text-telecab-muted font-mono">${esc(f.matricula || (f.libra ? 'Libra' : '—'))}</td>
+        <td class="px-3 py-1.5 text-right font-semibold ${f.horas > 0 ? 'text-telecab-text' : 'text-telecab-red'}">${f.horas.toFixed(1)} h</td>
+        <td class="px-3 py-1.5 text-telecab-muted text-xs">${esc(f.telefono || '—')}</td>
+      </tr>`).join('');
+    $('#r-preview').innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm text-telecab-muted"><b class="text-telecab-text">${DATOS.filas.length}</b> conductores ETT</span>
+        <span class="text-sm text-telecab-muted">Total: <b class="text-telecab-gold">${DATOS.totalHoras.toFixed(1)} h</b></span>
+      </div>
+      <div class="bg-telecab-dark/30 border border-telecab-border rounded-xl overflow-auto max-h-96">
+        <table class="w-full text-sm">
+          <thead class="sticky top-0 bg-telecab-card"><tr class="text-[11px] uppercase tracking-wide text-telecab-muted">
+            <th class="text-left px-3 py-2">Conductor</th><th class="text-left px-3 py-2">Turno</th>
+            <th class="text-left px-3 py-2">Contrato</th><th class="text-left px-3 py-2">Matrícula</th>
+            <th class="text-right px-3 py-2">Horas</th><th class="text-left px-3 py-2">Teléfono</th>
+          </tr></thead><tbody>${filas}</tbody>
+        </table>
+      </div>`;
+  }
+
+  $('#r-descargar').addEventListener('click', () => { window.location = '/reportes/horas-ett-ayer/excel'; });
+
+  $('#r-enviar').addEventListener('click', async () => {
+    const to = $('#r-destinatario').value.trim();
+    if (!to) return msg('Pon el correo de la ETT.', 'text-telecab-red');
+    if (!DATOS || !DATOS.disponible || !DATOS.filas.length) return msg('No hay datos de ayer para enviar.', 'text-telecab-red');
+    if (!confirm(`¿Enviar las horas ETT del ${DATOS.fecha} a ${to}? Saldrá desde tu correo.`)) return;
+    const btn = $('#r-enviar'); btn.disabled = true;
+    msg('Enviando…', 'text-telecab-muted');
+    try {
+      const r = await (await fetch('/reportes/horas-ett-ayer/enviar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) })).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'error');
+      msg(`✅ Enviado desde <b>${esc(r.from)}</b> a <b>${esc(r.to)}</b> (${r.conductores} conductores · ${r.total.toFixed(1)} h).`, 'text-telecab-green');
+    } catch (e) { msg('No se pudo enviar: ' + esc(e.message), 'text-telecab-red'); }
+    btn.disabled = false;
+  });
+
+  cargar();
+})();
+</script>
