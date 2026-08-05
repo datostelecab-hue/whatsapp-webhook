@@ -8,7 +8,7 @@
     <div class="flex items-center gap-3">
       <span id="reloj" class="text-sm text-telecab-muted"></span>
       <button id="btn-exportar" class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:border-telecab-gold">
-        <i class="fa-solid fa-file-excel mr-1"></i> Exportar
+        <i class="fa-solid fa-file-excel mr-1"></i> Exportar Excel
       </button>
       <button id="btn-refrescar" class="px-4 py-2 rounded-lg bg-telecab-gold/10 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/20">
         <i class="fa-solid fa-rotate mr-1"></i> Refrescar
@@ -21,13 +21,7 @@
   <div id="resumen" class="flex flex-wrap gap-3 mb-4"></div>
   <div id="sumatoria" class="flex flex-wrap gap-3 mb-6"></div>
 
-  <div class="flex gap-1 mb-4 border-b border-telecab-border">
-    <button data-vista="hoy" class="vtab px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">Hoy</button>
-    <button data-vista="ayer" class="vtab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">Ayer</button>
-    <button data-vista="enviar" class="vtab px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
-      <i class="fa-brands fa-whatsapp mr-1"></i> Enviar WhatsApps
-    </button>
-  </div>
+  <div id="tabs" class="flex gap-1 mb-4 border-b border-telecab-border overflow-x-auto"></div>
 
   <div id="barra-filtros" class="flex flex-wrap items-center gap-3 mb-4">
     <input id="f-buscar" type="search" placeholder="Nombre o matrícula…"
@@ -37,6 +31,11 @@
       <option value="Día">Solo Día</option>
       <option value="Noche">Solo Noche</option>
       <option value="TodoTurno">Solo TodoTurno</option>
+    </select>
+    <select id="f-tipo" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+      <option value="">ETT y Tibus</option>
+      <option value="tibus">Solo Tibus</option>
+      <option value="ett">Solo ETT</option>
     </select>
     <select id="f-orden" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
       <option value="horas_desc">Horas: mayor a menor</option>
@@ -48,9 +47,7 @@
     </label>
   </div>
 
-  <!-- El logo del layout hace de indicador de carga; este div queda solo para errores. -->
   <div id="cargando" class="hidden text-center py-16 text-telecab-muted"></div>
-
   <div id="secciones" class="space-y-8"></div>
 </div>
 
@@ -60,21 +57,32 @@ const esc = s => (s ?? '').toString().replace(/[&<>"]/g, c => ({ '&':'&amp;','<'
 const escAttr = s => (s ?? '').toString().replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const limpiarTel = t => (t ?? '').toString().replace(/[\s+\-()]/g, '');
 let DATOS = null;
-let VISTA = 'hoy';
+let VISTA = 0;   // 0..3 = día (0 = hoy); 'enviar' = pestaña WhatsApp
 
 const TURNOS_ORD = ['Día', 'Noche', 'TodoTurno'];
-// Turnos que existen de verdad en los datos (así TodoTurno solo aparece si hay).
-function turnosVis() {
-  return TURNOS_ORD.filter(t => DATOS.conductores.some(c => c.turno === t));
-}
+function turnosVis() { return TURNOS_ORD.filter(t => DATOS.conductores.some(c => c.turno === t)); }
 function iconoTurno(t) { return t === 'Día' ? '☀️' : t === 'Noche' ? '🌙' : '🔄'; }
+const esDia = () => VISTA !== 'enviar';
+const dia = c => c.dias[VISTA];   // info del día seleccionado
 
-const BADGE = {
-  trabajando: { txt: 'Trabajando', cls: 'bg-green-500/15 text-green-400' },
-  no_salido:  { txt: 'No ha salido', cls: 'bg-red-500/15 text-red-400' },
-  libranza:   { txt: 'Libranza', cls: 'bg-indigo-500/15 text-indigo-300' },
-  no_tocaba:  { txt: 'No le tocaba', cls: 'bg-telecab-card2 text-telecab-muted' }
+const BADGE_CLS = {
+  trabajando: 'bg-green-500/15 text-green-400',
+  no_salido:  'bg-red-500/15 text-red-400',
+  libranza:   'bg-indigo-500/15 text-indigo-300',
+  no_tocaba:  'bg-telecab-card2 text-telecab-muted'
 };
+function estadoDia(c) {
+  const d = dia(c);
+  if (VISTA === 0) return d.estadoControl;
+  if (d.libra) return 'libranza';
+  if (!d.debiaSalir) return (d.horas ?? 0) > 0 ? 'trabajando' : 'no_tocaba';
+  return (d.horas ?? 0) > 0 ? 'trabajando' : 'no_salido';
+}
+function badgeTxt(est) {
+  const hoy = VISTA === 0;
+  return { trabajando: hoy ? 'Trabajando' : 'Trabajó', no_salido: hoy ? 'No ha salido' : 'No trabajó',
+    libranza: 'Libranza', no_tocaba: 'No le tocaba' }[est];
+}
 
 async function cargar() {
   $('#cargando').classList.remove('hidden');
@@ -83,22 +91,30 @@ async function cargar() {
     const d = await r.json();
     if (!r.ok || d.status !== 'ok') throw new Error(d.msg || 'error');
     DATOS = d;
+    if (typeof VISTA === 'number' && !DATOS.dias.some(x => x.key === VISTA)) VISTA = 0;
+    pintarTabs();
     pintar();
-  } catch (e) {
-    $('#subtitulo').textContent = 'Error: ' + e.message;
-  }
+  } catch (e) { $('#subtitulo').textContent = 'Error: ' + e.message; }
   $('#cargando').classList.add('hidden');
 }
 
-function pintar() {
-  const esEnviar = VISTA === 'enviar';
-  // El tablero (resumen, sumatoria, filtros, exportar) solo en Hoy/Ayer.
-  ['#resumen', '#sumatoria', '#barra-filtros', '#btn-exportar'].forEach(sel =>
-    $(sel).classList.toggle('hidden', esEnviar));
+function pintarTabs() {
+  const tabBtn = (val, txt) => `<button data-vista="${val}" class="vtab whitespace-nowrap px-5 py-2.5 font-medium border-b-2 ${val == VISTA ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text'}">${txt}</button>`;
+  $('#tabs').innerHTML =
+    DATOS.dias.map(d => tabBtn(d.key, `${esc(d.etiqueta)} <span class="text-xs opacity-70">${esc(d.fechaTxt)}</span>`)).join('') +
+    tabBtn('enviar', '<i class="fa-brands fa-whatsapp mr-1"></i> Enviar WhatsApps');
+  document.querySelectorAll('.vtab').forEach(t => t.addEventListener('click', () => {
+    VISTA = t.dataset.vista === 'enviar' ? 'enviar' : Number(t.dataset.vista);
+    pintarTabs(); pintar();
+  }));
+}
 
-  $('#subtitulo').textContent = esEnviar
-    ? 'Avisar a los que no han salido hoy'
-    : (VISTA === 'hoy' ? `${DATOS.diaSemana} ${DATOS.fecha}` : `Ayer · ${DATOS.diaSemanaAyer}`);
+function pintar() {
+  const enviar = VISTA === 'enviar';
+  ['#resumen', '#sumatoria', '#barra-filtros', '#btn-exportar'].forEach(sel => $(sel).classList.toggle('hidden', enviar));
+  const d = enviar ? null : DATOS.dias.find(x => x.key === VISTA);
+  $('#subtitulo').textContent = enviar ? 'Avisar a los que no han salido hoy'
+    : `${d.etiqueta} · ${d.diaSemana} ${d.fechaTxt}`;
   $('#reloj').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES');
 
   const stale = $('#aviso-stale');
@@ -107,16 +123,14 @@ function pintar() {
     stale.textContent = `⚠️ Datos_API es de ${DATOS.mesDatos || 'otro mes'}, no del mes actual: las horas pueden no estar al día.`;
   } else stale.classList.add('hidden');
 
-  if (esEnviar) { pintarEnviar(); return; }
-  pintarResumen();
-  pintarSumatoria();
-  pintarSecciones();
+  if (enviar) { pintarEnviar(); return; }
+  pintarResumen(); pintarSumatoria(); pintarSecciones();
 }
 
 function pintarResumen() {
   const r = DATOS.resumen[VISTA];
-  const verbo = VISTA === 'hoy' ? 'han salido' : 'trabajaron';
-  const falta = VISTA === 'hoy' ? 'sin salir' : 'no trabajaron';
+  const verbo = VISTA === 0 ? 'han salido' : 'trabajaron';
+  const falta = VISTA === 0 ? 'sin salir' : 'no trabajaron';
   const turnos = turnosVis();
   const totalFalta = turnos.reduce((n, t) => n + r[t].noTrabajaron, 0);
   $('#resumen').innerHTML = turnos.map(t => `
@@ -127,229 +141,199 @@ function pintarResumen() {
     </div>`).join('') + `
     <div class="flex-1 min-w-[180px] rounded-xl border border-telecab-border bg-telecab-card p-4 flex items-center justify-center text-center">
       <div><div class="text-3xl font-bold text-red-400">${totalFalta}</div>
-      <div class="text-xs text-telecab-muted mt-1">${VISTA === 'hoy' ? 'sin salir en total' : 'no trabajaron en total'}</div></div>
+      <div class="text-xs text-telecab-muted mt-1">${VISTA === 0 ? 'sin salir en total' : 'no trabajaron en total'}</div></div>
     </div>`;
 }
 
 function pintarSumatoria() {
   const r = DATOS.resumen[VISTA];
-  const etiqueta = VISTA === 'hoy' ? 'hoy' : 'ayer';
-  const card = (titulo, horas, resaltar) => `
+  const card = (titulo, horas, resaltar, sub) => `
     <div class="flex-1 min-w-[160px] rounded-xl border ${resaltar ? 'border-telecab-gold/40 bg-telecab-gold/5' : 'border-telecab-border bg-telecab-card'} p-4 text-center">
       <div class="text-xs uppercase text-telecab-muted mb-1">${titulo}</div>
       <div class="text-2xl font-bold ${resaltar ? 'text-telecab-gold' : 'text-telecab-text'}">${horas.toFixed(1)} <span class="text-base font-normal text-telecab-muted">h</span></div>
+      ${sub ? `<div class="text-[11px] text-telecab-muted mt-1">${sub}</div>` : ''}
     </div>`;
   $('#sumatoria').innerHTML =
-    turnosVis().map(t => card(`Horas ${t} (${etiqueta})`, r[t].horas, false)).join('') +
-    card(`Total ${etiqueta}`, r.horasTotal, true);
+    turnosVis().map(t => card(`Horas ${t}`, r[t].horas, false)).join('') +
+    card('Total', r.horasTotal, true, r.horasNN ? `incluye ${r.horasNN.toFixed(1)} h de NN` : '');
 }
 
-function filtrar(lista) {
+function pasaFiltros(c) {
   const texto = $('#f-buscar').value.trim().toLowerCase();
-  if (!texto) return lista;
-  return lista.filter(c =>
-    (c.nombre || '').toLowerCase().includes(texto) ||
-    (c.dia.matricula || '').toLowerCase().includes(texto));
+  const tipo = $('#f-tipo').value;
+  if (texto && !((c.nombre || '').toLowerCase().includes(texto) || (dia(c).matricula || '').toLowerCase().includes(texto))) return false;
+  if (tipo === 'ett' && !c.ett) return false;
+  if (tipo === 'tibus' && (c.ett || c.esNN)) return false;   // NN no son Tibus
+  return true;
 }
-
 function ordenar(lista) {
   const modo = $('#f-orden').value;
-  const h = c => (c.dia.horas ?? -1);
+  const h = c => (dia(c).horas ?? -1);
   const l = lista.slice();
   if (modo === 'horas_asc') return l.sort((a, b) => h(a) - h(b) || a.nombre.localeCompare(b.nombre));
   if (modo === 'nombre') return l.sort((a, b) => a.nombre.localeCompare(b.nombre));
   return l.sort((a, b) => h(b) - h(a) || a.nombre.localeCompare(b.nombre));
 }
 
-function filaHtml(c, mostrarBadge) {
-  const h = c.dia.horas;
+function filaHtml(c) {
+  const d = dia(c);
+  const h = d.horas;
   const horasTxt = h == null ? '—' : h.toFixed(1) + ' h';
   const horasCls = (h != null && h > 0) ? 'text-telecab-text' : 'text-red-400';
-  const alerta = c.enDatos ? '' : ' <span class="text-amber-400 text-xs" title="Sin horas en Datos_API (nombre no cruza)">⚠︎</span>';
-  const badge = mostrarBadge
-    ? `<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${BADGE[c.dia.estadoControl].cls}">${BADGE[c.dia.estadoControl].txt}</span></td>`
-    : '';
+  const alerta = c.esNN
+    ? ' <span class="text-amber-400 text-xs" title="En Datos_API pero no en planificador ni agenda">NN</span>'
+    : (c.enDatos ? '' : ' <span class="text-amber-400 text-xs" title="Sin horas en Datos_API (el nombre no cruza)">⚠︎</span>');
+  const tipo = c.esNN ? '' : (c.ett ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">ETT</span>' : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-gold/10 text-telecab-gold">Tibus</span>');
+  const est = estadoDia(c);
   return `<tr class="border-t border-telecab-border">
     <td class="px-3 py-2 text-telecab-text">${esc(c.nombre)}${alerta}</td>
-    <td class="px-3 py-2 text-telecab-muted">${esc(c.dia.matricula || (c.dia.libra ? 'Libra' : '—'))}</td>
+    <td class="px-3 py-2">${tipo}</td>
+    <td class="px-3 py-2 text-telecab-muted">${esc(d.matricula || (d.libra ? 'Libra' : '—'))}</td>
     <td class="px-3 py-2 text-right font-semibold ${horasCls}">${horasTxt}</td>
-    ${badge}
+    <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${BADGE_CLS[est]}">${badgeTxt(est)}</span></td>
     <td class="px-3 py-2 text-telecab-muted text-xs">${esc(c.telefono) || '<span class="text-amber-400/70">sin teléfono</span>'}</td>
   </tr>`;
 }
-
-function tabla(filas, mostrarBadge, vacio) {
-  const cuerpo = filas.length ? filas.map(c => filaHtml(c, mostrarBadge)).join('')
-    : `<tr><td colspan="${mostrarBadge ? 5 : 4}" class="px-3 py-6 text-center text-telecab-muted">${vacio}</td></tr>`;
-  return `<div class="overflow-x-auto rounded-xl border border-telecab-border">
-    <table class="w-full text-sm">
+function tabla(filas, vacio) {
+  const cuerpo = filas.length ? filas.map(filaHtml).join('')
+    : `<tr><td colspan="6" class="px-3 py-6 text-center text-telecab-muted">${vacio}</td></tr>`;
+  return `<div class="overflow-x-auto rounded-xl border border-telecab-border"><table class="w-full text-sm">
       <thead class="bg-telecab-card text-telecab-muted text-xs uppercase"><tr>
-        <th class="text-left px-3 py-3">Conductor</th>
-        <th class="text-left px-3 py-3">Matrícula</th>
-        <th class="text-right px-3 py-3">Horas</th>
-        ${mostrarBadge ? '<th class="text-left px-3 py-3">Estado</th>' : ''}
-        <th class="text-left px-3 py-3">Teléfono</th>
-      </tr></thead>
-      <tbody>${cuerpo}</tbody>
-    </table></div>`;
+        <th class="text-left px-3 py-3">Conductor</th><th class="text-left px-3 py-3">Tipo</th>
+        <th class="text-left px-3 py-3">Matrícula</th><th class="text-right px-3 py-3">Horas</th>
+        <th class="text-left px-3 py-3">Estado</th><th class="text-left px-3 py-3">Teléfono</th>
+      </tr></thead><tbody>${cuerpo}</tbody></table></div>`;
 }
 
 function pintarSecciones() {
   const cont = $('#secciones');
   const soloFaltan = $('#f-problemas').checked;
   const turnoF = $('#f-turno').value;
+  const tipo = $('#f-tipo').value;
   cont.innerHTML = '';
 
-  if (VISTA === 'ayer' && !DATOS.ayerDisponible) {
-    cont.innerHTML = `<p class="text-center py-10 text-telecab-muted">No hay datos de ayer (primer día del mes o Datos_API no vigente).</p>`;
+  const d = DATOS.dias.find(x => x.key === VISTA);
+  if (!d.disponible) {
+    cont.innerHTML = `<p class="text-center py-10 text-telecab-muted">No hay horas de Datos_API para ese día (fuera del mes en curso o Datos_API no vigente).</p>`;
     return;
   }
 
   const turnos = turnoF ? [turnoF] : turnosVis();
   turnos.forEach(turno => {
-    const base = DATOS.conductores
-      .filter(c => c.turno === turno)
-      .map(c => ({ ...c, dia: VISTA === 'hoy' ? c.hoy : c.ayer }));
-
-    const icono = iconoTurno(turno);
-    let html = `<section><h2 class="text-lg font-semibold text-telecab-text mb-3">${icono} Turno ${turno}</h2>`;
-
-    if (VISTA === 'hoy') {
-      let filas = filtrar(base.filter(c => c.dia.debiaSalir || c.dia.libra));
-      if (soloFaltan) filas = filas.filter(c => c.dia.estadoControl === 'no_salido');
-      html += tabla(ordenar(filas), true, 'Nadie en este turno.');
-    } else {
-      const esperados = filtrar(base.filter(c => c.dia.debiaSalir));
-      const noTrab = ordenar(esperados.filter(c => !((c.dia.horas ?? 0) > 0)));
-      const trab = ordenar(esperados.filter(c => (c.dia.horas ?? 0) > 0));
-      html += `<div class="mb-2 text-sm font-medium text-red-400">No trabajaron (${noTrab.length})</div>`;
-      html += tabla(noTrab, false, 'Ninguno.');
-      if (!soloFaltan) {
-        html += `<div class="mt-5 mb-2 text-sm font-medium text-green-400">Trabajaron (${trab.length})</div>`;
-        html += tabla(trab, false, 'Ninguno.');
-      }
-    }
-    html += '</section>';
-    cont.insertAdjacentHTML('beforeend', html);
+    let filas = DATOS.conductores.filter(c => c.turno === turno && (dia(c).debiaSalir || dia(c).libra) && pasaFiltros(c));
+    if (soloFaltan) filas = filas.filter(c => { const e = estadoDia(c); return e === 'no_salido'; });
+    cont.insertAdjacentHTML('beforeend',
+      `<section><h2 class="text-lg font-semibold text-telecab-text mb-3">${iconoTurno(turno)} Turno ${turno}</h2>${tabla(ordenar(filas), 'Nadie en este turno.')}</section>`);
   });
+
+  // Sección NN: en Datos_API pero fuera de planificador/agenda (solo si tienen horas ese día).
+  if (!turnoF && tipo !== 'ett' && tipo !== 'tibus') {
+    let nn = DATOS.conductores.filter(c => c.esNN && (dia(c).horas ?? 0) > 0 && pasaFiltros(c));
+    if (!soloFaltan && nn.length) {
+      cont.insertAdjacentHTML('beforeend',
+        `<section><h2 class="text-lg font-semibold text-amber-400 mb-1">⚠️ Fuera de planificador/agenda (${nn.length})</h2>
+         <p class="text-xs text-telecab-muted mb-3">Estos hicieron horas pero su nombre no cruza con la agenda. Corrige su nombre/ID_BOLT o revísalos.</p>
+         ${tabla(ordenar(nn), 'Ninguno.')}</section>`);
+    }
+  }
 }
 
 // ════════ Enviar WhatsApps (solo hoy, los que no han salido) ════════
 function pintarEnviar() {
   const cont = $('#secciones');
-  const noShow = DATOS.conductores
-    .map(c => ({ ...c, dia: c.hoy }))
-    .filter(c => c.dia.debiaSalir && c.dia.estadoControl === 'no_salido');
-
+  const noShow = DATOS.conductores.filter(c => !c.esNN && c.dias[0].debiaSalir && c.dias[0].estadoControl === 'no_salido');
   let html = `<div class="mb-4 flex flex-wrap items-center gap-3">
     <button id="btn-enviar" disabled class="px-4 py-2 rounded-lg bg-green-600/20 text-green-400 font-medium hover:bg-green-600/30 disabled:opacity-40">
-      <i class="fa-brands fa-whatsapp mr-1"></i> Enviar WS a seleccionados (<span id="n-sel">0</span>)
-    </button>
+      <i class="fa-brands fa-whatsapp mr-1"></i> Enviar WS a seleccionados (<span id="n-sel">0</span>)</button>
     <label class="text-sm text-telecab-muted flex items-center gap-2 cursor-pointer">
-      <input id="chk-todos" type="checkbox" class="accent-telecab-gold"> Seleccionar todos con teléfono
-    </label>
-    <span id="envio-estado" class="text-sm text-telecab-muted"></span>
-  </div>`;
-
+      <input id="chk-todos" type="checkbox" class="accent-telecab-gold"> Seleccionar todos con teléfono</label>
+    <span id="envio-estado" class="text-sm text-telecab-muted"></span></div>`;
   turnosVis().forEach(turno => {
     const filas = noShow.filter(c => c.turno === turno);
-    const icono = iconoTurno(turno);
-    html += `<section class="mb-6"><h2 class="text-lg font-semibold text-telecab-text mb-3">${icono} ${turno} — no han salido (${filas.length})</h2>
+    html += `<section class="mb-6"><h2 class="text-lg font-semibold text-telecab-text mb-3">${iconoTurno(turno)} ${turno} — no han salido (${filas.length})</h2>
       <div class="overflow-x-auto rounded-xl border border-telecab-border"><table class="w-full text-sm">
         <thead class="bg-telecab-card text-telecab-muted text-xs uppercase"><tr>
           <th class="px-3 py-3 w-10"></th><th class="text-left px-3 py-3">Conductor</th>
           <th class="text-left px-3 py-3">Matrícula</th><th class="text-left px-3 py-3">Teléfono</th></tr></thead><tbody>`;
     html += filas.length ? filas.map(c => {
-      const tel = limpiarTel(c.telefono);
-      const sinTel = !tel;
+      const tel = limpiarTel(c.telefono); const sinTel = !tel;
       return `<tr class="border-t border-telecab-border">
-        <td class="px-3 py-2"><input type="checkbox" class="chk-ws accent-telecab-gold" ${sinTel ? 'disabled' : ''}
-             data-nombre="${escAttr(c.nombre)}" data-tel="${escAttr(tel)}"></td>
+        <td class="px-3 py-2"><input type="checkbox" class="chk-ws accent-telecab-gold" ${sinTel ? 'disabled' : ''} data-nombre="${escAttr(c.nombre)}" data-tel="${escAttr(tel)}"></td>
         <td class="px-3 py-2 text-telecab-text">${esc(c.nombre)}</td>
-        <td class="px-3 py-2 text-telecab-muted">${esc(c.dia.matricula || '—')}</td>
+        <td class="px-3 py-2 text-telecab-muted">${esc(c.dias[0].matricula || '—')}</td>
         <td class="px-3 py-2 text-telecab-muted text-xs">${sinTel ? '<span class="text-amber-400">sin teléfono</span>' : esc(c.telefono)}</td></tr>`;
     }).join('') : `<tr><td colspan="4" class="px-3 py-6 text-center text-telecab-muted">Nadie sin salir en este turno.</td></tr>`;
     html += `</tbody></table></div></section>`;
   });
-
   cont.innerHTML = html;
-
-  const conteo = () => {
-    const n = document.querySelectorAll('.chk-ws:checked').length;
-    $('#n-sel').textContent = n;
-    $('#btn-enviar').disabled = n === 0;
-  };
+  const conteo = () => { const n = document.querySelectorAll('.chk-ws:checked').length; $('#n-sel').textContent = n; $('#btn-enviar').disabled = n === 0; };
   document.querySelectorAll('.chk-ws').forEach(ch => ch.addEventListener('change', conteo));
-  $('#chk-todos').addEventListener('change', e => {
-    document.querySelectorAll('.chk-ws:not([disabled])').forEach(ch => { ch.checked = e.target.checked; });
-    conteo();
-  });
+  $('#chk-todos').addEventListener('change', e => { document.querySelectorAll('.chk-ws:not([disabled])').forEach(ch => { ch.checked = e.target.checked; }); conteo(); });
   $('#btn-enviar').addEventListener('click', enviarSeleccionados);
 }
-
 async function enviarSeleccionados() {
-  const sel = [...document.querySelectorAll('.chk-ws:checked')]
-    .map(ch => ({ nombre: ch.dataset.nombre, telefono: ch.dataset.tel }));
+  const sel = [...document.querySelectorAll('.chk-ws:checked')].map(ch => ({ nombre: ch.dataset.nombre, telefono: ch.dataset.tel }));
   if (!sel.length) return;
   if (!confirm(`¿Enviar la plantilla "atencion_hora" a ${sel.length} conductor(es)?`)) return;
-
-  $('#btn-enviar').disabled = true;
-  $('#envio-estado').textContent = 'Enviando…';
+  $('#btn-enviar').disabled = true; $('#envio-estado').textContent = 'Enviando…';
   try {
-    const r = await fetch('/control/enviar-ws', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ destinatarios: sel })
-    });
+    const r = await fetch('/control/enviar-ws', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destinatarios: sel }) });
     const d = await r.json();
     if (!r.ok || d.status !== 'ok') throw new Error(d.msg || 'error');
-    $('#envio-estado').innerHTML = `✅ Enviados ${d.enviados}/${sel.length}` +
-      (d.fallidos ? ` · <span class="text-red-400">${d.fallidos} fallaron</span>` : '');
-  } catch (e) {
-    $('#envio-estado').innerHTML = `<span class="text-red-400">Error: ${esc(e.message)}</span>`;
-  }
+    $('#envio-estado').innerHTML = `✅ Enviados ${d.enviados}/${sel.length}` + (d.fallidos ? ` · <span class="text-red-400">${d.fallidos} fallaron</span>` : '');
+  } catch (e) { $('#envio-estado').innerHTML = `<span class="text-red-400">Error: ${esc(e.message)}</span>`; }
   $('#btn-enviar').disabled = false;
 }
 
-// ════════ Exportar a Excel (CSV) ════════
-function exportarExcel() {
-  const dia = VISTA === 'ayer' ? 'ayer' : 'hoy';
-  const rows = [['Turno', 'Conductor', 'Matrícula', 'Horas', 'Estado', 'Teléfono']];
-  turnosVis().forEach(turno => {
-    DATOS.conductores.filter(c => c.turno === turno).forEach(c => {
-      const d = dia === 'hoy' ? c.hoy : c.ayer;
-      if (!d.debiaSalir && !d.libra) return;
-      const horas = d.horas == null ? '' : d.horas.toFixed(1).replace('.', ',');
-      const estado = d.libra ? 'Libranza' : ((d.horas ?? 0) > 0 ? 'Trabajó' : 'No trabajó');
-      rows.push([turno, c.nombre, d.matricula || (d.libra ? 'Libra' : ''), horas, estado, c.telefono || '']);
-    });
-  });
-  const csv = rows.map(r => r.map(v => {
-    const s = (v ?? '').toString();
-    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }).join(';')).join('\r\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `control_${dia}_${(DATOS.fecha || '').replace(/\//g, '-')}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+// ════════ Exportar a Excel (server-side, con los filtros aplicados y ordenado) ════════
+async function exportarExcel() {
+  if (!esDia()) return;
+  const soloFaltan = $('#f-problemas').checked;
+  const turnoF = $('#f-turno').value;
+  const d = DATOS.dias.find(x => x.key === VISTA);
 
-document.querySelectorAll('.vtab').forEach(t => t.addEventListener('click', () => {
-  document.querySelectorAll('.vtab').forEach(x => {
-    x.className = 'vtab px-5 py-2.5 font-medium border-b-2 ' +
-      (x === t ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+  // Reúne las filas visibles con los filtros actuales (turnos + NN).
+  let lista = [];
+  (turnoF ? [turnoF] : turnosVis()).forEach(turno => {
+    let f = DATOS.conductores.filter(c => c.turno === turno && (dia(c).debiaSalir || dia(c).libra) && pasaFiltros(c));
+    if (soloFaltan) f = f.filter(c => estadoDia(c) === 'no_salido');
+    lista = lista.concat(f);
   });
-  VISTA = t.dataset.vista;
-  pintar();
-}));
+  if (!turnoF && $('#f-tipo').value === '' && !soloFaltan) {
+    lista = lista.concat(DATOS.conductores.filter(c => c.esNN && (dia(c).horas ?? 0) > 0 && pasaFiltros(c)));
+  }
+  lista = ordenar(lista);   // siempre según el orden elegido (por defecto mayor a menor)
+
+  const columnas = [
+    { key: 'turno', label: 'Turno' }, { key: 'conductor', label: 'Conductor' }, { key: 'tipo', label: 'Tipo' },
+    { key: 'matricula', label: 'Matrícula' }, { key: 'horas', label: 'Horas' }, { key: 'estado', label: 'Estado' }, { key: 'telefono', label: 'Teléfono' }
+  ];
+  const filas = lista.map(c => {
+    const di = dia(c);
+    return {
+      turno: c.turno || (c.esNN ? 'NN' : ''),
+      conductor: c.nombre,
+      tipo: c.esNN ? 'NN' : (c.ett ? 'ETT' : 'Tibus'),
+      matricula: di.matricula || (di.libra ? 'Libra' : ''),
+      horas: di.horas == null ? '' : Number(di.horas.toFixed(1)),
+      estado: badgeTxt(estadoDia(c)),
+      telefono: c.telefono || ''
+    };
+  });
+  const titulo = `control_${d.etiqueta}_${d.fechaTxt}`.replace(/[\/\s]/g, '-');
+  try {
+    const r = await fetch('/control/excel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo, columnas, filas }) });
+    if (!r.ok) throw new Error('error');
+    const blob = await r.blob(); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = titulo + '.xlsx';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e) { alert('No se pudo exportar el Excel.'); }
+}
 
 $('#btn-refrescar').addEventListener('click', cargar);
 $('#btn-exportar').addEventListener('click', exportarExcel);
-$('#f-buscar').addEventListener('input', pintarSecciones);
+['#f-buscar', '#f-turno', '#f-tipo', '#f-orden'].forEach(s => $(s).addEventListener('input', pintarSecciones));
 $('#f-problemas').addEventListener('change', pintarSecciones);
-$('#f-turno').addEventListener('change', pintarSecciones);
-$('#f-orden').addEventListener('change', pintarSecciones);
 
 cargar();
 setInterval(cargar, 5 * 60 * 1000);

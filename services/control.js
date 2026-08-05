@@ -38,6 +38,7 @@ function numero(v) {
 async function leerHorasDatosApi() {
   const filas = await readSheet(ID_GESTION, `${HOJA_DATOS}!A:AZ`);
   const horas = new Map();
+  const nombres = new Map();   // clave → nombre original (para poder mostrar los NN)
   let mes = null, ano = null;
 
   if (filas.length && filas[0][0]) {
@@ -56,9 +57,9 @@ async function leerHorasDatosApi() {
       const v = numero(filas[i][3 + d]);
       if (v != null) porDia[d + 1] = v;
     }
-    if (!horas.has(clave)) horas.set(clave, porDia);
+    if (!horas.has(clave)) { horas.set(clave, porDia); nombres.set(clave, nombre); }
   }
-  return { mes, ano, horas };
+  return { mes, ano, horas, nombres };
 }
 
 /** DB_CONDUCTORES → Map(clave -> teléfono). Col G (7) nombre Bolt, col I (9) teléfono. */
@@ -89,10 +90,7 @@ function estadoControl({ libra, debiaSalir, horas }) {
  */
 async function tableroControl() {
   const [Y, M, D] = hoyMadrid().split('-').map(Number);
-  const base = new Date(Date.UTC(Y, M - 1, D, 12));
-  const idxHoy = (base.getUTCDay() + 6) % 7;      // Lun=0 … Dom=6
-  const idxAyer = (idxHoy + 6) % 7;
-  const Dayer = D - 1;
+  const pad = n => String(n).padStart(2, '0');
 
   const tablero = await leerTablero();
   const conductores = (tablero && tablero.conductores) || [];
@@ -101,69 +99,106 @@ async function tableroControl() {
 
   const horasVigentes = datos.mes === M && datos.ano === Y;
 
-  function diaInfo(c, idx, diaMes, porDia) {
-    const libra = !!(c.libra && c.libra[idx]);
-    const mat = c.asignacion ? c.asignacion[idx] : '';
-    const debiaSalir = !!mat && mat !== 'L';
-    const horas = (horasVigentes && diaMes >= 1 && porDia) ? (porDia[diaMes] ?? 0) : null;
-    return { libra, matricula: debiaSalir ? mat : '', debiaSalir, horas };
+  // Días a mostrar: hoy + los 3 anteriores (key 0..3).
+  const ETIQ = ['Hoy', 'Ayer', 'Hace 2 días', 'Hace 3 días'];
+  const dias = [];
+  for (let k = 0; k < 4; k++) {
+    const f = new Date(Date.UTC(Y, M - 1, D - k, 12));
+    const idx = (f.getUTCDay() + 6) % 7;                              // Lun=0 … Dom=6
+    const mismoMes = f.getUTCMonth() === M - 1 && f.getUTCFullYear() === Y;
+    dias.push({
+      key: k, etiqueta: ETIQ[k], idx,
+      diaMes: f.getUTCDate(), diaSemana: DIAS[idx],
+      fechaTxt: `${pad(f.getUTCDate())}/${pad(f.getUTCMonth() + 1)}`,
+      disponible: mismoMes && horasVigentes   // solo hay horas de Datos_API para el mes en curso
+    });
   }
 
+  const infoDia = (c, dia, porDia) => {
+    const libra = !!(c.libra && c.libra[dia.idx]);
+    const mat = c.asignacion ? c.asignacion[dia.idx] : '';
+    const debiaSalir = !!mat && mat !== 'L';
+    const horas = (dia.disponible && porDia) ? (porDia[dia.diaMes] ?? 0) : null;
+    const info = { libra, matricula: debiaSalir ? mat : '', debiaSalir, horas };
+    if (dia.key === 0) info.estadoControl = estadoControl(info);
+    return info;
+  };
+
+  const clavesUsadas = new Set();
   const filas = conductores.map(c => {
     const clave = normClave(c.idBolt);
     const porDia = (clave && datos.horas.get(clave)) || null;
-
-    const hoy = diaInfo(c, idxHoy, D, porDia);
-    hoy.estadoControl = estadoControl(hoy);
-    const ayer = diaInfo(c, idxAyer, Dayer, porDia);
-
-    const telefono = (c.telefono && c.telefono.trim())
-      || (clave && telefonos.get(clave)) || '';
-
+    if (porDia) clavesUsadas.add(clave);
+    const diasC = {};
+    dias.forEach(dia => { diasC[dia.key] = infoDia(c, dia, porDia); });
     return {
       // Se muestra el NOMBRE DE BOLT (ID_BOLT). La seguridad social queda de apoyo.
       nombre: (c.idBolt || '').trim() || c.nombre || '(sin ID_BOLT)',
       nombreSS: c.nombre || '',
       tieneIdBolt: !!(c.idBolt && c.idBolt.trim()),
+      esNN: false,
+      ett: /ETT/i.test(c.contrato || ''),   // ETT vs Tibus (nuestro)
+      contrato: c.contrato || '',
       turno: c.turno || '',
       estado: c.estadoCalculado || c.estado || '',
-      telefono,
+      telefono: (c.telefono && c.telefono.trim()) || (clave && telefonos.get(clave)) || '',
       enDatos: !!porDia,
-      hoy, ayer
+      dias: diasC
     };
   });
 
+  // NN: están en Datos_API pero NO casan con la agenda (otro nombre o no están).
+  // Se traen con sus horas para que el total cuadre con Datos_API.
+  const filasNN = [];
+  for (const [clave, porDia] of datos.horas.entries()) {
+    if (clavesUsadas.has(clave)) continue;
+    const diasC = {};
+    dias.forEach(dia => {
+      const horas = dia.disponible ? (porDia[dia.diaMes] ?? 0) : null;
+      const info = { libra: false, matricula: '', debiaSalir: false, horas };
+      if (dia.key === 0) info.estadoControl = (horas != null && horas > 0) ? 'trabajando' : 'no_tocaba';
+      diasC[dia.key] = info;
+    });
+    filasNN.push({
+      nombre: datos.nombres.get(clave) || '(desconocido)',
+      nombreSS: '', tieneIdBolt: false, esNN: true,
+      ett: false, contrato: '', turno: '',
+      estado: 'No está en planificador ni agenda',
+      telefono: telefonos.get(clave) || '',
+      enDatos: true, dias: diasC
+    });
+  }
+  const todas = filas.concat(filasNN);
+
   const r1 = n => Math.round(n * 10) / 10;
-  const resumenDe = sel => {
+  const resumenDia = dia => {
     const r = {};
-    let horasTotal = 0;
     ['Día', 'Noche', 'TodoTurno'].forEach(t => {
-      const del = filas.filter(f => f.turno === t);
-      const esperados = del.filter(f => sel(f).debiaSalir);
-      const trabajaron = esperados.filter(f => (sel(f).horas ?? 0) > 0).length;
-      const horas = del.reduce((s, f) => s + (sel(f).horas ?? 0), 0);
-      horasTotal += horas;
+      const del = todas.filter(f => f.turno === t);
+      const esperados = del.filter(f => f.dias[dia.key].debiaSalir);
+      const trabajaron = esperados.filter(f => (f.dias[dia.key].horas ?? 0) > 0).length;
+      const horas = del.reduce((s, f) => s + (f.dias[dia.key].horas ?? 0), 0);
       r[t] = {
-        esperados: esperados.length,
-        trabajaron,
+        esperados: esperados.length, trabajaron,
         noTrabajaron: esperados.length - trabajaron,
-        libranza: del.filter(f => sel(f).libra).length,
+        libranza: del.filter(f => f.dias[dia.key].libra).length,
         horas: r1(horas)
       };
     });
-    r.horasTotal = r1(horasTotal);
+    r.horasTotal = r1(todas.reduce((s, f) => s + (f.dias[dia.key].horas ?? 0), 0));
+    r.horasNN = r1(filasNN.reduce((s, f) => s + (f.dias[dia.key].horas ?? 0), 0));
     return r;
   };
+  const resumen = {};
+  dias.forEach(dia => { resumen[dia.key] = resumenDia(dia); });
 
   return {
-    fecha: `${String(D).padStart(2, '0')}/${String(M).padStart(2, '0')}/${Y}`,
-    diaSemana: DIAS[idxHoy],
-    diaSemanaAyer: DIAS[idxAyer],
-    ayerDisponible: Dayer >= 1 && horasVigentes,
+    fecha: `${pad(D)}/${pad(M)}/${Y}`,
+    dias,
     horasVigentes,
     mesDatos: datos.mes ? `${MESES[datos.mes - 1]} ${datos.ano}` : null,
-    resumen: { hoy: resumenDe(f => f.hoy), ayer: resumenDe(f => f.ayer) },
-    conductores: filas
+    resumen,
+    conductores: todas
   };
 }
 

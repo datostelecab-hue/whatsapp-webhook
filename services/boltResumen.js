@@ -113,6 +113,7 @@ async function actualizarRegion(region, ahora) {
   const diaActual = ahora.getDate();
   const hora = ahora.getHours();
   const diasDelMes = new Date(ano, mes, 0).getDate();
+  let maxLogTs = 0;   // instrumentación: el state-log más reciente que devuelve Bolt (para ver si HOY se congela)
 
   // Caché del mes en curso, en SEGUNDOS y con sello de mes/año: sin redondeos
   // reinyectados y sin arrastrar el mes anterior en la primera ejecución.
@@ -148,6 +149,7 @@ async function actualizarRegion(region, ahora) {
       );
       await sleep(1000);
 
+      for (const l of stateLogs) { if (l.created > maxLogTs) maxLogTs = l.created; }
       acumularHoras(stateLogs, flotaId, cache, region, diasFaltantes, mes, ano, endTs);
     }
 
@@ -270,13 +272,20 @@ async function actualizarRegion(region, ahora) {
   // 4) HOY en curso: un solo valor, en columna aparte (la serie no lo cuenta).
   const cHoy = cache[diaActual];
   const hoyTotal = cHoy ? region.flotas.reduce((s, f) => s + (cHoy.porFlota[f] || 0) / 3600, 0) : 0;
+  // Instrumentación: si "último state-log" avanza pero HOY no crece, el valor de hoy se
+  // está congelando (probable recorte de 6h del tramo abierto); si no avanza, Bolt no da datos.
+  const ultimoLogTxt = maxLogTs
+    ? new Intl.DateTimeFormat('es-ES', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(maxLogTs * 1000))
+    : '—';
+  console.log(`🕐 [${tag}] HOY (día ${diaActual}) = ${hoyTotal.toFixed(1)} h · último state-log de Bolt = ${ultimoLogTxt}`);
 
   // 5) Escribe la hoja de 15 días.
   await ensureSheet(SPREADSHEET_ID, region.hoja15);
   const nF = region.flotas.length;
   const cabecera15 = ['FECHA'];
   region.flotas.forEach(f => cabecera15.push('FLOTA ' + f));
-  cabecera15.push('TOTAL', 'ACUMULADO', '', `HOY (${meses[ahora.getMonth()]} ${diaActual})`);
+  const selloAct = new Intl.DateTimeFormat('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(ahora);
+  cabecera15.push('TOTAL', 'ACUMULADO', '', `HOY (${meses[ahora.getMonth()]} ${diaActual}) · act. ${selloAct}`);
 
   const values15 = [cabecera15];
   let ac15 = 0;
