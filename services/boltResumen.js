@@ -275,7 +275,7 @@ async function actualizarRegion(region, ahora) {
   // Instrumentación: si "último state-log" avanza pero HOY no crece, el valor de hoy se
   // está congelando (probable recorte de 6h del tramo abierto); si no avanza, Bolt no da datos.
   const ultimoLogTxt = maxLogTs
-    ? new Intl.DateTimeFormat('es-ES', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(maxLogTs * 1000))
+    ? new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(maxLogTs * 1000))
     : '—';
   console.log(`🕐 [${tag}] HOY (día ${diaActual}) = ${hoyTotal.toFixed(1)} h · último state-log de Bolt = ${ultimoLogTxt}`);
 
@@ -284,7 +284,7 @@ async function actualizarRegion(region, ahora) {
   const nF = region.flotas.length;
   const cabecera15 = ['FECHA'];
   region.flotas.forEach(f => cabecera15.push('FLOTA ' + f));
-  const selloAct = new Intl.DateTimeFormat('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(ahora);
+  const selloAct = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }).format(ahora);
   cabecera15.push('TOTAL', 'ACUMULADO', '', `HOY (${meses[ahora.getMonth()]} ${diaActual}) · act. ${selloAct}`);
 
   const values15 = [cabecera15];
