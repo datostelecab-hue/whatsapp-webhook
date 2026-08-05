@@ -1,8 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { leerTickets, crearPinAdmin, ESTADOS, ETAPAS } = require('../services/tickets');
+const { leerTickets, crearPinAdmin, guardarCelda, leerTicket, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerPadron } = require('../services/conductoresBolt');
+const { enviarBallenoil } = require('../services/whatsapp');
 const codigos = require('../services/codigosBallenoil');
+
+// Nombre con el que saludar en la plantilla de Ballenoil: el ID_BOLT (nombre de BOLT)
+// si lo hay, y si no el nombre de la ficha.
+const nombreSaludo = t => (t && ((t.id_bolt || '').toString().trim()
+  || `${t.nombre || ''} ${t.apellidos || ''}`.trim())) || '';
 
 // Tablero de Administración: recibe las fichas que RRHH ya dio de alta y que
 // esperan el PIN de Ballenoil (último paso antes del planificador).
@@ -83,12 +89,36 @@ router.post('/codigos/purgar', async (req, res) => {
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 
-// Guarda el PIN de Ballenoil → crea la ficha en AGENDA_V2 y pasa a Tráfico.
+// Guarda el PIN de Ballenoil → crea la ficha en AGENDA_V2, pasa a Tráfico y ENVÍA la
+// plantilla de bienvenida "ballenoil" (con el botón "VER PIN BALLENOIL"). El envío no
+// bloquea: si falla, el PIN ya quedó guardado y se avisa.
 router.post('/pin', async (req, res) => {
   try {
     const b = req.body || {};
     const t = await crearPinAdmin(b.tel, b.pin, b.id_bolt, b.obs_ballenoil);
-    res.json({ status: 'ok', ticket: t });
+    const env = await enviarBallenoil(t.id, nombreSaludo(t));
+    if (!env.ok) console.error(`⚠️ [Ballenoil] Bienvenida NO enviada a ${t.id}: ${env.error}`);
+    res.json({ status: 'ok', ticket: t, enviado: env.ok, envioError: env.ok ? null : env.error });
+  } catch (error) {
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Reenvía la bienvenida de Ballenoil a una ficha YA creada (el PIN cambia a veces):
+// actualiza el PIN en su ficha y vuelve a mandar la plantilla. Independiente de la
+// etapa (no re-crea nada en la agenda).
+router.post('/ballenoil/reenviar', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const tel = (b.tel || '').toString();
+    const pin = (b.pin == null ? '' : b.pin).toString().trim();
+    if (!pin) throw new Error('Escribe el PIN de Ballenoil');
+    await guardarCelda(tel, 'pin_ballenoil', pin);
+    if (b.obs_ballenoil != null) await guardarCelda(tel, 'obs_ballenoil', (b.obs_ballenoil || '').toString());
+    const t = await leerTicket(tel);
+    const env = await enviarBallenoil(tel, nombreSaludo(t));
+    if (!env.ok) console.error(`⚠️ [Ballenoil] Reenvío NO entregado a ${tel}: ${env.error}`);
+    res.json({ status: 'ok', enviado: env.ok, envioError: env.ok ? null : env.error });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
   }

@@ -13,10 +13,12 @@ function limpiarTelefono(t) {
 }
 
 /**
- * Envía la plantilla "atencion_hora" (un parámetro de cuerpo: el nombre).
- * Devuelve { ok, id } o { ok:false, error }.
+ * Envía una plantilla con UN parámetro de cuerpo llamado "nombre" (el saludo).
+ * Nota: el parámetro va como NOMBRADO ('nombre'), igual que "atencion_hora". Si al
+ * crear la plantilla en Meta la variable quedó como {{1}} (posicional), habría que
+ * quitar `parameter_name`. Devuelve { ok, id } o { ok:false, error }.
  */
-async function enviarAtencionHora(telefono, nombre) {
+async function enviarPlantillaNombre(telefono, plantilla, nombre) {
   const to = limpiarTelefono(telefono);
   if (!to) return { ok: false, error: 'sin teléfono' };
 
@@ -25,7 +27,7 @@ async function enviarAtencionHora(telefono, nombre) {
     to,
     type: 'template',
     template: {
-      name: 'atencion_hora',
+      name: plantilla,
       language: { code: 'es' },
       components: [{
         type: 'body',
@@ -48,4 +50,11 @@ async function enviarAtencionHora(telefono, nombre) {
   }
 }
 
-module.exports = { enviarAtencionHora, limpiarTelefono };
+// Plantilla de aviso de horas (ya existente).
+const enviarAtencionHora = (telefono, nombre) => enviarPlantillaNombre(telefono, 'atencion_hora', nombre);
+
+// Bienvenida de Ballenoil: saluda por su nombre y trae el botón "VER PIN BALLENOIL"
+// (el bot entrega el PIN de su ficha al pulsarlo).
+const enviarBallenoil = (telefono, nombre) => enviarPlantillaNombre(telefono, 'ballenoil', nombre);
+
+module.exports = { enviarAtencionHora, enviarBallenoil, enviarPlantillaNombre, limpiarTelefono };
