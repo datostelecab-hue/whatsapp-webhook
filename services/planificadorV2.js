@@ -638,6 +638,7 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
 
     coche.huecos = [];
     coche.conflictos = [];
+    coche.avisos = [];   // no bloqueantes (p. ej. trabaja en su libranza): solo avisan
 
     const nombreCoche = coche.matricula || '#' + (coche.idx + 1);
     coche.personas.forEach(p => {
@@ -665,8 +666,13 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     problemas
       .filter(x => x.idx === coche.idx)
       .forEach(x => {
-        if (['turno-cruzado', 'estado-retira', 'trabaja-en-libranza', 'matricula-duplicada'].includes(x.tipo)) {
+        if (['turno-cruzado', 'estado-retira', 'matricula-duplicada'].includes(x.tipo)) {
           coche.conflictos.push({ tipo: x.tipo, msg: x.msg });
+        } else if (x.tipo === 'trabaja-en-libranza') {
+          // NO bloquea: el conductor PUEDE trabajar su día de libranza (se le añade
+          // como CT). Solo se avisa por si es un despiste; el día SÍ cuenta en la
+          // cobertura y el coche no queda en "Error".
+          coche.avisos.push({ tipo: x.tipo, msg: x.msg });
         }
       });
 
