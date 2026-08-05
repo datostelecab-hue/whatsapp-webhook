@@ -37,6 +37,18 @@ const MAP_TURNO_AGENDA = { 'Día': 'dia', 'Dia': 'dia', 'Noche': 'noche', 'TodoT
 const CORTE_TURNO = { dia: 5, noche: 5, todoturno: 2 };
 const CORTE_DEFECTO = 5;
 
+// Orden de los logs para medir tramos. A IGUAL segundo, los estados que NO cuentan
+// (busy, inactive) van DESPUÉS de los que sí (has_order, waiting_orders), para que
+// un descanso que arranca en el mismo instante que un waiting_orders "gane" y no se
+// lo trague el tramo. Bug real: Oswaldo 5/8 tenía a las 06:59:24 dos logs (busy y
+// waiting_orders); al quedar el busy ANTES, el waiting_orders cogía como fin el
+// siguiente waiting_orders (09:29:56) y sumaba 2h30m de descanso. Con este desempate
+// el waiting_orders del mismo segundo cierra en el busy (0 s) y el descanso no cuenta.
+function ordenarLogs(a, b) {
+  return (a.created - b.created) ||
+    ((STATE_VIAJE.includes(a.state) ? 0 : 1) - (STATE_VIAJE.includes(b.state) ? 0 : 1));
+}
+
 /**
  * Turno de cada conductor desde la agenda ACTUAL (AGENDA_V2, vía el planificador),
  * NO desde la vieja TurnosDB. La clave es el nombre de Bolt (ID_BOLT) normalizado,
@@ -422,7 +434,7 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
         horasNocturnasPorConductor[nombreReal] = 0;
       }
 
-      logs.sort((a, b) => a.created - b.created);
+      logs.sort(ordenarLogs);
 
       for (let i = 0; i < logs.length; i++) {
         if (!STATE_VIAJE.includes(logs[i].state)) continue;
@@ -637,7 +649,7 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
         horasNocturnasPorConductor[nombreReal] = 0;
       }
 
-      logs.sort((a, b) => a.created - b.created);
+      logs.sort(ordenarLogs);
 
       for (let i = 0; i < logs.length; i++) {
         const logActual = logs[i];
@@ -957,7 +969,7 @@ async function obtenerMetricasVisor() {
   const segPorFlota = {};     // desglose para cuadrar con el informe de Bolt
 
   Object.values(logsPorDriver).forEach(logs => {
-    logs.sort((a, b) => a.created - b.created);
+    logs.sort(ordenarLogs);
 
     for (let i = 0; i < logs.length; i++) {
       const estado = logs[i].state;
