@@ -223,14 +223,27 @@ function componentesDesdeDef(def, valores) {
 // la EXACTA (según Meta); el resto cubre por fuerza bruta que no se pudiera leer la
 // definición: cuerpo/encabezado × posicional/con-nombre "1","2".
 function estrategiasEnvio(def) {
-  const n12 = v => v.map((_, i) => String(i + 1));
-  return [
-    { label: 'def', fn: v => componentesDesdeDef(def, v) },
-    { label: 'body-pos', fn: v => [{ type: 'body', parameters: paramsPosicional(v) }] },
-    { label: 'body-num', fn: v => [{ type: 'body', parameters: paramsConNombre(v, n12(v)) }] },
-    { label: 'header-pos', fn: v => [{ type: 'header', parameters: paramsPosicional(v) }] },
-    { label: 'header-num', fn: v => [{ type: 'header', parameters: paramsConNombre(v, n12(v)) }] }
+  const bodyNamed = nombres => v => [{ type: 'body', parameters: paramsConNombre(v, nombres(v)) }];
+  const num = v => v.map((_, i) => String(i + 1));
+  const nombre = v => v.map((_, i) => i ? 'nombre_' + (i + 1) : 'nombre');
+  const nombreN = v => v.map((_, i) => 'nombre_' + (i + 1));
+  const name = v => v.map((_, i) => i ? 'name_' + (i + 1) : 'name');
+  // Nombre(s) forzado(s) por env (BODA_VARS="nombre" o "nombre_1,nombre_2") si se conoce.
+  const forzados = (process.env.BODA_VARS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const estr = [
+    { label: 'def', fn: v => componentesDesdeDef(def, v) }
   ];
+  if (forzados.length) estr.push({ label: 'body-forzado', fn: v => [{ type: 'body', parameters: paramsConNombre(v, v.map((_, i) => forzados[i] || forzados[forzados.length - 1])) }] });
+  estr.push(
+    { label: 'body-pos', fn: v => [{ type: 'body', parameters: paramsPosicional(v) }] },
+    { label: 'body-num', fn: bodyNamed(num) },
+    { label: 'body-nombre', fn: bodyNamed(nombre) },
+    { label: 'body-nombre_n', fn: bodyNamed(nombreN) },
+    { label: 'body-name', fn: bodyNamed(name) },
+    { label: 'header-pos', fn: v => [{ type: 'header', parameters: paramsPosicional(v) }] },
+    { label: 'header-num', fn: v => [{ type: 'header', parameters: paramsConNombre(v, num(v)) }] }
+  );
+  return estr;
 }
 
 // Recuerda la estrategia que funcionó (para no re-tantear en los 249 envíos).
