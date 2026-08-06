@@ -115,25 +115,50 @@ let WABA_ID = (process.env.BODA_WABA_ID || '').trim() || null;
 let debugWaba = null;              // rastro del descubrimiento (para el diagnóstico)
 const defsPlantilla = new Map();   // nombre → { formato, nombres, idioma }
 
-// Descubre el WhatsApp Business Account del token (una vez) vía debug_token.
-async function descubrirWaba() {
-  if (WABA_ID) return WABA_ID;
+let wabaBuscado = false;   // ya se intentó descubrir (no re-tantear en cada envío)
+
+// Reúne WABAs candidatos del token: por granular_scopes y, si no, por los negocios del usuario.
+async function candidatosWaba() {
+  const ids = new Set();
+  if (WABA_ID) ids.add(WABA_ID);
   try {
     const r = await fetch(`https://graph.facebook.com/${VERSION}/debug_token?input_token=${encodeURIComponent(TOKEN)}&access_token=${encodeURIComponent(TOKEN)}`);
     const d = await r.json();
     debugWaba = { app_id: d.data && d.data.app_id, scopes: (d.data && d.data.granular_scopes) || null, error: d.error ? d.error.message : null };
-    for (const s of (d.data && d.data.granular_scopes) || []) {
-      if (/whatsapp_business/i.test(s.scope || '') && (s.target_ids || []).length) { WABA_ID = s.target_ids[0]; break; }
-    }
-    // Fallback: WABA a partir del número de teléfono (a veces expuesto en la Graph API).
-    if (!WABA_ID) {
-      const r2 = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}?fields=whatsapp_business_account{id}&access_token=${encodeURIComponent(TOKEN)}`);
-      const d2 = await r2.json();
-      const w = d2.whatsapp_business_account && d2.whatsapp_business_account.id;
-      if (w) { WABA_ID = w; debugWaba.viaTelefono = w; }
-      else if (d2.error) debugWaba.errorTelefono = d2.error.message;
-    }
+    for (const s of (d.data && d.data.granular_scopes) || []) for (const t of (s.target_ids || [])) ids.add(t);
   } catch (e) { debugWaba = { error: e.message }; }
+  try {
+    const rb = await fetch(`https://graph.facebook.com/${VERSION}/me/businesses?access_token=${encodeURIComponent(TOKEN)}`);
+    const db = await rb.json();
+    if (db.error && debugWaba) debugWaba.errorNegocios = db.error.message;
+    for (const b of (db.data || [])) {
+      for (const edge of ['owned_whatsapp_business_accounts', 'client_whatsapp_business_accounts']) {
+        try {
+          const rw = await fetch(`https://graph.facebook.com/${VERSION}/${b.id}/${edge}?access_token=${encodeURIComponent(TOKEN)}`);
+          const dw = await rw.json();
+          for (const w of (dw.data || [])) if (w.id) ids.add(w.id);
+        } catch (_) { }
+      }
+    }
+  } catch (_) { }
+  return [...ids];
+}
+
+// Descubre el WABA que contiene nuestras plantillas (probando cada candidato).
+async function descubrirWaba() {
+  if (WABA_ID) return WABA_ID;
+  if (wabaBuscado) return null;
+  wabaBuscado = true;
+  const cands = await candidatosWaba();
+  if (debugWaba) debugWaba.candidatos = cands;
+  for (const w of cands) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/${VERSION}/${w}/message_templates?name=plantilla_1&access_token=${encodeURIComponent(TOKEN)}`);
+      const d = await r.json();
+      if ((d.data || []).length) { WABA_ID = w; break; }
+    } catch (_) { }
+  }
+  if (!WABA_ID && cands.length === 1) WABA_ID = cands[0];
   return WABA_ID;
 }
 
