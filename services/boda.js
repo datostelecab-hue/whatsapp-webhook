@@ -349,29 +349,39 @@ async function probarCompleto() {
 // ── Lectura de la lista y localización del invitado por teléfono ─────────────
 // Busca en las hojas reales Y en las de prueba; recuerda en qué hoja está para
 // escribir la respuesta en el sitio correcto.
+let _simTipo = null;   // en simulación fuerza qué lista buscar primero (las hojas TEST comparten números)
+
 async function buscarInvitado(telefono) {
   const k = clave(telefono);
   if (!k) return null;
 
-  for (const hoja of [HOJA.ind, HOJA.indTest]) {
-    const rows = await readSheet(SHEET_ID, `'${hoja}'!A:E`).catch(() => []);
-    for (let i = 1; i < rows.length; i++) {
-      const f = rows[i] || [];
-      if (clave(f[1]) === k) return { tipo: 'individual', hoja, fila: i + 1, apodo: (f[2] || f[0] || '').toString().trim(), nombre: f[0] };
+  const buscarInd = async () => {
+    for (const hoja of [HOJA.ind, HOJA.indTest]) {
+      const rows = await readSheet(SHEET_ID, `'${hoja}'!A:E`).catch(() => []);
+      for (let i = 1; i < rows.length; i++) {
+        const f = rows[i] || [];
+        if (clave(f[1]) === k) return { tipo: 'individual', hoja, fila: i + 1, apodo: (f[2] || f[0] || '').toString().trim(), nombre: f[0] };
+      }
     }
-  }
-  for (const hoja of [HOJA.par, HOJA.parTest]) {
-    const rows = await readSheet(SHEET_ID, `'${hoja}'!A:H`).catch(() => []);
-    for (let i = 1; i < rows.length; i++) {
-      const f = rows[i] || [];
-      if (clave(f[2]) === k) return {
-        tipo: 'pareja', hoja, fila: i + 1,
-        apodoT: (f[3] || f[0] || '').toString().trim(), apodoP: (f[4] || f[1] || '').toString().trim(),
-        nombreT: f[0], nombreP: f[1]
-      };
+    return null;
+  };
+  const buscarPar = async () => {
+    for (const hoja of [HOJA.par, HOJA.parTest]) {
+      const rows = await readSheet(SHEET_ID, `'${hoja}'!A:H`).catch(() => []);
+      for (let i = 1; i < rows.length; i++) {
+        const f = rows[i] || [];
+        if (clave(f[2]) === k) return {
+          tipo: 'pareja', hoja, fila: i + 1,
+          apodoT: (f[3] || f[0] || '').toString().trim(), apodoP: (f[4] || f[1] || '').toString().trim(),
+          nombreT: f[0], nombreP: f[1]
+        };
+      }
     }
-  }
-  return null;
+    return null;
+  };
+  // Normalmente individual primero; en simulación de pareja se invierte.
+  const [a, b] = _simTipo === 'pareja' ? [buscarPar, buscarInd] : [buscarInd, buscarPar];
+  return (await a()) || (await b());
 }
 
 async function guardarRta(inv, quien, valor) {
@@ -634,4 +644,51 @@ async function opcionesLista() {
   return { invita: set(0), edad: set(6), prioridad: set(7), lista: set(8), grupo: set(10) };
 }
 
-module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista, diagnostico, probarCompleto };
+// ============================================================
+// SIMULACIÓN DEL FLUJO DE RESPUESTA (para probar sin teléfono)
+// ============================================================
+// Inyecta toques de botón / texto por el MISMO código que una persona real
+// (manejarMensaje), usando el primer número de las hojas TEST, y devuelve cómo
+// quedó guardada la respuesta en la hoja. También manda los WhatsApp de respuesta
+// al número de prueba (para ver la experiencia completa).
+async function simular(escenario) {
+  const esPareja = escenario.startsWith('pareja');
+  const hoja = esPareja ? HOJA.parTest : HOJA.indTest;
+  const telIdx = esPareja ? 2 : 1;
+  const rows = await readSheet(SHEET_ID, `'${hoja}'!A:H`).catch(() => []);
+  const fila = rows[1] || [];                       // primera fila de datos de la hoja TEST
+  const from = soloDigitos(fila[telIdx]);
+  if (!from) throw new Error(`No hay número de prueba en "${hoja}" (fila 2)`);
+
+  const boton = texto => ({ from, type: 'button', button: { text: texto, payload: texto } });
+  const inter = id => ({ from, type: 'interactive', interactive: { type: 'button_reply', button_reply: { id } } });
+  const texto = body => ({ from, type: 'text', text: { body } });
+
+  const GUION = {
+    'individual-si': [boton('¡Cuenten con migo!')],
+    'individual-talvez': [boton('Todavia no puedo confirmar')],
+    'individual-no': [boton('No voy a poder acompañarlos')],
+    'individual-texto': [texto('Hola, ¿puedo llevar acompañante?')],
+    'pareja-si': [boton('¡Conta con nosotros!')],
+    'pareja-no': [boton('No podremos acompañarlos')],
+    'pareja-parcial': [boton('No podemos confimar...'), inter('boda_si'), inter('boda_no')],
+    'pareja-texto': [texto('Hola, una consulta')]
+  };
+  const guion = GUION[escenario];
+  if (!guion) throw new Error('Escenario desconocido: ' + escenario);
+
+  _simTipo = esPareja ? 'pareja' : 'individual';
+  try {
+    for (const msg of guion) await manejarMensaje(msg);
+  } finally { _simTipo = null; }
+
+  // Releer la fila para mostrar cómo quedó guardada la respuesta.
+  const rows2 = await readSheet(SHEET_ID, `'${hoja}'!A:H`).catch(() => []);
+  const f2 = rows2[1] || [];
+  const guardado = esPareja
+    ? { titular: (f2[3] || f2[0] || '').toString().trim(), rtaTitular: (f2[5] || '').toString().trim(), acompanante: (f2[4] || f2[1] || '').toString().trim(), rtaAcompanante: (f2[6] || '').toString().trim() }
+    : { invitado: (f2[2] || f2[0] || '').toString().trim(), rta: (f2[3] || '').toString().trim() };
+  return { escenario, hoja, from, pasos: guion.length, guardado };
+}
+
+module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista, diagnostico, probarCompleto, simular };

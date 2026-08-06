@@ -52,6 +52,10 @@
     .solo-pareja { display:none; }
     #panelAlta.modo-pareja .solo-pareja { display:flex; }
     .enviar.sec { background:linear-gradient(135deg,#2e8b57,#37a06a); }
+    .simbtns { display:flex; flex-wrap:wrap; gap:8px; }
+    .simbtns button { border:1px solid var(--linea); background:#fff; border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; color:var(--tinta); }
+    .simbtns button:hover { border-color:var(--oro2); }
+    .simbtns button:disabled { opacity:.5; cursor:wait; }
     @media (max-width:520px){ .stats{grid-template-columns:1fr;} .form{grid-template-columns:1fr;} }
   </style>
 </head>
@@ -146,6 +150,30 @@
         <div class="errores" id="errBox" style="display:none"></div>
         <div class="pie" id="pTiempo"></div>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>🧪 Simular respuestas (prueba)</h2>
+      <p style="font-size:12px;color:var(--suave);margin:0 0 14px">Simula que un invitado de prueba responde, para ver cómo queda en la hoja. Usa los números de las hojas TEST (Igna/Cruz) y les llega el WhatsApp de respuesta real.</p>
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--suave);font-weight:600;margin-bottom:6px">Individual</div>
+        <div class="simbtns">
+          <button data-esc="individual-si">Confirma (Sí)</button>
+          <button data-esc="individual-talvez">Tal vez</button>
+          <button data-esc="individual-no">No</button>
+          <button data-esc="individual-texto">Texto libre</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--suave);font-weight:600;margin-bottom:6px">Pareja</div>
+        <div class="simbtns">
+          <button data-esc="pareja-si">Ambos sí</button>
+          <button data-esc="pareja-no">Ambos no</button>
+          <button data-esc="pareja-parcial">Parcial (Sí / No)</button>
+          <button data-esc="pareja-texto">Texto libre</button>
+        </div>
+      </div>
+      <div class="aviso" id="simMsg" style="text-align:left;margin-top:14px"></div>
     </div>
   </div>
 
@@ -270,6 +298,28 @@
       } catch (e) { msgAlta('Error: ' + e.message, true); }
       $('btnAlta').disabled = false;
     });
+
+    // ── Simular respuestas (prueba) ──────────────────────────────────
+    function msgSim(t, err) { const el = $('simMsg'); el.textContent = t; el.style.color = err ? 'var(--err)' : 'var(--ok)'; }
+    document.querySelectorAll('.simbtns button').forEach(b => b.addEventListener('click', async () => {
+      const btns = document.querySelectorAll('.simbtns button');
+      btns.forEach(x => x.disabled = true);
+      msgSim('Simulando «' + b.textContent + '»…', false);
+      try {
+        const r = await fetch(BASE + 'simular', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ escenario: b.dataset.esc }) });
+        const d = await r.json();
+        if (d.status !== 'ok') { msgSim('❌ ' + (d.msg || 'Error'), true); }
+        else {
+          const g = d.guardado || {};
+          const txt = g.rta !== undefined
+            ? '✅ En «' + d.hoja + '»: ' + g.invitado + ' → Rta = "' + (g.rta || '(vacío)') + '"'
+            : '✅ En «' + d.hoja + '»: ' + g.titular + ' → "' + (g.rtaTitular || '(vacío)') + '"  ·  ' + g.acompanante + ' → "' + (g.rtaAcompanante || '(vacío)') + '"';
+          msgSim(txt, false);
+          refrescar();
+        }
+      } catch (e) { msgSim('Error: ' + e.message, true); }
+      btns.forEach(x => x.disabled = false);
+    }));
 
     // Arranque
     pintarResumen(EST0.resumen);

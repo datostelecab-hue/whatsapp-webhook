@@ -48,6 +48,13 @@ router.get('/probar', async (req, res) => {
   catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
+// Simula el flujo de respuesta de un invitado de prueba (toca botón / escribe) y devuelve
+// cómo quedó guardado en la hoja. Escenario: individual-si|talvez|no|texto, pareja-si|no|parcial|texto.
+router.post('/simular', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await boda.simular((req.body || {}).escenario)) }); }
+  catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
 // Estado + progreso (el panel lo sondea para refrescar la barra).
 router.get('/estado', async (req, res) => {
   try {
