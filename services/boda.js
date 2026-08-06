@@ -98,23 +98,105 @@ const enviarInteractivo = (to, texto, botones) => enviarWA({
   interactive: { type: 'button', body: { text: texto }, action: { buttons: botones.map(b => ({ type: 'reply', reply: b })) } }
 });
 
-// Envía la plantilla probando variantes de idioma hasta acertar, y recuerda la buena.
-// params: array posicional para {{1}}, {{2}}…
-async function enviarPlantilla(to, plantilla, params) {
-  const cuerpo = code => ({
-    to: soloDigitos(to), type: 'template',
-    template: { name: plantilla, language: { code }, components: [{ type: 'body', parameters: params.map(t => ({ type: 'text', text: (t || '').toString() })) }] }
-  });
-  const orden = [IDIOMA_OK, 'es', 'es_AR', 'es_ES', 'es_LA'].filter((v, i, a) => v && a.indexOf(v) === i);
+// ── Definición real de la plantilla (para armar los parámetros como toca) ────
+// Meta acepta parámetros POSICIONALES ({{1}}) o CON NOMBRE ({{nombre}}); mandar el
+// formato equivocado da el error #132012. En vez de adivinar, leemos la plantilla
+// desde la Graph API y construimos los parámetros según su formato real e idioma.
+let WABA_ID = (process.env.BODA_WABA_ID || '').trim() || null;
+const defsPlantilla = new Map();   // nombre → { formato, nombres, idioma }
+
+// Descubre el WhatsApp Business Account del token (una vez) vía debug_token.
+async function descubrirWaba() {
+  if (WABA_ID) return WABA_ID;
+  try {
+    const r = await fetch(`https://graph.facebook.com/${VERSION}/debug_token?input_token=${encodeURIComponent(TOKEN)}&access_token=${encodeURIComponent(TOKEN)}`);
+    const d = await r.json();
+    for (const s of (d.data && d.data.granular_scopes) || []) {
+      if (/whatsapp_business/i.test(s.scope || '') && (s.target_ids || []).length) { WABA_ID = s.target_ids[0]; break; }
+    }
+  } catch (e) { console.error('⚠️ [BODA] No pude descubrir el WABA:', e.message); }
+  return WABA_ID;
+}
+
+// Lee (y cachea) el formato de parámetros y el idioma de una plantilla aprobada.
+async function definicionPlantilla(nombre) {
+  if (defsPlantilla.has(nombre)) return defsPlantilla.get(nombre);
+  const waba = await descubrirWaba();
+  if (!waba) return null;
+  try {
+    const r = await fetch(`https://graph.facebook.com/${VERSION}/${waba}/message_templates?name=${encodeURIComponent(nombre)}&access_token=${encodeURIComponent(TOKEN)}`);
+    const d = await r.json();
+    const t = (d.data || []).find(x => x.name === nombre) || (d.data || [])[0];
+    if (!t) return null;
+    const body = (t.components || []).find(c => (c.type || '').toUpperCase() === 'BODY');
+    let nombres = [];
+    if (body && body.example && body.example.body_text_named_params) nombres = body.example.body_text_named_params.map(p => p.param_name);
+    if (!nombres.length && body && body.text) {
+      const toks = (body.text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || []).map(x => x.replace(/[{}]/g, '').trim());
+      nombres = toks.filter(x => !/^\d+$/.test(x));   // solo los que NO son números
+    }
+    const formato = (t.parameter_format || (nombres.length ? 'NAMED' : 'POSITIONAL')).toUpperCase();
+    const def = {
+      formato, nombres, idioma: t.language || IDIOMA_OK,
+      // Estructura cruda (para el diagnóstico): tipo de cada componente, texto y ejemplo.
+      componentes: (t.components || []).map(c => ({ type: c.type, format: c.format, text: c.text, example: c.example }))
+    };
+    defsPlantilla.set(nombre, def);
+    console.log(`💍 [BODA] Plantilla ${nombre}: formato ${def.formato}, idioma ${def.idioma}${def.nombres.length ? ', vars ' + def.nombres.join('/') : ''}`);
+    return def;
+  } catch (e) { console.error(`⚠️ [BODA] No pude leer la plantilla ${nombre}:`, e.message); return null; }
+}
+
+// Construcción de los parámetros de cuerpo (valores en orden {{1}}, {{2}}…).
+const paramsPosicional = valores => valores.map(t => ({ type: 'text', text: (t || '').toString() }));
+const paramsConNombre = (valores, nombres) => valores.map((t, i) => ({ type: 'text', parameter_name: nombres[i] || String(i + 1), text: (t || '').toString() }));
+
+// Recuerda la estrategia que funcionó para cada plantilla (para no re-tantear en los 249 envíos).
+const formatoOK = new Map();   // plantilla → { tipo:'named'|'positional', nombres? }
+
+// Envía la plantilla acertando el formato SÍ o SÍ: prueba, en orden, named con los
+// nombres reales → named con "1"/"2" → posicional, y se queda con el que va. Un fallo
+// de formato (#132012) NO manda mensaje, así que probar otra estrategia no duplica nada.
+// valores: array de textos en orden ({{1}}, {{2}}…) — aquí son los APODOS.
+async function enviarPlantilla(to, plantilla, valores) {
+  const def = await definicionPlantilla(plantilla).catch(() => null);
+
+  const candidatas = [];
+  const memo = formatoOK.get(plantilla);
+  if (memo) candidatas.push(memo);
+  if (def && def.formato === 'NAMED' && def.nombres.length) candidatas.push({ tipo: 'named', nombres: def.nombres });
+  else if (def && def.nombres.length) candidatas.push({ tipo: 'named', nombres: def.nombres });
+  candidatas.push({ tipo: 'named', nombres: valores.map((_, i) => String(i + 1)) });   // "1","2" (posicional guardado como named)
+  candidatas.push({ tipo: 'positional' });
+  // Quitar duplicadas.
+  const vistas = new Set(), estrategias = [];
+  for (const c of candidatas) { const k = c.tipo + ':' + ((c.nombres || []).join(',')); if (!vistas.has(k)) { vistas.add(k); estrategias.push(c); } }
+
+  const idiomas = [(def && def.idioma) || IDIOMA_OK, 'es', 'es_AR', 'es_ES', 'es_LA'].filter((v, i, a) => v && a.indexOf(v) === i);
   let ultimo;
-  for (const code of orden) {
-    const r = await enviarWA(cuerpo(code));
-    if (r.ok) { IDIOMA_OK = code; return r; }
-    ultimo = r;
-    // Si el fallo NO es de idioma/plantilla, no tiene sentido seguir probando.
-    if (!/language|translat|does not exist|template name|plantilla/i.test(r.error || '')) break;
+  for (const est of estrategias) {
+    const params = est.tipo === 'named' ? paramsConNombre(valores, est.nombres) : paramsPosicional(valores);
+    for (const code of idiomas) {
+      const r = await enviarWA({
+        to: soloDigitos(to), type: 'template',
+        template: { name: plantilla, language: { code }, components: [{ type: 'body', parameters: params }] }
+      });
+      if (r.ok) { IDIOMA_OK = code; formatoOK.set(plantilla, est); return r; }
+      ultimo = r;
+      const err = r.error || '';
+      if (/132012|parameter format/i.test(err)) break;                              // formato → siguiente estrategia
+      if (!/language|translat|does not exist|template name/i.test(err)) return r;    // error no recuperable (token, nº, etc.)
+      // fallo de idioma → probar el siguiente idioma con esta misma estrategia
+    }
   }
   return ultimo;
+}
+
+// Diagnóstico para el panel: qué WABA y qué formato/idioma ve de cada plantilla.
+async function diagnostico() {
+  const waba = await descubrirWaba();
+  const [p1, p112] = await Promise.all([definicionPlantilla('plantilla_1'), definicionPlantilla('plantilla_1_1_2')]);
+  return { waba: waba || null, plantilla_1: p1, plantilla_1_1_2: p112 };
 }
 
 // ── Lectura de la lista y localización del invitado por teléfono ─────────────
@@ -402,4 +484,4 @@ async function opcionesLista() {
   return { invita: set(0), edad: set(6), prioridad: set(7), lista: set(8), grupo: set(10) };
 }
 
-module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista };
+module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista, diagnostico };

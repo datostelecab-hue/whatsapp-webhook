@@ -35,6 +35,12 @@ router.post('/agregar', async (req, res) => {
   }
 });
 
+// Diagnóstico: qué WABA y qué formato/idioma detecta de cada plantilla (para depurar).
+router.get('/plantillas', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await boda.diagnostico()) }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
 // Estado + progreso (el panel lo sondea para refrescar la barra).
 router.get('/estado', async (req, res) => {
   try {
