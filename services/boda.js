@@ -112,6 +112,7 @@ const enviarInteractivo = (to, texto, botones) => enviarWA({
 // formato equivocado da el error #132012. En vez de adivinar, leemos la plantilla
 // desde la Graph API y construimos los parámetros según su formato real e idioma.
 let WABA_ID = (process.env.BODA_WABA_ID || '').trim() || null;
+let debugWaba = null;              // rastro del descubrimiento (para el diagnóstico)
 const defsPlantilla = new Map();   // nombre → { formato, nombres, idioma }
 
 // Descubre el WhatsApp Business Account del token (una vez) vía debug_token.
@@ -120,10 +121,19 @@ async function descubrirWaba() {
   try {
     const r = await fetch(`https://graph.facebook.com/${VERSION}/debug_token?input_token=${encodeURIComponent(TOKEN)}&access_token=${encodeURIComponent(TOKEN)}`);
     const d = await r.json();
+    debugWaba = { app_id: d.data && d.data.app_id, scopes: (d.data && d.data.granular_scopes) || null, error: d.error ? d.error.message : null };
     for (const s of (d.data && d.data.granular_scopes) || []) {
       if (/whatsapp_business/i.test(s.scope || '') && (s.target_ids || []).length) { WABA_ID = s.target_ids[0]; break; }
     }
-  } catch (e) { console.error('⚠️ [BODA] No pude descubrir el WABA:', e.message); }
+    // Fallback: WABA a partir del número de teléfono (a veces expuesto en la Graph API).
+    if (!WABA_ID) {
+      const r2 = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}?fields=whatsapp_business_account{id}&access_token=${encodeURIComponent(TOKEN)}`);
+      const d2 = await r2.json();
+      const w = d2.whatsapp_business_account && d2.whatsapp_business_account.id;
+      if (w) { WABA_ID = w; debugWaba.viaTelefono = w; }
+      else if (d2.error) debugWaba.errorTelefono = d2.error.message;
+    }
+  } catch (e) { debugWaba = { error: e.message }; }
   return WABA_ID;
 }
 
@@ -232,7 +242,52 @@ async function enviarPlantilla(to, plantilla, valores) {
 async function diagnostico() {
   const waba = await descubrirWaba();
   const [p1, p112] = await Promise.all([definicionPlantilla('plantilla_1'), definicionPlantilla('plantilla_1_1_2')]);
-  return { waba: waba || null, plantilla_1: p1, plantilla_1_1_2: p112 };
+  return { waba: waba || null, debug: debugWaba, plantilla_1: p1, plantilla_1_1_2: p112 };
+}
+
+// Prueba de envío con TRAZA completa: intenta cada estrategia (cuerpo/encabezado,
+// posicional/con-nombre, cada idioma) y registra qué respondió Meta en cada una. Para
+// en el primer ÉXITO (para no mandar duplicados: las que fallan no llegan a enviar).
+async function probarEnvio(telefono, plantilla, valores) {
+  const def = await definicionPlantilla(plantilla).catch(() => null);
+  const estr = estrategiasEnvio(def);
+  const idiomas = [(def && def.idioma) || IDIOMA_OK, 'es', 'es_AR', 'es_ES', 'es_LA'].filter((v, i, a) => v && a.indexOf(v) === i);
+  const to = normalizarEnvio(telefono);
+  const traza = [];
+  let exito = null;
+  for (const e of estr) {
+    const comps = e.fn(valores);
+    if (!comps || !comps.length) { traza.push({ estrategia: e.label, saltada: 'sin componentes (falta definición/WABA)' }); continue; }
+    const intentos = [];
+    let ok = false;
+    for (const code of idiomas) {
+      const r = await enviarWA({ to, type: 'template', template: { name: plantilla, language: { code }, components: comps } });
+      intentos.push({ idioma: code, ok: r.ok, id: r.id || null, error: r.error || null });
+      if (r.ok) { ok = true; exito = { estrategia: e.label, idioma: code, id: r.id }; estrategiaMemo.set(plantilla, e.label); IDIOMA_OK = code; break; }
+      if (!/language|translat|does not exist|template name/i.test(r.error || '')) break;   // no es de idioma → no probar más idiomas
+    }
+    traza.push({ estrategia: e.label, componentes: comps, intentos });
+    if (ok) break;
+  }
+  return { plantilla, to, def, exito, traza };
+}
+
+// Ejecuta la prueba completa contra los números de las hojas TEST (un individual y una
+// pareja) y devuelve toda la traza. Solo manda mensaje real en la estrategia que acierta.
+async function probarCompleto() {
+  const [t1, t11] = await Promise.all([
+    readSheet(SHEET_ID, `'${HOJA.indTest}'!A:E`).catch(() => []),
+    readSheet(SHEET_ID, `'${HOJA.parTest}'!A:H`).catch(() => [])
+  ]);
+  const fi = t1[1] || [], fp = t11[1] || [];
+  const out = { waba: await descubrirWaba(), debug: debugWaba };
+  out.plantilla_1 = fi[1]
+    ? await probarEnvio(fi[1], 'plantilla_1', [(fi[2] || fi[0] || 'Prueba').toString()])
+    : { error: 'Sin número en TEST 1 (fila 2, col B)' };
+  out.plantilla_1_1_2 = fp[2]
+    ? await probarEnvio(fp[2], 'plantilla_1_1_2', [(fp[3] || fp[0] || 'Prueba').toString(), (fp[4] || fp[1] || 'Prueba').toString()])
+    : { error: 'Sin número en TEST 1+1 (fila 2, col C)' };
+  return out;
 }
 
 // ── Lectura de la lista y localización del invitado por teléfono ─────────────
@@ -523,4 +578,4 @@ async function opcionesLista() {
   return { invita: set(0), edad: set(6), prioridad: set(7), lista: set(8), grupo: set(10) };
 }
 
-module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista, diagnostico };
+module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista, diagnostico, probarCompleto };

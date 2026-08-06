@@ -35,9 +35,16 @@ router.post('/agregar', async (req, res) => {
   }
 });
 
-// Diagnóstico: qué WABA y qué formato/idioma detecta de cada plantilla (para depurar).
+// Diagnóstico: qué WABA y qué formato/idioma detecta de cada plantilla (solo lectura).
 router.get('/plantillas', async (req, res) => {
   try { res.json({ status: 'ok', ...(await boda.diagnostico()) }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
+// Prueba de envío con TRAZA completa contra las hojas TEST: intenta todas las estrategias
+// y registra la respuesta de Meta en cada una (manda mensaje real solo en la que acierta).
+router.get('/probar', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await boda.probarCompleto()) }); }
   catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
