@@ -32,6 +32,22 @@ const COL = { IND_RTA: 'D', IND_ENVIADO: 'E', PAR_RTA_T: 'F', PAR_RTA_MAS: 'G', 
 // Idioma de las plantillas. Se auto-corrige en el primer envío (es / es_AR / es_ES…).
 let IDIOMA_OK = (process.env.BODA_IDIOMA || 'es').trim();
 
+// Las plantillas llevan ENCABEZADO DE IMAGEN (la foto del portón). Meta obliga a mandar
+// esa imagen en CADA envío. Se resuelve por orden:
+//   1) BODA_IMAGEN_ID   → media id ya subido a WhatsApp.
+//   2) BODA_IMAGEN_URL  → URL pública directa.
+//   3) La propia app en Render: RENDER_EXTERNAL_URL/assets/<BODA_IMAGEN_FILE> (por defecto
+//      boda.jpg; /assets se sirve en abierto, así que WhatsApp puede descargarla).
+const IMG_ID = (process.env.BODA_IMAGEN_ID || '').trim();
+const IMG_FILE = (process.env.BODA_IMAGEN_FILE || 'boda.jpeg').trim();
+let IMG_URL = (process.env.BODA_IMAGEN_URL || '').trim();
+if (!IMG_URL && !IMG_ID && process.env.RENDER_EXTERNAL_URL) {
+  IMG_URL = process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, '') + '/assets/' + IMG_FILE;
+}
+const tieneImagen = () => !!(IMG_URL || IMG_ID);
+const imgParam = () => ({ type: 'image', image: IMG_ID ? { id: IMG_ID } : { link: IMG_URL } });
+const imagenActual = () => IMG_ID ? ('id:' + IMG_ID) : (IMG_URL || '(sin imagen configurada)');
+
 // ── Textos de las respuestas ────────────────────────────────────────────────
 const IND = {
   A: '¡Genial! Qué bueno que nos vas a poder acompañar en este día tan especial 🥳\n¡Te esperamos!\n\nIgna y Cruz',
@@ -204,6 +220,11 @@ function componentesDesdeDef(def, valores) {
   for (const c of def.componentes) {
     const tipo = (c.type || '').toUpperCase();
     if (tipo !== 'BODY' && tipo !== 'HEADER') continue;
+    // Encabezado de imagen (media): se manda la imagen, no texto.
+    if (tipo === 'HEADER' && (c.format || '').toUpperCase() === 'IMAGE') {
+      if (tieneImagen()) out.push({ type: 'header', parameters: [imgParam()] });
+      continue;
+    }
     const toks = (c.text || '').match(/\{\{\s*[^}]+?\s*\}\}/g) || [];
     if (!toks.length) continue;
     const nombres = toks.map(x => x.replace(/[{}]/g, '').trim());
@@ -223,25 +244,22 @@ function componentesDesdeDef(def, valores) {
 // la EXACTA (según Meta); el resto cubre por fuerza bruta que no se pudiera leer la
 // definición: cuerpo/encabezado × posicional/con-nombre "1","2".
 function estrategiasEnvio(def) {
-  const bodyNamed = nombres => v => [{ type: 'body', parameters: paramsConNombre(v, nombres(v)) }];
   const num = v => v.map((_, i) => String(i + 1));
-  const nombre = v => v.map((_, i) => i ? 'nombre_' + (i + 1) : 'nombre');
-  const nombreN = v => v.map((_, i) => 'nombre_' + (i + 1));
-  const name = v => v.map((_, i) => i ? 'name_' + (i + 1) : 'name');
-  // Nombre(s) forzado(s) por env (BODA_VARS="nombre" o "nombre_1,nombre_2") si se conoce.
-  const forzados = (process.env.BODA_VARS || '').split(',').map(s => s.trim()).filter(Boolean);
-  const estr = [
-    { label: 'def', fn: v => componentesDesdeDef(def, v) }
-  ];
-  if (forzados.length) estr.push({ label: 'body-forzado', fn: v => [{ type: 'body', parameters: paramsConNombre(v, v.map((_, i) => forzados[i] || forzados[forzados.length - 1])) }] });
+  const bodyPos = v => ({ type: 'body', parameters: paramsPosicional(v) });
+  const bodyNum = v => ({ type: 'body', parameters: paramsConNombre(v, num(v)) });
+  const estr = [{ label: 'def', fn: v => componentesDesdeDef(def, v) }];
+  // Estas plantillas llevan ENCABEZADO DE IMAGEN + cuerpo posicional {{1}}[,{{2}}]. Hay que
+  // mandar la imagen (imgParam) en cada envío; sin ella Meta rechaza con #132012.
+  if (tieneImagen()) {
+    estr.push(
+      { label: 'img+body-pos', fn: v => [{ type: 'header', parameters: [imgParam()] }, bodyPos(v)] },
+      { label: 'img+body-num', fn: v => [{ type: 'header', parameters: [imgParam()] }, bodyNum(v)] }
+    );
+  }
+  // Respaldos (por si alguna plantilla no llevara imagen).
   estr.push(
-    { label: 'body-pos', fn: v => [{ type: 'body', parameters: paramsPosicional(v) }] },
-    { label: 'body-num', fn: bodyNamed(num) },
-    { label: 'body-nombre', fn: bodyNamed(nombre) },
-    { label: 'body-nombre_n', fn: bodyNamed(nombreN) },
-    { label: 'body-name', fn: bodyNamed(name) },
-    { label: 'header-pos', fn: v => [{ type: 'header', parameters: paramsPosicional(v) }] },
-    { label: 'header-num', fn: v => [{ type: 'header', parameters: paramsConNombre(v, num(v)) }] }
+    { label: 'body-pos', fn: v => [bodyPos(v)] },
+    { label: 'body-num', fn: v => [bodyNum(v)] }
   );
   return estr;
 }
@@ -280,7 +298,7 @@ async function enviarPlantilla(to, plantilla, valores) {
 async function diagnostico() {
   const waba = await descubrirWaba();
   const [p1, p112] = await Promise.all([definicionPlantilla('plantilla_1'), definicionPlantilla('plantilla_1_1_2')]);
-  return { waba: waba || null, debug: debugWaba, plantilla_1: p1, plantilla_1_1_2: p112 };
+  return { waba: waba || null, imagen: imagenActual(), debug: debugWaba, plantilla_1: p1, plantilla_1_1_2: p112 };
 }
 
 // Prueba de envío con TRAZA completa: intenta cada estrategia (cuerpo/encabezado,
@@ -318,7 +336,7 @@ async function probarCompleto() {
     readSheet(SHEET_ID, `'${HOJA.parTest}'!A:H`).catch(() => [])
   ]);
   const fi = t1[1] || [], fp = t11[1] || [];
-  const out = { waba: await descubrirWaba(), debug: debugWaba };
+  const out = { waba: await descubrirWaba(), imagen: imagenActual(), debug: debugWaba };
   out.plantilla_1 = fi[1]
     ? await probarEnvio(fi[1], 'plantilla_1', [(fi[2] || fi[0] || 'Prueba').toString()])
     : { error: 'Sin número en TEST 1 (fila 2, col B)' };
