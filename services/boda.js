@@ -79,6 +79,15 @@ function clave(t) {
   return d.length > 10 ? d.slice(-10) : d;                        // ya nacional u otro
 }
 
+// Normaliza un teléfono para ENVIAR (WhatsApp exige el prefijo de país, sin signos).
+// Repara el caso típico del listado: móvil argentino sin el "54" (queda "9"+10 dígitos).
+function normalizarEnvio(t) {
+  let d = soloDigitos(t);
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.length === 11 && d.startsWith('9')) d = '54' + d;        // 9 + 10 nacional AR → +54
+  return d;
+}
+
 // ── Envío por la Cloud API (SIEMPRE desde el número de la boda) ──────────────
 async function enviarWA(payload) {
   try {
@@ -92,9 +101,9 @@ async function enviarWA(payload) {
     return { ok: false, error: (d.error && d.error.message) || JSON.stringify(d) };
   } catch (e) { return { ok: false, error: e.message }; }
 }
-const enviarTexto = (to, texto) => enviarWA({ to: soloDigitos(to), type: 'text', text: { body: texto } });
+const enviarTexto = (to, texto) => enviarWA({ to: normalizarEnvio(to), type: 'text', text: { body: texto } });
 const enviarInteractivo = (to, texto, botones) => enviarWA({
-  to: soloDigitos(to), type: 'interactive',
+  to: normalizarEnvio(to), type: 'interactive',
   interactive: { type: 'button', body: { text: texto }, action: { buttons: botones.map(b => ({ type: 'reply', reply: b })) } }
 });
 
@@ -178,7 +187,7 @@ async function enviarPlantilla(to, plantilla, valores) {
     const params = est.tipo === 'named' ? paramsConNombre(valores, est.nombres) : paramsPosicional(valores);
     for (const code of idiomas) {
       const r = await enviarWA({
-        to: soloDigitos(to), type: 'template',
+        to: normalizarEnvio(to), type: 'template',
         template: { name: plantilla, language: { code }, components: [{ type: 'body', parameters: params }] }
       });
       if (r.ok) { IDIOMA_OK = code; formatoOK.set(plantilla, est); return r; }
@@ -357,7 +366,10 @@ async function enviarInvitaciones(opciones = {}) {
         cola.push({ hoja: hPar, fila: i + 1, tel, plantilla: 'plantilla_1_1_2', params: [(f[3] || f[0] || '').toString().trim(), (f[4] || f[1] || '').toString().trim()], envCol: COL.PAR_ENVIADO });
       }
     }
-    const lote = limite ? cola.slice(0, limite) : cola;
+    // Quita duplicados por teléfono (el mismo número en varias filas → un solo mensaje).
+    const vistas = new Set(), dedup = [];
+    for (const d of cola) { const k = clave(d.tel); if (vistas.has(k)) { progreso.saltados++; continue; } vistas.add(k); dedup.push(d); }
+    const lote = limite ? dedup.slice(0, limite) : dedup;
     progreso.total = lote.length;
 
     // 2) Enviar en serie, marcando "Enviado" y actualizando el progreso.
