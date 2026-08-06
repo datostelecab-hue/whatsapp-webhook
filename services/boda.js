@@ -156,46 +156,73 @@ async function definicionPlantilla(nombre) {
   } catch (e) { console.error(`⚠️ [BODA] No pude leer la plantilla ${nombre}:`, e.message); return null; }
 }
 
-// Construcción de los parámetros de cuerpo (valores en orden {{1}}, {{2}}…).
+// Construcción de los parámetros (valores en orden {{1}}, {{2}}…).
 const paramsPosicional = valores => valores.map(t => ({ type: 'text', text: (t || '').toString() }));
 const paramsConNombre = (valores, nombres) => valores.map((t, i) => ({ type: 'text', parameter_name: nombres[i] || String(i + 1), text: (t || '').toString() }));
 
-// Recuerda la estrategia que funcionó para cada plantilla (para no re-tantear en los 249 envíos).
-const formatoOK = new Map();   // plantilla → { tipo:'named'|'positional', nombres? }
+// Componentes EXACTOS según la definición real de la plantilla: coloca las variables
+// donde de verdad están (HEADER o BODY) y en el formato correcto (con nombre o posicional).
+// Devuelve null si no se pudo leer la definición.
+function componentesDesdeDef(def, valores) {
+  if (!def || !Array.isArray(def.componentes)) return null;
+  const out = []; let idx = 0;
+  for (const c of def.componentes) {
+    const tipo = (c.type || '').toUpperCase();
+    if (tipo !== 'BODY' && tipo !== 'HEADER') continue;
+    const toks = (c.text || '').match(/\{\{\s*[^}]+?\s*\}\}/g) || [];
+    if (!toks.length) continue;
+    const nombres = toks.map(x => x.replace(/[{}]/g, '').trim());
+    const named = def.formato === 'NAMED' || nombres.some(n => !/^\d+$/.test(n));
+    out.push({
+      type: tipo.toLowerCase(),
+      parameters: nombres.map(n => {
+        const val = (valores[idx++] || '').toString();
+        return named ? { type: 'text', parameter_name: n, text: val } : { type: 'text', text: val };
+      })
+    });
+  }
+  return out.length ? out : null;
+}
 
-// Envía la plantilla acertando el formato SÍ o SÍ: prueba, en orden, named con los
-// nombres reales → named con "1"/"2" → posicional, y se queda con el que va. Un fallo
-// de formato (#132012) NO manda mensaje, así que probar otra estrategia no duplica nada.
-// valores: array de textos en orden ({{1}}, {{2}}…) — aquí son los APODOS.
+// Estrategias de envío (constructores de componentes), de más a menos probable. La 1ª es
+// la EXACTA (según Meta); el resto cubre por fuerza bruta que no se pudiera leer la
+// definición: cuerpo/encabezado × posicional/con-nombre "1","2".
+function estrategiasEnvio(def) {
+  const n12 = v => v.map((_, i) => String(i + 1));
+  return [
+    { label: 'def', fn: v => componentesDesdeDef(def, v) },
+    { label: 'body-pos', fn: v => [{ type: 'body', parameters: paramsPosicional(v) }] },
+    { label: 'body-num', fn: v => [{ type: 'body', parameters: paramsConNombre(v, n12(v)) }] },
+    { label: 'header-pos', fn: v => [{ type: 'header', parameters: paramsPosicional(v) }] },
+    { label: 'header-num', fn: v => [{ type: 'header', parameters: paramsConNombre(v, n12(v)) }] }
+  ];
+}
+
+// Recuerda la estrategia que funcionó (para no re-tantear en los 249 envíos).
+const estrategiaMemo = new Map();   // plantilla → label
+
+// Envía la plantilla acertando la estructura SÍ o SÍ. Prueba la estructura EXACTA de Meta
+// y, si no, cuerpo/encabezado en ambos formatos. Un fallo de estructura (#132012) NO manda
+// mensaje, así que probar otra estrategia nunca duplica. valores = APODOS en orden.
 async function enviarPlantilla(to, plantilla, valores) {
   const def = await definicionPlantilla(plantilla).catch(() => null);
-
-  const candidatas = [];
-  const memo = formatoOK.get(plantilla);
-  if (memo) candidatas.push(memo);
-  if (def && def.formato === 'NAMED' && def.nombres.length) candidatas.push({ tipo: 'named', nombres: def.nombres });
-  else if (def && def.nombres.length) candidatas.push({ tipo: 'named', nombres: def.nombres });
-  candidatas.push({ tipo: 'named', nombres: valores.map((_, i) => String(i + 1)) });   // "1","2" (posicional guardado como named)
-  candidatas.push({ tipo: 'positional' });
-  // Quitar duplicadas.
-  const vistas = new Set(), estrategias = [];
-  for (const c of candidatas) { const k = c.tipo + ':' + ((c.nombres || []).join(',')); if (!vistas.has(k)) { vistas.add(k); estrategias.push(c); } }
+  let estr = estrategiasEnvio(def);
+  const memo = estrategiaMemo.get(plantilla);
+  if (memo) estr = [...estr.filter(e => e.label === memo), ...estr.filter(e => e.label !== memo)];
 
   const idiomas = [(def && def.idioma) || IDIOMA_OK, 'es', 'es_AR', 'es_ES', 'es_LA'].filter((v, i, a) => v && a.indexOf(v) === i);
   let ultimo;
-  for (const est of estrategias) {
-    const params = est.tipo === 'named' ? paramsConNombre(valores, est.nombres) : paramsPosicional(valores);
+  for (const e of estr) {
+    const comps = e.fn(valores);
+    if (!comps || !comps.length) continue;
     for (const code of idiomas) {
-      const r = await enviarWA({
-        to: normalizarEnvio(to), type: 'template',
-        template: { name: plantilla, language: { code }, components: [{ type: 'body', parameters: params }] }
-      });
-      if (r.ok) { IDIOMA_OK = code; formatoOK.set(plantilla, est); return r; }
+      const r = await enviarWA({ to: normalizarEnvio(to), type: 'template', template: { name: plantilla, language: { code }, components: comps } });
+      if (r.ok) { IDIOMA_OK = code; estrategiaMemo.set(plantilla, e.label); return r; }
       ultimo = r;
       const err = r.error || '';
-      if (/132012|parameter format/i.test(err)) break;                              // formato → siguiente estrategia
-      if (!/language|translat|does not exist|template name/i.test(err)) return r;    // error no recuperable (token, nº, etc.)
-      // fallo de idioma → probar el siguiente idioma con esta misma estrategia
+      if (/132012|parameter format|number of param|expected|component/i.test(err)) break;   // estructura mala → siguiente
+      if (!/language|translat|does not exist|template name/i.test(err)) return r;            // error no recuperable
+      // fallo de idioma → siguiente idioma, misma estrategia
     }
   }
   return ultimo;
