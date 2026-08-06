@@ -95,6 +95,7 @@ const notificacionesRoutes = require('./routes/notificaciones');
 const pendientesRoutes = require('./routes/pendientes');
 const peticionesRoutes = require('./routes/peticiones');
 const operacionesRoutes = require('./routes/operaciones');
+const bodaRoutes = require('./routes/boda');
 const authRoutes = require('./routes/auth');
 const usuariosRoutes = require('./routes/usuarios');
 const sesion = require('./services/sesion');
@@ -162,6 +163,11 @@ app.use('/notificaciones', notificacionesRoutes);
 app.use('/pendientes', pendientesRoutes);
 app.use('/peticiones', peticionesRoutes);
 app.use('/operaciones', operacionesRoutes);
+
+// ── BODA (favor aparte, módulo OCULTO): panel solo-superadmin para enviar las
+//    invitaciones por WhatsApp. No está en el menú ni en ACCESO. El webhook (POST /)
+//    ya enruta por phone_number_id lo que llega al número de la boda. ──────────────
+app.use('/boda-igna-cruz', bodaRoutes);
 
 // Actualización manual del padrón CONDUCTORES_BOLT (para probar sin esperar al cron).
 app.get('/conductores-bolt/actualizar', async (req, res) => {

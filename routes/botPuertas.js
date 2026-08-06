@@ -33,6 +33,15 @@ router.post('/', async (req, res) => {
     const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return res.status(200).end();
 
+    // Enrutado por número: lo que llega al número de la BODA (favor aparte) va a su
+    // propio módulo. El bot de Telecab (puertas, Ballenoil…) queda intacto.
+    const phoneNumberId = req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+    const boda = require('../services/boda');
+    if (phoneNumberId === boda.PHONE_NUMBER_ID) {
+      await boda.manejarMensaje(message);
+      return res.status(200).end();
+    }
+
     const from = message.from;
 
     if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {

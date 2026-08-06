@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title><%= titulo %></title>
+  <style>
+    :root { --oro:#b98a2e; --oro2:#d8b866; --tinta:#2b2b33; --suave:#6b6b76; --linea:#ece7de; --bg:#faf8f4; --ok:#2e8b57; --err:#c0392b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--tinta); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased; }
+    .wrap { max-width:720px; margin:0 auto; padding:32px 20px 64px; }
+    header { text-align:center; margin-bottom:28px; }
+    header .nombres { font-family:Georgia,"Times New Roman",serif; font-size:34px; letter-spacing:.5px; color:var(--oro); }
+    header .sub { color:var(--suave); font-size:14px; margin-top:4px; }
+    header .fecha { color:var(--suave); font-size:12px; margin-top:2px; letter-spacing:1px; text-transform:uppercase; }
+    .card { background:#fff; border:1px solid var(--linea); border-radius:14px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,.04); margin-bottom:18px; }
+    .card h2 { margin:0 0 14px; font-size:15px; font-weight:600; letter-spacing:.3px; }
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .stat { background:#fff; border:1px solid var(--linea); border-radius:14px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .stat .t { font-size:13px; color:var(--suave); font-weight:600; margin-bottom:12px; }
+    .stat .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; text-align:center; }
+    .stat .n { font-size:24px; font-weight:700; line-height:1; }
+    .stat .n.enviados { color:var(--oro); }
+    .stat .n.resp { color:var(--ok); }
+    .stat .l { font-size:11px; color:var(--suave); margin-top:5px; }
+    .opts { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; margin-bottom:16px; }
+    .seg { display:inline-flex; border:1px solid var(--linea); border-radius:10px; overflow:hidden; }
+    .seg button { border:0; background:#fff; padding:9px 14px; font-size:13px; cursor:pointer; color:var(--suave); }
+    .seg button.on { background:var(--oro); color:#fff; font-weight:600; }
+    label.chk { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--tinta); cursor:pointer; }
+    .lim { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--suave); }
+    .lim input { width:70px; padding:6px 8px; border:1px solid var(--linea); border-radius:8px; font-size:13px; }
+    .enviar { width:100%; border:0; border-radius:12px; padding:14px; font-size:15px; font-weight:600; color:#fff; background:linear-gradient(135deg,var(--oro),var(--oro2)); cursor:pointer; }
+    .enviar:disabled { opacity:.5; cursor:not-allowed; }
+    .modo-test .enviar { background:linear-gradient(135deg,#3a7bd5,#4a90d9); }
+    .aviso { font-size:12px; color:var(--suave); margin-top:10px; text-align:center; }
+    .bar { height:12px; background:var(--linea); border-radius:8px; overflow:hidden; margin:10px 0; }
+    .bar > div { height:100%; width:0; background:linear-gradient(90deg,var(--oro),var(--oro2)); transition:width .4s ease; }
+    .prog-linea { display:flex; justify-content:space-between; font-size:13px; color:var(--suave); }
+    .prog-linea b { color:var(--tinta); }
+    .badge { display:inline-block; font-size:11px; padding:2px 8px; border-radius:20px; background:#eef; color:#3a7bd5; margin-left:8px; vertical-align:middle; }
+    .errores { margin-top:12px; border-top:1px dashed var(--linea); padding-top:10px; }
+    .errores div { font-size:12px; color:var(--err); font-family:ui-monospace,Menlo,Consolas,monospace; margin-bottom:3px; word-break:break-all; }
+    .vacio { color:var(--suave); font-size:13px; text-align:center; padding:8px 0; }
+    .pie { text-align:center; font-size:11px; color:var(--suave); margin-top:10px; }
+    .form { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+    .campo { display:flex; flex-direction:column; gap:5px; }
+    .campo label { font-size:12px; color:var(--suave); }
+    .campo input { padding:9px 10px; border:1px solid var(--linea); border-radius:8px; font-size:14px; background:#fff; }
+    .campo input:focus { outline:none; border-color:var(--oro2); }
+    .solo-pareja { display:none; }
+    #panelAlta.modo-pareja .solo-pareja { display:flex; }
+    .enviar.sec { background:linear-gradient(135deg,#2e8b57,#37a06a); }
+    @media (max-width:520px){ .stats{grid-template-columns:1fr;} .form{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app">
+    <header>
+      <div class="nombres">Igna &amp; Cruz</div>
+      <div class="sub">Panel de confirmaciones · WhatsApp</div>
+      <div class="fecha">19 · Diciembre · 2026</div>
+    </header>
+
+    <% if (error) { %>
+      <div class="card" style="border-color:#f0c0c0;background:#fdf5f5;color:#a33">
+        No pude leer la lista: <%= error %>
+      </div>
+    <% } %>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="t">👤 Individuales</div>
+        <div class="grid">
+          <div><div class="n" id="i-tot">–</div><div class="l">invitados</div></div>
+          <div><div class="n enviados" id="i-env">–</div><div class="l">enviados</div></div>
+          <div><div class="n resp" id="i-res">–</div><div class="l">respondió</div></div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="t">💑 Parejas</div>
+        <div class="grid">
+          <div><div class="n" id="p-tot">–</div><div class="l">invitados</div></div>
+          <div><div class="n enviados" id="p-env">–</div><div class="l">enviados</div></div>
+          <div><div class="n resp" id="p-res">–</div><div class="l">respondió</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="panelEnvio">
+      <h2>Enviar invitaciones</h2>
+      <div class="opts">
+        <div class="seg" id="seg">
+          <button data-tipo="todos" class="on">Todos</button>
+          <button data-tipo="individual">Individuales</button>
+          <button data-tipo="pareja">Parejas</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="test"> 🧪 Modo prueba (hojas TEST)</label>
+        <label class="chk"><input type="checkbox" id="reenviar"> Reenviar a los ya enviados</label>
+        <span class="lim">Límite <input type="number" id="limite" value="0" min="0"> <span style="font-size:11px">(0 = todos)</span></span>
+      </div>
+      <button class="enviar" id="btnEnviar">Enviar invitaciones</button>
+      <div class="aviso" id="aviso">Envía la plantilla aprobada a cada invitado. Los que ya la recibieron se saltan (salvo que marques «Reenviar»).</div>
+    </div>
+
+    <div class="card" id="panelAlta">
+      <h2>Añadir invitado</h2>
+      <div class="opts">
+        <div class="seg" id="segAlta">
+          <button data-tipo="individual" class="on">Individual (1)</button>
+          <button data-tipo="pareja">Pareja (1+1)</button>
+        </div>
+      </div>
+      <div class="form">
+        <div class="campo"><label>Nombre completo *</label><input id="a-nombre" placeholder="Nombre y apellido"></div>
+        <div class="campo"><label>Apodo</label><input id="a-apodo" placeholder="cómo saludarle"></div>
+        <div class="campo"><label>Teléfono *</label><input id="a-tel" placeholder="54 9 351 234 5678"></div>
+        <div class="campo"><label>IG</label><input id="a-ig" placeholder="opcional"></div>
+        <div class="campo solo-pareja"><label>Nombre +1 *</label><input id="a-nombre2" placeholder="acompañante"></div>
+        <div class="campo solo-pareja"><label>Apodo +1</label><input id="a-apodo2"></div>
+        <div class="campo solo-pareja"><label>IG +1</label><input id="a-ig2" placeholder="opcional"></div>
+        <div class="campo"><label>Quién invita</label><input id="a-invita" list="dl-invita" placeholder="Igna / Cruz"></div>
+        <div class="campo"><label>Edad</label><input id="a-edad" list="dl-edad" placeholder="Adulto / Niño"></div>
+        <div class="campo"><label>Prioridad</label><input id="a-prioridad" list="dl-prioridad"></div>
+        <div class="campo"><label>Lista</label><input id="a-lista" list="dl-lista"></div>
+        <div class="campo"><label>Grupo</label><input id="a-grupo" list="dl-grupo"></div>
+      </div>
+      <button class="enviar sec" id="btnAlta">Añadir invitado</button>
+      <div class="aviso" id="altaMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Progreso <span class="badge" id="badgeTest" style="display:none">PRUEBA</span></h2>
+      <div id="progVacio" class="vacio">Sin envíos en marcha.</div>
+      <div id="progBox" style="display:none">
+        <div class="bar"><div id="barra"></div></div>
+        <div class="prog-linea">
+          <span><b id="pEnv">0</b> / <span id="pTot">0</span> enviados</span>
+          <span id="pEstado"></span>
+        </div>
+        <div class="prog-linea" style="margin-top:6px">
+          <span>Saltados: <b id="pSalt">0</b></span>
+          <span>Errores: <b id="pErr">0</b></span>
+        </div>
+        <div class="errores" id="errBox" style="display:none"></div>
+        <div class="pie" id="pTiempo"></div>
+      </div>
+    </div>
+  </div>
+
+  <% var O = opciones || {invita:[],edad:[],prioridad:[],lista:[],grupo:[]}; %>
+  <datalist id="dl-invita"><% (O.invita||[]).forEach(function(v){ %><option value="<%= v %>"></option><% }); %></datalist>
+  <datalist id="dl-edad"><% (O.edad||[]).forEach(function(v){ %><option value="<%= v %>"></option><% }); %></datalist>
+  <datalist id="dl-prioridad"><% (O.prioridad||[]).forEach(function(v){ %><option value="<%= v %>"></option><% }); %></datalist>
+  <datalist id="dl-lista"><% (O.lista||[]).forEach(function(v){ %><option value="<%= v %>"></option><% }); %></datalist>
+  <datalist id="dl-grupo"><% (O.grupo||[]).forEach(function(v){ %><option value="<%= v %>"></option><% }); %></datalist>
+
+  <script>
+    const EST0 = <%- JSON.stringify({ resumen: resumen || null, progreso: progreso || null }) %>;
+    // Base del módulo (funciona con o sin barra final en la URL, y sea cual sea el prefijo de montaje).
+    const BASE = location.pathname.replace(/\/+$/, '') + '/';
+    let tipo = 'todos';
+    let sondeo = null;
+
+    const $ = id => document.getElementById(id);
+    const num = v => (v == null ? '–' : v);
+
+    function pintarResumen(r) {
+      if (!r) return;
+      $('i-tot').textContent = num(r.individual.total);
+      $('i-env').textContent = num(r.individual.enviados);
+      $('i-res').textContent = num(r.individual.respondidos);
+      $('p-tot').textContent = num(r.pareja.total);
+      $('p-env').textContent = num(r.pareja.enviados);
+      $('p-res').textContent = num(r.pareja.respondidos);
+    }
+
+    function pintarProgreso(p) {
+      if (!p || (!p.activo && !p.total && !p.iniciado)) { $('progVacio').style.display = 'block'; $('progBox').style.display = 'none'; return; }
+      $('progVacio').style.display = 'none';
+      $('progBox').style.display = 'block';
+      const hechos = (p.enviados || 0) + (p.errores || 0);
+      const pct = p.total ? Math.round(hechos / p.total * 100) : (p.activo ? 5 : 100);
+      $('barra').style.width = pct + '%';
+      $('pEnv').textContent = p.enviados || 0;
+      $('pTot').textContent = p.total || 0;
+      $('pSalt').textContent = p.saltados || 0;
+      $('pErr').textContent = p.errores || 0;
+      $('pEstado').textContent = p.activo ? '⏳ enviando…' : '✅ terminado';
+      $('badgeTest').style.display = p.test ? 'inline-block' : 'none';
+      $('pTiempo').textContent = (p.iniciado ? 'Inicio ' + p.iniciado : '') + (p.fin ? ' · Fin ' + p.fin : '');
+      const errs = p.detalle || [];
+      if (errs.length) { $('errBox').style.display = 'block'; $('errBox').innerHTML = errs.map(e => '<div>' + e.replace(/</g,'&lt;') + '</div>').join(''); }
+      else $('errBox').style.display = 'none';
+      $('btnEnviar').disabled = !!p.activo;
+    }
+
+    async function refrescar() {
+      try {
+        const r = await fetch(BASE + 'estado', { headers: { 'Accept': 'application/json' } });
+        const d = await r.json();
+        if (d.status === 'ok') { pintarResumen(d.resumen); pintarProgreso(d.progreso); if (!d.progreso.activo) pararSondeo(); }
+      } catch (_) {}
+    }
+    function arrancarSondeo() { if (!sondeo) sondeo = setInterval(refrescar, 3000); }
+    function pararSondeo() { if (sondeo) { clearInterval(sondeo); sondeo = null; } }
+
+    // Selector de tipo (segmentado)
+    $('seg').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      [...$('seg').children].forEach(x => x.classList.remove('on'));
+      b.classList.add('on'); tipo = b.dataset.tipo;
+    });
+
+    // Modo prueba tiñe el botón de azul.
+    $('test').addEventListener('change', () => document.body.classList.toggle('modo-test', $('test').checked));
+
+    $('btnEnviar').addEventListener('click', async () => {
+      const test = $('test').checked, reenviar = $('reenviar').checked, limite = Number($('limite').value) || 0;
+      const nombreTipo = { todos: 'TODOS (individuales + parejas)', individual: 'solo individuales', pareja: 'solo parejas' }[tipo];
+      let msg = `¿Enviar invitaciones a ${nombreTipo}?`;
+      if (test) msg = `🧪 PRUEBA (hojas TEST): ${msg}`;
+      else msg = `⚠️ ENVÍO REAL a los invitados.\n\n${msg}`;
+      if (reenviar) msg += '\n\nIncluye a quienes YA la recibieron.';
+      if (limite) msg += `\n\nMáximo ${limite} mensajes.`;
+      if (!confirm(msg)) return;
+
+      $('btnEnviar').disabled = true;
+      try {
+        const r = await fetch(BASE + 'enviar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ tipo, test, reenviar, limite })
+        });
+        const d = await r.json();
+        if (d.status !== 'ok') { alert('No se pudo iniciar: ' + (d.msg || '')); $('btnEnviar').disabled = false; return; }
+        arrancarSondeo(); refrescar();
+      } catch (e) { alert('Error: ' + e.message); $('btnEnviar').disabled = false; }
+    });
+
+    // ── Añadir invitado ──────────────────────────────────────────────
+    let tipoAlta = 'individual';
+    $('segAlta').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      [...$('segAlta').children].forEach(x => x.classList.remove('on'));
+      b.classList.add('on'); tipoAlta = b.dataset.tipo;
+      $('panelAlta').classList.toggle('modo-pareja', tipoAlta === 'pareja');
+    });
+    function msgAlta(t, err) { const el = $('altaMsg'); el.textContent = t; el.style.color = err ? 'var(--err)' : 'var(--ok)'; }
+    $('btnAlta').addEventListener('click', async () => {
+      const g = id => $(id).value.trim();
+      const datos = {
+        tipo: tipoAlta, nombre: g('a-nombre'), apodo: g('a-apodo'), telefono: g('a-tel'), ig: g('a-ig'),
+        nombre2: g('a-nombre2'), apodo2: g('a-apodo2'), ig2: g('a-ig2'),
+        quienInvita: g('a-invita'), edad: g('a-edad'), prioridad: g('a-prioridad'), lista: g('a-lista'), grupo: g('a-grupo')
+      };
+      if (!datos.nombre || !datos.telefono) { msgAlta('Faltan el nombre y el teléfono.', true); return; }
+      if (tipoAlta === 'pareja' && !datos.nombre2) { msgAlta('Falta el nombre del acompañante (+1).', true); return; }
+      $('btnAlta').disabled = true; msgAlta('Guardando…', false);
+      try {
+        const r = await fetch(BASE + 'agregar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(datos) });
+        const d = await r.json();
+        if (d.status !== 'ok') { msgAlta(d.msg || 'No se pudo añadir', true); }
+        else {
+          const quien = d.tipo === 'pareja' ? (d.nombre + ' & ' + d.nombre2) : d.nombre;
+          msgAlta('✅ Añadido: ' + quien + (d.aviso ? ' — ⚠️ ' + d.aviso : ''), !!d.aviso);
+          ['a-nombre', 'a-apodo', 'a-tel', 'a-ig', 'a-nombre2', 'a-apodo2', 'a-ig2'].forEach(id => $(id).value = '');
+          refrescar();
+        }
+      } catch (e) { msgAlta('Error: ' + e.message, true); }
+      $('btnAlta').disabled = false;
+    });
+
+    // Arranque
+    pintarResumen(EST0.resumen);
+    pintarProgreso(EST0.progreso);
+    if (EST0.progreso && EST0.progreso.activo) arrancarSondeo();
+  </script>
+</body>
+</html>
