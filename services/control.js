@@ -171,13 +171,15 @@ async function tableroControl() {
   const todas = filas.concat(filasNN);
 
   const r1 = n => Math.round(n * 10) / 10;
-  // Capa de verificación (fase BETA): "trabajó" = MÁS DE 1 h en Datos_API (filtra logins
-  // de minutos). Se cuenta a TODA la gente que hizo horas —aunque librara o no la esperáramos—,
-  // no solo a los que "debían salir"; por eso el numerador puede superar al denominador
-  // (p. ej. 60/54). Los NN (sin turno en la agenda) se suman a NOCHE, que es donde suele
-  // haber conductores montados a última hora sin meter aún al sistema.
-  const trabajoReal = info => (info.horas ?? 0) > 1;
+  // Capa de verificación (fase BETA): se cuenta a TODA la gente que hizo horas en Datos_API
+  // —aunque librara o no la esperáramos—, no solo a los que "debían salir"; por eso el
+  // numerador puede superar al denominador (p. ej. 60/54). Los NN (sin turno) se suman a
+  // NOCHE, donde suele haber conductores montados a última hora sin meter aún al sistema.
+  // Umbral de "trabajó": en HOY basta con haberse CONECTADO (>0 h, para ver quién entró al
+  // actualizarse Datos_API); en los días ya cerrados se exige >1 h (filtra logins de minutos).
   const resumenDia = dia => {
+    const umbral = dia.key === 0 ? 0 : 1;
+    const trabajoReal = info => (info.horas ?? 0) > umbral;
     const r = {};
     ['Día', 'Noche', 'TodoTurno'].forEach(t => {
       let del = todas.filter(f => !f.esNN && f.turno === t);

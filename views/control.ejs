@@ -67,13 +67,14 @@ function turnosVis() { return TURNOS_ORD.filter(t => DATOS.conductores.some(c =>
 function iconoTurno(t) { return t === 'Día' ? '☀️' : t === 'Noche' ? '🌙' : '🔄'; }
 const esDia = () => VISTA !== 'enviar';
 const dia = c => c.dias[VISTA];   // info del día seleccionado
-const esPasado = () => esDia() && VISTA >= 1 && VISTA <= 3;   // Ayer / Hace 2 / Hace 3 → justificable
+const esPasado = () => esDia() && VISTA >= 1 && VISTA <= 3;        // Ayer / Hace 2 / Hace 3 (para el reporte con colores)
+const esJustificable = () => esDia() && VISTA >= 0 && VISTA <= 3;  // Hoy + los 3 anteriores → se puede poner la J
 const normNom = s => (s ?? '').toString().trim().toLowerCase();
 let JUSTIS = new Map();   // nombre normalizado → justificante del día visible
 
 async function cargarJustis() {
   JUSTIS = new Map();
-  if (!esPasado()) return;
+  if (!esJustificable()) return;
   try {
     const r = await fetch('/control/justificantes?dia=' + VISTA);
     const d = await r.json();
@@ -238,11 +239,11 @@ function filaHtml(c) {
     <td class="px-3 py-2 text-right font-semibold ${horasCls}">${horasTxt}</td>
     <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${BADGE_CLS[est]}">${badgeTxt(est)}</span></td>
     <td class="px-3 py-2 text-telecab-muted text-xs">${esc(c.telefono) || '<span class="text-amber-400/70">sin teléfono</span>'}</td>
-    ${esPasado() ? celdaJustificante(c, d) : ''}
+    ${esJustificable() ? celdaJustificante(c, d) : ''}
   </tr>`;
 }
 function tabla(filas, vacio) {
-  const just = esPasado();
+  const just = esJustificable();
   const nCols = just ? 7 : 6;
   const cuerpo = filas.length ? filas.map(filaHtml).join('')
     : `<tr><td colspan="${nCols}" class="px-3 py-6 text-center text-telecab-muted">${vacio}</td></tr>`;

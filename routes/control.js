@@ -86,7 +86,7 @@ router.post('/justificar', async (req, res) => {
   try {
     const b = req.body || {};
     const dia = Number(b.dia);
-    if (![1, 2, 3].includes(dia)) throw new Error('Solo se puede justificar Ayer, Hace 2 o Hace 3 días');
+    if (![0, 1, 2, 3].includes(dia)) throw new Error('Día no válido para justificar (Hoy, Ayer, Hace 2 o Hace 3)');
     const { str: fecha } = justificantes.fechaDeClave(dia);
     const r = await justificantes.guardar({
       fecha, idBolt: b.nombre, nombre: b.nombre, telefono: b.telefono, turno: b.turno,
@@ -104,7 +104,7 @@ router.post('/justificar', async (req, res) => {
 router.get('/justificantes', async (req, res) => {
   try {
     const dia = Number(req.query.dia);
-    const key = [1, 2, 3].includes(dia) ? dia : 1;
+    const key = [0, 1, 2, 3].includes(dia) ? dia : 1;
     const { str: fecha } = justificantes.fechaDeClave(key);
     const m = await justificantes.leerPorFecha(fecha);
     const justis = [...m.values()].map(j => ({ nombre: j.nombre || j.id_bolt, observacion: j.observacion }));
