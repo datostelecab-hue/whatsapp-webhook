@@ -49,9 +49,15 @@
 
   <!-- ══ POR CONDUCTOR ══ -->
   <section id="panel-personas" class="hidden">
-    <input id="f-persona" type="search" placeholder="Nombre o ID del conductor…"
-           class="w-full max-w-md mb-4 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
-                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <input id="f-persona" type="search" placeholder="Nombre o ID del conductor…"
+             class="flex-1 min-w-[220px] max-w-md px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+                    text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
+      <button id="btn-turnos-todos" class="px-4 py-2 rounded-lg bg-green-600/15 text-green-400 text-sm font-medium hover:bg-green-600/25">
+        <i class="fa-brands fa-whatsapp mr-1"></i> Enviar turnos a todos
+      </button>
+      <span id="turnos-estado" class="text-sm text-telecab-muted"></span>
+    </div>
     <div id="lista-personas" class="grid gap-3 lg:grid-cols-2"></div>
   </section>
 </div>
@@ -247,9 +253,15 @@ function pintarPersonas() {
     }).join('');
     return `
       <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-        <div class="mb-3">
-          <div class="text-telecab-text font-semibold">${esc(p.nombre || p.id)}</div>
-          <div class="text-xs text-telecab-muted">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''}</div>
+        <div class="mb-3 flex items-start justify-between gap-2">
+          <div>
+            <div class="text-telecab-text font-semibold">${esc(p.nombre || p.id)}</div>
+            <div class="text-xs text-telecab-muted">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''}</div>
+          </div>
+          <button class="btn-turno shrink-0 px-3 py-1.5 rounded-lg bg-green-600/15 text-green-400 text-xs font-medium hover:bg-green-600/25 disabled:opacity-40"
+                  data-id="${esc(p.id)}" ${p.telefono ? '' : 'disabled'} title="${p.telefono ? 'Enviar sus turnos por WhatsApp' : 'Sin teléfono en la agenda'}">
+            <i class="fa-brands fa-whatsapp mr-1"></i> Enviar
+          </button>
         </div>
         <div class="space-y-1">${dias}</div>
       </div>`;
@@ -273,5 +285,43 @@ $('#btn-recargar').addEventListener('click', cargar);
 $('#sem-prev').addEventListener('click', () => { if (SEMANA > 0) { SEMANA--; cargar(); } });
 $('#sem-next').addEventListener('click', () => { if (SEMANA < 8) { SEMANA++; cargar(); } });
 $('#sem-hoy').addEventListener('click', () => { if (SEMANA !== 0) { SEMANA = 0; cargar(); } });
+
+// ── Envío de turnos por WhatsApp ──
+let _pollTurnos = null;
+$('#lista-personas').addEventListener('click', async e => {
+  const b = e.target.closest('.btn-turno'); if (!b || b.disabled) return;
+  if (!confirm('¿Enviar sus turnos de esta semana por WhatsApp?')) return;
+  const o = b.innerHTML; b.disabled = true; b.innerHTML = 'Enviando…';
+  try {
+    const r = await fetch('/cobertura/enviar-turnos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idBolt: b.dataset.id, semana: SEMANA }) });
+    const d = await r.json();
+    if (d.status !== 'ok') { alert(d.msg || 'No se pudo enviar'); b.innerHTML = o; b.disabled = false; return; }
+    b.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Enviado';
+  } catch (err) { alert('Error: ' + err.message); b.innerHTML = o; b.disabled = false; }
+});
+
+$('#btn-turnos-todos').addEventListener('click', async () => {
+  const n = (D.porConductor || []).filter(p => p.telefono && p.dias.some(d => d.trabaja)).length;
+  if (!confirm(`¿Enviar los turnos de esta semana a los ${n} conductores que trabajan y tienen teléfono?`)) return;
+  $('#btn-turnos-todos').disabled = true;
+  try {
+    const r = await fetch('/cobertura/enviar-turnos-todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semana: SEMANA }) });
+    const d = await r.json();
+    if (d.status !== 'ok') { alert(d.msg || 'No se pudo iniciar'); $('#btn-turnos-todos').disabled = false; return; }
+    arrancarPollTurnos();
+  } catch (err) { alert('Error: ' + err.message); $('#btn-turnos-todos').disabled = false; }
+});
+async function pollTurnos() {
+  try {
+    const d = await (await fetch('/cobertura/enviar-turnos/estado')).json();
+    const p = d.progreso || {};
+    $('#turnos-estado').textContent = p.activo
+      ? `Enviando… ${p.enviados}/${p.total}${p.errores ? ' · ' + p.errores + ' err' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin tel' : ''}`
+      : (p.total ? `✅ ${p.enviados}/${p.total} enviados${p.errores ? ' · ' + p.errores + ' con error' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin teléfono' : ''}` : '');
+    if (!p.activo) { clearInterval(_pollTurnos); _pollTurnos = null; $('#btn-turnos-todos').disabled = false; }
+  } catch (_) {}
+}
+function arrancarPollTurnos() { $('#turnos-estado').textContent = 'Iniciando…'; if (!_pollTurnos) _pollTurnos = setInterval(pollTurnos, 3000); pollTurnos(); }
+
 cargar();
 </script>

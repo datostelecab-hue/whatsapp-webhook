@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { leerTablero, DIAS_SEM, TURNOS } = require('../services/planificadorV2');
-const { instruccionesPorConductor } = require('../services/turnosConductor');
+const { instruccionesPorConductor, planSemanaTexto } = require('../services/turnosConductor');
+const { enviarTurnosSemana } = require('../services/whatsapp');
 
 router.get('/', (req, res) => {
   res.render('cobertura', {
@@ -44,5 +45,61 @@ router.get('/api/datos', async (req, res) => {
     res.status(500).json({ status: 'error', msg: error.message });
   }
 });
+
+// ── Envío de turnos por WhatsApp (plantilla turnosdeconductores) ─────────────
+const TZ = 'Europe/Madrid';
+const sello = () => new Intl.DateTimeFormat('es-ES', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date());
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let _progTurnos = { activo: false, total: 0, enviados: 0, errores: 0, sinTel: 0, iniciado: null, fin: null, detalle: [] };
+const progTurnos = () => ({ ..._progTurnos, detalle: _progTurnos.detalle.slice(-15) });
+
+// Envía los turnos de la semana a UN conductor (por su ID_BOLT).
+router.post('/enviar-turnos', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const semana = Math.max(0, Math.min(8, Number(b.semana) || 0));
+    const idBolt = (b.idBolt || '').toString().trim();
+    if (!idBolt) throw new Error('Falta el conductor');
+    const t = await leerTablero({ offsetSemana: semana });
+    const entrada = instruccionesPorConductor(t).find(e => e.id === idBolt);
+    if (!entrada) throw new Error('Ese conductor no tiene turnos esta semana');
+    if (!entrada.telefono) throw new Error('Ese conductor no tiene teléfono en la agenda');
+    const r = await enviarTurnosSemana(entrada.telefono, entrada.nombre, planSemanaTexto(entrada));
+    if (!r.ok) throw new Error(r.error);
+    console.log(`📅 [Turnos] Enviado a ${entrada.nombre}`);
+    res.json({ status: 'ok', enviado: true });
+  } catch (e) {
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
+// Envía los turnos a TODOS los que trabajan esa semana (en segundo plano; el panel sondea).
+router.post('/enviar-turnos-todos', (req, res) => {
+  if (_progTurnos.activo) return res.status(409).json({ status: 'error', msg: 'Ya hay un envío en marcha' });
+  const semana = Math.max(0, Math.min(8, Number((req.body || {}).semana) || 0));
+  enviarTurnosBulk(semana).catch(e => console.error('❌ [Turnos] bulk:', e.message));
+  res.json({ status: 'ok', msg: 'Envío iniciado' });
+});
+
+router.get('/enviar-turnos/estado', (req, res) => res.json({ status: 'ok', progreso: progTurnos() }));
+
+async function enviarTurnosBulk(semana) {
+  _progTurnos = { activo: true, total: 0, enviados: 0, errores: 0, sinTel: 0, iniciado: sello(), fin: null, detalle: [] };
+  try {
+    const t = await leerTablero({ offsetSemana: semana });
+    const lista = instruccionesPorConductor(t).filter(e => e.dias.some(d => d.trabaja));   // solo los que trabajan
+    _progTurnos.total = lista.length;
+    for (const e of lista) {
+      if (!e.telefono) { _progTurnos.sinTel++; _progTurnos.detalle.push(`${e.nombre}: sin teléfono`); continue; }
+      const r = await enviarTurnosSemana(e.telefono, e.nombre, planSemanaTexto(e));
+      if (r.ok) _progTurnos.enviados++;
+      else { _progTurnos.errores++; _progTurnos.detalle.push(`${e.nombre}: ${r.error}`); }
+      await sleep(1200);   // ~50/min, por debajo de los límites de Meta
+    }
+  } finally {
+    _progTurnos.activo = false; _progTurnos.fin = sello();
+  }
+  console.log(`📅 [Turnos] Bulk semana ${semana}: ${_progTurnos.enviados} enviados · ${_progTurnos.errores} err · ${_progTurnos.sinTel} sin tel`);
+}
 
 module.exports = router;

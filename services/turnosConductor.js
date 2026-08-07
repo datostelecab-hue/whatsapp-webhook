@@ -94,4 +94,31 @@ function mensajeTurnos(entrada) {
   return L.join('\n').trim();
 }
 
-module.exports = { instruccionesPorConductor, mensajeTurnos };
+/**
+ * SOLO el cuerpo del plan (días de la semana), para el parámetro {{2}} de la plantilla
+ * `turnosdeconductores` — el saludo y el pie ya van en la propia plantilla. Sin negritas
+ * (`*`) porque los parámetros de plantilla no las interpretan; solo texto + emojis.
+ */
+function planSemanaTexto(entrada) {
+  if (!entrada || !Array.isArray(entrada.dias)) return '';
+  const L = [];
+  const tel = x => (x.telefono ? ` (${x.telefono})` : '');
+  const dias = entrada.dias;
+  let i = 0;
+  while (i < dias.length) {
+    const d = dias[i];
+    if (!d.trabaja) {
+      let j = i; while (j < dias.length && !dias[j].trabaja) j++;
+      L.push(`😴 ${unirDias(dias.slice(i, j).map(x => diaLargo(x.diaNombre)))}: libras`);
+      i = j; continue;
+    }
+    let linea = `📅 ${diaLargo(d.diaNombre)} · turno de ${d.turno} · coche ${d.matricula}`;
+    if (d.recibeDe) linea += ` · 🔑 recibes de ${d.recibeDe.nombre}${tel(d.recibeDe)}`;
+    if (d.entregaA) linea += ` · 🤝 entregas a ${d.entregaA.nombre}${tel(d.entregaA)}`;
+    L.push(linea);
+    i++;
+  }
+  return L.join('\n');
+}
+
+module.exports = { instruccionesPorConductor, mensajeTurnos, planSemanaTexto };
