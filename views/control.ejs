@@ -10,6 +10,9 @@
       <button id="btn-exportar" class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:border-telecab-gold">
         <i class="fa-solid fa-file-excel mr-1"></i> Exportar Excel
       </button>
+      <button id="btn-reporte" class="hidden px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:border-telecab-gold" title="Reporte del día con colores por horas y los justificantes al final">
+        <i class="fa-solid fa-chart-column mr-1"></i> Reporte (colores)
+      </button>
       <button id="btn-refrescar" class="px-4 py-2 rounded-lg bg-telecab-gold/10 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/20">
         <i class="fa-solid fa-rotate mr-1"></i> Refrescar
       </button>
@@ -64,6 +67,35 @@ function turnosVis() { return TURNOS_ORD.filter(t => DATOS.conductores.some(c =>
 function iconoTurno(t) { return t === 'Día' ? '☀️' : t === 'Noche' ? '🌙' : '🔄'; }
 const esDia = () => VISTA !== 'enviar';
 const dia = c => c.dias[VISTA];   // info del día seleccionado
+const esPasado = () => esDia() && VISTA >= 1 && VISTA <= 3;   // Ayer / Hace 2 / Hace 3 → justificable
+const normNom = s => (s ?? '').toString().trim().toLowerCase();
+let JUSTIS = new Map();   // nombre normalizado → justificante del día visible
+
+async function cargarJustis() {
+  JUSTIS = new Map();
+  if (!esPasado()) return;
+  try {
+    const r = await fetch('/control/justificantes?dia=' + VISTA);
+    const d = await r.json();
+    if (d.status === 'ok') JUSTIS = new Map((d.justis || []).map(j => [normNom(j.nombre), j]));
+  } catch (_) {}
+}
+
+async function justificar(nombre, telefono, turno, horas) {
+  const d = DATOS.dias.find(x => x.key === VISTA);
+  const ex = JUSTIS.get(normNom(nombre));
+  const hTxt = (horas === '' || horas == null) ? 'sin horas en BOLT' : horas + ' h';
+  const obs = prompt(`Justificar a ${nombre}\n${d.etiqueta} ${d.fechaTxt} · ${hTxt}\n\nObservación (obligatoria) — vale como 8 h del día:`, ex ? ex.observacion : '');
+  if (obs == null) return;
+  if (!obs.trim()) { alert('La observación es obligatoria.'); return; }
+  try {
+    const r = await fetch('/control/justificar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dia: VISTA, nombre, telefono, turno, horas, observacion: obs.trim() }) });
+    const j = await r.json();
+    if (j.status !== 'ok') { alert(j.msg || 'No se pudo justificar'); return; }
+    await cargarJustis(); pintarSecciones();
+  } catch (e) { alert('Error: ' + e.message); }
+}
 
 const BADGE_CLS = {
   trabajando: 'bg-green-500/15 text-green-400',
@@ -93,7 +125,7 @@ async function cargar() {
     DATOS = d;
     if (typeof VISTA === 'number' && !DATOS.dias.some(x => x.key === VISTA)) VISTA = 0;
     pintarTabs();
-    pintar();
+    await pintar();
   } catch (e) { $('#subtitulo').textContent = 'Error: ' + e.message; }
   $('#cargando').classList.add('hidden');
 }
@@ -109,9 +141,10 @@ function pintarTabs() {
   }));
 }
 
-function pintar() {
+async function pintar() {
   const enviar = VISTA === 'enviar';
   ['#resumen', '#sumatoria', '#barra-filtros', '#btn-exportar'].forEach(sel => $(sel).classList.toggle('hidden', enviar));
+  $('#btn-reporte').classList.toggle('hidden', !esPasado());   // reporte con colores: solo días pasados
   const d = enviar ? null : DATOS.dias.find(x => x.key === VISTA);
   $('#subtitulo').textContent = enviar ? 'Avisar a los que no han salido hoy'
     : `${d.etiqueta} · ${d.diaSemana} ${d.fechaTxt}`;
@@ -124,6 +157,7 @@ function pintar() {
   } else stale.classList.add('hidden');
 
   if (enviar) { pintarEnviar(); return; }
+  await cargarJustis();
   pintarResumen(); pintarSumatoria(); pintarSecciones();
 }
 
@@ -175,6 +209,18 @@ function ordenar(lista) {
   return l.sort((a, b) => h(b) - h(a) || a.nombre.localeCompare(b.nombre));
 }
 
+function celdaJustificante(c, d) {
+  const j = JUSTIS.get(normNom(c.nombre));
+  const dat = `data-nombre="${escAttr(c.nombre)}" data-tel="${escAttr(c.telefono || '')}" data-turno="${escAttr(c.turno || '')}" data-horas="${d.horas == null ? '' : d.horas}"`;
+  if (j) {
+    return `<td class="px-3 py-2 whitespace-nowrap">
+      <span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold text-white" style="background:#1d4ed8">J</span>
+      <span class="text-telecab-muted text-xs" title="${escAttr(j.observacion)}">${esc((j.observacion || '').slice(0, 22))}</span>
+      <button class="jbtn ml-1 text-telecab-muted hover:text-telecab-gold text-xs underline" ${dat}>editar</button></td>`;
+  }
+  return `<td class="px-3 py-2"><button class="jbtn px-2 py-1 rounded border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-text text-xs" ${dat}>Justificar</button></td>`;
+}
+
 function filaHtml(c) {
   const d = dia(c);
   const h = d.horas;
@@ -192,16 +238,20 @@ function filaHtml(c) {
     <td class="px-3 py-2 text-right font-semibold ${horasCls}">${horasTxt}</td>
     <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${BADGE_CLS[est]}">${badgeTxt(est)}</span></td>
     <td class="px-3 py-2 text-telecab-muted text-xs">${esc(c.telefono) || '<span class="text-amber-400/70">sin teléfono</span>'}</td>
+    ${esPasado() ? celdaJustificante(c, d) : ''}
   </tr>`;
 }
 function tabla(filas, vacio) {
+  const just = esPasado();
+  const nCols = just ? 7 : 6;
   const cuerpo = filas.length ? filas.map(filaHtml).join('')
-    : `<tr><td colspan="6" class="px-3 py-6 text-center text-telecab-muted">${vacio}</td></tr>`;
+    : `<tr><td colspan="${nCols}" class="px-3 py-6 text-center text-telecab-muted">${vacio}</td></tr>`;
   return `<div class="overflow-x-auto rounded-xl border border-telecab-border"><table class="w-full text-sm">
       <thead class="bg-telecab-card text-telecab-muted text-xs uppercase"><tr>
         <th class="text-left px-3 py-3">Conductor</th><th class="text-left px-3 py-3">Tipo</th>
         <th class="text-left px-3 py-3">Matrícula</th><th class="text-right px-3 py-3">Horas</th>
         <th class="text-left px-3 py-3">Estado</th><th class="text-left px-3 py-3">Teléfono</th>
+        ${just ? '<th class="text-left px-3 py-3">Justificante</th>' : ''}
       </tr></thead><tbody>${cuerpo}</tbody></table></div>`;
 }
 
@@ -332,6 +382,9 @@ async function exportarExcel() {
 
 $('#btn-refrescar').addEventListener('click', cargar);
 $('#btn-exportar').addEventListener('click', exportarExcel);
+$('#btn-reporte').addEventListener('click', () => { if (esPasado()) window.location = '/control/reporte/excel?dia=' + VISTA; });
+// Botón "Justificar" (delegado, porque las filas se repintan).
+$('#secciones').addEventListener('click', e => { const b = e.target.closest('.jbtn'); if (b) justificar(b.dataset.nombre, b.dataset.tel, b.dataset.turno, b.dataset.horas); });
 ['#f-buscar', '#f-turno', '#f-tipo', '#f-orden'].forEach(s => $(s).addEventListener('input', pintarSecciones));
 $('#f-problemas').addEventListener('change', pintarSecciones);
 

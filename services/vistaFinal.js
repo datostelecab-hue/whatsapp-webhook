@@ -68,6 +68,9 @@ const COLOR_TURNO = [
   { has: 'Noche',       bg: '#1f2a44', fg: '#ffffff' },
   { has: 'Día',         bg: '#ffe08a', fg: '#1a1a1a' }
 ];
+// Azul de la 'J' (justificante). DISTINTO del azul de "Vacaciones" (#3b82f6) para que
+// no se confundan; además la letra J ya la diferencia de la V.
+const AZUL_JUST = '#1d4ed8';
 
 function rgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -211,10 +214,12 @@ async function reconstruirVistaFinal() {
       return { valor: viejo ? (viejo.fila[3 + idx] ?? '') : '' };
     }
     // Preservar marcas manuales V (vacaciones) / B (baja médica) / P (permiso
-    // retribuido) aunque sea el mes en curso: se ponen a mano en Trafico2 y
-    // alimentan las alertas y el auto-estado del planificador.
+    // retribuido) / J (justificante de tráfico) aunque sea el mes en curso: se ponen
+    // a mano y alimentan las alertas / el auto-estado / los reportes. Nunca se pisan
+    // con las horas del cron.
     const marca = viejo ? String(viejo.fila[3 + idx] ?? '').trim().toUpperCase() : '';
     if (marca === 'V' || marca === 'B' || marca === 'P') return { valor: viejo.fila[3 + idx] };
+    if (marca === 'J') return { valor: viejo.fila[3 + idx], justif: true };   // justificante: se re-colorea azul abajo
     // Mes en curso con horas vigentes:
     const wd = (f.getUTCDay() + 6) % 7;
     const esLibranza = !!(c.libra && c.libra[wd]);
@@ -249,7 +254,8 @@ async function reconstruirVistaFinal() {
   // 5) Conductores de la AGENDA (arriba). El estado SIEMPRE sale de la agenda.
   const filasAgenda = [];
   const escritas = new Set();
-  const marcas = [];   // celdas (fila/col 0-based) con horas en día de libranza
+  const marcas = [];    // celdas (fila/col 0-based) con horas en día de libranza
+  const justCells = [];  // celdas con 'J' (justificante) → se pintan de azul
   roster.forEach((c, i) => {
     const filaIdx = 3 + i;   // fila 0-based en el grid (tras las 3 cabeceras)
     const k = clave(c.idBolt || c.nombre);
@@ -265,6 +271,7 @@ async function reconstruirVistaFinal() {
       const r = celdaAgenda(c, f, idx, viejo);
       fila.push(r.valor);
       if (r.especial) marcas.push({ row: filaIdx, col: 3 + idx });
+      if (r.justif) justCells.push({ row: filaIdx, col: 3 + idx });
     });
     filasAgenda.push(fila);
   });
@@ -378,6 +385,16 @@ async function reconstruirVistaFinal() {
             }
           },
           fields: 'userEnteredFormat.borders,userEnteredFormat.textFormat.bold'
+        }
+      }));
+
+      // Pinta de AZUL cada celda con 'J' (justificante), sobre la fila correcta de ESTA
+      // corrida (así el color sigue al conductor aunque se reordenen las filas).
+      justCells.forEach(m => reqs.push({
+        repeatCell: {
+          range: { sheetId, startRowIndex: m.row, endRowIndex: m.row + 1, startColumnIndex: m.col, endColumnIndex: m.col + 1 },
+          cell: celdaColor({ bg: AZUL_JUST, fg: '#ffffff' }),
+          fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.foregroundColor'
         }
       }));
 
@@ -608,4 +625,46 @@ async function escribirLetrasRango(idBolt, letra, desdeStr, hastaStr) {
   return { celdas: writes.length };
 }
 
-module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia, escribirLetrasRango, leerFinAusencias };
+/**
+ * Marca una 'J' (justificante de tráfico) en la bitácora para un conductor (por ID_BOLT)
+ * en una fecha (dd/mm/aaaa), con FONDO AZUL. Sustituye lo que hubiera ese día (las horas),
+ * y el cron la conserva (ver preservación de marcas). Si el conductor NO tiene fila en
+ * VISTA_FINAL (un NN), no escribe nada y devuelve { escrito:false } — el justificante
+ * queda solo en la hoja JUSTIFICANTES.
+ */
+async function marcarJustificante(idBolt, fechaStr) {
+  const m = String(fechaStr || '').match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  const t = m ? Date.UTC(+m[3], +m[2] - 1, +m[1], 12) : null;
+  if (t == null) return { escrito: false, motivo: 'fecha inválida' };
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const finMs = Date.UTC(FIN.y, FIN.m, FIN.d, 12);
+  if (t < inicioMs || t > finMs) return { escrito: false, motivo: 'fuera de rango' };
+  const col = 3 + Math.round((t - inicioMs) / 86400000);
+
+  const filas = await readSheet(ID_GESTION, `${HOJA}!A:ZZ`, { valueRenderOption: 'UNFORMATTED_VALUE' });
+  let fila = -1;
+  for (let i = 3; i < filas.length; i++) {
+    if (clave((filas[i][1] || '').toString().trim()) === clave(idBolt)) { fila = i; break; }
+  }
+  if (fila === -1) return { escrito: false, motivo: 'NN (sin fila en VISTA_FINAL)' };
+
+  await writeSheet(ID_GESTION, `${HOJA}!${colLetra0(col)}${fila + 1}`, [['J']]);
+  // Fondo azul explícito (Node no colorea letras normalmente; lo hace el formato
+  // condicional de la hoja, que no cubre la J, así que se lo ponemos nosotros).
+  try {
+    const sheetId = (await getSheetIds(ID_GESTION))[HOJA];
+    if (sheetId !== undefined) {
+      await batchUpdate(ID_GESTION, [{
+        repeatCell: {
+          range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: col, endColumnIndex: col + 1 },
+          cell: celdaColor({ bg: AZUL_JUST, fg: '#ffffff' }),
+          fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.foregroundColor'
+        }
+      }]);
+    }
+  } catch (e) { console.warn(`⚠️ [VISTA_FINAL] color J: ${e.message}`); }
+
+  return { escrito: true, fila: fila + 1, col };
+}
+
+module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia, escribirLetrasRango, leerFinAusencias, marcarJustificante };

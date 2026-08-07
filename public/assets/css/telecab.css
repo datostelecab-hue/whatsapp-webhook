@@ -205,6 +205,7 @@ main > * { animation: tc-fade-in .3s ease; }
   --tc-vac: 59 130 246;      /* azul  · vacaciones */
   --tc-med: 245 158 11;      /* ámbar · baja médica */
   --tc-permiso: 168 85 247;  /* morado · permiso */
+  --tc-just: 29 78 216;      /* azul intenso · justificante (J) — distinto del de vacaciones */
 }
 
 /* Selector de fecha (js-fecha) */

@@ -31,7 +31,7 @@ function codificar(cell) {
   if (cell == null || cell === '') return null;
   const s = cell.toString().trim();
   if (!s) return null;
-  if (/^[VBPL]$/i.test(s)) return s.toUpperCase();
+  if (/^[VBPLJ]$/i.test(s)) return s.toUpperCase();
   const n = Number(s.replace(',', '.'));
   return isNaN(n) ? null : n;
 }

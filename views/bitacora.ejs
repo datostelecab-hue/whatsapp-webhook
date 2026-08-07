@@ -33,10 +33,10 @@
   const rol = '<%= rol || "" %>';   // rol REAL de la sesión (lo inyecta el servidor)
 
   // Colores desde los tokens globales (canales RGB → se pueden teñir y cambian con el tema).
-  const CH = { V: 'var(--tc-vac)', B: 'var(--tc-med)', P: 'var(--tc-permiso)' };
+  const CH = { V: 'var(--tc-vac)', B: 'var(--tc-med)', P: 'var(--tc-permiso)', J: 'var(--tc-just)' };
   const clr = t => `rgb(${CH[t]})`;            // color sólido de una ausencia
   const tintClr = t => `rgb(${CH[t]} / .14)`;  // su fondo tenue
-  const NOM = { V: 'Vacaciones', B: 'Baja médica', P: 'Permiso' };
+  const NOM = { V: 'Vacaciones', B: 'Baja médica', P: 'Permiso', J: 'Justificante' };
   const HCOL = 'rgb(var(--tc-green))';
   const TRACK = 'rgb(var(--tc-dark))', LINEA = 'rgb(var(--tc-border))', LIBR = 'rgb(var(--tc-muted) / .28)';
   const ABBR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -195,6 +195,7 @@
          <span class="flex items-center gap-1.5"><span style="background:${clr('B')}" class="w-3 h-3 rounded"></span>Baja médica</span>
          <span class="flex items-center gap-1.5"><span style="background:${clr('V')}" class="w-3 h-3 rounded"></span>Vacaciones</span>
          <span class="flex items-center gap-1.5"><span style="background:${clr('P')}" class="w-3 h-3 rounded"></span>Permiso</span>
+         <span class="flex items-center gap-1.5"><span style="background:${clr('J')}" class="w-3 h-3 rounded"></span>Justificante</span>
          <span class="flex items-center gap-1.5"><span style="background:${LIBR}" class="w-3 h-3 rounded"></span>Libranza</span>
        </div>
        <p class="text-xs text-telecab-muted mt-6 mb-2">Horas</p>
@@ -240,14 +241,14 @@
     const tl = $('#b-tl'), lb = $('#b-tlabels');
     if (level === 'año') {
       let cells = '';
-      for (let w = 0; w < 52; w++) { let col = null; for (let j = 0; j < 7; j++) { const v = dia(c, w * 7 + j); if (esAus(v)) { col = clr(v); break; } } cells += celdaTL(col || TRACK); }
+      for (let w = 0; w < 52; w++) { let col = null; for (let j = 0; j < 7; j++) { const v = dia(c, w * 7 + j); if (esAus(v) || v === 'J') { col = clr(v); break; } } cells += celdaTL(col || TRACK); }
       tl.innerHTML = cells;
       lb.innerHTML = MESES.map(m => `<div style="flex:1 1 0;text-align:center;" class="text-[10px] text-telecab-muted">${m.label.slice(0, 3)}</div>`).join('');
     } else {
       const r = rango(); let cells = '', labs = '';
       for (let d = r.a; d <= r.b; d++) {
         const v = dia(c, d);
-        const bg = esAus(v) ? clr(v) : (v === 'L' ? LIBR : TRACK);
+        const bg = (esAus(v) || v === 'J') ? clr(v) : (v === 'L' ? LIBR : TRACK);
         cells += celdaTL(bg);
         const dt = new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + d));
         const lab = level === 'semana' ? DOW[(d % 7)] : (dt.getUTCDate() % 5 === 1 ? dt.getUTCDate() : '');
