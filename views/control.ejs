@@ -189,7 +189,7 @@ function pintarSumatoria() {
     </div>`;
   $('#sumatoria').innerHTML =
     turnosVis().map(t => card(`Horas ${t}`, r[t].horas, false)).join('') +
-    card('Total', r.horasTotal, true, r.horasNN ? `incluye ${r.horasNN.toFixed(1)} h de NN` : '');
+    card('Total', r.horasTotal, true, r.horasNN ? `${r.horasNN.toFixed(1)} h de NN (contadas en Noche)` : '');
 }
 
 function pasaFiltros(c) {

@@ -171,18 +171,24 @@ async function tableroControl() {
   const todas = filas.concat(filasNN);
 
   const r1 = n => Math.round(n * 10) / 10;
+  // Capa de verificación (fase BETA): "trabajó" = MÁS DE 1 h en Datos_API (filtra logins
+  // de minutos). Se cuenta a TODA la gente que hizo horas —aunque librara o no la esperáramos—,
+  // no solo a los que "debían salir"; por eso el numerador puede superar al denominador
+  // (p. ej. 60/54). Los NN (sin turno en la agenda) se suman a NOCHE, que es donde suele
+  // haber conductores montados a última hora sin meter aún al sistema.
+  const trabajoReal = info => (info.horas ?? 0) > 1;
   const resumenDia = dia => {
     const r = {};
     ['Día', 'Noche', 'TodoTurno'].forEach(t => {
-      const del = todas.filter(f => f.turno === t);
+      let del = todas.filter(f => !f.esNN && f.turno === t);
+      if (t === 'Noche') del = del.concat(filasNN);
       const esperados = del.filter(f => f.dias[dia.key].debiaSalir);
-      const trabajaron = esperados.filter(f => (f.dias[dia.key].horas ?? 0) > 0).length;
-      const horas = del.reduce((s, f) => s + (f.dias[dia.key].horas ?? 0), 0);
       r[t] = {
-        esperados: esperados.length, trabajaron,
-        noTrabajaron: esperados.length - trabajaron,
+        esperados: esperados.length,
+        trabajaron: del.filter(f => trabajoReal(f.dias[dia.key])).length,        // TODOS los que hicieron >1h
+        noTrabajaron: esperados.filter(f => !trabajoReal(f.dias[dia.key])).length, // esperados que NO llegaron a >1h
         libranza: del.filter(f => f.dias[dia.key].libra).length,
-        horas: r1(horas)
+        horas: r1(del.reduce((s, f) => s + (f.dias[dia.key].horas ?? 0), 0))
       };
     });
     r.horasTotal = r1(todas.reduce((s, f) => s + (f.dias[dia.key].horas ?? 0), 0));
