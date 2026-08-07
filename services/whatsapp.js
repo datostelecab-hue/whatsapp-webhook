@@ -89,7 +89,7 @@ async function enviarPlantillaPosicional(telefono, plantilla, valores) {
 // veces rechaza los saltos de línea en los parámetros; si pasa, se reintenta APLANADO y,
 // una vez detectado, se aplana ya siempre (para no gastar dos envíos por conductor).
 let _turnosPlano = false;
-const aplanarPlan = p => (p || '').replace(/\n+/g, '  ·  ').replace(/[\t ]{4,}/g, '   ');
+const aplanarPlan = p => (p || '').replace(/\n+/g, ' ▪️ ').replace(/[\t ]{4,}/g, '   ');
 async function enviarTurnosSemana(telefono, nombre, plan) {
   const mandar = txt => enviarPlantillaPosicional(telefono, 'turnosdeconductores', [nombre || '', txt]);
   const r = await mandar(_turnosPlano ? aplanarPlan(plan) : plan);

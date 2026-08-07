@@ -8,19 +8,25 @@
 // que ya calcula planificadorV2.
 
 const { DIAS_SEM, TURNOS } = require('./planificadorV2');
+const { normClave } = require('./conductores');
 
 /**
  * Devuelve, por conductor, su semana: [{ id, nombre, telefono, dias: [7] }], donde
  * cada día es { diaNombre, trabaja } y, si trabaja: { turno, matricula, recibeDe, entregaA }.
  * recibeDe / entregaA = { nombre, telefono, directo } o null (sin relevo).
  */
-function instruccionesPorConductor(tablero) {
+function instruccionesPorConductor(tablero, telefonosExtra) {
   const conductores = (tablero && tablero.conductores) || [];
   const coches = (tablero && tablero.coches) || [];
+  const extra = telefonosExtra instanceof Map ? telefonosExtra : new Map();
 
   const porId = new Map();
   conductores.forEach(c => { if (c.idBolt) porId.set(c.idBolt, c); });
-  const telDe = id => { const c = porId.get(id); return (c && (c.telefono || '').toString().trim()) || ''; };
+  // Teléfono: el de la agenda y, si está vacío, el de DB_CONDUCTORES (por nombre normalizado).
+  const telDe = id => {
+    const c = porId.get(id);
+    return ((c && (c.telefono || '').toString().trim()) || '') || extra.get(normClave(id)) || '';
+  };
   const nombreDe = id => { const c = porId.get(id); return (c && c.nombre) || id; };
 
   const relevos = [];
@@ -101,24 +107,31 @@ function mensajeTurnos(entrada) {
  */
 function planSemanaTexto(entrada) {
   if (!entrada || !Array.isArray(entrada.dias)) return '';
-  const L = [];
-  const tel = x => (x.telefono ? ` (${x.telefono})` : '');
+  const tel = x => (x && x.telefono ? ` (${x.telefono})` : '');
+  // Clave para agrupar días consecutivos IDÉNTICOS (mismo turno, coche, de quién recibe y a
+  // quién entrega) → "Martes a Viernes" en una sola línea en vez de repetir 4 iguales.
+  const clave = d => d.trabaja
+    ? `T|${d.turno}|${d.matricula}|${d.recibeDe ? d.recibeDe.nombre + d.recibeDe.telefono : ''}|${d.entregaA ? d.entregaA.nombre + d.entregaA.telefono : ''}`
+    : 'L';
   const dias = entrada.dias;
+  const seg = [];
   let i = 0;
   while (i < dias.length) {
+    let j = i; const k = clave(dias[i]);
+    while (j < dias.length && clave(dias[j]) === k) j++;
+    const nombres = unirDias(dias.slice(i, j).map(x => diaLargo(x.diaNombre)));
     const d = dias[i];
     if (!d.trabaja) {
-      let j = i; while (j < dias.length && !dias[j].trabaja) j++;
-      L.push(`😴 ${unirDias(dias.slice(i, j).map(x => diaLargo(x.diaNombre)))}: libras`);
-      i = j; continue;
+      seg.push(`😴 ${nombres}: libras`);
+    } else {
+      let s = `📅 ${nombres} · turno de ${d.turno} · coche ${d.matricula}`;
+      if (d.recibeDe) s += ` · 🔑 recibes de ${d.recibeDe.nombre}${tel(d.recibeDe)}`;
+      if (d.entregaA) s += ` · 🤝 entregas a ${d.entregaA.nombre}${tel(d.entregaA)}`;
+      seg.push(s);
     }
-    let linea = `📅 ${diaLargo(d.diaNombre)} · turno de ${d.turno} · coche ${d.matricula}`;
-    if (d.recibeDe) linea += ` · 🔑 recibes de ${d.recibeDe.nombre}${tel(d.recibeDe)}`;
-    if (d.entregaA) linea += ` · 🤝 entregas a ${d.entregaA.nombre}${tel(d.entregaA)}`;
-    L.push(linea);
-    i++;
+    i = j;
   }
-  return L.join('\n');
+  return seg.join('\n');
 }
 
 module.exports = { instruccionesPorConductor, mensajeTurnos, planSemanaTexto };

@@ -3,6 +3,7 @@ const router = express.Router();
 const { leerTablero, DIAS_SEM, TURNOS } = require('../services/planificadorV2');
 const { instruccionesPorConductor, planSemanaTexto } = require('../services/turnosConductor');
 const { enviarTurnosSemana } = require('../services/whatsapp');
+const { leerTelefonosDB } = require('../services/control');
 
 router.get('/', (req, res) => {
   res.render('cobertura', {
@@ -18,7 +19,7 @@ router.get('/api/datos', async (req, res) => {
   try {
     // ?semana=N: 0 = actual, 1 = la que viene, etc. Para "ver el futuro".
     const offsetSemana = Math.max(0, Math.min(8, parseInt(req.query.semana) || 0));
-    const t = await leerTablero({ offsetSemana });
+    const [t, telsDB] = await Promise.all([leerTablero({ offsetSemana }), leerTelefonosDB().catch(() => new Map())]);
 
     // Los relevos de todos los coches, en una sola lista para poder filtrarlos
     // por persona: cada conductor quiere saber a quién entrega y de quién recibe.
@@ -30,7 +31,7 @@ router.get('/api/datos', async (req, res) => {
       cobertura: t.cobertura,
       ausentesEnPlaza: t.ausentesEnPlaza || [],
       relevos,
-      porConductor: instruccionesPorConductor(t),
+      porConductor: instruccionesPorConductor(t, telsDB),
       coches: t.coches
         .filter(c => c.matricula && c.operativo)
         .map(c => ({
@@ -60,8 +61,8 @@ router.post('/enviar-turnos', async (req, res) => {
     const semana = Math.max(0, Math.min(8, Number(b.semana) || 0));
     const idBolt = (b.idBolt || '').toString().trim();
     if (!idBolt) throw new Error('Falta el conductor');
-    const t = await leerTablero({ offsetSemana: semana });
-    const entrada = instruccionesPorConductor(t).find(e => e.id === idBolt);
+    const [t, telsDB] = await Promise.all([leerTablero({ offsetSemana: semana }), leerTelefonosDB().catch(() => new Map())]);
+    const entrada = instruccionesPorConductor(t, telsDB).find(e => e.id === idBolt);
     if (!entrada) throw new Error('Ese conductor no tiene turnos esta semana');
     if (!entrada.telefono) throw new Error('Ese conductor no tiene teléfono en la agenda');
     const r = await enviarTurnosSemana(entrada.telefono, entrada.nombre, planSemanaTexto(entrada));
@@ -86,8 +87,8 @@ router.get('/enviar-turnos/estado', (req, res) => res.json({ status: 'ok', progr
 async function enviarTurnosBulk(semana) {
   _progTurnos = { activo: true, total: 0, enviados: 0, errores: 0, sinTel: 0, iniciado: sello(), fin: null, detalle: [] };
   try {
-    const t = await leerTablero({ offsetSemana: semana });
-    const lista = instruccionesPorConductor(t).filter(e => e.dias.some(d => d.trabaja));   // solo los que trabajan
+    const [t, telsDB] = await Promise.all([leerTablero({ offsetSemana: semana }), leerTelefonosDB().catch(() => new Map())]);
+    const lista = instruccionesPorConductor(t, telsDB).filter(e => e.dias.some(d => d.trabaja));   // solo los que trabajan
     _progTurnos.total = lista.length;
     for (const e of lista) {
       if (!e.telefono) { _progTurnos.sinTel++; _progTurnos.detalle.push(`${e.nombre}: sin teléfono`); continue; }

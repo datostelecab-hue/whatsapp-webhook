@@ -210,4 +210,4 @@ async function tableroControl() {
   };
 }
 
-module.exports = { tableroControl, leerHorasDatosApi };
+module.exports = { tableroControl, leerHorasDatosApi, leerTelefonosDB };
