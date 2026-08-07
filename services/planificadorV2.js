@@ -1122,30 +1122,52 @@ const { readMany, writeMany, getSheetIds, deleteRows } = require('./sheets');
  * @param filasActuales  lo ya leído de la hoja, cabecera incluida
  * @param colClave       columna 1-based que marca "esta fila tiene un registro"
  */
+// Cola en serie de las altas: dos `anadirDebajo` seguidos NUNCA se solapan (evita que
+// calculen la misma fila y se pisen). Es un proceso único, así que basta un candado en
+// memoria. Cada tarea corre tras la anterior, pase lo que pase con ella.
+let _colaAltas = Promise.resolve();
+
 async function anadirDebajo(hoja, filasActuales, colClave, nuevasFilas, anchoFila) {
   if (!nuevasFilas.length) return { primeraFila: null, filas: 0 };
 
-  // Última fila (1-based) que tiene algo en la columna clave.
-  let ultima = 1;   // al menos la cabecera
-  for (let i = 1; i < filasActuales.length; i++) {
-    if (txt((filasActuales[i] || [])[colClave - 1])) ultima = i + 1;
-  }
-
-  const primeraFila = ultima + 1;
+  // "Fila ocupada" = tiene algo en ALGUNA columna clave. CLAVE del arreglo: un conductor
+  // real puede tener ID_BOLT sin NOMBRE (o al revés), así que hay que mirar ambas; si no,
+  // se toma por vacía una fila ocupada y se sobrescribe (el bug que borró conductores).
+  const claves = (Array.isArray(colClave) ? colClave : [colClave]).map(Number);
+  const ocupada = f => claves.some(c => txt((f || [])[c - 1]));
   const hojaRef = `'${hoja.replace(/'/g, "''")}'`;
   const colFin = colLetra(anchoFila);
 
-  const datos = nuevasFilas.map((fila, i) => {
-    const completa = fila.slice(0, anchoFila);
-    while (completa.length < anchoFila) completa.push('');
-    return {
-      range: `${hojaRef}!A${primeraFila + i}:${colFin}${primeraFila + i}`,
-      values: [completa]
-    };
+  const tarea = _colaAltas.then(async () => {
+    // RE-LECTURA fresca dentro del candado: nunca se parte de datos viejos del llamador.
+    const [frescas] = await readMany(SPREADSHEET_PLANIFICADOR, [`${hojaRef}!A1:${colFin}1000`]);
+    const base = (frescas && frescas.length) ? frescas : filasActuales;
+
+    let ultima = 1;   // al menos la cabecera
+    for (let i = 1; i < base.length; i++) if (ocupada(base[i])) ultima = i + 1;
+    const primeraFila = ultima + 1;
+
+    // SALVAGUARDA anti-sobrescritura: si alguna fila destino ya tiene conductor, se
+    // aborta en vez de machacarlo. No debería pasar nunca tras el cálculo correcto,
+    // pero es la red que garantiza que jamás se borra a nadie.
+    for (let i = 0; i < nuevasFilas.length; i++) {
+      const obj = base[primeraFila - 1 + i];
+      if (obj && ocupada(obj)) {
+        throw new Error(`[anadirDebajo] La fila ${primeraFila + i} de "${hoja}" ya tiene un conductor; se aborta para no sobrescribir.`);
+      }
+    }
+
+    const datos = nuevasFilas.map((fila, i) => {
+      const completa = fila.slice(0, anchoFila);
+      while (completa.length < anchoFila) completa.push('');
+      return { range: `${hojaRef}!A${primeraFila + i}:${colFin}${primeraFila + i}`, values: [completa] };
+    });
+    await writeMany(SPREADSHEET_PLANIFICADOR, datos);
+    return { primeraFila, filas: nuevasFilas.length };
   });
 
-  await writeMany(SPREADSHEET_PLANIFICADOR, datos);
-  return { primeraFila, filas: nuevasFilas.length };
+  _colaAltas = tarea.catch(() => {});   // la cola continúa aunque una alta falle
+  return tarea;
 }
 
 const ULTIMA_FILA_PLAN = PLAN_FILA_INI + N_MAT * FILAS_POR_COCHE - 1;
@@ -1609,7 +1631,7 @@ async function crearConductor(datos) {
     fila[CAMPOS_EDITABLES[nombre].col - 1] = validarCampo(nombre, valor);
   });
 
-  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.NOMBRE, [fila], A_HEADERS.length);
+  await anadirDebajo(HOJAS.AGENDA, agendaFilas, [A.ID_BOLT, A.NOMBRE], [fila], A_HEADERS.length);
 
   // Verificar que ha entrado antes de dar el alta por buena. Como puede no
   // tener ID de Bolt, se comprueba por ID si lo hay y, si no, por nombre.
@@ -1767,7 +1789,7 @@ async function migrarBajasEmpresa() {
       fila.push(hoy);
       return fila;
     });
-    await anadirDebajo(HOJA_OUT, outFilas, A.NOMBRE, filas, A_HEADERS.length + 1);
+    await anadirDebajo(HOJA_OUT, outFilas, [A.ID_BOLT, A.NOMBRE], filas, A_HEADERS.length + 1);
 
     // ---- 2. Verificar que la copia está antes de borrar nada ----
     const comprobacion = await leerOut();
@@ -1826,7 +1848,7 @@ async function restaurarDesdeOut(ids) {
     ASG_COL.forEach(c => { fila[c - 1] = ''; });
     return fila;
   });
-  await anadirDebajo(HOJAS.AGENDA, agendaFilas, A.NOMBRE, filas, A_HEADERS.length);
+  await anadirDebajo(HOJAS.AGENDA, agendaFilas, [A.ID_BOLT, A.NOMBRE], filas, A_HEADERS.length);
 
   // ---- 2. Verificar antes de borrar del archivo ----
   const [agendaDespues] = await readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.agenda]);
