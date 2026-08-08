@@ -55,6 +55,12 @@ router.post('/simular', async (req, res) => {
   catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 
+// Reinicia las respuestas de las hojas TEST (para empezar una prueba desde cero).
+router.post('/reiniciar-pruebas', async (req, res) => {
+  try { await boda.reiniciarPruebas(); res.json({ status: 'ok' }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
 // Estado + progreso (el panel lo sondea para refrescar la barra).
 router.get('/estado', async (req, res) => {
   try {

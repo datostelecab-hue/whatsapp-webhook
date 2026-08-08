@@ -18,7 +18,7 @@
 //
 // Los textos de respuesta están aquí (fáciles de editar).
 
-const { readSheet, writeSheet, writeSheetRaw, appendRows, ensureSheet } = require('./sheets');
+const { readSheet, writeSheet, writeSheetRaw, appendRows, ensureSheet, clearSheet } = require('./sheets');
 
 const TOKEN = process.env.WHATSAPP_TOKEN || '';
 const VERSION = 'v25.0';
@@ -91,6 +91,10 @@ const MSG = {
   pendiente: ap => `¡Hola${ap ? ' ' + ap : ''}! 🤖 Soy un asistente automático. Para confirmar tu asistencia tocá por favor uno de los botones del mensaje de la invitación (Sí / Tal vez / No). ¡Gracias! 🙏`,
   desconocido: () => `¡Hola! 🤖 Soy el asistente automático de la boda de Igna y Cruz. No puedo leer los mensajes; para cualquier cosa, escribiles directamente a ellos. ¡Gracias! 💛`
 };
+
+// Cuando alguien CAMBIA una respuesta que ya había dado (ej. tocó "Sí" y luego "No").
+const actualizada = (ap, valor) => `¡Listo${ap ? ' ' + ap : ''}! Cambiamos tu respuesta a *${valor}* ✅\nQueda registrada la nueva. ¡Gracias! 🙏${firma}`;
+const NOTA_ACT = '✅ Cambiamos tu respuesta anterior por esta nueva.\n\n';
 
 // Botones interactivos del sub-flujo de parejas.
 const BOTONES_SN = [
@@ -439,14 +443,23 @@ async function guardarMensajeLibre(from, inv, texto, etapa) {
   } catch (e) { console.warn('⚠️ [BODA] no pude guardar el mensaje libre:', e.message); }
 }
 
-// ── Clasificación del botón de la plantilla (por su texto) ───────────────────
-// Los A/B/C llegan como type:'button' con button.text = el texto del botón.
-function clasificar(caption) {
-  const s = (caption || '').toString().toLowerCase();
-  if (/cuenten con ?migo|cont[aá] con nosotros|cuenten conmigo/.test(s)) return 'A';
-  if (/todav[ií]a no puedo|no podemos confi/.test(s)) return 'B';
-  if (/no voy a poder|no podremos acompa/.test(s)) return 'C';
-  return null;
+// ── Clasificación del botón de la plantilla (por su texto), según el TIPO ─────
+// A/B/C significan cosas distintas en individual (Sí / Tal vez / No) y en pareja (ambos
+// sí / confirmar uno por uno / ambos no). Los textos pueden variar entre versiones de la
+// plantilla, así que es tolerante (sin acentos, por palabras clave y con orden cuidado).
+function clasificar(caption, tipo) {
+  const n = (caption || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  if (tipo === 'pareja') {
+    if (/conta con nosotros|cuenten con nosotros|vamos los dos|asistimos|si,? vamos/.test(n)) return 'A';
+    if (/no podremos|no podemos acompan|no vamos a poder|no asistiremos|no iremos/.test(n)) return 'C';
+    if (/no podemos confi|confirmar|uno por uno|no estamos segur|tal vez/.test(n)) return 'B';
+    if (/\bno\b/.test(n)) return 'B';   // "no podemos confirmar…" → sub-flujo (uno por uno)
+    return 'A';
+  }
+  // individual (Sí / Tal vez / No). Ojo al orden: "tal vez" puede contener "no lo sé".
+  if (/tal vez|talvez|todav|quiza|mas adelante|aun no|no lo se|no se|no estoy segur|pendiente/.test(n)) return 'B';
+  if (/\bno\b/.test(n)) return 'C';     // "no voy a poder", "no podre", "no puedo"…
+  return 'A';                            // por defecto: confirmación (Sí)
 }
 
 // ============================================================
@@ -475,20 +488,23 @@ async function manejarMensaje(message /*, value */) {
 async function onBotonPlantilla(from, cap) {
   const inv = await buscarInvitado(from);
   if (!inv) { await enviarTexto(from, FALLBACK('')); return; }
-  const op = clasificar(cap);
+  const op = clasificar(cap, inv.tipo);
 
   if (inv.tipo === 'individual') {
-    if (op === 'A') { await guardarRta(inv, 'titular', 'Sí'); await enviarTexto(from, IND.A); }
-    else if (op === 'B') { await guardarRta(inv, 'titular', 'Tal vez'); await enviarTexto(from, IND.B); }
-    else if (op === 'C') { await guardarRta(inv, 'titular', 'No'); await enviarTexto(from, IND.C); }
-    else await enviarTexto(from, FALLBACK(inv.apodo));
+    const valor = op === 'A' ? 'Sí' : op === 'B' ? 'Tal vez' : op === 'C' ? 'No' : null;
+    if (!valor) { await enviarTexto(from, FALLBACK(inv.apodo)); return; }
+    const cambio = inv.rta && inv.rta !== valor;            // ya había respondido algo distinto
+    await guardarRta(inv, 'titular', valor);
+    await enviarTexto(from, cambio ? actualizada(inv.apodo, valor)
+      : (valor === 'Sí' ? IND.A : valor === 'Tal vez' ? IND.B : IND.C));
     return;
   }
   // pareja
-  if (op === 'A') { await guardarRta(inv, 'titular', 'Sí'); await guardarRta(inv, 'mas', 'Sí'); await enviarTexto(from, PAR.A); }
-  else if (op === 'C') { await guardarRta(inv, 'titular', 'No'); await guardarRta(inv, 'mas', 'No'); await enviarTexto(from, PAR.C); }
+  const pre = yaRespondio(inv) ? NOTA_ACT : '';   // ¿ya habían respondido? → avisar que se cambia
+  if (op === 'A') { await guardarRta(inv, 'titular', 'Sí'); await guardarRta(inv, 'mas', 'Sí'); await enviarTexto(from, pre + PAR.A); }
+  else if (op === 'C') { await guardarRta(inv, 'titular', 'No'); await guardarRta(inv, 'mas', 'No'); await enviarTexto(from, pre + PAR.C); }
   else if (op === 'B') {   // confirmamos uno por uno (un solo mensaje por vez)
-    estados.set(clave(from), { step: 'titular', inv });
+    estados.set(clave(from), { step: 'titular', inv, previo: yaRespondio(inv) });
     await enviarInteractivo(from, `Sin problema, confirmemos uno por uno 🙂\n${preguntaAsiste(inv.apodoT)}`, BOTONES_SN);
   } else await enviarTexto(from, FALLBACK(inv.apodoT));
 }
@@ -504,8 +520,9 @@ async function onBotonInteractivo(from, id) {
   } else {
     await guardarRta(st.inv, 'mas', valor);
     estados.delete(clave(from));
+    const pre = st.previo ? NOTA_ACT : '';
     // Cierre NATURAL que refleja lo que contestaron (no un genérico).
-    await enviarTexto(from, cierrePareja(st.inv.apodoT, st.rtaT, st.inv.apodoP, valor));
+    await enviarTexto(from, pre + cierrePareja(st.inv.apodoT, st.rtaT, st.inv.apodoP, valor));
   }
 }
 
@@ -748,4 +765,13 @@ async function simular(escenario) {
   return { escenario, hoja, from, pasos: guion.length, guardado };
 }
 
-module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista, diagnostico, probarCompleto, simular };
+// Borra las respuestas Y las marcas de envío de las hojas TEST, para empezar una prueba
+// desde cero (así el bot no cree que "ya respondió" por pruebas anteriores).
+async function reiniciarPruebas() {
+  await clearSheet(SHEET_ID, `'${HOJA.indTest}'!D2:E`).catch(() => { });   // TEST 1: Rta + Enviado
+  await clearSheet(SHEET_ID, `'${HOJA.parTest}'!F2:H`).catch(() => { });   // TEST 1+1: Rta T + Rta +1 + Enviado
+  console.log('💍 [BODA] Respuestas de prueba reiniciadas (TEST 1 y TEST 1+1)');
+  return { ok: true };
+}
+
+module.exports = { PHONE_NUMBER_ID, manejarMensaje, enviarInvitaciones, estadoResumen, progresoActual, enviando, agregarInvitado, opcionesLista, diagnostico, probarCompleto, simular, reiniciarPruebas };

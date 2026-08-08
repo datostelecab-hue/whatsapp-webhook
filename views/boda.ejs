@@ -154,7 +154,9 @@
 
     <div class="card">
       <h2>🧪 Simular respuestas (prueba)</h2>
-      <p style="font-size:12px;color:var(--suave);margin:0 0 14px">Simula que un invitado de prueba responde, para ver cómo queda en la hoja. Usa los números de las hojas TEST (Igna/Cruz) y les llega el WhatsApp de respuesta real.</p>
+      <p style="font-size:12px;color:var(--suave);margin:0 0 12px">Simula que un invitado de prueba responde, para ver cómo queda en la hoja. Usa los números de las hojas TEST (Igna/Cruz) y les llega el WhatsApp de respuesta real.</p>
+      <button id="btnReiniciar" style="border:1px solid var(--linea);background:#fff;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;color:var(--tinta);margin-bottom:14px">↺ Reiniciar respuestas de prueba</button>
+      <p style="font-size:11px;color:var(--suave);margin:-8px 0 14px">Borra las respuestas de las hojas TEST para empezar de cero (si no, el bot creerá que ya respondiste por pruebas anteriores).</p>
       <div style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--suave);font-weight:600;margin-bottom:6px">Individual</div>
         <div class="simbtns">
@@ -301,6 +303,16 @@
 
     // ── Simular respuestas (prueba) ──────────────────────────────────
     function msgSim(t, err) { const el = $('simMsg'); el.textContent = t; el.style.color = err ? 'var(--err)' : 'var(--ok)'; }
+    $('btnReiniciar').addEventListener('click', async () => {
+      if (!confirm('¿Borrar las respuestas de las hojas TEST para empezar una prueba desde cero?')) return;
+      const b = $('btnReiniciar'); b.disabled = true; msgSim('Reiniciando…', false);
+      try {
+        const r = await fetch(BASE + 'reiniciar-pruebas', { method: 'POST', headers: { 'Accept': 'application/json' } });
+        const d = await r.json();
+        msgSim(d.status === 'ok' ? '✅ Respuestas de prueba reiniciadas' : ('❌ ' + (d.msg || 'error')), d.status !== 'ok');
+      } catch (e) { msgSim('Error: ' + e.message, true); }
+      b.disabled = false;
+    });
     document.querySelectorAll('.simbtns button').forEach(b => b.addEventListener('click', async () => {
       const btns = document.querySelectorAll('.simbtns button');
       btns.forEach(x => x.disabled = true);
