@@ -18,13 +18,16 @@
 //
 // Los textos de respuesta están aquí (fáciles de editar).
 
-const { readSheet, writeSheet, appendRows } = require('./sheets');
+const { readSheet, writeSheet, writeSheetRaw, appendRows, ensureSheet } = require('./sheets');
 
 const TOKEN = process.env.WHATSAPP_TOKEN || '';
 const VERSION = 'v25.0';
 const PHONE_NUMBER_ID = '1146890328517605';                       // número de la BODA
 const SHEET_ID = '1fS7AoZRl08hxAzlwVqbLOj2jT7znAJuJMyy93zXqPA8';  // lista de invitados
 const HOJA = { ind: '1 (Si o Si)', par: '1+1 (Si o SI)', indTest: 'TEST 1', parTest: 'TEST 1+1', ofi: 'Lista Oficial' };
+const HOJA_MENSAJES = 'MENSAJES';   // texto libre que escribe la gente (lo que NO es un botón)
+// Plantillas aprobadas en Meta.
+const PLANTILLA = { ind: 'plantilla_1_corr', par: 'plantilla_1_1_2' };
 
 // Columnas (letra) para escribir respuestas / marca de envío.
 const COL = { IND_RTA: 'D', IND_ENVIADO: 'E', PAR_RTA_T: 'F', PAR_RTA_MAS: 'G', PAR_ENVIADO: 'H' };
@@ -54,14 +57,40 @@ const IND = {
   B: 'No te preocupes, más adelante nos podés confirmar.\n¡Ojalá puedas acompañarnos! 🙏\n\nIgna y Cruz',
   C: 'Lamentamos que no puedas ser parte, te agradecemos igualmente 💛\n¡Saludos!\n\nIgna y Cruz'
 };
+const firma = '\n\nIgna y Cruz';
 const PAR = {
-  A: '¡Genial! Qué bueno que nos puedan acompañar en este día tan especial 🥳\n¡Los esperamos!\n\nIgna y Cruz',
-  C: 'Qué pena que no nos puedan acompañar. ¡Muchas gracias por su respuesta! 💛\n\nIgna y Cruz',
-  FIN: '¡Muchas gracias por tu respuesta! 🙏\n\nIgna y Cruz'
+  A: '¡Genial! Qué bueno que nos puedan acompañar en este día tan especial 🥳\n¡Los esperamos!' + firma,
+  C: 'Qué pena que no nos puedan acompañar. ¡Muchas gracias por su respuesta! 💛' + firma
 };
 const FALLBACK = n => `Hola${n ? ' ' + n : ''} 👋 Soy solo un asistente virtual y no puedo leerte. ` +
   `Para confirmar tu asistencia usá por favor los botones del mensaje de la invitación ` +
-  `(Sí / Tal vez / No). ¡Muchas gracias!\n\nIgna y Cruz`;
+  `(Sí / Tal vez / No). ¡Muchas gracias!` + firma;
+
+// ── Sub-flujo de pareja (botón "No podemos confirmar"): se pregunta UNO POR UNO y el
+//    cierre REFLEJA lo que contestaron (para que no salgan respuestas genéricas raras). ──
+const preguntaAsiste = quien => `¿${quien || 'esa persona'} podrá asistir? 🙂`;
+const bridgePareja = quienSigue => `¡Gracias! ¿Y ${quienSigue || 'su acompañante'}? 🙂`;
+const unir = arr => (arr.length === 2 ? `${arr[0]} y ${arr[1]}` : arr[0]);
+function cierrePareja(apT, rT, apP, rP) {
+  const si = [], tv = [], no = [];
+  [[apT || 'el/la titular', rT], [apP || 'su acompañante', rP]].forEach(([ap, r]) => {
+    if (r === 'Sí') si.push(ap); else if (r === 'Tal vez') tv.push(ap); else no.push(ap);
+  });
+  const p = [];
+  if (si.length === 2) p.push(`¡Genial, los esperamos a ${unir(si)}! 🥳`);
+  else if (si.length === 1) p.push(`¡Genial, contamos con ${si[0]}! 🥳`);
+  if (tv.length) p.push(`${unir(tv)} nos lo confirma${tv.length === 2 ? 'n' : ''} más adelante 🙏`);
+  if (no.length === 2 && !si.length && !tv.length) p.push('Qué pena que no puedan acompañarnos 💛');
+  else if (no.length) p.push(`Una pena que ${unir(no)} no pueda${no.length === 2 ? 'n' : ''} 💛`);
+  return p.join('\n') + '\n\n¡Muchas gracias por avisar!' + firma;
+}
+
+// ── Respuestas al TEXTO LIBRE según la etapa (además, el mensaje se guarda aparte). ──
+const MSG = {
+  fin: ap => `¡Hola${ap ? ' ' + ap : ''}! 🤖 Soy un asistente automático y no leo los mensajes. Ya tenemos tu respuesta anotada, ¡gracias! Cualquier duda, escribile directamente a Igna y Cruz 💛`,
+  pendiente: ap => `¡Hola${ap ? ' ' + ap : ''}! 🤖 Soy un asistente automático. Para confirmar tu asistencia tocá por favor uno de los botones del mensaje de la invitación (Sí / Tal vez / No). ¡Gracias! 🙏`,
+  desconocido: () => `¡Hola! 🤖 Soy el asistente automático de la boda de Igna y Cruz. No puedo leer los mensajes; para cualquier cosa, escribiles directamente a ellos. ¡Gracias! 💛`
+};
 
 // Botones interactivos del sub-flujo de parejas.
 const BOTONES_SN = [
@@ -297,8 +326,8 @@ async function enviarPlantilla(to, plantilla, valores) {
 // Diagnóstico para el panel: qué WABA y qué formato/idioma ve de cada plantilla.
 async function diagnostico() {
   const waba = await descubrirWaba();
-  const [p1, p112] = await Promise.all([definicionPlantilla('plantilla_1'), definicionPlantilla('plantilla_1_1_2')]);
-  return { waba: waba || null, imagen: imagenActual(), debug: debugWaba, plantilla_1: p1, plantilla_1_1_2: p112 };
+  const [p1, p112] = await Promise.all([definicionPlantilla(PLANTILLA.ind), definicionPlantilla(PLANTILLA.par)]);
+  return { waba: waba || null, imagen: imagenActual(), debug: debugWaba, individual: p1, pareja: p112 };
 }
 
 // Prueba de envío con TRAZA completa: intenta cada estrategia (cuerpo/encabezado,
@@ -337,11 +366,11 @@ async function probarCompleto() {
   ]);
   const fi = t1[1] || [], fp = t11[1] || [];
   const out = { waba: await descubrirWaba(), imagen: imagenActual(), debug: debugWaba };
-  out.plantilla_1 = fi[1]
-    ? await probarEnvio(fi[1], 'plantilla_1', [(fi[2] || fi[0] || 'Prueba').toString()])
+  out.individual = fi[1]
+    ? await probarEnvio(fi[1], PLANTILLA.ind, [(fi[2] || fi[0] || 'Prueba').toString()])
     : { error: 'Sin número en TEST 1 (fila 2, col B)' };
-  out.plantilla_1_1_2 = fp[2]
-    ? await probarEnvio(fp[2], 'plantilla_1_1_2', [(fp[3] || fp[0] || 'Prueba').toString(), (fp[4] || fp[1] || 'Prueba').toString()])
+  out.pareja = fp[2]
+    ? await probarEnvio(fp[2], PLANTILLA.par, [(fp[3] || fp[0] || 'Prueba').toString(), (fp[4] || fp[1] || 'Prueba').toString()])
     : { error: 'Sin número en TEST 1+1 (fila 2, col C)' };
   return out;
 }
@@ -360,7 +389,7 @@ async function buscarInvitado(telefono) {
       const rows = await readSheet(SHEET_ID, `'${hoja}'!A:E`).catch(() => []);
       for (let i = 1; i < rows.length; i++) {
         const f = rows[i] || [];
-        if (clave(f[1]) === k) return { tipo: 'individual', hoja, fila: i + 1, apodo: (f[2] || f[0] || '').toString().trim(), nombre: f[0] };
+        if (clave(f[1]) === k) return { tipo: 'individual', hoja, fila: i + 1, apodo: (f[2] || f[0] || '').toString().trim(), nombre: f[0], rta: (f[3] || '').toString().trim() };
       }
     }
     return null;
@@ -373,7 +402,8 @@ async function buscarInvitado(telefono) {
         if (clave(f[2]) === k) return {
           tipo: 'pareja', hoja, fila: i + 1,
           apodoT: (f[3] || f[0] || '').toString().trim(), apodoP: (f[4] || f[1] || '').toString().trim(),
-          nombreT: f[0], nombreP: f[1]
+          nombreT: f[0], nombreP: f[1],
+          rtaT: (f[5] || '').toString().trim(), rtaP: (f[6] || '').toString().trim()
         };
       }
     }
@@ -388,6 +418,25 @@ async function guardarRta(inv, quien, valor) {
   if (inv.tipo === 'individual') return writeSheet(SHEET_ID, `'${inv.hoja}'!${COL.IND_RTA}${inv.fila}`, [[valor]]);
   const col = quien === 'titular' ? COL.PAR_RTA_T : COL.PAR_RTA_MAS;
   return writeSheet(SHEET_ID, `'${inv.hoja}'!${col}${inv.fila}`, [[valor]]);
+}
+
+// Guarda el TEXTO LIBRE (lo que NO es un botón) en la hoja MENSAJES, para revisarlo aparte.
+let _mensajesListo = false;
+async function ensureMensajes() {
+  if (_mensajesListo) return;
+  await ensureSheet(SHEET_ID, HOJA_MENSAJES);
+  const filas = await readSheet(SHEET_ID, `'${HOJA_MENSAJES}'!A1:F1`).catch(() => []);
+  if (!filas.length || !(filas[0] || []).length) {
+    await writeSheetRaw(SHEET_ID, `'${HOJA_MENSAJES}'!A1`, [['FECHA', 'TELEFONO', 'NOMBRE', 'TIPO', 'ETAPA', 'MENSAJE']]);
+  }
+  _mensajesListo = true;
+}
+async function guardarMensajeLibre(from, inv, texto, etapa) {
+  try {
+    await ensureMensajes();
+    const nombre = inv ? (inv.nombre || inv.nombreT || inv.apodo || inv.apodoT || '') : '';
+    await appendRows(SHEET_ID, `'${HOJA_MENSAJES}'!A:F`, [[selloAhora(), soloDigitos(from), nombre, inv ? inv.tipo : '', etapa, (texto || '').slice(0, 500)]]);
+  } catch (e) { console.warn('⚠️ [BODA] no pude guardar el mensaje libre:', e.message); }
 }
 
 // ── Clasificación del botón de la plantilla (por su texto) ───────────────────
@@ -438,9 +487,9 @@ async function onBotonPlantilla(from, cap) {
   // pareja
   if (op === 'A') { await guardarRta(inv, 'titular', 'Sí'); await guardarRta(inv, 'mas', 'Sí'); await enviarTexto(from, PAR.A); }
   else if (op === 'C') { await guardarRta(inv, 'titular', 'No'); await guardarRta(inv, 'mas', 'No'); await enviarTexto(from, PAR.C); }
-  else if (op === 'B') {   // confirmar uno a uno
+  else if (op === 'B') {   // confirmamos uno por uno (un solo mensaje por vez)
     estados.set(clave(from), { step: 'titular', inv });
-    await enviarInteractivo(from, `¿${inv.apodoT || 'el/la titular'} podrá asistir?`, BOTONES_SN);
+    await enviarInteractivo(from, `Sin problema, confirmemos uno por uno 🙂\n${preguntaAsiste(inv.apodoT)}`, BOTONES_SN);
   } else await enviarTexto(from, FALLBACK(inv.apodoT));
 }
 
@@ -450,24 +499,32 @@ async function onBotonInteractivo(from, id) {
   const valor = VALOR_BOTON[id] || 'Tal vez';
   if (st.step === 'titular') {
     await guardarRta(st.inv, 'titular', valor);
-    st.step = 'mas'; estados.set(clave(from), st);
-    await enviarInteractivo(from, `¿Y ${st.inv.apodoP || 'su acompañante'}?`, BOTONES_SN);
+    st.rtaT = valor; st.step = 'mas'; estados.set(clave(from), st);   // guardamos la 1ª rta para el cierre
+    await enviarInteractivo(from, bridgePareja(st.inv.apodoP), BOTONES_SN);
   } else {
     await guardarRta(st.inv, 'mas', valor);
     estados.delete(clave(from));
-    await enviarTexto(from, PAR.FIN);
+    // Cierre NATURAL que refleja lo que contestaron (no un genérico).
+    await enviarTexto(from, cierrePareja(st.inv.apodoT, st.rtaT, st.inv.apodoP, valor));
   }
 }
 
-async function onTexto(from, _text) {
+const yaRespondio = inv => inv && (inv.tipo === 'individual' ? !!inv.rta : !!(inv.rtaT || inv.rtaP));
+
+async function onTexto(from, texto) {
   const st = estados.get(clave(from));
-  if (st) {   // está a mitad del sub-flujo: reencaminar a los botones
+  if (st) {   // en mitad del sub-flujo: reencaminar a los botones (no cuenta como mensaje suelto)
     const quien = st.step === 'titular' ? st.inv.apodoT : st.inv.apodoP;
-    await enviarInteractivo(from, `Por favor, usá los botones 🙏\n¿${quien || 'esa persona'} podrá asistir?`, BOTONES_SN);
+    await enviarInteractivo(from, `Por favor, respondé con los botones 🙏\n${preguntaAsiste(quien)}`, BOTONES_SN);
     return;
   }
   const inv = await buscarInvitado(from);
-  await enviarTexto(from, FALLBACK(inv ? (inv.apodo || inv.apodoT) : ''));
+  const etapa = inv ? (yaRespondio(inv) ? 'fin' : 'pendiente') : 'desconocido';
+  await guardarMensajeLibre(from, inv, texto, etapa);   // se guarda SIEMPRE en la hoja MENSAJES
+  const ap = inv ? (inv.apodo || inv.apodoT || '') : '';
+  if (etapa === 'fin') await enviarTexto(from, MSG.fin(ap));
+  else if (etapa === 'pendiente') await enviarTexto(from, MSG.pendiente(ap));
+  else await enviarTexto(from, MSG.desconocido());
 }
 
 // ============================================================
@@ -501,7 +558,7 @@ async function enviarInvitaciones(opciones = {}) {
         const tel = soloDigitos(f[1]);
         if (!tel) continue;
         if (!reenviar && (f[4] || '').toString().trim()) { progreso.saltados++; continue; }
-        cola.push({ hoja: hInd, fila: i + 1, tel, plantilla: 'plantilla_1', params: [(f[2] || f[0] || '').toString().trim()], envCol: COL.IND_ENVIADO });
+        cola.push({ hoja: hInd, fila: i + 1, tel, plantilla: PLANTILLA.ind, params: [(f[2] || f[0] || '').toString().trim()], envCol: COL.IND_ENVIADO });
       }
     }
     if (tipo === 'pareja' || tipo === 'todos') {
@@ -511,7 +568,7 @@ async function enviarInvitaciones(opciones = {}) {
         const tel = soloDigitos(f[2]);
         if (!tel) continue;
         if (!reenviar && (f[7] || '').toString().trim()) { progreso.saltados++; continue; }
-        cola.push({ hoja: hPar, fila: i + 1, tel, plantilla: 'plantilla_1_1_2', params: [(f[3] || f[0] || '').toString().trim(), (f[4] || f[1] || '').toString().trim()], envCol: COL.PAR_ENVIADO });
+        cola.push({ hoja: hPar, fila: i + 1, tel, plantilla: PLANTILLA.par, params: [(f[3] || f[0] || '').toString().trim(), (f[4] || f[1] || '').toString().trim()], envCol: COL.PAR_ENVIADO });
       }
     }
     // Quita duplicados por teléfono (el mismo número en varias filas → un solo mensaje).
