@@ -451,9 +451,12 @@ function clasificar(caption, tipo) {
   const n = (caption || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
   if (tipo === 'pareja') {
     if (/conta con nosotros|cuenten con nosotros|vamos los dos|asistimos|si,? vamos/.test(n)) return 'A';
-    if (/no podremos|no podemos acompan|no vamos a poder|no asistiremos|no iremos/.test(n)) return 'C';
-    if (/no podemos confi|confirmar|uno por uno|no estamos segur|tal vez/.test(n)) return 'B';
-    if (/\bno\b/.test(n)) return 'B';   // "no podemos confirmar…" → sub-flujo (uno por uno)
+    // OJO: B ("No podemos/podremos CONFIRMAR" → preguntar uno por uno) va ANTES que C, porque
+    // ambos botones empiezan casi igual ("no pod…"); lo que los distingue es "confirmar" (B)
+    // frente a "acompañar" (C). Si se comprueba C primero, "no podremos confirmar" cae mal en C.
+    if (/confi|uno por uno|no estamos segur|tal vez|quiza/.test(n)) return 'B';
+    if (/acompan|no podremos|no podemos|no vamos a poder|no asistir|no iremos/.test(n)) return 'C';
+    if (/\bno\b/.test(n)) return 'B';   // último recurso → sub-flujo (nunca respuesta inmediata rara)
     return 'A';
   }
   // individual (Sí / Tal vez / No). Ojo al orden: "tal vez" puede contener "no lo sé".
