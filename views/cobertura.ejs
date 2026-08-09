@@ -22,9 +22,6 @@
     <button data-tab="dias" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-gold border-b-2 border-telecab-gold">
       Por día
     </button>
-    <button data-tab="relevos" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
-      Relevos por coche
-    </button>
     <button data-tab="personas" class="tab whitespace-nowrap px-5 py-2.5 font-medium text-telecab-muted border-b-2 border-transparent hover:text-telecab-text">
       Por conductor
     </button>
@@ -39,18 +36,10 @@
   <!-- ══ POR DÍA ══ -->
   <section id="panel-dias" class="space-y-3"></section>
 
-  <!-- ══ RELEVOS POR COCHE ══ -->
-  <section id="panel-relevos" class="hidden">
-    <input id="f-coche" type="search" placeholder="Matrícula, zona o conductor…"
-           class="w-full max-w-md mb-4 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
-                  text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
-    <div id="lista-coches" class="grid gap-3 xl:grid-cols-2"></div>
-  </section>
-
   <!-- ══ POR CONDUCTOR ══ -->
   <section id="panel-personas" class="hidden">
     <div class="flex flex-wrap items-center gap-3 mb-4">
-      <input id="f-persona" type="search" placeholder="Nombre o ID del conductor…"
+      <input id="f-persona" type="search" placeholder="Nombre, ID o matrícula…"
              class="flex-1 min-w-[220px] max-w-md px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
                     text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold">
       <button id="btn-turnos-todos" class="px-4 py-2 rounded-lg bg-green-600/15 text-green-400 text-sm font-medium hover:bg-green-600/25">
@@ -111,7 +100,6 @@ function pintar() {
     (totalPre ? ` · ${totalPre} por incorporación` : '');
   pintarAusentes();
   pintarDias();
-  pintarCoches();
   pintarPersonas();
 }
 
@@ -185,56 +173,17 @@ function pintarDias() {
   }).join('');
 }
 
-// ════════ Relevos por coche ════════
-function pintarCoches() {
-  const texto = $('#f-coche').value.trim().toLowerCase();
-
-  const visibles = D.coches.filter(c => {
-    if (!texto) return true;
-    const heno = [c.matricula, c.zona, ...c.semana.map(t => t.nombre + ' ' + t.id)].join(' ').toLowerCase();
-    return heno.includes(texto);
-  });
-
-  $('#lista-coches').innerHTML = visibles.map(c => `
-    <div class="rounded-xl bg-telecab-card border ${c.hayError ? 'border-telecab-red' : 'border-telecab-border'} p-4">
-      <div class="flex items-baseline justify-between mb-3">
-        <span class="font-semibold text-telecab-text">${esc(c.matricula)}</span>
-        <span class="text-xs text-telecab-muted">${esc(c.zona || 'sin zona')} · ${c.relevos.length} relevos</span>
-      </div>
-      ${c.relevos.length ? `<div class="space-y-2">${c.relevos.map(frase).join('')}</div>`
-        : `<p class="text-sm text-telecab-muted">Sin relevos: lo lleva siempre la misma persona o está sin cubrir.</p>`}
-    </div>`).join('') || '<p class="text-telecab-muted">Ningún coche coincide.</p>';
-}
-
-/** "CT2 Carlos recibe de Valentina el 8888LLL — sábado, de día a noche" */
-function frase(r) {
-  const parado = r.tramosParado > 0
-    ? `<span class="text-amber-400"> · el coche queda parado ${r.tramosParado} turno${r.tramosParado === 1 ? '' : 's'}</span>`
-    : '';
-  const cierre = r.cierraSemana
-    ? '<span class="text-telecab-muted"> · cierre de semana</span>' : '';
-
-  return `
-  <div class="text-sm border-l-2 border-telecab-border pl-3">
-    <span class="text-telecab-muted text-xs">${esc(r.recibe.plaza || '')}</span>
-    <span class="text-telecab-text font-medium">${esc(r.recibe.nombre)}</span>
-    <span class="text-telecab-muted">recibe de</span>
-    <span class="text-telecab-text font-medium">${esc(r.entrega.nombre)}</span>
-    <span class="text-telecab-muted">el</span>
-    <span class="text-telecab-text">${esc(r.matricula)}</span>
-    <div class="text-xs text-telecab-muted mt-0.5">
-      ${esc(r.entrega.dia)} ${icono(r.entrega.turno)} ${esc(r.entrega.turno)}
-      →
-      ${esc(r.recibe.dia)} ${icono(r.recibe.turno)} ${esc(r.recibe.turno)}${parado}${cierre}
-    </div>
-  </div>`;
-}
-
 // ════════ Por conductor ════════
 function pintarPersonas() {
   const texto = $('#f-persona').value.trim().toLowerCase();
+  // Se busca por nombre/ID/teléfono Y por MATRÍCULA: escribiendo "1208MJY" salen
+  // todos los conductores asociados a ese coche esta semana (fijos y correturnos).
   const lista = (D.porConductor || [])
-    .filter(p => !texto || `${p.nombre} ${p.id} ${p.telefono}`.toLowerCase().includes(texto));
+    .filter(p => {
+      if (!texto) return true;
+      const matriculas = p.dias.map(d => d.matricula || '').join(' ');
+      return `${p.nombre} ${p.id} ${p.telefono} ${matriculas}`.toLowerCase().includes(texto);
+    });
 
   const recibeTxt = d => d.recibeDe ? `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}` : '';
   const entregaTxt = d => d.entregaA ? `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}` : '';
@@ -282,11 +231,10 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
     x.className = 'tab whitespace-nowrap px-5 py-2.5 font-medium border-b-2 ' +
       (activa ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
   });
-  ['dias', 'relevos', 'personas'].forEach(p =>
+  ['dias', 'personas'].forEach(p =>
     $('#panel-' + p).classList.toggle('hidden', t.dataset.tab !== p));
 }));
 
-$('#f-coche').addEventListener('input', pintarCoches);
 $('#f-persona').addEventListener('input', pintarPersonas);
 $('#btn-recargar').addEventListener('click', cargar);
 $('#sem-prev').addEventListener('click', () => { if (SEMANA > 0) { SEMANA--; cargar(); } });
