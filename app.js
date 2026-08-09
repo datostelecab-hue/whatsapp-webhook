@@ -184,15 +184,17 @@ app.get('/conductores-bolt/actualizar', async (req, res) => {
   }
 });
 
-// Procesado manual de ausencias V/B/P (auto-estado + letras) sin esperar al cron.
+// Procesado manual de ausencias V/B/P (auto-estado + reincorporaciones + letras)
+// sin esperar al cron.
 app.get('/vista-final/ausencias-auto', async (req, res) => {
-  console.log('🔧 [VISTA_FINAL] ausencias (auto-estado + letras) manual...');
+  console.log('🔧 [VISTA_FINAL] ausencias (auto-estado + reincorporaciones + letras) manual...');
   try {
-    const { aplicarAusenciasAutomaticas, escribirLetrasAusencia } = require('./services/vistaFinal');
+    const { aplicarAusenciasAutomaticas, aplicarReincorporaciones, escribirLetrasAusencia } = require('./services/vistaFinal');
     const estado = await aplicarAusenciasAutomaticas();
+    const reincorporaciones = await aplicarReincorporaciones();
     const letras = await escribirLetrasAusencia();
-    console.log(`✅ [VISTA_FINAL] ausencias: ${JSON.stringify({ estado, letras })}`);
-    res.json({ ok: true, estado, letras });
+    console.log(`✅ [VISTA_FINAL] ausencias: ${JSON.stringify({ estado, reincorporaciones, letras })}`);
+    res.json({ ok: true, estado, reincorporaciones, letras });
   } catch (error) {
     console.error(`❌ [VISTA_FINAL] Error: ${error.stack || error.message}`);
     res.status(500).json({ ok: false, error: error.message });
@@ -300,10 +302,14 @@ cron.schedule('20 4 * * *', async () => {
 cron.schedule('45 * * * *', async () => {
   console.log('⏰ [CRON VISTA_FINAL] vacaciones automáticas + reconstruirVistaFinal()...');
   try {
-    const { reconstruirVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia } = require('./services/vistaFinal');
+    const { reconstruirVistaFinal, aplicarAusenciasAutomaticas, aplicarReincorporaciones, escribirLetrasAusencia } = require('./services/vistaFinal');
     // 1) A quien le empieza/corre hoy una ausencia (V/B/P) → estado automático.
     const aus = await aplicarAusenciasAutomaticas();
     if (aus.aplicados) console.log(`🏖️ [CRON VISTA_FINAL] ${aus.aplicados} ausencia(s): ${aus.conductores.join(', ')}`);
+    // 1bis) La inversa: a quien se le ACABARON las letras (hoy ya no hay V/B/P) se le
+    //       reincorpora solo → Activo si su semana está cubierta, si no Pendiente Asignar.
+    const rein = await aplicarReincorporaciones();
+    if (rein.reincorporados) console.log(`🎉 [CRON VISTA_FINAL] ${rein.reincorporados} reincorporación(es): ${rein.conductores.join(', ')}`);
     // 2) Con fecha de reincorporación → rellenar las letras del periodo en la bitácora.
     const let2 = await escribirLetrasAusencia();
     if (let2.celdas) console.log(`📝 [CRON VISTA_FINAL] ${let2.celdas} celda(s) de ausencia: ${let2.conductores.join(', ')}`);

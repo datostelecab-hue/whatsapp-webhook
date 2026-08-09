@@ -115,13 +115,16 @@ router.get('/api/tablero', async (req, res) => {
   }
 });
 
-/** Alertas de VISTA_FINAL: bajas/vacaciones marcadas a mano en los próximos días. */
+/** Alertas de VISTA_FINAL: bajas/vacaciones próximas + reincorporaciones de HOY. */
 router.get('/api/alertas', async (req, res) => {
   try {
-    const { alertasVistaFinal } = require('../services/vistaFinal');
+    const { alertasVistaFinal, alertasReincorporados } = require('../services/vistaFinal');
     const dias = Math.max(1, Math.min(14, parseInt(req.query.dias) || 4));
-    const alertas = await alertasVistaFinal(dias);
-    res.json({ status: 'ok', alertas, horizonte: dias });
+    const [alertas, reincorporados] = await Promise.all([
+      alertasVistaFinal(dias),
+      alertasReincorporados().catch(() => [])
+    ]);
+    res.json({ status: 'ok', alertas, reincorporados, horizonte: dias });
   } catch (error) {
     console.error('❌ [PLANIFICADOR] /api/alertas:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });

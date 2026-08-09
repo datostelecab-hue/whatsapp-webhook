@@ -504,8 +504,16 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
 
       if (p.rol === 'CT') {
         // El correturno cubre exactamente lo que tenga escrito, ni más ni menos.
+        // Se registra el motivo de los días que NO cubre por fechas (pre-alta,
+        // hasta vencido, ausente) igual que en los fijos: así el hueco se explica
+        // ("entra el X") en vez de salir como "sin conductor" a secas.
         p.diasCubre = (p.diasManual ? p.diasManual.slice() : Array(7).fill(false))
-          .map((v, d) => v && activoEnFecha(p, info, fechasSemana[d]).activo);
+          .map((v, d) => {
+            if (!v) return false;
+            const gate = activoEnFecha(p, info, fechasSemana[d]);
+            if (!gate.activo) { (p.inactivoPorDia = p.inactivoPorDia || {})[d] = gate.motivo; return false; }
+            return true;
+          });
 
         if (!p.diasManual) {
           problemas.push({
@@ -527,7 +535,12 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
           }
         }
       } else {
-        const partida = p.diasManual ? p.diasManual : info.trabaja;
+        // Un FIJO parte SIEMPRE de su patrón de la agenda (todos sus días no-libranza):
+        // la celda DIAS_TRABAJA de su fila NO se lee como restricción. Antes sí se leía,
+        // y como guardarTablero persistía ahí los días COMPUTADOS (ya recortados por
+        // pre-alta/ausencias), un fijo con alta a mitad de semana quedaba capado a esos
+        // días PARA SIEMPRE (bug "Publio": alta el viernes → "V S D" eterno).
+        const partida = info.trabaja;
         // Un estado especial (vacaciones, baja médica, suspensión…) o estar fuera
         // de su ventana de fecha significa que NO cubre esos días: se muestran como
         // hueco en el planificador, no como turno cubierto.
@@ -544,10 +557,9 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
       p.diasManualTexto = p.diasManual ? diasALetras(p.diasManual) : '';
       p.turnosCubre = turnosCubre;
 
-      // Base de días antes de recortar por el CT de cada turno.
-      const baseDias = p.rol === 'CT'
-        ? p.diasCubre
-        : (p.diasManual ? p.diasManual : info.trabaja);
+      // Base de días antes de recortar por el CT de cada turno. Para el fijo, SIEMPRE
+      // su patrón de la agenda (ver arriba: DIAS_TRABAJA no restringe a los fijos).
+      const baseDias = p.rol === 'CT' ? p.diasCubre : info.trabaja;
 
       turnosCubre.forEach(turnoCubre => {
         baseDias.forEach((cubre, d) => {
@@ -639,6 +651,7 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     coche.huecos = [];
     coche.conflictos = [];
     coche.avisos = [];   // no bloqueantes (p. ej. trabaja en su libranza): solo avisan
+    coche.preAltas = []; // días sin salir porque el asignado entra más tarde (alta/Desde futuro)
 
     const nombreCoche = coche.matricula || '#' + (coche.idx + 1);
     coche.personas.forEach(p => {
@@ -700,12 +713,36 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
         });
 
         if (lista.length === 0) {
-          coche.huecos.push({ dia: d, turno, etiqueta: `(${turno === 'Día' ? 'D' : 'N'}) ${DIAS_SEM[d]}` });
+          const etiqueta = `(${turno === 'Día' ? 'D' : 'N'}) ${DIAS_SEM[d]}`;
+          // ¿El hueco lo explica alguien YA asignado que entra MÁS TARDE (fecha de
+          // alta futura o "Desde" de la asignación)? Entonces la plaza NO está libre:
+          // el coche no sale ese día, pero no hay que buscar a nadie. No cuenta como
+          // "libre" ni marca el coche como incompleto; se avisa abajo (ámbar).
+          const pPre = coche.personas.find(x => x.id && x.inactivoPorDia && x.inactivoPorDia[d] === 'pre-alta' &&
+            (x.turno === turno || (x.turnosCubre && x.turnosCubre.includes(turno))));
+          if (pPre) coche.preAltas.push({ dia: d, turno, etiqueta, id: pPre.id, p: pPre });
+          else coche.huecos.push({ dia: d, turno, etiqueta });
         } else {
           salen[turno][d]++;
         }
       });
     }
+
+    // Un aviso por cada persona que entra más tarde, con sus días agrupados.
+    const prePorPersona = new Map();
+    coche.preAltas.forEach(h => {
+      if (!prePorPersona.has(h.id)) prePorPersona.set(h.id, { p: h.p, dias: [] });
+      prePorPersona.get(h.id).dias.push(h.etiqueta);
+    });
+    prePorPersona.forEach(({ p, dias }) => {
+      const info = porId.get(p.id);
+      const cand = [p.desdeD, info && info.fechaAltaD].filter(Boolean);
+      const desde = cand.length ? new Date(Math.max.apply(null, cand.map(x => x.getTime()))) : null;
+      coche.avisos.push({
+        tipo: 'pre-alta',
+        msg: `${(info && info.nombre) || p.id} se incorpora el ${fmtF(desde)}: hasta entonces ${dias.join(' · ')} sin salir (la plaza ya es suya, no cuenta como libre)`
+      });
+    });
 
     coche.hayError = coche.conflictos.length > 0;
     coche.numLibres = coche.hayError ? 0 : coche.huecos.length;
@@ -1312,7 +1349,10 @@ function aplicarCambios(planFilas, cambios) {
         // siguiente que entre heredaría una jornada que nadie le ha asignado.
         if (!txt(s.id)) fila[P.DIAS_TRABAJA - 1] = '';
       }
-      if (s.dias !== undefined) {
+      if (s.dias !== undefined && SLOTS[k].rol === 'CT') {
+        // Solo los CORRETURNOS tienen días manuales. Para un FIJO se ignora lo que
+        // llegue: sus días son su patrón de libranza de la agenda, y aceptar texto
+        // aquí era una vía para capar a un fijo sin querer (bug "Publio").
         // Se rechaza aquí, no en la hoja: quien está escribiendo ve el error en
         // el momento, en vez de descubrir semanas después que a ese coche le
         // faltaba un turno porque su texto no se entendió.
@@ -1392,7 +1432,11 @@ async function guardarTablero(tablero, opciones = {}) {
       colIds.push([p.id]);
       // En las filas de correturno se respeta lo que escribió la persona; en las
       // de fijo, lo que calcula el motor.
-      colDias.push([p.rol === 'CT' ? diasALetras(p.diasManual) : (p.diasTexto || '')]);
+      // CT: sus días MANUALES tal cual (su jornada asignada). FIJO: la celda queda
+      // VACÍA a propósito — si se escribieran sus días computados (recortados por
+      // pre-alta/ausencias de ESTA semana), la siguiente corrida los releería como
+      // restricción manual y el fijo quedaría capado para siempre (bug "Publio").
+      colDias.push([p.rol === 'CT' ? diasALetras(p.diasManual) : '']);
       // Ventana de la asignación: se reescribe tal cual (round-trip), no se pierde.
       colDesde.push([p.desde || '']);
       colHasta.push([p.hasta || '']);

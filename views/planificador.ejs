@@ -158,6 +158,7 @@ function pintarResumen() {
 }
 
 let ALERTAS_VB = [];
+let REINCORPORADOS = [];   // vueltos HOY de vacaciones/baja/permiso (según la bitácora)
 
 function pintarAvisos() {
   const box = $('#avisos');
@@ -169,21 +170,32 @@ function pintarAvisos() {
 }
 
 function contarAlertas() {
-  const n = ALERTAS_VB.length + ((TABLERO && TABLERO.avisos) ? TABLERO.avisos.length : 0);
+  const n = ALERTAS_VB.length + REINCORPORADOS.length + ((TABLERO && TABLERO.avisos) ? TABLERO.avisos.length : 0);
   $('#n-alertas').textContent = n ? '(' + n + ')' : '';
 }
 
-// Bajas / vacaciones próximas leídas de VISTA_FINAL (marcadas a mano).
+// Bajas / vacaciones próximas + reincorporaciones de HOY, leídas de VISTA_FINAL.
 function pintarAlertasVB() {
   const box = $('#alertas-vb');
-  if (!ALERTAS_VB.length) { box.innerHTML = ''; contarAlertas(); return; }
-  box.innerHTML = '<div class="rounded-lg border border-telecab-red/40 bg-telecab-red/10 p-4 text-sm">' +
-    '<strong class="text-telecab-red"><i class="fa-solid fa-user-clock mr-1"></i> Bajas / vacaciones próximas:</strong>' +
-    '<ul class="mt-2 space-y-1 text-telecab-text">' +
-    ALERTAS_VB.map(a => '<li>· <b>' + esc(a.conductor) + '</b> — ' + esc(a.motivo) + ' ' +
-      (a.dias === 1 ? 'mañana' : 'en ' + a.dias + ' días') +
-      ' <span class="text-telecab-muted">(' + esc(a.fecha) + ')</span> · toca reemplazar</li>').join('') +
-    '</ul></div>';
+  let html = '';
+  if (REINCORPORADOS.length) {
+    html += '<div class="rounded-lg border border-green-600/40 bg-green-900/15 p-4 text-sm mb-3">' +
+      '<strong class="text-green-400"><i class="fa-solid fa-person-walking-arrow-right mr-1"></i> Reincorporaciones de hoy:</strong>' +
+      '<ul class="mt-2 space-y-1 text-telecab-text">' +
+      REINCORPORADOS.map(a => '<li>· <b>' + esc(a.conductor) + '</b> volvió hoy de ' + esc(a.motivo) +
+        ' — revisa que su semana quede planificada</li>').join('') +
+      '</ul></div>';
+  }
+  if (ALERTAS_VB.length) {
+    html += '<div class="rounded-lg border border-telecab-red/40 bg-telecab-red/10 p-4 text-sm">' +
+      '<strong class="text-telecab-red"><i class="fa-solid fa-user-clock mr-1"></i> Bajas / vacaciones próximas:</strong>' +
+      '<ul class="mt-2 space-y-1 text-telecab-text">' +
+      ALERTAS_VB.map(a => '<li>· <b>' + esc(a.conductor) + '</b> — ' + esc(a.motivo) + ' ' +
+        (a.dias === 1 ? 'mañana' : 'en ' + a.dias + ' días') +
+        ' <span class="text-telecab-muted">(' + esc(a.fecha) + ')</span> · toca reemplazar</li>').join('') +
+      '</ul></div>';
+  }
+  box.innerHTML = html;
   contarAlertas();
 }
 
@@ -191,7 +203,8 @@ async function cargarAlertas() {
   try {
     const r = await (await fetch('/planificador/api/alertas')).json();
     ALERTAS_VB = (r.status === 'ok' && r.alertas) ? r.alertas : [];
-  } catch (e) { ALERTAS_VB = []; }
+    REINCORPORADOS = (r.status === 'ok' && r.reincorporados) ? r.reincorporados : [];
+  } catch (e) { ALERTAS_VB = []; REINCORPORADOS = []; }
   pintarAlertasVB();
 }
 

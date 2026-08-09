@@ -537,6 +537,106 @@ async function leerFinAusencias() {
 // Estado de ausencia → letra de la bitácora (inverso de LETRA_ESTADO).
 const ESTADO_LETRA = Object.fromEntries(Object.entries(LETRA_ESTADO).map(([l, e]) => [e, l]));
 
+const AUSENCIA_LETRAS = ['V', 'B', 'P'];
+
+/**
+ * REINCORPORACIÓN AUTOMÁTICA (la inversa de aplicarAusenciasAutomaticas): para cada
+ * conductor cuyo estado es Vacaciones / Baja Médica / Permiso Retribuido pero cuya
+ * celda de HOY en la bitácora YA NO tiene letra (sus V/B/P terminaron), se le
+ * reincorpora solo:
+ *   · Activo             si su semana queda cubierta (lo decide el propio motor), o
+ *   · Pendiente Asignar  si está sin planificar o le faltan días.
+ * Además limpia su fecha de REINCORPORACION manual (ya cumplida; si se quedara,
+ * taparía a la automática en su PRÓXIMA ausencia). Quien no tiene fila en la
+ * bitácora no se toca (se gestiona a mano). "Suspendido" también queda manual.
+ */
+async function aplicarReincorporaciones() {
+  const hoy = hoyMadrid();
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const colHoy = 3 + Math.round((hoy.getTime() - inicioMs) / 86400000);
+  if (colHoy < 3) return { reincorporados: 0, conductores: [] };
+
+  const [filas, tablero] = await Promise.all([
+    readSheet(ID_GESTION, `${HOJA}!A:ZZ`, { valueRenderOption: 'UNFORMATTED_VALUE' }),
+    leerTablero()
+  ]);
+
+  // Letra de HOY por conductor de la bitácora.
+  const letraHoy = new Map();
+  for (let i = 3; i < filas.length; i++) {
+    const nombre = (filas[i][1] || '').toString().trim();
+    if (!nombre || nombre.toUpperCase() === 'CONDUCTOR') continue;
+    const k = clave(nombre);
+    if (k && !letraHoy.has(k)) letraHoy.set(k, String(filas[i][colHoy] ?? '').trim().toUpperCase());
+  }
+
+  // Ausentes (V/B/P) cuya bitácora ya no marca ausencia hoy → han vuelto.
+  const vueltos = ((tablero && tablero.conductores) || []).filter(c => {
+    if (!ESTADO_LETRA[c.estado]) return false;              // su estado no es V/B/P
+    const k = clave(c.idBolt || '');
+    if (!k || !letraHoy.has(k)) return false;               // sin fila en la bitácora: manual
+    return !AUSENCIA_LETRAS.includes(letraHoy.get(k));      // hoy ya no hay letra → volvió
+  });
+  if (!vueltos.length) return { reincorporados: 0, conductores: [] };
+
+  // 1) A Activo provisional, para que el motor los cuente al recalcular.
+  await cambiarEstados(vueltos.map(c => ({ id: c.idBolt, estado: 'Activo' })));
+
+  // 2) El criterio del MOTOR decide el estado final: si tras recalcular queda como
+  //    "Pendiente Asignar" (le faltan días o no tiene plaza), se le pone; si su
+  //    semana está cubierta se queda en Activo. Cero lógica duplicada.
+  const t2 = await leerTablero();
+  const porId2 = new Map(((t2 && t2.conductores) || []).map(c => [clave(c.idBolt || ''), c]));
+  const ajustes = [];
+  const resultado = [];
+  vueltos.forEach(c => {
+    const n = porId2.get(clave(c.idBolt));
+    const nuevo = n && n.estadoCalculado === 'Pendiente Asignar' ? 'Pendiente Asignar' : 'Activo';
+    if (nuevo !== 'Activo') ajustes.push({ id: c.idBolt, estado: nuevo });
+    resultado.push(`${c.idBolt}: ${c.estado} → ${nuevo}`);
+  });
+  if (ajustes.length) await cambiarEstados(ajustes);
+
+  // 3) Limpiar la fecha de REINCORPORACION manual (col AH de AGENDA_V2), ya cumplida.
+  try {
+    const { SPREADSHEET_PLANIFICADOR } = require('./planificadorV2');
+    const limpiezas = vueltos
+      .filter(c => c.fila)
+      .map(c => ({ range: `AGENDA_V2!AH${c.fila}`, values: [['']] }));
+    if (limpiezas.length) await writeMany(SPREADSHEET_PLANIFICADOR, limpiezas);
+  } catch (e) { console.warn(`⚠️ [VISTA_FINAL] No pude limpiar reincorporaciones: ${e.message}`); }
+
+  return { reincorporados: resultado.length, conductores: resultado };
+}
+
+/**
+ * Alertas de reincorporación de HOY (sin estado, recomputable todo el día): filas de
+ * la bitácora con V/B/P AYER y sin letra HOY → "X volvió hoy de vacaciones/baja/permiso".
+ * Las consume el panel de alertas del planificador junto a las de ausencias próximas.
+ */
+async function alertasReincorporados() {
+  const hoy = hoyMadrid();
+  const inicioMs = Date.UTC(INICIO.y, INICIO.m, INICIO.d, 12);
+  const colHoy = 3 + Math.round((hoy.getTime() - inicioMs) / 86400000);
+  if (colHoy < 4) return [];   // hace falta que exista la columna de ayer
+
+  const filas = await readSheet(ID_GESTION, `${HOJA}!A:ZZ`, { valueRenderOption: 'UNFORMATTED_VALUE' });
+  const TIPO = { V: 'vacaciones', B: 'baja médica', P: 'permiso retribuido' };
+  const out = [];
+  for (let i = 3; i < filas.length; i++) {
+    const nombre = (filas[i][1] || '').toString().trim();
+    if (!nombre || nombre.toUpperCase() === 'CONDUCTOR') continue;
+    const estadoCol = (filas[i][0] || '').toString();
+    if (['Out', 'mapear'].some(s => estadoCol.includes(s))) continue;   // bajas/ocultos: no
+    const ayer = String(filas[i][colHoy - 1] ?? '').trim().toUpperCase();
+    const hoyL = String(filas[i][colHoy] ?? '').trim().toUpperCase();
+    if (AUSENCIA_LETRAS.includes(ayer) && !AUSENCIA_LETRAS.includes(hoyL)) {
+      out.push({ conductor: nombre, tipo: ayer, motivo: TIPO[ayer], fecha: isoFecha(hoy) });
+    }
+  }
+  return out;
+}
+
 /**
  * Al haber una fecha de reincorporación en un conductor ausente (Vacaciones / Baja
  * Médica / Permiso Retribuido), rellena su letra (V/B/P) en la bitácora desde HOY
@@ -667,4 +767,4 @@ async function marcarJustificante(idBolt, fechaStr) {
   return { escrito: true, fila: fila + 1, col };
 }
 
-module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, escribirLetrasAusencia, escribirLetrasRango, leerFinAusencias, marcarJustificante };
+module.exports = { reconstruirVistaFinal, alertasVistaFinal, aplicarAusenciasAutomaticas, aplicarReincorporaciones, alertasReincorporados, escribirLetrasAusencia, escribirLetrasRango, leerFinAusencias, marcarJustificante };

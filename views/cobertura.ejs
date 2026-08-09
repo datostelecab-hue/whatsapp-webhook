@@ -101,9 +101,14 @@ async function cargar() {
 
 function pintar() {
   const totalRelevos = D.relevos.length;
-  const totalHuecos = D.cobertura.reduce((n, c) => n + c.sinConductor.length, 0);
+  // Los tramos "pre-alta" (el asignado entra más tarde) NO son turnos sin conductor:
+  // la plaza ya tiene dueño, solo que aún no ha llegado. Se cuentan aparte.
+  const esPre = c => c.tipo === 'titular-pre-alta';
+  const totalHuecos = D.cobertura.reduce((n, c) => n + c.sinConductor.filter(x => !esPre(x)).length, 0);
+  const totalPre = D.cobertura.reduce((n, c) => n + c.sinConductor.filter(esPre).length, 0);
   $('#resumen').textContent =
-    `${D.coches.length} coches operativos · ${totalRelevos} relevos a la semana · ${totalHuecos} turnos sin conductor`;
+    `${D.coches.length} coches operativos · ${totalRelevos} relevos a la semana · ${totalHuecos} turnos sin conductor` +
+    (totalPre ? ` · ${totalPre} por incorporación` : '');
   pintarAusentes();
   pintarDias();
   pintarCoches();
@@ -161,12 +166,14 @@ function pintarDias() {
                 <ul class="mt-2 space-y-1">
                   ${t.sinConductor.map(c => {
                     const col = c.tipo === 'conflicto' ? 'text-telecab-red'
+                              : c.tipo === 'titular-pre-alta' ? 'text-sky-400'   // informativo: ya asignado, entra más tarde
                               : c.tipo === 'sin_conductor' ? 'text-telecab-muted'
                               : 'text-amber-400';   // vehículo o motivo de fecha
+                    const pre = c.tipo === 'titular-pre-alta' ? '⏳ ' : '';
 
                     return `<li class="flex items-baseline gap-2">
                       <span class="font-medium text-telecab-text">${esc(c.matricula)}</span>
-                      <span class="${col}">${esc(c.motivo)}</span>
+                      <span class="${col}">${pre}${esc(c.motivo)}</span>
                       ${c.zona ? `<span class="text-telecab-muted/70">· ${esc(c.zona)}</span>` : ''}
                     </li>`;
                   }).join('')}
