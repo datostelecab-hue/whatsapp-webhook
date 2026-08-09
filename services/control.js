@@ -47,9 +47,22 @@ async function leerHorasDatosApi() {
     if (m) { mes = MESES.indexOf(m[1].toLowerCase()) + 1; ano = parseInt(m[2]); }
   }
 
-  for (let i = 3; i < filas.length; i++) {
+  // Filas de datos por CONTENIDO, no por posición fija. Antes se asumía que
+  // empezaban en la fila 4 (i=3): si la hoja las trae una fila más arriba, se
+  // perdía exactamente la PRIMERA fila — el primer nombre alfabético ("Aarón…")
+  // salía como "no cruza" aunque estuviera tal cual. Ahora se salta solo lo que
+  // es cabecera de verdad.
+  const CABECERAS = new Set(['CONDUCTOR', 'CONDUCTORES', 'NOMBRE', 'NOMBRES',
+    'NOMBRE COMPLETO', 'NOMBRE Y APELLIDOS', 'ESTADO', 'TURNO', 'ID_BOLT', 'DRIVER', 'DRIVERS']);
+  for (let i = 1; i < filas.length; i++) {
     const nombre = (filas[i][1] || '').toString().trim();
     if (!nombre || nombre.toUpperCase().includes('TOTAL')) continue;
+    if (CABECERAS.has(nombre.toUpperCase())) continue;
+    if (!/[a-záéíóúüñ]/i.test(nombre)) continue;   // sin letras no es un conductor
+    // Cabecera de números de día (1, 2, 3…): sus columnas de día son la secuencia.
+    let secuencia = 0;
+    for (let d = 0; d < 10; d++) if (numero(filas[i][3 + d]) === d + 1) secuencia++;
+    if (secuencia >= 8) continue;
     const clave = normClave(nombre);
     if (!clave) continue;
     const porDia = {};

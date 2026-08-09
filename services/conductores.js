@@ -16,8 +16,15 @@ const { CONFIG_BOLT, fetchRangoCompleto } = require('./bolt');
 // los tokens ordenados (así "Juan Ruiz Cano" == "Cano Juan Ruiz"). Los nombres
 // de Bolt y los de ID_BOLT están en el mismo orden, pero ordenar da margen ante
 // pequeñas reordenaciones.
+// Caracteres INVISIBLES que a veces se cuelan al copiar/pegar (espacio de ancho
+// cero, marcas de dirección, BOM, guion suave…). Se BORRAN (no se convierten en
+// espacio): si no, "Aarón" con uno dentro se partiría en "aar on" y el cruce por
+// nombre fallaría aunque en pantalla se vea idéntico.
+const INVISIBLES = /[\u200B-\u200F\u2060\uFEFF\u00AD]/g;
+
 function normClave(n) {
   return (n || '').toString()
+    .replace(INVISIBLES, '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/).filter(Boolean).sort().join(' ');
@@ -26,6 +33,7 @@ function normClave(n) {
 // Igual pero sin ordenar tokens: sirve para detectar duplicados evidentes.
 function normNombre(n) {
   return (n || '').toString()
+    .replace(INVISIBLES, '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[,()]/g, ' ').replace(/\s+/g, ' ')
     .trim().toLowerCase();
