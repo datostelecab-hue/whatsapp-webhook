@@ -62,6 +62,14 @@ router.post('/congelar', async (req, res) => {
   catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
+// Carga rápida SIN Bolt para la vista (al elegir mes): congelada, o snapshot recalculado.
+router.get('/cargar', async (req, res) => {
+  const mes = parseInt(req.query.mes, 10), ano = parseInt(req.query.ano, 10);
+  if (!validarMesAno(mes, ano)) return res.status(400).json({ status: 'error', msg: 'Mes/año no válidos' });
+  try { res.json({ status: 'ok', ...(await nomina.cargar(mes, ano)) }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
 // Ver una nómina ya congelada (sin recalcular)
 router.get('/congelada', async (req, res) => {
   const mes = parseInt(req.query.mes, 10), ano = parseInt(req.query.ano, 10);

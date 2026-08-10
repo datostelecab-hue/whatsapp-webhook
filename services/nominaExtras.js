@@ -57,7 +57,7 @@ const HOJA_CONFIG = 'NOMINA_CONFIG';
 // llamada y así refleja al momento cualquier cambio manual en la hoja.
 async function leerConfig() {
   const cfg = { ...DEFAULTS };
-  const filas = await readSheet(SPREADSHEET_ID, `'${HOJA_CONFIG}'!A:B`).catch(() => []);
+  const filas = await readSheet(LIBRO_NOMINA, `'${HOJA_CONFIG}'!A:B`).catch(() => []);
   (filas || []).forEach(f => {
     const k = (f[0] || '').toString().trim();
     if (k in cfg) { const v = parseFloat(String(f[1]).replace(',', '.')); if (!isNaN(v)) cfg[k] = v; }
@@ -72,9 +72,9 @@ async function guardarConfig(nuevos = {}) {
     if (k in DEFAULTS) { const v = parseFloat(String(nuevos[k]).replace(',', '.')); if (!isNaN(v)) cfg[k] = v; }
   });
   const values = CONFIG_CAMPOS.map(c => [c.key, cfg[c.key], c.label]);
-  await ensureSheet(SPREADSHEET_ID, HOJA_CONFIG);
-  await clearSheet(SPREADSHEET_ID, `'${HOJA_CONFIG}'!A:C`);
-  await writeSheet(SPREADSHEET_ID, `'${HOJA_CONFIG}'!A1`, values);
+  await ensureSheet(LIBRO_NOMINA, HOJA_CONFIG);
+  await clearSheet(LIBRO_NOMINA, `'${HOJA_CONFIG}'!A:C`);
+  await writeSheet(LIBRO_NOMINA, `'${HOJA_CONFIG}'!A1`, values);
   return cfg;
 }
 
@@ -83,9 +83,17 @@ const MESES_SLUG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
 const MESES_NOM = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-const hojaMes = (mes, ano) => `${MESES_SLUG[mes - 1]}-${ano}`;
-const hojaNomina = (mes, ano) => `NOMINA_${MESES_SLUG[mes - 1]}-${ano}`;
+const hojaMes = (mes, ano) => `${MESES_SLUG[mes - 1]}-${ano}`;       // hoja de horas (fuente)
+const hojaNomina = (mes, ano) => `NOMINA_${MESES_SLUG[mes - 1]}-${ano}`;       // congelado final
+const hojaDatos = (mes, ano) => `NOMINA_DATOS_${MESES_SLUG[mes - 1]}-${ano}`;  // snapshot de datos crudos
 const r2 = n => Math.round(n * 100) / 100;
+
+// Libro donde viven las hojas PROPIAS de nómina (config, snapshot de datos, congelados).
+// Es la "base de datos de nóminas": una vez generado el mes, recalcular/congelar/leer
+// salen de aquí, sin volver a Bolt ni a la agenda. Por defecto el mismo libro de horas;
+// para tenerla en un libro APARTE (con otro ID y acceso solo RRHH), crea el libro,
+// compártelo con la cuenta de servicio y cambia solo esta línea.
+const LIBRO_NOMINA = SPREADSHEET_ID;
 
 const num = v => {
   if (v == null || v === '') return 0;
@@ -93,21 +101,70 @@ const num = v => {
   return isNaN(n) ? 0 : n;
 };
 
-// ---- DNI/NIE por nombre (AGENDA_V2 actual + CONDUCTORES_OUT archivados) ----
-async function leerDnis() {
-  const dni = new Map();
+const esEtt = contrato => /ETT/i.test(contrato || '');
+
+// ---- Ficha (DNI + contrato) por nombre (AGENDA_V2 actual + CONDUCTORES_OUT archivados).
+//      El contrato distingue ETT de Tibus (los nuestros). ----
+async function leerFichas() {
+  const fichas = new Map();
   const cargar = async rango => {
     const filas = await readSheet(SPREADSHEET_PLANIFICADOR, rango).catch(() => []);
     for (let i = 1; i < filas.length; i++) {
-      const nombre = (filas[i][3] || '').toString().trim();   // col D = ID_BOLT (nombre Bolt)
-      const d = (filas[i][4] || '').toString().trim();        // col E = DNI/NIE
+      const nombre = (filas[i][3] || '').toString().trim();    // col D = ID_BOLT (nombre Bolt)
       const k = normClave(nombre);
-      if (k && d && !dni.has(k)) dni.set(k, d);
+      if (!k || fichas.has(k)) continue;
+      fichas.set(k, {
+        dni: (filas[i][4] || '').toString().trim(),            // col E = DNI/NIE
+        contrato: (filas[i][11] || '').toString().trim()       // col L = CONTRATO
+      });
     }
   };
-  await cargar('AGENDA_V2!A:E');
-  await cargar('CONDUCTORES_OUT!A:E');
-  return dni;
+  await cargar('AGENDA_V2!A:L');
+  await cargar('CONDUCTORES_OUT!A:L');
+  return fichas;
+}
+
+// Enriquece los conductores leídos de la hoja de horas con su DNI/contrato/ETT.
+function enriquecer(conductores, fichas) {
+  return conductores.map(c => {
+    const fi = fichas.get(normClave(c.nombre)) || {};
+    return { ...c, dni: fi.dni || '', contrato: fi.contrato || '', ett: esEtt(fi.contrato) };
+  });
+}
+
+// ---- Snapshot: la "base de datos" de datos crudos del mes, para recalcular sin Bolt ----
+async function escribirSnapshot(mes, ano, conductores) {
+  const hoja = hojaDatos(mes, ano);
+  const cab = ['Conductor', 'DNI/NIE', 'Contrato', 'Tipo', 'Desde día', 'Horas',
+    'Nocturnas (h)', 'Neto € (FAS)', 'Propinas €', 'Peajes €', '% Efec'];
+  const values = [[`📦 DATOS NÓMINA · ${MESES_NOM[mes - 1]} ${ano} — base para recalcular sin volver a Bolt`], cab];
+  conductores.forEach(c => values.push([
+    c.nombre, c.dni || '', c.contrato || '', c.ett ? 'ETT' : 'Tibus', c.primerDia,
+    c.total, c.noc, c.neto, c.propinas, c.peajes, c.efec == null ? '' : c.efec
+  ]));
+  const ref = `'${hoja}'`;
+  await ensureSheet(LIBRO_NOMINA, hoja);
+  await clearSheet(LIBRO_NOMINA, `${ref}!A:Z`);
+  await writeSheet(LIBRO_NOMINA, `${ref}!A1`, values);
+}
+
+async function leerSnapshot(mes, ano) {
+  const filas = await readSheet(LIBRO_NOMINA, `'${hojaDatos(mes, ano)}'!A1:Z5000`).catch(() => []);
+  if (!filas || filas.length < 3) return null;
+  const out = [];
+  for (let i = 2; i < filas.length; i++) {
+    const f = filas[i] || [];
+    const nombre = (f[0] || '').toString().trim();
+    if (!nombre || nombre.includes('TOTAL')) continue;
+    out.push({
+      nombre, dni: (f[1] || '').toString().trim(), contrato: (f[2] || '').toString().trim(),
+      ett: (f[3] || '').toString().trim().toUpperCase() === 'ETT',
+      primerDia: num(f[4]), total: num(f[5]), noc: num(f[6]), neto: num(f[7]),
+      propinas: num(f[8]), peajes: num(f[9]),
+      efec: f[10] === '' || f[10] == null ? null : num(f[10])
+    });
+  }
+  return out;
 }
 
 // ---- Lee la hoja mensual por CABECERA (tolerante a la posición de las columnas) ----
@@ -157,7 +214,7 @@ async function leerHojaMensual(mes, ano) {
 }
 
 // ---- Cálculo de la nómina de UN conductor (tu cadena del .gs), según el config ----
-function calcularFila(c, dnis, diasDelMes, cfg) {
+function calcularFila(c, diasDelMes, cfg) {
   const util = (c.efec != null ? c.efec : 0) / 100;               // 0..1
   const primerDia = c.primerDia || 1;
   const diasDesde = diasDelMes - primerDia + 1;                   // del 1er día con horas a fin de mes
@@ -175,7 +232,9 @@ function calcularFila(c, dnis, diasDelMes, cfg) {
 
   return {
     nombre: c.nombre,
-    dni: dnis.get(normClave(c.nombre)) || '',
+    dni: c.dni || '',
+    ett: !!c.ett,
+    contrato: c.contrato || '',
     primerDia,
     horas: r2(c.total),
     horasObjetivo: r2(hsTgt),
@@ -195,20 +254,36 @@ function calcularFila(c, dnis, diasDelMes, cfg) {
 // ---- Genera la nómina completa de un mes (sin escribir nada) ----
 async function generar(mes, ano, opciones = {}) {
   const cfg = opciones.config || await leerConfig();
-
-  // 1. (Re)generar la hoja mensual con datos frescos de Bolt + utilización, salvo
-  //    que se pida saltar (recálculo solo por cambio de config = actualizar:false).
-  if (opciones.actualizar !== false) {
-    await procesarYUnificar(mes, ano, { hojaDestino: hojaMes(mes, ano), incluirTodos: true, modoHistorico: true });
-  }
-
-  const [mensual, dnis] = await Promise.all([leerHojaMensual(mes, ano), leerDnis()]);
   const diasDelMes = new Date(ano, mes, 0).getDate();
 
+  let conductores, sinEfec, sinDinero;
+
+  if (opciones.actualizar !== false) {
+    // GENERAR (pesado): baja de Bolt, regenera la hoja de horas + utilización y guarda
+    // el SNAPSHOT de datos crudos — la base para recalcular después sin volver a Bolt.
+    await procesarYUnificar(mes, ano, { hojaDestino: hojaMes(mes, ano), incluirTodos: true, modoHistorico: true });
+    const [mensual, fichas] = await Promise.all([leerHojaMensual(mes, ano), leerFichas()]);
+    conductores = enriquecer(mensual.conductores, fichas);
+    sinEfec = !mensual.tieneEfec; sinDinero = !mensual.tieneDinero;
+    await escribirSnapshot(mes, ano, conductores);
+  } else {
+    // RECALCULAR (rápido): del snapshot, SIN tocar Bolt ni la agenda. Si aún no hay
+    // snapshot (mes generado antes de esta versión), cae a la hoja de horas + agenda.
+    conductores = await leerSnapshot(mes, ano);
+    if (conductores) {
+      sinEfec = conductores.length > 0 && conductores.every(c => c.efec == null);
+      sinDinero = conductores.length > 0 && conductores.every(c => !c.neto && !c.propinas && !c.peajes);
+    } else {
+      const [mensual, fichas] = await Promise.all([leerHojaMensual(mes, ano), leerFichas()]);
+      conductores = enriquecer(mensual.conductores, fichas);
+      sinEfec = !mensual.tieneEfec; sinDinero = !mensual.tieneDinero;
+    }
+  }
+
   // Solo entra quien trabajó ese mes (tiene horas). Es "por mes", como pediste.
-  const filas = mensual.conductores
+  const filas = conductores
     .filter(c => c.total > 0)
-    .map(c => calcularFila(c, dnis, diasDelMes, cfg))
+    .map(c => calcularFila(c, diasDelMes, cfg))
     .sort((a, b) => b.total - a.total);
 
   const totales = filas.reduce((t, f) => {
@@ -223,11 +298,7 @@ async function generar(mes, ano, opciones = {}) {
     mes, ano, mesNombre: MESES_NOM[mes - 1], diasDelMes,
     filas, totales, config: cfg,
     congelada: await existeCongelada(mes, ano),
-    avisos: {
-      sinEfec: !mensual.tieneEfec,       // hoja vieja sin utilización (regenera para tenerla)
-      sinDinero: !mensual.tieneDinero,   // hoja sin facturación
-      sinDni: filas.filter(f => !f.dni).length
-    }
+    avisos: { sinEfec, sinDinero, sinDni: filas.filter(f => !f.dni).length }
   };
 }
 
@@ -265,15 +336,15 @@ async function congelar(mes, ano) {
   const r = enMemoria || await generar(mes, ano, { actualizar: false });
 
   const hoja = hojaNomina(mes, ano);
-  const cab = ['Nombre del conductor', 'DNI/NIE', 'Desde día', 'Horas', 'Propinas (€)', 'Peajes (€)',
+  const cab = ['Nombre del conductor', 'DNI/NIE', 'Tipo', 'Desde día', 'Horas', 'Propinas (€)', 'Peajes (€)',
     'Nocturnas (€)', 'MBO FAS (€)', 'Compensación (€)', 'Días extra', '%Utilización', 'TOTAL (€)'];
   const values = [[`💶 NÓMINA EXTRAS · ${MESES_NOM[mes - 1]} ${ano} · congelada`], cab];
   r.filas.forEach(f => values.push([
-    f.nombre, f.dni, f.primerDia, f.horas, f.propinas, f.peajes,
+    f.nombre, f.dni, f.ett ? 'ETT' : 'Tibus', f.primerDia, f.horas, f.propinas, f.peajes,
     f.nocturnas, f.mboFAS, f.compensacion, f.diasExtra,
     f.utilPct == null ? '' : f.utilPct, f.total
   ]));
-  values.push(['📌 TOTAL', '', '', '', r.totales.propinas, r.totales.peajes, r.totales.nocturnas,
+  values.push(['📌 TOTAL', '', '', '', '', r.totales.propinas, r.totales.peajes, r.totales.nocturnas,
     r.totales.mboFAS, r.totales.compensacion, r.totales.diasExtra, '', r.totales.total]);
 
   // Config usada (para que el mes quede reproducible: quién cambió qué tarifa y cuándo).
@@ -283,14 +354,14 @@ async function congelar(mes, ano) {
   CONFIG_CAMPOS.forEach(c => values.push([c.label, cfg[c.key]]));
 
   const ref = `'${hoja}'`;
-  await ensureSheet(SPREADSHEET_ID, hoja);
-  await clearSheet(SPREADSHEET_ID, `${ref}!A:Z`);
-  await writeSheet(SPREADSHEET_ID, `${ref}!A1`, values);
+  await ensureSheet(LIBRO_NOMINA, hoja);
+  await clearSheet(LIBRO_NOMINA, `${ref}!A:Z`);
+  await writeSheet(LIBRO_NOMINA, `${ref}!A1`, values);
   return { hoja, conductores: r.filas.length, total: r.totales.total };
 }
 
-// Recalcula un mes YA generado con (opcionalmente) un config nuevo, sin volver a
-// descargar de Bolt. Rápido: solo relee la hoja mensual y reaplica las fórmulas.
+// Recalcula un mes YA generado con (opcionalmente) un config nuevo, SIN volver a Bolt:
+// lee el snapshot de datos crudos y reaplica las fórmulas. En vivo y barato.
 async function recalcular(mes, ano, config) {
   if (config) await guardarConfig(config);
   const r = await generar(mes, ano, { actualizar: false });
@@ -299,30 +370,47 @@ async function recalcular(mes, ano, config) {
 }
 
 async function existeCongelada(mes, ano) {
-  const filas = await readSheet(SPREADSHEET_ID, `'${hojaNomina(mes, ano)}'!A1:A3`).catch(() => []);
+  const filas = await readSheet(LIBRO_NOMINA, `'${hojaNomina(mes, ano)}'!A1:A3`).catch(() => []);
   return !!(filas && filas.length);
 }
 
-// ---- Lee una nómina ya congelada (para revisarla sin recalcular) ----
+// ---- Lee una nómina ya congelada (para revisarla sin recalcular ni tocar Bolt) ----
 async function leerCongelada(mes, ano) {
-  const filas = await readSheet(SPREADSHEET_ID, `'${hojaNomina(mes, ano)}'!A1:L2000`).catch(() => []);
+  const filas = await readSheet(LIBRO_NOMINA, `'${hojaNomina(mes, ano)}'!A1:M2000`).catch(() => []);
   if (!filas || filas.length < 3) return null;
   const datos = [];
   for (let i = 2; i < filas.length; i++) {
     const f = filas[i] || [];
-    if (!f[0] || f[0].toString().includes('TOTAL')) continue;
+    const n = (f[0] || '').toString();
+    if (!n.trim()) continue;
+    if (n.includes('TOTAL') || n.includes('⚙️') || n.includes('Config')) break;   // fin de datos → footer de config
     datos.push({
-      nombre: f[0], dni: f[1], primerDia: num(f[2]), horas: num(f[3]),
-      propinas: num(f[4]), peajes: num(f[5]), nocturnas: num(f[6]), mboFAS: num(f[7]),
-      compensacion: num(f[8]), diasExtra: num(f[9]),
-      utilPct: f[10] === '' || f[10] == null ? null : num(f[10]), total: num(f[11])
+      nombre: f[0], dni: f[1], ett: (f[2] || '').toString().trim().toUpperCase() === 'ETT', contrato: '',
+      primerDia: num(f[3]), horas: num(f[4]),
+      propinas: num(f[5]), peajes: num(f[6]), nocturnas: num(f[7]), mboFAS: num(f[8]),
+      compensacion: num(f[9]), diasExtra: num(f[10]),
+      utilPct: f[11] === '' || f[11] == null ? null : num(f[11]), total: num(f[12])
     });
   }
-  return { mes, ano, mesNombre: MESES_NOM[mes - 1], filas: datos, congelada: true };
+  const totales = datos.reduce((t, f) => {
+    ['propinas', 'peajes', 'nocturnas', 'mboFAS', 'compensacion', 'diasExtra', 'total'].forEach(k => t[k] += f[k] || 0);
+    return t;
+  }, { propinas: 0, peajes: 0, nocturnas: 0, mboFAS: 0, compensacion: 0, diasExtra: 0, total: 0 });
+  Object.keys(totales).forEach(k => totales[k] = r2(totales[k]));
+  return { mes, ano, mesNombre: MESES_NOM[mes - 1], filas: datos, totales, congelada: true, avisos: {} };
+}
+
+// ---- Carga para la vista SIN Bolt: congelada > snapshot recalculado > nada ----
+async function cargar(mes, ano) {
+  const cong = await leerCongelada(mes, ano);
+  if (cong) return { fuente: 'congelada', resultado: cong };
+  const snap = await leerSnapshot(mes, ano);
+  if (snap) return { fuente: 'datos', resultado: await generar(mes, ano, { actualizar: false }) };
+  return { fuente: 'nada', resultado: null };
 }
 
 module.exports = {
-  DEFAULTS, CONFIG_CAMPOS, MESES_NOM, hojaMes, hojaNomina,
-  leerConfig, guardarConfig, recalcular,
-  generar, generarEnFondo, estado, congelar, leerCongelada, existeCongelada, leerDnis
+  DEFAULTS, CONFIG_CAMPOS, MESES_NOM, hojaMes, hojaNomina, hojaDatos, LIBRO_NOMINA,
+  leerConfig, guardarConfig, recalcular, cargar,
+  generar, generarEnFondo, estado, congelar, leerCongelada, existeCongelada, leerSnapshot
 };
