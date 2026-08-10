@@ -93,6 +93,8 @@ router.get('/descargar', async (req, res) => {
     ws.columns = [
       { header: 'Nombre', key: 'nombre', width: 34 },
       { header: 'DNI/NIE', key: 'dni', width: 14 },
+      { header: 'Tipo', key: 'tipo', width: 8 },
+      { header: 'Jornada', key: 'jornada', width: 11 },
       { header: 'Desde día', key: 'primerDia', width: 10 },
       { header: 'Horas', key: 'horas', width: 9 },
       { header: 'Propinas (€)', key: 'propinas', width: 12 },
@@ -108,7 +110,8 @@ router.get('/descargar', async (req, res) => {
     ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3748' } };
     ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     filas.forEach(f => ws.addRow({
-      nombre: f.nombre, dni: f.dni, primerDia: f.primerDia, horas: f.horas,
+      nombre: f.nombre, dni: f.dni, tipo: f.ett ? 'ETT' : 'Tibus', jornada: f.jornada ? f.jornada + ' horas' : '',
+      primerDia: f.primerDia, horas: f.horas,
       propinas: f.propinas, peajes: f.peajes, nocturnas: f.nocturnas, mboFAS: f.mboFAS,
       compensacion: f.compensacion, diasExtra: f.diasExtra,
       util: f.utilPct == null ? '' : f.utilPct / 100, total: f.total

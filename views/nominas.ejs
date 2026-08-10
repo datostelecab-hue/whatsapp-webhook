@@ -68,6 +68,7 @@
             <th class="text-left px-3 py-2">Conductor</th>
             <th class="text-left px-3 py-2">DNI/NIE</th>
             <th class="text-left px-3 py-2">Tipo</th>
+            <th class="text-left px-3 py-2">Jornada</th>
             <th class="text-right px-3 py-2" title="Primer día con horas del mes (arranque del prorrateo)">Desde</th>
             <th class="text-right px-3 py-2">Horas</th>
             <th class="text-right px-3 py-2">Propinas</th>
@@ -183,6 +184,7 @@ function filtrarYpintar() {
     <td class="px-3 py-2 text-telecab-text">${esc(f.nombre)}</td>
     <td class="px-3 py-2 text-telecab-muted">${esc(f.dni)||'<span class="text-telecab-red/70">—</span>'}</td>
     <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${f.ett?'bg-purple-500/15 text-purple-300':'bg-telecab-card2 text-telecab-muted'}">${f.ett?'ETT':'Tibus'}</span></td>
+    <td class="px-3 py-2 text-telecab-muted whitespace-nowrap">${f.jornada?f.jornada+' horas':'<span class="text-telecab-muted/50">—</span>'}</td>
     <td class="px-3 py-2 text-right text-telecab-muted">${f.primerDia}</td>
     <td class="px-3 py-2 text-right">${(Number(f.horas)||0).toFixed(1)}</td>
     <td class="px-3 py-2 text-right">${eur(f.propinas)}</td>
@@ -193,10 +195,10 @@ function filtrarYpintar() {
     <td class="px-3 py-2 text-right ${f.diasExtra>0?'':'text-telecab-muted/50'}">${(Number(f.diasExtra)||0).toFixed(2)}</td>
     <td class="px-3 py-2 text-right">${f.utilPct==null?'<span class="text-telecab-red/70">—</span>':f.utilPct.toFixed(0)+'%'}</td>
     <td class="px-3 py-2 text-right font-semibold text-telecab-text">${eur(f.total)}</td></tr>`).join('')
-    || '<tr><td colspan="13" class="px-3 py-6 text-center text-telecab-muted">Sin coincidencias</td></tr>';
+    || '<tr><td colspan="14" class="px-3 py-6 text-center text-telecab-muted">Sin coincidencias</td></tr>';
   const t = filas.reduce((a,f)=>{['propinas','peajes','nocturnas','mboFAS','compensacion','diasExtra','total'].forEach(k=>a[k]+=f[k]||0);return a;},{propinas:0,peajes:0,nocturnas:0,mboFAS:0,compensacion:0,diasExtra:0,total:0});
   $('#tfoot').innerHTML = `<tr>
-    <td class="px-3 py-2" colspan="5">TOTAL${FILTRO_TIPO!=='todos'?' '+FILTRO_TIPO.toUpperCase():''} (${filas.length})</td>
+    <td class="px-3 py-2" colspan="6">TOTAL${FILTRO_TIPO!=='todos'?' '+FILTRO_TIPO.toUpperCase():''} (${filas.length})</td>
     <td class="px-3 py-2 text-right">${eur(t.propinas)}</td>
     <td class="px-3 py-2 text-right">${eur(t.peajes)}</td>
     <td class="px-3 py-2 text-right">${eur(t.nocturnas)}</td>
@@ -240,7 +242,8 @@ function pintarAvisos(a, cfg) {
   if (a.sinEfec) av.push(['red','⚠️ La hoja del mes no tiene utilización (% Efec). Marca "descargar datos frescos" y vuelve a generar para calcularla.']);
   if (a.sinDinero) av.push(['red','⚠️ La hoja del mes no tiene facturación (FAS/propinas/peajes). Regenera el mes.']);
   if (a.sinDni>0) av.push(['amber',`${a.sinDni} conductor(es) sin DNI/NIE en la agenda (aparecen con —). Complétalos en AGENDA_V2 si hace falta.`]);
-  av.push(['muted',`Hora extra: ${eur(cfg?cfg.eurHoraExtra:0).replace(' €','')} €/h × utilización · Nocturna: ${cfg?cfg.eurHoraNoc:0} × horas × ${cfg?cfg.factorNoc:0} · FAS: (neto − ${cfg?cfg.umbralFAS:0}) × ${cfg?cfg.pctMBOFAS:0}`]);
+  const c = cfg || {};
+  av.push(['muted',`Hora extra: ${c.eurHoraExtra||0} €/h × utilización · Nocturna: ${c.eurHoraNoc||0} × h × ${c.factorNoc||0} · FAS: (neto − umbral) × ${c.pctMBOFAS||0} · umbral 40h=${c.umbralFAS40||0} / 32h=${c.umbralFAS32||0}`]);
   $('#avisos').innerHTML = av.map(([c,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c==='amber'?'bg-amber-900/15 text-amber-400 border border-amber-600/30':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');
 }
 

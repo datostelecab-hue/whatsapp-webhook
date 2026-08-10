@@ -24,7 +24,9 @@ const { normClave } = require('./conductores');
 // defecto son los verificados contra junio; se pueden cambiar desde el panel y quedan
 // guardados en la hoja NOMINA_CONFIG, que manda sobre estos defaults.
 const DEFAULTS = {
-  sueldoBase: 1445,     // informativo (no entra en el total de extras, como en el Excel)
+  // Sueldo base y umbral FAS son DISTINTOS por jornada (40h vs 32h). Los de 32h
+  // arrancan igual que los de 40h para no cambiar nada hasta que pongas los reales.
+  sueldoBase40: 1445, sueldoBase32: 1445,   // informativos (no entran en el total, como en el Excel)
   horasMetaDia: 8,      // horas objetivo por día operativo
   diasObjetivo: 22,     // días operativos de un mes completo
   eurHoraExtra: 7,      // € por hora extra × utilización.
@@ -32,7 +34,7 @@ const DEFAULTS = {
                         // tiene 7 y las fórmulas leían la celda → el valor REAL usado fue 7.
                         // Verificado reproduciendo junio: con 7 cuadra 164/164 al céntimo.
   lUtilizacion: 0.75,   // informativo (no entra en el cálculo, como en el Excel)
-  umbralFAS: 4750,      // € de facturación neta desde los que hay MBO FAS
+  umbralFAS40: 4750, umbralFAS32: 4750,     // USADO — a partir de este neto hay MBO FAS, según jornada
   pctMBOFAS: 0.4,       // fracción del exceso de facturación sobre el umbral
   eurHoraNoc: 8.16,     // € hora nocturna
   factorNoc: 0.1        // multiplicador de nocturnas (€hora × horas × 0.1)
@@ -40,15 +42,17 @@ const DEFAULTS = {
 
 // Orden y etiquetas para el panel. `usado` = si afecta al total (los demás son informativos).
 const CONFIG_CAMPOS = [
-  { key: 'sueldoBase', label: 'Sueldo base (€)', usado: false, dec: 2 },
-  { key: 'horasMetaDia', label: 'Horas meta por día', usado: true, dec: 2 },
-  { key: 'diasObjetivo', label: 'Días operativos objetivo (mes completo)', usado: true, dec: 2 },
-  { key: 'eurHoraExtra', label: '€ por hora extra', usado: true, dec: 2 },
-  { key: 'lUtilizacion', label: 'L utilización (informativo)', usado: false, dec: 2 },
-  { key: 'umbralFAS', label: 'Umbral FAS (€)', usado: true, dec: 2 },
-  { key: 'pctMBOFAS', label: '% MBO FAS (fracción, 0.4 = 40%)', usado: true, dec: 2 },
-  { key: 'eurHoraNoc', label: '€ hora nocturna', usado: true, dec: 2 },
-  { key: 'factorNoc', label: 'Factor nocturnas', usado: true, dec: 2 }
+  { key: 'sueldoBase40', label: 'Sueldo base 40h (€)', usado: false },
+  { key: 'sueldoBase32', label: 'Sueldo base 32h (€)', usado: false },
+  { key: 'horasMetaDia', label: 'Horas meta por día', usado: true },
+  { key: 'diasObjetivo', label: 'Días operativos objetivo (mes completo)', usado: true },
+  { key: 'eurHoraExtra', label: '€ por hora extra', usado: true },
+  { key: 'lUtilizacion', label: 'L utilización (informativo)', usado: false },
+  { key: 'umbralFAS40', label: 'Umbral FAS 40h (€)', usado: true },
+  { key: 'umbralFAS32', label: 'Umbral FAS 32h (€)', usado: true },
+  { key: 'pctMBOFAS', label: '% MBO FAS (fracción, 0.4 = 40%)', usado: true },
+  { key: 'eurHoraNoc', label: '€ hora nocturna', usado: true },
+  { key: 'factorNoc', label: 'Factor nocturnas', usado: true }
 ];
 
 const HOJA_CONFIG = 'NOMINA_CONFIG';
@@ -102,6 +106,14 @@ const num = v => {
 };
 
 const esEtt = contrato => /ETT/i.test(contrato || '');
+
+// Jornada del contrato en horas (40 o 32) para elegir umbral FAS / sueldo base.
+// "40h", "ETT 40h", "40 horas"… → 40. "32h" → 32. Si no se reconoce, 40 por defecto.
+const horasContrato = contrato => {
+  const s = String(contrato || '');
+  const m = s.match(/(\d{2})\s*h/i) || s.match(/\b(32|40)\b/);
+  return m && m[1] === '32' ? 32 : 40;
+};
 
 // ---- Ficha (DNI + contrato) por nombre (AGENDA_V2 actual + CONDUCTORES_OUT archivados).
 //      El contrato distingue ETT de Tibus (los nuestros). ----
@@ -222,9 +234,11 @@ function calcularFila(c, diasDelMes, cfg) {
   const hsTgt = diasOperTgt * cfg.horasMetaDia;
   const delta = c.total - hsTgt;
 
+  const jornada = horasContrato(c.contrato);                            // 40 | 32
+  const umbral = jornada === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40;     // umbral FAS según jornada
   const mboHsExt = delta > 0 ? (delta * cfg.eurHoraExtra) * util : 0;   // € extra × utilización
   const eurNoc = cfg.eurHoraNoc * c.noc * cfg.factorNoc;
-  const mboFAS = c.neto > cfg.umbralFAS ? (c.neto - cfg.umbralFAS) * cfg.pctMBOFAS : 0;
+  const mboFAS = c.neto > umbral ? (c.neto - umbral) * cfg.pctMBOFAS : 0;
   const totalMBO = Math.max(mboHsExt, mboFAS);                    // gana el mayor de los dos MBO
   const compensacion = mboHsExt > mboFAS ? mboHsExt : 0;         // informativo: cuánto puso el MBO de horas
   const diasExtra = delta > cfg.horasMetaDia ? delta / cfg.horasMetaDia : 0;
@@ -235,6 +249,7 @@ function calcularFila(c, diasDelMes, cfg) {
     dni: c.dni || '',
     ett: !!c.ett,
     contrato: c.contrato || '',
+    jornada,
     primerDia,
     horas: r2(c.total),
     horasObjetivo: r2(hsTgt),
@@ -336,15 +351,16 @@ async function congelar(mes, ano) {
   const r = enMemoria || await generar(mes, ano, { actualizar: false });
 
   const hoja = hojaNomina(mes, ano);
-  const cab = ['Nombre del conductor', 'DNI/NIE', 'Tipo', 'Desde día', 'Horas', 'Propinas (€)', 'Peajes (€)',
+  const cab = ['Nombre del conductor', 'DNI/NIE', 'Tipo', 'Jornada', 'Desde día', 'Horas', 'Propinas (€)', 'Peajes (€)',
     'Nocturnas (€)', 'MBO FAS (€)', 'Compensación (€)', 'Días extra', '%Utilización', 'TOTAL (€)'];
   const values = [[`💶 NÓMINA EXTRAS · ${MESES_NOM[mes - 1]} ${ano} · congelada`], cab];
   r.filas.forEach(f => values.push([
-    f.nombre, f.dni, f.ett ? 'ETT' : 'Tibus', f.primerDia, f.horas, f.propinas, f.peajes,
+    f.nombre, f.dni, f.ett ? 'ETT' : 'Tibus', f.jornada ? f.jornada + ' horas' : '',
+    f.primerDia, f.horas, f.propinas, f.peajes,
     f.nocturnas, f.mboFAS, f.compensacion, f.diasExtra,
     f.utilPct == null ? '' : f.utilPct, f.total
   ]));
-  values.push(['📌 TOTAL', '', '', '', '', r.totales.propinas, r.totales.peajes, r.totales.nocturnas,
+  values.push(['📌 TOTAL', '', '', '', '', '', r.totales.propinas, r.totales.peajes, r.totales.nocturnas,
     r.totales.mboFAS, r.totales.compensacion, r.totales.diasExtra, '', r.totales.total]);
 
   // Config usada (para que el mes quede reproducible: quién cambió qué tarifa y cuándo).
@@ -374,30 +390,61 @@ async function existeCongelada(mes, ano) {
   return !!(filas && filas.length);
 }
 
-// ---- Lee una nómina ya congelada (para revisarla sin recalcular ni tocar Bolt) ----
+// ---- Lee una nómina ya congelada (sin recalcular ni tocar Bolt).
+//      Lee POR CABECERA, no por posición: así funciona aunque la hoja tenga un formato
+//      distinto (p. ej. una congelada antes de existir la columna "Tipo"). ----
 async function leerCongelada(mes, ano) {
-  const filas = await readSheet(LIBRO_NOMINA, `'${hojaNomina(mes, ano)}'!A1:M2000`).catch(() => []);
+  const filas = await readSheet(LIBRO_NOMINA, `'${hojaNomina(mes, ano)}'!A1:Z2000`).catch(() => []);
   if (!filas || filas.length < 3) return null;
+
+  const cab = filas[1] || [];   // fila 0 = título, fila 1 = cabeceras
+  const col = (...nombres) => {
+    for (const n of nombres) {
+      const i = cab.findIndex(c => (c || '').toString().trim().toLowerCase() === n.toLowerCase());
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iN = col('Nombre del conductor', 'Nombre', 'Conductor'), iDni = col('DNI/NIE', 'DNI'),
+    iTipo = col('Tipo'), iJorn = col('Jornada'), iDesde = col('Desde día', 'Desde'), iHoras = col('Horas'),
+    iProp = col('Propinas (€)', 'Propinas'), iPeaje = col('Peajes (€)', 'Peajes'),
+    iNoc = col('Nocturnas (€)', 'Nocturnas'), iFas = col('MBO FAS (€)', 'MBO FAS'),
+    iComp = col('Compensación (€)', 'Compensación'), iDias = col('Días extra', 'Días ext.'),
+    iUtil = col('%Utilización', '%Util'), iTot = col('TOTAL (€)', 'TOTAL');
+  if (iN < 0 || iTot < 0) return null;   // no parece una hoja de nómina
+  const g = (f, i) => (i >= 0 ? f[i] : undefined);
+
+  const labelKey = {}; CONFIG_CAMPOS.forEach(c => { labelKey[c.label] = c.key; });
+  const cfg = {};
   const datos = [];
+  let enDatos = true;
   for (let i = 2; i < filas.length; i++) {
     const f = filas[i] || [];
-    const n = (f[0] || '').toString();
-    if (!n.trim()) continue;
-    if (n.includes('TOTAL') || n.includes('⚙️') || n.includes('Config')) break;   // fin de datos → footer de config
-    datos.push({
-      nombre: f[0], dni: f[1], ett: (f[2] || '').toString().trim().toUpperCase() === 'ETT', contrato: '',
-      primerDia: num(f[3]), horas: num(f[4]),
-      propinas: num(f[5]), peajes: num(f[6]), nocturnas: num(f[7]), mboFAS: num(f[8]),
-      compensacion: num(f[9]), diasExtra: num(f[10]),
-      utilPct: f[11] === '' || f[11] == null ? null : num(f[11]), total: num(f[12])
-    });
+    const primera = (f[0] || '').toString().trim();
+    if (enDatos) {
+      if (!primera) continue;
+      if (primera.includes('TOTAL') || primera.includes('⚙️') || primera.includes('Config')) { enDatos = false; continue; }
+      datos.push({
+        nombre: g(f, iN), dni: g(f, iDni) || '',
+        ett: (g(f, iTipo) || '').toString().trim().toUpperCase() === 'ETT', contrato: '',
+        jornada: num(g(f, iJorn)) || null,
+        primerDia: num(g(f, iDesde)), horas: num(g(f, iHoras)),
+        propinas: num(g(f, iProp)), peajes: num(g(f, iPeaje)), nocturnas: num(g(f, iNoc)), mboFAS: num(g(f, iFas)),
+        compensacion: num(g(f, iComp)), diasExtra: num(g(f, iDias)),
+        utilPct: g(f, iUtil) === '' || g(f, iUtil) == null ? null : num(g(f, iUtil)), total: num(g(f, iTot))
+      });
+    } else if (labelKey[primera] !== undefined) {   // pie: "Config usada al congelar"
+      const v = parseFloat(String(f[1]).replace(',', '.'));
+      if (!isNaN(v)) cfg[labelKey[primera]] = v;
+    }
   }
   const totales = datos.reduce((t, f) => {
     ['propinas', 'peajes', 'nocturnas', 'mboFAS', 'compensacion', 'diasExtra', 'total'].forEach(k => t[k] += f[k] || 0);
     return t;
   }, { propinas: 0, peajes: 0, nocturnas: 0, mboFAS: 0, compensacion: 0, diasExtra: 0, total: 0 });
   Object.keys(totales).forEach(k => totales[k] = r2(totales[k]));
-  return { mes, ano, mesNombre: MESES_NOM[mes - 1], filas: datos, totales, congelada: true, avisos: {} };
+  const config = Object.keys(cfg).length ? { ...DEFAULTS, ...cfg } : await leerConfig();
+  return { mes, ano, mesNombre: MESES_NOM[mes - 1], filas: datos, totales, config, congelada: true, avisos: {} };
 }
 
 // ---- Carga para la vista SIN Bolt: congelada > snapshot recalculado > nada ----
