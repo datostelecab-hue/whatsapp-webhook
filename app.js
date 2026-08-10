@@ -97,6 +97,7 @@ const notificacionesRoutes = require('./routes/notificaciones');
 const pendientesRoutes = require('./routes/pendientes');
 const peticionesRoutes = require('./routes/peticiones');
 const operacionesRoutes = require('./routes/operaciones');
+const sancionesRoutes = require('./routes/sanciones');
 const bodaRoutes = require('./routes/boda');
 const authRoutes = require('./routes/auth');
 const usuariosRoutes = require('./routes/usuarios');
@@ -167,6 +168,7 @@ app.use('/notificaciones', notificacionesRoutes);
 app.use('/pendientes', pendientesRoutes);
 app.use('/peticiones', peticionesRoutes);
 app.use('/operaciones', operacionesRoutes);
+app.use('/sanciones', sancionesRoutes);
 
 // ── BODA (favor aparte, módulo OCULTO): panel solo-superadmin para enviar las
 //    invitaciones por WhatsApp. No está en el menú ni en ACCESO. El webhook (POST /)
@@ -337,6 +339,22 @@ cron.schedule('45 * * * *', async () => {
     console.error(`❌ [CRON VISTA_FINAL] Error: ${error.stack || error.message}`);
   }
 });
+
+// SANCIONES DE VELOCIDAD: cada 15 min (con desfase) busca excesos en Mapon, resuelve el
+// conductor y registra/avisa. APAGADO por defecto: se activa con SANCIONES_CRON=on cuando
+// esté verificado (y SANCIONES_MODO=live para que envíe de verdad; si no, solo simula).
+if (process.env.SANCIONES_CRON === 'on') {
+  cron.schedule('3,18,33,48 * * * *', async () => {
+    try {
+      const sanciones = require('./services/sanciones');
+      const r = await sanciones.procesar();
+      if (r && r.nuevas) console.log(`🚦 [CRON Sanciones] ${JSON.stringify({ modo: r.modo, nuevas: r.nuevas, advertencias: r.advertencias, reincidencias: r.reincidencias, sinConductor: r.sinConductor })}`);
+    } catch (error) {
+      console.error(`❌ [CRON Sanciones] ${error.stack || error.message}`);
+    }
+  });
+  console.log('🚦 [Sanciones] Cron de velocidad ACTIVADO (cada 15 min)');
+}
 
 // ============================================================
 // INICIAR SERVIDOR

@@ -29,7 +29,8 @@ const ACCESO = {
   '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'],
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/agenda': ['trafico'],
   '/control': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
-  '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico']
+  '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico'],
+  '/sanciones': ['trafico']
 };
 
 // ── Firma / verificación del token ──────────────────────────────────────────
