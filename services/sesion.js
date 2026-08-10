@@ -26,7 +26,7 @@ if (!SECRET) {
 const ACCESO = {
   '/vacantes': ['oficina'], '/seleccion': ['oficina'], '/ett': ['oficina'], '/pendientes-bolt': ['oficina'],
   '/rrhh': ['oficina'], '/administracion': ['oficina'], '/plantilla': ['oficina'], '/fichas': ['oficina'],
-  '/ticketera': ['oficina'], '/reportes': ['oficina'],
+  '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'],
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/agenda': ['trafico'],
   '/control': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
   '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico']

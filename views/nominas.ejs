@@ -1,0 +1,211 @@
+<div class="max-w-7xl mx-auto">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-money-check-dollar text-telecab-gold"></i> Nóminas extras
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">Compensación variable del mes (horas extra, nocturnas, FAS, peajes y propinas), calculada desde Bolt.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <select id="mes" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text"></select>
+      <input id="ano" type="number" min="2024" max="2100" class="w-24 px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text">
+    </div>
+  </div>
+
+  <!-- ══ CONFIG editable ══ -->
+  <div class="rounded-xl bg-telecab-card border border-telecab-border mb-5">
+    <button id="cfg-toggle" class="w-full flex items-center justify-between px-4 py-3 text-telecab-text font-medium">
+      <span><i class="fa-solid fa-sliders mr-2 text-telecab-gold"></i> Configuración (tarifas y parámetros)</span>
+      <i id="cfg-chev" class="fa-solid fa-chevron-down text-xs text-telecab-muted transition"></i>
+    </button>
+    <div id="cfg-body" class="hidden px-4 pb-4">
+      <div id="cfg-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      <p class="text-xs text-telecab-muted mt-3">Los marcados con <span class="text-telecab-gold">●</span> afectan al total. Cambia lo que quieras y pulsa <b>Recalcular</b> (no vuelve a descargar de Bolt).</p>
+      <div class="flex gap-2 mt-3">
+        <button id="btn-guardar-cfg" class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/25">Guardar config</button>
+        <button id="btn-recalcular" class="px-4 py-2 rounded-lg bg-blue-600/15 text-blue-400 text-sm font-medium hover:bg-blue-600/25"><i class="fa-solid fa-calculator mr-1"></i> Recalcular con este config</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Acciones ══ -->
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <button id="btn-generar" class="px-4 py-2 rounded-lg bg-green-600/20 text-green-400 font-medium hover:bg-green-600/30">
+      <i class="fa-solid fa-rotate mr-1"></i> Generar nómina del mes
+    </button>
+    <label class="text-sm text-telecab-muted flex items-center gap-1.5">
+      <input id="actualizar" type="checkbox" checked> descargar datos frescos de Bolt
+    </label>
+    <span class="flex-1"></span>
+    <button id="btn-congelar" class="px-4 py-2 rounded-lg bg-telecab-red/15 text-telecab-red text-sm font-medium hover:bg-telecab-red/25 disabled:opacity-40" disabled>
+      <i class="fa-solid fa-snowflake mr-1"></i> Congelar
+    </button>
+    <a id="btn-descargar" href="#" class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:bg-telecab-card2 hidden">
+      <i class="fa-solid fa-file-excel mr-1"></i> Excel
+    </a>
+  </div>
+
+  <div id="progreso" class="hidden mb-4 rounded-lg border border-telecab-border bg-telecab-card px-4 py-3 text-sm text-telecab-text"></div>
+  <div id="avisos" class="mb-4 space-y-2"></div>
+
+  <!-- ══ Tabla ══ -->
+  <div id="tabla-wrap" class="hidden rounded-xl bg-telecab-card border border-telecab-border overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-telecab-border">
+      <input id="filtro" type="search" placeholder="Nombre o DNI…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm w-64 max-w-full">
+      <span id="resumen-tabla" class="text-sm text-telecab-muted"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-telecab-muted bg-telecab-card2/50">
+          <tr>
+            <th class="text-left px-3 py-2">Conductor</th>
+            <th class="text-left px-3 py-2">DNI/NIE</th>
+            <th class="text-right px-3 py-2" title="Primer día con horas del mes (arranque del prorrateo)">Desde</th>
+            <th class="text-right px-3 py-2">Horas</th>
+            <th class="text-right px-3 py-2">Propinas</th>
+            <th class="text-right px-3 py-2">Peajes</th>
+            <th class="text-right px-3 py-2">Nocturnas</th>
+            <th class="text-right px-3 py-2">MBO FAS</th>
+            <th class="text-right px-3 py-2">Compens.</th>
+            <th class="text-right px-3 py-2">Días ext.</th>
+            <th class="text-right px-3 py-2">%Util</th>
+            <th class="text-right px-3 py-2 font-semibold text-telecab-text">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+        <tfoot id="tfoot" class="font-semibold text-telecab-text border-t-2 border-telecab-border"></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="datos-servidor">
+  <%- JSON.stringify({ mesActual: mesActual, anoActual: anoActual, campos: campos }) %>
+</script>
+<script>
+const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
+const $ = s => document.querySelector(s);
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur = n => (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+let RESULTADO = null, poll = null;
+
+// ── Selectores de mes/año ──
+MESES.forEach((m,i)=>{ const o=document.createElement('option'); o.value=i+1; o.textContent=m; if(i+1===CFG.mesActual)o.selected=true; $('#mes').appendChild(o); });
+$('#ano').value = CFG.anoActual;
+const mes = () => parseInt($('#mes').value,10);
+const ano = () => parseInt($('#ano').value,10);
+
+// ── Config ──
+$('#cfg-toggle').addEventListener('click', () => { $('#cfg-body').classList.toggle('hidden'); $('#cfg-chev').classList.toggle('rotate-180'); });
+function pintarConfig(cfg) {
+  $('#cfg-grid').innerHTML = CFG.campos.map(c => `
+    <label class="block">
+      <span class="text-xs text-telecab-muted">${c.usado?'<span class="text-telecab-gold">●</span> ':''}${esc(c.label)}</span>
+      <input data-key="${c.key}" type="number" step="0.01" value="${cfg[c.key]}"
+        class="cfg-in mt-1 w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text">
+    </label>`).join('');
+}
+const recogerConfig = () => { const o={}; document.querySelectorAll('.cfg-in').forEach(i=>o[i.dataset.key]=parseFloat(i.value)); return o; };
+async function cargarConfig() {
+  const r = await (await fetch('/nominas/config')).json();
+  if (r.status==='ok') pintarConfig(r.config);
+}
+$('#btn-guardar-cfg').addEventListener('click', async () => {
+  const r = await (await fetch('/nominas/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:recogerConfig()})})).json();
+  msgProgreso(r.status==='ok'?'✅ Config guardada':'❌ '+(r.msg||'error'), r.status!=='ok');
+});
+
+// ── Generar (pesado, con sondeo) ──
+$('#btn-generar').addEventListener('click', async () => {
+  if (poll) return;
+  $('#btn-generar').disabled = true; $('#tabla-wrap').classList.add('hidden'); $('#btn-congelar').disabled = true; $('#btn-descargar').classList.add('hidden');
+  msgProgreso('Iniciando…', false);
+  const r = await (await fetch('/nominas/generar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano(),actualizar:$('#actualizar').checked})})).json();
+  if (r.status!=='ok') { msgProgreso('❌ '+(r.msg||'error'), true); $('#btn-generar').disabled=false; return; }
+  poll = setInterval(sondear, 2000); sondear();
+});
+async function sondear() {
+  const e = await (await fetch('/nominas/estado')).json();
+  if (e.error) { clearInterval(poll); poll=null; msgProgreso('❌ '+e.error, true); $('#btn-generar').disabled=false; return; }
+  if (e.generando) { msgProgreso('⏳ '+(e.fase||'Procesando…'), false); return; }
+  clearInterval(poll); poll=null; $('#btn-generar').disabled=false;
+  if (e.resultado) { RESULTADO = e.resultado; render(); msgProgreso('✅ Nómina generada — revisa y congela', false); }
+}
+
+// ── Recalcular (rápido) ──
+$('#btn-recalcular').addEventListener('click', async () => {
+  msgProgreso('⏳ Recalculando con el config…', false);
+  const r = await (await fetch('/nominas/recalcular',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano(),config:recogerConfig()})})).json();
+  if (r.status==='ok') { RESULTADO = r.resultado; render(); msgProgreso('✅ Recalculado', false); }
+  else msgProgreso('❌ '+(r.msg||'error'), true);
+});
+
+// ── Congelar ──
+$('#btn-congelar').addEventListener('click', async () => {
+  if (!confirm(`¿Congelar la nómina de ${MESES[mes()-1]} ${ano()}? Se escribe la hoja NOMINA_${MESES[mes()-1].toLowerCase()}-${ano()} con estos valores.`)) return;
+  msgProgreso('⏳ Congelando…', false);
+  const r = await (await fetch('/nominas/congelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
+  msgProgreso(r.status==='ok'?`✅ Congelada en "${r.hoja}" · ${r.conductores} conductores · total ${eur(r.total)}`:'❌ '+(r.msg||'error'), r.status!=='ok');
+});
+
+// ── Descargar ──
+$('#btn-descargar').addEventListener('click', e => { e.preventDefault(); window.open(`/nominas/descargar?mes=${mes()}&ano=${ano()}`,'_blank'); });
+
+// ── Render de la tabla ──
+function render() {
+  if (!RESULTADO || !RESULTADO.filas) return;
+  const t = RESULTADO.totales || {};
+  $('#tabla-wrap').classList.remove('hidden');
+  $('#btn-congelar').disabled = false; $('#btn-descargar').classList.remove('hidden');
+  pintarAvisos(RESULTADO.avisos, RESULTADO.config);
+  filtrarYpintar();
+  $('#tfoot').innerHTML = `<tr>
+    <td class="px-3 py-2" colspan="4">TOTAL (${RESULTADO.filas.length})</td>
+    <td class="px-3 py-2 text-right">${eur(t.propinas)}</td>
+    <td class="px-3 py-2 text-right">${eur(t.peajes)}</td>
+    <td class="px-3 py-2 text-right">${eur(t.nocturnas)}</td>
+    <td class="px-3 py-2 text-right">${eur(t.mboFAS)}</td>
+    <td class="px-3 py-2 text-right">${eur(t.compensacion)}</td>
+    <td class="px-3 py-2 text-right">${(Number(t.diasExtra)||0).toFixed(2)}</td>
+    <td></td>
+    <td class="px-3 py-2 text-right text-telecab-gold">${eur(t.total)}</td></tr>`;
+}
+function filtrarYpintar() {
+  const q = ($('#filtro').value||'').toLowerCase().trim();
+  const filas = RESULTADO.filas.filter(f => !q || (f.nombre+' '+(f.dni||'')).toLowerCase().includes(q));
+  $('#resumen-tabla').textContent = `${filas.length} conductores · ${MESES[RESULTADO.mes-1]} ${RESULTADO.ano}`;
+  $('#tbody').innerHTML = filas.map(f => `<tr class="border-t border-telecab-border/50 hover:bg-telecab-card2/40">
+    <td class="px-3 py-2 text-telecab-text">${esc(f.nombre)}</td>
+    <td class="px-3 py-2 text-telecab-muted">${esc(f.dni)||'<span class="text-telecab-red/70">—</span>'}</td>
+    <td class="px-3 py-2 text-right text-telecab-muted">${f.primerDia}</td>
+    <td class="px-3 py-2 text-right">${(Number(f.horas)||0).toFixed(1)}</td>
+    <td class="px-3 py-2 text-right">${eur(f.propinas)}</td>
+    <td class="px-3 py-2 text-right">${eur(f.peajes)}</td>
+    <td class="px-3 py-2 text-right">${eur(f.nocturnas)}</td>
+    <td class="px-3 py-2 text-right ${f.compensacion>0?'text-telecab-muted/60':''}">${eur(f.mboFAS)}</td>
+    <td class="px-3 py-2 text-right ${f.compensacion>0?'':'text-telecab-muted/50'}">${eur(f.compensacion)}</td>
+    <td class="px-3 py-2 text-right ${f.diasExtra>0?'':'text-telecab-muted/50'}">${(Number(f.diasExtra)||0).toFixed(2)}</td>
+    <td class="px-3 py-2 text-right">${f.utilPct==null?'<span class="text-telecab-red/70">—</span>':f.utilPct.toFixed(0)+'%'}</td>
+    <td class="px-3 py-2 text-right font-semibold text-telecab-text">${eur(f.total)}</td></tr>`).join('')
+    || '<tr><td colspan="12" class="px-3 py-6 text-center text-telecab-muted">Sin coincidencias</td></tr>';
+}
+$('#filtro').addEventListener('input', filtrarYpintar);
+
+function pintarAvisos(a, cfg) {
+  if (!a) { $('#avisos').innerHTML=''; return; }
+  const av=[];
+  if (a.sinEfec) av.push(['red','⚠️ La hoja del mes no tiene utilización (% Efec). Marca "descargar datos frescos" y vuelve a generar para calcularla.']);
+  if (a.sinDinero) av.push(['red','⚠️ La hoja del mes no tiene facturación (FAS/propinas/peajes). Regenera el mes.']);
+  if (a.sinDni>0) av.push(['amber',`${a.sinDni} conductor(es) sin DNI/NIE en la agenda (aparecen con —). Complétalos en AGENDA_V2 si hace falta.`]);
+  av.push(['muted',`Hora extra: ${eur(cfg?cfg.eurHoraExtra:0).replace(' €','')} €/h × utilización · Nocturna: ${cfg?cfg.eurHoraNoc:0} × horas × ${cfg?cfg.factorNoc:0} · FAS: (neto − ${cfg?cfg.umbralFAS:0}) × ${cfg?cfg.pctMBOFAS:0}`]);
+  $('#avisos').innerHTML = av.map(([c,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c==='amber'?'bg-amber-900/15 text-amber-400 border border-amber-600/30':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');
+}
+
+function msgProgreso(txt, err) {
+  const p = $('#progreso'); p.classList.remove('hidden');
+  p.textContent = txt; p.style.color = err ? 'var(--tc-red, #f87171)' : '';
+}
+
+cargarConfig();
+</script>

@@ -121,7 +121,8 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
         todosConductores[nombre] = {
           turno: info.turno || '?',
           estado: info.estado || 'activo',
-          horasNocturnas: 0
+          horasNocturnas: 0,
+          efectHas: 0, efectWait: 0
         };
         for (let d = 1; d <= datos.diasDelMes; d++) {
           todosConductores[nombre][d] = 0;
@@ -157,6 +158,17 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
       });
     }
 
+    // Utilización (has_order / waiting_orders): se suma entre flotas igual que las horas,
+    // así un conductor que trabajó en las dos da su utilización combinada real del mes.
+    if (datos.efectividad) {
+      Object.entries(datos.efectividad).forEach(([nombre, e]) => {
+        if (todosConductores[nombre]) {
+          todosConductores[nombre].efectHas = (todosConductores[nombre].efectHas || 0) + e.has;
+          todosConductores[nombre].efectWait = (todosConductores[nombre].efectWait || 0) + e.wait;
+        }
+      });
+    }
+
     // Propinas, peajes y neto: se suman entre flotas igual que las horas.
     // Un conductor puede facturar sin tener state logs, así que si no existe
     // la fila todavía se crea aquí.
@@ -166,7 +178,8 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
           todosConductores[nombre] = {
             turno: datos.infoConductores[nombre]?.turno || '?',
             estado: datos.infoConductores[nombre]?.estado || 'activo',
-            horasNocturnas: 0
+            horasNocturnas: 0,
+            efectHas: 0, efectWait: 0
           };
           for (let dia = 1; dia <= datos.diasDelMes; dia++) {
             todosConductores[nombre][dia] = 0;
@@ -389,6 +402,7 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
 
     const horasPorConductor = {};
     const horasNocturnasPorConductor = {};
+    const efectividadPorConductor = {};   // nombre -> { has, wait } en segundos (para la utilización)
     const infoConductores = {};
     const dineroPorConductor = {};
     let sinNombre = 0;
@@ -432,6 +446,7 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
         horasPorConductor[nombreReal] = {};
         for (let d = 1; d <= diasDelMes; d++) horasPorConductor[nombreReal][d] = 0;
         horasNocturnasPorConductor[nombreReal] = 0;
+        efectividadPorConductor[nombreReal] = { has: 0, wait: 0 };
       }
 
       logs.sort(ordenarLogs);
@@ -444,6 +459,10 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
         const inicio = logs[i].created;
         const fin = siguiente.created;
         if (fin - inicio <= 0) continue;
+
+        // Utilización: has_order vs waiting_orders (los dos únicos STATE_VIAJE).
+        if (logs[i].state === 'has_order') efectividadPorConductor[nombreReal].has += (fin - inicio);
+        else efectividadPorConductor[nombreReal].wait += (fin - inicio);
 
         distribuirHoras(horasPorConductor[nombreReal], inicio, fin,
           CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO);
@@ -481,6 +500,7 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
     return {
       horas: horasPorConductor,
       horasNocturnas: horasNocturnasPorConductor,
+      efectividad: efectividadPorConductor,
       dinero: dineroPorConductor,
       diasDelMes,
       diaLimite: diasDelMes,
@@ -610,6 +630,7 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
 
     const horasPorConductor = {};
     const horasNocturnasPorConductor = {};
+    const efectividadPorConductor = {};   // nombre -> { has, wait } en segundos (para la utilización)
     const infoConductores = {};
 
     let logsDescartados = 0;
@@ -648,6 +669,9 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
       if (!horasNocturnasPorConductor[nombreReal]) {
         horasNocturnasPorConductor[nombreReal] = 0;
       }
+      if (!efectividadPorConductor[nombreReal]) {
+        efectividadPorConductor[nombreReal] = { has: 0, wait: 0 };
+      }
 
       logs.sort(ordenarLogs);
 
@@ -662,6 +686,10 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
         const finIntervalo = siguienteLog.created;
         const duracion = finIntervalo - inicioIntervalo;
         if (duracion <= 0) continue;
+
+        // Utilización: has_order vs waiting_orders (los dos únicos STATE_VIAJE).
+        if (logActual.state === 'has_order') efectividadPorConductor[nombreReal].has += duracion;
+        else efectividadPorConductor[nombreReal].wait += duracion;
 
         distribuirHoras(horasPorConductor[nombreReal], inicioIntervalo, finIntervalo,
           CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO);
@@ -712,12 +740,14 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
           horasPorConductor[info.nombre][d] = 0;
         }
         horasNocturnasPorConductor[info.nombre] = 0;
+        efectividadPorConductor[info.nombre] = { has: 0, wait: 0 };
       }
     });
 
     return {
       horas: horasPorConductor,
       horasNocturnas: horasNocturnasPorConductor,
+      efectividad: efectividadPorConductor,
       diasDelMes,
       diaLimite,
       infoConductores
@@ -813,6 +843,9 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
   // apunte por posición a las anteriores (los VLOOKUP de la nómina) sigue
   // funcionando igual.
   if (incluirDinero) headers.push('Propinas €', 'Peajes €', 'Neto €', 'Viajes');
+  // Utilización (has_order / horas efectivas) por conductor. Va la última, tras el
+  // dinero, para no desplazar ninguna columna anterior. La nómina la lee por nombre.
+  headers.push('% Efec');
   values.push(headers);
 
   const activos = [], inactivos = [], despedidos = [];
@@ -828,6 +861,7 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
 
   let granTotalSeg = 0, granTotalNocturno = 0, granDiasTrab = 0;
   let granPropinas = 0, granPeajes = 0, granNeto = 0, granViajes = 0;
+  let granEfectHas = 0, granEfectWait = 0;
   const totalesPorDia = new Array(diasDelMes + 1).fill(0);
 
   todosOrdenados.forEach(([nombre, data]) => {
@@ -883,6 +917,13 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
       granViajes += data.viajes || 0;
     }
 
+    // % Efec del conductor: has_order / (has_order + waiting_orders). Vacío si no tiene
+    // horas efectivas (no facturó ni esperó pedidos ese mes).
+    const efSeg = (data.efectHas || 0) + (data.efectWait || 0);
+    row.push(efSeg > 0 ? ((data.efectHas || 0) / efSeg * 100).toFixed(1) : '');
+    granEfectHas += data.efectHas || 0;
+    granEfectWait += data.efectWait || 0;
+
     values.push(row);
 
     granTotalSeg += totalSeg;
@@ -910,6 +951,8 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
       granViajes.toString()
     );
   }
+  const granEfSeg = granEfectHas + granEfectWait;
+  totalRow.push(granEfSeg > 0 ? (granEfectHas / granEfSeg * 100).toFixed(1) : '');
 
   values.push(totalRow);
 
@@ -918,7 +961,9 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
   const hojaRef = `'${nombreHoja.replace(/'/g, "''")}'`;
 
   await ensureSheet(SPREADSHEET_ID, nombreHoja);
-  await clearSheet(SPREADSHEET_ID, `${hojaRef}!A:Z`);
+  // Se limpia hasta BA (no solo A:Z): con 31 días + Debe + dinero + % Efec la fila llega
+  // a la columna ~AS, y un A:Z dejaba basura de corridas anteriores en las columnas altas.
+  await clearSheet(SPREADSHEET_ID, `${hojaRef}!A:BA`);
   await writeSheet(SPREADSHEET_ID, `${hojaRef}!A1`, values);
 
   console.log(`✅ Hoja ${nombreHoja} actualizada: ${values.length} filas`);
