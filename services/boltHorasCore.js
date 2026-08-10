@@ -34,7 +34,12 @@ const MAP_TURNO_AGENDA = { 'Día': 'dia', 'Dia': 'dia', 'Noche': 'noche', 'TodoT
 // Hora (0-23) de corte del día operativo por turno. Día y Noche: el día va de las
 // 5:00 a las 5:00, así el turno de noche (17:00→05:00) cae ENTERO en su día y
 // cuadra con Bolt. TodoTurno: de 2:00 a 2:00. Desconocido: como día.
-const CORTE_TURNO = { dia: 5, noche: 5, todoturno: 2 };
+// Corte del "día operativo" (hora local a la que empieza el día contable de cada turno):
+//   · dia = 0  → día natural, de 00:00 a 00:00 (medianoche a medianoche).
+//   · noche = 12 → de mediodía a mediodía, para que la noche ENTERA (p.ej. 22:00→06:00)
+//     caiga en un solo día operativo y no se parta a las 5:00.
+//   · todoturno = 2 y el defecto (turno desconocido) = 5 se mantienen; revísalos si hace falta.
+const CORTE_TURNO = { dia: 0, noche: 12, todoturno: 2 };
 const CORTE_DEFECTO = 5;
 
 // Orden de los logs para medir tramos. A IGUAL segundo, los estados que NO cuentan
