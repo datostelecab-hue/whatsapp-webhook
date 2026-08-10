@@ -217,6 +217,22 @@ app.get('/vista-final/reconstruir', async (req, res) => {
   }
 });
 
+// Recuperación ÚNICA: restaura las L borradas de las semanas pasadas del mes en curso
+// re-aplicando el patrón vivo de AGENDA_V2 (sin tocar celdas con horas >0). Correcto si
+// nadie cambió su libranza desde entonces. Después, el cron ya las conserva congeladas.
+app.get('/vista-final/recuperar-libranzas', async (req, res) => {
+  console.log('🩹 [VISTA_FINAL] recuperar libranzas pasadas (re-aplicando patrón)...');
+  try {
+    const { reconstruirVistaFinal } = require('./services/vistaFinal');
+    const r = await reconstruirVistaFinal({ recuperarLibranzas: true });
+    console.log(`✅ [VISTA_FINAL] libranzas recuperadas: ${JSON.stringify(r)}`);
+    res.json({ ok: true, recuperado: true, ...r });
+  } catch (error) {
+    console.error(`❌ [VISTA_FINAL] Error: ${error.stack || error.message}`);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // ============================================================
 // CRON
 // ============================================================

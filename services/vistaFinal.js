@@ -140,7 +140,10 @@ function colLetra0(n) {
 /**
  * Reconstruye VISTA_FINAL. Devuelve un resumen de lo escrito.
  */
-async function reconstruirVistaFinal() {
+async function reconstruirVistaFinal(opciones = {}) {
+  // recuperarLibranzas: pasada ÚNICA para restaurar las L de semanas pasadas del mes en
+  // curso que se hubieran borrado (re-aplica el patrón vivo, sin tocar celdas con horas).
+  const recuperar = opciones.recuperarLibranzas === true;
   const hoy = hoyMadrid();
   const hoyY = hoy.getUTCFullYear();
   const hoyM = hoy.getUTCMonth() + 1;
@@ -228,10 +231,24 @@ async function reconstruirVistaFinal() {
     const trabajo = h != null && h > 0;
     const enSemanaViva = f >= lunes && f <= domingo;
 
-    // Trabajó un día que libraba → salen las HORAS, marcadas (borde especial).
+    // La 'L' de semanas YA PASADAS se CONGELA (se respeta la escrita, igual que V/B/P/J),
+    // PERO si ese día hizo horas (>0) mandan las HORAS con su borde especial: libraba pero
+    // trabajó, y esas horas cuentan. Solo la semana en curso recalcula desde el patrón vivo.
+    if (marca === 'L' && !enSemanaViva) {
+      if (trabajo) return { valor: h, especial: true };
+      return { valor: 'L' };
+    }
+
+    // Trabajó un día que libraba → HORAS marcadas (borde especial).
     if (esLibranza && trabajo) return { valor: h, especial: true };
-    // Libró de verdad: 'L' solo en la semana viva; en el resto del mes → 0.
-    if (esLibranza) return { valor: enSemanaViva ? 'L' : (f <= hoy ? 0 : '') };
+    // Libranza sin trabajar: 'L' en la semana viva. En semanas pasadas → 0, salvo en modo
+    // RECUPERAR, que re-aplica el patrón para restaurar las L borradas (nunca pisa horas
+    // >0: esas ya se resolvieron arriba). Futuro del mes → en blanco.
+    if (esLibranza) {
+      if (enSemanaViva) return { valor: 'L' };
+      if (f > hoy) return { valor: '' };
+      return { valor: recuperar ? 'L' : 0 };
+    }
     if (trabajo) return { valor: h };
     if (f <= hoy) return { valor: 0 };            // pasado/hoy sin horas → 0
     return { valor: '' };                          // futuro del mes → en blanco
