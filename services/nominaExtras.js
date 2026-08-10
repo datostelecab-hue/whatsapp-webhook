@@ -99,6 +99,11 @@ const r2 = n => Math.round(n * 100) / 100;
 // compártelo con la cuenta de servicio y cambia solo esta línea.
 const LIBRO_NOMINA = SPREADSHEET_ID;
 
+// Nóminas a MES VENCIDO: la nómina de un mes se calcula con los datos del mes ANTERIOR
+// (la de julio usa junio; la de enero, diciembre del año pasado). El mes seleccionado
+// es el de PAGO; el prorrateo y los datos salen del mes de trabajo.
+const mesVencido = (mes, ano) => (mes === 1 ? { mes: 12, ano: ano - 1 } : { mes: mes - 1, ano });
+
 const num = v => {
   if (v == null || v === '') return 0;
   const n = parseFloat(String(v).replace(',', '.').replace(/[^\d.\-]/g, ''));
@@ -147,9 +152,10 @@ function enriquecer(conductores, fichas) {
 // ---- Snapshot: la "base de datos" de datos crudos del mes, para recalcular sin Bolt ----
 async function escribirSnapshot(mes, ano, conductores) {
   const hoja = hojaDatos(mes, ano);
+  const { mes: mesD, ano: anoD } = mesVencido(mes, ano);
   const cab = ['Conductor', 'DNI/NIE', 'Contrato', 'Tipo', 'Desde día', 'Horas',
     'Nocturnas (h)', 'Neto € (FAS)', 'Propinas €', 'Peajes €', '% Efec'];
-  const values = [[`📦 DATOS NÓMINA · ${MESES_NOM[mes - 1]} ${ano} — base para recalcular sin volver a Bolt`], cab];
+  const values = [[`📦 DATOS NÓMINA · ${MESES_NOM[mes - 1]} ${ano} (mes vencido: trabajo de ${MESES_NOM[mesD - 1]} ${anoD}) — base para recalcular sin Bolt`], cab];
   conductores.forEach(c => values.push([
     c.nombre, c.dni || '', c.contrato || '', c.ett ? 'ETT' : 'Tibus', c.primerDia,
     c.total, c.noc, c.neto, c.propinas, c.peajes, c.efec == null ? '' : c.efec
@@ -267,29 +273,31 @@ function calcularFila(c, diasDelMes, cfg) {
 }
 
 // ---- Genera la nómina completa de un mes (sin escribir nada) ----
-async function generar(mes, ano, opciones = {}) {
+async function generar(mesNom, anoNom, opciones = {}) {
   const cfg = opciones.config || await leerConfig();
-  const diasDelMes = new Date(ano, mes, 0).getDate();
+  // MES VENCIDO: los datos son los del mes ANTERIOR (la nómina de julio usa junio).
+  const { mes: mesD, ano: anoD } = mesVencido(mesNom, anoNom);
+  const diasDelMes = new Date(anoD, mesD, 0).getDate();   // días del mes de TRABAJO (para prorratear)
 
   let conductores, sinEfec, sinDinero;
 
   if (opciones.actualizar !== false) {
-    // GENERAR (pesado): baja de Bolt, regenera la hoja de horas + utilización y guarda
-    // el SNAPSHOT de datos crudos — la base para recalcular después sin volver a Bolt.
-    await procesarYUnificar(mes, ano, { hojaDestino: hojaMes(mes, ano), incluirTodos: true, modoHistorico: true });
-    const [mensual, fichas] = await Promise.all([leerHojaMensual(mes, ano), leerFichas()]);
+    // GENERAR (pesado): baja de Bolt el mes de TRABAJO, regenera su hoja de horas +
+    // utilización y guarda el SNAPSHOT con el nombre de la NÓMINA (mes de pago).
+    await procesarYUnificar(mesD, anoD, { hojaDestino: hojaMes(mesD, anoD), incluirTodos: true, modoHistorico: true });
+    const [mensual, fichas] = await Promise.all([leerHojaMensual(mesD, anoD), leerFichas()]);
     conductores = enriquecer(mensual.conductores, fichas);
     sinEfec = !mensual.tieneEfec; sinDinero = !mensual.tieneDinero;
-    await escribirSnapshot(mes, ano, conductores);
+    await escribirSnapshot(mesNom, anoNom, conductores);
   } else {
     // RECALCULAR (rápido): del snapshot, SIN tocar Bolt ni la agenda. Si aún no hay
-    // snapshot (mes generado antes de esta versión), cae a la hoja de horas + agenda.
-    conductores = await leerSnapshot(mes, ano);
+    // snapshot, cae a la hoja de horas del mes de trabajo + agenda.
+    conductores = await leerSnapshot(mesNom, anoNom);
     if (conductores) {
       sinEfec = conductores.length > 0 && conductores.every(c => c.efec == null);
       sinDinero = conductores.length > 0 && conductores.every(c => !c.neto && !c.propinas && !c.peajes);
     } else {
-      const [mensual, fichas] = await Promise.all([leerHojaMensual(mes, ano), leerFichas()]);
+      const [mensual, fichas] = await Promise.all([leerHojaMensual(mesD, anoD), leerFichas()]);
       conductores = enriquecer(mensual.conductores, fichas);
       sinEfec = !mensual.tieneEfec; sinDinero = !mensual.tieneDinero;
     }
@@ -309,11 +317,17 @@ async function generar(mes, ano, opciones = {}) {
   }, { propinas: 0, peajes: 0, nocturnas: 0, mboFAS: 0, compensacion: 0, diasExtra: 0, total: 0 });
   Object.keys(totales).forEach(k => totales[k] = r2(totales[k]));
 
+  // ¿El mes de trabajo aún no terminó? → datos incompletos (aún no toca esa nómina).
+  const hoy = new Date();
+  const trabajoIncompleto = anoD > hoy.getFullYear() ||
+    (anoD === hoy.getFullYear() && mesD >= hoy.getMonth() + 1);
+
   return {
-    mes, ano, mesNombre: MESES_NOM[mes - 1], diasDelMes,
+    mes: mesNom, ano: anoNom, mesNombre: MESES_NOM[mesNom - 1], diasDelMes,
+    mesDatos: mesD, anoDatos: anoD, mesDatosNombre: MESES_NOM[mesD - 1],
     filas, totales, config: cfg,
-    congelada: await existeCongelada(mes, ano),
-    avisos: { sinEfec, sinDinero, sinDni: filas.filter(f => !f.dni).length }
+    congelada: await existeCongelada(mesNom, anoNom),
+    avisos: { sinEfec, sinDinero, sinDni: filas.filter(f => !f.dni).length, trabajoIncompleto }
   };
 }
 
@@ -324,11 +338,12 @@ function estado() { return _estado; }
 
 function generarEnFondo(mes, ano, opciones = {}) {
   if (_estado.generando) throw new Error('Ya hay una nómina generándose');
+  const { mes: mesD, ano: anoD } = mesVencido(mes, ano);
   _estado = {
     generando: true, mes, ano, error: null, resultado: null,
     fase: opciones.actualizar === false
-      ? 'Leyendo los datos ya calculados del mes…'
-      : 'Descargando y recalculando datos de Bolt (horas, nocturnas, facturación, utilización)… puede tardar unos minutos.'
+      ? `Leyendo los datos guardados (trabajo de ${MESES_NOM[mesD - 1]} ${anoD})…`
+      : `Descargando de Bolt los datos de ${MESES_NOM[mesD - 1]} ${anoD} para la nómina de ${MESES_NOM[mes - 1]} ${ano}… puede tardar unos minutos.`
   };
   (async () => {
     try {
@@ -353,7 +368,8 @@ async function congelar(mes, ano) {
   const hoja = hojaNomina(mes, ano);
   const cab = ['Nombre del conductor', 'DNI/NIE', 'Tipo', 'Jornada', 'Desde día', 'Horas', 'Propinas (€)', 'Peajes (€)',
     'Nocturnas (€)', 'MBO FAS (€)', 'Compensación (€)', 'Días extra', '%Utilización', 'TOTAL (€)'];
-  const values = [[`💶 NÓMINA EXTRAS · ${MESES_NOM[mes - 1]} ${ano} · congelada`], cab];
+  const values = [[`💶 NÓMINA EXTRAS · ${MESES_NOM[mes - 1]} ${ano} · congelada` +
+    (r.mesDatosNombre ? ` (mes vencido: trabajo de ${r.mesDatosNombre} ${r.anoDatos})` : '')], cab];
   r.filas.forEach(f => values.push([
     f.nombre, f.dni, f.ett ? 'ETT' : 'Tibus', f.jornada ? f.jornada + ' horas' : '',
     f.primerDia, f.horas, f.propinas, f.peajes,
@@ -444,7 +460,12 @@ async function leerCongelada(mes, ano) {
   }, { propinas: 0, peajes: 0, nocturnas: 0, mboFAS: 0, compensacion: 0, diasExtra: 0, total: 0 });
   Object.keys(totales).forEach(k => totales[k] = r2(totales[k]));
   const config = Object.keys(cfg).length ? { ...DEFAULTS, ...cfg } : await leerConfig();
-  return { mes, ano, mesNombre: MESES_NOM[mes - 1], filas: datos, totales, config, congelada: true, avisos: {} };
+  const { mes: mesD, ano: anoD } = mesVencido(mes, ano);
+  return {
+    mes, ano, mesNombre: MESES_NOM[mes - 1],
+    mesDatos: mesD, anoDatos: anoD, mesDatosNombre: MESES_NOM[mesD - 1],
+    filas: datos, totales, config, congelada: true, avisos: {}
+  };
 }
 
 // ---- Carga para la vista SIN Bolt: congelada > snapshot recalculado > nada ----

@@ -4,7 +4,7 @@
       <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
         <i class="fa-solid fa-money-check-dollar text-telecab-gold"></i> Nóminas extras
       </h1>
-      <p class="text-sm text-telecab-muted mt-1">Compensación variable del mes (horas extra, nocturnas, FAS, peajes y propinas), calculada desde Bolt.</p>
+      <p class="text-sm text-telecab-muted mt-1">Compensación variable, calculada desde Bolt. <b class="text-telecab-text">A mes vencido</b>: la nómina de un mes usa los datos del mes anterior (la de Julio = trabajo de Junio).</p>
     </div>
     <div class="flex items-center gap-2">
       <select id="mes" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text"></select>
@@ -152,7 +152,8 @@ $('#btn-recalcular').addEventListener('click', async () => {
 
 // ── Congelar ──
 $('#btn-congelar').addEventListener('click', async () => {
-  if (!confirm(`¿Congelar la nómina de ${MESES[mes()-1]} ${ano()}? Se escribe la hoja NOMINA_${MESES[mes()-1].toLowerCase()}-${ano()} con estos valores.`)) return;
+  const dm = RESULTADO && RESULTADO.mesDatosNombre ? ` (trabajo de ${RESULTADO.mesDatosNombre})` : '';
+  if (!confirm(`¿Congelar la nómina de ${MESES[mes()-1]} ${ano()}${dm}? Se escribe la hoja NOMINA_${MESES[mes()-1].toLowerCase()}-${ano()} con estos valores.`)) return;
   msgProgreso('⏳ Congelando…', false);
   const r = await (await fetch('/nominas/congelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
   if (r.status==='ok' && RESULTADO) { RESULTADO._fuente='congelada'; RESULTADO.congelada=true; render(); }
@@ -179,7 +180,8 @@ function filtrarYpintar() {
   const filas = RESULTADO.filas.filter(f =>
     (FILTRO_TIPO==='todos' || (FILTRO_TIPO==='ett' ? f.ett : !f.ett)) &&
     (!q || (f.nombre+' '+(f.dni||'')).toLowerCase().includes(q)));
-  $('#resumen-tabla').textContent = `${filas.length} conductores · ${MESES[RESULTADO.mes-1]} ${RESULTADO.ano}`;
+  $('#resumen-tabla').textContent = `${filas.length} conductores · Nómina ${MESES[RESULTADO.mes-1]} ${RESULTADO.ano}` +
+    (RESULTADO.mesDatosNombre ? ` · datos de ${RESULTADO.mesDatosNombre} ${RESULTADO.anoDatos}` : '');
   $('#tbody').innerHTML = filas.map(f => `<tr class="border-t border-telecab-border/50 hover:bg-telecab-card2/40">
     <td class="px-3 py-2 text-telecab-text">${esc(f.nombre)}</td>
     <td class="px-3 py-2 text-telecab-muted">${esc(f.dni)||'<span class="text-telecab-red/70">—</span>'}</td>
@@ -242,6 +244,7 @@ function pintarAvisos(a, cfg) {
   if (a.sinEfec) av.push(['red','⚠️ La hoja del mes no tiene utilización (% Efec). Marca "descargar datos frescos" y vuelve a generar para calcularla.']);
   if (a.sinDinero) av.push(['red','⚠️ La hoja del mes no tiene facturación (FAS/propinas/peajes). Regenera el mes.']);
   if (a.sinDni>0) av.push(['amber',`${a.sinDni} conductor(es) sin DNI/NIE en la agenda (aparecen con —). Complétalos en AGENDA_V2 si hace falta.`]);
+  if (a.trabajoIncompleto) av.push(['amber',`⚠️ El mes de trabajo (${RESULTADO?RESULTADO.mesDatosNombre:''}) aún no ha terminado: los datos están incompletos. Esta nómina se genera el mes siguiente.`]);
   const c = cfg || {};
   av.push(['muted',`Hora extra: ${c.eurHoraExtra||0} €/h × utilización · Nocturna: ${c.eurHoraNoc||0} × h × ${c.factorNoc||0} · FAS: (neto − umbral) × ${c.pctMBOFAS||0} · umbral 40h=${c.umbralFAS40||0} / 32h=${c.umbralFAS32||0}`]);
   $('#avisos').innerHTML = av.map(([c,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c==='amber'?'bg-amber-900/15 text-amber-400 border border-amber-600/30':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');
