@@ -129,33 +129,55 @@ router.post('/ballenoil/reenviar', async (req, res) => {
 // (para crearla al vuelo). A cada uno se le puede asignar/actualizar el PIN.
 router.get('/conductores', async (req, res) => {
   try {
-    const { leerTablero } = require('../services/planificadorV2');
+    const { leerTablero, ESTADOS_ESPECIALES } = require('../services/planificadorV2');
     const l9 = v => { const d = String(v == null ? '' : v).replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
+    // Solo gente OPERATIVA: fuera vacaciones, baja médica, permiso, baja de empresa y
+    // suspendidos. Se quedan "Activo" y "Pendiente Asignar" (y el estado en blanco, que
+    // se asume operativo). Así la lista de PIN no arrastra a quien ahora no conduce.
+    const noOperativo = e => ESTADOS_ESPECIALES.includes((e || '').toString().trim());
     const [tablero, tks, padron] = await Promise.all([
       leerTablero(),
       leerTickets(),
       leerPadron().catch(() => ({ db: new Map() }))
     ]);
-    // PIN por teléfono (de las fichas) + teléfonos que YA tienen ficha (ticket).
+    // Por teléfono: PIN, y los datos de la ficha (DNI + correo) que Administración copia
+    // para pedirle el PIN a Ballenoil. También el correo del padrón de BOLT como respaldo
+    // (el padrón trae correo pero no DNI).
     const pinPorTel = new Map();
+    const fichaPorTel = new Map();     // tel9 -> { dni, email } (de la ficha de RRHH)
+    const emailPadronTel = new Map();  // tel9 -> correo del padrón de BOLT (respaldo)
     const telConFicha = new Set();
-    (tks.lista || []).forEach(t => { const k = l9(t.id); if (k) { pinPorTel.set(k, t.pin_ballenoil || ''); telConFicha.add(k); } });
+    (tks.lista || []).forEach(t => {
+      const k = l9(t.id); if (!k) return;
+      pinPorTel.set(k, t.pin_ballenoil || '');
+      fichaPorTel.set(k, { dni: (t.dni || '').toString().trim(), email: (t.email || '').toString().trim() });
+      telConFicha.add(k);
+    });
+    (padron.db || new Map()).forEach(d => { const k = l9(d.phone); if (k && d.email && !emailPadronTel.has(k)) emailPadronTel.set(k, d.email.toString().trim()); });
+    // OJO: telConFicha se llena con TODOS los de agenda (incluidos los no operativos) para
+    // que un suspendido/baja no se cuele luego por el padrón de BOLT.
     (tablero.conductores || []).forEach(c => { const k = l9(c.telefono); if (k) telConFicha.add(k); });
 
     const out = [];
     const vistos = new Set();
-    // 1) Agenda: conductores con ficha operativa.
+    // 1) Agenda: conductores con ficha, SOLO activos / pendientes de asignar.
     (tablero.conductores || []).forEach(c => {
+      if (noOperativo(c.estado)) return;   // fuera bajas, vacaciones, permisos, suspendidos
       const tel = l9(c.telefono);
       const key = tel || 'bolt:' + ((c.idBolt || c.id || '').toLowerCase());
       if (vistos.has(key)) return; vistos.add(key);
+      const f = tel ? fichaPorTel.get(tel) : null;
       out.push({
         id_bolt: c.idBolt || c.id || '', nombre: c.nombre || '',
         telefono: (c.telefono || '').toString().trim(), turno: c.turno || '',
+        dni: (c.dni || (f && f.dni) || '').toString().trim(),
+        email: ((f && f.email) || (tel && emailPadronTel.get(tel)) || '').toString().trim(),
+        estado: (c.estado || '').toString().trim(),
         pin_ballenoil: tel ? (pinPorTel.get(tel) || '') : '', con_ficha: true
       });
     });
-    // 2) Padrón de BOLT (activos) SIN ficha: para crear ficha + PIN de una vez.
+    // 2) Padrón de BOLT (activos) SIN ficha: para crear ficha + PIN de una vez. No tienen
+    //    DNI en el padrón (sí correo); el DNI se rellena al crearles la ficha.
     (padron.db || new Map()).forEach(d => {
       if ((d.state || '').toLowerCase() !== 'active') return;
       const tel = l9(d.phone);
@@ -164,14 +186,16 @@ router.get('/conductores', async (req, res) => {
       out.push({
         id_bolt: (d.nombre || '').trim(), nombre: (d.nombre || '').trim(),
         telefono: (d.phone || '').toString().trim(), turno: '',
-        pin_ballenoil: '', con_ficha: false
+        dni: '', email: (d.email || '').toString().trim(),
+        estado: '', pin_ballenoil: '', con_ficha: false
       });
     });
     out.sort((a, b) => (a.con_ficha === b.con_ficha ? 0 : a.con_ficha ? -1 : 1)
       || (a.nombre || a.id_bolt).localeCompare(b.nombre || b.id_bolt));
+    const conPin = c => !!(c.pin_ballenoil || '').toString().trim();
     res.json({
       status: 'ok', conductores: out,
-      contadores: { conFicha: out.filter(c => c.con_ficha).length, sinFicha: out.filter(c => !c.con_ficha).length }
+      contadores: { total: out.length, conPin: out.filter(conPin).length, sinPin: out.filter(c => !conPin(c)).length }
     });
   } catch (e) {
     console.error('❌ [Administración] /conductores:', e.message);
