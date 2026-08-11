@@ -195,7 +195,12 @@ async function tableroControl() {
     const trabajoReal = info => (info.horas ?? 0) > umbral;
     const r = {};
     ['Día', 'Noche', 'TodoTurno'].forEach(t => {
-      let del = todas.filter(f => !f.esNN && f.turno === t);
+      // Un conductor de TodoTurno cubre su coche de DÍA y de NOCHE, así que cuenta en
+      // AMBOS turnos —igual que en Cobertura, donde ese coche sale de día y de noche—.
+      // Antes quedaba solo en su propia fila y el Control no cuadraba con la Cobertura
+      // (faltaba justo ese/esos coche(s)). Su fila "TodoTurno" se mantiene como referencia.
+      const sumaTodoTurno = t !== 'TodoTurno';
+      let del = todas.filter(f => !f.esNN && (f.turno === t || (sumaTodoTurno && f.turno === 'TodoTurno')));
       if (t === 'Noche') del = del.concat(filasNN);
       const esperados = del.filter(f => f.dias[dia.key].debiaSalir);
       r[t] = {
