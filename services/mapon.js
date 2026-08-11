@@ -266,6 +266,182 @@ async function leerExcesosGraves(rango = {}) {
   return { ...r, alertas: r.alertas.filter(a => a.velocidad >= UMBRAL) };
 }
 
+// ============================================================
+// AUDITORÍA DE FLOTA (Operaciones): km diarios y combustible
+// ============================================================
+
+/** ISO UTC → clave de día en hora peninsular ('aaaa-mm-dd', ordena bien como texto). */
+function diaLocal(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(d);
+}
+
+/** Resuelve el rango desde/hasta igual que leerAlertas (día final completo, tope 31 días). */
+function resolverRango({ desde, hasta } = {}, porDefectoDias = 7) {
+  const fin = (desde || hasta) ? (parseFecha(hasta) || new Date()) : new Date();
+  if (hasta) fin.setHours(23, 59, 59, 0);
+  let ini = parseFecha(desde);
+  if (!ini) { ini = new Date(fin); ini.setDate(ini.getDate() - porDefectoDias); }
+  ini.setHours(0, 0, 0, 0);
+  if (ini > fin) throw new Error('La fecha inicial es posterior a la final');
+  const dias = Math.round((fin - ini) / 86400000);
+  if (dias > MAX_DIAS) throw new Error(`Mapon solo permite consultar ${MAX_DIAS} días seguidos (has pedido ${dias})`);
+  return { ini, fin };
+}
+
+/** GET a la API de Mapon con control del formato de error {error:{code,msg}}. */
+async function pedir(ruta, params) {
+  const r = await fetch(`${API}/${ruta}?key=${KEY}&${params}`);
+  const json = await r.json();
+  if (json && json.error) {
+    throw new Error(`Mapon (${ruta}): ${json.error.msg || json.error.code || 'error desconocido'}`);
+  }
+  return json;
+}
+
+/**
+ * Km recorridos por vehículo y día natural (hora peninsular), sumando la
+ * distancia GPS de los trayectos de route/list.json de TODA la flota.
+ *
+ * route/list no pagina: para que la respuesta no sea un mamotreto, el rango se
+ * trocea en ventanas de pocos días que se piden EN SERIE (la cuenta admite 5
+ * peticiones concurrentes y el cron de sanciones ya consume). Un trayecto que
+ * cruza la medianoche cuenta entero en su día de INICIO; los que caen justo en
+ * el corte de dos ventanas se deduplican por route_id.
+ */
+const DIAS_POR_VENTANA = 5;
+
+async function leerKmPorDia({ desde, hasta } = {}) {
+  const { ini, fin } = resolverRango({ desde, hasta });
+  const mapaUnidades = await unidades();
+
+  // Eje de días del rango (en local): la vista pinta una columna por día, con
+  // dato o sin él.
+  const dias = [];
+  for (let d = new Date(ini); d <= fin; d.setDate(d.getDate() + 1)) {
+    dias.push(diaLocal(d.toISOString()));
+  }
+
+  const porUnidad = new Map();   // unit_id -> { km: Map(dia -> metros), viajes }
+  const vistos = new Set();      // unit_id|route_id (dedupe entre ventanas)
+
+  for (let v = new Date(ini); v < fin;) {
+    const vFin = new Date(v); vFin.setDate(vFin.getDate() + DIAS_POR_VENTANA);
+    const hastaV = vFin < fin ? vFin : fin;
+    const json = await pedir('route/list.json',
+      `from=${encodeURIComponent(aUTC(v))}&till=${encodeURIComponent(aUTC(hastaV))}`);
+    ((json.data && json.data.units) || []).forEach(u => {
+      (u.routes || []).forEach(ruta => {
+        if (ruta.type !== 'route') return;                    // las paradas no suman km
+        const clave = `${u.unit_id}|${ruta.route_id}`;
+        if (vistos.has(clave)) return;
+        vistos.add(clave);
+        const dia = diaLocal(ruta.start && ruta.start.time);
+        if (!dia) return;
+        const reg = porUnidad.get(u.unit_id) || { km: new Map(), viajes: 0 };
+        reg.km.set(dia, (reg.km.get(dia) || 0) + (Number(ruta.distance) || 0));
+        reg.viajes++;
+        porUnidad.set(u.unit_id, reg);
+      });
+    });
+    v = vFin;
+  }
+
+  const filas = [...porUnidad.entries()].map(([unitId, reg]) => {
+    const unidad = mapaUnidades.get(unitId) || {};
+    const km = {};
+    let total = 0;
+    reg.km.forEach((metros, dia) => {
+      const k = Math.round(metros / 100) / 10;   // metros → km con 1 decimal
+      km[dia] = k;
+      total += k;
+    });
+    return {
+      unitId,
+      matricula: unidad.matricula || `#${unitId}`,
+      vehiculo: unidad.vehiculo || '—',
+      km,
+      total: Math.round(total * 10) / 10,
+      viajes: reg.viajes
+    };
+  }).sort((a, b) => a.matricula.localeCompare(b.matricula));
+
+  return { dias, filas, desde: aUTC(ini), hasta: aUTC(fin) };
+}
+
+/**
+ * Auditoría de combustible de toda la flota en una pasada:
+ *   eventos  repostajes (subida de nivel) y caídas (bajada brusca: posible robo)
+ *            de fuel/changes.json, con lugar y nivel previo.
+ *   resumen  litros repostados/drenados/consumidos por unidad de fuel/summary.json.
+ *
+ * Cada dato viene por duplicado desde la fuente 'sensor' (varilla) y 'can'
+ * (centralita). En turismos sin varillas la fuente real es el CAN, así que se
+ * prefiere can y se cae a sensor si el CAN no trae nada.
+ */
+async function leerCombustible({ desde, hasta } = {}) {
+  const { ini, fin } = resolverRango({ desde, hasta });
+  const rango = `from=${encodeURIComponent(aUTC(ini))}&till=${encodeURIComponent(aUTC(fin))}`;
+  const [cambios, resumenRaw, mapaUnidades] = await Promise.all([
+    pedir('fuel/changes.json', rango),
+    pedir('fuel/summary.json', rango),
+    unidades()
+  ]);
+
+  const eventos = [];
+  (cambios.data || []).forEach(u => {
+    const unidad = mapaUnidades.get(u.unit_id) || {};
+    const matricula = txt(u.number) || unidad.matricula || `#${u.unit_id}`;
+    ['can', 'sensor'].forEach(fuente => {
+      (u[fuente] || []).forEach(e => {
+        const litros = Math.round((Number(e.fuel_change) || 0) * 10) / 10;
+        if (!litros) return;
+        const { fecha, hora, orden } = enLocal(e.gmt);
+        eventos.push({
+          unitId: u.unit_id,
+          matricula,
+          vehiculo: unidad.vehiculo || '—',
+          tipo: litros > 0 ? 'repostaje' : 'caida',
+          litros,
+          nivelAntes: e.fuel_before != null ? Math.round(Number(e.fuel_before) * 10) / 10 : null,
+          fecha, hora, orden,
+          lat: e.lat != null ? Number(e.lat) : null,
+          lng: e.lng != null ? Number(e.lng) : null,
+          direccion: txt(e.address),
+          fuente
+        });
+      });
+    });
+  });
+  eventos.sort((a, b) => b.orden - a.orden);
+
+  const num = v => (v == null || v === '' ? null : Math.round(Number(v) * 10) / 10);
+  const resumen = (resumenRaw.data || []).map(u => {
+    const can = u.can || {}, sensor = u.sensor || {};
+    const conDatos = o => o && [o.fueled, o.total_consumed, o.drained, o.start, o.end]
+      .some(v => v != null && v !== '');
+    const fuente = conDatos(can) ? 'can' : (conDatos(sensor) ? 'sensor' : null);
+    const d = fuente === 'can' ? can : sensor;
+    const unidad = mapaUnidades.get(u.unit_id) || {};
+    return {
+      unitId: u.unit_id,
+      matricula: unidad.matricula || `#${u.unit_id}`,
+      vehiculo: unidad.vehiculo || '—',
+      fuente,
+      repostado: fuente ? num(d.fueled) : null,
+      drenado: fuente ? num(d.drained) : null,
+      consumido: fuente ? num(d.total_consumed) : null,
+      consumoMedio: fuente ? num(d.avg_consumption) : null,
+      medida: txt(u.fuel_consumption_measurement) || 'l/100km'
+    };
+  }).sort((a, b) => a.matricula.localeCompare(b.matricula));
+
+  return { eventos, resumen, desde: aUTC(ini), hasta: aUTC(fin) };
+}
+
 /** Setups configurados en Mapon (diagnóstico: con qué límite está avisando). */
 async function listarSetups() {
   const r = await fetch(`${API}/alert/list_setups.json?key=${KEY}`);
@@ -282,5 +458,6 @@ async function listarSetups() {
 module.exports = {
   TIPOS, UMBRAL, MAX_DIAS,
   leerAlertas, leerExcesosGraves, listarSetups,
+  leerKmPorDia, leerCombustible,
   unidades, parseFecha, parseValor, normalizar
 };

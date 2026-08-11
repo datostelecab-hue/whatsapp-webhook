@@ -1,0 +1,293 @@
+<div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
+
+  <!-- Encabezado + rango -->
+  <div class="flex flex-wrap items-center gap-3 mb-5">
+    <div>
+      <h2 class="text-xl font-bold flex items-center gap-2">
+        <i class="fa-solid fa-clipboard-check text-telecab-gold"></i> Auditoría de flota
+      </h2>
+      <p class="text-sm text-telecab-muted mt-0.5" id="a-resumen">Repostajes y kilómetros diarios por matrícula (Mapon)</p>
+    </div>
+
+    <div class="ml-auto flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-1.5">
+        <label class="text-xs text-telecab-muted">Del</label>
+        <input id="a-desde" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa" data-max="today">
+        <label class="text-xs text-telecab-muted">al</label>
+        <input id="a-hasta" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa" data-max="today">
+      </div>
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
+        <input id="a-buscar" placeholder="Buscar matrícula…"
+               class="pl-8 pr-3 py-2 w-40 sm:w-52 bg-telecab-card border border-telecab-border rounded-xl text-sm
+                      focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
+      </div>
+      <button id="a-consultar"
+              class="flex items-center gap-2 px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm
+                     hover:bg-telecab-gold-soft transition shadow-gold">
+        <i class="fa-solid fa-rotate"></i> Consultar
+      </button>
+      <a id="a-excel" href="#"
+         class="flex items-center gap-2 px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-telecab-text
+                text-sm font-medium hover:border-telecab-gold/50 transition">
+        <i class="fa-solid fa-file-excel text-telecab-green"></i> Excel
+      </a>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" id="a-kpis"></div>
+
+  <!-- Aviso -->
+  <div id="a-aviso" class="hidden mb-5 rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4 text-sm text-telecab-red"></div>
+
+  <!-- Repostajes y caídas -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft mb-6">
+    <div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
+      <h3 class="font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-gas-pump text-telecab-gold"></i> Repostajes y caídas de nivel
+      </h3>
+      <div class="ml-auto flex gap-2" id="a-filtros-ev"></div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
+          <tr>
+            <th class="text-left font-semibold px-4 py-3">Fecha</th>
+            <th class="text-left font-semibold px-4 py-3">Hora</th>
+            <th class="text-left font-semibold px-4 py-3">Matrícula</th>
+            <th class="text-left font-semibold px-4 py-3">Evento</th>
+            <th class="text-right font-semibold px-4 py-3">Litros</th>
+            <th class="text-right font-semibold px-4 py-3">Nivel antes</th>
+            <th class="text-left font-semibold px-4 py-3">Lugar</th>
+          </tr>
+        </thead>
+        <tbody id="a-tbody-ev" class="divide-y divide-telecab-border/60"></tbody>
+      </table>
+    </div>
+    <div id="a-vacio-ev" class="hidden p-8 text-center text-telecab-muted">
+      <i class="fa-solid fa-gas-pump text-3xl mb-2 opacity-40"></i>
+      <p id="a-vacio-ev-txt">Sin eventos de combustible en este rango.</p>
+    </div>
+    <div id="a-cargando-ev" class="p-8 text-center text-telecab-muted">
+      <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Leyendo combustible…
+    </div>
+  </div>
+
+  <!-- KM por día -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
+      <h3 class="font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-road text-telecab-gold"></i> Kilómetros diarios por matrícula
+      </h3>
+      <span class="ml-auto text-xs text-telecab-muted" id="a-km-nota"></span>
+    </div>
+    <div class="overflow-x-auto max-h-[34rem] overflow-y-auto">
+      <table class="w-full text-sm" id="a-tabla-km">
+        <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
+          <tr id="a-thead-km"></tr>
+        </thead>
+        <tbody id="a-tbody-km" class="divide-y divide-telecab-border/60"></tbody>
+      </table>
+    </div>
+    <div id="a-vacio-km" class="hidden p-8 text-center text-telecab-muted">
+      <i class="fa-solid fa-road text-3xl mb-2 opacity-40"></i>
+      <p>Sin kilómetros registrados en este rango.</p>
+    </div>
+    <div id="a-cargando-km" class="p-8 text-center text-telecab-muted">
+      <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sumando kilómetros (varias consultas, puede tardar unos segundos)…
+    </div>
+  </div>
+
+  <p class="text-[11px] text-telecab-muted mt-3">
+    Horas y días en hora peninsular; un viaje que cruza la medianoche cuenta en su día de inicio.
+    Mapon permite consultar como mucho <%= maxDias %> días seguidos. El combustible sale de la
+    centralita (CAN) del coche: las caídas de nivel marcan <b>posibles</b> robos/sifonados, a verificar.
+  </p>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let EVENTOS = [], RESUMEN = [], KM = { dias: [], filas: [] };
+let filtroEv = '', busqueda = '';
+let cargandoEv = false, cargandoKm = false;
+
+const pad = n => String(n).padStart(2, '0');
+const fmt = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
+const ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const fmtKm = v => (v == null ? '' : v.toLocaleString('es-ES', { maximumFractionDigits: 1 }));
+
+function kpis() {
+  const rep = EVENTOS.filter(e => e.tipo === 'repostaje');
+  const cai = EVENTOS.filter(e => e.tipo === 'caida');
+  const litrosRep = Math.round(rep.reduce((s, e) => s + e.litros, 0));
+  const litrosCai = Math.round(cai.reduce((s, e) => s + Math.abs(e.litros), 0));
+  const kmTotal = Math.round(KM.filas.reduce((s, f) => s + f.total, 0));
+  const activos = KM.filas.filter(f => f.total > 0).length;
+
+  const kpi = (n, txt, cls) => `
+    <div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
+      <div class="text-2xl font-bold ${cls}">${n}</div>
+      <div class="text-xs text-telecab-muted mt-0.5">${txt}</div>
+    </div>`;
+  $('#a-kpis').innerHTML =
+    kpi(cargandoEv ? '…' : `${rep.length}`, `Repostajes · ${cargandoEv ? '…' : litrosRep + ' l'}`, 'text-telecab-green') +
+    kpi(cargandoEv ? '…' : `${cai.length}`, `Caídas de nivel · ${cargandoEv ? '…' : litrosCai + ' l'}`, cai.length ? 'text-telecab-red' : 'text-telecab-muted') +
+    kpi(cargandoKm ? '…' : kmTotal.toLocaleString('es-ES') + ' km', 'Km de la flota en el rango', 'text-telecab-text') +
+    kpi(cargandoKm ? '…' : activos, 'Vehículos con actividad', 'text-telecab-gold');
+}
+
+function filtrosEv() {
+  const n = t => EVENTOS.filter(e => !t || e.tipo === t).length;
+  $('#a-filtros-ev').innerHTML = [
+    { id: '', txt: `Todos (${n('')})` },
+    { id: 'repostaje', txt: `Repostajes (${n('repostaje')})` },
+    { id: 'caida', txt: `Caídas (${n('caida')})` }
+  ].map(o => {
+    const on = filtroEv === o.id;
+    return `<button data-f="${o.id}" class="px-3 py-1.5 rounded-lg text-xs font-medium transition border
+      ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+           : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${o.txt}</button>`;
+  }).join('');
+  $('#a-filtros-ev').querySelectorAll('button').forEach(b =>
+    b.onclick = () => { filtroEv = b.dataset.f; filtrosEv(); pintarEventos(); });
+}
+
+function pintarEventos() {
+  const t = busqueda.toLowerCase();
+  const lista = EVENTOS.filter(e => {
+    if (filtroEv && e.tipo !== filtroEv) return false;
+    if (t && !(`${e.matricula} ${e.vehiculo}`).toLowerCase().includes(t)) return false;
+    return true;
+  });
+  $('#a-vacio-ev').classList.toggle('hidden', lista.length > 0 || cargandoEv);
+  $('#a-tbody-ev').innerHTML = lista.map(e => {
+    const esRep = e.tipo === 'repostaje';
+    const lugar = e.direccion
+      ? esc(e.direccion)
+      : (e.lat != null ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` : '—');
+    const mapa = e.lat != null
+      ? ` <a href="https://maps.google.com/?q=${e.lat},${e.lng}" target="_blank" rel="noopener"
+             class="text-telecab-gold hover:underline text-xs whitespace-nowrap"><i class="fa-solid fa-map-location-dot"></i> mapa</a>`
+      : '';
+    return `
+    <tr class="hover:bg-telecab-card2/50 transition ${esRep ? '' : 'bg-telecab-red/[0.04]'}">
+      <td class="px-4 py-3 whitespace-nowrap">${e.fecha}</td>
+      <td class="px-4 py-3 font-medium whitespace-nowrap">${e.hora}</td>
+      <td class="px-4 py-3 font-semibold">${esc(e.matricula)}</td>
+      <td class="px-4 py-3">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium
+          ${esRep ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/15 text-telecab-red'}">
+          ${esRep ? 'Repostaje' : 'Caída'}</span>
+      </td>
+      <td class="px-4 py-3 text-right font-semibold ${esRep ? 'text-telecab-green' : 'text-telecab-red'}">
+        ${esRep ? '+' : ''}${e.litros.toLocaleString('es-ES')} l</td>
+      <td class="px-4 py-3 text-right text-telecab-muted">${e.nivelAntes != null ? e.nivelAntes.toLocaleString('es-ES') + ' l' : '—'}</td>
+      <td class="px-4 py-3 text-telecab-muted">${lugar}${mapa}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pintarKm() {
+  const t = busqueda.toLowerCase();
+  const filas = KM.filas.filter(f => !t || (`${f.matricula} ${f.vehiculo}`).toLowerCase().includes(t));
+  $('#a-vacio-km').classList.toggle('hidden', filas.length > 0 || cargandoKm);
+
+  $('#a-thead-km').innerHTML =
+    `<th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Matrícula</th>` +
+    KM.dias.map(d => `<th class="text-right font-semibold px-2 py-3 whitespace-nowrap">${ddmm(d)}</th>`).join('') +
+    `<th class="text-right font-semibold px-4 py-3">Total</th>`;
+
+  $('#a-tbody-km').innerHTML = filas.map(f => `
+    <tr class="hover:bg-telecab-card2/50 transition">
+      <td class="px-4 py-2.5 font-semibold sticky left-0 bg-telecab-card whitespace-nowrap"
+          title="${esc(f.vehiculo)}">${esc(f.matricula)}</td>
+      ${KM.dias.map(d => {
+        const v = f.km[d];
+        return `<td class="px-2 py-2.5 text-right ${v ? '' : 'text-telecab-muted/40'}">${v ? fmtKm(v) : '·'}</td>`;
+      }).join('')}
+      <td class="px-4 py-2.5 text-right font-bold">${fmtKm(f.total)}</td>
+    </tr>`).join('');
+
+  // Totales de la flota por día, al pie.
+  if (filas.length) {
+    const tot = KM.dias.map(d => filas.reduce((s, f) => s + (f.km[d] || 0), 0));
+    $('#a-tbody-km').innerHTML += `
+      <tr class="bg-telecab-card2/70 font-semibold">
+        <td class="px-4 py-2.5 sticky left-0 bg-telecab-card2">Flota (${filas.length})</td>
+        ${tot.map(v => `<td class="px-2 py-2.5 text-right">${v ? fmtKm(Math.round(v)) : '·'}</td>`).join('')}
+        <td class="px-4 py-2.5 text-right">${fmtKm(Math.round(filas.reduce((s, f) => s + f.total, 0)))}</td>
+      </tr>`;
+  }
+  $('#a-km-nota').textContent = filas.length ? `${filas.length} vehículos con viajes en el rango` : '';
+}
+
+function aviso(texto) {
+  const box = $('#a-aviso');
+  if (!texto) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i>${esc(texto)}`;
+}
+
+function rango() {
+  const p = new URLSearchParams();
+  if ($('#a-desde').value.trim()) p.set('desde', $('#a-desde').value.trim());
+  if ($('#a-hasta').value.trim()) p.set('hasta', $('#a-hasta').value.trim());
+  return p.toString();
+}
+
+async function cargar() {
+  aviso('');
+  const q = rango();
+  $('#a-excel').href = '/operaciones/auditoria/excel?' + q;
+  $('#a-resumen').textContent = `${$('#a-desde').value} → ${$('#a-hasta').value}`;
+
+  // Las dos consultas van en paralelo y cada tarjeta se pinta cuando llega su parte.
+  cargandoEv = cargandoKm = true;
+  $('#a-cargando-ev').classList.remove('hidden'); $('#a-cargando-km').classList.remove('hidden');
+  $('#a-vacio-ev').classList.add('hidden'); $('#a-vacio-km').classList.add('hidden');
+  EVENTOS = []; RESUMEN = []; KM = { dias: [], filas: [] };
+  filtrosEv(); pintarEventos(); pintarKm(); kpis();
+
+  const evP = fetch('/operaciones/api/combustible?' + q).then(r => r.json())
+    .then(d => {
+      if (d.status !== 'ok') throw new Error(d.msg || 'combustible');
+      EVENTOS = d.eventos || []; RESUMEN = d.resumen || [];
+    })
+    .catch(e => aviso('Combustible: ' + e.message))
+    .finally(() => {
+      cargandoEv = false; $('#a-cargando-ev').classList.add('hidden');
+      filtrosEv(); pintarEventos(); kpis();
+    });
+
+  const kmP = fetch('/operaciones/api/km?' + q).then(r => r.json())
+    .then(d => {
+      if (d.status !== 'ok') throw new Error(d.msg || 'km');
+      KM = { dias: d.dias || [], filas: d.filas || [] };
+    })
+    .catch(e => aviso('Kilómetros: ' + e.message))
+    .finally(() => {
+      cargandoKm = false; $('#a-cargando-km').classList.add('hidden');
+      pintarKm(); kpis();
+    });
+
+  await Promise.allSettled([evP, kmP]);
+}
+
+// ---------- Arranque ----------
+(function () {
+  const hoy = new Date();
+  const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
+  $('#a-desde').value = fmt(hace7);
+  $('#a-hasta').value = fmt(hoy);
+
+  $('#a-consultar').onclick = cargar;
+  $('#a-buscar').oninput = e => { busqueda = e.target.value; pintarEventos(); pintarKm(); };
+  ['#a-desde', '#a-hasta'].forEach(s => $(s).addEventListener('change', cargar));
+
+  cargar();
+})();
+</script>
