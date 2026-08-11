@@ -30,6 +30,9 @@
   <!-- ══ Titulares de vacaciones/baja que siguen en su plaza (esos turnos NO salen) ══ -->
   <div id="ausentes-plaza" class="mb-5"></div>
 
+  <!-- ══ TodoTurno: cubren día y noche del mismo coche (para tenerlos en cuenta) ══ -->
+  <div id="todoturno" class="mb-5"></div>
+
   <!-- El logo del layout hace de indicador de carga; este div queda solo para errores. -->
   <div id="cargando" class="hidden text-center py-16 text-telecab-muted"></div>
 
@@ -99,6 +102,7 @@ function pintar() {
     `${D.coches.length} coches operativos · ${totalRelevos} relevos a la semana · ${totalHuecos} turnos sin conductor` +
     (totalPre ? ` · ${totalPre} por incorporación` : '');
   pintarAusentes();
+  pintarTodoTurno();
   pintarDias();
   pintarPersonas();
 }
@@ -123,6 +127,46 @@ function pintarAusentes() {
             <span class="text-amber-400">· ${esc(a.estado)}${a.reincorporacion ? ' hasta ' + esc(a.reincorporacion) : ''}</span>
             ${a.dias && a.dias.length ? `<span class="text-telecab-muted/80">· no sale ${a.dias.map(esc).join(' ')}</span>` : ''}
             ${a.zona ? `<span class="text-telecab-muted/60">· ${esc(a.zona)}</span>` : ''}
+          </li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+// ════════ TodoTurno: mismo conductor cubre DÍA y NOCHE del mismo coche ════════
+// Se deriva del propio tablero (D.coches[].semana): en un día, si el tramo de Día y el de
+// Noche del mismo coche llevan al MISMO conductor, ese conductor hace TodoTurno ese día.
+// Ese coche sale de día Y de noche, así que conviene tenerlos presentes en la cobertura.
+function pintarTodoTurno() {
+  const box = $('#todoturno');
+  const porDriver = new Map();   // id -> { nombre, coches: Map(matrícula -> Set(diaNombre)) }
+  (D.coches || []).forEach(coche => {
+    const s = coche.semana || [];
+    for (let d = 0; d < 7; d++) {
+      const dia = s[d * 2], noche = s[d * 2 + 1];   // orden de TURNOS: [Día, Noche]
+      if (!dia || !noche || !dia.id || dia.id !== noche.id) continue;   // ha de cubrir AMBOS
+      const reg = porDriver.get(dia.id) || { nombre: dia.nombre || dia.id, coches: new Map() };
+      const dias = reg.coches.get(coche.matricula) || new Set();
+      dias.add(dia.diaNombre);
+      reg.coches.set(coche.matricula, dias);
+      porDriver.set(dia.id, reg);
+    }
+  });
+
+  if (!porDriver.size) { box.innerHTML = ''; return; }
+  const items = [...porDriver.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const abrev = d => (d || '').slice(0, 3);
+  box.innerHTML = `
+    <div class="rounded-xl border border-indigo-500/40 bg-indigo-900/20 p-4">
+      <div class="flex items-center gap-2 mb-2 text-indigo-300 font-semibold">
+        <span>☀️🌙</span> TodoTurno — cubren día y noche del mismo coche (${items.length})
+      </div>
+      <ul class="space-y-1 text-sm">
+        ${items.map(v => `
+          <li class="flex flex-wrap items-baseline gap-x-2">
+            <span class="font-medium text-telecab-text">${esc(v.nombre)}</span>
+            ${[...v.coches.entries()].map(([mat, dias]) =>
+              `<span class="text-telecab-muted">· <span class="font-mono text-telecab-text">${esc(mat)}</span>
+                 <span class="text-telecab-muted/70">(${[...dias].map(abrev).map(esc).join(' ')})</span></span>`).join('')}
           </li>`).join('')}
       </ul>
     </div>`;
