@@ -48,7 +48,7 @@ router.get('/api/datos', async (req, res) => {
   }
 });
 
-// ── Envío de turnos por WhatsApp (plantilla turnosdeconductores) ─────────────
+// ── Aviso de turnos por WhatsApp (plantilla con botón; el detalle lo manda el bot) ──
 const TZ = 'Europe/Madrid';
 const sello = () => new Intl.DateTimeFormat('es-ES', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date());
 const sleep = ms => new Promise(r => setTimeout(r, ms));

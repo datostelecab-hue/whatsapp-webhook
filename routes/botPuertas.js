@@ -234,7 +234,9 @@ async function enviarTurnos(phone, nombreSesion) {
 // Botón de una PLANTILLA (quick reply). El de la bienvenida de Ballenoil pide el PIN.
 async function handleTemplateButton(phone, label) {
   const l = (label || '').toUpperCase();
-  if (l.includes('TURNO')) {
+  // Se acepta cualquier etiqueta razonable del botón ("Ver mis turnos", "Ver detalle",
+  // "Ver horario"…) para no depender del texto exacto con el que se aprobó la plantilla.
+  if (/TURNO|DETALLE|HORARIO|SEMANA/.test(l)) {
     // Botón "Ver mis turnos" del aviso → se manda el detalle en TEXTO LIBRE (bien formateado).
     console.log(`📅 [Turnos] Botón "ver turnos" de ${phone}`);
     await enviarTurnos(phone);

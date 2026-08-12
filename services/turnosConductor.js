@@ -100,38 +100,4 @@ function mensajeTurnos(entrada) {
   return L.join('\n').trim();
 }
 
-/**
- * SOLO el cuerpo del plan (días de la semana), para el parámetro {{2}} de la plantilla
- * `turnosdeconductores` — el saludo y el pie ya van en la propia plantilla. Sin negritas
- * (`*`) porque los parámetros de plantilla no las interpretan; solo texto + emojis.
- */
-function planSemanaTexto(entrada) {
-  if (!entrada || !Array.isArray(entrada.dias)) return '';
-  const tel = x => (x && x.telefono ? ` (${x.telefono})` : '');
-  // Clave para agrupar días consecutivos IDÉNTICOS (mismo turno, coche, de quién recibe y a
-  // quién entrega) → "Martes a Viernes" en una sola línea en vez de repetir 4 iguales.
-  const clave = d => d.trabaja
-    ? `T|${d.turno}|${d.matricula}|${d.recibeDe ? d.recibeDe.nombre + d.recibeDe.telefono : ''}|${d.entregaA ? d.entregaA.nombre + d.entregaA.telefono : ''}`
-    : 'L';
-  const dias = entrada.dias;
-  const seg = [];
-  let i = 0;
-  while (i < dias.length) {
-    let j = i; const k = clave(dias[i]);
-    while (j < dias.length && clave(dias[j]) === k) j++;
-    const nombres = unirDias(dias.slice(i, j).map(x => diaLargo(x.diaNombre)));
-    const d = dias[i];
-    if (!d.trabaja) {
-      seg.push(`😴 ${nombres}: libras`);
-    } else {
-      let s = `📅 ${nombres} · turno de ${d.turno} · coche ${d.matricula}`;
-      if (d.recibeDe) s += ` · 🔑 recibes de ${d.recibeDe.nombre}${tel(d.recibeDe)}`;
-      if (d.entregaA) s += ` · 🤝 entregas a ${d.entregaA.nombre}${tel(d.entregaA)}`;
-      seg.push(s);
-    }
-    i = j;
-  }
-  return seg.join('\n');
-}
-
-module.exports = { instruccionesPorConductor, mensajeTurnos, planSemanaTexto };
+module.exports = { instruccionesPorConductor, mensajeTurnos };

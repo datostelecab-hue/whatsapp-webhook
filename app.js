@@ -317,6 +317,18 @@ cron.schedule('20 4 * * *', async () => {
   }
 });
 
+// Diagnóstico de plantillas de WhatsApp: nombre, IDIOMA y estado exactos tal como los
+// tiene Meta. Es lo que resuelve el error #132001 ("Template name does not exist in the
+// translation"), que casi siempre es un idioma distinto del que se pide (es vs es_ES).
+app.get('/whatsapp/plantillas', async (req, res) => {
+  try {
+    const { listarPlantillas } = require('./services/whatsapp');
+    res.json(await listarPlantillas((req.query.nombre || '').toString().trim() || undefined));
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // Auditoría de flota: a las 5:00 (poco tráfico) procesa el día de AYER, ya cerrado.
 // Es pesado (una llamada a Mapon por coche), por eso va una sola vez al día y deja el
 // resultado en el Sheet; el panel de Operaciones solo lee de ahí.
