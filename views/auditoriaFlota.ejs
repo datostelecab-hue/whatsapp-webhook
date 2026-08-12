@@ -6,7 +6,7 @@
       <h2 class="text-xl font-bold flex items-center gap-2">
         <i class="fa-solid fa-clipboard-check text-telecab-gold"></i> Auditoría de flota
       </h2>
-      <p class="text-sm text-telecab-muted mt-0.5" id="a-resumen">Repostajes y kilómetros diarios por matrícula (Mapon)</p>
+      <p class="text-sm text-telecab-muted mt-0.5" id="a-resumen">KM (Mapon vs BOLT) y repostajes por matrícula</p>
     </div>
 
     <div class="ml-auto flex flex-wrap items-center gap-2">
@@ -20,8 +20,8 @@
       </div>
       <div class="relative">
         <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
-        <input id="a-buscar" placeholder="Buscar matrícula…"
-               class="pl-8 pr-3 py-2 w-40 sm:w-52 bg-telecab-card border border-telecab-border rounded-xl text-sm
+        <input id="a-buscar" placeholder="Filtrar matrícula…"
+               class="pl-8 pr-3 py-2 w-36 sm:w-48 bg-telecab-card border border-telecab-border rounded-xl text-sm
                       focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
       </div>
       <button id="a-consultar"
@@ -43,194 +43,224 @@
   <!-- Aviso -->
   <div id="a-aviso" class="hidden mb-5 rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4 text-sm text-telecab-red"></div>
 
-  <!-- Repostajes y caídas -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft mb-6">
-    <div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
-      <h3 class="font-semibold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-gas-pump text-telecab-gold"></i> Repostajes y caídas de nivel
-      </h3>
-      <div class="ml-auto flex gap-2" id="a-filtros-ev"></div>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
-          <tr>
-            <th class="text-left font-semibold px-4 py-3">Fecha</th>
-            <th class="text-left font-semibold px-4 py-3">Hora</th>
-            <th class="text-left font-semibold px-4 py-3">Matrícula</th>
-            <th class="text-left font-semibold px-4 py-3">Evento</th>
-            <th class="text-right font-semibold px-4 py-3">Litros</th>
-            <th class="text-right font-semibold px-4 py-3">Nivel antes</th>
-            <th class="text-left font-semibold px-4 py-3">Lugar</th>
-          </tr>
-        </thead>
-        <tbody id="a-tbody-ev" class="divide-y divide-telecab-border/60"></tbody>
-      </table>
-    </div>
-    <div id="a-vacio-ev" class="hidden p-8 text-center text-telecab-muted">
-      <i class="fa-solid fa-gas-pump text-3xl mb-2 opacity-40"></i>
-      <p id="a-vacio-ev-txt">Sin eventos de combustible en este rango.</p>
-    </div>
-    <div id="a-cargando-ev" class="p-8 text-center text-telecab-muted">
-      <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Leyendo combustible…
-    </div>
+  <!-- Pestañas -->
+  <div class="flex gap-1 mb-4 border-b border-telecab-border" id="a-tabs">
+    <button data-tab="km"   class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-road mr-1.5"></i> KM Mapon vs BOLT</button>
+    <button data-tab="rep"  class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-gas-pump mr-1.5"></i> Repostajes</button>
+    <button data-tab="top"  class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-trophy mr-1.5"></i> Top ofensores</button>
   </div>
 
-  <!-- KM por día -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
-    <div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
-      <h3 class="font-semibold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-road text-telecab-gold"></i> Kilómetros diarios por matrícula
-      </h3>
-      <span class="ml-auto text-xs text-telecab-muted" id="a-km-nota"></span>
-    </div>
-    <div class="overflow-x-auto max-h-[34rem] overflow-y-auto">
-      <table class="w-full text-sm" id="a-tabla-km">
-        <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
-          <tr id="a-thead-km"></tr>
-        </thead>
-        <tbody id="a-tbody-km" class="divide-y divide-telecab-border/60"></tbody>
-      </table>
-    </div>
-    <div id="a-vacio-km" class="hidden p-8 text-center text-telecab-muted">
-      <i class="fa-solid fa-road text-3xl mb-2 opacity-40"></i>
-      <p>Sin kilómetros registrados en este rango.</p>
-    </div>
-    <div id="a-cargando-km" class="p-8 text-center text-telecab-muted">
-      <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sumando kilómetros (varias consultas, puede tardar unos segundos)…
-    </div>
+  <div id="a-cargando" class="p-10 text-center text-telecab-muted">
+    <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Consultando (varias llamadas troceadas, puede tardar unos segundos)…
   </div>
 
-  <p class="text-[11px] text-telecab-muted mt-3">
-    Horas y días en hora peninsular; un viaje que cruza la medianoche cuenta en su día de inicio.
-    Mapon permite consultar como mucho <%= maxDias %> días seguidos. El combustible sale de la
-    centralita (CAN) del coche: las caídas de nivel marcan <b>posibles</b> robos/sifonados, a verificar.
-  </p>
+  <!-- ══ Pestaña KM ══ -->
+  <section data-panel="km" class="hidden">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+      <div class="overflow-x-auto max-h-[36rem] overflow-y-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
+            <tr id="a-thead-km"></tr>
+          </thead>
+          <tbody id="a-tbody-km" class="divide-y divide-telecab-border/60"></tbody>
+        </table>
+      </div>
+      <div id="a-vacio-km" class="hidden p-8 text-center text-telecab-muted">
+        <i class="fa-solid fa-road text-3xl mb-2 opacity-40"></i>
+        <p id="a-vacio-km-txt">Sin kilómetros en este rango.</p>
+      </div>
+    </div>
+    <p class="text-[11px] text-telecab-muted mt-2">
+      <b>Mapon</b> = km totales por GPS. <b>BOLT</b> = km con pasajero (viajes finished). La <b>diferencia</b> ≈ km en vacío o fuera de app.
+      Cada celda de día muestra <span class="font-mono">Mapon/BOLT</span>.
+    </p>
+  </section>
+
+  <!-- ══ Pestaña Repostajes ══ -->
+  <section data-panel="rep" class="hidden">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+      <div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
+        <h3 class="font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-gas-pump text-telecab-gold"></i> Repostajes y caídas de nivel</h3>
+        <div class="ml-auto flex gap-2" id="a-filtros-ev"></div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
+            <tr>
+              <th class="text-left font-semibold px-4 py-3">Fecha</th><th class="text-left font-semibold px-4 py-3">Hora</th>
+              <th class="text-left font-semibold px-4 py-3">Matrícula</th><th class="text-left font-semibold px-4 py-3">Evento</th>
+              <th class="text-right font-semibold px-4 py-3">Litros</th><th class="text-right font-semibold px-4 py-3">Nivel antes</th>
+              <th class="text-left font-semibold px-4 py-3">Lugar</th>
+            </tr>
+          </thead>
+          <tbody id="a-tbody-ev" class="divide-y divide-telecab-border/60"></tbody>
+        </table>
+      </div>
+      <div id="a-vacio-ev" class="hidden p-8 text-center text-telecab-muted">
+        <i class="fa-solid fa-gas-pump text-3xl mb-2 opacity-40"></i>
+        <p id="a-vacio-ev-txt">Sin eventos de combustible en este rango.</p>
+      </div>
+    </div>
+    <p class="text-[11px] text-telecab-muted mt-2">
+      El nivel sale de la centralita (CAN): las <b>caídas</b> marcan <b>posibles</b> robos/sifonados a verificar, y los litros exactos conviene contrastarlos con el ticket real.
+    </p>
+  </section>
+
+  <!-- ══ Pestaña Ofensores ══ -->
+  <section data-panel="top" class="hidden">
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+        <div class="px-4 py-3 border-b border-telecab-border font-semibold text-telecab-text flex items-center gap-2">
+          <i class="fa-solid fa-route text-telecab-red"></i> Top 5 · más KM sin facturar
+        </div>
+        <div id="a-top-diff" class="divide-y divide-telecab-border/60"></div>
+      </div>
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+        <div class="px-4 py-3 border-b border-telecab-border font-semibold text-telecab-text flex items-center gap-2">
+          <i class="fa-solid fa-gas-pump text-telecab-gold"></i> Top 5 · más repostan
+        </div>
+        <div id="a-top-rep" class="divide-y divide-telecab-border/60"></div>
+      </div>
+    </div>
+    <p class="text-[11px] text-telecab-muted mt-2">Los ofensores se calculan sobre TODO el rango (no les afecta el filtro de matrícula).</p>
+  </section>
+
+  <p class="text-[11px] text-telecab-muted mt-3" id="a-pie"></p>
 </div>
 
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let EVENTOS = [], RESUMEN = [], KM = { dias: [], filas: [] };
-let filtroEv = '', busqueda = '';
-let cargandoEv = false, cargandoKm = false;
+let DATA = { dias: [], km: [], eventos: [], ofensores: { kmDiff: [], repostaje: [] } };
+let tab = 'km', filtroEv = '', busqueda = '', cargando = false, error = null, gen = 0;
 
 const pad = n => String(n).padStart(2, '0');
 const fmt = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
 const ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const fmtKm = v => (v == null ? '' : v.toLocaleString('es-ES', { maximumFractionDigits: 1 }));
+const nkm = v => (v == null ? '' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
 
+// ── KPIs ──
 function kpis() {
-  const rep = EVENTOS.filter(e => e.tipo === 'repostaje');
-  const cai = EVENTOS.filter(e => e.tipo === 'caida');
-  const litrosRep = Math.round(rep.reduce((s, e) => s + e.litros, 0));
-  const litrosCai = Math.round(cai.reduce((s, e) => s + Math.abs(e.litros), 0));
-  const kmTotal = Math.round(KM.filas.reduce((s, f) => s + f.total, 0));
-  const activos = KM.filas.filter(f => f.total > 0).length;
-
-  const kpi = (n, txt, cls) => `
-    <div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
-      <div class="text-2xl font-bold ${cls}">${n}</div>
-      <div class="text-xs text-telecab-muted mt-0.5">${txt}</div>
-    </div>`;
+  const km = DATA.km;
+  const totMapon = Math.round(km.reduce((s, k) => s + k.totalMapon, 0));
+  const totBolt = Math.round(km.reduce((s, k) => s + k.totalBolt, 0));
+  const diff = totMapon - totBolt;
+  const pct = totMapon > 0 ? Math.round(diff / totMapon * 100) : 0;
+  const rep = DATA.eventos.filter(e => e.tipo === 'repostaje');
+  const litros = Math.round(rep.reduce((s, e) => s + e.litros, 0));
+  const kpi = (n, t, cls) => `<div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
+      <div class="text-2xl font-bold ${cls}">${cargando ? '…' : n}</div><div class="text-xs text-telecab-muted mt-0.5">${t}</div></div>`;
   $('#a-kpis').innerHTML =
-    kpi(cargandoEv ? '…' : `${rep.length}`, `Repostajes · ${cargandoEv ? '…' : litrosRep + ' l'}`, 'text-telecab-green') +
-    kpi(cargandoEv ? '…' : `${cai.length}`, `Caídas de nivel · ${cargandoEv ? '…' : litrosCai + ' l'}`, cai.length ? 'text-telecab-red' : 'text-telecab-muted') +
-    kpi(cargandoKm ? '…' : kmTotal.toLocaleString('es-ES') + ' km', 'Km de la flota en el rango', 'text-telecab-text') +
-    kpi(cargandoKm ? '…' : activos, 'Vehículos con actividad', 'text-telecab-gold');
+    kpi(totMapon.toLocaleString('es-ES') + ' km', 'KM Mapon (total GPS)', 'text-telecab-text') +
+    kpi(totBolt.toLocaleString('es-ES') + ' km', 'KM BOLT (con pasajero)', 'text-telecab-gold') +
+    kpi(diff.toLocaleString('es-ES') + ' km', `Diferencia · ${pct}% en vacío`, diff > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
+    kpi(rep.length + ' · ' + litros + ' l', 'Repostajes en el rango', 'text-telecab-green');
 }
 
+// ── Pestaña KM ──
+function pintarKm() {
+  const t = busqueda.toLowerCase();
+  const filas = DATA.km.filter(k => !t || (`${k.matricula} ${k.vehiculo}`).toLowerCase().includes(t));
+  const mostrarVacio = !filas.length && !cargando && !error;
+  $('#a-vacio-km').classList.toggle('hidden', !mostrarVacio);
+  if (mostrarVacio) $('#a-vacio-km-txt').textContent = DATA.km.length ? 'Ninguna matrícula coincide con el filtro.' : 'Sin kilómetros en este rango.';
+
+  $('#a-thead-km').innerHTML =
+    `<th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Matrícula</th>
+     <th class="text-right font-semibold px-3 py-3">Mapon</th>
+     <th class="text-right font-semibold px-3 py-3">BOLT</th>
+     <th class="text-right font-semibold px-3 py-3">Dif.</th>
+     <th class="text-right font-semibold px-3 py-3">% vacío</th>
+     <th class="text-right font-semibold px-3 py-3">Viajes</th>` +
+    DATA.dias.map(d => `<th class="text-right font-semibold px-2 py-3 whitespace-nowrap" title="Mapon / BOLT">${ddmm(d)}</th>`).join('');
+
+  $('#a-tbody-km').innerHTML = filas.map(k => {
+    const pct = k.pct == null ? '' : k.pct + '%';
+    const pctCls = k.pct == null ? 'text-telecab-muted' : k.pct >= 40 ? 'text-telecab-red font-semibold' : k.pct >= 25 ? 'text-telecab-gold' : 'text-telecab-muted';
+    const diffCls = k.diff > 0 ? 'text-telecab-red' : k.diff < 0 ? 'text-telecab-gold' : 'text-telecab-muted';
+    return `<tr class="hover:bg-telecab-card2/50 transition">
+      <td class="px-4 py-2.5 font-semibold sticky left-0 bg-telecab-card whitespace-nowrap" title="${esc(k.vehiculo)}">${esc(k.matricula)}</td>
+      <td class="px-3 py-2.5 text-right">${nkm(k.totalMapon)}</td>
+      <td class="px-3 py-2.5 text-right text-telecab-gold">${nkm(k.totalBolt)}</td>
+      <td class="px-3 py-2.5 text-right font-medium ${diffCls}">${nkm(k.diff)}</td>
+      <td class="px-3 py-2.5 text-right ${pctCls}">${pct}</td>
+      <td class="px-3 py-2.5 text-right text-telecab-muted">${k.viajesBolt || ''}</td>
+      ${DATA.dias.map(d => {
+        const m = k.mapon[d], b = k.bolt[d];
+        if (m == null && b == null) return '<td class="px-2 py-2.5 text-right text-telecab-muted/30">·</td>';
+        return `<td class="px-2 py-2.5 text-right whitespace-nowrap text-xs"><span>${nkm(m || 0)}</span><span class="text-telecab-muted/50">/</span><span class="text-telecab-gold">${nkm(b || 0)}</span></td>`;
+      }).join('')}
+    </tr>`;
+  }).join('');
+}
+
+// ── Pestaña Repostajes ──
 function filtrosEv() {
-  const n = t => EVENTOS.filter(e => !t || e.tipo === t).length;
+  const n = tp => DATA.eventos.filter(e => !tp || e.tipo === tp).length;
   $('#a-filtros-ev').innerHTML = [
-    { id: '', txt: `Todos (${n('')})` },
-    { id: 'repostaje', txt: `Repostajes (${n('repostaje')})` },
-    { id: 'caida', txt: `Caídas (${n('caida')})` }
+    { id: '', txt: `Todos (${n('')})` }, { id: 'repostaje', txt: `Repostajes (${n('repostaje')})` }, { id: 'caida', txt: `Caídas (${n('caida')})` }
   ].map(o => {
     const on = filtroEv === o.id;
     return `<button data-f="${o.id}" class="px-3 py-1.5 rounded-lg text-xs font-medium transition border
-      ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
-           : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${o.txt}</button>`;
+      ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${o.txt}</button>`;
   }).join('');
-  $('#a-filtros-ev').querySelectorAll('button').forEach(b =>
-    b.onclick = () => { filtroEv = b.dataset.f; filtrosEv(); pintarEventos(); });
+  $('#a-filtros-ev').querySelectorAll('button').forEach(b => b.onclick = () => { filtroEv = b.dataset.f; filtrosEv(); pintarEv(); });
 }
-
-function pintarEventos() {
+function pintarEv() {
   const t = busqueda.toLowerCase();
-  const lista = EVENTOS.filter(e => {
+  const lista = DATA.eventos.filter(e => {
     if (filtroEv && e.tipo !== filtroEv) return false;
     if (t && !(`${e.matricula} ${e.vehiculo}`).toLowerCase().includes(t)) return false;
     return true;
   });
-  $('#a-vacio-ev').classList.toggle('hidden', lista.length > 0 || cargandoEv);
+  const mostrarVacio = !lista.length && !cargando && !error;
+  $('#a-vacio-ev').classList.toggle('hidden', !mostrarVacio);
+  if (mostrarVacio) $('#a-vacio-ev-txt').textContent = DATA.eventos.length ? 'Ningún evento coincide con el filtro.' : 'Sin eventos de combustible en este rango.';
   $('#a-tbody-ev').innerHTML = lista.map(e => {
     const esRep = e.tipo === 'repostaje';
-    const lugar = e.direccion
-      ? esc(e.direccion)
-      : (e.lat != null ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` : '—');
-    const mapa = e.lat != null
-      ? ` <a href="https://maps.google.com/?q=${e.lat},${e.lng}" target="_blank" rel="noopener"
-             class="text-telecab-gold hover:underline text-xs whitespace-nowrap"><i class="fa-solid fa-map-location-dot"></i> mapa</a>`
-      : '';
-    return `
-    <tr class="hover:bg-telecab-card2/50 transition ${esRep ? '' : 'bg-telecab-red/[0.04]'}">
-      <td class="px-4 py-3 whitespace-nowrap">${e.fecha}</td>
-      <td class="px-4 py-3 font-medium whitespace-nowrap">${e.hora}</td>
+    const lugar = e.direccion ? esc(e.direccion) : (e.lat != null ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` : '—');
+    const mapa = e.lat != null ? ` <a href="https://maps.google.com/?q=${e.lat},${e.lng}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline text-xs whitespace-nowrap"><i class="fa-solid fa-map-location-dot"></i></a>` : '';
+    return `<tr class="hover:bg-telecab-card2/50 transition ${esRep ? '' : 'bg-telecab-red/[0.04]'}">
+      <td class="px-4 py-3 whitespace-nowrap">${ddmm(e.dia)}</td>
+      <td class="px-4 py-3 font-medium whitespace-nowrap">${esc(e.hora)}</td>
       <td class="px-4 py-3 font-semibold">${esc(e.matricula)}</td>
-      <td class="px-4 py-3">
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium
-          ${esRep ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/15 text-telecab-red'}">
-          ${esRep ? 'Repostaje' : 'Caída'}</span>
-      </td>
-      <td class="px-4 py-3 text-right font-semibold ${esRep ? 'text-telecab-green' : 'text-telecab-red'}">
-        ${esRep ? '+' : ''}${e.litros.toLocaleString('es-ES')} l</td>
-      <td class="px-4 py-3 text-right text-telecab-muted">${e.nivelAntes != null ? e.nivelAntes.toLocaleString('es-ES') + ' l' : '—'}</td>
+      <td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${esRep ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/15 text-telecab-red'}">${esRep ? 'Repostaje' : 'Caída'}</span></td>
+      <td class="px-4 py-3 text-right font-semibold ${esRep ? 'text-telecab-green' : 'text-telecab-red'}">${esRep ? '+' : ''}${nkm(e.litros)} l</td>
+      <td class="px-4 py-3 text-right text-telecab-muted">${e.nivelAntes != null ? nkm(e.nivelAntes) + ' l' : '—'}</td>
       <td class="px-4 py-3 text-telecab-muted">${lugar}${mapa}</td>
     </tr>`;
   }).join('');
 }
 
-function pintarKm() {
-  const t = busqueda.toLowerCase();
-  const filas = KM.filas.filter(f => !t || (`${f.matricula} ${f.vehiculo}`).toLowerCase().includes(t));
-  $('#a-vacio-km').classList.toggle('hidden', filas.length > 0 || cargandoKm);
-
-  $('#a-thead-km').innerHTML =
-    `<th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Matrícula</th>` +
-    KM.dias.map(d => `<th class="text-right font-semibold px-2 py-3 whitespace-nowrap">${ddmm(d)}</th>`).join('') +
-    `<th class="text-right font-semibold px-4 py-3">Total</th>`;
-
-  $('#a-tbody-km').innerHTML = filas.map(f => `
-    <tr class="hover:bg-telecab-card2/50 transition">
-      <td class="px-4 py-2.5 font-semibold sticky left-0 bg-telecab-card whitespace-nowrap"
-          title="${esc(f.vehiculo)}">${esc(f.matricula)}</td>
-      ${KM.dias.map(d => {
-        const v = f.km[d];
-        return `<td class="px-2 py-2.5 text-right ${v ? '' : 'text-telecab-muted/40'}">${v ? fmtKm(v) : '·'}</td>`;
-      }).join('')}
-      <td class="px-4 py-2.5 text-right font-bold">${fmtKm(f.total)}</td>
-    </tr>`).join('');
-
-  // Totales de la flota por día, al pie.
-  if (filas.length) {
-    const tot = KM.dias.map(d => filas.reduce((s, f) => s + (f.km[d] || 0), 0));
-    $('#a-tbody-km').innerHTML += `
-      <tr class="bg-telecab-card2/70 font-semibold">
-        <td class="px-4 py-2.5 sticky left-0 bg-telecab-card2">Flota (${filas.length})</td>
-        ${tot.map(v => `<td class="px-2 py-2.5 text-right">${v ? fmtKm(Math.round(v)) : '·'}</td>`).join('')}
-        <td class="px-4 py-2.5 text-right">${fmtKm(Math.round(filas.reduce((s, f) => s + f.total, 0)))}</td>
-      </tr>`;
-  }
-  $('#a-km-nota').textContent = filas.length ? `${filas.length} vehículos con viajes en el rango` : '';
+// ── Pestaña Ofensores ──
+function pintarTop() {
+  const fila = (izq, der, sub) => `<div class="flex items-center gap-3 px-4 py-3">
+      <span class="min-w-0 flex-1"><span class="block font-semibold text-telecab-text">${esc(izq)}</span><span class="block text-xs text-telecab-muted">${sub}</span></span>
+      <span class="text-right font-bold text-telecab-text whitespace-nowrap">${der}</span></div>`;
+  const d = DATA.ofensores.kmDiff;
+  $('#a-top-diff').innerHTML = d.length ? d.map(o =>
+    fila(o.matricula, `${nkm(o.diff)} km`, `Mapon ${nkm(o.totalMapon)} · BOLT ${nkm(o.totalBolt)} · ${o.pct == null ? '' : o.pct + '% vacío'}`)).join('')
+    : '<p class="p-4 text-sm text-telecab-muted">Sin datos.</p>';
+  const rp = DATA.ofensores.repostaje;
+  $('#a-top-rep').innerHTML = rp.length ? rp.map(o =>
+    fila(o.matricula, `${nkm(o.litros)} l`, `${o.veces} repostaje${o.veces === 1 ? '' : 's'}`)).join('')
+    : '<p class="p-4 text-sm text-telecab-muted">Sin repostajes.</p>';
 }
 
-function aviso(texto) {
-  const box = $('#a-aviso');
-  if (!texto) { box.classList.add('hidden'); return; }
-  box.classList.remove('hidden');
-  box.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i>${esc(texto)}`;
+function pintarTodo() { kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarTop(); }
+
+// ── Pestañas ──
+function activarTab(t) {
+  tab = t;
+  document.querySelectorAll('.a-tab').forEach(b => {
+    const on = b.dataset.tab === t;
+    b.className = 'a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition ' +
+      (on ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+  });
+  document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== t || cargando));
 }
+
+function aviso(t) { const b = $('#a-aviso'); if (!t) { b.classList.add('hidden'); return; } b.classList.remove('hidden'); b.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i>${esc(t)}`; }
 
 function rango() {
   const p = new URLSearchParams();
@@ -240,54 +270,45 @@ function rango() {
 }
 
 async function cargar() {
-  aviso('');
+  const mine = ++gen;
+  error = null; aviso('');
   const q = rango();
   $('#a-excel').href = '/operaciones/auditoria/excel?' + q;
   $('#a-resumen').textContent = `${$('#a-desde').value} → ${$('#a-hasta').value}`;
+  $('#a-consultar').disabled = true;
+  cargando = true;
+  $('#a-cargando').classList.remove('hidden');
+  document.querySelectorAll('[data-panel]').forEach(p => p.classList.add('hidden'));
+  kpis();
 
-  // Las dos consultas van en paralelo y cada tarjeta se pinta cuando llega su parte.
-  cargandoEv = cargandoKm = true;
-  $('#a-cargando-ev').classList.remove('hidden'); $('#a-cargando-km').classList.remove('hidden');
-  $('#a-vacio-ev').classList.add('hidden'); $('#a-vacio-km').classList.add('hidden');
-  EVENTOS = []; RESUMEN = []; KM = { dias: [], filas: [] };
-  filtrosEv(); pintarEventos(); pintarKm(); kpis();
-
-  const evP = fetch('/operaciones/api/combustible?' + q).then(r => r.json())
-    .then(d => {
-      if (d.status !== 'ok') throw new Error(d.msg || 'combustible');
-      EVENTOS = d.eventos || []; RESUMEN = d.resumen || [];
-    })
-    .catch(e => aviso('Combustible: ' + e.message))
-    .finally(() => {
-      cargandoEv = false; $('#a-cargando-ev').classList.add('hidden');
-      filtrosEv(); pintarEventos(); kpis();
-    });
-
-  const kmP = fetch('/operaciones/api/km?' + q).then(r => r.json())
-    .then(d => {
-      if (d.status !== 'ok') throw new Error(d.msg || 'km');
-      KM = { dias: d.dias || [], filas: d.filas || [] };
-    })
-    .catch(e => aviso('Kilómetros: ' + e.message))
-    .finally(() => {
-      cargandoKm = false; $('#a-cargando-km').classList.add('hidden');
-      pintarKm(); kpis();
-    });
-
-  await Promise.allSettled([evP, kmP]);
+  try {
+    const d = await (await fetch('/operaciones/api/auditoria?' + q)).json();
+    if (mine !== gen) return;
+    if (d.status !== 'ok') throw new Error(d.msg || 'error');
+    DATA = { dias: d.dias || [], km: d.km || [], eventos: d.eventos || [], ofensores: d.ofensores || { kmDiff: [], repostaje: [] } };
+    $('#a-pie').textContent = `${d.km.length} matrículas · ${d.dias.length} días · ${d.refrescados} día(s) actualizados desde las APIs, el resto del histórico.`;
+  } catch (e) {
+    if (mine !== gen) return;
+    error = e.message; aviso('No se pudo cargar: ' + e.message);
+    DATA = { dias: [], km: [], eventos: [], ofensores: { kmDiff: [], repostaje: [] } };
+  } finally {
+    if (mine === gen) {
+      cargando = false; $('#a-cargando').classList.add('hidden');
+      $('#a-consultar').disabled = false;
+      pintarTodo(); activarTab(tab);
+    }
+  }
 }
 
-// ---------- Arranque ----------
+// ── Arranque ──
 (function () {
-  const hoy = new Date();
-  const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
-  $('#a-desde').value = fmt(hace7);
-  $('#a-hasta').value = fmt(hoy);
-
+  const hoy = new Date(); const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
+  $('#a-desde').value = fmt(hace7); $('#a-hasta').value = fmt(hoy);
+  document.querySelectorAll('.a-tab').forEach(b => b.onclick = () => activarTab(b.dataset.tab));
+  activarTab('km');
   $('#a-consultar').onclick = cargar;
-  $('#a-buscar').oninput = e => { busqueda = e.target.value; pintarEventos(); pintarKm(); };
+  $('#a-buscar').oninput = e => { busqueda = e.target.value; pintarKm(); pintarEv(); };
   ['#a-desde', '#a-hasta'].forEach(s => $(s).addEventListener('change', cargar));
-
   cargar();
 })();
 </script>
