@@ -184,7 +184,7 @@ async function iniciar({ telefono, nombre, matricula }) {
   // OJO: driver/update con `unit` MUEVE al conductor de coche. Si ya tenía uno puesto
   // (caso normal si es un conductor real que ya existía en Mapon), se apunta cuál era
   // para devolvérselo al terminar y no dejarle la ficha tocada.
-  let driverId = '', notas = '', unitPrevia = '';
+  let driverId = '', notas = '', unitPrevia = '', errorMapon = '';
   try {
     driverId = await conductorMapon(nombre, telefono);
     if (driverId) {
@@ -197,6 +197,7 @@ async function iniciar({ telefono, nombre, matricula }) {
     }
   } catch (e) {
     notas = `Mapon no enlazó al conductor: ${e.message}`;
+    errorMapon = e.message;
     console.error('⚠️ [FICHAJE] asignar:', e.message);
   }
 
@@ -207,7 +208,7 @@ async function iniciar({ telefono, nombre, matricula }) {
   };
   await añadirFila(turno);
   console.log(`🟢 [FICHAJE] ${nombre} inicia turno en ${unidad.matricula} (unit ${unidad.unitId})`);
-  return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId };
+  return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId, errorMapon };
 }
 
 /** Km recorridos por el coche desde que empezó el turno hasta ahora. */

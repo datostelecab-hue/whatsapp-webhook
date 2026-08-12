@@ -304,22 +304,34 @@ async function pedir(ruta, params) {
 
 /**
  * POST a la API de Mapon (endpoints de escritura: driver/create, driver/update…).
- * La clave va en la query y los parámetros en el cuerpo, que es lo que acepta Mapon.
+ *
+ * Los parámetros se mandan A LA VEZ en la query y en el cuerpo: la documentación de
+ * Mapon los describe siempre como parámetros de la petición sin precisar dónde, y
+ * según el endpoint lee unos u otros. Mandando ambos funciona en los dos casos.
+ * El error se propaga con el cuerpo crudo, que es lo único que permite diagnosticar
+ * (p. ej. una clave sin permiso de escritura).
  */
 async function pedirPost(ruta, params) {
+  const qs = new URLSearchParams({ key: KEY });
   const body = new URLSearchParams();
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v === undefined) return;
-    body.append(k, v === null ? '' : String(v));
+    const val = v === null ? '' : String(v);
+    qs.append(k, val);
+    body.append(k, val);
   });
-  const r = await fetch(`${API}/${ruta}?key=${KEY}`, {
+  const r = await fetch(`${API}/${ruta}?${qs}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
   });
-  const json = await r.json();
-  if (json && json.error) {
-    throw new Error(`Mapon (${ruta}): ${json.error.msg || json.error.text || json.error.code || 'error'}`);
+  const texto = await r.text();
+  let json = null;
+  try { json = JSON.parse(texto); } catch (e) { /* respuesta no-JSON: se ve en el error */ }
+  if (!json) throw new Error(`Mapon (${ruta}) HTTP ${r.status}: ${texto.slice(0, 200)}`);
+  if (json.error) {
+    const e = json.error;
+    throw new Error(`Mapon (${ruta}) error ${e.code || '?'}: ${e.msg || e.text || JSON.stringify(e)}`);
   }
   return json;
 }
@@ -353,7 +365,11 @@ async function crearConductor({ nombre, apellidos, telefono, unitId }) {
     unit: unitId || undefined
   });
   const d = (j && j.data) || {};
-  return d.driver_id || d.id || (d.driver && d.driver.id) || null;
+  const id = d.driver_id || d.id || (d.driver && (d.driver.id || d.driver.driver_id)) || null;
+  // Si Mapon dijo OK pero no encontramos el id, es que la respuesta tiene otra forma:
+  // hay que verla, porque el conductor SÍ se ha creado y así no lo sabríamos.
+  if (!id) throw new Error(`Mapon creó el conductor pero no reconozco su id en: ${JSON.stringify(j).slice(0, 200)}`);
+  return id;
 }
 
 /** Asigna el coche al conductor (lo que hace visible su nombre en la unidad). */

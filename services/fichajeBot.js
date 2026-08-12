@@ -107,7 +107,8 @@ async function abrirTurno(telefono, matricula) {
   const t = r.turno;
   await enviarBotones(telefono,
     `🟢 *Turno iniciado*\n\n🚘 ${t.matricula}${r.vehiculo ? ` · ${r.vehiculo}` : ''}\n🕐 ${fichaje.horaES(t.inicio)}\n` +
-    `${r.enlazado ? '🔗 Enlazado a tu nombre en Mapon' : '⚠️ No se pudo enlazar en Mapon (el turno queda registrado igual)'}\n\n` +
+    `${r.enlazado ? '🔗 Enlazado a tu nombre en Mapon'
+      : `⚠️ No se pudo enlazar en Mapon (el turno queda registrado igual)\n_${(r.errorMapon || 'motivo desconocido').slice(0, 220)}_`}\n\n` +
     `A partir de ahora cuento los km. Cuando acabes, pulsa *Terminar turno*.`,
     [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' }]);
 }

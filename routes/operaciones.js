@@ -76,6 +76,33 @@ router.post('/auditoria/procesar', (req, res) => {
 
 router.get('/auditoria/procesar/estado', (req, res) => res.json({ status: 'ok', progreso: auditoria.progreso() }));
 
+// ── Diagnóstico del fichaje: ¿deja Mapon crear/asignar conductores con esta clave? ──
+// Solo lectura por defecto. Con ?crear=NOMBRE intenta dar de alta ese conductor y
+// devuelve la respuesta CRUDA de Mapon, que es lo único que dice el motivo real.
+router.get('/fichaje/diagnostico', async (req, res) => {
+  const mapon = require('../services/mapon');
+  const out = { clave: !!process.env.MAPON_API_KEY };
+  try {
+    const lista = await mapon.listarConductores();
+    out.conductores = lista.length;
+    out.ejemplo = lista.slice(0, 3).map(d => ({ id: d.id || d.driver_id, nombre: `${d.name || ''} ${d.surname || ''}`.trim() }));
+  } catch (e) { out.errorLista = e.message; }
+
+  const nombre = (req.query.crear || '').toString().trim();
+  if (nombre) {
+    const partes = nombre.split(/\s+/);
+    try {
+      const id = await mapon.crearConductor({ nombre: partes[0], apellidos: partes.slice(1).join(' ') || '-' });
+      out.creado = { id, nombre };
+      if (req.query.unit) {
+        try { await mapon.asignarConductor(id, req.query.unit); out.asignado = `driver ${id} → unit ${req.query.unit}`; }
+        catch (e) { out.errorAsignar = e.message; }
+      }
+    } catch (e) { out.errorCrear = e.message; }
+  }
+  res.json(out);
+});
+
 // Excel de la auditoría (mismos datos cacheados): KM (Mapon/BOLT/dif), Repostajes y Ofensores.
 router.get('/auditoria/excel', async (req, res) => {
   try {
