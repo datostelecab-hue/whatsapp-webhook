@@ -62,4 +62,20 @@ router.get('/exportar', async (req, res) => {
   }
 });
 
+// Excel ya maquetado para ADJUNTAR al correo de la ETT (lo normal); el texto de
+// arriba se conserva por si alguien prefiere pegarlo en el cuerpo del mensaje.
+router.get('/exportar/excel', async (req, res) => {
+  try {
+    const { generarExcelETT, nombreFichero } = require('../services/ettExcel');
+    const lista = await ett.leer();
+    const buffer = await generarExcelETT(lista);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreFichero()}"`);
+    res.send(Buffer.from(buffer));
+  } catch (e) {
+    console.error('❌ [ETT] /exportar/excel:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 module.exports = router;

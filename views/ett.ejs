@@ -29,11 +29,19 @@
   <!-- Resumen + exportar -->
   <div class="flex flex-wrap items-center gap-2 mb-4" id="chips"></div>
 
-  <div class="flex items-center justify-between mb-3">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
     <h2 class="font-semibold text-telecab-text">Candidatos</h2>
-    <button id="btnExportar" class="px-3 py-2 rounded-xl border border-telecab-border text-sm text-telecab-text hover:bg-telecab-card2 flex items-center gap-2">
-      <i class="fa-solid fa-copy text-telecab-muted"></i> Copiar matriz para la ETT
-    </button>
+    <div class="flex items-center gap-2">
+      <!-- Lo normal es adjuntar el Excel al correo; copiar la matriz queda como alternativa. -->
+      <a id="btnExcel" href="/ett/exportar/excel"
+         class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm hover:bg-telecab-gold-soft transition shadow-gold flex items-center gap-2">
+        <i class="fa-solid fa-file-excel"></i> Descargar Excel para la ETT
+      </a>
+      <button id="btnExportar" class="px-3 py-2 rounded-xl border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text hover:bg-telecab-card2 flex items-center gap-2"
+              title="Copia la matriz en texto, por si prefieres pegarla en el cuerpo del correo">
+        <i class="fa-solid fa-copy"></i> Copiar matriz
+      </button>
+    </div>
   </div>
 
   <div id="lista" class="space-y-3">
