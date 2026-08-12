@@ -38,7 +38,10 @@
   </div>
 
   <!-- KPIs -->
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" id="a-kpis"></div>
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2" id="a-kpis"></div>
+  <p id="a-kpi-filtro" class="hidden text-[11px] text-telecab-gold mb-4">
+    <i class="fa-solid fa-filter mr-1"></i> Totales de las matrículas filtradas, no de toda la flota.
+  </p>
 
   <!-- Aviso de error -->
   <div id="a-aviso" class="hidden mb-5 rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4 text-sm text-telecab-red"></div>
@@ -83,12 +86,15 @@
             <tr>
               <th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Matrícula</th>
               <th class="text-right font-semibold px-3 py-3">KM total</th>
-              <th class="text-right font-semibold px-3 py-3">Con pasajero</th>
-              <th class="text-right font-semibold px-3 py-3">Ida a recoger</th>
-              <th class="text-right font-semibold px-3 py-3">Cruising</th>
-              <th class="text-right font-semibold px-3 py-3 text-telecab-red">FUERA</th>
-              <th class="text-right font-semibold px-3 py-3">% fuera</th>
-              <th class="text-left font-semibold px-3 py-3 w-40">Reparto</th>
+              <th class="text-right font-semibold px-3 py-3">Pasajero</th>
+              <th class="text-right font-semibold px-3 py-3">Ida</th>
+              <th class="text-right font-semibold px-3 py-3">Espera</th>
+              <th class="text-right font-semibold px-3 py-3 text-amber-400">Descanso</th>
+              <th class="text-right font-semibold px-3 py-3 text-telecab-red">Fuera</th>
+              <th class="text-right font-semibold px-3 py-3 text-telecab-red">No disp.</th>
+              <th class="text-right font-semibold px-3 py-3">%</th>
+              <th class="text-right font-semibold px-3 py-3 text-amber-400" title="Horas marcado ocupado">h desc.</th>
+              <th class="text-left font-semibold px-3 py-3 w-32">Reparto</th>
             </tr>
           </thead>
           <tbody id="a-tbody-km" class="divide-y divide-telecab-border/60"></tbody>
@@ -101,8 +107,11 @@
     </div>
     <p class="text-[11px] text-telecab-muted mt-2">
       Todos los km los mide <b>Mapon</b> (GPS punto a punto); <b>BOLT</b> solo aporta las horas exactas de aceptación, recogida y bajada.
-      <b class="text-telecab-red">FUERA</b> = rodó sin pedido y con la app de BOLT <b>cerrada</b> (estado <span class="font-mono">inactive</span>) — es el km sospechoso.
-      Si no consta que estuviera offline, cuenta como <b>cruising</b> (no acusa).
+      <b>Espera</b> = sin pedido pero <b>disponible</b> (<span class="font-mono">waiting_orders</span>): es trabajo normal.
+      <b class="text-amber-400">Descanso</b> = marcado <b>ocupado</b> (<span class="font-mono">busy</span>) y
+      <b class="text-telecab-red">Fuera</b> = app <b>cerrada</b> (<span class="font-mono">inactive</span>): en ambos <b>no estaba a disposición de BOLT</b>, y suman
+      <b class="text-telecab-red">No disp.</b> Si no consta el estado, cuenta como espera (no acusa).
+      <b>h desc.</b> son horas marcado ocupado <i>aunque no ruede</i> — para ver pausas largas.
     </p>
   </section>
 
@@ -138,12 +147,18 @@
 
   <!-- ══ Ofensores ══ -->
   <section data-panel="top" class="hidden">
-    <div class="grid md:grid-cols-2 gap-4">
+    <div class="grid md:grid-cols-3 gap-4">
       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
         <div class="px-4 py-3 border-b border-telecab-border font-semibold text-telecab-text flex items-center gap-2">
-          <i class="fa-solid fa-user-secret text-telecab-red"></i> Top 5 · más KM con BOLT cerrado
+          <i class="fa-solid fa-user-secret text-telecab-red"></i> Top 5 · KM no disponible
         </div>
         <div id="a-top-fuera" class="divide-y divide-telecab-border/60"></div>
+      </div>
+      <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+        <div class="px-4 py-3 border-b border-telecab-border font-semibold text-telecab-text flex items-center gap-2">
+          <i class="fa-solid fa-mug-hot text-amber-400"></i> Top 5 · horas en «ocupado»
+        </div>
+        <div id="a-top-desc" class="divide-y divide-telecab-border/60"></div>
       </div>
       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
         <div class="px-4 py-3 border-b border-telecab-border font-semibold text-telecab-text flex items-center gap-2">
@@ -169,26 +184,35 @@ const fmt = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFul
 const ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const nkm = v => (v == null ? '' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
 
+// Los KPI y los contadores siguen el filtro de matrícula: si no, junto a la fila de
+// un solo coche se leían los totales de toda la flota como si fueran suyos.
+const coincide = o => { const q = busqueda.trim().toLowerCase(); return !q || (`${o.matricula} ${o.vehiculo || ''}`).toLowerCase().includes(q); };
+const kmFiltrado = () => DATA.km.filter(coincide);
+const evFiltrado = () => DATA.eventos.filter(coincide);
+
 function kpis() {
-  const k = DATA.km;
+  const k = kmFiltrado();
   const t = f => Math.round(k.reduce((s, x) => s + (x[f] || 0), 0));
-  const total = t('totalMapon'), fuera = t('totalFuera'), pas = t('totalPasajero');
-  const pctF = total > 0 ? Math.round(fuera / total * 100) : 0;
+  const total = t('totalMapon'), pas = t('totalPasajero');
+  const desc = t('totalDescanso'), fuera = t('totalFuera'), noDisp = desc + fuera;
+  const hDesc = Math.round(k.reduce((s, x) => s + (x.hDescanso || 0), 0));
+  const pctN = total > 0 ? Math.round(noDisp / total * 100) : 0;
   const pctP = total > 0 ? Math.round(pas / total * 100) : 0;
   const kpi = (n, txt, cls) => `<div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
     <div class="text-2xl font-bold ${cls}">${cargando ? '…' : n}</div><div class="text-xs text-telecab-muted mt-0.5">${txt}</div></div>`;
   $('#a-kpis').innerHTML =
     kpi(total.toLocaleString('es-ES') + ' km', 'KM totales (Mapon)', 'text-telecab-text') +
     kpi(pas.toLocaleString('es-ES') + ' km', `Con pasajero · ${pctP}%`, 'text-telecab-green') +
-    kpi(fuera.toLocaleString('es-ES') + ' km', `Con BOLT cerrado · ${pctF}%`, fuera > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
-    kpi(DATA.km.filter(x => x.totalFuera > 0).length, 'Coches con km fuera', 'text-telecab-gold');
+    kpi(noDisp.toLocaleString('es-ES') + ' km', `No disponible · ${pctN}% (${desc.toLocaleString('es-ES')} descanso + ${fuera.toLocaleString('es-ES')} cerrada)`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
+    kpi(hDesc.toLocaleString('es-ES') + ' h', 'Horas marcado «ocupado»', hDesc > 0 ? 'text-amber-400' : 'text-telecab-muted');
+  $('#a-kpi-filtro').classList.toggle('hidden', !busqueda.trim());
 }
 
 function barra(k) {
   const t = k.totalMapon || 1;
   const seg = (v, c) => v > 0 ? `<span class="${c}" style="width:${(v / t * 100).toFixed(1)}%"></span>` : '';
-  return `<span class="flex h-2 rounded-full overflow-hidden bg-telecab-dark w-full" title="pasajero/ida/cruising/fuera">
-    ${seg(k.totalPasajero, 'bg-telecab-green')}${seg(k.totalIda, 'bg-telecab-gold')}${seg(k.totalCruising, 'bg-telecab-muted/50')}${seg(k.totalFuera, 'bg-telecab-red')}</span>`;
+  return `<span class="flex h-2 rounded-full overflow-hidden bg-telecab-dark w-full" title="pasajero / ida / espera / descanso / fuera">
+    ${seg(k.totalPasajero, 'bg-telecab-green')}${seg(k.totalIda, 'bg-telecab-gold')}${seg(k.totalEspera, 'bg-telecab-muted/50')}${seg(k.totalDescanso, 'bg-amber-500')}${seg(k.totalFuera, 'bg-telecab-red')}</span>`;
 }
 
 function pintarKm() {
@@ -198,22 +222,27 @@ function pintarKm() {
   $('#a-vacio-km').classList.toggle('hidden', !vacio);
   if (vacio) $('#a-vacio-km-txt').textContent = DATA.km.length ? 'Ninguna matrícula coincide con el filtro.' : 'Sin datos procesados en este rango.';
   $('#a-tbody-km').innerHTML = filas.map(k => {
-    const cls = k.pctFuera >= 25 ? 'text-telecab-red font-bold' : k.pctFuera >= 10 ? 'text-telecab-gold font-semibold' : 'text-telecab-muted';
-    return `<tr class="hover:bg-telecab-card2/50 transition ${k.pctFuera >= 25 ? 'bg-telecab-red/[0.04]' : ''}">
+    const cls = k.pctNoDisp >= 25 ? 'text-telecab-red font-bold' : k.pctNoDisp >= 10 ? 'text-telecab-gold font-semibold' : 'text-telecab-muted';
+    const hd = k.hDescanso >= 4 ? 'text-telecab-red font-bold' : k.hDescanso >= 2 ? 'text-amber-400 font-semibold' : 'text-telecab-muted';
+    return `<tr class="hover:bg-telecab-card2/50 transition ${k.pctNoDisp >= 25 ? 'bg-telecab-red/[0.04]' : ''}">
       <td class="px-4 py-2.5 font-semibold sticky left-0 bg-telecab-card whitespace-nowrap" title="${esc(k.vehiculo)}">${esc(k.matricula)}</td>
       <td class="px-3 py-2.5 text-right">${nkm(k.totalMapon)}</td>
       <td class="px-3 py-2.5 text-right text-telecab-green">${nkm(k.totalPasajero)}</td>
       <td class="px-3 py-2.5 text-right text-telecab-gold">${nkm(k.totalIda)}</td>
-      <td class="px-3 py-2.5 text-right text-telecab-muted">${nkm(k.totalCruising)}</td>
-      <td class="px-3 py-2.5 text-right font-semibold ${k.totalFuera > 0 ? 'text-telecab-red' : 'text-telecab-muted'}">${nkm(k.totalFuera)}</td>
-      <td class="px-3 py-2.5 text-right ${cls}">${k.pctFuera == null ? '' : k.pctFuera + '%'}</td>
+      <td class="px-3 py-2.5 text-right text-telecab-muted">${nkm(k.totalEspera)}</td>
+      <td class="px-3 py-2.5 text-right ${k.totalDescanso > 0 ? 'text-amber-400' : 'text-telecab-muted'}">${nkm(k.totalDescanso)}</td>
+      <td class="px-3 py-2.5 text-right ${k.totalFuera > 0 ? 'text-telecab-red' : 'text-telecab-muted'}">${nkm(k.totalFuera)}</td>
+      <td class="px-3 py-2.5 text-right font-semibold ${k.totalNoDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted'}">${nkm(k.totalNoDisp)}</td>
+      <td class="px-3 py-2.5 text-right ${cls}">${k.pctNoDisp == null ? '' : k.pctNoDisp + '%'}</td>
+      <td class="px-3 py-2.5 text-right ${hd}">${k.hDescanso ? nkm(k.hDescanso) + ' h' : ''}</td>
       <td class="px-3 py-2.5">${barra(k)}</td>
     </tr>`;
   }).join('');
 }
 
 function filtrosEv() {
-  const n = tp => DATA.eventos.filter(e => !tp || e.tipo === tp).length;
+  const base = evFiltrado();
+  const n = tp => base.filter(e => !tp || e.tipo === tp).length;
   $('#a-filtros-ev').innerHTML = [{ id: '', txt: `Todos (${n('')})` }, { id: 'repostaje', txt: `Repostajes (${n('repostaje')})` }, { id: 'caida', txt: `Caídas (${n('caida')})` }]
     .map(o => { const on = filtroEv === o.id;
       return `<button data-f="${o.id}" class="px-3 py-1.5 rounded-lg text-xs font-medium transition border
@@ -247,8 +276,13 @@ function pintarTop() {
     <span class="min-w-0 flex-1"><span class="block font-semibold text-telecab-text">${esc(izq)}</span><span class="block text-xs text-telecab-muted">${sub}</span></span>
     <span class="text-right font-bold whitespace-nowrap ${cls || 'text-telecab-text'}">${der}</span></div>`;
   const f = DATA.ofensores.fuera;
-  $('#a-top-fuera').innerHTML = f.length ? f.map(o => fila(o.matricula, `${nkm(o.fuera)} km`, `${o.pct == null ? '' : o.pct + '% de sus ' + nkm(o.mapon) + ' km'}`, 'text-telecab-red')).join('')
-    : '<p class="p-4 text-sm text-telecab-green"><i class="fa-solid fa-circle-check mr-1"></i> Nadie rodó con BOLT cerrado en este rango.</p>';
+  $('#a-top-fuera').innerHTML = f.length ? f.map(o => fila(o.matricula, `${nkm(o.noDisp)} km`,
+      `${o.pct == null ? '' : o.pct + '% de sus ' + nkm(o.mapon) + ' km'} · ${nkm(o.descanso)} descanso + ${nkm(o.fuera)} cerrada`, 'text-telecab-red')).join('')
+    : '<p class="p-4 text-sm text-telecab-green"><i class="fa-solid fa-circle-check mr-1"></i> Nadie rodó estando no disponible.</p>';
+  const d = DATA.ofensores.descanso || [];
+  $('#a-top-desc').innerHTML = d.length ? d.map(o => fila(o.matricula, `${nkm(o.horas)} h`,
+      `marcado «ocupado»${o.km ? ' · rodó ' + nkm(o.km) + ' km' : ' · sin rodar'}`, 'text-amber-400')).join('')
+    : '<p class="p-4 text-sm text-telecab-muted">Nadie se marcó ocupado.</p>';
   const r = DATA.ofensores.repostaje;
   $('#a-top-rep').innerHTML = r.length ? r.map(o => fila(o.matricula, `${nkm(o.litros)} l`, `${o.veces} repostaje${o.veces === 1 ? '' : 's'}`)).join('')
     : '<p class="p-4 text-sm text-telecab-muted">Sin repostajes.</p>';
@@ -306,6 +340,8 @@ async function cargar() {
 }
 
 // ── Procesado manual (backfill) ──
+function arrancarPoll() { if (!poll) poll = setInterval(sondearProgreso, 3000); }
+
 async function sondearProgreso() {
   try {
     const d = await (await fetch('/operaciones/auditoria/procesar/estado')).json();
@@ -314,6 +350,7 @@ async function sondearProgreso() {
       $('#a-progreso').classList.remove('hidden');
       $('#a-prog-txt').textContent = `Procesando ${p.dia || ''}… ${p.hechos}/${p.total} días`;
       $('#a-prog-bar').style.width = (p.total ? (p.hechos / p.total * 100) : 0) + '%';
+      arrancarPoll();   // si el backfill lo lanzó otra pestaña, esta también sigue el progreso
     } else {
       $('#a-progreso').classList.add('hidden');
       if (poll) { clearInterval(poll); poll = null; if (p.error) aviso('Procesado: ' + p.error); cargar(); }
@@ -325,11 +362,13 @@ $('#a-procesar').onclick = async () => {
   if (!confirm(`¿Procesar ${p.length} día(s)? Es pesado: consulta el recorrido de cada coche en Mapon.`)) return;
   $('#a-procesar').disabled = true;
   try {
+    // Se manda la LISTA exacta de días pendientes: mandando solo los extremos se
+    // reprocesaban también los días de en medio que ya estaban bien.
     const r = await (await fetch('/operaciones/auditoria/procesar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ desde: ddmm(p[0]) + '/' + p[0].slice(0, 4), hasta: ddmm(p[p.length - 1]) + '/' + p[p.length - 1].slice(0, 4) }) })).json();
+      body: JSON.stringify({ dias: p }) })).json();
     if (r.status !== 'ok') throw new Error(r.msg);
     $('#a-progreso').classList.remove('hidden');
-    if (!poll) poll = setInterval(sondearProgreso, 3000);
+    arrancarPoll();
   } catch (e) { aviso('No se pudo iniciar: ' + e.message); }
   $('#a-procesar').disabled = false;
 };
@@ -340,7 +379,7 @@ $('#a-procesar').onclick = async () => {
   document.querySelectorAll('.a-tab').forEach(b => b.onclick = () => activarTab(b.dataset.tab));
   activarTab('km');
   $('#a-consultar').onclick = cargar;
-  $('#a-buscar').oninput = e => { busqueda = e.target.value; pintarKm(); pintarEv(); };
+  $('#a-buscar').oninput = e => { busqueda = e.target.value; kpis(); pintarKm(); filtrosEv(); pintarEv(); };
   ['#a-desde', '#a-hasta'].forEach(s => $(s).addEventListener('change', cargar));
   cargar(); sondearProgreso();
 })();

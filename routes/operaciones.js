@@ -64,7 +64,10 @@ router.post('/auditoria/procesar', (req, res) => {
   try {
     const b = req.body || {};
     if (auditoria.progreso().activo) return res.status(409).json({ status: 'error', msg: 'Ya hay un procesado en marcha' });
-    auditoria.procesarRango({ desde: b.desde, hasta: b.hasta }).catch(e => console.error('❌ [AUDITORÍA] procesar:', e.message));
+    // Se admite la LISTA de días pendientes (no tienen por qué ser contiguos): así no
+    // se reprocesan de balde los días buenos que haya en medio.
+    auditoria.procesarRango({ desde: b.desde, hasta: b.hasta, dias: b.dias })
+      .catch(e => console.error('❌ [AUDITORÍA] procesar:', e.message));
     res.json({ status: 'ok', msg: 'Procesado iniciado' });
   } catch (e) {
     res.status(400).json({ status: 'error', msg: e.message });
@@ -87,18 +90,21 @@ router.get('/auditoria/excel', async (req, res) => {
       { header: 'Matrícula', key: 'mat', width: 14 }, { header: 'Vehículo', key: 'veh', width: 20 },
       { header: 'KM total (Mapon)', key: 'mapon', width: 16 },
       { header: 'Con pasajero', key: 'pas', width: 13 }, { header: 'Ida a recoger', key: 'ida', width: 13 },
-      { header: 'Cruising (BOLT abierto)', key: 'cru', width: 21 }, { header: 'FUERA (BOLT cerrado)', key: 'fue', width: 19 },
-      { header: '% fuera', key: 'pctf', width: 9 }, { header: '% con pasajero', key: 'pctp', width: 14 },
+      { header: 'Espera (disponible)', key: 'esp', width: 18 },
+      { header: 'DESCANSO (ocupado)', key: 'des', width: 19 }, { header: 'FUERA (app cerrada)', key: 'fue', width: 19 },
+      { header: 'KM no disponible', key: 'nod', width: 17 }, { header: '% no disponible', key: 'pctn', width: 15 },
+      { header: 'h con pedido', key: 'hped', width: 12 }, { header: 'h espera', key: 'hesp', width: 10 },
+      { header: 'h DESCANSO', key: 'hdes', width: 12 }, { header: 'h app cerrada', key: 'hfue', width: 13 },
       { header: 'KM facturado BOLT', key: 'bolt', width: 17 }, { header: 'Viajes', key: 'viajes', width: 8 }
     ];
     r.km.forEach(k => wsKm.addRow({
       mat: k.matricula, veh: k.vehiculo, mapon: k.totalMapon, pas: k.totalPasajero, ida: k.totalIda,
-      cru: k.totalCruising, fue: k.totalFuera,
-      pctf: k.pctFuera == null ? '' : k.pctFuera / 100, pctp: k.pctPasajero == null ? '' : k.pctPasajero / 100,
+      esp: k.totalEspera, des: k.totalDescanso, fue: k.totalFuera, nod: k.totalNoDisp,
+      pctn: k.pctNoDisp == null ? '' : k.pctNoDisp / 100,
+      hped: k.hPedido, hesp: k.hEspera, hdes: k.hDescanso, hfue: k.hFuera,
       bolt: k.totalBolt, viajes: k.viajesBolt
     }));
-    wsKm.getColumn('pctf').numFmt = '0%';
-    wsKm.getColumn('pctp').numFmt = '0%';
+    wsKm.getColumn('pctn').numFmt = '0%';
     wsKm.getRow(1).font = { bold: true };
 
     // Detalle día a día (para poder señalar la jornada concreta en una reclamación).
@@ -106,13 +112,16 @@ router.get('/auditoria/excel', async (req, res) => {
     wsDia.columns = [
       { header: 'Día', key: 'dia', width: 12 }, { header: 'Matrícula', key: 'mat', width: 14 },
       { header: 'KM total', key: 'mapon', width: 10 }, { header: 'Con pasajero', key: 'pas', width: 13 },
-      { header: 'Ida a recoger', key: 'ida', width: 13 }, { header: 'Cruising', key: 'cru', width: 11 },
-      { header: 'FUERA', key: 'fue', width: 10 }, { header: 'Facturado BOLT', key: 'bolt', width: 14 }
+      { header: 'Ida a recoger', key: 'ida', width: 13 }, { header: 'Espera', key: 'esp', width: 10 },
+      { header: 'DESCANSO', key: 'des', width: 11 }, { header: 'FUERA', key: 'fue', width: 10 },
+      { header: 'h DESCANSO', key: 'hdes', width: 12 }, { header: 'h app cerrada', key: 'hfue', width: 13 },
+      { header: 'Facturado BOLT', key: 'bolt', width: 14 }
     ];
     r.km.forEach(k => r.dias.forEach(d => {
       const x = k.dias[d]; if (!x) return;
       wsDia.addRow({ dia: ddmm(d) + '/' + d.slice(0, 4), mat: k.matricula, mapon: x.mapon,
-        pas: x.pasajero, ida: x.ida, cru: x.cruising, fue: x.fuera, bolt: x.bolt });
+        pas: x.pasajero, ida: x.ida, esp: x.espera, des: x.descanso, fue: x.fuera,
+        hdes: x.hDescanso, hfue: x.hFuera, bolt: x.bolt });
     }));
     wsDia.getRow(1).font = { bold: true };
 
@@ -131,16 +140,23 @@ router.get('/auditoria/excel', async (req, res) => {
     wsEv.getRow(1).font = { bold: true };
 
     const wsTop = wb.addWorksheet('Ofensores');
-    wsTop.addRow(['TOP 5 — más KM con BOLT CERRADO (km "por fuera")']);
-    wsTop.addRow(['Matrícula', 'KM fuera', '% del total', 'KM total (Mapon)']);
-    r.ofensores.fuera.forEach(o => wsTop.addRow([o.matricula, o.fuera, o.pct == null ? '' : o.pct + '%', o.mapon]));
-    const corte = r.ofensores.fuera.length + 4;
-    wsTop.addRow([]);
-    wsTop.addRow(['TOP 5 — más repostan']);
-    wsTop.addRow(['Matrícula', 'Litros', 'Repostajes']);
-    r.ofensores.repostaje.forEach(o => wsTop.addRow([o.matricula, o.litros, o.veces]));
-    wsTop.getColumn(1).width = 16;
-    [wsTop.getRow(1), wsTop.getRow(2), wsTop.getRow(corte), wsTop.getRow(corte + 1)].forEach(f => f.font = { bold: true });
+    const negritas = [];
+    const bloque = (titulo, cabecera, filas) => {
+      negritas.push(wsTop.addRow([titulo]).number);
+      negritas.push(wsTop.addRow(cabecera).number);
+      filas.forEach(f => wsTop.addRow(f));
+      wsTop.addRow([]);
+    };
+    bloque('TOP 5 — más KM sin estar disponible (descanso + app cerrada)',
+      ['Matrícula', 'KM no disponible', '% del total', 'de ellos DESCANSO', 'de ellos app cerrada', 'KM total'],
+      r.ofensores.fuera.map(o => [o.matricula, o.noDisp, o.pct == null ? '' : o.pct + '%', o.descanso, o.fuera, o.mapon]));
+    bloque('TOP 5 — más HORAS marcado "ocupado" (descanso)',
+      ['Matrícula', 'Horas en descanso', 'KM rodados en descanso'],
+      r.ofensores.descanso.map(o => [o.matricula, o.horas, o.km]));
+    bloque('TOP 5 — más repostan', ['Matrícula', 'Litros', 'Repostajes'],
+      r.ofensores.repostaje.map(o => [o.matricula, o.litros, o.veces]));
+    wsTop.getColumn(1).width = 18;
+    negritas.forEach(n => wsTop.getRow(n).font = { bold: true });
 
     const diaES = iso => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
     const nombre = `auditoria-flota-${diaES(r.desde)}-a-${diaES(r.hasta)}`;

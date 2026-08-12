@@ -139,6 +139,30 @@ async function setRowVisibility(spreadsheetId, sheetId, tramos) {
   });
 }
 
+/**
+ * Se asegura de que la hoja tenga AL MENOS `filas` filas y `columnas` columnas.
+ * values.update NO amplía la rejilla: escribir más filas de las que tiene la hoja
+ * (1000 por defecto) falla con "exceeds grid limits", así que hay que crecerla antes.
+ */
+async function ensureGrid(spreadsheetId, sheetName, filas, columnas) {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const hoja = (meta.data.sheets || []).find(s => s.properties.title === sheetName);
+  if (!hoja) throw new Error(`No existe la hoja "${sheetName}"`);
+  const g = hoja.properties.gridProperties || {};
+  const reqs = [];
+  if (filas && (g.rowCount || 0) < filas) {
+    reqs.push({ appendDimension: { sheetId: hoja.properties.sheetId, dimension: 'ROWS', length: filas - (g.rowCount || 0) } });
+  }
+  if (columnas && (g.columnCount || 0) < columnas) {
+    reqs.push({ appendDimension: { sheetId: hoja.properties.sheetId, dimension: 'COLUMNS', length: columnas - (g.columnCount || 0) } });
+  }
+  if (reqs.length) {
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: reqs } });
+    console.log(`📐 Hoja "${sheetName}" ampliada a ${Math.max(filas || 0, g.rowCount || 0)} filas`);
+  }
+}
+
 /** Mapa nombre de hoja → id numérico (necesario para borrar filas). */
 async function getSheetIds(spreadsheetId) {
   const sheets = getSheetsClient();
@@ -188,7 +212,7 @@ async function deleteRows(spreadsheetId, sheetId, filas) {
 }
 
 module.exports = {
-  readSheet, writeSheet, writeSheetRaw, clearSheet, ensureSheet,
+  readSheet, writeSheet, writeSheetRaw, clearSheet, ensureSheet, ensureGrid,
   readMany, writeMany, getSheetIds, appendRows, deleteRows, setRowVisibility,
   batchUpdate
 };
