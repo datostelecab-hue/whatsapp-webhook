@@ -302,6 +302,97 @@ async function pedir(ruta, params) {
   return json;
 }
 
+/**
+ * POST a la API de Mapon (endpoints de escritura: driver/create, driver/update…).
+ * La clave va en la query y los parámetros en el cuerpo, que es lo que acepta Mapon.
+ */
+async function pedirPost(ruta, params) {
+  const body = new URLSearchParams();
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v === undefined) return;
+    body.append(k, v === null ? '' : String(v));
+  });
+  const r = await fetch(`${API}/${ruta}?key=${KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  const json = await r.json();
+  if (json && json.error) {
+    throw new Error(`Mapon (${ruta}): ${json.error.msg || json.error.text || json.error.code || 'error'}`);
+  }
+  return json;
+}
+
+// ── Conductores en Mapon (para enlazar quién lleva cada coche) ────────────────
+
+const normMat = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/** Busca una unidad por matrícula en el padrón cacheado. Devuelve {unitId,...} o null. */
+async function unidadPorMatricula(matricula) {
+  const buscada = normMat(matricula);
+  if (!buscada) return null;
+  const mapa = await unidades();
+  for (const [unitId, info] of mapa) {
+    if (normMat(info.matricula) === buscada) return { unitId, ...info };
+  }
+  return null;
+}
+
+/** Todos los conductores dados de alta en Mapon. */
+async function listarConductores() {
+  const j = await pedir('driver/list.json', '');
+  const d = j && j.data;
+  return (d && (d.drivers || (Array.isArray(d) ? d : null))) || [];
+}
+
+/** Crea un conductor. Mapon exige nombre Y apellidos. Devuelve su id. */
+async function crearConductor({ nombre, apellidos, telefono, unitId }) {
+  const j = await pedirPost('driver/create.json', {
+    name: nombre, surname: apellidos || '-', phone: telefono || undefined,
+    unit: unitId || undefined
+  });
+  const d = (j && j.data) || {};
+  return d.driver_id || d.id || (d.driver && d.driver.id) || null;
+}
+
+/** Asigna el coche al conductor (lo que hace visible su nombre en la unidad). */
+const asignarConductor = (driverId, unitId) => pedirPost('driver/update.json', { driver_id: driverId, unit: unitId });
+
+/** Le quita el coche (unit vacío = desasignar, según la doc de Mapon). */
+const desasignarConductor = driverId => pedirPost('driver/update.json', { driver_id: driverId, unit: '' });
+
+/** Conductores que Mapon tiene asignados AHORA a una unidad (include=drivers). */
+async function conductoresDeUnidad(unitId) {
+  const j = await pedir('unit/list.json', `unit_id=${encodeURIComponent(unitId)}&include=drivers`);
+  const u = ((j.data && j.data.units) || [])[0] || {};
+  return u.drivers || {};
+}
+
+/**
+ * Km recorridos por una unidad en una ventana, y cuántos de esos trayectos vienen
+ * ya atribuidos a un conductor por la propia Mapon (include=driver_id). Lo segundo
+ * es la comprobación de si Mapon SELLA el conductor en el histórico o lo resuelve
+ * al vuelo: hasta saberlo, la atribución buena es la de nuestro libro de turnos.
+ */
+async function kmEnVentana({ unitId, fromTs, tillTs }) {
+  const j = await pedir('route/list.json',
+    `from=${encodeURIComponent(aUTC(new Date(fromTs * 1000)))}` +
+    `&till=${encodeURIComponent(aUTC(new Date(tillTs * 1000)))}` +
+    `&unit_id=${encodeURIComponent(unitId)}&include=driver_id`);
+  const u = ((j.data && j.data.units) || [])[0] || {};
+  let metros = 0, trayectos = 0, conConductor = 0;
+  const driversVistos = new Set();
+  (u.routes || []).forEach(rt => {
+    if (rt.type !== 'route') return;
+    metros += Number(rt.distance) || 0;
+    trayectos++;
+    const d = Number(rt.driver_id) || 0;
+    if (d > 0) { conConductor++; driversVistos.add(d); }
+  });
+  return { km: Math.round(metros / 100) / 10, trayectos, conConductor, drivers: [...driversVistos] };
+}
+
 /** gmt de Mapon ('Y-m-d H:i:s' o ISO, siempre UTC) → unix segundos. */
 function tsUTC(g) {
   let s = String(g == null ? '' : g).trim().replace(' ', 'T');
@@ -495,5 +586,7 @@ module.exports = {
   TIPOS, UMBRAL, MAX_DIAS,
   leerAlertas, leerExcesosGraves, listarSetups,
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
+  unidadPorMatricula, listarConductores, crearConductor,
+  asignarConductor, desasignarConductor, conductoresDeUnidad, kmEnVentana,
   unidades, parseFecha, parseValor, normalizar
 };

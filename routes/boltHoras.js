@@ -9,6 +9,9 @@ const {
   listarMeses,
   RANGO_DEFECTO
 } = require('../services/boltHistorico');
+const { SPREADSHEET_ID } = require('../services/turnos');
+const { readSheet } = require('../services/sheets');
+const ExcelJS = require('exceljs');
 
 // "4-2025" → { mes: 4, ano: 2025 }
 function parsearMesAno(texto) {

@@ -101,4 +101,50 @@ async function enviarTurnosSemana(telefono, nombre, plan) {
   return r;
 }
 
-module.exports = { enviarAtencionHora, enviarBallenoil, enviarPlantillaNombre, enviarPlantillaPosicional, enviarTurnosSemana, limpiarTelefono };
+// Aviso "turnos listos" (plantilla con botón de respuesta rápida). El detalle se manda en
+// TEXTO LIBRE cuando el conductor pulsa el botón (lo maneja el webhook de botPuertas).
+// {{1}} = nombre; el botón es estático, no lleva parámetro.
+const enviarAvisoTurnos = (telefono, nombre) => enviarPlantillaPosicional(telefono, 'turnos_listos', [nombre || '']);
+
+/** Mensaje de texto suelto (dentro de la ventana de 24 h). */
+async function enviarTexto(telefono, texto) {
+  const to = limpiarTelefono(telefono);
+  if (!to) return { ok: false, error: 'sin teléfono' };
+  try {
+    const r = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}/messages`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: texto } })
+    });
+    const d = await r.json();
+    if (d.messages && d.messages[0]) return { ok: true, id: d.messages[0].id };
+    return { ok: false, error: (d.error && d.error.message) || JSON.stringify(d) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/**
+ * Mensaje con botones de respuesta rápida. `botones` = [{ id, titulo }] (máx. 3, y
+ * WhatsApp corta los títulos a 20 caracteres).
+ */
+async function enviarBotones(telefono, texto, botones) {
+  const to = limpiarTelefono(telefono);
+  if (!to) return { ok: false, error: 'sin teléfono' };
+  const payload = {
+    messaging_product: 'whatsapp', to, type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: texto },
+      action: { buttons: (botones || []).slice(0, 3).map(b => ({ type: 'reply', reply: { id: b.id, title: String(b.titulo).slice(0, 20) } })) }
+    }
+  };
+  try {
+    const r = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}/messages`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.messages && d.messages[0]) return { ok: true, id: d.messages[0].id };
+    return { ok: false, error: (d.error && d.error.message) || JSON.stringify(d) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+module.exports = { enviarAtencionHora, enviarBallenoil, enviarPlantillaNombre, enviarPlantillaPosicional, enviarTurnosSemana, enviarAvisoTurnos, enviarTexto, enviarBotones, limpiarTelefono };

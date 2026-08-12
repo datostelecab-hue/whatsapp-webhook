@@ -7,6 +7,7 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const PHONE_NUMBER_ID = '1256923474160518';
 const WHATSAPP_VERSION = 'v25.0';
 const MAPON_API_KEY = process.env.MAPON_API_KEY || '';
+const fichajeBot = require('../services/fichajeBot');
 
 const sesiones = {};
 
@@ -70,6 +71,10 @@ router.post('/', async (req, res) => {
 // TEXTO RECIBIDO
 // ============================================================
 async function handleText(phone, text) {
+  // Fichaje de turno (EN PRUEBAS): solo actúa para los teléfonos de la lista y va
+  // ANTES de la comprobación de la agenda, porque quien prueba puede no estar en ella.
+  if (await fichajeBot.manejarTexto(phone, text)) return;
+
   const conductor = await callAppsScript('buscar_conductor', { telefono: phone });
 
   if (!conductor || !conductor.encontrado) {
@@ -129,8 +134,11 @@ async function handleText(phone, text) {
 // BOTÓN PULSADO
 // ============================================================
 async function handleButton(phone, buttonId) {
+  // Botones del fichaje de turno (EN PRUEBAS): no dependen de tener sesión de puertas.
+  if (await fichajeBot.manejarBoton(phone, buttonId)) return;
+
   const sesion = sesiones[phone];
-  
+
   if (!sesion) {
     await sendText(phone, '⚠️ Primero indica una matrícula (ej: 1888LTJ).');
     return;
@@ -211,7 +219,9 @@ async function enviarTurnos(phone, nombreSesion) {
   try {
     const planif = require('../services/planificadorV2');
     const { instruccionesPorConductor, mensajeTurnos } = require('../services/turnosConductor');
-    const tablero = await planif.leerTablero();
+    // La semana que se le anunció al mandar el aviso (0 = actual). Si no hay apunte, la actual.
+    const offset = require('../services/avisoTurnos').offsetDe(phone);
+    const tablero = await planif.leerTablero({ offsetSemana: offset });
     const norm = s => String(s || '').trim().toLowerCase();
     const entrada = instruccionesPorConductor(tablero).find(e => norm(e.id) === norm(idBolt));
     await sendText(phone, mensajeTurnos(entrada));
@@ -224,7 +234,11 @@ async function enviarTurnos(phone, nombreSesion) {
 // Botón de una PLANTILLA (quick reply). El de la bienvenida de Ballenoil pide el PIN.
 async function handleTemplateButton(phone, label) {
   const l = (label || '').toUpperCase();
-  if (l.includes('PIN') || l.includes('BALLENOIL')) {
+  if (l.includes('TURNO')) {
+    // Botón "Ver mis turnos" del aviso → se manda el detalle en TEXTO LIBRE (bien formateado).
+    console.log(`📅 [Turnos] Botón "ver turnos" de ${phone}`);
+    await enviarTurnos(phone);
+  } else if (l.includes('PIN') || l.includes('BALLENOIL')) {
     await enviarPinBallenoil(phone);
   } else {
     await handleText(phone, '');   // etiqueta desconocida → saludo/menú normal

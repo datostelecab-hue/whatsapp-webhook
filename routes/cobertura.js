@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { leerTablero, DIAS_SEM, TURNOS } = require('../services/planificadorV2');
-const { instruccionesPorConductor, planSemanaTexto } = require('../services/turnosConductor');
-const { enviarTurnosSemana } = require('../services/whatsapp');
+const { instruccionesPorConductor } = require('../services/turnosConductor');
+const { enviarAvisoTurnos } = require('../services/whatsapp');
 const { leerTelefonosDB } = require('../services/control');
+const avisoTurnos = require('../services/avisoTurnos');
 
 router.get('/', (req, res) => {
   res.render('cobertura', {
@@ -65,9 +66,10 @@ router.post('/enviar-turnos', async (req, res) => {
     const entrada = instruccionesPorConductor(t, telsDB).find(e => e.id === idBolt);
     if (!entrada) throw new Error('Ese conductor no tiene turnos esta semana');
     if (!entrada.telefono) throw new Error('Ese conductor no tiene teléfono en la agenda');
-    const r = await enviarTurnosSemana(entrada.telefono, entrada.nombre, planSemanaTexto(entrada));
+    const r = await enviarAvisoTurnos(entrada.telefono, entrada.nombre);
     if (!r.ok) throw new Error(r.error);
-    console.log(`📅 [Turnos] Enviado a ${entrada.nombre}`);
+    avisoTurnos.marcar(entrada.telefono, semana);   // al pulsar el botón verá ESTA semana
+    console.log(`📅 [Turnos] Aviso enviado a ${entrada.nombre} (semana ${semana})`);
     res.json({ status: 'ok', enviado: true });
   } catch (e) {
     res.status(400).json({ status: 'error', msg: e.message });
@@ -92,8 +94,8 @@ async function enviarTurnosBulk(semana) {
     _progTurnos.total = lista.length;
     for (const e of lista) {
       if (!e.telefono) { _progTurnos.sinTel++; _progTurnos.detalle.push(`${e.nombre}: sin teléfono`); continue; }
-      const r = await enviarTurnosSemana(e.telefono, e.nombre, planSemanaTexto(e));
-      if (r.ok) _progTurnos.enviados++;
+      const r = await enviarAvisoTurnos(e.telefono, e.nombre);
+      if (r.ok) { _progTurnos.enviados++; avisoTurnos.marcar(e.telefono, semana); }
       else { _progTurnos.errores++; _progTurnos.detalle.push(`${e.nombre}: ${r.error}`); }
       await sleep(1200);   // ~50/min, por debajo de los límites de Meta
     }
