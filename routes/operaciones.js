@@ -81,22 +81,58 @@ router.get('/auditoria/procesar/estado', (req, res) => res.json({ status: 'ok', 
 // devuelve la respuesta CRUDA de Mapon, que es lo único que dice el motivo real.
 router.get('/fichaje/diagnostico', async (req, res) => {
   const mapon = require('../services/mapon');
+  const q = req.query || {};
   const out = { clave: !!process.env.MAPON_API_KEY };
+  let lista = [];
   try {
-    const lista = await mapon.listarConductores();
+    lista = await mapon.listarConductores();
     out.conductores = lista.length;
-    out.ejemplo = lista.slice(0, 3).map(d => ({ id: d.id || d.driver_id, nombre: `${d.name || ''} ${d.surname || ''}`.trim() }));
   } catch (e) { out.errorLista = e.message; }
 
-  const nombre = (req.query.crear || '').toString().trim();
+  // ?buscar=Claude → conductores cuyo nombre coincide (sirve para ver DUPLICADOS)
+  const buscar = (q.buscar || '').toString().trim().toLowerCase();
+  if (buscar) {
+    out.coincidencias = lista
+      .map(d => ({ id: d.id || d.driver_id, nombre: `${d.name || ''} ${d.surname || ''}`.trim(), tel: d.phone || '' }))
+      .filter(d => d.nombre.toLowerCase().includes(buscar));
+  }
+
+  // ?matricula=0417MMZ → resuelve la unidad y dice qué conductor tiene puesto ahora
+  let unitId = q.unit ? String(q.unit) : null;
+  if (q.matricula) {
+    const u = await mapon.unidadPorMatricula(q.matricula).catch(e => { out.errorUnidad = e.message; return null; });
+    if (u) { unitId = String(u.unitId); out.unidad = { unitId: u.unitId, matricula: u.matricula, vehiculo: u.vehiculo }; }
+    else out.unidad = null;
+  }
+  if (unitId) {
+    try { out.conductoresDeLaUnidad = await mapon.conductoresDeUnidad(unitId); }
+    catch (e) { out.errorConductoresUnidad = e.message; }
+  }
+
+  // ?crear=NOMBRE → lo crea si no existe (o reutiliza el que ya haya con ese nombre)
+  const nombre = (q.crear || '').toString().trim();
   if (nombre) {
-    const partes = nombre.split(/\s+/);
+    const yaEsta = lista.find(d => `${d.name || ''} ${d.surname || ''}`.trim().toLowerCase() === nombre.toLowerCase());
     try {
-      const id = await mapon.crearConductor({ nombre: partes[0], apellidos: partes.slice(1).join(' ') || '-' });
-      out.creado = { id, nombre };
-      if (req.query.unit) {
-        try { await mapon.asignarConductor(id, req.query.unit); out.asignado = `driver ${id} → unit ${req.query.unit}`; }
-        catch (e) { out.errorAsignar = e.message; }
+      let id = yaEsta ? (yaEsta.id || yaEsta.driver_id) : null;
+      if (id) out.reutilizado = { id, nombre };
+      else {
+        const partes = nombre.split(/\s+/);
+        id = await mapon.crearConductor({ nombre: partes[0], apellidos: partes.slice(1).join(' ') || '-' });
+        out.creado = { id, nombre };
+      }
+      // ?asignar=1 → prueba la ASIGNACIÓN al coche (la otra mitad del fichaje)
+      if (unitId && q.asignar) {
+        try {
+          await mapon.asignarConductor(id, unitId);
+          out.asignado = `driver ${id} → unit ${unitId}`;
+          out.compruebaEnUnidad = await mapon.conductoresDeUnidad(unitId).catch(() => null);
+        } catch (e) { out.errorAsignar = e.message; }
+      }
+      // ?soltar=1 → le quita el coche (para dejarlo como estaba)
+      if (q.soltar) {
+        try { await mapon.desasignarConductor(id); out.desasignado = id; }
+        catch (e) { out.errorDesasignar = e.message; }
       }
     } catch (e) { out.errorCrear = e.message; }
   }
