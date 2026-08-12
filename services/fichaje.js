@@ -26,12 +26,13 @@ const sheets = require('./sheets');
 const ID_FICHAJE = process.env.ID_FICHAJE || '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';
 const HOJA = 'FICHAJE_TURNOS';
 const CAB = ['id', 'telefono', 'nombre', 'matricula', 'unit_id', 'mapon_driver_id',
-  'inicio', 'fin', 'km', 'trayectos', 'trayectos_atribuidos', 'estado', 'notas'];
-const RANGO = `${HOJA}!A:M`;
+  'inicio', 'fin', 'km', 'trayectos', 'trayectos_atribuidos', 'estado', 'notas', 'unit_previa'];
+const RANGO = `${HOJA}!A:N`;
 
-// Teléfonos autorizados MIENTRAS está en pruebas, y con qué nombre saludarles (útil
-// para probar con gente que no está en la agenda). Formato: '640389649:Camilo,600111222'.
-const PRUEBAS = (process.env.FICHAJE_TELEFONOS || '640389649:Camilo')
+// Teléfonos autorizados MIENTRAS está en pruebas, con el NOMBRE que se les pone (el
+// mismo que se crea/asigna en Mapon: la mayoría de conductores no están dados de alta
+// allí, así que el nombre lo decidimos aquí). Formato: '640389649:Claude code,600111222:Otro'.
+const PRUEBAS = (process.env.FICHAJE_TELEFONOS || '640389649:Claude code')
   .split(',').map(s => s.trim()).filter(Boolean)
   .reduce((m, par) => { const [t, n] = par.split(':'); m[tel9(t)] = (n || '').trim(); return m; }, {});
 
@@ -72,16 +73,16 @@ async function leerLibro() {
     inicio: Number(r[6]) || 0, fin: Number(r[7]) || 0,
     km: r[8] === '' || r[8] == null ? null : Number(r[8]),
     trayectos: Number(r[9]) || 0, atribuidos: Number(r[10]) || 0,
-    estado: String(r[11] || ''), notas: String(r[12] || '')
+    estado: String(r[11] || ''), notas: String(r[12] || ''), unitPrevia: String(r[13] || '')
   })).filter(t => t.id);
 }
 
 const aFila = t => [t.id, t.telefono, t.nombre, t.matricula, t.unitId, t.driverId,
   t.inicio || '', t.fin || '', t.km == null ? '' : t.km, t.trayectos || '', t.atribuidos || '',
-  t.estado, t.notas || ''];
+  t.estado, t.notas || '', t.unitPrevia || ''];
 
 async function guardarFila(t) {
-  await sheets.writeSheetRaw(ID_FICHAJE, `${HOJA}!A${t.fila}:M${t.fila}`, [aFila(t)]);
+  await sheets.writeSheetRaw(ID_FICHAJE, `${HOJA}!A${t.fila}:N${t.fila}`, [aFila(t)]);
 }
 async function añadirFila(t) {
   await sheets.appendRows(ID_FICHAJE, RANGO, [aFila(t)]);
@@ -98,35 +99,52 @@ const abiertoDeCoche = (libro, matricula, telefono) =>
 // ── Conductor en Mapon ────────────────────────────────────────────────────────
 
 /**
- * Busca al conductor en Mapon por teléfono (y si no, por nombre); si no existe, lo
- * crea. Devuelve su driver_id. Es lo que permite que en Mapon se vea el nombre.
+ * Devuelve el driver_id de Mapon para el NOMBRE que le pasamos, creándolo si no
+ * existe. La identidad la manda NUESTRO nombre, no lo que haya en Mapon:
+ *
+ *   · La mayoría de conductores NO están dados de alta en Mapon, así que hay que
+ *     poder crearlos sobre la marcha con el nombre que decidamos.
+ *   · Antes se buscaba primero por TELÉFONO, y eso reutilizaba a un conductor real ya
+ *     existente (aparecía su nombre completo en vez del que queríamos) y además le
+ *     movía el coche que tuviera puesto. Ya no: se casa por nombre exacto.
  */
 async function conductorMapon(nombre, telefono) {
-  const t9 = tel9(telefono);
+  const nom = String(nombre || '').trim();
+  if (!nom) return null;
   let lista = [];
   try { lista = await mapon.listarConductores(); } catch (e) { console.error('⚠️ [FICHAJE] driver/list:', e.message); }
-  const nom = String(nombre || '').trim().toLowerCase();
-  const encontrado = lista.find(d => t9 && tel9(d.phone) === t9)
-    || lista.find(d => `${d.name || ''} ${d.surname || ''}`.trim().toLowerCase() === nom);
+  const clave = nom.toLowerCase();
+  const encontrado = lista.find(d => `${d.name || ''} ${d.surname || ''}`.trim().toLowerCase() === clave);
   if (encontrado) return encontrado.id || encontrado.driver_id;
 
-  const partes = String(nombre || '').trim().split(/\s+/);
+  const partes = nom.split(/\s+/);
   const id = await mapon.crearConductor({
-    nombre: partes[0] || 'Conductor',
+    nombre: partes[0],
     apellidos: partes.slice(1).join(' ') || '-',
-    telefono: telefono ? `+34${t9}` : undefined
+    telefono: telefono ? `+34${tel9(telefono)}` : undefined
   });
-  console.log(`🆕 [FICHAJE] Conductor creado en Mapon: ${nombre} (id ${id})`);
+  console.log(`🆕 [FICHAJE] Conductor creado en Mapon: "${nom}" (id ${id})`);
   return id;
 }
 
 // ── Operaciones ───────────────────────────────────────────────────────────────
 
+/**
+ * Deshace el enlace en Mapon: si el conductor tenía otro coche antes del turno, se le
+ * DEVUELVE; si no tenía ninguno, se le quita. Así un fichaje nunca deja peor la ficha
+ * de un conductor real de lo que estaba.
+ */
+async function soltarEnMapon(t) {
+  if (!t.driverId) return;
+  if (t.unitPrevia) await mapon.asignarConductor(t.driverId, t.unitPrevia);
+  else await mapon.desasignarConductor(t.driverId);
+}
+
 /** Cierra los turnos que llevan demasiado tiempo abiertos (olvidos). */
 async function cerrarOlvidados(libro) {
   const limite = ahoraSeg() - MAX_HORAS_TURNO * 3600;
   for (const t of libro.filter(x => x.estado === 'abierto' && x.inicio && x.inicio < limite)) {
-    try { if (t.driverId) await mapon.desasignarConductor(t.driverId); } catch (e) { /* se cierra igual */ }
+    try { await soltarEnMapon(t); } catch (e) { /* se cierra igual */ }
     t.fin = t.inicio + MAX_HORAS_TURNO * 3600;
     t.estado = 'auto-cerrado';
     t.notas = `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar`;
@@ -163,10 +181,20 @@ async function iniciar({ telefono, nombre, matricula }) {
 
   // El enlace en Mapon no debe impedir fichar: si falla, el turno se abre igual y se
   // anota — la prueba de quién llevaba el coche es nuestro libro, no Mapon.
-  let driverId = '', notas = '';
+  // OJO: driver/update con `unit` MUEVE al conductor de coche. Si ya tenía uno puesto
+  // (caso normal si es un conductor real que ya existía en Mapon), se apunta cuál era
+  // para devolvérselo al terminar y no dejarle la ficha tocada.
+  let driverId = '', notas = '', unitPrevia = '';
   try {
     driverId = await conductorMapon(nombre, telefono);
-    if (driverId) await mapon.asignarConductor(driverId, unidad.unitId);
+    if (driverId) {
+      const previa = await mapon.unidadDeConductor(driverId).catch(() => null);
+      if (previa && String(previa.unitId) !== String(unidad.unitId)) {
+        unitPrevia = String(previa.unitId);
+        notas = `Tenía asignado ${previa.matricula || previa.unitId}; se le devolverá al terminar`;
+      }
+      await mapon.asignarConductor(driverId, unidad.unitId);
+    }
   } catch (e) {
     notas = `Mapon no enlazó al conductor: ${e.message}`;
     console.error('⚠️ [FICHAJE] asignar:', e.message);
@@ -175,7 +203,7 @@ async function iniciar({ telefono, nombre, matricula }) {
   const turno = {
     id: `${tel9(telefono)}-${ahoraSeg()}`, telefono: tel9(telefono), nombre,
     matricula: unidad.matricula, unitId: String(unidad.unitId), driverId: String(driverId || ''),
-    inicio: ahoraSeg(), fin: 0, km: null, trayectos: 0, atribuidos: 0, estado: 'abierto', notas
+    inicio: ahoraSeg(), fin: 0, km: null, trayectos: 0, atribuidos: 0, estado: 'abierto', notas, unitPrevia
   };
   await añadirFila(turno);
   console.log(`🟢 [FICHAJE] ${nombre} inicia turno en ${unidad.matricula} (unit ${unidad.unitId})`);
@@ -201,8 +229,8 @@ async function terminar(telefono) {
 
   const fin = ahoraSeg();
   const km = await kmDelTurno(t, fin);
-  try { if (t.driverId) await mapon.desasignarConductor(t.driverId); }
-  catch (e) { t.notas = `${t.notas ? t.notas + ' · ' : ''}Mapon no desasignó: ${e.message}`; }
+  try { await soltarEnMapon(t); }
+  catch (e) { t.notas = `${t.notas ? t.notas + ' · ' : ''}Mapon no soltó el coche: ${e.message}`; }
 
   t.fin = fin;
   t.km = km ? km.km : null;

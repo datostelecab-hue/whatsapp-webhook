@@ -362,6 +362,26 @@ const asignarConductor = (driverId, unitId) => pedirPost('driver/update.json', {
 /** Le quita el coche (unit vacío = desasignar, según la doc de Mapon). */
 const desasignarConductor = driverId => pedirPost('driver/update.json', { driver_id: driverId, unit: '' });
 
+/**
+ * Unidad que Mapon tiene asignada AHORA a un conductor, o null. Se necesita para
+ * poder DEVOLVERLE su coche al terminar el turno: driver/update con `unit` mueve al
+ * conductor, así que sin esto un fichaje de prueba dejaría a un conductor real sin
+ * el vehículo que tenía puesto.
+ */
+async function unidadDeConductor(driverId) {
+  if (!driverId) return null;
+  const j = await pedir('unit/list.json', 'include=drivers');
+  const id = String(driverId);
+  for (const u of (j.data && j.data.units) || []) {
+    const d = u.drivers || {};
+    for (const k of ['driver1', 'driver2']) {
+      const dr = d[k];
+      if (dr && String(dr.id) === id) return { unitId: u.unit_id, matricula: txt(u.number), plaza: k };
+    }
+  }
+  return null;
+}
+
 /** Conductores que Mapon tiene asignados AHORA a una unidad (include=drivers). */
 async function conductoresDeUnidad(unitId) {
   const j = await pedir('unit/list.json', `unit_id=${encodeURIComponent(unitId)}&include=drivers`);
@@ -587,6 +607,6 @@ module.exports = {
   leerAlertas, leerExcesosGraves, listarSetups,
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, listarConductores, crearConductor,
-  asignarConductor, desasignarConductor, conductoresDeUnidad, kmEnVentana,
+  asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana,
   unidades, parseFecha, parseValor, normalizar
 };
