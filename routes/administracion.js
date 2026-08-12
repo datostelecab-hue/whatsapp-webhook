@@ -112,13 +112,19 @@ router.post('/ballenoil/reenviar', async (req, res) => {
     const b = req.body || {};
     const tel = (b.tel || '').toString();
     const pin = (b.pin == null ? '' : b.pin).toString().trim();
+    const enviar = b.enviar !== false && b.enviar !== 'false';
     if (!pin) throw new Error('Escribe el PIN de Ballenoil');
     await guardarCelda(tel, 'pin_ballenoil', pin);
     if (b.obs_ballenoil != null) await guardarCelda(tel, 'obs_ballenoil', (b.obs_ballenoil || '').toString());
+    // Sin `enviar` solo se corrige la ficha, sin volver a escribir al conductor.
+    if (!enviar) {
+      console.log(`💾 [Ballenoil] PIN/observación actualizados en la ficha de ${tel} (sin enviar)`);
+      return res.json({ status: 'ok', guardado: true, enviado: false });
+    }
     const t = await leerTicket(tel);
     const env = await enviarBallenoil(tel, nombreSaludo(t));
     if (!env.ok) console.error(`⚠️ [Ballenoil] Reenvío NO entregado a ${tel}: ${env.error}`);
-    res.json({ status: 'ok', enviado: env.ok, envioError: env.ok ? null : env.error });
+    res.json({ status: 'ok', guardado: true, enviado: env.ok, envioError: env.ok ? null : env.error });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
   }
@@ -144,13 +150,16 @@ router.get('/conductores', async (req, res) => {
     // para pedirle el PIN a Ballenoil. También el correo del padrón de BOLT como respaldo
     // (el padrón trae correo pero no DNI).
     const pinPorTel = new Map();
-    const fichaPorTel = new Map();     // tel9 -> { dni, email } (de la ficha de RRHH)
+    const fichaPorTel = new Map();     // tel9 -> { dni, email, obs } (de la ficha de RRHH)
     const emailPadronTel = new Map();  // tel9 -> correo del padrón de BOLT (respaldo)
     const telConFicha = new Set();
     (tks.lista || []).forEach(t => {
       const k = l9(t.id); if (!k) return;
       pinPorTel.set(k, t.pin_ballenoil || '');
-      fichaPorTel.set(k, { dni: (t.dni || '').toString().trim(), email: (t.email || '').toString().trim() });
+      fichaPorTel.set(k, {
+        dni: (t.dni || '').toString().trim(), email: (t.email || '').toString().trim(),
+        obs: (t.obs_ballenoil || '').toString().trim()
+      });
       telConFicha.add(k);
     });
     (padron.db || new Map()).forEach(d => { const k = l9(d.phone); if (k && d.email && !emailPadronTel.has(k)) emailPadronTel.set(k, d.email.toString().trim()); });
@@ -173,6 +182,7 @@ router.get('/conductores', async (req, res) => {
         dni: (c.dni || (f && f.dni) || '').toString().trim(),
         email: ((f && f.email) || (tel && emailPadronTel.get(tel)) || '').toString().trim(),
         estado: (c.estado || '').toString().trim(),
+        obs_ballenoil: (f && f.obs) || '',
         pin_ballenoil: tel ? (pinPorTel.get(tel) || '') : '', con_ficha: true
       });
     });
@@ -187,7 +197,7 @@ router.get('/conductores', async (req, res) => {
         id_bolt: (d.nombre || '').trim(), nombre: (d.nombre || '').trim(),
         telefono: (d.phone || '').toString().trim(), turno: '',
         dni: '', email: (d.email || '').toString().trim(),
-        estado: '', pin_ballenoil: '', con_ficha: false
+        estado: '', obs_ballenoil: '', pin_ballenoil: '', con_ficha: false
       });
     });
     out.sort((a, b) => (a.con_ficha === b.con_ficha ? 0 : a.con_ficha ? -1 : 1)
@@ -203,20 +213,28 @@ router.get('/conductores', async (req, res) => {
   }
 });
 
-// Asigna/actualiza el PIN a cualquier conductor (crea la ficha si no la tiene) y le
-// envía la bienvenida de Ballenoil. Dos procesos de una vez: ficha + PIN.
+// Asigna/actualiza el PIN (y la observación) de cualquier conductor, creando la ficha
+// si no la tiene. Con `enviar` manda además la bienvenida de Ballenoil por WhatsApp;
+// sin él solo GUARDA, que es lo que hace falta cuando solo se corrige el PIN o se
+// añade una nota y no procede volver a molestar al conductor.
 router.post('/ballenoil/conductor', async (req, res) => {
   try {
     const b = req.body || {};
     const tel = (b.tel || '').toString();
     const pin = (b.pin == null ? '' : b.pin).toString().trim();
     const nombre = (b.nombre || '').toString().trim();
+    const obs = b.obs == null ? null : b.obs.toString();   // null = no tocar la nota
+    const enviar = b.enviar !== false && b.enviar !== 'false';
     if (!tel) throw new Error('Falta el teléfono del conductor');
     if (!pin) throw new Error('Escribe el PIN de Ballenoil');
-    const t = await guardarPinConductor(tel, pin, nombre);
+    const t = await guardarPinConductor(tel, pin, nombre, obs);
+    if (!enviar) {
+      console.log(`💾 [Ballenoil] PIN/observación guardados para ${tel} (sin enviar WhatsApp)`);
+      return res.json({ status: 'ok', guardado: true, enviado: false });
+    }
     const env = await enviarBallenoil(tel, nombreSaludo(t) || nombre);
     if (!env.ok) console.error(`⚠️ [Ballenoil] Bienvenida NO enviada a ${tel}: ${env.error}`);
-    res.json({ status: 'ok', enviado: env.ok, envioError: env.ok ? null : env.error });
+    res.json({ status: 'ok', guardado: true, enviado: env.ok, envioError: env.ok ? null : env.error });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
   }

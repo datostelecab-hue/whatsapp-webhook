@@ -666,7 +666,7 @@ async function guardarCelda(tel, campo, valor) {
  * (etapa TRÁFICO) solo para almacenar el PIN, así el bot puede entregarlo al pulsar
  * "VER PIN BALLENOIL". No re-crea nada en la agenda: es un upsert del PIN.
  */
-async function guardarPinConductor(tel, pin, nombre) {
+async function guardarPinConductor(tel, pin, nombre, obs) {
   tel = normalizarTel(tel);
   if (!telValido(tel)) throw new Error('Teléfono inválido: deben ser 9 dígitos');
   pin = (pin == null ? '' : pin).toString().trim();
@@ -678,6 +678,8 @@ async function guardarPinConductor(tel, pin, nombre) {
     porTel.set(tel, t);
   }
   t.pin_ballenoil = pin;
+  // La observación solo se toca si viene: así guardar el PIN a secas no borra la nota.
+  if (obs != null) t.obs_ballenoil = obs.toString();
   const nom = (nombre || '').toString().trim();
   if (nom && !t.id_bolt) t.id_bolt = nom;
   if (nom && !t.nombre) t.nombre = nom;

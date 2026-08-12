@@ -132,16 +132,29 @@
           <p id="cq-nombre" class="font-semibold text-telecab-text truncate"></p>
           <p id="cq-estado" class="text-xs mt-0.5"></p>
         </div>
-        <div class="flex items-end gap-2">
+        <div class="flex items-end gap-2 flex-wrap">
           <div>
             <label class="block text-xs text-telecab-muted mb-1">PIN de Ballenoil</label>
             <input id="cq-pin" inputmode="numeric" autocomplete="off" placeholder="Ej. 4821"
                    class="w-32 bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text tracking-widest focus:outline-none focus:border-telecab-gold transition">
           </div>
+          <!-- Guardar a secas: para corregir el PIN o dejar una nota sin volver a escribir al conductor. -->
+          <button id="cq-guardar" class="px-4 py-2.5 rounded-xl bg-telecab-card border border-telecab-border text-telecab-text hover:border-telecab-gold/50 transition font-medium disabled:opacity-40">
+            <i class="fa-solid fa-floppy-disk mr-1"></i> Guardar
+          </button>
           <button id="cq-enviar" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40">
             <i class="fa-solid fa-paper-plane mr-1"></i> <span id="cq-btn-txt">Guardar y enviar</span>
           </button>
         </div>
+      </div>
+
+      <!-- Observaciones de Ballenoil: quedan en la ficha y se ven en la lista -->
+      <div class="mt-3">
+        <label class="block text-xs text-telecab-muted mb-1">
+          Observaciones de Ballenoil <span class="text-telecab-muted/60">(se guardan en su ficha)</span>
+        </label>
+        <textarea id="cq-obs" rows="2" placeholder="Ej. tarjeta entregada en mano, PIN cambiado el 12/08, incidencia con la matrícula…"
+                  class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text resize-none focus:outline-none focus:border-telecab-gold transition"></textarea>
       </div>
       <!-- Datos que se copian para pedirle el PIN a Ballenoil -->
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
@@ -181,6 +194,7 @@
 
 <script>
   const $ = s => document.querySelector(s);
+  const escH = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   let fichaActual = null;
   let fichaHecho = false;   // true = ficha ya creada (solo actualizar PIN y reenviar)
   let autoAbierto = false;
@@ -235,24 +249,27 @@
     });
   });
 
-  $('#btn-pin').addEventListener('click', async () => {
+  /** Guarda el PIN y las observaciones. Con `enviar` manda la bienvenida de Ballenoil. */
+  async function guardarFicha(enviar) {
     if (!fichaActual) return;
     const pin = $('#pin').value.trim();
     if (!pin) { msg('Escribe el PIN de Ballenoil.', false); return; }
     const obs_ballenoil = $('#obs-ball').value.trim();
-    const btn = $('#btn-pin'); btn.disabled = true;
+    const btns = [$('#btn-pin')].filter(Boolean);
+    btns.forEach(b => b.disabled = true);
     let r;
     if (fichaHecho) {
-      // Ficha ya creada: solo actualizar el PIN y reenviar la bienvenida.
-      r = await api('/administracion/ballenoil/reenviar', { tel: fichaActual.id, pin, obs_ballenoil });
+      // Ficha ya creada: solo actualizar el PIN/observaciones (y reenviar si toca).
+      r = await api('/administracion/ballenoil/reenviar', { tel: fichaActual.id, pin, obs_ballenoil, enviar });
     } else {
       const id_bolt = $('#d-nombre').value.trim();
-      if (!id_bolt) { msg('Escribe el nombre tal como sale en BOLT (será su ID en la agenda).', false); btn.disabled = false; return; }
+      if (!id_bolt) { msg('Escribe el nombre tal como sale en BOLT (será su ID en la agenda).', false); btns.forEach(b => b.disabled = false); return; }
       r = await api('/administracion/pin', { tel: fichaActual.id, pin, id_bolt, obs_ballenoil });
     }
-    btn.disabled = false;
+    btns.forEach(b => b.disabled = false);
     if (r.status === 'ok') {
-      const base = fichaHecho ? 'PIN actualizado.' : 'PIN guardado. Creado en la Agenda como Pendiente Asignar.';
+      const base = fichaHecho ? 'PIN y observaciones actualizados.' : 'PIN guardado. Creado en la Agenda como Pendiente Asignar.';
+      if (enviar === false) { msg(`✅ ${base} No se ha enviado nada al conductor.`, true); cargar(); return; }
       const envio = r.enviado
         ? 'Bienvenida de Ballenoil enviada por WhatsApp.'
         : `⚠️ Pero la bienvenida NO se envió (${r.envioError || 'revisa el número / WhatsApp'}).`;
@@ -261,7 +278,9 @@
     } else {
       msg(r.msg || 'No se pudo guardar el PIN', false);
     }
-  });
+  }
+
+  $('#btn-pin').addEventListener('click', () => guardarFicha(true));
 
   function fila(t, hecho) {
     const el = document.createElement('div');
@@ -273,6 +292,8 @@
        <span class="min-w-0 flex-1">
          <span class="block text-sm text-telecab-text truncate">${nomCompleto(t)}</span>
          <span class="block text-xs text-telecab-muted font-mono">${t.telefono || t.id}${t.email ? ' · ' + t.email : ''}</span>
+         ${t.obs_ballenoil ? `<span class="block text-xs text-telecab-gold/90 truncate mt-0.5" title="${escH(t.obs_ballenoil)}">
+           <i class="fa-solid fa-note-sticky mr-1"></i>${escH(t.obs_ballenoil)}</span>` : ''}
        </span>
        ${hecho ? `<span class="text-xs px-2 py-1 rounded-lg bg-telecab-green/10 text-telecab-green border border-telecab-green/25 font-mono whitespace-nowrap">PIN ${t.pin_ballenoil}</span>` : '<i class="fa-solid fa-chevron-right text-telecab-muted text-xs"></i>'}`;
     el.addEventListener('click', () => abrirFicha(t, hecho));
@@ -404,7 +425,7 @@
     const fil = LISTA.filter(c => {
       if (FILTRO === 'sin' && tienePin(c)) return false;
       if (FILTRO === 'con' && !tienePin(c)) return false;
-      return !q || (`${c.nombre} ${c.id_bolt} ${c.telefono} ${c.dni || ''} ${c.email || ''}`).toLowerCase().includes(q);
+      return !q || (`${c.nombre} ${c.id_bolt} ${c.telefono} ${c.dni || ''} ${c.email || ''} ${c.obs_ballenoil || ''}`).toLowerCase().includes(q);
     });
     const cont = $('#cq-lista');
     if (!fil.length) { cont.innerHTML = '<p class="text-sm text-telecab-muted px-1 py-4">Sin conductores que coincidan.</p>'; return; }
@@ -415,6 +436,8 @@
         <span class="min-w-0 flex-1">
           <span class="block text-sm text-telecab-text truncate">${esc(c.id_bolt || c.nombre || '(sin nombre)')}</span>
           <span class="block text-xs text-telecab-muted font-mono truncate">${esc(c.telefono || 'sin teléfono')}${c.dni ? ' · ' + esc(c.dni) : ''}${c.email ? ' · ' + esc(c.email) : ''}</span>
+          ${c.obs_ballenoil ? `<span class="block text-xs text-telecab-gold/90 truncate mt-0.5" title="${esc(c.obs_ballenoil)}">
+            <i class="fa-solid fa-note-sticky mr-1"></i>${esc(c.obs_ballenoil)}</span>` : ''}
         </span>
         ${c.con_ficha
           ? (tienePin(c)
@@ -438,6 +461,7 @@
     $('#cq-d-dni').textContent = c.dni || '—';
     $('#cq-d-email').textContent = c.email || '—';
     $('#cq-pin').value = c.pin_ballenoil || '';
+    $('#cq-obs').value = c.obs_ballenoil || '';
     $('#cq-btn-txt').textContent = c.con_ficha ? 'Guardar y enviar' : 'Crear ficha, guardar y enviar';
     $('#cq-msg').classList.add('hidden');
     $('#cq-panel').classList.remove('hidden');
@@ -462,24 +486,36 @@
   $('#cq-buscar').addEventListener('input', pintar);
   document.querySelectorAll('.cq-filtro').forEach(b => b.addEventListener('click', () => { FILTRO = b.dataset.f; pintar(); }));
 
-  $('#cq-enviar').addEventListener('click', async () => {
+  /** Guarda PIN + observación. Con `enviar` manda además la bienvenida por WhatsApp. */
+  async function guardar(enviar) {
     if (!sel) return;
     const pin = $('#cq-pin').value.trim();
     if (!pin) return msg('Escribe el PIN.', false);
-    const btn = $('#cq-enviar'); btn.disabled = true;
+    const obs = $('#cq-obs').value;
+    const btns = [$('#cq-enviar'), $('#cq-guardar')];
+    btns.forEach(b => b.disabled = true);
     try {
       const r = await (await fetch('/administracion/ballenoil/conductor', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tel: sel.telefono, pin, nombre: sel.id_bolt || sel.nombre })
+        body: JSON.stringify({ tel: sel.telefono, pin, obs, enviar, nombre: sel.id_bolt || sel.nombre })
       })).json();
       if (r.status === 'ok') {
-        const base = sel.con_ficha ? 'PIN guardado.' : 'Ficha creada y PIN guardado.';
-        msg(r.enviado ? `✅ ${base} Bienvenida enviada por WhatsApp.` : `${base} ⚠️ Pero la bienvenida NO se envió (${esc(r.envioError || 'revisa el número')}).`, r.enviado === true);
-        cargar();
+        const base = sel.con_ficha ? 'PIN y observaciones guardados.' : 'Ficha creada, PIN y observaciones guardados.';
+        if (!enviar) msg(`✅ ${base} No se ha enviado nada al conductor.`, true);
+        else msg(r.enviado ? `✅ ${base} Bienvenida enviada por WhatsApp.`
+                           : `${base} ⚠️ Pero la bienvenida NO se envió (${esc(r.envioError || 'revisa el número')}).`, r.enviado === true);
+        // Se refresca la lista para que la nota se vea ya en la fila del conductor.
+        const tel = sel.telefono;
+        await cargar();
+        const otra = LISTA.find(c => c.telefono === tel);
+        if (otra) elegir(otra);
       } else msg(r.msg || 'No se pudo guardar', false);
     } catch (e) { msg('Error: ' + esc(e.message), false); }
-    btn.disabled = false;
-  });
+    btns.forEach(b => b.disabled = false);
+  }
+
+  $('#cq-enviar').addEventListener('click', () => guardar(true));
+  $('#cq-guardar').addEventListener('click', () => guardar(false));
 
   cargar();
 })();

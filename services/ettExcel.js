@@ -90,7 +90,7 @@ async function generarExcelETT(lista) {
   // ── Fila 1: banda oscura con el logo y el título ──
   ws.mergeCells(`A1:${ultima}1`);
   const t = ws.getCell('A1');
-  t.value = 'TIBUS LUXURY · Respuesta a candidatos ETT';
+  t.value = '                 TIBUS LUXURY · Respuesta a candidatos ETT';
   t.font = { name: 'Calibri', size: 16, bold: true, color: { argb: GOLD } };
   t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
   // El texto se sangra para dejarle sitio al logo, que va flotando sobre la banda.
