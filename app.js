@@ -317,6 +317,21 @@ cron.schedule('20 4 * * *', async () => {
   }
 });
 
+// Auditoría de flota: a las 5:00 (poco tráfico) procesa el día de AYER, ya cerrado.
+// Es pesado (una llamada a Mapon por coche), por eso va una sola vez al día y deja el
+// resultado en el Sheet; el panel de Operaciones solo lee de ahí.
+cron.schedule('0 5 * * *', async () => {
+  try {
+    const auditoria = require('./services/auditoriaFlota');
+    const dia = auditoria.diaMenos(auditoria.hoyMadrid(), 1);
+    console.log(`⏰ [CRON Auditoría] procesando ${dia}...`);
+    const r = await auditoria.procesarDia(dia);
+    console.log(`✅ [CRON Auditoría] ${dia}: ${r.filas} matrículas, ${r.eventos} repostajes`);
+  } catch (error) {
+    console.error(`❌ [CRON Auditoría] Error: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
 // hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
 cron.schedule('45 * * * *', async () => {

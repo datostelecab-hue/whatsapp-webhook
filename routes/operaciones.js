@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');
 const { TIPOS, UMBRAL, MAX_DIAS, leerAlertas, listarSetups } = require('../services/mapon');
-const { cargarAuditoria } = require('../services/auditoriaFlota');
+const auditoria = require('../services/auditoriaFlota');
+const { cargarAuditoria } = auditoria;
 
 router.get('/', (req, res) => {
   res.render('operaciones', {
@@ -56,6 +57,22 @@ router.get('/api/auditoria', async (req, res) => {
   }
 });
 
+// Procesa (o reprocesa) un rango de días: es PESADO — una llamada a Mapon por coche y
+// día —, así que corre en segundo plano y el panel sondea el progreso. Lo normal es que
+// lo haga el cron de las 5am; esto es para backfill o para rehacer un día concreto.
+router.post('/auditoria/procesar', (req, res) => {
+  try {
+    const b = req.body || {};
+    if (auditoria.progreso().activo) return res.status(409).json({ status: 'error', msg: 'Ya hay un procesado en marcha' });
+    auditoria.procesarRango({ desde: b.desde, hasta: b.hasta }).catch(e => console.error('❌ [AUDITORÍA] procesar:', e.message));
+    res.json({ status: 'ok', msg: 'Procesado iniciado' });
+  } catch (e) {
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
+router.get('/auditoria/procesar/estado', (req, res) => res.json({ status: 'ok', progreso: auditoria.progreso() }));
+
 // Excel de la auditoría (mismos datos cacheados): KM (Mapon/BOLT/dif), Repostajes y Ofensores.
 router.get('/auditoria/excel', async (req, res) => {
   try {
@@ -64,26 +81,40 @@ router.get('/auditoria/excel', async (req, res) => {
     const ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
     const wb = new ExcelJS.Workbook();
 
-    // Hoja KM: una fila por matrícula con Mapon, BOLT, diferencia y % en vacío + días.
-    const wsKm = wb.addWorksheet('KM Mapon vs BOLT');
+    // Hoja KM: desglose forense por matrícula (los 4 buckets suman el total de Mapon).
+    const wsKm = wb.addWorksheet('KM por estado');
     wsKm.columns = [
       { header: 'Matrícula', key: 'mat', width: 14 }, { header: 'Vehículo', key: 'veh', width: 20 },
-      { header: 'KM Mapon', key: 'mapon', width: 11 }, { header: 'KM BOLT', key: 'bolt', width: 11 },
-      { header: 'Diferencia', key: 'diff', width: 11 }, { header: '% vacío', key: 'pct', width: 9 },
-      { header: 'Viajes', key: 'viajes', width: 8 },
-      ...r.dias.map(d => ({ header: ddmm(d), key: 'd_' + d, width: 8 }))
+      { header: 'KM total (Mapon)', key: 'mapon', width: 16 },
+      { header: 'Con pasajero', key: 'pas', width: 13 }, { header: 'Ida a recoger', key: 'ida', width: 13 },
+      { header: 'Cruising (BOLT abierto)', key: 'cru', width: 21 }, { header: 'FUERA (BOLT cerrado)', key: 'fue', width: 19 },
+      { header: '% fuera', key: 'pctf', width: 9 }, { header: '% con pasajero', key: 'pctp', width: 14 },
+      { header: 'KM facturado BOLT', key: 'bolt', width: 17 }, { header: 'Viajes', key: 'viajes', width: 8 }
     ];
-    r.km.forEach(k => {
-      const fila = { mat: k.matricula, veh: k.vehiculo, mapon: k.totalMapon, bolt: k.totalBolt,
-        diff: k.diff, pct: k.pct == null ? '' : k.pct / 100, viajes: k.viajesBolt };
-      r.dias.forEach(d => {
-        const m = k.mapon[d], b = k.bolt[d];
-        fila['d_' + d] = (m != null || b != null) ? `${m || 0}/${b || 0}` : '';   // Mapon/BOLT
-      });
-      wsKm.addRow(fila);
-    });
-    wsKm.getColumn('pct').numFmt = '0%';
+    r.km.forEach(k => wsKm.addRow({
+      mat: k.matricula, veh: k.vehiculo, mapon: k.totalMapon, pas: k.totalPasajero, ida: k.totalIda,
+      cru: k.totalCruising, fue: k.totalFuera,
+      pctf: k.pctFuera == null ? '' : k.pctFuera / 100, pctp: k.pctPasajero == null ? '' : k.pctPasajero / 100,
+      bolt: k.totalBolt, viajes: k.viajesBolt
+    }));
+    wsKm.getColumn('pctf').numFmt = '0%';
+    wsKm.getColumn('pctp').numFmt = '0%';
     wsKm.getRow(1).font = { bold: true };
+
+    // Detalle día a día (para poder señalar la jornada concreta en una reclamación).
+    const wsDia = wb.addWorksheet('Detalle por día');
+    wsDia.columns = [
+      { header: 'Día', key: 'dia', width: 12 }, { header: 'Matrícula', key: 'mat', width: 14 },
+      { header: 'KM total', key: 'mapon', width: 10 }, { header: 'Con pasajero', key: 'pas', width: 13 },
+      { header: 'Ida a recoger', key: 'ida', width: 13 }, { header: 'Cruising', key: 'cru', width: 11 },
+      { header: 'FUERA', key: 'fue', width: 10 }, { header: 'Facturado BOLT', key: 'bolt', width: 14 }
+    ];
+    r.km.forEach(k => r.dias.forEach(d => {
+      const x = k.dias[d]; if (!x) return;
+      wsDia.addRow({ dia: ddmm(d) + '/' + d.slice(0, 4), mat: k.matricula, mapon: x.mapon,
+        pas: x.pasajero, ida: x.ida, cru: x.cruising, fue: x.fuera, bolt: x.bolt });
+    }));
+    wsDia.getRow(1).font = { bold: true };
 
     const wsEv = wb.addWorksheet('Repostajes y caídas');
     wsEv.columns = [
@@ -100,15 +131,16 @@ router.get('/auditoria/excel', async (req, res) => {
     wsEv.getRow(1).font = { bold: true };
 
     const wsTop = wb.addWorksheet('Ofensores');
-    wsTop.addRow(['TOP 5 — más KM sin facturar (Mapon − BOLT)']);
-    wsTop.addRow(['Matrícula', 'KM Mapon', 'KM BOLT', 'Diferencia', '% vacío']);
-    r.ofensores.kmDiff.forEach(o => wsTop.addRow([o.matricula, o.totalMapon, o.totalBolt, o.diff, o.pct == null ? '' : o.pct + '%']));
+    wsTop.addRow(['TOP 5 — más KM con BOLT CERRADO (km "por fuera")']);
+    wsTop.addRow(['Matrícula', 'KM fuera', '% del total', 'KM total (Mapon)']);
+    r.ofensores.fuera.forEach(o => wsTop.addRow([o.matricula, o.fuera, o.pct == null ? '' : o.pct + '%', o.mapon]));
+    const corte = r.ofensores.fuera.length + 4;
     wsTop.addRow([]);
     wsTop.addRow(['TOP 5 — más repostan']);
     wsTop.addRow(['Matrícula', 'Litros', 'Repostajes']);
     r.ofensores.repostaje.forEach(o => wsTop.addRow([o.matricula, o.litros, o.veces]));
     wsTop.getColumn(1).width = 16;
-    [wsTop.getRow(1), wsTop.getRow(2), wsTop.getRow(r.ofensores.kmDiff.length + 4), wsTop.getRow(r.ofensores.kmDiff.length + 5)].forEach(f => f.font = { bold: true });
+    [wsTop.getRow(1), wsTop.getRow(2), wsTop.getRow(corte), wsTop.getRow(corte + 1)].forEach(f => f.font = { bold: true });
 
     const diaES = iso => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
     const nombre = `auditoria-flota-${diaES(r.desde)}-a-${diaES(r.hasta)}`;

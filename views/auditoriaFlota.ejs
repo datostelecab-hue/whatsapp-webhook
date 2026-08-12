@@ -6,7 +6,7 @@
       <h2 class="text-xl font-bold flex items-center gap-2">
         <i class="fa-solid fa-clipboard-check text-telecab-gold"></i> Auditoría de flota
       </h2>
-      <p class="text-sm text-telecab-muted mt-0.5" id="a-resumen">KM (Mapon vs BOLT) y repostajes por matrícula</p>
+      <p class="text-sm text-telecab-muted mt-0.5" id="a-resumen">KM por estado · quién rueda con BOLT cerrado</p>
     </div>
 
     <div class="ml-auto flex flex-wrap items-center gap-2">
@@ -21,7 +21,7 @@
       <div class="relative">
         <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
         <input id="a-buscar" placeholder="Filtrar matrícula…"
-               class="pl-8 pr-3 py-2 w-36 sm:w-48 bg-telecab-card border border-telecab-border rounded-xl text-sm
+               class="pl-8 pr-3 py-2 w-36 sm:w-44 bg-telecab-card border border-telecab-border rounded-xl text-sm
                       focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
       </div>
       <button id="a-consultar"
@@ -40,43 +40,73 @@
   <!-- KPIs -->
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" id="a-kpis"></div>
 
-  <!-- Aviso -->
+  <!-- Aviso de error -->
   <div id="a-aviso" class="hidden mb-5 rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4 text-sm text-telecab-red"></div>
+
+  <!-- Días sin procesar -->
+  <div id="a-pendientes" class="hidden mb-5 rounded-xl border border-telecab-gold/40 bg-telecab-gold/5 p-4 text-sm">
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="text-telecab-gold flex-1 min-w-0" id="a-pend-txt"></span>
+      <button id="a-procesar" class="px-3 py-1.5 rounded-lg bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold text-xs font-semibold hover:bg-telecab-gold/25 transition">
+        <i class="fa-solid fa-gears mr-1"></i> Procesar ahora
+      </button>
+    </div>
+    <p class="text-xs text-telecab-muted mt-2">El cron los procesa solo a las 5:00. Procesar a mano es pesado (una consulta a Mapon por coche y día).</p>
+  </div>
+
+  <!-- Progreso del procesado -->
+  <div id="a-progreso" class="hidden mb-5 rounded-xl border border-telecab-border bg-telecab-card p-4 text-sm">
+    <div class="flex items-center gap-3">
+      <i class="fa-solid fa-circle-notch fa-spin text-telecab-gold"></i>
+      <span id="a-prog-txt" class="text-telecab-text flex-1"></span>
+    </div>
+    <div class="mt-2 h-1.5 bg-telecab-dark rounded-full overflow-hidden"><div id="a-prog-bar" class="h-full bg-telecab-gold transition-all" style="width:0%"></div></div>
+  </div>
 
   <!-- Pestañas -->
   <div class="flex gap-1 mb-4 border-b border-telecab-border" id="a-tabs">
-    <button data-tab="km"   class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-road mr-1.5"></i> KM Mapon vs BOLT</button>
-    <button data-tab="rep"  class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-gas-pump mr-1.5"></i> Repostajes</button>
-    <button data-tab="top"  class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-trophy mr-1.5"></i> Top ofensores</button>
+    <button data-tab="km"  class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-road mr-1.5"></i> KM por estado</button>
+    <button data-tab="rep" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-gas-pump mr-1.5"></i> Repostajes</button>
+    <button data-tab="top" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Top ofensores</button>
   </div>
 
   <div id="a-cargando" class="p-10 text-center text-telecab-muted">
-    <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Consultando (varias llamadas troceadas, puede tardar unos segundos)…
+    <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Cargando…
   </div>
 
-  <!-- ══ Pestaña KM ══ -->
+  <!-- ══ KM por estado ══ -->
   <section data-panel="km" class="hidden">
     <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
       <div class="overflow-x-auto max-h-[36rem] overflow-y-auto">
         <table class="w-full text-sm">
           <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
-            <tr id="a-thead-km"></tr>
+            <tr>
+              <th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Matrícula</th>
+              <th class="text-right font-semibold px-3 py-3">KM total</th>
+              <th class="text-right font-semibold px-3 py-3">Con pasajero</th>
+              <th class="text-right font-semibold px-3 py-3">Ida a recoger</th>
+              <th class="text-right font-semibold px-3 py-3">Cruising</th>
+              <th class="text-right font-semibold px-3 py-3 text-telecab-red">FUERA</th>
+              <th class="text-right font-semibold px-3 py-3">% fuera</th>
+              <th class="text-left font-semibold px-3 py-3 w-40">Reparto</th>
+            </tr>
           </thead>
           <tbody id="a-tbody-km" class="divide-y divide-telecab-border/60"></tbody>
         </table>
       </div>
       <div id="a-vacio-km" class="hidden p-8 text-center text-telecab-muted">
         <i class="fa-solid fa-road text-3xl mb-2 opacity-40"></i>
-        <p id="a-vacio-km-txt">Sin kilómetros en este rango.</p>
+        <p id="a-vacio-km-txt">Sin datos procesados en este rango.</p>
       </div>
     </div>
     <p class="text-[11px] text-telecab-muted mt-2">
-      <b>Mapon</b> = km totales por GPS. <b>BOLT</b> = km con pasajero (viajes finished). La <b>diferencia</b> ≈ km en vacío o fuera de app.
-      Cada celda de día muestra <span class="font-mono">Mapon/BOLT</span>.
+      Todos los km los mide <b>Mapon</b> (GPS punto a punto); <b>BOLT</b> solo aporta las horas exactas de aceptación, recogida y bajada.
+      <b class="text-telecab-red">FUERA</b> = rodó sin pedido y con la app de BOLT <b>cerrada</b> (estado <span class="font-mono">inactive</span>) — es el km sospechoso.
+      Si no consta que estuviera offline, cuenta como <b>cruising</b> (no acusa).
     </p>
   </section>
 
-  <!-- ══ Pestaña Repostajes ══ -->
+  <!-- ══ Repostajes ══ -->
   <section data-panel="rep" class="hidden">
     <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
       <div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
@@ -102,18 +132,18 @@
       </div>
     </div>
     <p class="text-[11px] text-telecab-muted mt-2">
-      El nivel sale de la centralita (CAN): las <b>caídas</b> marcan <b>posibles</b> robos/sifonados a verificar, y los litros exactos conviene contrastarlos con el ticket real.
+      El nivel sale de la centralita (CAN): las <b>caídas</b> marcan <b>posibles</b> robos a verificar, y los litros conviene contrastarlos con el ticket real.
     </p>
   </section>
 
-  <!-- ══ Pestaña Ofensores ══ -->
+  <!-- ══ Ofensores ══ -->
   <section data-panel="top" class="hidden">
     <div class="grid md:grid-cols-2 gap-4">
       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
         <div class="px-4 py-3 border-b border-telecab-border font-semibold text-telecab-text flex items-center gap-2">
-          <i class="fa-solid fa-route text-telecab-red"></i> Top 5 · más KM sin facturar
+          <i class="fa-solid fa-user-secret text-telecab-red"></i> Top 5 · más KM con BOLT cerrado
         </div>
-        <div id="a-top-diff" class="divide-y divide-telecab-border/60"></div>
+        <div id="a-top-fuera" class="divide-y divide-telecab-border/60"></div>
       </div>
       <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
         <div class="px-4 py-3 border-b border-telecab-border font-semibold text-telecab-text flex items-center gap-2">
@@ -122,7 +152,7 @@
         <div id="a-top-rep" class="divide-y divide-telecab-border/60"></div>
       </div>
     </div>
-    <p class="text-[11px] text-telecab-muted mt-2">Los ofensores se calculan sobre TODO el rango (no les afecta el filtro de matrícula).</p>
+    <p class="text-[11px] text-telecab-muted mt-2">Calculado sobre todo el rango (no le afecta el filtro de matrícula). Antes de reclamar, contrasta el caso concreto en el Excel («Detalle por día»).</p>
   </section>
 
   <p class="text-[11px] text-telecab-muted mt-3" id="a-pie"></p>
@@ -131,95 +161,75 @@
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let DATA = { dias: [], km: [], eventos: [], ofensores: { kmDiff: [], repostaje: [] } };
-let tab = 'km', filtroEv = '', busqueda = '', cargando = false, error = null, gen = 0;
+let DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [] }, pendientes: [] };
+let tab = 'km', filtroEv = '', busqueda = '', cargando = false, error = null, gen = 0, poll = null;
 
 const pad = n => String(n).padStart(2, '0');
 const fmt = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
 const ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const nkm = v => (v == null ? '' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
 
-// ── KPIs ──
 function kpis() {
-  const km = DATA.km;
-  const totMapon = Math.round(km.reduce((s, k) => s + k.totalMapon, 0));
-  const totBolt = Math.round(km.reduce((s, k) => s + k.totalBolt, 0));
-  const diff = totMapon - totBolt;
-  const pct = totMapon > 0 ? Math.round(diff / totMapon * 100) : 0;
-  const rep = DATA.eventos.filter(e => e.tipo === 'repostaje');
-  const litros = Math.round(rep.reduce((s, e) => s + e.litros, 0));
-  const kpi = (n, t, cls) => `<div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
-      <div class="text-2xl font-bold ${cls}">${cargando ? '…' : n}</div><div class="text-xs text-telecab-muted mt-0.5">${t}</div></div>`;
+  const k = DATA.km;
+  const t = f => Math.round(k.reduce((s, x) => s + (x[f] || 0), 0));
+  const total = t('totalMapon'), fuera = t('totalFuera'), pas = t('totalPasajero');
+  const pctF = total > 0 ? Math.round(fuera / total * 100) : 0;
+  const pctP = total > 0 ? Math.round(pas / total * 100) : 0;
+  const kpi = (n, txt, cls) => `<div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
+    <div class="text-2xl font-bold ${cls}">${cargando ? '…' : n}</div><div class="text-xs text-telecab-muted mt-0.5">${txt}</div></div>`;
   $('#a-kpis').innerHTML =
-    kpi(totMapon.toLocaleString('es-ES') + ' km', 'KM Mapon (total GPS)', 'text-telecab-text') +
-    kpi(totBolt.toLocaleString('es-ES') + ' km', 'KM BOLT (con pasajero)', 'text-telecab-gold') +
-    kpi(diff.toLocaleString('es-ES') + ' km', `Diferencia · ${pct}% en vacío`, diff > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
-    kpi(rep.length + ' · ' + litros + ' l', 'Repostajes en el rango', 'text-telecab-green');
+    kpi(total.toLocaleString('es-ES') + ' km', 'KM totales (Mapon)', 'text-telecab-text') +
+    kpi(pas.toLocaleString('es-ES') + ' km', `Con pasajero · ${pctP}%`, 'text-telecab-green') +
+    kpi(fuera.toLocaleString('es-ES') + ' km', `Con BOLT cerrado · ${pctF}%`, fuera > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
+    kpi(DATA.km.filter(x => x.totalFuera > 0).length, 'Coches con km fuera', 'text-telecab-gold');
 }
 
-// ── Pestaña KM ──
+function barra(k) {
+  const t = k.totalMapon || 1;
+  const seg = (v, c) => v > 0 ? `<span class="${c}" style="width:${(v / t * 100).toFixed(1)}%"></span>` : '';
+  return `<span class="flex h-2 rounded-full overflow-hidden bg-telecab-dark w-full" title="pasajero/ida/cruising/fuera">
+    ${seg(k.totalPasajero, 'bg-telecab-green')}${seg(k.totalIda, 'bg-telecab-gold')}${seg(k.totalCruising, 'bg-telecab-muted/50')}${seg(k.totalFuera, 'bg-telecab-red')}</span>`;
+}
+
 function pintarKm() {
   const t = busqueda.toLowerCase();
   const filas = DATA.km.filter(k => !t || (`${k.matricula} ${k.vehiculo}`).toLowerCase().includes(t));
-  const mostrarVacio = !filas.length && !cargando && !error;
-  $('#a-vacio-km').classList.toggle('hidden', !mostrarVacio);
-  if (mostrarVacio) $('#a-vacio-km-txt').textContent = DATA.km.length ? 'Ninguna matrícula coincide con el filtro.' : 'Sin kilómetros en este rango.';
-
-  $('#a-thead-km').innerHTML =
-    `<th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Matrícula</th>
-     <th class="text-right font-semibold px-3 py-3">Mapon</th>
-     <th class="text-right font-semibold px-3 py-3">BOLT</th>
-     <th class="text-right font-semibold px-3 py-3">Dif.</th>
-     <th class="text-right font-semibold px-3 py-3">% vacío</th>
-     <th class="text-right font-semibold px-3 py-3">Viajes</th>` +
-    DATA.dias.map(d => `<th class="text-right font-semibold px-2 py-3 whitespace-nowrap" title="Mapon / BOLT">${ddmm(d)}</th>`).join('');
-
+  const vacio = !filas.length && !cargando && !error;
+  $('#a-vacio-km').classList.toggle('hidden', !vacio);
+  if (vacio) $('#a-vacio-km-txt').textContent = DATA.km.length ? 'Ninguna matrícula coincide con el filtro.' : 'Sin datos procesados en este rango.';
   $('#a-tbody-km').innerHTML = filas.map(k => {
-    const pct = k.pct == null ? '' : k.pct + '%';
-    const pctCls = k.pct == null ? 'text-telecab-muted' : k.pct >= 40 ? 'text-telecab-red font-semibold' : k.pct >= 25 ? 'text-telecab-gold' : 'text-telecab-muted';
-    const diffCls = k.diff > 0 ? 'text-telecab-red' : k.diff < 0 ? 'text-telecab-gold' : 'text-telecab-muted';
-    return `<tr class="hover:bg-telecab-card2/50 transition">
+    const cls = k.pctFuera >= 25 ? 'text-telecab-red font-bold' : k.pctFuera >= 10 ? 'text-telecab-gold font-semibold' : 'text-telecab-muted';
+    return `<tr class="hover:bg-telecab-card2/50 transition ${k.pctFuera >= 25 ? 'bg-telecab-red/[0.04]' : ''}">
       <td class="px-4 py-2.5 font-semibold sticky left-0 bg-telecab-card whitespace-nowrap" title="${esc(k.vehiculo)}">${esc(k.matricula)}</td>
       <td class="px-3 py-2.5 text-right">${nkm(k.totalMapon)}</td>
-      <td class="px-3 py-2.5 text-right text-telecab-gold">${nkm(k.totalBolt)}</td>
-      <td class="px-3 py-2.5 text-right font-medium ${diffCls}">${nkm(k.diff)}</td>
-      <td class="px-3 py-2.5 text-right ${pctCls}">${pct}</td>
-      <td class="px-3 py-2.5 text-right text-telecab-muted">${k.viajesBolt || ''}</td>
-      ${DATA.dias.map(d => {
-        const m = k.mapon[d], b = k.bolt[d];
-        if (m == null && b == null) return '<td class="px-2 py-2.5 text-right text-telecab-muted/30">·</td>';
-        return `<td class="px-2 py-2.5 text-right whitespace-nowrap text-xs"><span>${nkm(m || 0)}</span><span class="text-telecab-muted/50">/</span><span class="text-telecab-gold">${nkm(b || 0)}</span></td>`;
-      }).join('')}
+      <td class="px-3 py-2.5 text-right text-telecab-green">${nkm(k.totalPasajero)}</td>
+      <td class="px-3 py-2.5 text-right text-telecab-gold">${nkm(k.totalIda)}</td>
+      <td class="px-3 py-2.5 text-right text-telecab-muted">${nkm(k.totalCruising)}</td>
+      <td class="px-3 py-2.5 text-right font-semibold ${k.totalFuera > 0 ? 'text-telecab-red' : 'text-telecab-muted'}">${nkm(k.totalFuera)}</td>
+      <td class="px-3 py-2.5 text-right ${cls}">${k.pctFuera == null ? '' : k.pctFuera + '%'}</td>
+      <td class="px-3 py-2.5">${barra(k)}</td>
     </tr>`;
   }).join('');
 }
 
-// ── Pestaña Repostajes ──
 function filtrosEv() {
   const n = tp => DATA.eventos.filter(e => !tp || e.tipo === tp).length;
-  $('#a-filtros-ev').innerHTML = [
-    { id: '', txt: `Todos (${n('')})` }, { id: 'repostaje', txt: `Repostajes (${n('repostaje')})` }, { id: 'caida', txt: `Caídas (${n('caida')})` }
-  ].map(o => {
-    const on = filtroEv === o.id;
-    return `<button data-f="${o.id}" class="px-3 py-1.5 rounded-lg text-xs font-medium transition border
-      ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${o.txt}</button>`;
-  }).join('');
+  $('#a-filtros-ev').innerHTML = [{ id: '', txt: `Todos (${n('')})` }, { id: 'repostaje', txt: `Repostajes (${n('repostaje')})` }, { id: 'caida', txt: `Caídas (${n('caida')})` }]
+    .map(o => { const on = filtroEv === o.id;
+      return `<button data-f="${o.id}" class="px-3 py-1.5 rounded-lg text-xs font-medium transition border
+        ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${o.txt}</button>`; }).join('');
   $('#a-filtros-ev').querySelectorAll('button').forEach(b => b.onclick = () => { filtroEv = b.dataset.f; filtrosEv(); pintarEv(); });
 }
 function pintarEv() {
   const t = busqueda.toLowerCase();
-  const lista = DATA.eventos.filter(e => {
-    if (filtroEv && e.tipo !== filtroEv) return false;
-    if (t && !(`${e.matricula} ${e.vehiculo}`).toLowerCase().includes(t)) return false;
-    return true;
-  });
-  const mostrarVacio = !lista.length && !cargando && !error;
-  $('#a-vacio-ev').classList.toggle('hidden', !mostrarVacio);
-  if (mostrarVacio) $('#a-vacio-ev-txt').textContent = DATA.eventos.length ? 'Ningún evento coincide con el filtro.' : 'Sin eventos de combustible en este rango.';
+  const lista = DATA.eventos.filter(e => (!filtroEv || e.tipo === filtroEv) && (!t || (`${e.matricula} ${e.vehiculo}`).toLowerCase().includes(t)));
+  const vacio = !lista.length && !cargando && !error;
+  $('#a-vacio-ev').classList.toggle('hidden', !vacio);
+  if (vacio) $('#a-vacio-ev-txt').textContent = DATA.eventos.length ? 'Ningún evento coincide con el filtro.' : 'Sin eventos de combustible en este rango.';
   $('#a-tbody-ev').innerHTML = lista.map(e => {
     const esRep = e.tipo === 'repostaje';
     const lugar = e.direccion ? esc(e.direccion) : (e.lat != null ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` : '—');
-    const mapa = e.lat != null ? ` <a href="https://maps.google.com/?q=${e.lat},${e.lng}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline text-xs whitespace-nowrap"><i class="fa-solid fa-map-location-dot"></i></a>` : '';
+    const mapa = e.lat != null ? ` <a href="https://maps.google.com/?q=${e.lat},${e.lng}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline text-xs"><i class="fa-solid fa-map-location-dot"></i></a>` : '';
     return `<tr class="hover:bg-telecab-card2/50 transition ${esRep ? '' : 'bg-telecab-red/[0.04]'}">
       <td class="px-4 py-3 whitespace-nowrap">${ddmm(e.dia)}</td>
       <td class="px-4 py-3 font-medium whitespace-nowrap">${esc(e.hora)}</td>
@@ -232,24 +242,26 @@ function pintarEv() {
   }).join('');
 }
 
-// ── Pestaña Ofensores ──
 function pintarTop() {
-  const fila = (izq, der, sub) => `<div class="flex items-center gap-3 px-4 py-3">
-      <span class="min-w-0 flex-1"><span class="block font-semibold text-telecab-text">${esc(izq)}</span><span class="block text-xs text-telecab-muted">${sub}</span></span>
-      <span class="text-right font-bold text-telecab-text whitespace-nowrap">${der}</span></div>`;
-  const d = DATA.ofensores.kmDiff;
-  $('#a-top-diff').innerHTML = d.length ? d.map(o =>
-    fila(o.matricula, `${nkm(o.diff)} km`, `Mapon ${nkm(o.totalMapon)} · BOLT ${nkm(o.totalBolt)} · ${o.pct == null ? '' : o.pct + '% vacío'}`)).join('')
-    : '<p class="p-4 text-sm text-telecab-muted">Sin datos.</p>';
-  const rp = DATA.ofensores.repostaje;
-  $('#a-top-rep').innerHTML = rp.length ? rp.map(o =>
-    fila(o.matricula, `${nkm(o.litros)} l`, `${o.veces} repostaje${o.veces === 1 ? '' : 's'}`)).join('')
+  const fila = (izq, der, sub, cls) => `<div class="flex items-center gap-3 px-4 py-3">
+    <span class="min-w-0 flex-1"><span class="block font-semibold text-telecab-text">${esc(izq)}</span><span class="block text-xs text-telecab-muted">${sub}</span></span>
+    <span class="text-right font-bold whitespace-nowrap ${cls || 'text-telecab-text'}">${der}</span></div>`;
+  const f = DATA.ofensores.fuera;
+  $('#a-top-fuera').innerHTML = f.length ? f.map(o => fila(o.matricula, `${nkm(o.fuera)} km`, `${o.pct == null ? '' : o.pct + '% de sus ' + nkm(o.mapon) + ' km'}`, 'text-telecab-red')).join('')
+    : '<p class="p-4 text-sm text-telecab-green"><i class="fa-solid fa-circle-check mr-1"></i> Nadie rodó con BOLT cerrado en este rango.</p>';
+  const r = DATA.ofensores.repostaje;
+  $('#a-top-rep').innerHTML = r.length ? r.map(o => fila(o.matricula, `${nkm(o.litros)} l`, `${o.veces} repostaje${o.veces === 1 ? '' : 's'}`)).join('')
     : '<p class="p-4 text-sm text-telecab-muted">Sin repostajes.</p>';
 }
 
-function pintarTodo() { kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarTop(); }
+function pintarPendientes() {
+  const p = DATA.pendientes || [];
+  $('#a-pendientes').classList.toggle('hidden', !p.length || cargando);
+  if (p.length) $('#a-pend-txt').innerHTML = `<b>${p.length} día(s) sin procesar</b> en este rango: ${p.map(ddmm).join(', ')}. Los datos mostrados no los incluyen.`;
+}
 
-// ── Pestañas ──
+function pintarTodo() { kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarTop(); pintarPendientes(); }
+
 function activarTab(t) {
   tab = t;
   document.querySelectorAll('.a-tab').forEach(b => {
@@ -259,9 +271,7 @@ function activarTab(t) {
   });
   document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== t || cargando));
 }
-
 function aviso(t) { const b = $('#a-aviso'); if (!t) { b.classList.add('hidden'); return; } b.classList.remove('hidden'); b.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i>${esc(t)}`; }
-
 function rango() {
   const p = new URLSearchParams();
   if ($('#a-desde').value.trim()) p.set('desde', $('#a-desde').value.trim());
@@ -276,31 +286,54 @@ async function cargar() {
   $('#a-excel').href = '/operaciones/auditoria/excel?' + q;
   $('#a-resumen').textContent = `${$('#a-desde').value} → ${$('#a-hasta').value}`;
   $('#a-consultar').disabled = true;
-  cargando = true;
-  $('#a-cargando').classList.remove('hidden');
+  cargando = true; $('#a-cargando').classList.remove('hidden');
   document.querySelectorAll('[data-panel]').forEach(p => p.classList.add('hidden'));
+  $('#a-pendientes').classList.add('hidden');
   kpis();
-
   try {
     const d = await (await fetch('/operaciones/api/auditoria?' + q)).json();
     if (mine !== gen) return;
     if (d.status !== 'ok') throw new Error(d.msg || 'error');
-    DATA = { dias: d.dias || [], km: d.km || [], eventos: d.eventos || [], ofensores: d.ofensores || { kmDiff: [], repostaje: [] } };
-    $('#a-pie').textContent = `${d.km.length} matrículas · ${d.dias.length} días · ${d.refrescados} día(s) actualizados desde las APIs, el resto del histórico.`;
+    DATA = { dias: d.dias || [], km: d.km || [], eventos: d.eventos || [], ofensores: d.ofensores || { fuera: [], repostaje: [] }, pendientes: d.pendientes || [] };
+    $('#a-pie').textContent = `${DATA.km.length} matrículas · ${DATA.dias.length} días · datos del histórico (los procesa el cron a las 5:00).`;
   } catch (e) {
     if (mine !== gen) return;
     error = e.message; aviso('No se pudo cargar: ' + e.message);
-    DATA = { dias: [], km: [], eventos: [], ofensores: { kmDiff: [], repostaje: [] } };
+    DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [] }, pendientes: [] };
   } finally {
-    if (mine === gen) {
-      cargando = false; $('#a-cargando').classList.add('hidden');
-      $('#a-consultar').disabled = false;
-      pintarTodo(); activarTab(tab);
-    }
+    if (mine === gen) { cargando = false; $('#a-cargando').classList.add('hidden'); $('#a-consultar').disabled = false; pintarTodo(); activarTab(tab); }
   }
 }
 
-// ── Arranque ──
+// ── Procesado manual (backfill) ──
+async function sondearProgreso() {
+  try {
+    const d = await (await fetch('/operaciones/auditoria/procesar/estado')).json();
+    const p = d.progreso || {};
+    if (p.activo) {
+      $('#a-progreso').classList.remove('hidden');
+      $('#a-prog-txt').textContent = `Procesando ${p.dia || ''}… ${p.hechos}/${p.total} días`;
+      $('#a-prog-bar').style.width = (p.total ? (p.hechos / p.total * 100) : 0) + '%';
+    } else {
+      $('#a-progreso').classList.add('hidden');
+      if (poll) { clearInterval(poll); poll = null; if (p.error) aviso('Procesado: ' + p.error); cargar(); }
+    }
+  } catch (_) {}
+}
+$('#a-procesar').onclick = async () => {
+  const p = DATA.pendientes || []; if (!p.length) return;
+  if (!confirm(`¿Procesar ${p.length} día(s)? Es pesado: consulta el recorrido de cada coche en Mapon.`)) return;
+  $('#a-procesar').disabled = true;
+  try {
+    const r = await (await fetch('/operaciones/auditoria/procesar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ desde: ddmm(p[0]) + '/' + p[0].slice(0, 4), hasta: ddmm(p[p.length - 1]) + '/' + p[p.length - 1].slice(0, 4) }) })).json();
+    if (r.status !== 'ok') throw new Error(r.msg);
+    $('#a-progreso').classList.remove('hidden');
+    if (!poll) poll = setInterval(sondearProgreso, 3000);
+  } catch (e) { aviso('No se pudo iniciar: ' + e.message); }
+  $('#a-procesar').disabled = false;
+};
+
 (function () {
   const hoy = new Date(); const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
   $('#a-desde').value = fmt(hace7); $('#a-hasta').value = fmt(hoy);
@@ -309,6 +342,6 @@ async function cargar() {
   $('#a-consultar').onclick = cargar;
   $('#a-buscar').oninput = e => { busqueda = e.target.value; pintarKm(); pintarEv(); };
   ['#a-desde', '#a-hasta'].forEach(s => $(s).addEventListener('change', cargar));
-  cargar();
+  cargar(); sondearProgreso();
 })();
 </script>

@@ -302,6 +302,42 @@ async function pedir(ruta, params) {
   return json;
 }
 
+/** gmt de Mapon ('Y-m-d H:i:s' o ISO, siempre UTC) → unix segundos. */
+function tsUTC(g) {
+  let s = String(g == null ? '' : g).trim().replace(' ', 'T');
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z';   // sin zona → es UTC
+  const t = Date.parse(s);
+  return isNaN(t) ? null : Math.floor(t / 1000);
+}
+
+/**
+ * Recorrido punto a punto de UNA unidad (route/list con include=decoded_route).
+ * Devuelve sus trayectos con la distancia Mapon (metros) y la traza GPS con hora,
+ * para poder repartir cada metro según en qué estado estaba el conductor (BOLT).
+ * `decoded_route` solo lo da Mapon pidiendo una única unidad, de ahí una llamada
+ * por coche (pesado: se hace en el cron de la auditoría, no en cada consulta).
+ *
+ *   fromTs / tillTs   unix (segundos), UTC.
+ */
+async function leerRecorridoUnidad({ unitId, fromTs, tillTs }) {
+  const from = aUTC(new Date(fromTs * 1000));
+  const till = aUTC(new Date(tillTs * 1000));
+  const json = await pedir('route/list.json',
+    `from=${encodeURIComponent(from)}&till=${encodeURIComponent(till)}` +
+    `&unit_id=${encodeURIComponent(unitId)}&include=decoded_route`);
+  const u = ((json.data && json.data.units) || [])[0] || {};
+  const trips = (u.routes || [])
+    .filter(rt => rt.type === 'route')
+    .map(rt => ({
+      distancia: Number(rt.distance) || 0,               // metros (odómetro Mapon del tramo)
+      inicioTs: rt.start && rt.start.time ? tsUTC(rt.start.time) : null,
+      puntos: ((rt.decoded_route && rt.decoded_route.points) || [])
+        .map(p => ({ t: tsUTC(p.gmt), lat: Number(p.lat), lng: Number(p.lng) }))
+        .filter(p => p.t != null && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    }));
+  return { unitId, trips };
+}
+
 /**
  * Km recorridos por vehículo y día natural (hora peninsular), sumando la
  * distancia GPS de los trayectos de route/list.json de TODA la flota.
@@ -458,6 +494,6 @@ async function listarSetups() {
 module.exports = {
   TIPOS, UMBRAL, MAX_DIAS,
   leerAlertas, leerExcesosGraves, listarSetups,
-  leerKmPorDia, leerCombustible,
+  leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidades, parseFecha, parseValor, normalizar
 };
