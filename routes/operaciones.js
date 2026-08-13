@@ -109,6 +109,30 @@ router.get('/fichaje/diagnostico', async (req, res) => {
     catch (e) { out.errorConductoresUnidad = e.message; }
   }
 
+  // ?reles=1 → ¿tienen los coches relé de corte de motor instalado? (solo lectura)
+  if (q.reles) {
+    try { out.reles = await mapon.relesDeFlota(); }
+    catch (e) { out.errorReles = e.message; }
+  }
+
+  // ?rele=0|1 con ?matricula= → PRUEBA el corte de motor en UN coche y confirma el
+  // estado real (change_relay solo dice que la orden salió). 0/1 lo decide quien llama:
+  // qué valor bloquea y cuál libera se comprueba mirando el coche, no adivinando.
+  if (q.rele !== undefined && unitId) {
+    try {
+      const info = await mapon.relesDeUnidad(unitId);
+      out.antesDeTodo = info;
+      const rele = mapon.releDeCorte(info);
+      if (!rele) out.errorRele = 'Ese vehículo no reporta ningún relé';
+      else if (info.enMarcha) out.errorRele = `El coche está EN MARCHA (${info.velocidad} km/h): no se toca el relé`;
+      else {
+        out.rele = await mapon.cambiarReleConfirmado({
+          unitId, relayId: rele.relay_id, estado: String(q.rele) === '1'
+        });
+      }
+    } catch (e) { out.errorRele = e.message; }
+  }
+
   // ?crear=NOMBRE → lo crea si no existe (o reutiliza el que ya haya con ese nombre)
   const nombre = (q.crear || '').toString().trim();
   if (nombre) {

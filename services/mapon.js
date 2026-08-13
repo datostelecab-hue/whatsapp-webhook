@@ -406,6 +406,93 @@ async function conductoresDeUnidad(unitId) {
 }
 
 /**
+ * Relés instalados en la flota (include=relays). Es lo PRIMERO que hay que mirar antes
+ * de plantearse cualquier corte de motor: si el vehículo no lleva el relé físico, la
+ * lista viene vacía y no hay nada que activar por API.
+ *
+ * De cada relé interesa: `type` ('engine_block' = corte de motor), `relay_state` (si
+ * está activo AHORA), `enabled` y `control_while_moving` (si el equipo permite o no
+ * accionarlo en marcha — Mapon rechaza el corte con el coche en movimiento).
+ */
+async function relesDeFlota() {
+  const j = await pedir('unit/list.json', 'include=relays,ignition');
+  const unidades = (j.data && j.data.units) || [];
+  const filas = unidades.map(u => ({
+    unitId: u.unit_id,
+    matricula: txt(u.number) || `#${u.unit_id}`,
+    estado: (u.state && u.state.name) || '',
+    reles: (u.relays || []).map(r => ({
+      relay_id: r.relay_id, tipo: r.type, titulo: txt(r.title),
+      activo: r.relay_state, habilitado: r.enabled,
+      invertido: r.inverted, controlEnMarcha: r.control_while_moving
+    }))
+  }));
+  const conRele = filas.filter(f => f.reles.length);
+  const conCorte = filas.filter(f => f.reles.some(r => r.tipo === 'engine_block'));
+  return {
+    totalVehiculos: filas.length,
+    conAlgunRele: conRele.length,
+    conCorteDeMotor: conCorte.length,
+    // Si esto sale 0, la respuesta a "¿podemos bloquear el motor?" es NO por hardware.
+    veredicto: conCorte.length
+      ? `${conCorte.length} de ${filas.length} vehículos tienen relé de corte de motor`
+      : 'NINGÚN vehículo reporta relé de corte de motor: haría falta instalarlo',
+    vehiculos: conRele.length ? conRele : filas.slice(0, 10)
+  };
+}
+
+// ── Corte de motor (relé) ─────────────────────────────────────────────────────
+// OJO: unit/change_relay solo confirma que la ORDEN salió, no que el relé cambiara.
+// Para saber el estado real hay que volver a leer unit/list con include=relays; por eso
+// todas las operaciones de aquí confirman después.
+
+/** Relés y estado de marcha de UNA unidad. */
+async function relesDeUnidad(unitId) {
+  const j = await pedir('unit/list.json', `unit_id=${encodeURIComponent(unitId)}&include=relays,ignition`);
+  const u = ((j.data && j.data.units) || [])[0];
+  if (!u) return null;
+  return {
+    unitId: u.unit_id, matricula: txt(u.number),
+    estado: (u.state && u.state.name) || '',            // driving / standing / nodata…
+    enMarcha: (u.state && u.state.name) === 'driving',
+    velocidad: Number(u.speed) || 0,
+    reles: (u.relays || []).map(r => ({
+      relay_id: r.relay_id, tipo: r.type, titulo: txt(r.title),
+      estado: r.relay_state, habilitado: r.enabled,
+      invertido: r.inverted, controlEnMarcha: r.control_while_moving
+    }))
+  };
+}
+
+/** El relé de corte de motor de una unidad (o el primero que haya), o null. */
+const releDeCorte = info => !info ? null
+  : (info.reles.find(r => r.tipo === 'engine_block') || info.reles[0] || null);
+
+/** Manda la orden de cambio de relé. Devuelve la respuesta cruda de Mapon. */
+const cambiarRele = ({ unitId, relayId, estado }) =>
+  pedirPost('unit/change_relay.json', { unit_id: unitId, relay_id: relayId, relay_state: estado ? 1 : 0 });
+
+/**
+ * Cambia el relé y CONFIRMA leyendo el estado real. Devuelve
+ * { ok, antes, despues, confirmado, intentos }. `ok:false` con `confirmado:false`
+ * significa que la orden salió pero el equipo no la aplicó (sin cobertura, p. ej.).
+ */
+async function cambiarReleConfirmado({ unitId, relayId, estado, intentos = 5, esperaMs = 2000 }) {
+  const previo = await relesDeUnidad(unitId);
+  const rPrev = (previo && previo.reles.find(r => String(r.relay_id) === String(relayId))) || null;
+  await cambiarRele({ unitId, relayId, estado });
+  for (let i = 1; i <= intentos; i++) {
+    await new Promise(r => setTimeout(r, esperaMs));
+    const ahora = await relesDeUnidad(unitId);
+    const rAhora = (ahora && ahora.reles.find(x => String(x.relay_id) === String(relayId))) || null;
+    if (rAhora && !!rAhora.estado === !!estado) {
+      return { ok: true, confirmado: true, intentos: i, antes: rPrev, despues: rAhora };
+    }
+    if (i === intentos) return { ok: false, confirmado: false, intentos: i, antes: rPrev, despues: rAhora };
+  }
+}
+
+/**
  * Km recorridos por una unidad en una ventana, y cuántos de esos trayectos vienen
  * ya atribuidos a un conductor por la propia Mapon (include=driver_id). Lo segundo
  * es la comprobación de si Mapon SELLA el conductor en el histórico o lo resuelve
@@ -624,5 +711,6 @@ module.exports = {
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana,
+  relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado,
   unidades, parseFecha, parseValor, normalizar
 };
