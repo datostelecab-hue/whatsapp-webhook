@@ -115,6 +115,13 @@ router.get('/fichaje/diagnostico', async (req, res) => {
     catch (e) { out.errorReles = e.message; }
   }
 
+  // ?crudo=1 con ?matricula= → qué devuelve Mapon TAL CUAL, probando varias formas de
+  // pedir los extras. Sirve para distinguir "no tiene relé" de "no lo pedimos bien".
+  if (q.crudo && unitId) {
+    try { out.crudo = await mapon.crudoUnidad(unitId); }
+    catch (e) { out.errorCrudo = e.message; }
+  }
+
   // ?rele=0|1 con ?matricula= → PRUEBA el corte de motor en UN coche y confirma el
   // estado real (change_relay solo dice que la orden salió). 0/1 lo decide quien llama:
   // qué valor bloquea y cuál libera se comprueba mirando el coche, no adivinando.

@@ -415,7 +415,7 @@ async function conductoresDeUnidad(unitId) {
  * accionarlo en marcha — Mapon rechaza el corte con el coche en movimiento).
  */
 async function relesDeFlota() {
-  const j = await pedir('unit/list.json', 'include=relays,ignition');
+  const j = await pedir('unit/list.json', incluir('relays', 'ignition'));
   const unidades = (j.data && j.data.units) || [];
   const filas = unidades.map(u => ({
     unitId: u.unit_id,
@@ -442,13 +442,17 @@ async function relesDeFlota() {
 }
 
 // ── Corte de motor (relé) ─────────────────────────────────────────────────────
+// El parámetro `include` de Mapon se manda como ARRAY (include[]=a&include[]=b). Con
+// varios valores separados por comas no los interpreta y devuelve la unidad SIN esos
+// bloques — que parece "no tiene relés" cuando en realidad no se los hemos pedido bien.
+const incluir = (...vals) => vals.filter(Boolean).map(v => `include[]=${encodeURIComponent(v)}`).join('&');
 // OJO: unit/change_relay solo confirma que la ORDEN salió, no que el relé cambiara.
 // Para saber el estado real hay que volver a leer unit/list con include=relays; por eso
 // todas las operaciones de aquí confirman después.
 
 /** Relés y estado de marcha de UNA unidad. */
 async function relesDeUnidad(unitId) {
-  const j = await pedir('unit/list.json', `unit_id=${encodeURIComponent(unitId)}&include=relays,ignition`);
+  const j = await pedir('unit/list.json', `unit_id=${encodeURIComponent(unitId)}&${incluir('relays', 'ignition')}`);
   const u = ((j.data && j.data.units) || [])[0];
   if (!u) return null;
   return {
@@ -462,6 +466,38 @@ async function relesDeUnidad(unitId) {
       invertido: r.inverted, controlEnMarcha: r.control_while_moving
     }))
   };
+}
+
+/**
+ * Volcado CRUDO de una unidad probando varias formas de pedir los extras, para saber
+ * si el vehículo de verdad no tiene relé o es que no lo estamos pidiendo bien. Devuelve
+ * las claves que trae cada variante, sin interpretar nada.
+ */
+async function crudoUnidad(unitId) {
+  const variantes = {
+    'include[]=relays': `unit_id=${encodeURIComponent(unitId)}&include[]=relays`,
+    'include=relays': `unit_id=${encodeURIComponent(unitId)}&include=relays`,
+    'include[]=relays&include[]=io_din': `unit_id=${encodeURIComponent(unitId)}&include[]=relays&include[]=io_din`,
+    'sin include': `unit_id=${encodeURIComponent(unitId)}`
+  };
+  const out = {};
+  for (const [etiqueta, params] of Object.entries(variantes)) {
+    try {
+      const j = await pedir('unit/list.json', params);
+      const u = ((j.data && j.data.units) || [])[0] || {};
+      out[etiqueta] = {
+        claves: Object.keys(u),
+        relays: u.relays !== undefined ? u.relays : '(ausente)',
+        io_din: u.io_din !== undefined ? u.io_din : '(ausente)'
+      };
+    } catch (e) { out[etiqueta] = { error: e.message }; }
+  }
+  // Los comandos remotos son la OTRA vía posible de corte de motor (connected-car).
+  try {
+    const j = await pedir('unit_commands/get_available.json', `unit_id=${encodeURIComponent(unitId)}`);
+    out.comandosDisponibles = j.data || j;
+  } catch (e) { out.comandosDisponibles = { error: e.message }; }
+  return out;
 }
 
 /** El relé de corte de motor de una unidad (o el primero que haya), o null. */
@@ -711,6 +747,6 @@ module.exports = {
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana,
-  relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado,
+  relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado, crudoUnidad,
   unidades, parseFecha, parseValor, normalizar
 };
