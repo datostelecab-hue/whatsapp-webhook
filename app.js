@@ -322,7 +322,9 @@ cron.schedule('20 4 * * *', async () => {
 // translation"), que casi siempre es un idioma distinto del que se pide (es vs es_ES).
 app.get('/whatsapp/plantillas', async (req, res) => {
   try {
-    const { listarPlantillas } = require('./services/whatsapp');
+    const { listarPlantillas, estadoCuenta } = require('./services/whatsapp');
+    // ?cuenta=1 → estado del número y de la empresa propietaria (límites de mensajes).
+    if (req.query.cuenta) return res.json(await estadoCuenta());
     res.json(await listarPlantillas((req.query.nombre || '').toString().trim() || undefined));
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });

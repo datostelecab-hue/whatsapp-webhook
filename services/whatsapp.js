@@ -118,7 +118,10 @@ async function enviarAvisoTurnos(telefono, nombre) {
  * idioma no son los que creemos. Descubre la cuenta (WABA) a partir del propio token;
  * se puede fijar con WHATSAPP_WABA_ID para ahorrarse el descubrimiento.
  */
-let _waba = (process.env.WHATSAPP_WABA_ID || '').trim() || null;
+// WABA "Telecab" (portfolio "Datos telecab"), la que contiene nuestras plantillas y los
+// dos números. Se deja fijo como el PHONE_NUMBER_ID; WHATSAPP_WABA_ID lo puede cambiar.
+const WABA_TELECAB = '1352445060168316';
+let _waba = (process.env.WHATSAPP_WABA_ID || '').trim() || WABA_TELECAB;
 async function descubrirWaba() {
   if (_waba) return _waba;
   try {
@@ -152,6 +155,49 @@ async function listarPlantillas(nombre) {
     botones: ((t.components || []).find(c => (c.type || '').toUpperCase() === 'BUTTONS')?.buttons || []).map(b => b.text)
   })).sort((a, b) => a.nombre.localeCompare(b.nombre));
   return { ok: true, waba, total: plantillas.length, idiomaUsado: Object.fromEntries(idiomaOk), plantillas };
+}
+
+/**
+ * Estado de la cuenta: qué WABA usamos, QUÉ EMPRESA la posee y si esa empresa está
+ * verificada, más la calidad y el escalón de mensajes del número. Sirve para el caso
+ * típico de "mi empresa está verificada pero WhatsApp me sigue limitando": suele ser
+ * que el WABA cuelga de OTRO portfolio distinto del verificado.
+ */
+async function estadoCuenta() {
+  const out = { phone_number_id: PHONE_NUMBER_ID };
+  const g = async (ruta, campos) => {
+    const r = await fetch(`https://graph.facebook.com/${VERSION}/${ruta}?fields=${encodeURIComponent(campos)}&access_token=${encodeURIComponent(TOKEN)}`);
+    return r.json();
+  };
+  try {
+    // Calidad y escalón actual del número que envía.
+    const n = await g(PHONE_NUMBER_ID, 'display_phone_number,verified_name,quality_rating,messaging_limit_tier,name_status,status');
+    out.numero = n.error ? { error: n.error.message } : n;
+  } catch (e) { out.numero = { error: e.message }; }
+
+  try {
+    const waba = await descubrirWaba();
+    out.waba = waba || null;
+    if (waba) {
+      const w = await g(waba, 'id,name,account_review_status,owner_business_info,on_behalf_of_business_info');
+      out.cuenta = w.error ? { error: w.error.message } : w;
+      const negocio = (w.owner_business_info && w.owner_business_info.id) || (w.on_behalf_of_business_info && w.on_behalf_of_business_info.id);
+      if (negocio) {
+        const b = await g(negocio, 'id,name,verification_status');
+        out.empresaPropietaria = b.error ? { error: b.error.message } : b;
+      }
+    }
+  } catch (e) { out.errorWaba = e.message; }
+
+  // Traducción de lo importante a lenguaje llano.
+  const v = out.empresaPropietaria && out.empresaPropietaria.verification_status;
+  out.resumen = {
+    escalon: (out.numero && out.numero.messaging_limit_tier) || '(desconocido)',
+    calidad: (out.numero && out.numero.quality_rating) || '(desconocida)',
+    empresaQuePoseeElWhatsApp: (out.empresaPropietaria && out.empresaPropietaria.name) || '(desconocida)',
+    empresaVerificada: v === 'verified' ? 'sí' : (v || '(desconocido)')
+  };
+  return out;
 }
 
 /** Mensaje de texto suelto (dentro de la ventana de 24 h). */
@@ -195,4 +241,4 @@ async function enviarBotones(telefono, texto, botones) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
-module.exports = { enviarAtencionHora, enviarBallenoil, enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, limpiarTelefono, PLANTILLA_TURNOS };
+module.exports = { enviarAtencionHora, enviarBallenoil, enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, PLANTILLA_TURNOS };
