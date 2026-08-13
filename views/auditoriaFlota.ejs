@@ -29,11 +29,28 @@
                      hover:bg-telecab-gold-soft transition shadow-gold">
         <i class="fa-solid fa-rotate"></i> Consultar
       </button>
-      <a id="a-excel" href="#"
-         class="flex items-center gap-2 px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-telecab-text
+      <!-- Cada tabla se descarga en su propio Excel; el desplegable elige cuál. -->
+      <div class="relative" id="a-desc">
+        <button id="a-desc-btn" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-telecab-text
                 text-sm font-medium hover:border-telecab-gold/50 transition">
-        <i class="fa-solid fa-file-excel text-telecab-green"></i> Excel
-      </a>
+          <i class="fa-solid fa-download text-telecab-green"></i> Descargar <i class="fa-solid fa-chevron-down text-[10px]"></i>
+        </button>
+        <div id="a-desc-menu" class="hidden absolute right-0 mt-1 w-72 z-30 rounded-xl border border-telecab-border bg-telecab-card shadow-soft overflow-hidden">
+          <p class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-telecab-muted">Excel · una tabla por archivo</p>
+          <a data-x="dia"            class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Turno de día</a>
+          <a data-x="noche"          class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Turno de noche</a>
+          <a data-x="resumen-turnos" class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Resumen de turnos (día+noche)</a>
+          <a data-x="manana"         class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Mitad 00–12</a>
+          <a data-x="tarde"          class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Mitad 12–24</a>
+          <a data-x="completo"       class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Día natural (00–24)</a>
+          <a data-x="detalle-dia"    class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Detalle por día</a>
+          <a data-x="repostajes"     class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Repostajes y caídas</a>
+          <a data-x="ofensores"      class="a-dl block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-excel text-telecab-green mr-2"></i>Top offenders</a>
+          <p class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-telecab-muted border-t border-telecab-border">PDF · gráfico de flujo</p>
+          <a data-p="turnos"  class="a-dlp block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2"><i class="fa-solid fa-file-pdf text-telecab-red mr-2"></i>Flujo por turno</a>
+          <a data-p="mitades" class="a-dlp block px-3 py-2 text-sm text-telecab-text hover:bg-telecab-card2 mb-1"><i class="fa-solid fa-file-pdf text-telecab-red mr-2"></i>Flujo por mitades del día</a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -217,6 +234,9 @@
           <i class="fa-solid fa-diagram-project text-telecab-gold"></i> A dónde se van los kilómetros
         </h3>
         <span class="text-xs text-telecab-muted" id="a-flujo-rango"></span>
+        <a data-p="turnos" class="a-dlp ml-auto px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold/50 transition cursor-pointer">
+          <i class="fa-solid fa-file-pdf text-telecab-red mr-1"></i> PDF
+        </a>
       </div>
       <p class="text-[11px] text-telecab-muted mb-3">
         El ancho de cada cinta son kilómetros reales. De izquierda a derecha: total → turno → en qué estaba el conductor.
@@ -238,6 +258,9 @@
           <i class="fa-solid fa-diagram-project text-telecab-gold"></i> Por día natural, partido a mediodía
         </h3>
         <span class="text-xs text-telecab-muted" id="a-flujo2-rango"></span>
+        <a data-p="mitades" class="a-dlp ml-auto px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold/50 transition cursor-pointer">
+          <i class="fa-solid fa-file-pdf text-telecab-red mr-1"></i> PDF
+        </a>
       </div>
       <p class="text-[11px] text-telecab-muted mb-3">
         El mismo flujo pero sobre el día de 00:00 a 24:00, dividido en <b>primera mitad (00–12)</b> y <b>segunda mitad (12–24)</b>.
@@ -652,7 +675,7 @@ async function cargar() {
   const mine = ++gen;
   error = null; aviso('');
   const q = rango();
-  $('#a-excel').href = '/operaciones/auditoria/excel?' + q;
+  // Las descargas se arman al pulsar (usan el rango vigente), no hace falta href aquí.
   $('#a-resumen').textContent = `${$('#a-desde').value} → ${$('#a-hasta').value}`;
   $('#a-consultar').disabled = true;
   cargando = true; $('#a-cargando').classList.remove('hidden');
@@ -715,6 +738,22 @@ $('#a-procesar').onclick = async () => {
   $('#a-desde').value = fmt(hace7); $('#a-hasta').value = fmt(hoy);
   document.querySelectorAll('.a-tab').forEach(b => b.onclick = () => activarTab(b.dataset.tab));
   activarTab('km');
+
+  // ── Descargas: cada tabla su Excel, cada gráfico su PDF ──
+  // Se navega a la URL en el momento de pulsar para que lleve SIEMPRE el rango vigente.
+  const descargar = url => { const a = document.createElement('a'); a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); };
+  const menu = $('#a-desc-menu');
+  $('#a-desc-btn').onclick = e => { e.stopPropagation(); menu.classList.toggle('hidden'); };
+  document.addEventListener('click', () => menu.classList.add('hidden'));
+  menu.addEventListener('click', e => e.stopPropagation());
+  document.querySelectorAll('.a-dl').forEach(a => a.onclick = () => {
+    descargar(`/operaciones/auditoria/excel?${rango()}&tabla=${encodeURIComponent(a.dataset.x)}`);
+    menu.classList.add('hidden');
+  });
+  document.querySelectorAll('.a-dlp').forEach(a => a.onclick = () => {
+    descargar(`/operaciones/auditoria/pdf?${rango()}&flujo=${encodeURIComponent(a.dataset.p)}`);
+    menu.classList.add('hidden');
+  });
   $('#a-consultar').onclick = cargar;
   $('#a-buscar').oninput = e => { busqueda = e.target.value; kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarFlujos(); };
   ['#a-desde', '#a-hasta'].forEach(s => $(s).addEventListener('change', cargar));
