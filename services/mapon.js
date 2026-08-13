@@ -504,9 +504,24 @@ async function crudoUnidad(unitId) {
 const releDeCorte = info => !info ? null
   : (info.reles.find(r => r.tipo === 'engine_block') || info.reles[0] || null);
 
-/** Manda la orden de cambio de relé. Devuelve la respuesta cruda de Mapon. */
-const cambiarRele = ({ unitId, relayId, estado }) =>
-  pedirPost('unit/change_relay.json', { unit_id: unitId, relay_id: relayId, relay_state: estado ? 1 : 0 });
+/**
+ * Manda la orden de cambio de relé.
+ *
+ * `unit/change_relay` es un método RESTRINGIDO: si la clave no lo tiene habilitado,
+ * Mapon responde 1006 "Method not available" (no es un fallo del coche ni de los
+ * parámetros). Solo lo puede activar el soporte de Mapon sobre la API key.
+ */
+async function cambiarRele({ unitId, relayId, estado }) {
+  try {
+    return await pedirPost('unit/change_relay.json', { unit_id: unitId, relay_id: relayId, relay_state: estado ? 1 : 0 });
+  } catch (e) {
+    if (/1006|method not available/i.test(e.message)) {
+      throw new Error('La API key NO tiene habilitado el corte de motor (unit/change_relay, error 1006 "Method not available"). ' +
+        'Hay que pedirle a soporte de Mapon que active ese método para la clave; desde la app sí funciona porque usa otra vía.');
+    }
+    throw e;
+  }
+}
 
 /**
  * Cambia el relé y CONFIRMA leyendo el estado real. Devuelve
