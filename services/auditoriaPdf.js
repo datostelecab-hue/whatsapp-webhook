@@ -99,9 +99,14 @@ async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas })
   if (subtitulo) pg.drawText(limpiar(subtitulo), { x: 24, y: H - 90, size: 9, font: reg, color: C.suave });
 
   // ── Geometría del Sankey ──
+  // TODO se calcula en coordenadas SVG (Y hacia ABAJO desde el borde superior), igual
+  // que en pantalla. Es lo que espera drawSvgPath; si se mezcla con las coordenadas
+  // propias del PDF (Y hacia arriba) las cintas se dibujan fuera de la página y solo
+  // quedan visibles las barras. Para las barras y los textos se convierte con `aPdf`.
+  const aPdf = sy => H - sy;
   const total = tramos.reduce((s, t) => s + t.tot.totalMapon, 0);
-  const top = H - 108, bottom = 150;             // deja sitio abajo para el resumen
-  const alto = top - bottom, NW = 12, GAP = 14;
+  const top = 108, bottom = H - 150;             // desde arriba; abajo queda el resumen
+  const alto = bottom - top, NW = 12, GAP = 14;
   const X = [40, W / 2 - NW / 2, W - 40 - NW];
   const activos = tramos.filter(t => t.tot.totalMapon > 0);
   const sumaBucket = id => activos.reduce((s, t) => s + (t.tot[id] || 0), 0);
@@ -113,46 +118,47 @@ async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas })
       (alto - GAP * Math.max(activos.length - 1, 0)) / total,
       (alto - GAP * Math.max(bucketsAct.length - 1, 0)) / total
     );
-    // En PDF el eje Y crece hacia ARRIBA: se apila desde `top` hacia abajo restando.
     const apilar = (items, valor) => {
       const altoCol = items.reduce((s, i) => s + valor(i) * E, 0) + GAP * (items.length - 1);
-      let y = top - (alto - altoCol) / 2;
-      return items.map(i => { const h = valor(i) * E; const n = { item: i, yTop: y, h }; y -= h + GAP; return n; });
+      let y = top + (alto - altoCol) / 2;
+      return items.map(i => { const h = valor(i) * E; const n = { item: i, y, h }; y += h + GAP; return n; });
     };
-    const nTotal = { yTop: top - (alto - total * E) / 2, h: total * E };
+    const nTotal = { y: top + (alto - total * E) / 2, h: total * E };
     const nTramos = apilar(activos, t => t.tot.totalMapon);
     const nBuckets = apilar(bucketsAct, b => sumaBucket(b.id));
 
+    // El origen del trazo se pone en la esquina superior izquierda de la página.
+    const trazo = (d, color, opacity) => pg.drawSvgPath(d, { x: 0, y: H, color, opacity, borderWidth: 0 });
+
     // Nivel 0 → 1
-    let yT = nTotal.yTop;
+    let yT = nTotal.y;
     const cursorTramo = new Map();
     nTramos.forEach(nt => {
-      pg.drawSvgPath(cinta(X[0] + NW, yT, X[1], nt.yTop, -nt.h, -nt.h),
-        { color: nt.item.color, opacity: 0.25, y: 0, x: 0 });
-      yT -= nt.h;
-      cursorTramo.set(nt.item.txt, nt.yTop);
+      trazo(cinta(X[0] + NW, yT, X[1], nt.y, nt.h, nt.h), nt.item.color, 0.28);
+      yT += nt.h;
+      cursorTramo.set(nt.item.txt, nt.y);
     });
     // Nivel 1 → 2
-    const cursorBucket = new Map(nBuckets.map(nb => [nb.item.id, nb.yTop]));
+    const cursorBucket = new Map(nBuckets.map(nb => [nb.item.id, nb.y]));
     nTramos.forEach(nt => {
       let y1 = cursorTramo.get(nt.item.txt);
       nBuckets.forEach(nb => {
         const v = nt.item.tot[nb.item.id] || 0;
         if (v <= 0) return;
         const h = v * E, y2 = cursorBucket.get(nb.item.id);
-        pg.drawSvgPath(cinta(X[1] + NW, y1, X[2], y2, -h, -h), { color: nb.item.color, opacity: 0.35, x: 0, y: 0 });
-        y1 -= h; cursorBucket.set(nb.item.id, y2 - h);
+        trazo(cinta(X[1] + NW, y1, X[2], y2, h, h), nb.item.color, 0.38);
+        y1 += h; cursorBucket.set(nb.item.id, y2 + h);
       });
     });
 
-    // Nodos y etiquetas
+    // Nodos y etiquetas (aquí sí en coordenadas del PDF)
     const pc = v => total > 0 ? Math.round(v / total * 100) + '%' : '';
     const nodo = (x, n, color, txt, sub, derecha) => {
-      pg.drawRectangle({ x, y: n.yTop - n.h, width: NW, height: Math.max(n.h, 1), color });
+      pg.drawRectangle({ x, y: aPdf(n.y + n.h), width: NW, height: Math.max(n.h, 1), color });
       const anchoTxt = bold.widthOfTextAtSize(limpiar(txt), 9), anchoSub = reg.widthOfTextAtSize(limpiar(sub), 8);
       const tx = derecha ? x - 8 - anchoTxt : x + NW + 8;
       const sx = derecha ? x - 8 - anchoSub : x + NW + 8;
-      const cy = n.yTop - n.h / 2;
+      const cy = aPdf(n.y + n.h / 2);
       pg.drawText(limpiar(txt), { x: tx, y: cy + 2, size: 9, font: bold, color: C.texto });
       pg.drawText(limpiar(sub), { x: sx, y: cy - 9, size: 8, font: reg, color: C.suave });
     };
@@ -162,7 +168,7 @@ async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas })
     nBuckets.forEach(nb => nodo(X[2], nb, nb.item.color, nb.item.txt,
       `${nkm(sumaBucket(nb.item.id))} km · ${pc(sumaBucket(nb.item.id))}`, true));
   } else {
-    pg.drawText(limpiar('Sin kilómetros en este rango.'), { x: 40, y: (top + bottom) / 2, size: 12, font: reg, color: C.suave });
+    pg.drawText(limpiar('Sin kilómetros en este rango.'), { x: 40, y: aPdf((top + bottom) / 2), size: 12, font: reg, color: C.suave });
   }
 
   // ── Resumen inferior: trabajando en BOLT vs no disponible ──
