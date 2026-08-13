@@ -220,8 +220,8 @@
       </div>
       <p class="text-[11px] text-telecab-muted mb-3">
         El ancho de cada cinta son kilómetros reales. De izquierda a derecha: total → turno → en qué estaba el conductor.
-        <b>Solo este gráfico</b> cuenta las matrículas del <b>planificador con algún conductor asignado</b> (fuera bajas, reservas y coches de otras plazas);
-        las tablas y el Excel siguen mostrando toda la flota.
+        Solo entran las <b>matrículas con actividad en la flota de BOLT</b> (un state log o un pedido ese día);
+        los coches que Mapon ve pero no son de esta flota quedan fuera de toda la auditoría.
       </p>
       <div class="overflow-x-auto"><div id="a-sankey" class="min-w-[720px]"></div></div>
       <div id="a-flujo-vacio" class="hidden p-8 text-center text-telecab-muted">
@@ -230,6 +230,25 @@
       </div>
     </div>
     <div class="grid sm:grid-cols-2 gap-3 mt-3" id="a-flujo-kpis"></div>
+
+    <!-- Segunda vista: el día natural partido por la mitad, sin depender de los turnos -->
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft p-4 mt-4">
+      <div class="flex flex-wrap items-baseline gap-2 mb-1">
+        <h3 class="font-semibold text-telecab-text flex items-center gap-2">
+          <i class="fa-solid fa-diagram-project text-telecab-gold"></i> Por día natural, partido a mediodía
+        </h3>
+        <span class="text-xs text-telecab-muted" id="a-flujo2-rango"></span>
+      </div>
+      <p class="text-[11px] text-telecab-muted mb-3">
+        El mismo flujo pero sobre el día de 00:00 a 24:00, dividido en <b>primera mitad (00–12)</b> y <b>segunda mitad (12–24)</b>.
+        No depende de los turnos, así que sirve para comparar coches con relevos distintos.
+      </p>
+      <div class="overflow-x-auto"><div id="a-sankey2" class="min-w-[720px]"></div></div>
+      <div id="a-flujo2-vacio" class="hidden p-8 text-center text-telecab-muted">
+        <i class="fa-solid fa-diagram-project text-3xl mb-2 opacity-40"></i>
+        <p>Sin kilómetros que representar en este rango.</p>
+      </div>
+    </div>
   </section>
 
   <p class="text-[11px] text-telecab-muted mt-3" id="a-pie"></p>
@@ -473,45 +492,38 @@ const BUCKETS = [
 // Los colores se guardan como 'var(--tc-green)' o como triplete '245 158 11'; en ambos
 // casos `rgb(...)` los acepta, así el gráfico sigue el tema claro/oscuro sin tocar nada.
 
-/**
- * SOLO en este gráfico: se cuentan únicamente las matrículas del planificador que
- * tienen algún conductor asignado. Mapon ve muchos coches que no se usan (bajas,
- * Barcelona, reservas) y esos distorsionan el reparto. Las tablas y el Excel siguen
- * enseñando la flota entera.
- */
-const enPlan = k => !DATA.planificadas || DATA.planificadas.has(k.placa);
-
-/** Suma los totales de un tramo (con el filtro de matrícula y el del planificador). */
+/** Suma los totales de un tramo (aplicando el filtro de matrícula). */
 function totalesDe(lista) {
   const a = { totalMapon: 0, coches: 0 };
   BUCKETS.forEach(b => a[b.id] = 0);
-  (lista || []).filter(coincide).filter(enPlan).forEach(k => {
+  (lista || []).filter(coincide).forEach(k => {
     a.totalMapon += k.totalMapon || 0; a.coches++;
     BUCKETS.forEach(b => a[b.id] += k[b.id] || 0);
   });
   return a;
 }
 
-function pintarFlujo() {
-  const dia = totalesDe(DATA.segmentos.dia), noche = totalesDe(DATA.segmentos.noche);
-  const total = dia.totalMapon + noche.totalMapon;
-  const nCoches = new Set([...(DATA.segmentos.dia || []), ...(DATA.segmentos.noche || [])]
-    .filter(coincide).filter(enPlan).map(k => k.placa)).size;
-  $('#a-flujo-rango').innerHTML = `${esc($('#a-desde').value)} → ${esc($('#a-hasta').value)}` +
-    (DATA.planificadas
-      ? ` · <b>${nCoches}</b> coches del planificador con conductor asignado`
-      : ` · <span class="text-telecab-gold">toda la flota (no se pudo leer el planificador)</span>`);
+/**
+ * Dibuja un Sankey. `tramos` son los dos nodos del medio (turnos, o mitades del día);
+ * el gráfico es el mismo, solo cambia por dónde se parte el tiempo.
+ */
+function pintarFlujo(cfg) {
+  const { destino, tramos: defTramos, kpis: idKpis, rango: idRango, vacio: idVacio } = cfg;
+  const tot = defTramos.map(t => ({ ...t, tot: totalesDe(DATA.segmentos[t.seg]) }));
+  const total = tot.reduce((s, t) => s + t.tot.totalMapon, 0);
+  const nCoches = new Set(defTramos.flatMap(t => DATA.segmentos[t.seg] || [])
+    .filter(coincide).map(k => k.placa)).size;
+  $(idRango).innerHTML = `${esc($('#a-desde').value)} → ${esc($('#a-hasta').value)}` +
+    ` · <b>${nCoches}</b> matrículas con actividad en BOLT`;
   const vacio = !(total > 0) && !cargando;
-  $('#a-flujo-vacio').classList.toggle('hidden', !vacio);
-  $('#a-sankey').innerHTML = '';
-  if (!(total > 0)) { $('#a-flujo-kpis').innerHTML = ''; return; }
+  $(idVacio).classList.toggle('hidden', !vacio);
+  $(destino).innerHTML = '';
+  if (!(total > 0)) { if (idKpis) $(idKpis).innerHTML = ''; return; }
 
+  const dia = tot[0].tot, noche = tot[1] ? tot[1].tot : totalesDe([]);
   const W = 940, H = 440, M = 24, NW = 15, GAP = 16;
   const X = [M, W / 2 - NW / 2, W - M - NW];
-  const turnos = [
-    { id: 'dia', txt: '☀️ Turno de día', tot: dia, color: 'var(--tc-gold)' },
-    { id: 'noche', txt: '🌙 Turno de noche', tot: noche, color: '96 165 250' }
-  ].filter(t => t.tot.totalMapon > 0);
+  const turnos = tot.filter(t => t.tot.totalMapon > 0);
 
   // Una sola escala para las tres columnas: la manda la más apretada (la de 5 nodos).
   const alto = H - M * 2;
@@ -526,9 +538,12 @@ function pintarFlujo() {
     return items.map(i => { const h = valor(i) * E; const n = { item: i, y, h }; y += h + GAP; return n; });
   };
 
+  // Cada bucket suma lo de TODOS los tramos (no solo dos), para que el gráfico valga
+  // igual con turnos que con mitades del día.
+  const sumaBucket = id => turnos.reduce((s, t) => s + (t.tot[id] || 0), 0);
   const nTotal = [{ item: null, y: M + (alto - total * E) / 2, h: total * E }];
   const nTurnos = apilar(turnos, t => t.tot.totalMapon);
-  const nBuckets = apilar(BUCKETS.filter(b => dia[b.id] + noche[b.id] > 0), b => dia[b.id] + noche[b.id]);
+  const nBuckets = apilar(BUCKETS.filter(b => sumaBucket(b.id) > 0), b => sumaBucket(b.id));
 
   // Cinta de enlace: dos curvas cúbicas que unen los bordes de origen y destino.
   const cinta = (x1, y1, x2, y2, h1, h2) => {
@@ -571,15 +586,16 @@ function pintarFlujo() {
   partes.push(nodo(X[0], nTotal[0].y, nTotal[0].h, 'var(--tc-text)', 'start', 'KM totales', `${nkm(round1(total))} km`));
   nTurnos.forEach(nt => partes.push(nodo(X[1], nt.y, nt.h, nt.item.color, 'start', nt.item.txt, `${nkm(round1(nt.item.tot.totalMapon))} km · ${pc(nt.item.tot.totalMapon)}`)));
   nBuckets.forEach(nb => {
-    const v = dia[nb.item.id] + noche[nb.item.id];
+    const v = sumaBucket(nb.item.id);
     partes.push(nodo(X[2], nb.y, nb.h, nb.item.color, 'end', nb.item.txt, `${nkm(round1(v))} km · ${pc(v)}`));
   });
 
-  $('#a-sankey').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:460px">${partes.join('')}</svg>`;
+  $(destino).innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:460px">${partes.join('')}</svg>`;
+  if (!idKpis) return;
 
   // Mismas categorías que las tarjetas de arriba, para que no se contradigan:
   // trabajando en BOLT (viaje + camino + espera) frente a no disponible (descanso + cerrada).
-  const s = f => dia[f] + noche[f];
+  const s = sumaBucket;
   const viaje = s('totalPasajero'), camino = s('totalIda'), espera = s('totalEspera');
   const desc = s('totalDescanso'), cerrada = s('totalFuera');
   const enBolt = viaje + camino + espera, noDisp = desc + cerrada;
@@ -587,14 +603,32 @@ function pintarFlujo() {
     <div class="text-xs text-telecab-text font-medium">${t}</div>
     <div class="text-2xl font-bold ${cls}">${v}</div>
     <div class="text-[11px] text-telecab-muted mt-0.5">${sub}</div></div>`;
-  $('#a-flujo-kpis').innerHTML =
+  $(idKpis).innerHTML =
     tarjeta('Trabajando en BOLT', `${pc(enBolt)} · ${nkm(round1(enBolt))} km`,
       `🧍 ${nkm(round1(viaje))} de viaje · 🚕 ${nkm(round1(camino))} de camino · ⏳ ${nkm(round1(espera))} en espera`, 'text-telecab-green') +
     tarjeta('No disponible', `${pc(noDisp)} · ${nkm(round1(noDisp))} km`,
       `😴 ${nkm(round1(desc))} en descanso · 🔒 ${nkm(round1(cerrada))} con la app cerrada`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted');
 }
 
-function pintarTodo() { kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarTop(); pintarFlujo(); pintarPendientes(); }
+/** Los dos flujos: por turno (05–17 / 17–05) y por día natural partido a mediodía. */
+function pintarFlujos() {
+  pintarFlujo({
+    destino: '#a-sankey', kpis: '#a-flujo-kpis', rango: '#a-flujo-rango', vacio: '#a-flujo-vacio',
+    tramos: [
+      { seg: 'dia', id: 'dia', txt: '☀️ Turno de día', color: 'var(--tc-gold)' },
+      { seg: 'noche', id: 'noche', txt: '🌙 Turno de noche', color: '96 165 250' }
+    ]
+  });
+  pintarFlujo({
+    destino: '#a-sankey2', kpis: null, rango: '#a-flujo2-rango', vacio: '#a-flujo2-vacio',
+    tramos: [
+      { seg: 'manana', id: 'manana', txt: '🌅 00:00 – 12:00', color: 'var(--tc-gold)' },
+      { seg: 'tarde', id: 'tarde', txt: '🌆 12:00 – 24:00', color: '96 165 250' }
+    ]
+  });
+}
+
+function pintarTodo() { kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarTop(); pintarFlujos(); pintarPendientes(); }
 
 function activarTab(t) {
   tab = t;
@@ -631,8 +665,7 @@ async function cargar() {
     if (d.status !== 'ok') throw new Error(d.msg || 'error');
     DATA = { dias: d.dias || [], km: d.km || [], eventos: d.eventos || [], ofensores: d.ofensores || { fuera: [], repostaje: [] },
       pendientes: d.pendientes || [], segmentos: d.segmentos || {}, etiquetas: d.etiquetas || {},
-      // null = no se pudo leer el planificador → el gráfico cuenta toda la flota y lo avisa.
-      planificadas: Array.isArray(d.planificadas) ? new Set(d.planificadas) : null };
+      matriculasBolt: d.matriculasBolt || 0 };
     $('#a-pie').textContent = `${DATA.km.length} matrículas · ${DATA.dias.length} días · datos del histórico (los procesa el cron a las 5:00).`;
   } catch (e) {
     if (mine !== gen) return;
@@ -683,7 +716,7 @@ $('#a-procesar').onclick = async () => {
   document.querySelectorAll('.a-tab').forEach(b => b.onclick = () => activarTab(b.dataset.tab));
   activarTab('km');
   $('#a-consultar').onclick = cargar;
-  $('#a-buscar').oninput = e => { busqueda = e.target.value; kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarFlujo(); };
+  $('#a-buscar').oninput = e => { busqueda = e.target.value; kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarFlujos(); };
   ['#a-desde', '#a-hasta'].forEach(s => $(s).addEventListener('change', cargar));
   cargar(); sondearProgreso();
 })();

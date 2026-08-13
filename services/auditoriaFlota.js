@@ -126,13 +126,18 @@ function tsDeHoraLocal(dia, hora) {
 //   · completo día natural:    00:00 → 24:00 (la vista de siempre)
 // "completo" NO es la suma de los otros dos: el tramo 00:00-05:00 pertenece al turno de
 // noche de la víspera. Por eso se guardan y se consultan por separado.
+// Además, el DÍA NATURAL partido por la mitad (00–12 y 12–24), que es otra forma de
+// mirarlo cuando el relevo no cae a las 5: no depende de los turnos y permite un
+// segundo flujo comparable entre coches.
 const HORA_TURNO_DIA = Number(process.env.AUDITORIA_HORA_DIA || 5);
 const HORA_TURNO_NOCHE = Number(process.env.AUDITORIA_HORA_NOCHE || 17);
-const SEGMENTOS = ['completo', 'dia', 'noche'];
+const SEGMENTOS = ['completo', 'dia', 'noche', 'manana', 'tarde'];
 const ETIQUETA_SEG = {
-  completo: `Día natural (00:00–24:00)`,
+  completo: 'Día natural (00:00–24:00)',
   dia: `Turno de día (${HORA_TURNO_DIA}:00–${HORA_TURNO_NOCHE}:00)`,
-  noche: `Turno de noche (${HORA_TURNO_NOCHE}:00–${HORA_TURNO_DIA}:00)`
+  noche: `Turno de noche (${HORA_TURNO_NOCHE}:00–${HORA_TURNO_DIA}:00)`,
+  manana: 'Primera mitad (00:00–12:00)',
+  tarde: 'Segunda mitad (12:00–24:00)'
 };
 
 /** Ventana [start, end) de un tramo. */
@@ -140,6 +145,8 @@ function limitesSegmento(dia, seg) {
   if (seg === 'dia') return { start: tsDeHoraLocal(dia, HORA_TURNO_DIA), end: tsDeHoraLocal(dia, HORA_TURNO_NOCHE) };
   if (seg === 'noche') return { start: tsDeHoraLocal(dia, HORA_TURNO_NOCHE), end: tsDeHoraLocal(diaMenos(dia, -1), HORA_TURNO_DIA) };
   const l = limitesDiaMadrid(dia);
+  if (seg === 'manana') return { start: l.start, end: tsDeHoraLocal(dia, 12) };
+  if (seg === 'tarde') return { start: tsDeHoraLocal(dia, 12), end: l.end + 1 };
   return { start: l.start, end: l.end + 1 };
 }
 
@@ -454,8 +461,18 @@ async function computarDia(dia) {
   const nombrePorUuid = new Map();
   (padron.db || new Map()).forEach((d, uuid) => nombrePorUuid.set(uuid, (d.nombre || '').trim()));
 
+  // ── Qué matrículas se auditan: LAS QUE TUVIERON ACTIVIDAD EN BOLT ese día ──
+  // Mapon tiene coches que no son de esta flota (otras plazas, bajas, reservas sin dar
+  // de alta) y auditarlos ensucia los totales. La verdad la manda BOLT: si un coche
+  // tuvo un state log o un pedido, es de la flota y se audita; si no, ni se consulta a
+  // Mapon —lo que además ahorra una llamada por coche—.
+  const placasBolt = new Set([...Object.keys(logsPorPlaca), ...Object.keys(ordenesPorPlaca)]);
+  const unidadesAuditar = [...mapaUnidades.entries()].filter(([, info]) => placasBolt.has(normPlaca(info.matricula)));
+  console.log(`🚗 [AUDITORÍA] ${dia}: ${placasBolt.size} matrículas con actividad en BOLT · ` +
+    `${unidadesAuditar.length} localizadas en Mapon (de ${mapaUnidades.size})`);
+
   const filas = new Map();   // 'placa|seg' → fila
-  await enParalelo([...mapaUnidades.entries()], CONC_MAPON, async ([unitId, info]) => {
+  await enParalelo(unidadesAuditar, CONC_MAPON, async ([unitId, info]) => {
     const placa = normPlaca(info.matricula);
     if (!placa) return;
     const { trips } = await mapon.leerRecorridoUnidad({ unitId, fromTs, tillTs });
@@ -709,32 +726,6 @@ function construirRespuesta(dias, filasKmRec, eventosRec, segmento = 'completo')
 }
 
 /**
- * Matrículas del PLANIFICADOR que tienen al menos un conductor asignado.
- *
- * Mapon tiene muchos más coches de los que se usan (bajas, Barcelona, reservas), y en
- * el gráfico de flujo eso ensucia los totales. El criterio es el pedido: basta con que
- * el coche tenga UNA plaza cubierta —aunque solo sea el turno de día— para que cuente;
- * si está en el planificador pero sin nadie asignado, se ignora aunque Mapon lo vea
- * moverse. Solo lo usa el Sankey: las tablas y el Excel siguen mostrando toda la flota.
- */
-let _cachePlan = { ts: 0, set: null };
-async function placasPlanificadas() {
-  if (_cachePlan.set && Date.now() - _cachePlan.ts < 10 * 60 * 1000) return _cachePlan.set;
-  const { leerTablero } = require('./planificadorV2');
-  const t = await leerTablero();
-  const set = new Set();
-  (t.coches || []).forEach(c => {
-    const placa = normPlaca(c.matricula);
-    if (!placa) return;
-    const conConductor = (c.personas || []).some(p => p && (p.id || '').toString().trim());
-    if (conConductor) set.add(placa);
-  });
-  _cachePlan = { ts: Date.now(), set };
-  console.log(`🗓️  [AUDITORÍA] ${set.size} matrículas del planificador con conductor asignado`);
-  return set;
-}
-
-/**
  * Lee el rango del histórico. Va por la MISMA cola que los guardados: si no, una
  * consulta que caiga en mitad de una reescritura vería la tabla a medias y pintaría
  * una auditoría vacía (que se lee como "aquí no ha rodado nadie por fuera").
@@ -753,15 +744,13 @@ function cargarAuditoria({ desde, hasta } = {}) {
     const segmentos = Object.fromEntries(SEGMENTOS.map(s =>
       [s, s === 'completo' ? base.km : construirRespuesta(dias, filas, eventos, s).km]));
     const pendientes = dias.filter(d => !procesados.has(d));
-    // Si el planificador no se puede leer, se manda null y el gráfico avisa de que está
-    // contando toda la flota en vez de filtrar en silencio por una lista vacía.
-    const plan = await placasPlanificadas().catch(e => {
-      console.error('⚠️ [AUDITORÍA] planificador:', e.message);
-      return null;
-    });
+    // Todo lo guardado ya es de matrículas CON ACTIVIDAD EN BOLT (se filtran al
+    // calcular el día), así que no hace falta ningún filtro adicional aquí.
+    const enRango = new Set(dias);
+    const matriculas = new Set(filas.filter(r => enRango.has(r.dia)).map(r => r.placa));
     return {
       ...base, segmentos, etiquetas: ETIQUETA_SEG,
-      planificadas: plan ? [...plan] : null,
+      matriculasBolt: matriculas.size,
       desde: ini.toISOString(), hasta: fin.toISOString(), pendientes, generado: ahora()
     };
   });
@@ -770,7 +759,7 @@ function cargarAuditoria({ desde, hasta } = {}) {
 module.exports = {
   cargarAuditoria, procesarDia, procesarRango, progreso, hoyMadrid, diaMenos,
   // exportados para pruebas
-  SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana, placasPlanificadas,
+  SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana,
   normPlaca, diaLocal, limitesDiaMadrid, offsetMadridSeg, mergeIv, enIntervalos,
   construirIv, estadoEn, bucketDe, atribuirRecorrido, tiempoPorEstado, haversineKm, construirRespuesta,
   leerFilasKm, leerEventos, resolverRango, ejeDias, MAX_DIAS
