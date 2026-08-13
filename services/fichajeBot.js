@@ -105,11 +105,17 @@ async function abrirTurno(telefono, matricula) {
     return;
   }
   const t = r.turno;
+  // El estado del motor va DESTACADO: si no se pudo liberar, hay que saberlo antes de
+  // subirse al coche, no descubrirlo al girar la llave.
+  const motor = !r.bloqueoActivo ? ''
+    : (r.motor && r.motor.hecho)
+      ? '\n🔓 *Motor desbloqueado* — ya puedes arrancar'
+      : `\n🔒 *ATENCIÓN: el motor NO se ha desbloqueado*\n_${(r.motor && r.motor.motivo) || 'motivo desconocido'}_\nAvisa a Tráfico antes de nada.`;
   await enviarBotones(telefono,
     `🟢 *Turno iniciado*\n\n🚘 ${t.matricula}${r.vehiculo ? ` · ${r.vehiculo}` : ''}\n🕐 ${fichaje.horaES(t.inicio)}\n` +
     `${r.enlazado ? '🔗 Enlazado a tu nombre en Mapon'
-      : `⚠️ No se pudo enlazar en Mapon (el turno queda registrado igual)\n_${(r.errorMapon || 'motivo desconocido').slice(0, 220)}_`}\n\n` +
-    `A partir de ahora cuento los km. Cuando acabes, pulsa *Terminar turno*.`,
+      : `⚠️ No se pudo enlazar en Mapon (el turno queda registrado igual)\n_${(r.errorMapon || 'motivo desconocido').slice(0, 220)}_`}` +
+    `${motor}\n\nA partir de ahora cuento los km. Cuando acabes, pulsa *Terminar turno*.`,
     [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' }]);
 }
 
@@ -141,9 +147,13 @@ async function cerrarTurno(telefono) {
   const atrib = r.km && r.km.trayectos
     ? `\n🔎 Mapon atribuyó ${r.km.conConductor}/${r.km.trayectos} trayecto(s) a un conductor`
     : '';
+  const motor = !r.bloqueoActivo ? ''
+    : (r.motor && r.motor.hecho)
+      ? '\n🔒 Motor bloqueado hasta el próximo turno'
+      : `\n⚠️ El motor NO se ha bloqueado (_${(r.motor && r.motor.motivo) || 'motivo desconocido'}_)`;
   await enviarBotones(telefono,
     `🔴 *Turno terminado*\n\n🚘 ${t.matricula}\n🕐 ${fichaje.horaES(t.inicio)} → ${fichaje.horaES(t.fin)} (${dur})\n` +
-    `🛣️ *${t.km == null ? '—' : t.km} km* recorridos${atrib}\n\nGracias. Queda registrado.`,
+    `🛣️ *${t.km == null ? '—' : t.km} km* recorridos${atrib}${motor}\n\nGracias. Queda registrado.`,
     [{ id: BTN_INICIAR, titulo: '🟢 Iniciar turno' }]);
 }
 

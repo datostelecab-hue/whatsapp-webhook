@@ -40,6 +40,45 @@ const PRUEBAS = (process.env.FICHAJE_TELEFONOS || '640389649:Claude code')
 // un coche asignado indefinidamente en Mapon ni un turno abierto eterno en el libro.
 const MAX_HORAS_TURNO = Number(process.env.FICHAJE_MAX_HORAS || 14);
 
+// ── Corte de motor ───────────────────────────────────────────────────────────
+// Los vehículos llevan relé `engine_block` ("Bloqueo Motor", relay_id 1). Verificado en
+// el coche real: con el coche en servicio normal el relé está en 0, así que 0 = motor
+// LIBRE y 1 = motor BLOQUEADO (inverted=0). Se dejan en variables por si alguna
+// instalación viniera invertida.
+const RELE_LIBRE = Number(process.env.FICHAJE_RELE_LIBRE ?? 0);
+const RELE_BLOQUEADO = Number(process.env.FICHAJE_RELE_BLOQUEADO ?? 1);
+
+// APAGADO por defecto: inmovilizar un coche es irreversible desde el móvil del
+// conductor, así que no se activa solo por desplegar. Se enciende con
+// FICHAJE_BLOQUEO_MOTOR=1 cuando se quiera probar de verdad.
+const BLOQUEO_ACTIVO = process.env.FICHAJE_BLOQUEO_MOTOR === '1';
+
+/**
+ * Pone el motor libre o bloqueado y CONFIRMA el estado real (change_relay solo dice que
+ * la orden salió). Nunca actúa con el coche en marcha. Devuelve
+ * { hecho, motivo } — `hecho:false` con su motivo si no se pudo.
+ */
+async function motor(unitId, bloquear) {
+  if (!BLOQUEO_ACTIVO) return { hecho: false, motivo: 'desactivado' };
+  try {
+    const info = await mapon.relesDeUnidad(unitId);
+    const rele = mapon.releDeCorte(info);
+    if (!rele || !rele.habilitado) return { hecho: false, motivo: 'sin relé de corte' };
+    // El equipo declara control_while_moving=0: con el coche rodando no se toca.
+    if (info.enMarcha) return { hecho: false, motivo: `coche en marcha (${info.velocidad} km/h)` };
+    const r = await mapon.cambiarReleConfirmado({
+      unitId, relayId: rele.relay_id, estado: bloquear ? RELE_BLOQUEADO : RELE_LIBRE
+    });
+    if (r.confirmado) return { hecho: true, motivo: '' };
+    return { hecho: false, motivo: 'la orden salió pero el coche no la confirmó (¿sin cobertura?)' };
+  } catch (e) {
+    console.error('⚠️ [FICHAJE] motor:', e.message);
+    return { hecho: false, motivo: e.message };
+  }
+}
+const liberarMotor = unitId => motor(unitId, false);
+const bloquearMotor = unitId => motor(unitId, true);
+
 const ZONA = 'Europe/Madrid';
 const ahoraSeg = () => Math.floor(Date.now() / 1000);
 function tel9(t) { const d = String(t == null ? '' : t).replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; }
@@ -145,6 +184,9 @@ async function cerrarOlvidados(libro) {
   const limite = ahoraSeg() - MAX_HORAS_TURNO * 3600;
   for (const t of libro.filter(x => x.estado === 'abierto' && x.inicio && x.inicio < limite)) {
     try { await soltarEnMapon(t); } catch (e) { /* se cierra igual */ }
+    // Se bloquea también en el cierre automático: si no, un turno olvidado dejaría el
+    // coche libre indefinidamente y se perdería el control que da el fichaje.
+    try { await bloquearMotor(t.unitId); } catch (e) { /* se anota abajo */ }
     t.fin = t.inicio + MAX_HORAS_TURNO * 3600;
     t.estado = 'auto-cerrado';
     t.notas = `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar`;
@@ -207,8 +249,12 @@ async function iniciar({ telefono, nombre, matricula }) {
     inicio: ahoraSeg(), fin: 0, km: null, trayectos: 0, atribuidos: 0, estado: 'abierto', notas, unitPrevia
   };
   await añadirFila(turno);
-  console.log(`🟢 [FICHAJE] ${nombre} inicia turno en ${unidad.matricula} (unit ${unidad.unitId})`);
-  return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId, errorMapon };
+  // Con el turno YA registrado se libera el motor: si algo fallara, el turno consta
+  // igual y el coche se puede desbloquear a mano desde el panel.
+  const mot = await liberarMotor(unidad.unitId);
+  console.log(`🟢 [FICHAJE] ${nombre} inicia turno en ${unidad.matricula} (unit ${unidad.unitId})` +
+    (BLOQUEO_ACTIVO ? ` · motor ${mot.hecho ? 'LIBRE' : 'NO liberado: ' + mot.motivo}` : ''));
+  return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId, errorMapon, motor: mot, bloqueoActivo: BLOQUEO_ACTIVO };
 }
 
 /** Km recorridos por el coche desde que empezó el turno hasta ahora. */
@@ -233,17 +279,23 @@ async function terminar(telefono) {
   try { await soltarEnMapon(t); }
   catch (e) { t.notas = `${t.notas ? t.notas + ' · ' : ''}Mapon no soltó el coche: ${e.message}`; }
 
+  // Al cerrar, el coche queda bloqueado hasta que alguien vuelva a fichar en él.
+  const mot = await bloquearMotor(t.unitId);
+  if (BLOQUEO_ACTIVO && !mot.hecho) t.notas = `${t.notas ? t.notas + ' · ' : ''}Motor NO bloqueado: ${mot.motivo}`;
+
   t.fin = fin;
   t.km = km ? km.km : null;
   t.trayectos = km ? km.trayectos : 0;
   t.atribuidos = km ? km.conConductor : 0;
   t.estado = 'cerrado';
   await guardarFila(t);
-  console.log(`🔴 [FICHAJE] ${t.nombre} termina turno en ${t.matricula}: ${t.km} km`);
-  return { ok: true, turno: t, km };
+  console.log(`🔴 [FICHAJE] ${t.nombre} termina turno en ${t.matricula}: ${t.km} km` +
+    (BLOQUEO_ACTIVO ? ` · motor ${mot.hecho ? 'BLOQUEADO' : 'NO bloqueado: ' + mot.motivo}` : ''));
+  return { ok: true, turno: t, km, motor: mot, bloqueoActivo: BLOQUEO_ACTIVO };
 }
 
 module.exports = {
   esPruebas, nombreDe, estado, iniciar, terminar, kmDelTurno,
-  horaES, duracion, MAX_HORAS_TURNO
+  liberarMotor, bloquearMotor,
+  horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO
 };
