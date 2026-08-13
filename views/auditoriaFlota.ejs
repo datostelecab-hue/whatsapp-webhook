@@ -71,6 +71,7 @@
     <button data-tab="km"  class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-road mr-1.5"></i> KM por estado</button>
     <button data-tab="rep" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-gas-pump mr-1.5"></i> Repostajes</button>
     <button data-tab="top" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Top Offenders</button>
+    <button data-tab="flujo" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-diagram-project mr-1.5"></i> Flujo de KM</button>
   </div>
 
   <div id="a-cargando" class="p-10 text-center text-telecab-muted">
@@ -208,6 +209,29 @@
     <p class="text-[11px] text-telecab-muted mt-2">Calculado sobre todo el rango (no le afecta el filtro de matrícula). Antes de reclamar, contrasta el caso concreto en el Excel («Detalle por día»).</p>
   </section>
 
+  <!-- ══ Flujo de KM (Sankey) ══ -->
+  <section data-panel="flujo" class="hidden">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft p-4">
+      <div class="flex flex-wrap items-baseline gap-2 mb-1">
+        <h3 class="font-semibold text-telecab-text flex items-center gap-2">
+          <i class="fa-solid fa-diagram-project text-telecab-gold"></i> A dónde se van los kilómetros
+        </h3>
+        <span class="text-xs text-telecab-muted" id="a-flujo-rango"></span>
+      </div>
+      <p class="text-[11px] text-telecab-muted mb-3">
+        El ancho de cada cinta son kilómetros reales. De izquierda a derecha: total → turno → en qué estaba el conductor.
+        <b>Solo este gráfico</b> cuenta las matrículas del <b>planificador con algún conductor asignado</b> (fuera bajas, reservas y coches de otras plazas);
+        las tablas y el Excel siguen mostrando toda la flota.
+      </p>
+      <div class="overflow-x-auto"><div id="a-sankey" class="min-w-[720px]"></div></div>
+      <div id="a-flujo-vacio" class="hidden p-8 text-center text-telecab-muted">
+        <i class="fa-solid fa-diagram-project text-3xl mb-2 opacity-40"></i>
+        <p>Sin kilómetros que representar en este rango.</p>
+      </div>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3 mt-3" id="a-flujo-kpis"></div>
+  </section>
+
   <p class="text-[11px] text-telecab-muted mt-3" id="a-pie"></p>
 </div>
 
@@ -239,21 +263,40 @@ const kmFiltrado = () => (segmento === 'turnos'
   : filasSegmento()).filter(coincide);
 const evFiltrado = () => DATA.eventos.filter(coincide);
 
+/**
+ * Tarjetas de cabecera. Los km se agrupan en DOS bloques que suman el total, para que
+ * no quede kilometraje sin explicar:
+ *   · TRABAJANDO EN BOLT = de viaje + de camino + en espera (los tres son trabajo:
+ *     llevar al cliente, ir a por él y estar disponible esperando).
+ *   · NO DISPONIBLE      = descanso (marcado ocupado) + app cerrada. Es el km "basura".
+ * Cada tarjeta lleva debajo su desglose, que era justo lo que faltaba.
+ */
 function kpis() {
   const k = kmFiltrado();
   const t = f => Math.round(k.reduce((s, x) => s + (x[f] || 0), 0));
-  const total = t('totalMapon'), pas = t('totalPasajero');
-  const desc = t('totalDescanso'), fuera = t('totalFuera'), noDisp = desc + fuera;
+  const total = t('totalMapon');
+  const viaje = t('totalPasajero'), camino = t('totalIda'), espera = t('totalEspera');
+  const desc = t('totalDescanso'), cerrada = t('totalFuera');
+  const enBolt = viaje + camino + espera, noDisp = desc + cerrada;
   const hDesc = Math.round(k.reduce((s, x) => s + (x.hDescanso || 0), 0));
-  const pctN = total > 0 ? Math.round(noDisp / total * 100) : 0;
-  const pctP = total > 0 ? Math.round(pas / total * 100) : 0;
-  const kpi = (n, txt, cls) => `<div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
-    <div class="text-2xl font-bold ${cls}">${cargando ? '…' : n}</div><div class="text-xs text-telecab-muted mt-0.5">${txt}</div></div>`;
+  const hFuera = Math.round(k.reduce((s, x) => s + (x.hFuera || 0), 0));
+  const n = v => v.toLocaleString('es-ES');
+  const pc = v => total > 0 ? Math.round(v / total * 100) + '%' : '—';
+
+  const kpi = (valor, titulo, detalle, cls) => `<div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
+    <div class="text-2xl font-bold ${cls}">${cargando ? '…' : valor}</div>
+    <div class="text-xs text-telecab-text mt-0.5 font-medium">${titulo}</div>
+    <div class="text-[11px] text-telecab-muted mt-0.5 leading-relaxed">${cargando ? '' : detalle}</div></div>`;
+
   $('#a-kpis').innerHTML =
-    kpi(total.toLocaleString('es-ES') + ' km', 'KM totales (Mapon)', 'text-telecab-text') +
-    kpi(pas.toLocaleString('es-ES') + ' km', `Con pasajero · ${pctP}%`, 'text-telecab-green') +
-    kpi(noDisp.toLocaleString('es-ES') + ' km', `No disponible · ${pctN}% (${desc.toLocaleString('es-ES')} descanso + ${fuera.toLocaleString('es-ES')} cerrada)`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
-    kpi(hDesc.toLocaleString('es-ES') + ' h', 'Horas marcado «ocupado»', hDesc > 0 ? 'text-amber-400' : 'text-telecab-muted');
+    kpi(n(total) + ' km', 'KM totales (Mapon)',
+      `${k.length} registro(s) · todo lo que rodó la flota`, 'text-telecab-text') +
+    kpi(n(enBolt) + ' km', `Trabajando en BOLT · ${pc(enBolt)}`,
+      `🧍 ${n(viaje)} de viaje · 🚕 ${n(camino)} de camino · ⏳ ${n(espera)} en espera`, 'text-telecab-green') +
+    kpi(n(noDisp) + ' km', `No disponible · ${pc(noDisp)}`,
+      `😴 ${n(desc)} en descanso · 🔒 ${n(cerrada)} con la app cerrada`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
+    kpi(n(hDesc + hFuera) + ' h', 'Horas sin estar disponible',
+      `😴 ${n(hDesc)} h marcado ocupado · 🔒 ${n(hFuera)} h con la app cerrada`, (hDesc + hFuera) > 0 ? 'text-amber-400' : 'text-telecab-muted');
   $('#a-kpi-filtro').classList.toggle('hidden', !busqueda.trim());
 }
 
@@ -403,8 +446,8 @@ function pintarTop() {
     : '<p class="p-4 text-sm text-telecab-green"><i class="fa-solid fa-circle-check mr-1"></i> Nadie rodó estando no disponible.</p>';
   const d = DATA.ofensores.descanso || [];
   $('#a-top-desc').innerHTML = d.length ? d.map(o => fila(o.matricula, `${nkm(o.horas)} h`,
-      `marcado «ocupado»${o.km ? ' · rodó ' + nkm(o.km) + ' km' : ' · sin rodar'}`, 'text-amber-400')).join('')
-    : '<p class="p-4 text-sm text-telecab-muted">Nadie se marcó ocupado.</p>';
+      `marcado «En descanso»${o.km ? ' · rodó ' + nkm(o.km) + ' km' : ' · sin rodar'}`, 'text-amber-400')).join('')
+    : '<p class="p-4 text-sm text-telecab-muted">Nadie se marcó en descanso.</p>';
   const r = DATA.ofensores.repostaje;
   $('#a-top-rep').innerHTML = r.length ? r.map(o => fila(o.matricula, `${nkm(o.litros)} l`, `${o.veces} repostaje${o.veces === 1 ? '' : 's'}`)).join('')
     : '<p class="p-4 text-sm text-telecab-muted">Sin repostajes.</p>';
@@ -416,7 +459,142 @@ function pintarPendientes() {
   if (p.length) $('#a-pend-txt').innerHTML = `<b>${p.length} día(s) sin procesar</b> en este rango: ${p.map(ddmm).join(', ')}. Los datos mostrados no los incluyen.`;
 }
 
-function pintarTodo() { kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarTop(); pintarPendientes(); }
+// ════════ Flujo de KM (Sankey en SVG, sin librerías) ════════
+// Estructura fija: TOTAL → {día, noche} → {pasajero, ida, espera, descanso, fuera}.
+// El ancho de cada cinta es proporcional a los km, así que de un vistazo se ve cuánto
+// del total se va en cada estado y qué turno aporta más km no disponibles.
+const BUCKETS = [
+  { id: 'totalPasajero', txt: 'Con pasajero', color: 'var(--tc-green)' },
+  { id: 'totalIda', txt: 'Ida a recoger', color: 'var(--tc-gold)' },
+  { id: 'totalEspera', txt: 'Espera (disponible)', color: 'var(--tc-muted)' },
+  { id: 'totalDescanso', txt: 'Descanso (ocupado)', color: '245 158 11' },
+  { id: 'totalFuera', txt: 'Fuera (app cerrada)', color: 'var(--tc-red)' }
+];
+// Los colores se guardan como 'var(--tc-green)' o como triplete '245 158 11'; en ambos
+// casos `rgb(...)` los acepta, así el gráfico sigue el tema claro/oscuro sin tocar nada.
+
+/**
+ * SOLO en este gráfico: se cuentan únicamente las matrículas del planificador que
+ * tienen algún conductor asignado. Mapon ve muchos coches que no se usan (bajas,
+ * Barcelona, reservas) y esos distorsionan el reparto. Las tablas y el Excel siguen
+ * enseñando la flota entera.
+ */
+const enPlan = k => !DATA.planificadas || DATA.planificadas.has(k.placa);
+
+/** Suma los totales de un tramo (con el filtro de matrícula y el del planificador). */
+function totalesDe(lista) {
+  const a = { totalMapon: 0, coches: 0 };
+  BUCKETS.forEach(b => a[b.id] = 0);
+  (lista || []).filter(coincide).filter(enPlan).forEach(k => {
+    a.totalMapon += k.totalMapon || 0; a.coches++;
+    BUCKETS.forEach(b => a[b.id] += k[b.id] || 0);
+  });
+  return a;
+}
+
+function pintarFlujo() {
+  const dia = totalesDe(DATA.segmentos.dia), noche = totalesDe(DATA.segmentos.noche);
+  const total = dia.totalMapon + noche.totalMapon;
+  const nCoches = new Set([...(DATA.segmentos.dia || []), ...(DATA.segmentos.noche || [])]
+    .filter(coincide).filter(enPlan).map(k => k.placa)).size;
+  $('#a-flujo-rango').innerHTML = `${esc($('#a-desde').value)} → ${esc($('#a-hasta').value)}` +
+    (DATA.planificadas
+      ? ` · <b>${nCoches}</b> coches del planificador con conductor asignado`
+      : ` · <span class="text-telecab-gold">toda la flota (no se pudo leer el planificador)</span>`);
+  const vacio = !(total > 0) && !cargando;
+  $('#a-flujo-vacio').classList.toggle('hidden', !vacio);
+  $('#a-sankey').innerHTML = '';
+  if (!(total > 0)) { $('#a-flujo-kpis').innerHTML = ''; return; }
+
+  const W = 940, H = 440, M = 24, NW = 15, GAP = 16;
+  const X = [M, W / 2 - NW / 2, W - M - NW];
+  const turnos = [
+    { id: 'dia', txt: '☀️ Turno de día', tot: dia, color: 'var(--tc-gold)' },
+    { id: 'noche', txt: '🌙 Turno de noche', tot: noche, color: '96 165 250' }
+  ].filter(t => t.tot.totalMapon > 0);
+
+  // Una sola escala para las tres columnas: la manda la más apretada (la de 5 nodos).
+  const alto = H - M * 2;
+  const esc0 = alto / total;
+  const esc1 = (alto - GAP * (turnos.length - 1)) / total;
+  const esc2 = (alto - GAP * (BUCKETS.length - 1)) / total;
+  const E = Math.min(esc0, esc1, esc2);
+
+  const apilar = (items, valor) => {   // centra la columna verticalmente
+    const altoCol = items.reduce((s, i) => s + valor(i) * E, 0) + GAP * (items.length - 1);
+    let y = M + (alto - altoCol) / 2;
+    return items.map(i => { const h = valor(i) * E; const n = { item: i, y, h }; y += h + GAP; return n; });
+  };
+
+  const nTotal = [{ item: null, y: M + (alto - total * E) / 2, h: total * E }];
+  const nTurnos = apilar(turnos, t => t.tot.totalMapon);
+  const nBuckets = apilar(BUCKETS.filter(b => dia[b.id] + noche[b.id] > 0), b => dia[b.id] + noche[b.id]);
+
+  // Cinta de enlace: dos curvas cúbicas que unen los bordes de origen y destino.
+  const cinta = (x1, y1, x2, y2, h1, h2) => {
+    const xm = (x1 + x2) / 2;
+    return `M${x1},${y1} C${xm},${y1} ${xm},${y2} ${x2},${y2} L${x2},${y2 + h2} C${xm},${y2 + h2} ${xm},${y1 + h1} ${x1},${y1 + h1} Z`;
+  };
+
+  const partes = [];
+  // Nivel 0 → 1
+  let yT = nTotal[0].y;
+  const cursorTurno = new Map();
+  nTurnos.forEach(nt => {
+    const h = nt.h;
+    partes.push(`<path d="${cinta(X[0] + NW, yT, X[1], nt.y, h, h)}" fill="rgb(${nt.item.color})" opacity=".28"><title>${esc(nt.item.txt)}: ${nkm(round1(h / E))} km</title></path>`);
+    yT += h;
+    cursorTurno.set(nt.item.id, nt.y);
+  });
+  // Nivel 1 → 2 (cada bucket recibe primero lo del día y luego lo de la noche)
+  const cursorBucket = new Map(nBuckets.map(nb => [nb.item.id, nb.y]));
+  nTurnos.forEach(nt => {
+    let y1 = cursorTurno.get(nt.item.id);
+    nBuckets.forEach(nb => {
+      const v = nt.item.tot[nb.item.id] || 0;
+      if (v <= 0) return;
+      const h = v * E;
+      const y2 = cursorBucket.get(nb.item.id);
+      partes.push(`<path d="${cinta(X[1] + NW, y1, X[2], y2, h, h)}" fill="rgb(${nb.item.color})" opacity=".38"><title>${esc(nt.item.txt)} → ${esc(nb.item.txt)}: ${nkm(round1(v))} km</title></path>`);
+      y1 += h; cursorBucket.set(nb.item.id, y2 + h);
+    });
+  });
+
+  // Nodos y etiquetas
+  const nodo = (x, y, h, color, anclaje, texto, sub) => {
+    const tx = anclaje === 'start' ? x + NW + 8 : x - 8;
+    return `<rect x="${x}" y="${y}" width="${NW}" height="${Math.max(h, 1)}" rx="3" fill="rgb(${color})" opacity=".9"/>
+      <text x="${tx}" y="${y + h / 2 - 2}" text-anchor="${anclaje}" fill="rgb(var(--tc-text))" font-size="12" font-weight="600">${texto}</text>
+      <text x="${tx}" y="${y + h / 2 + 13}" text-anchor="${anclaje}" fill="rgb(var(--tc-muted))" font-size="11">${sub}</text>`;
+  };
+  const pc = v => total > 0 ? Math.round(v / total * 100) + '%' : '';
+  partes.push(nodo(X[0], nTotal[0].y, nTotal[0].h, 'var(--tc-text)', 'start', 'KM totales', `${nkm(round1(total))} km`));
+  nTurnos.forEach(nt => partes.push(nodo(X[1], nt.y, nt.h, nt.item.color, 'start', nt.item.txt, `${nkm(round1(nt.item.tot.totalMapon))} km · ${pc(nt.item.tot.totalMapon)}`)));
+  nBuckets.forEach(nb => {
+    const v = dia[nb.item.id] + noche[nb.item.id];
+    partes.push(nodo(X[2], nb.y, nb.h, nb.item.color, 'end', nb.item.txt, `${nkm(round1(v))} km · ${pc(v)}`));
+  });
+
+  $('#a-sankey').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:460px">${partes.join('')}</svg>`;
+
+  // Mismas categorías que las tarjetas de arriba, para que no se contradigan:
+  // trabajando en BOLT (viaje + camino + espera) frente a no disponible (descanso + cerrada).
+  const s = f => dia[f] + noche[f];
+  const viaje = s('totalPasajero'), camino = s('totalIda'), espera = s('totalEspera');
+  const desc = s('totalDescanso'), cerrada = s('totalFuera');
+  const enBolt = viaje + camino + espera, noDisp = desc + cerrada;
+  const tarjeta = (t, v, sub, cls) => `<div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
+    <div class="text-xs text-telecab-text font-medium">${t}</div>
+    <div class="text-2xl font-bold ${cls}">${v}</div>
+    <div class="text-[11px] text-telecab-muted mt-0.5">${sub}</div></div>`;
+  $('#a-flujo-kpis').innerHTML =
+    tarjeta('Trabajando en BOLT', `${pc(enBolt)} · ${nkm(round1(enBolt))} km`,
+      `🧍 ${nkm(round1(viaje))} de viaje · 🚕 ${nkm(round1(camino))} de camino · ⏳ ${nkm(round1(espera))} en espera`, 'text-telecab-green') +
+    tarjeta('No disponible', `${pc(noDisp)} · ${nkm(round1(noDisp))} km`,
+      `😴 ${nkm(round1(desc))} en descanso · 🔒 ${nkm(round1(cerrada))} con la app cerrada`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted');
+}
+
+function pintarTodo() { kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarTop(); pintarFlujo(); pintarPendientes(); }
 
 function activarTab(t) {
   tab = t;
@@ -452,7 +630,9 @@ async function cargar() {
     if (mine !== gen) return;
     if (d.status !== 'ok') throw new Error(d.msg || 'error');
     DATA = { dias: d.dias || [], km: d.km || [], eventos: d.eventos || [], ofensores: d.ofensores || { fuera: [], repostaje: [] },
-      pendientes: d.pendientes || [], segmentos: d.segmentos || {}, etiquetas: d.etiquetas || {} };
+      pendientes: d.pendientes || [], segmentos: d.segmentos || {}, etiquetas: d.etiquetas || {},
+      // null = no se pudo leer el planificador → el gráfico cuenta toda la flota y lo avisa.
+      planificadas: Array.isArray(d.planificadas) ? new Set(d.planificadas) : null };
     $('#a-pie').textContent = `${DATA.km.length} matrículas · ${DATA.dias.length} días · datos del histórico (los procesa el cron a las 5:00).`;
   } catch (e) {
     if (mine !== gen) return;
@@ -503,7 +683,7 @@ $('#a-procesar').onclick = async () => {
   document.querySelectorAll('.a-tab').forEach(b => b.onclick = () => activarTab(b.dataset.tab));
   activarTab('km');
   $('#a-consultar').onclick = cargar;
-  $('#a-buscar').oninput = e => { busqueda = e.target.value; kpis(); pintarKm(); filtrosEv(); pintarEv(); };
+  $('#a-buscar').oninput = e => { busqueda = e.target.value; kpis(); pintarKm(); filtrosEv(); pintarEv(); pintarFlujo(); };
   ['#a-desde', '#a-hasta'].forEach(s => $(s).addEventListener('change', cargar));
   cargar(); sondearProgreso();
 })();

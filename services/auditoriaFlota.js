@@ -709,6 +709,32 @@ function construirRespuesta(dias, filasKmRec, eventosRec, segmento = 'completo')
 }
 
 /**
+ * Matrículas del PLANIFICADOR que tienen al menos un conductor asignado.
+ *
+ * Mapon tiene muchos más coches de los que se usan (bajas, Barcelona, reservas), y en
+ * el gráfico de flujo eso ensucia los totales. El criterio es el pedido: basta con que
+ * el coche tenga UNA plaza cubierta —aunque solo sea el turno de día— para que cuente;
+ * si está en el planificador pero sin nadie asignado, se ignora aunque Mapon lo vea
+ * moverse. Solo lo usa el Sankey: las tablas y el Excel siguen mostrando toda la flota.
+ */
+let _cachePlan = { ts: 0, set: null };
+async function placasPlanificadas() {
+  if (_cachePlan.set && Date.now() - _cachePlan.ts < 10 * 60 * 1000) return _cachePlan.set;
+  const { leerTablero } = require('./planificadorV2');
+  const t = await leerTablero();
+  const set = new Set();
+  (t.coches || []).forEach(c => {
+    const placa = normPlaca(c.matricula);
+    if (!placa) return;
+    const conConductor = (c.personas || []).some(p => p && (p.id || '').toString().trim());
+    if (conConductor) set.add(placa);
+  });
+  _cachePlan = { ts: Date.now(), set };
+  console.log(`🗓️  [AUDITORÍA] ${set.size} matrículas del planificador con conductor asignado`);
+  return set;
+}
+
+/**
  * Lee el rango del histórico. Va por la MISMA cola que los guardados: si no, una
  * consulta que caiga en mitad de una reescritura vería la tabla a medias y pintaría
  * una auditoría vacía (que se lee como "aquí no ha rodado nadie por fuera").
@@ -727,8 +753,15 @@ function cargarAuditoria({ desde, hasta } = {}) {
     const segmentos = Object.fromEntries(SEGMENTOS.map(s =>
       [s, s === 'completo' ? base.km : construirRespuesta(dias, filas, eventos, s).km]));
     const pendientes = dias.filter(d => !procesados.has(d));
+    // Si el planificador no se puede leer, se manda null y el gráfico avisa de que está
+    // contando toda la flota en vez de filtrar en silencio por una lista vacía.
+    const plan = await placasPlanificadas().catch(e => {
+      console.error('⚠️ [AUDITORÍA] planificador:', e.message);
+      return null;
+    });
     return {
       ...base, segmentos, etiquetas: ETIQUETA_SEG,
+      planificadas: plan ? [...plan] : null,
       desde: ini.toISOString(), hasta: fin.toISOString(), pendientes, generado: ahora()
     };
   });
@@ -737,7 +770,7 @@ function cargarAuditoria({ desde, hasta } = {}) {
 module.exports = {
   cargarAuditoria, procesarDia, procesarRango, progreso, hoyMadrid, diaMenos,
   // exportados para pruebas
-  SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana,
+  SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana, placasPlanificadas,
   normPlaca, diaLocal, limitesDiaMadrid, offsetMadridSeg, mergeIv, enIntervalos,
   construirIv, estadoEn, bucketDe, atribuirRecorrido, tiempoPorEstado, haversineKm, construirRespuesta,
   leerFilasKm, leerEventos, resolverRango, ejeDias, MAX_DIAS
