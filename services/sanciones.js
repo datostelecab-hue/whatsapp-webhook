@@ -35,6 +35,28 @@ const VENTANAS_VEH = 3;                                           // ventanas de
 const modo = () => (process.env.SANCIONES_MODO === 'live' ? 'live' : 'test');
 const esLive = () => modo() === 'live';
 
+/**
+ * FECHA DE ALTA DEL SISTEMA (SANCIONES_DESDE, formato aaaa-mm-dd).
+ *
+ * No se puede sancionar por reincidencia usando excesos anteriores a que el sistema
+ * existiera: al conductor nunca se le avisó de ellos, así que no puede "reincidir".
+ * Con esta fecha puesta, todo lo anterior:
+ *   · NI se registra (las alertas viejas se ignoran aunque se pida un rango amplio),
+ *   · NI cuenta como infracción previa (aunque queden filas antiguas en el libro).
+ * Sin ella el módulo se comporta como antes (cuenta todo el histórico).
+ */
+function inicioSistemaTs() {
+  const s = (process.env.SANCIONES_DESDE || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  // Medianoche de ese día en hora peninsular (el desfase se saca del propio día).
+  const mediodiaUTC = Date.UTC(+m[1], +m[2] - 1, +m[3], 12);
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour12: false, hour: '2-digit' }).format(new Date(mediodiaUTC)));
+  const offsetSeg = (h - 12) * 3600;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3]) - offsetSeg * 1000;
+}
+const DESDE_TS = inicioSistemaTs();
+
 // Estados del registro (columna N).
 const EST = {
   ENVIADO: 'enviado',                 // advertencia enviada
@@ -176,9 +198,11 @@ async function leerLog() {
 }
 
 // ¿Cuántas infracciones previas atribuidas a ese conductor dentro de la ventana?
+// Nunca se miran hechos anteriores al alta del sistema: aunque el libro conserve filas
+// viejas, no cuentan para la reincidencia (al conductor no se le avisó de aquello).
 function previosEnVentana(log, driverUuid, tsMs) {
   const limite = new Date(tsMs); limite.setMonth(limite.getMonth() - VENTANA_MESES);
-  const desde = limite.getTime();
+  const desde = Math.max(limite.getTime(), DESDE_TS || 0);
   return log.filter(r => r.driverUuid && r.driverUuid === driverUuid && CUENTAN.has(r.estado) &&
     r.ts != null && r.ts >= desde && r.ts < tsMs).length;
 }
@@ -210,9 +234,12 @@ async function procesar(opciones = {}) {
 
     for (const a of alertas) {
       if (yaVistas.has(a.id)) continue;                 // dedup: ya registrada
+      const tMs = Date.parse(a.iso);
+      // Anterior al alta del sistema: ni se registra ni cuenta. Evita que una consulta
+      // con rango amplio vuelva a llenar el libro de hechos que nunca se comunicaron.
+      if (DESDE_TS && tMs < DESDE_TS) { res.previosAlAlta = (res.previosAlAlta || 0) + 1; continue; }
       yaVistas.add(a.id);
       res.nuevas++;
-      const tMs = Date.parse(a.iso);
       const fila = new Array(CAB.length).fill('');
       fila[0] = a.id; fila[1] = fmtMadrid(tMs); fila[2] = a.iso; fila[3] = String(tMs);
       fila[4] = a.matricula; fila[8] = a.velocidad ?? ''; fila[9] = a.limite ?? ''; fila[10] = a.exceso ?? '';
@@ -292,10 +319,17 @@ async function rechazar(clave, motivo) {
   return { ok: true };
 }
 
-function estadoModulo() { return { modo: modo(), corriendo: _corriendo, ultimo: _ultimo }; }
+function estadoModulo() {
+  return {
+    modo: modo(), corriendo: _corriendo, ultimo: _ultimo,
+    // Desde cuándo cuenta el sistema (lo de antes no genera avisos ni reincidencia).
+    desde: DESDE_TS ? new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(DESDE_TS)) : null,
+    ventanaMeses: VENTANA_MESES
+  };
+}
 
 module.exports = {
-  LIBRO, HOJA, EST, VENTANA_MESES,
+  LIBRO, HOJA, EST, VENTANA_MESES, DESDE_TS,
   procesar, aprobar, rechazar, leerLog, estadoModulo,
-  conductorDeMatricula, mapaVehiculos, modo
+  conductorDeMatricula, mapaVehiculos, modo, previosEnVentana
 };
