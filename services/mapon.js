@@ -524,6 +524,29 @@ async function cambiarRele({ unitId, relayId, estado }) {
 }
 
 /**
+ * Prueba el cambio de relé por POST y por GET y devuelve QUÉ respondió cada uno, sin
+ * interpretar. Sirve para distinguir tres cosas que se confunden:
+ *   · "Invalid request path"  → la ruta está mal escrita (no es el caso si sale 1006)
+ *   · error de parámetros      → mandamos mal los datos
+ *   · 1006 "Method not available" → la ruta existe y los datos están bien, pero la
+ *     clave NO tiene permiso para ese método (es lo que hay que resolver en Mapon)
+ */
+async function probarRele({ unitId, relayId, estado }) {
+  const params = { unit_id: unitId, relay_id: relayId, relay_state: estado ? 1 : 0 };
+  const out = {};
+  try { out.POST = { ok: true, respuesta: await pedirPost('unit/change_relay.json', params) }; }
+  catch (e) { out.POST = { ok: false, error: e.message }; }
+  const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  try { out.GET = { ok: true, respuesta: await pedir('unit/change_relay.json', qs) }; }
+  catch (e) { out.GET = { ok: false, error: e.message }; }
+  // Una ruta inventada, como control: si ESTA da un error distinto al de change_relay,
+  // confirma que change_relay existe de verdad y que el problema es de permiso.
+  try { out.rutaInventada = { ok: true, respuesta: await pedir('unit/no_existe_de_verdad.json', '') }; }
+  catch (e) { out.rutaInventada = { ok: false, error: e.message }; }
+  return out;
+}
+
+/**
  * Cambia el relé y CONFIRMA leyendo el estado real. Devuelve
  * { ok, antes, despues, confirmado, intentos }. `ok:false` con `confirmado:false`
  * significa que la orden salió pero el equipo no la aplicó (sin cobertura, p. ej.).
@@ -762,6 +785,6 @@ module.exports = {
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana,
-  relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado, crudoUnidad,
+  relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar
 };

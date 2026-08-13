@@ -122,6 +122,23 @@ router.get('/fichaje/diagnostico', async (req, res) => {
     catch (e) { out.errorCrudo = e.message; }
   }
 
+  // ?probarrele=1 con ?matricula= → prueba el corte por POST y por GET, más una ruta
+  // inventada como control. Es la evidencia para saber si el 1006 es de PERMISO o si
+  // estamos mandando mal la petición (no cambia nada en el coche si no tiene permiso).
+  if (q.probarrele && unitId) {
+    try {
+      const info = await mapon.relesDeUnidad(unitId);
+      const rele = mapon.releDeCorte(info);
+      if (!rele) out.errorProbar = 'Ese vehículo no reporta relé';
+      else if (info.enMarcha) out.errorProbar = `Coche en marcha (${info.velocidad} km/h): no se prueba`;
+      else {
+        out.pruebaRele = await mapon.probarRele({
+          unitId, relayId: rele.relay_id, estado: String(q.probarrele) === '1' ? 0 : 1
+        });
+      }
+    } catch (e) { out.errorProbar = e.message; }
+  }
+
   // ?rele=0|1 con ?matricula= → PRUEBA el corte de motor en UN coche y confirma el
   // estado real (change_relay solo dice que la orden salió). 0/1 lo decide quien llama:
   // qué valor bloquea y cuál libera se comprueba mirando el coche, no adivinando.
