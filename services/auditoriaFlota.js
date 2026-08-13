@@ -28,6 +28,7 @@
  */
 
 const { fetchRangoCompleto, fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+const { leerPadron } = require('./conductoresBolt');
 const mapon = require('./mapon');
 const sheets = require('./sheets');
 
@@ -40,9 +41,9 @@ const ID_AUDITORIA = process.env.ID_AUDITORIA || '18LiwQTyzQAzNxtwXzX-HSEhM3Hhbg
 const TAB_KM = 'AUDITORIA_KM';
 const TAB_FUEL = 'AUDITORIA_REPOSTAJES';
 const TAB_DIAS = 'AUDITORIA_DIAS';
-const CAB_KM = ['dia', 'placa', 'matricula', 'vehiculo', 'km_mapon', 'km_pasajero', 'km_ida', 'km_espera', 'km_descanso', 'km_fuera',
-  'h_pedido', 'h_espera', 'h_descanso', 'h_fuera', 'km_bolt', 'viajes_bolt', 'actualizado'];
-const RANGO_KM = 'A:Q';   // ancho de TAB_KM (17 columnas)
+const CAB_KM = ['dia', 'turno', 'placa', 'matricula', 'vehiculo', 'km_mapon', 'km_pasajero', 'km_ida', 'km_espera', 'km_descanso', 'km_fuera',
+  'h_pedido', 'h_espera', 'h_descanso', 'h_fuera', 'km_bolt', 'viajes_bolt', 'conductores', 'actualizado'];
+const ANCHO_KM = 19;      // columnas de TAB_KM (A:S)
 const CAB_FUEL = ['dia', 'hora', 'orden', 'placa', 'matricula', 'vehiculo', 'tipo', 'litros', 'nivel_antes', 'lat', 'lng', 'direccion', 'fuente', 'actualizado'];
 const CAB_DIAS = ['dia', 'actualizado'];
 
@@ -96,6 +97,50 @@ function inicioDiaMadrid(dia) {
 function limitesDiaMadrid(dia) {
   const start = inicioDiaMadrid(dia);
   return { start, end: inicioDiaMadrid(diaMenos(dia, -1)) - 1 };
+}
+
+/** Hora local de un instante en Madrid (0-23). */
+const horaLocalDe = ts => Number(new Intl.DateTimeFormat('en-GB', { timeZone: ZONA, hour12: false, hour: '2-digit' }).format(new Date(ts * 1000)));
+
+/**
+ * Instante en que empieza `hora`:00 (local Madrid) del día indicado. Se prueban los dos
+ * desfases posibles de España (CET +1 / CEST +2) y se elige el que de verdad cae en esa
+ * hora local, así los días de cambio de hora no descuadran los tramos de turno.
+ */
+function tsDeHoraLocal(dia, hora) {
+  const [y, m, d] = dia.split('-').map(Number);
+  const base = Math.floor(Date.UTC(y, m - 1, d, hora) / 1000);
+  for (const off of [3600, 7200]) {
+    const ts = base - off;
+    if (horaLocalDe(ts) === hora && diaLocal(ts) === dia) return ts;
+  }
+  return base - offsetMadridSeg(dia);
+}
+
+// ── Tramos de auditoría ───────────────────────────────────────────────────────
+// Estos coches suelen llevar DOS conductores en 24 h, así que mirar solo el día
+// natural mezcla los dos turnos y diluye lo que hizo cada uno. Se audita en tres
+// tramos, y los tres se calculan de la MISMA lectura de Mapon:
+//   · dia      turno de día:   05:00 → 17:00 del propio día
+//   · noche    turno de noche: 17:00 → 05:00 del día siguiente
+//   · completo día natural:    00:00 → 24:00 (la vista de siempre)
+// "completo" NO es la suma de los otros dos: el tramo 00:00-05:00 pertenece al turno de
+// noche de la víspera. Por eso se guardan y se consultan por separado.
+const HORA_TURNO_DIA = Number(process.env.AUDITORIA_HORA_DIA || 5);
+const HORA_TURNO_NOCHE = Number(process.env.AUDITORIA_HORA_NOCHE || 17);
+const SEGMENTOS = ['completo', 'dia', 'noche'];
+const ETIQUETA_SEG = {
+  completo: `Día natural (00:00–24:00)`,
+  dia: `Turno de día (${HORA_TURNO_DIA}:00–${HORA_TURNO_NOCHE}:00)`,
+  noche: `Turno de noche (${HORA_TURNO_NOCHE}:00–${HORA_TURNO_DIA}:00)`
+};
+
+/** Ventana [start, end) de un tramo. */
+function limitesSegmento(dia, seg) {
+  if (seg === 'dia') return { start: tsDeHoraLocal(dia, HORA_TURNO_DIA), end: tsDeHoraLocal(dia, HORA_TURNO_NOCHE) };
+  if (seg === 'noche') return { start: tsDeHoraLocal(dia, HORA_TURNO_NOCHE), end: tsDeHoraLocal(diaMenos(dia, -1), HORA_TURNO_DIA) };
+  const l = limitesDiaMadrid(dia);
+  return { start: l.start, end: l.end + 1 };
 }
 
 /** Como en mapon: día final completo, tope 31 días. */
@@ -338,9 +383,24 @@ async function leerFuelDia(dia) {
     .filter(e => e.dia === dia);
 }
 
+/**
+ * Conductores que BOLT vio en ese coche dentro de la ventana. Se saca de los state
+ * logs (no del planificador): es quien de verdad estaba conectado con ese vehículo.
+ * Los logs son eventos de cambio y se emiten cada pocos minutos, así que quien haya
+ * trabajado un turno entero aparece seguro.
+ */
+function conductoresEnVentana(logs, ini, fin, nombrePorUuid) {
+  const uuids = new Set();
+  (logs || []).forEach(l => { if (l.t >= ini && l.t < fin && l.driver) uuids.add(l.driver); });
+  return [...uuids].map(u => (nombrePorUuid.get(u) || '').trim() || `#${String(u).slice(0, 8)}`).sort();
+}
+
 async function computarDia(dia) {
   const { start, end } = limitesDiaMadrid(dia);
-  const fromTs = start - MARGEN_SEG, tillTs = end + MARGEN_SEG;
+  // La ventana cubre TODOS los tramos: desde las 00:00 del día hasta las 05:00 del
+  // siguiente (fin del turno de noche), con el margen habitual a cada lado.
+  const finNoche = limitesSegmento(dia, 'noche').end;
+  const fromTs = start - MARGEN_SEG, tillTs = Math.max(end, finNoche) + MARGEN_SEG;
   // Los logs se piden con MUCHA más historia hacia atrás: son eventos de CAMBIO, así
   // que para saber en qué estado entra el coche a las 00:00 hay que ver el último
   // cambio anterior — que puede ser de la tarde previa. Sin esto, quien cierra la app
@@ -373,43 +433,64 @@ async function computarDia(dia) {
     (logsPorPlaca[p] = logsPorPlaca[p] || []).push({ t: l.created, state: l.state, driver: l.driver_uuid || '' });
   });
 
-  // Km facturado (ride_distance) del día, por placa — referencia
-  const billed = {};
+  // Km facturado (ride_distance) por placa Y TRAMO: el pedido cae en el tramo que
+  // contenga su hora de creación, igual que los km.
+  const ventanas = Object.fromEntries(SEGMENTOS.map(s => [s, limitesSegmento(dia, s)]));
+  const billed = {};   // placa -> { seg: { km, viajes } }
   ordenes.forEach(o => {
     if (o.order_status !== 'finished' || o.ride_distance == null) return;
-    if (diaLocal(o.order_created_timestamp) !== dia) return;
     const p = normPlaca(o.vehicle_license_plate); if (!p) return;
-    const b = billed[p] || { km: 0, viajes: 0 }; b.km += Number(o.ride_distance) / 1000; b.viajes++; billed[p] = b;
+    const t = Number(o.order_created_timestamp);
+    SEGMENTOS.forEach(s => {
+      if (t < ventanas[s].start || t >= ventanas[s].end) return;
+      const porSeg = billed[p] = billed[p] || {};
+      const b = porSeg[s] = porSeg[s] || { km: 0, viajes: 0 };
+      b.km += Number(o.ride_distance) / 1000; b.viajes++;
+    });
   });
 
-  const filas = new Map();   // placa → fila (dos unidades Mapon con la misma matrícula se SUMAN, no se pisan)
+  // Nombre de cada conductor de BOLT (para decir QUIÉN usó el coche en cada tramo).
+  const padron = await leerPadron().catch(() => ({ db: new Map() }));
+  const nombrePorUuid = new Map();
+  (padron.db || new Map()).forEach((d, uuid) => nombrePorUuid.set(uuid, (d.nombre || '').trim()));
+
+  const filas = new Map();   // 'placa|seg' → fila
   await enParalelo([...mapaUnidades.entries()], CONC_MAPON, async ([unitId, info]) => {
     const placa = normPlaca(info.matricula);
     if (!placa) return;
     const { trips } = await mapon.leerRecorridoUnidad({ unitId, fromTs, tillTs });
-    const tripsDia = trips.filter(t => t.inicioTs != null && diaLocal(t.inicioTs) === dia);
-    if (!tripsDia.length && !billed[placa]) return;   // ese coche no se movió ni facturó ese día
-    const iv = construirIv(ordenesPorPlaca[placa] || [], logsPorPlaca[placa] || []);
-    const km = atribuirRecorrido(tripsDia, iv);
-    const h = tiempoPorEstado(iv, start, end);        // horas del DÍA local, no de la ventana con margen
-    const b = billed[placa] || { km: 0, viajes: 0 };
-    const hh = s => Math.round(s / 360) / 10;         // segundos → horas con 1 decimal
-    const prev = filas.get(placa);
-    if (prev) {   // misma matrícula en dos unidades (tracker sustituido): se acumulan los km
-      prev.kmMapon = round1(prev.kmMapon + km.pasajero + km.ida + km.espera + km.descanso + km.fuera);
-      prev.kmPasajero = round1(prev.kmPasajero + km.pasajero); prev.kmIda = round1(prev.kmIda + km.ida);
-      prev.kmEspera = round1(prev.kmEspera + km.espera); prev.kmDescanso = round1(prev.kmDescanso + km.descanso);
-      prev.kmFuera = round1(prev.kmFuera + km.fuera);
-      return;
+    const logsCoche = logsPorPlaca[placa] || [];
+    const iv = construirIv(ordenesPorPlaca[placa] || [], logsCoche);
+    const hh = s => Math.round(s / 360) / 10;   // segundos → horas con 1 decimal
+
+    for (const seg of SEGMENTOS) {
+      const { start: s0, end: s1 } = ventanas[seg];
+      // Un trayecto cuenta entero en el tramo donde EMPIEZA (mismo criterio que el día).
+      const tripsSeg = trips.filter(t => t.inicioTs != null && t.inicioTs >= s0 && t.inicioTs < s1);
+      const b = (billed[placa] && billed[placa][seg]) || { km: 0, viajes: 0 };
+      const conductores = conductoresEnVentana(logsCoche, s0, s1, nombrePorUuid);
+      if (!tripsSeg.length && !b.viajes && !conductores.length) continue;   // ni se movió ni hubo nadie
+
+      const km = atribuirRecorrido(tripsSeg, iv);
+      const h = tiempoPorEstado(iv, s0, s1);
+      const clave = `${placa}|${seg}`;
+      const prev = filas.get(clave);
+      if (prev) {   // misma matrícula en dos unidades Mapon: se acumulan los km
+        prev.kmMapon = round1(prev.kmMapon + km.pasajero + km.ida + km.espera + km.descanso + km.fuera);
+        prev.kmPasajero = round1(prev.kmPasajero + km.pasajero); prev.kmIda = round1(prev.kmIda + km.ida);
+        prev.kmEspera = round1(prev.kmEspera + km.espera); prev.kmDescanso = round1(prev.kmDescanso + km.descanso);
+        prev.kmFuera = round1(prev.kmFuera + km.fuera);
+        continue;
+      }
+      filas.set(clave, {
+        dia, turno: seg, placa, matricula: info.matricula || placa, vehiculo: info.vehiculo || '',
+        kmMapon: round1(km.pasajero + km.ida + km.espera + km.descanso + km.fuera),
+        kmPasajero: round1(km.pasajero), kmIda: round1(km.ida), kmEspera: round1(km.espera),
+        kmDescanso: round1(km.descanso), kmFuera: round1(km.fuera),
+        hPedido: hh(h.has_order), hEspera: hh(h.waiting_orders), hDescanso: hh(h.busy), hFuera: hh(h.inactive),
+        kmBolt: round1(b.km), viajesBolt: b.viajes, conductores
+      });
     }
-    filas.set(placa, {
-      dia, placa, matricula: info.matricula || placa, vehiculo: info.vehiculo || '',
-      kmMapon: round1(km.pasajero + km.ida + km.espera + km.descanso + km.fuera),
-      kmPasajero: round1(km.pasajero), kmIda: round1(km.ida), kmEspera: round1(km.espera),
-      kmDescanso: round1(km.descanso), kmFuera: round1(km.fuera),
-      hPedido: hh(h.has_order), hEspera: hh(h.waiting_orders), hDescanso: hh(h.busy), hFuera: hh(h.inactive),
-      kmBolt: round1(b.km), viajesBolt: b.viajes
-    });
   });
 
   const eventos = await leerFuelDia(dia);
@@ -418,15 +499,18 @@ async function computarDia(dia) {
 
 // ── Serialización / Sheet ─────────────────────────────────────────────────────
 
-const filaKmASheet = o => [o.dia, o.placa, o.matricula, o.vehiculo, o.kmMapon || '', o.kmPasajero || '', o.kmIda || '',
-  o.kmEspera || '', o.kmDescanso || '', o.kmFuera || '',
-  o.hPedido || '', o.hEspera || '', o.hDescanso || '', o.hFuera || '', o.kmBolt || '', o.viajesBolt || '', ahora()];
+const filaKmASheet = o => [o.dia, o.turno || 'completo', o.placa, o.matricula, o.vehiculo,
+  o.kmMapon || '', o.kmPasajero || '', o.kmIda || '', o.kmEspera || '', o.kmDescanso || '', o.kmFuera || '',
+  o.hPedido || '', o.hEspera || '', o.hDescanso || '', o.hFuera || '', o.kmBolt || '', o.viajesBolt || '',
+  (o.conductores || []).join(' · '), ahora()];
 function leerFilasKm(valores) {
   return (valores || []).slice(1).filter(r => r[0]).map(r => ({
-    dia: String(r[0]), placa: String(r[1] || ''), matricula: String(r[2] || ''), vehiculo: String(r[3] || ''),
-    kmMapon: num(r[4]), kmPasajero: num(r[5]), kmIda: num(r[6]), kmEspera: num(r[7]), kmDescanso: num(r[8]), kmFuera: num(r[9]),
-    hPedido: num(r[10]), hEspera: num(r[11]), hDescanso: num(r[12]), hFuera: num(r[13]),
-    kmBolt: num(r[14]), viajesBolt: Math.round(num(r[15]))
+    dia: String(r[0]), turno: String(r[1] || 'completo'), placa: String(r[2] || ''),
+    matricula: String(r[3] || ''), vehiculo: String(r[4] || ''),
+    kmMapon: num(r[5]), kmPasajero: num(r[6]), kmIda: num(r[7]), kmEspera: num(r[8]), kmDescanso: num(r[9]), kmFuera: num(r[10]),
+    hPedido: num(r[11]), hEspera: num(r[12]), hDescanso: num(r[13]), hFuera: num(r[14]),
+    kmBolt: num(r[15]), viajesBolt: Math.round(num(r[16])),
+    conductores: String(r[17] || '').split('·').map(s => s.trim()).filter(Boolean)
   }));
 }
 const eventoASheet = e => [e.dia, e.hora, e.orden, e.placa, e.matricula, e.vehiculo, e.tipo, e.litros,
@@ -445,7 +529,7 @@ async function ensureTabs() {
   await sheets.ensureSheet(ID_AUDITORIA, TAB_KM);
   await sheets.ensureSheet(ID_AUDITORIA, TAB_FUEL);
   await sheets.ensureSheet(ID_AUDITORIA, TAB_DIAS);
-  let [a, b, c] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A1:Q1`, `${TAB_FUEL}!A1:N1`, `${TAB_DIAS}!A1:B1`]);
+  let [a, b, c] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A1:S1`, `${TAB_FUEL}!A1:N1`, `${TAB_DIAS}!A1:B1`]);
   // Migración: si la cabecera de KM no cuadra (esquema viejo), se rehace la tabla
   // y se vacía el control de días para reconstruir con el esquema nuevo.
   const hdr = (a[0] || []).map(String);
@@ -488,12 +572,12 @@ async function guardarDias(resultados) {
   return enCola(async () => {
     await ensureTabs();
     const dias = new Set(resultados.map(r => r.dia));
-    const [valKm, valFuel, valDias] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A:Q`, `${TAB_FUEL}!A:N`, `${TAB_DIAS}!A:B`]);
+    const [valKm, valFuel, valDias] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A:S`, `${TAB_FUEL}!A:N`, `${TAB_DIAS}!A:B`]);
     const previasKm = Math.max(0, (valKm || []).length - 1), previasFuel = Math.max(0, (valFuel || []).length - 1);
     let filasKm = leerFilasKm(valKm).filter(r => !dias.has(r.dia));
     let eventos = leerEventos(valFuel).filter(r => !dias.has(r.dia));
     resultados.forEach(r => { filasKm = filasKm.concat(r.filas); eventos = eventos.concat(r.eventos); });
-    await reescribir(TAB_KM, filasKm.map(filaKmASheet), 17, previasKm);
+    await reescribir(TAB_KM, filasKm.map(filaKmASheet), ANCHO_KM, previasKm);
     await reescribir(TAB_FUEL, eventos.map(eventoASheet), 14, previasFuel);
     // El control de días se escribe en RAW: con USER_ENTERED, Sheets convertía
     // 'aaaa-mm-dd' en fecha y al releerlo ('11/08/2026') no casaba nunca, así que
@@ -557,13 +641,20 @@ async function procesarRango({ desde, hasta, dias: lista } = {}) {
 
 // ── Lectura para la vista (solo Sheet, sin tocar APIs) ────────────────────────
 
-function construirRespuesta(dias, filasKmRec, eventosRec) {
+/**
+ * Arma la tabla de un TRAMO concreto ('completo', 'dia' o 'noche'). Se llama una vez
+ * por tramo, así la vista puede enseñar el turno de día, el de noche y el día natural
+ * sin recalcular nada.
+ */
+function construirRespuesta(dias, filasKmRec, eventosRec, segmento = 'completo') {
   const set = new Set(dias);
   const porPlaca = new Map();
   filasKmRec.forEach(r => {
     if (!set.has(r.dia)) return;
+    if ((r.turno || 'completo') !== segmento) return;
     let o = porPlaca.get(r.placa);
-    if (!o) { o = { placa: r.placa, matricula: r.matricula, vehiculo: r.vehiculo, dias: {} }; porPlaca.set(r.placa, o); }
+    if (!o) { o = { placa: r.placa, matricula: r.matricula, vehiculo: r.vehiculo, dias: {}, conductores: new Set() }; porPlaca.set(r.placa, o); }
+    (r.conductores || []).forEach(c => o.conductores.add(c));
     // Se ACUMULA: si el histórico trajera dos filas del mismo (día, matrícula),
     // sobrescribir haría desaparecer esos km sin ningún aviso.
     const prev = o.dias[r.dia];
@@ -571,6 +662,7 @@ function construirRespuesta(dias, filasKmRec, eventosRec) {
       descanso: r.kmDescanso, fuera: r.kmFuera, bolt: r.kmBolt, viajes: r.viajesBolt,
       hPedido: r.hPedido, hEspera: r.hEspera, hDescanso: r.hDescanso, hFuera: r.hFuera };
     if (prev) { for (const k in nuevo) nuevo[k] = round1((prev[k] || 0) + (nuevo[k] || 0)); }
+    nuevo.conductores = (r.conductores || []).slice();
     o.dias[r.dia] = nuevo;
     if (!o.matricula) o.matricula = r.matricula;
     if (!o.vehiculo && r.vehiculo) o.vehiculo = r.vehiculo;
@@ -579,11 +671,12 @@ function construirRespuesta(dias, filasKmRec, eventosRec) {
     const a = { mapon: 0, pasajero: 0, ida: 0, espera: 0, descanso: 0, fuera: 0, bolt: 0, viajes: 0,
       hPedido: 0, hEspera: 0, hDescanso: 0, hFuera: 0 };
     Object.values(o.dias).forEach(d => { for (const k in a) a[k] += d[k] || 0; });
+    const conductores = [...o.conductores].sort();
     const totalMapon = round1(a.mapon);
     // "No disponible" = rodó sin estar a disposición de BOLT (descanso + app cerrada).
     const noDisp = round1(a.descanso + a.fuera);
     return {
-      placa: o.placa, matricula: o.matricula, vehiculo: o.vehiculo, dias: o.dias,
+      placa: o.placa, matricula: o.matricula, vehiculo: o.vehiculo, dias: o.dias, conductores,
       totalMapon, totalPasajero: round1(a.pasajero), totalIda: round1(a.ida),
       totalEspera: round1(a.espera), totalDescanso: round1(a.descanso), totalFuera: round1(a.fuera),
       totalNoDisp: noDisp, totalBolt: round1(a.bolt), viajesBolt: a.viajes,
@@ -625,17 +718,26 @@ function cargarAuditoria({ desde, hasta } = {}) {
   return enCola(async () => {
     const dias = ejeDias(ini, fin);
     await ensureTabs();
-    const [valKm, valFuel, valDias] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A:Q`, `${TAB_FUEL}!A:N`, `${TAB_DIAS}!A:B`]);
+    const [valKm, valFuel, valDias] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A:S`, `${TAB_FUEL}!A:N`, `${TAB_DIAS}!A:B`]);
     const procesados = new Set((valDias || []).slice(1).map(r => String(r[0]).trim()).filter(Boolean));
-    const resp = construirRespuesta(dias, leerFilasKm(valKm), leerEventos(valFuel));
+    const filas = leerFilasKm(valKm), eventos = leerEventos(valFuel);
+    // Se arma cada tramo por separado: el día natural (la vista de siempre) y los dos
+    // turnos, para poder verlos juntos sin volver a consultar.
+    const base = construirRespuesta(dias, filas, eventos, 'completo');
+    const segmentos = Object.fromEntries(SEGMENTOS.map(s =>
+      [s, s === 'completo' ? base.km : construirRespuesta(dias, filas, eventos, s).km]));
     const pendientes = dias.filter(d => !procesados.has(d));
-    return { ...resp, desde: ini.toISOString(), hasta: fin.toISOString(), pendientes, generado: ahora() };
+    return {
+      ...base, segmentos, etiquetas: ETIQUETA_SEG,
+      desde: ini.toISOString(), hasta: fin.toISOString(), pendientes, generado: ahora()
+    };
   });
 }
 
 module.exports = {
   cargarAuditoria, procesarDia, procesarRango, progreso, hoyMadrid, diaMenos,
   // exportados para pruebas
+  SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana,
   normPlaca, diaLocal, limitesDiaMadrid, offsetMadridSeg, mergeIv, enIntervalos,
   construirIv, estadoEn, bucketDe, atribuirRecorrido, tiempoPorEstado, haversineKm, construirRespuesta,
   leerFilasKm, leerEventos, resolverRango, ejeDias, MAX_DIAS

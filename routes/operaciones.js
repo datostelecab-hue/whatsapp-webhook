@@ -218,6 +218,36 @@ router.get('/auditoria/excel', async (req, res) => {
     wsKm.getColumn('pctn').numFmt = '0%';
     wsKm.getRow(1).font = { bold: true };
 
+    // Hoja por TURNO: los dos tramos uno al lado del otro, con quién usó el coche en
+    // cada uno según BOLT. Es la vista que sirve para pedir explicaciones a una persona.
+    const wsT = wb.addWorksheet('Por turno');
+    wsT.columns = [
+      { header: 'Matrícula', key: 'mat', width: 14 },
+      { header: 'DÍA · KM total', key: 'dkm', width: 14 }, { header: 'DÍA · no disponible', key: 'dnd', width: 18 },
+      { header: 'DÍA · %', key: 'dp', width: 9 }, { header: 'DÍA · conductores (BOLT)', key: 'dc', width: 34 },
+      { header: 'NOCHE · KM total', key: 'nkm', width: 16 }, { header: 'NOCHE · no disponible', key: 'nnd', width: 20 },
+      { header: 'NOCHE · %', key: 'np', width: 10 }, { header: 'NOCHE · conductores (BOLT)', key: 'nc', width: 34 },
+      { header: 'Consolidado KM', key: 'tkm', width: 15 }, { header: 'Consolidado no disp.', key: 'tnd', width: 19 }
+    ];
+    const segDia = new Map(((r.segmentos && r.segmentos.dia) || []).map(k => [k.placa, k]));
+    const segNoche = new Map(((r.segmentos && r.segmentos.noche) || []).map(k => [k.placa, k]));
+    [...new Set([...segDia.keys(), ...segNoche.keys()])].map(p => ({ d: segDia.get(p), n: segNoche.get(p) }))
+      .sort((a, b) => (((b.d && b.d.totalNoDisp) || 0) + ((b.n && b.n.totalNoDisp) || 0)) - (((a.d && a.d.totalNoDisp) || 0) + ((a.n && a.n.totalNoDisp) || 0)))
+      .forEach(x => {
+        const d = x.d, n = x.n;
+        const fila = wsT.addRow({
+          mat: (d || n).matricula,
+          dkm: d ? d.totalMapon : '', dnd: d ? d.totalNoDisp : '', dp: d && d.pctNoDisp != null ? d.pctNoDisp / 100 : '',
+          dc: d ? (d.conductores || []).join(' · ') : '',
+          nkm: n ? n.totalMapon : '', nnd: n ? n.totalNoDisp : '', np: n && n.pctNoDisp != null ? n.pctNoDisp / 100 : '',
+          nc: n ? (n.conductores || []).join(' · ') : '',
+          tkm: Math.round((((d && d.totalMapon) || 0) + ((n && n.totalMapon) || 0)) * 10) / 10,
+          tnd: Math.round((((d && d.totalNoDisp) || 0) + ((n && n.totalNoDisp) || 0)) * 10) / 10
+        });
+        fila.getCell('dp').numFmt = '0%'; fila.getCell('np').numFmt = '0%';
+      });
+    wsT.getRow(1).font = { bold: true };
+
     // Detalle día a día (para poder señalar la jornada concreta en una reclamación).
     const wsDia = wb.addWorksheet('Detalle por día');
     wsDia.columns = [
@@ -226,13 +256,14 @@ router.get('/auditoria/excel', async (req, res) => {
       { header: 'Ida a recoger', key: 'ida', width: 13 }, { header: 'Espera', key: 'esp', width: 10 },
       { header: 'DESCANSO', key: 'des', width: 11 }, { header: 'FUERA', key: 'fue', width: 10 },
       { header: 'h DESCANSO', key: 'hdes', width: 12 }, { header: 'h app cerrada', key: 'hfue', width: 13 },
-      { header: 'Facturado BOLT', key: 'bolt', width: 14 }
+      { header: 'Facturado BOLT', key: 'bolt', width: 14 },
+      { header: 'Conductores (BOLT)', key: 'cond', width: 34 }
     ];
     r.km.forEach(k => r.dias.forEach(d => {
       const x = k.dias[d]; if (!x) return;
       wsDia.addRow({ dia: ddmm(d) + '/' + d.slice(0, 4), mat: k.matricula, mapon: x.mapon,
         pas: x.pasajero, ida: x.ida, esp: x.espera, des: x.descanso, fue: x.fuera,
-        hdes: x.hDescanso, hfue: x.hFuera, bolt: x.bolt });
+        hdes: x.hDescanso, hfue: x.hFuera, bolt: x.bolt, cond: (x.conductores || []).join(' · ') });
     }));
     wsDia.getRow(1).font = { bold: true };
 

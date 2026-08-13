@@ -57,6 +57,20 @@ function inicioSistemaTs() {
 }
 const DESDE_TS = inicioSistemaTs();
 
+/**
+ * Hasta qué antigüedad se considera FIABLE la atribución del exceso a un conductor.
+ *
+ * conductorDeMatricula amplía la búsqueda hasta 15 días si el coche estaba desconectado
+ * de BOLT. Pasado un rato eso deja de ser un dato y pasa a ser una conjetura: estos
+ * coches cambian de manos cada turno (día/noche), así que "el último que lo condujo hace
+ * 6 horas" puede perfectamente NO ser quien iba al volante. Por encima de este margen el
+ * caso se registra pero queda PENDIENTE DE REVISIÓN y no se avisa a nadie: es preferible
+ * revisar a mano que acusar a quien no fue.
+ */
+const VENTANA_FIABLE_SEG = Number(process.env.SANCIONES_VENTANA_FIABLE || 3600);
+const humanizar = seg => seg < 3600 ? `${Math.round(seg / 60)} min`
+  : seg < 86400 ? `${Math.round(seg / 3600)} h` : `${Math.round(seg / 86400)} días`;
+
 // Estados del registro (columna N).
 const EST = {
   ENVIADO: 'enviado',                 // advertencia enviada
@@ -232,7 +246,13 @@ async function procesar(opciones = {}) {
     const log = await leerLog();
     const yaVistas = new Set(log.map(r => r.clave));
 
-    for (const a of alertas) {
+    // De la MÁS ANTIGUA a la más reciente. Mapon las devuelve al revés, y como la
+    // reincidencia solo mira hechos ANTERIORES (ts < ts del actual), procesándolas de
+    // nueva a vieja ninguna veía a las demás: varios excesos de la misma tanda salían
+    // todos como "1ª advertencia" y se enviaban varios WhatsApp al mismo conductor.
+    const enOrden = [...alertas].sort((x, y) => x.orden - y.orden);
+
+    for (const a of enOrden) {
       if (yaVistas.has(a.id)) continue;                 // dedup: ya registrada
       const tMs = Date.parse(a.iso);
       // Anterior al alta del sistema: ni se registra ni cuenta. Evita que una consulta
@@ -262,6 +282,21 @@ async function procesar(opciones = {}) {
       const { nombre, telefono } = await datosConductor(r.driver_uuid);
       fila[5] = nombre || '(sin nombre)'; fila[6] = r.driver_uuid; fila[7] = telefono;
       fila[17] = (r.lat != null && r.lng != null) ? `${r.lat},${r.lng}` : '';   // ubicación del log
+
+      // Atribución dudosa: el conductor se dedujo de un log demasiado antiguo. Se deja
+      // constancia con el nombre del candidato, pero NO se avisa ni cuenta como
+      // infracción suya hasta que alguien lo confirme a mano.
+      if (r.ventanaSeg > VENTANA_FIABLE_SEG) {
+        fila[11] = 'Atribución dudosa';
+        fila[13] = EST.PEND_REVISION;
+        fila[16] = `Candidato: ${nombre || r.driver_uuid} (último log del coche ${humanizar(r.ventanaSeg)} antes del exceso). ` +
+          `El coche cambia de conductor cada turno: confirmar antes de avisar.`;
+        res.dudosas = (res.dudosas || 0) + 1;
+        await appendRows(LIBRO, RANGO_LOG, [fila]);
+        res.detalle.push({ matricula: a.matricula, conductor: nombre, aviso: fila[11], estado: fila[13] });
+        continue;
+      }
+      fila[16] = `Conductor resuelto con log de ${humanizar(r.ventanaSeg)} antes del exceso`;
 
       const previos = previosEnVentana(log, r.driver_uuid, tMs);
       const esReincidente = previos >= 1;

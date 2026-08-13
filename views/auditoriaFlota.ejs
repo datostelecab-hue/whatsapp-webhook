@@ -79,7 +79,44 @@
 
   <!-- ══ KM por estado ══ -->
   <section data-panel="km" class="hidden">
-    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <!-- Tramo: los coches cambian de conductor cada turno, así que por turno se ve lo
+         que por día se diluye. "Turnos (día+noche)" pone los dos uno al lado del otro. -->
+    <div class="flex flex-wrap gap-1 mb-3" id="a-segmentos"></div>
+
+    <!-- Tabla combinada de los dos turnos -->
+    <div data-vista="turnos" class="hidden bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+      <div class="overflow-x-auto max-h-[36rem] overflow-y-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
+            <tr>
+              <th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2" rowspan="2">Matrícula</th>
+              <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="4">☀️ Turno de día</th>
+              <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="4">🌙 Turno de noche</th>
+              <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="2">Consolidado</th>
+            </tr>
+            <tr>
+              <th class="text-right font-semibold px-3 py-2 border-l border-telecab-border">KM</th>
+              <th class="text-right font-semibold px-3 py-2 text-telecab-red">No disp.</th>
+              <th class="text-right font-semibold px-3 py-2">%</th>
+              <th class="text-left font-semibold px-3 py-2">Conductores (BOLT)</th>
+              <th class="text-right font-semibold px-3 py-2 border-l border-telecab-border">KM</th>
+              <th class="text-right font-semibold px-3 py-2 text-telecab-red">No disp.</th>
+              <th class="text-right font-semibold px-3 py-2">%</th>
+              <th class="text-left font-semibold px-3 py-2">Conductores (BOLT)</th>
+              <th class="text-right font-semibold px-3 py-2 border-l border-telecab-border">KM</th>
+              <th class="text-right font-semibold px-3 py-2 text-telecab-red">No disp.</th>
+            </tr>
+          </thead>
+          <tbody id="a-tbody-turnos" class="divide-y divide-telecab-border/60"></tbody>
+        </table>
+      </div>
+      <div id="a-vacio-turnos" class="hidden p-8 text-center text-telecab-muted">
+        <i class="fa-solid fa-clock text-3xl mb-2 opacity-40"></i>
+        <p>Sin datos de turnos en este rango.</p>
+      </div>
+    </div>
+
+    <div data-vista="detalle" class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
       <div class="overflow-x-auto max-h-[36rem] overflow-y-auto">
         <table class="w-full text-sm">
           <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
@@ -94,6 +131,7 @@
               <th class="text-right font-semibold px-3 py-3 text-telecab-red">No disp.</th>
               <th class="text-right font-semibold px-3 py-3">%</th>
               <th class="text-right font-semibold px-3 py-3 text-amber-400" title="Horas marcado ocupado">h desc.</th>
+              <th class="text-left font-semibold px-3 py-3">Conductores (BOLT)</th>
               <th class="text-left font-semibold px-3 py-3 w-32">Reparto</th>
             </tr>
           </thead>
@@ -176,8 +214,16 @@
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [] }, pendientes: [] };
+let DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [] }, pendientes: [], segmentos: {}, etiquetas: {} };
 let tab = 'km', filtroEv = '', busqueda = '', cargando = false, error = null, gen = 0, poll = null;
+// Tramo que se está viendo: 'turnos' (los dos en paralelo), 'dia', 'noche' o 'completo'.
+let segmento = 'turnos';
+const SEGS = [
+  { id: 'turnos', txt: '☀️🌙 Turnos (día + noche)' },
+  { id: 'dia', txt: '☀️ Solo turno de día' },
+  { id: 'noche', txt: '🌙 Solo turno de noche' },
+  { id: 'completo', txt: '📅 Día natural (00–24)' }
+];
 
 const pad = n => String(n).padStart(2, '0');
 const fmt = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
@@ -187,7 +233,10 @@ const nkm = v => (v == null ? '' : Number(v).toLocaleString('es-ES', { maximumFr
 // Los KPI y los contadores siguen el filtro de matrícula: si no, junto a la fila de
 // un solo coche se leían los totales de toda la flota como si fueran suyos.
 const coincide = o => { const q = busqueda.trim().toLowerCase(); return !q || (`${o.matricula} ${o.vehiculo || ''}`).toLowerCase().includes(q); };
-const kmFiltrado = () => DATA.km.filter(coincide);
+// Los KPI siguen el tramo elegido: en "Turnos" se suman día + noche.
+const kmFiltrado = () => (segmento === 'turnos'
+  ? [...(DATA.segmentos.dia || []), ...(DATA.segmentos.noche || [])]
+  : filasSegmento()).filter(coincide);
 const evFiltrado = () => DATA.eventos.filter(coincide);
 
 function kpis() {
@@ -215,9 +264,32 @@ function barra(k) {
     ${seg(k.totalPasajero, 'bg-telecab-green')}${seg(k.totalIda, 'bg-telecab-gold')}${seg(k.totalEspera, 'bg-telecab-muted/50')}${seg(k.totalDescanso, 'bg-amber-500')}${seg(k.totalFuera, 'bg-telecab-red')}</span>`;
 }
 
+/** Filas del tramo elegido (para las vistas de un solo tramo). */
+function filasSegmento() {
+  if (segmento === 'turnos') return [];
+  return (DATA.segmentos && DATA.segmentos[segmento]) || DATA.km || [];
+}
+
+function pintarSelector() {
+  $('#a-segmentos').innerHTML = SEGS.map(s => {
+    const on = segmento === s.id;
+    return `<button data-seg="${s.id}" class="a-seg px-3 py-1.5 rounded-lg text-xs font-medium transition border
+      ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${s.txt}</button>`;
+  }).join('') + (DATA.etiquetas && DATA.etiquetas.dia
+    ? `<span class="ml-2 self-center text-[11px] text-telecab-muted">${esc(DATA.etiquetas[segmento === 'turnos' ? 'dia' : segmento] || '')}${segmento === 'turnos' ? ' · ' + esc(DATA.etiquetas.noche) : ''}</span>` : '');
+  document.querySelectorAll('.a-seg').forEach(b => b.onclick = () => { segmento = b.dataset.seg; pintarKm(); });
+  // La tabla combinada y la de detalle se alternan según el tramo elegido.
+  const esTurnos = segmento === 'turnos';
+  const t1 = document.querySelector('[data-vista="turnos"]'), t2 = document.querySelector('[data-vista="detalle"]');
+  if (t1) t1.classList.toggle('hidden', !esTurnos || cargando);
+  if (t2) t2.classList.toggle('hidden', esTurnos || cargando);
+}
+
 function pintarKm() {
+  pintarSelector();
+  if (segmento === 'turnos') { pintarTurnos(); return; }
   const t = busqueda.toLowerCase();
-  const filas = DATA.km.filter(k => !t || (`${k.matricula} ${k.vehiculo}`).toLowerCase().includes(t));
+  const filas = filasSegmento().filter(k => !t || (`${k.matricula} ${k.vehiculo}`).toLowerCase().includes(t));
   const vacio = !filas.length && !cargando && !error;
   $('#a-vacio-km').classList.toggle('hidden', !vacio);
   if (vacio) $('#a-vacio-km-txt').textContent = DATA.km.length ? 'Ninguna matrícula coincide con el filtro.' : 'Sin datos procesados en este rango.';
@@ -235,10 +307,60 @@ function pintarKm() {
       <td class="px-3 py-2.5 text-right font-semibold ${k.totalNoDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted'}">${nkm(k.totalNoDisp)}</td>
       <td class="px-3 py-2.5 text-right ${cls}">${k.pctNoDisp == null ? '' : k.pctNoDisp + '%'}</td>
       <td class="px-3 py-2.5 text-right ${hd}">${k.hDescanso ? nkm(k.hDescanso) + ' h' : ''}</td>
+      <td class="px-3 py-2.5 text-xs text-telecab-muted">${conductoresTxt(k.conductores)}</td>
       <td class="px-3 py-2.5">${barra(k)}</td>
     </tr>`;
   }).join('');
 }
+
+// Quién usó el coche según BOLT en ese tramo (no según el planificador).
+function conductoresTxt(lista) {
+  const c = lista || [];
+  if (!c.length) return '<span class="text-telecab-muted/40">sin conductor en BOLT</span>';
+  const txt = c.map(esc).join(' · ');
+  return c.length > 2
+    ? `<span title="${esc(c.join(' · '))}">${esc(c[0])} +${c.length - 1}</span>`
+    : txt;
+}
+
+// ── Tabla combinada de los dos turnos ──
+function pintarTurnos() {
+  const t = busqueda.trim().toLowerCase();
+  const dia = new Map((DATA.segmentos.dia || []).map(k => [k.placa, k]));
+  const noche = new Map((DATA.segmentos.noche || []).map(k => [k.placa, k]));
+  const placas = [...new Set([...dia.keys(), ...noche.keys()])]
+    .map(p => ({ p, d: dia.get(p), n: noche.get(p) }))
+    .filter(x => { const m = (x.d || x.n).matricula || ''; return !t || m.toLowerCase().includes(t); })
+    .map(x => ({ ...x, noDisp: ((x.d && x.d.totalNoDisp) || 0) + ((x.n && x.n.totalNoDisp) || 0) }))
+    .sort((a, b) => b.noDisp - a.noDisp);
+
+  const vacio = !placas.length && !cargando && !error;
+  $('#a-vacio-turnos').classList.toggle('hidden', !vacio);
+
+  const celdas = k => {
+    if (!k) return `<td class="px-3 py-2.5 text-right text-telecab-muted/30">·</td>
+      <td class="px-3 py-2.5 text-right text-telecab-muted/30">·</td>
+      <td class="px-3 py-2.5 text-right text-telecab-muted/30">·</td>
+      <td class="px-3 py-2.5 text-xs text-telecab-muted/40">—</td>`;
+    const cls = k.pctNoDisp >= 25 ? 'text-telecab-red font-bold' : k.pctNoDisp >= 10 ? 'text-telecab-gold font-semibold' : 'text-telecab-muted';
+    return `<td class="px-3 py-2.5 text-right border-l border-telecab-border/40">${nkm(k.totalMapon)}</td>
+      <td class="px-3 py-2.5 text-right ${k.totalNoDisp > 0 ? 'text-telecab-red font-semibold' : 'text-telecab-muted'}">${nkm(k.totalNoDisp)}</td>
+      <td class="px-3 py-2.5 text-right ${cls}">${k.pctNoDisp == null ? '' : k.pctNoDisp + '%'}</td>
+      <td class="px-3 py-2.5 text-xs text-telecab-muted">${conductoresTxt(k.conductores)}</td>`;
+  };
+
+  $('#a-tbody-turnos').innerHTML = placas.map(x => {
+    const mat = (x.d || x.n).matricula;
+    const totKm = ((x.d && x.d.totalMapon) || 0) + ((x.n && x.n.totalMapon) || 0);
+    return `<tr class="hover:bg-telecab-card2/50 transition ${x.noDisp > 0 ? 'bg-telecab-red/[0.03]' : ''}">
+      <td class="px-4 py-2.5 font-semibold sticky left-0 bg-telecab-card whitespace-nowrap">${esc(mat)}</td>
+      ${celdas(x.d)}${celdas(x.n)}
+      <td class="px-3 py-2.5 text-right font-semibold border-l border-telecab-border/40">${nkm(round1(totKm))}</td>
+      <td class="px-3 py-2.5 text-right font-bold ${x.noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted'}">${nkm(round1(x.noDisp))}</td>
+    </tr>`;
+  }).join('');
+}
+const round1 = v => Math.round(v * 10) / 10;
 
 function filtrosEv() {
   const base = evFiltrado();
@@ -304,6 +426,7 @@ function activarTab(t) {
       (on ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
   });
   document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== t || cargando));
+  if (t === 'km' && !cargando) pintarSelector();   // alterna tabla combinada / detalle
 }
 function aviso(t) { const b = $('#a-aviso'); if (!t) { b.classList.add('hidden'); return; } b.classList.remove('hidden'); b.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i>${esc(t)}`; }
 function rango() {
@@ -328,12 +451,13 @@ async function cargar() {
     const d = await (await fetch('/operaciones/api/auditoria?' + q)).json();
     if (mine !== gen) return;
     if (d.status !== 'ok') throw new Error(d.msg || 'error');
-    DATA = { dias: d.dias || [], km: d.km || [], eventos: d.eventos || [], ofensores: d.ofensores || { fuera: [], repostaje: [] }, pendientes: d.pendientes || [] };
+    DATA = { dias: d.dias || [], km: d.km || [], eventos: d.eventos || [], ofensores: d.ofensores || { fuera: [], repostaje: [] },
+      pendientes: d.pendientes || [], segmentos: d.segmentos || {}, etiquetas: d.etiquetas || {} };
     $('#a-pie').textContent = `${DATA.km.length} matrículas · ${DATA.dias.length} días · datos del histórico (los procesa el cron a las 5:00).`;
   } catch (e) {
     if (mine !== gen) return;
     error = e.message; aviso('No se pudo cargar: ' + e.message);
-    DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [] }, pendientes: [] };
+    DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [] }, pendientes: [], segmentos: {}, etiquetas: {} };
   } finally {
     if (mine === gen) { cargando = false; $('#a-cargando').classList.add('hidden'); $('#a-consultar').disabled = false; pintarTodo(); activarTab(tab); }
   }
