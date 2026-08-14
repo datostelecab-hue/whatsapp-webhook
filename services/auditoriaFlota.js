@@ -542,7 +542,12 @@ function leerEventos(valores) {
   }));
 }
 
+// Comprobar las pestañas cuesta 4 llamadas a Sheets y solo hace falta UNA VEZ por
+// arranque: repetirlo en cada día de un backfill fue lo que agotó la cuota de la API
+// (60 peticiones por minuto y usuario) y tumbó todo el ERP, login incluido.
+let _tabsListas = false;
 async function ensureTabs() {
+  if (_tabsListas) return;
   await sheets.ensureSheet(ID_AUDITORIA, TAB_KM);
   await sheets.ensureSheet(ID_AUDITORIA, TAB_FUEL);
   await sheets.ensureSheet(ID_AUDITORIA, TAB_DIAS);
@@ -561,6 +566,7 @@ async function ensureTabs() {
   if (!b.length) tareas.push({ range: `${TAB_FUEL}!A1`, values: [CAB_FUEL] });
   if (!c.length) tareas.push({ range: `${TAB_DIAS}!A1`, values: [CAB_DIAS] });
   if (tareas.length) await sheets.writeMany(ID_AUDITORIA, tareas);
+  _tabsListas = true;
 }
 /**
  * Reescribe una tabla ENTERA sin dejarla nunca vacía a medias: primero se amplía la
@@ -621,12 +627,28 @@ async function procesarDia(dia) {
 let _prog = { activo: false, total: 0, hechos: 0, dia: null, iniciado: null, fin: null, error: null, fallidos: [] };
 const progreso = () => ({ ..._prog });
 
+// Interruptor de emergencia: un backfill largo consume mucha cuota de Google y, si se
+// desmadra, tumba TODO el ERP (el login también lee de Sheets). Sin esto la única
+// forma de pararlo era reiniciar el servicio.
+let _parar = false;
+function detener() {
+  if (!_prog.activo) return { activo: false, msg: 'No hay ningún procesado en marcha' };
+  _parar = true;
+  console.warn('🛑 [AUDITORÍA] parada solicitada: se detiene al acabar el día en curso');
+  return { activo: true, msg: 'Se detendrá al terminar el día en curso' };
+}
+
 /**
  * Procesa días. Admite un rango {desde,hasta} o una LISTA explícita de días
  * ('aaaa-mm-dd'): los pendientes no tienen por qué ser contiguos, y pasando solo los
  * extremos se reprocesaban de balde todos los días buenos de en medio.
  * Un día que falle no aborta el resto: se anota y se sigue.
  */
+// Días que se calculan antes de escribir en el Sheet. Guardar día a día reescribía el
+// libro entero cada vez (~12 llamadas por día) y agotaba la cuota de Google. En lotes,
+// el coste de escritura se reparte entre varios días.
+const DIAS_POR_LOTE = Number(process.env.AUDITORIA_LOTE || 5);
+
 async function procesarRango({ desde, hasta, dias: lista } = {}) {
   if (_prog.activo) throw new Error('Ya hay un procesado en marcha');
   let dias;
@@ -638,19 +660,37 @@ async function procesarRango({ desde, hasta, dias: lista } = {}) {
     const { ini, fin } = resolverRango({ desde, hasta });
     dias = ejeDias(ini, fin);
   }
+  _parar = false;
   _prog = { activo: true, total: dias.length, hechos: 0, dia: null, iniciado: ahora(), fin: null, error: null, fallidos: [] };
   try {
+    // Se calculan varios días y se GUARDAN DE UNA VEZ: el guardado reescribe el libro
+    // entero, así que hacerlo por día multiplicaba las llamadas a Sheets hasta agotar
+    // la cuota. Un lote pequeño mantiene la resiliencia (si se corta, se pierde solo
+    // el lote en curso) y baja el coste de la API a la quinta parte.
+    let lote = [];
+    const volcar = async () => {
+      if (!lote.length) return;
+      await guardarDias(lote);
+      console.log(`📊 [AUDITORÍA] guardados ${lote.length} día(s): ${lote.map(x => x.dia).join(', ')}`);
+      lote = [];
+    };
     for (const d of dias) {
+      if (_parar) { _prog.error = 'Detenido a mano'; console.warn('🛑 [AUDITORÍA] backfill detenido'); break; }
       _prog.dia = d;
       try {
-        await procesarDia(d);   // guarda día a día → resiliente si se corta
+        lote.push(await computarDia(d));
+        if (lote.length >= DIAS_POR_LOTE) await volcar();
       } catch (e) {
         _prog.fallidos.push(`${d}: ${e.message}`);
         console.error(`❌ [AUDITORÍA] ${d}:`, e.message);
       }
       _prog.hechos++;
     }
+    await volcar();
     if (_prog.fallidos.length) _prog.error = `${_prog.fallidos.length} día(s) sin procesar: ${_prog.fallidos.slice(0, 3).join(' · ')}`;
+  } catch (e) {
+    _prog.error = e.message;
+    console.error('❌ [AUDITORÍA] backfill:', e.message);
   } finally {
     _prog.activo = false; _prog.fin = ahora();
   }
@@ -757,7 +797,7 @@ function cargarAuditoria({ desde, hasta } = {}) {
 }
 
 module.exports = {
-  cargarAuditoria, procesarDia, procesarRango, progreso, hoyMadrid, diaMenos,
+  cargarAuditoria, procesarDia, procesarRango, progreso, detener, hoyMadrid, diaMenos,
   // exportados para pruebas
   SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana,
   normPlaca, diaLocal, limitesDiaMadrid, offsetMadridSeg, mergeIv, enIntervalos,

@@ -10,6 +10,9 @@
       <button id="btn-exportar" class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:border-telecab-gold">
         <i class="fa-solid fa-file-excel mr-1"></i> Exportar Excel
       </button>
+      <button id="btn-turnos" class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:border-telecab-gold" title="Excel con el turno de noche de hoy y los dos días siguientes (día y noche), con matrícula y teléfono">
+        <i class="fa-solid fa-calendar-days mr-1"></i> Turnos fin de semana
+      </button>
       <button id="btn-reporte" class="hidden px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:border-telecab-gold" title="Reporte del día con colores por horas y los justificantes al final">
         <i class="fa-solid fa-chart-column mr-1"></i> Reporte (colores)
       </button>
@@ -381,8 +384,27 @@ async function exportarExcel() {
   } catch (e) { alert('No se pudo exportar el Excel.'); }
 }
 
+// Excel de turnos: hoy solo la noche + los dos días siguientes con día y noche.
+// Tarda un par de segundos (lee el planificador), así que el botón avisa mientras tanto.
+async function excelTurnos() {
+  const b = $('#btn-turnos');
+  const html = b.innerHTML;
+  b.disabled = true;
+  b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Generando…';
+  try {
+    const r = await fetch('/control/turnos/excel');
+    if (!r.ok) throw new Error('error');
+    const blob = await r.blob(); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `Turnos_Tibus_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e) { alert('No se pudo generar el Excel de turnos.'); }
+  b.disabled = false; b.innerHTML = html;
+}
+
 $('#btn-refrescar').addEventListener('click', cargar);
 $('#btn-exportar').addEventListener('click', exportarExcel);
+$('#btn-turnos').addEventListener('click', excelTurnos);
 $('#btn-reporte').addEventListener('click', () => { if (esPasado()) window.location = '/control/reporte/excel?dia=' + VISTA; });
 // Botón "Justificar" (delegado, porque las filas se repintan).
 $('#secciones').addEventListener('click', e => { const b = e.target.closest('.jbtn'); if (b) justificar(b.dataset.nombre, b.dataset.tel, b.dataset.turno, b.dataset.horas); });

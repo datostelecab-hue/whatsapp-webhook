@@ -76,6 +76,13 @@ router.post('/auditoria/procesar', (req, res) => {
 
 router.get('/auditoria/procesar/estado', (req, res) => res.json({ status: 'ok', progreso: auditoria.progreso() }));
 
+// Parada de emergencia del backfill. Un procesado largo consume mucha cuota de Google
+// y puede dejar sin servicio al resto del ERP (el login también lee de Sheets); esto lo
+// corta sin tener que reiniciar. Se acepta por GET para poder pararlo desde el navegador.
+const pararAuditoria = (req, res) => res.json({ status: 'ok', ...auditoria.detener() });
+router.post('/auditoria/procesar/detener', pararAuditoria);
+router.get('/auditoria/procesar/detener', pararAuditoria);
+
 // ── Diagnóstico del fichaje: ¿deja Mapon crear/asignar conductores con esta clave? ──
 // Solo lectura por defecto. Con ?crear=NOMBRE intenta dar de alta ese conductor y
 // devuelve la respuesta CRUDA de Mapon, que es lo único que dice el motivo real.

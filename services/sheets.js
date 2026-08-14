@@ -15,27 +15,52 @@ function getSheetsClient() {
   return sheetsClient;
 }
 
+/**
+ * Reintenta cuando Google responde "Resource has been exhausted": su cuota es de 60
+ * peticiones por minuto y usuario, y al agotarse falla TODO lo que lee Sheets — hasta
+ * el login. Con una espera creciente, un pico puntual (un backfill, varios paneles a la
+ * vez) se absorbe en vez de tumbar el ERP. Si tras los reintentos sigue fallando, se
+ * propaga el error para que se vea en los logs.
+ */
+const esCuota = e => {
+  const m = (e && (e.message || '')) + ' ' + ((e && e.code) || '');
+  return /exhaust|quota|rate limit|RESOURCE_EXHAUSTED|\b429\b/i.test(m);
+};
+const dormir = ms => new Promise(r => setTimeout(r, ms));
+
+async function conReintento(etiqueta, fn, intentos = 4) {
+  for (let i = 1; ; i++) {
+    try { return await fn(); }
+    catch (e) {
+      if (!esCuota(e) || i >= intentos) throw e;
+      const espera = 1500 * Math.pow(2, i - 1);   // 1,5s · 3s · 6s
+      console.warn(`⏳ [Sheets] cuota agotada en ${etiqueta} — reintento ${i}/${intentos - 1} en ${espera / 1000}s`);
+      await dormir(espera);
+    }
+  }
+}
+
 async function readSheet(spreadsheetId, range, options = {}) {
   const sheets = getSheetsClient();
-  const response = await sheets.spreadsheets.values.get({
+  const response = await conReintento('readSheet', () => sheets.spreadsheets.values.get({
     spreadsheetId,
     range,
     // Por defecto Google devuelve el valor tal como se ve (con coma decimal,
     // fechas formateadas…). Con UNFORMATTED_VALUE los números vuelven como
     // números y sobreviven al ida y vuelta sin depender del idioma de la hoja.
     valueRenderOption: options.valueRenderOption
-  });
+  }));
   return response.data.values || [];
 }
 
 async function writeSheet(spreadsheetId, range, values) {
   const sheets = getSheetsClient();
-  await sheets.spreadsheets.values.update({
+  await conReintento('write', () => sheets.spreadsheets.values.update({
     spreadsheetId,
     range,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values }
-  });
+  }));
 }
 
 // Como writeSheet pero SIN que Sheets interprete los valores: 'YYYY-MM-DD' se
@@ -44,20 +69,20 @@ async function writeSheet(spreadsheetId, range, values) {
 // ida y vuelta.
 async function writeSheetRaw(spreadsheetId, range, values) {
   const sheets = getSheetsClient();
-  await sheets.spreadsheets.values.update({
+  await conReintento('write', () => sheets.spreadsheets.values.update({
     spreadsheetId,
     range,
     valueInputOption: 'RAW',
     requestBody: { values }
-  });
+  }));
 }
 
 async function clearSheet(spreadsheetId, range) {
   const sheets = getSheetsClient();
-  await sheets.spreadsheets.values.clear({
+  await conReintento('clear', () => sheets.spreadsheets.values.clear({
     spreadsheetId,
     range
-  });
+  }));
 }
 
 async function ensureSheet(spreadsheetId, sheetName) {
@@ -82,7 +107,7 @@ async function ensureSheet(spreadsheetId, sheetName) {
  */
 async function readMany(spreadsheetId, ranges) {
   const sheets = getSheetsClient();
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges });
+  const response = await conReintento('readMany', () => sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges }));
   const valueRanges = response.data.valueRanges || [];
   return ranges.map((_, i) => (valueRanges[i] && valueRanges[i].values) || []);
 }
@@ -98,10 +123,10 @@ async function readMany(spreadsheetId, ranges) {
 async function writeMany(spreadsheetId, datos) {
   if (!datos.length) return { updatedCells: 0 };
   const sheets = getSheetsClient();
-  const response = await sheets.spreadsheets.values.batchUpdate({
+  const response = await conReintento('writeMany', () => sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,
     requestBody: { valueInputOption: 'USER_ENTERED', data: datos }
-  });
+  }));
   return {
     updatedCells: response.data.totalUpdatedCells || 0,
     updatedRanges: response.data.totalUpdatedRanges || 0
@@ -144,7 +169,16 @@ async function setRowVisibility(spreadsheetId, sheetId, tramos) {
  * values.update NO amplía la rejilla: escribir más filas de las que tiene la hoja
  * (1000 por defecto) falla con "exceeds grid limits", así que hay que crecerla antes.
  */
+// Tamaño conocido de cada pestaña: pedir los metadatos en CADA escritura multiplicaba
+// las llamadas a la API y agotaba la cuota (60/min por usuario). Solo se consulta si no
+// se conoce o si hace falta crecer de verdad.
+const _grid = new Map();   // 'spreadsheetId|hoja' -> { filas, columnas }
+
 async function ensureGrid(spreadsheetId, sheetName, filas, columnas) {
+  const clave = `${spreadsheetId}|${sheetName}`;
+  const conocido = _grid.get(clave);
+  if (conocido && (!filas || conocido.filas >= filas) && (!columnas || conocido.columnas >= columnas)) return;
+
   const sheets = getSheetsClient();
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
   const hoja = (meta.data.sheets || []).find(s => s.properties.title === sheetName);
@@ -161,6 +195,10 @@ async function ensureGrid(spreadsheetId, sheetName, filas, columnas) {
     await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: reqs } });
     console.log(`📐 Hoja "${sheetName}" ampliada a ${Math.max(filas || 0, g.rowCount || 0)} filas`);
   }
+  _grid.set(clave, {
+    filas: Math.max(filas || 0, g.rowCount || 0),
+    columnas: Math.max(columnas || 0, g.columnCount || 0)
+  });
 }
 
 /** Mapa nombre de hoja → id numérico (necesario para borrar filas). */
@@ -178,13 +216,13 @@ async function getSheetIds(spreadsheetId) {
 async function appendRows(spreadsheetId, range, values) {
   if (!values.length) return { updatedRows: 0 };
   const sheets = getSheetsClient();
-  const response = await sheets.spreadsheets.values.append({
+  const response = await conReintento('append', () => sheets.spreadsheets.values.append({
     spreadsheetId,
     range,
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values }
-  });
+  }));
   return { updatedRows: (response.data.updates || {}).updatedRows || 0 };
 }
 

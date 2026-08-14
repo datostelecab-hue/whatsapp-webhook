@@ -4,6 +4,7 @@ const router = express.Router();
 const { tableroControl } = require('../services/control');
 const { enviarAtencionHora } = require('../services/whatsapp');
 const justificantes = require('../services/justificantes');
+const { generarExcelTurnos } = require('../services/controlExcel');
 
 const MAX_ENVIO = 200;
 
@@ -126,6 +127,21 @@ router.get('/reporte/excel', async (req, res) => {
     res.send(buf);
   } catch (e) {
     console.error('❌ [Control] /reporte/excel:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
+// Turnos de hoy (solo noche) + los dos días siguientes con las dos tablas.
+// Pensado para el viernes: llevar impreso quién sale el sábado y el domingo.
+router.get('/turnos/excel', async (req, res) => {
+  try {
+    const dias = Math.min(Math.max(Number(req.query.dias) || 2, 0), 6);
+    const { buffer, nombre } = await generarExcelTurnos({ dias, desde: req.query.desde });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}.xlsx"`);
+    res.send(buffer);
+  } catch (e) {
+    console.error('❌ [Control] /turnos/excel:', e.message);
     res.status(500).json({ status: 'error', msg: e.message });
   }
 });
