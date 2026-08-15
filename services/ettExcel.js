@@ -12,13 +12,13 @@
 // entrevista"), para no romper lo que esperan al otro lado.
 
 const ExcelJS = require('exceljs');
-const path = require('path');
 const fs = require('fs');
 
 const TZ = 'Europe/Madrid';
 // El logo va incrustado en el .xlsx (no enlazado), así que el fichero viaja completo
 // por correo. Si algún día no estuviera, la cabecera se genera igual sin él.
-const LOGO = path.join(__dirname, '..', 'public', 'assets', 'logo-128.png');
+// La ruta sale del estilo común para que todos los Excel lleven el MISMO logo.
+const { LOGO } = require('./excelEstilo');
 
 // Paleta de la casa (dorado Telecab) en ARGB.
 const DARK = 'FF1F2430';

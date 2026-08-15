@@ -19,6 +19,7 @@ const { tableroControl } = require('./control');
 const { normClave } = require('./conductores');
 const { marcarJustificante } = require('./vistaFinal');
 const { readSheet, writeSheetRaw, appendRows, ensureSheet } = require('./sheets');
+const est = require('./excelEstilo');
 
 const ID = '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';   // libro GestionConductores
 const HOJA = 'JUSTIFICANTES';
@@ -126,7 +127,10 @@ async function reporteDia(key) {
     const horas = dia.horas;   // número o null
     const incluir = dia.debiaSalir || (horas != null && horas > 0) || !!just;
     if (!incluir) continue;
-    bruto.push({ nombre: c.nombre, telefono: c.telefono || '', turno: c.turno || '', horas, esNN: c.esNN, just });
+    bruto.push({
+      nombre: c.nombre, telefono: c.telefono || '', turno: c.turno || '', horas,
+      esNN: c.esNN, libra: !!dia.libra, debiaSalir: !!dia.debiaSalir, just
+    });
   }
 
   // No justificados primero (mayor→menor); justificados al final (también mayor→menor).
@@ -134,41 +138,178 @@ async function reporteDia(key) {
   const orden = bruto.filter(f => !f.just).sort(cmp).concat(bruto.filter(f => f.just).sort(cmp));
 
   const filas = orden.map((f, i) => {
+    const comun = { nro: i + 1, nombre: f.nombre, telefono: f.telefono, turno: f.turno, horas: f.horas, libra: f.libra, debiaSalir: f.debiaSalir };
     if (f.just) {
       const horasTexto = (f.horas != null && f.horas > 0) ? `${r1(f.horas)} (J)` : 'J';
-      return { nro: i + 1, nombre: f.nombre, telefono: f.telefono, turno: f.turno, horas: f.horas, horasTexto, color: 'azul', observacion: f.just.observacion || '', esJ: true };
+      return { ...comun, horasTexto, color: 'azul', observacion: f.just.observacion || '', esJ: true };
     }
     const b = banda(f.horas);
-    return { nro: i + 1, nombre: f.nombre, telefono: f.telefono, turno: f.turno, horas: f.horas, horasTexto: (f.horas != null ? String(r1(f.horas)) : ''), color: b.color, observacion: b.obs, esJ: false };
+    return { ...comun, horasTexto: (f.horas != null ? String(r1(f.horas)) : ''), color: b.color, observacion: b.obs, esJ: false };
   });
 
-  return { fecha, diaSemana: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][idx], dia: Number(key), filas };
+  return {
+    fecha, diaSemana: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][idx],
+    dia: Number(key), filas, resumen: resumirFilas(filas)
+  };
+}
+
+// ── Resumen del día ─────────────────────────────────────────────────────────
+// Se calcula SOBRE LAS FILAS QUE SE IMPRIMEN, para que quien lea el Excel pueda
+// sumar a mano y le cuadre. Quien solo libraba no aparece en el reporte (reporteDia
+// ya lo deja fuera), y aun así se descarta aquí por si viniera con libranza y coche.
+function resumirFilas(filas) {
+  const hizo = f => (f.horas ?? 0) > 0;
+  const porTurno = {};
+  filas.forEach(f => {
+    const t = (f.turno || '').trim() || '(sin turno)';
+    porTurno[t] = r1((porTurno[t] || 0) + (f.horas ?? 0));
+  });
+  return {
+    salieron: filas.filter(hizo).length,
+    // Se les esperaba y no aparecieron. La libranza no cuenta como falta.
+    noSalieron: filas.filter(f => !hizo(f) && !f.libra).length,
+    cumplieron8: filas.filter(f => (f.horas ?? 0) >= 8).length,
+    menos4: filas.filter(f => hizo(f) && f.horas < 4).length,
+    justificados: filas.filter(f => f.esJ).length,
+    horasDia: porTurno['Día'] || 0,
+    horasNoche: porTurno['Noche'] || 0,
+    // TodoTurno y los que no tienen turno en la agenda (los NN) van aparte: así las
+    // cuatro líneas suman EXACTAMENTE el total y no hay horas escondidas.
+    horasTodoTurno: porTurno['TodoTurno'] || 0,
+    horasSinTurno: porTurno['(sin turno)'] || 0,
+    horasTotal: r1(filas.reduce((s, f) => s + (f.horas ?? 0), 0)),
+    personas: filas.length
+  };
 }
 
 // ── Excel del reporte (colores SOLO en la celda de horas) ───────────────────
+// Los colores de la banda son los de siempre —tráfico ya los tiene interiorizados—;
+// lo que cambia es el envoltorio: cabecera de la casa con el logo, tabla con bordes
+// y, al final, el resumen del día y la leyenda de colores.
+const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9' };
+const CAB_REPORTE = ['Nº', 'Nombre', 'Teléfono', 'Turno', 'Horas', 'Observaciones'];
+const ANCHOS_REPORTE = [6, 34, 16, 11, 12, 26];
+const N_REPORTE = CAB_REPORTE.length;
+const ULTIMA_REPORTE = est.colLetra(N_REPORTE);
+
+/** Fila del resumen: concepto a la izquierda (A:D) y valor a la derecha (E:F). */
+function lineaResumen(ws, fila, concepto, valor, opciones = {}) {
+  const { horas = false, destacar = false, tenue = false } = opciones;
+  ws.mergeCells(`A${fila}:D${fila}`);
+  ws.mergeCells(`E${fila}:${ULTIMA_REPORTE}${fila}`);
+  const c = ws.getCell(`A${fila}`);
+  const v = ws.getCell(`E${fila}`);
+  c.value = concepto;
+  v.value = valor;
+  if (horas) v.numFmt = '0.0" h"';
+  [c, v].forEach(x => {
+    x.border = est.TODOS_BORDES;
+    x.font = { size: destacar ? 12 : 11, bold: destacar, color: { argb: tenue ? est.TENUE : est.TEXTO } };
+    if (destacar) x.fill = est.relleno('FFFFF4DA');
+  });
+  c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  v.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(fila).height = destacar ? 24 : 19;
+  return fila + 1;
+}
+
+/** Cabecera de sección dentro de la hoja (RESUMEN, LEYENDA…). */
+function tituloSeccion(ws, fila, texto) {
+  ws.mergeCells(`A${fila}:${ULTIMA_REPORTE}${fila}`);
+  const t = ws.getCell(`A${fila}`);
+  t.value = texto;
+  t.font = { size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+  t.fill = est.relleno(est.CAB_BG);
+  t.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  t.border = est.TODOS_BORDES;
+  ws.getRow(fila).height = 22;
+  return fila + 1;
+}
+
 async function excelDia(reporte) {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Reporte');
-  const relleno = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
-  const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9' };
+  wb.creator = 'Tibus Luxury';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('Reporte', {
+    pageSetup: {
+      orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }
+    }
+  });
+  ANCHOS_REPORTE.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  ws.mergeCells('A1:F1');
-  ws.getCell('A1').value = `Reporte de horas — ${reporte.diaSemana} ${reporte.fecha}`;
-  ws.getCell('A1').font = { bold: true, size: 13 };
+  const r = reporte.resumen || resumirFilas(reporte.filas);
+  let fila = est.bandaCabecera(ws, est.registrarLogo(wb),
+    `Reporte de horas · ${reporte.diaSemana} ${reporte.fecha}`,
+    `${r.personas} conductor(es) en el reporte   ·   ${String(r.horasTotal).replace('.', ',')} h en total   ·   generado el ${ahora()}`,
+    N_REPORTE);
 
-  ws.getRow(3).values = ['Nº', 'Nombre', 'Teléfono', 'Turno', 'Horas', 'Observaciones'];
-  ws.getRow(3).font = { bold: true };
-  ws.columns = [{ width: 6 }, { width: 34 }, { width: 16 }, { width: 10 }, { width: 12 }, { width: 22 }];
+  const filaCab = fila;
+  fila = est.cabeceraTabla(ws, fila, CAB_REPORTE);
 
-  reporte.filas.forEach(f => {
-    const row = ws.addRow([f.nro, f.nombre, f.telefono, f.turno || '', f.horasTexto, f.observacion]);
+  reporte.filas.forEach((f, i) => {
+    const row = ws.getRow(fila);
+    [f.nro, f.nombre, f.telefono, f.turno || '', f.horasTexto, f.observacion].forEach((v, ci) => {
+      const c = row.getCell(ci + 1);
+      c.value = v;
+      c.border = est.TODOS_BORDES;
+      c.alignment = { vertical: 'middle', horizontal: ci === 1 ? 'left' : 'center', indent: ci === 1 ? 1 : 0 };
+      c.font = { size: 11, color: { argb: est.TEXTO } };
+      if (i % 2) c.fill = est.relleno('FFFAFBFC');
+    });
+    // El COLOR va solo en la celda de horas, como siempre.
     const cel = row.getCell(5);
-    if (FILL[f.color]) cel.fill = relleno(FILL[f.color]);
-    cel.alignment = { horizontal: 'center' };
-    if (f.esJ) cel.font = { bold: true };
+    if (FILL[f.color]) cel.fill = est.relleno(FILL[f.color]);
+    cel.font = { size: 11, bold: true, color: { argb: f.color === 'azul' ? 'FFFFFFFF' : 'FF1F2430' } };
+    row.height = 19;
+    fila++;
+  });
+
+  // Las columnas se congelan bajo la cabecera para no perderlas al bajar por la lista.
+  ws.views = [{ state: 'frozen', ySplit: filaCab }];
+  ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: fila - 1, column: N_REPORTE } };
+
+  // ── Resumen del día ───────────────────────────────────────────────────────
+  fila++;
+  fila = tituloSeccion(ws, fila, `RESUMEN DEL ${reporte.diaSemana.toUpperCase()} ${reporte.fecha}`);
+  fila = lineaResumen(ws, fila, 'Personas que salieron (con horas registradas)', r.salieron);
+  fila = lineaResumen(ws, fila, 'No salieron  ·  sin contar libranzas', r.noSalieron);
+  fila = lineaResumen(ws, fila, 'Cumplieron las 8 h (8 h o más)', r.cumplieron8);
+  fila = lineaResumen(ws, fila, 'Salieron con menos de 4 h', r.menos4);
+  fila = lineaResumen(ws, fila, 'Justificados con J  ·  valen 8 h para el pago', r.justificados, { tenue: true });
+  fila++;
+  fila = lineaResumen(ws, fila, 'Horas hechas en el turno de DÍA', r.horasDia, { horas: true });
+  fila = lineaResumen(ws, fila, 'Horas hechas en el turno de NOCHE', r.horasNoche, { horas: true });
+  // Solo se listan si aportan horas: si no, son ruido en el papel.
+  if (r.horasTodoTurno) fila = lineaResumen(ws, fila, 'Horas hechas en TodoTurno', r.horasTodoTurno, { horas: true, tenue: true });
+  if (r.horasSinTurno) fila = lineaResumen(ws, fila, 'Horas de conductores sin turno en la agenda', r.horasSinTurno, { horas: true, tenue: true });
+  fila = lineaResumen(ws, fila, 'HORAS TOTALES DEL DÍA', r.horasTotal, { horas: true, destacar: true });
+
+  // ── Leyenda de colores ────────────────────────────────────────────────────
+  fila += 2;
+  fila = tituloSeccion(ws, fila, 'LEYENDA DE COLORES');
+  [
+    ['verde', 'Muy efectivo — 9 h o más'],
+    ['verde', 'Efectivo — de 7,6 a 8,9 h'],
+    ['amarillo', 'Poco efectivo — de 6,4 a 7,5 h'],
+    ['rojo', 'No cumplieron — 6,3 h o menos'],
+    ['azul', 'Justificado (J) — cuenta 8 h para el pago'],
+    ['gris', 'Sin dato de horas ese día']
+  ].forEach(([color, texto]) => {
+    ws.mergeCells(`B${fila}:${ULTIMA_REPORTE}${fila}`);
+    const chip = ws.getCell(`A${fila}`);
+    chip.fill = est.relleno(FILL[color]);
+    chip.border = est.TODOS_BORDES;
+    const t = ws.getCell(`B${fila}`);
+    t.value = texto;
+    t.font = { size: 10, color: { argb: est.TEXTO } };
+    t.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    t.border = est.TODOS_BORDES;
+    ws.getRow(fila).height = 18;
+    fila++;
   });
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-module.exports = { fechaDeClave, banda, guardar, leerPorFecha, reporteDia, excelDia, HOJA };
+module.exports = { fechaDeClave, banda, guardar, leerPorFecha, reporteDia, resumirFilas, excelDia, HOJA };

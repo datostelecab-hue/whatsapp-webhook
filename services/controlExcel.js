@@ -14,31 +14,18 @@
 // cubre los dos turnos.
 
 const ExcelJS = require('exceljs');
-const path = require('path');
-const fs = require('fs');
 const { leerTablero, DIAS_SEM, TURNOS } = require('./planificadorV2');
 const { leerTelefonosDB } = require('./control');
 const { normClave } = require('./conductores');
+const est = require('./excelEstilo');
 
 const TZ = 'Europe/Madrid';
-const LOGO = path.join(__dirname, '..', 'public', 'assets', 'logo-128.png');
 
-// Paleta de la casa en ARGB.
-const DARK = 'FF1F2430';
-const GOLD = 'FFE8B84B';
-const GRIS_BORDE = 'FFD8DCE3';
 const CAB_DIA = 'FFFDF0D2';     // cabecera del turno de día (dorado suave)
 const CAB_NOCHE = 'FFDCE7FA';   // cabecera del turno de noche (azul suave)
-const CAB_TXT = 'FF394150';
-
-const borde = { style: 'thin', color: { argb: GRIS_BORDE } };
-const TODOS_BORDES = { top: borde, left: borde, bottom: borde, right: borde };
 
 const CABECERAS = ['Nº', 'Conductor', 'Matrícula', 'Teléfono', 'Zona', 'Obs.'];
 const ANCHOS = [6, 30, 14, 16, 16, 14];
-
-let _logoOk = null;
-const hayLogo = () => (_logoOk === null ? (_logoOk = fs.existsSync(LOGO)) : _logoOk);
 
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit'
@@ -96,58 +83,24 @@ function salidasDe(tablero, telsDB, idxDia, turno) {
   return filas.sort((a, b) => a.matricula.localeCompare(b.matricula));
 }
 
-/** Banda superior con el logo y el título. Devuelve la siguiente fila libre. */
-function cabecera(ws, idLogo, titulo, subtitulo, nCols) {
-  const ultima = String.fromCharCode(64 + nCols);
-  ws.mergeCells(`A1:${ultima}1`);
-  const t = ws.getCell('A1');
-  t.value = `TIBUS LUXURY · ${titulo}`;
-  t.font = { name: 'Calibri', size: 15, bold: true, color: { argb: GOLD } };
-  t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
-  t.alignment = { vertical: 'middle', horizontal: 'left', indent: idLogo != null ? 6 : 1 };
-  ws.getRow(1).height = 44;
-  if (idLogo != null) {
-    ws.addImage(idLogo, { tl: { col: 0.15, row: 0.12 }, ext: { width: 42, height: 42 }, editAs: 'absolute' });
-  }
-  ws.mergeCells(`A2:${ultima}2`);
-  const s = ws.getCell('A2');
-  s.value = subtitulo;
-  s.font = { size: 10, color: { argb: 'FF6B7280' } };
-  s.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F8FA' } };
-  s.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-  ws.getRow(2).height = 19;
-  return 4;   // se deja la fila 3 en blanco
-}
-
 /**
  * Pinta un bloque "turno" (título + cabecera + filas). Devuelve la siguiente fila libre.
  */
 function bloqueTurno(ws, fila, turno, filas) {
   const esNoche = turno === 'Noche';
-  const nCols = CABECERAS.length;
-  const ultima = String.fromCharCode(64 + nCols);
+  const ultima = est.colLetra(CABECERAS.length);
 
   ws.mergeCells(`A${fila}:${ultima}${fila}`);
   const tt = ws.getCell(`A${fila}`);
   tt.value = `${esNoche ? '🌙' : '☀️'}  TURNO DE ${turno.toUpperCase()}   ·   ${filas.length} conductor(es)`;
-  tt.font = { size: 11, bold: true, color: { argb: CAB_TXT } };
-  tt.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: esNoche ? CAB_NOCHE : CAB_DIA } };
+  tt.font = { size: 11, bold: true, color: { argb: est.CAB_BG } };
+  tt.fill = est.relleno(esNoche ? CAB_NOCHE : CAB_DIA);
   tt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-  tt.border = TODOS_BORDES;
+  tt.border = est.TODOS_BORDES;
   ws.getRow(fila).height = 22;
   fila++;
 
-  const cab = ws.getRow(fila);
-  CABECERAS.forEach((h, i) => {
-    const c = cab.getCell(i + 1);
-    c.value = h;
-    c.font = { size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CAB_TXT } };
-    c.alignment = { vertical: 'middle', horizontal: 'center' };
-    c.border = TODOS_BORDES;
-  });
-  cab.height = 20;
-  fila++;
+  fila = est.cabeceraTabla(ws, fila, CABECERAS);
 
   if (!filas.length) {
     ws.mergeCells(`A${fila}:${ultima}${fila}`);
@@ -155,7 +108,7 @@ function bloqueTurno(ws, fila, turno, filas) {
     v.value = 'Nadie asignado a este turno.';
     v.font = { size: 10, italic: true, color: { argb: 'FF9AA1AC' } };
     v.alignment = { vertical: 'middle', horizontal: 'center' };
-    v.border = TODOS_BORDES;
+    v.border = est.TODOS_BORDES;
     return fila + 2;
   }
 
@@ -165,13 +118,13 @@ function bloqueTurno(ws, fila, turno, filas) {
     val.forEach((v, ci) => {
       const c = r.getCell(ci + 1);
       c.value = v;
-      c.border = TODOS_BORDES;
+      c.border = est.TODOS_BORDES;
       c.alignment = { vertical: 'middle', horizontal: ci === 1 ? 'left' : 'center', indent: ci === 1 ? 1 : 0 };
-      c.font = { size: 11, color: { argb: 'FF374151' }, bold: ci === 2 };
+      c.font = { size: 11, color: { argb: est.TEXTO }, bold: ci === 2 };
       // Zebra suave para seguir la fila con el dedo al leer en papel.
-      if (i % 2) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFBFC' } };
+      if (i % 2) c.fill = est.relleno('FFFAFBFC');
       // El que hace las 24 h se resalta: conviene tenerlo presente.
-      if (f.todoTurno) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4DA' } };
+      if (f.todoTurno) c.fill = est.relleno('FFFFF4DA');
     });
     r.height = 19;
     fila++;
@@ -210,7 +163,7 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
   wb.creator = 'Tibus Luxury';
   wb.created = new Date();
   // El logo se registra UNA vez y se reutiliza en las tres hojas.
-  const idLogo = hayLogo() ? wb.addImage({ filename: LOGO, extension: 'png' }) : null;
+  const idLogo = est.registrarLogo(wb);
 
   objetivos.forEach(({ n, fecha, idxDia, offsetSemana }) => {
     const tablero = tableros.get(offsetSemana);
@@ -226,7 +179,7 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
     ANCHOS.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
     const etiqueta = n === 0 ? 'HOY' : n === 1 ? 'MAÑANA' : 'PASADO MAÑANA';
-    let fila = cabecera(ws, idLogo,
+    let fila = est.bandaCabecera(ws, idLogo,
       `${etiqueta} · ${fmtFecha(fecha)}`,
       `${n === 0 ? 'Solo turno de noche' : 'Turno de día y turno de noche'}   ·   generado el ${sello()}`,
       CABECERAS.length);
