@@ -1,0 +1,472 @@
+<div class="max-w-7xl mx-auto">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-headset text-telecab-gold"></i> Call Center
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Cada llamada queda clasificada en <b>cluster → subcluster → motivo → resultado → acción</b>:
+        de ahí salen los KPIs y las reincidencias sin trabajo extra.
+      </p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <div id="chips-periodo" class="flex items-center gap-1 bg-telecab-card border border-telecab-border rounded-xl p-1">
+        <button data-p="hoy"  class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">Hoy</button>
+        <button data-p="7"    class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">7 días</button>
+        <button data-p="30"   class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">30 días</button>
+        <button data-p="mes"  class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">Este mes</button>
+      </div>
+      <button id="btn-refrescar" class="px-3 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/25">
+        <i class="fa-solid fa-rotate"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ KPIs ══ -->
+  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Llamadas</div>
+      <div id="k-total" class="text-2xl font-bold text-telecab-text">—</div>
+      <div id="k-dir" class="text-[11px] text-telecab-muted mt-0.5"></div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Resueltas</div>
+      <div id="k-resueltas" class="text-2xl font-bold text-telecab-green">—</div>
+      <div id="k-enllamada" class="text-[11px] text-telecab-muted mt-0.5"></div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Pendientes</div>
+      <div id="k-pendientes" class="text-2xl font-bold text-telecab-warn">—</div>
+      <div class="text-[11px] text-telecab-muted mt-0.5">de seguimiento</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">No contactadas</div>
+      <div id="k-nocontacto" class="text-2xl font-bold text-telecab-red">—</div>
+      <div id="k-sinlocalizar" class="text-[11px] text-telecab-muted mt-0.5"></div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Resolución media</div>
+      <div id="k-media" class="text-2xl font-bold text-telecab-text">—</div>
+      <div class="text-[11px] text-telecab-muted mt-0.5">de las que quedan pendientes</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Reincidencias</div>
+      <div id="k-reinc" class="text-2xl font-bold text-telecab-violet">—</div>
+      <div class="text-[11px] text-telecab-muted mt-0.5">conductor + motivo, 30 días</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-5 gap-4">
+    <!-- ══ Registrar llamada ══ -->
+    <div class="xl:col-span-2">
+      <form id="form-llamada" class="rounded-xl bg-telecab-card border border-telecab-border p-4 xl:sticky xl:top-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-telecab-text"><i class="fa-solid fa-phone-volume text-telecab-gold mr-1"></i> Registrar llamada</h2>
+          <div class="flex rounded-lg overflow-hidden border border-telecab-border text-xs font-semibold">
+            <button type="button" data-d="saliente" class="btn-dir px-3 py-1.5">📤 Saliente</button>
+            <button type="button" data-d="entrante" class="btn-dir px-3 py-1.5">📥 Entrante</button>
+          </div>
+        </div>
+
+        <label class="block text-xs text-telecab-muted mb-1">Conductor</label>
+        <input id="f-conductor" list="lista-conductores" required autocomplete="off" placeholder="Empieza a escribir…"
+               class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
+        <datalist id="lista-conductores"></datalist>
+
+        <div class="grid grid-cols-3 gap-2 mb-2">
+          <div>
+            <label class="block text-xs text-telecab-muted mb-1">Teléfono</label>
+            <input id="f-telefono" class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
+          </div>
+          <div>
+            <label class="block text-xs text-telecab-muted mb-1">Matrícula</label>
+            <input id="f-matricula" class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text uppercase">
+          </div>
+          <div>
+            <label class="block text-xs text-telecab-muted mb-1">Turno</label>
+            <select id="f-turno" class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
+              <option value="">—</option><option>Día</option><option>Noche</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <div>
+            <label class="block text-xs text-telecab-muted mb-1">Cluster</label>
+            <select id="f-cluster" required class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
+          </div>
+          <div>
+            <label class="block text-xs text-telecab-muted mb-1">Subcluster</label>
+            <select id="f-subcluster" required class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
+          </div>
+        </div>
+        <label class="block text-xs text-telecab-muted mb-1">Motivo</label>
+        <select id="f-motivo" required class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
+
+        <label class="block text-xs text-telecab-muted mb-1">Resultado</label>
+        <select id="f-resultado" required class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
+
+        <label class="block text-xs text-telecab-muted mb-1">Acción tomada</label>
+        <input id="f-accion" list="lista-acciones" autocomplete="off" placeholder="Opcional"
+               class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
+        <datalist id="lista-acciones"></datalist>
+
+        <label class="block text-xs text-telecab-muted mb-1">Notas <span class="opacity-60">(tipo de siniestro, detalle de la avería…)</span></label>
+        <textarea id="f-notas" rows="2" class="w-full mb-3 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></textarea>
+
+        <label class="flex items-center gap-2 mb-3 text-sm text-telecab-text cursor-pointer">
+          <input id="f-pendiente" type="checkbox" class="accent-current">
+          Queda <b>pendiente de seguimiento</b>
+        </label>
+
+        <button id="btn-guardar" class="w-full py-2.5 rounded-lg bg-telecab-gold text-black font-semibold hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk mr-1"></i> Registrar llamada
+        </button>
+      </form>
+    </div>
+
+    <!-- ══ Panel derecho ══ -->
+    <div class="xl:col-span-3 space-y-4">
+
+      <!-- Pendientes de seguimiento -->
+      <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+        <h2 class="font-semibold text-telecab-text mb-3"><i class="fa-solid fa-hourglass-half text-telecab-warn mr-1"></i>
+          Pendientes de seguimiento <span id="n-pendientes" class="text-telecab-muted font-normal"></span></h2>
+        <div id="lista-pendientes" class="space-y-2"></div>
+      </div>
+
+      <!-- Distribución -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+          <h3 class="text-sm font-semibold text-telecab-text mb-3">Llamadas por cluster</h3>
+          <div id="g-clusters" class="space-y-2"></div>
+        </div>
+        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+          <h3 class="text-sm font-semibold text-telecab-text mb-3">Motivos que más llamadas generan</h3>
+          <div id="g-motivos" class="space-y-2"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+          <h3 class="text-sm font-semibold text-telecab-text mb-2">Conductores con más llamadas</h3>
+          <table class="w-full text-sm">
+            <thead><tr class="text-[11px] text-telecab-muted text-left">
+              <th class="py-1">Conductor</th><th class="text-center">Llamadas</th><th class="text-center">Motivos ≠</th><th class="text-center">Pend.</th>
+            </tr></thead>
+            <tbody id="t-conductores"></tbody>
+          </table>
+        </div>
+        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+          <h3 class="text-sm font-semibold text-telecab-text mb-2">Reincidencias <span class="text-[11px] text-telecab-muted font-normal">(≥2 en 30 días)</span></h3>
+          <div id="t-reincidencias" class="space-y-1.5"></div>
+          <div class="mt-3 pt-3 border-t border-telecab-border/60 flex items-center gap-4 text-xs text-telecab-muted">
+            <span>Turno Día: <b id="k-tdia" class="text-telecab-text">—</b></span>
+            <span>Noche: <b id="k-tnoche" class="text-telecab-text">—</b></span>
+            <span>Sin turno: <b id="k-tsin" class="text-telecab-text">—</b></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Llamadas del periodo -->
+      <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 class="font-semibold text-telecab-text"><i class="fa-solid fa-list text-telecab-gold mr-1"></i> Llamadas del periodo</h2>
+          <div class="flex items-center gap-2">
+            <input id="fil-texto" placeholder="Buscar…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text w-36">
+            <select id="fil-cluster" class="px-2 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text"><option value="">Todos los clusters</option></select>
+            <select id="fil-estado" class="px-2 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text">
+              <option value="">Todas</option><option value="resuelta">Resueltas</option><option value="pendiente">Pendientes</option>
+            </select>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[640px]">
+            <thead><tr class="text-[11px] text-telecab-muted text-left border-b border-telecab-border/60">
+              <th class="py-2">Fecha</th><th></th><th>Conductor</th><th>Motivo</th><th>Resultado</th><th>Estado</th><th>Agente</th>
+            </tr></thead>
+            <tbody id="t-llamadas"></tbody>
+          </table>
+        </div>
+        <div id="t-vacio" class="hidden text-center text-sm text-telecab-muted py-6">Sin llamadas en este periodo.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal resolver ══ -->
+<div id="modal-resolver" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl w-full max-w-md p-5">
+    <h3 class="font-semibold text-telecab-text mb-1">Resolver seguimiento</h3>
+    <p id="m-resumen" class="text-xs text-telecab-muted mb-3"></p>
+    <label class="block text-xs text-telecab-muted mb-1">Resultado final <span class="opacity-60">(opcional, sustituye al inicial)</span></label>
+    <select id="m-resultado" class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
+    <label class="block text-xs text-telecab-muted mb-1">¿Cómo se resolvió? <b class="text-telecab-red">*</b></label>
+    <textarea id="m-nota" rows="3" class="w-full mb-3 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></textarea>
+    <div class="flex gap-2 justify-end">
+      <button id="m-cancelar" class="px-4 py-2 rounded-lg bg-telecab-card2 text-telecab-text text-sm">Cancelar</button>
+      <button id="m-ok" class="px-4 py-2 rounded-lg bg-telecab-green text-white text-sm font-semibold">Resolver</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl border text-sm font-medium shadow-lg"></div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  let CAT = [], UNIV = [], CONDUCTORES = [], DATOS = null;
+  let direccion = 'saliente', periodo = 'hoy', resolviendo = null;
+
+  // ── Utilidades ──────────────────────────────────────────────────────────────
+  const hoyISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  function rangoPeriodo() {
+    const hoy = hoyISO();
+    if (periodo === 'hoy') return { desde: hoy, hasta: hoy };
+    if (periodo === 'mes') return { desde: hoy.slice(0, 8) + '01', hasta: hoy };
+    const d = new Date(hoy + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - (Number(periodo) - 1));
+    return { desde: d.toISOString().slice(0, 10), hasta: hoy };
+  }
+  const fmtFecha = ts => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(ts * 1000);
+  const PIDE_SEGUIMIENTO = /pendiente|escalado|quedó|taller|grúa|revisión en base|no contactado|buzón/i;
+
+  function toast(msg, mal) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl border text-sm font-medium shadow-lg ' +
+      (mal ? 'bg-telecab-red/15 border-telecab-red/40 text-telecab-red' : 'bg-telecab-green/15 border-telecab-green/40 text-telecab-green');
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), 3500);
+  }
+
+  // ── Formulario: cascada de clasificación ────────────────────────────────────
+  const opciones = (sel, lista, ph) => {
+    sel.innerHTML = (ph ? `<option value="" disabled selected>${ph}</option>` : '') +
+      lista.map(x => `<option>${esc(x)}</option>`).join('');
+  };
+  function pintaClusters() { opciones($('f-cluster'), CAT.map(c => c.cluster), 'Elige…'); pintaSubclusters(); }
+  function clusterSel() { return CAT.find(c => c.cluster === $('f-cluster').value) || CAT[0]; }
+  function pintaSubclusters() {
+    const c = clusterSel(); if (!c) return;
+    if (!$('f-cluster').value) $('f-cluster').value = c.cluster;
+    opciones($('f-subcluster'), c.subclusters.map(s => s.nombre));
+    pintaMotivos();
+  }
+  function subclusterSel() { const c = clusterSel(); return c && (c.subclusters.find(s => s.nombre === $('f-subcluster').value) || c.subclusters[0]); }
+  function pintaMotivos() {
+    const s = subclusterSel(); if (!s) return;
+    opciones($('f-motivo'), s.motivos.map(m => m.motivo));
+    pintaResultados();
+  }
+  function motivoSel() { const s = subclusterSel(); return s && (s.motivos.find(m => m.motivo === $('f-motivo').value) || s.motivos[0]); }
+  function pintaResultados() {
+    const m = motivoSel(); if (!m) return;
+    $('f-resultado').innerHTML =
+      m.resultados.map(r => `<option>${esc(r)}</option>`).join('') +
+      `<option disabled>──────────</option>` +
+      UNIV.map(r => `<option>${esc(r)}</option>`).join('');
+    $('lista-acciones').innerHTML = (m.acciones || []).map(a => `<option value="${esc(a)}">`).join('');
+    sugierePendiente();
+  }
+  function sugierePendiente() { $('f-pendiente').checked = PIDE_SEGUIMIENTO.test($('f-resultado').value || ''); }
+
+  function pintaDireccion() {
+    document.querySelectorAll('.btn-dir').forEach(b => {
+      const on = b.dataset.d === direccion;
+      b.className = 'btn-dir px-3 py-1.5 ' + (on ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted');
+    });
+  }
+
+  function autorrellena() {
+    const v = $('f-conductor').value.trim().toLowerCase();
+    const c = CONDUCTORES.find(x => x.nombre.toLowerCase() === v || String(x.id).toLowerCase() === v);
+    if (!c) return;
+    if (c.telefono) $('f-telefono').value = c.telefono;
+    if (c.matricula) $('f-matricula').value = c.matricula;
+    $('f-turno').value = c.turno === 'Día y Noche' ? 'Día' : (c.turno || '');
+  }
+
+  // ── Carga y pintado del panel ───────────────────────────────────────────────
+  async function cargaDatos() {
+    const r = rangoPeriodo();
+    const res = await fetch(`/callcenter/api/datos?desde=${r.desde}&hasta=${r.hasta}`);
+    DATOS = await res.json();
+    if (DATOS.status !== 'ok') { toast(DATOS.msg || 'Error cargando datos', true); return; }
+    pintaKpis(); pintaPendientes(); pintaGraficos(); pintaTabla();
+  }
+
+  function pintaKpis() {
+    const k = DATOS.kpis;
+    $('k-total').textContent = k.total;
+    $('k-dir').textContent = `${k.salientes} salientes · ${k.entrantes} entrantes`;
+    $('k-resueltas').textContent = k.total ? k.pctResueltas + '%' : '—';
+    $('k-enllamada').textContent = k.resueltasEnLlamada ? `${k.resueltasEnLlamada} en la propia llamada` : '';
+    $('k-pendientes').textContent = DATOS.pendientes.length;
+    $('k-nocontacto').textContent = k.total ? k.pctNoContactadas + '%' : '—';
+    $('k-sinlocalizar').textContent = k.sinLocalizar.length ? `${k.sinLocalizar.length} sin localizar aún` : '';
+    $('k-media').textContent = k.conSeguimiento ? k.mediaResolucionH + ' h' : '—';
+    $('k-reinc').textContent = k.reincidencias.length;
+    $('k-tdia').textContent = k.porTurno['Día']; $('k-tnoche').textContent = k.porTurno['Noche']; $('k-tsin').textContent = k.porTurno['—'];
+  }
+
+  function pintaPendientes() {
+    const caja = $('lista-pendientes');
+    const P = DATOS.pendientes;
+    $('n-pendientes').textContent = P.length ? `· ${P.length}` : '';
+    caja.innerHTML = P.length ? '' : '<div class="text-sm text-telecab-muted">Nada pendiente. 🎉</div>';
+    P.forEach(x => {
+      const div = document.createElement('div');
+      div.className = 'flex items-center justify-between gap-3 rounded-lg border border-telecab-warn/40 bg-telecab-warn/10 px-3 py-2';
+      div.innerHTML = `
+        <div class="min-w-0">
+          <div class="text-sm text-telecab-text font-medium truncate">${esc(x.conductor)} <span class="text-telecab-muted font-normal">· ${esc(x.motivo)}</span></div>
+          <div class="text-[11px] text-telecab-muted truncate">${fmtFecha(x.ts)} · ${esc(x.resultado)}${x.matricula ? ' · ' + esc(x.matricula) : ''}${x.notas ? ' · ' + esc(x.notas) : ''}</div>
+        </div>
+        <button class="shrink-0 px-3 py-1.5 rounded-lg bg-telecab-green/15 text-telecab-green text-xs font-semibold hover:bg-telecab-green/25">Resolver</button>`;
+      div.querySelector('button').onclick = () => abreResolver(x);
+      caja.appendChild(div);
+    });
+  }
+
+  function barra(caja, filas, color) {
+    const max = Math.max(1, ...filas.map(f => f.n));
+    caja.innerHTML = filas.length ? '' : '<div class="text-sm text-telecab-muted">Sin datos.</div>';
+    filas.forEach(f => {
+      caja.insertAdjacentHTML('beforeend', `
+        <div>
+          <div class="flex justify-between text-xs mb-0.5">
+            <span class="text-telecab-text truncate pr-2">${esc(f.nombre)}</span>
+            <span class="text-telecab-muted">${f.n}</span>
+          </div>
+          <div class="h-2 rounded-full bg-telecab-card2 overflow-hidden">
+            <div class="h-full rounded-full bg-telecab-${color}" style="width:${Math.round(f.n / max * 100)}%"></div>
+          </div>
+        </div>`);
+    });
+  }
+
+  function pintaGraficos() {
+    const k = DATOS.kpis;
+    barra($('g-clusters'), k.porCluster, 'gold');
+    barra($('g-motivos'), k.porMotivo, 'violet');
+    $('t-conductores').innerHTML = k.porConductor.map(c => `
+      <tr class="border-t border-telecab-border/40">
+        <td class="py-1.5 text-telecab-text">${esc(c.nombre)}</td>
+        <td class="text-center font-semibold text-telecab-text">${c.n}</td>
+        <td class="text-center text-telecab-muted">${c.motivos}</td>
+        <td class="text-center ${c.pendientes ? 'text-telecab-warn font-semibold' : 'text-telecab-muted'}">${c.pendientes || ''}</td>
+      </tr>`).join('') || '<tr><td colspan="4" class="py-2 text-sm text-telecab-muted">Sin datos.</td></tr>';
+    $('t-reincidencias').innerHTML = k.reincidencias.map(r => `
+      <div class="flex items-center justify-between rounded-lg bg-telecab-violet/10 border border-telecab-violet/30 px-3 py-1.5 text-xs">
+        <span class="text-telecab-text truncate pr-2">${esc(r.conductor)} <span class="text-telecab-muted">· ${esc(r.motivo)}</span></span>
+        <span class="shrink-0 font-bold text-telecab-violet">×${r.n}</span>
+      </div>`).join('') || '<div class="text-sm text-telecab-muted">Ninguna. 👌</div>';
+  }
+
+  function pintaTabla() {
+    const txt = $('fil-texto').value.trim().toLowerCase();
+    const fc = $('fil-cluster').value, fe = $('fil-estado').value;
+    const filas = DATOS.llamadas.filter(x =>
+      (!fc || x.cluster === fc) && (!fe || x.estado === fe) &&
+      (!txt || `${x.conductor} ${x.matricula} ${x.motivo} ${x.resultado} ${x.notas}`.toLowerCase().includes(txt)));
+    $('t-vacio').classList.toggle('hidden', !!filas.length);
+    $('t-llamadas').innerHTML = filas.map(x => `
+      <tr class="border-b border-telecab-border/30">
+        <td class="py-2 text-xs text-telecab-muted whitespace-nowrap">${fmtFecha(x.ts)}</td>
+        <td class="text-xs">${x.direccion === 'entrante' ? '📥' : '📤'}</td>
+        <td class="text-telecab-text">${esc(x.conductor)}${x.matricula ? `<span class="text-[10px] text-telecab-muted ml-1">${esc(x.matricula)}</span>` : ''}</td>
+        <td><span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">${esc(x.cluster)}</span>
+            <span class="text-xs text-telecab-text">${esc(x.motivo)}</span></td>
+        <td class="text-xs text-telecab-muted">${esc(x.resultado)}</td>
+        <td>${x.estado === 'pendiente'
+          ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-telecab-warn/15 text-telecab-warn font-semibold">pendiente</span>'
+          : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-telecab-green/15 text-telecab-green font-semibold">resuelta</span>'}</td>
+        <td class="text-xs text-telecab-muted">${esc(x.agente)}</td>
+      </tr>`).join('');
+  }
+
+  // ── Resolver ────────────────────────────────────────────────────────────────
+  function abreResolver(x) {
+    resolviendo = x;
+    $('m-resumen').textContent = `${x.conductor} · ${x.motivo} · registrada el ${fmtFecha(x.ts)}`;
+    let m = null;
+    CAT.forEach(c => c.subclusters.forEach(s => s.motivos.forEach(mm => { if (mm.motivo === x.motivo) m = mm; })));
+    $('m-resultado').innerHTML = '<option value="">Mantener: ' + esc(x.resultado) + '</option>' +
+      ((m && m.resultados) || []).concat(UNIV).map(r => `<option>${esc(r)}</option>`).join('');
+    $('m-nota').value = '';
+    $('modal-resolver').classList.remove('hidden');
+  }
+  $('m-cancelar').onclick = () => $('modal-resolver').classList.add('hidden');
+  $('m-ok').onclick = async () => {
+    const nota = $('m-nota').value.trim();
+    if (!nota) { toast('Cuenta cómo se resolvió: sin nota no hay cierre.', true); return; }
+    const res = await fetch('/callcenter/api/resolver', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: resolviendo.clave, resolucion: nota, resultado: $('m-resultado').value || undefined })
+    });
+    const j = await res.json();
+    if (j.status !== 'ok') { toast(j.msg || 'No se pudo resolver', true); return; }
+    $('modal-resolver').classList.add('hidden');
+    toast('Seguimiento resuelto ✔');
+    cargaDatos();
+  };
+
+  // ── Registrar ───────────────────────────────────────────────────────────────
+  $('form-llamada').onsubmit = async ev => {
+    ev.preventDefault();
+    const b = $('btn-guardar'); b.disabled = true;
+    try {
+      const res = await fetch('/callcenter/api/registrar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          direccion, conductor: $('f-conductor').value, telefono: $('f-telefono').value,
+          matricula: $('f-matricula').value, turno: $('f-turno').value,
+          cluster: $('f-cluster').value, subcluster: $('f-subcluster').value,
+          motivo: $('f-motivo').value, resultado: $('f-resultado').value,
+          accion: $('f-accion').value, notas: $('f-notas').value,
+          estado: $('f-pendiente').checked ? 'pendiente' : 'resuelta'
+        })
+      });
+      const j = await res.json();
+      if (j.status !== 'ok') { toast(j.msg || 'No se pudo registrar', true); return; }
+      toast('Llamada registrada ✔');
+      ['f-conductor', 'f-telefono', 'f-matricula', 'f-accion', 'f-notas'].forEach(id => $(id).value = '');
+      $('f-turno').value = ''; $('f-pendiente').checked = false;
+      cargaDatos();
+    } finally { b.disabled = false; }
+  };
+
+  // ── Eventos ─────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.btn-dir').forEach(b => b.onclick = () => { direccion = b.dataset.d; pintaDireccion(); });
+  document.querySelectorAll('.chip-p').forEach(b => b.onclick = () => {
+    periodo = b.dataset.p;
+    document.querySelectorAll('.chip-p').forEach(x => x.className = 'chip-p px-3 py-1.5 rounded-lg text-xs font-semibold ' +
+      (x.dataset.p === periodo ? 'bg-telecab-gold/20 text-telecab-gold' : 'text-telecab-muted hover:text-telecab-text'));
+    cargaDatos();
+  });
+  $('f-cluster').onchange = pintaSubclusters;
+  $('f-subcluster').onchange = pintaMotivos;
+  $('f-motivo').onchange = pintaResultados;
+  $('f-resultado').onchange = sugierePendiente;
+  $('f-conductor').onchange = autorrellena;
+  ['fil-texto', 'fil-cluster', 'fil-estado'].forEach(id => { $(id).oninput = pintaTabla; });
+  $('btn-refrescar').onclick = cargaDatos;
+
+  // ── Arranque ────────────────────────────────────────────────────────────────
+  (async () => {
+    const [cat, cond] = await Promise.all([
+      fetch('/callcenter/api/catalogo').then(r => r.json()),
+      fetch('/callcenter/api/conductores').then(r => r.json()).catch(() => ({ conductores: [] }))
+    ]);
+    CAT = cat.catalogo || []; UNIV = cat.universales || [];
+    CONDUCTORES = cond.conductores || [];
+    $('lista-conductores').innerHTML = CONDUCTORES.map(c =>
+      `<option value="${esc(c.nombre)}">${esc([c.matricula, c.turno].filter(Boolean).join(' · '))}</option>`).join('');
+    $('fil-cluster').innerHTML += CAT.map(c => `<option>${esc(c.cluster)}</option>`).join('');
+    pintaClusters(); pintaDireccion();
+    document.querySelector('.chip-p[data-p="hoy"]').click();
+  })();
+})();
+</script>

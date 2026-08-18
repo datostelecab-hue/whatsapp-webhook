@@ -170,6 +170,7 @@ app.use('/pendientes', pendientesRoutes);
 app.use('/peticiones', peticionesRoutes);
 app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
+app.use('/callcenter', require('./routes/callCenter'));
 
 // ── BODA (favor aparte, módulo OCULTO): panel solo-superadmin para enviar las
 //    invitaciones por WhatsApp. No está en el menú ni en ACCESO. El webhook (POST /)
