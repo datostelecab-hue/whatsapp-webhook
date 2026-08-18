@@ -1,0 +1,597 @@
+<div class="max-w-[1500px] mx-auto">
+
+  <!-- ══ Cabecera ══ -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-table-columns text-telecab-gold"></i> Planificador V2
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Arrastra un conductor a una plaza (o toca conductor y luego plaza). La matrícula se cambia
+        en la propia tarjeta y el grupo entero se va con ella. Nada se escribe hasta pulsar <b>Guardar</b>.
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/planificador" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted text-sm hover:text-telecab-text" title="La rejilla clásica de siempre">
+        <i class="fa-solid fa-table-cells-large mr-1"></i> Clásico
+      </a>
+      <button id="btn-recargar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm hover:border-telecab-gold">
+        <i class="fa-solid fa-rotate mr-1"></i> Recargar
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ KPIs ══ -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-3">
+      <div class="text-xs text-telecab-muted">Coches operativos</div>
+      <div id="k-coches" class="text-xl font-bold text-telecab-text">—</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-3">
+      <div class="text-xs text-telecab-muted">Huecos turno día</div>
+      <div id="k-huecos-dia" class="text-xl font-bold text-telecab-warn">—</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-3">
+      <div class="text-xs text-telecab-muted">Huecos turno noche</div>
+      <div id="k-huecos-noche" class="text-xl font-bold text-telecab-warn">—</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-3">
+      <div class="text-xs text-telecab-muted">Pendientes de plaza</div>
+      <div id="k-pendientes" class="text-xl font-bold text-telecab-gold">—</div>
+    </div>
+  </div>
+
+  <!-- ══ Filtros ══ -->
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <input id="f-busca" type="search" placeholder="Matrícula o conductor…"
+           class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm w-56">
+    <select id="f-zona" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm">
+      <option value="">Todas las zonas</option>
+    </select>
+    <button data-filtro="todos" class="f-chip activo px-3 py-1.5 rounded-full text-sm border">Todos</button>
+    <button data-filtro="huecos" class="f-chip px-3 py-1.5 rounded-full text-sm border">Con huecos</button>
+    <button data-filtro="pendiente" class="f-chip px-3 py-1.5 rounded-full text-sm border">Con cambios</button>
+    <span id="aviso-esquema" class="hidden text-xs text-telecab-red"></span>
+  </div>
+
+  <div id="msg" class="hidden mb-4 rounded-lg border border-telecab-border bg-telecab-card px-4 py-3 text-sm"></div>
+
+  <div class="grid lg:grid-cols-[1fr_290px] gap-4 items-start">
+
+    <!-- ══ TABLERO ══ -->
+    <div id="tablero" class="grid md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+
+    <!-- ══ BANQUILLO ══ -->
+    <aside class="lg:sticky lg:top-4">
+      <div class="rounded-xl bg-telecab-card border border-telecab-border overflow-hidden">
+        <div class="px-4 py-3 border-b border-telecab-border flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-telecab-text"><i class="fa-solid fa-people-line text-telecab-gold mr-1"></i> Banquillo</h2>
+          <span id="banquillo-n" class="text-xs text-telecab-muted"></span>
+        </div>
+        <div class="p-3">
+          <input id="banquillo-busca" type="search" placeholder="Buscar en toda la agenda…"
+                 class="w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text text-sm mb-2">
+          <p class="text-[11px] text-telecab-muted mb-2">Sueltos aquí para <b>quitar</b> a alguien de su plaza.</p>
+          <div id="banquillo" class="space-y-1.5 max-h-[52vh] overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ══ Barra flotante de cambios ══ -->
+<div id="barra" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3
+     bg-telecab-card border border-telecab-gold/50 rounded-full pl-5 pr-2 py-2 shadow-gold">
+  <span class="text-sm text-telecab-text"><b id="barra-n">0</b> cambio(s) sin guardar</span>
+  <button id="btn-descartar" class="px-3 py-1.5 rounded-full text-sm text-telecab-muted hover:text-telecab-text">Descartar</button>
+  <button id="btn-guardar" class="px-4 py-1.5 rounded-full bg-telecab-gold/90 text-black text-sm font-semibold hover:bg-telecab-gold">
+    <i class="fa-solid fa-floppy-disk mr-1"></i> Guardar
+  </button>
+</div>
+
+<style>
+  .f-chip { border-color: rgb(var(--tc-border)); color: rgb(var(--tc-muted)); background: rgb(var(--tc-card)); }
+  .f-chip.activo { border-color: rgb(var(--tc-gold) / .6); color: rgb(var(--tc-gold)); background: rgb(var(--tc-gold) / .12); }
+
+  /* Tarjeta de coche */
+  .coche { border: 1px solid rgb(var(--tc-border)); border-radius: 14px; background: rgb(var(--tc-card)); }
+  .coche.con-hueco { border-color: rgb(var(--tc-red) / .45); }
+  .coche.tocado { box-shadow: 0 0 0 1px rgb(var(--tc-gold) / .5); }
+  .coche.no-operativo { opacity: .55; }
+
+  /* Plazas */
+  .plaza { border: 1.5px dashed rgb(var(--tc-border)); border-radius: 10px; min-height: 44px; transition: border-color .15s, background .15s; }
+  .plaza.vacia { border-color: rgb(var(--tc-red) / .55); background: rgb(var(--tc-red) / .05); }
+  .plaza.destino { border-color: rgb(var(--tc-gold)); background: rgb(var(--tc-gold) / .12); border-style: solid; }
+  .plaza.pendiente { border-color: rgb(var(--tc-gold) / .7); border-style: dashed; }
+
+  /* Fichas de conductor */
+  .ficha { cursor: grab; user-select: none; }
+  .ficha:active { cursor: grabbing; }
+  .ficha.seleccionada { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 1px; }
+  .ficha.arrastrando { opacity: .4; }
+
+  /* Tira de cobertura semanal */
+  .tira { display: inline-grid; grid-template-columns: repeat(7, 12px); gap: 2px; }
+  .tira i { width: 12px; height: 12px; border-radius: 3px; font-style: normal; }
+  .tira .ok { background: rgb(var(--tc-green) / .8); }
+  .tira .hueco { background: rgb(var(--tc-red) / .8); }
+  .tira .conf { background: rgb(var(--tc-warn)); }
+  .tira .nada { background: rgb(var(--tc-border)); }
+
+  #banquillo .ficha { border: 1px solid rgb(var(--tc-border)); }
+  .banquillo-destino { outline: 2px dashed rgb(var(--tc-red) / .6); outline-offset: -2px; border-radius: 12px; }
+</style>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LETRAS = <%- JSON.stringify(letrasDia) %>;
+const DIAS = <%- JSON.stringify(diasSem) %>;
+const ESTADOS_VEH = <%- JSON.stringify(estadosVehiculo) %>;
+
+let T = null;                  // tablero del servidor (estado GUARDADO)
+let CAMBIOS = new Map();       // cocheIdx -> { matricula?, zona?, estadoVeh?, slots: Map(slot -> {id?, dias?}) }
+let SELECCION = null;          // ficha elegida por clic { id, desde: {coche, slot} | null }
+let FILTRO = 'todos';
+
+// ── Estado local: el tablero del servidor + los cambios aún sin guardar ──────
+function cambioDe(idx) {
+  if (!CAMBIOS.has(idx)) CAMBIOS.set(idx, { slots: new Map() });
+  return CAMBIOS.get(idx);
+}
+function nCambios() {
+  let n = 0;
+  CAMBIOS.forEach(c => {
+    n += ['matricula','zona','estadoVeh'].filter(k => c[k] !== undefined).length;
+    n += c.slots.size;
+  });
+  return n;
+}
+// Valor "efectivo" (cambio pendiente si lo hay; si no, lo guardado)
+const efCampo = (coche, campo) => {
+  const c = CAMBIOS.get(coche.idx);
+  return c && c[campo] !== undefined ? c[campo] : coche[campo];
+};
+function efSlot(coche, k) {
+  const c = CAMBIOS.get(coche.idx);
+  const pend = c && c.slots.get(k);
+  const p = coche.personas[k];
+  if (pend && pend.id !== undefined) {
+    const info = pend.id ? (porId().get(pend.id) || {}) : {};
+    return { id: pend.id, nombre: info.nombre || pend.id, dias: pend.dias, pendiente: true, base: p };
+  }
+  if (pend && pend.dias !== undefined) return { id: p.id, nombre: p.nombre || p.id, dias: pend.dias, pendiente: true, base: p };
+  return { id: p.id, nombre: p.nombre || p.id, dias: null, pendiente: false, base: p };
+}
+
+let _porId = null;
+function porId() {
+  if (_porId) return _porId;
+  _porId = new Map();
+  (T.conductores || []).forEach(c => { if (c.id) _porId.set(c.id, c); });
+  return _porId;
+}
+
+// ¿Dónde está colocado un conductor AHORA (con los cambios pendientes)? → {coche, slot} | null
+function plazaDe(id) {
+  if (!id) return null;
+  for (const coche of T.coches) {
+    for (let k = 0; k < coche.personas.length; k++) {
+      if (efSlot(coche, k).id === id) return { coche: coche.idx, slot: k };
+    }
+  }
+  return null;
+}
+
+// ── Mutaciones (todas locales; el servidor no ve nada hasta Guardar) ─────────
+function ponerEnSlot(cocheIdx, slot, id) {
+  const origen = id ? plazaDe(id) : null;
+  const destino = T.coches.find(c => c.idx === cocheIdx);
+  const ocupante = efSlot(destino, slot).id;
+
+  if (origen && (origen.coche !== cocheIdx || origen.slot !== slot)) {
+    // Se mueve: su plaza anterior queda con el ocupante del destino (intercambio) o vacía.
+    setSlot(origen.coche, origen.slot, ocupante || '');
+  } else if (ocupante && ocupante !== id) {
+    // Venía del banquillo y la plaza estaba ocupada: el ocupante sale al banquillo.
+  }
+  setSlot(cocheIdx, slot, id);
+  pintar();
+}
+function setSlot(cocheIdx, slot, id) {
+  const coche = T.coches.find(c => c.idx === cocheIdx);
+  const c = cambioDe(cocheIdx);
+  const prev = c.slots.get(slot) || {};
+  // Si el valor vuelve a ser el guardado, el cambio se anula solo.
+  if ((coche.personas[slot].id || '') === (id || '') && prev.dias === undefined) c.slots.delete(slot);
+  else c.slots.set(slot, { ...prev, id: id || '' });
+  limpiarSiVacio(cocheIdx);
+}
+function setDias(cocheIdx, slot, dias) {
+  const coche = T.coches.find(c => c.idx === cocheIdx);
+  const c = cambioDe(cocheIdx);
+  const prev = c.slots.get(slot) || {};
+  const guardado = (coche.personas[slot].diasIlegibles != null)
+    ? coche.personas[slot].diasIlegibles
+    : (coche.personas[slot].diasManual || []).map((v,i)=>v?LETRAS[i]:null).filter(Boolean).join(' ');
+  if ((dias || '').trim() === (guardado || '').trim() && prev.id === undefined) c.slots.delete(slot);
+  else c.slots.set(slot, { ...prev, dias });
+  limpiarSiVacio(cocheIdx);
+  refrescarBarra();
+}
+function setCampo(cocheIdx, campo, valor) {
+  const coche = T.coches.find(c => c.idx === cocheIdx);
+  const c = cambioDe(cocheIdx);
+  if ((coche[campo] || '') === (valor || '')) delete c[campo];
+  else c[campo] = valor;
+  limpiarSiVacio(cocheIdx);
+  pintar();
+}
+function limpiarSiVacio(idx) {
+  const c = CAMBIOS.get(idx);
+  if (c && c.slots.size === 0 && c.matricula === undefined && c.zona === undefined && c.estadoVeh === undefined) {
+    CAMBIOS.delete(idx);
+  }
+}
+
+// ── Pintado ──────────────────────────────────────────────────────────────────
+const iconoTurno = t => t === 'Día' ? '☀️' : '🌙';
+
+function tiraCobertura(coche, turno) {
+  // La cobertura por día sale del ÚLTIMO guardado (el servidor la recalcula al
+  // guardar): si hay cambios pendientes en el coche se muestra atenuada.
+  const off = turno === 'Noche' ? 1 : 0;
+  const celdas = [];
+  for (let d = 0; d < 7; d++) {
+    const tr = (coche.semana || [])[d * 2 + off] || {};
+    let cls = 'nada', tit = DIAS[d] + ': sin datos';
+    if (!coche.operativo || !coche.matricula) { cls = 'nada'; tit = DIAS[d] + ': coche fuera'; }
+    else if (tr.conflicto) { cls = 'conf'; tit = DIAS[d] + ': conflicto'; }
+    else if (tr.id) { cls = 'ok'; tit = DIAS[d] + ': ' + (tr.nombre || tr.id); }
+    else { cls = 'hueco'; tit = DIAS[d] + ': HUECO'; }
+    celdas.push(`<i class="${cls}" title="${esc(tit)}"></i>`);
+  }
+  return `<span class="tira">${celdas.join('')}</span>`;
+}
+
+function fichaHTML(id, nombre, extra, origen) {
+  const info = porId().get(id) || {};
+  const letras = (info.trabaja || []).map((v,i)=>v?LETRAS[i]:null).filter(Boolean).join('');
+  const sel = SELECCION && SELECCION.id === id ? ' seleccionada' : '';
+  return `
+    <div class="ficha${sel} flex items-center gap-2 rounded-lg bg-telecab-card2 px-2.5 py-1.5"
+         draggable="true" data-id="${esc(id)}" ${origen ? `data-coche="${origen.coche}" data-slot="${origen.slot}"` : 'data-banquillo="1"'}>
+      <span class="flex-1 min-w-0">
+        <span class="block text-sm text-telecab-text truncate">${esc(nombre || id)}</span>
+        <span class="block text-[10px] text-telecab-muted">${esc([info.turno, info.contrato, letras].filter(Boolean).join(' · ')) || '&nbsp;'}</span>
+      </span>
+      ${extra || ''}
+      ${origen ? `<button class="quitar text-telecab-muted hover:text-telecab-red text-xs px-1" title="Quitar de la plaza" data-coche="${origen.coche}" data-slot="${origen.slot}">✕</button>` : ''}
+    </div>`;
+}
+
+function plazaHTML(coche, k) {
+  const s = efSlot(coche, k);
+  const meta = coche.personas[k];
+  const clases = ['plaza','p-1'];
+  // El rojo se reserva para los huecos de VERDAD: una plaza fija sin nadie en un
+  // coche operativo. Un correturno vacío es lo normal, no una alarma.
+  if (!s.id && meta.rol === 'FIJO' && coche.operativo && coche.matricula) clases.push('vacia');
+  if (s.pendiente) clases.push('pendiente');
+  const etiquetaVacia = meta.rol === 'FIJO' && coche.operativo && coche.matricula
+    ? '<span class="text-xs text-telecab-red font-medium">— hueco —</span>'
+    : '<span class="text-xs text-telecab-muted">libre</span>';
+  let extra = '';
+  if (meta.desde || meta.hasta) extra = `<span class="text-[10px] text-telecab-warn" title="Sustitución temporal ${esc(meta.desde||'')}–${esc(meta.hasta||'')}">🕐</span>`;
+  if (meta.huerfano && !s.pendiente) extra += `<span class="text-[10px] text-telecab-red" title="Este ID ya no está en la agenda">⚠️</span>`;
+  return `
+    <div class="${clases.join(' ')}" data-coche="${coche.idx}" data-slot="${k}">
+      ${s.id ? fichaHTML(s.id, s.nombre, extra, { coche: coche.idx, slot: k }) : `<div class="px-2 py-2 text-center">${etiquetaVacia}</div>`}
+    </div>`;
+}
+
+function diasCTHTML(coche, k) {
+  const s = efSlot(coche, k);
+  const p = coche.personas[k];
+  if (!s.id) return '';
+  const valor = s.dias !== null && s.dias !== undefined
+    ? s.dias
+    : (p.diasIlegibles != null ? p.diasIlegibles : (p.diasManual || []).map((v,i)=>v?LETRAS[i]:null).filter(Boolean).join(' '));
+  const mal = p.diasIlegibles != null && (s.dias === null || s.dias === undefined);
+  return `<input class="dias-ct mt-1 w-full px-2 py-1 rounded bg-telecab-dark border ${mal?'border-telecab-red':'border-telecab-border'} text-xs text-telecab-text"
+          data-coche="${coche.idx}" data-slot="${k}" value="${esc(valor)}" placeholder="Días (L M X J V S D)"
+          title="${mal ? 'No se entienden estos días — corrígelos' : 'Días que trabaja este correturno'}">`;
+}
+
+function cocheHTML(coche) {
+  const matricula = efCampo(coche, 'matricula');
+  const zona = efCampo(coche, 'zona');
+  const estadoVeh = efCampo(coche, 'estadoVeh');
+  const operativo = estadoVeh === '✓';
+  const tocado = CAMBIOS.has(coche.idx);
+
+  const huecos = [0,1].filter(k => operativo && matricula && !efSlot(coche, k).id).length;
+  const ctOcupados = [2,3,4,5].filter(k => efSlot(coche, k).id).length;
+  const clases = ['coche','p-3'];
+  if (huecos && operativo) clases.push('con-hueco');
+  if (tocado) clases.push('tocado');
+  if (!operativo) clases.push('no-operativo');
+
+  return `
+  <div class="${clases.join(' ')}" data-idx="${coche.idx}">
+    <div class="flex items-center gap-2 mb-2">
+      <select class="estado-veh px-1.5 py-1 rounded bg-telecab-dark border border-telecab-border text-sm" data-idx="${coche.idx}" title="Estado del vehículo">
+        ${ESTADOS_VEH.map(e => `<option ${e===estadoVeh?'selected':''}>${e}</option>`).join('')}
+      </select>
+      <input class="matricula flex-1 min-w-0 px-2 py-1 rounded bg-telecab-dark border ${tocado && CAMBIOS.get(coche.idx).matricula !== undefined ? 'border-telecab-gold' : 'border-telecab-border'} text-telecab-text font-bold text-sm uppercase"
+             data-idx="${coche.idx}" value="${esc(matricula)}" placeholder="MATRÍCULA"
+             title="Cambiar la matrícula mueve al grupo entero a esa placa">
+      <input class="zona w-24 px-2 py-1 rounded bg-telecab-dark border border-telecab-border text-telecab-muted text-xs"
+             data-idx="${coche.idx}" value="${esc(zona)}" placeholder="Zona" list="zonas">
+      ${tocado ? '<span class="w-2 h-2 rounded-full bg-telecab-gold" title="Con cambios sin guardar"></span>' : ''}
+    </div>
+
+    <div class="space-y-2">
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-telecab-muted">☀️ Día</span>
+          ${tiraCobertura(coche, 'Día')}
+        </div>
+        ${plazaHTML(coche, 0)}
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-telecab-muted">🌙 Noche</span>
+          ${tiraCobertura(coche, 'Noche')}
+        </div>
+        ${plazaHTML(coche, 1)}
+      </div>
+    </div>
+
+    <details class="mt-2" ${ctOcupados ? 'open' : ''}>
+      <summary class="text-xs text-telecab-muted cursor-pointer select-none">Correturnos ${ctOcupados ? `<b class="text-telecab-gold">(${ctOcupados})</b>` : ''}</summary>
+      <div class="grid grid-cols-2 gap-1.5 mt-1.5">
+        ${[2,3,4,5].map(k => `
+          <div>
+            <span class="text-[10px] text-telecab-muted">${iconoTurno(coche.personas[k].turno)} ${esc(coche.personas[k].etiqueta)}</span>
+            ${plazaHTML(coche, k)}
+            ${diasCTHTML(coche, k)}
+          </div>`).join('')}
+      </div>
+    </details>
+  </div>`;
+}
+
+function pasaFiltro(coche) {
+  const q = ($('#f-busca').value || '').toLowerCase().trim();
+  const z = $('#f-zona').value;
+  if (z && (efCampo(coche, 'zona') || '') !== z) return false;
+  if (q) {
+    const nombres = coche.personas.map((p,k) => efSlot(coche,k).nombre || '').join(' ');
+    if (!((efCampo(coche,'matricula')||'') + ' ' + nombres).toLowerCase().includes(q)) return false;
+  }
+  const operativo = efCampo(coche, 'estadoVeh') === '✓';
+  if (FILTRO === 'huecos') return operativo && !!efCampo(coche,'matricula') && [0,1].some(k => !efSlot(coche,k).id);
+  if (FILTRO === 'pendiente') return CAMBIOS.has(coche.idx);
+  return true;
+}
+
+function pintar() {
+  if (!T) return;
+  _porId = null;
+
+  // KPIs (con los cambios pendientes aplicados)
+  const visibles = T.coches.filter(c => efCampo(c,'matricula') || c.personas.some(p => p.id));
+  const oper = visibles.filter(c => efCampo(c,'estadoVeh') === '✓' && efCampo(c,'matricula'));
+  $('#k-coches').textContent = oper.length;
+  $('#k-huecos-dia').textContent = oper.filter(c => !efSlot(c,0).id).length;
+  $('#k-huecos-noche').textContent = oper.filter(c => !efSlot(c,1).id).length;
+
+  // Zonas para el filtro (se conserva la selección)
+  const zSel = $('#f-zona').value;
+  const zonas = [...new Set(visibles.map(c => efCampo(c,'zona')).filter(Boolean))].sort();
+  $('#f-zona').innerHTML = '<option value="">Todas las zonas</option>' + zonas.map(z => `<option ${z===zSel?'selected':''}>${esc(z)}</option>`).join('');
+  if (!document.getElementById('zonas')) {
+    const dl = document.createElement('datalist'); dl.id = 'zonas'; document.body.appendChild(dl);
+  }
+  document.getElementById('zonas').innerHTML = zonas.map(z => `<option value="${esc(z)}">`).join('');
+
+  // Tablero, agrupado por zona
+  const porZona = new Map();
+  visibles.filter(pasaFiltro).forEach(c => {
+    const z = efCampo(c,'zona') || '(sin zona)';
+    if (!porZona.has(z)) porZona.set(z, []);
+    porZona.get(z).push(c);
+  });
+  let html = '';
+  [...porZona.keys()].sort().forEach(z => {
+    html += `<div class="md:col-span-2 xl:col-span-3 mt-1 first:mt-0">
+      <span class="text-xs font-semibold uppercase tracking-wider text-telecab-gold">${esc(z)}</span>
+      <span class="text-xs text-telecab-muted ml-1">(${porZona.get(z).length})</span>
+    </div>`;
+    html += porZona.get(z)
+      .sort((a,b) => (efCampo(a,'matricula')||'').localeCompare(efCampo(b,'matricula')||''))
+      .map(cocheHTML).join('');
+  });
+  $('#tablero').innerHTML = html || '<p class="text-telecab-muted text-sm md:col-span-2 xl:col-span-3">Nada que mostrar con estos filtros.</p>';
+
+  pintarBanquillo();
+  refrescarBarra();
+}
+
+function pintarBanquillo() {
+  const q = ($('#banquillo-busca').value || '').toLowerCase().trim();
+  // Sin buscar: los pendientes de plaza. Buscando: toda la agenda activa.
+  const colocados = new Set();
+  T.coches.forEach(c => c.personas.forEach((p,k) => { const id = efSlot(c,k).id; if (id) colocados.add(id); }));
+
+  let lista;
+  if (q) {
+    lista = (T.conductores || []).filter(c => c.id && (c.nombre || c.id).toLowerCase().includes(q));
+  } else {
+    lista = (T.pendientes || []).filter(c => c.id && !colocados.has(c.id));
+  }
+  $('#k-pendientes').textContent = (T.pendientes || []).filter(c => c.id && !colocados.has(c.id)).length;
+  $('#banquillo-n').textContent = q ? `${lista.length} de la agenda` : `${lista.length} pendiente(s)`;
+  $('#banquillo').innerHTML = lista.slice(0, 80).map(c => {
+    const donde = plazaDe(c.id);
+    const chip = donde
+      ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-telecab-card text-telecab-muted" title="Ya colocado — arrástralo para moverlo">${esc(efCampo(T.coches.find(x=>x.idx===donde.coche),'matricula') || 'coche ' + donde.coche)}</span>`
+      : '';
+    return fichaHTML(c.id, c.nombre || c.id, chip, null);
+  }).join('') || `<p class="text-xs text-telecab-muted px-1">${q ? 'Sin resultados.' : 'Nadie pendiente de plaza 🎉'}</p>`;
+}
+
+function refrescarBarra() {
+  const n = nCambios();
+  $('#barra').classList.toggle('hidden', n === 0);
+  $('#barra-n').textContent = n;
+}
+
+// ── Drag & drop + clic para tocar ────────────────────────────────────────────
+let ARRASTRE = null;   // { id, desde: {coche, slot} | null }
+
+document.addEventListener('dragstart', e => {
+  const f = e.target.closest('.ficha');
+  if (!f) return;
+  ARRASTRE = { id: f.dataset.id, desde: f.dataset.coche !== undefined ? { coche: +f.dataset.coche, slot: +f.dataset.slot } : null };
+  f.classList.add('arrastrando');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', f.dataset.id); } catch (_) {}
+});
+document.addEventListener('dragend', e => {
+  $$('.arrastrando').forEach(x => x.classList.remove('arrastrando'));
+  $$('.plaza.destino').forEach(x => x.classList.remove('destino'));
+  $('#banquillo').closest('aside').classList.remove('banquillo-destino');
+  ARRASTRE = null;
+});
+document.addEventListener('dragover', e => {
+  const plaza = e.target.closest('.plaza');
+  const banquillo = e.target.closest('aside');
+  if (plaza || banquillo) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+  $$('.plaza.destino').forEach(x => x.classList.remove('destino'));
+  if (plaza && ARRASTRE) plaza.classList.add('destino');
+  if (banquillo && ARRASTRE && ARRASTRE.desde) banquillo.classList.add('banquillo-destino');
+  else if (!banquillo) $$('aside.banquillo-destino').forEach(x => x.classList.remove('banquillo-destino'));
+});
+document.addEventListener('drop', e => {
+  const plaza = e.target.closest('.plaza');
+  const banquillo = e.target.closest('aside');
+  if (!ARRASTRE) return;
+  e.preventDefault();
+  if (plaza) {
+    ponerEnSlot(+plaza.dataset.coche, +plaza.dataset.slot, ARRASTRE.id);
+  } else if (banquillo && ARRASTRE.desde) {
+    setSlot(ARRASTRE.desde.coche, ARRASTRE.desde.slot, '');
+    pintar();
+  }
+  ARRASTRE = null;
+});
+
+// Fallback táctil / sin arrastre: toca una ficha y luego una plaza.
+document.addEventListener('click', e => {
+  const quitar = e.target.closest('.quitar');
+  if (quitar) {
+    setSlot(+quitar.dataset.coche, +quitar.dataset.slot, '');
+    SELECCION = null; pintar();
+    return;
+  }
+  const f = e.target.closest('.ficha');
+  if (f && !e.target.closest('input')) {
+    const misma = SELECCION && SELECCION.id === f.dataset.id;
+    SELECCION = misma ? null : { id: f.dataset.id };
+    $$('.ficha.seleccionada').forEach(x => x.classList.remove('seleccionada'));
+    if (!misma) $$(`.ficha[data-id="${CSS.escape(f.dataset.id)}"]`).forEach(x => x.classList.add('seleccionada'));
+    return;
+  }
+  const plaza = e.target.closest('.plaza');
+  if (plaza && SELECCION) {
+    ponerEnSlot(+plaza.dataset.coche, +plaza.dataset.slot, SELECCION.id);
+    SELECCION = null;
+  }
+});
+
+// ── Campos de la tarjeta ────────────────────────────────────────────────────
+document.addEventListener('change', e => {
+  if (e.target.matches('.estado-veh')) setCampo(+e.target.dataset.idx, 'estadoVeh', e.target.value);
+  if (e.target.matches('.zona')) setCampo(+e.target.dataset.idx, 'zona', e.target.value.trim());
+  if (e.target.matches('.matricula')) setCampo(+e.target.dataset.idx, 'matricula', e.target.value.trim().toUpperCase());
+  if (e.target.matches('.dias-ct')) setDias(+e.target.dataset.coche, +e.target.dataset.slot, e.target.value.trim().toUpperCase());
+});
+
+// ── Filtros ─────────────────────────────────────────────────────────────────
+$('#f-busca').addEventListener('input', pintar);
+$('#f-zona').addEventListener('change', pintar);
+$('#banquillo-busca').addEventListener('input', pintarBanquillo);
+$$('.f-chip').forEach(b => b.addEventListener('click', () => {
+  FILTRO = b.dataset.filtro;
+  $$('.f-chip').forEach(x => x.classList.toggle('activo', x === b));
+  pintar();
+}));
+
+// ── Cargar / guardar ────────────────────────────────────────────────────────
+function msg(t, err) {
+  const m = $('#msg');
+  if (!t) { m.classList.add('hidden'); return; }
+  m.classList.remove('hidden');
+  m.innerHTML = t;
+  m.style.color = err ? 'rgb(var(--tc-red))' : '';
+}
+
+async function cargar() {
+  msg('');
+  try {
+    const r = await fetch('/planificador/api/tablero');
+    const d = await r.json();
+    if (d.status === 'error') throw new Error(d.msg);
+    T = d; CAMBIOS = new Map(); SELECCION = null;
+    if (d.esquema && d.esquema.ok === false) {
+      $('#aviso-esquema').textContent = '⚠️ El esquema de la hoja no cuadra — revisa el planificador clásico';
+      $('#aviso-esquema').classList.remove('hidden');
+    }
+    pintar();
+    if ((d.avisos || []).length) {
+      msg(`⚠️ ${d.avisos.length} aviso(s) del planificador: ` + esc(d.avisos.slice(0,3).map(a => a.msg || a.texto || a).join(' · ')) + (d.avisos.length > 3 ? '…' : ''), false);
+    }
+  } catch (e) { msg('No se pudo cargar el tablero: ' + esc(e.message), true); }
+}
+
+async function guardar() {
+  const cambios = [];
+  CAMBIOS.forEach((c, idx) => {
+    const uno = { coche: idx };
+    ['matricula','zona','estadoVeh'].forEach(k => { if (c[k] !== undefined) uno[k] = c[k]; });
+    if (c.slots.size) uno.slots = [...c.slots.entries()].map(([slot, v]) => ({ slot, ...v }));
+    cambios.push(uno);
+  });
+  if (!cambios.length) return;
+
+  const b = $('#btn-guardar');
+  b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Guardando…';
+  try {
+    const r = await fetch('/planificador/api/guardar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cambios })
+    });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo guardar');
+    T = d.tablero; CAMBIOS = new Map(); SELECCION = null;
+    pintar();
+    const avisos = (d.tablero.avisos || []).length;
+    msg(`✅ Guardado en ${d.segundos}s (${d.escritura.updatedCells} celdas)` +
+        (avisos ? ` · ⚠️ ${avisos} aviso(s): ` + esc(d.tablero.avisos.slice(0,3).map(a => a.msg || a.texto || a).join(' · ')) : ''), false);
+  } catch (e) {
+    msg('❌ ' + esc(e.message) + ' — tus cambios siguen aquí, puedes reintentar.', true);
+  }
+  b.disabled = false; b.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Guardar';
+}
+
+$('#btn-guardar').addEventListener('click', guardar);
+$('#btn-descartar').addEventListener('click', () => { if (nCambios() === 0 || confirm('¿Descartar todos los cambios sin guardar?')) cargar(); });
+$('#btn-recargar').addEventListener('click', () => { if (nCambios() === 0 || confirm('Hay cambios sin guardar. ¿Recargar igualmente?')) cargar(); });
+window.addEventListener('beforeunload', e => { if (nCambios() > 0) { e.preventDefault(); e.returnValue = ''; } });
+
+cargar();
+</script>

@@ -27,7 +27,7 @@ const ACCESO = {
   '/vacantes': ['oficina'], '/seleccion': ['oficina'], '/ett': ['oficina'], '/pendientes-bolt': ['oficina'],
   '/rrhh': ['oficina'], '/administracion': ['oficina'], '/plantilla': ['oficina'], '/fichas': ['oficina'],
   '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'],
-  '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/agenda': ['trafico'],
+  '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],
   '/control': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
   '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico'],
   '/sanciones': ['trafico']

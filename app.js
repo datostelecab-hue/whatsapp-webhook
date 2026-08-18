@@ -140,6 +140,7 @@ app.use('/usuarios', usuariosRoutes);
 app.use('/horas', boltHoras);
 app.use('/resumen', resumenRoutes);
 app.use('/planificador', planificadorRoutes);
+app.use('/planificador-v2', require('./routes/tablero'));
 app.use('/agenda', agendaRoutes);
 app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
