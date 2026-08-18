@@ -100,4 +100,45 @@ function mensajeTurnos(entrada) {
   return L.join('\n').trim();
 }
 
-module.exports = { instruccionesPorConductor, mensajeTurnos };
+// ── ¿Qué entrada de la lista es la de ESTE teléfono? ─────────────────────────
+// El aviso se manda al teléfono de la agenda, pero al pulsar el botón hay que
+// volver del teléfono a la persona. Antes se intentaba solo por el padrón de
+// BOLT y comparando el nombre letra a letra: si el teléfono no estaba en el
+// padrón o el nombre difería en una tilde o en el orden de los apellidos, el
+// conductor recibía "no encuentro tus turnos" (caso Israel Alvarado, 18/08/2026).
+// Ahora se reúnen TODAS las identidades disponibles y se compara con normClave
+// (sin tildes, sin mayúsculas y con las palabras ordenadas).
+
+const tel9 = t => String(t || '').replace(/\D/g, '').slice(-9);
+
+/**
+ * Claves (normClave) que pueden identificar al que llama:
+ *  - conductores de la agenda cuyo teléfono coincide (la fuente A LA QUE se mandó el aviso),
+ *  - entradas de DB_CONDUCTORES (Map normClave(nombre) → teléfono) con ese teléfono,
+ *  - su nombre en el padrón de BOLT, si se tiene,
+ *  - el nombre de la sesión del bot, si la hay.
+ */
+function clavesDe({ phone, conductores, telsDB, padronNombre, nombreSesion }) {
+  const mio = tel9(phone);
+  const claves = new Set();
+  if (mio) {
+    (conductores || []).forEach(c => {
+      if (tel9(c.telefono) === mio && (c.idBolt || c.id)) claves.add(normClave(c.idBolt || c.id));
+    });
+    if (telsDB instanceof Map) {
+      for (const [clave, tel] of telsDB) if (tel9(tel) === mio) claves.add(clave);
+    }
+  }
+  if ((padronNombre || '').trim()) claves.add(normClave(padronNombre));
+  if ((nombreSesion || '').trim()) claves.add(normClave(nombreSesion));
+  claves.delete('');
+  return claves;
+}
+
+/** Primera entrada cuya id o nombre (normalizados) esté entre las claves. */
+function entradaPorClaves(lista, claves) {
+  if (!claves || !claves.size) return null;
+  return (lista || []).find(e => claves.has(normClave(e.id)) || claves.has(normClave(e.nombre))) || null;
+}
+
+module.exports = { instruccionesPorConductor, mensajeTurnos, clavesDe, entradaPorClaves };

@@ -207,23 +207,40 @@ async function handleButton(phone, buttonId) {
   }
 }
 
-// Envía al conductor sus turnos/relevos de la semana (texto libre). Resuelve su
-// ID_BOLT por teléfono y compone el mensaje desde el tablero del planificador.
+// Envía al conductor sus turnos/relevos de la semana (texto libre). El reto es volver
+// del TELÉFONO a la persona: se prueban todas las identidades (agenda del tablero,
+// DB_CONDUCTORES, padrón de BOLT, sesión) comparadas con normClave — antes solo se
+// probaba el padrón con igualdad literal y fallaba con tildes, apellidos cambiados
+// de orden o teléfonos que no estuvieran en BOLT.
 async function enviarTurnos(phone, nombreSesion) {
-  let idBolt = (nombreSesion || '').trim();
-  try {
-    const c = await require('../services/conductoresBolt').buscarPorTelefono(phone);
-    if (c && (c.nombre || '').trim()) idBolt = c.nombre.trim();
-  } catch (e) { console.error('⚠️ [Turnos] buscarPorTelefono:', e.message); }
-
   try {
     const planif = require('../services/planificadorV2');
-    const { instruccionesPorConductor, mensajeTurnos } = require('../services/turnosConductor');
+    const { instruccionesPorConductor, mensajeTurnos, clavesDe, entradaPorClaves } = require('../services/turnosConductor');
     // La semana que se le anunció al mandar el aviso (0 = actual). Si no hay apunte, la actual.
     const offset = require('../services/avisoTurnos').offsetDe(phone);
-    const tablero = await planif.leerTablero({ offsetSemana: offset });
-    const norm = s => String(s || '').trim().toLowerCase();
-    const entrada = instruccionesPorConductor(tablero).find(e => norm(e.id) === norm(idBolt));
+    const [tablero, telsDB] = await Promise.all([
+      planif.leerTablero({ offsetSemana: offset }),
+      require('../services/control').leerTelefonosDB().catch(() => new Map())
+    ]);
+    // telsDB también aquí: así los relevos del mensaje llevan teléfono aunque falte en la agenda.
+    const lista = instruccionesPorConductor(tablero, telsDB);
+
+    let claves = clavesDe({ phone, conductores: tablero.conductores, telsDB, nombreSesion });
+    let entrada = entradaPorClaves(lista, claves);
+    if (!entrada) {
+      // Último cartucho (cuesta otra lectura): el padrón de BOLT por teléfono.
+      try {
+        const c = await require('../services/conductoresBolt').buscarPorTelefono(phone);
+        if (c && (c.nombre || '').trim()) {
+          claves = clavesDe({ phone, conductores: tablero.conductores, telsDB, nombreSesion, padronNombre: c.nombre });
+          entrada = entradaPorClaves(lista, claves);
+        }
+      } catch (e) { console.error('⚠️ [Turnos] buscarPorTelefono:', e.message); }
+    }
+    if (!entrada) {
+      // Se deja rastro de QUÉ se probó: es lo que hace diagnosticable el siguiente caso.
+      console.warn(`⚠️ [Turnos] Sin turnos para …${String(phone).slice(-4)} (semana +${offset}): identidades probadas [${[...claves].join(' | ') || 'ninguna'}]`);
+    }
     await sendText(phone, mensajeTurnos(entrada));
   } catch (e) {
     console.error('❌ [Turnos] enviarTurnos:', e.message);
