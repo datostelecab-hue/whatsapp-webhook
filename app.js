@@ -235,6 +235,14 @@ app.get('/vista-final/recuperar-libranzas', async (req, res) => {
   }
 });
 
+// ── Auditoría EN VIVO: vigila cada pocos minutos los coches planificados que
+//    ruedan estando en descanso. Se apaga con VIVO_ACTIVO=off. ────────────────
+if (process.env.VIVO_ACTIVO !== 'off') {
+  require('./services/auditoriaVivo').arrancar();
+} else {
+  console.log('⏸️  [VIVO] Auditoría en vivo desactivada (VIVO_ACTIVO=off)');
+}
+
 // ============================================================
 // CRON
 // ============================================================

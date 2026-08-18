@@ -1,0 +1,174 @@
+<div class="max-w-7xl mx-auto">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <span class="latido"></span> Auditoría en vivo
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Coches <b>planificados</b> que están en <b>descanso</b> en BOLT pero siguen sumando kilómetros en el GPS.
+        Se recalcula solo cada <span id="cfg-int">—</span> min.
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="reloj" class="text-xs text-telecab-muted"></span>
+      <button id="btn-refrescar" class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold font-medium hover:bg-telecab-gold/25">
+        <i class="fa-solid fa-rotate mr-1"></i> Refrescar ahora
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ Tarjetas de situación ══ -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Alertas activas</div>
+      <div id="k-alertas" class="text-2xl font-bold text-telecab-text">—</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">En descanso ahora</div>
+      <div id="k-vigilados" class="text-2xl font-bold text-telecab-text">—</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Coches planificados</div>
+      <div id="k-plan" class="text-2xl font-bold text-telecab-text">—</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Turno en curso</div>
+      <div id="k-turno" class="text-2xl font-bold text-telecab-gold">—</div>
+    </div>
+  </div>
+
+  <div id="msg" class="hidden mb-4 rounded-lg border border-telecab-border bg-telecab-card px-4 py-3 text-sm"></div>
+
+  <!-- ══ Alertas ══ -->
+  <section>
+    <h2 class="text-sm font-semibold text-telecab-red mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      Se mueven en descanso
+      <span id="n-alertas" class="text-xs text-telecab-muted"></span>
+    </h2>
+    <div id="lista" class="grid gap-3 lg:grid-cols-2"></div>
+  </section>
+</div>
+
+<style>
+  /* Punto rojo que late: deja claro de un vistazo que esto es "en vivo". */
+  .latido { width: 12px; height: 12px; border-radius: 50%; background: rgb(var(--tc-red)); box-shadow: 0 0 0 0 rgb(var(--tc-red) / .55); animation: latido 2s infinite; flex-shrink: 0; }
+  @keyframes latido { 70% { box-shadow: 0 0 0 12px rgb(var(--tc-red) / 0); } 100% { box-shadow: 0 0 0 0 rgb(var(--tc-red) / 0); } }
+  @media (prefers-reduced-motion: reduce) { .latido { animation: none; } }
+  .fila-alerta { transition: opacity .3s ease; }
+  .revisada { opacity: .5; }
+</style>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let DATOS = null, tickReloj = null;
+
+function msg(t, err) {
+  const m = $('#msg');
+  if (!t) { m.classList.add('hidden'); return; }
+  m.classList.remove('hidden');
+  m.textContent = t;
+  m.style.color = err ? 'rgb(var(--tc-red))' : '';
+}
+
+function pintar() {
+  if (!DATOS) return;
+  const a = DATOS.alertas || [];
+  $('#k-alertas').textContent = a.filter(x => !x.revisada).length;
+  $('#k-alertas').className = 'text-2xl font-bold ' + (a.filter(x=>!x.revisada).length ? 'text-telecab-red' : 'text-telecab-green');
+  $('#k-vigilados').textContent = DATOS.vigilados ?? '—';
+  $('#k-plan').textContent = DATOS.planificados ?? '—';
+  $('#k-turno').textContent = DATOS.turno || '—';
+  $('#n-alertas').textContent = a.length ? `(${a.length})` : '';
+  $('#cfg-int').textContent = (DATOS.config && DATOS.config.intervaloMin) || '—';
+
+  if (DATOS.error) msg('Última vuelta con error: ' + DATOS.error, true);
+  else msg('');
+
+  if (!a.length) {
+    $('#lista').innerHTML = `
+      <div class="lg:col-span-2 rounded-xl bg-telecab-card border border-telecab-border p-8 text-center">
+        <i class="fa-solid fa-circle-check text-3xl text-telecab-green mb-3"></i>
+        <p class="text-telecab-text font-medium">Ningún coche planificado se está moviendo en descanso.</p>
+        <p class="text-telecab-muted text-sm mt-1">
+          Se vigilan los que llevan más de ${(DATOS.config&&DATOS.config.minDescansoMin)||'—'} min en descanso
+          y superan ${(DATOS.config&&DATOS.config.umbralKm)||'—'} km.
+        </p>
+      </div>`;
+    return;
+  }
+
+  $('#lista').innerHTML = a.map(r => `
+    <div class="fila-alerta ${r.revisada?'revisada':''} rounded-xl border ${r.revisada?'border-telecab-border':'border-telecab-red/45'} ${r.revisada?'bg-telecab-card':'bg-telecab-red/5'} p-4">
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="font-semibold text-telecab-text text-lg">${esc(r.matricula)}</span>
+        <span class="text-xs text-telecab-muted">en descanso desde las ${esc(r.desdeLocal)}</span>
+      </div>
+
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-2">
+        <span class="text-2xl font-bold text-telecab-red">${r.km} km</span>
+        <span class="text-sm text-telecab-muted">en ${r.minutos} min · ${r.trayectos} trayecto(s) · ≈${r.kmPorHora} km/h de media</span>
+      </div>
+
+      <div class="text-sm mt-3 space-y-0.5">
+        <div><span class="text-telecab-muted">Planificado:</span> <b class="text-telecab-text">${esc(r.planificado)||'—'}</b>${r.zona?` <span class="text-telecab-muted">· ${esc(r.zona)}</span>`:''}</div>
+        <div>
+          <span class="text-telecab-muted">Conectado en BOLT:</span>
+          <b class="${r.distinto?'text-telecab-warn':'text-telecab-text'}">${esc(r.enBolt)||'—'}</b>
+          ${r.distinto?'<span class="text-xs text-telecab-warn ml-1">⚠ no es el planificado</span>':''}
+        </div>
+        ${r.telefono?`<div class="text-telecab-muted text-xs">📱 ${esc(r.telefono)}</div>`:''}
+      </div>
+
+      <div class="flex flex-wrap gap-2 mt-3">
+        ${r.telefono?`<a href="https://wa.me/${esc(String(r.telefono).replace(/\\D/g,''))}?text=${encodeURIComponent('Hola, ¿va todo bien con el coche '+r.matricula+'? Nos figura en descanso pero con movimiento.')}" target="_blank" rel="noopener"
+           class="px-3 py-1.5 rounded-lg bg-telecab-green/15 text-telecab-green border border-telecab-green/40 text-sm font-medium hover:bg-telecab-green/25"><i class="fa-brands fa-whatsapp mr-1"></i> Escribirle</a>`:''}
+        <button data-revisada="${esc(r.clave)}" class="px-3 py-1.5 rounded-lg bg-telecab-card2 text-telecab-muted text-sm hover:text-telecab-text">
+          ${r.revisada?'Revisada ✓':'Marcar revisada'}
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+function pintarReloj() {
+  if (!DATOS || !DATOS.ts) { $('#reloj').textContent = ''; return; }
+  const seg = Math.max(0, Math.round((Date.now() - DATOS.ts) / 1000));
+  const txt = seg < 60 ? `hace ${seg}s` : `hace ${Math.round(seg/60)} min`;
+  $('#reloj').textContent = 'Actualizado ' + txt;
+}
+
+async function cargar(forzar) {
+  const b = $('#btn-refrescar');
+  if (forzar) { b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Midiendo…'; }
+  try {
+    const r = forzar
+      ? await fetch('/operaciones/api/vivo/refrescar', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' })
+      : await fetch('/operaciones/api/vivo');
+    DATOS = await r.json();
+    pintar(); pintarReloj();
+  } catch (e) { msg('No se pudo consultar: ' + e.message, true); }
+  if (forzar) { b.disabled = false; b.innerHTML = '<i class="fa-solid fa-rotate mr-1"></i> Refrescar ahora'; }
+}
+
+$('#btn-refrescar').addEventListener('click', () => cargar(true));
+
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-revisada]');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/operaciones/api/vivo/revisada', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ clave: btn.dataset.revisada })
+    });
+    DATOS = await r.json();
+    pintar();
+  } catch (err) { msg('No se pudo marcar: ' + err.message, true); }
+});
+
+// El servidor recalcula por su cuenta; la pantalla solo va a buscar el resultado.
+cargar();
+setInterval(cargar, 30000);
+tickReloj = setInterval(pintarReloj, 5000);
+</script>

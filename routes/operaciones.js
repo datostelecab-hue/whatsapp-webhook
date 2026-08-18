@@ -3,6 +3,7 @@ const router = express.Router();
 const ExcelJS = require('exceljs');
 const { TIPOS, UMBRAL, MAX_DIAS, leerAlertas, listarSetups } = require('../services/mapon');
 const auditoria = require('../services/auditoriaFlota');
+const vivo = require('../services/auditoriaVivo');
 const { cargarAuditoria } = auditoria;
 
 router.get('/', (req, res) => {
@@ -86,6 +87,28 @@ router.get('/auditoria/procesar/detener', pararAuditoria);
 // ── Diagnóstico del fichaje: ¿deja Mapon crear/asignar conductores con esta clave? ──
 // Solo lectura por defecto. Con ?crear=NOMBRE intenta dar de alta ese conductor y
 // devuelve la respuesta CRUDA de Mapon, que es lo único que dice el motivo real.
+// ── Auditoría EN VIVO: coches planificados que ruedan estando en descanso ──
+router.get('/vivo', (req, res) => {
+  res.render('auditoriaVivo', {
+    titulo: 'Auditoría en vivo',
+    seccion: 'vivo',
+    layout: 'layout-gestion'
+  });
+});
+
+router.get('/api/vivo', (req, res) => res.json({ status: 'ok', ...vivo.estado() }));
+
+// Fuerza una vuelta sin esperar al temporizador.
+router.post('/api/vivo/refrescar', async (req, res) => {
+  try { await vivo.pasada(); res.json({ status: 'ok', ...vivo.estado() }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
+router.post('/api/vivo/revisada', (req, res) => {
+  const r = vivo.marcarRevisada((req.body || {}).clave, (req.session && req.session.usuario && req.session.usuario.nombre) || '');
+  res.json({ status: r.ok ? 'ok' : 'error', ...vivo.estado() });
+});
+
 router.get('/fichaje/diagnostico', async (req, res) => {
   const mapon = require('../services/mapon');
   const q = req.query || {};
