@@ -325,7 +325,11 @@ async function pasada() {
     // Km de cada uno DURANTE el descanso.
     const medidos = await enLotes(candidatos, CFG.concurrencia, async c => {
       try {
-        const km = await mapon.kmEnVentana({ unitId: c.unitId, fromTs: c.desde, tillTs: ahoraTs });
+        // kmEnVentanaExacto recorta al intervalo: el kmEnVentana normal contaba
+        // ENTERO cualquier trayecto que tocara la ventana, y un coche que venía
+        // conduciendo desde antes del descanso heredaba todos esos km (falso
+        // positivo 0348MMZ: 60,7 km que eran de la mañana).
+        const km = await mapon.kmEnVentanaExacto({ unitId: c.unitId, fromTs: c.desde, tillTs: ahoraTs });
         return { ...c, km: km.km, trayectos: km.trayectos };
       } catch (e) {
         console.warn(`⚠️  [VIVO] ${c.matricula}: no se pudo medir (${e.message})`);

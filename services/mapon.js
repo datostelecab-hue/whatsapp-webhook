@@ -590,6 +590,54 @@ async function kmEnVentana({ unitId, fromTs, tillTs }) {
   return { km: Math.round(metros / 100) / 10, trayectos, conConductor, drivers: [...driversVistos] };
 }
 
+/**
+ * Como kmEnVentana pero RECORTANDO al intervalo. route/list devuelve ENTERO
+ * cualquier trayecto que toque la ventana, así que un tramo de conducción que
+ * venía de antes contaba completo (caso 0348MMZ: "60,7 km en descanso" que en
+ * realidad eran de toda la mañana; Mapon daba ~2 km reales tras las 11:41).
+ * Aquí un trayecto solo aporta los metros de sus puntos GPS que caen dentro de
+ * [fromTs, tillTs]:
+ *   · trayecto entero dentro  → su odómetro Mapon (más fiel que la traza);
+ *   · trayecto que cruza      → suma haversine de los segmentos interiores;
+ *   · sin traza (raro)        → solo cuenta si EMPEZÓ dentro de la ventana.
+ */
+function haversineKmMapon(a, b) {
+  const R = 6371, r = x => x * Math.PI / 180;
+  const dlat = r(b.lat - a.lat), dln = r(b.lng - a.lng);
+  const q = Math.sin(dlat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dln / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(q));
+}
+
+async function kmEnVentanaExacto({ unitId, fromTs, tillTs }) {
+  const { trips } = await leerRecorridoUnidad({ unitId, fromTs, tillTs });
+  let km = 0, trayectos = 0;
+  for (const tr of trips) {
+    const pts = tr.puntos || [];
+    if (!pts.length) {
+      if (tr.inicioTs != null && tr.inicioTs >= fromTs && tr.inicioTs <= tillTs) {
+        km += (tr.distancia || 0) / 1000;
+        if (tr.distancia > 0) trayectos++;
+      }
+      continue;
+    }
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    if (t0 >= fromTs && t1 <= tillTs) {           // entero dentro
+      km += (tr.distancia || 0) / 1000;
+      if (tr.distancia > 0) trayectos++;
+      continue;
+    }
+    let dentro = 0;                                // cruza el borde: se recorta
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i - 1].t >= fromTs && pts[i].t <= tillTs) {
+        dentro += haversineKmMapon(pts[i - 1], pts[i]);
+      }
+    }
+    if (dentro > 0.05) trayectos++;
+    km += dentro;
+  }
+  return { km: Math.round(km * 10) / 10, trayectos };
+}
+
 /** gmt de Mapon ('Y-m-d H:i:s' o ISO, siempre UTC) → unix segundos. */
 function tsUTC(g) {
   let s = String(g == null ? '' : g).trim().replace(' ', 'T');
@@ -784,7 +832,7 @@ module.exports = {
   leerAlertas, leerExcesosGraves, listarSetups,
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, listarConductores, crearConductor,
-  asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana,
+  asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
   relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar
 };
