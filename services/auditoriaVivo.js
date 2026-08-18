@@ -2,10 +2,17 @@
 // AUDITORÍA EN VIVO — coches que se mueven estando "en descanso"
 // ============================================================
 // La auditoría forense (auditoriaFlota) contesta al día siguiente. Esto contesta
-// AHORA: cada pocos minutos mira qué coches están en `busy` (descanso) según BOLT
-// y cuántos km llevan hechos en ese rato según el GPS (Mapon). Si un coche lleva
-// media hora "descansando" y ha recorrido 8 km, alguien está usando el coche sin
-// estar disponible para pedidos — y tráfico se entera mientras pasa, no mañana.
+// AHORA: cada pocos minutos mira qué coches planificados NO están disponibles en
+// BOLT y cuántos km llevan hechos en ese rato según el GPS (Mapon).
+//
+// Tres situaciones, de menos a más grave:
+//   · DESCANSO      (`busy`)    sigue conectado, pero no coge pedidos.
+//   · DESCONECTADO  (`inactive`) cerró sesión en BOLT: el coche rueda sin rastro
+//                                de plataforma, solo lo ve el GPS.
+//   · SIN RASTRO                planificado y sin un solo log en toda la ventana:
+//                                ni siquiera sabemos cuándo se desconectó.
+// Las dos últimas llevan su propio umbral, más alto por defecto: al terminar el
+// turno es normal llevarse el coche a base, y no queremos ahogar el panel con eso.
 //
 // Solo se vigilan los coches PLANIFICADOS en el turno en curso: un coche aparcado
 // en el depósito puede moverse por mil motivos legítimos y no es noticia.
@@ -29,6 +36,9 @@ const CFG = {
   intervaloMin: Number(process.env.VIVO_INTERVALO_MIN) || 5,
   // Km recorridos en descanso a partir de los cuales salta la alerta.
   umbralKm: Number(process.env.VIVO_UMBRAL_KM) || 5,
+  // Umbral para los DESCONECTADOS. Más alto porque el traslado a base al acabar
+  // el turno es legítimo y frecuente; súbelo o bájalo según lo que veas.
+  umbralKmDesconectado: Number(process.env.VIVO_UMBRAL_KM_DESC) || 10,
   // Mínimo en descanso antes de mirar: por debajo son transiciones normales
   // (el conductor cierra el viaje mientras aún rueda hasta aparcar).
   minDescansoMin: Number(process.env.VIVO_MIN_DESCANSO_MIN) || 10,
@@ -36,11 +46,24 @@ const CFG = {
   ventanaLogsH: Number(process.env.VIVO_VENTANA_LOGS_H) || 6,
   // Consultas simultáneas a Mapon (su límite son 5).
   concurrencia: 4,
+  // Máximo de coches medidos en una vuelta. Los "sin rastro" pueden ser muchos
+  // (todo planificado cuyo conductor no se conectó) y cada uno cuesta una llamada.
+  // Si se llega al tope se dice en el log; nunca se recorta en silencio.
+  maxPorVuelta: Number(process.env.VIVO_MAX_POR_VUELTA) || 25,
   ttlTableroMs: 20 * 60 * 1000,
   ttlPadronMs: 30 * 60 * 1000
 };
 
 const ESTADO_DESCANSO = 'busy';
+const ESTADO_DESCONECTADO = 'inactive';
+
+// Tipos de alerta. El texto es el que se ve en el panel y en la hoja.
+const TIPO = { DESCANSO: 'descanso', DESCONECTADO: 'desconectado', SIN_RASTRO: 'sin-rastro' };
+const ETIQUETA_TIPO = {
+  [TIPO.DESCANSO]: 'en descanso',
+  [TIPO.DESCONECTADO]: 'desconectado de BOLT',
+  [TIPO.SIN_RASTRO]: 'sin rastro en BOLT'
+};
 
 // ── Libro donde viven las alertas ───────────────────────────────────────────
 // Se escribe SOLO al abrir una alerta, al cerrarla y al justificarla — no en cada
@@ -51,7 +74,7 @@ const HOJA_VIVO = 'AUDITORIA_VIVO';
 const CAB_VIVO = ['Clave', 'Abierta (Madrid)', 'ts inicio', 'Matrícula', 'Zona', 'Turno',
   'Planificado', 'En BOLT', 'driver_uuid', 'Teléfono', 'Distinto',
   'Km', 'Minutos', 'Trayectos', 'Km/h', 'Estado', 'Cerrada (Madrid)',
-  'Justificada (Madrid)', 'Justificada por', 'Motivo'];
+  'Justificada (Madrid)', 'Justificada por', 'Motivo', 'Tipo'];
 
 // Estados de una alerta:
 //   abierta      el coche SIGUE en descanso moviéndose (los km aún suben)
@@ -91,7 +114,7 @@ let _hojaLista = false;
 async function ensureHoja() {
   if (_hojaLista) return;
   await ensureSheet(LIBRO_VIVO, HOJA_VIVO);
-  const filas = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A1:T1`).catch(() => []);
+  const filas = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A1:U1`).catch(() => []);
   if (!filas.length || !(filas[0] || []).length) {
     await writeSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A1`, [CAB_VIVO]);
   }
@@ -102,7 +125,7 @@ const aFila = a => [
   a.clave, a.abiertaLocal, a.desde, a.matricula, a.zona, a.turno,
   a.planificado, a.enBolt, a.driverUuid, a.telefono, a.distinto ? 'sí' : '',
   a.km, a.minutos, a.trayectos, a.kmPorHora, a.estado, a.cerradaLocal || '',
-  a.justificadaLocal || '', a.justificadaPor || '', a.motivo || ''
+  a.justificadaLocal || '', a.justificadaPor || '', a.motivo || '', a.tipo || TIPO.DESCANSO
 ];
 
 /** Carga el expediente de la hoja (una sola vez, al arrancar). */
@@ -110,7 +133,7 @@ async function cargarAlertas() {
   if (_cargado) return;
   try {
     await ensureHoja();
-    const filas = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A2:T50000`).catch(() => []);
+    const filas = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A2:U50000`).catch(() => []);
     (filas || []).forEach((f, i) => {
       const clave = (f[0] || '').toString();
       const desde = Number(f[2]) || 0;
@@ -130,7 +153,9 @@ async function cargarAlertas() {
         cerradaLocal: (f[16] || '').toString(),
         justificadaLocal: (f[17] || '').toString(),
         justificadaPor: (f[18] || '').toString(),
-        motivo: (f[19] || '').toString()
+        motivo: (f[19] || '').toString(),
+        // Las filas anteriores a este cambio no traen tipo: eran todas de descanso.
+        tipo: (f[20] || TIPO.DESCANSO).toString()
       });
     });
     console.log(`📒 [VIVO] Expediente cargado: ${ALERTAS.size} alerta(s), ` +
@@ -145,7 +170,7 @@ async function cargarAlertas() {
 async function anotar(a) {
   try {
     await ensureHoja();
-    await appendRows(LIBRO_VIVO, `'${HOJA_VIVO}'!A:T`, [aFila(a)]);
+    await appendRows(LIBRO_VIVO, `'${HOJA_VIVO}'!A:U`, [aFila(a)]);
     // La fila real se sabrá al recargar; hasta entonces se localiza por clave.
   } catch (e) { console.error(`⚠️  [VIVO] No se pudo anotar ${a.clave}: ${e.message}`); }
 }
@@ -162,7 +187,7 @@ async function reanotar(a) {
       if (i < 0) return anotar(a);
       fila = a.fila = i + 2;
     }
-    await writeSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A${fila}:T${fila}`, [aFila(a)]);
+    await writeSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A${fila}:U${fila}`, [aFila(a)]);
   } catch (e) { console.error(`⚠️  [VIVO] No se pudo actualizar ${a.clave}: ${e.message}`); }
 }
 
@@ -313,17 +338,51 @@ async function pasada() {
     const logs = await logsRecientes(desdeTs, ahoraTs);
     const estados = estadoActualPorPlaca(logs, uuidPlaca);
 
-    // Candidatos: planificados + en descanso + ya con un rato en descanso.
-    const candidatos = Object.entries(estados)
-      .filter(([placa, e]) =>
-        e.estado === ESTADO_DESCANSO &&
-        plan.has(placa) &&
-        (ahoraTs - e.desde) >= CFG.minDescansoMin * 60)
-      .map(([placa, e]) => ({ placa, ...e, ...plan.get(placa), unitId: unitPorPlaca.get(placa) }))
-      .filter(c => c.unitId);
+    // ── Candidatos: coches PLANIFICADOS que no están disponibles en BOLT ──
+    const minSeg = CFG.minDescansoMin * 60;
+    const candidatos = [];
 
-    // Km de cada uno DURANTE el descanso.
-    const medidos = await enLotes(candidatos, CFG.concurrencia, async c => {
+    // (a) y (b): los que tienen logs y su último estado es descanso o desconexión.
+    Object.entries(estados).forEach(([placa, e]) => {
+      if (!plan.has(placa)) return;
+      const tipo = e.estado === ESTADO_DESCANSO ? TIPO.DESCANSO
+                 : e.estado === ESTADO_DESCONECTADO ? TIPO.DESCONECTADO
+                 : null;
+      if (!tipo) return;                              // con pedido o esperando: normal
+      if ((ahoraTs - e.desde) < minSeg) return;       // demasiado reciente: transición
+      const unitId = unitPorPlaca.get(placa);
+      if (unitId) candidatos.push({ placa, ...e, ...plan.get(placa), unitId, tipo });
+    });
+
+    // (c) SIN RASTRO: planificado y sin un solo log en la ventana. Es el agujero
+    // gordo — un coche que rueda sin que BOLT sepa nada de él. No se sabe cuándo
+    // se desconectó, así que se mide desde el principio de la ventana y se dice.
+    plan.forEach((info, placa) => {
+      if (estados[placa]) return;                     // ya lo hemos mirado arriba
+      const unitId = unitPorPlaca.get(placa);
+      if (!unitId) return;
+      candidatos.push({
+        placa, ...info, unitId, tipo: TIPO.SIN_RASTRO,
+        estado: ESTADO_DESCONECTADO, desde: desdeTs, driver: ''
+      });
+    });
+
+    // Se mide primero lo más urgente: descanso (está pasando ahora y con conductor
+    // identificado), luego desconectados, y por último los que no dan señal.
+    // Dentro de cada grupo, antes los que llevan más tiempo así.
+    const PRIORIDAD = { [TIPO.DESCANSO]: 0, [TIPO.DESCONECTADO]: 1, [TIPO.SIN_RASTRO]: 2 };
+    candidatos.sort((x, y) => PRIORIDAD[x.tipo] - PRIORIDAD[y.tipo] || x.desde - y.desde);
+
+    const aMedir = candidatos.slice(0, CFG.maxPorVuelta);
+    const sinMedir = candidatos.length - aMedir.length;
+    if (sinMedir > 0) {
+      console.warn(`⚠️  [VIVO] ${candidatos.length} coches por revisar y el tope es ` +
+        `${CFG.maxPorVuelta}: ${sinMedir} quedan para la vuelta siguiente ` +
+        `(sube VIVO_MAX_POR_VUELTA si esto se repite)`);
+    }
+
+    // Km de cada uno durante SU ventana (desde que descansa / se desconectó).
+    const medidos = await enLotes(aMedir, CFG.concurrencia, async c => {
       try {
         // kmEnVentanaExacto recorta al intervalo: el kmEnVentana normal contaba
         // ENTERO cualquier trayecto que tocara la ventana, y un coche que venía
@@ -343,8 +402,11 @@ async function pasada() {
     const nuevas = [];
 
     for (const c of medidos.filter(Boolean)) {
-      if (c.km <= CFG.umbralKm) continue;
-      const clave = `${c.placa}|${c.desde}`;
+      // Cada tipo tiene su listón: al desconectado se le exige más km porque
+      // llevarse el coche a base al acabar el turno es normal.
+      const umbral = c.tipo === TIPO.DESCANSO ? CFG.umbralKm : CFG.umbralKmDesconectado;
+      if (c.km <= umbral) continue;
+      const clave = `${c.placa}|${c.desde}|${c.tipo}`;
       vistasAhora.add(clave);
 
       const minutos = Math.round((ahoraTs - c.desde) / 60);
@@ -369,6 +431,7 @@ async function pasada() {
 
       const alerta = {
         clave,
+        tipo: c.tipo,
         desde: c.desde,
         abiertaLocal: fechaLocal(c.desde),
         matricula: c.matricula,
@@ -404,7 +467,8 @@ async function pasada() {
     ULTIMO = {
       ts: Date.now(),
       ejecutando: false,
-      vigilados: candidatos.length,
+      vigilados: aMedir.length,
+      sinMedir,
       planificados: plan.size,
       turno,
       error: null,
@@ -412,7 +476,7 @@ async function pasada() {
     };
     if (nuevas.length) {
       console.log(`🚨 [VIVO] ${nuevas.length} alerta(s) NUEVA(s): ` +
-        nuevas.map(a => `${a.matricula} ${a.km}km/${a.minutos}min`).join(', '));
+        nuevas.map(a => `${a.matricula} ${a.km}km/${a.minutos}min (${ETIQUETA_TIPO[a.tipo] || a.tipo})`).join(', '));
     }
   } catch (e) {
     console.error(`❌ [VIVO] ${e.stack || e.message}`);
@@ -434,13 +498,21 @@ function estado() {
     .filter(a => a.estado === JUSTIFICADA)
     .sort((a, b) => b.desde - a.desde)
     .slice(0, 30);
+  const deTipo = t => pendientes.filter(a => (a.tipo || TIPO.DESCANSO) === t).length;
   return {
     ...ULTIMO,
     alertas: pendientes,
     justificadas,
     abiertas: pendientes.filter(a => a.estado === ABIERTA).length,
     cerradas: pendientes.filter(a => a.estado === CERRADA).length,
-    config: { umbralKm: CFG.umbralKm, minDescansoMin: CFG.minDescansoMin, intervaloMin: CFG.intervaloMin },
+    enDescanso: deTipo(TIPO.DESCANSO),
+    desconectados: deTipo(TIPO.DESCONECTADO) + deTipo(TIPO.SIN_RASTRO),
+    etiquetasTipo: ETIQUETA_TIPO,
+    config: {
+      umbralKm: CFG.umbralKm, umbralKmDesconectado: CFG.umbralKmDesconectado,
+      minDescansoMin: CFG.minDescansoMin, intervaloMin: CFG.intervaloMin,
+      ventanaLogsH: CFG.ventanaLogsH
+    },
     proxima: ULTIMO.ts ? ULTIMO.ts + CFG.intervaloMin * 60000 : 0
   };
 }

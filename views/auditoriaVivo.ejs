@@ -5,8 +5,8 @@
         <span class="latido"></span> Auditoría en vivo
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
-        Coches <b>planificados</b> que están en <b>descanso</b> en BOLT pero siguen sumando kilómetros en el GPS.
-        Se recalcula solo cada <span id="cfg-int">—</span> min.
+        Coches <b>planificados</b> que no están disponibles en BOLT —en descanso, desconectados o sin rastro—
+        pero siguen sumando kilómetros en el GPS. Se recalcula solo cada <span id="cfg-int">—</span> min.
       </p>
     </div>
     <div class="flex items-center gap-2">
@@ -28,8 +28,8 @@
       <div id="k-cerradas" class="text-2xl font-bold text-telecab-text">—</div>
     </div>
     <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">En descanso ahora</div>
-      <div id="k-vigilados" class="text-2xl font-bold text-telecab-text">—</div>
+      <div class="text-xs text-telecab-muted mb-1">Desconectados</div>
+      <div id="k-desconectados" class="text-2xl font-bold text-telecab-text">—</div>
     </div>
     <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
       <div class="text-xs text-telecab-muted mb-1">Coches planificados</div>
@@ -114,13 +114,16 @@ function pintar() {
   $('#k-abiertas').className = 'text-2xl font-bold ' + (abiertas ? 'text-telecab-red' : 'text-telecab-green');
   $('#k-cerradas').textContent = cerradas;
   $('#k-cerradas').className = 'text-2xl font-bold ' + (cerradas ? 'text-telecab-warn' : 'text-telecab-green');
-  $('#k-vigilados').textContent = DATOS.vigilados ?? '—';
+  const desc = DATOS.desconectados || 0;
+  $('#k-desconectados').textContent = desc;
+  $('#k-desconectados').className = 'text-2xl font-bold ' + (desc ? 'text-telecab-violet' : 'text-telecab-green');
   $('#k-plan').textContent = DATOS.planificados ?? '—';
   $('#k-turno').textContent = DATOS.turno || '—';
   $('#n-alertas').textContent = a.length ? `(${a.length})` : '';
   $('#cfg-int').textContent = (DATOS.config && DATOS.config.intervaloMin) || '—';
 
   if (DATOS.error) msg('Última vuelta con error: ' + DATOS.error, true);
+  else if (DATOS.sinMedir > 0) msg(`${DATOS.sinMedir} coche(s) quedaron sin revisar en esta vuelta por el tope; entran en la siguiente.`, false);
   else msg('');
 
   pintarHistorico();
@@ -132,35 +135,47 @@ function pintar() {
         <p class="text-telecab-text font-medium">Nada pendiente.</p>
         <p class="text-telecab-muted text-sm mt-1">
           Se vigilan los planificados que llevan más de ${(DATOS.config&&DATOS.config.minDescansoMin)||'—'} min
-          en descanso y superan ${(DATOS.config&&DATOS.config.umbralKm)||'—'} km.
+          sin estar disponibles: más de ${(DATOS.config&&DATOS.config.umbralKm)||'—'} km en descanso,
+          o más de ${(DATOS.config&&DATOS.config.umbralKmDesconectado)||'—'} km desconectados.
           Las alertas se quedan aquí hasta que las justifiques.
         </p>
       </div>`;
     return;
   }
 
+  const ETIQ = (DATOS.etiquetasTipo) || {};
   $('#lista').innerHTML = a.map(r => {
     const enCurso = r.estado === 'abierta';
+    const tipo = r.tipo || 'descanso';
+    // Desconectado y sin-rastro son más graves: no hay ni rastro en la plataforma.
+    const grave = tipo !== 'descanso';
+    const borde = enCurso ? (grave ? 'border-telecab-violet/55' : 'border-telecab-red/45') : 'border-telecab-warn/40';
+    const fondo = enCurso ? (grave ? 'bg-telecab-violet/5' : 'bg-telecab-red/5') : 'bg-telecab-warn/5';
+    const chip = grave
+      ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/40">${esc(ETIQ[tipo] || tipo)}</span>`
+      : `<span class="text-[10px] px-2 py-0.5 rounded-full bg-telecab-card2 text-telecab-muted">${esc(ETIQ[tipo] || tipo)}</span>`;
     return `
-    <div class="fila-alerta ${enCurso?'':'cerrada'} rounded-xl border ${enCurso?'border-telecab-red/45':'border-telecab-warn/40'} ${enCurso?'bg-telecab-red/5':'bg-telecab-warn/5'} p-4">
+    <div class="fila-alerta ${enCurso?'':'cerrada'} rounded-xl border ${borde} ${fondo} p-4">
       <div class="flex items-baseline justify-between gap-2">
-        <span class="font-semibold text-telecab-text text-lg">${esc(r.matricula)}</span>
-        <span class="text-xs ${enCurso?'text-telecab-red':'text-telecab-muted'}">
+        <span class="font-semibold text-telecab-text text-lg">${esc(r.matricula)} ${chip}</span>
+        <span class="text-xs ${enCurso?(grave?'text-telecab-violet':'text-telecab-red'):'text-telecab-muted'}">
           ${enCurso ? '● ocurriendo ahora' : 'terminó ' + esc(r.cerradaLocal || '')}
         </span>
       </div>
-      <div class="text-xs text-telecab-muted mt-0.5">empezó el ${esc(r.abiertaLocal)}</div>
+      <div class="text-xs text-telecab-muted mt-0.5">
+        empezó el ${esc(r.abiertaLocal)}${tipo === 'sin-rastro' ? ' · sin ningún log en la ventana, puede venir de antes' : ''}
+      </div>
 
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-2">
-        <span class="text-2xl font-bold text-telecab-red">${r.km} km</span>
+        <span class="text-2xl font-bold ${grave?'text-telecab-violet':'text-telecab-red'}">${r.km} km</span>
         <span class="text-sm text-telecab-muted">en ${r.minutos} min · ${r.trayectos} trayecto(s) · ≈${r.kmPorHora} km/h de media</span>
       </div>
 
       <div class="text-sm mt-3 space-y-0.5">
         <div><span class="text-telecab-muted">Planificado:</span> <b class="text-telecab-text">${esc(r.planificado)||'—'}</b>${r.zona?` <span class="text-telecab-muted">· ${esc(r.zona)}</span>`:''}</div>
         <div>
-          <span class="text-telecab-muted">Conectado en BOLT:</span>
-          <b class="${r.distinto?'text-telecab-warn':'text-telecab-text'}">${esc(r.enBolt)||'—'}</b>
+          <span class="text-telecab-muted">${grave ? 'Último en BOLT:' : 'Conectado en BOLT:'}</span>
+          <b class="${r.distinto?'text-telecab-warn':'text-telecab-text'}">${esc(r.enBolt)||'— nadie —'}</b>
           ${r.distinto?'<span class="text-xs text-telecab-warn ml-1">⚠ no es el planificado</span>':''}
         </div>
         ${r.telefono?`<div class="text-telecab-muted text-xs">📱 ${esc(r.telefono)}</div>`:''}
@@ -216,7 +231,8 @@ $('#btn-refrescar').addEventListener('click', () => cargar(true));
 
 // ── Justificar ──────────────────────────────────────────────────────────────
 const RAPIDOS = ['Fue a repostar', 'Al taller / avería', 'Cambio de turno acordado',
-  'Traslado del coche', 'Uso indebido — hablado con el conductor', 'Falso positivo del GPS'];
+  'Traslado a base al acabar turno', 'Se le cerró la app / sin cobertura',
+  'Uso indebido — hablado con el conductor', 'Falso positivo del GPS'];
 let CLAVE_ACTUAL = null;
 
 function abrirModal(btn) {
