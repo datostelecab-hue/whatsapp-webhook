@@ -71,9 +71,11 @@ async function tableroCacheado() {
 }
 async function padronCacheado() {
   if (cachePadron.datos && Date.now() - cachePadron.ts < CFG.ttlPadronMs) return cachePadron.datos;
-  const p = await leerPadron();
-  cachePadron = { ts: Date.now(), datos: p };
-  return p;
+  // leerPadron() devuelve { db: Map(uuid -> ficha), filas: n }; aquí solo interesa el mapa.
+  const { db } = await leerPadron();
+  if (!db || typeof db.get !== 'function') throw new Error('leerPadron() no devolvió el mapa esperado');
+  cachePadron = { ts: Date.now(), datos: db };
+  return db;
 }
 
 /**

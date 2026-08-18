@@ -105,7 +105,9 @@ router.post('/api/vivo/refrescar', async (req, res) => {
 });
 
 router.post('/api/vivo/revisada', (req, res) => {
-  const r = vivo.marcarRevisada((req.body || {}).clave, (req.session && req.session.usuario && req.session.usuario.nombre) || '');
+  // El usuario de la sesión va en req.usuario (lo deja sesion.identificar), no en req.session.
+  const quien = req.usuario ? (req.usuario.nombre || req.usuario.email || '') : '';
+  const r = vivo.marcarRevisada((req.body || {}).clave, quien);
   res.json({ status: r.ok ? 'ok' : 'error', ...vivo.estado() });
 });
 
