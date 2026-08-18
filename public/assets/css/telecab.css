@@ -19,6 +19,10 @@
   --tc-red: 229 72 77;
   --tc-red-hover: 201 59 64;
   --tc-green: 62 207 142;
+  /* Estados que no son ni error ni éxito. Los heredan todos los temas oscuros;
+     los claros los redefinen más profundos para que se lean sobre blanco. */
+  --tc-warn: 251 191 36;    /* ámbar: requiere revisión a mano */
+  --tc-violet: 196 181 253; /* morado: reincidencia / escalado */
   --tc-text: 230 232 236;
   --tc-muted: 139 147 161;
   --tc-scroll: 46 53 66;
@@ -40,9 +44,11 @@
   --tc-gold-deep: 150 106 18;
   --tc-red: 214 55 62;
   --tc-red-hover: 185 42 48;
-  --tc-green: 20 155 110;
+  --tc-green: 15 128 90;
   --tc-text: 24 31 44;
   --tc-muted: 96 112 136;
+  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
+  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
   --tc-scroll: 203 209 218;
   --tc-scroll-hover: 176 184 196;
   --tc-halo1: 183 130 24;
@@ -96,8 +102,10 @@
   color-scheme: light;
   --tc-dark: 242 246 251; --tc-card: 255 255 255; --tc-card2: 235 241 249; --tc-border: 217 226 238;
   --tc-gold: 37 99 235; --tc-gold-soft: 96 145 240; --tc-gold-deep: 29 78 200;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
   --tc-text: 22 31 46; --tc-muted: 90 106 130;
+  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
+  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
   --tc-scroll: 203 209 218; --tc-scroll-hover: 176 184 196;
   --tc-halo1: 37 99 235; --tc-halo2: 20 155 110; --tc-halo1-a: 0.05; --tc-halo2-a: 0.035;
 }
@@ -107,6 +115,8 @@
   --tc-gold: 21 128 61; --tc-gold-soft: 34 160 82; --tc-gold-deep: 15 100 48;
   --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 21 128 61;
   --tc-text: 24 34 28; --tc-muted: 92 112 100;
+  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
+  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
   --tc-scroll: 203 214 206; --tc-scroll-hover: 176 190 180;
   --tc-halo1: 21 128 61; --tc-halo2: 37 99 235; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
 }
@@ -114,8 +124,10 @@
   color-scheme: light;
   --tc-dark: 251 244 248; --tc-card: 255 255 255; --tc-card2: 249 236 242; --tc-border: 238 217 227;
   --tc-gold: 200 29 104; --tc-gold-soft: 224 74 142; --tc-gold-deep: 165 22 85;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
   --tc-text: 40 26 34; --tc-muted: 122 96 108;
+  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
+  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
   --tc-scroll: 214 203 209; --tc-scroll-hover: 190 176 183;
   --tc-halo1: 200 29 104; --tc-halo2: 124 58 237; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
 }
@@ -123,8 +135,10 @@
   color-scheme: light;
   --tc-dark: 247 245 252; --tc-card: 255 255 255; --tc-card2: 240 236 249; --tc-border: 226 219 240;
   --tc-gold: 124 58 237; --tc-gold-soft: 155 100 245; --tc-gold-deep: 100 45 200;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
   --tc-text: 30 26 44; --tc-muted: 104 96 128;
+  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
+  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
   --tc-scroll: 209 203 218; --tc-scroll-hover: 184 176 196;
   --tc-halo1: 124 58 237; --tc-halo2: 200 29 104; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
 }
@@ -132,8 +146,10 @@
   color-scheme: light;
   --tc-dark: 251 246 241; --tc-card: 255 255 255; --tc-card2: 249 240 233; --tc-border: 238 226 214;
   --tc-gold: 194 65 12; --tc-gold-soft: 224 100 40; --tc-gold-deep: 160 52 8;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 20 155 110;
+  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
   --tc-text: 40 30 22; --tc-muted: 120 104 92;
+  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
+  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
   --tc-scroll: 214 206 199; --tc-scroll-hover: 190 180 172;
   --tc-halo1: 194 65 12; --tc-halo2: 20 155 110; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
 }

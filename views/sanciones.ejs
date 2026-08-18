@@ -22,13 +22,13 @@
 
   <!-- ══ Pendientes de revisión (sin conductor) ══ -->
   <section id="sec-revision" class="hidden mb-6">
-    <h2 class="text-sm font-semibold text-amber-400 mb-2 flex items-center gap-2"><i class="fa-solid fa-user-magnifying-glass"></i> Sin conductor resuelto (revisar a mano) <span id="n-revision" class="text-xs text-telecab-muted"></span></h2>
+    <h2 class="text-sm font-semibold text-telecab-warn mb-2 flex items-center gap-2"><i class="fa-solid fa-user-magnifying-glass"></i> Sin conductor resuelto (revisar a mano) <span id="n-revision" class="text-xs text-telecab-muted"></span></h2>
     <div id="lista-revision" class="rounded-xl bg-telecab-card border border-telecab-border divide-y divide-telecab-border/60 text-sm"></div>
   </section>
 
   <!-- ══ Reincidentes (contador por conductor, últimos 3 meses) ══ -->
   <section id="sec-reinc" class="hidden mb-6">
-    <h2 class="text-sm font-semibold text-purple-300 mb-2 flex items-center gap-2"><i class="fa-solid fa-repeat"></i> Reincidentes (últimos 3 meses) <span id="n-reinc" class="text-xs text-telecab-muted"></span></h2>
+    <h2 class="text-sm font-semibold text-telecab-violet mb-2 flex items-center gap-2"><i class="fa-solid fa-repeat"></i> Reincidentes (últimos 3 meses) <span id="n-reinc" class="text-xs text-telecab-muted"></span></h2>
     <div id="lista-reinc" class="flex flex-wrap gap-2"></div>
   </section>
 
@@ -65,13 +65,15 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let LOG = [], MODO = 'test';
 
+// Solo tokens de la marca: la paleta suelta de Tailwind (purple-300, amber-400…)
+// está pensada para fondo oscuro y se vuelve ilegible en los 6 temas claros.
 const BADGE = {
-  'enviado': ['Enviada','bg-green-600/15 text-green-400'],
+  'enviado': ['Enviada','bg-telecab-green/15 text-telecab-green'],
   'simulado': ['Simulada (test)','bg-telecab-card2 text-telecab-muted'],
   'pendiente-aprobacion': ['Pend. aprobar','bg-telecab-red/15 text-telecab-red'],
-  'reincidencia-enviada': ['Reincidencia enviada','bg-purple-600/15 text-purple-300'],
+  'reincidencia-enviada': ['Reincidencia enviada','bg-telecab-violet/15 text-telecab-violet'],
   'reincidencia-simulada': ['Reincidencia (test)','bg-telecab-card2 text-telecab-muted'],
-  'pendiente-revision': ['Sin conductor','bg-amber-900/20 text-amber-400'],
+  'pendiente-revision': ['Sin conductor','bg-telecab-warn/15 text-telecab-warn'],
   'descartada': ['Descartada','bg-telecab-card2 text-telecab-muted/60'],
   'error': ['Error','bg-telecab-red/15 text-telecab-red']
 };
@@ -84,8 +86,8 @@ async function cargar() {
   ]);
   MODO = (lg && lg.modo) || (est && est.modo) || 'test';
   $('#modo').innerHTML = MODO==='live'
-    ? '<span class="bg-green-600/20 text-green-400 px-2 py-0.5 rounded-full">EN VIVO</span>'
-    : '<span class="bg-amber-600/20 text-amber-400 px-2 py-0.5 rounded-full">MODO TEST (no envía)</span>';
+    ? '<span class="bg-telecab-green/15 text-telecab-green px-2 py-0.5 rounded-full">EN VIVO</span>'
+    : '<span class="bg-telecab-warn/15 text-telecab-warn px-2 py-0.5 rounded-full">MODO TEST (no envía)</span>';
   LOG = (lg && lg.log) || [];
   render();
 }
@@ -104,7 +106,7 @@ function render() {
       <div class="text-sm text-telecab-muted mt-1">Matrícula <b class="text-telecab-text">${esc(r.matricula)}</b> · ${r.velocidad||'?'} km/h (límite ${r.limite||'?'}) · ${esc(r.aviso)}</div>
       <div class="text-xs text-telecab-muted mt-1">${r.telefono ? '📱 '+esc(r.telefono) : '<span class="text-telecab-red">⚠️ sin teléfono</span>'}</div>
       <div class="flex gap-2 mt-3">
-        <button data-aprob="${esc(r.clave)}" class="px-3 py-1.5 rounded-lg bg-purple-600/20 text-purple-300 text-sm font-medium hover:bg-purple-600/30"><i class="fa-brands fa-whatsapp mr-1"></i> Aprobar y enviar</button>
+        <button data-aprob="${esc(r.clave)}" class="px-3 py-1.5 rounded-lg bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/40 text-sm font-medium hover:bg-telecab-violet/25"><i class="fa-brands fa-whatsapp mr-1"></i> Aprobar y enviar</button>
         <button data-rechazo="${esc(r.clave)}" class="px-3 py-1.5 rounded-lg bg-telecab-card2 text-telecab-muted text-sm hover:text-telecab-text">Descartar</button>
       </div>
     </div>`).join('');
@@ -121,7 +123,9 @@ function render() {
   const reinc = Object.values(porCond).filter(c => c.n >= 2).sort((a,b)=>b.n-a.n);
   $('#sec-reinc').classList.toggle('hidden', !reinc.length);
   $('#n-reinc').textContent = reinc.length ? `(${reinc.length})` : '';
-  $('#lista-reinc').innerHTML = reinc.map(c => `<span class="px-3 py-1.5 rounded-full bg-purple-600/15 text-purple-200 text-sm">${esc(c.nombre)||'(sin nombre)'} <b class="ml-1 text-purple-300">×${c.n}</b></span>`).join('');
+  // El nombre va en el color de texto normal: sobre la píldora morada clara es
+  // lo único que se lee bien en los temas claros. El contador sí en morado.
+  $('#lista-reinc').innerHTML = reinc.map(c => `<span class="px-3 py-1.5 rounded-full bg-telecab-violet/12 border border-telecab-violet/30 text-telecab-text text-sm">${esc(c.nombre)||'(sin nombre)'} <b class="ml-1 text-telecab-violet">×${c.n}</b></span>`).join('');
 
   // Sin conductor (revisión)
   const rev = LOG.filter(r => r.estado === 'pendiente-revision').sort((a,b)=>(b.ts||0)-(a.ts||0));
@@ -132,7 +136,7 @@ function render() {
       <span class="text-telecab-muted text-xs">${esc(r.fechaLocal)}</span>
       <span class="font-medium text-telecab-text">${esc(r.matricula)}</span>
       <span class="text-telecab-muted">· ${r.velocidad||'?'} km/h</span>
-      <span class="text-amber-400/80 text-xs">· ${esc(r.notas)}</span>
+      <span class="text-telecab-warn text-xs">· ${esc(r.notas)}</span>
     </div>`).join('');
 
   filtrar();
