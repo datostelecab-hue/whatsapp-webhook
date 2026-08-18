@@ -19,6 +19,7 @@ const { fetchRangoCompleto, CONFIG_BOLT } = require('./bolt');
 const mapon = require('./mapon');
 const { leerTablero, TURNOS } = require('./planificadorV2');
 const { leerPadron } = require('./conductoresBolt');
+const { readSheet, writeSheet, ensureSheet, appendRows } = require('./sheets');
 
 const TZ = 'Europe/Madrid';
 
@@ -41,23 +42,129 @@ const CFG = {
 
 const ESTADO_DESCANSO = 'busy';
 
+// ── Libro donde viven las alertas ───────────────────────────────────────────
+// Se escribe SOLO al abrir una alerta, al cerrarla y al justificarla — no en cada
+// vuelta —, así que no pesa en la cuota de Sheets. Sobrevive a los reinicios de
+// Render: si tráfico no llega a mirar en 5 minutos, la alerta sigue ahí mañana.
+const LIBRO_VIVO = process.env.VIVO_LIBRO || '18E7ZJpc29aGDAAFNIyrvhScuMgEuYR8qNG1FGVY9_Ns';
+const HOJA_VIVO = 'AUDITORIA_VIVO';
+const CAB_VIVO = ['Clave', 'Abierta (Madrid)', 'ts inicio', 'Matrícula', 'Zona', 'Turno',
+  'Planificado', 'En BOLT', 'driver_uuid', 'Teléfono', 'Distinto',
+  'Km', 'Minutos', 'Trayectos', 'Km/h', 'Estado', 'Cerrada (Madrid)',
+  'Justificada (Madrid)', 'Justificada por', 'Motivo'];
+
+// Estados de una alerta:
+//   abierta      el coche SIGUE en descanso moviéndose (los km aún suben)
+//   cerrada      salió de descanso; queda pendiente de que alguien la justifique
+//   justificada  resuelta a mano, con motivo. Deja de salir en el panel.
+const ABIERTA = 'abierta', CERRADA = 'cerrada', JUSTIFICADA = 'justificada';
+
 // ── Estado en memoria ────────────────────────────────────────────────────────
 // Se pierde al reiniciar Render: es un monitor de "ahora", no un libro de
 // registro. Lo que hay que conservar ya lo guarda la auditoría forense.
 let ULTIMO = {
   ts: 0,                 // cuándo terminó la última vuelta
   ejecutando: false,
-  alertas: [],           // las que están activas AHORA
   vigilados: 0,          // coches en descanso que se han medido
   planificados: 0,
   error: null,
   duracionMs: 0
 };
-const REVISADAS = new Map();   // clave -> { ts, quien }  alertas que tráfico ya miró
+
+// Expediente vivo: clave -> alerta. Se carga de la hoja al arrancar y se mantiene
+// en memoria para que el panel responda al instante.
+const ALERTAS = new Map();
+let _cargado = false;
 let timer = null;
 
 const normPlaca = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
 const r1 = n => Math.round(n * 10) / 10;
+
+// ── Persistencia de las alertas ─────────────────────────────────────────────
+
+const fechaLocal = ts => new Intl.DateTimeFormat('es-ES', {
+  timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hour12: false
+}).format(new Date((ts || Date.now() / 1000) * 1000));
+
+let _hojaLista = false;
+async function ensureHoja() {
+  if (_hojaLista) return;
+  await ensureSheet(LIBRO_VIVO, HOJA_VIVO);
+  const filas = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A1:T1`).catch(() => []);
+  if (!filas.length || !(filas[0] || []).length) {
+    await writeSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A1`, [CAB_VIVO]);
+  }
+  _hojaLista = true;
+}
+
+const aFila = a => [
+  a.clave, a.abiertaLocal, a.desde, a.matricula, a.zona, a.turno,
+  a.planificado, a.enBolt, a.driverUuid, a.telefono, a.distinto ? 'sí' : '',
+  a.km, a.minutos, a.trayectos, a.kmPorHora, a.estado, a.cerradaLocal || '',
+  a.justificadaLocal || '', a.justificadaPor || '', a.motivo || ''
+];
+
+/** Carga el expediente de la hoja (una sola vez, al arrancar). */
+async function cargarAlertas() {
+  if (_cargado) return;
+  try {
+    await ensureHoja();
+    const filas = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A2:T50000`).catch(() => []);
+    (filas || []).forEach((f, i) => {
+      const clave = (f[0] || '').toString();
+      const desde = Number(f[2]) || 0;
+      // Una alerta de verdad tiene clave "placa|ts" y un ts plausible. Si la hoja
+      // apunta a otro sitio (VIVO_LIBRO mal puesto), no se llena el panel de basura.
+      if (!clave || !clave.includes('|') || desde < 1e9) return;
+      ALERTAS.set(clave, {
+        fila: i + 2, clave,
+        abiertaLocal: (f[1] || '').toString(), desde,
+        matricula: (f[3] || '').toString(), zona: (f[4] || '').toString(), turno: (f[5] || '').toString(),
+        planificado: (f[6] || '').toString(), enBolt: (f[7] || '').toString(),
+        driverUuid: (f[8] || '').toString(), telefono: (f[9] || '').toString(),
+        distinto: !!(f[10] || '').toString().trim(),
+        km: Number(f[11]) || 0, minutos: Number(f[12]) || 0,
+        trayectos: Number(f[13]) || 0, kmPorHora: Number(f[14]) || 0,
+        estado: (f[15] || ABIERTA).toString(),
+        cerradaLocal: (f[16] || '').toString(),
+        justificadaLocal: (f[17] || '').toString(),
+        justificadaPor: (f[18] || '').toString(),
+        motivo: (f[19] || '').toString()
+      });
+    });
+    console.log(`📒 [VIVO] Expediente cargado: ${ALERTAS.size} alerta(s), ` +
+      `${[...ALERTAS.values()].filter(a => a.estado !== JUSTIFICADA).length} sin justificar`);
+  } catch (e) {
+    console.error(`⚠️  [VIVO] No se pudo cargar el expediente: ${e.message}`);
+  }
+  _cargado = true;
+}
+
+/** Escribe una alerta nueva al final de la hoja. */
+async function anotar(a) {
+  try {
+    await ensureHoja();
+    await appendRows(LIBRO_VIVO, `'${HOJA_VIVO}'!A:T`, [aFila(a)]);
+    // La fila real se sabrá al recargar; hasta entonces se localiza por clave.
+  } catch (e) { console.error(`⚠️  [VIVO] No se pudo anotar ${a.clave}: ${e.message}`); }
+}
+
+/** Reescribe una alerta ya anotada (cambian km, estado o justificación). */
+async function reanotar(a) {
+  try {
+    await ensureHoja();
+    let fila = a.fila;
+    if (!fila) {
+      // Se busca su fila por la clave (solo pasa si se anotó en esta misma sesión).
+      const claves = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A2:A50000`).catch(() => []);
+      const i = (claves || []).findIndex(f => (f[0] || '').toString() === a.clave);
+      if (i < 0) return anotar(a);
+      fila = a.fila = i + 2;
+    }
+    await writeSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A${fila}:T${fila}`, [aFila(a)]);
+  } catch (e) { console.error(`⚠️  [VIVO] No se pudo actualizar ${a.clave}: ${e.message}`); }
+}
 
 // ── Cachés de lo que vive en Sheets ─────────────────────────────────────────
 let cacheTablero = { ts: 0, datos: null };
@@ -188,6 +295,7 @@ async function pasada() {
   const t0 = Date.now();
 
   try {
+    await cargarAlertas();   // la primera vez, recupera lo que hubiera antes de reiniciar
     const ahoraTs = Math.floor(Date.now() / 1000);
     const desdeTs = ahoraTs - CFG.ventanaLogsH * 3600;
 
@@ -225,48 +333,82 @@ async function pasada() {
       }
     });
 
-    const alertas = medidos.filter(Boolean)
-      .filter(c => c.km > CFG.umbralKm)
-      .map(c => {
-        const minutos = Math.round((ahoraTs - c.desde) / 60);
-        const ficha = padron.get(c.driver);
-        return {
-          clave: `${c.placa}|${c.desde}`,
-          matricula: c.matricula,
-          zona: c.zona,
-          km: r1(c.km),
-          trayectos: c.trayectos,
-          minutos,
-          kmPorHora: r1(c.km / Math.max(minutos / 60, 0.1)),
-          desde: c.desde,
-          desdeLocal: new Intl.DateTimeFormat('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(c.desde * 1000)),
-          turno: c.turno,
-          planificado: c.planificado,
-          enBolt: (ficha && ficha.nombre) || '',
-          telefono: (ficha && ficha.phone) || '',
-          driverUuid: c.driver || '',
-          // Si el que conduce no es el que estaba planificado, es otra historia
-          // (coche cambiado de mano) y conviene verlo de un vistazo.
-          distinto: !!(ficha && ficha.nombre && c.planificado &&
-            normPlaca(ficha.nombre) !== normPlaca(c.planificado)),
-          revisada: REVISADAS.has(`${c.placa}|${c.desde}`)
-        };
-      })
-      .sort((a, b) => b.km - a.km);
+    // ── Expediente: se ABRE al superar el umbral, se ACTUALIZA mientras dure y
+    //    se CIERRA cuando el coche deja el descanso. Nunca se borra solo. ──
+    const vistasAhora = new Set();
+    const nuevas = [];
+
+    for (const c of medidos.filter(Boolean)) {
+      if (c.km <= CFG.umbralKm) continue;
+      const clave = `${c.placa}|${c.desde}`;
+      vistasAhora.add(clave);
+
+      const minutos = Math.round((ahoraTs - c.desde) / 60);
+      const ficha = padron.get(c.driver);
+      const datos = {
+        km: r1(c.km),
+        trayectos: c.trayectos,
+        minutos,
+        kmPorHora: r1(c.km / Math.max(minutos / 60, 0.1))
+      };
+
+      const previa = ALERTAS.get(clave);
+      if (previa) {
+        // Ya abierta: solo crecen los números. Si estaba justificada se respeta
+        // (alguien ya dio explicación de ESE descanso: no se reabre sola).
+        if (previa.estado !== JUSTIFICADA) {
+          Object.assign(previa, datos, { estado: ABIERTA });
+          reanotar(previa);
+        }
+        continue;
+      }
+
+      const alerta = {
+        clave,
+        desde: c.desde,
+        abiertaLocal: fechaLocal(c.desde),
+        matricula: c.matricula,
+        zona: c.zona,
+        turno: c.turno,
+        planificado: c.planificado,
+        enBolt: (ficha && ficha.nombre) || '',
+        telefono: (ficha && ficha.phone) || '',
+        driverUuid: c.driver || '',
+        // Si el que conduce no es el que estaba planificado, es otra historia
+        // (coche cambiado de mano) y conviene verlo de un vistazo.
+        distinto: !!(ficha && ficha.nombre && c.planificado &&
+          normPlaca(ficha.nombre) !== normPlaca(c.planificado)),
+        ...datos,
+        estado: ABIERTA,
+        cerradaLocal: '', justificadaLocal: '', justificadaPor: '', motivo: ''
+      };
+      ALERTAS.set(clave, alerta);
+      nuevas.push(alerta);
+      anotar(alerta);
+    }
+
+    // Las que estaban abiertas y ya no aparecen: el coche salió del descanso.
+    // Se cierran con sus cifras finales, pero SIGUEN en el panel hasta justificarlas.
+    ALERTAS.forEach(a => {
+      if (a.estado === ABIERTA && !vistasAhora.has(a.clave)) {
+        a.estado = CERRADA;
+        a.cerradaLocal = fechaLocal(ahoraTs);
+        reanotar(a);
+      }
+    });
 
     ULTIMO = {
       ts: Date.now(),
       ejecutando: false,
-      alertas,
       vigilados: candidatos.length,
       planificados: plan.size,
       turno,
       error: null,
       duracionMs: Date.now() - t0
     };
-    if (alertas.length) {
-      console.log(`🚨 [VIVO] ${alertas.length} coche(s) en descanso con más de ${CFG.umbralKm} km: ` +
-        alertas.map(a => `${a.matricula} ${a.km}km/${a.minutos}min`).join(', '));
+    if (nuevas.length) {
+      console.log(`🚨 [VIVO] ${nuevas.length} alerta(s) NUEVA(s): ` +
+        nuevas.map(a => `${a.matricula} ${a.km}km/${a.minutos}min`).join(', '));
     }
   } catch (e) {
     console.error(`❌ [VIVO] ${e.stack || e.message}`);
@@ -278,20 +420,43 @@ async function pasada() {
 // ── API del módulo ──────────────────────────────────────────────────────────
 
 function estado() {
+  const todas = [...ALERTAS.values()];
+  // Pendientes: primero las que siguen pasando, luego las cerradas, por km.
+  const pendientes = todas
+    .filter(a => a.estado !== JUSTIFICADA)
+    .sort((a, b) => (a.estado === ABIERTA ? 0 : 1) - (b.estado === ABIERTA ? 0 : 1) || b.km - a.km);
+  // Histórico reciente de justificadas, para poder consultar qué se decidió.
+  const justificadas = todas
+    .filter(a => a.estado === JUSTIFICADA)
+    .sort((a, b) => b.desde - a.desde)
+    .slice(0, 30);
   return {
     ...ULTIMO,
-    alertas: ULTIMO.alertas.map(a => ({ ...a, revisada: REVISADAS.has(a.clave) })),
+    alertas: pendientes,
+    justificadas,
+    abiertas: pendientes.filter(a => a.estado === ABIERTA).length,
+    cerradas: pendientes.filter(a => a.estado === CERRADA).length,
     config: { umbralKm: CFG.umbralKm, minDescansoMin: CFG.minDescansoMin, intervaloMin: CFG.intervaloMin },
     proxima: ULTIMO.ts ? ULTIMO.ts + CFG.intervaloMin * 60000 : 0
   };
 }
 
-function marcarRevisada(clave, quien) {
-  if (!clave) return { ok: false };
-  REVISADAS.set(clave, { ts: Date.now(), quien: quien || '' });
-  // No crece sin fin: se sueltan las de hace más de 24 h.
-  const corte = Date.now() - 24 * 3600 * 1000;
-  for (const [k, v] of REVISADAS) if (v.ts < corte) REVISADAS.delete(k);
+/**
+ * Justificar = cerrar el caso a mano dejando dicho POR QUÉ. El motivo es
+ * obligatorio a propósito: una alerta que desaparece sin explicación no sirve
+ * de nada dentro de tres semanas, cuando haya que decidir algo sobre ese coche.
+ */
+async function justificar(clave, motivo, quien) {
+  const a = ALERTAS.get(clave);
+  if (!a) return { ok: false, msg: 'Esa alerta ya no existe' };
+  const m = (motivo || '').toString().trim();
+  if (!m) return { ok: false, msg: 'Escribe el motivo: es lo que se consulta luego' };
+  a.estado = JUSTIFICADA;
+  a.motivo = m;
+  a.justificadaPor = quien || '';
+  a.justificadaLocal = fechaLocal(Math.floor(Date.now() / 1000));
+  await reanotar(a);
+  console.log(`✅ [VIVO] ${a.matricula} justificada por ${quien || '—'}: ${m}`);
   return { ok: true };
 }
 
@@ -305,4 +470,4 @@ function arrancar() {
 }
 function parar() { if (timer) { clearInterval(timer); timer = null; } }
 
-module.exports = { pasada, estado, marcarRevisada, arrancar, parar, turnoActual, CFG };
+module.exports = { pasada, estado, justificar, arrancar, parar, turnoActual, cargarAlertas, CFG, ALERTAS };

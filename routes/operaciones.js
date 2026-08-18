@@ -104,11 +104,14 @@ router.post('/api/vivo/refrescar', async (req, res) => {
   catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
-router.post('/api/vivo/revisada', (req, res) => {
+// Justificar cierra el caso dejando dicho por qué (el motivo es obligatorio).
+router.post('/api/vivo/justificar', async (req, res) => {
   // El usuario de la sesión va en req.usuario (lo deja sesion.identificar), no en req.session.
   const quien = req.usuario ? (req.usuario.nombre || req.usuario.email || '') : '';
-  const r = vivo.marcarRevisada((req.body || {}).clave, quien);
-  res.json({ status: r.ok ? 'ok' : 'error', ...vivo.estado() });
+  const b = req.body || {};
+  const r = await vivo.justificar(b.clave, b.motivo, quien);
+  if (!r.ok) return res.status(400).json({ status: 'error', msg: r.msg });
+  res.json({ status: 'ok', ...vivo.estado() });
 });
 
 router.get('/fichaje/diagnostico', async (req, res) => {

@@ -18,10 +18,14 @@
   </div>
 
   <!-- ══ Tarjetas de situación ══ -->
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+  <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
     <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">Alertas activas</div>
-      <div id="k-alertas" class="text-2xl font-bold text-telecab-text">—</div>
+      <div class="text-xs text-telecab-muted mb-1">Ocurriendo ahora</div>
+      <div id="k-abiertas" class="text-2xl font-bold text-telecab-text">—</div>
+    </div>
+    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
+      <div class="text-xs text-telecab-muted mb-1">Sin justificar</div>
+      <div id="k-cerradas" class="text-2xl font-bold text-telecab-text">—</div>
     </div>
     <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
       <div class="text-xs text-telecab-muted mb-1">En descanso ahora</div>
@@ -48,6 +52,34 @@
     </h2>
     <div id="lista" class="grid gap-3 lg:grid-cols-2"></div>
   </section>
+
+  <!-- ══ Histórico de justificadas ══ -->
+  <section class="mt-8">
+    <details>
+      <summary class="text-sm font-semibold text-telecab-muted cursor-pointer select-none">
+        <i class="fa-solid fa-clock-rotate-left mr-1"></i> Justificadas recientemente
+        <span id="n-just" class="text-xs"></span>
+      </summary>
+      <div id="historico" class="mt-3 rounded-xl bg-telecab-card border border-telecab-border overflow-hidden text-sm"></div>
+    </details>
+  </section>
+</div>
+
+<!-- ══ Diálogo de justificación ══ -->
+<div id="modal" class="hidden fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="w-full max-w-md rounded-xl bg-telecab-card border border-telecab-border p-5">
+    <h3 class="text-lg font-semibold text-telecab-text mb-1">Justificar alerta</h3>
+    <p id="modal-sub" class="text-sm text-telecab-muted mb-4"></p>
+    <label class="block text-xs font-semibold text-telecab-text mb-1">¿Qué pasó?</label>
+    <textarea id="modal-motivo" rows="3" placeholder="Ej.: fue a repostar · llevó el coche al taller · cambio de turno acordado"
+      class="w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text text-sm"></textarea>
+    <div class="flex flex-wrap gap-1.5 mt-2" id="modal-rapidos"></div>
+    <p id="modal-err" class="hidden text-xs text-telecab-red mt-2"></p>
+    <div class="flex justify-end gap-2 mt-4">
+      <button id="modal-cancelar" class="px-3 py-2 rounded-lg text-sm text-telecab-muted hover:text-telecab-text">Cancelar</button>
+      <button id="modal-ok" class="px-4 py-2 rounded-lg bg-telecab-green/15 text-telecab-green border border-telecab-green/40 text-sm font-medium hover:bg-telecab-green/25">Justificar</button>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -56,7 +88,9 @@
   @keyframes latido { 70% { box-shadow: 0 0 0 12px rgb(var(--tc-red) / 0); } 100% { box-shadow: 0 0 0 0 rgb(var(--tc-red) / 0); } }
   @media (prefers-reduced-motion: reduce) { .latido { animation: none; } }
   .fila-alerta { transition: opacity .3s ease; }
-  .revisada { opacity: .5; }
+  /* Una alerta CERRADA ya no está pasando, pero sigue pendiente de justificar:
+     se atenúa un poco para distinguirla de las que ocurren ahora mismo. */
+  .cerrada { opacity: .78; }
 </style>
 
 <script>
@@ -75,8 +109,11 @@ function msg(t, err) {
 function pintar() {
   if (!DATOS) return;
   const a = DATOS.alertas || [];
-  $('#k-alertas').textContent = a.filter(x => !x.revisada).length;
-  $('#k-alertas').className = 'text-2xl font-bold ' + (a.filter(x=>!x.revisada).length ? 'text-telecab-red' : 'text-telecab-green');
+  const abiertas = DATOS.abiertas || 0, cerradas = DATOS.cerradas || 0;
+  $('#k-abiertas').textContent = abiertas;
+  $('#k-abiertas').className = 'text-2xl font-bold ' + (abiertas ? 'text-telecab-red' : 'text-telecab-green');
+  $('#k-cerradas').textContent = cerradas;
+  $('#k-cerradas').className = 'text-2xl font-bold ' + (cerradas ? 'text-telecab-warn' : 'text-telecab-green');
   $('#k-vigilados').textContent = DATOS.vigilados ?? '—';
   $('#k-plan').textContent = DATOS.planificados ?? '—';
   $('#k-turno').textContent = DATOS.turno || '—';
@@ -86,25 +123,33 @@ function pintar() {
   if (DATOS.error) msg('Última vuelta con error: ' + DATOS.error, true);
   else msg('');
 
+  pintarHistorico();
+
   if (!a.length) {
     $('#lista').innerHTML = `
       <div class="lg:col-span-2 rounded-xl bg-telecab-card border border-telecab-border p-8 text-center">
         <i class="fa-solid fa-circle-check text-3xl text-telecab-green mb-3"></i>
-        <p class="text-telecab-text font-medium">Ningún coche planificado se está moviendo en descanso.</p>
+        <p class="text-telecab-text font-medium">Nada pendiente.</p>
         <p class="text-telecab-muted text-sm mt-1">
-          Se vigilan los que llevan más de ${(DATOS.config&&DATOS.config.minDescansoMin)||'—'} min en descanso
-          y superan ${(DATOS.config&&DATOS.config.umbralKm)||'—'} km.
+          Se vigilan los planificados que llevan más de ${(DATOS.config&&DATOS.config.minDescansoMin)||'—'} min
+          en descanso y superan ${(DATOS.config&&DATOS.config.umbralKm)||'—'} km.
+          Las alertas se quedan aquí hasta que las justifiques.
         </p>
       </div>`;
     return;
   }
 
-  $('#lista').innerHTML = a.map(r => `
-    <div class="fila-alerta ${r.revisada?'revisada':''} rounded-xl border ${r.revisada?'border-telecab-border':'border-telecab-red/45'} ${r.revisada?'bg-telecab-card':'bg-telecab-red/5'} p-4">
+  $('#lista').innerHTML = a.map(r => {
+    const enCurso = r.estado === 'abierta';
+    return `
+    <div class="fila-alerta ${enCurso?'':'cerrada'} rounded-xl border ${enCurso?'border-telecab-red/45':'border-telecab-warn/40'} ${enCurso?'bg-telecab-red/5':'bg-telecab-warn/5'} p-4">
       <div class="flex items-baseline justify-between gap-2">
         <span class="font-semibold text-telecab-text text-lg">${esc(r.matricula)}</span>
-        <span class="text-xs text-telecab-muted">en descanso desde las ${esc(r.desdeLocal)}</span>
+        <span class="text-xs ${enCurso?'text-telecab-red':'text-telecab-muted'}">
+          ${enCurso ? '● ocurriendo ahora' : 'terminó ' + esc(r.cerradaLocal || '')}
+        </span>
       </div>
+      <div class="text-xs text-telecab-muted mt-0.5">empezó el ${esc(r.abiertaLocal)}</div>
 
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-2">
         <span class="text-2xl font-bold text-telecab-red">${r.km} km</span>
@@ -124,11 +169,27 @@ function pintar() {
       <div class="flex flex-wrap gap-2 mt-3">
         ${r.telefono?`<a href="https://wa.me/${esc(String(r.telefono).replace(/\\D/g,''))}?text=${encodeURIComponent('Hola, ¿va todo bien con el coche '+r.matricula+'? Nos figura en descanso pero con movimiento.')}" target="_blank" rel="noopener"
            class="px-3 py-1.5 rounded-lg bg-telecab-green/15 text-telecab-green border border-telecab-green/40 text-sm font-medium hover:bg-telecab-green/25"><i class="fa-brands fa-whatsapp mr-1"></i> Escribirle</a>`:''}
-        <button data-revisada="${esc(r.clave)}" class="px-3 py-1.5 rounded-lg bg-telecab-card2 text-telecab-muted text-sm hover:text-telecab-text">
-          ${r.revisada?'Revisada ✓':'Marcar revisada'}
+        <button data-justificar="${esc(r.clave)}" data-matricula="${esc(r.matricula)}" data-km="${r.km}" data-min="${r.minutos}"
+                class="px-3 py-1.5 rounded-lg bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/40 text-sm font-medium hover:bg-telecab-violet/25">
+          <i class="fa-solid fa-clipboard-check mr-1"></i> Justificar
         </button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+function pintarHistorico() {
+  const h = DATOS.justificadas || [];
+  $('#n-just').textContent = h.length ? `(${h.length})` : '(0)';
+  $('#historico').innerHTML = h.length
+    ? h.map(r => `
+      <div class="px-4 py-2.5 border-b border-telecab-border/50 last:border-0 flex flex-wrap items-baseline gap-x-2">
+        <span class="font-medium text-telecab-text">${esc(r.matricula)}</span>
+        <span class="text-telecab-muted text-xs">${r.km} km / ${r.minutos} min · ${esc(r.abiertaLocal)}</span>
+        <span class="text-telecab-text text-sm flex-1 min-w-0">— ${esc(r.motivo)}</span>
+        <span class="text-telecab-muted text-xs">${esc(r.justificadaPor || '')} · ${esc(r.justificadaLocal || '')}</span>
+      </div>`).join('')
+    : '<p class="px-4 py-3 text-telecab-muted text-sm">Todavía no se ha justificado ninguna.</p>';
 }
 
 function pintarReloj() {
@@ -153,18 +214,61 @@ async function cargar(forzar) {
 
 $('#btn-refrescar').addEventListener('click', () => cargar(true));
 
-document.addEventListener('click', async e => {
-  const btn = e.target.closest('[data-revisada]');
-  if (!btn) return;
-  btn.disabled = true;
+// ── Justificar ──────────────────────────────────────────────────────────────
+const RAPIDOS = ['Fue a repostar', 'Al taller / avería', 'Cambio de turno acordado',
+  'Traslado del coche', 'Uso indebido — hablado con el conductor', 'Falso positivo del GPS'];
+let CLAVE_ACTUAL = null;
+
+function abrirModal(btn) {
+  CLAVE_ACTUAL = btn.dataset.justificar;
+  $('#modal-sub').textContent = `${btn.dataset.matricula} · ${btn.dataset.km} km en ${btn.dataset.min} min`;
+  $('#modal-motivo').value = '';
+  $('#modal-err').classList.add('hidden');
+  $('#modal-rapidos').innerHTML = RAPIDOS.map(t =>
+    `<button type="button" class="rapido px-2 py-1 rounded-full bg-telecab-card2 text-telecab-muted text-xs hover:text-telecab-text">${esc(t)}</button>`).join('');
+  $('#modal').classList.remove('hidden');
+  $('#modal-motivo').focus();
+}
+function cerrarModal() { $('#modal').classList.add('hidden'); CLAVE_ACTUAL = null; }
+
+$('#modal-cancelar').addEventListener('click', cerrarModal);
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') cerrarModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').classList.contains('hidden')) cerrarModal(); });
+
+$('#modal-ok').addEventListener('click', async () => {
+  const motivo = $('#modal-motivo').value.trim();
+  if (!motivo) {
+    $('#modal-err').textContent = 'Escribe el motivo: es lo que se consulta luego.';
+    $('#modal-err').classList.remove('hidden');
+    return;
+  }
+  const b = $('#modal-ok');
+  b.disabled = true; b.textContent = 'Guardando…';
   try {
-    const r = await fetch('/operaciones/api/vivo/revisada', {
+    const r = await fetch('/operaciones/api/vivo/justificar', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ clave: btn.dataset.revisada })
+      body: JSON.stringify({ clave: CLAVE_ACTUAL, motivo })
     });
-    DATOS = await r.json();
-    pintar();
-  } catch (err) { msg('No se pudo marcar: ' + err.message, true); }
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.msg || 'no se pudo');
+    DATOS = d; cerrarModal(); pintar();
+  } catch (err) {
+    $('#modal-err').textContent = err.message;
+    $('#modal-err').classList.remove('hidden');
+  }
+  b.disabled = false; b.textContent = 'Justificar';
+});
+
+document.addEventListener('click', e => {
+  const rap = e.target.closest('.rapido');
+  if (rap) {
+    const t = $('#modal-motivo');
+    t.value = t.value ? t.value + ' · ' + rap.textContent : rap.textContent;
+    t.focus();
+    return;
+  }
+  const btn = e.target.closest('[data-justificar]');
+  if (btn) abrirModal(btn);
 });
 
 // El servidor recalcula por su cuenta; la pantalla solo va a buscar el resultado.
