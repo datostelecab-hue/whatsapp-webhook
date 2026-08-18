@@ -10,9 +10,16 @@
 //   · DNI/NIE → AGENDA_V2 (+ archivo CONDUCTORES_OUT).
 // El resultado se puede CONGELAR en una hoja "NOMINA_mes-año" inmutable.
 //
-// NOVEDAD respecto al Excel: el arranque para prorratear el objetivo del mes NO es
-// la fecha de alta, sino el PRIMER DÍA CON HORAS de ese conductor ese mes (se ve en
-// la columna "Desde día"). La fecha de alta se deja intacta en la agenda.
+// ARRANQUE DEL PRORRATEO: la FECHA DE ALTA (AGENDA_V2 / CONDUCTORES_OUT, col G,
+// formato dd/mm/aaaa). Manda ella, no el primer día con horas:
+//   · alta ANTES del mes de trabajo  → mes completo, sin prorratear. Un veterano que
+//     libró la primera quincena ya no ve su objetivo partido por la mitad (con el
+//     criterio viejo le bastaba media jornada para "hacer extras").
+//   · alta DENTRO del mes            → se prorratea desde su día de alta.
+//   · alta DESPUÉS del mes           → no entra en esa nómina (aún no trabajaba).
+//   · sin fecha                      → se conserva el criterio viejo (primer día con
+//     horas) y se marca en el panel, para que nadie se quede sin cobrar por un dato
+//     vacío que a alguien se le olvidó rellenar.
 
 const { procesarYUnificar } = require('./boltHorasCore');
 const { SPREADSHEET_ID } = require('./turnos');                    // libro de horas mensuales
@@ -112,6 +119,36 @@ const num = v => {
 
 const esEtt = contrato => /ETT/i.test(contrato || '');
 
+/**
+ * 'dd/mm/aaaa' (lo que hay en la col G de la agenda) → { d, m, a }, o null si está
+ * vacía o no se entiende. Acepta también guiones y años de dos cifras.
+ */
+function parseAlta(txt) {
+  const s = String(txt == null ? '' : txt).trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (!m) return null;
+  const d = +m[1], mes = +m[2];
+  let a = +m[3];
+  if (a < 100) a += 2000;
+  if (d < 1 || d > 31 || mes < 1 || mes > 12 || a < 1990 || a > 2100) return null;
+  return { d, m: mes, a };
+}
+
+/**
+ * Sitúa el alta respecto al mes de TRABAJO:
+ *   'antes'    ya estaba de alta → mes completo
+ *   'dentro'   entró ese mes     → prorratea desde alta.d
+ *   'despues'  entró más tarde   → fuera de esta nómina
+ *   null       sin fecha usable  → se decide con el criterio viejo
+ */
+function situarAlta(alta, mesTrabajo, anoTrabajo) {
+  if (!alta) return null;
+  if (alta.a < anoTrabajo || (alta.a === anoTrabajo && alta.m < mesTrabajo)) return 'antes';
+  if (alta.a === anoTrabajo && alta.m === mesTrabajo) return 'dentro';
+  return 'despues';
+}
+
 // Jornada del contrato en horas (40 o 32) para elegir umbral FAS / sueldo base.
 // "40h", "ETT 40h", "40 horas"… → 40. "32h" → 32. Si no se reconoce, 40 por defecto.
 const horasContrato = contrato => {
@@ -132,7 +169,8 @@ async function leerFichas() {
       if (!k || fichas.has(k)) continue;
       fichas.set(k, {
         dni: (filas[i][4] || '').toString().trim(),            // col E = DNI/NIE
-        contrato: (filas[i][11] || '').toString().trim()       // col L = CONTRATO
+        contrato: (filas[i][11] || '').toString().trim(),      // col L = CONTRATO
+        alta: (filas[i][6] || '').toString().trim()            // col G = FECHA_ALTA (dd/mm/aaaa)
       });
     }
   };
@@ -145,7 +183,7 @@ async function leerFichas() {
 function enriquecer(conductores, fichas) {
   return conductores.map(c => {
     const fi = fichas.get(normClave(c.nombre)) || {};
-    return { ...c, dni: fi.dni || '', contrato: fi.contrato || '', ett: esEtt(fi.contrato) };
+    return { ...c, dni: fi.dni || '', contrato: fi.contrato || '', ett: esEtt(fi.contrato), alta: fi.alta || '' };
   });
 }
 
@@ -154,11 +192,12 @@ async function escribirSnapshot(mes, ano, conductores) {
   const hoja = hojaDatos(mes, ano);
   const { mes: mesD, ano: anoD } = mesVencido(mes, ano);
   const cab = ['Conductor', 'DNI/NIE', 'Contrato', 'Tipo', 'Desde día', 'Horas',
-    'Nocturnas (h)', 'Neto € (FAS)', 'Propinas €', 'Peajes €', '% Efec'];
+    'Nocturnas (h)', 'Neto € (FAS)', 'Propinas €', 'Peajes €', '% Efec', 'Fecha alta'];
   const values = [[`📦 DATOS NÓMINA · ${MESES_NOM[mes - 1]} ${ano} (mes vencido: trabajo de ${MESES_NOM[mesD - 1]} ${anoD}) — base para recalcular sin Bolt`], cab];
   conductores.forEach(c => values.push([
     c.nombre, c.dni || '', c.contrato || '', c.ett ? 'ETT' : 'Tibus', c.primerDia,
-    c.total, c.noc, c.neto, c.propinas, c.peajes, c.efec == null ? '' : c.efec
+    c.total, c.noc, c.neto, c.propinas, c.peajes, c.efec == null ? '' : c.efec,
+    c.alta || ''
   ]));
   const ref = `'${hoja}'`;
   await ensureSheet(LIBRO_NOMINA, hoja);
@@ -179,7 +218,9 @@ async function leerSnapshot(mes, ano) {
       ett: (f[3] || '').toString().trim().toUpperCase() === 'ETT',
       primerDia: num(f[4]), total: num(f[5]), noc: num(f[6]), neto: num(f[7]),
       propinas: num(f[8]), peajes: num(f[9]),
-      efec: f[10] === '' || f[10] == null ? null : num(f[10])
+      efec: f[10] === '' || f[10] == null ? null : num(f[10]),
+      // Los snapshots anteriores a este cambio no traen la columna: quedan como antes.
+      alta: (f[11] || '').toString().trim()
     });
   }
   return out;
@@ -232,10 +273,22 @@ async function leerHojaMensual(mes, ano) {
 }
 
 // ---- Cálculo de la nómina de UN conductor (tu cadena del .gs), según el config ----
-function calcularFila(c, diasDelMes, cfg) {
+function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   const util = (c.efec != null ? c.efec : 0) / 100;               // 0..1
-  const primerDia = c.primerDia || 1;
-  const diasDesde = diasDelMes - primerDia + 1;                   // del 1er día con horas a fin de mes
+
+  // Día desde el que cuenta el mes para este conductor:
+  //   alta anterior al mes  → 1 (mes completo)
+  //   alta dentro del mes   → el día del alta
+  //   sin fecha             → criterio viejo (primer día con horas)
+  const alta = parseAlta(c.alta);
+  const donde = situarAlta(alta, mesTrabajo, anoTrabajo);
+  let arranque, origen;
+  if (donde === 'antes')       { arranque = 1;       origen = 'alta-anterior'; }
+  else if (donde === 'dentro') { arranque = alta.d;  origen = 'alta-en-mes'; }
+  else                         { arranque = c.primerDia || 1; origen = 'primer-log'; }
+
+  const primerDia = Math.min(Math.max(arranque, 1), diasDelMes);
+  const diasDesde = diasDelMes - primerDia + 1;                   // del arranque a fin de mes
   const diasOperTgt = r2((diasDesde / diasDelMes) * cfg.diasObjetivo);
   const hsTgt = diasOperTgt * cfg.horasMetaDia;
   const delta = c.total - hsTgt;
@@ -257,6 +310,8 @@ function calcularFila(c, diasDelMes, cfg) {
     contrato: c.contrato || '',
     jornada,
     primerDia,
+    alta: c.alta || '',
+    origenArranque: origen,      // alta-anterior | alta-en-mes | primer-log
     horas: r2(c.total),
     horasObjetivo: r2(hsTgt),
     deltaHoras: r2(delta),
@@ -303,10 +358,21 @@ async function generar(mesNom, anoNom, opciones = {}) {
     }
   }
 
-  // Solo entra quien trabajó ese mes (tiene horas). Es "por mes", como pediste.
-  const filas = conductores
-    .filter(c => c.total > 0)
-    .map(c => calcularFila(c, diasDelMes, cfg))
+  // Solo entra quien trabajó ese mes (tiene horas)…
+  const conHoras = conductores.filter(c => c.total > 0);
+
+  // …y que ya estuviera de alta. Quien entró DESPUÉS del mes de trabajo (p. ej. alta
+  // en julio para la nómina que paga el trabajo de junio) no pinta nada aquí; si tiene
+  // horas es que la fecha está mal puesta, así que se lista aparte en vez de callarlo.
+  const fuera = [];
+  const dentro = conHoras.filter(c => {
+    if (situarAlta(parseAlta(c.alta), mesD, anoD) !== 'despues') return true;
+    fuera.push({ nombre: c.nombre, alta: c.alta, horas: r2(c.total) });
+    return false;
+  });
+
+  const filas = dentro
+    .map(c => calcularFila(c, diasDelMes, cfg, mesD, anoD))
     .sort((a, b) => b.total - a.total);
 
   const totales = filas.reduce((t, f) => {
@@ -327,7 +393,15 @@ async function generar(mesNom, anoNom, opciones = {}) {
     mesDatos: mesD, anoDatos: anoD, mesDatosNombre: MESES_NOM[mesD - 1],
     filas, totales, config: cfg,
     congelada: await existeCongelada(mesNom, anoNom),
-    avisos: { sinEfec, sinDinero, sinDni: filas.filter(f => !f.dni).length, trabajoIncompleto }
+    avisos: {
+      sinEfec, sinDinero, sinDni: filas.filter(f => !f.dni).length, trabajoIncompleto,
+      // Sin fecha de alta: cobran con el criterio viejo, pero conviene rellenarles la col G.
+      sinAlta: filas.filter(f => f.origenArranque === 'primer-log').length,
+      // Altas dentro del mes de trabajo: son los únicos con el objetivo prorrateado.
+      altaEnMes: filas.filter(f => f.origenArranque === 'alta-en-mes').length,
+      // Con horas pero alta POSTERIOR al mes: fuera de esta nómina (revisar la fecha).
+      excluidos: fuera
+    }
   };
 }
 
@@ -366,15 +440,17 @@ async function congelar(mes, ano) {
   const r = enMemoria || await generar(mes, ano, { actualizar: false });
 
   const hoja = hojaNomina(mes, ano);
+  // 'Fecha alta' va al final: leerCongelada busca por nombre de cabecera, así que
+  // los meses congelados antes de este cambio se siguen leyendo igual.
   const cab = ['Nombre del conductor', 'DNI/NIE', 'Tipo', 'Jornada', 'Desde día', 'Horas', 'Propinas (€)', 'Peajes (€)',
-    'Nocturnas (€)', 'MBO FAS (€)', 'Compensación (€)', 'Días extra', '%Utilización', 'TOTAL (€)'];
+    'Nocturnas (€)', 'MBO FAS (€)', 'Compensación (€)', 'Días extra', '%Utilización', 'TOTAL (€)', 'Fecha alta'];
   const values = [[`💶 NÓMINA EXTRAS · ${MESES_NOM[mes - 1]} ${ano} · congelada` +
     (r.mesDatosNombre ? ` (mes vencido: trabajo de ${r.mesDatosNombre} ${r.anoDatos})` : '')], cab];
   r.filas.forEach(f => values.push([
     f.nombre, f.dni, f.ett ? 'ETT' : 'Tibus', f.jornada ? f.jornada + ' horas' : '',
     f.primerDia, f.horas, f.propinas, f.peajes,
     f.nocturnas, f.mboFAS, f.compensacion, f.diasExtra,
-    f.utilPct == null ? '' : f.utilPct, f.total
+    f.utilPct == null ? '' : f.utilPct, f.total, f.alta || ''
   ]));
   values.push(['📌 TOTAL', '', '', '', '', '', r.totales.propinas, r.totales.peajes, r.totales.nocturnas,
     r.totales.mboFAS, r.totales.compensacion, r.totales.diasExtra, '', r.totales.total]);
@@ -480,5 +556,7 @@ async function cargar(mes, ano) {
 module.exports = {
   DEFAULTS, CONFIG_CAMPOS, MESES_NOM, hojaMes, hojaNomina, hojaDatos, LIBRO_NOMINA,
   leerConfig, guardarConfig, recalcular, cargar,
-  generar, generarEnFondo, estado, congelar, leerCongelada, existeCongelada, leerSnapshot
+  generar, generarEnFondo, estado, congelar, leerCongelada, existeCongelada, leerSnapshot,
+  // Expuestos para poder probar el parseo de fechas y la ubicación del alta.
+  _parseAlta: parseAlta, _situarAlta: situarAlta
 };

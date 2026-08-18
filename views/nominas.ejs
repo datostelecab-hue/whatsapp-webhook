@@ -23,14 +23,14 @@
       <p class="text-xs text-telecab-muted mt-3">Los marcados con <span class="text-telecab-gold">●</span> afectan al total. Cambia lo que quieras y pulsa <b>Recalcular</b> (no vuelve a descargar de Bolt).</p>
       <div class="flex gap-2 mt-3">
         <button id="btn-guardar-cfg" class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/25">Guardar config</button>
-        <button id="btn-recalcular" class="px-4 py-2 rounded-lg bg-blue-600/15 text-blue-400 text-sm font-medium hover:bg-blue-600/25"><i class="fa-solid fa-calculator mr-1"></i> Recalcular con este config</button>
+        <button id="btn-recalcular" class="px-4 py-2 rounded-lg bg-telecab-violet/15 text-telecab-violet text-sm font-medium hover:bg-telecab-violet/25"><i class="fa-solid fa-calculator mr-1"></i> Recalcular con este config</button>
       </div>
     </div>
   </div>
 
   <!-- ══ Acciones ══ -->
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <button id="btn-generar" class="px-4 py-2 rounded-lg bg-green-600/20 text-green-400 font-medium hover:bg-green-600/30">
+    <button id="btn-generar" class="px-4 py-2 rounded-lg bg-telecab-green/15 text-telecab-green font-medium hover:bg-telecab-green/25">
       <i class="fa-solid fa-rotate mr-1"></i> Generar nómina del mes
     </button>
     <label class="text-sm text-telecab-muted flex items-center gap-1.5">
@@ -169,7 +169,7 @@ function render() {
   if (!RESULTADO || !RESULTADO.filas) { $('#tabla-wrap').classList.add('hidden'); return; }
   $('#tabla-wrap').classList.remove('hidden');
   $('#btn-congelar').disabled = false; $('#btn-descargar').classList.remove('hidden');
-  const badge = RESULTADO._fuente==='congelada' ? ['❄️ congelada','bg-blue-500/15 text-blue-400']
+  const badge = RESULTADO._fuente==='congelada' ? ['❄️ congelada','bg-telecab-violet/15 text-telecab-violet']
     : RESULTADO._fuente==='datos' ? ['📦 recalculado (sin congelar)','bg-telecab-card2 text-telecab-muted'] : null;
   $('#fuente').innerHTML = badge ? `<span class="px-2 py-0.5 rounded-full ${badge[1]}">${badge[0]}</span>` : '';
   pintarAvisos(RESULTADO.avisos, RESULTADO.config);
@@ -185,7 +185,7 @@ function filtrarYpintar() {
   $('#tbody').innerHTML = filas.map(f => `<tr class="border-t border-telecab-border/50 hover:bg-telecab-card2/40">
     <td class="px-3 py-2 text-telecab-text">${esc(f.nombre)}</td>
     <td class="px-3 py-2 text-telecab-muted">${esc(f.dni)||'<span class="text-telecab-red/70">—</span>'}</td>
-    <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${f.ett?'bg-purple-500/15 text-purple-300':'bg-telecab-card2 text-telecab-muted'}">${f.ett?'ETT':'Tibus'}</span></td>
+    <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${f.ett?'bg-telecab-violet/15 text-telecab-violet':'bg-telecab-card2 text-telecab-muted'}">${f.ett?'ETT':'Tibus'}</span></td>
     <td class="px-3 py-2 text-telecab-muted whitespace-nowrap">${f.jornada?f.jornada+' horas':'<span class="text-telecab-muted/50">—</span>'}</td>
     <td class="px-3 py-2 text-right text-telecab-muted">${f.primerDia}</td>
     <td class="px-3 py-2 text-right">${(Number(f.horas)||0).toFixed(1)}</td>
@@ -245,9 +245,14 @@ function pintarAvisos(a, cfg) {
   if (a.sinDinero) av.push(['red','⚠️ La hoja del mes no tiene facturación (FAS/propinas/peajes). Regenera el mes.']);
   if (a.sinDni>0) av.push(['amber',`${a.sinDni} conductor(es) sin DNI/NIE en la agenda (aparecen con —). Complétalos en AGENDA_V2 si hace falta.`]);
   if (a.trabajoIncompleto) av.push(['amber',`⚠️ El mes de trabajo (${RESULTADO?RESULTADO.mesDatosNombre:''}) aún no ha terminado: los datos están incompletos. Esta nómina se genera el mes siguiente.`]);
+  // Altas: quién quedó fuera y quién va sin fecha (el prorrateo sale de AGENDA_V2 col G).
+  const exc = (a.excluidos||[]);
+  if (exc.length) av.push(['red',`⛔ ${exc.length} conductor(es) con horas pero FECHA DE ALTA posterior a ${RESULTADO?RESULTADO.mesDatosNombre:'ese mes'}: fuera de esta nómina. Revisa su fecha en la agenda si es un error → ${exc.map(e=>`${e.nombre} (alta ${e.alta||'—'}, ${e.horas} h)`).join(' · ')}`]);
+  if (a.sinAlta>0) av.push(['amber',`${a.sinAlta} conductor(es) SIN fecha de alta: se les prorratea desde su primer día con horas (criterio antiguo). Rellena la columna G de AGENDA_V2 para afinarlo.`]);
+  if (a.altaEnMes>0) av.push(['muted',`${a.altaEnMes} conductor(es) se dieron de alta durante ${RESULTADO?RESULTADO.mesDatosNombre:'el mes'}: son los únicos con el objetivo prorrateado.`]);
   const c = cfg || {};
   av.push(['muted',`Hora extra: ${c.eurHoraExtra||0} €/h × utilización · Nocturna: ${c.eurHoraNoc||0} × h × ${c.factorNoc||0} · FAS: (neto − umbral) × ${c.pctMBOFAS||0} · umbral 40h=${c.umbralFAS40||0} / 32h=${c.umbralFAS32||0}`]);
-  $('#avisos').innerHTML = av.map(([c,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c==='amber'?'bg-amber-900/15 text-amber-400 border border-amber-600/30':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');
+  $('#avisos').innerHTML = av.map(([c,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c==='amber'?'bg-telecab-warn/15 text-telecab-warn border border-telecab-warn/35':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');
 }
 
 function msgProgreso(txt, err) {
