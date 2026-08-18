@@ -336,6 +336,58 @@ async function pedirPost(ruta, params) {
   return json;
 }
 
+// ── COMANDOS DE UNIDAD (unit_commands) ───────────────────────────────────────
+// Vía confirmada por soporte de Mapon (correo de Omar Naboulsi, 18/08/2026) para
+// mandar órdenes al vehículo. Es OTRA API distinta de `unit/change_relay`, que
+// devolvía error 1006 ("Method not available") por falta de permisos.
+//
+// El catálogo de comandos lo define cada instalación: NO se adivinan los nombres,
+// se preguntan con comandosDisponibles() y se ejecuta uno de esos exactamente.
+
+/** Comandos que admite esa unidad. Devuelve la lista tal cual la da Mapon. */
+async function comandosDisponibles(unitId) {
+  const j = await pedir('unit_commands/get_available.json', `unit_id=${encodeURIComponent(unitId)}`);
+  const d = (j && j.data) || {};
+  // Mapon no documenta la forma exacta; se acepta lista suelta o envuelta.
+  const lista = Array.isArray(d) ? d
+    : Array.isArray(d.commands) ? d.commands
+    : Array.isArray(d.units) ? (d.units[0] || {}).commands || []
+    : [];
+  return {
+    unitId: Number(unitId),
+    comandos: lista.map(c => (typeof c === 'string' ? { command: c } : c)),
+    crudo: d          // por si la forma cambia: así se ve sin tocar código
+  };
+}
+
+/**
+ * Ejecuta un comando en la unidad. `command` DEBE ser uno de los que devuelve
+ * comandosDisponibles: mandar un nombre inventado es la forma más rápida de
+ * llevarse un error o, peor, de no saber si hizo algo.
+ */
+async function ejecutarComando({ unitId, command }) {
+  if (!unitId) throw new Error('Falta unit_id');
+  if (!command) throw new Error('Falta el comando');
+  const j = await pedirPost('unit_commands/execute.json', { unit_id: unitId, command });
+  return { ok: true, unitId: Number(unitId), command, respuesta: (j && j.data) || j };
+}
+
+/**
+ * Comprueba que un comando existe ANTES de mandarlo, y lo ejecuta. Se usa desde
+ * el bloqueo de motor: si el nombre no está en el catálogo de esa unidad, se
+ * avisa con la lista real en vez de disparar a ciegas.
+ */
+async function ejecutarComandoSeguro({ unitId, command }) {
+  const { comandos } = await comandosDisponibles(unitId);
+  const nombres = comandos.map(c => c.command || c.name || c.id).filter(Boolean);
+  const existe = nombres.some(n => String(n).toLowerCase() === String(command).toLowerCase());
+  if (!existe) {
+    return { ok: false, motivo: 'comando-no-disponible', command, disponibles: nombres };
+  }
+  const real = nombres.find(n => String(n).toLowerCase() === String(command).toLowerCase());
+  return await ejecutarComando({ unitId, command: real });
+}
+
 // ── Conductores en Mapon (para enlazar quién lleva cada coche) ────────────────
 
 const normMat = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -833,6 +885,7 @@ module.exports = {
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
+  comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,
   relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar
 };

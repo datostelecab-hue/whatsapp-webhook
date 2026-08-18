@@ -157,6 +157,29 @@ router.get('/fichaje/diagnostico', async (req, res) => {
     catch (e) { out.errorCrudo = e.message; }
   }
 
+  // ?comandos=1 con ?matricula= → CATÁLOGO de comandos de esa unidad (unit_commands,
+  // la vía que Mapon confirmó por correo el 18/08/2026). Solo lectura: no toca el
+  // coche. Es el primer paso — hasta no ver los nombres reales no se manda nada.
+  if (q.comandos && unitId) {
+    try { out.comandos = await mapon.comandosDisponibles(unitId); }
+    catch (e) { out.errorComandos = e.message; }
+  }
+
+  // ?ejecutar=<nombre> con ?matricula= → EJECUTA ese comando en el coche.
+  // OJO: esto SÍ actúa sobre el vehículo. Se comprueba antes que el comando exista
+  // en el catálogo de esa unidad; si no, se devuelve la lista real y no se manda nada.
+  if (q.ejecutar && unitId) {
+    try {
+      const info = await mapon.relesDeUnidad(unitId).catch(() => null);
+      if (info && info.enMarcha) {
+        out.errorEjecutar = `Coche en marcha (${info.velocidad} km/h): no se manda nada`;
+      } else {
+        out.antesDeEjecutar = info;
+        out.ejecucion = await mapon.ejecutarComandoSeguro({ unitId, command: String(q.ejecutar) });
+      }
+    } catch (e) { out.errorEjecutar = e.message; }
+  }
+
   // ?probarrele=1 con ?matricula= → prueba el corte por POST y por GET, más una ruta
   // inventada como control. Es la evidencia para saber si el 1006 es de PERMISO o si
   // estamos mandando mal la petición (no cambia nada en el coche si no tiene permiso).
