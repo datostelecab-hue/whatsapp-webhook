@@ -17,7 +17,14 @@ const db = require('./db');
 
 const DIR = path.join(__dirname, '..', 'db');
 
-const huella = txt => crypto.createHash('sha256').update(txt, 'utf8').digest('hex').slice(0, 16);
+// La huella NO puede depender del sistema operativo. Con core.autocrlf=true el
+// mismo fichero tiene CRLF en Windows y LF en el repositorio y en Render, así
+// que hashear el texto crudo marcaba TODAS las migraciones como modificadas en
+// cuanto se aplicaban desde un sitio y se leían desde otro. Se normalizan los
+// saltos de línea y el espacio final antes de calcularla.
+const normalizar = txt => String(txt).replace(/\r\n/g, '\n').trimEnd();
+const huella = txt => crypto.createHash('sha256')
+  .update(normalizar(txt), 'utf8').digest('hex').slice(0, 16);
 const ficheros = () => fs.existsSync(DIR)
   ? fs.readdirSync(DIR).filter(f => f.endsWith('.sql')).sort()
   : [];

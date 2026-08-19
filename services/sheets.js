@@ -90,12 +90,14 @@ async function clearSheet(spreadsheetId, range) {
 }
 
 async function ensureSheet(spreadsheetId, sheetName) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… crear hoja ${sheetName}`)) return;
   const sheets = getSheetsClient();
   const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
   const exists = spreadsheet.data.sheets.some(s => s.properties.title === sheetName);
-  
+
   if (!exists) {
+    // La comprobación es una LECTURA y pasa siempre; lo que se frena en modo
+    // pruebas es crear la pestaña, que sí modificaría el libro de producción.
+    if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… crear hoja ${sheetName}`)) return;
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -183,7 +185,6 @@ async function setRowVisibility(spreadsheetId, sheetId, tramos) {
 const _grid = new Map();   // 'spreadsheetId|hoja' -> { filas, columnas }
 
 async function ensureGrid(spreadsheetId, sheetName, filas, columnas) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${sheetName} ${filas}x${columnas}`)) return;
   const clave = `${spreadsheetId}|${sheetName}`;
   const conocido = _grid.get(clave);
   if (conocido && (!filas || conocido.filas >= filas) && (!columnas || conocido.columnas >= columnas)) return;
@@ -194,6 +195,7 @@ async function ensureGrid(spreadsheetId, sheetName, filas, columnas) {
   if (!hoja) throw new Error(`No existe la hoja "${sheetName}"`);
   const g = hoja.properties.gridProperties || {};
   const reqs = [];
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ampliar ${sheetName} a ${filas}x${columnas}`)) return;
   if (filas && (g.rowCount || 0) < filas) {
     reqs.push({ appendDimension: { sheetId: hoja.properties.sheetId, dimension: 'ROWS', length: filas - (g.rowCount || 0) } });
   }
