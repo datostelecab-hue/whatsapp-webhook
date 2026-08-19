@@ -114,6 +114,19 @@ router.post('/api/vivo/justificar', async (req, res) => {
   res.json({ status: 'ok', ...vivo.estado() });
 });
 
+// Relee el expediente de la hoja y reemplaza lo que hay en memoria. Es lo que
+// hay que llamar si alguien edita o borra filas a mano en AUDITORIA_VIVO.
+router.post('/api/vivo/recargar', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await require('../services/auditoriaVivo').recargarExpediente()) }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
+// Borra el expediente entero (memoria + hoja). Sin vuelta atrás.
+router.post('/api/vivo/vaciar', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await require('../services/auditoriaVivo').vaciarExpediente()) }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
 router.get('/fichaje/diagnostico', async (req, res) => {
   const mapon = require('../services/mapon');
   const q = req.query || {};

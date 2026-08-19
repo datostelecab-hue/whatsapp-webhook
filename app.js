@@ -249,7 +249,16 @@ if (process.env.VIVO_ACTIVO !== 'off') {
 // CRON
 // ============================================================
 
-// Horas de conductores: cada hora en punto
+// Horas de conductores — DOS carriles:
+//
+//  · Cada hora en punto, pasada COMPLETA del mes. Es la de reparación: si una
+//    pasada corta se comió una lectura a medias de Bolt, o si alguien tocó la
+//    agenda, aquí se corrige solo en menos de una hora. No se quita nunca.
+//  · Cada 10 minutos, pasada INCREMENTAL que rehace solo ayer y hoy. Es la que
+//    hace que el control de tráfico esté fresco sin machacar la API de Bolt.
+//
+// Las dos escriben la misma hoja (Datos_API), así que da igual cuál llegue
+// última. Se desfasan del minuto 0 para no solaparse con la completa.
 cron.schedule('0 * * * *', async () => {
   const ahora = new Date();
   const mes = ahora.getMonth() + 1;
@@ -261,7 +270,25 @@ cron.schedule('0 * * * *', async () => {
   } catch (error) {
     console.error(`❌ [CRON Horas] Error: ${error.message}`);
   }
-});
+}, { timezone: 'Europe/Madrid' });
+
+if (process.env.HORAS_INCREMENTAL !== 'off') {
+  let enMarcha = false;
+  cron.schedule('5,15,25,35,45,55 * * * *', async () => {
+    // Una pasada corta que se alargue no debe pisar a la siguiente.
+    if (enMarcha) return console.log('⏭️  [CRON Horas⚡] La anterior sigue en marcha, se salta');
+    enMarcha = true;
+    try {
+      const { refrescarHorasIncremental } = require('./services/boltHorasCore');
+      const r = await refrescarHorasIncremental();
+      console.log(`⚡ [CRON Horas⚡] ${r.modo}${r.dias ? ' días ' + r.dias.join(',') : ''} · ${r.conductores} conductores`);
+    } catch (error) {
+      // Que falle una pasada corta no es grave: la completa de la hora repara.
+      console.error(`⚠️  [CRON Horas⚡] ${error.message}`);
+    } finally { enMarcha = false; }
+  }, { timezone: 'Europe/Madrid' });
+  console.log('⚡ [Horas] Refresco incremental ACTIVADO (cada 10 min)');
+}
 
 // Resumen de flotas: cada hora al minuto 15
 cron.schedule('15 * * * *', async () => {

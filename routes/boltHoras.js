@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { procesarYUnificar } = require('../services/boltHorasCore');
+const { procesarYUnificar, refrescarHorasIncremental, olvidarCacheHoras } = require('../services/boltHorasCore');
 const {
   procesarHistorico,
   getEstado,
@@ -107,7 +107,7 @@ router.get('/historico', (req, res) => {
 });
 
 // Rehacer un único mes en su propia hoja (abril-2025), sin tocar
-// TODAS_LAS_FLOTAS. Útil para reintentar un mes que haya fallado.
+// su hoja del histórico. Útil para reintentar un mes que haya fallado.
 router.get('/mes/:mes/:ano', async (req, res) => {
   try {
     const mes = parseInt(req.params.mes, 10);
@@ -128,7 +128,19 @@ router.get('/mes/:mes/:ano', async (req, res) => {
   }
 });
 
-// Procesar mes específico (escribe en TODAS_LAS_FLOTAS)
+// Refresco RÁPIDO del mes en curso: solo ayer y hoy (lo que hace el cron de 10 min).
+// Es el que hay que usar para ver un cambio ya en el control de tráfico.
+router.get('/refrescar', async (req, res) => {
+  try {
+    if (req.query.completa === '1') olvidarCacheHoras();   // fuerza pasada completa
+    res.json({ status: 'ok', ...(await refrescarHorasIncremental()) });
+  } catch (error) {
+    console.error('❌ [Horas] refrescar:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Procesar mes específico (el mes en curso va a Datos_API; el resto, a su hoja del histórico)
 router.get('/procesar/:mes/:ano', async (req, res) => {
   try {
     const mes = parseInt(req.params.mes);

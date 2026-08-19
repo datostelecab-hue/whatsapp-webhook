@@ -2,7 +2,18 @@ const { CONFIG_BOLT, fetchAllPaginated, fetchRangoCompleto, sleep } = require('.
 const { readSheet, writeSheet, clearSheet, ensureSheet } = require('./sheets');
 const { SPREADSHEET_ID, normalizarNombre, leerTurnos, leerPostMortem, buscarEnDiccionario } = require('./turnos');
 
-const HOJA_MES_ACTUAL = 'TODAS_LAS_FLOTAS';
+// Destino del MES EN CURSO. Antes se escribía TODAS_LAS_FLOTAS en el libro de horas
+// y un IMPORTRANGE lo copiaba a Datos_API; ese espejo era el cuello de botella de la
+// frescura (Google lo refresca cuando quiere, ~30 min) y se ha eliminado: ahora se
+// escribe Datos_API directamente. OJO: el HISTÓRICO sigue en el libro de horas
+// (hojas 'agosto-2026'…), que es de donde leen las nóminas — eso no se toca.
+const HOJA_MES_ACTUAL = 'Datos_API';
+const LIBRO_MES_ACTUAL = '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';   // GestionConductores
+
+// Red de seguridad para la transición: con HORAS_HOJA_LEGADO=1 se sigue alimentando
+// también la vieja TODAS_LAS_FLOTAS (3 llamadas más, irrelevantes para la cuota).
+const HOJA_LEGADO = 'TODAS_LAS_FLOTAS';
+const ESCRIBIR_LEGADO = process.env.HORAS_HOJA_LEGADO === '1';
 
 const MAPEO_ESTADOS_BOLT = {
   'active': 'activo',
@@ -109,6 +120,9 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
   const postMortem = [];                        // el postmortem se gestiona ahora en VISTA_FINAL
 
   const todosConductores = {};
+  // Desglose por día en paralelo, para poder recalcular un día suelto después.
+  const detalle = {};   // nombre -> { dias:{}, noc:{}, has:{}, wait:{} }
+  const tocaDetalle = nombre => (detalle[nombre] = detalle[nombre] || { dias: {}, noc: {}, has: {}, wait: {} });
 
   // El mes en curso sigue usando exactamente la lógica de siempre; solo el
   // histórico estrena el camino de "logs primero, nombres después".
@@ -153,6 +167,16 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
           todosConductores[nombre][diaNum] += segundos;
         }
       });
+
+      // Mismo reparto, pero guardado por día: es lo que se recalcula luego.
+      const det = tocaDetalle(nombre);
+      det.turno = info.turno || det.turno || '?';
+      det.estado = todosConductores[nombre].estado;
+      const sumar = (dst, src) => Object.entries(src || {}).forEach(([d, v2]) => { dst[d] = (dst[d] || 0) + v2; });
+      sumar(det.dias, diasObj);
+      sumar(det.noc, (datos.nocPorDia || {})[nombre]);
+      sumar(det.has, ((datos.efecPorDia || {})[nombre] || {}).has);
+      sumar(det.wait, ((datos.efecPorDia || {})[nombre] || {}).wait);
     });
 
     if (datos.horasNocturnas) {
@@ -199,7 +223,26 @@ async function procesarYUnificar(mes, ano, opciones = {}) {
     }
   }
 
-  await escribirHojaUnificada(todosConductores, mes, ano, hojaDestino, { incluirTodos, incluirDinero });
+  // El mes en curso va a Datos_API (otro libro); cualquier destino explícito
+  // (el histórico) se queda en el libro de horas, que es de donde lee la nómina.
+  const libro = hojaDestino === HOJA_MES_ACTUAL ? LIBRO_MES_ACTUAL : undefined;
+  const values = await escribirHojaUnificada(todosConductores, mes, ano, hojaDestino, { incluirTodos, incluirDinero, libro });
+
+  // Transición: si se pide, la misma tabla se copia a la hoja vieja.
+  if (ESCRIBIR_LEGADO && hojaDestino === HOJA_MES_ACTUAL) {
+    try {
+      await ensureSheet(SPREADSHEET_ID, HOJA_LEGADO);
+      await clearSheet(SPREADSHEET_ID, `${HOJA_LEGADO}!A:BA`);
+      await writeSheet(SPREADSHEET_ID, `${HOJA_LEGADO}!A1`, values);
+      console.log(`↩️  Copia de cortesía en ${HOJA_LEGADO}`);
+    } catch (e) { console.error(`⚠️  No se pudo copiar a ${HOJA_LEGADO}: ${e.message}`); }
+  }
+  // La pasada completa deja la caché lista para los refrescos incrementales.
+  if (hojaDestino === HOJA_MES_ACTUAL && !opciones.modoHistorico) {
+    Object.values(detalle).forEach(d => { d.dias = d.dias || {}; });
+    _cache = { mes, ano, ts: Date.now(), conductores: detalle };
+    console.log(`🗃️  Caché del mes lista: ${Object.keys(detalle).length} conductores`);
+  }
   console.log(`✅ Mes ${mes}/${ano} procesado → hoja "${hojaDestino}"`);
   return {
     status: 'ok',
@@ -470,7 +513,8 @@ async function calcularHorasFlotaHistorico(companyId, mes, ano, turnosDB, postMo
         else efectividadPorConductor[nombreReal].wait += (fin - inicio);
 
         distribuirHoras(horasPorConductor[nombreReal], inicio, fin,
-          CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO);
+          CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO,
+          mes, ano);
 
         horasNocturnasPorConductor[nombreReal] += calcularSegundosNocturnosEnIntervalo(inicio, fin);
       }
@@ -529,11 +573,21 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
   const diaLimite = (mes === ahora.getMonth() + 1 && ano === ahora.getFullYear())
     ? ahora.getDate() : diasDelMes;
 
-  const startTs = Math.floor(new Date(ano, mes - 1, 1, 0, 0, 0).getTime() / 1000);
-  let endTs = Math.floor(new Date(ano, mes - 1, diasDelMes, 23, 59, 59).getTime() / 1000);
-
-  if (mes === ahora.getMonth() + 1 && ano === ahora.getFullYear()) {
-    endTs = Math.floor(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 23, 59, 59).getTime() / 1000);
+  // Ventana: por defecto el mes entero; el refresco incremental pasa una corta.
+  // Se pide SIEMPRE algo más de lo que se va a aplicar, porque la duración de un
+  // estado se deduce del hueco hasta el log siguiente: sin los logs previos, el
+  // turno que arrancó antes de la ventana no existiría y el día saldría corto.
+  const ventana = opciones.ventana || null;
+  let startTs, endTs;
+  if (ventana) {
+    startTs = ventana.desdeTs;
+    endTs = ventana.hastaTs;
+  } else {
+    startTs = Math.floor(new Date(ano, mes - 1, 1, 0, 0, 0).getTime() / 1000);
+    endTs = Math.floor(new Date(ano, mes - 1, diasDelMes, 23, 59, 59).getTime() / 1000);
+    if (mes === ahora.getMonth() + 1 && ano === ahora.getFullYear()) {
+      endTs = Math.floor(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 23, 59, 59).getTime() / 1000);
+    }
   }
 
   // Etiqueta para poder seguir en los logs qué flota y qué mes falla.
@@ -609,6 +663,12 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     console.log(`📄 [${tag}] getFleetStateLogs: ${stateLogs.length} logs ` +
                 `(${diagLogs.paginas} pág., corte: ${diagLogs.motivo})`);
 
+    // En modo ventana la lectura alimenta una CACHÉ: si viene a medias, el día
+    // se congelaría incompleto hasta la siguiente pasada completa. Mejor abortar
+    // y dejar el dato anterior, que es viejo pero correcto. La pasada mensual no
+    // hace esto a propósito: es la que repara, y escribir algo es mejor que nada.
+    if (ventana) comprobarLecturaCompleta(`state logs ${tag}`);
+
     // Cobertura real: si la API devuelve del más nuevo al más viejo y se corta
     // la paginación, aquí se ve porque el primer log recibido no es del día 1.
     if (stateLogs.length > 0) {
@@ -637,6 +697,10 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
     const horasNocturnasPorConductor = {};
     const efectividadPorConductor = {};   // nombre -> { has, wait } en segundos (para la utilización)
     const infoConductores = {};
+    // Desglose POR DÍA de nocturnas y utilización. Es lo que permite recalcular
+    // solo hoy+ayer sin tener que rehacer los totales del mes.
+    const nocPorDia = {};                 // nombre -> { dia: seg }
+    const efecPorDia = {};                // nombre -> { has: {dia:seg}, wait: {dia:seg} }
 
     let logsDescartados = 0;
     const uuidsDesconocidos = new Set();
@@ -677,6 +741,8 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
       if (!efectividadPorConductor[nombreReal]) {
         efectividadPorConductor[nombreReal] = { has: 0, wait: 0 };
       }
+      if (!nocPorDia[nombreReal]) nocPorDia[nombreReal] = {};
+      if (!efecPorDia[nombreReal]) efecPorDia[nombreReal] = { has: {}, wait: {} };
 
       logs.sort(ordenarLogs);
 
@@ -692,19 +758,16 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
         const duracion = finIntervalo - inicioIntervalo;
         if (duracion <= 0) continue;
 
-        // Utilización: has_order vs waiting_orders (los dos únicos STATE_VIAJE).
-        if (logActual.state === 'has_order') efectividadPorConductor[nombreReal].has += duracion;
-        else efectividadPorConductor[nombreReal].wait += duracion;
-
+        // Horas, nocturnas y utilización se reparten de una vez y por el MISMO
+        // día operativo. Las nocturnas se calculan para todo el mundo: quién las
+        // ve reflejadas se decide al escribir la hoja, con el estado ya fusionado
+        // entre flotas (el histórico las muestra a todos y el mes en curso deja a
+        // los despedidos en "N/A").
         distribuirHoras(horasPorConductor[nombreReal], inicioIntervalo, finIntervalo,
-          CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO);
-
-        // Las nocturnas se calculan siempre para todo el mundo. Quién las ve
-        // reflejadas se decide al escribir la hoja, con el estado ya fusionado
-        // entre flotas: el histórico las muestra a todos y el mes en curso
-        // deja a los despedidos en "N/A".
-        const segNocturnos = calcularSegundosNocturnosEnIntervalo(inicioIntervalo, finIntervalo);
-        horasNocturnasPorConductor[nombreReal] += segNocturnos;
+          CORTE_TURNO[turno] !== undefined ? CORTE_TURNO[turno] : CORTE_DEFECTO,
+          mes, ano,
+          { noc: nocPorDia[nombreReal], has: efecPorDia[nombreReal].has,
+            wait: efecPorDia[nombreReal].wait, esHasOrder: logActual.state === 'has_order' });
       }
     });
 
@@ -749,10 +812,35 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
       }
     });
 
+    // Los totales del mes se DERIVAN del desglose diario, no se llevan aparte:
+    // así no pueden desincronizarse cuando se recalcula un día suelto.
+    const suma = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+    Object.keys(horasPorConductor).forEach(nombre => {
+      horasNocturnasPorConductor[nombre] = suma(nocPorDia[nombre]);
+      efectividadPorConductor[nombre] = {
+        has: suma(efecPorDia[nombre] && efecPorDia[nombre].has),
+        wait: suma(efecPorDia[nombre] && efecPorDia[nombre].wait)
+      };
+    });
+
+    // En modo ventana solo valen los días que se van a aplicar: el resto de la
+    // descarga era contexto para no cortar los turnos por el borde.
+    if (ventana && ventana.dias) {
+      const dentro = d => ventana.dias.includes(Number(d));
+      const podar = obj => { Object.keys(obj).forEach(d => { if (!dentro(d)) delete obj[d]; }); };
+      Object.keys(horasPorConductor).forEach(nombre => {
+        podar(horasPorConductor[nombre]);
+        if (nocPorDia[nombre]) podar(nocPorDia[nombre]);
+        if (efecPorDia[nombre]) { podar(efecPorDia[nombre].has); podar(efecPorDia[nombre].wait); }
+      });
+    }
+
     return {
       horas: horasPorConductor,
       horasNocturnas: horasNocturnasPorConductor,
       efectividad: efectividadPorConductor,
+      nocPorDia,
+      efecPorDia,
       diasDelMes,
       diaLimite,
       infoConductores
@@ -761,6 +849,12 @@ async function calcularHorasFlota(companyId, mes, ano, turnosDB, postMortem, opc
   } catch (error) {
     console.error(`❌ [${tag}] EXCEPCIÓN: ${error.message}`);
     console.error(error.stack);
+    // En modo ventana el resultado alimenta la caché y luego se ESCRIBE la hoja.
+    // Devolver un mes vacío aquí haría que el incremental pusiera los días a cero
+    // y borrase datos buenos: hay que propagar para que la pasada se aborte entera
+    // y quede el dato anterior. La pasada completa sigue tragándose el error a
+    // propósito: es la que repara, y publicar algo es mejor que no publicar nada.
+    if (opciones.ventana) throw error;
     return { horas: {}, horasNocturnas: {}, diasDelMes, diaLimite, infoConductores: {} };
   }
 }
@@ -800,12 +894,29 @@ function calcularSegundosNocturnosEnIntervalo(inicio, fin) {
 }
 
 /**
+ * Aborta si la última descarga de Bolt vino a medias. `fetchAllPaginated` devuelve
+ * lo que llevara leído cuando algo falla (error HTTP, tope de páginas, timeout) sin
+ * avisar al que llama: quien alimenta una caché TIENE que mirarlo, porque un día
+ * guardado a medias se queda mal hasta que alguien lo repare a mano.
+ * Mismo criterio que `comprobarCompleto` en auditoriaFlota.js.
+ */
+function comprobarLecturaCompleta(etiqueta) {
+  const d = fetchAllPaginated.ultimoDiagnostico || {};
+  if (d.motivo === 'error-http' || d.motivo === 'tope-paginas' || d.motivo === 'timeout') {
+    throw new Error(`BOLT devolvió datos incompletos en ${etiqueta} (${d.motivo}${d.errorHttp ? ' HTTP ' + d.errorHttp : ''}): no se toca la caché`);
+  }
+  if (d.totalRows != null && d.registros != null && d.registros < d.totalRows) {
+    throw new Error(`BOLT devolvió ${d.registros} de ${d.totalRows} registros en ${etiqueta}: no se toca la caché`);
+  }
+}
+
+/**
  * Reparte un intervalo [inicio, fin] (epoch en s) entre días operativos según la
  * hora de `corte` del turno. El día operativo empieza a las `corte`:00, así que
  * todo lo trabajado entre las `corte`:00 de un día y las `corte`:00 del siguiente
  * cuenta para el PRIMER día. Un solo mecanismo para día, noche y todoturno.
  */
-function distribuirHoras(horasConductor, inicio, fin, corte) {
+function distribuirHoras(horasConductor, inicio, fin, corte, mes, ano, extras) {
   let cts = inicio;
   while (cts < fin) {
     const f = new Date(cts * 1000);
@@ -815,7 +926,28 @@ function distribuirHoras(horasConductor, inicio, fin, corte) {
     const proximoCorte = new Date(y, m, antesDelCorte ? d : d + 1, corte, 0, 0).getTime() / 1000;
     const endSegment = Math.min(proximoCorte, fin);
     const seg = endSegment - cts;
-    if (horasConductor[diaAsignar] !== undefined && seg > 0) horasConductor[diaAsignar] += seg;
+
+    if (seg > 0) {
+      // FECHA REAL del día operativo, no solo su número. `diaAsignar` puede ser 0
+      // (= último día del mes anterior) y new Date lo normaliza solo. Sin esta
+      // comprobación, un tramo del 30 de abril acabaría sumado en la columna
+      // "día 30" de la hoja de MAYO en cuanto la ventana pedida cruce el mes
+      // — que es justo lo que hace el cálculo incremental el día 1.
+      const fDia = new Date(y, m, diaAsignar);
+      if (fDia.getMonth() + 1 === mes && fDia.getFullYear() === ano) {
+        const dia = fDia.getDate();
+        horasConductor[dia] = (horasConductor[dia] || 0) + seg;
+        if (extras) {
+          // Nocturnas y utilización se reparten POR EL MISMO día operativo que las
+          // horas: así el mes en curso puede recalcularse día a día sin recomponer
+          // el total del mes, y ningún tramo de otro mes se cuela en los totales.
+          const noc = calcularSegundosNocturnosEnIntervalo(cts, endSegment);
+          if (noc > 0) extras.noc[dia] = (extras.noc[dia] || 0) + noc;
+          const dest = extras.esHasOrder ? extras.has : extras.wait;
+          dest[dia] = (dest[dia] || 0) + seg;
+        }
+      }
+    }
     cts = endSegment;
   }
 }
@@ -965,14 +1097,139 @@ async function escribirHojaUnificada(todosConductores, mes, ano, nombreHoja = HO
   // se interpreta mal por el guion.
   const hojaRef = `'${nombreHoja.replace(/'/g, "''")}'`;
 
-  await ensureSheet(SPREADSHEET_ID, nombreHoja);
+  // El libro depende del destino: el mes en curso vive en GestionConductores
+  // (Datos_API) y el histórico en el libro de horas. Por defecto, el de horas.
+  const libro = opciones.libro || SPREADSHEET_ID;
+
+  await ensureSheet(libro, nombreHoja);
   // Se limpia hasta BA (no solo A:Z): con 31 días + Debe + dinero + % Efec la fila llega
   // a la columna ~AS, y un A:Z dejaba basura de corridas anteriores en las columnas altas.
-  await clearSheet(SPREADSHEET_ID, `${hojaRef}!A:BA`);
-  await writeSheet(SPREADSHEET_ID, `${hojaRef}!A1`, values);
+  await clearSheet(libro, `${hojaRef}!A:BA`);
+  await writeSheet(libro, `${hojaRef}!A1`, values);
 
   console.log(`✅ Hoja ${nombreHoja} actualizada: ${values.length} filas`);
+  return values;
 }
+
+// ============================================================
+// REFRESCO INCREMENTAL DEL MES EN CURSO
+// ============================================================
+// Recalcular el mes entero cuesta cientos de peticiones a Bolt: a una por hora
+// pasa, pero cada 10 minutos es inviable. La idea: el mes ya calculado hace de
+// caché y cada pasada corta rehace SOLO los días que aún pueden moverse.
+//
+// Reglas que no son negociables (cada una es un fallo real evitado):
+//  · Se piden 3 días de logs y se aplican 2. El día extra es contexto: la
+//    duración de un estado sale del hueco hasta el log siguiente, así que sin
+//    los logs anteriores el turno que arrancó antes de la ventana no existiría.
+//  · Se ponen los días a CERO antes de sumar. Si no, dos pasadas seguidas
+//    duplicarían las horas — hoy no pasa solo porque se reconstruye todo.
+//  · Si Bolt devuelve una lectura a medias, se aborta sin tocar la caché.
+//  · Si cambia el mes o el turno de alguien, se hace pasada completa: el turno
+//    decide a qué día operativo va cada tramo, así que cambiarlo re-reparte el
+//    MES ENTERO de esa persona, no solo desde el día del cambio.
+
+let _cache = null;   // { mes, ano, ts, conductores: { nombre: {turno, estado, dias, noc, has, wait} } }
+
+/** Días que aún pueden cambiar: ayer y hoy (por el corte de la noche, ayer sigue abierto). */
+function diasVivos(ahora) {
+  const hoy = ahora.getDate();
+  const ayer = new Date(ahora.getFullYear(), ahora.getMonth(), hoy - 1);
+  // Si ayer cayó en el mes anterior, solo se refresca hoy: los días del mes
+  // pasado ya no se tocan (y su hoja es otra).
+  return ayer.getMonth() === ahora.getMonth() ? [ayer.getDate(), hoy] : [hoy];
+}
+
+/** La caché, en la forma que espera escribirHojaUnificada. */
+function tablaDesdeCache(cache) {
+  const diasDelMes = new Date(cache.ano, cache.mes, 0).getDate();
+  const suma = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+  const tabla = {};
+  Object.entries(cache.conductores).forEach(([nombre, d]) => {
+    const fila = {
+      turno: d.turno || '?', estado: d.estado || 'activo',
+      horasNocturnas: suma(d.noc), efectHas: suma(d.has), efectWait: suma(d.wait)
+    };
+    for (let x = 1; x <= diasDelMes; x++) fila[x] = d.dias[x] || 0;
+    tabla[nombre] = fila;
+  });
+  return tabla;
+}
+
+/**
+ * Refresca el mes en curso recalculando solo los días vivos. Si no hay caché
+ * utilizable (arranque, cambio de mes, cambio de turno) hace pasada completa,
+ * que además deja la caché lista para las siguientes.
+ */
+async function refrescarHorasIncremental() {
+  const ahora = new Date();
+  const mes = ahora.getMonth() + 1, ano = ahora.getFullYear();
+
+  if (!_cache || _cache.mes !== mes || _cache.ano !== ano) {
+    console.log('🔄 [Horas] Sin caché del mes en curso → pasada completa');
+    const r = await procesarYUnificar(mes, ano);
+    return { ...r, modo: 'completa', motivo: 'sin-cache' };
+  }
+
+  const dias = diasVivos(ahora);
+  // Se pide un día más por delante como contexto (ver cabecera del bloque).
+  const desdeTs = Math.floor(new Date(ano, mes - 1, dias[0] - 1, 0, 0, 0).getTime() / 1000);
+  const hastaTs = Math.floor(ahora.getTime() / 1000);
+  const turnosDB = await leerTurnosAgenda();
+
+  const parciales = [];
+  for (const flota of CONFIG_BOLT.flotas) {
+    parciales.push(await calcularHorasFlota(flota.id, mes, ano, turnosDB, [], {
+      ventana: { desdeTs, hastaTs, dias }
+    }));
+  }
+
+  // ¿Le ha cambiado el turno a alguien? Entonces sus horas del mes ENTERO están
+  // repartidas con el corte viejo y hay que rehacerlas.
+  const cambiados = [];
+  parciales.forEach(p => Object.entries(p.infoConductores || {}).forEach(([nombre, info]) => {
+    const enCache = _cache.conductores[nombre];
+    if (enCache && info.turno && info.turno !== '?' && enCache.turno !== '?' && enCache.turno !== info.turno) {
+      cambiados.push(`${nombre}: ${enCache.turno}→${info.turno}`);
+    }
+  }));
+  if (cambiados.length) {
+    console.log(`🔄 [Horas] Cambio de turno (${cambiados.join(', ')}) → pasada completa`);
+    const r = await procesarYUnificar(mes, ano);
+    return { ...r, modo: 'completa', motivo: 'cambio-turno', cambiados };
+  }
+
+  // A cero los días vivos de TODOS los cacheados: quien ayer tenía horas y hoy
+  // no aparece en la descarga es que ya no las tiene.
+  Object.values(_cache.conductores).forEach(d => {
+    dias.forEach(x => { delete d.dias[x]; delete d.noc[x]; delete d.has[x]; delete d.wait[x]; });
+  });
+
+  let nuevos = 0;
+  parciales.forEach(p => {
+    Object.entries(p.horas).forEach(([nombre, diasObj]) => {
+      let d = _cache.conductores[nombre];
+      if (!d) { d = _cache.conductores[nombre] = { dias: {}, noc: {}, has: {}, wait: {} }; nuevos++; }
+      const info = p.infoConductores[nombre] || {};
+      if (info.turno && info.turno !== '?') d.turno = info.turno;
+      if (info.estado && PRIORIDAD_ESTADO[info.estado] >= PRIORIDAD_ESTADO[d.estado || 'despedido']) d.estado = info.estado;
+      const sumar = (dst, src) => Object.entries(src || {}).forEach(([x, v]) => { dst[x] = (dst[x] || 0) + v; });
+      sumar(d.dias, diasObj);
+      sumar(d.noc, (p.nocPorDia || {})[nombre]);
+      sumar(d.has, ((p.efecPorDia || {})[nombre] || {}).has);
+      sumar(d.wait, ((p.efecPorDia || {})[nombre] || {}).wait);
+    });
+  });
+
+  _cache.ts = Date.now();
+  await escribirHojaUnificada(tablaDesdeCache(_cache), mes, ano, HOJA_MES_ACTUAL, { libro: LIBRO_MES_ACTUAL });
+  console.log(`⚡ [Horas] Incremental: días ${dias.join(', ')} · ${Object.keys(_cache.conductores).length} conductores` +
+              (nuevos ? ` (${nuevos} nuevos)` : ''));
+  return { status: 'ok', modo: 'incremental', mes, ano, dias, conductores: Object.keys(_cache.conductores).length, nuevos };
+}
+
+/** Para pruebas y para forzar una pasada completa desde fuera. */
+function olvidarCacheHoras() { _cache = null; }
 
 // ============================================================
 // VISOR EN VIVO - MÉTRICAS UNIFICADAS
@@ -1097,4 +1354,4 @@ async function obtenerMetricasVisor() {
   };
 }
 
-module.exports = { procesarYUnificar, obtenerMetricasVisor, limpiarCacheDrivers };
+module.exports = { procesarYUnificar, refrescarHorasIncremental, olvidarCacheHoras, obtenerMetricasVisor, limpiarCacheDrivers };

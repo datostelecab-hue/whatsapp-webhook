@@ -14,6 +14,14 @@
       <button id="btn-refrescar" class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold font-medium hover:bg-telecab-gold/25">
         <i class="fa-solid fa-rotate mr-1"></i> Refrescar ahora
       </button>
+      <button id="btn-recargar" title="Releer la hoja AUDITORIA_VIVO y reemplazar lo que hay en memoria. Úsalo si has editado o borrado filas a mano."
+              class="px-3 py-2 rounded-lg bg-telecab-card2 text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-file-arrow-down"></i>
+      </button>
+      <button id="btn-vaciar" title="Borrar el expediente entero: memoria y hoja"
+              class="px-3 py-2 rounded-lg bg-telecab-card2 text-telecab-muted hover:text-telecab-red">
+        <i class="fa-solid fa-trash"></i>
+      </button>
     </div>
   </div>
 
@@ -228,6 +236,25 @@ async function cargar(forzar) {
 }
 
 $('#btn-refrescar').addEventListener('click', () => cargar(true));
+
+// El panel pinta desde la memoria del servidor, no desde la hoja: si alguien
+// edita AUDITORIA_VIVO a mano hay que releerla o no se entera hasta reiniciar.
+$('#btn-recargar').addEventListener('click', async () => {
+  const r = await (await fetch('/operaciones/api/vivo/recargar', { method: 'POST' })).json();
+  if (r.status !== 'ok') return alert('No se pudo recargar: ' + (r.msg || ''));
+  alert(`Expediente releído de la hoja: ${r.alertas} alerta(s).`);
+  cargar();
+});
+
+$('#btn-vaciar').addEventListener('click', async () => {
+  if (!confirm('Se borra el expediente ENTERO, en memoria y en la hoja AUDITORIA_VIVO.
+
+No tiene vuelta atrás. ¿Seguir?')) return;
+  const r = await (await fetch('/operaciones/api/vivo/vaciar', { method: 'POST' })).json();
+  if (r.status !== 'ok') return alert('No se pudo vaciar: ' + (r.msg || ''));
+  alert(`Borradas ${r.borradas} alerta(s).`);
+  cargar();
+});
 
 // ── Justificar ──────────────────────────────────────────────────────────────
 const RAPIDOS = ['Fue a repostar', 'Al taller / avería', 'Cambio de turno acordado',

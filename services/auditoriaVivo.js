@@ -26,7 +26,7 @@ const { fetchRangoCompleto, CONFIG_BOLT } = require('./bolt');
 const mapon = require('./mapon');
 const { leerTablero, TURNOS } = require('./planificadorV2');
 const { leerPadron } = require('./conductoresBolt');
-const { readSheet, writeSheet, ensureSheet, appendRows } = require('./sheets');
+const { readSheet, writeSheet, ensureSheet, appendRows, clearSheet } = require('./sheets');
 
 const TZ = 'Europe/Madrid';
 
@@ -179,16 +179,44 @@ async function anotar(a) {
 async function reanotar(a) {
   try {
     await ensureHoja();
-    let fila = a.fila;
+    // NUNCA se escribe por número de fila a ciegas: si alguien borró u ordenó
+    // filas en la hoja, ese número apunta ya a OTRA alerta y la machacaríamos.
+    // Se comprueba siempre que la fila siga teniendo esta clave.
+    const claves = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A2:A50000`).catch(() => []);
+    const enFila = f => ((claves[f - 2] || [])[0] || '').toString();
+    let fila = a.fila && enFila(a.fila) === a.clave ? a.fila : 0;
     if (!fila) {
-      // Se busca su fila por la clave (solo pasa si se anotó en esta misma sesión).
-      const claves = await readSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A2:A50000`).catch(() => []);
       const i = (claves || []).findIndex(f => (f[0] || '').toString() === a.clave);
-      if (i < 0) return anotar(a);
+      if (i < 0) { a.fila = 0; return anotar(a); }   // ya no está: se vuelve a añadir
       fila = a.fila = i + 2;
     }
     await writeSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A${fila}:U${fila}`, [aFila(a)]);
   } catch (e) { console.error(`⚠️  [VIVO] No se pudo actualizar ${a.clave}: ${e.message}`); }
+}
+
+/**
+ * Vuelve a leer el expediente de la hoja y REEMPLAZA lo que hay en memoria.
+ * Es lo que hace falta cuando alguien edita o borra filas a mano: el panel pinta
+ * desde memoria, así que sin esto los cambios en la hoja no se ven hasta reiniciar.
+ */
+async function recargarExpediente() {
+  ALERTAS.clear();
+  _cargado = false;
+  await cargarAlertas();
+  return { alertas: ALERTAS.size };
+}
+
+/** Borra el expediente entero: memoria y hoja. No tiene vuelta atrás. */
+async function vaciarExpediente() {
+  const habia = ALERTAS.size;
+  ALERTAS.clear();
+  _cargado = true;                       // ya está "cargado": vacío
+  try {
+    await ensureHoja();
+    await clearSheet(LIBRO_VIVO, `'${HOJA_VIVO}'!A2:U50000`);
+  } catch (e) { console.error(`⚠️  [VIVO] No se pudo vaciar la hoja: ${e.message}`); }
+  console.log(`🧹 [VIVO] Expediente vaciado (${habia} alerta(s))`);
+  return { borradas: habia };
 }
 
 // ── Cachés de lo que vive en Sheets ─────────────────────────────────────────
@@ -546,4 +574,4 @@ function arrancar() {
 }
 function parar() { if (timer) { clearInterval(timer); timer = null; } }
 
-module.exports = { pasada, estado, justificar, arrancar, parar, turnoActual, cargarAlertas, CFG, ALERTAS };
+module.exports = { pasada, estado, justificar, arrancar, parar, turnoActual, cargarAlertas, recargarExpediente, vaciarExpediente, CFG, ALERTAS };
