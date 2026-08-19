@@ -171,6 +171,7 @@ app.use('/peticiones', peticionesRoutes);
 app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
 app.use('/callcenter', require('./routes/callCenter'));
+app.use('/migraciones', require('./routes/migraciones'));
 
 // Diagnóstico del servidor de pruebas: qué se ha bloqueado y qué crons no corren.
 app.get('/modo-pruebas', (req, res) => {
