@@ -244,7 +244,11 @@ app.get('/vista-final/recuperar-libranzas', async (req, res) => {
 
 // ── Auditoría EN VIVO: vigila cada pocos minutos los coches planificados que
 //    ruedan estando en descanso. Se apaga con VIVO_ACTIVO=off. ────────────────
-if (process.env.VIVO_ACTIVO !== 'off') {
+if (require('./services/modoPruebas').ACTIVO) {
+  // OJO: esta arranca con setInterval, NO con cron.schedule, así que el
+  // envoltorio `programar` no la alcanza y hay que frenarla aquí.
+  console.log('🧪 [PRUEBAS] Auditoría en vivo NO se arranca');
+} else if (process.env.VIVO_ACTIVO !== 'off') {
   require('./services/auditoriaVivo').arrancar();
 } else {
   console.log('⏸️  [VIVO] Auditoría en vivo desactivada (VIVO_ACTIVO=off)');
@@ -264,6 +268,12 @@ function programar(expresion, tarea, opciones) {
   return cron.schedule(expresion, tarea, opciones);
 }
 const _cronsOmitidos = [];
+if (pruebas.ACTIVO) {
+  // Se imprime al final del arranque, cuando ya se sabe cuántos se omitieron.
+  process.nextTick(() => console.log(
+    `🧪 [PRUEBAS] MODO_PRUEBAS=1 — ${_cronsOmitidos.length} cron(s) NO arrancados, ` +
+    'escrituras de Sheets/WhatsApp/Mapon bloqueadas. Detalle en /modo-pruebas'));
+}
 
 // Horas de conductores — DOS carriles:
 //
@@ -303,7 +313,7 @@ if (process.env.HORAS_INCREMENTAL !== 'off') {
       console.error(`⚠️  [CRON Horas⚡] ${error.message}`);
     } finally { enMarcha = false; }
   }, { timezone: 'Europe/Madrid' });
-  console.log('⚡ [Horas] Refresco incremental ACTIVADO (cada 10 min)');
+  if (!pruebas.ACTIVO) console.log('⚡ [Horas] Refresco incremental ACTIVADO (cada 10 min)');
 }
 
 // Resumen de flotas: cada hora al minuto 15
