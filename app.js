@@ -172,6 +172,11 @@ app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
 app.use('/callcenter', require('./routes/callCenter'));
 
+// Diagnóstico del servidor de pruebas: qué se ha bloqueado y qué crons no corren.
+app.get('/modo-pruebas', (req, res) => {
+  res.json({ status: 'ok', ...pruebas.estado(), cronsOmitidos: _cronsOmitidos });
+});
+
 // ── BODA (favor aparte, módulo OCULTO): panel solo-superadmin para enviar las
 //    invitaciones por WhatsApp. No está en el menú ni en ACCESO. El webhook (POST /)
 //    ya enruta por phone_number_id lo que llega al número de la boda. ──────────────
@@ -248,6 +253,17 @@ if (process.env.VIVO_ACTIVO !== 'off') {
 // ============================================================
 // CRON
 // ============================================================
+// `programar` sustituye a cron.schedule: en el servidor de pruebas no arranca
+// ninguno. Los crons escriben en las hojas de PRODUCCIÓN y comparten con el
+// servidor real la cuota de Sheets (60/min), que ya tumbó el ERP una vez.
+const pruebas = require('./services/modoPruebas');
+pruebas.instalarCortafuegos();
+
+function programar(expresion, tarea, opciones) {
+  if (pruebas.ACTIVO) { _cronsOmitidos.push(expresion); return null; }
+  return cron.schedule(expresion, tarea, opciones);
+}
+const _cronsOmitidos = [];
 
 // Horas de conductores — DOS carriles:
 //
@@ -259,7 +275,7 @@ if (process.env.VIVO_ACTIVO !== 'off') {
 //
 // Las dos escriben la misma hoja (Datos_API), así que da igual cuál llegue
 // última. Se desfasan del minuto 0 para no solaparse con la completa.
-cron.schedule('0 * * * *', async () => {
+programar('0 * * * *', async () => {
   const ahora = new Date();
   const mes = ahora.getMonth() + 1;
   const ano = ahora.getFullYear();
@@ -274,7 +290,7 @@ cron.schedule('0 * * * *', async () => {
 
 if (process.env.HORAS_INCREMENTAL !== 'off') {
   let enMarcha = false;
-  cron.schedule('5,15,25,35,45,55 * * * *', async () => {
+  programar('5,15,25,35,45,55 * * * *', async () => {
     // Una pasada corta que se alargue no debe pisar a la siguiente.
     if (enMarcha) return console.log('⏭️  [CRON Horas⚡] La anterior sigue en marcha, se salta');
     enMarcha = true;
@@ -291,7 +307,7 @@ if (process.env.HORAS_INCREMENTAL !== 'off') {
 }
 
 // Resumen de flotas: cada hora al minuto 15
-cron.schedule('15 * * * *', async () => {
+programar('15 * * * *', async () => {
   console.log('⏰ [CRON Resumen] actualizarTodo()...');
   try {
     const { actualizarTodo } = require('./services/boltResumen');
@@ -308,7 +324,7 @@ cron.schedule('15 * * * *', async () => {
 // L_Acumuladas y se pisarán. La ruta POST /libranzas/sync funciona igualmente
 // para pruebas manuales aunque el cron esté apagado.
 if (process.env.LIBRANZAS_CRON === 'on') {
-  cron.schedule('30 * * * *', async () => {
+  programar('30 * * * *', async () => {
     console.log('⏰ [CRON Libranzas] sincronizarLibranzas()...');
     try {
       const { sincronizarLibranzas } = require('./services/libranzas');
@@ -325,7 +341,7 @@ if (process.env.LIBRANZAS_CRON === 'on') {
 
 // CONDUCTORES_BOLT: padrón de creación de conductores, cada media hora (:10 y
 // :40, para no chocar con los otros crons). Sella el created_at propio.
-cron.schedule('10,40 * * * *', async () => {
+programar('10,40 * * * *', async () => {
   console.log('⏰ [CRON CONDUCTORES_BOLT] actualizarConductoresBolt()...');
   try {
     const { actualizarConductoresBolt } = require('./services/conductoresBolt');
@@ -344,7 +360,7 @@ cron.schedule('10,40 * * * *', async () => {
 
 // Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
 // vencieron (los usados se conservan siempre, como histórico).
-cron.schedule('20 4 * * *', async () => {
+programar('20 4 * * *', async () => {
   try {
     const { purgarVencidos } = require('./services/codigosBallenoil');
     const r = await purgarVencidos();
@@ -371,7 +387,7 @@ app.get('/whatsapp/plantillas', async (req, res) => {
 // Auditoría de flota: a las 5:00 (poco tráfico) procesa el día de AYER, ya cerrado.
 // Es pesado (una llamada a Mapon por coche), por eso va una sola vez al día y deja el
 // resultado en el Sheet; el panel de Operaciones solo lee de ahí.
-cron.schedule('0 5 * * *', async () => {
+programar('0 5 * * *', async () => {
   try {
     const auditoria = require('./services/auditoriaFlota');
     const dia = auditoria.diaMenos(auditoria.hoyMadrid(), 1);
@@ -385,7 +401,7 @@ cron.schedule('0 5 * * *', async () => {
 
 // VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
 // hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
-cron.schedule('45 * * * *', async () => {
+programar('45 * * * *', async () => {
   console.log('⏰ [CRON VISTA_FINAL] vacaciones automáticas + reconstruirVistaFinal()...');
   try {
     const { reconstruirVistaFinal, aplicarAusenciasAutomaticas, aplicarReincorporaciones, escribirLetrasAusencia } = require('./services/vistaFinal');
@@ -410,7 +426,7 @@ cron.schedule('45 * * * *', async () => {
 // conductor y registra/avisa. APAGADO por defecto: se activa con SANCIONES_CRON=on cuando
 // esté verificado (y SANCIONES_MODO=live para que envíe de verdad; si no, solo simula).
 if (process.env.SANCIONES_CRON === 'on') {
-  cron.schedule('3,18,33,48 * * * *', async () => {
+  programar('3,18,33,48 * * * *', async () => {
     try {
       const sanciones = require('./services/sanciones');
       const r = await sanciones.procesar();
