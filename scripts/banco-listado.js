@@ -131,6 +131,44 @@ const GENTE = [
     fecha_nacimiento: '1988-11-02' },
 ];
 
+// Relleno hasta pasar de 50 filas: sin eso el paginador no se puede probar.
+// Los nombres son inventados y a proposito de largos distintos, que es lo que
+// descuadra una tabla.
+const APE = ['Moreno', 'Ferreira', 'Ben Ali', 'Nowak', 'Oliveira Santos', 'Ruiz', 'Ndiaye',
+             'Del Campo Herrera', 'Iglesias', 'Kowalczyk', 'Sow', 'Vargas Llosa'];
+const PIL = ['Adrian', 'Fatou', 'Marek', 'Joao', 'Youssef', 'Ainhoa', 'Ibrahima', 'Rocio'];
+for (let i = 0; i < 120; i++) {
+  const sit = i % 11 === 0 ? 'vacaciones' : i % 17 === 0 ? 'baja_medica' : 'activo';
+  const ett = i % 5 === 0;
+  GENTE.push({
+    id: 100 + i,
+    nombre: PIL[i % PIL.length],
+    apellidos: APE[i % APE.length] + (i % 3 ? '' : ' ' + APE[(i + 4) % APE.length]),
+    nombre_ss: (APE[i % APE.length] + ' ' + PIL[i % PIL.length]).toUpperCase(),
+    dni_tipo: i % 4 ? 'DNI' : 'NIE',
+    dni_nie: (i % 4 ? '' : 'X') + String(10000000 + i * 7919).slice(0, 8) + 'K',
+    nacionalidad: i % 3 ? 'Espana' : 'Senegal',
+    email: i % 6 ? 'p' + i + '@telecab.es' : null,
+    empleo_tipo: ett ? 'ett' : 'propia', ett_nombre: ett ? 'Randstad' : null,
+    alta: '202' + (3 + (i % 4)) + '-0' + (1 + (i % 9)) + '-1' + (i % 9),
+    baja: null, antiguedad: '202' + (3 + (i % 4)) + '-01-01', anios: (i % 60) / 10,
+    situacion: sit,
+    situacion_etiqueta: sit === 'activo' ? 'Activo' : sit === 'vacaciones' ? 'Vacaciones' : 'Baja medica',
+    ausente: sit !== 'activo', situacion_desde: '2026-06-01', hasta_previsto: null,
+    turno_id: 1 + (i % 2), turno: i % 2 ? 'Noche' : 'Dia',
+    telefono: '+346' + String(10000000 + i),
+    bolt_id: i % 9 ? 'b' + (900000 + i) : null,
+    bolt_estado: i % 13 ? 'active' : 'deactivated',
+    // Uno de cada treinta con DOS plazas: es el caso que duplicaba la fila.
+    matricula: i % 4 === 3 ? null : (i % 30 === 7 ? '00' + i + 'AAA + 11' + i + 'BBB' : '0' + (1000 + i) + 'XYZ'),
+    plazas_abiertas: i % 4 === 3 ? 0 : (i % 30 === 7 ? 2 : 1),
+    vehiculo_id: i, rol: 'titular', zona: i % 2 ? 'Getafe' : 'Usera',
+    libranzas: i % 7 ? 'X J' : 'S D',
+    direccion: 'Calle Falsa ' + i + ', 28000 Madrid', naf: null, legajo: null,
+    fecha_nacimiento: '1990-01-01',
+  });
+}
+
 // Los faltantes se calculan con la MISMA funcion del repositorio: si cambia la
 // regla, el banco cambia con ella y no miente.
 const { faltantesDe } = require('../services/repo/conductores');
@@ -144,8 +182,16 @@ app.get('/conductores/api/lista', (req, res) => res.json({
     porSituacion: SITUACIONES
       .map(s => ({ ...s, personas: conFaltan.filter(p => p.situacion === s.codigo).length }))
       .filter(s => s.personas),
-    porTipo: [{ tipo: 'propia', personas: 2 }, { tipo: 'ett', personas: 1 }],
-    huecos: { sin_bolt: 1, sin_telefono: 0, sin_dni: 0, sin_coche: 1 },
+    porTipo: [
+      { tipo: 'propia', personas: conFaltan.filter(p => p.empleo_tipo === 'propia').length },
+      { tipo: 'ett', personas: conFaltan.filter(p => p.empleo_tipo === 'ett').length },
+    ],
+    huecos: {
+      sin_bolt: conFaltan.filter(p => !p.bolt_id).length,
+      sin_telefono: conFaltan.filter(p => !p.telefono).length,
+      sin_dni: conFaltan.filter(p => !p.dni_nie).length,
+      sin_coche: conFaltan.filter(p => !p.matricula).length,
+    },
   },
 }));
 

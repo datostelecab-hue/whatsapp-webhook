@@ -65,9 +65,11 @@ async function listar({ id, momento, incluirBajas = false, tipo, situacion, turn
            -- Cuenta de BOLT. La activa manda: hay gente con varias.
            bolt.externo_id AS bolt_id, bolt.estado_externo AS bolt_estado,
 
-           -- Coche y plaza de hoy, con su zona.
-           v.matricula, v.id AS vehiculo_id, sl.rol, tv.etiqueta AS turno_plaza,
-           bz.nombre AS zona,
+           -- Coche y plaza de hoy. AGRUPADOS: unir con asignacion a pelo
+           -- duplicaba la fila de quien tuviera dos plazas abiertas, y esto es
+           -- una lista de personas, no de plazas.
+           coche.matricula, coche.vehiculo_id, coche.rol, coche.zona,
+           coche.plazas AS plazas_abiertas,
 
            -- Libranzas del patrón vigente, como 'L M' y no como siete columnas.
            lib.dias AS libranzas
@@ -93,14 +95,19 @@ async function listar({ id, momento, incluirBajas = false, tipo, situacion, turn
        WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
        -- La cuenta activa primero: es la que usa el sistema para cruzar horas.
        ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) bolt ON TRUE
-    LEFT JOIN asignacion a
-           ON a.conductor_id = c.id
-          AND a.desde <= ref.dia AND (a.hasta IS NULL OR a.hasta >= ref.dia)
-    LEFT JOIN plaza p     ON p.id = a.plaza_id
-    LEFT JOIN cat_slot sl ON sl.slot = p.slot
-    LEFT JOIN turno tv    ON tv.id = sl.turno_id
-    LEFT JOIN vehiculo v  ON v.id = p.vehiculo_id
-    LEFT JOIN base_zona bz ON bz.id = v.base_zona_id
+    LEFT JOIN LATERAL (
+      SELECT string_agg(DISTINCT v.matricula, ' + ' ORDER BY v.matricula) AS matricula,
+             min(v.id)                                                    AS vehiculo_id,
+             string_agg(DISTINCT sl.rol, ', ')                            AS rol,
+             string_agg(DISTINCT bz.nombre, ', ')                         AS zona,
+             count(*)::int                                                AS plazas
+        FROM asignacion a
+        JOIN plaza p      ON p.id = a.plaza_id
+        JOIN cat_slot sl  ON sl.slot = p.slot
+        JOIN vehiculo v   ON v.id = p.vehiculo_id
+        LEFT JOIN base_zona bz ON bz.id = v.base_zona_id
+       WHERE a.conductor_id = c.id
+         AND a.desde <= ref.dia AND (a.hasta IS NULL OR a.hasta >= ref.dia)) coche ON TRUE
     LEFT JOIN LATERAL (
       SELECT string_agg(
                CASE d.dia_semana WHEN 1 THEN 'L' WHEN 2 THEN 'M' WHEN 3 THEN 'X'
@@ -131,6 +138,9 @@ function faltantesDe(c) {
   // sus horas y el conductor desaparece del control de trafico sin avisar.
   else if (c.bolt_estado && c.bolt_estado !== 'active') f.push(`cuenta de BOLT ${c.bolt_estado}`);
   if (!c.telefono) f.push('teléfono');
+  // Dos plazas abiertas a la vez casi siempre es un error de planificacion: la
+  // persona figura conduciendo dos coches el mismo dia.
+  if (c.plazas_abiertas > 1) f.push(`${c.plazas_abiertas} plazas a la vez`);
   if (!c.dni_nie)  f.push('DNI');
   // A un ETT no se le exige la ficha legal completa: entra con nombre, DNI y
   // fecha, y por eso se le puede planificar antes de existir en BOLT.

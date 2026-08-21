@@ -95,7 +95,7 @@
   function etiqueta(texto, tono) {
     if (texto === null || texto === undefined || texto === '') return '';
     const t = tono || 'muted';
-    return `<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold bg-telecab-${t}/15 text-telecab-${t} border border-telecab-${t}/30">${esc(texto)}</span>`;
+    return `<span class="inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-lg text-xs font-semibold bg-telecab-${t}/15 text-telecab-${t} border border-telecab-${t}/30">${esc(texto)}</span>`;
   }
 
   /** Los días que faltan, en color: rojo si pasó, ámbar si está cerca. */
@@ -157,6 +157,8 @@
       this.abierto = null;        // clave del elemento abierto, o null
       this.propia = false;        // ¿la entrada del historial la pusimos nosotros?
       this.cargando = false;
+      this.porPagina = cfg.porPagina || 50;
+      this.pagina = 0;
 
       this.pintarArmazon();
       this.escuchar();
@@ -193,20 +195,23 @@
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" data-parte="kpis"></div>
             <div class="flex flex-wrap gap-2 mb-4" data-parte="filtros"></div>
 
-            <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
-              <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                  <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
-                    <tr data-parte="cabecera"></tr>
-                  </thead>
-                  <tbody data-parte="cuerpo" class="divide-y divide-telecab-border/60"></tbody>
-                </table>
-              </div>
-              <div data-parte="vacio" class="hidden p-10 text-center text-telecab-muted">
-                <i class="fa-solid ${esc(c.icono || 'fa-inbox')} text-3xl mb-2 opacity-40"></i>
-                <p>${esc(c.vacio || 'No hay nada que coincida.')}</p>
-              </div>
+            <!-- Rejilla de datos, no tarjeta. La cabecera se queda fija arriba
+                 mientras el cuerpo se desplaza: con doscientas filas es la
+                 diferencia entre leer una tabla y adivinarla. -->
+            <div data-parte="rejilla"
+                 class="overflow-auto border-y border-telecab-border ${esc(c.alto || 'max-h-[calc(100vh-15rem)] min-h-[16rem]')}">
+              <table class="w-full text-sm border-collapse">
+                <thead class="sticky top-0 z-10">
+                  <tr data-parte="cabecera" class="bg-telecab-card2"></tr>
+                </thead>
+                <tbody data-parte="cuerpo"></tbody>
+              </table>
             </div>
+            <div data-parte="vacio" class="hidden p-10 text-center text-telecab-muted border-y border-telecab-border">
+              <i class="fa-solid ${esc(c.icono || 'fa-inbox')} text-3xl mb-2 opacity-40"></i>
+              <p>${esc(c.vacio || 'No hay nada que coincida.')}</p>
+            </div>
+            <div data-parte="paginador" class="hidden flex-wrap items-center gap-2 py-3"></div>
           </section>
 
           <!-- FICHA -->
@@ -218,13 +223,15 @@
         lista: q('lista'), detalle: q('detalle'), cuerpo: q('cuerpo'),
         cabecera: q('cabecera'), vacio: q('vacio'), kpis: q('kpis'),
         filtros: q('filtros'), busca: q('busca'), acciones: q('acciones'),
-        subtitulo: q('subtitulo'),
+        subtitulo: q('subtitulo'), rejilla: q('rejilla'), paginador: q('paginador'),
       };
 
       // Cabecera de la tabla.
       this.el.cabecera.innerHTML = c.columnas.map(col =>
-        `<th class="text-left font-semibold px-4 py-3 ${esc(col.claseCabecera || '')}">${esc(col.titulo || '')}</th>`
-      ).join('') + '<th class="w-8"></th>';
+        `<th class="text-left font-semibold px-3 py-2.5 text-[11px] uppercase tracking-wider
+                    text-telecab-text/70 border-b-2 border-telecab-border whitespace-nowrap
+                    ${esc(col.claseCabecera || '')}">${esc(col.titulo || '')}</th>`
+      ).join('') + '<th class="w-8 border-b-2 border-telecab-border"></th>';
 
       // Botones de la cabecera (alta, exportar, sincronizar…).
       (c.acciones || []).forEach(a => {
@@ -245,7 +252,7 @@
           clearTimeout(reloj);
           const v = e.target.value;
           // Pequeña espera: no se repinta la tabla en cada tecla.
-          reloj = setTimeout(() => { this.busca = v; this.pintarFilas(); }, 150);
+          reloj = setTimeout(() => { this.busca = v; this.pagina = 0; this.pintarFilas(); }, 150);
         });
       }
 
@@ -282,6 +289,7 @@
 
     error(msg) {
       this.el.cuerpo.innerHTML = '';
+      this.el.rejilla.classList.add('hidden');
       this.el.vacio.classList.remove('hidden');
       this.el.vacio.innerHTML = `
         <i class="fa-solid fa-triangle-exclamation text-3xl mb-2 text-telecab-red/60"></i>
@@ -324,6 +332,7 @@
         if (k.filtro) {
           t.addEventListener('click', () => {
             this.filtros[k.filtro.id] = this.filtros[k.filtro.id] === k.filtro.valor ? '' : k.filtro.valor;
+            this.pagina = 0;
             this.pintarFiltros();
             this.pintarFilas();
           });
@@ -335,54 +344,126 @@
     pintarFiltros() {
       const defs = this.cfg.filtros || [];
       if (!defs.length) { this.el.filtros.classList.add('hidden'); return; }
+      this.el.filtros.className = 'flex flex-wrap items-center gap-x-2 gap-y-2 mb-4';
 
       this.el.filtros.innerHTML = '';
-      defs.forEach(def => {
+      defs.forEach((def, i) => {
         const opciones = typeof def.opciones === 'function'
           ? def.opciones(this.filas, this.extra) : (def.opciones || []);
         const todas = [{ valor: '', texto: def.textoTodos || 'Todos' }].concat(opciones);
 
+        // Cada grupo va en su propia caja: se ve de un vistazo que "Día" y
+        // "Noche" son lo mismo y "Sin coche" es otra cosa.
+        const caja = nodo('<div class="flex flex-wrap gap-1 items-center"></div>');
+        if (i) caja.prepend(nodo('<span class="w-px h-5 bg-telecab-border mx-1"></span>'));
+        this.el.filtros.appendChild(caja);
+
         todas.forEach(op => {
           const activo = String(this.filtros[def.id] || '') === String(op.valor);
           const chip = nodo(`
-            <button class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+            <button class="px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
               activo
                 ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
                 : 'bg-telecab-card border-telecab-border text-telecab-muted hover:border-telecab-gold/40'
             }">${esc(op.texto)}${op.cuenta !== undefined ? ` <span class="opacity-60">${esc(op.cuenta)}</span>` : ''}</button>`);
           chip.addEventListener('click', () => {
             this.filtros[def.id] = op.valor;
+            this.pagina = 0;
             this.pintarFiltros();
             this.pintarFilas();
           });
-          this.el.filtros.appendChild(chip);
+          caja.appendChild(chip);
         });
       });
     }
 
     pintarFilas() {
-      const filas = this.visibles();
+      const todas = this.visibles();
       const c = this.cfg;
+
+      // La pagina puede quedarse fuera de rango al filtrar: se recoloca.
+      const paginas = Math.max(1, Math.ceil(todas.length / this.porPagina));
+      if (this.pagina > paginas - 1) this.pagina = paginas - 1;
+      if (this.pagina < 0) this.pagina = 0;
+      const desde = this.pagina * this.porPagina;
+      const filas = todas.slice(desde, desde + this.porPagina);
 
       if (this.el.subtitulo) {
         this.el.subtitulo.textContent = c.subtitulo
-          ? c.subtitulo(filas, this.filas, this.extra)
-          : `${filas.length} de ${this.filas.length}`;
+          ? c.subtitulo(todas, this.filas, this.extra)
+          : `${todas.length} de ${this.filas.length}`;
       }
 
-      this.el.vacio.classList.toggle('hidden', filas.length > 0);
+      this.el.vacio.classList.toggle('hidden', todas.length > 0);
+      this.el.rejilla.classList.toggle('hidden', todas.length === 0);
+      this.pintarPaginador(todas.length, paginas, desde, filas.length);
       this.el.cuerpo.innerHTML = filas.map(f => {
         const celdas = c.columnas.map(col => {
           const bruto = col.campo !== undefined ? valorDe(f, col.campo) : undefined;
           const html = col.pinta ? col.pinta(bruto, f) : esc(bruto);
-          return `<td class="px-4 py-3 ${esc(col.clase || '')}">${html === undefined || html === null ? '' : html}</td>`;
+          return `<td class="px-3 py-2 align-middle ${esc(col.clase || '')}">${html === undefined || html === null ? '' : html}</td>`;
         }).join('');
-        return `<tr data-clave="${esc(f[this.clave])}" class="hover:bg-telecab-card2/60 cursor-pointer transition">${celdas}<td class="px-2 text-telecab-muted"><i class="fa-solid fa-chevron-right text-xs"></i></td></tr>`;
+        return `<tr data-clave="${esc(f[this.clave])}"
+                    class="border-b border-telecab-border/70 even:bg-telecab-card2/30
+                           hover:bg-telecab-gold/10 cursor-pointer transition-colors">${celdas}<td class="px-2 text-telecab-muted"><i class="fa-solid fa-chevron-right text-xs"></i></td></tr>`;
       }).join('');
 
       this.el.cuerpo.querySelectorAll('tr[data-clave]').forEach(tr => {
         tr.addEventListener('click', () => this.abrir(tr.dataset.clave, { historial: true }));
       });
+    }
+
+    /**
+     * El paginador. Si todo cabe en una pagina no aparece: un "1 de 1" con dos
+     * flechas apagadas es ruido.
+     */
+    pintarPaginador(total, paginas, desde, enPagina) {
+      const p = this.el.paginador;
+      p.classList.toggle('hidden', paginas <= 1);
+      p.classList.toggle('flex', paginas > 1);
+      if (paginas <= 1) { p.innerHTML = ''; return; }
+
+      const ir = n => {
+        this.pagina = n;
+        this.pintarFilas();
+        // Al cambiar de pagina se vuelve arriba de la tabla; si no, apareces a
+        // media altura de la pagina nueva.
+        if (this.el.rejilla) this.el.rejilla.scrollTop = 0;
+      };
+
+      p.innerHTML = '';
+      p.appendChild(nodo(`<span class="text-xs text-telecab-muted mr-auto">
+        ${desde + 1}–${desde + enPagina} de ${total}</span>`));
+
+      const boton = (contenido, destino, activo) => {
+        const b = nodo(`<button class="min-w-[2rem] h-8 px-2 rounded-lg text-xs font-semibold border transition ${
+          activo
+            ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+            : destino === null
+              ? 'border-transparent text-telecab-muted cursor-default'
+              : 'bg-telecab-card border-telecab-border hover:border-telecab-gold/50'
+        }">${contenido}</button>`);
+        if (destino !== null && !activo) b.addEventListener('click', () => ir(destino));
+        if (destino === null) b.disabled = true;
+        return b;
+      };
+
+      p.appendChild(boton('<i class="fa-solid fa-chevron-left text-[10px]"></i>',
+        this.pagina > 0 ? this.pagina - 1 : null));
+
+      // Ventana de numeros alrededor de la actual, con la primera y la ultima
+      // siempre a la vista. Con 200 conductores son 5 paginas, pero con 5.000
+      // registros esto evita una fila de cien botones.
+      const nums = new Set([0, paginas - 1]);
+      for (let n = this.pagina - 1; n <= this.pagina + 1; n++) if (n >= 0 && n < paginas) nums.add(n);
+      const orden = [...nums].sort((a, b) => a - b);
+      orden.forEach((n, i) => {
+        if (i && n - orden[i - 1] > 1) p.appendChild(boton('…', null));
+        p.appendChild(boton(String(n + 1), n, n === this.pagina));
+      });
+
+      p.appendChild(boton('<i class="fa-solid fa-chevron-right text-[10px]"></i>',
+        this.pagina < paginas - 1 ? this.pagina + 1 : null));
     }
 
     // --- navegación ---

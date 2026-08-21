@@ -84,29 +84,26 @@
     ],
 
     columnas: [
-      { titulo: 'Conductor', campo: 'nombre_completo', clase: 'font-semibold',
+      { titulo: 'Conductor', campo: 'nombre_completo', clase: 'font-semibold whitespace-nowrap',
         pinta: (v, f) => esc(v) + (f.empleo_tipo === 'ett'
           ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/30">ETT</span>' : '') },
       { titulo: 'DNI', campo: 'dni_nie', clase: 'whitespace-nowrap tabular-nums',
         pinta: v => v ? esc(v) : '<span class="text-telecab-warn">—</span>' },
-      { titulo: 'BOLT', campo: 'bolt_id', clase: 'whitespace-nowrap',
-        pinta: (v, f) => !v
-          ? '<span class="text-telecab-warn">Sin enlazar</span>'
-          : `<span class="tabular-nums">${esc(v)}</span>` +
-            (f.bolt_estado && f.bolt_estado !== 'active'
-              ? ` <span class="text-telecab-muted text-xs">${esc(f.bolt_estado)}</span>` : '') },
       { titulo: 'Situación', campo: 'situacion_etiqueta',
         pinta: (v, f) => etiqueta(v, tonoSituacion(f.situacion)) },
       { titulo: 'Turno', campo: 'turno' },
       { titulo: 'Libra', campo: 'libranzas', clase: 'whitespace-nowrap text-telecab-muted' },
       { titulo: 'Coche', campo: 'matricula', clase: 'whitespace-nowrap',
-        pinta: (v, f) => v
-          ? `<span class="font-semibold">${esc(v)}</span>` +
-            (f.zona ? ` <span class="text-telecab-muted text-xs">${esc(f.zona)}</span>` : '')
-          : '<span class="text-telecab-muted">—</span>' },
+        pinta: (v, f) => !v
+          ? '<span class="text-telecab-muted">—</span>'
+          : (f.plazas_abiertas > 1
+              ? `<span class="text-telecab-warn" title="${esc(f.plazas_abiertas)} plazas abiertas a la vez"><i class="fa-solid fa-triangle-exclamation"></i> </span>` : '') +
+            `<span class="font-semibold">${esc(v)}</span>` +
+            (f.zona ? ` <span class="text-telecab-muted text-xs">${esc(f.zona)}</span>` : '') },
       { titulo: 'Teléfono', campo: 'telefono', clase: 'whitespace-nowrap tabular-nums' },
-      { titulo: 'Antigüedad', campo: 'anios', clase: 'tabular-nums whitespace-nowrap',
-        pinta: (v, f) => v == null ? '' : `${v} a <span class="text-telecab-muted text-xs">${esc(fecha(f.alta))}</span>` },
+      { titulo: 'Desde', campo: 'alta', clase: 'tabular-nums whitespace-nowrap',
+        pinta: (v, f) => !v ? '' : esc(fecha(v)) +
+          (f.anios >= 1 ? ` <span class="text-telecab-muted text-xs">${esc(f.anios)} a</span>` : '') },
       { titulo: 'Ficha', campo: 'faltan', clase: 'text-center', pinta: (v, f) => faltan(f) },
     ],
 
@@ -143,6 +140,9 @@
             { etiqueta: 'Turno', valor: d => d.turno },
             { etiqueta: 'Libra', valor: d => d.libranzas },
             { etiqueta: 'Coche', valor: d => d.matricula ? `${d.matricula}${d.zona ? ' · ' + d.zona : ''}` : '' },
+            { etiqueta: 'Plazas abiertas', clase: 'text-telecab-warn font-semibold',
+              visible: d => d.plazas_abiertas > 1,
+              valor: d => `${d.plazas_abiertas} a la vez` },
           ],
         },
         {
