@@ -532,9 +532,12 @@
         hueco.innerHTML = campos.map(c => {
           const v = c.valor(d);
           const pintado = c.html ? (v || '') : (esc(v) || '<span class="text-telecab-muted">—</span>');
+          // La etiqueta puede depender del dato: "DNI", "NIE" o "Pasaporte"
+          // segun lo que sea esa persona.
+          const et = typeof c.etiqueta === 'function' ? c.etiqueta(d) : c.etiqueta;
           return `
             <div class="${esc(c.ancho || '')}">
-              <p class="text-xs text-telecab-muted uppercase tracking-wide mb-1">${esc(c.etiqueta)}</p>
+              <p class="text-xs text-telecab-muted uppercase tracking-wide mb-1">${esc(et)}</p>
               <p class="text-sm ${esc(c.clase || '')}">${pintado}</p>
             </div>`;
         }).join('');

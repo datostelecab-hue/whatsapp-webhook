@@ -35,10 +35,16 @@ app.set('views', path.join(__dirname, 'views'));
 app.set('layout', 'layout');
 
 // Marca de version para los estaticos. Los archivos de /assets se cachean un
-// dia; sin esto, un despliegue que cambia listado.js dejaria a la gente con la
-// copia vieja hasta el dia siguiente. En Render cada despliegue trae un commit
-// distinto, asi que la URL cambia sola y el navegador vuelve a pedirlo.
+// dia; sin esto, un despliegue que cambia el CSS o un script deja a la gente
+// con la copia vieja hasta el dia siguiente, y "no funciona" sin que se vea por
+// que. En Render cada despliegue trae un commit distinto, asi que la URL cambia
+// sola y el navegador vuelve a pedir el archivo.
 app.locals.v = (process.env.RENDER_GIT_COMMIT || '').slice(0, 8) || String(Date.now());
+
+// `est()` pone esa marca. Las vistas lo usan para TODO lo que pueda cambiar
+// (hojas de estilo y scripts); el logo y el video se quedan sin ella porque no
+// cambian nunca y asi se siguen cacheando de verdad.
+app.locals.est = ruta => ruta + (ruta.indexOf('?') === -1 ? '?v=' : '&v=') + app.locals.v;
 
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
@@ -79,6 +85,7 @@ const agendaRoutes = require('./routes/agenda');
 const matchingRoutes = require('./routes/matching');
 const coberturaRoutes = require('./routes/cobertura');
 const vehiculosRoutes = require('./routes/vehiculos');
+const conductoresRoutes = require('./routes/conductores');
 const documentosRoutes = require('./routes/documentos');
 const libranzasRoutes = require('./routes/libranzas');
 const controlRoutes = require('./routes/control');
@@ -150,6 +157,7 @@ app.use('/agenda', agendaRoutes);
 app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
+app.use('/conductores', conductoresRoutes);
 app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);

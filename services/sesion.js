@@ -30,7 +30,10 @@ const ACCESO = {
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],
   '/control': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
   '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico'],
-  '/sanciones': ['trafico'], '/callcenter': ['trafico'], '/migraciones': ['desarrollador'], '/explorador': ['desarrollador']
+  '/sanciones': ['trafico'], '/callcenter': ['trafico'], '/migraciones': ['desarrollador'], '/explorador': ['desarrollador'],
+  // La plantilla la miran los dos departamentos: Trafico para saber quien
+  // puede conducir hoy, RRHH para saber quien esta de alta y con que.
+  '/conductores': ['oficina', 'trafico']
 };
 
 // ── Firma / verificación del token ──────────────────────────────────────────

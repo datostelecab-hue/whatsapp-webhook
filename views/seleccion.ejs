@@ -260,7 +260,7 @@
 </div>
 
 
-<script src="/assets/js/nacionalidades.js"></script>
+<script src="<%= typeof est === 'function' ? est('/assets/js/nacionalidades.js') : '/assets/js/nacionalidades.js' %>"></script>
 <script>
   const ETAPAS = <%- JSON.stringify(etapas || []) %>;
   const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas','link_bolt',

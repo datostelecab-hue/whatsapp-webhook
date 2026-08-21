@@ -1,0 +1,298 @@
+<div id="modulo"></div>
+
+<script>
+(function () {
+  const CAT = <%- JSON.stringify(catalogos || {}) %>;
+  const { fecha, hace, etiqueta, esc } = Listado.fmt;
+
+  const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+  // Color de cada situación. El código va en la base; esto es solo cómo se ve.
+  const tonoSituacion = c => ({
+    activo: 'green', vacaciones: 'gold', baja_medica: 'warn',
+    permiso: 'violet', excedencia: 'muted', baja_empresa: 'red',
+  }[c] || 'muted');
+
+  // Lo que le falta a una ficha, en corto y con su aviso.
+  const faltan = f => !f.faltan.length
+    ? '<span class="text-telecab-green"><i class="fa-solid fa-check"></i></span>'
+    : `<span class="text-telecab-warn" title="${esc(f.faltan.join(', '))}">
+         <i class="fa-solid fa-triangle-exclamation"></i> ${f.faltan.length}</span>`;
+
+  const plantilla = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Conductores',
+    icono: 'fa-id-card',
+    clave: 'id',
+    origen: '/conductores/api/lista',
+    vacio: 'No hay conductores que coincidan.',
+    buscar: {
+      texto: 'Buscar nombre, DNI, BOLT, coche…',
+      // Se busca por lo que IDENTIFICA además de por el nombre: por eso están
+      // el DNI, la cuenta de BOLT y la matrícula.
+      campos: ['nombre_completo', 'nombre_ss', 'dni_nie', 'bolt_id', 'matricula', 'telefono', 'zona'],
+    },
+
+    subtitulo: (v, t) => v.length === t.length
+      ? `${t.length} en plantilla`
+      : `${v.length} de ${t.length} en plantilla`,
+
+    kpis: (filas, extra) => {
+      const r = extra.resumen || {};
+      const h = r.huecos || {};
+      const ett = (r.porTipo || []).find(x => x.tipo === 'ett');
+      const ausentes = filas.filter(f => f.ausente).length;
+      return [
+        { etiqueta: 'En plantilla', valor: filas.length, tono: 'text',
+          pie: `${ett ? ett.personas : 0} por ETT` },
+        { etiqueta: 'Disponibles hoy', valor: filas.length - ausentes, tono: 'green',
+          pie: `${ausentes} ausentes` },
+        { etiqueta: 'Sin coche', valor: Number(h.sin_coche || 0), tono: 'gold',
+          filtro: { id: 'coche', valor: 'sin' }, pie: 'no planificados' },
+        { etiqueta: 'Fichas con huecos', valor: filas.filter(f => f.faltan.length).length, tono: 'warn',
+          filtro: { id: 'ficha', valor: 'incompleta' },
+          pie: `${h.sin_bolt || 0} sin BOLT · ${h.sin_telefono || 0} sin teléfono` },
+      ];
+    },
+
+    filtros: [
+      {
+        id: 'situacion', campo: 'situacion', textoTodos: 'Todas las situaciones',
+        opciones: (filas, extra) => (extra.resumen && extra.resumen.porSituacion || [])
+          .map(s => ({ valor: s.codigo, texto: s.etiqueta, cuenta: s.personas })),
+      },
+      {
+        id: 'tipo', campo: 'empleo_tipo', textoTodos: 'Propia y ETT',
+        opciones: (filas, extra) => (extra.resumen && extra.resumen.porTipo || [])
+          .map(t => ({ valor: t.tipo, texto: t.tipo === 'ett' ? 'ETT' : 'Propia', cuenta: t.personas })),
+      },
+      {
+        id: 'turno', campo: 'turno_id', textoTodos: 'Todos los turnos',
+        opciones: () => (CAT.turnos || []).map(t => ({ valor: t.id, texto: t.etiqueta })),
+      },
+      {
+        // Estos dos no filtran por una columna: filtran por una condición.
+        id: 'coche', textoTodos: 'Con y sin coche',
+        pasa: (f, v) => v === 'sin' ? !f.matricula : !!f.matricula,
+        opciones: () => [{ valor: 'sin', texto: 'Sin coche' }, { valor: 'con', texto: 'Con coche' }],
+      },
+      {
+        id: 'ficha', textoTodos: 'Completas e incompletas',
+        pasa: (f, v) => v === 'incompleta' ? f.faltan.length > 0 : f.faltan.length === 0,
+        opciones: () => [{ valor: 'incompleta', texto: 'Ficha incompleta' }],
+      },
+    ],
+
+    columnas: [
+      { titulo: 'Conductor', campo: 'nombre_completo', clase: 'font-semibold',
+        pinta: (v, f) => esc(v) + (f.empleo_tipo === 'ett'
+          ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/30">ETT</span>' : '') },
+      { titulo: 'DNI', campo: 'dni_nie', clase: 'whitespace-nowrap tabular-nums',
+        pinta: v => v ? esc(v) : '<span class="text-telecab-warn">—</span>' },
+      { titulo: 'BOLT', campo: 'bolt_id', clase: 'whitespace-nowrap',
+        pinta: (v, f) => !v
+          ? '<span class="text-telecab-warn">Sin enlazar</span>'
+          : `<span class="tabular-nums">${esc(v)}</span>` +
+            (f.bolt_estado && f.bolt_estado !== 'active'
+              ? ` <span class="text-telecab-muted text-xs">${esc(f.bolt_estado)}</span>` : '') },
+      { titulo: 'Situación', campo: 'situacion_etiqueta',
+        pinta: (v, f) => etiqueta(v, tonoSituacion(f.situacion)) },
+      { titulo: 'Turno', campo: 'turno' },
+      { titulo: 'Libra', campo: 'libranzas', clase: 'whitespace-nowrap text-telecab-muted' },
+      { titulo: 'Coche', campo: 'matricula', clase: 'whitespace-nowrap',
+        pinta: (v, f) => v
+          ? `<span class="font-semibold">${esc(v)}</span>` +
+            (f.zona ? ` <span class="text-telecab-muted text-xs">${esc(f.zona)}</span>` : '')
+          : '<span class="text-telecab-muted">—</span>' },
+      { titulo: 'Teléfono', campo: 'telefono', clase: 'whitespace-nowrap tabular-nums' },
+      { titulo: 'Antigüedad', campo: 'anios', clase: 'tabular-nums whitespace-nowrap',
+        pinta: (v, f) => v == null ? '' : `${v} a <span class="text-telecab-muted text-xs">${esc(fecha(f.alta))}</span>` },
+      { titulo: 'Ficha', campo: 'faltan', clase: 'text-center', pinta: (v, f) => faltan(f) },
+    ],
+
+    // ---------- la ficha ----------
+
+    detalle: {
+      origen: id => `/conductores/api/ficha/${id}`,
+      titulo: d => d.nombre_completo,
+      subtitulo: d => [
+        d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',
+        d.dni_nie, d.bolt_id ? 'BOLT ' + d.bolt_id : null,
+      ].filter(Boolean).join(' · '),
+
+      bloques: [
+        {
+          // Lo primero es lo que hay que arreglar. Si no falta nada, no aparece.
+          titulo: 'Falta por completar', icono: 'fa-triangle-exclamation',
+          visible: d => (d.faltan || []).length > 0,
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5';
+            hueco.innerHTML = `<ul class="text-sm space-y-1">${d.faltan.map(x =>
+              `<li class="flex items-center gap-2 text-telecab-warn">
+                 <i class="fa-solid fa-circle-exclamation text-xs"></i>${esc(x)}</li>`).join('')}</ul>`;
+          },
+        },
+        {
+          titulo: 'Situación hoy', icono: 'fa-user-clock',
+          campos: [
+            { etiqueta: 'Situación', html: true,
+              valor: d => etiqueta(d.situacion_etiqueta, tonoSituacion(d.situacion)) },
+            { etiqueta: 'Desde', valor: d => fecha(d.situacion_desde) },
+            { etiqueta: 'Vuelta prevista', valor: d => fecha(d.hasta_previsto),
+              visible: d => !!d.hasta_previsto },
+            { etiqueta: 'Turno', valor: d => d.turno },
+            { etiqueta: 'Libra', valor: d => d.libranzas },
+            { etiqueta: 'Coche', valor: d => d.matricula ? `${d.matricula}${d.zona ? ' · ' + d.zona : ''}` : '' },
+          ],
+        },
+        {
+          titulo: 'Datos personales', icono: 'fa-id-card',
+          campos: [
+            { etiqueta: 'Nombre', valor: d => d.nombre },
+            { etiqueta: 'Apellidos', valor: d => d.apellidos },
+            { etiqueta: 'En la Seguridad Social', valor: d => d.nombre_ss },
+            { etiqueta: d => d.dni_tipo || 'DNI', valor: d => d.dni_nie },
+            { etiqueta: 'NAF', valor: d => d.naf },
+            { etiqueta: 'Legajo', valor: d => d.legajo },
+            { etiqueta: 'Nacimiento', valor: d => fecha(d.fecha_nacimiento) },
+            { etiqueta: 'Nacionalidad', valor: d => d.nacionalidad },
+            { etiqueta: 'Correo', valor: d => d.email },
+            { etiqueta: 'Dirección', valor: d => d.direccion, ancho: 'sm:col-span-2 lg:col-span-3' },
+          ],
+        },
+        {
+          titulo: 'Teléfonos', icono: 'fa-phone',
+          tabla: {
+            datos: d => d.telefonos,
+            vacio: 'Sin teléfono. El bot no puede escribirle.',
+            columnas: [
+              { titulo: 'Número', campo: 'e164', clase: 'tabular-nums font-semibold' },
+              { titulo: 'Origen', campo: 'origen' },
+              { titulo: 'Principal', campo: 'principal',
+                pinta: v => v ? '<i class="fa-solid fa-star text-telecab-gold"></i>' : '' },
+              { titulo: 'Desde', campo: 'vigente_desde', pinta: v => fecha(v) },
+              { titulo: 'Hasta', campo: 'vigente_hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">En uso</span>' },
+            ],
+          },
+        },
+        {
+          titulo: 'Cuentas en otros sistemas', icono: 'fa-plug',
+          tabla: {
+            datos: d => d.cuentas,
+            vacio: 'Sin cuenta de BOLT: no se le pueden imputar horas.',
+            columnas: [
+              { titulo: 'Sistema', campo: 'sistema', clase: 'uppercase font-semibold' },
+              { titulo: 'Identificador', campo: 'externo_id', clase: 'tabular-nums' },
+              { titulo: 'Nombre allí', campo: 'externo_nombre' },
+              { titulo: 'Estado', campo: 'estado_externo',
+                pinta: v => etiqueta(v, v === 'active' ? 'green' : 'muted') },
+              { titulo: 'Hasta', campo: 'visto_hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Vigente</span>' },
+            ],
+          },
+        },
+        {
+          titulo: 'Empleo', icono: 'fa-file-contract',
+          tabla: {
+            datos: d => d.empleos,
+            vacio: 'Sin periodos de empleo registrados.',
+            columnas: [
+              { titulo: 'Tipo', campo: 'tipo',
+                pinta: (v, f) => etiqueta(v === 'ett' ? (f.ett_nombre || 'ETT') : 'Propia',
+                  v === 'ett' ? 'violet' : 'green') },
+              { titulo: 'Alta', campo: 'alta', pinta: v => fecha(v) },
+              { titulo: 'Baja', campo: 'baja',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">En activo</span>' },
+              { titulo: 'Antigüedad', campo: 'fecha_antiguedad', pinta: v => fecha(v) },
+              { titulo: 'Motivo', campo: 'motivo_baja' },
+            ],
+          },
+        },
+        {
+          titulo: 'Coches por los que ha pasado', icono: 'fa-car-side',
+          tabla: {
+            datos: d => d.coches,
+            vacio: 'Nunca ha tenido plaza asignada.',
+            columnas: [
+              { titulo: 'Matrícula', campo: 'matricula', clase: 'font-semibold' },
+              { titulo: 'Turno', campo: 'turno' },
+              { titulo: 'Rol', campo: 'rol' },
+              { titulo: 'Zona', campo: 'zona' },
+              { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
+              { titulo: 'Hasta', campo: 'hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Ahora</span>' },
+            ],
+          },
+        },
+        {
+          titulo: 'Historial de situaciones', icono: 'fa-clock-rotate-left',
+          tabla: {
+            datos: d => d.situaciones,
+            vacio: 'Nunca ha estado ausente.',
+            columnas: [
+              { titulo: 'Situación', campo: 'etiqueta',
+                pinta: (v, f) => etiqueta(v || f.estado, tonoSituacion(f.estado)) },
+              { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
+              { titulo: 'Hasta', campo: 'hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Sigue</span>' },
+              { titulo: 'Motivo', campo: 'motivo' },
+            ],
+          },
+        },
+        {
+          titulo: 'Historial de turnos', icono: 'fa-arrows-rotate',
+          visible: d => (d.turnos || []).length > 1,
+          tabla: {
+            datos: d => d.turnos,
+            columnas: [
+              { titulo: 'Turno', campo: 'etiqueta' },
+              { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
+              { titulo: 'Hasta', campo: 'hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Ahora</span>' },
+              { titulo: 'Origen', campo: 'origen', clase: 'text-telecab-muted' },
+            ],
+          },
+        },
+        {
+          // Esto es lo que explica por qué un cruce con BOLT o con las hojas
+          // salió bien o mal. Hoy no se puede consultar en ningún sitio.
+          titulo: 'Con qué nombre le conoce cada sistema', icono: 'fa-fingerprint',
+          visible: d => (d.alias || []).length > 0,
+          tabla: {
+            datos: d => d.alias,
+            columnas: [
+              { titulo: 'Sistema', campo: 'tipo', clase: 'text-telecab-muted' },
+              { titulo: 'Nombre', campo: 'alias' },
+              { titulo: 'Resuelve', campo: 'ambiguo',
+                pinta: v => v
+                  ? '<span class="text-telecab-warn"><i class="fa-solid fa-triangle-exclamation"></i> Ambiguo</span>'
+                  : '<span class="text-telecab-green">Sí</span>' },
+            ],
+          },
+        },
+        {
+          titulo: 'Patrón de libranza', icono: 'fa-calendar-week',
+          visible: d => (d.patrones || []).length > 0,
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5 space-y-3';
+            hueco.innerHTML = d.patrones.map(p => `
+              <div class="flex items-center gap-3 flex-wrap">
+                <div class="flex gap-1">
+                  ${[1, 2, 3, 4, 5, 6, 7].map(n => `
+                    <span class="w-7 h-7 rounded-lg text-xs font-semibold flex items-center justify-center
+                      ${p.dias.includes(n)
+                        ? 'bg-telecab-gold text-telecab-dark'
+                        : 'bg-telecab-card2 text-telecab-muted'}">${DIAS[n]}</span>`).join('')}
+                </div>
+                <span class="text-xs text-telecab-muted">
+                  ${esc(fecha(p.desde))} → ${p.hasta ? esc(fecha(p.hasta)) : 'ahora'}
+                </span>
+              </div>`).join('');
+          },
+        },
+      ],
+    },
+  });
+})();
+</script>

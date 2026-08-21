@@ -75,18 +75,120 @@ app.get('/vehiculos/api/ficha/:id', (req, res) => {
   });
 });
 
-app.get('/vehiculos', (req, res) => {
-  const locals = {
-    titulo: 'Vehículos', seccion: 'vehiculos', rol: 'superadmin',
-    usuario: { nombre: 'Banco', apellidos: 'Pruebas', email: 'a@b.c' }, tema: 'dark', v: 'test',
-    estadosVehiculo: ESTADOS, zonas: ZONAS,
-  };
+// Pinta una vista dentro del layout, igual que lo hara Express.
+function pintar(res, vista, extra) {
   const V = path.join(__dirname, '..', 'views');
-  const body = ejs.render(fs.readFileSync(path.join(V, 'vehiculos.ejs'), 'utf8'),
-    locals, { filename: path.join(V, 'vehiculos.ejs') });
+  const locals = {
+    rol: 'superadmin', tema: 'dark', v: 'test',
+    usuario: { nombre: 'Banco', apellidos: 'Pruebas', email: 'a@b.c' },
+    est: ruta => ruta + '?v=test',
+    ...extra,
+  };
+  const body = ejs.render(fs.readFileSync(path.join(V, vista + '.ejs'), 'utf8'),
+    locals, { filename: path.join(V, vista + '.ejs') });
   res.send(ejs.render(fs.readFileSync(path.join(V, 'layout-gestion.ejs'), 'utf8'),
     { ...locals, body }, { filename: path.join(V, 'layout-gestion.ejs') }));
+}
+
+app.get('/vehiculos', (req, res) => pintar(res, 'vehiculos', {
+  titulo: 'Vehículos', seccion: 'vehiculos', estadosVehiculo: ESTADOS, zonas: ZONAS,
+}));
+
+// -- Conductores -----------------------------------------------------------
+const SITUACIONES = [
+  { codigo: 'activo',      etiqueta: 'Activo',      es_ausencia: false },
+  { codigo: 'vacaciones',  etiqueta: 'Vacaciones',  es_ausencia: true },
+  { codigo: 'baja_medica', etiqueta: 'Baja médica', es_ausencia: true },
+];
+const TURNOS = [{ id: 1, codigo: 'dia', etiqueta: 'Día' }, { id: 2, codigo: 'noche', etiqueta: 'Noche' }];
+
+const GENTE = [
+  { id: 10, nombre: 'Ana', apellidos: 'García Ruiz', nombre_ss: 'GARCIA RUIZ ANA',
+    dni_tipo: 'DNI', dni_nie: '12345678Z', nacionalidad: 'España', email: 'ana@telecab.es',
+    empleo_tipo: 'propia', ett_nombre: null, alta: '2023-02-01', baja: null,
+    antiguedad: '2023-02-01', anios: 3.5, situacion: 'activo', situacion_etiqueta: 'Activo',
+    ausente: false, situacion_desde: '2023-02-01', hasta_previsto: null,
+    turno_id: 1, turno: 'Día', telefono: '+34600111222', bolt_id: '884411', bolt_estado: 'active',
+    matricula: '3031LTV', vehiculo_id: 1, rol: 'titular', zona: 'Norte', libranzas: 'S D',
+    direccion: 'Calle Mayor 3, 28002 Madrid', naf: '281234567840', legajo: 'A-104',
+    fecha_nacimiento: '1990-06-12' },
+  { id: 11, nombre: 'Luis', apellidos: 'Pérez Soto', nombre_ss: null,
+    dni_tipo: 'NIE', dni_nie: 'X1234567L', nacionalidad: 'Colombia', email: null,
+    empleo_tipo: 'ett', ett_nombre: 'Randstad', alta: '2026-07-15', baja: null,
+    antiguedad: '2026-07-15', anios: 0.1, situacion: 'activo', situacion_etiqueta: 'Activo',
+    ausente: false, situacion_desde: '2026-07-15', hasta_previsto: null,
+    turno_id: 2, turno: 'Noche', telefono: '+34600333444', bolt_id: null, bolt_estado: null,
+    matricula: null, vehiculo_id: null, rol: null, zona: null, libranzas: null,
+    direccion: null, naf: null, legajo: null, fecha_nacimiento: '1995-01-30' },
+  { id: 12, nombre: 'Marta', apellidos: 'Ibáñez Lara', nombre_ss: 'IBANEZ LARA MARTA',
+    dni_tipo: 'DNI', dni_nie: '87654321X', nacionalidad: 'España', email: 'marta@telecab.es',
+    empleo_tipo: 'propia', ett_nombre: null, alta: '2021-09-01', baja: null,
+    antiguedad: '2019-04-01', anios: 7.4, situacion: 'baja_medica', situacion_etiqueta: 'Baja médica',
+    ausente: true, situacion_desde: '2026-08-01', hasta_previsto: null,
+    turno_id: 1, turno: 'Día', telefono: '+34600555666', bolt_id: '884412', bolt_estado: 'deactivated',
+    matricula: '1234ABC', vehiculo_id: 3, rol: 'titular', zona: 'Norte', libranzas: 'L M',
+    direccion: 'Avenida Sur 12, 28100 Alcobendas', naf: '289876543210', legajo: 'A-077',
+    fecha_nacimiento: '1988-11-02' },
+];
+
+// Los faltantes se calculan con la MISMA funcion del repositorio: si cambia la
+// regla, el banco cambia con ella y no miente.
+const { faltantesDe } = require('../services/repo/conductores');
+const conFaltan = GENTE.map(p => ({
+  ...p, faltan: faltantesDe(p), nombre_completo: p.apellidos + ', ' + p.nombre,
+}));
+
+app.get('/conductores/api/lista', (req, res) => res.json({
+  filas: conFaltan,
+  resumen: {
+    porSituacion: SITUACIONES
+      .map(s => ({ ...s, personas: conFaltan.filter(p => p.situacion === s.codigo).length }))
+      .filter(s => s.personas),
+    porTipo: [{ tipo: 'propia', personas: 2 }, { tipo: 'ett', personas: 1 }],
+    huecos: { sin_bolt: 1, sin_telefono: 0, sin_dni: 0, sin_coche: 1 },
+  },
+}));
+
+app.get('/conductores/api/ficha/:id', (req, res) => {
+  const p = conFaltan.find(x => String(x.id) === req.params.id);
+  if (!p) return res.status(404).json({ status: 'error', msg: 'No existe ese conductor' });
+  res.json({
+    ...p,
+    telefonos: p.telefono
+      ? [{ e164: p.telefono, origen: 'bolt', principal: true, vigente_desde: '2024-01-01', vigente_hasta: null }]
+      : [],
+    cuentas: p.bolt_id
+      ? [{ sistema: 'bolt', externo_id: p.bolt_id, externo_nombre: p.nombre + ' ' + p.apellidos,
+           estado_externo: p.bolt_estado, visto_desde: '2024-01-01', visto_hasta: null }]
+      : [],
+    empleos: [{ tipo: p.empleo_tipo, ett_nombre: p.ett_nombre, alta: p.alta, baja: null,
+                fecha_antiguedad: p.antiguedad, motivo_baja: null }],
+    situaciones: [{ estado: p.situacion, etiqueta: p.situacion_etiqueta,
+                    desde: p.situacion_desde, hasta: null, motivo: null }],
+    turnos: [{ turno_id: p.turno_id, etiqueta: p.turno, desde: p.alta, hasta: null, origen: 'migracion' }],
+    coches: p.matricula
+      ? [{ id: 1, matricula: p.matricula, turno: p.turno, rol: p.rol, zona: p.zona,
+           desde: '2025-01-01', hasta: null }]
+      : [],
+    alias: [
+      { tipo: 'bolt_nombre', alias: p.nombre + ' ' + p.apellidos, ambiguo: false, vigente: true },
+      { tipo: 'ss_nombre', alias: p.nombre_ss || '', ambiguo: false, vigente: true },
+    ].filter(a => a.alias),
+    // `patrones`, no `libranzas`: el repositorio los separa a proposito para
+    // que la lista de patrones no pise el texto legible ('L M') del listado.
+    patrones: p.libranzas
+      ? [{ id: 1, desde: p.alta, hasta: null,
+           dias: p.libranzas.split(' ').map(d => 'LMXJVSD'.indexOf(d) + 1) }]
+      : [],
+  });
 });
 
-app.get('/', (req, res) => res.redirect('/vehiculos'));
-app.listen(4599, () => console.log('Banco de pruebas en http://localhost:4599/vehiculos'));
+app.get('/conductores', (req, res) => pintar(res, 'conductores', {
+  titulo: 'Conductores', seccion: 'conductores',
+  catalogos: { situaciones: SITUACIONES, turnos: TURNOS,
+               tipos: [{ codigo: 'propia', etiqueta: 'Plantilla propia' },
+                       { codigo: 'ett', etiqueta: 'ETT' }] },
+}));
+
+app.get('/', (req, res) => res.redirect('/conductores'));
+app.listen(4599, () => console.log('Banco: http://localhost:4599/vehiculos y /conductores'));

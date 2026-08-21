@@ -34,11 +34,11 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="/assets/css/telecab.css">
+  <link rel="stylesheet" href="<%= typeof est === 'function' ? est('/assets/css/telecab.css') : '/assets/css/telecab.css' %>">
 
   <!-- Componentes compartidos. Se cargan aqui, ANTES del cuerpo, porque cada
        modulo los invoca desde su propio bloque de codigo en linea. -->
-  <script src="/assets/js/listado.js?v=<%= typeof v !== 'undefined' ? v : '' %>"></script>
+  <script src="<%= typeof est === 'function' ? est('/assets/js/listado.js') : '/assets/js/listado.js' %>"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -185,6 +185,7 @@
           { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'oficina', items: [
             { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' },
             { href: '/administracion', icono: 'fa-gas-pump',         texto: 'Administración', id: 'administracion' },
+            { href: '/conductores',   icono: 'fa-id-card',          texto: 'Conductores',    id: 'conductores' },
             { href: '/plantilla',      icono: 'fa-address-book',     texto: 'Plantilla',      id: 'plantilla' },
             { href: '/ticketera',      icono: 'fa-ticket',          texto: 'Ticketera RRHH', id: 'ticketera' },
             { href: '/reportes',       icono: 'fa-file-lines',      texto: 'Reportes',       id: 'reportes' },
@@ -201,7 +202,10 @@
           ] },
           { nombre: 'Flota', icono: 'fa-car-side', rol: 'trafico', items: [
             { href: '/matching',  icono: 'fa-location-dot', texto: 'Matching',  id: 'matching' },
-            { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' }
+            { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' },
+            // La MISMA pantalla que ve RRHH. Aparece en los dos departamentos
+            // porque los dos la necesitan, no porque haya dos pantallas.
+            { href: '/conductores', icono: 'fa-id-card',    texto: 'Conductores', id: 'conductores' }
           ] },
           { nombre: 'Operaciones', icono: 'fa-triangle-exclamation', rol: 'trafico', items: [
             { href: '/operaciones', icono: 'fa-tower-broadcast', texto: 'Alertas Mapon', id: 'operaciones' },
