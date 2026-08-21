@@ -24,7 +24,7 @@ async function calcular() {
   const itAbiertos = (ticketsItLista || []).filter(t => t.estado === 'Nuevo' || t.estado === 'En curso');
 
   const rechazadosRRHH = L.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
-  const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT);
+  const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT || t.estado === ESTADOS.LISTO_RRHH);
   const pendientesPin = L.filter(t => t.estado === ESTADOS.PENDIENTE_PIN);
   const petPendientes = (peticiones || []).filter(p => p.estado === 'Pendiente');
   // Incorporaciones recién llegadas a Tráfico (deciden Aceptar / Asignar manual).

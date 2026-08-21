@@ -35,7 +35,7 @@ router.get('/api/datos', async (req, res) => {
               doc_bancario, doc_seg_social, doc_penales, ficha_pdf, ...campos } = t;
       return { ...campos, ett: esETT(t), documentos, ficha_pdf_link: (fp && fp.link) || '' };
     };
-    const porTramitar = lista.filter(t => t.estado === ESTADOS.APROBADO_BOLT).map(preparar);
+    const porTramitar = lista.filter(t => t.estado === ESTADOS.APROBADO_BOLT || t.estado === ESTADOS.LISTO_RRHH).map(preparar);
     const altas = lista.filter(t => t.estado === ESTADOS.ALTA).map(preparar);
     const noAlta = lista.filter(t => t.estado === ESTADOS.NO_ALTA).map(preparar);
     res.json({

@@ -50,7 +50,6 @@ router.get('/api/datos', async (req, res) => {
     ETAPAS_CANDIDATURA.forEach(e => { porEtapa[e] = []; });
     enFunnel.forEach(t => porEtapa[t.estado].push(t));
 
-    const pendienteBolt = lista.filter(t => t.estado === ESTADOS.PENDIENTE_BOLT).length;
     const descartados = lista.filter(t => t.estado === ESTADOS.DESCARTADO).length;
     // Fichas que RRHH devolvió a Selección, con su motivo, para revisarlas.
     const rechazadosRRHH = lista.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
@@ -60,8 +59,7 @@ router.get('/api/datos', async (req, res) => {
       porEtapa, rechazadosRRHH,
       contadores: {
         funnel: enFunnel.length,
-        porEtapa: ETAPAS_CANDIDATURA.reduce((a, e) => (a[e] = porEtapa[e].length, a), {}),
-        pendienteBolt, descartados, rechazadosRRHH: rechazadosRRHH.length
+        porEtapa: ETAPAS_CANDIDATURA.reduce((a, e) => (a[e] = porEtapa[e].length, a), {}), descartados, rechazadosRRHH: rechazadosRRHH.length
       }
     });
   } catch (error) {

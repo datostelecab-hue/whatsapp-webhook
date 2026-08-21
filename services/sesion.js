@@ -24,7 +24,7 @@ if (!SECRET) {
 // que no esté aquí es compartido (cualquier usuario autenticado): Pendientes,
 // Peticiones, Bitácora, Configuración, Visor, Notificaciones, Documentos…
 const ACCESO = {
-  '/vacantes': ['oficina'], '/seleccion': ['oficina'], '/ett': ['oficina'], '/pendientes-bolt': ['oficina'],
+  '/vacantes': ['oficina'], '/seleccion': ['oficina'], '/ett': ['oficina'],
   '/rrhh': ['oficina'], '/administracion': ['oficina'], '/plantilla': ['oficina'], '/fichas': ['oficina'],
   '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'],
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],

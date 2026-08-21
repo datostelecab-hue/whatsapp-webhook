@@ -145,7 +145,10 @@ const ESTADOS = {
   RELEVAMIENTO: 'Relevamiento de datos',
   // Salidas:
   DESCARTADO: 'Descartado',
-  PENDIENTE_BOLT: 'Pendiente en BOLT',   // enviado a BOLT, esperando aprobación
+  // OBSOLETO (agosto 2026): ya no se espera la aprobacion de BOLT. Se conserva
+  // solo para que las fichas que se quedaron en este estado sigan legibles.
+  PENDIENTE_BOLT: 'Pendiente en BOLT',
+  LISTO_RRHH: 'Listo para RRHH',         // acabado el relevamiento, pasa directo
   APROBADO_BOLT: 'Aprobado en BOLT',     // el padrón lo detectó → alerta a RRHH
   RECHAZADO_BOLT: 'Rechazado en BOLT',   // BOLT lo rechazó (marcado a mano)
   PENDIENTE_PIN: 'Pendiente de alta en Ballenoil',  // RRHH ya dio el alta; Administración debe crear el PIN de Ballenoil
@@ -357,14 +360,15 @@ async function enviarABolt(tel) {
     return t;
   }
 
-  // Conductor NUEVO en BOLT: hace falta el link de alta y esperar la aprobación.
-  if (!t.link_bolt) {
-    throw new Error('Falta el link de alta de BOLT (o que el conductor ya esté en el histórico)');
-  }
-  t.estado = ESTADOS.PENDIENTE_BOLT;
-  t.etapa = ETAPAS.BOLT;
+  // Conductor NUEVO en BOLT: TAMPOCO se espera. Pasa directo a RRHH sin cuenta.
+  // El enlace con BOLT se hace despues desde el cazamiento, cuando alguien elija
+  // su ID entre los libres: esperar bloqueaba la contratacion sin motivo, y los
+  // ETT entran antes de existir en BOLT.
+  t.estado = ESTADOS.LISTO_RRHH;
+  t.etapa = ETAPAS.RRHH;
   t.fecha_apto = ahora();
   await guardarTodos(porTel, filas);
+  await marcarVacante(t, VAC.PROCESO);
   return t;
 }
 

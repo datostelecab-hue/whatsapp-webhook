@@ -164,7 +164,7 @@ class Padron {
     const prev = p.externos.get(sistema + '|' + e);
     // Entre varias cuentas del mismo sistema gana la activa.
     if (!prev || (estado === 'active' && prev.estado !== 'active')) {
-      p.externos.set(sistema + '|' + e, { sistema, externo_id: e, nombre: s(nombre), estado });
+      p.externos.set(sistema + '|' + e, { sistema, externo_id: e, nombre: s(nombre), estado, telefono: p._telUltimo || '' });
     }
   }
   telefono(p, e164, origen, activo) {
@@ -198,6 +198,7 @@ class Padron {
     if (!p) { if (!activo) nIna++; continue; }
     P.poner(p, 'BOLT', { nombre, email: nulo(r.EMAIL, 160) });
     P.alias(p, 'bolt_nombre', nombre);
+    p._telUltimo = s(r.PHONE);           // el telefono de ESTA cuenta, para el enlace
     P.externo(p, 'bolt', r.DRIVER_UUID, nombre, estado);
     P.telefono(p, r.PHONE, 'bolt', activo);
     if (activo) nAct++;
@@ -362,11 +363,17 @@ class Padron {
       }
 
       for (const e of p.externos.values()) {
+        // `enlazado_at` NO es opcional: el esquema exige que si hay conductor
+        // haya fecha de enlace. Estos vienen de la carga, no de que alguien los
+        // haya emparejado a mano, y asi queda registrado.
         const ok = await intentar(
-          `INSERT INTO conductor_externo (conductor_id, sistema, externo_id, externo_nombre, estado_externo)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [id, e.sistema, e.externo_id.slice(0, 64), e.nombre.slice(0, 200), e.estado],
-          () => avisos.push(`ID externo repetido: ${e.sistema}/${e.externo_id.slice(0, 8)} (${completo})`));
+          `INSERT INTO conductor_externo
+             (conductor_id, sistema, externo_id, externo_nombre, estado_externo,
+              externo_telefono, enlazado_at, origen_enlace)
+           VALUES ($1,$2,$3,$4,$5,$6,now(),'migracion')`,
+          [id, e.sistema, e.externo_id.slice(0, 64), e.nombre.slice(0, 200), e.estado,
+           (e.telefono || '').slice(0, 20) || null],
+          err => avisos.push(`Cuenta externa no cargada ${e.sistema}/${e.externo_id.slice(0, 8)} (${completo}): ${primeraLinea(err)}`));
         if (ok) nExt++;
       }
 
