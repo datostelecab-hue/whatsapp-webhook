@@ -194,4 +194,41 @@ for (const m of bloqueTipos.matchAll(/(\w+):\s*\{\s*tabla:\s*'([a-z_]+)',\s*enti
 }
 console.log(malVig ? `${malVig} problema(s) en el mapa de vigencias` : 'El mapa de vigencias cuadra con el esquema');
 
-process.exitCode = (fallos || malVig) ? 1 : 0;
+// Y que los campos que la ficha declara editables sean COLUMNAS DE VERDAD y no
+// generadas. Escribir en una columna generada es un error de PostgreSQL, y un
+// campo mal escrito se descubre cuando alguien intenta guardar.
+const cond = require(path.join(__dirname, '..', 'services', 'repo', 'conductores.js'));
+const colsConductor = tablas.get('conductor') || new Set();
+// Las generadas se sacan del propio .sql: llevan GENERATED ALWAYS AS.
+const sqlNucleo = fs.readFileSync(path.join(DIR, '01-nucleo.sql'), 'utf8');
+const generadas = new Set([...sqlNucleo.matchAll(/^\s+([a-z_]+)\s+[A-Z][^\n]*GENERATED ALWAYS AS/gm)].map(m => m[1]));
+
+let malCampos = 0;
+for (const [campo, def] of Object.entries(cond.CAMPOS || {})) {
+  if (!colsConductor.has(campo)) {
+    console.log(`  x campo editable "${campo}": no existe en la tabla conductor`);
+    malCampos++;
+  } else if (generadas.has(campo)) {
+    console.log(`  x campo editable "${campo}": es una columna GENERADA, no se puede escribir`);
+    malCampos++;
+  }
+  if (!def.etiqueta) { console.log(`  x campo "${campo}": sin etiqueta, saldría sin nombre en pantalla`); malCampos++; }
+  if (!def.grupo) { console.log(`  x campo "${campo}": sin grupo`); malCampos++; }
+}
+// Y al revés: columnas que se pueden escribir y nadie declara editables. No es
+// un error —el teléfono, por ejemplo, tiene su propio historial— pero conviene
+// verlas para decidir a conciencia.
+const NO_EDITABLES = new Set([
+  'id', 'es_centinela', 'empleo_vigente', 'creado_at', 'actualizado_at',
+  'iban_cifrado',            // va cifrado, no se toca desde un formulario
+  'pais_codigo', 'pais_nacimiento_codigo',   // los pone el propio país
+]);
+const huerfanas = [...colsConductor].filter(c =>
+  !generadas.has(c) && !NO_EDITABLES.has(c) && !(cond.CAMPOS || {})[c]);
+if (huerfanas.length) console.log(`  · columnas sin declarar editables (a propósito o no): ${huerfanas.join(', ')}`);
+
+console.log(malCampos
+  ? `${malCampos} problema(s) en el mapa de campos editables`
+  : `Los ${Object.keys(cond.CAMPOS || {}).length} campos editables cuadran con la tabla`);
+
+process.exitCode = (fallos || malVig || malCampos) ? 1 : 0;

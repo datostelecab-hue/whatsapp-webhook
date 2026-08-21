@@ -320,34 +320,54 @@ const boltLibres = q => bolt.libres(q);
  * Trafico VE los sensibles y no puede cambiarlos.
  */
 const CAMPOS = {
-  nombre:           { ambito: 'sensible' },
-  apellidos:        { ambito: 'sensible' },
-  nombre_ss:        { ambito: 'sensible' },
-  dni_tipo:         { ambito: 'sensible' },
-  dni_nie:          { ambito: 'sensible' },
-  fecha_nacimiento: { ambito: 'sensible', tipo: 'fecha' },
-  sexo:             { ambito: 'sensible' },
-  estado_civil:     { ambito: 'sensible' },
-  nacionalidad:     { ambito: 'sensible' },
-  naf_provincia:    { ambito: 'sensible' },
-  naf_numero:       { ambito: 'sensible' },
-  naf_control:      { ambito: 'sensible' },
-  legajo:           { ambito: 'sensible' },
-  via_tipo:         { ambito: 'sensible' },
-  via_nombre:       { ambito: 'sensible' },
-  via_numero:       { ambito: 'sensible' },
-  escalera:         { ambito: 'sensible' },
-  piso:             { ambito: 'sensible' },
-  puerta:           { ambito: 'sensible' },
-  localidad:        { ambito: 'sensible' },
-  codigo_postal:    { ambito: 'sensible' },
-  provincia:        { ambito: 'sensible' },
-  pais:             { ambito: 'sensible' },
-  email:            { ambito: 'sensible' },
-  tel_emergencia:   { ambito: 'sensible' },
-  recomendador:     { ambito: 'sensible' },
-  observaciones:    { ambito: 'operativo' },
+  // Identidad
+  nombre:            { grupo: 'Identidad', etiqueta: 'Nombre', ambito: 'sensible' },
+  apellidos:         { grupo: 'Identidad', etiqueta: 'Apellidos', ambito: 'sensible' },
+  nombre_ss:         { grupo: 'Identidad', etiqueta: 'Nombre en la Seguridad Social', ambito: 'sensible',
+                       ayuda: 'Como figura en la Seguridad Social, que no siempre coincide con el de BOLT' },
+  dni_tipo:          { grupo: 'Identidad', etiqueta: 'Tipo de documento', ambito: 'sensible',
+                       tipo: 'lista', opciones: ['DNI', 'NIE', 'Pasaporte', 'Pasaporte/NIE'] },
+  dni_nie:           { grupo: 'Identidad', etiqueta: 'Número de documento', ambito: 'sensible' },
+  fecha_nacimiento:  { grupo: 'Identidad', etiqueta: 'Fecha de nacimiento', ambito: 'sensible', tipo: 'fecha' },
+  sexo:              { grupo: 'Identidad', etiqueta: 'Sexo', ambito: 'sensible',
+                       tipo: 'lista', opciones: ['Hombre', 'Mujer', 'Otro'] },
+  estado_civil:      { grupo: 'Identidad', etiqueta: 'Estado civil', ambito: 'sensible' },
+  nacionalidad:      { grupo: 'Identidad', etiqueta: 'Nacionalidad', ambito: 'sensible' },
+  pais_nacimiento:   { grupo: 'Identidad', etiqueta: 'País de nacimiento', ambito: 'sensible' },
+
+  // Seguridad Social. La gestoría lo maneja en tres piezas y así hay que
+  // devolvérselo: `naf` se recalcula sola al juntarlas.
+  naf_provincia:     { grupo: 'Seguridad Social', etiqueta: 'NAF · provincia', ambito: 'sensible' },
+  naf_numero:        { grupo: 'Seguridad Social', etiqueta: 'NAF · número', ambito: 'sensible' },
+  naf_control:       { grupo: 'Seguridad Social', etiqueta: 'NAF · control', ambito: 'sensible' },
+  legajo:            { grupo: 'Seguridad Social', etiqueta: 'Legajo', ambito: 'sensible',
+                       ayuda: 'El identificador que usa la gestoría en SU sistema, no el nuestro' },
+
+  // Dirección despiezada: el fichero de la gestoría la pide así.
+  via_tipo:          { grupo: 'Dirección', etiqueta: 'Tipo de vía', ambito: 'sensible' },
+  via_nombre:        { grupo: 'Dirección', etiqueta: 'Nombre de la vía', ambito: 'sensible' },
+  via_numero:        { grupo: 'Dirección', etiqueta: 'Número', ambito: 'sensible' },
+  escalera:          { grupo: 'Dirección', etiqueta: 'Escalera', ambito: 'sensible' },
+  piso:              { grupo: 'Dirección', etiqueta: 'Piso', ambito: 'sensible' },
+  puerta:            { grupo: 'Dirección', etiqueta: 'Puerta', ambito: 'sensible' },
+  codigo_postal:     { grupo: 'Dirección', etiqueta: 'Código postal', ambito: 'sensible' },
+  localidad:         { grupo: 'Dirección', etiqueta: 'Localidad', ambito: 'sensible' },
+  provincia:         { grupo: 'Dirección', etiqueta: 'Provincia', ambito: 'sensible' },
+  pais:              { grupo: 'Dirección', etiqueta: 'País', ambito: 'sensible' },
+  lat:               { grupo: 'Dirección', etiqueta: 'Latitud', ambito: 'sensible', tipo: 'numero',
+                       ayuda: 'Sin coordenadas, esta persona no entra en el reparto por zona' },
+  lng:               { grupo: 'Dirección', etiqueta: 'Longitud', ambito: 'sensible', tipo: 'numero' },
+
+  // Contacto. El teléfono principal NO está aquí: tiene historial propio y se
+  // cambia desde su bloque, que además comprueba que no sea de otra persona.
+  email:             { grupo: 'Contacto', etiqueta: 'Correo', ambito: 'sensible' },
+  tel_emergencia:    { grupo: 'Contacto', etiqueta: 'Teléfono de emergencia', ambito: 'sensible' },
+
+  // Interno
+  recomendador:      { grupo: 'Interno', etiqueta: 'Quién le recomendó', ambito: 'sensible' },
+  observaciones:     { grupo: 'Interno', etiqueta: 'Observaciones', ambito: 'operativo', tipo: 'texto-largo' },
 };
+
 
 // Columnas GENERADAS: se calculan solas y no se pueden escribir. Intentarlo es
 // un error de PostgreSQL, no un aviso.
@@ -381,6 +401,16 @@ async function actualizar(id, campos, { usuarioId, rol } = {}) {
   const cols = entradas.map(([k]) => k);
   if (!cols.length) throw new Error('No se ha recibido ningún cambio');
 
+  // Los campos de lista solo aceptan lo que hay en su lista. Que el desplegable
+  // del navegador ya lo limite no basta: la ruta es pública para quien tenga
+  // sesión y esto es lo único que de verdad lo impide.
+  for (const [k, v] of entradas) {
+    const def = CAMPOS[k];
+    if (def && def.opciones && v && !def.opciones.includes(v)) {
+      throw new Error(`"${v}" no vale para ${def.etiqueta}. Opciones: ${def.opciones.join(', ')}`);
+    }
+  }
+
   return db.transaccion(async cli => {
     const antes = (await cli.query('SELECT * FROM conductor WHERE id = $1', [id])).rows[0];
     if (!antes) throw new Error('No existe ese conductor');
@@ -391,7 +421,15 @@ async function actualizar(id, campos, { usuarioId, rol } = {}) {
         WHERE id = $1`,
       [id, ...cols.map(c => {
         const v = campos[c];
-        return v === '' || v === undefined ? null : v;
+        if (v === '' || v === undefined || v === null) return null;
+        // Los numéricos llegan como texto del formulario; PostgreSQL no acepta
+        // '' en una columna NUMERIC y una coma decimal tampoco.
+        if (CAMPOS[c] && CAMPOS[c].tipo === 'numero') {
+          const n = Number(String(v).replace(',', '.'));
+          if (!Number.isFinite(n)) throw new Error(`"${CAMPOS[c].etiqueta}" tiene que ser un número`);
+          return n;
+        }
+        return v;
       })]);
 
     const ahora = (await cli.query('SELECT * FROM conductor WHERE id = $1', [id])).rows[0];
