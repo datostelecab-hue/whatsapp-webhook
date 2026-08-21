@@ -244,40 +244,68 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
     'SELECT id, matricula_norm, matricula FROM vehiculo WHERE baja_at IS NULL'))
     .rows.map(r => [r.matricula_norm, r]));
 
-  const yaEnlazados = new Set((await db.consulta(
-    `SELECT externo_id FROM vehiculo_alias WHERE sistema = 'mapon' AND visto_hasta IS NULL`))
-    .rows.map(r => r.externo_id));
+  // Coches que YA tienen unidad vigente: no se les toca.
+  const yaTienen = new Map((await db.consulta(
+    `SELECT vehiculo_id, externo_id FROM vehiculo_alias
+      WHERE sistema = 'mapon' AND visto_hasta IS NULL`))
+    .rows.map(r => [r.vehiculo_id, r.externo_id]));
 
-  const nuevos = [], sinCoche = [], cambiados = [];
+  // VARIAS unidades con la misma matricula: pasa cuando se cambia el GPS y la
+  // vieja no se da de baja en Mapon. No se elige por nosotros — el odometro
+  // dependeria de cual se leyera la ultima. Se informa y se deja sin enlazar.
+  const porMatricula = new Map();
   for (const [unitId, u] of unidades) {
     const k = norm(u.matricula);
-    const veh = nuestros.get(k);
-    if (!veh) { sinCoche.push({ unitId, matricula: u.matricula, vehiculo: u.vehiculo }); continue; }
-    if (yaEnlazados.has(String(unitId))) continue;
-    nuevos.push({ unitId: String(unitId), vehiculoId: veh.id, matricula: veh.matricula, enMapon: u.matricula });
+    if (!k) continue;
+    if (!porMatricula.has(k)) porMatricula.set(k, []);
+    porMatricula.get(k).push({ unitId: String(unitId), ...u });
   }
-  const conUnidad = new Set(nuevos.map(n => n.vehiculoId));
-  (await db.consulta(
-    `SELECT v.id, v.matricula FROM vehiculo v WHERE v.baja_at IS NULL
-       AND NOT EXISTS (SELECT 1 FROM vehiculo_alias a
-                        WHERE a.vehiculo_id = v.id AND a.sistema = 'mapon' AND a.visto_hasta IS NULL)`))
-    .rows.forEach(v => { if (!conUnidad.has(v.id)) cambiados.push(v.matricula); });
 
-  if (soloVer) return { nuevos, sinCoche, sinUnidad: cambiados, aplicado: false };
+  const nuevos = [], sinCoche = [], ambiguas = [], yaEnlazados = [];
+  for (const [k, lista] of porMatricula) {
+    const veh = nuestros.get(k);
+    if (!veh) { lista.forEach(u => sinCoche.push({ unitId: u.unitId, matricula: u.matricula, vehiculo: u.vehiculo })); continue; }
+    if (yaTienen.has(veh.id)) { yaEnlazados.push(veh.matricula); continue; }
+    if (lista.length > 1) {
+      ambiguas.push({
+        matricula: veh.matricula,
+        unidades: lista.map(u => ({ unitId: u.unitId, vehiculo: u.vehiculo, odometroM: u.odometroM, ultimoDato: u.ultimoDato })),
+      });
+      continue;
+    }
+    nuevos.push({ unitId: lista[0].unitId, vehiculoId: veh.id, matricula: veh.matricula, enMapon: lista[0].matricula });
+  }
+
+  const sinUnidad = (await db.consulta(
+    `SELECT v.matricula FROM vehiculo v WHERE v.baja_at IS NULL
+       AND NOT EXISTS (SELECT 1 FROM vehiculo_alias a
+                        WHERE a.vehiculo_id = v.id AND a.sistema = 'mapon' AND a.visto_hasta IS NULL)
+     ORDER BY v.matricula`)).rows
+    .map(v => v.matricula)
+    .filter(m => !nuevos.some(n => n.matricula === m) && !ambiguas.some(a => a.matricula === m));
+
+  if (soloVer) return { nuevos, sinCoche, ambiguas, sinUnidad, yaEnlazados: yaEnlazados.length, aplicado: false };
 
   let creados = 0;
+  const rechazados = [];
   await db.transaccion(async cli => {
     for (const n of nuevos) {
-      const r = await cli.query(
-        `INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula)
-         VALUES ($1, 'mapon', $2, $3)
-         ON CONFLICT (sistema, externo_id, visto_desde) DO NOTHING
-         RETURNING id`,
-        [n.vehiculoId, n.unitId, n.enMapon]);
-      if (r.rowCount) creados++;
+      // Punto de guardado: un choque no puede tumbar los 86 enlaces restantes.
+      await cli.query('SAVEPOINT sp');
+      try {
+        const r = await cli.query(
+          `INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula)
+           VALUES ($1, 'mapon', $2, $3) RETURNING id`,
+          [n.vehiculoId, n.unitId, n.enMapon]);
+        await cli.query('RELEASE SAVEPOINT sp');
+        if (r.rowCount) creados++;
+      } catch (err) {
+        await cli.query('ROLLBACK TO SAVEPOINT sp');
+        rechazados.push(`${n.matricula} (unidad ${n.unitId}): ${String(err.message).split(String.fromCharCode(10))[0]}`);
+      }
     }
   });
-  return { nuevos: creados, sinCoche, sinUnidad: cambiados, aplicado: true };
+  return { nuevos: creados, sinCoche, ambiguas, sinUnidad, yaEnlazados: yaEnlazados.length, rechazados, aplicado: true };
 }
 
 module.exports = {

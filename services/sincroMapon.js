@@ -20,6 +20,14 @@ async function enlazar({ soloVer = false } = {}) {
   if (!unidades.size) throw new Error('Mapon no devolvió ninguna unidad');
   const r = await veh.enlazarMapon(unidades, { soloVer });
   const n = typeof r.nuevos === 'number' ? r.nuevos : r.nuevos.length;
+  if (r.ambiguas.length) {
+    console.warn(`⚠️  [MAPON] ${r.ambiguas.length} matricula(s) con VARIAS unidades: ` +
+      r.ambiguas.map(a => `${a.matricula} → ${a.unidades.map(u => u.unitId).join('/')}`).join(', ') +
+      '. No se enlazan: hay que dar de baja la unidad vieja en Mapon.');
+  }
+  if (r.rechazados && r.rechazados.length) {
+    console.error('❌ [MAPON] Enlaces rechazados: ' + r.rechazados.join(' | '));
+  }
   console.log(`🛰️  [MAPON] Enlaces: ${n} ${soloVer ? 'por crear' : 'creados'} · ` +
     `${r.sinCoche.length} unidad(es) sin coche nuestro · ${r.sinUnidad.length} coche(s) sin unidad`);
   return { ...r, unidades: unidades.size };
