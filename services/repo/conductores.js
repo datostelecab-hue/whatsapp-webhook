@@ -294,16 +294,13 @@ async function catalogos() {
  * Las cuentas de BOLT sin dueño, para el enlace manual. Es la lista que se
  * ofrece frente a los conductores que están "pendientes de asignar id".
  */
-async function boltLibres() {
-  // Sale de `v_bolt_libres`, no de una consulta propia: la vista ya decide qué
-  // cuenta cuenta como libre (sin dueño Y activa). Repetir esa condición aquí
-  // era la forma de que un día dejaran de coincidir.
-  const r = await db.consulta(
-    `SELECT driver_uuid AS externo_id, nombre_en_bolt AS externo_nombre,
-            externo_telefono, externo_email, estado_externo, visto_desde, visto_at
-       FROM v_bolt_libres ORDER BY nombre_en_bolt`);
-  return r.rows;
-}
+// El cazamiento con BOLT vive entero en `services/cazamientoBolt.js`, que ya
+// tenía libres/enlazar/desenlazar antes de que existiera este repositorio. Aquí
+// solo se reexporta para que la pantalla tenga una única puerta de entrada;
+// escribir una segunda versión fue un error y duraron poco.
+const bolt = require('../cazamientoBolt');
+
+const boltLibres = q => bolt.libres(q);
 
 // ============================================================
 // ESCRITURA
@@ -467,49 +464,28 @@ async function guardarLibranza(id, dias, { desde, usuarioId } = {}) {
 }
 
 /**
- * Enlaza una cuenta de BOLT libre con un conductor.
+ * Enlaza una cuenta de BOLT. Delega en el cazamiento y añade la constancia en
+ * la ficha, que es lo propio de este módulo.
  *
- * Es manual a propósito: hay homónimos reales y el cruce automático por nombre
- * es justamente lo que se quiso desterrar.
+ * `cuentaId` es el id de la fila que da `v_bolt_libres`.
  */
-async function enlazarBolt(id, externoId, { usuarioId } = {}) {
-  return db.transaccion(async cli => {
-    const cuenta = (await cli.query(
-      `SELECT id, conductor_id, externo_nombre FROM conductor_externo
-        WHERE sistema = 'bolt' AND externo_id = $1`, [String(externoId)])).rows[0];
-    if (!cuenta) throw new Error(`La cuenta de BOLT "${externoId}" no existe`);
-    if (cuenta.conductor_id && cuenta.conductor_id !== Number(id)) {
-      throw new Error('Esa cuenta de BOLT ya está asignada a otra persona');
-    }
-    await cli.query(
-      `UPDATE conductor_externo
-          SET conductor_id = $2, enlazado_at = now(),
-              enlazado_por = $3, origen_enlace = 'manual'
-        WHERE id = $1`,
-      [cuenta.id, id, usuarioId || null]);
-    await audit.registrar({
-      tabla: 'conductor', id, usuarioId, cli,
-      cambios: [{ campo: 'cuenta_bolt', antes: null, ahora: String(externoId) }],
-    });
-    return { externoId: String(externoId), nombreEnBolt: cuenta.externo_nombre };
+async function enlazarBolt(id, cuentaId, { usuarioId } = {}) {
+  const r = await bolt.enlazar({ cuentaId, conductorId: id, usuarioId });
+  await audit.registrar({
+    tabla: 'conductor', id, usuarioId,
+    cambios: [{ campo: 'cuenta_bolt', antes: null, ahora: r.externo_id }],
   });
+  return { externoId: r.externo_id, nombreEnBolt: r.externo_nombre };
 }
 
-/** Suelta la cuenta de BOLT: vuelve a la bolsa de IDs libres. */
-async function soltarBolt(id, externoId, { usuarioId } = {}) {
-  return db.transaccion(async cli => {
-    const r = await cli.query(
-      `UPDATE conductor_externo
-          SET conductor_id = NULL, enlazado_at = NULL, enlazado_por = NULL
-        WHERE sistema = 'bolt' AND externo_id = $1 AND conductor_id = $2
-        RETURNING id`, [String(externoId), id]);
-    if (!r.rowCount) throw new Error('Esa cuenta no está enlazada con esta persona');
-    await audit.registrar({
-      tabla: 'conductor', id, usuarioId, cli,
-      cambios: [{ campo: 'cuenta_bolt', antes: String(externoId), ahora: null }],
-    });
-    return true;
+/** Suelta la cuenta: vuelve a la bolsa de IDs libres. */
+async function soltarBolt(id, cuentaId, { usuarioId } = {}) {
+  const r = await bolt.desenlazar({ cuentaId, usuarioId });
+  await audit.registrar({
+    tabla: 'conductor', id, usuarioId,
+    cambios: [{ campo: 'cuenta_bolt', antes: r.externo_id, ahora: null }],
   });
+  return true;
 }
 
 /** Añade o sustituye el teléfono principal. */

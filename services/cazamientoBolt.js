@@ -84,35 +84,71 @@ async function pendientes({ soloEmpleados = true } = {}) {
 /**
  * Enlaza una cuenta con un conductor. Lo hace una persona, con su nombre.
  * Falla si la cuenta ya está enlazada: deshacer es un paso aparte y consciente.
+ *
+ * `cuentaId` es el id de la FILA de conductor_externo (el que trae la vista
+ * v_bolt_libres), no el driver_uuid de BOLT. Antes se llamaba `externoId` y
+ * eso invitaba a pasarle el uuid, que no habría encontrado nada.
  */
-async function enlazar({ externoId, conductorId, usuarioId }) {
-  if (!externoId || !conductorId) throw new Error('Faltan la cuenta o el conductor');
+async function enlazar({ cuentaId, conductorId, usuarioId }) {
+  if (!cuentaId || !conductorId) throw new Error('Faltan la cuenta o el conductor');
   const r = await db.consulta(
     `UPDATE conductor_externo
         SET conductor_id = $2, enlazado_at = now(), enlazado_por = $3, origen_enlace = 'manual'
       WHERE id = $1 AND sistema = 'bolt' AND conductor_id IS NULL
       RETURNING externo_id, externo_nombre`,
-    [externoId, conductorId, usuarioId || null]);
+    [cuentaId, conductorId, usuarioId || null]);
   if (!r.rowCount) throw new Error('Esa cuenta no existe o ya está enlazada con alguien');
   return r.rows[0];
 }
 
 /** Deshace un enlace equivocado. La cuenta vuelve a la lista de libres. */
-async function desenlazar({ externoId, usuarioId }) {
+async function desenlazar({ cuentaId, usuarioId }) {
   const r = await db.consulta(
     `UPDATE conductor_externo
         SET conductor_id = NULL, enlazado_at = NULL, enlazado_por = $2
       WHERE id = $1 AND sistema = 'bolt' AND conductor_id IS NOT NULL
       RETURNING externo_id`,
-    [externoId, usuarioId || null]);
+    [cuentaId, usuarioId || null]);
   if (!r.rowCount) throw new Error('Esa cuenta no está enlazada');
   return r.rows[0];
+}
+
+/**
+ * Cuentas libres con dueño PROPUESTO por el teléfono.
+ *
+ * El teléfono sí identifica: es obligatorio en la ficha de contratación y la
+ * cuenta de BOLT se da de alta con ese mismo número. Sigue enlazando una
+ * persona — esto solo evita tener que buscar a mano entre cientos de nombres.
+ */
+async function sugerencias({ soloEmpleados = true } = {}) {
+  return (await db.consulta(
+    `SELECT * FROM v_bolt_sugerencia
+      WHERE ($1 = FALSE OR empleo_vigente)
+      ORDER BY coincide_nombre DESC, quien`, [soloEmpleados])).rows;
+}
+
+/**
+ * Cómo está cada persona respecto a BOLT. Distingue lo que hasta ahora se veía
+ * igual: "no tiene cuenta enlazada" (papeleo) de "no está dada de alta en BOLT"
+ * (no puede trabajar).
+ */
+async function altaEnBolt({ soloEmpleados = true, situacion } = {}) {
+  return (await db.consulta(
+    `SELECT * FROM v_conductor_alta_bolt
+      WHERE ($1 = FALSE OR empleo_vigente)
+        AND ($2::text IS NULL OR situacion_bolt = $2)
+      ORDER BY situacion_bolt, quien`, [soloEmpleados, situacion || null])).rows;
 }
 
 /** Resumen para el panel. */
 async function estado() {
   const q = await db.consulta(`SELECT
     (SELECT count(*) FROM v_bolt_libres)                                        libres,
+    (SELECT count(*) FROM v_bolt_sugerencia WHERE empleo_vigente)                sugeridas,
+    (SELECT count(*) FROM v_conductor_alta_bolt
+      WHERE empleo_vigente AND situacion_bolt = 'no_esta_en_bolt')               sin_alta_bolt,
+    (SELECT count(*) FROM v_conductor_alta_bolt
+      WHERE empleo_vigente AND situacion_bolt = 'sin_telefono')                  sin_telefono,
     (SELECT count(*) FROM v_conductor_sin_bolt WHERE empleo_vigente)            pendientes,
     (SELECT count(*) FROM v_conductor_sin_bolt WHERE empleo_vigente AND es_ett) pendientes_ett,
     (SELECT count(*) FROM conductor_externo
@@ -121,4 +157,26 @@ async function estado() {
   return q.rows[0];
 }
 
-module.exports = { sincronizar, libres, pendientes, enlazar, desenlazar, estado };
+/**
+ * Pregunta a BOLT quién hay y actualiza el inventario.
+ *
+ * Es lo que hace que existan "IDs de BOLT libres": la carga inicial creó cada
+ * cuenta ya pegada a una persona, así que sin esta pasada la lista de libres
+ * está vacía y no hay nada que enlazar.
+ *
+ * NO enlaza a nadie. Solo actualiza qué cuentas existen y en qué estado.
+ */
+async function sincronizarDesdeBolt() {
+  const { traerDriversBolt } = require('./conductoresBolt');
+  const porUuid = await traerDriversBolt();
+  const cuentas = [...porUuid.values()];
+  const r = await sincronizar(cuentas);
+  console.log(`🔗 [BOLT] Inventario: ${r.vistas} cuentas · ${r.nuevas} nuevas · ` +
+              `${r.cambiadas} con otro estado · ${r.desaparecidas} ya no están`);
+  return r;
+}
+
+module.exports = {
+  sincronizar, sincronizarDesdeBolt, libres, pendientes, sugerencias, altaEnBolt,
+  enlazar, desenlazar, estado,
+};

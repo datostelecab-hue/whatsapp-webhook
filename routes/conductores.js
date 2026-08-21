@@ -18,6 +18,7 @@ const con = require('../services/repo/conductores');
 const docs = require('../services/repo/documentos');
 const audit = require('../services/repo/auditoria');
 const actor = require('../services/repo/actor');
+const bolt = require('../services/cazamientoBolt');
 
 // Los archivos llegan en base64 dentro del JSON. El parser global es de 2 MB y
 // un DNI escaneado se pasa de largo, asi que aqui va su propio limite.
@@ -85,9 +86,27 @@ router.get('/api/ficha/:id', async (req, res) => {
 
 // Cuentas de BOLT sin dueño: es la lista que se ofrece para enlazar a mano.
 router.get('/api/bolt-libres', async (req, res) => {
-  try { res.json({ cuentas: await con.boltLibres() }); }
+  try { res.json({ cuentas: await con.boltLibres(req.query.q) }); }
   catch (error) { res.status(500).json({ status: 'error', msg: error.message }); }
 });
+
+// Cuentas libres con dueño propuesto POR EL TELÉFONO. Es lo que convierte el
+// enlace en un clic en vez de buscar a mano entre cientos de nombres.
+router.get('/api/bolt-sugerencias', responde(async req =>
+  ({ sugerencias: await bolt.sugerencias({ soloEmpleados: req.query.todos !== '1' }) })));
+
+// Cómo está cada persona respecto a BOLT: enlazada, en BOLT sin enlazar, sin
+// teléfono, o directamente sin dar de alta.
+router.get('/api/alta-bolt', responde(async req =>
+  ({ conductores: await bolt.altaEnBolt({
+    soloEmpleados: req.query.todos !== '1', situacion: req.query.situacion,
+  }) })));
+
+router.get('/api/bolt-estado', responde(async () => ({ estado: await bolt.estado() })));
+
+// Pregunta a BOLT quién hay y actualiza el inventario. Sin esta pasada no hay
+// cuentas libres: la carga inicial creó cada una ya pegada a una persona.
+router.post('/api/bolt/sincronizar', responde(async () => bolt.sincronizarDesdeBolt()));
 
 router.get('/api/catalogos', async (req, res) => {
   try { res.json(await con.catalogos()); }
@@ -122,11 +141,13 @@ router.post('/api/conductor/:id/libranza', responde(async req =>
 router.post('/api/conductor/:id/telefono', responde(async req =>
   ({ telefono: await con.guardarTelefono(Number(req.params.id), (req.body || {}).e164, await quien(req)) })));
 
+// `cuentaId` es el id de la FILA de conductor_externo, el que dan v_bolt_libres
+// y v_bolt_sugerencia. No es el driver_uuid: ese identifica en BOLT, no aquí.
 router.post('/api/conductor/:id/bolt', responde(async req =>
-  con.enlazarBolt(Number(req.params.id), (req.body || {}).externoId, await quien(req))));
+  con.enlazarBolt(Number(req.params.id), (req.body || {}).cuentaId, await quien(req))));
 
-router.delete('/api/conductor/:id/bolt/:externoId', responde(async req =>
-  ({ soltada: await con.soltarBolt(Number(req.params.id), req.params.externoId, await quien(req)) })));
+router.delete('/api/conductor/:id/bolt/:cuentaId', responde(async req =>
+  ({ soltada: await con.soltarBolt(Number(req.params.id), Number(req.params.cuentaId), await quien(req)) })));
 
 router.post('/api/conductor/:id/alta', responde(async req =>
   ({ periodoId: await con.darDeAlta(Number(req.params.id), req.body || {}, await quien(req)) })));

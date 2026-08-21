@@ -192,20 +192,74 @@
   }
 
   async function accionBolt(d) {
-    let libres = [];
-    try { libres = (await api('/conductores/api/bolt-libres')).cuentas || []; }
-    catch (e) { return alert(e.message); }
-    if (!libres.length) return alert('No hay ninguna cuenta de BOLT libre.');
+    let sugeridas = [], libres = [], estado = {};
+    try {
+      [sugeridas, libres, estado] = await Promise.all([
+        api('/conductores/api/bolt-sugerencias').then(r => r.sugerencias || []),
+        api('/conductores/api/bolt-libres').then(r => r.cuentas || []),
+        api('/conductores/api/bolt-estado').then(r => r.estado || {}),
+      ]);
+    } catch (e) { return alert(e.message); }
+
+    // La propuesta para ESTA persona: la cuenta cuyo teléfono es el suyo.
+    const mia = sugeridas.find(x => Number(x.conductor_id) === Number(d.id));
+
+    if (mia) {
+      const ok = confirm(
+        `En BOLT hay una cuenta con SU MISMO teléfono:\n\n` +
+        `  ${mia.nombre_en_bolt || '(sin nombre)'}\n` +
+        `  ${mia.externo_telefono}\n` +
+        `  estado: ${mia.estado_externo}\n\n` +
+        (mia.coincide_nombre
+          ? 'El nombre también coincide.\n\n'
+          : 'El nombre NO coincide exactamente, pero el teléfono sí. Compruébalo.\n\n') +
+        '¿Enlazar esta cuenta?');
+      if (ok) {
+        await hacer(() => enviar(`/conductores/api/conductor/${d.id}/bolt`, 'POST', { cuentaId: mia.cuenta_id }));
+        return;
+      }
+    }
+
+    if (!libres.length) {
+      // El mensaje explica POR QUÉ no hay ninguna, que es lo que faltaba: casi
+      // siempre es que nadie ha traído todavía el padrón de BOLT.
+      const ultima = estado.ultima_consulta
+        ? `La última consulta a BOLT fue el ${fecha(estado.ultima_consulta)}.`
+        : 'Nunca se ha consultado el padrón de BOLT desde aquí.';
+      return alert(
+        'No hay ninguna cuenta de BOLT libre.\n\n' + ultima + '\n\n' +
+        `Enlazadas: ${estado.enlazadas || 0} · sin dar de alta en BOLT: ${estado.sin_alta_bolt || 0}\n\n` +
+        'Si falta gente, hay que traer el padrón: es el botón "Traer de BOLT" de la cabecera.');
+    }
 
     const v = await pedirDatos(`Enlazar cuenta de BOLT a ${d.nombre_completo}`, [
-      { id: 'externoId', etiqueta: 'Cuenta', tipo: 'lista',
+      { id: 'cuentaId', etiqueta: 'Cuenta', tipo: 'lista',
         opciones: libres.map(c => ({
-          valor: c.externo_id,
-          texto: `${c.externo_nombre || '(sin nombre)'}${c.externo_telefono ? ' · ' + c.externo_telefono : ''}`,
+          valor: c.id,
+          texto: `${c.nombre_en_bolt || '(sin nombre)'}${c.externo_telefono ? ' · ' + c.externo_telefono : ''}`,
         })) },
-    ], { nota: 'Se elige a mano a propósito: hay homónimos reales y cruzar por nombre es justo lo que se quiso desterrar.' });
+    ], { nota: 'Ninguna cuenta libre tiene el teléfono de esta persona, así que hay que elegirla a mano. Comprueba de quién es antes: una cuenta mal enlazada le imputa las horas a otro.' });
     if (!v) return;
     await hacer(() => enviar(`/conductores/api/conductor/${d.id}/bolt`, 'POST', v));
+  }
+
+  /** Trae el padrón de BOLT y cuenta cuántas propuestas salen. */
+  async function traerDeBolt() {
+    if (!confirm('Preguntar a BOLT qué cuentas existen y actualizar el inventario.\n\n' +
+                 'NO enlaza a nadie: solo deja la lista al día para poder enlazar.\n\n¿Seguir?')) return;
+    try {
+      const r = await enviar('/conductores/api/bolt/sincronizar', 'POST');
+      const e = await api('/conductores/api/bolt-estado').then(x => x.estado || {});
+      alert(
+        `${r.vistas} cuentas en BOLT · ${r.nuevas} nuevas · ${r.cambiadas} con otro estado\n\n` +
+        `Libres para enlazar: ${e.libres || 0}\n` +
+        `Con dueño propuesto por el teléfono: ${e.sugeridas || 0}\n` +
+        `Personas SIN dar de alta en BOLT: ${e.sin_alta_bolt || 0}\n` +
+        `Personas sin teléfono en la ficha: ${e.sin_telefono || 0}`);
+      await plantilla.recargar();
+    } catch (e) {
+      alert('BOLT: ' + e.message);
+    }
   }
 
   async function accionDatos(d) {
@@ -310,6 +364,10 @@
           pie: `${h.sin_bolt || 0} sin BOLT · ${h.sin_telefono || 0} sin teléfono` },
       ];
     },
+
+    acciones: [
+      { texto: 'Traer de BOLT', icono: 'fa-rotate', principal: false, onClick: traerDeBolt },
+    ],
 
     filtros: [
       {

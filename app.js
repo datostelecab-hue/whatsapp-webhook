@@ -387,6 +387,18 @@ programar('10,40 * * * *', async () => {
   }
 });
 
+// Inventario de cuentas de BOLT: cada dia a las 05:00, antes que el resto.
+// NO enlaza a nadie; solo mantiene al dia que cuentas existen y en que estado.
+// Sin esta pasada la lista de "IDs de BOLT libres" esta siempre vacia, porque
+// la carga inicial creo cada cuenta ya pegada a una persona.
+programar('0 5 * * *', async () => {
+  try {
+    await require('./services/cazamientoBolt').sincronizarDesdeBolt();
+  } catch (error) {
+    console.error(`⚠️  [CRON BOLT] ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // Odometros de Mapon: cada dia a las 05:30. Enlaza los coches nuevos y
 // refresca el kilometraje. Es la MISMA llamada a unit/list.json que ya se
 // hacia para otras cosas, asi que no anade carga a la API.
