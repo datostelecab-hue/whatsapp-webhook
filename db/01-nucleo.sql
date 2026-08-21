@@ -85,24 +85,64 @@ CREATE TABLE base_zona (
 CREATE TABLE conductor (
   id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   es_centinela      BOOLEAN       NOT NULL DEFAULT FALSE,
+
+  -- Identidad
   nombre            VARCHAR(80)   NOT NULL,
   apellidos         VARCHAR(120),
   nombre_ss         VARCHAR(200),
+  dni_tipo          VARCHAR(20),   -- 'Pasaporte/NIE' llega a 13 caracteres en la plantilla real
   dni_nie           VARCHAR(15),
-  naf               VARCHAR(20),
   fecha_nacimiento  DATE,
+  sexo              VARCHAR(10),
+  estado_civil      VARCHAR(30),
   nacionalidad      VARCHAR(60),
-  email             VARCHAR(160),
-  direccion         VARCHAR(255),
-  codigo_postal     VARCHAR(10),
+  pais_nacimiento         VARCHAR(60),
+  pais_nacimiento_codigo  VARCHAR(5),
+
+  -- Seguridad Social: la gestoría lo maneja en tres piezas y así hay que
+  -- devolvérselo. `naf` las junta para poder buscar por el número completo.
+  naf_provincia     VARCHAR(4),
+  naf_numero        VARCHAR(12),
+  naf_control       VARCHAR(2),
+  naf               VARCHAR(20)   GENERATED ALWAYS AS (
+                      COALESCE(naf_provincia,'') || COALESCE(naf_numero,'') || COALESCE(naf_control,'')
+                    ) STORED,
+
+  -- Identificador que usa la gestoría en SU sistema; no es nuestro.
+  legajo            VARCHAR(20),
+
+  -- Dirección DESPIEZADA. El fichero de la gestoría la pide así y su formato no
+  -- se puede cambiar: guardándola como una sola cadena no habría forma de
+  -- reconstruirlo. Juntar es fácil; separar después, no.
+  via_tipo          VARCHAR(20),
+  via_nombre        VARCHAR(120),
+  via_numero        VARCHAR(10),
+  escalera          VARCHAR(10),
+  piso              VARCHAR(10),
+  puerta            VARCHAR(10),
   localidad         VARCHAR(80),
+  codigo_postal     VARCHAR(10),
   provincia         VARCHAR(80),
+  pais              VARCHAR(60),
+  pais_codigo       VARCHAR(5),
+  direccion         VARCHAR(300)  GENERATED ALWAYS AS (
+                      btrim(
+                        COALESCE(via_tipo || ' ', '') || COALESCE(via_nombre, '') ||
+                        COALESCE(' ' || via_numero, '') || COALESCE(', esc. ' || escalera, '') ||
+                        COALESCE(', ' || piso, '') || COALESCE(' ' || puerta, '') ||
+                        COALESCE(', ' || codigo_postal, '') || COALESCE(' ' || localidad, '')
+                      )
+                    ) STORED,
   lat               NUMERIC(9,6),
   lng               NUMERIC(9,6),
-  iban_cifrado      BYTEA,
+
+  -- Contacto y datos internos
+  email             VARCHAR(160),
   tel_emergencia    VARCHAR(20),
+  iban_cifrado      BYTEA,
   recomendador      VARCHAR(120),
   observaciones     TEXT,
+
   empleo_vigente    BOOLEAN       NOT NULL DEFAULT FALSE,
   creado_at         TIMESTAMPTZ   NOT NULL DEFAULT now(),
   actualizado_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
@@ -110,6 +150,7 @@ CREATE TABLE conductor (
 );
 -- El DNI es único cuando existe; los que no lo tienen no chocan entre sí.
 CREATE UNIQUE INDEX uq_cond_dni ON conductor (upper(btrim(dni_nie))) WHERE dni_nie IS NOT NULL;
+CREATE UNIQUE INDEX uq_cond_legajo ON conductor (legajo) WHERE legajo IS NOT NULL;
 CREATE INDEX idx_cond_empleo    ON conductor (empleo_vigente);
 CREATE INDEX idx_cond_apellidos ON conductor (apellidos, nombre);
 COMMENT ON COLUMN conductor.es_centinela IS
@@ -120,19 +161,28 @@ COMMENT ON COLUMN conductor.empleo_vigente IS
 CREATE TABLE conductor_periodo_empleo (
   id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   conductor_id  BIGINT      NOT NULL REFERENCES conductor(id) ON DELETE CASCADE,
+  tipo          VARCHAR(10) NOT NULL DEFAULT 'propia',
+  ett_nombre    VARCHAR(120),
   alta          DATE        NOT NULL,
   baja          DATE,
+  -- Puede ser ANTERIOR al alta: es la antigüedad que se arrastra de una subrogación.
+  fecha_antiguedad DATE,
   motivo_baja   VARCHAR(255),
   peticion_id   BIGINT,      -- FK a peticion(id): se añade con el dominio RRHH
   usuario_id    INTEGER,     -- FK a usuario(id): se añade abajo, tras crear usuario
   creado_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT ck_empleo_rango CHECK (baja IS NULL OR baja >= alta)
+  CONSTRAINT ck_empleo_rango CHECK (baja IS NULL OR baja >= alta),
+  CONSTRAINT ck_empleo_tipo CHECK (tipo IN ('propia','ett')),
+  -- El nombre de la ETT solo tiene sentido si el periodo es de ETT.
+  CONSTRAINT ck_empleo_ett CHECK (tipo = 'ett' OR ett_nombre IS NULL)
 );
 -- Un conductor solo puede tener UN periodo de empleo abierto a la vez.
 CREATE UNIQUE INDEX uq_empleo_abierto ON conductor_periodo_empleo (conductor_id) WHERE baja IS NULL;
 CREATE INDEX idx_empleo_rango ON conductor_periodo_empleo (alta, baja);
 COMMENT ON TABLE conductor_periodo_empleo IS
-  'Altas y bajas. Un conductor puede irse y volver: por eso no son columnas de conductor';
+  'Altas y bajas. Un conductor puede irse y volver, y puede entrar por ETT y pasar luego a plantilla propia: por eso el tipo va aquí y no en conductor';
+COMMENT ON COLUMN conductor_periodo_empleo.tipo IS
+  'propia = plantilla con todos los datos legales; ett = alta rapida, solo nombre, DNI y fecha. Un ETT se puede planificar sin existir todavia en BOLT';
 
 CREATE TABLE conductor_alias (
   id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -177,6 +227,26 @@ CREATE UNIQUE INDEX uq_tel_principal ON conductor_telefono (conductor_id) WHERE 
 CREATE INDEX idx_tel_cond ON conductor_telefono (conductor_id);
 COMMENT ON COLUMN conductor_telefono.sufijo9 IS
   'Últimos 9 dígitos: es como cruza hoy el bot, con o sin prefijo +34';
+
+CREATE TABLE conductor_externo (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  conductor_id  BIGINT      NOT NULL REFERENCES conductor(id) ON DELETE CASCADE,
+  sistema       VARCHAR(12) NOT NULL,
+  externo_id    VARCHAR(64) NOT NULL,
+  externo_nombre VARCHAR(200),
+  estado_externo VARCHAR(20),
+  visto_desde   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  visto_hasta   TIMESTAMPTZ,
+  CONSTRAINT ck_cext_sistema CHECK (sistema IN ('bolt','mapon','ballenoil')),
+  CONSTRAINT uq_cext UNIQUE (sistema, externo_id),
+  CONSTRAINT ck_cext_rango CHECK (visto_hasta IS NULL OR visto_hasta >= visto_desde)
+);
+CREATE INDEX idx_cext_cond ON conductor_externo (conductor_id, sistema);
+CREATE INDEX idx_cext_estado ON conductor_externo (sistema, estado_externo);
+COMMENT ON TABLE conductor_externo IS
+  'Identificadores DUROS de la persona en cada sistema (driver_uuid de BOLT, id de Mapon). Es lo que sustituye de verdad al cruce por nombre: conductor_alias guarda NOMBRES, esta guarda IDs';
+COMMENT ON COLUMN conductor_externo.estado_externo IS
+  'active/deactivated/suspended en BOLT. Hay 72 personas con varias cuentas: la activa es la que manda';
 
 -- ── Usuarios del ERP ────────────────────────────────────────────────────────
 
