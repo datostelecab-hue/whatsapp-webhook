@@ -15,6 +15,9 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
+// Sin esto req.body llega vacio y los guardados parecen aplicarse sin efecto:
+// el banco decia "ok" y no cambiaba nada.
+app.use(express.json({ limit: '12mb' }));
 app.use('/assets', express.static(path.join(__dirname, '..', 'public', 'assets')));
 
 const ESTADOS = [
@@ -270,6 +273,12 @@ function filasCoche({ matricula, estado = '\u2713', zona = '', slots = {} }) {
   });
 }
 
+// Las filas del planificador, EN MEMORIA. Guardar las modifica de verdad, igual
+// que la hoja: es la unica forma de reproducir un fallo del ciclo completo.
+let PLAN_FILAS = null;
+
+let AGENDA_PRUEBA = null;
+
 function tableroDePrueba() {
   const dd = n => { const d = new Date(Date.now() + n * 86400000); const p = x => String(x).padStart(2, '0');
                     return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`; };
@@ -303,17 +312,62 @@ function tableroDePrueba() {
     // Coche averiado.
     filasCoche({ matricula: '7759MCH', estado: 'X', zona: 'Getafe' }),
   );
-  const t = PL.calcularTablero(agenda, plan, [{ nombre: 'Usera', lat: 40.38, lng: -3.70 }]);
+  AGENDA_PRUEBA = agenda;
+  if (!PLAN_FILAS) PLAN_FILAS = plan;
+  const t = PL.calcularTablero(agenda, PLAN_FILAS, [{ nombre: 'Usera', lat: 40.38, lng: -3.70 }]);
   t.esquema = { ok: true, problemas: [] };
   return t;
+}
+
+/** Reconstruye las filas a partir del tablero, como hace guardarTablero. */
+function volcarTablero(t) {
+  const P = PL.P;
+  const filas = [];
+  t.coches.forEach(coche => coche.personas.forEach(p => {
+    const f = new Array(12).fill('');
+    if (p.slot === 0 || filas.length % PL.FILAS_POR_COCHE === 0) {
+      f[P.ESTADO_VEH - 1] = coche.estadoVeh || '';
+      f[P.MATRICULA - 1] = coche.matricula || '';
+      f[P.ZONA - 1] = coche.zona || '';
+    }
+    if (!(p.retirar || !p.id)) {
+      f[P.ID_BOLT - 1] = p.id;
+      f[P.DIAS_TRABAJA - 1] = p.rol === 'CT' ? PL.diasALetras(p.diasManual) : '';
+      f[P.DESDE - 1] = p.desde || '';
+      f[P.HASTA - 1] = p.hasta || '';
+    }
+    filas.push(f);
+  }));
+  return filas;
 }
 
 app.get('/planificador/api/tablero', (req, res) => res.json({ status: 'ok', ...tableroDePrueba() }));
 
 app.post('/planificador/api/guardar', (req, res) => {
-  // No se escribe nada: se recalcula con los cambios aplicados y se devuelve,
-  // que es lo que hace el de verdad.
-  res.json({ status: 'ok', segundos: 0.4, escritura: { updatedCells: 12 }, tablero: tableroDePrueba() });
+  try {
+    tableroDePrueba();   // asegura que PLAN_FILAS existe
+    const { datos } = PL.aplicarCambios([[], ...PLAN_FILAS], (req.body || {}).cambios || []);
+    const t = PL.calcularTablero(AGENDA_PRUEBA, datos,
+      [{ nombre: 'Usera', lat: 40.38, lng: -3.70 }]);
+    t.esquema = { ok: true, problemas: [] };
+    // Se vuelca igual que a la hoja: así el siguiente ciclo lee lo escrito, que
+    // es donde aparecen los fallos de ida y vuelta.
+    PLAN_FILAS = volcarTablero(t);
+    res.json({
+      status: 'ok', segundos: 0.4,
+      escritura: { updatedCells: datos.length * 4, rangos: 4 },
+      cochesAplicados: ((req.body || {}).cambios || []).map(c => c.coche),
+      tablero: t,
+    });
+  } catch (e) {
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
+// Vuelve a dejar el tablero como estaba, para encadenar pruebas.
+app.post('/planificador/api/reiniciar-banco', (req, res) => {
+  PLAN_FILAS = null;
+  res.json({ status: 'ok' });
 });
 
 app.get('/planificador-v2', (req, res) => pintar(res, 'planificadorV2', {

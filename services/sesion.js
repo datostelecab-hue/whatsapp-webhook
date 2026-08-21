@@ -25,7 +25,7 @@ if (!SECRET) {
 // Peticiones, Bitácora, Configuración, Visor, Notificaciones, Documentos…
 const ACCESO = {
   '/vacantes': ['oficina'], '/seleccion': ['oficina'], '/ett': ['oficina'],
-  '/rrhh': ['oficina'], '/administracion': ['oficina'], '/plantilla': ['oficina'], '/fichas': ['oficina'],
+  '/rrhh': ['oficina'], '/administracion': ['oficina'], '/fichas': ['oficina'],
   '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'],
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],
   '/control': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
@@ -33,7 +33,10 @@ const ACCESO = {
   '/sanciones': ['trafico'], '/callcenter': ['trafico'], '/migraciones': ['desarrollador'], '/explorador': ['desarrollador'],
   // La plantilla la miran los dos departamentos: Trafico para saber quien
   // puede conducir hoy, RRHH para saber quien esta de alta y con que.
-  '/conductores': ['oficina', 'trafico']
+  '/conductores': ['oficina', 'trafico'],
+  // Exportar no ensena nada que no se este viendo ya: lo que llega son las
+  // filas que el navegador tiene delante. Vale con estar dentro.
+  '/exportar': ['oficina', 'trafico']
 };
 
 // ── Firma / verificación del token ──────────────────────────────────────────

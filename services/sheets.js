@@ -128,8 +128,14 @@ async function readMany(spreadsheetId, ranges) {
  * sigue siendo un único viaje a Google.
  */
 async function writeMany(spreadsheetId, datos) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${datos.length} rango(s)`)) return;
-  if (!datos.length) return { updatedCells: 0 };
+  // Bloqueado en modo pruebas: se devuelve la MISMA forma que en una escritura
+  // real, con ceros y una marca. Devolver `undefined` hacia que los llamantes
+  // que hacen `{ ...res }` se quedaran sin campos y los logs escribieran
+  // "undefined celdas", que parece un fallo cuando no lo es.
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${datos.length} rango(s)`)) {
+    return { updatedCells: 0, updatedRanges: 0, bloqueado: true };
+  }
+  if (!datos.length) return { updatedCells: 0, updatedRanges: 0 };
   const sheets = getSheetsClient();
   const response = await conReintento('writeMany', () => sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,

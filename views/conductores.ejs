@@ -6,6 +6,132 @@
   const { fecha, hace, etiqueta, esc } = Listado.fmt;
 
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const ROL = '<%= typeof rol !== "undefined" ? rol : "" %>';
+  // Tráfico ve la ficha entera pero solo cambia lo suyo: turno y libranzas.
+  const SOLO_OPERATIVO = ROL === 'trafico';
+
+  /** Llama a la API y devuelve el JSON, o lanza con el mensaje del servidor. */
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => null);
+    if (!r.ok || (j && j.status === 'error')) throw new Error((j && j.msg) || `Error ${r.status}`);
+    return j;
+  }
+  const enviar = (url, metodo, cuerpo) => api(url, {
+    method: metodo,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo || {}),
+  });
+
+  /** dd/mm/aaaa → aaaa-mm-dd, que es lo que entiende la base. */
+  const aISO = v => {
+    const m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : (v || null);
+  };
+
+  /**
+   * Ventana pequeña para pedir unos datos. Se usa para todas las acciones de la
+   * ficha en vez de repetir el mismo modal seis veces.
+   *
+   * `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'semana', opciones, valor, ayuda }]
+   * Devuelve los valores, o null si se cancela.
+   */
+  function pedirDatos(titulo, campos, { textoBoton = 'Guardar', nota } = {}) {
+    return new Promise(resolver => {
+      const fondo = document.createElement('div');
+      fondo.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm';
+      fondo.innerHTML = `
+        <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-md my-8">
+          <div class="px-5 py-4 border-b border-telecab-border">
+            <h3 class="font-bold">${esc(titulo)}</h3>
+            ${nota ? `<p class="text-xs text-telecab-muted mt-1">${esc(nota)}</p>` : ''}
+          </div>
+          <form class="p-5 space-y-4">
+            ${campos.map(c => {
+              const base = 'w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40';
+              let campo;
+              if (c.tipo === 'lista') {
+                campo = `<select id="pd-${c.id}" class="${base}">${(c.opciones || []).map(o =>
+                  `<option value="${esc(o.valor)}" ${String(o.valor) === String(c.valor || '') ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}</select>`;
+              } else if (c.tipo === 'semana') {
+                const puestos = c.valor || [];
+                campo = `<div class="flex gap-1" id="pd-${c.id}">${[1,2,3,4,5,6,7].map(n =>
+                  `<button type="button" data-dia="${n}"
+                     class="w-9 h-9 rounded-lg text-sm font-semibold transition border
+                       ${puestos.includes(n)
+                         ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+                         : 'bg-telecab-card2 text-telecab-muted border-telecab-border'}">${DIAS[n]}</button>`).join('')}</div>`;
+              } else if (c.tipo === 'texto-largo') {
+                campo = `<textarea id="pd-${c.id}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`;
+              } else {
+                campo = `<input id="pd-${c.id}" class="${c.tipo === 'fecha' ? 'js-fecha ' : ''}${base}"
+                          value="${esc(c.valor || '')}" placeholder="${esc(c.marcador || (c.tipo === 'fecha' ? 'dd/mm/aaaa' : ''))}">`;
+              }
+              return `<div>
+                <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">${esc(c.etiqueta)}</label>
+                ${campo}
+                ${c.ayuda ? `<p class="text-[11px] text-telecab-muted mt-1">${esc(c.ayuda)}</p>` : ''}
+              </div>`;
+            }).join('')}
+            <p class="hidden text-sm text-telecab-red" data-error></p>
+            <div class="flex items-center gap-2 pt-1">
+              <button type="submit" class="flex-1 px-4 py-2.5 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">${esc(textoBoton)}</button>
+              <button type="button" data-cancelar class="px-4 py-2.5 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">Cancelar</button>
+            </div>
+          </form>
+        </div>`;
+      document.body.appendChild(fondo);
+
+      // Los días de la semana se marcan pinchando.
+      fondo.querySelectorAll('[id^="pd-"] [data-dia]').forEach(b => {
+        b.addEventListener('click', () => {
+          const on = b.classList.toggle('bg-telecab-gold');
+          b.classList.toggle('text-telecab-dark', on);
+          b.classList.toggle('border-telecab-gold', on);
+          b.classList.toggle('bg-telecab-card2', !on);
+          b.classList.toggle('text-telecab-muted', !on);
+          b.classList.toggle('border-telecab-border', !on);
+        });
+      });
+
+      const cerrar = v => { fondo.remove(); document.removeEventListener('keydown', esc2); resolver(v); };
+      const esc2 = e => { if (e.key === 'Escape') cerrar(null); };
+      document.addEventListener('keydown', esc2);
+      fondo.addEventListener('click', e => { if (e.target === fondo) cerrar(null); });
+      fondo.querySelector('[data-cancelar]').addEventListener('click', () => cerrar(null));
+
+      fondo.querySelector('form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const salida = {};
+        campos.forEach(c => {
+          const el = fondo.querySelector('#pd-' + c.id);
+          if (c.tipo === 'semana') {
+            salida[c.id] = [...el.querySelectorAll('[data-dia]')]
+              .filter(b => b.classList.contains('bg-telecab-gold'))
+              .map(b => Number(b.dataset.dia));
+          } else {
+            salida[c.id] = c.tipo === 'fecha' ? aISO(el.value.trim()) : el.value.trim();
+          }
+        });
+        cerrar(salida);
+      });
+
+      const primero = fondo.querySelector('input, select, textarea');
+      if (primero) primero.focus();
+    });
+  }
+
+  /** Ejecuta una acción y refresca la ficha y la lista. Errores a la vista. */
+  async function hacer(fn) {
+    try {
+      await fn();
+      const id = plantilla.abierto;
+      await plantilla.recargar();
+      if (id) await plantilla.abrir(id, { historial: false });
+    } catch (e) {
+      alert(e.message);
+    }
+  }
 
   // Color de cada situación. El código va en la base; esto es solo cómo se ve.
   const tonoSituacion = c => ({
@@ -18,6 +144,136 @@
     ? '<span class="text-telecab-green"><i class="fa-solid fa-check"></i></span>'
     : `<span class="text-telecab-warn" title="${esc(f.faltan.join(', '))}">
          <i class="fa-solid fa-triangle-exclamation"></i> ${f.faltan.length}</span>`;
+
+  // ---------- acciones de la ficha ----------
+
+  async function accionSituacion(d) {
+    const v = await pedirDatos(`Cambiar la situación de ${d.nombre_completo}`, [
+      { id: 'estado', etiqueta: 'Situación', tipo: 'lista', valor: d.situacion,
+        opciones: (CAT.situaciones || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })) },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(new Date()),
+        ayuda: 'Se cierra la situación anterior el día antes.' },
+      { id: 'hastaPrevisto', etiqueta: 'Vuelta prevista', tipo: 'fecha',
+        ayuda: 'Solo cuenta en vacaciones o permisos. En una baja médica la fecha la pone el alta, no nosotros.' },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
+    ], { nota: 'Una ausencia NO le quita su plaza: el coche sigue siendo suyo.' });
+    if (!v) return;
+    // Una ausencia no cierra su asignación, así que aquí no se toca nada del
+    // coche. Está decidido en el esquema y esto solo lo respeta.
+    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/situacion`, 'POST', v));
+  }
+
+  async function accionTurno(d) {
+    const v = await pedirDatos(`Cambiar el turno de ${d.nombre_completo}`, [
+      { id: 'turnoId', etiqueta: 'Turno', tipo: 'lista', valor: d.turno_id,
+        opciones: (CAT.turnos || []).map(t => ({ valor: t.id, texto: t.etiqueta })) },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(new Date()) },
+    ]);
+    if (!v) return;
+    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/turno`, 'POST', v));
+  }
+
+  async function accionLibranza(d) {
+    const actual = (d.patrones || []).find(p => !p.hasta);
+    const v = await pedirDatos(`Libranzas de ${d.nombre_completo}`, [
+      { id: 'dias', etiqueta: 'Días que libra', tipo: 'semana', valor: (actual && actual.dias) || [] },
+      { id: 'desde', etiqueta: 'A partir de', tipo: 'fecha', valor: fecha(new Date()) },
+    ], { nota: 'Se abre un patrón nuevo y se cierra el anterior. No se reescribe: si se reescribiera, la cobertura de las semanas pasadas dejaría de cuadrar con lo que de verdad pasó.' });
+    if (!v) return;
+    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/libranza`, 'POST', v));
+  }
+
+  async function accionTelefono(d) {
+    const v = await pedirDatos(`Teléfono de ${d.nombre_completo}`, [
+      { id: 'e164', etiqueta: 'Número', valor: d.telefono || '+34', marcador: '+34600000000' },
+    ], { nota: 'Pasa a ser el principal y el anterior se archiva. Es el número con el que el bot le escribe.' });
+    if (!v) return;
+    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/telefono`, 'POST', v));
+  }
+
+  async function accionBolt(d) {
+    let libres = [];
+    try { libres = (await api('/conductores/api/bolt-libres')).cuentas || []; }
+    catch (e) { return alert(e.message); }
+    if (!libres.length) return alert('No hay ninguna cuenta de BOLT libre.');
+
+    const v = await pedirDatos(`Enlazar cuenta de BOLT a ${d.nombre_completo}`, [
+      { id: 'externoId', etiqueta: 'Cuenta', tipo: 'lista',
+        opciones: libres.map(c => ({
+          valor: c.externo_id,
+          texto: `${c.externo_nombre || '(sin nombre)'}${c.externo_telefono ? ' · ' + c.externo_telefono : ''}`,
+        })) },
+    ], { nota: 'Se elige a mano a propósito: hay homónimos reales y cruzar por nombre es justo lo que se quiso desterrar.' });
+    if (!v) return;
+    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/bolt`, 'POST', v));
+  }
+
+  async function accionDatos(d) {
+    const v = await pedirDatos(`Datos de ${d.nombre_completo}`, [
+      { id: 'nombre', etiqueta: 'Nombre', valor: d.nombre },
+      { id: 'apellidos', etiqueta: 'Apellidos', valor: d.apellidos },
+      { id: 'nombre_ss', etiqueta: 'En la Seguridad Social', valor: d.nombre_ss,
+        ayuda: 'Como figura en la Seguridad Social, que no siempre coincide.' },
+      { id: 'dni_nie', etiqueta: 'DNI o NIE', valor: d.dni_nie },
+      { id: 'email', etiqueta: 'Correo', valor: d.email },
+      { id: 'observaciones', etiqueta: 'Observaciones', tipo: 'texto-largo', valor: d.observaciones },
+    ], { nota: 'Cada campo que cambie queda registrado con tu nombre y la hora.' });
+    if (!v) return;
+    await hacer(() => enviar(`/conductores/api/conductor/${d.id}`, 'PUT', v));
+  }
+
+  async function accionBaja(d) {
+    const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
+      { id: 'fecha', etiqueta: 'Fecha de baja', tipo: 'fecha', valor: fecha(new Date()) },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
+    ], { textoBoton: 'Dar de baja',
+         nota: 'Se cierran su empleo, su turno, sus libranzas y sus asignaciones. Su historial se conserva entero.' });
+    if (!v) return;
+    if (!confirm(`Confirmar la baja de ${d.nombre_completo} el ${v.fecha}.`)) return;
+    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/baja`, 'POST', v));
+  }
+
+  // ---------- documentos ----------
+
+  async function subirDocumento(d) {
+    let tipos = [];
+    try { tipos = (await api('/conductores/api/tipos-documento')).tipos || []; }
+    catch (e) { return alert(e.message); }
+
+    const entrada = document.createElement('input');
+    entrada.type = 'file';
+    entrada.accept = 'image/*,application/pdf';
+    entrada.onchange = async () => {
+      const f = entrada.files && entrada.files[0];
+      if (!f) return;
+      if (f.size > 25 * 1024 * 1024) return alert('El archivo pasa de 25 MB.');
+
+      const v = await pedirDatos(`Subir "${f.name}"`, [
+        { id: 'tipo', etiqueta: 'Qué documento es', tipo: 'lista',
+          opciones: tipos.map(t => ({ valor: t.codigo, texto: t.etiqueta + (t.obligatorio ? ' (obligatorio)' : '') })) },
+        { id: 'fechaEmision', etiqueta: 'Fecha de emisión', tipo: 'fecha' },
+        { id: 'fechaCaduca', etiqueta: 'Caduca el', tipo: 'fecha',
+          ayuda: 'Obligatoria en los documentos que caducan; es lo que permite avisar antes.' },
+        { id: 'notas', etiqueta: 'Notas', tipo: 'texto-largo' },
+      ], { textoBoton: 'Subir' });
+      if (!v) return;
+
+      const base64 = await new Promise(r => {
+        const fr = new FileReader();
+        fr.onload = () => r(String(fr.result).split(',')[1]);
+        fr.readAsDataURL(f);
+      });
+      await hacer(() => enviar('/conductores/api/documento', 'POST', {
+        conductorId: d.id, nombre: f.name, mime: f.type, base64, ...v,
+      }));
+    };
+    entrada.click();
+  }
+
+  async function retirarDocumento(doc, d) {
+    if (!confirm(`Retirar "${doc.nombre_archivo}".\n\nEl archivo NO se borra de Drive: solo deja de ser el vigente.`)) return;
+    await hacer(() => api(`/conductores/api/documento/${doc.id}`, { method: 'DELETE' }));
+  }
 
   const plantilla = Listado.montar({
     raiz: '#modulo',
@@ -112,6 +368,14 @@
     detalle: {
       origen: id => `/conductores/api/ficha/${id}`,
       titulo: d => d.nombre_completo,
+      acciones: [
+        { texto: 'Situación', icono: 'fa-user-clock', principal: true, onClick: accionSituacion },
+        { texto: 'Turno', icono: 'fa-clock', visible: () => true, onClick: accionTurno },
+        { texto: 'Libranzas', icono: 'fa-calendar-week', onClick: accionLibranza },
+        { texto: 'Editar datos', icono: 'fa-pen', visible: () => !SOLO_OPERATIVO, onClick: accionDatos },
+        { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
+      ],
       subtitulo: d => [
         d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',
         d.dni_nie, d.bolt_id ? 'BOLT ' + d.bolt_id : null,
@@ -127,6 +391,65 @@
             hueco.innerHTML = `<ul class="text-sm space-y-1">${d.faltan.map(x =>
               `<li class="flex items-center gap-2 text-telecab-warn">
                  <i class="fa-solid fa-circle-exclamation text-xs"></i>${esc(x)}</li>`).join('')}</ul>`;
+          },
+        },
+        {
+          titulo: 'Documentos', icono: 'fa-folder-open',
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5 space-y-3';
+            hueco.innerHTML = '<p class="text-sm text-telecab-muted">Cargando…</p>';
+            // Se piden aparte y no con la ficha: son una consulta más y la
+            // mayoría de las veces se mira la ficha sin abrir los papeles.
+            api(`/conductores/api/conductor/${d.id}/documentos`).then(r => {
+              const lista = r.documentos || [];
+              hueco.innerHTML = `
+                <div class="flex items-center gap-2">
+                  <button data-subir class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold
+                          bg-telecab-gold text-telecab-dark shadow-gold">
+                    <i class="fa-solid fa-upload"></i> Subir documento</button>
+                  <span class="text-xs text-telecab-muted">${lista.length} documento(s)</span>
+                </div>
+                ${lista.length ? `
+                <div class="overflow-x-auto -mx-5 mt-1">
+                  <table class="w-full text-sm">
+                    <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wider">
+                      <tr>
+                        <th class="text-left font-semibold px-5 py-2">Documento</th>
+                        <th class="text-left font-semibold px-5 py-2">Archivo</th>
+                        <th class="text-left font-semibold px-5 py-2">Caduca</th>
+                        <th class="w-20"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-telecab-border/60">
+                      ${lista.map(x => `
+                        <tr>
+                          <td class="px-5 py-2">${esc(x.tipo_etiqueta)}
+                            ${x.obligatorio ? '<span class="text-[10px] text-telecab-muted">obligatorio</span>' : ''}</td>
+                          <td class="px-5 py-2 text-telecab-muted truncate max-w-[16rem]">${esc(x.nombre_archivo)}</td>
+                          <td class="px-5 py-2 whitespace-nowrap">
+                            ${x.fecha_caduca
+                              ? `<span class="text-telecab-${x.caducado ? 'red' : (x.dias_caduca <= 30 ? 'warn' : 'muted')}">
+                                   ${esc(fecha(x.fecha_caduca))}${x.caducado ? ' (caducado)' : ''}</span>`
+                              : '<span class="text-telecab-muted">—</span>'}</td>
+                          <td class="px-5 py-2 text-right whitespace-nowrap">
+                            <a href="/conductores/api/documento/${x.id}/descargar" target="_blank"
+                               class="text-telecab-muted hover:text-telecab-gold px-1" title="Abrir">
+                               <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i></a>
+                            <button data-retirar="${x.id}" class="text-telecab-muted hover:text-telecab-red px-1"
+                                    title="Retirar del índice (el archivo no se borra)">
+                               <i class="fa-solid fa-xmark text-xs"></i></button>
+                          </td>
+                        </tr>`).join('')}
+                    </tbody>
+                  </table>
+                </div>` : '<p class="text-sm text-telecab-muted">Todavía no tiene ningún documento subido.</p>'}`;
+
+              hueco.querySelector('[data-subir]').addEventListener('click', () => subirDocumento(d));
+              hueco.querySelectorAll('[data-retirar]').forEach(b => b.addEventListener('click', () =>
+                retirarDocumento(lista.find(x => String(x.id) === b.dataset.retirar), d)));
+            }).catch(e => {
+              hueco.innerHTML = `<p class="text-sm text-telecab-red">${esc(e.message)}</p>`;
+            });
           },
         },
         {
@@ -162,6 +485,7 @@
         },
         {
           titulo: 'Teléfonos', icono: 'fa-phone',
+          acciones: [{ texto: 'Cambiar', onClick: accionTelefono }],
           tabla: {
             datos: d => d.telefonos,
             vacio: 'Sin teléfono. El bot no puede escribirle.',
@@ -178,6 +502,7 @@
         },
         {
           titulo: 'Cuentas en otros sistemas', icono: 'fa-plug',
+          acciones: [{ texto: 'Enlazar BOLT', onClick: accionBolt }],
           tabla: {
             datos: d => d.cuentas,
             vacio: 'Sin cuenta de BOLT: no se le pueden imputar horas.',

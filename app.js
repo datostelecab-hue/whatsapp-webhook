@@ -7,8 +7,12 @@ const app = express();
 // conductores y adjuntos de soporte) se SALTAN este parser y aplican su propio
 // límite mayor dentro de su router; si no, este 2mb las capaba silenciosamente.
 const jsonGlobal = express.json({ limit: '2mb' });
+// Rutas que suben archivos en base64 y ponen su PROPIO limite mas alto dentro
+// de su router. Tienen que saltarse este parser: si corre antes, rechaza la
+// peticion por tamano y el limite de dentro no llega a aplicarse nunca.
+const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/conductores/api/documento'];
 app.use((req, res, next) => {
-  if (req.path.startsWith('/documentos') || req.path.startsWith('/soporte')) return next();
+  if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);
 });
 app.use(express.urlencoded({ extended: true }));
@@ -95,7 +99,6 @@ const seleccionRoutes = require('./routes/seleccion');
 const ettRoutes = require('./routes/ett');
 const rrhhRoutes = require('./routes/rrhh');
 const administracionRoutes = require('./routes/administracion');
-const plantillaRoutes = require('./routes/plantilla');
 const fichasRoutes = require('./routes/fichas');
 const ticketeraRoutes = require('./routes/ticketera');
 const soporteRoutes = require('./routes/soporte');
@@ -167,7 +170,9 @@ app.use('/seleccion', seleccionRoutes);
 app.use('/ett', ettRoutes);
 app.use('/rrhh', rrhhRoutes);
 app.use('/administracion', administracionRoutes);
-app.use('/plantilla', plantillaRoutes);
+// /plantilla se retiro: la sustituye /conductores, que ademas edita.
+// Su exportacion a Excel no se perdio, se generalizo en /exportar.
+app.use('/exportar', require('./routes/exportar'));
 app.use('/fichas', fichasRoutes);
 app.use('/ticketera', ticketeraRoutes);
 app.use('/soporte', soporteRoutes);

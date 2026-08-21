@@ -214,22 +214,50 @@ function ponerEnSlot(cocheIdx, slot, id) {
     // Venía del banquillo y la plaza estaba ocupada: el ocupante sale al banquillo.
   }
   setSlot(cocheIdx, slot, id);
-  // El Desde es obligatorio, asi que se rellena solo con el dia en que se
-  // planifica. Quien quiera otra fecha la cambia; lo que no puede es quedarse
-  // sin ella y que nadie sepa desde cuando ocupa esa plaza.
-  if (id) {
-    const s = efSlot(T.coches.find(c => c.idx === cocheIdx), slot);
-    if (!s.desde) setFecha(cocheIdx, slot, 'desde', hoyTexto(), { sinPintar: true });
-  }
+
+  // Un movimiento toca hasta DOS plazas: la de destino y la de origen, que se
+  // queda con quien estuviera en el destino. Las dos son un arreglo NUEVO, así
+  // que las dos necesitan su "Desde", y se rellena con el día en que se
+  // planifica.
+  //
+  // Rellenar solo la de destino era el fallo: la de origen se quedaba con
+  // alguien dentro y la fecha en blanco, y parecía que poner una fecha borraba
+  // las de los demás.
+  const tocadas = [{ coche: cocheIdx, slot }];
+  if (origen) tocadas.push(origen);
+  tocadas.forEach(t => rellenarDesde(t.coche, t.slot));
+
   pintar();
+}
+
+/** Si la plaza tiene a alguien y no tiene Desde, se le pone el día de hoy. */
+function rellenarDesde(cocheIdx, slot) {
+  const coche = T.coches.find(c => c.idx === cocheIdx);
+  if (!coche) return;
+  const s = efSlot(coche, slot);
+  if (s.id && !s.desde) setFecha(cocheIdx, slot, 'desde', hoyTexto(), { sinPintar: true });
 }
 function setSlot(cocheIdx, slot, id) {
   const coche = T.coches.find(c => c.idx === cocheIdx);
   const c = cambioDe(cocheIdx);
   const prev = c.slots.get(slot) || {};
-  // Si el valor vuelve a ser el guardado, el cambio se anula solo.
-  if ((coche.personas[slot].id || '') === (id || '') && prev.dias === undefined) c.slots.delete(slot);
-  else c.slots.set(slot, { ...prev, id: id || '' });
+  const mismo = (coche.personas[slot].id || '') === (id || '');
+
+  // Si vuelve a quedar como estaba —misma persona, sin días ni fechas tocados—
+  // el cambio se anula solo. Antes solo se miraban los días, así que un cambio
+  // de fecha se perdía si la persona volvía a ser la misma.
+  if (mismo && prev.dias === undefined && prev.desde === undefined && prev.hasta === undefined) {
+    c.slots.delete(slot);
+  } else if (mismo) {
+    c.slots.set(slot, { ...prev, id: id || '' });
+  } else {
+    // Cambia la persona: la ventana del anterior NO se hereda, era suya. Se
+    // limpian las fechas pendientes y `rellenarDesde` pondrá la nueva.
+    const limpio = { ...prev };
+    delete limpio.desde;
+    delete limpio.hasta;
+    c.slots.set(slot, { ...limpio, id: id || '' });
+  }
   limpiarSiVacio(cocheIdx);
 }
 function setDias(cocheIdx, slot, dias) {

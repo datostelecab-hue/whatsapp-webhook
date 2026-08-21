@@ -233,6 +233,17 @@
                     ${esc(col.claseCabecera || '')}">${esc(col.titulo || '')}</th>`
       ).join('') + '<th class="w-8 border-b-2 border-telecab-border"></th>';
 
+      // Exportar: lo tienen todas las listas salvo que se pida lo contrario.
+      // Antes esto se programaba pantalla por pantalla y solo lo tenia una.
+      if (c.exportar !== false) {
+        const b = nodo(`<button class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold
+            transition bg-telecab-card border border-telecab-border hover:bg-telecab-card2"
+            title="Descargar lo que se está viendo, en Excel">
+            <i class="fa-solid fa-file-excel"></i></button>`);
+        b.addEventListener('click', () => this.exportar());
+        this.el.acciones.appendChild(b);
+      }
+
       // Botones de la cabecera (alta, exportar, sincronizar…).
       (c.acciones || []).forEach(a => {
         const b = nodo(`<button class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${
@@ -534,6 +545,57 @@
       this.el.lista.classList.remove('hidden');
     }
 
+    /**
+     * Descarga en Excel lo que se está viendo.
+     *
+     * Se manda lo FILTRADO, no todo: quien filtra por "fichas incompletas" y
+     * exporta espera esas filas. Y se mandan los valores en crudo, no el HTML
+     * pintado: una hoja de cálculo con etiquetas de colores dentro no sirve
+     * para nada.
+     */
+    async exportar() {
+      const filas = this.visibles();
+      if (!filas.length) return;
+
+      const columnas = this.cfg.columnas
+        .filter(c => c.campo !== undefined && c.exportar !== false)
+        .map(c => ({ key: String(c.campo), label: c.titulo || String(c.campo) }));
+
+      const datos = filas.map(f => {
+        const fila = {};
+        columnas.forEach(c => {
+          const v = valorDe(f, c.key);
+          // Los arreglos (los faltantes de una ficha, por ejemplo) se juntan;
+          // en una celda de Excel un objeto sale como "[object Object]".
+          fila[c.key] = Array.isArray(v) ? v.join(', ')
+            : (v && typeof v === 'object' && !(v instanceof Date)) ? JSON.stringify(v)
+            : v;
+        });
+        return fila;
+      });
+
+      const r = await fetch('/exportar/excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titulo: this.cfg.titulo || 'datos', columnas, filas: datos }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        alert('No se pudo exportar: ' + ((j && j.msg) || r.status));
+        return;
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(this.cfg.titulo || 'datos').toLowerCase()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Sin esto el navegador se queda con el fichero en memoria hasta recargar.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     /** Vuelve a traer la lista sin perder búsqueda ni filtros. */
     async recargar() {
       const datos = await traer(this.cfg.origen);
@@ -601,10 +663,26 @@
             <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
               ${b.icono ? `<i class="fa-solid ${esc(b.icono)} text-telecab-gold text-sm"></i>` : ''}
               <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">${esc(b.titulo)}</h3>
+              <span data-acciones-bloque class="ml-auto flex items-center gap-1"></span>
             </div>` : ''}
           <div data-hueco></div>
         </div>`);
       const hueco = caja.querySelector('[data-hueco]');
+
+      // Acciones propias del bloque, en su cabecera. Es donde se esperan: el
+      // botón de cambiar el teléfono va junto a los teléfonos, no arriba del
+      // todo mezclado con los de la ficha entera.
+      const barra = caja.querySelector('[data-acciones-bloque]');
+      if (barra) {
+        (b.acciones || []).filter(a => !a.visible || a.visible(d)).forEach(a => {
+          const bt = nodo(`<button class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition
+              bg-telecab-card2 border-telecab-border text-telecab-muted
+              hover:border-telecab-gold/50 hover:text-telecab-gold">
+              ${a.icono ? `<i class="fa-solid ${esc(a.icono)} mr-1"></i>` : ''}${esc(a.texto || '')}</button>`);
+          bt.addEventListener('click', () => a.onClick(d, this));
+          barra.appendChild(bt);
+        });
+      }
 
       if (b.campos) {
         const campos = (typeof b.campos === 'function' ? b.campos(d) : b.campos)

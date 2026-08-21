@@ -182,7 +182,9 @@ router.post('/api/guardar', async (req, res) => {
     const segundos = ((Date.now() - t0) / 1000).toFixed(1);
 
     console.log(`💾 [PLANIFICADOR] ${cochesAplicados.length} coches · ` +
-                `${escritura.updatedCells} celdas · ${escritura.rangos} rangos · ${segundos}s`);
+                (escritura.bloqueado
+                  ? `NO escrito (modo pruebas) · ${escritura.rangos} rangos · ${segundos}s`
+                  : `${escritura.updatedCells} celdas · ${escritura.rangos} rangos · ${segundos}s`));
 
     res.json({
       status: 'ok',
