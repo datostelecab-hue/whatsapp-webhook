@@ -1,0 +1,220 @@
+<div class="p-4 lg:p-6 max-w-[1100px] mx-auto space-y-5">
+
+  <div class="flex flex-wrap items-center gap-3">
+    <div>
+      <h2 class="text-xl font-bold flex items-center gap-2">
+        <i class="fa-solid fa-code-branch text-telecab-gold"></i> Migraciones
+      </h2>
+      <p class="text-sm text-telecab-muted mt-0.5" id="m-sub">Comprobando la base…</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button id="m-simular" class="px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm">
+        <i class="fa-solid fa-eye mr-1"></i> Simular
+      </button>
+      <button id="m-aplicar" class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
+        <i class="fa-solid fa-play mr-1"></i> Aplicar lo pendiente
+      </button>
+    </div>
+  </div>
+
+  <div id="m-msg" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
+
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="m-kpis"></div>
+
+  <!-- Un fichero ya aplicado que cambia después NO se vuelve a ejecutar. Verlo
+       aquí es la diferencia entre saberlo y descubrirlo semanas más tarde. -->
+  <div id="m-modificadas" class="hidden rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4"></div>
+
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+      <i class="fa-solid fa-list-check text-telecab-gold text-sm"></i>
+      <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Ficheros</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wider">
+          <tr>
+            <th class="text-left font-semibold px-4 py-2.5">Fichero</th>
+            <th class="text-left font-semibold px-4 py-2.5">Estado</th>
+            <th class="text-left font-semibold px-4 py-2.5">Aplicada</th>
+            <th class="text-right font-semibold px-4 py-2.5">Duración</th>
+          </tr>
+        </thead>
+        <tbody id="m-tbody" class="divide-y divide-telecab-border/60"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <details class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <summary class="px-5 py-3 cursor-pointer text-sm font-semibold text-telecab-muted uppercase tracking-wide">
+      <i class="fa-solid fa-database mr-1"></i> Qué hay creado
+    </summary>
+    <div id="m-inventario" class="p-5 text-sm text-telecab-muted">Pulsa para cargarlo.</div>
+  </details>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fecha = v => {
+    if (!v) return '';
+    const d = new Date(v), p = n => String(n).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+
+  function aviso(texto, tipo) {
+    const m = $('#m-msg');
+    if (!texto) { m.classList.add('hidden'); return; }
+    const tono = tipo === 'error' ? 'red' : tipo === 'ok' ? 'green' : 'gold';
+    m.className = `rounded-xl border px-4 py-3 text-sm border-telecab-${tono}/40 bg-telecab-${tono}/5 text-telecab-${tono}`;
+    m.innerHTML = texto;
+  }
+
+  async function pedir(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => null);
+    if (!j) throw new Error(`El servidor respondió ${r.status}`);
+    if (j.status === 'error' && j.msg) throw new Error(j.msg);
+    return j;
+  }
+
+  async function cargar() {
+    try {
+      const d = await pedir('/migraciones/api/estado');
+      const bd = d.bd || {};
+      const m = d.migraciones || {};
+
+      $('#m-sub').textContent = bd.conecta
+        ? `${bd.version || 'PostgreSQL'} · ${bd.bd || ''} · ${bd.latenciaMs} ms` +
+          (bd.pool ? ` · ${bd.pool.total}/${bd.pool.max} conexiones` : '')
+        : (bd.error ? 'Sin conexión: ' + bd.error : 'Base de datos no configurada');
+
+      $('#m-kpis').innerHTML = [
+        { et: 'Aplicadas', v: (m.aplicadas || []).length, tono: 'green' },
+        { et: 'Pendientes', v: (m.pendientes || []).length, tono: (m.pendientes || []).length ? 'gold' : 'muted' },
+        { et: 'Modificadas', v: (m.modificadas || []).length, tono: (m.modificadas || []).length ? 'red' : 'muted' },
+        { et: 'Conexión', v: bd.conecta ? 'OK' : 'NO', tono: bd.conecta ? 'green' : 'red' },
+      ].map(k => `
+        <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 shadow-soft">
+          <p class="text-xs text-telecab-muted uppercase tracking-wide">${k.et}</p>
+          <p class="text-2xl font-bold mt-1 text-telecab-${k.tono}">${esc(k.v)}</p>
+        </div>`).join('');
+
+      // Un fichero ya aplicado que cambió después: PostgreSQL no lo vuelve a
+      // ejecutar, así que pruebas y producción dejan de parecerse en silencio.
+      const mod = m.modificadas || [];
+      $('#m-modificadas').classList.toggle('hidden', !mod.length);
+      if (mod.length) {
+        $('#m-modificadas').innerHTML = `
+          <p class="font-semibold text-telecab-red mb-2">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            ${mod.length} fichero(s) cambiaron DESPUÉS de aplicarse</p>
+          <p class="text-xs text-telecab-muted mb-2">
+            No se van a volver a ejecutar. Lo que hay en la base es la versión vieja.
+            Si el cambio importa, hace falta un fichero nuevo con la corrección.</p>
+          <ul class="text-xs space-y-0.5">${mod.map(x =>
+            `<li>· <b>${esc(x.fichero)}</b> — se aplicó con ${esc(x.aplicadaCon)}, ahora es ${esc(x.ahora)}</li>`).join('')}</ul>`;
+      }
+
+      const filas = [];
+      (m.pendientes || []).forEach(p => filas.push({
+        fichero: p.fichero, estado: 'Pendiente', tono: 'gold', at: null, ms: null,
+      }));
+      (m.aplicadas || []).forEach(a => filas.push({
+        fichero: a.fichero,
+        estado: mod.some(x => x.fichero === a.fichero) ? 'Aplicada (modificada)' : 'Aplicada',
+        tono: mod.some(x => x.fichero === a.fichero) ? 'red' : 'green',
+        at: a.aplicada_at, ms: a.duracion_ms,
+      }));
+      filas.sort((a, b) => a.fichero.localeCompare(b.fichero));
+
+      $('#m-tbody').innerHTML = filas.map(f => `
+        <tr class="hover:bg-telecab-card2/60">
+          <td class="px-4 py-2 font-mono text-xs">${esc(f.fichero)}</td>
+          <td class="px-4 py-2">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold whitespace-nowrap
+                         bg-telecab-${f.tono}/15 text-telecab-${f.tono} border border-telecab-${f.tono}/30">
+              ${esc(f.estado)}</span></td>
+          <td class="px-4 py-2 text-telecab-muted text-xs">${esc(fecha(f.at))}</td>
+          <td class="px-4 py-2 text-right tabular-nums text-telecab-muted text-xs">${f.ms == null ? '' : f.ms + ' ms'}</td>
+        </tr>`).join('');
+
+      $('#m-aplicar').disabled = !(m.pendientes || []).length;
+      $('#m-aplicar').classList.toggle('opacity-40', !(m.pendientes || []).length);
+    } catch (e) {
+      aviso('❌ ' + esc(e.message), 'error');
+    }
+  }
+
+  $('#m-simular').addEventListener('click', async () => {
+    aviso('Comprobando…');
+    try {
+      const d = await pedir('/migraciones/api/simular');
+      const lista = d.pendientes || [];
+      aviso(lista.length
+        ? `Se aplicarían ${lista.length}: ${esc(lista.map(x => x.fichero).join(', '))}`
+        : 'No hay nada pendiente.', 'ok');
+    } catch (e) { aviso('❌ ' + esc(e.message), 'error'); }
+  });
+
+  $('#m-aplicar').addEventListener('click', async () => {
+    if (!confirm('Aplicar las migraciones pendientes.\n\nCada fichero va en su propia transacción: si uno falla, se para ahí y los anteriores quedan aplicados.\n\n¿Seguir?')) return;
+    const b = $('#m-aplicar');
+    b.disabled = true;
+    aviso('Aplicando…');
+    try {
+      const d = await pedir('/migraciones/api/aplicar', { method: 'POST' });
+      const bien = (d.aplicadas || []).filter(x => x.ok);
+      const mal = (d.aplicadas || []).filter(x => !x.ok);
+      aviso(
+        `${bien.length} aplicada(s)` +
+        (bien.length ? ': ' + esc(bien.map(x => x.fichero).join(', ')) : '') +
+        // PostgreSQL da `detail` y `hint` además del mensaje, y suelen decir
+        // exactamente qué fila o qué restricción falló. Esconderlos obliga a ir
+        // a los logs de Render para algo que cabe aquí.
+        (mal.length
+          ? `<br><b>Falló ${esc(mal[0].fichero)}:</b> ${esc(mal[0].error || '')}` +
+            (mal[0].detalle ? `<br><span class="opacity-80">${esc(mal[0].detalle)}</span>` : '') +
+            (mal[0].pista ? `<br><span class="opacity-80">Pista: ${esc(mal[0].pista)}</span>` : '')
+          : ''),
+        mal.length ? 'error' : 'ok');
+    } catch (e) {
+      aviso('❌ ' + esc(e.message), 'error');
+    } finally {
+      b.disabled = false;
+      cargar();
+    }
+  });
+
+  // El inventario se pide solo al abrirlo: recorre el catálogo entero.
+  let inventarioPedido = false;
+  document.querySelector('details').addEventListener('toggle', async e => {
+    if (!e.target.open || inventarioPedido) return;
+    inventarioPedido = true;
+    try {
+      const d = await pedir('/migraciones/api/inventario');
+      const tablas = d.tablas || [];
+      const tot = d.totales || {};
+      $('#m-inventario').innerHTML = `
+        <p class="mb-3 text-telecab-text">
+          ${tablas.length} tablas · ${tot.foraneas || 0} foráneas ·
+          ${tot.comprobaciones || 0} comprobaciones ·
+          ${tot.indicesUnicosParciales || 0} índices únicos parciales
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-1 text-xs">
+          ${tablas.map(t => `<span class="flex items-baseline justify-between gap-2">
+             <span class="font-mono truncate">${esc(t.tabla)}</span>
+             <span class="text-telecab-muted whitespace-nowrap">${esc(t.columnas)} col · ${esc(t.tamano)}</span>
+           </span>`).join('')}
+        </div>`;
+    } catch (e) {
+      inventarioPedido = false;
+      $('#m-inventario').innerHTML = `<span class="text-telecab-red">${esc(e.message)}</span>`;
+    }
+  });
+
+  cargar();
+})();
+</script>

@@ -10,6 +10,14 @@ const migra = require('../services/migraciones');
 
 router.use(sesion.requiereDesarrollador);
 
+// La página. Faltaba: el menú lleva a /migraciones desde siempre y respondía
+// "Cannot GET" porque aquí solo había API.
+router.get('/', (req, res) => {
+  res.render('migraciones', {
+    titulo: 'Migraciones', seccion: 'migraciones', layout: 'layout-gestion',
+  });
+});
+
 // Estado de la conexión y qué migraciones hay aplicadas o pendientes.
 router.get('/api/estado', async (req, res) => {
   try {
