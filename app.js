@@ -370,6 +370,18 @@ programar('10,40 * * * *', async () => {
 
 // Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
 // vencieron (los usados se conservan siempre, como histórico).
+// Odometros de Mapon: cada dia a las 05:30. Enlaza los coches nuevos y
+// refresca el kilometraje. Es la MISMA llamada a unit/list.json que ya se
+// hacia para otras cosas, asi que no anade carga a la API.
+programar('30 5 * * *', async () => {
+  try {
+    const r = await require('./services/sincroMapon').diaria();
+    console.log(`🛰️  [CRON Mapon] ${r.odometros.actualizados} odometro(s) al dia`);
+  } catch (error) {
+    console.error(`⚠️  [CRON Mapon] ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 programar('20 4 * * *', async () => {
   try {
     const { purgarVencidos } = require('./services/codigosBallenoil');

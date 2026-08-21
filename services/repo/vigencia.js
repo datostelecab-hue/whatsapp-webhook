@@ -17,7 +17,8 @@ const db = require('../db');
 
 // tipo → { tabla, entidad, desde, hasta, orden }
 const TIPOS = {
-  empleo:          { tabla: 'conductor_periodo_empleo', entidad: 'conductor_id' },
+  empleo:          { tabla: 'conductor_periodo_empleo', entidad: 'conductor_id',
+                     desde: 'alta', hasta: 'baja' },
   situacion:       { tabla: 'conductor_estado_hist',    entidad: 'conductor_id' },
   turnoConductor:  { tabla: 'conductor_turno_hist',     entidad: 'conductor_id' },
   libranza:        { tabla: 'patron_libranza',          entidad: 'conductor_id' },
@@ -31,6 +32,10 @@ const TIPOS = {
   corteTurno:      { tabla: 'turno_version',            entidad: 'turno_id' },
 };
 
+// OJO con las fechas: en SQL `desde <= NULL` no es falso sino DESCONOCIDO, asi
+// que no casa NINGUNA fila. Por eso todas las comparaciones van envueltas en
+// COALESCE(..., CURRENT_DATE): pasar `undefined` significa "hoy", y decirlo en
+// JavaScript no basta porque el null llega igual a la consulta.
 function def(tipo) {
   const d = TIPOS[tipo];
   if (!d) throw new Error(`Tipo de vigencia desconocido: "${tipo}". Los válidos: ${Object.keys(TIPOS).join(', ')}`);
@@ -43,8 +48,8 @@ async function vigente(tipo, entidadId, fecha) {
   const r = await db.consulta(
     `SELECT * FROM ${d.tabla}
       WHERE ${d.entidad} = $1
-        AND ${d.desde} <= $2::date
-        AND (${d.hasta} IS NULL OR ${d.hasta} >= $2::date)
+        AND ${d.desde} <= COALESCE($2::date, CURRENT_DATE)
+        AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
       ORDER BY ${d.desde} DESC${d.orden ? ', ' + d.orden : ''}
       LIMIT 1`,
     [entidadId, fecha || null]);
@@ -57,8 +62,8 @@ async function vigentes(tipo, entidadId, fecha) {
   const r = await db.consulta(
     `SELECT * FROM ${d.tabla}
       WHERE ${d.entidad} = $1
-        AND ${d.desde} <= $2::date
-        AND (${d.hasta} IS NULL OR ${d.hasta} >= $2::date)
+        AND ${d.desde} <= COALESCE($2::date, CURRENT_DATE)
+        AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
       ORDER BY ${d.orden ? d.orden + ', ' : ''}${d.desde} DESC`,
     [entidadId, fecha || null]);
   return r.rows;
@@ -98,14 +103,14 @@ async function reemplazar(tipo, entidadId, datos, { desde, cerrarAnterior = true
       // Se cierra el día ANTERIOR al nuevo: los rangos son inclusivos y si no
       // se solaparían un día.
       await c.query(
-        `UPDATE ${d.tabla} SET ${d.hasta} = ($2::date - 1)
-          WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL AND ${d.desde} < $2::date`,
+        `UPDATE ${d.tabla} SET ${d.hasta} = (COALESCE($2::date, CURRENT_DATE) - 1)
+          WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL AND ${d.desde} < COALESCE($2::date, CURRENT_DATE)`,
         [entidadId, dia]);
       // Una vigencia que empezaba HOY y se sustituye hoy mismo no llega a
       // existir: se borra en vez de dejarla con `hasta` anterior a `desde`.
       await c.query(
         `DELETE FROM ${d.tabla}
-          WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL AND ${d.desde} >= $2::date`,
+          WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL AND ${d.desde} >= COALESCE($2::date, CURRENT_DATE)`,
         [entidadId, dia]);
     }
     const campos = { [d.entidad]: entidadId, [d.desde]: dia, ...datos };
@@ -124,7 +129,7 @@ async function reemplazar(tipo, entidadId, datos, { desde, cerrarAnterior = true
 async function cerrar(tipo, entidadId, hasta, { cli } = {}) {
   const d = def(tipo);
   const dia = hasta || new Date().toISOString().slice(0, 10);
-  const sql = `UPDATE ${d.tabla} SET ${d.hasta} = $2::date
+  const sql = `UPDATE ${d.tabla} SET ${d.hasta} = COALESCE($2::date, CURRENT_DATE)
                 WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL RETURNING *`;
   const r = cli ? await cli.query(sql, [entidadId, dia]) : await db.consulta(sql, [entidadId, dia]);
   return r.rows[0] || null;
@@ -141,8 +146,8 @@ async function vigenteDeVarias(tipo, entidadIds, fecha) {
   const r = await db.consulta(
     `SELECT DISTINCT ON (${d.entidad}) * FROM ${d.tabla}
       WHERE ${d.entidad} = ANY($1)
-        AND ${d.desde} <= $2::date
-        AND (${d.hasta} IS NULL OR ${d.hasta} >= $2::date)
+        AND ${d.desde} <= COALESCE($2::date, CURRENT_DATE)
+        AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
       ORDER BY ${d.entidad}, ${d.desde} DESC`,
     [entidadIds, fecha || null]);
   return new Map(r.rows.map(x => [x[d.entidad], x]));
@@ -153,13 +158,42 @@ async function contarVigentes(tipo, fecha) {
   const d = def(tipo);
   const r = await db.consulta(
     `SELECT count(DISTINCT ${d.entidad})::int n FROM ${d.tabla}
-      WHERE ${d.desde} <= $1::date AND (${d.hasta} IS NULL OR ${d.hasta} >= $1::date)`,
+      WHERE ${d.desde} <= COALESCE($1::date, CURRENT_DATE) AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($1::date, CURRENT_DATE))`,
     [fecha || null]);
   return r.rows[0].n;
 }
 
+/**
+ * Comprueba que el mapa de arriba coincide con las columnas REALES. Existe
+ * porque ya falló una vez: `conductor_periodo_empleo` usa alta/baja y no
+ * desde/hasta, y el error no aparecia hasta que alguien consultaba ese tipo.
+ * Se llama al arrancar; si algo no cuadra, se ve en el log en vez de meses
+ * despues en una pantalla vacia.
+ */
+async function comprobarMapa() {
+  const fallos = [];
+  for (const [tipo, bruto] of Object.entries(TIPOS)) {
+    const d = { desde: 'desde', hasta: 'hasta', ...bruto };
+    try {
+      const r = await db.consulta(
+        `SELECT attname FROM pg_attribute
+          WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped`, [d.tabla]);
+      const cols = new Set(r.rows.map(x => x.attname));
+      const faltan = [d.entidad, d.desde, d.hasta].filter(c => !cols.has(c));
+      if (faltan.length) fallos.push(`${tipo} (${d.tabla}): no existe ${faltan.join(', ')}`);
+    } catch (e) {
+      fallos.push(`${tipo}: ${e.message}`);
+    }
+  }
+  const NL = String.fromCharCode(10);
+  if (fallos.length) console.error('❌ [VIGENCIA] El mapa no cuadra con la base:' + NL + '   ' + fallos.join(NL + '   '));
+  else console.log(`✓ [VIGENCIA] ${Object.keys(TIPOS).length} tipos comprobados contra la base`);
+  return fallos;
+}
+
 module.exports = {
   TIPOS: Object.keys(TIPOS),
+  comprobarMapa,
   vigente, vigentes, vigenteDeVarias, historial, abierta,
   reemplazar, cerrar, contarVigentes,
 };

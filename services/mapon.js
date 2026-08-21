@@ -119,7 +119,13 @@ async function unidades() {
   lista.forEach(u => {
     mapa.set(u.unit_id, {
       matricula: txt(u.number) || txt(u.label) || `#${u.unit_id}`,
-      vehiculo: [txt(u.make), txt(u.model)].filter(Boolean).join(' ') || txt(u.label) || 'Vehículo'
+      vehiculo: [txt(u.make), txt(u.model)].filter(Boolean).join(' ') || txt(u.label) || 'Vehículo',
+      // `mileage` viene en METROS y ya llegaba en esta misma llamada: se estaba
+      // tirando. Es el odometro del coche, asi que sale gratis.
+      odometroM: Number.isFinite(Number(u.mileage)) ? Math.round(Number(u.mileage)) : null,
+      estado: txt(u.state) || null,          // driving / standing / nodata / nogps / service
+      ultimoDato: txt(u.last_update) || null,
+      lat: Number(u.lat) || null, lng: Number(u.lng) || null
     });
   });
   cacheUnidades = { ts: Date.now(), mapa };

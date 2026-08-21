@@ -58,4 +58,16 @@ router.delete('/api/vehiculo/:fila', async (req, res) => {
   }
 });
 
+// Sincronizacion con Mapon: enlaces de unidad y odometros. Solo lectura de
+// Mapon; lo unico que se escribe es en nuestra base.
+router.get('/api/mapon/simular', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await require('../services/sincroMapon').enlazar({ soloVer: true })) }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
+router.post('/api/mapon/sincronizar', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await require('../services/sincroMapon').diaria()) }); }
+  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
 module.exports = router;
