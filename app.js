@@ -34,6 +34,12 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.set('layout', 'layout');
 
+// Marca de version para los estaticos. Los archivos de /assets se cachean un
+// dia; sin esto, un despliegue que cambia listado.js dejaria a la gente con la
+// copia vieja hasta el dia siguiente. En Render cada despliegue trae un commit
+// distinto, asi que la URL cambia sola y el navegador vuelve a pedirlo.
+app.locals.v = (process.env.RENDER_GIT_COMMIT || '').slice(0, 8) || String(Date.now());
+
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 
@@ -368,8 +374,6 @@ programar('10,40 * * * *', async () => {
   }
 });
 
-// Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
-// vencieron (los usados se conservan siempre, como histórico).
 // Odometros de Mapon: cada dia a las 05:30. Enlaza los coches nuevos y
 // refresca el kilometraje. Es la MISMA llamada a unit/list.json que ya se
 // hacia para otras cosas, asi que no anade carga a la API.
@@ -382,6 +386,8 @@ programar('30 5 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
+// vencieron (los usados se conservan siempre, como histórico).
 programar('20 4 * * *', async () => {
   try {
     const { purgarVencidos } = require('./services/codigosBallenoil');

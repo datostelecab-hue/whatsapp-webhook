@@ -1,174 +1,116 @@
 <%
-  // Leyenda de estados de vehículo (mismo criterio que el planificador)
-  const LEYENDA = {
-    '✓': 'Operativo', 'S': 'Siniestro', 'T': 'Transporte',
-    'X': 'En taller', 'R': 'Reservado', 'B': 'Baja'
-  };
+  // Colores de cada estado. El código va en la base ('O','R','T','X','S','B');
+  // esto es solo cómo se pinta.
+  const TONO_ESTADO = { O: 'green', R: 'gold', T: 'violet', X: 'warn', S: 'red', B: 'muted' };
 %>
 
-<div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
+<div id="modulo"></div>
 
-  <!-- Encabezado + acciones -->
-  <div class="flex flex-wrap items-center gap-3 mb-5">
-    <div>
-      <h2 class="text-xl font-bold flex items-center gap-2">
-        <i class="fa-solid fa-car-side text-telecab-gold"></i> Flota
-      </h2>
-      <p class="text-sm text-telecab-muted mt-0.5" id="v-resumen"></p>
-    </div>
-    <div class="ml-auto flex items-center gap-2">
-      <div class="relative">
-        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
-        <input id="v-buscar" placeholder="Buscar matrícula, modelo…"
-               class="pl-8 pr-3 py-2 w-48 sm:w-64 bg-telecab-card border border-telecab-border rounded-xl text-sm
-                      focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
-      </div>
-      <button id="v-nuevo"
-              class="flex items-center gap-2 px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm
-                     hover:bg-telecab-gold-soft transition shadow-gold">
-        <i class="fa-solid fa-plus"></i> Nuevo vehículo
-      </button>
-    </div>
-  </div>
-
-  <!-- Tarjetas resumen -->
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" id="v-kpis"></div>
-
-  <!-- Aviso: matrículas del planificador sin ficha -->
-  <div id="v-sinficha" class="hidden mb-5 rounded-xl border border-telecab-gold/30 bg-telecab-gold/5 p-4"></div>
-
-  <!-- Filtro por estado -->
-  <div class="flex flex-wrap gap-2 mb-4" id="v-filtros"></div>
-
-  <!-- Tabla -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
-          <tr>
-            <th class="text-left font-semibold px-4 py-3">Matrícula</th>
-            <th class="text-left font-semibold px-4 py-3">Modelo</th>
-            <th class="text-left font-semibold px-4 py-3">Estado</th>
-            <th class="text-left font-semibold px-4 py-3">ITV</th>
-            <th class="text-left font-semibold px-4 py-3">Seguro</th>
-            <th class="text-left font-semibold px-4 py-3">Zona</th>
-            <th class="text-left font-semibold px-4 py-3">Plan.</th>
-            <th class="text-right font-semibold px-4 py-3"></th>
-          </tr>
-        </thead>
-        <tbody id="v-tbody" class="divide-y divide-telecab-border/60"></tbody>
-      </table>
-    </div>
-    <div id="v-vacio" class="hidden p-10 text-center text-telecab-muted">
-      <i class="fa-solid fa-car-side text-3xl mb-2 opacity-40"></i>
-      <p>No hay vehículos que coincidan.</p>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════ MODAL FICHA ══════════ -->
-<div id="ficha" class="hidden fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
+<!-- Formulario de alta y edición. Vive fuera del componente porque es propio de
+     esta pantalla: el componente pone la lista y la ficha, no sabe de coches. -->
+<div id="ficha-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
   <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-lg my-8">
     <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
-      <h3 id="ficha-titulo" class="font-bold text-lg">Vehículo</h3>
-      <button id="ficha-cerrar" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted transition">
+      <h3 id="fm-titulo" class="font-bold text-lg">Vehículo</h3>
+      <button type="button" id="fm-cerrar" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted transition">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
 
-    <form id="ficha-form" class="p-5 space-y-4">
-      <input type="hidden" id="f-fila">
+    <form id="fm-form" class="p-5 space-y-4">
+      <input type="hidden" id="fm-id">
+
       <div class="grid grid-cols-2 gap-4">
-        <div class="col-span-2 sm:col-span-1">
-          <label class="block text-xs text-telecab-muted mb-1">Matrícula *</label>
-          <input id="f-matricula" required
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm uppercase
+        <div>
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Matrícula *</label>
+          <input id="fm-matricula" required maxlength="12"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm uppercase
                         focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
         </div>
-        <div class="col-span-2 sm:col-span-1">
-          <label class="block text-xs text-telecab-muted mb-1">Estado</label>
-          <select id="f-estado"
-                  class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+        <div>
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Estado</label>
+          <select id="fm-estado"
+                  class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
                          focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-            <option value="">—</option>
-            <% estadosVehiculo.forEach(e => { %>
-              <option value="<%= e %>"><%= e %> · <%= LEYENDA[e] || e %></option>
+            <% (estadosVehiculo || []).forEach(e => { %>
+              <option value="<%= e.codigo %>"><%= e.etiqueta %></option>
             <% }) %>
           </select>
         </div>
-        <div class="col-span-2">
-          <label class="block text-xs text-telecab-muted mb-1">Marca y modelo</label>
-          <input id="f-marcaModelo" placeholder="Ej. Toyota Corolla"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Marca y modelo</label>
+          <input id="fm-marcaModelo" maxlength="120"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
                         focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
         </div>
         <div>
-          <label class="block text-xs text-telecab-muted mb-1">Año</label>
-          <input id="f-anio" inputmode="numeric" placeholder="2022"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Año</label>
+          <input id="fm-anio" type="number" min="1980" max="2100"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
                         focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Fecha matriculación</label>
-          <input id="f-matriculacion" placeholder="dd/mm/aaaa"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
-                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">ITV (vence)</label>
-          <input id="f-itv" placeholder="dd/mm/aaaa"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
-                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Km</label>
-          <input id="f-km" inputmode="numeric" placeholder="0"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
-                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Aseguradora</label>
-          <input id="f-aseguradora" placeholder="Ej. Mapfre"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
-                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Seguro (vence)</label>
-          <input id="f-venceSeguro" placeholder="dd/mm/aaaa"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
-                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-        </div>
-        <div class="col-span-2">
-          <label class="block text-xs text-telecab-muted mb-1">Zona / base</label>
-          <input id="f-zona" list="zonas-list" placeholder="Zona de la flota"
-                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm
-                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-          <datalist id="zonas-list">
-            <% (zonas || []).forEach(z => { %><option value="<%= z %>"></option><% }) %>
-          </datalist>
-        </div>
-        <div class="col-span-2">
-          <label class="block text-xs text-telecab-muted mb-1">Notas</label>
-          <textarea id="f-notas" rows="2"
-                    class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm resize-none
-                           focus:outline-none focus:ring-2 focus:ring-telecab-gold/40"></textarea>
         </div>
       </div>
 
-      <p id="ficha-error" class="hidden text-sm text-telecab-red"></p>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Matriculación</label>
+          <input id="fm-matriculacion" class="js-fecha w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Caduca la ITV</label>
+          <input id="fm-itv" class="js-fecha w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa">
+        </div>
+      </div>
 
-      <div class="flex items-center gap-2 pt-1">
-        <button type="button" id="ficha-borrar"
-                class="hidden mr-auto px-3 py-2 rounded-lg text-telecab-red hover:bg-telecab-red/10 transition text-sm">
-          <i class="fa-solid fa-trash"></i> Borrar
-        </button>
-        <button type="button" id="ficha-cancelar"
-                class="px-4 py-2 rounded-lg border border-telecab-border hover:bg-telecab-card2 transition text-sm">
-          Cancelar
-        </button>
-        <button type="submit" id="ficha-guardar"
-                class="px-4 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold hover:bg-telecab-gold-soft transition text-sm">
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Aseguradora</label>
+          <input id="fm-aseguradora" maxlength="80"
+                 class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Vence el seguro</label>
+          <input id="fm-venceSeguro" class="js-fecha w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
+                        focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Zona</label>
+        <select id="fm-zonaId"
+                class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
+                       focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+          <option value="">Sin zona</option>
+          <% (zonas || []).forEach(z => { %>
+            <option value="<%= z.id %>"><%= z.nombre %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Notas</label>
+        <textarea id="fm-notas" rows="2"
+                  class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
+                         focus:outline-none focus:ring-2 focus:ring-telecab-gold/40"></textarea>
+      </div>
+
+      <p id="fm-error" class="hidden text-sm text-telecab-red"></p>
+
+      <div class="flex items-center gap-2 pt-2">
+        <button type="submit" id="fm-guardar"
+                class="flex-1 px-4 py-2.5 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm
+                       hover:bg-telecab-gold-soft transition shadow-gold">
           Guardar
+        </button>
+        <button type="button" id="fm-cancelar"
+                class="px-4 py-2.5 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">
+          Cancelar
         </button>
       </div>
     </form>
@@ -176,222 +118,296 @@
 </div>
 
 <script>
-const LEYENDA = <%- JSON.stringify(LEYENDA) %>;
-const $ = s => document.querySelector(s);
-let VEHICULOS = [], SINFICHA = [], filtroEstado = '', textoBusqueda = '';
+(function () {
+  const TONO = <%- JSON.stringify(TONO_ESTADO) %>;
+  const { fecha, fechaHora, hace, km, etiqueta, caduca, esc } = Listado.fmt;
 
-const badge = (txt, cls) =>
-  `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${cls}">${txt}</span>`;
+  // ---------- la pantalla ----------
 
-// Color del chip de estado del vehículo
-function chipEstado(e) {
-  const map = {
-    '✓': 'bg-telecab-green/15 text-telecab-green',
-    'X': 'bg-telecab-red/15 text-telecab-red',
-    'S': 'bg-telecab-red/15 text-telecab-red',
-    'B': 'bg-telecab-muted/20 text-telecab-muted',
-    'T': 'bg-telecab-gold/15 text-telecab-gold',
-    'R': 'bg-telecab-gold/15 text-telecab-gold'
-  };
-  if (!e) return badge('—', 'bg-telecab-muted/20 text-telecab-muted');
-  return badge(`${e} · ${LEYENDA[e] || ''}`, map[e] || 'bg-telecab-card2 text-telecab-text');
-}
+  const flota = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Flota',
+    icono: 'fa-car-side',
+    clave: 'id',
+    origen: '/vehiculos/api/lista',
+    vacio: 'No hay vehículos que coincidan.',
+    buscar: { texto: 'Buscar matrícula, modelo…', campos: ['matricula', 'marca_modelo', 'zona'] },
 
-// Celda de una fecha de vencimiento (ITV / seguro) con color según urgencia
-function celdaVencimiento(valor, estado) {
-  if (!valor) return `<span class="text-telecab-muted">—</span>`;
-  const clases = {
-    vencido: 'text-telecab-red font-semibold',
-    proximo: 'text-telecab-gold font-semibold',
-    ok: 'text-telecab-text'
-  };
-  const icono = estado === 'vencido' ? '<i class="fa-solid fa-triangle-exclamation mr-1"></i>'
-              : estado === 'proximo' ? '<i class="fa-solid fa-clock mr-1"></i>' : '';
-  return `<span class="${clases[estado] || 'text-telecab-text'}">${icono}${valor}</span>`;
-}
+    subtitulo: (visibles, todas) =>
+      visibles.length === todas.length
+        ? `${todas.length} vehículos`
+        : `${visibles.length} de ${todas.length} vehículos`,
 
-function pintarKpis() {
-  const total = VEHICULOS.length;
-  const operativos = VEHICULOS.filter(v => v.estado === '✓').length;
-  const taller = VEHICULOS.filter(v => v.estado === 'X' || v.estado === 'S').length;
-  const alertas = VEHICULOS.filter(v => v.itvEstado === 'vencido' || v.itvEstado === 'proximo'
-                                     || v.seguroEstado === 'vencido' || v.seguroEstado === 'proximo').length;
-  const kpi = (n, txt, cls) => `
-    <div class="bg-telecab-card border border-telecab-border rounded-xl px-4 py-3">
-      <div class="text-2xl font-bold ${cls}">${n}</div>
-      <div class="text-xs text-telecab-muted mt-0.5">${txt}</div>
-    </div>`;
-  $('#v-kpis').innerHTML =
-    kpi(total, 'Vehículos', 'text-telecab-text') +
-    kpi(operativos, 'Operativos', 'text-telecab-green') +
-    kpi(taller, 'Taller / siniestro', 'text-telecab-red') +
-    kpi(alertas, 'ITV/seguro por vencer', 'text-telecab-gold');
-}
+    kpis: (filas, extra) => {
+      const r = (extra && extra.resumen) || {};
+      const a = r.alertas || {};
+      const operativos = filas.filter(f => f.es_operativo).length;
+      return [
+        { etiqueta: 'Operativos', valor: `${operativos} / ${filas.length}`, tono: 'green',
+          filtro: { id: 'estado', valor: 'O' } },
+        { etiqueta: 'ITV', valor: Number(a.itv_caducada || 0) + Number(a.itv_pronto || 0),
+          tono: Number(a.itv_caducada) ? 'red' : 'warn',
+          pie: `${a.itv_caducada || 0} caducadas · ${a.itv_pronto || 0} en 30 días` },
+        { etiqueta: 'Seguro', valor: Number(a.seguro_caducado || 0) + Number(a.seguro_pronto || 0),
+          tono: Number(a.seguro_caducado) ? 'red' : 'warn',
+          pie: `${a.seguro_caducado || 0} vencidos · ${a.seguro_pronto || 0} en 30 días` },
+        { etiqueta: 'Odómetro', valor: filas.filter(f => f.km_odometro_m).length,
+          tono: 'gold', pie: `${a.odometro_viejo || 0} sin refrescar` },
+      ];
+    },
 
-function pintarFiltros() {
-  const estados = ['', '✓', 'X', 'S', 'T', 'R', 'B'];
-  $('#v-filtros').innerHTML = estados.map(e => {
-    const on = filtroEstado === e;
-    const txt = e === '' ? 'Todos' : `${e} · ${LEYENDA[e] || ''}`;
-    return `<button data-estado="${e}"
-      class="px-3 py-1.5 rounded-lg text-xs font-medium transition border
-             ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
-                  : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${txt}</button>`;
-  }).join('');
-  $('#v-filtros').querySelectorAll('button').forEach(b =>
-    b.onclick = () => { filtroEstado = b.dataset.estado; pintar(); });
-}
+    filtros: [{
+      id: 'estado',
+      campo: 'estado_operativo',
+      textoTodos: 'Todos',
+      // Las opciones salen de los datos, no de una lista escrita a mano: si
+      // mañana se añade un estado en la base, aparece aquí solo.
+      opciones: (filas, extra) => ((extra.resumen && extra.resumen.porEstado) || [])
+        .filter(e => e.coches > 0)
+        .map(e => ({ valor: e.codigo, texto: e.etiqueta, cuenta: e.coches })),
+    }],
 
-function pintarSinFicha() {
-  const box = $('#v-sinficha');
-  if (!SINFICHA.length) { box.classList.add('hidden'); return; }
-  box.classList.remove('hidden');
-  box.innerHTML = `
-    <div class="flex items-start gap-3">
-      <i class="fa-solid fa-circle-info text-telecab-gold mt-0.5"></i>
-      <div class="text-sm">
-        <p class="font-semibold text-telecab-gold mb-1">${SINFICHA.length} matrícula(s) en el planificador sin ficha de vehículo</p>
-        <p class="text-telecab-muted mb-2">Créales una ficha para llevar su ITV, seguro y estado.</p>
-        <div class="flex flex-wrap gap-1.5">
-          ${SINFICHA.map(m => `<button data-mat="${m}"
-             class="px-2 py-1 rounded-md bg-telecab-card2 border border-telecab-border text-xs
-                    hover:border-telecab-gold/50 transition">${m} <i class="fa-solid fa-plus text-[10px] ml-0.5"></i></button>`).join('')}
-        </div>
-      </div>
-    </div>`;
-  box.querySelectorAll('button[data-mat]').forEach(b =>
-    b.onclick = () => abrirFicha(null, b.dataset.mat));
-}
+    acciones: [
+      { texto: 'Nuevo vehículo', icono: 'fa-plus', onClick: () => abrirForm(null) },
+      { texto: 'Mapon', icono: 'fa-satellite-dish', principal: false, onClick: sincronizarMapon },
+    ],
 
-function pintar() {
-  const t = textoBusqueda.toLowerCase();
-  const lista = VEHICULOS.filter(v => {
-    if (filtroEstado && v.estado !== filtroEstado) return false;
-    if (t && !(`${v.matricula} ${v.marcaModelo} ${v.zona} ${v.aseguradora}`.toLowerCase().includes(t))) return false;
-    return true;
+    columnas: [
+      { titulo: 'Matrícula', campo: 'matricula', clase: 'font-semibold whitespace-nowrap' },
+      { titulo: 'Modelo', campo: 'marca_modelo',
+        pinta: (v, f) => esc(v || '') + (f.anio ? ` <span class="text-telecab-muted">${f.anio}</span>` : '') },
+      { titulo: 'Estado', campo: 'estado_etiqueta',
+        pinta: (v, f) => etiqueta(v, TONO[f.estado_operativo] || 'muted') },
+      { titulo: 'ITV', campo: 'itv_caduca', clase: 'whitespace-nowrap',
+        pinta: (v, f) => caduca(f.dias_itv, fecha(v)) },
+      { titulo: 'Seguro', campo: 'seguro_caduca', clase: 'whitespace-nowrap',
+        pinta: (v, f) => caduca(f.dias_seguro, fecha(v)) },
+      { titulo: 'Zona', campo: 'zona' },
+      { titulo: 'Kilómetros', campo: 'km_odometro_m', clase: 'whitespace-nowrap tabular-nums',
+        pinta: (v, f) => v
+          ? `${km(v)} <span class="text-telecab-muted text-xs">${esc(hace(f.km_odometro_at))}</span>`
+          : '<span class="text-telecab-muted">—</span>' },
+      { titulo: 'Plazas', campo: 'plazas_ocupadas', clase: 'tabular-nums',
+        pinta: v => `${v}<span class="text-telecab-muted"> / 6</span>` },
+    ],
+
+    // ---------- la ficha ----------
+
+    detalle: {
+      origen: id => `/vehiculos/api/ficha/${id}`,
+      titulo: d => d.matricula,
+      subtitulo: d => [d.marca_modelo, d.anio, d.zona].filter(Boolean).join(' · '),
+
+      acciones: [
+        { texto: 'Editar', icono: 'fa-pen', principal: true, onClick: d => abrirForm(d) },
+        { texto: 'Dar de baja', icono: 'fa-ban', peligro: true,
+          visible: d => !d.baja_at, onClick: darDeBaja },
+      ],
+
+      bloques: [
+        {
+          titulo: 'Datos del vehículo', icono: 'fa-circle-info',
+          campos: [
+            { etiqueta: 'Matrícula', valor: d => d.matricula, clase: 'font-semibold' },
+            { etiqueta: 'Estado', html: true,
+              valor: d => etiqueta(d.estado_etiqueta, TONO[d.estado_operativo] || 'muted') },
+            { etiqueta: 'Zona', valor: d => d.zona },
+            { etiqueta: 'Marca y modelo', valor: d => d.marca_modelo },
+            { etiqueta: 'Año', valor: d => d.anio },
+            { etiqueta: 'Matriculación', valor: d => fecha(d.fecha_matriculacion) },
+            { etiqueta: 'Caduca la ITV', html: true, valor: d => caduca(dias(d.itv_caduca), fecha(d.itv_caduca)) },
+            { etiqueta: 'Aseguradora', valor: d => d.aseguradora },
+            { etiqueta: 'Vence el seguro', html: true, valor: d => caduca(dias(d.seguro_caduca), fecha(d.seguro_caduca)) },
+            { etiqueta: 'Kilómetros', valor: d => km(d.km_odometro_m) },
+            { etiqueta: 'Última lectura', valor: d => d.km_odometro_at ? `${fechaHora(d.km_odometro_at)} (${hace(d.km_odometro_at)})` : '' },
+            { etiqueta: 'Notas', valor: d => d.notas, ancho: 'sm:col-span-2 lg:col-span-3' },
+          ],
+        },
+        {
+          titulo: 'Plazas y conductores', icono: 'fa-users',
+          tabla: {
+            datos: d => d.plazas,
+            vacio: 'Este coche no tiene plazas.',
+            columnas: [
+              { titulo: 'Turno', campo: 'turno' },
+              { titulo: 'Rol', campo: 'rol' },
+              { titulo: 'Conductor', campo: 'conductor',
+                pinta: v => v ? esc(v) : '<span class="text-telecab-muted">Libre</span>' },
+              { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
+            ],
+          },
+        },
+        {
+          titulo: 'Enlaces con sistemas externos', icono: 'fa-link',
+          tabla: {
+            datos: d => d.enlaces,
+            vacio: 'Sin enlazar. Este coche no recibe kilometraje.',
+            columnas: [
+              { titulo: 'Sistema', campo: 'sistema', clase: 'uppercase font-semibold' },
+              { titulo: 'Identificador', campo: 'externo_id', clase: 'tabular-nums' },
+              { titulo: 'Matrícula allí', campo: 'externo_matricula',
+                // Si allí está escrita distinta, se avisa: es el descuadre que
+                // deja a un coche sin kilómetros sin que nadie se entere.
+                pinta: (v, f, d) => norm(v) === norm(d.matricula)
+                  ? esc(v)
+                  : `<span class="text-telecab-warn">${esc(v)} <i class="fa-solid fa-triangle-exclamation"></i></span>` },
+              { titulo: 'Desde', campo: 'visto_desde', pinta: v => fecha(v) },
+            ],
+          },
+        },
+        {
+          titulo: 'Historial de estado', icono: 'fa-clock-rotate-left',
+          tabla: {
+            datos: d => d.historialEstado,
+            vacio: 'Sin cambios registrados.',
+            columnas: [
+              { titulo: 'Estado', campo: 'etiqueta',
+                pinta: (v, f) => etiqueta(v || f.estado_codigo, TONO[f.estado_codigo] || 'muted') },
+              { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
+              { titulo: 'Hasta', campo: 'hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Ahora</span>' },
+            ],
+          },
+        },
+        {
+          titulo: 'Historial de zona', icono: 'fa-location-dot',
+          visible: d => (d.historialZona || []).length > 0,
+          tabla: {
+            datos: d => d.historialZona,
+            columnas: [
+              { titulo: 'Zona', campo: 'etiqueta' },
+              { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
+              { titulo: 'Hasta', campo: 'hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Ahora</span>' },
+            ],
+          },
+        },
+      ],
+    },
   });
 
-  $('#v-vacio').classList.toggle('hidden', lista.length > 0);
-  $('#v-tbody').innerHTML = lista.map(v => `
-    <tr class="hover:bg-telecab-card2/50 transition cursor-pointer" data-fila="${v.fila}">
-      <td class="px-4 py-3 font-semibold">${v.matricula}</td>
-      <td class="px-4 py-3 text-telecab-muted">${v.marcaModelo || '—'}${v.anio ? ` <span class="text-xs">(${v.anio})</span>` : ''}</td>
-      <td class="px-4 py-3">${chipEstado(v.estado)}</td>
-      <td class="px-4 py-3">${celdaVencimiento(v.itv, v.itvEstado)}</td>
-      <td class="px-4 py-3">${celdaVencimiento(v.venceSeguro, v.seguroEstado)}</td>
-      <td class="px-4 py-3 text-telecab-muted">${v.zona || '—'}</td>
-      <td class="px-4 py-3">${v.enPlanificador
-          ? badge('En uso', 'bg-telecab-green/15 text-telecab-green')
-          : badge('No', 'bg-telecab-muted/15 text-telecab-muted')}</td>
-      <td class="px-4 py-3 text-right"><i class="fa-solid fa-pen text-telecab-muted text-xs"></i></td>
-    </tr>`).join('');
+  function norm(m) { return String(m || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); }
+  function dias(f) {
+    if (!f) return null;
+    return Math.round((new Date(f) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  }
 
-  $('#v-tbody').querySelectorAll('tr').forEach(tr =>
-    tr.onclick = () => abrirFicha(VEHICULOS.find(v => v.fila == tr.dataset.fila)));
-}
+  // ---------- el formulario ----------
 
-// ---------- Modal ----------
-function abrirFicha(v, matriculaNueva) {
-  $('#ficha-error').classList.add('hidden');
-  $('#f-fila').value = v ? v.fila : '';
-  $('#f-matricula').value = v ? v.matricula : (matriculaNueva || '');
-  $('#f-matricula').disabled = !!v;   // la matrícula no se cambia en edición
-  $('#f-estado').value = v ? v.estado : '';
-  $('#f-marcaModelo').value = v ? v.marcaModelo : '';
-  $('#f-anio').value = v ? v.anio : '';
-  $('#f-matriculacion').value = v ? v.matriculacion : '';
-  $('#f-itv').value = v ? v.itv : '';
-  $('#f-km').value = v ? v.km : '';
-  $('#f-aseguradora').value = v ? v.aseguradora : '';
-  $('#f-venceSeguro').value = v ? v.venceSeguro : '';
-  $('#f-zona').value = v ? v.zona : '';
-  $('#f-notas').value = v ? v.notas : '';
-  $('#ficha-titulo').textContent = v ? `Vehículo ${v.matricula}` : 'Nuevo vehículo';
-  $('#ficha-borrar').classList.toggle('hidden', !v);
-  $('#ficha').classList.remove('hidden');
-}
-function cerrarFicha() { $('#ficha').classList.add('hidden'); }
+  const modal = document.getElementById('ficha-modal');
+  const form  = document.getElementById('fm-form');
+  const error = document.getElementById('fm-error');
+  const campo = id => document.getElementById('fm-' + id);
 
-async function guardar(e) {
-  e.preventDefault();
-  const btn = $('#ficha-guardar');
-  btn.disabled = true; btn.textContent = 'Guardando…';
-  $('#ficha-error').classList.add('hidden');
-  const fila = $('#f-fila').value;
-  const campos = {
-    estado: $('#f-estado').value, marcaModelo: $('#f-marcaModelo').value,
-    anio: $('#f-anio').value, matriculacion: $('#f-matriculacion').value,
-    itv: $('#f-itv').value, km: $('#f-km').value,
-    aseguradora: $('#f-aseguradora').value, venceSeguro: $('#f-venceSeguro').value,
-    zona: $('#f-zona').value, notas: $('#f-notas').value
+  const CAMPOS = ['matricula', 'estado', 'marcaModelo', 'anio', 'matriculacion',
+                  'itv', 'aseguradora', 'venceSeguro', 'zonaId', 'notas'];
+
+  // La ficha guarda las fechas en ISO y el formulario las enseña dd/mm/aaaa.
+  const aISO = v => {
+    const m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : (v || null);
   };
-  try {
-    let r;
-    if (fila) {
-      r = await fetch('/vehiculos/api/vehiculo', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fila: Number(fila), campos })
+
+  function abrirForm(d) {
+    error.classList.add('hidden');
+    document.getElementById('fm-titulo').textContent = d ? `Editar ${d.matricula}` : 'Nuevo vehículo';
+    campo('id').value = d ? d.id : '';
+
+    campo('matricula').value    = d ? d.matricula || '' : '';
+    campo('estado').value       = d ? d.estado_operativo || 'O' : 'O';
+    campo('marcaModelo').value  = d ? d.marca_modelo || '' : '';
+    campo('anio').value         = d ? d.anio || '' : '';
+    campo('matriculacion').value= d ? fecha(d.fecha_matriculacion) : '';
+    campo('itv').value          = d ? fecha(d.itv_caduca) : '';
+    campo('aseguradora').value  = d ? d.aseguradora || '' : '';
+    campo('venceSeguro').value  = d ? fecha(d.seguro_caduca) : '';
+    campo('zonaId').value       = d && d.base_zona_id ? String(d.base_zona_id) : '';
+    campo('notas').value        = d ? d.notas || '' : '';
+
+    // La matrícula no se cambia desde aquí: es la identidad del coche y hay
+    // enlaces externos colgando de ella. Para eso, baja y alta.
+    campo('matricula').readOnly = !!d;
+    campo('matricula').classList.toggle('opacity-60', !!d);
+
+    modal.classList.remove('hidden');
+    (d ? campo('marcaModelo') : campo('matricula')).focus();
+  }
+
+  function cerrarForm() { modal.classList.add('hidden'); }
+  document.getElementById('fm-cerrar').addEventListener('click', cerrarForm);
+  document.getElementById('fm-cancelar').addEventListener('click', cerrarForm);
+  modal.addEventListener('click', e => { if (e.target === modal) cerrarForm(); });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    error.classList.add('hidden');
+
+    const datos = {};
+    CAMPOS.forEach(k => { datos[k] = campo(k).value.trim(); });
+    datos.matricula = datos.matricula.toUpperCase();
+    ['matriculacion', 'itv', 'venceSeguro'].forEach(k => { datos[k] = aISO(datos[k]); });
+    datos.anio = datos.anio ? Number(datos.anio) : null;
+
+    const id = campo('id').value;
+    const boton = document.getElementById('fm-guardar');
+    boton.disabled = true;
+
+    try {
+      const r = await fetch(id ? `/vehiculos/api/vehiculo/${id}` : '/vehiculos/api/vehiculo', {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
       });
-    } else {
-      r = await fetch('/vehiculos/api/vehiculo', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matricula: $('#f-matricula').value, ...campos })
-      });
+      const j = await r.json();
+      if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo guardar');
+
+      cerrarForm();
+      await flota.recargar();
+      // Si se estaba editando desde la ficha, se vuelve a pintar con lo nuevo.
+      if (id && flota.abierto) await flota.abrir(id, { historial: false });
+    } catch (err) {
+      error.textContent = err.message;
+      error.classList.remove('hidden');
+    } finally {
+      boton.disabled = false;
     }
-    const data = await r.json();
-    if (data.status !== 'ok') throw new Error(data.msg || 'Error al guardar');
-    cerrarFicha();
-    await cargar();
-  } catch (err) {
-    $('#ficha-error').textContent = err.message;
-    $('#ficha-error').classList.remove('hidden');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Guardar';
+  });
+
+  // ---------- acciones ----------
+
+  async function darDeBaja(d) {
+    if (!confirm(`¿Dar de baja ${d.matricula}?\n\nSe cierran sus plazas y las asignaciones vivas. El historial se conserva.`)) return;
+    const r = await fetch(`/vehiculos/api/vehiculo/${d.id}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok || j.status === 'error') return alert(j.msg || 'No se pudo dar de baja');
+    flota.volver();
+    await flota.recargar();
   }
-}
 
-async function borrar() {
-  const fila = $('#f-fila').value;
-  if (!fila) return;
-  if (!confirm(`¿Borrar la ficha del vehículo ${$('#f-matricula').value}? Esta acción elimina la fila de la hoja.`)) return;
-  const btn = $('#ficha-borrar');
-  btn.disabled = true;
-  try {
-    const r = await fetch('/vehiculos/api/vehiculo/' + fila, { method: 'DELETE' });
-    const data = await r.json();
-    if (data.status !== 'ok') throw new Error(data.msg || 'Error al borrar');
-    cerrarFicha();
-    await cargar();
-  } catch (err) {
-    $('#ficha-error').textContent = err.message;
-    $('#ficha-error').classList.remove('hidden');
-  } finally { btn.disabled = false; }
-}
+  async function sincronizarMapon() {
+    if (!confirm('Traer de Mapon los enlaces que falten y refrescar el kilometraje.\n\n¿Seguir?')) return;
+    try {
+      const r = await fetch('/vehiculos/api/mapon/sincronizar', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok || j.status === 'error') throw new Error(j.msg || 'Mapon no respondió');
 
-async function cargar() {
-  try {
-    const r = await fetch('/vehiculos/api/datos');
-    const data = await r.json();
-    if (data.status === 'error') throw new Error(data.msg);
-    VEHICULOS = data.vehiculos || [];
-    SINFICHA = data.sinFicha || [];
-    $('#v-resumen').textContent = `${VEHICULOS.length} vehículo(s) en la flota`;
-    pintarKpis(); pintarFiltros(); pintarSinFicha(); pintar();
-  } catch (err) {
-    $('#v-resumen').textContent = 'Error al cargar: ' + err.message;
+      const e = j.enlaces || {}, o = j.odometros || {};
+      const lineas = [
+        `${o.actualizados || 0} odómetros al día`,
+        `${e.nuevos || 0} enlaces nuevos`,
+      ];
+      if ((e.ambiguas || []).length) {
+        lineas.push('', 'Matrículas con VARIAS unidades en Mapon (hay que dar de baja la vieja allí):');
+        e.ambiguas.forEach(a => lineas.push(`  ${a.matricula}: ${a.unidades.map(u => u.unitId).join(', ')}`));
+      }
+      if ((e.sinUnidad || []).length) {
+        lineas.push('', `Sin GPS: ${e.sinUnidad.join(', ')}`);
+      }
+      alert(lineas.join('\n'));
+      await flota.recargar();
+    } catch (err) {
+      alert('Mapon: ' + err.message);
+    }
   }
-}
-
-// Listeners
-$('#v-nuevo').onclick = () => abrirFicha(null);
-$('#ficha-cerrar').onclick = cerrarFicha;
-$('#ficha-cancelar').onclick = cerrarFicha;
-$('#ficha-borrar').onclick = borrar;
-$('#ficha-form').onsubmit = guardar;
-$('#v-buscar').oninput = e => { textoBusqueda = e.target.value; pintar(); };
-// A propósito NO se cierra al hacer clic fuera: se perderían los datos a medio
-// rellenar. Solo cierran la X, Cancelar, Escape o un guardado correcto.
-document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarFicha(); });
-
-cargar();
+})();
 </script>

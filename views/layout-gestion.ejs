@@ -21,8 +21,24 @@
       } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
     })();
   </script>
+
+  <!-- Menú contraído o no, ANTES de pintar: si se decidiera después, el menú
+       aparecería ancho y daría un salto al encogerse. Sin preferencia guardada
+       se decide por el ancho de la pantalla, que es lo que de verdad importa. -->
+  <script>
+    (function () {
+      try {
+        var g = localStorage.getItem('telecab-menu');
+        var corto = g === null ? (window.innerWidth < 1280) : (g === 'corto');
+        if (corto) document.documentElement.setAttribute('data-menu', 'corto');
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/assets/css/telecab.css">
 
+  <!-- Componentes compartidos. Se cargan aqui, ANTES del cuerpo, porque cada
+       modulo los invoca desde su propio bloque de codigo en linea. -->
+  <script src="/assets/js/listado.js?v=<%= typeof v !== 'undefined' ? v : '' %>"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -136,8 +152,14 @@
   <!-- ══════════ MENÚ LATERAL ══════════ -->
   <aside id="menu"
          class="fixed lg:sticky top-0 left-0 z-40 h-screen w-64 shrink-0
-                bg-telecab-card/80 backdrop-blur-xl border-r border-telecab-border
-                flex flex-col -translate-x-full lg:translate-x-0 transition-transform duration-300">
+                flex flex-col -translate-x-full lg:translate-x-0
+                transition-transform duration-300 lg:transition-[width]">
+
+    <!-- Panel: es quien lleva el fondo y quien cambia de ancho. Va aparte del
+         <aside> para que, contraído, pueda desplegarse POR ENCIMA del contenido
+         sin empujarlo (el hueco que reserva el aside no se toca). -->
+    <div id="menu-panel"
+         class="h-full w-full flex flex-col bg-telecab-card/80 backdrop-blur-xl border-r border-telecab-border">
 
     <!-- Marca -->
     <a href="/planificador" class="flex items-center gap-3 px-5 py-5 border-b border-telecab-border/70">
@@ -157,7 +179,8 @@
           { nombre: 'Contratación', icono: 'fa-user-tie', rol: 'oficina', items: [
             { href: '/vacantes',       icono: 'fa-location-dot',    texto: 'Vacantes',       id: 'vacantes' },
             { href: '/seleccion',      icono: 'fa-user-plus',       texto: 'Selección',      id: 'seleccion' },
-            { href: '/ett',            icono: 'fa-people-arrows',   texto: 'ETT',            id: 'ett' },
+            { href: '/ett',            icono: 'fa-people-arrows',   texto: 'ETT',            id: 'ett' },
+
           ] },
           { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'oficina', items: [
             { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' },
@@ -253,8 +276,10 @@
         <i class="fa-solid fa-gear w-5 text-center"></i>
         <span>Configuración</span>
       </a>
-      <p class="px-3 pt-3 text-[11px] text-telecab-muted">© <%= new Date().getFullYear() %> Telecab</p>
+      <p class="px-3 pt-3 text-[11px] text-telecab-muted whitespace-nowrap">© <%= new Date().getFullYear() %> Telecab</p>
     </div>
+
+    </div><!-- /menu-panel -->
   </aside>
 
   <div id="menu-fondo" class="hidden fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"></div>
@@ -267,6 +292,11 @@
                    bg-telecab-dark/70 backdrop-blur-lg border-b border-telecab-border">
       <button id="menu-abrir" class="lg:hidden w-9 h-9 rounded-lg hover:bg-telecab-card2 transition">
         <i class="fa-solid fa-bars"></i>
+      </button>
+      <button id="menu-corto" type="button"
+              class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition items-center justify-center text-telecab-muted"
+              aria-label="Contraer el menú" title="Contraer el menú (Ctrl+B)">
+        <i class="fa-solid fa-angles-left"></i>
       </button>
       <h1 class="font-semibold text-telecab-text"><%= titulo || 'Gestión' %></h1>
 
@@ -320,6 +350,66 @@
   document.getElementById('menu-abrir').addEventListener('click', abrir);
   fondo.addEventListener('click', cerrar);
   menu.querySelectorAll('a').forEach(a => a.addEventListener('click', cerrar));
+
+  // ── Menú contraído ──────────────────────────────────────────────────────
+  // Tres formas de manejarlo, de la más automática a la más explícita:
+  //   · sin preferencia guardada, se decide por el ancho de la pantalla;
+  //   · contraído, basta pasar el ratón para verlo entero (lo hace el CSS);
+  //   · el botón (o Ctrl+B) fija la decisión y se recuerda.
+  const raiz = document.documentElement;
+  const btnCorto = document.getElementById('menu-corto');
+  const icoCorto = btnCorto.querySelector('i');
+
+  const pintarBoton = () => {
+    const corto = raiz.getAttribute('data-menu') === 'corto';
+    icoCorto.className = 'fa-solid ' + (corto ? 'fa-angles-right' : 'fa-angles-left');
+    const t = corto ? 'Fijar el menú abierto (Ctrl+B)' : 'Contraer el menú (Ctrl+B)';
+    btnCorto.title = t;
+    btnCorto.setAttribute('aria-label', t);
+    btnCorto.setAttribute('aria-expanded', String(!corto));
+  };
+
+  // ¿Ha elegido ya alguien, o seguimos decidiendo por el ancho de pantalla?
+  let elegido = false;
+  try { elegido = localStorage.getItem('telecab-menu') !== null; } catch (e) {}
+
+  const alternar = () => {
+    const corto = raiz.getAttribute('data-menu') === 'corto';
+    if (corto) raiz.removeAttribute('data-menu');
+    else raiz.setAttribute('data-menu', 'corto');
+    try { localStorage.setItem('telecab-menu', corto ? 'largo' : 'corto'); } catch (e) {}
+    elegido = true;   // a partir de aquí manda la persona, no la ventana
+    pintarBoton();
+  };
+
+  pintarBoton();
+  btnCorto.addEventListener('click', alternar);
+
+  // Ctrl+B, como en cualquier editor. No se roba la tecla mientras se escribe.
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'b') return;
+    // Ojo con `matches`: el destino de la tecla no siempre es un elemento (puede
+    // ser el propio documento si no hay nada enfocado), y entonces no existe.
+    const d = e.target;
+    if (d && typeof d.matches === 'function' &&
+        (d.matches('input, textarea, select') || d.isContentEditable)) return;
+    e.preventDefault();
+    alternar();
+  });
+
+  // Mientras nadie haya elegido, el menú sigue al tamaño de la ventana. La
+  // comprobación va DENTRO del oyente: si estuviera fuera, quien pulsara el
+  // botón y luego cambiara el tamaño se encontraría con que le ignora.
+  let reloj;
+  window.addEventListener('resize', () => {
+    if (elegido) return;
+    clearTimeout(reloj);
+    reloj = setTimeout(() => {
+      if (window.innerWidth < 1280) raiz.setAttribute('data-menu', 'corto');
+      else raiz.removeAttribute('data-menu');
+      pintarBoton();
+    }, 150);
+  });
 
   // Desplegables de departamento en el menú.
   document.querySelectorAll('.grupo-btn').forEach(btn => {

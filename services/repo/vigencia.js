@@ -15,7 +15,12 @@
 
 const db = require('../db');
 
-// tipo → { tabla, entidad, desde, hasta, orden }
+// Algunas vigencias guardan un codigo (`estado_codigo`, `base_zona_id`) que por
+// si solo no se puede ensenar: en pantalla haria falta un numero traducido a
+// mano en cada modulo. `mira` declara de que catalogo sale la etiqueta y todas
+// las lecturas la traen ya resuelta, sin que nadie repita el JOIN.
+//
+// tipo → { tabla, entidad, desde, hasta, orden, mira }
 const TIPOS = {
   empleo:          { tabla: 'conductor_periodo_empleo', entidad: 'conductor_id',
                      desde: 'alta', hasta: 'baja' },
@@ -27,8 +32,12 @@ const TIPOS = {
   cuentaExterna:   { tabla: 'conductor_externo',        entidad: 'conductor_id',
                      desde: 'visto_desde',   hasta: 'visto_hasta' },
   asignacion:      { tabla: 'asignacion',               entidad: 'plaza_id' },
-  estadoVehiculo:  { tabla: 'vehiculo_estado_hist',     entidad: 'vehiculo_id' },
-  baseVehiculo:    { tabla: 'vehiculo_base_hist',       entidad: 'vehiculo_id' },
+  estadoVehiculo:  { tabla: 'vehiculo_estado_hist',     entidad: 'vehiculo_id',
+                     mira: { col: 'estado_codigo', tabla: 'cat_estado_vehiculo',
+                             clave: 'codigo', campo: 'etiqueta', como: 'etiqueta' } },
+  baseVehiculo:    { tabla: 'vehiculo_base_hist',       entidad: 'vehiculo_id',
+                     mira: { col: 'base_zona_id', tabla: 'base_zona',
+                             clave: 'id', campo: 'nombre', como: 'etiqueta' } },
   corteTurno:      { tabla: 'turno_version',            entidad: 'turno_id' },
 };
 
@@ -39,18 +48,31 @@ const TIPOS = {
 function def(tipo) {
   const d = TIPOS[tipo];
   if (!d) throw new Error(`Tipo de vigencia desconocido: "${tipo}". Los válidos: ${Object.keys(TIPOS).join(', ')}`);
-  return { desde: 'desde', hasta: 'hasta', orden: null, ...d };
+  return { desde: 'desde', hasta: 'hasta', orden: null, mira: null, ...d };
+}
+
+/** Las columnas a pedir: las de la tabla y, si hay catalogo, su etiqueta. */
+function cols(d) {
+  return d.mira ? `t.*, m.${d.mira.campo} AS ${d.mira.como}` : 't.*';
+}
+
+/** El FROM, con el catalogo enganchado si lo hay. Siempre LEFT: un codigo que
+ *  ya no este en el catalogo no puede hacer desaparecer una fila del historial. */
+function desde(d) {
+  return d.mira
+    ? `${d.tabla} t LEFT JOIN ${d.mira.tabla} m ON m.${d.mira.clave} = t.${d.mira.col}`
+    : `${d.tabla} t`;
 }
 
 /** La fila vigente de una entidad en una fecha (hoy si no se dice otra). */
 async function vigente(tipo, entidadId, fecha) {
   const d = def(tipo);
   const r = await db.consulta(
-    `SELECT * FROM ${d.tabla}
-      WHERE ${d.entidad} = $1
-        AND ${d.desde} <= COALESCE($2::date, CURRENT_DATE)
-        AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
-      ORDER BY ${d.desde} DESC${d.orden ? ', ' + d.orden : ''}
+    `SELECT ${cols(d)} FROM ${desde(d)}
+      WHERE t.${d.entidad} = $1
+        AND t.${d.desde} <= COALESCE($2::date, CURRENT_DATE)
+        AND (t.${d.hasta} IS NULL OR t.${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
+      ORDER BY t.${d.desde} DESC${d.orden ? ', t.' + d.orden : ''}
       LIMIT 1`,
     [entidadId, fecha || null]);
   return r.rows[0] || null;
@@ -60,11 +82,11 @@ async function vigente(tipo, entidadId, fecha) {
 async function vigentes(tipo, entidadId, fecha) {
   const d = def(tipo);
   const r = await db.consulta(
-    `SELECT * FROM ${d.tabla}
-      WHERE ${d.entidad} = $1
-        AND ${d.desde} <= COALESCE($2::date, CURRENT_DATE)
-        AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
-      ORDER BY ${d.orden ? d.orden + ', ' : ''}${d.desde} DESC`,
+    `SELECT ${cols(d)} FROM ${desde(d)}
+      WHERE t.${d.entidad} = $1
+        AND t.${d.desde} <= COALESCE($2::date, CURRENT_DATE)
+        AND (t.${d.hasta} IS NULL OR t.${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
+      ORDER BY ${d.orden ? 't.' + d.orden + ', ' : ''}t.${d.desde} DESC`,
     [entidadId, fecha || null]);
   return r.rows;
 }
@@ -73,7 +95,7 @@ async function vigentes(tipo, entidadId, fecha) {
 async function historial(tipo, entidadId) {
   const d = def(tipo);
   const r = await db.consulta(
-    `SELECT * FROM ${d.tabla} WHERE ${d.entidad} = $1 ORDER BY ${d.desde} DESC`,
+    `SELECT ${cols(d)} FROM ${desde(d)} WHERE t.${d.entidad} = $1 ORDER BY t.${d.desde} DESC`,
     [entidadId]);
   return r.rows;
 }
@@ -82,8 +104,8 @@ async function historial(tipo, entidadId) {
 async function abierta(tipo, entidadId) {
   const d = def(tipo);
   const r = await db.consulta(
-    `SELECT * FROM ${d.tabla} WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL
-      ORDER BY ${d.desde} DESC LIMIT 1`,
+    `SELECT ${cols(d)} FROM ${desde(d)} WHERE t.${d.entidad} = $1 AND t.${d.hasta} IS NULL
+      ORDER BY t.${d.desde} DESC LIMIT 1`,
     [entidadId]);
   return r.rows[0] || null;
 }
@@ -144,11 +166,11 @@ async function vigenteDeVarias(tipo, entidadIds, fecha) {
   const d = def(tipo);
   if (!entidadIds || !entidadIds.length) return new Map();
   const r = await db.consulta(
-    `SELECT DISTINCT ON (${d.entidad}) * FROM ${d.tabla}
-      WHERE ${d.entidad} = ANY($1)
-        AND ${d.desde} <= COALESCE($2::date, CURRENT_DATE)
-        AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
-      ORDER BY ${d.entidad}, ${d.desde} DESC`,
+    `SELECT DISTINCT ON (t.${d.entidad}) ${cols(d)} FROM ${desde(d)}
+      WHERE t.${d.entidad} = ANY($1)
+        AND t.${d.desde} <= COALESCE($2::date, CURRENT_DATE)
+        AND (t.${d.hasta} IS NULL OR t.${d.hasta} >= COALESCE($2::date, CURRENT_DATE))
+      ORDER BY t.${d.entidad}, t.${d.desde} DESC`,
     [entidadIds, fecha || null]);
   return new Map(r.rows.map(x => [x[d.entidad], x]));
 }
@@ -173,14 +195,24 @@ async function contarVigentes(tipo, fecha) {
 async function comprobarMapa() {
   const fallos = [];
   for (const [tipo, bruto] of Object.entries(TIPOS)) {
-    const d = { desde: 'desde', hasta: 'hasta', ...bruto };
+    const d = { desde: 'desde', hasta: 'hasta', mira: null, ...bruto };
+    const columnasDe = async tabla => new Set((await db.consulta(
+      `SELECT attname FROM pg_attribute
+        WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped`, [tabla])
+    ).rows.map(x => x.attname));
     try {
-      const r = await db.consulta(
-        `SELECT attname FROM pg_attribute
-          WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped`, [d.tabla]);
-      const cols = new Set(r.rows.map(x => x.attname));
+      const cols = await columnasDe(d.tabla);
       const faltan = [d.entidad, d.desde, d.hasta].filter(c => !cols.has(c));
       if (faltan.length) fallos.push(`${tipo} (${d.tabla}): no existe ${faltan.join(', ')}`);
+
+      // El catálogo enganchado se comprueba igual: un JOIN mal declarado rompe
+      // TODAS las lecturas de ese tipo, no solo el historial.
+      if (d.mira) {
+        if (!cols.has(d.mira.col)) fallos.push(`${tipo} (${d.tabla}): no existe la columna ${d.mira.col}`);
+        const cat = await columnasDe(d.mira.tabla);
+        const f2 = [d.mira.clave, d.mira.campo].filter(c => !cat.has(c));
+        if (f2.length) fallos.push(`${tipo} (${d.mira.tabla}): no existe ${f2.join(', ')}`);
+      }
     } catch (e) {
       fallos.push(`${tipo}: ${e.message}`);
     }
