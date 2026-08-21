@@ -236,5 +236,91 @@ app.get('/conductores', (req, res) => pintar(res, 'conductores', {
                        { codigo: 'ett', etiqueta: 'ETT' }] },
 }));
 
+// -- Planificador V2 --------------------------------------------------------
+// El tablero lo calcula el motor real (`calcularTablero`) con filas inventadas.
+// Se meten a proposito los casos que hay que ver: huecos, un ID que ya no esta
+// en la agenda, dias ilegibles, alguien que se va manana y un TodoTurno metido
+// en dos coches el mismo dia.
+const PL = require('../services/planificadorV2');
+
+function filaAgenda({ id, nombre, turno = 'D\u00eda', libra = [], alta = '01/01/2024', estado = 'Activo' }) {
+  const A = PL.A, f = new Array(PL.A_HEADERS.length).fill('');
+  f[A.ACTIVO - 1] = 'SI'; f[A.ESTADO - 1] = estado; f[A.NOMBRE - 1] = nombre;
+  f[A.ID_BOLT - 1] = id;  f[A.DNI - 1] = '00000000X'; f[A.FECHA_ALTA - 1] = alta;
+  f[A.TURNO - 1] = turno; f[A.CONTRATO - 1] = '40h'; f[A.TELEFONO - 1] = '600000000';
+  f[A.COORDENADAS - 1] = '40.42,-3.70';
+  [A.L_LUN, A.L_MAR, A.L_MIE, A.L_JUE, A.L_VIE, A.L_SAB, A.L_DOM]
+    .forEach((col, i) => { f[col - 1] = libra.includes(i) ? 'SI' : ''; });
+  return f;
+}
+
+function filasCoche({ matricula, estado = '\u2713', zona = '', slots = {} }) {
+  const P = PL.P;
+  return Array.from({ length: PL.FILAS_POR_COCHE }, (_, k) => {
+    const f = new Array(PL.P_HEADERS.length).fill('');
+    if (k === 0) { f[P.ESTADO_VEH - 1] = estado; f[P.MATRICULA - 1] = matricula; f[P.ZONA - 1] = zona; }
+    const x = slots[k];
+    if (x) {
+      f[P.ID_BOLT - 1] = x.id || '';
+      if (x.dias)  f[P.DIAS_TRABAJA - 1] = x.dias;
+      if (x.desde) f[P.DESDE - 1] = x.desde;
+      if (x.hasta) f[P.HASTA - 1] = x.hasta;
+    }
+    return f;
+  });
+}
+
+function tableroDePrueba() {
+  const dd = n => { const d = new Date(Date.now() + n * 86400000); const p = x => String(x).padStart(2, '0');
+                    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`; };
+  const agenda = [
+    filaAgenda({ id: 'ana',   nombre: 'Ana Garc\u00eda Ruiz',      turno: 'D\u00eda',   libra: [5, 6] }),
+    filaAgenda({ id: 'pedro', nombre: 'Pedro Maso Postigo',   turno: 'Noche', libra: [5, 6] }),
+    filaAgenda({ id: 'ruben', nombre: 'Ruben Ramos Lopez',    turno: 'D\u00eda',   libra: [5, 6] }),
+    filaAgenda({ id: 'todo',  nombre: 'Jose Maria Lopez',     turno: 'TodoTurno', libra: [5, 6] }),
+    filaAgenda({ id: 'vaca',  nombre: 'Ruiz Cano Juan Franc', turno: 'Noche', libra: [5, 6], estado: 'Vacaciones' }),
+    filaAgenda({ id: 'libre', nombre: 'Sin Plaza Todavia',    turno: 'D\u00eda',   libra: [6] }),
+  ];
+  const plan = [].concat(
+    // Coche completo y en orden.
+    filasCoche({ matricula: '3414JXB', zona: 'Usera', slots: {
+      0: { id: 'ruben', desde: '01/02/2026' },
+      1: { id: 'pedro', desde: '01/02/2026' },
+      2: { id: 'todo',  dias: 'L M X J', desde: '01/03/2026' },
+    } }),
+    // Hueco de dia, y alguien que se va manana.
+    filasCoche({ matricula: '0458MMZ', zona: 'Getafe', slots: {
+      1: { id: 'vaca', desde: '01/01/2026', hasta: dd(1) },
+    } }),
+    // Un ID que ya no existe en la agenda + dias ilegibles.
+    filasCoche({ matricula: '5775KKL', zona: 'Usera', slots: {
+      0: { id: 'ana', desde: '01/01/2026' },
+      3: { id: 'fantasma' },
+      4: { id: 'todo', dias: 'LUNES Y JUEVES' },
+    } }),
+    // Coche libre, sin tripulacion: el candidato para un intercambio.
+    filasCoche({ matricula: '9001ZZZ', zona: 'Getafe' }),
+    // Coche averiado.
+    filasCoche({ matricula: '7759MCH', estado: 'X', zona: 'Getafe' }),
+  );
+  const t = PL.calcularTablero(agenda, plan, [{ nombre: 'Usera', lat: 40.38, lng: -3.70 }]);
+  t.esquema = { ok: true, problemas: [] };
+  return t;
+}
+
+app.get('/planificador/api/tablero', (req, res) => res.json({ status: 'ok', ...tableroDePrueba() }));
+
+app.post('/planificador/api/guardar', (req, res) => {
+  // No se escribe nada: se recalcula con los cambios aplicados y se devuelve,
+  // que es lo que hace el de verdad.
+  res.json({ status: 'ok', segundos: 0.4, escritura: { updatedCells: 12 }, tablero: tableroDePrueba() });
+});
+
+app.get('/planificador-v2', (req, res) => pintar(res, 'planificadorV2', {
+  titulo: 'Planificador V2', seccion: 'planificador-v2',
+  // Los mismos locales que pasa routes/tablero.js.
+  diasSem: PL.DIAS_SEM, letrasDia: PL.LETRAS_DIA, estadosVehiculo: PL.ESTADOS_VEHICULO,
+}));
+
 app.get('/', (req, res) => res.redirect('/conductores'));
-app.listen(4599, () => console.log('Banco: http://localhost:4599/vehiculos y /conductores'));
+app.listen(4599, () => console.log('Banco: http://localhost:4599/vehiculos · /conductores · /planificador-v2'));

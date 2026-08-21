@@ -372,6 +372,10 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
   // ---- 3. Validaciones previas y días que cubre cada persona ----
   // Ocupación global, para detectar a la misma persona en dos coches a la vez.
   const ocupacionGlobal = new Map();   // "id|dia|turno" → Set(matriculas)
+  // La misma persona NO puede estar en dos coches el mismo dia, aunque sea en
+  // turnos distintos: son dos jornadas seguidas. La de arriba va por turno y
+  // por eso se le escapaba el caso Dia en un coche + Noche en otro.
+  const ocupacionDia = new Map();      // "id|dia" → Map(matricula → Set(turnos))
   const asignacionPorDia = new Map();  // id → [7] matrícula
   const problemas = [];                // se convierten en avisos más abajo
 
@@ -587,9 +591,16 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
             if (!asg[d]) asg[d] = coche.matricula;
           }
 
+          const nombreC = coche.matricula || `coche#${coche.idx + 1}`;
           const gk = `${p.id}|${d}|${turnoCubre}`;
           if (!ocupacionGlobal.has(gk)) ocupacionGlobal.set(gk, new Set());
-          ocupacionGlobal.get(gk).add(coche.matricula || `coche#${coche.idx + 1}`);
+          ocupacionGlobal.get(gk).add(nombreC);
+
+          const dk = `${p.id}|${d}`;
+          if (!ocupacionDia.has(dk)) ocupacionDia.set(dk, new Map());
+          const porCoche = ocupacionDia.get(dk);
+          if (!porCoche.has(nombreC)) porCoche.set(nombreC, new Set());
+          porCoche.get(nombreC).add(turnoCubre);
         });
       });
     });
@@ -708,6 +719,18 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
             coche.conflictos.push({
               dia: DIAS_SEM[d], turno,
               msg: `${id} está en ${matrs.size} coches el ${DIAS_SEM[d]} ${turno} (${[...matrs].join(', ')})`
+            });
+          }
+          // Y el mismo día en dos coches distintos aunque sea en turnos
+          // distintos: nadie hace un día y una noche seguidos.
+          const porCoche = ocupacionDia.get(`${id}|${d}`);
+          if (porCoche && porCoche.size > 1 && !(matrs && matrs.size > 1)) {
+            const detalle = [...porCoche.entries()]
+              .map(([m, turnos]) => `${m} (${[...turnos].join('/')})`).join(' y ');
+            const quien = (porId.get(id) || {}).nombre || id;
+            coche.conflictos.push({
+              dia: DIAS_SEM[d], turno,
+              msg: `${quien} está el ${DIAS_SEM[d]} en dos coches: ${detalle}`
             });
           }
         });
@@ -1309,6 +1332,13 @@ async function leerTablero(opciones = {}) {
  * pantalla del navegador: así, si alguien tocó otro coche mientras tanto, no se
  * lo pisamos. Solo se sobrescribe lo que el usuario ha cambiado de verdad.
  */
+/** Hoy en dd/mm/aaaa, que es el formato con el que se escribe en la hoja. */
+function hoyDDMMAAAA() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
 function aplicarCambios(planFilas, cambios) {
   const datos = planFilas.slice(1);   // sin la cabecera
   const aplicados = [];
@@ -1365,9 +1395,21 @@ function aplicarCambios(planFilas, cambios) {
         }
         fila[P.DIAS_TRABAJA - 1] = diasALetras(analisis.dias);
       }
-      // Ventana de la asignación (opcional). Texto tal cual; el motor lo parsea.
+      // Ventana de la asignación. Texto tal cual; el motor lo parsea.
       if (s.desde !== undefined) fila[P.DESDE - 1] = txt(s.desde);
       if (s.hasta !== undefined) fila[P.HASTA - 1] = txt(s.hasta);
+
+      // El DESDE es obligatorio en cuanto hay alguien en la plaza. Si no llega
+      // ninguno y la fila tampoco lo tenía, se pone el día en que se planifica:
+      // sin fecha, el motor da la asignación por vigente desde siempre y las
+      // coberturas de semanas pasadas salen mal.
+      //
+      // Solo afecta a las plazas que se TOCAN. Las que ya estaban ahí sin fecha
+      // se quedan como están: son de cuando esto no se pedía, y reescribirlas
+      // todas de golpe les inventaría un histórico que nadie ha decidido.
+      if (s.id !== undefined && txt(s.id) && !txt(fila[P.DESDE - 1])) {
+        fila[P.DESDE - 1] = hoyDDMMAAAA();
+      }
     });
 
     aplicados.push(c);

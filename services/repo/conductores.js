@@ -16,6 +16,7 @@
 
 const db = require('../db');
 const vig = require('./vigencia');
+const audit = require('./auditoria');
 
 // Nombre para mostrar. Se arma en SQL para poder ordenar y buscar por él.
 const NOMBRE = `btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)`;
@@ -72,7 +73,11 @@ async function listar({ id, momento, incluirBajas = false, tipo, situacion, turn
            coche.plazas AS plazas_abiertas,
 
            -- Libranzas del patrón vigente, como 'L M' y no como siete columnas.
-           lib.dias AS libranzas
+           lib.dias AS libranzas,
+
+           -- Documentación obligatoria que le falta. Sale de v_documento_falta,
+           -- que es la única definición de "obligatorio" del sistema.
+           docs.faltan AS docs_faltan
     FROM conductor c
     CROSS JOIN ref
     LEFT JOIN conductor_periodo_empleo e
@@ -117,6 +122,9 @@ async function listar({ id, momento, incluirBajas = false, tipo, situacion, turn
         JOIN patron_libranza_dia d ON d.patron_id = pl.id
        WHERE pl.conductor_id = c.id
          AND pl.desde <= ref.dia AND (pl.hasta IS NULL OR pl.hasta >= ref.dia)) lib ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT array_agg(f.etiqueta ORDER BY f.etiqueta) AS faltan
+        FROM v_documento_falta f WHERE f.conductor_id = c.id) docs ON TRUE
     WHERE NOT c.es_centinela
       ${donde.length ? 'AND ' + donde.join(' AND ') : ''}
     ORDER BY ${NOMBRE}`, params);
@@ -148,6 +156,9 @@ function faltantesDe(c) {
     if (!c.nombre_ss) f.push('nombre de la Seguridad Social');
     if (!c.email)     f.push('correo');
   }
+  // Papeles. La lista de cuáles son obligatorios vive en cat_tipo_documento, no
+  // aquí: añadir uno nuevo no debería obligar a tocar código.
+  (c.docs_faltan || []).forEach(d => f.push(d));
   return f;
 }
 
@@ -247,11 +258,11 @@ async function resumen({ momento } = {}) {
 
     db.consulta(`
       SELECT count(*) FILTER (WHERE NOT EXISTS (
-               SELECT 1 FROM conductor_externo x
-                WHERE x.conductor_id = c.id AND x.sistema = 'bolt' AND x.visto_hasta IS NULL))  sin_bolt,
+               SELECT 1 FROM conductor_externo xb
+                WHERE xb.conductor_id = c.id AND xb.sistema = 'bolt' AND xb.visto_hasta IS NULL)) sin_bolt,
              count(*) FILTER (WHERE NOT EXISTS (
-               SELECT 1 FROM conductor_telefono x
-                WHERE x.conductor_id = c.id AND x.vigente_hasta IS NULL))                       sin_telefono,
+               SELECT 1 FROM conductor_telefono xt
+                WHERE xt.conductor_id = c.id AND xt.vigente_hasta IS NULL))                      sin_telefono,
              count(*) FILTER (WHERE c.dni_nie IS NULL)                                          sin_dni,
              count(*) FILTER (WHERE NOT EXISTS (
                SELECT 1 FROM asignacion a
@@ -284,14 +295,313 @@ async function catalogos() {
  * ofrece frente a los conductores que están "pendientes de asignar id".
  */
 async function boltLibres() {
+  // Sale de `v_bolt_libres`, no de una consulta propia: la vista ya decide qué
+  // cuenta cuenta como libre (sin dueño Y activa). Repetir esa condición aquí
+  // era la forma de que un día dejaran de coincidir.
   const r = await db.consulta(
-    `SELECT externo_id, externo_nombre, estado_externo, visto_desde
-       FROM conductor_externo
-      WHERE sistema = 'bolt' AND conductor_id IS NULL
-      ORDER BY (estado_externo = 'active') DESC, externo_nombre`);
+    `SELECT driver_uuid AS externo_id, nombre_en_bolt AS externo_nombre,
+            externo_telefono, externo_email, estado_externo, visto_desde, visto_at
+       FROM v_bolt_libres ORDER BY nombre_en_bolt`);
+  return r.rows;
+}
+
+// ============================================================
+// ESCRITURA
+// ============================================================
+// Todo lo que se puede cambiar de un conductor. Nada de esto escribe fechas
+// "hasta" a mano: las vigencias pasan por `repo/vigencia`, que cierra la
+// anterior y abre la nueva en una sola transaccion.
+
+/**
+ * Campos editables de la ficha, con quien puede tocarlos.
+ *
+ *   operativo → el dia a dia de Trafico: turno y libranzas.
+ *   sensible  → datos personales, contractuales y bancarios: solo RRHH.
+ *
+ * El reparto estaba ya escrito en el codigo viejo (CAMPOS_SENSIBLES en
+ * planificadorV2.js) pero marcado como "todavia no se aplica". Aqui se aplica:
+ * Trafico VE los sensibles y no puede cambiarlos.
+ */
+const CAMPOS = {
+  nombre:           { ambito: 'sensible' },
+  apellidos:        { ambito: 'sensible' },
+  nombre_ss:        { ambito: 'sensible' },
+  dni_tipo:         { ambito: 'sensible' },
+  dni_nie:          { ambito: 'sensible' },
+  fecha_nacimiento: { ambito: 'sensible', tipo: 'fecha' },
+  sexo:             { ambito: 'sensible' },
+  estado_civil:     { ambito: 'sensible' },
+  nacionalidad:     { ambito: 'sensible' },
+  naf_provincia:    { ambito: 'sensible' },
+  naf_numero:       { ambito: 'sensible' },
+  naf_control:      { ambito: 'sensible' },
+  legajo:           { ambito: 'sensible' },
+  via_tipo:         { ambito: 'sensible' },
+  via_nombre:       { ambito: 'sensible' },
+  via_numero:       { ambito: 'sensible' },
+  escalera:         { ambito: 'sensible' },
+  piso:             { ambito: 'sensible' },
+  puerta:           { ambito: 'sensible' },
+  localidad:        { ambito: 'sensible' },
+  codigo_postal:    { ambito: 'sensible' },
+  provincia:        { ambito: 'sensible' },
+  pais:             { ambito: 'sensible' },
+  email:            { ambito: 'sensible' },
+  tel_emergencia:   { ambito: 'sensible' },
+  recomendador:     { ambito: 'sensible' },
+  observaciones:    { ambito: 'operativo' },
+};
+
+// Columnas GENERADAS: se calculan solas y no se pueden escribir. Intentarlo es
+// un error de PostgreSQL, no un aviso.
+const GENERADAS = ['direccion', 'naf', 'nombre_completo'];
+
+/** Los campos que puede tocar un rol. Trafico solo lo operativo. */
+function camposDe(rol) {
+  const todos = Object.keys(CAMPOS);
+  if (rol === 'trafico') return todos.filter(c => CAMPOS[c].ambito === 'operativo');
+  return todos;
+}
+
+/**
+ * Actualiza la ficha y deja constancia de cada campo que cambia.
+ *
+ * `rol` decide qué se acepta. Un campo prohibido NO se ignora en silencio: se
+ * lanza. Ignorarlo haría creer a quien lo escribió que se guardó.
+ */
+async function actualizar(id, campos, { usuarioId, rol } = {}) {
+  const permitidos = new Set(camposDe(rol));
+  const entradas = Object.entries(campos || {})
+    .filter(([k]) => k in CAMPOS || GENERADAS.includes(k));
+
+  const prohibidos = entradas.filter(([k]) => GENERADAS.includes(k) || !permitidos.has(k)).map(([k]) => k);
+  if (prohibidos.length) {
+    const generadas = prohibidos.filter(k => GENERADAS.includes(k));
+    if (generadas.length) throw new Error(`Estos campos se calculan solos y no se escriben: ${generadas.join(', ')}`);
+    throw new Error(`Tu rol no puede cambiar: ${prohibidos.join(', ')}`);
+  }
+
+  const cols = entradas.map(([k]) => k);
+  if (!cols.length) throw new Error('No se ha recibido ningún cambio');
+
+  return db.transaccion(async cli => {
+    const antes = (await cli.query('SELECT * FROM conductor WHERE id = $1', [id])).rows[0];
+    if (!antes) throw new Error('No existe ese conductor');
+
+    await cli.query(
+      `UPDATE conductor SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')},
+              actualizado_at = now()
+        WHERE id = $1`,
+      [id, ...cols.map(c => {
+        const v = campos[c];
+        return v === '' || v === undefined ? null : v;
+      })]);
+
+    const ahora = (await cli.query('SELECT * FROM conductor WHERE id = $1', [id])).rows[0];
+    // `direccion` y `naf` se recalculan solas al cambiar sus piezas: apuntarlas
+    // seria ruido, porque no las ha cambiado nadie a mano.
+    const n = await audit.registrar({
+      tabla: 'conductor', id, antes, ahora, usuarioId, cli,
+      ignorar: GENERADAS,
+    });
+    return { campos: cols, auditados: n };
+  });
+}
+
+/**
+ * Cambia la situación (vacaciones, baja médica, vuelta al trabajo).
+ *
+ * Una ausencia NO cierra la asignación: la persona conserva su plaza. Eso ya
+ * está decidido en el esquema y aquí solo se respeta.
+ */
+async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { usuarioId } = {}) {
+  if (!estado) throw new Error('Falta la situación');
+  return db.transaccion(async cli => {
+    const cat = (await cli.query(
+      'SELECT codigo, etiqueta, fin_previsible FROM cat_estado_conductor WHERE codigo = $1', [estado])).rows[0];
+    if (!cat) throw new Error(`No existe la situación "${estado}"`);
+
+    // Una vuelta con fecha prevista solo tiene sentido si esa situación la
+    // admite: en una baja médica la fecha la pone el alta, no nosotros.
+    const previsto = cat.fin_previsible ? (hastaPrevisto || null) : null;
+    return vig.reemplazar('situacion', id, {
+      estado, hasta_previsto: previsto, motivo: motivo || null, usuario_id: usuarioId || null,
+    }, { desde, cli });
+  });
+}
+
+/** Cambia el turno. Cierra el anterior el día antes; nunca se solapan. */
+async function cambiarTurno(id, { turnoId, desde }, { usuarioId } = {}) {
+  if (!turnoId) throw new Error('Falta el turno');
+  return vig.reemplazar('turnoConductor', id,
+    { turno_id: Number(turnoId), origen: 'manual', usuario_id: usuarioId || null }, { desde });
+}
+
+/**
+ * Guarda el patrón de libranza: qué días de la semana libra (1 = lunes).
+ *
+ * Cambiarlo abre un patrón NUEVO y cierra el anterior, no reescribe el que
+ * había. Si se reescribiera, la cobertura de las semanas pasadas se recalcularía
+ * con la libranza de hoy y dejaría de cuadrar con lo que de verdad pasó.
+ */
+async function guardarLibranza(id, dias, { desde, usuarioId } = {}) {
+  const limpios = [...new Set((dias || []).map(Number))]
+    .filter(d => Number.isInteger(d) && d >= 1 && d <= 7)
+    .sort((a, b) => a - b);
+  if (limpios.length >= 7) throw new Error('No puede librar los siete días');
+
+  return db.transaccion(async cli => {
+    const patron = await vig.reemplazar('libranza', id,
+      { usuario_id: usuarioId || null }, { desde, cli });
+    for (const d of limpios) {
+      await cli.query('INSERT INTO patron_libranza_dia (patron_id, dia_semana) VALUES ($1,$2)', [patron.id, d]);
+    }
+    // El patrón queda en el historial aunque no libre ningún día: "no libra" es
+    // una decisión, no la ausencia de una.
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'libranza', antes: null, ahora: limpios.join(' ') || '(ninguna)' }],
+    });
+    return { patronId: patron.id, dias: limpios };
+  });
+}
+
+/**
+ * Enlaza una cuenta de BOLT libre con un conductor.
+ *
+ * Es manual a propósito: hay homónimos reales y el cruce automático por nombre
+ * es justamente lo que se quiso desterrar.
+ */
+async function enlazarBolt(id, externoId, { usuarioId } = {}) {
+  return db.transaccion(async cli => {
+    const cuenta = (await cli.query(
+      `SELECT id, conductor_id, externo_nombre FROM conductor_externo
+        WHERE sistema = 'bolt' AND externo_id = $1`, [String(externoId)])).rows[0];
+    if (!cuenta) throw new Error(`La cuenta de BOLT "${externoId}" no existe`);
+    if (cuenta.conductor_id && cuenta.conductor_id !== Number(id)) {
+      throw new Error('Esa cuenta de BOLT ya está asignada a otra persona');
+    }
+    await cli.query(
+      `UPDATE conductor_externo
+          SET conductor_id = $2, enlazado_at = now(),
+              enlazado_por = $3, origen_enlace = 'manual'
+        WHERE id = $1`,
+      [cuenta.id, id, usuarioId || null]);
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'cuenta_bolt', antes: null, ahora: String(externoId) }],
+    });
+    return { externoId: String(externoId), nombreEnBolt: cuenta.externo_nombre };
+  });
+}
+
+/** Suelta la cuenta de BOLT: vuelve a la bolsa de IDs libres. */
+async function soltarBolt(id, externoId, { usuarioId } = {}) {
+  return db.transaccion(async cli => {
+    const r = await cli.query(
+      `UPDATE conductor_externo
+          SET conductor_id = NULL, enlazado_at = NULL, enlazado_por = NULL
+        WHERE sistema = 'bolt' AND externo_id = $1 AND conductor_id = $2
+        RETURNING id`, [String(externoId), id]);
+    if (!r.rowCount) throw new Error('Esa cuenta no está enlazada con esta persona');
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'cuenta_bolt', antes: String(externoId), ahora: null }],
+    });
+    return true;
+  });
+}
+
+/** Añade o sustituye el teléfono principal. */
+async function guardarTelefono(id, e164, { origen = 'manual', usuarioId, desde } = {}) {
+  const limpio = String(e164 || '').replace(/[^0-9+]/g, '');
+  if (limpio.replace(/\D/g, '').length < 9) throw new Error('El teléfono no parece válido');
+  return db.transaccion(async cli => {
+    // El sufijo de 9 dígitos es único entre los vigentes: si ya es de otro, la
+    // base lo rechaza. Se comprueba antes para poder decir de quién es.
+    const duenio = (await cli.query(
+      `SELECT t.conductor_id, ${NOMBRE} AS nombre
+         FROM conductor_telefono t JOIN conductor c ON c.id = t.conductor_id
+        WHERE t.vigente_hasta IS NULL AND t.sufijo9 = right(regexp_replace($1,'[^0-9]','','g'), 9)
+          AND t.conductor_id <> $2`, [limpio, id])).rows[0];
+    if (duenio) throw new Error(`Ese teléfono ya es de ${duenio.nombre}`);
+
+    await vig.reemplazar('telefono', id,
+      { e164: limpio, origen, principal: true }, { desde, cli });
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'telefono', antes: null, ahora: limpio }],
+    });
+    return limpio;
+  });
+}
+
+/** Da de alta a alguien: abre su periodo de empleo. */
+async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad }, { usuarioId } = {}) {
+  if (!alta) throw new Error('Falta la fecha de alta');
+  if (tipo === 'ett' && !ettNombre) throw new Error('Falta el nombre de la ETT');
+  return db.transaccion(async cli => {
+    const abierto = await vig.abierta('empleo', id);
+    if (abierto) throw new Error('Esta persona ya está de alta');
+    const r = await cli.query(
+      `INSERT INTO conductor_periodo_empleo (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, usuario_id)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [id, tipo, tipo === 'ett' ? ettNombre : null, alta, antiguedad || null, usuarioId || null]);
+    await cli.query('UPDATE conductor SET empleo_vigente = TRUE WHERE id = $1', [id]);
+    return r.rows[0].id;
+  });
+}
+
+/**
+ * Da de baja: cierra el empleo, la situación, el turno y las asignaciones.
+ *
+ * Lo importante es que se cierra TODO en la misma transacción. Dejar una
+ * asignación abierta de alguien que ya no está haría que su coche siguiera
+ * apareciendo cubierto.
+ */
+async function darDeBaja(id, { fecha, motivo }, { usuarioId } = {}) {
+  const dia = fecha || new Date().toISOString().slice(0, 10);
+  return db.transaccion(async cli => {
+    const r = await cli.query(
+      `UPDATE conductor_periodo_empleo SET baja = $2, motivo_baja = $3, usuario_id = $4
+        WHERE conductor_id = $1 AND baja IS NULL RETURNING id`,
+      [id, dia, motivo || null, usuarioId || null]);
+    if (!r.rowCount) throw new Error('Esta persona no está de alta');
+
+    await cli.query(
+      `UPDATE asignacion SET hasta = $2 WHERE conductor_id = $1 AND (hasta IS NULL OR hasta > $2)`,
+      [id, dia]);
+    await vig.cerrar('situacion', id, dia, { cli });
+    await vig.cerrar('turnoConductor', id, dia, { cli });
+    await vig.cerrar('libranza', id, dia, { cli });
+    await cli.query('UPDATE conductor SET empleo_vigente = FALSE WHERE id = $1', [id]);
+
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'baja', antes: null, ahora: `${dia}${motivo ? ' · ' + motivo : ''}` }],
+    });
+    return true;
+  });
+}
+
+/**
+ * La misma persona en dos coches el mismo día. Sale de la vista, que es la
+ * ÚNICA definición de esta regla en todo el sistema.
+ */
+async function doblePlaza({ momento } = {}) {
+  const r = await db.consulta(`
+    SELECT d.*, ${NOMBRE} AS nombre_completo
+      FROM v_conductor_doble_plaza d
+      JOIN conductor c ON c.id = d.conductor_id
+     WHERE COALESCE($1::date, CURRENT_DATE) BETWEEN d.solapa_desde AND d.solapa_hasta
+     ORDER BY 8, d.dia_semana`, [momento || null]);
   return r.rows;
 }
 
 module.exports = {
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
+  CAMPOS, camposDe, GENERADAS,
+  actualizar, cambiarSituacion, cambiarTurno, guardarLibranza,
+  enlazarBolt, soltarBolt, guardarTelefono,
+  darDeAlta, darDeBaja, doblePlaza,
 };
