@@ -156,10 +156,15 @@
   }[c] || 'muted');
 
   // Lo que le falta a una ficha, en corto y con su aviso.
-  const faltan = f => !f.faltan.length
-    ? '<span class="text-telecab-green"><i class="fa-solid fa-check"></i></span>'
-    : `<span class="text-telecab-warn" title="${esc(f.faltan.join(', '))}">
-         <i class="fa-solid fa-triangle-exclamation"></i> ${f.faltan.length}</span>`;
+  //
+  // A quien está de baja no se le pone el tic verde: su ficha no está completa,
+  // es que ya no se le exige nada. Un tic verde ahí diría que está en orden.
+  const faltan = f => f.empleo_vigente === false
+    ? '<span class="text-telecab-muted" title="Ya no está en la empresa">—</span>'
+    : !f.faltan.length
+      ? '<span class="text-telecab-green" title="Ficha completa"><i class="fa-solid fa-check"></i></span>'
+      : `<span class="text-telecab-warn" title="${esc(f.faltan.join(', '))}">
+           <i class="fa-solid fa-triangle-exclamation"></i> ${f.faltan.length}</span>`;
 
   // ---------- acciones de la ficha ----------
 
@@ -529,23 +534,33 @@
       campos: ['nombre_completo', 'nombre_ss', 'dni_nie', 'bolt_id', 'matricula', 'telefono', 'zona'],
     },
 
-    subtitulo: (v, t) => v.length === t.length
-      ? `${t.length} en plantilla`
-      : `${v.length} de ${t.length} en plantilla`,
+    subtitulo: (v, t) => {
+      const alta = t.filter(f => f.empleo_vigente !== false).length;
+      const detalle = `${alta} de alta · ${t.length - alta} de baja`;
+      return v.length === t.length ? `${t.length} personas · ${detalle}`
+                                   : `${v.length} de ${t.length} · ${detalle}`;
+    },
 
     kpis: (filas, extra) => {
       const r = extra.resumen || {};
       const h = r.huecos || {};
       const ett = (r.porTipo || []).find(x => x.tipo === 'ett');
-      const ausentes = filas.filter(f => f.ausente).length;
+      // La lista trae a TODOS, así que los contadores se calculan sobre quien
+      // está de alta. "Disponibles hoy" contando a los que se fueron no
+      // significaría nada.
+      const deAlta = filas.filter(f => f.empleo_vigente !== false);
+      const deBaja = filas.length - deAlta.length;
+      const ausentes = deAlta.filter(f => f.ausente).length;
       return [
-        { etiqueta: 'En plantilla', valor: filas.length, tono: 'text',
+        { etiqueta: 'De alta', valor: deAlta.length, tono: 'text',
+          filtro: { id: 'empleo', valor: 'alta' },
           pie: `${ett ? ett.personas : 0} por ETT` },
-        { etiqueta: 'Disponibles hoy', valor: filas.length - ausentes, tono: 'green',
+        { etiqueta: 'Disponibles hoy', valor: deAlta.length - ausentes, tono: 'green',
           pie: `${ausentes} ausentes` },
-        { etiqueta: 'Sin coche', valor: Number(h.sin_coche || 0), tono: 'gold',
-          filtro: { id: 'coche', valor: 'sin' }, pie: 'no planificados' },
-        { etiqueta: 'Fichas con huecos', valor: filas.filter(f => f.faltan.length).length, tono: 'warn',
+        { etiqueta: 'Baja en la empresa', valor: deBaja, tono: 'muted',
+          filtro: { id: 'empleo', valor: 'baja' },
+          pie: `${filas.length} en total` },
+        { etiqueta: 'Fichas con huecos', valor: deAlta.filter(f => f.faltan.length).length, tono: 'warn',
           filtro: { id: 'ficha', valor: 'incompleta' },
           pie: `${h.sin_bolt || 0} sin BOLT · ${h.sin_telefono || 0} sin teléfono` },
       ];
@@ -558,6 +573,16 @@
     ],
 
     filtros: [
+      {
+        // Lo primero que se decide al mirar la plantilla: ¿gente de ahora, o
+        // también la que ya se fue?
+        id: 'empleo', textoTodos: 'Toda la plantilla',
+        pasa: (f, v) => v === 'alta' ? f.empleo_vigente !== false : f.empleo_vigente === false,
+        opciones: (filas) => [
+          { valor: 'alta', texto: 'De alta', cuenta: filas.filter(f => f.empleo_vigente !== false).length },
+          { valor: 'baja', texto: 'De baja', cuenta: filas.filter(f => f.empleo_vigente === false).length },
+        ],
+      },
       {
         id: 'situacion', campo: 'situacion', textoTodos: 'Todas las situaciones',
         opciones: (filas, extra) => (extra.resumen && extra.resumen.porSituacion || [])
@@ -604,8 +629,16 @@
             (f.zona ? ` <span class="text-telecab-muted text-xs">${esc(f.zona)}</span>` : '') },
       { titulo: 'Teléfono', campo: 'telefono', clase: 'whitespace-nowrap tabular-nums' },
       { titulo: 'Desde', campo: 'alta', clase: 'tabular-nums whitespace-nowrap',
-        pinta: (v, f) => !v ? '' : esc(fecha(v)) +
-          (f.anios >= 1 ? ` <span class="text-telecab-muted text-xs">${esc(f.anios)} a</span>` : '') },
+        pinta: (v, f) => {
+          // Si ya no está, lo que importa es CUÁNDO se fue, no cuándo entró.
+          if (f.empleo_vigente === false) {
+            return f.fecha_baja
+              ? `<span class="text-telecab-muted">baja ${esc(fecha(f.fecha_baja))}</span>`
+              : '<span class="text-telecab-muted">—</span>';
+          }
+          return !v ? '' : esc(fecha(v)) +
+            (f.anios >= 1 ? ` <span class="text-telecab-muted text-xs">${esc(f.anios)} a</span>` : '');
+        } },
       { titulo: 'Ficha', campo: 'faltan', clase: 'text-center', pinta: (v, f) => faltan(f) },
     ],
 
@@ -715,6 +748,11 @@
             { etiqueta: 'Plazas abiertas', clase: 'text-telecab-warn font-semibold',
               visible: d => d.plazas_abiertas > 1,
               valor: d => `${d.plazas_abiertas} a la vez` },
+            { etiqueta: 'Causó baja el', visible: d => d.empleo_vigente === false,
+              valor: d => fecha(d.fecha_baja) },
+            { etiqueta: 'Motivo de la baja', ancho: 'sm:col-span-2',
+              visible: d => d.empleo_vigente === false && !!d.motivo_baja,
+              valor: d => d.motivo_baja },
           ],
         },
         {

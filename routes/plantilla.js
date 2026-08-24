@@ -63,7 +63,9 @@ router.get('/api/lista', async (req, res) => {
   try {
     const opciones = {
       momento: momentoDe(req),
-      incluirBajas: req.query.bajas === '1',
+      // Salen TODOS por omisión: activos, ausentes y quien ya causó baja. Con
+      // ?vigentes=1 se limita a los contratados ahora mismo.
+      soloVigentes: req.query.vigentes === '1',
     };
     const [filas, resumen] = await Promise.all([
       con.listar(opciones),

@@ -186,11 +186,22 @@ for (let i = 0; i < 120; i++) {
 // Los faltantes se calculan con la MISMA funcion del repositorio: si cambia la
 // regla, el banco cambia con ella y no miente.
 const { faltantesDe } = require('../services/repo/conductores');
-const conFaltan = GENTE.map(p => ({
-  // De alta salvo que la fila diga lo contrario, como en la base.
-  empleo_vigente: p.empleo_vigente !== false,
-  ...p, faltan: faltantesDe(p), nombre_completo: p.apellidos + ', ' + p.nombre,
-}));
+const conFaltan = GENTE.map(p => {
+  const vigente = p.empleo_vigente !== false;
+  return {
+    ...p,
+    empleo_vigente: vigente,
+    // Misma regla que la consulta: sin contrato abierto, esta de baja diga lo
+    // que diga su historial de situaciones.
+    situacion: vigente ? p.situacion : 'baja_empresa',
+    situacion_etiqueta: vigente ? p.situacion_etiqueta : 'Baja en la empresa',
+    ausente: vigente ? p.ausente : true,
+    fecha_baja: vigente ? null : p.baja,
+    motivo_baja: vigente ? null : 'Fin de contrato',
+    faltan: faltantesDe({ ...p, empleo_vigente: vigente }),
+    nombre_completo: p.apellidos + ', ' + p.nombre,
+  };
+});
 
 // Alta de alguien nuevo. Simula el choque por DNI o teléfono, que es el caso
 // interesante: la persona ya existe y lo que toca es restaurarla.
@@ -222,8 +233,12 @@ app.get('/plantilla/api/lista', (req, res) => res.json({
   filas: conFaltan,
   resumen: {
     porSituacion: SITUACIONES
-      .map(s => ({ ...s, personas: conFaltan.filter(p => p.situacion === s.codigo).length }))
-      .filter(s => s.personas),
+      .map(s => ({ ...s,
+        personas: conFaltan.filter(p => p.empleo_vigente !== false && p.situacion === s.codigo).length }))
+      .filter(s => s.personas)
+      .concat([{ codigo: 'baja_empresa', etiqueta: 'Baja en la empresa', es_ausencia: true,
+                 personas: conFaltan.filter(p => p.empleo_vigente === false).length }]
+                 .filter(x => x.personas)),
     porTipo: [
       { tipo: 'propia', personas: conFaltan.filter(p => p.empleo_tipo === 'propia').length },
       { tipo: 'ett', personas: conFaltan.filter(p => p.empleo_tipo === 'ett').length },

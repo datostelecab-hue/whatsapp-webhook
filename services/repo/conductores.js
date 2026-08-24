@@ -27,13 +27,15 @@ const NOMBRE = `btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)`;
  * `momento` permite mirar la plantilla de una fecha pasada: quién estaba de
  * alta, en qué turno y en qué coche. Hoy eso no se puede saber.
  */
-async function listar({ id, momento, incluirBajas = false, tipo, situacion, turnoId } = {}) {
+async function listar({ id, momento, soloVigentes = false, tipo, situacion, turnoId } = {}) {
   const params = [momento || null];
   const donde = [];
-  // Pidiendo un id concreto no se filtra por empleo: una ficha se abre igual
-  // aunque la persona ya no esté de alta.
+  // Por omisión salen TODOS: los de alta, los que están de vacaciones o de baja
+  // médica, y los que ya se fueron. La plantilla es la gente que ha pasado por
+  // aquí, y esconder a quien causó baja obliga a ir a buscarla a otro sitio.
+  // Quien quiera solo a los contratados lo pide con `soloVigentes`.
   if (id) { params.push(Number(id)); donde.push(`c.id = $${params.length}`); }
-  else if (!incluirBajas) donde.push('c.empleo_vigente');
+  else if (soloVigentes) donde.push('c.empleo_vigente');
   if (tipo)      { params.push(tipo);            donde.push(`e.tipo = $${params.length}`); }
   if (situacion) { params.push(situacion);       donde.push(`COALESCE(s.estado, 'activo') = $${params.length}`); }
   if (turnoId)   { params.push(Number(turnoId)); donde.push(`th.turno_id = $${params.length}`); }
@@ -53,11 +55,21 @@ async function listar({ id, momento, incluirBajas = false, tipo, situacion, turn
            round(EXTRACT(EPOCH FROM (age((SELECT dia FROM ref),
                  COALESCE(e.fecha_antiguedad, e.alta)))) / 31557600, 1) AS anios,
 
-           -- Situación: activo mientras nadie diga lo contrario.
-           COALESCE(s.estado, 'activo')     AS situacion,
-           COALESCE(ce.etiqueta, 'Activo')  AS situacion_etiqueta,
-           COALESCE(ce.es_ausencia, FALSE)  AS ausente,
-           s.desde AS situacion_desde, s.hasta_previsto,
+           -- Situación. Quien no tiene contrato abierto está DE BAJA, diga lo
+           -- que diga su historial: a mucha gente se le cerró el contrato sin
+           -- tocarle el estado, y aparecería como "Activo" años después de
+           -- haberse ido. El contrato manda sobre el estado.
+           CASE WHEN e.alta IS NULL THEN 'baja_empresa'
+                ELSE COALESCE(s.estado, 'activo') END           AS situacion,
+           CASE WHEN e.alta IS NULL THEN 'Baja en la empresa'
+                ELSE COALESCE(ce.etiqueta, 'Activo') END        AS situacion_etiqueta,
+           CASE WHEN e.alta IS NULL THEN TRUE
+                ELSE COALESCE(ce.es_ausencia, FALSE) END        AS ausente,
+           -- Si se fue, la fecha que importa es la de su baja, no la del estado.
+           CASE WHEN e.alta IS NULL THEN ultimo.baja ELSE s.desde END AS situacion_desde,
+           s.hasta_previsto,
+           ultimo.baja        AS fecha_baja,
+           ultimo.motivo_baja,
 
            th.turno_id, t.etiqueta AS turno,
 
@@ -83,6 +95,12 @@ async function listar({ id, momento, incluirBajas = false, tipo, situacion, turn
     LEFT JOIN conductor_periodo_empleo e
            ON e.conductor_id = c.id
           AND e.alta <= ref.dia AND (e.baja IS NULL OR e.baja >= ref.dia)
+    -- El último contrato CERRADO, para saber cuándo y por qué se fue quien ya
+    -- no está. Sin esto, una baja es una fila sin fecha y sin explicación.
+    LEFT JOIN LATERAL (
+      SELECT baja, motivo_baja FROM conductor_periodo_empleo
+       WHERE conductor_id = c.id AND baja IS NOT NULL
+       ORDER BY baja DESC LIMIT 1) ultimo ON e.alta IS NULL
     LEFT JOIN conductor_estado_hist s
            ON s.conductor_id = c.id
           AND s.desde <= ref.dia AND (s.hasta IS NULL OR s.hasta >= ref.dia)
@@ -141,6 +159,11 @@ async function listar({ id, momento, incluirBajas = false, tipo, situacion, turn
  */
 function faltantesDe(c) {
   const f = [];
+  // A quien ya no trabaja aquí no se le exige nada: su ficha se queda como
+  // estaba. Si no, el listado se llenaría de avisos sobre gente que se fue hace
+  // años y taparían los de la gente que sí está.
+  if (c.empleo_vigente === false) return f;
+
   if (!c.bolt_id) f.push('cuenta de BOLT');
   // Tenerla desactivada es igual de malo que no tenerla: BOLT deja de mandar
   // sus horas y el conductor desaparece del control de trafico sin avisar.
@@ -230,19 +253,31 @@ async function ficha(id, { momento } = {}) {
 /** Contadores de la cabecera. Una consulta, no una por tarjeta. */
 async function resumen({ momento } = {}) {
   const [porSituacion, porTipo, huecos] = await Promise.all([
+    // Cuenta a TODO el mundo, incluidos los que ya no están: es lo que llena
+    // los filtros de la pantalla, y un filtro que no ofrece "baja en la
+    // empresa" hace imposible encontrar a quien se fue.
+    //
+    // La regla de la situación es la MISMA que en `listar`: sin contrato
+    // abierto, la persona está de baja diga lo que diga su historial.
     db.consulta(`
       WITH ref AS (SELECT COALESCE($1::date, CURRENT_DATE) AS dia)
-      SELECT COALESCE(s.estado, 'activo') AS codigo,
-             COALESCE(ce.etiqueta, 'Activo') AS etiqueta,
-             COALESCE(ce.es_ausencia, FALSE) AS es_ausencia,
+      SELECT CASE WHEN e.alta IS NULL THEN 'baja_empresa'
+                  ELSE COALESCE(s.estado, 'activo') END      AS codigo,
+             CASE WHEN e.alta IS NULL THEN 'Baja en la empresa'
+                  ELSE COALESCE(ce.etiqueta, 'Activo') END   AS etiqueta,
+             CASE WHEN e.alta IS NULL THEN TRUE
+                  ELSE COALESCE(ce.es_ausencia, FALSE) END   AS es_ausencia,
              count(*)::int personas
         FROM conductor c
         CROSS JOIN ref
+        LEFT JOIN conductor_periodo_empleo e
+               ON e.conductor_id = c.id
+              AND e.alta <= ref.dia AND (e.baja IS NULL OR e.baja >= ref.dia)
         LEFT JOIN conductor_estado_hist s
                ON s.conductor_id = c.id
               AND s.desde <= ref.dia AND (s.hasta IS NULL OR s.hasta >= ref.dia)
         LEFT JOIN cat_estado_conductor ce ON ce.codigo = s.estado
-       WHERE c.empleo_vigente AND NOT c.es_centinela
+       WHERE NOT c.es_centinela
        GROUP BY 1, 2, 3 ORDER BY 3, 2`, [momento || null]),
 
     db.consulta(`
