@@ -233,4 +233,57 @@ SELECT f.conductor_id, f.tipo, f.etiqueta
 COMMENT ON VIEW v_documento_falta IS
   'Lo que le falta a quien SI esta contratado. Alimenta los avisos de RRHH';
 
+-- ── Los documentos que pide Seleccion y no estaban en el catalogo ───────────
+-- El embudo recoge siete: las dos caras del DNI, las dos del carne, el
+-- certificado bancario, la vida laboral y el de delitos sexuales. En el
+-- catalogo faltaban cuatro.
+--
+-- Las caras van como TIPOS DISTINTOS y no como una columna "cara" del documento.
+-- Parece mas feo, pero es lo que hace que la comprobacion funcione: con un solo
+-- tipo "dni", subir solo el frente ya lo daria por entregado, y el reverso es
+-- justo el que se olvida.
+--
+-- El certificado de delitos sexuales caduca (tres meses de validez habitual);
+-- las caras de un documento caducan cuando caduca el documento, asi que heredan
+-- el aviso de su tipo principal.
+-- ANTES o DESPUES de contratar.
+--
+-- "Obligatorio" no bastaba. El contrato firmado y el alta en la Seguridad Social
+-- son obligatorios, pero NO pueden existir antes de contratar a nadie: no hay
+-- contrato que firmar hasta que se le contrata. Sin esta distincion, exigir la
+-- documentacion completa para pasar a RRHH bloquearia el 100% de las altas
+-- pidiendo un papel que solo existe despues.
+ALTER TABLE cat_tipo_documento ADD COLUMN IF NOT EXISTS previo_alta BOOLEAN NOT NULL DEFAULT TRUE;
+
+COMMENT ON COLUMN cat_tipo_documento.previo_alta IS
+  'Si se exige ANTES de contratar. El contrato y el alta en la SS son obligatorios pero posteriores: no existen hasta que hay contratacion';
+
+-- Se reescribe el orden de TODOS los de conductor, no solo el de los nuevos: si
+-- los reversos van sueltos al final, aparecen lejos de su documento y quien
+-- sube papeles tiene que ir a buscarlos. Cada reverso, detras de su frente.
+INSERT INTO cat_tipo_documento
+  (codigo, etiqueta, ambito, caduca, obligatorio, aviso_dias, orden, previo_alta) VALUES
+  ('dni',             'DNI o NIE',                      'conductor', TRUE,  TRUE, 60,  1, TRUE),
+  -- El reverso NO caduca por su cuenta: es la otra cara del mismo documento,
+  -- y su caducidad es la del frente. Marcarlo como caducable obligaria a
+  -- escribir dos veces la misma fecha, y la restriccion exige aviso 0.
+  ('dni_reverso',     'DNI o NIE (reverso)',            'conductor', FALSE, TRUE,  0,  2, TRUE),
+  ('permiso',         'Permiso de conducir',            'conductor', TRUE,  TRUE, 60,  3, TRUE),
+  ('permiso_reverso', 'Permiso de conducir (reverso)',  'conductor', FALSE, TRUE,  0,  4, TRUE),
+  ('vtc',             'Tarjeta VTC',                    'conductor', TRUE,  TRUE, 60,  5, TRUE),
+  ('vida_laboral',    'Vida laboral o certificado SS',  'conductor', FALSE, TRUE,  0,  6, TRUE),
+  ('penales',         'Certificado de delitos sexuales','conductor', TRUE,  TRUE, 30,  7, TRUE),
+  -- El certificado bancario ya era obligatorio para Seleccion; ahora la base
+  -- dice lo mismo que el proceso.
+  ('cuenta',          'Certificado de cuenta',          'conductor', FALSE, TRUE,  0,  8, TRUE),
+  ('reconocimiento',  'Reconocimiento médico',          'conductor', TRUE,  FALSE, 30, 9, TRUE),
+  ('formacion',       'Certificado de formación',       'conductor', TRUE,  FALSE, 30, 10, TRUE),
+  -- Estos dos NO pueden existir antes de contratar.
+  ('contrato',        'Contrato firmado',               'conductor', FALSE, TRUE,  0, 11, FALSE),
+  ('alta_ss',         'Alta en la Seguridad Social',    'conductor', FALSE, TRUE,  0, 12, FALSE)
+ON CONFLICT (codigo) DO UPDATE SET
+  etiqueta = EXCLUDED.etiqueta, caduca = EXCLUDED.caduca,
+  obligatorio = EXCLUDED.obligatorio, aviso_dias = EXCLUDED.aviso_dias,
+  orden = EXCLUDED.orden, previo_alta = EXCLUDED.previo_alta;
+
 COMMIT;

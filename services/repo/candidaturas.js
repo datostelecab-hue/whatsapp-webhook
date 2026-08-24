@@ -273,8 +273,15 @@ async function faltantes(id) {
   // Y los documentos obligatorios. Se preguntan a v_documento_falta_PERSONA y no
   // a v_documento_falta: la segunda solo mira a quien tiene contrato, y un
   // candidato no lo tiene — daria cero documentos que faltan siempre.
+  // Solo los PREVIOS al alta. El contrato firmado y el alta en la Seguridad
+  // Social tambien son obligatorios, pero no existen hasta que se contrata:
+  // exigirlos aqui bloquearia todas las altas pidiendo un papel imposible.
   const docs = await db.consulta(
-    `SELECT d.etiqueta FROM v_documento_falta_persona d WHERE d.conductor_id = $1 ORDER BY d.etiqueta`,
+    `SELECT d.etiqueta
+       FROM v_documento_falta_persona d
+       JOIN cat_tipo_documento td ON td.codigo = d.tipo
+      WHERE d.conductor_id = $1 AND td.previo_alta
+      ORDER BY td.orden`,
     [c.id]);
   return [...faltan, ...docs.rows.map(d => 'Documento: ' + d.etiqueta)];
 }
