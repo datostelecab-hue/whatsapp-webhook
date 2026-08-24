@@ -550,17 +550,116 @@ async function guardarTelefono(id, e164, { origen = 'manual', usuarioId, desde }
   });
 }
 
+/**
+ * Crea a una persona NUEVA y la contrata, todo en una transacción.
+ *
+ * Lo mínimo es el nombre y la fecha de alta. Los ETT entran así de justos a
+ * propósito: se les puede planificar antes de existir en BOLT y antes de que
+ * llegue su papeleo, que es como funciona de verdad una incorporación urgente.
+ *
+ * El DNI, si viene, se comprueba ANTES de crear nada: la base ya lo impide con
+ * un índice único, pero un error de PostgreSQL no dice de quién era el DNI y
+ * eso es justo lo que hace falta saber.
+ */
+async function crear(datos, { usuarioId, rol } = {}) {
+  const d = datos || {};
+  const nombre = String(d.nombre || '').trim();
+  if (!nombre) throw new Error('Falta el nombre');
+  if (!d.alta) throw new Error('Falta la fecha de alta');
+  const tipo = d.tipo === 'ett' ? 'ett' : 'propia';
+  if (tipo === 'ett' && !String(d.ettNombre || '').trim()) throw new Error('Falta el nombre de la ETT');
+
+  const dni = String(d.dni_nie || '').trim().toUpperCase() || null;
+  if (dni) {
+    const ya = (await db.consulta(
+      `SELECT id, ${NOMBRE} AS quien, empleo_vigente FROM conductor c
+        WHERE upper(btrim(dni_nie)) = $1`, [dni])).rows[0];
+    if (ya) {
+      throw new Error(`Ese DNI ya es de ${ya.quien}` +
+        (ya.empleo_vigente ? ', que está de alta.' : ', que está de baja. Vuélvele a dar de alta desde su ficha.') +
+        ` (ficha ${ya.id})`);
+    }
+  }
+
+  // El teléfono también: si ya es de otra persona vigente, la base lo rechaza y
+  // el alta entera se caería después de haber creado a medias.
+  const tel = String(d.telefono || '').replace(/[^0-9+]/g, '');
+  if (tel) {
+    const duenio = (await db.consulta(
+      `SELECT ${NOMBRE} AS quien FROM conductor_telefono t
+         JOIN conductor c ON c.id = t.conductor_id
+        WHERE t.vigente_hasta IS NULL
+          AND t.sufijo9 = right(regexp_replace($1, '[^0-9]', '', 'g'), 9)`, [tel])).rows[0];
+    if (duenio) throw new Error(`Ese teléfono ya es de ${duenio.quien}`);
+  }
+
+  return db.transaccion(async cli => {
+    // Solo los campos que el rol pueda tocar, con la misma regla que editar.
+    const permitidos = new Set(camposDe(rol));
+    const cols = ['nombre'], vals = [nombre];
+    for (const [k, v] of Object.entries(d)) {
+      if (k === 'nombre' || !CAMPOS[k] || !permitidos.has(k)) continue;
+      if (v === '' || v === null || v === undefined) continue;
+      cols.push(k);
+      vals.push(CAMPOS[k].tipo === 'numero' ? Number(String(v).replace(',', '.')) : v);
+    }
+
+    const r = await cli.query(
+      `INSERT INTO conductor (${cols.join(', ')})
+       VALUES (${cols.map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING id`, vals);
+    const id = r.rows[0].id;
+
+    await cli.query(
+      `INSERT INTO conductor_periodo_empleo
+         (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas,
+          fin_periodo_prueba, usuario_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, tipo, tipo === 'ett' ? String(d.ettNombre).trim() : null, d.alta,
+       d.antiguedad || null, d.jornadaHoras || null, d.finPrueba || null, usuarioId || null]);
+    await cli.query('UPDATE conductor SET empleo_vigente = TRUE WHERE id = $1', [id]);
+
+    if (tel) {
+      await cli.query(
+        `INSERT INTO conductor_telefono (conductor_id, e164, origen, principal)
+         VALUES ($1,$2,'manual',TRUE)`, [id, tel]);
+    }
+    if (d.turnoId) {
+      await vig.reemplazar('turnoConductor', id,
+        { turno_id: Number(d.turnoId), origen: 'manual', usuario_id: usuarioId || null },
+        { desde: d.alta, cerrarAnterior: false, cli });
+    }
+    if (Array.isArray(d.libranzas) && d.libranzas.length) {
+      const patron = await vig.reemplazar('libranza', id, { usuario_id: usuarioId || null },
+        { desde: d.alta, cerrarAnterior: false, cli });
+      for (const dia of [...new Set(d.libranzas.map(Number))].filter(x => x >= 1 && x <= 7)) {
+        await cli.query('INSERT INTO patron_libranza_dia (patron_id, dia_semana) VALUES ($1,$2)',
+          [patron.id, dia]);
+      }
+    }
+
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'alta', antes: null, ahora: `${nombre} · ${tipo} · ${d.alta}` }],
+    });
+    return { id, nombre };
+  });
+}
+
 /** Da de alta a alguien: abre su periodo de empleo. */
-async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad }, { usuarioId } = {}) {
+async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
+                              jornadaHoras, finPrueba }, { usuarioId } = {}) {
   if (!alta) throw new Error('Falta la fecha de alta');
   if (tipo === 'ett' && !ettNombre) throw new Error('Falta el nombre de la ETT');
   return db.transaccion(async cli => {
     const abierto = await vig.abierta('empleo', id);
     if (abierto) throw new Error('Esta persona ya está de alta');
     const r = await cli.query(
-      `INSERT INTO conductor_periodo_empleo (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, usuario_id)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [id, tipo, tipo === 'ett' ? ettNombre : null, alta, antiguedad || null, usuarioId || null]);
+      `INSERT INTO conductor_periodo_empleo
+         (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas,
+          fin_periodo_prueba, usuario_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [id, tipo, tipo === 'ett' ? ettNombre : null, alta, antiguedad || null,
+       jornadaHoras || null, finPrueba || null, usuarioId || null]);
     await cli.query('UPDATE conductor SET empleo_vigente = TRUE WHERE id = $1', [id]);
     return r.rows[0].id;
   });
@@ -615,7 +714,7 @@ async function doblePlaza({ momento } = {}) {
 module.exports = {
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
-  actualizar, cambiarSituacion, cambiarTurno, guardarLibranza,
+  crear, actualizar, cambiarSituacion, cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,
 };

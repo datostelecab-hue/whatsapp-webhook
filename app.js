@@ -10,7 +10,7 @@ const jsonGlobal = express.json({ limit: '2mb' });
 // Rutas que suben archivos en base64 y ponen su PROPIO limite mas alto dentro
 // de su router. Tienen que saltarse este parser: si corre antes, rechaza la
 // peticion por tamano y el limite de dentro no llega a aplicarse nunca.
-const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/conductores/api/documento'];
+const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento'];
 app.use((req, res, next) => {
   if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);
@@ -89,7 +89,7 @@ const agendaRoutes = require('./routes/agenda');
 const matchingRoutes = require('./routes/matching');
 const coberturaRoutes = require('./routes/cobertura');
 const vehiculosRoutes = require('./routes/vehiculos');
-const conductoresRoutes = require('./routes/conductores');
+const plantillaRoutes = require('./routes/plantilla');
 const documentosRoutes = require('./routes/documentos');
 const libranzasRoutes = require('./routes/libranzas');
 const controlRoutes = require('./routes/control');
@@ -160,7 +160,10 @@ app.use('/agenda', agendaRoutes);
 app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
-app.use('/conductores', conductoresRoutes);
+app.use('/plantilla', plantillaRoutes);
+// La pantalla se llamo /conductores mientras se construia. Quien tenga ese
+// enlace guardado no se encuentra un 404.
+app.get('/conductores', (req, res) => res.redirect(301, '/plantilla'));
 app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
@@ -170,8 +173,8 @@ app.use('/seleccion', seleccionRoutes);
 app.use('/ett', ettRoutes);
 app.use('/rrhh', rrhhRoutes);
 app.use('/administracion', administracionRoutes);
-// /plantilla se retiro: la sustituye /conductores, que ademas edita.
-// Su exportacion a Excel no se perdio, se generalizo en /exportar.
+// La exportacion a Excel de la Plantilla vieja no se perdio: se generalizo aqui
+// y ahora la usa cualquier listado.
 app.use('/exportar', require('./routes/exportar'));
 app.use('/fichas', fichasRoutes);
 app.use('/ticketera', ticketeraRoutes);
@@ -503,4 +506,20 @@ app.listen(port, () => {
   console.log(`   Cron: Cada hora (minuto 0)`);
   // Siembra el primer superadmin si SUPERADMIN_EMAIL está definido y aún no existe.
   sesion.sembrarSuperadmin();
+
+  // Comprobaciones de arranque. Las dos existían con un comentario que decía
+  // "se llama al arrancar" y NADIE las llamaba: un mapa desalineado no daba la
+  // cara hasta que alguien abría la pantalla concreta que lo usaba.
+  const bd = require('./services/db');
+  if (bd.HAY_BD) {
+    // ¿Sigue cuadrando el mapa de vigencias con las tablas reales?
+    require('./services/repo/vigencia').comprobarMapa().catch(e =>
+      console.error('⚠️  [VIGENCIA] No se pudo comprobar: ' + e.message));
+    // ¿Cubre el constructor de la agenda todas sus columnas? Si falta una,
+    // llega VACÍA a los 24 módulos que leen conductores.
+    require('./services/repo/agenda').comprobarCobertura().catch(e =>
+      console.error('⚠️  [AGENDA] No se pudo comprobar: ' + e.message));
+    const origen = require('./services/planificadorV2').AGENDA_ORIGEN;
+    console.log(`👥 [AGENDA] Los conductores se leen de: ${origen === 'postgres' ? 'PostgreSQL' : 'la hoja AGENDA_V2'}`);
+  }
 });

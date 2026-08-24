@@ -1,5 +1,5 @@
 // ============================================================
-// CONDUCTORES — rutas
+// PLANTILLA — rutas
 // ============================================================
 // La plantilla, leída de PostgreSQL. Sustituye a `/plantilla`, que cruzaba tres
 // hojas por nombre en JavaScript.
@@ -36,7 +36,7 @@ const responde = fn => async (req, res) => {
     const r = await fn(req, res);
     if (!res.headersSent) res.json({ status: 'ok', ...(r && typeof r === 'object' ? r : {}) });
   } catch (e) {
-    console.error(`❌ [CONDUCTORES] ${req.method} ${req.path}: ${e.message}`);
+    console.error(`❌ [PLANTILLA] ${req.method} ${req.path}: ${e.message}`);
     res.status(400).json({ status: 'error', msg: e.message });
   }
 };
@@ -44,10 +44,10 @@ const responde = fn => async (req, res) => {
 router.get('/', async (req, res) => {
   let catalogos = { situaciones: [], turnos: [], tipos: [] };
   try { catalogos = await con.catalogos(); } catch (e) {
-    console.error('❌ [CONDUCTORES] catálogos:', e.message);
+    console.error('❌ [PLANTILLA] catálogos:', e.message);
   }
-  res.render('conductores', {
-    titulo: 'Conductores', seccion: 'conductores', layout: 'layout-gestion',
+  res.render('plantilla', {
+    titulo: 'Plantilla', seccion: 'plantilla', layout: 'layout-gestion',
     catalogos,
   });
 });
@@ -68,7 +68,7 @@ router.get('/api/lista', async (req, res) => {
     ]);
     res.json({ filas, resumen });
   } catch (error) {
-    console.error('❌ [CONDUCTORES] /api/lista:', error.message);
+    console.error('❌ [PLANTILLA] /api/lista:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
   }
 });
@@ -79,7 +79,7 @@ router.get('/api/ficha/:id', async (req, res) => {
     if (!f) return res.status(404).json({ status: 'error', msg: 'No existe ese conductor' });
     res.json(f);
   } catch (error) {
-    console.error('❌ [CONDUCTORES] /api/ficha:', error.message);
+    console.error('❌ [PLANTILLA] /api/ficha:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
   }
 });
@@ -123,6 +123,11 @@ router.get('/api/campos', responde(async req => ({
   campos: con.CAMPOS,
   editables: con.camposDe((req.usuario || {}).rol || ''),
 })));
+
+// Alta de una persona nueva. La ficha y el contrato se crean juntos: alguien
+// en la plantilla sin periodo de empleo no esta ni contratado ni de baja.
+router.post('/api/conductor', responde(async req =>
+  con.crear(req.body || {}, await quien(req))));
 
 router.put('/api/conductor/:id', responde(async req =>
   con.actualizar(Number(req.params.id), req.body || {}, await quien(req))));
@@ -193,7 +198,7 @@ router.get('/api/documento/:id/descargar', async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre)}"`);
     res.send(d.bytes);
   } catch (e) {
-    console.error(`❌ [CONDUCTORES] descargar: ${e.message}`);
+    console.error(`❌ [PLANTILLA] descargar: ${e.message}`);
     res.status(404).send('No se encontró el documento');
   }
 });

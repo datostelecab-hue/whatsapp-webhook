@@ -1285,11 +1285,44 @@ function validarEsquema(agendaFilas, planFilas) {
 }
 
 /** Lee las tres hojas en una sola petición, sin interpretar nada. */
+/**
+ * De dónde salen los CONDUCTORES.
+ *
+ *   'sheets'   → AGENDA_V2, como siempre (por defecto)
+ *   'postgres' → se reconstruyen desde la base
+ *
+ * Va detrás de un interruptor y APAGADO por defecto a propósito: de esta
+ * función cuelgan el planificador, la cobertura, el control de horas, el bot y
+ * las nóminas. Poder volver atrás cambiando una variable de entorno, sin
+ * desplegar, vale más que ahorrarse la variable.
+ *
+ * El planificador (los coches y las plazas) sigue viniendo de la hoja: eso es
+ * el siguiente paso, no este.
+ */
+const AGENDA_ORIGEN = (process.env.AGENDA_ORIGEN || 'sheets').toLowerCase();
+
 async function leerCrudo() {
-  const [agendaFilas, planFilas, basesFilas] = await readMany(
-    SPREADSHEET_PLANIFICADOR,
-    [RANGOS.agenda, RANGOS.plan, RANGOS.bases]
-  );
+  const desdeBase = AGENDA_ORIGEN === 'postgres';
+
+  // El planificador y las bases se siguen leyendo de la hoja en los dos casos;
+  // lo único que cambia es de dónde salen los conductores.
+  const rangos = desdeBase ? [RANGOS.plan, RANGOS.bases] : [RANGOS.agenda, RANGOS.plan, RANGOS.bases];
+  const leidas = await readMany(SPREADSHEET_PLANIFICADOR, rangos);
+
+  let agendaFilas, planFilas, basesFilas;
+  if (desdeBase) {
+    [planFilas, basesFilas] = leidas;
+    try {
+      agendaFilas = await require('./repo/agenda').filas();
+    } catch (e) {
+      // Si la base falla, NO se sigue con una agenda vacía: eso dejaría a todo
+      // el mundo sin turno ni libranzas y el planificador lo daría por bueno.
+      throw new Error(`No se pudo leer la agenda de PostgreSQL: ${e.message}. ` +
+                      `Para volver a la hoja: AGENDA_ORIGEN=sheets`);
+    }
+  } else {
+    [agendaFilas, planFilas, basesFilas] = leidas;
+  }
 
   const bases = basesFilas.slice(1)
     .map(f => {
@@ -1303,7 +1336,8 @@ async function leerCrudo() {
     agendaFilas,
     planFilas,
     bases,
-    esquema: validarEsquema(agendaFilas, planFilas)
+    origenAgenda: desdeBase ? 'postgres' : 'sheets',
+    esquema: validarEsquema(agendaFilas, planFilas),
   };
 }
 
@@ -1965,7 +1999,7 @@ module.exports = {
   CAMPOS_OPERATIVOS, CAMPOS_SENSIBLES, validarCampo,
   ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS, TURNOS_CONDUCTOR, CONTRATOS,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
-  validarEsquema, leerCrudo, leerTablero, guardarTablero,
+  validarEsquema, leerCrudo, leerTablero, guardarTablero, AGENDA_ORIGEN,
   aplicarCambios, guardarCambios,
   HOJAS,
   PLAN_FILA_CAB, PLAN_FILA_INI, FILAS_POR_COCHE, N_MAT,

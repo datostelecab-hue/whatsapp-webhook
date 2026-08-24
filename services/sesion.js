@@ -33,7 +33,7 @@ const ACCESO = {
   '/sanciones': ['trafico'], '/callcenter': ['trafico'], '/migraciones': ['desarrollador'], '/explorador': ['desarrollador'],
   // La plantilla la miran los dos departamentos: Trafico para saber quien
   // puede conducir hoy, RRHH para saber quien esta de alta y con que.
-  '/conductores': ['oficina', 'trafico'],
+  '/plantilla': ['oficina', 'trafico'], '/conductores': ['oficina', 'trafico'],
   // Exportar no ensena nada que no se este viendo ya: lo que llega son las
   // filas que el navegador tiene delante. Vale con estar dentro.
   '/exportar': ['oficina', 'trafico']

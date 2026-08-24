@@ -179,7 +179,7 @@ const conFaltan = GENTE.map(p => ({
   ...p, faltan: faltantesDe(p), nombre_completo: p.apellidos + ', ' + p.nombre,
 }));
 
-app.get('/conductores/api/lista', (req, res) => res.json({
+app.get('/plantilla/api/lista', (req, res) => res.json({
   filas: conFaltan,
   resumen: {
     porSituacion: SITUACIONES
@@ -198,7 +198,7 @@ app.get('/conductores/api/lista', (req, res) => res.json({
   },
 }));
 
-app.get('/conductores/api/ficha/:id', (req, res) => {
+app.get('/plantilla/api/ficha/:id', (req, res) => {
   const p = conFaltan.find(x => String(x.id) === req.params.id);
   if (!p) return res.status(404).json({ status: 'error', msg: 'No existe ese conductor' });
   res.json({
@@ -232,8 +232,8 @@ app.get('/conductores/api/ficha/:id', (req, res) => {
   });
 });
 
-app.get('/conductores', (req, res) => pintar(res, 'conductores', {
-  titulo: 'Conductores', seccion: 'conductores',
+app.get('/plantilla', (req, res) => pintar(res, 'plantilla', {
+  titulo: 'Plantilla', seccion: 'plantilla',
   catalogos: { situaciones: SITUACIONES, turnos: TURNOS,
                tipos: [{ codigo: 'propia', etiqueta: 'Plantilla propia' },
                        { codigo: 'ett', etiqueta: 'ETT' }] },
@@ -376,5 +376,5 @@ app.get('/planificador-v2', (req, res) => pintar(res, 'planificadorV2', {
   diasSem: PL.DIAS_SEM, letrasDia: PL.LETRAS_DIA, estadosVehiculo: PL.ESTADOS_VEHICULO,
 }));
 
-app.get('/', (req, res) => res.redirect('/conductores'));
-app.listen(4599, () => console.log('Banco: http://localhost:4599/vehiculos · /conductores · /planificador-v2'));
+app.get('/', (req, res) => res.redirect('/plantilla'));
+app.listen(4599, () => console.log('Banco: http://localhost:4599/vehiculos · /plantilla · /planificador-v2'));

@@ -170,7 +170,7 @@
     if (!v) return;
     // Una ausencia no cierra su asignación, así que aquí no se toca nada del
     // coche. Está decidido en el esquema y esto solo lo respeta.
-    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/situacion`, 'POST', v));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion`, 'POST', v));
   }
 
   async function accionTurno(d) {
@@ -180,7 +180,7 @@
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(new Date()) },
     ]);
     if (!v) return;
-    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/turno`, 'POST', v));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/turno`, 'POST', v));
   }
 
   async function accionLibranza(d) {
@@ -190,7 +190,7 @@
       { id: 'desde', etiqueta: 'A partir de', tipo: 'fecha', valor: fecha(new Date()) },
     ], { nota: 'Se abre un patrón nuevo y se cierra el anterior. No se reescribe: si se reescribiera, la cobertura de las semanas pasadas dejaría de cuadrar con lo que de verdad pasó.' });
     if (!v) return;
-    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/libranza`, 'POST', v));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/libranza`, 'POST', v));
   }
 
   async function accionTelefono(d) {
@@ -198,16 +198,16 @@
       { id: 'e164', etiqueta: 'Número', valor: d.telefono || '+34', marcador: '+34600000000' },
     ], { nota: 'Pasa a ser el principal y el anterior se archiva. Es el número con el que el bot le escribe.' });
     if (!v) return;
-    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/telefono`, 'POST', v));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/telefono`, 'POST', v));
   }
 
   async function accionBolt(d) {
     let sugeridas = [], libres = [], estado = {};
     try {
       [sugeridas, libres, estado] = await Promise.all([
-        api('/conductores/api/bolt-sugerencias').then(r => r.sugerencias || []),
-        api('/conductores/api/bolt-libres').then(r => r.cuentas || []),
-        api('/conductores/api/bolt-estado').then(r => r.estado || {}),
+        api('/plantilla/api/bolt-sugerencias').then(r => r.sugerencias || []),
+        api('/plantilla/api/bolt-libres').then(r => r.cuentas || []),
+        api('/plantilla/api/bolt-estado').then(r => r.estado || {}),
       ]);
     } catch (e) { return alert(e.message); }
 
@@ -225,7 +225,7 @@
           : 'El nombre NO coincide exactamente, pero el teléfono sí. Compruébalo.\n\n') +
         '¿Enlazar esta cuenta?');
       if (ok) {
-        await hacer(() => enviar(`/conductores/api/conductor/${d.id}/bolt`, 'POST', { cuentaId: mia.cuenta_id }));
+        await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt`, 'POST', { cuentaId: mia.cuenta_id }));
         return;
       }
     }
@@ -250,7 +250,57 @@
         })) },
     ], { nota: 'Ninguna cuenta libre tiene el teléfono de esta persona, así que hay que elegirla a mano. Comprueba de quién es antes: una cuenta mal enlazada le imputa las horas a otro.' });
     if (!v) return;
-    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/bolt`, 'POST', v));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt`, 'POST', v));
+  }
+
+  /**
+   * Alta de alguien nuevo.
+   *
+   * Se pide lo mínimo: nombre y fecha. Un ETT entra así de justo a propósito —
+   * se le puede planificar antes de que llegue su papeleo, que es como funciona
+   * de verdad una incorporación urgente. El resto se completa luego en su ficha.
+   */
+  async function altaNueva() {
+    const v = await pedirDatos('Dar de alta a alguien nuevo', [
+      { id: 'nombre', etiqueta: 'Nombre *', grupo: 'Quién es' },
+      { id: 'apellidos', etiqueta: 'Apellidos', grupo: 'Quién es' },
+      { id: 'dni_nie', etiqueta: 'DNI o NIE', grupo: 'Quién es',
+        ayuda: 'Si ya existe, se avisa de quién es en vez de crear un duplicado.' },
+      { id: 'telefono', etiqueta: 'Teléfono', grupo: 'Quién es',
+        ayuda: 'Es con el que le escribe el bot, y con el que se le busca en BOLT.' },
+
+      { id: 'tipo', etiqueta: 'Tipo de contrato', grupo: 'Contrato', tipo: 'lista',
+        valor: 'propia', obligatorio: true,
+        opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', grupo: 'Contrato',
+        ayuda: 'Solo si el contrato es por ETT.' },
+      { id: 'alta', etiqueta: 'Fecha de alta *', grupo: 'Contrato', tipo: 'fecha',
+        valor: fecha(new Date()) },
+      { id: 'antiguedad', etiqueta: 'Antigüedad reconocida', grupo: 'Contrato', tipo: 'fecha',
+        ayuda: 'Solo si arrastra antigüedad de antes, por una subrogación.' },
+      { id: 'jornadaHoras', etiqueta: 'Jornada', grupo: 'Contrato', tipo: 'lista',
+        opciones: [20, 25, 30, 32, 35, 40].map(h => ({ valor: h, texto: h + ' horas' })) },
+      { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', grupo: 'Contrato', tipo: 'fecha' },
+
+      { id: 'turnoId', etiqueta: 'Turno', grupo: 'Cómo trabaja', tipo: 'lista',
+        opciones: (CAT.turnos || []).map(t => ({ valor: t.id, texto: t.etiqueta })) },
+      { id: 'libranzas', etiqueta: 'Días que libra', grupo: 'Cómo trabaja', tipo: 'semana', valor: [] },
+    ], { ancho: 'max-w-2xl', columnas: 2, textoBoton: 'Dar de alta',
+         nota: 'Solo el nombre y la fecha de alta son obligatorios. Todo lo demás se puede completar después en su ficha.' });
+    if (!v) return;
+
+    if (!v.nombre) return alert('Falta el nombre.');
+    if (!v.alta) return alert('Falta la fecha de alta.');
+
+    try {
+      const r = await enviar('/plantilla/api/conductor', 'POST', v);
+      await plantilla.recargar();
+      // Se abre su ficha recién creada: lo siguiente que se hace siempre es
+      // completarla o subirle un documento.
+      if (r.id) await plantilla.abrir(r.id);
+    } catch (e) {
+      alert(e.message);
+    }
   }
 
   /** Trae el padrón de BOLT y cuenta cuántas propuestas salen. */
@@ -258,8 +308,8 @@
     if (!confirm('Preguntar a BOLT qué cuentas existen y actualizar el inventario.\n\n' +
                  'NO enlaza a nadie: solo deja la lista al día para poder enlazar.\n\n¿Seguir?')) return;
     try {
-      const r = await enviar('/conductores/api/bolt/sincronizar', 'POST');
-      const e = await api('/conductores/api/bolt-estado').then(x => x.estado || {});
+      const r = await enviar('/plantilla/api/bolt/sincronizar', 'POST');
+      const e = await api('/plantilla/api/bolt-estado').then(x => x.estado || {});
       alert(
         `${r.vistas} cuentas en BOLT · ${r.nuevas} nuevas · ${r.cambiadas} con otro estado\n\n` +
         `Libres para enlazar: ${e.libres || 0}\n` +
@@ -277,7 +327,7 @@
   // pantalla, y que Tráfico vea exactamente lo que puede tocar y nada más.
   let CAMPOS_FICHA = null;
   async function camposFicha() {
-    if (!CAMPOS_FICHA) CAMPOS_FICHA = await api('/conductores/api/campos');
+    if (!CAMPOS_FICHA) CAMPOS_FICHA = await api('/plantilla/api/campos');
     return CAMPOS_FICHA;
   }
 
@@ -320,7 +370,7 @@
     });
     if (!Object.keys(cambios).length) return;
 
-    await hacer(() => enviar(`/conductores/api/conductor/${d.id}`, 'PUT', cambios));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}`, 'PUT', cambios));
   }
 
   async function accionBaja(d) {
@@ -331,14 +381,14 @@
          nota: 'Se cierran su empleo, su turno, sus libranzas y sus asignaciones. Su historial se conserva entero.' });
     if (!v) return;
     if (!confirm(`Confirmar la baja de ${d.nombre_completo} el ${v.fecha}.`)) return;
-    await hacer(() => enviar(`/conductores/api/conductor/${d.id}/baja`, 'POST', v));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', v));
   }
 
   // ---------- documentos ----------
 
   async function subirDocumento(d) {
     let tipos = [];
-    try { tipos = (await api('/conductores/api/tipos-documento')).tipos || []; }
+    try { tipos = (await api('/plantilla/api/tipos-documento')).tipos || []; }
     catch (e) { return alert(e.message); }
 
     const entrada = document.createElement('input');
@@ -364,7 +414,7 @@
         fr.onload = () => r(String(fr.result).split(',')[1]);
         fr.readAsDataURL(f);
       });
-      await hacer(() => enviar('/conductores/api/documento', 'POST', {
+      await hacer(() => enviar('/plantilla/api/documento', 'POST', {
         conductorId: d.id, nombre: f.name, mime: f.type, base64, ...v,
       }));
     };
@@ -373,16 +423,16 @@
 
   async function retirarDocumento(doc, d) {
     if (!confirm(`Retirar "${doc.nombre_archivo}".\n\nEl archivo NO se borra de Drive: solo deja de ser el vigente.`)) return;
-    await hacer(() => api(`/conductores/api/documento/${doc.id}`, { method: 'DELETE' }));
+    await hacer(() => api(`/plantilla/api/documento/${doc.id}`, { method: 'DELETE' }));
   }
 
   const plantilla = Listado.montar({
     raiz: '#modulo',
-    titulo: 'Conductores',
+    titulo: 'Plantilla',
     icono: 'fa-id-card',
     clave: 'id',
-    origen: '/conductores/api/lista',
-    vacio: 'No hay conductores que coincidan.',
+    origen: '/plantilla/api/lista',
+    vacio: 'No hay nadie que coincida.',
     buscar: {
       texto: 'Buscar nombre, DNI, BOLT, coche…',
       // Se busca por lo que IDENTIFICA además de por el nombre: por eso están
@@ -413,6 +463,8 @@
     },
 
     acciones: [
+      // Solo RRHH da de alta. Trafico ve la plantilla pero no contrata.
+      ...(SOLO_OPERATIVO ? [] : [{ texto: 'Dar de alta', icono: 'fa-user-plus', onClick: altaNueva }]),
       { texto: 'Traer de BOLT', icono: 'fa-rotate', principal: false, onClick: traerDeBolt },
     ],
 
@@ -471,7 +523,7 @@
     // ---------- la ficha ----------
 
     detalle: {
-      origen: id => `/conductores/api/ficha/${id}`,
+      origen: id => `/plantilla/api/ficha/${id}`,
       titulo: d => d.nombre_completo,
       acciones: [
         { texto: 'Situación', icono: 'fa-user-clock', principal: true, onClick: accionSituacion },
@@ -505,7 +557,7 @@
             hueco.innerHTML = '<p class="text-sm text-telecab-muted">Cargando…</p>';
             // Se piden aparte y no con la ficha: son una consulta más y la
             // mayoría de las veces se mira la ficha sin abrir los papeles.
-            api(`/conductores/api/conductor/${d.id}/documentos`).then(r => {
+            api(`/plantilla/api/conductor/${d.id}/documentos`).then(r => {
               const lista = r.documentos || [];
               hueco.innerHTML = `
                 <div class="flex items-center gap-2">
@@ -537,7 +589,7 @@
                                    ${esc(fecha(x.fecha_caduca))}${x.caducado ? ' (caducado)' : ''}</span>`
                               : '<span class="text-telecab-muted">—</span>'}</td>
                           <td class="px-5 py-2 text-right whitespace-nowrap">
-                            <a href="/conductores/api/documento/${x.id}/descargar" target="_blank"
+                            <a href="/plantilla/api/documento/${x.id}/descargar" target="_blank"
                                class="text-telecab-muted hover:text-telecab-gold px-1" title="Abrir">
                                <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i></a>
                             <button data-retirar="${x.id}" class="text-telecab-muted hover:text-telecab-red px-1"

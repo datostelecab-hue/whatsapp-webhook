@@ -45,6 +45,22 @@
     </div>
   </div>
 
+  <!-- La agenda de conductores es de la que beben 24 módulos. Antes de que
+       dejen de leer la hoja hay que ver que la base dice lo mismo. -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2 flex-wrap">
+      <i class="fa-solid fa-code-compare text-telecab-gold text-sm"></i>
+      <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Agenda: hoja contra PostgreSQL</h3>
+      <span id="ca-origen" class="text-xs text-telecab-muted"></span>
+      <button id="ca-comparar" class="ml-auto px-3 py-1.5 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">
+        <i class="fa-solid fa-code-compare mr-1"></i> Comparar
+      </button>
+    </div>
+    <div id="ca-cuerpo" class="p-5 text-sm text-telecab-muted">
+      Compara las dos fuentes fila a fila. No cambia nada.
+    </div>
+  </div>
+
   <details class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
     <summary class="px-5 py-3 cursor-pointer text-sm font-semibold text-telecab-muted uppercase tracking-wide">
       <i class="fa-solid fa-database mr-1"></i> Qué hay creado
@@ -212,6 +228,77 @@
     } catch (e) {
       inventarioPedido = false;
       $('#m-inventario').innerHTML = `<span class="text-telecab-red">${esc(e.message)}</span>`;
+    }
+  });
+
+  // ── Comparar la agenda ────────────────────────────────────────────────────
+  pedir('/migraciones/api/origen-agenda').then(d => {
+    const en = d.origen === 'postgres';
+    $('#ca-origen').innerHTML = `leyendo de <b class="text-telecab-${en ? 'green' : 'gold'}">` +
+      `${en ? 'PostgreSQL' : 'la hoja'}</b>`;
+  }).catch(() => {});
+
+  $('#ca-comparar').addEventListener('click', async () => {
+    const c = $('#ca-cuerpo');
+    c.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Leyendo las dos…';
+    try {
+      const d = await pedir('/migraciones/api/comparar-agenda');
+      const limpio = d.conDiferencias === 0 && !d.soloHoja.length && !d.soloBase.length;
+      c.innerHTML = `
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          ${[['En la hoja', d.enHoja, 'text'], ['En la base', d.enBase, 'text'],
+             ['Con diferencias', d.conDiferencias, d.conDiferencias ? 'warn' : 'green'],
+             ['Sin pareja', d.soloHoja.length + d.soloBase.length,
+              (d.soloHoja.length + d.soloBase.length) ? 'red' : 'green']]
+            .map(([et, v, t]) => `
+              <div class="bg-telecab-card2 border border-telecab-border rounded-xl p-3">
+                <p class="text-[11px] text-telecab-muted uppercase tracking-wide">${et}</p>
+                <p class="text-xl font-bold text-telecab-${t}">${v}</p>
+              </div>`).join('')}
+        </div>
+
+        ${limpio ? `<p class="text-telecab-green font-semibold">
+            <i class="fa-solid fa-check"></i> Las dos fuentes dicen lo mismo.
+            Se puede cambiar AGENDA_ORIGEN a "postgres".</p>` : ''}
+
+        ${d.porColumna.length ? `
+          <p class="font-semibold text-telecab-text mb-1">Diferencias por columna</p>
+          <div class="flex flex-wrap gap-1.5 mb-4">${d.porColumna.map(x =>
+            `<span class="px-2 py-0.5 rounded-lg text-xs bg-telecab-warn/15 text-telecab-warn
+                          border border-telecab-warn/30">${esc(x.columna)}: ${x.filas}</span>`).join('')}</div>` : ''}
+
+        ${d.soloHoja.length ? `
+          <p class="font-semibold text-telecab-red mb-1">Solo en la hoja (${d.soloHoja.length})</p>
+          <p class="text-xs mb-3">${d.soloHoja.slice(0,25).map(x => esc(x.nombre || x.id)).join(' · ')}${d.soloHoja.length>25?'…':''}</p>` : ''}
+
+        ${d.soloBase.length ? `
+          <p class="font-semibold text-telecab-red mb-1">Solo en la base (${d.soloBase.length})</p>
+          <p class="text-xs mb-3">${d.soloBase.slice(0,25).map(x => esc(x.nombre || x.id)).join(' · ')}${d.soloBase.length>25?'…':''}</p>` : ''}
+
+        ${d.debiles.length ? `
+          <p class="text-xs text-telecab-warn mb-3">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            ${d.debiles.length} emparejada(s) POR NOMBRE, sin ID de BOLT: son las menos fiables.</p>` : ''}
+
+        ${d.diferencias.length ? `
+          <details class="mt-2">
+            <summary class="cursor-pointer text-sm font-semibold text-telecab-text">
+              Ver las ${d.conDiferencias} filas que difieren</summary>
+            <div class="mt-2 max-h-[50vh] overflow-y-auto space-y-2">
+              ${d.diferencias.map(x => `
+                <div class="border border-telecab-border rounded-xl p-2">
+                  <p class="text-xs font-semibold">${esc(x.nombre || x.id)}
+                    ${x.emparejamientoDebil ? '<span class="text-telecab-warn">(por nombre)</span>' : ''}</p>
+                  ${x.campos.map(cp => `
+                    <p class="text-[11px] text-telecab-muted">
+                      <b>${esc(cp.columna)}</b>: hoja «${esc(cp.hoja)}» · base «${esc(cp.base)}»</p>`).join('')}
+                </div>`).join('')}
+            </div>
+          </details>` : ''}
+
+        <p class="text-xs text-telecab-muted mt-3">${d.segundos}s</p>`;
+    } catch (e) {
+      c.innerHTML = `<span class="text-telecab-red">${esc(e.message)}</span>`;
     }
   });
 
