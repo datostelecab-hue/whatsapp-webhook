@@ -52,6 +52,27 @@ router.post('/campos', async (req, res) => {
   }
 });
 
+// Crea la ficha del contratado en PostgreSQL. A partir de aqui es una persona
+// del sistema, no un candidato: la misma ficha que tendra cuando a los tres
+// meses pase a plantilla propia.
+router.post('/rrhh', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const actor = require('../services/repo/actor');
+    const r = await require('../services/ett').pasarARRHH((b.tel || '').toString(), {
+      ettNombre: b.ettNombre,
+      usuarioId: await actor.idDe(req),
+      rol: (req.usuario || {}).rol || '',
+    });
+    console.log(`👤 [ETT] Ficha ${r.restaurado ? 'restaurada' : 'creada'} nº ${r.id}` +
+                (r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
+    res.json({ status: 'ok', ...r });
+  } catch (e) {
+    console.error(`❌ [ETT] /rrhh: ${e.message}`);
+    res.status(400).json({ status: 'error', msg: e.message, situacion: e.situacion });
+  }
+});
+
 // Devuelve la matriz (texto separado por tabulaciones) para pegar en la respuesta a la ETT.
 router.get('/exportar', async (req, res) => {
   try {

@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const router = express.Router();
 const { leerVacantesGuardadas, vacanteDisponible } = require('../services/vacantes');
-const { buscarPorTelefono } = require('../services/conductoresBolt');
+const alta = require('../services/repo/alta');
 const { geocodificar, geocodificarEstructurado } = require('../services/geocoding');
 const drive = require('../services/drive');
 const { generarFichaPDF } = require('../services/fichaAlta');
@@ -75,9 +75,19 @@ router.get('/api/ticket/:tel', async (req, res) => {
     const tel = normalizarTel(req.params.tel);
     const { porTel } = await leerTickets();
     const t = porTel.get(tel) || null;
-    let bolt = null;
-    try { bolt = await buscarPorTelefono(tel); } catch (_) { /* histórico opcional */ }
-    res.json({ status: 'ok', ticket: t, enBolt: !!bolt, boltNombre: bolt ? bolt.nombre : '' });
+    // La consulta va a PostgreSQL, no a la copia de BOLT en hojas: allí están
+    // NUESTRAS fichas con sus teléfonos, que es lo único capaz de distinguir una
+    // restauración (tenemos ficha suya) de un alta desde cero. La hoja solo
+    // sabía si el número aparecía en BOLT, que es media respuesta.
+    let situacion = null;
+    try { situacion = await alta.porTelefono(tel); }
+    catch (e) { console.error(`❌ [SELECCION] alta ${tel}: ${e.message}`); }
+    res.json({
+      status: 'ok', ticket: t, alta: situacion,
+      // Se mantienen mientras la pantalla vieja siga leyéndolos.
+      enBolt: Boolean(situacion && situacion.bolt),
+      boltNombre: (situacion && situacion.bolt && situacion.bolt.nombre) || '',
+    });
   } catch (error) {
     res.status(500).json({ status: 'error', msg: error.message });
   }
@@ -104,10 +114,14 @@ router.post('/etapa', async (req, res) => {
   }
 });
 
-// Enviar la solicitud a BOLT (solo tras completar el funnel).
+// Pasar a RRHH: crea la ficha en PostgreSQL y mueve el ticket de etapa.
 router.post('/bolt', async (req, res) => {
   try {
-    const t = await enviarABolt((req.body || {}).tel);
+    const actor = require('../services/repo/actor');
+    const t = await enviarABolt((req.body || {}).tel, {
+      usuarioId: await actor.idDe(req),
+      rol: (req.usuario || {}).rol || '',
+    });
     res.json({ status: 'ok', ticket: t });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });

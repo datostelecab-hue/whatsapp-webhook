@@ -80,11 +80,18 @@ COMMENT ON COLUMN conductor.centro_codigo IS
   'Centro de trabajo de la Seguridad Social. Distinto de flota, que es la compañia de BOLT';
 
 -- ── La situacion respecto a BOLT, ahora diciendo CON QUE NUMERO ─────────────
--- La misma vista de la migracion 10, con tres columnas mas: el telefono de la
--- cuenta de BOLT, su uuid, y si ese numero es el mismo que tenemos nosotros.
--- Cuando no lo es, la pantalla puede decirlo en vez de dejar a quien lo mira
--- adivinando por que no cuadra.
-CREATE OR REPLACE VIEW v_conductor_alta_bolt AS
+-- La misma vista de la migracion 10, con cuatro columnas mas: el telefono de la
+-- cuenta de BOLT, su uuid, su nombre, y si ese numero es el mismo que tenemos
+-- nosotros. Cuando no lo es, la pantalla puede decirlo en vez de dejar a quien
+-- lo mira adivinando por que no cuadra.
+--
+-- Se reemplaza ENTERA y no con CREATE OR REPLACE: las columnas nuevas van en
+-- medio, antes de `situacion_bolt`, y REPLACE solo sabe añadir al final. Aqui el
+-- orden importa para leerla, asi que se tira y se vuelve a crear. Solo la usa
+-- JavaScript (cazamientoBolt), ninguna otra vista cuelga de ella.
+DROP VIEW IF EXISTS v_conductor_alta_bolt;
+
+CREATE VIEW v_conductor_alta_bolt AS
 SELECT c.id AS conductor_id,
        btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
        c.dni_nie,

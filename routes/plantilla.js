@@ -168,6 +168,13 @@ router.post('/api/conductor/:id/alta', responde(async req =>
 router.post('/api/conductor/:id/baja', responde(async req =>
   ({ dado: await con.darDeBaja(Number(req.params.id), req.body || {}, await quien(req)) })));
 
+// El paso de ETT a plantilla propia, a los tres meses. NO es una baja seguida
+// de un alta: la persona sigue en su coche y en su turno, y la antigüedad de la
+// ETT se arrastra al contrato nuevo.
+router.post('/api/conductor/:id/a-propia', responde(async req =>
+  require('../services/repo/alta').convertirAPropia(
+    Number(req.params.id), req.body || {}, await quien(req))));
+
 // El historial de ediciones de una ficha: quién tocó qué y cuándo.
 router.get('/api/conductor/:id/cambios', responde(async req =>
   ({ cambios: await audit.historial('conductor', Number(req.params.id)) })));

@@ -105,6 +105,19 @@
       campo('Zona', '<input value="' + esc(c.zona) + '" list="dl-zonas" class="f-zona w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5" placeholder="GETAFE…">') +
       '<button data-tel="' + c.telefono + '" class="guardar px-3 py-1.5 rounded-lg bg-telecab-gold text-white text-sm font-semibold h-[34px]">Guardar</button>' +
       '</div>';
+    // Pasar a RRHH: solo con la decisión tomada y la fecha de alta puesta, que
+    // es lo mínimo para abrir un contrato. Si ya tiene ficha, se dice cuál en
+    // vez de ofrecer crearla otra vez.
+    const puedePasar = c.estado === 'Contratado' && String(c.fecha_alta || '').trim();
+    const aRRHH = c.ficha
+      ? '<div class="mt-3 pt-3 border-t border-telecab-border text-xs text-telecab-muted">' +
+        '<i class="fa-solid fa-id-card mr-1"></i> Ficha creada · nº ' + esc(c.ficha) + '</div>'
+      : (!puedePasar ? '' :
+        '<div class="mt-3 pt-3 border-t border-telecab-border flex items-center gap-3">' +
+        '<button data-tel="' + c.telefono + '" class="a-rrhh px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-gold text-telecab-gold text-sm font-semibold">' +
+        '<i class="fa-solid fa-forward mr-1"></i> Crear ficha y pasar a RRHH</button>' +
+        '<span class="text-[11px] text-telecab-muted">Deja de ser candidato: pasa a la plantilla como contrato de ETT.</span>' +
+        '</div>');
     return '<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4" data-card="' + c.telefono + '">' +
       '<div class="flex items-start justify-between gap-3">' +
       '<div><div class="font-semibold text-telecab-text">' + esc(c.nombre || '(sin nombre)') + '</div>' +
@@ -112,13 +125,27 @@
       (c.direccion ? '<div class="text-xs text-telecab-muted">📍 ' + esc(c.direccion) + (c.cp ? ', ' + esc(c.cp) : '') + '</div>' : '') +
       '<div class="text-xs text-telecab-muted mt-0.5">🗓 ' + esc(c.fecha_entrevista) + ' ' + esc(c.hora_entrevista) + ' · <span class="text-telecab-text">ETT:</span> ' + esc(c.jornada_ett) + ' ' + esc(c.turno_ett) + '</div>' +
       '</div>' + chip + '</div>' +
-      '<div class="flex flex-wrap gap-2 mt-3">' + botones + '</div>' + datos + '</div>';
+      '<div class="flex flex-wrap gap-2 mt-3">' + botones + '</div>' + datos + aRRHH + '</div>';
   }
   function campo(label, control) { return '<div><label class="block text-[11px] text-telecab-muted mb-1">' + label + '</label>' + control + '</div>'; }
 
   function wire() {
     document.querySelectorAll('.dec').forEach(b => b.addEventListener('click', async () => {
       await accion('/ett/decision', { tel: b.dataset.tel, estado: b.dataset.dec });
+      cargar();
+    }));
+    document.querySelectorAll('.a-rrhh').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true;
+      const r = await accion('/ett/rrhh', { tel: b.dataset.tel });
+      if (r && r.status === 'ok') {
+        alert((r.restaurado ? '✅ Ficha restaurada' : '✅ Ficha creada') + ' nº ' + r.id +
+              (r.faltaBolt ? '
+
+⚠️ No tiene cuenta de BOLT. Sin ella no puede conducir.'
+                           : (r.boltEnlazada ? '
+
+Su cuenta de BOLT se ha enlazado sola.' : '')));
+      }
       cargar();
     }));
     document.querySelectorAll('.guardar').forEach(b => b.addEventListener('click', async () => {

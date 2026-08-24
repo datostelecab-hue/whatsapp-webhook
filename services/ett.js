@@ -184,6 +184,91 @@ async function guardarCampos(tel, campos = {}) {
   return { ok: true };
 }
 
+// ── Pasar a RRHH: la ficha se crea en PostgreSQL ────────────────────────────
+//
+// Hasta aquí el candidato solo existía en esta hoja. Al contratarlo se convierte
+// en una ficha de verdad, la misma tabla en la que están los de TIBUS: es la
+// MISMA persona y a los tres meses pasará a plantilla propia sin cambiar de
+// ficha, arrastrando la antigüedad de la ETT.
+//
+// De la ETT viene menos información que de Selección: nombre, DNI, teléfono,
+// correo, dirección y código postal. Lo que falte se rellena luego desde la
+// ficha, que es editable. Lo que NO puede faltar es la fecha de alta.
+
+/** "40 HORAS" -> 40. Es lo único numérico que hay en esa celda. */
+const horasDe = v => { const m = String(v == null ? '' : v).match(/(\d{1,2})/); return m ? Number(m[1]) : null; };
+
+/** dd/mm/aaaa -> aaaa-mm-dd. La hoja la escribe a la española; la base la quiere ISO. */
+function aIso(v) {
+  const s = String(v == null ? '' : v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? m[0] : null;
+}
+
+const sinTildes = s => String(s == null ? '' : s).normalize('NFD')
+  .replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+
+/**
+ * Crea (o restaura) la ficha del candidato contratado y la deja en PostgreSQL.
+ *
+ * El nombre de la ETT no se adivina: viene en `ettNombre` o en la variable de
+ * entorno ETT_NOMBRE. Inventarlo dejaria un contrato firmado por una empresa que
+ * no existe.
+ */
+async function pasarARRHH(tel, { ettNombre, usuarioId, rol } = {}) {
+  const alta = require('./repo/alta');
+  const con = require('./repo/conductores');
+
+  const t9 = normalizarTel(tel);
+  const c = (await leer()).find(x => x.telefono === t9);
+  if (!c) throw new Error('No encuentro ese candidato');
+  if (c.ficha) throw new Error(`Ya tiene ficha creada (nº ${c.ficha})`);
+  if (c.estado !== 'Contratado') {
+    throw new Error(`Solo se pasa a RRHH a quien está "Contratado"; este está "${c.estado || 'sin estado'}"`);
+  }
+  const fechaAlta = aIso(c.fecha_alta);
+  if (!fechaAlta) throw new Error('Falta la fecha de alta, o no está en formato dd/mm/aaaa');
+
+  const empresa = String(ettNombre || process.env.ETT_NOMBRE || '').trim();
+  if (!empresa) {
+    throw new Error('Falta el nombre de la ETT: ponlo en la variable de entorno ETT_NOMBRE');
+  }
+
+  // El turno de la hoja es texto ("Día", "Noche"); la base lo guarda por id.
+  let turnoId = null;
+  if (c.turno) {
+    const { turnos } = await con.catalogos();
+    const buscado = sinTildes(c.turno);
+    const encontrado = (turnos || []).find(x =>
+      sinTildes(x.etiqueta) === buscado || sinTildes(x.codigo) === buscado);
+    if (encontrado) turnoId = encontrado.id;
+  }
+
+  const { nombre, apellidos } = alta.partirNombre(c.nombre);
+  const r = await alta.realizar({
+    telefono: t9,
+    nombre, apellidos,
+    dni_nie: (c.dni || '').toUpperCase() || undefined,
+    email: c.correo || undefined,
+    // La ETT manda la direccion en una sola cadena. Se guarda entera en el
+    // nombre de la via: despiezarla a ojo inventaria portales y pisos.
+    via_nombre: c.direccion || undefined,
+    codigo_postal: c.cp || undefined,
+    tipo: 'ett',
+    ettNombre: empresa,
+    alta: fechaAlta,
+    jornadaHoras: horasDe(c.jornada) || horasDe(c.jornada_ett),
+    turnoId,
+  }, { usuarioId, rol });
+
+  // Se anota en la hoja para no crearla dos veces y para poder ir de una a otra.
+  await writeSheet(ID, `${HOJA}!${colLetra(COL.ficha)}${c._fila}`, [[String(r.id)]]);
+  await tocar(c._fila);
+  return r;
+}
+
 // ── Exportar la matriz de vuelta para la ETT (mismo formato, pegable en el correo) ──
 async function exportarMatriz() {
   const lista = await leer();
@@ -200,4 +285,5 @@ async function exportarMatriz() {
   return filas.map(f => f.join('\t')).join('\n');
 }
 
-module.exports = { datos, leer, importar, guardarDecision, guardarCampos, exportarMatriz, normalizarTel, ESTADOS, HOJA };
+module.exports = { datos, leer, importar, guardarDecision, guardarCampos, pasarARRHH,
+                   exportarMatriz, normalizarTel, ESTADOS, HOJA };
