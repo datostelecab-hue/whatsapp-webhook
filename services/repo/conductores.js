@@ -619,14 +619,12 @@ async function guardarTelefono(id, e164, { origen = 'manual', usuarioId, desde }
  * un índice único, pero un error de PostgreSQL no dice de quién era el DNI y
  * eso es justo lo que hace falta saber.
  */
-async function crear(datos, { usuarioId, rol } = {}) {
-  const d = datos || {};
-  const nombre = String(d.nombre || '').trim();
-  if (!nombre) throw new Error('Falta el nombre');
-  if (!d.alta) throw new Error('Falta la fecha de alta');
-  const tipo = d.tipo === 'ett' ? 'ett' : 'propia';
-  if (tipo === 'ett' && !String(d.ettNombre || '').trim()) throw new Error('Falta el nombre de la ETT');
-
+/**
+ * Comprueba que ni el DNI ni el telefono sean ya de otra persona.
+ *
+ * Devuelve el telefono limpio, que es lo unico que hace falta despues.
+ */
+async function comprobarChoques(d) {
   // Un choque de DNI o de teléfono casi nunca es un error de quien escribe: es
   // que esa persona YA EXISTE. Puede estar trabajando (y entonces el dato está
   // mal) o estar de baja (y entonces lo que toca es volver a darle de alta, no
@@ -666,7 +664,31 @@ async function crear(datos, { usuarioId, rol } = {}) {
     if (duenio) throw choque(duenio, 'teléfono');
   }
 
-  return db.transaccion(async cli => {
+  return tel;
+}
+
+/**
+ * Crea a la PERSONA, sin contratarla.
+ *
+ * Existir en el sistema y estar contratado son dos cosas distintas, y hasta
+ * ahora estaban pegadas: `crear` exigia una fecha de alta, asi que no habia
+ * forma de meter a un candidato de Seleccion, que todavia no tiene contrato.
+ *
+ * Alguien sin ningun periodo de empleo es exactamente eso: una persona que
+ * conocemos y que aqui no ha trabajado. Y desde el primer momento tiene las
+ * garantias de la base: su DNI no se puede repetir y su telefono no puede ser
+ * el de otro.
+ *
+ * Acepta un `cli` para poder ir dentro de una transaccion mayor, que es como la
+ * usa `crear`.
+ */
+async function crearPersona(datos, { usuarioId, rol, cli } = {}) {
+  const d = datos || {};
+  const nombre = String(d.nombre || '').trim();
+  if (!nombre) throw new Error('Falta el nombre');
+  const tel = await comprobarChoques(d);
+
+  const hacer = async cli => {
     // Solo los campos que el rol pueda tocar, con la misma regla que editar.
     const permitidos = new Set(camposDe(rol));
     const cols = ['nombre'], vals = [nombre];
@@ -682,6 +704,34 @@ async function crear(datos, { usuarioId, rol } = {}) {
        VALUES (${cols.map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING id`, vals);
     const id = r.rows[0].id;
 
+    if (tel) {
+      await cli.query(
+        `INSERT INTO conductor_telefono (conductor_id, e164, origen, principal)
+         VALUES ($1,$2,'manual',TRUE)`, [id, tel]);
+    }
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'ficha', antes: null, ahora: nombre }],
+    });
+    return { id, nombre };
+  };
+
+  return cli ? hacer(cli) : db.transaccion(hacer);
+}
+
+/**
+ * Crea a alguien Y le abre su periodo de empleo. Es el alta de toda la vida:
+ * la persona y el contrato en el mismo acto.
+ */
+async function crear(datos, { usuarioId, rol } = {}) {
+  const d = datos || {};
+  if (!d.alta) throw new Error('Falta la fecha de alta');
+  const tipo = d.tipo === 'ett' ? 'ett' : 'propia';
+  if (tipo === 'ett' && !String(d.ettNombre || '').trim()) throw new Error('Falta el nombre de la ETT');
+
+  return db.transaccion(async cli => {
+    const { id, nombre } = await crearPersona(datos, { usuarioId, rol, cli });
+
     await cli.query(
       `INSERT INTO conductor_periodo_empleo
          (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas,
@@ -691,11 +741,6 @@ async function crear(datos, { usuarioId, rol } = {}) {
        d.antiguedad || null, d.jornadaHoras || null, d.finPrueba || null, usuarioId || null]);
     await cli.query('UPDATE conductor SET empleo_vigente = TRUE WHERE id = $1', [id]);
 
-    if (tel) {
-      await cli.query(
-        `INSERT INTO conductor_telefono (conductor_id, e164, origen, principal)
-         VALUES ($1,$2,'manual',TRUE)`, [id, tel]);
-    }
     if (d.turnoId) {
       await vig.reemplazar('turnoConductor', id,
         { turno_id: Number(d.turnoId), origen: 'manual', usuario_id: usuarioId || null },
@@ -786,6 +831,7 @@ async function doblePlaza({ momento } = {}) {
 
 module.exports = {
   campos,
+  crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
   crear, actualizar, cambiarSituacion, cambiarTurno, guardarLibranza,
