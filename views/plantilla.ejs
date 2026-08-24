@@ -14,7 +14,13 @@
   async function api(url, opciones) {
     const r = await fetch(url, opciones);
     const j = await r.json().catch(() => null);
-    if (!r.ok || (j && j.status === 'error')) throw new Error((j && j.msg) || `Error ${r.status}`);
+    if (!r.ok || (j && j.status === 'error')) {
+      const e = new Error((j && j.msg) || `Error ${r.status}`);
+      // El servidor puede decir MÁS que un mensaje: si el fallo es un choque
+      // con alguien que ya existe, viene con quién es y en qué situación está.
+      if (j && j.conflicto) e.conflicto = j.conflicto;
+      throw e;
+    }
     return j;
   }
   const enviar = (url, metodo, cuerpo) => api(url, {
@@ -254,6 +260,33 @@
   }
 
   /**
+   * Vuelve a dar de alta a alguien que ya estuvo aquí.
+   *
+   * NO se crea una ficha nueva: se abre un periodo de empleo más sobre la misma
+   * persona. Así su historial —los coches que llevó, sus bajas, sus documentos—
+   * sigue siendo el suyo, que es justo lo que se perdería creando un duplicado.
+   */
+  async function volverAAlta(d) {
+    const previos = (d.empleos || []).length;
+    const v = await pedirDatos(`Volver a dar de alta a ${d.nombre_completo}`, [
+      { id: 'tipo', etiqueta: 'Tipo de contrato', tipo: 'lista', obligatorio: true,
+        valor: d.empleo_tipo || 'propia',
+        opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: d.ett_nombre || '' },
+      { id: 'alta', etiqueta: 'Fecha de alta *', tipo: 'fecha', valor: fecha(new Date()) },
+      { id: 'antiguedad', etiqueta: 'Antigüedad reconocida', tipo: 'fecha',
+        ayuda: 'Si se le respeta la antigüedad de su etapa anterior, ponla aquí.' },
+      { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista',
+        opciones: [20, 25, 30, 32, 35, 40].map(h => ({ valor: h, texto: h + ' horas' })) },
+      { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', tipo: 'fecha' },
+    ], { textoBoton: 'Volver a dar de alta',
+         nota: `Ya tiene ${previos} periodo(s) de empleo en su historial. Este se añade, no los sustituye.` });
+    if (!v) return;
+    if (!v.alta) return alert('Falta la fecha de alta.');
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/alta`, 'POST', v));
+  }
+
+  /**
    * Alta de alguien nuevo.
    *
    * Se pide lo mínimo: nombre y fecha. Un ETT entra así de justo a propósito —
@@ -299,7 +332,17 @@
       // completarla o subirle un documento.
       if (r.id) await plantilla.abrir(r.id);
     } catch (e) {
-      alert(e.message);
+      // Si el choque es con una persona que YA existe, no se deja a nadie
+      // delante de un mensaje sin salida: se le lleva a su ficha, que es donde
+      // se resuelve — volviéndole a dar de alta o corrigiendo el dato.
+      const c = e.conflicto;
+      if (!c) return alert(e.message);
+      const ir = confirm(
+        e.message + '\n\n' +
+        (c.empleoVigente
+          ? '¿Abrir su ficha para comprobarlo?'
+          : '¿Abrir su ficha para volver a darle de alta?'));
+      if (ir) await plantilla.abrir(c.id);
     }
   }
 
@@ -532,6 +575,9 @@
         { texto: 'Editar datos', icono: 'fa-pen', visible: () => !SOLO_OPERATIVO, onClick: accionDatos },
         { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
+        // Solo aparece si está de baja: es la vuelta, no un alta nueva.
+        { texto: 'Volver a dar de alta', icono: 'fa-user-check', principal: true,
+          visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: volverAAlta },
       ],
       subtitulo: d => [
         d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',

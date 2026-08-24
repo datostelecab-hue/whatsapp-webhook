@@ -569,16 +569,30 @@ async function crear(datos, { usuarioId, rol } = {}) {
   const tipo = d.tipo === 'ett' ? 'ett' : 'propia';
   if (tipo === 'ett' && !String(d.ettNombre || '').trim()) throw new Error('Falta el nombre de la ETT');
 
+  // Un choque de DNI o de teléfono casi nunca es un error de quien escribe: es
+  // que esa persona YA EXISTE. Puede estar trabajando (y entonces el dato está
+  // mal) o estar de baja (y entonces lo que toca es volver a darle de alta, no
+  // crear un duplicado).
+  //
+  // Por eso el error no es solo un texto: lleva de quién se trata y en qué
+  // situación está, para que la pantalla pueda ofrecer el paso siguiente en vez
+  // de dejar a alguien delante de un mensaje sin salida.
+  const choque = (fila, campo) => {
+    const e = new Error(
+      `Ese ${campo} ya es de ${fila.quien}` +
+      (fila.empleo_vigente
+        ? ', que está de alta ahora mismo.'
+        : ', que está de baja. Lo que toca es volver a darle de alta, no crear otra ficha.'));
+    e.conflicto = { id: fila.id, quien: fila.quien, empleoVigente: fila.empleo_vigente, campo };
+    return e;
+  };
+
   const dni = String(d.dni_nie || '').trim().toUpperCase() || null;
   if (dni) {
     const ya = (await db.consulta(
-      `SELECT id, ${NOMBRE} AS quien, empleo_vigente FROM conductor c
-        WHERE upper(btrim(dni_nie)) = $1`, [dni])).rows[0];
-    if (ya) {
-      throw new Error(`Ese DNI ya es de ${ya.quien}` +
-        (ya.empleo_vigente ? ', que está de alta.' : ', que está de baja. Vuélvele a dar de alta desde su ficha.') +
-        ` (ficha ${ya.id})`);
-    }
+      `SELECT c.id, ${NOMBRE} AS quien, c.empleo_vigente FROM conductor c
+        WHERE upper(btrim(c.dni_nie)) = $1`, [dni])).rows[0];
+    if (ya) throw choque(ya, 'DNI');
   }
 
   // El teléfono también: si ya es de otra persona vigente, la base lo rechaza y
@@ -586,11 +600,12 @@ async function crear(datos, { usuarioId, rol } = {}) {
   const tel = String(d.telefono || '').replace(/[^0-9+]/g, '');
   if (tel) {
     const duenio = (await db.consulta(
-      `SELECT ${NOMBRE} AS quien FROM conductor_telefono t
+      `SELECT c.id, ${NOMBRE} AS quien, c.empleo_vigente
+         FROM conductor_telefono t
          JOIN conductor c ON c.id = t.conductor_id
         WHERE t.vigente_hasta IS NULL
           AND t.sufijo9 = right(regexp_replace($1, '[^0-9]', '', 'g'), 9)`, [tel])).rows[0];
-    if (duenio) throw new Error(`Ese teléfono ya es de ${duenio.quien}`);
+    if (duenio) throw choque(duenio, 'teléfono');
   }
 
   return db.transaccion(async cli => {

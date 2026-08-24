@@ -132,6 +132,17 @@ const GENTE = [
     matricula: '1234ABC', vehiculo_id: 3, rol: 'titular', zona: 'Norte', libranzas: 'L M',
     direccion: 'Avenida Sur 12, 28100 Alcobendas', naf: '289876543210', legajo: 'A-077',
     fecha_nacimiento: '1988-11-02' },
+  // Alguien que YA ESTUVO aquí y se fue: es el caso de la restauración, y sin
+  // una fila así no se puede probar el botón de volver a dar de alta.
+  { id: 13, nombre: 'Andrés Camilo', apellidos: 'Bedoya', nombre_ss: 'BEDOYA ANDRES CAMILO',
+    dni_tipo: 'DNI', dni_nie: '11223344Z', nacionalidad: 'Colombia', email: null,
+    empleo_tipo: 'propia', ett_nombre: null, alta: '2024-03-01', baja: '2026-05-31',
+    antiguedad: '2024-03-01', anios: 2.2, situacion: 'activo', situacion_etiqueta: 'Activo',
+    ausente: false, situacion_desde: '2024-03-01', hasta_previsto: null,
+    turno_id: 1, turno: 'Día', telefono: '+34640389649', bolt_id: '884499', bolt_estado: 'active',
+    matricula: null, vehiculo_id: null, rol: null, zona: null, libranzas: null,
+    direccion: null, naf: null, legajo: null, fecha_nacimiento: '1992-07-19',
+    empleo_vigente: false },
 ];
 
 // Relleno hasta pasar de 50 filas: sin eso el paginador no se puede probar.
@@ -176,8 +187,36 @@ for (let i = 0; i < 120; i++) {
 // regla, el banco cambia con ella y no miente.
 const { faltantesDe } = require('../services/repo/conductores');
 const conFaltan = GENTE.map(p => ({
+  // De alta salvo que la fila diga lo contrario, como en la base.
+  empleo_vigente: p.empleo_vigente !== false,
   ...p, faltan: faltantesDe(p), nombre_completo: p.apellidos + ', ' + p.nombre,
 }));
+
+// Alta de alguien nuevo. Simula el choque por DNI o teléfono, que es el caso
+// interesante: la persona ya existe y lo que toca es restaurarla.
+app.post('/plantilla/api/conductor', (req, res) => {
+  const b = req.body || {};
+  const nueve = t => String(t || '').replace(/\D/g, '').slice(-9);
+  const ya = conFaltan.find(p =>
+    (b.dni_nie && String(p.dni_nie || '').toUpperCase() === String(b.dni_nie).toUpperCase()) ||
+    (b.telefono && nueve(p.telefono) && nueve(p.telefono) === nueve(b.telefono)));
+  if (ya) {
+    const campo = b.dni_nie && String(ya.dni_nie || '').toUpperCase() === String(b.dni_nie).toUpperCase()
+      ? 'DNI' : 'teléfono';
+    return res.status(400).json({
+      status: 'error',
+      msg: `Ese ${campo} ya es de ${ya.nombre_completo}` +
+        (ya.empleo_vigente
+          ? ', que está de alta ahora mismo.'
+          : ', que está de baja. Lo que toca es volver a darle de alta, no crear otra ficha.'),
+      conflicto: { id: ya.id, quien: ya.nombre_completo, empleoVigente: ya.empleo_vigente, campo },
+    });
+  }
+  res.json({ status: 'ok', id: 999, nombre: b.nombre });
+});
+
+app.post('/plantilla/api/conductor/:id/alta', (req, res) =>
+  res.json({ status: 'ok', periodoId: 77 }));
 
 app.get('/plantilla/api/lista', (req, res) => res.json({
   filas: conFaltan,

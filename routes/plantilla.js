@@ -37,7 +37,10 @@ const responde = fn => async (req, res) => {
     if (!res.headersSent) res.json({ status: 'ok', ...(r && typeof r === 'object' ? r : {}) });
   } catch (e) {
     console.error(`❌ [PLANTILLA] ${req.method} ${req.path}: ${e.message}`);
-    res.status(400).json({ status: 'error', msg: e.message });
+    // `conflicto` viaja con el error: dice QUIÉN es la persona que ya existe y
+    // si está de alta. Sin eso, la pantalla solo puede enseñar un mensaje y
+    // dejar a quien lo lee sin saber qué hacer.
+    res.status(400).json({ status: 'error', msg: e.message, conflicto: e.conflicto });
   }
 };
 
