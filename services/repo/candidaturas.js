@@ -92,11 +92,14 @@ async function catalogos() {
  * Por omisión salen las candidaturas VIVAS. Las cerradas (descartes, bajas) se
  * piden aparte: son historia y en la pantalla del día a día solo estorban.
  */
-async function listar({ incluirCerradas = false, etapa, estado } = {}) {
+async function listar({ incluirCerradas = false, etapa, estado, canal } = {}) {
   const donde = [], params = [];
   if (!incluirCerradas) donde.push('cerrado_at IS NULL');
   if (etapa)  { params.push(etapa);  donde.push(`etapa = $${params.length}`); }
   if (estado) { params.push(estado); donde.push(`estado = $${params.length}`); }
+  // Por canal: es lo que separa la pantalla de la ETT de la de Seleccion. Misma
+  // tabla, misma consulta, distinta puerta de entrada.
+  if (canal)  { params.push(canal);  donde.push(`canal = $${params.length}`); }
 
   const r = await db.consulta(
     `SELECT * FROM v_candidatura
@@ -456,7 +459,177 @@ async function paraFicha(id) {
   };
 }
 
+// ── La matriz que manda la ETT ──────────────────────────────────────────────
+//
+// La agencia manda por correo una TABLA, no un fichero. Se copia y se pega, y de
+// ahi salen las fichas. El orden de sus columnas es el suyo y no se negocia:
+//
+//   0 Fecha entrevista · 1 Hora · 2 Jornada · 3 Turno · 4 Nombre · 5 DNI/NIE ·
+//   6 TELEFONO · 7 Direccion · 8 CP · 9 Correo
+//   [ 10 Fecha de alta · 11 Jornada · 12 Turno · 13 Zona ]  <- las rellenamos
+//     nosotros y se las devolvemos
+//
+// El telefono es la clave: una fila sin nueve digitos ahi es la cabecera, una
+// linea en blanco o una nota suelta, y se salta sin ruido.
+
+/** "05/08/2026" + "12:00h" -> un instante. Sin hora, las 00:00. */
+function citaDe(dia, hora) {
+  const d = String(dia || '').match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (!d) return null;
+  const h = String(hora || '').match(/(\d{1,2})[:.h]?(\d{2})?/);
+  const iso = d[3] + '-' + d[2].padStart(2, '0') + '-' + d[1].padStart(2, '0')
+    + 'T' + String(h ? h[1] : '0').padStart(2, '0') + ':' + ((h && h[2]) || '00') + ':00';
+  return isNaN(new Date(iso)) ? null : iso;
+}
+
+const soloDigitos = v => String(v == null ? '' : v).replace(/\D/g, '');
+const horasDe = v => { const m = String(v == null ? '' : v).match(/(\d{1,2})/); return m ? Number(m[1]) : null; };
+
+function parsearMatriz(texto) {
+  const filas = [];
+  for (const linea of String(texto || '').split(/\r?\n/)) {
+    if (!linea.trim()) continue;
+    const c = linea.split('\t').map(s => String(s == null ? '' : s).trim());
+    if (c.length < 7) continue;
+    const tel = soloDigitos(c[6]).slice(-9);
+    if (tel.length !== 9) continue;   // cabecera, o fila sin telefono valido
+
+    // Lo que va detras de la columna 10 puede traer un "no se presento" escrito
+    // a mano en cualquiera de esas celdas.
+    const cola = c.slice(10).join(' ');
+    const noSePresento = /no se present/i.test(cola);
+
+    filas.push({
+      telefono: tel,
+      entrevista: citaDe(c[0], c[1]),
+      jornada_ett: c[2] || null, turno_ett: c[3] || null,
+      nombre: c[4] || '', dni: (c[5] || '').toUpperCase(),
+      direccion: c[7] || null, cp: c[8] || null, correo: c[9] || null,
+      // Si no se presento, lo que venga en estas celdas no es una decision.
+      alta: noSePresento ? null : (c[10] || null),
+      jornada: noSePresento ? null : (c[11] || null),
+      turno: noSePresento ? null : (c[12] || null),
+      zona: noSePresento ? null : (c[13] || null),
+      noSePresento,
+    });
+  }
+  return filas;
+}
+
+/**
+ * Crea las candidaturas de una matriz pegada.
+ *
+ * Idempotente por telefono: quien ya tenga un proceso vivo NO se toca. La
+ * agencia reenvia la misma tabla ampliada cada semana, asi que pegarla dos veces
+ * tiene que ser inofensivo.
+ */
+async function importarMatriz(texto, quien = {}) {
+  const filas = parsearMatriz(texto);
+  if (!filas.length) {
+    throw new Error('No he reconocido ninguna fila. Copia la tabla del correo con sus columnas, ' +
+                    'incluyendo la del teléfono.');
+  }
+
+  const [{ turnos, zonas }, ] = await Promise.all([catalogos()]);
+  const sinTildes = s => String(s == null ? '' : s).normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const turnoDe = v => (turnos.find(x => sinTildes(x.etiqueta) === sinTildes(v)
+    || sinTildes(x.codigo) === sinTildes(v)) || {}).id || null;
+  const zonaDe = v => (zonas.find(x => sinTildes(x.nombre) === sinTildes(v)) || {}).id || null;
+
+  const avisos = [];
+  let creados = 0, yaEstaban = 0;
+
+  for (const f of filas) {
+    try {
+      const { candidatura } = await porTelefono(f.telefono);
+      if (candidatura) { yaEstaban++; continue; }
+
+      const r = await abrir(f.telefono, {
+        nombre: f.nombre,
+        canal: 'bolsa_ett',
+        dni_nie: f.dni || undefined,
+        email: f.correo || undefined,
+        via_nombre: f.direccion || undefined,
+        codigo_postal: f.cp || undefined,
+      }, quien);
+
+      // El resto va en una segunda pasada: `abrir` crea a la persona y arranca
+      // el proceso, y esto es lo que la agencia añade encima.
+      await db.consulta(
+        `UPDATE candidatura
+            SET estado = $1, entrevista_at = $2, jornada_ett = $3, turno_ett = $4,
+                jornada_horas = $5, turno_id = $6, base_zona_id = $7,
+                inicio_previsto = $8, actualizado_at = now()
+          WHERE id = $9`,
+        [
+          // Con cita puesta ya no esta en preseleccion: hay entrevista acordada.
+          f.noSePresento ? 'no_presentado' : (f.entrevista ? 'coord_entrevista' : 'preseleccion'),
+          f.entrevista, f.jornada_ett, f.turno_ett,
+          horasDe(f.jornada), turnoDe(f.turno), zonaDe(f.zona),
+          f.alta && /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}$/.test(f.alta)
+            ? f.alta.split(/[\/\-.]/).reverse().join('-') : null,
+          r.id,
+        ]);
+      creados++;
+    } catch (e) {
+      avisos.push(`${f.nombre || f.telefono}: ${String(e.message).split('\n')[0]}`);
+    }
+  }
+
+  return { leidas: filas.length, creados, yaEstaban, avisos };
+}
+
+// ── Lo que se le devuelve a la agencia ──────────────────────────────────────
+//
+// La ETT espera SU tabla de vuelta, con sus columnas y en su orden, para pegarla
+// en la respuesta del mismo hilo de correo. Es un consumidor con su formato: se
+// traduce aqui, que se ve de un vistazo que es una traduccion.
+
+const CAB_MATRIZ = ['Fecha Entrevista', 'Hora entrevista', 'JORNADA', 'TURNO', 'Nombre',
+  'DNI / NIE', 'Teléfono', 'DIRECCIÓN', 'CÓDIGO POSTAL', 'Correo Electrónico',
+  'FECHA DE ALTA', 'JORNADA', 'TURNO', 'ZONA'];
+
+/** Las candidaturas de la ETT con la forma que espera su tabla y su Excel. */
+async function paraETT() {
+  const filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
+  const dosCifras = n => String(n).padStart(2, '0');
+  return filas.map(c => {
+    const cita = c.entrevista_at ? new Date(c.entrevista_at) : null;
+    // A la agencia se le contesta CON EL MOTIVO, no con un hueco: si alguien no
+    // se presento o no paso, eso es justo lo que tiene que leer.
+    let alta = c.inicio_previsto ? String(c.inicio_previsto).slice(0, 10).split('-').reverse().join('/') : '';
+    let jor = c.jornada_horas ? c.jornada_horas + 'h' : '';
+    let tur = c.turno || '';
+    let zon = c.zona || '';
+    if (c.estado === 'no_presentado') { alta = 'No se presentó'; jor = tur = zon = ''; }
+    else if (c.estado === 'descartado') { alta = 'No pasa la entrevista'; jor = tur = zon = ''; }
+
+    return {
+      fecha_entrevista: cita ? `${dosCifras(cita.getDate())}/${dosCifras(cita.getMonth() + 1)}/${cita.getFullYear()}` : '',
+      hora_entrevista: cita ? `${dosCifras(cita.getHours())}:${dosCifras(cita.getMinutes())}h` : '',
+      jornada_ett: c.jornada_ett || '', turno_ett: c.turno_ett || '',
+      nombre: c.quien || '', dni: c.dni_nie || '', telefono: c.telefono || '',
+      direccion: c.via_nombre || c.direccion || '', cp: c.codigo_postal || '',
+      correo: c.email || '',
+      fecha_alta: alta, jornada: jor, turno: tur, zona: zon,
+      estado: c.estado_etiqueta || '',
+    };
+  });
+}
+
+/** La misma tabla como texto separado por tabuladores, pegable en el correo. */
+async function matriz() {
+  const filas = await paraETT();
+  const orden = ['fecha_entrevista', 'hora_entrevista', 'jornada_ett', 'turno_ett', 'nombre',
+    'dni', 'telefono', 'direccion', 'cp', 'correo', 'fecha_alta', 'jornada', 'turno', 'zona'];
+  return [CAB_MATRIZ.join('\t')]
+    .concat(filas.map(f => orden.map(k => f[k]).join('\t')))
+    .join('\n');
+}
+
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
-  cambiarEstado, pasarARRHH, faltantes, paraFicha,
+  cambiarEstado, pasarARRHH, faltantes, paraFicha, importarMatriz, parsearMatriz,
+  paraETT, matriz,
 };

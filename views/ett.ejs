@@ -1,204 +1,293 @@
-<div class="max-w-5xl mx-auto p-4 sm:p-6">
-
-  <div class="flex items-center gap-3 mb-6">
-    <div class="w-10 h-10 rounded-xl bg-telecab-gold/10 flex items-center justify-center">
-      <i class="fa-solid fa-people-arrows text-telecab-gold"></i>
-    </div>
-    <div>
-      <h1 class="text-xl font-bold text-telecab-text">ETT · Bolsa de empleo</h1>
-      <p class="text-sm text-telecab-muted">Candidatos que nos manda la agencia. Marca la decisión y completa los datos.</p>
-    </div>
-  </div>
-
-  <!-- Importar la matriz del correo -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 sm:p-5 mb-5">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-table-cells text-telecab-muted"></i> Importar matriz del correo</h2>
-      <button id="btnToggleImport" class="text-xs text-telecab-muted hover:text-telecab-text">Mostrar / ocultar</button>
-    </div>
-    <div id="importBox">
-      <p class="text-xs text-telecab-muted mb-2">Copia la tabla del correo de la ETT y pégala aquí (se separa por columnas sola). Solo se añaden los teléfonos nuevos; los que ya están no se tocan.</p>
-      <textarea id="pegar" rows="5" placeholder="Pega aquí la tabla del correo…" class="w-full text-sm rounded-xl border border-telecab-border bg-telecab-bg p-3 font-mono text-telecab-text focus:outline-none focus:border-telecab-gold"></textarea>
-      <div class="flex items-center gap-3 mt-3">
-        <button id="btnImportar" class="px-4 py-2 rounded-xl bg-telecab-gold text-white text-sm font-semibold hover:opacity-90">Importar candidatos</button>
-        <span id="importMsg" class="text-sm"></span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Resumen + exportar -->
-  <div class="flex flex-wrap items-center gap-2 mb-4" id="chips"></div>
-
-  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-    <h2 class="font-semibold text-telecab-text">Candidatos</h2>
-    <div class="flex items-center gap-2">
-      <!-- Lo normal es adjuntar el Excel al correo; copiar la matriz queda como alternativa. -->
-      <a id="btnExcel" href="/ett/exportar/excel"
-         class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm hover:bg-telecab-gold-soft transition shadow-gold flex items-center gap-2">
-        <i class="fa-solid fa-file-excel"></i> Descargar Excel para la ETT
-      </a>
-      <button id="btnExportar" class="px-3 py-2 rounded-xl border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text hover:bg-telecab-card2 flex items-center gap-2"
-              title="Copia la matriz en texto, por si prefieres pegarla en el cuerpo del correo">
-        <i class="fa-solid fa-copy"></i> Copiar matriz
-      </button>
-    </div>
-  </div>
-
-  <div id="lista" class="space-y-3">
-    <div class="text-center text-telecab-muted py-10 text-sm">Cargando…</div>
-  </div>
-</div>
+<div id="modulo"></div>
 
 <script>
-  const $ = s => document.querySelector(s);
-  const JORNADAS = ['40h', '32h'];
-  const TURNOS = ['Día', 'Noche'];
-  const ESTADO_ORDEN = { 'Pendiente': 0, 'Presentó': 1, 'Contratado': 2, 'No pasa': 3, 'No se presentó': 4 };
-  const ESTILO = {
-    'Pendiente': 'bg-slate-100 text-slate-600', 'Presentó': 'bg-blue-100 text-blue-700',
-    'Contratado': 'bg-green-100 text-green-700', 'No pasa': 'bg-red-100 text-red-700',
-    'No se presentó': 'bg-amber-100 text-amber-700'
-  };
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+(function () {
+  const CAT = <%- JSON.stringify(catalogos || {}) %>;
+  const { fecha, fechaHora, esc } = Listado.fmt;
 
-  async function cargar() {
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => null);
+    if (!r.ok || (j && j.status === 'error')) throw new Error((j && j.msg) || 'Error ' + r.status);
+    return j;
+  }
+
+  const enviar = (url, metodo, cuerpo) => api(url, {
+    method: metodo,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo || {}),
+  });
+
+  async function hacer(fn, hecho) {
     try {
-      const r = await fetch('/ett/api/datos', { headers: { Accept: 'application/json' } });
-      const d = await r.json();
-      if (d.status !== 'ok') throw new Error(d.msg || 'error');
-      pintarChips(d.resumen);
-      pintarLista(d.lista);
-    } catch (e) { $('#lista').innerHTML = '<div class="text-center text-red-600 py-8 text-sm">No pude cargar: ' + esc(e.message) + '</div>'; }
+      const r = await fn();
+      await ett.recargar();
+      if (hecho !== false) Dialogo.hecho(hecho || 'Guardado');
+      return r;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo hacer', texto: e.message, tono: 'error' });
+      return null;
+    }
   }
 
-  function pintarChips(r) {
-    const chip = (n, txt, cls) => '<span class="px-3 py-1.5 rounded-full text-xs font-semibold ' + cls + '">' + n + ' ' + txt + '</span>';
-    $('#chips').innerHTML =
-      chip(r.total, 'total', 'bg-telecab-card2 text-telecab-text') +
-      chip(r.pendientes, 'por decidir', 'bg-blue-100 text-blue-700') +
-      chip(r.contratados, 'contratados', 'bg-green-100 text-green-700') +
-      chip(r.noPasan, 'no pasan', 'bg-red-100 text-red-700') +
-      chip(r.noPresentados, 'no se presentaron', 'bg-amber-100 text-amber-700');
+  // ── Importar la matriz del correo ───────────────────────────────────────
+  //
+  // La agencia manda una TABLA, no un fichero: se copia del correo y se pega.
+  // De ahí salen las fichas directamente, sin pasar por ninguna hoja.
+
+  async function importar() {
+    const v = await Dialogo.formulario('Importar la tabla de la ETT', [
+      { id: 'texto', etiqueta: 'Pega aquí la tabla del correo', tipo: 'texto-largo',
+        ayuda: 'Se separa por columnas sola. Los teléfonos que ya estén no se tocan, ' +
+               'así que puedes pegar la tabla entera cada semana.' },
+    ], { ancho: 'max-w-2xl', textoBoton: 'Importar' });
+    if (!v || !String(v.texto || '').trim()) return;
+
+    const r = await hacer(() => enviar('/ett/api/importar', 'POST', { texto: v.texto }), false);
+    if (!r) return;
+
+    await Dialogo.aviso({
+      titulo: 'Importación terminada',
+      html: '<p class="text-sm">' + r.leidas + ' fila(s) leídas · <b>' + r.creados + '</b> candidatura(s) nuevas'
+        + (r.yaEstaban ? ' · ' + r.yaEstaban + ' ya estaban' : '') + '</p>'
+        + (r.avisos && r.avisos.length
+          ? '<ul class="text-xs text-telecab-warn mt-3 space-y-1 list-disc pl-4">'
+            + r.avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>'
+          : ''),
+      tono: (r.avisos && r.avisos.length) ? 'aviso' : 'ok',
+    });
   }
 
-  function pintarLista(lista) {
-    if (!lista.length) { $('#lista').innerHTML = '<div class="text-center text-telecab-muted py-10 text-sm">Aún no hay candidatos. Pega la matriz del correo arriba.</div>'; return; }
-    lista.sort((a, b) => (ESTADO_ORDEN[a.estado] ?? 9) - (ESTADO_ORDEN[b.estado] ?? 9) || a.nombre.localeCompare(b.nombre));
-    $('#lista').innerHTML = lista.map(tarjeta).join('');
-    wire();
-  }
-
-  function tarjeta(c) {
-    const chip = '<span class="px-2.5 py-1 rounded-full text-xs font-semibold ' + (ESTILO[c.estado] || 'bg-slate-100 text-slate-600') + '">' + esc(c.estado || 'Pendiente') + '</span>';
-    const botones = ['No se presentó', 'Presentó', 'Contratado', 'No pasa'].map(e =>
-      '<button data-dec="' + e + '" data-tel="' + c.telefono + '" class="dec px-2.5 py-1.5 rounded-lg text-xs border ' +
-      (c.estado === e ? 'border-telecab-gold text-telecab-gold font-semibold' : 'border-telecab-border text-telecab-muted hover:bg-telecab-card2') + '">' + e + '</button>').join('');
-    // Datos de Selección: visibles cuando presentó o contratado
-    const mostrarDatos = c.estado === 'Contratado' || c.estado === 'Presentó';
-    const sel = j => JORNADAS.map(o => '<option ' + (c.jornada === o ? 'selected' : '') + '>' + o + '</option>').join('');
-    const selT = TURNOS.map(o => '<option ' + (c.turno === o ? 'selected' : '') + '>' + o + '</option>').join('');
-    const datos = !mostrarDatos ? '' :
-      '<div class="mt-3 pt-3 border-t border-telecab-border grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">' +
-      campo('Fecha alta', '<input value="' + esc(c.fecha_alta) + '" class="f-fecha w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5" placeholder="dd/mm/aaaa">') +
-      campo('Jornada', '<select class="f-jornada w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5"><option value=""></option>' + sel() + '</select>') +
-      campo('Turno', '<select class="f-turno w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5"><option value=""></option>' + selT + '</select>') +
-      campo('Zona', '<input value="' + esc(c.zona) + '" list="dl-zonas" class="f-zona w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5" placeholder="GETAFE…">') +
-      '<button data-tel="' + c.telefono + '" class="guardar px-3 py-1.5 rounded-lg bg-telecab-gold text-white text-sm font-semibold h-[34px]">Guardar</button>' +
-      '</div>';
-    // Pasar a RRHH: solo con la decisión tomada y la fecha de alta puesta, que
-    // es lo mínimo para abrir un contrato. Si ya tiene ficha, se dice cuál en
-    // vez de ofrecer crearla otra vez.
-    const puedePasar = c.estado === 'Contratado' && String(c.fecha_alta || '').trim();
-    const aRRHH = c.ficha
-      ? '<div class="mt-3 pt-3 border-t border-telecab-border text-xs text-telecab-muted">' +
-        '<i class="fa-solid fa-id-card mr-1"></i> Ficha creada · nº ' + esc(c.ficha) + '</div>'
-      : (!puedePasar ? '' :
-        '<div class="mt-3 pt-3 border-t border-telecab-border flex items-center gap-3">' +
-        '<button data-tel="' + c.telefono + '" class="a-rrhh px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-gold text-telecab-gold text-sm font-semibold">' +
-        '<i class="fa-solid fa-forward mr-1"></i> Crear ficha y pasar a RRHH</button>' +
-        '<span class="text-[11px] text-telecab-muted">Deja de ser candidato: pasa a la plantilla como contrato de ETT.</span>' +
-        '</div>');
-    return '<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4" data-card="' + c.telefono + '">' +
-      '<div class="flex items-start justify-between gap-3">' +
-      '<div><div class="font-semibold text-telecab-text">' + esc(c.nombre || '(sin nombre)') + '</div>' +
-      '<div class="text-xs text-telecab-muted mt-0.5">📞 ' + esc(c.telefono) + (c.dni ? ' · ' + esc(c.dni) : '') + (c.correo ? ' · ' + esc(c.correo) : '') + '</div>' +
-      (c.direccion ? '<div class="text-xs text-telecab-muted">📍 ' + esc(c.direccion) + (c.cp ? ', ' + esc(c.cp) : '') + '</div>' : '') +
-      '<div class="text-xs text-telecab-muted mt-0.5">🗓 ' + esc(c.fecha_entrevista) + ' ' + esc(c.hora_entrevista) + ' · <span class="text-telecab-text">ETT:</span> ' + esc(c.jornada_ett) + ' ' + esc(c.turno_ett) + '</div>' +
-      '</div>' + chip + '</div>' +
-      '<div class="flex flex-wrap gap-2 mt-3">' + botones + '</div>' + datos + aRRHH + '</div>';
-  }
-  function campo(label, control) { return '<div><label class="block text-[11px] text-telecab-muted mb-1">' + label + '</label>' + control + '</div>'; }
-
-  function wire() {
-    document.querySelectorAll('.dec').forEach(b => b.addEventListener('click', async () => {
-      await accion('/ett/decision', { tel: b.dataset.tel, estado: b.dataset.dec });
-      cargar();
-    }));
-    document.querySelectorAll('.a-rrhh').forEach(b => b.addEventListener('click', async () => {
-      b.disabled = true;
-      const r = await accion('/ett/rrhh', { tel: b.dataset.tel });
-      if (r && r.status === 'ok') {
-        alert((r.restaurado ? '✅ Ficha restaurada' : '✅ Ficha creada') + ' nº ' + r.id +
-              (r.faltaBolt ? '
-
-⚠️ No tiene cuenta de BOLT. Sin ella no puede conducir.'
-                           : (r.boltEnlazada ? '
-
-Su cuenta de BOLT se ha enlazado sola.' : '')));
-      }
-      cargar();
-    }));
-    document.querySelectorAll('.guardar').forEach(b => b.addEventListener('click', async () => {
-      const card = b.closest('[data-card]');
-      await accion('/ett/campos', {
-        tel: b.dataset.tel,
-        fecha_alta: card.querySelector('.f-fecha').value,
-        jornada: card.querySelector('.f-jornada').value,
-        turno: card.querySelector('.f-turno').value,
-        zona: card.querySelector('.f-zona').value
+  /** La tabla de vuelta, para pegarla en la respuesta del mismo hilo. */
+  async function copiarMatriz() {
+    try {
+      const texto = await (await fetch('/ett/api/matriz')).text();
+      await navigator.clipboard.writeText(texto);
+      Dialogo.hecho('Tabla copiada. Pégala en la respuesta a la agencia.');
+    } catch (e) {
+      await Dialogo.aviso({
+        titulo: 'No se pudo copiar',
+        html: '<p class="text-sm">Ábrela y cópiala a mano:</p>'
+          + '<p class="mt-2"><a href="/ett/api/matriz" target="_blank" rel="noopener" '
+          + 'class="text-telecab-gold underline">Ver la tabla</a></p>',
+        tono: 'aviso',
       });
-      b.textContent = 'Guardado ✓';
-      setTimeout(() => { b.textContent = 'Guardar'; }, 1500);
+    }
+  }
+
+  // ── Acciones de la ficha ────────────────────────────────────────────────
+
+  /**
+   * La decisión sobre el candidato.
+   *
+   * Son los mismos estados del sistema, no una lista aparte: "No se presentó" es
+   * propio de esta vía y por eso existe, pero vive en el mismo catálogo.
+   */
+  async function accionEstado(d) {
+    const ops = (CAT.estados || [])
+      .filter(e => e.etapa === 'seleccion' || e.codigo === d.estado)
+      .map(e => ({ valor: e.codigo, texto: e.etiqueta }));
+    const v = await Dialogo.formulario('Decisión sobre ' + d.quien, [
+      { id: 'estado', etiqueta: 'Estado', tipo: 'lista', opciones: ops, valor: d.estado, obligatorio: true },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
+    ], { nota: 'Lo que se marque aquí es lo que se le devuelve a la agencia en su tabla.' });
+    if (!v || !v.estado || v.estado === d.estado) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/estado', 'POST', v));
+  }
+
+  /** Lo que decidimos nosotros: alta, jornada, turno y zona. */
+  async function accionNuestro(d) {
+    const v = await Dialogo.formulario('Datos para ' + d.quien, [
+      { id: 'inicio_previsto', etiqueta: 'Fecha de alta', tipo: 'fecha', valor: fecha(d.inicio_previsto) },
+      { id: 'jornada_horas', etiqueta: 'Jornada (horas)', valor: d.jornada_horas || '' },
+      { id: 'turno_id', etiqueta: 'Turno', tipo: 'lista', valor: d.turno_id || '',
+        opciones: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })) },
+      { id: 'base_zona_id', etiqueta: 'Zona', tipo: 'lista', valor: d.base_zona_id || '',
+        opciones: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })) },
+    ], { columnas: 2, nota: 'Esto es NUESTRA decisión. Lo que pidió la agencia se conserva aparte.' });
+    if (!v) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id, 'PUT', v));
+  }
+
+  /** El resto de la ficha: los datos de la persona. */
+  async function accionDatos(d) {
+    const LISTAS = {
+      turno_id: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })),
+      base_zona_id: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })),
+      canal: (CAT.canales || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })),
+    };
+    const campos = (CAT.campos || []).map(c => ({
+      id: c.id, etiqueta: c.etiqueta || c.id, grupo: c.grupo,
+      ayuda: c.id === 'iban' && d.tiene_iban
+        ? 'Ya hay uno guardado. Escribe solo si quieres cambiarlo.' : c.ayuda,
+      tipo: LISTAS[c.id] ? 'lista' : (c.tipo || 'texto'),
+      opciones: LISTAS[c.id] || c.opciones,
+      valor: c.id === 'iban' ? ''
+        : c.tipo === 'fecha' ? fecha(d[c.id])
+          : (d[c.id] == null ? '' : String(d[c.id])),
     }));
+
+    const v = await Dialogo.formulario('Datos de ' + d.quien, campos, {
+      ancho: 'max-w-3xl', columnas: 2,
+      nota: 'Cada cambio queda registrado con tu nombre y la hora.',
+    });
+    if (!v) return;
+
+    const cambios = {};
+    campos.forEach(c => {
+      const ahora = v[c.id] == null ? '' : String(v[c.id]);
+      if (c.id === 'iban') { if (ahora) cambios.iban = ahora; return; }
+      const antes = c.tipo === 'fecha' ? (Dialogo.aISO(c.valor) || '') : (c.valor || '');
+      if (ahora !== antes) cambios[c.id] = v[c.id];
+    });
+    if (!Object.keys(cambios).length) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id, 'PUT', cambios));
   }
 
-  async function accion(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
-    const d = await r.json();
-    if (d.status !== 'ok') alert(d.msg || 'Error');
-    return d;
+  /** Contratar: deja de ser candidato y pasa a la plantilla, con contrato de ETT. */
+  async function accionRRHH(d) {
+    if ((d.faltan || []).length) {
+      return Dialogo.aviso({
+        titulo: 'Todavía falta algo',
+        html: '<p class="text-sm">Antes de pasar a RRHH hay que completar:</p>'
+          + '<ul class="text-sm mt-2 space-y-1 list-disc pl-4">'
+          + d.faltan.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>',
+        tono: 'aviso',
+      });
+    }
+    const v = await Dialogo.formulario('Contratar a ' + d.quien, [
+      { id: 'alta', etiqueta: 'Fecha de inicio', tipo: 'fecha',
+        valor: fecha(d.inicio_previsto), obligatorio: true },
+      { id: 'jornadaHoras', etiqueta: 'Jornada (horas)', valor: d.jornada_horas || '' },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT',
+        ayuda: 'Si se deja vacío se usa el configurado en el servidor' },
+    ], { nota: 'Se le abre el periodo de empleo con contrato de ETT. A los tres meses pasa a plantilla propia.' });
+    if (!v || !v.alta) return;
+
+    const r = await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/rrhh', 'POST', v), false);
+    if (!r) return;
+    await Dialogo.aviso({
+      titulo: 'Pasa a RRHH',
+      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>'
+        + (r.faltaBolt
+          ? '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
+            + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>'
+          : '<p class="text-sm mt-2">Su cuenta de BOLT queda enlazada a la ficha.</p>'),
+      tono: r.faltaBolt ? 'aviso' : 'ok',
+    });
   }
 
-  // Importar
-  $('#btnToggleImport').addEventListener('click', () => $('#importBox').classList.toggle('hidden'));
-  $('#btnImportar').addEventListener('click', async () => {
-    const texto = $('#pegar').value;
-    if (!texto.trim()) { $('#importMsg').innerHTML = '<span class="text-telecab-muted">Pega la tabla primero.</span>'; return; }
-    $('#btnImportar').disabled = true; $('#importMsg').innerHTML = '<span class="text-telecab-muted">Importando…</span>';
-    try {
-      const r = await fetch('/ett/importar', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ texto }) });
-      const d = await r.json();
-      if (d.status !== 'ok') { $('#importMsg').innerHTML = '<span class="text-red-600">' + esc(d.msg || 'Error') + '</span>'; }
-      else {
-        $('#importMsg').innerHTML = '<span class="text-green-700">✅ ' + d.añadidos + ' nuevos' + (d.yaEstaban ? ' · ' + d.yaEstaban + ' ya estaban' : '') + '</span>';
-        $('#pegar').value = ''; cargar();
-      }
-    } catch (e) { $('#importMsg').innerHTML = '<span class="text-red-600">' + esc(e.message) + '</span>'; }
-    $('#btnImportar').disabled = false;
-  });
+  // ── La pantalla ─────────────────────────────────────────────────────────
 
-  // Exportar (copiar al portapapeles)
-  $('#btnExportar').addEventListener('click', async () => {
-    try {
-      const r = await fetch('/ett/exportar');
-      const txt = await r.text();
-      await navigator.clipboard.writeText(txt);
-      const b = $('#btnExportar'); const o = b.innerHTML;
-      b.innerHTML = '<i class="fa-solid fa-check text-green-600"></i> Copiado';
-      setTimeout(() => { b.innerHTML = o; }, 1800);
-    } catch (e) { alert('No pude copiar: ' + e.message); }
-  });
+  const ett = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'ETT · Bolsa de empleo',
+    icono: 'fa-people-arrows',
+    clave: 'id',
+    origen: '/ett/api/lista',
+    vacio: 'Todavía no hay candidatos de la agencia. Pega su tabla para empezar.',
+    buscar: {
+      texto: 'Buscar nombre, teléfono, DNI…',
+      campos: ['quien', 'telefono', 'dni_nie'],
+    },
+    acciones: [
+      { texto: 'Pegar tabla del correo', icono: 'fa-table', onClick: importar },
+      { texto: 'Copiar tabla de vuelta', icono: 'fa-copy', principal: false, onClick: copiarMatriz },
+      { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
+        onClick: () => { window.location.href = '/ett/api/excel'; } },
+    ],
 
-  cargar();
+    subtitulo: (v, t) => (v.length === t.length
+      ? t.length + ' candidato(s) de la agencia'
+      : v.length + ' de ' + t.length),
+
+    kpis: (filas, extra) => {
+      const r = extra.resumen || {};
+      return [
+        { etiqueta: 'En proceso', valor: r.pendientes || 0, tono: 'text' },
+        { etiqueta: 'Contratados', valor: r.contratados || 0, tono: 'green' },
+        { etiqueta: 'No se presentaron', valor: r.noPresentados || 0, tono: 'warn',
+          filtro: { id: 'estado', valor: 'no_presentado' } },
+        { etiqueta: 'No pasan', valor: r.descartados || 0, tono: 'muted',
+          filtro: { id: 'estado', valor: 'descartado' } },
+      ];
+    },
+
+    filtros: [
+      { id: 'estado', etiqueta: 'Estado', campo: 'estado',
+        opciones: (CAT.estados || []).map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
+    ],
+
+    columnas: [
+      { titulo: 'Candidato', campo: 'quien', principal: true },
+      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm' },
+      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm' },
+      { titulo: 'Entrevista', valor: d => fechaHora(d.entrevista_at) },
+      { titulo: 'Pide la ETT', valor: d => [d.jornada_ett, d.turno_ett].filter(Boolean).join(' · ') || '—' },
+      { titulo: 'Estado', valor: d => d.estado_etiqueta },
+      { titulo: 'Alta prevista', valor: d => fecha(d.inicio_previsto) || '—' },
+    ],
+
+    detalle: {
+      origen: id => '/ett/api/ficha/' + id,
+      titulo: d => d.quien,
+      subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
+      acciones: [
+        { texto: 'Contratar', icono: 'fa-forward', principal: true,
+          visible: d => d.en_funnel, onClick: accionRRHH },
+        { texto: 'Decisión', icono: 'fa-diagram-next', principal: false, onClick: accionEstado },
+        { texto: 'Alta, jornada y zona', icono: 'fa-clipboard-check', principal: false, onClick: accionNuestro },
+        { texto: 'Datos', icono: 'fa-pen', principal: false, onClick: accionDatos },
+      ],
+
+      bloques: [
+        {
+          titulo: 'Falta por completar', icono: 'fa-triangle-exclamation',
+          visible: d => (d.faltan || []).length > 0,
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5';
+            hueco.innerHTML = '<ul class="text-sm space-y-1">' + d.faltan.map(x =>
+              '<li class="flex items-center gap-2 text-telecab-warn">'
+              + '<i class="fa-solid fa-circle-exclamation text-xs"></i>' + esc(x) + '</li>').join('')
+              + '</ul>';
+          },
+        },
+        {
+          // Lo que pide la agencia y lo que decidimos nosotros, uno al lado del
+          // otro. Es la comparación que se hace al contestarle.
+          titulo: 'La agencia pide', icono: 'fa-inbox',
+          campos: [
+            { etiqueta: 'Entrevista', valor: d => fechaHora(d.entrevista_at) },
+            { etiqueta: 'Jornada', valor: d => d.jornada_ett },
+            { etiqueta: 'Turno', valor: d => d.turno_ett },
+          ],
+        },
+        {
+          titulo: 'Nosotros decidimos', icono: 'fa-clipboard-check',
+          campos: [
+            { etiqueta: 'Estado', valor: d => d.estado_etiqueta },
+            { etiqueta: 'Fecha de alta', valor: d => fecha(d.inicio_previsto) },
+            { etiqueta: 'Jornada', valor: d => (d.jornada_horas ? d.jornada_horas + ' h' : '') },
+            { etiqueta: 'Turno', valor: d => d.turno },
+            { etiqueta: 'Zona', valor: d => d.zona },
+            { etiqueta: 'Motivo', valor: d => d.motivo, ancho: 'sm:col-span-2' },
+          ],
+        },
+        {
+          titulo: 'La persona', icono: 'fa-id-card',
+          campos: [
+            { etiqueta: 'Nombre', valor: d => d.nombre },
+            { etiqueta: 'Apellidos', valor: d => d.apellidos },
+            { etiqueta: 'DNI / NIE', valor: d => d.dni_nie },
+            { etiqueta: 'Correo', valor: d => d.email },
+            { etiqueta: 'Teléfono', valor: d => d.telefono },
+            { etiqueta: 'Dirección', valor: d => d.direccion, ancho: 'sm:col-span-2 lg:col-span-3' },
+            { etiqueta: 'Código postal', valor: d => d.codigo_postal },
+            { etiqueta: 'Abierta', valor: d => fecha(d.creado_at) },
+          ],
+        },
+      ],
+    },
+  });
+})();
 </script>
-<datalist id="dl-zonas"><option>GETAFE</option><option>COLMENAR</option><option>ALCOBENDAS</option><option>MADRID</option></datalist>
