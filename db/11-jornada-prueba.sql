@@ -63,22 +63,29 @@ SELECT c.id AS conductor_id,
           AND e.fin_periodo_prueba >= CURRENT_DATE)            AS en_prueba,
        c.recomendador,
        t.etiqueta                                              AS turno,
-       -- "40h", "32h ETT"… tal como lo espera el planificador.
+       -- "40h", "32h ETT"… tal como lo espera el planificador. Con ::text
+       -- explícito: mezclar un número con texto en un `||` funciona, pero
+       -- depender de la conversión implícita es cómo aparecen sorpresas.
        CASE WHEN e.jornada_horas IS NULL THEN NULL
-            ELSE e.jornada_horas || 'h' || CASE WHEN e.tipo = 'ett' THEN ' ETT' ELSE '' END
+            ELSE e.jornada_horas::text || 'h' || CASE WHEN e.tipo = 'ett' THEN ' ETT' ELSE '' END
        END                                                     AS contrato,
        -- Libranzas, un booleano por día (1 = lunes).
-       COALESCE(lib.dias @> ARRAY[1], FALSE) AS lib_lun,
-       COALESCE(lib.dias @> ARRAY[2], FALSE) AS lib_mar,
-       COALESCE(lib.dias @> ARRAY[3], FALSE) AS lib_mie,
-       COALESCE(lib.dias @> ARRAY[4], FALSE) AS lib_jue,
-       COALESCE(lib.dias @> ARRAY[5], FALSE) AS lib_vie,
-       COALESCE(lib.dias @> ARRAY[6], FALSE) AS lib_sab,
-       COALESCE(lib.dias @> ARRAY[7], FALSE) AS lib_dom,
+       --
+       -- Con `= ANY` y no con `@>`: `dia_semana` es SMALLINT, así que el
+       -- array_agg de abajo da un `smallint[]`, y `ARRAY[1]` es `integer[]`.
+       -- PostgreSQL no tiene un `@>` entre esos dos tipos y la vista no llegaba
+       -- a crearse. `= ANY` sí compara un entero con un smallint sin castear.
+       COALESCE(1 = ANY(lib.dias), FALSE) AS lib_lun,
+       COALESCE(2 = ANY(lib.dias), FALSE) AS lib_mar,
+       COALESCE(3 = ANY(lib.dias), FALSE) AS lib_mie,
+       COALESCE(4 = ANY(lib.dias), FALSE) AS lib_jue,
+       COALESCE(5 = ANY(lib.dias), FALSE) AS lib_vie,
+       COALESCE(6 = ANY(lib.dias), FALSE) AS lib_sab,
+       COALESCE(7 = ANY(lib.dias), FALSE) AS lib_dom,
        coche.matricula,
        -- "lat,lng" como lo escribía la hoja.
        CASE WHEN c.lat IS NULL OR c.lng IS NULL THEN NULL
-            ELSE c.lat || ',' || c.lng END                     AS coordenadas,
+            ELSE c.lat::text || ',' || c.lng::text END         AS coordenadas,
        c.direccion                                             AS direccion_completa,
        tel.e164                                                AS telefono,
        c.tel_emergencia,
