@@ -289,6 +289,17 @@ async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, m
 
     if (!ett) throw new Error('Esta persona no tiene ningún contrato abierto');
     if (ett.tipo !== 'ett') throw new Error('Su contrato abierto ya es de plantilla propia');
+
+    // AQUÍ sí se exige el expediente entero. Mientras venía por la ETT la
+    // relación laboral era con la agencia y ellos solo nos daban lo justo; al
+    // pasar a plantilla propia la relación pasa a ser nuestra, y con ella la
+    // obligación de tener sus papeles.
+    const faltan = await require('./exigencia').faltaPara(id, 'propia');
+    if (faltan.length) {
+      const e = new Error('Antes de pasarle a plantilla propia falta: ' + faltan.join(', '));
+      e.faltan = faltan;
+      throw e;
+    }
     if (dia <= String(ett.alta).slice(0, 10)) {
       throw new Error('El paso a plantilla propia no puede ser anterior al alta en la ETT');
     }

@@ -342,7 +342,7 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   };
   if (!contrato.alta) throw new Error('Falta la fecha de inicio del contrato');
 
-  const faltan = await faltantes(Number(id));
+  const faltan = await faltantes(Number(id), contrato.tipo);
   if (faltan.length) throw new Error('Antes de pasar a RRHH faltan datos: ' + faltan.join(', '));
 
   await con.darDeAlta(c.conductor_id, {
@@ -370,47 +370,29 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   };
 }
 
-// Lo que tiene que estar antes de pasar a RRHH. Son datos de la PERSONA y de
-// sus documentos, así que se preguntan a sus tablas y no a una lista aparte que
-// se quedaría vieja.
-const OBLIGATORIOS = [
-  ['nombre', 'Nombre'], ['apellidos', 'Apellidos'], ['dni_nie', 'DNI/NIE'],
-  ['fecha_nacimiento', 'Fecha de nacimiento'], ['sexo', 'Sexo'], ['email', 'Correo'],
-  ['via_nombre', 'Dirección'], ['codigo_postal', 'Código postal'],
-  ['estado_civil', 'Estado civil'], ['naf_numero', 'Nº Seguridad Social'],
-];
-
-async function faltantes(id) {
+/**
+ * Qué le falta a esta candidatura para poder contratarla.
+ *
+ * El listón lo pone `repo/exigencia`, que es el mismo que se aplica a los tres
+ * meses al pasar de ETT a propia. `tipo` decide cuál; si no se dice, se deduce
+ * del canal: quien viene por la bolsa de la ETT se contrata por ETT.
+ */
+async function faltantes(id, tipo) {
   const r = await db.consulta(
-    `SELECT c.* FROM candidatura k JOIN conductor c ON c.id = k.conductor_id WHERE k.id = $1`,
-    [Number(id)]);
-  const c = r.rows[0];
-  if (!c) return ['la candidatura no existe'];
-  const faltan = OBLIGATORIOS.filter(([campo]) => !String(c[campo] == null ? '' : c[campo]).trim())
-    .map(([, etiqueta]) => etiqueta);
-
-  // Y los documentos obligatorios. Se preguntan a v_documento_falta_PERSONA y no
-  // a v_documento_falta: la segunda solo mira a quien tiene contrato, y un
-  // candidato no lo tiene — daria cero documentos que faltan siempre.
-  // Solo los PREVIOS al alta. El contrato firmado y el alta en la Seguridad
-  // Social tambien son obligatorios, pero no existen hasta que se contrata:
-  // exigirlos aqui bloquearia todas las altas pidiendo un papel imposible.
-  const docs = await db.consulta(
-    `SELECT d.etiqueta
-       FROM v_documento_falta_persona d
-       JOIN cat_tipo_documento td ON td.codigo = d.tipo
-      WHERE d.conductor_id = $1 AND td.previo_alta
-      ORDER BY td.orden`,
-    [c.id]);
-  return [...faltan, ...docs.rows.map(d => 'Documento: ' + d.etiqueta)];
+    `SELECT k.conductor_id, k.canal, k.tipo_contrato
+       FROM candidatura k WHERE k.id = $1`, [Number(id)]);
+  const k = r.rows[0];
+  if (!k) return ['la candidatura no existe'];
+  const via = tipo || (k.canal === 'bolsa_ett' || /ETT/i.test(k.tipo_contrato || '') ? 'ett' : 'propia');
+  return require('./exigencia').faltaPara(k.conductor_id, via);
 }
 
 /**
  * La candidatura con la forma que espera el generador de la FICHA DE ALTA.
  *
- * El PDF es un consumidor heredado: pide diecisiete claves con nombres suyos.
- * En vez de retorcer el modelo para complacerlo, se traduce aqui — que es lo
- * que es, una traduccion, y se ve de un vistazo.
+ * El PDF es un consumidor heredado: pide diecisiete claves con nombres suyos. En
+ * vez de retorcer el modelo para complacerlo, se traduce aqui — que es lo que
+ * es, una traduccion, y se ve de un vistazo.
  *
  * Las fechas del carne salen del DOCUMENTO, no de dos casillas aparte: si el
  * permiso esta subido con su emision y su caducidad, escribirlas otra vez a mano
@@ -485,6 +467,29 @@ function citaDe(dia, hora) {
 const soloDigitos = v => String(v == null ? '' : v).replace(/\D/g, '');
 const horasDe = v => { const m = String(v == null ? '' : v).match(/(\d{1,2})/); return m ? Number(m[1]) : null; };
 
+/**
+ * Que hay de verdad en la columna que la agencia titula "CODIGO POSTAL".
+ *
+ * Unas veces un codigo postal y otras una fecha de nacimiento. No se discute con
+ * la agencia por el titulo de una columna: se lee lo que hay.
+ */
+function leerOchava(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return {};
+  const f = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (f) {
+    const anio = Number(f[3]);
+    // Una fecha de nacimiento plausible. Fuera de rango es un error de tecleo y
+    // se descarta antes que guardarlo.
+    if (anio >= 1930 && anio <= 2010) {
+      return { nacimiento: f[3] + '-' + f[2].padStart(2, '0') + '-' + f[1].padStart(2, '0') };
+    }
+    return {};
+  }
+  const cp = s.match(/^(\d{4,5})$/);
+  return cp ? { cp: cp[1].padStart(5, '0') } : {};
+}
+
 function parsearMatriz(texto) {
   const filas = [];
   for (const linea of String(texto || '').split(/\r?\n/)) {
@@ -504,7 +509,15 @@ function parsearMatriz(texto) {
       entrevista: citaDe(c[0], c[1]),
       jornada_ett: c[2] || null, turno_ett: c[3] || null,
       nombre: c[4] || '', dni: (c[5] || '').toUpperCase(),
-      direccion: c[7] || null, cp: c[8] || null, correo: c[9] || null,
+      direccion: c[7] || null, correo: c[9] || null,
+      // La columna 8 la titulan "CÓDIGO POSTAL", pero lo que mandan ahí es la
+      // FECHA DE NACIMIENTO. Se mira el contenido y no el titulo: una fecha es
+      // una fecha y cinco digitos son un codigo postal, y confiar en la cabecera
+      // habria guardado "24/07/1977" como codigo postal de alguien.
+      ...leerOchava(c[8]),
+      // Y si el codigo postal no venia solo, suele estar dentro de la direccion:
+      // "c/Juan Miro 1 bajo A, 28770 Colmenar viejo".
+      cpDeDireccion: (String(c[7] || '').match(/\b(\d{5})\b/) || [])[1] || null,
       // Si no se presento, lo que venga en estas celdas no es una decision.
       alta: noSePresento ? null : (c[10] || null),
       jornada: noSePresento ? null : (c[11] || null),
@@ -551,7 +564,8 @@ async function importarMatriz(texto, quien = {}) {
         dni_nie: f.dni || undefined,
         email: f.correo || undefined,
         via_nombre: f.direccion || undefined,
-        codigo_postal: f.cp || undefined,
+        codigo_postal: f.cp || f.cpDeDireccion || undefined,
+        fecha_nacimiento: f.nacimiento || undefined,
       }, quien);
 
       // El resto va en una segunda pasada: `abrir` crea a la persona y arranca
