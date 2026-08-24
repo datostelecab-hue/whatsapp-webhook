@@ -176,7 +176,14 @@
   });
 
   $('#m-aplicar').addEventListener('click', async () => {
-    if (!confirm('Aplicar las migraciones pendientes.\n\nCada fichero va en su propia transacción: si uno falla, se para ahí y los anteriores quedan aplicados.\n\n¿Seguir?')) return;
+    const ok = await Dialogo.confirmar({
+      titulo: 'Aplicar las migraciones pendientes',
+      si: 'Aplicar', no: 'Cancelar',
+      html: `<p>Cada fichero va en su propia transacción.</p>
+             <p class="text-telecab-muted">Si uno falla, se para ahí y los anteriores quedan aplicados.
+             Se puede corregir y volver a lanzar.</p>`,
+    });
+    if (!ok) return;
     const b = $('#m-aplicar');
     b.disabled = true;
     aviso('Aplicando…');

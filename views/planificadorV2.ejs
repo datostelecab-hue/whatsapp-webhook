@@ -748,10 +748,16 @@ function abrirCambioDeCoche(idx) {
         <span class="text-xs text-telecab-muted">${esc(x.estado)}${x.zona ? ' · ' + esc(x.zona) : ''}</span>
         <span class="ml-auto text-[10px] ${x.libre ? 'text-telecab-green' : 'text-telecab-warn'}">
           ${x.libre ? 'sin tripulación' : 'con tripulación'}</span>`;
-      b.addEventListener('click', () => {
-        if (!x.libre && !confirm(
-          `${x.matricula || 'Ese coche'} tiene tripulación.\n\n` +
-          'Al intercambiar, cada grupo se queda en su tarjeta y solo se cruzan los coches. ¿Seguir?')) return;
+      b.addEventListener('click', async () => {
+        if (!x.libre) {
+          const ok = await Dialogo.confirmar({
+            titulo: `${x.matricula || 'Ese coche'} tiene tripulación`,
+            tono: 'aviso', si: 'Intercambiar igualmente', no: 'Cancelar',
+            html: `<p>Al intercambiar, <b>cada grupo se queda en su tarjeta</b> y solo se cruzan los coches.</p>
+                   <p class="text-telecab-muted">Nadie cambia de compañero ni de turno.</p>`,
+          });
+          if (!ok) return;
+        }
         cerrar();
         intercambiarCoche(idx, x.c.idx);
       });
@@ -961,8 +967,29 @@ async function guardar() {
 }
 
 $('#btn-guardar').addEventListener('click', guardar);
-$('#btn-descartar').addEventListener('click', () => { if (nCambios() === 0 || confirm('¿Descartar todos los cambios sin guardar?')) cargar(); });
-$('#btn-recargar').addEventListener('click', () => { if (nCambios() === 0 || confirm('Hay cambios sin guardar. ¿Recargar igualmente?')) cargar(); });
+// Los dos avisan de lo MISMO —que hay cambios sin guardar— pero se llega por
+// caminos distintos, así que cada uno lo dice a su manera.
+$('#btn-descartar').addEventListener('click', async () => {
+  const n = nCambios();
+  if (n === 0) return cargar();
+  const ok = await Dialogo.confirmar({
+    titulo: 'Descartar los cambios',
+    tono: 'peligro', si: `Descartar ${n} cambio${n === 1 ? '' : 's'}`, no: 'Seguir editando',
+    texto: 'Se pierde todo lo que no se haya guardado. No hay vuelta atrás.',
+  });
+  if (ok) cargar();
+});
+
+$('#btn-recargar').addEventListener('click', async () => {
+  const n = nCambios();
+  if (n === 0) return cargar();
+  const ok = await Dialogo.confirmar({
+    titulo: 'Recargar el tablero',
+    tono: 'aviso', si: 'Recargar y perderlos', no: 'Seguir editando',
+    texto: `Tienes ${n} cambio${n === 1 ? '' : 's'} sin guardar. Al recargar se pierden.`,
+  });
+  if (ok) cargar();
+});
 window.addEventListener('beforeunload', e => { if (nCambios() > 0) { e.preventDefault(); e.returnValue = ''; } });
 
 cargar();

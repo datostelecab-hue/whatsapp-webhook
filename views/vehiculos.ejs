@@ -376,7 +376,13 @@
   // ---------- acciones ----------
 
   async function darDeBaja(d) {
-    if (!confirm(`¿Dar de baja ${d.matricula}?\n\nSe cierran sus plazas y las asignaciones vivas. El historial se conserva.`)) return;
+    const ok = await Dialogo.confirmar({
+      titulo: `Dar de baja ${d.matricula}`,
+      tono: 'peligro', si: 'Dar de baja', no: 'Cancelar',
+      html: `<p>Se cierran sus plazas y las asignaciones vivas.</p>
+             <p class="text-telecab-muted">Nadie conduce un coche dado de baja. Su historial se conserva.</p>`,
+    });
+    if (!ok) return;
     const r = await fetch(`/vehiculos/api/vehiculo/${d.id}`, { method: 'DELETE' });
     const j = await r.json();
     if (!r.ok || j.status === 'error') return alert(j.msg || 'No se pudo dar de baja');
@@ -385,7 +391,13 @@
   }
 
   async function sincronizarMapon() {
-    if (!confirm('Traer de Mapon los enlaces que falten y refrescar el kilometraje.\n\n¿Seguir?')) return;
+    const ok = await Dialogo.confirmar({
+      titulo: 'Sincronizar con Mapon',
+      si: 'Sincronizar', no: 'Cancelar',
+      html: `<p>Se traen los enlaces que falten y se refresca el kilometraje.</p>
+             <p class="text-telecab-muted">Solo se lee de Mapon; lo único que se escribe es en nuestra base.</p>`,
+    });
+    if (!ok) return;
     try {
       const r = await fetch('/vehiculos/api/mapon/sincronizar', { method: 'POST' });
       const j = await r.json();

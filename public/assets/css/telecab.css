@@ -299,3 +299,17 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
 /* El botón de contraer solo tiene sentido donde el menú está fijo. */
 #menu-corto { display: none; }
 @media (min-width: 1024px) { #menu-corto { display: inline-flex; } }
+
+/* Diálogos (public/assets/js/dialogo.js) */
+.dialogo { animation: dlgFondo .12s ease-out; }
+.dialogo .dialogo-caja { animation: dlgCaja .16s cubic-bezier(.2, .9, .3, 1); }
+.dialogo.dialogo-saliendo { animation: dlgFondo .12s ease-in reverse; }
+@keyframes dlgFondo { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dlgCaja {
+  from { opacity: 0; transform: translateY(8px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+/* Quien tenga el movimiento reducido activado no ve animaciones. */
+@media (prefers-reduced-motion: reduce) {
+  .dialogo, .dialogo .dialogo-caja { animation: none; }
+}

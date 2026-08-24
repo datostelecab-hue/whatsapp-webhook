@@ -38,6 +38,7 @@
 
   <!-- Componentes compartidos. Se cargan aqui, ANTES del cuerpo, porque cada
        modulo los invoca desde su propio bloque de codigo en linea. -->
+  <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
   <script src="<%= typeof est === 'function' ? est('/assets/js/listado.js') : '/assets/js/listado.js' %>"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
