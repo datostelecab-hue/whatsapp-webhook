@@ -27,11 +27,17 @@
     body: JSON.stringify(cuerpo || {}),
   });
 
-  /** Ejecuta algo, refresca la pantalla, y enseña el error si lo hay. */
-  async function hacer(fn) {
+  /**
+   * Ejecuta algo, refresca la pantalla y avisa de cómo ha ido.
+   *
+   * El aviso de que SÍ se ha guardado importa tanto como el del error: sin él,
+   * guardar y no guardar se ven exactamente igual.
+   */
+  async function hacer(fn, hecho) {
     try {
       const r = await fn();
       await seleccion.recargar();
+      if (hecho !== false) Dialogo.hecho(hecho || 'Guardado');
       return r;
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo hacer', texto: e.message, tono: 'error' });
@@ -85,8 +91,13 @@
     // uno, viene puesto: escribirlo otra vez solo sirve para que salga distinto.
     let datos = { telefono: tel9(v.telefono) };
     if (!s.ficha) {
+      // Nombre y apellidos POR SEPARADO. Pedirlos juntos obliga a adivinar dónde
+      // acaba uno y empiezan los otros, y con "Andrés Camilo Bedoya Corrales" no
+      // hay forma de acertar: la base los guarda separados, así que se preguntan
+      // separados.
       const n = await Dialogo.formulario('Datos para abrir la candidatura', [
-        { id: 'nombre', etiqueta: 'Nombre y apellidos', valor: s.nombreSugerido || '' },
+        { id: 'nombre', etiqueta: 'Nombre', valor: s.nombreSugerido || '' },
+        { id: 'apellidos', etiqueta: 'Apellidos' },
         { id: 'canal', etiqueta: 'Canal de origen', tipo: 'lista',
           opciones: (CAT.canales || []).map(c => ({ valor: c.codigo, texto: c.etiqueta })) },
       ], { textoBoton: 'Crear' });

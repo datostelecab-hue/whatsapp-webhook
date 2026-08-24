@@ -355,37 +355,65 @@
     pintarFiltros() {
       const defs = this.cfg.filtros || [];
       if (!defs.length) { this.el.filtros.classList.add('hidden'); return; }
-      this.el.filtros.className = 'flex flex-wrap items-center gap-x-2 gap-y-2 mb-4';
-
+      this.el.filtros.className = 'flex flex-wrap items-center gap-2 mb-4';
       this.el.filtros.innerHTML = '';
-      defs.forEach((def, i) => {
+
+      // Desplegables y no botones sueltos.
+      //
+      // Con dos o tres opciones los botones se leen de un vistazo, pero en
+      // cuanto un filtro tiene quince —los estados de una candidatura, los
+      // canales por los que llega la gente— la pantalla se convierte en una
+      // pared de chips y no se distingue el filtro de los datos.
+      //
+      // El desplegable ocupa lo mismo tenga tres opciones o treinta. Lo que se
+      // pierde es el clic unico, y eso se compensa: los KPIs de arriba siguen
+      // filtrando de un toque para lo que se mira todos los dias.
+      defs.forEach(def => {
         const opciones = typeof def.opciones === 'function'
           ? def.opciones(this.filas, this.extra) : (def.opciones || []);
         const todas = [{ valor: '', texto: def.textoTodos || 'Todos' }].concat(opciones);
+        const puesto = String(this.filtros[def.id] || '');
+        const activo = puesto !== '';
 
-        // Cada grupo va en su propia caja: se ve de un vistazo que "Día" y
-        // "Noche" son lo mismo y "Sin coche" es otra cosa.
-        const caja = nodo('<div class="flex flex-wrap gap-1 items-center"></div>');
-        if (i) caja.prepend(nodo('<span class="w-px h-5 bg-telecab-border mx-1"></span>'));
-        this.el.filtros.appendChild(caja);
-
-        todas.forEach(op => {
-          const activo = String(this.filtros[def.id] || '') === String(op.valor);
-          const chip = nodo(`
-            <button class="px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
+        const caja = nodo(`
+          <div class="relative inline-flex items-center">
+            <select class="appearance-none pl-3 pr-8 py-1.5 rounded-xl text-xs font-medium border
+                cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 ${
               activo
                 ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
                 : 'bg-telecab-card border-telecab-border text-telecab-muted hover:border-telecab-gold/40'
-            }">${esc(op.texto)}${op.cuenta !== undefined ? ` <span class="opacity-60">${esc(op.cuenta)}</span>` : ''}</button>`);
-          chip.addEventListener('click', () => {
-            this.filtros[def.id] = op.valor;
-            this.pagina = 0;
-            this.pintarFiltros();
-            this.pintarFilas();
-          });
-          caja.appendChild(chip);
+            }">${todas.map(op => `
+              <option value="${esc(op.valor)}" ${String(op.valor) === puesto ? 'selected' : ''}
+                >${esc(op.texto)}${op.cuenta !== undefined ? ` (${esc(op.cuenta)})` : ''}</option>`).join('')}
+            </select>
+            <i class="fa-solid fa-chevron-down absolute right-3 text-[9px] pointer-events-none ${
+              activo ? 'text-telecab-dark/70' : 'text-telecab-muted'}"></i>
+          </div>`);
+
+        caja.querySelector('select').addEventListener('change', e => {
+          this.filtros[def.id] = e.target.value;
+          this.pagina = 0;
+          this.pintarFiltros();
+          this.pintarFilas();
         });
+        this.el.filtros.appendChild(caja);
       });
+
+      // Quitar todo de una vez. Con botones se veia cual estaba puesto sin
+      // mirar; con desplegables hace falta una salida rapida, y solo aparece
+      // cuando hay algo que quitar.
+      if (defs.some(d => String(this.filtros[d.id] || ''))) {
+        const b = nodo(`<button class="px-2.5 py-1.5 rounded-xl text-xs font-medium
+            text-telecab-muted hover:text-telecab-red transition">
+            <i class="fa-solid fa-xmark mr-1"></i>Quitar filtros</button>`);
+        b.addEventListener('click', () => {
+          defs.forEach(d => { this.filtros[d.id] = ''; });
+          this.pagina = 0;
+          this.pintarFiltros();
+          this.pintarFilas();
+        });
+        this.el.filtros.appendChild(b);
+      }
     }
 
     pintarFilas() {
@@ -410,7 +438,12 @@
       this.pintarPaginador(todas.length, paginas, desde, filas.length);
       this.el.cuerpo.innerHTML = filas.map(f => {
         const celdas = c.columnas.map(col => {
-          const bruto = col.campo !== undefined ? valorDe(f, col.campo) : undefined;
+          // `valor` y `campo` son lo mismo. Los bloques de la ficha usan `valor` y
+          // las columnas usaban solo `campo`, y esa diferencia no la recuerda
+          // nadie: se escribe `valor` en una columna, sale la celda vacia y no
+          // avisa nada. Se admiten los dos.
+          const ref = col.valor !== undefined ? col.valor : col.campo;
+          const bruto = ref !== undefined ? valorDe(f, ref) : undefined;
           const html = col.pinta ? col.pinta(bruto, f) : esc(bruto);
           return `<td class="px-3 py-2 align-middle ${esc(col.clase || '')}">${html === undefined || html === null ? '' : html}</td>`;
         }).join('');
@@ -558,8 +591,8 @@
       if (!filas.length) return;
 
       const columnas = this.cfg.columnas
-        .filter(c => c.campo !== undefined && c.exportar !== false)
-        .map(c => ({ key: String(c.campo), label: c.titulo || String(c.campo) }));
+        .filter(c => (c.campo !== undefined || c.valor !== undefined) && c.exportar !== false)
+        .map(c => ({ key: c.campo !== undefined ? c.campo : c.valor, label: c.titulo || String(c.campo || '') }));
 
       const datos = filas.map(f => {
         const fila = {};
@@ -604,6 +637,16 @@
       this.pintarKpis();
       this.pintarFiltros();
       this.pintarFilas();
+
+      // Y la ficha abierta, si la hay.
+      //
+      // Sin esto, guardar un cambio refrescaba la lista —que esta debajo y no se
+      // ve— y dejaba la ficha delante enseñando lo de ANTES. Desde fuera es
+      // identico a que no se hubiera guardado nada, asi que se guarda otra vez,
+      // o se va a comprobarlo a mano.
+      //
+      // Sin tocar el historial: no es navegar, es volver a mirar lo mismo.
+      if (this.abierto) await this.abrir(this.abierto, { historial: false });
     }
 
     // --- pintado de la ficha ---

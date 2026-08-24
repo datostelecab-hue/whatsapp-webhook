@@ -261,7 +261,33 @@
     });
   }
 
-  global.Dialogo = { abrir, aviso, confirmar, elegir, formulario, aISO, TONOS };
+
+  // ── Confirmacion breve ──────────────────────────────────────────────────
+  //
+  // Hasta ahora guardar algo era MUDO: la ventana se cerraba y ya. Quien lo hace
+  // no distingue "guardado" de "no ha pasado nada", y acaba comprobandolo a mano
+  // o guardando otra vez.
+  //
+  // Un modal para esto seria peor: obliga a un clic mas por cada guardado. Esto
+  // aparece abajo, se lee de un vistazo y se va solo.
+  function hecho(texto, { tono = 'ok', segundos = 3 } = {}) {
+    const t = TONOS[tono] || TONOS.ok;
+    const caja = document.createElement('div');
+    caja.className = 'fixed bottom-5 right-5 z-[130] flex items-center gap-2 px-4 py-3 rounded-xl '
+      + 'bg-telecab-card border border-telecab-' + t.color + '/40 shadow-soft text-sm '
+      + 'transition-opacity duration-300';
+    caja.innerHTML = '<i class="fa-solid ' + t.icono + ' text-telecab-' + t.color + '"></i>'
+      + '<span>' + esc(texto) + '</span>';
+    document.body.appendChild(caja);
+    // Si alguien ha pedido menos movimiento, se queda quieto y desaparece igual.
+    const quieto = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setTimeout(() => {
+      if (!quieto) caja.style.opacity = '0';
+      setTimeout(() => caja.remove(), quieto ? 0 : 300);
+    }, segundos * 1000);
+  }
+
+  global.Dialogo = { abrir, aviso, confirmar, elegir, formulario, hecho, aISO, TONOS };
 
   // `alert` se sustituye de una vez para TODAS las pantallas: no devuelve nada,
   // así que ningún código que lo llame se entera del cambio. Con `confirm` no

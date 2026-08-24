@@ -148,9 +148,17 @@ async function abrir(telefono, datos = {}, quien = {}) {
 
   let conductorId = situacion.ficha ? situacion.ficha.id : null;
   if (!conductorId) {
-    const nombre = String(datos.nombre || situacion.nombreSugerido || '').trim();
-    if (!nombre) throw new Error('Falta el nombre para abrir la candidatura');
-    const r = await con.crearPersona({ ...datos, nombre, telefono }, quien);
+    const entero = String(datos.nombre || situacion.nombreSugerido || '').trim();
+    if (!entero) throw new Error('Falta el nombre para abrir la candidatura');
+    // Si vienen los apellidos aparte, se respetan. Si no y el nombre lleva coma
+    // —"Bedoya Corrales, Andres Camilo", que es como lo escriben la gestoria y
+    // la ETT—, se parte. Sin coma va entero al nombre: partir "Andres Camilo
+    // Bedoya Corrales" por el primer espacio acierta a veces y falla siempre que
+    // hay un nombre compuesto.
+    const partes = String(datos.apellidos || '').trim()
+      ? { nombre: entero, apellidos: String(datos.apellidos).trim() }
+      : alta.partirNombre(entero);
+    const r = await con.crearPersona({ ...datos, ...partes, telefono }, quien);
     conductorId = r.id;
   }
 
