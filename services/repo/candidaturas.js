@@ -31,6 +31,9 @@ const CAMPOS = {
   vacante_ref:       { etiqueta: 'Vacante' },
   turno_id:          { etiqueta: 'Turno', tipo: 'numero' },
   base_zona_id:      { etiqueta: 'Zona', tipo: 'numero' },
+  inicio_previsto:   { etiqueta: 'Fecha de inicio', tipo: 'fecha' },
+  jornada_horas:     { etiqueta: 'Jornada (horas)', tipo: 'numero' },
+  tipo_contrato:     { etiqueta: 'Tipo de contrato' },
   responsable:       { etiqueta: 'Responsable' },
   notas:             { etiqueta: 'Notas' },
   num_hijos:         { etiqueta: 'Nº de hijos', tipo: 'numero' },
@@ -50,9 +53,33 @@ async function catalogos() {
     db.consulta(`SELECT id, codigo, etiqueta FROM turno WHERE activo ORDER BY id`),
     db.consulta(`SELECT id, nombre FROM base_zona ORDER BY nombre`),
   ]);
+  // Los campos que la pantalla puede editar, con su etiqueta y su tipo. Salen de
+  // aqui y no de una lista escrita en la vista: son los mismos que valida
+  // `guardar`, asi que no pueden discrepar.
+  const campos = [];
+  const PERSONA = ['nombre', 'apellidos', 'dni_nie', 'fecha_nacimiento', 'sexo',
+    'estado_civil', 'nacionalidad', 'email', 'tel_emergencia', 'centro_codigo',
+    'via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta',
+    'codigo_postal', 'localidad', 'provincia', 'observaciones'];
+  for (const k of PERSONA) {
+    const def = con.CAMPOS[k];
+    if (def) campos.push({ id: k, grupo: def.grupo || 'Persona', ...def });
+  }
+  // Los que se escriben de una pieza y la base guarda despiezados. No estan en
+  // CAMPOS porque no son columnas: son la forma en que los teclea una persona.
+  campos.push({ id: 'naf', grupo: 'Seguridad Social', etiqueta: 'Nº Seguridad Social',
+                ayuda: 'Los doce dígitos, con separadores o sin ellos' });
+  campos.push({ id: 'iban', grupo: 'Seguridad Social', etiqueta: 'IBAN / nº de cuenta',
+                ayuda: 'Se guarda cifrado. Si se deja vacío, no se toca el que hubiera' });
+  campos.push({ id: 'coordenadas', grupo: 'Dirección', etiqueta: 'Coordenadas',
+                ayuda: 'lat, lng — se obtienen del botón de geocodificar' });
+  for (const [id, def] of Object.entries(CAMPOS)) {
+    campos.push({ id, grupo: 'Proceso', ...def });
+  }
+
   return {
     estados: estados.rows, etapas: etapas.rows, canales: canales.rows,
-    turnos: turnos.rows, zonas: zonas.rows,
+    turnos: turnos.rows, zonas: zonas.rows, campos,
     // El recorrido de Selección, en orden. La pantalla pinta los pasos con esto
     // en vez de llevar su propia lista, que es como se desincronizan.
     funnel: estados.rows.filter(e => e.en_funnel).map(e => e.codigo),
@@ -136,6 +163,53 @@ async function abrir(telefono, datos = {}, quien = {}) {
 }
 
 /**
+ * Convierte lo que se escribe de una pieza en lo que la base guarda separado.
+ *
+ * Tres casos, y los tres por la misma razon: la gestoria pide la direccion
+ * despiezada y el NAF en tres trozos, pero nadie los teclea asi. Y las
+ * coordenadas se pegan como "lat, lng" porque es como las da un mapa.
+ *
+ * Lo que no venga, no se toca: devolver un objeto solo con lo que ha llegado
+ * evita borrar la mitad de una direccion al guardar la otra mitad.
+ */
+function despiezar(datos) {
+  const fuera = {};
+
+  // "28/1234567/89", "28 1234567 89" o los doce digitos seguidos.
+  const naf = datos.naf || datos.num_seg_social;
+  if (naf !== undefined) {
+    const n = String(naf || '').replace(/[^0-9]/g, '');
+    if (n.length >= 8) {
+      fuera.naf_provincia = n.slice(0, 2);
+      fuera.naf_numero = n.slice(2, -2);
+      fuera.naf_control = n.slice(-2);
+    }
+  }
+
+  // "40.23578, -3.76983". Fuera de España se descarta: una coma mal puesta manda
+  // a alguien al Atlantico, y esto lo usa el planificador para las recogidas.
+  if (datos.coordenadas !== undefined) {
+    const m = String(datos.coordenadas || '').match(/^\s*(-?\d+[.,]?\d*)\s*,\s*(-?\d+[.,]?\d*)\s*$/);
+    if (m) {
+      const lat = Number(m[1].replace(',', '.')), lng = Number(m[2].replace(',', '.'));
+      if (isFinite(lat) && isFinite(lng) && lat >= 27 && lat <= 44 && lng >= -19 && lng <= 5) {
+        fuera.lat = lat; fuera.lng = lng;
+      }
+    } else if (!String(datos.coordenadas || '').trim()) {
+      fuera.lat = null; fuera.lng = null;
+    }
+  }
+
+  // Una direccion pegada entera, cuando no vienen las partes por separado. Va
+  // al nombre de la via: partirla a ojo inventaria portales y pisos.
+  if (datos.direccion !== undefined && datos.via_nombre === undefined) {
+    fuera.via_nombre = String(datos.direccion || '').slice(0, 120) || null;
+  }
+
+  return fuera;
+}
+
+/**
  * Guarda lo que venga, mandando cada dato a su tabla.
  *
  * Este reparto es el módulo entero en una función: los campos de la persona
@@ -146,8 +220,13 @@ async function guardar(id, datos = {}, quien = {}) {
   const c = (await db.consulta('SELECT conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
   if (!c) throw new Error('No existe esa candidatura');
 
+  // Lo que una persona teclea de una pieza y la base guarda despiezado. Se
+  // normaliza AQUI y no en la pantalla: si lo hiciera la pantalla, cada
+  // formulario que quisiera guardar una direccion tendria que repetirlo.
+  const d = { ...datos, ...despiezar(datos) };
+
   const dePersona = {}, deProceso = {};
-  for (const [k, v] of Object.entries(datos)) {
+  for (const [k, v] of Object.entries(d)) {
     if (con.CAMPOS[k]) dePersona[k] = v;
     else if (CAMPOS[k]) deProceso[k] = v;
   }
@@ -168,6 +247,23 @@ async function guardar(id, datos = {}, quien = {}) {
   // El teléfono no es un campo de la ficha: tiene su propia tabla y su propia
   // vigencia, así que va por su función.
   if (datos.telefono) await con.guardarTelefono(c.conductor_id, datos.telefono, quien);
+
+  // El IBAN va CIFRADO. En la hoja viajaba en claro, a la vista de cualquiera
+  // con acceso al documento; aquí se guarda cifrado y no se devuelve nunca en
+  // los listados. Si no hay clave configurada se avisa y no se guarda, en vez
+  // de escribirlo en claro «de momento».
+  if (datos.iban !== undefined) {
+    const cripto = require('../cripto');
+    const iban = String(datos.iban || '').replace(/\s+/g, '').toUpperCase();
+    if (!iban) {
+      await db.consulta('UPDATE conductor SET iban_cifrado = NULL WHERE id = $1', [c.conductor_id]);
+    } else if (!cripto.configurada()) {
+      throw new Error('No se puede guardar el IBAN: falta la clave de cifrado en el servidor');
+    } else {
+      await db.consulta('UPDATE conductor SET iban_cifrado = $1 WHERE id = $2',
+        [cripto.cifrar(iban), c.conductor_id]);
+    }
+  }
 
   return { id: Number(id), conductorId: c.conductor_id };
 }
@@ -221,6 +317,18 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
       WHERE k.id = $1`, [Number(id)])).rows[0];
   if (!c) throw new Error('No existe esa candidatura');
   if (c.empleo_vigente) throw new Error(`${c.quien} ya tiene un contrato abierto`);
+  // Lo pactado durante la seleccion vale como contrato, salvo que al pasar a
+  // RRHH se diga otra cosa. Asi no hay que reescribir lo que ya se acordo.
+  const k = (await db.consulta(
+    'SELECT inicio_previsto, jornada_horas, tipo_contrato FROM candidatura WHERE id = $1',
+    [Number(id)])).rows[0] || {};
+  contrato = {
+    alta: contrato.alta || (k.inicio_previsto ? String(k.inicio_previsto).slice(0, 10) : null),
+    jornadaHoras: contrato.jornadaHoras || k.jornada_horas || null,
+    tipo: contrato.tipo || (/ETT/i.test(k.tipo_contrato || '') ? 'ett' : 'propia'),
+    ettNombre: contrato.ettNombre,
+    finPrueba: contrato.finPrueba,
+  };
   if (!contrato.alta) throw new Error('Falta la fecha de inicio del contrato');
 
   const faltan = await faltantes(Number(id));
@@ -286,7 +394,61 @@ async function faltantes(id) {
   return [...faltan, ...docs.rows.map(d => 'Documento: ' + d.etiqueta)];
 }
 
+/**
+ * La candidatura con la forma que espera el generador de la FICHA DE ALTA.
+ *
+ * El PDF es un consumidor heredado: pide diecisiete claves con nombres suyos.
+ * En vez de retorcer el modelo para complacerlo, se traduce aqui — que es lo
+ * que es, una traduccion, y se ve de un vistazo.
+ *
+ * Las fechas del carne salen del DOCUMENTO, no de dos casillas aparte: si el
+ * permiso esta subido con su emision y su caducidad, escribirlas otra vez a mano
+ * solo sirve para que un dia no coincidan.
+ */
+async function paraFicha(id) {
+  const r = await db.consulta(
+    `SELECT k.id, k.inicio_previsto, k.num_hijos,
+            c.id AS conductor_id, c.nombre, c.apellidos, c.dni_nie, c.email,
+            c.fecha_nacimiento, c.estado_civil, c.naf, c.direccion, c.codigo_postal,
+            c.observaciones, c.iban_cifrado,
+            tel.e164 AS telefono,
+            per.fecha_emision AS carnet_expedicion,
+            per.fecha_caduca  AS carnet_caducidad
+       FROM candidatura k
+       JOIN conductor c ON c.id = k.conductor_id
+       LEFT JOIN LATERAL (
+         SELECT e164 FROM conductor_telefono
+          WHERE conductor_id = c.id AND vigente_hasta IS NULL
+          ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT fecha_emision, fecha_caduca FROM documento
+          WHERE conductor_id = c.id AND tipo = 'permiso' AND vigente
+          ORDER BY id DESC LIMIT 1) per ON TRUE
+      WHERE k.id = $1`, [Number(id)]);
+  const f = r.rows[0];
+  if (!f) throw new Error('No existe esa candidatura');
+
+  const fecha = v => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '');
+  let iban = '';
+  if (f.iban_cifrado) {
+    const cripto = require('../cripto');
+    try { iban = cripto.descifrar(f.iban_cifrado); } catch (e) { iban = '(no se pudo descifrar)'; }
+  }
+
+  return {
+    conductorId: f.conductor_id,
+    id: f.telefono, telefono: f.telefono,
+    nombre: f.nombre, apellidos: f.apellidos, dni: f.dni_nie, email: f.email,
+    fecha_nacimiento: fecha(f.fecha_nacimiento), estado_civil: f.estado_civil,
+    num_hijos: f.num_hijos, num_seg_social: f.naf,
+    direccion: f.direccion, codigo_postal: f.codigo_postal,
+    carnet_expedicion: fecha(f.carnet_expedicion), carnet_caducidad: fecha(f.carnet_caducidad),
+    fecha_inicio: fecha(f.inicio_previsto),
+    iban, observaciones: f.observaciones,
+  };
+}
+
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
-  cambiarEstado, pasarARRHH, faltantes,
+  cambiarEstado, pasarARRHH, faltantes, paraFicha,
 };

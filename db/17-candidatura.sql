@@ -118,6 +118,13 @@ CREATE TABLE IF NOT EXISTS candidatura (
   turno_id      SMALLINT    REFERENCES turno(id) ON DELETE SET NULL,
   base_zona_id  SMALLINT    REFERENCES base_zona(id) ON DELETE SET NULL,
 
+  -- Lo que se pacta durante la seleccion y se convierte en contrato al final.
+  -- Vive en la candidatura y no en `conductor_periodo_empleo` porque hasta que
+  -- no se contrata NO HAY periodo: es una intencion, no un contrato.
+  inicio_previsto DATE,
+  jornada_horas   SMALLINT,
+  tipo_contrato   VARCHAR(20),
+
   responsable   VARCHAR(80),
   notas         TEXT,
   motivo        VARCHAR(255),   -- del descarte, del rechazo o de la baja
@@ -163,7 +170,21 @@ CREATE OR REPLACE VIEW v_candidatura AS
 SELECT k.id,
        k.conductor_id,
        btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
-       c.nombre, c.apellidos, c.dni_nie, c.email,
+       -- Los datos de la persona que edita este mismo formulario. Se exponen
+       -- aqui para que la pantalla no tenga que pedir dos cosas y cruzarlas:
+       -- siguen viviendo en `conductor`, esto solo los enseña.
+       c.nombre, c.apellidos, c.dni_nie, c.dni_tipo, c.email,
+       c.fecha_nacimiento, c.sexo, c.estado_civil, c.nacionalidad,
+       c.naf, c.centro_codigo,
+       c.via_tipo, c.via_nombre, c.via_numero, c.escalera, c.piso, c.puerta,
+       c.direccion, c.codigo_postal, c.localidad, c.provincia,
+       c.tel_emergencia, c.observaciones,
+       -- "lat, lng" como se escribe y se pega, que es como lo da un mapa.
+       CASE WHEN c.lat IS NULL OR c.lng IS NULL THEN NULL
+            ELSE c.lat::text || ', ' || c.lng::text END      AS coordenadas,
+       -- El IBAN NO sale de aqui: esta cifrado y un listado no tiene por que
+       -- llevarlo. Se descifra solo al generar la ficha de alta.
+       (c.iban_cifrado IS NOT NULL)                          AS tiene_iban,
        tel.e164                                             AS telefono,
        k.estado,
        e.etiqueta                                           AS estado_etiqueta,
@@ -175,6 +196,7 @@ SELECT k.id,
        k.experiencia, k.carne_vtc, k.prueba_conduccion, k.apto_medico,
        k.vacante_ref, k.turno_id, t.etiqueta                AS turno,
        k.base_zona_id, bz.nombre                            AS zona,
+       k.inicio_previsto, k.jornada_horas, k.tipo_contrato,
        k.responsable, k.notas, k.motivo, k.num_hijos, k.tipo_carnet,
        k.creado_at, k.apto_at, k.alta_at, k.habilitado_at, k.asignado_at,
        k.cerrado_at, k.deteccion_at,

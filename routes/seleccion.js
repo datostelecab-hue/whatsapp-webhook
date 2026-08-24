@@ -1,250 +1,213 @@
+// ============================================================
+// SELECCIÓN — rutas
+// ============================================================
+// Lee y escribe en PostgreSQL. Ya no toca la hoja TICKETS.
+//
+// Mismo contrato que Vehículos y Plantilla, para que el componente `Listado` no
+// tenga que aprender nada nuevo:
+//   · /api/lista      → { filas, resumen }
+//   · /api/ficha/:id  → la ficha entera
+//
+// La clave es el ID DE LA CANDIDATURA. El teléfono sirve para BUSCAR a alguien
+// —es lo que se sabe de un candidato antes que nada—, pero no identifica: una
+// persona puede cambiar de número y haber tenido dos procesos.
+
 const express = require('express');
 const multer = require('multer');
 const router = express.Router();
 const { leerVacantesGuardadas, vacanteDisponible } = require('../services/vacantes');
-const alta = require('../services/repo/alta');
 const { geocodificar, geocodificarEstructurado } = require('../services/geocoding');
 const drive = require('../services/drive');
 const { generarFichaPDF } = require('../services/fichaAlta');
-const {
-  leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
-  guardarDocumento, guardarCelda, parseDoc,
-  CANALES, ETAPAS_CANDIDATURA, ESTADOS, ETAPAS, DOCUMENTOS, normalizarTel
-} = require('../services/tickets');
+const cand = require('../services/repo/candidaturas');
+const docs = require('../services/repo/documentos');
+const actor = require('../services/repo/actor');
 
-// Los archivos llegan como multipart (no JSON), así que esquivan el límite global
-// de 2 MB de app.js. En memoria; hasta 25 MB por archivo.
+// Los archivos llegan como multipart (no JSON), así que esquivan el límite
+// global de 2 MB de app.js. En memoria; hasta 25 MB por archivo.
 const subida = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
-// Clave estable para la carpeta de Drive del candidato. Se prefiere el DNI (que
-// también usará la agenda cuando pase a activo), luego el nombre, luego el tel.
-function claveDe(t) {
-  return (t.dni || t.nombre || t.id || '').toString().trim();
-}
+/** Quién hace el cambio. Todo lo que escribe pasa por aquí. */
+const quien = async req => ({
+  usuarioId: await actor.idDe(req),
+  rol: (req.usuario || {}).rol || '',
+});
 
-// Vista de Selección (funnel de candidatos).
-router.get('/', async (req, res) => {
-  let vacantes = [];
+/** Recoge el error y lo devuelve legible, sin repetirlo diez veces. */
+const responde = fn => async (req, res) => {
   try {
-    // Solo vacantes DISPONIBLES: las "En proceso de alta" ya tienen un candidato
-    // y las Cerradas están resueltas, así que no se pueden volver a reclutar.
+    const r = await fn(req, res);
+    if (!res.headersSent) res.json({ status: 'ok', ...(r && typeof r === 'object' ? r : {}) });
+  } catch (e) {
+    console.error(`❌ [SELECCIÓN] ${req.method} ${req.path}: ${e.message}`);
+    // `conflicto` y `situacion` viajan con el error: dicen de QUIÉN se trata y
+    // qué se puede hacer. Sin eso la pantalla solo puede enseñar un mensaje y
+    // dejar a quien lo lee sin salida.
+    res.status(400).json({ status: 'error', msg: e.message, conflicto: e.conflicto, situacion: e.situacion });
+  }
+};
+
+// Los documentos que pide la ficha de alta, con el nombre corto que usa la
+// pantalla y el tipo que usa la base. La pantalla dice "carnet"; el catálogo,
+// "permiso de conducir". La traducción vive aquí y no en los dos sitios.
+const DOCUMENTOS = [
+  { key: 'dni',            tipo: 'dni',             label: 'DNI/NIE (frente)' },
+  { key: 'dni_reverso',    tipo: 'dni_reverso',     label: 'DNI/NIE (reverso)' },
+  { key: 'carnet',         tipo: 'permiso',         label: 'Carné de conducir (frente)' },
+  { key: 'carnet_reverso', tipo: 'permiso_reverso', label: 'Carné de conducir (reverso)' },
+  { key: 'bancario',       tipo: 'cuenta',          label: 'Certificado bancario' },
+  { key: 'seg_social',     tipo: 'vida_laboral',    label: 'Vida laboral / certificado SS' },
+  { key: 'penales',        tipo: 'penales',         label: 'Certificado de delitos sexuales' },
+];
+
+router.get('/', async (req, res) => {
+  let vacantes = [], catalogos = { estados: [], canales: [], turnos: [], zonas: [], funnel: [] };
+  try {
+    // Solo vacantes DISPONIBLES: las "En proceso de alta" ya tienen candidato y
+    // las Cerradas están resueltas.
     vacantes = (await leerVacantesGuardadas()).filter(vacanteDisponible);
   } catch (e) { console.error('❌ [Selección] vacantes:', e.message); }
+  try { catalogos = await cand.catalogos(); } catch (e) {
+    console.error('❌ [Selección] catálogos:', e.message);
+  }
   res.render('seleccion', {
-    titulo: 'Selección',
-    seccion: 'seleccion',
-    layout: 'layout-gestion',
-    canales: CANALES,
-    etapas: ETAPAS_CANDIDATURA,
-    vacantes
+    titulo: 'Selección', seccion: 'seleccion', layout: 'layout-gestion',
+    vacantes, catalogos, documentos: DOCUMENTOS,
   });
 });
 
-// Candidatos del funnel, agrupados por etapa de candidatura.
-router.get('/api/datos', async (req, res) => {
-  try {
-    const { lista } = await leerTickets();
-    const enFunnel = lista.filter(t => t.etapa === ETAPAS.SELECCION
-      && ETAPAS_CANDIDATURA.includes(t.estado));
-    const porEtapa = {};
-    ETAPAS_CANDIDATURA.forEach(e => { porEtapa[e] = []; });
-    enFunnel.forEach(t => porEtapa[t.estado].push(t));
+// ── Lectura ────────────────────────────────────────────────────────────────
 
-    const descartados = lista.filter(t => t.estado === ESTADOS.DESCARTADO).length;
-    // Fichas que RRHH devolvió a Selección, con su motivo, para revisarlas.
-    const rechazadosRRHH = lista.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
+router.get('/api/lista', responde(async req => {
+  const filas = await cand.listar({ incluirCerradas: req.query.cerradas === '1' });
+  const { estados, funnel } = await cand.catalogos();
 
-    res.json({
-      status: 'ok',
-      porEtapa, rechazadosRRHH,
-      contadores: {
-        funnel: enFunnel.length,
-        porEtapa: ETAPAS_CANDIDATURA.reduce((a, e) => (a[e] = porEtapa[e].length, a), {}), descartados, rechazadosRRHH: rechazadosRRHH.length
-      }
-    });
-  } catch (error) {
-    console.error('❌ [Selección] /api/datos:', error.message);
-    res.status(500).json({ status: 'error', msg: error.message });
-  }
-});
+  // El resumen se calcula sobre lo que ya se ha traído: son contadores de una
+  // lista de decenas de filas, no hace falta otra consulta.
+  const porEstado = {};
+  filas.forEach(f => { porEstado[f.estado] = (porEstado[f.estado] || 0) + 1; });
 
-// Un ticket concreto por teléfono (para cargarlo en la ficha).
-router.get('/api/ticket/:tel', async (req, res) => {
-  try {
-    const { normalizarTel } = require('../services/tickets');
-    const tel = normalizarTel(req.params.tel);
-    const { porTel } = await leerTickets();
-    const t = porTel.get(tel) || null;
-    // La consulta va a PostgreSQL, no a la copia de BOLT en hojas: allí están
-    // NUESTRAS fichas con sus teléfonos, que es lo único capaz de distinguir una
-    // restauración (tenemos ficha suya) de un alta desde cero. La hoja solo
-    // sabía si el número aparecía en BOLT, que es media respuesta.
-    let situacion = null;
-    try { situacion = await alta.porTelefono(tel); }
-    catch (e) { console.error(`❌ [SELECCION] alta ${tel}: ${e.message}`); }
-    res.json({
-      status: 'ok', ticket: t, alta: situacion,
-      // Se mantienen mientras la pantalla vieja siga leyéndolos.
-      enBolt: Boolean(situacion && situacion.bolt),
-      boltNombre: (situacion && situacion.bolt && situacion.bolt.nombre) || '',
-    });
-  } catch (error) {
-    res.status(500).json({ status: 'error', msg: error.message });
-  }
-});
+  return {
+    filas,
+    resumen: {
+      total: filas.length,
+      enFunnel: filas.filter(f => f.en_funnel).length,
+      porEstado,
+      // El recorrido, en orden y con su etiqueta, para que la pantalla no lleve
+      // su propia copia de las etapas.
+      funnel: funnel.map(c => {
+        const e = estados.find(x => x.codigo === c) || {};
+        return { codigo: c, etiqueta: e.etiqueta, cuantos: porEstado[c] || 0 };
+      }),
+    },
+  };
+}));
 
-// Crear / actualizar ticket (upsert por teléfono).
-router.post('/ticket', async (req, res) => {
-  try {
-    const t = await guardarTicket(req.body || {});
-    res.json({ status: 'ok', ticket: t });
-  } catch (error) {
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
+router.get('/api/ficha/:id', responde(async req => {
+  const f = await cand.ficha(Number(req.params.id));
+  if (!f) { const e = new Error('No existe esa candidatura'); throw e; }
+  return { ...f, faltan: await cand.faltantes(f.id), documentosPedidos: DOCUMENTOS };
+}));
 
-// Mover de etapa dentro del funnel.
-router.post('/etapa', async (req, res) => {
-  try {
-    const b = req.body || {};
-    const t = await cambiarEtapaCandidatura(b.tel, b.estado);
-    res.json({ status: 'ok', ticket: t });
-  } catch (error) {
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
+router.get('/api/catalogos', responde(() => cand.catalogos()));
 
-// Pasar a RRHH: crea la ficha en PostgreSQL y mueve el ticket de etapa.
-router.post('/bolt', async (req, res) => {
-  try {
-    const actor = require('../services/repo/actor');
-    const t = await enviarABolt((req.body || {}).tel, {
-      usuarioId: await actor.idDe(req),
-      rol: (req.usuario || {}).rol || '',
-    });
-    res.json({ status: 'ok', ticket: t });
-  } catch (error) {
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
+// Qué hay detrás de un teléfono ANTES de abrir nada: si hay proceso vivo, si
+// tenemos ficha suya y si está en BOLT, con qué número. Es lo que deja decidir
+// entre continuar, restaurar o empezar de cero.
+router.get('/api/telefono/:tel', responde(req => cand.porTelefono(req.params.tel)));
 
-// Descartar candidato.
-router.post('/descartar', async (req, res) => {
-  try {
-    const b = req.body || {};
-    const t = await descartar(b.tel, b.motivo);
-    res.json({ status: 'ok', ticket: t });
-  } catch (error) {
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
+// ── Escritura ──────────────────────────────────────────────────────────────
 
-// Geocodifica una dirección. Si llegan las partes (via/numero/CP/localidad/…),
-// usa la búsqueda estructurada (más fiable); si no, la libre por compatibilidad.
-router.post('/geocodificar', async (req, res) => {
-  try {
-    const b = req.body || {};
-    // Estructurada solo si hay nombre de vía; si no (p. ej. dirección pegada entera),
-    // búsqueda libre para no perder la calle.
-    const r = (b.via && b.via.trim())
-      ? await geocodificarEstructurado({
-          tipo_via: b.tipo_via, via: b.via, numero: b.numero,
-          codigo_postal: b.codigo_postal, localidad: b.localidad, provincia: b.provincia
-        })
-      : await geocodificar(b.direccion, b.codigoPostal || b.codigo_postal);
-    if (!r) return res.json({ status: 'ok', encontrado: false });
-    if (r.error) return res.status(502).json({ status: 'error', msg: r.mensaje });
-    res.json({ status: 'ok', encontrado: true, ...r, coordenadas: `${r.lat}, ${r.lng}` });
-  } catch (error) {
-    res.status(500).json({ status: 'error', msg: error.message });
-  }
-});
+router.post('/api/candidatura', responde(async req =>
+  cand.abrir((req.body || {}).telefono, req.body || {}, await quien(req))));
 
-// Sube UNO de los 7 documentos de la ficha a Drive y guarda su enlace en el
-// ticket. multipart: campo 'archivo' + campos de texto tel y tipo.
-router.post('/documento', subida.single('archivo'), async (req, res) => {
-  try {
-    const tel = normalizarTel((req.body || {}).tel);
-    const tipo = (req.body || {}).tipo;
-    const def = DOCUMENTOS.find(d => d.key === tipo);
-    if (!def) return res.status(400).json({ status: 'error', msg: 'Tipo de documento no válido' });
-    if (!req.file) return res.status(400).json({ status: 'error', msg: 'No llegó ningún archivo' });
+router.put('/api/candidatura/:id', responde(async req =>
+  cand.guardar(Number(req.params.id), req.body || {}, await quien(req))));
 
-    // El ticket se crea solo si aún no existía (sin pisar nada: guardarDocumento
-    // escribe luego únicamente la celda del documento).
-    let t = await leerTicket(tel);
-    if (!t) { await guardarTicket({ tel }); t = await leerTicket(tel); }
+router.post('/api/candidatura/:id/estado', responde(async req => {
+  const b = req.body || {};
+  return cand.cambiarEstado(Number(req.params.id), b.estado, { motivo: b.motivo, ...(await quien(req)) });
+}));
 
-    // Si ya había un documento de este tipo, se sobrescribe (mismo archivo/enlace).
-    const previo = parseDoc(t[def.col]);
-    const nombre = `${tipo.toUpperCase()} — ${req.file.originalname}`;
-    const archivo = await drive.subir(claveDe(t), {
-      nombre, mime: req.file.mimetype, base64: req.file.buffer.toString('base64'),
-      fileId: previo && previo.id
-    });
-    const doc = { id: archivo.id, link: archivo.webViewLink, nombre: archivo.name, mime: archivo.mimeType };
-    await guardarDocumento(tel, tipo, doc);
-    res.json({ status: 'ok', doc });
-  } catch (error) {
-    console.error('❌ [Selección] documento:', error.message);
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
+// Selección termina: se le abre el contrato y pasa a RRHH.
+router.post('/api/candidatura/:id/rrhh', responde(async req => {
+  const r = await cand.pasarARRHH(Number(req.params.id), req.body || {}, await quien(req));
+  console.log(`👤 [SELECCIÓN] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
+              (r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
+  return r;
+}));
 
-// Quita un documento (lo borra de Drive y limpia la celda del ticket).
-router.delete('/documento', async (req, res) => {
-  try {
-    const tel = normalizarTel((req.body || {}).tel);
-    const tipo = (req.body || {}).tipo;
-    const def = DOCUMENTOS.find(d => d.key === tipo);
-    if (!def) return res.status(400).json({ status: 'error', msg: 'Tipo de documento no válido' });
-    const t = await leerTicket(tel);
-    const doc = t ? parseDoc(t[def.col]) : null;
-    if (doc && doc.id) { try { await drive.borrar(doc.id); } catch (_) { /* ya no estaba */ } }
-    await guardarDocumento(tel, tipo, null);
-    res.json({ status: 'ok' });
-  } catch (error) {
-    console.error('❌ [Selección] borrar documento:', error.message);
-    res.status(400).json({ status: 'error', msg: error.message });
-  }
-});
+// ── Documentos ─────────────────────────────────────────────────────────────
+// Van a la tabla `documento`, que es de la PERSONA. Los bytes siguen en Drive;
+// lo que cambia es que ahora están indexados, con su tipo y su caducidad, en vez
+// de ser un JSON dentro de una celda.
 
-// Genera la FICHA DE ALTA (PDF): formulario + cada documento adjunto. La guarda
-// en la carpeta de Drive del candidato y devuelve el enlace para abrirla.
-router.post('/ficha', async (req, res) => {
-  try {
-    const tel = normalizarTel((req.body || {}).tel);
-    const t = await leerTicket(tel);
-    if (!t) return res.status(400).json({ status: 'error', msg: 'No existe el ticket' });
+router.post('/api/candidatura/:id/documento', subida.single('archivo'), responde(async req => {
+  const b = req.body || {};
+  const def = DOCUMENTOS.find(d => d.key === b.tipo);
+  if (!def) throw new Error('Tipo de documento no válido');
+  if (!req.file) throw new Error('No llegó ningún archivo');
 
-    // Descarga los documentos ya subidos para incrustarlos.
-    const documentos = [];
-    for (const def of DOCUMENTOS) {
-      const doc = parseDoc(t[def.col]);
-      if (!doc || !doc.id) continue;
-      try {
-        const { bytes, mime } = await drive.descargar(doc.id);
-        documentos.push({ label: def.label, bytes, mime });
-      } catch (e) {
-        console.error(`❌ [Selección] no se pudo descargar ${def.key}:`, e.message);
-      }
+  const id = Number(req.params.id);
+  const f = await cand.ficha(id);
+  if (!f) throw new Error('No existe esa candidatura');
+
+  const doc = await docs.subir({
+    conductorId: f.conductor_id,
+    tipo: def.tipo,
+    nombre: `${def.label} — ${req.file.originalname}`,
+    mime: req.file.mimetype,
+    base64: req.file.buffer.toString('base64'),
+    fechaEmision: b.emision || null,
+    fechaCaduca: b.caduca || null,
+  }, await quien(req));
+
+  return { doc, faltan: await cand.faltantes(id) };
+}));
+
+router.delete('/api/documento/:docId', responde(async req =>
+  ({ retirado: await docs.retirar(Number(req.params.docId), {
+    borrarArchivo: true, ...(await quien(req)),
+  }) })));
+
+// ── La FICHA DE ALTA en PDF ────────────────────────────────────────────────
+router.post('/api/candidatura/:id/ficha-pdf', responde(async req => {
+  const id = Number(req.params.id);
+  const datos = await cand.paraFicha(id);
+  const f = await cand.ficha(id);
+
+  // Los documentos ya subidos, para incrustarlos en el PDF.
+  const adjuntos = [];
+  for (const def of DOCUMENTOS) {
+    const d = (f.documentos || []).find(x => x.tipo === def.tipo && x.vigente);
+    if (!d) continue;
+    try {
+      const a = await docs.descargar(d.id);
+      adjuntos.push({ label: def.label.toUpperCase(), bytes: a.bytes, mime: a.mime });
+    } catch (e) {
+      console.error(`❌ [Selección] no se pudo descargar ${def.key}: ${e.message}`);
     }
-
-    const pdf = await generarFichaPDF(t, documentos);
-    const nombreFicha = `FICHA DE ALTA - ${(t.nombre || tel).toString().trim()}.pdf`;
-    // Si ya se había generado, se sobrescribe el mismo PDF (mismo enlace).
-    const fichaPrev = parseDoc(t.ficha_pdf);
-    const archivo = await drive.subir(claveDe(t), {
-      nombre: nombreFicha, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64'),
-      fileId: fichaPrev && fichaPrev.id
-    });
-    const ficha = { id: archivo.id, link: archivo.webViewLink, nombre: archivo.name, mime: 'application/pdf' };
-    await guardarCelda(tel, 'ficha_pdf', JSON.stringify(ficha));
-    res.json({ status: 'ok', ficha, link: archivo.webViewLink, nombre: nombreFicha, adjuntos: documentos.length });
-  } catch (error) {
-    console.error('❌ [Selección] ficha:', error.message);
-    res.status(400).json({ status: 'error', msg: error.message });
   }
-});
+
+  const pdf = await generarFichaPDF(datos, adjuntos);
+  const nombre = `FICHA DE ALTA - ${(datos.nombre || datos.telefono || id).toString().trim()}.pdf`;
+  const archivo = await drive.subir(String(datos.conductorId), {
+    nombre, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64'),
+  });
+  return { link: archivo.webViewLink, nombre, adjuntos: adjuntos.length };
+}));
+
+// ── Geocodificación ────────────────────────────────────────────────────────
+// Se queda igual: es un servicio externo que no tiene que ver con dónde se
+// guarden los datos.
+router.post('/api/geocodificar', responde(async req => {
+  const b = req.body || {};
+  return (b.via && b.via.trim())
+    ? geocodificarEstructurado({
+      via: b.via, numero: b.numero, tipoVia: b.tipoVia,
+      codigoPostal: b.codigo_postal, localidad: b.localidad, provincia: b.provincia,
+    })
+    : geocodificar(b.direccion);
+}));
 
 module.exports = router;

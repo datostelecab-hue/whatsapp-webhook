@@ -1,788 +1,409 @@
-<div class="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
+<div id="modulo"></div>
 
-  <!-- Funnel: contador por etapa + salidas -->
-  <div class="flex flex-wrap items-stretch gap-2">
-    <% (etapas || []).forEach(function (e, i) { %>
-      <div class="flex-1 min-w-[140px] bg-telecab-card border border-telecab-border rounded-xl px-3 py-2">
-        <p class="text-[10px] uppercase tracking-wide text-telecab-muted leading-tight"><%= i + 1 %>. <%= e %></p>
-        <p class="text-xl font-bold text-telecab-text" data-cont-etapa="<%= e %>">–</p>
-      </div>
-    <% }); %>
-    <div class="min-w-[130px] bg-telecab-card border border-telecab-border rounded-xl px-3 py-2">
-      <p class="text-[10px] uppercase tracking-wide text-telecab-muted">Rechazados RRHH</p>
-      <p id="c-rechrrhh" class="text-xl font-bold text-telecab-red">–</p>
-    </div>
-  </div>
-
-  <!-- Buscar / crear por teléfono -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
-    <label class="block text-sm text-telecab-muted mb-2">Contacto del candidato — teléfono (9 dígitos)</label>
-    <div class="flex gap-2">
-      <input id="tel-input" inputmode="numeric" maxlength="14" placeholder="6XX XXX XXX"
-             class="flex-1 bg-telecab-dark border border-telecab-border rounded-xl px-4 py-2.5 text-telecab-text placeholder:text-telecab-muted/60 focus:outline-none focus:border-telecab-gold transition font-mono tracking-wider">
-      <button id="btn-abrir" class="px-5 py-2.5 rounded-xl bg-telecab-gold text-telecab-dark font-semibold hover:bg-telecab-gold-soft transition whitespace-nowrap">
-        <i class="fa-solid fa-id-card mr-1"></i> Abrir / crear
-      </button>
-    </div>
-    <p id="tel-error" class="text-telecab-red text-xs mt-2 hidden"></p>
-  </div>
-
-  <!-- Ficha -->
-  <div id="ficha" class="bg-telecab-card border border-telecab-border rounded-2xl p-5 hidden">
-    <div class="flex items-center justify-between mb-3">
-      <div>
-        <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
-          <i class="fa-solid fa-user-pen text-telecab-gold"></i> <span id="ficha-titulo">Nuevo candidato</span>
-        </h2>
-        <p class="text-sm text-telecab-muted font-mono" id="ficha-tel"></p>
-      </div>
-    </div>
-
-    <div id="banner-bolt" class="hidden mb-3 rounded-xl border border-telecab-gold/50 bg-telecab-gold/10 p-3 text-xs text-telecab-gold">
-      <i class="fa-solid fa-triangle-exclamation mr-1"></i> <b>Este conductor YA está en BOLT</b> (viene de un proceso anterior). No hay que crear la cuenta: <b>actívala YA en BOLT</b> — sin estar activo no puede trabajar. Al pasar a RRHH la cuenta se enlaza sola a su ficha.
-    </div>
-
-    <!-- Funnel stepper -->
-    <div class="flex flex-wrap gap-1.5 mb-4" id="stepper">
-      <% (etapas || []).forEach(function (e, i) { %>
-        <button type="button" data-etapa="<%= e %>" class="step px-3 py-1.5 rounded-lg text-xs border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
-          <%= i + 1 %>. <%= e %>
-        </button>
-      <% }); %>
-    </div>
-
-    <div class="grid md:grid-cols-2 gap-4">
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Nombre</label>
-        <input data-campo="nombre" class="inp">
-      </div>
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Apellidos</label>
-        <input data-campo="apellidos" class="inp">
-      </div>
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">DNI / NIE</label>
-        <input data-campo="dni" class="inp">
-      </div>
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Canal de origen</label>
-        <select data-campo="canal" class="inp">
-          <option value="">—</option>
-          <% (canales || []).forEach(function (c) { %><option value="<%= c %>"><%= c %></option><% }); %>
-        </select>
-        <p id="nota-ett" class="text-[11px] text-telecab-gold mt-1 hidden"><i class="fa-solid fa-circle-info"></i> Vía ETT: el contrato puede ser 40h ETT / 32h ETT. La agencia nos lo manda; lo entrevistamos igual.</p>
-      </div>
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Correo electrónico</label>
-        <input data-campo="email" type="email" class="inp">
-      </div>
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Contacto de emergencia</label>
-        <input data-campo="contacto_emergencia" class="inp">
-      </div>
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Fecha de nacimiento</label>
-        <input data-campo="fecha_nacimiento" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-max="today">
-      </div>
-
-      <!-- Vacante que se cubre (la arma Tráfico en el generador) -->
-      <div class="md:col-span-2">
-        <label class="block text-xs text-telecab-muted mb-1">Vacante <span class="text-telecab-muted/70">(la elige Tráfico en el generador)</span></label>
-        <select data-campo="vacante" class="inp">
-          <option value="">— sin asignar —</option>
-          <% (vacantes || []).forEach(function (v) { %>
-            <option value="<%= v.id %>" data-zonas="<%= v.zonas %>" data-turno="<%= v.turno %>"><%= v.puesto %> · <%= v.zonas %> · libra <%= v.libranzas %></option>
-          <% }); %>
-        </select>
-        <p id="vac-info" class="text-[11px] text-telecab-muted mt-1 hidden"></p>
-      </div>
-
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Certificado bancario (IBAN / nº cuenta)</label>
-        <input data-campo="iban" class="inp font-mono">
-      </div>
-      <div>
-        <label class="block text-xs text-telecab-muted mb-1">Responsable (Selección)</label>
-        <input data-campo="responsable" class="inp">
-      </div>
-
-      <div class="md:col-span-2">
-        <label class="block text-xs text-telecab-muted mb-1">Dirección <span class="text-telecab-muted/70">(en partes: geocodifica mejor)</span></label>
-        <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
-          <select id="dir-tipovia" class="inp sm:col-span-2">
-            <option>Calle</option><option>Avenida</option><option>Paseo</option><option>Plaza</option>
-            <option>Camino</option><option>Carretera</option><option>Ronda</option><option>Travesía</option>
-            <option>Callejón</option><option>Glorieta</option><option>Vía</option><option>Otra</option>
-          </select>
-          <input id="dir-via" class="inp col-span-2 sm:col-span-3" placeholder="Nombre de la vía">
-          <input id="dir-numero" class="inp sm:col-span-1" placeholder="Nº" inputmode="numeric">
-        </div>
-        <input id="dir-resto" class="inp mt-2" placeholder="Piso / puerta / escalera (opcional)">
-        <input data-campo="direccion" class="inp mt-2" placeholder="Dirección completa (se arma con las partes; editable)">
-        <p class="text-[11px] text-telecab-muted mt-1">El código postal, la localidad y la provincia se toman de la <b>Ficha de alta</b> (abajo) para geocodificar con precisión.</p>
-      </div>
-      <div class="md:col-span-2">
-        <label class="block text-xs text-telecab-muted mb-1">Coordenadas</label>
-        <div class="flex gap-2">
-          <input data-campo="coordenadas" class="inp font-mono flex-1" placeholder="lat, lng">
-          <button id="btn-geo" type="button" class="px-3 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition whitespace-nowrap text-sm">
-            <i class="fa-solid fa-location-crosshairs mr-1"></i> Obtener
-          </button>
-        </div>
-        <p id="geo-info" class="text-[11px] mt-1 hidden"></p>
-      </div>
-
-      <div class="md:col-span-2">
-        <label class="block text-xs text-telecab-muted mb-1">Notas</label>
-        <textarea data-campo="notas" rows="2" class="inp resize-none"></textarea>
-      </div>
-
-    </div>
-
-    <!-- ══════════ FICHA DE ALTA: datos + documentos ══════════ -->
-    <div class="mt-5 pt-4 border-t border-telecab-border">
-      <h3 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
-        <i class="fa-solid fa-file-signature text-telecab-gold"></i> Ficha de alta
-        <span class="text-[11px] text-telecab-muted font-normal">— datos y documentos para la FICHA DE ALTA en PDF</span>
-      </h3>
-      <div class="grid md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Código postal</label>
-          <input data-campo="codigo_postal" class="inp">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Localidad</label>
-          <input data-campo="localidad" class="inp" placeholder="MADRID">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Provincia</label>
-          <input data-campo="provincia" class="inp" placeholder="Madrid">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Sexo</label>
-          <select data-campo="sexo" class="inp">
-            <option value="">—</option>
-            <option>Hombre</option>
-            <option>Mujer</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Centro de trabajo</label>
-          <select data-campo="centro_trabajo" class="inp">
-            <option value="">—</option>
-            <option value="00003">TIBUS LUXURY SERVICES, SLU (TELECAB)</option>
-            <option value="00002">TIBUS LUXURY (NETWORK)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Estado civil</label>
-          <input data-campo="estado_civil" class="inp" placeholder="SOLTERO">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Nº de hijos</label>
-          <input data-campo="num_hijos" class="inp">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Nº Seguridad Social</label>
-          <input data-campo="num_seg_social" class="inp font-mono">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Tipo de carnet</label>
-          <input data-campo="tipo_carnet" class="inp" placeholder="B">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Carnet · fecha expedición</label>
-          <input data-campo="carnet_expedicion" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-max="today" data-max-field="carnet_caducidad" data-max-offset="-1">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Carnet · fecha caducidad</label>
-          <input data-campo="carnet_caducidad" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-min="today" data-min-field="carnet_expedicion" data-min-offset="1">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Fecha tentativa de incorporación</label>
-          <input data-campo="fecha_inicio" class="js-fecha inp" readonly placeholder="dd/mm/aaaa" data-min="today">
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Nacionalidad <span class="text-telecab-muted/70">(del DNI/NIE)</span></label>
-          <input data-campo="nacionalidad" class="inp" list="dl-nacionalidades" placeholder="Escribe o elige…" autocomplete="off">
-          <datalist id="dl-nacionalidades"></datalist>
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Turno <span class="text-telecab-muted/70">(se sugiere desde la vacante)</span></label>
-          <select data-campo="turno" class="inp">
-            <option value="">— sin asignar —</option>
-            <option value="Día">Día</option>
-            <option value="Noche">Noche</option>
-            <option value="TodoTurno">TodoTurno</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1">Jornada</label>
-          <select data-campo="jornada" class="inp">
-            <option value="40 HORAS">40 horas</option>
-            <option value="32 HORAS">32 horas</option>
-          </select>
-          <p id="salario-nota" class="text-[11px] text-telecab-gold mt-1"></p>
-        </div>
-      </div>
-
-      <p class="text-xs uppercase tracking-wide text-telecab-muted mt-5 mb-2">Documentos <span class="normal-case text-telecab-muted/70">— arrastra un archivo, pega un pantallazo (Ctrl+V) o haz clic para examinar</span></p>
-      <div id="drive-aviso" class="hidden rounded-lg border border-telecab-gold/40 bg-telecab-gold/5 px-3 py-2 text-xs text-telecab-gold mb-2"></div>
-      <div id="dropzones" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
-
-      <div class="mt-4 flex items-center gap-3 flex-wrap">
-        <button id="btn-ficha" class="px-4 py-2.5 rounded-xl bg-telecab-gold/15 border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/25 transition font-semibold">
-          <i class="fa-solid fa-file-pdf mr-1"></i> Generar FICHA DE ALTA (PDF)
-        </button>
-        <p id="ficha-pdf-msg" class="text-xs hidden"></p>
-      </div>
-    </div>
-
-    <!-- Atributos rápidos -->
-    <div class="flex flex-wrap gap-4 mt-4">
-      <% [{k:'experiencia',t:'Experiencia'},{k:'carne_vtc',t:'Carné VTC'}].forEach(function (f) { %>
-        <div>
-          <label class="block text-xs text-telecab-muted mb-1"><%= f.t %></label>
-          <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden" data-toggle="<%= f.k %>">
-            <button type="button" data-val="Sí" class="px-4 py-1.5 text-sm transition">Sí</button>
-            <button type="button" data-val="No" class="px-4 py-1.5 text-sm transition border-l border-telecab-border">No</button>
-          </div>
-        </div>
-      <% }); %>
-    </div>
-
-    <div class="flex flex-wrap gap-2 mt-5">
-      <button id="btn-guardar" class="px-4 py-2.5 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text hover:border-telecab-gold transition font-medium">
-        <i class="fa-solid fa-floppy-disk mr-1"></i> Guardar
-      </button>
-      <button id="btn-bolt" class="px-4 py-2.5 rounded-xl bg-telecab-green/15 border border-telecab-green/40 text-telecab-green hover:bg-telecab-green/25 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
-        <i class="fa-solid fa-paper-plane mr-1"></i> Enviar solicitud a BOLT
-      </button>
-      <button id="btn-descartar" class="px-4 py-2.5 rounded-xl bg-telecab-red/10 border border-telecab-red/40 text-telecab-red hover:bg-telecab-red/20 transition font-medium ml-auto">
-        <i class="fa-solid fa-user-xmark mr-1"></i> Descartar
-      </button>
-    </div>
-    <p id="ficha-msg" class="text-xs mt-3 hidden"></p>
-  </div>
-
-  <!-- Board por etapa -->
-  <div id="board" class="space-y-3"></div>
-
-</div>
-
-
-<script src="<%= typeof est === 'function' ? est('/assets/js/nacionalidades.js') : '/assets/js/nacionalidades.js' %>"></script>
 <script>
-  const ETAPAS = <%- JSON.stringify(etapas || []) %>;
-  const CAMPOS = ['nombre','dni','canal','email','contacto_emergencia','fecha_nacimiento','vacante','iban','responsable','direccion','coordenadas','notas',
-    'apellidos','codigo_postal','localidad','provincia','estado_civil','num_hijos','num_seg_social','tipo_carnet','carnet_expedicion','carnet_caducidad','fecha_inicio','jornada','nacionalidad','turno',
-    'sexo','centro_trabajo'];
-  const estado = { experiencia: 'No', carne_vtc: 'No' };
-  let ticketActual = null;
-  let EN_BOLT = false;   // ¿el teléfono ya está en nuestro histórico de BOLT?
+(function () {
+  const CAT = <%- JSON.stringify(catalogos || {}) %>;
+  const VACANTES = <%- JSON.stringify(vacantes || []) %>;
+  const DOCS = <%- JSON.stringify(documentos || []) %>;
+  const { fecha, hace, esc } = Listado.fmt;
 
-  const $ = s => document.querySelector(s);
-  const norm = v => String(v || '').replace(/\D/g, '').slice(-9);
-
-  // Toggles Sí/No
-  function pintarToggle(campo) {
-    document.querySelectorAll(`[data-toggle="${campo}"] [data-val]`).forEach(b => {
-      const on = b.dataset.val === estado[campo];
-      b.className = 'px-4 py-1.5 text-sm transition' + (b.dataset.val === 'No' ? ' border-l border-telecab-border' : '') +
-        (on ? (estado[campo] === 'Sí' ? ' bg-telecab-green/20 text-telecab-green font-semibold' : ' bg-telecab-card2 text-telecab-text font-semibold')
-            : ' text-telecab-muted hover:bg-telecab-card2');
-    });
-  }
-  document.querySelectorAll('[data-toggle]').forEach(g => {
-    const campo = g.dataset.toggle;
-    g.querySelectorAll('[data-val]').forEach(b => b.addEventListener('click', () => { estado[campo] = b.dataset.val; pintarToggle(campo); }));
-  });
-
-  // Stepper del funnel
-  function pintarStepper(estadoActual) {
-    const idx = ETAPAS.indexOf(estadoActual);
-    document.querySelectorAll('#stepper .step').forEach((b, i) => {
-      const done = i < idx, cur = i === idx;
-      b.className = 'step px-3 py-1.5 rounded-lg text-xs border transition ' +
-        (cur ? 'border-telecab-gold bg-telecab-gold/15 text-telecab-gold font-semibold'
-         : done ? 'border-telecab-green/40 bg-telecab-green/10 text-telecab-green'
-         : 'border-telecab-border text-telecab-muted hover:border-telecab-gold');
-    });
-    actualizarBotonBolt();
-  }
-
-  // Ya no hay link de BOLT que rellenar: basta con haber terminado el funnel.
-  // El botón pasa la ficha a RRHH, tenga cuenta de BOLT o no — sin cuenta no
-  // podrá conducir, pero eso se resuelve en RRHH y no bloquea la contratación.
-  function actualizarBotonBolt() {
-    const estadoActual = ticketActual ? ticketActual.estado : '';
-    const btn = $('#btn-bolt');
-    btn.disabled = estadoActual !== ETAPAS[ETAPAS.length - 1];
-    btn.innerHTML = '<i class="fa-solid fa-forward mr-1"></i> Pasar a RRHH';
-  }
-
-  async function api(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    return r.json();
-  }
-  function msg(texto, ok) {
-    const el = $('#ficha-msg');
-    el.textContent = texto;
-    el.className = 'text-xs mt-3 ' + (ok ? 'text-telecab-green' : 'text-telecab-red');
-    el.classList.remove('hidden');
-  }
-
-  function abrirFicha(t, tel) {
-    ticketActual = t || { id: tel, estado: ETAPAS[0] };
-    $('#ficha').classList.remove('hidden');
-    $('#ficha-tel').textContent = ticketActual.id;
-    $('#ficha-titulo').textContent = (t && t.nombre) ? t.nombre : 'Nuevo candidato';
-    CAMPOS.forEach(k => { const el = $(`[data-campo="${k}"]`); if (el) el.value = t ? (t[k] || '') : ''; });
-    descomponerDireccion(t ? (t.direccion || '') : '');   // parte la dirección en tipo/vía/número
-    ['experiencia', 'carne_vtc'].forEach(k => { estado[k] = (t && t[k] === 'Sí') ? 'Sí' : 'No'; pintarToggle(k); });
-    pintarStepper(ticketActual.estado);
-    pintarVacInfo();
-    refrescarDocs();
-    const _j = $('[data-campo="jornada"]'); if (_j && !_j.value) _j.value = '40 HORAS';
-    actualizarSalario();
-    $('#nota-ett').classList.toggle('hidden', ($('[data-campo="canal"]').value !== 'Bolsa de Empleo (ETT)'));
-    $('#ficha-msg').classList.add('hidden');
-    $('#ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-
-  // Reabre una ficha por teléfono (cargando datos del servidor + banner de BOLT).
-  async function abrirPorTel(tel) {
-    const r = await (await fetch('/seleccion/api/ticket/' + tel)).json();
-    EN_BOLT = !!(r && r.enBolt);
-    $('#banner-bolt').classList.toggle('hidden', !EN_BOLT);
-    abrirFicha((r && r.ticket) || { id: tel }, tel);
-  }
-
-  function datosFicha() {
-    const d = { tel: ticketActual.id, experiencia: estado.experiencia, carne_vtc: estado.carne_vtc };
-    CAMPOS.forEach(k => { const el = $(`[data-campo="${k}"]`); if (el) d[k] = el.value; });
-    // La zona se deriva de la vacante; el turno lo lleva su propio selector (CAMPOS).
-    const opt = $('[data-campo="vacante"]').selectedOptions[0];
-    d.zona = opt ? (opt.dataset.zonas || '') : '';
-    return d;
-  }
-
-  // Cola de subida de documentos. Guardar el formulario reescribe TODA la hoja,
-  // así que primero se espera a que terminen las subidas (que escriben celdas
-  // sueltas) para no revertirlas con una lectura antigua.
-  let colaDocs = Promise.resolve();
-  async function guardarFormulario() {
-    await colaDocs;
-    return api('/seleccion/ticket', datosFicha());
-  }
-
-  // Campos y documentos obligatorios antes de enviar a BOLT (deben coincidir con
-  // REQUERIDOS_ALTA del servidor, que es quien lo impone de verdad).
-  const REQ_FICHA = [
-    ['nombre', 'Nombre'], ['apellidos', 'Apellidos'], ['dni', 'DNI/NIE'],
-    ['fecha_nacimiento', 'Fecha de nacimiento'], ['sexo', 'Sexo'], ['email', 'Correo'],
-    ['direccion', 'Dirección'], ['codigo_postal', 'Código postal'],
-    ['estado_civil', 'Estado civil'], ['num_seg_social', 'Nº Seguridad Social'],
-    ['iban', 'Certificado bancario (IBAN)'],
-    ['carnet_expedicion', 'Carnet: expedición'], ['carnet_caducidad', 'Carnet: caducidad'],
-    ['fecha_inicio', 'Fecha de inicio']
-  ];
-  const REQ_DOCS = [
-    ['dni', 'Doc: DNI/NIE (frente)'], ['dni_reverso', 'Doc: DNI/NIE (reverso)'],
-    ['carnet', 'Doc: Carnet (frente)'], ['carnet_reverso', 'Doc: Carnet (reverso)'],
-    ['bancario', 'Doc: Cert. bancario'],
-    ['seg_social', 'Doc: Seg. Social/vida laboral'], ['penales', 'Doc: Delitos sexuales']
-  ];
-  function faltanFicha() {
-    const d = datosFicha();
-    const faltan = REQ_FICHA.filter(([c]) => !String(d[c] || '').trim()).map(([, l]) => l);
-    REQ_DOCS.forEach(([k, l]) => { if (!(ticketActual && ticketActual['doc_' + k])) faltan.push(l); });
-    return faltan;
-  }
-
-  function pintarVacInfo() {
-    const opt = $('[data-campo="vacante"]').selectedOptions[0];
-    const info = $('#vac-info');
-    if (opt && opt.value) { info.textContent = `Zona: ${opt.dataset.zonas || '—'} · Turno: ${opt.dataset.turno || '—'}`; info.classList.remove('hidden'); }
-    else info.classList.add('hidden');
-  }
-  $('[data-campo="vacante"]').addEventListener('change', () => {
-    pintarVacInfo();
-    // Al elegir vacante se sugiere su turno (el reclutador puede cambiarlo).
-    const opt = $('[data-campo="vacante"]').selectedOptions[0];
-    const tno = opt && opt.dataset.turno;
-    const sel = $('[data-campo="turno"]');
-    if (tno && sel && [...sel.options].some(o => o.value === tno)) sel.value = tno;
-  });
-
-  // Salario según la jornada (40 h → 1.442,14 · 32 h → 1.154,39). Solo informativo
-  // en la ficha; el PDF lo vuelve a calcular igual en el servidor.
-  const SALARIOS = { '40': '1.442,14', '32': '1.154,39' };
-  function actualizarSalario() {
-    const jn = $('[data-campo="jornada"]');
-    const h = (jn ? jn.value : '').replace(/\D/g, '');
-    const nota = $('#salario-nota');
-    if (nota) nota.textContent = 'Salario: ' + (SALARIOS[h] || SALARIOS['40']) + ' € · Contrato: ' + (h === '32' ? 'CT-200' : 'CT-100');
-  }
-  { const jn = $('[data-campo="jornada"]'); if (jn) jn.addEventListener('change', actualizarSalario); }
-
-  // Abrir / crear
-  $('#btn-abrir').addEventListener('click', async () => {
-    const tel = norm($('#tel-input').value);
-    const err = $('#tel-error');
-    if (tel.length !== 9) { err.textContent = 'El teléfono debe tener 9 dígitos.'; err.classList.remove('hidden'); return; }
-    err.classList.add('hidden');
-    const r = await (await fetch('/seleccion/api/ticket/' + tel)).json();
-    EN_BOLT = !!r.enBolt;
-    $('#banner-bolt').classList.toggle('hidden', !EN_BOLT);
-    abrirFicha(r.ticket, tel);
-  });
-  $('#tel-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btn-abrir').click(); });
-  $('[data-campo="canal"]').addEventListener('change', () => $('#nota-ett').classList.toggle('hidden', $('[data-campo="canal"]').value !== 'Bolsa de Empleo (ETT)'));
-
-  // Guardar
-  $('#btn-guardar').addEventListener('click', async () => {
-    const r = await guardarFormulario();
-    if (r.status === 'ok') { $('#ficha').classList.add('hidden'); cargar(); }
-    else msg(r.msg || 'Error al guardar', false);
-  });
-
-  // Mover de etapa (stepper)
-  $('#stepper').addEventListener('click', async e => {
-    const b = e.target.closest('.step'); if (!b || !ticketActual) return;
-    await guardarFormulario();              // guarda lo escrito
-    const r = await api('/seleccion/etapa', { tel: ticketActual.id, estado: b.dataset.etapa });
-    if (r.status === 'ok') { ticketActual = r.ticket; pintarStepper(r.ticket.estado); cargar(); }
-    else msg(r.msg || 'No se pudo mover de etapa', false);
-  });
-
-  // Enviar a BOLT
-  $('#btn-bolt').addEventListener('click', async () => {
-    await guardarFormulario();                 // guarda lo tecleado antes de validar
-    const faltan = faltanFicha();
-    if (faltan.length) { msg('Completa la ficha antes de enviar a BOLT — falta: ' + faltan.join(', '), false); return; }
-    const r = await api('/seleccion/bolt', { tel: ticketActual.id });
-    if (r.status === 'ok') {
-      const directo = r.ticket && r.ticket.estado === 'Aprobado en BOLT';
-      msg(directo ? 'Ya estaba en BOLT — pasado directo a RRHH. Recuerda activarlo en BOLT.'
-                  : 'Solicitud enviada a BOLT — pendiente de aprobación.', true);
-      $('#ficha').classList.add('hidden'); cargar();
+  /** Llama a la API y devuelve el JSON, o lanza con el mensaje del servidor. */
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => null);
+    if (!r.ok || (j && j.status === 'error')) {
+      const e = new Error((j && j.msg) || 'Error ' + r.status);
+      // El servidor dice MÁS que un mensaje: si el fallo es un choque con
+      // alguien que ya existe, viene con quién es y qué se puede hacer.
+      if (j) { e.conflicto = j.conflicto; e.situacion = j.situacion; }
+      throw e;
     }
-    else msg(r.msg || 'No se pudo enviar a BOLT', false);
-  });
-
-  // Descartar
-  $('#btn-descartar').addEventListener('click', async () => {
-    const motivo = prompt('Motivo del descarte:'); if (motivo === null) return;
-    const r = await api('/seleccion/descartar', { tel: ticketActual.id, motivo });
-    if (r.status === 'ok') { $('#ficha').classList.add('hidden'); cargar(); }
-    else msg(r.msg || 'No se pudo descartar', false);
-  });
-
-  // ── Dirección estructurada + geocodificación fiable ──────────────────────
-  const TIPOS_VIA = ['Calle', 'Avenida', 'Paseo', 'Plaza', 'Camino', 'Carretera', 'Ronda', 'Travesía', 'Callejón', 'Glorieta', 'Vía'];
-  // Arma la "Dirección completa" (lo que se guarda) a partir de las partes.
-  function componerDireccion() {
-    const tipo = $('#dir-tipovia').value, via = $('#dir-via').value.trim();
-    const num = $('#dir-numero').value.trim(), resto = $('#dir-resto').value.trim();
-    if (!via && !num && !resto) return;   // sin partes no se pisa lo ya escrito
-    // Si el nombre de la vía ya empieza por un tipo (o "Gran Vía"), no se antepone otro.
-    const yaLleva = /^(calle|avenida|avda|av|paseo|plaza|pza|camino|carretera|ctra|ronda|travesía|callejón|glorieta|vía|gran vía)\b/i.test(via);
-    const calle = [(via && !yaLleva ? tipo : ''), via, num].filter(Boolean).join(' ').trim();
-    $('[data-campo="direccion"]').value = [calle, resto].filter(Boolean).join(', ');
+    return j;
   }
-  // Al cargar una ficha, reparte la dirección guardada en tipo/vía/número (aprox.).
-  function descomponerDireccion(valor) {
-    const set = (t, v, n, r) => { $('#dir-tipovia').value = t; $('#dir-via').value = v; $('#dir-numero').value = n; $('#dir-resto').value = r; };
-    set('Calle', '', '', '');
-    const s = String(valor || '').trim();
-    if (!s) return;
-    const partes = s.split(',');
-    const calle = (partes.shift() || '').trim();
-    const resto = partes.join(',').trim();
-    const m = calle.match(/^(\p{L}+)\s+(.*?)\s+(\d+\S*)$/u);
-    const tipo = m && TIPOS_VIA.find(t => t.toLowerCase() === m[1].toLowerCase());
-    if (tipo) set(tipo, m[2].trim(), m[3].trim(), resto);
-    else set('Calle', calle, '', resto);   // no casó: se conserva todo en la vía
-  }
-  ['#dir-tipovia', '#dir-via', '#dir-numero', '#dir-resto'].forEach(sel => {
-    const el = $(sel); if (!el) return;
-    el.addEventListener('input', componerDireccion);
-    el.addEventListener('change', componerDireccion);
+
+  const enviar = (url, metodo, cuerpo) => api(url, {
+    method: metodo,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo || {}),
   });
 
-  // Sugerencias de nacionalidad (ISO 3166) en el datalist.
-  (function () {
-    const dl = document.getElementById('dl-nacionalidades');
-    if (dl && window.NACIONALIDADES) dl.innerHTML = window.NACIONALIDADES.map(n => `<option value="${n}"></option>`).join('');
-  })();
+  /** Ejecuta algo, refresca la pantalla, y enseña el error si lo hay. */
+  async function hacer(fn) {
+    try {
+      const r = await fn();
+      await seleccion.recargar();
+      return r;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo hacer', texto: e.message, tono: 'error' });
+      return null;
+    }
+  }
 
-  // Geocodificar: envía las partes + CP/localidad/provincia de la ficha (búsqueda
-  // estructurada de Nominatim, más fiable) y avisa de la precisión del resultado.
-  $('#btn-geo').addEventListener('click', async () => {
-    const payload = {
-      tipo_via: $('#dir-tipovia').value, via: $('#dir-via').value.trim(), numero: $('#dir-numero').value.trim(),
-      direccion: $('[data-campo="direccion"]').value.trim(),
-      codigo_postal: $('[data-campo="codigo_postal"]').value.trim(),
-      localidad: $('[data-campo="localidad"]').value.trim(),
-      provincia: $('[data-campo="provincia"]').value.trim()
+  const tel9 = v => { const d = String(v || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
+
+  // ── Abrir o crear por teléfono ──────────────────────────────────────────
+  //
+  // Es como empieza todo: se escribe un número y el sistema dice qué hay detrás
+  // ANTES de dejar rellenar nada. Preguntarlo después solo permitiría rechazar
+  // el alta con un error, y quien lo lee se quedaría sin saber si debe seguir un
+  // proceso que ya existe, restaurar a alguien o empezar de cero.
+
+  async function abrirPorTelefono() {
+    const v = await Dialogo.formulario('Abrir o crear candidato', [
+      { id: 'telefono', etiqueta: 'Teléfono (9 dígitos)', marcador: '6XX XXX XXX' },
+    ], { textoBoton: 'Buscar' });
+    if (!v || tel9(v.telefono).length !== 9) return;
+
+    let r;
+    try { r = await api('/seleccion/api/telefono/' + tel9(v.telefono)); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo buscar', texto: e.message, tono: 'error' }); }
+
+    // Ya hay un proceso vivo con ese número: se abre y punto.
+    if (r.candidatura) return seleccion.abrir(r.candidatura.id);
+
+    const s = r.situacion || {};
+    const avisos = (s.avisos || []).map(a => '<li>' + esc(a) + '</li>').join('');
+    const sigue = await Dialogo.confirmar({
+      titulo: s.titulo || 'Candidato nuevo',
+      html: '<p class="text-sm">' + esc(s.explica || '') + '</p>'
+        + (s.ficha
+          ? '<p class="text-sm mt-2"><b>' + esc(s.ficha.quien) + '</b>'
+            + (s.ficha.baja ? ' · se fue el ' + esc(fecha(s.ficha.baja)) : '') + '</p>'
+          : '')
+        + (s.bolt
+          ? '<p class="text-sm mt-2">En BOLT como <b>' + esc(s.bolt.nombre || '—') + '</b> con el '
+            + esc(s.bolt.telefono || '—') + (s.bolt.activa ? '' : ' (cuenta desactivada)') + '</p>'
+          : '')
+        + (avisos
+          ? '<ul class="text-xs text-telecab-warn mt-3 space-y-1 list-disc pl-4">' + avisos + '</ul>'
+          : ''),
+      si: 'Abrir candidatura',
+    });
+    if (!sigue) return;
+
+    // Si no tenemos ficha suya hace falta un nombre para crearla. Si BOLT nos da
+    // uno, viene puesto: escribirlo otra vez solo sirve para que salga distinto.
+    let datos = { telefono: tel9(v.telefono) };
+    if (!s.ficha) {
+      const n = await Dialogo.formulario('Datos para abrir la candidatura', [
+        { id: 'nombre', etiqueta: 'Nombre y apellidos', valor: s.nombreSugerido || '' },
+        { id: 'canal', etiqueta: 'Canal de origen', tipo: 'lista',
+          opciones: (CAT.canales || []).map(c => ({ valor: c.codigo, texto: c.etiqueta })) },
+      ], { textoBoton: 'Crear' });
+      if (!n || !String(n.nombre || '').trim()) return;
+      datos = Object.assign(datos, n);
+    }
+
+    const creada = await hacer(() => enviar('/seleccion/api/candidatura', 'POST', datos));
+    if (creada && creada.id) seleccion.abrir(creada.id);
+  }
+
+  // ── Acciones de la ficha ────────────────────────────────────────────────
+
+  /** Mover dentro del embudo, o sacar de él. */
+  async function accionEstado(d) {
+    const ops = (CAT.estados || [])
+      .filter(e => e.en_funnel || e.es_salida || e.etapa === 'seleccion')
+      .map(e => ({ valor: e.codigo, texto: e.etiqueta }));
+    const v = await Dialogo.formulario('Estado de ' + d.quien, [
+      { id: 'estado', etiqueta: 'Estado', tipo: 'lista', opciones: ops, valor: d.estado, obligatorio: true },
+      { id: 'motivo', etiqueta: 'Motivo (si se descarta o se devuelve)', tipo: 'texto-largo' },
+    ]);
+    if (!v || !v.estado || v.estado === d.estado) return;
+    await hacer(() => enviar('/seleccion/api/candidatura/' + d.id + '/estado', 'POST', v));
+  }
+
+  /**
+   * Todos los datos en un formulario: los de la persona y los del proceso.
+   *
+   * La lista de campos viene del SERVIDOR, no escrita aquí: son los mismos que
+   * valida al guardar, así que no pueden discrepar.
+   */
+  async function accionDatos(d) {
+    const LISTAS = {
+      canal: (CAT.canales || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })),
+      turno_id: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })),
+      base_zona_id: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })),
+      vacante_ref: VACANTES.map(x => ({ valor: x.id, texto: x.puesto + ' · ' + x.zonas })),
     };
-    if (!payload.via && !payload.direccion) { msg('Escribe primero la dirección.', false); return; }
-    const btn = $('#btn-geo'); const html = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
-    const r = await api('/seleccion/geocodificar', payload);
-    btn.innerHTML = html;
-    const info = $('#geo-info');
-    if (r.status === 'ok' && r.encontrado) {
-      $('[data-campo="coordenadas"]').value = r.coordenadas;
-      const fina = /house|building|address|amenity|shop|place/i.test(r.precision || '');
-      info.textContent = (fina ? '✓ Portal exacto' : '≈ Aproximado (' + (r.precision || 'zona') + ') — revisa número y CP') + (r.etiqueta ? ' · ' + r.etiqueta : '');
-      info.className = 'text-[11px] mt-1 ' + (fina ? 'text-telecab-green' : 'text-telecab-gold');
-      info.classList.remove('hidden');
-      msg('Coordenadas obtenidas (' + (r.precision || '—') + ').', true);
-    } else {
-      info.classList.add('hidden');
-      msg(r.msg || 'No se encontró la dirección. Revisa vía, número y CP.', false);
-    }
-  });
 
-  // Board por etapa
-  function tarjeta(t) {
-    const el = document.createElement('button');
-    el.className = 'w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-border transition';
-    el.innerHTML =
-      `<span class="w-7 h-7 rounded-lg bg-telecab-gold/15 text-telecab-gold flex items-center justify-center shrink-0 text-xs"><i class="fa-solid fa-user"></i></span>
-       <span class="min-w-0 flex-1">
-         <span class="block text-sm text-telecab-text truncate">${t.nombre || '<span class=\"text-telecab-muted\">(sin nombre)</span>'}</span>
-         <span class="block text-xs text-telecab-muted font-mono">${t.id}${t.zona ? ' · ' + t.zona : ''}${t.turno ? ' ' + t.turno : ''}${t.canal ? ' · ' + t.canal : ''}</span>
-       </span>`;
-    el.addEventListener('click', async () => {
-      const r = await (await fetch('/seleccion/api/ticket/' + t.id)).json();
-      EN_BOLT = !!(r && r.enBolt);
-      $('#banner-bolt').classList.toggle('hidden', !EN_BOLT);
-      abrirFicha((r && r.ticket) || t, t.id);
+    const campos = (CAT.campos || []).map(c => ({
+      id: c.id,
+      etiqueta: c.etiqueta || c.id,
+      grupo: c.grupo,
+      ayuda: c.id === 'iban' && d.tiene_iban
+        ? 'Ya hay uno guardado. Escribe solo si quieres cambiarlo.' : c.ayuda,
+      tipo: LISTAS[c.id] ? 'lista' : (c.tipo || 'texto'),
+      opciones: LISTAS[c.id] || c.opciones,
+      // El IBAN nunca vuelve del servidor: está cifrado. Se deja vacío y solo se
+      // manda si se escribe algo, para no borrarlo sin querer al guardar.
+      valor: c.id === 'iban' ? ''
+        : c.tipo === 'fecha' ? fecha(d[c.id])
+          : (d[c.id] == null ? '' : String(d[c.id])),
+    }));
+
+    const v = await Dialogo.formulario('Datos de ' + d.quien, campos, {
+      ancho: 'max-w-3xl', columnas: 2,
+      nota: 'Cada cambio queda registrado con tu nombre y la hora.',
     });
-    return el;
+    if (!v) return;
+
+    // Solo lo que ha cambiado: así el registro de auditoría no se llena de
+    // campos que nadie ha tocado.
+    const cambios = {};
+    campos.forEach(c => {
+      const ahora = v[c.id] == null ? '' : String(v[c.id]);
+      if (c.id === 'iban') { if (ahora) cambios.iban = ahora; return; }
+      const antes = c.tipo === 'fecha' ? (Dialogo.aISO(c.valor) || '') : (c.valor || '');
+      if (ahora !== antes) cambios[c.id] = v[c.id];
+    });
+    if (!Object.keys(cambios).length) return;
+    await hacer(() => enviar('/seleccion/api/candidatura/' + d.id, 'PUT', cambios));
   }
 
-  async function cargar() {
-    const r = await (await fetch('/seleccion/api/datos')).json();
-    if (r.status !== 'ok') return;
-    ETAPAS.forEach(e => { const el = document.querySelector(`[data-cont-etapa="${e}"]`); if (el) el.textContent = r.contadores.porEtapa[e] || 0; });
-    $('#c-pendiente').textContent = r.contadores.pendienteBolt;
-    $('#c-rechrrhh').textContent = r.contadores.rechazadosRRHH || 0;
-
-    const board = $('#board'); board.innerHTML = '';
-
-    // Rechazados por RRHH (si hay): arriba, con el motivo, para reabrir y corregir.
-    const rech = r.rechazadosRRHH || [];
-    if (rech.length) {
-      const sec = document.createElement('div');
-      sec.className = 'bg-telecab-red/5 border border-telecab-red/40 rounded-2xl p-4';
-      sec.innerHTML = `<h2 class="text-sm font-semibold text-telecab-red mb-2 flex items-center gap-2"><i class="fa-solid fa-rotate-left"></i> Rechazados por RRHH <span class="text-telecab-muted font-normal">(${rech.length})</span></h2>`;
-      const cont = document.createElement('div'); cont.className = 'space-y-1';
-      rech.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es')).forEach(t => {
-        const el = document.createElement('button');
-        el.className = 'w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg bg-telecab-dark/40 hover:bg-telecab-card2 border border-transparent hover:border-telecab-red/40 transition';
-        el.innerHTML =
-          `<span class="w-7 h-7 rounded-lg bg-telecab-red/15 text-telecab-red flex items-center justify-center shrink-0 text-xs"><i class="fa-solid fa-user-xmark"></i></span>
-           <span class="min-w-0 flex-1">
-             <span class="block text-sm text-telecab-text truncate">${t.nombre || '(sin nombre)'}</span>
-             <span class="block text-xs text-telecab-red/80 truncate">${t.motivo || 'Devuelto por RRHH'}</span>
-           </span>
-           <span class="block text-xs text-telecab-muted font-mono shrink-0">${t.id}</span>`;
-        el.addEventListener('click', () => abrirPorTel(t.id));
-        cont.appendChild(el);
+  /** Sacar las coordenadas de la dirección ya escrita. */
+  async function accionGeo(d) {
+    try {
+      const r = await enviar('/seleccion/api/geocodificar', 'POST', {
+        via: d.via_nombre, numero: d.via_numero, tipoVia: d.via_tipo,
+        codigo_postal: d.codigo_postal, localidad: d.localidad, provincia: d.provincia,
+        direccion: d.direccion,
       });
-      sec.appendChild(cont); board.appendChild(sec);
-    }
-
-    ETAPAS.forEach((e, i) => {
-      const lista = r.porEtapa[e] || [];
-      const sec = document.createElement('div');
-      sec.className = 'bg-telecab-card border border-telecab-border rounded-2xl p-4';
-      sec.innerHTML = `<h2 class="text-sm font-semibold text-telecab-text mb-2 flex items-center gap-2">
-          <span class="w-5 h-5 rounded-md bg-telecab-gold/15 text-telecab-gold text-[11px] flex items-center justify-center">${i + 1}</span>
-          ${e} <span class="text-telecab-muted font-normal">(${lista.length})</span></h2>`;
-      const cont = document.createElement('div'); cont.className = 'space-y-1';
-      if (!lista.length) cont.innerHTML = '<p class="text-telecab-muted text-xs px-1">—</p>';
-      else lista.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es')).forEach(t => cont.appendChild(tarjeta(t)));
-      sec.appendChild(cont); board.appendChild(sec);
-    });
-  }
-
-  // ---------- Documentos de la ficha de alta (Drive) ----------
-  const DOCS = [
-    { key: 'dni', label: 'DNI / NIE (frente)' },
-    { key: 'dni_reverso', label: 'DNI / NIE (reverso)' },
-    { key: 'carnet', label: 'Carnet de conducir (frente)' },
-    { key: 'carnet_reverso', label: 'Carnet de conducir (reverso)' },
-    { key: 'bancario', label: 'Certificado bancario' },
-    { key: 'seg_social', label: 'Cert. Seg. Social / vida laboral' },
-    { key: 'penales', label: 'Cert. de delitos sexuales' }
-  ];
-  let dzActiva = null;   // última zona apuntada (para pegar con Ctrl+V)
-
-  const iconoMime = m => /pdf/.test(m || '') ? 'fa-file-pdf' : (/image/.test(m || '') ? 'fa-file-image' : 'fa-file');
-
-  function pintarDoc(tipo, doc) {
-    const zona = document.querySelector(`.dz[data-tipo="${tipo}"]`);
-    if (!zona) return;
-    const body = zona.querySelector('.dz-body');
-    if (doc && doc.id) {
-      zona.classList.add('dz-ok');
-      const nombre = String(doc.nombre || 'documento').replace(/^[A-Z_]+ — /, '');
-      body.innerHTML =
-        `<div class="flex items-center gap-2 w-full">
-           <i class="fa-solid ${iconoMime(doc.mime)} text-telecab-green"></i>
-           <a href="${doc.link || '#'}" target="_blank" rel="noopener" class="flex-1 text-left text-xs text-telecab-text hover:text-telecab-gold truncate">${nombre}</a>
-           <button type="button" class="dz-quitar text-telecab-muted hover:text-telecab-red px-1" title="Quitar"><i class="fa-solid fa-xmark"></i></button>
-         </div>`;
-      body.querySelector('.dz-quitar').addEventListener('click', ev => { ev.stopPropagation(); quitarDoc(tipo); });
-    } else {
-      zona.classList.remove('dz-ok');
-      body.innerHTML = '<span class="text-[11px] text-telecab-muted">Arrastra, pega o haz clic</span>';
-    }
-  }
-
-  function refrescarDocs() {
-    DOCS.forEach(d => {
-      let doc = null;
-      const raw = ticketActual ? ticketActual['doc_' + d.key] : '';
-      if (raw) { try { doc = JSON.parse(raw); } catch (_) {} }
-      pintarDoc(d.key, doc);
-    });
-    // Ficha ya generada: mostrar el enlace al PDF actual.
-    const el = $('#ficha-pdf-msg');
-    let fp = null;
-    if (ticketActual && ticketActual.ficha_pdf) { try { fp = JSON.parse(ticketActual.ficha_pdf); } catch (_) {} }
-    if (fp && fp.link) {
-      el.className = 'text-xs text-telecab-muted';
-      el.innerHTML = 'Ficha actual: <a href="' + fp.link + '" target="_blank" rel="noopener" class="underline text-telecab-gold font-semibold">Abrir PDF →</a>';
-      el.classList.remove('hidden');
-    } else {
-      el.classList.add('hidden');
-    }
-  }
-
-  // Los documentos se suben de UNO EN UNO (cola): así el servidor escribe cada
-  // celda sin solaparse. El ticket lo crea el propio endpoint si no existía.
-  function subirDoc(tipo, file) {
-    if (!file || !ticketActual) return;
-    const tel = ticketActual.id;
-    const zona = document.querySelector(`.dz[data-tipo="${tipo}"]`);
-    zona.querySelector('.dz-body').innerHTML = '<span class="text-[11px] text-telecab-muted"><i class="fa-solid fa-circle-notch fa-spin"></i> Subiendo…</span>';
-    if (window.telecabCarga) window.telecabCarga.abrir();   // tapa la pantalla mientras sube
-    colaDocs = colaDocs.then(() => enviarDoc(tipo, file, tel));
-  }
-  async function enviarDoc(tipo, file, tel) {
-    try {
-      const fd = new FormData();
-      fd.append('tel', tel);
-      fd.append('tipo', tipo);
-      fd.append('archivo', file, file.name || (tipo + '.png'));
-      const r = await (await fetch('/seleccion/documento', { method: 'POST', body: fd })).json();
-      if (r.status !== 'ok') throw new Error(r.msg);
-      if (ticketActual && ticketActual.id === tel) ticketActual['doc_' + tipo] = JSON.stringify(r.doc);
-      pintarDoc(tipo, r.doc);
+      if (!r.lat || !r.lng) throw new Error('No se encontró esa dirección');
+      const ok = await Dialogo.confirmar({
+        titulo: 'Coordenadas encontradas',
+        texto: r.lat + ', ' + r.lng + (r.formateada ? ' — ' + r.formateada : '') + '. ¿Se guardan?',
+      });
+      if (!ok) return;
+      await hacer(() => enviar('/seleccion/api/candidatura/' + d.id, 'PUT',
+        { coordenadas: r.lat + ', ' + r.lng }));
     } catch (e) {
-      pintarDoc(tipo, null);
-      msg('No se pudo subir el documento: ' + e.message, false);
-    } finally {
-      if (window.telecabCarga) window.telecabCarga.cerrar();
+      await Dialogo.aviso({ titulo: 'No se pudo geocodificar', texto: e.message, tono: 'error' });
     }
   }
 
-  async function quitarDoc(tipo) {
-    if (!ticketActual) return;
-    try {
-      const r = await (await fetch('/seleccion/documento', {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tel: ticketActual.id, tipo })
-      })).json();
-      if (r.status !== 'ok') throw new Error(r.msg);
-      ticketActual['doc_' + tipo] = '';
-      pintarDoc(tipo, null);
-    } catch (e) { msg('No se pudo quitar: ' + e.message, false); }
+  /** Selección termina: se abre el contrato y la persona pasa a RRHH. */
+  async function accionRRHH(d) {
+    if ((d.faltan || []).length) {
+      return Dialogo.aviso({
+        titulo: 'Todavía falta algo',
+        html: '<p class="text-sm">Antes de pasar a RRHH hay que completar:</p>'
+          + '<ul class="text-sm mt-2 space-y-1 list-disc pl-4">'
+          + d.faltan.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>',
+        tono: 'aviso',
+      });
+    }
+
+    const v = await Dialogo.formulario('Contratar a ' + d.quien, [
+      { id: 'alta', etiqueta: 'Fecha de inicio', tipo: 'fecha',
+        valor: fecha(d.inicio_previsto), obligatorio: true },
+      { id: 'jornadaHoras', etiqueta: 'Jornada (horas)', valor: d.jornada_horas || '' },
+      { id: 'tipo', etiqueta: 'Tipo de contrato', tipo: 'lista', obligatorio: true,
+        valor: /ETT/i.test(d.tipo_contrato || '') ? 'ett' : 'propia',
+        opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', ayuda: 'Solo si el contrato es por ETT' },
+    ], { nota: 'Se le abre el periodo de empleo. A partir de aquí es plantilla, no candidato.' });
+    if (!v || !v.alta) return;
+
+    const r = await hacer(() => enviar('/seleccion/api/candidatura/' + d.id + '/rrhh', 'POST', v));
+    if (!r) return;
+    await Dialogo.aviso({
+      titulo: 'Pasa a RRHH',
+      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>'
+        + (r.faltaBolt
+          ? '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
+            + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>'
+          : '<p class="text-sm mt-2">Su cuenta de BOLT queda enlazada a la ficha.</p>'),
+      tono: r.faltaBolt ? 'aviso' : 'ok',
+    });
   }
 
-  function initDropzones() {
-    const cont = $('#dropzones');
-    cont.innerHTML = DOCS.map(d => `
-      <div class="dz relative rounded-xl border border-dashed border-telecab-border p-3 min-h-[92px] flex flex-col cursor-pointer transition focus:outline-none focus:border-telecab-gold" data-tipo="${d.key}" tabindex="0">
-        <span class="text-xs font-medium text-telecab-text mb-1">${d.label}</span>
-        <div class="dz-body flex-1 flex items-center justify-center text-center"></div>
-        <input type="file" class="hidden dz-input" accept="image/*,application/pdf,.pdf">
-      </div>`).join('');
+  /** La FICHA DE ALTA en PDF, con sus documentos incrustados. */
+  async function accionFichaPDF(d) {
+    const r = await hacer(() => enviar('/seleccion/api/candidatura/' + d.id + '/ficha-pdf', 'POST'));
+    if (!r) return;
+    await Dialogo.aviso({
+      titulo: 'Ficha generada',
+      html: '<p class="text-sm">' + esc(r.nombre) + ' · ' + r.adjuntos + ' documento(s) dentro</p>'
+        + '<p class="mt-2"><a href="' + esc(r.link) + '" target="_blank" rel="noopener" '
+        + 'class="text-telecab-gold underline">Abrir en Drive</a></p>',
+      tono: 'ok',
+    });
+  }
 
-    cont.querySelectorAll('.dz').forEach(zona => {
-      const tipo = zona.dataset.tipo;
-      const input = zona.querySelector('.dz-input');
-      pintarDoc(tipo, null);
-      zona.addEventListener('click', e => { if (e.target.closest('a,button')) return; input.click(); });
-      zona.addEventListener('focus', () => { dzActiva = tipo; });
-      zona.addEventListener('mouseenter', () => { dzActiva = tipo; });
-      input.addEventListener('change', () => { if (input.files[0]) subirDoc(tipo, input.files[0]); input.value = ''; });
-      zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('border-telecab-gold'); });
-      zona.addEventListener('dragleave', () => zona.classList.remove('border-telecab-gold'));
-      zona.addEventListener('drop', e => {
-        e.preventDefault(); zona.classList.remove('border-telecab-gold');
-        const f = e.dataTransfer.files[0]; if (f) subirDoc(tipo, f);
+  // ── Documentos ──────────────────────────────────────────────────────────
+
+  async function subirDocumento(d, key, archivo) {
+    const fd = new FormData();
+    fd.append('tipo', key);
+    fd.append('archivo', archivo, archivo.name);
+    // Los tipos que caducan piden su fecha, y el servidor lo exige. Un documento
+    // caducado que nadie vigila es peor que no tenerlo.
+    const cad = await Dialogo.formulario('Fechas del documento', [
+      { id: 'emision', etiqueta: 'Fecha de emisión', tipo: 'fecha' },
+      { id: 'caduca', etiqueta: 'Fecha de caducidad', tipo: 'fecha' },
+    ], { textoBoton: 'Subir', nota: 'Déjalas vacías si este documento no caduca.' });
+    if (!cad) return;
+    if (cad.emision) fd.append('emision', cad.emision);
+    if (cad.caduca) fd.append('caduca', cad.caduca);
+    await hacer(() => api('/seleccion/api/candidatura/' + d.id + '/documento',
+      { method: 'POST', body: fd }));
+  }
+
+  function pintarDocumentos(d, hueco) {
+    hueco.className = 'p-5 space-y-2';
+    const puestos = new Map((d.documentos || []).filter(x => x.vigente).map(x => [x.tipo, x]));
+
+    hueco.innerHTML = (d.documentosPedidos || DOCS).map(def => {
+      const doc = puestos.get(def.tipo);
+      return '<div class="flex items-center gap-3 text-sm border-b border-telecab-border/50 pb-2">'
+        + '<i class="fa-solid ' + (doc ? 'fa-circle-check text-telecab-green' : 'fa-circle text-telecab-muted/40')
+        + ' text-xs"></i>'
+        + '<span class="flex-1">' + esc(def.label) + '</span>'
+        + (doc
+          ? (doc.caducado ? '<span class="text-telecab-red text-xs">caducado</span>' : '')
+            + '<a href="' + esc(doc.enlace || '#') + '" target="_blank" rel="noopener" '
+            + 'class="text-telecab-gold text-xs underline">ver</a>'
+            + '<button data-quitar="' + doc.id + '" class="text-telecab-red text-xs">quitar</button>'
+          : '<label class="text-telecab-gold text-xs cursor-pointer">subir'
+            + '<input type="file" class="hidden" data-subir="' + esc(def.key) + '"></label>')
+        + '</div>';
+    }).join('');
+
+    hueco.querySelectorAll('[data-subir]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const f = inp.files && inp.files[0];
+        if (f) subirDocumento(d, inp.dataset.subir, f);
+      });
+    });
+
+    hueco.querySelectorAll('[data-quitar]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const ok = await Dialogo.confirmar({
+          titulo: '¿Quitar el documento?',
+          texto: 'Se borra también el archivo de Drive. No tiene vuelta atrás.',
+          tono: 'peligro',
+        });
+        if (!ok) return;
+        await hacer(() => api('/seleccion/api/documento/' + b.dataset.quitar, { method: 'DELETE' }));
       });
     });
   }
 
-  // Pegar (Ctrl+V) una imagen → va a la última zona apuntada.
-  document.addEventListener('paste', e => {
-    if (!dzActiva || !ticketActual) return;
-    const item = [...((e.clipboardData || {}).items || [])].find(i => i.type.indexOf('image/') === 0);
-    if (!item) return;
-    const f = item.getAsFile();
-    if (f) { e.preventDefault(); subirDoc(dzActiva, f); }
+  // ── La pantalla ─────────────────────────────────────────────────────────
+
+  const seleccion = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Selección',
+    icono: 'fa-user-plus',
+    clave: 'id',
+    origen: '/seleccion/api/lista',
+    vacio: 'No hay ninguna candidatura abierta. Empieza por el teléfono.',
+    buscar: {
+      texto: 'Buscar nombre, teléfono, DNI…',
+      campos: ['quien', 'telefono', 'dni_nie', 'responsable'],
+    },
+    acciones: [
+      { texto: 'Abrir / crear', icono: 'fa-id-card', onClick: abrirPorTelefono },
+    ],
+
+    subtitulo: (v, t) => (v.length === t.length
+      ? t.length + ' candidatura(s) abiertas'
+      : v.length + ' de ' + t.length),
+
+    // Un contador por paso del embudo, y se pincha para filtrar. Vienen del
+    // servidor con su orden: la pantalla no lleva su propia lista de etapas, que
+    // es como se desincronizaban.
+    kpis: (filas, extra) => (((extra.resumen || {}).funnel) || []).map(e => ({
+      etiqueta: e.etiqueta,
+      valor: e.cuantos,
+      tono: e.cuantos ? 'text' : 'muted',
+      filtro: { id: 'estado', valor: e.codigo },
+    })),
+
+    filtros: [
+      { id: 'estado', etiqueta: 'Estado', campo: 'estado',
+        opciones: (CAT.estados || []).map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
+      { id: 'canal', etiqueta: 'Canal', campo: 'canal',
+        opciones: (CAT.canales || []).map(c => ({ valor: c.codigo, texto: c.etiqueta })) },
+    ],
+
+    columnas: [
+      { titulo: 'Candidato', campo: 'quien', principal: true },
+      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm' },
+      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm' },
+      { titulo: 'Estado', valor: d => d.estado_etiqueta },
+      { titulo: 'Canal', valor: d => d.canal_etiqueta || '—' },
+      { titulo: 'Responsable', valor: d => d.responsable || '—' },
+      { titulo: 'Abierta', valor: d => hace(d.creado_at) },
+    ],
+
+    detalle: {
+      origen: id => '/seleccion/api/ficha/' + id,
+      titulo: d => d.quien,
+      subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
+      acciones: [
+        { texto: 'Pasar a RRHH', icono: 'fa-forward', principal: true,
+          visible: d => d.en_funnel, onClick: accionRRHH },
+        { texto: 'Estado', icono: 'fa-diagram-next', principal: false, onClick: accionEstado },
+        { texto: 'Datos', icono: 'fa-pen', principal: false, onClick: accionDatos },
+        { texto: 'Coordenadas', icono: 'fa-location-crosshairs', principal: false, onClick: accionGeo },
+        { texto: 'Ficha de alta', icono: 'fa-file-pdf', principal: false, onClick: accionFichaPDF },
+      ],
+
+      bloques: [
+        {
+          // Lo primero es lo que hay que arreglar. Si no falta nada, no aparece.
+          titulo: 'Falta por completar', icono: 'fa-triangle-exclamation',
+          visible: d => (d.faltan || []).length > 0,
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5';
+            hueco.innerHTML = '<ul class="text-sm space-y-1">' + d.faltan.map(x =>
+              '<li class="flex items-center gap-2 text-telecab-warn">'
+              + '<i class="fa-solid fa-circle-exclamation text-xs"></i>' + esc(x) + '</li>').join('')
+              + '</ul>';
+          },
+        },
+        {
+          titulo: 'El proceso', icono: 'fa-diagram-project',
+          campos: [
+            { etiqueta: 'Estado', valor: d => d.estado_etiqueta },
+            { etiqueta: 'Etapa', valor: d => d.etapa_etiqueta },
+            { etiqueta: 'Canal', valor: d => d.canal_etiqueta },
+            { etiqueta: 'Responsable', valor: d => d.responsable },
+            { etiqueta: 'Vacante', valor: d => d.vacante_ref },
+            { etiqueta: 'Turno', valor: d => d.turno },
+            { etiqueta: 'Zona', valor: d => d.zona },
+            { etiqueta: 'Inicio previsto', valor: d => fecha(d.inicio_previsto) },
+            { etiqueta: 'Jornada', valor: d => (d.jornada_horas ? d.jornada_horas + ' h' : '') },
+            { etiqueta: 'Abierta', valor: d => fecha(d.creado_at) },
+            { etiqueta: 'Motivo', valor: d => d.motivo },
+            { etiqueta: 'Notas', valor: d => d.notas, ancho: 'sm:col-span-2 lg:col-span-3' },
+          ],
+        },
+        {
+          titulo: 'La persona', icono: 'fa-id-card',
+          campos: [
+            { etiqueta: 'Nombre', valor: d => d.nombre },
+            { etiqueta: 'Apellidos', valor: d => d.apellidos },
+            { etiqueta: 'DNI / NIE', valor: d => d.dni_nie },
+            { etiqueta: 'Fecha de nacimiento', valor: d => fecha(d.fecha_nacimiento) },
+            { etiqueta: 'Sexo', valor: d => d.sexo },
+            { etiqueta: 'Estado civil', valor: d => d.estado_civil },
+            { etiqueta: 'Nacionalidad', valor: d => d.nacionalidad },
+            { etiqueta: 'Nº Seguridad Social', valor: d => d.naf },
+            { etiqueta: 'Centro de trabajo', valor: d => d.centro_codigo },
+            { etiqueta: 'Correo', valor: d => d.email },
+            { etiqueta: 'Teléfono', valor: d => d.telefono },
+            { etiqueta: 'Contacto de emergencia', valor: d => d.tel_emergencia },
+            { etiqueta: 'IBAN', valor: d => (d.tiene_iban ? 'Guardado (cifrado)' : '') },
+            { etiqueta: 'Dirección', valor: d => d.direccion, ancho: 'sm:col-span-2 lg:col-span-3' },
+            { etiqueta: 'Coordenadas', valor: d => d.coordenadas },
+          ],
+        },
+        { titulo: 'Documentos', icono: 'fa-folder-open', pinta: pintarDocumentos },
+      ],
+    },
   });
-
-  // Aviso si Drive aún no está conectado.
-  (async () => {
-    try {
-      const est = await (await fetch('/documentos/api/estado')).json();
-      if (!est.configurado) {
-        const a = $('#drive-aviso');
-        a.classList.remove('hidden');
-        a.innerHTML = est.puedeConectar
-          ? 'Drive aún no está conectado. <a href="/documentos/auth" target="_blank" class="underline font-semibold">Conectar cuenta de Google →</a>'
-          : 'Falta configurar el cliente OAuth de Drive (GOOGLE_OAUTH_CLIENT_ID / SECRET en Render).';
-      }
-    } catch (_) {}
-  })();
-
-  // Generar la FICHA DE ALTA en PDF.
-  $('#btn-ficha').addEventListener('click', async () => {
-    if (!ticketActual) return;
-    const el = $('#ficha-pdf-msg');
-    el.className = 'text-xs text-telecab-muted'; el.textContent = 'Generando la ficha…'; el.classList.remove('hidden');
-    try {
-      await guardarFormulario();
-      const r = await (await fetch('/seleccion/ficha', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tel: ticketActual.id })
-      })).json();
-      if (r.status !== 'ok') throw new Error(r.msg);
-      if (r.ficha) ticketActual.ficha_pdf = JSON.stringify(r.ficha);   // recordar el PDF actual
-      el.className = 'text-xs text-telecab-green';
-      el.innerHTML = `Ficha generada (${r.adjuntos} doc.). <a href="${r.link}" target="_blank" rel="noopener" class="underline font-semibold">Abrir PDF →</a>`;
-      if (r.link) window.open(r.link, '_blank');
-    } catch (e) {
-      el.className = 'text-xs text-telecab-red'; el.textContent = 'No se pudo generar: ' + e.message;
-    }
-  });
-
-  initDropzones();
-  cargar();
-
-  // Abre directamente una ficha si viene ?tel= (desde Pendientes / la campana).
-  (function () {
-    const tel = new URLSearchParams(location.search).get('tel');
-    if (tel && /^\d{9}$/.test(tel)) abrirPorTel(tel);
-  })();
+})();
 </script>
-
