@@ -273,14 +273,25 @@
   function hecho(texto, { tono = 'ok', segundos = 3 } = {}) {
     const t = TONOS[tono] || TONOS.ok;
     const caja = document.createElement('div');
-    caja.className = 'fixed bottom-5 right-5 z-[130] flex items-center gap-2 px-4 py-3 rounded-xl '
-      + 'bg-telecab-card border border-telecab-' + t.color + '/40 shadow-soft text-sm '
-      + 'transition-opacity duration-300';
+    // Arriba y centrado, debajo de la cabecera. Abajo a la derecha estaba fuera
+    // de donde mira nadie: un aviso que no se ve es lo mismo que no darlo.
+    caja.className = 'fixed top-20 left-1/2 -translate-x-1/2 z-[130] flex items-center gap-2 '
+      + 'px-4 py-3 rounded-xl bg-telecab-card border border-telecab-' + t.color + '/40 '
+      + 'shadow-soft text-sm transition-all duration-300';
     caja.innerHTML = '<i class="fa-solid ' + t.icono + ' text-telecab-' + t.color + '"></i>'
       + '<span>' + esc(texto) + '</span>';
-    document.body.appendChild(caja);
-    // Si alguien ha pedido menos movimiento, se queda quieto y desaparece igual.
+    // Si alguien ha pedido menos movimiento, aparece y se va sin gesto.
     const quieto = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!quieto) caja.style.transform = 'translate(-50%, -12px)';
+    if (!quieto) caja.style.opacity = '0';
+    document.body.appendChild(caja);
+    if (!quieto) {
+      // Un fotograma despues, para que el navegador vea el cambio y lo anime.
+      requestAnimationFrame(() => {
+        caja.style.transform = 'translate(-50%, 0)';
+        caja.style.opacity = '1';
+      });
+    }
     setTimeout(() => {
       if (!quieto) caja.style.opacity = '0';
       setTimeout(() => caja.remove(), quieto ? 0 : 300);
