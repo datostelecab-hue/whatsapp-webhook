@@ -314,14 +314,34 @@ async function resumen({ momento } = {}) {
 
 /** Catálogos para filtros y desplegables. */
 async function catalogos() {
-  const [situaciones, turnos] = await Promise.all([
+  const [situaciones, turnos, centros] = await Promise.all([
     db.consulta(`SELECT codigo, etiqueta, es_ausencia FROM cat_estado_conductor ORDER BY orden, etiqueta`),
     db.consulta(`SELECT id, codigo, etiqueta FROM turno WHERE activo ORDER BY id`),
+    db.consulta(`SELECT codigo, nombre FROM cat_centro_trabajo WHERE activo ORDER BY nombre`),
   ]);
   return {
     situaciones: situaciones.rows,
     turnos: turnos.rows,
+    centros: centros.rows,
     tipos: [{ codigo: 'propia', etiqueta: 'Plantilla propia' }, { codigo: 'ett', etiqueta: 'ETT' }],
+  };
+}
+
+/**
+ * CAMPOS con las listas que viven en la base ya resueltas.
+ *
+ * `CAMPOS` es estatico y viaja a la pantalla como JSON, asi que no puede
+ * traerse solo una lista que esta en una tabla. Se resuelve aqui, en el unico
+ * sitio que sabe consultar, y la pantalla recibe las opciones ya hechas.
+ */
+async function campos() {
+  const cat = await catalogos();
+  return {
+    ...CAMPOS,
+    centro_codigo: {
+      ...CAMPOS.centro_codigo,
+      opciones: (cat.centros || []).map(c => ({ valor: c.codigo, texto: c.nombre })),
+    },
   };
 }
 
@@ -377,6 +397,9 @@ const CAMPOS = {
   naf_control:       { grupo: 'Seguridad Social', etiqueta: 'NAF · control', ambito: 'sensible' },
   legajo:            { grupo: 'Seguridad Social', etiqueta: 'Legajo', ambito: 'sensible',
                        ayuda: 'El identificador que usa la gestoría en SU sistema, no el nuestro' },
+  centro_codigo:     { grupo: 'Seguridad Social', etiqueta: 'Centro de trabajo', ambito: 'sensible',
+                       tipo: 'lista',
+                       ayuda: 'Con qué centro se cotiza. No es lo mismo que la flota de BOLT, que es con quién se conduce' },
 
   // Dirección despiezada: el fichero de la gestoría la pide así.
   via_tipo:          { grupo: 'Dirección', etiqueta: 'Tipo de vía', ambito: 'sensible' },
@@ -762,6 +785,7 @@ async function doblePlaza({ momento } = {}) {
 }
 
 module.exports = {
+  campos,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
   crear, actualizar, cambiarSituacion, cambiarTurno, guardarLibranza,

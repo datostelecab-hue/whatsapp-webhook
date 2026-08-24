@@ -109,12 +109,27 @@ function sqlDeJs(txt) {
   return trozos;
 }
 
-// Todos los sitios donde se escribe SQL: los .sql y los repositorios.
+// Todos los sitios donde se escribe SQL: los .sql, los repositorios y los
+// cargadores.
+//
+// Durante un tiempo esto solo miraba `services/repo/`, y por ahí se coló SQL sin
+// revisar en dos sitios: los cargadores de `scripts/`, que son los que más
+// nombres de columna escriben de una sentada, y los servicios sueltos de
+// `services/`, donde vive todo lo que habla con BOLT y con Mapon.
+//
+// Una columna mal tecleada ahí no revienta al arrancar: revienta a mitad de una
+// carga o dentro de un cron, que es cuando peor viene y donde menos se mira.
+//
+// Solo se ve el SQL escrito entre comillas invertidas, así que ahí se escribe.
 const fuentes = ficheros.map(f => ({ nombre: f, sql: [fs.readFileSync(path.join(DIR, f), 'utf8')] }));
-const REPO = path.join(__dirname, '..', 'services', 'repo');
-if (fs.existsSync(REPO)) {
-  for (const f of fs.readdirSync(REPO).filter(x => x.endsWith('.js'))) {
-    fuentes.push({ nombre: 'repo/' + f, sql: sqlDeJs(fs.readFileSync(path.join(REPO, f), 'utf8')) });
+for (const [dir, mote] of [[['services', 'repo'], 'repo/'],
+                           [['services'], 'services/'],
+                           [['scripts'], 'scripts/']]) {
+  const ruta = path.join(__dirname, '..', ...dir);
+  if (!fs.existsSync(ruta)) continue;
+  for (const f of fs.readdirSync(ruta).filter(x => x.endsWith('.js'))) {
+    const sql = sqlDeJs(fs.readFileSync(path.join(ruta, f), 'utf8'));
+    if (sql.length) fuentes.push({ nombre: mote + f, sql });
   }
 }
 
@@ -123,6 +138,37 @@ for (const fuente of fuentes) {
   const f = fuente.nombre;
   // Cada sentencia por separado: los alias no cruzan de una a otra.
   for (const sent of bruto.split(';')) {
+    // ── Las listas de columnas de un INSERT ──
+    //
+    // Esto no se miraba, y era el hueco grande: un INSERT escribe veinte o
+    // treinta nombres de columna de una sentada, sin alias delante, así que la
+    // comprobación de abajo (que busca `alias.columna`) no veía ni uno. Y un
+    // INSERT ... VALUES ni siquiera llegaba aquí, porque el filtro de la línea
+    // siguiente solo dejaba pasar SELECT, UPDATE y DELETE.
+    //
+    // Es justo donde peor duele equivocarse: no falla al arrancar, falla a
+    // mitad de una carga.
+    for (const m of sent.matchAll(/\bINSERT\s+INTO\s+([a-z_][a-z0-9_]*)\s*\(([^)]*)\)/gi)) {
+      const tabla = m[1].toLowerCase();
+      const cols = tablas.get(tabla);
+      if (!cols || !cols.size || cols.has('*')) continue;   // CTE, o tabla que no conocemos
+      for (const trozo of m[2].split(',')) {
+        const col = trozo.trim().toLowerCase();
+        if (!/^[a-z_][a-z0-9_]*$/.test(col)) continue;      // expresiones, no columnas
+        // `_` es la marca que deja sqlDeJs donde había una interpolación: la
+        // lista de columnas se arma en JavaScript y desde aquí no se puede
+        // saber cuál es. No es un error, es que no se ve.
+        if (col === '_') continue;
+        revisadas++;
+        if (!cols.has(col)) {
+          fallos++;
+          console.log(`  x ${f}: INSERT INTO ${tabla} — no existe la columna "${col}"`);
+          const parecidas = [...cols].filter(c => c.startsWith(col.slice(0, 3)) || col.startsWith(c.slice(0, 3)));
+          if (parecidas.length) console.log(`      ¿querías decir ${parecidas.slice(0, 4).join(', ')}?`);
+        }
+      }
+    }
+
     if (!/\b(SELECT|UPDATE|DELETE)\b/i.test(sent)) continue;
 
     // alias → tabla(s), sacado de FROM/JOIN/UPDATE.

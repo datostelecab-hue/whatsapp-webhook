@@ -27,11 +27,17 @@ function fecha(v) {
   const d = v instanceof Date ? v : new Date(v);
   if (isNaN(d)) return String(v);
   const p = n => String(n).padStart(2, '0');
-  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  // Hora LOCAL, no UTC. Una columna DATE la convierte el driver en un Date a
+  // medianoche local; leerlo en UTC desde Madrid (UTC+1/+2) devuelve el dia
+  // anterior. Asi es como un alta del 07/02 salia como 06/02 en 135 filas.
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 // La hoja usaba 'SI' / '' para los booleanos y el motor los lee así.
 const si = v => (v ? 'SI' : '');
+// Para lo que puede no saberse: vacio NO quiere decir "no", quiere decir que
+// nadie lo ha rellenado todavia. Un 'NO' se afirma; un hueco se deja en blanco.
+const siNo = v => (v === null || v === undefined ? '' : (v ? 'SI' : 'NO'));
 const txt = v => (v === null || v === undefined ? '' : String(v));
 
 /**
@@ -57,7 +63,7 @@ async function filas() {
     f[A.NAF - 1]             = txt(c.naf);
     f[A.FECHA_ALTA - 1]      = fecha(c.fecha_alta);
     f[A.FIN_PRUEBA - 1]      = fecha(c.fin_periodo_prueba);
-    f[A.EN_PRUEBA - 1]       = si(c.en_prueba);
+    f[A.EN_PRUEBA - 1]       = siNo(c.en_prueba);
     f[A.RECOMENDADOR - 1]    = txt(c.recomendador);
     f[A.TURNO - 1]           = txt(c.turno);
     f[A.CONTRATO - 1]        = txt(c.contrato);

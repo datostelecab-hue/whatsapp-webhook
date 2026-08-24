@@ -52,6 +52,22 @@ const txt = v => {
 const s = v => txt(v).trim();
 const nulo = (v, max) => { const x = s(v); return x === '' ? null : (max ? x.slice(0, max) : x); };
 const dniLimpio = v => { const x = s(v).toUpperCase().replace(/[^0-9A-Z]/g, ''); return x.length >= 6 ? x : null; };
+
+// "40.23578, -3.76983" -> { lat, lng }. Fuera de Espana se descarta: una coma
+// mal puesta o un cero de mas mandan a alguien al Atlantico, y eso el
+// planificador lo usa para calcular recogidas.
+const coords = v => {
+  const m = s(v).match(/^\s*(-?\d+[.,]?\d*)\s*,\s*(-?\d+[.,]?\d*)\s*$/);
+  if (!m) return {};
+  const lat = Number(m[1].replace(',', '.')), lng = Number(m[2].replace(',', '.'));
+  if (!isFinite(lat) || !isFinite(lng)) return {};
+  if (lat < 27 || lat > 44 || lng < -19 || lng > 5) return {};
+  return { lat, lng };
+};
+
+// "40h" -> 40. "32h ETT" -> 32. El tipo de contrato ya viene de la hoja de la
+// gestoria, asi que de aqui solo se toma el numero de horas.
+const horas = v => { const m = s(v).match(/^(\d{1,2})\s*(h|$)/i); return m ? Number(m[1]) : null; };
 const tel9 = v => { const x = s(v).replace(/\D/g, '').slice(-9); return x.length === 9 ? x : null; };
 
 // Las fechas llegan como Date de Excel o como texto dd/mm/aaaa. Y '00/00/0000'
@@ -217,7 +233,15 @@ class Padron {
         nombre, dni_nie: dniLimpio(r.DNI_NIE),
         recomendador: nulo(r.RECOMENDADOR, 120), observaciones: nulo(r.OBSERVACIONES),
         tel_emergencia: nulo(r.TEL_EMERGENCIA, 20),
+        ...coords(r.COORDENADAS),
       });
+      // Contrato y fin de prueba describen el periodo de empleo ABIERTO, asi
+      // que solo valen los de la agenda viva: en CONDUCTORES_OUT ya no hay
+      // periodo abierto al que pegarlos.
+      if (!esBaja) {
+        p.jornadaT2 = horas(r.CONTRATO);
+        p.finPruebaT2 = fecha(r.FIN_PERIODO_PRUEBA);
+      }
       P.alias(p, 'manual', nombre);
       P.alias(p, 'bolt_nombre', r.ID_BOLT);
       P.telefono(p, r.TELEFONO, 'agenda', false);
@@ -338,15 +362,16 @@ class Padron {
            naf_provincia, naf_numero, naf_control, legajo,
            via_tipo, via_nombre, via_numero, escalera, piso, puerta,
            localidad, codigo_postal, provincia, pais, pais_codigo,
-           email, tel_emergencia, recomendador, observaciones)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+           email, tel_emergencia, recomendador, observaciones, lat, lng)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
          RETURNING id`,
         [nom.slice(0, 80), ape && ape.slice(0, 120), v('nombre_ss'), v('dni_tipo'), v('dni_nie'),
          v('fecha_nacimiento'), v('sexo'), v('estado_civil'), v('pais_nacimiento'), v('pais_nacimiento_codigo'),
          v('naf_provincia'), v('naf_numero'), v('naf_control'), v('legajo'),
          v('via_tipo'), v('via_nombre'), v('via_numero'), v('escalera'), v('piso'), v('puerta'),
          v('localidad'), v('codigo_postal'), v('provincia'), v('pais'), v('pais_codigo'),
-         v('email'), v('tel_emergencia'), v('recomendador'), v('observaciones')],
+         v('email'), v('tel_emergencia'), v('recomendador'), v('observaciones'),
+         v('lat'), v('lng')],
         err => avisos.push(`Conductor no creado (${completo}): ${primeraLinea(err)}`));
       if (!r) continue;
       const id = r.rows[0].id;
@@ -397,10 +422,16 @@ class Padron {
         if (!baja && i === emp.length - 1 && p.bajaT2 && !p.enAgendaT2) {
           baja = typeof p.bajaT2 === 'string' ? p.bajaT2 : e.alta;
         }
+        // La agenda describe el contrato de AHORA: sus horas y su fin de prueba
+        // solo pueden colgar del periodo que queda abierto, nunca de uno viejo.
+        const abierto = !baja;
         const ok = await intentar(
-          `INSERT INTO conductor_periodo_empleo (conductor_id, tipo, alta, baja, fecha_antiguedad)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [id, e.tipo, e.alta, baja, e.antiguedad || null],
+          `INSERT INTO conductor_periodo_empleo (conductor_id, tipo, alta, baja, fecha_antiguedad,
+             jornada_horas, fin_periodo_prueba)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [id, e.tipo, e.alta, baja, e.antiguedad || null,
+           abierto ? (p.jornadaT2 || null) : null,
+           abierto ? (p.finPruebaT2 || null) : null],
           err => avisos.push(`Periodo no cargado (${completo}): ${primeraLinea(err)}`));
         if (ok) nEmp++;
       }

@@ -126,7 +126,9 @@ router.get('/api/catalogos', async (req, res) => {
 // Qué campos puede tocar quien está mirando. La pantalla lo usa para enseñar
 // unos editables y otros solo de lectura, en vez de dejar intentarlo y fallar.
 router.get('/api/campos', responde(async req => ({
-  campos: con.CAMPOS,
+  // `campos()` y no `CAMPOS`: las listas que viven en una tabla (el centro de
+  // trabajo) se resuelven contra la base antes de mandarlas.
+  campos: await con.campos(),
   editables: con.camposDe((req.usuario || {}).rol || ''),
 })));
 

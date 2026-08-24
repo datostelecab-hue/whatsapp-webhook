@@ -8,9 +8,19 @@
 // No cambia nada. Se puede ejecutar tantas veces como haga falta, con el
 // sistema en marcha.
 //
-// Cómo se emparejan las filas: por ID_BOLT, que es lo único que identifica de
-// verdad. Quien no lo tenga se empareja por nombre normalizado, y eso se marca
-// como emparejamiento DÉBIL — precisamente porque el nombre no identifica.
+// Cómo se emparejan las filas: por ID_BOLT primero.
+//
+// Y OJO con lo que es ID_BOLT, que aquí se dio por supuesto y salió caro: NO es
+// un UUID, es el NOMBRE tal como aparece en BOLT. La hoja lo guarda así y el
+// planificador lo usa de clave para cruzar AGENDA_V2 con PLANIFICADOR_V2.
+//
+// Que sea un nombre no lo hace mala clave para esto: es la MISMA cadena a los
+// dos lados, carácter a carácter, y es exactamente la que el motor va a cruzar.
+// Si no cuadra aquí, tampoco cuadraría en el planificador.
+//
+// Quien no lo tenga cae al nombre normalizado — sin tildes ni orden de
+// apellidos — y eso se marca como emparejamiento DÉBIL: puede acertar aquí y
+// aun así fallar en el motor, que compara la cadena tal cual.
 
 const db = require('../db');
 
@@ -34,9 +44,13 @@ function iguales(cabecera, hoja, base) {
   if (a === b) return true;
   if (!a && !b) return true;
 
-  // Booleanos de la hoja.
-  const bool = v => /^(si|sí|s|true|x|1)$/i.test(v);
-  if ((bool(a) || !a) && (bool(b) || !b)) return bool(a) === bool(b);
+  // Booleanos de la hoja. Un "no" se escribe de seis maneras -- vacio, NO,
+  // FALSE, 0 -- y todas significan lo mismo. Sin esto, una libranza guardada
+  // como FALSE en la hoja y vacia en la base contaba como diferencia: eran
+  // unas 100 por cada dia de la semana, siete columnas de ruido.
+  const cierto = v => /^(si|sí|s|true|verdadero|x|1)$/i.test(v);
+  const falso  = v => !v || /^(no|n|false|falso|0)$/i.test(v);
+  if ((cierto(a) || falso(a)) && (cierto(b) || falso(b))) return cierto(a) === cierto(b);
 
   // Fechas: dd/mm/aaaa contra lo que sea.
   const dia = v => {
