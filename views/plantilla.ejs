@@ -256,7 +256,8 @@
       return alert(
         'No hay ninguna cuenta de BOLT libre.\n\n' + ultima + '\n\n' +
         `Enlazadas: ${estado.enlazadas || 0} · sin dar de alta en BOLT: ${estado.sin_alta_bolt || 0}\n\n` +
-        'Si falta gente, hay que traer el padrón: es el botón "Traer de BOLT" de la cabecera.');
+        'Si falta gente, la ingesta lo traerá sola en la próxima pasada. ' +
+        'El botón "Datos" de la cabecera dice de cuándo es lo que hay.');
     }
 
     const v = await pedirDatos(`Enlazar cuenta de BOLT a ${d.nombre_completo}`, [
@@ -377,29 +378,56 @@
     }
   }
 
-  /** Trae el padrón de BOLT y cuenta cuántas propuestas salen. */
-  async function traerDeBolt() {
-    const ok = await Dialogo.confirmar({
-      titulo: 'Traer el padrón de BOLT',
-      si: 'Traer', no: 'Cancelar',
-      html: `<p>Se pregunta a BOLT qué cuentas existen y se actualiza el inventario.</p>
-             <p class="text-telecab-muted">NO enlaza a nadie con nadie: solo deja la lista al día
-             para poder enlazar después a mano.</p>`,
+  /**
+   * De cuándo son los datos.
+   *
+   * Esta pantalla NO llama a BOLT ni a Mapon: lee de PostgreSQL, y quien trae
+   * los datos es la ingesta, cada pocos minutos. Lo único que hace falta saber
+   * aquí es si están al día — y eso se pregunta a la base, no a la API.
+   */
+  async function verFrescura() {
+    let e;
+    try { e = await api('/plantilla/api/frescura'); }
+    catch (err) { return Dialogo.aviso({ titulo: 'No se pudo consultar', texto: err.message, tono: 'error' }); }
+
+    const cuando = seg => {
+      if (seg == null) return 'nunca';
+      if (seg < 90) return 'hace un momento';
+      if (seg < 5400) return `hace ${Math.round(seg / 60)} min`;
+      if (seg < 172800) return `hace ${Math.round(seg / 3600)} h`;
+      return `hace ${Math.round(seg / 86400)} días`;
+    };
+
+    const filas = (e.tareas || []).map(t => {
+      const tono = t.alDia ? 'green' : (t.critica ? 'red' : 'warn');
+      return `
+        <div class="flex items-start gap-2 py-1.5 border-b border-telecab-border/60 last:border-0">
+          <i class="fa-solid ${t.alDia ? 'fa-circle-check' : 'fa-circle-exclamation'}
+                     text-telecab-${tono} mt-0.5 text-xs"></i>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm">${esc(t.etiqueta)}</p>
+            <p class="text-xs text-telecab-muted">
+              ${esc(cuando(t.haceSeg))}${t.registros != null ? ` · ${t.registros} registro(s)` : ''}
+              · cada ${t.cadaMin} min
+            </p>
+            ${t.error ? `<p class="text-xs text-telecab-${tono} mt-0.5">${esc(t.error)}</p>` : ''}
+            ${!t.ok && t.ultimoAcierto
+              ? `<p class="text-xs text-telecab-muted">Lo último que entró bien fue ${esc(cuando(
+                  Math.round((Date.now() - new Date(t.ultimoAcierto).getTime()) / 1000)))}.</p>`
+              : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    const algoMal = (e.tareas || []).some(t => !t.alDia);
+    await Dialogo.aviso({
+      titulo: 'De cuándo son estos datos',
+      tono: algoMal ? 'aviso' : 'ok',
+      ancho: 'max-w-lg',
+      html: (filas || '<p class="text-telecab-muted">La ingesta todavía no ha corrido.</p>') +
+        `<p class="text-xs text-telecab-muted mt-3">Esta pantalla lee de la base, no de BOLT ni de Mapon.
+         Los datos los trae la ingesta sola; si algo va atrasado, se ve aquí.</p>`,
     });
-    if (!ok) return;
-    try {
-      const r = await enviar('/plantilla/api/bolt/sincronizar', 'POST');
-      const e = await api('/plantilla/api/bolt-estado').then(x => x.estado || {});
-      alert(
-        `${r.vistas} cuentas en BOLT · ${r.nuevas} nuevas · ${r.cambiadas} con otro estado\n\n` +
-        `Libres para enlazar: ${e.libres || 0}\n` +
-        `Con dueño propuesto por el teléfono: ${e.sugeridas || 0}\n` +
-        `Personas SIN dar de alta en BOLT: ${e.sin_alta_bolt || 0}\n` +
-        `Personas sin teléfono en la ficha: ${e.sin_telefono || 0}`);
-      await plantilla.recargar();
-    } catch (e) {
-      alert('BOLT: ' + e.message);
-    }
   }
 
   // Los campos editables los declara el SERVIDOR. Pedirlos en vez de escribirlos
@@ -569,7 +597,7 @@
     acciones: [
       // Solo RRHH da de alta. Trafico ve la plantilla pero no contrata.
       ...(SOLO_OPERATIVO ? [] : [{ texto: 'Dar de alta', icono: 'fa-user-plus', onClick: altaNueva }]),
-      { texto: 'Traer de BOLT', icono: 'fa-rotate', principal: false, onClick: traerDeBolt },
+      { texto: 'Datos', icono: 'fa-clock-rotate-left', principal: false, onClick: verFrescura },
     ],
 
     filtros: [

@@ -109,9 +109,10 @@ router.get('/api/alta-bolt', responde(async req =>
 
 router.get('/api/bolt-estado', responde(async () => ({ estado: await bolt.estado() })));
 
-// Pregunta a BOLT quién hay y actualiza el inventario. Sin esta pasada no hay
-// cuentas libres: la carga inicial creó cada una ya pegada a una persona.
-router.post('/api/bolt/sincronizar', responde(async () => bolt.sincronizarDesdeBolt()));
+// RRHH NO llama a BOLT. Ni aquí ni en ninguna pantalla: los datos los trae la
+// ingesta cada pocos minutos y aquí solo se lee de PostgreSQL. Lo único que se
+// ofrece es saber DE CUÁNDO son, que es lo que sustituye a preguntar.
+router.get('/api/frescura', responde(async () => require('../services/ingesta').estado()));
 
 router.get('/api/catalogos', async (req, res) => {
   try { res.json(await con.catalogos()); }

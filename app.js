@@ -390,29 +390,39 @@ programar('10,40 * * * *', async () => {
   }
 });
 
-// Inventario de cuentas de BOLT: cada dia a las 05:00, antes que el resto.
-// NO enlaza a nadie; solo mantiene al dia que cuentas existen y en que estado.
-// Sin esta pasada la lista de "IDs de BOLT libres" esta siempre vacia, porque
-// la carga inicial creo cada cuenta ya pegada a una persona.
-programar('0 5 * * *', async () => {
+// ── LA INGESTA ──────────────────────────────────────────────────────────────
+// El latido: cada 5 minutos se mira qué toca traer de BOLT y de Mapon.
+//
+// Es la UNICA puerta por la que entran datos externos. Ninguna pantalla llama a
+// una API para pintarse: leen de PostgreSQL, que es lo que las hace rapidas y
+// lo que hace que una caida de Mapon no se note en RRHH.
+//
+// Cada tarea decide cada cuanto tiene sentido repetirla (services/ingesta.js):
+// el padron de conductores no cambia cada cinco minutos y pedirlo asi son
+// cientos de paginas por hora. El latido es de 5; la cadencia, de cada tarea.
+programar('*/5 * * * *', async () => {
   try {
-    await require('./services/cazamientoBolt').sincronizarDesdeBolt();
+    await require('./services/ingesta').latido();
   } catch (error) {
-    console.error(`⚠️  [CRON BOLT] ${error.message}`);
+    console.error(`❌ [INGESTA] El latido falló entero: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
 
-// Odometros de Mapon: cada dia a las 05:30. Enlaza los coches nuevos y
-// refresca el kilometraje. Es la MISMA llamada a unit/list.json que ya se
-// hacia para otras cosas, asi que no anade carga a la API.
-programar('30 5 * * *', async () => {
+// El registro de la ingesta se poda: una pasada cada 5 minutos son cien mil
+// filas al año por tarea y el detalle fino no vale para nada pasada una semana.
+programar('40 4 * * *', async () => {
   try {
-    const r = await require('./services/sincroMapon').diaria();
-    console.log(`🛰️  [CRON Mapon] ${r.odometros.actualizados} odometro(s) al dia`);
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await bd.consulta('SELECT purgar_ingesta(7) AS n');
+    if (r.rows[0].n) console.log(`🧹 [INGESTA] Purgadas ${r.rows[0].n} filas del registro`);
   } catch (error) {
-    console.error(`⚠️  [CRON Mapon] ${error.message}`);
+    console.error(`⚠️  [INGESTA] Purga: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
+
+// (Los odometros de Mapon ya no tienen cron propio: son una tarea mas de la
+// ingesta, con su cadencia y su registro de si funciono.)
 
 // Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
 // vencieron (los usados se conservan siempre, como histórico).
