@@ -15,6 +15,7 @@ const { enviarTexto, enviarBotones } = require('./whatsapp');
 const BTN_INICIAR = 'turno_iniciar';
 const BTN_TERMINAR = 'turno_terminar';
 const BTN_KM = 'turno_km';
+const BTN_MOTOR = 'turno_motor';
 
 // Espera de matrícula tras pulsar "Iniciar turno" (en memoria: si Render reinicia, el
 // conductor solo tiene que volver a pulsar el botón).
@@ -33,7 +34,8 @@ async function panel(telefono, cabecera) {
       `Cuando acabes pulsa *Terminar turno* y te digo los km que has hecho.`;
     await enviarBotones(telefono, txt, [
       { id: BTN_TERMINAR, titulo: '🔴 Terminar turno' },
-      { id: BTN_KM, titulo: '📍 Ver km ahora' }
+      { id: BTN_KM, titulo: '📍 Ver km ahora' },
+      { id: BTN_MOTOR, titulo: '🔓 Desbloquear' }
     ]);
   } else {
     const txt = (cabecera ? cabecera + '\n\n' : `👋 Hola ${nombre}.\n\n`) +
@@ -78,6 +80,7 @@ async function manejarBoton(telefono, buttonId) {
   }
   if (buttonId === BTN_TERMINAR) { await cerrarTurno(telefono); return true; }
   if (buttonId === BTN_KM) { await verKm(telefono); return true; }
+  if (buttonId === BTN_MOTOR) { await desbloquear(telefono); return true; }
   return false;
 }
 
@@ -107,16 +110,49 @@ async function abrirTurno(telefono, matricula) {
   const t = r.turno;
   // El estado del motor va DESTACADO: si no se pudo liberar, hay que saberlo antes de
   // subirse al coche, no descubrirlo al girar la llave.
+  // Se distingue "lo he desbloqueado" de "ya estaba libre". Al principio casi
+  // ningún coche estará bloqueado, y decir "desbloqueado" cuando no se ha tocado
+  // nada enseña a no fiarse del mensaje.
+  const m = r.motor || {};
   const motor = !r.bloqueoActivo ? ''
-    : (r.motor && r.motor.hecho)
-      ? '\n🔓 *Motor desbloqueado* — ya puedes arrancar'
-      : `\n🔒 *ATENCIÓN: el motor NO se ha desbloqueado*\n_${(r.motor && r.motor.motivo) || 'motivo desconocido'}_\nAvisa a Tráfico antes de nada.`;
+    : m.hecho
+      ? (m.yaEstaba ? '\n🔓 El motor ya estaba libre' : '\n🔓 *Motor desbloqueado* — ya puedes arrancar')
+      : `\n🔒 *ATENCIÓN: el motor NO se ha desbloqueado*\n_${m.motivo || 'motivo desconocido'}_\n` +
+        'Pulsa *Desbloquear* para reintentarlo; si sigue igual, avisa a Tráfico.';
   await enviarBotones(telefono,
     `🟢 *Turno iniciado*\n\n🚘 ${t.matricula}${r.vehiculo ? ` · ${r.vehiculo}` : ''}\n🕐 ${fichaje.horaES(t.inicio)}\n` +
     `${r.enlazado ? '🔗 Enlazado a tu nombre en Mapon'
       : `⚠️ No se pudo enlazar en Mapon (el turno queda registrado igual)\n_${(r.errorMapon || 'motivo desconocido').slice(0, 220)}_`}` +
     `${motor}\n\nA partir de ahora cuento los km. Cuando acabes, pulsa *Terminar turno*.`,
-    [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' }]);
+    [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' },
+     { id: BTN_MOTOR, titulo: '🔓 Desbloquear' }]);
+}
+
+/**
+ * Reintenta el desbloqueo con el turno ya abierto.
+ *
+ * Si el primer intento falló —el coche estaba sin cobertura, o rodando— el
+ * conductor se queda con el motor cortado y sin nada que pulsar. Antes solo
+ * quedaba cerrar el turno y volver a abrirlo, y eso ensucia el libro.
+ */
+async function desbloquear(telefono) {
+  const { abierto, turno } = await fichaje.estado(telefono);
+  if (!abierto) return panel(telefono, 'No tienes ningún turno abierto.');
+
+  const antes = await fichaje.estadoMotor(turno.unitId);
+  if (!fichaje.BLOQUEO_ACTIVO) {
+    return panel(telefono, '🔌 El corte de motor está *apagado* en el servidor, así que no hay nada que desbloquear.');
+  }
+  if (antes.sabemos && !antes.bloqueado) {
+    return panel(telefono, `🔓 El motor de *${turno.matricula}* ya está libre.`);
+  }
+  const r = await fichaje.liberarMotor(turno.unitId);
+  await panel(telefono, r.hecho
+    ? `🔓 *Motor desbloqueado* en ${turno.matricula}. Ya puedes arrancar.`
+    : `🔒 Sigue sin desbloquearse.
+_${r.motivo}_
+
+Vuelve a intentarlo en un minuto; si no, avisa a Tráfico.`);
 }
 
 async function verKm(telefono) {
@@ -127,7 +163,8 @@ async function verKm(telefono) {
   await enviarBotones(telefono,
     km ? `📍 *Llevas ${km.km} km* en ${turno.matricula}\n🕐 ${dur} de turno · ${km.trayectos} trayecto(s)`
        : `📍 Turno en ${turno.matricula} · ${dur}\n(No he podido leer los km ahora mismo)`,
-    [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Actualizar' }]);
+    [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Actualizar' },
+     { id: BTN_MOTOR, titulo: '🔓 Desbloquear' }]);
 }
 
 async function cerrarTurno(telefono) {
@@ -139,6 +176,17 @@ async function cerrarTurno(telefono) {
     await enviarTexto(telefono, `❌ No se pudo cerrar el turno: ${e.message}`);
     return;
   }
+  // Va conduciendo. El turno se queda ABIERTO a propósito: terminar es lo que
+  // corta el motor, y hacerlo rodando lo inmovilizaría donde quiera que pare.
+  if (!r.ok && r.motivo === 'coche-en-marcha') {
+    await enviarBotones(telefono,
+      `🚗 *Estás en marcha* (${r.velocidad} km/h).\n\n` +
+      'Al terminar el turno se bloquea el motor, así que *primero aparca* en un sitio ' +
+      'seguro y apaga el coche. Cuando estés parado, vuelve a pulsar *Terminar turno*.\n\n' +
+      '_Tu turno sigue abierto: no has perdido nada._',
+      [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' }]);
+    return;
+  }
   if (!r.ok) return panel(telefono, '⚠️ No tenías ningún turno abierto.');
   const t = r.turno;
   const dur = fichaje.duracion(t.fin - t.inicio);
@@ -147,10 +195,12 @@ async function cerrarTurno(telefono) {
   const atrib = r.km && r.km.trayectos
     ? `\n🔎 Mapon atribuyó ${r.km.conConductor}/${r.km.trayectos} trayecto(s) a un conductor`
     : '';
+  const m = r.motor || {};
   const motor = !r.bloqueoActivo ? ''
-    : (r.motor && r.motor.hecho)
-      ? '\n🔒 Motor bloqueado hasta el próximo turno'
-      : `\n⚠️ El motor NO se ha bloqueado (_${(r.motor && r.motor.motivo) || 'motivo desconocido'}_)`;
+    : m.hecho
+      ? (m.yaEstaba ? '\n🔒 El motor ya estaba bloqueado' : '\n🔒 Motor bloqueado hasta el próximo turno')
+      : `\n⚠️ El motor NO se ha bloqueado (_${m.motivo || 'motivo desconocido'}_)` +
+        (m.reintentable ? '\n_Se reintentará solo cuando el coche lleve un rato parado._' : '');
   await enviarBotones(telefono,
     `🔴 *Turno terminado*\n\n🚘 ${t.matricula}\n🕐 ${fichaje.horaES(t.inicio)} → ${fichaje.horaES(t.fin)} (${dur})\n` +
     `🛣️ *${t.km == null ? '—' : t.km} km* recorridos${atrib}${motor}\n\nGracias. Queda registrado.`,

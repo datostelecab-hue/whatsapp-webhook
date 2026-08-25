@@ -502,16 +502,56 @@ const incluir = (...vals) => vals.filter(Boolean).map(v => `include[]=${encodeUR
 // Para saber el estado real hay que volver a leer unit/list con include=relays; por eso
 // todas las operaciones de aquí confirman después.
 
-/** Relés y estado de marcha de UNA unidad. */
+/** Segundos desde una marca de tiempo de Mapon, o null si no viene o no se entiende. */
+function segundosDesde(v) {
+  if (v == null || v === '') return null;
+  // Puede venir en segundos epoch o como fecha ISO/'YYYY-MM-DD HH:MM:SS' en UTC.
+  const n = Number(v);
+  const t = Number.isFinite(n) && n > 1e9
+    ? n * 1000
+    : Date.parse(String(v).includes('T') ? String(v) : String(v).replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(t)) return null;
+  const seg = Math.floor((Date.now() - t) / 1000);
+  return seg >= 0 ? seg : 0;
+}
+
+/**
+ * Relés y estado de marcha de UNA unidad.
+ *
+ * Devuelve además CUÁNTO lleva parada y si tiene el contacto puesto, porque
+ * "velocidad 0" no significa que nadie esté usando el coche: un taxi parado
+ * recogiendo a alguien va a 0 km/h y bloquearle el motor ahí es lo peor que
+ * puede hacer este sistema.
+ *
+ * Cuando Mapon no da esos datos se devuelven en null a propósito, y quien
+ * decida inmovilizar tiene que tratar el null como "no lo sé" y NO actuar.
+ */
 async function relesDeUnidad(unitId) {
-  const j = await pedir('unit/list.json', `unit_id=${encodeURIComponent(unitId)}&${incluir('relays', 'ignition')}`);
+  const j = await pedir('unit/list.json',
+    `unit_id=${encodeURIComponent(unitId)}&${incluir('relays', 'ignition', 'in_state')}`);
   const u = ((j.data && j.data.units) || [])[0];
   if (!u) return null;
+
+  const estado = (u.state && u.state.name) || '';       // driving / standing / nodata…
+  // Mapon nombra esto de varias formas según el modelo de equipo; se prueban
+  // todas y si ninguna viene, se dice que no se sabe en vez de suponer.
+  const desdeCuando = (u.state && (u.state.start || u.state.since || u.state.from)) || null;
+  const duracion = Number(u.state && (u.state.duration || u.state.seconds));
+  const ign = u.ignition !== undefined ? u.ignition
+    : (u.in_state && u.in_state.ignition !== undefined ? u.in_state.ignition : undefined);
+
   return {
     unitId: u.unit_id, matricula: txt(u.number),
-    estado: (u.state && u.state.name) || '',            // driving / standing / nodata…
-    enMarcha: (u.state && u.state.name) === 'driving',
+    estado,
+    enMarcha: estado === 'driving',
     velocidad: Number(u.speed) || 0,
+    // Contacto: true / false / null (no lo sabemos).
+    ignicion: ign === undefined || ign === null ? null : !!Number(ign),
+    // Segundos que lleva en el estado actual. null = no lo sabemos.
+    segParado: estado === 'driving' ? 0
+      : (Number.isFinite(duracion) && duracion >= 0 ? Math.floor(duracion) : segundosDesde(desdeCuando)),
+    // Cuándo se supo de él por última vez: con datos viejos no se decide nada.
+    segSinSenal: segundosDesde(u.last_update || (u.state && u.state.last_update)),
     reles: (u.relays || []).map(r => ({
       relay_id: r.relay_id, tipo: r.type, titulo: txt(r.title),
       estado: r.relay_state, habilitado: r.enabled,

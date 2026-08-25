@@ -342,6 +342,28 @@ cron.schedule('10,40 * * * *', async () => {
   }
 });
 
+// Repaso del corte de motor: deja bloqueado todo coche que nadie esté usando.
+//
+// No sobra por tener el bloqueo al terminar turno. Ese falla a veces —el coche
+// iba rodando, o estaba sin cobertura— y no hay quien lo reintente; y un coche
+// que nunca ha tenido un turno no se bloquearía jamás. Este repaso cierra los
+// dos agujeros, y no hace NADA mientras FICHAJE_BLOQUEO_MOTOR no esté a 1.
+//
+// Cada diez minutos y no cada uno: un coche que acaba de parar tiene que
+// esperar de todas formas a llevar un buen rato quieto, así que correr no sirve
+// de nada y sí gasta cuota de Mapon.
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    const r = await require('./services/fichaje').repasarBloqueos();
+    if (r.bloqueados && r.bloqueados.length) {
+      console.log(`🔒 [CRON FICHAJE] ${r.bloqueados.length} coche(s) bloqueado(s): ` +
+        r.bloqueados.map(x => x.matricula).join(', '));
+    }
+  } catch (error) {
+    console.error(`❌ [CRON FICHAJE] El repaso de bloqueos falló: ${error.message}`);
+  }
+});
+
 // Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
 // vencieron (los usados se conservan siempre, como histórico).
 cron.schedule('20 4 * * *', async () => {

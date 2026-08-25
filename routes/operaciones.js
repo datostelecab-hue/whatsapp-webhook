@@ -228,6 +228,26 @@ router.get('/fichaje/diagnostico', async (req, res) => {
     } catch (e) { out.errorRele = e.message; }
   }
 
+  // ?repaso=1 → SIMULA el repaso de bloqueos: dice a qué coches se les cortaría el
+  // motor y por qué se deja fuera a los demás, sin tocar ninguno. Es lo que hay que
+  // mirar ANTES de encender FICHAJE_BLOQUEO_MOTOR: si aquí aparece un coche que
+  // está trabajando, la regla está mal y no se enciende nada.
+  //
+  // ?repaso=aplicar → lo ejecuta de verdad (lo mismo que hace el cron).
+  if (q.repaso) {
+    try {
+      const fj = require('../services/fichaje');
+      out.alcance = {
+        bloqueoActivo: fj.BLOQUEO_ACTIVO,
+        matriculas: fj.MATRICULAS,
+        todaLaFlota: fj.TODA_LA_FLOTA,
+        alcance: fj.TODA_LA_FLOTA ? 'toda la flota' : 'solo los coches que han pasado por el fichaje',
+        telefonos: 'los de FICHAJE_TELEFONOS',
+      };
+      out.repaso = await fj.repasarBloqueos({ soloMirar: String(q.repaso) !== 'aplicar' });
+    } catch (e) { out.errorRepaso = e.message; }
+  }
+
   // ?crear=NOMBRE → lo crea si no existe (o reutiliza el que ya haya con ese nombre)
   const nombre = (q.crear || '').toString().trim();
   if (nombre) {

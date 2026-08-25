@@ -53,36 +53,149 @@ const RELE_BLOQUEADO = Number(process.env.FICHAJE_RELE_BLOQUEADO ?? 1);
 // FICHAJE_BLOQUEO_MOTOR=1 cuando se quiera probar de verdad.
 const BLOQUEO_ACTIVO = process.env.FICHAJE_BLOQUEO_MOTOR === '1';
 
+// Minutos que un coche tiene que llevar parado para que se le pueda inmovilizar
+// SIN que nadie haya pulsado "Terminar turno".
+const MIN_PARADO = Number(process.env.FICHAJE_MIN_PARADO || 20);
+// Con datos más viejos que esto no se decide nada: no se sabe dónde está.
+const MAX_SIN_SENAL = Number(process.env.FICHAJE_MAX_SIN_SENAL || 15);
+
+/**
+ * ¿Se puede inmovilizar este coche ahora mismo?
+ *
+ * ESTA ES LA FUNCIÓN DELICADA DEL MÓDULO. Cortar el motor de un coche que está
+ * trabajando deja a un conductor tirado, y puede que con un cliente dentro. Así
+ * que la regla es al revés de lo normal: ante la duda, NO.
+ *
+ * "Velocidad 0" no vale como prueba de que nadie lo usa. Un taxi parado
+ * recogiendo a alguien, en un semáforo o esperando en la parada del aeropuerto
+ * va a 0 km/h. Lo que sí vale es que lleve un buen rato quieto y sin contacto.
+ *
+ * `porOrden` es cuando lo pide una persona —pulsó "Terminar turno"—: ahí sí ha
+ * dicho que ha acabado, y solo se comprueba que no esté rodando.
+ */
+function puedeInmovilizar(info, { porOrden = false } = {}) {
+  if (!info) return 'no se puede leer el estado del coche';
+  if (info.enMarcha || info.velocidad > 0) return `coche en marcha (${info.velocidad} km/h)`;
+  if (porOrden) return null;
+
+  if (info.segSinSenal != null && info.segSinSenal > MAX_SIN_SENAL * 60) {
+    return `sin señal desde hace ${Math.round(info.segSinSenal / 60)} min`;
+  }
+  if (info.ignicion === true) return 'tiene el contacto puesto';
+  // null = Mapon no lo dice. No es una autorización.
+  if (info.segParado == null) return 'no se sabe cuánto lleva parado';
+  if (info.segParado < MIN_PARADO * 60) {
+    return `solo lleva ${Math.round(info.segParado / 60)} min parado (hacen falta ${MIN_PARADO})`;
+  }
+  return null;
+}
+
 /**
  * Pone el motor libre o bloqueado y CONFIRMA el estado real (change_relay solo dice que
- * la orden salió). Nunca actúa con el coche en marcha. Devuelve
- * { hecho, motivo } — `hecho:false` con su motivo si no se pudo.
+ * la orden salió). Devuelve { hecho, motivo } — `hecho:false` con su motivo si no se pudo.
+ *
+ * Liberar es seguro y se hace siempre que se pueda. Bloquear pasa por
+ * `puedeInmovilizar`, salvo que lo haya pedido el conductor.
  */
-async function motor(unitId, bloquear) {
+async function motor(unitId, bloquear, { porOrden = false } = {}) {
   if (!BLOQUEO_ACTIVO) return { hecho: false, motivo: 'desactivado' };
   try {
     const info = await mapon.relesDeUnidad(unitId);
     const rele = mapon.releDeCorte(info);
     if (!rele || !rele.habilitado) return { hecho: false, motivo: 'sin relé de corte' };
-    // El equipo declara control_while_moving=0: con el coche rodando no se toca.
-    if (info.enMarcha) return { hecho: false, motivo: `coche en marcha (${info.velocidad} km/h)` };
+    // El equipo declara control_while_moving=0: con el coche rodando no se toca,
+    // ni para bloquear ni para liberar.
+    //
+    // `reintentable` porque el repaso SÍ lo recogerá cuando el coche pare. Sin
+    // esta marca el mensaje se quedaba en "no se ha bloqueado" a secas, y quien
+    // lo leía no sabía si tenía que hacer algo o no.
+    if (info.enMarcha) {
+      return { hecho: false, motivo: `coche en marcha (${info.velocidad} km/h)`, reintentable: true };
+    }
+    // YA ESTÁ COMO SE QUIERE: no se manda nada.
+    //
+    // No es solo ahorrarse una llamada. `cambiarReleConfirmado` espera hasta
+    // diez segundos a que el coche confirme, y eso son diez segundos de silencio
+    // en una conversación de WhatsApp — el conductor pulsa "Iniciar turno" y no
+    // pasa nada. Al principio casi ningún coche estará bloqueado, así que este
+    // es el caso NORMAL, no la excepción.
+    const objetivo = bloquear ? RELE_BLOQUEADO : RELE_LIBRE;
+    if (Number(rele.estado) === objetivo) {
+      return { hecho: true, motivo: '', yaEstaba: true };
+    }
+    if (bloquear) {
+      const no = puedeInmovilizar(info, { porOrden });
+      if (no) return { hecho: false, motivo: no, reintentable: true };
+    }
     const r = await mapon.cambiarReleConfirmado({
       unitId, relayId: rele.relay_id, estado: bloquear ? RELE_BLOQUEADO : RELE_LIBRE
     });
     if (r.confirmado) return { hecho: true, motivo: '' };
-    return { hecho: false, motivo: 'la orden salió pero el coche no la confirmó (¿sin cobertura?)' };
+    return { hecho: false, motivo: 'la orden salió pero el coche no la confirmó (¿sin cobertura?)', reintentable: true };
   } catch (e) {
     console.error('⚠️ [FICHAJE] motor:', e.message);
-    return { hecho: false, motivo: e.message };
+    return { hecho: false, motivo: e.message, reintentable: true };
   }
 }
 const liberarMotor = unitId => motor(unitId, false);
-const bloquearMotor = unitId => motor(unitId, true);
+
+/**
+ * Como esta el motor de un coche, sin tocarlo.
+ *
+ * Hace falta para poder decirselo al conductor cuando pregunta, y para el boton
+ * de reintentar: si el desbloqueo fallo por cobertura, tiene que poder verlo y
+ * volver a intentarlo sin cerrar y reabrir el turno.
+ */
+async function estadoMotor(unitId) {
+  try {
+    const info = await mapon.relesDeUnidad(unitId);
+    const rele = mapon.releDeCorte(info);
+    if (!rele) return { sabemos: false, motivo: 'sin rele de corte' };
+    return {
+      sabemos: true,
+      bloqueado: Number(rele.estado) === RELE_BLOQUEADO,
+      enMarcha: info.enMarcha,
+      velocidad: info.velocidad,
+      estado: info.estado,
+    };
+  } catch (e) {
+    return { sabemos: false, motivo: e.message };
+  }
+}
+// Con orden: lo ha pedido el conductor al terminar su turno.
+const bloquearMotor = (unitId, opciones) => motor(unitId, true, opciones);
 
 const ZONA = 'Europe/Madrid';
 const ahoraSeg = () => Math.floor(Date.now() / 1000);
 function tel9(t) { const d = String(t == null ? '' : t).replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; }
 const normMat = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// HASTA DÓNDE LLEGA EL CORTE DE MOTOR.
+//
+// Para el turno basta con `FICHAJE_TELEFONOS`: solo ese número abre y cierra, y
+// solo se toca el coche que él diga. Cualquier matrícula vale — se coge el que
+// haya abajo y se ficha en él.
+//
+// El problema es el repaso, que NO tiene número: es un cron que mira la flota, y
+// sin límite bloquearía coches de gente que ni sabe que esto existe.
+//
+// El límite lo pone el LIBRO, no una lista de matrículas: el repaso solo toca
+// coches que han pasado por el fichaje, y al fichaje solo llegan los teléfonos
+// autorizados. Así el aislamiento por número alcanza también al cron, y sigue
+// sirviendo cualquier coche: fichas en él y desde ese momento entra.
+//
+// FICHAJE_MATRICULAS queda para el día que esto sea de todos:
+//   vacío             = solo los coches que han pasado por el fichaje
+//   '1888LTJ,0417MMZ' = además, esos
+//   '*'               = toda la flota
+//
+// El '*' se mira ANTES de normalizar: `normMat` quita todo lo que no sea letra o
+// número, así que un asterisco normalizado es una cadena vacía y desaparecía.
+const _MAT_CRUDAS = String(process.env.FICHAJE_MATRICULAS || '')
+  .split(',').map(x => x.trim()).filter(Boolean);
+const TODA_LA_FLOTA = _MAT_CRUDAS.includes('*');
+const MATRICULAS = _MAT_CRUDAS.map(x => normMat(x)).filter(Boolean);
+
 const horaES = seg => new Intl.DateTimeFormat('es-ES', {
   timeZone: ZONA, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
 }).format(new Date(seg * 1000));
@@ -184,12 +297,18 @@ async function cerrarOlvidados(libro) {
   const limite = ahoraSeg() - MAX_HORAS_TURNO * 3600;
   for (const t of libro.filter(x => x.estado === 'abierto' && x.inicio && x.inicio < limite)) {
     try { await soltarEnMapon(t); } catch (e) { /* se cierra igual */ }
-    // Se bloquea también en el cierre automático: si no, un turno olvidado dejaría el
-    // coche libre indefinidamente y se perdería el control que da el fichaje.
-    try { await bloquearMotor(t.unitId); } catch (e) { /* se anota abajo */ }
+    // Se bloquea también en el cierre automático, PERO sin `porOrden`: aquí no ha
+    // dicho nadie que haya terminado. Solo lo dice el reloj, y el reloj se
+    // equivoca — un turno de 14 horas puede seguir en la calle con un cliente
+    // dentro. Así que pasa por la regla estricta: quieto un buen rato, sin
+    // contacto y con datos frescos. Si no se cumple, el turno se cierra igual y
+    // el coche lo bloquea el repaso cuando de verdad esté parado.
+    let mot = { hecho: false, motivo: 'no intentado' };
+    try { mot = await bloquearMotor(t.unitId); } catch (e) { mot = { hecho: false, motivo: e.message }; }
     t.fin = t.inicio + MAX_HORAS_TURNO * 3600;
     t.estado = 'auto-cerrado';
-    t.notas = `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar`;
+    t.notas = `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar` +
+      (BLOQUEO_ACTIVO && !mot.hecho ? ` · motor NO bloqueado: ${mot.motivo}` : '');
     await guardarFila(t);
     console.log(`⏱️ [FICHAJE] Turno de ${t.nombre} (${t.matricula}) auto-cerrado`);
   }
@@ -274,13 +393,36 @@ async function terminar(telefono) {
   const t = abiertoDe(libro, telefono);
   if (!t) return { ok: false, motivo: 'sin-turno' };
 
+  // EN MARCHA NO SE TERMINA EL TURNO.
+  //
+  // Terminar es lo que corta el motor, así que cerrar el turno rodando deja el
+  // bloqueo pendiente y el coche se inmoviliza donde quiera que pare: un carril,
+  // una salida, la puerta de un cliente. El turno se queda ABIERTO y se le pide
+  // que aparque primero — es un minuto para él y evita dejar un coche cruzado.
+  //
+  // Solo cuando el corte está encendido: sin él, terminar no inmoviliza nada y
+  // no hay motivo para no dejarle cerrar.
+  //
+  // Y solo si SABEMOS que va en marcha. Si Mapon no contesta se le deja cerrar:
+  // la duda nunca puede dejar a alguien sin poder terminar su jornada.
+  if (BLOQUEO_ACTIVO) {
+    const m = await estadoMotor(t.unitId);
+    if (m.sabemos && m.enMarcha) {
+      return { ok: false, motivo: 'coche-en-marcha', velocidad: m.velocidad, turno: t };
+    }
+  }
+
   const fin = ahoraSeg();
   const km = await kmDelTurno(t, fin);
   try { await soltarEnMapon(t); }
   catch (e) { t.notas = `${t.notas ? t.notas + ' · ' : ''}Mapon no soltó el coche: ${e.message}`; }
 
   // Al cerrar, el coche queda bloqueado hasta que alguien vuelva a fichar en él.
-  const mot = await bloquearMotor(t.unitId);
+  //
+  // `porOrden`: lo ha pedido el conductor, así que basta con que no esté rodando.
+  // No hace falta esperar a que lleve veinte minutos quieto — acaba de decir que
+  // ha terminado, y eso es mejor información que cualquier sensor.
+  const mot = await bloquearMotor(t.unitId, { porOrden: true });
   if (BLOQUEO_ACTIVO && !mot.hecho) t.notas = `${t.notas ? t.notas + ' · ' : ''}Motor NO bloqueado: ${mot.motivo}`;
 
   t.fin = fin;
@@ -294,8 +436,82 @@ async function terminar(telefono) {
   return { ok: true, turno: t, km, motor: mot, bloqueoActivo: BLOQUEO_ACTIVO };
 }
 
+// ── El repaso ─────────────────────────────────────────────────────────────────
+
+/**
+ * Deja bloqueado todo coche que nadie esté usando.
+ *
+ * Sin esto el control tiene dos agujeros, y los dos dejan un coche libre para
+ * siempre sin que nadie se entere:
+ *
+ *   · El bloqueo al terminar turno FALLA a veces —el coche estaba rodando, o sin
+ *     cobertura— y no hay quien lo reintente.
+ *   · Un coche que nunca ha tenido un turno no se bloquea nunca.
+ *
+ * El repaso los cierra: mira la flota entera, se queda con los que tienen el
+ * motor libre y NO tienen turno abierto, y bloquea los que de verdad llevan
+ * parados. Los que no cumplen la regla se dejan para la vuelta siguiente — no
+ * hay prisa, y equivocarse aquí es dejar tirado a alguien.
+ *
+ * Es idempotente: pasarlo dos veces seguidas no hace nada la segunda.
+ */
+async function repasarBloqueos({ soloMirar = false } = {}) {
+  if (!BLOQUEO_ACTIVO && !soloMirar) {
+    return { activo: false, motivo: 'FICHAJE_BLOQUEO_MOTOR no está a 1', bloqueados: [], omitidos: [] };
+  }
+  const libro = await leerLibro();
+  const conTurno = new Set(libro.filter(t => t.estado === 'abierto').map(t => String(t.unitId)));
+
+  // HASTA DÓNDE LLEGA EL REPASO.
+  //
+  // Solo los coches que han pasado por el fichaje, y al fichaje solo llegan los
+  // teléfonos autorizados. Así el aislamiento por número alcanza también al
+  // cron, sin tener que apuntar matrículas: coges el coche que quieras, fichas
+  // en él, y desde ese momento entra.
+  //
+  // Sin esto el cron miraría la flota entera y bloquearía coches de gente que ni
+  // sabe que esto existe, con la llave en la mano.
+  const conocidos = new Set(libro.map(t => String(t.unitId)).filter(Boolean));
+  const alcanza = v => TODA_LA_FLOTA
+    || conocidos.has(String(v.unitId))
+    || MATRICULAS.includes(normMat(v.matricula));
+
+  const flota = await mapon.relesDeFlota();
+  const bloqueados = [], omitidos = [], fallidos = [];
+
+  for (const v of (flota.vehiculos || [])) {
+    if (!alcanza(v)) continue;
+    const rele = (v.reles || []).find(r => r.tipo === 'engine_block' && r.habilitado);
+    if (!rele) continue;
+    // Ya está bloqueado: nada que hacer.
+    if (Number(rele.activo) === RELE_BLOQUEADO) continue;
+    // Alguien lo está usando y lo ha dicho. Se respeta.
+    if (conTurno.has(String(v.unitId))) {
+      omitidos.push({ matricula: v.matricula, motivo: 'turno abierto' });
+      continue;
+    }
+
+    const info = await mapon.relesDeUnidad(v.unitId).catch(() => null);
+    const no = puedeInmovilizar(info, { porOrden: false });
+    if (no) { omitidos.push({ matricula: v.matricula, motivo: no }); continue; }
+    if (soloMirar) { bloqueados.push({ matricula: v.matricula, simulado: true }); continue; }
+
+    const r = await motor(v.unitId, true, { porOrden: false });
+    if (r.hecho) bloqueados.push({ matricula: v.matricula, unitId: v.unitId });
+    else fallidos.push({ matricula: v.matricula, motivo: r.motivo });
+  }
+
+  if (bloqueados.length || fallidos.length) {
+    console.log(`🔒 [FICHAJE] Repaso: ${bloqueados.length} bloqueado(s)` +
+      (fallidos.length ? `, ${fallidos.length} sin poder` : '') +
+      (omitidos.length ? `, ${omitidos.length} en uso` : ''));
+  }
+  return { activo: BLOQUEO_ACTIVO, soloMirar, bloqueados, omitidos, fallidos };
+}
+
 module.exports = {
   esPruebas, nombreDe, estado, iniciar, terminar, kmDelTurno,
-  liberarMotor, bloquearMotor,
-  horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO
+  liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, repasarBloqueos,
+  horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO, MIN_PARADO,
+  MATRICULAS, TODA_LA_FLOTA
 };
