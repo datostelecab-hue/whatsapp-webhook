@@ -738,20 +738,55 @@ const CAB_MATRIZ = ['Fecha Entrevista', 'Hora entrevista', 'JORNADA', 'TURNO', '
   'DNI / NIE', 'Teléfono', 'DIRECCIÓN', 'CÓDIGO POSTAL', 'Correo Electrónico',
   'FECHA DE ALTA', 'JORNADA', 'TURNO', 'ZONA'];
 
+// Nuestros estados, dichos en el vocabulario de la agencia.
+//
+// Ellos manejan cinco y solo cinco, y su Excel pinta y cuenta por ese nombre.
+// Mandarles "Rechazado RRHH" o "Listo para RRHH" no es informarles mejor: es
+// contarles nuestro proceso interno, que ni les sirve ni entienden. Y de paso
+// dejaba las filas sin pintar y los contadores a cero.
+const ESTADO_ETT = {
+  no_presentado:   'No se presentó',
+  descartado:      'No pasa',
+  rechazado_bolt:  'No pasa',
+  rechazado_rrhh:  'No pasa',
+  no_alta:         'No pasa',
+  no_prueba:       'No pasa',
+  entrevistado:    'Presentó',
+  rec_medico:      'Presentó',
+  preseleccion:    'Pendiente',
+  coord_entrevista:'Pendiente',
+};
+
+/** dd/mm/aaaa desde lo que devuelva la base, que puede ser un Date o un texto. */
+function aDiaMesAnio(v) {
+  if (!v) return '';
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d)) return String(v);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
 /** Las candidaturas de la ETT con la forma que espera su tabla y su Excel. */
 async function paraETT() {
   const filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
   const dosCifras = n => String(n).padStart(2, '0');
+
   return filas.map(c => {
     const cita = c.entrevista_at ? new Date(c.entrevista_at) : null;
-    // A la agencia se le contesta CON EL MOTIVO, no con un hueco: si alguien no
-    // se presento o no paso, eso es justo lo que tiene que leer.
-    let alta = c.inicio_previsto ? String(c.inicio_previsto).slice(0, 10).split('-').reverse().join('/') : '';
+
+    // Contratado es lo que la agencia necesita saber, y eso no lo dice un estado
+    // del embudo: lo dice tener CONTRATO ABIERTO. Alguien puede estar en
+    // "Listo para RRHH" y aún no habérsele dado de alta.
+    const estado = c.empleo_vigente ? 'Contratado' : (ESTADO_ETT[c.estado] || 'Pendiente');
+
+    // A la agencia se le contesta con el MOTIVO, no con un hueco: si alguien no
+    // se presentó o no pasó, eso es justo lo que tiene que leer en esa casilla.
+    let alta = aDiaMesAnio(c.inicio_previsto);
     let jor = c.jornada_horas ? c.jornada_horas + 'h' : '';
     let tur = c.turno || '';
     let zon = c.zona || '';
-    if (c.estado === 'no_presentado') { alta = 'No se presentó'; jor = tur = zon = ''; }
-    else if (c.estado === 'descartado') { alta = 'No pasa la entrevista'; jor = tur = zon = ''; }
+    if (estado === 'No se presentó') { alta = 'No se presentó'; jor = tur = zon = ''; }
+    else if (estado === 'No pasa')   { alta = 'No pasa la entrevista'; jor = tur = zon = ''; }
 
     return {
       fecha_entrevista: cita ? `${dosCifras(cita.getDate())}/${dosCifras(cita.getMonth() + 1)}/${cita.getFullYear()}` : '',
@@ -761,7 +796,7 @@ async function paraETT() {
       direccion: c.via_nombre || c.direccion || '', cp: c.codigo_postal || '',
       correo: c.email || '',
       fecha_alta: alta, jornada: jor, turno: tur, zona: zon,
-      estado: c.estado_etiqueta || '',
+      estado,
     };
   });
 }
