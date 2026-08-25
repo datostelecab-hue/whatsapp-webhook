@@ -25,6 +25,10 @@ const db = require('../db');
 const DIAS = 7;
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
+/** Como se llama una plaza cuando hay que nombrarla: "Fijo dia", "CT1 noche". */
+const etiquetaPlaza = (rol, ordenCt, turno) =>
+  (rol === 'CT' ? 'CT' + (ordenCt || '') : 'Fijo') + ' ' + String(turno || '').toLowerCase();
+
 /** El lunes de la semana que contiene esa fecha. */
 function lunesDe(dia) {
   const d = new Date(dia + 'T00:00:00');
@@ -218,6 +222,8 @@ async function tablero({ dia } = {}) {
       turno: p.turno,
       turnoCodigo: p.turno_codigo,
       ordenCt: p.orden_ct,
+      // Cómo se llama esta plaza cuando hay que nombrarla en un mensaje.
+      etiqueta: etiquetaPlaza(p.rol, p.orden_ct, p.turno),
       id: persona ? persona.id : '',
       nombre: persona ? persona.nombre : '',
       asignacionId: a ? String(a.id) : '',
@@ -239,6 +245,8 @@ async function tablero({ dia } = {}) {
         plazaId: '', slot: k, rol: k < 2 ? 'FIJO' : 'CT',
         turno: k % 2 === 0 ? 'Día' : 'Noche', turnoCodigo: k % 2 === 0 ? 'dia' : 'noche',
         ordenCt: k < 2 ? null : (k < 4 ? 1 : 2),
+        etiqueta: etiquetaPlaza(k < 2 ? 'FIJO' : 'CT', k < 2 ? null : (k < 4 ? 1 : 2),
+          k % 2 === 0 ? 'Día' : 'Noche'),
         id: '', nombre: '', asignacionId: '', desde: '', hasta: '',
         diasManual: new Array(DIAS).fill(false), diasSugeridos: [], huerfano: false,
       };
@@ -278,9 +286,7 @@ async function tablero({ dia } = {}) {
   // ── El banquillo ───────────────────────────────────────────────────────
   // Quien no tiene ninguna plaza esta semana. Incluye a los que empiezan más
   // adelante: se les ve para poder colocarlos antes de que entren.
-  const banquillo = [...gente.values()]
-    .filter(p => !p.plazas)
-    .map(p => p.id);
+  const pendientes = [...gente.values()].filter(p => !p.plazas);
 
   return {
     dia: efectivo,
@@ -289,7 +295,9 @@ async function tablero({ dia } = {}) {
     dias: LETRAS,
     coches,
     conductores: [...gente.values()],
-    banquillo,
+    // El banquillo. Van las personas enteras y no sus ids: el front las pinta
+    // por nombre y no tendria de donde sacarlo.
+    pendientes,
     resumen: {
       coches: coches.filter(c => c.operativo).length,
       diasSinCubrirDia,
@@ -299,7 +307,7 @@ async function tablero({ dia } = {}) {
       // pregunta que se hace de verdad.
       ctQueFaltanDia: Math.ceil(diasSinCubrirDia / 6),
       ctQueFaltanNoche: Math.ceil(diasSinCubrirNoche / 6),
-      banquillo: banquillo.length,
+      pendientes: pendientes.length,
     },
     avisos: avisosDe(coches, gente),
   };
@@ -525,11 +533,32 @@ async function guardar(cambios = [], { dia, usuarioId } = {}) {
  * correturnos se lleva sus mismos días. Lo de X se cierra la víspera; lo de Y
  * empieza el día del cambio.
  */
-async function cambiarCoche({ deVehiculoId, aVehiculoId, dia, soloTurno }, { usuarioId } = {}) {
+async function cambiarCoche({ deVehiculoId, aVehiculoId, dia, soloTurno, forzar }, { usuarioId } = {}) {
   if (!deVehiculoId || !aVehiculoId) throw new Error('Faltan los dos coches');
   if (String(deVehiculoId) === String(aVehiculoId)) throw new Error('Es el mismo coche');
   const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
   const movidos = [];
+
+  // EL COCHE DE DESTINO TIENE QUE ESTAR LIBRE.
+  //
+  // Si lleva gente, moverla sin decir nada la deja sin plaza — y nadie se entera
+  // hasta que esa persona se presenta a trabajar. Se para y se dice por su
+  // nombre; `forzar` existe para cuando de verdad se quiera hacer.
+  if (!forzar) {
+    const ocupado = await db.consulta(
+      `SELECT btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS quien
+         FROM v_plaza p
+         JOIN asignacion a ON a.plaza_id = p.plaza_id
+                          AND a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $2)
+         JOIN conductor c ON c.id = a.conductor_id
+        WHERE p.vehiculo_id = $1`, [aVehiculoId, efectivo]);
+    if (ocupado.rows.length) {
+      const e = new Error('El coche de destino ya lleva gente: ' +
+        ocupado.rows.map(r => r.quien).join(', ') + '. Sácalos antes, o confirma que se les quita la plaza.');
+      e.ocupantes = ocupado.rows.map(r => r.quien);
+      throw e;
+    }
+  }
 
   await db.transaccion(async cli => {
     const origen = await cli.query(

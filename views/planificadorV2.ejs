@@ -41,6 +41,25 @@
     </div>
   </div>
 
+  <!-- ══ Fecha efectiva ══
+       Decide qué semana se ve Y desde cuándo vale lo que se toque. Va antes que
+       los filtros porque no filtra nada: cambia de qué se está hablando. -->
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <button id="f-antes" title="Semana anterior"
+      class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-chevron-left text-xs"></i>
+    </button>
+    <input id="f-dia" type="date"
+      class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm"
+      title="Lo que planifiques vale desde este día">
+    <button id="f-despues" title="Semana siguiente"
+      class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-chevron-right text-xs"></i>
+    </button>
+    <button id="f-hoy" class="px-3 py-2 rounded-lg text-sm text-telecab-muted hover:text-telecab-text">Hoy</button>
+    <span id="f-semana" class="text-sm text-telecab-muted"></span>
+  </div>
+
   <!-- ══ Filtros ══ -->
   <div class="flex flex-wrap items-center gap-2 mb-4">
     <input id="f-busca" type="search" placeholder="Matrícula o conductor…"
@@ -51,7 +70,6 @@
     <button data-filtro="todos" class="f-chip activo px-3 py-1.5 rounded-full text-sm border">Todos</button>
     <button data-filtro="huecos" class="f-chip px-3 py-1.5 rounded-full text-sm border">Con huecos</button>
     <button data-filtro="pendiente" class="f-chip px-3 py-1.5 rounded-full text-sm border">Con cambios</button>
-    <span id="aviso-esquema" class="hidden text-xs text-telecab-red"></span>
   </div>
 
   <div id="msg" class="hidden mb-4 rounded-lg border border-telecab-border bg-telecab-card px-4 py-3 text-sm"></div>
@@ -310,33 +328,64 @@ function setCampo(cocheIdx, campo, valor) {
  * para marcarla. Antes habia que reescribir las dos matriculas a mano y era
  * facil dejarlas duplicadas un momento.
  */
-function intercambiarCoche(idxA, idxB) {
+/**
+ * El coche se cambia por otro y SU GENTE SE VA CON EL.
+ *
+ * Antes esto intercambiaba las MATRICULAS de las dos tarjetas y dejaba las
+ * tripulaciones donde estaban — asi funcionaba con la hoja, donde la fila era la
+ * posicion y la matricula un texto dentro.
+ *
+ * En la base el coche ES la matricula, y la gente cuelga de sus plazas. Cambiar
+ * los textos de sitio ahi no significa nada: lo que pasa de verdad cuando un
+ * coche entra al taller es que sus conductores se suben a otro. Eso es lo que se
+ * manda ahora, y va al servidor en UNA transaccion respetando plaza y dias: a
+ * mano son doce movimientos y basta fallar en uno para dejar a alguien sin coche.
+ *
+ * Se guarda al momento, no con el boton: mueve a demasiada gente para dejarlo
+ * pendiente entre otros cambios.
+ */
+async function intercambiarCoche(idxA, idxB) {
   if (idxA === idxB) return;
   const A = T.coches.find(c => c.idx === idxA);
   const B = T.coches.find(c => c.idx === idxB);
   if (!A || !B) return;
 
-  const antes = ['matricula', 'zona', 'estadoVeh'].reduce((o, k) => {
-    o[k] = [efCampo(A, k) || '', efCampo(B, k) || ''];
-    return o;
-  }, {});
-  Object.keys(antes).forEach(k => {
-    setCampoSinPintar(idxA, k, antes[k][1]);
-    setCampoSinPintar(idxB, k, antes[k][0]);
-  });
-  pintar();
-  msg(`Coche intercambiado: ${esc(antes.matricula[0] || 'sin placa')} ↔ ` +
-      `${esc(antes.matricula[1] || 'sin placa')}. Las tripulaciones no se han movido.`, false);
-}
+  const gente = A.personas.filter(p => p.id).length;
+  if (!gente) return msg('Ese coche no tiene a nadie que mover.', true);
 
-// setCampo repinta, y en un intercambio hay seis cambios seguidos: se repinta
-// una sola vez al final.
-function setCampoSinPintar(cocheIdx, campo, valor) {
-  const coche = T.coches.find(c => c.idx === cocheIdx);
-  const c = cambioDe(cocheIdx);
-  if ((coche[campo] || '') === (valor || '')) delete c[campo];
-  else c[campo] = valor;
-  limpiarSiVacio(cocheIdx);
+  const hacerlo = async forzar => {
+    const r = await fetch('/planificador-v2/api/cambiar-coche', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ de: A.vehiculoId, a: B.vehiculoId, dia: DIA, forzar })
+    });
+    return { r, d: await r.json() };
+  };
+
+  try {
+    let { d } = await hacerlo(false);
+
+    // El destino lleva gente: se dice quien es y se pregunta, en vez de
+    // quitarles la plaza sin avisar.
+    if (d.status !== 'ok' && /ya lleva gente/.test(d.msg || '')) {
+      const ok = await Dialogo.confirmar({
+        titulo: '¿' + (efCampo(B, 'matricula') || 'El coche de destino') + ' ya lleva gente?',
+        tono: 'peligro', si: 'Quitarles la plaza y mover', no: 'Cancelar',
+        texto: d.msg,
+      });
+      if (!ok) return;
+      ({ d } = await hacerlo(true));
+    }
+    if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo mover');
+
+    T = d.tablero; CAMBIOS = new Map(); SELECCION = null;
+    pintarSemana();
+    pintar();
+    pintarAvisos(d.tablero.avisos);
+    msg('✅ ' + d.movidos.length + ' conductor(es) de ' + esc(efCampo(A, 'matricula') || 'ese coche') +
+        ' pasan a ' + esc(efCampo(B, 'matricula') || 'el otro') + ' desde el ' + d.dia, false);
+  } catch (e) {
+    msg('No se pudo cambiar el coche: ' + esc(e.message), true);
+  }
 }
 
 function limpiarSiVacio(idx) {
@@ -776,6 +825,17 @@ document.addEventListener('click', e => {
 
 // ── Filtros ─────────────────────────────────────────────────────────────────
 $('#f-busca').addEventListener('input', pintar);
+
+// La fecha efectiva. Moverse una semana son siete dias: el tablero se posiciona
+// solo en el lunes que corresponda.
+$('#f-antes').addEventListener('click', () => moverDia(-7));
+$('#f-despues').addEventListener('click', () => moverDia(7));
+$('#f-hoy').addEventListener('click', () => { DIA = ''; $('#f-dia').value = ''; cargar(); });
+$('#f-dia').addEventListener('change', e => {
+  if (!e.target.value) return;
+  DIA = e.target.value;
+  cargar();
+});
 $('#f-zona').addEventListener('change', pintar);
 $('#banquillo-busca').addEventListener('input', pintarBanquillo);
 $$('.f-chip').forEach(b => b.addEventListener('click', () => {
@@ -898,28 +958,64 @@ function msg(t, err) {
   m.style.color = err ? 'rgb(var(--tc-red))' : '';
 }
 
+// LA FECHA EFECTIVA. Decide que semana se pinta y, al guardar, desde cuando
+// vale lo que se toque. Sin ella el tablero solo sabia hablar del presente.
+let DIA = '';
+
 async function cargar() {
   msg('');
   try {
-    const r = await fetch('/planificador/api/tablero');
+    const r = await fetch('/planificador-v2/api/tablero' + (DIA ? '?dia=' + DIA : ''));
     const d = await r.json();
     if (d.status === 'error') throw new Error(d.msg);
     T = d; CAMBIOS = new Map(); SELECCION = null;
-    if (d.esquema && d.esquema.ok === false) {
-      $('#aviso-esquema').textContent = '⚠️ El esquema de la hoja no cuadra — revisa el planificador clásico';
-      $('#aviso-esquema').classList.remove('hidden');
-    }
+    DIA = d.dia || DIA;
+    const sel = $('#f-dia');
+    if (sel && !sel.value) sel.value = DIA;
+    pintarSemana();
     pintar();
     pintarAvisos(d.avisos);
   } catch (e) { msg('No se pudo cargar el tablero: ' + esc(e.message), true); }
 }
 
+/** Que semana se esta viendo, en cristiano. */
+function pintarSemana() {
+  const caja = $('#f-semana');
+  if (!caja || !T || !T.fechas) return;
+  const dm = f => f.slice(8, 10) + '/' + f.slice(5, 7);
+  caja.textContent = 'Semana del ' + dm(T.fechas[0]) + ' al ' + dm(T.fechas[6]);
+}
+
+/** Mueve la fecha efectiva N dias y recarga. */
+async function moverDia(dias) {
+  if (nCambios() > 0) {
+    const ok = await Dialogo.confirmar({
+      titulo: 'Tienes cambios sin guardar',
+      tono: 'aviso', si: 'Cambiar de fecha y perderlos', no: 'Seguir aqui',
+      texto: 'Al cambiar de fecha se recarga el tablero y se pierde lo que no hayas guardado.',
+    });
+    if (!ok) return;
+  }
+  const d = new Date((DIA || hoyTexto()) + 'T00:00:00');
+  d.setDate(d.getDate() + dias);
+  DIA = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  $('#f-dia').value = DIA;
+  cargar();
+}
+
 async function guardar() {
   const cambios = [];
   CAMBIOS.forEach((c, idx) => {
-    const uno = { coche: idx };
+    const coche = T.coches.find(x => x.idx === idx) || {};
+    // Se manda la IDENTIDAD del coche y de la plaza, no su posicion en la lista.
+    // Con el indice, un coche anadido entre que cargas y guardas desplazaba todo
+    // y escribias en el equivocado, sin que nada fallara.
+    const uno = { coche: idx, vehiculoId: coche.vehiculoId };
     ['matricula','zona','estadoVeh'].forEach(k => { if (c[k] !== undefined) uno[k] = c[k]; });
-    if (c.slots.size) uno.slots = [...c.slots.entries()].map(([slot, v]) => ({ slot, ...v }));
+    if (c.slots.size) {
+      uno.slots = [...c.slots.entries()].map(([slot, v]) =>
+        ({ slot, plazaId: (coche.personas[slot] || {}).plazaId, ...v }));
+    }
     cambios.push(uno);
   });
   if (!cambios.length) return;
@@ -950,16 +1046,18 @@ async function guardar() {
   const b = $('#btn-guardar');
   b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Guardando…';
   try {
-    const r = await fetch('/planificador/api/guardar', {
+    const r = await fetch('/planificador-v2/api/guardar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cambios })
+      body: JSON.stringify({ cambios, dia: DIA })
     });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo guardar');
     T = d.tablero; CAMBIOS = new Map(); SELECCION = null;
+    pintarSemana();
     pintar();
     pintarAvisos(d.tablero.avisos);
-    msg(`✅ Guardado en ${d.segundos}s (${d.escritura.updatedCells} celdas)`, false);
+    const n = (d.hechos || []).length;
+    msg('✅ Guardado: ' + n + ' movimiento(s) con fecha ' + d.dia, false);
   } catch (e) {
     msg('❌ ' + esc(e.message) + ' — tus cambios siguen aquí, puedes reintentar.', true);
   }
