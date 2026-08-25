@@ -1,22 +1,29 @@
 // ============================================================
 // FLOTA VIVA — la vuelta de cada cinco minutos
 // ============================================================
-// Se mira qué dice BOLT del conductor y qué dice Mapon del coche, y se guarda el
-// TRAMO: mientras la situación no cambia, la misma fila se estira. Cuando cambia,
-// se cierra y se abre otra.
+// Cada cinco minutos se pregunta a BOLT qué ha pasado y a Mapon cuánto ha rodado
+// el coche. Y lo que se guarda son TRAMOS: una fila por racha.
 //
 // Por qué tramos y no fotos: "¿cuánto lleva este coche desconectado?" con fotos
 // obliga a recorrer el historial hacia atrás en cada consulta. Con tramos es leer
-// una fila — ya trae `desde` y los km que lleva acumulados.
+// una fila — ya trae `desde` y los km acumulados.
 //
-// Los km NO son la resta del odómetro final menos el inicial: se suma el trocito
-// de cada vuelta y solo si es creíble. Ver `kmDelTrozo`, al final.
+// DOS COSAS QUE NO SON OBVIAS y que costaron un fallo cada una:
+//
+//   1. Los tramos NO se cortan cuando miramos, sino cuando BOLT dice que pasó.
+//      Sus apuntes traen la hora exacta y antes se tiraban, así que cada tramo
+//      arrastraba hasta cinco minutos de error y un viaje corto entre dos vueltas
+//      no existía. Se reproducen uno a uno. Ver `aplicar`.
+//
+//   2. Los km NO son la resta del odómetro final menos el inicial. Un equipo sin
+//      cobertura se pone al día de golpe y ese salto son kilómetros de antes.
+//      Se suma el trocito de cada vuelta y solo si es creíble. Ver `kmDelTrozo`.
 //
 // LA VENTANA DE BOLT ES CORTA A PROPÓSITO (dos horas). BOLT no tiene un "dime
 // cómo está todo ahora": tiene un registro de CAMBIOS. Un coche que lleva seis
 // horas apagado no genera un solo apunte, así que pedir una ventana enorme para
 // "encontrarlo" es tirar cuota. No hace falta: si no hay apunte nuevo, su
-// situación es la que ya teníamos guardada, y de eso se encarga el tramo abierto.
+// situación es la que ya teníamos, y de eso se encarga el tramo abierto.
 
 const db = require('./db');
 const fuentes = require('./fuentes');
@@ -137,28 +144,18 @@ async function pasada() {
     // guardarse, pero si alguien desactiva una matrícula, su coche deja de
     // mirarse en la siguiente vuelta sin tener que borrar nada.
     const coches = (await db.consulta(
-      `SELECT v.uuid, v.matricula, v.mapon_unit
+      `SELECT v.uuid, v.matricula, v.mapon_unit, v.ultimo_log_at
          FROM fv_vehiculo v
          JOIN fv_matricula m ON m.matricula = v.matricula AND m.activa`)).rows;
 
     let conectados = 0, cambios = 0;
 
     for (const v of coches) {
-      const log = estadosBolt.get(v.uuid);
-      const gps = v.matricula ? mapon.get(v.matricula) : null;
-
-      // Sin apunte nuevo de BOLT no se cambia nada: su situación es la que ya
-      // teníamos. Solo si NO tenemos ninguna se asume desconectado, y se deja
-      // dicho que fue una suposición nuestra dejando el estado crudo en nulo.
-      let situacion = null, estadoBolt = null, conductor = null;
-      if (log) {
-        estadoBolt = log.estado;
-        situacion = mapa.get(log.estado) || null;
-        if (!situacion) { await apuntarDesconocido(log.estado); situacion = 'otro'; }
-        conductor = log.conductor || null;
-      }
-
-      const r = await aplicar(v, { situacion, estadoBolt, conductor, gps });
+      const r = await aplicar(v, {
+        logs: estadosBolt.get(v.uuid) || [],
+        gps: v.matricula ? mapon.get(v.matricula) : null,
+        mapa,
+      });
       if (r.cambio) cambios++;
       if (r.conectado) conectados++;
     }
@@ -180,72 +177,168 @@ async function pasada() {
 }
 
 /**
- * Estira el tramo abierto o abre uno nuevo.
+ * Reproduce los cambios de estado de un coche y le suma los km del intervalo.
  *
- * El conductor NO cuenta como cambio de tramo por sí solo: BOLT deja de mandar
- * driver_uuid al desconectarse, y tratar eso como tramo nuevo partía en dos la
- * misma racha y perdía los km acumulados. El conductor se rellena cuando viene y
- * no se borra cuando falta.
+ * ANTES esto era una FOTO cada cinco minutos: se miraba en qué estaba y se
+ * estiraba o se abría un tramo, con la hora en que habíamos mirado NOSOTROS. Dos
+ * cosas se perdían por el camino:
+ *
+ *   · Un estado que empezaba y acababa entre dos vueltas no existía. Un viaje de
+ *     cuatro minutos no dejaba rastro, y el tramo decía "en espera" todo el rato.
+ *   · Cada tramo arrastraba hasta cinco minutos de error, porque `desde` era
+ *     cuándo miramos y no cuándo pasó. Y la hora buena la teníamos delante, en el
+ *     propio apunte de BOLT.
+ *
+ * Ahora se reproducen los apuntes UNO A UNO con su hora real. Los tramos salen
+ * exactos y los estados cortos aparecen.
+ *
+ * El conductor NO abre tramo por sí solo: BOLT deja de mandar driver_uuid al
+ * desconectarse, y tratarlo como cambio partía en dos la misma racha.
  */
-async function aplicar(vehiculo, { situacion, estadoBolt, conductor, gps }) {
+async function aplicar(vehiculo, { logs, mapa, gps }) {
   const odo = gps && gps.odometroM != null ? gps.odometroM : null;
   const senal = gps && gps.senalAt ? gps.senalAt : null;
-
-  const abierto = (await db.consulta(
-    `SELECT id, situacion, conductor_uuid, odometro_visto_m, senal_at, km_dudoso
-       FROM fv_tramo WHERE vehiculo_uuid = $1 AND hasta IS NULL`,
-    [vehiculo.uuid])).rows[0];
-
-  // La primera vez que vemos un coche sin apunte de BOLT: se le supone apagado.
-  const destino = situacion || (abierto ? abierto.situacion : 'desconectado');
-  const conectado = destino !== 'desconectado';
 
   if (gps && gps.unitId && !vehiculo.mapon_unit) {
     await db.consulta('UPDATE fv_vehiculo SET mapon_unit = $2 WHERE uuid = $1',
       [vehiculo.uuid, gps.unitId]);
   }
 
-  if (abierto && abierto.situacion === destino) {
-    const avance = kmDelTrozo(abierto, odo, senal);
-    await db.consulta(
-      `UPDATE fv_tramo
-          SET hasta = NULL,
-              odometro_fin_m = COALESCE($2, odometro_fin_m),
-              odometro_ini_m = COALESCE(odometro_ini_m, $2),
-              odometro_visto_m = COALESCE($2, odometro_visto_m),
-              senal_at = COALESCE($5, senal_at),
-              km_m = km_m + $6,
-              km_dudoso = km_dudoso OR $7,
-              conductor_uuid = COALESCE($3, conductor_uuid),
-              estado_bolt = COALESCE($4, estado_bolt),
-              vueltas = vueltas + 1
-        WHERE id = $1`,
-      [abierto.id, odo, conductor || null, estadoBolt || null, senal,
-       avance.metros, avance.dudoso]);
-    return { cambio: false, conectado };
+  let abierto = (await db.consulta(
+    `SELECT id, situacion, desde, conductor_uuid, odometro_visto_m, senal_at
+       FROM fv_tramo WHERE vehiculo_uuid = $1 AND hasta IS NULL`,
+    [vehiculo.uuid])).rows[0] || null;
+
+  // Solo los apuntes que no hemos reproducido. Sin esto, cada vuelta volvería a
+  // procesar las dos horas de ventana y duplicaría tramos.
+  const visto = vehiculo.ultimo_log_at ? new Date(vehiculo.ultimo_log_at).getTime() : 0;
+  const nuevos = (logs || []).filter(l => l.t * 1000 > visto);
+
+  // La lectura de odómetro con la que empezó el intervalo, y los tramos que han
+  // estado abiertos durante él. Los dos hacen falta para repartir los km.
+  const lecturaPrevia = abierto ? abierto.odometro_visto_m : null;
+  const senalPrevia = abierto ? abierto.senal_at : null;
+  const tocados = abierto ? [{ id: abierto.id, desde: new Date(abierto.desde) }] : [];
+
+  let cambios = 0, sinClasificar = null;
+
+  for (const l of nuevos) {
+    const cuando = new Date(l.t * 1000);
+    let situacion = mapa.get(l.estado);
+    if (!situacion) { sinClasificar = l.estado; situacion = 'otro'; }
+
+    // Mismo estado que el tramo abierto: no es un cambio, es un latido. Se
+    // aprovecha para rellenar el conductor, que BOLT no manda siempre.
+    if (abierto && abierto.situacion === situacion) {
+      if (l.conductor && !abierto.conductor_uuid) {
+        await db.consulta('UPDATE fv_tramo SET conductor_uuid = $2 WHERE id = $1',
+          [abierto.id, l.conductor]);
+        abierto.conductor_uuid = l.conductor;
+      }
+      continue;
+    }
+
+    const anterior = abierto;
+    const fila = await db.transaccion(async cli => {
+      if (anterior) {
+        // GREATEST protege de un apunte con hora anterior al inicio del tramo:
+        // pasa si los relojes bailan, y dejaría un tramo que acaba antes de
+        // empezar — que la base rechazaría, con razón.
+        await cli.query(
+          'UPDATE fv_tramo SET hasta = GREATEST(desde, $2::timestamptz) WHERE id = $1',
+          [anterior.id, cuando.toISOString()]);
+      }
+      const r = await cli.query(
+        `INSERT INTO fv_tramo (vehiculo_uuid, conductor_uuid, situacion, estado_bolt,
+                               desde, odometro_ini_m, odometro_fin_m, senal_at, km_m)
+         VALUES ($1, $2, $3, $4, $5, $6, $6, $7, 0) RETURNING id, desde`,
+        [vehiculo.uuid, l.conductor || (anterior ? anterior.conductor_uuid : null) || null,
+         situacion, l.estado || null, cuando.toISOString(), odo, senal]);
+      return r.rows[0];
+    });
+
+    abierto = { id: fila.id, situacion, desde: fila.desde, conductor_uuid: l.conductor || null };
+    tocados.push({ id: fila.id, desde: new Date(fila.desde) });
+    cambios++;
   }
 
-  // Cambió de situación: se cierra lo anterior y se abre lo nuevo, en la misma
-  // transacción. A medias quedaría un coche con dos tramos abiertos, y el índice
-  // único lo rechazaría — que es lo que tiene que pasar.
-  await db.transaccion(async cli => {
-    if (abierto) {
-      await cli.query(
-        'UPDATE fv_tramo SET hasta = now(), odometro_fin_m = COALESCE($2, odometro_fin_m) WHERE id = $1',
-        [abierto.id, odo]);
-    }
-    // El tramo nuevo empieza con CERO km, no con la resta de odómetros. Lo que
-    // el coche hizo antes es del tramo anterior, aunque el equipo lo cuente
-    // ahora.
-    await cli.query(
-      `INSERT INTO fv_tramo (vehiculo_uuid, conductor_uuid, situacion, estado_bolt,
-                             desde, odometro_ini_m, odometro_fin_m, odometro_visto_m,
-                             senal_at, km_m)
-       VALUES ($1, $2, $3, $4, now(), $5, $5, $5, $6, 0)`,
-      [vehiculo.uuid, conductor || (abierto ? abierto.conductor_uuid : null) || null,
-       destino, estadoBolt || null, odo, senal]);
+  // Ni apuntes ni tramo: es la primera vez que vemos este coche. Se le supone
+  // apagado, y el estado crudo queda en nulo para decir que fue suposición.
+  if (!abierto) {
+    const r = await db.consulta(
+      `INSERT INTO fv_tramo (vehiculo_uuid, situacion, desde, odometro_ini_m,
+                             odometro_fin_m, senal_at, km_m)
+       VALUES ($1, 'desconectado', now(), $2, $2, $3, 0) RETURNING id, desde`,
+      [vehiculo.uuid, odo, senal]);
+    abierto = { id: r.rows[0].id, situacion: 'desconectado', desde: r.rows[0].desde };
+    tocados.push({ id: r.rows[0].id, desde: new Date(r.rows[0].desde) });
+    cambios++;
+  }
+
+  // ── Los km del intervalo, repartidos entre los tramos que lo ocuparon ──
+  const avance = kmDelTrozo({ odometro_visto_m: lecturaPrevia, senal_at: senalPrevia }, odo, senal);
+  const reparto = repartirKm(tocados, avance.metros, senal || new Date());
+  const dudoso = avance.dudoso || tocados.length > 1;
+
+  for (const r of reparto) {
+    await db.consulta(
+      `UPDATE fv_tramo
+          SET km_m = km_m + $2,
+              km_dudoso = km_dudoso OR $3,
+              odometro_fin_m = COALESCE($4, odometro_fin_m),
+              odometro_ini_m = COALESCE(odometro_ini_m, $4),
+              odometro_visto_m = COALESCE($4, odometro_visto_m),
+              senal_at = COALESCE($5, senal_at),
+              vueltas = vueltas + 1
+        WHERE id = $1`,
+      [r.id, r.metros, r.metros > 0 && dudoso, odo, senal]);
+  }
+
+  if (sinClasificar) await apuntarDesconocido(sinClasificar);
+  if (nuevos.length) {
+    await db.consulta('UPDATE fv_vehiculo SET ultimo_log_at = $2 WHERE uuid = $1',
+      [vehiculo.uuid, new Date(nuevos[nuevos.length - 1].t * 1000).toISOString()]);
+  }
+
+  return { cambio: cambios > 0, conectado: abierto.situacion !== 'desconectado' };
+}
+
+/**
+ * Reparte los metros del intervalo entre los tramos que han estado abiertos.
+ *
+ * Cuando en cinco minutos no cambia nada —lo normal— hay un solo tramo y se lo
+ * lleva todo. Cuando ha habido cambios, el odómetro no dice EN CUÁL de ellos se
+ * hicieron los km: solo sabemos el total del intervalo. Se reparte por tiempo,
+ * que es la única aproximación defendible, y los tramos afectados quedan
+ * marcados como dudosos para que la pantalla no los enseñe como exactos.
+ *
+ * Antes esto no existía y el total entero caía en el último tramo. Un conductor
+ * que se ponía en descanso, hacía veinte kilómetros y volvía a espera entre dos
+ * vueltas aparecía con los veinte km en "espera" — justo lo contrario de lo que
+ * hay que ver.
+ */
+function repartirKm(tocados, metros, hasta) {
+  if (!tocados.length) return [];
+  if (!metros) return tocados.map(t => ({ id: t.id, metros: 0 }));
+  if (tocados.length === 1) return [{ id: tocados[0].id, metros }];
+
+  const fin = new Date(hasta).getTime();
+  const duraciones = tocados.map((t, i) => {
+    const acaba = i + 1 < tocados.length ? tocados[i + 1].desde.getTime() : fin;
+    return Math.max(0, acaba - t.desde.getTime());
   });
-  return { cambio: true, conectado };
+  const total = duraciones.reduce((s, d) => s + d, 0);
+  if (!total) return tocados.map((t, i) => ({ id: t.id, metros: i ? 0 : metros }));
+
+  let repartido = 0;
+  return tocados.map((t, i) => {
+    // Al último se le da lo que quede, para que la suma cuadre exactamente y no
+    // se pierda un metro por redondeo.
+    const m = i === tocados.length - 1 ? metros - repartido
+      : Math.round(metros * duraciones[i] / total);
+    repartido += m;
+    return { id: t.id, metros: m };
+  });
 }
 
 // Lo más rápido que puede ir un coche, en metros por segundo. 180 km/h es
@@ -287,4 +380,4 @@ function kmDelTrozo(tramo, odo, senal) {
   return { metros: delta, dudoso: false };
 }
 
-module.exports = { pasada, padron, vigiladas, kmDelTrozo };
+module.exports = { pasada, padron, vigiladas, kmDelTrozo, repartirKm };

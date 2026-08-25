@@ -91,16 +91,29 @@ async function estados(desdeTs, hastaTs) {
     logs.push(...l);
   }
 
+  // TODOS los apuntes de cada coche, en orden, no solo el último.
+  //
+  // Quedarse con el último parecía suficiente —es el estado de ahora— y no lo
+  // era, por dos razones:
+  //
+  //   · Un estado que empieza Y acaba entre dos vueltas nuestras desaparecía. Un
+  //     viaje de cuatro minutos no dejaba rastro: veíamos "espera" antes y
+  //     "espera" después, y el tramo decía que llevaba dos horas esperando.
+  //   · La hora del cambio la teníamos delante y la tirábamos. El tramo empezaba
+  //     cuando MIRÁBAMOS nosotros, no cuando pasó, así que cada uno arrastraba
+  //     hasta cinco minutos de error.
+  //
+  // Los apuntes traen la hora exacta. Con ellos se reconstruyen los tramos de
+  // verdad en vez de aproximarlos cada cinco minutos.
   const porVehiculo = new Map();
   logs.forEach(l => {
     const uuid = txt(l.vehicle_uuid);
     const t = Number(l.created);
     if (!uuid || !t) return;
-    const previo = porVehiculo.get(uuid);
-    if (!previo || t > previo.t) {
-      porVehiculo.set(uuid, { t, estado: txt(l.state), conductor: txt(l.driver_uuid) });
-    }
+    if (!porVehiculo.has(uuid)) porVehiculo.set(uuid, []);
+    porVehiculo.get(uuid).push({ t, estado: txt(l.state), conductor: txt(l.driver_uuid) });
   });
+  porVehiculo.forEach(arr => arr.sort((a, b) => a.t - b.t));
   return porVehiculo;
 }
 

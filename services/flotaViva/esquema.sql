@@ -255,6 +255,10 @@ CREATE INDEX IF NOT EXISTS idx_fv_vuelta_fecha ON fv_vuelta (arrancada_at DESC);
 -- Ahora se suma el trocito de cada vuelta, y solo si es CREIBLE para el tiempo
 -- que ha pasado segun el reloj del propio equipo. Lo que no lo es, no se cuenta
 -- y se deja dicho con `km_dudoso` en vez de callarselo.
+-- Hasta que apunte de BOLT hemos reproducido ya. Sin esto, cada vuelta volveria
+-- a procesar las dos horas de ventana y duplicaria tramos.
+ALTER TABLE fv_vehiculo ADD COLUMN IF NOT EXISTS ultimo_log_at TIMESTAMPTZ;
+
 ALTER TABLE fv_tramo ADD COLUMN IF NOT EXISTS km_m             BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE fv_tramo ADD COLUMN IF NOT EXISTS odometro_visto_m BIGINT;
 ALTER TABLE fv_tramo ADD COLUMN IF NOT EXISTS senal_at         TIMESTAMPTZ;
