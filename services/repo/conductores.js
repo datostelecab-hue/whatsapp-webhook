@@ -748,6 +748,10 @@ async function crear(datos, { usuarioId, rol } = {}) {
   return db.transaccion(async cli => {
     const { id, nombre } = await crearPersona(datos, { usuarioId, rol, cli });
 
+    // `empleo_vigente` no se toca a mano: lo mantiene el disparador
+    // `tg_empleo_vigente` en cuanto cambia un periodo. Escribirlo aquí además
+    // era lo que permitía que se desincronizara cuando alguien cerraba un
+    // periodo por otra vía.
     await cli.query(
       `INSERT INTO conductor_periodo_empleo
          (conductor_id, tipo, ett_nombre, alta, fecha_antiguedad, jornada_horas,
@@ -755,7 +759,6 @@ async function crear(datos, { usuarioId, rol } = {}) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [id, tipo, tipo === 'ett' ? String(d.ettNombre).trim() : null, d.alta,
        d.antiguedad || null, d.jornadaHoras || null, d.finPrueba || null, usuarioId || null]);
-    await cli.query('UPDATE conductor SET empleo_vigente = TRUE WHERE id = $1', [id]);
 
     if (d.turnoId) {
       await vig.reemplazar('turnoConductor', id,
@@ -794,7 +797,6 @@ async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
       [id, tipo, tipo === 'ett' ? ettNombre : null, alta, antiguedad || null,
        jornadaHoras || null, finPrueba || null, usuarioId || null]);
-    await cli.query('UPDATE conductor SET empleo_vigente = TRUE WHERE id = $1', [id]);
     return r.rows[0].id;
   });
 }
@@ -821,7 +823,6 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId } = {}) {
     await vig.cerrar('situacion', id, dia, { cli });
     await vig.cerrar('turnoConductor', id, dia, { cli });
     await vig.cerrar('libranza', id, dia, { cli });
-    await cli.query('UPDATE conductor SET empleo_vigente = FALSE WHERE id = $1', [id]);
 
     await audit.registrar({
       tabla: 'conductor', id, usuarioId, cli,
