@@ -137,6 +137,12 @@ router.post('/api/candidatura/:id/rrhh', responde(async req => {
   return r;
 }));
 
+// Borrar una candidatura que no debería existir: un teléfono mal tecleado, una
+// fila duplicada, una prueba. NO es descartar — descartar deja rastro porque es
+// una decisión del proceso. Se niega si la persona ha trabajado aquí.
+router.delete('/api/candidatura/:id', responde(async req =>
+  cand.eliminar(Number(req.params.id), await quien(req))));
+
 // ── Documentos ─────────────────────────────────────────────────────────────
 // Van a la tabla `documento`, que es de la PERSONA. Los bytes siguen en Drive;
 // lo que cambia es que ahora están indexados, con su tipo y su caducidad, en vez

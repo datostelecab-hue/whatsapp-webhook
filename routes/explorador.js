@@ -1,9 +1,12 @@
 // ============================================================
 // EXPLORADOR DE LA BASE DE DATOS — rutas (solo rol desarrollador)
 // ============================================================
-// Todo lo de aquí es de solo lectura, garantizado por la propia base. Aun así
-// queda tras el rol más alto: ver todas las tablas incluye ver datos personales
-// de la plantilla entera.
+// Leer es de solo lectura, garantizado por la propia base. Escribir tiene su
+// propia ruta y su propia red: se prueba, se dice a cuántas filas afectaría y
+// solo entonces se guarda.
+//
+// Todo queda tras el rol más alto. No solo por escribir: ver todas las tablas
+// incluye ver los datos personales de la plantilla entera.
 const express = require('express');
 const router = express.Router();
 const sesion = require('../services/sesion');
@@ -33,6 +36,19 @@ router.get('/api/datos',      responder(req => exp.datos(req.query.tabla, {
 router.post('/api/consulta', responder(async req => {
   const r = await exp.consultaLibre((req.body || {}).sql);
   console.log(`🔎 [BD] Consulta de ${(req.usuario || {}).email || '?'}: ${r.total} fila(s) en ${r.ms} ms`);
+  return r;
+}));
+
+// Escribir. En dos tiempos: primero se prueba (se ejecuta y se deshace) para
+// decir a cuántas filas afectaría, y solo con `confirmar` se guarda.
+router.post('/api/escribir', responder(async req => {
+  const b = req.body || {};
+  const r = await exp.escribir(b.sql, { confirmar: b.confirmar === true });
+  // Se registra SIEMPRE, también la prueba: quién quiso hacer qué es tan útil
+  // como quién lo hizo.
+  console.log(`✍️  [BD] ${(req.usuario || {}).email || '?'} ${r.guardado ? 'EJECUTA' : 'prueba'}` +
+              ` (${r.filas === null ? 'sin filas' : r.filas + ' filas'}): ` +
+              String(b.sql || '').replace(/\s+/g, ' ').slice(0, 160));
   return r;
 }));
 

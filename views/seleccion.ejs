@@ -242,6 +242,30 @@
     });
   }
 
+  /**
+   * Borrar una candidatura que no debería existir.
+   *
+   * No es lo mismo que descartar: descartar es una decisión del proceso y deja
+   * rastro. Esto es para un teléfono mal tecleado, una fila duplicada o una
+   * prueba. El servidor se niega si la persona ha trabajado aquí.
+   */
+  async function accionEliminar(d) {
+    const ok = await Dialogo.confirmar({
+      titulo: '¿Borrar la candidatura de ' + d.quien + '?',
+      html: '<p class="text-sm">Desaparece del sistema, con sus documentos. <b>No tiene vuelta atrás.</b></p>'
+        + '<p class="text-sm mt-2 text-telecab-muted">Si lo que pasa es que no sigue en el proceso, '
+        + 'no la borres: <b>descártala</b>, y queda constancia de que se presentó.</p>',
+      tono: 'peligro',
+      si: 'Borrar',
+    });
+    if (!ok) return;
+    const r = await hacer(() => api('/seleccion/api/candidatura/' + d.id, { method: 'DELETE' }), false);
+    if (!r) return;
+    seleccion.volver();
+    Dialogo.hecho('Borrada la candidatura de ' + r.quien
+      + (r.personaBorrada ? ' y su ficha' : ' (la ficha se queda: tiene más historia)'));
+  }
+
   // ── Documentos ──────────────────────────────────────────────────────────
 
   async function subirDocumento(d, key, archivo) {
@@ -360,6 +384,8 @@
         { texto: 'Datos', icono: 'fa-pen', principal: false, onClick: accionDatos },
         { texto: 'Coordenadas', icono: 'fa-location-crosshairs', principal: false, onClick: accionGeo },
         { texto: 'Ficha de alta', icono: 'fa-file-pdf', principal: false, onClick: accionFichaPDF },
+        { texto: 'Borrar', icono: 'fa-trash', peligro: true, principal: false,
+          onClick: accionEliminar },
       ],
 
       bloques: [

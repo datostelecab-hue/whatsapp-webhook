@@ -104,6 +104,12 @@ router.post('/api/candidatura/:id/rrhh', responde(async req => {
   return r;
 }));
 
+// Borrar una candidatura que no debería existir: un teléfono mal tecleado, una
+// fila duplicada, una prueba. NO es descartar — descartar deja rastro porque es
+// una decisión del proceso. Se niega si la persona ha trabajado aquí.
+router.delete('/api/candidatura/:id', responde(async req =>
+  cand.eliminar(Number(req.params.id), await quien(req))));
+
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
 
 // La matriz como texto, para pegarla en la respuesta del mismo hilo.

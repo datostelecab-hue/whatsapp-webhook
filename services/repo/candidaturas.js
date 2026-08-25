@@ -555,8 +555,29 @@ async function importarMatriz(texto, quien = {}) {
 
   for (const f of filas) {
     try {
-      const { candidatura } = await porTelefono(f.telefono);
+      const { situacion, candidatura } = await porTelefono(f.telefono);
       if (candidatura) { yaEstaban++; continue; }
+
+      // Y tampoco si esta MISMA cita ya se importó, aunque su candidatura se
+      // cerrara después.
+      //
+      // `porTelefono` solo devuelve la candidatura VIVA, así que sin esto pasaba
+      // lo siguiente: se pega la tabla, se descarta a alguien, se vuelve a pegar
+      // la tabla —que es lo normal, la agencia la reenvía ampliada cada semana—
+      // y esa persona reaparecía con una candidatura nueva, dejando dos.
+      //
+      // Se compara por la CITA: si vuelve a presentarse dentro de unos meses la
+      // fecha será otra, y entonces sí son dos procesos distintos y las dos
+      // candidaturas son historia legítima. Sin cita no se puede distinguir, y
+      // ante la duda no se duplica.
+      if (situacion.ficha) {
+        const ya = await db.consulta(
+          `SELECT 1 FROM candidatura
+            WHERE conductor_id = $1 AND canal = 'bolsa_ett'
+              AND ($2::timestamptz IS NULL OR entrevista_at = $2)
+            LIMIT 1`, [situacion.ficha.id, f.entrevista]);
+        if (ya.rows.length) { yaEstaban++; continue; }
+      }
 
       const r = await abrir(f.telefono, {
         nombre: f.nombre,
@@ -642,8 +663,63 @@ async function matriz() {
     .join('\n');
 }
 
+/**
+ * Borra una candidatura, y a la persona si solo existia por ella.
+ *
+ * NO es lo mismo que descartar. Descartar es una decision del proceso y deja
+ * rastro: esa persona se presento y no paso, y eso es historia que sirve. Esto
+ * es para cuando la candidatura NO DEBERIA EXISTIR — un telefono mal tecleado,
+ * una fila duplicada, una prueba.
+ *
+ * Se niega en seco si la persona ha tenido algun periodo de empleo, aunque este
+ * cerrado. Eso ya no es un candidato: es alguien que trabajo aqui, y su
+ * historial laboral no se borra desde una pantalla de seleccion.
+ *
+ * A la persona solo se la lleva por delante si no le queda nada mas: ni empleo,
+ * ni otra candidatura. Si la ficha ya existia antes (una restauracion), se
+ * queda: no la creo este proceso y no le toca a este proceso borrarla.
+ */
+async function eliminar(id, { usuarioId } = {}) {
+  return db.transaccion(async cli => {
+    const k = (await cli.query(
+      `SELECT k.conductor_id, k.estado,
+              btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
+              (SELECT count(*)::int FROM conductor_periodo_empleo e
+                WHERE e.conductor_id = k.conductor_id)              AS empleos,
+              (SELECT count(*)::int FROM candidatura o
+                WHERE o.conductor_id = k.conductor_id AND o.id <> k.id) AS otras
+         FROM candidatura k JOIN conductor c ON c.id = k.conductor_id
+        WHERE k.id = $1`, [Number(id)])).rows[0];
+    if (!k) throw new Error('No existe esa candidatura');
+
+    if (k.empleos) {
+      throw new Error(`${k.quien} ha trabajado aquí: su ficha no se borra desde Selección. ` +
+                      'Si no debe seguir en el proceso, descártala en vez de borrarla.');
+    }
+
+    await cli.query('DELETE FROM candidatura WHERE id = $1', [Number(id)]);
+
+    // La persona, solo si no le queda nada. El resto de sus cosas —telefonos,
+    // alias, documentos— caen solas por las claves foraneas.
+    let personaBorrada = false;
+    if (!k.otras) {
+      await cli.query('DELETE FROM conductor WHERE id = $1', [k.conductor_id]);
+      personaBorrada = true;
+    }
+
+    // El registro SI se queda. Es una tabla sin clave foranea a proposito, justo
+    // para poder decir que existio algo que ya no existe.
+    await audit.registrar({
+      tabla: 'candidatura', id: Number(id), usuarioId,
+      cambios: [{ campo: 'eliminada', antes: `${k.quien} · ${k.estado}`, ahora: null }],
+    });
+
+    return { id: Number(id), quien: k.quien, personaBorrada };
+  });
+}
+
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
-  cambiarEstado, pasarARRHH, faltantes, paraFicha, importarMatriz, parsearMatriz,
+  cambiarEstado, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
   paraETT, matriz,
 };

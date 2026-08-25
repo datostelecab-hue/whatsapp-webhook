@@ -3,12 +3,18 @@
 // ============================================================
 // Un phpMyAdmin de andar por casa, porque Render no trae ninguno.
 //
-// SEGURIDAD — cómo se impide escribir:
+// SEGURIDAD — leer y escribir son dos puertas distintas:
 //
-//   Toda consulta libre corre dentro de una transacción marcada READ ONLY por
-//   la propia base. Un DELETE, un UPDATE o un DROP no fallan "porque el filtro
-//   los pilló": fallan porque PostgreSQL se niega a ejecutarlos. Filtrar SQL
-//   con expresiones regulares es una carrera que siempre se pierde; esto no.
+//   LEER (`consultaLibre`) corre dentro de una transacción marcada READ ONLY por
+//   la propia base. Un DELETE o un DROP escritos ahí no fallan "porque el filtro
+//   los pilló": fallan porque PostgreSQL se niega a ejecutarlos. Filtrar SQL con
+//   expresiones regulares es una carrera que siempre se pierde; esto no.
+//
+//   ESCRIBIR (`escribir`) es otra función, y a propósito. No se protege
+//   prohibiéndolo —el módulo entero ya está detrás de `requiereDesarrollador`, y
+//   por el panel de Render se entra igual— sino enseñando lo que va a pasar
+//   ANTES de que pase: se ejecuta, se cuenta a cuántas filas afecta y se
+//   deshace. Un DELETE sin WHERE se delata solo.
 //
 //   Además hay un `statement_timeout`, así que una consulta mal pensada no
 //   puede dejar la base bloqueada, y un límite de filas para no traerse un
@@ -182,6 +188,63 @@ async function consultaLibre(sql) {
     recortado,
     ms: r.ms,
   };
+}
+
+/**
+ * Escribir en la base desde el explorador.
+ *
+ * No se protege prohibiéndolo. Lo que se protege es el error IRREVERSIBLE por
+ * descuido, y de la única forma que de verdad funciona: enseñando lo que va a
+ * pasar antes de que pase.
+ *
+ *   1. Sin `confirmar`, la sentencia se ejecuta dentro de una transacción, se
+ *      cuenta a cuántas filas afecta y se DESHACE. No queda nada escrito.
+ *   2. La pantalla enseña ese número. Un `DELETE` sin `WHERE` se delata solo:
+ *      dice 463 filas, y ahí te paras.
+ *   3. Con `confirmar`, se ejecuta otra vez y se guarda.
+ *
+ * El precio de esa red: la sentencia corre DOS veces. Da igual para un UPDATE o
+ * un DELETE, pero un INSERT quema un valor de secuencia en la prueba. Es un
+ * hueco en una numeración, no un dato perdido.
+ */
+async function escribir(sql, { confirmar = false } = {}) {
+  const texto = String(sql || '').trim();
+  if (!texto) throw new Error('Escribe una sentencia');
+
+  const cli = await db.pool().connect();
+  try {
+    await cli.query('BEGIN');
+    await cli.query(`SET LOCAL statement_timeout = '${TIEMPO_MAX}'`);
+    const t0 = Date.now();
+    const r = await cli.query(texto);
+    const ms = Date.now() - t0;
+
+    // `rowCount` es null en las sentencias que no tocan filas (un CREATE, por
+    // ejemplo). Se distingue de cero, que sí significa "no ha cogido ninguna".
+    const filas = (r.rowCount === null || r.rowCount === undefined) ? null : r.rowCount;
+
+    if (!confirmar) {
+      await cli.query('ROLLBACK');
+      return {
+        guardado: false, filas, ms,
+        aviso: filas === null
+          ? 'La sentencia es válida. Todavía no se ha guardado nada.'
+          : `Afectaría a ${filas} fila(s). Todavía no se ha guardado nada.`,
+      };
+    }
+
+    await cli.query('COMMIT');
+    return {
+      guardado: true, filas, ms,
+      columnas: (r.fields || []).map(f => f.name),
+      devueltas: (r.rows || []).slice(0, LIMITE_FILAS),
+    };
+  } catch (e) {
+    await cli.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    cli.release();
+  }
 }
 
 /** Resumen para la cabecera del explorador. */
