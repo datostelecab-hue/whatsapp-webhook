@@ -1,0 +1,577 @@
+// ============================================================
+// PLANIFICADOR — el tablero, sobre PostgreSQL
+// ============================================================
+// Sustituye a leer PLANIFICADOR_V2 y AGENDA_V2 de la hoja. No es la misma
+// lógica traducida: es otra, porque la de la hoja estaba limitada por la hoja.
+//
+// Lo que se va con ella:
+//
+//   · El ID de BOLT como clave. Era el NOMBRE tal como lo escribe BOLT, y todo
+//     el tablero colgaba de que ese texto coincidiera carácter a carácter. Aquí
+//     la clave es el id del conductor, que no cambia porque alguien corrija una
+//     tilde. La cuenta de BOLT pasa a ser un dato más de la persona.
+//   · Los días escritos a mano ("L M X"). Ahora son filas en `asignacion_dia`.
+//   · Una foto del presente. La hoja solo sabía decir quién está HOY en cada
+//     plaza; `asignacion` tiene desde y hasta, así que se puede mirar cualquier
+//     semana y planificar hacia delante sin pisar lo de antes.
+//
+// LA REGLA de quién cubre qué día NO está aquí: está en `f_cobertura`, en la
+// base. Este módulo la consulta y le da forma de tablero. Si mañana cambia lo
+// que significa un correturnos, se cambia en un sitio.
+
+const db = require('../db');
+
+// Lunes = 1, como ISODOW. El tablero pinta de lunes a domingo.
+const DIAS = 7;
+const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+/** El lunes de la semana que contiene esa fecha. */
+function lunesDe(dia) {
+  const d = new Date(dia + 'T00:00:00');
+  const desplaza = (d.getDay() + 6) % 7;          // domingo=0 → 6
+  d.setDate(d.getDate() - desplaza);
+  return aISO(d);
+}
+
+const aISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Una fecha de PostgreSQL a 'AAAA-MM-DD', sin pasar por UTC. */
+function fechaDe(v) {
+  if (!v) return '';
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d) ? '' : aISO(d);
+}
+
+const hoy = () => aISO(new Date());
+
+/** Los siete días de la semana que empieza ese lunes. */
+function semanaDesde(lunes) {
+  const base = new Date(lunes + 'T00:00:00');
+  return Array.from({ length: DIAS }, (_, i) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    return aISO(d);
+  });
+}
+
+/**
+ * El tablero de una semana.
+ *
+ * `dia` es la fecha EFECTIVA: decide qué semana se pinta y, cuando se guarda,
+ * desde cuándo valen los cambios. Por omisión, hoy.
+ */
+async function tablero({ dia } = {}) {
+  const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  const lunes = lunesDe(efectivo);
+  const fechas = semanaDesde(lunes);
+  const domingo = fechas[DIAS - 1];
+
+  const [plazas, asignaciones, cobertura, conductores, sugeridos] = await Promise.all([
+    // Las plazas de los coches que se planifican. El orden es el de la
+    // pantalla: primero la zona, luego la matrícula.
+    db.consulta(
+      `SELECT plaza_id, vehiculo_id, matricula, zona, base_zona_id, estado_operativo,
+              es_operativo, visible_cobertura, slot, turno_codigo, turno, rol, orden_ct
+         FROM v_plaza
+        WHERE visible_cobertura
+        ORDER BY zona NULLS LAST, matricula, slot`),
+
+    // Lo que hay escrito para esta semana, con sus días si es correturnos.
+    db.consulta(
+      `SELECT a.id, a.plaza_id, a.conductor_id, a.desde, a.hasta,
+              (SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana)
+                 FROM asignacion_dia ad WHERE ad.asignacion_id = a.id) AS dias
+         FROM asignacion a
+         JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+        WHERE a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $1)
+        ORDER BY a.desde`, [lunes, domingo]),
+
+    // Día a día, quién cubre qué. La regla vive en la base.
+    db.consulta('SELECT * FROM f_cobertura($1, $2)', [lunes, domingo]),
+
+    // Quién se puede planificar. No hay "agenda": es la plantilla con contrato
+    // abierto, su turno, su libranza y su jornada.
+    db.consulta(
+      `SELECT c.id,
+              btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
+              c.dni_nie,
+              e.alta, e.jornada_horas, e.tipo AS contrato_tipo, e.ett_nombre,
+              j.dias_ct,
+              th.turno_id, t.codigo AS turno_codigo, t.etiqueta AS turno,
+              lib.dias                                   AS libra,
+              (ext.externo_id IS NULL)                   AS bolt_pendiente,
+              est.estado, ce.etiqueta AS estado_etiqueta, ce.es_ausencia
+         FROM conductor c
+         JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL
+         LEFT JOIN cat_jornada j  ON j.horas = e.jornada_horas
+         LEFT JOIN conductor_turno_hist th
+                ON th.conductor_id = c.id
+               AND th.desde <= $1 AND (th.hasta IS NULL OR th.hasta >= $1)
+         LEFT JOIN turno t ON t.id = th.turno_id
+         LEFT JOIN LATERAL (
+           SELECT array_agg(d.dia_semana ORDER BY d.dia_semana) AS dias
+             FROM patron_libranza pl
+             JOIN patron_libranza_dia d ON d.patron_id = pl.id
+            WHERE pl.conductor_id = c.id
+              AND pl.desde <= $1 AND (pl.hasta IS NULL OR pl.hasta >= $1)) lib ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT externo_id FROM conductor_externo
+            WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
+            ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) ext ON TRUE
+         LEFT JOIN conductor_estado_hist est
+                ON est.conductor_id = c.id
+               AND est.desde <= $1 AND (est.hasta IS NULL OR est.hasta >= $1)
+         LEFT JOIN cat_estado_conductor ce ON ce.codigo = est.estado
+        WHERE NOT c.es_centinela
+        ORDER BY nombre`, [efectivo]),
+
+    // Qué días le tocarían a un correturnos en cada plaza: los que libra el
+    // fijo de ese coche y turno.
+    db.consulta('SELECT plaza_id, dias_sugeridos FROM v_plaza_ct_sugerida'),
+  ]);
+
+  const sugeridoDe = new Map(sugeridos.rows.map(r => [String(r.plaza_id), r.dias_sugeridos || []]));
+
+  // ── Las personas, indexadas ────────────────────────────────────────────
+  const gente = new Map();
+  conductores.rows.forEach(c => {
+    const libra = new Array(DIAS).fill(false);
+    (c.libra || []).forEach(d => { libra[d - 1] = true; });
+    gente.set(String(c.id), {
+      id: String(c.id),
+      nombre: c.nombre,
+      dni: c.dni_nie || '',
+      turno: c.turno || '',
+      turnoCodigo: c.turno_codigo || '',
+      turnoId: c.turno_id || null,
+      alta: fechaDe(c.alta),
+      jornadaHoras: c.jornada_horas == null ? null : Number(c.jornada_horas),
+      diasQueDebeCT: c.dias_ct == null ? null : Number(c.dias_ct),
+      contrato: c.jornada_horas ? `${Number(c.jornada_horas)}h${c.contrato_tipo === 'ett' ? ' ETT' : ''}` : '',
+      esEtt: c.contrato_tipo === 'ett',
+      ettNombre: c.ett_nombre || '',
+      boltPendiente: !!c.bolt_pendiente,
+      estado: c.estado_etiqueta || 'Activo',
+      ausente: !!c.es_ausencia,
+      libra,
+      // Se rellenan con la cobertura, más abajo.
+      trabaja: new Array(DIAS).fill(false),
+      diasAsignados: 0,
+      plazas: 0,
+    });
+  });
+
+  // ── La cobertura, día a día ────────────────────────────────────────────
+  const indiceDia = new Map(fechas.map((f, i) => [f, i]));
+  // vehiculo → turno → día → [conductores]
+  const cubre = new Map();
+  cobertura.rows.forEach(r => {
+    const i = indiceDia.get(fechaDe(r.dia));
+    if (i === undefined) return;
+    const clave = `${r.vehiculo_id}|${r.turno_id}`;
+    if (!cubre.has(clave)) cubre.set(clave, Array.from({ length: DIAS }, () => []));
+    cubre.get(clave)[i].push(String(r.conductor_id));
+
+    const p = gente.get(String(r.conductor_id));
+    if (p && !p.trabaja[i]) { p.trabaja[i] = true; p.diasAsignados++; }
+  });
+
+  // ── Las asignaciones por plaza ─────────────────────────────────────────
+  const porPlaza = new Map();
+  asignaciones.rows.forEach(a => porPlaza.set(String(a.plaza_id), a));
+  asignaciones.rows.forEach(a => {
+    const p = gente.get(String(a.conductor_id));
+    if (p) p.plazas++;
+  });
+
+  // ── El tablero ─────────────────────────────────────────────────────────
+  const coches = [];
+  const porVehiculo = new Map();
+  plazas.rows.forEach(p => {
+    const k = String(p.vehiculo_id);
+    if (!porVehiculo.has(k)) {
+      const coche = {
+        idx: coches.length,
+        vehiculoId: p.vehiculo_id,
+        matricula: p.matricula,
+        zona: p.zona || '',
+        zonaId: p.base_zona_id || null,
+        estado: p.estado_operativo,
+        operativo: !!p.es_operativo,
+        // Seis plazas; se rellenan por su número de slot.
+        personas: Array.from({ length: 6 }, () => null),
+        semana: Array.from({ length: DIAS * 2 }, () => ({ id: '', nombre: '', conflicto: false })),
+      };
+      porVehiculo.set(k, coche);
+      coches.push(coche);
+    }
+    const coche = porVehiculo.get(k);
+    const a = porPlaza.get(String(p.plaza_id));
+    const persona = a ? gente.get(String(a.conductor_id)) : null;
+    const dias = new Array(DIAS).fill(false);
+    (a && a.dias ? a.dias : []).forEach(d => { dias[d - 1] = true; });
+
+    coche.personas[p.slot] = {
+      plazaId: String(p.plaza_id),
+      slot: p.slot,
+      rol: p.rol,
+      turno: p.turno,
+      turnoCodigo: p.turno_codigo,
+      ordenCt: p.orden_ct,
+      id: persona ? persona.id : '',
+      nombre: persona ? persona.nombre : '',
+      asignacionId: a ? String(a.id) : '',
+      desde: a ? fechaDe(a.desde) : '',
+      hasta: a ? fechaDe(a.hasta) : '',
+      diasManual: dias,
+      // Lo que le tocaría si nadie dice otra cosa: los días que libra el fijo.
+      diasSugeridos: (sugeridoDe.get(String(p.plaza_id)) || []).map(d => d - 1),
+      huerfano: !!(a && !persona),
+    };
+  });
+
+  // Una plaza que no existe en la base se pinta igual, vacía: el tablero tiene
+  // seis huecos por coche pase lo que pase.
+  coches.forEach(coche => {
+    for (let k = 0; k < 6; k++) {
+      if (coche.personas[k]) continue;
+      coche.personas[k] = {
+        plazaId: '', slot: k, rol: k < 2 ? 'FIJO' : 'CT',
+        turno: k % 2 === 0 ? 'Día' : 'Noche', turnoCodigo: k % 2 === 0 ? 'dia' : 'noche',
+        ordenCt: k < 2 ? null : (k < 4 ? 1 : 2),
+        id: '', nombre: '', asignacionId: '', desde: '', hasta: '',
+        diasManual: new Array(DIAS).fill(false), diasSugeridos: [], huerfano: false,
+      };
+    }
+  });
+
+  // ── La tira de cobertura, y los días sin cubrir ────────────────────────
+  const turnoIdDe = new Map();
+  plazas.rows.forEach(p => turnoIdDe.set(p.turno_codigo, p.turno_id));
+
+  let diasSinCubrirDia = 0, diasSinCubrirNoche = 0;
+  coches.forEach(coche => {
+    ['dia', 'noche'].forEach((codigo, off) => {
+      const lista = cubre.get(`${coche.vehiculoId}|${turnoIdDe.get(codigo)}`)
+        || Array.from({ length: DIAS }, () => []);
+      let sinCubrir = 0;
+      for (let d = 0; d < DIAS; d++) {
+        const quienes = lista[d];
+        const celda = coche.semana[d * 2 + off];
+        if (!quienes.length) {
+          if (coche.operativo) sinCubrir++;
+          continue;
+        }
+        const p = gente.get(quienes[0]);
+        celda.id = quienes[0];
+        celda.nombre = p ? p.nombre : '';
+        // Dos personas cubriendo el mismo coche, turno y día. La base impide
+        // que compartan PLAZA, no que un fijo y su correturnos se solapen.
+        celda.conflicto = quienes.length > 1;
+        if (celda.conflicto) celda.otros = quienes.slice(1).map(i => (gente.get(i) || {}).nombre || i);
+      }
+      if (off === 0) diasSinCubrirDia += sinCubrir; else diasSinCubrirNoche += sinCubrir;
+      coche[off === 0 ? 'sinCubrirDia' : 'sinCubrirNoche'] = sinCubrir;
+    });
+  });
+
+  // ── El banquillo ───────────────────────────────────────────────────────
+  // Quien no tiene ninguna plaza esta semana. Incluye a los que empiezan más
+  // adelante: se les ve para poder colocarlos antes de que entren.
+  const banquillo = [...gente.values()]
+    .filter(p => !p.plazas)
+    .map(p => p.id);
+
+  return {
+    dia: efectivo,
+    lunes,
+    fechas,
+    dias: LETRAS,
+    coches,
+    conductores: [...gente.values()],
+    banquillo,
+    resumen: {
+      coches: coches.filter(c => c.operativo).length,
+      diasSinCubrirDia,
+      diasSinCubrirNoche,
+      // A dos días por coche, un correturnos de 40 horas cubre seis días. Es lo
+      // que convierte "faltan 14 días" en "hacen falta 3 personas", que es la
+      // pregunta que se hace de verdad.
+      ctQueFaltanDia: Math.ceil(diasSinCubrirDia / 6),
+      ctQueFaltanNoche: Math.ceil(diasSinCubrirNoche / 6),
+      banquillo: banquillo.length,
+    },
+    avisos: avisosDe(coches, gente),
+  };
+}
+
+/**
+ * Lo que hay que mirar, dicho con nombres.
+ *
+ * No son todos los problemas posibles: son los que impiden que alguien salga a
+ * trabajar, más los que hacen que el tablero mienta.
+ */
+function avisosDe(coches, gente) {
+  const avisos = [];
+  const di = (tipo, msg) => avisos.push({ tipo, msg });
+
+  coches.forEach(coche => {
+    if (!coche.operativo) return;
+    coche.personas.forEach(p => {
+      if (p.rol !== 'FIJO' || p.id) return;
+      di('hueco', `${coche.matricula}: sin fijo de ${p.turno.toLowerCase()}`);
+    });
+    coche.semana.forEach((celda, i) => {
+      if (!celda.conflicto) return;
+      const turno = i % 2 === 0 ? 'día' : 'noche';
+      di('conflicto', `${coche.matricula} ${LETRAS[Math.floor(i / 2)]} (${turno}): ` +
+        `${celda.nombre} y ${(celda.otros || []).join(', ')} a la vez`);
+    });
+  });
+
+  gente.forEach(p => {
+    if (!p.plazas) return;
+    if (!p.turnoId) di('sin_turno', `${p.nombre} está colocado y no tiene turno`);
+    if (p.boltPendiente) di('bolt', `${p.nombre} no tiene cuenta de BOLT`);
+    if (p.ausente) di('ausente', `${p.nombre} está ${p.estado.toLowerCase()} y ocupa plaza`);
+    // Un correturnos con menos días de los que le tocan por contrato. El
+    // estándar son dos por coche: 32 horas son cuatro días, 40 son seis.
+    const soloCT = p.diasQueDebeCT != null && p.trabaja.some(Boolean);
+    if (soloCT && p.plazas > 1 && p.diasAsignados < p.diasQueDebeCT) {
+      di('faltan_dias', `${p.nombre} tiene ${p.diasAsignados} día(s) de los ` +
+        `${p.diasQueDebeCT} que le tocan`);
+    }
+  });
+
+  return avisos;
+}
+
+// ============================================================
+// ESCRIBIR
+// ============================================================
+
+/** El día anterior, para cerrar lo que había el día antes de que entre el nuevo. */
+function vispera(dia) {
+  const d = new Date(dia + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return aISO(d);
+}
+
+/**
+ * "L M X" → [1, 2, 3].
+ *
+ * Se sigue aceptando escrito porque es como lo teclea Tráfico, pero ya no se
+ * guarda así: acaba en filas de `asignacion_dia`. Devuelve null si hay algo que
+ * no se entiende, y entonces no se guarda nada — antes un "L y M" se convertía
+ * en solo el lunes sin decir una palabra.
+ */
+function parsearDias(txt) {
+  if (Array.isArray(txt)) return txt.map(Number).filter(d => d >= 1 && d <= 7);
+  const limpio = String(txt == null ? '' : txt).trim();
+  if (!limpio) return [];
+  const MAPA = { L: 1, M: 2, X: 3, J: 4, V: 5, S: 6, D: 7 };
+  const dias = new Set();
+  for (const trozo of limpio.toUpperCase().split(/[\s,;.+\-/]+/)) {
+    if (!trozo) continue;
+    // "LMX" pegado también vale: se lee letra a letra.
+    for (const letra of trozo) {
+      if (!MAPA[letra]) return null;
+      dias.add(MAPA[letra]);
+    }
+  }
+  return [...dias].sort((a, b) => a - b);
+}
+
+/** La asignación viva de una plaza en una fecha. */
+async function asignacionEn(cli, plazaId, dia) {
+  const r = await cli.query(
+    `SELECT id, conductor_id, desde, hasta FROM asignacion
+      WHERE plaza_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta >= $2)
+      ORDER BY desde DESC LIMIT 1`, [plazaId, dia]);
+  return r.rows[0] || null;
+}
+
+/**
+ * Deja libre una plaza a partir de un día.
+ *
+ * Cerrar y no borrar: quien estuvo ahí el mes pasado estuvo, y la cobertura de
+ * esas semanas tiene que seguir cuadrando. Solo se borra la asignación que
+ * todavía no había empezado, porque esa no llegó a pasar.
+ */
+async function liberar(cli, plazaId, dia, usuarioId) {
+  const a = await asignacionEn(cli, plazaId, dia);
+  if (!a) return null;
+  const desde = fechaDe(a.desde);
+  if (desde >= dia) {
+    await cli.query('DELETE FROM asignacion WHERE id = $1', [a.id]);
+    return { id: a.id, borrada: true };
+  }
+  await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [a.id, vispera(dia)]);
+  return { id: a.id, cerrada: vispera(dia) };
+}
+
+/**
+ * Coloca a alguien en una plaza desde un día.
+ *
+ * Las dos reglas que pidió Tráfico, y que aquí son una línea cada una:
+ *
+ *   · Sin "desde", desde el día que se está planificando.
+ *   · Sin "hasta", indefinido. La plaza es suya hasta que alguien diga otra cosa.
+ *
+ * Los días de un correturnos, si no se dicen, son los que libra el fijo de ese
+ * mismo coche y turno. Es lo que significa un correturnos: cubrir justo los días
+ * que el fijo no está.
+ */
+async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia, usuarioId }) {
+  const entra = desde || dia;
+  const rol = (await cli.query('SELECT rol FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
+  if (!rol) throw new Error('Esa plaza ya no existe');
+
+  const actual = await asignacionEn(cli, plazaId, entra);
+  // Ya está ahí: no se abre otra, se ajusta la que hay. Abrir una segunda por
+  // cambiarle la fecha de fin partía su historia en dos sin motivo.
+  if (actual && String(actual.conductor_id) === String(conductorId)) {
+    await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [actual.id, hasta || null]);
+    await guardarDias(cli, actual.id, plazaId, rol.rol, dias);
+    return { id: actual.id, ajustada: true };
+  }
+
+  if (actual) await liberar(cli, plazaId, entra, usuarioId);
+
+  const r = await cli.query(
+    `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [plazaId, conductorId, entra, hasta || null, usuarioId || null]);
+  await guardarDias(cli, r.rows[0].id, plazaId, rol.rol, dias);
+  return { id: r.rows[0].id, nueva: true };
+}
+
+/** Los días que cubre un correturnos. Un fijo no tiene: cubre todos menos los que libra. */
+async function guardarDias(cli, asignacionId, plazaId, rol, dias) {
+  await cli.query('DELETE FROM asignacion_dia WHERE asignacion_id = $1', [asignacionId]);
+  if (rol !== 'CT') return;
+
+  let lista = dias;
+  if (!lista || !lista.length) {
+    const s = await cli.query(
+      'SELECT dias_sugeridos FROM v_plaza_ct_sugerida WHERE plaza_id = $1', [plazaId]);
+    lista = (s.rows[0] || {}).dias_sugeridos || [];
+  }
+  for (const d of lista) {
+    await cli.query(
+      'INSERT INTO asignacion_dia (asignacion_id, dia_semana) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [asignacionId, d]);
+  }
+}
+
+/**
+ * Guarda los cambios del tablero.
+ *
+ * Todo en UNA transacción: mover a alguien toca dos plazas, y a medias deja el
+ * coche de origen con un hueco y el de destino con dos personas.
+ *
+ * `dia` es la fecha efectiva: lo que se guarde vale DESDE ese día, y lo que
+ * hubiera antes se cierra la víspera. Así se puede poner a uno el 25 y a otro
+ * el 28 en la misma plaza sin borrar lo del 25.
+ */
+async function guardar(cambios = [], { dia, usuarioId } = {}) {
+  const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  const hechos = [];
+
+  await db.transaccion(async cli => {
+    for (const c of cambios) {
+      if (c.vehiculoId && (c.zona !== undefined || c.estadoVeh !== undefined)) {
+        const sets = [], vals = [];
+        if (c.zona !== undefined) { vals.push(c.zona || null); sets.push(`base_zona_id = $${vals.length}`); }
+        if (c.estadoVeh !== undefined) { vals.push(c.estadoVeh); sets.push(`estado_operativo = $${vals.length}`); }
+        vals.push(c.vehiculoId);
+        await cli.query(`UPDATE vehiculo SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals);
+        hechos.push({ que: 'coche', vehiculoId: c.vehiculoId });
+      }
+
+      for (const s of (c.slots || [])) {
+        if (!s.plazaId) throw new Error('Falta la plaza: recarga el tablero y vuelve a intentarlo');
+
+        const dias = s.dias === undefined ? null : parsearDias(s.dias);
+        if (dias === null && s.dias !== undefined && String(s.dias).trim()) {
+          throw new Error(`No entiendo los días "${s.dias}". Escríbelos como L M X J V S D.`);
+        }
+
+        if (!s.id) {
+          const r = await liberar(cli, s.plazaId, s.desde || efectivo, usuarioId);
+          if (r) hechos.push({ que: 'libera', plazaId: s.plazaId, ...r });
+          continue;
+        }
+        const r = await colocar(cli, {
+          plazaId: s.plazaId, conductorId: Number(s.id),
+          desde: s.desde || null, hasta: s.hasta || null, dias: dias || [],
+        }, { dia: efectivo, usuarioId });
+        hechos.push({ que: 'coloca', plazaId: s.plazaId, conductorId: s.id, ...r });
+      }
+    }
+  });
+
+  return { hechos, dia: efectivo };
+}
+
+/**
+ * Un coche se cambia por otro: sus conductores se van con él.
+ *
+ * Pasa de verdad y pasa a menudo — el coche entra en el taller y la gente sigue
+ * saliendo con otro. Hacerlo plaza por plaza son doce movimientos, y basta con
+ * equivocarse en uno para dejar a alguien sin coche o a dos en el mismo.
+ *
+ * Se respeta la plaza: el fijo de día de X es el fijo de día de Y, y un
+ * correturnos se lleva sus mismos días. Lo de X se cierra la víspera; lo de Y
+ * empieza el día del cambio.
+ */
+async function cambiarCoche({ deVehiculoId, aVehiculoId, dia, soloTurno }, { usuarioId } = {}) {
+  if (!deVehiculoId || !aVehiculoId) throw new Error('Faltan los dos coches');
+  if (String(deVehiculoId) === String(aVehiculoId)) throw new Error('Es el mismo coche');
+  const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  const movidos = [];
+
+  await db.transaccion(async cli => {
+    const origen = await cli.query(
+      `SELECT p.plaza_id, p.slot, p.rol, p.turno_codigo, a.id AS asignacion_id, a.conductor_id,
+              a.hasta,
+              (SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana)
+                 FROM asignacion_dia ad WHERE ad.asignacion_id = a.id) AS dias
+         FROM v_plaza p
+         JOIN asignacion a ON a.plaza_id = p.plaza_id
+                          AND a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $2)
+        WHERE p.vehiculo_id = $1
+        ORDER BY p.slot`, [deVehiculoId, efectivo]);
+
+    if (!origen.rows.length) throw new Error('Ese coche no tiene a nadie colocado');
+
+    const destino = new Map((await cli.query(
+      'SELECT plaza_id, slot FROM v_plaza WHERE vehiculo_id = $1', [aVehiculoId]
+    )).rows.map(r => [r.slot, r.plaza_id]));
+
+    for (const o of origen.rows) {
+      if (soloTurno && o.turno_codigo !== soloTurno) continue;
+      const plazaDestino = destino.get(o.slot);
+      if (!plazaDestino) {
+        throw new Error(`El coche de destino no tiene la plaza ${o.slot}: no se puede mover a todos`);
+      }
+      // Primero se vacía el destino y se cierra el origen; después se coloca.
+      // Al revés, la exclusión de la base rechazaría el solape — que es
+      // exactamente lo que tiene que hacer.
+      await liberar(cli, o.plaza_id, efectivo, usuarioId);
+      await liberar(cli, plazaDestino, efectivo, usuarioId);
+      const r = await colocar(cli, {
+        plazaId: plazaDestino, conductorId: o.conductor_id,
+        desde: efectivo, hasta: fechaDe(o.hasta) || null, dias: o.dias || [],
+      }, { dia: efectivo, usuarioId });
+      movidos.push({ conductorId: String(o.conductor_id), slot: o.slot, asignacionId: r.id });
+    }
+  });
+
+  return { movidos, dia: efectivo };
+}
+
+module.exports = {
+  tablero, guardar, cambiarCoche,
+  lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
+};
