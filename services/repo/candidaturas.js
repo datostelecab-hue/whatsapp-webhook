@@ -976,6 +976,18 @@ async function paraETT({ solicitudId } = {}) {
 
   const dosCifras = n => String(n).padStart(2, '0');
 
+  // Una fecha como la escribe la agencia: DD/MM/AAAA.
+  //
+  // Con getDate() y NO con getUTCDate(). El driver devuelve un DATE como
+  // medianoche LOCAL, así que en horario de verano el UTC de esa medianoche cae
+  // en el día anterior: leerlo en UTC restaba un día a todas las fechas.
+  const aDiaMesAnio = v => {
+    if (!v) return '';
+    const d = v instanceof Date ? v : new Date(v);
+    if (isNaN(d)) return '';
+    return `${dosCifras(d.getDate())}/${dosCifras(d.getMonth() + 1)}/${d.getFullYear()}`;
+  };
+
   return filas.map(c => {
     const cita = c.entrevista_at ? new Date(c.entrevista_at) : null;
 

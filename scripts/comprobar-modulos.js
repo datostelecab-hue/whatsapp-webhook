@@ -109,4 +109,158 @@ for (const dir of ['routes', 'services']) {
 console.log(`\n${llamadas} llamada(s) entre módulos comprobadas`);
 console.log(malLlamados ? `${malLlamados} apuntan a algo que no existe` : 'Todas apuntan a algo que existe');
 
-process.exitCode = (fallos || malLlamados) ? 1 : 0;
+// ============================================================
+// LAS FUNCIONES DE CASA EXISTEN
+// ============================================================
+// El tercer medio fallo de la misma familia, y el que más veces ha pasado: se
+// sustituye un bloque, se lleva por delante una función auxiliar de al lado, y
+// las llamadas se quedan apuntando al vacío.
+//
+// No lo ve nadie: `node --check` compila —es sintaxis válida—, el módulo carga
+// —la función solo falta cuando se EJECUTA esa línea—, y las exportaciones
+// siguen estando. Revienta el día que alguien pulsa el botón, y con un mensaje
+// que no dice de dónde viene: "aDiaMesAnio is not defined".
+//
+// LA REGLA, a propósito estrecha: se marca un nombre solo si TODAS sus
+// apariciones en el fichero son llamadas. Si aparece una sola vez como otra cosa
+// —un parámetro, un destructurado, una declaración— se calla. Así un parámetro
+// que este lector no sepa leer produce un olvido y no un grito, que es el error
+// que se puede permitir: un comprobador que se equivoca enseña a ignorarlo.
+
+const GLOBALES = new Set([
+  'require', 'module', 'exports', 'process', 'console', 'Buffer', 'URL', 'URLSearchParams',
+  'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'setImmediate', 'queueMicrotask',
+  'fetch', 'structuredClone', 'AbortController', 'TextEncoder', 'TextDecoder',
+  'Object', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt', 'Math', 'JSON', 'Date',
+  'RegExp', 'Error', 'TypeError', 'RangeError', 'Promise', 'Map', 'Set', 'WeakMap', 'WeakSet',
+  'Proxy', 'Reflect', 'Function', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+  'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
+  // Palabras que van seguidas de paréntesis y no son llamadas a nada.
+  'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'await', 'new', 'delete',
+  'do', 'else', 'yield', 'void', 'in', 'of', 'case', 'function', 'class', 'super', 'this',
+  'async',
+]);
+
+// Dónde puede empezar una expresión regular: justo después de algo que NO es un
+// valor. Detrás de un valor, una barra es una división.
+const ABRE_REGEX = new Set(['', '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';',
+  '+', '-', '*', '%', '~', '^', '<', '>']);
+
+/**
+ * El texto sin nada que PAREZCA código sin serlo.
+ *
+ * Hacen falta las cuatro cosas, y cada una se aprendió a base de gritos en
+ * falso: un SQL entre comillas trae `count(`, un comentario trae `la vista (…)`,
+ * una expresión regular trae `VIEW (`, y una plantilla trae `${n} caso(s)`.
+ *
+ * Y se lee CARÁCTER A CARÁCTER en vez de con expresiones regulares. Con regex
+ * casi funcionaba, y ese "casi" era el problema: una plantilla con otra dentro
+ * —`${x} de ${`${y}`}`— se cerraba en la comilla equivocada, y a partir de ahí
+ * el fichero entero quedaba desalineado. El resultado eran nueve avisos de
+ * funciones que sí existían, que es exactamente como se aprende a ignorar esto.
+ */
+function soloCodigo(txt) {
+  const n = txt.length;
+  let out = '', i = 0, anterior = '';
+  // Una pila porque `${ }` vuelve a modo código dentro de una plantilla, y ahí
+  // dentro puede empezar otra plantilla.
+  const pila = [{ plantilla: false, llaves: 0 }];
+  const cima = () => pila[pila.length - 1];
+
+  while (i < n) {
+    const c = txt[i], d = txt[i + 1];
+
+    if (cima().plantilla) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === '`') { pila.pop(); i++; out += ' TXT '; anterior = 'x'; continue; }
+      if (c === '$' && d === '{') { pila.push({ plantilla: false, llaves: 0 }); i += 2; out += ' '; continue; }
+      i++;
+      continue;
+    }
+
+    if (c === '/' && d === '/') { while (i < n && txt[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') {
+      i += 2;
+      while (i < n && !(txt[i] === '*' && txt[i + 1] === '/')) i++;
+      i += 2; out += ' ';
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const q = c;
+      i++;
+      while (i < n && txt[i] !== q) { if (txt[i] === '\\') i++; i++; }
+      i++; out += ' TXT '; anterior = 'x';
+      continue;
+    }
+    if (c === '`') { pila.push({ plantilla: true, llaves: 0 }); i++; continue; }
+    if (c === '/' && ABRE_REGEX.has(anterior)) {
+      i++;
+      let dentroDeCorchetes = false;
+      while (i < n) {
+        const x = txt[i];
+        if (x === '\\') { i += 2; continue; }
+        if (x === '\n') break;
+        if (x === '[') dentroDeCorchetes = true;
+        else if (x === ']') dentroDeCorchetes = false;
+        else if (x === '/' && !dentroDeCorchetes) break;
+        i++;
+      }
+      i++;
+      while (i < n && 'gimsuyd'.includes(txt[i])) i++;
+      out += ' RE '; anterior = 'x';
+      continue;
+    }
+
+    if (c === '{') cima().llaves++;
+    if (c === '}') {
+      // La llave que cierra un `${ }` devuelve a la plantilla de fuera.
+      if (cima().llaves === 0 && pila.length > 1) { pila.pop(); i++; continue; }
+      cima().llaves--;
+    }
+
+    out += c;
+    if (!/\s/.test(c)) anterior = c;
+    i++;
+  }
+  return out;
+}
+
+let sinDefinir = 0, nombresVistos = 0;
+for (const dir of [['services'], ['services', 'repo'], ['routes'], ['scripts']]) {
+  const carpeta = path.join(__dirname, '..', ...dir);
+  if (!fs.existsSync(carpeta)) continue;
+  const mote = dir.join('/') + '/';
+
+  for (const f of fs.readdirSync(carpeta).filter(x => x.endsWith('.js'))) {
+    const txt = soloCodigo(fs.readFileSync(path.join(carpeta, f), 'utf8'));
+
+    // Dónde aparece cada nombre, y cuántas de esas veces es una llamada.
+    const veces = new Map(), comoLlamada = new Map();
+    const suma = (mapa, k) => mapa.set(k, (mapa.get(k) || 0) + 1);
+
+    for (const m of txt.matchAll(/([.\w$]?)\s*\b([A-Za-z_$][\w$]*)\b\s*(\(?)/g)) {
+      const [, antes, nombre, abre] = m;
+      if (antes === '.') continue;                       // es una propiedad, no un nombre suelto
+      suma(veces, nombre);
+      if (!abre) continue;
+      // Una DEFINICIÓN también lleva paréntesis: `function f(…) {`, `f(…) {`
+      // de un método, `class X {`. Eso no cuenta como llamada.
+      const resto = txt.slice(m.index + m[0].length);
+      if (/^[^()]*\)\s*\{/.test(resto)) continue;
+      suma(comoLlamada, nombre);
+    }
+
+    for (const [nombre, n] of comoLlamada) {
+      if (GLOBALES.has(nombre)) continue;
+      nombresVistos++;
+      if (veces.get(nombre) > n) continue;               // aparece como otra cosa: está declarado
+      sinDefinir++;
+      console.log(`  x ${mote}${f}: llama a ${nombre}() y no está declarado en el fichero`);
+    }
+  }
+}
+
+console.log(`\n${nombresVistos} nombre(s) llamados en el propio fichero`);
+console.log(sinDefinir ? `${sinDefinir} no existen` : 'Todos existen');
+
+process.exitCode = (fallos || malLlamados || sinDefinir) ? 1 : 0;
