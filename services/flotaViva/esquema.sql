@@ -409,6 +409,14 @@ CREATE TABLE IF NOT EXISTS fv_incidencia (
 -- cada tipo nuestro, como DATO: si maniana cambian su catalogo, es un UPDATE.
 --
 -- Vacio = esa incidencia se justifica solo aqui, sin crear llamada.
+-- La llamada que se creo en el Call Center, si se creo. Enlaza los dos libros
+-- sin duplicar el dato.
+--
+-- VA EN UN ALTER Y NO DENTRO DEL CREATE TABLE: la tabla ya existia de un
+-- arranque anterior, y CREATE TABLE IF NOT EXISTS no aniade columnas a una tabla
+-- que ya esta. La declaracion de mas arriba no llego a aplicarse nunca.
+ALTER TABLE fv_incidencia ADD COLUMN IF NOT EXISTS llamada_clave VARCHAR(40);
+
 ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_cluster    VARCHAR(40);
 ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_subcluster VARCHAR(40);
 ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_motivo     VARCHAR(120);

@@ -233,13 +233,26 @@ async function justificar(id, { motivo, resultado, accion, quien } = {}) {
     try {
       const cc = require('../callCenter');
       llamada = await cc.registrar(datos, quien || '');
-      await db.consulta('UPDATE fv_incidencia SET llamada_clave = $2 WHERE id = $1',
-        [Number(id), llamada.clave]);
     } catch (e) {
       // La justificación NO se deshace: quedó guardada arriba. Solo se dice que
       // la llamada no llegó al Call Center, para poder repetirla a mano.
       errorLlamada = e.message;
       console.error('⚠️  [FLOTA VIVA] No se pudo registrar la llamada:', e.message);
+    }
+
+    // GUARDAR EL ENLACE VA APARTE, y a propósito.
+    //
+    // Estaba dentro del mismo try, así que si la llamada se creaba bien y luego
+    // fallaba este UPDATE, se reportaba "sin llamada en el Call Center" — con la
+    // llamada ya escrita en su hoja. Decir que algo no pasó cuando sí pasó es
+    // peor que no decir nada: nadie va a ir a borrarla.
+    if (llamada) {
+      try {
+        await db.consulta('UPDATE fv_incidencia SET llamada_clave = $2 WHERE id = $1',
+          [Number(id), llamada.clave]);
+      } catch (e) {
+        console.error(`⚠️  [FLOTA VIVA] Llamada ${llamada.clave} creada pero no enlazada: ${e.message}`);
+      }
     }
   }
 
