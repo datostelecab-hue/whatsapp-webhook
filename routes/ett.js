@@ -102,11 +102,27 @@ router.post('/api/candidatura/:id/estado', responde(async req => {
   return cand.cambiarEstado(Number(req.params.id), b.estado, { motivo: b.motivo, ...(await quien(req)) });
 }));
 
+// No pasa, y por qué. El motivo decide a qué estado va —no presentarse no es no
+// superar la entrevista—, así que aquí no se manda ningún estado: se manda el
+// motivo y lo demás lo saca el catálogo.
+router.post('/api/candidatura/:id/descartar', responde(async req => {
+  const b = req.body || {};
+  const r = await cand.descartar(Number(req.params.id),
+    { motivoCodigo: b.motivoCodigo, detalle: b.detalle, ...(await quien(req)) });
+  console.log(`🚫 [ETT] candidatura ${r.id} no pasa: ${b.motivoCodigo} → ${r.estado}`);
+  return r;
+}));
+
 router.post('/api/candidatura/:id/rrhh', responde(async req => {
+  const b = req.body || {};
   // Por esta vía el contrato es de ETT salvo que se diga otra cosa: es de donde
   // viene la persona.
+  //
+  // El nombre de la ETT va DESPUÉS del cuerpo y no antes: el formulario lo manda
+  // vacío cuando no se escribe nada, y colocado delante ese vacío pisaba el
+  // configurado en el servidor y el alta se caía por falta de nombre.
   const r = await cand.pasarARRHH(Number(req.params.id),
-    { tipo: 'ett', ettNombre: process.env.ETT_NOMBRE, ...(req.body || {}) },
+    { tipo: 'ett', ...b, ettNombre: b.ettNombre || process.env.ETT_NOMBRE },
     await quien(req));
   console.log(`👤 [ETT] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
               (r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));

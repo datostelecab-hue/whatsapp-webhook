@@ -308,35 +308,54 @@
   // ── Acciones de la ficha ────────────────────────────────────────────────
 
   /**
-   * La decisión sobre el candidato.
+   * No pasa, y por qué.
    *
-   * Son los mismos estados del sistema, no una lista aparte: "No se presentó" es
-   * propio de esta vía y por eso existe, pero vive en el mismo catálogo.
+   * De una entrevista de la ETT salen TRES cosas y no quince: contratado con
+   * fecha, pendiente de asignar, o no pasa. Aquí había un desplegable con todos
+   * los estados del embudo, y la mayoría no significan nada por esta vía.
+   *
+   * El motivo es obligatorio, y no es texto libre: cada uno lleva a SU estado
+   * —no presentarse no es no superar la entrevista, y la agencia los lee
+   * distinto— y es el justificante que se le manda en el Excel. Quién lleva a
+   * dónde lo dice el catálogo, así que esta pantalla no elige ningún estado:
+   * manda el motivo y ya está.
    */
-  async function accionEstado(d) {
-    const ops = (CAT.estados || [])
-      .filter(e => e.etapa === 'seleccion' || e.codigo === d.estado)
-      .map(e => ({ valor: e.codigo, texto: e.etiqueta }));
-    const v = await Dialogo.formulario('Decisión sobre ' + d.quien, [
-      { id: 'estado', etiqueta: 'Estado', tipo: 'lista', opciones: ops, valor: d.estado, obligatorio: true },
-      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
-    ], { nota: 'Lo que se marque aquí es lo que se le devuelve a la agencia en su tabla.' });
-    if (!v || !v.estado || v.estado === d.estado) return;
-    await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/estado', 'POST', v));
+  async function accionDescartar(d) {
+    const motivos = CAT.motivos || [];
+    const v = await Dialogo.formulario('¿Por qué no pasa ' + d.quien + '?', [
+      { id: 'motivoCodigo', etiqueta: 'Motivo', tipo: 'lista', obligatorio: true,
+        valor: motivos.length ? motivos[0].codigo : '',
+        opciones: motivos.map(m => ({ valor: m.codigo, texto: m.etiqueta })) },
+      { id: 'detalle', etiqueta: 'Explicación', tipo: 'texto-largo',
+        ayuda: 'Obligatoria si eliges "Otro motivo".' },
+    ], { textoBoton: 'No pasa',
+         nota: 'Esto es lo que se le devuelve a la agencia como justificante.' });
+    if (!v || !v.motivoCodigo) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/descartar', 'POST', v),
+      'Queda registrado por qué no pasa');
   }
 
-  /** Lo que decidimos nosotros: alta, jornada, turno y zona. */
-  async function accionNuestro(d) {
-    const v = await Dialogo.formulario('Datos para ' + d.quien, [
-      { id: 'inicio_previsto', etiqueta: 'Fecha de alta', tipo: 'fecha', valor: fecha(d.inicio_previsto) },
-      { id: 'jornada_horas', etiqueta: 'Jornada (horas)', valor: d.jornada_horas || '' },
-      { id: 'turno_id', etiqueta: 'Turno', tipo: 'lista', valor: d.turno_id || '',
-        opciones: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })) },
-      { id: 'base_zona_id', etiqueta: 'Zona', tipo: 'lista', valor: d.base_zona_id || '',
-        opciones: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })) },
-    ], { columnas: 2, nota: 'Esto es NUESTRA decisión. Lo que pidió la agencia se conserva aparte.' });
-    if (!v) return;
-    await hacer(() => enviar('/ett/api/candidatura/' + d.id, 'PUT', v));
+  /**
+   * Elegido, y sin coche todavía.
+   *
+   * Para la agencia es "Pendiente" en su Excel, pero aquí tiene su propio
+   * nombre: pendiente de ASIGNAR. Antes esto se conseguía dejándole en
+   * "Entrevistado", que dice otra cosa —que se le entrevistó, no que se le
+   * eligió—, así que dos hechos distintos compartían nombre.
+   *
+   * Es además lo único que obliga a un segundo envío: sin nadie aquí, la tanda
+   * queda contestada del todo con el primero.
+   */
+  async function accionPendiente(d) {
+    const ok = await Dialogo.confirmar({
+      titulo: '¿Pendiente de asignar?',
+      texto: d.quien + ' queda elegido y a la espera de plaza. A la agencia se le manda como '
+        + '"Pendiente", y hasta que tenga fecha de alta la tanda necesitará un segundo envío.',
+      si: 'Dejar pendiente',
+    });
+    if (!ok) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/estado', 'POST',
+      { estado: 'pendiente_asignar' }), 'Pendiente de asignar');
   }
 
   /** El resto de la ficha: los datos de la persona. */
@@ -385,13 +404,32 @@
         tono: 'aviso',
       });
     }
+    // Cuanto se decide al contratar, en un solo sitio.
+    //
+    // Estaba partido en dos botones: este pedía fecha y horas, y había que pasar
+    // antes por otro a poner turno y zona. Lo que pasaba de verdad es que se
+    // contrataba sin turno, y esa persona llegaba al planificador sin poder
+    // colocarse — el dato se había quedado en la cabeza de quien la entrevistó.
     const v = await Dialogo.formulario('Contratar a ' + d.quien, [
-      { id: 'alta', etiqueta: 'Fecha de inicio', tipo: 'fecha',
+      { id: 'alta', etiqueta: 'Fecha de alta', tipo: 'fecha',
         valor: fecha(d.inicio_previsto), obligatorio: true },
-      { id: 'jornadaHoras', etiqueta: 'Jornada (horas)', valor: d.jornada_horas || '' },
+      // Jornada y turno salen de la base, no de una lista escrita aquí: si
+      // mañana se contrata a 20 horas, se añade una fila y ya está.
+      { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista', obligatorio: true,
+        valor: d.jornada_horas ? String(Number(d.jornada_horas)) : '',
+        opciones: (CAT.jornadas || []).map(x => ({ valor: String(Number(x.horas)), texto: x.etiqueta })) },
+      { id: 'turnoId', etiqueta: 'Turno', tipo: 'lista', obligatorio: true,
+        valor: d.turno_id || '',
+        opciones: (CAT.turnos || []).filter(x => x.asignable)
+          .map(x => ({ valor: x.id, texto: x.etiqueta })) },
+      { id: 'zonaId', etiqueta: 'Zona', tipo: 'lista', obligatorio: true,
+        valor: d.base_zona_id || '',
+        opciones: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })) },
       { id: 'ettNombre', etiqueta: 'Nombre de la ETT',
         ayuda: 'Si se deja vacío se usa el configurado en el servidor' },
-    ], { nota: 'Se le abre el periodo de empleo con contrato de ETT. A los tres meses pasa a plantilla propia.' });
+    ], { columnas: 2,
+         nota: 'Se le abre el periodo de empleo con contrato de ETT y su turno empieza el día '
+             + 'del alta. A los tres meses pasa a plantilla propia.' });
     if (!v || !v.alta) return;
 
     const r = await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/rrhh', 'POST', v), false);
@@ -537,10 +575,20 @@
       titulo: d => d.quien,
       subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
       acciones: [
+        // LAS TRES SALIDAS DE UNA ENTREVISTA, y no hay una cuarta: se le
+        // contrata con fecha, se queda esperando plaza, o no pasa y se dice por
+        // qué. Son las tres palabras que entiende la agencia.
+        //
+        // "Pendiente de asignar" sigue visible para quien ya no pasó: es por
+        // donde se le devuelve al proceso si vuelve a aparecer. Sin eso, un
+        // descarte por error dejaba la ficha congelada.
         { texto: 'Contratar', icono: 'fa-forward', principal: true,
           visible: d => d.en_funnel, onClick: accionRRHH },
-        { texto: 'Decisión', icono: 'fa-diagram-next', principal: false, onClick: accionEstado },
-        { texto: 'Alta, jornada y zona', icono: 'fa-clipboard-check', principal: false, onClick: accionNuestro },
+        { texto: 'Pendiente de asignar', icono: 'fa-user-clock', principal: false,
+          visible: d => !d.inicio_previsto && d.estado !== 'pendiente_asignar',
+          onClick: accionPendiente },
+        { texto: 'No pasa', icono: 'fa-user-xmark', principal: false,
+          visible: d => !d.inicio_previsto && !d.es_salida, onClick: accionDescartar },
         { texto: 'Datos', icono: 'fa-pen', principal: false, onClick: accionDatos },
         { texto: 'Borrar', icono: 'fa-trash', peligro: true, principal: false,
           onClick: accionEliminar },

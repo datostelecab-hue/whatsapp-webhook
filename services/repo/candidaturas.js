@@ -45,13 +45,21 @@ const CAMPOS = {
 
 /** Los catálogos que la pantalla necesita para pintar sus desplegables. */
 async function catalogos() {
-  const [estados, etapas, canales, turnos, zonas] = await Promise.all([
-    db.consulta(`SELECT codigo, etiqueta, etapa, orden, en_funnel, es_salida
+  const [estados, etapas, canales, turnos, zonas, jornadas, motivos] = await Promise.all([
+    db.consulta(`SELECT codigo, etiqueta, etapa, orden, en_funnel, es_salida, etiqueta_ett
                    FROM cat_estado_candidatura WHERE NOT obsoleto ORDER BY orden`),
     db.consulta(`SELECT codigo, etiqueta FROM cat_etapa_candidatura ORDER BY orden`),
     db.consulta(`SELECT codigo, etiqueta FROM cat_canal_candidatura WHERE activo ORDER BY etiqueta`),
-    db.consulta(`SELECT id, codigo, etiqueta FROM turno WHERE activo ORDER BY id`),
+    // `asignable` distingue los turnos que se ELIGEN al contratar de los que
+    // solo existen para leer datos viejos. La pantalla no tiene que saberse
+    // cuales son.
+    db.consulta(`SELECT id, codigo, etiqueta, asignable FROM turno WHERE activo ORDER BY id`),
     db.consulta(`SELECT id, nombre FROM base_zona ORDER BY nombre`),
+    db.consulta(`SELECT horas, etiqueta FROM cat_jornada WHERE activa ORDER BY orden`),
+    // Cada motivo lleva a SU estado: no presentarse no es no pasar la
+    // entrevista, y la agencia los lee distinto.
+    db.consulta(`SELECT codigo, etiqueta, estado, pide_texto
+                   FROM cat_motivo_descarte WHERE activo ORDER BY orden`),
   ]);
   // Los campos que la pantalla puede editar, con su etiqueta y su tipo. Salen de
   // aqui y no de una lista escrita en la vista: son los mismos que valida
@@ -79,7 +87,8 @@ async function catalogos() {
 
   return {
     estados: estados.rows, etapas: etapas.rows, canales: canales.rows,
-    turnos: turnos.rows, zonas: zonas.rows, campos,
+    turnos: turnos.rows,
+    jornadas: jornadas.rows, zonas: zonas.rows, motivos: motivos.rows, campos,
     // El recorrido de Selección, en orden. La pantalla pinta los pasos con esto
     // en vez de llevar su propia lista, que es como se desincronizan.
     funnel: estados.rows.filter(e => e.en_funnel).map(e => e.codigo),
@@ -320,7 +329,7 @@ async function guardar(id, datos = {}, quien = {}) {
  * La etapa NO se toca: la dice el catálogo. Guardar las dos era como se
  * conseguía tener una ficha en "Entrevistado" y etapa "RRHH" a la vez.
  */
-async function cambiarEstado(id, estado, { motivo, usuarioId } = {}) {
+async function cambiarEstado(id, estado, { motivo, motivoCodigo, usuarioId } = {}) {
   const e = (await db.consulta(
     'SELECT codigo, etiqueta, es_salida FROM cat_estado_candidatura WHERE codigo = $1', [estado])).rows[0];
   if (!e) throw new Error(`No existe el estado "${estado}"`);
@@ -329,23 +338,64 @@ async function cambiarEstado(id, estado, { motivo, usuarioId } = {}) {
     [Number(id)])).rows[0];
   if (!antes) throw new Error('No existe esa candidatura');
 
+  // Volver a un estado VIVO borra el motivo, si no se da otro.
+  //
+  // El motivo es la explicación de por qué esa persona no siguió. Quien vuelve
+  // al proceso ya no tiene ninguna, y arrastrar la vieja significaba que un
+  // candidato reabierto seguía diciendo "No se presentó" en su ficha y en el
+  // Excel de la agencia.
+  const limpia = !e.es_salida && !motivo;
+
   await db.consulta(
     `UPDATE candidatura
         SET estado = $1,
-            motivo = COALESCE($2, motivo),
+            motivo        = CASE WHEN $5 THEN NULL ELSE COALESCE($2, motivo) END,
+            motivo_codigo = CASE WHEN $5 THEN NULL ELSE COALESCE($6, motivo_codigo) END,
             -- Una salida cierra la candidatura; volver a un estado vivo la
             -- reabre. Sin esto, reabrir una ficha descartada la dejaba abierta
             -- y cerrada a la vez.
             cerrado_at = CASE WHEN $3 THEN COALESCE(cerrado_at, now()) ELSE NULL END,
             actualizado_at = now()
       WHERE id = $4`,
-    [estado, motivo || null, e.es_salida, Number(id)]);
+    [estado, motivo || null, e.es_salida, Number(id), limpia, motivoCodigo || null]);
 
   await audit.registrar({
     tabla: 'candidatura', id: Number(id), usuarioId,
     cambios: [{ campo: 'estado', antes: antes.estado, ahora: estado }],
   });
   return { id: Number(id), estado, etiqueta: e.etiqueta, cerrada: e.es_salida };
+}
+
+/**
+ * No pasa, y por qué.
+ *
+ * El motivo NO es un adorno: decide a qué estado va la persona. No presentarse a
+ * la entrevista y no superarla son dos cosas distintas, y la agencia las lee
+ * distinto en su Excel. Esa correspondencia vive en `cat_motivo_descarte`, así
+ * que ni la pantalla ni esta función eligen el estado: lo leen.
+ *
+ * Se guarda dos veces a propósito. `motivo` es como se lee —la etiqueta y, si la
+ * hay, la explicación—, y es lo que acaba en el justificante que se le manda a
+ * la agencia. `motivo_codigo` es como se cuenta: "cuántos no se presentan" es
+ * una pregunta que se hace de verdad, y en prosa no se responde.
+ */
+async function descartar(id, { motivoCodigo, detalle, usuarioId } = {}) {
+  if (!motivoCodigo) throw new Error('Falta el motivo: hay que decir por qué no pasa');
+  const m = (await db.consulta(
+    'SELECT codigo, etiqueta, estado, pide_texto FROM cat_motivo_descarte WHERE codigo = $1 AND activo',
+    [motivoCodigo])).rows[0];
+  if (!m) throw new Error(`No existe el motivo "${motivoCodigo}"`);
+
+  const texto = String(detalle || '').trim();
+  if (m.pide_texto && !texto) {
+    throw new Error(`"${m.etiqueta}" hay que explicarlo: escribe qué pasó.`);
+  }
+
+  return cambiarEstado(id, m.estado, {
+    motivo: m.etiqueta + (texto ? ' — ' + texto : ''),
+    motivoCodigo: m.codigo,
+    usuarioId,
+  });
 }
 
 /**
@@ -363,6 +413,24 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
       WHERE k.id = $1`, [Number(id)])).rows[0];
   if (!c) throw new Error('No existe esa candidatura');
   if (c.empleo_vigente) throw new Error(`${c.quien} ya tiene un contrato abierto`);
+
+  // LO QUE SE DECIDE AL CONTRATAR SE GUARDA ANTES DE ABRIR NADA.
+  //
+  // Contratar es el momento en que se deciden fecha, jornada, turno y zona, asi
+  // que se decide y se escribe aqui mismo. Antes habia que pasar por otro boton
+  // a rellenarlo y luego volver a este, y lo que pasaba de verdad es que la
+  // gente contrataba sin turno: la persona llegaba al planificador sin poder
+  // colocarse, con el dato en la cabeza de quien la entrevisto.
+  //
+  // Se escribe en la candidatura y no solo en el contrato porque es SU decision:
+  // queda dicha aunque el alta falle mas adelante.
+  const decidido = {};
+  if (contrato.alta) decidido.inicio_previsto = contrato.alta;
+  if (contrato.jornadaHoras) decidido.jornada_horas = contrato.jornadaHoras;
+  if (contrato.turnoId) decidido.turno_id = contrato.turnoId;
+  if (contrato.zonaId) decidido.base_zona_id = contrato.zonaId;
+  if (Object.keys(decidido).length) await guardar(id, decidido, quien);
+
   // Lo pactado durante la seleccion vale como contrato, salvo que al pasar a
   // RRHH se diga otra cosa. Asi no hay que reescribir lo que ya se acordo.
   const k = (await db.consulta(
@@ -934,8 +1002,16 @@ async function paraETT({ solicitudId } = {}) {
     let jor = c.jornada_horas ? c.jornada_horas + 'h' : '';
     let tur = c.turno || '';
     let zon = c.zona || '';
-    if (estado === 'No se presentó') { alta = 'No se presentó'; jor = tur = zon = ''; }
-    else if (estado === 'No pasa')   { alta = 'No pasa la entrevista'; jor = tur = zon = ''; }
+    // A quien no pasa se le manda EL MOTIVO, no una frase hecha.
+    //
+    // Antes en esa casilla iba siempre "No pasa la entrevista", dijera lo que
+    // dijera la realidad: la agencia recibía la misma frase para el que rechazó
+    // la oferta y para el que no cumplía los requisitos. Ahora va lo que se
+    // eligió del catálogo, que es el justificante que ellos esperan.
+    if (estado === 'No se presentó' || estado === 'No pasa') {
+      alta = c.motivo || (estado === 'No se presentó' ? 'No se presentó' : 'No pasa la entrevista');
+      jor = tur = zon = '';
+    }
 
     return {
       fecha_entrevista: cita ? `${dosCifras(cita.getDate())}/${dosCifras(cita.getMonth() + 1)}/${cita.getFullYear()}` : '',
@@ -1017,6 +1093,6 @@ async function eliminar(id, { usuarioId } = {}) {
 
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
-  cambiarEstado, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
+  cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
   paraETT, matriz, solicitudesETT, cerrarSolicitud, registrarEnvio,
 };
