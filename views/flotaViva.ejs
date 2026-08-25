@@ -314,9 +314,22 @@
    * dia del despliegue. Dos tonos descendentes se distinguen del ruido de fondo
    * de una oficina sin llegar a molestar.
    */
+  // El navegador NO deja crear audio sin un gesto previo del usuario, asi que el
+  // primer pitido se perdia con un aviso en consola. Se abre el contexto en el
+  // primer clic que hagas en la pagina y se reutiliza a partir de ahi.
+  let AUDIO = null;
+  function abrirAudio() {
+    if (AUDIO) { if (AUDIO.state === 'suspended') AUDIO.resume(); return AUDIO; }
+    try { AUDIO = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { AUDIO = null; }
+    return AUDIO;
+  }
+  document.addEventListener('click', abrirAudio, { once: true });
+
   function pitar() {
     try {
-      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const ac = abrirAudio();
+      if (!ac) return;
       [880, 660].forEach((hz, i) => {
         const o = ac.createOscillator(), g = ac.createGain();
         o.frequency.value = hz; o.type = 'sine';
