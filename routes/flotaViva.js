@@ -41,4 +41,28 @@ router.post('/api/refrescar', responde(async () => {
   return { ...r, ...(await panel.estado()) };
 }));
 
+// Lo que manda Mapon TAL CUAL para una matricula.
+//
+// Existe porque los km salieron mal y no habia forma de saber si el fallo estaba
+// en la cuenta o en lo que llega. Los nombres de los campos de Mapon —`mileage`,
+// `last_update`— y sus unidades no estan documentados en ningun sitio nuestro:
+// aqui se ven, y se deja de suponer.
+router.get('/api/mapon/:matricula', responde(async req => {
+  const fuentes = require('../services/flotaViva/fuentes');
+  const mat = fuentes.normMat(req.params.matricula);
+  const flota = await fuentes.flotaMapon();
+  const u = flota.get(mat);
+  return {
+    matricula: mat,
+    encontrado: !!u,
+    // Lo que hemos entendido nosotros...
+    interpretado: u || null,
+    // ...y lo que llega de verdad, para poder comparar.
+    crudo: await (async () => {
+      const j = await fuentes.crudoDeUnidad(mat);
+      return j;
+    })(),
+  };
+}));
+
 module.exports = router;

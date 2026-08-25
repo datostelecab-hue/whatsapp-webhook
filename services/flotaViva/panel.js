@@ -41,6 +41,7 @@ const fila = r => ({
   segundos: Number(r.segundos) || 0,
   desdeHace: duracion(r.segundos),
   km: r.km == null ? null : Number(r.km),
+  kmDudoso: !!r.km_dudoso,
   vueltas: r.vueltas,
   ultimoConductor: r.ultimo_conductor || '',
   ultimoTelefono: r.ultimo_telefono || '',
@@ -102,8 +103,7 @@ async function historial(matricula, dias = 2) {
     `SELECT t.situacion, s.etiqueta, t.estado_bolt, t.desde, t.hasta,
             c.nombre AS conductor, c.telefono,
             EXTRACT(EPOCH FROM (COALESCE(t.hasta, now()) - t.desde))::bigint AS segundos,
-            CASE WHEN t.odometro_fin_m IS NULL OR t.odometro_ini_m IS NULL THEN NULL
-                 ELSE round((t.odometro_fin_m - t.odometro_ini_m) / 1000.0, 1) END AS km
+            round(t.km_m / 1000.0, 1) AS km, t.km_dudoso
        FROM fv_tramo t
        JOIN fv_vehiculo v      ON v.uuid = t.vehiculo_uuid
        JOIN fv_cat_situacion s ON s.codigo = t.situacion
@@ -115,6 +115,7 @@ async function historial(matricula, dias = 2) {
     situacion: x.situacion, etiqueta: x.etiqueta, estadoBolt: x.estado_bolt,
     desde: x.desde, hasta: x.hasta, conductor: x.conductor || '', telefono: x.telefono || '',
     duracion: duracion(x.segundos), km: x.km == null ? null : Number(x.km),
+    kmDudoso: !!x.km_dudoso,
   }));
 }
 

@@ -15,6 +15,127 @@
 
 BEGIN;
 
+-- ── QUE COCHES SE VIGILAN ─────────────────────────────────────────────────
+-- La lista va en una TABLA, no en el codigo ni en una variable de entorno. Son
+-- casi cien matriculas y cambian: se compra un coche, se vende otro. Aqui se
+-- aniade o se quita con una linea de SQL, sin desplegar nada.
+--
+-- Lo que NO este en esta lista no se mira: ni se guarda, ni sale en el panel.
+-- BOLT y Mapon devuelven la flota entera; el filtro es nuestro.
+--
+--   Quitar uno:  UPDATE fv_matricula SET activa = FALSE WHERE matricula = '0261MFX';
+--   Aniadir uno: INSERT INTO fv_matricula (matricula) VALUES ('1234ABC');
+CREATE TABLE IF NOT EXISTS fv_matricula (
+  matricula  VARCHAR(15)  PRIMARY KEY,
+  activa     BOOLEAN      NOT NULL DEFAULT TRUE,
+  nota       VARCHAR(120),
+  creado_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE fv_matricula IS
+  'Los coches que se auditan. Lo que no este aqui con activa=TRUE, no se mira';
+
+INSERT INTO fv_matricula (matricula) VALUES
+  ('0261MFX'),
+  ('0348MMZ'),
+  ('0400MMZ'),
+  ('0417MMZ'),
+  ('0431MMZ'),
+  ('0454MMZ'),
+  ('0458MMZ'),
+  ('0524MMZ'),
+  ('0626MMZ'),
+  ('0698MMZ'),
+  ('0715MMZ'),
+  ('0730MMZ'),
+  ('0744MMZ'),
+  ('0756MMZ'),
+  ('0802MJY'),
+  ('0835MMZ'),
+  ('0870MMZ'),
+  ('0970LJJ'),
+  ('1067MJY'),
+  ('1068MJY'),
+  ('1073MJY'),
+  ('1085MJY'),
+  ('1090LVH'),
+  ('1090MJY'),
+  ('1096MJY'),
+  ('1120KTK'),
+  ('1194LCK'),
+  ('1204MJY'),
+  ('1205MJY'),
+  ('1206MJY'),
+  ('1208MJY'),
+  ('1209MJY'),
+  ('1210MJY'),
+  ('1212MJY'),
+  ('1223MJY'),
+  ('1685KTC'),
+  ('1888LTJ'),
+  ('2264KZW'),
+  ('2350LHP'),
+  ('2514LNF'),
+  ('2903LZH'),
+  ('3019KSM'),
+  ('3031LTV'),
+  ('3110KSM'),
+  ('3396NNM'),
+  ('3414JXB'),
+  ('3724KZS'),
+  ('3784LFV'),
+  ('3814KYG'),
+  ('4799LBG'),
+  ('4966LGP'),
+  ('5369LJH'),
+  ('5631LBW'),
+  ('5646MDM'),
+  ('5736LGK'),
+  ('5775KKL'),
+  ('5886LBZ'),
+  ('5906LTT'),
+  ('5909LBZ'),
+  ('5912LBZ'),
+  ('6287LBG'),
+  ('6544LVX'),
+  ('6621LTK'),
+  ('6663LCY'),
+  ('7222LVG'),
+  ('7550KYT'),
+  ('7603KZY'),
+  ('7711KWV'),
+  ('7759MCH'),
+  ('8026LTT'),
+  ('8083KXD'),
+  ('8203LTR'),
+  ('8386NNP'),
+  ('8388NNP'),
+  ('8475KWG'),
+  ('8512LDS'),
+  ('8563NNR'),
+  ('8565NNR'),
+  ('8930KVC'),
+  ('8997LDK'),
+  ('9001LWJ'),
+  ('9037LJR'),
+  ('9107LWS'),
+  ('9212MCF'),
+  ('9214LJR'),
+  ('9511MMX'),
+  ('9521MMX'),
+  ('9523MMX'),
+  ('9528MMX'),
+  ('9533MMX'),
+  ('9534MMX'),
+  ('9535MMX'),
+  ('9549LTP'),
+  ('9549MMX'),
+  ('9590MMX'),
+  ('9753LNT'),
+  ('9775LRH'),
+  ('9985LBC')
+ON CONFLICT (matricula) DO NOTHING;
+
 -- ── Los coches, tal como los conoce BOLT ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS fv_vehiculo (
   uuid        VARCHAR(64) PRIMARY KEY,
@@ -125,8 +246,31 @@ CREATE TABLE IF NOT EXISTS fv_vuelta (
 );
 CREATE INDEX IF NOT EXISTS idx_fv_vuelta_fecha ON fv_vuelta (arrancada_at DESC);
 
+-- ── Los km, contados vuelta a vuelta y no restando odometros ──────────────
+-- El odometro NO sirve como cuentakilometros de un tramo. Un equipo que estuvo
+-- sin cobertura se pone al dia de golpe, y ese salto son kilometros de ANTES: al
+-- restar el odometro final menos el inicial, todos caian en el tramo abierto y
+-- salian 19 km en un coche que llevaba tres minutos parado.
+--
+-- Ahora se suma el trocito de cada vuelta, y solo si es CREIBLE para el tiempo
+-- que ha pasado segun el reloj del propio equipo. Lo que no lo es, no se cuenta
+-- y se deja dicho con `km_dudoso` en vez de callarselo.
+ALTER TABLE fv_tramo ADD COLUMN IF NOT EXISTS km_m             BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE fv_tramo ADD COLUMN IF NOT EXISTS odometro_visto_m BIGINT;
+ALTER TABLE fv_tramo ADD COLUMN IF NOT EXISTS senal_at         TIMESTAMPTZ;
+ALTER TABLE fv_tramo ADD COLUMN IF NOT EXISTS km_dudoso        BOOLEAN NOT NULL DEFAULT FALSE;
+
+COMMENT ON COLUMN fv_tramo.km_m IS
+  'Metros acumulados vuelta a vuelta, descartando los saltos imposibles. NO es odometro_fin - odometro_ini';
+COMMENT ON COLUMN fv_tramo.senal_at IS
+  'Cuando hablo el equipo por ultima vez, en su reloj. Es la base para saber si un salto de odometro es creible';
+
 -- ── Lo que pinta la pantalla ──────────────────────────────────────────────
-CREATE OR REPLACE VIEW fv_ahora AS
+-- Se rehace entera: CREATE OR REPLACE no deja meter una columna en medio,
+-- solo aniadir al final.
+DROP VIEW IF EXISTS fv_ahora;
+
+CREATE VIEW fv_ahora AS
 SELECT v.uuid                                   AS vehiculo_uuid,
        v.matricula,
        v.mapon_unit,
@@ -145,9 +289,8 @@ SELECT v.uuid                                   AS vehiculo_uuid,
        c.telefono,
        -- Km de este tramo. En descanso o desconectado, son los km que no
        -- deberian existir.
-       CASE WHEN t.odometro_fin_m IS NULL OR t.odometro_ini_m IS NULL THEN NULL
-            ELSE round((t.odometro_fin_m - t.odometro_ini_m) / 1000.0, 1)
-       END                                      AS km,
+       round(t.km_m / 1000.0, 1)                AS km,
+       t.km_dudoso,
        t.vueltas,
        -- Quien lo llevaba la ultima vez, para los que estan desconectados.
        ult.conductor_uuid                       AS ultimo_conductor_uuid,
@@ -155,6 +298,9 @@ SELECT v.uuid                                   AS vehiculo_uuid,
        ultc.telefono                            AS ultimo_telefono,
        ult.hasta                                AS ultimo_uso_at
   FROM fv_vehiculo v
+  -- Solo los vigilados. Desactivar una matricula la saca del panel al momento,
+  -- sin borrar su historial.
+  JOIN fv_matricula m           ON m.matricula = v.matricula AND m.activa
   LEFT JOIN fv_tramo t          ON t.vehiculo_uuid = v.uuid AND t.hasta IS NULL
   LEFT JOIN fv_cat_situacion s  ON s.codigo = t.situacion
   LEFT JOIN fv_conductor c      ON c.uuid = t.conductor_uuid

@@ -7,8 +7,10 @@
 //
 // Por qué tramos y no fotos: "¿cuánto lleva este coche desconectado?" con fotos
 // obliga a recorrer el historial hacia atrás en cada consulta. Con tramos es leer
-// una fila — ya trae `desde`. Y los km por situación salen de restar dos
-// odómetros, que es lo que costaba en la versión anterior.
+// una fila — ya trae `desde` y los km que lleva acumulados.
+//
+// Los km NO son la resta del odómetro final menos el inicial: se suma el trocito
+// de cada vuelta y solo si es creíble. Ver `kmDelTrozo`, al final.
 //
 // LA VENTANA DE BOLT ES CORTA A PROPÓSITO (dos horas). BOLT no tiene un "dime
 // cómo está todo ahora": tiene un registro de CAMBIOS. Un coche que lleva seis
@@ -46,14 +48,34 @@ async function apuntarDesconocido(estado) {
   console.warn(`⚠️  [FLOTA VIVA] Estado de BOLT sin clasificar: "${estado}"`);
 }
 
+/** Las matrículas que se vigilan. Lo que no esté aquí no se mira. */
+async function vigiladas() {
+  const r = await db.consulta('SELECT matricula FROM fv_matricula WHERE activa');
+  return new Set(r.rows.map(x => x.matricula));
+}
+
 /** Refresca el padrón de coches y conductores si toca. */
 async function padron(desdeTs, hastaTs) {
   if (Date.now() - ultimoPadron < PADRON_CADA_MIN * 60000) return false;
 
-  const [coches, gente] = await Promise.all([
+  const [todosLosCoches, gente, lista] = await Promise.all([
     fuentes.vehiculos(desdeTs, hastaTs),
     fuentes.conductores(desdeTs, hastaTs),
+    vigiladas(),
   ]);
+
+  // EL FILTRO. BOLT devuelve la flota entera; aquí se descarta lo que no está en
+  // la lista, antes de guardar nada. Así ni ocupa sitio ni sale en el panel.
+  const coches = todosLosCoches.filter(v => v.matricula && lista.has(v.matricula));
+
+  // Una matrícula de la lista que BOLT no conoce no es un detalle: o está mal
+  // escrita, o ese coche ya no está en la flota. Se dice por su nombre.
+  const enBolt = new Set(coches.map(v => v.matricula));
+  const sinCoche = [...lista].filter(m => !enBolt.has(m));
+  if (sinCoche.length) {
+    console.warn(`⚠️  [FLOTA VIVA] ${sinCoche.length} matrícula(s) vigiladas que BOLT no conoce: ` +
+                 sinCoche.slice(0, 12).join(', ') + (sinCoche.length > 12 ? '…' : ''));
+  }
 
   await db.transaccion(async cli => {
     for (const v of coches) {
@@ -78,8 +100,9 @@ async function padron(desdeTs, hastaTs) {
   });
 
   ultimoPadron = Date.now();
-  console.log(`👥 [FLOTA VIVA] Padrón: ${coches.length} coche(s), ${gente.length} conductor(es)`);
-  return true;
+  console.log(`👥 [FLOTA VIVA] Padrón: ${coches.length} de ${lista.size} vigilada(s) · ` +
+              `${gente.length} conductor(es)`);
+  return { coches: coches.length, vigiladas: lista.size, sinCoche };
 }
 
 /**
@@ -110,8 +133,13 @@ async function pasada() {
       traducir(),
     ]);
 
+    // Solo los vigilados, y por si acaso: `fv_vehiculo` ya está filtrado al
+    // guardarse, pero si alguien desactiva una matrícula, su coche deja de
+    // mirarse en la siguiente vuelta sin tener que borrar nada.
     const coches = (await db.consulta(
-      'SELECT uuid, matricula, mapon_unit FROM fv_vehiculo')).rows;
+      `SELECT v.uuid, v.matricula, v.mapon_unit
+         FROM fv_vehiculo v
+         JOIN fv_matricula m ON m.matricula = v.matricula AND m.activa`)).rows;
 
     let conectados = 0, cambios = 0;
 
@@ -161,9 +189,11 @@ async function pasada() {
  */
 async function aplicar(vehiculo, { situacion, estadoBolt, conductor, gps }) {
   const odo = gps && gps.odometroM != null ? gps.odometroM : null;
+  const senal = gps && gps.senalAt ? gps.senalAt : null;
 
   const abierto = (await db.consulta(
-    'SELECT id, situacion, conductor_uuid FROM fv_tramo WHERE vehiculo_uuid = $1 AND hasta IS NULL',
+    `SELECT id, situacion, conductor_uuid, odometro_visto_m, senal_at, km_dudoso
+       FROM fv_tramo WHERE vehiculo_uuid = $1 AND hasta IS NULL`,
     [vehiculo.uuid])).rows[0];
 
   // La primera vez que vemos un coche sin apunte de BOLT: se le supone apagado.
@@ -176,16 +206,22 @@ async function aplicar(vehiculo, { situacion, estadoBolt, conductor, gps }) {
   }
 
   if (abierto && abierto.situacion === destino) {
+    const avance = kmDelTrozo(abierto, odo, senal);
     await db.consulta(
       `UPDATE fv_tramo
           SET hasta = NULL,
               odometro_fin_m = COALESCE($2, odometro_fin_m),
               odometro_ini_m = COALESCE(odometro_ini_m, $2),
+              odometro_visto_m = COALESCE($2, odometro_visto_m),
+              senal_at = COALESCE($5, senal_at),
+              km_m = km_m + $6,
+              km_dudoso = km_dudoso OR $7,
               conductor_uuid = COALESCE($3, conductor_uuid),
               estado_bolt = COALESCE($4, estado_bolt),
               vueltas = vueltas + 1
         WHERE id = $1`,
-      [abierto.id, odo, conductor || null, estadoBolt || null]);
+      [abierto.id, odo, conductor || null, estadoBolt || null, senal,
+       avance.metros, avance.dudoso]);
     return { cambio: false, conectado };
   }
 
@@ -198,14 +234,57 @@ async function aplicar(vehiculo, { situacion, estadoBolt, conductor, gps }) {
         'UPDATE fv_tramo SET hasta = now(), odometro_fin_m = COALESCE($2, odometro_fin_m) WHERE id = $1',
         [abierto.id, odo]);
     }
+    // El tramo nuevo empieza con CERO km, no con la resta de odómetros. Lo que
+    // el coche hizo antes es del tramo anterior, aunque el equipo lo cuente
+    // ahora.
     await cli.query(
       `INSERT INTO fv_tramo (vehiculo_uuid, conductor_uuid, situacion, estado_bolt,
-                             desde, odometro_ini_m, odometro_fin_m)
-       VALUES ($1, $2, $3, $4, now(), $5, $5)`,
+                             desde, odometro_ini_m, odometro_fin_m, odometro_visto_m,
+                             senal_at, km_m)
+       VALUES ($1, $2, $3, $4, now(), $5, $5, $5, $6, 0)`,
       [vehiculo.uuid, conductor || (abierto ? abierto.conductor_uuid : null) || null,
-       destino, estadoBolt || null, odo]);
+       destino, estadoBolt || null, odo, senal]);
   });
   return { cambio: true, conectado };
 }
 
-module.exports = { pasada, padron };
+// Lo más rápido que puede ir un coche, en metros por segundo. 180 km/h es
+// generoso a propósito: no es un límite de velocidad, es el listón por encima
+// del cual un salto de odómetro NO es un coche circulando.
+const MAX_MS = 50;
+
+/**
+ * Cuántos metros ha hecho el coche DESDE LA ÚLTIMA VUELTA.
+ *
+ * Aquí estaba el fallo que sacó 18,9 km en un coche que llevaba tres minutos
+ * parado. Antes los km de un tramo eran `odómetro final − odómetro inicial`, y
+ * eso da por hecho que el odómetro avanza a la vez que el coche. No es verdad:
+ * un equipo que estuvo sin cobertura se pone al día de golpe, y ese salto —que
+ * son kilómetros de horas antes, o de otro día— caía entero en el tramo abierto.
+ *
+ * Así que se mira el trozo de cada vuelta y se compara con el tiempo que ha
+ * pasado SEGÚN EL RELOJ DEL EQUIPO, no según el nuestro: si el equipo no ha
+ * vuelto a hablar, no hay kilómetros nuevos que contar por mucho que haya pasado
+ * el tiempo. Lo que no cabe en ese rato no se suma, y se marca como dudoso.
+ */
+function kmDelTrozo(tramo, odo, senal) {
+  const nada = { metros: 0, dudoso: false };
+  if (odo == null || tramo.odometro_visto_m == null) return nada;
+
+  const delta = Number(odo) - Number(tramo.odometro_visto_m);
+  if (delta === 0) return nada;
+  // El odómetro no baja. Si baja, es que lo han reiniciado o cambiado el equipo.
+  if (delta < 0) return { metros: 0, dudoso: true };
+
+  // Sin saber cuándo habló el equipo antes y ahora, no se puede juzgar el salto.
+  // Se cuenta igual, porque lo normal es que sea bueno, pero queda señalado.
+  if (!senal || !tramo.senal_at) return { metros: delta, dudoso: true };
+
+  const seg = (new Date(senal) - new Date(tramo.senal_at)) / 1000;
+  // El equipo no ha vuelto a hablar: no hay nada nuevo, sea cual sea el número.
+  if (seg <= 0) return nada;
+  if (delta > seg * MAX_MS) return { metros: 0, dudoso: true };
+  return { metros: delta, dudoso: false };
+}
+
+module.exports = { pasada, padron, vigiladas, kmDelTrozo };

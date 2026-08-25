@@ -110,6 +110,9 @@
       '<span class="text-sm text-telecab-muted tabular-nums">' + esc(c.desdeHace) + '</span>' +
       (km ? '<span class="text-sm tabular-nums ' + (sospecha ? 'text-telecab-red font-semibold' : 'text-telecab-muted') +
         '">' + c.km + ' km</span>' : '') +
+      // Si se ha descartado algun salto de odometro, se dice. Un numero que
+      // puede estar corto es mejor que un numero que parece exacto y no lo es.
+      (c.kmDudoso ? '<span class="text-xs text-telecab-warn" title="Se ha descartado algun salto de odometro imposible: los km pueden quedarse cortos">~</span>' : '') +
       (c.situacion === 'otro' && c.estadoBolt
         ? '<span class="text-xs text-telecab-red" title="BOLT manda un estado que no sabemos traducir">' +
           esc(c.estadoBolt) + '</span>' : '') +

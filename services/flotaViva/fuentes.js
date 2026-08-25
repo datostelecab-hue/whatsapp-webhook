@@ -24,6 +24,17 @@ const MAPON_TIMEOUT = Number(process.env.MAPON_TIMEOUT_MS) || 20000;
 const txt = v => String(v == null ? '' : v).trim();
 const normMat = s => txt(s).toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+/** Una marca de tiempo de Mapon a Date, o null si no viene o no se entiende. */
+function fecha(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  // Puede venir en segundos epoch o como 'AAAA-MM-DD HH:MM:SS' en UTC.
+  const t = Number.isFinite(n) && n > 1e9
+    ? n * 1000
+    : Date.parse(String(v).includes('T') ? String(v) : String(v).replace(' ', 'T') + 'Z');
+  return Number.isFinite(t) ? new Date(t) : null;
+}
+
 // ── BOLT ────────────────────────────────────────────────────────────────────
 
 /** Los coches de todas las flotas: uuid → matrícula. */
@@ -136,9 +147,38 @@ async function flotaMapon() {
       // sin km y se dice, en vez de inventarse un cero que parecería "no se ha
       // movido".
       odometroM: Number.isFinite(Number(u.mileage)) ? Math.round(Number(u.mileage)) : null,
+      // CUÁNDO habló el equipo por última vez, en su propio reloj.
+      //
+      // Es imprescindible para los km. El odómetro de un equipo que estuvo sin
+      // cobertura se pone al día de golpe, y ese salto son kilómetros de ANTES:
+      // sin saber a qué periodo corresponden, se le atribuyen al tramo que esté
+      // abierto y aparecen 19 km en un coche que lleva tres minutos parado.
+      senalAt: fecha(u.last_update),
     });
   });
   return porMatricula;
 }
 
-module.exports = { vehiculos, conductores, estados, flotaMapon, normMat };
+/**
+ * El objeto de Mapon de UNA unidad, sin interpretar nada.
+ *
+ * Existe porque los km salieron mal y no había forma de saber si el fallo estaba
+ * en nuestra cuenta o en lo que llega. `mileage` y `last_update` —sus nombres y
+ * sobre todo sus UNIDADES— son suposiciones nuestras hasta que se miran.
+ */
+async function crudoDeUnidad(matricula) {
+  const mat = normMat(matricula);
+  const j = await pedirMapon('unit/list.json');
+  const u = ((j.data && j.data.units) || []).find(x => normMat(x.number || x.label) === mat);
+  if (!u) return null;
+  return {
+    campos: Object.keys(u),
+    unit_id: u.unit_id, number: u.number, state: u.state, speed: u.speed,
+    mileage: u.mileage, last_update: u.last_update,
+    // Por si el odómetro viniera con otro nombre en algún equipo.
+    otrosPosibles: Object.fromEntries(Object.entries(u)
+      .filter(([k]) => /mile|odo|dist|update|time/i.test(k))),
+  };
+}
+
+module.exports = { vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, normMat };
