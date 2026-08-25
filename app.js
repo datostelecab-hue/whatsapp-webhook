@@ -172,6 +172,12 @@ app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
 app.use('/callcenter', require('./routes/callCenter'));
 
+// ── FLOTA VIVA: qué está haciendo ahora mismo cada coche de BOLT ────────────
+// Módulo nuevo y aparte. Todo lo suyo vive en services/flotaViva/, sus tablas
+// empiezan por `fv_` y su conexión es propia (FLOTA_VIVA_DB_URL). Aquí solo se
+// engancha.
+app.use('/flota-viva', require('./routes/flotaViva'));
+
 // ── BODA (favor aparte, módulo OCULTO): panel solo-superadmin para enviar las
 //    invitaciones por WhatsApp. No está en el menú ni en ACCESO. El webhook (POST /)
 //    ya enruta por phone_number_id lo que llega al número de la boda. ──────────────
@@ -341,6 +347,22 @@ cron.schedule('10,40 * * * *', async () => {
     console.error(`❌ [CRON CONDUCTORES_BOLT] Error: ${error.stack || error.message}`);
   }
 });
+
+// Flota viva: cada 5 minutos, qué dice BOLT del conductor y Mapon del coche.
+//
+// No arranca sin `FLOTA_VIVA_DB_URL`: sin base no tiene dónde guardar los tramos,
+// y sin tramos no puede contestar "cuánto lleva así", que es todo el módulo.
+if (process.env.FLOTA_VIVA_DB_URL || process.env.DATABASE_URL) {
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      await require('./services/flotaViva/motor').pasada();
+    } catch (error) {
+      console.error(`❌ [FLOTA VIVA] La vuelta falló: ${error.message}`);
+    }
+  });
+} else {
+  console.log('⏸️  [FLOTA VIVA] Sin FLOTA_VIVA_DB_URL: el módulo no arranca');
+}
 
 // Repaso del corte de motor: deja bloqueado todo coche que nadie esté usando.
 //

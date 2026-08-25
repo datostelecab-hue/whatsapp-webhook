@@ -1,0 +1,171 @@
+<div class="max-w-7xl mx-auto">
+
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <span class="latido"></span> Flota viva
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Los coches de BOLT cruzados con el GPS de Mapon, cada 5 minutos.
+        Quién lleva cada uno, en qué está y cuánto lleva así.
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="reloj" class="text-xs text-telecab-muted"></span>
+      <button id="btn-refrescar"
+        class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold font-medium hover:bg-telecab-gold/25">
+        <i class="fa-solid fa-rotate mr-1"></i> Refrescar ahora
+      </button>
+    </div>
+  </div>
+
+  <!-- Las cifras, en una tira: lo que se viene a mirar es la lista -->
+  <div id="cifras" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm mb-5"></div>
+
+  <div id="aviso" class="hidden mb-4"></div>
+
+  <div class="space-y-6">
+    <section>
+      <h2 class="font-semibold text-telecab-text mb-2 flex items-center gap-2">
+        <i class="fa-solid fa-signal text-telecab-green text-sm"></i>
+        Conectados <span id="n-conectados" class="text-telecab-muted font-normal text-sm"></span>
+      </h2>
+      <div id="lista-conectados"></div>
+    </section>
+
+    <section>
+      <h2 class="font-semibold text-telecab-text mb-2 flex items-center gap-2">
+        <i class="fa-solid fa-plug-circle-xmark text-telecab-warn text-sm"></i>
+        Se acaban de desconectar <span id="n-recien" class="text-telecab-muted font-normal text-sm"></span>
+      </h2>
+      <div id="lista-recien"></div>
+    </section>
+
+    <section>
+      <h2 class="font-semibold text-telecab-text mb-2 flex items-center gap-2">
+        <i class="fa-solid fa-car-side text-telecab-muted text-sm"></i>
+        Parados <span id="n-parados" class="text-telecab-muted font-normal text-sm"></span>
+      </h2>
+      <div id="lista-parados"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
+    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+
+  let T = null;
+
+  const tel = t => {
+    if (!t) return '';
+    const limpio = String(t).replace(/[^\d+]/g, '');
+    return '<a href="tel:' + esc(limpio) + '" class="text-telecab-gold hover:underline">' + esc(t) + '</a>';
+  };
+
+  function cifra(n, texto, color) {
+    return '<span class="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-lg">' +
+      '<b class="font-semibold tabular-nums text-telecab-' + color + '">' + n + '</b>' +
+      '<span class="text-telecab-muted">' + esc(texto) + '</span></span>';
+  }
+
+  function pintarCifras(r) {
+    const punto = '<span class="text-telecab-border">·</span>';
+    $('#cifras').innerHTML = [
+      cifra(r.total, 'coches', 'text'),
+      cifra(r.viaje, 'en viaje', 'green'),
+      cifra(r.espera, 'en espera', 'gold'),
+      cifra(r.descanso, 'en descanso', 'warn'),
+      cifra(r.recienCaidos, 'recién caídos', 'warn'),
+      cifra(r.parados, 'parados', 'muted'),
+    ].join(punto) +
+    // Los km en descanso solo se enseñan si los hay: un cero permanente en la
+    // barra deja de leerse a los dos días.
+    (r.kmEnDescanso ? punto + cifra(r.kmEnDescanso, 'km rodando en descanso', 'red') : '') +
+    (r.sinClasificar ? punto + cifra(r.sinClasificar, 'sin clasificar', 'red') : '');
+  }
+
+  function tarjeta(c, modo) {
+    const km = c.km != null && c.km > 0;
+    // Un coche que rueda en descanso o desconectado es lo único que se pinta en
+    // rojo. Lo demás son datos; esto es una pregunta.
+    const sospecha = km && (c.situacion === 'descanso' || c.situacion === 'desconectado');
+    const quien = modo === 'conectado'
+      ? (c.conductor || '<span class="text-telecab-muted">sin conductor en BOLT</span>')
+      : (c.ultimoConductor
+        ? 'Último: <b>' + esc(c.ultimoConductor) + '</b>'
+        : '<span class="text-telecab-muted">no consta quién lo llevó</span>');
+    const telefono = modo === 'conectado' ? c.telefono : c.ultimoTelefono;
+
+    return '<div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 rounded-xl border ' +
+      (sospecha ? 'border-telecab-red/40 bg-telecab-red/5' : 'border-telecab-border bg-telecab-card') +
+      ' mb-2">' +
+      '<span class="font-mono font-semibold text-telecab-text w-24">' + esc(c.matricula) + '</span>' +
+      '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-telecab-' + esc(c.color || 'muted') +
+        '/15 text-telecab-' + esc(c.color || 'muted') + '">' + esc(c.etiqueta || '—') + '</span>' +
+      '<span class="text-sm flex-1 min-w-[12rem]">' + quien +
+        (telefono ? ' <span class="text-telecab-muted">·</span> ' + tel(telefono) : '') + '</span>' +
+      '<span class="text-sm text-telecab-muted tabular-nums">' + esc(c.desdeHace) + '</span>' +
+      (km ? '<span class="text-sm tabular-nums ' + (sospecha ? 'text-telecab-red font-semibold' : 'text-telecab-muted') +
+        '">' + c.km + ' km</span>' : '') +
+      (c.situacion === 'otro' && c.estadoBolt
+        ? '<span class="text-xs text-telecab-red" title="BOLT manda un estado que no sabemos traducir">' +
+          esc(c.estadoBolt) + '</span>' : '') +
+      '</div>';
+  }
+
+  function pintarLista(sel, filas, modo, vacio) {
+    $(sel).innerHTML = filas.length
+      ? filas.map(c => tarjeta(c, modo)).join('')
+      : '<p class="text-sm text-telecab-muted px-3 py-4">' + esc(vacio) + '</p>';
+  }
+
+  function pintar() {
+    if (!T) return;
+    pintarCifras(T.resumen);
+    $('#n-conectados').textContent = '(' + T.conectados.length + ')';
+    $('#n-recien').textContent = '(' + T.recienCaidos.length + ', menos de ' + Math.round(T.recienMin / 60) + ' h)';
+    $('#n-parados').textContent = '(' + T.parados.length + ')';
+    pintarLista('#lista-conectados', T.conectados, 'conectado', 'Ningún coche conectado en BOLT ahora mismo.');
+    pintarLista('#lista-recien', T.recienCaidos, 'caido', 'Nadie se ha desconectado hace poco.');
+    pintarLista('#lista-parados', T.parados, 'caido', 'Ningún coche lleva mucho parado.');
+
+    const v = T.ultimaVuelta;
+    if (v && v.error) {
+      $('#aviso').className = 'mb-4 px-3 py-2 rounded-xl border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red';
+      $('#aviso').textContent = 'La última vuelta falló: ' + v.error;
+    } else {
+      $('#aviso').className = 'hidden';
+    }
+    $('#reloj').textContent = v && v.arrancada_at
+      ? 'Última vuelta: ' + new Date(v.arrancada_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      : '';
+  }
+
+  async function cargar(forzar) {
+    const b = $('#btn-refrescar');
+    if (forzar) { b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Mirando…'; }
+    try {
+      const r = await fetch('/flota-viva/api/' + (forzar ? 'refrescar' : 'estado'),
+        forzar ? { method: 'POST' } : undefined);
+      const d = await r.json();
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo leer');
+      T = d;
+      pintar();
+    } catch (e) {
+      $('#aviso').className = 'mb-4 px-3 py-2 rounded-xl border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red';
+      $('#aviso').textContent = e.message;
+    }
+    b.disabled = false;
+    b.innerHTML = '<i class="fa-solid fa-rotate mr-1"></i> Refrescar ahora';
+  }
+
+  $('#btn-refrescar').addEventListener('click', () => cargar(true));
+  // Se repinta solo cada minuto. NO fuerza una vuelta: solo lee lo último que
+  // haya guardado el cron, así que mirar la pantalla no gasta cuota de BOLT.
+  setInterval(() => cargar(false), 60000);
+  cargar(false);
+})();
+</script>
