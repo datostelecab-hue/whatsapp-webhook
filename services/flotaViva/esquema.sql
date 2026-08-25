@@ -317,4 +317,93 @@ SELECT v.uuid                                   AS vehiculo_uuid,
      ORDER BY x.hasta DESC LIMIT 1) ult ON TRUE
   LEFT JOIN fv_conductor ultc   ON ultc.uuid = ult.conductor_uuid;
 
+-- ============================================================
+-- LAS FRANJAS CRITICAS Y SUS INCIDENCIAS
+-- ============================================================
+-- Hay dos tramos del dia en los que un coche DEBERIA estar trabajando. Si en su
+-- franja deja de hacerlo, alguien tiene que llamar al conductor y dejar escrito
+-- que paso; y al cerrar la franja, el parte de lo que hubo.
+--
+-- Entre franja y franja hay relevo —de 15:30 a 18:30 y de 03:30 a 06:30— y ahi
+-- no se avisa de nada: se mira a mano.
+--
+-- Las horas van en una TABLA. Cambiar un turno es entonces un UPDATE, no un
+-- despliegue, y es de las cosas que cambian.
+
+CREATE TABLE IF NOT EXISTS fv_franja (
+  codigo     VARCHAR(12) PRIMARY KEY,
+  etiqueta   VARCHAR(40) NOT NULL,
+  -- Minutos desde medianoche. Si `fin` es menor que `inicio`, la franja cruza
+  -- las doce y termina al dia siguiente — que es lo que hace la de noche.
+  inicio_min SMALLINT    NOT NULL,
+  fin_min    SMALLINT    NOT NULL,
+  activa     BOOLEAN     NOT NULL DEFAULT TRUE,
+  orden      SMALLINT    NOT NULL DEFAULT 0,
+  CONSTRAINT ck_franja_min CHECK (inicio_min BETWEEN 0 AND 1439 AND fin_min BETWEEN 0 AND 1439)
+);
+
+COMMENT ON TABLE fv_franja IS
+  'Las horas en que se vigila. Cambiar un turno es un UPDATE, no un despliegue';
+
+INSERT INTO fv_franja (codigo, etiqueta, inicio_min, fin_min, orden) VALUES
+  ('dia',   'Turno de dia',   390,  930, 1),   -- 06:30 -> 15:30
+  ('noche', 'Turno de noche', 1110, 210, 2)    -- 18:30 -> 03:30 (cruza medianoche)
+ON CONFLICT (codigo) DO UPDATE SET
+  etiqueta = EXCLUDED.etiqueta, inicio_min = EXCLUDED.inicio_min,
+  fin_min = EXCLUDED.fin_min, orden = EXCLUDED.orden;
+
+-- ── Que se considera una incidencia ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS fv_cat_incidencia (
+  codigo    VARCHAR(24) PRIMARY KEY,
+  etiqueta  VARCHAR(60) NOT NULL,
+  detalle   VARCHAR(200),
+  gravedad  SMALLINT    NOT NULL DEFAULT 1,
+  activa    BOOLEAN     NOT NULL DEFAULT TRUE,
+  orden     SMALLINT    NOT NULL DEFAULT 0
+);
+
+INSERT INTO fv_cat_incidencia (codigo, etiqueta, detalle, gravedad, orden) VALUES
+  ('desconectado', 'Se ha desconectado',
+   'Estaba trabajando en su franja y se cayo de BOLT', 3, 1),
+  ('rueda_caido',  'Rueda estando desconectado',
+   'Suma kilometros sin estar en la plataforma', 4, 2),
+  ('descanso',     'Lleva demasiado en descanso',
+   'Conectado pero sin coger pedidos mas tiempo del razonable', 2, 3),
+  ('no_aparece',   'No ha aparecido en su franja',
+   'Suele trabajar a estas horas y hoy no se ha conectado', 2, 4)
+ON CONFLICT (codigo) DO UPDATE SET
+  etiqueta = EXCLUDED.etiqueta, detalle = EXCLUDED.detalle,
+  gravedad = EXCLUDED.gravedad, orden = EXCLUDED.orden;
+
+-- ── La incidencia ─────────────────────────────────────────────────────────
+-- Una por coche, franja y dia: si el mismo coche se cae tres veces en la misma
+-- franja no son tres llamadas, es una conversacion. Se reabre y se suma.
+CREATE TABLE IF NOT EXISTS fv_incidencia (
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  vehiculo_uuid  VARCHAR(64) NOT NULL REFERENCES fv_vehiculo(uuid) ON DELETE CASCADE,
+  tipo           VARCHAR(24) NOT NULL REFERENCES fv_cat_incidencia(codigo),
+  franja         VARCHAR(12) NOT NULL REFERENCES fv_franja(codigo),
+  -- El dia al que pertenece la franja. La de noche del 25 acaba el 26 a las
+  -- 03:30, y sigue siendo la del 25.
+  dia_operativo  DATE        NOT NULL,
+  conductor_uuid VARCHAR(64) REFERENCES fv_conductor(uuid) ON DELETE SET NULL,
+  abierta_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Cuando dejo de pasar. Nulo = sigue pasando ahora mismo.
+  resuelta_at    TIMESTAMPTZ,
+  veces          INTEGER     NOT NULL DEFAULT 1,
+  detalle        VARCHAR(300),
+  -- La llamada. Es la razon de ser del modulo: detectar sin recoger respuesta
+  -- no sirve de nada.
+  justificada_at TIMESTAMPTZ,
+  justificada_por VARCHAR(120),
+  motivo         TEXT,
+  CONSTRAINT uq_fv_inc UNIQUE (vehiculo_uuid, tipo, franja, dia_operativo)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fv_inc_dia ON fv_incidencia (dia_operativo DESC, franja);
+CREATE INDEX IF NOT EXISTS idx_fv_inc_abierta ON fv_incidencia (justificada_at) WHERE justificada_at IS NULL;
+
+COMMENT ON TABLE fv_incidencia IS
+  'Lo que hay que llamar y justificar. Una por coche, franja y dia: tres caidas seguidas son una conversacion, no tres';
+
 COMMIT;

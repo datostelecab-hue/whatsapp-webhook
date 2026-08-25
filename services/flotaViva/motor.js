@@ -166,9 +166,19 @@ async function pasada() {
               cambios = $4, ms = $5 WHERE id = $1`,
       [vuelta, coches.length, conectados, cambios, ms]);
 
+    // Con los tramos ya al día, se mira si toca llamar a alguien. Va DESPUÉS
+    // a propósito: la revisión lee `fv_ahora`, y si corriera antes miraría la
+    // foto anterior.
+    let incidencias = null;
+    try {
+      incidencias = await require('./franjas').revisar();
+    } catch (e) {
+      console.error('⚠️  [FLOTA VIVA] La revisión de franjas falló:', e.message);
+    }
+
     console.log(`🚦 [FLOTA VIVA] ${coches.length} coche(s) · ${conectados} conectado(s) · ` +
                 `${cambios} cambio(s) · ${ms} ms`);
-    return { vehiculos: coches.length, conectados, cambios, ms };
+    return { vehiculos: coches.length, conectados, cambios, ms, incidencias };
   } catch (e) {
     await db.consulta('UPDATE fv_vuelta SET terminada_at = now(), error = $2 WHERE id = $1',
       [vuelta, e.message]).catch(() => {});

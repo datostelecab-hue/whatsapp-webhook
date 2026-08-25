@@ -41,6 +41,33 @@ router.post('/api/refrescar', responde(async () => {
   return { ...r, ...(await panel.estado()) };
 }));
 
+// ── Las franjas criticas ──────────────────────────────────────────────────
+
+// Lo que hay que llamar ahora. Se pide aparte del estado porque se mira mucho
+// mas a menudo y pesa mucho menos.
+router.get('/api/incidencias', responde(async req => {
+  await db.preparar();
+  return {
+    incidencias: await panel.incidencias({
+      dia: req.query.dia, franja: req.query.franja,
+      incluirJustificadas: req.query.todas === '1',
+    }),
+  };
+}));
+
+// Alguien ha llamado y cuenta que paso. Sin motivo no se cierra.
+router.post('/api/incidencia/:id/justificar', responde(async req => {
+  const b = req.body || {};
+  const quien = (req.usuario && (req.usuario.nombre || req.usuario.email)) || '';
+  const r = await panel.justificar(req.params.id, { motivo: b.motivo, quien });
+  console.log(`✍️  [FLOTA VIVA] Incidencia ${r.id} justificada por ${quien || '(sin nombre)'}`);
+  return r;
+}));
+
+// El parte de una franja. Es lo que se mira al cierre.
+router.get('/api/cierre', responde(async req =>
+  panel.cierre({ dia: req.query.dia, franja: req.query.franja })));
+
 // Lo que manda Mapon TAL CUAL para una matricula.
 //
 // Existe porque los km salieron mal y no habia forma de saber si el fallo estaba

@@ -23,6 +23,10 @@
     </div>
     <div class="flex items-center gap-2">
       <span id="fv-reloj" class="text-xs text-telecab-muted"></span>
+      <button id="fv-permiso" class="hidden px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+        text-sm text-telecab-muted hover:text-telecab-text" title="Permite que te avise aunque estes en otra pestana">
+        <i class="fa-solid fa-bell mr-1"></i> Activar avisos
+      </button>
       <button id="fv-refrescar"
         class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold font-medium hover:bg-telecab-gold/25">
         <i class="fa-solid fa-rotate mr-1"></i> Refrescar
@@ -31,6 +35,10 @@
   </div>
 
   <div id="fv-aviso" class="hidden mb-4"></div>
+
+  <!-- EL AVISADOR. Va arriba del todo y en rojo porque es lo unico de esta
+       pantalla que pide que alguien haga algo AHORA: llamar. -->
+  <div id="fv-incidencias" class="hidden mb-5"></div>
 
   <!-- Pestañas: cada una es un filtro, y el número se ve sin abrirla -->
   <div id="fv-tabs" class="flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-telecab-border mb-3"></div>
@@ -89,6 +97,9 @@
     m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 
   let T = null;               // lo último que trajo el servidor
+  let INC = [];               // incidencias abiertas
+  let VISTAS = new Set();     // las que ya sonaron: no se avisa dos veces
+  let PRIMERA = true;         // al entrar no suena nada, solo se pinta
   let TAB = 'todos';
   let ORDEN = { campo: 'segundos', desc: true };
 
@@ -291,6 +302,113 @@
     }
   }
 
+  // ── El avisador ─────────────────────────────────────────────────────────
+  //
+  // Dentro de la franja critica, un coche que deja de trabajar obliga a llamar.
+  // Esto es lo que hace que alguien se entere sin estar mirando la pantalla.
+
+  /**
+   * Un pitido corto, generado al vuelo.
+   *
+   * Sin fichero de audio a proposito: uno mas que subir, cachear y que falte el
+   * dia del despliegue. Dos tonos descendentes se distinguen del ruido de fondo
+   * de una oficina sin llegar a molestar.
+   */
+  function pitar() {
+    try {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      [880, 660].forEach((hz, i) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = hz; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, ac.currentTime + i * 0.18);
+        g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + i * 0.18 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + i * 0.18 + 0.16);
+        o.connect(g); g.connect(ac.destination);
+        o.start(ac.currentTime + i * 0.18); o.stop(ac.currentTime + i * 0.18 + 0.18);
+      });
+    } catch (e) { /* sin audio se sigue: el aviso visual manda igual */ }
+  }
+
+  function avisarNavegador(nuevas) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const uno = nuevas[0];
+    new Notification(nuevas.length === 1 ? uno.matricula + ' · ' + uno.etiqueta
+      : nuevas.length + ' incidencias en la flota', {
+      body: nuevas.length === 1
+        ? (uno.detalle || '') + (uno.conductor ? ' — ' + uno.conductor : '')
+        : nuevas.slice(0, 4).map(x => x.matricula + ' ' + x.etiqueta).join(' · '),
+      tag: 'flota-viva', renotify: true,
+    });
+  }
+
+  function pintarIncidencias() {
+    const caja = $('#fv-incidencias');
+    if (!INC.length) { caja.className = 'hidden mb-5'; caja.innerHTML = ''; return; }
+
+    // Solo suena lo que no ha sonado ya. Un aviso que se repite cada minuto
+    // deja de ser un aviso al segundo dia.
+    const nuevas = INC.filter(x => !VISTAS.has(x.id));
+    nuevas.forEach(x => VISTAS.add(x.id));
+    if (nuevas.length && !PRIMERA) { pitar(); avisarNavegador(nuevas); }
+    PRIMERA = false;
+
+    caja.className = 'mb-5 rounded-2xl border border-red-500/40 bg-red-500/5 overflow-hidden';
+    caja.innerHTML =
+      '<div class="px-4 py-2.5 border-b border-red-500/25 flex items-center justify-between">' +
+        '<span class="font-semibold text-red-500"><i class="fa-solid fa-phone-volume mr-2"></i>' +
+        'Hay que llamar <span class="tabular-nums">(' + INC.length + ')</span></span>' +
+        '<span class="text-xs text-telecab-muted">' + esc(INC[0].franjaEtiqueta || '') + '</span>' +
+      '</div>' +
+      INC.map(x =>
+        '<div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 border-b border-red-500/10 last:border-0">' +
+          '<span class="font-mono font-semibold text-telecab-text w-24">' + esc(x.matricula) + '</span>' +
+          '<span class="text-sm text-red-500 w-52">' + esc(x.etiqueta) +
+            (x.veces > 1 ? ' <span class="opacity-70">(x' + x.veces + ')</span>' : '') + '</span>' +
+          '<span class="text-sm flex-1 min-w-[14rem] text-telecab-muted">' + esc(x.detalle) + '</span>' +
+          '<span class="text-sm">' + (x.conductor ? esc(x.conductor) : '') +
+            (x.telefono ? ' <a href="tel:' + esc(String(x.telefono).replace(/[^\d+]/g, '')) +
+              '" class="text-telecab-gold hover:underline ml-1">' + esc(x.telefono) + '</a>' : '') + '</span>' +
+          '<span class="text-sm text-telecab-muted tabular-nums">' + esc(x.duracion) + '</span>' +
+          '<button data-just="' + x.id + '" class="px-3 py-1 rounded-lg bg-telecab-card border border-telecab-border ' +
+            'text-sm text-telecab-text hover:border-telecab-gold">Ya he llamado</button>' +
+        '</div>').join('');
+
+    caja.querySelectorAll('[data-just]').forEach(b =>
+      b.addEventListener('click', () => justificar(Number(b.dataset.just))));
+  }
+
+  /** El motivo es obligatorio: cerrarla sin explicacion es esconderla. */
+  async function justificar(id) {
+    const inc = INC.find(x => x.id === id);
+    const v = await Dialogo.formulario('¿Qué ha pasado con ' + (inc ? inc.matricula : 'este coche') + '?', [
+      { id: 'motivo', etiqueta: 'Qué te ha dicho', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'Queda en el parte del cierre con tu nombre y la hora.' },
+    ], { textoBoton: 'Guardar' });
+    if (!v || !String(v.motivo || '').trim()) return;
+    try {
+      const r = await fetch('/flota-viva/api/incidencia/' + id + '/justificar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: v.motivo }),
+      });
+      const d = await r.json();
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo guardar');
+      INC = INC.filter(x => x.id !== id);
+      pintarIncidencias();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo guardar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  async function traerIncidencias() {
+    try {
+      const r = await fetch('/flota-viva/api/incidencias');
+      const d = await r.json();
+      if (d.status !== 'ok') return;
+      INC = d.incidencias || [];
+      pintarIncidencias();
+    } catch (e) { /* el panel sigue funcionando sin esto */ }
+  }
+
   // ── Traer datos ─────────────────────────────────────────────────────────
 
   async function cargar(forzar) {
@@ -303,6 +421,7 @@
       if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo leer');
       T = d;
       pintar();
+      traerIncidencias();
     } catch (e) {
       const av = $('#fv-aviso');
       av.className = 'mb-4 px-3 py-2 rounded-xl border border-red-500/40 bg-red-500/10 text-sm text-red-500';
@@ -325,10 +444,29 @@
     pintar();
   }));
 
+  // Permiso para avisar. Se pide con un boton y no al entrar: los navegadores
+  // rechazan la peticion sin un gesto de por medio, y ademas un permiso que
+  // salta solo al abrir una pagina se deniega por reflejo.
+  function pintarPermiso() {
+    const b = $('#fv-permiso');
+    if (!b) return;
+    const hay = 'Notification' in window;
+    b.classList.toggle('hidden', !hay || Notification.permission !== 'default');
+  }
+  $('#fv-permiso').addEventListener('click', async () => {
+    try { await Notification.requestPermission(); } catch (e) { /* da igual */ }
+    pintarPermiso();
+  });
+  pintarPermiso();
+
   // Los contadores corren solos cada 15 s sin pedir nada al servidor; los datos
   // se refrescan cada minuto. Mirar la pantalla no gasta cuota de BOLT.
+  //
+  // Las incidencias van aparte y mas a menudo: son lo que hace que alguien
+  // levante el telefono, y pesan mucho menos que el estado entero.
   setInterval(pintar, 15000);
   setInterval(() => cargar(false), 60000);
+  setInterval(traerIncidencias, 30000);
   cargar(false);
 })();
 </script>

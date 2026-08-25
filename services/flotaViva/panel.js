@@ -119,4 +119,88 @@ async function historial(matricula, dias = 2) {
   }));
 }
 
-module.exports = { estado, historial, duracion };
+/**
+ * Lo que hay que llamar AHORA.
+ *
+ * Solo lo que sigue pasando y nadie ha justificado todavia. En cuanto alguien
+ * llama y anota el motivo, desaparece de aqui — y sigue estando en el parte del
+ * cierre, que es donde tiene que constar.
+ */
+async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
+  const donde = ['1 = 1'], params = [];
+  if (dia)    { params.push(dia);    donde.push(`i.dia_operativo = $${params.length}`); }
+  if (franja) { params.push(franja); donde.push(`i.franja = $${params.length}`); }
+  if (!incluirJustificadas) donde.push('i.justificada_at IS NULL');
+
+  const r = await db.consulta(
+    `SELECT i.id, i.tipo, c.etiqueta AS tipo_etiqueta, c.gravedad,
+            i.franja, f.etiqueta AS franja_etiqueta, i.dia_operativo,
+            v.matricula, i.detalle, i.veces,
+            i.abierta_at, i.resuelta_at,
+            i.justificada_at, i.justificada_por, i.motivo,
+            EXTRACT(EPOCH FROM (COALESCE(i.resuelta_at, now()) - i.abierta_at))::bigint AS segundos,
+            co.nombre AS conductor, co.telefono
+       FROM fv_incidencia i
+       JOIN fv_cat_incidencia c ON c.codigo = i.tipo
+       JOIN fv_franja f         ON f.codigo = i.franja
+       JOIN fv_vehiculo v       ON v.uuid = i.vehiculo_uuid
+       LEFT JOIN fv_conductor co ON co.uuid = i.conductor_uuid
+      WHERE ${donde.join(' AND ')}
+      ORDER BY i.resuelta_at NULLS FIRST, c.gravedad DESC, i.abierta_at`, params);
+
+  return r.rows.map(x => ({
+    id: Number(x.id), tipo: x.tipo, etiqueta: x.tipo_etiqueta, gravedad: x.gravedad,
+    franja: x.franja, franjaEtiqueta: x.franja_etiqueta, dia: x.dia_operativo,
+    matricula: x.matricula, detalle: x.detalle || '', veces: x.veces,
+    abierta: x.abierta_at, resuelta: x.resuelta_at, sigue: !x.resuelta_at,
+    duracion: duracion(x.segundos),
+    conductor: x.conductor || '', telefono: x.telefono || '',
+    justificada: !!x.justificada_at, justificadaPor: x.justificada_por || '',
+    motivo: x.motivo || '',
+  }));
+}
+
+/**
+ * Alguien ha llamado y cuenta que paso.
+ *
+ * El motivo es obligatorio: una incidencia cerrada sin explicacion no es una
+ * incidencia resuelta, es una incidencia escondida.
+ */
+async function justificar(id, { motivo, quien } = {}) {
+  const texto = String(motivo || '').trim();
+  if (!texto) throw new Error('Hace falta decir que paso: sin motivo no se cierra');
+  const r = await db.consulta(
+    `UPDATE fv_incidencia
+        SET justificada_at = now(), justificada_por = $2, motivo = $3
+      WHERE id = $1 RETURNING id`,
+    [Number(id), String(quien || '').slice(0, 120) || null, texto]);
+  if (!r.rows.length) throw new Error('No existe esa incidencia');
+  return { id: Number(id), justificada: true };
+}
+
+/**
+ * El parte de una franja: que paso y que quedo sin explicar.
+ *
+ * Es lo que se mira al cierre. Lo que aparece aqui sin justificar es lo que
+ * sube, asi que va primero.
+ */
+async function cierre({ dia, franja } = {}) {
+  const lista = await incidencias({ dia, franja, incluirJustificadas: true });
+  const sinJustificar = lista.filter(x => !x.justificada);
+  const porTipo = {};
+  lista.forEach(x => { porTipo[x.etiqueta] = (porTipo[x.etiqueta] || 0) + 1; });
+
+  return {
+    dia, franja,
+    incidencias: lista,
+    resumen: {
+      total: lista.length,
+      sinJustificar: sinJustificar.length,
+      justificadas: lista.length - sinJustificar.length,
+      coches: new Set(lista.map(x => x.matricula)).size,
+      porTipo,
+    },
+  };
+}
+
+module.exports = { estado, historial, incidencias, justificar, cierre, duracion };
