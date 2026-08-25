@@ -430,7 +430,24 @@
       pintarIncidencias();
       // Si la llamada no llego al Call Center se dice, porque hay que repetirla
       // a mano. La justificacion en cambio SI quedo guardada.
-      if (d.sinLlamada) {
+      if (d.ensayo) {
+        // Modo prueba: se enseña la llamada que SE HABRIA creado, para poder
+        // comprobar la clasificacion sin escribir en su libro.
+        Dialogo.aviso({
+          titulo: 'Prueba: no se ha escrito en el Call Center',
+          html: '<p class="text-sm text-telecab-muted">Esta es la llamada que se habría registrado:</p>' +
+            '<div class="mt-2 text-sm space-y-1">' +
+            [['Conductor', d.ensayo.conductor], ['Matrícula', d.ensayo.matricula],
+             ['Turno', d.ensayo.turno], ['Clasificación',
+              d.ensayo.cluster + ' › ' + d.ensayo.subcluster + ' › ' + d.ensayo.motivo],
+             ['Resultado', d.ensayo.resultado], ['Acción', d.ensayo.accion || '—'],
+             ['Notas', d.ensayo.notas]]
+              .map(([k, v2]) => '<div><span class="text-telecab-muted">' + esc(k) + ':</span> ' + esc(v2) + '</div>')
+              .join('') + '</div>' +
+            '<p class="text-sm mt-3 text-telecab-muted">Quita <b>FLOTA_VIVA_CC=off</b> para que se registre de verdad.</p>',
+          tono: 'aviso', ancho: 'max-w-lg',
+        });
+      } else if (d.sinLlamada) {
         Dialogo.aviso({
           titulo: 'Justificada, pero sin llamada en el Call Center',
           html: '<p class="text-sm">' + esc(d.sinLlamada) + '</p>' +

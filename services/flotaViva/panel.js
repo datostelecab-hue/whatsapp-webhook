@@ -16,6 +16,17 @@
 
 const db = require('./db');
 
+// El enlace con el Call Center se puede apagar.
+//
+// Existe para poder probar el flujo entero en produccion —que es donde vive el
+// modulo— sin meter una llamada de mentira en su libro y ensuciarles los KPIs y
+// la reincidencia. Con `off`, la incidencia se justifica igual y se devuelve la
+// llamada que SE HABRIA creado, para poder verla sin escribirla.
+//
+// Por defecto ENCENDIDO: apagarlo es la excepcion, y un enlace que hay que
+// acordarse de encender es un enlace que un dia no esta.
+const CC_ACTIVO = String(process.env.FLOTA_VIVA_CC || '').toLowerCase() !== 'off';
+
 // A partir de aquí, una desconexión deja de ser noticia y pasa a ser un coche
 // aparcado. Ajustable: en una flota de noche puede no encajar.
 const RECIEN_MIN = Number(process.env.FLOTA_VIVA_RECIEN_MIN) || 120;
@@ -192,21 +203,36 @@ async function justificar(id, { motivo, resultado, accion, quien } = {}) {
   // Y DESPUÉS se crea la llamada, si ese tipo tiene clasificación. Justificar
   // una incidencia ES una llamada: tiene que contar en sus KPIs y en su
   // reincidencia, no quedarse en un libro aparte.
-  let llamada = null, errorLlamada = '';
+  let llamada = null, errorLlamada = '', ensayo = null;
   if (inc.cc_motivo && inc.conductor) {
+    const datos = {
+      direccion: 'saliente',
+      conductor: inc.conductor, telefono: inc.telefono || '',
+      matricula: inc.matricula || '',
+      turno: inc.franja === 'noche' ? 'Noche' : 'Día',
+      cluster: inc.cc_cluster, subcluster: inc.cc_subcluster, motivo: inc.cc_motivo,
+      resultado: String(resultado || '').trim(),
+      accion: String(accion || '').trim(),
+      notas: texto,
+      estado: 'resuelta',
+    };
+
+    // Apagado: se comprueba que la clasificacion es valida —que es la mitad de
+    // lo que se quiere probar— pero NO se escribe en su hoja.
+    if (!CC_ACTIVO) {
+      try {
+        require('../callCenter').validarClasificacion(datos);
+        ensayo = datos;
+      } catch (e) { errorLlamada = e.message; }
+      return {
+        id: Number(id), justificada: true, llamada: null, ensayo,
+        sinLlamada: errorLlamada || 'FLOTA_VIVA_CC=off: no se ha escrito en el Call Center (prueba)',
+      };
+    }
+
     try {
       const cc = require('../callCenter');
-      llamada = await cc.registrar({
-        direccion: 'saliente',
-        conductor: inc.conductor, telefono: inc.telefono || '',
-        matricula: inc.matricula || '',
-        turno: inc.franja === 'noche' ? 'Noche' : 'Día',
-        cluster: inc.cc_cluster, subcluster: inc.cc_subcluster, motivo: inc.cc_motivo,
-        resultado: String(resultado || '').trim(),
-        accion: String(accion || '').trim(),
-        notas: texto,
-        estado: 'resuelta',
-      }, quien || '');
+      llamada = await cc.registrar(datos, quien || '');
       await db.consulta('UPDATE fv_incidencia SET llamada_clave = $2 WHERE id = $1',
         [Number(id), llamada.clave]);
     } catch (e) {
