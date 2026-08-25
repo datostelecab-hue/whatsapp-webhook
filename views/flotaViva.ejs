@@ -6,7 +6,7 @@
   .fv-tab { border-bottom: 2px solid transparent; }
   .fv-tab.on { border-bottom-color: currentColor; }
   .fv-cab { cursor: pointer; user-select: none; white-space: nowrap; }
-  .fv-cab:hover { color: var(--tc-text, #0f172a); }
+  .fv-cab:hover { color: rgb(var(--tc-text)); }
   #fv-panel { transition: transform .18s ease-out; }
 </style>
 
@@ -68,9 +68,9 @@
 
 <!-- Ficha del coche: se abre al pulsar una fila -->
 <div id="fv-fondo" class="hidden fixed inset-0 bg-black/40 z-40"></div>
-<aside id="fv-panel" class="fixed top-0 right-0 h-full w-full max-w-xl bg-telecab-bg border-l border-telecab-border
-       z-50 overflow-y-auto translate-x-full">
-  <div class="sticky top-0 bg-telecab-bg border-b border-telecab-border px-5 py-4 flex items-center justify-between">
+<aside id="fv-panel" class="fixed top-0 right-0 h-full w-full max-w-xl bg-telecab-dark border-l border-telecab-border
+       z-50 overflow-y-auto translate-x-full shadow-2xl">
+  <div class="sticky top-0 z-10 bg-telecab-dark border-b border-telecab-border px-5 py-4 flex items-center justify-between">
     <div>
       <h2 id="fv-p-mat" class="text-xl font-bold font-mono text-telecab-text"></h2>
       <p id="fv-p-sub" class="text-sm text-telecab-muted mt-0.5"></p>
