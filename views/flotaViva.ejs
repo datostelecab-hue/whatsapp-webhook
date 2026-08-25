@@ -425,10 +425,20 @@
     campos.push({ id: 'motivo', etiqueta: 'Qué te ha dicho', tipo: 'texto-largo', obligatorio: true,
       ayuda: 'Queda en el parte del cierre con tu nombre y la hora.' });
 
-    const v = await Dialogo.formulario('Llamada a ' + (inc && inc.conductor ? inc.conductor : (inc ? inc.matricula : 'este coche')), campos, {
+    // QUE PASO va en el titulo y en la nota: el formulario solo sabe pintar
+    // campos que se escriben, y esto es para leer antes de descolgar.
+    const titulo = inc
+      ? inc.matricula + ' · ' + inc.etiqueta + (inc.conductor ? ' — ' + inc.conductor : '')
+      : 'Llamada';
+    const queHaPasado = inc
+      ? (inc.detalle || '') + ' · lleva ' + inc.duracion +
+        (inc.veces > 1 ? ' · ha vuelto a pasar ' + inc.veces + ' veces hoy' : '')
+      : '';
+    const v = await Dialogo.formulario(titulo, campos, {
       textoBoton: 'Guardar la llamada',
-      nota: cls ? 'Se registra en el Call Center como ' + cls.cluster + ' › ' + cls.subcluster + ' › ' + cls.motivo
-        : 'Este tipo de incidencia no tiene clasificación de Call Center: se guarda solo aquí.',
+      nota: queHaPasado + (cls
+        ? '  ·  Se registra en el Call Center como ' + cls.cluster + ' › ' + cls.subcluster + ' › ' + cls.motivo
+        : '  ·  Este tipo no tiene clasificación de Call Center: se guarda solo aquí.'),
     });
     if (!v || !String(v.motivo || '').trim()) return;
 

@@ -105,7 +105,14 @@ async function abrir({ vehiculoUuid, tipo, franja, diaOperativo, conductorUuid, 
        (vehiculo_uuid, tipo, franja, dia_operativo, conductor_uuid, detalle)
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (vehiculo_uuid, tipo, franja, dia_operativo) DO UPDATE SET
-       veces = fv_incidencia.veces + 1,
+       -- El contador cuenta las veces que PASO, no las veces que hemos mirado.
+       --
+       -- Antes subia en cada vuelta del cron, asi que un coche cuarenta minutos
+       -- desconectado salia como "x8" — que son las ocho veces que le echamos un
+       -- ojo, no ocho desconexiones. Solo sube si la incidencia estaba resuelta
+       -- y ha vuelto: eso si es otra vez.
+       veces = fv_incidencia.veces
+             + CASE WHEN fv_incidencia.resuelta_at IS NOT NULL THEN 1 ELSE 0 END,
        resuelta_at = NULL,
        detalle = COALESCE(EXCLUDED.detalle, fv_incidencia.detalle),
        conductor_uuid = COALESCE(EXCLUDED.conductor_uuid, fv_incidencia.conductor_uuid)
