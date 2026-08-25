@@ -7,8 +7,9 @@
 //
 // Ya no hay hoja ETT_CANDIDATOS.
 //
-// Mismo contrato que las demás pantallas: /api/lista → { filas, resumen } y
-// /api/ficha/:id.
+// Mismo contrato que las demás pantallas: /api/lista → { filas, ... } y
+// /api/ficha/:id. Aquí el extra son las TANDAS: la unidad con la que se le
+// contesta a la agencia, y de la que cuelga si toca mandar Excel o no.
 
 const express = require('express');
 const router = express.Router();
@@ -46,22 +47,19 @@ router.get('/', async (req, res) => {
 router.get('/api/lista', responde(async () => {
   // Con las cerradas: a la agencia se le responde también por quien no se
   // presentó o no pasó, así que tienen que verse.
-  const filas = await cand.listar({ canal: CANAL, incluirCerradas: true });
-  const porEstado = {};
-  filas.forEach(f => { porEstado[f.estado] = (porEstado[f.estado] || 0) + 1; });
-
-  return {
-    filas,
-    resumen: {
-      total: filas.length,
-      porEstado,
-      // Los cuatro números que se miran para contestar a la agencia.
-      pendientes: filas.filter(f => f.en_funnel).length,
-      contratados: filas.filter(f => !f.en_funnel && !f.es_salida).length,
-      noPresentados: porEstado.no_presentado || 0,
-      descartados: porEstado.descartado || 0,
-    },
-  };
+  //
+  // Las solicitudes van en la misma respuesta y no en otra llamada: la pantalla
+  // filtra por tanda, y para pintar el filtro hace falta saber por qué fase va
+  // cada una. Dos viajes para pintar una barra es un viaje de más.
+  //
+  // Los recuentos NO se mandan: cada fila ya trae `etiqueta_ett` e
+  // `inicio_previsto`, así que la pantalla los saca de lo que está enseñando.
+  // Contarlos aquí daba números del total mientras se miraba una sola tanda.
+  const [filas, solicitudes] = await Promise.all([
+    cand.listar({ canal: CANAL, incluirCerradas: true }),
+    cand.solicitudesETT(),
+  ]);
+  return { filas, solicitudes };
 }));
 
 router.get('/api/ficha/:id', responde(async req => {
@@ -130,6 +128,17 @@ router.get('/api/solicitudes', responde(async () => ({ solicitudes: await cand.s
 // Se cierra cuando ya no queda nada que responderle a la agencia.
 router.post('/api/solicitud/:id/cerrar', responde(async req =>
   cand.cerrarSolicitud(Number(req.params.id), await quien(req))));
+
+// Ya se le ha contestado. Lo apunta la pantalla justo después de copiar la tabla
+// o descargar el Excel: el correo lo manda una persona, así que el sistema no
+// puede saberlo solo. De aquí sale la regla del segundo envío.
+router.post('/api/solicitud/:id/enviado', responde(async req => {
+  const r = await cand.registrarEnvio(Number(req.params.id),
+    { formato: (req.body || {}).formato, ...(await quien(req)) });
+  console.log(`📤 [ETT] solicitud ${r.solicitudId} · envío ${r.orden} (${(req.body || {}).formato || 'excel'})` +
+              (r.cerrada ? ' — cerrada: no queda nadie pendiente' : ` — quedan ${r.pendientes} pendiente(s)`));
+  return r;
+}));
 
 const solicitudDe = req => ({
   solicitudId: /^\d+$/.test(req.query.solicitud || '') ? Number(req.query.solicitud) : null,

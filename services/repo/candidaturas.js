@@ -797,6 +797,61 @@ async function solicitudesETT({ incluirCerradas = true } = {}) {
   return r.rows;
 }
 
+/**
+ * Por que una solicitud NO se puede mandar. Un solo texto para los dos sitios
+ * que lo preguntan: el que genera el Excel y el que apunta que ya se mando.
+ */
+function porQueNoSeManda(s) {
+  if (s.cerrada_at) return 'Esta solicitud ya está cerrada: se le contestó entera a la agencia.';
+  if (s.sin_decidir) {
+    return `Faltan ${s.sin_decidir} por decidir. La solicitud se manda entera, así que ` +
+           'hay que resolverlos antes.';
+  }
+  // La regla que pidió el módulo: el segundo envío existe SOLO para contar
+  // quién era pendiente de asignar y ya dejó de serlo. Sin pendientes no hay
+  // nada nuevo que decir, y mandar otra vez la misma tabla solo confunde a quien
+  // la recibe: no sabría si es una corrección o un duplicado.
+  return 'Ya se le contestó y no queda nadie pendiente de asignar: no hace falta otro envío.';
+}
+
+/**
+ * Deja constancia de que a la agencia ya se le contestó por esta solicitud.
+ *
+ * No lo puede saber el sistema solo —el correo lo manda una persona—, así que lo
+ * apunta la pantalla justo después de copiar la tabla o descargar el Excel. De
+ * ahí sale lo único que de verdad importa saber de una tanda: si ya salió, y si
+ * queda algo por contar.
+ *
+ * Guarda la FOTO de lo que se dijo. Recontarlo un mes después daría otro número,
+ * porque los pendientes de entonces ya se resolvieron.
+ */
+async function registrarEnvio(solicitudId, { formato = 'excel', usuarioId } = {}) {
+  const id = Number(solicitudId);
+  if (!id) throw new Error('Falta la solicitud');
+  return db.transaccion(async cli => {
+    const s = (await cli.query('SELECT * FROM v_solicitud_ett WHERE id = $1', [id])).rows[0];
+    if (!s) throw new Error('No existe esa solicitud');
+    if (!s.puede_enviar) throw new Error(porQueNoSeManda(s));
+
+    const r = await cli.query(
+      `INSERT INTO solicitud_ett_envio
+         (solicitud_id, orden, formato, candidatos, contratados, pendientes, descartados, usuario_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, orden, enviado_at`,
+      [id, s.envios + 1, formato, s.candidatos, s.contratados, s.pendientes, s.descartados,
+       usuarioId || null]);
+
+    // Sin nadie pendiente de asignar la tanda queda contestada del todo, así que
+    // se cierra sola. Dejarla abierta sería ofrecer un segundo envío que no
+    // existe, que es justo lo que hacía antes.
+    const cerrada = !s.pendientes;
+    if (cerrada) {
+      await cli.query(
+        'UPDATE solicitud_ett SET cerrada_at = now() WHERE id = $1 AND cerrada_at IS NULL', [id]);
+    }
+    return { ...r.rows[0], solicitudId: id, cerrada, pendientes: s.pendientes };
+  });
+}
+
 /** Cierra una solicitud: ya no queda nada que responderle a la agencia. */
 async function cerrarSolicitud(id, { usuario_id } = {}) {
   const s = (await db.consulta('SELECT * FROM v_solicitud_ett WHERE id = $1', [Number(id)])).rows[0];
@@ -817,6 +872,20 @@ async function cerrarSolicitud(id, { usuario_id } = {}) {
  * dos las que ocupaban dos jornadas.
  */
 async function paraETT({ solicitudId } = {}) {
+  // SOLO HAY SEGUNDO ENVIO SI QUEDA ALGUIEN PENDIENTE DE ASIGNAR.
+  //
+  // Se comprueba antes de construir nada: de poco sirve dejar generar un Excel
+  // que no habria que mandar. La regla la decide la vista —esta escrita una sola
+  // vez, en `puede_enviar`—, y aqui solo se obedece.
+  if (solicitudId) {
+    const s = (await db.consulta('SELECT * FROM v_solicitud_ett WHERE id = $1',
+      [Number(solicitudId)])).rows[0];
+    if (!s) throw new Error('No existe esa solicitud');
+    // El "sin decidir" se deja pasar aposta: unas lineas mas abajo se vuelve a
+    // mirar y alli si se puede decir QUIENES faltan, que es lo accionable.
+    if (!s.puede_enviar && !s.sin_decidir) throw new Error(porQueNoSeManda(s));
+  }
+
   let filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
   if (solicitudId) filas = filas.filter(c => String(c.solicitud_id) === String(solicitudId));
 
@@ -831,8 +900,8 @@ async function paraETT({ solicitudId } = {}) {
   const sinDecidir = filas.filter(c => !c.inicio_previsto && !c.etiqueta_ett);
   if (sinDecidir.length) {
     const e = new Error(
-      `Faltan ${sinDecidir.length} por decidir. La solicitud se manda entera, así que ` +
-      'hay que resolverlos antes: ' + sinDecidir.map(c => c.quien).join(', '));
+      porQueNoSeManda({ sin_decidir: sinDecidir.length }) +
+      ' Faltan: ' + sinDecidir.map(c => c.quien).join(', '));
     e.sinDecidir = sinDecidir.map(c => ({ id: c.id, quien: c.quien, estado: c.estado_etiqueta }));
     throw e;
   }
@@ -949,5 +1018,5 @@ async function eliminar(id, { usuarioId } = {}) {
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
   cambiarEstado, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
-  paraETT, matriz, solicitudesETT, cerrarSolicitud,
+  paraETT, matriz, solicitudesETT, cerrarSolicitud, registrarEnvio,
 };

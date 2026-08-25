@@ -206,8 +206,22 @@ let fallos = 0, revisadas = 0;
  */
 function sqlDeJs(txt) {
   const trozos = [];
-  for (const m of txt.matchAll(/`([^`]*)`/g)) {
-    const t = m[1];
+
+  // Las comillas invertidas son donde va el SQL largo, pero NO donde va todo:
+  // una consulta de una linea se escribe con comillas simples, y asi se quedaba
+  // entera sin revisar. Se leen las dos, con el mismo filtro: que la cadena
+  // parezca SQL.
+  //
+  // De las simples solo valen las de una linea y sin barra invertida. Con
+  // escapes de por medio no se puede saber donde termina la cadena leyendola con
+  // una expresion regular, y ante la duda se deja pasar antes que inventarsela.
+  const BARRA = String.fromCharCode(92);
+  const fuentes = [
+    ...[...txt.matchAll(/`([^`]*)`/g)].map(m => m[1]),
+    ...[...txt.matchAll(/'([^'\n]*)'/g)].map(m => m[1]).filter(t => !t.includes(BARRA)),
+  ];
+
+  for (const t of fuentes) {
     if (!/\b(SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/i.test(t)) continue;
     trozos.push(t.replace(/\$\{[^}]*\}/g, ` ${HUECO} `));
   }

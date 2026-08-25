@@ -194,6 +194,8 @@
 
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" data-parte="kpis"></div>
             <div class="flex flex-wrap gap-2 mb-4" data-parte="filtros"></div>
+            <div class="mb-3" data-parte="cifras"></div>
+            <div class="mb-4" data-parte="nota"></div>
 
             <!-- Rejilla de datos, no tarjeta. La cabecera se queda fija arriba
                  mientras el cuerpo se desplaza: con doscientas filas es la
@@ -222,6 +224,7 @@
       this.el = {
         lista: q('lista'), detalle: q('detalle'), cuerpo: q('cuerpo'),
         cabecera: q('cabecera'), vacio: q('vacio'), kpis: q('kpis'),
+        cifras: q('cifras'), nota: q('nota'),
         filtros: q('filtros'), busca: q('busca'), acciones: q('acciones'),
         subtitulo: q('subtitulo'), rejilla: q('rejilla'), paginador: q('paginador'),
       };
@@ -352,6 +355,75 @@
       });
     }
 
+    /**
+     * Las mismas cifras que un KPI, pero en una linea.
+     *
+     * Cuatro tarjetas ocupan media pantalla para decir cuatro numeros, y por
+     * encima de un cierto numero de pantallas eso es lo unico que se ve al
+     * entrar. Cuando lo que hace falta es mirar la LISTA, las cifras van en una
+     * tira fina: se leen igual y no empujan los datos hacia abajo.
+     *
+     * Se calculan sobre lo que se esta VIENDO —las filas que pasan los filtros—
+     * y no sobre el total. Filtrar por una tanda y que los numeros sigan siendo
+     * los de todas seria decir algo que no es.
+     */
+    pintarCifras() {
+      if (!this.cfg.cifras) { this.el.cifras.classList.add('hidden'); return; }
+      const visibles = this.visibles();
+      const datos = this.cfg.cifras(visibles, this.extra, this.filtros) || [];
+      this.el.cifras.className = 'mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm';
+      this.el.cifras.innerHTML = '';
+
+      datos.filter(Boolean).forEach((c, i) => {
+        if (i) this.el.cifras.appendChild(nodo('<span class="text-telecab-border">·</span>'));
+        const puesto = c.filtro && this.filtros[c.filtro.id] === c.filtro.valor;
+        const t = nodo(`
+          <span class="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-lg transition ${
+            c.filtro ? 'cursor-pointer hover:bg-telecab-border/30' : ''} ${
+            puesto ? 'bg-telecab-gold/15' : ''}">
+            <b class="font-semibold tabular-nums text-telecab-${esc(c.tono || 'text')}">${esc(c.valor)}</b>
+            <span class="text-telecab-muted">${esc(c.etiqueta || '')}</span>
+          </span>`);
+        if (c.filtro) {
+          t.addEventListener('click', () => {
+            this.filtros[c.filtro.id] = puesto ? '' : c.filtro.valor;
+            this.pagina = 0;
+            this.pintarFiltros();
+            this.pintarFilas();
+          });
+        }
+        this.el.cifras.appendChild(t);
+      });
+    }
+
+    /**
+     * Una linea que dice que pasa con lo que se esta mirando.
+     *
+     * No es un adorno: es donde se pone lo accionable —"faltan 8 por decidir, no
+     * se puede generar el Excel"—, que en una tarjeta de numeros no cabe y en un
+     * dialogo llega tarde, cuando ya has pulsado el boton que no tocaba.
+     */
+    pintarNota() {
+      if (!this.cfg.nota) { this.el.nota.classList.add('hidden'); return; }
+      const n = this.cfg.nota(this.visibles(), this.extra, this.filtros);
+      if (!n || !n.texto) { this.el.nota.classList.add('hidden'); return; }
+
+      const TONOS = {
+        aviso: 'bg-telecab-warn/10 border-telecab-warn/30 text-telecab-warn',
+        bien:  'bg-telecab-green/10 border-telecab-green/30 text-telecab-green',
+        mal:   'bg-telecab-red/10 border-telecab-red/30 text-telecab-red',
+        info:  'bg-telecab-card border-telecab-border text-telecab-muted',
+      };
+      this.el.nota.className = 'mb-4';
+      this.el.nota.classList.remove('hidden');
+      this.el.nota.innerHTML = `
+        <div class="flex items-start gap-2 px-3 py-2 rounded-xl border text-sm ${
+          TONOS[n.tono] || TONOS.info}">
+          <i class="fa-solid ${esc(n.icono || 'fa-circle-info')} mt-0.5 text-xs"></i>
+          <span>${esc(n.texto)}</span>
+        </div>`;
+    }
+
     pintarFiltros() {
       const defs = this.cfg.filtros || [];
       if (!defs.length) { this.el.filtros.classList.add('hidden'); return; }
@@ -417,6 +489,11 @@
     }
 
     pintarFilas() {
+      // Las cifras y la nota cuelgan de lo que se ve, asi que se repintan aqui:
+      // es el unico sitio por el que pasan TODOS los cambios (filtros, busqueda,
+      // recarga). Colgarlas de cada sitio que cambia algo es como se olvida uno.
+      this.pintarCifras();
+      this.pintarNota();
       const todas = this.visibles();
       const c = this.cfg;
 

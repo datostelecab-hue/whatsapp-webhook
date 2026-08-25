@@ -106,35 +106,133 @@
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (v || '');
   };
 
-  /** Devuelve `?solicitud=N` para la elegida, o null si se cancela. */
-  async function elegirSolicitud(titulo) {
-    let lista = [];
-    try { lista = (await api('/ett/api/solicitudes')).solicitudes || []; } catch (e) { /* se sigue */ }
-    if (!lista.length) return '';
+  /**
+   * En qué situación está un candidato DE CARA A LA AGENCIA.
+   *
+   * No es nuestro estado del embudo —ese tiene quince valores— sino las cuatro
+   * palabras con las que se le contesta. Escrito una vez: lo usan las cifras, el
+   * filtro y, en el servidor, la vista que decide si la tanda se puede mandar.
+   *
+   * Contratado lo dice la FECHA DE ALTA, no tener contrato abierto: este Excel
+   * es lo que hace que la agencia dé el alta, así que si esperásemos al contrato
+   * no se lo diríamos nunca.
+   */
+  const SITUACION = c => (c.inicio_previsto ? 'contratado'
+    : c.etiqueta_ett === 'Pendiente' ? 'pendiente'
+      : c.etiqueta_ett ? 'descartado'
+        : 'sin_decidir');
+
+  /** Las tandas tal como las trajo la lista. Ya están en pantalla: no se repiden. */
+  const tandas = () => (ett && ett.extra && ett.extra.solicitudes) || [];
+
+  /** Por dónde va una tanda, dicho para leerlo de un vistazo. */
+  const RESUMEN_FASE = {
+    sin_decidir:   s => s.sin_decidir + ' sin decidir',
+    lista:         () => 'lista para el primer envío',
+    falta_asignar: s => s.pendientes + ' pendiente(s) de asignar',
+    completa:      () => 'contestada entera',
+    cerrada:       () => 'cerrada',
+  };
+
+  /**
+   * Qué le falta a esta tanda, dicho entero.
+   *
+   * Es la línea que de verdad se lee al entrar: no cuántos hay, sino qué hay que
+   * hacer con ellos y qué está bloqueando el siguiente paso.
+   */
+  function notaDeTanda(s) {
+    const cuando = s.ultimo_envio_at ? ' el ' + enES(s.ultimo_envio_at) : '';
+    if (s.fase === 'sin_decidir') return {
+      tono: 'mal', icono: 'fa-circle-exclamation',
+      texto: s.etiqueta + ': faltan ' + s.sin_decidir + ' por decidir. La tanda se manda '
+        + 'entera, así que hasta que no estén todos no se puede generar el Excel.' };
+    if (s.fase === 'lista') return {
+      tono: 'bien', icono: 'fa-paper-plane',
+      texto: s.etiqueta + ': todo decidido y sin mandar. Toca el primer Excel para la agencia.' };
+    if (s.fase === 'falta_asignar') return {
+      tono: 'aviso', icono: 'fa-user-clock',
+      texto: s.etiqueta + ': primer Excel enviado' + cuando + '. Quedan ' + s.pendientes
+        + ' pendiente(s) de asignar, y hay que resolverlos para mandar el segundo.' };
+    return {
+      tono: 'info', icono: 'fa-circle-check',
+      texto: s.etiqueta + ': contestada entera' + cuando
+        + '. Nadie quedó pendiente de asignar, así que no hace falta un segundo envío.' };
+  }
+
+  /**
+   * A qué tanda se responde.
+   *
+   * Si ya hay una elegida en el filtro, se responde a ESA sin preguntar: es la
+   * que estás mirando. Volver a preguntarlo no es confirmar, es una ocasión más
+   * de equivocarse.
+   *
+   * Devuelve `null` si se cancela; si no, el id (o `null` dentro del objeto
+   * cuando no hay ninguna tanda y se manda todo).
+   */
+  async function elegirSolicitud(titulo, { soloEnviables = false } = {}) {
+    const todas = tandas();
+    if (!todas.length) return { id: null };
+
+    // La que está puesta en el filtro manda, ESTÉ COMO ESTÉ.
+    //
+    // Aunque no se pueda mandar: si la tanda que tienes delante está bloqueada,
+    // lo que hay que hacer es decírtelo, no prepararte otra por tu cuenta. Ese
+    // es el fallo que se cuela sin que nadie lo note — se manda una tanda que no
+    // era y nadie mira el nombre del fichero.
+    const puesta = ett && ett.filtros && ett.filtros.tanda;
+    const yaElegida = todas.find(s => String(s.id) === String(puesta || ''));
+    if (yaElegida) return { id: yaElegida.id };
+
+    const lista = soloEnviables ? todas.filter(s => s.puede_enviar) : todas;
+    if (!lista.length) {
+      await Dialogo.aviso({
+        titulo: 'No hay ninguna tanda que mandar',
+        html: '<p class="text-sm">Todas están contestadas o tienen gente sin decidir. '
+          + 'Elige una arriba para ver qué le falta.</p>',
+        tono: 'aviso',
+      });
+      return null;
+    }
+    if (lista.length === 1) return { id: lista[0].id };
 
     const opciones = lista.map(s => ({
       valor: s.id,
-      // Lo que hace falta ver para decidir: quién bloquea el envío y quién
-      // obliga a un segundo.
-      texto: enES(s.recibida_at) + (s.referencia ? ' · ' + s.referencia : '')
-        + ' — ' + s.candidatos + ' candidato(s)'
-        + (s.sin_decidir ? ' · ⚠ ' + s.sin_decidir + ' sin decidir' : '')
-        + (s.pendientes ? ' · ' + s.pendientes + ' pendiente(s) de asignar' : '')
-        + (!s.sin_decidir && !s.pendientes ? ' · cerrada' : ''),
+      texto: s.etiqueta + ' — ' + s.candidatos + ' candidato(s) · '
+        + (RESUMEN_FASE[s.fase] || RESUMEN_FASE.cerrada)(s),
     }));
 
     const v = await Dialogo.formulario(titulo, [
-      { id: 'solicitud', etiqueta: 'Solicitud de la agencia', tipo: 'lista',
+      { id: 'solicitud', etiqueta: 'Tanda de la agencia', tipo: 'lista',
         opciones, valor: opciones[0].valor, obligatorio: true },
     ], { ancho: 'max-w-lg', textoBoton: 'Preparar' });
     if (!v || !v.solicitud) return null;
-    return '?solicitud=' + v.solicitud;
+    return { id: Number(v.solicitud) };
+  }
+
+  const consulta = id => (id ? '?solicitud=' + id : '');
+
+  /**
+   * Apunta que la tanda ya salió.
+   *
+   * El correo lo manda una persona, así que esto es lo más cerca que puede estar
+   * el sistema de saberlo: se marca justo después de que la tabla acabe en el
+   * portapapeles o el Excel en el disco. De aquí sale la regla del segundo
+   * envío, así que sin esto la pantalla no sabría si toca o no.
+   */
+  async function marcarEnviado(id, formato) {
+    if (!id) return;
+    const r = await hacer(() => enviar('/ett/api/solicitud/' + id + '/enviado', 'POST', { formato }), false);
+    if (!r) return;
+    Dialogo.hecho(r.cerrada
+      ? 'Envío ' + r.orden + ' apuntado. Nadie quedó pendiente: la tanda queda cerrada.'
+      : 'Envío ' + r.orden + ' apuntado. Quedan ' + r.pendientes + ' pendiente(s) de asignar.');
   }
 
   /** La tabla de vuelta, para pegarla en la respuesta del mismo hilo. */
   async function copiarMatriz() {
-    const q = await elegirSolicitud('Copiar la tabla para la agencia');
-    if (q === null) return;
+    const t = await elegirSolicitud('Copiar la tabla para la agencia', { soloEnviables: true });
+    if (!t) return;
+    const q = consulta(t.id);
     let texto;
     try {
       const r = await fetch('/ett/api/matriz' + q);
@@ -142,16 +240,15 @@
       if (!r.ok) throw new Error(texto);
     } catch (e) {
       return Dialogo.aviso({
-        titulo: 'Falta gente por decidir',
-        html: '<p class="text-sm">' + esc(e.message) + '</p>'
-          + '<p class="text-sm mt-2 text-telecab-muted">La solicitud se manda entera: '
-          + 'resuélvelos y vuelve a intentarlo.</p>',
+        titulo: 'Esta tanda no se puede mandar',
+        html: '<p class="text-sm">' + esc(e.message) + '</p>',
         tono: 'aviso',
       });
     }
     try {
       await navigator.clipboard.writeText(texto);
-      Dialogo.hecho('Tabla copiada. Pégala en la respuesta a la agencia.');
+      await marcarEnviado(t.id, 'texto');
+      if (!t.id) Dialogo.hecho('Tabla copiada. Pégala en la respuesta a la agencia.');
     } catch (e) {
       await Dialogo.aviso({
         titulo: 'No se pudo copiar sola',
@@ -170,9 +267,9 @@
    * Cerrarla antes sería decir que está contestada cuando no lo está.
    */
   async function cerrarSolicitud() {
-    const q = await elegirSolicitud('Cerrar una solicitud');
-    if (!q) return;
-    const id = q.split('=')[1];
+    const t = await elegirSolicitud('Cerrar una tanda');
+    if (!t || !t.id) return;
+    const id = t.id;
     const ok = await Dialogo.confirmar({
       titulo: '¿Cerrar la solicitud?',
       texto: 'Se marca como contestada del todo. Deja de ofrecerse para nuevos envíos.',
@@ -191,21 +288,21 @@
    * —que sí devuelve el motivo— y solo si sale bien se lanza la descarga.
    */
   async function descargarExcel() {
-    const q = await elegirSolicitud('Excel para la agencia');
-    if (q === null) return;
+    const t = await elegirSolicitud('Excel para la agencia', { soloEnviables: true });
+    if (!t) return;
+    const q = consulta(t.id);
     try {
       const r = await fetch('/ett/api/matriz' + q);
       if (!r.ok) throw new Error((await r.text()) || 'No se pudo generar');
     } catch (e) {
       return Dialogo.aviso({
-        titulo: 'Falta gente por decidir',
-        html: '<p class="text-sm">' + esc(e.message) + '</p>'
-          + '<p class="text-sm mt-2 text-telecab-muted">La tanda se manda entera: '
-          + 'resuélvelos y vuelve a intentarlo.</p>',
+        titulo: 'Esta tanda no se puede mandar',
+        html: '<p class="text-sm">' + esc(e.message) + '</p>',
         tono: 'aviso',
       });
     }
     window.location.href = '/ett/api/excel' + q;
+    await marcarEnviado(t.id, 'excel');
   }
 
   // ── Acciones de la ficha ────────────────────────────────────────────────
@@ -356,24 +453,72 @@
         onClick: cerrarSolicitud },
     ],
 
-    subtitulo: (v, t) => (v.length === t.length
-      ? t.length + ' candidato(s) de la agencia'
-      : v.length + ' de ' + t.length),
+    // El recuento de candidatos ya lo dice la tira de cifras, así que aquí se
+    // dice lo otro que hace falta saber al entrar: cuántas tandas hay abiertas.
+    subtitulo: (v, t, extra) => {
+      const abiertas = (extra.solicitudes || []).filter(x => !x.cerrada_at).length;
+      return abiertas
+        ? abiertas + ' tanda(s) abierta(s) de la agencia'
+        : (extra.solicitudes || []).length + ' tanda(s), todas contestadas';
+    },
 
-    kpis: (filas, extra) => {
-      const r = extra.resumen || {};
+    // Las cifras en una línea y no en cuatro tarjetas: lo que se viene a mirar
+    // aquí es la LISTA, y media pantalla de tarjetas la empujaba fuera de la
+    // vista. Se cuentan sobre lo que se está viendo, así que al filtrar por una
+    // tanda son las de esa tanda.
+    cifras: v => {
+      const n = k => v.filter(f => SITUACION(f) === k).length;
+      const con = (etiqueta, valor, tono, situacion) =>
+        ({ etiqueta, valor, tono, filtro: situacion ? { id: 'situacion', valor: situacion } : null });
       return [
-        { etiqueta: 'En proceso', valor: r.pendientes || 0, tono: 'text' },
-        { etiqueta: 'Contratados', valor: r.contratados || 0, tono: 'green' },
-        { etiqueta: 'No se presentaron', valor: r.noPresentados || 0, tono: 'warn',
-          filtro: { id: 'estado', valor: 'no_presentado' } },
-        { etiqueta: 'No pasan', valor: r.descartados || 0, tono: 'muted',
-          filtro: { id: 'estado', valor: 'descartado' } },
+        con('en la tanda', v.length),
+        con('contratados', n('contratado'), 'green', 'contratado'),
+        con('pendientes de asignar', n('pendiente'), 'warn', 'pendiente'),
+        con('sin decidir', n('sin_decidir'), 'red', 'sin_decidir'),
+        con('descartados', n('descartado'), 'muted', 'descartado'),
       ];
     },
 
+    // Y debajo, lo accionable: qué le falta a la tanda que estás mirando para
+    // poder contestarle a la agencia.
+    nota: (v, extra, filtros) => {
+      const lista = extra.solicitudes || [];
+      const s = lista.find(x => String(x.id) === String(filtros.tanda || ''));
+      if (s) return notaDeTanda(s);
+
+      // Sin tanda elegida se dice lo que hay en TODAS, que es lo que se quiere
+      // saber al entrar: si algo espera por nosotros.
+      const bloqueadas = lista.filter(x => x.fase === 'sin_decidir').length;
+      const porMandar = lista.filter(x => x.fase === 'lista' || x.fase === 'falta_asignar').length;
+      if (!bloqueadas && !porMandar) return null;
+      const trozos = [];
+      if (bloqueadas) trozos.push(bloqueadas + ' con gente sin decidir');
+      if (porMandar) trozos.push(porMandar + ' con envío pendiente');
+      return {
+        tono: bloqueadas ? 'aviso' : 'info', icono: 'fa-layer-group',
+        texto: 'Tandas: ' + trozos.join(' · ') + '. Elige una arriba para ver qué le falta.',
+      };
+    },
+
     filtros: [
-      { id: 'estado', etiqueta: 'Estado', campo: 'estado',
+      // La tanda primero: es la unidad con la que se trabaja aquí. Todo lo demás
+      // —mandar el Excel, cerrarla, saber si falta un segundo envío— cuelga de
+      // cuál estés mirando.
+      { id: 'tanda', etiqueta: 'Tanda', campo: 'solicitud_id', textoTodos: 'Todas las tandas',
+        opciones: (filas, extra) => (extra.solicitudes || []).map(x => ({
+          valor: String(x.id), texto: x.etiqueta, cuenta: x.candidatos })) },
+      // Las cuatro palabras de la agencia. Es como se mira la tanda cuando hay
+      // que contestarle, y no coincide con nuestro embudo: "pendiente" para
+      // ellos es pendiente de ASIGNAR.
+      { id: 'situacion', etiqueta: 'Situación', textoTodos: 'Toda la tanda',
+        pasa: (f, v) => SITUACION(f) === v,
+        opciones: [
+          { valor: 'contratado', texto: 'Contratados' },
+          { valor: 'pendiente', texto: 'Pendientes de asignar' },
+          { valor: 'sin_decidir', texto: 'Sin decidir' },
+          { valor: 'descartado', texto: 'Descartados' },
+        ] },
+      { id: 'estado', etiqueta: 'Estado', campo: 'estado', textoTodos: 'Cualquier estado',
         opciones: (CAT.estados || []).map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
     ],
 
