@@ -74,8 +74,24 @@
       { id: 'hastaPrevisto', etiqueta: 'Vuelta prevista', tipo: 'fecha',
         ayuda: 'Solo cuenta en vacaciones o permisos. En una baja médica la fecha la pone el alta, no nosotros.' },
       { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
-    ], { nota: 'Una ausencia NO le quita su plaza: el coche sigue siendo suyo.' });
+    ], { nota: 'Una ausencia NO le quita su plaza: el coche sigue siendo suyo. '
+         + '"Baja en la empresa" sí: esa cierra su contrato.' });
     if (!v) return;
+
+    // "Baja en la empresa" está en esta lista porque es donde se busca, pero no
+    // es una situación en la que se esté: es el final del contrato. Así que
+    // elegirla hace EXACTAMENTE lo que el botón de dar de baja, con la misma
+    // confirmación y con la fecha que se acaba de poner en "Desde".
+    //
+    // Antes escribía un estado y ya: la ficha decía "Baja en la empresa" y el
+    // contrato seguía abierto, así que el resto del sistema seguía contando con
+    // esa persona.
+    const elegida = (CAT.situaciones || []).find(x => x.codigo === v.estado);
+    if (elegida && elegida.es_fin_contrato) {
+      if (!await confirmarBaja(d, v.desde)) return;
+      return darDeBaja(d, v.desde, v.motivo);
+    }
+
     // Una ausencia no cierra su asignación, así que aquí no se toca nada del
     // coche. Está decidido en el esquema y esto solo lo respeta.
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion`, 'POST', v));
@@ -378,6 +394,28 @@
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}`, 'PUT', cambios));
   }
 
+  /**
+   * La confirmación de una baja, UNA sola para las dos puertas: el botón de
+   * arriba y elegir "Baja en la empresa" en el desplegable de situación.
+   *
+   * Si se explicara en dos sitios, tarde o temprano uno de los dos diría algo
+   * que el otro ya no hace.
+   */
+  function confirmarBaja(d, dia) {
+    return Dialogo.confirmar({
+      titulo: `Dar de baja a ${d.nombre_completo}`,
+      tono: 'peligro', si: 'Dar de baja', no: 'Cancelar',
+      html: `<p>Con fecha <b>${esc(dia)}</b>.</p>
+             <p class="text-telecab-muted">Se cierran su empleo, su turno, sus libranzas y sus asignaciones.
+             Su historial se conserva entero y se le puede volver a dar de alta.</p>`,
+    });
+  }
+
+  // Declarada, no `const`: `accionSituacion` está más arriba y también la usa.
+  function darDeBaja(d, fecha, motivo) {
+    return hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', { fecha, motivo }));
+  }
+
   async function accionBaja(d) {
     const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
       { id: 'fecha', etiqueta: 'Fecha de baja', tipo: 'fecha', valor: fecha(new Date()) },
@@ -385,15 +423,8 @@
     ], { textoBoton: 'Dar de baja',
          nota: 'Se cierran su empleo, su turno, sus libranzas y sus asignaciones. Su historial se conserva entero.' });
     if (!v) return;
-    const ok = await Dialogo.confirmar({
-      titulo: `Dar de baja a ${d.nombre_completo}`,
-      tono: 'peligro', si: 'Dar de baja', no: 'Cancelar',
-      html: `<p>Con fecha <b>${esc(v.fecha)}</b>.</p>
-             <p class="text-telecab-muted">Se cierran su empleo, su turno, sus libranzas y sus asignaciones.
-             Su historial se conserva entero y se le puede volver a dar de alta.</p>`,
-    });
-    if (!ok) return;
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', v));
+    if (!await confirmarBaja(d, v.fecha)) return;
+    await darDeBaja(d, v.fecha, v.motivo);
   }
 
   // ---------- documentos ----------
@@ -590,7 +621,8 @@
       origen: id => `/plantilla/api/ficha/${id}`,
       titulo: d => d.nombre_completo,
       acciones: [
-        { texto: 'Situación', icono: 'fa-user-clock', principal: true, onClick: accionSituacion },
+        { texto: 'Situación', icono: 'fa-user-clock', principal: true,
+          visible: d => d.empleo_vigente, onClick: accionSituacion },
         { texto: 'Turno', icono: 'fa-clock', visible: () => true, onClick: accionTurno },
         { texto: 'Libranzas', icono: 'fa-calendar-week', onClick: accionLibranza },
         { texto: 'Editar datos', icono: 'fa-pen', visible: () => !SOLO_OPERATIVO, onClick: accionDatos },

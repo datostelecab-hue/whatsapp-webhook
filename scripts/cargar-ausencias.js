@@ -14,6 +14,7 @@
 const path = require('path');
 const ExcelJS = require('exceljs');
 const db = require('../services/db');
+const con = require('../services/repo/conductores');
 const { normClave } = require('../services/conductores');
 
 const NL = String.fromCharCode(10);
@@ -35,6 +36,12 @@ const s = v => txt(v).trim();
 
 // Lo que pone la hoja → código del catálogo. 'Activo' y 'Pendiente Asignar'
 // NO son ausencias: no generan fila, porque lo normal no se registra.
+//
+// 'BAJA EMPRESA' está aquí pero NO es una ausencia: es que esa persona ya no
+// trabaja aquí. Escribirla como estado —que es lo que se hacía— dejaba a la
+// gente a medias: la ficha ponía "Baja en la empresa" y el contrato seguía
+// abierto, así que el resto del sistema seguía contando con ella. Ahora esas
+// filas causan baja de verdad, con la misma función que el botón de RRHH.
 const ESTADO = {
   'BAJA MÉDICA': 'baja_medica', 'BAJA MEDICA': 'baja_medica',
   'VACACIONES': 'vacaciones',
@@ -82,7 +89,7 @@ const ESTADO = {
   }
   const resolver = n => { const k = normClave(n); return k ? porAlias.get(k) ?? null : null; };
 
-  let n = 0;
+  let n = 0, bajas = 0;
   const sinResolver = [];
   const avisos = [];
   await db.transaccion(async cli => {
@@ -94,17 +101,36 @@ const ESTADO = {
     for (const f of filas) {
       const id = resolver(f.idBolt || f.nombre);
       if (!id) { sinResolver.push(f.nombre); continue; }
+      const nota = 'Migración desde AGENDA_V2 (' + f.bruto + ')';
+
+      // Irse no es una situación: se cierra el contrato, y con él el turno, las
+      // libranzas y las asignaciones. Se llama a la misma función que usa RRHH
+      // en vez de repetir aquí qué significa una baja.
+      if (f.estado === 'baja_empresa') {
+        await cli.query('SAVEPOINT sp');
+        try {
+          await con.darDeBaja(id, { fecha: HOY, motivo: nota }, { cli });
+          await cli.query('RELEASE SAVEPOINT sp');
+          bajas++;
+        } catch (err) {
+          await cli.query('ROLLBACK TO SAVEPOINT sp');
+          avisos.push(`${f.nombre}: ${err.message.split(NL)[0]}`);
+        }
+        continue;
+      }
+
       const r = await intentar(
         `INSERT INTO conductor_estado_hist (conductor_id, estado, desde, motivo)
          VALUES ($1,$2,$3,$4)`,
-        [id, f.estado, HOY, 'Migración desde AGENDA_V2 (' + f.bruto + ')'],
+        [id, f.estado, HOY, nota],
         err => avisos.push(`${f.nombre}: ${err.message.split(NL)[0]}`));
       if (r) n++;
     }
   });
 
   console.log(NL + `══ EN LA BASE ══`);
-  console.log(`  ausencias abiertas: ${n}` + (sinResolver.length ? ` · ${sinResolver.length} sin resolver` : ''));
+  console.log(`  ausencias abiertas: ${n}` + (bajas ? ` · ${bajas} baja(s) de empresa` : '')
+    + (sinResolver.length ? ` · ${sinResolver.length} sin resolver` : ''));
 
   const q = await db.consulta(`
     SELECT e.etiqueta, e.fin_previsible, count(h.id) personas

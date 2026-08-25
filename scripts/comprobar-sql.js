@@ -93,7 +93,19 @@ for (const sent of limpio.split(';')) {
  * expresion sin alias, un FROM que no aparece). Mejor no decir nada que decir
  * algo falso.
  */
-function columnasEnOrden(cuerpo) {
+// Lo que queda donde había una interpolación de JS. No es una columna: es un
+// trozo de SQL que solo se conoce en tiempo de ejecución.
+const HUECO = '_';
+
+// Palabras que aparecen solas en una lista de SELECT sin ser columnas.
+const NO_SON_COLUMNAS = new Set([
+  'null', 'true', 'false', 'default',
+  'current_date', 'current_timestamp', 'current_time', 'localtimestamp', 'now',
+  // `${NOMBRE} AS quien` deja un hueco donde iba la expresión: no es una columna.
+  HUECO,
+]);
+
+function trozosDelSelect(cuerpo) {
   const desdeSelect = cuerpo.replace(/^[\s\S]*?\bSELECT\b/i, '');
   let nivel = 0, corte = -1;
   for (let i = 0; i < desdeSelect.length; i++) {
@@ -116,6 +128,13 @@ function columnasEnOrden(cuerpo) {
     actual += c;
   }
   trozos.push(actual);
+  return trozos;
+}
+
+/** Los nombres finales de esa lista: el alias si lo tiene, y si no la columna. */
+function columnasEnOrden(cuerpo) {
+  const trozos = trozosDelSelect(cuerpo);
+  if (!trozos) return null;
 
   const nombres = [];
   for (const bruto of trozos) {
@@ -190,7 +209,7 @@ function sqlDeJs(txt) {
   for (const m of txt.matchAll(/`([^`]*)`/g)) {
     const t = m[1];
     if (!/\b(SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/i.test(t)) continue;
-    trozos.push(t.replace(/\$\{[^}]*\}/g, ' _ '));
+    trozos.push(t.replace(/\$\{[^}]*\}/g, ` ${HUECO} `));
   }
   return trozos;
 }
@@ -290,6 +309,42 @@ for (const fuente of fuentes) {
         fallos++;
         console.log(`  x ${f}: ${ali}.${col} — "${tabla}" no tiene esa columna`);
         const parecidas = [...cols].filter(c => c.startsWith(col.slice(0, 3)) || col.startsWith(c.slice(0, 3)));
+        if (parecidas.length) console.log(`      ¿querías decir ${parecidas.slice(0, 4).join(', ')}?`);
+      }
+    }
+
+    // ── Columnas SIN cualificar ───────────────────────────────────────────
+    //
+    // El bucle de arriba solo ve `alias.columna`. Una consulta de una sola
+    // tabla no lleva prefijos —`SELECT codigo, etiqueta FROM cat_estado_conductor`—
+    // y era justo la que se colaba entera: un `es_fin_contratoo` pasaba sin que
+    // nadie dijera nada, que es como se descubrió este hueco.
+    //
+    // Solo se mira cuando NO hay duda de a qué tabla pertenece cada nombre: UNA
+    // sola tabla en juego y UN solo SELECT en la sentencia. Con una subconsulta
+    // o un JOIN de por medio se calla. Preferimos no decir nada a señalar lo que
+    // está bien: un chivato que grita de más enseña a ignorarlo.
+    const enJuego = new Set([...alias.values()].flatMap(x => [...x]));
+    if (enJuego.size !== 1) continue;
+    if ((sent.match(/\bSELECT\b/gi) || []).length !== 1) continue;
+
+    const laTabla = [...enJuego][0];
+    const susCols = tablas.get(laTabla) || vistas.get(laTabla);
+    if (!susCols || !susCols.size || susCols.has('*')) continue;
+
+    for (const bruto of trozosDelSelect(sent) || []) {
+      // Solo un nombre pelado, con o sin AS. Una función, un literal, una
+      // expresión o un `$1` no son columnas y aquí no se tocan.
+      const x = bruto.trim().replace(/^DISTINCT\s+/i, '');
+      const suelto = x.match(/^([a-z_][a-z0-9_]*)(?:\s+AS\s+[a-z_][a-z0-9_]*)?$/i);
+      if (!suelto) continue;
+      const col = suelto[1].toLowerCase();
+      if (NO_SON_COLUMNAS.has(col)) continue;
+      revisadas++;
+      if (!susCols.has(col)) {
+        fallos++;
+        console.log(`  x ${f}: ${col} — "${laTabla}" no tiene esa columna`);
+        const parecidas = [...susCols].filter(c => c.startsWith(col.slice(0, 3)) || col.startsWith(c.slice(0, 3)));
         if (parecidas.length) console.log(`      ¿querías decir ${parecidas.slice(0, 4).join(', ')}?`);
       }
     }

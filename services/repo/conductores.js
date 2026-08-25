@@ -331,7 +331,10 @@ async function resumen({ momento } = {}) {
 /** Catálogos para filtros y desplegables. */
 async function catalogos() {
   const [situaciones, turnos, centros] = await Promise.all([
-    db.consulta(`SELECT codigo, etiqueta, es_ausencia FROM cat_estado_conductor ORDER BY orden, etiqueta`),
+    // `es_fin_contrato` marca la que NO es una situación: 'Baja en la empresa' se
+    // sigue eligiendo igual, pero no se guarda como estado — da de baja.
+    db.consulta(`SELECT codigo, etiqueta, es_ausencia, es_fin_contrato
+                   FROM cat_estado_conductor ORDER BY orden, etiqueta`),
     db.consulta(`SELECT id, codigo, etiqueta FROM turno WHERE activo ORDER BY id`),
     db.consulta(`SELECT codigo, nombre FROM cat_centro_trabajo WHERE activo ORDER BY nombre`),
   ]);
@@ -525,11 +528,25 @@ async function actualizar(id, campos, { usuarioId, rol } = {}) {
  */
 async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
-  return db.transaccion(async cli => {
-    const cat = (await cli.query(
-      'SELECT codigo, etiqueta, fin_previsible FROM cat_estado_conductor WHERE codigo = $1', [estado])).rows[0];
-    if (!cat) throw new Error(`No existe la situación "${estado}"`);
+  const cat = (await db.consulta(
+    `SELECT codigo, etiqueta, fin_previsible, es_fin_contrato
+       FROM cat_estado_conductor WHERE codigo = $1`, [estado])).rows[0];
+  if (!cat) throw new Error(`No existe la situación "${estado}"`);
 
+  // IRSE NO ES UNA SITUACIÓN EN LA QUE SE ESTÉ: es el final del contrato.
+  //
+  // Pero la gente la busca aquí, en la lista de situaciones, que es donde tiene
+  // sentido buscarla. Así que se sigue ofreciendo y hace EXACTAMENTE lo mismo
+  // que el botón de al lado —cierra empleo, turno, libranzas y asignaciones—,
+  // no algo parecido. Dos puertas, un solo camino.
+  //
+  // Antes escribía una fila de estado y ya: la ficha decía "Baja en la empresa"
+  // con el contrato abierto, y el resto del sistema seguía contando con esa
+  // persona. Dos pantallas respondiendo cosas distintas porque se les preguntaba
+  // por cosas distintas.
+  if (cat.es_fin_contrato) return darDeBaja(id, { fecha: desde, motivo }, { usuarioId });
+
+  return db.transaccion(async cli => {
     // Una vuelta con fecha prevista solo tiene sentido si esa situación la
     // admite: en una baja médica la fecha la pone el alta, no nosotros.
     const previsto = cat.fin_previsible ? (hastaPrevisto || null) : null;
@@ -808,9 +825,13 @@ async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
  * asignación abierta de alguien que ya no está haría que su coche siguiera
  * apareciendo cubierto.
  */
-async function darDeBaja(id, { fecha, motivo }, { usuarioId } = {}) {
+async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
   const dia = fecha || new Date().toISOString().slice(0, 10);
-  return db.transaccion(async cli => {
+  // Se puede llamar dentro de una transacción que ya esté abierta —los
+  // cargadores lo hacen— o suelta. Lo que NO puede es haber dos definiciones de
+  // qué significa dar de baja, que es como se llega a que una pantalla cierre
+  // cosas que la otra deja abiertas.
+  const hazlo = async cli => {
     const r = await cli.query(
       `UPDATE conductor_periodo_empleo SET baja = $2, motivo_baja = $3, usuario_id = $4
         WHERE conductor_id = $1 AND baja IS NULL RETURNING id`,
@@ -829,7 +850,8 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId } = {}) {
       cambios: [{ campo: 'baja', antes: null, ahora: `${dia}${motivo ? ' · ' + motivo : ''}` }],
     });
     return true;
-  });
+  };
+  return cli ? hazlo(cli) : db.transaccion(hazlo);
 }
 
 /**
