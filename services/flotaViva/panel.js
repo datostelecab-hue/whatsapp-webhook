@@ -166,16 +166,86 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
  * El motivo es obligatorio: una incidencia cerrada sin explicacion no es una
  * incidencia resuelta, es una incidencia escondida.
  */
-async function justificar(id, { motivo, quien } = {}) {
+async function justificar(id, { motivo, resultado, accion, quien } = {}) {
   const texto = String(motivo || '').trim();
-  if (!texto) throw new Error('Hace falta decir que paso: sin motivo no se cierra');
-  const r = await db.consulta(
+  if (!texto) throw new Error('Hace falta decir qué pasó: sin motivo no se cierra');
+
+  const inc = (await db.consulta(
+    `SELECT i.id, i.tipo, i.franja, v.matricula, c.nombre AS conductor, c.telefono,
+            k.cc_cluster, k.cc_subcluster, k.cc_motivo
+       FROM fv_incidencia i
+       JOIN fv_vehiculo v        ON v.uuid = i.vehiculo_uuid
+       JOIN fv_cat_incidencia k  ON k.codigo = i.tipo
+       LEFT JOIN fv_conductor c  ON c.uuid = i.conductor_uuid
+      WHERE i.id = $1`, [Number(id)])).rows[0];
+  if (!inc) throw new Error('No existe esa incidencia');
+
+  // PRIMERO se guarda aquí. La justificación es lo que necesita el parte del
+  // cierre, y no puede perderse porque el Call Center —que escribe en una hoja—
+  // falle o esté sin cuota.
+  await db.consulta(
     `UPDATE fv_incidencia
         SET justificada_at = now(), justificada_por = $2, motivo = $3
-      WHERE id = $1 RETURNING id`,
+      WHERE id = $1`,
     [Number(id), String(quien || '').slice(0, 120) || null, texto]);
-  if (!r.rows.length) throw new Error('No existe esa incidencia');
-  return { id: Number(id), justificada: true };
+
+  // Y DESPUÉS se crea la llamada, si ese tipo tiene clasificación. Justificar
+  // una incidencia ES una llamada: tiene que contar en sus KPIs y en su
+  // reincidencia, no quedarse en un libro aparte.
+  let llamada = null, errorLlamada = '';
+  if (inc.cc_motivo && inc.conductor) {
+    try {
+      const cc = require('../callCenter');
+      llamada = await cc.registrar({
+        direccion: 'saliente',
+        conductor: inc.conductor, telefono: inc.telefono || '',
+        matricula: inc.matricula || '',
+        turno: inc.franja === 'noche' ? 'Noche' : 'Día',
+        cluster: inc.cc_cluster, subcluster: inc.cc_subcluster, motivo: inc.cc_motivo,
+        resultado: String(resultado || '').trim(),
+        accion: String(accion || '').trim(),
+        notas: texto,
+        estado: 'resuelta',
+      }, quien || '');
+      await db.consulta('UPDATE fv_incidencia SET llamada_clave = $2 WHERE id = $1',
+        [Number(id), llamada.clave]);
+    } catch (e) {
+      // La justificación NO se deshace: quedó guardada arriba. Solo se dice que
+      // la llamada no llegó al Call Center, para poder repetirla a mano.
+      errorLlamada = e.message;
+      console.error('⚠️  [FLOTA VIVA] No se pudo registrar la llamada:', e.message);
+    }
+  }
+
+  return {
+    id: Number(id), justificada: true,
+    llamada: llamada ? llamada.clave : null,
+    sinLlamada: !inc.cc_motivo ? 'ese tipo no tiene clasificación de Call Center'
+      : !inc.conductor ? 'no consta el conductor'
+        : errorLlamada || '',
+  };
+}
+
+/** La clasificación y los resultados válidos de una incidencia, para el diálogo. */
+async function clasificacionDe(id) {
+  const r = (await db.consulta(
+    `SELECT k.cc_cluster, k.cc_subcluster, k.cc_motivo
+       FROM fv_incidencia i JOIN fv_cat_incidencia k ON k.codigo = i.tipo
+      WHERE i.id = $1`, [Number(id)])).rows[0];
+  if (!r || !r.cc_motivo) return null;
+
+  const cc = require('../callCenter');
+  const m = cc.CATALOGO
+    .filter(c => c.cluster === r.cc_cluster)
+    .flatMap(c => c.subclusters.filter(s => s.nombre === r.cc_subcluster))
+    .flatMap(s => s.motivos.filter(x => x.motivo === r.cc_motivo))[0];
+  if (!m) return null;
+
+  return {
+    cluster: r.cc_cluster, subcluster: r.cc_subcluster, motivo: r.cc_motivo,
+    resultados: [...m.resultados, ...cc.RESULTADOS_UNIVERSALES],
+    acciones: m.acciones || [],
+  };
 }
 
 /**
@@ -203,4 +273,4 @@ async function cierre({ dia, franja } = {}) {
   };
 }
 
-module.exports = { estado, historial, incidencias, justificar, cierre, duracion };
+module.exports = { estado, historial, incidencias, justificar, clasificacionDe, cierre, duracion };

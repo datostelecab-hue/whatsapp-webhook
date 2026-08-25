@@ -55,12 +55,24 @@ router.get('/api/incidencias', responde(async req => {
   };
 }));
 
+// Como se clasifica esta incidencia en el Call Center y que resultados admite.
+// Se pide al abrir el dialogo: los resultados validos dependen del motivo, y
+// mandar uno que no le corresponde hace que la llamada no se registre.
+router.get('/api/incidencia/:id/clasificacion', responde(async req =>
+  ({ clasificacion: await panel.clasificacionDe(req.params.id) })));
+
 // Alguien ha llamado y cuenta que paso. Sin motivo no se cierra.
+//
+// Ademas de justificarla aqui, se REGISTRA LA LLAMADA en el Call Center: es una
+// llamada de verdad y tiene que contar en sus KPIs y en su reincidencia.
 router.post('/api/incidencia/:id/justificar', responde(async req => {
   const b = req.body || {};
   const quien = (req.usuario && (req.usuario.nombre || req.usuario.email)) || '';
-  const r = await panel.justificar(req.params.id, { motivo: b.motivo, quien });
-  console.log(`✍️  [FLOTA VIVA] Incidencia ${r.id} justificada por ${quien || '(sin nombre)'}`);
+  const r = await panel.justificar(req.params.id, {
+    motivo: b.motivo, resultado: b.resultado, accion: b.accion, quien,
+  });
+  console.log(`✍️  [FLOTA VIVA] Incidencia ${r.id} justificada por ${quien || '(sin nombre)'}` +
+              (r.llamada ? ` · llamada ${r.llamada}` : ` · SIN llamada: ${r.sinLlamada}`));
   return r;
 }));
 

@@ -377,23 +377,68 @@
       b.addEventListener('click', () => justificar(Number(b.dataset.just))));
   }
 
-  /** El motivo es obligatorio: cerrarla sin explicacion es esconderla. */
+  /**
+   * La llamada.
+   *
+   * No es solo guardar una nota: se clasifica con el vocabulario del Call Center
+   * y queda registrada alli como una llamada mas, con sus KPIs y su
+   * reincidencia. Aqui se pide el RESULTADO —que depende del motivo— y lo que
+   * te haya contado el conductor.
+   *
+   * El texto es obligatorio: cerrarla sin explicacion es esconderla.
+   */
   async function justificar(id) {
     const inc = INC.find(x => x.id === id);
-    const v = await Dialogo.formulario('¿Qué ha pasado con ' + (inc ? inc.matricula : 'este coche') + '?', [
-      { id: 'motivo', etiqueta: 'Qué te ha dicho', tipo: 'texto-largo', obligatorio: true,
-        ayuda: 'Queda en el parte del cierre con tu nombre y la hora.' },
-    ], { textoBoton: 'Guardar' });
+
+    // Los resultados validos los dice el catalogo, no esta pantalla. Se piden
+    // ahora porque cambian segun el motivo.
+    let cls = null;
+    try {
+      const r = await fetch('/flota-viva/api/incidencia/' + id + '/clasificacion');
+      const d = await r.json();
+      if (d.status === 'ok') cls = d.clasificacion;
+    } catch (e) { /* se sigue: sin clasificacion, se justifica solo aqui */ }
+
+    const campos = [];
+    if (cls) {
+      campos.push({ id: 'resultado', etiqueta: 'Cómo ha acabado la llamada', tipo: 'lista',
+        obligatorio: true, valor: cls.resultados[0],
+        opciones: cls.resultados.map(x => ({ valor: x, texto: x })) });
+      if (cls.acciones.length) {
+        campos.push({ id: 'accion', etiqueta: 'Qué se hace ahora', tipo: 'lista',
+          opciones: [{ valor: '', texto: '—' }].concat(cls.acciones.map(x => ({ valor: x, texto: x }))) });
+      }
+    }
+    campos.push({ id: 'motivo', etiqueta: 'Qué te ha dicho', tipo: 'texto-largo', obligatorio: true,
+      ayuda: 'Queda en el parte del cierre con tu nombre y la hora.' });
+
+    const v = await Dialogo.formulario('Llamada a ' + (inc && inc.conductor ? inc.conductor : (inc ? inc.matricula : 'este coche')), campos, {
+      textoBoton: 'Guardar la llamada',
+      nota: cls ? 'Se registra en el Call Center como ' + cls.cluster + ' › ' + cls.subcluster + ' › ' + cls.motivo
+        : 'Este tipo de incidencia no tiene clasificación de Call Center: se guarda solo aquí.',
+    });
     if (!v || !String(v.motivo || '').trim()) return;
+
     try {
       const r = await fetch('/flota-viva/api/incidencia/' + id + '/justificar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ motivo: v.motivo }),
+        body: JSON.stringify({ motivo: v.motivo, resultado: v.resultado, accion: v.accion }),
       });
       const d = await r.json();
       if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo guardar');
       INC = INC.filter(x => x.id !== id);
       pintarIncidencias();
+      // Si la llamada no llego al Call Center se dice, porque hay que repetirla
+      // a mano. La justificacion en cambio SI quedo guardada.
+      if (d.sinLlamada) {
+        Dialogo.aviso({
+          titulo: 'Justificada, pero sin llamada en el Call Center',
+          html: '<p class="text-sm">' + esc(d.sinLlamada) + '</p>' +
+                '<p class="text-sm mt-2 text-telecab-muted">La incidencia queda cerrada y en el parte. ' +
+                'Si hacía falta la llamada, apúntala a mano en el Call Center.</p>',
+          tono: 'aviso',
+        });
+      }
     } catch (e) {
       Dialogo.aviso({ titulo: 'No se pudo guardar', texto: e.message, tono: 'error' });
     }

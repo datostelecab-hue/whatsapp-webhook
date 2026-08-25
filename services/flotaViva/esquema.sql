@@ -397,8 +397,37 @@ CREATE TABLE IF NOT EXISTS fv_incidencia (
   justificada_at TIMESTAMPTZ,
   justificada_por VARCHAR(120),
   motivo         TEXT,
+  -- La llamada que se creo en el Call Center, si se creo. Enlaza los dos libros
+  -- sin duplicar el dato: alli estan sus KPIs, aqui el parte del cierre.
+  llamada_clave  VARCHAR(40),
   CONSTRAINT uq_fv_inc UNIQUE (vehiculo_uuid, tipo, franja, dia_operativo)
 );
+
+-- ── El puente con el Call Center ──────────────────────────────────────────
+-- Justificar una incidencia ES una llamada, y el Call Center ya tiene el
+-- vocabulario para clasificarla. Se guarda a que clasificacion suya corresponde
+-- cada tipo nuestro, como DATO: si maniana cambian su catalogo, es un UPDATE.
+--
+-- Vacio = esa incidencia se justifica solo aqui, sin crear llamada.
+ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_cluster    VARCHAR(40);
+ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_subcluster VARCHAR(40);
+ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_motivo     VARCHAR(120);
+
+-- OJO CON LAS TILDES: el catalogo del Call Center casa por texto exacto, asi que
+-- 'Conexion' no encuentra 'Conexión' y la llamada no se crearia. Lo comprueba
+-- `scripts/probar-flota-viva.js` contra el catalogo de verdad.
+UPDATE fv_cat_incidencia SET cc_cluster = v.cl, cc_subcluster = v.sub, cc_motivo = v.mot
+  FROM (VALUES
+    -- Exacto: su catalogo ya tenia este caso.
+    ('no_aparece',   'Asistencia', 'Conexión',         'No se ha conectado a su puesto'),
+    ('desconectado', 'Asistencia', 'Conexión',         'No se ha conectado a su puesto'),
+    -- Un coche que rueda apagado es lo que ellos llaman uso personal.
+    ('rueda_caido',  'Conducta',   'Uso del vehículo', 'Uso personal del coche'),
+    -- El mas flojo de los cuatro: "espera extendida" no es exactamente estar en
+    -- descanso. Se deja apuntado para que se cambie si no encaja.
+    ('descanso',     'Operativa',  'Servicio',         'Espera extendida')
+  ) AS v(cod, cl, sub, mot)
+ WHERE fv_cat_incidencia.codigo = v.cod;
 
 CREATE INDEX IF NOT EXISTS idx_fv_inc_dia ON fv_incidencia (dia_operativo DESC, franja);
 CREATE INDEX IF NOT EXISTS idx_fv_inc_abierta ON fv_incidencia (justificada_at) WHERE justificada_at IS NULL;
