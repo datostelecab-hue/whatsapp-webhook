@@ -227,6 +227,19 @@ async function aplicar(vehiculo, { logs, mapa, gps }) {
     let situacion = mapa.get(l.estado);
     if (!situacion) { sinClasificar = l.estado; situacion = 'otro'; }
 
+    // UN APUNTE ANTERIOR AL TRAMO QUE YA ESTÁ ABIERTO SE IGNORA.
+    //
+    // Habla de algo que pasó antes de donde estamos, así que no se puede meter
+    // sin reescribir hacia atrás. Cerrar el tramo abierto en una hora anterior a
+    // su propio inicio dejaba un tramo de CERO minutos — que es exactamente el
+    // "Desconectado 16:54 · 0 min" que apareció junto al bueno de las 16:03.
+    //
+    // Pasa una sola vez por coche, al estrenar el reproductor: como no había
+    // marca de por dónde íbamos, la primera vuelta reprodujo las dos horas de
+    // ventana enteras, incluidos apuntes anteriores al tramo que ya estaba
+    // abierto. A partir de ahí la marca existe y no vuelve a ocurrir.
+    if (abierto && cuando < new Date(abierto.desde)) continue;
+
     // Mismo estado que el tramo abierto: no es un cambio, es un latido. Se
     // aprovecha para rellenar el conductor, que BOLT no manda siempre.
     if (abierto && abierto.situacion === situacion) {
@@ -241,9 +254,9 @@ async function aplicar(vehiculo, { logs, mapa, gps }) {
     const anterior = abierto;
     const fila = await db.transaccion(async cli => {
       if (anterior) {
-        // GREATEST protege de un apunte con hora anterior al inicio del tramo:
-        // pasa si los relojes bailan, y dejaría un tramo que acaba antes de
-        // empezar — que la base rechazaría, con razón.
+        // GREATEST sigue como red de seguridad para el caso límite —dos apuntes
+        // en el mismo segundo—, pero ya no es lo que evita los tramos de cero
+        // minutos: eso lo hace el descarte de arriba.
         await cli.query(
           'UPDATE fv_tramo SET hasta = GREATEST(desde, $2::timestamptz) WHERE id = $1',
           [anterior.id, cuando.toISOString()]);
