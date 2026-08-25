@@ -46,15 +46,39 @@
     const r = await hacer(() => enviar('/ett/api/importar', 'POST', { texto: v.texto }), false);
     if (!r) return;
 
+    // Fila por fila, y no solo un recuento. Lo que de verdad interesa de una
+    // tabla de la agencia es a quién de esa lista ya conocemos: quien pasó por
+    // aquí antes, y sobre todo quien YA ESTÁ TRABAJANDO con nosotros.
+    const PINTA = {
+      creada:     { icono: 'fa-circle-plus',   color: 'green', texto: 'Nueva' },
+      vuelve:     { icono: 'fa-rotate-left',   color: 'gold',  texto: 'Ya pasó por aquí' },
+      ya_estaba:  { icono: 'fa-circle-check',  color: 'muted', texto: 'Ya estaba' },
+      ya_trabaja: { icono: 'fa-user-check',    color: 'red',   texto: 'YA TRABAJA AQUÍ' },
+      error:      { icono: 'fa-circle-xmark',  color: 'red',   texto: 'No se pudo' },
+    };
+
+    const filas = (r.detalle || []).map(d => {
+      const p = PINTA[d.que] || PINTA.error;
+      return '<div class="flex items-start gap-2 py-1.5 border-b border-telecab-border/40 text-sm">'
+        + '<i class="fa-solid ' + p.icono + ' text-telecab-' + p.color + ' text-xs mt-1"></i>'
+        + '<div class="flex-1"><b>' + esc(d.nombre) + '</b> '
+        + '<span class="text-telecab-muted font-mono text-xs">' + esc(d.telefono) + '</span>'
+        + (d.nota ? '<div class="text-xs text-telecab-muted">' + esc(d.nota) + '</div>' : '')
+        + '</div>'
+        + '<span class="text-[10px] uppercase tracking-wide text-telecab-' + p.color + '">'
+        + esc(p.texto) + '</span></div>';
+    }).join('');
+
     await Dialogo.aviso({
       titulo: 'Importación terminada',
-      html: '<p class="text-sm">' + r.leidas + ' fila(s) leídas · <b>' + r.creados + '</b> candidatura(s) nuevas'
-        + (r.yaEstaban ? ' · ' + r.yaEstaban + ' ya estaban' : '') + '</p>'
-        + (r.avisos && r.avisos.length
-          ? '<ul class="text-xs text-telecab-warn mt-3 space-y-1 list-disc pl-4">'
-            + r.avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>'
-          : ''),
-      tono: (r.avisos && r.avisos.length) ? 'aviso' : 'ok',
+      ancho: 'max-w-2xl',
+      html: '<p class="text-sm">' + r.leidas + ' fila(s) leídas · <b>' + r.creados + '</b> nueva(s)'
+        + (r.vuelven ? ' · ' + r.vuelven + ' que ya pasaron por aquí' : '')
+        + (r.yaEstaban ? ' · ' + r.yaEstaban + ' ya estaban' : '')
+        + (r.yaTrabajan ? ' · <b class="text-telecab-red">' + r.yaTrabajan + ' ya trabajan aquí</b>' : '')
+        + '</p>'
+        + '<div class="mt-3 max-h-80 overflow-y-auto">' + filas + '</div>',
+      tono: (r.yaTrabajan || r.errores) ? 'aviso' : 'ok',
     });
   }
 

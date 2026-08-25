@@ -138,6 +138,32 @@ async function porTelefono(telefono) {
 }
 
 /**
+ * Rellena de una ficha SOLO lo que está vacío.
+ *
+ * Antes, cuando la persona ya existía, todo lo que traía la fila —DNI, correo,
+ * dirección, fecha de nacimiento— se perdía sin decir nada: aparecía en la lista
+ * con las casillas en blanco y sin explicar por qué.
+ *
+ * Se rellena, no se pisa. Lo que trae la agencia es información nueva donde no
+ * teníamos nada; no es autoridad para reemplazar lo que alguien ya escribió a
+ * mano, que casi siempre estará mejor comprobado.
+ */
+async function rellenarHuecos(conductorId, datos, quien) {
+  const actual = (await db.consulta(
+    'SELECT * FROM conductor WHERE id = $1', [conductorId])).rows[0];
+  if (!actual) return {};
+
+  const huecos = {};
+  for (const [k, v] of Object.entries({ ...datos, ...despiezar(datos) })) {
+    if (!con.CAMPOS[k] || v === '' || v === null || v === undefined) continue;
+    const tiene = actual[k];
+    if (tiene === null || tiene === undefined || String(tiene).trim() === '') huecos[k] = v;
+  }
+  if (Object.keys(huecos).length) await con.actualizar(conductorId, huecos, quien);
+  return huecos;
+}
+
+/**
  * Abre una candidatura: crea a la persona si no la conocíamos y le arranca el
  * proceso en Preselección.
  *
@@ -147,7 +173,14 @@ async function porTelefono(telefono) {
  */
 async function abrir(telefono, datos = {}, quien = {}) {
   const { situacion, candidatura } = await porTelefono(telefono);
-  if (candidatura) return { id: candidatura.id, yaExistia: true };
+
+  // Ya hay un proceso vivo con ese número. No se abre otro, pero SÍ se aprovecha
+  // lo que venga: la agencia manda una fila más completa a la semana siguiente, y
+  // repegar la tabla tiene que servir para algo más que decir "ya estaba".
+  if (candidatura) {
+    await rellenarHuecos(candidatura.conductor_id, datos, quien);
+    return { id: candidatura.id, conductorId: candidatura.conductor_id, yaExistia: true };
+  }
 
   let conductorId = situacion.ficha ? situacion.ficha.id : null;
   if (!conductorId) {
@@ -163,6 +196,8 @@ async function abrir(telefono, datos = {}, quien = {}) {
       : alta.partirNombre(entero);
     const r = await con.crearPersona({ ...datos, ...partes, telefono }, quien);
     conductorId = r.id;
+  } else {
+    await rellenarHuecos(conductorId, datos, quien);
   }
 
   const r = await db.consulta(
@@ -530,11 +565,20 @@ function parsearMatriz(texto) {
 }
 
 /**
- * Crea las candidaturas de una matriz pegada.
+ * Crea las candidaturas de una matriz pegada, y DICE qué ha pasado con cada una.
  *
- * Idempotente por telefono: quien ya tenga un proceso vivo NO se toca. La
- * agencia reenvia la misma tabla ampliada cada semana, asi que pegarla dos veces
- * tiene que ser inofensivo.
+ * Contar "creados y ya estaban" no basta. Lo que de verdad interesa de una tabla
+ * de la agencia es a quién de esa lista YA CONOCEMOS, y por qué: gente que ya
+ * pasó por aquí, o —lo importante— gente que ya está trabajando con nosotros.
+ * Eso solo se puede saber teniendo una base con el DNI y el teléfono de todos, y
+ * si se sabe hay que decirlo.
+ *
+ * Se busca por TELÉFONO y por DNI. Por los dos, porque la agencia manda a veces
+ * a alguien con un número nuevo: sin mirar el DNI, esa fila reventaba con un
+ * error de clave duplicada en vez de decir de quién se trata.
+ *
+ * Idempotente: repegar la tabla no duplica a nadie, y de paso rellena los huecos
+ * de quien ya estaba.
  */
 async function importarMatriz(texto, quien = {}) {
   const filas = parsearMatriz(texto);
@@ -550,43 +594,96 @@ async function importarMatriz(texto, quien = {}) {
     || sinTildes(x.codigo) === sinTildes(v)) || {}).id || null;
   const zonaDe = v => (zonas.find(x => sinTildes(x.nombre) === sinTildes(v)) || {}).id || null;
 
-  const avisos = [];
-  let creados = 0, yaEstaban = 0;
+  // Lo que la agencia da de cada persona. Se arma una vez y se usa en los dos
+  // caminos: al crear la candidatura y al rellenar huecos de una que ya existe.
+  const dePersona = f => ({
+    dni_nie: f.dni || undefined,
+    email: f.correo || undefined,
+    via_nombre: f.direccion || undefined,
+    codigo_postal: f.cp || f.cpDeDireccion || undefined,
+    fecha_nacimiento: f.nacimiento || undefined,
+  });
+
+  /** ¿Conocemos a esta persona? Por el DNI, aunque venga con otro número. */
+  async function porDni(dni) {
+    if (!dni) return null;
+    const r = await db.consulta(
+      `SELECT c.id, c.empleo_vigente,
+              btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
+              (SELECT e164 FROM conductor_telefono
+                WHERE conductor_id = c.id AND vigente_hasta IS NULL
+                ORDER BY principal DESC, id LIMIT 1) AS telefono
+         FROM conductor c
+        WHERE upper(btrim(c.dni_nie)) = $1 AND NOT c.es_centinela`,
+      [String(dni).trim().toUpperCase()]);
+    return r.rows[0] || null;
+  }
+
+  const detalle = [];
+  const anota = (f, que, nota) => detalle.push({
+    nombre: f.nombre || '(sin nombre)', telefono: f.telefono, dni: f.dni || null, que, nota: nota || null,
+  });
 
   for (const f of filas) {
     try {
       const { situacion, candidatura } = await porTelefono(f.telefono);
-      if (candidatura) { yaEstaban++; continue; }
+      const porElDni = situacion.ficha ? null : await porDni(f.dni);
+      const conocida = situacion.ficha || porElDni;
 
-      // Y tampoco si esta MISMA cita ya se importó, aunque su candidatura se
-      // cerrara después.
-      //
+      // ── Ya trabaja aquí ──
+      // Es el aviso que importa. La agencia lo manda como candidato nuevo y
+      // resulta que es alguien de la plantilla. No se abre nada.
+      if (conocida && (conocida.empleoVigente || conocida.empleo_vigente)) {
+        anota(f, 'ya_trabaja',
+          `${conocida.quien} ya tiene contrato abierto con nosotros` +
+          (porElDni ? ` (le hemos reconocido por el DNI; su número aquí es ${porElDni.telefono || 'otro'})` : ''));
+        continue;
+      }
+
+      // ── Ya tiene un proceso vivo ──
+      // No se abre otro, pero se aprovecha la fila: la agencia manda una versión
+      // más completa a la semana siguiente, y repegar la tabla tiene que servir
+      // para algo más que decir "ya estaba".
+      if (candidatura) {
+        const puestos = await rellenarHuecos(candidatura.conductor_id, dePersona(f), quien);
+        const n = Object.keys(puestos).length;
+        anota(f, 'ya_estaba', n ? `Ya estaba en el proceso. Se han rellenado ${n} dato(s) que faltaban.`
+                                : 'Ya estaba en el proceso, sin nada nuevo que añadir.');
+        continue;
+      }
+
+      // ── Esta misma cita ya se importó ──
       // `porTelefono` solo devuelve la candidatura VIVA, así que sin esto pasaba
       // lo siguiente: se pega la tabla, se descarta a alguien, se vuelve a pegar
-      // la tabla —que es lo normal, la agencia la reenvía ampliada cada semana—
-      // y esa persona reaparecía con una candidatura nueva, dejando dos.
+      // —que es lo normal— y reaparecía con una candidatura nueva, dejando dos.
       //
       // Se compara por la CITA: si vuelve a presentarse dentro de unos meses la
-      // fecha será otra, y entonces sí son dos procesos distintos y las dos
-      // candidaturas son historia legítima. Sin cita no se puede distinguir, y
-      // ante la duda no se duplica.
+      // fecha será otra, y entonces sí son dos procesos distintos y las dos son
+      // historia legítima. Sin cita no se puede distinguir, y ante la duda no se
+      // duplica.
       if (situacion.ficha) {
         const ya = await db.consulta(
           `SELECT 1 FROM candidatura
             WHERE conductor_id = $1 AND canal = 'bolsa_ett'
               AND ($2::timestamptz IS NULL OR entrevista_at = $2)
             LIMIT 1`, [situacion.ficha.id, f.entrevista]);
-        if (ya.rows.length) { yaEstaban++; continue; }
+        if (ya.rows.length) {
+          const puestos = await rellenarHuecos(situacion.ficha.id, dePersona(f), quien);
+          const n = Object.keys(puestos).length;
+          anota(f, 'ya_estaba', 'Esta entrevista ya se importó' +
+            (n ? `. Se han rellenado ${n} dato(s) que faltaban.` : '.'));
+          continue;
+        }
       }
 
-      const r = await abrir(f.telefono, {
+      // ── Le conocemos, pero no está en ningún proceso ──
+      // Ya pasó por aquí antes. Se le abre uno nuevo sobre SU ficha, no otra.
+      const vuelve = Boolean(conocida);
+
+      const r = await abrir(porElDni ? porElDni.telefono || f.telefono : f.telefono, {
         nombre: f.nombre,
         canal: 'bolsa_ett',
-        dni_nie: f.dni || undefined,
-        email: f.correo || undefined,
-        via_nombre: f.direccion || undefined,
-        codigo_postal: f.cp || f.cpDeDireccion || undefined,
-        fecha_nacimiento: f.nacimiento || undefined,
+        ...dePersona(f),
       }, quien);
 
       // El resto va en una segunda pasada: `abrir` crea a la persona y arranca
@@ -606,13 +703,29 @@ async function importarMatriz(texto, quien = {}) {
             ? f.alta.split(/[\/\-.]/).reverse().join('-') : null,
           r.id,
         ]);
-      creados++;
+
+      anota(f, vuelve ? 'vuelve' : 'creada',
+        vuelve ? `Ya teníamos ficha de ${conocida.quien}: no se ha creado otra, se le abre un proceso nuevo` +
+                 (porElDni ? ' (reconocido por el DNI, viene con otro número)' : '')
+               : null);
     } catch (e) {
-      avisos.push(`${f.nombre || f.telefono}: ${String(e.message).split('\n')[0]}`);
+      anota(f, 'error', String(e.message).split('\n')[0]);
     }
   }
 
-  return { leidas: filas.length, creados, yaEstaban, avisos };
+  const cuantos = q => detalle.filter(d => d.que === q).length;
+  return {
+    leidas: filas.length,
+    creados: cuantos('creada'),
+    vuelven: cuantos('vuelve'),
+    yaEstaban: cuantos('ya_estaba'),
+    yaTrabajan: cuantos('ya_trabaja'),
+    errores: cuantos('error'),
+    detalle,
+    // Se mantiene para quien lo leía antes: los avisos son las filas que no
+    // acabaron en una candidatura nueva.
+    avisos: detalle.filter(d => d.que === 'error').map(d => `${d.nombre}: ${d.nota}`),
+  };
 }
 
 // ── Lo que se le devuelve a la agencia ──────────────────────────────────────

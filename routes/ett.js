@@ -78,8 +78,12 @@ router.get('/api/catalogos', responde(() => cand.catalogos()));
 // tiene que ser inofensivo.
 router.post('/api/importar', responde(async req => {
   const r = await cand.importarMatriz((req.body || {}).texto, await quien(req));
-  console.log(`👥 [ETT] ${r.creados} candidatura(s) creadas de ${r.leidas} filas ` +
-              `(${r.yaEstaban} ya estaban${r.avisos.length ? `, ${r.avisos.length} con aviso` : ''})`);
+  console.log(`👥 [ETT] ${r.leidas} filas: ${r.creados} nuevas · ${r.vuelven} vuelven · ` +
+              `${r.yaEstaban} ya estaban · ${r.yaTrabajan} ya trabajan aquí · ${r.errores} con error`);
+  // Quien ya está en plantilla y la agencia manda como candidato: se deja dicho
+  // en el log con nombre, que es una confusión que conviene poder rastrear.
+  r.detalle.filter(d => d.que === 'ya_trabaja')
+    .forEach(d => console.log(`   ⚠️  ${d.nombre} (${d.telefono}) — ${d.nota}`));
   return r;
 }));
 
