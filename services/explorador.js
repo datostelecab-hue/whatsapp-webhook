@@ -261,4 +261,4 @@ async function resumen() {
   return { ...x, version: String(x.version).split(' ').slice(0, 2).join(' ') };
 }
 
-module.exports = { tablas, estructura, datos, consultaLibre, resumen, LIMITE_FILAS };
+module.exports = { tablas, estructura, datos, consultaLibre, escribir, resumen, LIMITE_FILAS };
