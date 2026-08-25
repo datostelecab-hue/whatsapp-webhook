@@ -136,18 +136,17 @@ router.delete('/api/candidatura/:id', responde(async req =>
   cand.eliminar(Number(req.params.id), await quien(req))));
 
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
+//
+// Las solicitudes NO tienen ruta propia: van dentro de `/api/lista`, que es la
+// única llamada que hace la pantalla al entrar. Tenerlas también aparte era un
+// segundo sitio del que sacar lo mismo.
+//
+// Y cerrar una a mano tampoco: se cierra sola al mandar el envío en el que ya
+// no queda nadie pendiente.
 
-// Las solicitudes: cada tabla pegada, con sus números. Es lo que se elige antes
-// de mandar nada, porque la unidad de respuesta es la solicitud y no una fecha.
-router.get('/api/solicitudes', responde(async () => ({ solicitudes: await cand.solicitudesETT() })));
-
-// Se cierra cuando ya no queda nada que responderle a la agencia.
-router.post('/api/solicitud/:id/cerrar', responde(async req =>
-  cand.cerrarSolicitud(Number(req.params.id), await quien(req))));
-
-// Ya se le ha contestado. Lo apunta la pantalla justo después de copiar la tabla
-// o descargar el Excel: el correo lo manda una persona, así que el sistema no
-// puede saberlo solo. De aquí sale la regla del segundo envío.
+// Ya se le ha contestado. Lo apunta la pantalla justo después de descargar el
+// Excel: el correo lo manda una persona, así que el sistema no puede saberlo
+// solo. De aquí sale la regla del segundo envío.
 router.post('/api/solicitud/:id/enviado', responde(async req => {
   const r = await cand.registrarEnvio(Number(req.params.id),
     { formato: (req.body || {}).formato, ...(await quien(req)) });
@@ -160,14 +159,13 @@ const solicitudDe = req => ({
   solicitudId: /^\d+$/.test(req.query.solicitud || '') ? Number(req.query.solicitud) : null,
 });
 
-// La matriz como texto, para pegarla en la respuesta del mismo hilo.
-router.get('/api/matriz', async (req, res) => {
-  try { res.type('text/plain; charset=utf-8').send(await cand.matriz(solicitudDe(req))); }
-  catch (e) {
-    console.error('❌ [ETT] matriz:', e.message);
-    res.status(500).type('text/plain').send(e.message);
-  }
-});
+// ¿Se puede mandar esta tanda? Se pregunta ANTES de descargar.
+//
+// Una descarga del navegador no sabe enseñar un error: si el servidor se niega,
+// el fichero simplemente no aparece y no hay forma de saber por qué. Así que
+// primero se pregunta aquí —que sí contesta el motivo, con nombres— y solo si
+// sale bien se lanza la descarga.
+router.get('/api/comprobar', responde(async req => ({ filas: (await cand.paraETT(solicitudDe(req))).length })));
 
 router.get('/api/excel', async (req, res) => {
   try {

@@ -129,8 +129,8 @@
   const RESUMEN_FASE = {
     sin_decidir:   s => s.sin_decidir + ' sin decidir',
     lista:         () => 'lista para el primer envío',
-    falta_asignar: s => s.pendientes + ' pendiente(s) de asignar',
-    completa:      () => 'contestada entera',
+    falta_asignar: s => s.pendientes + ' pendiente(s) sin regularizar',
+    lista_cierre:  () => 'lista para el segundo envío',
     cerrada:       () => 'cerrada',
   };
 
@@ -149,14 +149,21 @@
     if (s.fase === 'lista') return {
       tono: 'bien', icono: 'fa-paper-plane',
       texto: s.etiqueta + ': todo decidido y sin mandar. Toca el primer Excel para la agencia.' };
+    // Ya se mandó el primero y siguen habiendo pendientes: AQUÍ NO SE MANDA.
+    // El segundo envío es justo para contar que dejaron de estarlo, así que con
+    // ellos sin tocar la agencia recibiría dos veces la misma tabla.
     if (s.fase === 'falta_asignar') return {
       tono: 'aviso', icono: 'fa-user-clock',
       texto: s.etiqueta + ': primer Excel enviado' + cuando + '. Quedan ' + s.pendientes
-        + ' pendiente(s) de asignar, y hay que resolverlos para mandar el segundo.' };
+        + ' pendiente(s) de asignar, y hasta que no estén todos contratados o fuera '
+        + 'no se puede mandar el segundo.' };
+    if (s.fase === 'lista_cierre') return {
+      tono: 'bien', icono: 'fa-paper-plane',
+      texto: s.etiqueta + ': primer Excel enviado' + cuando + '. Ya no queda nadie pendiente '
+        + 'de asignar, así que toca el segundo y último envío.' };
     return {
       tono: 'info', icono: 'fa-circle-check',
-      texto: s.etiqueta + ': contestada entera' + cuando
-        + '. Nadie quedó pendiente de asignar, así que no hace falta un segundo envío.' };
+      texto: s.etiqueta + ': contestada entera' + cuando + '. No hay nada más que mandarle.' };
   }
 
   /**
@@ -228,56 +235,6 @@
       : 'Envío ' + r.orden + ' apuntado. Quedan ' + r.pendientes + ' pendiente(s) de asignar.');
   }
 
-  /** La tabla de vuelta, para pegarla en la respuesta del mismo hilo. */
-  async function copiarMatriz() {
-    const t = await elegirSolicitud('Copiar la tabla para la agencia', { soloEnviables: true });
-    if (!t) return;
-    const q = consulta(t.id);
-    let texto;
-    try {
-      const r = await fetch('/ett/api/matriz' + q);
-      texto = await r.text();
-      if (!r.ok) throw new Error(texto);
-    } catch (e) {
-      return Dialogo.aviso({
-        titulo: 'Esta tanda no se puede mandar',
-        html: '<p class="text-sm">' + esc(e.message) + '</p>',
-        tono: 'aviso',
-      });
-    }
-    try {
-      await navigator.clipboard.writeText(texto);
-      await marcarEnviado(t.id, 'texto');
-      if (!t.id) Dialogo.hecho('Tabla copiada. Pégala en la respuesta a la agencia.');
-    } catch (e) {
-      await Dialogo.aviso({
-        titulo: 'No se pudo copiar sola',
-        html: '<p class="text-sm">Ábrela y cópiala a mano:</p>'
-          + '<p class="mt-2"><a href="/ett/api/matriz' + esc(q) + '" target="_blank" rel="noopener" '
-          + 'class="text-telecab-gold underline">Ver la tabla</a></p>',
-        tono: 'aviso',
-      });
-    }
-  }
-
-  /**
-   * Cerrar una solicitud: ya no queda nada que responderle a la agencia.
-   *
-   * El servidor se niega si aún hay alguien sin decidir o pendiente de asignar.
-   * Cerrarla antes sería decir que está contestada cuando no lo está.
-   */
-  async function cerrarSolicitud() {
-    const t = await elegirSolicitud('Cerrar una tanda');
-    if (!t || !t.id) return;
-    const id = t.id;
-    const ok = await Dialogo.confirmar({
-      titulo: '¿Cerrar la solicitud?',
-      texto: 'Se marca como contestada del todo. Deja de ofrecerse para nuevos envíos.',
-      si: 'Cerrar',
-    });
-    if (!ok) return;
-    await hacer(() => enviar('/ett/api/solicitud/' + id + '/cerrar', 'POST'), 'Solicitud cerrada');
-  }
 
   /**
    * El Excel con formato, que es lo que se adjunta al correo.
@@ -292,8 +249,7 @@
     if (!t) return;
     const q = consulta(t.id);
     try {
-      const r = await fetch('/ett/api/matriz' + q);
-      if (!r.ok) throw new Error((await r.text()) || 'No se pudo generar');
+      await api('/ett/api/comprobar' + q);
     } catch (e) {
       return Dialogo.aviso({
         titulo: 'Esta tanda no se puede mandar',
@@ -482,13 +438,13 @@
       texto: 'Buscar nombre, teléfono, DNI…',
       campos: ['quien', 'telefono', 'dni_nie'],
     },
+    // Lo que entra y lo que sale, nada más. Copiar la tabla en texto hacía lo
+    // mismo que el Excel pero peor, y cerrar la solicitud dejó de hacer falta el
+    // día que se cierra sola al mandar el último envío.
     acciones: [
       { texto: 'Pegar tabla del correo', icono: 'fa-table', onClick: importar },
-      { texto: 'Copiar tabla de vuelta', icono: 'fa-copy', principal: false, onClick: copiarMatriz },
       { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
         onClick: descargarExcel },
-      { texto: 'Cerrar solicitud', icono: 'fa-box-archive', principal: false,
-        onClick: cerrarSolicitud },
     ],
 
     // El recuento de candidatos ya lo dice la tira de cifras, así que aquí se
@@ -525,13 +481,15 @@
       if (s) return notaDeTanda(s);
 
       // Sin tanda elegida se dice lo que hay en TODAS, que es lo que se quiere
-      // saber al entrar: si algo espera por nosotros.
-      const bloqueadas = lista.filter(x => x.fase === 'sin_decidir').length;
-      const porMandar = lista.filter(x => x.fase === 'lista' || x.fase === 'falta_asignar').length;
+      // saber al entrar: si algo espera por nosotros. Y se separa lo que ESTÁ
+      // parado de lo que ya se puede mandar: no es lo mismo tener que decidir
+      // que tener que darle a un botón.
+      const bloqueadas = lista.filter(x => x.fase === 'sin_decidir' || x.fase === 'falta_asignar').length;
+      const porMandar = lista.filter(x => x.puede_enviar).length;
       if (!bloqueadas && !porMandar) return null;
       const trozos = [];
-      if (bloqueadas) trozos.push(bloqueadas + ' con gente sin decidir');
-      if (porMandar) trozos.push(porMandar + ' con envío pendiente');
+      if (bloqueadas) trozos.push(bloqueadas + ' esperando por nosotros');
+      if (porMandar) trozos.push(porMandar + ' lista(s) para mandar');
       return {
         tono: bloqueadas ? 'aviso' : 'info', icono: 'fa-layer-group',
         texto: 'Tandas: ' + trozos.join(' · ') + '. Elige una arriba para ver qué le falta.',

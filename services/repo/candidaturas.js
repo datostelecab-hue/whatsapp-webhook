@@ -836,13 +836,10 @@ async function importarMatriz(texto, quien = {}, { solicitudId, referencia, reci
 
 // ── Lo que se le devuelve a la agencia ──────────────────────────────────────
 //
-// La ETT espera SU tabla de vuelta, con sus columnas y en su orden, para pegarla
-// en la respuesta del mismo hilo de correo. Es un consumidor con su formato: se
-// traduce aqui, que se ve de un vistazo que es una traduccion.
-
-const CAB_MATRIZ = ['Fecha Entrevista', 'Hora entrevista', 'JORNADA', 'TURNO', 'Nombre',
-  'DNI / NIE', 'Teléfono', 'DIRECCIÓN', 'CÓDIGO POSTAL', 'Correo Electrónico',
-  'FECHA DE ALTA', 'JORNADA', 'TURNO', 'ZONA'];
+// Una sola forma de contestarle: SU Excel, con sus columnas y en su orden. Hubo
+// tambien una version en texto para pegarla en el correo, y sobraba — hacia lo
+// mismo peor, y era una segunda definicion del mismo formato que podia quedarse
+// atras sin que nadie lo notara.
 
 // Nuestros estados, dichos en el vocabulario de la agencia.
 //
@@ -875,11 +872,17 @@ function porQueNoSeManda(s) {
     return `Faltan ${s.sin_decidir} por decidir. La solicitud se manda entera, así que ` +
            'hay que resolverlos antes.';
   }
-  // La regla que pidió el módulo: el segundo envío existe SOLO para contar
-  // quién era pendiente de asignar y ya dejó de serlo. Sin pendientes no hay
-  // nada nuevo que decir, y mandar otra vez la misma tabla solo confunde a quien
-  // la recibe: no sabría si es una corrección o un duplicado.
-  return 'Ya se le contestó y no queda nadie pendiente de asignar: no hace falta otro envío.';
+  // EL SEGUNDO ENVÍO ES PARA DECIR QUE YA NO HAY PENDIENTES.
+  //
+  // Con pendientes todavía sin regularizar, la agencia recibiría dos veces la
+  // misma tabla: la primera diciendo "estos tres están pendientes" y la segunda
+  // diciendo exactamente lo mismo. Un envío que no cuenta nada nuevo.
+  if (s.pendientes) {
+    return `Todavía hay ${s.pendientes} pendiente(s) de asignar. El segundo envío es ` +
+           'justo para contar que ya no lo están, así que antes tienen que quedar todos ' +
+           'contratados con fecha o fuera con su motivo.';
+  }
+  return 'Ya se le contestó y no queda nada nuevo que contarle.';
 }
 
 /**
@@ -920,17 +923,14 @@ async function registrarEnvio(solicitudId, { formato = 'excel', usuarioId } = {}
   });
 }
 
-/** Cierra una solicitud: ya no queda nada que responderle a la agencia. */
-async function cerrarSolicitud(id, { usuario_id } = {}) {
-  const s = (await db.consulta('SELECT * FROM v_solicitud_ett WHERE id = $1', [Number(id)])).rows[0];
-  if (!s) throw new Error('No existe esa solicitud');
-  if (s.sin_decidir || s.pendientes) {
-    throw new Error(`Todavía quedan ${s.sin_decidir + s.pendientes} sin resolver. ` +
-                    'Una solicitud se cierra cuando ya no hay nada que responderle a la agencia.');
-  }
-  await db.consulta('UPDATE solicitud_ett SET cerrada_at = now() WHERE id = $1', [Number(id)]);
-  return { id: Number(id), cerrada: true };
-}
+// Cerrar una solicitud A MANO ya no existe, y por eso `cerrada_at` la escribe
+// solo `registrarEnvio` unas líneas más arriba.
+//
+// Se cierra sola al mandar el envío en el que no queda nadie pendiente de
+// asignar, que es LA definición de "ya no hay nada que contarle a la agencia".
+// El botón que había pedía a una persona que repitiera ese razonamiento y
+// acertara; podía cerrarla antes de tiempo o dejarla abierta para siempre, y en
+// los dos casos la pantalla decía algo que no era.
 
 /**
  * Las candidaturas de una SOLICITUD, con la forma que espera su tabla y su Excel.
@@ -1038,16 +1038,6 @@ async function paraETT({ solicitudId } = {}) {
   });
 }
 
-/** La misma tabla como texto separado por tabuladores, pegable en el correo. */
-async function matriz(tanda) {
-  const filas = await paraETT(tanda);
-  const orden = ['fecha_entrevista', 'hora_entrevista', 'jornada_ett', 'turno_ett', 'nombre',
-    'dni', 'telefono', 'direccion', 'cp', 'correo', 'fecha_alta', 'jornada', 'turno', 'zona'];
-  return [CAB_MATRIZ.join('\t')]
-    .concat(filas.map(f => orden.map(k => f[k]).join('\t')))
-    .join('\n');
-}
-
 /**
  * Borra una candidatura, y a la persona si solo existia por ella.
  *
@@ -1106,5 +1096,5 @@ async function eliminar(id, { usuarioId } = {}) {
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
   cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
-  paraETT, matriz, solicitudesETT, cerrarSolicitud, registrarEnvio,
+  paraETT, solicitudesETT, registrarEnvio,
 };
