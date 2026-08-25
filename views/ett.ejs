@@ -82,21 +82,67 @@
     });
   }
 
+  // ── Qué tanda se le devuelve ────────────────────────────────────────────
+  //
+  // La agencia manda la gente por tandas: una convocatoria, uno o dos días de
+  // entrevistas. Y se le responde DOS VECES sobre la misma tanda — la primera
+  // con lo resuelto y los pendientes, la segunda cuando esos pendientes ya
+  // tienen fecha de alta o se descartan.
+  //
+  // Sin elegir tanda se le devolvería el histórico entero, y a la tercera semana
+  // le estarías mandando gente de hace un mes.
+
+  const soloDia = v => String(v || '').slice(0, 10);
+  const enES = v => { const p = soloDia(v).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : v; };
+
+  /** Devuelve `?desde=&hasta=` para la tanda elegida, o null si se cancela. */
+  async function elegirTanda(titulo) {
+    let tandas = [];
+    try { tandas = (await api('/ett/api/tandas')).tandas || []; } catch (e) { /* se sigue sin lista */ }
+
+    const opciones = tandas.filter(t => t.dia !== 'sin-cita').map(t => ({
+      valor: t.dia,
+      texto: enES(t.dia) + ' — ' + t.total + ' candidato(s)'
+        + (t.sinResolver ? ' · ' + t.sinResolver + ' sin resolver' : ' · todos resueltos'),
+    }));
+    if (!opciones.length) return '';   // no hay citas: se manda lo que haya
+
+    const v = await Dialogo.formulario(titulo, [
+      { id: 'dia', etiqueta: 'Tanda (día de las entrevistas)', tipo: 'lista',
+        opciones: [{ valor: '', texto: 'Todas' }].concat(opciones), valor: opciones[0].valor },
+      { id: 'hasta', etiqueta: 'Hasta (si la tanda ocupó dos días)', tipo: 'lista',
+        opciones: [{ valor: '', texto: 'Solo ese día' }].concat(opciones),
+        ayuda: 'La agencia a veces reparte una misma convocatoria en dos jornadas' },
+    ], { textoBoton: 'Preparar' });
+    if (!v) return null;
+    if (!v.dia) return '';
+    return '?desde=' + v.dia + '&hasta=' + (v.hasta || v.dia);
+  }
+
   /** La tabla de vuelta, para pegarla en la respuesta del mismo hilo. */
   async function copiarMatriz() {
+    const q = await elegirTanda('Copiar la tabla para la agencia');
+    if (q === null) return;
     try {
-      const texto = await (await fetch('/ett/api/matriz')).text();
+      const texto = await (await fetch('/ett/api/matriz' + q)).text();
       await navigator.clipboard.writeText(texto);
       Dialogo.hecho('Tabla copiada. Pégala en la respuesta a la agencia.');
     } catch (e) {
       await Dialogo.aviso({
         titulo: 'No se pudo copiar',
         html: '<p class="text-sm">Ábrela y cópiala a mano:</p>'
-          + '<p class="mt-2"><a href="/ett/api/matriz" target="_blank" rel="noopener" '
+          + '<p class="mt-2"><a href="/ett/api/matriz' + esc(q) + '" target="_blank" rel="noopener" '
           + 'class="text-telecab-gold underline">Ver la tabla</a></p>',
         tono: 'aviso',
       });
     }
+  }
+
+  /** El Excel con formato, que es lo que se adjunta al correo. */
+  async function descargarExcel() {
+    const q = await elegirTanda('Excel para la agencia');
+    if (q === null) return;
+    window.location.href = '/ett/api/excel' + q;
   }
 
   // ── Acciones de la ficha ────────────────────────────────────────────────
@@ -242,7 +288,7 @@
       { texto: 'Pegar tabla del correo', icono: 'fa-table', onClick: importar },
       { texto: 'Copiar tabla de vuelta', icono: 'fa-copy', principal: false, onClick: copiarMatriz },
       { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
-        onClick: () => { window.location.href = '/ett/api/excel'; } },
+        onClick: descargarExcel },
     ],
 
     subtitulo: (v, t) => (v.length === t.length

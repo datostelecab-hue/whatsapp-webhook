@@ -116,9 +116,20 @@ router.delete('/api/candidatura/:id', responde(async req =>
 
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
 
+// Las tandas disponibles: cada día de entrevista, con cuánta gente hay y cuánta
+// sigue sin resolver. Es lo que se elige antes de mandar nada.
+router.get('/api/tandas', responde(async () => ({ tandas: await cand.tandasETT() })));
+
+// `desde` y `hasta` acotan por día de ENTREVISTA. Sin ellos sale todo, que a la
+// tercera semana significa devolverle a la agencia gente de hace un mes.
+const tandaDe = req => ({
+  desde: /^\d{4}-\d{2}-\d{2}$/.test(req.query.desde || '') ? req.query.desde : null,
+  hasta: /^\d{4}-\d{2}-\d{2}$/.test(req.query.hasta || '') ? req.query.hasta : null,
+});
+
 // La matriz como texto, para pegarla en la respuesta del mismo hilo.
 router.get('/api/matriz', async (req, res) => {
-  try { res.type('text/plain; charset=utf-8').send(await cand.matriz()); }
+  try { res.type('text/plain; charset=utf-8').send(await cand.matriz(tandaDe(req))); }
   catch (e) {
     console.error('❌ [ETT] matriz:', e.message);
     res.status(500).type('text/plain').send('No se pudo generar: ' + e.message);
@@ -128,7 +139,7 @@ router.get('/api/matriz', async (req, res) => {
 router.get('/api/excel', async (req, res) => {
   try {
     // Devuelve los bytes ya hechos, no el libro.
-    const bytes = await generarExcelETT(await cand.paraETT());
+    const bytes = await generarExcelETT(await cand.paraETT(tandaDe(req)));
     res.setHeader('Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombreFichero()}"`);

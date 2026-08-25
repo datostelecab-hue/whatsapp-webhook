@@ -766,18 +766,65 @@ function aDiaMesAnio(v) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-/** Las candidaturas de la ETT con la forma que espera su tabla y su Excel. */
-async function paraETT() {
+/** El día de la cita, en aaaa-mm-dd, para agrupar por tanda. */
+const diaDeCita = v => (v ? new Date(v).toISOString().slice(0, 10) : null);
+
+/**
+ * Las tandas: cada día de entrevista, con cuánta gente hay y cuánta sin
+ * resolver. Es lo que se elige antes de mandarle nada a la agencia.
+ */
+async function tandasETT() {
   const filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
+  const por = new Map();
+  for (const c of filas) {
+    const dia = diaDeCita(c.entrevista_at) || 'sin-cita';
+    if (!por.has(dia)) por.set(dia, { dia, total: 0, sinResolver: 0 });
+    const t = por.get(dia);
+    t.total++;
+    // Sin resolver = ni contratado ni descartado. Son los que van como
+    // "Pendiente" y los que obligan a un segundo envío.
+    if (!c.inicio_previsto && !c.es_salida) t.sinResolver++;
+  }
+  return [...por.values()].sort((a, b) => String(b.dia).localeCompare(String(a.dia)));
+}
+
+/**
+ * Las candidaturas de la ETT con la forma que espera su tabla y su Excel.
+ *
+ * `desde` y `hasta` acotan por día de ENTREVISTA, que es como la agencia manda
+ * la gente: en tandas. Sin acotar salen todas, y a la tercera semana le estarías
+ * devolviendo gente de hace un mes.
+ */
+async function paraETT({ desde, hasta } = {}) {
+  let filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
+  if (desde || hasta) {
+    filas = filas.filter(c => {
+      const dia = diaDeCita(c.entrevista_at);
+      if (!dia) return false;                       // sin cita no pertenece a ninguna tanda
+      return (!desde || dia >= desde) && (!hasta || dia <= hasta);
+    });
+  }
   const dosCifras = n => String(n).padStart(2, '0');
 
   return filas.map(c => {
     const cita = c.entrevista_at ? new Date(c.entrevista_at) : null;
 
-    // Contratado es lo que la agencia necesita saber, y eso no lo dice un estado
-    // del embudo: lo dice tener CONTRATO ABIERTO. Alguien puede estar en
-    // "Listo para RRHH" y aún no habérsele dado de alta.
-    const estado = c.empleo_vigente ? 'Contratado' : (ESTADO_ETT[c.estado] || 'Pendiente');
+    // CONTRATADO LO DICE LA FECHA DE ALTA, no tener contrato abierto.
+    //
+    // El orden importa y va al revés de lo que parece: este Excel es lo que HACE
+    // que la agencia dé el alta en la Seguridad Social. Si esperásemos a que el
+    // contrato exista para decirles "contratado", no se lo diríamos nunca —
+    // están esperando a que se lo digamos nosotros.
+    //
+    // Poner fecha de alta es la decisión de contratar, y además es lo que
+    // significa "ya está planificado".
+    //
+    // Una salida manda sobre la fecha: quien no se presentó no es un contratado
+    // aunque alguien le hubiera puesto fecha antes de saberlo.
+    const dicho = ESTADO_ETT[c.estado];
+    const estado = (dicho === 'No pasa' || dicho === 'No se presentó') ? dicho
+      : c.inicio_previsto ? 'Contratado'
+        : (dicho || 'Pendiente');
 
     // A la agencia se le contesta con el MOTIVO, no con un hueco: si alguien no
     // se presentó o no pasó, eso es justo lo que tiene que leer en esa casilla.
@@ -802,8 +849,8 @@ async function paraETT() {
 }
 
 /** La misma tabla como texto separado por tabuladores, pegable en el correo. */
-async function matriz() {
-  const filas = await paraETT();
+async function matriz(tanda) {
+  const filas = await paraETT(tanda);
   const orden = ['fecha_entrevista', 'hora_entrevista', 'jornada_ett', 'turno_ett', 'nombre',
     'dni', 'telefono', 'direccion', 'cp', 'correo', 'fecha_alta', 'jornada', 'turno', 'zona'];
   return [CAB_MATRIZ.join('\t')]
@@ -869,5 +916,5 @@ async function eliminar(id, { usuarioId } = {}) {
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
   cambiarEstado, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
-  paraETT, matriz,
+  paraETT, matriz, tandasETT,
 };
