@@ -149,6 +149,10 @@ const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 const LETRAS = <%- JSON.stringify(letrasDia) %>;
 const DIAS = <%- JSON.stringify(diasSem) %>;
 const ESTADOS_VEH = <%- JSON.stringify(estadosVehiculo) %>;
+// Codigo -> si ese estado deja al coche en la calle. Sale del catalogo de la
+// base, asi que aniadir un estado nuevo no obliga a tocar esta pantalla.
+const OPERATIVOS = new Set(ESTADOS_VEH.filter(e => e.es_operativo).map(e => e.codigo));
+const esOperativo = codigo => OPERATIVOS.has(codigo);
 
 let T = null;                  // tablero del servidor (estado GUARDADO)
 let CAMBIOS = new Map();       // cocheIdx -> { matricula?, zona?, estadoVeh?, slots: Map(slot -> {id?, dias?}) }
@@ -493,7 +497,11 @@ function cocheHTML(coche) {
   const matricula = efCampo(coche, 'matricula');
   const zona = efCampo(coche, 'zona');
   const estadoVeh = efCampo(coche, 'estadoVeh');
-  const operativo = estadoVeh === '✓';
+  // Si ese estado significa operativo lo dice el CATALOGO, no una comparacion
+  // con un simbolo. Antes se miraba `estadoVeh === '✓'` —el de la hoja—, y como
+  // la base manda 'O' salia false siempre: TODAS las tarjetas se pintaban
+  // apagadas, que es lo que se veia.
+  const operativo = esOperativo(estadoVeh);
   const tocado = CAMBIOS.has(coche.idx);
 
   const huecos = [0,1].filter(k => operativo && matricula && !efSlot(coche, k).id).length;
@@ -507,16 +515,17 @@ function cocheHTML(coche) {
   <div class="${clases.join(' ')}" data-idx="${coche.idx}">
     <div class="flex items-center gap-2 mb-2">
       <select class="estado-veh px-1.5 py-1 rounded bg-telecab-dark border border-telecab-border text-sm" data-idx="${coche.idx}" title="Estado del vehículo">
-        ${ESTADOS_VEH.map(e => `<option ${e===estadoVeh?'selected':''}>${e}</option>`).join('')}
+        ${ESTADOS_VEH.map(e => `<option value="${esc(e.codigo)}" ${e.codigo===estadoVeh?'selected':''}
+          title="${esc(e.etiqueta)}">${esc(e.codigo)}</option>`).join('')}
       </select>
       <input class="matricula flex-1 min-w-0 px-2 py-1 rounded bg-telecab-dark border ${tocado && CAMBIOS.get(coche.idx).matricula !== undefined ? 'border-telecab-gold' : 'border-telecab-border'} text-telecab-text font-bold text-sm uppercase"
              data-idx="${coche.idx}" value="${esc(matricula)}" placeholder="MATRÍCULA"
-             title="Cambiar la matrícula mueve al grupo entero a esa placa">
+             title="Corrige la matrícula de ESTE coche. Para mover a la tripulación a otro, usa el botón de al lado">
       <input class="zona w-24 px-2 py-1 rounded bg-telecab-dark border border-telecab-border text-telecab-muted text-xs"
              data-idx="${coche.idx}" value="${esc(zona)}" placeholder="Zona" list="zonas">
       <button class="cambiar-coche w-7 h-7 shrink-0 rounded border border-telecab-border text-telecab-muted
                      hover:border-telecab-gold hover:text-telecab-gold transition text-xs"
-              data-idx="${coche.idx}" title="Cambiar de coche: la tripulación se queda, el coche se intercambia con otro cuadrante">
+              data-idx="${coche.idx}" title="Cambiar de coche: la tripulación de este coche se pasa a otro">
         <i class="fa-solid fa-right-left"></i>
       </button>
       ${tocado ? '<span class="w-2 h-2 rounded-full bg-telecab-gold" title="Con cambios sin guardar"></span>' : ''}

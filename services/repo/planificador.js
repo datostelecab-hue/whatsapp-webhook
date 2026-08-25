@@ -200,7 +200,10 @@ async function tablero({ dia } = {}) {
         matricula: p.matricula,
         zona: p.zona || '',
         zonaId: p.base_zona_id || null,
-        estado: p.estado_operativo,
+        // `estadoVeh` con el nombre que usa el front. Es el CODIGO de la base
+        // ('O', 'R', 'T'...), no el simbolo de la hoja: quien decide que
+        // significa operativo es `cat_estado_vehiculo`, no una lista de textos.
+        estadoVeh: p.estado_operativo,
         operativo: !!p.es_operativo,
         // Seis plazas; se rellenan por su número de slot.
         personas: Array.from({ length: 6 }, () => null),
@@ -488,10 +491,44 @@ async function guardar(cambios = [], { dia, usuarioId } = {}) {
 
   await db.transaccion(async cli => {
     for (const c of cambios) {
-      if (c.vehiculoId && (c.zona !== undefined || c.estadoVeh !== undefined)) {
+      const tocaCoche = c.zona !== undefined || c.estadoVeh !== undefined || c.matricula !== undefined;
+      if (c.vehiculoId && tocaCoche) {
         const sets = [], vals = [];
-        if (c.zona !== undefined) { vals.push(c.zona || null); sets.push(`base_zona_id = $${vals.length}`); }
+
+        // LA ZONA VIAJA COMO TEXTO y la columna es una clave ajena.
+        //
+        // El front tiene un campo escrito con lista de sugerencias, así que
+        // llega "Alcobendas", no un número. Meterlo tal cual en `base_zona_id`
+        // reventaba la consulta. Se busca por nombre, y si esa zona no existe se
+        // dice cuál es en vez de dejar un error de tipos.
+        if (c.zona !== undefined) {
+          let zonaId = null;
+          const nombre = String(c.zona || '').trim();
+          if (nombre) {
+            const z = await cli.query(
+              'SELECT id FROM base_zona WHERE nombre_norm = lower(btrim($1))', [nombre]);
+            if (!z.rows.length) throw new Error(`No existe la zona "${nombre}"`);
+            zonaId = z.rows[0].id;
+          }
+          vals.push(zonaId); sets.push(`base_zona_id = $${vals.length}`);
+        }
+
         if (c.estadoVeh !== undefined) { vals.push(c.estadoVeh); sets.push(`estado_operativo = $${vals.length}`); }
+
+        // Cambiar la matrícula RENOMBRA el coche, no mueve a nadie: la gente
+        // cuelga de sus plazas y las plazas del vehículo. Para mover a la
+        // tripulación está el botón de cambiar de coche.
+        if (c.matricula !== undefined) {
+          const mat = String(c.matricula || '').trim().toUpperCase();
+          if (!mat) throw new Error('Un coche no se puede quedar sin matrícula');
+          const otro = await cli.query(
+            `SELECT matricula FROM vehiculo
+              WHERE matricula_norm = upper(regexp_replace($1, '[^A-Za-z0-9]', '', 'g'))
+                AND id <> $2 AND baja_at IS NULL`, [mat, c.vehiculoId]);
+          if (otro.rows.length) throw new Error(`Ya hay otro coche con la matrícula ${mat}`);
+          vals.push(mat); sets.push(`matricula = $${vals.length}`);
+        }
+
         vals.push(c.vehiculoId);
         await cli.query(`UPDATE vehiculo SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals);
         hechos.push({ que: 'coche', vehiculoId: c.vehiculoId });
