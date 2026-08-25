@@ -61,8 +61,15 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            -- haberse ido. El contrato manda sobre el estado.
            CASE WHEN e.alta IS NULL THEN 'baja_empresa'
                 ELSE COALESCE(s.estado, 'activo') END           AS situacion,
-           CASE WHEN e.alta IS NULL THEN 'Baja en la empresa'
+           -- Contratado pero aún sin empezar. Antes esta gente salía como "Baja
+           -- en la empresa", que es lo contrario de lo que pasa: se les acaba de
+           -- contratar. Se les distingue por la ETIQUETA y no por el código, para
+           -- que los filtros por situación sigan funcionando igual.
+           CASE WHEN e.alta IS NULL     THEN 'Baja en la empresa'
+                WHEN e.alta > ref.dia   THEN 'Entra el ' || to_char(e.alta, 'DD/MM')
                 ELSE COALESCE(ce.etiqueta, 'Activo') END        AS situacion_etiqueta,
+           -- Y se dice a las claras, para que una pantalla pueda separarlos.
+           (e.alta IS NOT NULL AND e.alta > ref.dia)            AS aun_no_empieza,
            CASE WHEN e.alta IS NULL THEN TRUE
                 ELSE COALESCE(ce.es_ausencia, FALSE) END        AS ausente,
            -- Si se fue, la fecha que importa es la de su baja, no la del estado.
@@ -92,9 +99,16 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            docs.faltan AS docs_faltan
     FROM conductor c
     CROSS JOIN ref
+    -- El contrato abierto. SIN exigir que ya haya empezado: quien tiene fecha de
+    -- alta para dentro de dos días está contratado, no de baja.
+    --
+    -- Antes esto exigía que el alta ya hubiera llegado, y el resultado era que
+    -- la misma persona salía planificable en el planificador —que nunca miró esa
+    -- fecha— y "Baja en la empresa" en esta pantalla. Dos sitios contradiciéndose
+    -- sobre alguien que empieza el jueves.
     LEFT JOIN conductor_periodo_empleo e
            ON e.conductor_id = c.id
-          AND e.alta <= ref.dia AND (e.baja IS NULL OR e.baja >= ref.dia)
+          AND (e.baja IS NULL OR e.baja >= ref.dia)
     -- El último contrato CERRADO, para saber cuándo y por qué se fue quien ya
     -- no está. Sin esto, una baja es una fila sin fecha y sin explicación.
     LEFT JOIN LATERAL (
@@ -270,9 +284,11 @@ async function resumen({ momento } = {}) {
              count(*)::int personas
         FROM conductor c
         CROSS JOIN ref
+        -- Sin exigir que el contrato haya empezado, igual que en el listado: si
+        -- los dos contaran distinto, los KPIs no sumarían la lista.
         LEFT JOIN conductor_periodo_empleo e
                ON e.conductor_id = c.id
-              AND e.alta <= ref.dia AND (e.baja IS NULL OR e.baja >= ref.dia)
+              AND (e.baja IS NULL OR e.baja >= ref.dia)
         LEFT JOIN conductor_estado_hist s
                ON s.conductor_id = c.id
               AND s.desde <= ref.dia AND (s.hasta IS NULL OR s.hasta >= ref.dia)
@@ -287,7 +303,7 @@ async function resumen({ momento } = {}) {
         CROSS JOIN ref
         JOIN conductor_periodo_empleo e
           ON e.conductor_id = c.id
-         AND e.alta <= ref.dia AND (e.baja IS NULL OR e.baja >= ref.dia)
+         AND (e.baja IS NULL OR e.baja >= ref.dia)
        WHERE NOT c.es_centinela
        GROUP BY 1`, [momento || null]),
 

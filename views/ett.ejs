@@ -36,14 +36,23 @@
   // De ahí salen las fichas directamente, sin pasar por ninguna hoja.
 
   async function importar() {
+    // Una tabla pegada es UNA solicitud. La referencia es para reconocerla
+    // después: el asunto del correo, "semana 32", lo que sirva — porque a la
+    // tercera hay tres y todas se parecen.
     const v = await Dialogo.formulario('Importar la tabla de la ETT', [
       { id: 'texto', etiqueta: 'Pega aquí la tabla del correo', tipo: 'texto-largo',
         ayuda: 'Se separa por columnas sola. Los teléfonos que ya estén no se tocan, ' +
                'así que puedes pegar la tabla entera cada semana.' },
+      { id: 'referencia', etiqueta: 'Referencia de la solicitud',
+        ayuda: 'Para reconocerla luego: el asunto del correo, la semana…' },
+      { id: 'recibida', etiqueta: 'Fecha en que la mandaron', tipo: 'fecha',
+        ayuda: 'Si se deja vacía, hoy' },
     ], { ancho: 'max-w-2xl', textoBoton: 'Importar' });
     if (!v || !String(v.texto || '').trim()) return;
 
-    const r = await hacer(() => enviar('/ett/api/importar', 'POST', { texto: v.texto }), false);
+    const r = await hacer(() => enviar('/ett/api/importar', 'POST', {
+      texto: v.texto, referencia: v.referencia, recibida: v.recibida,
+    }), false);
     if (!r) return;
 
     // Fila por fila, y no solo un recuento. Lo que de verdad interesa de una
@@ -82,54 +91,70 @@
     });
   }
 
-  // ── Qué tanda se le devuelve ────────────────────────────────────────────
+  // ── A qué solicitud se responde ─────────────────────────────────────────
   //
-  // La agencia manda la gente por tandas: una convocatoria, uno o dos días de
-  // entrevistas. Y se le responde DOS VECES sobre la misma tanda — la primera
-  // con lo resuelto y los pendientes, la segunda cuando esos pendientes ya
-  // tienen fecha de alta o se descartan.
+  // La agencia manda la gente por SOLICITUDES: un correo, una tabla. Y se le
+  // responde dos veces sobre la misma — la primera con lo resuelto y los
+  // pendientes de asignar, la segunda cuando esos ya tienen puesto o se
+  // descartan.
   //
-  // Sin elegir tanda se le devolvería el histórico entero, y a la tercera semana
-  // le estarías mandando gente de hace un mes.
+  // Se elige la solicitud y no una fecha: dos correos distintos pueden citar
+  // gente el mismo día, y una misma tabla repartir las entrevistas en dos.
 
-  const soloDia = v => String(v || '').slice(0, 10);
-  const enES = v => { const p = soloDia(v).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : v; };
+  const enES = v => {
+    const p = String(v || '').slice(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (v || '');
+  };
 
-  /** Devuelve `?desde=&hasta=` para la tanda elegida, o null si se cancela. */
-  async function elegirTanda(titulo) {
-    let tandas = [];
-    try { tandas = (await api('/ett/api/tandas')).tandas || []; } catch (e) { /* se sigue sin lista */ }
+  /** Devuelve `?solicitud=N` para la elegida, o null si se cancela. */
+  async function elegirSolicitud(titulo) {
+    let lista = [];
+    try { lista = (await api('/ett/api/solicitudes')).solicitudes || []; } catch (e) { /* se sigue */ }
+    if (!lista.length) return '';
 
-    const opciones = tandas.filter(t => t.dia !== 'sin-cita').map(t => ({
-      valor: t.dia,
-      texto: enES(t.dia) + ' — ' + t.total + ' candidato(s)'
-        + (t.sinResolver ? ' · ' + t.sinResolver + ' sin resolver' : ' · todos resueltos'),
+    const opciones = lista.map(s => ({
+      valor: s.id,
+      // Lo que hace falta ver para decidir: quién bloquea el envío y quién
+      // obliga a un segundo.
+      texto: enES(s.recibida_at) + (s.referencia ? ' · ' + s.referencia : '')
+        + ' — ' + s.candidatos + ' candidato(s)'
+        + (s.sin_decidir ? ' · ⚠ ' + s.sin_decidir + ' sin decidir' : '')
+        + (s.pendientes ? ' · ' + s.pendientes + ' pendiente(s) de asignar' : '')
+        + (!s.sin_decidir && !s.pendientes ? ' · cerrada' : ''),
     }));
-    if (!opciones.length) return '';   // no hay citas: se manda lo que haya
 
     const v = await Dialogo.formulario(titulo, [
-      { id: 'dia', etiqueta: 'Tanda (día de las entrevistas)', tipo: 'lista',
-        opciones: [{ valor: '', texto: 'Todas' }].concat(opciones), valor: opciones[0].valor },
-      { id: 'hasta', etiqueta: 'Hasta (si la tanda ocupó dos días)', tipo: 'lista',
-        opciones: [{ valor: '', texto: 'Solo ese día' }].concat(opciones),
-        ayuda: 'La agencia a veces reparte una misma convocatoria en dos jornadas' },
-    ], { textoBoton: 'Preparar' });
-    if (!v) return null;
-    if (!v.dia) return '';
-    return '?desde=' + v.dia + '&hasta=' + (v.hasta || v.dia);
+      { id: 'solicitud', etiqueta: 'Solicitud de la agencia', tipo: 'lista',
+        opciones, valor: opciones[0].valor, obligatorio: true },
+    ], { ancho: 'max-w-lg', textoBoton: 'Preparar' });
+    if (!v || !v.solicitud) return null;
+    return '?solicitud=' + v.solicitud;
   }
 
   /** La tabla de vuelta, para pegarla en la respuesta del mismo hilo. */
   async function copiarMatriz() {
-    const q = await elegirTanda('Copiar la tabla para la agencia');
+    const q = await elegirSolicitud('Copiar la tabla para la agencia');
     if (q === null) return;
+    let texto;
     try {
-      const texto = await (await fetch('/ett/api/matriz' + q)).text();
+      const r = await fetch('/ett/api/matriz' + q);
+      texto = await r.text();
+      if (!r.ok) throw new Error(texto);
+    } catch (e) {
+      return Dialogo.aviso({
+        titulo: 'Falta gente por decidir',
+        html: '<p class="text-sm">' + esc(e.message) + '</p>'
+          + '<p class="text-sm mt-2 text-telecab-muted">La solicitud se manda entera: '
+          + 'resuélvelos y vuelve a intentarlo.</p>',
+        tono: 'aviso',
+      });
+    }
+    try {
       await navigator.clipboard.writeText(texto);
       Dialogo.hecho('Tabla copiada. Pégala en la respuesta a la agencia.');
     } catch (e) {
       await Dialogo.aviso({
-        titulo: 'No se pudo copiar',
+        titulo: 'No se pudo copiar sola',
         html: '<p class="text-sm">Ábrela y cópiala a mano:</p>'
           + '<p class="mt-2"><a href="/ett/api/matriz' + esc(q) + '" target="_blank" rel="noopener" '
           + 'class="text-telecab-gold underline">Ver la tabla</a></p>',
@@ -138,10 +163,48 @@
     }
   }
 
-  /** El Excel con formato, que es lo que se adjunta al correo. */
+  /**
+   * Cerrar una solicitud: ya no queda nada que responderle a la agencia.
+   *
+   * El servidor se niega si aún hay alguien sin decidir o pendiente de asignar.
+   * Cerrarla antes sería decir que está contestada cuando no lo está.
+   */
+  async function cerrarSolicitud() {
+    const q = await elegirSolicitud('Cerrar una solicitud');
+    if (!q) return;
+    const id = q.split('=')[1];
+    const ok = await Dialogo.confirmar({
+      titulo: '¿Cerrar la solicitud?',
+      texto: 'Se marca como contestada del todo. Deja de ofrecerse para nuevos envíos.',
+      si: 'Cerrar',
+    });
+    if (!ok) return;
+    await hacer(() => enviar('/ett/api/solicitud/' + id + '/cerrar', 'POST'), 'Solicitud cerrada');
+  }
+
+  /**
+   * El Excel con formato, que es lo que se adjunta al correo.
+   *
+   * Se comprueba ANTES de descargarlo. Una descarga del navegador no puede
+   * enseñar un error: si el servidor se niega, el archivo simplemente no
+   * aparece y no hay forma de saber por qué. Así que primero se pide la matriz
+   * —que sí devuelve el motivo— y solo si sale bien se lanza la descarga.
+   */
   async function descargarExcel() {
-    const q = await elegirTanda('Excel para la agencia');
+    const q = await elegirSolicitud('Excel para la agencia');
     if (q === null) return;
+    try {
+      const r = await fetch('/ett/api/matriz' + q);
+      if (!r.ok) throw new Error((await r.text()) || 'No se pudo generar');
+    } catch (e) {
+      return Dialogo.aviso({
+        titulo: 'Falta gente por decidir',
+        html: '<p class="text-sm">' + esc(e.message) + '</p>'
+          + '<p class="text-sm mt-2 text-telecab-muted">La tanda se manda entera: '
+          + 'resuélvelos y vuelve a intentarlo.</p>',
+        tono: 'aviso',
+      });
+    }
     window.location.href = '/ett/api/excel' + q;
   }
 
@@ -289,6 +352,8 @@
       { texto: 'Copiar tabla de vuelta', icono: 'fa-copy', principal: false, onClick: copiarMatriz },
       { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
         onClick: descargarExcel },
+      { texto: 'Cerrar solicitud', icono: 'fa-box-archive', principal: false,
+        onClick: cerrarSolicitud },
     ],
 
     subtitulo: (v, t) => (v.length === t.length

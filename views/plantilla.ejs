@@ -475,13 +475,23 @@
       // significaría nada.
       const deAlta = filas.filter(f => f.empleo_vigente !== false);
       const deBaja = filas.length - deAlta.length;
-      const ausentes = deAlta.filter(f => f.ausente).length;
+      // Contratados que TODAVÍA no han empezado. No cuentan como disponibles
+      // hoy —no lo están— pero tampoco son una baja: son la gente que entra.
+      const entran = deAlta.filter(f => f.aun_no_empieza);
+      const ausentes = deAlta.filter(f => f.ausente && !f.aun_no_empieza).length;
       return [
         { etiqueta: 'De alta', valor: deAlta.length, tono: 'text',
           filtro: { id: 'empleo', valor: 'alta' },
           pie: `${ett ? ett.personas : 0} por ETT` },
-        { etiqueta: 'Disponibles hoy', valor: deAlta.length - ausentes, tono: 'green',
+        { etiqueta: 'Disponibles hoy', valor: deAlta.length - ausentes - entran.length, tono: 'green',
           pie: `${ausentes} ausentes` },
+        // Solo aparece cuando hay alguien esperando a incorporarse. Es la lista
+        // que hay que mirar el lunes: quién entra esta semana.
+        ...(entran.length ? [{
+          etiqueta: 'Entran pronto', valor: entran.length, tono: 'gold',
+          filtro: { id: 'empleo', valor: 'entran' },
+          pie: entran.map(f => fecha(f.alta)).sort()[0] + ' el primero',
+        }] : []),
         { etiqueta: 'Baja en la empresa', valor: deBaja, tono: 'muted',
           filtro: { id: 'empleo', valor: 'baja' },
           pie: `${filas.length} en total` },
@@ -502,11 +512,18 @@
         // Lo primero que se decide al mirar la plantilla: ¿gente de ahora, o
         // también la que ya se fue?
         id: 'empleo', textoTodos: 'Toda la plantilla',
-        pasa: (f, v) => v === 'alta' ? f.empleo_vigente !== false : f.empleo_vigente === false,
-        opciones: (filas) => [
-          { valor: 'alta', texto: 'De alta', cuenta: filas.filter(f => f.empleo_vigente !== false).length },
-          { valor: 'baja', texto: 'De baja', cuenta: filas.filter(f => f.empleo_vigente === false).length },
-        ],
+        pasa: (f, v) => v === 'alta' ? f.empleo_vigente !== false
+          : v === 'entran' ? Boolean(f.aun_no_empieza)
+            : f.empleo_vigente === false,
+        opciones: (filas) => {
+          const entran = filas.filter(f => f.aun_no_empieza).length;
+          return [
+            { valor: 'alta', texto: 'De alta', cuenta: filas.filter(f => f.empleo_vigente !== false).length },
+            // Solo se ofrece si hay alguien: un filtro que siempre da cero es ruido.
+            ...(entran ? [{ valor: 'entran', texto: 'Entran pronto', cuenta: entran }] : []),
+            { valor: 'baja', texto: 'De baja', cuenta: filas.filter(f => f.empleo_vigente === false).length },
+          ];
+        },
       },
       {
         id: 'situacion', campo: 'situacion', textoTodos: 'Todas las situaciones',

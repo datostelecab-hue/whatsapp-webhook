@@ -81,6 +81,9 @@ async function filas() {
     f[A.TEL_EMERG - 1]       = txt(c.tel_emergencia);
     f[A.OBSERVACIONES - 1]   = txt(c.observaciones);
     f[A.REINCORPORACION - 1] = fecha(c.reincorporacion);
+    // Su ID_BOLT es provisional: no tiene cuenta de BOLT todavía. El
+    // planificador lo avisa sin impedir que se le coloque en un coche.
+    f[A.BOLT_PENDIENTE - 1]  = si(c.bolt_pendiente);
     // BINOMIO y ASG_* se quedan vacías a propósito: las pone el motor.
     return f;
   });

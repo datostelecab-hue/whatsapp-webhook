@@ -366,7 +366,7 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   // Lo pactado durante la seleccion vale como contrato, salvo que al pasar a
   // RRHH se diga otra cosa. Asi no hay que reescribir lo que ya se acordo.
   const k = (await db.consulta(
-    'SELECT inicio_previsto, jornada_horas, tipo_contrato FROM candidatura WHERE id = $1',
+    'SELECT inicio_previsto, jornada_horas, tipo_contrato, turno_id FROM candidatura WHERE id = $1',
     [Number(id)])).rows[0] || {};
   contrato = {
     alta: contrato.alta || (k.inicio_previsto ? String(k.inicio_previsto).slice(0, 10) : null),
@@ -387,6 +387,25 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
     jornadaHoras: contrato.jornadaHoras,
     finPrueba: contrato.finPrueba,
   }, quien);
+
+  // EL TURNO TIENE QUE VIAJAR CON LA PERSONA.
+  //
+  // Se decide en Selección —viene hasta en la tabla de la agencia— pero vivía
+  // solo en la candidatura. El planificador no la mira: mira el historial de
+  // turnos del conductor, y sin turno nadie es planificable
+  // (`listoParaPlanificar = idBolt && turno`).
+  //
+  // Así que la persona llegaba al planificador sin turno y no se podía colocar,
+  // con el dato escrito dos pantallas atrás.
+  //
+  // Desde la fecha de alta, no desde hoy: su turno empieza cuando empieza él.
+  if (k.turno_id) {
+    try {
+      await con.cambiarTurno(c.conductor_id, { turnoId: k.turno_id, desde: contrato.alta }, quien);
+    } catch (e) {
+      console.error(`⚠️  [CANDIDATURA] turno no aplicado a ${c.quien}: ${e.message}`);
+    }
+  }
 
   await db.consulta(
     `UPDATE candidatura SET estado = 'listo_rrhh', apto_at = now(), actualizado_at = now()
@@ -580,7 +599,7 @@ function parsearMatriz(texto) {
  * Idempotente: repegar la tabla no duplica a nadie, y de paso rellena los huecos
  * de quien ya estaba.
  */
-async function importarMatriz(texto, quien = {}) {
+async function importarMatriz(texto, quien = {}, { solicitudId, referencia, recibida } = {}) {
   const filas = parsearMatriz(texto);
   if (!filas.length) {
     throw new Error('No he reconocido ninguna fila. Copia la tabla del correo con sus columnas, ' +
@@ -619,6 +638,19 @@ async function importarMatriz(texto, quien = {}) {
     return r.rows[0] || null;
   }
 
+  // LA SOLICITUD. Una tabla pegada es una solicitud, y esa es la unidad con la
+  // que se le responde a la agencia. Si se pasa un `solicitudId` se añade a una
+  // que ya existe —la agencia reenvía la misma tabla ampliada—; si no, se abre
+  // una nueva.
+  let solicitud = Number(solicitudId) || null;
+  if (!solicitud) {
+    const r = await db.consulta(
+      `INSERT INTO solicitud_ett (recibida_at, referencia, usuario_id)
+       VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3) RETURNING id`,
+      [recibida || null, referencia || null, quien.usuarioId || null]);
+    solicitud = r.rows[0].id;
+  }
+
   const detalle = [];
   const anota = (f, que, nota) => detalle.push({
     nombre: f.nombre || '(sin nombre)', telefono: f.telefono, dni: f.dni || null, que, nota: nota || null,
@@ -645,6 +677,11 @@ async function importarMatriz(texto, quien = {}) {
       // más completa a la semana siguiente, y repegar la tabla tiene que servir
       // para algo más que decir "ya estaba".
       if (candidatura) {
+        // Aunque ya estuviera, se le ata a esta solicitud si no tenía ninguna:
+        // así una tabla reenviada no deja filas huérfanas.
+        await db.consulta(
+          'UPDATE candidatura SET solicitud_id = COALESCE(solicitud_id, $1) WHERE id = $2',
+          [solicitud, candidatura.id]);
         const puestos = await rellenarHuecos(candidatura.conductor_id, dePersona(f), quien);
         const n = Object.keys(puestos).length;
         anota(f, 'ya_estaba', n ? `Ya estaba en el proceso. Se han rellenado ${n} dato(s) que faltaban.`
@@ -692,7 +729,7 @@ async function importarMatriz(texto, quien = {}) {
         `UPDATE candidatura
             SET estado = $1, entrevista_at = $2, jornada_ett = $3, turno_ett = $4,
                 jornada_horas = $5, turno_id = $6, base_zona_id = $7,
-                inicio_previsto = $8, actualizado_at = now()
+                inicio_previsto = $8, solicitud_id = $10, actualizado_at = now()
           WHERE id = $9`,
         [
           // Con cita puesta ya no esta en preseleccion: hay entrevista acordada.
@@ -701,7 +738,7 @@ async function importarMatriz(texto, quien = {}) {
           horasDe(f.jornada), turnoDe(f.turno), zonaDe(f.zona),
           f.alta && /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}$/.test(f.alta)
             ? f.alta.split(/[\/\-.]/).reverse().join('-') : null,
-          r.id,
+          r.id, solicitud,
         ]);
 
       anota(f, vuelve ? 'vuelve' : 'creada',
@@ -715,6 +752,7 @@ async function importarMatriz(texto, quien = {}) {
 
   const cuantos = q => detalle.filter(d => d.que === q).length;
   return {
+    solicitudId: solicitud,
     leidas: filas.length,
     creados: cuantos('creada'),
     vuelven: cuantos('vuelve'),
@@ -744,66 +782,61 @@ const CAB_MATRIZ = ['Fecha Entrevista', 'Hora entrevista', 'JORNADA', 'TURNO', '
 // Mandarles "Rechazado RRHH" o "Listo para RRHH" no es informarles mejor: es
 // contarles nuestro proceso interno, que ni les sirve ni entienden. Y de paso
 // dejaba las filas sin pintar y los contadores a cero.
-const ESTADO_ETT = {
-  no_presentado:   'No se presentó',
-  descartado:      'No pasa',
-  rechazado_bolt:  'No pasa',
-  rechazado_rrhh:  'No pasa',
-  no_alta:         'No pasa',
-  no_prueba:       'No pasa',
-  entrevistado:    'Presentó',
-  rec_medico:      'Presentó',
-  preseleccion:    'Pendiente',
-  coord_entrevista:'Pendiente',
-};
-
-/** dd/mm/aaaa desde lo que devuelva la base, que puede ser un Date o un texto. */
-function aDiaMesAnio(v) {
-  if (!v) return '';
-  const d = v instanceof Date ? v : new Date(v);
-  if (isNaN(d)) return String(v);
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
-/** El día de la cita, en aaaa-mm-dd, para agrupar por tanda. */
-const diaDeCita = v => (v ? new Date(v).toISOString().slice(0, 10) : null);
-
 /**
- * Las tandas: cada día de entrevista, con cuánta gente hay y cuánta sin
- * resolver. Es lo que se elige antes de mandarle nada a la agencia.
- */
-async function tandasETT() {
-  const filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
-  const por = new Map();
-  for (const c of filas) {
-    const dia = diaDeCita(c.entrevista_at) || 'sin-cita';
-    if (!por.has(dia)) por.set(dia, { dia, total: 0, sinResolver: 0 });
-    const t = por.get(dia);
-    t.total++;
-    // Sin resolver = ni contratado ni descartado. Son los que van como
-    // "Pendiente" y los que obligan a un segundo envío.
-    if (!c.inicio_previsto && !c.es_salida) t.sinResolver++;
-  }
-  return [...por.values()].sort((a, b) => String(b.dia).localeCompare(String(a.dia)));
-}
-
-/**
- * Las candidaturas de la ETT con la forma que espera su tabla y su Excel.
+ * Las solicitudes de la agencia, con sus números.
  *
- * `desde` y `hasta` acotan por día de ENTREVISTA, que es como la agencia manda
- * la gente: en tandas. Sin acotar salen todas, y a la tercera semana le estarías
- * devolviendo gente de hace un mes.
+ * Cada una es UNA tabla pegada. Los tres números que deciden qué hacer con ella
+ * vienen calculados de la base, no contados aquí: `sin_decidir` impide mandar
+ * nada, `pendientes` obliga a un segundo envío, y `contratados` es lo resuelto.
  */
-async function paraETT({ desde, hasta } = {}) {
-  let filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
-  if (desde || hasta) {
-    filas = filas.filter(c => {
-      const dia = diaDeCita(c.entrevista_at);
-      if (!dia) return false;                       // sin cita no pertenece a ninguna tanda
-      return (!desde || dia >= desde) && (!hasta || dia <= hasta);
-    });
+async function solicitudesETT({ incluirCerradas = true } = {}) {
+  const r = await db.consulta(
+    `SELECT * FROM v_solicitud_ett
+      ${incluirCerradas ? '' : 'WHERE cerrada_at IS NULL'}
+      ORDER BY recibida_at DESC, id DESC`);
+  return r.rows;
+}
+
+/** Cierra una solicitud: ya no queda nada que responderle a la agencia. */
+async function cerrarSolicitud(id, { usuario_id } = {}) {
+  const s = (await db.consulta('SELECT * FROM v_solicitud_ett WHERE id = $1', [Number(id)])).rows[0];
+  if (!s) throw new Error('No existe esa solicitud');
+  if (s.sin_decidir || s.pendientes) {
+    throw new Error(`Todavía quedan ${s.sin_decidir + s.pendientes} sin resolver. ` +
+                    'Una solicitud se cierra cuando ya no hay nada que responderle a la agencia.');
   }
+  await db.consulta('UPDATE solicitud_ett SET cerrada_at = now() WHERE id = $1', [Number(id)]);
+  return { id: Number(id), cerrada: true };
+}
+
+/**
+ * Las candidaturas de una SOLICITUD, con la forma que espera su tabla y su Excel.
+ *
+ * Se responde por solicitud, que es lo que la agencia mandó. Agrupar por fecha
+ * de entrevista mezclaba dos solicitudes que citaran el mismo día y partía en
+ * dos las que ocupaban dos jornadas.
+ */
+async function paraETT({ solicitudId } = {}) {
+  let filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
+  if (solicitudId) filas = filas.filter(c => String(c.solicitud_id) === String(solicitudId));
+
+  // LA SOLICITUD SE MANDA ENTERA. Si alguien sigue sin decidir, no se genera nada.
+  //
+  // Mandarla a medias sería peor que no mandarla: la agencia da por cerrado lo
+  // que recibe, y quien saliera en blanco quedaría en tierra de nadie — ni
+  // contratado, ni descartado, ni esperando. Se para aquí y se dice quién falta.
+  //
+  // "Sin decidir" lo dice la base: `etiqueta_ett` en NULL. Estaba escrito en una
+  // constante aquí, y era un dato disfrazado de código.
+  const sinDecidir = filas.filter(c => !c.inicio_previsto && !c.etiqueta_ett);
+  if (sinDecidir.length) {
+    const e = new Error(
+      `Faltan ${sinDecidir.length} por decidir. La solicitud se manda entera, así que ` +
+      'hay que resolverlos antes: ' + sinDecidir.map(c => c.quien).join(', '));
+    e.sinDecidir = sinDecidir.map(c => ({ id: c.id, quien: c.quien, estado: c.estado_etiqueta }));
+    throw e;
+  }
+
   const dosCifras = n => String(n).padStart(2, '0');
 
   return filas.map(c => {
@@ -821,7 +854,7 @@ async function paraETT({ desde, hasta } = {}) {
     //
     // Una salida manda sobre la fecha: quien no se presentó no es un contratado
     // aunque alguien le hubiera puesto fecha antes de saberlo.
-    const dicho = ESTADO_ETT[c.estado];
+    const dicho = c.etiqueta_ett;
     const estado = (dicho === 'No pasa' || dicho === 'No se presentó') ? dicho
       : c.inicio_previsto ? 'Contratado'
         : (dicho || 'Pendiente');
@@ -916,5 +949,5 @@ async function eliminar(id, { usuarioId } = {}) {
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
   cambiarEstado, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
-  paraETT, matriz, tandasETT,
+  paraETT, matriz, solicitudesETT, cerrarSolicitud,
 };

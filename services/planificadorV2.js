@@ -43,7 +43,11 @@ const A = {
   TEL_EMERG: 25, OBSERVACIONES: 26,
   ASG_LUN: 27, ASG_MAR: 28, ASG_MIE: 29, ASG_JUE: 30, ASG_VIE: 31, ASG_SAB: 32, ASG_DOM: 33,
   // Fecha de reincorporación para ausencias temporales (opcional). Columna AH.
-  REINCORPORACION: 34
+  REINCORPORACION: 34,
+  // Si su ID_BOLT es PROVISIONAL — o sea, todavía no está dado de alta en BOLT.
+  // Solo la rellena la agenda leída de PostgreSQL; desde la hoja viene vacía, y
+  // entonces se comporta como antes.
+  BOLT_PENDIENTE: 35
 };
 
 const A_HEADERS = [
@@ -295,6 +299,9 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
       fila: idx + 2,                     // fila real en la hoja
       idBolt,
       id: idBolt,                        // el planificador enlaza por este campo
+      // Su clave es provisional: todavía no está dado de alta en BOLT. Se
+      // planifica igual y se avisa.
+      boltPendiente: txt(v[A.BOLT_PENDIENTE - 1]).toUpperCase() === 'SI',
       activo: esCheck(v[A.ACTIVO - 1]),
       nombre,
       dni: txt(v[A.DNI - 1]),
@@ -856,6 +863,13 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     // Qué le falta para poder trabajar. Sin ID de Bolt o sin turno no se puede
     // ni planificar; sin coordenadas no entra en el matching por zona.
     const faltan = [];
+    // El alta en BOLT es un AVISO, no un impedimento.
+    //
+    // Antes sin ID de Bolt no se podía planificar, porque no había clave con la
+    // que escribir en el cuadrante. Ahora la agenda siempre da una —el nombre de
+    // la persona si no hay cuenta— así que el coche sale igual y aquí solo se
+    // deja dicho que falta el trámite, que es de RRHH.
+    if (info.boltPendiente) faltan.push('alta en BOLT');
     if (!info.idBolt) faltan.push('ID de Bolt');
     if (!info.turno) faltan.push('turno');
     if (!parseCoords(info.coordenadas)) faltan.push('coordenadas');

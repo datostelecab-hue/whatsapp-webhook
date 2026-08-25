@@ -77,8 +77,15 @@ router.get('/api/catalogos', responde(() => cand.catalogos()));
 // agencia reenvía la misma tabla ampliada cada semana, así que pegarla dos veces
 // tiene que ser inofensivo.
 router.post('/api/importar', responde(async req => {
-  const r = await cand.importarMatriz((req.body || {}).texto, await quien(req));
-  console.log(`👥 [ETT] ${r.leidas} filas: ${r.creados} nuevas · ${r.vuelven} vuelven · ` +
+  const b = req.body || {};
+  // Sin `solicitudId` se abre una solicitud nueva: una tabla pegada es una
+  // solicitud. Con él se añade a una que ya existe, que es el caso de la agencia
+  // reenviando la misma tabla ampliada.
+  const r = await cand.importarMatriz(b.texto, await quien(req), {
+    solicitudId: b.solicitudId, referencia: b.referencia, recibida: b.recibida,
+  });
+  console.log(`👥 [ETT] solicitud ${r.solicitudId} · ${r.leidas} filas: ` +
+              `${r.creados} nuevas · ${r.vuelven} vuelven · ` +
               `${r.yaEstaban} ya estaban · ${r.yaTrabajan} ya trabajan aquí · ${r.errores} con error`);
   // Quien ya está en plantilla y la agencia manda como candidato: se deja dicho
   // en el log con nombre, que es una confusión que conviene poder rastrear.
@@ -116,30 +123,31 @@ router.delete('/api/candidatura/:id', responde(async req =>
 
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
 
-// Las tandas disponibles: cada día de entrevista, con cuánta gente hay y cuánta
-// sigue sin resolver. Es lo que se elige antes de mandar nada.
-router.get('/api/tandas', responde(async () => ({ tandas: await cand.tandasETT() })));
+// Las solicitudes: cada tabla pegada, con sus números. Es lo que se elige antes
+// de mandar nada, porque la unidad de respuesta es la solicitud y no una fecha.
+router.get('/api/solicitudes', responde(async () => ({ solicitudes: await cand.solicitudesETT() })));
 
-// `desde` y `hasta` acotan por día de ENTREVISTA. Sin ellos sale todo, que a la
-// tercera semana significa devolverle a la agencia gente de hace un mes.
-const tandaDe = req => ({
-  desde: /^\d{4}-\d{2}-\d{2}$/.test(req.query.desde || '') ? req.query.desde : null,
-  hasta: /^\d{4}-\d{2}-\d{2}$/.test(req.query.hasta || '') ? req.query.hasta : null,
+// Se cierra cuando ya no queda nada que responderle a la agencia.
+router.post('/api/solicitud/:id/cerrar', responde(async req =>
+  cand.cerrarSolicitud(Number(req.params.id), await quien(req))));
+
+const solicitudDe = req => ({
+  solicitudId: /^\d+$/.test(req.query.solicitud || '') ? Number(req.query.solicitud) : null,
 });
 
 // La matriz como texto, para pegarla en la respuesta del mismo hilo.
 router.get('/api/matriz', async (req, res) => {
-  try { res.type('text/plain; charset=utf-8').send(await cand.matriz(tandaDe(req))); }
+  try { res.type('text/plain; charset=utf-8').send(await cand.matriz(solicitudDe(req))); }
   catch (e) {
     console.error('❌ [ETT] matriz:', e.message);
-    res.status(500).type('text/plain').send('No se pudo generar: ' + e.message);
+    res.status(500).type('text/plain').send(e.message);
   }
 });
 
 router.get('/api/excel', async (req, res) => {
   try {
     // Devuelve los bytes ya hechos, no el libro.
-    const bytes = await generarExcelETT(await cand.paraETT(tandaDe(req)));
+    const bytes = await generarExcelETT(await cand.paraETT(solicitudDe(req)));
     res.setHeader('Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombreFichero()}"`);
