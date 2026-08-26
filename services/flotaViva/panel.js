@@ -31,14 +31,7 @@ const CC_ACTIVO = String(process.env.FLOTA_VIVA_CC || '').toLowerCase() !== 'off
 // aparcado. Ajustable: en una flota de noche puede no encajar.
 const RECIEN_MIN = Number(process.env.FLOTA_VIVA_RECIEN_MIN) || 120;
 
-const duracion = seg => {
-  if (seg == null) return '';
-  const s = Math.max(0, Math.floor(seg));
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  if (d) return `${d} d ${h} h`;
-  if (h) return `${h} h ${String(m).padStart(2, '0')} min`;
-  return `${m} min`;
-};
+const { duracion } = require('./formato');
 
 const fila = r => ({
   matricula: r.matricula || '(sin matrícula)',

@@ -294,6 +294,10 @@ SELECT v.uuid                                   AS vehiculo_uuid,
        -- Km de este tramo. En descanso o desconectado, son los km que no
        -- deberian existir.
        round(t.km_m / 1000.0, 1)                AS km,
+       -- Los mismos metros en crudo. El panel enseña los km del tramo entero,
+       -- pero la auditoria necesita restar los que ya estaban al abrirse la
+       -- franja, y para eso el redondeo no vale.
+       t.km_m,
        t.km_dudoso,
        t.vueltas,
        -- Quien lo llevaba la ultima vez, para los que estan desconectados.
@@ -345,12 +349,48 @@ CREATE TABLE IF NOT EXISTS fv_franja (
 COMMENT ON TABLE fv_franja IS
   'Las horas en que se vigila. Cambiar un turno es un UPDATE, no un despliegue';
 
+-- Estas horas son el ARRANQUE, no la verdad.
+--
+-- El sitio donde se decide a que hora empieza un turno es esta tabla, y quien lo
+-- decide es quien opera, con un UPDATE. Por eso el conflicto NO pisa `inicio_min`
+-- ni `fin_min`: si los pisara, cada despliegue devolveria las horas a lo que
+-- diga este fichero y el cambio de ayer se perderia sin que nadie se entere.
 INSERT INTO fv_franja (codigo, etiqueta, inicio_min, fin_min, orden) VALUES
   ('dia',   'Turno de dia',   390,  930, 1),   -- 06:30 -> 15:30
   ('noche', 'Turno de noche', 1110, 210, 2)    -- 18:30 -> 03:30 (cruza medianoche)
 ON CONFLICT (codigo) DO UPDATE SET
-  etiqueta = EXCLUDED.etiqueta, inicio_min = EXCLUDED.inicio_min,
-  fin_min = EXCLUDED.fin_min, orden = EXCLUDED.orden;
+  etiqueta = EXCLUDED.etiqueta, orden = EXCLUDED.orden;
+
+-- ── El corte: donde estaba cada coche cuando abrio la franja ──────────────
+-- LA AUDITORIA EMPIEZA A LAS 06:30, Y ESO INCLUYE EL CONTADOR.
+--
+-- Un coche puede llegar a las 06:30 llevando ya cuatro horas desconectado y
+-- treinta kilometros encima. Esos kilometros son de la madrugada — del horario
+-- de transicion, que se mira a mano— y no son noticia de esta franja. Sin este
+-- corte, a las 06:30 clavadas saltaba una alerta de "29,9 km rodando
+-- desconectado" por algo que paso a las tres de la maniana.
+--
+-- Se guarda una fila por coche, franja y dia con los metros que el tramo YA
+-- traia, y a partir de ahi solo se cuenta la diferencia. Si el tramo cambia
+-- dentro de la franja, deja de casar por `tramo_id` y el nuevo cuenta entero:
+-- empezo dentro, luego es todo suyo.
+--
+-- El corte se toma en la primera vuelta que cae dentro de la franja, no en el
+-- minuto exacto de apertura: se pierden como mucho los metros de esos cinco
+-- minutos, y a cambio no hace falta un proceso que despierte a las 06:30.
+CREATE TABLE IF NOT EXISTS fv_corte (
+  vehiculo_uuid VARCHAR(64) NOT NULL REFERENCES fv_vehiculo(uuid) ON DELETE CASCADE,
+  franja        VARCHAR(12) NOT NULL REFERENCES fv_franja(codigo),
+  dia_operativo DATE        NOT NULL,
+  -- Que tramo estaba abierto. Si al mirar hay otro, este corte ya no aplica.
+  tramo_id      BIGINT,
+  km_m          BIGINT      NOT NULL DEFAULT 0,
+  desde         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (vehiculo_uuid, franja, dia_operativo)
+);
+
+COMMENT ON TABLE fv_corte IS
+  'Lo que cada coche ya traia al abrirse su franja. La auditoria cuenta desde aqui';
 
 -- ── Que se considera una incidencia ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS fv_cat_incidencia (

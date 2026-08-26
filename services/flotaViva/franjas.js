@@ -19,6 +19,7 @@
 // Las horas viven en `fv_franja`, en la base. Cambiar un turno es un UPDATE.
 
 const db = require('./db');
+const { duracion } = require('./formato');
 
 const ZONA = 'Europe/Madrid';
 
@@ -52,6 +53,21 @@ function vispera(fecha) {
 }
 
 /**
+ * Si la franja termina al día siguiente. La de noche lo hace; la de día no.
+ *
+ * Está en una función y no escrito a mano en cada consulta porque la pregunta
+ * sale en tres sitios —en qué franja estamos, quién suele trabajarla, quién ya
+ * la ha trabajado— y basta con que uno de los tres se despiste para que la
+ * madrugada desaparezca sin avisar. Ya pasó.
+ */
+const cruzaMedianoche = franja => franja.fin_min < franja.inicio_min;
+
+/** Si una hora del día —en minutos desde medianoche— cae dentro de la franja. */
+const dentroDeFranja = (franja, minutos) => cruzaMedianoche(franja)
+  ? (minutos >= franja.inicio_min || minutos < franja.fin_min)
+  : (minutos >= franja.inicio_min && minutos < franja.fin_min);
+
+/**
  * En qué franja cae un instante, y a qué día pertenece esa franja.
  *
  * Devuelve null en el relevo, que es lo que hace que no se avise entre las 15:30
@@ -64,24 +80,16 @@ function vispera(fecha) {
 function franjaDe(franjas, cuando = new Date()) {
   const { fecha, minutos } = localDe(cuando);
   for (const f of franjas) {
-    if (!f.activa) continue;
-    const cruza = f.fin_min < f.inicio_min;
-    if (!cruza) {
-      if (minutos >= f.inicio_min && minutos < f.fin_min) {
-        return { franja: f, diaOperativo: fecha, desdeInicio: minutos - f.inicio_min };
-      }
-      continue;
-    }
-    // Cruza medianoche: o es de hoy después del inicio, o de ayer antes del fin.
-    if (minutos >= f.inicio_min) {
+    if (!f.activa || !dentroDeFranja(f, minutos)) continue;
+    if (!cruzaMedianoche(f)) {
       return { franja: f, diaOperativo: fecha, desdeInicio: minutos - f.inicio_min };
     }
-    if (minutos < f.fin_min) {
-      return {
-        franja: f, diaOperativo: vispera(fecha),
-        desdeInicio: minutos + (1440 - f.inicio_min),
-      };
-    }
+    // Cruza medianoche: o es de hoy después del inicio, o de ayer antes del fin.
+    // Y de ahí que el día operativo no sea el del reloj: a la una de la mañana
+    // seguimos en la franja de ayer.
+    return minutos >= f.inicio_min
+      ? { franja: f, diaOperativo: fecha, desdeInicio: minutos - f.inicio_min }
+      : { franja: f, diaOperativo: vispera(fecha), desdeInicio: minutos + (1440 - f.inicio_min) };
   }
   return null;
 }
@@ -146,8 +154,7 @@ async function habituales(franja, diaOperativo) {
   // fuera toda la madrugada: un coche que solo se conecta a las 22:00 contaba,
   // pero uno que empieza a la una de la mañana no contaba nunca. Su ausencia no
   // se reclamaba jamás.
-  const cruza = franja.fin_min < franja.inicio_min;
-  const dentro = cruza
+  const dentro = cruzaMedianoche(franja)
     ? '(minuto >= $3::int OR minuto < $4::int)'
     : '(minuto >= $3::int AND minuto < $4::int)';
 
@@ -195,11 +202,62 @@ async function cerrarFranjasPasadas(ahora) {
   return r.rowCount;
 }
 
+/**
+ * Marca dónde estaba cada coche al abrirse la franja.
+ *
+ * A partir de aquí se cuenta. Un coche que llega a las 06:30 con cuatro horas
+ * desconectado y treinta kilómetros encima no es noticia de esta franja: esos
+ * kilómetros son de la madrugada, del horario de transición que se mira a mano.
+ *
+ * Solo se apunta la primera vez —`DO NOTHING`—, así que da igual cuántas vueltas
+ * dé el cron: el corte es el de la primera.
+ */
+async function tomarCorte(franja, diaOperativo) {
+  const r = await db.consulta(
+    `INSERT INTO fv_corte (vehiculo_uuid, franja, dia_operativo, tramo_id, km_m)
+     SELECT a.vehiculo_uuid, $1::varchar, $2::date, a.tramo_id, a.km_m
+       FROM fv_ahora a
+      WHERE a.tramo_id IS NOT NULL
+     ON CONFLICT (vehiculo_uuid, franja, dia_operativo) DO NOTHING`,
+    [franja.codigo, diaOperativo]);
+  return r.rowCount;
+}
+
+/**
+ * Cómo está cada coche AHORA, pero contado desde que abrió la franja.
+ *
+ * Es `fv_ahora` con tres columnas más, y son las que mandan en las alertas:
+ *
+ *   · `segundos_franja` — lo que lleva así SIN contar lo de antes de la franja
+ *   · `km_franja`       — los kilómetros que ha sumado desde el corte
+ *   · `venia_de_antes`  — si el tramo ya estaba abierto al empezar
+ *
+ * El panel en vivo sigue leyendo `fv_ahora` a pelo, con los totales de verdad:
+ * ahí lo que se quiere saber es cuánto lleva un coche sin conexión, venga de
+ * donde venga. Son dos preguntas distintas y no comparten respuesta.
+ */
+async function estadoDeFranja(franja, diaOperativo) {
+  const r = await db.consulta(
+    `SELECT a.*,
+            EXTRACT(EPOCH FROM (now() - GREATEST(a.desde, f.inicio)))::bigint AS segundos_franja,
+            round(GREATEST(a.km_m - COALESCE(c.km_m, 0), 0) / 1000.0, 1)      AS km_franja,
+            (a.desde < f.inicio)                                              AS venia_de_antes
+       FROM fv_ahora a
+       CROSS JOIN (SELECT ($2::date + ($3::int || ' minutes')::interval)
+                            AT TIME ZONE 'Europe/Madrid' AS inicio) f
+       -- Si el tramo cambió dentro de la franja, el corte deja de casar y el
+       -- nuevo cuenta entero: empezó dentro, luego es todo suyo.
+       LEFT JOIN fv_corte c ON c.vehiculo_uuid = a.vehiculo_uuid
+                           AND c.franja = $1 AND c.dia_operativo = $2::date
+                           AND c.tramo_id = a.tramo_id`,
+    [franja.codigo, diaOperativo, franja.inicio_min]);
+  return r.rows;
+}
+
 /** Los coches que YA han estado conectados en esta franja, hoy. */
 async function yaTrabajaronHoy(franja, diaOperativo) {
   // El arranque de la franja en hora local, y su fin —que puede caer al día
   // siguiente si cruza medianoche.
-  const cruza = franja.fin_min < franja.inicio_min;
   const r = await db.consulta(
     `SELECT DISTINCT t.vehiculo_uuid
        FROM fv_tramo t
@@ -208,7 +266,7 @@ async function yaTrabajaronHoy(franja, diaOperativo) {
               AT TIME ZONE 'Europe/Madrid')
         AND t.desde <= (($1::date + $3::int + ($4::int || ' minutes')::interval)
               AT TIME ZONE 'Europe/Madrid')`,
-    [diaOperativo, franja.inicio_min, cruza ? 1 : 0, franja.fin_min]);
+    [diaOperativo, franja.inicio_min, cruzaMedianoche(franja) ? 1 : 0, franja.fin_min]);
   return new Set(r.rows.map(x => x.vehiculo_uuid));
 }
 
@@ -239,8 +297,13 @@ async function revisar() {
   if (!ahora) return { franja: null, motivo: 'relevo', abiertas: 0, nuevas: 0, cerradas };
 
   const { franja, diaOperativo, desdeInicio } = ahora;
+
+  // EL CORTE VA ANTES DE MIRAR, siempre. Es lo que hace que a las 06:30 el
+  // contador de todos empiece en cero en vez de heredar la madrugada.
+  await tomarCorte(franja, diaOperativo);
+
   const [estado, trabajaron] = await Promise.all([
-    db.consulta('SELECT * FROM fv_ahora'),
+    estadoDeFranja(franja, diaOperativo),
     yaTrabajaronHoy(franja, diaOperativo),
   ]);
 
@@ -253,11 +316,15 @@ async function revisar() {
   let nuevas = 0, abiertas = 0;
   const clave = { franja: franja.codigo, diaOperativo };
 
-  for (const c of estado.rows) {
+  for (const c of estado) {
     if (!c.vehiculo_uuid) continue;
     const uuid = c.vehiculo_uuid;
-    const min = Math.floor(Number(c.segundos || 0) / 60);
-    const km = c.km == null ? 0 : Number(c.km);
+    // `min` y `km` son SIEMPRE los de dentro de la franja: son los que deciden
+    // si hay que llamar. `segTotal` es lo que lleva de verdad, y solo se usa
+    // para escribirlo, nunca para disparar nada.
+    const min = Math.floor(Number(c.segundos_franja || 0) / 60);
+    const km = c.km_franja == null ? 0 : Number(c.km_franja);
+    const segTotal = Number(c.segundos || 0);
     const comun = { vehiculoUuid: uuid, conductorUuid: c.conductor_uuid, ...clave };
     const apunta = async (tipo, detalle) => {
       const r = await abrir({ ...comun, tipo, detalle });
@@ -267,8 +334,11 @@ async function revisar() {
 
     if (c.situacion === 'desconectado') {
       if (trabajaron.has(uuid)) {
+        // Aquí `venia_de_antes` no puede ser cierto: para llegar a esta rama el
+        // coche tuvo que estar conectado dentro de la franja, así que la caída
+        // es de la franja. La hora que se escribe es la de verdad.
         await apunta('desconectado',
-          `Se desconectó hace ${min} min` + (km ? ` y lleva ${km} km así` : ''));
+          `Se desconectó hace ${duracion(segTotal)}` + (km ? ` y lleva ${km} km así` : ''));
       } else if (habitual.has(uuid)) {
         await apunta('no_aparece',
           `Sin conectarse en lo que va de franja (${Math.floor(desdeInicio / 60)} h)`);
@@ -288,7 +358,14 @@ async function revisar() {
     await resolver(uuid, 'rueda_caido', franja.codigo, diaOperativo);
 
     if (c.situacion === 'descanso' && min >= MAX_DESCANSO_MIN) {
-      await apunta('descanso', `${min} min seguidos en descanso` + (km ? ` · ${km} km` : ''));
+      // Si venía descansando de antes de la franja, los minutos que cuentan son
+      // los de dentro —por eso no salta a las 06:30 quien lleva parado desde las
+      // cinco— pero al que llame le hace falta saber el rato de verdad.
+      await apunta('descanso',
+        (c.venia_de_antes
+          ? `${min} min en descanso desde que abrió la franja · encadena ${duracion(segTotal)}`
+          : `${min} min seguidos en descanso`)
+        + (km ? ` · ${km} km` : ''));
     } else {
       await resolver(uuid, 'descanso', franja.codigo, diaOperativo);
     }
@@ -301,7 +378,7 @@ async function revisar() {
 }
 
 module.exports = {
-  franjas, franjaDe, localDe, vispera, abrir, resolver, habituales, cerrarFranjasPasadas,
-  yaTrabajaronHoy, revisar,
+  franjas, franjaDe, cruzaMedianoche, dentroDeFranja, localDe, vispera, abrir, resolver, habituales, cerrarFranjasPasadas,
+  yaTrabajaronHoy, tomarCorte, estadoDeFranja, revisar,
   MAX_DESCANSO_MIN, GRACIA_MIN, DIAS_HABITO, VECES_HABITO,
 };

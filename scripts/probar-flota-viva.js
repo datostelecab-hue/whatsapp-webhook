@@ -77,5 +77,43 @@ filas.forEach(([, codigo, cluster, subcluster, motivo]) => {
     !!m, m ? '(' + m.resultados.length + ' resultado(s))' : '← NO EXISTE en el catálogo');
 });
 
+// -- 3. La ventana horaria de cada franja ------------------------------------
+// La de noche va de 18:30 a 03:30, asi que "dentro" no es un intervalo: es lo de
+// despues del inicio O lo de antes del fin. Cuando esto se aplano a un BETWEEN
+// que acababa a las 23:59, la madrugada entera dejo de contar y la ausencia de
+// quien solo trabaja de madrugada no se reclamaba nunca.
+console.log('\n== La ventana horaria de cada franja ==');
+const [DIA, NOCHE] = FRANJAS;
+const hm = (h, m) => h * 60 + (m || 0);
+[
+  ['dia   07:00', DIA,   hm(7),      true],
+  ['dia   15:29', DIA,   hm(15, 29), true],
+  ['dia   16:30', DIA,   hm(16, 30), false],
+  ['noche 19:00', NOCHE, hm(19),     true],
+  ['noche 23:59', NOCHE, hm(23, 59), true],
+  ['noche 01:00', NOCHE, hm(1),      true],
+  ['noche 03:29', NOCHE, hm(3, 29),  true],
+  ['noche 05:00', NOCHE, hm(5),      false],
+  ['noche 12:00', NOCHE, hm(12),     false],
+].forEach(([que, f, minutos, esperado]) => {
+  const r = franjas.dentroDeFranja(f, minutos);
+  comprobar(que.padEnd(12) + '-> ' + (r ? 'dentro' : 'fuera'), r === esperado);
+});
+
+// -- 4. El esquema, en las dos cosas que ya se han roto -----------------------
+console.log('\n== El esquema ==');
+
+// El corte es lo que hace que la auditoria empiece a contar a las 06:30 en vez
+// de heredar los kilometros de la madrugada.
+comprobar('existe fv_corte', /CREATE TABLE IF NOT EXISTS fv_corte\b/.test(sql));
+comprobar('fv_ahora publica km_m en crudo', /\n\s+t\.km_m,/.test(sql));
+
+// LAS HORAS LAS PONE QUIEN OPERA, con un UPDATE. Si la semilla las pisara al
+// arrancar, cada despliegue devolveria los turnos a lo que diga este fichero.
+const semilla = sql.slice(sql.indexOf('INSERT INTO fv_franja'));
+const conflicto = semilla.slice(semilla.indexOf('ON CONFLICT'), semilla.indexOf(';'));
+comprobar('el despliegue no pisa las horas de fv_franja',
+  !/inicio_min\s*=|fin_min\s*=/.test(conflicto));
+
 console.log(mal ? `\n${mal} COMPROBACIÓN(ES) MAL` : '\nTodo cuadra');
 process.exitCode = mal ? 1 : 0;
