@@ -129,5 +129,22 @@ const conflicto = semilla.slice(semilla.indexOf('ON CONFLICT'), semilla.indexOf(
 comprobar('el despliegue no pisa las horas de fv_franja',
   !/inicio_min\s*=|fin_min\s*=/.test(conflicto));
 
+// Cerrar una incidencia: llamar o ignorar. Las dos dejan rastro; solo una crea
+// llamada en el Call Center.
+comprobar('existe fv_cat_gestion', /CREATE TABLE IF NOT EXISTS fv_cat_gestion/.test(sql));
+comprobar('fv_incidencia guarda la gestion',
+  /ALTER TABLE fv_incidencia ADD COLUMN IF NOT EXISTS gestion/.test(sql));
+
+const semGestion = sql.slice(sql.indexOf('INSERT INTO fv_cat_gestion'));
+const gest = [...semGestion.slice(0, semGestion.indexOf('ON CONFLICT')).matchAll(
+  /\('([a-z_]+)',/g)].map(m => m[1]);
+comprobar('estan llamada e ignorada',
+  gest.includes('llamada') && gest.includes('ignorada'), '(' + gest.join(', ') + ')');
+
+// Si NINGUNA gestion creara llamada, el puente con el Call Center existiria
+// pero no lo cruzaria nadie, y nadie se enteraria.
+comprobar('alguna gestion crea llamada',
+  /'llamada',[^)]*TRUE,\s*TRUE/.test(semGestion));
+
 console.log(mal ? `\n${mal} COMPROBACIÓN(ES) MAL` : '\nTodo cuadra');
 process.exitCode = mal ? 1 : 0;

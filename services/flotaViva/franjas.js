@@ -28,8 +28,14 @@ const { duracion } = require('./formato');
 
 const ZONA = 'Europe/Madrid';
 
-// Minutos seguidos en descanso a partir de los cuales hay que preguntar.
-const MAX_DESCANSO_MIN = Number(process.env.FLOTA_VIVA_MAX_DESCANSO_MIN) || 45;
+// Minutos en descanso a partir de los cuales sale en la lista. CERO: salen todos
+// desde que se ponen.
+//
+// Estaba en 45 y el caso que mas importa se colaba por debajo — veinte minutos
+// en descanso con dieciocho kilometros hechos no llegaba a la lista nunca. Ahora
+// salen todos y se despachan con los dos botones, llamando o ignorando; el
+// detalle dice cuanto lleva cada uno. Subirlo vuelve al comportamiento de antes.
+const MAX_DESCANSO_MIN = Number(process.env.FLOTA_VIVA_MAX_DESCANSO_MIN) || 0;
 // Y los km. Descansar no es estar quieto: ir a comer son dos o tres kilómetros y
 // eso no es noticia. Veinte, sí. Se vigilan las dos cosas por separado porque un
 // coche puede pasarse en una sin pasarse en la otra — y de hecho es lo normal.
@@ -396,13 +402,17 @@ async function revisar() {
     // descanso y dieciocho kilómetros hechos. Con un solo aviso por tiempo, ese
     // coche no salía en ninguna lista.
     if (min >= MAX_DESCANSO_MIN) {
+      // El detalle lleva SIEMPRE el rato, porque ahora salen todos desde el
+      // minuto cero y es lo único que distingue de un vistazo al que acaba de
+      // parar del que lleva hora y media.
+      //
       // Si venía descansando de antes de la franja, los minutos que cuentan son
       // los de dentro —por eso no salta a las 06:30 quien lleva parado desde las
       // cinco— pero al que llame le hace falta saber el rato de verdad.
       await apunta('descanso',
         (c.venia_de_antes
-          ? `${min} min en descanso desde que abrió la franja · encadena ${duracion(segTotal)}`
-          : `${min} min seguidos en descanso`)
+          ? `${duracion(min * 60)} en descanso dentro de la franja · encadena ${duracion(segTotal)}`
+          : `${duracion(min * 60)} en descanso`)
         + (km ? ` · ${km} km` : ''));
     } else {
       await resolver(uuid, 'descanso', franja.codigo, diaOperativo);

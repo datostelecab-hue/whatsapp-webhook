@@ -416,8 +416,15 @@ INSERT INTO fv_cat_incidencia (codigo, etiqueta, detalle, gravedad, orden) VALUE
    'Estaba trabajando en su franja y se cayo de BOLT', 3, 1),
   ('rueda_caido',  'Rueda estando desconectado',
    'Suma kilometros sin estar en la plataforma', 4, 2),
-  ('descanso',     'Lleva demasiado en descanso',
-   'Conectado pero sin coger pedidos mas tiempo del razonable', 2, 3),
+  -- SALE EN CUANTO SE PONE EN DESCANSO, no cuando lleva mucho.
+  --
+  -- Antes esperaba a los 45 minutos, y eso dejaba fuera lo que mas se queria
+  -- ver: el que se pone en descanso veinte minutos y en esos veinte minutos
+  -- hace dieciocho kilometros. Ahora salen todos y se despachan de dos maneras,
+  -- llamando o ignorando; el detalle dice cuanto lleva para poder distinguir de
+  -- un vistazo el que acaba de parar del que lleva hora y media.
+  ('descanso',     'Se ha puesto en descanso',
+   'Conectado pero sin coger pedidos. El detalle dice cuanto lleva', 2, 3),
   -- EL TIEMPO Y LOS KM SE VIGILAN POR SEPARADO, y este es el motivo.
   --
   -- Un coche puede llevar veinte minutos en descanso —nada— y haber hecho
@@ -473,6 +480,51 @@ CREATE TABLE IF NOT EXISTS fv_incidencia (
 -- arranque anterior, y CREATE TABLE IF NOT EXISTS no aniade columnas a una tabla
 -- que ya esta. La declaracion de mas arriba no llego a aplicarse nunca.
 ALTER TABLE fv_incidencia ADD COLUMN IF NOT EXISTS llamada_clave VARCHAR(40);
+
+-- ── QUE SE HIZO CON ELLA: llamar o ignorar ────────────────────────────────
+-- CERRAR UNA INCIDENCIA NO ES SIEMPRE LLAMAR.
+--
+-- La mitad de lo que salta no necesita telefono: es el descanso de la comida,
+-- es un coche en el taller, es algo que ya se sabia. Sin una forma de decir "lo
+-- he mirado y no hacia falta", esas se quedan en rojo para siempre y el parte
+-- del cierre las cuenta como sin revisar — que es mentira, alguien las miro.
+--
+-- Y AL IGNORAR SE PIDE MOTIVO IGUAL QUE AL LLAMAR. Un boton que quita cosas de
+-- la pantalla sin dejar rastro es un boton para vaciar la pantalla, no para
+-- auditarla. Aqui las dos gestiones dejan quien, cuando y por que.
+--
+-- Va en una tabla y no en un booleano porque maniana pueden ser tres: llamada,
+-- ignorada, escalada. Aniadir una es una fila.
+CREATE TABLE IF NOT EXISTS fv_cat_gestion (
+  codigo       VARCHAR(16) PRIMARY KEY,
+  etiqueta     VARCHAR(40) NOT NULL,
+  detalle      VARCHAR(200),
+  -- Si se puede cerrar sin escribir nada. Por ahora ninguna: las dos exigen.
+  exige_motivo BOOLEAN     NOT NULL DEFAULT TRUE,
+  -- Si ademas crea una llamada en el Call Center. Ignorar no la crea: no ha
+  -- habido llamada, y meterla les ensuciaria los KPIs y la reincidencia.
+  crea_llamada BOOLEAN     NOT NULL DEFAULT FALSE,
+  color        VARCHAR(12),
+  activa       BOOLEAN     NOT NULL DEFAULT TRUE,
+  orden        SMALLINT    NOT NULL DEFAULT 0
+);
+
+INSERT INTO fv_cat_gestion (codigo, etiqueta, detalle, exige_motivo, crea_llamada, color, orden) VALUES
+  ('llamada',  'Ya he llamado',
+   'Se ha hablado con el conductor. Queda como llamada en el Call Center', TRUE, TRUE, 'green', 1),
+  ('ignorada', 'Ignorar',
+   'Se ha mirado y no hacia falta llamar. Queda con nombre y motivo, sin llamada', TRUE, FALSE, 'muted', 2)
+ON CONFLICT (codigo) DO UPDATE SET
+  etiqueta = EXCLUDED.etiqueta, detalle = EXCLUDED.detalle,
+  exige_motivo = EXCLUDED.exige_motivo, crea_llamada = EXCLUDED.crea_llamada,
+  color = EXCLUDED.color, orden = EXCLUDED.orden;
+
+ALTER TABLE fv_incidencia ADD COLUMN IF NOT EXISTS gestion VARCHAR(16)
+  REFERENCES fv_cat_gestion(codigo);
+
+-- Lo que ya estaba cerrado se cerro llamando: entonces no habia otra forma.
+UPDATE fv_incidencia SET gestion = 'llamada'
+ WHERE justificada_at IS NOT NULL AND gestion IS NULL;
 
 ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_cluster    VARCHAR(40);
 ALTER TABLE fv_cat_incidencia ADD COLUMN IF NOT EXISTS cc_subcluster VARCHAR(40);

@@ -150,12 +150,14 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
             v.matricula, i.detalle, i.veces,
             i.abierta_at, i.resuelta_at,
             i.justificada_at, i.justificada_por, i.motivo, i.llamada_clave,
+            i.gestion, g.etiqueta AS gestion_etiqueta, g.color AS gestion_color,
             EXTRACT(EPOCH FROM (COALESCE(i.resuelta_at, now()) - i.abierta_at))::bigint AS segundos,
             co.nombre AS conductor, co.telefono
        FROM fv_incidencia i
        JOIN fv_cat_incidencia c ON c.codigo = i.tipo
        JOIN fv_franja f         ON f.codigo = i.franja
        JOIN fv_vehiculo v       ON v.uuid = i.vehiculo_uuid
+       LEFT JOIN fv_cat_gestion g ON g.codigo = i.gestion
        LEFT JOIN fv_conductor co ON co.uuid = i.conductor_uuid
       WHERE ${donde.join(' AND ')}
       ORDER BY i.resuelta_at NULLS FIRST, c.gravedad DESC, i.abierta_at`, params);
@@ -170,6 +172,10 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
     justificada: !!x.justificada_at, justificadaPor: x.justificada_por || '',
     justificadaAt: x.justificada_at,
     motivo: x.motivo || '',
+    // Como se cerro: llamando o ignorandola. Las dos cuentan como revisada; el
+    // parte las separa porque no significan lo mismo.
+    gestion: x.gestion || '', gestionEtiqueta: x.gestion_etiqueta || '',
+    gestionColor: x.gestion_color || '',
     // La llamada del Call Center, si llego a crearse. Sin ella, la incidencia
     // esta explicada aqui pero no cuenta en sus KPIs.
     llamada: x.llamada_clave || '',
@@ -182,9 +188,34 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
  * El motivo es obligatorio: una incidencia cerrada sin explicacion no es una
  * incidencia resuelta, es una incidencia escondida.
  */
-async function justificar(id, { motivo, resultado, accion, quien } = {}) {
+/** Las formas de cerrar una incidencia. Salen de la base, no de la pantalla. */
+async function gestiones() {
+  const r = await db.consulta(
+    `SELECT codigo, etiqueta, detalle, exige_motivo, crea_llamada, color
+       FROM fv_cat_gestion WHERE activa ORDER BY orden`);
+  return r.rows.map(x => ({
+    codigo: x.codigo, etiqueta: x.etiqueta, detalle: x.detalle || '',
+    exigeMotivo: x.exige_motivo, creaLlamada: x.crea_llamada, color: x.color || '',
+  }));
+}
+
+/**
+ * Cerrar una incidencia: llamando o ignorándola.
+ *
+ * LAS DOS DEJAN RASTRO IGUAL — quién, cuándo y por qué. La diferencia es que
+ * ignorar no crea llamada en el Call Center: no ha habido llamada, y meter una
+ * de mentira les ensucia los KPIs y la reincidencia.
+ *
+ * Qué gestiones hay y cuál crea llamada lo dice `fv_cat_gestion`, no este
+ * código: si mañana hace falta "escalada", es una fila.
+ */
+async function justificar(id, { gestion = 'llamada', motivo, resultado, accion, quien } = {}) {
+  const g = (await db.consulta(
+    'SELECT * FROM fv_cat_gestion WHERE codigo = $1 AND activa', [String(gestion)])).rows[0];
+  if (!g) throw new Error(`No existe la gestión "${gestion}"`);
+
   const texto = String(motivo || '').trim();
-  if (!texto) throw new Error('Hace falta decir qué pasó: sin motivo no se cierra');
+  if (g.exige_motivo && !texto) throw new Error('Hace falta decir qué pasó: sin motivo no se cierra');
 
   const inc = (await db.consulta(
     `SELECT i.id, i.tipo, i.franja, v.matricula, c.nombre AS conductor, c.telefono,
@@ -201,15 +232,15 @@ async function justificar(id, { motivo, resultado, accion, quien } = {}) {
   // falle o esté sin cuota.
   await db.consulta(
     `UPDATE fv_incidencia
-        SET justificada_at = now(), justificada_por = $2, motivo = $3
+        SET justificada_at = now(), justificada_por = $2, motivo = $3, gestion = $4
       WHERE id = $1`,
-    [Number(id), String(quien || '').slice(0, 120) || null, texto]);
+    [Number(id), String(quien || '').slice(0, 120) || null, texto || null, g.codigo]);
 
-  // Y DESPUÉS se crea la llamada, si ese tipo tiene clasificación. Justificar
-  // una incidencia ES una llamada: tiene que contar en sus KPIs y en su
-  // reincidencia, no quedarse en un libro aparte.
+  // Y DESPUÉS se crea la llamada, si esta gestión la crea y ese tipo tiene
+  // clasificación. Justificar una incidencia llamando ES una llamada: tiene que
+  // contar en sus KPIs y en su reincidencia, no quedarse en un libro aparte.
   let llamada = null, errorLlamada = '', ensayo = null;
-  if (inc.cc_motivo && inc.conductor) {
+  if (g.crea_llamada && inc.cc_motivo && inc.conductor) {
     const datos = {
       direccion: 'saliente',
       conductor: inc.conductor, telefono: inc.telefono || '',
@@ -263,10 +294,14 @@ async function justificar(id, { motivo, resultado, accion, quien } = {}) {
 
   return {
     id: Number(id), justificada: true,
+    gestion: g.codigo, gestionEtiqueta: g.etiqueta,
     llamada: llamada ? llamada.clave : null,
-    sinLlamada: !inc.cc_motivo ? 'ese tipo no tiene clasificación de Call Center'
-      : !inc.conductor ? 'no consta el conductor'
-        : errorLlamada || '',
+    // Ignorar SIN llamada es lo correcto, no un fallo: por eso no se avisa de
+    // nada. Solo se explica cuando SÍ se esperaba una llamada y no salió.
+    sinLlamada: !g.crea_llamada ? ''
+      : !inc.cc_motivo ? 'ese tipo no tiene clasificación de Call Center'
+        : !inc.conductor ? 'no consta el conductor'
+          : errorLlamada || '',
   };
 }
 
@@ -311,6 +346,8 @@ async function cierre({ dia, franja } = {}) {
       total: lista.length,
       sinJustificar: sinJustificar.length,
       justificadas: lista.length - sinJustificar.length,
+      llamadas: lista.filter(x => x.gestion === 'llamada').length,
+      ignoradas: lista.filter(x => x.gestion === 'ignorada').length,
       coches: new Set(lista.map(x => x.matricula)).size,
       porTipo,
     },
@@ -329,6 +366,11 @@ async function partes({ desde, hasta } = {}) {
     `SELECT to_char(i.dia_operativo, 'YYYY-MM-DD') AS dia, i.franja, f.etiqueta AS franja_etiqueta, f.orden,
             count(*)::int                                              AS total,
             count(*) FILTER (WHERE i.justificada_at IS NULL)::int       AS sin_revisar,
+            -- Revisada no es lo mismo que llamada. Se separan porque el jefe
+            -- pregunta por las dos cosas: cuantas se atendieron y cuantas
+            -- llegaron a ser una llamada de verdad.
+            count(*) FILTER (WHERE i.gestion = 'llamada')::int          AS llamadas,
+            count(*) FILTER (WHERE i.gestion = 'ignorada')::int         AS ignoradas,
             count(*) FILTER (WHERE i.llamada_clave IS NOT NULL)::int    AS con_llamada,
             count(DISTINCT i.vehiculo_uuid)::int                        AS coches
        FROM fv_incidencia i
@@ -340,8 +382,12 @@ async function partes({ desde, hasta } = {}) {
 
   return r.rows.map(x => ({
     dia: x.dia, franja: x.franja, franjaEtiqueta: x.franja_etiqueta,
-    total: x.total, sinRevisar: x.sin_revisar, conLlamada: x.con_llamada, coches: x.coches,
+    total: x.total, sinRevisar: x.sin_revisar, conLlamada: x.con_llamada,
+    llamadas: x.llamadas, ignoradas: x.ignoradas, coches: x.coches,
   }));
 }
 
-module.exports = { estado, historial, incidencias, justificar, clasificacionDe, cierre, partes, duracion };
+module.exports = {
+  estado, historial, incidencias, gestiones, justificar, clasificacionDe,
+  cierre, partes, duracion,
+};

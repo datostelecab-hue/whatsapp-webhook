@@ -68,18 +68,26 @@ router.get('/api/incidencias', responde(async req => {
 router.get('/api/incidencia/:id/clasificacion', responde(async req =>
   ({ clasificacion: await panel.clasificacionDe(req.params.id) })));
 
-// Alguien ha llamado y cuenta que paso. Sin motivo no se cierra.
+// Las formas de cerrar una incidencia. Las pide la pantalla para pintar los
+// botones: cuales hay y cual crea llamada lo dice la base, no el front.
+router.get('/api/gestiones', responde(async () => {
+  await db.preparar();
+  return { gestiones: await panel.gestiones() };
+}));
+
+// Cerrar una incidencia: llamando o ignorandola. Las dos exigen motivo y las dos
+// quedan con nombre y hora — ignorar no es hacerla desaparecer.
 //
-// Ademas de justificarla aqui, se REGISTRA LA LLAMADA en el Call Center: es una
+// Si la gestion crea llamada, ademas se REGISTRA EN EL CALL CENTER: es una
 // llamada de verdad y tiene que contar en sus KPIs y en su reincidencia.
 router.post('/api/incidencia/:id/justificar', responde(async req => {
   const b = req.body || {};
   const quien = (req.usuario && (req.usuario.nombre || req.usuario.email)) || '';
   const r = await panel.justificar(req.params.id, {
-    motivo: b.motivo, resultado: b.resultado, accion: b.accion, quien,
+    gestion: b.gestion, motivo: b.motivo, resultado: b.resultado, accion: b.accion, quien,
   });
-  console.log(`✍️  [FLOTA VIVA] Incidencia ${r.id} justificada por ${quien || '(sin nombre)'}` +
-              (r.llamada ? ` · llamada ${r.llamada}` : ` · SIN llamada: ${r.sinLlamada}`));
+  console.log(`✍️  [FLOTA VIVA] Incidencia ${r.id} — ${r.gestionEtiqueta} — por ${quien || '(sin nombre)'}` +
+              (r.llamada ? ` · llamada ${r.llamada}` : r.sinLlamada ? ` · SIN llamada: ${r.sinLlamada}` : ''));
   return r;
 }));
 

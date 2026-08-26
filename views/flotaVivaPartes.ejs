@@ -45,6 +45,7 @@
   </div>
 </div>
 
+<script src="/assets/js/flotaVivaGestion.js"></script>
 <script>
 (function () {
   const $ = s => document.querySelector(s);
@@ -79,7 +80,11 @@
             : '<span class="px-2 py-0.5 rounded-md text-xs bg-emerald-500/15 text-emerald-500">al día</span>') +
         '</div>' +
         '<div class="text-xs text-telecab-muted mt-0.5">' + p.total + ' incidencia(s) · ' +
-          p.coches + ' coche(s)' + (p.conLlamada ? ' · ' + p.conLlamada + ' en Call Center' : '') + '</div>' +
+          p.coches + ' coche(s)' +
+          // Revisada no es lo mismo que llamada: se separan porque son dos
+          // preguntas distintas al cierre.
+          (p.llamadas ? ' · ' + p.llamadas + ' llamada(s)' : '') +
+          (p.ignoradas ? ' · ' + p.ignoradas + ' ignorada(s)' : '') + '</div>' +
         '</button>';
     }).join('') : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Sin incidencias en esas fechas.</p>';
 
@@ -110,9 +115,20 @@
             esc(x.etiqueta) + (x.veces > 1 ? ' (x' + x.veces + ')' : '') + '</span>' +
           '<span class="text-sm flex-1 min-w-[12rem] text-telecab-muted">' + esc(x.detalle) + '</span>' +
           '<span class="text-xs text-telecab-muted tabular-nums">' + hora(x.abierta) + ' · ' + esc(x.duracion) + '</span>' +
+          // SIN REVISAR ES ACCIONABLE DESDE AQUI. El parte es donde se mira al
+          // cierre, y obligar a volver al panel en vivo —donde esa incidencia
+          // ya no esta, porque su franja acabo— dejaba las de ayer sin forma de
+          // cerrarse nunca.
           (pendiente
-            ? '<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-red-500/15 text-red-500">Sin revisar</span>'
-            : '<span class="px-2 py-0.5 rounded-md text-xs bg-emerald-500/15 text-emerald-500">Revisada</span>') +
+            ? '<span class="flex items-center gap-2">' +
+                '<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-red-500/15 text-red-500">Sin revisar</span>' +
+                GestionIncidencia.botones(x.id) +
+              '</span>'
+            : x.gestion === 'ignorada'
+              ? '<span class="px-2 py-0.5 rounded-md text-xs bg-telecab-border/40 text-telecab-muted">' +
+                esc(x.gestionEtiqueta || 'Ignorada') + '</span>'
+              : '<span class="px-2 py-0.5 rounded-md text-xs bg-emerald-500/15 text-emerald-500">' +
+                esc(x.gestionEtiqueta || 'Revisada') + '</span>') +
         '</div>' +
         (x.conductor ? '<div class="text-xs text-telecab-muted mt-1">' + esc(x.conductor) +
           (x.telefono ? ' · ' + esc(x.telefono) : '') + '</div>' : '') +
@@ -121,7 +137,9 @@
             '<span class="text-telecab-text">' + esc(x.motivo) + '</span>' +
             '<div class="text-xs text-telecab-muted mt-0.5">' + esc(x.justificadaPor || 'sin nombre') +
               ' · ' + hora(x.justificadaAt) +
-              (x.llamada ? ' · registrada en Call Center' : ' · <span class="text-amber-500">sin llamada en Call Center</span>') +
+              (x.llamada ? ' · registrada en Call Center'
+                : x.gestion === 'ignorada' ? ' · ignorada, sin llamada'
+                  : ' · <span class="text-amber-500">sin llamada en Call Center</span>') +
             '</div></div>'
           : '') +
         '</div>';
@@ -139,6 +157,12 @@
           '<span class="text-telecab-muted">coches</span></span>' +
       '</div>' +
       (filas || '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Ninguna incidencia.</p>');
+
+    // Al cerrar una desde aqui se repinta el parte entero: cambian el contador
+    // de sin revisar y el de la lista de la izquierda.
+    GestionIncidencia.enganchar($('#p-detalle'),
+      id => (d.incidencias || []).find(x => x.id === id),
+      () => { abrir(dia, franja); });
   }
 
   // Por omisión, la última semana.
@@ -147,6 +171,7 @@
   const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   $('#p-hasta').value = iso(hoy);
   $('#p-desde').value = iso(antes);
+  GestionIncidencia.cargar();
   $('#p-desde').addEventListener('change', cargarPartes);
   $('#p-hasta').addEventListener('change', cargarPartes);
   cargarPartes();
