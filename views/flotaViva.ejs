@@ -137,6 +137,44 @@
   // Rodar estando en descanso o desconectado es lo que se viene a buscar aquí.
   const sospechoso = c => (c.km > 0) && (c.situacion === 'descanso' || c.situacion === 'desconectado');
 
+  // Una señal de Mapon más vieja que esto ya no sirve para afirmar "no se ha
+  // movido": solo dice que hace rato que no sabemos nada del coche.
+  const SENAL_VIEJA_MIN = 30;
+
+  /**
+   * Los km del tramo, y CUANDO NO SE SABEN dicho en voz alta.
+   *
+   * Tres respuestas distintas que antes se pintaban con la misma raya:
+   *
+   *   · un número  → se ha movido eso desde que entró en este estado
+   *   · `0`        → tenemos GPS reciente y no se ha movido
+   *   · `sin GPS`  → Mapon no ha dado ni una lectura en este tramo
+   *
+   * La diferencia entre las dos últimas es justo la pregunta cuando un coche
+   * está desconectado: un cero de un equipo mudo no es un cero.
+   */
+  function celdaKm(c, maxKm) {
+    if (c.km > 0) {
+      const ancho = maxKm > 0 ? Math.max(4, Math.round((c.km / maxKm) * 100)) : 0;
+      return '<div class="flex items-center justify-end gap-2">' +
+        '<div class="fv-barra" style="width:' + ancho + 'px"></div>' +
+        '<span class="tabular-nums">' + c.km + '</span>' +
+        (c.kmDudoso ? '<span class="text-amber-500" title="Se descartó algún salto de odómetro imposible: puede quedarse corto">~</span>' : '') +
+        '</div>';
+    }
+    if (c.sinGps) {
+      return '<span class="text-amber-500 text-[12px]" ' +
+        'title="Mapon no ha dado ninguna lectura en este tramo. No es que no se haya movido: es que no se sabe">' +
+        'sin GPS</span>';
+    }
+    const senal = c.gpsAt ? hace(c.gpsAt) : null;
+    if (senal && senal.seg > SENAL_VIEJA_MIN * 60) {
+      return '<span class="text-amber-500 tabular-nums" ' +
+        'title="Última señal de Mapon hace ' + esc(senal.txt) + ': el cero puede quedarse corto">0</span>';
+    }
+    return '<span class="opacity-40 tabular-nums">0</span>';
+  }
+
   const TABS = [
     { id: 'todos',        texto: 'Todos',         pasa: () => true },
     { id: 'viaje',        texto: 'En viaje',      pasa: c => c.situacion === 'viaje' },
@@ -188,7 +226,6 @@
     const quien = c.conductor || c.ultimoConductor || '';
     const telefono = c.telefono || c.ultimoTelefono || '';
     const ultimo = !c.conductor && c.ultimoConductor;
-    const ancho = maxKm > 0 && c.km > 0 ? Math.max(4, Math.round((c.km / maxKm) * 100)) : 0;
 
     return '<tr class="fv-fila border-t border-telecab-border" data-mat="' + esc(c.matricula) + '">' +
       '<td class="px-4 py-2.5 font-mono font-semibold text-telecab-text">' + esc(c.matricula) + '</td>' +
@@ -210,13 +247,7 @@
       // Los km con barra: el número dice cuánto, la barra dice cuánto COMPARADO
       // con el resto, que es lo que hace saltar a la vista al que se pasa.
       '<td class="px-4 py-2.5 text-right ' + (mal ? 'text-red-500 font-semibold' : 'text-telecab-muted') + '">' +
-        (c.km > 0
-          ? '<div class="flex items-center justify-end gap-2">' +
-              '<div class="fv-barra" style="width:' + ancho + 'px"></div>' +
-              '<span class="tabular-nums">' + c.km + '</span>' +
-              (c.kmDudoso ? '<span class="text-amber-500" title="Se descartó algún salto de odómetro imposible: puede quedarse corto">~</span>' : '') +
-            '</div>'
-          : '<span class="opacity-40">—</span>') +
+        celdaKm(c, maxKm) +
       '</td></tr>';
   }
 
@@ -260,7 +291,10 @@
   async function abrirFicha(mat) {
     const c = todas().find(x => x.matricula === mat);
     $('#fv-p-mat').textContent = mat;
-    $('#fv-p-sub').textContent = c ? (c.etiqueta + ' · ' + hace(c.desde).txt) : '';
+    $('#fv-p-sub').textContent = c
+      ? c.etiqueta + ' · ' + hace(c.desde).txt +
+        (c.km > 0 ? ' · ' + c.km + ' km' : c.sinGps ? ' · sin GPS' : '')
+      : '';
     $('#fv-p-cuerpo').innerHTML = '<p class="text-sm text-telecab-muted">Buscando su historial…</p>';
     $('#fv-fondo').classList.remove('hidden');
     $('#fv-panel').classList.remove('translate-x-full');

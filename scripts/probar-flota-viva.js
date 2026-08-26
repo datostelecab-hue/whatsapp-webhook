@@ -66,7 +66,21 @@ const bloque = sql.slice(sql.indexOf('UPDATE fv_cat_incidencia SET cc_cluster'))
 const filas = [...bloque.slice(0, bloque.indexOf(') AS v(')).matchAll(
   /\('([a-z_]+)',\s*'([^']+)',\s*'([^']+)',\s*'([^']+)'\)/g)];
 
-comprobar('se leen las cuatro del esquema', filas.length === 4, '(' + filas.length + ')');
+// TODO TIPO DE INCIDENCIA TIENE QUE ESTAR MAPEADO.
+//
+// Si se aniade uno y se olvida el mapeo, la incidencia se justifica pero no
+// llega ninguna llamada al Call Center, y no se entera nadie: no hay error, solo
+// una llamada que no existe. Por eso no se comprueba un numero fijo, sino que la
+// lista de tipos del catalogo y la del mapeo son la misma.
+const seedTipos = sql.slice(sql.indexOf('INSERT INTO fv_cat_incidencia'));
+const tipos = [...seedTipos.slice(0, seedTipos.indexOf('ON CONFLICT')).matchAll(
+  /^\s+\('([a-z_]+)',/gm)].map(m => m[1]);
+const mapeados = filas.map(f => f[1]);
+const sinMapear = tipos.filter(t => !mapeados.includes(t));
+
+comprobar('todos los tipos tienen mapeo', tipos.length > 0 && !sinMapear.length,
+  sinMapear.length ? 'sin mapear: ' + sinMapear.join(', ')
+                   : '(' + tipos.length + ' tipo(s))');
 
 filas.forEach(([, codigo, cluster, subcluster, motivo]) => {
   const m = cc.CATALOGO

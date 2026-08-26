@@ -4,14 +4,19 @@
 // Hay dos tramos del día en que un coche DEBERÍA estar trabajando: 06:30–15:30 y
 // 18:30–03:30. Entre medias hay relevo y no se vigila nada — eso se mira a mano.
 //
-// Dentro de su franja, cuatro cosas obligan a llamar al conductor:
+// Dentro de su franja, cinco cosas obligan a llamar al conductor:
 //
 //   · se desconecta habiendo trabajado      ← el caso claro
 //   · rueda estando desconectado            ← km sin plataforma
 //   · lleva demasiado en descanso           ← comer sí, dos horas no
+//   · rueda estando en descanso             ← km con la plataforma de adorno
 //   · no ha aparecido en toda la franja     ← suele trabajar y hoy no está
 //
-// LA CUARTA ES LA DELICADA, y por eso no mira solo si el coche está apagado:
+// EL TIEMPO Y LOS KILÓMETROS SON DOS AUDITORÍAS, no una. Las dos del medio
+// miran el mismo estado y saltan por separado: veinte minutos en descanso no es
+// noticia, pero veinte minutos y dieciocho kilómetros sí.
+//
+// LA ÚLTIMA ES LA DELICADA, y por eso no mira solo si el coche está apagado:
 // entonces avisaría de todos los coches de repuesto aparcados en la base, todos
 // los días. Solo cuenta si ESE coche suele trabajar a esas horas — y eso se sabe
 // mirando lo que el propio módulo lleva acumulado.
@@ -25,6 +30,10 @@ const ZONA = 'Europe/Madrid';
 
 // Minutos seguidos en descanso a partir de los cuales hay que preguntar.
 const MAX_DESCANSO_MIN = Number(process.env.FLOTA_VIVA_MAX_DESCANSO_MIN) || 45;
+// Y los km. Descansar no es estar quieto: ir a comer son dos o tres kilómetros y
+// eso no es noticia. Veinte, sí. Se vigilan las dos cosas por separado porque un
+// coche puede pasarse en una sin pasarse en la otra — y de hecho es lo normal.
+const MAX_KM_DESCANSO = Number(process.env.FLOTA_VIVA_MAX_KM_DESCANSO) || 5;
 // Margen desde que arranca la franja antes de reclamar a quien no ha aparecido.
 // Nadie ficha a las 06:30 clavadas.
 const GRACIA_MIN = Number(process.env.FLOTA_VIVA_GRACIA_MIN) || 60;
@@ -211,15 +220,28 @@ async function cerrarFranjasPasadas(ahora) {
  *
  * Solo se apunta la primera vez —`DO NOTHING`—, así que da igual cuántas vueltas
  * dé el cron: el corte es el de la primera.
+ *
+ * Y SOLO SE APUNTA DE LOS TRAMOS QUE YA ESTABAN ABIERTOS AL EMPEZAR LA FRANJA.
+ *
+ * Esto es lo que hace que el corte no pueda mentir. Un tramo que arranca a las
+ * 09:21 tiene todos sus kilómetros dentro de la franja por definición: no hay
+ * nada que descontarle, nunca. Sin esa condición, cualquier corte tomado tarde
+ * —el primer arranque tras un despliegue, un borrado a mano a media mañana—
+ * cogía como base los km que ese tramo ya llevaba y los escondía para siempre.
+ * Pasó: un descanso con 19,5 km salió avisando de 1,4 porque el corte se tomó
+ * cuando ya llevaba 18,1.
  */
 async function tomarCorte(franja, diaOperativo) {
   const r = await db.consulta(
     `INSERT INTO fv_corte (vehiculo_uuid, franja, dia_operativo, tramo_id, km_m)
      SELECT a.vehiculo_uuid, $1::varchar, $2::date, a.tramo_id, a.km_m
        FROM fv_ahora a
+       CROSS JOIN (SELECT ($2::date + ($3::int || ' minutes')::interval)
+                            AT TIME ZONE 'Europe/Madrid' AS inicio) f
       WHERE a.tramo_id IS NOT NULL
+        AND a.desde < f.inicio
      ON CONFLICT (vehiculo_uuid, franja, dia_operativo) DO NOTHING`,
-    [franja.codigo, diaOperativo]);
+    [franja.codigo, diaOperativo, franja.inicio_min]);
   return r.rowCount;
 }
 
@@ -349,6 +371,9 @@ async function revisar() {
       // no ha aparecido, y es más grave que las dos cosas.
       if (km > 0) await apunta('rueda_caido', `${km} km estando desconectado`);
       else await resolver(uuid, 'rueda_caido', franja.codigo, diaOperativo);
+      // Ya no está descansando: está apagado, que es otra cosa y peor.
+      await resolver(uuid, 'descanso', franja.codigo, diaOperativo);
+      await resolver(uuid, 'rueda_descanso', franja.codigo, diaOperativo);
       continue;
     }
 
@@ -357,7 +382,20 @@ async function revisar() {
     await resolver(uuid, 'no_aparece', franja.codigo, diaOperativo);
     await resolver(uuid, 'rueda_caido', franja.codigo, diaOperativo);
 
-    if (c.situacion === 'descanso' && min >= MAX_DESCANSO_MIN) {
+    if (c.situacion !== 'descanso') {
+      await resolver(uuid, 'descanso', franja.codigo, diaOperativo);
+      await resolver(uuid, 'rueda_descanso', franja.codigo, diaOperativo);
+      continue;
+    }
+
+    // DESCANSAR SE MIDE EN DOS EJES, Y NO SON EL MISMO AVISO.
+    //
+    // Por tiempo: lleva demasiado rato sin coger nada. Por kilómetros: dice que
+    // descansa y está rodando. Un coche puede pasarse en uno sin pasarse en el
+    // otro, y de hecho el caso que importa es justo ese — veinte minutos en
+    // descanso y dieciocho kilómetros hechos. Con un solo aviso por tiempo, ese
+    // coche no salía en ninguna lista.
+    if (min >= MAX_DESCANSO_MIN) {
       // Si venía descansando de antes de la franja, los minutos que cuentan son
       // los de dentro —por eso no salta a las 06:30 quien lleva parado desde las
       // cinco— pero al que llame le hace falta saber el rato de verdad.
@@ -368,6 +406,12 @@ async function revisar() {
         + (km ? ` · ${km} km` : ''));
     } else {
       await resolver(uuid, 'descanso', franja.codigo, diaOperativo);
+    }
+
+    if (km >= MAX_KM_DESCANSO) {
+      await apunta('rueda_descanso', `${km} km rodando en descanso · lleva ${min} min así`);
+    } else {
+      await resolver(uuid, 'rueda_descanso', franja.codigo, diaOperativo);
     }
   }
 
@@ -380,5 +424,5 @@ async function revisar() {
 module.exports = {
   franjas, franjaDe, cruzaMedianoche, dentroDeFranja, localDe, vispera, abrir, resolver, habituales, cerrarFranjasPasadas,
   yaTrabajaronHoy, tomarCorte, estadoDeFranja, revisar,
-  MAX_DESCANSO_MIN, GRACIA_MIN, DIAS_HABITO, VECES_HABITO,
+  MAX_DESCANSO_MIN, MAX_KM_DESCANSO, GRACIA_MIN, DIAS_HABITO, VECES_HABITO,
 };

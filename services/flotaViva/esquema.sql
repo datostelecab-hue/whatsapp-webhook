@@ -299,6 +299,15 @@ SELECT v.uuid                                   AS vehiculo_uuid,
        -- franja, y para eso el redondeo no vale.
        t.km_m,
        t.km_dudoso,
+       -- CERO KILOMETROS Y "NO LO SABEMOS" NO SON LO MISMO.
+       --
+       -- Si Mapon no ha dado ni una lectura en este tramo, `km` sale 0 y parece
+       -- que el coche no se ha movido, cuando lo que pasa es que no tenemos ni
+       -- idea. En un coche desconectado esa diferencia es justo la pregunta.
+       (t.odometro_visto_m IS NULL)             AS sin_gps,
+       -- Cuando fue la ultima senal de este tramo. Un "0 km" de un equipo que
+       -- lleva tres horas mudo no es un cero, es un silencio.
+       t.senal_at                               AS gps_at,
        t.vueltas,
        -- Quien lo llevaba la ultima vez, para los que estan desconectados.
        ult.conductor_uuid                       AS ultimo_conductor_uuid,
@@ -409,8 +418,16 @@ INSERT INTO fv_cat_incidencia (codigo, etiqueta, detalle, gravedad, orden) VALUE
    'Suma kilometros sin estar en la plataforma', 4, 2),
   ('descanso',     'Lleva demasiado en descanso',
    'Conectado pero sin coger pedidos mas tiempo del razonable', 2, 3),
+  -- EL TIEMPO Y LOS KM SE VIGILAN POR SEPARADO, y este es el motivo.
+  --
+  -- Un coche puede llevar veinte minutos en descanso —nada— y haber hecho
+  -- dieciocho kilometros en esos veinte minutos. Eso no es descansar: es rodar
+  -- fuera de la plataforma con el coche de la empresa, y es mas grave que estar
+  -- parado dos horas. Con un solo aviso por tiempo, ese coche no salia.
+  ('rueda_descanso', 'Rueda estando en descanso',
+   'Suma kilometros mientras dice estar descansando', 4, 4),
   ('no_aparece',   'No ha aparecido en su franja',
-   'Suele trabajar a estas horas y hoy no se ha conectado', 2, 4)
+   'Suele trabajar a estas horas y hoy no se ha conectado', 2, 5)
 ON CONFLICT (codigo) DO UPDATE SET
   etiqueta = EXCLUDED.etiqueta, detalle = EXCLUDED.detalle,
   gravedad = EXCLUDED.gravedad, orden = EXCLUDED.orden;
@@ -471,6 +488,8 @@ UPDATE fv_cat_incidencia SET cc_cluster = v.cl, cc_subcluster = v.sub, cc_motivo
     ('desconectado', 'Asistencia', 'Conexión',         'No se ha conectado a su puesto'),
     -- Un coche que rueda apagado es lo que ellos llaman uso personal.
     ('rueda_caido',  'Conducta',   'Uso del vehículo', 'Uso personal del coche'),
+    -- Rodar en descanso es el mismo uso personal, solo que sin apagar BOLT.
+    ('rueda_descanso', 'Conducta', 'Uso del vehículo', 'Uso personal del coche'),
     -- El mas flojo de los cuatro: "espera extendida" no es exactamente estar en
     -- descanso. Se deja apuntado para que se cambie si no encaja.
     ('descanso',     'Operativa',  'Servicio',         'Espera extendida')

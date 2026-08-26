@@ -46,6 +46,10 @@ const fila = r => ({
   desdeHace: duracion(r.segundos),
   km: r.km == null ? null : Number(r.km),
   kmDudoso: !!r.km_dudoso,
+  // Para que el panel pueda decir "0 km" cuando es 0 y "sin GPS" cuando no se
+  // sabe, en vez de pintar la misma raya para las dos cosas.
+  sinGps: !!r.sin_gps,
+  gpsAt: r.gps_at || null,
   vueltas: r.vueltas,
   ultimoConductor: r.ultimo_conductor || '',
   ultimoTelefono: r.ultimo_telefono || '',
