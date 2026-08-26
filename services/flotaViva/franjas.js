@@ -159,6 +159,31 @@ async function habituales(franja, diaOperativo) {
   return new Set(r.rows.map(x => x.vehiculo_uuid));
 }
 
+/**
+ * Cierra las incidencias de cualquier franja que no sea la de ahora.
+ *
+ * Es lo que convierte "esto sigue pasando" en "esto pasó": una incidencia de la
+ * franja de día no puede seguir abierta a las nueve de la noche. Se cierran
+ * TODAS las de otras franjas o de otros días, y las que nadie justificó salen en
+ * el parte como sin revisar.
+ *
+ * En el relevo se cierran todas, porque ahí no se vigila nada.
+ */
+async function cerrarFranjasPasadas(ahora) {
+  const r = ahora
+    ? await db.consulta(
+      `UPDATE fv_incidencia SET resuelta_at = now()
+        WHERE resuelta_at IS NULL
+          AND NOT (franja = $1 AND dia_operativo = $2)`,
+      [ahora.franja.codigo, ahora.diaOperativo])
+    : await db.consulta('UPDATE fv_incidencia SET resuelta_at = now() WHERE resuelta_at IS NULL');
+
+  if (r.rowCount) {
+    console.log(`📋 [FLOTA VIVA] ${r.rowCount} incidencia(s) cerradas al acabar su franja`);
+  }
+  return r.rowCount;
+}
+
 /** Los coches que YA han estado conectados en esta franja, hoy. */
 async function yaTrabajaronHoy(franja, diaOperativo) {
   // El arranque de la franja en hora local, y su fin —que puede caer al día
@@ -188,7 +213,19 @@ async function yaTrabajaronHoy(franja, diaOperativo) {
 async function revisar() {
   const lista = await franjas();
   const ahora = franjaDe(lista, new Date());
-  if (!ahora) return { franja: null, motivo: 'relevo', abiertas: 0, nuevas: 0 };
+
+  // AL SALIR DE UNA FRANJA SE CIERRA LO QUE QUEDARA ABIERTO.
+  //
+  // Sin esto, una incidencia que salta a las 15:25 —cinco minutos antes de que
+  // acabe el turno de día— se quedaba en rojo para siempre: durante el relevo la
+  // revisión no corre, así que nadie la resolvía, y seguía pidiendo llamada toda
+  // la tarde y dentro del turno de noche.
+  //
+  // Cerrarla no es darla por buena: si nadie la justificó, sale como "sin
+  // revisar" en el parte, que es donde tiene que verse.
+  const cerradas = await cerrarFranjasPasadas(ahora);
+
+  if (!ahora) return { franja: null, motivo: 'relevo', abiertas: 0, nuevas: 0, cerradas };
 
   const { franja, diaOperativo, desdeInicio } = ahora;
   const [estado, trabajaron] = await Promise.all([
@@ -253,7 +290,7 @@ async function revisar() {
 }
 
 module.exports = {
-  franjas, franjaDe, localDe, vispera, abrir, resolver, habituales,
+  franjas, franjaDe, localDe, vispera, abrir, resolver, habituales, cerrarFranjasPasadas,
   yaTrabajaronHoy, revisar,
   MAX_DESCANSO_MIN, GRACIA_MIN, DIAS_HABITO, VECES_HABITO,
 };

@@ -26,6 +26,13 @@ router.get('/', (req, res) => {
   });
 });
 
+// El reporte: que paso en cada franja y que se hizo.
+router.get('/partes', (req, res) => {
+  res.render('flotaVivaPartes', {
+    titulo: 'Partes de incidencias', seccion: 'flota-viva', layout: 'layout-gestion',
+  });
+});
+
 router.get('/api/estado', responde(async () => {
   await db.preparar();
   return panel.estado();
@@ -79,6 +86,11 @@ router.post('/api/incidencia/:id/justificar', responde(async req => {
 // El parte de una franja. Es lo que se mira al cierre.
 router.get('/api/cierre', responde(async req =>
   panel.cierre({ dia: req.query.dia, franja: req.query.franja })));
+
+// Los partes de varios dias, para elegir cual mirar. La columna que importa es
+// la de "sin revisar".
+router.get('/api/partes', responde(async req =>
+  ({ partes: await panel.partes({ desde: req.query.desde, hasta: req.query.hasta }) })));
 
 // Lo que manda Mapon TAL CUAL para una matricula.
 //

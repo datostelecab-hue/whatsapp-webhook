@@ -148,7 +148,7 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
             i.franja, f.etiqueta AS franja_etiqueta, i.dia_operativo,
             v.matricula, i.detalle, i.veces,
             i.abierta_at, i.resuelta_at,
-            i.justificada_at, i.justificada_por, i.motivo,
+            i.justificada_at, i.justificada_por, i.motivo, i.llamada_clave,
             EXTRACT(EPOCH FROM (COALESCE(i.resuelta_at, now()) - i.abierta_at))::bigint AS segundos,
             co.nombre AS conductor, co.telefono
        FROM fv_incidencia i
@@ -167,7 +167,11 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
     duracion: duracion(x.segundos),
     conductor: x.conductor || '', telefono: x.telefono || '',
     justificada: !!x.justificada_at, justificadaPor: x.justificada_por || '',
+    justificadaAt: x.justificada_at,
     motivo: x.motivo || '',
+    // La llamada del Call Center, si llego a crearse. Sin ella, la incidencia
+    // esta explicada aqui pero no cuenta en sus KPIs.
+    llamada: x.llamada_clave || '',
   }));
 }
 
@@ -312,4 +316,31 @@ async function cierre({ dia, franja } = {}) {
   };
 }
 
-module.exports = { estado, historial, incidencias, justificar, clasificacionDe, cierre, duracion };
+/**
+ * Los partes de varios dias de un vistazo.
+ *
+ * Es el reporte que se mira de semana en semana: cada franja de cada dia con
+ * cuantas incidencias hubo y cuantas quedaron SIN REVISAR. Lo que se persigue es
+ * esa segunda columna — lo demas ya se llamo y se explico.
+ */
+async function partes({ desde, hasta } = {}) {
+  const r = await db.consulta(
+    `SELECT i.dia_operativo, i.franja, f.etiqueta AS franja_etiqueta, f.orden,
+            count(*)::int                                              AS total,
+            count(*) FILTER (WHERE i.justificada_at IS NULL)::int       AS sin_revisar,
+            count(*) FILTER (WHERE i.llamada_clave IS NOT NULL)::int    AS con_llamada,
+            count(DISTINCT i.vehiculo_uuid)::int                        AS coches
+       FROM fv_incidencia i
+       JOIN fv_franja f ON f.codigo = i.franja
+      WHERE i.dia_operativo BETWEEN COALESCE($1::date, CURRENT_DATE - 7)
+                                AND COALESCE($2::date, CURRENT_DATE)
+      GROUP BY i.dia_operativo, i.franja, f.etiqueta, f.orden
+      ORDER BY i.dia_operativo DESC, f.orden`, [desde || null, hasta || null]);
+
+  return r.rows.map(x => ({
+    dia: x.dia_operativo, franja: x.franja, franjaEtiqueta: x.franja_etiqueta,
+    total: x.total, sinRevisar: x.sin_revisar, conLlamada: x.con_llamada, coches: x.coches,
+  }));
+}
+
+module.exports = { estado, historial, incidencias, justificar, clasificacionDe, cierre, partes, duracion };

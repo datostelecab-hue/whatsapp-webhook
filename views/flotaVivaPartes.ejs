@@ -1,0 +1,151 @@
+<div class="max-w-[1400px] mx-auto">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-clipboard-list text-telecab-gold"></i> Partes de incidencias
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Lo que pasó en cada franja crítica y qué se hizo. Lo que nadie explicó sale como
+        <span class="text-red-500 font-medium">sin revisar</span>.
+      </p>
+    </div>
+    <a href="/flota-viva" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+       text-sm text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-satellite-dish mr-1"></i> Flota viva
+    </a>
+  </div>
+
+  <!-- Las franjas de relevo NO generan alertas, y conviene que se sepa: es la
+       primera pregunta que hace todo el mundo al ver el parte. -->
+  <div class="mb-4 px-3 py-2 rounded-xl border border-telecab-border bg-telecab-card text-sm text-telecab-muted">
+    <i class="fa-solid fa-circle-info mr-1"></i>
+    Solo se vigila dentro de las franjas críticas. En el <b>relevo</b> —de 15:30 a 18:30 y de
+    03:30 a 06:30— no se genera ninguna alerta: ahí se mira a mano.
+  </div>
+
+  <div class="grid lg:grid-cols-[320px_1fr] gap-4 items-start">
+
+    <!-- Los partes, uno por franja y día -->
+    <aside class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-telecab-border flex items-center gap-2">
+        <input id="p-desde" type="date"
+          class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+        <span class="text-telecab-muted text-xs">a</span>
+        <input id="p-hasta" type="date"
+          class="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+      </div>
+      <div id="p-lista" class="max-h-[70vh] overflow-y-auto"></div>
+    </aside>
+
+    <!-- El detalle del parte elegido -->
+    <section id="p-detalle" class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+      <p class="px-4 py-10 text-center text-sm text-telecab-muted">Elige un parte de la izquierda.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
+    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+
+  const dm = f => String(f || '').slice(0, 10).split('-').reverse().slice(0, 2).join('/');
+  const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  let ELEGIDO = null;
+
+  async function cargarPartes() {
+    const q = new URLSearchParams();
+    if ($('#p-desde').value) q.set('desde', $('#p-desde').value);
+    if ($('#p-hasta').value) q.set('hasta', $('#p-hasta').value);
+    const d = await (await fetch('/flota-viva/api/partes?' + q)).json();
+    const partes = d.partes || [];
+
+    $('#p-lista').innerHTML = partes.length ? partes.map(p => {
+      const activo = ELEGIDO && ELEGIDO.dia === p.dia && ELEGIDO.franja === p.franja;
+      return '<button data-dia="' + esc(p.dia) + '" data-franja="' + esc(p.franja) + '" ' +
+        'class="w-full text-left px-4 py-3 border-b border-telecab-border hover:bg-telecab-card2 ' +
+        (activo ? 'bg-telecab-gold/10' : '') + '">' +
+        '<div class="flex items-center justify-between gap-2">' +
+          '<span class="font-medium text-telecab-text">' + dm(p.dia) + ' · ' + esc(p.franjaEtiqueta) + '</span>' +
+          // Lo que se persigue es esta cifra. Si es cero, el parte esta cerrado.
+          (p.sinRevisar
+            ? '<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-red-500/15 text-red-500">' +
+              p.sinRevisar + ' sin revisar</span>'
+            : '<span class="px-2 py-0.5 rounded-md text-xs bg-emerald-500/15 text-emerald-500">al día</span>') +
+        '</div>' +
+        '<div class="text-xs text-telecab-muted mt-0.5">' + p.total + ' incidencia(s) · ' +
+          p.coches + ' coche(s)' + (p.conLlamada ? ' · ' + p.conLlamada + ' en Call Center' : '') + '</div>' +
+        '</button>';
+    }).join('') : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Sin incidencias en esas fechas.</p>';
+
+    $('#p-lista').querySelectorAll('[data-dia]').forEach(b =>
+      b.addEventListener('click', () => abrir(b.dataset.dia, b.dataset.franja)));
+  }
+
+  async function abrir(dia, franja) {
+    ELEGIDO = { dia, franja };
+    cargarPartes();
+    $('#p-detalle').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>';
+
+    const d = await (await fetch('/flota-viva/api/cierre?dia=' + encodeURIComponent(dia) +
+      '&franja=' + encodeURIComponent(franja))).json();
+    if (d.status !== 'ok') {
+      $('#p-detalle').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(d.msg) + '</p>';
+      return;
+    }
+    const r = d.resumen || {};
+    const filas = (d.incidencias || []).map(x => {
+      // Sin justificar = nadie ha llamado todavia. Es lo unico que se pinta en
+      // rojo: lo demas ya tiene respuesta.
+      const pendiente = !x.justificada;
+      return '<div class="px-4 py-3 border-b border-telecab-border ' + (pendiente ? 'bg-red-500/5' : '') + '">' +
+        '<div class="flex flex-wrap items-center gap-x-3 gap-y-1">' +
+          '<span class="font-mono font-semibold text-telecab-text w-24">' + esc(x.matricula) + '</span>' +
+          '<span class="text-sm ' + (pendiente ? 'text-red-500' : 'text-telecab-muted') + ' w-52">' +
+            esc(x.etiqueta) + (x.veces > 1 ? ' (x' + x.veces + ')' : '') + '</span>' +
+          '<span class="text-sm flex-1 min-w-[12rem] text-telecab-muted">' + esc(x.detalle) + '</span>' +
+          '<span class="text-xs text-telecab-muted tabular-nums">' + hora(x.abierta) + ' · ' + esc(x.duracion) + '</span>' +
+          (pendiente
+            ? '<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-red-500/15 text-red-500">Sin revisar</span>'
+            : '<span class="px-2 py-0.5 rounded-md text-xs bg-emerald-500/15 text-emerald-500">Revisada</span>') +
+        '</div>' +
+        (x.conductor ? '<div class="text-xs text-telecab-muted mt-1">' + esc(x.conductor) +
+          (x.telefono ? ' · ' + esc(x.telefono) : '') + '</div>' : '') +
+        (x.justificada
+          ? '<div class="mt-2 pl-3 border-l-2 border-emerald-500/40 text-sm">' +
+            '<span class="text-telecab-text">' + esc(x.motivo) + '</span>' +
+            '<div class="text-xs text-telecab-muted mt-0.5">' + esc(x.justificadaPor || 'sin nombre') +
+              ' · ' + hora(x.justificadaAt) +
+              (x.llamada ? ' · registrada en Call Center' : ' · <span class="text-amber-500">sin llamada en Call Center</span>') +
+            '</div></div>'
+          : '') +
+        '</div>';
+    }).join('');
+
+    $('#p-detalle').innerHTML =
+      '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-x-5 gap-y-1">' +
+        '<span class="font-semibold text-telecab-text">' + dm(dia) + ' · ' + esc(franja) + '</span>' +
+        '<span class="text-sm"><b class="tabular-nums">' + (r.total || 0) + '</b> ' +
+          '<span class="text-telecab-muted">incidencias</span></span>' +
+        '<span class="text-sm"><b class="tabular-nums text-red-500">' + (r.sinJustificar || 0) + '</b> ' +
+          '<span class="text-telecab-muted">sin revisar</span></span>' +
+        '<span class="text-sm"><b class="tabular-nums">' + (r.coches || 0) + '</b> ' +
+          '<span class="text-telecab-muted">coches</span></span>' +
+      '</div>' +
+      (filas || '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Ninguna incidencia.</p>');
+  }
+
+  // Por omisión, la última semana.
+  const hoy = new Date();
+  const antes = new Date(hoy); antes.setDate(antes.getDate() - 7);
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  $('#p-hasta').value = iso(hoy);
+  $('#p-desde').value = iso(antes);
+  $('#p-desde').addEventListener('change', cargarPartes);
+  $('#p-hasta').addEventListener('change', cargarPartes);
+  cargarPartes();
+})();
+</script>
