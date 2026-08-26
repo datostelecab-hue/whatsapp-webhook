@@ -139,13 +139,17 @@ async function historial(matricula, dias = 2) {
  */
 async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
   const donde = ['1 = 1'], params = [];
-  if (dia)    { params.push(dia);    donde.push(`i.dia_operativo = $${params.length}`); }
+  // ::date explicito. Si llega '2026-08-25T00:00:00.000Z' —que es lo que da un
+  // Date al pasar por JSON— sin el cast la comparacion depende de la zona del
+  // servidor y puede caer en el dia anterior.
+  if (dia)    { params.push(String(dia).slice(0, 10)); donde.push(`i.dia_operativo = $${params.length}::date`); }
   if (franja) { params.push(franja); donde.push(`i.franja = $${params.length}`); }
   if (!incluirJustificadas) donde.push('i.justificada_at IS NULL');
 
   const r = await db.consulta(
     `SELECT i.id, i.tipo, c.etiqueta AS tipo_etiqueta, c.gravedad,
-            i.franja, f.etiqueta AS franja_etiqueta, i.dia_operativo,
+            i.franja, f.etiqueta AS franja_etiqueta,
+            to_char(i.dia_operativo, 'YYYY-MM-DD') AS dia,
             v.matricula, i.detalle, i.veces,
             i.abierta_at, i.resuelta_at,
             i.justificada_at, i.justificada_por, i.motivo, i.llamada_clave,
@@ -161,7 +165,7 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
 
   return r.rows.map(x => ({
     id: Number(x.id), tipo: x.tipo, etiqueta: x.tipo_etiqueta, gravedad: x.gravedad,
-    franja: x.franja, franjaEtiqueta: x.franja_etiqueta, dia: x.dia_operativo,
+    franja: x.franja, franjaEtiqueta: x.franja_etiqueta, dia: x.dia,
     matricula: x.matricula, detalle: x.detalle || '', veces: x.veces,
     abierta: x.abierta_at, resuelta: x.resuelta_at, sigue: !x.resuelta_at,
     duracion: duracion(x.segundos),
@@ -325,7 +329,7 @@ async function cierre({ dia, franja } = {}) {
  */
 async function partes({ desde, hasta } = {}) {
   const r = await db.consulta(
-    `SELECT i.dia_operativo, i.franja, f.etiqueta AS franja_etiqueta, f.orden,
+    `SELECT to_char(i.dia_operativo, 'YYYY-MM-DD') AS dia, i.franja, f.etiqueta AS franja_etiqueta, f.orden,
             count(*)::int                                              AS total,
             count(*) FILTER (WHERE i.justificada_at IS NULL)::int       AS sin_revisar,
             count(*) FILTER (WHERE i.llamada_clave IS NOT NULL)::int    AS con_llamada,
@@ -338,7 +342,7 @@ async function partes({ desde, hasta } = {}) {
       ORDER BY i.dia_operativo DESC, f.orden`, [desde || null, hasta || null]);
 
   return r.rows.map(x => ({
-    dia: x.dia_operativo, franja: x.franja, franjaEtiqueta: x.franja_etiqueta,
+    dia: x.dia, franja: x.franja, franjaEtiqueta: x.franja_etiqueta,
     total: x.total, sinRevisar: x.sin_revisar, conLlamada: x.con_llamada, coches: x.coches,
   }));
 }

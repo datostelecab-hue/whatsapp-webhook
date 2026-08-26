@@ -55,6 +55,7 @@
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
 
   let ELEGIDO = null;
+  const ETIQUETAS = {};   // codigo de franja -> como se llama
 
   async function cargarPartes() {
     const q = new URLSearchParams();
@@ -63,6 +64,7 @@
     const d = await (await fetch('/flota-viva/api/partes?' + q)).json();
     const partes = d.partes || [];
 
+    partes.forEach(p => { ETIQUETAS[p.franja] = p.franjaEtiqueta; });
     $('#p-lista').innerHTML = partes.length ? partes.map(p => {
       const activo = ELEGIDO && ELEGIDO.dia === p.dia && ELEGIDO.franja === p.franja;
       return '<button data-dia="' + esc(p.dia) + '" data-franja="' + esc(p.franja) + '" ' +
@@ -86,7 +88,7 @@
   }
 
   async function abrir(dia, franja) {
-    ELEGIDO = { dia, franja };
+    ELEGIDO = { dia, franja, etiqueta: (ETIQUETAS[franja] || franja) };
     cargarPartes();
     $('#p-detalle').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>';
 
@@ -127,7 +129,8 @@
 
     $('#p-detalle').innerHTML =
       '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-x-5 gap-y-1">' +
-        '<span class="font-semibold text-telecab-text">' + dm(dia) + ' · ' + esc(franja) + '</span>' +
+        '<span class="font-semibold text-telecab-text">' + dm(dia) + ' · ' +
+          esc(ETIQUETAS[franja] || franja) + '</span>' +
         '<span class="text-sm"><b class="tabular-nums">' + (r.total || 0) + '</b> ' +
           '<span class="text-telecab-muted">incidencias</span></span>' +
         '<span class="text-sm"><b class="tabular-nums text-red-500">' + (r.sinJustificar || 0) + '</b> ' +

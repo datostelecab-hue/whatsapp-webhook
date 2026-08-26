@@ -138,24 +138,35 @@ async function resolver(vehiculoUuid, tipo, franja, diaOperativo) {
  * incidencia de "no ha aparecido" saltaría en cada coche de repuesto aparcado.
  */
 async function habituales(franja, diaOperativo) {
+  // LA FRANJA DE NOCHE CRUZA MEDIANOCHE, y aquí eso importa.
+  //
+  // El filtro es por hora del día, así que para la de noche —de 18:30 a 04:00—
+  // no vale un "entre X e Y": hay que aceptar lo de después de las 18:30 O lo de
+  // antes de las 04:00. Antes se estiraba el final hasta las 23:59, y eso dejaba
+  // fuera toda la madrugada: un coche que solo se conecta a las 22:00 contaba,
+  // pero uno que empieza a la una de la mañana no contaba nunca. Su ausencia no
+  // se reclamaba jamás.
+  const cruza = franja.fin_min < franja.inicio_min;
+  const dentro = cruza
+    ? '(minuto >= $3::int OR minuto < $4::int)'
+    : '(minuto >= $3::int AND minuto < $4::int)';
+
   const r = await db.consulta(
-    `SELECT i.vehiculo_uuid
-       FROM (
-         SELECT DISTINCT t.vehiculo_uuid, x.dia_operativo
-           FROM fv_tramo t
-           JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.conectado
-           CROSS JOIN LATERAL (SELECT (t.desde AT TIME ZONE 'Europe/Madrid')::date AS dia_operativo) x
-          WHERE t.desde >= (($2::date - $3::int) || ' 00:00')::timestamp AT TIME ZONE 'Europe/Madrid'
-            AND t.desde < ($2::date || ' 23:59')::timestamp AT TIME ZONE 'Europe/Madrid'
-            AND EXTRACT(HOUR FROM (t.desde AT TIME ZONE 'Europe/Madrid')) * 60
-              + EXTRACT(MINUTE FROM (t.desde AT TIME ZONE 'Europe/Madrid'))
-              BETWEEN $4::int AND $5::int
-       ) i
-      GROUP BY i.vehiculo_uuid
-     HAVING count(*) >= $6::int`,
-    [franja.codigo, diaOperativo, DIAS_HABITO,
-     franja.inicio_min, franja.fin_min < franja.inicio_min ? 1439 : franja.fin_min,
-     VECES_HABITO]);
+    `WITH v AS (
+       SELECT DISTINCT t.vehiculo_uuid,
+              (t.desde AT TIME ZONE 'Europe/Madrid')::date AS dia
+         FROM fv_tramo t
+         JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.conectado
+         CROSS JOIN LATERAL (
+           SELECT EXTRACT(HOUR   FROM (t.desde AT TIME ZONE 'Europe/Madrid')) * 60
+                + EXTRACT(MINUTE FROM (t.desde AT TIME ZONE 'Europe/Madrid')) AS minuto) m
+        WHERE t.desde >= (($1::date - $2::int) || ' 00:00')::timestamp AT TIME ZONE 'Europe/Madrid'
+          AND ${dentro}
+     )
+     SELECT vehiculo_uuid FROM v
+      GROUP BY vehiculo_uuid
+     HAVING count(*) >= $5::int`,
+    [diaOperativo, DIAS_HABITO, franja.inicio_min, franja.fin_min, VECES_HABITO]);
   return new Set(r.rows.map(x => x.vehiculo_uuid));
 }
 
