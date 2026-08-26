@@ -330,9 +330,17 @@ async function revisar() {
   // contador de todos empiece en cero en vez de heredar la madrugada.
   await tomarCorte(franja, diaOperativo);
 
-  const [estado, trabajaron] = await Promise.all([
+  const [estado, trabajaron, activos] = await Promise.all([
     estadoDeFranja(franja, diaOperativo),
     yaTrabajaronHoy(franja, diaOperativo),
+    // QUE AVISOS ESTAN ENCENDIDOS LO DICE LA BASE.
+    //
+    // `fv_cat_incidencia.activa` existia y no lo miraba nadie. Ahora apagar un
+    // tipo entero es un UPDATE: util cuando se ensancha una franja y uno de los
+    // avisos —el de "no ha aparecido", sobre todo— pasa a saltar en media flota
+    // por un cambio de horario y no por un problema.
+    db.consulta('SELECT codigo FROM fv_cat_incidencia WHERE activa')
+      .then(r => new Set(r.rows.map(x => x.codigo))),
   ]);
 
   // La ausencia solo es noticia pasada la gracia: nadie ficha a las 06:30
@@ -355,6 +363,8 @@ async function revisar() {
     const segTotal = Number(c.segundos || 0);
     const comun = { vehiculoUuid: uuid, conductorUuid: c.conductor_uuid, ...clave };
     const apunta = async (tipo, detalle) => {
+      // Apagado: ni se abre ni se deja abierto lo que hubiera de antes.
+      if (!activos.has(tipo)) return resolver(uuid, tipo, franja.codigo, diaOperativo);
       const r = await abrir({ ...comun, tipo, detalle });
       if (r && r.nueva) nuevas++;
       abiertas++;

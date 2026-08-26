@@ -68,6 +68,22 @@ router.get('/api/incidencias', responde(async req => {
 router.get('/api/incidencia/:id/clasificacion', responde(async req =>
   ({ clasificacion: await panel.clasificacionDe(req.params.id) })));
 
+// Las horas que se vigilan, tal como estan en la base AHORA.
+//
+// La pantalla no puede llevarlas escritas: se cambian con un UPDATE y sin
+// desplegar, asi que un texto fijo queda desfasado el dia que alguien mueve un
+// turno — y encima diciendo que no se avisa a unas horas a las que si se avisa.
+router.get('/api/franjas', responde(async () => {
+  await db.preparar();
+  const f = await require('../services/flotaViva/franjas').franjas();
+  return {
+    franjas: f.map(x => ({
+      codigo: x.codigo, etiqueta: x.etiqueta,
+      inicioMin: x.inicio_min, finMin: x.fin_min,
+    })),
+  };
+}));
+
 // Las formas de cerrar una incidencia. Las pide la pantalla para pintar los
 // botones: cuales hay y cual crea llamada lo dice la base, no el front.
 router.get('/api/gestiones', responde(async () => {

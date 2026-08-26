@@ -16,13 +16,12 @@
     </a>
   </div>
 
-  <!-- Las franjas de relevo NO generan alertas, y conviene que se sepa: es la
-       primera pregunta que hace todo el mundo al ver el parte. -->
-  <div class="mb-4 px-3 py-2 rounded-xl border border-telecab-border bg-telecab-card text-sm text-telecab-muted">
-    <i class="fa-solid fa-circle-info mr-1"></i>
-    Solo se vigila dentro de las franjas críticas. En el <b>relevo</b> —de 15:30 a 18:30 y de
-    03:30 a 06:30— no se genera ninguna alerta: ahí se mira a mano.
-  </div>
+  <!-- Las horas que NO se vigilan son la primera pregunta que hace todo el mundo
+       al ver el parte. Se pintan leyendo las franjas de la base, no escritas
+       aquí: se cambian con un UPDATE y sin desplegar, y un texto fijo acaba
+       jurando que no se avisa a unas horas a las que sí se avisa. -->
+  <div id="p-horario"
+    class="mb-4 px-3 py-2 rounded-xl border border-telecab-border bg-telecab-card text-sm text-telecab-muted"></div>
 
   <div class="grid lg:grid-cols-[320px_1fr] gap-4 items-start">
 
@@ -57,6 +56,52 @@
 
   let ELEGIDO = null;
   const ETIQUETAS = {};   // codigo de franja -> como se llama
+
+  const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+
+  /**
+   * Los ratos del día que NO cubre ninguna franja.
+   *
+   * Se recorren los 1440 minutos y se juntan los que quedan fuera. Es fuerza
+   * bruta y da igual —son mil y pico comprobaciones una vez— pero acierta con
+   * cualquier configuración: dos franjas, una sola, tres, o unas que se tocan y
+   * no dejan hueco ninguno.
+   */
+  function huecos(franjas) {
+    const dentro = m => franjas.some(f => f.finMin < f.inicioMin
+      ? (m >= f.inicioMin || m < f.finMin)
+      : (m >= f.inicioMin && m < f.finMin));
+    const fuera = [];
+    let ini = null;
+    for (let m = 0; m <= 1440; m++) {
+      const hay = m < 1440 && !dentro(m);
+      if (hay && ini === null) ini = m;
+      if (!hay && ini !== null) { fuera.push([ini, m]); ini = null; }
+    }
+    // Si el día empieza y acaba descubierto es el mismo hueco dando la vuelta.
+    if (fuera.length > 1 && fuera[0][0] === 0 && fuera[fuera.length - 1][1] === 1440) {
+      const ult = fuera.pop();
+      fuera[0] = [ult[0], fuera[0][1]];
+    }
+    return fuera;
+  }
+
+  async function pintarHorario() {
+    let f = [];
+    try {
+      const d = await (await fetch('/flota-viva/api/franjas')).json();
+      if (d.status === 'ok') f = d.franjas || [];
+    } catch (e) { /* sin esto el parte se lee igual */ }
+    if (!f.length) { $('#p-horario').classList.add('hidden'); return; }
+
+    const cubiertas = f.map(x => esc(x.etiqueta) + ' <b>' + hhmm(x.inicioMin) + '–' + hhmm(x.finMin) + '</b>').join(' · ');
+    const fuera = huecos(f);
+    $('#p-horario').innerHTML = '<i class="fa-solid fa-circle-info mr-1"></i> Se vigila en ' + cubiertas + '. ' +
+      (fuera.length
+        ? 'En el <b>relevo</b> —' + fuera.map(([a, b]) => hhmm(a) + ' a ' + hhmm(b)).join(' y ') +
+          '— no se genera ninguna alerta: ahí se mira a mano.'
+        : 'No queda ningún hueco: se vigila el día entero.');
+  }
 
   async function cargarPartes() {
     const q = new URLSearchParams();
@@ -172,6 +217,7 @@
   $('#p-hasta').value = iso(hoy);
   $('#p-desde').value = iso(antes);
   GestionIncidencia.cargar();
+  pintarHorario();
   $('#p-desde').addEventListener('change', cargarPartes);
   $('#p-hasta').addEventListener('change', cargarPartes);
   cargarPartes();
