@@ -146,5 +146,25 @@ comprobar('estan llamada e ignorada',
 comprobar('alguna gestion crea llamada',
   /'llamada',[^)]*TRUE,\s*TRUE/.test(semGestion));
 
+// -- 5. Dos personas cerrando la misma incidencia ----------------------------
+// La lista se repesca cada treinta segundos, asi que dos pueden descolgar a la
+// vez. Sin la condicion, el segundo pisa el motivo del primero y se crean DOS
+// llamadas en el Call Center para lo mismo — en el libro de OTRO equipo, donde
+// nadie va a ir a borrarlas. Por eso se vigila que la condicion siga puesta.
+console.log('\n== El guardian de las dos manos ==');
+const svcPanel = fs.readFileSync(path.join(RAIZ, 'services/flotaViva/panel.js'), 'utf8');
+const elUpdate = svcPanel.slice(svcPanel.indexOf('SET justificada_at = now()'));
+
+comprobar('el UPDATE solo cierra lo que sigue abierto',
+  /WHERE id = \$1 AND justificada_at IS NULL/.test(elUpdate.slice(0, 400)));
+comprobar('y avisa a quien llego tarde', /yaEstaba: true/.test(svcPanel));
+
+// Si se creara la llamada igual, el guardian no serviria de nada: la incidencia
+// no se pisaria pero el Call Center acabaria con las dos llamadas.
+const iGuardia = svcPanel.indexOf('yaEstaba: true');
+const iLlamada = svcPanel.indexOf('g.crea_llamada && inc.cc_motivo');
+comprobar('y corta antes de crear la llamada',
+  iGuardia > 0 && iLlamada > iGuardia);
+
 console.log(mal ? `\n${mal} COMPROBACIÓN(ES) MAL` : '\nTodo cuadra');
 process.exitCode = mal ? 1 : 0;

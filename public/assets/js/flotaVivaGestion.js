@@ -133,7 +133,25 @@ window.GestionIncidencia = (function () {
       const d = await r.json();
       if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo guardar');
 
-      if (d.ensayo) {
+      // ALGUIEN SE ADELANTO. No es un error: es exactamente para lo que esta el
+      // guardian del servidor. Se dice quien y que dijo, que es lo que hace
+      // falta para no volver a marcar ese numero.
+      if (d.yaEstaba) {
+        const cuando = d.cuando
+          ? new Date(d.cuando).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+          : '';
+        Dialogo.aviso({
+          titulo: 'Ya la había cerrado ' + (d.por || 'otra persona'),
+          html: '<p class="text-sm">' +
+              (d.gestionEtiqueta ? '<b>' + esc(d.gestionEtiqueta) + '</b>' : 'Cerrada') +
+              (cuando ? ' a las ' + esc(cuando) : '') +
+              (d.por ? ' por ' + esc(d.por) : '') + '.</p>' +
+            (d.motivo ? '<p class="text-sm mt-2 text-telecab-muted">' + esc(d.motivo) + '</p>' : '') +
+            '<p class="text-sm mt-3 text-telecab-muted">No se ha guardado nada de lo tuyo y no se ha ' +
+            'creado ninguna llamada: la suya es la que vale.</p>',
+          tono: 'aviso',
+        });
+      } else if (d.ensayo) {
         // Modo prueba: se enseña la llamada que SE HABRÍA creado, para poder
         // comprobar la clasificación sin escribir en su libro.
         Dialogo.aviso({

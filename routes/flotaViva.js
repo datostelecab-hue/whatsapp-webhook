@@ -102,8 +102,13 @@ router.post('/api/incidencia/:id/justificar', responde(async req => {
   const r = await panel.justificar(req.params.id, {
     gestion: b.gestion, motivo: b.motivo, resultado: b.resultado, accion: b.accion, quien,
   });
-  console.log(`✍️  [FLOTA VIVA] Incidencia ${r.id} — ${r.gestionEtiqueta} — por ${quien || '(sin nombre)'}` +
-              (r.llamada ? ` · llamada ${r.llamada}` : r.sinLlamada ? ` · SIN llamada: ${r.sinLlamada}` : ''));
+  if (r.yaEstaba) {
+    console.log(`🤝 [FLOTA VIVA] Incidencia ${r.id}: ${quien || '(sin nombre)'} llegó tarde, ` +
+                `ya la cerró ${r.por || '(sin nombre)'} — ${r.gestionEtiqueta || r.gestion}`);
+  } else {
+    console.log(`✍️  [FLOTA VIVA] Incidencia ${r.id} — ${r.gestionEtiqueta} — por ${quien || '(sin nombre)'}` +
+                (r.llamada ? ` · llamada ${r.llamada}` : r.sinLlamada ? ` · SIN llamada: ${r.sinLlamada}` : ''));
+  }
   return r;
 }));
 

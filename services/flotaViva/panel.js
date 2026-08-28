@@ -230,11 +230,45 @@ async function justificar(id, { gestion = 'llamada', motivo, resultado, accion, 
   // PRIMERO se guarda aquí. La justificación es lo que necesita el parte del
   // cierre, y no puede perderse porque el Call Center —que escribe en una hoja—
   // falle o esté sin cuota.
-  await db.consulta(
+  //
+  // EL PRIMERO QUE LLEGA LA CIERRA. Ese `justificada_at IS NULL` es la mitad de
+  // esta función.
+  //
+  // La lista se repesca cada treinta segundos, así que dos personas pueden estar
+  // mirando la misma fila y descolgar a la vez. Sin la condición, el UPDATE se
+  // ejecutaba dos veces: el segundo pisaba el motivo del primero y se creaban
+  // DOS llamadas en el Call Center para la misma incidencia — que les ensucia
+  // los KPIs y la reincidencia, que es justo lo que se quería evitar.
+  //
+  // Con ella no hace falta ninguna transacción explícita: Postgres bloquea la
+  // fila, el segundo espera al primero y al reevaluar la condición ya no la
+  // cumple. Se queda en cero filas, y de ahí no pasa.
+  const upd = await db.consulta(
     `UPDATE fv_incidencia
         SET justificada_at = now(), justificada_por = $2, motivo = $3, gestion = $4
-      WHERE id = $1`,
+      WHERE id = $1 AND justificada_at IS NULL
+      RETURNING id`,
     [Number(id), String(quien || '').slice(0, 120) || null, texto || null, g.codigo]);
+
+  // Llegó tarde. NO se toca nada y sobre todo NO se crea llamada: se le dice
+  // quién se le adelantó y qué dijo, que es lo que necesita para no volver a
+  // marcar ese número.
+  if (!upd.rowCount) {
+    const ya = (await db.consulta(
+      `SELECT i.justificada_at, i.justificada_por, i.motivo, i.llamada_clave,
+              i.gestion, g.etiqueta AS gestion_etiqueta
+         FROM fv_incidencia i
+         LEFT JOIN fv_cat_gestion g ON g.codigo = i.gestion
+        WHERE i.id = $1`, [Number(id)])).rows[0];
+    if (!ya) throw new Error('No existe esa incidencia');
+    return {
+      id: Number(id), justificada: true, yaEstaba: true,
+      gestion: ya.gestion || '', gestionEtiqueta: ya.gestion_etiqueta || '',
+      por: ya.justificada_por || '', cuando: ya.justificada_at,
+      motivo: ya.motivo || '', llamada: ya.llamada_clave || '',
+      sinLlamada: '',
+    };
+  }
 
   // Y DESPUÉS se crea la llamada, si esta gestión la crea y ese tipo tiene
   // clasificación. Justificar una incidencia llamando ES una llamada: tiene que
