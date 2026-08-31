@@ -1,177 +1,605 @@
-<div class="max-w-5xl mx-auto p-4 sm:p-6">
-
-  <div class="flex items-center gap-3 mb-6">
-    <div class="w-10 h-10 rounded-xl bg-telecab-gold/10 flex items-center justify-center">
-      <i class="fa-solid fa-people-arrows text-telecab-gold"></i>
-    </div>
-    <div>
-      <h1 class="text-xl font-bold text-telecab-text">ETT · Bolsa de empleo</h1>
-      <p class="text-sm text-telecab-muted">Candidatos que nos manda la agencia. Marca la decisión y completa los datos.</p>
-    </div>
-  </div>
-
-  <!-- Importar la matriz del correo -->
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 sm:p-5 mb-5">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-table-cells text-telecab-muted"></i> Importar matriz del correo</h2>
-      <button id="btnToggleImport" class="text-xs text-telecab-muted hover:text-telecab-text">Mostrar / ocultar</button>
-    </div>
-    <div id="importBox">
-      <p class="text-xs text-telecab-muted mb-2">Copia la tabla del correo de la ETT y pégala aquí (se separa por columnas sola). Solo se añaden los teléfonos nuevos; los que ya están no se tocan.</p>
-      <textarea id="pegar" rows="5" placeholder="Pega aquí la tabla del correo…" class="w-full text-sm rounded-xl border border-telecab-border bg-telecab-bg p-3 font-mono text-telecab-text focus:outline-none focus:border-telecab-gold"></textarea>
-      <div class="flex items-center gap-3 mt-3">
-        <button id="btnImportar" class="px-4 py-2 rounded-xl bg-telecab-gold text-white text-sm font-semibold hover:opacity-90">Importar candidatos</button>
-        <span id="importMsg" class="text-sm"></span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Resumen + exportar -->
-  <div class="flex flex-wrap items-center gap-2 mb-4" id="chips"></div>
-
-  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-    <h2 class="font-semibold text-telecab-text">Candidatos</h2>
-    <div class="flex items-center gap-2">
-      <!-- Lo normal es adjuntar el Excel al correo; copiar la matriz queda como alternativa. -->
-      <a id="btnExcel" href="/ett/exportar/excel"
-         class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm hover:bg-telecab-gold-soft transition shadow-gold flex items-center gap-2">
-        <i class="fa-solid fa-file-excel"></i> Descargar Excel para la ETT
-      </a>
-      <button id="btnExportar" class="px-3 py-2 rounded-xl border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text hover:bg-telecab-card2 flex items-center gap-2"
-              title="Copia la matriz en texto, por si prefieres pegarla en el cuerpo del correo">
-        <i class="fa-solid fa-copy"></i> Copiar matriz
-      </button>
-    </div>
-  </div>
-
-  <div id="lista" class="space-y-3">
-    <div class="text-center text-telecab-muted py-10 text-sm">Cargando…</div>
-  </div>
-</div>
+<div id="modulo"></div>
 
 <script>
-  const $ = s => document.querySelector(s);
-  const JORNADAS = ['40h', '32h'];
-  const TURNOS = ['Día', 'Noche'];
-  const ESTADO_ORDEN = { 'Pendiente': 0, 'Presentó': 1, 'Contratado': 2, 'No pasa': 3, 'No se presentó': 4 };
-  const ESTILO = {
-    'Pendiente': 'bg-slate-100 text-slate-600', 'Presentó': 'bg-blue-100 text-blue-700',
-    'Contratado': 'bg-green-100 text-green-700', 'No pasa': 'bg-red-100 text-red-700',
-    'No se presentó': 'bg-amber-100 text-amber-700'
+(function () {
+  const CAT = <%- JSON.stringify(catalogos || {}) %>;
+  const { fecha, fechaHora, esc } = Listado.fmt;
+
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => null);
+    if (!r.ok || (j && j.status === 'error')) throw new Error((j && j.msg) || 'Error ' + r.status);
+    return j;
+  }
+
+  const enviar = (url, metodo, cuerpo) => api(url, {
+    method: metodo,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo || {}),
+  });
+
+  async function hacer(fn, hecho) {
+    try {
+      const r = await fn();
+      await ett.recargar();
+      if (hecho !== false) Dialogo.hecho(hecho || 'Guardado');
+      return r;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo hacer', texto: e.message, tono: 'error' });
+      return null;
+    }
+  }
+
+  // ── Importar la matriz del correo ───────────────────────────────────────
+  //
+  // La agencia manda una TABLA, no un fichero: se copia del correo y se pega.
+  // De ahí salen las fichas directamente, sin pasar por ninguna hoja.
+
+  async function importar() {
+    // Una tabla pegada es UNA solicitud. La referencia es para reconocerla
+    // después: el asunto del correo, "semana 32", lo que sirva — porque a la
+    // tercera hay tres y todas se parecen.
+    const v = await Dialogo.formulario('Importar la tabla de la ETT', [
+      { id: 'texto', etiqueta: 'Pega aquí la tabla del correo', tipo: 'texto-largo',
+        ayuda: 'Se separa por columnas sola. Los teléfonos que ya estén no se tocan, ' +
+               'así que puedes pegar la tabla entera cada semana.' },
+      { id: 'referencia', etiqueta: 'Referencia de la solicitud',
+        ayuda: 'Para reconocerla luego: el asunto del correo, la semana…' },
+      { id: 'recibida', etiqueta: 'Fecha en que la mandaron', tipo: 'fecha',
+        ayuda: 'Si se deja vacía, hoy' },
+    ], { ancho: 'max-w-2xl', textoBoton: 'Importar' });
+    if (!v || !String(v.texto || '').trim()) return;
+
+    const r = await hacer(() => enviar('/ett/api/importar', 'POST', {
+      texto: v.texto, referencia: v.referencia, recibida: v.recibida,
+    }), false);
+    if (!r) return;
+
+    // Fila por fila, y no solo un recuento. Lo que de verdad interesa de una
+    // tabla de la agencia es a quién de esa lista ya conocemos: quien pasó por
+    // aquí antes, y sobre todo quien YA ESTÁ TRABAJANDO con nosotros.
+    const PINTA = {
+      creada:     { icono: 'fa-circle-plus',   color: 'green', texto: 'Nueva' },
+      vuelve:     { icono: 'fa-rotate-left',   color: 'gold',  texto: 'Ya pasó por aquí' },
+      ya_estaba:  { icono: 'fa-circle-check',  color: 'muted', texto: 'Ya estaba' },
+      ya_trabaja: { icono: 'fa-user-check',    color: 'red',   texto: 'YA TRABAJA AQUÍ' },
+      error:      { icono: 'fa-circle-xmark',  color: 'red',   texto: 'No se pudo' },
+    };
+
+    const filas = (r.detalle || []).map(d => {
+      const p = PINTA[d.que] || PINTA.error;
+      return '<div class="flex items-start gap-2 py-1.5 border-b border-telecab-border/40 text-sm">'
+        + '<i class="fa-solid ' + p.icono + ' text-telecab-' + p.color + ' text-xs mt-1"></i>'
+        + '<div class="flex-1"><b>' + esc(d.nombre) + '</b> '
+        + '<span class="text-telecab-muted font-mono text-xs">' + esc(d.telefono) + '</span>'
+        + (d.nota ? '<div class="text-xs text-telecab-muted">' + esc(d.nota) + '</div>' : '')
+        + '</div>'
+        + '<span class="text-[10px] uppercase tracking-wide text-telecab-' + p.color + '">'
+        + esc(p.texto) + '</span></div>';
+    }).join('');
+
+    await Dialogo.aviso({
+      titulo: 'Importación terminada',
+      ancho: 'max-w-2xl',
+      html: '<p class="text-sm">' + r.leidas + ' fila(s) leídas · <b>' + r.creados + '</b> nueva(s)'
+        + (r.vuelven ? ' · ' + r.vuelven + ' que ya pasaron por aquí' : '')
+        + (r.yaEstaban ? ' · ' + r.yaEstaban + ' ya estaban' : '')
+        + (r.yaTrabajan ? ' · <b class="text-telecab-red">' + r.yaTrabajan + ' ya trabajan aquí</b>' : '')
+        + '</p>'
+        + '<div class="mt-3 max-h-80 overflow-y-auto">' + filas + '</div>',
+      tono: (r.yaTrabajan || r.errores) ? 'aviso' : 'ok',
+    });
+  }
+
+  // ── A qué solicitud se responde ─────────────────────────────────────────
+  //
+  // La agencia manda la gente por SOLICITUDES: un correo, una tabla. Y se le
+  // responde dos veces sobre la misma — la primera con lo resuelto y los
+  // pendientes de asignar, la segunda cuando esos ya tienen puesto o se
+  // descartan.
+  //
+  // Se elige la solicitud y no una fecha: dos correos distintos pueden citar
+  // gente el mismo día, y una misma tabla repartir las entrevistas en dos.
+
+  const enES = v => {
+    const p = String(v || '').slice(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (v || '');
   };
-  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 
-  async function cargar() {
-    try {
-      const r = await fetch('/ett/api/datos', { headers: { Accept: 'application/json' } });
-      const d = await r.json();
-      if (d.status !== 'ok') throw new Error(d.msg || 'error');
-      pintarChips(d.resumen);
-      pintarLista(d.lista);
-    } catch (e) { $('#lista').innerHTML = '<div class="text-center text-red-600 py-8 text-sm">No pude cargar: ' + esc(e.message) + '</div>'; }
+  /**
+   * En qué situación está un candidato DE CARA A LA AGENCIA.
+   *
+   * No es nuestro estado del embudo —ese tiene quince valores— sino las cuatro
+   * palabras con las que se le contesta. Escrito una vez: lo usan las cifras, el
+   * filtro y, en el servidor, la vista que decide si la tanda se puede mandar.
+   *
+   * Contratado lo dice la FECHA DE ALTA, no tener contrato abierto: este Excel
+   * es lo que hace que la agencia dé el alta, así que si esperásemos al contrato
+   * no se lo diríamos nunca.
+   */
+  const SITUACION = c => (c.inicio_previsto ? 'contratado'
+    : c.etiqueta_ett === 'Pendiente' ? 'pendiente'
+      : c.etiqueta_ett ? 'descartado'
+        : 'sin_decidir');
+
+  /** Las tandas tal como las trajo la lista. Ya están en pantalla: no se repiden. */
+  const tandas = () => (ett && ett.extra && ett.extra.solicitudes) || [];
+
+  /** Por dónde va una tanda, dicho para leerlo de un vistazo. */
+  const RESUMEN_FASE = {
+    sin_decidir:   s => s.sin_decidir + ' sin decidir',
+    lista:         () => 'lista para el primer envío',
+    falta_asignar: s => s.pendientes + ' pendiente(s) sin regularizar',
+    lista_cierre:  () => 'lista para el segundo envío',
+    cerrada:       () => 'cerrada',
+  };
+
+  /**
+   * Qué le falta a esta tanda, dicho entero.
+   *
+   * Es la línea que de verdad se lee al entrar: no cuántos hay, sino qué hay que
+   * hacer con ellos y qué está bloqueando el siguiente paso.
+   */
+  function notaDeTanda(s) {
+    const cuando = s.ultimo_envio_at ? ' el ' + enES(s.ultimo_envio_at) : '';
+    if (s.fase === 'sin_decidir') return {
+      tono: 'mal', icono: 'fa-circle-exclamation',
+      texto: s.etiqueta + ': faltan ' + s.sin_decidir + ' por decidir. La tanda se manda '
+        + 'entera, así que hasta que no estén todos no se puede generar el Excel.' };
+    if (s.fase === 'lista') return {
+      tono: 'bien', icono: 'fa-paper-plane',
+      texto: s.etiqueta + ': todo decidido y sin mandar. Toca el primer Excel para la agencia.' };
+    // Ya se mandó el primero y siguen habiendo pendientes: AQUÍ NO SE MANDA.
+    // El segundo envío es justo para contar que dejaron de estarlo, así que con
+    // ellos sin tocar la agencia recibiría dos veces la misma tabla.
+    if (s.fase === 'falta_asignar') return {
+      tono: 'aviso', icono: 'fa-user-clock',
+      texto: s.etiqueta + ': primer Excel enviado' + cuando + '. Quedan ' + s.pendientes
+        + ' pendiente(s) de asignar, y hasta que no estén todos contratados o fuera '
+        + 'no se puede mandar el segundo.' };
+    if (s.fase === 'lista_cierre') return {
+      tono: 'bien', icono: 'fa-paper-plane',
+      texto: s.etiqueta + ': primer Excel enviado' + cuando + '. Ya no queda nadie pendiente '
+        + 'de asignar, así que toca el segundo y último envío.' };
+    return {
+      tono: 'info', icono: 'fa-circle-check',
+      texto: s.etiqueta + ': contestada entera' + cuando + '. No hay nada más que mandarle.' };
   }
 
-  function pintarChips(r) {
-    const chip = (n, txt, cls) => '<span class="px-3 py-1.5 rounded-full text-xs font-semibold ' + cls + '">' + n + ' ' + txt + '</span>';
-    $('#chips').innerHTML =
-      chip(r.total, 'total', 'bg-telecab-card2 text-telecab-text') +
-      chip(r.pendientes, 'por decidir', 'bg-blue-100 text-blue-700') +
-      chip(r.contratados, 'contratados', 'bg-green-100 text-green-700') +
-      chip(r.noPasan, 'no pasan', 'bg-red-100 text-red-700') +
-      chip(r.noPresentados, 'no se presentaron', 'bg-amber-100 text-amber-700');
-  }
+  /**
+   * A qué tanda se responde.
+   *
+   * Si ya hay una elegida en el filtro, se responde a ESA sin preguntar: es la
+   * que estás mirando. Volver a preguntarlo no es confirmar, es una ocasión más
+   * de equivocarse.
+   *
+   * Devuelve `null` si se cancela; si no, el id (o `null` dentro del objeto
+   * cuando no hay ninguna tanda y se manda todo).
+   */
+  async function elegirSolicitud(titulo, { soloEnviables = false } = {}) {
+    const todas = tandas();
+    if (!todas.length) return { id: null };
 
-  function pintarLista(lista) {
-    if (!lista.length) { $('#lista').innerHTML = '<div class="text-center text-telecab-muted py-10 text-sm">Aún no hay candidatos. Pega la matriz del correo arriba.</div>'; return; }
-    lista.sort((a, b) => (ESTADO_ORDEN[a.estado] ?? 9) - (ESTADO_ORDEN[b.estado] ?? 9) || a.nombre.localeCompare(b.nombre));
-    $('#lista').innerHTML = lista.map(tarjeta).join('');
-    wire();
-  }
+    // La que está puesta en el filtro manda, ESTÉ COMO ESTÉ.
+    //
+    // Aunque no se pueda mandar: si la tanda que tienes delante está bloqueada,
+    // lo que hay que hacer es decírtelo, no prepararte otra por tu cuenta. Ese
+    // es el fallo que se cuela sin que nadie lo note — se manda una tanda que no
+    // era y nadie mira el nombre del fichero.
+    const puesta = ett && ett.filtros && ett.filtros.tanda;
+    const yaElegida = todas.find(s => String(s.id) === String(puesta || ''));
+    if (yaElegida) return { id: yaElegida.id };
 
-  function tarjeta(c) {
-    const chip = '<span class="px-2.5 py-1 rounded-full text-xs font-semibold ' + (ESTILO[c.estado] || 'bg-slate-100 text-slate-600') + '">' + esc(c.estado || 'Pendiente') + '</span>';
-    const botones = ['No se presentó', 'Presentó', 'Contratado', 'No pasa'].map(e =>
-      '<button data-dec="' + e + '" data-tel="' + c.telefono + '" class="dec px-2.5 py-1.5 rounded-lg text-xs border ' +
-      (c.estado === e ? 'border-telecab-gold text-telecab-gold font-semibold' : 'border-telecab-border text-telecab-muted hover:bg-telecab-card2') + '">' + e + '</button>').join('');
-    // Datos de Selección: visibles cuando presentó o contratado
-    const mostrarDatos = c.estado === 'Contratado' || c.estado === 'Presentó';
-    const sel = j => JORNADAS.map(o => '<option ' + (c.jornada === o ? 'selected' : '') + '>' + o + '</option>').join('');
-    const selT = TURNOS.map(o => '<option ' + (c.turno === o ? 'selected' : '') + '>' + o + '</option>').join('');
-    const datos = !mostrarDatos ? '' :
-      '<div class="mt-3 pt-3 border-t border-telecab-border grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">' +
-      campo('Fecha alta', '<input value="' + esc(c.fecha_alta) + '" class="f-fecha w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5" placeholder="dd/mm/aaaa">') +
-      campo('Jornada', '<select class="f-jornada w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5"><option value=""></option>' + sel() + '</select>') +
-      campo('Turno', '<select class="f-turno w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5"><option value=""></option>' + selT + '</select>') +
-      campo('Zona', '<input value="' + esc(c.zona) + '" list="dl-zonas" class="f-zona w-full text-sm rounded-lg border border-telecab-border bg-telecab-bg px-2 py-1.5" placeholder="GETAFE…">') +
-      '<button data-tel="' + c.telefono + '" class="guardar px-3 py-1.5 rounded-lg bg-telecab-gold text-white text-sm font-semibold h-[34px]">Guardar</button>' +
-      '</div>';
-    return '<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4" data-card="' + c.telefono + '">' +
-      '<div class="flex items-start justify-between gap-3">' +
-      '<div><div class="font-semibold text-telecab-text">' + esc(c.nombre || '(sin nombre)') + '</div>' +
-      '<div class="text-xs text-telecab-muted mt-0.5">📞 ' + esc(c.telefono) + (c.dni ? ' · ' + esc(c.dni) : '') + (c.correo ? ' · ' + esc(c.correo) : '') + '</div>' +
-      (c.direccion ? '<div class="text-xs text-telecab-muted">📍 ' + esc(c.direccion) + (c.cp ? ', ' + esc(c.cp) : '') + '</div>' : '') +
-      '<div class="text-xs text-telecab-muted mt-0.5">🗓 ' + esc(c.fecha_entrevista) + ' ' + esc(c.hora_entrevista) + ' · <span class="text-telecab-text">ETT:</span> ' + esc(c.jornada_ett) + ' ' + esc(c.turno_ett) + '</div>' +
-      '</div>' + chip + '</div>' +
-      '<div class="flex flex-wrap gap-2 mt-3">' + botones + '</div>' + datos + '</div>';
-  }
-  function campo(label, control) { return '<div><label class="block text-[11px] text-telecab-muted mb-1">' + label + '</label>' + control + '</div>'; }
-
-  function wire() {
-    document.querySelectorAll('.dec').forEach(b => b.addEventListener('click', async () => {
-      await accion('/ett/decision', { tel: b.dataset.tel, estado: b.dataset.dec });
-      cargar();
-    }));
-    document.querySelectorAll('.guardar').forEach(b => b.addEventListener('click', async () => {
-      const card = b.closest('[data-card]');
-      await accion('/ett/campos', {
-        tel: b.dataset.tel,
-        fecha_alta: card.querySelector('.f-fecha').value,
-        jornada: card.querySelector('.f-jornada').value,
-        turno: card.querySelector('.f-turno').value,
-        zona: card.querySelector('.f-zona').value
+    const lista = soloEnviables ? todas.filter(s => s.puede_enviar) : todas;
+    if (!lista.length) {
+      await Dialogo.aviso({
+        titulo: 'No hay ninguna tanda que mandar',
+        html: '<p class="text-sm">Todas están contestadas o tienen gente sin decidir. '
+          + 'Elige una arriba para ver qué le falta.</p>',
+        tono: 'aviso',
       });
-      b.textContent = 'Guardado ✓';
-      setTimeout(() => { b.textContent = 'Guardar'; }, 1500);
+      return null;
+    }
+    if (lista.length === 1) return { id: lista[0].id };
+
+    const opciones = lista.map(s => ({
+      valor: s.id,
+      texto: s.etiqueta + ' — ' + s.candidatos + ' candidato(s) · '
+        + (RESUMEN_FASE[s.fase] || RESUMEN_FASE.cerrada)(s),
     }));
+
+    const v = await Dialogo.formulario(titulo, [
+      { id: 'solicitud', etiqueta: 'Tanda de la agencia', tipo: 'lista',
+        opciones, valor: opciones[0].valor, obligatorio: true },
+    ], { ancho: 'max-w-lg', textoBoton: 'Preparar' });
+    if (!v || !v.solicitud) return null;
+    return { id: Number(v.solicitud) };
   }
 
-  async function accion(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
-    const d = await r.json();
-    if (d.status !== 'ok') alert(d.msg || 'Error');
-    return d;
+  const consulta = id => (id ? '?solicitud=' + id : '');
+
+  /**
+   * Apunta que la tanda ya salió.
+   *
+   * El correo lo manda una persona, así que esto es lo más cerca que puede estar
+   * el sistema de saberlo: se marca justo después de que la tabla acabe en el
+   * portapapeles o el Excel en el disco. De aquí sale la regla del segundo
+   * envío, así que sin esto la pantalla no sabría si toca o no.
+   */
+  async function marcarEnviado(id, formato) {
+    if (!id) return;
+    const r = await hacer(() => enviar('/ett/api/solicitud/' + id + '/enviado', 'POST', { formato }), false);
+    if (!r) return;
+    Dialogo.hecho(r.cerrada
+      ? 'Envío ' + r.orden + ' apuntado. Nadie quedó pendiente: la tanda queda cerrada.'
+      : 'Envío ' + r.orden + ' apuntado. Quedan ' + r.pendientes + ' pendiente(s) de asignar.');
   }
 
-  // Importar
-  $('#btnToggleImport').addEventListener('click', () => $('#importBox').classList.toggle('hidden'));
-  $('#btnImportar').addEventListener('click', async () => {
-    const texto = $('#pegar').value;
-    if (!texto.trim()) { $('#importMsg').innerHTML = '<span class="text-telecab-muted">Pega la tabla primero.</span>'; return; }
-    $('#btnImportar').disabled = true; $('#importMsg').innerHTML = '<span class="text-telecab-muted">Importando…</span>';
-    try {
-      const r = await fetch('/ett/importar', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ texto }) });
-      const d = await r.json();
-      if (d.status !== 'ok') { $('#importMsg').innerHTML = '<span class="text-red-600">' + esc(d.msg || 'Error') + '</span>'; }
-      else {
-        $('#importMsg').innerHTML = '<span class="text-green-700">✅ ' + d.añadidos + ' nuevos' + (d.yaEstaban ? ' · ' + d.yaEstaban + ' ya estaban' : '') + '</span>';
-        $('#pegar').value = ''; cargar();
-      }
-    } catch (e) { $('#importMsg').innerHTML = '<span class="text-red-600">' + esc(e.message) + '</span>'; }
-    $('#btnImportar').disabled = false;
-  });
 
-  // Exportar (copiar al portapapeles)
-  $('#btnExportar').addEventListener('click', async () => {
+  /**
+   * El Excel con formato, que es lo que se adjunta al correo.
+   *
+   * Se comprueba ANTES de descargarlo. Una descarga del navegador no puede
+   * enseñar un error: si el servidor se niega, el archivo simplemente no
+   * aparece y no hay forma de saber por qué. Así que primero se pide la matriz
+   * —que sí devuelve el motivo— y solo si sale bien se lanza la descarga.
+   */
+  async function descargarExcel() {
+    const t = await elegirSolicitud('Excel para la agencia', { soloEnviables: true });
+    if (!t) return;
+    const q = consulta(t.id);
     try {
-      const r = await fetch('/ett/exportar');
-      const txt = await r.text();
-      await navigator.clipboard.writeText(txt);
-      const b = $('#btnExportar'); const o = b.innerHTML;
-      b.innerHTML = '<i class="fa-solid fa-check text-green-600"></i> Copiado';
-      setTimeout(() => { b.innerHTML = o; }, 1800);
-    } catch (e) { alert('No pude copiar: ' + e.message); }
-  });
+      await api('/ett/api/comprobar' + q);
+    } catch (e) {
+      return Dialogo.aviso({
+        titulo: 'Esta tanda no se puede mandar',
+        html: '<p class="text-sm">' + esc(e.message) + '</p>',
+        tono: 'aviso',
+      });
+    }
+    window.location.href = '/ett/api/excel' + q;
+    await marcarEnviado(t.id, 'excel');
+  }
 
-  cargar();
+  // ── Acciones de la ficha ────────────────────────────────────────────────
+
+  /**
+   * No pasa, y por qué.
+   *
+   * De una entrevista de la ETT salen TRES cosas y no quince: contratado con
+   * fecha, pendiente de asignar, o no pasa. Aquí había un desplegable con todos
+   * los estados del embudo, y la mayoría no significan nada por esta vía.
+   *
+   * El motivo es obligatorio, y no es texto libre: cada uno lleva a SU estado
+   * —no presentarse no es no superar la entrevista, y la agencia los lee
+   * distinto— y es el justificante que se le manda en el Excel. Quién lleva a
+   * dónde lo dice el catálogo, así que esta pantalla no elige ningún estado:
+   * manda el motivo y ya está.
+   */
+  async function accionDescartar(d) {
+    const motivos = CAT.motivos || [];
+    const v = await Dialogo.formulario('¿Por qué no pasa ' + d.quien + '?', [
+      { id: 'motivoCodigo', etiqueta: 'Motivo', tipo: 'lista', obligatorio: true,
+        valor: motivos.length ? motivos[0].codigo : '',
+        opciones: motivos.map(m => ({ valor: m.codigo, texto: m.etiqueta })) },
+      { id: 'detalle', etiqueta: 'Explicación', tipo: 'texto-largo',
+        ayuda: 'Obligatoria si eliges "Otro motivo".' },
+    ], { textoBoton: 'No pasa',
+         nota: 'Esto es lo que se le devuelve a la agencia como justificante.' });
+    if (!v || !v.motivoCodigo) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/descartar', 'POST', v),
+      'Queda registrado por qué no pasa');
+  }
+
+  /**
+   * Elegido, y sin coche todavía.
+   *
+   * Para la agencia es "Pendiente" en su Excel, pero aquí tiene su propio
+   * nombre: pendiente de ASIGNAR. Antes esto se conseguía dejándole en
+   * "Entrevistado", que dice otra cosa —que se le entrevistó, no que se le
+   * eligió—, así que dos hechos distintos compartían nombre.
+   *
+   * Es además lo único que obliga a un segundo envío: sin nadie aquí, la tanda
+   * queda contestada del todo con el primero.
+   */
+  async function accionPendiente(d) {
+    const ok = await Dialogo.confirmar({
+      titulo: '¿Pendiente de asignar?',
+      texto: d.quien + ' queda elegido y a la espera de plaza. A la agencia se le manda como '
+        + '"Pendiente", y hasta que tenga fecha de alta la tanda necesitará un segundo envío.',
+      si: 'Dejar pendiente',
+    });
+    if (!ok) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/estado', 'POST',
+      { estado: 'pendiente_asignar' }), 'Pendiente de asignar');
+  }
+
+  /** El resto de la ficha: los datos de la persona. */
+  async function accionDatos(d) {
+    const LISTAS = {
+      turno_id: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })),
+      base_zona_id: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })),
+      canal: (CAT.canales || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })),
+    };
+    const campos = (CAT.campos || []).map(c => ({
+      id: c.id, etiqueta: c.etiqueta || c.id, grupo: c.grupo,
+      ayuda: c.id === 'iban' && d.tiene_iban
+        ? 'Ya hay uno guardado. Escribe solo si quieres cambiarlo.' : c.ayuda,
+      tipo: LISTAS[c.id] ? 'lista' : (c.tipo || 'texto'),
+      opciones: LISTAS[c.id] || c.opciones,
+      valor: c.id === 'iban' ? ''
+        : c.tipo === 'fecha' ? fecha(d[c.id])
+          : (d[c.id] == null ? '' : String(d[c.id])),
+    }));
+
+    const v = await Dialogo.formulario('Datos de ' + d.quien, campos, {
+      ancho: 'max-w-3xl', columnas: 2,
+      nota: 'Cada cambio queda registrado con tu nombre y la hora.',
+    });
+    if (!v) return;
+
+    const cambios = {};
+    campos.forEach(c => {
+      const ahora = v[c.id] == null ? '' : String(v[c.id]);
+      if (c.id === 'iban') { if (ahora) cambios.iban = ahora; return; }
+      const antes = c.tipo === 'fecha' ? (Dialogo.aISO(c.valor) || '') : (c.valor || '');
+      if (ahora !== antes) cambios[c.id] = v[c.id];
+    });
+    if (!Object.keys(cambios).length) return;
+    await hacer(() => enviar('/ett/api/candidatura/' + d.id, 'PUT', cambios));
+  }
+
+  /** Contratar: deja de ser candidato y pasa a la plantilla, con contrato de ETT. */
+  async function accionRRHH(d) {
+    if ((d.faltan || []).length) {
+      return Dialogo.aviso({
+        titulo: 'Todavía falta algo',
+        html: '<p class="text-sm">Antes de pasar a RRHH hay que completar:</p>'
+          + '<ul class="text-sm mt-2 space-y-1 list-disc pl-4">'
+          + d.faltan.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>',
+        tono: 'aviso',
+      });
+    }
+    // Cuanto se decide al contratar, en un solo sitio.
+    //
+    // Estaba partido en dos botones: este pedía fecha y horas, y había que pasar
+    // antes por otro a poner turno y zona. Lo que pasaba de verdad es que se
+    // contrataba sin turno, y esa persona llegaba al planificador sin poder
+    // colocarse — el dato se había quedado en la cabeza de quien la entrevistó.
+    const v = await Dialogo.formulario('Contratar a ' + d.quien, [
+      { id: 'alta', etiqueta: 'Fecha de alta', tipo: 'fecha',
+        valor: fecha(d.inicio_previsto), obligatorio: true },
+      // Jornada y turno salen de la base, no de una lista escrita aquí: si
+      // mañana se contrata a 20 horas, se añade una fila y ya está.
+      { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista', obligatorio: true,
+        valor: d.jornada_horas ? String(Number(d.jornada_horas)) : '',
+        opciones: (CAT.jornadas || []).map(x => ({ valor: String(Number(x.horas)), texto: x.etiqueta })) },
+      { id: 'turnoId', etiqueta: 'Turno', tipo: 'lista', obligatorio: true,
+        valor: d.turno_id || '',
+        opciones: (CAT.turnos || []).filter(x => x.asignable)
+          .map(x => ({ valor: x.id, texto: x.etiqueta })) },
+      { id: 'zonaId', etiqueta: 'Zona', tipo: 'lista', obligatorio: true,
+        valor: d.base_zona_id || '',
+        opciones: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })) },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT',
+        ayuda: 'Si se deja vacío se usa el configurado en el servidor' },
+    ], { columnas: 2,
+         nota: 'Se le abre el periodo de empleo con contrato de ETT y su turno empieza el día '
+             + 'del alta. A los tres meses pasa a plantilla propia.' });
+    if (!v || !v.alta) return;
+
+    const r = await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/rrhh', 'POST', v), false);
+    if (!r) return;
+    await Dialogo.aviso({
+      titulo: 'Pasa a RRHH',
+      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>'
+        + (r.faltaBolt
+          ? '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
+            + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>'
+          : '<p class="text-sm mt-2">Su cuenta de BOLT queda enlazada a la ficha.</p>'),
+      tono: r.faltaBolt ? 'aviso' : 'ok',
+    });
+  }
+
+  /**
+   * Borrar una candidatura que no debería existir.
+   *
+   * No es lo mismo que descartar: descartar es una decisión del proceso y deja
+   * rastro. Esto es para un teléfono mal tecleado, una fila duplicada o una
+   * prueba. El servidor se niega si la persona ha trabajado aquí.
+   */
+  async function accionEliminar(d) {
+    const ok = await Dialogo.confirmar({
+      titulo: '¿Borrar la candidatura de ' + d.quien + '?',
+      html: '<p class="text-sm">Desaparece del sistema, con sus documentos. <b>No tiene vuelta atrás.</b></p>'
+        + '<p class="text-sm mt-2 text-telecab-muted">Si lo que pasa es que no sigue en el proceso, '
+        + 'no la borres: <b>descártala</b>, y queda constancia de que se presentó.</p>',
+      tono: 'peligro',
+      si: 'Borrar',
+    });
+    if (!ok) return;
+    const r = await hacer(() => api('/ett/api/candidatura/' + d.id, { method: 'DELETE' }), false);
+    if (!r) return;
+    ett.volver();
+    Dialogo.hecho('Borrada la candidatura de ' + r.quien
+      + (r.personaBorrada ? ' y su ficha' : ' (la ficha se queda: tiene más historia)'));
+  }
+
+  // ── La pantalla ─────────────────────────────────────────────────────────
+
+  const ett = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'ETT · Bolsa de empleo',
+    icono: 'fa-people-arrows',
+    clave: 'id',
+    origen: '/ett/api/lista',
+    vacio: 'Todavía no hay candidatos de la agencia. Pega su tabla para empezar.',
+    buscar: {
+      texto: 'Buscar nombre, teléfono, DNI…',
+      campos: ['quien', 'telefono', 'dni_nie'],
+    },
+    // Lo que entra y lo que sale, nada más. Copiar la tabla en texto hacía lo
+    // mismo que el Excel pero peor, y cerrar la solicitud dejó de hacer falta el
+    // día que se cierra sola al mandar el último envío.
+    acciones: [
+      { texto: 'Pegar tabla del correo', icono: 'fa-table', onClick: importar },
+      { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
+        onClick: descargarExcel },
+    ],
+
+    // El recuento de candidatos ya lo dice la tira de cifras, así que aquí se
+    // dice lo otro que hace falta saber al entrar: cuántas tandas hay abiertas.
+    subtitulo: (v, t, extra) => {
+      const abiertas = (extra.solicitudes || []).filter(x => !x.cerrada_at).length;
+      return abiertas
+        ? abiertas + ' tanda(s) abierta(s) de la agencia'
+        : (extra.solicitudes || []).length + ' tanda(s), todas contestadas';
+    },
+
+    // Las cifras en una línea y no en cuatro tarjetas: lo que se viene a mirar
+    // aquí es la LISTA, y media pantalla de tarjetas la empujaba fuera de la
+    // vista. Se cuentan sobre lo que se está viendo, así que al filtrar por una
+    // tanda son las de esa tanda.
+    cifras: v => {
+      const n = k => v.filter(f => SITUACION(f) === k).length;
+      const con = (etiqueta, valor, tono, situacion) =>
+        ({ etiqueta, valor, tono, filtro: situacion ? { id: 'situacion', valor: situacion } : null });
+      return [
+        con('en la tanda', v.length),
+        con('contratados', n('contratado'), 'green', 'contratado'),
+        con('pendientes de asignar', n('pendiente'), 'warn', 'pendiente'),
+        con('sin decidir', n('sin_decidir'), 'red', 'sin_decidir'),
+        con('descartados', n('descartado'), 'muted', 'descartado'),
+      ];
+    },
+
+    // Y debajo, lo accionable: qué le falta a la tanda que estás mirando para
+    // poder contestarle a la agencia.
+    nota: (v, extra, filtros) => {
+      const lista = extra.solicitudes || [];
+      const s = lista.find(x => String(x.id) === String(filtros.tanda || ''));
+      if (s) return notaDeTanda(s);
+
+      // Sin tanda elegida se dice lo que hay en TODAS, que es lo que se quiere
+      // saber al entrar: si algo espera por nosotros. Y se separa lo que ESTÁ
+      // parado de lo que ya se puede mandar: no es lo mismo tener que decidir
+      // que tener que darle a un botón.
+      const bloqueadas = lista.filter(x => x.fase === 'sin_decidir' || x.fase === 'falta_asignar').length;
+      const porMandar = lista.filter(x => x.puede_enviar).length;
+      if (!bloqueadas && !porMandar) return null;
+      const trozos = [];
+      if (bloqueadas) trozos.push(bloqueadas + ' esperando por nosotros');
+      if (porMandar) trozos.push(porMandar + ' lista(s) para mandar');
+      return {
+        tono: bloqueadas ? 'aviso' : 'info', icono: 'fa-layer-group',
+        texto: 'Tandas: ' + trozos.join(' · ') + '. Elige una arriba para ver qué le falta.',
+      };
+    },
+
+    filtros: [
+      // La tanda primero: es la unidad con la que se trabaja aquí. Todo lo demás
+      // —mandar el Excel, cerrarla, saber si falta un segundo envío— cuelga de
+      // cuál estés mirando.
+      { id: 'tanda', etiqueta: 'Tanda', campo: 'solicitud_id', textoTodos: 'Todas las tandas',
+        opciones: (filas, extra) => (extra.solicitudes || []).map(x => ({
+          valor: String(x.id), texto: x.etiqueta, cuenta: x.candidatos })) },
+      // Las cuatro palabras de la agencia. Es como se mira la tanda cuando hay
+      // que contestarle, y no coincide con nuestro embudo: "pendiente" para
+      // ellos es pendiente de ASIGNAR.
+      { id: 'situacion', etiqueta: 'Situación', textoTodos: 'Toda la tanda',
+        pasa: (f, v) => SITUACION(f) === v,
+        opciones: [
+          { valor: 'contratado', texto: 'Contratados' },
+          { valor: 'pendiente', texto: 'Pendientes de asignar' },
+          { valor: 'sin_decidir', texto: 'Sin decidir' },
+          { valor: 'descartado', texto: 'Descartados' },
+        ] },
+      { id: 'estado', etiqueta: 'Estado', campo: 'estado', textoTodos: 'Cualquier estado',
+        opciones: (CAT.estados || []).map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
+    ],
+
+    columnas: [
+      { titulo: 'Candidato', campo: 'quien', principal: true },
+      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm' },
+      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm' },
+      { titulo: 'Entrevista', valor: d => fechaHora(d.entrevista_at) },
+      { titulo: 'Pide la ETT', valor: d => [d.jornada_ett, d.turno_ett].filter(Boolean).join(' · ') || '—' },
+      { titulo: 'Estado', valor: d => d.estado_etiqueta },
+      { titulo: 'Alta prevista', valor: d => fecha(d.inicio_previsto) || '—' },
+    ],
+
+    detalle: {
+      origen: id => '/ett/api/ficha/' + id,
+      titulo: d => d.quien,
+      subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
+      acciones: [
+        // LAS TRES SALIDAS DE UNA ENTREVISTA, y no hay una cuarta: se le
+        // contrata con fecha, se queda esperando plaza, o no pasa y se dice por
+        // qué. Son las tres palabras que entiende la agencia.
+        //
+        // "Pendiente de asignar" sigue visible para quien ya no pasó: es por
+        // donde se le devuelve al proceso si vuelve a aparecer. Sin eso, un
+        // descarte por error dejaba la ficha congelada.
+        { texto: 'Contratar', icono: 'fa-forward', principal: true,
+          visible: d => d.en_funnel, onClick: accionRRHH },
+        { texto: 'Pendiente de asignar', icono: 'fa-user-clock', principal: false,
+          visible: d => !d.inicio_previsto && d.estado !== 'pendiente_asignar',
+          onClick: accionPendiente },
+        { texto: 'No pasa', icono: 'fa-user-xmark', principal: false,
+          visible: d => !d.inicio_previsto && !d.es_salida, onClick: accionDescartar },
+        { texto: 'Datos', icono: 'fa-pen', principal: false, onClick: accionDatos },
+        { texto: 'Borrar', icono: 'fa-trash', peligro: true, principal: false,
+          onClick: accionEliminar },
+      ],
+
+      bloques: [
+        {
+          titulo: 'Falta por completar', icono: 'fa-triangle-exclamation',
+          visible: d => (d.faltan || []).length > 0,
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5';
+            hueco.innerHTML = '<ul class="text-sm space-y-1">' + d.faltan.map(x =>
+              '<li class="flex items-center gap-2 text-telecab-warn">'
+              + '<i class="fa-solid fa-circle-exclamation text-xs"></i>' + esc(x) + '</li>').join('')
+              + '</ul>';
+          },
+        },
+        {
+          // Lo que pide la agencia y lo que decidimos nosotros, uno al lado del
+          // otro. Es la comparación que se hace al contestarle.
+          titulo: 'La agencia pide', icono: 'fa-inbox',
+          campos: [
+            { etiqueta: 'Entrevista', valor: d => fechaHora(d.entrevista_at) },
+            { etiqueta: 'Jornada', valor: d => d.jornada_ett },
+            { etiqueta: 'Turno', valor: d => d.turno_ett },
+          ],
+        },
+        {
+          titulo: 'Nosotros decidimos', icono: 'fa-clipboard-check',
+          campos: [
+            { etiqueta: 'Estado', valor: d => d.estado_etiqueta },
+            { etiqueta: 'Fecha de alta', valor: d => fecha(d.inicio_previsto) },
+            { etiqueta: 'Jornada', valor: d => (d.jornada_horas ? d.jornada_horas + ' h' : '') },
+            { etiqueta: 'Turno', valor: d => d.turno },
+            { etiqueta: 'Zona', valor: d => d.zona },
+            { etiqueta: 'Motivo', valor: d => d.motivo, ancho: 'sm:col-span-2' },
+          ],
+        },
+        {
+          titulo: 'La persona', icono: 'fa-id-card',
+          campos: [
+            { etiqueta: 'Nombre', valor: d => d.nombre },
+            { etiqueta: 'Apellidos', valor: d => d.apellidos },
+            { etiqueta: 'DNI / NIE', valor: d => d.dni_nie },
+            { etiqueta: 'Correo', valor: d => d.email },
+            { etiqueta: 'Teléfono', valor: d => d.telefono },
+            { etiqueta: 'Dirección', valor: d => d.direccion, ancho: 'sm:col-span-2 lg:col-span-3' },
+            { etiqueta: 'Código postal', valor: d => d.codigo_postal },
+            { etiqueta: 'Abierta', valor: d => fecha(d.creado_at) },
+          ],
+        },
+      ],
+    },
+  });
+})();
 </script>
-<datalist id="dl-zonas"><option>GETAFE</option><option>COLMENAR</option><option>ALCOBENDAS</option><option>MADRID</option></datalist>

@@ -211,4 +211,6 @@ async function buscarPorTelefono(tel) {
   return null;
 }
 
-module.exports = { actualizarConductoresBolt, leerPadron, buscarPorTelefono };
+// `traerDriversBolt` se exporta para que el cazamiento con PostgreSQL pueda
+// pedir el padron sin volver a escribir la paginacion ni las ventanas.
+module.exports = { actualizarConductoresBolt, leerPadron, buscarPorTelefono, traerDriversBolt };

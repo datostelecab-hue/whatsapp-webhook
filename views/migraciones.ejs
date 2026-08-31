@@ -1,0 +1,314 @@
+<div class="p-4 lg:p-6 max-w-[1100px] mx-auto space-y-5">
+
+  <div class="flex flex-wrap items-center gap-3">
+    <div>
+      <h2 class="text-xl font-bold flex items-center gap-2">
+        <i class="fa-solid fa-code-branch text-telecab-gold"></i> Migraciones
+      </h2>
+      <p class="text-sm text-telecab-muted mt-0.5" id="m-sub">Comprobando la base…</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button id="m-simular" class="px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm">
+        <i class="fa-solid fa-eye mr-1"></i> Simular
+      </button>
+      <button id="m-aplicar" class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
+        <i class="fa-solid fa-play mr-1"></i> Aplicar lo pendiente
+      </button>
+    </div>
+  </div>
+
+  <div id="m-msg" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
+
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="m-kpis"></div>
+
+  <!-- Un fichero ya aplicado que cambia después NO se vuelve a ejecutar. Verlo
+       aquí es la diferencia entre saberlo y descubrirlo semanas más tarde. -->
+  <div id="m-modificadas" class="hidden rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4"></div>
+
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+      <i class="fa-solid fa-list-check text-telecab-gold text-sm"></i>
+      <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Ficheros</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wider">
+          <tr>
+            <th class="text-left font-semibold px-4 py-2.5">Fichero</th>
+            <th class="text-left font-semibold px-4 py-2.5">Estado</th>
+            <th class="text-left font-semibold px-4 py-2.5">Aplicada</th>
+            <th class="text-right font-semibold px-4 py-2.5">Duración</th>
+          </tr>
+        </thead>
+        <tbody id="m-tbody" class="divide-y divide-telecab-border/60"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- La agenda de conductores es de la que beben 24 módulos. Antes de que
+       dejen de leer la hoja hay que ver que la base dice lo mismo. -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2 flex-wrap">
+      <i class="fa-solid fa-code-compare text-telecab-gold text-sm"></i>
+      <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Agenda: hoja contra PostgreSQL</h3>
+      <span id="ca-origen" class="text-xs text-telecab-muted"></span>
+      <button id="ca-comparar" class="ml-auto px-3 py-1.5 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">
+        <i class="fa-solid fa-code-compare mr-1"></i> Comparar
+      </button>
+    </div>
+    <div id="ca-cuerpo" class="p-5 text-sm text-telecab-muted">
+      Compara las dos fuentes fila a fila. No cambia nada.
+    </div>
+  </div>
+
+  <details class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+    <summary class="px-5 py-3 cursor-pointer text-sm font-semibold text-telecab-muted uppercase tracking-wide">
+      <i class="fa-solid fa-database mr-1"></i> Qué hay creado
+    </summary>
+    <div id="m-inventario" class="p-5 text-sm text-telecab-muted">Pulsa para cargarlo.</div>
+  </details>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fecha = v => {
+    if (!v) return '';
+    const d = new Date(v), p = n => String(n).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+
+  function aviso(texto, tipo) {
+    const m = $('#m-msg');
+    if (!texto) { m.classList.add('hidden'); return; }
+    const tono = tipo === 'error' ? 'red' : tipo === 'ok' ? 'green' : 'gold';
+    m.className = `rounded-xl border px-4 py-3 text-sm border-telecab-${tono}/40 bg-telecab-${tono}/5 text-telecab-${tono}`;
+    m.innerHTML = texto;
+  }
+
+  async function pedir(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => null);
+    if (!j) throw new Error(`El servidor respondió ${r.status}`);
+    if (j.status === 'error' && j.msg) throw new Error(j.msg);
+    return j;
+  }
+
+  async function cargar() {
+    try {
+      const d = await pedir('/migraciones/api/estado');
+      const bd = d.bd || {};
+      const m = d.migraciones || {};
+
+      $('#m-sub').textContent = bd.conecta
+        ? `${bd.version || 'PostgreSQL'} · ${bd.bd || ''} · ${bd.latenciaMs} ms` +
+          (bd.pool ? ` · ${bd.pool.total}/${bd.pool.max} conexiones` : '')
+        : (bd.error ? 'Sin conexión: ' + bd.error : 'Base de datos no configurada');
+
+      $('#m-kpis').innerHTML = [
+        { et: 'Aplicadas', v: (m.aplicadas || []).length, tono: 'green' },
+        { et: 'Pendientes', v: (m.pendientes || []).length, tono: (m.pendientes || []).length ? 'gold' : 'muted' },
+        { et: 'Modificadas', v: (m.modificadas || []).length, tono: (m.modificadas || []).length ? 'red' : 'muted' },
+        { et: 'Conexión', v: bd.conecta ? 'OK' : 'NO', tono: bd.conecta ? 'green' : 'red' },
+      ].map(k => `
+        <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 shadow-soft">
+          <p class="text-xs text-telecab-muted uppercase tracking-wide">${k.et}</p>
+          <p class="text-2xl font-bold mt-1 text-telecab-${k.tono}">${esc(k.v)}</p>
+        </div>`).join('');
+
+      // Un fichero ya aplicado que cambió después: PostgreSQL no lo vuelve a
+      // ejecutar, así que pruebas y producción dejan de parecerse en silencio.
+      const mod = m.modificadas || [];
+      $('#m-modificadas').classList.toggle('hidden', !mod.length);
+      if (mod.length) {
+        $('#m-modificadas').innerHTML = `
+          <p class="font-semibold text-telecab-red mb-2">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            ${mod.length} fichero(s) cambiaron DESPUÉS de aplicarse</p>
+          <p class="text-xs text-telecab-muted mb-2">
+            No se van a volver a ejecutar. Lo que hay en la base es la versión vieja.
+            Si el cambio importa, hace falta un fichero nuevo con la corrección.</p>
+          <ul class="text-xs space-y-0.5">${mod.map(x =>
+            `<li>· <b>${esc(x.fichero)}</b> — se aplicó con ${esc(x.aplicadaCon)}, ahora es ${esc(x.ahora)}</li>`).join('')}</ul>`;
+      }
+
+      const filas = [];
+      (m.pendientes || []).forEach(p => filas.push({
+        fichero: p.fichero, estado: 'Pendiente', tono: 'gold', at: null, ms: null,
+      }));
+      (m.aplicadas || []).forEach(a => filas.push({
+        fichero: a.fichero,
+        estado: mod.some(x => x.fichero === a.fichero) ? 'Aplicada (modificada)' : 'Aplicada',
+        tono: mod.some(x => x.fichero === a.fichero) ? 'red' : 'green',
+        at: a.aplicada_at, ms: a.duracion_ms,
+      }));
+      filas.sort((a, b) => a.fichero.localeCompare(b.fichero));
+
+      $('#m-tbody').innerHTML = filas.map(f => `
+        <tr class="hover:bg-telecab-card2/60">
+          <td class="px-4 py-2 font-mono text-xs">${esc(f.fichero)}</td>
+          <td class="px-4 py-2">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold whitespace-nowrap
+                         bg-telecab-${f.tono}/15 text-telecab-${f.tono} border border-telecab-${f.tono}/30">
+              ${esc(f.estado)}</span></td>
+          <td class="px-4 py-2 text-telecab-muted text-xs">${esc(fecha(f.at))}</td>
+          <td class="px-4 py-2 text-right tabular-nums text-telecab-muted text-xs">${f.ms == null ? '' : f.ms + ' ms'}</td>
+        </tr>`).join('');
+
+      $('#m-aplicar').disabled = !(m.pendientes || []).length;
+      $('#m-aplicar').classList.toggle('opacity-40', !(m.pendientes || []).length);
+    } catch (e) {
+      aviso('❌ ' + esc(e.message), 'error');
+    }
+  }
+
+  $('#m-simular').addEventListener('click', async () => {
+    aviso('Comprobando…');
+    try {
+      const d = await pedir('/migraciones/api/simular');
+      const lista = d.pendientes || [];
+      aviso(lista.length
+        ? `Se aplicarían ${lista.length}: ${esc(lista.map(x => x.fichero).join(', '))}`
+        : 'No hay nada pendiente.', 'ok');
+    } catch (e) { aviso('❌ ' + esc(e.message), 'error'); }
+  });
+
+  $('#m-aplicar').addEventListener('click', async () => {
+    const ok = await Dialogo.confirmar({
+      titulo: 'Aplicar las migraciones pendientes',
+      si: 'Aplicar', no: 'Cancelar',
+      html: `<p>Cada fichero va en su propia transacción.</p>
+             <p class="text-telecab-muted">Si uno falla, se para ahí y los anteriores quedan aplicados.
+             Se puede corregir y volver a lanzar.</p>`,
+    });
+    if (!ok) return;
+    const b = $('#m-aplicar');
+    b.disabled = true;
+    aviso('Aplicando…');
+    try {
+      const d = await pedir('/migraciones/api/aplicar', { method: 'POST' });
+      const bien = (d.aplicadas || []).filter(x => x.ok);
+      const mal = (d.aplicadas || []).filter(x => !x.ok);
+      aviso(
+        `${bien.length} aplicada(s)` +
+        (bien.length ? ': ' + esc(bien.map(x => x.fichero).join(', ')) : '') +
+        // PostgreSQL da `detail` y `hint` además del mensaje, y suelen decir
+        // exactamente qué fila o qué restricción falló. Esconderlos obliga a ir
+        // a los logs de Render para algo que cabe aquí.
+        (mal.length
+          ? `<br><b>Falló ${esc(mal[0].fichero)}:</b> ${esc(mal[0].error || '')}` +
+            (mal[0].detalle ? `<br><span class="opacity-80">${esc(mal[0].detalle)}</span>` : '') +
+            (mal[0].pista ? `<br><span class="opacity-80">Pista: ${esc(mal[0].pista)}</span>` : '')
+          : ''),
+        mal.length ? 'error' : 'ok');
+    } catch (e) {
+      aviso('❌ ' + esc(e.message), 'error');
+    } finally {
+      b.disabled = false;
+      cargar();
+    }
+  });
+
+  // El inventario se pide solo al abrirlo: recorre el catálogo entero.
+  let inventarioPedido = false;
+  document.querySelector('details').addEventListener('toggle', async e => {
+    if (!e.target.open || inventarioPedido) return;
+    inventarioPedido = true;
+    try {
+      const d = await pedir('/migraciones/api/inventario');
+      const tablas = d.tablas || [];
+      const tot = d.totales || {};
+      $('#m-inventario').innerHTML = `
+        <p class="mb-3 text-telecab-text">
+          ${tablas.length} tablas · ${tot.foraneas || 0} foráneas ·
+          ${tot.comprobaciones || 0} comprobaciones ·
+          ${tot.indicesUnicosParciales || 0} índices únicos parciales
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-1 text-xs">
+          ${tablas.map(t => `<span class="flex items-baseline justify-between gap-2">
+             <span class="font-mono truncate">${esc(t.tabla)}</span>
+             <span class="text-telecab-muted whitespace-nowrap">${esc(t.columnas)} col · ${esc(t.tamano)}</span>
+           </span>`).join('')}
+        </div>`;
+    } catch (e) {
+      inventarioPedido = false;
+      $('#m-inventario').innerHTML = `<span class="text-telecab-red">${esc(e.message)}</span>`;
+    }
+  });
+
+  // ── Comparar la agenda ────────────────────────────────────────────────────
+  pedir('/migraciones/api/origen-agenda').then(d => {
+    const en = d.origen === 'postgres';
+    $('#ca-origen').innerHTML = `leyendo de <b class="text-telecab-${en ? 'green' : 'gold'}">` +
+      `${en ? 'PostgreSQL' : 'la hoja'}</b>`;
+  }).catch(() => {});
+
+  $('#ca-comparar').addEventListener('click', async () => {
+    const c = $('#ca-cuerpo');
+    c.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Leyendo las dos…';
+    try {
+      const d = await pedir('/migraciones/api/comparar-agenda');
+      const limpio = d.conDiferencias === 0 && !d.soloHoja.length && !d.soloBase.length;
+      c.innerHTML = `
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          ${[['En la hoja', d.enHoja, 'text'], ['En la base', d.enBase, 'text'],
+             ['Con diferencias', d.conDiferencias, d.conDiferencias ? 'warn' : 'green'],
+             ['Sin pareja', d.soloHoja.length + d.soloBase.length,
+              (d.soloHoja.length + d.soloBase.length) ? 'red' : 'green']]
+            .map(([et, v, t]) => `
+              <div class="bg-telecab-card2 border border-telecab-border rounded-xl p-3">
+                <p class="text-[11px] text-telecab-muted uppercase tracking-wide">${et}</p>
+                <p class="text-xl font-bold text-telecab-${t}">${v}</p>
+              </div>`).join('')}
+        </div>
+
+        ${limpio ? `<p class="text-telecab-green font-semibold">
+            <i class="fa-solid fa-check"></i> Las dos fuentes dicen lo mismo.
+            Se puede cambiar AGENDA_ORIGEN a "postgres".</p>` : ''}
+
+        ${d.porColumna.length ? `
+          <p class="font-semibold text-telecab-text mb-1">Diferencias por columna</p>
+          <div class="flex flex-wrap gap-1.5 mb-4">${d.porColumna.map(x =>
+            `<span class="px-2 py-0.5 rounded-lg text-xs bg-telecab-warn/15 text-telecab-warn
+                          border border-telecab-warn/30">${esc(x.columna)}: ${x.filas}</span>`).join('')}</div>` : ''}
+
+        ${d.soloHoja.length ? `
+          <p class="font-semibold text-telecab-red mb-1">Solo en la hoja (${d.soloHoja.length})</p>
+          <p class="text-xs mb-3">${d.soloHoja.slice(0,25).map(x => esc(x.nombre || x.id)).join(' · ')}${d.soloHoja.length>25?'…':''}</p>` : ''}
+
+        ${d.soloBase.length ? `
+          <p class="font-semibold text-telecab-red mb-1">Solo en la base (${d.soloBase.length})</p>
+          <p class="text-xs mb-3">${d.soloBase.slice(0,25).map(x => esc(x.nombre || x.id)).join(' · ')}${d.soloBase.length>25?'…':''}</p>` : ''}
+
+        ${d.debiles.length ? `
+          <p class="text-xs text-telecab-warn mb-3">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            ${d.debiles.length} emparejada(s) POR NOMBRE, sin ID de BOLT: son las menos fiables.</p>` : ''}
+
+        ${d.diferencias.length ? `
+          <details class="mt-2">
+            <summary class="cursor-pointer text-sm font-semibold text-telecab-text">
+              Ver las ${d.conDiferencias} filas que difieren</summary>
+            <div class="mt-2 max-h-[50vh] overflow-y-auto space-y-2">
+              ${d.diferencias.map(x => `
+                <div class="border border-telecab-border rounded-xl p-2">
+                  <p class="text-xs font-semibold">${esc(x.nombre || x.id)}
+                    ${x.emparejamientoDebil ? '<span class="text-telecab-warn">(por nombre)</span>' : ''}</p>
+                  ${x.campos.map(cp => `
+                    <p class="text-[11px] text-telecab-muted">
+                      <b>${esc(cp.columna)}</b>: hoja «${esc(cp.hoja)}» · base «${esc(cp.base)}»</p>`).join('')}
+                </div>`).join('')}
+            </div>
+          </details>` : ''}
+
+        <p class="text-xs text-telecab-muted mt-3">${d.segundos}s</p>`;
+    } catch (e) {
+      c.innerHTML = `<span class="text-telecab-red">${esc(e.message)}</span>`;
+    }
+  });
+
+  cargar();
+})();
+</script>

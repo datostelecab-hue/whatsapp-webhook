@@ -43,7 +43,11 @@ const A = {
   TEL_EMERG: 25, OBSERVACIONES: 26,
   ASG_LUN: 27, ASG_MAR: 28, ASG_MIE: 29, ASG_JUE: 30, ASG_VIE: 31, ASG_SAB: 32, ASG_DOM: 33,
   // Fecha de reincorporación para ausencias temporales (opcional). Columna AH.
-  REINCORPORACION: 34
+  REINCORPORACION: 34,
+  // Si su ID_BOLT es PROVISIONAL — o sea, todavía no está dado de alta en BOLT.
+  // Solo la rellena la agenda leída de PostgreSQL; desde la hoja viene vacía, y
+  // entonces se comporta como antes.
+  BOLT_PENDIENTE: 35
 };
 
 const A_HEADERS = [
@@ -295,6 +299,9 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
       fila: idx + 2,                     // fila real en la hoja
       idBolt,
       id: idBolt,                        // el planificador enlaza por este campo
+      // Su clave es provisional: todavía no está dado de alta en BOLT. Se
+      // planifica igual y se avisa.
+      boltPendiente: txt(v[A.BOLT_PENDIENTE - 1]).toUpperCase() === 'SI',
       activo: esCheck(v[A.ACTIVO - 1]),
       nombre,
       dni: txt(v[A.DNI - 1]),
@@ -372,6 +379,10 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
   // ---- 3. Validaciones previas y días que cubre cada persona ----
   // Ocupación global, para detectar a la misma persona en dos coches a la vez.
   const ocupacionGlobal = new Map();   // "id|dia|turno" → Set(matriculas)
+  // La misma persona NO puede estar en dos coches el mismo dia, aunque sea en
+  // turnos distintos: son dos jornadas seguidas. La de arriba va por turno y
+  // por eso se le escapaba el caso Dia en un coche + Noche en otro.
+  const ocupacionDia = new Map();      // "id|dia" → Map(matricula → Set(turnos))
   const asignacionPorDia = new Map();  // id → [7] matrícula
   const problemas = [];                // se convierten en avisos más abajo
 
@@ -587,9 +598,16 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
             if (!asg[d]) asg[d] = coche.matricula;
           }
 
+          const nombreC = coche.matricula || `coche#${coche.idx + 1}`;
           const gk = `${p.id}|${d}|${turnoCubre}`;
           if (!ocupacionGlobal.has(gk)) ocupacionGlobal.set(gk, new Set());
-          ocupacionGlobal.get(gk).add(coche.matricula || `coche#${coche.idx + 1}`);
+          ocupacionGlobal.get(gk).add(nombreC);
+
+          const dk = `${p.id}|${d}`;
+          if (!ocupacionDia.has(dk)) ocupacionDia.set(dk, new Map());
+          const porCoche = ocupacionDia.get(dk);
+          if (!porCoche.has(nombreC)) porCoche.set(nombreC, new Set());
+          porCoche.get(nombreC).add(turnoCubre);
         });
       });
     });
@@ -708,6 +726,18 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
             coche.conflictos.push({
               dia: DIAS_SEM[d], turno,
               msg: `${id} está en ${matrs.size} coches el ${DIAS_SEM[d]} ${turno} (${[...matrs].join(', ')})`
+            });
+          }
+          // Y el mismo día en dos coches distintos aunque sea en turnos
+          // distintos: nadie hace un día y una noche seguidos.
+          const porCoche = ocupacionDia.get(`${id}|${d}`);
+          if (porCoche && porCoche.size > 1 && !(matrs && matrs.size > 1)) {
+            const detalle = [...porCoche.entries()]
+              .map(([m, turnos]) => `${m} (${[...turnos].join('/')})`).join(' y ');
+            const quien = (porId.get(id) || {}).nombre || id;
+            coche.conflictos.push({
+              dia: DIAS_SEM[d], turno,
+              msg: `${quien} está el ${DIAS_SEM[d]} en dos coches: ${detalle}`
             });
           }
         });
@@ -833,6 +863,13 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     // Qué le falta para poder trabajar. Sin ID de Bolt o sin turno no se puede
     // ni planificar; sin coordenadas no entra en el matching por zona.
     const faltan = [];
+    // El alta en BOLT es un AVISO, no un impedimento.
+    //
+    // Antes sin ID de Bolt no se podía planificar, porque no había clave con la
+    // que escribir en el cuadrante. Ahora la agenda siempre da una —el nombre de
+    // la persona si no hay cuenta— así que el coche sale igual y aquí solo se
+    // deja dicho que falta el trámite, que es de RRHH.
+    if (info.boltPendiente) faltan.push('alta en BOLT');
     if (!info.idBolt) faltan.push('ID de Bolt');
     if (!info.turno) faltan.push('turno');
     if (!parseCoords(info.coordenadas)) faltan.push('coordenadas');
@@ -1262,11 +1299,44 @@ function validarEsquema(agendaFilas, planFilas) {
 }
 
 /** Lee las tres hojas en una sola petición, sin interpretar nada. */
+/**
+ * De dónde salen los CONDUCTORES.
+ *
+ *   'sheets'   → AGENDA_V2, como siempre (por defecto)
+ *   'postgres' → se reconstruyen desde la base
+ *
+ * Va detrás de un interruptor y APAGADO por defecto a propósito: de esta
+ * función cuelgan el planificador, la cobertura, el control de horas, el bot y
+ * las nóminas. Poder volver atrás cambiando una variable de entorno, sin
+ * desplegar, vale más que ahorrarse la variable.
+ *
+ * El planificador (los coches y las plazas) sigue viniendo de la hoja: eso es
+ * el siguiente paso, no este.
+ */
+const AGENDA_ORIGEN = (process.env.AGENDA_ORIGEN || 'sheets').toLowerCase();
+
 async function leerCrudo() {
-  const [agendaFilas, planFilas, basesFilas] = await readMany(
-    SPREADSHEET_PLANIFICADOR,
-    [RANGOS.agenda, RANGOS.plan, RANGOS.bases]
-  );
+  const desdeBase = AGENDA_ORIGEN === 'postgres';
+
+  // El planificador y las bases se siguen leyendo de la hoja en los dos casos;
+  // lo único que cambia es de dónde salen los conductores.
+  const rangos = desdeBase ? [RANGOS.plan, RANGOS.bases] : [RANGOS.agenda, RANGOS.plan, RANGOS.bases];
+  const leidas = await readMany(SPREADSHEET_PLANIFICADOR, rangos);
+
+  let agendaFilas, planFilas, basesFilas;
+  if (desdeBase) {
+    [planFilas, basesFilas] = leidas;
+    try {
+      agendaFilas = await require('./repo/agenda').filas();
+    } catch (e) {
+      // Si la base falla, NO se sigue con una agenda vacía: eso dejaría a todo
+      // el mundo sin turno ni libranzas y el planificador lo daría por bueno.
+      throw new Error(`No se pudo leer la agenda de PostgreSQL: ${e.message}. ` +
+                      `Para volver a la hoja: AGENDA_ORIGEN=sheets`);
+    }
+  } else {
+    [agendaFilas, planFilas, basesFilas] = leidas;
+  }
 
   const bases = basesFilas.slice(1)
     .map(f => {
@@ -1280,7 +1350,8 @@ async function leerCrudo() {
     agendaFilas,
     planFilas,
     bases,
-    esquema: validarEsquema(agendaFilas, planFilas)
+    origenAgenda: desdeBase ? 'postgres' : 'sheets',
+    esquema: validarEsquema(agendaFilas, planFilas),
   };
 }
 
@@ -1309,6 +1380,13 @@ async function leerTablero(opciones = {}) {
  * pantalla del navegador: así, si alguien tocó otro coche mientras tanto, no se
  * lo pisamos. Solo se sobrescribe lo que el usuario ha cambiado de verdad.
  */
+/** Hoy en dd/mm/aaaa, que es el formato con el que se escribe en la hoja. */
+function hoyDDMMAAAA() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
 function aplicarCambios(planFilas, cambios) {
   const datos = planFilas.slice(1);   // sin la cabecera
   const aplicados = [];
@@ -1365,9 +1443,21 @@ function aplicarCambios(planFilas, cambios) {
         }
         fila[P.DIAS_TRABAJA - 1] = diasALetras(analisis.dias);
       }
-      // Ventana de la asignación (opcional). Texto tal cual; el motor lo parsea.
+      // Ventana de la asignación. Texto tal cual; el motor lo parsea.
       if (s.desde !== undefined) fila[P.DESDE - 1] = txt(s.desde);
       if (s.hasta !== undefined) fila[P.HASTA - 1] = txt(s.hasta);
+
+      // El DESDE es obligatorio en cuanto hay alguien en la plaza. Si no llega
+      // ninguno y la fila tampoco lo tenía, se pone el día en que se planifica:
+      // sin fecha, el motor da la asignación por vigente desde siempre y las
+      // coberturas de semanas pasadas salen mal.
+      //
+      // Solo afecta a las plazas que se TOCAN. Las que ya estaban ahí sin fecha
+      // se quedan como están: son de cuando esto no se pedía, y reescribirlas
+      // todas de golpe les inventaría un histórico que nadie ha decidido.
+      if (s.id !== undefined && txt(s.id) && !txt(fila[P.DESDE - 1])) {
+        fila[P.DESDE - 1] = hoyDDMMAAAA();
+      }
     });
 
     aplicados.push(c);
@@ -1923,7 +2013,7 @@ module.exports = {
   CAMPOS_OPERATIVOS, CAMPOS_SENSIBLES, validarCampo,
   ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS, TURNOS_CONDUCTOR, CONTRATOS,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
-  validarEsquema, leerCrudo, leerTablero, guardarTablero,
+  validarEsquema, leerCrudo, leerTablero, guardarTablero, AGENDA_ORIGEN,
   aplicarCambios, guardarCambios,
   HOJAS,
   PLAN_FILA_CAB, PLAN_FILA_INI, FILAS_POR_COCHE, N_MAT,

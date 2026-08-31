@@ -247,9 +247,13 @@ $('#btn-recargar').addEventListener('click', async () => {
 });
 
 $('#btn-vaciar').addEventListener('click', async () => {
-  if (!confirm('Se borra el expediente ENTERO, en memoria y en la hoja AUDITORIA_VIVO.
-
-No tiene vuelta atrás. ¿Seguir?')) return;
+  const ok = await Dialogo.confirmar({
+    titulo: '¿Vaciar el expediente entero?',
+    texto: 'Se borra en memoria y en la hoja AUDITORIA_VIVO. No tiene vuelta atrás.',
+    tono: 'peligro',
+    si: 'Vaciar',
+  });
+  if (!ok) return;
   const r = await (await fetch('/operaciones/api/vivo/vaciar', { method: 'POST' })).json();
   if (r.status !== 'ok') return alert('No se pudo vaciar: ' + (r.msg || ''));
   alert(`Borradas ${r.borradas} alerta(s).`);

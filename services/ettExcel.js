@@ -29,12 +29,19 @@ const GRUPO_NOS = 'FFFBEFCF';
 const CAB_BG = 'FF394150';
 
 // Un color por resultado: se ve de un vistazo quién entra y quién no.
+//
+// Son CUATRO. "Pendiente" es pendiente de ASIGNAR —elegido, sin puesto todavía—
+// y por eso va en ámbar y no en blanco: es alguien de quien la agencia volverá a
+// tener noticias, no una fila sin resolver.
+//
+// Antes había un quinto, "Presentó", que significaba "entrevistado, pendiente
+// de decisión". Se ha ido: quien está entrevistado y sin puesto ES el pendiente
+// de asignar, y tener dos nombres para lo mismo solo confundía a quien lo lee.
 const ESTILO = {
   'Contratado':     { fill: 'FFE7F6EC', font: 'FF14663A', negrita: true },
+  'Pendiente':      { fill: 'FFFFF9E8', font: 'FF8A6100' },
   'No pasa':        { fill: 'FFFDECEC', font: 'FFA32020' },
-  'No se presentó': { fill: 'FFF2F3F5', font: 'FF6B7280', cursiva: true },
-  'Presentó':       { fill: 'FFFFF9E8', font: 'FF8A6100' },
-  'Pendiente':      { fill: 'FFFFFFFF', font: 'FF374151' }
+  'No se presentó': { fill: 'FFF2F3F5', font: 'FF6B7280', cursiva: true }
 };
 
 const CABECERAS = ['Fecha Entrevista', 'Hora', 'Jornada', 'Turno', 'Nombre', 'DNI / NIE', 'Teléfono',
@@ -110,8 +117,11 @@ async function generarExcelETT(lista) {
   const n = e => lista.filter(c => c.estado === e).length;
   ws.mergeCells(`A2:${ultima}2`);
   const s = ws.getCell('A2');
+  // Los cuatro, incluidos los pendientes: son los que obligan a un segundo
+  // envío, así que la agencia tiene que verlos contados desde arriba.
   s.value = `${lista.length} candidato(s)  ·  ${n('Contratado')} contratado(s)  ·  ` +
-            `${n('No pasa')} no pasa(n)  ·  ${n('No se presentó')} no se presentó  ·  Generado el ${hoyES()}`;
+            `${n('Pendiente')} pendiente(s) de asignar  ·  ${n('No pasa')} no pasa(n)  ·  ` +
+            `${n('No se presentó')} no se presentó  ·  Generado el ${hoyES()}`;
   s.font = { size: 10, color: { argb: 'FF6B7280' } };
   s.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F8FA' } };
   s.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -179,10 +189,9 @@ async function generarExcelETT(lista) {
   ws.getCell(`A${inicioLeyenda}`).value = 'Leyenda';
   ws.getCell(`A${inicioLeyenda}`).font = { size: 10, bold: true, color: { argb: 'FF374151' } };
   [['Contratado', 'Se incorpora: fecha de alta, jornada, turno y zona a la derecha'],
+   ['Pendiente', 'Seleccionado, pendiente de asignarle puesto'],
    ['No pasa', 'No supera la entrevista'],
-   ['No se presentó', 'No acudió a la entrevista'],
-   ['Presentó', 'Entrevistado, pendiente de decisión'],
-   ['Pendiente', 'Pendiente de entrevista']
+   ['No se presentó', 'No acudió a la entrevista']
   ].forEach(([estado, texto], i) => {
     const f = inicioLeyenda + 1 + i;
     const c1 = ws.getCell(`A${f}`), c2 = ws.getCell(`B${f}`);

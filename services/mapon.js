@@ -104,13 +104,34 @@ function enLocal(iso) {
 // de pedirlas en cada consulta.
 
 let cacheUnidades = { ts: 0, mapa: new Map() };
+// Ninguna llamada a Mapon puede quedarse esperando para siempre. El `fetch` de
+// Node NO trae tiempo limite por defecto: si Mapon no contesta, la peticion se
+// cuelga indefinidamente y con ella el cron o la pantalla que la lanzo. Ya
+// paso una vez con el enlace de unidades.
+const TIMEOUT_MAPON = Number(process.env.MAPON_TIMEOUT_MS) || 20000;
+
+async function fetchMapon(url, opciones) {
+  const ac = new AbortController();
+  const reloj = setTimeout(() => ac.abort(), TIMEOUT_MAPON);
+  try {
+    return await fetch(url, { ...(opciones || {}), signal: ac.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`Mapon no respondio en ${TIMEOUT_MAPON / 1000}s (${String(url).split('?')[0]})`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
 const TTL_UNIDADES = 10 * 60 * 1000;
 
 async function unidades() {
   if (cacheUnidades.mapa.size && Date.now() - cacheUnidades.ts < TTL_UNIDADES) {
     return cacheUnidades.mapa;
   }
-  const r = await fetch(`${API}/unit/list.json?key=${KEY}`);
+  const r = await fetchMapon(`${API}/unit/list.json?key=${KEY}`);
   const json = await r.json();
   const lista = (json && json.data && json.data.units) || [];
   if (!lista.length && cacheUnidades.mapa.size) return cacheUnidades.mapa;   // fallo puntual: se sigue con lo anterior
@@ -119,7 +140,13 @@ async function unidades() {
   lista.forEach(u => {
     mapa.set(u.unit_id, {
       matricula: txt(u.number) || txt(u.label) || `#${u.unit_id}`,
-      vehiculo: [txt(u.make), txt(u.model)].filter(Boolean).join(' ') || txt(u.label) || 'Vehículo'
+      vehiculo: [txt(u.make), txt(u.model)].filter(Boolean).join(' ') || txt(u.label) || 'Vehículo',
+      // `mileage` viene en METROS y ya llegaba en esta misma llamada: se estaba
+      // tirando. Es el odometro del coche, asi que sale gratis.
+      odometroM: Number.isFinite(Number(u.mileage)) ? Math.round(Number(u.mileage)) : null,
+      estado: txt(u.state) || null,          // driving / standing / nodata / nogps / service
+      ultimoDato: txt(u.last_update) || null,
+      lat: Number(u.lat) || null, lng: Number(u.lng) || null
     });
   });
   cacheUnidades = { ts: Date.now(), mapa };
@@ -230,7 +257,7 @@ async function leerAlertas({ desde, hasta, tipo } = {}) {
   let pagina = 1, totalPaginas = 1, total = 0;
 
   while (pagina <= totalPaginas && pagina <= MAX_PAGINAS) {
-    const r = await fetch(`${base}&page=${pagina}`);
+    const r = await fetchMapon(`${base}&page=${pagina}`);
     const json = await r.json();
 
     if (json && json.error) {
@@ -294,7 +321,7 @@ function resolverRango({ desde, hasta } = {}, porDefectoDias = 7) {
 
 /** GET a la API de Mapon con control del formato de error {error:{code,msg}}. */
 async function pedir(ruta, params) {
-  const r = await fetch(`${API}/${ruta}?key=${KEY}&${params}`);
+  const r = await fetchMapon(`${API}/${ruta}?key=${KEY}&${params}`);
   const json = await r.json();
   if (json && json.error) {
     throw new Error(`Mapon (${ruta}): ${json.error.msg || json.error.code || 'error desconocido'}`);
@@ -320,7 +347,7 @@ async function pedirPost(ruta, params) {
     qs.append(k, val);
     body.append(k, val);
   });
-  const r = await fetch(`${API}/${ruta}?${qs}`, {
+  const r = await fetchMapon(`${API}/${ruta}?${qs}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
@@ -908,7 +935,7 @@ async function leerCombustible({ desde, hasta } = {}) {
 
 /** Setups configurados en Mapon (diagnóstico: con qué límite está avisando). */
 async function listarSetups() {
-  const r = await fetch(`${API}/alert/list_setups.json?key=${KEY}`);
+  const r = await fetchMapon(`${API}/alert/list_setups.json?key=${KEY}`);
   const json = await r.json();
   return (json.setups || []).map(s => ({
     setupId: s.setup_id,

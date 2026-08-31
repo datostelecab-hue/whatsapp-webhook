@@ -7,8 +7,12 @@ const app = express();
 // conductores y adjuntos de soporte) se SALTAN este parser y aplican su propio
 // límite mayor dentro de su router; si no, este 2mb las capaba silenciosamente.
 const jsonGlobal = express.json({ limit: '2mb' });
+// Rutas que suben archivos en base64 y ponen su PROPIO limite mas alto dentro
+// de su router. Tienen que saltarse este parser: si corre antes, rechaza la
+// peticion por tamano y el limite de dentro no llega a aplicarse nunca.
+const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento'];
 app.use((req, res, next) => {
-  if (req.path.startsWith('/documentos') || req.path.startsWith('/soporte')) return next();
+  if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);
 });
 app.use(express.urlencoded({ extended: true }));
@@ -33,6 +37,18 @@ app.use(expressLayouts);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.set('layout', 'layout');
+
+// Marca de version para los estaticos. Los archivos de /assets se cachean un
+// dia; sin esto, un despliegue que cambia el CSS o un script deja a la gente
+// con la copia vieja hasta el dia siguiente, y "no funciona" sin que se vea por
+// que. En Render cada despliegue trae un commit distinto, asi que la URL cambia
+// sola y el navegador vuelve a pedir el archivo.
+app.locals.v = (process.env.RENDER_GIT_COMMIT || '').slice(0, 8) || String(Date.now());
+
+// `est()` pone esa marca. Las vistas lo usan para TODO lo que pueda cambiar
+// (hojas de estilo y scripts); el logo y el video se quedan sin ella porque no
+// cambian nunca y asi se siguen cacheando de verdad.
+app.locals.est = ruta => ruta + (ruta.indexOf('?') === -1 ? '?v=' : '&v=') + app.locals.v;
 
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
@@ -73,6 +89,7 @@ const agendaRoutes = require('./routes/agenda');
 const matchingRoutes = require('./routes/matching');
 const coberturaRoutes = require('./routes/cobertura');
 const vehiculosRoutes = require('./routes/vehiculos');
+const plantillaRoutes = require('./routes/plantilla');
 const documentosRoutes = require('./routes/documentos');
 const libranzasRoutes = require('./routes/libranzas');
 const controlRoutes = require('./routes/control');
@@ -80,10 +97,8 @@ const vacantesRoutes = require('./routes/vacantes');
 const generadorRoutes = require('./routes/generador');
 const seleccionRoutes = require('./routes/seleccion');
 const ettRoutes = require('./routes/ett');
-const pendientesBoltRoutes = require('./routes/pendientesBolt');
 const rrhhRoutes = require('./routes/rrhh');
 const administracionRoutes = require('./routes/administracion');
-const plantillaRoutes = require('./routes/plantilla');
 const fichasRoutes = require('./routes/fichas');
 const ticketeraRoutes = require('./routes/ticketera');
 const soporteRoutes = require('./routes/soporte');
@@ -145,6 +160,10 @@ app.use('/agenda', agendaRoutes);
 app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
+app.use('/plantilla', plantillaRoutes);
+// La pantalla se llamo /conductores mientras se construia. Quien tenga ese
+// enlace guardado no se encuentra un 404.
+app.get('/conductores', (req, res) => res.redirect(301, '/plantilla'));
 app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
@@ -152,10 +171,11 @@ app.use('/vacantes', vacantesRoutes);
 app.use('/generador', generadorRoutes);
 app.use('/seleccion', seleccionRoutes);
 app.use('/ett', ettRoutes);
-app.use('/pendientes-bolt', pendientesBoltRoutes);
 app.use('/rrhh', rrhhRoutes);
 app.use('/administracion', administracionRoutes);
-app.use('/plantilla', plantillaRoutes);
+// La exportacion a Excel de la Plantilla vieja no se perdio: se generalizo aqui
+// y ahora la usa cualquier listado.
+app.use('/exportar', require('./routes/exportar'));
 app.use('/fichas', fichasRoutes);
 app.use('/ticketera', ticketeraRoutes);
 app.use('/soporte', soporteRoutes);
@@ -171,6 +191,13 @@ app.use('/peticiones', peticionesRoutes);
 app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
 app.use('/callcenter', require('./routes/callCenter'));
+app.use('/migraciones', require('./routes/migraciones'));
+app.use('/explorador', require('./routes/explorador'));
+
+// Diagnóstico del servidor de pruebas: qué se ha bloqueado y qué crons no corren.
+app.get('/modo-pruebas', (req, res) => {
+  res.json({ status: 'ok', ...pruebas.estado(), cronsOmitidos: _cronsOmitidos });
+});
 
 // ── FLOTA VIVA: qué está haciendo ahora mismo cada coche de BOLT ────────────
 // Módulo nuevo y aparte. Todo lo suyo vive en services/flotaViva/, sus tablas
@@ -245,7 +272,11 @@ app.get('/vista-final/recuperar-libranzas', async (req, res) => {
 
 // ── Auditoría EN VIVO: vigila cada pocos minutos los coches planificados que
 //    ruedan estando en descanso. Se apaga con VIVO_ACTIVO=off. ────────────────
-if (process.env.VIVO_ACTIVO !== 'off') {
+if (require('./services/modoPruebas').ACTIVO) {
+  // OJO: esta arranca con setInterval, NO con cron.schedule, así que el
+  // envoltorio `programar` no la alcanza y hay que frenarla aquí.
+  console.log('🧪 [PRUEBAS] Auditoría en vivo NO se arranca');
+} else if (process.env.VIVO_ACTIVO !== 'off') {
   require('./services/auditoriaVivo').arrancar();
 } else {
   console.log('⏸️  [VIVO] Auditoría en vivo desactivada (VIVO_ACTIVO=off)');
@@ -254,6 +285,23 @@ if (process.env.VIVO_ACTIVO !== 'off') {
 // ============================================================
 // CRON
 // ============================================================
+// `programar` sustituye a cron.schedule: en el servidor de pruebas no arranca
+// ninguno. Los crons escriben en las hojas de PRODUCCIÓN y comparten con el
+// servidor real la cuota de Sheets (60/min), que ya tumbó el ERP una vez.
+const pruebas = require('./services/modoPruebas');
+pruebas.instalarCortafuegos();
+
+function programar(expresion, tarea, opciones) {
+  if (pruebas.ACTIVO) { _cronsOmitidos.push(expresion); return null; }
+  return cron.schedule(expresion, tarea, opciones);
+}
+const _cronsOmitidos = [];
+if (pruebas.ACTIVO) {
+  // Se imprime al final del arranque, cuando ya se sabe cuántos se omitieron.
+  process.nextTick(() => console.log(
+    `🧪 [PRUEBAS] MODO_PRUEBAS=1 — ${_cronsOmitidos.length} cron(s) NO arrancados, ` +
+    'escrituras de Sheets/WhatsApp/Mapon bloqueadas. Detalle en /modo-pruebas'));
+}
 
 // Horas de conductores — DOS carriles:
 //
@@ -265,7 +313,7 @@ if (process.env.VIVO_ACTIVO !== 'off') {
 //
 // Las dos escriben la misma hoja (Datos_API), así que da igual cuál llegue
 // última. Se desfasan del minuto 0 para no solaparse con la completa.
-cron.schedule('0 * * * *', async () => {
+programar('0 * * * *', async () => {
   const ahora = new Date();
   const mes = ahora.getMonth() + 1;
   const ano = ahora.getFullYear();
@@ -280,7 +328,7 @@ cron.schedule('0 * * * *', async () => {
 
 if (process.env.HORAS_INCREMENTAL !== 'off') {
   let enMarcha = false;
-  cron.schedule('5,15,25,35,45,55 * * * *', async () => {
+  programar('5,15,25,35,45,55 * * * *', async () => {
     // Una pasada corta que se alargue no debe pisar a la siguiente.
     if (enMarcha) return console.log('⏭️  [CRON Horas⚡] La anterior sigue en marcha, se salta');
     enMarcha = true;
@@ -293,11 +341,11 @@ if (process.env.HORAS_INCREMENTAL !== 'off') {
       console.error(`⚠️  [CRON Horas⚡] ${error.message}`);
     } finally { enMarcha = false; }
   }, { timezone: 'Europe/Madrid' });
-  console.log('⚡ [Horas] Refresco incremental ACTIVADO (cada 10 min)');
+  if (!pruebas.ACTIVO) console.log('⚡ [Horas] Refresco incremental ACTIVADO (cada 10 min)');
 }
 
 // Resumen de flotas: cada hora al minuto 15
-cron.schedule('15 * * * *', async () => {
+programar('15 * * * *', async () => {
   console.log('⏰ [CRON Resumen] actualizarTodo()...');
   try {
     const { actualizarTodo } = require('./services/boltResumen');
@@ -314,7 +362,7 @@ cron.schedule('15 * * * *', async () => {
 // L_Acumuladas y se pisarán. La ruta POST /libranzas/sync funciona igualmente
 // para pruebas manuales aunque el cron esté apagado.
 if (process.env.LIBRANZAS_CRON === 'on') {
-  cron.schedule('30 * * * *', async () => {
+  programar('30 * * * *', async () => {
     console.log('⏰ [CRON Libranzas] sincronizarLibranzas()...');
     try {
       const { sincronizarLibranzas } = require('./services/libranzas');
@@ -331,7 +379,7 @@ if (process.env.LIBRANZAS_CRON === 'on') {
 
 // CONDUCTORES_BOLT: padrón de creación de conductores, cada media hora (:10 y
 // :40, para no chocar con los otros crons). Sella el created_at propio.
-cron.schedule('10,40 * * * *', async () => {
+programar('10,40 * * * *', async () => {
   console.log('⏰ [CRON CONDUCTORES_BOLT] actualizarConductoresBolt()...');
   try {
     const { actualizarConductoresBolt } = require('./services/conductoresBolt');
@@ -348,33 +396,76 @@ cron.schedule('10,40 * * * *', async () => {
   }
 });
 
-// Flota viva: cada 5 minutos, qué dice BOLT del conductor y Mapon del coche.
+// ── LA INGESTA ──────────────────────────────────────────────────────────────
+// El latido: cada 5 minutos se mira qué toca traer de BOLT y de Mapon.
 //
-// No arranca sin `FLOTA_VIVA_DB_URL`: sin base no tiene dónde guardar los tramos,
-// y sin tramos no puede contestar "cuánto lleva así", que es todo el módulo.
+// Es la UNICA puerta por la que entran datos externos. Ninguna pantalla llama a
+// una API para pintarse: leen de PostgreSQL, que es lo que las hace rapidas y
+// lo que hace que una caida de Mapon no se note en RRHH.
+//
+// Cada tarea decide cada cuanto tiene sentido repetirla (services/ingesta.js):
+// el padron de conductores no cambia cada cinco minutos y pedirlo asi son
+// cientos de paginas por hora. El latido es de 5; la cadencia, de cada tarea.
+programar('*/5 * * * *', async () => {
+  try {
+    await require('./services/ingesta').latido();
+  } catch (error) {
+    console.error(`❌ [INGESTA] El latido falló entero: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+// El registro de la ingesta se poda: una pasada cada 5 minutos son cien mil
+// filas al año por tarea y el detalle fino no vale para nada pasada una semana.
+programar('40 4 * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await bd.consulta('SELECT purgar_ingesta(7) AS n');
+    if (r.rows[0].n) console.log(`🧹 [INGESTA] Purgadas ${r.rows[0].n} filas del registro`);
+  } catch (error) {
+    console.error(`⚠️  [INGESTA] Purga: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+// (Los odometros de Mapon ya no tienen cron propio: son una tarea mas de la
+// ingesta, con su cadencia y su registro de si funciono.)
+
+// ── LO QUE VINO DE PRODUCCION ───────────────────────────────────────────────
+// Estos dos crons nacieron en `main` con `cron.schedule` directo. Aqui van por
+// `programar()` como todo lo demas, y NO es cosmetico: `programar` es lo que los
+// apaga con MODO_PRUEBAS=1.
+//
+// Importa sobre todo para el segundo. El repaso de bloqueos INMOVILIZA COCHES
+// de verdad; un modo pruebas que no lo detuviera seria peor que no tener modo
+// pruebas, porque da falsa confianza.
+
+// Flota viva: cada 5 minutos, que dice BOLT del conductor y Mapon del coche.
+//
+// No arranca sin `FLOTA_VIVA_DB_URL`: sin base no tiene donde guardar los tramos,
+// y sin tramos no puede contestar "cuanto lleva asi", que es todo el modulo.
 if (process.env.FLOTA_VIVA_DB_URL || process.env.DATABASE_URL) {
-  cron.schedule('*/5 * * * *', async () => {
+  programar('*/5 * * * *', async () => {
     try {
       await require('./services/flotaViva/motor').pasada();
     } catch (error) {
       console.error(`❌ [FLOTA VIVA] La vuelta falló: ${error.message}`);
     }
-  });
+  }, { timezone: 'Europe/Madrid' });
 } else {
   console.log('⏸️  [FLOTA VIVA] Sin FLOTA_VIVA_DB_URL: el módulo no arranca');
 }
 
-// Repaso del corte de motor: deja bloqueado todo coche que nadie esté usando.
+// Repaso del corte de motor: deja bloqueado todo coche que nadie este usando.
 //
 // No sobra por tener el bloqueo al terminar turno. Ese falla a veces —el coche
 // iba rodando, o estaba sin cobertura— y no hay quien lo reintente; y un coche
-// que nunca ha tenido un turno no se bloquearía jamás. Este repaso cierra los
-// dos agujeros, y no hace NADA mientras FICHAJE_BLOQUEO_MOTOR no esté a 1.
+// que nunca ha tenido un turno no se bloquearia jamas. Este repaso cierra los
+// dos agujeros, y no hace NADA mientras FICHAJE_BLOQUEO_MOTOR no este a 1.
 //
 // Cada diez minutos y no cada uno: un coche que acaba de parar tiene que
-// esperar de todas formas a llevar un buen rato quieto, así que correr no sirve
-// de nada y sí gasta cuota de Mapon.
-cron.schedule('*/10 * * * *', async () => {
+// esperar de todas formas a llevar un buen rato quieto, asi que correr no sirve
+// de nada y si gasta cuota de Mapon.
+programar('*/10 * * * *', async () => {
   try {
     const r = await require('./services/fichaje').repasarBloqueos();
     if (r.bloqueados && r.bloqueados.length) {
@@ -384,11 +475,11 @@ cron.schedule('*/10 * * * *', async () => {
   } catch (error) {
     console.error(`❌ [CRON FICHAJE] El repaso de bloqueos falló: ${error.message}`);
   }
-});
+}, { timezone: 'Europe/Madrid' });
 
 // Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
 // vencieron (los usados se conservan siempre, como histórico).
-cron.schedule('20 4 * * *', async () => {
+programar('20 4 * * *', async () => {
   try {
     const { purgarVencidos } = require('./services/codigosBallenoil');
     const r = await purgarVencidos();
@@ -415,7 +506,7 @@ app.get('/whatsapp/plantillas', async (req, res) => {
 // Auditoría de flota: a las 5:00 (poco tráfico) procesa el día de AYER, ya cerrado.
 // Es pesado (una llamada a Mapon por coche), por eso va una sola vez al día y deja el
 // resultado en el Sheet; el panel de Operaciones solo lee de ahí.
-cron.schedule('0 5 * * *', async () => {
+programar('0 5 * * *', async () => {
   try {
     const auditoria = require('./services/auditoriaFlota');
     const dia = auditoria.diaMenos(auditoria.hoyMadrid(), 1);
@@ -429,7 +520,7 @@ cron.schedule('0 5 * * *', async () => {
 
 // VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
 // hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
-cron.schedule('45 * * * *', async () => {
+programar('45 * * * *', async () => {
   console.log('⏰ [CRON VISTA_FINAL] vacaciones automáticas + reconstruirVistaFinal()...');
   try {
     const { reconstruirVistaFinal, aplicarAusenciasAutomaticas, aplicarReincorporaciones, escribirLetrasAusencia } = require('./services/vistaFinal');
@@ -454,7 +545,7 @@ cron.schedule('45 * * * *', async () => {
 // conductor y registra/avisa. APAGADO por defecto: se activa con SANCIONES_CRON=on cuando
 // esté verificado (y SANCIONES_MODO=live para que envíe de verdad; si no, solo simula).
 if (process.env.SANCIONES_CRON === 'on') {
-  cron.schedule('3,18,33,48 * * * *', async () => {
+  programar('3,18,33,48 * * * *', async () => {
     try {
       const sanciones = require('./services/sanciones');
       const r = await sanciones.procesar();
@@ -478,4 +569,20 @@ app.listen(port, () => {
   console.log(`   Cron: Cada hora (minuto 0)`);
   // Siembra el primer superadmin si SUPERADMIN_EMAIL está definido y aún no existe.
   sesion.sembrarSuperadmin();
+
+  // Comprobaciones de arranque. Las dos existían con un comentario que decía
+  // "se llama al arrancar" y NADIE las llamaba: un mapa desalineado no daba la
+  // cara hasta que alguien abría la pantalla concreta que lo usaba.
+  const bd = require('./services/db');
+  if (bd.HAY_BD) {
+    // ¿Sigue cuadrando el mapa de vigencias con las tablas reales?
+    require('./services/repo/vigencia').comprobarMapa().catch(e =>
+      console.error('⚠️  [VIGENCIA] No se pudo comprobar: ' + e.message));
+    // ¿Cubre el constructor de la agenda todas sus columnas? Si falta una,
+    // llega VACÍA a los 24 módulos que leen conductores.
+    require('./services/repo/agenda').comprobarCobertura().catch(e =>
+      console.error('⚠️  [AGENDA] No se pudo comprobar: ' + e.message));
+    const origen = require('./services/planificadorV2').AGENDA_ORIGEN;
+    console.log(`👥 [AGENDA] Los conductores se leen de: ${origen === 'postgres' ? 'PostgreSQL' : 'la hoja AGENDA_V2'}`);
+  }
 });

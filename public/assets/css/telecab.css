@@ -233,3 +233,83 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
 /* Zona de subida de documentos (dropzone de Selección) */
 .dz.dz-ok { border-style: solid; border-color: rgb(var(--tc-green) / .5); }
 .dz:hover { border-color: rgb(var(--tc-gold) / .5); }
+
+/* ══════════════════════════════════════════════════════════════
+   MENÚ LATERAL COMPACTO
+   ══════════════════════════════════════════════════════════════
+   El menú ocupa 16rem, que en portátiles se come un tercio del ancho útil.
+   Contraído se queda en 4.5rem: solo los iconos.
+
+   La gracia está en que contraído NO estorba: al pasar el ratón se despliega
+   POR ENCIMA del contenido, sin moverlo. Nada de layout que salta mientras
+   estás leyendo una tabla. Por eso el panel va posicionado y el hueco que
+   reserva el menú en la fila no cambia.
+
+   El estado vive en <html data-menu="corto">, igual que el tema, y se aplica
+   antes de pintar para que no haya parpadeo al cargar. */
+
+@media (min-width: 1024px) {
+  #menu-panel {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100vh;
+    width: 16rem;
+    transition: width .18s ease;
+    overflow: hidden;
+    z-index: 41;
+  }
+
+  :root[data-menu="corto"] #menu,
+  :root[data-menu="corto"] #menu-panel { width: 4.5rem; }
+
+  /* Desplegado temporal: con el ratón encima o con el foco dentro (teclado). */
+  :root[data-menu="corto"] #menu:hover #menu-panel,
+  :root[data-menu="corto"] #menu:focus-within #menu-panel {
+    width: 16rem;
+    box-shadow: 0 12px 40px -8px rgba(0, 0, 0, .55);
+  }
+
+  /* Los textos se desvanecen; el icono se queda en su columna. Se buscan por
+     estructura y no por una clase puesta a mano: asi un modulo nuevo que se
+     anada manana al menu se comporta bien sin que nadie se acuerde de esto. */
+  #menu-panel span, #menu-panel p, #menu-panel .grupo-chev { transition: opacity .12s ease; }
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel span:not(#nav-pend-badge),
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel p,
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel .grupo-chev {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* El contador de pendientes es lo único que sigue vivo contraído: se sube a
+     la esquina del icono, como el punto de una aplicación de móvil. */
+  #menu-panel nav a { position: relative; }
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #nav-pend-badge {
+    position: absolute;
+    top: .35rem;
+    left: 1.9rem;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  /* Contraído no se abren departamentos: no habría sitio donde leerlos. Se ven
+     en cuanto el ratón despliega el panel. */
+  :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) .grupo-items { display: none; }
+}
+
+/* El botón de contraer solo tiene sentido donde el menú está fijo. */
+#menu-corto { display: none; }
+@media (min-width: 1024px) { #menu-corto { display: inline-flex; } }
+
+/* Diálogos (public/assets/js/dialogo.js) */
+.dialogo { animation: dlgFondo .12s ease-out; }
+.dialogo .dialogo-caja { animation: dlgCaja .16s cubic-bezier(.2, .9, .3, 1); }
+.dialogo.dialogo-saliendo { animation: dlgFondo .12s ease-in reverse; }
+@keyframes dlgFondo { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dlgCaja {
+  from { opacity: 0; transform: translateY(8px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+/* Quien tenga el movimiento reducido activado no ve animaciones. */
+@media (prefers-reduced-motion: reduce) {
+  .dialogo, .dialogo .dialogo-caja { animation: none; }
+}

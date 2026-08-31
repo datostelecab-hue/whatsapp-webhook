@@ -1,4 +1,5 @@
 const { google } = require('googleapis');
+const pruebas = require('./modoPruebas');
 
 let sheetsClient = null;
 
@@ -54,6 +55,7 @@ async function readSheet(spreadsheetId, range, options = {}) {
 }
 
 async function writeSheet(spreadsheetId, range, values) {
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range} (${values.length} filas)`)) return;
   const sheets = getSheetsClient();
   await conReintento('write', () => sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -68,6 +70,7 @@ async function writeSheet(spreadsheetId, range, values) {
 // cabeceras que son claves (L_Acumuladas), donde el texto debe sobrevivir al
 // ida y vuelta.
 async function writeSheetRaw(spreadsheetId, range, values) {
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range} (${values.length} filas)`)) return;
   const sheets = getSheetsClient();
   await conReintento('write', () => sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -78,6 +81,7 @@ async function writeSheetRaw(spreadsheetId, range, values) {
 }
 
 async function clearSheet(spreadsheetId, range) {
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range}`)) return;
   const sheets = getSheetsClient();
   await conReintento('clear', () => sheets.spreadsheets.values.clear({
     spreadsheetId,
@@ -89,8 +93,11 @@ async function ensureSheet(spreadsheetId, sheetName) {
   const sheets = getSheetsClient();
   const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
   const exists = spreadsheet.data.sheets.some(s => s.properties.title === sheetName);
-  
+
   if (!exists) {
+    // La comprobación es una LECTURA y pasa siempre; lo que se frena en modo
+    // pruebas es crear la pestaña, que sí modificaría el libro de producción.
+    if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… crear hoja ${sheetName}`)) return;
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -121,7 +128,14 @@ async function readMany(spreadsheetId, ranges) {
  * sigue siendo un único viaje a Google.
  */
 async function writeMany(spreadsheetId, datos) {
-  if (!datos.length) return { updatedCells: 0 };
+  // Bloqueado en modo pruebas: se devuelve la MISMA forma que en una escritura
+  // real, con ceros y una marca. Devolver `undefined` hacia que los llamantes
+  // que hacen `{ ...res }` se quedaran sin campos y los logs escribieran
+  // "undefined celdas", que parece un fallo cuando no lo es.
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${datos.length} rango(s)`)) {
+    return { updatedCells: 0, updatedRanges: 0, bloqueado: true };
+  }
+  if (!datos.length) return { updatedCells: 0, updatedRanges: 0 };
   const sheets = getSheetsClient();
   const response = await conReintento('writeMany', () => sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,
@@ -135,6 +149,7 @@ async function writeMany(spreadsheetId, datos) {
 
 /** Envía requests crudas a spreadsheets.batchUpdate (formato, visibilidad…). */
 async function batchUpdate(spreadsheetId, requests) {
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${requests.length} petición(es)`)) return {};
   const reqs = (requests || []).filter(Boolean);
   if (!reqs.length) return;
   const sheets = getSheetsClient();
@@ -147,6 +162,7 @@ async function batchUpdate(spreadsheetId, requests) {
  * Todo en una sola petición.
  */
 async function setRowVisibility(spreadsheetId, sheetId, tramos) {
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… visibilidad de filas`)) return;
   const reqs = (tramos || []).filter(t => t.endIndex > t.startIndex);
   if (!reqs.length) return;
   const sheets = getSheetsClient();
@@ -185,6 +201,7 @@ async function ensureGrid(spreadsheetId, sheetName, filas, columnas) {
   if (!hoja) throw new Error(`No existe la hoja "${sheetName}"`);
   const g = hoja.properties.gridProperties || {};
   const reqs = [];
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ampliar ${sheetName} a ${filas}x${columnas}`)) return;
   if (filas && (g.rowCount || 0) < filas) {
     reqs.push({ appendDimension: { sheetId: hoja.properties.sheetId, dimension: 'ROWS', length: filas - (g.rowCount || 0) } });
   }
@@ -214,6 +231,7 @@ async function getSheetIds(spreadsheetId) {
 
 /** Añade filas al final de una hoja. */
 async function appendRows(spreadsheetId, range, values) {
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range} (+${values.length})`)) return { updatedRows: 0 };
   if (!values.length) return { updatedRows: 0 };
   const sheets = getSheetsClient();
   const response = await conReintento('append', () => sheets.spreadsheets.values.append({
@@ -232,6 +250,7 @@ async function appendRows(spreadsheetId, range, values) {
  * una fila desplace a las siguientes y se acabe eliminando la equivocada.
  */
 async function deleteRows(spreadsheetId, sheetId, filas) {
+  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${filas.length} fila(s)`)) return { borradas: 0 };
   if (!filas.length) return { borradas: 0 };
   const sheets = getSheetsClient();
   const ordenadas = [...new Set(filas)].sort((a, b) => b - a);

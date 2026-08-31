@@ -41,6 +41,25 @@
     </div>
   </div>
 
+  <!-- ══ Fecha efectiva ══
+       Decide qué semana se ve Y desde cuándo vale lo que se toque. Va antes que
+       los filtros porque no filtra nada: cambia de qué se está hablando. -->
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <button id="f-antes" title="Semana anterior"
+      class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-chevron-left text-xs"></i>
+    </button>
+    <input id="f-dia" type="date"
+      class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm"
+      title="Lo que planifiques vale desde este día">
+    <button id="f-despues" title="Semana siguiente"
+      class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-chevron-right text-xs"></i>
+    </button>
+    <button id="f-hoy" class="px-3 py-2 rounded-lg text-sm text-telecab-muted hover:text-telecab-text">Hoy</button>
+    <span id="f-semana" class="text-sm text-telecab-muted"></span>
+  </div>
+
   <!-- ══ Filtros ══ -->
   <div class="flex flex-wrap items-center gap-2 mb-4">
     <input id="f-busca" type="search" placeholder="Matrícula o conductor…"
@@ -51,10 +70,10 @@
     <button data-filtro="todos" class="f-chip activo px-3 py-1.5 rounded-full text-sm border">Todos</button>
     <button data-filtro="huecos" class="f-chip px-3 py-1.5 rounded-full text-sm border">Con huecos</button>
     <button data-filtro="pendiente" class="f-chip px-3 py-1.5 rounded-full text-sm border">Con cambios</button>
-    <span id="aviso-esquema" class="hidden text-xs text-telecab-red"></span>
   </div>
 
   <div id="msg" class="hidden mb-4 rounded-lg border border-telecab-border bg-telecab-card px-4 py-3 text-sm"></div>
+  <div id="avisos" class="hidden mb-4"></div>
 
   <div class="grid lg:grid-cols-[1fr_290px] gap-4 items-start">
 
@@ -130,6 +149,10 @@ const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 const LETRAS = <%- JSON.stringify(letrasDia) %>;
 const DIAS = <%- JSON.stringify(diasSem) %>;
 const ESTADOS_VEH = <%- JSON.stringify(estadosVehiculo) %>;
+// Codigo -> si ese estado deja al coche en la calle. Sale del catalogo de la
+// base, asi que aniadir un estado nuevo no obliga a tocar esta pantalla.
+const OPERATIVOS = new Set(ESTADOS_VEH.filter(e => e.es_operativo).map(e => e.codigo));
+const esOperativo = codigo => OPERATIVOS.has(codigo);
 
 let T = null;                  // tablero del servidor (estado GUARDADO)
 let CAMBIOS = new Map();       // cocheIdx -> { matricula?, zona?, estadoVeh?, slots: Map(slot -> {id?, dias?}) }
@@ -156,14 +179,29 @@ const efCampo = (coche, campo) => {
 };
 function efSlot(coche, k) {
   const c = CAMBIOS.get(coche.idx);
-  const pend = c && c.slots.get(k);
+  const pend = (c && c.slots.get(k)) || {};
   const p = coche.personas[k];
-  if (pend && pend.id !== undefined) {
-    const info = pend.id ? (porId().get(pend.id) || {}) : {};
-    return { id: pend.id, nombre: info.nombre || pend.id, dias: pend.dias, pendiente: true, base: p };
-  }
-  if (pend && pend.dias !== undefined) return { id: p.id, nombre: p.nombre || p.id, dias: pend.dias, pendiente: true, base: p };
-  return { id: p.id, nombre: p.nombre || p.id, dias: null, pendiente: false, base: p };
+  const cambiaPersona = pend.id !== undefined;
+  const id = cambiaPersona ? pend.id : (p.id || '');
+  const info = cambiaPersona && id ? (porId().get(id) || {}) : {};
+  return {
+    id,
+    nombre: !id ? '' : (cambiaPersona ? (info.nombre || id) : (p.nombre || id)),
+    dias: pend.dias !== undefined ? pend.dias : null,
+    // Las fechas de la plaza. Al cambiar de persona NO se heredan las del
+    // anterior: la ventana era suya, no de la plaza.
+    desde: pend.desde !== undefined ? pend.desde : (cambiaPersona ? '' : (p.desde || '')),
+    hasta: pend.hasta !== undefined ? pend.hasta : (cambiaPersona ? '' : (p.hasta || '')),
+    pendiente: Object.keys(pend).length > 0,
+    base: p,
+  };
+}
+
+// Hoy en dd/mm/aaaa, que es como se escriben las fechas en la hoja.
+function hoyTexto() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 let _porId = null;
@@ -198,15 +236,50 @@ function ponerEnSlot(cocheIdx, slot, id) {
     // Venía del banquillo y la plaza estaba ocupada: el ocupante sale al banquillo.
   }
   setSlot(cocheIdx, slot, id);
+
+  // Un movimiento toca hasta DOS plazas: la de destino y la de origen, que se
+  // queda con quien estuviera en el destino. Las dos son un arreglo NUEVO, así
+  // que las dos necesitan su "Desde", y se rellena con el día en que se
+  // planifica.
+  //
+  // Rellenar solo la de destino era el fallo: la de origen se quedaba con
+  // alguien dentro y la fecha en blanco, y parecía que poner una fecha borraba
+  // las de los demás.
+  const tocadas = [{ coche: cocheIdx, slot }];
+  if (origen) tocadas.push(origen);
+  tocadas.forEach(t => rellenarDesde(t.coche, t.slot));
+
   pintar();
+}
+
+/** Si la plaza tiene a alguien y no tiene Desde, se le pone el día de hoy. */
+function rellenarDesde(cocheIdx, slot) {
+  const coche = T.coches.find(c => c.idx === cocheIdx);
+  if (!coche) return;
+  const s = efSlot(coche, slot);
+  if (s.id && !s.desde) setFecha(cocheIdx, slot, 'desde', hoyTexto(), { sinPintar: true });
 }
 function setSlot(cocheIdx, slot, id) {
   const coche = T.coches.find(c => c.idx === cocheIdx);
   const c = cambioDe(cocheIdx);
   const prev = c.slots.get(slot) || {};
-  // Si el valor vuelve a ser el guardado, el cambio se anula solo.
-  if ((coche.personas[slot].id || '') === (id || '') && prev.dias === undefined) c.slots.delete(slot);
-  else c.slots.set(slot, { ...prev, id: id || '' });
+  const mismo = (coche.personas[slot].id || '') === (id || '');
+
+  // Si vuelve a quedar como estaba —misma persona, sin días ni fechas tocados—
+  // el cambio se anula solo. Antes solo se miraban los días, así que un cambio
+  // de fecha se perdía si la persona volvía a ser la misma.
+  if (mismo && prev.dias === undefined && prev.desde === undefined && prev.hasta === undefined) {
+    c.slots.delete(slot);
+  } else if (mismo) {
+    c.slots.set(slot, { ...prev, id: id || '' });
+  } else {
+    // Cambia la persona: la ventana del anterior NO se hereda, era suya. Se
+    // limpian las fechas pendientes y `rellenarDesde` pondrá la nueva.
+    const limpio = { ...prev };
+    delete limpio.desde;
+    delete limpio.hasta;
+    c.slots.set(slot, { ...limpio, id: id || '' });
+  }
   limpiarSiVacio(cocheIdx);
 }
 function setDias(cocheIdx, slot, dias) {
@@ -221,6 +294,27 @@ function setDias(cocheIdx, slot, dias) {
   limpiarSiVacio(cocheIdx);
   refrescarBarra();
 }
+/** Desde/Hasta de una plaza. `campo` es 'desde' o 'hasta'. */
+function setFecha(cocheIdx, slot, campo, valor, opciones) {
+  const coche = T.coches.find(c => c.idx === cocheIdx);
+  const c = cambioDe(cocheIdx);
+  const prev = c.slots.get(slot) || {};
+  const guardado = coche.personas[slot][campo] || '';
+  const nuevo = (valor || '').trim();
+
+  if (nuevo === guardado) {
+    // Vuelve a ser lo guardado: se retira este campo del cambio pendiente.
+    const resto = { ...prev };
+    delete resto[campo];
+    if (Object.keys(resto).length) c.slots.set(slot, resto);
+    else c.slots.delete(slot);
+  } else {
+    c.slots.set(slot, { ...prev, [campo]: nuevo });
+  }
+  limpiarSiVacio(cocheIdx);
+  if (!(opciones && opciones.sinPintar)) refrescarBarra();
+}
+
 function setCampo(cocheIdx, campo, valor) {
   const coche = T.coches.find(c => c.idx === cocheIdx);
   const c = cambioDe(cocheIdx);
@@ -229,6 +323,75 @@ function setCampo(cocheIdx, campo, valor) {
   limpiarSiVacio(cocheIdx);
   pintar();
 }
+/**
+ * Intercambia el COCHE entre dos cuadrantes: matricula, zona y estado pasan de
+ * una tarjeta a la otra y las tripulaciones no se mueven.
+ *
+ * Es la operacion que se hace cada vez que un coche entra en taller: el grupo
+ * sigue trabajando en otra placa y la averiada queda en la tarjeta de al lado
+ * para marcarla. Antes habia que reescribir las dos matriculas a mano y era
+ * facil dejarlas duplicadas un momento.
+ */
+/**
+ * El coche se cambia por otro y SU GENTE SE VA CON EL.
+ *
+ * Antes esto intercambiaba las MATRICULAS de las dos tarjetas y dejaba las
+ * tripulaciones donde estaban — asi funcionaba con la hoja, donde la fila era la
+ * posicion y la matricula un texto dentro.
+ *
+ * En la base el coche ES la matricula, y la gente cuelga de sus plazas. Cambiar
+ * los textos de sitio ahi no significa nada: lo que pasa de verdad cuando un
+ * coche entra al taller es que sus conductores se suben a otro. Eso es lo que se
+ * manda ahora, y va al servidor en UNA transaccion respetando plaza y dias: a
+ * mano son doce movimientos y basta fallar en uno para dejar a alguien sin coche.
+ *
+ * Se guarda al momento, no con el boton: mueve a demasiada gente para dejarlo
+ * pendiente entre otros cambios.
+ */
+async function intercambiarCoche(idxA, idxB) {
+  if (idxA === idxB) return;
+  const A = T.coches.find(c => c.idx === idxA);
+  const B = T.coches.find(c => c.idx === idxB);
+  if (!A || !B) return;
+
+  const gente = A.personas.filter(p => p.id).length;
+  if (!gente) return msg('Ese coche no tiene a nadie que mover.', true);
+
+  const hacerlo = async forzar => {
+    const r = await fetch('/planificador-v2/api/cambiar-coche', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ de: A.vehiculoId, a: B.vehiculoId, dia: DIA, forzar })
+    });
+    return { r, d: await r.json() };
+  };
+
+  try {
+    let { d } = await hacerlo(false);
+
+    // El destino lleva gente: se dice quien es y se pregunta, en vez de
+    // quitarles la plaza sin avisar.
+    if (d.status !== 'ok' && /ya lleva gente/.test(d.msg || '')) {
+      const ok = await Dialogo.confirmar({
+        titulo: '¿' + (efCampo(B, 'matricula') || 'El coche de destino') + ' ya lleva gente?',
+        tono: 'peligro', si: 'Quitarles la plaza y mover', no: 'Cancelar',
+        texto: d.msg,
+      });
+      if (!ok) return;
+      ({ d } = await hacerlo(true));
+    }
+    if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo mover');
+
+    T = d.tablero; CAMBIOS = new Map(); SELECCION = null;
+    pintarSemana();
+    pintar();
+    pintarAvisos(d.tablero.avisos);
+    msg('✅ ' + d.movidos.length + ' conductor(es) de ' + esc(efCampo(A, 'matricula') || 'ese coche') +
+        ' pasan a ' + esc(efCampo(B, 'matricula') || 'el otro') + ' desde el ' + d.dia, false);
+  } catch (e) {
+    msg('No se pudo cambiar el coche: ' + esc(e.message), true);
+  }
+}
+
 function limpiarSiVacio(idx) {
   const c = CAMBIOS.get(idx);
   if (c && c.slots.size === 0 && c.matricula === undefined && c.zona === undefined && c.estadoVeh === undefined) {
@@ -292,6 +455,31 @@ function plazaHTML(coche, k) {
     </div>`;
 }
 
+/**
+ * Ventana de la asignacion. Solo aparece si hay alguien: una plaza vacia no
+ * tiene desde ni hasta.
+ *
+ * El Desde va en rojo mientras este vacio, porque es obligatorio y sin el no
+ * se puede guardar. El Hasta vacio es lo normal: significa indefinido.
+ */
+function fechasHTML(coche, k) {
+  const s = efSlot(coche, k);
+  if (!s.id) return '';
+  const falta = !s.desde;
+  const clase = 'fecha-asig js-fecha flex-1 min-w-0 px-1.5 py-0.5 rounded bg-telecab-dark ' +
+                'text-[10px] text-telecab-text border';
+  return `
+    <div class="flex items-center gap-1 mt-1" title="Desde cuando ocupa esta plaza y hasta cuando">
+      <input class="${clase} ${falta ? 'border-telecab-red' : 'border-telecab-border'}"
+             data-coche="${coche.idx}" data-slot="${k}" data-campo="desde"
+             value="${esc(s.desde)}" placeholder="Desde *">
+      <i class="fa-solid fa-arrow-right-long text-[9px] text-telecab-muted"></i>
+      <input class="${clase} border-telecab-border"
+             data-coche="${coche.idx}" data-slot="${k}" data-campo="hasta"
+             value="${esc(s.hasta)}" placeholder="indefinido">
+    </div>`;
+}
+
 function diasCTHTML(coche, k) {
   const s = efSlot(coche, k);
   const p = coche.personas[k];
@@ -309,7 +497,11 @@ function cocheHTML(coche) {
   const matricula = efCampo(coche, 'matricula');
   const zona = efCampo(coche, 'zona');
   const estadoVeh = efCampo(coche, 'estadoVeh');
-  const operativo = estadoVeh === '✓';
+  // Si ese estado significa operativo lo dice el CATALOGO, no una comparacion
+  // con un simbolo. Antes se miraba `estadoVeh === '✓'` —el de la hoja—, y como
+  // la base manda 'O' salia false siempre: TODAS las tarjetas se pintaban
+  // apagadas, que es lo que se veia.
+  const operativo = esOperativo(estadoVeh);
   const tocado = CAMBIOS.has(coche.idx);
 
   const huecos = [0,1].filter(k => operativo && matricula && !efSlot(coche, k).id).length;
@@ -323,13 +515,19 @@ function cocheHTML(coche) {
   <div class="${clases.join(' ')}" data-idx="${coche.idx}">
     <div class="flex items-center gap-2 mb-2">
       <select class="estado-veh px-1.5 py-1 rounded bg-telecab-dark border border-telecab-border text-sm" data-idx="${coche.idx}" title="Estado del vehículo">
-        ${ESTADOS_VEH.map(e => `<option ${e===estadoVeh?'selected':''}>${e}</option>`).join('')}
+        ${ESTADOS_VEH.map(e => `<option value="${esc(e.codigo)}" ${e.codigo===estadoVeh?'selected':''}
+          title="${esc(e.etiqueta)}">${esc(e.codigo)}</option>`).join('')}
       </select>
       <input class="matricula flex-1 min-w-0 px-2 py-1 rounded bg-telecab-dark border ${tocado && CAMBIOS.get(coche.idx).matricula !== undefined ? 'border-telecab-gold' : 'border-telecab-border'} text-telecab-text font-bold text-sm uppercase"
              data-idx="${coche.idx}" value="${esc(matricula)}" placeholder="MATRÍCULA"
-             title="Cambiar la matrícula mueve al grupo entero a esa placa">
+             title="Corrige la matrícula de ESTE coche. Para mover a la tripulación a otro, usa el botón de al lado">
       <input class="zona w-24 px-2 py-1 rounded bg-telecab-dark border border-telecab-border text-telecab-muted text-xs"
              data-idx="${coche.idx}" value="${esc(zona)}" placeholder="Zona" list="zonas">
+      <button class="cambiar-coche w-7 h-7 shrink-0 rounded border border-telecab-border text-telecab-muted
+                     hover:border-telecab-gold hover:text-telecab-gold transition text-xs"
+              data-idx="${coche.idx}" title="Cambiar de coche: la tripulación de este coche se pasa a otro">
+        <i class="fa-solid fa-right-left"></i>
+      </button>
       ${tocado ? '<span class="w-2 h-2 rounded-full bg-telecab-gold" title="Con cambios sin guardar"></span>' : ''}
     </div>
 
@@ -340,6 +538,7 @@ function cocheHTML(coche) {
           ${tiraCobertura(coche, 'Día')}
         </div>
         ${plazaHTML(coche, 0)}
+        ${fechasHTML(coche, 0)}
       </div>
       <div>
         <div class="flex items-center justify-between mb-1">
@@ -347,6 +546,7 @@ function cocheHTML(coche) {
           ${tiraCobertura(coche, 'Noche')}
         </div>
         ${plazaHTML(coche, 1)}
+        ${fechasHTML(coche, 1)}
       </div>
     </div>
 
@@ -358,6 +558,7 @@ function cocheHTML(coche) {
             <span class="text-[10px] text-telecab-muted">${iconoTurno(coche.personas[k].turno)} ${esc(coche.personas[k].etiqueta)}</span>
             ${plazaHTML(coche, k)}
             ${diasCTHTML(coche, k)}
+            ${fechasHTML(coche, k)}
           </div>`).join('')}
       </div>
     </details>
@@ -519,10 +720,131 @@ document.addEventListener('change', e => {
   if (e.target.matches('.zona')) setCampo(+e.target.dataset.idx, 'zona', e.target.value.trim());
   if (e.target.matches('.matricula')) setCampo(+e.target.dataset.idx, 'matricula', e.target.value.trim().toUpperCase());
   if (e.target.matches('.dias-ct')) setDias(+e.target.dataset.coche, +e.target.dataset.slot, e.target.value.trim().toUpperCase());
+  if (e.target.matches('.fecha-asig')) {
+    const inp = e.target;
+    setFecha(+inp.dataset.coche, +inp.dataset.slot, inp.dataset.campo, inp.value);
+    // El borde se corrige aqui y no repintando: repintar mataria el foco y el
+    // calendario que el usuario acaba de usar.
+    if (inp.dataset.campo === 'desde') {
+      inp.classList.toggle('border-telecab-red', !inp.value.trim());
+      inp.classList.toggle('border-telecab-border', !!inp.value.trim());
+    }
+  }
+});
+
+// ── Cambio de coche ─────────────────────────────────────────────────────────
+// Con 87 coches, pedir "pincha ahora la otra tarjeta" obliga a buscarla por la
+// pantalla. Se abre una lista, y arriba salen los candidatos de verdad: coches
+// operativos SIN tripulacion, que son los que estan libres para recibir a un
+// grupo.
+function abrirCambioDeCoche(idx) {
+  const origen = T.coches.find(c => c.idx === idx);
+  if (!origen) return;
+
+  const conGente = c => c.personas.some((_, k) => efSlot(c, k).id);
+  const candidatos = T.coches
+    .filter(c => c.idx !== idx)
+    .map(c => ({
+      c,
+      matricula: efCampo(c, 'matricula') || '',
+      zona: efCampo(c, 'zona') || '',
+      estado: efCampo(c, 'estadoVeh') || '',
+      libre: !conGente(c),
+    }))
+    // El orden importa mas de lo que parece: la hoja tiene 120 filas y la mayoria
+    // estan sin placa. Sin ordenar, lo primero que se ve son treinta "(sin placa)"
+    // y el coche que buscas queda enterrado.
+    //   1º coches con placa y sin tripulacion  → los candidatos de verdad
+    //   2º coches con placa y con tripulacion  → intercambio entre dos grupos
+    //   3º filas vacias                        → aparcar el grupo en una fila libre
+    .sort((a, b) => {
+      const rango = x => (!x.matricula ? 2 : (x.libre ? 0 : 1));
+      return rango(a) - rango(b) || a.matricula.localeCompare(b.matricula, 'es');
+    });
+
+  const fondo = document.createElement('div');
+  fondo.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm';
+  fondo.innerHTML = `
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-md my-8">
+      <div class="px-5 py-4 border-b border-telecab-border">
+        <h3 class="font-bold">Cambiar de coche</h3>
+        <p class="text-xs text-telecab-muted mt-1">
+          La tripulación de <b class="text-telecab-text">${esc(efCampo(origen, 'matricula') || 'este cuadrante')}</b>
+          se queda donde está. Lo que se intercambia es el coche: matrícula, zona y estado.
+        </p>
+      </div>
+      <div class="p-3 border-b border-telecab-border">
+        <input id="cc-busca" placeholder="Buscar matrícula…" autofocus
+               class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
+                      focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+      </div>
+      <div id="cc-lista" class="max-h-[50vh] overflow-y-auto p-2 space-y-1"></div>
+      <div class="px-5 py-3 border-t border-telecab-border text-right">
+        <button id="cc-cerrar" class="px-4 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-sm">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+
+  const cerrar = () => { fondo.remove(); document.removeEventListener('keydown', alEscape); };
+  const alEscape = e => { if (e.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', alEscape);
+  fondo.addEventListener('click', e => { if (e.target === fondo) cerrar(); });
+  fondo.querySelector('#cc-cerrar').addEventListener('click', cerrar);
+
+  const lista = fondo.querySelector('#cc-lista');
+  const pintarLista = () => {
+    const q = (fondo.querySelector('#cc-busca').value || '').toLowerCase().trim();
+    const vistos = candidatos.filter(x => !q || (x.matricula + ' ' + x.zona).toLowerCase().includes(q));
+    lista.innerHTML = vistos.length ? '' : '<p class="p-4 text-center text-sm text-telecab-muted">Ningún coche coincide.</p>';
+    vistos.forEach(x => {
+      const b = document.createElement('button');
+      b.className = 'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-sm ' +
+                    'bg-telecab-card2 border border-telecab-border hover:border-telecab-gold/50 transition';
+      b.innerHTML = `
+        <span class="font-semibold ${x.matricula ? '' : 'text-telecab-muted italic font-normal'}">
+          ${esc(x.matricula || 'fila vacía #' + (x.c.idx + 1))}</span>
+        <span class="text-xs text-telecab-muted">${esc(x.estado)}${x.zona ? ' · ' + esc(x.zona) : ''}</span>
+        <span class="ml-auto text-[10px] ${x.libre ? 'text-telecab-green' : 'text-telecab-warn'}">
+          ${x.libre ? 'sin tripulación' : 'con tripulación'}</span>`;
+      b.addEventListener('click', async () => {
+        if (!x.libre) {
+          const ok = await Dialogo.confirmar({
+            titulo: `${x.matricula || 'Ese coche'} tiene tripulación`,
+            tono: 'aviso', si: 'Intercambiar igualmente', no: 'Cancelar',
+            html: `<p>Al intercambiar, <b>cada grupo se queda en su tarjeta</b> y solo se cruzan los coches.</p>
+                   <p class="text-telecab-muted">Nadie cambia de compañero ni de turno.</p>`,
+          });
+          if (!ok) return;
+        }
+        cerrar();
+        intercambiarCoche(idx, x.c.idx);
+      });
+      lista.appendChild(b);
+    });
+  };
+  fondo.querySelector('#cc-busca').addEventListener('input', pintarLista);
+  pintarLista();
+  fondo.querySelector('#cc-busca').focus();
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.cambiar-coche');
+  if (b) abrirCambioDeCoche(+b.dataset.idx);
 });
 
 // ── Filtros ─────────────────────────────────────────────────────────────────
 $('#f-busca').addEventListener('input', pintar);
+
+// La fecha efectiva. Moverse una semana son siete dias: el tablero se posiciona
+// solo en el lunes que corresponda.
+$('#f-antes').addEventListener('click', () => moverDia(-7));
+$('#f-despues').addEventListener('click', () => moverDia(7));
+$('#f-hoy').addEventListener('click', () => { DIA = ''; $('#f-dia').value = ''; cargar(); });
+$('#f-dia').addEventListener('change', e => {
+  if (!e.target.value) return;
+  DIA = e.target.value;
+  cargar();
+});
 $('#f-zona').addEventListener('change', pintar);
 $('#banquillo-busca').addEventListener('input', pintarBanquillo);
 $$('.f-chip').forEach(b => b.addEventListener('click', () => {
@@ -532,6 +854,111 @@ $$('.f-chip').forEach(b => b.addEventListener('click', () => {
 }));
 
 // ── Cargar / guardar ────────────────────────────────────────────────────────
+// Gravedad y aspecto de cada tipo de aviso. Lo que no este aqui sale como
+// informativo: mas vale un aviso sin clasificar que uno escondido.
+const TIPOS_AVISO = {
+  'huerfano':                     { nivel: 2, icono: 'fa-user-slash',        titulo: 'IDs que ya no están en la agenda' },
+  'dias-ilegibles':               { nivel: 2, icono: 'fa-triangle-exclamation', titulo: 'Días que no se entienden' },
+  'turno-cruzado':                { nivel: 2, icono: 'fa-arrows-turn-to-dots', titulo: 'Turno cruzado' },
+  'matricula-duplicada':          { nivel: 2, icono: 'fa-clone',             titulo: 'Matrículas repetidas' },
+  'estado-retira':                { nivel: 1, icono: 'fa-user-minus',        titulo: 'Ausencias que liberan la plaza' },
+  'fecha-hasta-hoy':              { nivel: 2, icono: 'fa-hourglass-end',     titulo: 'Se van HOY' },
+  'fecha-hasta-manana':           { nivel: 1, icono: 'fa-hourglass-half',    titulo: 'Se van mañana' },
+  'fecha-hasta-vencida':          { nivel: 2, icono: 'fa-calendar-xmark',    titulo: 'Asignaciones vencidas' },
+  'fecha-alta-futura':            { nivel: 0, icono: 'fa-calendar-plus',     titulo: 'Aún no se han incorporado' },
+  'fecha-reincorporacion-pasada': { nivel: 2, icono: 'fa-calendar-check',    titulo: 'Debían haber vuelto' },
+  'trabaja-en-libranza':          { nivel: 0, icono: 'fa-bed',               titulo: 'Trabajan en su día de libranza' },
+  'pre-alta':                     { nivel: 0, icono: 'fa-clock',             titulo: 'Entran más tarde' },
+  'ausencia-temporal':            { nivel: 1, icono: 'fa-umbrella-beach',    titulo: 'Planificados estando ausentes' },
+  'ct-sin-dias':                  { nivel: 1, icono: 'fa-calendar-day',      titulo: 'Correturnos sin días: no cubren nada' },
+  'asignacion-vencida':           { nivel: 2, icono: 'fa-calendar-xmark',    titulo: 'Asignaciones vencidas' },
+  'repetido-en-coche':            { nivel: 2, icono: 'fa-copy',              titulo: 'Repetidos en el mismo coche' },
+  'sin-turno':                    { nivel: 2, icono: 'fa-circle-question',   titulo: 'Sin turno: no se pueden planificar' },
+  'coche-parado':                 { nivel: 1, icono: 'fa-car-burst',         titulo: 'Coches parados con gente dentro' },
+  'titular-ausente':              { nivel: 1, icono: 'fa-user-clock',        titulo: 'El titular está ausente' },
+  'titular-pre-alta':             { nivel: 0, icono: 'fa-user-plus',         titulo: 'El titular aún no ha entrado' },
+  'conflicto':                    { nivel: 2, icono: 'fa-bolt',              titulo: 'Conflictos' },
+};
+const NIVELES = [
+  { tono: 'muted', etiqueta: 'Para saberlo' },
+  { tono: 'warn',  etiqueta: 'Conviene mirarlo' },
+  { tono: 'red',   etiqueta: 'Hay que arreglarlo' },
+];
+
+function pintarAvisos(lista) {
+  const caja = $('#avisos');
+  const avisos = (lista || []).map(a => (typeof a === 'string' ? { tipo: 'otro', msg: a } : a));
+  if (!avisos.length) { caja.classList.add('hidden'); caja.innerHTML = ''; return; }
+  caja.classList.remove('hidden');
+
+  // Agrupados por tipo, y los tipos ordenados por gravedad.
+  const grupos = new Map();
+  avisos.forEach(a => {
+    const k = a.tipo || 'otro';
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(a);
+  });
+  const def = k => TIPOS_AVISO[k] || { nivel: 0, icono: 'fa-circle-info', titulo: 'Otros avisos' };
+  const orden = [...grupos.keys()].sort((a, b) => def(b).nivel - def(a).nivel || grupos.get(b).length - grupos.get(a).length);
+
+  const peor = Math.max(...orden.map(k => def(k).nivel));
+  const tonoPeor = NIVELES[peor].tono;
+
+  caja.innerHTML = `
+    <details class="rounded-xl border border-telecab-${tonoPeor}/40 bg-telecab-${tonoPeor}/5 overflow-hidden" ${peor >= 2 ? 'open' : ''}>
+      <summary class="flex items-center gap-2 px-4 py-2.5 cursor-pointer select-none">
+        <i class="fa-solid fa-bell text-telecab-${tonoPeor}"></i>
+        <span class="text-sm font-semibold">${avisos.length} aviso${avisos.length === 1 ? '' : 's'} del planificador</span>
+        <span class="flex items-center gap-1.5 ml-2">
+          ${orden.map(k => {
+            const d = def(k);
+            return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold
+                          bg-telecab-${NIVELES[d.nivel].tono}/15 text-telecab-${NIVELES[d.nivel].tono}"
+                          title="${esc(d.titulo)}"><i class="fa-solid ${d.icono}"></i>${grupos.get(k).length}</span>`;
+          }).join('')}
+        </span>
+        <span class="ml-auto text-xs text-telecab-muted">detalles</span>
+      </summary>
+      <div class="px-4 pb-3 pt-1 space-y-3">
+        ${orden.map(k => {
+          const d = def(k);
+          const tono = NIVELES[d.nivel].tono;
+          const items = grupos.get(k);
+          return `
+            <div>
+              <p class="flex items-center gap-2 text-[11px] uppercase tracking-wider font-semibold text-telecab-${tono} mb-1">
+                <i class="fa-solid ${d.icono}"></i>${esc(d.titulo)}
+                <span class="text-telecab-muted font-normal normal-case tracking-normal">${items.length}</span>
+              </p>
+              <ul class="space-y-0.5">
+                ${items.map(a => `
+                  <li class="text-xs text-telecab-text/90 flex items-start gap-2">
+                    <span class="text-telecab-muted mt-0.5">·</span>
+                    <span class="flex-1">${esc(a.msg || a.texto || '')}</span>
+                    ${a.matricula ? `<button class="ir-a-coche shrink-0 text-[10px] px-1.5 py-0.5 rounded
+                        border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition"
+                        data-matricula="${esc(a.matricula)}">${esc(a.matricula)}</button>` : ''}
+                  </li>`).join('')}
+              </ul>
+            </div>`;
+        }).join('')}
+      </div>
+    </details>`;
+}
+
+// Ir al coche del aviso: se filtra por su matricula y se lleva la vista alli.
+// Antes habia que buscarla a ojo entre ochenta y siete tarjetas.
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.ir-a-coche');
+  if (!b) return;
+  $('#f-busca').value = b.dataset.matricula;
+  FILTRO = 'todos';
+  $$('.f-chip').forEach(x => x.classList.toggle('activo', x.dataset.filtro === 'todos'));
+  pintar();
+  const tarjeta = document.querySelector('.coche');
+  if (tarjeta) tarjeta.scrollIntoView({ block: 'center', behavior: 'smooth' });
+});
+
 function msg(t, err) {
   const m = $('#msg');
   if (!t) { m.classList.add('hidden'); return; }
@@ -540,48 +967,106 @@ function msg(t, err) {
   m.style.color = err ? 'rgb(var(--tc-red))' : '';
 }
 
+// LA FECHA EFECTIVA. Decide que semana se pinta y, al guardar, desde cuando
+// vale lo que se toque. Sin ella el tablero solo sabia hablar del presente.
+let DIA = '';
+
 async function cargar() {
   msg('');
   try {
-    const r = await fetch('/planificador/api/tablero');
+    const r = await fetch('/planificador-v2/api/tablero' + (DIA ? '?dia=' + DIA : ''));
     const d = await r.json();
     if (d.status === 'error') throw new Error(d.msg);
     T = d; CAMBIOS = new Map(); SELECCION = null;
-    if (d.esquema && d.esquema.ok === false) {
-      $('#aviso-esquema').textContent = '⚠️ El esquema de la hoja no cuadra — revisa el planificador clásico';
-      $('#aviso-esquema').classList.remove('hidden');
-    }
+    DIA = d.dia || DIA;
+    const sel = $('#f-dia');
+    if (sel && !sel.value) sel.value = DIA;
+    pintarSemana();
     pintar();
-    if ((d.avisos || []).length) {
-      msg(`⚠️ ${d.avisos.length} aviso(s) del planificador: ` + esc(d.avisos.slice(0,3).map(a => a.msg || a.texto || a).join(' · ')) + (d.avisos.length > 3 ? '…' : ''), false);
-    }
+    pintarAvisos(d.avisos);
   } catch (e) { msg('No se pudo cargar el tablero: ' + esc(e.message), true); }
+}
+
+/** Que semana se esta viendo, en cristiano. */
+function pintarSemana() {
+  const caja = $('#f-semana');
+  if (!caja || !T || !T.fechas) return;
+  const dm = f => f.slice(8, 10) + '/' + f.slice(5, 7);
+  caja.textContent = 'Semana del ' + dm(T.fechas[0]) + ' al ' + dm(T.fechas[6]);
+}
+
+/** Mueve la fecha efectiva N dias y recarga. */
+async function moverDia(dias) {
+  if (nCambios() > 0) {
+    const ok = await Dialogo.confirmar({
+      titulo: 'Tienes cambios sin guardar',
+      tono: 'aviso', si: 'Cambiar de fecha y perderlos', no: 'Seguir aqui',
+      texto: 'Al cambiar de fecha se recarga el tablero y se pierde lo que no hayas guardado.',
+    });
+    if (!ok) return;
+  }
+  const d = new Date((DIA || hoyTexto()) + 'T00:00:00');
+  d.setDate(d.getDate() + dias);
+  DIA = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  $('#f-dia').value = DIA;
+  cargar();
 }
 
 async function guardar() {
   const cambios = [];
   CAMBIOS.forEach((c, idx) => {
-    const uno = { coche: idx };
+    const coche = T.coches.find(x => x.idx === idx) || {};
+    // Se manda la IDENTIDAD del coche y de la plaza, no su posicion en la lista.
+    // Con el indice, un coche anadido entre que cargas y guardas desplazaba todo
+    // y escribias en el equivocado, sin que nada fallara.
+    const uno = { coche: idx, vehiculoId: coche.vehiculoId };
     ['matricula','zona','estadoVeh'].forEach(k => { if (c[k] !== undefined) uno[k] = c[k]; });
-    if (c.slots.size) uno.slots = [...c.slots.entries()].map(([slot, v]) => ({ slot, ...v }));
+    if (c.slots.size) {
+      uno.slots = [...c.slots.entries()].map(([slot, v]) =>
+        ({ slot, plazaId: (coche.personas[slot] || {}).plazaId, ...v }));
+    }
     cambios.push(uno);
   });
   if (!cambios.length) return;
 
+  // El Desde se exige a lo que se esta TOCANDO ahora, no a todo el tablero: las
+  // asignaciones que ya estaban ahi vienen sin fecha de cuando esto no existia,
+  // y bloquearlas dejaria el tablero imposible de guardar. Cada plaza que se
+  // toque va poniendo la suya.
+  const sinDesde = [];
+  CAMBIOS.forEach((c, idx) => {
+    const coche = T.coches.find(x => x.idx === idx);
+    if (!coche) return;
+    c.slots.forEach((_, k) => {
+      const s = efSlot(coche, k);
+      if (s.id && !s.desde) {
+        sinDesde.push(`${efCampo(coche, 'matricula') || '#' + (idx + 1)} · ${coche.personas[k].etiqueta}`);
+      }
+    });
+  });
+  if (sinDesde.length) {
+    msg(`❌ Falta la fecha "Desde" en ${sinDesde.length} plaza(s): ` +
+        esc(sinDesde.slice(0, 4).join(' · ')) + (sinDesde.length > 4 ? '…' : ''), true);
+    const primero = document.querySelector('.fecha-asig[data-campo="desde"].border-telecab-red');
+    if (primero) { primero.scrollIntoView({ block: 'center', behavior: 'smooth' }); primero.focus(); }
+    return;
+  }
+
   const b = $('#btn-guardar');
   b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Guardando…';
   try {
-    const r = await fetch('/planificador/api/guardar', {
+    const r = await fetch('/planificador-v2/api/guardar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cambios })
+      body: JSON.stringify({ cambios, dia: DIA })
     });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo guardar');
     T = d.tablero; CAMBIOS = new Map(); SELECCION = null;
+    pintarSemana();
     pintar();
-    const avisos = (d.tablero.avisos || []).length;
-    msg(`✅ Guardado en ${d.segundos}s (${d.escritura.updatedCells} celdas)` +
-        (avisos ? ` · ⚠️ ${avisos} aviso(s): ` + esc(d.tablero.avisos.slice(0,3).map(a => a.msg || a.texto || a).join(' · ')) : ''), false);
+    pintarAvisos(d.tablero.avisos);
+    const n = (d.hechos || []).length;
+    msg('✅ Guardado: ' + n + ' movimiento(s) con fecha ' + d.dia, false);
   } catch (e) {
     msg('❌ ' + esc(e.message) + ' — tus cambios siguen aquí, puedes reintentar.', true);
   }
@@ -589,8 +1074,29 @@ async function guardar() {
 }
 
 $('#btn-guardar').addEventListener('click', guardar);
-$('#btn-descartar').addEventListener('click', () => { if (nCambios() === 0 || confirm('¿Descartar todos los cambios sin guardar?')) cargar(); });
-$('#btn-recargar').addEventListener('click', () => { if (nCambios() === 0 || confirm('Hay cambios sin guardar. ¿Recargar igualmente?')) cargar(); });
+// Los dos avisan de lo MISMO —que hay cambios sin guardar— pero se llega por
+// caminos distintos, así que cada uno lo dice a su manera.
+$('#btn-descartar').addEventListener('click', async () => {
+  const n = nCambios();
+  if (n === 0) return cargar();
+  const ok = await Dialogo.confirmar({
+    titulo: 'Descartar los cambios',
+    tono: 'peligro', si: `Descartar ${n} cambio${n === 1 ? '' : 's'}`, no: 'Seguir editando',
+    texto: 'Se pierde todo lo que no se haya guardado. No hay vuelta atrás.',
+  });
+  if (ok) cargar();
+});
+
+$('#btn-recargar').addEventListener('click', async () => {
+  const n = nCambios();
+  if (n === 0) return cargar();
+  const ok = await Dialogo.confirmar({
+    titulo: 'Recargar el tablero',
+    tono: 'aviso', si: 'Recargar y perderlos', no: 'Seguir editando',
+    texto: `Tienes ${n} cambio${n === 1 ? '' : 's'} sin guardar. Al recargar se pierden.`,
+  });
+  if (ok) cargar();
+});
 window.addEventListener('beforeunload', e => { if (nCambios() > 0) { e.preventDefault(); e.returnValue = ''; } });
 
 cargar();

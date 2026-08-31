@@ -9,7 +9,7 @@
 // pipeline completo, para que RRHH/Tráfico/Asistencias solo tengan que rellenar
 // las suyas sin cambiar el esquema.
 
-const { readSheet, writeSheetRaw, ensureSheet } = require('./sheets');
+const { readSheet, writeSheetRaw, ensureSheet, ensureGrid } = require('./sheets');
 const { leerPadron, buscarPorTelefono } = require('./conductoresBolt');
 const { crearConductor } = require('./planificadorV2');
 
@@ -50,7 +50,10 @@ const COL = {
   direccion: 27,
   coordenadas: 28,
   vacante: 29,         // id de la vacante guardada que se recluta
-  link_bolt: 30,       // link del proceso de alta que da BOLT (se envía al conductor)
+  // RETIRADO (agosto 2026): ya no se manda al conductor ningun link de alta de
+  // BOLT. La columna SE QUEDA: es una hoja, y quitarla correria una posicion
+  // todas las de despues y estropearia cada ficha guardada.
+  link_bolt: 30,
   // --- Ficha de alta (relevamiento de datos para la FICHA DE ALTA en PDF) ---
   apellidos: 31,
   codigo_postal: 32,
@@ -80,9 +83,17 @@ const COL = {
   doc_dni_reverso: 53,
   doc_carnet_reverso: 54,
   id_bolt: 55,         // nombre completo tal como sale en BOLT (col C de CONDUCTORES_BOLT) = ID_BOLT en la agenda
-  obs_ballenoil: 56    // Administración: observaciones de Ballenoil (opcional)
+  obs_ballenoil: 56,   // Administración: observaciones de Ballenoil (opcional)
+  // Los dos datos que la Seguridad Social pide y este funnel no recogia. Sin
+  // ellos la ficha nace incompleta y hay que volver a preguntarselo a la
+  // persona, que es justo lo que se queria evitar.
+  sexo: 57,
+  centro_trabajo: 58,  // codigo del centro con el que se cotiza (cat_centro_trabajo)
+  // El id de la ficha en PostgreSQL, una vez creada. Es el hilo entre el
+  // candidato y la persona, y evita crearla dos veces.
+  conductor_id: 59
 };
-const N_COLS = 57;
+const N_COLS = 60;
 
 const CABECERA = [
   'telefono', 'nombre', 'estado', 'etapa', 'canal', 'zona', 'experiencia',
@@ -96,7 +107,8 @@ const CABECERA = [
   'carnet_caducidad', 'fecha_inicio',
   'doc_dni', 'doc_carnet', 'doc_bancario', 'doc_seg_social', 'doc_penales',
   'tipo_contrato', 'jornada', 'ficha_pdf', 'nacionalidad', 'excel_alta',
-  'pin_ballenoil', 'doc_dni_reverso', 'doc_carnet_reverso', 'id_bolt', 'obs_ballenoil'
+  'pin_ballenoil', 'doc_dni_reverso', 'doc_carnet_reverso', 'id_bolt', 'obs_ballenoil',
+  'sexo', 'centro_trabajo', 'conductor_id'
 ];
 
 // Los documentos de la ficha de alta (7 por conductor: DNI y carnet por las dos
@@ -118,7 +130,7 @@ const DOCUMENTOS = [
 // no se exigen porque el PDF ya los rellena.
 const REQUERIDOS_ALTA = [
   ['nombre', 'Nombre'], ['apellidos', 'Apellidos'], ['dni', 'DNI/NIE'],
-  ['fecha_nacimiento', 'Fecha de nacimiento'], ['email', 'Correo'],
+  ['fecha_nacimiento', 'Fecha de nacimiento'], ['sexo', 'Sexo'], ['email', 'Correo'],
   ['direccion', 'Dirección'], ['codigo_postal', 'Código postal'],
   ['estado_civil', 'Estado civil'], ['num_seg_social', 'Nº Seguridad Social'],
   ['iban', 'Certificado bancario (IBAN)'],
@@ -131,6 +143,68 @@ const REQUERIDOS_ALTA = [
   ['doc_seg_social', 'Documento: Seg. Social / vida laboral'],
   ['doc_penales', 'Documento: Certificado de delitos sexuales']
 ];
+/** dd/mm/aaaa -> aaaa-mm-dd. La hoja escribe a la española; la base quiere ISO. */
+function aIsoFecha(v) {
+  const s = String(v == null ? '' : v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? m[0] : null;
+}
+
+/**
+ * El NAF en las tres piezas que usa la gestoría: provincia, número y control.
+ *
+ * Se escribe de mil maneras ("28/1234567/89", "28 1234567 89", los doce dígitos
+ * seguidos). Solo cuentan los dígitos: 2 + los que haya + 2. Si no salen al
+ * menos ocho, no se parte nada — media matrícula de la Seguridad Social es peor
+ * que ninguna.
+ */
+function partirNaf(v) {
+  const d = String(v == null ? '' : v).replace(/[^0-9]/g, '');
+  if (d.length < 8) return {};
+  return { naf_provincia: d.slice(0, 2), naf_numero: d.slice(2, -2), naf_control: d.slice(-2) };
+}
+
+/** "40 HORAS" -> 40. */
+const horasDeJornada = v => { const m = String(v == null ? '' : v).match(/(\d{1,2})/); return m ? Number(m[1]) : null; };
+
+/**
+ * Un ticket de Selección con la forma que quiere la ficha de PostgreSQL.
+ *
+ * Aquí es donde se despieza lo que el funnel guarda de una pieza: la dirección,
+ * el NAF y las coordenadas. Y donde se deduce lo que no hace falta preguntar:
+ * un documento que empieza por X, Y o Z es un NIE.
+ */
+function fichaDeTicket(t) {
+  const s = k => { const v = String((t || {})[k] || '').trim(); return v || undefined; };
+  const dni = (s('dni') || '').toUpperCase() || undefined;
+  const coord = String((t || {}).coordenadas || '').split(',');
+  const lat = Number(coord[0]), lng = Number(coord[1]);
+
+  return {
+    telefono: t.id,
+    nombre: s('nombre'), apellidos: s('apellidos'),
+    dni_nie: dni,
+    dni_tipo: dni ? (/^[XYZ]/.test(dni) ? 'N.I.E' : 'D.N.I./N.I.F.') : undefined,
+    fecha_nacimiento: aIsoFecha(t.fecha_nacimiento) || undefined,
+    sexo: s('sexo'), estado_civil: s('estado_civil'), nacionalidad: s('nacionalidad'),
+    ...partirNaf(t.num_seg_social),
+    centro_codigo: s('centro_trabajo'),
+    // La dirección llega en una sola cadena. Va entera al nombre de la vía:
+    // despiezarla a ojo inventaría portales y pisos que nadie ha dicho.
+    via_nombre: s('direccion'),
+    codigo_postal: s('codigo_postal'), localidad: s('localidad'), provincia: s('provincia'),
+    lat: isFinite(lat) && lat !== 0 ? lat : undefined,
+    lng: isFinite(lng) && lng !== 0 ? lng : undefined,
+    email: s('email'), tel_emergencia: s('contacto_emergencia'),
+    // El contrato.
+    tipo: 'propia',
+    alta: aIsoFecha(t.fecha_inicio) || undefined,
+    jornadaHoras: horasDeJornada(t.jornada),
+  };
+}
+
 /** Devuelve las etiquetas de los campos requeridos que están vacíos en el ticket. */
 function faltantesAlta(t) {
   return REQUERIDOS_ALTA.filter(([c]) => !String((t || {})[c] || '').trim()).map(([, l]) => l);
@@ -142,10 +216,19 @@ const ESTADOS = {
   COORD_ENTREVISTA: 'Coordinación de entrevista',
   ENTREVISTADO: 'Entrevistado',
   REC_MEDICO: 'Reconocimiento médico',
+  // OBSOLETO (agosto 2026): el relevamiento de datos deja de ser una etapa. Los
+  // datos se piden durante el funnel y la ficha se crea directamente en
+  // PostgreSQL, asi que del reconocimiento medico se pasa derecho a RRHH.
+  //
+  // NO se borra: hay fichas paradas en este estado y quitarlo las dejaria
+  // ilegibles. Se queda para poder leerlas, fuera del recorrido.
   RELEVAMIENTO: 'Relevamiento de datos',
   // Salidas:
   DESCARTADO: 'Descartado',
-  PENDIENTE_BOLT: 'Pendiente en BOLT',   // enviado a BOLT, esperando aprobación
+  // OBSOLETO (agosto 2026): ya no se espera la aprobacion de BOLT. Se conserva
+  // solo para que las fichas que se quedaron en este estado sigan legibles.
+  PENDIENTE_BOLT: 'Pendiente en BOLT',
+  LISTO_RRHH: 'Listo para RRHH',         // acabado el relevamiento, pasa directo
   APROBADO_BOLT: 'Aprobado en BOLT',     // el padrón lo detectó → alerta a RRHH
   RECHAZADO_BOLT: 'Rechazado en BOLT',   // BOLT lo rechazó (marcado a mano)
   PENDIENTE_PIN: 'Pendiente de alta en Ballenoil',  // RRHH ya dio el alta; Administración debe crear el PIN de Ballenoil
@@ -158,11 +241,11 @@ const ESTADOS = {
   AUSENTE: 'Ausente notificado',
   DESPIDO: 'Despido procedente'
 };
-// Orden del funnel de Selección. El "enviar a BOLT" solo se habilita al llegar
-// a la última etapa (relevamiento de datos hecho).
+// Orden del funnel de Selección. Termina en el reconocimiento médico: de ahí
+// pasa directo a RRHH.
 const ETAPAS_CANDIDATURA = [
   ESTADOS.PRESELECCION, ESTADOS.COORD_ENTREVISTA, ESTADOS.ENTREVISTADO,
-  ESTADOS.REC_MEDICO, ESTADOS.RELEVAMIENTO
+  ESTADOS.REC_MEDICO
 ];
 const ETAPAS = { SELECCION: 'Selección', BOLT: 'BOLT', RRHH: 'RRHH', ADMINISTRACION: 'Administración', TRAFICO: 'Tráfico' };
 // Leads de dónde viene la gente. Se guarda para poder analizar el origen luego.
@@ -238,6 +321,11 @@ async function leerTickets() {
 async function guardarTodos(porTel, filasViejas) {
   const grid = [CABECERA, ...[...porTel.values()].map(objetoAFila)];
   while (grid.length < filasViejas) grid.push(new Array(N_COLS).fill(''));
+  // La hoja tiene el ancho que tenía el día que se creó. Al añadir columnas al
+  // ticket, escribir más allá de ese ancho falla con "exceeds grid limits" — y
+  // falla al GUARDAR, o sea después de que alguien haya rellenado la ficha
+  // entera. Se ensancha antes; si ya cabe, no hace ninguna llamada.
+  await ensureGrid(ID_PLANIFICADOR, HOJA, grid.length, N_COLS);
   await writeSheetRaw(ID_PLANIFICADOR, `${HOJA}!A1`, grid);
 }
 
@@ -292,10 +380,11 @@ async function guardarTicket(datos = {}) {
   // Campos de texto editables desde Selección.
   ['nombre', 'canal', 'zona', 'turno', 'responsable', 'notas', 'dni', 'email',
    'contacto_emergencia', 'fecha_nacimiento', 'iban', 'direccion', 'coordenadas',
-   'vacante', 'link_bolt',
+   'vacante',
    'apellidos', 'codigo_postal', 'localidad', 'provincia', 'estado_civil',
    'num_hijos', 'num_seg_social', 'tipo_carnet', 'carnet_expedicion',
-   'carnet_caducidad', 'fecha_inicio', 'tipo_contrato', 'jornada', 'nacionalidad']
+   'carnet_caducidad', 'fecha_inicio', 'tipo_contrato', 'jornada', 'nacionalidad',
+   'sexo', 'centro_trabajo']
     .forEach(k => { if (datos[k] !== undefined) t[k] = String(datos[k]).trim(); });
   if (datos.experiencia !== undefined) t.experiencia = siNo(datos.experiencia);
   if (datos.carne_vtc !== undefined) t.carne_vtc = siNo(datos.carne_vtc);
@@ -318,27 +407,49 @@ async function cambiarEtapaCandidatura(tel, estado) {
 }
 
 /**
- * Envía la solicitud de alta a BOLT. Aquí TERMINA Selección: solo se puede
- * cuando el candidato completó el funnel (última etapa: "Relevamiento de datos").
- * El ticket queda "Pendiente en BOLT"; RRHH se entera cuando la conciliación
- * detecta al conductor ya creado en BOLT.
+ * Aquí TERMINA Selección y la ficha pasa a RRHH. Solo se puede cuando el
+ * candidato completó el funnel, que ahora acaba en el reconocimiento médico.
+ *
+ * Ya no se espera a BOLT en ningún caso: si la cuenta existe, se anota; y si no,
+ * se pasa igual, porque esperar bloqueaba la contratación sin motivo. Lo que no
+ * cambia es que sin cuenta de BOLT no se puede conducir: eso se ve en la ficha
+ * y hay que resolverlo antes de que se incorpore.
  */
-async function enviarABolt(tel) {
+async function enviarABolt(tel, quien = {}) {
   tel = normalizarTel(tel);
   const { porTel, filas } = await leerTickets();
   const t = porTel.get(tel);
   if (!t) throw new Error('No existe un ticket con ese teléfono');
-  if (t.estado !== ESTADOS.RELEVAMIENTO) {
-    throw new Error('Antes de enviar a BOLT hay que completar el funnel hasta "Relevamiento de datos"');
+  if (t.estado !== ESTADOS.REC_MEDICO) {
+    throw new Error('Antes de pasar a RRHH hay que completar el funnel hasta "Reconocimiento médico"');
   }
   // La ficha (datos + documentos) debe estar completa: así RRHH la recibe entera.
   const faltan = faltantesAlta(t);
   if (faltan.length) {
     throw new Error('Antes de enviar a BOLT faltan datos de la ficha: ' + faltan.join(', '));
   }
-  // ¿Ya está en NUESTRA base de datos de BOLT (viene de un proceso anterior)?
+  // LA FICHA. Aquí deja de ser un candidato y pasa a ser una persona del
+  // sistema, en la misma tabla que el resto de la plantilla.
+  //
+  // `realizar` decide solo si es un alta nueva o una restauración: si esta
+  // persona ya trabajó aquí, se le abre un periodo más sobre su ficha de
+  // siempre en vez de crear una segunda.
+  //
+  // Si falla, la transición NO sigue. Es preferible que se quede en Selección y
+  // se reintente a que pase a RRHH sin ficha, que es un hueco que nadie ve
+  // hasta que hay que planificarle.
+  let ficha = null;
+  if (!t.conductor_id) {
+    ficha = await require('./repo/alta').realizar(fichaDeTicket(t), quien);
+    t.conductor_id = String(ficha.id);
+  }
+
+  // Con qué cuenta de BOLT se ha quedado, para anotarla en el ticket.
   let enBolt = null;
-  try { enBolt = await buscarPorTelefono(tel); } catch (_) {}
+  try {
+    const s = await require('./repo/alta').porTelefono(tel);
+    if (s.bolt) enBolt = { driver_uuid: s.bolt.uuid, nombre: s.bolt.nombre };
+  } catch (_) { /* informativo: la ficha ya está creada */ }
 
   if (enBolt) {
     // No hay que crearlo en BOLT: va DIRECTO a RRHH (solo hay que activarlo en la
@@ -357,14 +468,15 @@ async function enviarABolt(tel) {
     return t;
   }
 
-  // Conductor NUEVO en BOLT: hace falta el link de alta y esperar la aprobación.
-  if (!t.link_bolt) {
-    throw new Error('Falta el link de alta de BOLT (o que el conductor ya esté en el histórico)');
-  }
-  t.estado = ESTADOS.PENDIENTE_BOLT;
-  t.etapa = ETAPAS.BOLT;
+  // Conductor NUEVO en BOLT: TAMPOCO se espera. Pasa directo a RRHH sin cuenta.
+  // El enlace con BOLT se hace despues desde el cazamiento, cuando alguien elija
+  // su ID entre los libres: esperar bloqueaba la contratacion sin motivo, y los
+  // ETT entran antes de existir en BOLT.
+  t.estado = ESTADOS.LISTO_RRHH;
+  t.etapa = ETAPAS.RRHH;
   t.fecha_apto = ahora();
   await guardarTodos(porTel, filas);
+  await marcarVacante(t, VAC.PROCESO);
   return t;
 }
 
@@ -422,16 +534,16 @@ async function conciliarTicketsBolt() {
 }
 
 /**
- * Devuelve una ficha a "Relevamiento de datos" (Selección). Se usa siempre que
- * una ficha se DEVUELVE desde cualquier punto del proceso: se reabre en Selección
- * para revisar/corregir y volver a enviar. El motivo queda anotado en las notas.
+ * Devuelve una ficha a Selección, al último paso del funnel. Se usa siempre que
+ * una ficha se DEVUELVE desde cualquier punto del proceso: se reabre para
+ * revisar, corregir y volver a enviar. El motivo queda anotado en las notas.
  */
-async function devolverARelevamiento(tel, motivo) {
+async function devolverASeleccion(tel, motivo) {
   tel = normalizarTel(tel);
   const { porTel, filas } = await leerTickets();
   const t = porTel.get(tel);
   if (!t) throw new Error('No existe un ticket con ese teléfono');
-  t.estado = ESTADOS.RELEVAMIENTO;
+  t.estado = ESTADOS.REC_MEDICO;
   t.etapa = ETAPAS.SELECCION;
   const nota = (motivo || '').toString().trim();
   if (nota) t.notas = t.notas ? `${t.notas}\n[Devuelto ${ahora()}] ${nota}` : `[Devuelto ${ahora()}] ${nota}`;
@@ -441,9 +553,9 @@ async function devolverARelevamiento(tel, motivo) {
   return t;
 }
 
-/** BOLT rechazó al candidato: se devuelve a "Relevamiento de datos" para corregir y reintentar. */
+/** BOLT rechazó al candidato: vuelve a Selección para corregir y reintentar. */
 async function marcarRechazadoBolt(tel, motivo) {
-  return devolverARelevamiento(tel, 'Rechazado en BOLT' + (motivo ? `: ${motivo}` : ''));
+  return devolverASeleccion(tel, 'Rechazado en BOLT' + (motivo ? `: ${motivo}` : ''));
 }
 
 /** Descarta un candidato en Selección, con motivo. */
@@ -760,7 +872,7 @@ async function crearFichasConductores(listaDatos = []) {
 
 module.exports = {
   leerTickets, leerTicket, guardarTicket, cambiarEtapaCandidatura, enviarABolt, descartar,
-  conciliarTicketsBolt, marcarRechazadoBolt, devolverARelevamiento,
+  conciliarTicketsBolt, marcarRechazadoBolt, devolverASeleccion,
   procesarAltaRRHH, crearPinAdmin, noContinuarRRHH, devolverRRHH,
   guardarDocumento, guardarCelda, guardarPinConductor, parseDoc, faltantesAlta,
   buscarPorIdBolt, crearFichaConductor, crearFichasConductores,
