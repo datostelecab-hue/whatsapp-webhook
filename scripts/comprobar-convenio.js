@@ -109,10 +109,13 @@ const declarado = (seed.match(/esperado\s+(\d+)/) || [])[1];
 const filasParam = insertsDelSeed(seed)
   .filter(i => i.tabla === 'agreement_parameter')
   .length;
-// Contar las tuplas reales del bloque de agreement_parameter.
-const bloque = seed.slice(seed.indexOf('INSERT INTO agreement_parameter'));
-const finBloque = bloque.indexOf(';');
-const tuplas = (bloque.slice(0, finBloque).match(/\n\s*\('a1000000/g) || []).length;
+// Contar las tuplas reales de TODOS los bloques de agreement_parameter, no solo
+// el primero: una correccion puede anadir mas en un INSERT aparte, y contar solo
+// el primer bloque esconderia esas filas y daria un total falso.
+let tuplas = 0;
+for (const b of seed.matchAll(/INSERT INTO agreement_parameter[\s\S]*?;/g)) {
+  tuplas += (b[0].match(/\n\s*\('a1000000/g) || []).length;
+}
 ok(`agreement_parameter: ${tuplas} tuplas reales`,
    tuplas > 0,
    declarado ? `(el seed dice esperar ${declarado})` : '');
