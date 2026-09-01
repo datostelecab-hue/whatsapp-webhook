@@ -106,7 +106,7 @@ async function tablero({ dia } = {}) {
               lib.dias                                   AS libra,
               (ext.externo_id IS NULL)                   AS bolt_pendiente,
               est.estado, ce.etiqueta AS estado_etiqueta, ce.es_ausencia,
-              ce.libera_plaza, est.hasta AS estado_hasta,
+              ce.libera_plaza, ce.fin_previsible, est.hasta AS estado_hasta,
               prox.estado AS prox_estado, prox.etiqueta AS prox_etiqueta, prox.desde AS prox_desde
          FROM conductor c
          JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL
@@ -210,6 +210,8 @@ async function tablero({ dia } = {}) {
       ausente: !!c.es_ausencia,
       // Su estado libera la plaza (vacaciones/suspendido/baja): sale del cuadrante.
       liberaPlaza: !!c.libera_plaza,
+      // La ausencia tiene vuelta prevista (vacaciones/permiso), no es indefinida.
+      finPrevisible: !!c.fin_previsible,
       // Cuando vuelve de la ausencia actual (para avisar la vuelta proxima).
       vuelveEl: fechaDe(c.estado_hasta),
       // La proxima ausencia que aun no ha empezado (para avisar "entra el...").
@@ -356,9 +358,11 @@ async function tablero({ dia } = {}) {
   // ── El banquillo ───────────────────────────────────────────────────────
   // Quien no tiene ninguna plaza esta semana. Incluye a los que empiezan más
   // adelante: se les ve para poder colocarlos antes de que entren.
-  // El banquillo = disponibles de verdad: sin plaza y SIN ausencia. Los que
-  // estan de baja/vacaciones/suspendidos no se ofrecen para colocar.
-  const pendientes = [...gente.values()].filter(p => !p.plazas && !p.ausente);
+  // El banquillo = sin plaza y disponibles: los activos, mas los ausentes con
+  // VUELTA PREVISTA (vacaciones/permiso, para poder planificar su regreso). Se
+  // quedan fuera las ausencias indefinidas (baja medica, suspension): no se sabe
+  // cuando vuelven.
+  const pendientes = [...gente.values()].filter(p => !p.plazas && (!p.ausente || p.finPrevisible));
   const cuadrantes = await listarCuadrantes();
   const zonas = (await db.consulta('SELECT id, nombre FROM base_zona WHERE activa ORDER BY nombre')).rows
     .map(z => ({ id: z.id, nombre: z.nombre }));
