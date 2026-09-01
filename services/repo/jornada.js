@@ -208,6 +208,12 @@ function resumenDelDia({ tramos, catalogo, asientos, conductorId, dia, gate }) {
     .filter(t => { const r = catalogo.get(t.estado); return r && !r.cuenta && t.estado === 'busy'; })
     .reduce((s, t) => s + t.minutos, 0);
 
+  // Minutos nocturnos (22:00-06:00, art. 25.g) del tiempo trabajado. El importe
+  // es [VL-1], pero los minutos son un hecho y se cuentan aqui.
+  const nocturno = tramos
+    .filter(t => { const r = catalogo.get(t.estado); return r && r.cuenta; })
+    .reduce((s, t) => s + minutosNocturnos(t.desde, t.hasta), 0);
+
   // Los tramos para el PDF: estado, supuesto (si cuenta) y minutos.
   const detalle = tramos.map(t => {
     const r = catalogo.get(t.estado);
@@ -220,8 +226,41 @@ function resumenDelDia({ tramos, catalogo, asientos, conductorId, dia, gate }) {
     conductorId, dia,
     inicio, fin,
     efectivoEstricto: estricto, efectivoTotal: total,
-    descanso, aux, tramos: detalle,
+    descanso, aux, nocturno, tramos: detalle,
   };
+}
+
+// ── Minutos en la franja nocturna (22:00-06:00) ─────────────────────────────
+// Analitico, sin recorrer minuto a minuto. La franja nocturna vale 480 min por
+// dia (120 de 22:00-24:00 + 360 de 00:00-06:00). Se cuenta cuanto de un tramo
+// cae ahi, en hora local de Madrid.
+const NOCHE_INI = 22 * 60;    // 1320
+const NOCHE_FIN = 6 * 60;     // 360
+
+/** El desfase de Madrid (segundos) en un instante, con su horario de verano. */
+function offsetMadrid(epochSeg) {
+  const ms = epochSeg * 1000;
+  const p = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(new Date(ms)).reduce((o, x) => (o[x.type] = x.value, o), {});
+  const comoUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  return Math.round((comoUTC - ms) / 1000);
+}
+
+/** Minutos nocturnos acumulados en [0, m) de un reloj local en minutos. */
+function nocturnoHasta(m) {
+  const dias = Math.floor(m / 1440) * 480;
+  const resto = ((m % 1440) + 1440) % 1440;
+  return dias + Math.min(resto, NOCHE_FIN) + Math.max(0, resto - NOCHE_INI);
+}
+
+/** Cuantos minutos de un tramo [desde, hasta] (epoch s) caen en la franja nocturna. */
+function minutosNocturnos(desdeSeg, hastaSeg) {
+  const off = offsetMadrid(desdeSeg);        // el offset del arranque; constante salvo el dia del cambio de hora
+  const a = Math.floor((desdeSeg + off) / 60);
+  const b = Math.floor((hastaSeg + off) / 60);
+  return Math.max(0, nocturnoHasta(b) - nocturnoHasta(a));
 }
 
 /** Escribe (o rehace) el registro de un dia. Idempotente por (conductor, dia). */
@@ -229,21 +268,23 @@ async function guardarRegistro(r) {
   await db.consulta(
     `INSERT INTO registro_jornada
        (conductor_id, dia, inicio, fin, efectivo_estricto_min, efectivo_total_min,
-        descanso_min, aux_min, tramos, generado_at)
+        descanso_min, aux_min, nocturno_min, tramos, generado_at)
      VALUES ($1, $2::date,
              CASE WHEN $3 > 0 THEN to_timestamp($3) END,
              CASE WHEN $4 > 0 THEN to_timestamp($4) END,
-             $5, $6, $7, $8, $9::jsonb, now())
+             $5, $6, $7, $8, $9, $10::jsonb, now())
      ON CONFLICT (conductor_id, dia) DO UPDATE SET
        inicio = EXCLUDED.inicio, fin = EXCLUDED.fin,
        efectivo_estricto_min = EXCLUDED.efectivo_estricto_min,
        efectivo_total_min = EXCLUDED.efectivo_total_min,
        descanso_min = EXCLUDED.descanso_min, aux_min = EXCLUDED.aux_min,
+       nocturno_min = EXCLUDED.nocturno_min,
        tramos = EXCLUDED.tramos, generado_at = now()
      -- Un registro congelado NO se rehace: es el del cierre.
      WHERE registro_jornada.congelado_at IS NULL`,
     [r.conductorId, r.dia, r.inicio || 0, r.fin || 0,
-     r.efectivoEstricto, r.efectivoTotal, r.descanso, r.aux, JSON.stringify(r.tramos)]);
+     r.efectivoEstricto, r.efectivoTotal, r.descanso, r.aux, r.nocturno || 0,
+     JSON.stringify(r.tramos)]);
 }
 
 /** Deriva la jornada de TODOS los conductores con eventos ese dia. */
@@ -260,6 +301,6 @@ async function derivarTodos(dia, opciones = {}) {
 
 module.exports = {
   tramosDeLogs, catalogoEstados, asientosDeDia, guardarAsientos,
-  derivarDia, derivarTodos, resumenDelDia, guardarRegistro,
+  derivarDia, derivarTodos, resumenDelDia, guardarRegistro, minutosNocturnos,
   MAX_TRAMO_MIN, AUX_MIN,
 };
