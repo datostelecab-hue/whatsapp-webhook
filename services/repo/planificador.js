@@ -147,13 +147,17 @@ async function tablero({ dia } = {}) {
     // emergencia) y se quedaron sin sitio. Es una foto de "ahora".
     db.consulta('SELECT * FROM v_conductor_huerfano ORDER BY zona NULLS LAST, matricula'),
 
-    // El pool de emergencia = coches SIN NADIE asignado (reserva), listos para
-    // meter en un bloque cuando un coche se va al taller o siniestro.
+    // El pool de emergencia = coches OPERATIVOS y SIN NADIE asignado (reserva).
+    // Operativos a proposito: un coche en taller/siniestro sin gente NO sirve de
+    // repuesto (esta roto), aunque no tenga a nadie.
     db.consulta(
       `SELECT v.id AS vehiculo_id, v.matricula, v.base_zona_id, bz.nombre AS zona,
               v.estado_operativo
-         FROM vehiculo v LEFT JOIN base_zona bz ON bz.id = v.base_zona_id
+         FROM vehiculo v
+         JOIN cat_estado_vehiculo cev ON cev.codigo = v.estado_operativo
+         LEFT JOIN base_zona bz ON bz.id = v.base_zona_id
         WHERE v.baja_at IS NULL
+          AND cev.es_operativo
           AND NOT EXISTS (
             SELECT 1 FROM plaza p
               JOIN asignacion a ON a.plaza_id = p.id
