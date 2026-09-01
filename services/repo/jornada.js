@@ -43,7 +43,10 @@ function tramosDeLogs(logs, finDia) {
     // Recorte por el tope: un tramo no puede durar mas que MAX_TRAMO_MIN.
     if (hasta - desde > MAX_TRAMO_MIN * 60) hasta = desde + MAX_TRAMO_MIN * 60;
     if (hasta <= desde) continue;                 // tramo de cero, se descarta
-    tramos.push({ estado: ord[i].estado, desde, hasta, minutos: Math.round((hasta - desde) / 60) });
+    // `veh` viaja con el tramo: la derivacion lo necesita para preguntar por la
+    // zona de ese coche (el area de TE_A1).
+    tramos.push({ estado: ord[i].estado, desde, hasta, veh: ord[i].veh,
+      minutos: Math.round((hasta - desde) / 60) });
   }
   return tramos;
 }
@@ -157,7 +160,24 @@ async function derivarDia(conductorId, dia, { areaConfirmada = null } = {}) {
   // El corte del dia en epoch, para cerrar el ultimo tramo.
   const finDia = Math.floor(new Date(dia + 'T00:00:00Z').getTime() / 1000) + 86400;
   const tramos = tramosDeLogs(logs, finDia);
-  const asientos = asientosDeDia({ tramos, catalogo, conductorId, dia, areaConfirmada });
+
+  // EL AREA SE RESUELVE ANTES, no dentro del bucle: preguntar a la base por cada
+  // tramo condicionado (la espera) y guardar la respuesta. asientosDeDia sigue
+  // siendo puro y sincrono. Si el que llama pasa su propia areaConfirmada
+  // -en una prueba, por ejemplo-, esa manda.
+  let gate = areaConfirmada;
+  if (!gate) {
+    const dentro = new Map();
+    for (const tr of tramos) {
+      const regla = catalogo.get(tr.estado);
+      if (regla && regla.condicionado && tr.veh) {
+        dentro.set(tr.desde, await staging.enArea(tr.veh, tr.desde));
+      }
+    }
+    gate = tr => dentro.get(tr.desde) === true;
+  }
+
+  const asientos = asientosDeDia({ tramos, catalogo, conductorId, dia, areaConfirmada: gate });
   const nuevos = await guardarAsientos(asientos);
   return { conductorId, dia, tramos: tramos.length, asientos: asientos.length, nuevos };
 }

@@ -115,6 +115,33 @@ const TAREAS = {
     },
   },
 
+  zonas_mapon: {
+    fuente: 'mapon',
+    etiqueta: 'Zonas de Mapon (entrada/salida)',
+    // Cada 15 min. Es lo que decide si la espera cuenta como area (TE_A1), asi
+    // que conviene fresco, pero no tanto como los state logs.
+    cadaMin: Number(process.env.INGESTA_ZONAS_MIN) || 15,
+    critica: false,
+    async ejecutar() {
+      const mapon = require('./mapon');
+      const staging = require('./repo/staging');
+      const t0 = Date.now();
+      // La ventana la maneja leerAlertas por fechas; se pide el ultimo dia.
+      const hoy = new Date();
+      const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+      const iso = d => d.toISOString().slice(0, 10);
+      const r = await mapon.leerAlertas({ desde: iso(ayer), hasta: iso(hoy), tipo: 'in_object' });
+      const eventos = r.alertas || [];
+      const descargaId = await staging.registrarDescarga({
+        fuente: 'mapon', endpoint: 'alert/list.json (in_object)',
+        params: { desde: iso(ayer), hasta: iso(hoy) }, payload: eventos,
+        filas: eventos.length, ms: Date.now() - t0,
+      });
+      const nuevos = await staging.guardarZonas(eventos, descargaId);
+      return { registros: nuevos, detalle: { traidos: eventos.length, nuevos } };
+    },
+  },
+
   unidades_mapon: {
     fuente: 'mapon',
     etiqueta: 'Odómetros de Mapon',

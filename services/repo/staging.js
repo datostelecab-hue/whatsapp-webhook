@@ -94,18 +94,42 @@ async function guardarOrders(ordenes, descargaId = null) {
 }
 
 /**
+ * Aterriza los eventos de zona de Mapon (in_object) en mapon_zona_evento.
+ *
+ * `eventos` es lo que da la alerta ya normalizada: [{ unitId, zona, sentido,
+ * iso }]. Idempotente por (unidad, instante, sentido).
+ */
+async function guardarZonas(eventos, descargaId = null) {
+  let nuevos = 0;
+  for (const e of eventos || []) {
+    const unit = e.unitId != null ? String(e.unitId) : null;
+    const cuando = e.iso || e.time || null;
+    if (!unit || !cuando) continue;
+    const r = await db.consulta(
+      `INSERT INTO mapon_zona_evento (unit_id, zona, sentido, ocurrido_at, descarga_id)
+       VALUES ($1, $2, $3, $4::timestamptz, $5)
+       ON CONFLICT (unit_id, ocurrido_at, sentido) DO NOTHING
+       RETURNING id`,
+      [unit, e.zona || null, e.sentido || null, cuando, descargaId]);
+    if (r.rowCount) nuevos++;
+  }
+  return nuevos;
+}
+
+/**
  * Los eventos de un conductor NUESTRO en un dia, listos para derivar la jornada.
  *
  * Cruza el driver_uuid de BOLT con nuestro conductor por conductor_externo, que
- * es el enlace duro por id (no por nombre). Devuelve [{ t, estado }] en epoch de
- * segundos, que es lo que espera jornada.tramosDeLogs.
+ * es el enlace duro por id (no por nombre). Devuelve [{ t, estado, veh }] en
+ * epoch de segundos; `veh` es el vehicle_uuid de BOLT, para que la derivacion
+ * pueda preguntar por la zona de ese coche (el area de TE_A1).
  *
  * Se pide un poco antes del dia para poder cerrar el primer tramo con el estado
  * en que se venia: el dia no empieza en el vacio.
  */
 async function logsDeConductorDia(conductorId, dia) {
   const r = await db.consulta(
-    `SELECT EXTRACT(EPOCH FROM b.ocurrido_at)::bigint AS t, b.estado
+    `SELECT EXTRACT(EPOCH FROM b.ocurrido_at)::bigint AS t, b.estado, b.vehiculo_uuid AS veh
        FROM bolt_state_log b
        JOIN conductor_externo ce
          ON ce.sistema = 'bolt' AND ce.externo_id = b.driver_uuid
@@ -114,7 +138,15 @@ async function logsDeConductorDia(conductorId, dia) {
         AND b.ocurrido_at <  ($2::date + INTERVAL '1 day')
       ORDER BY b.ocurrido_at`,
     [conductorId, dia]);
-  return r.rows.map(x => ({ t: Number(x.t), estado: x.estado }));
+  return r.rows.map(x => ({ t: Number(x.t), estado: x.estado, veh: x.veh }));
+}
+
+/** Si un coche de BOLT estaba dentro de una zona de Mapon en un momento. */
+async function enArea(vehiculoUuidBolt, momentoEpochSeg) {
+  if (!vehiculoUuidBolt) return false;
+  const r = await db.consulta('SELECT f_en_area($1, to_timestamp($2)) AS dentro',
+    [vehiculoUuidBolt, momentoEpochSeg]);
+  return !!(r.rows[0] && r.rows[0].dentro);
 }
 
 /** Los conductores con eventos en un dia. Para saber a quien derivar. */
@@ -130,5 +162,6 @@ async function conductoresConLogs(dia) {
 }
 
 module.exports = {
-  registrarDescarga, guardarStateLogs, guardarOrders, logsDeConductorDia, conductoresConLogs,
+  registrarDescarga, guardarStateLogs, guardarOrders, guardarZonas,
+  logsDeConductorDia, conductoresConLogs, enArea,
 };
