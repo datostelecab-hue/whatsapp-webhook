@@ -219,11 +219,16 @@ async function tablero({ dia } = {}) {
   });
 
   // ── Las asignaciones por plaza ─────────────────────────────────────────
+  // La plaza muestra a quien esta vigente el dia EFECTIVO (no a quien estuvo
+  // antes en la semana): asi "dejar vacia" -que cierra la asignacion la vispera-
+  // limpia la celda de verdad, y el banquillo cuenta bien.
   const porPlaza = new Map();
-  asignaciones.rows.forEach(a => porPlaza.set(String(a.plaza_id), a));
   asignaciones.rows.forEach(a => {
-    const p = gente.get(String(a.conductor_id));
-    if (p) p.plazas++;
+    if (fechaDe(a.desde) <= efectivo && (!a.hasta || fechaDe(a.hasta) >= efectivo)) {
+      porPlaza.set(String(a.plaza_id), a);
+      const p = gente.get(String(a.conductor_id));
+      if (p) p.plazas++;
+    }
   });
 
   // ── El tablero ─────────────────────────────────────────────────────────
@@ -585,6 +590,20 @@ async function fijarDescanso(vehiculoId, dias, { dia, usuarioId } = {}) {
   const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
   const parsed = parsearDias(dias);
   if (parsed === null) throw new Error('No entiendo los días. Escríbelos como L M X J V S D.');
+  // Si el coche esta en un cuadrante, no puede repetir el bloque de dias de otro.
+  if (parsed.length) {
+    const dup = await db.consulta(
+      `SELECT v2.matricula
+         FROM vehiculo v1
+         JOIN vehiculo v2 ON v2.cuadrante_id = v1.cuadrante_id AND v2.id <> v1.id
+         JOIN vehiculo_descanso vd ON vd.vehiculo_id = v2.id AND vd.hasta IS NULL
+         JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+        WHERE v1.id = $1 AND v1.cuadrante_id IS NOT NULL
+        GROUP BY v2.id, v2.matricula
+       HAVING array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) = $2::smallint[]`,
+      [vehiculoId, parsed]);
+    if (dup.rows.length) throw new Error(`Ese bloque (${parsed.map(d => LETRAS[d - 1]).join('/')}) ya lo lleva ${dup.rows[0].matricula} en el cuadrante`);
+  }
   await db.transaccion(async cli => { await ponerDescansoCoche(cli, vehiculoId, parsed, efectivo, usuarioId); });
   return { dia: efectivo, dias: parsed };
 }
@@ -893,8 +912,65 @@ async function asignarCTcuadrante({ cuadranteId, turno, conductorId, vehiculos }
   return { dia: efectivo, coches: n };
 }
 
+/**
+ * Reemplaza la matrícula de un bloque por otra (de emergencia). La nueva HEREDA
+ * el bloque entero: el cuadrante, los días de descanso y la tripulación. El
+ * coche viejo (el que va a taller/siniestro) queda suelto y vacío.
+ */
+async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId } = {}) {
+  if (!deVehiculoId || !aVehiculoId) throw new Error('Faltan los dos coches');
+  if (String(deVehiculoId) === String(aVehiculoId)) throw new Error('Es el mismo coche');
+  const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+
+  // El destino tiene que estar libre (es una matrícula de emergencia).
+  const ocupado = await db.consulta(
+    `SELECT btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS quien
+       FROM v_plaza p
+       JOIN asignacion a ON a.plaza_id = p.plaza_id AND a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $2)
+       JOIN conductor c ON c.id = a.conductor_id
+      WHERE p.vehiculo_id = $1`, [aVehiculoId, efectivo]);
+  if (ocupado.rows.length) throw new Error('La matrícula de destino lleva gente. Usa una libre (de emergencia).');
+
+  let movidos = 0;
+  await db.transaccion(async cli => {
+    // 1. La tripulación, plaza a plaza (misma posición). No falla si no hay gente.
+    const origen = await cli.query(
+      `SELECT p.plaza_id, p.slot, a.conductor_id, a.hasta,
+              (SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana)
+                 FROM asignacion_dia ad WHERE ad.asignacion_id = a.id) AS dias
+         FROM v_plaza p
+         JOIN asignacion a ON a.plaza_id = p.plaza_id AND a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $2)
+        WHERE p.vehiculo_id = $1 ORDER BY p.slot`, [deVehiculoId, efectivo]);
+    const destino = new Map((await cli.query(
+      'SELECT plaza_id, slot FROM v_plaza WHERE vehiculo_id = $1', [aVehiculoId])).rows.map(r => [r.slot, r.plaza_id]));
+    for (const o of origen.rows) {
+      const plazaDestino = destino.get(o.slot);
+      if (!plazaDestino) continue;
+      await liberar(cli, o.plaza_id, efectivo, usuarioId);
+      await liberar(cli, plazaDestino, efectivo, usuarioId);
+      await colocar(cli, { plazaId: plazaDestino, conductorId: o.conductor_id, desde: efectivo,
+        hasta: fechaDe(o.hasta) || null, dias: o.dias || [] }, { dia: efectivo, usuarioId });
+      movidos++;
+    }
+    // 2. El cuadrante y el descanso pasan al coche nuevo; el viejo queda suelto.
+    const de = (await cli.query('SELECT cuadrante_id FROM vehiculo WHERE id = $1', [deVehiculoId])).rows[0];
+    const desc = (await cli.query(
+      `SELECT array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
+         FROM vehiculo_descanso vd JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+        WHERE vd.vehiculo_id = $1 AND vd.desde <= $2 AND (vd.hasta IS NULL OR vd.hasta >= $2)`,
+      [deVehiculoId, efectivo])).rows[0];
+    await cli.query('UPDATE vehiculo SET cuadrante_id = $2 WHERE id = $1', [aVehiculoId, de ? de.cuadrante_id : null]);
+    await cli.query('UPDATE vehiculo SET cuadrante_id = NULL WHERE id = $1', [deVehiculoId]);
+    if (desc && desc.dias && desc.dias.length) {
+      await ponerDescansoCoche(cli, aVehiculoId, desc.dias, efectivo, usuarioId);
+      await ponerDescansoCoche(cli, deVehiculoId, [], efectivo, usuarioId);
+    }
+  });
+  return { dia: efectivo, movidos };
+}
+
 module.exports = {
-  tablero, guardar, cambiarCoche, fijarDescanso,
+  tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
   listarCuadrantes, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,

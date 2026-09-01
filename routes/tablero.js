@@ -143,6 +143,16 @@ router.post('/api/descanso', responde(async req => {
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
 
+// Reemplazar la matricula de un bloque por una de emergencia: la nueva hereda
+// cuadrante, dias y tripulacion. Para cuando un coche se va a taller/siniestro.
+router.post('/api/reemplazar-matricula', responde(async req => {
+  const b = req.body || {};
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await plan.reemplazarMatricula(b.de, b.a, { dia: b.dia, ...quien });
+  console.log(`🔧 [TABLERO] matrícula ${b.de} -> ${b.a} (bloque heredado, ${r.movidos} conductor(es)) desde ${r.dia}`);
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
 // ── Libranza excepcional: el swap de una semana ────────────────────────────
 router.post('/api/libranza-excepcional', responde(async req => {
   const b = req.body || {};
