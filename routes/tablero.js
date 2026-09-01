@@ -54,7 +54,7 @@ router.get('/', async (req, res) => {
   try { estados = await estadosVehiculo(); }
   catch (e) { console.error('❌ [TABLERO] catálogo de estados:', e.message); }
   res.render('planificadorV2', {
-    titulo: 'Planificador V2',
+    titulo: 'Cuadrante',
     seccion: 'planificador-v2',
     layout: 'layout-gestion',
     diasSem: DIAS_SEM,
