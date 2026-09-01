@@ -94,6 +94,38 @@ router.post('/api/cambiar-coche', responde(async req => {
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
 
+// ── Cuadrantes: el grupo de coches que comparte correturnos ────────────────
+router.get('/api/cuadrantes', responde(async () => ({ cuadrantes: await plan.listarCuadrantes() })));
+
+router.post('/api/cuadrantes', responde(async req => {
+  const b = req.body || {};
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await plan.crearCuadrante({ nombre: b.nombre, zona: b.zona }, quien);
+  console.log(`🧩 [TABLERO] cuadrante "${b.nombre}" creado`);
+  return { ...r, cuadrantes: await plan.listarCuadrantes() };
+}));
+
+router.delete('/api/cuadrantes/:id', responde(async req => {
+  const r = await plan.borrarCuadrante(req.params.id);
+  return { ...r, tablero: await plan.tablero({ dia: req.query.dia }) };
+}));
+
+// Meter (o sacar, con cuadranteId vacío) un coche de un cuadrante.
+router.post('/api/cuadrante/coche', responde(async req => {
+  const b = req.body || {};
+  const r = await plan.meterCoche(b.vehiculoId, b.cuadranteId || null);
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
+// Asignar (o quitar) el CT de un cuadrante: se reparte entre sus coches.
+router.post('/api/cuadrante/ct', responde(async req => {
+  const b = req.body || {};
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await plan.asignarCTcuadrante({ cuadranteId: b.cuadranteId, turno: b.turno, conductorId: b.conductorId }, { dia: b.dia, ...quien });
+  console.log(`🔗 [TABLERO] CT ${b.turno} del cuadrante ${b.cuadranteId} en ${r.coches} coche(s)`);
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
 // ── Descanso de un coche: escribe la libranza de sus dos fijos ─────────────
 router.post('/api/descanso', responde(async req => {
   const b = req.body || {};

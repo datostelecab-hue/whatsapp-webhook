@@ -75,10 +75,11 @@ async function tablero({ dia } = {}) {
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
       `SELECT plaza_id, vehiculo_id, matricula, zona, base_zona_id, estado_operativo,
-              es_operativo, visible_cobertura, slot, turno_codigo, turno, rol, orden_ct
+              es_operativo, visible_cobertura, slot, turno_codigo, turno, rol, orden_ct,
+              cuadrante_id, cuadrante
          FROM v_plaza
         WHERE visible_cobertura
-        ORDER BY zona NULLS LAST, matricula, slot`),
+        ORDER BY zona NULLS LAST, cuadrante NULLS LAST, matricula, slot`),
 
     // Lo que hay escrito para esta semana, con sus días si es correturnos.
     db.consulta(
@@ -221,6 +222,8 @@ async function tablero({ dia } = {}) {
         matricula: p.matricula,
         zona: p.zona || '',
         zonaId: p.base_zona_id || null,
+        cuadranteId: p.cuadrante_id || null,
+        cuadrante: p.cuadrante || '',
         // `estadoVeh` con el nombre que usa el front. Es el CODIGO de la base
         // ('O', 'R', 'T'...), no el simbolo de la hoja: quien decide que
         // significa operativo es `cat_estado_vehiculo`, no una lista de textos.
@@ -311,11 +314,13 @@ async function tablero({ dia } = {}) {
   // Quien no tiene ninguna plaza esta semana. Incluye a los que empiezan más
   // adelante: se les ve para poder colocarlos antes de que entren.
   const pendientes = [...gente.values()].filter(p => !p.plazas);
+  const cuadrantes = await listarCuadrantes();
 
   return {
     dia: efectivo,
     lunes,
     fechas,
+    cuadrantes,
     dias: LETRAS,
     coches,
     conductores: [...gente.values()],
@@ -793,8 +798,90 @@ async function borrarLibranzaExcepcional(id) {
   return { borrada: true };
 }
 
+// ============================================================
+// CUADRANTES
+// ============================================================
+// Un cuadrante agrupa coches (bloques de días) que comparten correturnos. El CT
+// se asigna AL CUADRANTE y se reparte entre sus coches, cada uno con los días
+// que libra su fijo (v_plaza_ct_sugerida). Un coche suelto (sin cuadrante) es
+// solo sus dos días de libranza.
+
+async function listarCuadrantes() {
+  const r = await db.consulta(
+    `SELECT cu.id, cu.nombre, cu.base_zona_id, bz.nombre AS zona,
+            (SELECT count(*)::int FROM vehiculo v WHERE v.cuadrante_id = cu.id AND v.baja_at IS NULL) AS coches
+       FROM cuadrante cu LEFT JOIN base_zona bz ON bz.id = cu.base_zona_id
+      WHERE cu.baja_at IS NULL
+      ORDER BY bz.nombre NULLS LAST, cu.nombre`);
+  return r.rows.map(c => ({
+    id: String(c.id), nombre: c.nombre, zona: c.zona || '', zonaId: c.base_zona_id || null, coches: c.coches,
+  }));
+}
+
+async function crearCuadrante({ nombre, zona }, { usuarioId } = {}) {
+  const n = String(nombre || '').trim();
+  if (!n) throw new Error('El cuadrante necesita un nombre');
+  let zonaId = null;
+  if (zona) {
+    const z = await db.consulta('SELECT id FROM base_zona WHERE nombre_norm = lower(btrim($1))', [String(zona).trim()]);
+    if (!z.rows.length) throw new Error(`No existe la zona "${zona}"`);
+    zonaId = z.rows[0].id;
+  }
+  const r = await db.consulta(
+    'INSERT INTO cuadrante (nombre, base_zona_id, usuario_id) VALUES ($1, $2, $3) RETURNING id',
+    [n, zonaId, usuarioId || null]);
+  return { id: String(r.rows[0].id) };
+}
+
+async function borrarCuadrante(id) {
+  await db.transaccion(async cli => {
+    // Los coches quedan sueltos; no se toca su gente ni su libranza.
+    await cli.query('UPDATE vehiculo SET cuadrante_id = NULL WHERE cuadrante_id = $1', [id]);
+    await cli.query('UPDATE cuadrante SET baja_at = now() WHERE id = $1', [id]);
+  });
+  return { borrado: true };
+}
+
+/** Mete un coche en un cuadrante (o lo saca, con cuadranteId nulo). */
+async function meterCoche(vehiculoId, cuadranteId) {
+  if (!vehiculoId) throw new Error('Falta el coche');
+  await db.consulta('UPDATE vehiculo SET cuadrante_id = $2 WHERE id = $1', [vehiculoId, cuadranteId || null]);
+  return { ok: true };
+}
+
+/**
+ * Asigna un CT al cuadrante: lo coloca en la plaza CT de cada coche del
+ * cuadrante, con los días que libra el fijo de ese coche. Así un CT abarca las
+ * matrículas del cuadrante sin teclearlo coche por coche. conductorId vacío lo
+ * quita de todos.
+ */
+async function asignarCTcuadrante({ cuadranteId, turno, conductorId }, { dia, usuarioId } = {}) {
+  if (!cuadranteId) throw new Error('Falta el cuadrante');
+  const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  const slot = turno === 'noche' ? 3 : 2;   // CT1 día = slot 2, CT1 noche = slot 3
+  let n = 0;
+  await db.transaccion(async cli => {
+    const plazas = await cli.query(
+      `SELECT p.id AS plaza_id
+         FROM plaza p JOIN vehiculo v ON v.id = p.vehiculo_id AND v.baja_at IS NULL
+        WHERE v.cuadrante_id = $1 AND p.slot = $2 AND p.baja_at IS NULL`, [cuadranteId, slot]);
+    for (const pl of plazas.rows) {
+      if (conductorId) {
+        // Sin días: guardarDias los saca de v_plaza_ct_sugerida (los del fijo).
+        await colocar(cli, { plazaId: pl.plaza_id, conductorId: Number(conductorId), desde: efectivo, hasta: null, dias: [] },
+          { dia: efectivo, usuarioId });
+      } else {
+        await liberar(cli, pl.plaza_id, efectivo, usuarioId);
+      }
+      n++;
+    }
+  });
+  return { dia: efectivo, coches: n };
+}
+
 module.exports = {
   tablero, guardar, cambiarCoche, fijarDescanso,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
+  listarCuadrantes, crearCuadrante, borrarCuadrante, meterCoche, asignarCTcuadrante,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
 };
