@@ -105,7 +105,9 @@ async function tablero({ dia } = {}) {
               th.turno_id, t.codigo AS turno_codigo, t.etiqueta AS turno,
               lib.dias                                   AS libra,
               (ext.externo_id IS NULL)                   AS bolt_pendiente,
-              est.estado, ce.etiqueta AS estado_etiqueta, ce.es_ausencia
+              est.estado, ce.etiqueta AS estado_etiqueta, ce.es_ausencia,
+              ce.libera_plaza, est.hasta AS estado_hasta,
+              prox.estado AS prox_estado, prox.etiqueta AS prox_etiqueta, prox.desde AS prox_desde
          FROM conductor c
          JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL
          LEFT JOIN cat_jornada j  ON j.horas = e.jornada_horas
@@ -127,6 +129,13 @@ async function tablero({ dia } = {}) {
                 ON est.conductor_id = c.id
                AND est.desde <= $1 AND (est.hasta IS NULL OR est.hasta >= $1)
          LEFT JOIN cat_estado_conductor ce ON ce.codigo = est.estado
+         -- La proxima ausencia que aun no ha empezado (para avisar "entra el...").
+         LEFT JOIN LATERAL (
+           SELECT h.estado, h.desde, cec.etiqueta
+             FROM conductor_estado_hist h
+             JOIN cat_estado_conductor cec ON cec.codigo = h.estado
+            WHERE h.conductor_id = c.id AND cec.es_ausencia AND h.desde > $1
+            ORDER BY h.desde LIMIT 1) prox ON TRUE
         WHERE NOT c.es_centinela
         ORDER BY nombre`, [efectivo]),
 
@@ -195,6 +204,12 @@ async function tablero({ dia } = {}) {
       boltPendiente: !!c.bolt_pendiente,
       estado: c.estado_etiqueta || 'Activo',
       ausente: !!c.es_ausencia,
+      // Su estado libera la plaza (vacaciones/suspendido/baja): sale del cuadrante.
+      liberaPlaza: !!c.libera_plaza,
+      // Cuando vuelve de la ausencia actual (para avisar la vuelta proxima).
+      vuelveEl: fechaDe(c.estado_hasta),
+      // La proxima ausencia que aun no ha empezado (para avisar "entra el...").
+      proxAusencia: c.prox_desde ? { estado: c.prox_etiqueta, desde: fechaDe(c.prox_desde) } : null,
       libra,
       // Se rellenan con la cobertura, más abajo.
       trabaja: new Array(DIAS).fill(false),

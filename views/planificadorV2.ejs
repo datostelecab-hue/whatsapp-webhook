@@ -406,6 +406,20 @@
     return tr;
   }
 
+  // El aviso de ausencia de un conductor: vacaciones (libera la plaza -> hueco),
+  // baja/permiso (alerta, sigue asignado), o una ausencia que entra pronto.
+  function avisoAusencia(c) {
+    if (!c) return null;
+    if (c.ausente) {
+      const vuelve = c.vuelveEl && c.vuelveEl <= sumarDias(DIA, 7) ? ` · vuelve ${isoAes(c.vuelveEl)}` : '';
+      return { tono: c.liberaPlaza ? 'red' : 'warn', texto: c.estado + vuelve, hueco: !!c.liberaPlaza };
+    }
+    if (c.proxAusencia && c.proxAusencia.desde && c.proxAusencia.desde <= sumarDias(DIA, 7)) {
+      return { tono: 'gold', texto: `entra en ${String(c.proxAusencia.estado || '').toLowerCase()} el ${isoAes(c.proxAusencia.desde)}`, hueco: false };
+    }
+    return null;
+  }
+
   function celdaPuesto(coche, p, col) {
     const esFijo = p.rol === 'FIJO' || col.slot < 2;
     const wrap = document.createElement('div');
@@ -422,10 +436,13 @@
         sub = dias ? ('días ' + dias) : 'sin días';
       }
       const ett = persona && persona.esEtt ? ' <span class="text-telecab-violet">ETT</span>' : '';
+      const av = avisoAusencia(persona);
+      const nombreCls = av && av.hueco ? 'line-through text-telecab-muted' : 'font-medium group-hover:text-telecab-gold';
       wrap.innerHTML = `
         <button class="text-left w-full group" data-asignar>
-          <span class="font-medium group-hover:text-telecab-gold transition">${esc(persona ? persona.nombre : p.nombre)}${ett}</span>
+          <span class="${nombreCls} transition">${esc(persona ? persona.nombre : p.nombre)}${ett}</span>
           <span class="block text-xs text-telecab-muted">${esc(sub)}</span>
+          ${av ? `<span class="block text-[11px] text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}${av.hueco ? ' · sin cubrir' : ''}</span>` : ''}
         </button>`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
     } else {
