@@ -51,6 +51,37 @@ const TAREAS = {
     },
   },
 
+  state_logs_bolt: {
+    fuente: 'bolt',
+    etiqueta: 'Logs de estado de BOLT',
+    // Cada 10 min: es la fuente de la jornada y del panel en vivo. La ventana
+    // pedida se solapa a proposito con la anterior; el aterrizaje es idempotente.
+    cadaMin: Number(process.env.INGESTA_STATE_LOGS_MIN) || 10,
+    critica: true,
+    async ejecutar() {
+      const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+      const staging = require('./repo/staging');
+      const hasta = Math.floor(Date.now() / 1000);
+      const desde = hasta - (Number(process.env.INGESTA_STATE_LOGS_VENTANA_H) || 2) * 3600;
+
+      let todos = [], nuevos = 0;
+      const t0 = Date.now();
+      for (const f of CONFIG_BOLT.flotas) {
+        const logs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs',
+          { company_id: f.id, start_ts: desde, end_ts: hasta }, 'state_logs', 1000, `ingesta log ${f.id}`);
+        todos = todos.concat(logs);
+      }
+      // Se guarda el crudo (para auditar/reprocesar) y de ahi cuelgan los eventos.
+      const descargaId = await staging.registrarDescarga({
+        fuente: 'bolt', endpoint: 'getFleetStateLogs',
+        params: { start_ts: desde, end_ts: hasta }, payload: todos,
+        filas: todos.length, ms: Date.now() - t0,
+      });
+      nuevos = await staging.guardarStateLogs(todos, descargaId);
+      return { registros: nuevos, detalle: { traidos: todos.length, nuevos } };
+    },
+  },
+
   unidades_mapon: {
     fuente: 'mapon',
     etiqueta: 'Odómetros de Mapon',

@@ -134,7 +134,48 @@ async function guardarAsientos(asientos) {
   return nuevos;
 }
 
+/**
+ * Deriva la jornada de un conductor en un dia, LEYENDO DE POSTGRES.
+ *
+ * Este es el eslabon que cumple la arquitectura: no llama a BOLT. Lee los
+ * eventos ya aterrizados en bolt_state_log (via staging), los convierte en
+ * asientos y los guarda. Se puede correr las veces que haga falta -es
+ * idempotente- y se puede rederivar el pasado sin volver a tocar la API, que
+ * era todo el objetivo.
+ *
+ * `areaConfirmada` es el gancho para la zona de Mapon: cuando se cruce, decide
+ * si un tramo de espera estaba dentro del area (TE_A1) o no (TE_NO).
+ */
+async function derivarDia(conductorId, dia, { areaConfirmada = null } = {}) {
+  const staging = require('./staging');
+  const [logs, catalogo] = await Promise.all([
+    staging.logsDeConductorDia(conductorId, dia),
+    catalogoEstados(),
+  ]);
+  if (!logs.length) return { conductorId, dia, tramos: 0, asientos: 0, nuevos: 0 };
+
+  // El corte del dia en epoch, para cerrar el ultimo tramo.
+  const finDia = Math.floor(new Date(dia + 'T00:00:00Z').getTime() / 1000) + 86400;
+  const tramos = tramosDeLogs(logs, finDia);
+  const asientos = asientosDeDia({ tramos, catalogo, conductorId, dia, areaConfirmada });
+  const nuevos = await guardarAsientos(asientos);
+  return { conductorId, dia, tramos: tramos.length, asientos: asientos.length, nuevos };
+}
+
+/** Deriva la jornada de TODOS los conductores con eventos ese dia. */
+async function derivarTodos(dia, opciones = {}) {
+  const staging = require('./staging');
+  const ids = await staging.conductoresConLogs(dia);
+  let asientos = 0, nuevos = 0;
+  for (const id of ids) {
+    const r = await derivarDia(id, dia, opciones);
+    asientos += r.asientos; nuevos += r.nuevos;
+  }
+  return { dia, conductores: ids.length, asientos, nuevos };
+}
+
 module.exports = {
   tramosDeLogs, catalogoEstados, asientosDeDia, guardarAsientos,
+  derivarDia, derivarTodos,
   MAX_TRAMO_MIN, AUX_MIN,
 };

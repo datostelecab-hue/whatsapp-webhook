@@ -422,6 +422,10 @@ programar('40 4 * * *', async () => {
     if (!bd.HAY_BD) return;
     const r = await bd.consulta('SELECT purgar_ingesta(7) AS n');
     if (r.rows[0].n) console.log(`🧹 [INGESTA] Purgadas ${r.rows[0].n} filas del registro`);
+    // El payload crudo de las descargas de BOLT/Mapon pesa; se vacia a la
+    // semana. Los eventos tipados (bolt_state_log) y los metadatos se quedan.
+    const d = await bd.consulta('SELECT purgar_descargas(7) AS n');
+    if (d.rows[0].n) console.log(`🧹 [INGESTA] Vaciado el crudo de ${d.rows[0].n} descarga(s)`);
   } catch (error) {
     console.error(`⚠️  [INGESTA] Purga: ${error.message}`);
   }
