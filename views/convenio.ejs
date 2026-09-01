@@ -1,0 +1,286 @@
+<%
+  // El mes de arranque lo decide el servidor (el ultimo con objetivos). El resto
+  // de la pantalla es el componente Listado: aqui solo se DESCRIBE lo del
+  // convenio (que columnas, que bloques), no se reimplementa ni la lista ni la
+  // ficha ni el buscador.
+%>
+
+<!-- Barra del mes: la pantalla entera mira un mes; se cambia aqui. Va fuera del
+     componente porque es propia de este modulo (el componente no sabe de meses). -->
+<div class="px-4 lg:px-6 pt-4 lg:pt-6 max-w-[1400px] mx-auto">
+  <div class="flex items-center gap-2">
+    <span class="text-sm text-telecab-muted mr-1">Mes de jornada</span>
+    <button id="mes-prev" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Mes anterior">
+      <i class="fa-solid fa-chevron-left text-xs"></i>
+    </button>
+    <div id="mes-label" class="min-w-[10rem] text-center font-semibold tabular-nums"></div>
+    <button id="mes-next" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Mes siguiente">
+      <i class="fa-solid fa-chevron-right text-xs"></i>
+    </button>
+  </div>
+</div>
+
+<div id="convenio"></div>
+
+<script>
+(function () {
+  const { fecha, esc, etiqueta } = Listado.fmt;
+
+  // ---------- estado: el mes que se esta mirando ----------
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const MES = { anio: <%= anioInicial %>, mes: <%= mesInicial %> };
+
+  // ---------- formateadores propios del modulo ----------
+  const n = v => (v === null || v === undefined || v === '') ? null : Number(v);
+  /** Minutos a "12h 30m". Hueco visible si no hay dato (no un "0h 0m" enganoso). */
+  const hm = v => {
+    const x = n(v);
+    if (x === null || isNaN(x)) return '<span class="text-telecab-muted">—</span>';
+    const h = Math.floor(Math.abs(x) / 60), m = Math.abs(x) % 60;
+    return (x < 0 ? '-' : '') + h + 'h' + (m ? ' ' + m + 'm' : '');
+  };
+  const eur = v => {
+    const x = n(v);
+    if (x === null || isNaN(x)) return '<span class="text-telecab-muted">—</span>';
+    return x.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+  };
+  const hora = v => {
+    if (!v) return '';
+    const d = new Date(v); if (isNaN(d)) return '';
+    const p = x => String(x).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes());
+  };
+  const mmaa = (a, m) => String(m).padStart(2, '0') + '/' + a;
+
+  // Estado del objetivo del mes: congelado (cerrado, no se toca), publicado
+  // (comunicado al conductor) o borrador (aun sin comunicar).
+  const estadoObjetivo = f => {
+    if (!f.objetivo_min && f.objetivo_min !== 0) return { texto: 'Sin objetivo', tono: 'muted' };
+    if (f.congelado_at) return { texto: 'Congelado', tono: 'violet' };
+    if (f.publicado_at) return { texto: 'Publicado', tono: 'green' };
+    return { texto: 'Borrador', tono: 'warn' };
+  };
+
+  // Tonos de las tablas de la ficha (solo pintan, el dato manda la base).
+  const TONO_VAR = { nocturnidad: 'violet', propina: 'green', hora_extra: 'warn', plus_calidad: 'gold',
+                     bonus: 'green', complemento_garantia: 'gold', descuento: 'red' };
+  const TONO_VAR_ESTADO = { calculada: 'muted', aprobada: 'green', pagada: 'violet' };
+  const IE = {
+    detectada:            { txt: 'Detectada',       tono: 'warn' },
+    pendiente_autoridad:  { txt: 'Pend. autoridad',  tono: 'warn' },
+    validada:             { txt: 'Validada',         tono: 'gold' },
+    autorizada:           { txt: 'Autorizada',       tono: 'violet' },
+    programada:           { txt: 'Programada',       tono: 'violet' },
+    descontada:           { txt: 'Descontada',       tono: 'muted' },
+    rechazada:            { txt: 'Rechazada',        tono: 'red' },
+  };
+  const TIPO_BAJA = { voluntaria: 'Voluntaria', despido: 'Despido', fin_contrato: 'Fin de contrato', no_supero_prueba: 'No superó prueba' };
+
+  // ---------- la pantalla ----------
+  const panel = Listado.montar({
+    raiz: '#convenio',
+    titulo: 'Jornada del convenio',
+    icono: 'fa-scale-balanced',
+    clave: 'conductor_id',
+    // Funcion, no cadena: se re-lee en cada carga/recarga, asi cambiar de mes
+    // trae el mes nuevo sin volver a montar nada.
+    origen: () => `/convenio/api/trabajadores?anio=${MES.anio}&mes=${MES.mes}`,
+    vacio: 'Ningún trabajador con contrato vigente coincide.',
+    buscar: { texto: 'Buscar nombre, grupo…', campos: ['nombre', 'grupo', 'grupo_nombre'] },
+
+    subtitulo: (visibles, todas) =>
+      `${MESES[MES.mes - 1]} ${MES.anio} · ` +
+      (visibles.length === todas.length ? `${todas.length} trabajadores` : `${visibles.length} de ${todas.length}`),
+
+    kpis: (filas) => {
+      const conDefecto = filas.filter(f => n(f.defecto) > 0).length;
+      const conExceso  = filas.filter(f => n(f.exceso) > 0).length;
+      const incid      = filas.reduce((s, f) => s + (n(f.incidencias_abiertas) || 0), 0);
+      return [
+        { etiqueta: 'Trabajadores', valor: filas.length, tono: 'text',
+          pie: `${filas.filter(f => f.objetivo_min != null).length} con objetivo` },
+        { etiqueta: 'Con defecto', valor: conDefecto, tono: conDefecto ? 'red' : 'green',
+          pie: 'jornada por debajo', filtro: { id: 'alerta', valor: 'defecto' } },
+        { etiqueta: 'Con exceso', valor: conExceso, tono: conExceso ? 'warn' : 'muted',
+          pie: 'horas extra', filtro: { id: 'alerta', valor: 'exceso' } },
+        { etiqueta: 'Incidencias', valor: incid, tono: incid ? 'gold' : 'muted',
+          pie: 'económicas abiertas', filtro: { id: 'alerta', valor: 'incidencias' } },
+      ];
+    },
+
+    filtros: [
+      { id: 'grupo', campo: 'grupo', textoTodos: 'Todos los grupos',
+        opciones: filas => [...new Set(filas.map(f => f.grupo).filter(Boolean))].sort()
+          .map(g => ({ valor: g, texto: g })) },
+      { id: 'alerta', textoTodos: 'Sin filtro de alerta',
+        opciones: [
+          { valor: 'defecto', texto: 'Con defecto' },
+          { valor: 'exceso', texto: 'Con exceso (extra)' },
+          { valor: 'incidencias', texto: 'Con incidencias' },
+        ],
+        pasa: (f, v) => v === 'defecto' ? n(f.defecto) > 0
+                      : v === 'exceso' ? n(f.exceso) > 0
+                      : v === 'incidencias' ? n(f.incidencias_abiertas) > 0 : true },
+    ],
+
+    columnas: [
+      { titulo: 'Trabajador', campo: 'nombre', clase: 'font-semibold whitespace-nowrap' },
+      { titulo: 'Grupo', campo: 'grupo', pinta: v => etiqueta(v, 'gold') },
+      { titulo: 'Objetivo', campo: 'bruta', clase: 'tabular-nums whitespace-nowrap', pinta: v => hm(v) },
+      { titulo: 'Cumplido', campo: 'cumple', clase: 'tabular-nums whitespace-nowrap',
+        // La estricta (convenio) grande y, debajo, la total (operativa).
+        pinta: (v, f) => `${hm(v)}<span class="block text-xs text-telecab-muted">total ${n(f.cumple_total) === null ? '—' : hm(f.cumple_total)}</span>` },
+      { titulo: 'Defecto', campo: 'defecto', clase: 'tabular-nums whitespace-nowrap',
+        pinta: v => n(v) > 0 ? `<span class="text-telecab-red font-semibold">${hm(v)}</span>` : '<span class="text-telecab-muted">—</span>' },
+      { titulo: 'Exceso', campo: 'exceso', clase: 'tabular-nums whitespace-nowrap',
+        pinta: v => n(v) > 0 ? `<span class="text-telecab-warn font-semibold">${hm(v)}</span>` : '<span class="text-telecab-muted">—</span>' },
+      { titulo: 'Publicación', campo: 'objetivo_min', exportar: false,
+        pinta: (v, f) => { const e = estadoObjetivo(f); return etiqueta(e.texto, e.tono); } },
+      { titulo: '', campo: 'incidencias_abiertas', exportar: false,
+        pinta: v => n(v) > 0 ? `<span class="inline-flex items-center gap-1 text-telecab-gold text-xs" title="Incidencias económicas abiertas"><i class="fa-solid fa-triangle-exclamation"></i>${v}</span>` : '' },
+    ],
+
+    // ---------- la ficha del trabajador ----------
+    detalle: {
+      origen: id => `/convenio/api/ficha/${id}`,
+      titulo: d => d.nombre,
+      subtitulo: d => {
+        const c = d.contrato;
+        return [c && c.grupo_nombre, c && (c.jornada_mode === 'MARCO_TEMPORAL' ? 'Cómputo mensual' : 'Horario concreto')]
+          .filter(Boolean).join(' · ');
+      },
+
+      bloques: [
+        {
+          titulo: 'Contrato vigente', icono: 'fa-file-signature',
+          visible: d => !!d.contrato,
+          campos: d => {
+            const c = d.contrato || {};
+            return [
+              { etiqueta: 'Grupo', html: true, valor: () => etiqueta(c.grupo, 'gold') + (c.grupo_nombre ? ` <span class="text-telecab-muted">${esc(c.grupo_nombre)}</span>` : '') },
+              { etiqueta: 'Convenio', valor: () => c.convenio },
+              { etiqueta: 'Modo de jornada', valor: () => c.jornada_mode === 'MARCO_TEMPORAL' ? 'Marco temporal (mensual)' : 'Horario concreto (diario)' },
+              { etiqueta: 'Política de objetivo', valor: () => c.target_policy === 'MONTHLY_POOL' ? 'Bolsa mensual' : 'Diario' },
+              { etiqueta: 'Desde', valor: () => fecha(c.desde) },
+              { etiqueta: 'Correo legal', valor: () => d.correo_legal, clase: d.correo_legal ? '' : 'text-telecab-muted' },
+            ];
+          },
+        },
+        {
+          titulo: 'Conciliación por mes', icono: 'fa-scale-balanced',
+          tabla: {
+            datos: d => d.conciliacion,
+            vacio: 'Todavía no hay meses conciliados.',
+            columnas: [
+              { titulo: 'Mes', pinta: (v, f) => `<span class="tabular-nums">${mmaa(f.anio, f.mes)}</span>` },
+              { titulo: 'Objetivo', campo: 'bruta', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Reduce', campo: 'reduce', clase: 'tabular-nums', pinta: v => n(v) ? hm(v) : '<span class="text-telecab-muted">—</span>' },
+              { titulo: 'Neta', campo: 'neta', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Cumplido', campo: 'cumple', clase: 'tabular-nums',
+                pinta: (v, f) => `${hm(v)}<span class="block text-xs text-telecab-muted">total ${hm(f.cumple_total)}</span>` },
+              { titulo: 'Defecto', campo: 'defecto', clase: 'tabular-nums',
+                pinta: v => n(v) > 0 ? `<span class="text-telecab-red">${hm(v)}</span>` : '<span class="text-telecab-muted">—</span>' },
+              { titulo: 'Exceso', campo: 'exceso', clase: 'tabular-nums',
+                pinta: v => n(v) > 0 ? `<span class="text-telecab-warn">${hm(v)}</span>` : '<span class="text-telecab-muted">—</span>' },
+              { titulo: 'Estado', pinta: (v, f) => { const e = estadoObjetivo(f); return etiqueta(e.texto, e.tono); } },
+            ],
+          },
+        },
+        {
+          titulo: 'Registro de jornada (últimos días)', icono: 'fa-clock',
+          tabla: {
+            datos: d => d.registro,
+            vacio: 'Sin registro de jornada derivado aún.',
+            columnas: [
+              { titulo: 'Día', campo: 'dia', clase: 'tabular-nums whitespace-nowrap', pinta: v => fecha(v) },
+              { titulo: 'Franja', clase: 'tabular-nums whitespace-nowrap',
+                pinta: (v, f) => (f.inicio ? hora(f.inicio) : '—') + ' – ' + (f.fin ? hora(f.fin) : '—') },
+              { titulo: 'Efectivo', campo: 'efectivo_estricto_min', clase: 'tabular-nums',
+                pinta: (v, f) => `${hm(v)}<span class="block text-xs text-telecab-muted">total ${hm(f.efectivo_total_min)}</span>` },
+              { titulo: 'Descanso', campo: 'descanso_min', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Nocturno', campo: 'nocturno_min', clase: 'tabular-nums', pinta: v => n(v) ? hm(v) : '<span class="text-telecab-muted">—</span>' },
+            ],
+          },
+        },
+        {
+          titulo: 'Ausencias y permisos', icono: 'fa-user-clock',
+          tabla: {
+            datos: d => d.ausencias,
+            vacio: 'Sin ausencias registradas.',
+            columnas: [
+              { titulo: 'Estado', campo: 'estado_etiqueta', pinta: (v, f) => etiqueta(v || f.estado, f.es_ausencia ? 'warn' : 'muted') },
+              { titulo: 'Desde', campo: 'desde', clase: 'tabular-nums whitespace-nowrap', pinta: v => fecha(v) },
+              { titulo: 'Hasta', clase: 'tabular-nums whitespace-nowrap',
+                pinta: (v, f) => f.hasta ? fecha(f.hasta) : (f.hasta_previsto ? `<span class="text-telecab-muted">${fecha(f.hasta_previsto)} (prev.)</span>` : '<span class="text-telecab-muted">abierta</span>') },
+              { titulo: 'Motivo', campo: 'motivo', pinta: (v, f) => {
+                  const flags = [f.it_grave ? 'grave' : null, f.it_hospitalizacion ? 'hospital.' : null].filter(Boolean);
+                  return esc(v || '') + (flags.length ? ` <span class="text-telecab-red text-xs">(${flags.join(', ')})</span>` : '');
+                } },
+            ],
+          },
+        },
+        {
+          titulo: 'Variables de nómina', icono: 'fa-coins',
+          tabla: {
+            datos: d => d.variables,
+            vacio: 'Sin variables devengadas.',
+            columnas: [
+              { titulo: 'Tipo', campo: 'tipo', pinta: v => etiqueta(String(v || '').replace(/_/g, ' '), TONO_VAR[v] || 'muted') },
+              { titulo: 'Devengo', clase: 'tabular-nums whitespace-nowrap', pinta: (v, f) => mmaa(f.devengo_anio, f.devengo_mes) },
+              { titulo: 'Pago', clase: 'tabular-nums whitespace-nowrap', pinta: (v, f) => mmaa(f.pago_anio, f.pago_mes) },
+              { titulo: 'Cantidad', clase: 'tabular-nums whitespace-nowrap',
+                pinta: (v, f) => f.unidad === 'MIN' ? hm(f.cantidad) : `${n(f.cantidad)} ${esc(f.unidad || '')}` },
+              { titulo: 'Importe', campo: 'importe', clase: 'tabular-nums', pinta: v => eur(v) },
+              { titulo: 'Estado', campo: 'estado', pinta: v => etiqueta(v, TONO_VAR_ESTADO[v] || 'muted') },
+            ],
+          },
+        },
+        {
+          titulo: 'Incidencias económicas', icono: 'fa-file-invoice-dollar',
+          visible: d => d.incidencias && d.incidencias.length,
+          tabla: {
+            datos: d => d.incidencias,
+            columnas: [
+              { titulo: 'Tipo', campo: 'tipo', pinta: v => esc(String(v || '').replace(/_/g, ' ')) },
+              { titulo: 'Estado', campo: 'estado', pinta: v => { const e = IE[v] || { txt: v, tono: 'muted' }; return etiqueta(e.txt, e.tono); } },
+              { titulo: 'Detectado', campo: 'importe_detectado', clase: 'tabular-nums', pinta: v => eur(v) },
+              { titulo: 'Validado', campo: 'importe_validado', clase: 'tabular-nums', pinta: v => eur(v) },
+              { titulo: 'Autorizado', campo: 'importe_autorizado', clase: 'tabular-nums', pinta: v => eur(v) },
+              { titulo: 'Ref.', campo: 'ref_autoridad', pinta: v => esc(v || '') },
+            ],
+          },
+        },
+        {
+          titulo: 'Liquidaciones', icono: 'fa-money-check-dollar',
+          visible: d => d.liquidaciones && d.liquidaciones.length,
+          tabla: {
+            datos: d => d.liquidaciones,
+            columnas: [
+              { titulo: 'Baja', campo: 'fecha_baja', clase: 'tabular-nums whitespace-nowrap', pinta: v => fecha(v) },
+              { titulo: 'Tipo', campo: 'tipo_baja', pinta: v => esc(TIPO_BAJA[v] || v) },
+              { titulo: 'Preaviso', clase: 'tabular-nums whitespace-nowrap',
+                pinta: (v, f) => `${f.dias_preavisados}/${f.preaviso_exigido} d` },
+              { titulo: 'Finiquito', campo: 'total', clase: 'tabular-nums', pinta: v => eur(v) },
+              { titulo: 'Estado', campo: 'estado', pinta: v => etiqueta(v === 'cerrada' ? 'Cerrada' : 'Borrador', v === 'cerrada' ? 'green' : 'warn') },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  // ---------- el selector de mes ----------
+  const label = document.getElementById('mes-label');
+  const pintarMes = () => { label.textContent = `${MESES[MES.mes - 1]} ${MES.anio}`; };
+  const mover = paso => {
+    let m = MES.mes + paso, a = MES.anio;
+    if (m < 1) { m = 12; a--; } else if (m > 12) { m = 1; a++; }
+    MES.mes = m; MES.anio = a;
+    pintarMes();
+    panel.recargar();   // re-lee el origen (que ya mira el MES nuevo) sin remontar
+  };
+  document.getElementById('mes-prev').addEventListener('click', () => mover(-1));
+  document.getElementById('mes-next').addEventListener('click', () => mover(1));
+  pintarMes();
+})();
+</script>

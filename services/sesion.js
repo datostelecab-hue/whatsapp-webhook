@@ -26,7 +26,7 @@ if (!SECRET) {
 const ACCESO = {
   '/vacantes': ['oficina'], '/seleccion': ['oficina'], '/ett': ['oficina'],
   '/rrhh': ['oficina'], '/administracion': ['oficina'], '/fichas': ['oficina'],
-  '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'],
+  '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'], '/convenio': ['oficina'],
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],
   '/control': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
   '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico'],
