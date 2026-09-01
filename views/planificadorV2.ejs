@@ -228,9 +228,18 @@
     return ids.size > 1 ? 'varios' : null;
   }
 
-  // La libranza de un CT = el complemento de los días que trabaja.
-  const libraCT = persona => persona && persona.trabaja
-    ? persona.trabaja.map((v, i) => v ? null : DIAS_LETRA[i]).filter(Boolean).join(' ') : '';
+  // La libranza de un CT = el complemento de los días de SUS BLOQUES (su patrón:
+  // la unión de los descansos de los coches donde es CT), no de lo que cubrió esa
+  // semana en concreto (que depende de cuándo empezó la asignación).
+  const libraCT = persona => {
+    if (!persona) return '';
+    const trabaja = new Set();
+    (T.coches || []).forEach(c => [2, 3].forEach(slot => {
+      const p = (c.personas || [])[slot];
+      if (p && String(p.id) === String(persona.id)) (c.descanso || []).forEach(d => trabaja.add(Number(d)));
+    }));
+    return [1, 2, 3, 4, 5, 6, 7].filter(d => !trabaja.has(d)).map(d => DIAS_LETRA[d - 1]).join(' ');
+  };
 
   function tablaCoches(lista, enCuadrante) {
     const wrap = document.createElement('div');
