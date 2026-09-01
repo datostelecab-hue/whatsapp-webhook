@@ -147,7 +147,7 @@ async function tablero({ dia } = {}) {
         WHERE v.baja_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM plaza p
-              JOIN asignacion a ON a.plaza_id = p.plaza_id
+              JOIN asignacion a ON a.plaza_id = p.id
                                AND a.hasta IS NULL AND a.retirada_at IS NULL
              WHERE p.vehiculo_id = v.id AND p.baja_at IS NULL)
         ORDER BY bz.nombre NULLS LAST, v.matricula`),
