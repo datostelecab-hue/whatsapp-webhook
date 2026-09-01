@@ -17,13 +17,17 @@ const ok = (t, c, extra) => { if (!c) mal++; console.log((c ? '  ok  ' : '  MAL 
 
 const H = h => h * 60;
 
-// ── 1. Un dia de ausencia = 8h (480 min) ────────────────────────────────────
-console.log('\n== Cada dia de ausencia resta 8h ==');
-const MIN_DIA = 480;   // VACATION_DAY_EQUIV_MINUTES, art. 25.c. En la base sale del convenio.
-ok('un dia = 480 min', MIN_DIA === H(8));
-// 5 dias de vacaciones en el mes -> 2400 min de REDUCE.
+// ── 1. Un dia de ausencia resta la TASA DIARIA del objetivo (no 8h planos) ───
+console.log('\n== Cada dia de ausencia resta la tasa diaria del objetivo ==');
+// base_anual*60/dias_anio. 2026: 1776*60/365 = 291.9 -> 292 min/dia.
+const MIN_DIA = Math.round(1776 * 60 / 365);
+ok('un dia (2026) = 292 min', MIN_DIA === 292, '(' + MIN_DIA + ')');
+// Un mes ENTERO de ausencia deja la neta en cero: los dias suman el objetivo.
+const objAgosto = Math.round(1776 * 60 * 31 / 365);   // agosto completo
+ok('31 dias de ausencia ~= el objetivo del mes (neta 0)',
+   Math.abs(31 * MIN_DIA - objAgosto) <= 31);
 const diasVac = 5;
-ok('5 dias = 2400 min de REDUCE', diasVac * MIN_DIA === 2400);
+ok('5 dias = 1460 min de REDUCE', diasVac * MIN_DIA === 1460, '(' + diasVac * MIN_DIA + ')');
 
 // ── 2. El derecho a vacaciones, prorrateado ─────────────────────────────────
 console.log('\n== Derecho a vacaciones prorrateado por dias de alta (art. 21) ==');
@@ -49,17 +53,14 @@ const cuarto = derecho(D(2026, 10, 1), null, 2026);
 ok('alta 1-oct = ~5.5 dias', cuarto > 5.4 && cuarto < 5.7, `(${cuarto})`);
 
 // ── 3. Encaje en la reconciliacion ──────────────────────────────────────────
-console.log('\n== Las vacaciones restan de la NETA, no son defecto ==');
-// Objetivo 150h. 5 dias de vacaciones (40h REDUCE). Trabaja 110h. Neta = 110,
-// cumple 110 -> sin defecto: las vacaciones no se reclaman.
-const bruta = H(150), reduce = diasVac * MIN_DIA, cumple = H(110);
+console.log('\n== La ausencia baja la NETA a su tasa, no son defecto ==');
+// Objetivo de un mes de 30 dias. 5 dias de ausencia restan 5*292.
+const bruta = Math.round(1776 * 60 * 30 / 365);
+const reduce = diasVac * MIN_DIA;
 const neta = Math.max(0, bruta - reduce);
-const defecto = Math.max(0, neta - cumple);
-ok('neta = 110h', neta === H(110), `(${neta/60}h)`);
-ok('sin defecto', defecto === 0);
-// Si NO trabajara nada esas semanas, el defecto seria solo lo que falta tras
-// quitar las vacaciones, no el mes entero.
-ok('sin trabajar: defecto = neta (110h), no 150h', Math.max(0, neta - 0) === H(110));
+ok('la ausencia baja la neta en 5 dias', bruta - neta === reduce, '(' + reduce + ' min)');
+ok('un mes entero de ausencia dejaria la neta en 0',
+   Math.max(0, bruta - 30 * MIN_DIA) === 0);
 
 console.log(mal ? `\n${mal} PRUEBA(S) MAL` : '\nLa aritmetica de las ausencias cuadra');
 process.exitCode = mal ? 1 : 0;
