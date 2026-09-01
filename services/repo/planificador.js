@@ -356,7 +356,9 @@ async function tablero({ dia } = {}) {
   // ── El banquillo ───────────────────────────────────────────────────────
   // Quien no tiene ninguna plaza esta semana. Incluye a los que empiezan más
   // adelante: se les ve para poder colocarlos antes de que entren.
-  const pendientes = [...gente.values()].filter(p => !p.plazas);
+  // El banquillo = disponibles de verdad: sin plaza y SIN ausencia. Los que
+  // estan de baja/vacaciones/suspendidos no se ofrecen para colocar.
+  const pendientes = [...gente.values()].filter(p => !p.plazas && !p.ausente);
   const cuadrantes = await listarCuadrantes();
   const zonas = (await db.consulta('SELECT id, nombre FROM base_zona WHERE activa ORDER BY nombre')).rows
     .map(z => ({ id: z.id, nombre: z.nombre }));
