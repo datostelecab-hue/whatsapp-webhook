@@ -593,16 +593,17 @@ async function fijarDescanso(vehiculoId, dias, { dia, usuarioId } = {}) {
   // Si el coche esta en un cuadrante, no puede repetir el bloque de dias de otro.
   if (parsed.length) {
     const dup = await db.consulta(
-      `SELECT v2.matricula
+      `SELECT v2.matricula, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
          FROM vehiculo v1
          JOIN vehiculo v2 ON v2.cuadrante_id = v1.cuadrante_id AND v2.id <> v1.id
          JOIN vehiculo_descanso vd ON vd.vehiculo_id = v2.id AND vd.hasta IS NULL
          JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
         WHERE v1.id = $1 AND v1.cuadrante_id IS NOT NULL
         GROUP BY v2.id, v2.matricula
-       HAVING array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) = $2::smallint[]`,
+       HAVING array_agg(vdd.dia_semana) && $2::smallint[]`,
       [vehiculoId, parsed]);
-    if (dup.rows.length) throw new Error(`Ese bloque (${parsed.map(d => LETRAS[d - 1]).join('/')}) ya lo lleva ${dup.rows[0].matricula} en el cuadrante`);
+    if (dup.rows.length) throw new Error(
+      `Esos días chocan con ${dup.rows[0].matricula} (${(dup.rows[0].dias || []).map(d => LETRAS[d - 1]).join('/')}) en el cuadrante: no pueden compartir día`);
   }
   await db.transaccion(async cli => { await ponerDescansoCoche(cli, vehiculoId, parsed, efectivo, usuarioId); });
   return { dia: efectivo, dias: parsed };
@@ -846,15 +847,16 @@ async function anadirBloque({ cuadranteId, vehiculoId, dias }, { dia, usuarioId 
   const parsed = parsearDias(dias);
   if (parsed === null || !parsed.length) throw new Error('Elige los días del bloque');
   const dup = await db.consulta(
-    `SELECT v.matricula
+    `SELECT v.matricula, array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) AS dias
        FROM vehiculo v
        JOIN vehiculo_descanso vd ON vd.vehiculo_id = v.id AND vd.hasta IS NULL
        JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
       WHERE v.cuadrante_id = $1 AND v.id <> $2
       GROUP BY v.id, v.matricula
-     HAVING array_agg(vdd.dia_semana ORDER BY vdd.dia_semana) = $3::smallint[]`,
+     HAVING array_agg(vdd.dia_semana) && $3::smallint[]`,
     [cuadranteId, vehiculoId, parsed]);
-  if (dup.rows.length) throw new Error(`Ese bloque (${parsed.map(d => LETRAS[d - 1]).join('/')}) ya lo lleva ${dup.rows[0].matricula}`);
+  if (dup.rows.length) throw new Error(
+    `Esos días chocan con ${dup.rows[0].matricula} (${(dup.rows[0].dias || []).map(d => LETRAS[d - 1]).join('/')}): dos bloques no pueden compartir día`);
   await db.transaccion(async cli => {
     await cli.query('UPDATE vehiculo SET cuadrante_id = $2 WHERE id = $1', [vehiculoId, cuadranteId]);
     await ponerDescansoCoche(cli, vehiculoId, parsed, efectivo, usuarioId);

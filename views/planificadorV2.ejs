@@ -55,8 +55,13 @@
     </div>
   </div>
 
-  <!-- Filtro por zona + avisos -->
+  <!-- Filtro por zona + búsqueda + avisos -->
   <div class="flex flex-wrap items-center gap-2 mb-3">
+    <div class="relative">
+      <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
+      <input id="f-busca" type="search" placeholder="Buscar conductor o matrícula…"
+             class="pl-8 pr-3 py-2 w-56 bg-telecab-card border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+    </div>
     <select id="f-zona" class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm">
       <option value="">Todas las zonas</option>
     </select>
@@ -190,12 +195,18 @@
   }
 
   // ── El cuadrante, por zona ───────────────────────────────────────────────────
+  const plano = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   function cochesVisibles() {
     const zona = $('#f-zona').value;
     const soloHuecos = $('#f-huecos').checked;
+    const q = plano($('#f-busca').value).trim();
     return (T.coches || []).filter(c => {
       if (zona && c.zona !== zona) return false;
       if (soloHuecos && !((c.sinCubrirDia || 0) + (c.sinCubrirNoche || 0))) return false;
+      if (q) {
+        const txt = plano(c.matricula + ' ' + (c.personas || []).map(p => (p && p.nombre) || '').join(' '));
+        if (!txt.includes(q)) return false;
+      }
       return true;
     });
   }
@@ -300,8 +311,10 @@
     });
 
     // TODOS los cuadrantes (incluidos los vacíos, recién creados), filtrados por
-    // zona. Así un cuadrante nuevo aparece para poder añadirle bloques.
-    const cuadrantes = (T.cuadrantes || []).filter(cu => !zona || cu.zona === zona);
+    // zona. Al buscar, solo los que tengan coches que coincidan (los vacíos se ocultan).
+    const buscando = !!plano($('#f-busca').value).trim();
+    const cuadrantes = (T.cuadrantes || []).filter(cu =>
+      (!zona || cu.zona === zona) && (!buscando || (porCua.get(String(cu.id)) || []).length));
 
     const hayAlgo = cuadrantes.length || sueltos.length;
     $('#vacio').classList.toggle('hidden', hayAlgo > 0);
@@ -899,6 +912,7 @@
   $('#f-dia').addEventListener('change', e => { const iso = esAiso(e.target.value); if (iso) irA(iso); });
   $('#f-zona').addEventListener('change', pintar);
   $('#f-huecos').addEventListener('change', pintar);
+  { let t; $('#f-busca').addEventListener('input', () => { clearTimeout(t); t = setTimeout(pintar, 150); }); }
   $('#banq-busca').addEventListener('input', pintarBanquillo);
   document.querySelectorAll('.banq-tab').forEach(b =>
     b.addEventListener('click', () => { banqTab = b.dataset.banqTab; pintarBanquillo(); }));
