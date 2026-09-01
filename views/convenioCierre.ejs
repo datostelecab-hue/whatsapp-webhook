@@ -1,0 +1,218 @@
+<%- include('partials/convenio-nav', { sub: 'cierre' }) %>
+
+<div id="cierre"></div>
+
+<script>
+(function () {
+  const { fecha, fechaHora, esc, etiqueta, horasMin } = Listado.fmt;
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mesNombre = (a, m) => `${MESES[m - 1]} ${a}`;
+  const mmaa = (a, m) => String(m).padStart(2, '0') + '/' + a;
+
+  const n = v => (v === null || v === undefined || v === '') ? null : Number(v);
+  const DASH = '<span class="text-telecab-muted">—</span>';
+  const hm = v => horasMin(v) || DASH;
+  // Un delta con signo y color: verde si sube, rojo si baja, hueco si no cambia.
+  const hmDelta = v => {
+    const x = n(v);
+    if (x === null || x === 0) return DASH;
+    return `<span class="text-telecab-${x > 0 ? 'green' : 'red'}">${x > 0 ? '+' : ''}${horasMin(x)}</span>`;
+  };
+  const esCerrado = f => f.estado === 'cerrado';
+
+  const cierre = Listado.montar({
+    raiz: '#cierre',
+    titulo: 'Cierre de periodo',
+    icono: 'fa-lock',
+    clave: 'k',
+    origen: '/convenio/api/periodos',
+    vacio: 'No hay meses con jornada todavía.',
+    buscar: false,
+
+    subtitulo: (visibles, todas) =>
+      `${todas.filter(esCerrado).length} cerrados · ${todas.filter(f => !esCerrado(f)).length} por cerrar`,
+
+    kpis: (filas) => {
+      const cerrados = filas.filter(esCerrado).length;
+      const cambios = filas.filter(f => f.tiene_cambios).length;
+      return [
+        { etiqueta: 'Cerrados', valor: cerrados, tono: 'green', pie: 'meses congelados' },
+        { etiqueta: 'Por cerrar', valor: filas.length - cerrados, tono: filas.length - cerrados ? 'warn' : 'muted' },
+        { etiqueta: 'Con cambios', valor: cambios, tono: cambios ? 'gold' : 'muted',
+          pie: 'tras el cierre · regularizar' },
+      ];
+    },
+
+    columnas: [
+      { titulo: 'Mes', clase: 'font-semibold whitespace-nowrap', pinta: (v, f) => esc(mesNombre(f.anio, f.mes)) },
+      { titulo: 'Estado', pinta: (v, f) => esCerrado(f)
+          ? etiqueta('Cerrado', 'green') : etiqueta('Por cerrar', 'warn') },
+      { titulo: 'Contratos', clase: 'tabular-nums', pinta: (v, f) => esCerrado(f) ? f.contratos_cerrados : f.contratos_vivo },
+      { titulo: 'Defecto', campo: 'defecto_vivo', clase: 'tabular-nums whitespace-nowrap',
+        pinta: v => n(v) > 0 ? `<span class="text-telecab-red">${hm(v)}</span>` : DASH },
+      { titulo: 'Exceso', campo: 'exceso_vivo', clase: 'tabular-nums whitespace-nowrap',
+        pinta: v => n(v) > 0 ? `<span class="text-telecab-warn">${hm(v)}</span>` : DASH },
+      { titulo: 'Cerrado', clase: 'whitespace-nowrap text-xs',
+        pinta: (v, f) => esCerrado(f)
+          ? `${fecha(f.cerrado_at)}<span class="block text-telecab-muted">${esc(f.cerrado_por || '')}</span>` : DASH },
+      { titulo: '', exportar: false, pinta: (v, f) => f.tiene_cambios
+          ? `<span class="inline-flex items-center gap-1 text-telecab-gold text-xs" title="Cambió algo desde el cierre"><i class="fa-solid fa-rotate"></i>cambios</span>` : '' },
+    ],
+
+    detalle: {
+      origen: id => `/convenio/api/periodo/${String(id).replace('-', '/')}`,
+      titulo: d => mesNombre(d.anio, d.mes),
+      subtitulo: d => d.cerrado
+        ? `Cerrado el ${fecha(d.periodo && d.periodo.cerrado_at)} · ${d.snapshot.length} contratos congelados`
+        : 'Por cerrar',
+
+      acciones: [
+        { texto: 'Cerrar periodo', icono: 'fa-lock', principal: true,
+          visible: d => !d.cerrado, onClick: cerrarPeriodo },
+        { texto: 'Regularizar', icono: 'fa-rotate', principal: false,
+          visible: d => d.cerrado && d.diferencias.length > 0, onClick: regularizar },
+      ],
+
+      bloques: [
+        {
+          titulo: 'Sello del cierre', icono: 'fa-fingerprint',
+          visible: d => d.cerrado,
+          campos: d => [
+            { etiqueta: 'Estado', html: true, valor: () => etiqueta('Cerrado', 'green') },
+            { etiqueta: 'Cerrado', valor: () => `${fechaHora(d.periodo.cerrado_at)}` },
+            { etiqueta: 'Por', valor: () => d.periodo.cerrado_por },
+            { etiqueta: 'Contratos congelados', valor: () => d.snapshot.length },
+            { etiqueta: 'Manifiesto (sha256)', ancho: 'sm:col-span-2 lg:col-span-3',
+              html: true, valor: () => `<code class="text-xs break-all text-telecab-muted">${esc(d.periodo.manifiesto || '')}</code>` },
+          ],
+        },
+        {
+          titulo: 'Diferencias desde el cierre', icono: 'fa-rotate',
+          visible: d => d.cerrado && d.diferencias.length > 0,
+          pinta: (d, hueco) => {
+            hueco.className = 'p-5';
+            hueco.innerHTML = `
+              <p class="text-sm text-telecab-muted mb-3">
+                Llegaron datos después del cierre. El mes cerrado <b>no se toca</b>: al regularizar,
+                estas diferencias se apuntan como ajuste en el mes abierto siguiente.</p>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
+                    <tr><th class="text-left font-semibold px-4 py-2">Trabajador</th>
+                        <th class="text-left font-semibold px-4 py-2">Δ Cumplido</th>
+                        <th class="text-left font-semibold px-4 py-2">Δ Reduce</th></tr>
+                  </thead>
+                  <tbody class="divide-y divide-telecab-border/60">
+                    ${d.diferencias.map(r => `<tr>
+                      <td class="px-4 py-2">${esc(r.nombre)}</td>
+                      <td class="px-4 py-2 tabular-nums">${hmDelta(r.delta_cumple)}</td>
+                      <td class="px-4 py-2 tabular-nums">${hmDelta(r.delta_reduce)}</td></tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>`;
+          },
+        },
+        {
+          titulo: 'Foto congelada (la nómina del mes)', icono: 'fa-camera',
+          visible: d => d.cerrado && d.snapshot.length > 0,
+          tabla: {
+            datos: d => d.snapshot,
+            columnas: [
+              { titulo: 'Trabajador', campo: 'nombre', clase: 'whitespace-nowrap' },
+              { titulo: 'Objetivo', campo: 'bruta', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Neta', campo: 'neta', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Cumplido', campo: 'cumple', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Defecto', campo: 'defecto', clase: 'tabular-nums', pinta: v => n(v) > 0 ? `<span class="text-telecab-red">${hm(v)}</span>` : DASH },
+              { titulo: 'Exceso', campo: 'exceso', clase: 'tabular-nums', pinta: v => n(v) > 0 ? `<span class="text-telecab-warn">${hm(v)}</span>` : DASH },
+            ],
+          },
+        },
+        {
+          titulo: 'Lo que se congelaría al cerrar', icono: 'fa-camera',
+          visible: d => !d.cerrado,
+          tabla: {
+            datos: d => d.vivo,
+            vacio: 'Este mes no tiene conciliación todavía.',
+            columnas: [
+              { titulo: 'Trabajador', campo: 'nombre', clase: 'whitespace-nowrap' },
+              { titulo: 'Objetivo', campo: 'bruta', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Neta', campo: 'neta', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Cumplido', campo: 'cumple', clase: 'tabular-nums', pinta: v => hm(v) },
+              { titulo: 'Defecto', campo: 'defecto', clase: 'tabular-nums', pinta: v => n(v) > 0 ? `<span class="text-telecab-red">${hm(v)}</span>` : DASH },
+              { titulo: 'Exceso', campo: 'exceso', clase: 'tabular-nums', pinta: v => n(v) > 0 ? `<span class="text-telecab-warn">${hm(v)}</span>` : DASH },
+            ],
+          },
+        },
+        {
+          titulo: 'Regularizaciones apuntadas', icono: 'fa-list-check',
+          visible: d => d.regularizaciones.length > 0,
+          tabla: {
+            datos: d => d.regularizaciones,
+            columnas: [
+              { titulo: 'Trabajador', campo: 'nombre', clase: 'whitespace-nowrap' },
+              { titulo: 'Concepto', campo: 'concepto', pinta: v => etiqueta(v === 'cumple' ? 'Cumplido' : 'Reduce', v === 'cumple' ? 'gold' : 'violet') },
+              { titulo: 'Ajuste', campo: 'delta_min', clase: 'tabular-nums', pinta: v => hmDelta(v) },
+              { titulo: 'Se aplica en', clase: 'tabular-nums whitespace-nowrap', pinta: (v, r) => mmaa(r.aplica_anio, r.aplica_mes) },
+              { titulo: 'Motivo', campo: 'motivo', pinta: v => `<span class="text-telecab-muted">${esc(v || '')}</span>` },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  // ---------- acciones de escritura ----------
+
+  async function cerrarPeriodo(d, lst) {
+    const defecto = d.vivo.reduce((s, r) => s + (n(r.defecto) || 0), 0);
+    const exceso  = d.vivo.reduce((s, r) => s + (n(r.exceso) || 0), 0);
+    const ok = await Dialogo.confirmar({
+      titulo: `Cerrar ${mesNombre(d.anio, d.mes)}`,
+      tono: 'aviso', si: 'Cerrar y congelar', no: 'Cancelar',
+      html: `<p>Se fotografía la conciliación de <b>${d.vivo.length}</b> contratos y se congela como la nómina del mes.</p>
+             <p class="text-telecab-muted">Defecto total ${horasMin(defecto) || '0h'} · exceso total ${horasMin(exceso) || '0h'}.</p>
+             <p class="text-telecab-muted">Una vez cerrado no se reescribe: los cambios posteriores se regularizan hacia adelante.</p>`,
+    });
+    if (!ok) return;
+    try {
+      const r = await fetch('/convenio/api/cerrar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anio: d.anio, mes: d.mes }),
+      });
+      const j = await r.json();
+      if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo cerrar');
+      await Dialogo.aviso({
+        titulo: 'Periodo cerrado', tono: 'ok',
+        html: `<p>${mesNombre(d.anio, d.mes)}: <b>${j.resultado.contratos}</b> contratos congelados.</p>
+               <p class="text-telecab-muted">Manifiesto <code class="text-xs">${esc(String(j.resultado.manifiesto || '').slice(0, 16))}…</code></p>`,
+      });
+      await lst.recargar();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function regularizar(d, lst) {
+    const aplica = d.mes === 12 ? { a: d.anio + 1, m: 1 } : { a: d.anio, m: d.mes + 1 };
+    const ok = await Dialogo.confirmar({
+      titulo: `Regularizar ${mesNombre(d.anio, d.mes)}`,
+      si: 'Regularizar', no: 'Cancelar',
+      html: `<p>Hay <b>${d.diferencias.length}</b> contratos que cambiaron desde el cierre.</p>
+             <p class="text-telecab-muted">El mes cerrado no se toca. El ajuste se apunta en <b>${mesNombre(aplica.a, aplica.m)}</b> (mes abierto siguiente).</p>`,
+    });
+    if (!ok) return;
+    try {
+      const r = await fetch('/convenio/api/regularizar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anio: d.anio, mes: d.mes, aplica_anio: aplica.a, aplica_mes: aplica.m }),
+      });
+      const j = await r.json();
+      if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo regularizar');
+      await Dialogo.aviso({
+        titulo: 'Regularizado', tono: 'ok',
+        html: `<p><b>${j.creadas}</b> ajuste(s) apuntados en ${mesNombre(j.aplica.anio, j.aplica.mes)}.</p>`,
+      });
+      await lst.recargar();
+    } catch (e) { alert(e.message); }
+  }
+})();
+</script>

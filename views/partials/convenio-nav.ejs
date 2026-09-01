@@ -1,0 +1,30 @@
+<%
+  // Sub-navegacion del modulo de convenio. Las tres pantallas comparten el mismo
+  // apartado del menu (Convenio); estas pastillas cambian entre ellas. `sub` dice
+  // cual esta activa.
+  const _sub = typeof sub !== 'undefined' ? sub : 'jornada';
+  const _pills = [
+    { id: 'jornada',    href: '/convenio',            texto: 'Jornada',           icono: 'fa-scale-balanced' },
+    { id: 'cierre',     href: '/convenio/cierre',     texto: 'Cierre de periodo', icono: 'fa-lock' },
+    { id: 'absentismo', href: '/convenio/absentismo', texto: 'Absentismo',        icono: 'fa-chart-pie', proximamente: true },
+  ];
+%>
+<div class="px-4 lg:px-6 pt-4 lg:pt-6 max-w-[1400px] mx-auto">
+  <div class="flex flex-wrap items-center gap-2">
+    <% _pills.forEach(function (p) { const on = p.id === _sub; %>
+      <% if (p.proximamente) { %>
+        <span class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium border border-dashed border-telecab-border text-telecab-muted/60 cursor-not-allowed"
+              title="Próximamente">
+          <i class="fa-solid <%= p.icono %>"></i><%= p.texto %>
+        </span>
+      <% } else { %>
+        <a href="<%= p.href %>"
+           class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition <%=
+             on ? 'bg-telecab-gold text-telecab-dark shadow-gold'
+                : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:border-telecab-gold/40 hover:text-telecab-text' %>">
+          <i class="fa-solid <%= p.icono %>"></i><%= p.texto %>
+        </a>
+      <% } %>
+    <% }); %>
+  </div>
+</div>

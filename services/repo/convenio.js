@@ -123,4 +123,106 @@ async function ficha(conductorId) {
   };
 }
 
-module.exports = { mesPorDefecto, trabajadores, ficha };
+// ── Cierre de periodo (Hito 7) ──────────────────────────────────────────────
+// La lista de meses a cerrar: los que tienen objetivos o ya un periodo, con la
+// cuenta en vivo al lado (lo que se congelaria) y, si ya se cerro, su sello.
+async function periodos() {
+  return filas(`
+    WITH meses AS (
+      SELECT DISTINCT anio, mes FROM objetivo_mensual
+      UNION
+      SELECT anio, mes FROM periodo_nomina
+    ),
+    vivo AS (
+      SELECT anio, mes,
+             count(*)::int                    AS contratos,
+             COALESCE(sum(defecto), 0)::int   AS defecto,
+             COALESCE(sum(exceso), 0)::int    AS exceso
+        FROM v_conciliacion_mes GROUP BY anio, mes
+    )
+    SELECT m.anio || '-' || lpad(m.mes::text, 2, '0') AS k,
+           m.anio, m.mes,
+           COALESCE(p.estado, 'sin_cerrar')   AS estado,
+           p.cerrado_at, p.cerrado_por, p.manifiesto,
+           (SELECT count(*)::int FROM cierre_conciliacion cc WHERE cc.periodo_id = p.id) AS contratos_cerrados,
+           COALESCE(v.contratos, 0)           AS contratos_vivo,
+           COALESCE(v.defecto, 0)             AS defecto_vivo,
+           COALESCE(v.exceso, 0)              AS exceso_vivo,
+           -- Si esta cerrado, ¿ha cambiado algo desde el cierre? (candidato a regularizar)
+           (p.estado = 'cerrado' AND EXISTS (
+              SELECT 1 FROM v_conciliacion_mes v2
+              JOIN cierre_conciliacion cc2 ON cc2.contrato_id = v2.contrato_id AND cc2.periodo_id = p.id
+              WHERE v2.anio = m.anio AND v2.mes = m.mes
+                AND (v2.cumple <> cc2.cumple OR v2.reduce <> cc2.reduce)
+           )) AS tiene_cambios
+      FROM meses m
+      LEFT JOIN periodo_nomina p ON p.anio = m.anio AND p.mes = m.mes
+      LEFT JOIN vivo v ON v.anio = m.anio AND v.mes = m.mes
+     ORDER BY m.anio DESC, m.mes DESC`);
+}
+
+// La ficha de un periodo: la foto congelada (si cerrado), la vista en vivo, las
+// diferencias desde el cierre y las regularizaciones ya apuntadas.
+async function fichaPeriodo(anio, mes) {
+  const a = Number(anio), m = Number(mes);
+  if (!Number.isInteger(a) || !Number.isInteger(m)) throw new Error('Periodo no válido');
+  const per = await una(`SELECT * FROM periodo_nomina WHERE anio = $1 AND mes = $2`, [a, m]);
+  const cerrado = !!per && per.estado === 'cerrado';
+
+  const [snapshot, vivo, diferencias, regularizaciones] = await Promise.all([
+    cerrado ? filas(`
+      SELECT cc.contrato_id, btrim(co.nombre || ' ' || COALESCE(co.apellidos, '')) AS nombre,
+             cc.bruta, cc.reduce, cc.neta, cc.cumple, cc.cumple_total, cc.defecto, cc.exceso
+        FROM cierre_conciliacion cc
+        JOIN contrato c  ON c.id = cc.contrato_id
+        JOIN conductor co ON co.id = c.conductor_id
+       WHERE cc.periodo_id = $1 ORDER BY nombre`, [per.id]) : Promise.resolve([]),
+
+    filas(`
+      SELECT v.contrato_id, btrim(co.nombre || ' ' || COALESCE(co.apellidos, '')) AS nombre,
+             v.bruta, v.reduce, v.neta, v.cumple, v.cumple_total, v.defecto, v.exceso
+        FROM v_conciliacion_mes v
+        JOIN contrato c  ON c.id = v.contrato_id
+        JOIN conductor co ON co.id = c.conductor_id
+       WHERE v.anio = $1 AND v.mes = $2 ORDER BY nombre`, [a, m]),
+
+    cerrado ? filas(`
+      SELECT v.contrato_id, btrim(co.nombre || ' ' || COALESCE(co.apellidos, '')) AS nombre,
+             (v.cumple - cc.cumple) AS delta_cumple,
+             (v.reduce - cc.reduce) AS delta_reduce
+        FROM v_conciliacion_mes v
+        JOIN cierre_conciliacion cc ON cc.contrato_id = v.contrato_id AND cc.periodo_id = $3
+        JOIN contrato c  ON c.id = v.contrato_id
+        JOIN conductor co ON co.id = c.conductor_id
+       WHERE v.anio = $1 AND v.mes = $2 AND (v.cumple <> cc.cumple OR v.reduce <> cc.reduce)
+       ORDER BY nombre`, [a, m, per.id]) : Promise.resolve([]),
+
+    filas(`
+      SELECT r.origen_anio, r.origen_mes, r.aplica_anio, r.aplica_mes, r.concepto,
+             r.delta_min, r.motivo, r.creado_at,
+             btrim(co.nombre || ' ' || COALESCE(co.apellidos, '')) AS nombre
+        FROM regularizacion r JOIN conductor co ON co.id = r.conductor_id
+       WHERE r.origen_anio = $1 AND r.origen_mes = $2
+       ORDER BY r.creado_at DESC`, [a, m]),
+  ]);
+
+  return { anio: a, mes: m, periodo: per, cerrado, snapshot, vivo, diferencias, regularizaciones };
+}
+
+/** Cierra un mes: fotografia, congela y sella (llama a f_cerrar_periodo). */
+async function cerrar(anio, mes, quien) {
+  const r = await db.consulta(`SELECT * FROM f_cerrar_periodo($1, $2, $3)`, [Number(anio), Number(mes), quien || null]);
+  return r.rows[0];   // { periodo_id, contratos, manifiesto }
+}
+
+/** Apunta hacia adelante lo que cambio en un mes cerrado (f_regularizar). */
+async function regularizar(origenAnio, origenMes, aplicaAnio, aplicaMes) {
+  const r = await db.consulta(`SELECT f_regularizar($1, $2, $3, $4) AS creadas`,
+    [Number(origenAnio), Number(origenMes), Number(aplicaAnio), Number(aplicaMes)]);
+  return { creadas: r.rows[0].creadas };
+}
+
+module.exports = {
+  mesPorDefecto, trabajadores, ficha,
+  periodos, fichaPeriodo, cerrar, regularizar,
+};

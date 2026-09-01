@@ -91,6 +91,22 @@
     return isNaN(n) ? '' : n.toLocaleString('es-ES') + ' km';
   }
 
+  /** Minutos a "12h 30m". Vacío si no hay dato; negativos con su signo. */
+  function horasMin(v) {
+    if (v === null || v === undefined || v === '') return '';
+    const x = Number(v);
+    if (isNaN(x)) return '';
+    const h = Math.floor(Math.abs(x) / 60), m = Math.abs(x) % 60;
+    return (x < 0 ? '-' : '') + h + 'h' + (m ? ' ' + m + 'm' : '');
+  }
+
+  /** Euros con el formato local (1.234,56 €). Vacío si no hay dato. */
+  function euros(v) {
+    if (v === null || v === undefined || v === '') return '';
+    const x = Number(v);
+    return isNaN(x) ? '' : x.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+  }
+
   /** Etiqueta de color. `tono` es uno de los colores del tema. */
   function etiqueta(texto, tono) {
     if (texto === null || texto === undefined || texto === '') return '';
@@ -867,6 +883,6 @@
       return l;
     },
     // Formateadores, para que cada módulo no reinvente el suyo.
-    fmt: { fecha, fechaHora, hace, km, etiqueta, caduca, esc },
+    fmt: { fecha, fechaHora, hace, km, etiqueta, caduca, esc, horasMin, euros },
   };
 })(window);

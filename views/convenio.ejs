@@ -5,9 +5,11 @@
   // ficha ni el buscador.
 %>
 
+<%- include('partials/convenio-nav', { sub: 'jornada' }) %>
+
 <!-- Barra del mes: la pantalla entera mira un mes; se cambia aqui. Va fuera del
      componente porque es propia de este modulo (el componente no sabe de meses). -->
-<div class="px-4 lg:px-6 pt-4 lg:pt-6 max-w-[1400px] mx-auto">
+<div class="px-4 lg:px-6 pt-3 max-w-[1400px] mx-auto">
   <div class="flex items-center gap-2">
     <span class="text-sm text-telecab-muted mr-1">Mes de jornada</span>
     <button id="mes-prev" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Mes anterior">
@@ -24,7 +26,7 @@
 
 <script>
 (function () {
-  const { fecha, esc, etiqueta } = Listado.fmt;
+  const { fecha, esc, etiqueta, horasMin, euros } = Listado.fmt;
 
   // ---------- estado: el mes que se esta mirando ----------
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -32,18 +34,11 @@
 
   // ---------- formateadores propios del modulo ----------
   const n = v => (v === null || v === undefined || v === '') ? null : Number(v);
-  /** Minutos a "12h 30m". Hueco visible si no hay dato (no un "0h 0m" enganoso). */
-  const hm = v => {
-    const x = n(v);
-    if (x === null || isNaN(x)) return '<span class="text-telecab-muted">—</span>';
-    const h = Math.floor(Math.abs(x) / 60), m = Math.abs(x) % 60;
-    return (x < 0 ? '-' : '') + h + 'h' + (m ? ' ' + m + 'm' : '');
-  };
-  const eur = v => {
-    const x = n(v);
-    if (x === null || isNaN(x)) return '<span class="text-telecab-muted">—</span>';
-    return x.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
-  };
+  // Los formateadores viven en Listado.fmt (compartidos); aqui solo se les pone
+  // el hueco visible "—" cuando no hay dato, que es el estilo de este modulo.
+  const DASH = '<span class="text-telecab-muted">—</span>';
+  const hm = v => horasMin(v) || DASH;
+  const eur = v => euros(v) || DASH;
   const hora = v => {
     if (!v) return '';
     const d = new Date(v); if (isNaN(d)) return '';
@@ -133,7 +128,7 @@
       { titulo: 'Objetivo', campo: 'bruta', clase: 'tabular-nums whitespace-nowrap', pinta: v => hm(v) },
       { titulo: 'Cumplido', campo: 'cumple', clase: 'tabular-nums whitespace-nowrap',
         // La estricta (convenio) grande y, debajo, la total (operativa).
-        pinta: (v, f) => `${hm(v)}<span class="block text-xs text-telecab-muted">total ${n(f.cumple_total) === null ? '—' : hm(f.cumple_total)}</span>` },
+        pinta: (v, f) => `${hm(v)}<span class="block text-xs text-telecab-muted">total ${hm(f.cumple_total)}</span>` },
       { titulo: 'Defecto', campo: 'defecto', clase: 'tabular-nums whitespace-nowrap',
         pinta: v => n(v) > 0 ? `<span class="text-telecab-red font-semibold">${hm(v)}</span>` : '<span class="text-telecab-muted">—</span>' },
       { titulo: 'Exceso', campo: 'exceso', clase: 'tabular-nums whitespace-nowrap',
