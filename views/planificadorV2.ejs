@@ -315,24 +315,18 @@
     tdMat.querySelector('[data-estado]').addEventListener('click', () => cambiarEstado(coche));
     tr.appendChild(tdMat);
 
-    // Descanso del coche = libranza de sus fijos (día y noche libran igual).
-    // Solo se puede fijar si hay un fijo colocado; vacío es hueco, no descanso.
-    const fijoDia = coche.personas[0] && coche.personas[0].id ? porId.get(String(coche.personas[0].id)) : null;
-    const fijoNoche = coche.personas[1] && coche.personas[1].id ? porId.get(String(coche.personas[1].id)) : null;
-    const descanso = (fijoDia && fijoDia.libra) || (fijoNoche && fijoNoche.libra) || null;
-    const descTxt = descanso ? libraTexto(descanso) : '';
-    const hayFijo = !!(fijoDia || fijoNoche);
+    // Descanso del coche (el bloque): vive en el coche. Sus fijos libran esos
+    // días. Editable siempre (es del coche, no del fijo).
+    const descTxt = (coche.descanso && coche.descanso.length) ? diasTexto(coche.descanso) : '';
     const tdDesc = document.createElement('td');
     tdDesc.className = 'px-3 py-2.5 whitespace-nowrap';
     tdDesc.innerHTML = `
-      <button class="px-2 py-1 rounded-lg text-xs font-semibold border transition
-                     ${descTxt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}
-                     ${hayFijo ? 'hover:border-telecab-gold/50' : 'opacity-60 cursor-not-allowed'}"
-              data-desc ${hayFijo ? '' : 'disabled'}
-              title="${hayFijo ? 'Editar el descanso (día y noche a la vez)' : 'Coloca un fijo primero'}">
+      <button class="px-2 py-1 rounded-lg text-xs font-semibold border transition hover:border-telecab-gold/50
+                     ${descTxt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}"
+              data-desc title="Editar el descanso del coche (día y noche)">
         ${descTxt ? esc(descTxt) : 'sin descanso'}
       </button>`;
-    if (hayFijo) tdDesc.querySelector('[data-desc]').addEventListener('click', () => fijarDescansoCoche(coche, descanso));
+    tdDesc.querySelector('[data-desc]').addEventListener('click', () => fijarDescansoCoche(coche));
     tr.appendChild(tdDesc);
 
     // Las 4 columnas de puestos.
@@ -367,7 +361,7 @@
     if (p.id) {
       // Sub-línea: para el fijo, los días que libra; para el CT, sus días.
       let sub = '';
-      if (esFijo && persona) sub = 'libra ' + (libraTexto(persona.libra) || '—');
+      if (esFijo) sub = 'libra ' + (diasTexto(coche.descanso) || '—');
       else if (!esFijo) {
         const dias = (p.diasManual || []).some(Boolean)
           ? (p.diasManual || []).map((v, i) => v ? DIAS_LETRA[i] : null).filter(Boolean).join(' ')
@@ -629,9 +623,8 @@
   }
 
   // ── Descanso del coche (día + noche a la vez) ─────────────────────────────
-  async function fijarDescansoCoche(coche, actualLibra) {
-    const actual = (actualLibra || []).map((v, i) => v ? i + 1 : null).filter(Boolean);
-    const dias = await editarDescanso({ titulo: `Descanso de ${coche.matricula}`, actual });
+  async function fijarDescansoCoche(coche) {
+    const dias = await editarDescanso({ titulo: `Descanso de ${coche.matricula}`, actual: coche.descanso || [] });
     if (dias === undefined) return;   // cancelado
     try {
       const r = await fetch('/planificador-v2/api/descanso', {
