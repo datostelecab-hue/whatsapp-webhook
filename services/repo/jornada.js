@@ -179,7 +179,71 @@ async function derivarDia(conductorId, dia, { areaConfirmada = null } = {}) {
 
   const asientos = asientosDeDia({ tramos, catalogo, conductorId, dia, areaConfirmada: gate });
   const nuevos = await guardarAsientos(asientos);
+
+  // El registro del art. 18.9 sale de la misma pasada. Asi el registro y el
+  // ledger no se contradicen: son la misma verdad.
+  await guardarRegistro(resumenDelDia({ tramos, catalogo, asientos, conductorId, dia, gate }));
+
   return { conductorId, dia, tramos: tramos.length, asientos: asientos.length, nuevos };
+}
+
+/**
+ * El resumen diario del registro de jornada (art. 18.9), a partir de los tramos.
+ *
+ * Inicio, fin, efectivo (estricto y total), descanso y auxiliares. El nocturno
+ * lo rellena el Hito 8. Los tramos van tal cual para el desglose del PDF.
+ */
+function resumenDelDia({ tramos, catalogo, asientos, conductorId, dia, gate }) {
+  const inicio = tramos.length ? Math.min(...tramos.map(t => t.desde)) : null;
+  const fin = tramos.length ? Math.max(...tramos.map(t => t.hasta)) : null;
+
+  // El efectivo sale de los asientos, que ya aplicaron la regla del area.
+  const trabajo = asientos.filter(a => a.tipo === 'EFFECTIVE_WORK');
+  const total = trabajo.reduce((s, a) => s + a.minutos, 0);
+  const estricto = trabajo.filter(a => a.supuestoTe !== 'TE_NO').reduce((s, a) => s + a.minutos, 0);
+  const aux = asientos.filter(a => a.tipo === 'AUX_TASKS').reduce((s, a) => s + a.minutos, 0);
+
+  // El descanso es el tiempo en 'busy'.
+  const descanso = tramos
+    .filter(t => { const r = catalogo.get(t.estado); return r && !r.cuenta && t.estado === 'busy'; })
+    .reduce((s, t) => s + t.minutos, 0);
+
+  // Los tramos para el PDF: estado, supuesto (si cuenta) y minutos.
+  const detalle = tramos.map(t => {
+    const r = catalogo.get(t.estado);
+    let sup = null;
+    if (r && r.cuenta) sup = (r.condicionado && gate && !gate(t)) ? r.supuesto_sin : r.supuesto_te;
+    return { estado: t.estado, supuesto: sup, desde: t.desde, hasta: t.hasta, min: t.minutos };
+  });
+
+  return {
+    conductorId, dia,
+    inicio, fin,
+    efectivoEstricto: estricto, efectivoTotal: total,
+    descanso, aux, tramos: detalle,
+  };
+}
+
+/** Escribe (o rehace) el registro de un dia. Idempotente por (conductor, dia). */
+async function guardarRegistro(r) {
+  await db.consulta(
+    `INSERT INTO registro_jornada
+       (conductor_id, dia, inicio, fin, efectivo_estricto_min, efectivo_total_min,
+        descanso_min, aux_min, tramos, generado_at)
+     VALUES ($1, $2::date,
+             CASE WHEN $3 > 0 THEN to_timestamp($3) END,
+             CASE WHEN $4 > 0 THEN to_timestamp($4) END,
+             $5, $6, $7, $8, $9::jsonb, now())
+     ON CONFLICT (conductor_id, dia) DO UPDATE SET
+       inicio = EXCLUDED.inicio, fin = EXCLUDED.fin,
+       efectivo_estricto_min = EXCLUDED.efectivo_estricto_min,
+       efectivo_total_min = EXCLUDED.efectivo_total_min,
+       descanso_min = EXCLUDED.descanso_min, aux_min = EXCLUDED.aux_min,
+       tramos = EXCLUDED.tramos, generado_at = now()
+     -- Un registro congelado NO se rehace: es el del cierre.
+     WHERE registro_jornada.congelado_at IS NULL`,
+    [r.conductorId, r.dia, r.inicio || 0, r.fin || 0,
+     r.efectivoEstricto, r.efectivoTotal, r.descanso, r.aux, JSON.stringify(r.tramos)]);
 }
 
 /** Deriva la jornada de TODOS los conductores con eventos ese dia. */
@@ -196,6 +260,6 @@ async function derivarTodos(dia, opciones = {}) {
 
 module.exports = {
   tramosDeLogs, catalogoEstados, asientosDeDia, guardarAsientos,
-  derivarDia, derivarTodos,
+  derivarDia, derivarTodos, resumenDelDia, guardarRegistro,
   MAX_TRAMO_MIN, AUX_MIN,
 };
