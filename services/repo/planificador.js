@@ -539,11 +539,24 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
   const rol = (await cli.query('SELECT rol FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
   if (!rol) throw new Error('Esa plaza ya no existe');
 
+  // Auto-corte: si no hay "hasta" (o se pasa) y ya hay un ocupante FUTURO en la
+  // plaza, se cierra la vispera de su llegada. Asi se puede colocar a alguien
+  // "mientras llega el otro", y el otro lo desplaza solo el dia que entra. La
+  // exclusion de la base rechazaria el solape; esto lo evita a proposito.
+  let hastaFinal = hasta || null;
+  const futuro = (await cli.query(
+    'SELECT desde FROM asignacion WHERE plaza_id = $1 AND desde > $2 ORDER BY desde LIMIT 1',
+    [plazaId, entra])).rows[0];
+  if (futuro) {
+    const tope = vispera(fechaDe(futuro.desde));
+    if (!hastaFinal || hastaFinal > tope) hastaFinal = tope;
+  }
+
   const actual = await asignacionEn(cli, plazaId, entra);
   // Ya está ahí: no se abre otra, se ajusta la que hay. Abrir una segunda por
   // cambiarle la fecha de fin partía su historia en dos sin motivo.
   if (actual && String(actual.conductor_id) === String(conductorId)) {
-    await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [actual.id, hasta || null]);
+    await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [actual.id, hastaFinal]);
     await guardarDias(cli, actual.id, plazaId, rol.rol, dias);
     return { id: actual.id, ajustada: true };
   }
@@ -553,7 +566,7 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
   const r = await cli.query(
     `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [plazaId, conductorId, entra, hasta || null, usuarioId || null]);
+    [plazaId, conductorId, entra, hastaFinal, usuarioId || null]);
   await guardarDias(cli, r.rows[0].id, plazaId, rol.rol, dias);
   return { id: r.rows[0].id, nueva: true };
 }
