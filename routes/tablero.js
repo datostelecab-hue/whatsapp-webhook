@@ -100,9 +100,17 @@ router.get('/api/cuadrantes', responde(async () => ({ cuadrantes: await plan.lis
 router.post('/api/cuadrantes', responde(async req => {
   const b = req.body || {};
   const quien = { usuarioId: await actor.idDe(req) };
-  const r = await plan.crearCuadrante({ nombre: b.nombre, zona: b.zona }, quien);
-  console.log(`🧩 [TABLERO] cuadrante "${b.nombre}" creado`);
+  const r = await plan.crearCuadrante({ zonaId: b.zonaId }, quien);
+  console.log(`🧩 [TABLERO] Cuadrante ${r.numero} creado`);
   return { ...r, cuadrantes: await plan.listarCuadrantes() };
+}));
+
+// Anadir un bloque (matricula + dias de libranza) a un cuadrante.
+router.post('/api/cuadrante/bloque', responde(async req => {
+  const b = req.body || {};
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await plan.anadirBloque({ cuadranteId: b.cuadranteId, vehiculoId: b.vehiculoId, dias: b.dias }, { dia: b.dia, ...quien });
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
 
 router.delete('/api/cuadrantes/:id', responde(async req => {
@@ -121,7 +129,7 @@ router.post('/api/cuadrante/coche', responde(async req => {
 router.post('/api/cuadrante/ct', responde(async req => {
   const b = req.body || {};
   const quien = { usuarioId: await actor.idDe(req) };
-  const r = await plan.asignarCTcuadrante({ cuadranteId: b.cuadranteId, turno: b.turno, conductorId: b.conductorId }, { dia: b.dia, ...quien });
+  const r = await plan.asignarCTcuadrante({ cuadranteId: b.cuadranteId, turno: b.turno, conductorId: b.conductorId, vehiculos: b.vehiculos }, { dia: b.dia, ...quien });
   console.log(`🔗 [TABLERO] CT ${b.turno} del cuadrante ${b.cuadranteId} en ${r.coches} coche(s)`);
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
