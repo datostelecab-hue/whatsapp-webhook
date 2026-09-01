@@ -504,6 +504,9 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [plazaId, conductorId, entra, hasta || null, usuarioId || null]);
   await guardarDias(cli, r.rows[0].id, plazaId, rol.rol, dias);
+  // Un fijo que entra hereda el descanso del coche (el del otro fijo), para que
+  // dia y noche libren igual sin que Trafico lo tenga que teclear dos veces.
+  if (rol.rol === 'FIJO') await heredarDescanso(cli, plazaId, conductorId, entra, usuarioId);
   return { id: r.rows[0].id, nueva: true };
 }
 
@@ -523,6 +526,76 @@ async function guardarDias(cli, asignacionId, plazaId, rol, dias) {
       'INSERT INTO asignacion_dia (asignacion_id, dia_semana) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [asignacionId, d]);
   }
+}
+
+// ── El descanso, por coche ──────────────────────────────────────────────────
+// El descanso NO es del coche en la base: es la libranza de sus fijos (dia y
+// noche libran igual, salvo libranza excepcional). Pero desde el cuadrante se
+// maneja como si fuera del coche: se fija una vez y va a los dos fijos, y al
+// colocar un fijo hereda el del otro. Asi "manda un solo sitio" para Trafico y
+// f_cobertura sigue leyendo la libranza del conductor sin cambiar nada.
+
+/** Pone (con fecha) el patron de libranza de un conductor desde un dia. */
+async function ponerPatronLibranza(cli, conductorId, dias, dia, usuarioId) {
+  const act = (await cli.query(
+    `SELECT id, desde FROM patron_libranza
+      WHERE conductor_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta >= $2)
+      ORDER BY desde DESC LIMIT 1`, [conductorId, dia])).rows[0];
+  if (act) {
+    // Cerrar la vispera; borrar si aun no habia empezado (no llego a pasar).
+    if (fechaDe(act.desde) >= dia) await cli.query('DELETE FROM patron_libranza WHERE id = $1', [act.id]);
+    else await cli.query('UPDATE patron_libranza SET hasta = $2 WHERE id = $1', [act.id, vispera(dia)]);
+  }
+  if (!dias || !dias.length) return null;
+  const r = await cli.query(
+    'INSERT INTO patron_libranza (conductor_id, desde, usuario_id) VALUES ($1, $2, $3) RETURNING id',
+    [conductorId, dia, usuarioId || null]);
+  for (const d of dias) {
+    await cli.query('INSERT INTO patron_libranza_dia (patron_id, dia_semana) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [r.rows[0].id, d]);
+  }
+  return r.rows[0].id;
+}
+
+/** El descanso vigente de un coche = la libranza del OTRO fijo (dia<->noche). */
+async function descansoDelCoche(cli, plazaId, dia) {
+  const r = await cli.query(
+    `SELECT array_agg(pld.dia_semana ORDER BY pld.dia_semana) AS dias
+       FROM v_plaza p
+       JOIN asignacion a ON a.plaza_id = p.plaza_id
+                        AND a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $2)
+       JOIN patron_libranza pl ON pl.conductor_id = a.conductor_id
+                              AND pl.desde <= $2 AND (pl.hasta IS NULL OR pl.hasta >= $2)
+       JOIN patron_libranza_dia pld ON pld.patron_id = pl.id
+      WHERE p.vehiculo_id = (SELECT vehiculo_id FROM v_plaza WHERE plaza_id = $1)
+        AND p.rol = 'FIJO' AND p.plaza_id <> $1`, [plazaId, dia]);
+  return (r.rows[0] || {}).dias || [];
+}
+
+/** Al colocar un fijo, hereda el descanso del coche (el del otro fijo). */
+async function heredarDescanso(cli, plazaId, conductorId, dia, usuarioId) {
+  const dias = await descansoDelCoche(cli, plazaId, dia);
+  if (dias.length) await ponerPatronLibranza(cli, conductorId, dias, dia, usuarioId);
+}
+
+/**
+ * Fija el descanso de un coche: escribe la libranza de sus DOS fijos. Desde el
+ * dia efectivo; lo anterior se cierra la vispera para no reescribir el pasado.
+ */
+async function fijarDescanso(vehiculoId, dias, { dia, usuarioId } = {}) {
+  const efectivo = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  const parsed = parsearDias(dias);
+  if (parsed === null) throw new Error('No entiendo los días. Escríbelos como L M X J V S D.');
+  await db.transaccion(async cli => {
+    const fijos = await cli.query(
+      `SELECT DISTINCT a.conductor_id
+         FROM v_plaza p
+         JOIN asignacion a ON a.plaza_id = p.plaza_id
+                          AND a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $2)
+        WHERE p.vehiculo_id = $1 AND p.rol = 'FIJO'`, [vehiculoId, efectivo]);
+    for (const f of fijos.rows) await ponerPatronLibranza(cli, f.conductor_id, parsed, efectivo, usuarioId);
+  });
+  return { dia: efectivo, dias: parsed };
 }
 
 /**
@@ -721,7 +794,7 @@ async function borrarLibranzaExcepcional(id) {
 }
 
 module.exports = {
-  tablero, guardar, cambiarCoche,
+  tablero, guardar, cambiarCoche, fijarDescanso,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
 };

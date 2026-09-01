@@ -94,6 +94,15 @@ router.post('/api/cambiar-coche', responde(async req => {
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
 
+// ── Descanso de un coche: escribe la libranza de sus dos fijos ─────────────
+router.post('/api/descanso', responde(async req => {
+  const b = req.body || {};
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await plan.fijarDescanso(b.vehiculoId, b.dias, { dia: b.dia, ...quien });
+  console.log(`🛌 [TABLERO] descanso del coche ${b.vehiculoId} = [${(r.dias || []).join(' ')}] desde ${r.dia}`);
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
 // ── Libranza excepcional: el swap de una semana ────────────────────────────
 router.post('/api/libranza-excepcional', responde(async req => {
   const b = req.body || {};

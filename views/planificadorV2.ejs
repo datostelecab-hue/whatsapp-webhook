@@ -232,6 +232,7 @@
             <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
               <tr>
                 <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Matrícula</th>
+                <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Descanso</th>
                 ${COLS.map(c => `<th class="text-left font-semibold px-3 py-2.5">${c.tit}</th>`).join('')}
                 <th class="w-10"></th>
               </tr>
@@ -260,6 +261,26 @@
               data-estado>${esc(ESTADO_ETQ.get(coche.estadoVeh) || coche.estadoVeh)}<i class="fa-solid fa-chevron-down text-[9px]"></i></button>`;
     tdMat.querySelector('[data-estado]').addEventListener('click', () => cambiarEstado(coche));
     tr.appendChild(tdMat);
+
+    // Descanso del coche = libranza de sus fijos (día y noche libran igual).
+    // Solo se puede fijar si hay un fijo colocado; vacío es hueco, no descanso.
+    const fijoDia = coche.personas[0] && coche.personas[0].id ? porId.get(String(coche.personas[0].id)) : null;
+    const fijoNoche = coche.personas[1] && coche.personas[1].id ? porId.get(String(coche.personas[1].id)) : null;
+    const descanso = (fijoDia && fijoDia.libra) || (fijoNoche && fijoNoche.libra) || null;
+    const descTxt = descanso ? libraTexto(descanso) : '';
+    const hayFijo = !!(fijoDia || fijoNoche);
+    const tdDesc = document.createElement('td');
+    tdDesc.className = 'px-3 py-2.5 whitespace-nowrap';
+    tdDesc.innerHTML = `
+      <button class="px-2 py-1 rounded-lg text-xs font-semibold border transition
+                     ${descTxt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}
+                     ${hayFijo ? 'hover:border-telecab-gold/50' : 'opacity-60 cursor-not-allowed'}"
+              data-desc ${hayFijo ? '' : 'disabled'}
+              title="${hayFijo ? 'Editar el descanso (día y noche a la vez)' : 'Coloca un fijo primero'}">
+        ${descTxt ? esc(descTxt) : 'sin descanso'}
+      </button>`;
+    if (hayFijo) tdDesc.querySelector('[data-desc]').addEventListener('click', () => fijarDescansoCoche(coche, descanso));
+    tr.appendChild(tdDesc);
 
     // Las 4 columnas de puestos.
     COLS.forEach(col => {
@@ -480,6 +501,62 @@
       if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo guardar');
       if (j.tablero) aplicar(j.tablero);
     } catch (e) { alert(e.message); }
+  }
+
+  // ── Descanso del coche (día + noche a la vez) ─────────────────────────────
+  async function fijarDescansoCoche(coche, actualLibra) {
+    const actual = (actualLibra || []).map((v, i) => v ? i + 1 : null).filter(Boolean);
+    const dias = await editarDescanso({ titulo: `Descanso de ${coche.matricula}`, actual });
+    if (dias === undefined) return;   // cancelado
+    try {
+      const r = await fetch('/planificador-v2/api/descanso', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehiculoId: coche.vehiculoId, dias, dia: DIA }),
+      });
+      const j = await r.json();
+      if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo guardar el descanso');
+      if (j.tablero) aplicar(j.tablero);
+    } catch (e) { alert(e.message); }
+  }
+
+  function editarDescanso({ titulo, actual }) {
+    return new Promise(resolve => {
+      const sel = new Set(actual || []);
+      const fondo = document.createElement('div');
+      fondo.className = 'fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4';
+      fondo.innerHTML = `
+        <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-sm my-16">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-telecab-border">
+            <h3 class="font-semibold">${esc(titulo)}</h3>
+            <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="p-4">
+            <p class="text-xs text-telecab-muted mb-3">Los días que libran los fijos (día y noche a la vez). El correturnos cubre justo esos días.</p>
+            <div class="flex flex-wrap gap-1.5 justify-center" data-dias></div>
+            <div class="flex gap-2 mt-4">
+              <button data-guardar class="flex-1 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">Guardar</button>
+              <button data-cancelar class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm">Cancelar</button>
+            </div>
+          </div>
+        </div>`;
+      const cerrar = v => { document.body.removeChild(fondo); resolve(v); };
+      const cont = fondo.querySelector('[data-dias]');
+      const pinta = () => {
+        cont.innerHTML = DIAS_LETRA.map((l, i) => {
+          const d = i + 1, on = sel.has(d);
+          return `<button data-d="${d}" class="w-10 h-10 rounded-xl border text-sm font-semibold transition ${on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' : 'bg-telecab-card2 border-telecab-border text-telecab-muted hover:border-telecab-gold/40'}">${l}</button>`;
+        }).join('');
+        cont.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => {
+          const d = Number(b.dataset.d); if (sel.has(d)) sel.delete(d); else sel.add(d); pinta();
+        }));
+      };
+      fondo.querySelector('[data-x]').addEventListener('click', () => cerrar(undefined));
+      fondo.querySelector('[data-cancelar]').addEventListener('click', () => cerrar(undefined));
+      fondo.addEventListener('mousedown', e => { if (e.target === fondo) cerrar(undefined); });
+      fondo.querySelector('[data-guardar]').addEventListener('click', () => cerrar([...sel].sort((a, b) => a - b)));
+      document.body.appendChild(fondo);
+      pinta();
+    });
   }
 
   // ── Selector de conductor (modal con búsqueda) ────────────────────────────
