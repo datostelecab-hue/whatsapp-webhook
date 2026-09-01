@@ -8,12 +8,15 @@
 // (el agujero estaba ahi: un valor en la 48 contra una columna de la 45).
 //
 // Es PRECISO a proposito: un comprobador que grita en falso no lo mira nadie.
-// Solo tres cosas, y las tres cualificadas por tabla, no por nombre suelto:
+// Solo cuatro cosas, cualificadas por tabla, no por nombre suelto:
 //   1. Un valor de un CHECK ... IN mas largo que el ancho de SU columna.
 //   2. Una funcion set-returning (RETURNS TABLE/SETOF) extraida como escalar
 //      con (fn(...)).columna -- el patron exacto que rompio la 46.
 //   3. ALTER COLUMN TYPE de una columna de una tabla de la que depende una
 //      vista viva, sin soltar la vista antes.
+//   4. Una variable de plpgsql con el MISMO nombre que una columna que la
+//      funcion asigna con SET col = ... -- "column reference X is ambiguous"
+//      (el patron que rompio la 52: variable `total` vs columna `total`).
 //
 // NO sustituye a aplicar contra Postgres. Coge lo que se repite, no todo.
 
@@ -122,6 +125,20 @@ for (const [nombre, def] of Object.entries(funcs)) {
   for (const srfn of srfVivas) {
     if (new RegExp(`\(\s*${srfn}\s*\([^)]*\)\s*\)\s*\.`, 'i').test(def.cuerpo)) {
       fallo(def.f, `${nombre}() extrae como escalar la set-returning ${srfn}(...).col -- ilegal`);
+    }
+  }
+}
+// Variable de plpgsql que colisiona con una columna asignada con SET col = ...
+// El DECLARE va antes del primer BEGIN; una columna se delata por "SET col =".
+for (const [nombre, def] of Object.entries(funcs)) {
+  const decl = def.cuerpo.slice(0, def.cuerpo.search(/\bBEGIN\b/i)).replace(/\bDECLARE\b/i, '  ');
+  const vars = new Set([...decl.matchAll(/(?:^|;)\s*([a-z_]+)\s+[A-Za-z]/gim)].map(m => m[1].toLowerCase()));
+  const vistas = new Set();
+  for (const m of def.cuerpo.matchAll(/\bSET\s+([a-z_]+)\s*=/gi)) {
+    const col = m[1].toLowerCase();
+    if (vars.has(col) && !vistas.has(col)) {
+      vistas.add(col);
+      fallo(def.f, `${nombre}(): la variable "${col}" colisiona con la columna en SET ${col} = ... -- "column reference is ambiguous"`);
     }
   }
 }
