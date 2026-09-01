@@ -1,0 +1,132 @@
+<%- include('partials/convenio-nav', { sub: 'absentismo' }) %>
+
+<!-- Barra del mes: el cuadro entero mira un mes. Igual que en Jornada. -->
+<div class="px-4 lg:px-6 pt-3 max-w-[1400px] mx-auto">
+  <div class="flex items-center gap-2">
+    <span class="text-sm text-telecab-muted mr-1">Mes</span>
+    <button id="mes-prev" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Mes anterior">
+      <i class="fa-solid fa-chevron-left text-xs"></i>
+    </button>
+    <div id="mes-label" class="min-w-[10rem] text-center font-semibold tabular-nums"></div>
+    <button id="mes-next" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Mes siguiente">
+      <i class="fa-solid fa-chevron-right text-xs"></i>
+    </button>
+  </div>
+</div>
+
+<div id="absentismo"></div>
+
+<script>
+(function () {
+  const { esc, etiqueta, euros } = Listado.fmt;
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const MES = { anio: <%= anioInicial %>, mes: <%= mesInicial %> };
+
+  const n = v => (v === null || v === undefined || v === '') ? null : Number(v);
+  const DASH = '<span class="text-telecab-muted">—</span>';
+  const eur = v => euros(v) || DASH;
+  const horas = v => { const x = n(v); return x === null ? DASH : x.toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' h'; };
+
+  // El modulo responsable: como se pinta y como se llama. El codigo manda (base).
+  const MOD = {
+    taller:        { txt: 'Taller',        tono: 'gold' },
+    trafico:       { txt: 'Tráfico',       tono: 'violet' },
+    operaciones:   { txt: 'Operaciones',   tono: 'warn' },
+    rrhh:          { txt: 'RRHH',          tono: 'green' },
+    it:            { txt: 'IT',            tono: 'red' },
+    disciplinario: { txt: 'Disciplinario', tono: 'red' },
+    estructural:   { txt: 'Estructural',   tono: 'muted' },
+  };
+  const modTxt = m => (MOD[m] || { txt: m }).txt;
+  const modEtq = m => { const x = MOD[m] || { txt: m, tono: 'muted' }; return etiqueta(x.txt, x.tono); };
+
+  // Nombres legibles de los tipos de asiento del ledger.
+  const TIPO = {
+    VACATION: 'Vacaciones', SICK_LEAVE_IT: 'IT (baja médica)', PAID_LEAVE: 'Permiso retribuido',
+    TRAINING_LEAVE: 'Permiso formación', MANDATORY_TRAINING: 'Formación obligatoria',
+    UNPAID_LEAVE: 'Permiso sin sueldo', SUSPENSION_DISC: 'Suspensión disciplinaria',
+    SUSPENSION_PERMISO: 'Suspensión de permiso', JUST_WORKSHOP: 'Parada de taller',
+    JUST_TRAFFIC: 'Sin vehículo (tráfico)', JUST_OPERATIONAL: 'Operativa', JUST_HR: 'RRHH',
+    UNJUSTIFIED_ABSENCE: 'Ausencia injustificada',
+  };
+  const tipoTxt = t => TIPO[t] || String(t || '').replace(/_/g, ' ');
+
+  const cuadro = Listado.montar({
+    raiz: '#absentismo',
+    titulo: 'Coste del absentismo',
+    icono: 'fa-chart-pie',
+    clave: 'modulo',
+    origen: () => `/convenio/api/absentismo?anio=${MES.anio}&mes=${MES.mes}`,
+    vacio: 'No hay coste de absentismo registrado este mes.',
+    buscar: false,
+
+    subtitulo: (visibles, todas) =>
+      `${MESES[MES.mes - 1]} ${MES.anio} · ${todas.length} módulo(s) con coste`,
+
+    kpis: (filas) => {
+      const soportado = filas.reduce((s, f) => s + (n(f.coste_soportado) || 0), 0);
+      const cesante   = filas.reduce((s, f) => s + (n(f.lucro_cesante) || 0), 0);
+      const hs        = filas.reduce((s, f) => s + (n(f.horas) || 0), 0);
+      return [
+        { etiqueta: 'Coste soportado', valor: euros(soportado) || '0 €', tono: 'red', pie: 'salario que se paga' },
+        { etiqueta: 'Lucro cesante', valor: euros(cesante) || '0 €', tono: 'warn', pie: 'facturación no hecha' },
+        { etiqueta: 'Coste total', valor: euros(soportado + cesante) || '0 €', tono: 'gold', pie: 'soportado + cesante' },
+        { etiqueta: 'Horas', valor: horas(hs), tono: 'text', pie: 'no trabajadas' },
+      ];
+    },
+
+    columnas: [
+      { titulo: 'Módulo responsable', campo: 'modulo', clase: 'whitespace-nowrap', pinta: v => modEtq(v) },
+      { titulo: 'Horas', campo: 'horas', clase: 'tabular-nums whitespace-nowrap', pinta: v => horas(v) },
+      { titulo: 'Días', campo: 'dias', clase: 'tabular-nums' },
+      { titulo: 'Coste soportado', campo: 'coste_soportado', clase: 'tabular-nums whitespace-nowrap',
+        pinta: v => n(v) > 0 ? `<span class="text-telecab-red">${eur(v)}</span>` : DASH },
+      { titulo: 'Lucro cesante', campo: 'lucro_cesante', clase: 'tabular-nums whitespace-nowrap',
+        pinta: v => n(v) > 0 ? `<span class="text-telecab-warn">${eur(v)}</span>` : DASH },
+      { titulo: 'Coste total', clase: 'tabular-nums whitespace-nowrap font-semibold',
+        pinta: (v, f) => eur((n(f.coste_soportado) || 0) + (n(f.lucro_cesante) || 0)) },
+    ],
+
+    detalle: {
+      origen: id => `/convenio/api/absentismo/${encodeURIComponent(id)}?anio=${MES.anio}&mes=${MES.mes}`,
+      titulo: d => modTxt(d.modulo),
+      subtitulo: d => `${MESES[d.mes - 1]} ${d.anio} · desglose por tipo`,
+
+      bloques: [
+        {
+          titulo: 'Por tipo de ausencia', icono: 'fa-list',
+          tabla: {
+            datos: d => d.tipos,
+            vacio: 'Sin coste en este módulo.',
+            columnas: [
+              { titulo: 'Tipo', campo: 'tipo', clase: 'whitespace-nowrap', pinta: v => esc(tipoTxt(v)) },
+              { titulo: 'Trabajadores', campo: 'trabajadores', clase: 'tabular-nums' },
+              { titulo: 'Días', campo: 'dias', clase: 'tabular-nums' },
+              { titulo: 'Horas', campo: 'horas', clase: 'tabular-nums whitespace-nowrap', pinta: v => horas(v) },
+              { titulo: 'Coste soportado', campo: 'coste_soportado', clase: 'tabular-nums whitespace-nowrap',
+                pinta: v => n(v) > 0 ? `<span class="text-telecab-red">${eur(v)}</span>` : DASH },
+              { titulo: 'Lucro cesante', campo: 'lucro_cesante', clase: 'tabular-nums whitespace-nowrap',
+                pinta: v => n(v) > 0 ? `<span class="text-telecab-warn">${eur(v)}</span>` : DASH },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  // ---------- el selector de mes (igual que en Jornada) ----------
+  const label = document.getElementById('mes-label');
+  const pintarMes = () => { label.textContent = `${MESES[MES.mes - 1]} ${MES.anio}`; };
+  const mover = paso => {
+    let m = MES.mes + paso, a = MES.anio;
+    if (m < 1) { m = 12; a--; } else if (m > 12) { m = 1; a++; }
+    MES.mes = m; MES.anio = a;
+    pintarMes();
+    cuadro.recargar();
+  };
+  document.getElementById('mes-prev').addEventListener('click', () => mover(-1));
+  document.getElementById('mes-next').addEventListener('click', () => mover(1));
+  pintarMes();
+})();
+</script>

@@ -28,6 +28,17 @@ router.get('/cierre', (req, res) => {
   });
 });
 
+// El cuadro de absentismo.
+router.get('/absentismo', async (req, res) => {
+  const mes = await convenio.mesPorDefecto().catch(() => {
+    const h = new Date(); return { anio: h.getFullYear(), mes: h.getMonth() + 1 };
+  });
+  res.render('convenioAbsentismo', {
+    titulo: 'Convenio · Absentismo', seccion: 'convenio', layout: 'layout-gestion', sub: 'absentismo',
+    anioInicial: mes.anio, mesInicial: mes.mes,
+  });
+});
+
 const responder = fn => async (req, res) => {
   try { res.json({ status: 'ok', ...(await fn(req)) }); }
   catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
@@ -76,6 +87,16 @@ router.post('/api/regularizar', responder(async req => {
   const r = await convenio.regularizar(oa, om, aa, am);
   console.log(`♻️  [CONVENIO] ${(req.usuario || {}).email || '?'} regulariza ${oa}-${om} en ${aa}-${am}: ${r.creadas} apunte(s)`);
   return { ...r, aplica: { anio: aa, mes: am } };
+}));
+
+// ── Cuadro de absentismo ────────────────────────────────────────────────────
+router.get('/api/absentismo', responder(async req => {
+  const { anio, mes } = await mesDe(req);
+  return { mes: { anio, mes }, filas: await convenio.absentismo(anio, mes) };
+}));
+router.get('/api/absentismo/:modulo', responder(async req => {
+  const { anio, mes } = await mesDe(req);
+  return { ficha: await convenio.absentismoModulo(anio, mes, req.params.modulo) };
 }));
 
 module.exports = router;

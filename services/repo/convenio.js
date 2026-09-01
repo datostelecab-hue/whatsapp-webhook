@@ -222,7 +222,41 @@ async function regularizar(origenAnio, origenMes, aplicaAnio, aplicaMes) {
   return { creadas: r.rows[0].creadas };
 }
 
+// ── Cuadro de absentismo (Hito 11) ──────────────────────────────────────────
+// El coste del absentismo del mes, agregado por MODULO RESPONSABLE. Las dos
+// magnitudes -coste soportado (lo pagado) y lucro cesante (lo no facturado)- se
+// suman limpio; por eso aqui se agregan y se ordenan por coste total. Los
+// "trabajadores" NO se suman entre tipos (contarian doble): se ven por tipo en
+// el detalle, donde el dato ya es exacto.
+async function absentismo(anio, mes) {
+  return filas(`
+    SELECT modulo,
+           count(*)::int                    AS tipos,
+           sum(dias)::int                   AS dias,
+           round(sum(horas), 1)             AS horas,
+           round(sum(coste_soportado), 2)   AS coste_soportado,
+           round(sum(lucro_cesante), 2)     AS lucro_cesante
+      FROM v_coste_absentismo
+     WHERE anio = $1 AND mes = $2
+     GROUP BY modulo
+     ORDER BY (sum(coste_soportado) + sum(lucro_cesante)) DESC`, [Number(anio), Number(mes)]);
+}
+
+// El detalle de un modulo: cada tipo de ausencia, con su coste. Aqui
+// "trabajadores" es el de la vista (distinct por tipo), asi que es exacto.
+async function absentismoModulo(anio, mes, modulo) {
+  const tipos = await filas(`
+    SELECT tipo, trabajadores, dias, round(horas, 1) AS horas,
+           round(coste_soportado, 2) AS coste_soportado,
+           round(lucro_cesante, 2)   AS lucro_cesante
+      FROM v_coste_absentismo
+     WHERE anio = $1 AND mes = $2 AND modulo = $3
+     ORDER BY (coste_soportado + lucro_cesante) DESC`, [Number(anio), Number(mes), String(modulo)]);
+  return { modulo: String(modulo), anio: Number(anio), mes: Number(mes), tipos };
+}
+
 module.exports = {
   mesPorDefecto, trabajadores, ficha,
   periodos, fichaPeriodo, cerrar, regularizar,
+  absentismo, absentismoModulo,
 };
