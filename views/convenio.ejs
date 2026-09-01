@@ -55,7 +55,11 @@
   // Estado del objetivo del mes: congelado (cerrado, no se toca), publicado
   // (comunicado al conductor) o borrador (aun sin comunicar).
   const estadoObjetivo = f => {
-    if (!f.objetivo_min && f.objetivo_min !== 0) return { texto: 'Sin objetivo', tono: 'muted' };
+    // El objetivo llega como `objetivo_min` en el panel y como `bruta` en la
+    // conciliacion de la ficha: se acepta cualquiera de los dos. Si hay fila de
+    // conciliacion, hay objetivo (la vista sale de objetivo_mensual).
+    const obj = f.objetivo_min != null ? f.objetivo_min : f.bruta;
+    if (obj == null) return { texto: 'Sin objetivo', tono: 'muted' };
     if (f.congelado_at) return { texto: 'Congelado', tono: 'violet' };
     if (f.publicado_at) return { texto: 'Publicado', tono: 'green' };
     return { texto: 'Borrador', tono: 'warn' };
