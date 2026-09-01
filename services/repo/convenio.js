@@ -255,8 +255,68 @@ async function absentismoModulo(anio, mes, modulo) {
   return { modulo: String(modulo), anio: Number(anio), mes: Number(mes), tipos };
 }
 
+// ── Nómina del mes / export a gestoría (Hito 14) ────────────────────────────
+// Lo que se PAGA en un mes son las variables cuyo mes de pago cae en ese mes
+// (se devengan un mes y se pagan al siguiente). Aqui se pivotan por trabajador,
+// con su identidad, para que la gestoria lo lea de una fila. Las magnitudes en
+// minutos (nocturnidad, extra) se dan aparte por si el importe es [VL] (nulo).
+async function nominaMes(anio, mes) {
+  return filas(`
+    SELECT co.id AS conductor_id,
+           btrim(co.nombre || ' ' || COALESCE(co.apellidos, '')) AS nombre,
+           co.dni_nie AS dni, co.naf,
+           round(sum(v.importe) FILTER (WHERE v.tipo = 'propina'), 2)              AS propinas,
+           round(sum(v.importe) FILTER (WHERE v.tipo = 'plus_calidad'), 2)         AS plus_calidad,
+           round(sum(v.importe) FILTER (WHERE v.tipo = 'bonus'), 2)                AS bonus,
+           round(sum(v.importe) FILTER (WHERE v.tipo = 'complemento_garantia'), 2) AS garantia,
+           round(sum(v.importe) FILTER (WHERE v.tipo = 'descuento'), 2)            AS descuentos,
+           round(sum(v.importe) FILTER (WHERE v.tipo = 'hora_extra'), 2)           AS extra_eur,
+           sum(v.cantidad) FILTER (WHERE v.tipo = 'hora_extra' AND v.unidad = 'MIN')   AS extra_min,
+           round(sum(v.importe) FILTER (WHERE v.tipo = 'nocturnidad'), 2)          AS nocturnidad_eur,
+           sum(v.cantidad) FILTER (WHERE v.tipo = 'nocturnidad' AND v.unidad = 'MIN') AS nocturnidad_min,
+           round(COALESCE(sum(v.importe), 0), 2)                                   AS total
+      FROM variable_nomina v JOIN conductor co ON co.id = v.conductor_id
+     WHERE v.pago_anio = $1 AND v.pago_mes = $2
+     GROUP BY co.id, nombre, co.dni_nie, co.naf
+     ORDER BY nombre`, [Number(anio), Number(mes)]);
+}
+
+// El detalle de una nómina: las variables pagadas ese mes y el finiquito si tuvo
+// baja en el mes.
+async function nominaDetalle(conductorId, anio, mes) {
+  const id = Number(conductorId), a = Number(anio), m = Number(mes);
+  const datos = await una(`
+    SELECT id, btrim(nombre || ' ' || COALESCE(apellidos, '')) AS nombre, dni_nie AS dni, naf
+      FROM conductor WHERE id = $1`, [id]);
+  if (!datos) throw new Error('No se encuentra el conductor');
+  const [variables, finiquitos] = await Promise.all([
+    filas(`SELECT tipo, devengo_anio, devengo_mes, cantidad, unidad, importe, estado
+             FROM variable_nomina WHERE conductor_id = $1 AND pago_anio = $2 AND pago_mes = $3
+            ORDER BY tipo`, [id, a, m]),
+    filas(`SELECT id, fecha_baja, tipo_baja, total, estado
+             FROM liquidacion WHERE conductor_id = $1
+              AND fecha_baja >= make_date($2, $3, 1)
+              AND fecha_baja <  (make_date($2, $3, 1) + INTERVAL '1 month')::date
+            ORDER BY fecha_baja DESC`, [id, a, m]),
+  ]);
+  return { ...datos, variables, finiquitos };
+}
+
+// Los finiquitos con baja en el mes (segunda hoja del export).
+async function finiquitosMes(anio, mes) {
+  return filas(`
+    SELECT btrim(co.nombre || ' ' || COALESCE(co.apellidos, '')) AS nombre,
+           co.dni_nie AS dni, co.naf,
+           l.fecha_baja, l.tipo_baja, l.dias_preavisados, l.preaviso_exigido, l.total, l.estado
+      FROM liquidacion l JOIN conductor co ON co.id = l.conductor_id
+     WHERE l.fecha_baja >= make_date($1, $2, 1)
+       AND l.fecha_baja <  (make_date($1, $2, 1) + INTERVAL '1 month')::date
+     ORDER BY l.fecha_baja`, [Number(anio), Number(mes)]);
+}
+
 module.exports = {
   mesPorDefecto, trabajadores, ficha,
   periodos, fichaPeriodo, cerrar, regularizar,
   absentismo, absentismoModulo,
+  nominaMes, nominaDetalle, finiquitosMes,
 };

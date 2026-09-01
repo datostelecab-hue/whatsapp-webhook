@@ -1,0 +1,134 @@
+<%- include('partials/convenio-nav', { sub: 'nomina' }) %>
+
+<!-- Barra del mes: la nómina es de un mes (el de PAGO de las variables). -->
+<div class="px-4 lg:px-6 pt-3 max-w-[1400px] mx-auto">
+  <div class="flex items-center gap-2">
+    <span class="text-sm text-telecab-muted mr-1">Mes de pago</span>
+    <button id="mes-prev" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Mes anterior">
+      <i class="fa-solid fa-chevron-left text-xs"></i>
+    </button>
+    <div id="mes-label" class="min-w-[10rem] text-center font-semibold tabular-nums"></div>
+    <button id="mes-next" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Mes siguiente">
+      <i class="fa-solid fa-chevron-right text-xs"></i>
+    </button>
+  </div>
+</div>
+
+<div id="nomina"></div>
+
+<script>
+(function () {
+  const { fecha, esc, etiqueta, horasMin, euros } = Listado.fmt;
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const MES = { anio: <%= anioInicial %>, mes: <%= mesInicial %> };
+
+  const n = v => (v === null || v === undefined || v === '') ? null : Number(v);
+  const DASH = '<span class="text-telecab-muted">—</span>';
+  const eur = v => euros(v) || DASH;
+  const hm = v => horasMin(v) || DASH;
+  const mmaa = (a, m) => String(m).padStart(2, '0') + '/' + a;
+
+  const TONO_VAR = { nocturnidad: 'violet', propina: 'green', hora_extra: 'warn', plus_calidad: 'gold',
+                     bonus: 'green', complemento_garantia: 'gold', descuento: 'red' };
+  const TIPO_BAJA = { voluntaria: 'Voluntaria', despido: 'Despido', fin_contrato: 'Fin de contrato', no_supero_prueba: 'No superó prueba' };
+
+  const nomina = Listado.montar({
+    raiz: '#nomina',
+    titulo: 'Nómina del mes',
+    icono: 'fa-file-invoice-dollar',
+    clave: 'conductor_id',
+    origen: () => `/convenio/api/nomina?anio=${MES.anio}&mes=${MES.mes}`,
+    vacio: 'Ninguna variable se paga este mes.',
+    buscar: { texto: 'Buscar nombre, DNI…', campos: ['nombre', 'dni'] },
+    exportar: false,   // el export propio (a gestoría) es mas rico; se usa ese
+
+    subtitulo: (visibles, todas) =>
+      `${MESES[MES.mes - 1]} ${MES.anio} · ${todas.length} trabajador(es) con nómina variable`,
+
+    kpis: (filas) => {
+      const total     = filas.reduce((s, f) => s + (n(f.total) || 0), 0);
+      const propinas  = filas.reduce((s, f) => s + (n(f.propinas) || 0), 0);
+      const descuento = filas.reduce((s, f) => s + (n(f.descuentos) || 0), 0);
+      return [
+        { etiqueta: 'Trabajadores', valor: filas.length, tono: 'text' },
+        { etiqueta: 'Total variable', valor: euros(total) || '0 €', tono: 'gold', pie: 'a pagar este mes' },
+        { etiqueta: 'Propinas', valor: euros(propinas) || '0 €', tono: 'green' },
+        { etiqueta: 'Descuentos', valor: euros(descuento) || '0 €', tono: descuento ? 'red' : 'muted' },
+      ];
+    },
+
+    acciones: [
+      { texto: 'Exportar a gestoría', icono: 'fa-file-excel',
+        onClick: () => { window.location.href = `/convenio/api/nomina/export?anio=${MES.anio}&mes=${MES.mes}`; } },
+    ],
+
+    columnas: [
+      { titulo: 'Trabajador', campo: 'nombre', clase: 'font-semibold whitespace-nowrap' },
+      { titulo: 'DNI/NIE', campo: 'dni', clase: 'whitespace-nowrap text-telecab-muted' },
+      { titulo: 'Propinas', campo: 'propinas', clase: 'tabular-nums whitespace-nowrap', pinta: v => eur(v) },
+      { titulo: 'Plus calidad', campo: 'plus_calidad', clase: 'tabular-nums whitespace-nowrap', pinta: v => eur(v) },
+      { titulo: 'Bonus', campo: 'bonus', clase: 'tabular-nums whitespace-nowrap', pinta: v => eur(v) },
+      { titulo: 'Garantía', campo: 'garantia', clase: 'tabular-nums whitespace-nowrap', pinta: v => eur(v) },
+      { titulo: 'H. extra', campo: 'extra_eur', clase: 'tabular-nums whitespace-nowrap',
+        pinta: (v, f) => n(v) != null ? eur(v) : (n(f.extra_min) ? `<span class="text-telecab-muted">${hm(f.extra_min)}</span>` : DASH) },
+      { titulo: 'Nocturnidad', campo: 'nocturnidad_min', clase: 'tabular-nums whitespace-nowrap',
+        pinta: (v, f) => n(f.nocturnidad_eur) != null ? eur(f.nocturnidad_eur) : (n(v) ? `<span class="text-telecab-muted">${hm(v)}</span>` : DASH) },
+      { titulo: 'Descuentos', campo: 'descuentos', clase: 'tabular-nums whitespace-nowrap',
+        pinta: v => n(v) ? `<span class="text-telecab-red">${eur(v)}</span>` : DASH },
+      { titulo: 'Total', campo: 'total', clase: 'tabular-nums whitespace-nowrap font-semibold', pinta: v => eur(v) },
+    ],
+
+    detalle: {
+      origen: id => `/convenio/api/nomina/detalle/${id}?anio=${MES.anio}&mes=${MES.mes}`,
+      titulo: d => d.nombre,
+      subtitulo: d => [d.dni, d.naf].filter(Boolean).join(' · '),
+
+      bloques: [
+        {
+          titulo: 'Variables pagadas este mes', icono: 'fa-coins',
+          tabla: {
+            datos: d => d.variables,
+            vacio: 'Sin variables este mes.',
+            columnas: [
+              { titulo: 'Concepto', campo: 'tipo', pinta: v => etiqueta(String(v || '').replace(/_/g, ' '), TONO_VAR[v] || 'muted') },
+              { titulo: 'Devengo', clase: 'tabular-nums whitespace-nowrap', pinta: (v, f) => mmaa(f.devengo_anio, f.devengo_mes) },
+              { titulo: 'Cantidad', clase: 'tabular-nums whitespace-nowrap',
+                pinta: (v, f) => f.unidad === 'MIN' ? hm(f.cantidad) : `${n(f.cantidad)} ${esc(f.unidad || '')}` },
+              { titulo: 'Importe', campo: 'importe', clase: 'tabular-nums', pinta: v => eur(v) },
+              { titulo: 'Estado', campo: 'estado', pinta: v => etiqueta(v, v === 'pagada' ? 'violet' : v === 'aprobada' ? 'green' : 'muted') },
+            ],
+          },
+        },
+        {
+          titulo: 'Finiquito (baja este mes)', icono: 'fa-money-check-dollar',
+          visible: d => d.finiquitos && d.finiquitos.length > 0,
+          tabla: {
+            datos: d => d.finiquitos,
+            columnas: [
+              { titulo: 'Fecha baja', campo: 'fecha_baja', clase: 'tabular-nums whitespace-nowrap', pinta: v => fecha(v) },
+              { titulo: 'Tipo', campo: 'tipo_baja', pinta: v => esc(TIPO_BAJA[v] || v) },
+              { titulo: 'Finiquito', campo: 'total', clase: 'tabular-nums', pinta: v => eur(v) },
+              { titulo: 'Estado', campo: 'estado', pinta: v => etiqueta(v === 'cerrada' ? 'Cerrada' : 'Borrador', v === 'cerrada' ? 'green' : 'warn') },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  // ---------- selector de mes ----------
+  const label = document.getElementById('mes-label');
+  const pintarMes = () => { label.textContent = `${MESES[MES.mes - 1]} ${MES.anio}`; };
+  const mover = paso => {
+    let m = MES.mes + paso, a = MES.anio;
+    if (m < 1) { m = 12; a--; } else if (m > 12) { m = 1; a++; }
+    MES.mes = m; MES.anio = a;
+    pintarMes();
+    nomina.recargar();
+  };
+  document.getElementById('mes-prev').addEventListener('click', () => mover(-1));
+  document.getElementById('mes-next').addEventListener('click', () => mover(1));
+  pintarMes();
+})();
+</script>
