@@ -63,6 +63,9 @@
     <label class="flex items-center gap-2 text-sm text-telecab-muted ml-1">
       <input type="checkbox" id="f-huecos" class="accent-telecab-gold"> Solo con huecos
     </label>
+    <button id="btn-nuevo-cua" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
+      <i class="fa-solid fa-plus"></i>Nuevo cuadrante
+    </button>
     <button id="btn-avisos" class="ml-auto hidden items-center gap-2 px-3 py-2 rounded-xl bg-telecab-warn/10 border border-telecab-warn/30 text-telecab-warn text-sm">
       <i class="fa-solid fa-triangle-exclamation"></i><span id="btn-avisos-n">0</span> avisos
     </button>
@@ -205,48 +208,98 @@
     { slot: 3, tit: 'CT noche',  turno: 'noche' },
   ];
 
+  // El CT (día/noche) de un cuadrante: el ocupante de la plaza CT en sus coches.
+  // Si es el mismo en todos, ese es el CT del cuadrante; si difieren, 'varios'.
+  function ctDelCuadrante(lista, slot) {
+    const ids = new Set();
+    lista.forEach(c => { const p = (c.personas || [])[slot]; if (p && p.id) ids.add(String(p.id)); });
+    if (ids.size === 1) return porId.get([...ids][0]) || null;
+    return ids.size > 1 ? 'varios' : null;
+  }
+
+  // La libranza de un CT = el complemento de los días que trabaja.
+  const libraCT = persona => persona && persona.trabaja
+    ? persona.trabaja.map((v, i) => v ? null : DIAS_LETRA[i]).filter(Boolean).join(' ') : '';
+
+  function tablaCoches(lista, enCuadrante) {
+    const wrap = document.createElement('div');
+    wrap.className = 'overflow-x-auto border border-telecab-border rounded-2xl';
+    wrap.innerHTML = `
+      <table class="w-full text-sm border-collapse">
+        <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
+          <tr>
+            <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Matrícula</th>
+            <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Descanso</th>
+            ${COLS.map(c => `<th class="text-left font-semibold px-3 py-2.5">${c.tit}</th>`).join('')}
+            <th class="w-10"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>`;
+    const tb = wrap.querySelector('tbody');
+    lista.forEach(coche => tb.appendChild(filaCoche(coche, enCuadrante)));
+    return wrap;
+  }
+
+  function seccionCuadrante(lista) {
+    const c0 = lista[0];
+    const sec = document.createElement('section');
+    const ctDia = ctDelCuadrante(lista, 2), ctNoche = ctDelCuadrante(lista, 3);
+    const chipCT = (persona, turno) => {
+      const nombre = persona === 'varios' ? 'Varios' : (persona ? persona.nombre : null);
+      const libra = (persona && persona !== 'varios') ? libraCT(persona) : '';
+      return `<button data-ct="${turno}" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition
+                ${nombre ? 'bg-telecab-violet/10 text-telecab-violet border-telecab-violet/30' : 'border-dashed border-telecab-border text-telecab-muted'} hover:border-telecab-gold/50">
+              <i class="fa-solid fa-user-group"></i>CT ${turno}: ${nombre ? esc(nombre) : 'asignar'}${libra ? ` <span class="text-telecab-muted">libra ${esc(libra)}</span>` : ''}</button>`;
+    };
+    const cab = document.createElement('div');
+    cab.className = 'flex flex-wrap items-center gap-2 mb-2';
+    cab.innerHTML = `
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold flex items-center gap-2">
+        <i class="fa-solid fa-object-group"></i>${esc(c0.cuadrante)}
+        <span class="text-telecab-muted font-normal normal-case">${c0.zona ? esc(c0.zona) + ' · ' : ''}${lista.length} coche(s)</span>
+      </h3>
+      <div class="flex items-center gap-2 ml-2">${chipCT(ctDia, 'día')}${chipCT(ctNoche, 'noche')}</div>
+      <button data-borrar-cua class="ml-auto text-xs text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i> borrar cuadrante</button>`;
+    cab.querySelector('[data-ct="día"]').addEventListener('click', () => asignarCTCuadrante(c0.cuadranteId, 'dia'));
+    cab.querySelector('[data-ct="noche"]').addEventListener('click', () => asignarCTCuadrante(c0.cuadranteId, 'noche'));
+    cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(c0.cuadranteId, c0.cuadrante));
+    sec.appendChild(cab);
+    sec.appendChild(tablaCoches(lista, true));
+    return sec;
+  }
+
+  function seccionSueltos(lista) {
+    const sec = document.createElement('section');
+    const cab = document.createElement('h3');
+    cab.className = 'text-sm font-semibold uppercase tracking-wide text-telecab-muted mb-2 flex items-center gap-2';
+    cab.innerHTML = `<i class="fa-solid fa-car-side"></i>Coches sueltos <span class="font-normal normal-case">${lista.length}</span>`;
+    sec.appendChild(cab);
+    sec.appendChild(tablaCoches(lista, false));
+    return sec;
+  }
+
   function pintar() {
     const cont = $('#cuadrante');
     const coches = cochesVisibles();
     $('#vacio').classList.toggle('hidden', coches.length > 0);
     cont.classList.toggle('hidden', coches.length === 0);
 
-    // Agrupa por zona conservando el orden (ya viene ordenado por zona).
+    // Agrupa por cuadrante; los sueltos, al final.
     const grupos = new Map();
     coches.forEach(c => {
-      const z = c.zona || 'Sin zona';
-      if (!grupos.has(z)) grupos.set(z, []);
-      grupos.get(z).push(c);
+      const k = c.cuadranteId ? ('cua:' + c.cuadranteId) : 'sueltos';
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(c);
     });
 
     cont.innerHTML = '';
-    grupos.forEach((lista, zona) => {
-      const sec = document.createElement('section');
-      sec.innerHTML = `
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold mb-2 flex items-center gap-2">
-          <i class="fa-solid fa-location-dot"></i>${esc(zona)}
-          <span class="text-telecab-muted font-normal normal-case">${lista.length} coche(s)</span>
-        </h3>
-        <div class="overflow-x-auto border border-telecab-border rounded-2xl">
-          <table class="w-full text-sm border-collapse">
-            <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
-              <tr>
-                <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Matrícula</th>
-                <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Descanso</th>
-                ${COLS.map(c => `<th class="text-left font-semibold px-3 py-2.5">${c.tit}</th>`).join('')}
-                <th class="w-10"></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>`;
-      const tb = sec.querySelector('tbody');
-      lista.forEach(coche => tb.appendChild(filaCoche(coche)));
-      cont.appendChild(sec);
+    [...grupos.keys()].sort((a, b) => (a === 'sueltos') - (b === 'sueltos')).forEach(k => {
+      cont.appendChild(k === 'sueltos' ? seccionSueltos(grupos.get(k)) : seccionCuadrante(grupos.get(k)));
     });
   }
 
-  function filaCoche(coche) {
+  function filaCoche(coche, enCuadrante) {
     const tr = document.createElement('tr');
     tr.className = 'border-t border-telecab-border/70 align-top';
     const tono = tonoEstado(coche.estadoVeh);
@@ -294,7 +347,12 @@
     // Acciones del coche.
     const tdAcc = document.createElement('td');
     tdAcc.className = 'px-2 py-2.5 text-right whitespace-nowrap';
-    tdAcc.innerHTML = `<button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" title="Cambiar de coche (llevarse la tripulación)" data-cambiar><i class="fa-solid fa-right-left"></i></button>`;
+    tdAcc.innerHTML = `
+      <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-cua
+              title="${enCuadrante ? 'Sacar del cuadrante' : 'Meter en un cuadrante'}"><i class="fa-solid ${enCuadrante ? 'fa-object-ungroup' : 'fa-object-group'}"></i></button>
+      <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-cambiar
+              title="Cambiar de coche (llevarse la tripulación)"><i class="fa-solid fa-right-left"></i></button>`;
+    tdAcc.querySelector('[data-cua]').addEventListener('click', () => enCuadrante ? sacarDeCuadrante(coche) : meterEnCuadrante(coche));
     tdAcc.querySelector('[data-cambiar]').addEventListener('click', () => cambiarCoche(coche));
     tr.appendChild(tdAcc);
 
@@ -476,15 +534,15 @@
 
   async function libranzaExcepcional(persona) {
     const lunes = T.fechas[0], domingo = T.fechas[6];
-    const datos = await Dialogo.formulario({
-      titulo: `Libranza excepcional · ${persona.nombre}`,
-      texto: 'Cambia, solo esta semana, un día de libranza por uno de trabajo. La semana siguiente vuelve a la normalidad.',
-      campos: [
+    const datos = await Dialogo.formulario(
+      `Libranza excepcional · ${persona.nombre}`,
+      [
         { id: 'trabaja', etiqueta: 'Trabaja el día (que normalmente libra)', tipo: 'fecha', obligatorio: true, ayuda: `Entre ${isoAes(lunes)} y ${isoAes(domingo)}` },
         { id: 'libra', etiqueta: 'Libra el día (que normalmente trabaja)', tipo: 'fecha', obligatorio: true },
         { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto' },
       ],
-    });
+      { nota: 'Cambia, solo esta semana, un día de libranza por uno de trabajo. La semana siguiente vuelve a la normalidad.' }
+    );
     if (!datos) return;
     // `formulario` ya devuelve las fechas en ISO (aaaa-mm-dd).
     const diaTrabaja = datos.trabaja, diaLibra = datos.libra;
@@ -500,6 +558,73 @@
       const j = await r.json();
       if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo guardar');
       if (j.tablero) aplicar(j.tablero);
+    } catch (e) { alert(e.message); }
+  }
+
+  // ── Cuadrantes ────────────────────────────────────────────────────────────
+  async function pedirTablero(url, body, metodo) {
+    const r = await fetch(url, {
+      method: metodo || 'POST', headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const j = await r.json();
+    if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo guardar');
+    if (j.tablero) aplicar(j.tablero);
+    return j;
+  }
+
+  async function nuevoCuadrante() {
+    const datos = await Dialogo.formulario('Nuevo cuadrante', [
+      { id: 'nombre', etiqueta: 'Nombre', tipo: 'texto', obligatorio: true, marcador: 'Correturno 1 Usera' },
+      { id: 'zona', etiqueta: 'Zona', tipo: 'texto', ayuda: 'Opcional' },
+    ]);
+    if (!datos || !datos.nombre) return null;
+    try {
+      const r = await fetch('/planificador-v2/api/cuadrantes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: datos.nombre, zona: datos.zona }),
+      });
+      const j = await r.json();
+      if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo crear');
+      await cargar(DIA);   // refresca la lista de cuadrantes en el payload
+      return j.id ? String(j.id) : null;
+    } catch (e) { alert(e.message); return null; }
+  }
+
+  async function meterEnCuadrante(coche) {
+    const opciones = (T.cuadrantes || []).map(c => ({ valor: c.id, texto: `${c.nombre}${c.zona ? ' · ' + c.zona : ''} (${c.coches})` }));
+    opciones.push({ valor: '__nuevo__', texto: '＋ Nuevo cuadrante…' });
+    const elegido = await Dialogo.elegir({ titulo: `Meter ${coche.matricula} en un cuadrante`, opciones });
+    if (!elegido) return;
+    let id = elegido;
+    if (elegido === '__nuevo__') { id = await nuevoCuadrante(); if (!id) return; }
+    try {
+      await pedirTablero('/planificador-v2/api/cuadrante/coche', { vehiculoId: coche.vehiculoId, cuadranteId: id, dia: DIA });
+    } catch (e) { alert(e.message); }
+  }
+
+  async function sacarDeCuadrante(coche) {
+    try {
+      await pedirTablero('/planificador-v2/api/cuadrante/coche', { vehiculoId: coche.vehiculoId, cuadranteId: null, dia: DIA });
+    } catch (e) { alert(e.message); }
+  }
+
+  async function borrarCuadranteUI(id, nombre) {
+    const ok = await Dialogo.confirmar({
+      titulo: `Borrar el cuadrante ${nombre}`, tono: 'aviso', si: 'Borrar', no: 'Cancelar',
+      html: '<p>Los coches quedan sueltos. No se toca su gente ni su libranza.</p>',
+    });
+    if (!ok) return;
+    try {
+      await pedirTablero(`/planificador-v2/api/cuadrantes/${encodeURIComponent(id)}?dia=${encodeURIComponent(DIA)}`, null, 'DELETE');
+    } catch (e) { alert(e.message); }
+  }
+
+  async function asignarCTCuadrante(cuadranteId, turno) {
+    const id = await pickConductor({ titulo: `CT ${turno} del cuadrante`, turno, actual: null });
+    if (id === undefined) return;   // cancelado
+    try {
+      await pedirTablero('/planificador-v2/api/cuadrante/ct', { cuadranteId, turno, conductorId: id || '', dia: DIA });
     } catch (e) { alert(e.message); }
   }
 
@@ -656,6 +781,7 @@
   document.querySelectorAll('.banq-tab').forEach(b =>
     b.addEventListener('click', () => { banqTab = b.dataset.banqTab; pintarBanquillo(); }));
   $('#btn-avisos').addEventListener('click', () => $('#avisos').classList.toggle('hidden'));
+  $('#btn-nuevo-cua').addEventListener('click', nuevoCuadrante);
 
   // Arranque.
   irA(hoyISO());
