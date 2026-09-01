@@ -814,13 +814,15 @@ async function borrarLibranzaExcepcional(id) {
 
 async function listarCuadrantes() {
   const r = await db.consulta(
-    `SELECT cu.id, cu.numero, cu.nombre, cu.base_zona_id, bz.nombre AS zona,
+    `SELECT cu.id, cu.base_zona_id, bz.nombre AS zona,
             (SELECT count(*)::int FROM vehiculo v WHERE v.cuadrante_id = cu.id AND v.baja_at IS NULL) AS coches
        FROM cuadrante cu LEFT JOIN base_zona bz ON bz.id = cu.base_zona_id
       WHERE cu.baja_at IS NULL
-      ORDER BY cu.numero NULLS LAST, cu.id`);
-  return r.rows.map(c => ({
-    id: String(c.id), numero: c.numero, nombre: c.nombre,
+      ORDER BY cu.id`);
+  // El numero es secuencial entre los cuadrantes VIVOS (por orden de creacion):
+  // al borrar unos, los que quedan se renumeran 1..N, sin huecos.
+  return r.rows.map((c, i) => ({
+    id: String(c.id), numero: i + 1, nombre: 'Cuadrante ' + (i + 1),
     zona: c.zona || '', zonaId: c.base_zona_id || null, coches: c.coches,
   }));
 }
