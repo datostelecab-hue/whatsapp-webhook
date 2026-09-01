@@ -241,8 +241,7 @@
     return wrap;
   }
 
-  function seccionCuadrante(lista) {
-    const c0 = lista[0];
+  function seccionCuadrante(cu, lista) {
     const sec = document.createElement('section');
     const ctDia = ctDelCuadrante(lista, 2), ctNoche = ctDelCuadrante(lista, 3);
     const chipCT = (persona, turno) => {
@@ -256,18 +255,25 @@
     cab.className = 'flex flex-wrap items-center gap-2 mb-2';
     cab.innerHTML = `
       <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold flex items-center gap-2">
-        <i class="fa-solid fa-object-group"></i>${esc(c0.cuadrante)}
-        <span class="text-telecab-muted font-normal normal-case">${c0.zona ? esc(c0.zona) + ' · ' : ''}${lista.length} bloque(s)</span>
+        <i class="fa-solid fa-object-group"></i>${esc(cu.nombre)}
+        <span class="text-telecab-muted font-normal normal-case">${cu.zona ? esc(cu.zona) + ' · ' : ''}${lista.length} bloque(s)</span>
       </h3>
       <button data-bloque class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50 transition"><i class="fa-solid fa-plus"></i> Bloque</button>
       <div class="flex items-center gap-2 ml-1">${chipCT(ctDia, 'día')}${chipCT(ctNoche, 'noche')}</div>
       <button data-borrar-cua class="ml-auto text-xs text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i> borrar cuadrante</button>`;
-    cab.querySelector('[data-bloque]').addEventListener('click', () => anadirBloque(c0.cuadranteId));
-    cab.querySelector('[data-ct="día"]').addEventListener('click', () => asignarCTCuadrante(c0.cuadranteId, 'dia', lista));
-    cab.querySelector('[data-ct="noche"]').addEventListener('click', () => asignarCTCuadrante(c0.cuadranteId, 'noche', lista));
-    cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(c0.cuadranteId, c0.cuadrante));
+    cab.querySelector('[data-bloque]').addEventListener('click', () => anadirBloque(cu.id));
+    cab.querySelector('[data-ct="día"]').addEventListener('click', () => asignarCTCuadrante(cu.id, 'dia', lista));
+    cab.querySelector('[data-ct="noche"]').addEventListener('click', () => asignarCTCuadrante(cu.id, 'noche', lista));
+    cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(cu.id, cu.nombre));
     sec.appendChild(cab);
-    sec.appendChild(tablaCoches(lista, true));
+    if (lista.length) {
+      sec.appendChild(tablaCoches(lista, true));
+    } else {
+      const vac = document.createElement('p');
+      vac.className = 'text-xs text-telecab-muted px-3 py-4 border border-dashed border-telecab-border rounded-2xl text-center';
+      vac.textContent = 'Cuadrante vacío. Pulsa "Bloque" para añadir días + matrícula.';
+      sec.appendChild(vac);
+    }
     return sec;
   }
 
@@ -283,22 +289,27 @@
 
   function pintar() {
     const cont = $('#cuadrante');
+    const zona = $('#f-zona').value;
     const coches = cochesVisibles();
-    $('#vacio').classList.toggle('hidden', coches.length > 0);
-    cont.classList.toggle('hidden', coches.length === 0);
 
-    // Agrupa por cuadrante; los sueltos, al final.
-    const grupos = new Map();
+    // Coches por cuadrante; los sueltos aparte.
+    const porCua = new Map(); const sueltos = [];
     coches.forEach(c => {
-      const k = c.cuadranteId ? ('cua:' + c.cuadranteId) : 'sueltos';
-      if (!grupos.has(k)) grupos.set(k, []);
-      grupos.get(k).push(c);
+      if (c.cuadranteId) { const k = String(c.cuadranteId); if (!porCua.has(k)) porCua.set(k, []); porCua.get(k).push(c); }
+      else sueltos.push(c);
     });
+
+    // TODOS los cuadrantes (incluidos los vacíos, recién creados), filtrados por
+    // zona. Así un cuadrante nuevo aparece para poder añadirle bloques.
+    const cuadrantes = (T.cuadrantes || []).filter(cu => !zona || cu.zona === zona);
+
+    const hayAlgo = cuadrantes.length || sueltos.length;
+    $('#vacio').classList.toggle('hidden', hayAlgo > 0);
+    cont.classList.toggle('hidden', !hayAlgo);
 
     cont.innerHTML = '';
-    [...grupos.keys()].sort((a, b) => (a === 'sueltos') - (b === 'sueltos')).forEach(k => {
-      cont.appendChild(k === 'sueltos' ? seccionSueltos(grupos.get(k)) : seccionCuadrante(grupos.get(k)));
-    });
+    cuadrantes.forEach(cu => cont.appendChild(seccionCuadrante(cu, porCua.get(String(cu.id)) || [])));
+    if (sueltos.length) cont.appendChild(seccionSueltos(sueltos));
   }
 
   function filaCoche(coche, enCuadrante) {
@@ -319,11 +330,18 @@
     // cambiar la matrícula ahí (sus conductores quedan "huérfanos imaginarios").
     if (!coche.visibleCobertura) {
       tr.classList.add('bg-telecab-red/5');
+      const tieneGente = (coche.personas || []).some(p => p && p.id);
       const b = document.createElement('button');
       b.className = 'mt-1 block text-[11px] text-telecab-red font-semibold hover:underline';
-      b.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> cambiar matrícula aquí';
-      b.title = 'Mete una matrícula de emergencia y la tripulación se va con ella';
-      b.addEventListener('click', () => cambiarCoche(coche));
+      b.innerHTML = tieneGente
+        ? '<i class="fa-solid fa-triangle-exclamation"></i> cambiar matrícula aquí'
+        : '<i class="fa-solid fa-triangle-exclamation"></i> fuera de cobertura';
+      if (tieneGente) {
+        b.title = 'Mete una matrícula de emergencia y la tripulación se va con ella';
+        b.addEventListener('click', () => cambiarCoche(coche, true));
+      } else {
+        b.className = 'mt-1 block text-[11px] text-telecab-red';
+      }
       tdMat.appendChild(b);
     }
     tr.appendChild(tdMat);
@@ -509,10 +527,22 @@
     } catch (e) { alert(e.message); }
   }
 
-  async function cambiarCoche(coche) {
-    const otros = (T.coches || []).filter(c => c.vehiculoId !== coche.vehiculoId)
-      .concat((T.emergencia || []).map(e => ({ vehiculoId: e.vehiculoId, matricula: e.matricula + ' (emergencia)', zona: e.zona })));
-    const destino = await pickCoche({ titulo: `Mover la tripulación de ${coche.matricula} a…`, coches: otros });
+  async function cambiarCoche(coche, soloEmergencia) {
+    // La matrícula nueva SOLO puede ser una que no tenga a nadie (de emergencia):
+    // si llevara gente, moverla la dejaría sin sitio. Por eso, para el cambio de
+    // un coche en taller/siniestro, solo se ofrecen las de emergencia.
+    const emergencia = (T.emergencia || []).map(e => ({ vehiculoId: e.vehiculoId, matricula: e.matricula, zona: e.zona }));
+    if (soloEmergencia && !emergencia.length) {
+      await Dialogo.aviso({ titulo: 'Sin coches de emergencia', texto: 'No hay ninguna matrícula libre (sin nadie asignado) para meter aquí.', tono: 'aviso' });
+      return;
+    }
+    const otros = soloEmergencia ? emergencia
+      : (T.coches || []).filter(c => c.vehiculoId !== coche.vehiculoId)
+          .concat(emergencia.map(e => ({ ...e, matricula: e.matricula + ' (emergencia)' })));
+    const destino = await pickCoche({
+      titulo: soloEmergencia ? `Matrícula de emergencia para ${coche.matricula}` : `Mover la tripulación de ${coche.matricula} a…`,
+      coches: otros,
+    });
     if (!destino) return;
     try {
       const r = await fetch('/planificador-v2/api/cambiar-coche', {
