@@ -56,6 +56,44 @@ async function guardarStateLogs(logs, descargaId = null) {
 }
 
 /**
+ * Aterriza las ordenes de BOLT en bolt_order, con maduracion.
+ *
+ * `ordenes` es lo que da getFleetOrders. A diferencia de los state logs, una
+ * orden que vuelve mas tarde ACTUALIZA su estado y su precio (nace pendiente y
+ * termina): por eso es ON CONFLICT DO UPDATE, no DO NOTHING. Los timestamps de
+ * BOLT vienen en epoch de segundos.
+ *
+ * Devuelve cuantas ordenes se tocaron (nuevas o actualizadas).
+ */
+async function guardarOrders(ordenes, descargaId = null) {
+  let tocadas = 0;
+  for (const o of ordenes || []) {
+    const driver = o.driver_uuid || null;
+    const creado = Number(o.order_created_timestamp);
+    if (!driver || !creado) continue;
+    const p = o.order_price || {};
+    const r = await db.consulta(
+      `INSERT INTO bolt_order
+         (order_ref, driver_uuid, estado, creado_ts, finalizado_ts, propina, peaje, neto, descarga_id)
+       VALUES ($1, $2, $3, to_timestamp($4),
+               CASE WHEN $5 > 0 THEN to_timestamp($5) END,
+               $6, $7, $8, $9)
+       ON CONFLICT (driver_uuid, creado_ts) WHERE driver_uuid IS NOT NULL
+       DO UPDATE SET
+         estado = EXCLUDED.estado,
+         finalizado_ts = COALESCE(EXCLUDED.finalizado_ts, bolt_order.finalizado_ts),
+         propina = EXCLUDED.propina, peaje = EXCLUDED.peaje, neto = EXCLUDED.neto,
+         descarga_id = EXCLUDED.descarga_id, actualizado_at = now()
+       RETURNING id`,
+      [o.id || o.order_id || o.order_reference || null, driver, o.order_status || null,
+       creado, Number(o.order_finished_timestamp) || 0,
+       Number(p.tip) || 0, Number(p.toll_fee) || 0, Number(p.net_earnings) || 0, descargaId]);
+    if (r.rowCount) tocadas++;
+  }
+  return tocadas;
+}
+
+/**
  * Los eventos de un conductor NUESTRO en un dia, listos para derivar la jornada.
  *
  * Cruza el driver_uuid de BOLT con nuestro conductor por conductor_externo, que
@@ -92,5 +130,5 @@ async function conductoresConLogs(dia) {
 }
 
 module.exports = {
-  registrarDescarga, guardarStateLogs, logsDeConductorDia, conductoresConLogs,
+  registrarDescarga, guardarStateLogs, guardarOrders, logsDeConductorDia, conductoresConLogs,
 };

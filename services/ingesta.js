@@ -82,6 +82,39 @@ const TAREAS = {
     },
   },
 
+  orders_bolt: {
+    fuente: 'bolt',
+    etiqueta: 'Órdenes de BOLT',
+    // Cada hora, no cada diez minutos: las ordenes son para dinero y
+    // cancelaciones -cosas mensuales-, no para el panel en vivo. Y la ventana es
+    // ancha porque una orden MADURA durante horas: se vuelve a traer para coger
+    // su estado y precio finales. El aterrizaje actualiza, no duplica.
+    cadaMin: Number(process.env.INGESTA_ORDERS_MIN) || 60,
+    critica: false,
+    async ejecutar() {
+      const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+      const staging = require('./repo/staging');
+      const hasta = Math.floor(Date.now() / 1000);
+      const desde = hasta - (Number(process.env.INGESTA_ORDERS_VENTANA_H) || 48) * 3600;
+
+      let todas = [];
+      const t0 = Date.now();
+      for (const f of CONFIG_BOLT.flotas) {
+        const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders',
+          { company_ids: [f.id], company_id: f.id, time_range_filter_type: 'created',
+            start_ts: desde, end_ts: hasta }, 'orders', 1000, `ingesta orders ${f.id}`);
+        todas = todas.concat(ordenes);
+      }
+      const descargaId = await staging.registrarDescarga({
+        fuente: 'bolt', endpoint: 'getFleetOrders',
+        params: { start_ts: desde, end_ts: hasta }, payload: todas,
+        filas: todas.length, ms: Date.now() - t0,
+      });
+      const tocadas = await staging.guardarOrders(todas, descargaId);
+      return { registros: tocadas, detalle: { traidas: todas.length, tocadas } };
+    },
+  },
+
   unidades_mapon: {
     fuente: 'mapon',
     etiqueta: 'Odómetros de Mapon',
