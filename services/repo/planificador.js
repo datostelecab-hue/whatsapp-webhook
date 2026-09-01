@@ -70,7 +70,7 @@ async function tablero({ dia } = {}) {
   const fechas = semanaDesde(lunes);
   const domingo = fechas[DIAS - 1];
 
-  const [plazas, asignaciones, cobertura, conductores, sugeridos] = await Promise.all([
+  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc] = await Promise.all([
     // Las plazas de los coches que se planifican. El orden es el de la
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
@@ -132,6 +132,27 @@ async function tablero({ dia } = {}) {
     // Qué días le tocarían a un correturnos en cada plaza: los que libra el
     // fijo de ese coche y turno.
     db.consulta('SELECT plaza_id, dias_sugeridos FROM v_plaza_ct_sugerida'),
+
+    // Conductores huérfanos: su coche salió de cobertura (taller, siniestro,
+    // emergencia) y se quedaron sin sitio. Es una foto de "ahora".
+    db.consulta('SELECT * FROM v_conductor_huerfano ORDER BY zona NULLS LAST, matricula'),
+
+    // El pool de coches de emergencia (estado 'E'), listos para meter en un
+    // cuadrante. No salen en el tablero normal porque no son visible_cobertura.
+    db.consulta(
+      `SELECT v.id AS vehiculo_id, v.matricula, v.base_zona_id, bz.nombre AS zona
+         FROM vehiculo v LEFT JOIN base_zona bz ON bz.id = v.base_zona_id
+        WHERE v.estado_operativo = 'E' AND v.baja_at IS NULL
+        ORDER BY bz.nombre NULLS LAST, v.matricula`),
+
+    // Las libranzas excepcionales que tocan esta semana (para avisarlas en el
+    // tablero): la que trabaja o la que libra cae dentro de la semana.
+    db.consulta(
+      `SELECT le.id, le.conductor_id, le.dia_trabaja, le.dia_libra, le.motivo,
+              btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor
+         FROM libranza_excepcional le JOIN conductor c ON c.id = le.conductor_id
+        WHERE le.dia_trabaja BETWEEN $1 AND $2 OR le.dia_libra BETWEEN $1 AND $2
+        ORDER BY le.dia_trabaja`, [lunes, domingo]),
   ]);
 
   const sugeridoDe = new Map(sugeridos.rows.map(r => [String(r.plaza_id), r.dias_sugeridos || []]));
@@ -301,6 +322,35 @@ async function tablero({ dia } = {}) {
     // El banquillo. Van las personas enteras y no sus ids: el front las pinta
     // por nombre y no tendria de donde sacarlo.
     pendientes,
+    // Conductores sin coche porque el suyo salio de cobertura (taller...): hay
+    // que recolocarlos, normalmente en un coche de emergencia.
+    huerfanos: huerfanos.rows.map(h => ({
+      asignacionId: String(h.asignacion_id),
+      conductorId: String(h.conductor_id),
+      conductor: h.conductor,
+      matricula: h.matricula,
+      estadoVeh: h.estado_operativo,
+      estado: h.estado_etiqueta,
+      zona: h.zona || '',
+      turno: h.turno,
+      rol: h.rol,
+    })),
+    // Coches de emergencia disponibles para colocar en un cuadrante.
+    emergencia: emergencia.rows.map(e => ({
+      vehiculoId: e.vehiculo_id,
+      matricula: e.matricula,
+      zona: e.zona || '',
+      zonaId: e.base_zona_id || null,
+    })),
+    // Libranzas excepcionales activas esta semana.
+    libranzasSemana: libranzasExc.rows.map(l => ({
+      id: String(l.id),
+      conductorId: String(l.conductor_id),
+      conductor: l.conductor,
+      diaTrabaja: fechaDe(l.dia_trabaja),
+      diaLibra: fechaDe(l.dia_libra),
+      motivo: l.motivo || '',
+    })),
     resumen: {
       coches: coches.filter(c => c.operativo).length,
       diasSinCubrirDia,
@@ -637,7 +687,41 @@ async function cambiarCoche({ deVehiculoId, aVehiculoId, dia, soloTurno, forzar 
   return { movidos, dia: efectivo };
 }
 
+// ============================================================
+// LIBRANZA EXCEPCIONAL
+// ============================================================
+// El swap de una semana: un fijo trabaja un dia que libra por patron y libra uno
+// que trabaja. No toca el patron; f_cobertura lo lee por encima (db/54). El
+// desplazamiento del CT y el coche de emergencia es una colocacion normal que
+// hace Trafico despues; aqui solo se apunta el swap.
+
+async function crearLibranzaExcepcional({ conductorId, diaTrabaja, diaLibra, motivo }, { usuarioId } = {}) {
+  if (!conductorId) throw new Error('Falta el conductor');
+  const f = /^\d{4}-\d{2}-\d{2}$/;
+  if (!f.test(diaTrabaja || '') || !f.test(diaLibra || '')) throw new Error('Faltan las fechas del cambio');
+  if (diaTrabaja === diaLibra) throw new Error('El día que trabaja y el que libra no pueden ser el mismo');
+  try {
+    const r = await db.consulta(
+      `INSERT INTO libranza_excepcional (conductor_id, dia_trabaja, dia_libra, motivo, autorizado_por)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [Number(conductorId), diaTrabaja, diaLibra, (motivo || '').trim() || null, usuarioId || null]);
+    return { id: String(r.rows[0].id) };
+  } catch (e) {
+    // El CHECK de "misma semana" (<= 6 dias) o los UNIQUE de dia dan un mensaje
+    // feo de Postgres; se traduce a algo que Trafico entienda.
+    if (/ck_lexc_semana/.test(e.message)) throw new Error('Los dos días deben ser de la misma semana');
+    if (/uq_lexc/.test(e.message)) throw new Error('Ese conductor ya tiene un cambio en uno de esos días');
+    throw e;
+  }
+}
+
+async function borrarLibranzaExcepcional(id) {
+  await db.consulta('DELETE FROM libranza_excepcional WHERE id = $1', [Number(id)]);
+  return { borrada: true };
+}
+
 module.exports = {
   tablero, guardar, cambiarCoche,
+  crearLibranzaExcepcional, borrarLibranzaExcepcional,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
 };

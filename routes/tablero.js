@@ -94,4 +94,20 @@ router.post('/api/cambiar-coche', responde(async req => {
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
 
+// ── Libranza excepcional: el swap de una semana ────────────────────────────
+router.post('/api/libranza-excepcional', responde(async req => {
+  const b = req.body || {};
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await plan.crearLibranzaExcepcional({
+    conductorId: b.conductorId, diaTrabaja: b.diaTrabaja, diaLibra: b.diaLibra, motivo: b.motivo,
+  }, quien);
+  console.log(`🔀 [TABLERO] libranza excepcional del conductor ${b.conductorId}: trabaja ${b.diaTrabaja}, libra ${b.diaLibra}`);
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
+router.delete('/api/libranza-excepcional/:id', responde(async req => {
+  const r = await plan.borrarLibranzaExcepcional(req.params.id);
+  return { ...r, tablero: await plan.tablero({ dia: req.query.dia }) };
+}));
+
 module.exports = router;
