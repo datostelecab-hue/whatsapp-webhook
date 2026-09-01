@@ -59,10 +59,11 @@ async function catalogoEstados() {
 /**
  * Los asientos de trabajo de un dia, a partir de sus tramos.
  *
- * Cada tramo se traduce con la tabla. El estado que cuenta directo (has_order)
- * genera un asiento EFFECTIVE_WORK con su supuesto. La espera (condicionado) NO
- * genera asiento mientras no se confirme el area: el convenio no la da por
- * trabajo. Y si hubo cualquier actividad, se anaden los 20 min auxiliares.
+ * Cada tramo se traduce con la tabla. has_order genera un asiento EFFECTIVE_WORK
+ * TE_A3. La espera TAMBIEN genera asiento siempre -para que las horas totales
+ * sean has_order + waiting-, pero con supuesto TE_A1 si esta en area o TE_NO si
+ * no: TE_NO suma en las totales y no en las estrictas. Y si hubo actividad, se
+ * anaden los 20 min auxiliares.
  *
  * `areaConfirmada(tramo)` decide si un tramo condicionado esta dentro del area.
  * Por defecto NULL = no se sabe = no cuenta. Cuando se cruce la zona de Mapon,
@@ -81,11 +82,12 @@ function asientosDeDia({ tramos, catalogo, conductorId, dia, areaConfirmada = nu
 
     let supuesto = regla.supuesto_te;
     if (regla.condicionado) {
-      // Solo cuenta dentro del area. Sin confirmarla, cae al supuesto_sin
-      // (TE_NO) y NO genera asiento.
+      // La espera SIEMPRE genera asiento -para que sume en las horas totales-,
+      // pero el supuesto cambia: TE_A1 si esta dentro del area (cuenta tambien
+      // en las estrictas), TE_NO si no (solo en las totales). La diferencia
+      // entre las dos medidas es justo este TE_NO.
       const dentro = areaConfirmada ? areaConfirmada(tr) : false;
-      if (!dentro) continue;                      // TE_NO: no es trabajo efectivo
-      supuesto = regla.supuesto_te;               // TE_A1: dentro del area, cuenta
+      supuesto = dentro ? regla.supuesto_te : regla.supuesto_sin;
     }
 
     asientos.push({

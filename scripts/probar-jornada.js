@@ -51,18 +51,27 @@ const largo = j.tramosDeLogs([{ t: H(8), estado: 'has_order' }], H(8) + 20 * 360
 ok('un tramo de 20 h se recorta a 12 h', largo[0].minutos === j.MAX_TRAMO_MIN, `(${largo[0].minutos} min)`);
 
 // ── 2. Clasificacion: que cuenta y que no ───────────────────────────────────
-console.log('\n== has_order cuenta, waiting NO (sin area) ==');
+console.log('\n== Sin area: has_order = TE_A3, waiting = TE_NO (pero AMBAS suman en total) ==');
 let as = j.asientosDeDia({ tramos, catalogo: CATALOGO, conductorId: 7, dia: '2026-08-20' });
 const trabajo = as.filter(a => a.tipo === 'EFFECTIVE_WORK');
-ok('un solo asiento de trabajo efectivo', trabajo.length === 1, `(${trabajo.length})`);
-ok('es el has_order, TE_A3, 120 min', trabajo[0].supuestoTe === 'TE_A3' && trabajo[0].minutos === 120);
-ok('la espera NO genera asiento', !as.some(a => a.supuestoTe === 'TE_A1'));
-ok('el descanso no genera nada', !as.some(a => a.tipo && a.tipo !== 'EFFECTIVE_WORK' && a.tipo !== 'AUX_TASKS'));
+// Las dos generan asiento: el total es has_order + waiting SIEMPRE.
+ok('dos asientos de trabajo (has_order y waiting)', trabajo.length === 2, `(${trabajo.length})`);
+ok('has_order es TE_A3, 120 min', trabajo.some(a => a.supuestoTe === 'TE_A3' && a.minutos === 120));
+ok('la espera es TE_NO, 60 min (suma en total, no en estricta)',
+   trabajo.some(a => a.supuestoTe === 'TE_NO' && a.minutos === 60));
+// La medida ESTRICTA es lo que no es TE_NO; la TOTAL es todo el trabajo.
+const estricto = trabajo.filter(a => a.supuestoTe !== 'TE_NO').reduce((s, a) => s + a.minutos, 0);
+const total    = trabajo.reduce((s, a) => s + a.minutos, 0);
+ok('estricta = 120 min (solo has_order)', estricto === 120, `(${estricto})`);
+ok('total = 180 min (has_order + waiting)', total === 180, `(${total})`);
 
-console.log('\n== Con area confirmada, la espera sube a TE_A1 ==');
+console.log('\n== Con area confirmada, la espera sube a TE_A1 (cuenta en las dos) ==');
 as = j.asientosDeDia({ tramos, catalogo: CATALOGO, conductorId: 7, dia: '2026-08-20',
   areaConfirmada: () => true });
-ok('ahora la espera cuenta como TE_A1', as.some(a => a.supuestoTe === 'TE_A1' && a.minutos === 60));
+ok('la espera es TE_A1', as.some(a => a.supuestoTe === 'TE_A1' && a.minutos === 60));
+const estricto2 = as.filter(a => a.tipo === 'EFFECTIVE_WORK' && a.supuestoTe !== 'TE_NO')
+  .reduce((s, a) => s + a.minutos, 0);
+ok('ahora estricta = total = 180 min', estricto2 === 180, `(${estricto2})`);
 
 // ── 3. Los 20 min auxiliares ────────────────────────────────────────────────
 console.log('\n== Tareas auxiliares: 20 min si hubo actividad ==');
