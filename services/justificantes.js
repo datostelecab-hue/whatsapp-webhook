@@ -147,18 +147,40 @@ async function reporteDia(key) {
     return { ...comun, horasTexto: (f.horas != null ? String(r1(f.horas)) : ''), color: b.color, observacion: b.obs, esJ: false };
   });
 
-  // KM por conductor del NÚCLEO (route/list, día completo), para las columnas
-  // nuevas del Excel. En su propio try: si el núcleo aún no está poblado, el
-  // reporte de horas sale igual (las columnas quedan vacías, no rompe nada).
+  // KM por conductor del NÚCLEO (route/list), para las columnas nuevas del Excel.
+  //
+  // POR TURNO, no por día natural: cada conductor cuenta lo que hizo EN SU JORNADA
+  // en BOLT. El día natural le metía a un conductor de noche la madrugada (00–05),
+  // que es del turno de noche de la víspera —de OTRO conductor—, y salían cosas
+  // como "0 horas pero 170 km". Con la ventana de su turno, el km es el suyo.
+  //
+  // En su propio try: si el núcleo no está poblado, el reporte sale igual.
   try {
     const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
     await require('./flotaViva/db').preparar();
-    const km = await require('./flotaViva/rutas').kmConectadoDesconectado(iso, 'completo');
-    const porNombre = new Map(km.conductores.map(c => [normClave(c.conductor), c]));
+    const rutas = require('./flotaViva/rutas');
+    const [kmDia, kmNoche] = await Promise.all([
+      rutas.kmConectadoDesconectado(iso, 'dia'),
+      rutas.kmConectadoDesconectado(iso, 'noche'),
+    ]);
+    const mapDia = new Map(kmDia.conductores.map(c => [normClave(c.conductor), c]));
+    const mapNoche = new Map(kmNoche.conductores.map(c => [normClave(c.conductor), c]));
+    const r1km = v => (v == null ? null : Math.round(v * 10) / 10);
     filas.forEach(f => {
-      const k = porNombre.get(normClave(f.nombre));
-      f.kmBolt = k ? k.enBolt : null;
-      f.kmDesc = k ? k.desconectado : null;
+      const k = normClave(f.nombre);
+      const t = (f.turno || '').trim();
+      const d = mapDia.get(k), n = mapNoche.get(k);
+      if (t === 'Noche') {
+        f.kmBolt = n ? n.enBolt : null;
+        f.kmDesc = n ? n.desconectado : null;
+      } else if (t === 'TodoTurno') {
+        // Cubre día y noche: suma sus dos ventanas.
+        f.kmBolt = (d || n) ? r1km((d ? d.enBolt : 0) + (n ? n.enBolt : 0)) : null;
+        f.kmDesc = (d || n) ? r1km((d ? d.desconectado : 0) + (n ? n.desconectado : 0)) : null;
+      } else {   // Día (o sin turno en la agenda)
+        f.kmBolt = d ? d.enBolt : null;
+        f.kmDesc = d ? d.desconectado : null;
+      }
     });
   } catch (e) {
     console.warn('⚠️  [JUST] KM del núcleo no disponible para el reporte:', e.message);
