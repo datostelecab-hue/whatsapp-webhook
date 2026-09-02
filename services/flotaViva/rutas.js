@@ -249,23 +249,46 @@ async function horasConectadasPorConductor(dia, turno = 'operativo') {
  */
 async function horasConectadoTotal(dia, turno = 'noche12') {
   const [hi, off, hf] = TURNOS[turno] || TURNOS.noche12;
+  // Se traen los TRAMOS conectados (recortados a la ventana) y se FUNDEN los solapes
+  // en JS. Un conductor puede tener tramos en dos coches a la vez (relevo, coche
+  // seleccionado), y sumar sus duraciones a pelo cuenta el mismo rato dos veces —de
+  // ahí salían 22 h en una ventana de 24—. Las horas son tiempo de reloj: la UNIÓN de
+  // los intervalos, no la suma. Vienen ordenados por 'desde' para poder fundirlos.
   const r = await db.consulta(
     `WITH v AS (
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      )
      SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
-            floor(sum(EXTRACT(EPOCH FROM (
-              LEAST(COALESCE(t.hasta, now()), v.fin) - GREATEST(t.desde, v.ini)
-            ))) / 60)::int AS minutos
+            GREATEST(t.desde, v.ini)               AS desde,
+            LEAST(COALESCE(t.hasta, now()), v.fin)  AS hasta
        FROM fv_tramo t
        CROSS JOIN v
        JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.conectado
        LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
       WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
-      GROUP BY conductor`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+      ORDER BY conductor, desde`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+
+  const porCond = new Map();
+  r.rows.forEach(x => {
+    if (!porCond.has(x.conductor)) porCond.set(x.conductor, []);
+    porCond.get(x.conductor).push([new Date(x.desde).getTime(), new Date(x.hasta).getTime()]);
+  });
   const m = new Map();
-  r.rows.forEach(x => m.set(x.conductor, Number(x.minutos) || 0));
+  for (const [nombre, ivs] of porCond) {
+    let total = 0, curIni = null, curFin = null;   // ivs ya vienen ordenados por 'desde'
+    for (const [s, e] of ivs) {
+      if (e <= s) continue;
+      if (curFin === null || s > curFin) {          // hueco → cierra el bloque anterior
+        if (curFin !== null) total += curFin - curIni;
+        curIni = s; curFin = e;
+      } else if (e > curFin) {                       // solapa → estira el bloque
+        curFin = e;
+      }
+    }
+    if (curFin !== null) total += curFin - curIni;
+    m.set(nombre, Math.floor(total / 60000));        // ms → minutos
+  }
   return m;
 }
 
