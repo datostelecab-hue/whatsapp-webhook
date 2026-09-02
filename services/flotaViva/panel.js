@@ -36,6 +36,10 @@ const { duracion } = require('./formato');
 const fila = r => ({
   matricula: r.matricula || '(sin matrícula)',
   situacion: r.situacion,
+  // Conectado = está en algo (viaje/espera/descanso), no caído. Se deriva igual
+  // que en `estado()` para que cuadre con sus listas; el cockpit lo usa para el
+  // chip y para contar. Sin esto salía todo como "desconectado".
+  conectado: !!(r.situacion && r.situacion !== 'desconectado'),
   etiqueta: r.situacion_etiqueta,
   color: r.color,
   estadoBolt: r.estado_bolt,

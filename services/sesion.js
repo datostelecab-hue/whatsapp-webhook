@@ -14,6 +14,13 @@ const COOKIE = 'telecab_sesion';
 const DURACION_MS = 12 * 60 * 60 * 1000;   // 12 h
 const PROD = process.env.NODE_ENV === 'production';
 
+// Versión de los assets estáticos. Cambia en cada arranque —o sea, en cada
+// despliegue—, así el navegador vuelve a pedir el JS/CSS en vez de servir una
+// copia vieja de caché. Se cuelga en res.locals.v y las vistas lo ponen como
+// `?v=<%= v %>`. Fue justo esto: una pantalla nueva pedía una función que el
+// helper ya tenía, pero el navegador seguía con el fichero de antes.
+const ARRANQUE = Date.now().toString(36);
+
 let SECRET = process.env.SESSION_SECRET;
 if (!SECRET) {
   SECRET = crypto.randomBytes(32).toString('hex');
@@ -90,6 +97,7 @@ function cargarSesion(req, res, next) {
   res.locals.usuario = u || null;
   res.locals.rol = u ? u.rol : null;
   res.locals.tema = u ? (u.tema || '') : null;   // tema del perfil (para pintar sin parpadeo)
+  res.locals.v = ARRANQUE;                         // versión de assets (cache-bust por despliegue)
   next();
 }
 
