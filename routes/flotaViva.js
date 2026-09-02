@@ -169,12 +169,15 @@ router.get('/api/mapon-rutas/:matricula', responde(async req => {
   const mat = fuentes.normMat(req.params.matricula);
   const u = (await fuentes.flotaMapon()).get(mat);
   if (!u) return { matricula: mat, encontrado: false };
-  const dia = (req.query.dia && String(req.query.dia).slice(0, 10)) ||
-    new Intl.DateTimeFormat('en-CA',
-      { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  // Mapon exige ISO 8601 con T y Z (no 'YYYY-MM-DD HH:MM:SS'): ese fue el error.
+  // Ventana: últimas N horas (24 por defecto), suficiente para ver el formato.
+  const iso = d => d.toISOString().slice(0, 19) + 'Z';
+  const horas = Math.min(Math.max(Number(req.query.horas) || 24, 1), 168);
+  const fin = new Date();
+  const ini = new Date(fin.getTime() - horas * 3600 * 1000);
   return {
-    matricula: mat, unitId: u.unitId, dia,
-    crudo: await fuentes.rutasDeUnidad(u.unitId, `${dia} 00:00:00`, `${dia} 23:59:59`),
+    matricula: mat, unitId: u.unitId, desde: iso(ini), hasta: iso(fin),
+    crudo: await fuentes.rutasDeUnidad(u.unitId, iso(ini), iso(fin)),
   };
 }));
 
