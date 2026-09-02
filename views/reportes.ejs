@@ -44,17 +44,17 @@
         <i class="fa-solid fa-clock text-telecab-gold text-lg mt-0.5"></i>
         <div class="flex-1">
           <div class="font-semibold text-telecab-text">Reporte de horas del día</div>
-          <p class="text-sm text-telecab-muted mt-0.5">Horas por conductor con colores y los justificantes al final.</p>
+          <p class="text-sm text-telecab-muted mt-0.5">De un clic: el <b>Excel</b> (horas + KM + matrícula por conductor) y el <b>PDF del Sankey</b> (flujo de KM de la flota, por coche).</p>
           <div class="flex items-center gap-2 mt-3">
             <select id="r-horas-dia" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
               <option value="1">Ayer</option>
               <option value="2">Hace 2 días</option>
               <option value="3">Hace 3 días</option>
             </select>
-            <a id="r-horas" href="/control/reporte/excel?dia=1"
+            <button id="r-horas"
                class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
-              <i class="fa-solid fa-download mr-1"></i> Excel
-            </a>
+              <i class="fa-solid fa-download mr-1"></i> Descargar (Excel + Sankey)
+            </button>
           </div>
         </div>
       </div>
@@ -92,6 +92,19 @@
     el.addEventListener('change', set); set();
   };
   sinc('#r-turnos-dias', '#r-turnos', 'dias');
-  sinc('#r-horas-dia', '#r-horas', 'dia');
+
+  // El reporte del día baja DOS ficheros de un clic: el Excel de horas+KM y el PDF
+  // del Sankey. Con un pequeño desfase, porque algunos navegadores frenan dos
+  // descargas seguidas.
+  const baja = url => {
+    const a = document.createElement('a');
+    a.href = url; a.download = '';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  document.querySelector('#r-horas').addEventListener('click', () => {
+    const key = document.querySelector('#r-horas-dia').value;
+    baja('/control/reporte/excel?dia=' + encodeURIComponent(key));
+    setTimeout(() => baja('/control/sankey/pdf?dia=' + encodeURIComponent(key)), 500);
+  });
 })();
 </script>

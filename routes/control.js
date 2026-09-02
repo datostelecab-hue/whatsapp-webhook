@@ -186,6 +186,36 @@ router.get('/reporte/excel', async (req, res) => {
   }
 });
 
+// PDF del Sankey de flujo de KM del día (mismo `dia`=key que el reporte de horas).
+// Reutiliza generarPdfFlujo de la Auditoría; el dato va POR MATRÍCULA (no duplica).
+router.get('/sankey/pdf', async (req, res) => {
+  try {
+    const key = [1, 2, 3].includes(Number(req.query.dia)) ? Number(req.query.dia) : 1;
+    const { Y, M, D, str: fecha, idx } = justificantes.fechaDeClave(key);
+    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
+    await require('../services/flotaViva/db').preparar();
+    const { sankeyFlota } = require('../services/flotaViva/rutas');
+    const { generarPdfFlujo } = require('../services/auditoriaPdf');
+    const { rgb } = require('pdf-lib');
+
+    const s = await sankeyFlota(iso);
+    // El color de cada turno lo pone aquí (tenemos pdf-lib): día verde, noche azul.
+    const tramos = s.tramos.map((t, i) => ({ ...t, color: i === 0 ? rgb(0.13, 0.70, 0.45) : rgb(0.38, 0.65, 0.98) }));
+    const diaSem = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][idx];
+    const pdf = await generarPdfFlujo({
+      titulo: `Flujo de KM · ${diaSem} ${fecha}`,
+      subtitulo: 'En BOLT (viaje + espera) vs desconectado (descanso + apagado). Por coche, sin duplicar.',
+      rango: fecha, tramos, matriculas: s.matriculas,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="sankey-km-${fecha.replace(/\//g, '-')}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    console.error('❌ [Control] /sankey/pdf:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 // Turnos de hoy (solo noche) + los dos días siguientes con las dos tablas.
 // Pensado para el viernes: llevar impreso quién sale el sábado y el domingo.
 router.get('/turnos/excel', async (req, res) => {

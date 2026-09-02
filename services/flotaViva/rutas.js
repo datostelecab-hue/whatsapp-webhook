@@ -233,4 +233,72 @@ async function horasConectadasPorConductor(dia, turno = 'operativo') {
   return m;
 }
 
-module.exports = { ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado, horasConectadasPorConductor };
+/**
+ * Los km de la flota en un turno, repartidos por estado — SUMANDO POR COCHE, no
+ * por conductor. Cada trayecto de Mapon se reparte por tiempo entre los estados
+ * (viaje/espera/descanso/desconectado) de SU coche, y se suma una sola vez. Así el
+ * total NO se duplica cuando dos conductores comparten matrícula, y cuadra con el
+ * total de Mapon. Es la base del Sankey.
+ */
+async function bucketsTurno(dia, turno) {
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     ),
+     solape AS (
+       SELECT veh.matricula,
+              t.situacion,
+              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
+         FROM fv_ruta r
+         CROSS JOIN v
+         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
+         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
+                             AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
+          AND r.inicio >= v.ini AND r.inicio < v.fin
+     )
+     SELECT
+       round(coalesce(sum(metros_trozo) FILTER (WHERE situacion = 'viaje'), 0) / 1000.0, 1)        AS viaje,
+       round(coalesce(sum(metros_trozo) FILTER (WHERE situacion = 'espera'), 0) / 1000.0, 1)       AS espera,
+       round(coalesce(sum(metros_trozo) FILTER (WHERE situacion = 'descanso'), 0) / 1000.0, 1)     AS descanso,
+       round(coalesce(sum(metros_trozo) FILTER (WHERE situacion = 'desconectado'), 0) / 1000.0, 1) AS fuera,
+       count(DISTINCT matricula)::int AS coches
+       FROM solape`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+  const x = r.rows[0] || {};
+  return {
+    viaje: Number(x.viaje) || 0, espera: Number(x.espera) || 0,
+    descanso: Number(x.descanso) || 0, fuera: Number(x.fuera) || 0,
+    coches: Number(x.coches) || 0,
+  };
+}
+
+/**
+ * El flujo de km de la flota para el Sankey, listo para generarPdfFlujo: día y
+ * noche como tramos, cada uno con sus buckets. Por matrícula (bucketsTurno), así
+ * no se duplica. `totalPasajero` = viaje (hasta la Fase 3 no se separa pasajero/ida,
+ * `totalIda` queda en 0). El color de los tramos lo pone quien dibuja (tiene pdf-lib).
+ */
+async function sankeyFlota(dia) {
+  const [bDia, bNoche] = await Promise.all([bucketsTurno(dia, 'dia'), bucketsTurno(dia, 'noche')]);
+  const tot = b => ({
+    totalMapon: Math.round((b.viaje + b.espera + b.descanso + b.fuera) * 10) / 10,
+    totalPasajero: b.viaje, totalIda: 0,
+    totalEspera: b.espera, totalDescanso: b.descanso, totalFuera: b.fuera,
+  });
+  return {
+    tramos: [
+      { txt: 'Turno de día', tot: tot(bDia) },
+      { txt: 'Turno de noche', tot: tot(bNoche) },
+    ],
+    matriculas: Math.max(bDia.coches, bNoche.coches),
+  };
+}
+
+module.exports = {
+  ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
+  horasConectadasPorConductor, bucketsTurno, sankeyFlota,
+};
