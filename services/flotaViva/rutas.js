@@ -40,6 +40,10 @@ async function ingestarRutas({ desde, hasta, ventanaDias = 3 } = {}) {
     await guardarLote(trips);
     trayectos += trips.length;
     metros += trips.reduce((s, t) => s + t.metros, 0);
+    // Progreso por ventana: en un backfill de un mes es lo único que dice que
+    // sigue vivo y por dónde va.
+    console.log(`   🛰️  [rutas] ${iso(v).slice(0, 10)}…${iso(hastaV).slice(0, 10)}: ` +
+                `${trips.length} trayecto(s) (acum. ${trayectos})`);
     v = vFin;
   }
   return { trayectos, km: Math.round(metros / 100) / 10, desde: iso(ini), hasta: iso(fin) };
@@ -91,4 +95,58 @@ async function kmPorCoche(dia) {
   return m;
 }
 
-module.exports = { ingestarRutas, guardarLote, kmPorCoche };
+/**
+ * Km CONECTADO vs DESCONECTADO por conductor en un día, cruzando el núcleo con
+ * los tramos. (Fase 3.)
+ *
+ * Cada trayecto de Mapon (fv_ruta) se reparte entre los tramos de BOLT que toca,
+ * en proporción al TIEMPO que solapa con cada uno; los metros de un tramo cuentan
+ * como "conectado" o "desconectado" según su situación. Así, un coche que rueda
+ * con BOLT apagado suma "km desconectado" —rodar fuera de plataforma— y lo demás
+ * es "km conectado". Es la fuente buena (route/list), no el mileage.
+ *
+ * El reparto es por tiempo (asume velocidad uniforme dentro del trayecto): es una
+ * aproximación, pero la única defendible sin la traza punto a punto, y para el km
+ * total por conductor cuadra. Los tramos desconectados no llevan conductor en
+ * BOLT, así que sus km caen en "(sin conductor)": justo lo que hay que mirar.
+ */
+async function kmConectadoDesconectado(dia) {
+  const r = await db.consulta(
+    `WITH solape AS (
+       SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
+              s.conectado,
+              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
+         FROM fv_ruta r
+         JOIN fv_vehiculo v      ON v.mapon_unit = r.unit_id
+         JOIN fv_tramo t         ON t.vehiculo_uuid = v.uuid
+                                AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
+         JOIN fv_cat_situacion s ON s.codigo = t.situacion
+         LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
+          AND (r.inicio AT TIME ZONE 'Europe/Madrid')::date = $1::date
+     )
+     SELECT conductor,
+            round(coalesce(sum(metros_trozo) FILTER (WHERE conectado), 0) / 1000.0, 1)     AS km_conectado,
+            round(coalesce(sum(metros_trozo) FILTER (WHERE NOT conectado), 0) / 1000.0, 1) AS km_desconectado,
+            round(coalesce(sum(metros_trozo), 0) / 1000.0, 1)                              AS km_total
+       FROM solape
+      GROUP BY conductor
+      ORDER BY km_total DESC NULLS LAST`, [String(dia).slice(0, 10)]);
+
+  const conductores = r.rows.map(x => ({
+    conductor: x.conductor,
+    conectado: Number(x.km_conectado) || 0,
+    desconectado: Number(x.km_desconectado) || 0,
+    total: Number(x.km_total) || 0,
+  }));
+  const suma = k => Math.round(conductores.reduce((a, f) => a + f[k], 0) * 10) / 10;
+  return {
+    dia: String(dia).slice(0, 10),
+    conductores,
+    total: { conectado: suma('conectado'), desconectado: suma('desconectado'), total: suma('total') },
+  };
+}
+
+module.exports = { ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado };

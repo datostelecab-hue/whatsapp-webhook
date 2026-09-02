@@ -197,7 +197,23 @@ router.get('/api/ingestar-rutas', responde(async (req, res) => {
   if (!desde && req.query.dias) {
     desde = new Date(Date.now() - Number(req.query.dias) * 86400000).toISOString();
   }
-  const r = await require('../services/flotaViva/rutas').ingestarRutas({ desde, hasta });
+  const rutas = require('../services/flotaViva/rutas');
+
+  // Rango largo (el backfill de la migración, desde el 1 de agosto) NO puede ir
+  // síncrono: son minutos y el HTTP se corta. Se lanza en segundo plano y se
+  // sigue por los logs (progreso por ventana) o por /api/km-hoy.
+  const diasRango = desde ? (Date.now() - new Date(desde).getTime()) / 86400000 : 1;
+  if (req.query.bg === '1' || diasRango > 7) {
+    rutas.ingestarRutas({ desde, hasta })
+      .then(r => console.log(`🛰️  [FLOTA VIVA] Backfill rutas TERMINADO: ${r.trayectos} trayecto(s), ${r.km} km`))
+      .catch(e => console.error('❌ [FLOTA VIVA] Backfill rutas falló:', e.message));
+    return {
+      iniciado: true, desde: desde || '(auto)', hasta: hasta || '(ahora)',
+      nota: 'Corre en segundo plano. Mira los logs de Render (progreso por ventana) o /flota-viva/api/km-hoy.',
+    };
+  }
+
+  const r = await rutas.ingestarRutas({ desde, hasta });
   console.log(`🛰️  [FLOTA VIVA] Backfill rutas: ${r.trayectos} trayecto(s), ${r.km} km ` +
               `(${r.desde} → ${r.hasta})`);
   return r;

@@ -3,11 +3,16 @@ const ExcelJS = require('exceljs');
 const router = express.Router();
 const { tableroControl } = require('../services/control');
 const { enDirecto } = require('../services/flotaViva/directo');
+const { kmConectadoDesconectado } = require('../services/flotaViva/rutas');
 const { enviarAtencionHora } = require('../services/whatsapp');
 const justificantes = require('../services/justificantes');
 const { generarExcelTurnos } = require('../services/controlExcel');
 
 const MAX_ENVIO = 200;
+
+// Hoy en Madrid, 'YYYY-MM-DD'. Los datos van por día operativo.
+const hoyMadrid = () => new Intl.DateTimeFormat('en-CA',
+  { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 // EN DIRECTO — el cockpit. Fusiona el plan del Cuadrante con la realidad viva de
 // Flota Viva y las alertas abiertas. Sustituye al tablero de hojas (que sigue
@@ -28,6 +33,30 @@ router.get('/api/directo', async (req, res) => {
     console.error('❌ [Control] /api/directo:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
   }
+});
+
+// ── KM y traza (Fase 3) ─────────────────────────────────────────────────────
+// El km CONECTADO vs DESCONECTADO por conductor, del núcleo (route/list cruzado
+// con los tramos). Es la fuente buena: el km del `mileage` era el que daba 0.
+router.get('/km', (req, res) => {
+  res.render('kmTraza', { titulo: 'Control · KM y traza', seccion: 'control', layout: 'layout-gestion' });
+});
+router.get('/api/km-traza', async (req, res) => {
+  try {
+    await require('../services/flotaViva/db').preparar();
+    const dia = (req.query.dia && String(req.query.dia).slice(0, 10)) || hoyMadrid();
+    res.json({ status: 'ok', ...(await kmConectadoDesconectado(dia)) });
+  } catch (error) {
+    console.error('❌ [Control] /api/km-traza:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// ── Reportes ────────────────────────────────────────────────────────────────
+// De momento reúne lo que ya es "reporte" y hoy vivía suelto en el clásico: los
+// turnos para imprimir y el reporte de horas del día. Se irá llenando.
+router.get('/reportes', (req, res) => {
+  res.render('reportes', { titulo: 'Control · Reportes', seccion: 'control', layout: 'layout-gestion' });
 });
 
 // El tablero clásico de hojas, aparcado aquí mientras sus exportables (Excel,
