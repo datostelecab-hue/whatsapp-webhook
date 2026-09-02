@@ -5,7 +5,8 @@ const { tableroControl } = require('../services/control');
 const { enDirecto } = require('../services/flotaViva/directo');
 const { kmConectadoDesconectado } = require('../services/flotaViva/rutas');
 const { enviarAtencionHora } = require('../services/whatsapp');
-const justificantes = require('../services/justificantes');
+const justificantes = require('../services/justificantes');   // (reporte: aún usa la hoja, se migra "luego")
+const repoJust = require('../services/repo/justificantes');    // justificar/leer: PostgreSQL
 const { generarExcelTurnos } = require('../services/controlExcel');
 
 const MAX_ENVIO = 200;
@@ -166,13 +167,14 @@ router.post('/justificar', async (req, res) => {
     const b = req.body || {};
     const dia = Number(b.dia);
     if (![0, 1, 2, 3].includes(dia)) throw new Error('Día no válido para justificar (Hoy, Ayer, Hace 2 o Hace 3)');
-    const { str: fecha } = justificantes.fechaDeClave(dia);
-    const r = await justificantes.guardar({
-      fecha, idBolt: b.nombre, nombre: b.nombre, telefono: b.telefono, turno: b.turno,
+    const { Y, M, D, str: fecha } = justificantes.fechaDeClave(dia);
+    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
+    const r = await repoJust.guardar({
+      diaIso: iso, nombre: b.nombre,
       horas: (b.horas == null || b.horas === '') ? '' : Number(b.horas),
-      observacion: b.observacion, creadoPor: (req.usuario && req.usuario.email) || ''
+      observacion: b.observacion, usuarioId: (req.usuario && req.usuario.id) || null,
     });
-    console.log(`📝 [Control] Justificante ${fecha} · ${b.nombre} (VISTA_FINAL: ${r.enVistaFinal ? 'sí' : 'NN'})`);
+    console.log(`📝 [Control] Justificante PG ${iso} · ${b.nombre} → conductor ${r.conductorId} (J en bitácora)`);
     res.json({ status: 'ok', fecha, ...r });
   } catch (e) {
     res.status(400).json({ status: 'error', msg: e.message });
@@ -184,9 +186,12 @@ router.get('/justificantes', async (req, res) => {
   try {
     const dia = Number(req.query.dia);
     const key = [0, 1, 2, 3].includes(dia) ? dia : 1;
-    const { str: fecha } = justificantes.fechaDeClave(key);
-    const m = await justificantes.leerPorFecha(fecha);
-    const justis = [...m.values()].map(j => ({ nombre: j.nombre || j.id_bolt, observacion: j.observacion }));
+    const { Y, M, D, str: fecha } = justificantes.fechaDeClave(key);
+    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
+    const m = await repoJust.leerPorFecha(iso);
+    // El Map trae la misma entrada bajo varias claves (nombre BOLT y canónico): dedup por conductor.
+    const vistos = new Set(); const justis = [];
+    for (const j of m.values()) { if (vistos.has(j.conductorId)) continue; vistos.add(j.conductorId); justis.push({ nombre: j.nombre, observacion: j.observacion }); }
     res.json({ status: 'ok', fecha, justis });
   } catch (e) {
     res.status(500).json({ status: 'error', msg: e.message });
