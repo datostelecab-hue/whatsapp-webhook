@@ -145,6 +145,7 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
 
   const r = await db.consulta(
     `SELECT i.id, i.tipo, c.etiqueta AS tipo_etiqueta, c.gravedad,
+            c.cc_cluster, c.cc_subcluster, c.cc_motivo,
             i.franja, f.etiqueta AS franja_etiqueta,
             to_char(i.dia_operativo, 'YYYY-MM-DD') AS dia,
             v.matricula, i.detalle, i.veces,
@@ -179,6 +180,11 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
     // La llamada del Call Center, si llego a crearse. Sin ella, la incidencia
     // esta explicada aqui pero no cuenta en sus KPIs.
     llamada: x.llamada_clave || '',
+    // Como se clasificaria en el Call Center este tipo de incidencia. Sirve para
+    // el detalle del parte: saber en que cajon cae aunque nadie haya llamado aun.
+    clasificacion: (x.cc_cluster || x.cc_motivo)
+      ? { cluster: x.cc_cluster || '', subcluster: x.cc_subcluster || '', motivo: x.cc_motivo || '' }
+      : null,
   }));
 }
 
