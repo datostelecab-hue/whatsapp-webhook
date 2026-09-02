@@ -44,7 +44,7 @@ async function leerBitacora() {
   // Las fechas se piden como TEXTO ('YYYY-MM-DD') a propósito: node-postgres
   // devuelve las columnas DATE como Date en zona local, y eso desplaza un día según
   // el reloj. Con to_char nos quitamos de encima toda la ambigüedad de zona.
-  const [roster, ausencias, justis, horas] = await Promise.all([
+  const [roster, ausencias, justis, horas, libranzas] = await Promise.all([
     db.consulta(
       `SELECT conductor_id, nombre_apellidos AS nombre, turno, estado
          FROM v_agenda ORDER BY nombre_apellidos`),
@@ -67,6 +67,21 @@ async function leerBitacora() {
          FROM registro_jornada
         WHERE dia BETWEEN $1::date AND $2::date AND efectivo_total_min > 0`,
       [INICIO_ISO, hoyIso]),
+    // Libranza 'L': asignado a una plaza ese día pero NO lo cubre (su coche descansa,
+    // o es CT y no le toca) — la MISMA regla del planificador, f_cobertura, sin
+    // duplicarla. La ausencia se resta aparte (V/B/P la pisará después).
+    db.consulta(
+      `WITH asignados AS (
+         SELECT DISTINCT a.conductor_id, g.dia::date AS dia
+           FROM generate_series($1::date, $2::date, interval '1 day') g(dia)
+           JOIN asignacion a ON a.desde <= g.dia::date AND (a.hasta IS NULL OR a.hasta >= g.dia::date)
+           JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+       ),
+       cubren AS (SELECT DISTINCT conductor_id, dia FROM f_cobertura($1::date, $2::date))
+       SELECT a.conductor_id, to_char(a.dia, 'YYYY-MM-DD') AS dia
+         FROM asignados a
+        WHERE NOT EXISTS (SELECT 1 FROM cubren c WHERE c.conductor_id = a.conductor_id AND c.dia = a.dia)`,
+      [INICIO_ISO, hoyIso]),
   ]);
 
   // Un array de días (todo a null) por conductor_id.
@@ -84,9 +99,14 @@ async function leerBitacora() {
     return c.dias;
   };
 
-  // Orden de aplicación = prioridad de la celda: primero las horas (base), luego 'J'
+  // Orden de aplicación = prioridad de la celda (de menor a mayor): libranza 'L' de
+  // base, luego las horas (si trabajó su libranza, manda la hora), luego 'J'
   // (justificado pisa las horas), y por último la ausencia V/B/P (pisa a todo: si está
   // de vacaciones, la celda es 'V' aunque ese día fichara un rato).
+  libranzas.rows.forEach(r => {
+    const i = idxDe(r.dia);
+    if (i >= 0 && i < nDias) diasDe(r.conductor_id)[i] = 'L';
+  });
   horas.rows.forEach(r => {
     const i = idxDe(r.dia);
     if (i >= 0 && i < nDias) diasDe(r.conductor_id)[i] = Math.round((Number(r.min) || 0) / 6) / 10;
