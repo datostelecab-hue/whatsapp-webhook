@@ -150,6 +150,7 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
      ),
      solape AS (
        SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
+              veh.matricula AS matricula,
               t.situacion,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
                 LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
@@ -163,16 +164,36 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
           AND r.inicio >= v.ini AND r.inicio < v.fin
      )
-     SELECT conductor,
+     -- Por conductor Y matrícula: un conductor puede haber cogido más de un coche
+     -- en su jornada. Se agrupa en JS para dar el total del conductor + la lista
+     -- de matrículas (la de más km primero, que es "el coche" del día).
+     SELECT conductor, matricula,
             round(coalesce(sum(metros_trozo) FILTER (WHERE situacion IN ${EN_BOLT}), 0) / 1000.0, 1) AS km_bolt,
             round(coalesce(sum(metros_trozo) FILTER (WHERE situacion IN ${FUERA}), 0) / 1000.0, 1)   AS km_desc
        FROM solape
-      GROUP BY conductor`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+      GROUP BY conductor, matricula`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
 
-  const conductores = r.rows.map(x => {
+  const porCond = new Map();
+  r.rows.forEach(x => {
     const enBolt = Number(x.km_bolt) || 0;
     const desconectado = Number(x.km_desc) || 0;
-    return { conductor: x.conductor, enBolt, desconectado, total: Math.round((enBolt + desconectado) * 10) / 10 };
+    if (!porCond.has(x.conductor)) {
+      porCond.set(x.conductor, { conductor: x.conductor, enBolt: 0, desconectado: 0, _mats: [] });
+    }
+    const c = porCond.get(x.conductor);
+    c.enBolt += enBolt; c.desconectado += desconectado;
+    if (x.matricula) c._mats.push({ matricula: x.matricula, km: enBolt + desconectado });
+  });
+  const conductores = [...porCond.values()].map(c => {
+    c.enBolt = Math.round(c.enBolt * 10) / 10;
+    c.desconectado = Math.round(c.desconectado * 10) / 10;
+    c.total = Math.round((c.enBolt + c.desconectado) * 10) / 10;
+    c._mats.sort((a, b) => b.km - a.km);
+    // `matricula` = el coche con más km (el principal); `matriculas` = todos.
+    c.matricula = c._mats.length ? c._mats[0].matricula : null;
+    c.matriculas = c._mats.map(m => m.matricula);
+    delete c._mats;
+    return c;
   }).sort((a, b) => b.total - a.total);
   const suma = k => Math.round(conductores.reduce((a, f) => a + f[k], 0) * 10) / 10;
   return {
