@@ -8,13 +8,21 @@
         <i class="fa-solid fa-route text-telecab-gold"></i> KM y traza
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
-        Kilómetros <span class="text-emerald-500 font-medium">conectado</span> vs
-        <span class="text-amber-500 font-medium">desconectado</span> por conductor, del núcleo
-        (Mapon <code>route/list</code>). Rodar desconectado es rodar fuera de plataforma.
+        Kilómetros <span class="text-emerald-500 font-medium">en BOLT</span> (viaje + espera) vs
+        <span class="text-amber-500 font-medium">desconectado</span> (descanso + apagado) por conductor,
+        del núcleo (Mapon <code>route/list</code>). Rodar desconectado es rodar fuera de plataforma.
       </p>
     </div>
-    <input id="k-dia" type="date"
-      class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+    <div class="flex items-center gap-2">
+      <select id="k-turno"
+        class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+        <option value="completo">Día completo</option>
+        <option value="dia">Turno de día (5–17)</option>
+        <option value="noche">Turno de noche (17–5)</option>
+      </select>
+      <input id="k-dia" type="date"
+        class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+    </div>
   </div>
 
   <!-- Totales de flota -->
@@ -48,7 +56,7 @@
 
   function fila(c, max) {
     // Dos barras proporcionales al mayor total, para comparar de un vistazo.
-    const pc = max ? Math.round(c.conectado / max * 100) : 0;
+    const pc = max ? Math.round(c.enBolt / max * 100) : 0;
     const pd = max ? Math.round(c.desconectado / max * 100) : 0;
     const sinCond = c.conductor === '(sin conductor)';
     return '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-x-4 gap-y-2">' +
@@ -62,7 +70,7 @@
           '</div>' +
         '</div>' +
       '</div>' +
-      '<span class="w-24 text-right tabular-nums text-emerald-500" title="Conectado">' + km(c.conectado) + '</span>' +
+      '<span class="w-24 text-right tabular-nums text-emerald-500" title="En BOLT">' + km(c.enBolt) + '</span>' +
       '<span class="w-24 text-right tabular-nums text-amber-500" title="Desconectado">' + km(c.desconectado) + '</span>' +
       '<span class="w-24 text-right tabular-nums font-semibold text-telecab-text" title="Total">' + km(c.total) + '</span>' +
       '</div>';
@@ -70,17 +78,19 @@
 
   async function cargar() {
     const dia = $('#k-dia').value;
+    const turno = $('#k-turno').value;
     $('#k-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>';
     let d;
     try {
-      d = await (await fetch('/control/api/km-traza?dia=' + encodeURIComponent(dia))).json();
+      d = await (await fetch('/control/api/km-traza?dia=' + encodeURIComponent(dia) +
+        '&turno=' + encodeURIComponent(turno))).json();
       if (d.status !== 'ok') throw new Error(d.msg || 'Error');
     } catch (e) {
       $('#k-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(e.message) + '</p>';
       return;
     }
     $('#k-totales').innerHTML =
-      tarjeta('Conectado', d.total.conectado, 'ok') +
+      tarjeta('En BOLT', d.total.enBolt, 'ok') +
       tarjeta('Desconectado', d.total.desconectado, 'aviso') +
       tarjeta('Total flota', d.total.total, '');
 
@@ -89,7 +99,7 @@
     $('#k-lista').innerHTML = cs.length
       ? '<div class="px-4 py-2 border-b border-telecab-border flex items-center gap-x-4 text-[11px] uppercase tracking-wide text-telecab-muted">' +
           '<span class="w-56">Conductor</span><span class="flex-1 min-w-[16rem]"></span>' +
-          '<span class="w-24 text-right">Conect.</span><span class="w-24 text-right">Descon.</span>' +
+          '<span class="w-24 text-right">En BOLT</span><span class="w-24 text-right">Descon.</span>' +
           '<span class="w-24 text-right">Total</span></div>' +
         cs.map(c => fila(c, max)).join('')
       : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Sin km ese día. ' +
@@ -99,6 +109,7 @@
   const hoy = new Date();
   $('#k-dia').value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
   $('#k-dia').addEventListener('change', cargar);
+  $('#k-turno').addEventListener('change', cargar);
   cargar();
 })();
 </script>

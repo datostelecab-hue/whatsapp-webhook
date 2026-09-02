@@ -110,42 +110,71 @@ async function kmPorCoche(dia) {
  * total por conductor cuadra. Los tramos desconectados no llevan conductor en
  * BOLT, así que sus km caen en "(sin conductor)": justo lo que hay que mirar.
  */
-async function kmConectadoDesconectado(dia) {
+// Los turnos, IGUAL que la Auditoría flota (mismas variables de entorno para que
+// no se desincronicen): día 05:00→17:00, noche 17:00→05:00 del día siguiente.
+const HORA_DIA = Number(process.env.AUDITORIA_HORA_DIA || 5);
+const HORA_NOCHE = Number(process.env.AUDITORIA_HORA_NOCHE || 17);
+// [hora_inicio, offset_días_fin, hora_fin]. "completo" es el día natural (00→24),
+// y NO es la suma de día+noche: la madrugada 00:00–05:00 es del turno de noche de
+// la víspera, así que se cuenta aparte.
+const TURNOS = {
+  completo: [0, 1, 0],
+  dia: [HORA_DIA, 0, HORA_NOCHE],
+  noche: [HORA_NOCHE, 1, HORA_DIA],
+};
+
+/**
+ * Km EN BOLT vs DESCONECTADO por conductor, POR TURNO. (Fase 3 / como Auditoría.)
+ *
+ * Un trayecto cuenta en el turno donde EMPIEZA. El turno de noche cruza medianoche
+ * —17:00 a 05:00 del día siguiente—, así que la madrugada va con el conductor de
+ * noche de la víspera, no con el de día que entra a las 5. Partir por día natural
+ * le metía al de día lo que rodó el de noche: eso es justo lo que arregla esto.
+ *
+ * EN BOLT = viaje+espera (has_order + waiting_orders). DESCONECTADO = descanso+
+ * desconectado (busy + inactive): rodar sin estar disponible para la plataforma.
+ */
+async function kmConectadoDesconectado(dia, turno = 'completo') {
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.completo;
+  const EN_BOLT = "('viaje','espera')";
+  const FUERA = "('descanso','desconectado')";
   const r = await db.consulta(
-    `WITH solape AS (
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     ),
+     solape AS (
        SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
-              s.conectado,
+              t.situacion,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
                 LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
                 / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
          FROM fv_ruta r
-         JOIN fv_vehiculo v      ON v.mapon_unit = r.unit_id
-         JOIN fv_tramo t         ON t.vehiculo_uuid = v.uuid
-                                AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
-         JOIN fv_cat_situacion s ON s.codigo = t.situacion
+         CROSS JOIN v
+         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
+         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
+                             AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
          LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND (r.inicio AT TIME ZONE 'Europe/Madrid')::date = $1::date
+          AND r.inicio >= v.ini AND r.inicio < v.fin
      )
      SELECT conductor,
-            round(coalesce(sum(metros_trozo) FILTER (WHERE conectado), 0) / 1000.0, 1)     AS km_conectado,
-            round(coalesce(sum(metros_trozo) FILTER (WHERE NOT conectado), 0) / 1000.0, 1) AS km_desconectado,
-            round(coalesce(sum(metros_trozo), 0) / 1000.0, 1)                              AS km_total
+            round(coalesce(sum(metros_trozo) FILTER (WHERE situacion IN ${EN_BOLT}), 0) / 1000.0, 1) AS km_bolt,
+            round(coalesce(sum(metros_trozo) FILTER (WHERE situacion IN ${FUERA}), 0) / 1000.0, 1)   AS km_desc
        FROM solape
-      GROUP BY conductor
-      ORDER BY km_total DESC NULLS LAST`, [String(dia).slice(0, 10)]);
+      GROUP BY conductor`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
 
-  const conductores = r.rows.map(x => ({
-    conductor: x.conductor,
-    conectado: Number(x.km_conectado) || 0,
-    desconectado: Number(x.km_desconectado) || 0,
-    total: Number(x.km_total) || 0,
-  }));
+  const conductores = r.rows.map(x => {
+    const enBolt = Number(x.km_bolt) || 0;
+    const desconectado = Number(x.km_desc) || 0;
+    return { conductor: x.conductor, enBolt, desconectado, total: Math.round((enBolt + desconectado) * 10) / 10 };
+  }).sort((a, b) => b.total - a.total);
   const suma = k => Math.round(conductores.reduce((a, f) => a + f[k], 0) * 10) / 10;
   return {
     dia: String(dia).slice(0, 10),
+    turno,
     conductores,
-    total: { conectado: suma('conectado'), desconectado: suma('desconectado'), total: suma('total') },
+    total: { enBolt: suma('enBolt'), desconectado: suma('desconectado'), total: suma('total') },
   };
 }
 

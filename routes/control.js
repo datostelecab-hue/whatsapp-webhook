@@ -45,7 +45,8 @@ router.get('/api/km-traza', async (req, res) => {
   try {
     await require('../services/flotaViva/db').preparar();
     const dia = (req.query.dia && String(req.query.dia).slice(0, 10)) || hoyMadrid();
-    res.json({ status: 'ok', ...(await kmConectadoDesconectado(dia)) });
+    const turno = ['dia', 'noche', 'completo'].includes(req.query.turno) ? req.query.turno : 'completo';
+    res.json({ status: 'ok', ...(await kmConectadoDesconectado(dia, turno)) });
   } catch (error) {
     console.error('❌ [Control] /api/km-traza:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
