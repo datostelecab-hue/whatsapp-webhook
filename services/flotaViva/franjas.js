@@ -48,6 +48,15 @@ const GRACIA_MIN = Number(process.env.FLOTA_VIVA_GRACIA_MIN) || 60;
 const DIAS_HABITO = Number(process.env.FLOTA_VIVA_DIAS_HABITO) || 14;
 const VECES_HABITO = Number(process.env.FLOTA_VIVA_VECES_HABITO) || 3;
 
+// La jornada esperada y el margen de relevo, en minutos. Si un coche se
+// desconecta habiendo estado conectado MENOS de (JORNADA − RELEVO) dentro de la
+// franja, es "sin cumplir sus horas". El relevo perdona la media hora de entrega.
+//
+// Son ajustables sin desplegar, y el aviso `desc_sin_horas` nace APAGADO
+// (fv_cat_incidencia.activa): mientras esté apagado, esto no cambia nada.
+const JORNADA_MIN = Number(process.env.FLOTA_VIVA_JORNADA_MIN) || 480;   // 8 h
+const RELEVO_MIN  = Number(process.env.FLOTA_VIVA_RELEVO_MIN)  || 30;    // media hora
+
 /** La hora local de un instante, en minutos desde medianoche, y su fecha. */
 function localDe(cuando) {
   const p = new Intl.DateTimeFormat('es-ES', {
@@ -299,6 +308,38 @@ async function yaTrabajaronHoy(franja, diaOperativo) {
 }
 
 /**
+ * Cuántos MINUTOS lleva conectado cada coche DENTRO de la franja.
+ *
+ * No es el tramo de ahora: es la suma de todos los ratos conectados desde que
+ * abrió la franja hasta este momento, recortados a la franja. Es lo que decide,
+ * cuando un coche se desconecta, si ha cumplido su jornada o se ha ido antes.
+ *
+ * Comer parte la jornada en dos tramos conectados con un descanso en medio; por
+ * eso se SUMAN los ratos y no se mira solo el último. El descanso no cuenta como
+ * conectado —`s.conectado` lo excluye—, que es justamente lo que se quiere: las
+ * horas son de trabajo, no de estar con BOLT abierto sin coger nada.
+ */
+async function conectadoEnFranja(franja, diaOperativo) {
+  const r = await db.consulta(
+    `WITH f AS (
+       SELECT ($1::date + ($2::int || ' minutes')::interval) AT TIME ZONE 'Europe/Madrid' AS inicio,
+              now() AS fin)
+     SELECT t.vehiculo_uuid,
+            floor(sum(EXTRACT(EPOCH FROM (
+              LEAST(COALESCE(t.hasta, f.fin), f.fin) - GREATEST(t.desde, f.inicio)
+            ))) / 60)::int AS minutos
+       FROM fv_tramo t
+       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.conectado
+       CROSS JOIN f
+      WHERE COALESCE(t.hasta, f.fin) > f.inicio AND t.desde < f.fin
+      GROUP BY t.vehiculo_uuid`,
+    [diaOperativo, franja.inicio_min]);
+  const m = new Map();
+  r.rows.forEach(x => m.set(x.vehiculo_uuid, Number(x.minutos) || 0));
+  return m;
+}
+
+/**
  * Mira qué está pasando ahora y abre o cierra incidencias.
  *
  * Fuera de franja no hace nada: en el relevo no se avisa, se mira a mano.
@@ -349,6 +390,14 @@ async function revisar() {
     ? await habituales(franja, diaOperativo)
     : new Set();
 
+  // Las horas conectadas dentro de la franja, SOLO si el aviso de "sin cumplir
+  // horas" está encendido. Mientras esté apagado ni se hace la consulta ni cambia
+  // nada: la desconexión sigue saliendo como el 'desconectado' de siempre.
+  const conectadoMin = activos.has('desc_sin_horas')
+    ? await conectadoEnFranja(franja, diaOperativo)
+    : new Map();
+  const UMBRAL = JORNADA_MIN - RELEVO_MIN;
+
   let nuevas = 0, abiertas = 0;
   const clave = { franja: franja.codigo, diaOperativo };
 
@@ -375,8 +424,22 @@ async function revisar() {
         // Aquí `venia_de_antes` no puede ser cierto: para llegar a esta rama el
         // coche tuvo que estar conectado dentro de la franja, así que la caída
         // es de la franja. La hora que se escribe es la de verdad.
-        await apunta('desconectado',
-          `Se desconectó hace ${duracion(segTotal)}` + (km ? ` y lleva ${km} km así` : ''));
+        //
+        // DOS FORMAS DE LA MISMA CAÍDA, nunca a la vez. Si el aviso de horas está
+        // encendido y se fue con menos de su jornada, es la versión fina ("sin
+        // cumplir horas"); si no, la de siempre. La otra se resuelve, para no
+        // llamar dos veces por la misma desconexión.
+        const cumplidos = conectadoMin.get(uuid);
+        if (activos.has('desc_sin_horas') && cumplidos != null && cumplidos < UMBRAL) {
+          await apunta('desc_sin_horas',
+            `Se fue con ${duracion(cumplidos * 60)} de ${duracion(JORNADA_MIN * 60)}` +
+            ` · le faltaban ${duracion((JORNADA_MIN - cumplidos) * 60)}` + (km ? ` · ${km} km` : ''));
+          await resolver(uuid, 'desconectado', franja.codigo, diaOperativo);
+        } else {
+          await apunta('desconectado',
+            `Se desconectó hace ${duracion(segTotal)}` + (km ? ` y lleva ${km} km así` : ''));
+          await resolver(uuid, 'desc_sin_horas', franja.codigo, diaOperativo);
+        }
       } else if (habitual.has(uuid)) {
         await apunta('no_aparece',
           `Sin conectarse en lo que va de franja (${Math.floor(desdeInicio / 60)} h)`);
@@ -393,8 +456,11 @@ async function revisar() {
       continue;
     }
 
-    // Está conectado: lo que hubiera de estar caído deja de pasar.
+    // Está conectado: lo que hubiera de estar caído deja de pasar. Si volvió
+    // (de comer, de repostar), la de "sin cumplir horas" también se resuelve —
+    // ya está de vuelta, y seguirá sumando minutos.
     await resolver(uuid, 'desconectado', franja.codigo, diaOperativo);
+    await resolver(uuid, 'desc_sin_horas', franja.codigo, diaOperativo);
     await resolver(uuid, 'no_aparece', franja.codigo, diaOperativo);
     await resolver(uuid, 'rueda_caido', franja.codigo, diaOperativo);
 
@@ -443,6 +509,6 @@ async function revisar() {
 
 module.exports = {
   franjas, franjaDe, cruzaMedianoche, dentroDeFranja, localDe, vispera, abrir, resolver, habituales, cerrarFranjasPasadas,
-  yaTrabajaronHoy, tomarCorte, estadoDeFranja, revisar,
-  MAX_DESCANSO_MIN, MAX_KM_DESCANSO, GRACIA_MIN, DIAS_HABITO, VECES_HABITO,
+  yaTrabajaronHoy, conectadoEnFranja, tomarCorte, estadoDeFranja, revisar,
+  MAX_DESCANSO_MIN, MAX_KM_DESCANSO, GRACIA_MIN, DIAS_HABITO, VECES_HABITO, JORNADA_MIN, RELEVO_MIN,
 };

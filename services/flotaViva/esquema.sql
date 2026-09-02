@@ -439,6 +439,25 @@ ON CONFLICT (codigo) DO UPDATE SET
   etiqueta = EXCLUDED.etiqueta, detalle = EXCLUDED.detalle,
   gravedad = EXCLUDED.gravedad, orden = EXCLUDED.orden;
 
+-- SE HA DESCONECTADO SIN CUMPLIR SUS HORAS (Fase 2) — NACE APAGADO A PROPOSITO.
+--
+-- Es mas fino que 'desconectado': no es que se haya caido, es que se ha ido antes
+-- de completar su jornada (conectado menos del umbral dentro de la franja). Toca
+-- el cron de produccion, asi que se entrega DESACTIVADO y no dispara nada hasta
+-- que Trafico ajuste el umbral (variables FLOTA_VIVA_JORNADA_MIN / _RELEVO_MIN) y
+-- compruebe que no salta de mas. Se enciende con un UPDATE, sin desplegar:
+--   UPDATE fv_cat_incidencia SET activa = TRUE WHERE codigo = 'desc_sin_horas';
+--
+-- Va en su propio INSERT porque el de arriba no trae la columna `activa`, y el
+-- ON CONFLICT de aqui NO la toca: una vez encendido, sigue encendido tras cada
+-- despliegue (manda lo que diga la base, no este fichero).
+INSERT INTO fv_cat_incidencia (codigo, etiqueta, detalle, gravedad, activa, orden) VALUES
+  ('desc_sin_horas', 'Se ha desconectado sin cumplir sus horas',
+   'Se fue antes de completar su jornada. El detalle dice cuanto llevaba', 4, FALSE, 1)
+ON CONFLICT (codigo) DO UPDATE SET
+  etiqueta = EXCLUDED.etiqueta, detalle = EXCLUDED.detalle,
+  gravedad = EXCLUDED.gravedad, orden = EXCLUDED.orden;
+
 -- ── La incidencia ─────────────────────────────────────────────────────────
 -- Una por coche, franja y dia: si el mismo coche se cae tres veces en la misma
 -- franja no son tres llamadas, es una conversacion. Se reabre y se suma.
