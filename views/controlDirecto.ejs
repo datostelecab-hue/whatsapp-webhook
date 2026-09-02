@@ -66,6 +66,17 @@
   // que está trabajando.
   const abiertos = new Set();
 
+  // El filtro por categoría: se pulsa un chip de resumen y la lista se queda solo
+  // con esos. null = todos. Cada categoría es un predicado sobre la fila.
+  let filtroCat = null;
+  const CATS = {
+    conectados:  c => c.vivo && c.vivo.conectado,
+    descanso:    c => c.estado.codigo === 'descanso' || c.estado.codigo === 'descanso_rodando',
+    sinConexion: c => c.estado.codigo === 'sin_conexion',
+    avisos:      c => c.incidencias.length > 0,
+    fueraDePlan: c => !c.enPlan,
+  };
+
   const chip = (txt, tono) =>
     '<span class="px-2 py-0.5 rounded-md text-xs font-medium ' + (TONO[tono] || TONO.muted) + '">' + esc(txt) + '</span>';
 
@@ -86,19 +97,35 @@
 
   function pintarResumen(r) {
     if (!r) { $('#d-resumen').innerHTML = ''; return; }
-    const c = [
-      ['Coches', r.coches, 'muted'],
-      ['Conectados', r.conectados, 'ok'],
-      ['En descanso', r.enDescanso, 'aviso'],
-      ['Debían salir sin conexión', r.sinConexion, r.sinConexion ? 'aviso' : 'muted'],
-      ['Avisos abiertos', r.alertas, r.alertas ? 'error' : 'muted'],
-      ['Fuera de plan', r.fueraDePlan, r.fueraDePlan ? 'aviso' : 'muted'],
+    // [categoría, etiqueta, número, tono]. La primera (categoría '') es el total:
+    // pulsarla quita el filtro. El resto filtra por su predicado de CATS.
+    const chips = [
+      ['', 'Coches', r.coches, 'muted'],
+      ['conectados', 'Conectados', r.conectados, 'ok'],
+      ['descanso', 'En descanso', r.enDescanso, 'aviso'],
+      ['sinConexion', 'Debían salir sin conexión', r.sinConexion, r.sinConexion ? 'aviso' : 'muted'],
+      ['avisos', 'Avisos abiertos', r.alertas, r.alertas ? 'error' : 'muted'],
+      ['fueraDePlan', 'Fuera de plan', r.fueraDePlan, r.fueraDePlan ? 'aviso' : 'muted'],
     ];
-    $('#d-resumen').innerHTML = c.map(([t, n, tono]) =>
-      '<span class="px-3 py-1.5 rounded-xl border border-telecab-border bg-telecab-card text-sm ' +
-        'flex items-center gap-2"><b class="tabular-nums ' +
-        (tono === 'error' ? 'text-red-500' : tono === 'aviso' ? 'text-amber-500' : tono === 'ok' ? 'text-emerald-500' : 'text-telecab-text') +
-        '">' + (n || 0) + '</b> <span class="text-telecab-muted">' + esc(t) + '</span></span>').join('');
+    $('#d-resumen').innerHTML = chips.map(([cat, t, n, tono]) => {
+      const activo = cat ? filtroCat === cat : !filtroCat;   // el total se resalta si no hay filtro
+      const num = tono === 'error' ? 'text-red-500' : tono === 'aviso' ? 'text-amber-500'
+        : tono === 'ok' ? 'text-emerald-500' : 'text-telecab-text';
+      return '<button data-cat="' + cat + '" class="px-3 py-1.5 rounded-xl border text-sm flex items-center gap-2 ' +
+        (activo ? 'border-telecab-gold bg-telecab-gold/10' : 'border-telecab-border bg-telecab-card hover:border-telecab-muted') +
+        '"><b class="tabular-nums ' + num + '">' + (n || 0) + '</b> ' +
+        '<span class="text-telecab-muted">' + esc(t) + '</span></button>';
+    }).join('');
+
+    // Pulsar un chip filtra por su categoría; volver a pulsarlo (o pulsar Coches)
+    // lo quita. El filtro se combina con el buscador de texto.
+    $('#d-resumen').querySelectorAll('[data-cat]').forEach(b =>
+      b.addEventListener('click', () => {
+        const cat = b.dataset.cat;
+        filtroCat = (cat && filtroCat !== cat) ? cat : null;
+        pintarResumen(r);
+        pintar();
+      }));
   }
 
   // El bloque de una incidencia dentro del detalle: qué pasó + los botones.
@@ -200,16 +227,19 @@
   function pintar() {
     if (!DATOS) return;
     const q = ($('#d-filtro').value || '').trim().toLowerCase();
+    const pred = filtroCat && CATS[filtroCat] ? CATS[filtroCat] : null;
     const todas = DATOS.coches || [];
-    const filas = todas.filter(c => !q ||
-      (c.matricula || '').toLowerCase().includes(q) ||
-      ((c.plan.dia + ' ' + c.plan.noche + ' ' + ((c.vivo && c.vivo.conductor) || '') +
-        ' ' + ((c.vivo && c.vivo.ultimoConductor) || '')).toLowerCase().includes(q)));
+    const filas = todas.filter(c =>
+      (!pred || pred(c)) &&
+      (!q ||
+        (c.matricula || '').toLowerCase().includes(q) ||
+        ((c.plan.dia + ' ' + c.plan.noche + ' ' + ((c.vivo && c.vivo.conductor) || '') +
+          ' ' + ((c.vivo && c.vivo.ultimoConductor) || '')).toLowerCase().includes(q))));
 
     $('#d-lista').innerHTML = filas.length
       ? filas.map(filaHTML).join('')
       : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nada que mostrar.</p>';
-    $('#d-cuenta').textContent = q ? filas.length + ' de ' + todas.length : todas.length + ' coche(s)';
+    $('#d-cuenta').textContent = (q || filtroCat) ? filas.length + ' de ' + todas.length : todas.length + ' coche(s)';
 
     // Reabrir lo que estaba abierto antes de repintar.
     $('#d-lista').querySelectorAll('.dfila').forEach(fila => {
