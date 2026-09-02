@@ -28,7 +28,7 @@ const ACCESO = {
   '/rrhh': ['oficina'], '/administracion': ['oficina'], '/fichas': ['oficina'],
   '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'], '/convenio': ['oficina'],
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],
-  '/control': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
+  '/control': ['trafico'], '/flota-viva': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
   '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico'],
   '/sanciones': ['trafico'], '/callcenter': ['trafico'], '/migraciones': ['desarrollador'], '/explorador': ['desarrollador'],
   // La plantilla la miran los dos departamentos: Trafico para saber quien

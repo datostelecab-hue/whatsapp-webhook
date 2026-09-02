@@ -1,0 +1,32 @@
+<%
+  // Sub-navegacion de Control de trafico. El modulo une el tablero de asistencia
+  // (Control) y el vivo (Flota Viva) bajo un mismo apartado; estas pastillas
+  // cambian entre sus partes. `sub` dice cual esta activa. Flota Viva ya no vive
+  // en Operaciones: es una parte de aqui.
+  const _sub = typeof sub !== 'undefined' ? sub : 'directo';
+  const _pills = [
+    { id: 'directo',   href: '/control',            texto: 'En directo',   icono: 'fa-satellite-dish' },
+    { id: 'flota',     href: '/flota-viva',          texto: 'Flota viva',   icono: 'fa-tower-cell' },
+    { id: 'historico', href: '/flota-viva/partes',   texto: 'Histórico',    icono: 'fa-clock-rotate-left' },
+    { id: 'km',        href: '/control/km',          texto: 'KM y traza',   icono: 'fa-route', proximamente: true },
+    { id: 'reportes',  href: '/control/reportes',    texto: 'Reportes',     icono: 'fa-chart-pie', proximamente: true },
+  ];
+%>
+<div class="px-4 lg:px-6 pt-4 lg:pt-6 max-w-[1600px] mx-auto">
+  <div class="flex flex-wrap items-center gap-2">
+    <% _pills.forEach(function (p) { const on = p.id === _sub; %>
+      <% if (p.proximamente) { %>
+        <span class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium border border-dashed border-telecab-border text-telecab-muted/60 cursor-not-allowed" title="Próximamente">
+          <i class="fa-solid <%= p.icono %>"></i><%= p.texto %>
+        </span>
+      <% } else { %>
+        <a href="<%= p.href %>"
+           class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition <%=
+             on ? 'bg-telecab-gold text-telecab-dark shadow-gold'
+                : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:border-telecab-gold/40 hover:text-telecab-text' %>">
+          <i class="fa-solid <%= p.icono %>"></i><%= p.texto %>
+        </a>
+      <% } %>
+    <% }); %>
+  </div>
+</div>

@@ -22,14 +22,14 @@ const responde = fn => async (req, res) => {
 
 router.get('/', (req, res) => {
   res.render('flotaViva', {
-    titulo: 'Flota viva', seccion: 'flota-viva', layout: 'layout-gestion',
+    titulo: 'Control · Flota viva', seccion: 'control', layout: 'layout-gestion',
   });
 });
 
 // El reporte: que paso en cada franja y que se hizo.
 router.get('/partes', (req, res) => {
   res.render('flotaVivaPartes', {
-    titulo: 'Partes de incidencias', seccion: 'flota-viva', layout: 'layout-gestion',
+    titulo: 'Control · Histórico', seccion: 'control', layout: 'layout-gestion',
   });
 });
 
