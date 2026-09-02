@@ -39,6 +39,23 @@ window.GestionIncidencia = (function () {
     return pedido;
   }
 
+  /**
+   * El botón "He llamado" — seguimiento, NO cierre.
+   *
+   * A diferencia de los de gestión, este no abre diálogo ni cierra la incidencia:
+   * deja constancia de un intento de llamada y ya. Se puede pulsar tantas veces
+   * como se llame; el número entre paréntesis son los intentos que ya hay.
+   */
+  function botonLlamar(id, veces) {
+    return '<button data-llamar="' + esc(id) + '" ' +
+      'title="Dejar constancia de que has llamado. No cierra la incidencia." ' +
+      'class="px-3 py-1 rounded-lg border border-telecab-border text-sm whitespace-nowrap ' +
+      'text-telecab-text hover:border-telecab-gold">' +
+      '<i class="fa-solid fa-phone text-xs mr-1"></i>He llamado' +
+      (Number(veces) > 0 ? ' <span class="text-telecab-muted">(' + esc(veces) + ')</span>' : '') +
+      '</button>';
+  }
+
   /** Los botones de una incidencia, listos para meter en el HTML. */
   function botones(id) {
     return GESTIONES.map(g =>
@@ -64,6 +81,25 @@ window.GestionIncidencia = (function () {
         const id = Number(b.dataset.just);
         const r = await abrir(buscar ? buscar(id) : { id }, b.dataset.gestion);
         if (r && hecho) hecho(id, r);
+      }));
+
+    // "He llamado": un POST y ya. No abre diálogo. Se deshabilita mientras vuela
+    // para no apuntar dos intentos de un doble clic, y avisa con el número.
+    raiz.querySelectorAll('[data-llamar]').forEach(b =>
+      b.addEventListener('click', async () => {
+        const id = Number(b.dataset.llamar);
+        b.disabled = true;
+        try {
+          const res = await fetch('/flota-viva/api/incidencia/' + id + '/he-llamado', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+          });
+          const d = await res.json();
+          if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo apuntar');
+          if (window.Dialogo && Dialogo.hecho) Dialogo.hecho('Apuntado · intento nº ' + d.veces);
+          if (hecho) hecho(id, d);
+        } catch (e) {
+          if (window.Dialogo) Dialogo.aviso({ titulo: 'No se pudo apuntar la llamada', texto: e.message, tono: 'error' });
+        } finally { b.disabled = false; }
       }));
   }
 
@@ -186,5 +222,5 @@ window.GestionIncidencia = (function () {
     }
   }
 
-  return { cargar, lista: () => GESTIONES, botones, enganchar, abrir };
+  return { cargar, lista: () => GESTIONES, botones, botonLlamar, enganchar, abrir };
 })();

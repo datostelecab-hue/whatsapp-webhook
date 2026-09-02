@@ -153,13 +153,22 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
             i.justificada_at, i.justificada_por, i.motivo, i.llamada_clave,
             i.gestion, g.etiqueta AS gestion_etiqueta, g.color AS gestion_color,
             EXTRACT(EPOCH FROM (COALESCE(i.resuelta_at, now()) - i.abierta_at))::bigint AS segundos,
-            co.nombre AS conductor, co.telefono
+            co.nombre AS conductor, co.telefono,
+            sg.n AS seg_n, sg.ult_quien AS seg_quien, sg.ult_at AS seg_at
        FROM fv_incidencia i
        JOIN fv_cat_incidencia c ON c.codigo = i.tipo
        JOIN fv_franja f         ON f.codigo = i.franja
        JOIN fv_vehiculo v       ON v.uuid = i.vehiculo_uuid
        LEFT JOIN fv_cat_gestion g ON g.codigo = i.gestion
        LEFT JOIN fv_conductor co ON co.uuid = i.conductor_uuid
+       -- Cuántas veces se ha llamado ya (el "He llamado" de En directo) y el
+       -- último intento. Es un rastro aparte: no cierra la incidencia.
+       LEFT JOIN LATERAL (
+         SELECT s.quien AS ult_quien, s.creada_at AS ult_at,
+                (SELECT count(*)::int FROM fv_seguimiento s2 WHERE s2.incidencia_id = i.id) AS n
+           FROM fv_seguimiento s WHERE s.incidencia_id = i.id
+          ORDER BY s.creada_at DESC LIMIT 1
+       ) sg ON true
       WHERE ${donde.join(' AND ')}
       ORDER BY i.resuelta_at NULLS FIRST, c.gravedad DESC, i.abierta_at`, params);
 
@@ -185,6 +194,10 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
     clasificacion: (x.cc_cluster || x.cc_motivo)
       ? { cluster: x.cc_cluster || '', subcluster: x.cc_subcluster || '', motivo: x.cc_motivo || '' }
       : null,
+    // Cuántas veces se ha llamado ya y el último intento. "He llamado" no cierra:
+    // por eso una incidencia puede seguir abierta con varios seguimientos.
+    seguimientos: Number(x.seg_n) || 0,
+    ultimoSeguimiento: x.seg_at ? { quien: x.seg_quien || '', at: x.seg_at } : null,
   }));
 }
 
@@ -345,6 +358,35 @@ async function justificar(id, { gestion = 'llamada', motivo, resultado, accion, 
   };
 }
 
+/**
+ * "He llamado" — un intento de llamada, SIN cerrar la incidencia.
+ *
+ * Es el botón de seguimiento de En directo, al lado de Justificar. A diferencia
+ * de justificar, no toca justificada_at ni crea llamada en el Call Center: solo
+ * deja rastro de que se ha intentado. Se puede pulsar tantas veces como se llame
+ * —no cogen, se vuelve a marcar— y cada vez suma una fila con quién y cuándo. La
+ * incidencia sigue abierta hasta que alguien la justifica de verdad.
+ */
+async function seguir(id, { quien, nota } = {}) {
+  const inc = (await db.consulta(
+    'SELECT id FROM fv_incidencia WHERE id = $1', [Number(id)])).rows[0];
+  if (!inc) throw new Error('No existe esa incidencia');
+  await db.consulta(
+    'INSERT INTO fv_seguimiento (incidencia_id, quien, nota) VALUES ($1, $2, $3)',
+    [Number(id), String(quien || '').slice(0, 120) || null, String(nota || '').trim() || null]);
+  const c = (await db.consulta(
+    'SELECT count(*)::int AS n FROM fv_seguimiento WHERE incidencia_id = $1', [Number(id)])).rows[0];
+  return { id: Number(id), veces: c.n };
+}
+
+/** Los intentos de llamada de una incidencia, del primero al último. */
+async function seguimientos(id) {
+  const r = await db.consulta(
+    `SELECT quien, nota, creada_at
+       FROM fv_seguimiento WHERE incidencia_id = $1 ORDER BY creada_at`, [Number(id)]);
+  return r.rows.map(x => ({ quien: x.quien || '', nota: x.nota || '', at: x.creada_at }));
+}
+
 /** La clasificación y los resultados válidos de una incidencia, para el diálogo. */
 async function clasificacionDe(id) {
   const r = (await db.consulta(
@@ -428,6 +470,6 @@ async function partes({ desde, hasta } = {}) {
 }
 
 module.exports = {
-  estado, historial, incidencias, gestiones, justificar, clasificacionDe,
+  estado, historial, incidencias, gestiones, justificar, seguir, seguimientos, clasificacionDe,
   cierre, partes, duracion,
 };

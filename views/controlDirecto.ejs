@@ -1,0 +1,282 @@
+<%- include('partials/control-nav', { sub: 'directo' }) %>
+
+<div class="max-w-[1400px] mx-auto">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-satellite-dish text-telecab-gold"></i> En directo
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        El plan del cuadrante contra lo que rueda ahora mismo. En
+        <span class="text-red-500 font-medium">rojo</span> lo que hay que llamar.
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="d-actualizado" class="text-xs text-telecab-muted"></span>
+      <a href="/control/clasico" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+        text-sm text-telecab-muted hover:text-telecab-text" title="El tablero de horas de siempre (Excel, justificantes)">
+        <i class="fa-solid fa-table-list mr-1"></i> Tablero clásico
+      </a>
+      <button id="d-refrescar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+        text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-rotate mr-1"></i> Actualizar
+      </button>
+    </div>
+  </div>
+
+  <!-- Si una de las dos fuentes no responde, se dice: el resto se ve igual. -->
+  <div id="d-aviso" class="hidden mb-3 px-3 py-2 rounded-xl border text-sm"></div>
+
+  <div id="d-resumen" class="flex flex-wrap gap-2 mb-3"></div>
+
+  <div class="mb-3 flex flex-wrap items-center gap-2">
+    <i class="fa-solid fa-filter text-telecab-muted text-xs"></i>
+    <input id="d-filtro" placeholder="Conductor o matrícula"
+      class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-56">
+    <span id="d-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
+  </div>
+
+  <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+    <div id="d-lista">
+      <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+    </div>
+  </div>
+</div>
+
+<script src="/assets/js/flotaVivaGestion.js"></script>
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
+    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  // Los cuatro tonos del sistema, a clases de color.
+  const TONO = {
+    ok:    'bg-emerald-500/15 text-emerald-500',
+    aviso: 'bg-amber-500/15 text-amber-500',
+    error: 'bg-red-500/15 text-red-500',
+    muted: 'bg-telecab-border/40 text-telecab-muted',
+  };
+
+  let DATOS = null;
+  // Las matrículas desplegadas. Se conservan al refrescar, y mientras haya alguna
+  // abierta el auto-refresco se pausa: nadie quiere que le muevan la fila con la
+  // que está trabajando.
+  const abiertos = new Set();
+
+  const chip = (txt, tono) =>
+    '<span class="px-2 py-0.5 rounded-md text-xs font-medium ' + (TONO[tono] || TONO.muted) + '">' + esc(txt) + '</span>';
+
+  // Lo que se ve en vivo, en una línea. Un coche desconectado enseña a su último
+  // conductor: es a quién se llama.
+  function ahoraTxt(v) {
+    if (!v) return '<span class="text-telecab-muted">Sin datos en vivo</span>';
+    if (v.situacion === 'desconectado') {
+      return '<span class="text-telecab-muted">Desconectado' + (v.desdeHace ? ' · hace ' + esc(v.desdeHace) : '') +
+        (v.ultimoConductor ? ' · último: ' + esc(v.ultimoConductor) : '') + '</span>';
+    }
+    const km = v.km != null ? ' · ' + v.km + ' km' : '';
+    return '<span class="text-telecab-text">' + esc(v.etiqueta || v.situacion) + '</span>' +
+      (v.conductor ? ' <span class="text-telecab-muted">· ' + esc(v.conductor) + '</span>' : '') +
+      (v.desdeHace ? ' <span class="text-telecab-muted">· ' + esc(v.desdeHace) + '</span>' : '') +
+      (km ? ' <span class="text-telecab-muted">' + esc(km) + '</span>' : '');
+  }
+
+  function pintarResumen(r) {
+    if (!r) { $('#d-resumen').innerHTML = ''; return; }
+    const c = [
+      ['Coches', r.coches, 'muted'],
+      ['Conectados', r.conectados, 'ok'],
+      ['En descanso', r.enDescanso, 'aviso'],
+      ['Debían salir sin conexión', r.sinConexion, r.sinConexion ? 'aviso' : 'muted'],
+      ['Avisos abiertos', r.alertas, r.alertas ? 'error' : 'muted'],
+      ['Fuera de plan', r.fueraDePlan, r.fueraDePlan ? 'aviso' : 'muted'],
+    ];
+    $('#d-resumen').innerHTML = c.map(([t, n, tono]) =>
+      '<span class="px-3 py-1.5 rounded-xl border border-telecab-border bg-telecab-card text-sm ' +
+        'flex items-center gap-2"><b class="tabular-nums ' +
+        (tono === 'error' ? 'text-red-500' : tono === 'aviso' ? 'text-amber-500' : tono === 'ok' ? 'text-emerald-500' : 'text-telecab-text') +
+        '">' + (n || 0) + '</b> <span class="text-telecab-muted">' + esc(t) + '</span></span>').join('');
+  }
+
+  // El bloque de una incidencia dentro del detalle: qué pasó + los botones.
+  function incidenciaHTML(i) {
+    return '<div class="rounded-lg border border-telecab-border p-2">' +
+      '<div class="flex flex-wrap items-center gap-2">' +
+        '<span class="text-sm ' + (i.gravedad >= 3 ? 'text-red-500 font-medium' : 'text-telecab-text') + '">' +
+          esc(i.etiqueta) + (i.veces > 1 ? ' (x' + i.veces + ')' : '') + '</span>' +
+        '<span class="text-sm text-telecab-muted flex-1 min-w-[8rem]">' + esc(i.detalle) + '</span>' +
+        (i.telefono ? '<a href="tel:' + esc(i.telefono) + '" class="px-2 py-1 rounded-lg border border-telecab-border ' +
+          'text-sm text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-phone-volume"></i></a>' : '') +
+        GestionIncidencia.botonLlamar(i.id, i.seguimientos) +
+        GestionIncidencia.botones(i.id) +
+      '</div>' +
+      (i.ultimoSeguimiento
+        ? '<div class="text-xs text-telecab-muted mt-1"><i class="fa-solid fa-phone mr-1"></i>' +
+          i.seguimientos + ' intento(s) · último ' + esc(i.ultimoSeguimiento.quien || 'sin nombre') +
+          ' · ' + hora(i.ultimoSeguimiento.at) + '</div>'
+        : '') +
+      '</div>';
+  }
+
+  function detalleHTML(c) {
+    const inc = c.incidencias.length
+      ? '<div class="space-y-2">' + c.incidencias.map(incidenciaHTML).join('') + '</div>'
+      : '<p class="text-sm text-telecab-muted">Sin avisos abiertos.</p>';
+
+    return '<div class="ddet hidden px-4 pb-3">' +
+      '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
+        // El plan del día
+        '<div class="grid grid-cols-2 gap-3">' +
+          '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Plan · Día</div>' +
+            '<div class="text-telecab-text">' + (esc(c.plan.dia) || '<span class="text-telecab-muted">sin cubrir</span>') + '</div></div>' +
+          '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-0.5">Plan · Noche</div>' +
+            '<div class="text-telecab-text">' + (esc(c.plan.noche) || '<span class="text-telecab-muted">sin cubrir</span>') + '</div></div>' +
+        '</div>' +
+        // Los avisos con sus botones
+        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos</div>' + inc + '</div>' +
+        // Los trazos del coche (se cargan al abrir)
+        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos de hoy</div>' +
+          '<div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
+      '</div></div>';
+  }
+
+  function filaHTML(c) {
+    const nInc = c.incidencias.length;
+    return '<div class="dfila border-b border-telecab-border" data-mat="' + esc(c.matriculaNorm) + '">' +
+      '<div class="dcab px-4 py-3 cursor-pointer select-none flex flex-wrap items-center gap-x-3 gap-y-1">' +
+        '<span class="font-mono font-semibold text-telecab-text w-24">' + esc(c.matricula) + '</span>' +
+        chip(c.estado.etiqueta, c.estado.tono) +
+        '<span class="text-xs text-telecab-muted w-52 truncate" title="Plan de hoy">' +
+          '<i class="fa-regular fa-calendar mr-1"></i>D: ' + (esc(c.plan.dia) || '—') + ' · N: ' + (esc(c.plan.noche) || '—') + '</span>' +
+        '<span class="text-sm flex-1 min-w-[12rem]">' + ahoraTxt(c.vivo) + '</span>' +
+        (nInc ? chip(nInc + (nInc > 1 ? ' avisos' : ' aviso'), 'error') : '') +
+        (c.cuadrante ? '<span class="text-xs text-telecab-muted">' + esc(c.cuadrante) + '</span>' : '') +
+        '<i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform ml-1"></i>' +
+      '</div>' +
+      detalleHTML(c) +
+      '</div>';
+  }
+
+  // Trae los trazos de un coche y los pinta dentro de su fila. Una vez por
+  // apertura: si ya están, no se vuelve a pedir.
+  async function cargarTrazos(fila) {
+    const caja = fila.querySelector('.dtrazos');
+    if (!caja || caja.dataset.cargado) return;
+    caja.dataset.cargado = '1';
+    const mat = fila.querySelector('.font-mono').textContent.trim();
+    try {
+      const d = await (await fetch('/flota-viva/api/historial/' + encodeURIComponent(mat) + '?dias=1')).json();
+      const h = (d.historial || []);
+      caja.innerHTML = h.length
+        ? '<div class="space-y-1">' + h.map(t =>
+            '<div class="flex items-center gap-2 text-xs">' +
+              '<span class="tabular-nums text-telecab-muted w-24">' + hora(t.desde) + (t.hasta ? '–' + hora(t.hasta) : '–ahora') + '</span>' +
+              '<span class="text-telecab-text w-24">' + esc(t.etiqueta || t.situacion) + '</span>' +
+              '<span class="text-telecab-muted">' + esc(t.duracion || '') + (t.km != null ? ' · ' + t.km + ' km' : '') +
+                (t.conductor ? ' · ' + esc(t.conductor) : '') + '</span>' +
+            '</div>').join('') + '</div>'
+        : '<span class="text-telecab-muted">Sin trazos hoy.</span>';
+    } catch (e) {
+      caja.innerHTML = '<span class="text-red-500">No se pudieron cargar los trazos.</span>';
+      caja.dataset.cargado = '';   // que se pueda reintentar al reabrir
+    }
+  }
+
+  function abrirFila(fila) {
+    fila.querySelector('.ddet').classList.remove('hidden');
+    fila.querySelector('.dchev').classList.add('rotate-180');
+    abiertos.add(fila.dataset.mat);
+    cargarTrazos(fila);
+  }
+  function cerrarFila(fila) {
+    fila.querySelector('.ddet').classList.add('hidden');
+    fila.querySelector('.dchev').classList.remove('rotate-180');
+    abiertos.delete(fila.dataset.mat);
+  }
+
+  function pintar() {
+    if (!DATOS) return;
+    const q = ($('#d-filtro').value || '').trim().toLowerCase();
+    const todas = DATOS.coches || [];
+    const filas = todas.filter(c => !q ||
+      (c.matricula || '').toLowerCase().includes(q) ||
+      ((c.plan.dia + ' ' + c.plan.noche + ' ' + ((c.vivo && c.vivo.conductor) || '') +
+        ' ' + ((c.vivo && c.vivo.ultimoConductor) || '')).toLowerCase().includes(q)));
+
+    $('#d-lista').innerHTML = filas.length
+      ? filas.map(filaHTML).join('')
+      : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nada que mostrar.</p>';
+    $('#d-cuenta').textContent = q ? filas.length + ' de ' + todas.length : todas.length + ' coche(s)';
+
+    // Reabrir lo que estaba abierto antes de repintar.
+    $('#d-lista').querySelectorAll('.dfila').forEach(fila => {
+      if (abiertos.has(fila.dataset.mat)) abrirFila(fila);
+    });
+    wire();
+  }
+
+  function wire() {
+    // El acordeón. Se ignora el clic si cae en un botón/enlace de acción.
+    $('#d-lista').querySelectorAll('.dcab').forEach(cab =>
+      cab.addEventListener('click', e => {
+        if (e.target.closest('[data-just],[data-llamar],a,button')) return;
+        const fila = cab.closest('.dfila');
+        if (fila.querySelector('.ddet').classList.contains('hidden')) abrirFila(fila);
+        else cerrarFila(fila);
+      }));
+
+    // Los botones Justificar / He llamado de todas las incidencias del tablero.
+    // Al cerrar o apuntar una, se recargan los datos (cambia el estado del coche).
+    GestionIncidencia.enganchar($('#d-lista'),
+      id => {
+        for (const c of (DATOS.coches || [])) {
+          const i = c.incidencias.find(x => x.id === id);
+          if (i) return i;
+        }
+        return { id };
+      },
+      () => cargar());
+  }
+
+  async function cargar() {
+    try {
+      const d = await (await fetch('/control/api/directo')).json();
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo cargar');
+      DATOS = d;
+
+      // Aviso si falta una fuente. No corta: lo que haya se ve.
+      const falta = [];
+      if (!d.hayCuadrante) falta.push('el cuadrante');
+      if (!d.hayFlotaViva) falta.push('la flota viva');
+      const av = $('#d-aviso');
+      if (falta.length) {
+        av.className = 'mb-3 px-3 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-600';
+        av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> No responde ' + falta.join(' ni ') +
+          '. Se muestra lo demás.';
+      } else {
+        av.className = 'hidden';
+      }
+
+      pintarResumen(d.resumen);
+      pintar();
+      $('#d-actualizado').textContent = 'Actualizado a las ' +
+        new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(e.message) + '</p>';
+    }
+  }
+
+  GestionIncidencia.cargar();
+  cargar();
+  $('#d-filtro').addEventListener('input', pintar);
+  $('#d-refrescar').addEventListener('click', cargar);
+
+  // Auto-refresco cada 45 s, PERO no mientras haya una fila abierta: se estaría
+  // trabajando con ella y repintar la cerraría. En cuanto se cierran todas,
+  // vuelve solo.
+  setInterval(() => { if (abiertos.size === 0) cargar(); }, 45000);
+})();
+</script>

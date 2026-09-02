@@ -554,4 +554,29 @@ CREATE INDEX IF NOT EXISTS idx_fv_inc_abierta ON fv_incidencia (justificada_at) 
 COMMENT ON TABLE fv_incidencia IS
   'Lo que hay que llamar y justificar. Una por coche, franja y dia: tres caidas seguidas son una conversacion, no tres';
 
+-- ── EL SEGUIMIENTO: "he llamado" sin cerrar ───────────────────────────────
+-- JUSTIFICAR NO ES LO MISMO QUE LLAMAR UNA VEZ.
+--
+-- En el panel en vivo se llama, no cogen, se vuelve a llamar. Cada intento deja
+-- rastro aqui —quien y cuando— pero NO cierra la incidencia: sigue abierta hasta
+-- que alguien la justifica. Por eso es una tabla aparte y no toca justificada_at:
+-- puede haber muchos seguimientos y una sola justificacion.
+--
+-- El boton "He llamado" de En directo escribe aqui; "Justificar" escribe en
+-- fv_incidencia. Son dos gestos distintos y se guardan por separado: el primero
+-- es un rastro, el segundo cierra.
+CREATE TABLE IF NOT EXISTS fv_seguimiento (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  incidencia_id BIGINT      NOT NULL REFERENCES fv_incidencia(id) ON DELETE CASCADE,
+  quien         VARCHAR(120),
+  nota          TEXT,
+  creada_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fv_seg_incidencia
+  ON fv_seguimiento (incidencia_id, creada_at DESC);
+
+COMMENT ON TABLE fv_seguimiento IS
+  'Cada "He llamado" de En directo: rastro de intentos de una incidencia, sin cerrarla';
+
 COMMIT;

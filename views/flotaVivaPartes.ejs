@@ -207,8 +207,13 @@
       // Sin justificar = nadie ha llamado todavia. Es lo unico que se pinta en
       // rojo: lo demas ya tiene respuesta.
       const pendiente = !x.justificada;
+      // Datos para el filtro de arriba. En minúscula para comparar sin acentos
+      // de mayúsculas; la hora tal cual se ve (HH:MM), que es como se busca.
       return '<div class="inc border-b border-telecab-border ' + (pendiente ? 'bg-red-500/5' : '') +
-        '" data-id="' + esc(x.id) + '">' +
+        '" data-id="' + esc(x.id) + '"' +
+        ' data-c="' + esc((x.conductor || '').toLowerCase()) + '"' +
+        ' data-h="' + esc(hora(x.abierta)) + '"' +
+        ' data-q="' + esc((x.justificadaPor || '').toLowerCase()) + '">' +
         // La cabecera es el resumen de un vistazo. Es clicable: al pulsarla se
         // despliega el detalle. Se ignora el clic si cae en un boton de gestion.
         '<div class="inc-cab px-4 py-3 cursor-pointer select-none">' +
@@ -252,6 +257,21 @@
         '<span class="text-sm"><b class="tabular-nums">' + (r.coches || 0) + '</b> ' +
           '<span class="text-telecab-muted">coches</span></span>' +
       '</div>' +
+      // El filtro: para un parte de noche con 90 incidencias, encontrar la de un
+      // conductor, una hora o quién la cerró sin ir fila a fila. Es en cliente
+      // —los datos ya están cargados— así que responde al teclear.
+      ((r.total || 0) > 1
+        ? '<div class="px-4 py-2.5 border-b border-telecab-border flex flex-wrap items-center gap-2">' +
+            '<i class="fa-solid fa-filter text-telecab-muted text-xs"></i>' +
+            '<input id="f-cond" placeholder="Conductor" ' +
+              'class="px-2 py-1 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">' +
+            '<input id="f-hora" placeholder="Hora" ' +
+              'class="px-2 py-1 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-20">' +
+            '<input id="f-quien" placeholder="Quién la cerró" ' +
+              'class="px-2 py-1 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-40">' +
+            '<span id="f-cuenta" class="text-xs text-telecab-muted ml-auto"></span>' +
+          '</div>'
+        : '') +
       (filas || '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Ninguna incidencia.</p>');
 
     // Cada incidencia se despliega al pulsar su cabecera. Se ignora el clic si
@@ -265,6 +285,30 @@
         const chev = cab.querySelector('.inc-chev');
         if (chev) chev.classList.toggle('rotate-180');
       }));
+
+    // El filtro oculta filas que no cuadran. Se compara por subcadena: "03" en
+    // hora vale para 03:12, "os" en quién vale para Óscar. Sin filtros, no toca
+    // nada. La cuenta de arriba dice cuántas quedan.
+    function filtrar() {
+      const c = ($('#f-cond') || {}).value ? $('#f-cond').value.trim().toLowerCase() : '';
+      const h = ($('#f-hora') || {}).value ? $('#f-hora').value.trim() : '';
+      const q = ($('#f-quien') || {}).value ? $('#f-quien').value.trim().toLowerCase() : '';
+      let vis = 0, tot = 0;
+      $('#p-detalle').querySelectorAll('.inc').forEach(inc => {
+        tot++;
+        const ok = (!c || (inc.dataset.c || '').includes(c)) &&
+                   (!h || (inc.dataset.h || '').includes(h)) &&
+                   (!q || (inc.dataset.q || '').includes(q));
+        inc.style.display = ok ? '' : 'none';
+        if (ok) vis++;
+      });
+      const cta = $('#f-cuenta');
+      if (cta) cta.textContent = (c || h || q) ? (vis + ' de ' + tot) : '';
+    }
+    ['f-cond', 'f-hora', 'f-quien'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', filtrar);
+    });
 
     // Al cerrar una desde aqui se repinta el parte entero: cambian el contador
     // de sin revisar y el de la lista de la izquierda.

@@ -2,22 +2,47 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const router = express.Router();
 const { tableroControl } = require('../services/control');
+const { enDirecto } = require('../services/flotaViva/directo');
 const { enviarAtencionHora } = require('../services/whatsapp');
 const justificantes = require('../services/justificantes');
 const { generarExcelTurnos } = require('../services/controlExcel');
 
 const MAX_ENVIO = 200;
 
-// La interfaz de tráfico.
+// EN DIRECTO — el cockpit. Fusiona el plan del Cuadrante con la realidad viva de
+// Flota Viva y las alertas abiertas. Sustituye al tablero de hojas (que sigue
+// disponible en /api/datos y en la vista 'control' por si hace falta volver).
 router.get('/', (req, res) => {
-  res.render('control', {
-    titulo: 'Control de tráfico',
+  res.render('controlDirecto', {
+    titulo: 'Control · En directo',
     seccion: 'control',
     layout: 'layout-gestion'
   });
 });
 
-// Datos del tablero (JSON). El front lo refresca solo cada pocos minutos.
+// Los datos del cockpit (JSON). El front lo refresca solo cada pocos segundos.
+router.get('/api/directo', async (req, res) => {
+  try {
+    res.json({ status: 'ok', ...(await enDirecto({ dia: req.query.dia })) });
+  } catch (error) {
+    console.error('❌ [Control] /api/directo:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// El tablero clásico de hojas, aparcado aquí mientras sus exportables (Excel,
+// justificantes, envío de "atención hora") se portan al futuro submenú Reportes.
+// Nada de esto se pierde: sigue funcionando, solo cambia de puerta.
+router.get('/clasico', (req, res) => {
+  res.render('control', {
+    titulo: 'Control · Tablero clásico',
+    seccion: 'control',
+    layout: 'layout-gestion'
+  });
+});
+
+// El tablero clásico de hojas (turno/libranza/horas). Se conserva mientras la
+// migración termina de cuajar; el cockpit de arriba es el que manda ahora.
 router.get('/api/datos', async (req, res) => {
   try {
     const datos = await tableroControl();

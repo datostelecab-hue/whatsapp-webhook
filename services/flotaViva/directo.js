@@ -1,0 +1,192 @@
+// ============================================================
+// EN DIRECTO — la fusión: plan del Cuadrante × realidad viva
+// ============================================================
+// El cockpit de tráfico. Junta tres cosas que hasta ahora vivían separadas:
+//
+//   PLAN      quién DEBÍA ir hoy en cada coche, turno de día y de noche.
+//             Sale del Cuadrante (planificador V2, Postgres) vía `tablero()`.
+//   REALIDAD  quién está conectado AHORA, en qué (viaje/espera/descanso), cuánto
+//             lleva y cuántos km. Sale de Flota Viva (`fv_ahora`).
+//   ALERTAS   lo que hay que llamar: las incidencias abiertas del coche, con sus
+//             botones (Justificar / He llamado) y el teléfono.
+//
+// NO SE HACE JOIN EN SQL entre los dos mundos. El Cuadrante vive en la base
+// principal y Flota Viva puede vivir en otra (FLOTA_VIVA_DB_URL). Se piden por
+// separado —cada uno a su pool— y se cruzan aquí en JS por matrícula normalizada,
+// que es lo único que comparten. Así funciona apunten donde apunten las dos.
+
+const panel = require('./panel');
+const { normMat } = require('./fuentes');
+
+const TZ = 'Europe/Madrid';
+
+/** Hoy en Madrid, 'YYYY-MM-DD'. El plan y las incidencias son del día operativo. */
+function hoyMadrid() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
+/** El día anterior a una fecha 'YYYY-MM-DD'. */
+function ayerDe(iso) {
+  const [Y, M, D] = iso.split('-').map(Number);
+  const d = new Date(Date.UTC(Y, M - 1, D - 1, 12));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** Índice del día en la semana del Cuadrante: 0=Lunes … 6=Domingo. */
+function idxDiaSemana(iso) {
+  const [Y, M, D] = iso.split('-').map(Number);
+  const d = new Date(Date.UTC(Y, M - 1, D, 12));
+  return (d.getUTCDay() + 6) % 7;
+}
+
+/** El nombre de una celda de cobertura (semana[]) o '' si no hay nadie. */
+function nombreCelda(celda) {
+  return celda && celda.nombre ? String(celda.nombre) : '';
+}
+
+/**
+ * El estado de un coche de un vistazo. Es lo que pinta el chip.
+ *
+ * Precedencia pensada para tráfico: primero lo que exige acción (una alerta
+ * abierta manda sobre todo lo demás), luego lo que está roto (fuera de servicio),
+ * luego lo que rueda, y al final lo que debía salir y no aparece.
+ */
+function calcEstado({ plan, vivo, nIncidencias, operativo }) {
+  const debia = !!(plan.dia || plan.noche);
+  if (nIncidencias > 0) {
+    return { codigo: 'alerta', etiqueta: nIncidencias + (nIncidencias > 1 ? ' avisos' : ' aviso'), tono: 'error' };
+  }
+  if (!operativo) return { codigo: 'fuera', etiqueta: 'Fuera de servicio', tono: 'muted' };
+  if (vivo && vivo.conectado) {
+    if (vivo.situacion === 'descanso') {
+      return vivo.km
+        ? { codigo: 'descanso_rodando', etiqueta: 'En descanso · rodando', tono: 'aviso' }
+        : { codigo: 'descanso', etiqueta: 'En descanso', tono: 'ok' };
+    }
+    return { codigo: 'trabajando', etiqueta: vivo.etiqueta || 'Conectado', tono: 'ok' };
+  }
+  if (debia) return { codigo: 'sin_conexion', etiqueta: 'Debía salir · sin conexión', tono: 'aviso' };
+  if (vivo) return { codigo: 'desconectado', etiqueta: 'Desconectado', tono: 'muted' };
+  return { codigo: 'idle', etiqueta: '—', tono: 'muted' };
+}
+
+/**
+ * El cockpit entero.
+ *
+ * Una fila por coche que importe AHORA: los que estaban planificados hoy, los que
+ * están conectados aunque no tocara, y los que tienen una alerta abierta. Cada
+ * fila trae su plan, su realidad y sus alertas ya cruzados.
+ */
+async function enDirecto({ dia } = {}) {
+  const hoy = (dia && String(dia).slice(0, 10)) || hoyMadrid();
+  const ayer = ayerDe(hoy);
+  const idx = idxDiaSemana(hoy);
+
+  // Las tablas fv_* tienen que existir antes de consultarlas. Es idempotente y
+  // se cachea: solo hace algo la primera vez tras arrancar.
+  await require('./db').preparar().catch(() => {});
+
+  // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
+  const plani = require('../repo/planificador');   // base principal (Cuadrante)
+  const [tab, est, incHoy, incAyer] = await Promise.all([
+    plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
+    panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
+    // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
+    // termina de madrugada con el día operativo de ayer, así que a las 02:00 lo
+    // que sigue vivo es "de ayer". Se juntan las dos y se quitan duplicados.
+    panel.incidencias({ dia: hoy }).catch(() => []),
+    panel.incidencias({ dia: ayer }).catch(() => []),
+  ]);
+
+  // ── Realidad viva: matrícula normalizada → su fila de fv_ahora ──────────────
+  const vivos = new Map();
+  if (est) {
+    [].concat(est.conectados || [], est.recienCaidos || [], est.parados || [])
+      .forEach(v => { if (v.matricula) vivos.set(normMat(v.matricula), v); });
+  }
+
+  // ── Alertas abiertas: matrícula normalizada → [incidencias] ─────────────────
+  const porInc = new Map();
+  const vistas = new Set();
+  [].concat(incAyer || [], incHoy || []).forEach(i => {
+    if (vistas.has(i.id)) return;      // hoy pisa a ayer si por lo que sea saliera en las dos
+    vistas.add(i.id);
+    const k = normMat(i.matricula);
+    if (!porInc.has(k)) porInc.set(k, []);
+    porInc.get(k).push(i);
+  });
+
+  // ── El plan: una fila por coche del Cuadrante ───────────────────────────────
+  const filas = [];
+  const usadas = new Set();
+  const coches = (tab && tab.coches) || [];
+  coches.forEach(c => {
+    const k = normMat(c.matricula);
+    usadas.add(k);
+    const plan = {
+      dia: nombreCelda(c.semana && c.semana[idx * 2]),
+      noche: nombreCelda(c.semana && c.semana[idx * 2 + 1]),
+    };
+    const vivo = vivos.get(k) || null;
+    const incidencias = porInc.get(k) || [];
+    filas.push({
+      matricula: c.matricula, matriculaNorm: k,
+      zona: c.zona || '', cuadrante: c.cuadrante || '',
+      estadoVeh: c.estadoVeh || '', operativo: c.operativo !== false,
+      plan, vivo, incidencias,
+      enPlan: true,
+      estado: calcEstado({ plan, vivo, nIncidencias: incidencias.length, operativo: c.operativo !== false }),
+    });
+  });
+
+  // ── Los que ruedan (o avisan) sin estar en el plan de hoy ───────────────────
+  // Un coche conectado que hoy no tocaba, o con una alerta y sin plaza en el
+  // Cuadrante. Tráfico tiene que verlos igual: son justo los que se escapan.
+  const extra = new Set();
+  vivos.forEach((v, k) => { if (!usadas.has(k) && v.conectado) extra.add(k); });
+  porInc.forEach((_, k) => { if (!usadas.has(k)) extra.add(k); });
+  extra.forEach(k => {
+    const vivo = vivos.get(k) || null;
+    const incidencias = porInc.get(k) || [];
+    const plan = { dia: '', noche: '' };
+    filas.push({
+      matricula: (vivo && vivo.matricula) || (incidencias[0] && incidencias[0].matricula) || k,
+      matriculaNorm: k,
+      zona: '', cuadrante: '', estadoVeh: '', operativo: true,
+      plan, vivo, incidencias,
+      enPlan: false,
+      estado: calcEstado({ plan, vivo, nIncidencias: incidencias.length, operativo: true }),
+    });
+  });
+
+  // Orden: primero lo que pide acción (alertas), luego descanso rodando, luego el
+  // resto; dentro de cada grupo, por matrícula.
+  const peso = { alerta: 0, descanso_rodando: 1, sin_conexion: 2, descanso: 3, trabajando: 4, desconectado: 5, fuera: 6, idle: 7 };
+  filas.sort((a, b) =>
+    (peso[a.estado.codigo] ?? 9) - (peso[b.estado.codigo] ?? 9) ||
+    a.matricula.localeCompare(b.matricula));
+
+  const resumen = {
+    coches: filas.length,
+    enPlan: filas.filter(f => f.enPlan).length,
+    conectados: filas.filter(f => f.vivo && f.vivo.conectado).length,
+    enDescanso: filas.filter(f => f.estado.codigo === 'descanso' || f.estado.codigo === 'descanso_rodando').length,
+    sinConexion: filas.filter(f => f.estado.codigo === 'sin_conexion').length,
+    alertas: filas.reduce((s, f) => s + f.incidencias.length, 0),
+    fueraDePlan: filas.filter(f => !f.enPlan).length,
+  };
+
+  return {
+    dia: hoy,
+    fecha: hoy.split('-').reverse().join('/'),
+    hayCuadrante: !!tab,
+    hayFlotaViva: !!est,
+    ultimaVuelta: est ? est.ultimaVuelta : null,
+    resumen,
+    coches: filas,
+  };
+}
+
+module.exports = { enDirecto };

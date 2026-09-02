@@ -112,6 +112,20 @@ router.post('/api/incidencia/:id/justificar', responde(async req => {
   return r;
 }));
 
+// "He llamado" — un intento de llamada desde En directo. NO cierra la incidencia
+// ni crea llamada en el Call Center: solo deja rastro de que se ha intentado. Se
+// puede pulsar tantas veces como se llame (no cogen, se vuelve a marcar).
+router.post('/api/incidencia/:id/he-llamado', responde(async req => {
+  const quien = (req.usuario && (req.usuario.nombre || req.usuario.email)) || '';
+  const r = await panel.seguir(req.params.id, { quien, nota: (req.body || {}).nota });
+  console.log(`📞 [FLOTA VIVA] "He llamado" incidencia ${r.id} (intento nº ${r.veces}) — ${quien || '(sin nombre)'}`);
+  return r;
+}));
+
+// Los intentos de llamada de una incidencia, en orden. Para ver el rastro.
+router.get('/api/incidencia/:id/seguimientos', responde(async req =>
+  ({ seguimientos: await panel.seguimientos(req.params.id) })));
+
 // El parte de una franja. Es lo que se mira al cierre.
 router.get('/api/cierre', responde(async req =>
   panel.cierre({ dia: req.query.dia, franja: req.query.franja })));
