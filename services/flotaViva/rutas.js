@@ -298,7 +298,86 @@ async function sankeyFlota(dia) {
   };
 }
 
+/**
+ * DIAGNÓSTICO — por qué una matrícula sale (o no) con km en el reporte.
+ *
+ * El km del reporte pasa por TRES cruces, y basta que uno falle para que salga en
+ * blanco aunque BOLT y Mapon digan que el coche rodó:
+ *   1) fv_ruta      → hay trayectos de Mapon de ese coche en la ventana (por matrícula).
+ *   2) fv_vehiculo  → esos trayectos casan por `mapon_unit = unit_id` (si mapon_unit
+ *                     está sin resolver, el reporte NO los ve aunque existan).
+ *   3) fv_tramo     → hay un tramo de BOLT que solapa, y lleva conductor: si no,
+ *                     los km caen en "(sin conductor)" y no se le atribuyen a nadie.
+ *
+ * Esta función traza los tres para las matrículas pedidas y devuelve dónde se corta,
+ * leyendo SOLO del núcleo (no vuelve a llamar a ninguna API). Es la herramienta para
+ * el "¿qué pasó con este?" sin tener que adivinar.
+ */
+async function diagnosticoKm(dia, plates = [], turno = 'operativo') {
+  await db.preparar();
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
+  const mats = (Array.isArray(plates) ? plates : [plates])
+    .map(p => String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, '')).filter(Boolean);
+
+  // La ventana operativa, una vez; se reusa como parámetros en el resto.
+  const win = (await db.consulta(
+    `SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
+            (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin`,
+    [String(dia).slice(0, 10), String(hi), off, String(hf)])).rows[0];
+
+  const matriculas = [];
+  for (const mat of mats) {
+    // 1) ¿Está el coche, y tiene el id de Mapon resuelto?
+    const vehiculo = (await db.consulta(
+      `SELECT v.uuid, v.mapon_unit,
+              (SELECT m.activa FROM fv_matricula m WHERE m.matricula = v.matricula) AS vigilada
+         FROM fv_vehiculo v WHERE v.matricula = $1 ORDER BY v.visto_at DESC`, [mat])).rows;
+
+    // 2a) Lo que el REPORTE ve: trayectos que casan por mapon_unit (el cruce real).
+    const rutaVista = (await db.consulta(
+      `SELECT count(*)::int n, coalesce(round(sum(r.metros) / 1000.0, 1), 0) km
+         FROM fv_ruta r JOIN fv_vehiculo v ON v.mapon_unit = r.unit_id
+        WHERE v.matricula = $1 AND r.inicio >= $2 AND r.inicio < $3`,
+      [mat, win.ini, win.fin])).rows[0];
+    // 2b) Lo que HAY de verdad: trayectos por matrícula (los rellena Mapon aunque
+    // mapon_unit esté sin resolver). Si esto trae km y 2a no, el corte es el enlace.
+    const rutaReal = (await db.consulta(
+      `SELECT count(*)::int n, coalesce(round(sum(metros) / 1000.0, 1), 0) km,
+              count(DISTINCT unit_id)::int units, min(inicio) primero, max(inicio) ultimo
+         FROM fv_ruta WHERE matricula = $1 AND inicio >= $2 AND inicio < $3`,
+      [mat, win.ini, win.fin])).rows[0];
+
+    // 3) Los tramos de BOLT del coche en la ventana, por conductor y situación:
+    // dice si hubo conexión y si llevaba conductor (o si todo es "(sin conductor)").
+    const tramos = (await db.consulta(
+      `SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor, t.situacion, count(*)::int AS n
+         FROM fv_tramo t
+         JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid AND veh.matricula = $1
+         LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
+        WHERE t.desde < $3 AND COALESCE(t.hasta, now()) > $2
+        GROUP BY 1, 2 ORDER BY n DESC`, [mat, win.ini, win.fin])).rows;
+
+    // El veredicto legible: dónde se cae.
+    let corte;
+    if (!vehiculo.length) corte = 'El coche no está en fv_vehiculo (nunca lo vio BOLT).';
+    else if (!Number(rutaReal.n)) corte = 'Sin trayectos de Mapon en la ventana (o núcleo sin backfillear ese día).';
+    else if (!Number(rutaVista.n)) corte = 'Trayectos SÍ, pero mapon_unit no casa: fv_vehiculo.mapon_unit está sin resolver → el reporte no los ve.';
+    else if (!tramos.some(t => t.conductor !== '(sin conductor)')) corte = 'Km SÍ, pero sus tramos de BOLT no llevan conductor → caen en "(sin conductor)".';
+    else corte = 'La tubería está completa: si sale en blanco es por el nombre (revisa fv_conductor vs. el cuadrante).';
+
+    matriculas.push({ matricula: mat, vehiculo, rutaVista, rutaReal, tramos, corte });
+  }
+
+  // El reparto por conductor (incl. "(sin conductor)"): para ver a nombre de quién
+  // —o de nadie— quedaron los km de esos coches. El reporte esconde "(sin conductor)".
+  const km = await kmConectadoDesconectado(dia, turno);
+  const reparto = km.conductores.filter(c =>
+    c.conductor === '(sin conductor)' || (c.matriculas || []).some(m => mats.includes(m)));
+
+  return { dia: String(dia).slice(0, 10), turno, ventana: win, matriculas, reparto };
+}
+
 module.exports = {
   ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
-  horasConectadasPorConductor, bucketsTurno, sankeyFlota,
+  horasConectadasPorConductor, bucketsTurno, sankeyFlota, diagnosticoKm,
 };

@@ -53,6 +53,24 @@ router.get('/api/km-traza', async (req, res) => {
   }
 });
 
+// DIAGNÓSTICO de km: por qué una matrícula sale (o no) con km en el reporte.
+// Traza los tres cruces del núcleo (fv_ruta / fv_vehiculo.mapon_unit / fv_tramo) y
+// dice dónde se corta. Ej: /control/api/km-diagnostico?dia=2026-09-01&mats=9521MMX,6663LCY
+// El `turno` por defecto es 'operativo' (05→05), el mismo que usa el reporte de horas.
+router.get('/api/km-diagnostico', async (req, res) => {
+  try {
+    const { diagnosticoKm } = require('../services/flotaViva/rutas');
+    const dia = (req.query.dia && String(req.query.dia).slice(0, 10)) || hoyMadrid();
+    const turno = ['dia', 'noche', 'completo', 'operativo'].includes(req.query.turno) ? req.query.turno : 'operativo';
+    const mats = String(req.query.mats || req.query.mat || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!mats.length) throw new Error('Falta ?mats= (una o varias matrículas separadas por coma)');
+    res.json({ status: 'ok', ...(await diagnosticoKm(dia, mats, turno)) });
+  } catch (error) {
+    console.error('❌ [Control] /api/km-diagnostico:', error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
 // ── Reportes ────────────────────────────────────────────────────────────────
 // De momento reúne lo que ya es "reporte" y hoy vivía suelto en el clásico: los
 // turnos para imprimir y el reporte de horas del día. Se irá llenando.
