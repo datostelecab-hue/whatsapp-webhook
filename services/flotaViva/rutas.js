@@ -70,15 +70,22 @@ async function guardarLote(trips) {
 /**
  * Km por coche en un día operativo (hora peninsular), leído del núcleo.
  *
+ * LA MATRÍCULA SALE DE fv_vehiculo, no de fv_ruta. En route/list el objeto de la
+ * unidad no trae la matrícula de forma fiable —por eso la Auditoría la resuelve
+ * por unit_id aparte—, así que se cruza `fv_ruta.unit_id` con `fv_vehiculo.mapon_unit`,
+ * que da la MISMA matrícula que usa el cockpit (la de BOLT). Si se keyeara por la
+ * de fv_ruta, no casaría y todo saldría en cero.
+ *
  * Un trayecto cuenta en el día de su INICIO. Devuelve Map(matrícula -> {km, viajes}).
  */
 async function kmPorCoche(dia) {
   const r = await db.consulta(
-    `SELECT matricula, round(sum(metros) / 1000.0, 1) AS km, count(*)::int AS viajes
-       FROM fv_ruta
-      WHERE matricula IS NOT NULL
-        AND (inicio AT TIME ZONE 'Europe/Madrid')::date = $1::date
-      GROUP BY matricula`, [String(dia).slice(0, 10)]);
+    `SELECT v.matricula, round(sum(r.metros) / 1000.0, 1) AS km, count(*)::int AS viajes
+       FROM fv_ruta r
+       JOIN fv_vehiculo v ON v.mapon_unit = r.unit_id
+      WHERE v.matricula IS NOT NULL
+        AND (r.inicio AT TIME ZONE 'Europe/Madrid')::date = $1::date
+      GROUP BY v.matricula`, [String(dia).slice(0, 10)]);
   const m = new Map();
   r.rows.forEach(x => m.set(x.matricula, { km: Number(x.km) || 0, viajes: x.viajes }));
   return m;

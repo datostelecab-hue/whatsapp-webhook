@@ -203,4 +203,19 @@ router.get('/api/ingestar-rutas', responde(async (req, res) => {
   return r;
 }));
 
+// Comprobación: los km de hoy por coche que verá el cockpit, del núcleo. Si esto
+// sale con datos y el cockpit no, el problema es de pintado; si sale vacío, es de
+// ingesta o del cruce por unit_id.
+router.get('/api/km-hoy', responde(async req => {
+  const dia = req.query.dia || new Intl.DateTimeFormat('en-CA',
+    { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const m = await require('../services/flotaViva/rutas').kmPorCoche(dia);
+  const coches = [...m.entries()].map(([matricula, x]) => ({ matricula, ...x })).sort((a, b) => b.km - a.km);
+  return {
+    dia, coches: coches.length,
+    kmTotal: Math.round(coches.reduce((s, c) => s + c.km, 0) * 10) / 10,
+    top: coches.slice(0, 15),
+  };
+}));
+
 module.exports = router;
