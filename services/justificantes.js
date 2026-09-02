@@ -116,7 +116,7 @@ async function guardar({ fecha, idBolt, nombre, telefono, turno, horas, observac
 
 // ── Reporte del día (key 1=Ayer, 2=Hace 2, 3=Hace 3) ────────────────────────
 async function reporteDia(key) {
-  const { str: fecha, idx } = fechaDeClave(key);
+  const { str: fecha, idx, Y, M, D } = fechaDeClave(key);
   const [tablero, justis] = await Promise.all([tableroControl(), leerPorFecha(fecha)]);
 
   const bruto = [];
@@ -146,6 +146,23 @@ async function reporteDia(key) {
     const b = banda(f.horas);
     return { ...comun, horasTexto: (f.horas != null ? String(r1(f.horas)) : ''), color: b.color, observacion: b.obs, esJ: false };
   });
+
+  // KM por conductor del NÚCLEO (route/list, día completo), para las columnas
+  // nuevas del Excel. En su propio try: si el núcleo aún no está poblado, el
+  // reporte de horas sale igual (las columnas quedan vacías, no rompe nada).
+  try {
+    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
+    await require('./flotaViva/db').preparar();
+    const km = await require('./flotaViva/rutas').kmConectadoDesconectado(iso, 'completo');
+    const porNombre = new Map(km.conductores.map(c => [normClave(c.conductor), c]));
+    filas.forEach(f => {
+      const k = porNombre.get(normClave(f.nombre));
+      f.kmBolt = k ? k.enBolt : null;
+      f.kmDesc = k ? k.desconectado : null;
+    });
+  } catch (e) {
+    console.warn('⚠️  [JUST] KM del núcleo no disponible para el reporte:', e.message);
+  }
 
   return {
     fecha, diaSemana: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][idx],
@@ -187,8 +204,8 @@ function resumirFilas(filas) {
 // lo que cambia es el envoltorio: cabecera de la casa con el logo, tabla con bordes
 // y, al final, el resumen del día y la leyenda de colores.
 const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9' };
-const CAB_REPORTE = ['Nº', 'Nombre', 'Teléfono', 'Turno', 'Horas', 'Observaciones'];
-const ANCHOS_REPORTE = [6, 34, 16, 11, 12, 26];
+const CAB_REPORTE = ['Nº', 'Nombre', 'Teléfono', 'Turno', 'Horas', 'Observaciones', 'KM BOLT', 'KM descon.'];
+const ANCHOS_REPORTE = [6, 34, 16, 11, 12, 26, 12, 12];
 const N_REPORTE = CAB_REPORTE.length;
 const ULTIMA_REPORTE = est.colLetra(N_REPORTE);
 
@@ -249,12 +266,15 @@ async function excelDia(reporte) {
 
   reporte.filas.forEach((f, i) => {
     const row = ws.getRow(fila);
-    [f.nro, f.nombre, f.telefono, f.turno || '', f.horasTexto, f.observacion].forEach((v, ci) => {
+    [f.nro, f.nombre, f.telefono, f.turno || '', f.horasTexto, f.observacion,
+     f.kmBolt == null ? '' : f.kmBolt, f.kmDesc == null ? '' : f.kmDesc].forEach((v, ci) => {
       const c = row.getCell(ci + 1);
       c.value = v;
       c.border = est.TODOS_BORDES;
       c.alignment = { vertical: 'middle', horizontal: ci === 1 ? 'left' : 'center', indent: ci === 1 ? 1 : 0 };
       c.font = { size: 11, color: { argb: est.TEXTO } };
+      // Las dos columnas de KM (7 y 8) en formato "0,0 km".
+      if (ci >= 6 && typeof v === 'number') c.numFmt = '0.0" km"';
       if (i % 2) c.fill = est.relleno('FFFAFBFC');
     });
     // El COLOR va solo en la celda de horas, como siempre.
