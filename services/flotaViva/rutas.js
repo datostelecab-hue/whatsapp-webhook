@@ -234,6 +234,55 @@ async function horasConectadasPorConductor(dia, turno = 'operativo') {
 }
 
 /**
+ * La(s) matrícula(s) con la(s) que cada conductor FICHÓ en BOLT en la ventana
+ * (viaje + espera), del núcleo — con independencia de que Mapon tenga traza o no.
+ *
+ * Sirve para el caso "REVISAR": un conductor que trabajó y se conectó en BOLT con
+ * un coche, pero de ese coche no hay km de Mapon. Pasa cuando el coche que tiene
+ * asignado en BOLT está en el taller y sale con OTRO que no está dado de alta en
+ * BOLT: BOLT lo sigue por el móvil (con la matrícula vieja), Mapon no ve moverse a
+ * la vieja. No se puede medir el km, así que se marca REVISAR y lo cuadra Tráfico.
+ *
+ * Devuelve { conductores: [{conductor, matricula (la de más rato), matriculas[], minutos}] }.
+ */
+async function matriculasBoltPorConductor(dia, turno = 'operativo') {
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     )
+     SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor, veh.matricula,
+            floor(sum(EXTRACT(EPOCH FROM (
+              LEAST(COALESCE(t.hasta, now()), v.fin) - GREATEST(t.desde, v.ini)
+            ))) / 60)::int AS minutos
+       FROM fv_tramo t
+       CROSS JOIN v
+       JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
+       LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
+      WHERE t.situacion IN ('viaje', 'espera')
+        AND t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
+      GROUP BY conductor, veh.matricula`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+
+  const porCond = new Map();
+  r.rows.forEach(x => {
+    if (!porCond.has(x.conductor)) porCond.set(x.conductor, { conductor: x.conductor, minutos: 0, _mats: [] });
+    const c = porCond.get(x.conductor);
+    const min = Number(x.minutos) || 0;
+    c.minutos += min;
+    if (x.matricula) c._mats.push({ matricula: x.matricula, minutos: min });
+  });
+  const conductores = [...porCond.values()].map(c => {
+    c._mats.sort((a, b) => b.minutos - a.minutos);
+    c.matricula = c._mats.length ? c._mats[0].matricula : null;
+    c.matriculas = c._mats.map(m => m.matricula);
+    delete c._mats;
+    return c;
+  });
+  return { dia: String(dia).slice(0, 10), turno, conductores };
+}
+
+/**
  * Los km de la flota en un turno, repartidos por estado — SUMANDO POR COCHE, no
  * por conductor. Cada trayecto de Mapon se reparte por tiempo entre los estados
  * (viaje/espera/descanso/desconectado) de SU coche, y se suma una sola vez. Así el
@@ -407,5 +456,6 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
 
 module.exports = {
   ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
-  horasConectadasPorConductor, bucketsTurno, sankeyFlota, diagnosticoKm,
+  horasConectadasPorConductor, matriculasBoltPorConductor, bucketsTurno,
+  sankeyFlota, diagnosticoKm,
 };

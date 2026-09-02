@@ -159,17 +159,41 @@ async function reporteDia(key) {
   // En su propio try: si el núcleo no está poblado, el reporte sale igual.
   try {
     const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
+    const rutas = require('./flotaViva/rutas');
     await require('./flotaViva/db').preparar();
-    const km = await require('./flotaViva/rutas').kmConectadoDesconectado(iso, 'operativo');
-    const porNombre = new Map(km.conductores.map(c => [normClave(c.conductor), c]));
+    // Dos fuentes: los km medidos por Mapon (fv_ruta), y la matrícula con la que
+    // fichó en BOLT (haya o no traza de Mapon). La segunda es la que destapa el
+    // caso REVISAR.
+    const [km, bolt] = await Promise.all([
+      rutas.kmConectadoDesconectado(iso, 'operativo'),
+      rutas.matriculasBoltPorConductor(iso, 'operativo'),
+    ]);
+    const porKm = new Map(km.conductores.map(c => [normClave(c.conductor), c]));
+    const porBolt = new Map(bolt.conductores.map(c => [normClave(c.conductor), c]));
     filas.forEach(f => {
-      const k = porNombre.get(normClave(f.nombre));
-      f.kmBolt = k ? k.enBolt : null;
-      f.kmDesc = k ? k.desconectado : null;
-      // La(s) matrícula(s) con la(s) que se conectó en BOLT ese día operativo —
-      // la de más km primero. Es la clave del caso "no planificado que trabajó":
-      // BOLT sabe con qué coche rodó aunque el Cuadrante no lo tuviera.
-      f.matricula = (k && k.matriculas && k.matriculas.length) ? k.matriculas.join(', ') : null;
+      const k = porKm.get(normClave(f.nombre));
+      if (k) {
+        // Caso normal: Mapon midió sus km. La(s) matrícula(s) con la(s) que se
+        // conectó en BOLT ese día operativo, la de más km primero.
+        f.kmBolt = k.enBolt;
+        f.kmDesc = k.desconectado;
+        f.matricula = (k.matriculas && k.matriculas.length) ? k.matriculas.join(', ') : null;
+        return;
+      }
+      // No hay km de Mapon. Si aun así fichó en BOLT con un coche, es REVISAR: el
+      // coche con el que fichó no tiene traza de Mapon (está en el taller y salió
+      // con otro NO dado de alta en BOLT, o su baliza está caída). No se puede medir
+      // el km — lo cuadra Tráfico a mano, que conoce el apaño. Se muestra la matrícula
+      // con la que fichó, que es el hilo del que tirar; el km va como "REVISAR".
+      const b = porBolt.get(normClave(f.nombre));
+      if (b && b.matriculas && b.matriculas.length) {
+        f.matricula = b.matriculas.join(', ');
+        f.kmBolt = 'REVISAR';
+        f.kmDesc = 'REVISAR';
+        f.revisar = true;
+      } else {
+        f.kmBolt = null; f.kmDesc = null; f.matricula = null;
+      }
     });
   } catch (e) {
     console.warn('⚠️  [JUST] KM del núcleo no disponible para el reporte:', e.message);
@@ -214,7 +238,7 @@ function resumirFilas(filas) {
 // Los colores de la banda son los de siempre —tráfico ya los tiene interiorizados—;
 // lo que cambia es el envoltorio: cabecera de la casa con el logo, tabla con bordes
 // y, al final, el resumen del día y la leyenda de colores.
-const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9' };
+const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9', revisar: 'FFFFC000' };
 const CAB_REPORTE = ['Nº', 'Nombre', 'Teléfono', 'Turno', 'Horas', 'Observaciones', 'Matrícula', 'KM BOLT', 'KM descon.'];
 const ANCHOS_REPORTE = [6, 34, 16, 11, 12, 26, 15, 12, 12];
 const N_REPORTE = CAB_REPORTE.length;
@@ -293,6 +317,16 @@ async function excelDia(reporte) {
     const cel = row.getCell(5);
     if (FILL[f.color]) cel.fill = est.relleno(FILL[f.color]);
     cel.font = { size: 11, bold: true, color: { argb: f.color === 'azul' ? 'FFFFFFFF' : 'FF1F2430' } };
+    // REVISAR: las dos celdas de KM (8 y 9) en ámbar y negrita, para que salte a la
+    // vista que ese km hay que cuadrarlo a mano (fichó con un coche sin traza de Mapon).
+    if (f.revisar) {
+      [8, 9].forEach(cn => {
+        const kc = row.getCell(cn);
+        kc.fill = est.relleno(FILL.revisar);
+        kc.font = { size: 11, bold: true, color: { argb: 'FF5A4600' } };
+        kc.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+    }
     row.height = 19;
     fila++;
   });
@@ -326,7 +360,8 @@ async function excelDia(reporte) {
     ['amarillo', 'Poco efectivo — de 6,4 a 7,5 h'],
     ['rojo', 'No cumplieron — 6,3 h o menos'],
     ['azul', 'Justificado (J) — cuenta 8 h para el pago'],
-    ['gris', 'Sin dato de horas ese día']
+    ['gris', 'Sin dato de horas ese día'],
+    ['revisar', 'REVISAR — fichó en BOLT con un coche sin traza de Mapon; lo cuadra Tráfico']
   ].forEach(([color, texto]) => {
     ws.mergeCells(`B${fila}:${ULTIMA_REPORTE}${fila}`);
     const chip = ws.getCell(`A${fila}`);
