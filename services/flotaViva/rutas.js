@@ -204,4 +204,33 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
   };
 }
 
-module.exports = { ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado };
+/**
+ * Minutos CONECTADO (viaje + espera = en BOLT) por conductor en la ventana de un
+ * turno, del núcleo. Es "cuántas horas trabajó" — sale de los tramos, no de km.
+ *
+ * Devuelve Map(nombreConductor -> minutos). La clave es el nombre de fv_conductor
+ * (el mismo que usa kmConectadoDesconectado), así que casan exacto entre sí.
+ */
+async function horasConectadasPorConductor(dia, turno = 'operativo') {
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     )
+     SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
+            floor(sum(EXTRACT(EPOCH FROM (
+              LEAST(COALESCE(t.hasta, now()), v.fin) - GREATEST(t.desde, v.ini)
+            ))) / 60)::int AS minutos
+       FROM fv_tramo t
+       CROSS JOIN v
+       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.codigo IN ('viaje', 'espera')
+       LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
+      WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
+      GROUP BY conductor`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+  const m = new Map();
+  r.rows.forEach(x => m.set(x.conductor, Number(x.minutos) || 0));
+  return m;
+}
+
+module.exports = { ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado, horasConectadasPorConductor };

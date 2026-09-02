@@ -37,6 +37,9 @@
     <span id="d-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
   </div>
 
+  <!-- Conductores que rodaron hoy en BOLT sin estar en el plan. Aparece solo si los hay. -->
+  <div id="d-sinplan"></div>
+
   <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
     <div id="d-lista">
       <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
@@ -79,6 +82,36 @@
 
   const chip = (txt, tono) =>
     '<span class="px-2 py-0.5 rounded-md text-xs font-medium ' + (TONO[tono] || TONO.muted) + '">' + esc(txt) + '</span>';
+
+  const horas = min => ((Number(min) || 0) / 60).toFixed(1);
+
+  // Los conductores que hoy trabajaron en BOLT sin estar en el plan. Sección propia,
+  // en ámbar, y solo si los hay: es el caso "rodó con un coche que el Cuadrante no
+  // le tenía asignado" — se ve aquí en vivo y luego cuadra en el reporte.
+  function pintarSinPlan(lista) {
+    const cont = $('#d-sinplan');
+    if (!lista || !lista.length) { cont.innerHTML = ''; return; }
+    cont.innerHTML =
+      '<div class="rounded-2xl border border-amber-500/40 bg-amber-500/5 overflow-hidden mb-3">' +
+        '<div class="px-4 py-2.5 border-b border-amber-500/30 flex flex-wrap items-center gap-2">' +
+          '<i class="fa-solid fa-user-clock text-amber-500"></i>' +
+          '<span class="font-semibold text-telecab-text">Trabajando sin plan</span>' +
+          '<span class="text-xs text-telecab-muted">' + lista.length +
+            ' conductor(es) que rodaron hoy en BOLT sin estar en el Cuadrante</span>' +
+        '</div>' +
+        lista.map(s =>
+          '<div class="px-4 py-2.5 border-b border-amber-500/15 flex flex-wrap items-center gap-x-4 gap-y-1">' +
+            '<span class="text-telecab-text font-medium w-52 truncate">' + esc(s.conductor) + '</span>' +
+            (s.conectadoAhora ? chip('Conectado ahora', 'ok') : '') +
+            '<span class="text-sm font-mono text-telecab-muted flex-1 min-w-[8rem]" title="Coche(s) usados en BOLT">' +
+              esc((s.matriculas || []).join(', ') || '—') + '</span>' +
+            '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas conectado en BOLT">' +
+              horas(s.minutos) + ' h</span>' +
+            '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="KM en BOLT">' + (s.enBolt || 0) + ' km</span>' +
+            '<span class="text-xs tabular-nums text-amber-500 w-20 text-right" title="KM desconectado">' + (s.desconectado || 0) + ' km</span>' +
+          '</div>').join('') +
+      '</div>';
+  }
 
   // Lo que se ve en vivo, en una línea. Un coche desconectado enseña a su último
   // conductor: es a quién se llama.
@@ -296,6 +329,7 @@
       }
 
       pintarResumen(d.resumen);
+      pintarSinPlan(d.sinPlan);
       pintar();
       $('#d-actualizado').innerHTML = 'Flota hoy <b class="text-telecab-text tabular-nums">' +
         ((d.resumen && d.resumen.kmHoy) || 0) + ' km</b> · actualizado ' +

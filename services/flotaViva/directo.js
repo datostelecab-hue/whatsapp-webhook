@@ -47,6 +47,19 @@ function nombreCelda(celda) {
 }
 
 /**
+ * Normaliza un nombre para cruzar el plan (agenda) con quien trabajó (BOLT): en
+ * minúsculas, sin acentos y con los tokens ordenados, así "Juan Perez Gomez" y
+ * "Gomez, Juan Pérez" caen en la misma clave. Es la misma idea que normClave, pero
+ * local para no acoplar Flota Viva a services/conductores.
+ */
+function normNombre(s) {
+  return String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim().split(/\s+/).filter(Boolean).sort().join(' ');
+}
+
+/**
  * El estado de un coche de un vistazo. Es lo que pinta el chip.
  *
  * Precedencia pensada para tráfico: primero lo que exige acción (una alerta
@@ -90,7 +103,8 @@ async function enDirecto({ dia } = {}) {
 
   // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
   const plani = require('../repo/planificador');   // base principal (Cuadrante)
-  const [tab, est, incHoy, incAyer, kmHoy] = await Promise.all([
+  const rutas = require('./rutas');
+  const [tab, est, incHoy, incAyer, kmHoy, kmCond, horasCond] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
     // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
@@ -100,7 +114,11 @@ async function enDirecto({ dia } = {}) {
     panel.incidencias({ dia: ayer }).catch(() => []),
     // Los km de hoy salen del NÚCLEO (fv_ruta, route/list), no del `mileage`
     // estancado. Si aún no se ha ingerido, sale vacío y el coche muestra 0.
-    require('./rutas').kmPorCoche(hoy).catch(() => new Map()),
+    rutas.kmPorCoche(hoy).catch(() => new Map()),
+    // Km y horas POR CONDUCTOR del día operativo (05→05), para detectar a quien
+    // trabajó sin estar en el plan. Con matrícula: BOLT sabe con qué coche rodó.
+    rutas.kmConectadoDesconectado(hoy, 'operativo').catch(() => ({ conductores: [] })),
+    rutas.horasConectadasPorConductor(hoy, 'operativo').catch(() => new Map()),
   ]);
 
   // ── Realidad viva: matrícula normalizada → su fila de fv_ahora ──────────────
@@ -175,6 +193,34 @@ async function enDirecto({ dia } = {}) {
     (peso[a.estado.codigo] ?? 9) - (peso[b.estado.codigo] ?? 9) ||
     a.matricula.localeCompare(b.matricula));
 
+  // ── TRABAJANDO SIN PLAN ─────────────────────────────────────────────────────
+  // Conductores que hoy trabajaron (km en su día operativo) o están conectados
+  // ahora, pero NO están en el Cuadrante. BOLT sabe con qué coche rodaron y cuánto,
+  // aunque el plan no los tuviera — es justo el caso que hay que ver y luego cuadrar
+  // en el reporte. Se cruza por nombre normalizado (plan de la agenda ↔ BOLT).
+  const planificados = new Set();
+  const anota = n => { const k = normNombre(n); if (k) planificados.add(k); };
+  ((tab && tab.conductores) || []).forEach(c => { anota(c.nombre); anota(c.idBolt); });
+  ((tab && tab.coches) || []).forEach(co => {
+    (co.personas || []).forEach(p => anota(p && p.nombre));
+    (co.semana || []).forEach(cell => anota(cell && cell.nombre));
+  });
+  const conectadosAhora = new Set();
+  vivos.forEach(v => { if (v.conectado && v.conductor) conectadosAhora.add(normNombre(v.conductor)); });
+
+  const sinPlan = ((kmCond && kmCond.conductores) || [])
+    .filter(c => c.conductor && c.conductor !== '(sin conductor)')
+    .filter(c => !planificados.has(normNombre(c.conductor)))
+    .filter(c => (c.total || 0) > 0 || conectadosAhora.has(normNombre(c.conductor)))
+    .map(c => ({
+      conductor: c.conductor,
+      matricula: c.matricula, matriculas: c.matriculas || [],
+      enBolt: c.enBolt, desconectado: c.desconectado, total: c.total,
+      minutos: horasCond.get(c.conductor) || 0,
+      conectadoAhora: conectadosAhora.has(normNombre(c.conductor)),
+    }))
+    .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
+
   const resumen = {
     coches: filas.length,
     enPlan: filas.filter(f => f.enPlan).length,
@@ -185,6 +231,8 @@ async function enDirecto({ dia } = {}) {
     fueraDePlan: filas.filter(f => !f.enPlan).length,
     // Km de toda la flota hoy, del núcleo. Es el número que hoy salía en 0.
     kmHoy: Math.round(filas.reduce((s, f) => s + (f.km || 0), 0) * 10) / 10,
+    // Conductores que trabajaron sin estar en el plan.
+    sinPlan: sinPlan.length,
   };
 
   return {
@@ -195,6 +243,7 @@ async function enDirecto({ dia } = {}) {
     ultimaVuelta: est ? est.ultimaVuelta : null,
     resumen,
     coches: filas,
+    sinPlan,
   };
 }
 
