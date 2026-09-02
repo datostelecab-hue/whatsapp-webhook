@@ -63,11 +63,13 @@ router.get('/api/km-diagnostico', async (req, res) => {
     const dia = (req.query.dia && String(req.query.dia).slice(0, 10)) || hoyMadrid();
     const turno = ['dia', 'noche', 'completo', 'operativo'].includes(req.query.turno) ? req.query.turno : 'operativo';
     const mats = String(req.query.mats || req.query.mat || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (!mats.length) throw new Error('Falta ?mats= (una o varias matrículas separadas por coma)');
+    // ?nombre= (o ?nombres=) traza por conductor: en qué coches tiene tramos ese día.
+    const nombres = String(req.query.nombres || req.query.nombre || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!mats.length && !nombres.length) throw new Error('Falta ?mats= (matrículas) o ?nombre= (conductor)');
     // ?mapon=1 → además le pregunta a Mapon por la ventana exacta, para cerrar la
     // bifurcación "hueco de ingesta vs. baliza caída" sin pegar JSON crudo.
     const conMapon = req.query.mapon === '1' || req.query.mapon === 'true';
-    res.json({ status: 'ok', ...(await diagnosticoKm(dia, mats, turno, { conMapon })) });
+    res.json({ status: 'ok', ...(await diagnosticoKm(dia, mats, turno, { conMapon, nombres })) });
   } catch (error) {
     console.error('❌ [Control] /api/km-diagnostico:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });

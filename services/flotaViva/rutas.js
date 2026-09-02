@@ -411,8 +411,11 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
     // lo tapa). Si Mapon tampoco → la baliza del coche no registró (BOLT lo siguió
     // por el móvil, el equipo del coche no). Solo con ?mapon=1: es la excepción a
     // "no volver a llamar a la API", justificada porque esto es un diagnóstico.
+    // Solo se pregunta a Mapon si el núcleo NO tiene nada del coche (ni por unit ni
+    // por matrícula): entonces la duda es hueco de ingesta vs. baliza caída. Si el
+    // núcleo ya tiene km (rutaVista), no hace falta molestar a la API.
     let mapon = null;
-    if (opts.conMapon && !Number(rutaReal.n)) {
+    if (opts.conMapon && !Number(rutaVista.n) && !Number(rutaReal.n)) {
       try {
         const u = (await fuentes.flotaMapon()).get(mat);
         if (!u) mapon = { encontrado: false };
@@ -428,19 +431,18 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
       } catch (e) { mapon = { error: e.message }; }
     }
 
-    // El veredicto legible: dónde se cae.
+    // El veredicto legible. LA CLAVE es rutaVista: es EXACTAMENTE lo que ve el reporte
+    // (cruce por mapon_unit). rutaReal (por matrícula) solo distingue el sub-caso
+    // "mapon_unit sin resolver", porque fv_ruta.matricula llega poco fiable de route/list.
     let corte;
     if (!vehiculo.length) corte = 'El coche no está en fv_vehiculo (nunca lo vio BOLT).';
-    else if (!Number(rutaReal.n)) {
-      if (!mapon) corte = 'Sin trayectos de Mapon en el núcleo esa ventana. Añade ?mapon=1 para saber si es hueco de ingesta o baliza caída.';
-      else if (mapon.error) corte = `Sin trayectos en el núcleo; y al preguntar a Mapon: ${mapon.error}`;
-      else if (mapon.encontrado === false) corte = 'Sin trayectos en el núcleo y Mapon no reconoce la matrícula (unit/list no la tiene).';
-      else if (mapon.trips > 0) corte = `HUECO DE INGESTA: Mapon SÍ tiene ${mapon.trips} trayecto(s) / ${mapon.km} km esa ventana, pero el núcleo no. Reingesta ese día (backfill).`;
-      else corte = 'BALIZA DEL COCHE: ni Mapon tiene trayectos de ese coche esa ventana. BOLT lo siguió por el móvil, el equipo del coche no registró. No es bug nuestro.';
-    }
-    else if (!Number(rutaVista.n)) corte = 'Trayectos SÍ, pero mapon_unit no casa: fv_vehiculo.mapon_unit está sin resolver → el reporte no los ve.';
-    else if (!tramos.some(t => t.conductor !== '(sin conductor)')) corte = 'Km SÍ, pero sus tramos de BOLT no llevan conductor → caen en "(sin conductor)".';
-    else corte = 'La tubería está completa: si sale en blanco es por el nombre (revisa fv_conductor vs. el cuadrante).';
+    else if (Number(rutaVista.n)) corte = `El coche SÍ tiene km en el núcleo (${rutaVista.n} trayecto(s) / ${rutaVista.km} km), repartidos entre los conductores de sus tramos. Si un conductor concreto sale en blanco, es que NO tiene tramos en este coche en la ventana → míralo con ?nombre=.`;
+    else if (Number(rutaReal.n)) corte = `Hay ${rutaReal.n} trayecto(s) por matrícula pero mapon_unit no casa: fv_vehiculo.mapon_unit está sin resolver → el reporte no los ve.`;
+    else if (!mapon) corte = 'Sin km en el núcleo esa ventana. Añade ?mapon=1 para saber si es hueco de ingesta o baliza caída.';
+    else if (mapon.error) corte = `Sin km en el núcleo; y al preguntar a Mapon: ${mapon.error}`;
+    else if (mapon.encontrado === false) corte = 'Sin km en el núcleo y Mapon no reconoce la matrícula (unit/list no la tiene).';
+    else if (mapon.trips > 0) corte = `HUECO DE INGESTA: Mapon SÍ tiene ${mapon.trips} trayecto(s) / ${mapon.km} km esa ventana, pero el núcleo no. Reingesta ese día (backfill).`;
+    else corte = 'BALIZA DEL COCHE: ni Mapon tiene trayectos de ese coche esa ventana. BOLT lo siguió por el móvil, el equipo del coche no registró. No es bug nuestro.';
 
     matriculas.push({ matricula: mat, vehiculo, rutaVista, rutaReal, tramos, mapon, corte });
   }
@@ -451,7 +453,33 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
   const reparto = km.conductores.filter(c =>
     c.conductor === '(sin conductor)' || (c.matriculas || []).some(m => mats.includes(m)));
 
-  return { dia: String(dia).slice(0, 10), turno, ventana: win, matriculas, reparto };
+  // Traza POR CONDUCTOR: en qué coches tiene tramos en la ventana (lo que ve nuestro
+  // sistema). Es el otro lado del diagnóstico: "el conductor trabajó pero sale en
+  // blanco" → o no tiene tramos (no lo trackeamos con coche), o los tiene en OTRO
+  // coche del que sí midió km otro conductor. Casa por nombre (ILIKE por tokens).
+  const conductores = [];
+  for (const nombre of (opts.nombres || [])) {
+    const toks = String(nombre || '').toLowerCase()
+      .replace(/[^a-z0-9áéíóúüñ\s]/gi, ' ').split(/\s+/).filter(t => t.length >= 3).slice(0, 4);
+    let tramos = [];
+    if (toks.length) {
+      const params = [win.ini, win.fin];
+      const conds = toks.map(t => { params.push('%' + t + '%'); return `co.nombre ILIKE $${params.length}`; });
+      tramos = (await db.consulta(
+        `SELECT co.nombre AS conductor, veh.matricula, t.situacion, count(*)::int AS n,
+                min(t.desde) AS desde, max(COALESCE(t.hasta, now())) AS hasta
+           FROM fv_tramo t
+           JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
+           JOIN fv_conductor co ON co.uuid = t.conductor_uuid
+          WHERE t.desde < $2 AND COALESCE(t.hasta, now()) > $1
+            AND ${conds.join(' AND ')}
+          GROUP BY co.nombre, veh.matricula, t.situacion
+          ORDER BY n DESC`, params)).rows;
+    }
+    conductores.push({ nombre, encontrado: tramos.length > 0, tramos });
+  }
+
+  return { dia: String(dia).slice(0, 10), turno, ventana: win, matriculas, reparto, conductores };
 }
 
 module.exports = {
