@@ -159,4 +159,23 @@ router.get('/api/mapon/:matricula', responde(async req => {
   };
 }));
 
+// DEPURACIÓN: los trayectos de Mapon de un coche en un día (por defecto hoy), TAL
+// CUAL. Es la distancia BUENA —la de "Informes/Rutas"— para construir los km
+// encima: el `mileage` de unit/list llega estancado (marca un odómetro de hace
+// horas y no cambia entre vueltas, así que la resta da cero). Con esto se ve el
+// formato exacto (campo de distancia y unidades) antes de tocar el motor.
+router.get('/api/mapon-rutas/:matricula', responde(async req => {
+  const fuentes = require('../services/flotaViva/fuentes');
+  const mat = fuentes.normMat(req.params.matricula);
+  const u = (await fuentes.flotaMapon()).get(mat);
+  if (!u) return { matricula: mat, encontrado: false };
+  const dia = (req.query.dia && String(req.query.dia).slice(0, 10)) ||
+    new Intl.DateTimeFormat('en-CA',
+      { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return {
+    matricula: mat, unitId: u.unitId, dia,
+    crudo: await fuentes.rutasDeUnidad(u.unitId, `${dia} 00:00:00`, `${dia} 23:59:59`),
+  };
+}));
+
 module.exports = router;

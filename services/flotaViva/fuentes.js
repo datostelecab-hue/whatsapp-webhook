@@ -194,4 +194,19 @@ async function crudoDeUnidad(matricula) {
   };
 }
 
-module.exports = { vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, normMat };
+/**
+ * Los trayectos que Mapon calcula para UNA unidad en un rango, tal cual.
+ *
+ * Es lo que da la distancia DE VERDAD —la de "Informes/Rutas"—, a diferencia del
+ * `mileage` de unit/list, que llega estancado (marca un odómetro de hace horas y
+ * no se mueve entre vueltas, así que la resta da cero). Se pide crudo para ver el
+ * formato exacto —el nombre del campo de distancia y sus unidades— antes de
+ * construir los km buenos encima.
+ */
+async function rutasDeUnidad(unitId, from, till) {
+  return pedirMapon('route/list.json',
+    `unit_id=${encodeURIComponent(unitId)}` +
+    `&from=${encodeURIComponent(from)}&till=${encodeURIComponent(till)}`);
+}
+
+module.exports = { vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, rutasDeUnidad, normMat };
