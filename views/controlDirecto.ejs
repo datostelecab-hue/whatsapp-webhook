@@ -204,7 +204,10 @@
             '<div class="flex items-center gap-2 text-xs">' +
               '<span class="tabular-nums text-telecab-muted w-24">' + hora(t.desde) + (t.hasta ? '–' + hora(t.hasta) : '–ahora') + '</span>' +
               '<span class="text-telecab-text w-24">' + esc(t.etiqueta || t.situacion) + '</span>' +
-              '<span class="text-telecab-muted">' + esc(t.duracion || '') + (t.km != null ? ' · ' + t.km + ' km' : '') +
+              // El km por tramo viene del `mileage` estancado y es poco fiable; se
+              // oculta hasta la Fase 3 (repartir route/list por tramo). El km bueno
+              // del día está en la cabecera de la fila.
+              '<span class="text-telecab-muted">' + esc(t.duracion || '') +
                 (t.conductor ? ' · ' + esc(t.conductor) : '') + '</span>' +
             '</div>').join('') + '</div>'
         : '<span class="text-telecab-muted">Sin trazos hoy.</span>';
