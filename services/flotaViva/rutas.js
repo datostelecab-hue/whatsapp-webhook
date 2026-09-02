@@ -121,6 +121,11 @@ const TURNOS = {
   completo: [0, 1, 0],
   dia: [HORA_DIA, 0, HORA_NOCHE],
   noche: [HORA_NOCHE, 1, HORA_DIA],
+  // El DÍA OPERATIVO: 05:00 → 05:00 del día siguiente (día ∪ noche). Es lo que
+  // hizo un conductor en su jornada, sea de día o de noche, sin necesidad de saber
+  // su turno. Empieza a las 05:00, así que no se come la madrugada de la víspera
+  // (que es del turno de noche del día anterior).
+  operativo: [HORA_DIA, 1, HORA_DIA],
 };
 
 /**
