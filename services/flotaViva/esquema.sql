@@ -598,4 +598,34 @@ CREATE INDEX IF NOT EXISTS idx_fv_seg_incidencia
 COMMENT ON TABLE fv_seguimiento IS
   'Cada "He llamado" de En directo: rastro de intentos de una incidencia, sin cerrarla';
 
+-- ── EL NÚCLEO DE KM: los trayectos de Mapon ───────────────────────────────
+-- LOS KM DE VERDAD NO SALEN DEL `mileage` DE unit/list.
+--
+-- Ese campo llega estancado —marca un odometro de horas antes y no se mueve entre
+-- vueltas, asi que la resta da 0 aunque el coche haya hecho 396 km—. Los km
+-- buenos estan en route/list (lo que ve la Auditoria): una fila por trayecto con
+-- su distancia Mapon en metros y sus horas.
+--
+-- Se guardan aqui —el nucleo— para que las pantallas lean los km SIN volver a
+-- llamar a la API: los alimenta el motor (una sola llamada de flota cada vuelta)
+-- y el backfill. La clave (unit_id, route_id) hace la ingesta idempotente: repetir
+-- una ventana no duplica, solo refresca.
+CREATE TABLE IF NOT EXISTS fv_ruta (
+  unit_id     BIGINT      NOT NULL,
+  route_id    VARCHAR(40) NOT NULL,
+  matricula   VARCHAR(15),
+  inicio      TIMESTAMPTZ NOT NULL,
+  fin         TIMESTAMPTZ,
+  metros      INTEGER     NOT NULL DEFAULT 0,
+  driver_id   BIGINT,
+  ingerida_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (unit_id, route_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fv_ruta_mat_ini ON fv_ruta (matricula, inicio);
+CREATE INDEX IF NOT EXISTS idx_fv_ruta_inicio  ON fv_ruta (inicio);
+
+COMMENT ON TABLE fv_ruta IS
+  'Nucleo de km: un trayecto de Mapon (route/list) por fila. Fuente buena de km, no el mileage estancado';
+
 COMMIT;

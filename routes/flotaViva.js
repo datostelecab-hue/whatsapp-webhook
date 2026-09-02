@@ -181,4 +181,26 @@ router.get('/api/mapon-rutas/:matricula', responde(async req => {
   };
 }));
 
+// BACKFILL / INGESTA MANUAL del núcleo de km. Solo desarrollador/superadmin: pide
+// a Mapon los trayectos del rango y los mete en fv_ruta. Sirve para rellenar
+// ayer+hoy en el servidor de pruebas, o para tapar un hueco si el cron estuvo
+// caído. Es idempotente (clave unit_id+route_id): repetirlo no duplica.
+//   /flota-viva/api/ingestar-rutas?dias=2
+//   /flota-viva/api/ingestar-rutas?desde=2026-09-01&hasta=2026-09-02T23:59:59Z
+router.get('/api/ingestar-rutas', responde(async (req, res) => {
+  const rol = req.usuario && req.usuario.rol;
+  if (rol !== 'superadmin' && rol !== 'desarrollador') {
+    res.status(403).json({ status: 'error', msg: 'Solo desarrollador/superadmin' });
+    return;
+  }
+  let desde = req.query.desde, hasta = req.query.hasta;
+  if (!desde && req.query.dias) {
+    desde = new Date(Date.now() - Number(req.query.dias) * 86400000).toISOString();
+  }
+  const r = await require('../services/flotaViva/rutas').ingestarRutas({ desde, hasta });
+  console.log(`🛰️  [FLOTA VIVA] Backfill rutas: ${r.trayectos} trayecto(s), ${r.km} km ` +
+              `(${r.desde} → ${r.hasta})`);
+  return r;
+}));
+
 module.exports = router;

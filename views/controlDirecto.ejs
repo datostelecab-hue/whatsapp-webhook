@@ -88,11 +88,11 @@
       return '<span class="text-telecab-muted">Desconectado' + (v.desdeHace ? ' · hace ' + esc(v.desdeHace) : '') +
         (v.ultimoConductor ? ' · último: ' + esc(v.ultimoConductor) : '') + '</span>';
     }
-    const km = v.km != null ? ' · ' + v.km + ' km' : '';
+    // El km de aquí NO se pinta: el del tramo viene del `mileage` estancado. El km
+    // bueno (del núcleo route/list) va aparte, en la fila, como "km hoy".
     return '<span class="text-telecab-text">' + esc(v.etiqueta || v.situacion) + '</span>' +
       (v.conductor ? ' <span class="text-telecab-muted">· ' + esc(v.conductor) + '</span>' : '') +
-      (v.desdeHace ? ' <span class="text-telecab-muted">· ' + esc(v.desdeHace) + '</span>' : '') +
-      (km ? ' <span class="text-telecab-muted">' + esc(km) + '</span>' : '');
+      (v.desdeHace ? ' <span class="text-telecab-muted">· ' + esc(v.desdeHace) + '</span>' : '');
   }
 
   function pintarResumen(r) {
@@ -179,6 +179,8 @@
         '<span class="text-xs text-telecab-muted w-52 truncate" title="Plan de hoy">' +
           '<i class="fa-regular fa-calendar mr-1"></i>D: ' + (esc(c.plan.dia) || '—') + ' · N: ' + (esc(c.plan.noche) || '—') + '</span>' +
         '<span class="text-sm flex-1 min-w-[12rem]">' + ahoraTxt(c.vivo) + '</span>' +
+        '<span class="text-xs text-telecab-muted whitespace-nowrap tabular-nums" title="Km de hoy (Mapon, del núcleo)">' +
+          '<i class="fa-solid fa-road mr-1"></i>' + (c.km || 0) + ' km</span>' +
         (nInc ? chip(nInc + (nInc > 1 ? ' avisos' : ' aviso'), 'error') : '') +
         (c.cuadrante ? '<span class="text-xs text-telecab-muted">' + esc(c.cuadrante) + '</span>' : '') +
         '<i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform ml-1"></i>' +
@@ -292,7 +294,8 @@
 
       pintarResumen(d.resumen);
       pintar();
-      $('#d-actualizado').textContent = 'Actualizado a las ' +
+      $('#d-actualizado').innerHTML = 'Flota hoy <b class="text-telecab-text tabular-nums">' +
+        ((d.resumen && d.resumen.kmHoy) || 0) + ' km</b> · actualizado ' +
         new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     } catch (e) {
       $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(e.message) + '</p>';

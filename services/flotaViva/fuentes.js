@@ -209,4 +209,43 @@ async function rutasDeUnidad(unitId, from, till) {
     `&from=${encodeURIComponent(from)}&till=${encodeURIComponent(till)}`);
 }
 
-module.exports = { vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, rutasDeUnidad, normMat };
+/** Mapon da la hora como 'Y-m-d H:i:s' UTC o ISO; se normaliza a ISO con Z. */
+function isoMapon(g) {
+  if (!g) return null;
+  let s = String(g).trim().replace(' ', 'T');
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z';   // sin zona = UTC
+  return s;
+}
+
+/**
+ * Los trayectos de TODA la flota en un rango, de route/list, en UNA sola llamada.
+ *
+ * Un trayecto es una racha de conducción con su distancia Mapon (metros) y sus
+ * horas; las paradas (type != 'route') no cuentan. Es la fuente BUENA de km —la
+ * de la Auditoría—, a diferencia del `mileage` de unit/list, que llega estancado.
+ * `from`/`till` en ISO 8601 con Z. `include=driver_id` trae quién conducía según
+ * Mapon (de apoyo: la atribución que manda es la de nuestro libro de turnos).
+ */
+async function trayectosFlota(from, till) {
+  const j = await pedirMapon('route/list.json',
+    `from=${encodeURIComponent(from)}&till=${encodeURIComponent(till)}&include=driver_id`);
+  const out = [];
+  ((j.data && j.data.units) || []).forEach(u => {
+    const mat = normMat(u.number || u.label);
+    (u.routes || []).forEach(rt => {
+      if (rt.type !== 'route') return;
+      out.push({
+        unitId: Number(u.unit_id),
+        routeId: String(rt.route_id),
+        matricula: mat || null,
+        metros: Math.round(Number(rt.distance) || 0),
+        inicio: isoMapon(rt.start && rt.start.time),
+        fin: isoMapon(rt.end && rt.end.time),
+        driverId: rt.driver_id != null ? Number(rt.driver_id) : null,
+      });
+    });
+  });
+  return out;
+}
+
+module.exports = { vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, rutasDeUnidad, trayectosFlota, normMat };

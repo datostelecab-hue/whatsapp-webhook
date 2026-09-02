@@ -176,9 +176,23 @@ async function pasada() {
       console.error('⚠️  [FLOTA VIVA] La revisión de franjas falló:', e.message);
     }
 
+    // Alimenta el núcleo de km con los trayectos de Mapon de las últimas horas —
+    // la fuente BUENA (route/list), no el `mileage` estancado. En su propio try:
+    // si route/list falla, la vuelta no se cae. Ventana holgada porque el dedup
+    // por route_id absorbe el solape entre vueltas.
+    let rutas = null;
+    try {
+      rutas = await require('./rutas').ingestarRutas({
+        desde: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+      });
+    } catch (e) {
+      console.error('⚠️  [FLOTA VIVA] La ingesta de rutas falló:', e.message);
+    }
+
     console.log(`🚦 [FLOTA VIVA] ${coches.length} coche(s) · ${conectados} conectado(s) · ` +
-                `${cambios} cambio(s) · ${ms} ms`);
-    return { vehiculos: coches.length, conectados, cambios, ms, incidencias };
+                `${cambios} cambio(s) · ${ms} ms` +
+                (rutas ? ` · ${rutas.trayectos} trayecto(s)` : ''));
+    return { vehiculos: coches.length, conectados, cambios, ms, incidencias, rutas };
   } catch (e) {
     await db.consulta('UPDATE fv_vuelta SET terminada_at = now(), error = $2 WHERE id = $1',
       [vuelta, e.message]).catch(() => {});

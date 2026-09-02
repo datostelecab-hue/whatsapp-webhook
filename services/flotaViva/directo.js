@@ -90,7 +90,7 @@ async function enDirecto({ dia } = {}) {
 
   // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
   const plani = require('../repo/planificador');   // base principal (Cuadrante)
-  const [tab, est, incHoy, incAyer] = await Promise.all([
+  const [tab, est, incHoy, incAyer, kmHoy] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
     // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
@@ -98,6 +98,9 @@ async function enDirecto({ dia } = {}) {
     // que sigue vivo es "de ayer". Se juntan las dos y se quitan duplicados.
     panel.incidencias({ dia: hoy }).catch(() => []),
     panel.incidencias({ dia: ayer }).catch(() => []),
+    // Los km de hoy salen del NÚCLEO (fv_ruta, route/list), no del `mileage`
+    // estancado. Si aún no se ha ingerido, sale vacío y el coche muestra 0.
+    require('./rutas').kmPorCoche(hoy).catch(() => new Map()),
   ]);
 
   // ── Realidad viva: matrícula normalizada → su fila de fv_ahora ──────────────
@@ -131,11 +134,13 @@ async function enDirecto({ dia } = {}) {
     };
     const vivo = vivos.get(k) || null;
     const incidencias = porInc.get(k) || [];
+    const kmc = kmHoy.get(k) || {};
     filas.push({
       matricula: c.matricula, matriculaNorm: k,
       zona: c.zona || '', cuadrante: c.cuadrante || '',
       estadoVeh: c.estadoVeh || '', operativo: c.operativo !== false,
       plan, vivo, incidencias,
+      km: kmc.km || 0, viajes: kmc.viajes || 0,
       enPlan: true,
       estado: calcEstado({ plan, vivo, nIncidencias: incidencias.length, operativo: c.operativo !== false }),
     });
@@ -150,12 +155,14 @@ async function enDirecto({ dia } = {}) {
   extra.forEach(k => {
     const vivo = vivos.get(k) || null;
     const incidencias = porInc.get(k) || [];
+    const kmc = kmHoy.get(k) || {};
     const plan = { dia: '', noche: '' };
     filas.push({
       matricula: (vivo && vivo.matricula) || (incidencias[0] && incidencias[0].matricula) || k,
       matriculaNorm: k,
       zona: '', cuadrante: '', estadoVeh: '', operativo: true,
       plan, vivo, incidencias,
+      km: kmc.km || 0, viajes: kmc.viajes || 0,
       enPlan: false,
       estado: calcEstado({ plan, vivo, nIncidencias: incidencias.length, operativo: true }),
     });
@@ -176,6 +183,8 @@ async function enDirecto({ dia } = {}) {
     sinConexion: filas.filter(f => f.estado.codigo === 'sin_conexion').length,
     alertas: filas.reduce((s, f) => s + f.incidencias.length, 0),
     fueraDePlan: filas.filter(f => !f.enPlan).length,
+    // Km de toda la flota hoy, del núcleo. Es el número que hoy salía en 0.
+    kmHoy: Math.round(filas.reduce((s, f) => s + (f.km || 0), 0) * 10) / 10,
   };
 
   return {
