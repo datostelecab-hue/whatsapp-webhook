@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { leerBitacora } = require('../services/bitacora');
+// Bitácora desde PostgreSQL (antes: hoja VISTA_FINAL en services/bitacora.js).
+const { leerBitacora } = require('../services/repo/bitacora');
 
 // VISTA_FINAL es una lectura grande (A:ZZ); se cachea unos minutos. La bitácora
 // se refresca por cron cada hora, así que unos minutos de desfase es aceptable.
