@@ -64,7 +64,10 @@ router.get('/api/km-diagnostico', async (req, res) => {
     const turno = ['dia', 'noche', 'completo', 'operativo'].includes(req.query.turno) ? req.query.turno : 'operativo';
     const mats = String(req.query.mats || req.query.mat || '').split(',').map(s => s.trim()).filter(Boolean);
     if (!mats.length) throw new Error('Falta ?mats= (una o varias matrículas separadas por coma)');
-    res.json({ status: 'ok', ...(await diagnosticoKm(dia, mats, turno)) });
+    // ?mapon=1 → además le pregunta a Mapon por la ventana exacta, para cerrar la
+    // bifurcación "hueco de ingesta vs. baliza caída" sin pegar JSON crudo.
+    const conMapon = req.query.mapon === '1' || req.query.mapon === 'true';
+    res.json({ status: 'ok', ...(await diagnosticoKm(dia, mats, turno, { conMapon })) });
   } catch (error) {
     console.error('❌ [Control] /api/km-diagnostico:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });

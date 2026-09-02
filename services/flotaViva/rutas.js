@@ -313,7 +313,7 @@ async function sankeyFlota(dia) {
  * leyendo SOLO del núcleo (no vuelve a llamar a ninguna API). Es la herramienta para
  * el "¿qué pasó con este?" sin tener que adivinar.
  */
-async function diagnosticoKm(dia, plates = [], turno = 'operativo') {
+async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
   await db.preparar();
   const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
   const mats = (Array.isArray(plates) ? plates : [plates])
@@ -357,15 +357,43 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo') {
         WHERE t.desde < $3 AND COALESCE(t.hasta, now()) > $2
         GROUP BY 1, 2 ORDER BY n DESC`, [mat, win.ini, win.fin])).rows;
 
+    // Bifurcación cuando NO hay trayectos en el núcleo: preguntarle a Mapon por la
+    // MISMA ventana. Si Mapon los tiene y el núcleo no → hueco de ingesta (backfill
+    // lo tapa). Si Mapon tampoco → la baliza del coche no registró (BOLT lo siguió
+    // por el móvil, el equipo del coche no). Solo con ?mapon=1: es la excepción a
+    // "no volver a llamar a la API", justificada porque esto es un diagnóstico.
+    let mapon = null;
+    if (opts.conMapon && !Number(rutaReal.n)) {
+      try {
+        const u = (await fuentes.flotaMapon()).get(mat);
+        if (!u) mapon = { encontrado: false };
+        else {
+          const crudo = await fuentes.rutasDeUnidad(u.unitId, iso(win.ini), iso(win.fin));
+          let trips = 0, metros = 0;
+          ((crudo && crudo.data && crudo.data.units) || []).forEach(un =>
+            (un.routes || []).forEach(rt => {
+              if (rt.type === 'route') { trips++; metros += Number(rt.distance) || 0; }
+            }));
+          mapon = { encontrado: true, unitId: u.unitId, trips, km: Math.round(metros / 100) / 10 };
+        }
+      } catch (e) { mapon = { error: e.message }; }
+    }
+
     // El veredicto legible: dónde se cae.
     let corte;
     if (!vehiculo.length) corte = 'El coche no está en fv_vehiculo (nunca lo vio BOLT).';
-    else if (!Number(rutaReal.n)) corte = 'Sin trayectos de Mapon en la ventana (o núcleo sin backfillear ese día).';
+    else if (!Number(rutaReal.n)) {
+      if (!mapon) corte = 'Sin trayectos de Mapon en el núcleo esa ventana. Añade ?mapon=1 para saber si es hueco de ingesta o baliza caída.';
+      else if (mapon.error) corte = `Sin trayectos en el núcleo; y al preguntar a Mapon: ${mapon.error}`;
+      else if (mapon.encontrado === false) corte = 'Sin trayectos en el núcleo y Mapon no reconoce la matrícula (unit/list no la tiene).';
+      else if (mapon.trips > 0) corte = `HUECO DE INGESTA: Mapon SÍ tiene ${mapon.trips} trayecto(s) / ${mapon.km} km esa ventana, pero el núcleo no. Reingesta ese día (backfill).`;
+      else corte = 'BALIZA DEL COCHE: ni Mapon tiene trayectos de ese coche esa ventana. BOLT lo siguió por el móvil, el equipo del coche no registró. No es bug nuestro.';
+    }
     else if (!Number(rutaVista.n)) corte = 'Trayectos SÍ, pero mapon_unit no casa: fv_vehiculo.mapon_unit está sin resolver → el reporte no los ve.';
     else if (!tramos.some(t => t.conductor !== '(sin conductor)')) corte = 'Km SÍ, pero sus tramos de BOLT no llevan conductor → caen en "(sin conductor)".';
     else corte = 'La tubería está completa: si sale en blanco es por el nombre (revisa fv_conductor vs. el cuadrante).';
 
-    matriculas.push({ matricula: mat, vehiculo, rutaVista, rutaReal, tramos, corte });
+    matriculas.push({ matricula: mat, vehiculo, rutaVista, rutaReal, tramos, mapon, corte });
   }
 
   // El reparto por conductor (incl. "(sin conductor)"): para ver a nombre de quién
