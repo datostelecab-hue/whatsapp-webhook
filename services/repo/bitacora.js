@@ -80,7 +80,14 @@ async function leerBitacora() {
        cubren AS (SELECT DISTINCT conductor_id, dia FROM f_cobertura($1::date, $2::date))
        SELECT a.conductor_id, to_char(a.dia, 'YYYY-MM-DD') AS dia
          FROM asignados a
-        WHERE NOT EXISTS (SELECT 1 FROM cubren c WHERE c.conductor_id = a.conductor_id AND c.dia = a.dia)`,
+        WHERE NOT EXISTS (SELECT 1 FROM cubren c WHERE c.conductor_id = a.conductor_id AND c.dia = a.dia)
+          -- Un ausente (suspendido, baja…) sigue asignado pero NO libra: se le quita
+          -- de 'L' (los V/B/P ya salen por su rama; el resto queda en blanco, no 'L').
+          AND NOT EXISTS (
+            SELECT 1 FROM conductor_estado_hist h
+              JOIN cat_estado_conductor ce ON ce.codigo = h.estado
+             WHERE h.conductor_id = a.conductor_id AND ce.es_ausencia
+               AND h.desde <= a.dia AND (h.hasta IS NULL OR h.hasta >= a.dia))`,
       [INICIO_ISO, hoyIso]),
   ]);
 
