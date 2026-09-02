@@ -84,7 +84,8 @@ process.on('uncaughtException', (error) => {
 const botPuertas = require('./routes/botPuertas');
 const boltHoras = require('./routes/boltHoras');
 const resumenRoutes = require('./routes/resumen');
-const planificadorRoutes = require('./routes/planificador');
+// Planificador legacy (Google Sheets) ELIMINADO. /planificador sirve ahora el
+// tablero PostgreSQL (routes/tablero.js), el mismo que /planificador-v2.
 const agendaRoutes = require('./routes/agenda');
 const matchingRoutes = require('./routes/matching');
 const coberturaRoutes = require('./routes/cobertura');
@@ -155,8 +156,8 @@ app.use('/usuarios', usuariosRoutes);
 
 app.use('/horas', boltHoras);
 app.use('/resumen', resumenRoutes);
-app.use('/planificador', planificadorRoutes);
-app.use('/planificador-v2', require('./routes/tablero'));
+app.use('/planificador', require('./routes/tablero'));
+app.use('/planificador-v2', require('./routes/tablero'));   // alias (el front llama a /planificador-v2/api/*)
 app.use('/agenda', agendaRoutes);
 app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
