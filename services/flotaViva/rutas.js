@@ -126,6 +126,11 @@ const TURNOS = {
   // su turno. Empieza a las 05:00, así que no se come la madrugada de la víspera
   // (que es del turno de noche del día anterior).
   operativo: [HORA_DIA, 1, HORA_DIA],
+  // REGLA DE TRÁFICO para el reporte: el turno de NOCHE va de MEDIODÍA a MEDIODÍA
+  // (12:00 D → 12:00 D+1). Así un turno de noche entero cae en UN día y la madrugada
+  // va con la noche que la trajo, no con el día siguiente. El turno de DÍA usa el día
+  // natural ('completo', 00:00→24:00).
+  noche12: [12, 1, 12],
 };
 
 /**
@@ -225,6 +230,37 @@ async function horasConectadasPorConductor(dia, turno = 'operativo') {
        FROM fv_tramo t
        CROSS JOIN v
        JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.codigo IN ('viaje', 'espera')
+       LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
+      WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
+      GROUP BY conductor`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+  const m = new Map();
+  r.rows.forEach(x => m.set(x.conductor, Number(x.minutos) || 0));
+  return m;
+}
+
+/**
+ * Horas CONECTADAS (viaje + espera + descanso = "conectado" de BOLT) por conductor
+ * en la ventana de un turno, del núcleo. Es "cuántas horas trabajó" con la MISMA
+ * definición que el Total de BOLT (que incluye el descanso), para poder sustituir a
+ * Datos_API en los turnos de noche —donde la hoja no sirve, porque solo guarda el
+ * total por día natural y el turno de noche va de mediodía a mediodía—.
+ *
+ * Devuelve Map(nombreConductor -> minutos). Clave = nombre de fv_conductor.
+ */
+async function horasConectadoTotal(dia, turno = 'noche12') {
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.noche12;
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     )
+     SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
+            floor(sum(EXTRACT(EPOCH FROM (
+              LEAST(COALESCE(t.hasta, now()), v.fin) - GREATEST(t.desde, v.ini)
+            ))) / 60)::int AS minutos
+       FROM fv_tramo t
+       CROSS JOIN v
+       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.conectado
        LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
       WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
       GROUP BY conductor`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
@@ -484,6 +520,6 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
 
 module.exports = {
   ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
-  horasConectadasPorConductor, matriculasBoltPorConductor, bucketsTurno,
-  sankeyFlota, diagnosticoKm,
+  horasConectadasPorConductor, horasConectadoTotal, matriculasBoltPorConductor,
+  bucketsTurno, sankeyFlota, diagnosticoKm,
 };

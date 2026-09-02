@@ -117,14 +117,44 @@ async function guardar({ fecha, idBolt, nombre, telefono, turno, horas, observac
 // ── Reporte del día (key 1=Ayer, 2=Hace 2, 3=Hace 3) ────────────────────────
 async function reporteDia(key) {
   const { str: fecha, idx, Y, M, D } = fechaDeClave(key);
+  const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
   const [tablero, justis] = await Promise.all([tableroControl(), leerPorFecha(fecha)]);
+
+  // Horas del NÚCLEO (Postgres, fv_tramo), NO de Datos_API (la hoja). Por turno: los
+  // de día, día natural (00→24); los de noche, de MEDIODÍA a MEDIODÍA (12→12, regla de
+  // Tráfico: la hoja parte el turno de noche por la medianoche y no sirve). Misma
+  // definición que el Total de BOLT (viaje+espera+descanso).
+  //
+  // Datos_API queda SOLO de red de seguridad: para los de DÍA cuyo nombre aún no case
+  // en el núcleo, y para todos si el núcleo entero no responde. Los de NOCHE van
+  // siempre por el núcleo (la hoja daría el trozo partido por la medianoche).
+  let horasDia = null, horasNoche = null;
+  try {
+    await require('./flotaViva/db').preparar();
+    const rutas = require('./flotaViva/rutas');
+    const [hd, hn] = await Promise.all([
+      rutas.horasConectadoTotal(iso, 'completo'),
+      rutas.horasConectadoTotal(iso, 'noche12'),
+    ]);
+    const aHoras = m => new Map([...m.entries()].map(([nom, min]) => [normClave(nom), Math.round(min / 6) / 10]));
+    horasDia = aHoras(hd); horasNoche = aHoras(hn);
+  } catch (e) {
+    console.warn('⚠️  [JUST] Horas del núcleo no disponibles, se usa Datos_API:', e.message);
+  }
+  const nucleoOk = !!(horasDia && horasNoche);
 
   const bruto = [];
   for (const c of (tablero.conductores || [])) {
     const dia = c.dias && c.dias[key];
     if (!dia) continue;
-    const just = justis.get(normClave(c.nombre));
-    const horas = dia.horas;   // número o null
+    const clave = normClave(c.nombre);
+    const just = justis.get(clave);
+    const esNoche = (c.turno || '').trim() === 'Noche';
+    const horas = !nucleoOk
+      ? dia.horas                                  // núcleo caído → la hoja para todos
+      : esNoche
+        ? (horasNoche.get(clave) ?? 0)             // noche: núcleo puro (12→12)
+        : (horasDia.get(clave) ?? dia.horas);      // día: núcleo, o la hoja de red
     const incluir = dia.debiaSalir || (horas != null && horas > 0) || !!just;
     if (!incluir) continue;
     bruto.push({
@@ -158,20 +188,23 @@ async function reporteDia(key) {
   //
   // En su propio try: si el núcleo no está poblado, el reporte sale igual.
   try {
-    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
     const rutas = require('./flotaViva/rutas');
     await require('./flotaViva/db').preparar();
-    // Dos fuentes: los km medidos por Mapon (fv_ruta), y la matrícula con la que
-    // fichó en BOLT (haya o no traza de Mapon). La segunda es la que destapa el
-    // caso REVISAR.
-    const [km, bolt] = await Promise.all([
-      rutas.kmConectadoDesconectado(iso, 'operativo'),
-      rutas.matriculasBoltPorConductor(iso, 'operativo'),
+    // Dos fuentes del núcleo (Postgres): los km medidos por Mapon (fv_ruta) y la
+    // matrícula con la que fichó en BOLT (destapa el caso REVISAR). Por TURNO, igual
+    // que las horas: los de noche 12→12, los demás día natural.
+    const [kmDia, kmNoche, boltDia, boltNoche] = await Promise.all([
+      rutas.kmConectadoDesconectado(iso, 'completo'),
+      rutas.kmConectadoDesconectado(iso, 'noche12'),
+      rutas.matriculasBoltPorConductor(iso, 'completo'),
+      rutas.matriculasBoltPorConductor(iso, 'noche12'),
     ]);
-    const porKm = new Map(km.conductores.map(c => [normClave(c.conductor), c]));
-    const porBolt = new Map(bolt.conductores.map(c => [normClave(c.conductor), c]));
+    const mapa = arr => new Map(arr.conductores.map(c => [normClave(c.conductor), c]));
+    const mapKmDia = mapa(kmDia), mapKmNoche = mapa(kmNoche);
+    const mapBoltDia = mapa(boltDia), mapBoltNoche = mapa(boltNoche);
     filas.forEach(f => {
-      const k = porKm.get(normClave(f.nombre));
+      const noche = (f.turno || '').trim() === 'Noche';
+      const k = (noche ? mapKmNoche : mapKmDia).get(normClave(f.nombre));
       if (k) {
         // Caso normal: Mapon midió sus km. La(s) matrícula(s) con la(s) que se
         // conectó en BOLT ese día operativo, la de más km primero.
@@ -185,7 +218,7 @@ async function reporteDia(key) {
       // con otro NO dado de alta en BOLT, o su baliza está caída). No se puede medir
       // el km — lo cuadra Tráfico a mano, que conoce el apaño. Se muestra la matrícula
       // con la que fichó, que es el hilo del que tirar; el km va como "REVISAR".
-      const b = porBolt.get(normClave(f.nombre));
+      const b = (noche ? mapBoltNoche : mapBoltDia).get(normClave(f.nombre));
       if (b && b.matriculas && b.matriculas.length) {
         f.matricula = b.matriculas.join(', ');
         f.kmBolt = 'REVISAR';
