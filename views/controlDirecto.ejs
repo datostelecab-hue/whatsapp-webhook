@@ -76,14 +76,18 @@
   function pintarTabs() {
     const p = (DATOS && DATOS.porTurno) || {};
     $('#d-tabs').innerHTML = TURNOS.map(t => {
-      const n = (t.id === 'nn' ? (p.nn || []) : (p[t.id] || [])).length;
+      const arr = (t.id === 'nn' ? (p.nn || []) : (p[t.id] || []));
+      const n = arr.length;
       const activo = turnoActivo === t.id;
       const rojo = t.id === 'nn' && n > 0;
+      // Turnos: "salieron X/Y" (X conectados de Y que trabajan hoy). NN: solo el número.
+      let num = String(n);
+      if (t.id !== 'nn') num = arr.filter(f => f.actividad && f.actividad.conectado).length + '/' + n;
       return '<button data-turno="' + t.id + '" class="px-3 py-2 rounded-xl border text-sm flex items-center gap-2 ' +
         (activo ? 'border-telecab-gold bg-telecab-gold/10 text-telecab-text'
                 : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text') + '">' +
         '<i class="fa-solid ' + t.icono + (rojo ? ' text-amber-500' : '') + '"></i> ' + t.etq +
-        ' <b class="tabular-nums ' + (rojo ? 'text-amber-500' : 'text-telecab-text') + '">' + n + '</b></button>';
+        ' <b class="tabular-nums ' + (rojo ? 'text-amber-500' : 'text-telecab-text') + '">' + num + '</b></button>';
     }).join('');
     $('#d-tabs').querySelectorAll('[data-turno]').forEach(b =>
       b.addEventListener('click', () => { turnoActivo = b.dataset.turno; pintarTabs(); pintar(); }));
@@ -240,7 +244,9 @@
         '<span class="ml-auto normal-case">' + grupos.get(k).length + '</span></div>' +
       grupos.get(k).map(filaConductor).join('')).join('');
 
-    $('#d-cuenta').textContent = (q ? filas.length + ' de ' + todas.length : todas.length) + ' conductor(es)';
+    const conectados = filas.filter(f => f.actividad && f.actividad.conectado).length;
+    $('#d-cuenta').textContent = 'Salieron ' + conectados + ' de ' + filas.length +
+      (q ? ' · filtrado de ' + todas.length : '');
 
     // Reabrir lo que estaba abierto + enganchar acordeón y botones.
     $('#d-lista').querySelectorAll('.dfila').forEach(fila => { if (abiertos.has(fila.dataset.mat)) abrirFila(fila); });

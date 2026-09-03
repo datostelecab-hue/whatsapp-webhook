@@ -285,22 +285,27 @@ async function enDirecto({ dia } = {}) {
     actividadPorId.set(cid, a);
   });
 
-  // Las PLAZAS guardadas (personas: FIJO/CT × día/noche), agrupadas POR CONDUCTOR:
-  // un correturnos cubre varios coches, pero se muestra UNA sola vez con todas sus
-  // matrículas. Cada conductor lleva su trazo vivo (km/horas) por conductor_id.
+  // QUIÉN TRABAJA HOY, por turno — de la COBERTURA del día (c.semana), no del roster:
+  // si el fijo libra hoy (su coche descansa), sale su CT que lo cubre, no el fijo. Se
+  // agrupa POR CONDUCTOR (un CT cubre varios coches → una sola fila con sus matrículas).
+  // El rol (FIJO/CT) se saca de las plazas del coche; el trazo vivo, por conductor_id.
   const crudo = { dia: [], noche: [], todoturno: [] };
   coches.forEach(c => {
-    (c.personas || []).forEach(p => {
-      if (!p || !p.nombre) return;               // plaza sin nadie asignado
-      const turno = p.turnoCodigo === 'noche' ? 'noche'
-                  : p.turnoCodigo === 'todoturno' ? 'todoturno' : 'dia';
+    const rolDe = new Map();
+    (c.personas || []).forEach(p => { if (p && p.id) rolDe.set(String(p.id), p.rol || ''); });
+    const cd = (c.semana && c.semana[idx * 2]) || {};       // quién cubre DÍA hoy
+    const cn = (c.semana && c.semana[idx * 2 + 1]) || {};    // quién cubre NOCHE hoy
+    const add = (cell, turno) => {
+      if (!cell.id && !cell.nombre) return;                  // sin cubrir hoy → nadie
       crudo[turno].push({
-        conductorId: p.id || '', conductor: p.nombre, turno, rol: p.rol || '',
+        conductorId: cell.id || '', conductor: cell.nombre || '', turno,
+        rol: rolDe.get(String(cell.id)) || '',
         matricula: c.matricula, cuadrante: c.cuadrante || '',
-        actividad: (p.id && actividadPorId.get(Number(p.id))) || null,
+        actividad: (cell.id && actividadPorId.get(Number(cell.id))) || null,
         incidencias: porInc.get(normMat(c.matricula)) || [],
       });
-    });
+    };
+    add(cd, 'dia'); add(cn, 'noche');
   });
   const agrupaConductor = plazas => {
     const m = new Map();
