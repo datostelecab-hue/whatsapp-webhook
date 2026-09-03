@@ -125,9 +125,11 @@ ALTER TABLE conductor_externo
 -- ── FIN. Revisa los NOTICE. Si el bloque 2 solo tocó dominio:  COMMIT;  si no:  ROLLBACK; ──
 --
 -- DESPUÉS DEL COMMIT (orden recomendado):
---   1. Arranca la app en Render. El motor sincroniza BOLT/Mapon → repuebla
---      conductor_externo, fv_conductor y fv_vehiculo, y empieza a ingerir fv_tramo/
---      fv_ruta desde AHORA.
---   2. Cuando el padrón de BOLT ya esté sincronizado, corre el cargador de plantilla
---      (node scripts/migrar-plantilla.js --go). Así su fase de re-enlace por teléfono
---      encuentra las cuentas de BOLT y ata cada conductor a la suya.
+--   1. Aplica las migraciones (incluida db/59) si no lo has hecho ya.
+--   2. Corre el cargador de plantilla: `node scripts/migrar-plantilla.js --dry` (revisa)
+--      y luego `--go`. El padrón de BOLT (conductor_externo) SE CONSERVÓ suelto, así
+--      que su fase de re-enlace por teléfono ata cada conductor a su cuenta AL MOMENTO;
+--      no hay que esperar a ninguna sincronización previa.
+--   3. La app en Render, con el motor encendido, va rellenando el núcleo (fv_tramo,
+--      bolt_order…) desde AHORA. Eso alimenta km, bitácora y Visibilidad; corre en
+--      paralelo y NO es requisito para el cargador.
