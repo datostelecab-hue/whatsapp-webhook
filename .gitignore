@@ -1,3 +1,6 @@
 node_modules/
 package-lock.json
 .env
+
+# Datos de migración con PII (no versionar)
+scripts/datos/
