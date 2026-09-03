@@ -205,7 +205,11 @@ async function serieMes(anio, mes) {
   const esMesActual = (Yh === anio && Mh === mes);
   const ultimoConDatos = esMesActual ? Dh : dm;   // en un mes pasado, todos los días
   for (let d = 1; d <= ultimoConDatos; d++) {
-    if (fotos.has(d)) continue;
+    const f = fotos.get(d);
+    // Recalcula el día si FALTA o si su foto está a 0: un 0 puede ser una foto vieja
+    // de antes de meter el histórico de tramos (backfill). Una foto con horas ya es
+    // buena y no se recalcula. Al reescribir con capturarDia se sana también en la BD.
+    if (f && (f.viajeSeg + f.esperaSeg) > 0) continue;
     try {
       const dISO = `${anio}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const h = await capturarDia(dISO);
