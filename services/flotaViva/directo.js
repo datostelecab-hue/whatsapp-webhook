@@ -205,6 +205,22 @@ async function enDirecto({ dia } = {}) {
     (co.personas || []).forEach(p => anota(p && p.nombre));
     (co.semana || []).forEach(cell => anota(cell && cell.nombre));
   });
+  // Y —clave— por el NOMBRE DE BOLT del planificado, resuelto por el enlace por
+  // teléfono (conductor_externo → fv_conductor). El nombre de la plantilla y el de
+  // BOLT pueden diferir (p.ej. "Tukieth" vs "Yulieth"); cruzar solo por el de la
+  // plantilla marcaba como "sin plan" a alguien que SÍ está en el Cuadrante.
+  try {
+    const idsPlan = [...new Set(((tab && tab.conductores) || [])
+      .map(c => Number(c.conductorId || c.conductor_id)).filter(Boolean))];
+    if (idsPlan.length) {
+      const r = await require('../db').consulta(
+        `SELECT fc.nombre AS bolt_nombre
+           FROM conductor_externo ce
+           JOIN fv_conductor fc ON fc.uuid = ce.externo_id
+          WHERE ce.sistema = 'bolt' AND ce.conductor_id = ANY($1::bigint[])`, [idsPlan]);
+      r.rows.forEach(x => anota(x.bolt_nombre));
+    }
+  } catch (e) { console.error('⚠️  [EN DIRECTO] enganche BOLT-nombre del plan:', e.message); }
   const conectadosAhora = new Set();
   vivos.forEach(v => { if (v.conectado && v.conductor) conectadosAhora.add(normNombre(v.conductor)); });
 
