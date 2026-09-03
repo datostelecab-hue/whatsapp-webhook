@@ -255,4 +255,23 @@ router.get('/turnos/excel', async (req, res) => {
   }
 });
 
+// La PARRILLA del planificador (formato ANEXO) en Excel: por CORRETURNO, cada
+// coche con su descanso, matrícula y las 4 plazas (fijo/CT × día/noche) con
+// teléfono y zona. Sale del planificador REAL (PostgreSQL), no de las hojas.
+router.get('/planificador/excel', async (req, res) => {
+  try {
+    const plani = require('../services/repo/planificador');
+    const { exportar } = require('../services/exportarPlanificador');
+    const dia = /^\d{4}-\d{2}-\d{2}$/.test(req.query.dia || '') ? req.query.dia : hoyMadrid();
+    const tablero = await plani.tablero({ dia });
+    const buffer = await exportar(tablero);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Planificador_${dia}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (e) {
+    console.error('❌ [Control] /planificador/excel:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 module.exports = router;

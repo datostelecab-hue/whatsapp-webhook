@@ -973,6 +973,27 @@ async function salidasHoy(dia) {
   return { dia: d, turnos, total: veces.size };
 }
 
+/**
+ * Contacto de cada conductor por su id: teléfono principal vigente y la localidad
+ * (la "zona" donde vive, que en el ANEXO va bajo el nombre). Un único mapa para
+ * enriquecer la parrilla sin tocar la consulta del tablero.
+ * @returns {Promise<Map<string,{telefono:string, zona:string}>>}
+ */
+async function contactos() {
+  const r = await db.consulta(
+    `SELECT c.id,
+            tel.e164     AS telefono,
+            c.localidad  AS zona
+       FROM conductor c
+       LEFT JOIN LATERAL (
+         SELECT e164 FROM conductor_telefono
+          WHERE conductor_id = c.id AND vigente_hasta IS NULL
+          ORDER BY principal DESC, id LIMIT 1) tel ON TRUE`);
+  const m = new Map();
+  r.rows.forEach(x => m.set(String(x.id), { telefono: x.telefono || '', zona: x.zona || '' }));
+  return m;
+}
+
 async function crearCuadrante({ zonaId }, { usuarioId } = {}) {
   // El numero es global y automatico (el maximo de siempre + 1: no se reusan
   // los de cuadrantes borrados). El nombre se deriva del numero.
@@ -1122,6 +1143,6 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
 module.exports = {
   tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
-  listarCuadrantes, salidasHoy, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
+  listarCuadrantes, salidasHoy, contactos, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
 };

@@ -13,7 +13,10 @@
  */
 
 const ExcelJS = require('exceljs');
-const { DIAS_SEM } = require('./planificadorV2');
+const { contactos } = require('./repo/planificador');   // teléfono + localidad, del núcleo (PostgreSQL)
+
+// Lunes … Domingo (0=lunes, como el índice del Cuadrante).
+const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 const AZUL = 'FF1F4E79';        // cabecera principal
 const AZUL_MEDIO = 'FF2E75B6';  // títulos de grupo
@@ -57,29 +60,6 @@ function cortoFecha(s) {
 
 // Texto plano de una celda, sea string o richText (para comparar/medir vacío).
 const celdaTexto = v => v == null ? '' : (v.richText ? v.richText.map(t => t.text).join('') : String(v));
-
-// Normaliza un nombre para cruzar con la base de BOLT (trim, espacios, minúsculas).
-const normNom = s => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLowerCase();
-
-// Teléfonos desde la base de BOLT (hoja CONDUCTORES_BOLT): el ID_BOLT de la agenda
-// ES el nombre de Bolt, así que se cruza por nombre — sin margen de error. Muchos
-// conductores no están en la agenda, pero su teléfono sí está aquí. Si falla la
-// lectura, se devuelve un mapa vacío y se cae al teléfono de la agenda.
-async function mapaTelefonosBolt() {
-  try {
-    const { leerPadron } = require('./conductoresBolt');
-    const { db } = await leerPadron();
-    const m = new Map();
-    for (const d of db.values()) {
-      const k = normNom(d.nombre);
-      if (k && d.phone) m.set(k, String(d.phone).trim());
-    }
-    return m;
-  } catch (e) {
-    console.error('⚠️ [ANEXO] No se pudieron leer teléfonos de CONDUCTORES_BOLT:', e.message);
-    return new Map();
-  }
-}
 
 const borde = () => {
   const l = { style: 'thin', color: { argb: BORDE } };
@@ -155,8 +135,8 @@ async function exportar(tablero) {
   tablero.conductores.forEach(c => { if (c.id) porId.set(c.id, c); });
   const cond = p => (p && p.id ? porId.get(p.id) : null);
 
-  // Teléfonos desde la base de BOLT, cruzados por nombre (= ID_BOLT).
-  const telBolt = await mapaTelefonosBolt();
+  // Teléfono y localidad del núcleo (PostgreSQL), por id de conductor.
+  const contac = await contactos().catch(() => new Map());
 
   ws.columns = COLUMNAS.map(c => ({ width: c.ancho }));
   const cab = ws.getRow(1);
@@ -179,21 +159,27 @@ async function exportar(tablero) {
   let fila = 2;
   let n = 1;
 
-  // Ficha de una plaza como tramos de texto: nombre (10), teléfono (9) y, super
-  // pequeña, la anotación de ventana Desde/Hasta del relevo (8, cursiva ámbar).
+  // Ficha de una plaza como tramos de texto: nombre (10), teléfono (9), zona/localidad
+  // (8), marca ETT (8 ámbar) y, si el titular está ausente, su ausencia (8 rojo). Al
+  // final, la ventana Desde/Hasta del relevo (8 cursiva ámbar).
   const AMBAR = 'FF9C5A00';
+  const ROJO = 'FFC00000';
   const fichaRuns = (p) => {
     const c = cond(p);
     const runs = [];
     if (p && p.id) {
-      // p.id = nombre de Bolt (ID_BOLT). El nombre sale de la agenda si está y, si no,
-      // del propio ID_BOLT (muchos conductores del plan no están en la agenda).
+      const info = contac.get(String(p.id)) || {};
       const nombre = (c && c.nombre) || p.id;
-      // Teléfono: primero la base de BOLT (cruce por nombre), luego el de la agenda.
-      const tel = telBolt.get(normNom(p.id)) || (c && telBolt.get(normNom(c.nombre))) || (c && c.telefono) || '';
+      const tel = info.telefono || (c && c.telefono) || '';
       runs.push({ text: nombre, font: { size: 10, color: { argb: NEGRO } } });
       if (tel) runs.push({ text: '\nTel: ' + tel, font: { size: 9, color: { argb: NEGRO } } });
-      if (c && c.direccion) runs.push({ text: '\n' + c.direccion, font: { size: 8, color: { argb: NEGRO } } });
+      if (info.zona) runs.push({ text: '\nZona: ' + info.zona, font: { size: 8, color: { argb: NEGRO } } });
+      if (c && c.esEtt) runs.push({ text: '\nETT' + (c.ettNombre ? ' · ' + c.ettNombre : ''), font: { size: 8, bold: true, color: { argb: AMBAR } } });
+      // El titular sigue en su plaza aunque hoy esté ausente (vacaciones, baja…): se
+      // anota, no se borra. La cobertura del día es otra pantalla.
+      if (c && c.ausente) {
+        runs.push({ text: '\n' + (c.estado || 'Ausente') + (c.vuelveEl ? ' hasta ' + cortoFecha(c.vuelveEl) : ''), font: { size: 8, italic: true, color: { argb: ROJO } } });
+      }
     }
     const vent = [];
     if (p && p.desde) vent.push('desde ' + cortoFecha(p.desde));
