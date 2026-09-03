@@ -5,7 +5,9 @@
 // TODO de PostgreSQL — cero hojas. La clave es SIEMPRE `conductor_id` (nunca el
 // nombre), así que no hay cruce por texto que se rompa con una tilde.
 //
-//   · Horas          → registro_jornada.efectivo_total_min (el parte diario del art. 18.9).
+//   · Horas          → núcleo fv_tramo (la ingesta de BOLT), tiempo conectado por día,
+//                       fundiendo solapes. Puente por id: fv_conductor.uuid = el
+//                       driver_uuid de BOLT = conductor_externo.externo_id.
 //   · Ausencias V/B/P → conductor_estado_hist + cat_estado_conductor.marca_bitacora.
 //   · Justificado J   → justificante vivo (anulado_at IS NULL).
 //   · Libranza L      → PENDIENTE: sale de la cobertura del planificador (f_cobertura /
@@ -62,10 +64,21 @@ async function leerBitacora() {
          FROM justificante
         WHERE anulado_at IS NULL AND dia_operativo BETWEEN $1::date AND $2::date`,
       [INICIO_ISO, hoyIso]),
+    // Horas del NÚCLEO (fv_tramo, la ingesta de BOLT) — no de registro_jornada, que
+    // aún no se puebla. Puente por id, sin nombres: fv_conductor.uuid = el driver_uuid
+    // de BOLT = conductor_externo.externo_id. Se traen los tramos CONECTADOS y se
+    // funden los solapes en JS (dos coches a la vez no cuentan doble). El día es el de
+    // la hora de inicio, en Madrid.
     db.consulta(
-      `SELECT conductor_id, to_char(dia, 'YYYY-MM-DD') AS dia, efectivo_total_min AS min
-         FROM registro_jornada
-        WHERE dia BETWEEN $1::date AND $2::date AND efectivo_total_min > 0`,
+      `SELECT ce.conductor_id,
+              to_char((t.desde AT TIME ZONE 'Europe/Madrid')::date, 'YYYY-MM-DD') AS dia,
+              t.desde, COALESCE(t.hasta, now()) AS hasta
+         FROM fv_tramo t
+         JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.conectado
+         JOIN fv_conductor fc      ON fc.uuid = t.conductor_uuid
+         JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = fc.uuid
+        WHERE t.desde >= $1::date AND t.desde < ($2::date + 1)
+        ORDER BY ce.conductor_id, t.desde`,
       [INICIO_ISO, hoyIso]),
     // Libranza 'L': asignado a una plaza ese día pero NO lo cubre (su coche descansa,
     // o es CT y no le toca) — la MISMA regla del planificador, f_cobertura, sin
@@ -114,9 +127,32 @@ async function leerBitacora() {
     const i = idxDe(r.dia);
     if (i >= 0 && i < nDias) diasDe(r.conductor_id)[i] = 'L';
   });
+  // Horas: se agrupan los tramos conectados por (conductor, día) y se FUNDEN los
+  // solapes (unión de intervalos), como en el reporte, para que dos coches a la vez
+  // no sumen el rato dos veces.
+  const porCondDia = new Map();   // conductor_id -> Map(dia -> [[desdeMs, hastaMs]])
   horas.rows.forEach(r => {
-    const i = idxDe(r.dia);
-    if (i >= 0 && i < nDias) diasDe(r.conductor_id)[i] = Math.round((Number(r.min) || 0) / 6) / 10;
+    const cid = Number(r.conductor_id);
+    if (!porCondDia.has(cid)) porCondDia.set(cid, new Map());
+    const m = porCondDia.get(cid);
+    if (!m.has(r.dia)) m.set(r.dia, []);
+    m.get(r.dia).push([new Date(r.desde).getTime(), new Date(r.hasta).getTime()]);
+  });
+  porCondDia.forEach((diasMap, cid) => {
+    const arr = diasDe(cid);
+    diasMap.forEach((ivs, diaKey) => {
+      const i = idxDe(diaKey);
+      if (i < 0 || i >= nDias) return;
+      ivs.sort((a, b) => a[0] - b[0]);
+      let total = 0, ci = null, cf = null;
+      for (const [s, e] of ivs) {
+        if (e <= s) continue;
+        if (cf === null || s > cf) { if (cf !== null) total += cf - ci; ci = s; cf = e; }
+        else if (e > cf) cf = e;
+      }
+      if (cf !== null) total += cf - ci;
+      arr[i] = Math.round((total / 60000) / 6) / 10;   // ms → min → h (1 decimal)
+    });
   });
   justis.rows.forEach(r => {
     const i = idxDe(r.dia);
