@@ -41,6 +41,10 @@ router.get('/api/estado', responde(async () => {
 router.get('/api/historial/:matricula', responde(async req =>
   ({ historial: await panel.historial(req.params.matricula, Number(req.query.dias) || 2) })));
 
+// Como el anterior pero POR CONDUCTOR: sus trazos de hoy en cualquier coche.
+router.get('/api/historial-conductor/:conductorId', responde(async req =>
+  ({ historial: await panel.historialConductor(req.params.conductorId, Number(req.query.dias) || 1) })));
+
 // Fuerza una vuelta sin esperar al cron. Es lo que se pulsa cuando alguien dice
 // "acabo de desconectarme y no sale".
 router.post('/api/refrescar', responde(async () => {

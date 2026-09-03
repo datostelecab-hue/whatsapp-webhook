@@ -132,6 +132,31 @@ async function historial(matricula, dias = 2) {
 }
 
 /**
+ * Como historial, pero POR CONDUCTOR: sus trazos de hoy en CUALQUIER coche (no solo
+ * el que tenía planificado). El enlace conductor→BOLT (conductor_externo) da el/los
+ * uuid con los que rodó; de ahí sus tramos. Cada trazo lleva su matrícula, porque el
+ * conductor puede cambiar de coche a lo largo del día.
+ */
+async function historialConductor(conductorId, dias = 1) {
+  const r = await db.consulta(
+    `SELECT v.matricula, t.situacion, s.etiqueta, t.desde, t.hasta,
+            EXTRACT(EPOCH FROM (COALESCE(t.hasta, now()) - t.desde))::bigint AS segundos
+       FROM fv_tramo t
+       JOIN fv_vehiculo v      ON v.uuid = t.vehiculo_uuid
+       JOIN fv_cat_situacion s ON s.codigo = t.situacion
+      WHERE t.conductor_uuid IN (
+              SELECT externo_id FROM conductor_externo
+               WHERE sistema = 'bolt' AND conductor_id = $1 AND externo_id IS NOT NULL)
+        AND t.desde >= now() - ($2 || ' days')::interval
+      ORDER BY t.desde DESC`, [Number(conductorId), String(dias)]);
+  return r.rows.map(x => ({
+    matricula: x.matricula || '(sin matrícula)',
+    situacion: x.situacion, etiqueta: x.etiqueta,
+    desde: x.desde, hasta: x.hasta, duracion: duracion(x.segundos),
+  }));
+}
+
+/**
  * Lo que hay que llamar AHORA.
  *
  * Solo lo que sigue pasando y nadie ha justificado todavia. En cuanto alguien
@@ -474,6 +499,6 @@ async function partes({ desde, hasta } = {}) {
 }
 
 module.exports = {
-  estado, historial, incidencias, gestiones, justificar, seguir, seguimientos, clasificacionDe,
-  cierre, partes, duracion,
+  estado, historial, historialConductor, incidencias, gestiones, justificar, seguir, seguimientos,
+  clasificacionDe, cierre, partes, duracion,
 };
