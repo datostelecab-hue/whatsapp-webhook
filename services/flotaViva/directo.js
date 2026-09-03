@@ -260,6 +260,54 @@ async function enDirecto({ dia } = {}) {
     sinPlan: sinPlan.length,
   };
 
+  // ── POR TURNO, POR CONDUCTOR (pestañas Día / Noche / TodoTurno / NN) ─────────
+  // Cada fila es una PERSONA del cuadrante de hoy (la celda día/noche del tablero,
+  // que trae conductor_id + nombre), con su trazo VIVO cruzado por el enlace de BOLT
+  // (conductor_externo → conductor_id): así sale su km/horas aunque el nombre de BOLT
+  // y el de la plantilla difieran. Los NN = los que ruedan sin plan.
+  const boltNombreAId = new Map();   // normNombre(nombre de BOLT) → conductor_id
+  try {
+    const rid = await require('../db').consulta(
+      `SELECT conductor_id, externo_nombre FROM conductor_externo
+        WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_nombre IS NOT NULL`);
+    rid.rows.forEach(x => boltNombreAId.set(normNombre(x.externo_nombre), Number(x.conductor_id)));
+  } catch (e) { console.error('⚠️  [EN DIRECTO] mapa BOLT→id:', e.message); }
+
+  const actividadPorId = new Map();   // conductor_id → {km, minutos, conectado, matriculas}
+  ((kmCond && kmCond.conductores) || []).forEach(c => {
+    const cid = boltNombreAId.get(normNombre(c.conductor));
+    if (!cid) return;
+    const a = actividadPorId.get(cid) || { km: 0, minutos: 0, conectado: false, matriculas: [] };
+    a.km = Math.round((a.km + (c.total || 0)) * 10) / 10;
+    a.minutos += horasCond.get(c.conductor) || 0;
+    a.conectado = a.conectado || conectadosAhora.has(normNombre(c.conductor));
+    (c.matriculas || []).forEach(m => { if (m && !a.matriculas.includes(m)) a.matriculas.push(m); });
+    actividadPorId.set(cid, a);
+  });
+
+  const porTurno = { dia: [], noche: [], todoturno: [], nn: sinPlan };
+  coches.forEach(c => {
+    const cd = (c.semana && c.semana[idx * 2]) || {};
+    const cn = (c.semana && c.semana[idx * 2 + 1]) || {};
+    const fila = (cell, turno) => ({
+      conductorId: cell.id || '', conductor: cell.nombre || '', turno,
+      matricula: c.matricula, matriculaNorm: normMat(c.matricula),
+      cuadrante: c.cuadrante || '', zona: c.zona || '',
+      conflicto: !!cell.conflicto, otros: cell.otros || [],
+      actividad: (cell.id && actividadPorId.get(Number(cell.id))) || null,
+      incidencias: porInc.get(normMat(c.matricula)) || [],
+    });
+    // Un conductor que cubre DÍA y NOCHE del mismo coche = TodoTurno.
+    if (cd.id && cd.id === cn.id) { if (cd.nombre) porTurno.todoturno.push(fila(cd, 'todoturno')); }
+    else {
+      if (cd.nombre) porTurno.dia.push(fila(cd, 'dia'));
+      if (cn.nombre) porTurno.noche.push(fila(cn, 'noche'));
+    }
+  });
+  const ordena = arr => arr.sort((a, b) =>
+    (a.cuadrante || '').localeCompare(b.cuadrante || '') || (a.conductor || '').localeCompare(b.conductor || ''));
+  ordena(porTurno.dia); ordena(porTurno.noche); ordena(porTurno.todoturno);
+
   return {
     dia: hoy,
     fecha: hoy.split('-').reverse().join('/'),
@@ -269,6 +317,7 @@ async function enDirecto({ dia } = {}) {
     resumen,
     coches: filas,
     sinPlan,
+    porTurno,
   };
 }
 
