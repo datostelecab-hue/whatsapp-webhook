@@ -55,22 +55,42 @@
     </div>
   </div>
 
-  <!-- ── KPIs de tramo corto: hoy, semana, turno actual, turno anterior ──────── -->
-  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
-    <% const mini = [['m-hoy','Hoy'],['m-semana','Esta semana'],['m-tact','Turno actual'],['m-tant','Turno anterior']]; %>
-    <% mini.forEach(function(m){ %>
-      <div class="rounded-2xl border border-telecab-border bg-telecab-card/60 p-4">
+  <!-- ── POR DÍA vs POR TURNO — son cosas DISTINTAS: la noche cruza medianoche ── -->
+  <%
+    function miniCard(id, label){
+      return `<div class="rounded-2xl border border-telecab-border bg-telecab-card/60 p-4">
         <div class="flex items-center justify-between">
-          <p class="text-xs text-telecab-muted uppercase tracking-wide" id="<%= m[0] %>-etq"><%= m[1] %></p>
-          <span class="text-[11px] text-telecab-muted" id="<%= m[0] %>-cond"></span>
+          <p class="text-xs text-telecab-muted uppercase tracking-wide" id="${id}-etq">${label}</p>
+          <span class="text-[11px] text-telecab-muted" id="${id}-cond"></span>
         </div>
-        <p class="text-2xl font-bold text-telecab-text mt-1 tabular-nums"><span id="<%= m[0] %>-h">—</span> <span class="text-sm text-telecab-muted font-normal">h</span></p>
+        <p class="text-2xl font-bold text-telecab-text mt-1 tabular-nums"><span id="${id}-h">—</span> <span class="text-sm text-telecab-muted font-normal">h</span></p>
         <div class="mt-2 h-1.5 rounded-full bg-telecab-card2 overflow-hidden">
-          <div id="<%= m[0] %>-bar" class="h-full bg-telecab-gold" style="width:0%"></div>
+          <div id="${id}-bar" class="h-full bg-telecab-gold" style="width:0%"></div>
         </div>
-        <p class="text-xs text-telecab-muted mt-1"><span id="<%= m[0] %>-util">—</span> % utilización</p>
-      </div>
-    <% }); %>
+        <p class="text-xs text-telecab-muted mt-1"><span id="${id}-util">—</span> % utilización</p>
+      </div>`;
+    }
+  %>
+
+  <div class="mb-2 flex items-center gap-2">
+    <span class="text-xs font-semibold text-telecab-text uppercase tracking-wider">Por día</span>
+    <span class="text-[11px] text-telecab-muted">día natural · 00:00–24:00</span>
+    <div class="flex-1 h-px bg-telecab-border/50"></div>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+    <%- miniCard('m-hoy', 'Hoy') %>
+    <%- miniCard('m-ayer', 'Ayer') %>
+    <%- miniCard('m-semana', 'Esta semana') %>
+  </div>
+
+  <div class="mb-2 flex items-center gap-2">
+    <span class="text-xs font-semibold text-telecab-text uppercase tracking-wider">Por turno</span>
+    <span class="text-[11px] text-telecab-muted">día 05–17 · noche 17–05 (cruza medianoche)</span>
+    <div class="flex-1 h-px bg-telecab-border/50"></div>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+    <%- miniCard('m-tdia', 'Turno día') %>
+    <%- miniCard('m-tnoche', 'Turno noche') %>
   </div>
 
   <!-- ── Gráficos ────────────────────────────────────────────────────────────── -->
@@ -194,8 +214,8 @@
       const bar = document.getElementById(id + '-bar');
       if (bar) bar.style.width = Math.max(0, Math.min(100, s.utilizacion || 0)) + '%';
     };
-    pon('m-hoy', r.dia); pon('m-semana', r.semana);
-    pon('m-tact', r.turnoActual); pon('m-tant', r.turnoAnterior);
+    pon('m-hoy', r.dia); pon('m-ayer', r.ayer); pon('m-semana', r.semana);
+    pon('m-tdia', r.turnoDia); pon('m-tnoche', r.turnoNoche);
 
     const t = new Date();
     setTxt('v-actualizado', '· actualizado ' + t.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }));

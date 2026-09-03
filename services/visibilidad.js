@@ -133,19 +133,27 @@ async function guardarConfig(patch) {
 // ── KPIs "en vivo" (mes, hoy, semana, turno actual, turno anterior) ──────────
 // Los turnos siguen la regla de tráfico: día = 05:00→17:00, noche = 17:00→05:00.
 // "Turno actual" es el que corre AHORA; "anterior", el inmediatamente previo.
+// POR TURNO es OTRA COSA que por día: el turno de noche va 17:00→05:00 y CRUZA
+// MEDIANOCHE, así que no cuadra con ningún día natural. Aquí se devuelven las dos
+// ventanas de turno relevantes "ahora": el día de hoy y la noche que toca.
 function ventanaTurnos() {
   const H = horaMadrid();
   const hoy = hoyISO(), ayer = diaISOhace(1);
-  // [dia, hIni, offDias, hFin]
   const dia = (d) => [d, 5, 0, 17];      // 05:00 → 17:00 del mismo día
   const noche = (d) => [d, 17, 1, 5];    // 17:00 → 05:00 del día siguiente
-  if (H >= 5 && H < 17) return { actual: { etq: 'Día (hoy)', v: dia(hoy) }, anterior: { etq: 'Noche (anoche)', v: noche(ayer) } };
-  if (H >= 17)          return { actual: { etq: 'Noche (hoy)', v: noche(hoy) }, anterior: { etq: 'Día (hoy)', v: dia(hoy) } };
-  /* H < 5 */           return { actual: { etq: 'Noche (anoche)', v: noche(ayer) }, anterior: { etq: 'Día (ayer)', v: dia(ayer) } };
+  // Turno DÍA: siempre el de hoy (en curso o ya cerrado).
+  const turnoDia = { etq: 'Turno día · hoy', v: dia(hoy) };
+  // Turno NOCHE: por la tarde/noche (>=17) la de ESTA noche (hoy 17→mañana 05); de
+  // madrugada o de día, la que acaba de pasar (anoche 17→hoy 05).
+  const turnoNoche = H >= 17
+    ? { etq: 'Turno noche · hoy', v: noche(hoy) }
+    : { etq: 'Turno noche · anoche', v: noche(ayer) };
+  return { dia: turnoDia, noche: turnoNoche };
 }
 
 async function resumen() {
   const hoy = hoyISO();
+  const ayer = diaISOhace(1);
   const [Y, M] = hoy.split('-').map(Number);
   const primeroMes = `${Y}-${String(M).padStart(2, '0')}-01`;
   const dm = diasEnMes(Y, M);
@@ -154,21 +162,25 @@ async function resumen() {
   const lunes = diaISOhace(dow);
 
   const t = ventanaTurnos();
-  const [mes, dia, semana, turnoActual, turnoAnterior, config] = await Promise.all([
+  const [mes, dia, ayerDia, semana, turnoDia, turnoNoche, config] = await Promise.all([
     slice(primeroMes, 0, dm, 0),           // todo el mes (los días futuros no suman)
-    slice(hoy, 0, 1, 0),                   // hoy 00:00 → 24:00 (parcial)
+    slice(hoy, 0, 1, 0),                   // HOY, día natural 00:00 → 24:00 (parcial)
+    slice(ayer, 0, 1, 0),                  // AYER, día natural completo
     slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
-    slice(...t.actual.v),
-    slice(...t.anterior.v),
+    slice(...t.dia.v),                     // turno DÍA (05→17)
+    slice(...t.noche.v),                   // turno NOCHE (17→05, cruza medianoche)
     leerConfig(),
   ]);
   return {
     hoyISO: hoy,
+    // POR DÍA (día natural 00:00→24:00)
     mes: { ...mes, etq: 'Este mes' },
     dia: { ...dia, etq: 'Hoy' },
+    ayer: { ...ayerDia, etq: 'Ayer' },
     semana: { ...semana, etq: 'Esta semana' },
-    turnoActual: { ...turnoActual, etq: t.actual.etq },
-    turnoAnterior: { ...turnoAnterior, etq: t.anterior.etq },
+    // POR TURNO (ventana del turno; la noche cruza medianoche)
+    turnoDia: { ...turnoDia, etq: t.dia.etq },
+    turnoNoche: { ...turnoNoche, etq: t.noche.etq },
     config,
   };
 }
