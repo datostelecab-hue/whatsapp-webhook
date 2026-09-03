@@ -1,0 +1,311 @@
+<div class="max-w-[1500px] mx-auto">
+
+  <!-- ── Cabecera: título + selector de mes + config ─────────────────────────── -->
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-chart-line text-telecab-gold"></i> Visibilidad
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Horas de flota en vivo desde el núcleo de BOLT. Sin hojas.
+        <span id="v-actualizado" class="ml-1 text-telecab-muted/70"></span>
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 bg-telecab-card border border-telecab-border rounded-lg px-1">
+        <button id="v-mes-prev" class="w-8 h-8 rounded-md hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-chevron-left"></i></button>
+        <span id="v-mes-lbl" class="text-sm text-telecab-text font-medium min-w-[130px] text-center tabular-nums">—</span>
+        <button id="v-mes-next" class="w-8 h-8 rounded-md hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <button id="v-config-btn" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text" title="Capacidad, meta, vehículos y días del mes">
+        <i class="fa-solid fa-sliders mr-1"></i> Config
+      </button>
+      <button id="v-refrescar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-rotate mr-1"></i> Actualizar
+      </button>
+    </div>
+  </div>
+
+  <!-- ── KPIs del mes (el panel del VISOR) ───────────────────────────────────── -->
+  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-3">
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Horas efectivas</p>
+      <p id="k-horas" class="text-3xl font-bold text-telecab-gold mt-1 tabular-nums">—</p>
+      <p class="text-xs text-telecab-muted mt-1">viaje + espera · este mes</p>
+    </div>
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">% Utilización</p>
+      <p id="k-util" class="text-3xl font-bold text-telecab-text mt-1 tabular-nums">—</p>
+      <p class="text-xs text-telecab-muted mt-1">viaje / (viaje + espera)</p>
+    </div>
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Euros / hora</p>
+      <p id="k-eurhora" class="text-3xl font-bold text-telecab-text mt-1 tabular-nums">—</p>
+      <p class="text-xs text-telecab-muted mt-1">neto / horas efectivas</p>
+    </div>
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Neto total</p>
+      <p id="k-neto" class="text-3xl font-bold text-telecab-text mt-1 tabular-nums">—</p>
+      <p class="text-xs text-telecab-muted mt-1">facturación del mes</p>
+    </div>
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Viajes / hora</p>
+      <p id="k-viahora" class="text-3xl font-bold text-telecab-text mt-1 tabular-nums">—</p>
+      <p class="text-xs text-telecab-muted mt-1"><span id="k-viajes">—</span> viajes terminados</p>
+    </div>
+  </div>
+
+  <!-- ── KPIs de tramo corto: hoy, semana, turno actual, turno anterior ──────── -->
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+    <% const mini = [['m-hoy','Hoy'],['m-semana','Esta semana'],['m-tact','Turno actual'],['m-tant','Turno anterior']]; %>
+    <% mini.forEach(function(m){ %>
+      <div class="rounded-2xl border border-telecab-border bg-telecab-card/60 p-4">
+        <div class="flex items-center justify-between">
+          <p class="text-xs text-telecab-muted uppercase tracking-wide" id="<%= m[0] %>-etq"><%= m[1] %></p>
+          <span class="text-[11px] text-telecab-muted" id="<%= m[0] %>-cond"></span>
+        </div>
+        <p class="text-2xl font-bold text-telecab-text mt-1 tabular-nums"><span id="<%= m[0] %>-h">—</span> <span class="text-sm text-telecab-muted font-normal">h</span></p>
+        <div class="mt-2 h-1.5 rounded-full bg-telecab-card2 overflow-hidden">
+          <div id="<%= m[0] %>-bar" class="h-full bg-telecab-gold" style="width:0%"></div>
+        </div>
+        <p class="text-xs text-telecab-muted mt-1"><span id="<%= m[0] %>-util">—</span> % utilización</p>
+      </div>
+    <% }); %>
+  </div>
+
+  <!-- ── Gráficos ────────────────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
+    <div class="xl:col-span-3 rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-telecab-text">Acumulado vs Ideal vs Crítico</h2>
+        <p class="text-xs text-telecab-muted">El acumulado real (oro) contra el ritmo ideal y el suelo crítico</p>
+      </div>
+      <div class="relative h-[300px]"><canvas id="g-acumulado"></canvas></div>
+    </div>
+    <div class="xl:col-span-2 rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <h2 class="text-sm font-semibold text-telecab-text mb-2">Horas efectivas por día</h2>
+      <div class="relative h-[260px]"><canvas id="g-dia"></canvas></div>
+    </div>
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <h2 class="text-sm font-semibold text-telecab-text mb-2">Brecha sobre el ideal</h2>
+      <div class="relative h-[260px]"><canvas id="g-brecha"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ── Tabla del mes (las columnas del VISOR) ──────────────────────────────── -->
+  <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+    <div class="px-4 py-3 border-b border-telecab-border flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-telecab-text">Detalle por día</h2>
+      <span class="text-xs text-telecab-muted">TOTAL = viaje+espera · WAITING = espera</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-telecab-muted text-xs uppercase tracking-wide border-b border-telecab-border">
+            <th class="text-left px-4 py-2">Día</th>
+            <th class="text-right px-3 py-2">Total</th>
+            <th class="text-right px-3 py-2">Waiting</th>
+            <th class="text-right px-3 py-2">% Util</th>
+            <th class="text-right px-3 py-2">Acumulado</th>
+            <th class="text-right px-3 py-2">Ideal</th>
+            <th class="text-right px-3 py-2">Crítico</th>
+            <th class="text-right px-3 py-2">Brecha</th>
+            <th class="text-right px-4 py-2">Sobre crítico</th>
+          </tr>
+        </thead>
+        <tbody id="v-tabla" class="tabular-nums"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Panel de config (capacidad, meta, vehículos, días) ────────────────────── -->
+<div id="v-config-modal" class="hidden fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  <div class="w-full max-w-md rounded-2xl border border-telecab-border bg-telecab-card shadow-soft">
+    <div class="px-5 py-4 border-b border-telecab-border flex items-center justify-between">
+      <h3 class="font-semibold text-telecab-text"><i class="fa-solid fa-sliders mr-2 text-telecab-gold"></i>Config del visor</h3>
+      <button id="v-config-x" class="text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="p-5 space-y-3">
+      <label class="block">
+        <span class="text-xs text-telecab-muted">Capacidad diaria · h (por coche)</span>
+        <input id="cfg-cap" type="number" step="0.1" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
+      </label>
+      <label class="block">
+        <span class="text-xs text-telecab-muted">Meta del mes (horas)</span>
+        <input id="cfg-meta" type="number" step="1" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
+      </label>
+      <label class="block">
+        <span class="text-xs text-telecab-muted">Vehículos</span>
+        <input id="cfg-veh" type="number" step="1" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
+      </label>
+      <label class="block">
+        <span class="text-xs text-telecab-muted">Días del mes <span class="text-telecab-muted/60">(vacío = automático)</span></span>
+        <input id="cfg-dias" type="number" step="1" placeholder="auto" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
+      </label>
+    </div>
+    <div class="px-5 py-4 border-t border-telecab-border flex justify-end gap-2">
+      <button id="v-config-cancel" class="px-3 py-2 rounded-lg text-sm text-telecab-muted hover:text-telecab-text">Cancelar</button>
+      <button id="v-config-save" class="px-4 py-2 rounded-lg text-sm bg-telecab-gold text-telecab-dark font-semibold hover:brightness-95">Guardar y recalcular</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+(function () {
+  // Color desde los tokens del tema (respeta claro/oscuro y el cambio en caliente).
+  const raiz = document.documentElement;
+  const cv  = (n, a) => { const v = getComputedStyle(raiz).getPropertyValue(n).trim(); return a == null ? `rgb(${v})` : `rgb(${v} / ${a})`; };
+  const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+  const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+  const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+  const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+
+  // Estado: mes visible.
+  const hoy = new Date();
+  let anio = hoy.getFullYear(), mes = hoy.getMonth() + 1;
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  let charts = {};
+
+  if (window.Chart) {
+    Chart.defaults.color = cv('--tc-muted');
+    Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+    Chart.defaults.borderColor = cv('--tc-border', 0.5);
+  }
+
+  // ── KPIs en vivo ──────────────────────────────────────────────────────────
+  async function cargarResumen() {
+    const r = await fetch('/visibilidad/api/resumen').then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok') return;
+    const m = r.mes;
+    setTxt('k-horas', nf1.format(m.horasEfectivas) + ' h');
+    setTxt('k-util', m.utilizacion == null ? '—' : nf1.format(m.utilizacion) + ' %');
+    setTxt('k-eurhora', m.eurosHora == null ? '—' : eur.format(m.eurosHora));
+    setTxt('k-neto', eur.format(m.neto || 0));
+    setTxt('k-viahora', m.viajesHora == null ? '—' : nf1.format(m.viajesHora) + ' v/h');
+    setTxt('k-viajes', nf0.format(m.viajes || 0));
+
+    const pon = (id, s) => {
+      setTxt(id + '-etq', s.etq);
+      setTxt(id + '-h', nf1.format(s.horasEfectivas));
+      setTxt(id + '-util', s.utilizacion == null ? '—' : nf1.format(s.utilizacion));
+      setTxt(id + '-cond', (s.conductores || 0) + ' cond.');
+      const bar = document.getElementById(id + '-bar');
+      if (bar) bar.style.width = Math.max(0, Math.min(100, s.utilizacion || 0)) + '%';
+    };
+    pon('m-hoy', r.dia); pon('m-semana', r.semana);
+    pon('m-tact', r.turnoActual); pon('m-tant', r.turnoAnterior);
+
+    const t = new Date();
+    setTxt('v-actualizado', '· actualizado ' + t.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }));
+  }
+
+  // ── Serie del mes: gráficos + tabla ───────────────────────────────────────
+  async function cargarSerie() {
+    setTxt('v-mes-lbl', MESES[mes - 1] + ' ' + anio);
+    const mm = String(mes).padStart(2, '0');
+    const r = await fetch('/visibilidad/api/serie?mes=' + anio + '-' + mm).then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok') return;
+    rellenarTabla(r.dias);
+    pintarGraficos(r.dias);
+    rellenarConfig(r.config);
+  }
+
+  function rellenarTabla(dias) {
+    const tb = document.getElementById('v-tabla');
+    tb.innerHTML = dias.map(d => {
+      const bClass = d.brecha >= 0 ? 'text-telecab-green' : 'text-telecab-red';
+      const sClass = d.sobreCritico >= 0 ? 'text-telecab-muted' : 'text-telecab-red font-semibold';
+      const sig = x => (x > 0 ? '+' : '') + nf1.format(x);
+      return `<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40">
+        <td class="text-left px-4 py-1.5 text-telecab-text">${d.dia}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-text">${d.total ? nf1.format(d.total) : '·'}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${d.waiting ? nf1.format(d.waiting) : '·'}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${d.utilizacion == null ? '·' : nf1.format(d.utilizacion)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-text">${nf0.format(d.acumulado)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${nf0.format(d.ideal)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${nf0.format(d.critico)}</td>
+        <td class="text-right px-3 py-1.5 ${bClass}">${sig(d.brecha)}</td>
+        <td class="text-right px-4 py-1.5 ${sClass}">${sig(d.sobreCritico)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function pintarGraficos(dias) {
+    const labels = dias.map(d => d.dia);
+    Object.values(charts).forEach(c => c && c.destroy());
+    const gridColor = cv('--tc-border', 0.35);
+    const ejes = { x: { grid: { color: gridColor } }, y: { grid: { color: gridColor }, beginAtZero: true } };
+
+    // Acumulado vs ideal vs crítico
+    charts.acum = new Chart(document.getElementById('g-acumulado'), {
+      type: 'line',
+      data: { labels, datasets: [
+        { label: 'Acumulado', data: dias.map(d => d.acumulado), borderColor: cv('--tc-gold'), backgroundColor: cv('--tc-gold', 0.12), fill: true, tension: 0.25, borderWidth: 2, pointRadius: 0 },
+        { label: 'Ideal', data: dias.map(d => d.ideal), borderColor: cv('--tc-muted', 0.9), borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
+        { label: 'Crítico', data: dias.map(d => d.critico), borderColor: cv('--tc-red', 0.9), borderDash: [3, 3], borderWidth: 1.5, pointRadius: 0, fill: false },
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { boxWidth: 12, usePointStyle: true } } }, scales: ejes }
+    });
+
+    // Horas por día (barras) + waiting encima
+    charts.dia = new Chart(document.getElementById('g-dia'), {
+      type: 'bar',
+      data: { labels, datasets: [
+        { label: 'Efectivas', data: dias.map(d => d.total), backgroundColor: cv('--tc-gold', 0.55), borderRadius: 3, stack: 'h' },
+        { label: 'Waiting', data: dias.map(d => d.waiting), backgroundColor: cv('--tc-warn', 0.5), borderRadius: 3, stack: 'w' },
+      ] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, usePointStyle: true } } }, scales: ejes }
+    });
+
+    // Brecha (verde arriba del ideal, rojo por debajo)
+    charts.brecha = new Chart(document.getElementById('g-brecha'), {
+      type: 'bar',
+      data: { labels, datasets: [
+        { label: 'Brecha', data: dias.map(d => d.brecha),
+          backgroundColor: dias.map(d => d.brecha >= 0 ? cv('--tc-green', 0.6) : cv('--tc-red', 0.6)), borderRadius: 3 },
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: ejes }
+    });
+  }
+
+  // ── Config ────────────────────────────────────────────────────────────────
+  function rellenarConfig(c) {
+    if (!c) return;
+    document.getElementById('cfg-cap').value = c.capacidad_diaria_h ?? '';
+    document.getElementById('cfg-meta').value = c.meta ?? '';
+    document.getElementById('cfg-veh').value = c.vehiculos ?? '';
+    document.getElementById('cfg-dias').value = c.dias_del_mes ?? '';
+  }
+  const modal = document.getElementById('v-config-modal');
+  const abrirCfg = () => modal.classList.remove('hidden');
+  const cerrarCfg = () => modal.classList.add('hidden');
+  document.getElementById('v-config-btn').addEventListener('click', abrirCfg);
+  document.getElementById('v-config-x').addEventListener('click', cerrarCfg);
+  document.getElementById('v-config-cancel').addEventListener('click', cerrarCfg);
+  modal.addEventListener('click', e => { if (e.target === modal) cerrarCfg(); });
+  document.getElementById('v-config-save').addEventListener('click', async () => {
+    const cuerpo = {
+      capacidad_diaria_h: document.getElementById('cfg-cap').value,
+      meta: document.getElementById('cfg-meta').value,
+      vehiculos: document.getElementById('cfg-veh').value,
+      dias_del_mes: document.getElementById('cfg-dias').value,   // vacío → null (auto) en el server
+    };
+    const r = await fetch('/visibilidad/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) }).then(x => x.json()).catch(() => null);
+    if (r && r.status === 'ok') { cerrarCfg(); cargarSerie(); }
+  });
+
+  // ── Navegación de mes + refresco ──────────────────────────────────────────
+  document.getElementById('v-mes-prev').addEventListener('click', () => { mes--; if (mes < 1) { mes = 12; anio--; } cargarSerie(); });
+  document.getElementById('v-mes-next').addEventListener('click', () => { mes++; if (mes > 12) { mes = 1; anio++; } cargarSerie(); });
+  document.getElementById('v-refrescar').addEventListener('click', () => { cargarResumen(); cargarSerie(); });
+
+  cargarResumen();
+  cargarSerie();
+  // Refresco suave de los KPIs cada 5 min (los gráficos se dejan salvo que cambien de mes).
+  setInterval(cargarResumen, 5 * 60 * 1000);
+})();
+</script>

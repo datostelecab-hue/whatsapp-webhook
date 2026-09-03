@@ -169,6 +169,7 @@ app.get('/conductores', (req, res) => res.redirect(301, '/plantilla'));
 app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
+app.use('/visibilidad', require('./routes/visibilidad'));
 app.use('/vacantes', vacantesRoutes);
 app.use('/generador', generadorRoutes);
 app.use('/seleccion', seleccionRoutes);
@@ -431,6 +432,31 @@ programar('40 4 * * *', async () => {
     if (d.rows[0].n) console.log(`🧹 [INGESTA] Vaciado el crudo de ${d.rows[0].n} descarga(s)`);
   } catch (error) {
     console.error(`⚠️  [INGESTA] Purga: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+// ── VISIBILIDAD ─────────────────────────────────────────────────────────────
+// Foto diaria de horas de flota para el visor (reemplaza al "VISOR EN VIVO" de la
+// hoja). Solo LEE del núcleo, así que es barato: refresca hoy+ayer cada 20 min (el
+// pasado ya está sellado) y sana el mes entero una vez al día por si hubo caída.
+programar('8,28,48 * * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    await require('./services/visibilidad').capturaCorriente();
+  } catch (error) {
+    console.error(`⚠️  [Visibilidad] captura hoy/ayer: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+programar('25 3 * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./services/visibilidad').backfillMesActual();
+    console.log(`📸 [Visibilidad] Backfill del mes: ${r.dias} día(s)`);
+  } catch (error) {
+    console.error(`⚠️  [Visibilidad] backfill del mes: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
 

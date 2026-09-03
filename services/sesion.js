@@ -37,6 +37,7 @@ const ACCESO = {
   '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],
   '/control': ['trafico'], '/flota-viva': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
   '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico'],
+  '/visibilidad': ['trafico', 'oficina'],   // horas de flota: lo miran Tráfico y RRHH
   '/sanciones': ['trafico'], '/callcenter': ['trafico'], '/migraciones': ['desarrollador'], '/explorador': ['desarrollador'],
   // La plantilla la miran los dos departamentos: Trafico para saber quien
   // puede conducir hoy, RRHH para saber quien esta de alta y con que.
