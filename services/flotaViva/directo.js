@@ -285,27 +285,27 @@ async function enDirecto({ dia } = {}) {
     actividadPorId.set(cid, a);
   });
 
+  // Las PLAZAS guardadas de cada coche (personas): FIJO/CT × día/noche. Es lo que se
+  // ve LLENO en el planificador; se muestran por turno tal cual (no la cobertura
+  // día-a-día, que aquí salía vacía). Cada plaza con su conductor_id → su trazo vivo.
   const porTurno = { dia: [], noche: [], todoturno: [], nn: sinPlan };
   coches.forEach(c => {
-    const cd = (c.semana && c.semana[idx * 2]) || {};
-    const cn = (c.semana && c.semana[idx * 2 + 1]) || {};
-    const fila = (cell, turno) => ({
-      conductorId: cell.id || '', conductor: cell.nombre || '', turno,
-      matricula: c.matricula, matriculaNorm: normMat(c.matricula),
-      cuadrante: c.cuadrante || '', zona: c.zona || '',
-      conflicto: !!cell.conflicto, otros: cell.otros || [],
-      actividad: (cell.id && actividadPorId.get(Number(cell.id))) || null,
-      incidencias: porInc.get(normMat(c.matricula)) || [],
+    (c.personas || []).forEach(p => {
+      if (!p || !p.nombre) return;               // plaza sin nadie asignado
+      const turno = p.turnoCodigo === 'noche' ? 'noche'
+                  : p.turnoCodigo === 'todoturno' ? 'todoturno' : 'dia';
+      porTurno[turno].push({
+        conductorId: p.id || '', conductor: p.nombre, turno, rol: p.rol || '',
+        matricula: c.matricula, matriculaNorm: normMat(c.matricula),
+        cuadrante: c.cuadrante || '', zona: c.zona || '',
+        actividad: (p.id && actividadPorId.get(Number(p.id))) || null,
+        incidencias: porInc.get(normMat(c.matricula)) || [],
+      });
     });
-    // Un conductor que cubre DÍA y NOCHE del mismo coche = TodoTurno.
-    if (cd.id && cd.id === cn.id) { if (cd.nombre) porTurno.todoturno.push(fila(cd, 'todoturno')); }
-    else {
-      if (cd.nombre) porTurno.dia.push(fila(cd, 'dia'));
-      if (cn.nombre) porTurno.noche.push(fila(cn, 'noche'));
-    }
   });
   const ordena = arr => arr.sort((a, b) =>
-    (a.cuadrante || '').localeCompare(b.cuadrante || '') || (a.conductor || '').localeCompare(b.conductor || ''));
+    (a.cuadrante || '').localeCompare(b.cuadrante || '') ||
+    (a.rol || '').localeCompare(b.rol || '') || (a.conductor || '').localeCompare(b.conductor || ''));
   ordena(porTurno.dia); ordena(porTurno.noche); ordena(porTurno.todoturno);
 
   return {

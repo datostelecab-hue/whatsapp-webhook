@@ -96,6 +96,9 @@
     return '<div class="dfila border-b border-telecab-border/70" data-mat="' + esc(f.matriculaNorm) + '">' +
       '<div class="dcab px-4 py-2.5 cursor-pointer select-none flex flex-wrap items-center gap-x-3 gap-y-1">' +
         '<span class="text-telecab-text font-medium w-56 truncate">' + esc(f.conductor) + '</span>' +
+        (f.rol ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
+          (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
+          '">' + esc(f.rol) + '</span>' : '') +
         '<span class="font-mono text-telecab-muted w-24">' + esc(f.matricula) + '</span>' +
         (a.conectado ? chip('Conectado', 'ok') : chip('Sin actividad', 'muted')) +
         '<span class="text-xs text-telecab-muted tabular-nums w-20 text-right" title="Horas conectado hoy">' +
