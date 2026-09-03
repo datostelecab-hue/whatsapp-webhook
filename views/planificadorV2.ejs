@@ -427,6 +427,12 @@
     const wrap = document.createElement('div');
     const persona = p.id ? porId.get(String(p.id)) : null;
 
+    // Aviso del PRÓXIMO DUEÑO: quien tiene esta plaza reservada para más adelante.
+    // Se ve aunque ahora esté vacía o con un temporal ("→ Carlos · llega el 12/09").
+    const fut = p.futuro
+      ? `<span class="block text-[11px] text-telecab-gold font-semibold mt-0.5"><i class="fa-solid fa-arrow-right-long"></i> ${esc(p.futuro.nombre)} · llega ${isoAes(p.futuro.desde)}</span>`
+      : '';
+
     if (p.id) {
       // Sub-línea: para el fijo, los días que libra; para el CT, sus días.
       let sub = '';
@@ -445,6 +451,7 @@
           <span class="${nombreCls} transition">${esc(persona ? persona.nombre : p.nombre)}${ett}</span>
           <span class="block text-xs text-telecab-muted">${esc(sub)}</span>
           ${av ? `<span class="block text-[11px] text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}${av.hueco ? ' · sin cubrir' : ''}</span>` : ''}
+          ${fut}
         </button>`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
     } else {
@@ -454,7 +461,8 @@
                        ${rojo ? 'border-telecab-red/50 text-telecab-red hover:bg-telecab-red/10' : 'border-telecab-border text-telecab-muted hover:bg-telecab-card2'}"
                 data-asignar>
           <i class="fa-solid fa-plus text-xs"></i> ${rojo ? 'Sin fijo' : 'Colocar CT'}
-        </button>`;
+        </button>
+        ${fut}`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
     }
 
@@ -545,14 +553,28 @@
   // Colocar / cambiar / quitar a alguien en un puesto.
   async function asignar(coche, p, col) {
     if (!p.plazaId) { await Dialogo.aviso({ titulo: 'Recarga', texto: 'Esta plaza no existe todavía en la base. Recarga el cuadrante.', tono: 'aviso' }); return; }
-    const id = await pickConductor({
-      titulo: `${col.tit} · ${coche.matricula}`,
-      turno: col.turno,
-      actual: p.id ? String(p.id) : null,
-    });
+    // Si la plaza tiene DUEÑO FUTURO, se recuerda en el título: estás planificando
+    // "mientras llega él".
+    const tit = `${col.tit} · ${coche.matricula}` +
+      (p.futuro ? ` · llega ${(p.futuro.nombre || '').split(' ')[0]} el ${isoAes(p.futuro.desde)}` : '');
+    const id = await pickConductor({ titulo: tit, turno: col.turno, actual: p.id ? String(p.id) : null });
     if (id === undefined) return;   // cancelado
+
+    // Colocando a alguien (no quitando) sobre una plaza con dueño futuro: se ofrece un
+    // "hasta" OPCIONAL. Vacío = el auto-corte lo cierra la víspera de que llegue el dueño.
+    let hasta = null;
+    if (id && p.futuro) {
+      const v = await Dialogo.formulario(`Mientras llega ${p.futuro.nombre}`, [
+        { id: 'hasta', etiqueta: 'Hasta (último día, opcional)', tipo: 'fecha',
+          ayuda: `Vacío = hasta la víspera de que llegue ${p.futuro.nombre} (${isoAes(p.futuro.desde)}).` },
+      ], { textoBoton: 'Colocar' });
+      if (v === undefined || v === null) return;   // cancelado
+      hasta = (v.hasta || '').trim() || null;
+    }
     try {
-      await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [{ plazaId: p.plazaId, id: id || '' }] }]);
+      const slot = { plazaId: p.plazaId, id: id || '' };
+      if (hasta) slot.hasta = hasta;
+      await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [slot] }]);
     } catch (e) { alert(e.message); }
   }
 

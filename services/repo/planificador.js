@@ -70,7 +70,7 @@ async function tablero({ dia } = {}) {
   const fechas = semanaDesde(lunes);
   const domingo = fechas[DIAS - 1];
 
-  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos] = await Promise.all([
+  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos, proximos] = await Promise.all([
     // Las plazas de los coches que se planifican. El orden es el de la
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
@@ -181,11 +181,28 @@ async function tablero({ dia } = {}) {
          JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
         WHERE vd.desde <= $1 AND (vd.hasta IS NULL OR vd.hasta >= $1)
         GROUP BY vd.vehiculo_id`, [efectivo]),
+
+    // El PRÓXIMO DUEÑO de cada plaza: la primera asignación que EMPIEZA después del
+    // día efectivo. Es lo que permite avisar "→ Carlos, llega el X" aunque estés
+    // mirando el presente (donde la plaza está vacía o con un temporal).
+    db.consulta(
+      `SELECT DISTINCT ON (a.plaza_id)
+              a.plaza_id, a.conductor_id, a.desde,
+              btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre
+         FROM asignacion a
+         JOIN plaza p     ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN conductor c ON c.id = a.conductor_id
+        WHERE a.desde > $1 AND a.retirada_at IS NULL
+        ORDER BY a.plaza_id, a.desde`, [efectivo]),
   ]);
 
   const descansoDe = new Map(descansos.rows.map(r => [String(r.vehiculo_id), (r.dias || []).map(Number)]));
 
   const sugeridoDe = new Map(sugeridos.rows.map(r => [String(r.plaza_id), r.dias_sugeridos || []]));
+
+  // Plaza → su próximo dueño (nombre + fecha en que llega), si hay uno futuro.
+  const proximoDe = new Map(proximos.rows.map(r =>
+    [String(r.plaza_id), { conductorId: String(r.conductor_id), nombre: r.nombre, desde: fechaDe(r.desde) }]));
 
   // ── Las personas, indexadas ────────────────────────────────────────────
   const gente = new Map();
@@ -305,6 +322,9 @@ async function tablero({ dia } = {}) {
       // Lo que le tocaría si nadie dice otra cosa: los días que libra el fijo.
       diasSugeridos: (sugeridoDe.get(String(p.plaza_id)) || []).map(d => d - 1),
       huerfano: !!(a && !persona),
+      // El PRÓXIMO DUEÑO, si esta plaza tiene una asignación futura: para avisar
+      // "→ Carlos, llega el X" aunque ahora esté vacía o con un temporal.
+      futuro: proximoDe.get(String(p.plaza_id)) || null,
     };
   });
 
