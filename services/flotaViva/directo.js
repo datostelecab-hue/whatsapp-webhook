@@ -143,6 +143,16 @@ async function enDirecto({ dia } = {}) {
   const filas = [];
   const usadas = new Set();
   const coches = (tab && tab.coches) || [];
+
+  // El cuadrante se etiqueta como en el planificador: por su POSICIÓN VIVA (1..N,
+  // sin huecos), no por el nombre congelado en la BD (`v_plaza.cuadrante`), que se
+  // desincroniza al borrar cuadrantes ("CUADRANTE 12" cuando ya es el 11). Se mapea
+  // por cuadranteId contra `tab.cuadrantes` (la misma fuente que numera el plan).
+  const etiquetaCuad = new Map();
+  ((tab && tab.cuadrantes) || []).forEach(cu =>
+    etiquetaCuad.set(String(cu.id), cu.nombre + (cu.zona ? ' · ' + cu.zona : '')));
+  const cuadDe = c => etiquetaCuad.get(String(c.cuadranteId)) || c.cuadrante || '';
+
   coches.forEach(c => {
     const k = normMat(c.matricula);
     usadas.add(k);
@@ -155,7 +165,7 @@ async function enDirecto({ dia } = {}) {
     const kmc = kmHoy.get(k) || {};
     filas.push({
       matricula: c.matricula, matriculaNorm: k,
-      zona: c.zona || '', cuadrante: c.cuadrante || '',
+      zona: c.zona || '', cuadrante: cuadDe(c),
       estadoVeh: c.estadoVeh || '', operativo: c.operativo !== false,
       plan, vivo, incidencias,
       km: kmc.km || 0, viajes: kmc.viajes || 0,
@@ -300,7 +310,7 @@ async function enDirecto({ dia } = {}) {
       crudo[turno].push({
         conductorId: cell.id || '', conductor: cell.nombre || '', turno,
         rol: rolDe.get(String(cell.id)) || '',
-        matricula: c.matricula, cuadrante: c.cuadrante || '',
+        matricula: c.matricula, cuadrante: cuadDe(c),
         actividad: (cell.id && actividadPorId.get(Number(cell.id))) || null,
         incidencias: porInc.get(normMat(c.matricula)) || [],
       });
@@ -340,7 +350,7 @@ async function enDirecto({ dia } = {}) {
   // desconectado, en descanso). No es solo "conectado ahora".
   const yaSalio = f => (f.actividad && (f.actividad.conectado || f.actividad.minutos > 0 || f.actividad.km > 0)) ? 1 : 0;
   const ordena = arr => arr.sort((a, b) =>
-    (a.cuadrante || '').localeCompare(b.cuadrante || '') ||
+    (a.cuadrante || '').localeCompare(b.cuadrante || '', undefined, { numeric: true }) ||
     (yaSalio(b) - yaSalio(a)) ||                                 // los que YA SALIERON, primero
     (a.conductor || '').localeCompare(b.conductor || ''));
   ordena(porTurno.dia); ordena(porTurno.noche); ordena(porTurno.todoturno);

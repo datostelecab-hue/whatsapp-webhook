@@ -248,7 +248,7 @@
       grupos.get(k).push(f);
     });
     const claves = [...grupos.keys()].sort((a, b) =>
-      (a === '(sin cuadrante)') - (b === '(sin cuadrante)') || a.localeCompare(b));
+      (a === '(sin cuadrante)') - (b === '(sin cuadrante)') || a.localeCompare(b, undefined, { numeric: true }));
 
     $('#d-lista').innerHTML = claves.map(k =>
       '<div class="px-4 py-1.5 bg-telecab-dark/40 border-b border-telecab-border text-xs uppercase tracking-wide text-telecab-muted flex items-center gap-2">' +
