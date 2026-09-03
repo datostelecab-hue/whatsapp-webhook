@@ -285,24 +285,52 @@ async function enDirecto({ dia } = {}) {
     actividadPorId.set(cid, a);
   });
 
-  // Las PLAZAS guardadas de cada coche (personas): FIJO/CT × día/noche. Es lo que se
-  // ve LLENO en el planificador; se muestran por turno tal cual (no la cobertura
-  // día-a-día, que aquí salía vacía). Cada plaza con su conductor_id → su trazo vivo.
-  const porTurno = { dia: [], noche: [], todoturno: [], nn: sinPlan };
+  // Las PLAZAS guardadas (personas: FIJO/CT × día/noche), agrupadas POR CONDUCTOR:
+  // un correturnos cubre varios coches, pero se muestra UNA sola vez con todas sus
+  // matrículas. Cada conductor lleva su trazo vivo (km/horas) por conductor_id.
+  const crudo = { dia: [], noche: [], todoturno: [] };
   coches.forEach(c => {
     (c.personas || []).forEach(p => {
       if (!p || !p.nombre) return;               // plaza sin nadie asignado
       const turno = p.turnoCodigo === 'noche' ? 'noche'
                   : p.turnoCodigo === 'todoturno' ? 'todoturno' : 'dia';
-      porTurno[turno].push({
+      crudo[turno].push({
         conductorId: p.id || '', conductor: p.nombre, turno, rol: p.rol || '',
-        matricula: c.matricula, matriculaNorm: normMat(c.matricula),
-        cuadrante: c.cuadrante || '', zona: c.zona || '',
+        matricula: c.matricula, cuadrante: c.cuadrante || '',
         actividad: (p.id && actividadPorId.get(Number(p.id))) || null,
         incidencias: porInc.get(normMat(c.matricula)) || [],
       });
     });
   });
+  const agrupaConductor = plazas => {
+    const m = new Map();
+    plazas.forEach(p => {
+      const clave = p.conductorId ? ('id:' + p.conductorId) : ('n:' + normNombre(p.conductor));
+      if (!m.has(clave)) m.set(clave, { clave, conductorId: p.conductorId, conductor: p.conductor,
+        turno: p.turno, roles: new Set(), matriculas: [], cuadrantes: new Set(), actividad: p.actividad, incidencias: [] });
+      const f = m.get(clave);
+      if (p.rol) f.roles.add(p.rol);
+      if (p.matricula && !f.matriculas.includes(p.matricula)) f.matriculas.push(p.matricula);
+      if (p.cuadrante) f.cuadrantes.add(p.cuadrante);
+      if (!f.actividad && p.actividad) f.actividad = p.actividad;
+      (p.incidencias || []).forEach(i => { if (!f.incidencias.some(x => x.id === i.id)) f.incidencias.push(i); });
+    });
+    return [...m.values()].map(f => {
+      // El coche a trazar: el que de verdad rodó (actividad), o el primero asignado.
+      const trazoMat = (f.actividad && (f.actividad.matriculas || [])[0]) || f.matriculas[0] || '';
+      return {
+        clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, turno: f.turno,
+        rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
+        matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',
+        cuadrante: [...f.cuadrantes][0] || '', cuadrantes: [...f.cuadrantes],
+        actividad: f.actividad, incidencias: f.incidencias,
+      };
+    });
+  };
+  const porTurno = {
+    dia: agrupaConductor(crudo.dia), noche: agrupaConductor(crudo.noche),
+    todoturno: agrupaConductor(crudo.todoturno), nn: sinPlan,
+  };
   const ordena = arr => arr.sort((a, b) =>
     (a.cuadrante || '').localeCompare(b.cuadrante || '') ||
     (a.rol || '').localeCompare(b.rol || '') || (a.conductor || '').localeCompare(b.conductor || ''));

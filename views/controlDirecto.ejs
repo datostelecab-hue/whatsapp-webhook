@@ -93,19 +93,19 @@
   function filaConductor(f) {
     const a = f.actividad || {};
     const nInc = (f.incidencias || []).length;
-    return '<div class="dfila border-b border-telecab-border/70" data-mat="' + esc(f.matriculaNorm) + '">' +
+    const mats = ((f.actividad && f.actividad.matriculas) || []).join(', ') || '—';   // EN VIVO: con qué sale hoy
+    return '<div class="dfila border-b border-telecab-border/70" data-mat="' + esc(f.clave) + '" data-trazomat="' + esc(f.trazoMat || '') + '">' +
       '<div class="dcab px-4 py-2.5 cursor-pointer select-none flex flex-wrap items-center gap-x-3 gap-y-1">' +
-        '<span class="text-telecab-text font-medium w-56 truncate">' + esc(f.conductor) + '</span>' +
+        '<span class="text-telecab-text font-medium w-52 truncate">' + esc(f.conductor) + '</span>' +
         (f.rol ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
           (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
           '">' + esc(f.rol) + '</span>' : '') +
-        '<span class="font-mono text-telecab-muted w-24">' + esc(f.matricula) + '</span>' +
+        '<span class="font-mono text-xs text-telecab-muted flex-1 min-w-[7rem]" title="Coche(s) con los que sale HOY (en vivo)">' + esc(mats) + '</span>' +
         (a.conectado ? chip('Conectado', 'ok') : chip('Sin actividad', 'muted')) +
-        '<span class="text-xs text-telecab-muted tabular-nums w-20 text-right" title="Horas conectado hoy">' +
+        '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas conectado hoy">' +
           horas(a.minutos) + ' h</span>' +
         '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km de hoy">' + (a.km || 0) + ' km</span>' +
         (nInc ? chip(nInc + (nInc > 1 ? ' avisos' : ' aviso'), 'error') : '') +
-        (f.conflicto ? chip('Conflicto', 'aviso') : '') +
         '<i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform ml-auto"></i>' +
       '</div>' +
       detalleConductor(f) +
@@ -139,7 +139,7 @@
       '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos</div>' + inc + '</div>' +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos de hoy · ' +
-          esc(f.matricula) + '</div><div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
+          esc(f.trazoMat || (f.matriculas || []).join(', ') || '—') + '</div><div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
       '</div></div>';
   }
 
@@ -161,7 +161,8 @@
     const caja = fila.querySelector('.dtrazos');
     if (!caja || caja.dataset.cargado) return;
     caja.dataset.cargado = '1';
-    const mat = fila.querySelector('.font-mono').textContent.trim();
+    const mat = (fila.dataset.trazomat || '').trim();
+    if (!mat) { caja.innerHTML = '<span class="text-telecab-muted">Sin coche que trazar.</span>'; return; }
     try {
       const d = await (await fetch('/flota-viva/api/historial/' + encodeURIComponent(mat) + '?dias=1')).json();
       const h = (d.historial || []);
@@ -213,7 +214,8 @@
     const todas = p[turnoActivo] || [];
     const filas = todas.filter(f => !q ||
       (f.conductor || '').toLowerCase().includes(q) ||
-      (f.matricula || '').toLowerCase().includes(q));
+      (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
+      ((f.actividad && f.actividad.matriculas) || []).join(' ').toLowerCase().includes(q));
 
     if (!filas.length) {
       $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nadie en este turno.</p>';
