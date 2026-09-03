@@ -165,10 +165,16 @@ async function fetchAllPaginated(endpoint, baseBody, dataKey, pageSize = 1000, e
 
       if (paginas === 1) {
         motivo = esCodigoTransitorio(codigoCuerpo) ? 'timeout' : 'sin-datos';
-        console.error(
-          `⚠️  [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} devolvió 0 registros ` +
-          `— code=${codigoCuerpo} message="${mensajeCuerpo}" total_rows=${totalRows}`
-        );
+        // Un vacío LEGÍTIMO (code OK, total_rows=0) NO es un aviso: es una flota sin
+        // actividad en la ventana (p.ej. la 63530, cerrada) — no ensucia el log. Solo
+        // se avisa si el vacío es sospechoso: código transitorio (timeout disfrazado)
+        // o total_rows>0 (la API dice que hay filas pero no las entregó).
+        if (esCodigoTransitorio(codigoCuerpo) || totalRows > 0) {
+          console.error(
+            `⚠️  [API${etiqueta ? ' ' + etiqueta : ''}] ${endpoint} devolvió 0 registros ` +
+            `— code=${codigoCuerpo} message="${mensajeCuerpo}" total_rows=${totalRows}`
+          );
+        }
       }
       break;
     }
