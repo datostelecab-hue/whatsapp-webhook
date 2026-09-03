@@ -210,14 +210,21 @@ async function enDirecto({ dia } = {}) {
   // BOLT pueden diferir (p.ej. "Tukieth" vs "Yulieth"); cruzar solo por el de la
   // plantilla marcaba como "sin plan" a alguien que SÍ está en el Cuadrante.
   try {
-    const idsPlan = [...new Set(((tab && tab.conductores) || [])
-      .map(c => Number(c.conductorId || c.conductor_id)).filter(Boolean))];
-    if (idsPlan.length) {
+    // TODOS los conductor_id del plan: banquillo/lista (c.id), plazas fijas
+    // (persona.id) y celdas de cuadrante/CT (celda.id). El id del tablero es `.id`.
+    const idsPlan = new Set();
+    const meter = v => { const n = Number(v); if (n) idsPlan.add(n); };
+    ((tab && tab.conductores) || []).forEach(c => meter(c && c.id));
+    ((tab && tab.coches) || []).forEach(co => {
+      (co.personas || []).forEach(p => meter(p && p.id));
+      (co.semana || []).forEach(cell => meter(cell && cell.id));
+    });
+    if (idsPlan.size) {
       const r = await require('../db').consulta(
         `SELECT fc.nombre AS bolt_nombre
            FROM conductor_externo ce
            JOIN fv_conductor fc ON fc.uuid = ce.externo_id
-          WHERE ce.sistema = 'bolt' AND ce.conductor_id = ANY($1::bigint[])`, [idsPlan]);
+          WHERE ce.sistema = 'bolt' AND ce.conductor_id = ANY($1::bigint[])`, [[...idsPlan]]);
       r.rows.forEach(x => anota(x.bolt_nombre));
     }
   } catch (e) { console.error('⚠️  [EN DIRECTO] enganche BOLT-nombre del plan:', e.message); }
