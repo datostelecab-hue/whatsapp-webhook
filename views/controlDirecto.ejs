@@ -31,6 +31,9 @@
     <i class="fa-solid fa-filter text-telecab-muted text-xs"></i>
     <input id="d-filtro" placeholder="Conductor o matrícula"
       class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-56">
+    <button id="d-solo-nosalieron" class="px-3 py-1.5 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-phone-volume mr-1"></i> Solo los que no han salido
+    </button>
     <span id="d-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
   </div>
 
@@ -49,6 +52,10 @@
     m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
   const horas = min => ((Number(min) || 0) / 60).toFixed(1);
+
+  // "Salió" = ha trabajado hoy: conectado ahora, o con horas/km (aunque ahora esté
+  // desconectado, en descanso). NO es solo "conectado ahora".
+  const salio = f => !!(f.actividad && (f.actividad.conectado || f.actividad.minutos > 0 || f.actividad.km > 0));
 
   const TONO = {
     ok:    'bg-emerald-500/15 text-emerald-500',
@@ -71,6 +78,7 @@
   ];
   const horaAhora = new Date().getHours();
   let turnoActivo = (horaAhora >= 5 && horaAhora < 17) ? 'dia' : 'noche';
+  let soloNoSalieron = false;   // filtro: solo los que NO han salido (a llamar)
 
   // ── Pestañas ────────────────────────────────────────────────────────────────
   function pintarTabs() {
@@ -82,7 +90,7 @@
       const rojo = t.id === 'nn' && n > 0;
       // Turnos: "salieron X/Y" (X conectados de Y que trabajan hoy). NN: solo el número.
       let num = String(n);
-      if (t.id !== 'nn') num = arr.filter(f => f.actividad && f.actividad.conectado).length + '/' + n;
+      if (t.id !== 'nn') num = arr.filter(salio).length + '/' + n;
       return '<button data-turno="' + t.id + '" class="px-3 py-2 rounded-xl border text-sm flex items-center gap-2 ' +
         (activo ? 'border-telecab-gold bg-telecab-gold/10 text-telecab-text'
                 : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text') + '">' +
@@ -105,7 +113,9 @@
           (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
           '">' + esc(f.rol) + '</span>' : '') +
         '<span class="font-mono text-xs text-telecab-muted flex-1 min-w-[7rem]" title="Coche(s) con los que sale HOY (en vivo)">' + esc(mats) + '</span>' +
-        (a.conectado ? chip('Conectado', 'ok') : chip('Sin actividad', 'muted')) +
+        (a.conectado ? chip('Conectado', 'ok')
+          : salio(f) ? chip('Salió', 'muted')
+          : chip('No ha salido', 'error')) +
         '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas conectado hoy">' +
           horas(a.minutos) + ' h</span>' +
         '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km de hoy">' + (a.km || 0) + ' km</span>' +
@@ -216,10 +226,12 @@
     }
 
     const todas = p[turnoActivo] || [];
-    const filas = todas.filter(f => !q ||
-      (f.conductor || '').toLowerCase().includes(q) ||
-      (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
-      ((f.actividad && f.actividad.matriculas) || []).join(' ').toLowerCase().includes(q));
+    const filas = todas.filter(f =>
+      (!soloNoSalieron || !salio(f)) &&
+      (!q ||
+        (f.conductor || '').toLowerCase().includes(q) ||
+        (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
+        ((f.actividad && f.actividad.matriculas) || []).join(' ').toLowerCase().includes(q)));
 
     if (!filas.length) {
       $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nadie en este turno.</p>';
@@ -244,9 +256,9 @@
         '<span class="ml-auto normal-case">' + grupos.get(k).length + '</span></div>' +
       grupos.get(k).map(filaConductor).join('')).join('');
 
-    const conectados = filas.filter(f => f.actividad && f.actividad.conectado).length;
-    $('#d-cuenta').textContent = 'Salieron ' + conectados + ' de ' + filas.length +
-      (q ? ' · filtrado de ' + todas.length : '');
+    const salieron = filas.filter(salio).length;
+    $('#d-cuenta').textContent = 'Salieron ' + salieron + ' de ' + filas.length +
+      (q || soloNoSalieron ? ' · filtrado de ' + todas.length : '');
 
     // Reabrir lo que estaba abierto + enganchar acordeón y botones.
     $('#d-lista').querySelectorAll('.dfila').forEach(fila => { if (abiertos.has(fila.dataset.mat)) abrirFila(fila); });
@@ -305,6 +317,13 @@
   cargar();
   $('#d-filtro').addEventListener('input', pintar);
   $('#d-refrescar').addEventListener('click', cargar);
+  $('#d-solo-nosalieron').addEventListener('click', () => {
+    soloNoSalieron = !soloNoSalieron;
+    $('#d-solo-nosalieron').className = 'px-3 py-1.5 rounded-lg border text-xs ' + (soloNoSalieron
+      ? 'border-telecab-red bg-telecab-red/10 text-telecab-red'
+      : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text');
+    pintar();
+  });
 
   // Auto-refresco cada 45 s, salvo con una fila abierta (se estaría trabajando con ella).
   setInterval(() => { if (abiertos.size === 0) cargar(); }, 45000);
