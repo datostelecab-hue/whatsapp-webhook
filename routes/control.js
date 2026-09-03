@@ -289,4 +289,22 @@ router.get('/planificador/excel', async (req, res) => {
   }
 });
 
+// REPORTE POR TURNOS (5-5) en Excel: quién rodó de 05:00→17:00 (día) y de
+// 17:00→05:00 (noche), con horas, matrícula y los NN incluidos. Del núcleo (fv_*),
+// no de las hojas. Es el reporte del control antiguo, ahora fiable.
+router.get('/reporte-turnos/excel', async (req, res) => {
+  try {
+    const rt = require('../services/reporteTurnos');
+    const dia = /^\d{4}-\d{2}-\d{2}$/.test(req.query.dia || '') ? req.query.dia : hoyMadrid();
+    const reporte = await rt.datos(dia);
+    const buffer = await rt.excelTurnos(reporte);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Reporte_turnos_${dia}.xlsx"`);
+    res.send(buffer);
+  } catch (e) {
+    console.error('❌ [Control] /reporte-turnos/excel:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 module.exports = router;

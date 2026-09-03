@@ -68,6 +68,24 @@
   <div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-2">Descargar</div>
   <div class="grid sm:grid-cols-2 gap-3 mb-6">
 
+    <!-- Reporte por turnos (5-5) -->
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-clock-rotate-left text-telecab-gold text-lg mt-0.5"></i>
+        <div class="flex-1">
+          <div class="font-semibold text-telecab-text">Reporte por turnos (5-5)</div>
+          <p class="text-sm text-telecab-muted mt-0.5">Quién rodó de <b>05→17</b> (día) y <b>17→05</b> (noche), con horas, matrícula y los <b>NN</b> incluidos. Del núcleo, no de las hojas.</p>
+          <div class="flex items-center gap-2 mt-3">
+            <input id="rt-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <a id="rt-excel" href="/control/reporte-turnos/excel"
+               class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+              <i class="fa-solid fa-download mr-1"></i> Excel
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Turnos para imprimir -->
     <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
       <div class="flex items-start gap-3">
@@ -303,5 +321,11 @@
   cdUmbral.addEventListener('change', () => { try { localStorage.setItem('cd-umbral', cdUmbral.value); } catch (_) { } cargarCD(); });
   $('#cd-refrescar').addEventListener('click', cargarCD);
   cargarCD();
+
+  // ── Reporte por turnos (5-5): el día elegido cambia el ?dia= del Excel ───────
+  const rtDia = $('#rt-dia'), rtExcel = $('#rt-excel');
+  rtDia.value = isoDia(0);
+  const syncRt = () => { rtExcel.href = '/control/reporte-turnos/excel' + (rtDia.value ? '?dia=' + encodeURIComponent(rtDia.value) : ''); };
+  rtDia.addEventListener('change', syncRt); syncRt();
 })();
 </script>
