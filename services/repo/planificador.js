@@ -885,6 +885,94 @@ async function listarCuadrantes() {
   }));
 }
 
+/**
+ * QUIÉN DEBE SALIR un día, por turno — la lista para LLAMAR. Sale directa de
+ * f_cobertura, la MISMA verdad que pinta el planificador: ya deja fuera a quien
+ * libra, a quien tiene el coche en descanso y a CUALQUIER ausente (vacaciones,
+ * baja, permiso, suspensión). Aquí no cabe "hoy no trabajo": si aparece, le toca.
+ * Se agrupa POR CONDUCTOR y turno (un CT que cubre varios coches sale UNA vez con
+ * todas sus matrículas). El cuadrante se etiqueta por su posición VIVA (como el
+ * planificador), no por el nombre congelado en la BD.
+ *
+ * @param {string} [dia] 'YYYY-MM-DD'. Por defecto, hoy del servidor (pásalo en
+ *   horario de Madrid desde la capa de arriba para no depender de la TZ del host).
+ * @returns {Promise<{dia:string, turnos:Array<{codigo,etiqueta,conductores:Array}>, total:number}>}
+ */
+async function salidasHoy(dia) {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : null;
+  const cuad = new Map((await listarCuadrantes()).map(c => [String(c.id), c]));  // id -> {numero, zona}
+
+  const r = await db.consulta(
+    `SELECT fc.conductor_id,
+            t.codigo                                             AS turno_codigo,
+            t.etiqueta                                           AS turno,
+            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
+            tel.e164                                             AS telefono,
+            bool_or(fc.rol = 'FIJO')                             AS es_fijo,
+            array_agg(DISTINCT v.matricula)                      AS matriculas,
+            array_agg(DISTINCT v.cuadrante_id)
+              FILTER (WHERE v.cuadrante_id IS NOT NULL)          AS cuadrante_ids,
+            min(bz.nombre)                                       AS zona
+       FROM f_cobertura(COALESCE($1::date, CURRENT_DATE),
+                        COALESCE($1::date, CURRENT_DATE)) fc
+       JOIN conductor c ON c.id = fc.conductor_id
+       JOIN turno t     ON t.id = fc.turno_id
+       JOIN vehiculo v  ON v.id = fc.vehiculo_id
+       LEFT JOIN base_zona bz ON bz.id = v.base_zona_id
+       LEFT JOIN LATERAL (
+         SELECT e164 FROM conductor_telefono
+          WHERE conductor_id = c.id AND vigente_hasta IS NULL
+          ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
+      GROUP BY fc.conductor_id, t.codigo, t.etiqueta, c.nombre, c.apellidos, tel.e164`,
+    [d]);
+
+  // Quién sale en AMBOS turnos hoy = TodoTurno de verdad (cubre día y noche).
+  const veces = new Map();
+  r.rows.forEach(x => veces.set(String(x.conductor_id), (veces.get(String(x.conductor_id)) || 0) + 1));
+
+  const etiqCuad = ids => (ids || []).map(id => {
+    const q = cuad.get(String(id));
+    return q ? (q.nombre + (q.zona ? ' · ' + q.zona : '')) : null;
+  }).filter(Boolean);
+  const numCuad = ids => (ids || []).reduce((min, id) => {
+    const q = cuad.get(String(id));
+    return q && (min === null || q.numero < min) ? q.numero : min;
+  }, null);
+
+  const porTurno = new Map();   // codigo -> { codigo, etiqueta, conductores:[] }
+  r.rows.forEach(x => {
+    if (!porTurno.has(x.turno_codigo)) porTurno.set(x.turno_codigo, { codigo: x.turno_codigo, etiqueta: x.turno, conductores: [] });
+    const cuadrantes = etiqCuad(x.cuadrante_ids);
+    porTurno.get(x.turno_codigo).conductores.push({
+      conductorId: String(x.conductor_id),
+      conductor: x.conductor || '',
+      telefono: x.telefono || '',
+      rol: x.es_fijo ? 'FIJO' : 'CT',
+      todoTurno: (veces.get(String(x.conductor_id)) || 0) > 1,
+      matriculas: (x.matriculas || []).slice().sort((a, b) => String(a).localeCompare(String(b))),
+      cuadrantes,
+      cuadrante: cuadrantes[0] || '',
+      cuadranteNum: numCuad(x.cuadrante_ids),
+      zona: x.zona || '',
+    });
+  });
+
+  // Orden para llamar: por cuadrante (posición viva) y luego por nombre.
+  const ordena = arr => arr.sort((a, b) =>
+    ((a.cuadranteNum ?? 9999) - (b.cuadranteNum ?? 9999)) ||
+    a.conductor.localeCompare(b.conductor, 'es'));
+  porTurno.forEach(t => ordena(t.conductores));
+
+  // Día y Noche primero y en ese orden; cualquier otro código, detrás.
+  const ORDEN = ['dia', 'noche', 'todoturno', 'desconocido'];
+  const turnos = [...porTurno.values()].sort((a, b) => {
+    const ia = ORDEN.indexOf(a.codigo), ib = ORDEN.indexOf(b.codigo);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+
+  return { dia: d, turnos, total: veces.size };
+}
+
 async function crearCuadrante({ zonaId }, { usuarioId } = {}) {
   // El numero es global y automatico (el maximo de siempre + 1: no se reusan
   // los de cuadrantes borrados). El nombre se deriva del numero.
@@ -1034,6 +1122,6 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
 module.exports = {
   tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
-  listarCuadrantes, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
+  listarCuadrantes, salidasHoy, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
 };

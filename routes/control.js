@@ -83,6 +83,21 @@ router.get('/reportes', (req, res) => {
   res.render('reportes', { titulo: 'Control · Reportes', seccion: 'control', layout: 'layout-gestion' });
 });
 
+// QUIÉN DEBE SALIR — la lista para LLAMAR, por turno. Sale directa del
+// planificador (f_cobertura): ya deja fuera a quien libra, a quien tiene el coche
+// en descanso y a cualquier ausente. Los que aparecen, salen sí o sí.
+router.get('/api/salidas', async (req, res) => {
+  try {
+    const { salidasHoy } = require('../services/repo/planificador');
+    const dia = /^\d{4}-\d{2}-\d{2}$/.test(req.query.dia || '') ? req.query.dia : hoyMadrid();
+    const datos = await salidasHoy(dia);
+    res.json({ status: 'ok', fecha: dia.split('-').reverse().join('/'), ...datos });
+  } catch (e) {
+    console.error('❌ [Control] /api/salidas:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 // El "Tablero clásico" (leía las horas de la hoja Datos_API) se RETIRÓ: manda el
 // cockpit "En directo" (PostgreSQL) y lo exportable vive en Reportes. La función
 // tableroControl() sigue en services/control.js solo porque el reporte de horas la

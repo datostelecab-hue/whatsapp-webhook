@@ -14,12 +14,13 @@
 // cubre los dos turnos.
 
 const ExcelJS = require('exceljs');
-const { leerTablero, DIAS_SEM, TURNOS } = require('./planificadorV2');
-const { leerTelefonosDB } = require('./control');
-const { normClave } = require('./conductores');
+const { salidasHoy } = require('./repo/planificador');   // planificador REAL (PostgreSQL, f_cobertura)
 const est = require('./excelEstilo');
 
 const TZ = 'Europe/Madrid';
+
+// Lunes … Domingo (0=lunes, como el índice del Cuadrante) para el nombre de la pestaña.
+const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 const CAB_DIA = 'FFFDF0D2';     // cabecera del turno de día (dorado suave)
 const CAB_NOCHE = 'FFDCE7FA';   // cabecera del turno de noche (azul suave)
@@ -48,39 +49,19 @@ const fmtTel = t => {
 };
 
 /**
- * Quién sale ese día y turno, tal como lo pinta la Cobertura.
- * Devuelve [{ nombre, matricula, telefono, zona, todoTurno }] ordenado por matrícula.
+ * Convierte un turno de `salidasHoy` (planificador) en las filas del Excel: una
+ * por CONDUCTOR (un CT con varios coches sale una vez con sus matrículas juntas).
+ * Ya viene ordenado y sin librantes ni ausentes: es lo que hay que llamar.
+ * Devuelve [{ nombre, matricula, telefono, zona, todoTurno }].
  */
-function salidasDe(tablero, telsDB, idxDia, turno) {
-  const iT = TURNOS.indexOf(turno);
-  if (iT < 0) return [];
-  // Teléfono por ID_BOLT desde la propia agenda; si falta, se busca en DB_CONDUCTORES.
-  const porId = new Map();
-  (tablero.conductores || []).forEach(c => { if (c.idBolt) porId.set(c.idBolt, c); });
-  const tel = (id, nombre) => {
-    const c = porId.get(id);
-    const t = (c && (c.telefono || '').trim()) || '';
-    if (t) return t;
-    return (telsDB && telsDB.get(normClave(nombre || id))) || '';
-  };
-
-  const filas = [];
-  (tablero.coches || []).forEach(coche => {
-    if (!coche.matricula || !coche.operativo) return;
-    const tramo = (coche.semana || [])[idxDia * 2 + iT];
-    if (!tramo || !tramo.id) return;
-    // TodoTurno = la MISMA persona cubre el día y la noche de este coche.
-    const otro = (coche.semana || [])[idxDia * 2 + (iT === 0 ? 1 : 0)];
-    const todoTurno = !!(otro && otro.id && otro.id === tramo.id);
-    filas.push({
-      nombre: (tramo.nombre || tramo.id || '').trim(),
-      matricula: coche.matricula,
-      telefono: fmtTel(tel(tramo.id, tramo.nombre)),
-      zona: coche.zona || '',
-      todoTurno
-    });
-  });
-  return filas.sort((a, b) => a.matricula.localeCompare(b.matricula));
+function filasDeTurno(turno) {
+  return ((turno && turno.conductores) || []).map(c => ({
+    nombre: c.conductor || '',
+    matricula: (c.matriculas || []).join(' · '),
+    telefono: fmtTel(c.telefono),
+    zona: c.zona || c.cuadrante || '',
+    todoTurno: !!c.todoTurno,
+  }));
 }
 
 /**
@@ -139,25 +120,23 @@ function bloqueTurno(ws, fila, turno, filas) {
  * @returns {Promise<{buffer: Buffer, nombre: string}>}
  */
 async function generarExcelTurnos({ dias = 2, desde } = {}) {
-  const telsDB = await leerTelefonosDB().catch(() => new Map());
   const dia0 = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : hoyMadrid();
 
-  // Índice de día (0=lunes … 6=domingo) y semana de cada fecha objetivo.
-  // Se parte del mediodía UTC del día de Madrid: así sumar 24 h nunca cae en el día
-  // equivocado cuando toca el cambio de hora.
+  // Índice de día (0=lunes … 6=domingo) y fecha ISO de cada objetivo. Se parte del
+  // mediodía UTC del día de Madrid: así sumar 24 h nunca cae en el día equivocado
+  // cuando toca el cambio de hora.
   const base = new Date(dia0 + 'T12:00:00Z');
   const idxHoy = (base.getUTCDay() + 6) % 7;
   const objetivos = [];
   for (let n = 0; n <= dias; n++) {
     const f = new Date(base.getTime() + n * 86400000);
-    objetivos.push({ n, fecha: f, idxDia: (idxHoy + n) % 7, offsetSemana: Math.floor((idxHoy + n) / 7) });
+    objetivos.push({ n, fecha: f, iso: f.toISOString().slice(0, 10), idxDia: (idxHoy + n) % 7 });
   }
 
-  // Se lee cada semana UNA vez (hoy y, si el rango cruza el domingo, la siguiente).
-  const tableros = new Map();
-  for (const o of [...new Set(objetivos.map(x => x.offsetSemana))]) {
-    tableros.set(o, await leerTablero({ offsetSemana: o }));
-  }
+  // Una consulta por día (pocas): cada `salidasHoy` ya trae día y noche del
+  // planificador (f_cobertura), deduplicado por persona y sin librantes ni ausentes.
+  const salidas = new Map();
+  for (const o of objetivos) salidas.set(o.iso, await salidasHoy(o.iso).catch(() => ({ turnos: [] })));
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Tibus Luxury';
@@ -165,12 +144,12 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
   // El logo se registra UNA vez y se reutiliza en las tres hojas.
   const idLogo = est.registrarLogo(wb);
 
-  objetivos.forEach(({ n, fecha, idxDia, offsetSemana }) => {
-    const tablero = tableros.get(offsetSemana);
+  objetivos.forEach(({ n, fecha, idxDia, iso }) => {
+    const porCodigo = new Map(((salidas.get(iso) || {}).turnos || []).map(t => [t.codigo, t]));
     const nombreDia = DIAS_SEM[idxDia];
     const dd = ddmm(fecha);   // con guion: Excel no admite "/" en el nombre de una pestaña
     // HOY solo interesa la noche (el turno de día ya está en la calle cuando se imprime).
-    const turnos = n === 0 ? ['Noche'] : ['Día', 'Noche'];
+    const codigos = n === 0 ? ['noche'] : ['dia', 'noche'];
 
     const ws = wb.addWorksheet(`${nombreDia} ${dd}`.slice(0, 31), {
       pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
@@ -178,14 +157,15 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
     });
     ANCHOS.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-    const etiqueta = n === 0 ? 'HOY' : n === 1 ? 'MAÑANA' : 'PASADO MAÑANA';
+    const etiqueta = ['HOY', 'MAÑANA', 'PASADO MAÑANA'][n] || nombreDia.toUpperCase();
     let fila = est.bandaCabecera(ws, idLogo,
       `${etiqueta} · ${fmtFecha(fecha)}`,
-      `${n === 0 ? 'Solo turno de noche' : 'Turno de día y turno de noche'}   ·   generado el ${sello()}`,
+      `${n === 0 ? 'Solo turno de noche' : 'Turno de día y turno de noche'}   ·   del planificador   ·   generado el ${sello()}`,
       CABECERAS.length);
 
-    turnos.forEach(turno => {
-      fila = bloqueTurno(ws, fila, turno, salidasDe(tablero, telsDB, idxDia, turno));
+    codigos.forEach(codigo => {
+      const t = porCodigo.get(codigo) || { etiqueta: codigo === 'noche' ? 'Noche' : 'Día', conductores: [] };
+      fila = bloqueTurno(ws, fila, t.etiqueta, filasDeTurno(t));
     });
 
     ws.views = [{ state: 'frozen', ySplit: 3 }];
@@ -195,4 +175,4 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
   return { buffer: Buffer.from(await wb.xlsx.writeBuffer()), nombre };
 }
 
-module.exports = { generarExcelTurnos, salidasDe };
+module.exports = { generarExcelTurnos };
