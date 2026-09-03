@@ -248,12 +248,25 @@ async function serieMes(anio, mes) {
       sobreCritico: r1(acumulado - critico),  // margen sobre el suelo crítico (− = en riesgo)
     });
   }
+  // Totales del MES elegido (para los KPIs de arriba, que ahora siguen al selector de
+  // mes en vez de quedarse fijos en "este mes"). Horas del acumulado; neto/viajes de
+  // bolt_order en la ventana del mes.
+  const totalMes = dias.length ? dias[dias.length - 1].acumulado : 0;   // horas efectivas
+  const waitingMes = dias.reduce((a, d) => a + (d.waiting || 0), 0);
+  const viajeMes = totalMes - waitingMes;
+  const dinero = await dineroVentana(primero, 0, dm, 0);
+  const totales = {
+    horasEfectivas: Math.round(totalMes * 10) / 10,
+    utilizacion: totalMes > 0 ? Math.round((viajeMes / totalMes) * 1000) / 10 : null,
+    neto: dinero.neto,
+    viajes: dinero.viajes,
+    eurosHora: totalMes > 0 ? Math.round((dinero.neto / totalMes) * 100) / 100 : null,
+    viajesHora: totalMes > 0 ? Math.round((dinero.viajes / totalMes) * 10) / 10 : null,
+  };
   return {
     anio, mes, diasMes: dm, config,
     idealDiario: Math.round(idealDiario),
-    dias,
-    // Totales del mes = último acumulado.
-    total: dias.length ? dias[dias.length - 1].acumulado : 0,
+    dias, total: totalMes, totales,
   };
 }
 

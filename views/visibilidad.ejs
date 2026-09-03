@@ -31,7 +31,7 @@
     <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Horas efectivas</p>
       <p id="k-horas" class="text-3xl font-bold text-telecab-gold mt-1 tabular-nums">—</p>
-      <p class="text-xs text-telecab-muted mt-1">viaje + espera · este mes</p>
+      <p class="text-xs text-telecab-muted mt-1">viaje + espera · <span id="k-sub-mes">este mes</span></p>
     </div>
     <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">% Utilización</p>
@@ -198,14 +198,8 @@
   async function cargarResumen() {
     const r = await fetch('/visibilidad/api/resumen').then(x => x.json()).catch(() => null);
     if (!r || r.status !== 'ok') return;
-    const m = r.mes;
-    setTxt('k-horas', nf1.format(m.horasEfectivas) + ' h');
-    setTxt('k-util', m.utilizacion == null ? '—' : nf1.format(m.utilizacion) + ' %');
-    setTxt('k-eurhora', m.eurosHora == null ? '—' : eur.format(m.eurosHora));
-    setTxt('k-neto', eur.format(m.neto || 0));
-    setTxt('k-viahora', m.viajesHora == null ? '—' : nf1.format(m.viajesHora) + ' v/h');
-    setTxt('k-viajes', nf0.format(m.viajes || 0));
-
+    // Los KPIs grandes de arriba los pinta cargarSerie (siguen al MES elegido). Aquí
+    // solo POR DÍA (hoy/ayer/semana) y POR TURNO, que son EN VIVO (el momento actual).
     const pon = (id, s) => {
       setTxt(id + '-etq', s.etq);
       setTxt(id + '-h', nf1.format(s.horasEfectivas));
@@ -227,9 +221,21 @@
     const mm = String(mes).padStart(2, '0');
     const r = await fetch('/visibilidad/api/serie?mes=' + anio + '-' + mm).then(x => x.json()).catch(() => null);
     if (!r || r.status !== 'ok') return;
+    pintarKpis(r.totales || {});
+    setTxt('k-sub-mes', MESES[mes - 1] + ' ' + anio);
     rellenarTabla(r.dias);
     pintarGraficos(r.dias);
     rellenarConfig(r.config);
+  }
+
+  // KPIs grandes del MES elegido (siguen al selector de mes, no a "hoy").
+  function pintarKpis(t) {
+    setTxt('k-horas', nf1.format(t.horasEfectivas || 0) + ' h');
+    setTxt('k-util', t.utilizacion == null ? '—' : nf1.format(t.utilizacion) + ' %');
+    setTxt('k-eurhora', t.eurosHora == null ? '—' : eur.format(t.eurosHora));
+    setTxt('k-neto', eur.format(t.neto || 0));
+    setTxt('k-viahora', t.viajesHora == null ? '—' : nf1.format(t.viajesHora) + ' v/h');
+    setTxt('k-viajes', nf0.format(t.viajes || 0));
   }
 
   function rellenarTabla(dias) {
