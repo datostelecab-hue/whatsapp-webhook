@@ -307,6 +307,18 @@ if (pruebas.ACTIVO) {
     'escrituras de Sheets/WhatsApp/Mapon bloqueadas. Detalle en /modo-pruebas'));
 }
 
+// ── CRONS DE HOJAS (LEGADO) — APAGADOS por defecto ───────────────────────────
+// El núcleo (PostgreSQL) ya tiene las horas y Visibilidad las muestra en vivo, así
+// que los cron que reescribían Datos_API / el resumen en Sheets sobran: doble-tiraban
+// de BOLT (parte de los 429) y de la cuota de Sheets (60/min, la que tumbó el ERP).
+// Se reactivan con HOJAS_CRONS=on solo si hiciera falta refrescar el viejo reporte de
+// Datos_API mientras se termina de migrar. (El cron CONDUCTORES_BOLT NO está aquí:
+// sigue vivo porque la conciliación de tickets con RRHH aún lee esa hoja del padrón.)
+const HOJAS_CRONS = process.env.HOJAS_CRONS === 'on';
+if (!HOJAS_CRONS && !pruebas.ACTIVO) {
+  console.log('📴 [HOJAS] Crons de hojas (Horas / Horas⚡ / Resumen) APAGADOS (HOJAS_CRONS!=on)');
+}
+
 // Horas de conductores — DOS carriles:
 //
 //  · Cada hora en punto, pasada COMPLETA del mes. Es la de reparación: si una
@@ -317,7 +329,7 @@ if (pruebas.ACTIVO) {
 //
 // Las dos escriben la misma hoja (Datos_API), así que da igual cuál llegue
 // última. Se desfasan del minuto 0 para no solaparse con la completa.
-programar('0 * * * *', async () => {
+if (HOJAS_CRONS) programar('0 * * * *', async () => {
   const ahora = new Date();
   const mes = ahora.getMonth() + 1;
   const ano = ahora.getFullYear();
@@ -330,7 +342,7 @@ programar('0 * * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
-if (process.env.HORAS_INCREMENTAL !== 'off') {
+if (HOJAS_CRONS && process.env.HORAS_INCREMENTAL !== 'off') {
   let enMarcha = false;
   programar('5,15,25,35,45,55 * * * *', async () => {
     // Una pasada corta que se alargue no debe pisar a la siguiente.
@@ -349,7 +361,7 @@ if (process.env.HORAS_INCREMENTAL !== 'off') {
 }
 
 // Resumen de flotas: cada hora al minuto 15
-programar('15 * * * *', async () => {
+if (HOJAS_CRONS) programar('15 * * * *', async () => {
   console.log('⏰ [CRON Resumen] actualizarTodo()...');
   try {
     const { actualizarTodo } = require('./services/boltResumen');
