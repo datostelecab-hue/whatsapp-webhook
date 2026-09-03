@@ -15,6 +15,13 @@
 //   node scripts/migrar-plantilla.js --xlsx <ruta> --just <ruta.tsv>
 //
 // El reset (borrar dominio, conservar el núcleo) va aparte: NO lo hace este script.
+//
+// La URL de la BD puede ir como ARGUMENTO (node scripts/migrar-plantilla.js
+// "postgresql://...") para no pelear con las comillas de cmd/PowerShell. Se fija en el
+// entorno AQUÍ, antes de requerir services/db, que lee DATABASE_URL al cargarse.
+
+const _urlArg = process.argv.slice(2).find(a => /^postgres(ql)?:\/\//i.test(a));
+if (_urlArg) process.env.DATABASE_URL = _urlArg;
 
 const path = require('path');
 const fs = require('fs');
