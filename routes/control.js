@@ -1,7 +1,6 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
 const router = express.Router();
-const { tableroControl } = require('../services/control');
 const { enDirecto } = require('../services/flotaViva/directo');
 const { kmConectadoDesconectado } = require('../services/flotaViva/rutas');
 const { enviarAtencionHora } = require('../services/whatsapp');
@@ -84,28 +83,10 @@ router.get('/reportes', (req, res) => {
   res.render('reportes', { titulo: 'Control · Reportes', seccion: 'control', layout: 'layout-gestion' });
 });
 
-// El tablero clásico de hojas, aparcado aquí mientras sus exportables (Excel,
-// justificantes, envío de "atención hora") se portan al futuro submenú Reportes.
-// Nada de esto se pierde: sigue funcionando, solo cambia de puerta.
-router.get('/clasico', (req, res) => {
-  res.render('control', {
-    titulo: 'Control · Tablero clásico',
-    seccion: 'control',
-    layout: 'layout-gestion'
-  });
-});
-
-// El tablero clásico de hojas (turno/libranza/horas). Se conserva mientras la
-// migración termina de cuajar; el cockpit de arriba es el que manda ahora.
-router.get('/api/datos', async (req, res) => {
-  try {
-    const datos = await tableroControl();
-    res.json({ status: 'ok', ...datos });
-  } catch (error) {
-    console.error('❌ [Control] /api/datos:', error.message);
-    res.status(500).json({ status: 'error', msg: error.message });
-  }
-});
+// El "Tablero clásico" (leía las horas de la hoja Datos_API) se RETIRÓ: manda el
+// cockpit "En directo" (PostgreSQL) y lo exportable vive en Reportes. La función
+// tableroControl() sigue en services/control.js solo porque el reporte de horas la
+// usa todavía; ese reporte se migra aparte ("luego"). Nada más lee de la hoja aquí.
 
 // Exporta a Excel las filas (ya filtradas y ordenadas en el cliente) con las columnas dadas.
 router.post('/excel', async (req, res) => {
