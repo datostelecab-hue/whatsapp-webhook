@@ -75,7 +75,7 @@ async function tablero({ dia } = {}) {
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
       `SELECT plaza_id, vehiculo_id, matricula, zona, base_zona_id, estado_operativo,
-              es_operativo, visible_cobertura, slot, turno_codigo, turno, rol, orden_ct,
+              es_operativo, visible_cobertura, slot, turno_id, turno_codigo, turno, rol, orden_ct,
               cuadrante_id, cuadrante
          FROM v_plaza
         WHERE visible_cobertura OR cuadrante_id IS NOT NULL
