@@ -219,6 +219,53 @@ router.get('/api/ingestar-rutas', responde(async (req, res) => {
   return r;
 }));
 
+// BACKFILL de HORAS (fv_tramo) — reconstruye del histórico de BOLT (state-logs). Solo
+// desarrollador/superadmin. Idempotente (delete+reinsert del rango, sin tocar el tramo
+// vivo). Rango largo → segundo plano. Ej (migración): ?desde=2026-07-01
+router.get('/api/backfill-tramos', responde(async (req, res) => {
+  const rol = req.usuario && req.usuario.rol;
+  if (rol !== 'superadmin' && rol !== 'desarrollador') {
+    res.status(403).json({ status: 'error', msg: 'Solo desarrollador/superadmin' });
+    return;
+  }
+  const { desde, hasta } = req.query;
+  if (!desde) throw new Error('Falta ?desde=AAAA-MM-DD');
+  const backfill = require('../services/flotaViva/backfill');
+  const diasRango = (Date.now() - new Date(desde).getTime()) / 86400000;
+  if (req.query.bg === '1' || diasRango > 3) {
+    backfill.backfillTramos({ desde, hasta })
+      .catch(e => console.error('❌ [FLOTA VIVA] Backfill tramos falló:', e.stack || e.message));
+    return {
+      iniciado: true, tarea: 'backfill-tramos', desde, hasta: hasta || '(hasta el tramo vivo)',
+      nota: 'Corre en segundo plano. Progreso en los logs de Render; luego se ve en /visibilidad.',
+    };
+  }
+  return await backfill.backfillTramos({ desde, hasta });
+}));
+
+// BACKFILL FINANCIERO (bolt_order: neto/viajes) del histórico. Solo dev/superadmin.
+// Idempotente (ON CONFLICT). Rango largo → segundo plano. Ej: ?desde=2026-07-01
+router.get('/api/backfill-orders', responde(async (req, res) => {
+  const rol = req.usuario && req.usuario.rol;
+  if (rol !== 'superadmin' && rol !== 'desarrollador') {
+    res.status(403).json({ status: 'error', msg: 'Solo desarrollador/superadmin' });
+    return;
+  }
+  const { desde, hasta } = req.query;
+  if (!desde) throw new Error('Falta ?desde=AAAA-MM-DD');
+  const backfill = require('../services/flotaViva/backfill');
+  const diasRango = (Date.now() - new Date(desde).getTime()) / 86400000;
+  if (req.query.bg === '1' || diasRango > 3) {
+    backfill.backfillOrders({ desde, hasta })
+      .catch(e => console.error('❌ [FLOTA VIVA] Backfill orders falló:', e.stack || e.message));
+    return {
+      iniciado: true, tarea: 'backfill-orders', desde, hasta: hasta || '(ahora)',
+      nota: 'Corre en segundo plano. Progreso en los logs de Render.',
+    };
+  }
+  return await backfill.backfillOrders({ desde, hasta });
+}));
+
 // Comprobación: los km de hoy por coche que verá el cockpit, del núcleo. Si esto
 // sale con datos y el cockpit no, el problema es de pintado; si sale vacío, es de
 // ingesta o del cruce por unit_id.
