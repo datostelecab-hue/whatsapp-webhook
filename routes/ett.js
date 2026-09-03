@@ -14,6 +14,7 @@
 const express = require('express');
 const router = express.Router();
 const cand = require('../services/repo/candidaturas');
+const alta = require('../services/repo/alta');
 const actor = require('../services/repo/actor');
 const { generarExcelETT, nombreFichero } = require('../services/ettExcel');
 
@@ -127,6 +128,25 @@ router.post('/api/candidatura/:id/rrhh', responde(async req => {
   console.log(`👤 [ETT] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
               (r.boltEnlazada ? ` — BOLT enlazada${r.boltReactivar ? ` (${r.boltEstado}: REACTIVAR)` : ''}`
                 : r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
+  return r;
+}));
+
+// ALTA RÁPIDA: teléfono + nombre → alta de ETT directa (sin matriz ni candidatura) y
+// enlace AUTOMÁTICO a BOLT por teléfono —incluidas cuentas desactivadas, con aviso de
+// reactivarlas—. Reutiliza alta.realizar: crea la ficha, abre el periodo de empleo (así
+// pasa directo al planificador, como si ya estuviera contratado) y engancha su BOLT.
+router.post('/api/alta-rapida', responde(async req => {
+  const b = req.body || {};
+  const nombre = String(b.nombre || '').trim();
+  const telefono = String(b.telefono || '').trim();
+  if (!nombre) throw new Error('Falta el nombre');
+  if (telefono.replace(/\D/g, '').length < 9) throw new Error('El teléfono no parece válido');
+  const hoy = new Date().toISOString().slice(0, 10);
+  const r = await alta.realizar(
+    { nombre, telefono, tipo: 'ett', ettNombre: b.ettNombre || process.env.ETT_NOMBRE || 'ETT', alta: hoy },
+    await quien(req));
+  console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id})` +
+    (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));
   return r;
 }));
 

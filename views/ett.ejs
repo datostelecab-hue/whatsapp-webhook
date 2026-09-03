@@ -276,6 +276,32 @@
    * dónde lo dice el catálogo, así que esta pantalla no elige ningún estado:
    * manda el motivo y ya está.
    */
+  // Alta rápida: teléfono + nombre → alta ETT directa + enlace BOLT por teléfono.
+  // Pasa directa al planificador (no entra en la bolsa de candidatos).
+  async function altaRapida() {
+    const v = await Dialogo.formulario('Alta rápida ETT', [
+      { id: 'nombre', etiqueta: 'Nombre y apellidos', tipo: 'texto', obligatorio: true },
+      { id: 'telefono', etiqueta: 'Teléfono', tipo: 'texto', obligatorio: true,
+        ayuda: 'Se enlaza solo con su cuenta de BOLT por este número.' },
+    ], { textoBoton: 'Dar de alta',
+         nota: 'Crea la ficha ETT y la pasa directa al planificador, como si ya estuviera contratado.' });
+    if (!v || !v.nombre || !v.telefono) return;
+    const r = await hacer(() => enviar('/ett/api/alta-rapida', 'POST', v), false);
+    if (!r) return;
+    let bolt;
+    if (r.faltaBolt) bolt = '<p class="text-sm mt-2 text-telecab-warn"><b>Sin cuenta de BOLT</b> con ese número: hay que darle de alta en BOLT.</p>';
+    else if (r.boltEnlazada) bolt = '<p class="text-sm mt-2">Su cuenta de BOLT queda <b>enlazada</b> a la ficha.</p>';
+    else bolt = '<p class="text-sm mt-2">Cuenta de BOLT localizada.</p>';
+    const avisos = (r.avisos && r.avisos.length)
+      ? '<ul class="text-sm mt-2 text-telecab-warn" style="list-style:disc;padding-left:1.25rem;">'
+        + r.avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>' : '';
+    await Dialogo.aviso({
+      titulo: 'Alta rápida hecha',
+      html: '<p class="text-sm">Ficha nº ' + esc(r.id) + ' creada y en el planificador.</p>' + bolt + avisos,
+      tono: (r.faltaBolt || (r.avisos && r.avisos.length)) ? 'aviso' : 'ok',
+    });
+  }
+
   async function accionDescartar(d) {
     const motivos = CAT.motivos || [];
     const v = await Dialogo.formulario('¿Por qué no pasa ' + d.quien + '?', [
@@ -454,6 +480,7 @@
     // día que se cierra sola al mandar el último envío.
     acciones: [
       { texto: 'Pegar tabla del correo', icono: 'fa-table', onClick: importar },
+      { texto: 'Alta rápida', icono: 'fa-bolt', principal: false, onClick: altaRapida },
       { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
         onClick: descargarExcel },
     ],

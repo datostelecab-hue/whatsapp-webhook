@@ -21,6 +21,7 @@ const fs = require('fs');
 const ExcelJS = require('exceljs');
 const db = require('../services/db');
 const con = require('../services/repo/conductores');
+const veh = require('../services/repo/vehiculos');
 const alta = require('../services/repo/alta');
 const repoJust = require('../services/repo/justificantes');
 
@@ -138,6 +139,19 @@ async function insertarEstado(conductorId, estado, desde, hasta) {
 const R = {};   // fase -> { ok, saltados:[], noCasan:[], solapes:[], errores:[] }
 const rep = f => (R[f] = R[f] || { ok: 0, saltados: [], noCasan: [], solapes: [], errores: [] });
 const linea = (m, x) => `f${x._fila}: ${m}`;
+
+// ── FASE 0: flota (coches de fv_matricula → vehiculo + 6 plazas, todos Operativo) ──
+// Sin asignaciones ni cuadrantes: el planificador se arma a mano. Reutiliza
+// vehiculos.crear (estado 'O' por defecto = Operativo, y crea las 6 plazas).
+async function faseFlota() {
+  const r = rep('FLOTA');
+  const mats = (await db.consulta(`SELECT matricula FROM fv_matricula WHERE activa ORDER BY matricula`)).rows;
+  for (const m of mats) {
+    if (!GO) { r.ok++; continue; }
+    try { await veh.crear({ matricula: m.matricula, estado: 'O' }, null); r.ok++; }
+    catch (e) { (/duplicate|unique|uq_veh|ya/i.test(e.message) ? r.saltados : r.errores).push(`${m.matricula}: ${e.message}`); }
+  }
+}
 
 // ── FASE 1: conductores propios ──────────────────────────────────────────────
 async function faseConductores(rows, esEtt) {
@@ -267,6 +281,7 @@ if (require.main === module) (async () => {
   const justis = leerJustificantes();
   console.log(`   PLANTILLA ${plantilla.length} · ETT ${ett.length} · BAJAS ${bajas.length} · VACACIONES ${vacaciones.length} · JUSTIF ${justis ? justis.length : 0}`);
 
+  await faseFlota();
   await faseConductores(plantilla, false);
   await faseConductores(ett, true);
   await faseEstados(vacaciones, 'vacaciones');
