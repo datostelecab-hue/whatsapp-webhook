@@ -53,7 +53,9 @@ function fecha(v) {
   if (m) {
     let [, d, mo, y] = m; y = Number(y); if (y < 100) y += 2000;
     const dt = new Date(Date.UTC(y, Number(mo) - 1, Number(d)));
-    return valida(dt) && dt.getUTCDate() === Number(d) ? iso(dt) : { malo: s };
+    // Round-trip de MES y DÍA: así un mes fuera de rango (00, 13…) que Date desborda
+    // en silencio ("10/00/2021"→dic del año anterior) se caza como {malo}, no se cuela.
+    return valida(dt) && dt.getUTCMonth() === Number(mo) - 1 && dt.getUTCDate() === Number(d) ? iso(dt) : { malo: s };
   }
   const dt = new Date(s);                                 // "Thu Apr 21 2022 ..."
   return valida(dt) ? iso(dt) : { malo: s };
@@ -229,8 +231,11 @@ async function faseConductores(rows, esEtt, skip) {
         legajo: txt(x.c2) || null, email: txt(x.c29) || null,
       };
     const tel = esEtt ? telFake() : telE164(x.c28);
-    // ETT que "SIGUE TRABAJANDO" no lleva baja; el resto sí si viene fecha.
-    const cierra = bajaF && !bajaF.malo && !(esEtt && /SIGUE/.test(estadoEtt)) ? bajaF : null;
+    // ETT que "SIGUE TRABAJANDO" no lleva baja; el resto sí si viene fecha. Y SOLO se
+    // cierra si la baja es >= al alta: si no, con.darDeBaja reventaría ck_empleo_rango en
+    // una transacción aparte y dejaría a la persona creada pero ACTIVA.
+    const bajaValida = !!(bajaF && !bajaF.malo && !(esEtt && /SIGUE/.test(estadoEtt)));
+    const cierra = bajaValida && bajaF >= altaF ? bajaF : null;
 
     if (!GO) { r.ok++; continue; }
     try {
@@ -240,7 +245,13 @@ async function faseConductores(rows, esEtt, skip) {
         alta: altaF, antiguedad: esEtt ? null : (dateOrNull(x.c41) || null),
         jornadaHoras: esEtt ? null : jornadaDe(txt(x.c36)),
       }, QUIEN);
-      if (cierra) await con.darDeBaja(id, { fecha: cierra, motivo: 'Migración inicial' }, QUIEN);
+      if (bajaValida && !cierra) r.saltados.push(linea(`baja (${bajaF}) anterior al alta (${altaF}): se carga ACTIVO — revisar`, x));
+      if (cierra) {
+        // En su propio try: si el cierre falla, la ficha YA está creada y activa. Se
+        // reporta claro (no como error genérico) para poder cerrarla a mano.
+        try { await con.darDeBaja(id, { fecha: cierra, motivo: 'Migración inicial' }, QUIEN); }
+        catch (e) { r.errores.push(linea(`CREADO pero NO se pudo dar de baja (queda ACTIVO): ${e.message}`, x)); }
+      }
       r.ok++;
     } catch (e) {
       (/(ya es de|ya tiene|ya está)/i.test(e.message) ? r.noCasan : r.errores).push(linea(`${nomRaw}: ${e.message}`, x));
@@ -337,8 +348,11 @@ if (require.main === module) (async () => {
   await faseFlota();
   await faseConductores(plantilla, false, skip);
   await faseConductores(ett, true, skip);
-  await faseEstados(vacaciones, 'vacaciones');
+  // Bajas ANTES que vacaciones: el EXCLUDE anti-solape rechaza el segundo estado que
+  // pise a otro, así que se carga primero el de más peso (la baja médica, legal/nómina);
+  // una vacación que la solape se reporta como 'solape' en vez de perderse la baja.
   await faseEstados(bajas, 'baja_medica');
+  await faseEstados(vacaciones, 'vacaciones');
   if (justis) await faseJustificantes(justis);
   await faseBolt();
 
