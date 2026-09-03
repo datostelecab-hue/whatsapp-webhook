@@ -336,9 +336,11 @@ async function enDirecto({ dia } = {}) {
     dia: agrupaConductor(crudo.dia), noche: agrupaConductor(crudo.noche),
     todoturno: agrupaConductor(crudo.todoturno), nn: sinPlan,
   };
+  const yaSalio = f => (f.actividad && f.actividad.conectado) ? 1 : 0;
   const ordena = arr => arr.sort((a, b) =>
     (a.cuadrante || '').localeCompare(b.cuadrante || '') ||
-    (a.rol || '').localeCompare(b.rol || '') || (a.conductor || '').localeCompare(b.conductor || ''));
+    (yaSalio(b) - yaSalio(a)) ||                                 // los que YA SALIERON, primero
+    (a.conductor || '').localeCompare(b.conductor || ''));
   ordena(porTurno.dia); ordena(porTurno.noche); ordena(porTurno.todoturno);
 
   return {
