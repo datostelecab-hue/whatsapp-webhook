@@ -220,12 +220,15 @@ async function enDirecto({ dia } = {}) {
       (co.semana || []).forEach(cell => meter(cell && cell.id));
     });
     if (idsPlan.size) {
+      // El nombre de BOLT del planificado sale DIRECTO de conductor_externo.externo_nombre
+      // (lo sincroniza el cazamiento), sin depender de que fv_conductor tenga el uuid.
       const r = await require('../db').consulta(
-        `SELECT fc.nombre AS bolt_nombre
-           FROM conductor_externo ce
-           JOIN fv_conductor fc ON fc.uuid = ce.externo_id
-          WHERE ce.sistema = 'bolt' AND ce.conductor_id = ANY($1::bigint[])`, [[...idsPlan]]);
+        `SELECT externo_nombre AS bolt_nombre
+           FROM conductor_externo
+          WHERE sistema = 'bolt' AND externo_nombre IS NOT NULL
+            AND conductor_id = ANY($1::bigint[])`, [[...idsPlan]]);
       r.rows.forEach(x => anota(x.bolt_nombre));
+      console.log(`🔎 [EN DIRECTO] plan ${idsPlan.size} ids · ${r.rows.length} con nombre de BOLT enlazado`);
     }
   } catch (e) { console.error('⚠️  [EN DIRECTO] enganche BOLT-nombre del plan:', e.message); }
   const conectadosAhora = new Set();
@@ -243,6 +246,8 @@ async function enDirecto({ dia } = {}) {
       conectadoAhora: conectadosAhora.has(normNombre(c.conductor)),
     }))
     .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
+
+  console.log(`🔎 [EN DIRECTO] sin plan (${sinPlan.length}): ${sinPlan.map(s => s.conductor).slice(0, 15).join(' · ')}`);
 
   const resumen = {
     coches: filas.length,
