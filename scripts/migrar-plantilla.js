@@ -24,6 +24,7 @@ const con = require('../services/repo/conductores');
 const veh = require('../services/repo/vehiculos');
 const alta = require('../services/repo/alta');
 const repoJust = require('../services/repo/justificantes');
+const { normClave } = require('../services/conductores');
 
 // ── Argumentos ───────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -35,6 +36,11 @@ const QUIEN = { usuarioId: null, rol: 'superadmin' };   // la migración corre c
 
 // ── Parsers robustos (los datos vienen sucios) ───────────────────────────────
 const txt = v => { if (v == null) return ''; if (typeof v === 'object') v = v.text ?? v.result ?? v; return String(v).trim(); };
+const up = v => txt(v).toUpperCase();
+// Teléfono FALSO único para los ETT (no traen número; el real se pone luego con el
+// alta rápida, que lo reemplaza y engancha BOLT). 9 dígitos, imposible de confundir.
+let _fakeN = 0;
+const telFake = () => '0000' + String(++_fakeN).padStart(5, '0');
 
 // Fecha → 'AAAA-MM-DD' o null. Acepta: Date de JS, "Thu Apr 21 2022 ...", "dd/mm/aaaa".
 // Descarta basura: "00/00/0000", años imposibles (< 2000 o > 2100), fechas no válidas.
@@ -123,6 +129,22 @@ const idPorNaf = async naf => (await db.consulta(
 const idPorTel = async s9 => (await db.consulta(
   `SELECT conductor_id FROM conductor_telefono WHERE sufijo9 = $1 ORDER BY (vigente_hasta IS NULL) DESC LIMIT 1`, [s9])).rows[0]?.conductor_id || null;
 
+// Fallback por NOMBRE (inequívoco): normClave del nombre contra conductor.nombre+apellidos.
+// Se carga una vez. Solo devuelve id si UNA sola persona casa (si hay dos, no arriesga).
+let _nomMap = null;
+async function idPorNombre(nombre) {
+  const clave = normClave(nombre);
+  if (!clave) return null;
+  if (!_nomMap) {
+    _nomMap = new Map();
+    const r = await db.consulta(
+      `SELECT id, btrim(nombre || ' ' || COALESCE(apellidos, '')) AS n FROM conductor WHERE NOT es_centinela`);
+    r.rows.forEach(x => { const k = normClave(x.n); if (!k) return; if (!_nomMap.has(k)) _nomMap.set(k, []); _nomMap.get(k).push(x.id); });
+  }
+  const ids = _nomMap.get(clave) || [];
+  return ids.length === 1 ? ids[0] : null;
+}
+
 // Inserta un estado histórico (rango cerrado o abierto). Devuelve 'ok'|'solape'|'error'.
 async function insertarEstado(conductorId, estado, desde, hasta) {
   try {
@@ -153,10 +175,38 @@ async function faseFlota() {
   }
 }
 
-// ── FASE 1: conductores propios ──────────────────────────────────────────────
-async function faseConductores(rows, esEtt) {
+// Dedup por DNI (PLANTILLA ∪ ETT). Regla de Tráfico: entre duplicados gana el que
+// tenga BAJA de empresa (Fecha Baja); si ninguno la tiene, gana el PROPIO antes que
+// el ETT; si empatan, el primero. Los sin DNI no se deduplican (se dejan todos).
+// Devuelve un Set de claves ('P'+fila / 'E'+fila) a SALTAR.
+function dedup(plantilla, ett) {
+  const grupos = new Map();
+  const meter = (x, esEtt) => {
+    const dni = up(esEtt ? x.c2 : x.c5);
+    if (!dni) return;
+    const baja = esEtt
+      ? !!(dateOrNull(x.c4) && !/SIGUE/.test(up(x.c5)))
+      : !!dateOrNull(x.c34);
+    if (!grupos.has(dni)) grupos.set(dni, []);
+    grupos.get(dni).push({ k: (esEtt ? 'E' : 'P') + x._fila, esEtt, baja });
+  };
+  plantilla.forEach(x => meter(x, false));
+  ett.forEach(x => meter(x, true));
+  const skip = new Set();
+  for (const g of grupos.values()) {
+    if (g.length < 2) continue;
+    const gana = g.find(e => e.baja) || g.find(e => !e.esEtt) || g[0];
+    g.forEach(e => { if (e.k !== gana.k) skip.add(e.k); });
+  }
+  return skip;
+}
+
+// ── FASE 1: conductores propios y ETT ────────────────────────────────────────
+async function faseConductores(rows, esEtt, skip) {
   const r = rep(esEtt ? 'ETT' : 'PROPIOS');
   for (const x of rows) {
+    const k = (esEtt ? 'E' : 'P') + x._fila;
+    if (skip && skip.has(k)) { r.saltados.push(linea('duplicado — se queda otra ficha con el mismo DNI', x)); continue; }
     const dni = esEtt ? txt(x.c2) : txt(x.c5);
     const nomRaw = esEtt ? txt(x.c1) : txt(x.c8);
     const { nombre, apellidos } = nombreApellidos(nomRaw);
@@ -178,7 +228,7 @@ async function faseConductores(rows, esEtt) {
         localidad: txt(x.c23) || null, codigo_postal: txt(x.c24) || null, provincia: txt(x.c25) || null,
         legajo: txt(x.c2) || null, email: txt(x.c29) || null,
       };
-    const tel = esEtt ? null : telE164(x.c28);
+    const tel = esEtt ? telFake() : telE164(x.c28);
     // ETT que "SIGUE TRABAJANDO" no lleva baja; el resto sí si viene fecha.
     const cierra = bajaF && !bajaF.malo && !(esEtt && /SIGUE/.test(estadoEtt)) ? bajaF : null;
 
@@ -232,7 +282,8 @@ async function faseJustificantes(rows) {
     if (!s9) { r.saltados.push(linea(`sin teléfono (${x.nombre})`, x)); continue; }   // p.ej. Iskren Petrov***
     if (!x.observacion) { r.saltados.push(linea(`sin observación (${x.nombre})`, x)); continue; }
     if (!GO) { r.ok++; continue; }
-    const id = await idPorTel(s9);
+    let id = await idPorTel(s9);
+    if (!id) id = await idPorNombre(x.nombre);   // fallback: por nombre inequívoco (ETT, teléfono viejo…)
     if (!id) { r.noCasan.push(linea(`no casa ${x.nombre} (${s9})`, x)); continue; }
     try {
       await repoJust.guardarPorId({ conductorId: id, diaIso: dia, horas: horas(x.horas) ?? '', observacion: x.observacion, usuarioId: null });
@@ -271,7 +322,7 @@ function informe() {
   console.log(GO ? '\n✅ Migración escrita.' : '\n(DRY) Revisa lo de arriba. Cuando cuadre: --go');
 }
 
-module.exports = { fecha, horas, nombreApellidos, sufijo9, telE164, nafDigitos, jornadaDe, leerXlsx };
+module.exports = { fecha, horas, nombreApellidos, sufijo9, telE164, nafDigitos, jornadaDe, leerXlsx, dedup };
 
 // Requerido como módulo (para tests) NO migra; solo al ejecutarlo directamente.
 if (require.main === module) (async () => {
@@ -281,9 +332,11 @@ if (require.main === module) (async () => {
   const justis = leerJustificantes();
   console.log(`   PLANTILLA ${plantilla.length} · ETT ${ett.length} · BAJAS ${bajas.length} · VACACIONES ${vacaciones.length} · JUSTIF ${justis ? justis.length : 0}`);
 
+  const skip = dedup(plantilla, ett);
+  if (skip.size) console.log(`   🔁 ${skip.size} fila(s) duplicada(s) por DNI se saltan (gana: baja empresa → propio → primero)`);
   await faseFlota();
-  await faseConductores(plantilla, false);
-  await faseConductores(ett, true);
+  await faseConductores(plantilla, false, skip);
+  await faseConductores(ett, true, skip);
   await faseEstados(vacaciones, 'vacaciones');
   await faseEstados(bajas, 'baja_medica');
   if (justis) await faseJustificantes(justis);

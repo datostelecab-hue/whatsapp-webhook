@@ -25,6 +25,7 @@ const pct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : '';
 
 (async () => {
   const { plantilla, bajas, vacaciones, ett } = await L.leerXlsx();
+  const skip = L.dedup(plantilla, ett);   // misma regla que el cargador
   console.log(`📄 ${plantilla.length} PLANTILLA · ${ett.length} ETT · ${bajas.length} BAJAS · ${vacaciones.length} VACACIONES`);
 
   // ── Identidad que existirá tras cargar: DNIs, NAFs y teléfonos ──────────────
@@ -61,6 +62,19 @@ const pct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : '';
     if (!alta || alta.malo) badAltaE.push(`f${x._fila}: ${quien} ingreso "${txt(x.c3)}"`);
   });
 
+  // Nombres para el FALLBACK de justificantes: normClave -> cuántas fichas únicas lo
+  // llevan (>1 = ambiguo, no se usa). Mismo criterio que el cargador.
+  const { normClave } = require('../services/conductores');
+  const nomCount = new Map();
+  const meterNom = (nom, esEtt, fila) => {
+    if (skip.has((esEtt ? 'E' : 'P') + fila)) return;
+    const k = normClave(nom); if (!k) return;
+    nomCount.set(k, (nomCount.get(k) || 0) + 1);
+  };
+  plantilla.forEach(x => meterNom(txt(x.c8), false, x._fila));
+  ett.forEach(x => meterNom(txt(x.c1), true, x._fila));
+  const casaNombre = nom => nomCount.get(normClave(nom)) === 1;
+
   // ── Cruces (lo que casará en el --go) ──────────────────────────────────────
   // VACACIONES por DNI
   const vacOK = [], vacHuerf = [], vacBad = [];
@@ -92,7 +106,8 @@ const pct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : '';
       if (!d || d.malo) { bad.push(`f${k + 2}: ${quien} fecha "${c[iF]}"`); return; }
       if (!s9) { sinTel.push(`f${k + 2}: ${quien}`); return; }
       if (!(c[iO] || '').trim()) { sinObs.push(`f${k + 2}: ${quien}`); return; }
-      (tels.has(s9) ? ok : huerf).push(`${quien} (${s9})`);
+      // Casa por teléfono O por nombre inequívoco (el fallback del cargador).
+      ((tels.has(s9) || casaNombre(quien)) ? ok : huerf).push(`${quien} (${s9})`);
     });
     just = { total: lineas.length - 1, ok, huerf, bad, sinTel, sinObs };
   }
@@ -111,7 +126,10 @@ const pct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : '';
     'sin DNI': sinDniP, 'alta inválida': badAltaP, 'sin NAF (no casarán sus bajas)': sinNafP, 'sin teléfono (no casarán sus justificantes ni BOLT)': sinTelP,
   });
   bloque(`ETT: ${ett.length}`, {}, { 'sin DNI': sinDniE, 'ingreso inválido': badAltaE });
-  bloque(`DNIs duplicados (PLANTILLA∪ETT) — gana el primero, el resto NO se crea`, {}, { 'duplicados': dupDni });
+  const totalC = plantilla.length + ett.length;
+  bloque(`DUPLICADOS por DNI: ${skip.size} se saltan → ${totalC - skip.size} fichas únicas ` +
+         `(gana: baja empresa → propio → primero). ETT sin teléfono → se les inventa uno falso (000000001…)`,
+         {}, { 'se salta el perdedor': dupDni });
   bloque(`VACACIONES: ${vacaciones.length} → CASAN ${vacOK.length}${pct(vacOK.length, vacaciones.length)}`, {}, {
     'NO casan (DNI no está en plantilla)': vacHuerf, 'fechas basura': vacBad,
   });
