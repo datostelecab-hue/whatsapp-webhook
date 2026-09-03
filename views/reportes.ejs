@@ -37,6 +37,33 @@
     <div id="s-cuerpo" class="mt-3 text-sm text-telecab-muted">Cargando…</div>
   </div>
 
+  <!-- Control del día — todos los conductores (no solo el plan) -->
+  <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 mb-6">
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <div class="font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-traffic-light text-telecab-gold"></i> Control del día
+        <span id="cd-fecha" class="text-xs font-normal text-telecab-muted"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="cd-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+        <label class="text-xs text-telecab-muted flex items-center gap-1">Umbral
+          <input id="cd-umbral" type="number" min="0.5" max="24" step="0.5" value="8"
+                 class="w-16 px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"> h
+        </label>
+        <button id="cd-refrescar" class="px-3 py-1.5 rounded-lg border border-telecab-border text-sm text-telecab-text hover:border-telecab-gold/40">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+      </div>
+    </div>
+    <p class="text-sm text-telecab-muted mt-0.5">
+      TODOS los conductores, no solo el plan: quién salió, quién no, y quién cumplió el
+      umbral de horas. Con las marcas de la bitácora (L/V/B/P/J); Justificado cuenta como cumplido.
+    </p>
+    <div id="cd-contadores" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3"></div>
+    <div id="cd-filtros" class="flex flex-wrap gap-1.5 mt-3"></div>
+    <div id="cd-cuerpo" class="mt-2 text-sm text-telecab-muted">Cargando…</div>
+  </div>
+
   <!-- Descargables -->
   <div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-2">Descargar</div>
   <div class="grid sm:grid-cols-2 gap-3 mb-6">
@@ -210,5 +237,71 @@
   selDia.addEventListener('change', cargarSalidas);
   $('#s-refrescar').addEventListener('click', cargarSalidas);
   cargarSalidas();
+
+  // ── Control del día — todos los conductores (semáforo) ──────────────────────
+  const cdDia = $('#cd-dia'), cdUmbral = $('#cd-umbral'), cdFecha = $('#cd-fecha');
+  const cdCont = $('#cd-contadores'), cdFiltros = $('#cd-filtros'), cdCuerpo = $('#cd-cuerpo');
+  let cdDatos = null, cdFiltro = 'todos';
+  try { const u = localStorage.getItem('cd-umbral'); if (u) cdUmbral.value = u; } catch (_) { }
+  cdDia.value = isoDia(0);
+
+  const stat = (label, valor, color) =>
+    '<div class="rounded-xl border border-telecab-border bg-telecab-dark/30 px-3 py-2">' +
+      '<div class="text-lg font-bold" style="color:' + color + '">' + valor + '</div>' +
+      '<div class="text-[11px] text-telecab-muted leading-tight">' + esc(label) + '</div></div>';
+  const chip = (id, label, n, activo) =>
+    '<button data-f="' + id + '" class="px-2 py-1 rounded-lg text-xs border ' +
+      (activo ? 'border-telecab-gold text-telecab-gold' : 'border-telecab-border text-telecab-muted') +
+      '">' + esc(label) + ' <b>' + n + '</b></button>';
+  const filaCD = f => {
+    const h = f.horas != null ? (f.horas.toFixed(1).replace(/\.0$/, '') + ' h') : (f.marca || '—');
+    return '<div class="flex items-center gap-2 px-3 py-1.5 border-b border-telecab-border/50 last:border-0">' +
+      '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + f.color + '"></span>' +
+      '<div class="min-w-0 flex-1 truncate"><span class="text-telecab-text">' + esc(f.nombre) + '</span>' +
+        (f.turno ? ' <span class="text-[11px] text-telecab-muted">· ' + esc(f.turno) + '</span>' : '') +
+        (f.esperado ? '' : ' <span class="text-[10px] text-telecab-muted">(sin plan)</span>') + '</div>' +
+      '<span class="text-xs font-medium shrink-0" style="color:' + f.color + '">' + esc(f.etiqueta) + '</span>' +
+      '<span class="text-xs text-telecab-muted w-14 text-right shrink-0 tabular-nums">' + h + '</span></div>';
+  };
+  const pintarCD = () => {
+    if (!cdDatos) return;
+    const c = cdDatos.contadores;
+    cdFecha.textContent = '· ' + cdDatos.fecha + ' · umbral ' + cdDatos.umbral + ' h';
+    cdCont.innerHTML =
+      stat('Salieron', c.salieron, '#22C55E') +
+      stat('No salieron', c.noSalieron, '#EF4444') +
+      stat('Cumplieron', c.cumplieron, '#22C55E') +
+      stat('No cumplieron', c.noCumplieron, '#FB923C');
+    const grupos = [
+      ['todos', 'Todos', cdDatos.conductores.length],
+      ['no_salio', 'No salió', c.noSalieron],
+      ['no_cumplio', 'No cumplió', c.noCumplieron],
+      ['cumplio', 'Cumplió', Math.max(0, c.cumplieron - c.justificados)],
+      ['justificado', 'Justificados (J)', c.justificados],
+      ['libra', 'Libranzas (L)', c.libranzas],
+      ['ausente', 'Ausencias (V/B/P)', c.ausencias],
+    ];
+    cdFiltros.innerHTML = grupos.map(g => chip(g[0], g[1], g[2], cdFiltro === g[0])).join('');
+    const filas = cdDatos.conductores.filter(f => cdFiltro === 'todos' || f.estado === cdFiltro);
+    cdCuerpo.innerHTML = '<div class="rounded-xl border border-telecab-border overflow-hidden bg-telecab-dark/20">' +
+      (filas.length ? filas.map(filaCD).join('') : '<div class="px-3 py-3 italic text-telecab-muted">Nadie en este grupo.</div>') +
+      '</div><div class="text-[11px] text-telecab-muted mt-1.5">' + c.total + ' conductores · ' + c.horasTotal + ' h en total · previstos hoy: ' + c.esperados + '</div>';
+  };
+  const cargarCD = async () => {
+    cdCuerpo.innerHTML = '<span class="italic">Cargando…</span>';
+    try {
+      const r = await fetch('/control/api/reporte-dia?dia=' + encodeURIComponent(cdDia.value || isoDia(0)) + '&umbral=' + encodeURIComponent(cdUmbral.value || 8));
+      const d = await r.json();
+      if (d.status !== 'ok') throw new Error(d.msg || 'error');
+      cdDatos = d; pintarCD();
+    } catch (e) {
+      cdCuerpo.innerHTML = '<div class="text-telecab-error">No se pudo cargar: ' + esc(e.message) + '</div>';
+    }
+  };
+  cdFiltros.addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; cdFiltro = b.getAttribute('data-f'); pintarCD(); });
+  cdDia.addEventListener('change', cargarCD);
+  cdUmbral.addEventListener('change', () => { try { localStorage.setItem('cd-umbral', cdUmbral.value); } catch (_) { } cargarCD(); });
+  $('#cd-refrescar').addEventListener('click', cargarCD);
+  cargarCD();
 })();
 </script>

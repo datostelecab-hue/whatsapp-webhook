@@ -98,6 +98,21 @@ router.get('/api/salidas', async (req, res) => {
   }
 });
 
+// CONTROL DEL DÍA sobre TODOS los conductores (no solo el plan): salieron / no
+// salieron / cumplieron / no cumplieron, con el semáforo de VISTA_FINAL (L/V/B/P/J).
+// El umbral de "cumplir" es fijo para todos (?umbral=, por defecto 8 h).
+router.get('/api/reporte-dia', async (req, res) => {
+  try {
+    const { reporteDia } = require('../services/reporteDia');
+    const dia = /^\d{4}-\d{2}-\d{2}$/.test(req.query.dia || '') ? req.query.dia : hoyMadrid();
+    const umbral = Number(req.query.umbral) > 0 ? Number(req.query.umbral) : 8;
+    res.json({ status: 'ok', ...(await reporteDia(dia, umbral)) });
+  } catch (e) {
+    console.error('❌ [Control] /api/reporte-dia:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 // El "Tablero clásico" (leía las horas de la hoja Datos_API) se RETIRÓ: manda el
 // cockpit "En directo" (PostgreSQL) y lo exportable vive en Reportes. La función
 // tableroControl() sigue en services/control.js solo porque el reporte de horas la
