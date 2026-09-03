@@ -418,18 +418,31 @@ programar('*/5 * * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
-// El registro de la ingesta se poda: una pasada cada 5 minutos son cien mil
-// filas al año por tarea y el detalle fino no vale para nada pasada una semana.
-programar('40 4 * * *', async () => {
+// La ingesta se poda A DIARIO a las 00:00. Lo que pesa es el PAYLOAD CRUDO en JSON
+// de cada descarga (ingesta_descarga.payload): con ventanas que se solapan a
+// propósito (state_logs 2h/10min, orders 48h/60min) el mismo dato se re-guarda
+// docenas de veces → ~90-250 MB/día. Nadie RE-LEE ese crudo (la maduración de una
+// orden se RE-DESCARGA de BOLT, no se lee del JSON viejo), así que vaciarlo pronto
+// es seguro. El dato bueno (bolt_state_log, bolt_order, mapon_zona_evento, fv_*) NO
+// se toca: son tablas aparte, idempotentes. Retención del crudo configurable con
+// INGESTA_CRUDO_DIAS (1 por defecto; súbela a 2 si el disco lo permite, para cubrir
+// la ventana de 48h de maduración de órdenes en depuración manual).
+programar('0 0 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
+    const crudoDias = Number(process.env.INGESTA_CRUDO_DIAS) || 1;
+    const d = await bd.consulta('SELECT purgar_descargas($1) AS n', [crudoDias]);
+    if (d.rows[0].n) console.log(`🧹 [INGESTA] Vaciado el crudo de ${d.rows[0].n} descarga(s) (>${crudoDias}d)`);
+    // El registro de ejecuciones (ingesta_ejecucion) es metadato ligero, no presiona
+    // disco: se conservan 7 días (28 los fallos). Sin agresividad aquí.
     const r = await bd.consulta('SELECT purgar_ingesta(7) AS n');
     if (r.rows[0].n) console.log(`🧹 [INGESTA] Purgadas ${r.rows[0].n} filas del registro`);
-    // El payload crudo de las descargas de BOLT/Mapon pesa; se vacia a la
-    // semana. Los eventos tipados (bolt_state_log) y los metadatos se quedan.
-    const d = await bd.consulta('SELECT purgar_descargas(7) AS n');
-    if (d.rows[0].n) console.log(`🧹 [INGESTA] Vaciado el crudo de ${d.rows[0].n} descarga(s)`);
+    // VACUUM normal (NO bloquea lecturas/escrituras, al contrario que VACUUM FULL):
+    // acelera reutilizar el hueco muerto del TOAST que deja el vaciado, para que la
+    // marca de agua de la tabla no suba en un plan pequeño. Encoger el fichero de
+    // verdad es VACUUM FULL (con lock), que solo hace falta una vez tras un backlog.
+    try { await bd.consulta('VACUUM ingesta_descarga'); } catch (e) { /* no crítico */ }
   } catch (error) {
     console.error(`⚠️  [INGESTA] Purga: ${error.message}`);
   }
