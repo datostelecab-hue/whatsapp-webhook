@@ -24,20 +24,16 @@ async function resolverConductor(nombre) {
 }
 
 /**
- * Guarda/actualiza el justificante del día y pone la 'J' en la bitácora.
- * `diaIso` = 'AAAA-MM-DD'. `horas` en horas (número) o vacío.
+ * Guarda/actualiza el justificante del día y pone la 'J' en la bitácora, por
+ * conductor_id ya resuelto. `diaIso` = 'AAAA-MM-DD'. `horas` = horas EXACTAS
+ * justificadas (número) o vacío (sin horas concretas).
  */
-async function guardar({ diaIso, nombre, horas, observacion, usuarioId }) {
+async function guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId }) {
   observacion = (observacion || '').toString().trim();
   if (!observacion) throw new Error('La observación es obligatoria para justificar');
-  if (!nombre) throw new Error('Falta el conductor');
+  conductorId = Number(conductorId);
+  if (!Number.isInteger(conductorId) || conductorId <= 0) throw new Error('Falta el conductor');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
-
-  const conductorId = await resolverConductor(nombre);
-  if (!conductorId) {
-    throw new Error(`No se pudo identificar a "${nombre}" en PostgreSQL (sin alias resoluble). ` +
-      `Hay que darle de alta el alias de BOLT antes de justificarlo.`);
-  }
   const horasSeg = (horas == null || horas === '') ? null : Math.round(Number(horas) * 3600);
 
   return db.transaccion(async cli => {
@@ -60,6 +56,17 @@ async function guardar({ diaIso, nombre, horas, observacion, usuarioId }) {
       [conductorId, diaIso, justId]);
     return { ok: true, conductorId, justificanteId: justId, enBitacora: true };
   });
+}
+
+/** Como guardarPorId, pero resolviendo el conductor por su nombre de BOLT (alias). */
+async function guardar({ diaIso, nombre, horas, observacion, usuarioId }) {
+  if (!nombre) throw new Error('Falta el conductor');
+  const conductorId = await resolverConductor(nombre);
+  if (!conductorId) {
+    throw new Error(`No se pudo identificar a "${nombre}" en PostgreSQL (sin alias resoluble). ` +
+      `Hay que darle de alta el alias de BOLT antes de justificarlo.`);
+  }
+  return guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId });
 }
 
 /**
@@ -87,4 +94,4 @@ async function leerPorFecha(diaIso) {
   return m;
 }
 
-module.exports = { resolverConductor, guardar, leerPorFecha };
+module.exports = { resolverConductor, guardar, guardarPorId, leerPorFecha };

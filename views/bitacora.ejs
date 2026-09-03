@@ -171,12 +171,26 @@
     pintarLista();
     $('#b-default').classList.add('hidden');
     const d = $('#b-detalle'); d.classList.remove('hidden');
+    const isoDe = idx => new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + idx)).toISOString().slice(0, 10);
+    const minIso = isoDe(0), maxIso = isoDe(DATA.hoyIdx);
+    const puedeJustificar = ['trafico', 'desarrollador', 'superadmin'].includes(rol);
     d.innerHTML =
       `<div class="flex items-center gap-3 mb-4">
          <button id="b-volver" class="text-xs px-2.5 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Resumen</button>
          <h2 class="text-lg font-semibold text-telecab-text truncate">${esc(c.id)}</h2>
          <span class="text-xs text-telecab-muted whitespace-nowrap">${esc(c.turno || '')}${c.estado ? ' · ' + esc(c.estado) : ''}</span>
+         ${puedeJustificar ? `<button id="b-justif-btn" class="ml-auto text-xs px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark font-semibold hover:opacity-90 transition whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar día</button>` : ''}
        </div>
+       ${puedeJustificar ? `
+       <div id="b-justif-form" class="hidden mb-4 p-3 rounded-xl bg-telecab-dark/50 border border-telecab-border">
+         <div class="flex flex-wrap items-end gap-3">
+           <label class="text-xs text-telecab-muted">Día<br><input id="j-dia" type="date" min="${minIso}" max="${maxIso}" value="${maxIso}" class="mt-1 bg-telecab-card border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <label class="text-xs text-telecab-muted">Horas justificadas<br><input id="j-horas" type="number" step="0.1" min="0" max="24" placeholder="exactas" class="mt-1 w-28 bg-telecab-card border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <label class="flex-1 min-w-[200px] text-xs text-telecab-muted">Observación (obligatoria)<br><input id="j-obs" type="text" class="mt-1 w-full bg-telecab-card border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <button id="j-guardar" class="text-xs px-3 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition" style="background:${HCOL}">Guardar J</button>
+         </div>
+         <p id="j-msg" class="text-xs mt-2"></p>
+       </div>` : ''}
        <div class="flex items-center gap-3 flex-wrap mb-4">
          <div class="inline-flex rounded-xl overflow-hidden border border-telecab-border">
            ${['año','mes','semana'].map(l => `<button data-lv="${l}" class="b-seg px-3 py-1.5 text-sm capitalize">${l}</button>`).join('')}
@@ -205,6 +219,29 @@
     d.querySelectorAll('.b-seg').forEach(b => b.addEventListener('click', () => { level = b.dataset.lv; render(); }));
     d.querySelector('#b-prev').addEventListener('click', () => nav(-1));
     d.querySelector('#b-next').addEventListener('click', () => nav(1));
+    const jbtn = d.querySelector('#b-justif-btn');
+    if (jbtn) {
+      const form = d.querySelector('#b-justif-form');
+      jbtn.addEventListener('click', () => form.classList.toggle('hidden'));
+      d.querySelector('#j-guardar').addEventListener('click', async () => {
+        const msg = d.querySelector('#j-msg');
+        const diaV = d.querySelector('#j-dia').value;
+        const horasV = d.querySelector('#j-horas').value;
+        const obsV = d.querySelector('#j-obs').value.trim();
+        if (!diaV) { msg.textContent = 'Elige un día.'; msg.style.color = 'salmon'; return; }
+        if (!obsV) { msg.textContent = 'La observación es obligatoria.'; msg.style.color = 'salmon'; return; }
+        msg.textContent = 'Guardando…'; msg.style.color = '';
+        try {
+          const resp = await (await fetch('/bitacora/api/justificar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV })
+          })).json();
+          if (resp.status !== 'ok') throw new Error(resp.msg || 'Error');
+          msg.textContent = '✓ Justificado. Actualizando…'; msg.style.color = 'lightgreen';
+          await recargarYAbrir(c.id);
+        } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'salmon'; }
+      });
+    }
     render();
   }
   function nav(dir) {
@@ -281,6 +318,16 @@
     } catch (e) {
       $('#b-default').innerHTML = '<p class="text-telecab-red text-sm">No se pudo cargar la bitácora: ' + esc(e.message) + '</p>';
     }
+  }
+  // Tras justificar: recarga los datos y reabre el mismo conductor (para ver la 'J').
+  async function recargarYAbrir(id) {
+    try {
+      const r = await (await fetch('/bitacora/api/datos')).json();
+      if (r.status !== 'ok') return;
+      DATA = r; MESES = construirMeses(r.inicio);
+      pintarKpisFlota(); pintarLista();
+      DATA.conductores.find(x => x.id === id) ? abrir(id) : pintarDefault();
+    } catch (e) { /* si falla, se queda como está */ }
   }
   $('#b-buscar').addEventListener('input', pintarLista);
   cargar();

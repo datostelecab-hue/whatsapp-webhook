@@ -108,14 +108,15 @@ async function leerBitacora() {
   const nuevos = () => new Array(nDias).fill(null);
   const porId = new Map();
   roster.rows.forEach(c => porId.set(Number(c.conductor_id), {
-    id: c.nombre || `#${c.conductor_id}`, estado: c.estado || '', turno: c.turno || '', dias: nuevos(),
+    id: c.nombre || `#${c.conductor_id}`, conductorId: Number(c.conductor_id),
+    estado: c.estado || '', turno: c.turno || '', dias: nuevos(),
   }));
   // Alguien con horas/ausencia pero fuera del roster vigente (p.ej. baja reciente):
   // no se pierde, entra con lo mínimo.
   const diasDe = id => {
     id = Number(id);
     let c = porId.get(id);
-    if (!c) { c = { id: `#${id}`, estado: '', turno: '', dias: nuevos() }; porId.set(id, c); }
+    if (!c) { c = { id: `#${id}`, conductorId: id, estado: '', turno: '', dias: nuevos() }; porId.set(id, c); }
     return c.dias;
   };
 
