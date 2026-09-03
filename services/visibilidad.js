@@ -196,14 +196,24 @@ async function serieMes(anio, mes) {
   const primero = `${anio}-${String(mes).padStart(2, '0')}-01`;
 
   let fotos = await leerFotosMes(anio, mes);
-  if (fotos.size === 0) {
-    await backfillMes(anio, mes);
-    fotos = await leerFotosMes(anio, mes);
-  }
-  // Hoy en vivo (solo si el mes pedido es el corriente).
+  // Rellenar CUALQUIER día pasado del mes sin foto. El cron solo hace hoy+ayer, así
+  // que tras un backfill de tramos los días anteriores del mes en curso (o un mes
+  // pasado entero) se quedaban sin foto y el acumulado no cuadraba con el KPI. Cada
+  // día que falte se calcula del núcleo y se guarda; en la siguiente carga ya está.
   const hoy = hoyISO();
   const [Yh, Mh, Dh] = hoy.split('-').map(Number);
-  if (Yh === anio && Mh === mes) {
+  const esMesActual = (Yh === anio && Mh === mes);
+  const ultimoConDatos = esMesActual ? Dh : dm;   // en un mes pasado, todos los días
+  for (let d = 1; d <= ultimoConDatos; d++) {
+    if (fotos.has(d)) continue;
+    try {
+      const dISO = `${anio}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const h = await capturarDia(dISO);
+      if (h) fotos.set(d, { viajeSeg: h.viajeSeg, esperaSeg: h.esperaSeg });
+    } catch (e) { /* un día que falle no corta el resto del mes */ }
+  }
+  // Hoy SIEMPRE en vivo por encima de su foto, para que el acumulado esté fresco.
+  if (esMesActual) {
     const h = await horasVentana(hoy, 0, 1, 0);
     fotos.set(Dh, { viajeSeg: h.viajeSeg, esperaSeg: h.esperaSeg });
   }
