@@ -408,7 +408,10 @@ async function descartar(id, { motivoCodigo, detalle, usuarioId } = {}) {
 async function pasarARRHH(id, contrato = {}, quien = {}) {
   const c = (await db.consulta(
     `SELECT k.conductor_id, k.estado, c.empleo_vigente,
-            btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien
+            btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
+            (SELECT e164 FROM conductor_telefono
+              WHERE conductor_id = c.id AND vigente_hasta IS NULL
+              ORDER BY principal DESC, id DESC LIMIT 1) AS telefono
        FROM candidatura k JOIN conductor c ON c.id = k.conductor_id
       WHERE k.id = $1`, [Number(id)])).rows[0];
   if (!c) throw new Error('No existe esa candidatura');
@@ -479,6 +482,28 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
     `UPDATE candidatura SET estado = 'listo_rrhh', apto_at = now(), actualizado_at = now()
       WHERE id = $1`, [Number(id)]);
 
+  // ENLACE AUTOMÁTICO A BOLT por teléfono — mismo criterio que alta.realizar: si
+  // existe una cuenta de BOLT con ese número y no es de nadie, se enlaza SOLA,
+  // INCLUIDAS las desactivadas (se enlazan igual y se avisa de que hay que
+  // reactivarlas). Antes esto quedaba como sugerencia de 1 clic; ahora es automático.
+  let boltEnlazada = false, boltEstado = null, boltAvisos = [];
+  try {
+    const alta = require('./alta');
+    const info = c.telefono ? await alta.porTelefono(c.telefono) : null;
+    if (info && info.bolt) {
+      boltEstado = info.bolt.estado;          // 'active' / 'deactivated' / …
+      boltAvisos = info.avisos || [];
+      // No es de nadie → se enlaza (aunque esté desactivada). Si ya es de otro, el
+      // aviso de porTelefono lo dice y NO se pisa el enlace ajeno.
+      if (!info.bolt.enlazadaCon) {
+        await con.enlazarBolt(c.conductor_id, info.bolt.cuentaId, quien);
+        boltEnlazada = true;
+      }
+    }
+  } catch (e) {
+    console.error(`⚠️  [CANDIDATURA] auto-enlace BOLT de ${c.quien}: ${e.message}`);
+  }
+
   // Sin cuenta de BOLT no puede conducir. Se devuelve para decirlo ahora y no
   // el día que tiene que salir.
   const s = await db.consulta(
@@ -488,6 +513,10 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   return {
     id: Number(id), conductorId: c.conductor_id, quien: c.quien,
     bolt: s.rows[0] || null,
+    // Resultado del auto-enlace: si se enganchó, en qué estado está la cuenta, y los
+    // avisos (p.ej. "está desactivada, reactívala en BOLT").
+    boltEnlazada, boltEstado, boltAvisos,
+    boltReactivar: boltEstado != null && boltEstado !== 'active',
     faltaBolt: !s.rows[0] || s.rows[0].situacion_bolt === 'no_esta_en_bolt',
   };
 }

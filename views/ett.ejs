@@ -390,14 +390,25 @@
 
     const r = await hacer(() => enviar('/ett/api/candidatura/' + d.id + '/rrhh', 'POST', v), false);
     if (!r) return;
+    let boltHtml;
+    if (r.faltaBolt) {
+      boltHtml = '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
+        + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>';
+    } else if (r.boltEnlazada) {
+      boltHtml = '<p class="text-sm mt-2">Su cuenta de BOLT queda <b>enlazada</b> a la ficha'
+        + (r.boltReactivar ? ' (estado: <b>' + esc(r.boltEstado) + '</b>)' : ' (activa)') + '.</p>';
+    } else {
+      boltHtml = '<p class="text-sm mt-2">Cuenta de BOLT localizada (no se enlazó sola).</p>';
+    }
+    // Avisos de la cuenta: "está desactivada, reactívala en BOLT", "ya enlazada a otro"…
+    const avisosHtml = (r.boltAvisos && r.boltAvisos.length)
+      ? '<ul class="text-sm mt-2 text-telecab-warn" style="list-style:disc;padding-left:1.25rem;">'
+        + r.boltAvisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>'
+      : '';
     await Dialogo.aviso({
       titulo: 'Pasa a RRHH',
-      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>'
-        + (r.faltaBolt
-          ? '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
-            + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>'
-          : '<p class="text-sm mt-2">Su cuenta de BOLT queda enlazada a la ficha.</p>'),
-      tono: r.faltaBolt ? 'aviso' : 'ok',
+      html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>' + boltHtml + avisosHtml,
+      tono: (r.faltaBolt || r.boltReactivar || (r.boltAvisos && r.boltAvisos.length)) ? 'aviso' : 'ok',
     });
   }
 

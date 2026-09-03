@@ -125,7 +125,8 @@ router.post('/api/candidatura/:id/rrhh', responde(async req => {
     { tipo: 'ett', ...b, ettNombre: b.ettNombre || process.env.ETT_NOMBRE },
     await quien(req));
   console.log(`👤 [ETT] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
-              (r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
+              (r.boltEnlazada ? ` — BOLT enlazada${r.boltReactivar ? ` (${r.boltEstado}: REACTIVAR)` : ''}`
+                : r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
   return r;
 }));
 
