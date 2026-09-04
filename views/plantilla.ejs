@@ -46,6 +46,32 @@
     }
   }
 
+  /** Enlaza en bloque todas las cuentas de BOLT que casan por teléfono (1:1). */
+  async function autoEnlazarBolt() {
+    const ok = await Dialogo.confirmar({
+      titulo: 'Enlazar BOLT automáticamente', si: 'Enlazar', no: 'Cancelar',
+      html: '<p>Enlaza de un tirón todas las cuentas de BOLT cuyo <b>teléfono</b> coincide con una persona. Lo que no case se listará para resolver a mano.</p>',
+    });
+    if (!ok) return;
+    let r;
+    try { r = await enviar('/plantilla/api/bolt-auto', 'POST', {}); }
+    catch (e) { alert(e.message); return; }
+    await plantilla.recargar();
+    const pend = r.pendientes || [];
+    const lista = pend.length
+      ? '<ul class="list-disc pl-5" style="max-height:40vh;overflow:auto">' +
+        pend.map(p => `<li>${esc(p.quien)}${p.es_ett ? ' <span class="text-telecab-violet">ETT</span>' : ''}${p.telefono ? '' : ' · <span class="text-telecab-warn">sin teléfono</span>'}</li>`).join('') + '</ul>'
+      : '';
+    await Dialogo.aviso({
+      titulo: `Enlazadas ${r.enlazadas} cuenta(s) de BOLT`,
+      tono: pend.length ? 'aviso' : 'info',
+      html: `<p><b>${r.enlazadas}</b> cuenta(s) enlazadas por teléfono.</p>` +
+        (pend.length
+          ? `<p class="mt-2"><b>${pend.length}</b> siguen sin cuenta de BOLT — enlázalos a mano o dales de alta en BOLT:</p>${lista}`
+          : '<p>Ya no queda nadie sin cuenta de BOLT.</p>'),
+    });
+  }
+
   // Color de cada situación. El código va en la base; esto es solo cómo se ve.
   const tonoSituacion = c => ({
     activo: 'green', vacaciones: 'gold', baja_medica: 'warn',
@@ -535,6 +561,7 @@
     acciones: [
       // Solo RRHH da de alta. Trafico ve la plantilla pero no contrata.
       ...(SOLO_OPERATIVO ? [] : [{ texto: 'Dar de alta', icono: 'fa-user-plus', onClick: altaNueva }]),
+      ...(SOLO_OPERATIVO ? [] : [{ texto: 'Enlazar BOLT', icono: 'fa-link', onClick: autoEnlazarBolt }]),
       { texto: 'Datos', icono: 'fa-clock-rotate-left', principal: false, onClick: verFrescura },
     ],
 

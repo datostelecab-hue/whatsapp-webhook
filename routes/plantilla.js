@@ -100,6 +100,13 @@ router.get('/api/bolt-libres', async (req, res) => {
 router.get('/api/bolt-sugerencias', responde(async req =>
   ({ sugerencias: await bolt.sugerencias({ soloEmpleados: req.query.todos !== '1' }) })));
 
+// Enlaza AUTOMÁTICAMENTE todas las cuentas que casan por teléfono (1:1), de un tirón.
+// Devuelve cuántas enlazó y quiénes quedan sin cuenta de BOLT (para resolver a mano).
+router.post('/api/bolt-auto', responde(async req => {
+  const q = await quien(req);
+  return await bolt.autoEnlazar({ soloEmpleados: (req.body || {}).todos !== true, usuarioId: q.usuarioId });
+}));
+
 // Cómo está cada persona respecto a BOLT: enlazada, en BOLT sin enlazar, sin
 // teléfono, o directamente sin dar de alta.
 router.get('/api/alta-bolt', responde(async req =>

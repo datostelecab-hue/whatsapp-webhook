@@ -113,16 +113,44 @@ async function pendientes({ soloEmpleados = true } = {}) {
  * v_bolt_libres), no el driver_uuid de BOLT. Antes se llamaba `externoId` y
  * eso invitaba a pasarle el uuid, que no habría encontrado nada.
  */
-async function enlazar({ cuentaId, conductorId, usuarioId }) {
+async function enlazar({ cuentaId, conductorId, usuarioId, origen = 'manual' }) {
   if (!cuentaId || !conductorId) throw new Error('Faltan la cuenta o el conductor');
   const r = await db.consulta(
     `UPDATE conductor_externo
-        SET conductor_id = $2, enlazado_at = now(), enlazado_por = $3, origen_enlace = 'manual'
+        SET conductor_id = $2, enlazado_at = now(), enlazado_por = $3, origen_enlace = $4
       WHERE id = $1 AND sistema = 'bolt' AND conductor_id IS NULL
       RETURNING externo_id, externo_nombre`,
-    [cuentaId, conductorId, usuarioId || null]);
+    [cuentaId, conductorId, usuarioId || null, origen]);
   if (!r.rowCount) throw new Error('Esa cuenta no existe o ya está enlazada con alguien');
   return r.rows[0];
+}
+
+/**
+ * Enlaza AUTOMÁTICAMENTE todas las cuentas de BOLT libres cuyo teléfono casa con una
+ * persona (v_bolt_sugerencia). El teléfono es la clave fiable -único por conductor
+ * vigente-, así que el cruce es 1:1: no hace falta ir de uno en uno. Lo que NO casa
+ * (sin teléfono, teléfono que no está en BOLT…) se devuelve como `pendientes` para
+ * resolver a mano. Devuelve { enlazadas, errores, pendientes }.
+ */
+async function autoEnlazar({ soloEmpleados = true, usuarioId } = {}) {
+  const sug = await sugerencias({ soloEmpleados });
+  const usados = new Set();
+  let enlazadas = 0;
+  const errores = [];
+  for (const s of sug) {
+    // Una persona podría casar con DOS cuentas (dos BOLT con su teléfono): en
+    // automático se enlaza solo la primera; el resto se decide a mano.
+    if (usados.has(String(s.conductor_id))) continue;
+    try {
+      await enlazar({ cuentaId: s.cuenta_id, conductorId: s.conductor_id, usuarioId, origen: 'auto' });
+      usados.add(String(s.conductor_id));
+      enlazadas++;
+    } catch (e) { errores.push({ quien: s.quien, motivo: e.message }); }
+  }
+  const pendientes = (await db.consulta(
+    `SELECT conductor_id, quien, telefono, es_ett FROM v_conductor_sin_bolt
+      WHERE ($1 = FALSE OR empleo_vigente) ORDER BY quien`, [soloEmpleados])).rows;
+  return { enlazadas, errores, pendientes };
 }
 
 /** Deshace un enlace equivocado. La cuenta vuelve a la lista de libres. */
@@ -201,6 +229,6 @@ async function sincronizarDesdeBolt() {
 }
 
 module.exports = {
-  sincronizar, sincronizarDesdeBolt, libres, pendientes, sugerencias, altaEnBolt,
+  sincronizar, sincronizarDesdeBolt, libres, pendientes, sugerencias, autoEnlazar, altaEnBolt,
   enlazar, desenlazar, estado,
 };
