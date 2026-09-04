@@ -237,7 +237,7 @@ async function ficha(id, { momento } = {}) {
   ]);
 
   const cuentas = (await db.consulta(
-    `SELECT sistema, externo_id, externo_nombre, estado_externo, visto_desde, visto_hasta
+    `SELECT id, sistema, externo_id, externo_nombre, estado_externo, visto_desde, visto_hasta
        FROM conductor_externo WHERE conductor_id = $1
       ORDER BY visto_hasta NULLS FIRST, sistema, visto_desde DESC`, [id])).rows;
 

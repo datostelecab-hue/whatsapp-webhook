@@ -151,6 +151,43 @@
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/telefono`, 'POST', v));
   }
 
+  /**
+   * Suelta una cuenta de BOLT mal enlazada. Pasa cuando dos personas se parecen de
+   * nombre y se cruzan los teléfonos: la cuenta acaba en la ficha equivocada y le
+   * imputa las horas a quien no es. La cuenta NO se borra: vuelve a estar libre.
+   */
+  async function accionSoltarBolt(d) {
+    const cuentas = (d.cuentas || []).filter(c => c.id);
+    if (!cuentas.length) {
+      return Dialogo.aviso({ titulo: 'Sin cuenta enlazada', texto: 'Esta persona no tiene ninguna cuenta que soltar.' });
+    }
+    let cuenta = cuentas[0];
+    if (cuentas.length > 1) {
+      const v = await Dialogo.elegir({
+        titulo: 'Qué cuenta se suelta',
+        texto: 'Tiene más de una cuenta enlazada.',
+        opciones: cuentas.map(c => ({
+          texto: `${c.externo_nombre || '(sin nombre)'} · ${String(c.sistema || '').toUpperCase()}`,
+          valor: String(c.id),
+        })),
+      });
+      if (!v) return;
+      cuenta = cuentas.find(c => String(c.id) === String(v));
+    }
+    const ok = await Dialogo.confirmar({
+      titulo: 'Soltar la cuenta de BOLT', si: 'Soltar', no: 'Cancelar', tono: 'aviso',
+      html: `
+        <div class="rounded-xl border border-telecab-border bg-telecab-card2 p-3 text-sm">
+          <p class="font-semibold">${esc(cuenta.externo_nombre || '(sin nombre en BOLT)')}</p>
+          <p class="tabular-nums text-telecab-muted">${esc(cuenta.externo_id || '')}</p>
+        </div>
+        <p>Se suelta de <b>${esc(d.nombre_completo)}</b>. La cuenta <b>no se borra</b>:
+           vuelve a la lista de libres para enlazarla con quien de verdad sea.</p>`,
+    });
+    if (!ok) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt/${cuenta.id}`, 'DELETE'));
+  }
+
   async function accionBolt(d) {
     let sugeridas = [], libres = [], estado = {};
     try {
@@ -790,7 +827,12 @@
         },
         {
           titulo: 'Cuentas en otros sistemas', icono: 'fa-plug',
-          acciones: [{ texto: 'Enlazar BOLT', onClick: accionBolt }],
+          acciones: [
+            { texto: 'Enlazar BOLT', onClick: accionBolt },
+            { texto: 'Soltar', icono: 'fa-link-slash',
+              visible: d => !SOLO_OPERATIVO && (d.cuentas || []).some(c => c.id),
+              onClick: accionSoltarBolt },
+          ],
           tabla: {
             datos: d => d.cuentas,
             vacio: 'Sin cuenta de BOLT: no se le pueden imputar horas.',
