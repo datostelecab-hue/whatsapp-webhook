@@ -378,7 +378,7 @@
         ? '<i class="fa-solid fa-triangle-exclamation"></i> cambiar matrícula aquí'
         : '<i class="fa-solid fa-triangle-exclamation"></i> fuera de cobertura';
       if (tieneGente) {
-        b.title = 'Mete una matrícula de emergencia y hereda el bloque (cuadrante, días y tripulación)';
+        b.title = 'Intercambia el coche por otro (libre o con bloque): las tripulaciones se quedan en su cuadrante y días, cambia la matrícula';
         b.addEventListener('click', () => reemplazarMatriculaUI(coche));
       } else {
         b.className = 'mt-1 block text-[11px] text-telecab-red';
@@ -416,9 +416,12 @@
     tdAcc.innerHTML = `
       <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-cua
               title="${enCuadrante ? 'Sacar del cuadrante' : 'Meter en un cuadrante'}"><i class="fa-solid ${enCuadrante ? 'fa-object-ungroup' : 'fa-object-group'}"></i></button>
+      <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-swap
+              title="Intercambiar coche por otro (cada tripulación se queda en su cuadrante y días; solo cambia la matrícula)"><i class="fa-solid fa-shuffle"></i></button>
       <button class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition" data-cambiar
-              title="Cambiar de coche (llevarse la tripulación)"><i class="fa-solid fa-right-left"></i></button>`;
+              title="Cambiar de coche (llevarse la tripulación a una matrícula libre)"><i class="fa-solid fa-right-left"></i></button>`;
     tdAcc.querySelector('[data-cua]').addEventListener('click', () => enCuadrante ? sacarDeCuadrante(coche) : meterEnCuadrante(coche));
+    tdAcc.querySelector('[data-swap]').addEventListener('click', () => reemplazarMatriculaUI(coche));
     tdAcc.querySelector('[data-cambiar]').addEventListener('click', () => cambiarCoche(coche));
     tr.appendChild(tdAcc);
 
@@ -615,13 +618,24 @@
 
   // Taller/siniestro: la matrícula nueva (de emergencia) hereda el bloque entero.
   async function reemplazarMatriculaUI(coche) {
-    const emergencia = (T.emergencia || []).map(e => ({ vehiculoId: e.vehiculoId, matricula: e.matricula, zona: e.zona }));
-    if (!emergencia.length) { await Dialogo.aviso({ titulo: 'Sin coches de emergencia', texto: 'No hay ninguna matrícula libre (sin nadie) para meter aquí.', tono: 'aviso' }); return; }
-    const destino = await pickCoche({ titulo: `Matrícula de emergencia para ${coche.matricula}`, coches: emergencia });
+    // Se puede intercambiar por una matrícula LIBRE (de emergencia) o por otra que
+    // YA lleve bloque: en ese caso se intercambian (cada tripulación se queda en su
+    // cuadrante y días, solo cambia la matrícula que lleva).
+    const emergencia = (T.emergencia || []).map(e => ({ vehiculoId: e.vehiculoId, matricula: e.matricula + '  · libre', zona: e.zona }));
+    const ocupados = (T.coches || [])
+      .filter(c => String(c.vehiculoId) !== String(coche.vehiculoId) && (c.personas || []).some(p => p && p.id))
+      .map(c => ({ vehiculoId: c.vehiculoId, matricula: c.matricula, zona: c.zona || (c.cuadrante || '') }));
+    const opciones = ocupados.concat(emergencia);
+    if (!opciones.length) { await Dialogo.aviso({ titulo: 'No hay con qué intercambiar', texto: 'No hay otra matrícula (ni libre ni con bloque) disponible.', tono: 'aviso' }); return; }
+    const destino = await pickCoche({ titulo: `Intercambiar el coche de ${coche.matricula} por…`, coches: opciones });
     if (!destino) return;
+    const destCoche = (T.coches || []).find(c => String(c.vehiculoId) === String(destino));
+    const ocupado = destCoche && (destCoche.personas || []).some(p => p && p.id);
     const ok = await Dialogo.confirmar({
-      titulo: `Reemplazar ${coche.matricula}`, si: 'Reemplazar', no: 'Cancelar',
-      html: `<p>La matrícula nueva hereda el <b>cuadrante</b>, los <b>días</b> y la <b>tripulación</b>. ${esc(coche.matricula)} queda libre (en el taller).</p>`,
+      titulo: `Intercambiar ${coche.matricula}`, si: 'Intercambiar', no: 'Cancelar',
+      html: ocupado
+        ? `<p>Se <b>intercambian</b> los coches: cada tripulación se queda en su <b>cuadrante</b> y sus <b>días</b>, y solo cambia la <b>matrícula</b> que lleva. ${esc(coche.matricula)} ⇄ ${esc(destCoche.matricula)}.</p>`
+        : `<p>La matrícula nueva hereda el <b>cuadrante</b>, los <b>días</b> y la <b>tripulación</b>. ${esc(coche.matricula)} queda libre (en el taller).</p>`,
     });
     if (!ok) return;
     try {
