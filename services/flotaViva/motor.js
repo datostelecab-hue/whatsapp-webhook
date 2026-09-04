@@ -55,10 +55,37 @@ async function apuntarDesconocido(estado) {
   console.warn(`⚠️  [FLOTA VIVA] Estado de BOLT sin clasificar: "${estado}"`);
 }
 
-/** Las matrículas que se vigilan. Lo que no esté aquí no se mira. */
+/**
+ * Las matrículas que se vigilan.
+ *
+ * La verdad de la flota es la tabla `vehiculo` del dominio: si un coche está de
+ * alta, sus horas cuentan. Antes esto salía SOLO de una lista aparte
+ * (`fv_matricula`) que había que mantener a mano, y bastaba con olvidarse de
+ * apuntar ahí un coche para que sus horas desaparecieran sin que nadie se
+ * enterase: en agosto de 2026 se perdieron así 513 h de 3035LTX.
+ *
+ * `fv_matricula` se queda como AJUSTE, no como fuente:
+ *   · activa = TRUE  → se vigila aunque no esté en el dominio (un coche que solo
+ *                      existe en BOLT, por ejemplo).
+ *   · activa = FALSE → NO se vigila aunque esté de alta (exclusión a propósito).
+ */
 async function vigiladas() {
-  const r = await db.consulta('SELECT matricula FROM fv_matricula WHERE activa');
-  return new Set(r.rows.map(x => x.matricula));
+  try {
+    const r = await db.consulta(`
+      SELECT matricula FROM (
+        SELECT matricula FROM vehiculo WHERE baja_at IS NULL AND matricula IS NOT NULL
+        UNION
+        SELECT matricula FROM fv_matricula WHERE activa
+      ) t
+      WHERE matricula NOT IN (SELECT matricula FROM fv_matricula WHERE NOT activa)`);
+    return new Set(r.rows.map(x => x.matricula));
+  } catch (e) {
+    // Si el núcleo viviera en otra base y no viera `vehiculo`, se sigue con la
+    // lista de siempre antes que quedarse sin vigilar nada.
+    console.warn('⚠️  [FLOTA VIVA] No pude leer la flota del dominio, uso solo fv_matricula:', e.message);
+    const r = await db.consulta('SELECT matricula FROM fv_matricula WHERE activa');
+    return new Set(r.rows.map(x => x.matricula));
+  }
 }
 
 /** Refresca el padrón de coches y conductores si toca. */
@@ -82,6 +109,17 @@ async function padron(desdeTs, hastaTs) {
   if (sinCoche.length) {
     console.warn(`⚠️  [FLOTA VIVA] ${sinCoche.length} matrícula(s) vigiladas que BOLT no conoce: ` +
                  sinCoche.slice(0, 12).join(', ') + (sinCoche.length > 12 ? '…' : ''));
+  }
+
+  // Y AL REVÉS, que es justo lo que se nos escapaba: un coche que BOLT SÍ conoce y
+  // que no vigilamos se descarta aquí y sus horas no existen para nosotros, sin
+  // que nadie lo sepa. Ahora se dice por su nombre.
+  const sinVigilar = todosLosCoches.filter(v => v.matricula && !lista.has(v.matricula));
+  if (sinVigilar.length) {
+    console.warn(`⚠️  [FLOTA VIVA] ${sinVigilar.length} coche(s) que BOLT conoce y NO vigilamos ` +
+                 '(sus horas NO se guardan): ' +
+                 sinVigilar.slice(0, 12).map(v => v.matricula).join(', ') +
+                 (sinVigilar.length > 12 ? '…' : '') + ' — si son nuestros, dales de alta en la flota.');
   }
 
   await db.transaccion(async cli => {
