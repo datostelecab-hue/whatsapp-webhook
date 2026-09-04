@@ -202,10 +202,11 @@
 
   // ── El cuadrante, por zona ───────────────────────────────────────────────────
   const plano = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  // Un HUECO es una PLAZA que existe y está SIN ASIGNAR (no un día sin cubrir: casi
-  // todo coche tiene el fin de semana sin CT, y eso hacía que "solo con huecos" los
-  // mostrara todos). La plaza existe si tiene plazaId; está libre si no tiene id.
-  const tieneHueco = c => (c.personas || []).some(p => p && p.plazaId && !p.id);
+  // Un HUECO = una PLAZA VISIBLE (fijo día/noche o CT día/noche = slots 0-3) sin
+  // nadie asignado. Incluye los huecos de CORRETURNOS, no solo los de fijos. (No
+  // cuenta "días sin cubrir": casi todo coche tiene el finde sin CT y eso mostraba a
+  // todos con "solo con huecos".)
+  const tieneHueco = c => [0, 1, 2, 3].some(s => !((c.personas || [])[s] || {}).id);
   // La zona por la que filtrar es la del CUADRANTE del coche (la del coche a pelo
   // suele estar vacía); los sueltos, por la suya.
   const zonaDeCoche = (c, zc) => (c.cuadranteId && zc.get(String(c.cuadranteId))) || c.zona || '';
@@ -473,12 +474,15 @@
         </button>`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
     } else {
-      const rojo = esFijo;   // un fijo vacío es un hueco de verdad; un CT vacío, menos
+      // Un hueco tiene que SALTAR a la vista para localizarlos rápido: fondo tintado
+      // + icono de aviso. El fijo vacío en rojo (crítico); el CT vacío en ámbar.
+      const cls = esFijo
+        ? 'border-telecab-red/60 bg-telecab-red/10 text-telecab-red'
+        : 'border-telecab-warn/60 bg-telecab-warn/10 text-telecab-warn';
       wrap.innerHTML = `
-        <button class="text-left w-full px-2 py-1 rounded-lg border border-dashed transition
-                       ${rojo ? 'border-telecab-red/50 text-telecab-red hover:bg-telecab-red/10' : 'border-telecab-border text-telecab-muted hover:bg-telecab-card2'}"
+        <button class="text-left w-full px-2 py-1 rounded-lg border border-dashed font-semibold transition ${cls} hover:brightness-110"
                 data-asignar>
-          <i class="fa-solid fa-plus text-xs"></i> ${rojo ? 'Sin fijo' : 'Colocar CT'}
+          <i class="fa-solid fa-triangle-exclamation text-xs"></i> ${esFijo ? 'Hueco · sin fijo' : 'Hueco · colocar CT'}
         </button>
         ${fut}`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
