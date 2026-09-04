@@ -142,7 +142,7 @@ async function autoEnlazar({ soloEmpleados = true, usuarioId } = {}) {
     // automático se enlaza solo la primera; el resto se decide a mano.
     if (usados.has(String(s.conductor_id))) continue;
     try {
-      await enlazar({ cuentaId: s.cuenta_id, conductorId: s.conductor_id, usuarioId, origen: 'auto' });
+      await enlazar({ cuentaId: s.cuenta_id, conductorId: s.conductor_id, usuarioId, origen: 'automatico' });
       usados.add(String(s.conductor_id));
       enlazadas++;
     } catch (e) { errores.push({ quien: s.quien, motivo: e.message }); }

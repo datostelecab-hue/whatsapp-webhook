@@ -1111,6 +1111,13 @@ async function eliminar(id, { usuarioId } = {}) {
     // alias, documentos— caen solas por las claves foraneas.
     let personaBorrada = false;
     if (!k.otras) {
+      // Sus cuentas de BOLT/Mapon NO son suyas: se SUELTAN (vuelven a estar libres),
+      // no se borran. A mano, porque al borrar el conductor la FK solo pondría
+      // conductor_id a NULL y dejaría el resto del enlace puesto -> violaría
+      // ck_cext_enlace ((conductor_id IS NULL) = (enlazado_at IS NULL)).
+      await cli.query(
+        `UPDATE conductor_externo SET conductor_id = NULL, enlazado_at = NULL, enlazado_por = NULL
+          WHERE conductor_id = $1`, [k.conductor_id]);
       await cli.query('DELETE FROM conductor WHERE id = $1', [k.conductor_id]);
       personaBorrada = true;
     }
