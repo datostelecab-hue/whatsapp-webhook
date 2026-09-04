@@ -90,6 +90,12 @@ function construir(tab, contac, offsetSemana = 0) {
       };
     });
 
+  // Días de la semana SIN PLAN CARGADO: ni una sola plaza de ningún coche tiene a
+  // nadie. No es que TODOS libren: es que ese día no existe en el planificador (por
+  // ejemplo, antes de la migración). Decir "libras" ahí sería mentirle al conductor.
+  const hayPlan = Array.from({ length: 7 }, (_, d) =>
+    coches.some(c => c.semana[d * 2].id || c.semana[d * 2 + 1].id));
+
   const relevos = [];
   coches.forEach(c => c.relevos.forEach(r => relevos.push(r)));
 
@@ -106,7 +112,7 @@ function construir(tab, contac, offsetSemana = 0) {
     cobertura: coberturaPorTurno(coches, gente, fechas),
     ausentesEnPlaza: ausentesEnPlaza(coches, gente),
     relevos,
-    porConductor: porConductor(coches, gente, telDe),
+    porConductor: porConductor(coches, gente, telDe, hayPlan),
     // La pantalla pinta los operativos; los demás salen igual en `cobertura` con
     // su motivo ("en taller"), que es justo lo que hay que ver.
     coches: coches.filter(c => c.operativo).map(c => ({
@@ -221,7 +227,7 @@ function ausentesEnPlaza(coches, gente) {
  * La semana de CADA conductor: qué día trabaja, en qué coche, de quién lo recibe
  * y a quién se lo entrega. Es lo que se le manda por WhatsApp.
  */
-function porConductor(coches, gente, telDe) {
+function porConductor(coches, gente, telDe, hayPlan = []) {
   // id → [{ dia, diaNombre, turno, matricula }]
   const slots = new Map();
   coches.forEach(coche => coche.semana.forEach(tr => {
@@ -242,13 +248,14 @@ function porConductor(coches, gente, telDe) {
   for (const [id, mis] of slots.entries()) {
     const persona = gente.get(String(id));
     const dias = DIAS_SEM.map((diaNombre, d) => {
+      const sinPlan = hayPlan[d] === false;
       const delDia = mis.filter(s => s.dia === d).sort((a, b) => ordTurno(a.turno) - ordTurno(b.turno));
-      if (!delDia.length) return { diaNombre, trabaja: false };
+      if (!delDia.length) return { diaNombre, trabaja: false, sinPlan };
       const primero = delDia[0], ultimo = delDia[delDia.length - 1];
       const rec = buscaRecibe(id, primero);
       const ent = buscaEntrega(id, ultimo);
       return {
-        diaNombre, trabaja: true,
+        diaNombre, trabaja: true, sinPlan: false,
         turno: [...new Set(delDia.map(s => s.turno))].join(' y '),
         matricula: [...new Set(delDia.map(s => s.matricula))].join(' + '),
         recibeDe: rec ? { nombre: rec.entrega.nombre, telefono: telDe(rec.entrega.id), directo: !!rec.directo } : null,

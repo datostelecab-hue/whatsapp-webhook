@@ -135,6 +135,25 @@ eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
   eq(r3.entrada, null, 'sin pistas, no identifica a nadie');
   eq(r3.como, 'no-identificado', 'y lo dice para poder diagnosticarlo');
 
+  // ── La semana de la migración: lunes y martes SIN PLAN cargado ──────────────
+  console.log('');
+  console.log('=== DÍAS SIN PLAN (como la semana de la migración) ===');
+  const semanaCorta = semanaA.map((c, i) => (i < 4 ? vacia() : c));   // lun y mar vacíos
+  const D2 = cob.construir({ ...tab, coches: [{ ...tab.coches[0], semana: semanaCorta }] }, contac, 0);
+  const maria2 = D2.porConductor.find(p => p.nombre === 'María');
+  eq(maria2.dias[0].sinPlan, true, 'el lunes queda marcado como SIN PLAN');
+  eq(maria2.dias[0].trabaja, false, 'y por tanto no figura trabajando');
+  eq(maria2.dias[4].sinPlan, false, 'el viernes sí tiene plan');
+  const msg2 = mensajeTurnos(maria2);
+  ok(!/Lunes/.test(msg2), 'el mensaje NO menciona el lunes (no hay dato, no es que libre)');
+  ok(!/Martes/.test(msg2), 'ni el martes');
+  ok(/Viernes/.test(msg2), 'pero sí habla de los días que sí tienen plan');
+  ok(/libras/.test(mensajeTurnos(maria)), 'en una semana normal sigue diciendo cuándo libra');
+
+  // Semana entera sin plan: se dice claro, no un saludo huérfano.
+  ok(mensajeTurnos({ nombre: 'Ana', dias: maria2.dias.map(d => ({ ...d, sinPlan: true, trabaja: false })) })
+       .includes('todavía no tengo cargados'), 'una semana entera sin plan se dice claro');
+
   console.log(fallos ? `\n❌ ${fallos} fallo(s)` : '\n✅ Todo correcto');
   process.exit(fallos ? 1 : 0);
 })();

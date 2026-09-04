@@ -38,8 +38,12 @@ function mensajeTurnos(entrada) {
   let i = 0;
   while (i < dias.length) {
     const d = dias[i];
+    // Un día que NO está cargado en el planificador no se menciona: ni trabaja ni
+    // libra, sencillamente no hay dato. Antes salía como "libras" y era mentira
+    // (los días anteriores a la migración salían todos como libranza).
+    if (d.sinPlan) { i++; continue; }
     if (!d.trabaja) {
-      let j = i; while (j < dias.length && !dias[j].trabaja) j++;
+      let j = i; while (j < dias.length && !dias[j].trabaja && !dias[j].sinPlan) j++;
       L.push(`😴 *${unirDias(dias.slice(i, j).map(x => diaLargo(x.diaNombre)))}*: libras`, '');
       i = j; continue;
     }
@@ -48,6 +52,12 @@ function mensajeTurnos(entrada) {
     if (d.entregaA) L.push(`   🤝 Al terminar tu turno, lo entregas a *${d.entregaA.nombre}*${tel(d.entregaA)}`);
     L.push('');
     i++;
+  }
+  // Si de toda la semana no salió ni un día (aún sin plan cargado), se dice claro,
+  // en vez de mandar un saludo huérfano que no informa de nada.
+  if (L.length <= 2) {
+    return `👋 Hola ${entrada.nombre}, todavía no tengo cargados tus turnos de esa semana. ` +
+           'En cuanto estén, te aviso.';
   }
   return L.join('\n').trim();
 }
