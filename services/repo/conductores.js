@@ -41,7 +41,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
   if (id) { params.push(Number(id)); donde.push(`c.id = $${params.length}`); }
   else if (soloVigentes) donde.push('c.empleo_vigente');
   if (tipo)      { params.push(tipo);            donde.push(`e.tipo = $${params.length}`); }
-  if (situacion) { params.push(situacion);       donde.push(`COALESCE(s.estado, 'activo') = $${params.length}`); }
+  if (situacion) { params.push(situacion);       donde.push(`(CASE WHEN NOT c.empleo_vigente THEN 'baja_empresa' ELSE COALESCE(s.estado, 'activo') END) = $${params.length}`); }
   if (turnoId)   { params.push(Number(turnoId)); donde.push(`th.turno_id = $${params.length}`); }
 
   const r = await db.consulta(`
@@ -60,25 +60,26 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            round(EXTRACT(EPOCH FROM (age((SELECT dia FROM ref),
                  COALESCE(e.fecha_antiguedad, e.alta)))) / 31557600, 1) AS anios,
 
-           -- Situación. Quien no tiene contrato abierto está DE BAJA, diga lo
-           -- que diga su historial: a mucha gente se le cerró el contrato sin
-           -- tocarle el estado, y aparecería como "Activo" años después de
-           -- haberse ido. El contrato manda sobre el estado.
-           CASE WHEN e.alta IS NULL THEN 'baja_empresa'
+           -- Situación. Quien NO tiene el empleo vigente está DE BAJA, diga lo que
+           -- diga su historial (empleo_vigente = caché del periodo abierto; sin
+           -- periodo abierto no está de alta, aunque su contrato cerrara HOY). El
+           -- contrato manda sobre el estado. Antes esto miraba e.alta, y el día de
+           -- una baja la persona seguía saliendo "Activo".
+           CASE WHEN NOT c.empleo_vigente THEN 'baja_empresa'
                 ELSE COALESCE(s.estado, 'activo') END           AS situacion,
            -- Contratado pero aún sin empezar. Antes esta gente salía como "Baja
            -- en la empresa", que es lo contrario de lo que pasa: se les acaba de
            -- contratar. Se les distingue por la ETIQUETA y no por el código, para
            -- que los filtros por situación sigan funcionando igual.
-           CASE WHEN e.alta IS NULL     THEN 'Baja en la empresa'
-                WHEN e.alta > ref.dia   THEN 'Entra el ' || to_char(e.alta, 'DD/MM')
+           CASE WHEN NOT c.empleo_vigente THEN 'Baja en la empresa'
+                WHEN e.alta > ref.dia     THEN 'Entra el ' || to_char(e.alta, 'DD/MM')
                 ELSE COALESCE(ce.etiqueta, 'Activo') END        AS situacion_etiqueta,
            -- Y se dice a las claras, para que una pantalla pueda separarlos.
-           (e.alta IS NOT NULL AND e.alta > ref.dia)            AS aun_no_empieza,
-           CASE WHEN e.alta IS NULL THEN TRUE
+           (c.empleo_vigente AND e.alta IS NOT NULL AND e.alta > ref.dia) AS aun_no_empieza,
+           CASE WHEN NOT c.empleo_vigente THEN TRUE
                 ELSE COALESCE(ce.es_ausencia, FALSE) END        AS ausente,
            -- Si se fue, la fecha que importa es la de su baja, no la del estado.
-           CASE WHEN e.alta IS NULL THEN ultimo.baja ELSE s.desde END AS situacion_desde,
+           CASE WHEN NOT c.empleo_vigente THEN ultimo.baja ELSE s.desde END AS situacion_desde,
            s.hasta_previsto,
            ultimo.baja        AS fecha_baja,
            ultimo.motivo_baja,
@@ -128,10 +129,16 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     LEFT JOIN LATERAL (
       SELECT baja, motivo_baja FROM conductor_periodo_empleo
        WHERE conductor_id = c.id AND baja IS NOT NULL
-       ORDER BY baja DESC LIMIT 1) ultimo ON e.alta IS NULL
-    LEFT JOIN conductor_estado_hist s
-           ON s.conductor_id = c.id
-          AND s.desde <= ref.dia AND (s.hasta IS NULL OR s.hasta >= ref.dia)
+       ORDER BY baja DESC LIMIT 1) ultimo ON NOT c.empleo_vigente
+    -- El estado vigente, UNO solo: el más reciente que cubre hoy. Antes era un JOIN
+    -- a pelo y, si quedaba un 'activo' viejo sin cerrar solapando con una ausencia
+    -- nueva (p. ej. una baja médica), tomaba el que fuera -o duplicaba la fila-. Se
+    -- coge el de fecha desde más reciente, que es el que manda.
+    LEFT JOIN LATERAL (
+      SELECT estado, desde, hasta_previsto FROM conductor_estado_hist
+       WHERE conductor_id = c.id
+         AND desde <= ref.dia AND (hasta IS NULL OR hasta >= ref.dia)
+       ORDER BY desde DESC, id DESC LIMIT 1) s ON TRUE
     LEFT JOIN cat_estado_conductor ce ON ce.codigo = s.estado
     LEFT JOIN conductor_turno_hist th
            ON th.conductor_id = c.id
@@ -289,26 +296,22 @@ async function resumen({ momento } = {}) {
     // abierto, la persona está de baja diga lo que diga su historial.
     db.consulta(`
       WITH ref AS (SELECT COALESCE($1::date, CURRENT_DATE) AS dia)
-      SELECT CASE WHEN e.alta IS NULL THEN 'baja_empresa'
+      SELECT CASE WHEN NOT c.empleo_vigente THEN 'baja_empresa'
                   ELSE COALESCE(s.estado, 'activo') END      AS codigo,
-             CASE WHEN e.alta IS NULL THEN 'Baja en la empresa'
+             CASE WHEN NOT c.empleo_vigente THEN 'Baja en la empresa'
                   ELSE COALESCE(ce.etiqueta, 'Activo') END   AS etiqueta,
-             CASE WHEN e.alta IS NULL THEN TRUE
+             CASE WHEN NOT c.empleo_vigente THEN TRUE
                   ELSE COALESCE(ce.es_ausencia, FALSE) END   AS es_ausencia,
              count(*)::int personas
         FROM conductor c
         CROSS JOIN ref
-        -- Sin exigir que el contrato haya empezado, igual que en el listado: si
-        -- los dos contaran distinto, los KPIs no sumarían la lista.
-        -- UN periodo por persona (igual que en listar): sin esto, el día de una
-        -- re-alta la persona se cuenta dos veces y el contador no cuadra con la lista.
+        -- La MISMA regla que en listar: de baja = sin empleo vigente (no e.alta), y
+        -- el estado más reciente que cubre hoy (UN solo, sin duplicar).
         LEFT JOIN LATERAL (
-          SELECT alta FROM conductor_periodo_empleo
-           WHERE conductor_id = c.id AND (baja IS NULL OR baja >= ref.dia)
-           ORDER BY (baja IS NULL) DESC, alta DESC NULLS LAST LIMIT 1) e ON TRUE
-        LEFT JOIN conductor_estado_hist s
-               ON s.conductor_id = c.id
-              AND s.desde <= ref.dia AND (s.hasta IS NULL OR s.hasta >= ref.dia)
+          SELECT estado FROM conductor_estado_hist
+           WHERE conductor_id = c.id
+             AND desde <= ref.dia AND (hasta IS NULL OR hasta >= ref.dia)
+           ORDER BY desde DESC, id DESC LIMIT 1) s ON TRUE
         LEFT JOIN cat_estado_conductor ce ON ce.codigo = s.estado
        WHERE NOT c.es_centinela
        GROUP BY 1, 2, 3 ORDER BY 3, 2`, [momento || null]),
