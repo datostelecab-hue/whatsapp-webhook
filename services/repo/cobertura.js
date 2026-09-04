@@ -161,7 +161,7 @@ function motivoDe(coche, d, t, tramo, gente, fecha) {
     return { tipo: 'ausente', motivo: `${titular.nombre}: ${titular.estado || 'ausente'}${hasta}` };
   }
   if (titular && titular.alta && fecha && titular.alta > fecha) {
-    return { tipo: 'titular-pre-alta', motivo: `${titular.nombre} entra el ${titular.alta}` };
+    return { tipo: 'titular-pre-alta', motivo: `${titular.nombre} entra el ${corto(titular.alta)}` };
   }
   // El coche descansa ese día y no hay correturnos que lo cubra.
   if ((coche.descanso || []).includes(d + 1)) {

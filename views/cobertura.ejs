@@ -237,7 +237,7 @@ function pintarPersonas() {
       if (!d.trabaja) return `
         <div class="flex items-baseline gap-3 text-sm py-1">
           <span class="w-24 shrink-0 font-medium text-telecab-muted">${esc(d.diaNombre)}</span>
-          <span class="text-telecab-muted/60">Libra</span>
+          <span class="${d.sinPlan ? "text-telecab-muted/40 italic" : "text-telecab-muted/60"}">${d.sinPlan ? "Sin plan cargado" : "Libra"}</span>
         </div>`;
       const rec = recibeTxt(d), ent = entregaTxt(d);
       return `
