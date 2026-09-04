@@ -188,7 +188,13 @@
   function pintarZonas() {
     const sel = $('#f-zona');
     const previa = sel.value;
-    const zonas = [...new Set((T.coches || []).map(c => c.zona).filter(Boolean))].sort();
+    // Las zonas del filtro salen de los CUADRANTES (que es como filtra el tablero) y
+    // de los coches sueltos. La zona del coche a pelo suele venir vacía; la del
+    // cuadrante, no: antes el desplegable salía casi vacío o con zonas que no son.
+    const zonas = [...new Set([
+      ...(T.cuadrantes || []).map(cu => cu.zona),
+      ...(T.coches || []).filter(c => !c.cuadranteId).map(c => c.zona),
+    ].filter(Boolean))].sort();
     sel.innerHTML = '<option value="">Todas las zonas</option>' +
       zonas.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join('');
     sel.value = previa;
@@ -196,13 +202,21 @@
 
   // ── El cuadrante, por zona ───────────────────────────────────────────────────
   const plano = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // Un HUECO es una PLAZA que existe y está SIN ASIGNAR (no un día sin cubrir: casi
+  // todo coche tiene el fin de semana sin CT, y eso hacía que "solo con huecos" los
+  // mostrara todos). La plaza existe si tiene plazaId; está libre si no tiene id.
+  const tieneHueco = c => (c.personas || []).some(p => p && p.plazaId && !p.id);
+  // La zona por la que filtrar es la del CUADRANTE del coche (la del coche a pelo
+  // suele estar vacía); los sueltos, por la suya.
+  const zonaDeCoche = (c, zc) => (c.cuadranteId && zc.get(String(c.cuadranteId))) || c.zona || '';
   function cochesVisibles() {
     const zona = $('#f-zona').value;
     const soloHuecos = $('#f-huecos').checked;
     const q = plano($('#f-busca').value).trim();
+    const zc = new Map((T.cuadrantes || []).map(cu => [String(cu.id), cu.zona]));
     return (T.coches || []).filter(c => {
-      if (zona && c.zona !== zona) return false;
-      if (soloHuecos && !((c.sinCubrirDia || 0) + (c.sinCubrirNoche || 0))) return false;
+      if (zona && zonaDeCoche(c, zc) !== zona) return false;
+      if (soloHuecos && !tieneHueco(c)) return false;
       if (q) {
         const txt = plano(c.matricula + ' ' + (c.personas || []).map(p => (p && p.nombre) || '').join(' '));
         if (!txt.includes(q)) return false;
@@ -321,9 +335,13 @@
 
     // TODOS los cuadrantes (incluidos los vacíos, recién creados), filtrados por
     // zona. Al buscar, solo los que tengan coches que coincidan (los vacíos se ocultan).
+    // Al FILTRAR (buscando o solo-huecos), un cuadrante sin coches que pasen el filtro
+    // se oculta: si no, salía como "vacío" y parecía que el filtro no hacía nada. Con
+    // solo el filtro de zona, los vacíos de esa zona siguen (para poder añadir bloques).
     const buscando = !!plano($('#f-busca').value).trim();
+    const filtrando = buscando || $('#f-huecos').checked;
     const cuadrantes = (T.cuadrantes || []).filter(cu =>
-      (!zona || cu.zona === zona) && (!buscando || (porCua.get(String(cu.id)) || []).length));
+      (!zona || cu.zona === zona) && (!filtrando || (porCua.get(String(cu.id)) || []).length));
 
     const hayAlgo = cuadrantes.length || sueltos.length;
     $('#vacio').classList.toggle('hidden', hayAlgo > 0);
