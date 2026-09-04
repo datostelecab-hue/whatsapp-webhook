@@ -1088,8 +1088,12 @@ async function eliminar(id, { usuarioId } = {}) {
     const k = (await cli.query(
       `SELECT k.conductor_id, k.estado,
               btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
+              -- Solo cuenta como "ha trabajado aquí" un empleo que YA EMPEZÓ. Un alta
+              -- FUTURA (una prueba que se quedó ahí, sin arrancar) no cuenta: se puede
+              -- borrar. Justo es el caso que la base no deja dar de baja (baja < alta),
+              -- así que borrarla es lo único que se puede hacer con ella.
               (SELECT count(*)::int FROM conductor_periodo_empleo e
-                WHERE e.conductor_id = k.conductor_id)              AS empleos,
+                WHERE e.conductor_id = k.conductor_id AND e.alta <= CURRENT_DATE) AS empleos,
               (SELECT count(*)::int FROM candidatura o
                 WHERE o.conductor_id = k.conductor_id AND o.id <> k.id) AS otras
          FROM candidatura k JOIN conductor c ON c.id = k.conductor_id

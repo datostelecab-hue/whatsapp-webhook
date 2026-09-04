@@ -853,12 +853,39 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
   // qué significa dar de baja, que es como se llega a que una pantalla cierre
   // cosas que la otra deja abiertas.
   const hazlo = async cli => {
-    const r = await cli.query(
-      `UPDATE conductor_periodo_empleo SET baja = $2, motivo_baja = $3, usuario_id = $4
-        WHERE conductor_id = $1 AND baja IS NULL RETURNING id`,
-      [id, dia, motivo || null, usuarioId || null]);
-    if (!r.rowCount) throw new Error('Esta persona no está de alta');
+    // El periodo abierto y si su ALTA es FUTURA (aún no ha arrancado).
+    const abierto = (await cli.query(
+      `SELECT id, to_char(alta, 'YYYY-MM-DD') AS alta
+         FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [id])).rows[0];
+    if (!abierto) throw new Error('Esta persona no está de alta');
 
+    // Un alta que aún no ha empezado NO se puede dar de baja antes del alta (lo
+    // prohíbe la base: baja >= alta). Es un contrato que nunca arrancó -típico de una
+    // prueba o un alta cancelada-, así que se CANCELA: se borra lo que empieza en el
+    // futuro (nunca llegó a existir) y se cierra a hoy lo que ya estuviera en marcha.
+    if (abierto.alta > dia) {
+      const limpiar = async tabla => {
+        await cli.query(`DELETE FROM ${tabla} WHERE conductor_id = $1 AND desde > $2`, [id, dia]);
+        await cli.query(
+          `UPDATE ${tabla} SET hasta = $2
+            WHERE conductor_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta > $2)`, [id, dia]);
+      };
+      await limpiar('asignacion');            // asignacion_dia cae en cascada
+      await limpiar('conductor_estado_hist');
+      await limpiar('conductor_turno_hist');
+      await limpiar('patron_libranza');
+      await cli.query('DELETE FROM conductor_periodo_empleo WHERE id = $1', [abierto.id]);
+      await audit.registrar({
+        tabla: 'conductor', id, usuarioId, cli,
+        cambios: [{ campo: 'baja', antes: null, ahora: `alta futura cancelada (era ${abierto.alta})` }],
+      });
+      return true;
+    }
+
+    // Baja normal: se cierra TODO a la fecha de baja, en la misma transacción.
+    await cli.query(
+      `UPDATE conductor_periodo_empleo SET baja = $2, motivo_baja = $3, usuario_id = $4 WHERE id = $1`,
+      [abierto.id, dia, motivo || null, usuarioId || null]);
     await cli.query(
       `UPDATE asignacion SET hasta = $2 WHERE conductor_id = $1 AND (hasta IS NULL OR hasta > $2)`,
       [id, dia]);
