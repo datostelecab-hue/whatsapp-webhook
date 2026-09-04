@@ -20,6 +20,10 @@ const audit = require('./auditoria');
 
 // Nombre para mostrar. Se arma en SQL para poder ordenar y buscar por él.
 const NOMBRE = `btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)`;
+// El nombre a MOSTRAR: siempre nos guiamos por el de BOLT. Si no tiene cuenta de
+// BOLT con nombre, el suyo con "(sin nombre de BOLT)" para que aparezca algo y no un
+// guion; y si tampoco tiene, su id. Requiere el LATERAL `bolt` (externo_nombre).
+const NOMBRE_BOLT = `COALESCE(NULLIF(btrim(bolt.externo_nombre), ''), NULLIF(${NOMBRE}, '') || ' (sin nombre de BOLT)', '#' || c.id::text)`;
 
 /**
  * El listado con todo lo que la pantalla necesita, en UNA consulta.
@@ -43,7 +47,8 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
   const r = await db.consulta(`
     WITH ref AS (SELECT COALESCE($1::date, CURRENT_DATE) AS dia)
     SELECT c.id,
-           ${NOMBRE}                       AS nombre_completo,
+           ${NOMBRE_BOLT}                  AS nombre_completo,
+           ${NOMBRE}                       AS nombre_legal,
            c.nombre, c.apellidos, c.nombre_ss,
            c.dni_tipo, c.dni_nie, c.nacionalidad, c.email,
            c.es_centinela, c.empleo_vigente,
@@ -106,9 +111,18 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     -- la misma persona salía planificable en el planificador —que nunca miró esa
     -- fecha— y "Baja en la empresa" en esta pantalla. Dos sitios contradiciéndose
     -- sobre alguien que empieza el jueves.
-    LEFT JOIN conductor_periodo_empleo e
-           ON e.conductor_id = c.id
-          AND (e.baja IS NULL OR e.baja >= ref.dia)
+    -- UN solo periodo por persona: el abierto manda; si no, el de alta más reciente
+    -- de los que aún no han terminado. Antes se unían TODOS los no terminados y el
+    -- día en que se cierra uno y se abre otro (re-alta el mismo día) la persona salía
+    -- DUPLICADA, las dos filas como "Activo". Quien ya se fue (sin periodo vivo) cae a
+    -- e = NULL y lo recoge el LATERAL ultimo (contrato cerrado) de abajo.
+    LEFT JOIN LATERAL (
+      SELECT tipo, ett_nombre, alta, baja, fecha_antiguedad
+        FROM conductor_periodo_empleo
+       WHERE conductor_id = c.id
+         AND (baja IS NULL OR baja >= ref.dia)
+       ORDER BY (baja IS NULL) DESC, alta DESC NULLS LAST
+       LIMIT 1) e ON TRUE
     -- El último contrato CERRADO, para saber cuándo y por qué se fue quien ya
     -- no está. Sin esto, una baja es una fila sin fecha y sin explicación.
     LEFT JOIN LATERAL (
@@ -128,7 +142,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
        WHERE conductor_id = c.id AND vigente_hasta IS NULL
        ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
     LEFT JOIN LATERAL (
-      SELECT externo_id, estado_externo FROM conductor_externo
+      SELECT externo_id, estado_externo, externo_nombre FROM conductor_externo
        WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
        -- La cuenta activa primero: es la que usa el sistema para cruzar horas.
        ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) bolt ON TRUE
@@ -159,7 +173,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
         FROM v_documento_falta f WHERE f.conductor_id = c.id) docs ON TRUE
     WHERE NOT c.es_centinela
       ${donde.length ? 'AND ' + donde.join(' AND ') : ''}
-    ORDER BY ${NOMBRE}`, params);
+    ORDER BY ${NOMBRE_BOLT}`, params);
 
   // Lo que le falta a cada ficha. Se calcula aquí y no en la vista para que
   // valga igual en la pantalla, en un aviso o en un informe.
@@ -286,9 +300,12 @@ async function resumen({ momento } = {}) {
         CROSS JOIN ref
         -- Sin exigir que el contrato haya empezado, igual que en el listado: si
         -- los dos contaran distinto, los KPIs no sumarían la lista.
-        LEFT JOIN conductor_periodo_empleo e
-               ON e.conductor_id = c.id
-              AND (e.baja IS NULL OR e.baja >= ref.dia)
+        -- UN periodo por persona (igual que en listar): sin esto, el día de una
+        -- re-alta la persona se cuenta dos veces y el contador no cuadra con la lista.
+        LEFT JOIN LATERAL (
+          SELECT alta FROM conductor_periodo_empleo
+           WHERE conductor_id = c.id AND (baja IS NULL OR baja >= ref.dia)
+           ORDER BY (baja IS NULL) DESC, alta DESC NULLS LAST LIMIT 1) e ON TRUE
         LEFT JOIN conductor_estado_hist s
                ON s.conductor_id = c.id
               AND s.desde <= ref.dia AND (s.hasta IS NULL OR s.hasta >= ref.dia)
@@ -301,9 +318,10 @@ async function resumen({ momento } = {}) {
       SELECT e.tipo, count(*)::int personas
         FROM conductor c
         CROSS JOIN ref
-        JOIN conductor_periodo_empleo e
-          ON e.conductor_id = c.id
-         AND (e.baja IS NULL OR e.baja >= ref.dia)
+        JOIN LATERAL (
+          SELECT tipo FROM conductor_periodo_empleo
+           WHERE conductor_id = c.id AND (baja IS NULL OR baja >= ref.dia)
+           ORDER BY (baja IS NULL) DESC, alta DESC NULLS LAST LIMIT 1) e ON TRUE
        WHERE NOT c.es_centinela
        GROUP BY 1`, [momento || null]),
 

@@ -47,12 +47,15 @@ async function leerBitacora() {
   // devuelve las columnas DATE como Date en zona local, y eso desplaza un día según
   // el reloj. Con to_char nos quitamos de encima toda la ambigüedad de zona.
   const [roster, ausencias, justis, horas, libranzas] = await Promise.all([
-    // El nombre a mostrar: el real (nombre_apellidos) y, si está vacío -alta sin
-    // nombre completo-, el de BOLT/alias (id_bolt, que NUNCA es vacío). Así no salen
-    // `#id` en la bitácora ni en el reporte del día.
+    // El nombre a mostrar: siempre nos guiamos por el de BOLT. Si no tiene cuenta de
+    // BOLT, su nombre con "(sin nombre de BOLT)"; y si tampoco, su id. Nada de #id a
+    // secas ni de un guion.
     db.consulta(
       `SELECT conductor_id,
-              COALESCE(NULLIF(btrim(nombre_apellidos), ''), id_bolt) AS nombre,
+              COALESCE(
+                CASE WHEN NOT bolt_pendiente THEN NULLIF(btrim(id_bolt), '') END,
+                NULLIF(btrim(nombre_apellidos), '') || ' (sin nombre de BOLT)',
+                '#' || conductor_id) AS nombre,
               turno, estado
          FROM v_agenda ORDER BY 2`),
     db.consulta(

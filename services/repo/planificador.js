@@ -98,7 +98,11 @@ async function tablero({ dia } = {}) {
     // abierto, su turno, su libranza y su jornada.
     db.consulta(
       `SELECT c.id,
-              btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
+              -- El nombre a MOSTRAR: el de BOLT manda; si no tiene cuenta de BOLT,
+              -- el suyo con "(sin nombre de BOLT)"; y si tampoco, su id.
+              COALESCE(ext.externo_nombre,
+                       NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), '') || ' (sin nombre de BOLT)',
+                       '#' || c.id::text)                    AS nombre,
               c.dni_nie,
               e.alta, e.jornada_horas, e.tipo AS contrato_tipo, e.ett_nombre,
               j.dias_ct,
@@ -122,7 +126,7 @@ async function tablero({ dia } = {}) {
             WHERE pl.conductor_id = c.id
               AND pl.desde <= $1 AND (pl.hasta IS NULL OR pl.hasta >= $1)) lib ON TRUE
          LEFT JOIN LATERAL (
-           SELECT externo_id FROM conductor_externo
+           SELECT externo_id, externo_nombre FROM conductor_externo
             WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
             ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) ext ON TRUE
          LEFT JOIN conductor_estado_hist est
