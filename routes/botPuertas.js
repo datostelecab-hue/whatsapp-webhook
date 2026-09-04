@@ -75,9 +75,18 @@ async function handleText(phone, text) {
   // ANTES de la comprobación de la agenda, porque quien prueba puede no estar en ella.
   if (await fichajeBot.manejarTexto(phone, text)) return;
 
-  const conductor = await callAppsScript('buscar_conductor', { telefono: phone });
+  // Quién es, de la BASE (PostgreSQL): el teléfono identifica solo -su sufijo de 9
+  // dígitos es único-. Antes esto preguntaba a Apps Script, que leía la hoja.
+  // Autoriza a quien está DE ALTA; quien ya causó baja deja de abrir puertas.
+  const conductor = await require('../services/repo/cobertura')
+    .conductorPorTelefono(phone).catch(e => {
+      console.error('❌ [Puertas] conductorPorTelefono:', e.message);
+      return null;
+    });
 
-  if (!conductor || !conductor.encontrado) {
+  if (!conductor || !conductor.activo) {
+    console.warn(`🚫 [Puertas] Sin autorizar …${String(phone).slice(-4)}` +
+                 (conductor ? ` (${conductor.nombre}: no está de alta)` : ' (teléfono no está en la plantilla)'));
     await sendText(phone, '❌ No estás autorizado. Tu número no está en la base de datos.');
     return;
   }

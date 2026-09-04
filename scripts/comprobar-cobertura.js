@@ -112,5 +112,29 @@ eq(D.resumen.relevos, 10, '10 relevos');
 eq(D.resumen.sinCubrir, 2, '2 tramos sin cubrir');
 eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
 
-console.log(fallos ? `\n❌ ${fallos} fallo(s)` : '\n✅ Todo correcto');
-process.exit(fallos ? 1 : 0);
+(async () => {
+  const { mensajeTurnos, resolver } = require('../services/turnosConductor');
+
+  console.log('\n=== MENSAJE DE WHATSAPP ===');
+  const msg = mensajeTurnos(maria);
+  ok(msg.includes('María'), 'saluda por su nombre');
+  ok(msg.includes('1888LTJ'), 'nombra el coche');
+  ok(msg.includes('Pedro'), 'dice a quién le entrega el coche');
+  ok(msg.includes('600 333 444') || msg.includes('600333444'), 'con el teléfono del relevo');
+  ok(/libras/.test(msg), 'agrupa los días que libra');
+  ok(mensajeTurnos(null).includes('No encuentro'), 'sin entrada, avisa en vez de romper');
+
+  // Sin BD, el primer camino (teléfono contra la base) falla y caen los respaldos.
+  console.log('\n=== RESOLVER (respaldos, sin BD) ===');
+  const r1 = await resolver(D.porConductor, { phone: '+34600111222' });
+  eq(r1.entrada && r1.entrada.nombre, 'María', 'resuelve por el teléfono que ya trae la lista');
+  eq(r1.como, 'telefono-lista', 'y deja dicho por dónde lo resolvió');
+  const r2 = await resolver(D.porConductor, { phone: '+34999999999', nombreSesion: 'ana' });
+  eq(r2.entrada && r2.entrada.nombre, 'Ana', 'resuelve por el nombre de la sesión');
+  const r3 = await resolver(D.porConductor, { phone: '+34999999999' });
+  eq(r3.entrada, null, 'sin pistas, no identifica a nadie');
+  eq(r3.como, 'no-identificado', 'y lo dice para poder diagnosticarlo');
+
+  console.log(fallos ? `\n❌ ${fallos} fallo(s)` : '\n✅ Todo correcto');
+  process.exit(fallos ? 1 : 0);
+})();

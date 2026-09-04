@@ -295,13 +295,16 @@ async function conductorPorTelefono(phone) {
   if (t.length < 9) return null;
   const r = await db.consulta(
     `SELECT t.conductor_id,
-            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre
+            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
+            c.empleo_vigente AS activo
        FROM conductor_telefono t
        JOIN conductor c ON c.id = t.conductor_id
       WHERE t.vigente_hasta IS NULL AND t.sufijo9 = right($1, 9)
       LIMIT 1`, [t]);
   const x = r.rows[0];
-  return x ? { conductorId: String(x.conductor_id), nombre: x.nombre || '' } : null;
+  return x
+    ? { conductorId: String(x.conductor_id), nombre: x.nombre || '', activo: x.activo !== false }
+    : null;
 }
 
 module.exports = {
