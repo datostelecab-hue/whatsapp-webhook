@@ -21,9 +21,12 @@ const args = process.argv.slice(2);
 const url = args.find(a => /^postgres(ql)?:\/\//i.test(a));
 const fechas = args.filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
 const dry = args.includes('--dry');
+// Reparar un dia suelto no necesita refrescar el padron (los coches ya estan). Y el
+// padron llama a BOLT, que con sus 429 es justo donde se cayo el arreglo del dia 19.
+const sinPadron = args.includes('--sin-padron');
 
 if (!url || fechas.length < 2) {
-  console.error('❌ Uso: node scripts/backfill-tramos.js "<URL>" <desde YYYY-MM-DD> <hasta YYYY-MM-DD> [--dry]');
+  console.error('❌ Uso: node scripts/backfill-tramos.js "<URL>" <desde YYYY-MM-DD> <hasta YYYY-MM-DD> [--dry] [--sin-padron]');
   process.exit(1);
 }
 process.env.DATABASE_URL = url;
@@ -39,6 +42,9 @@ const [desde, hasta] = fechas;
   try {
     await db.preparar();
 
+    if (sinPadron) {
+      console.log('=== 1. PADRON — saltado (--sin-padron) ===');
+    } else {
     console.log(`\n=== 1. PADRÓN — registrar los coches que se vigilan ===`);
     const antes = (await db.consulta('SELECT count(*)::int n FROM fv_vehiculo')).rows[0].n;
     // OJO: BOLT quiere epoch en SEGUNDOS (así lo llama la pasada viva), no en ms.
@@ -47,6 +53,7 @@ const [desde, hasta] = fechas;
     await motor.padron(hastaTs - 24 * 3600, hastaTs);
     const despues = (await db.consulta('SELECT count(*)::int n FROM fv_vehiculo')).rows[0].n;
     console.log(`   fv_vehiculo: ${antes} → ${despues} coche(s)` + (despues > antes ? `  (+${despues - antes} nuevos)` : ''));
+    }
 
     // Los que se vigilan pero aún no tienen ni un tramo en el rango: son los agujeros.
     const huecos = (await db.consulta(
