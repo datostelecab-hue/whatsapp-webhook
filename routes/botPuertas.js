@@ -214,34 +214,26 @@ async function handleButton(phone, buttonId) {
 // de orden o teléfonos que no estuvieran en BOLT.
 async function enviarTurnos(phone, nombreSesion) {
   try {
-    const planif = require('../services/planificadorV2');
-    const { instruccionesPorConductor, mensajeTurnos, clavesDe, entradaPorClaves } = require('../services/turnosConductor');
+    const cob = require('../services/repo/cobertura');
+    const { mensajeTurnos, resolver } = require('../services/turnosConductor');
     // La semana que se le anunció al mandar el aviso (0 = actual). Si no hay apunte, la actual.
     const offset = require('../services/avisoTurnos').offsetDe(phone);
-    const [tablero, telsDB] = await Promise.all([
-      planif.leerTablero({ offsetSemana: offset }),
-      require('../services/control').leerTelefonosDB().catch(() => new Map())
-    ]);
-    // telsDB también aquí: así los relevos del mensaje llevan teléfono aunque falte en la agenda.
-    const lista = instruccionesPorConductor(tablero, telsDB);
+    const { porConductor } = await cob.datos({ offsetSemana: offset });
+    const { entrada, como, quien } = await resolver(porConductor, { phone, nombreSesion });
 
-    let claves = clavesDe({ phone, conductores: tablero.conductores, telsDB, nombreSesion });
-    let entrada = entradaPorClaves(lista, claves);
-    if (!entrada) {
-      // Último cartucho (cuesta otra lectura): el padrón de BOLT por teléfono.
-      try {
-        const c = await require('../services/conductoresBolt').buscarPorTelefono(phone);
-        if (c && (c.nombre || '').trim()) {
-          claves = clavesDe({ phone, conductores: tablero.conductores, telsDB, nombreSesion, padronNombre: c.nombre });
-          entrada = entradaPorClaves(lista, claves);
-        }
-      } catch (e) { console.error('⚠️ [Turnos] buscarPorTelefono:', e.message); }
+    if (entrada) {
+      console.log(`📅 [Turnos] …${String(phone).slice(-4)} → ${entrada.nombre} (por ${como}, semana +${offset})`);
+      await sendText(phone, mensajeTurnos(entrada));
+      return;
     }
-    if (!entrada) {
-      // Se deja rastro de QUÉ se probó: es lo que hace diagnosticable el siguiente caso.
-      console.warn(`⚠️ [Turnos] Sin turnos para …${String(phone).slice(-4)} (semana +${offset}): identidades probadas [${[...claves].join(' | ') || 'ninguna'}]`);
+    // Identificado pero SIN turnos: no es un fallo, es que libra. Se dice así.
+    if (como === 'sin-turnos') {
+      console.log(`📅 [Turnos] …${String(phone).slice(-4)} → ${quien || 'conocido'}: sin turnos (semana +${offset})`);
+      await sendText(phone, `👋 Hola${quien ? ' ' + quien : ''}, esta semana no tienes ningún turno asignado. Si crees que es un error, avisa a la oficina.`);
+      return;
     }
-    await sendText(phone, mensajeTurnos(entrada));
+    console.warn(`⚠️ [Turnos] Sin identificar …${String(phone).slice(-4)} (semana +${offset})`);
+    await sendText(phone, mensajeTurnos(null));
   } catch (e) {
     console.error('❌ [Turnos] enviarTurnos:', e.message);
     await sendText(phone, 'No pude cargar tus turnos ahora mismo. Inténtalo en un momento, por favor.');

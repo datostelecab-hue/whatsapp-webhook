@@ -1,86 +1,38 @@
 // ============================================================
-// TURNOS POR CONDUCTOR — instrucciones de relevo de la semana
+// TURNOS POR CONDUCTOR — el mensaje de WhatsApp y a quién le toca
 // ============================================================
-// A partir del tablero (planificadorV2) arma, para cada conductor, su semana día a
-// día: qué coche lleva, de quién lo recibe y a quién se lo entrega (con teléfono).
-// Lo usan la pestaña "Por conductor" de Cobertura y el botón "Ver mis turnos" del bot.
-// Se apoya en `coche.semana` (14 tramos) y `coche.relevos` (pasos de un tramo a otro),
-// que ya calcula planificadorV2.
+// La SEMANA de cada conductor (qué coche lleva, de quién lo recibe y a quién se lo
+// entrega) la calcula `repo/cobertura.porConductor` desde el tablero de PostgreSQL.
+// Aquí queda solo lo que rodea al mensaje:
+//
+//   · mensajeTurnos(entrada)          → el texto que se le manda por WhatsApp.
+//   · resolver(lista, { phone, … })   → de un teléfono a SU entrada de la lista.
+//
+// Cero hojas: antes esto leía el tablero de Sheets y volvía del teléfono a la
+// persona comparando NOMBRES (fallaba con una tilde, con los apellidos en otro
+// orden o si el teléfono no estaba en el padrón). Ahora el teléfono identifica
+// solo, contra la base; el nombre queda de red por si acaso.
 
-const { DIAS_SEM, TURNOS } = require('./planificadorV2');
-const { normClave } = require('./conductores');
-
-/**
- * Devuelve, por conductor, su semana: [{ id, nombre, telefono, dias: [7] }], donde
- * cada día es { diaNombre, trabaja } y, si trabaja: { turno, matricula, recibeDe, entregaA }.
- * recibeDe / entregaA = { nombre, telefono, directo } o null (sin relevo).
- */
-function instruccionesPorConductor(tablero, telefonosExtra) {
-  const conductores = (tablero && tablero.conductores) || [];
-  const coches = (tablero && tablero.coches) || [];
-  const extra = telefonosExtra instanceof Map ? telefonosExtra : new Map();
-
-  const porId = new Map();
-  conductores.forEach(c => { if (c.idBolt) porId.set(c.idBolt, c); });
-  // Teléfono: el de la agenda y, si está vacío, el de DB_CONDUCTORES (por nombre normalizado).
-  const telDe = id => {
-    const c = porId.get(id);
-    return ((c && (c.telefono || '').toString().trim()) || '') || extra.get(normClave(id)) || '';
-  };
-  const nombreDe = id => { const c = porId.get(id); return (c && c.nombre) || id; };
-
-  const relevos = [];
-  coches.forEach(c => (c.relevos || []).forEach(r => relevos.push(r)));
-
-  // Tramos que conduce cada uno: id → [{ diaIdx, diaNombre, turno, matricula }]
-  const slots = new Map();
-  coches.forEach(coche => (coche.semana || []).forEach(tr => {
-    if (!tr.id) return;
-    if (!slots.has(tr.id)) slots.set(tr.id, []);
-    slots.get(tr.id).push({ diaIdx: tr.dia, diaNombre: tr.diaNombre, turno: tr.turno, matricula: coche.matricula });
-  }));
-
-  const buscaRecibe = (id, s) => relevos.find(r => r.matricula === s.matricula && r.recibe.id === id && r.recibe.dia === s.diaNombre && r.recibe.turno === s.turno);
-  const buscaEntrega = (id, s) => relevos.find(r => r.matricula === s.matricula && r.entrega.id === id && r.entrega.dia === s.diaNombre && r.entrega.turno === s.turno);
-  const ordTurno = t => { const i = TURNOS.indexOf(t); return i < 0 ? 99 : i; };
-
-  const salida = [];
-  for (const [id, misSlots] of slots.entries()) {
-    const dias = DIAS_SEM.map((diaNombre, d) => {
-      const delDia = misSlots.filter(s => s.diaIdx === d).sort((a, b) => ordTurno(a.turno) - ordTurno(b.turno));
-      if (!delDia.length) return { diaNombre, trabaja: false };
-
-      const primero = delDia[0], ultimo = delDia[delDia.length - 1];
-      const rec = buscaRecibe(id, primero);     // de quién lo coge (al empezar)
-      const ent = buscaEntrega(id, ultimo);      // a quién se lo deja (al terminar)
-      return {
-        diaNombre, trabaja: true,
-        turno: delDia.map(s => s.turno).join(' y '),
-        matricula: primero.matricula,
-        recibeDe: rec ? { nombre: rec.entrega.nombre, telefono: telDe(rec.entrega.id), directo: !!rec.directo } : null,
-        entregaA: ent ? { nombre: ent.recibe.nombre, telefono: telDe(ent.recibe.id), directo: !!ent.directo } : null
-      };
-    });
-    salida.push({ id, nombre: nombreDe(id), telefono: telDe(id), dias });
-  }
-  return salida.sort((a, b) => (a.nombre || a.id).localeCompare(b.nombre || b.id, 'es'));
-}
+const cob = require('./repo/cobertura');
 
 // El planner usa días abreviados; para el mensaje al conductor van completos.
-const DIAS_LARGOS = { Lun: 'Lunes', Mar: 'Martes', Mié: 'Miércoles', Mie: 'Miércoles', Jue: 'Jueves', Vie: 'Viernes', Sáb: 'Sábado', Sab: 'Sábado', Dom: 'Domingo' };
+const DIAS_LARGOS = {
+  Lun: 'Lunes', Mar: 'Martes', Mié: 'Miércoles', Mie: 'Miércoles',
+  Jue: 'Jueves', Vie: 'Viernes', Sáb: 'Sábado', Sab: 'Sábado', Dom: 'Domingo',
+};
 const diaLargo = d => DIAS_LARGOS[d] || d;
 
-/** Une una lista de nombres de día: ["Martes","Miércoles"] → "Martes y Miércoles". */
+/** Une nombres de día: ["Martes","Miércoles"] → "Martes y Miércoles". */
 function unirDias(nombres) {
   if (nombres.length === 1) return nombres[0];
   return nombres.slice(0, -1).join(', ') + ' y ' + nombres[nombres.length - 1];
 }
 
-/** Mensaje de WhatsApp con los turnos/relevos de un conductor (una entrada de la lista). */
+/** Mensaje de WhatsApp con los turnos y relevos de la semana de un conductor. */
 function mensajeTurnos(entrada) {
   if (!entrada) return 'No encuentro tus turnos de esta semana. Avisa a la oficina, por favor.';
   const L = [`👋 Hola ${entrada.nombre}, estos son tus turnos y relevos de esta semana:`, ''];
-  const dias = entrada.dias;
+  const dias = entrada.dias || [];
   const tel = x => (x.telefono ? ` (${x.telefono})` : '');
 
   let i = 0;
@@ -100,45 +52,58 @@ function mensajeTurnos(entrada) {
   return L.join('\n').trim();
 }
 
-// ── ¿Qué entrada de la lista es la de ESTE teléfono? ─────────────────────────
-// El aviso se manda al teléfono de la agenda, pero al pulsar el botón hay que
-// volver del teléfono a la persona. Antes se intentaba solo por el padrón de
-// BOLT y comparando el nombre letra a letra: si el teléfono no estaba en el
-// padrón o el nombre difería en una tilde o en el orden de los apellidos, el
-// conductor recibía "no encuentro tus turnos" (caso Israel Alvarado, 18/08/2026).
-// Ahora se reúnen TODAS las identidades disponibles y se compara con normClave
-// (sin tildes, sin mayúsculas y con las palabras ordenadas).
+// Nombre normalizado para la red de seguridad: sin tildes, en minúsculas y con las
+// palabras ordenadas, para que "Juan Pérez Gómez" y "Gómez, Juan Perez" casen.
+const normNombre = s => String(s || '').toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^a-z0-9\s]/g, ' ')
+  .trim().split(/\s+/).filter(Boolean).sort().join(' ');
 
 const tel9 = t => String(t || '').replace(/\D/g, '').slice(-9);
 
 /**
- * Claves (normClave) que pueden identificar al que llama:
- *  - conductores de la agenda cuyo teléfono coincide (la fuente A LA QUE se mandó el aviso),
- *  - entradas de DB_CONDUCTORES (Map normClave(nombre) → teléfono) con ese teléfono,
- *  - su nombre en el padrón de BOLT, si se tiene,
- *  - el nombre de la sesión del bot, si la hay.
+ * De un teléfono a SU entrada de la semana.
+ *
+ * 1. Por TELÉFONO contra la base (lo normal y lo fiable: el sufijo de 9 dígitos es
+ *    único, así que no hay margen de error).
+ * 2. Por el teléfono que ya trae la propia lista (mismo criterio, sin otra consulta).
+ * 3. Por NOMBRE (el de la sesión del bot), como último cartucho.
+ *
+ * Devuelve { entrada, como } — `como` dice por dónde se resolvió, que es lo que
+ * hace diagnosticable el caso raro.
  */
-function clavesDe({ phone, conductores, telsDB, padronNombre, nombreSesion }) {
-  const mio = tel9(phone);
-  const claves = new Set();
-  if (mio) {
-    (conductores || []).forEach(c => {
-      if (tel9(c.telefono) === mio && (c.idBolt || c.id)) claves.add(normClave(c.idBolt || c.id));
-    });
-    if (telsDB instanceof Map) {
-      for (const [clave, tel] of telsDB) if (tel9(tel) === mio) claves.add(clave);
+async function resolver(lista, { phone, nombreSesion } = {}) {
+  const L = lista || [];
+
+  // 1. El teléfono, contra la base.
+  try {
+    const p = await cob.conductorPorTelefono(phone);
+    if (p) {
+      const e = L.find(x => String(x.id) === p.conductorId);
+      if (e) return { entrada: e, como: 'telefono' };
+      // Está en la base pero no le toca ningún turno esta semana: eso NO es un
+      // fallo de identificación, es que libra. Se dice tal cual.
+      return { entrada: null, como: 'sin-turnos', quien: p.nombre };
     }
+  } catch (e) {
+    console.error('⚠️ [Turnos] conductorPorTelefono:', e.message);
   }
-  if ((padronNombre || '').trim()) claves.add(normClave(padronNombre));
-  if ((nombreSesion || '').trim()) claves.add(normClave(nombreSesion));
-  claves.delete('');
-  return claves;
+
+  // 2. El teléfono que ya viene en la lista.
+  const mio = tel9(phone);
+  if (mio) {
+    const e = L.find(x => tel9(x.telefono) === mio);
+    if (e) return { entrada: e, como: 'telefono-lista' };
+  }
+
+  // 3. El nombre de la sesión.
+  const clave = normNombre(nombreSesion);
+  if (clave) {
+    const e = L.find(x => normNombre(x.nombre) === clave);
+    if (e) return { entrada: e, como: 'nombre' };
+  }
+
+  return { entrada: null, como: 'no-identificado' };
 }
 
-/** Primera entrada cuya id o nombre (normalizados) esté entre las claves. */
-function entradaPorClaves(lista, claves) {
-  if (!claves || !claves.size) return null;
-  return (lista || []).find(e => claves.has(normClave(e.id)) || claves.has(normClave(e.nombre))) || null;
-}
-
-module.exports = { instruccionesPorConductor, mensajeTurnos, clavesDe, entradaPorClaves };
+module.exports = { mensajeTurnos, resolver, normNombre, tel9 };
