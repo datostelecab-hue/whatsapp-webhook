@@ -134,20 +134,21 @@ async function reporteDia(key) {
   // (12→12, regla de Tráfico: la hoja parte el turno de noche por la medianoche).
   // Datos_API queda SOLO de red de seguridad: para los de DÍA cuyo nombre aún no case
   // en el núcleo, y para todos si el núcleo entero no responde.
-  let horasDia = null, horasNoche = null;
+  let horasDia = null, horasNoche = null, horasJornada = null;
   try {
     await require('./flotaViva/db').preparar();
     const rutas = require('./flotaViva/rutas');
-    const [hd, hn] = await Promise.all([
-      rutas.horasEfectivasPorConductor(iso, 'completo'),
-      rutas.horasEfectivasPorConductor(iso, 'noche12'),
+    const [hd, hn, ho] = await Promise.all([
+      rutas.horasEfectivasPorConductor(iso, 'dia'),        // 05:00 → 17:00
+      rutas.horasEfectivasPorConductor(iso, 'noche'),      // 17:00 → 05:00 del día siguiente
+      rutas.horasEfectivasPorConductor(iso, 'operativo'),  // 05:00 → 05:00: la jornada entera
     ]);
     const aHoras = m => new Map([...m.entries()].map(([nom, min]) => [normClave(nom), Math.round(min / 6) / 10]));
-    horasDia = aHoras(hd); horasNoche = aHoras(hn);
+    horasDia = aHoras(hd); horasNoche = aHoras(hn); horasJornada = aHoras(ho);
   } catch (e) {
     console.warn('⚠️  [JUST] Horas del núcleo no disponibles, se usa Datos_API:', e.message);
   }
-  const nucleoOk = !!(horasDia && horasNoche);
+  const nucleoOk = !!(horasDia && horasNoche && horasJornada);
 
   const bruto = [];
   for (const c of (tablero.conductores || [])) {
@@ -155,12 +156,21 @@ async function reporteDia(key) {
     if (!dia) continue;
     const clave = normClave(c.nombre);
     const just = justis.get(clave);
-    const esNoche = (c.turno || '').trim() === 'Noche';
+    // CADA TURNO, SU VENTANA. El de día se mide contra 05:00-17:00 y el de noche contra
+    // 17:00-05:00, que es lo que dice su turno. Antes se medían contra dos ventanas que
+    // se SOLAPABAN (00→24 para los de día y 12→12 para los de noche): la de noche se
+    // metía 12 h en el día siguiente, así que 406,5 h de la madrugada del día D+1 se le
+    // apuntaban al día D. Por eso el reporte daba 938,3 h y Visibilidad 890,9 del MISMO día.
+    // Al que no tiene turno en la agenda —o hace TodoTurno— se le mide la jornada entera
+    // (05→05), porque no hay un tramo concreto que sea "el suyo".
+    const turno = (c.turno || '').trim();
+    const deSuTurno = clave =>
+      turno === 'Noche' ? (horasNoche.get(clave) ?? 0)
+      : turno === 'Día' || turno === 'Dia' ? (horasDia.get(clave) ?? 0)
+      : (horasJornada.get(clave) ?? 0);
     const horas = !nucleoOk
       ? dia.horas                                  // núcleo caído → la hoja para todos
-      : esNoche
-        ? (horasNoche.get(clave) ?? 0)             // noche: núcleo puro (12→12)
-        : (horasDia.get(clave) ?? dia.horas);      // día: núcleo, o la hoja de red
+      : deSuTurno(clave);
     const incluir = dia.debiaSalir || (horas != null && horas > 0) || !!just;
     if (!incluir) continue;
     bruto.push({

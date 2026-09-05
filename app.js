@@ -463,7 +463,7 @@ programar('0 0 * * *', async () => {
 // ── VISIBILIDAD ─────────────────────────────────────────────────────────────
 // Foto diaria de horas de flota para el visor (reemplaza al "VISOR EN VIVO" de la
 // hoja). Solo LEE del núcleo, así que es barato: refresca hoy+ayer cada 20 min (el
-// pasado ya está sellado) y sana el mes entero una vez al día por si hubo caída.
+// pasado ya está sellado) y sana el mes entero una vez al día, ya cerrada la jornada.
 programar('8,28,48 * * * *', async () => {
   try {
     const bd = require('./services/db');
@@ -474,7 +474,9 @@ programar('8,28,48 * * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
-programar('25 3 * * *', async () => {
+// A LAS 05:30, NO A LAS 03:25. La jornada va de 05:00 a 05:00, así que a las 03:25
+// el turno de noche todavía está rodando: sellar ahí guardaba la foto a medias.
+programar('30 5 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;

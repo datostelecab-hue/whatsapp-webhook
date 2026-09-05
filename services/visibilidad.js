@@ -139,13 +139,18 @@ async function guardarConfig(patch) {
 function ventanaTurnos() {
   const H = horaMadrid();
   const hoy = hoyISO(), ayer = diaISOhace(1);
-  const dia = (d) => [d, 5, 0, 17];      // 05:00 → 17:00 del mismo día
-  const noche = (d) => [d, 17, 1, 5];    // 17:00 → 05:00 del día siguiente
+  // Las horas NO se escriben aquí: salen de rutas.TURNOS, que es donde viven para
+  // todo el ERP (y de AUDITORIA_HORA_DIA / AUDITORIA_HORA_NOCHE). Tenerlas a mano
+  // en este fichero era la forma segura de que el día que cambien los turnos esta
+  // pantalla se quedara sola diciendo otra cosa.
+  const T = require('./flotaViva/rutas').TURNOS;
+  const dia = (d) => [d, T.dia[0], T.dia[1], T.dia[2]];
+  const noche = (d) => [d, T.noche[0], T.noche[1], T.noche[2]];
   // Turno DÍA: siempre el de hoy (en curso o ya cerrado).
   const turnoDia = { etq: 'Turno día · hoy', v: dia(hoy) };
   // Turno NOCHE: por la tarde/noche (>=17) la de ESTA noche (hoy 17→mañana 05); de
   // madrugada o de día, la que acaba de pasar (anoche 17→hoy 05).
-  const turnoNoche = H >= 17
+  const turnoNoche = H >= T.noche[0]
     ? { etq: 'Turno noche · hoy', v: noche(hoy) }
     : { etq: 'Turno noche · anoche', v: noche(ayer) };
   return { dia: turnoDia, noche: turnoNoche };
@@ -161,12 +166,23 @@ async function resumen() {
   const dow = (new Date(hoy + 'T12:00:00').getDay() + 6) % 7;   // 0 = lunes
   const lunes = diaISOhace(dow);
 
+  const H0 = require('./flotaViva/rutas').TURNOS.dia[0];   // el corte: 05:00
+  // ANTES DE LAS 05:00 LA JORNADA EN CURSO ES LA DE AYER. Sin esto, a las 03:00 la
+  // tarjeta "Hoy" pediría una ventana que aún no ha empezado y saldría 0 h, justo
+  // cuando el turno de noche está en lo más alto.
+  const jornadaHoy = horaMadrid() < H0 ? ayer : hoy;
+  const jornadaAyer = horaMadrid() < H0 ? diaISOhace(2) : ayer;
   const t = ventanaTurnos();
   const [mes, dia, ayerDia, semana, turnoDia, turnoNoche, config] = await Promise.all([
-    slice(primeroMes, 0, dm, 0),           // todo el mes (los días futuros no suman)
-    slice(hoy, 0, 1, 0),                   // HOY, día natural 00:00 → 24:00 (parcial)
-    slice(ayer, 0, 1, 0),                  // AYER, día natural completo
-    slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
+    // LA JORNADA ES 05:00 → 05:00, no el día natural. Es la que embaldosan los dos
+    // turnos (día 05-17 + noche 17-05) sin hueco ni solape, así que "Ayer" vale
+    // exactamente lo que suman sus dos tarjetas de turno. Con el día natural no:
+    // partía el turno de noche por la medianoche y esta misma pantalla se
+    // contradecía a sí misma por 30 h.
+    slice(primeroMes, H0, dm, H0),         // todo el mes (los días futuros no suman)
+    slice(jornadaHoy, H0, 1, H0),          // HOY, la jornada en curso (parcial)
+    slice(jornadaAyer, H0, 1, H0),         // AYER, la jornada anterior, completa
+    slice(lunes, H0, 7, H0),               // lunes → lunes (parcial)
     slice(...t.dia.v),                     // turno DÍA (05→17)
     slice(...t.noche.v),                   // turno NOCHE (17→05, cruza medianoche)
     leerConfig(),
@@ -288,11 +304,12 @@ async function leerFotosMes(anio, mes) {
 }
 
 // ── Foto diaria: la escribe el cron (y el backfill) ──────────────────────────
-// Calcula el día NATURAL (00:00→24:00) de flota y lo guarda. El pasado queda fijo;
+// Calcula la JORNADA OPERATIVA (05:00→05:00) y la guarda. El pasado queda fijo;
 // hoy/ayer se reescriben en cada pasada.
 async function capturarDia(diaIso) {
   if (!db.HAY_BD) return;
-  const h = await horasVentana(diaIso, 0, 1, 0);
+  const H0 = require('./flotaViva/rutas').TURNOS.dia[0];
+  const h = await horasVentana(diaIso, H0, 1, H0);
   await db.consulta(
     `INSERT INTO visibilidad_dia (dia, viaje_seg, espera_seg, descanso_seg, conductores, capturado_at)
      VALUES ($1::date, $2, $3, $4, $5, now())
@@ -321,9 +338,13 @@ async function backfillMes(anio, mes) {
 
 // Lo que llama el cron: refresca hoy y ayer (lo demás ya está sellado).
 async function capturaCorriente() {
-  const r1 = await capturarDia(hoyISO());
-  const r2 = await capturarDia(diaISOhace(1));
-  return { hoy: r1, ayer: r2 };
+  // TRES DÍAS, NO DOS. Con la jornada 05→05, a las 02:00 la jornada en curso es la
+  // que empezó AYER a las 05:00 y la anterior es la de ANTEAYER. Refrescando solo
+  // hoy y ayer, la de anteayer se quedaba sellada a medias para siempre.
+  const [r1, r2, r3] = [await capturarDia(hoyISO()),
+                        await capturarDia(diaISOhace(1)),
+                        await capturarDia(diaISOhace(2))];
+  return { hoy: r1, ayer: r2, anteayer: r3 };
 }
 
 // Sana el mes CORRIENTE entero (por si el servidor estuvo caído). Calcula el mes en
