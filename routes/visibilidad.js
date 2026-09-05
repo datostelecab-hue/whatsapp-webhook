@@ -38,6 +38,17 @@ router.get('/api/serie', async (req, res) => {
   }
 });
 
+// Los últimos N días cerrados + hoy en vivo: el gráfico de capacidad por día.
+router.get('/api/ultimos', async (req, res) => {
+  try {
+    const n = Math.max(5, Math.min(60, Number(req.query.n) || 15));
+    res.json({ status: 'ok', ...(await vis.ultimosDias(n)) });
+  } catch (e) {
+    console.error('❌ [Visibilidad] /api/ultimos:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 // Guarda la config (capacidad, meta, vehículos, días) y devuelve la nueva → recalcula.
 router.post('/api/config', async (req, res) => {
   try {

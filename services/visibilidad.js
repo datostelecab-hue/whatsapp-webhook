@@ -166,23 +166,22 @@ async function resumen() {
   const dow = (new Date(hoy + 'T12:00:00').getDay() + 6) % 7;   // 0 = lunes
   const lunes = diaISOhace(dow);
 
-  const H0 = require('./flotaViva/rutas').TURNOS.dia[0];   // el corte: 05:00
-  // ANTES DE LAS 05:00 LA JORNADA EN CURSO ES LA DE AYER. Sin esto, a las 03:00 la
-  // tarjeta "Hoy" pediría una ventana que aún no ha empezado y saldría 0 h, justo
-  // cuando el turno de noche está en lo más alto.
-  const jornadaHoy = horaMadrid() < H0 ? ayer : hoy;
-  const jornadaAyer = horaMadrid() < H0 ? diaISOhace(2) : ayer;
+  // DOS FORMAS DE MIRAR EL MISMO DÍA, Y LAS DOS VALEN. El DÍA NATURAL (00:00→24:00)
+  // es lo que cuadra con el informe de BOLT y con el histórico del mes; la JORNADA
+  // (05:00→05:00) es la que embaldosan los dos turnos sin hueco ni solape y la que
+  // cuadra con el Reporte de horas. No son el mismo número —la noche cruza la
+  // medianoche— y por eso se enseñan las dos, cada una con su etiqueta.
+  const T = require('./flotaViva/rutas').TURNOS;
+  const H0 = T.dia[0];                                     // el corte de la jornada: 05:00
+  // Antes de las 05:00 la jornada que acaba de cerrarse es la de ANTEAYER.
+  const ayerJornada = horaMadrid() < H0 ? diaISOhace(2) : ayer;
   const t = ventanaTurnos();
-  const [mes, dia, ayerDia, semana, turnoDia, turnoNoche, config] = await Promise.all([
-    // LA JORNADA ES 05:00 → 05:00, no el día natural. Es la que embaldosan los dos
-    // turnos (día 05-17 + noche 17-05) sin hueco ni solape, así que "Ayer" vale
-    // exactamente lo que suman sus dos tarjetas de turno. Con el día natural no:
-    // partía el turno de noche por la medianoche y esta misma pantalla se
-    // contradecía a sí misma por 30 h.
-    slice(primeroMes, H0, dm, H0),         // todo el mes (los días futuros no suman)
-    slice(jornadaHoy, H0, 1, H0),          // HOY, la jornada en curso (parcial)
-    slice(jornadaAyer, H0, 1, H0),         // AYER, la jornada anterior, completa
-    slice(lunes, H0, 7, H0),               // lunes → lunes (parcial)
+  const [mes, dia, ayerDia, ayerJor, semana, turnoDia, turnoNoche, config] = await Promise.all([
+    slice(primeroMes, 0, dm, 0),           // todo el mes, días naturales (los futuros no suman)
+    slice(hoy, 0, 1, 0),                   // HOY, día natural 00:00 → 24:00 (parcial)
+    slice(ayer, 0, 1, 0),                  // AYER, día natural completo
+    slice(ayerJornada, H0, 1, H0),         // AYER, jornada 05:00 → 05:00 (= turno día + turno noche)
+    slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
     slice(...t.dia.v),                     // turno DÍA (05→17)
     slice(...t.noche.v),                   // turno NOCHE (17→05, cruza medianoche)
     leerConfig(),
@@ -197,8 +196,44 @@ async function resumen() {
     // POR TURNO (ventana del turno; la noche cruza medianoche)
     turnoDia: { ...turnoDia, etq: t.dia.etq },
     turnoNoche: { ...turnoNoche, etq: t.noche.etq },
+    ayerJornada: { ...ayerJor, etq: 'Ayer · jornada completa', dia: ayerJornada },
     config,
   };
+}
+
+// ── Los últimos N días + hoy, para el gráfico de capacidad ───────────────────
+// Como el "CAPACIDAD X DIA" de la hoja: la línea de los días cerrados y, aparte, el
+// punto de HOY en curso. Lee las fotos (día natural) y cruza meses sin despeinarse;
+// hoy va siempre en vivo.
+async function ultimosDias(n = 15) {
+  const hoy = hoyISO();
+  const desde = diaISOhace(n);
+  const r = await db.consulta(
+    `SELECT to_char(dia, 'YYYY-MM-DD') AS dia, viaje_seg, espera_seg, conductores
+       FROM visibilidad_dia
+      WHERE dia >= $1::date AND dia < $2::date
+      ORDER BY dia`, [desde, hoy]);
+  const porDia = new Map(r.rows.map(x => [x.dia, x]));
+  const r1 = (x) => Math.round(x * 10) / 10;
+  const dias = [];
+  for (let i = n; i >= 1; i--) {
+    const d = diaISOhace(i);
+    const f = porDia.get(d);
+    const viaje = f ? Number(f.viaje_seg) : 0, espera = f ? Number(f.espera_seg) : 0;
+    dias.push({
+      dia: d, esHoy: false,
+      total: r1((viaje + espera) / 3600), waiting: r1(espera / 3600),
+      conductores: f ? Number(f.conductores) : 0,
+      sinFoto: !f,
+    });
+  }
+  const h = await horasVentana(hoy, 0, 1, 0);
+  dias.push({
+    dia: hoy, esHoy: true,
+    total: r1((h.viajeSeg + h.esperaSeg) / 3600), waiting: r1(h.esperaSeg / 3600),
+    conductores: h.conductores || 0, sinFoto: false,
+  });
+  return { n, dias };
 }
 
 // ── Serie del MES para los gráficos (por día, acumulado, ideal, crítico, brecha) ─
@@ -285,6 +320,10 @@ async function serieMes(anio, mes) {
   };
   return {
     anio, mes, diasMes: dm, config,
+    // Hasta qué día hay datos de verdad: en el mes en curso, hoy; en uno pasado, todos.
+    // Los gráficos cortan ahí las series reales; el ideal y el crítico siguen hasta
+    // fin de mes porque son el objetivo, no un dato.
+    ultimoConDatos, esMesActual, hoyDia: esMesActual ? Dh : null,
     idealDiario: Math.round(idealDiario),
     dias, total: totalMes, totales,
   };
@@ -304,12 +343,11 @@ async function leerFotosMes(anio, mes) {
 }
 
 // ── Foto diaria: la escribe el cron (y el backfill) ──────────────────────────
-// Calcula la JORNADA OPERATIVA (05:00→05:00) y la guarda. El pasado queda fijo;
+// Calcula el día NATURAL (00:00→24:00) de flota y lo guarda. El pasado queda fijo;
 // hoy/ayer se reescriben en cada pasada.
 async function capturarDia(diaIso) {
   if (!db.HAY_BD) return;
-  const H0 = require('./flotaViva/rutas').TURNOS.dia[0];
-  const h = await horasVentana(diaIso, H0, 1, H0);
+  const h = await horasVentana(diaIso, 0, 1, 0);
   await db.consulta(
     `INSERT INTO visibilidad_dia (dia, viaje_seg, espera_seg, descanso_seg, conductores, capturado_at)
      VALUES ($1::date, $2, $3, $4, $5, now())
@@ -355,7 +393,7 @@ async function backfillMesActual() {
 }
 
 module.exports = {
-  resumen, serieMes, leerConfig, guardarConfig,
+  resumen, serieMes, ultimosDias, leerConfig, guardarConfig,
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
   slice, horasVentana, dineroVentana,
