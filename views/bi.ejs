@@ -50,7 +50,7 @@
   </div>
 
   <%
-    const kpi = (id, label, sub, acento) => `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card p-4">
+    const kpi = (id, label, sub, acento, extra) => `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card p-4 ${extra || ''}">
       <p class="text-[11px] text-telecab-muted uppercase tracking-wide">${label}</p>
       <p id="${id}" class="text-2xl font-bold ${acento ? 'text-telecab-gold' : 'text-telecab-text'} mt-1 tabular-nums leading-none">—</p>
       <div class="flex items-center gap-2 mt-2"><span id="${id}-delta" class="text-[11px] tabular-nums"></span><span class="text-[11px] text-telecab-muted">${sub}</span></div>
@@ -74,10 +74,10 @@
   <!-- ══ RESUMEN ═══════════════════════════════════════════════════════════════ -->
   <section data-panel="resumen" class="b-panel hidden space-y-4">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <%- kpi('k-neto', 'Neto facturado', 'frente al periodo anterior', true) %>
-      <%- kpi('k-horas', 'Horas efectivas', 'viaje + espera') %>
-      <%- kpi('k-eurh', 'Euros por hora', 'neto / horas efectivas') %>
-      <%- kpi('k-viajes', 'Viajes terminados', 'con su € por viaje') %>
+      <%- kpi('k-neto', 'Neto facturado', 'frente al periodo anterior', false, 'tarjeta-grad tarjeta-grad-d') %>
+      <%- kpi('k-horas', 'Horas efectivas', 'viaje + espera', false, 'tarjeta-grad tarjeta-grad-a') %>
+      <%- kpi('k-eurh', 'Euros por hora', 'neto / horas efectivas', false, 'tarjeta-grad tarjeta-grad-b') %>
+      <%- kpi('k-viajes', 'Viajes terminados', 'con su € por viaje', false, 'tarjeta-grad tarjeta-grad-c') %>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
       <%- kpi('k-util', 'Utilización', 'viaje / (viaje + espera)') %>

@@ -1,315 +1,375 @@
 /* ============================================================
-   TELECAB — design tokens globales + base
+   TELECAB — identidad visual: tokens globales + base + componentes
    ============================================================
-   Los colores se definen como CANALES RGB ("r g b") para que Tailwind pueda
-   aplicarles opacidad (bg-telecab-gold/15, border-telecab-green/40, …) vía
-   rgb(var(--tc-*) / <alpha-value>). Cambiar de tema = cambiar estas variables;
-   NINGUNA vista necesita colores propios. */
+   La app entera se pinta desde aquí. Las vistas usan clases de Tailwind que
+   apuntan a estos tokens (bg-telecab-card, text-telecab-gold, …), así que
+   cambiar la identidad es cambiar este fichero: NINGUNA vista lleva colores
+   propios.
+
+   Los colores van como CANALES RGB ("r g b") para que Tailwind pueda aplicarles
+   opacidad (bg-telecab-gold/15, border-telecab-red/40) vía rgb(var(--tc-*) /
+   <alpha-value>).
+
+   LA IDEA VISUAL (2026-09): un fondo casi negro con un resplandor cálido que
+   entra por la izquierda —ámbar, como una lámpara al otro lado de la sala— y
+   superficies de cristal oscuro que lo dejan pasar. El acento es el ámbar de
+   la marca; el azul suave es el contrapunto frío para lo que tiene que
+   distinguirse del acento (series de gráficos, estados informativos). */
 
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --tc-dark: 14 17 22;
-  --tc-card: 23 27 34;
-  --tc-card2: 30 35 44;
-  --tc-border: 40 46 57;
-  --tc-gold: 232 184 75;
-  --tc-gold-soft: 243 208 114;
-  --tc-gold-deep: 201 150 47;
-  --tc-red: 229 72 77;
-  --tc-red-hover: 201 59 64;
-  --tc-green: 62 207 142;
-  /* Estados que no son ni error ni éxito. Los heredan todos los temas oscuros;
-     los claros los redefinen más profundos para que se lean sobre blanco. */
-  --tc-warn: 251 191 36;    /* ámbar: requiere revisión a mano */
-  --tc-violet: 196 181 253; /* morado: reincidencia / escalado */
-  --tc-text: 230 232 236;
-  --tc-muted: 139 147 161;
-  --tc-scroll: 46 53 66;
-  --tc-scroll-hover: 58 66 80;
-  --tc-halo1: 232 184 75;   /* dorado */
-  --tc-halo2: 62 207 142;   /* verde  */
-  --tc-halo1-a: 0.06;
-  --tc-halo2-a: 0.04;
+  --tc-dark: 13 10 12;         /* el negro cálido del fondo */
+  --tc-card: 27 22 25;         /* superficie: se pinta al 72 % para que pase el resplandor */
+  --tc-card2: 40 33 36;        /* superficie elevada / hover */
+  --tc-border: 62 52 55;       /* línea fina cálida */
+  --tc-gold: 244 150 60;       /* ÁMBAR: el acento de la marca */
+  --tc-gold-soft: 252 196 121;
+  --tc-gold-deep: 214 112 24;
+  --tc-azul: 110 156 250;      /* el contrapunto frío */
+  --tc-red: 240 82 82;
+  --tc-red-hover: 214 60 60;
+  --tc-green: 74 222 128;
+  --tc-warn: 251 191 36;       /* ámbar de aviso: requiere revisión a mano */
+  --tc-violet: 167 139 250;    /* morado: reincidencia / escalado */
+  --tc-text: 244 240 236;      /* blanco cálido */
+  --tc-muted: 160 150 152;
+  --tc-scroll: 62 52 55;
+  --tc-scroll-hover: 244 150 60;
+  /* El resplandor: tres focos. El grande, ámbar, entra por la izquierda; el
+     melocotón lo acompaña abajo; el violeta, muy tenue, equilibra a la derecha. */
+  --tc-halo1: 244 140 50;  --tc-halo1-a: 0.34;
+  --tc-halo2: 120 90 220;  --tc-halo2-a: 0.13;
+  --tc-halo3: 255 200 120; --tc-halo3-a: 0.12;
+  --tc-card-a: 0.72;           /* opacidad de las superficies (cristal) */
+  --tc-brillo: 255 255 255;    /* el filo de luz del borde superior de cada tarjeta */
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --tc-dark: 244 246 249;   /* fondo de página / campos hundidos */
+  --tc-dark: 250 246 242;      /* papel cálido */
   --tc-card: 255 255 255;
-  --tc-card2: 239 242 246;
-  --tc-border: 223 228 235;
-  --tc-gold: 183 130 24;    /* dorado más profundo: legible sobre claro */
-  --tc-gold-soft: 210 165 80;
-  --tc-gold-deep: 150 106 18;
+  --tc-card2: 246 240 235;
+  --tc-border: 232 222 214;
+  --tc-gold: 201 108 20;       /* ámbar profundo: legible sobre claro */
+  --tc-gold-soft: 232 150 60;
+  --tc-gold-deep: 170 86 10;
+  --tc-azul: 45 100 230;
   --tc-red: 214 55 62;
   --tc-red-hover: 185 42 48;
   --tc-green: 15 128 90;
-  --tc-text: 24 31 44;
-  --tc-muted: 96 112 136;
-  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
-  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
-  --tc-scroll: 203 209 218;
-  --tc-scroll-hover: 176 184 196;
-  --tc-halo1: 183 130 24;
-  --tc-halo2: 20 155 110;
-  --tc-halo1-a: 0.05;
-  --tc-halo2-a: 0.035;
+  --tc-warn: 180 83 9;
+  --tc-violet: 124 58 237;
+  --tc-text: 38 30 28;
+  --tc-muted: 122 110 106;
+  --tc-scroll: 220 210 202;
+  --tc-scroll-hover: 201 108 20;
+  --tc-halo1: 244 140 50;  --tc-halo1-a: 0.20;
+  --tc-halo2: 120 90 220;  --tc-halo2-a: 0.07;
+  --tc-halo3: 255 200 120; --tc-halo3-a: 0.16;
+  --tc-card-a: 0.86;
+  --tc-brillo: 255 255 255;
 }
 
-/* ===== Temas oscuros (heredan text/muted/red/green del oscuro; cambian superficie + acento) ===== */
+/* ===== Temas oscuros con otro acento (heredan la base del oscuro) ===== */
 :root[data-theme='azul'] {
-  --tc-dark: 11 15 24; --tc-card: 19 25 39; --tc-card2: 27 35 53; --tc-border: 41 52 74;
-  --tc-gold: 96 165 250; --tc-gold-soft: 147 197 253; --tc-gold-deep: 59 130 220;
-  --tc-halo1: 96 165 250; --tc-halo2: 62 207 142;
+  --tc-dark: 9 11 20; --tc-card: 20 24 38; --tc-card2: 30 36 54; --tc-border: 48 56 80;
+  --tc-gold: 96 165 250; --tc-gold-soft: 147 197 253; --tc-gold-deep: 59 130 220; --tc-azul: 244 150 60;
+  --tc-halo1: 80 130 250; --tc-halo2: 62 207 142; --tc-halo3: 140 170 255;
 }
 :root[data-theme='verde'] {
-  --tc-dark: 10 20 16; --tc-card: 16 29 24; --tc-card2: 24 40 33; --tc-border: 38 58 49;
-  --tc-gold: 52 211 153; --tc-gold-soft: 110 231 183; --tc-gold-deep: 16 160 110;
-  --tc-halo1: 52 211 153; --tc-halo2: 96 165 250;
+  --tc-dark: 8 16 13; --tc-card: 16 30 25; --tc-card2: 24 42 35; --tc-border: 40 62 52;
+  --tc-gold: 52 211 153; --tc-gold-soft: 110 231 183; --tc-gold-deep: 16 160 110; --tc-azul: 96 165 250;
+  --tc-halo1: 40 200 140; --tc-halo2: 96 165 250; --tc-halo3: 120 230 180;
 }
 :root[data-theme='purpura'] {
-  --tc-dark: 17 13 25; --tc-card: 26 20 37; --tc-card2: 35 28 51; --tc-border: 52 42 74;
-  --tc-gold: 167 139 250; --tc-gold-soft: 196 181 253; --tc-gold-deep: 124 92 220;
-  --tc-halo1: 167 139 250; --tc-halo2: 244 114 182;
+  --tc-dark: 14 10 20; --tc-card: 27 20 38; --tc-card2: 38 29 54; --tc-border: 58 46 80;
+  --tc-gold: 167 139 250; --tc-gold-soft: 196 181 253; --tc-gold-deep: 124 92 220; --tc-azul: 244 114 182;
+  --tc-halo1: 150 110 250; --tc-halo2: 244 114 182; --tc-halo3: 190 170 255;
 }
 :root[data-theme='rosa'] {
-  --tc-dark: 22 12 18; --tc-card: 33 20 28; --tc-card2: 46 29 39; --tc-border: 66 43 57;
-  --tc-gold: 244 114 182; --tc-gold-soft: 249 168 212; --tc-gold-deep: 214 60 145;
-  --tc-halo1: 244 114 182; --tc-halo2: 167 139 250;
+  --tc-dark: 20 10 15; --tc-card: 36 20 28; --tc-card2: 50 29 40; --tc-border: 74 44 58;
+  --tc-gold: 244 114 182; --tc-gold-soft: 249 168 212; --tc-gold-deep: 214 60 145; --tc-azul: 167 139 250;
+  --tc-halo1: 240 100 170; --tc-halo2: 167 139 250; --tc-halo3: 255 170 210;
 }
 :root[data-theme='cian'] {
-  --tc-dark: 9 20 22; --tc-card: 15 30 33; --tc-card2: 22 43 47; --tc-border: 34 62 68;
-  --tc-gold: 45 212 205; --tc-gold-soft: 103 232 226; --tc-gold-deep: 20 165 160;
-  --tc-halo1: 45 212 205; --tc-halo2: 62 207 142;
+  --tc-dark: 7 16 18; --tc-card: 15 31 34; --tc-card2: 22 45 49; --tc-border: 36 66 72;
+  --tc-gold: 45 212 205; --tc-gold-soft: 103 232 226; --tc-gold-deep: 20 165 160; --tc-azul: 244 150 60;
+  --tc-halo1: 40 200 195; --tc-halo2: 62 207 142; --tc-halo3: 110 235 230;
 }
 :root[data-theme='naranja'] {
-  --tc-dark: 23 16 10; --tc-card: 34 24 16; --tc-card2: 47 34 23; --tc-border: 68 50 35;
-  --tc-gold: 251 146 60; --tc-gold-soft: 253 186 116; --tc-gold-deep: 220 110 30;
-  --tc-halo1: 251 146 60; --tc-halo2: 229 72 77;
+  --tc-dark: 18 11 7; --tc-card: 34 22 14; --tc-card2: 48 32 21; --tc-border: 72 50 34;
+  --tc-gold: 251 146 60; --tc-gold-soft: 253 186 116; --tc-gold-deep: 220 110 30; --tc-azul: 110 156 250;
+  --tc-halo1: 251 130 40; --tc-halo2: 229 72 77; --tc-halo3: 255 190 110; --tc-halo1-a: 0.40;
 }
 :root[data-theme='contraste'] {
   color-scheme: dark;
-  --tc-dark: 0 0 0; --tc-card: 18 18 18; --tc-card2: 32 32 32; --tc-border: 74 74 74;
-  --tc-text: 255 255 255; --tc-muted: 201 201 201;
-  --tc-gold: 255 214 10; --tc-gold-soft: 255 229 92; --tc-gold-deep: 224 179 0;
+  --tc-dark: 0 0 0; --tc-card: 18 18 18; --tc-card2: 32 32 32; --tc-border: 90 90 90;
+  --tc-text: 255 255 255; --tc-muted: 205 205 205;
+  --tc-gold: 255 214 10; --tc-gold-soft: 255 229 92; --tc-gold-deep: 224 179 0; --tc-azul: 120 180 255;
   --tc-green: 74 222 128; --tc-red: 248 113 113;
-  --tc-halo1: 255 214 10; --tc-halo2: 255 214 10; --tc-halo1-a: 0; --tc-halo2-a: 0;
+  --tc-halo1-a: 0; --tc-halo2-a: 0; --tc-halo3-a: 0; --tc-card-a: 1;
 }
 
-/* ===== Temas claros con acento de color (superficie clara + texto oscuro + acento profundo, legible sobre blanco) ===== */
-:root[data-theme='claro-azul'] {
+/* ===== Temas claros con acento de color ===== */
+:root[data-theme='claro-azul'], :root[data-theme='claro-verde'], :root[data-theme='claro-rosa'],
+:root[data-theme='claro-purpura'], :root[data-theme='claro-naranja'] {
   color-scheme: light;
-  --tc-dark: 242 246 251; --tc-card: 255 255 255; --tc-card2: 235 241 249; --tc-border: 217 226 238;
-  --tc-gold: 37 99 235; --tc-gold-soft: 96 145 240; --tc-gold-deep: 29 78 200;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
-  --tc-text: 22 31 46; --tc-muted: 90 106 130;
-  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
-  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
-  --tc-scroll: 203 209 218; --tc-scroll-hover: 176 184 196;
-  --tc-halo1: 37 99 235; --tc-halo2: 20 155 110; --tc-halo1-a: 0.05; --tc-halo2-a: 0.035;
+  --tc-card: 255 255 255; --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
+  --tc-warn: 180 83 9; --tc-violet: 124 58 237; --tc-scroll: 210 204 200;
+  --tc-halo1-a: 0.16; --tc-halo2-a: 0.06; --tc-halo3-a: 0.10; --tc-card-a: 0.86; --tc-brillo: 255 255 255;
 }
-:root[data-theme='claro-verde'] {
-  color-scheme: light;
-  --tc-dark: 243 248 244; --tc-card: 255 255 255; --tc-card2: 236 244 238; --tc-border: 216 231 221;
-  --tc-gold: 21 128 61; --tc-gold-soft: 34 160 82; --tc-gold-deep: 15 100 48;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 21 128 61;
-  --tc-text: 24 34 28; --tc-muted: 92 112 100;
-  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
-  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
-  --tc-scroll: 203 214 206; --tc-scroll-hover: 176 190 180;
-  --tc-halo1: 21 128 61; --tc-halo2: 37 99 235; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
-}
-:root[data-theme='claro-rosa'] {
-  color-scheme: light;
-  --tc-dark: 251 244 248; --tc-card: 255 255 255; --tc-card2: 249 236 242; --tc-border: 238 217 227;
-  --tc-gold: 200 29 104; --tc-gold-soft: 224 74 142; --tc-gold-deep: 165 22 85;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
-  --tc-text: 40 26 34; --tc-muted: 122 96 108;
-  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
-  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
-  --tc-scroll: 214 203 209; --tc-scroll-hover: 190 176 183;
-  --tc-halo1: 200 29 104; --tc-halo2: 124 58 237; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
-}
-:root[data-theme='claro-purpura'] {
-  color-scheme: light;
-  --tc-dark: 247 245 252; --tc-card: 255 255 255; --tc-card2: 240 236 249; --tc-border: 226 219 240;
-  --tc-gold: 124 58 237; --tc-gold-soft: 155 100 245; --tc-gold-deep: 100 45 200;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
-  --tc-text: 30 26 44; --tc-muted: 104 96 128;
-  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
-  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
-  --tc-scroll: 209 203 218; --tc-scroll-hover: 184 176 196;
-  --tc-halo1: 124 58 237; --tc-halo2: 200 29 104; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
-}
-:root[data-theme='claro-naranja'] {
-  color-scheme: light;
-  --tc-dark: 251 246 241; --tc-card: 255 255 255; --tc-card2: 249 240 233; --tc-border: 238 226 214;
-  --tc-gold: 194 65 12; --tc-gold-soft: 224 100 40; --tc-gold-deep: 160 52 8;
-  --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
-  --tc-text: 40 30 22; --tc-muted: 120 104 92;
-  --tc-warn: 180 83 9;      /* ámbar profundo, legible sobre blanco */
-  --tc-violet: 124 58 237;  /* morado profundo, legible sobre blanco */
-  --tc-scroll: 214 206 199; --tc-scroll-hover: 190 180 172;
-  --tc-halo1: 194 65 12; --tc-halo2: 20 155 110; --tc-halo1-a: 0.05; --tc-halo2-a: 0.03;
-}
+:root[data-theme='claro-azul']    { --tc-dark: 242 246 251; --tc-card2: 235 241 249; --tc-border: 214 224 238; --tc-gold: 37 99 235;  --tc-gold-soft: 96 145 240; --tc-gold-deep: 29 78 200;  --tc-azul: 244 150 60;  --tc-text: 22 31 46; --tc-muted: 90 106 130; --tc-scroll-hover: 37 99 235;  --tc-halo1: 60 120 250; --tc-halo2: 20 155 110; --tc-halo3: 140 180 255; }
+:root[data-theme='claro-verde']   { --tc-dark: 243 248 244; --tc-card2: 236 244 238; --tc-border: 212 229 218; --tc-gold: 21 128 61;  --tc-gold-soft: 34 160 82;  --tc-gold-deep: 15 100 48;  --tc-azul: 37 99 235;   --tc-text: 24 34 28; --tc-muted: 92 112 100; --tc-scroll-hover: 21 128 61;  --tc-halo1: 40 170 100; --tc-halo2: 37 99 235;  --tc-halo3: 120 220 160; }
+:root[data-theme='claro-rosa']    { --tc-dark: 251 244 248; --tc-card2: 249 236 242; --tc-border: 236 214 226; --tc-gold: 200 29 104; --tc-gold-soft: 224 74 142; --tc-gold-deep: 165 22 85;  --tc-azul: 124 58 237;  --tc-text: 40 26 34; --tc-muted: 122 96 108; --tc-scroll-hover: 200 29 104; --tc-halo1: 230 80 150; --tc-halo2: 124 58 237; --tc-halo3: 255 170 210; }
+:root[data-theme='claro-purpura'] { --tc-dark: 247 245 252; --tc-card2: 240 236 249; --tc-border: 224 216 240; --tc-gold: 124 58 237; --tc-gold-soft: 155 100 245; --tc-gold-deep: 100 45 200; --tc-azul: 200 29 104;  --tc-text: 30 26 44; --tc-muted: 104 96 128; --tc-scroll-hover: 124 58 237; --tc-halo1: 140 90 250; --tc-halo2: 200 29 104; --tc-halo3: 190 170 255; }
+:root[data-theme='claro-naranja'] { --tc-dark: 251 246 241; --tc-card2: 249 240 233; --tc-border: 236 222 210; --tc-gold: 194 65 12;  --tc-gold-soft: 224 100 40; --tc-gold-deep: 160 52 8;   --tc-azul: 45 100 230;  --tc-text: 40 30 22; --tc-muted: 120 104 92; --tc-scroll-hover: 194 65 12;  --tc-halo1: 240 120 40; --tc-halo2: 20 155 110; --tc-halo3: 255 190 110; --tc-halo1-a: 0.22; }
 
-/* ===== Base ===== */
-body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+/* ============================================================
+   BASE
+   ============================================================ */
+html { font-size: 15px; }
+body {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+}
+h1, h2, h3, .font-bold, .font-semibold { letter-spacing: -0.02em; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
 
-.app-bg {
+/* EL FONDO. Tres focos de luz sobre negro cálido. Va en una capa fija detrás de
+   todo para que el resplandor no se desplace al hacer scroll y las superficies
+   de cristal lo dejen entrever. */
+.app-bg { background: rgb(var(--tc-dark)); position: relative; }
+.app-bg::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at -10% -10%, rgb(var(--tc-halo1) / var(--tc-halo1-a)), transparent 60%),
-    radial-gradient(50rem 40rem at 110% 0%, rgb(var(--tc-halo2) / var(--tc-halo2-a)), transparent 55%),
+    radial-gradient(75rem 55rem at -14% 18%,  rgb(var(--tc-halo1) / var(--tc-halo1-a)), transparent 62%),
+    radial-gradient(42rem 34rem at 8% 100%,   rgb(var(--tc-halo3) / var(--tc-halo3-a)), transparent 62%),
+    radial-gradient(60rem 48rem at 108% 96%,  rgb(var(--tc-halo2) / var(--tc-halo2-a)), transparent 62%),
     rgb(var(--tc-dark));
 }
+/* Un grano finísimo sobre el fondo: quita el aspecto de plástico de los degradados. */
+.app-bg::after {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
 
+/* ============================================================
+   SUPERFICIES DE CRISTAL — todas las tarjetas de la app, de golpe
+   ============================================================
+   Tailwind (CDN) pinta sus utilidades DESPUÉS de esta hoja, así que para ganarle
+   hay que subir la especificidad: por eso "body .clase". Se toca el aspecto de
+   la superficie, no su geometría, y las vistas no se enteran. */
+body .bg-telecab-card {
+  background-color: rgb(var(--tc-card) / var(--tc-card-a));
+  box-shadow: inset 0 1px 0 rgb(var(--tc-brillo) / .05), 0 10px 30px -18px rgb(0 0 0 / .6);
+}
+body .bg-telecab-card2 { background-color: rgb(var(--tc-card2) / .85); }
+body .border-telecab-border { border-color: rgb(var(--tc-border) / .75); }
+body .rounded-2xl { border-radius: 1.25rem; }
+body .rounded-xl  { border-radius: .9rem; }
+body .shadow-soft { box-shadow: inset 0 1px 0 rgb(var(--tc-brillo) / .06), 0 20px 50px -24px rgb(0 0 0 / .7); }
+
+/* El menú y la barra superior sí son cristal de verdad: hay poco y se nota. */
+#menu-panel {
+  background-color: rgb(var(--tc-dark) / .58) !important;
+  border-right-color: rgb(var(--tc-brillo) / .06) !important;
+  backdrop-filter: blur(22px) saturate(1.15);
+}
+body > div > div > header.sticky {
+  background-color: rgb(var(--tc-dark) / .55) !important;
+  border-bottom-color: rgb(var(--tc-brillo) / .06) !important;
+  backdrop-filter: blur(18px) saturate(1.15);
+}
+
+/* ============================================================
+   MENÚ LATERAL
+   ============================================================ */
+#menu-panel nav a, #menu-panel nav .grupo-btn { border-radius: .8rem; }
+#menu-panel nav a:hover, #menu-panel nav .grupo-btn:hover { background-color: rgb(var(--tc-brillo) / .05) !important; }
+/* El ítem activo es una pastilla llena con el ámbar de la marca, no una barra. */
+#menu .nav-item.activo {
+  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep))) !important;
+  color: rgb(var(--tc-dark)) !important;
+  box-shadow: 0 10px 26px -10px rgb(var(--tc-gold) / .75), inset 0 1px 0 rgb(255 255 255 / .25);
+  font-weight: 600;
+}
+#menu .nav-item.activo i { color: rgb(var(--tc-dark)) !important; opacity: .85; }
+#menu .nav-item.activo::before { display: none; }
+#menu-panel .grupo-items { border-left-color: rgb(var(--tc-brillo) / .08) !important; }
+#menu-panel > a:first-child { border-bottom-color: rgb(var(--tc-brillo) / .06) !important; }
+#menu-panel > div:last-child { border-top-color: rgb(var(--tc-brillo) / .06) !important; }
+
+/* ============================================================
+   BOTONES, CAMPOS, PASTILLAS
+   ============================================================ */
+/* Botón principal (ámbar): degradado, brillo arriba, sombra de color. */
+body button.bg-telecab-gold, body a.bg-telecab-gold, body .btn-primario {
+  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)));
+  color: rgb(var(--tc-dark)) !important;
+  box-shadow: 0 10px 24px -10px rgb(var(--tc-gold) / .7), inset 0 1px 0 rgb(255 255 255 / .28);
+  border: 0;
+  transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
+}
+body button.bg-telecab-gold:hover, body a.bg-telecab-gold:hover { filter: brightness(1.06); transform: translateY(-1px); }
+body button.bg-telecab-gold:active { transform: translateY(0) scale(.985); }
+/* Botón de peligro. */
+body button.bg-telecab-red { box-shadow: 0 10px 24px -12px rgb(var(--tc-red) / .6); }
+/* Botones secundarios (cristal): los que llevan borde y fondo de tarjeta. */
+body button.border.bg-telecab-card, body a.border.bg-telecab-card, body button.border-telecab-border.bg-telecab-card {
+  background-color: rgb(var(--tc-brillo) / .04);
+  border-color: rgb(var(--tc-brillo) / .09);
+  transition: background-color .15s ease, border-color .15s ease, transform .12s ease;
+}
+body button.border.bg-telecab-card:hover, body a.border.bg-telecab-card:hover {
+  background-color: rgb(var(--tc-brillo) / .08);
+  border-color: rgb(var(--tc-gold) / .45);
+}
+body button:active:not(:disabled) { transform: scale(.985); }
+
+/* Campos: hundidos en el cristal, con el filo ámbar al enfocar. */
+body input.bg-telecab-dark, body select.bg-telecab-dark, body textarea.bg-telecab-dark, .inp {
+  background-color: rgb(var(--tc-dark) / .55) !important;
+  border-color: rgb(var(--tc-brillo) / .09) !important;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / .25);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+body input.bg-telecab-dark:focus, body select.bg-telecab-dark:focus, body textarea.bg-telecab-dark:focus, .inp:focus {
+  outline: none;
+  border-color: rgb(var(--tc-gold) / .7) !important;
+  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18), inset 0 1px 2px rgb(0 0 0 / .25);
+}
+body select option { background-color: rgb(var(--tc-card)); color: rgb(var(--tc-text)); }
+::placeholder { color: rgb(var(--tc-muted) / .8); }
+
+/* Las pastillas de estado (chips): un poco más redondas y con su filo. */
+body span.rounded-md.text-xs.font-medium { border-radius: .55rem; padding-top: .2rem; padding-bottom: .2rem; }
+
+/* ============================================================
+   TABLAS
+   ============================================================ */
+body thead tr { border-bottom-color: rgb(var(--tc-brillo) / .08) !important; }
+body thead th { font-weight: 600; letter-spacing: .06em; color: rgb(var(--tc-muted)); }
+body tbody tr { transition: background-color .12s ease; }
+body tbody tr:hover { background-color: rgb(var(--tc-gold) / .05); }
+body tbody tr.border-b { border-bottom-color: rgb(var(--tc-brillo) / .05) !important; }
+/* Cabecera pegajosa de listas largas, con cristal detrás. */
+body thead.sticky th, body th.sticky, body .sticky.top-0.bg-telecab-dark {
+  backdrop-filter: blur(12px);
+}
+
+/* ============================================================
+   TARJETAS DE COLOR (KPI destacados)
+   ============================================================
+   Cuatro degradados cálidos para los números que mandan. Se aplican a mano en
+   las pantallas de dirección; el texto va siempre en blanco cálido. */
+.tarjeta-grad { color: rgb(255 250 245) !important; border: 0 !important; position: relative; overflow: hidden; }
+.tarjeta-grad::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(28rem 12rem at 100% -20%, rgb(255 255 255 / .22), transparent 60%);
+}
+.tarjeta-grad * { color: inherit !important; }
+.tarjeta-grad .text-telecab-muted, .tarjeta-grad .text-\[11px\] { opacity: .82; }
+.tarjeta-grad-a { background: linear-gradient(135deg, #8a7a3e, #5c5a2a) !important; }   /* oliva */
+.tarjeta-grad-b { background: linear-gradient(135deg, #7c5cf0, #4a34b8) !important; }   /* índigo */
+.tarjeta-grad-c { background: linear-gradient(135deg, #e0559c, #b52c73) !important; }   /* magenta */
+.tarjeta-grad-d { background: linear-gradient(135deg, #f0a34a, #d9702a) !important; }   /* ámbar */
+.tarjeta-grad .bg-telecab-card2 { background-color: rgb(255 255 255 / .22) !important; }
+.tarjeta-grad .bg-telecab-gold, .tarjeta-grad .bg-telecab-green { background: rgb(255 255 255 / .9) !important; }
+
+/* ============================================================
+   MARCA
+   ============================================================ */
 .brand-ring {
   background: conic-gradient(from 180deg,
     rgb(var(--tc-gold-deep)), rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)),
     rgb(var(--tc-gold)), rgb(var(--tc-gold-deep)));
   padding: 2px; border-radius: 9999px;
-  box-shadow: 0 0 24px -6px rgb(var(--tc-gold) / 0.5);
+  box-shadow: 0 0 28px -6px rgb(var(--tc-gold) / .55);
 }
 .gold-text {
   background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)));
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-
-/* Barra dorada del ítem activo del menú */
 .nav-item { position: relative; }
-.nav-item.activo::before {
-  content: ''; position: absolute; left: 0; top: 20%; bottom: 20%;
-  width: 3px; border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)));
-}
 
-::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgb(var(--tc-scroll)); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgb(var(--tc-scroll-hover)); }
 
-@keyframes tc-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-main > * { animation: tc-fade-in .3s ease; }
-@media (prefers-reduced-motion: reduce) { main > * { animation: none; } }
+@keyframes tc-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+main > * { animation: tc-fade-in .35s cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-reduced-motion: reduce) { main > *, .dialogo, .dialogo .dialogo-caja, .fp-pop { animation: none !important; } }
 
 /* ============================================================
    Componentes compartidos (sustituyen los <style> por vista)
    ============================================================ */
-
-/* Campo de formulario estándar */
 .inp {
   width: 100%;
   background: rgb(var(--tc-dark));
   border: 1px solid rgb(var(--tc-border));
-  border-radius: 0.75rem;
+  border-radius: 0.8rem;
   padding: 0.5rem 0.75rem;
   color: rgb(var(--tc-text));
-  transition: border-color .15s;
 }
-.inp:focus { outline: none; border-color: rgb(var(--tc-gold)); }
 .inp::placeholder { color: rgb(var(--tc-muted)); }
 
-/* Solo para lectores de pantalla */
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-/* Colores semánticos de ausencia (mismos en ambos temas; leen bien sobre claro y oscuro) */
+/* Colores semánticos de ausencia (mismos en ambos temas) */
 :root {
-  --tc-vac: 59 130 246;      /* azul  · vacaciones */
-  --tc-med: 245 158 11;      /* ámbar · baja médica */
-  --tc-permiso: 168 85 247;  /* morado · permiso */
-  --tc-just: 29 78 216;      /* azul intenso · justificante (J) — distinto del de vacaciones */
+  --tc-vac: 59 130 246;
+  --tc-med: 245 158 11;
+  --tc-permiso: 168 85 247;
+  --tc-just: 29 78 216;
 }
 
-/* Selector de fecha (js-fecha) */
 .fp-pop { animation: fpIn .12s cubic-bezier(.2, .8, .2, 1); }
 @keyframes fpIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
 input.js-fecha { cursor: pointer; }
 input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
 
-/* Zona de subida de documentos (dropzone de Selección) */
 .dz.dz-ok { border-style: solid; border-color: rgb(var(--tc-green) / .5); }
 .dz:hover { border-color: rgb(var(--tc-gold) / .5); }
 
 /* ══════════════════════════════════════════════════════════════
-   MENÚ LATERAL COMPACTO
-   ══════════════════════════════════════════════════════════════
-   El menú ocupa 16rem, que en portátiles se come un tercio del ancho útil.
-   Contraído se queda en 4.5rem: solo los iconos.
-
-   La gracia está en que contraído NO estorba: al pasar el ratón se despliega
-   POR ENCIMA del contenido, sin moverlo. Nada de layout que salta mientras
-   estás leyendo una tabla. Por eso el panel va posicionado y el hueco que
-   reserva el menú en la fila no cambia.
-
-   El estado vive en <html data-menu="corto">, igual que el tema, y se aplica
-   antes de pintar para que no haya parpadeo al cargar. */
-
+   MENÚ LATERAL COMPACTO (sin cambios de comportamiento)
+   ══════════════════════════════════════════════════════════════ */
 @media (min-width: 1024px) {
   #menu-panel {
-    position: absolute;
-    top: 0; left: 0;
-    height: 100vh;
-    width: 16rem;
-    transition: width .18s ease;
-    overflow: hidden;
-    z-index: 41;
+    position: absolute; top: 0; left: 0; height: 100vh; width: 16rem;
+    transition: width .18s ease; overflow: hidden; z-index: 41;
   }
-
   :root[data-menu="corto"] #menu,
   :root[data-menu="corto"] #menu-panel { width: 4.5rem; }
-
-  /* Desplegado temporal: con el ratón encima o con el foco dentro (teclado). */
   :root[data-menu="corto"] #menu:hover #menu-panel,
   :root[data-menu="corto"] #menu:focus-within #menu-panel {
     width: 16rem;
-    box-shadow: 0 12px 40px -8px rgba(0, 0, 0, .55);
+    box-shadow: 0 24px 60px -16px rgb(0 0 0 / .7);
   }
-
-  /* Los textos se desvanecen; el icono se queda en su columna. Se buscan por
-     estructura y no por una clase puesta a mano: asi un modulo nuevo que se
-     anada manana al menu se comporta bien sin que nadie se acuerde de esto. */
   #menu-panel span, #menu-panel p, #menu-panel .grupo-chev { transition: opacity .12s ease; }
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel span:not(#nav-pend-badge),
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel p,
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel .grupo-chev {
-    opacity: 0;
-    pointer-events: none;
+    opacity: 0; pointer-events: none;
   }
-
-  /* El contador de pendientes es lo único que sigue vivo contraído: se sube a
-     la esquina del icono, como el punto de una aplicación de móvil. */
   #menu-panel nav a { position: relative; }
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #nav-pend-badge {
-    position: absolute;
-    top: .35rem;
-    left: 1.9rem;
-    opacity: 1;
-    pointer-events: none;
+    position: absolute; top: .35rem; left: 1.9rem; opacity: 1; pointer-events: none;
   }
-
-  /* Contraído no se abren departamentos: no habría sitio donde leerlos. Se ven
-     en cuanto el ratón despliega el panel. */
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) .grupo-items { display: none; }
 }
-
-/* El botón de contraer solo tiene sentido donde el menú está fijo. */
 #menu-corto { display: none; }
 @media (min-width: 1024px) { #menu-corto { display: inline-flex; } }
 
-/* Diálogos (public/assets/js/dialogo.js) */
-.dialogo { animation: dlgFondo .12s ease-out; }
-.dialogo .dialogo-caja { animation: dlgCaja .16s cubic-bezier(.2, .9, .3, 1); }
+/* Diálogos (public/assets/js/dialogo.js): cristal con más blur. */
+.dialogo { animation: dlgFondo .12s ease-out; backdrop-filter: blur(10px); }
+.dialogo .dialogo-caja { animation: dlgCaja .18s cubic-bezier(.2, .9, .3, 1); }
 .dialogo.dialogo-saliendo { animation: dlgFondo .12s ease-in reverse; }
 @keyframes dlgFondo { from { opacity: 0; } to { opacity: 1; } }
-@keyframes dlgCaja {
-  from { opacity: 0; transform: translateY(8px) scale(.97); }
-  to   { opacity: 1; transform: none; }
-}
-/* Quien tenga el movimiento reducido activado no ve animaciones. */
-@media (prefers-reduced-motion: reduce) {
-  .dialogo, .dialogo .dialogo-caja { animation: none; }
-}
+@keyframes dlgCaja { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }

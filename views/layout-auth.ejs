@@ -19,20 +19,34 @@
   <link rel="stylesheet" href="<%= typeof est === 'function' ? est('/assets/css/telecab.css') : '/assets/css/telecab.css' %>">
 
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script>
     tailwind.config = {
       theme: { extend: {
-        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        fontFamily: { sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'] },
         colors: { 'telecab': {
           'dark': 'rgb(var(--tc-dark) / <alpha-value>)', 'card': 'rgb(var(--tc-card) / <alpha-value>)',
           'card2': 'rgb(var(--tc-card2) / <alpha-value>)', 'border': 'rgb(var(--tc-border) / <alpha-value>)',
           'gold': 'rgb(var(--tc-gold) / <alpha-value>)', 'gold-soft': 'rgb(var(--tc-gold-soft) / <alpha-value>)',
           'gold-deep': 'rgb(var(--tc-gold-deep) / <alpha-value>)', 'red': 'rgb(var(--tc-red) / <alpha-value>)',
           'green': 'rgb(var(--tc-green) / <alpha-value>)', 'text': 'rgb(var(--tc-text) / <alpha-value>)',
-          'muted': 'rgb(var(--tc-muted) / <alpha-value>)'
-        } },
+          'muted': 'rgb(var(--tc-muted) / <alpha-value>)', 'azul': 'rgb(var(--tc-azul) / <alpha-value>)'
+        },
+        // Los colores crudos de Tailwind que usan las vistas se redirigen a los
+        // tokens: text-red-500 ES el rojo de la marca, bg-emerald-500/15 ES el
+        // verde de la marca al 15 %. Cambiar el tema los cambia a todos.
+        'red':     { 400: 'rgb(var(--tc-red) / <alpha-value>)',    500: 'rgb(var(--tc-red) / <alpha-value>)',    600: 'rgb(var(--tc-red-hover) / <alpha-value>)' },
+        'emerald': { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
+        'green':   { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
+        'amber':   { 400: 'rgb(var(--tc-gold-soft) / <alpha-value>)', 500: 'rgb(var(--tc-gold) / <alpha-value>)', 600: 'rgb(var(--tc-gold-deep) / <alpha-value>)' },
+        'orange':  { 400: 'rgb(var(--tc-gold-soft) / <alpha-value>)', 500: 'rgb(var(--tc-gold) / <alpha-value>)' },
+        'yellow':  { 400: 'rgb(var(--tc-warn) / <alpha-value>)',   500: 'rgb(var(--tc-warn) / <alpha-value>)' },
+        'sky':     { 400: 'rgb(var(--tc-azul) / <alpha-value>)',   500: 'rgb(var(--tc-azul) / <alpha-value>)' },
+        'blue':    { 400: 'rgb(var(--tc-azul) / <alpha-value>)',   500: 'rgb(var(--tc-azul) / <alpha-value>)',   600: 'rgb(var(--tc-azul) / <alpha-value>)' },
+        'violet':  { 400: 'rgb(var(--tc-violet) / <alpha-value>)', 500: 'rgb(var(--tc-violet) / <alpha-value>)' },
+        'purple':  { 400: 'rgb(var(--tc-violet) / <alpha-value>)', 500: 'rgb(var(--tc-violet) / <alpha-value>)' },
+        },
         boxShadow: { 'soft': '0 1px 3px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5)', 'gold': '0 4px 20px -6px rgb(var(--tc-gold) / .35)' }
       } }
     }
@@ -41,8 +55,9 @@
 <body class="app-bg min-h-screen flex items-center justify-center p-4 font-sans text-telecab-text">
   <div class="w-full max-w-sm">
     <div class="flex flex-col items-center mb-6">
-      <img src="/assets/logo-64.png" class="w-14 h-14 mb-2" alt="Telecab" onerror="this.style.display='none'">
-      <span class="text-telecab-gold font-semibold tracking-wide">TELECAB</span>
+      <%- include('partials/logo-video', { tam: 'w-20 h-20' }) %>
+      <span class="mt-3 text-2xl font-extrabold tracking-tight">tele<span class="gold-text">cab</span></span>
+      <span class="text-xs text-telecab-muted">Gestión de flota</span>
     </div>
     <%- body %>
     <p class="text-center text-[11px] text-telecab-muted mt-6">Acceso restringido · plataforma interna</p>

@@ -43,14 +43,14 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
   <script>
     tailwind.config = {
       theme: {
         extend: {
-          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          fontFamily: { sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'] },
           colors: {
             // Apuntan a los tokens CSS (public/assets/css/telecab.css). El
             // <alpha-value> conserva los modificadores de opacidad (bg-…/15,
@@ -68,13 +68,27 @@
               'green': 'rgb(var(--tc-green) / <alpha-value>)',
               'warn': 'rgb(var(--tc-warn) / <alpha-value>)',
               'violet': 'rgb(var(--tc-violet) / <alpha-value>)',
+              'azul': 'rgb(var(--tc-azul) / <alpha-value>)',
               'text': 'rgb(var(--tc-text) / <alpha-value>)',
               'muted': 'rgb(var(--tc-muted) / <alpha-value>)'
-            }
+            },
+            // Los colores crudos de Tailwind que usan las vistas se redirigen a los
+            // tokens: text-red-500 ES el rojo de la marca, bg-emerald-500/15 ES el
+            // verde de la marca al 15 %. Cambiar el tema los cambia a todos.
+            'red':     { 400: 'rgb(var(--tc-red) / <alpha-value>)',    500: 'rgb(var(--tc-red) / <alpha-value>)',    600: 'rgb(var(--tc-red-hover) / <alpha-value>)' },
+            'emerald': { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
+            'green':   { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
+            'amber':   { 400: 'rgb(var(--tc-gold-soft) / <alpha-value>)', 500: 'rgb(var(--tc-gold) / <alpha-value>)', 600: 'rgb(var(--tc-gold-deep) / <alpha-value>)' },
+            'orange':  { 400: 'rgb(var(--tc-gold-soft) / <alpha-value>)', 500: 'rgb(var(--tc-gold) / <alpha-value>)' },
+            'yellow':  { 400: 'rgb(var(--tc-warn) / <alpha-value>)',   500: 'rgb(var(--tc-warn) / <alpha-value>)' },
+            'sky':     { 400: 'rgb(var(--tc-azul) / <alpha-value>)',   500: 'rgb(var(--tc-azul) / <alpha-value>)' },
+            'blue':    { 400: 'rgb(var(--tc-azul) / <alpha-value>)',   500: 'rgb(var(--tc-azul) / <alpha-value>)',   600: 'rgb(var(--tc-azul) / <alpha-value>)' },
+            'violet':  { 400: 'rgb(var(--tc-violet) / <alpha-value>)', 500: 'rgb(var(--tc-violet) / <alpha-value>)' },
+            'purple':  { 400: 'rgb(var(--tc-violet) / <alpha-value>)', 500: 'rgb(var(--tc-violet) / <alpha-value>)' },
           },
           boxShadow: {
             'soft': '0 1px 3px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5)',
-            'gold': '0 4px 20px -6px rgb(var(--tc-gold) / .35)'
+            'gold': '0 10px 26px -10px rgb(var(--tc-gold) / .6)'
           }
         }
       }
@@ -736,5 +750,48 @@
 })();
 </script>
 
+
+<!-- ══════════ Gráficos: barras con degradado (la firma visual) ══════════ -->
+<!-- Se registra una sola vez aquí, después del cuerpo (que es quien carga Chart.js), y
+     vale para todos los módulos: cada barra pasa de su color arriba a casi transparente
+     abajo, como luz que se apaga. No hay que tocar ningún gráfico. -->
+<script>
+(function () {
+  if (!window.Chart) return;
+  // De "rgb(r g b / a)", "rgb(r, g, b)", "rgba(...)" o "#rrggbb" a [r, g, b, a].
+  const rgba = c => {
+    if (typeof c !== 'string') return null;
+    let m = c.match(/^#([0-9a-f]{6})$/i);
+    if (m) return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16), 1];
+    m = c.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i);
+    if (!m) return null;
+    let a = m[4] == null ? 1 : (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
+    return [+m[1], +m[2], +m[3], a];
+  };
+  const degradado = (ctx, area, col) => {
+    const c = rgba(col); if (!c || !area) return col;
+    const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    g.addColorStop(0, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + Math.min(1, c[3] + .15) + ')');
+    g.addColorStop(1, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (c[3] * .18) + ')');
+    return g;
+  };
+  Chart.register({
+    id: 'barrasDegradadas',
+    beforeDatasetsUpdate(chart) {
+      const area = chart.chartArea; if (!area) return;
+      chart.data.datasets.forEach((ds, i) => {
+        const tipo = ds.type || chart.config.type;
+        if (tipo !== 'bar' || ds._degradadoAplicado === chart.chartArea.bottom) return;
+        if (ds._colorBase === undefined) ds._colorBase = ds.backgroundColor;
+        const base = ds._colorBase;
+        if (Array.isArray(base)) ds.backgroundColor = base.map(b => degradado(chart.ctx, area, b));
+        else if (typeof base === 'string') ds.backgroundColor = degradado(chart.ctx, area, base);
+        else return;
+        ds._degradadoAplicado = chart.chartArea.bottom;
+      });
+    },
+  });
+})();
+</script>
 </body>
 </html>
