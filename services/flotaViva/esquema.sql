@@ -232,6 +232,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_fv_tramo_abierto
   ON fv_tramo (vehiculo_uuid) WHERE hasta IS NULL;
 CREATE INDEX IF NOT EXISTS idx_fv_tramo_veh ON fv_tramo (vehiculo_uuid, desde DESC);
 CREATE INDEX IF NOT EXISTS idx_fv_tramo_sit ON fv_tramo (situacion, hasta);
+-- La actividad por PERSONA en una ventana de turno barre por tiempo, no por coche:
+-- los indices de arriba (por vehiculo, por situacion) no le sirven.
+CREATE INDEX IF NOT EXISTS idx_fv_tramo_desde ON fv_tramo (desde);
+CREATE INDEX IF NOT EXISTS idx_fv_tramo_cond  ON fv_tramo (conductor_uuid, desde) WHERE conductor_uuid IS NOT NULL;
 
 -- ── Las vueltas, para saber si esto esta vivo ─────────────────────────────
 CREATE TABLE IF NOT EXISTS fv_vuelta (

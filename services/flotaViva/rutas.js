@@ -107,8 +107,9 @@ async function kmPorCoche(dia) {
  *
  * El reparto es por tiempo (asume velocidad uniforme dentro del trayecto): es una
  * aproximación, pero la única defendible sin la traza punto a punto, y para el km
- * total por conductor cuadra. Los tramos desconectados no llevan conductor en
- * BOLT, así que sus km caen en "(sin conductor)": justo lo que hay que mirar.
+ * total por conductor cuadra. OJO: un tramo desconectado SI suele llevar conductor
+ * (el ultimo que iba al volante), asi que sus km se le imputan a esa persona aunque
+ * ya no estuviera trabajando. Por eso "salio" no puede mirar km: mira minutos.
  */
 // Los turnos, IGUAL que la Auditoría flota (mismas variables de entorno para que
 // no se desincronicen): día 05:00→17:00, noche 17:00→05:00 del día siguiente.
@@ -541,8 +542,161 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
   return { dia: String(dia).slice(0, 10), turno, ventana: win, matriculas, reparto, conductores };
 }
 
+
+/**
+ * ACTIVIDAD REAL DE CADA CONDUCTOR EN LA VENTANA DE SU TURNO.
+ *
+ * Es la respuesta a "¿este ha salido hoy o no?", y se hace siguiendo a la PERSONA
+ * (fv_tramo.conductor_uuid), no al coche. Antes se miraba el día operativo entero
+ * (05:00→05:00) y se sumaban los km rodados ESTANDO DESCONECTADO, así que el de
+ * noche que terminó a las 03:51 y dejó el coche rodando hasta las 07:50 aparecía
+ * como "Salió" en el turno de día con 0,0 h y 20,7 km. No salió: eran las sobras
+ * de su noche cruzando el corte de las 05:00.
+ *
+ * Reglas:
+ *   · TRABAJAR = viaje + espera. El descanso se cuenta aparte (estás con el coche
+ *     pero no disponible) y el desconectado no cuenta nada.
+ *   · La ventana se recorta a AHORA: nunca se cuenta futuro. Si el turno todavía
+ *     no ha empezado (la noche a las 09:00), `empezada` sale false y la lista vacía
+ *     — que no es lo mismo que "no ha salido nadie".
+ *   · Los km NO salen de fv_tramo.km_m (el odómetro solo llega a ratos y ensucia
+ *     el tramo que estuviera abierto) sino de fv_ruta, la fuente que cuadró con el
+ *     informe de BOLT. Se separan en los de trabajo y los de fuera de BOLT.
+ *
+ * Devuelve { dia, turno, ini, fin, finPlan, empezada, porUuid: Map(uuid → actividad) }.
+ */
+async function actividadPorConductor(dia, turno = 'dia') {
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.dia;
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
+     ),
+     w AS (SELECT ini, LEAST(fin_plan, now()) AS fin, fin_plan FROM v),
+     tr AS (
+       SELECT t.conductor_uuid                                   AS uuid,
+              veh.matricula,
+              t.situacion,
+              t.hasta IS NULL                                    AS abierto,
+              GREATEST(t.desde, w.ini)                           AS d,
+              LEAST(COALESCE(t.hasta, now()), w.fin)             AS h
+         FROM fv_tramo t
+         CROSS JOIN w
+         JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
+        WHERE t.conductor_uuid IS NOT NULL
+          AND w.fin > w.ini
+          AND t.desde < w.fin
+          AND COALESCE(t.hasta, now()) > w.ini
+     ),
+     p AS (
+       SELECT uuid, matricula, situacion, abierto, d, h,
+              EXTRACT(EPOCH FROM (h - d))                        AS seg
+         FROM tr
+     )
+     SELECT p.uuid, p.matricula,
+            co.nombre, co.telefono,
+            floor(COALESCE(sum(p.seg) FILTER (WHERE p.situacion IN ('viaje','espera')), 0) / 60)::int    AS minutos,
+            floor(COALESCE(sum(p.seg) FILTER (WHERE p.situacion = 'descanso'), 0) / 60)::int             AS min_descanso,
+            floor(COALESCE(sum(p.seg) FILTER (WHERE p.situacion = 'desconectado'), 0) / 60)::int         AS min_desconectado,
+            min(p.d) FILTER (WHERE p.situacion IN ('viaje','espera'))                                    AS primera,
+            max(p.h) FILTER (WHERE p.situacion IN ('viaje','espera'))                                    AS ultima,
+            bool_or(p.abierto AND p.situacion IN ('viaje','espera','descanso'))                          AS conectado_ahora,
+            max(p.situacion) FILTER (WHERE p.abierto)                                                    AS situacion_ahora
+       FROM p
+       LEFT JOIN fv_conductor co ON co.uuid = p.uuid
+      GROUP BY p.uuid, p.matricula, co.nombre, co.telefono`,
+    [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+
+  // ── Los km, de fv_ruta (los trayectos de Mapon), NO de fv_tramo.km_m ─────────
+  // km_m es el salto de odómetro dentro del tramo, y el odómetro solo llega a
+  // ratos: hoy solo 188 de 3.551 tramos traen km y el 43 % no tiene ni lectura.
+  // El resultado es que los km caen en el tramo que estuviera abierto cuando
+  // Mapon habló — 11,1 km imputados a un descanso de 12 minutos. fv_ruta sí es
+  // fiable: es la fuente que cuadró con el informe de BOLT al 0,03 %.
+  // Un trayecto cuenta en la ventana donde EMPIEZA, igual que en el resto del ERP.
+  const rk = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
+     ),
+     w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
+     solape AS (
+       SELECT t.conductor_uuid AS uuid, veh.matricula, t.situacion,
+              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
+         FROM fv_ruta r
+         CROSS JOIN w
+         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
+         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
+                             AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
+          AND w.fin > w.ini
+          AND r.inicio >= w.ini AND r.inicio < w.fin
+          AND t.conductor_uuid IS NOT NULL
+     )
+     SELECT uuid, matricula,
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion IN ('viaje','espera')), 0)::numeric / 1000.0, 1)     AS km,
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera
+       FROM solape GROUP BY uuid, matricula`,
+    [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+
+  // Una fila por (conductor, coche): se pliega en JS para dar el total de la persona
+  // y la lista de coches que llevó, el de más minutos primero — que es "su coche".
+  const porUuid = new Map();
+  r.rows.forEach(x => {
+    if (!porUuid.has(x.uuid)) {
+      porUuid.set(x.uuid, {
+        uuid: x.uuid, nombre: x.nombre || '', telefono: x.telefono || '',
+        minutos: 0, minDescanso: 0, minDesconectado: 0, km: 0, kmFuera: 0,
+        primera: null, ultima: null, conectadoAhora: false, situacionAhora: null,
+        _mats: [],
+      });
+    }
+    const a = porUuid.get(x.uuid);
+    a.minutos += Number(x.minutos) || 0;
+    a.minDescanso += Number(x.min_descanso) || 0;
+    a.minDesconectado += Number(x.min_desconectado) || 0;
+    if (x.primera && (!a.primera || x.primera < a.primera)) a.primera = x.primera;
+    if (x.ultima && (!a.ultima || x.ultima > a.ultima)) a.ultima = x.ultima;
+    if (x.conectado_ahora) { a.conectadoAhora = true; a.situacionAhora = x.situacion_ahora || a.situacionAhora; }
+    if (x.matricula) a._mats.push({ matricula: x.matricula, minutos: Number(x.minutos) || 0 });
+  });
+
+  // Los km encima de lo ya montado. Un conductor puede tener km de un coche del
+  // que no quedo tramo dentro de la ventana: entonces se crea su ficha igual.
+  rk.rows.forEach(x => {
+    if (!porUuid.has(x.uuid)) return;
+    const a = porUuid.get(x.uuid);
+    a.km = Math.round((a.km + (Number(x.km) || 0)) * 10) / 10;
+    a.kmFuera = Math.round((a.kmFuera + (Number(x.km_fuera) || 0)) * 10) / 10;
+  });
+  porUuid.forEach(a => {
+    a._mats.sort((p, q) => q.minutos - p.minutos);
+    a.matriculas = a._mats.map(m => m.matricula);
+    a.matricula = a.matriculas[0] || null;
+    delete a._mats;
+  });
+
+  // La ventana, para que quien pinte sepa si el turno ya empezó. La noche a las
+  // 09:00 no es "no ha salido nadie": es que todavía no le toca a nadie.
+  const w = await db.consulta(
+    `SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
+            (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan,
+            now() AS ahora`,
+    [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+  const { ini, fin_plan: finPlan, ahora } = w.rows[0];
+  return {
+    dia: String(dia).slice(0, 10), turno,
+    ini, finPlan, fin: ahora < finPlan ? ahora : finPlan,
+    empezada: ahora > ini,
+    terminada: ahora >= finPlan,
+    porUuid,
+  };
+}
+
 module.exports = {
   ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
   horasConectadasPorConductor, horasConectadoTotal, matriculasBoltPorConductor,
-  bucketsTurno, sankeyFlota, diagnosticoKm,
+  bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, TURNOS,
 };

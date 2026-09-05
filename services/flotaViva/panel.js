@@ -182,7 +182,7 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
             i.justificada_at, i.justificada_por, i.motivo, i.llamada_clave,
             i.gestion, g.etiqueta AS gestion_etiqueta, g.color AS gestion_color,
             EXTRACT(EPOCH FROM (COALESCE(i.resuelta_at, now()) - i.abierta_at))::bigint AS segundos,
-            co.nombre AS conductor, co.telefono,
+            i.conductor_uuid, co.nombre AS conductor, co.telefono,
             sg.n AS seg_n, sg.ult_quien AS seg_quien, sg.ult_at AS seg_at
        FROM fv_incidencia i
        JOIN fv_cat_incidencia c ON c.codigo = i.tipo
@@ -208,6 +208,9 @@ async function incidencias({ dia, franja, incluirJustificadas = false } = {}) {
     abierta: x.abierta_at, resuelta: x.resuelta_at, sigue: !x.resuelta_at,
     duracion: duracion(x.segundos),
     conductor: x.conductor || '', telefono: x.telefono || '',
+    // QUIÉN la provocó, por identificador. Sin esto el aviso solo se puede colgar
+    // de la matrícula, y los dos compañeros del coche veían los mismos avisos.
+    conductorUuid: x.conductor_uuid || '',
     justificada: !!x.justificada_at, justificadaPor: x.justificada_por || '',
     justificadaAt: x.justificada_at,
     motivo: x.motivo || '',

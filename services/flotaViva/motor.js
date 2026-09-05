@@ -71,6 +71,21 @@ async function apuntarDesconocido(estado) {
  */
 async function vigiladas() {
   try {
+    // Y se APUNTAN en fv_matricula las que falten. No es cosmética: la vista
+    // fv_ahora (el panel EN DIRECTO de /control) filtra por fv_matricula.activa,
+    // así que un coche de la flota que no esté apuntado se ingiere pero NO SE VE.
+    // Con el 3035LTX pasaba justo eso: rodaba con conductores y el panel no lo
+    // enseñaba. Apuntarlo aquí hace que lo que se vigila y lo que se ve salgan
+    // del mismo sitio: la flota de verdad. Desactivar una matrícula a mano
+    // (activa = false) la sigue sacando: esto solo da de alta lo que no está.
+    await db.consulta(`
+      INSERT INTO fv_matricula (matricula, activa, nota)
+      SELECT v.matricula, TRUE, 'alta automática desde la flota'
+        FROM vehiculo v
+       WHERE v.baja_at IS NULL AND v.matricula IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM fv_matricula m WHERE m.matricula = v.matricula)
+      ON CONFLICT (matricula) DO NOTHING`);
+
     const r = await db.consulta(`
       SELECT matricula FROM (
         SELECT matricula FROM vehiculo WHERE baja_at IS NULL AND matricula IS NOT NULL

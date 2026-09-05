@@ -53,9 +53,12 @@
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
   const horas = min => ((Number(min) || 0) / 60).toFixed(1);
 
-  // "Salió" = ha trabajado hoy: conectado ahora, o con horas/km (aunque ahora esté
-  // desconectado, en descanso). NO es solo "conectado ahora".
-  const salio = f => !!(f.actividad && (f.actividad.conectado || f.actividad.minutos > 0 || f.actividad.km > 0));
+  // EL VEREDICTO LO DA EL SERVIDOR (directo.js salidaDe), que es quien sabe la
+  // ventana de cada turno. Aquí solo se pinta. Antes esta fórmula estaba duplicada
+  // y contaba los km rodados estando desconectado, así que daba por salido a quien
+  // había terminado su noche a las 03:51 y dejó el coche rodando pasadas las 05:00.
+  const salio = f => f.salida === 'conectado' || f.salida === 'salio';
+  const falta = f => f.salida === 'no_salio';
 
   const TONO = {
     ok:    'bg-emerald-500/15 text-emerald-500',
@@ -90,7 +93,12 @@
       const rojo = t.id === 'nn' && n > 0;
       // Turnos: "salieron X/Y" (X conectados de Y que trabajan hoy). NN: solo el número.
       let num = String(n);
-      if (t.id !== 'nn') num = arr.filter(salio).length + '/' + n;
+      // Un turno que aún no ha empezado no tiene a nadie "sin salir": no le toca a
+      // nadie todavía. Decir "0/61" ahí invita a llamar a 61 personas a las 9 de la
+      // mañana; se dice que está pendiente y ya.
+      const vent = (DATOS && DATOS.ventanas && DATOS.ventanas[t.id]) || null;
+      const sinEmpezar = vent && !vent.empezada;
+      if (t.id !== 'nn') num = sinEmpezar ? String(n) : (arr.filter(salio).length + '/' + n);
       return '<button data-turno="' + t.id + '" class="px-3 py-2 rounded-xl border text-sm flex items-center gap-2 ' +
         (activo ? 'border-telecab-gold bg-telecab-gold/10 text-telecab-text'
                 : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text') + '">' +
@@ -105,7 +113,11 @@
   function filaConductor(f) {
     const a = f.actividad || {};
     const nInc = (f.incidencias || []).length;
-    const mats = ((f.actividad && f.actividad.matriculas) || []).join(', ') || '—';   // EN VIVO: con qué sale hoy
+    // El coche del que hay TRAZA. Si el plan decía otro, se enseñan los dos: el
+    // intercambio de coches entre compañeros pasa a diario y tráfico quiere saberlo.
+    const vivas = ((f.actividad && f.actividad.matriculas) || []);
+    const mats = (vivas.join(', ') || (f.matriculas || []).join(', ') || '—') +
+      (f.cocheCambiado ? ' (plan: ' + (f.matriculas || []).join(', ') + ')' : '');
     return '<div class="dfila border-b border-telecab-border/70" data-mat="' + esc(f.clave) + '" data-cid="' + esc(f.conductorId || '') + '">' +
       '<div class="dcab px-4 py-2.5 cursor-pointer select-none flex flex-wrap items-center gap-x-3 gap-y-1">' +
         '<span class="text-telecab-text font-medium w-52 truncate">' + esc(f.conductor) + '</span>' +
@@ -113,12 +125,18 @@
           (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
           '">' + esc(f.rol) + '</span>' : '') +
         '<span class="font-mono text-xs text-telecab-muted flex-1 min-w-[7rem]" title="Coche(s) con los que sale HOY (en vivo)">' + esc(mats) + '</span>' +
-        (a.conectado ? chip('Conectado', 'ok')
-          : salio(f) ? chip('Salió', 'muted')
-          : chip('No ha salido', 'error')) +
+        (f.salida === 'conectado' ? chip(a.situacion === 'descanso' ? 'En descanso' : 'Conectado', 'ok')
+          : f.salida === 'salio' ? chip('Salió', 'muted')
+          : f.salida === 'pendiente' ? chip('Aún no le toca', 'muted')
+          : chip('NO HA SALIDO', 'error')) +
+        (f.cocheCambiado ? chip('Otro coche', 'aviso') : '') +
+        (a.primera ? '<span class="text-xs text-telecab-muted tabular-nums" title="Primera conexión de su turno">desde ' + hora(a.primera) + '</span>' : '') +
         '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas conectado hoy">' +
           horas(a.minutos) + ' h</span>' +
-        '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km de hoy">' + (a.km || 0) + ' km</span>' +
+        '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km trabajando (viaje o espera)">' + (a.km || 0) + ' km</span>' +
+        // Km con el coche rodando FUERA de BOLT (descanso o desconectado). No cuentan
+        // como trabajo y son justo lo que hay que preguntar.
+        (a.kmFuera ? '<span class="text-xs tabular-nums text-amber-500 w-20 text-right" title="Km rodados fuera de BOLT (descanso o desconectado)">' + a.kmFuera + ' km</span>' : '') +
         (nInc ? chip(nInc + (nInc > 1 ? ' avisos' : ' aviso'), 'error') : '') +
         '<i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform ml-auto"></i>' +
       '</div>' +
@@ -227,7 +245,7 @@
 
     const todas = p[turnoActivo] || [];
     const filas = todas.filter(f =>
-      (!soloNoSalieron || !salio(f)) &&
+      (!soloNoSalieron || falta(f)) &&
       (!q ||
         (f.conductor || '').toLowerCase().includes(q) ||
         (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
@@ -257,7 +275,11 @@
       grupos.get(k).map(filaConductor).join('')).join('');
 
     const salieron = filas.filter(salio).length;
-    $('#d-cuenta').textContent = 'Salieron ' + salieron + ' de ' + filas.length +
+    const faltan = filas.filter(falta).length;
+    const vent = (DATOS.ventanas || {})[turnoActivo] || null;
+    $('#d-cuenta').textContent = (vent && !vent.empezada
+      ? 'Turno sin empezar · ' + filas.length + ' planificados'
+      : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '')) +
       (q || soloNoSalieron ? ' · filtrado de ' + todas.length : '');
 
     // Reabrir lo que estaba abierto + enganchar acordeón y botones.
