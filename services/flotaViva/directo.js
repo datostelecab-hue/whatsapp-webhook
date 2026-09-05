@@ -105,6 +105,10 @@ const UMBRAL_SALIDA_MIN = Number(process.env.CONTROL_UMBRAL_SALIDA_MIN || 0);
 function salidaDe(a, vent) {
   if (!vent || !vent.empezada) return 'pendiente';
   if (!a) return 'no_salio';
+  // El DESCANSO ('busy' en BOLT) es estar con el coche y la app abierta pero NO
+  // trabajando. Salió —el coche está con él— pero no es lo mismo que estar rodando,
+  // así que se dice aparte y no se pinta de verde. Sus minutos nunca cuentan.
+  if (a.conectadoAhora && a.situacionAhora === 'descanso') return 'descanso';
   if (a.conectadoAhora) return 'conectado';
   if (a.minutos > UMBRAL_SALIDA_MIN || a.km > 0) return 'salio';
   return 'no_salio';
@@ -412,7 +416,7 @@ async function enDirecto({ dia } = {}) {
     todoturno: agrupaConductor(crudo.todoturno, actOper),
     nn: sinPlan,
   };
-  const PESO_SALIDA = { no_salio: 0, pendiente: 1, conectado: 2, salio: 3 };
+  const PESO_SALIDA = { no_salio: 0, pendiente: 1, descanso: 2, conectado: 3, salio: 4 };
   const ordena = arr => arr.sort((a, b) =>
     (a.cuadrante || '').localeCompare(b.cuadrante || '', undefined, { numeric: true }) ||
     ((PESO_SALIDA[a.salida] ?? 9) - (PESO_SALIDA[b.salida] ?? 9)) ||   // los que faltan, primero

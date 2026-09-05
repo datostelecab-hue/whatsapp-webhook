@@ -22,7 +22,7 @@ const sinEmpezar = { empezada: false };
 // Una actividad vacía por defecto; cada caso cambia solo lo suyo.
 const act = (x = {}) => Object.assign({
   minutos: 0, minDescanso: 0, minDesconectado: 0, km: 0, kmFuera: 0,
-  conectadoAhora: false, primera: null, matriculas: [],
+  conectadoAhora: false, situacionAhora: null, primera: null, matriculas: [],
 }, x);
 
 console.log('\n=== EL CASO QUE ORIGINÓ ESTO (05/09/2026) ===');
@@ -60,6 +60,17 @@ eq(salidaDe(act({ minutos: 0, km: 2.3 }), corriendo), 'salio',
   'un viaje de menos de un minuto cuenta por sus km de TRABAJO');
 eq(salidaDe(act({ minutos: 0, km: 0, conectadoAhora: true }), corriendo), 'conectado',
   'acaba de conectarse hace segundos: conectado, no "no ha salido"');
+
+console.log('\n=== EL DESCANSO NO ES TRABAJO (busy) ===');
+// La regla del negocio: solo cuentan has_order (viaje) y waiting_orders (espera).
+// A un conductor con 4h29 de viaje, 1h03 de espera y 8h51 de descanso el reporte le
+// ponia 14,4 h y "Muy efectivo". Son 5,5 h y "No cumplieron".
+eq(salidaDe(act({ minDescanso: 531, conectadoAhora: true, situacionAhora: 'descanso' }), corriendo), 'descanso',
+  'el que esta en descanso ahora mismo se dice APARTE, no como conectado');
+eq(salidaDe(act({ minutos: 332, minDescanso: 531 }), corriendo), 'salio',
+  'el caso Rodrigo: salio de verdad, pero sus horas son 5,5 y no 14,4');
+eq(salidaDe(act({ minDescanso: 480, conectadoAhora: false }), corriendo), 'no_salio',
+  'ocho horas de descanso y ni un viaje: no ha trabajado');
 
 console.log('\n=== DESCANSO CON TRABAJO DETRÁS ===');
 eq(salidaDe(act({ minutos: 30, minDescanso: 120, kmFuera: 12 }), corriendo), 'salio',

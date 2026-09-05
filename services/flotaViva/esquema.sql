@@ -163,22 +163,38 @@ CREATE TABLE IF NOT EXISTS fv_conductor (
 CREATE TABLE IF NOT EXISTS fv_cat_situacion (
   codigo     VARCHAR(20) PRIMARY KEY,
   etiqueta   VARCHAR(40) NOT NULL,
+  -- CONECTADO = tiene la app de BOLT abierta. El descanso TAMBIEN lo esta: el
+  -- conductor sigue con el coche, solo que no disponible para viajes.
   conectado  BOOLEAN     NOT NULL,
+  -- EFECTIVO = cuenta como TIEMPO TRABAJADO. Solo viaje y espera.
+  --
+  -- Son dos preguntas distintas y confundirlas costo caro: cuatro consultas de
+  -- horas filtraban por `conectado` creyendo que significaba "trabajando", y el
+  -- Reporte de horas publicaba el descanso como jornada — a un conductor con
+  -- 4h29 de viaje y 1h03 de espera le ponia 14,4 h y "Muy efectivo" porque le
+  -- sumaba 8h51 de descanso. Con la columna aparte no hay forma de equivocarse:
+  --   s.conectado -> "esta con la app abierta"   (panel, quien anda por ahi)
+  --   s.efectivo  -> "esto cuenta como trabajo"  (horas, pagos, reportes)
+  efectivo   BOOLEAN     NOT NULL DEFAULT FALSE,
   orden      SMALLINT    NOT NULL DEFAULT 0,
   color      VARCHAR(12)
 );
+ALTER TABLE fv_cat_situacion ADD COLUMN IF NOT EXISTS efectivo BOOLEAN NOT NULL DEFAULT FALSE;
 
-INSERT INTO fv_cat_situacion (codigo, etiqueta, conectado, orden, color) VALUES
-  ('viaje',        'En viaje',      TRUE,  1, 'green'),
-  ('espera',       'En espera',     TRUE,  2, 'gold'),
-  ('descanso',     'En descanso',   TRUE,  3, 'warn'),
-  ('desconectado', 'Desconectado',  FALSE, 4, 'muted'),
+INSERT INTO fv_cat_situacion (codigo, etiqueta, conectado, efectivo, orden, color) VALUES
+  ('viaje',        'En viaje',      TRUE,  TRUE,  1, 'green'),
+  ('espera',       'En espera',     TRUE,  TRUE,  2, 'gold'),
+  -- El descanso ('busy' en BOLT) esta conectado pero NO es trabajo. Esta es LA
+  -- fila que hay que mirar cuando algo no cuadre con las horas.
+  ('descanso',     'En descanso',   TRUE,  FALSE, 3, 'warn'),
+  ('desconectado', 'Desconectado',  FALSE, FALSE, 4, 'muted'),
   -- Para un estado de BOLT que no sepamos traducir. Sale tal cual en el panel,
-  -- que es la unica forma de enterarse de que existe.
-  ('otro',         'Sin clasificar', TRUE, 9, 'red')
+  -- que es la unica forma de enterarse de que existe. No cuenta como trabajo
+  -- mientras no se decida a mano que es: mejor quedarse corto que inventar horas.
+  ('otro',         'Sin clasificar', TRUE, FALSE, 9, 'red')
 ON CONFLICT (codigo) DO UPDATE SET
   etiqueta = EXCLUDED.etiqueta, conectado = EXCLUDED.conectado,
-  orden = EXCLUDED.orden, color = EXCLUDED.color;
+  efectivo = EXCLUDED.efectivo, orden = EXCLUDED.orden, color = EXCLUDED.color;
 
 -- Como llama BOLT a cada una. Varias suyas pueden caer en la misma nuestra.
 CREATE TABLE IF NOT EXISTS fv_estado_bolt (

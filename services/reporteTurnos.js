@@ -50,8 +50,8 @@ async function datos(dia) {
   await require('./flotaViva/db').preparar().catch(() => {});
 
   const [hDia, hNoche, kmDia, kmNoche, plan, contac, puente] = await Promise.all([
-    rutas.horasConectadasPorConductor(d, 'dia').catch(() => new Map()),
-    rutas.horasConectadasPorConductor(d, 'noche').catch(() => new Map()),
+    rutas.horasEfectivasPorConductor(d, 'dia').catch(() => new Map()),
+    rutas.horasEfectivasPorConductor(d, 'noche').catch(() => new Map()),
     rutas.kmConectadoDesconectado(d, 'dia').catch(() => ({ conductores: [] })),
     rutas.kmConectadoDesconectado(d, 'noche').catch(() => ({ conductores: [] })),
     salidasHoy(d).catch(() => ({ turnos: [] })),

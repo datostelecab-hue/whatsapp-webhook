@@ -291,7 +291,14 @@ async function estadoDeFranja(franja, diaOperativo) {
   return r.rows;
 }
 
-/** Los coches que YA han estado conectados en esta franja, hoy. */
+/**
+ * Los coches que YA HAN APARECIDO en esta franja, hoy — en cualquier situación,
+ * DESCANSO INCLUIDO. Es a propósito: no mide trabajo, mide presencia, y sirve de
+ * puerta para saber si una desconexión es "de esta franja". Estrecharlo a viaje+
+ * espera apagaría el aviso de un coche que estuvo ahí en descanso y luego se fue,
+ * que es justo uno de los que hay que llamar. Las HORAS son otra cosa y van por
+ * `s.efectivo` (ver conectadoEnFranja).
+ */
 async function yaTrabajaronHoy(franja, diaOperativo) {
   // El arranque de la franja en hora local, y su fin —que puede caer al día
   // siguiente si cruza medianoche.
@@ -315,9 +322,10 @@ async function yaTrabajaronHoy(franja, diaOperativo) {
  * cuando un coche se desconecta, si ha cumplido su jornada o se ha ido antes.
  *
  * Comer parte la jornada en dos tramos conectados con un descanso en medio; por
- * eso se SUMAN los ratos y no se mira solo el último. El descanso no cuenta como
- * conectado —`s.conectado` lo excluye—, que es justamente lo que se quiere: las
- * horas son de trabajo, no de estar con BOLT abierto sin coger nada.
+ * eso se SUMAN los ratos y no se mira solo el último. El DESCANSO no cuenta:
+ * se filtra por `s.efectivo` (viaje y espera), no por `s.conectado` —que también
+ * es cierto para el descanso, porque significa "tiene la app abierta"—. Las horas
+ * son de trabajo, no de estar con BOLT abierto sin coger nada.
  */
 async function conectadoEnFranja(franja, diaOperativo) {
   const r = await db.consulta(
@@ -329,7 +337,7 @@ async function conectadoEnFranja(franja, diaOperativo) {
               LEAST(COALESCE(t.hasta, f.fin), f.fin) - GREATEST(t.desde, f.inicio)
             ))) / 60)::int AS minutos
        FROM fv_tramo t
-       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.conectado
+       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
        CROSS JOIN f
       WHERE COALESCE(t.hasta, f.fin) > f.inicio AND t.desde < f.fin
       GROUP BY t.vehiculo_uuid`,

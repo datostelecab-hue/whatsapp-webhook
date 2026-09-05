@@ -57,7 +57,7 @@
   // ventana de cada turno. Aquí solo se pinta. Antes esta fórmula estaba duplicada
   // y contaba los km rodados estando desconectado, así que daba por salido a quien
   // había terminado su noche a las 03:51 y dejó el coche rodando pasadas las 05:00.
-  const salio = f => f.salida === 'conectado' || f.salida === 'salio';
+  const salio = f => ['conectado', 'salio', 'descanso'].includes(f.salida);
   const falta = f => f.salida === 'no_salio';
 
   const TONO = {
@@ -125,13 +125,14 @@
           (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
           '">' + esc(f.rol) + '</span>' : '') +
         '<span class="font-mono text-xs text-telecab-muted flex-1 min-w-[7rem]" title="Coche(s) con los que sale HOY (en vivo)">' + esc(mats) + '</span>' +
-        (f.salida === 'conectado' ? chip(a.situacion === 'descanso' ? 'En descanso' : 'Conectado', 'ok')
+        (f.salida === 'conectado' ? chip('Conectado', 'ok')
+          : f.salida === 'descanso' ? chip('En descanso', 'aviso')
           : f.salida === 'salio' ? chip('Salió', 'muted')
           : f.salida === 'pendiente' ? chip('Aún no le toca', 'muted')
           : chip('NO HA SALIDO', 'error')) +
         (f.cocheCambiado ? chip('Otro coche', 'aviso') : '') +
         (a.primera ? '<span class="text-xs text-telecab-muted tabular-nums" title="Primera conexión de su turno">desde ' + hora(a.primera) + '</span>' : '') +
-        '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas conectado hoy">' +
+        '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas EFECTIVAS de hoy: viaje + espera. El descanso no cuenta.">' +
           horas(a.minutos) + ' h</span>' +
         '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km trabajando (viaje o espera)">' + (a.km || 0) + ' km</span>' +
         // Km con el coche rodando FUERA de BOLT (descanso o desconectado). No cuentan
@@ -182,7 +183,7 @@
       (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Rodó hoy', 'muted')) +
       '<span class="text-sm font-mono text-telecab-muted flex-1 min-w-[8rem]" title="Coche(s) usados en BOLT">' +
         esc((s.matriculas || []).join(', ') || '—') + '</span>' +
-      '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas conectado">' + horas(s.minutos) + ' h</span>' +
+      '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas efectivas: viaje + espera. El descanso no cuenta.">' + horas(s.minutos) + ' h</span>' +
       '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km en BOLT">' + (s.enBolt || 0) + ' km</span>' +
       '<span class="text-xs tabular-nums text-amber-500 w-20 text-right" title="Km desconectado">' + (s.desconectado || 0) + ' km</span>' +
       '</div>';

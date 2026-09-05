@@ -211,74 +211,55 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
 }
 
 /**
- * Minutos CONECTADO (viaje + espera = en BOLT) por conductor en la ventana de un
- * turno, del núcleo. Es "cuántas horas trabajó" — sale de los tramos, no de km.
+ * MINUTOS EFECTIVOS POR CONDUCTOR en la ventana de un turno. Del núcleo.
  *
- * Devuelve Map(nombreConductor -> minutos). La clave es el nombre de fv_conductor
- * (el mismo que usa kmConectadoDesconectado), así que casan exacto entre sí.
+ * EFECTIVO = viaje + espera. El DESCANSO NO CUENTA: en BOLT es 'busy', el conductor
+ * sigue con el coche y con la app abierta, pero no está disponible ni trabajando.
+ * Aquí no se filtra por `s.conectado` —que también es cierto para el descanso, porque
+ * significa "tiene la app abierta"— sino por `s.efectivo`, que es la columna del
+ * catálogo que dice qué cuenta como trabajo. Confundir las dos costó un reporte que
+ * le puso 14,4 h y "Muy efectivo" a quien había hecho 4h29 de viaje y 1h03 de espera:
+ * los otros 8h51 eran descanso.
+ *
+ * Las horas son TIEMPO DE RELOJ, así que se funden los solapes en vez de sumar
+ * duraciones a pelo: un conductor puede tener tramos en dos coches a la vez (un
+ * relevo, un coche mal seleccionado) y sumarlos contaba el mismo rato dos veces —de
+ * ahí salían 22 h en una ventana de 24—. Es la UNIÓN de los intervalos.
+ *
+ * Devuelve { porNombre: Map(nombre → minutos), porUuid: Map(uuid → minutos) }.
  */
-async function horasConectadasPorConductor(dia, turno = 'operativo') {
+async function minutosEfectivos(dia, turno = 'operativo') {
   const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
   const r = await db.consulta(
     `WITH v AS (
-       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      )
-     SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
-            floor(sum(EXTRACT(EPOCH FROM (
-              LEAST(COALESCE(t.hasta, now()), v.fin) - GREATEST(t.desde, v.ini)
-            ))) / 60)::int AS minutos
+     SELECT t.conductor_uuid                          AS uuid,
+            COALESCE(co.nombre, '(sin conductor)')    AS conductor,
+            GREATEST(t.desde, v.ini)                  AS desde,
+            LEAST(COALESCE(t.hasta, now()), v.fin)     AS hasta
        FROM fv_tramo t
        CROSS JOIN v
-       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.codigo IN ('viaje', 'espera')
+       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
        LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
       WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
-      GROUP BY conductor`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
-  const m = new Map();
-  r.rows.forEach(x => m.set(x.conductor, Number(x.minutos) || 0));
-  return m;
-}
+      ORDER BY uuid, conductor, desde`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
 
-/**
- * Horas CONECTADAS (viaje + espera + descanso = "conectado" de BOLT) por conductor
- * en la ventana de un turno, del núcleo. Es "cuántas horas trabajó" con la MISMA
- * definición que el Total de BOLT (que incluye el descanso), para poder sustituir a
- * Datos_API en los turnos de noche —donde la hoja no sirve, porque solo guarda el
- * total por día natural y el turno de noche va de mediodía a mediodía—.
- *
- * Devuelve Map(nombreConductor -> minutos). Clave = nombre de fv_conductor.
- */
-async function horasConectadoTotal(dia, turno = 'noche12') {
-  const [hi, off, hf] = TURNOS[turno] || TURNOS.noche12;
-  // Se traen los TRAMOS conectados (recortados a la ventana) y se FUNDEN los solapes
-  // en JS. Un conductor puede tener tramos en dos coches a la vez (relevo, coche
-  // seleccionado), y sumar sus duraciones a pelo cuenta el mismo rato dos veces —de
-  // ahí salían 22 h en una ventana de 24—. Las horas son tiempo de reloj: la UNIÓN de
-  // los intervalos, no la suma. Vienen ordenados por 'desde' para poder fundirlos.
-  const r = await db.consulta(
-    `WITH v AS (
-       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
-              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
-     )
-     SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
-            GREATEST(t.desde, v.ini)               AS desde,
-            LEAST(COALESCE(t.hasta, now()), v.fin)  AS hasta
-       FROM fv_tramo t
-       CROSS JOIN v
-       JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.conectado
-       LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
-      WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
-      ORDER BY conductor, desde`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
-
-  const porCond = new Map();
+  // Se agrupa por las dos claves a la vez: el nombre es lo que esperan los reportes
+  // viejos y el uuid es lo que usa el cockpit, y así solo se pregunta una vez.
+  const ivsNombre = new Map(), ivsUuid = new Map();
+  const mete = (m, k, iv) => { if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(iv); };
   r.rows.forEach(x => {
-    if (!porCond.has(x.conductor)) porCond.set(x.conductor, []);
-    porCond.get(x.conductor).push([new Date(x.desde).getTime(), new Date(x.hasta).getTime()]);
+    const iv = [new Date(x.desde).getTime(), new Date(x.hasta).getTime()];
+    mete(ivsNombre, x.conductor, iv);
+    mete(ivsUuid, x.uuid, iv);
   });
-  const m = new Map();
-  for (const [nombre, ivs] of porCond) {
-    let total = 0, curIni = null, curFin = null;   // ivs ya vienen ordenados por 'desde'
-    for (const [s, e] of ivs) {
+
+  // La unión de una lista de intervalos ya ordenada por su inicio.
+  const funde = ivs => {
+    let total = 0, curIni = null, curFin = null;
+    for (const [s, e] of ivs.slice().sort((a, b) => a[0] - b[0])) {
       if (e <= s) continue;
       if (curFin === null || s > curFin) {          // hueco → cierra el bloque anterior
         if (curFin !== null) total += curFin - curIni;
@@ -288,9 +269,18 @@ async function horasConectadoTotal(dia, turno = 'noche12') {
       }
     }
     if (curFin !== null) total += curFin - curIni;
-    m.set(nombre, Math.floor(total / 60000));        // ms → minutos
-  }
-  return m;
+    return Math.floor(total / 60000);
+  };
+  const aMapa = m => new Map([...m.entries()].map(([k, ivs]) => [k, funde(ivs)]));
+  return { porNombre: aMapa(ivsNombre), porUuid: aMapa(ivsUuid) };
+}
+
+/**
+ * Minutos efectivos por conductor, por NOMBRE. Es lo que consumen los reportes.
+ * Devuelve Map(nombre de fv_conductor -> minutos).
+ */
+async function horasEfectivasPorConductor(dia, turno = 'operativo') {
+  return (await minutosEfectivos(dia, turno)).porNombre;
 }
 
 /**
@@ -543,6 +533,7 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
 }
 
 
+
 /**
  * ACTIVIDAD REAL DE CADA CONDUCTOR EN LA VENTANA DE SU TURNO.
  *
@@ -671,6 +662,14 @@ async function actividadPorConductor(dia, turno = 'dia') {
     a.km = Math.round((a.km + (Number(x.km) || 0)) * 10) / 10;
     a.kmFuera = Math.round((a.kmFuera + (Number(x.km_fuera) || 0)) * 10) / 10;
   });
+  // LOS MINUTOS, DE LA MISMA FUENTE QUE LOS REPORTES. La consulta de arriba agrupa
+  // por (conductor, coche), y sumar esos trozos contaría dos veces el rato en que a
+  // una persona se le solapan dos tramos. minutosEfectivos funde los intervalos y
+  // filtra por s.efectivo, así que el cockpit y el Reporte de horas no pueden
+  // discrepar: es literalmente el mismo número.
+  const efect = (await minutosEfectivos(dia, turno)).porUuid;
+  porUuid.forEach((a, u) => { a.minutos = efect.get(u) || 0; });
+
   porUuid.forEach(a => {
     a._mats.sort((p, q) => q.minutos - p.minutos);
     a.matriculas = a._mats.map(m => m.matricula);
@@ -697,6 +696,6 @@ async function actividadPorConductor(dia, turno = 'dia') {
 
 module.exports = {
   ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
-  horasConectadasPorConductor, horasConectadoTotal, matriculasBoltPorConductor,
+  horasEfectivasPorConductor, minutosEfectivos, matriculasBoltPorConductor,
   bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, TURNOS,
 };

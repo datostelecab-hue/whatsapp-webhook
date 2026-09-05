@@ -120,21 +120,27 @@ async function reporteDia(key) {
   const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
   const [tablero, justis] = await Promise.all([tableroControl(), leerPorFecha(fecha)]);
 
-  // Horas del NÚCLEO (Postgres, fv_tramo), NO de Datos_API (la hoja). Por turno: los
-  // de día, día natural (00→24); los de noche, de MEDIODÍA a MEDIODÍA (12→12, regla de
-  // Tráfico: la hoja parte el turno de noche por la medianoche y no sirve). Misma
-  // definición que el Total de BOLT (viaje+espera+descanso).
+  // HORAS EFECTIVAS del NÚCLEO (Postgres, fv_tramo), NO de Datos_API (la hoja).
   //
+  // EFECTIVO = viaje + espera. El DESCANSO NO CUENTA. Esto estuvo mal: se pedían las
+  // horas con `horasConectadoTotal`, que sumaba también el descanso "para tener la
+  // misma definición que el Total de BOLT". Pero el Total de BOLT no son horas
+  // trabajadas: a quien hizo 4h29 de viaje y 1h03 de espera le ponía 14,4 h y la
+  // etiqueta "Muy efectivo" porque le sumaba 8h51 de descanso. Lo suyo eran 5,5 h.
+  // (La hoja Datos_API nunca tuvo el fallo —boltHorasCore solo cuenta has_order y
+  // waiting_orders—, así que el número bueno se perdió al migrar al núcleo.)
+  //
+  // Por turno: los de día, día natural (00→24); los de noche, de MEDIODÍA a MEDIODÍA
+  // (12→12, regla de Tráfico: la hoja parte el turno de noche por la medianoche).
   // Datos_API queda SOLO de red de seguridad: para los de DÍA cuyo nombre aún no case
-  // en el núcleo, y para todos si el núcleo entero no responde. Los de NOCHE van
-  // siempre por el núcleo (la hoja daría el trozo partido por la medianoche).
+  // en el núcleo, y para todos si el núcleo entero no responde.
   let horasDia = null, horasNoche = null;
   try {
     await require('./flotaViva/db').preparar();
     const rutas = require('./flotaViva/rutas');
     const [hd, hn] = await Promise.all([
-      rutas.horasConectadoTotal(iso, 'completo'),
-      rutas.horasConectadoTotal(iso, 'noche12'),
+      rutas.horasEfectivasPorConductor(iso, 'completo'),
+      rutas.horasEfectivasPorConductor(iso, 'noche12'),
     ]);
     const aHoras = m => new Map([...m.entries()].map(([nom, min]) => [normClave(nom), Math.round(min / 6) / 10]));
     horasDia = aHoras(hd); horasNoche = aHoras(hn);

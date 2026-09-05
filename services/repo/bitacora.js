@@ -74,15 +74,15 @@ async function leerBitacora() {
       [INICIO_ISO, hoyIso]),
     // Horas del NÚCLEO (fv_tramo, la ingesta de BOLT) — no de registro_jornada, que
     // aún no se puebla. Puente por id, sin nombres: fv_conductor.uuid = el driver_uuid
-    // de BOLT = conductor_externo.externo_id. Se traen los tramos CONECTADOS y se
-    // funden los solapes en JS (dos coches a la vez no cuentan doble). El día es el de
-    // la hora de inicio, en Madrid.
+    // de BOLT = conductor_externo.externo_id. Se traen los tramos EFECTIVOS —viaje y
+    // espera; el DESCANSO no es trabajo— y se funden los solapes en JS (dos coches a
+    // la vez no cuentan doble). El día es el de la hora de inicio, en Madrid.
     db.consulta(
       `SELECT ce.conductor_id,
               to_char((t.desde AT TIME ZONE 'Europe/Madrid')::date, 'YYYY-MM-DD') AS dia,
               t.desde, COALESCE(t.hasta, now()) AS hasta
          FROM fv_tramo t
-         JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.conectado
+         JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.efectivo
          JOIN fv_conductor fc      ON fc.uuid = t.conductor_uuid
          JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = fc.uuid
         WHERE t.desde >= $1::date AND t.desde < ($2::date + 1)
