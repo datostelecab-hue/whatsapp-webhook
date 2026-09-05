@@ -133,7 +133,7 @@ async function enDirecto({ dia } = {}) {
   // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
   const plani = require('../repo/planificador');   // base principal (Cuadrante)
   const rutas = require('./rutas');
-  const [tab, est, incHoy, incAyer, kmHoy, actDia, actNoche, actOper] = await Promise.all([
+  const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
     // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
@@ -144,6 +144,10 @@ async function enDirecto({ dia } = {}) {
     // Los km de hoy salen del NÚCLEO (fv_ruta, route/list), no del `mileage`
     // estancado. Si aún no se ha ingerido, sale vacío y el coche muestra 0.
     rutas.kmPorCoche(hoy).catch(() => new Map()),
+    // EL TELÉFONO, del padrón. Tiene que salir SIEMPRE al lado del nombre: la pantalla
+    // existe para llamar. Y no puede venir del trazo vivo, porque justo al que hay que
+    // llamar —el que no ha salido— no le queda ni un tramo del que sacarlo.
+    plani.contactos().catch(() => new Map()),
     // LA ACTIVIDAD DE CADA PERSONA, EN LA VENTANA DE SU TURNO. Una consulta por
     // turno, no una sola del día operativo: el de noche que terminó a las 03:51 y
     // dejó el coche rodando hasta las 07:50 aparecía como que había salido de DÍA,
@@ -306,6 +310,7 @@ async function enDirecto({ dia } = {}) {
     .filter(a => a.minutos > 0 || a.km > 0 || a.conectadoAhora)
     .map(a => ({
       conductor: a.nombre || ('#' + String(a.uuid).slice(0, 8)),
+      telefono: a.telefono || '',
       matricula: a.matricula, matriculas: a.matriculas,
       enBolt: a.km, desconectado: a.kmFuera,
       total: Math.round((a.km + a.kmFuera) * 10) / 10,
@@ -344,6 +349,7 @@ async function enDirecto({ dia } = {}) {
       const act = actividadDe(ventanaDe[turno], cell.id, cell.nombre);
       crudo[turno].push({
         conductorId: cell.id || '', conductor: cell.nombre || '', turno,
+        telefono: (contac.get(String(cell.id)) || {}).telefono || (act && act.telefono) || '',
         uuid: (act && act.uuid) || uuidDeId.get(Number(cell.id)) || '',
         rol: rolDe.get(String(cell.id)) || '',
         matricula: c.matricula, cuadrante: cuadDe(c),
@@ -360,6 +366,7 @@ async function enDirecto({ dia } = {}) {
       const act = actividadDe(actOper, cd.id, cd.nombre);
       crudo.todoturno.push({
         conductorId: cd.id, conductor: cd.nombre || '', turno: 'todoturno',
+        telefono: (contac.get(String(cd.id)) || {}).telefono || (act && act.telefono) || '',
         uuid: (act && act.uuid) || uuidDeId.get(Number(cd.id)) || '',
         rol: rolDe.get(String(cd.id)) || '',
         matricula: c.matricula, cuadrante: cuadDe(c),
@@ -373,11 +380,12 @@ async function enDirecto({ dia } = {}) {
     plazas.forEach(p => {
       const clave = p.conductorId ? ('id:' + p.conductorId) : ('n:' + normNombre(p.conductor));
       if (!m.has(clave)) m.set(clave, { clave, conductorId: p.conductorId, conductor: p.conductor,
-        uuid: p.uuid, turno: p.turno, roles: new Set(), matriculas: [], cuadrantes: new Set(),
+        uuid: p.uuid, telefono: p.telefono, turno: p.turno, roles: new Set(), matriculas: [], cuadrantes: new Set(),
         actividad: p.actividad, incidencias: [] });
       const f = m.get(clave);
       if (p.rol) f.roles.add(p.rol);
       if (p.uuid && !f.uuid) f.uuid = p.uuid;
+      if (p.telefono && !f.telefono) f.telefono = p.telefono;
       if (p.matricula && !f.matriculas.includes(p.matricula)) f.matriculas.push(p.matricula);
       if (p.cuadrante) f.cuadrantes.add(p.cuadrante);
       if (!f.actividad && p.actividad) f.actividad = p.actividad;
@@ -397,7 +405,7 @@ async function enDirecto({ dia } = {}) {
       const vivas = (f.actividad && f.actividad.matriculas) || [];
       const cocheCambiado = vivas.length > 0 && !vivas.some(m => f.matriculas.includes(m));
       return {
-        clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid,
+        clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid, telefono: f.telefono || '',
         turno: f.turno,
         rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
         matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',

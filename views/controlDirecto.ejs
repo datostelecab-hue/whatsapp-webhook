@@ -27,6 +27,11 @@
   <!-- Pestañas por turno: Día · Noche · TodoTurno · NN (los que ruedan sin plan). -->
   <div id="d-tabs" class="flex flex-wrap items-center gap-2 mb-3"></div>
 
+  <!-- LO PRIMERO QUE SE VE. Tráfico abre esta pantalla para saber a quién llama, así
+       que el número de los que faltan va grande y de rojo, y se puede pinchar para
+       quedarse solo con ellos. Lo demás es contexto. -->
+  <div id="d-resumen" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3"></div>
+
   <div class="mb-3 flex flex-wrap items-center gap-2">
     <i class="fa-solid fa-filter text-telecab-muted text-xs"></i>
     <input id="d-filtro" placeholder="Conductor o matrícula"
@@ -38,11 +43,61 @@
   </div>
 
   <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+    <!-- Cabecera de columnas: sin ella hay que adivinar qué es cada número. -->
+    <div id="d-cabecera" class="hidden dcab-grid px-0 py-2 border-b border-telecab-border
+      bg-telecab-dark/60 text-[10px] uppercase tracking-wide text-telecab-muted">
+      <span></span>
+      <span>Conductor</span>
+      <span class="dopc">Coche</span>
+      <span>Estado</span>
+      <span class="dopc text-right">Desde</span>
+      <span class="text-right" title="Horas efectivas: viaje + espera">Efectivas</span>
+      <span class="dopc text-right" title="Km rodados trabajando">Km</span>
+      <span class="dopc text-right" title="Km rodados fuera de BOLT (descanso o desconectado)">Km fuera</span>
+      <span class="text-right">Avisos</span>
+      <span></span>
+    </div>
     <div id="d-lista">
       <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
     </div>
   </div>
 </div>
+
+<style>
+  /* UNA REJILLA, NO UN FLEX-WRAP.
+     La fila era un flex con anchos variables: el chip de estado caía en una x
+     distinta en cada línea y los números no se podían comparar de un vistazo.
+     Con columnas fijas, la vista baja en vertical y todo cuadra. */
+  .dcab-grid {
+    display: grid;
+    grid-template-columns:
+      3px                    /* barra de estado, el color que se ve de lejos */
+      minmax(9rem, 1.6fr)    /* nombre + rol */
+      minmax(7rem, 1fr)      /* matrícula */
+      7.5rem                 /* estado */
+      4.5rem                 /* desde */
+      4.5rem                 /* horas efectivas */
+      5rem                   /* km de trabajo */
+      5rem                   /* km fuera */
+      4.75rem                /* avisos */
+      1.5rem;                /* el desplegable */
+    align-items: center;
+    column-gap: 0.75rem;
+    padding-right: 1rem;
+  }
+  .dcab-grid > span:first-child { padding: 0; }
+  /* La barra de color ocupa el alto entero de la fila, no solo el del texto. */
+  .dfila .dbarra { align-self: stretch; border-radius: 0 2px 2px 0; }
+
+  /* En pantallas estrechas se apilan las tres cosas que de verdad importan y el
+     resto se esconde: llamar por teléfono desde el móvil sigue funcionando. */
+  @media (max-width: 900px) {
+    .dcab-grid {
+      grid-template-columns: 3px minmax(7rem, 1fr) 6.75rem 4rem 3.25rem 1.5rem;
+    }
+    .dcab-grid > .dopc { display: none; }
+  }
+</style>
 
 <script src="/assets/js/flotaVivaGestion.js?v=<%= v %>"></script>
 <script>
@@ -52,6 +107,15 @@
     m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
   const horas = min => ((Number(min) || 0) / 60).toFixed(1);
+  // El teléfono va SIEMPRE al lado del nombre: esta pantalla existe para llamar, y
+  // buscar el número en otra pestaña es justo lo que hace que no se llame.
+  const tel9 = t => String(t || '').replace(/D/g, '').slice(-9);
+  const telBonito = t => { const n = tel9(t); return n.length === 9 ? n.slice(0, 3) + ' ' + n.slice(3, 6) + ' ' + n.slice(6) : (t || ''); };
+  const enlaceTel = (t, clase) => (tel9(t)
+    ? '<a href="tel:' + esc(t) + '" onclick="event.stopPropagation()" ' +
+      'class="' + (clase || '') + ' hover:text-telecab-gold hover:underline" title="Llamar a este número">' +
+      esc(telBonito(t)) + '</a>'
+    : '<span class="text-telecab-border">sin teléfono</span>');
 
   // EL VEREDICTO LO DA EL SERVIDOR (directo.js salidaDe), que es quien sabe la
   // ventana de cada turno. Aquí solo se pinta. Antes esta fórmula estaba duplicada
@@ -106,43 +170,117 @@
         ' <b class="tabular-nums ' + (rojo ? 'text-amber-500' : 'text-telecab-text') + '">' + num + '</b></button>';
     }).join('');
     $('#d-tabs').querySelectorAll('[data-turno]').forEach(b =>
-      b.addEventListener('click', () => { turnoActivo = b.dataset.turno; pintarTabs(); pintar(); }));
+      b.addEventListener('click', () => { turnoActivo = b.dataset.turno; pintarTabs(); pintarResumen(); pintar(); }));
   }
+  // ── El vocabulario visual del estado, en un solo sitio ──────────────────────
+  // Cada estado tiene SIEMPRE el mismo color, en la barra de la izquierda, en el
+  // chip y en el resumen de arriba. Así el ojo aprende el código una vez.
+  const ESTADO = {
+    no_salio:  { barra: 'bg-red-500',        etq: 'NO HA SALIDO',   tono: 'error', fila: 'bg-red-500/[0.05]' },
+    descanso:  { barra: 'bg-amber-500',      etq: 'En descanso',    tono: 'aviso', fila: '' },
+    conectado: { barra: 'bg-emerald-500',    etq: 'Conectado',      tono: 'ok',    fila: '' },
+    salio:     { barra: 'bg-telecab-border', etq: 'Salió',          tono: 'muted', fila: '' },
+    pendiente: { barra: 'bg-transparent',    etq: 'Aún no le toca', tono: 'muted', fila: '' },
+  };
+  const est = f => ESTADO[f.salida] || ESTADO.pendiente;
 
-  // ── Fila por CONDUCTOR (Día / Noche / TodoTurno) ─────────────────────────────
+  // Un cero no es un dato: es ruido. Se pinta apagado y con raya, para que los
+  // números que SÍ dicen algo salten solos.
+  const cifra = (v, suf, clase) => (Number(v) > 0
+    ? '<span class="' + clase + '">' + v + (suf || '') + '</span>'
+    : '<span class="text-telecab-border">—</span>');
+
   function filaConductor(f) {
     const a = f.actividad || {};
     const nInc = (f.incidencias || []).length;
-    // El coche del que hay TRAZA. Si el plan decía otro, se enseñan los dos: el
-    // intercambio de coches entre compañeros pasa a diario y tráfico quiere saberlo.
-    const vivas = ((f.actividad && f.actividad.matriculas) || []);
-    const mats = (vivas.join(', ') || (f.matriculas || []).join(', ') || '—') +
-      (f.cocheCambiado ? ' (plan: ' + (f.matriculas || []).join(', ') + ')' : '');
-    return '<div class="dfila border-b border-telecab-border/70" data-mat="' + esc(f.clave) + '" data-cid="' + esc(f.conductorId || '') + '">' +
-      '<div class="dcab px-4 py-2.5 cursor-pointer select-none flex flex-wrap items-center gap-x-3 gap-y-1">' +
-        '<span class="text-telecab-text font-medium w-52 truncate">' + esc(f.conductor) + '</span>' +
-        (f.rol ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
-          (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
-          '">' + esc(f.rol) + '</span>' : '') +
-        '<span class="font-mono text-xs text-telecab-muted flex-1 min-w-[7rem]" title="Coche(s) con los que sale HOY (en vivo)">' + esc(mats) + '</span>' +
-        (f.salida === 'conectado' ? chip('Conectado', 'ok')
-          : f.salida === 'descanso' ? chip('En descanso', 'aviso')
-          : f.salida === 'salio' ? chip('Salió', 'muted')
-          : f.salida === 'pendiente' ? chip('Aún no le toca', 'muted')
-          : chip('NO HA SALIDO', 'error')) +
-        (f.cocheCambiado ? chip('Otro coche', 'aviso') : '') +
-        (a.primera ? '<span class="text-xs text-telecab-muted tabular-nums" title="Primera conexión de su turno">desde ' + hora(a.primera) + '</span>' : '') +
-        '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas EFECTIVAS de hoy: viaje + espera. El descanso no cuenta.">' +
-          horas(a.minutos) + ' h</span>' +
-        '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km trabajando (viaje o espera)">' + (a.km || 0) + ' km</span>' +
-        // Km con el coche rodando FUERA de BOLT (descanso o desconectado). No cuentan
-        // como trabajo y son justo lo que hay que preguntar.
-        (a.kmFuera ? '<span class="text-xs tabular-nums text-amber-500 w-20 text-right" title="Km rodados fuera de BOLT (descanso o desconectado)">' + a.kmFuera + ' km</span>' : '') +
-        (nInc ? chip(nInc + (nInc > 1 ? ' avisos' : ' aviso'), 'error') : '') +
-        '<i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform ml-auto"></i>' +
+    const e = est(f);
+    // El coche del que hay TRAZA. Si el plan decía otro se marca, pero sin gastar
+    // media fila: la matrícula de verdad y un "≠" que al pasar el ratón lo explica.
+    const vivas = (a.matriculas || []);
+    const plan = (f.matriculas || []).join(', ');
+    const mat = vivas.join(', ') || plan || '—';
+    return '<div class="dfila border-b border-telecab-border/70 ' + e.fila +
+        '" data-mat="' + esc(f.clave) + '" data-cid="' + esc(f.conductorId || '') + '">' +
+      '<div class="dcab dcab-grid py-2.5 cursor-pointer select-none hover:bg-telecab-dark/40">' +
+        '<span class="dbarra ' + e.barra + '"></span>' +
+        '<span class="min-w-0">' +
+          '<span class="flex items-center gap-2 min-w-0">' +
+            '<span class="truncate text-telecab-text font-medium" title="' + esc(f.conductor) + '">' +
+              esc(f.conductor) + '</span>' +
+            (f.rol ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
+              (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
+              '">' + esc(f.rol) + '</span>' : '') +
+          '</span>' +
+          '<span class="block font-mono text-[11px] leading-tight text-telecab-muted">' +
+            enlaceTel(f.telefono) + '</span>' +
+        '</span>' +
+        '<span class="dopc min-w-0 flex items-center gap-1.5">' +
+          '<span class="font-mono text-xs text-telecab-muted truncate">' + esc(mat) + '</span>' +
+          (f.cocheCambiado
+            ? '<span class="shrink-0 text-[10px] font-bold text-amber-500" title="No es el coche del plan (' +
+              esc(plan) + ')">&ne;</span>' : '') +
+        '</span>' +
+        '<span>' + chip(e.etq, e.tono) + '</span>' +
+        '<span class="dopc text-right text-xs text-telecab-muted tabular-nums" ' +
+          'title="Primera conexión de su turno">' + (a.primera ? hora(a.primera) : '<span class="text-telecab-border">—</span>') + '</span>' +
+        '<span class="text-right text-xs tabular-nums" ' +
+          'title="Horas EFECTIVAS: viaje + espera. El descanso no cuenta.">' +
+          cifra(horas(a.minutos), ' h', 'text-telecab-text font-medium') + '</span>' +
+        '<span class="dopc text-right text-xs tabular-nums" title="Km rodados trabajando">' +
+          cifra(a.km, ' km', 'text-emerald-500') + '</span>' +
+        // Km con el coche rodando FUERA de BOLT (descanso o desconectado). No son
+        // trabajo y son justo lo que hay que preguntar.
+        '<span class="dopc text-right text-xs tabular-nums" ' +
+          'title="Km rodados FUERA de BOLT (en descanso o desconectado). No cuentan como trabajo.">' +
+          cifra(a.kmFuera, ' km', 'text-amber-500') + '</span>' +
+        '<span class="text-right">' +
+          (nInc ? chip(String(nInc), 'error') : '<span class="text-telecab-border text-xs">—</span>') + '</span>' +
+        '<span class="text-right"><i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform"></i></span>' +
       '</div>' +
       detalleConductor(f) +
       '</div>';
+  }
+
+  // ── El resumen de arriba: lo que se ve sin leer nada ────────────────────────
+  // Cuatro números. El primero es el que importa —a cuánta gente hay que llamar— y
+  // al pincharlo la lista se queda solo con ellos.
+  function pintarResumen() {
+    const p = (DATOS && DATOS.porTurno) || {};
+    const arr = (turnoActivo === 'nn' ? (p.nn || []) : (p[turnoActivo] || []));
+    const vent = ((DATOS && DATOS.ventanas) || {})[turnoActivo] || null;
+    const sinEmpezar = !!(vent && !vent.empezada);
+    const n = e => arr.filter(f => f.salida === e).length;
+    const avisos = arr.reduce((s, f) => s + ((f.incidencias || []).length), 0);
+
+    const tarjeta = (valor, etq, color, extra) =>
+      '<div class="' + (extra || '') + ' rounded-xl border border-telecab-border bg-telecab-dark/40 px-3 py-2">' +
+        '<div class="text-2xl font-bold tabular-nums leading-none ' + color + '">' + valor + '</div>' +
+        '<div class="text-[11px] text-telecab-muted mt-1">' + etq + '</div>' +
+      '</div>';
+
+    const cajas = turnoActivo === 'nn'
+      ? [tarjeta(arr.length, 'Ruedan sin estar en el cuadrante', 'text-amber-500')]
+      : sinEmpezar
+        // Un turno que no ha arrancado no tiene a nadie "sin salir": decir 0/61
+        // invitaría a llamar a 61 personas a las diez de la mañana.
+        ? [tarjeta(arr.length, 'Planificados · el turno aún no empieza', 'text-telecab-muted')]
+        : [
+            tarjeta(n('no_salio'), 'Sin salir · hay que llamar', 'text-red-500',
+              'cursor-pointer transition ' + (soloNoSalieron ? 'ring-2 ring-red-500/60' : 'hover:border-red-500/50')),
+            tarjeta(n('conectado'), 'Rodando ahora', 'text-emerald-500'),
+            tarjeta(n('descanso'), 'En descanso · con el coche parado', 'text-amber-500'),
+            tarjeta(avisos, 'Avisos abiertos', avisos ? 'text-red-500' : 'text-telecab-muted'),
+          ];
+    $('#d-resumen').innerHTML = cajas.join('');
+    $('#d-cabecera').classList.toggle('hidden', !arr.length);
+
+    const caja = $('#d-resumen').firstElementChild;
+    if (caja && !sinEmpezar && turnoActivo !== 'nn') {
+      caja.addEventListener('click', () => {
+        soloNoSalieron = !soloNoSalieron;
+        pintarResumen(); pintar();
+      });
+    }
   }
 
   function incidenciaHTML(i) {
@@ -179,7 +317,10 @@
   // ── Fila NN (rueda sin estar en el cuadrante) ────────────────────────────────
   function filaNN(s) {
     return '<div class="px-4 py-2.5 border-b border-telecab-border/70 flex flex-wrap items-center gap-x-4 gap-y-1">' +
-      '<span class="text-telecab-text font-medium w-56 truncate">' + esc(s.conductor) + '</span>' +
+      '<span class="w-56 min-w-0">' +
+        '<span class="block truncate text-telecab-text font-medium">' + esc(s.conductor) + '</span>' +
+        '<span class="block font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) + '</span>' +
+      '</span>' +
       (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Rodó hoy', 'muted')) +
       '<span class="text-sm font-mono text-telecab-muted flex-1 min-w-[8rem]" title="Coche(s) usados en BOLT">' +
         esc((s.matriculas || []).join(', ') || '—') + '</span>' +
@@ -253,9 +394,19 @@
         ((f.actividad && f.actividad.matriculas) || []).join(' ').toLowerCase().includes(q)));
 
     if (!filas.length) {
-      $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nadie en este turno.</p>';
-      $('#d-cuenta').textContent = '0 conductor(es)';
-      $('#d-lista').__wire = null;
+      // Una lista vacía tiene tres motivos muy distintos y hay que decir cuál es:
+      // "no hay nadie por llamar" es una buena noticia y "el turno no ha empezado"
+      // no es lo mismo que "no queda nadie".
+      const v0 = (DATOS.ventanas || {})[turnoActivo] || null;
+      const msg = v0 && !v0.empezada
+        ? 'Este turno todavía no ha empezado.'
+        : soloNoSalieron && todas.length
+          ? 'Nadie por llamar en este turno. 👌'
+          : q
+            ? 'Nadie con ese nombre o esa matrícula.'
+            : 'Nadie en este turno.';
+      $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' + msg + '</p>';
+      $('#d-cuenta').textContent = todas.length ? '0 de ' + todas.length + ' del turno' : '';
       return;
     }
 
@@ -269,19 +420,30 @@
     const claves = [...grupos.keys()].sort((a, b) =>
       (a === '(sin cuadrante)') - (b === '(sin cuadrante)') || a.localeCompare(b, undefined, { numeric: true }));
 
-    $('#d-lista').innerHTML = claves.map(k =>
-      '<div class="px-4 py-1.5 bg-telecab-dark/40 border-b border-telecab-border text-xs uppercase tracking-wide text-telecab-muted flex items-center gap-2">' +
-        '<i class="fa-solid fa-layer-group"></i> ' + esc(k) +
-        '<span class="ml-auto normal-case">' + grupos.get(k).length + '</span></div>' +
-      grupos.get(k).map(filaConductor).join('')).join('');
+    // La cabecera del cuadrante se queda pegada arriba al bajar, y dice cuántos de
+    // los suyos faltan: es el dato que decide si hay que bajar a mirar ese grupo.
+    $('#d-lista').innerHTML = claves.map(k => {
+      const g = grupos.get(k);
+      const nf = g.filter(falta).length;
+      return '<div class="sticky top-0 z-10 px-4 py-1.5 bg-telecab-dark border-b border-telecab-border' +
+          ' text-xs uppercase tracking-wide text-telecab-muted flex items-center gap-2">' +
+          '<i class="fa-solid fa-layer-group"></i> ' + esc(k) +
+          (nf ? ' <span class="normal-case text-red-500 font-medium">· ' + nf + ' sin salir</span>' : '') +
+          '<span class="ml-auto normal-case tabular-nums">' + g.length + '</span></div>' +
+        g.map(filaConductor).join('');
+    }).join('');
 
     const salieron = filas.filter(salio).length;
     const faltan = filas.filter(falta).length;
     const vent = (DATOS.ventanas || {})[turnoActivo] || null;
-    $('#d-cuenta').textContent = (vent && !vent.empezada
+    // Con el filtro de "solo los que faltan" puesto, decir "salieron 0 de 15" no
+    // informa de nada: lo que se está viendo es la lista de llamadas.
+    const pie = vent && !vent.empezada
       ? 'Turno sin empezar · ' + filas.length + ' planificados'
-      : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '')) +
-      (q || soloNoSalieron ? ' · filtrado de ' + todas.length : '');
+      : soloNoSalieron
+        ? filas.length + ' por llamar'
+        : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '');
+    $('#d-cuenta').textContent = pie + (q || soloNoSalieron ? ' · de ' + todas.length + ' del turno' : '');
 
     // Reabrir lo que estaba abierto + enganchar acordeón y botones.
     $('#d-lista').querySelectorAll('.dfila').forEach(fila => { if (abiertos.has(fila.dataset.mat)) abrirFila(fila); });
@@ -325,6 +487,7 @@
       } else { av.className = 'hidden'; }
 
       pintarTabs();
+      pintarResumen();
       pintar();
       $('#d-actualizado').innerHTML = 'Flota hoy <b class="text-telecab-text tabular-nums">' +
         ((d.resumen && d.resumen.kmHoy) || 0) + ' km</b> · ' + ((d.resumen && d.resumen.conectados) || 0) + ' conectados · ' +
