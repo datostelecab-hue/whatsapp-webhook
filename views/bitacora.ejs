@@ -1,222 +1,316 @@
 <div class="p-4 lg:p-6 space-y-4">
 
-  <!-- KPIs de flota -->
-  <div id="kpis-flota" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-    <% ['Conductores activos','Ausentes esta semana','Horas del mes','Bajas médicas activas'].forEach(function(k){ %>
+  <!-- ── KPIs de flota: hoy y este mes ─────────────────────────────────────── -->
+  <div id="kpis-flota" class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+    <% [['Plantilla vigente','personas hoy'],['Ausentes hoy','baja, vacaciones, permiso'],['Sin salir esta semana','vigentes sin una hora'],['Horas del mes','efectivas, viaje + espera'],['Justificantes del mes','días con J']].forEach(function(k){ %>
       <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
-        <p class="text-[11px] uppercase tracking-wide text-telecab-muted"><%= k %></p>
-        <p class="kpi-val text-2xl font-bold text-telecab-text">–</p>
+        <p class="text-[11px] uppercase tracking-wide text-telecab-muted"><%= k[0] %></p>
+        <p class="kpi-val text-2xl font-bold text-telecab-text tabular-nums leading-none mt-1">–</p>
+        <p class="text-[11px] text-telecab-muted mt-1"><%= k[1] %></p>
       </div>
     <% }); %>
   </div>
 
-  <!-- Maestro-detalle -->
-  <div class="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-13rem)]">
-    <aside class="lg:w-80 shrink-0 bg-telecab-card border border-telecab-border rounded-2xl flex flex-col lg:h-full overflow-hidden">
-      <div class="p-3 border-b border-telecab-border">
-        <input id="b-buscar" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text focus:outline-none focus:border-telecab-gold transition" placeholder="Buscar conductor…" autocomplete="off">
-        <p id="b-count" class="text-[11px] text-telecab-muted mt-1.5"></p>
+  <!-- ── Maestro-detalle ───────────────────────────────────────────────────── -->
+  <div class="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-14rem)]">
+    <aside class="lg:w-[22rem] shrink-0 bg-telecab-card border border-telecab-border rounded-2xl flex flex-col lg:h-full overflow-hidden">
+      <div class="p-3 border-b border-telecab-border space-y-2">
+        <input id="b-buscar" class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-sm text-telecab-text" placeholder="Nombre o teléfono…" autocomplete="off">
+        <div id="b-filtros" class="flex flex-wrap gap-1"></div>
+        <p id="b-count" class="text-[11px] text-telecab-muted"></p>
       </div>
-      <div id="b-lista" class="flex-1 overflow-y-auto p-2 space-y-1 max-h-[40vh] lg:max-h-none"></div>
+      <div id="b-lista" class="flex-1 overflow-y-auto p-2 space-y-0.5 max-h-[45vh] lg:max-h-none"></div>
     </aside>
 
-    <section class="flex-1 bg-telecab-card border border-telecab-border rounded-2xl overflow-y-auto lg:h-full">
+    <section class="flex-1 min-w-0 bg-telecab-card border border-telecab-border rounded-2xl overflow-y-auto lg:h-full">
       <div id="b-default" class="p-5"></div>
       <div id="b-detalle" class="p-5 hidden"></div>
     </section>
   </div>
 </div>
 
+<style>
+  /* La celda del calendario: cuadrada, con el número arriba y el dato abajo. */
+  .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .cal-dia {
+    position: relative; aspect-ratio: 1 / .78; border-radius: .8rem; padding: .45rem .55rem;
+    display: flex; flex-direction: column; justify-content: space-between;
+    border: 1px solid rgb(var(--tc-border) / .6); background: rgb(var(--tc-dark) / .35);
+    cursor: pointer; transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .cal-dia:hover { transform: translateY(-1px); border-color: rgb(var(--tc-gold) / .6); box-shadow: 0 10px 24px -14px rgb(0 0 0 / .8); }
+  .cal-dia.hoy { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 1px; }
+  .cal-dia.sel { border-color: rgb(var(--tc-gold)); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .25); }
+  .cal-dia.futuro, .cal-dia.fuera { opacity: .28; cursor: default; }
+  .cal-dia.futuro:hover, .cal-dia.fuera:hover { transform: none; border-color: rgb(var(--tc-border) / .6); box-shadow: none; }
+  .cal-num { font-size: 11px; color: rgb(var(--tc-muted)); font-weight: 600; line-height: 1; }
+  .cal-val { font-size: 12px; font-weight: 700; line-height: 1; letter-spacing: -.01em; }
+  .cal-tag { font-size: 10px; font-weight: 700; padding: .15rem .4rem; border-radius: .4rem; align-self: flex-start; }
+  /* Trabajo: verde, más lleno cuanto más cerca de las 8 h. */
+  .cal-dia.t1 { background: rgb(var(--tc-green) / .10); }
+  .cal-dia.t2 { background: rgb(var(--tc-green) / .22); }
+  .cal-dia.t3 { background: rgb(var(--tc-green) / .40); border-color: rgb(var(--tc-green) / .5); }
+  .cal-dia.t3 .cal-val, .cal-dia.t2 .cal-val { color: rgb(var(--tc-text)); }
+  .cal-dia.t1 .cal-val { color: rgb(var(--tc-green)); }
+  .cal-dia.nosalio { background: rgb(var(--tc-red) / .10); border-color: rgb(var(--tc-red) / .35); }
+  .cal-dia.nosalio .cal-val { color: rgb(var(--tc-red)); font-size: 10px; font-weight: 600; }
+  .cal-dia.L { background: rgb(var(--tc-muted) / .10); }
+  .cal-dia.L .cal-val { color: rgb(var(--tc-muted)); font-weight: 600; font-size: 10px; }
+  .cal-dia.V { background: rgb(var(--tc-vac) / .22); border-color: rgb(var(--tc-vac) / .45); }
+  .cal-dia.B { background: rgb(var(--tc-med) / .22); border-color: rgb(var(--tc-med) / .45); }
+  .cal-dia.P { background: rgb(var(--tc-permiso) / .22); border-color: rgb(var(--tc-permiso) / .45); }
+  .cal-dia.J { background: rgb(var(--tc-just) / .25); border-color: rgb(var(--tc-just) / .5); }
+  /* El año: doce meses en miniatura, cada día un puntito. */
+  .mini { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .mini > i { display: block; aspect-ratio: 1; border-radius: 2px; background: rgb(var(--tc-dark) / .5); }
+  .mini > i.t1 { background: rgb(var(--tc-green) / .35); } .mini > i.t2 { background: rgb(var(--tc-green) / .6); } .mini > i.t3 { background: rgb(var(--tc-green)); }
+  .mini > i.nosalio { background: rgb(var(--tc-red) / .6); } .mini > i.L { background: rgb(var(--tc-muted) / .35); }
+  .mini > i.V { background: rgb(var(--tc-vac)); } .mini > i.B { background: rgb(var(--tc-med)); } .mini > i.P { background: rgb(var(--tc-permiso)); } .mini > i.J { background: rgb(var(--tc-just)); }
+  .mini > i.futuro, .mini > i.fuera { opacity: .15; }
+  .b-chip { font-size: 11px; padding: .2rem .55rem; border-radius: .5rem; border: 1px solid rgb(var(--tc-border) / .7); color: rgb(var(--tc-muted)); cursor: pointer; }
+  .b-chip.on { border-color: rgb(var(--tc-gold)); color: rgb(var(--tc-text)); background: rgb(var(--tc-gold) / .12); }
+</style>
+
 <script>
+(function () {
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const rol = '<%= rol || "" %>';   // rol REAL de la sesión (lo inyecta el servidor)
+  const rol = '<%= rol || "" %>';
+  const puedeJustificar = ['trafico', 'desarrollador', 'superadmin'].includes(rol);
+  const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+  const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
 
-  // Colores desde los tokens globales (canales RGB → se pueden teñir y cambian con el tema).
+  // Colores por marca, desde los tokens del tema.
   const CH = { V: 'var(--tc-vac)', B: 'var(--tc-med)', P: 'var(--tc-permiso)', J: 'var(--tc-just)' };
-  const clr = t => `rgb(${CH[t]})`;            // color sólido de una ausencia
-  const tintClr = t => `rgb(${CH[t]} / .14)`;  // su fondo tenue
-  const NOM = { V: 'Vacaciones', B: 'Baja médica', P: 'Permiso', J: 'Justificante' };
-  const HCOL = 'rgb(var(--tc-green))';
-  const TRACK = 'rgb(var(--tc-dark))', LINEA = 'rgb(var(--tc-border))', LIBR = 'rgb(var(--tc-muted) / .28)';
-  const ABBR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-  const DOW = ['L','M','X','J','V','S','D'];
+  const clr = t => `rgb(${CH[t]})`, tint = t => `rgb(${CH[t]} / .16)`;
+  const NOM = { V: 'Vacaciones', B: 'Baja médica', P: 'Permiso', J: 'Justificado', L: 'Libranza' };
+  const MESES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const OBJETIVO = 8;   // horas de referencia de una jornada
 
-  let DATA = null, MESES = [], SEL = null;
-  let level = 'mes', mIdx = 0, wIdx = 0;
+  let DATA = null, MESES = [], SEL = null, filtro = 'vigentes';
+  let level = 'mes', mIdx = 0, wIdx = 0, diaSel = null;
 
-  const esAus = v => v === 'V' || v === 'B' || v === 'P';
-  const dia = (c, d) => (d >= 0 && d < c.dias.length ? c.dias[d] : null);
-
+  // ── Fechas: todo por índice desde el 1 de junio ───────────────────────────
+  const fechaDe = idx => new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + idx));
+  const isoDe = idx => fechaDe(idx).toISOString().slice(0, 10);
+  const dowDe = idx => (fechaDe(idx).getUTCDay() + 6) % 7;          // 0 = lunes
+  const fmtLargo = idx => { const f = fechaDe(idx); return DOW[dowDe(idx)] === 'X' ? 'miércoles ' + f.getUTCDate() : ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][dowDe(idx)] + ' ' + f.getUTCDate() + ' de ' + MESES_L[f.getUTCMonth()]; };
   function construirMeses(ini) {
     const M = []; let cur = null;
     for (let d = 0; d < 365; d++) {
-      const dt = new Date(Date.UTC(ini.y, ini.m, ini.d + d));
-      const y = dt.getUTCFullYear(), mo = dt.getUTCMonth();
-      if (!cur || cur.y !== y || cur.mo !== mo) { cur = { y, mo, label: ABBR[mo] + ' ' + y, start: d, len: 0, dias: [] }; M.push(cur); }
-      cur.len++; cur.dias.push(d);
+      const dt = fechaDe(d); const y = dt.getUTCFullYear(), mo = dt.getUTCMonth();
+      if (!cur || cur.y !== y || cur.mo !== mo) { cur = { y, mo, label: MESES_L[mo] + ' ' + y, corto: ABBR[mo] + ' ' + String(y).slice(2), start: d, len: 0 }; M.push(cur); }
+      cur.len++;
     }
     return M;
   }
   const mesDeHoy = () => Math.max(0, MESES.findIndex(m => DATA.hoyIdx >= m.start && DATA.hoyIdx < m.start + m.len));
-  const semDeHoy = () => Math.floor(DATA.hoyIdx / 7);
+  const semDeHoy = () => Math.floor((DATA.hoyIdx + dowDe(0)) / 7);        // la semana (empieza en lunes) que contiene hoy
+  const iniSemana = w => w * 7 - dowDe(0);                                // índice del lunes de la semana w
+  const esAus = v => v === 'V' || v === 'B' || v === 'P';
+  const val = (c, d) => (d >= 0 && d < c.dias.length ? c.dias[d] : null);
 
-  // Rangos de ausencia (nº de periodos consecutivos por tipo) en un array de días.
-  function rangos(dias) {
-    const r = { V: 0, B: 0, P: 0 }; let prev = null;
-    for (let d = 0; d < dias.length; d++) { const v = dias[d]; if (esAus(v)) { if (prev !== v) r[v]++; prev = v; } else prev = null; }
+  // ── La clase de un día: qué se pinta y qué se dice ────────────────────────
+  //   futuro · fuera (antes del alta / tras la baja) · t1/t2/t3 (trabajó, por horas)
+  //   · V/B/P (ausencia) · J (justificado) · L (libranza) · nosalio
+  function clase(c, d) {
+    if (d > DATA.hoyIdx) return 'futuro';
+    if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return 'fuera';
+    const v = val(c, d);
+    if (typeof v === 'number' && v > 0) return v >= OBJETIVO ? 't3' : v >= OBJETIVO / 2 ? 't2' : 't1';
+    if (esAus(v) || v === 'J' || v === 'L') return v;
+    return 'nosalio';
+  }
+  const trabajo = k => k === 't1' || k === 't2' || k === 't3';
+  function textoDia(c, d) {
+    const k = clase(c, d), v = val(c, d);
+    if (k === 'futuro') return 'Todavía no ha llegado.';
+    if (k === 'fuera') return c.altaIdx != null && d < c.altaIdx ? 'Antes de su alta.' : 'Después de su baja.';
+    if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '');
+    if (k === 'J') { const j = c.justif[isoDe(d)] || {}; return 'Justificado' + (j.horas != null ? ' · llevaba ' + nf1.format(j.horas) + ' h' : '') + (j.obs ? ' · ' + j.obs : ''); }
+    if (k === 'L') return 'Libranza (le tocaba descansar)';
+    if (esAus(k)) return NOM[k];
+    return 'No salió: ni una hora, sin libranza ni ausencia.';
+  }
+
+  // ── Resúmenes ────────────────────────────────────────────────────────────
+  function resumen(c, a, b) {
+    const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0, dias: 0 };
+    for (let d = a; d <= b; d++) {
+      const k = clase(c, d); if (k === 'futuro' || k === 'fuera') continue;
+      r.dias++;
+      if (trabajo(k)) { const v = val(c, d); r.horas += v; r.trabajados++; if (v < OBJETIVO) r.cortos++; }
+      else if (r[k] != null) r[k]++;
+    }
     return r;
   }
-  function horasEn(c, ini, fin) { let h = 0; for (let d = ini; d <= fin; d++) { const v = dia(c, d); if (typeof v === 'number' && v > 0) h += v; } return h; }
+  const badges = r => ['B', 'V', 'P', 'J'].filter(t => r[t]).map(t =>
+    `<span style="background:${tint(t)};color:${clr(t)}" class="text-[10px] px-1.5 py-0.5 rounded font-semibold" title="${NOM[t]}">${t}${r[t]}</span>`).join('');
 
-  // ---------- KPIs de flota ----------
+  // ── KPIs de flota ─────────────────────────────────────────────────────────
   function pintarKpisFlota() {
-    const wk = semDeHoy(), wa = wk * 7, wb = wk * 7 + 6;
-    const mes = MESES[mesDeHoy()];
-    let activos = 0, ausSem = 0, horasMes = 0, bMed = 0;
+    const mes = MESES[mesDeHoy()], wa = iniSemana(semDeHoy()), wb = Math.min(wa + 6, DATA.hoyIdx);
+    let vig = 0, aus = 0, sinSalir = 0, horas = 0, jotas = 0;
     DATA.conductores.forEach(c => {
-      if (/Activo/i.test(c.estado)) activos++;
-      let aus = false; for (let d = wa; d <= wb; d++) if (esAus(dia(c, d))) aus = true;
-      if (aus) ausSem++;
-      mes.dias.forEach(d => { const v = dia(c, d); if (typeof v === 'number' && v > 0) horasMes += v; });
-      if (dia(c, DATA.hoyIdx) === 'B') bMed++;
+      if (!c.vigente) return;
+      vig++;
+      if (esAus(val(c, DATA.hoyIdx))) aus++;
+      let algo = false; for (let d = Math.max(wa, c.altaIdx || 0); d <= wb; d++) { const k = clase(c, d); if (trabajo(k) || k === 'J' || k === 'L' || esAus(k)) { algo = true; break; } }
+      if (!algo && (c.altaIdx || 0) <= wb) sinSalir++;
+      const r = resumen(c, mes.start, mes.start + mes.len - 1); horas += r.horas; jotas += r.J;
     });
-    const vals = [activos, ausSem, Math.round(horasMes).toLocaleString('es-ES'), bMed];
-    document.querySelectorAll('#kpis-flota .kpi-val').forEach((el, i) => { el.textContent = vals[i]; });
+    [vig, aus, sinSalir, nf0.format(Math.round(horas)), jotas].forEach((v, i) => { document.querySelectorAll('#kpis-flota .kpi-val')[i].textContent = v; });
   }
 
-  // ---------- Lista de conductores ----------
-  function badges(r) {
-    let h = '';
-    ['B', 'V', 'P'].forEach(t => { if (r[t]) h += `<span style="background:${tintClr(t)};color:${clr(t)};" class="text-[10px] px-1.5 py-0.5 rounded font-semibold">${t}${r[t]}</span>`; });
-    return h || '<span class="text-[10px] text-telecab-muted">sin ausencias</span>';
+  // ── Lista ────────────────────────────────────────────────────────────────
+  const FILTROS = [
+    ['vigentes', 'Vigentes'], ['ausentes', 'Ausentes hoy'], ['B', 'Baja médica'], ['V', 'Vacaciones'],
+    ['sinsalir', 'Sin salir esta semana'], ['conJ', 'Con justificantes'], ['bajas', 'De baja'], ['todos', 'Todos'],
+  ];
+  function pasaFiltro(c) {
+    const hoy = val(c, DATA.hoyIdx);
+    if (filtro === 'todos') return true;
+    if (filtro === 'bajas') return !c.vigente;
+    if (!c.vigente) return false;
+    if (filtro === 'vigentes') return true;
+    if (filtro === 'ausentes') return esAus(hoy);
+    if (filtro === 'B' || filtro === 'V') return hoy === filtro;
+    if (filtro === 'conJ') return Object.keys(c.justif).length > 0;
+    if (filtro === 'sinsalir') {
+      const wa = iniSemana(semDeHoy()), wb = Math.min(wa + 6, DATA.hoyIdx);
+      for (let d = Math.max(wa, c.altaIdx || 0); d <= wb; d++) { const k = clase(c, d); if (trabajo(k) || k === 'J' || k === 'L' || esAus(k)) return false; }
+      return (c.altaIdx || 0) <= wb;
+    }
+    return true;
+  }
+  function pintarFiltros() {
+    $('#b-filtros').innerHTML = FILTROS.map(([k, t]) => `<button type="button" data-f="${k}" class="b-chip ${filtro === k ? 'on' : ''}">${t}</button>`).join('');
+    $('#b-filtros').querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; pintarFiltros(); pintarLista(); }));
   }
   function pintarLista() {
     const q = $('#b-buscar').value.trim().toLowerCase();
     const mes = MESES[mesDeHoy()];
-    const vis = DATA.conductores.filter(c => !q || c.id.toLowerCase().includes(q));
-    const cont = $('#b-lista'); cont.innerHTML = '';
-    if (!vis.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm p-3">Sin resultados.</p>'; }
-    vis.forEach(c => {
-      const r = rangos(c.dias);
-      const hMes = Math.round(horasEn(c, mes.start, mes.start + mes.len - 1));
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'w-full text-left px-2.5 py-2 rounded-xl hover:bg-telecab-card2 transition' + (SEL === c.id ? ' bg-telecab-card2' : '');
-      el.dataset.id = c.id;
-      el.innerHTML =
-        `<div class="flex items-center gap-2">
-           <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(c.id)}</span>
-           <span class="text-[11px] text-telecab-muted whitespace-nowrap">${hMes} h</span>
-         </div>
-         <div class="flex flex-wrap gap-1 mt-1">${badges(r)}</div>`;
-      el.addEventListener('click', () => abrir(c.id));
-      cont.appendChild(el);
-    });
-    $('#b-count').textContent = `${vis.length} de ${DATA.conductores.length} conductores`;
+    const vis = DATA.conductores.filter(c => pasaFiltro(c) && (!q || c.id.toLowerCase().includes(q) || (c.nombre || '').toLowerCase().includes(q) || (c.telefono || '').replace(/\D/g, '').includes(q.replace(/\D/g, '') || '§')));
+    const cont = $('#b-lista');
+    if (!vis.length) { cont.innerHTML = '<p class="text-telecab-muted text-sm p-3">Nadie con ese filtro.</p>'; }
+    else cont.innerHTML = vis.map(c => {
+      const r = resumen(c, mes.start, mes.start + mes.len - 1);
+      const hoy = val(c, DATA.hoyIdx), kHoy = clase(c, DATA.hoyIdx);
+      const punto = esAus(hoy) ? clr(hoy) : trabajo(kHoy) ? 'rgb(var(--tc-green))' : kHoy === 'L' ? 'rgb(var(--tc-muted))' : c.vigente ? 'rgb(var(--tc-border))' : 'transparent';
+      return `<button type="button" data-id="${c.conductorId}" class="b-item w-full text-left px-2.5 py-2 rounded-xl hover:bg-telecab-card2 transition ${SEL === c.conductorId ? 'bg-telecab-card2 ring-1 ring-telecab-gold/50' : ''}">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full shrink-0" style="background:${punto}" title="Hoy"></span>
+          <span class="min-w-0 flex-1 text-sm text-telecab-text truncate ${c.vigente ? '' : 'opacity-60'}">${esc(c.id)}</span>
+          <span class="text-[11px] text-telecab-muted tabular-nums whitespace-nowrap">${nf0.format(Math.round(r.horas))} h</span>
+        </div>
+        <div class="flex items-center gap-1.5 mt-1 pl-4">
+          <span class="text-[10px] text-telecab-muted font-mono">${esc(c.telefono || 'sin teléfono')}</span>
+          ${c.tipo ? `<span class="text-[10px] text-telecab-muted">· ${esc(c.tipo)}</span>` : ''}
+          ${!c.vigente && c.baja ? `<span class="text-[10px] text-telecab-red">· baja ${c.baja.slice(8, 10)}/${c.baja.slice(5, 7)}</span>` : ''}
+          <span class="ml-auto flex gap-1">${badges(r)}</span>
+        </div>
+      </button>`;
+    }).join('');
+    cont.querySelectorAll('.b-item').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.id))));
+    $('#b-count').textContent = `${vis.length} de ${DATA.conductores.length} · ${DATA.conductores.filter(c => c.vigente).length} vigentes`
+      + (DATA.avisos && DATA.avisos.sinFicha ? ` · ${DATA.avisos.sinFicha} cuenta BOLT sin ficha` : '');
   }
 
-  // ---------- Panel por defecto (según rol) ----------
+  // ── Panel por defecto: hoy, de un vistazo ─────────────────────────────────
   function pintarDefault() {
-    $('#b-detalle').classList.add('hidden');
-    $('#b-default').classList.remove('hidden');
-    const wk = semDeHoy(), wa = wk * 7, wb = wk * 7 + 6;
-    const mes = MESES[mesDeHoy()];
-
-    if (rol === 'trafico') {
-      const lista = DATA.conductores.map(c => {
-        const tipos = {}; for (let d = wa; d <= wb; d++) { const v = dia(c, d); if (esAus(v)) tipos[v] = (tipos[v] || 0) + 1; }
-        return { c, tipos, n: Object.values(tipos).reduce((a, b) => a + b, 0) };
-      }).filter(x => x.n).sort((a, b) => b.n - a.n);
-      $('#b-default').innerHTML =
-        `<h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2 mb-1"><i class="fa-solid fa-user-clock text-telecab-gold"></i> Ausentes esta semana</h2>
-         <p class="text-xs text-telecab-muted mb-4">Quién no sale estos días. Haz clic en cualquier conductor para ver su bitácora.</p>
-         ${lista.length ? '<div class="space-y-1.5">' + lista.map(x =>
-            `<button type="button" data-id="${esc(x.c.id)}" class="b-open w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 transition">
-               <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(x.c.id)}</span>
-               <span class="flex gap-1">${Object.keys(x.tipos).map(t => `<span style="background:${tintClr(t)};color:${clr(t)};" class="text-[11px] px-2 py-0.5 rounded-lg font-medium">${NOM[t]} · ${x.tipos[t]}d</span>`).join('')}</span>
-             </button>`).join('') + '</div>'
-          : '<p class="text-telecab-muted text-sm">Nadie ausente esta semana. 🎉</p>'}`;
-    } else {
-      const cont = { V: 0, B: 0, P: 0 }, conductores = [];
-      DATA.conductores.forEach(c => {
-        const r = { V: 0, B: 0, P: 0 }; let prev = null, any = false;
-        mes.dias.forEach(d => { const v = dia(c, d); if (esAus(v)) { any = true; if (prev !== v) { r[v]++; cont[v]++; } prev = v; } else prev = null; });
-        if (any) conductores.push({ c, r });
-      });
-      const chip = (t, n) => `<span style="background:${tintClr(t)};color:${clr(t)};" class="text-sm px-3 py-1.5 rounded-xl font-medium">${NOM[t]}: ${n}</span>`;
-      $('#b-default').innerHTML =
-        `<h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2 mb-1"><i class="fa-solid fa-calendar-check text-telecab-gold"></i> Ausencias de ${esc(mes.label)}</h2>
-         <p class="text-xs text-telecab-muted mb-4">Periodos de ausencia registrados este mes. Haz clic en un conductor para su histórico completo.</p>
-         <div class="flex flex-wrap gap-2 mb-5">${chip('V', cont.V)}${chip('B', cont.B)}${chip('P', cont.P)}</div>
-         ${conductores.length ? '<div class="space-y-1.5">' + conductores.map(x =>
-            `<button type="button" data-id="${esc(x.c.id)}" class="b-open w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 transition">
-               <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(x.c.id)}</span>
-               <span class="flex gap-1">${badges(x.r)}</span>
-             </button>`).join('') + '</div>'
-          : '<p class="text-telecab-muted text-sm">Sin ausencias este mes.</p>'}`;
-    }
-    $('#b-default').querySelectorAll('.b-open').forEach(b => b.addEventListener('click', () => abrir(b.dataset.id)));
+    $('#b-detalle').classList.add('hidden'); $('#b-default').classList.remove('hidden');
+    const hoy = DATA.hoyIdx, mes = MESES[mesDeHoy()];
+    const aus = DATA.conductores.filter(c => c.vigente && esAus(val(c, hoy)));
+    const porTipo = { B: [], V: [], P: [] }; aus.forEach(c => porTipo[val(c, hoy)].push(c));
+    const fila = c => `<button type="button" data-id="${c.conductorId}" class="b-open w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl bg-telecab-dark/40 hover:bg-telecab-card2 transition">
+        <span class="min-w-0 flex-1 text-sm text-telecab-text truncate">${esc(c.id)}</span>
+        <span class="text-[11px] text-telecab-muted font-mono">${esc(c.telefono || '')}</span>
+        ${(() => { const a = c.ausencias.find(x => x.desde <= isoDe(hoy) && x.hasta >= isoDe(hoy)); return a ? `<span class="text-[11px] text-telecab-muted">desde ${a.desde.slice(8, 10)}/${a.desde.slice(5, 7)}${a.abierta ? ' · sin fecha de vuelta' : ' · hasta ' + a.hasta.slice(8, 10) + '/' + a.hasta.slice(5, 7)}</span>` : ''; })()}
+      </button>`;
+    const bloque = (t, lista) => lista.length ? `<div><p class="text-xs font-semibold mb-1.5" style="color:${clr(t)}">${NOM[t]} · ${lista.length}</p><div class="space-y-1">${lista.map(fila).join('')}</div></div>` : '';
+    const jotasMes = DATA.conductores.reduce((s, c) => s + resumen(c, mes.start, mes.start + mes.len - 1).J, 0);
+    $('#b-default').innerHTML =
+      `<h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2 mb-1"><i class="fa-solid fa-calendar-day text-telecab-gold"></i> Hoy, ${esc(fmtLargo(hoy))}</h2>
+       <p class="text-xs text-telecab-muted mb-4">Quién falta hoy y por qué. Elige a alguien en la lista para ver su calendario completo, día a día.</p>
+       <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">${bloque('B', porTipo.B)}${bloque('V', porTipo.V)}${bloque('P', porTipo.P)}</div>
+       ${aus.length ? '' : '<p class="text-telecab-muted text-sm">Nadie ausente hoy.</p>'}
+       <p class="text-xs text-telecab-muted mt-6">Este mes llevamos <b class="text-telecab-text">${jotasMes}</b> días justificados (J) en toda la plantilla.</p>`;
+    $('#b-default').querySelectorAll('.b-open').forEach(b => b.addEventListener('click', () => abrir(Number(b.dataset.id))));
   }
 
-  // ---------- Detalle del conductor (año / mes / semana) ----------
-  function rango() {
-    if (level === 'año') return { a: 0, b: 364 };
-    if (level === 'mes') { const m = MESES[mIdx]; return { a: m.start, b: m.start + m.len - 1 }; }
-    return { a: wIdx * 7, b: Math.min(wIdx * 7 + 6, 364) };
-  }
+  // ── Detalle ──────────────────────────────────────────────────────────────
+  const rango = () => level === 'año' ? { a: 0, b: 364 } : level === 'mes' ? { a: MESES[mIdx].start, b: MESES[mIdx].start + MESES[mIdx].len - 1 } : { a: iniSemana(wIdx), b: iniSemana(wIdx) + 6 };
+  const sel = () => DATA.conductores.find(x => x.conductorId === SEL);
+
   function abrir(id) {
-    const c = DATA.conductores.find(x => x.id === id); if (!c) return;
-    SEL = id; level = 'mes'; mIdx = mesDeHoy(); wIdx = semDeHoy();
+    const c = DATA.conductores.find(x => x.conductorId === id); if (!c) return;
+    SEL = id; level = 'mes'; mIdx = mesDeHoy(); wIdx = semDeHoy(); diaSel = null;
     pintarLista();
     $('#b-default').classList.add('hidden');
     const d = $('#b-detalle'); d.classList.remove('hidden');
-    const isoDe = idx => new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + idx)).toISOString().slice(0, 10);
-    const minIso = isoDe(0), maxIso = isoDe(DATA.hoyIdx);
-    const puedeJustificar = ['trafico', 'desarrollador', 'superadmin'].includes(rol);
+    const estadoChip = c.ausente
+      ? `<span class="text-xs px-2 py-0.5 rounded-lg font-medium" style="background:${tint(val(c, DATA.hoyIdx) || 'B')};color:${clr(val(c, DATA.hoyIdx) || 'B')}">${esc(c.estado)}</span>`
+      : c.vigente ? '<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-green/15 text-telecab-green font-medium">Activo</span>'
+      : `<span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-red/15 text-telecab-red font-medium">Baja ${c.baja ? c.baja.split('-').reverse().join('/') : ''}</span>`;
     d.innerHTML =
-      `<div class="flex items-center gap-3 mb-4">
-         <button id="b-volver" class="text-xs px-2.5 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Resumen</button>
-         <h2 class="text-lg font-semibold text-telecab-text truncate">${esc(c.id)}</h2>
-         <span class="text-xs text-telecab-muted whitespace-nowrap">${esc(c.turno || '')}${c.estado ? ' · ' + esc(c.estado) : ''}</span>
-         ${puedeJustificar ? `<button id="b-justif-btn" class="ml-auto text-xs px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark font-semibold hover:opacity-90 transition whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar día</button>` : ''}
+      `<div class="flex flex-wrap items-start gap-3 mb-4">
+         <button id="b-volver" class="text-xs px-2.5 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Hoy</button>
+         <div class="min-w-0 flex-1">
+           <div class="flex flex-wrap items-center gap-2">
+             <h2 class="text-xl font-bold text-telecab-text truncate">${esc(c.id)}</h2>${estadoChip}
+           </div>
+           <p class="text-xs text-telecab-muted mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+             ${c.telefono ? `<a href="tel:${esc(c.telefono)}" class="font-mono hover:text-telecab-gold"><i class="fa-solid fa-phone mr-1"></i>${esc(c.telefono)}</a>` : '<span>sin teléfono</span>'}
+             ${c.tipo ? `<span>${esc(c.tipo === 'ett' ? 'ETT' : 'Plantilla propia')}</span>` : ''}
+             ${c.zona ? `<span><i class="fa-solid fa-location-dot mr-1"></i>${esc(c.zona)}</span>` : ''}
+             ${c.turno ? `<span>${esc(c.turno)}</span>` : ''}
+             ${c.alta ? `<span>alta ${c.alta.split('-').reverse().join('/')}</span>` : ''}
+             ${c.nombreBolt && c.nombre && c.nombreBolt !== c.nombre ? `<span class="text-telecab-muted/70">en plantilla: ${esc(c.nombre)}</span>` : ''}
+           </p>
+         </div>
+         ${puedeJustificar ? `<button id="b-justif-btn" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar un día</button>` : ''}
        </div>
        ${puedeJustificar ? `
        <div id="b-justif-form" class="hidden mb-4 p-3 rounded-xl bg-telecab-dark/50 border border-telecab-border">
+         <p class="text-xs text-telecab-muted mb-2">Pincha un día del calendario para elegirlo, o escríbelo. La J vale 8 h para el pago; las horas que pongas son las que llevaba de verdad.</p>
          <div class="flex flex-wrap items-end gap-3">
-           <label class="text-xs text-telecab-muted">Día<br><input id="j-dia" type="date" min="${minIso}" max="${maxIso}" value="${maxIso}" class="mt-1 bg-telecab-card border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
-           <label class="text-xs text-telecab-muted">Horas justificadas<br><input id="j-horas" type="number" step="0.1" min="0" max="24" placeholder="exactas" class="mt-1 w-28 bg-telecab-card border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
-           <label class="flex-1 min-w-[200px] text-xs text-telecab-muted">Observación (obligatoria)<br><input id="j-obs" type="text" class="mt-1 w-full bg-telecab-card border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
-           <button id="j-guardar" class="text-xs px-3 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition" style="background:${HCOL}">Guardar J</button>
+           <label class="text-xs text-telecab-muted">Día<br><input id="j-dia" type="date" min="${isoDe(0)}" max="${isoDe(DATA.hoyIdx)}" value="${isoDe(DATA.hoyIdx)}" class="mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <label class="text-xs text-telecab-muted">Horas que llevaba<br><input id="j-horas" type="number" step="0.1" min="0" max="24" placeholder="exactas" class="mt-1 w-28 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <label class="flex-1 min-w-[200px] text-xs text-telecab-muted">Motivo (obligatorio)<br><input id="j-obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. 2 horas ITV"></label>
+           <button id="j-guardar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold">Guardar J</button>
          </div>
          <p id="j-msg" class="text-xs mt-2"></p>
        </div>` : ''}
        <div class="flex items-center gap-3 flex-wrap mb-4">
          <div class="inline-flex rounded-xl overflow-hidden border border-telecab-border">
-           ${['año','mes','semana'].map(l => `<button data-lv="${l}" class="b-seg px-3 py-1.5 text-sm capitalize">${l}</button>`).join('')}
+           ${['año', 'mes', 'semana'].map(l => `<button data-lv="${l}" class="b-seg px-3 py-1.5 text-sm capitalize">${l}</button>`).join('')}
          </div>
          <div class="flex items-center gap-2 ml-auto">
            <button id="b-prev" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-chevron-left"></i></button>
-           <span id="b-period" class="text-sm font-medium text-telecab-text min-w-[110px] text-center"></span>
+           <span id="b-period" class="text-sm font-semibold text-telecab-text min-w-[150px] text-center capitalize"></span>
            <button id="b-next" class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition"><i class="fa-solid fa-chevron-right"></i></button>
          </div>
        </div>
-       <div id="b-kpis" class="grid grid-cols-4 gap-2 mb-5"></div>
-       <p class="text-xs text-telecab-muted mb-2">Ausencias</p>
-       <div id="b-tl" class="flex gap-0.5"></div>
-       <div id="b-tlabels" class="flex gap-0.5 mt-1"></div>
-       <div class="flex flex-wrap gap-4 mt-3 text-xs text-telecab-muted">
-         <span class="flex items-center gap-1.5"><span style="background:${clr('B')}" class="w-3 h-3 rounded"></span>Baja médica</span>
-         <span class="flex items-center gap-1.5"><span style="background:${clr('V')}" class="w-3 h-3 rounded"></span>Vacaciones</span>
-         <span class="flex items-center gap-1.5"><span style="background:${clr('P')}" class="w-3 h-3 rounded"></span>Permiso</span>
-         <span class="flex items-center gap-1.5"><span style="background:${clr('J')}" class="w-3 h-3 rounded"></span>Justificante</span>
-         <span class="flex items-center gap-1.5"><span style="background:${LIBR}" class="w-3 h-3 rounded"></span>Libranza</span>
+       <div id="b-kpis" class="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4"></div>
+       <div id="b-cal"></div>
+       <div id="b-diainfo" class="hidden mt-3 px-3 py-2 rounded-xl bg-telecab-dark/50 border border-telecab-border text-sm"></div>
+       <div class="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-[11px] text-telecab-muted">
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:rgb(var(--tc-green))"></span>Trabajó (más lleno = más horas)</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:rgb(var(--tc-red) / .6)"></span>No salió</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:rgb(var(--tc-muted) / .45)"></span>Libranza</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('J')}"></span>Justificado</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('B')}"></span>Baja médica</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('V')}"></span>Vacaciones</span>
+         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:${clr('P')}"></span>Permiso</span>
        </div>
-       <p class="text-xs text-telecab-muted mt-6 mb-2">Horas</p>
-       <div id="b-hours" class="flex gap-1 items-end h-32"></div>
-       <div id="b-hlabels" class="flex gap-1 mt-1"></div>`;
+       <p class="text-xs text-telecab-muted mt-6 mb-2">Horas por ${level === 'año' ? 'mes' : 'día'} <span class="text-telecab-muted/60">· la línea es la jornada de ${OBJETIVO} h</span></p>
+       <div id="b-hours" class="relative flex gap-1 items-end h-36"></div>
+       <div id="b-hlabels" class="flex gap-1 mt-1"></div>
+       <div id="b-ausencias" class="mt-6"></div>`;
     d.querySelector('#b-volver').addEventListener('click', () => { SEL = null; pintarLista(); pintarDefault(); });
-    d.querySelectorAll('.b-seg').forEach(b => b.addEventListener('click', () => { level = b.dataset.lv; render(); }));
+    d.querySelectorAll('.b-seg').forEach(b => b.addEventListener('click', () => { level = b.dataset.lv; diaSel = null; render(); }));
     d.querySelector('#b-prev').addEventListener('click', () => nav(-1));
     d.querySelector('#b-next').addEventListener('click', () => nav(1));
     const jbtn = d.querySelector('#b-justif-btn');
@@ -225,110 +319,146 @@
       jbtn.addEventListener('click', () => form.classList.toggle('hidden'));
       d.querySelector('#j-guardar').addEventListener('click', async () => {
         const msg = d.querySelector('#j-msg');
-        const diaV = d.querySelector('#j-dia').value;
-        const horasV = d.querySelector('#j-horas').value;
-        const obsV = d.querySelector('#j-obs').value.trim();
-        if (!diaV) { msg.textContent = 'Elige un día.'; msg.style.color = 'salmon'; return; }
-        if (!obsV) { msg.textContent = 'La observación es obligatoria.'; msg.style.color = 'salmon'; return; }
-        msg.textContent = 'Guardando…'; msg.style.color = '';
+        const diaV = d.querySelector('#j-dia').value, horasV = d.querySelector('#j-horas').value, obsV = d.querySelector('#j-obs').value.trim();
+        if (!diaV) { msg.textContent = 'Elige un día.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
+        if (!obsV) { msg.textContent = 'El motivo es obligatorio.'; msg.className = 'text-xs mt-2 text-telecab-red'; return; }
+        msg.textContent = 'Guardando…'; msg.className = 'text-xs mt-2 text-telecab-muted';
         try {
-          const resp = await (await fetch('/bitacora/api/justificar', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV })
-          })).json();
+          const resp = await (await fetch('/bitacora/api/justificar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conductorId: c.conductorId, dia: diaV, horas: horasV, observacion: obsV }) })).json();
           if (resp.status !== 'ok') throw new Error(resp.msg || 'Error');
-          msg.textContent = '✓ Justificado. Actualizando…'; msg.style.color = 'lightgreen';
-          await recargarYAbrir(c.id);
-        } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'salmon'; }
+          msg.textContent = '✓ Justificado. Actualizando…'; msg.className = 'text-xs mt-2 text-telecab-green';
+          await recargarYAbrir(c.conductorId);
+        } catch (e) { msg.textContent = 'Error: ' + e.message; msg.className = 'text-xs mt-2 text-telecab-red'; }
       });
     }
     render();
   }
   function nav(dir) {
-    if (level === 'mes') mIdx = (mIdx + 12 + dir) % 12;
-    else if (level === 'semana') wIdx = (wIdx + 52 + dir) % 52;
-    render();
+    if (level === 'mes') mIdx = Math.max(0, Math.min(MESES.length - 1, mIdx + dir));
+    else if (level === 'semana') wIdx = Math.max(0, Math.min(52, wIdx + dir));
+    diaSel = null; render();
   }
+
   function render() {
-    const c = DATA.conductores.find(x => x.id === SEL); if (!c) return;
+    const c = sel(); if (!c) return;
     document.querySelectorAll('.b-seg').forEach(b => {
       const on = b.dataset.lv === level;
-      b.className = 'b-seg px-3 py-1.5 text-sm capitalize ' + (on ? 'bg-telecab-gold/20 text-telecab-gold' : 'text-telecab-muted hover:text-telecab-text');
+      b.className = 'b-seg px-3 py-1.5 text-sm capitalize ' + (on ? 'bg-telecab-gold/20 text-telecab-gold font-semibold' : 'text-telecab-muted hover:text-telecab-text');
     });
-    const navOff = level === 'año';
-    ['#b-prev', '#b-next'].forEach(s => { $(s).style.visibility = navOff ? 'hidden' : 'visible'; });
-
-    // Periodo + KPIs
-    const r = rango(); let H = 0, tr = 0, au = 0, li = 0;
-    for (let d = r.a; d <= r.b; d++) { const v = dia(c, d); if (typeof v === 'number' && v > 0) { H += v; tr++; } else if (v === 'L') li++; else if (esAus(v)) au++; }
-    $('#b-period').textContent = level === 'año' ? 'jun 2026 – may 2027' : (level === 'mes' ? MESES[mIdx].label : 'sem ' + (wIdx + 1) + ' · ' + mesDeSemana(wIdx));
-    const kp = [['Horas', Math.round(H)], ['Días trabajados', tr], ['Días de ausencia', au], ['Libranzas', li]];
-    $('#b-kpis').innerHTML = kp.map(k =>
-      `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold text-telecab-text">${k[1]}</p></div>`).join('');
-
-    pintarTimeline(c);
-    pintarHoras(c);
+    ['#b-prev', '#b-next'].forEach(s => { $(s).style.visibility = level === 'año' ? 'hidden' : 'visible'; });
+    const r = rango(), s = resumen(c, r.a, r.b);
+    $('#b-period').textContent = level === 'año' ? 'junio 2026 – mayo 2027' : level === 'mes' ? MESES[mIdx].label : 'semana del ' + fechaDe(r.a).getUTCDate() + ' de ' + MESES_L[fechaDe(r.a).getUTCMonth()];
+    const kp = [
+      ['Horas', nf0.format(Math.round(s.horas)), 'text-telecab-text'],
+      ['Días trabajados', s.trabajados, 'text-telecab-green'],
+      ['Media por día', s.trabajados ? nf1.format(s.horas / s.trabajados) + ' h' : '—', s.trabajados && s.horas / s.trabajados < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text'],
+      ['Días sin salir', s.nosalio, s.nosalio ? 'text-telecab-red' : 'text-telecab-text'],
+      ['Ausencias', s.V + s.B + s.P, 'text-telecab-text'],
+      ['Justificados', s.J, s.J ? 'text-telecab-azul' : 'text-telecab-text'],
+    ];
+    $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p></div>`).join('');
+    pintarCalendario(c); pintarHoras(c); pintarAusencias(c);
+    $('#b-diainfo').classList.toggle('hidden', diaSel == null);
+    if (diaSel != null) $('#b-diainfo').innerHTML = `<b class="text-telecab-text capitalize">${esc(fmtLargo(diaSel))}</b> <span class="text-telecab-muted">· ${esc(textoDia(c, diaSel))}</span>`;
   }
-  function mesDeSemana(w) { const d = w * 7; const m = MESES.find(m => d >= m.start && d < m.start + m.len); return m ? m.label : ''; }
 
-  function celdaTL(bg, extra) {
-    return `<div style="flex:1 1 0;height:24px;border-radius:2px;background:${bg};border:0.5px solid ${bg === TRACK ? LINEA : bg};${extra || ''}"></div>`;
+  // ── El calendario ─────────────────────────────────────────────────────────
+  function celda(c, d, conNumero) {
+    const k = clase(c, d), v = val(c, d);
+    let contenido = '';
+    if (trabajo(k)) contenido = `<span class="cal-val">${nf1.format(v)} h</span>`;
+    else if (k === 'nosalio') contenido = '<span class="cal-val">no salió</span>';
+    else if (k === 'L') contenido = '<span class="cal-val">libra</span>';
+    else if (k === 'J') contenido = `<span class="cal-tag" style="background:${clr('J')};color:white">J</span>`;
+    else if (esAus(k)) contenido = `<span class="cal-tag" style="background:${clr(k)};color:white">${k}</span>`;
+    const f = fechaDe(d);
+    return `<div class="cal-dia ${k} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">
+      <span class="cal-num">${conNumero ? f.getUTCDate() : DOW[dowDe(d)]}${conNumero && level === 'semana' ? ' ' + DOW[dowDe(d)] : ''}</span>${contenido}</div>`;
   }
-  function pintarTimeline(c) {
-    const tl = $('#b-tl'), lb = $('#b-tlabels');
+  function pintarCalendario(c) {
+    const cal = $('#b-cal');
     if (level === 'año') {
-      let cells = '';
-      for (let w = 0; w < 52; w++) { let col = null; for (let j = 0; j < 7; j++) { const v = dia(c, w * 7 + j); if (esAus(v) || v === 'J') { col = clr(v); break; } } cells += celdaTL(col || TRACK); }
-      tl.innerHTML = cells;
-      lb.innerHTML = MESES.map(m => `<div style="flex:1 1 0;text-align:center;" class="text-[10px] text-telecab-muted">${m.label.slice(0, 3)}</div>`).join('');
-    } else {
-      const r = rango(); let cells = '', labs = '';
-      for (let d = r.a; d <= r.b; d++) {
-        const v = dia(c, d);
-        const bg = (esAus(v) || v === 'J') ? clr(v) : (v === 'L' ? LIBR : TRACK);
-        cells += celdaTL(bg);
-        const dt = new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + d));
-        const lab = level === 'semana' ? DOW[(d % 7)] : (dt.getUTCDate() % 5 === 1 ? dt.getUTCDate() : '');
-        labs += `<div style="flex:1 1 0;text-align:center;" class="text-[10px] text-telecab-muted">${lab}</div>`;
-      }
-      tl.innerHTML = cells; lb.innerHTML = labs;
+      cal.innerHTML = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' + MESES.map((m, i) => {
+        let puntos = ''; for (let p = 0; p < dowDe(m.start); p++) puntos += '<i style="visibility:hidden"></i>';
+        for (let d = m.start; d < m.start + m.len; d++) puntos += `<i class="${clase(c, d)}" title="${esc(fechaDe(d).getUTCDate() + ' ' + ABBR[m.mo] + ' · ' + textoDia(c, d))}"></i>`;
+        const s = resumen(c, m.start, m.start + m.len - 1);
+        return `<button type="button" data-m="${i}" class="b-mes text-left p-3 rounded-xl border border-telecab-border/60 bg-telecab-dark/30 hover:border-telecab-gold/60 transition">
+          <div class="flex items-baseline justify-between mb-2"><span class="text-xs font-semibold text-telecab-text capitalize">${m.label}</span><span class="text-[11px] text-telecab-muted tabular-nums">${s.dias ? nf0.format(Math.round(s.horas)) + ' h' : ''}</span></div>
+          <div class="mini">${puntos}</div>
+          <div class="flex gap-1 mt-2 text-[10px]">${s.nosalio ? `<span class="text-telecab-red">${s.nosalio} sin salir</span>` : ''}${badges(s) ? '<span class="ml-auto flex gap-1">' + badges(s) + '</span>' : ''}</div>
+        </button>`;
+      }).join('') + '</div>';
+      cal.querySelectorAll('.b-mes').forEach(b => b.addEventListener('click', () => { level = 'mes'; mIdx = Number(b.dataset.m); render(); }));
+      return;
     }
+    const r = rango();
+    let html = '<div class="cal mb-1">' + DOW.map(x => `<div class="text-center text-[11px] font-semibold text-telecab-muted">${x}</div>`).join('') + '</div><div class="cal">';
+    if (level === 'mes') for (let p = 0; p < dowDe(r.a); p++) html += '<div></div>';
+    for (let d = r.a; d <= Math.min(r.b, 364); d++) html += celda(c, d, true);
+    cal.innerHTML = html + '</div>';
+    cal.querySelectorAll('.cal-dia').forEach(el => el.addEventListener('click', () => {
+      const d = Number(el.dataset.d), k = clase(c, d);
+      if (k === 'futuro' || k === 'fuera') return;
+      diaSel = diaSel === d ? null : d;
+      const inp = $('#j-dia'); if (inp && diaSel != null) { inp.value = isoDe(d); const v = val(c, d); const h = $('#j-horas'); if (h && typeof v === 'number') h.value = v; }
+      render();
+    }));
   }
+
+  // ── Las horas, en barras, con la línea de la jornada ─────────────────────
   function pintarHoras(c) {
     const hc = $('#b-hours'), hl = $('#b-hlabels');
-    let vals = [], labs = [];
-    if (level === 'año') { vals = MESES.map(m => Math.round(horasEn(c, m.start, m.start + m.len - 1))); labs = MESES.map(m => m.label.slice(0, 3)); }
-    else { const r = rango(); for (let d = r.a; d <= r.b; d++) { const v = dia(c, d); vals.push(typeof v === 'number' && v > 0 ? Math.round(v) : 0); const dt = new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + d)); labs.push(level === 'semana' ? DOW[d % 7] : (dt.getUTCDate() % 5 === 1 ? dt.getUTCDate() : '')); } }
-    const max = Math.max(1, ...vals);
-    hc.innerHTML = vals.map(v =>
-      `<div style="flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:100%;">
-         <span class="text-[9px] text-telecab-muted">${v > 0 ? v : ''}</span>
-         <div style="width:100%;border-radius:3px 3px 0 0;background:${v > 0 ? HCOL : 'transparent'};height:${Math.round(v / max * 100)}%;min-height:${v > 0 ? 2 : 0}px;"></div>
+    let vals = [], labs = [], clases = [];
+    if (level === 'año') { MESES.forEach(m => { const s = resumen(c, m.start, m.start + m.len - 1); vals.push(Math.round(s.horas)); labs.push(m.corto); clases.push('t3'); }); }
+    else { const r = rango(); for (let d = r.a; d <= r.b; d++) { const v = val(c, d), k = clase(c, d); vals.push(trabajo(k) ? Math.round(v * 10) / 10 : 0); clases.push(k); labs.push(level === 'semana' ? DOW[dowDe(d)] : (fechaDe(d).getUTCDate() % 5 === 1 ? fechaDe(d).getUTCDate() : '')); } }
+    const ref = level === 'año' ? null : OBJETIVO;
+    const max = Math.max(ref || 1, ...vals);
+    const colorDe = k => trabajo(k) ? 'rgb(var(--tc-green))' : k === 'J' ? clr('J') : esAus(k) ? clr(k) : 'transparent';
+    hc.innerHTML = (ref ? `<div class="absolute left-0 right-0 border-t border-dashed border-telecab-gold/60 pointer-events-none" style="bottom:${Math.round(ref / max * 100)}%"><span class="absolute right-0 -top-4 text-[10px] text-telecab-gold">${ref} h</span></div>` : '') +
+      vals.map((v, i) => `<div style="flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:100%;" title="${esc(labs[i])}: ${v} h">
+         <span class="text-[9px] text-telecab-muted tabular-nums">${v > 0 ? nf0.format(v) : ''}</span>
+         <div style="width:100%;border-radius:4px 4px 0 0;background:${colorDe(clases[i])};height:${Math.round(v / max * 100)}%;min-height:${v > 0 ? 3 : 0}px;opacity:${v > 0 ? 1 : 0}"></div>
        </div>`).join('');
     hl.innerHTML = labs.map(l => `<div style="flex:1 1 0;text-align:center;" class="text-[10px] text-telecab-muted">${l}</div>`).join('');
   }
 
-  // ---------- Carga ----------
+  // ── Periodos de ausencia y justificantes, como lista ──────────────────────
+  function pintarAusencias(c) {
+    const a = c.ausencias.slice().sort((x, y) => y.desde.localeCompare(x.desde));
+    const js = Object.entries(c.justif).sort((x, y) => y[0].localeCompare(x[0]));
+    const f = iso => iso.split('-').reverse().slice(0, 2).join('/');
+    $('#b-ausencias').innerHTML = (a.length || js.length) ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div><p class="text-xs text-telecab-muted mb-2">Periodos de ausencia</p>${a.length ? a.map(x => `<div class="flex items-center gap-2 text-sm py-1.5 border-b border-telecab-border/40">
+        <span class="cal-tag" style="background:${clr(x.marca)};color:white">${x.marca}</span><span class="text-telecab-text">${esc(x.etiqueta)}</span>
+        <span class="ml-auto text-xs text-telecab-muted tabular-nums">${f(x.desde)} → ${x.abierta ? '<span class="text-telecab-warn">sin fecha de vuelta</span>' : f(x.hasta)}</span></div>`).join('') : '<p class="text-sm text-telecab-muted">Ninguno.</p>'}</div>
+      <div><p class="text-xs text-telecab-muted mb-2">Justificantes</p>${js.length ? js.map(([dia, j]) => `<div class="flex items-center gap-2 text-sm py-1.5 border-b border-telecab-border/40">
+        <span class="cal-tag" style="background:${clr('J')};color:white">J</span><span class="text-telecab-text tabular-nums">${f(dia)}</span>
+        ${j.horas != null ? `<span class="text-xs text-telecab-muted">llevaba ${nf1.format(j.horas)} h</span>` : ''}<span class="ml-auto text-xs text-telecab-muted truncate max-w-[16rem]" title="${esc(j.obs)}">${esc(j.obs)}</span></div>`).join('') : '<p class="text-sm text-telecab-muted">Ninguno.</p>'}</div>
+    </div>` : '';
+  }
+
+  // ── Carga ────────────────────────────────────────────────────────────────
   async function cargar() {
     try {
       const r = await (await fetch('/bitacora/api/datos')).json();
       if (r.status !== 'ok') throw new Error(r.msg || 'Error');
       DATA = r; MESES = construirMeses(r.inicio);
-      pintarKpisFlota(); pintarLista(); pintarDefault();
+      pintarKpisFlota(); pintarFiltros(); pintarLista(); pintarDefault();
     } catch (e) {
       $('#b-default').innerHTML = '<p class="text-telecab-red text-sm">No se pudo cargar la bitácora: ' + esc(e.message) + '</p>';
     }
   }
-  // Tras justificar: recarga los datos y reabre el mismo conductor (para ver la 'J').
   async function recargarYAbrir(id) {
     try {
       const r = await (await fetch('/bitacora/api/datos')).json();
       if (r.status !== 'ok') return;
       DATA = r; MESES = construirMeses(r.inicio);
       pintarKpisFlota(); pintarLista();
-      DATA.conductores.find(x => x.id === id) ? abrir(id) : pintarDefault();
+      DATA.conductores.find(x => x.conductorId === id) ? abrir(id) : pintarDefault();
     } catch (e) { /* si falla, se queda como está */ }
   }
   $('#b-buscar').addEventListener('input', pintarLista);
   cargar();
+})();
 </script>
