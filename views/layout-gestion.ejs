@@ -215,6 +215,11 @@
             { href: '/operaciones/vivo', icono: 'fa-tower-cell', texto: 'Auditoría en vivo', id: 'vivo' },
             { href: '/callcenter', icono: 'fa-headset', texto: 'Call Center', id: 'callcenter' }
           ] },
+          // Solo lo ve la dirección: el layout enseña un grupo si su rol coincide con el de
+          // la sesión, y 'direccion' no es el rol de nadie; superadmin y desarrollador lo ven todo.
+          { nombre: 'Dirección', icono: 'fa-chart-pie', rol: 'direccion', items: [
+            { href: '/bi', icono: 'fa-chart-pie', texto: 'Inteligencia de negocio', id: 'bi' }
+          ] },
           { nombre: 'Sistema', icono: 'fa-database', rol: 'desarrollador', items: [
             { href: '/explorador', icono: 'fa-database', texto: 'Base de datos', id: 'explorador' },
             { href: '/migraciones', icono: 'fa-code-branch', texto: 'Migraciones', id: 'migraciones' }

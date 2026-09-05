@@ -170,6 +170,7 @@ app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
 app.use('/visibilidad', require('./routes/visibilidad'));
+app.use('/bi', require('./routes/bi'));   // inteligencia de negocio (solo dirección)
 app.use('/vacantes', vacantesRoutes);
 app.use('/generador', generadorRoutes);
 app.use('/seleccion', seleccionRoutes);
@@ -471,6 +472,21 @@ programar('8,28,48 * * * *', async () => {
     await require('./services/visibilidad').capturaCorriente();
   } catch (error) {
     console.error(`⚠️  [Visibilidad] captura hoy/ayer: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+// ── BI ──────────────────────────────────────────────────────────────────────
+// Los hechos del cuadro de mando (horas, ingresos, km) son vistas materializadas:
+// se refrescan cada hora, en el minuto 15 para no pisarse con la captura de
+// Visibilidad. Tarda unos segundos y no bloquea a nadie (CONCURRENTLY).
+programar('15 * * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./services/bi').refrescar();
+    console.log('📊 [BI] refresco: ' + r.vistas.map(v => v.vista.replace('bi_hecho_', '') + ' ' + v.ms + ' ms').join(' · '));
+  } catch (error) {
+    console.error(`⚠️  [BI] refresco: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
 
