@@ -129,7 +129,7 @@
     if (k === 'futuro') return 'Todavía no ha llegado.';
     if (k === 'fuera') return c.altaIdx != null && d < c.altaIdx ? 'Antes de su alta.' : 'Después de su baja.';
     if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '');
-    if (k === 'J') { const j = c.justif[isoDe(d)] || {}; const hb = (c.horasBolt || {})[isoDe(d)]; return 'Justificado' + (j.horas != null ? ' · llevaba ' + nf1.format(j.horas) + ' h' : '') + (hb != null ? ' · en BOLT ' + nf1.format(hb) + ' h' : '') + (j.obs ? ' · ' + j.obs : ''); }
+    if (k === 'J') { const j = c.justif[isoDe(d)] || {}; const hb = (c.horasBolt || {})[isoDe(d)]; return 'Justificado' + (j.horas != null ? ' · justifica ' + nf1.format(j.horas) + ' h' : '') + (hb != null ? ' · en BOLT ' + nf1.format(hb) + ' h' : '') + ((j.horas != null || hb != null) ? ' · día de ' + nf1.format((j.horas || 0) + (hb || 0)) + ' h' : '') + (j.obs ? ' · ' + j.obs : ''); }
     if (k === 'L') return (c.lManual || {})[isoDe(d)] ? 'Libranza (puesta a mano)' : 'Libranza (le tocaba descansar)';
     if (esAus(k)) return NOM[k];
     return 'No salió: ni una hora, sin libranza ni ausencia.';
@@ -137,12 +137,17 @@
 
   // ── Resúmenes ────────────────────────────────────────────────────────────
   function resumen(c, a, b) {
-    const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0, dias: 0 };
+    const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0, dias: 0, horasJ: 0 };
     for (let d = a; d <= b; d++) {
       const k = clase(c, d); if (k === 'futuro' || k === 'fuera') continue;
       r.dias++;
       if (trabajo(k)) { const v = val(c, d); r.horas += v; r.trabajados++; if (v < OBJETIVO) r.cortos++; }
-      else if (r[k] != null) r[k]++;
+      else if (r[k] != null) {
+        r[k]++;
+        // Las horas JUSTIFICADAS del periodo: se suman aparte (para la nómina
+        // cuentan junto a las de BOLT, pero aquí no se mezclan con "Horas").
+        if (k === 'J') { const j = c.justif[isoDe(d)]; if (j && j.horas != null) r.horasJ += j.horas; }
+      }
     }
     return r;
   }
@@ -274,10 +279,10 @@
        </div>
        ${puedeJustificar ? `
        <div id="b-justif-form" class="hidden mb-4 p-3 rounded-xl bg-telecab-dark/50 border border-telecab-border">
-         <p class="text-xs text-telecab-muted mb-2">Pincha un día del calendario para elegirlo, o escríbelo. La J vale 8 h para el pago; las horas que pongas son las que llevaba de verdad.</p>
+         <p class="text-xs text-telecab-muted mb-2">Pincha un día del calendario para elegirlo, o escríbelo. Las horas que pongas son las que SE JUSTIFICAN, y se suman a las que hiciera en BOLT ese día: 2 h de taller + 8 h conectado = día de 10 h. Eso es lo que cuenta para la nómina.</p>
          <div class="flex flex-wrap items-end gap-3">
            <label class="text-xs text-telecab-muted">Día<br><input id="j-dia" type="date" min="${isoDe(0)}" max="${isoDe(DATA.hoyIdx)}" value="${isoDe(DATA.hoyIdx)}" class="mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
-           <label class="text-xs text-telecab-muted">Horas que llevaba<br><input id="j-horas" type="number" step="0.1" min="0" max="24" placeholder="exactas" class="mt-1 w-28 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+           <label class="text-xs text-telecab-muted">Horas que se justifican<br><input id="j-horas" type="number" step="0.1" min="0" max="24" placeholder="p. ej. 2" class="mt-1 w-28 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
            <label class="flex-1 min-w-[200px] text-xs text-telecab-muted">Motivo (obligatorio)<br><input id="j-obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. 2 horas ITV"></label>
            <button id="j-guardar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold">Guardar J</button>
          </div>
@@ -355,7 +360,7 @@
       ['Media por día', s.trabajados ? nf1.format(s.horas / s.trabajados) + ' h' : '—', s.trabajados && s.horas / s.trabajados < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text'],
       ['Días sin salir', s.nosalio, s.nosalio ? 'text-telecab-red' : 'text-telecab-text'],
       ['Ausencias', s.V + s.B + s.P, 'text-telecab-text'],
-      ['Justificados', s.J, s.J ? 'text-telecab-azul' : 'text-telecab-text'],
+      ['Justificados', s.J ? `${s.J}${s.horasJ ? ' · ' + nf1.format(s.horasJ) + ' h' : ''}` : 0, s.J ? 'text-telecab-azul' : 'text-telecab-text'],
     ];
     $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p></div>`).join('');
     pintarCalendario(c); pintarHoras(c); pintarAusencias(c);
@@ -363,8 +368,9 @@
   }
 
   // ── El panel del día: la etiqueta y las acciones ──────────────────────────
-  // Un día J enseña el MOTIVO, las horas que llevaba apuntadas y lo que hizo en
-  // BOLT (si hizo), con Editar/Anular. Un "no salió" se arregla AHÍ MISMO: o se
+  // Un día J enseña el MOTIVO, las horas que SE JUSTIFICAN (se suman a las de
+  // BOLT: 2 de taller + 8 conectado = día de 10) y la suma, con Editar/Anular.
+  // Un "no salió" se arregla AHÍ MISMO: o se
   // justifica con horas y motivo, o se marca como libranza (manual, bitacora_dia).
   function pintarDiaInfo(c) {
     const box = $('#b-diainfo');
@@ -380,8 +386,9 @@
       box.innerHTML = `
         <div class="flex flex-wrap items-center gap-2">
           ${cab}
-          <span class="text-xs px-2 py-0.5 rounded-lg font-semibold" style="background:${tint('J')};color:${clr('J')}">Justificante${j.horas != null ? ` · llevaba ${nf1.format(j.horas)} h` : ''}</span>
+          <span class="text-xs px-2 py-0.5 rounded-lg font-semibold" style="background:${tint('J')};color:${clr('J')}">Justificante${j.horas != null ? ` · justifica ${nf1.format(j.horas)} h` : ' · sin horas'}</span>
           <span class="text-xs text-telecab-muted">${boltTxt}</span>
+          <span class="text-xs font-semibold text-telecab-text" title="Justificadas + BOLT: lo que cuenta para la nómina">→ día de ${nf1.format((j.horas || 0) + (hb || 0))} h</span>
           ${puedeJustificar ? `<span class="ml-auto flex gap-1.5">
             <button data-di="editar" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition"><i class="fa-solid fa-pen mr-1"></i>Editar</button>
             <button data-di="anular" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition"><i class="fa-solid fa-ban mr-1"></i>Anular</button>
@@ -395,7 +402,7 @@
           <span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-red/15 text-telecab-red font-semibold">No salió</span>
           <span class="text-xs text-telecab-muted">${boltTxt}</span></div>
         <div class="flex flex-wrap items-end gap-2 mt-2">
-          <label class="text-[11px] text-telecab-muted">Horas que llevaba<br><input data-di="horas" type="number" step="0.1" min="0" max="24" placeholder="opcional" class="mt-1 w-24 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+          <label class="text-[11px] text-telecab-muted">Horas que se justifican<br><input data-di="horas" type="number" step="0.1" min="0" max="24" placeholder="p. ej. 8" class="mt-1 w-24 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
           <label class="flex-1 min-w-[160px] text-[11px] text-telecab-muted">Por qué no salió<br><input data-di="obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. coche en taller"></label>
           <button data-di="justificar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar</button>
           <button data-di="libranza" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-text transition whitespace-nowrap" title="Ese día le tocaba librar: se marca a mano, sin tocar el planificador"><i class="fa-solid fa-bed mr-1"></i>Era libranza</button>
@@ -517,7 +524,7 @@
         <span class="ml-auto text-xs text-telecab-muted tabular-nums">${f(x.desde)} → ${x.abierta ? '<span class="text-telecab-warn">sin fecha de vuelta</span>' : f(x.hasta)}</span></div>`).join('') : '<p class="text-sm text-telecab-muted">Ninguno.</p>'}</div>
       <div><p class="text-xs text-telecab-muted mb-2">Justificantes</p>${js.length ? js.map(([dia, j]) => `<div class="flex items-center gap-2 text-sm py-1.5 border-b border-telecab-border/40">
         <span class="cal-tag" style="background:${clr('J')};color:white">J</span><span class="text-telecab-text tabular-nums">${f(dia)}</span>
-        ${j.horas != null ? `<span class="text-xs text-telecab-muted">llevaba ${nf1.format(j.horas)} h</span>` : ''}<span class="ml-auto text-xs text-telecab-muted truncate max-w-[16rem]" title="${esc(j.obs)}">${esc(j.obs)}</span></div>`).join('') : '<p class="text-sm text-telecab-muted">Ninguno.</p>'}</div>
+        ${j.horas != null ? `<span class="text-xs text-telecab-muted">justifica ${nf1.format(j.horas)} h</span>` : ''}<span class="ml-auto text-xs text-telecab-muted truncate max-w-[16rem]" title="${esc(j.obs)}">${esc(j.obs)}</span></div>`).join('') : '<p class="text-sm text-telecab-muted">Ninguno.</p>'}</div>
     </div>` : '';
   }
 
