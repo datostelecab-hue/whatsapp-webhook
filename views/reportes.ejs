@@ -7,66 +7,34 @@
       <i class="fa-solid fa-chart-pie text-telecab-gold"></i> Reportes
     </h1>
     <p class="text-sm text-telecab-muted mt-1">
-      Lo que hay que imprimir o descargar, y los paneles de detalle. Se irá llenando
-      a medida que migren los módulos.
+      Lo que se imprime o se manda: cada tarjeta baja un Excel o un PDF. Todo sale de
+      PostgreSQL, nada de hojas. Lo que se mira en pantalla vive en <a href="/control" class="text-telecab-gold hover:underline">En directo</a>.
     </p>
   </div>
 
-  <!-- Quién sale hoy — para llamar (directo del planificador) -->
-  <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 mb-6">
-    <div class="flex items-center justify-between flex-wrap gap-2">
-      <div class="font-semibold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-phone-volume text-telecab-gold"></i> Quién sale — para llamar
-        <span id="s-fecha" class="text-xs font-normal text-telecab-muted"></span>
-      </div>
-      <div class="flex items-center gap-2">
-        <select id="s-dia" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
-          <option value="0">Hoy</option>
-          <option value="1">Mañana</option>
-          <option value="2">Pasado mañana</option>
-        </select>
-        <button id="s-refrescar" class="px-3 py-1.5 rounded-lg border border-telecab-border text-sm text-telecab-text hover:border-telecab-gold/40">
-          <i class="fa-solid fa-rotate mr-1"></i> Actualizar
-        </button>
-      </div>
-    </div>
-    <p class="text-sm text-telecab-muted mt-0.5">
-      Directo del planificador: <b>sin librantes, sin ausentes, sin vacaciones</b>. Los que
-      aparecen, salen sí o sí. Un CT que cubre varios coches sale una vez con sus matrículas.
-    </p>
-    <div id="s-cuerpo" class="mt-3 text-sm text-telecab-muted">Cargando…</div>
-  </div>
-
-  <!-- Control del día — todos los conductores (no solo el plan) -->
-  <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 mb-6">
-    <div class="flex items-center justify-between flex-wrap gap-2">
-      <div class="font-semibold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-traffic-light text-telecab-gold"></i> Control del día
-        <span id="cd-fecha" class="text-xs font-normal text-telecab-muted"></span>
-      </div>
-      <div class="flex items-center gap-2">
-        <input id="cd-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
-        <label class="text-xs text-telecab-muted flex items-center gap-1">Umbral
-          <input id="cd-umbral" type="number" min="0.5" max="24" step="0.5" value="8"
-                 class="w-16 px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"> h
-        </label>
-        <button id="cd-refrescar" class="px-3 py-1.5 rounded-lg border border-telecab-border text-sm text-telecab-text hover:border-telecab-gold/40">
-          <i class="fa-solid fa-rotate"></i>
-        </button>
-      </div>
-    </div>
-    <p class="text-sm text-telecab-muted mt-0.5">
-      TODOS los conductores, no solo el plan: quién salió, quién no, y quién cumplió el
-      umbral de horas. Con las marcas de la bitácora (L/V/B/P/J); Justificado cuenta como cumplido.
-    </p>
-    <div id="cd-contadores" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3"></div>
-    <div id="cd-filtros" class="flex flex-wrap gap-1.5 mt-3"></div>
-    <div id="cd-cuerpo" class="mt-2 text-sm text-telecab-muted">Cargando…</div>
-  </div>
-
-  <!-- Descargables -->
-  <div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-2">Descargar</div>
   <div class="grid sm:grid-cols-2 gap-3 mb-6">
+
+    <!-- Reporte de horas del día: Excel + Sankey -->
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-clock text-telecab-gold text-lg mt-0.5"></i>
+        <div class="flex-1">
+          <div class="font-semibold text-telecab-text">Reporte de horas del día</div>
+          <p class="text-sm text-telecab-muted mt-0.5">De un clic: el <b>Excel</b> (horas efectivas de la jornada 05→05, KM y matrícula por conductor, con quien salió fuera del cuadrante) y el <b>PDF del Sankey</b> (flujo de KM de la flota, por coche). Cuadra con Visibilidad.</p>
+          <div class="flex items-center gap-2 mt-3">
+            <select id="r-horas-dia" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+              <option value="1">Ayer</option>
+              <option value="2">Hace 2 días</option>
+              <option value="3">Hace 3 días</option>
+            </select>
+            <button id="r-horas" type="button"
+               class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+              <i class="fa-solid fa-download mr-1"></i> Excel + Sankey
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Reporte por turnos (5-5) -->
     <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
@@ -74,7 +42,7 @@
         <i class="fa-solid fa-clock-rotate-left text-telecab-gold text-lg mt-0.5"></i>
         <div class="flex-1">
           <div class="font-semibold text-telecab-text">Reporte por turnos (5-5)</div>
-          <p class="text-sm text-telecab-muted mt-0.5">Quién rodó de <b>05→17</b> (día) y <b>17→05</b> (noche), con horas, matrícula y los <b>NN</b> incluidos. Del núcleo, no de las hojas.</p>
+          <p class="text-sm text-telecab-muted mt-0.5">Quién rodó de <b>05→17</b> (día) y de <b>17→05</b> (noche), con horas, matrícula y los <b>NN</b> incluidos.</p>
           <div class="flex items-center gap-2 mt-3">
             <input id="rt-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
             <a id="rt-excel" href="/control/reporte-turnos/excel"
@@ -92,7 +60,7 @@
         <i class="fa-solid fa-print text-telecab-gold text-lg mt-0.5"></i>
         <div class="flex-1">
           <div class="font-semibold text-telecab-text">Turnos para imprimir</div>
-          <p class="text-sm text-telecab-muted mt-0.5">Quién sale hoy y los próximos días. Para llevar en papel.</p>
+          <p class="text-sm text-telecab-muted mt-0.5">Quién sale hoy y los próximos días, con teléfono. Para llevar en papel el fin de semana.</p>
           <div class="flex items-center gap-2 mt-3">
             <select id="r-turnos-dias" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
               <option value="2">Hoy + 2 días</option>
@@ -114,9 +82,10 @@
         <i class="fa-solid fa-table-cells text-telecab-gold text-lg mt-0.5"></i>
         <div class="flex-1">
           <div class="font-semibold text-telecab-text">Parrilla del planificador</div>
-          <p class="text-sm text-telecab-muted mt-0.5">El anexo completo por correturno: cada coche con su descanso, matrícula y las 4 plazas (fijo/CT · día/noche) con teléfono y zona. Del planificador real.</p>
+          <p class="text-sm text-telecab-muted mt-0.5">El anexo completo por correturno: cada coche con su descanso, matrícula y las 4 plazas (fijo/CT · día/noche) con teléfono y zona.</p>
           <div class="flex items-center gap-2 mt-3">
-            <a href="/control/planificador/excel"
+            <input id="pl-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <a id="pl-excel" href="/control/planificador/excel"
                class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
               <i class="fa-solid fa-download mr-1"></i> Excel
             </a>
@@ -124,61 +93,32 @@
         </div>
       </div>
     </div>
-
-    <!-- Reporte de horas -->
-    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
-      <div class="flex items-start gap-3">
-        <i class="fa-solid fa-clock text-telecab-gold text-lg mt-0.5"></i>
-        <div class="flex-1">
-          <div class="font-semibold text-telecab-text">Reporte de horas del día</div>
-          <p class="text-sm text-telecab-muted mt-0.5">De un clic: el <b>Excel</b> (horas + KM + matrícula por conductor) y el <b>PDF del Sankey</b> (flujo de KM de la flota, por coche).</p>
-          <div class="flex items-center gap-2 mt-3">
-            <select id="r-horas-dia" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
-              <option value="1">Ayer</option>
-              <option value="2">Hace 2 días</option>
-              <option value="3">Hace 3 días</option>
-            </select>
-            <button id="r-horas"
-               class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
-              <i class="fa-solid fa-download mr-1"></i> Descargar (Excel + Sankey)
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Paneles -->
-  <div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-2">Paneles</div>
-  <div class="grid sm:grid-cols-2 gap-3">
-    <a href="/control/km" class="rounded-2xl border border-telecab-border bg-telecab-card p-4 hover:border-telecab-gold/40 flex items-center gap-3">
-      <i class="fa-solid fa-route text-telecab-gold text-lg"></i>
-      <div>
-        <div class="font-semibold text-telecab-text">KM y traza</div>
-        <p class="text-sm text-telecab-muted">Km conectado vs desconectado por conductor.</p>
-      </div>
-    </a>
-    <a href="/flota-viva/partes" class="rounded-2xl border border-telecab-border bg-telecab-card p-4 hover:border-telecab-gold/40 flex items-center gap-3">
-      <i class="fa-solid fa-clipboard-list text-telecab-gold text-lg"></i>
-      <div>
-        <div class="font-semibold text-telecab-text">Histórico de incidencias</div>
-        <p class="text-sm text-telecab-muted">Partes por franja: qué pasó y qué se hizo.</p>
-      </div>
-    </a>
   </div>
 </div>
 
 <script>
 (function () {
   const $ = s => document.querySelector(s);
-  // Los selectores solo cambian el ?param del enlace de descarga.
+
+  // Hoy en la zona del navegador, 'YYYY-MM-DD'. A mediodía: sumar días nunca cae
+  // en el día equivocado por el cambio de hora.
+  const isoDia = off => {
+    const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + (off || 0));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+
+  // Un control (select o fecha) solo cambia el ?param= del enlace de descarga.
   const sinc = (sel, a, param) => {
     const el = $(sel), link = $(a);
     const base = link.getAttribute('href').split('?')[0];
-    const set = () => { link.href = base + '?' + param + '=' + encodeURIComponent(el.value); };
+    const set = () => { link.href = el.value ? base + '?' + param + '=' + encodeURIComponent(el.value) : base; };
     el.addEventListener('change', set); set();
   };
   sinc('#r-turnos-dias', '#r-turnos', 'dias');
+  $('#rt-dia').value = isoDia(0);
+  sinc('#rt-dia', '#rt-excel', 'dia');
+  $('#pl-dia').value = isoDia(0);
+  sinc('#pl-dia', '#pl-excel', 'dia');
 
   // El reporte del día baja DOS ficheros de un clic: el Excel de horas+KM y el PDF
   // del Sankey. Con un pequeño desfase, porque algunos navegadores frenan dos
@@ -188,144 +128,10 @@
     a.href = url; a.download = '';
     document.body.appendChild(a); a.click(); a.remove();
   };
-  document.querySelector('#r-horas').addEventListener('click', () => {
-    const key = document.querySelector('#r-horas-dia').value;
+  $('#r-horas').addEventListener('click', () => {
+    const key = $('#r-horas-dia').value;
     baja('/control/reporte/excel?dia=' + encodeURIComponent(key));
     setTimeout(() => baja('/control/sankey/pdf?dia=' + encodeURIComponent(key)), 500);
   });
-
-  // ── Quién sale — para llamar (directo del planificador) ─────────────────────
-  const cuerpo = $('#s-cuerpo'), selDia = $('#s-dia'), sfecha = $('#s-fecha');
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
-    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  // La fecha objetivo a partir del desplazamiento (0=hoy). Mediodía local: sumar
-  // días nunca cae en el día equivocado por el cambio de hora.
-  const isoDia = off => {
-    const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + off);
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  };
-  const fmtTel = t => { const d = String(t || '').replace(/\D/g, '').slice(-9); return d.length === 9 ? d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6) : (t || ''); };
-  const hrefTel = t => { const s = String(t || '').replace(/[^\d+]/g, ''); return s ? 'tel:' + s : ''; };
-  const icono = c => c === 'dia' ? '☀️' : c === 'noche' ? '🌙' : '👤';
-
-  const filaCond = f => {
-    const href = hrefTel(f.telefono);
-    const tel = f.telefono
-      ? (href
-          ? '<a href="' + href + '" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-telecab-gold/15 text-telecab-gold font-semibold text-sm whitespace-nowrap hover:bg-telecab-gold/25"><i class="fa-solid fa-phone"></i> ' + esc(fmtTel(f.telefono)) + '</a>'
-          : esc(fmtTel(f.telefono)))
-      : '<span class="text-xs text-telecab-error font-medium">Sin teléfono</span>';
-    const chip = (txt, cls) => '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ' + cls + '">' + esc(txt) + '</span>';
-    const meta = [
-      chip(f.rol || '—', f.rol === 'FIJO' ? 'bg-telecab-gold/15 text-telecab-gold' : 'bg-telecab-border/60 text-telecab-muted'),
-      f.todoTurno ? chip('TodoTurno', 'bg-amber-400/15 text-amber-500') : '',
-      (f.matriculas && f.matriculas.length) ? '<span class="font-medium text-telecab-text">' + esc(f.matriculas.join(' · ')) + '</span>' : '',
-      f.cuadrante ? esc(f.cuadrante) : (f.zona ? esc(f.zona) : ''),
-    ].filter(Boolean).join(' <span class="text-telecab-border">·</span> ');
-    return '<div class="flex items-center justify-between gap-3 px-3 py-2 border-b border-telecab-border/50 last:border-0">' +
-      '<div class="min-w-0"><div class="font-medium text-telecab-text truncate">' + esc(f.conductor) + '</div>' +
-      '<div class="text-xs text-telecab-muted flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">' + meta + '</div></div>' +
-      '<div class="shrink-0">' + tel + '</div></div>';
-  };
-
-  const bloque = t => {
-    const n = t.conductores.length;
-    return '<div class="mb-4">' +
-      '<div class="text-sm font-semibold text-telecab-text mb-1.5">' + icono(t.codigo) + ' ' + esc(t.etiqueta) +
-        ' <span class="text-telecab-muted font-normal">· ' + n + '</span></div>' +
-      '<div class="rounded-xl border border-telecab-border overflow-hidden bg-telecab-dark/20">' +
-        (n ? t.conductores.map(filaCond).join('') : '<div class="px-3 py-3 text-telecab-muted italic">Nadie planificado.</div>') +
-      '</div></div>';
-  };
-
-  const cargarSalidas = async () => {
-    cuerpo.innerHTML = '<span class="italic">Cargando…</span>';
-    try {
-      const r = await fetch('/control/api/salidas?dia=' + encodeURIComponent(isoDia(Number(selDia.value) || 0)));
-      const d = await r.json();
-      if (d.status !== 'ok') throw new Error(d.msg || 'error');
-      sfecha.textContent = '· ' + d.fecha + ' · ' + d.total + ' conductor' + (d.total === 1 ? '' : 'es');
-      cuerpo.innerHTML = (d.turnos || []).length
-        ? d.turnos.map(bloque).join('')
-        : '<div class="italic text-telecab-muted">Nadie planificado ese día.</div>';
-    } catch (e) {
-      cuerpo.innerHTML = '<div class="text-telecab-error">No se pudo cargar: ' + esc(e.message) + '</div>';
-    }
-  };
-  selDia.addEventListener('change', cargarSalidas);
-  $('#s-refrescar').addEventListener('click', cargarSalidas);
-  cargarSalidas();
-
-  // ── Control del día — todos los conductores (semáforo) ──────────────────────
-  const cdDia = $('#cd-dia'), cdUmbral = $('#cd-umbral'), cdFecha = $('#cd-fecha');
-  const cdCont = $('#cd-contadores'), cdFiltros = $('#cd-filtros'), cdCuerpo = $('#cd-cuerpo');
-  let cdDatos = null, cdFiltro = 'todos';
-  try { const u = localStorage.getItem('cd-umbral'); if (u) cdUmbral.value = u; } catch (_) { }
-  cdDia.value = isoDia(0);
-
-  const stat = (label, valor, color) =>
-    '<div class="rounded-xl border border-telecab-border bg-telecab-dark/30 px-3 py-2">' +
-      '<div class="text-lg font-bold" style="color:' + color + '">' + valor + '</div>' +
-      '<div class="text-[11px] text-telecab-muted leading-tight">' + esc(label) + '</div></div>';
-  const chip = (id, label, n, activo) =>
-    '<button data-f="' + id + '" class="px-2 py-1 rounded-lg text-xs border ' +
-      (activo ? 'border-telecab-gold text-telecab-gold' : 'border-telecab-border text-telecab-muted') +
-      '">' + esc(label) + ' <b>' + n + '</b></button>';
-  const filaCD = f => {
-    const h = f.horas != null ? (f.horas.toFixed(1).replace(/\.0$/, '') + ' h') : (f.marca || '—');
-    return '<div class="flex items-center gap-2 px-3 py-1.5 border-b border-telecab-border/50 last:border-0">' +
-      '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + f.color + '"></span>' +
-      '<div class="min-w-0 flex-1 truncate"><span class="text-telecab-text">' + esc(f.nombre) + '</span>' +
-        (f.turno ? ' <span class="text-[11px] text-telecab-muted">· ' + esc(f.turno) + '</span>' : '') +
-        (f.esperado ? '' : ' <span class="text-[10px] text-telecab-muted">(sin plan)</span>') + '</div>' +
-      '<span class="text-xs font-medium shrink-0" style="color:' + f.color + '">' + esc(f.etiqueta) + '</span>' +
-      '<span class="text-xs text-telecab-muted w-14 text-right shrink-0 tabular-nums">' + h + '</span></div>';
-  };
-  const pintarCD = () => {
-    if (!cdDatos) return;
-    const c = cdDatos.contadores;
-    cdFecha.textContent = '· ' + cdDatos.fecha + ' · umbral ' + cdDatos.umbral + ' h';
-    cdCont.innerHTML =
-      stat('Salieron', c.salieron, '#22C55E') +
-      stat('No salieron', c.noSalieron, '#EF4444') +
-      stat('Cumplieron', c.cumplieron, '#22C55E') +
-      stat('No cumplieron', c.noCumplieron, '#FB923C');
-    const grupos = [
-      ['todos', 'Todos', cdDatos.conductores.length],
-      ['no_salio', 'No salió', c.noSalieron],
-      ['no_cumplio', 'No cumplió', c.noCumplieron],
-      ['cumplio', 'Cumplió', Math.max(0, c.cumplieron - c.justificados)],
-      ['justificado', 'Justificados (J)', c.justificados],
-      ['libra', 'Libranzas (L)', c.libranzas],
-      ['ausente', 'Ausencias (V/B/P)', c.ausencias],
-    ];
-    cdFiltros.innerHTML = grupos.map(g => chip(g[0], g[1], g[2], cdFiltro === g[0])).join('');
-    const filas = cdDatos.conductores.filter(f => cdFiltro === 'todos' || f.estado === cdFiltro);
-    cdCuerpo.innerHTML = '<div class="rounded-xl border border-telecab-border overflow-hidden bg-telecab-dark/20">' +
-      (filas.length ? filas.map(filaCD).join('') : '<div class="px-3 py-3 italic text-telecab-muted">Nadie en este grupo.</div>') +
-      '</div><div class="text-[11px] text-telecab-muted mt-1.5">' + c.total + ' conductores · ' + c.horasTotal + ' h en total · previstos hoy: ' + c.esperados + '</div>';
-  };
-  const cargarCD = async () => {
-    cdCuerpo.innerHTML = '<span class="italic">Cargando…</span>';
-    try {
-      const r = await fetch('/control/api/reporte-dia?dia=' + encodeURIComponent(cdDia.value || isoDia(0)) + '&umbral=' + encodeURIComponent(cdUmbral.value || 8));
-      const d = await r.json();
-      if (d.status !== 'ok') throw new Error(d.msg || 'error');
-      cdDatos = d; pintarCD();
-    } catch (e) {
-      cdCuerpo.innerHTML = '<div class="text-telecab-error">No se pudo cargar: ' + esc(e.message) + '</div>';
-    }
-  };
-  cdFiltros.addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; cdFiltro = b.getAttribute('data-f'); pintarCD(); });
-  cdDia.addEventListener('change', cargarCD);
-  cdUmbral.addEventListener('change', () => { try { localStorage.setItem('cd-umbral', cdUmbral.value); } catch (_) { } cargarCD(); });
-  $('#cd-refrescar').addEventListener('click', cargarCD);
-  cargarCD();
-
-  // ── Reporte por turnos (5-5): el día elegido cambia el ?dia= del Excel ───────
-  const rtDia = $('#rt-dia'), rtExcel = $('#rt-excel');
-  rtDia.value = isoDia(0);
-  const syncRt = () => { rtExcel.href = '/control/reporte-turnos/excel' + (rtDia.value ? '?dia=' + encodeURIComponent(rtDia.value) : ''); };
-  rtDia.addEventListener('change', syncRt); syncRt();
 })();
 </script>

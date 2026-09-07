@@ -4,7 +4,7 @@ const router = express.Router();
 const { enDirecto } = require('../services/flotaViva/directo');
 const { kmConectadoDesconectado } = require('../services/flotaViva/rutas');
 const { enviarAtencionHora } = require('../services/whatsapp');
-const justificantes = require('../services/justificantes');   // (reporte: aún usa la hoja, se migra "luego")
+const justificantes = require('../services/justificantes');   // el Excel del reporte de horas (los datos, en repo/reporteHoras)
 const repoJust = require('../services/repo/justificantes');    // justificar/leer: PostgreSQL
 const llamadas = require('../services/repo/llamadas');         // el "telefonito" de seguimiento
 const actor = require('../services/repo/actor');               // quién firma (id por email si la cookie es vieja)
@@ -87,46 +87,17 @@ router.get('/api/km-diagnostico', async (req, res) => {
 });
 
 // ── Reportes ────────────────────────────────────────────────────────────────
-// De momento reúne lo que ya es "reporte" y hoy vivía suelto en el clásico: los
-// turnos para imprimir y el reporte de horas del día. Se irá llenando.
+// Solo descargables (Excel y PDF): reporte de horas + Sankey, reporte por turnos,
+// turnos para imprimir y la parrilla del planificador. Sin listas en pantalla.
 router.get('/reportes', (req, res) => {
   res.render('reportes', { titulo: 'Control · Reportes', seccion: 'control', layout: 'layout-gestion' });
 });
 
-// QUIÉN DEBE SALIR — la lista para LLAMAR, por turno. Sale directa del
-// planificador (f_cobertura): ya deja fuera a quien libra, a quien tiene el coche
-// en descanso y a cualquier ausente. Los que aparecen, salen sí o sí.
-router.get('/api/salidas', async (req, res) => {
-  try {
-    const { salidasHoy } = require('../services/repo/planificador');
-    const dia = /^\d{4}-\d{2}-\d{2}$/.test(req.query.dia || '') ? req.query.dia : hoyMadrid();
-    const datos = await salidasHoy(dia);
-    res.json({ status: 'ok', fecha: dia.split('-').reverse().join('/'), ...datos });
-  } catch (e) {
-    console.error('❌ [Control] /api/salidas:', e.message);
-    res.status(500).json({ status: 'error', msg: e.message });
-  }
-});
-
-// CONTROL DEL DÍA sobre TODOS los conductores (no solo el plan): salieron / no
-// salieron / cumplieron / no cumplieron, con el semáforo de VISTA_FINAL (L/V/B/P/J).
-// El umbral de "cumplir" es fijo para todos (?umbral=, por defecto 8 h).
-router.get('/api/reporte-dia', async (req, res) => {
-  try {
-    const { reporteDia } = require('../services/reporteDia');
-    const dia = /^\d{4}-\d{2}-\d{2}$/.test(req.query.dia || '') ? req.query.dia : hoyMadrid();
-    const umbral = Number(req.query.umbral) > 0 ? Number(req.query.umbral) : 8;
-    res.json({ status: 'ok', ...(await reporteDia(dia, umbral)) });
-  } catch (e) {
-    console.error('❌ [Control] /api/reporte-dia:', e.message);
-    res.status(500).json({ status: 'error', msg: e.message });
-  }
-});
-
 // El "Tablero clásico" (leía las horas de la hoja Datos_API) se RETIRÓ: manda el
-// cockpit "En directo" (PostgreSQL) y lo exportable vive en Reportes. La función
-// tableroControl() sigue en services/control.js solo porque el reporte de horas la
-// usa todavía; ese reporte se migra aparte ("luego"). Nada más lee de la hoja aquí.
+// cockpit "En directo" (PostgreSQL) y lo exportable vive en Reportes. Las dos
+// listas en pantalla que tenía Reportes ("Quién sale — para llamar" y "Control
+// del día") se quitaron el 07/09/2026: Reportes es SOLO descargables; lo que se
+// mira en vivo está en el cockpit, con el telefonito y la J al lado de cada uno.
 
 // Exporta a Excel las filas (ya filtradas y ordenadas en el cliente) con las columnas dadas.
 router.post('/excel', async (req, res) => {
