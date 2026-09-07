@@ -22,10 +22,10 @@
         </div>
       </div>
       <div id="wrap-dias">
-        <label class="block text-xs text-telecab-muted mb-1">Días de la vacante</label>
+        <label class="block text-xs text-telecab-muted mb-1">Contrato</label>
         <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden w-full" id="tg-dias">
-          <button type="button" data-val="4" class="flex-1 px-3 py-2 text-sm">4 días</button>
-          <button type="button" data-val="6" class="flex-1 px-3 py-2 text-sm border-l border-telecab-border">6 días</button>
+          <button type="button" data-val="32" class="flex-1 px-3 py-2 text-sm">32 h · 4 días</button>
+          <button type="button" data-val="40" class="flex-1 px-3 py-2 text-sm border-l border-telecab-border">40 h · 6 días</button>
         </div>
       </div>
       <div>
@@ -102,13 +102,13 @@
 <script>
   const $ = s => document.querySelector(s);
   let DATOS = { zonas: [] };
-  const estado = { tipo: 'CT', turno: 'Día', dias: 6 };
+  const estado = { tipo: 'CT', turno: 'Día', contrato: 40 };
   const LETRA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
   const DIAS_NOM = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
   const fijosTexto = b => `Fijo día: ${b.fijoDia || 'no asignado'} · Fijo noche: ${b.fijoNoche || 'no asignado'}`;
 
   // Estado del resultado interactivo (CT) y de la vacante fija.
-  let POOL = {}, POOL_ARR = [], SEL = new Set(), OBJETIVO = 6, TURNO = 'Día', ZONA = '';
+  let POOL = {}, POOL_ARR = [], SEL = new Set(), OBJETIVO = 6, TURNO = 'Día', ZONA = '', CONTRATO = null;
   let FIJO = null;
 
   function pintarToggle(id, val) {
@@ -119,7 +119,7 @@
     });
   }
   $('#tg-turno').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.turno = b.dataset.val; pintarToggle('tg-turno', estado.turno); llenarMatriculas(); pintarPendientes(); });
-  $('#tg-dias').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.dias = Number(b.dataset.val); pintarToggle('tg-dias', estado.dias); });
+  $('#tg-dias').addEventListener('click', e => { const b = e.target.closest('[data-val]'); if (!b) return; estado.contrato = Number(b.dataset.val); pintarToggle('tg-dias', estado.contrato); });
 
   function pintarTipo() {
     document.querySelectorAll('#tg-tipo [data-val]').forEach(b => {
@@ -241,7 +241,7 @@
 
   function renderResultado() {
     const cub = diasCubiertos();
-    $('#res-titulo').textContent = `Vacante ${TURNO} · ${cub.size}/${OBJETIVO} días · zona ${ZONA}`;
+    $('#res-titulo').textContent = `Vacante CT ${TURNO}${CONTRATO ? ' · ' + CONTRATO + ' h' : ''} · ${cub.size}/${OBJETIVO} días · zona ${ZONA}`;
     const est = $('#res-estado');
     if (cub.size >= OBJETIVO) { est.textContent = 'Completa'; est.className = 'text-xs px-2.5 py-1 rounded-full border border-telecab-green/40 text-telecab-green bg-telecab-green/10'; }
     else { est.textContent = `Faltan ${OBJETIVO - cub.size} días`; est.className = 'text-xs px-2.5 py-1 rounded-full border border-telecab-gold/40 text-telecab-gold bg-telecab-gold/10'; }
@@ -273,7 +273,7 @@
     const btn = $('#btn-guardar-vac'); btn.disabled = true;
     const r = await (await fetch('/generador/api/guardar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ turno: TURNO, objetivo: OBJETIVO, matriculas })
+      body: JSON.stringify({ turno: TURNO, objetivo: OBJETIVO, contrato: CONTRATO, matriculas })
     })).json();
     btn.disabled = false;
     if (r.status === 'ok') { mv.textContent = `Vacante guardada (${r.puesto} · ${r.zonas}) — ya la ve Selección.`; mv.className = 'text-xs mt-2 text-telecab-green'; refrescarPendientes(); }
@@ -321,7 +321,7 @@
     const btn = $('#btn-generar'); btn.disabled = true;
     const r = await (await fetch('/generador/api/generar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zona, turno: estado.turno, dias: estado.dias, matricula })
+      body: JSON.stringify({ zona, turno: estado.turno, contrato: estado.contrato, matricula })
     })).json();
     btn.disabled = false;
     if (r.status !== 'ok') { msg(r.msg || 'No se pudo generar', false); return; }
@@ -329,7 +329,7 @@
     POOL = {}; POOL_ARR = [];
     (r.pool || []).forEach(b => { POOL[b.matricula] = b; POOL_ARR.push(b.matricula); });
     SEL = new Set((r.propuesta || []).filter(m => POOL[m]));
-    OBJETIVO = r.objetivo; TURNO = r.turno; ZONA = r.zona;
+    OBJETIVO = r.objetivo; TURNO = r.turno; ZONA = r.zona; CONTRATO = r.contrato;
     renderResultado();
     $('#resultado').classList.remove('hidden');
     $('#resultado').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -343,7 +343,7 @@
     $('#sel-zona').innerHTML = '<option value="">— elige zona —</option>' +
       DATOS.zonas.map(z => `<option value="${z.zona}">${z.zona}</option>`).join('');
     pintarToggle('tg-turno', estado.turno);
-    pintarToggle('tg-dias', estado.dias);
+    pintarToggle('tg-dias', estado.contrato);
     pintarTipo();
     pintarPendientes();
   }

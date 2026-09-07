@@ -94,7 +94,9 @@ async function guardarVacante(data = {}) {
   const turno = data.turno === 'Noche' ? 'Noche' : 'Día';
   const cubiertos = new Set(mats.flatMap(m => m.d));
   const zonas = [...new Set(mats.map(m => m.zona).filter(Boolean))].join(' - ');
-  const puesto = tipoFijo ? `Fijo ${turno}` : ((mats.length > 1 ? 'CT' : 'Fijo') + ' ' + turno);
+  const contrato = [32, 40].includes(Number(data.contrato)) ? Number(data.contrato) : null;
+  const puesto = (tipoFijo ? `Fijo ${turno}` : ((mats.length > 1 ? 'CT' : 'Fijo') + ' ' + turno)) +
+    (contrato ? ` · ${contrato} h` : '');
   // El fijo libra 2 días a definir; el CT deja el hueco de los días no cubiertos.
   const libranzas = tipoFijo ? 'a definir'
     : [0, 1, 2, 3, 4, 5, 6].filter(d => !cubiertos.has(d)).map(d => LETRA[d]).join(' ');

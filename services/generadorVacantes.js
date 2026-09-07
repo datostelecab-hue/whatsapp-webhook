@@ -4,13 +4,24 @@
 // Arma la semana de un conductor nuevo encadenando huecos de varias matrículas.
 // Regla del negocio: los turnos fijos libran 2 días, y en esos 2 días entra el
 // correturno. Por eso cada matrícula aporta un BLOQUE = sus días de hueco (2 en
-// el caso normal), y se cogen enteros. Una vacante de 6 días = 3 bloques; de 4 =
-// 2 bloques. Los bloques deben tener días DISJUNTOS (un conductor no puede estar
-// en dos coches el mismo día). Prioriza la misma zona; si no completa, propone la
-// zona más cercana (por coordenadas de BASES), y Tráfico decide si la toma.
+// el caso normal), y se cogen enteros. La vacante se pide por CONTRATO: 32 h =
+// 4 días (2 bloques), 40 h = 6 días (3 bloques) — lo dice cat_jornada, no una
+// lista escrita aquí. Los bloques deben tener días DISJUNTOS (un conductor no
+// puede estar en dos coches el mismo día). Prioriza la misma zona; si no
+// completa, propone la zona más cercana (por coordenadas de base_zona), y
+// Tráfico decide si la toma.
+//
+// La fuente es el tablero de POSTGRESQL (repo/planificador): un HUECO de CT es
+// un día en que el coche descansa (sus fijos libran) y el tramo de ese turno se
+// queda sin nadie según f_cobertura. Antes esto leía el tablero de la hoja, que
+// se quedó congelado con la migración: generaba vacantes de un mundo que ya no
+// existe.
 
-const { leerTablero, DIAS_SEM } = require('./planificadorV2');
+const plani = require('./repo/planificador');
+const db = require('./db');
 const { leerVacantesGuardadas } = require('./vacantes');
+
+const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 function haversine(la1, lo1, la2, lo2) {
   const R = 6371, rad = Math.PI / 180;
@@ -22,9 +33,37 @@ function haversine(la1, lo1, la2, lo2) {
 const normZona = z => String(z || '').trim().toLowerCase();
 
 async function cargarCochesBases() {
-  const t = await leerTablero();
-  const coches = (t.coches || []).filter(c => c.operativo && c.matricula);
-  return { coches, bases: t.bases || [] };
+  const [tab, basesQ] = await Promise.all([
+    plani.tablero({}),
+    db.consulta('SELECT nombre, lat::float AS lat, lng::float AS lng FROM base_zona WHERE activa'),
+  ]);
+  // La zona del coche es la de su CUADRANTE (la del coche a pelo suele venir vacía).
+  const zonaCua = new Map((tab.cuadrantes || []).map(cu => [String(cu.id), cu.zona || '']));
+  const coches = (tab.coches || [])
+    .filter(c => c.operativo && c.matricula)
+    .map(c => {
+      const zona = (c.cuadranteId && zonaCua.get(String(c.cuadranteId))) || c.zona || '';
+      // HUECO de CT = día de descanso del coche (1-7) cuyo tramo de ese turno se
+      // queda SIN NADIE en la semana del tablero (la verdad de f_cobertura).
+      const huecos = [];
+      (c.descanso || []).forEach(d => {
+        ['Día', 'Noche'].forEach((turno, off) => {
+          const celda = (c.semana || [])[(Number(d) - 1) * 2 + off] || {};
+          if (!celda.id) huecos.push({ dia: Number(d) - 1, turno });
+        });
+      });
+      return { matricula: c.matricula, zona, personas: c.personas || [], huecos };
+    });
+  return { coches, bases: basesQ.rows };
+}
+
+// Cuántos días trabaja el contrato (32 h → 4, 40 h → 6): lo dice cat_jornada.
+let _contratos = null;
+async function contratos() {
+  if (_contratos) return _contratos;
+  const r = await db.consulta('SELECT horas::float AS horas, etiqueta, dias_ct FROM cat_jornada WHERE activa ORDER BY orden');
+  _contratos = r.rows.map(x => ({ horas: Number(x.horas), etiqueta: x.etiqueta, dias: Number(x.dias_ct) }));
+  return _contratos;
 }
 
 /** Matrículas ya reservadas en una vacante ABIERTA, por turno (Set por turno). */
@@ -112,7 +151,12 @@ function rellenoParcial(inicio, candidatos, objetivo) {
 async function generarVacante(opt = {}) {
   const zona = String(opt.zona || '').trim();
   const turno = opt.turno === 'Noche' ? 'Noche' : 'Día';
-  const objetivo = [2, 4, 6].includes(Number(opt.dias)) ? Number(opt.dias) : 6;
+  // La vacante se pide por CONTRATO (32/40 h) y el catálogo dice los días; se
+  // admite `dias` a pelo por compatibilidad.
+  const cts = await contratos();
+  const ct = cts.find(c => c.horas === Number(opt.contrato)) || null;
+  const objetivo = ct ? ct.dias
+    : ([2, 4, 6].includes(Number(opt.dias)) ? Number(opt.dias) : 6);
   const matricula = String(opt.matricula || '').trim();
   if (!zona || !matricula) throw new Error('Faltan la zona y la matrícula de partida');
 
@@ -155,6 +199,7 @@ async function generarVacante(opt = {}) {
 
   return {
     zona, turno, objetivo,
+    contrato: ct ? ct.horas : null,
     propuesta: elegidos.map(b => b.matricula),   // asignación automática (matrículas)
     pool
   };
@@ -183,7 +228,7 @@ async function datosGenerador() {
   const zonas = [...zonasMap.entries()]
     .map(([zona, matriculas]) => ({ zona, matriculas: matriculas.sort((a, b) => a.matricula.localeCompare(b.matricula)) }))
     .sort((a, b) => a.zona.localeCompare(b.zona, 'es'));
-  return { zonas, dias: DIAS_SEM };
+  return { zonas, dias: DIAS_SEM, contratos: await contratos() };
 }
 
 module.exports = { generarVacante, datosGenerador };
