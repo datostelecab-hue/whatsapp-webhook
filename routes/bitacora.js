@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 // Bitácora desde PostgreSQL (antes: hoja VISTA_FINAL en services/bitacora.js).
-const { leerBitacora, marcarLibranza, quitarLibranza } = require('../services/repo/bitacora');
+const { leerBitacora, leerVacaciones, marcarLibranza, quitarLibranza } = require('../services/repo/bitacora');
 const repoJust = require('../services/repo/justificantes');
 const actor = require('../services/repo/actor');
 
@@ -24,6 +24,18 @@ router.get('/api/datos', async (req, res) => {
   } catch (error) {
     console.error('❌ [Bitácora] /api/datos:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Las vacaciones de la plantilla vigente (disfrutadas + programadas) por meses.
+let cacheVac = null, tsVac = 0;
+router.get('/api/vacaciones', async (req, res) => {
+  try {
+    if (!cacheVac || Date.now() - tsVac > TTL) { cacheVac = await leerVacaciones(); tsVac = Date.now(); }
+    res.json({ status: 'ok', ...cacheVac });
+  } catch (e) {
+    console.error('❌ [Bitácora] /api/vacaciones:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
   }
 });
 

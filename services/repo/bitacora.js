@@ -229,6 +229,48 @@ async function leerBitacora() {
   return { conductores, hoyIdx, inicio: INICIO, avisos: { sinFicha: huerfanos.size } };
 }
 
+// ── Vacaciones: lo disfrutado y lo PROGRAMADO, para asignar por meses ───────
+// Los periodos V de TODA la plantilla vigente, incluidos los que aún no han
+// empezado (la "proyección"): es lo que RRHH mira para dar vacaciones sin que
+// se le junte media flota el mismo mes. Y la otra mitad de la foto: quién no
+// tiene NI UN DÍA (ni pasado ni programado), que es a quien le toca asignar.
+async function leerVacaciones() {
+  const hoyIso = hoyMadridIso();
+  const ROSTER = `SELECT conductor_id, telefono, zona, turno, empleo_vigente,
+              COALESCE(NULLIF(btrim(bolt_nombre), ''),
+                       NULLIF(btrim(nombre), '') || ' (sin nombre de BOLT)',
+                       'Conductor ' || conductor_id) AS mostrar
+         FROM bi_dim_conductor`;
+  const [periodos, plantilla] = await Promise.all([
+    db.consulta(
+      `SELECT h.conductor_id,
+              to_char(h.desde, 'YYYY-MM-DD') AS desde,
+              to_char(h.hasta, 'YYYY-MM-DD') AS hasta,
+              (h.hasta IS NULL) AS abierta,
+              d.mostrar AS nombre, d.telefono, d.zona, d.turno
+         FROM conductor_estado_hist h
+         JOIN cat_estado_conductor ce ON ce.codigo = h.estado AND ce.marca_bitacora = 'V'
+         JOIN (${ROSTER}) d ON d.conductor_id = h.conductor_id
+        WHERE d.empleo_vigente
+          AND COALESCE(h.hasta, $1::date) >= $2::date
+        ORDER BY h.desde, nombre`, [hoyIso, INICIO_ISO]),
+    db.consulta(`SELECT * FROM (${ROSTER}) r WHERE empleo_vigente`),
+  ]);
+  const conV = new Set(periodos.rows.map(x => String(x.conductor_id)));
+  return {
+    hoy: hoyIso,
+    periodos: periodos.rows.map(x => ({
+      conductorId: String(x.conductor_id), nombre: x.nombre, telefono: x.telefono || '',
+      zona: x.zona || '', turno: x.turno || '',
+      desde: x.desde, hasta: x.hasta || null, abierta: !!x.abierta,
+    })),
+    sinVacaciones: plantilla.rows
+      .filter(x => !conV.has(String(x.conductor_id)))
+      .map(x => ({ conductorId: String(x.conductor_id), nombre: x.mostrar, telefono: x.telefono || '', zona: x.zona || '', turno: x.turno || '' }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+  };
+}
+
 // ── La libranza manual del panel del día ────────────────────────────────────
 // "Ese día le tocaba librar": lo dice una persona desde la bitácora y vive en
 // bitacora_dia (marca 'L', marca_manual). No toca al planificador, y al pintar
@@ -259,4 +301,4 @@ async function quitarLibranza(conductorId, diaIso) {
   return { ok: true };
 }
 
-module.exports = { leerBitacora, marcarLibranza, quitarLibranza, INICIO };
+module.exports = { leerBitacora, leerVacaciones, marcarLibranza, quitarLibranza, INICIO };
