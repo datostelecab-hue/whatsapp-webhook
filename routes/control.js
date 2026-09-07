@@ -320,6 +320,10 @@ router.get('/sankey/pdf', async (req, res) => {
       titulo: `Flujo de KM · ${diaSem} ${fecha}`,
       subtitulo: 'En BOLT (viaje + espera) vs desconectado (descanso + apagado). Por coche, sin duplicar.',
       rango: fecha, tramos, matriculas: s.matriculas,
+      // BOLT en vivo marca "en viaje" desde que acepta hasta que deja al
+      // pasajero: la ida a recoger va DENTRO de ese km, no separada. Ponía
+      // "Con pasajero · 0 de camino", que se leía como que nadie fue a recoger.
+      etiquetas: { totalPasajero: 'En viaje (con pasajero o de camino)' },
     });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="sankey-km-${fecha.replace(/\//g, '-')}.pdf"`);

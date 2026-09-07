@@ -1,36 +1,27 @@
 // ============================================================
-// JUSTIFICANTES — justificar el día a conductores que no hicieron 8 h (letra J)
+// REPORTE DE HORAS DEL DÍA — el Excel de Control
 // ============================================================
-// Tráfico, en Control, justifica el día anterior (o hasta 3 días atrás) a un conductor
-// que no llegó a horas. Eso:
-//   · guarda el justificante (con OBSERVACIÓN obligatoria + ID_BOLT) en la hoja
-//     JUSTIFICANTES (base de datos de todas las J's), y
-//   · si el conductor tiene fila en VISTA_FINAL, le escribe una "J" azul ese día
-//     (los NN, sin fila, se quedan SOLO en JUSTIFICANTES — no se toca VISTA_FINAL).
-// La J vale 8 h para el pago, pero NO se tocan los totales del mes: es marca + reporte.
+// Aquí vive SOLO el Excel: cabecera de la casa, la tabla con el color en la
+// celda de horas, el resumen del día y la leyenda.
 //
-// El reporte del día (exportable a Excel) sale de tableroControl() —que ya trae a los NN
-// con su teléfono— coloreando SOLO la celda de horas:
-//   verde  ≥9  "Muy efectivo" · verde 7.6–8.9 "Efectivo" · amarillo 6.4–7.5 "Poco efectivo"
-//   rojo   ≤6.3 "No cumplieron" · azul  los J ("6.4 (J)") con su observación, al final.
+//   verde  >=9  "Muy efectivo" · verde 7,6-8,9 "Efectivo" · amarillo 6,4-7,5
+//   "Poco efectivo" · rojo <=6,3 "No cumplieron" · azul los J con su
+//   observación, al final. Ámbar en los KM = REVISAR.
+//
+// Los DATOS los arma repo/reporteHoras, en PostgreSQL de punta a punta. Este
+// módulo llevaba además la escritura de las J en la hoja JUSTIFICANTES y en
+// VISTA_FINAL; eso se quedó sin uso cuando justificar pasó a la tabla
+// `justificante` de PostgreSQL (Control y la bitácora escriben ahí), así que
+// se ha quitado: era un segundo almacén de J que ya no leía nadie.
 
 const ExcelJS = require('exceljs');
-const { tableroControl } = require('./control');
-const { normClave } = require('./conductores');
-const { marcarJustificante } = require('./vistaFinal');
-const { readSheet, writeSheetRaw, appendRows, ensureSheet } = require('./sheets');
+// El reporte del día se construye ENTERO en PostgreSQL (repo/reporteHoras): la
+// lista de gente y las horas salen del mismo sitio y se cruzan por el uuid de
+// BOLT. Aquí queda solo el Excel, que es lo que este módulo sabe hacer.
+const rep = require('./repo/reporteHoras');
 const est = require('./excelEstilo');
 
-const ID = '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';   // libro GestionConductores
-const HOJA = 'JUSTIFICANTES';
-const RANGO = `${HOJA}!A:J`;
 const TZ = 'Europe/Madrid';
-
-const COL = { fecha: 0, id_bolt: 1, nombre: 2, telefono: 3, turno: 4, horas: 5, observacion: 6, en_vista_final: 7, creado_por: 8, creado: 9 };
-const N_COLS = 10;
-const CABECERA = ['FECHA', 'ID_BOLT', 'NOMBRE', 'TELEFONO', 'TURNO', 'HORAS', 'OBSERVACION', 'EN_VISTA_FINAL', 'CREADO_POR', 'CREADO'];
-
-const r1 = h => Math.round(h * 10) / 10;
 
 function ahora() {
   const p = new Intl.DateTimeFormat('en-GB', {
@@ -40,248 +31,10 @@ function ahora() {
   return `${g('day')}/${g('month')}/${g('year')} ${g('hour')}:${g('minute')}`;
 }
 
-// Fecha para una "clave de día" de Control: 0=Hoy, 1=Ayer, 2=Hace 2, 3=Hace 3.
-function fechaDeClave(key) {
-  const s = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const [Y, M, D] = s.split('-').map(Number);
-  const f = new Date(Date.UTC(Y, M - 1, D - Number(key || 0), 12));
-  const y = f.getUTCFullYear(), m = f.getUTCMonth() + 1, d = f.getUTCDate();
-  return { Y: y, M: m, D: d, str: `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`, idx: (f.getUTCDay() + 6) % 7 };
-}
-
-// Banda de color + observación automática para los NO justificados.
-function banda(h) {
-  if (h == null) return { color: 'gris', obs: '' };
-  if (h >= 9) return { color: 'verde', obs: 'Muy efectivo' };
-  if (h >= 7.6) return { color: 'verde', obs: 'Efectivo' };
-  if (h >= 6.4) return { color: 'amarillo', obs: 'Poco efectivo' };
-  return { color: 'rojo', obs: 'No cumplieron' };
-}
-
-async function ensureHoja() {
-  await ensureSheet(ID, HOJA);
-  const filas = await readSheet(ID, `${HOJA}!A1:J1`);
-  if (!filas.length || !(filas[0] || []).length) await writeSheetRaw(ID, `${HOJA}!A1`, [CABECERA]);
-}
-
-async function leerTodos() {
-  await ensureHoja();
-  const filas = await readSheet(ID, RANGO);
-  const lista = [];
-  for (let i = 1; i < filas.length; i++) {
-    const f = filas[i] || [];
-    if (!(f[COL.fecha] || '').toString().trim()) continue;
-    const o = { _fila: i + 1 };
-    for (const [k, ci] of Object.entries(COL)) o[k] = (f[ci] == null ? '' : f[ci]).toString().trim();
-    lista.push(o);
-  }
-  return lista;
-}
-
-// Justificantes de una fecha → Map(clave(id_bolt) -> justificante).
-async function leerPorFecha(fechaStr) {
-  const m = new Map();
-  for (const j of await leerTodos()) if (j.fecha === fechaStr) m.set(normClave(j.id_bolt), j);
-  return m;
-}
-
-// Guarda (o actualiza) un justificante y, si el conductor tiene fila, marca la J azul.
-async function guardar({ fecha, idBolt, nombre, telefono, turno, horas, observacion, creadoPor }) {
-  observacion = (observacion || '').toString().trim();
-  if (!observacion) throw new Error('La observación es obligatoria para justificar');
-  idBolt = (idBolt || nombre || '').toString().trim();
-  if (!idBolt) throw new Error('Falta el conductor');
-  if (!fecha) throw new Error('Falta la fecha');
-  await ensureHoja();
-
-  const filas = await readSheet(ID, RANGO);
-  const k = normClave(idBolt);
-  let fila = -1;
-  for (let i = 1; i < filas.length; i++) {
-    const f = filas[i] || [];
-    if ((f[COL.fecha] || '') === fecha && normClave(f[COL.id_bolt] || '') === k) { fila = i + 1; break; }
-  }
-
-  // Escribe la J en VISTA_FINAL si tiene fila (los NN devuelven escrito:false).
-  let enVF = false;
-  try { const r = await marcarJustificante(idBolt, fecha); enVF = !!(r && r.escrito); }
-  catch (e) { console.warn('⚠️ [JUST] VISTA_FINAL:', e.message); }
-
-  const row = [fecha, idBolt, (nombre || idBolt), (telefono || ''), (turno || ''),
-  (horas == null || horas === '' ? '' : horas), observacion, enVF ? 'sí' : 'no', (creadoPor || ''), ahora()];
-  if (fila > 0) await writeSheetRaw(ID, `${HOJA}!A${fila}:J${fila}`, [row]);
-  else await appendRows(ID, RANGO, [row]);
-  return { ok: true, enVistaFinal: enVF };
-}
-
-// ── Reporte del día (key 1=Ayer, 2=Hace 2, 3=Hace 3) ────────────────────────
-async function reporteDia(key) {
-  const { str: fecha, idx, Y, M, D } = fechaDeClave(key);
-  const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
-  const [tablero, justis] = await Promise.all([tableroControl(), leerPorFecha(fecha)]);
-
-  // HORAS EFECTIVAS del NÚCLEO (Postgres, fv_tramo), NO de Datos_API (la hoja).
-  //
-  // EFECTIVO = viaje + espera. El DESCANSO NO CUENTA. Esto estuvo mal: se pedían las
-  // horas con `horasConectadoTotal`, que sumaba también el descanso "para tener la
-  // misma definición que el Total de BOLT". Pero el Total de BOLT no son horas
-  // trabajadas: a quien hizo 4h29 de viaje y 1h03 de espera le ponía 14,4 h y la
-  // etiqueta "Muy efectivo" porque le sumaba 8h51 de descanso. Lo suyo eran 5,5 h.
-  // (La hoja Datos_API nunca tuvo el fallo —boltHorasCore solo cuenta has_order y
-  // waiting_orders—, así que el número bueno se perdió al migrar al núcleo.)
-  //
-  // Por turno: los de día, día natural (00→24); los de noche, de MEDIODÍA a MEDIODÍA
-  // (12→12, regla de Tráfico: la hoja parte el turno de noche por la medianoche).
-  // Datos_API queda SOLO de red de seguridad: para los de DÍA cuyo nombre aún no case
-  // en el núcleo, y para todos si el núcleo entero no responde.
-  let horasDia = null, horasNoche = null, horasJornada = null;
-  try {
-    await require('./flotaViva/db').preparar();
-    const rutas = require('./flotaViva/rutas');
-    const [hd, hn, ho] = await Promise.all([
-      rutas.horasEfectivasPorConductor(iso, 'dia'),        // 05:00 → 17:00
-      rutas.horasEfectivasPorConductor(iso, 'noche'),      // 17:00 → 05:00 del día siguiente
-      rutas.horasEfectivasPorConductor(iso, 'operativo'),  // 05:00 → 05:00: la jornada entera
-    ]);
-    const aHoras = m => new Map([...m.entries()].map(([nom, min]) => [normClave(nom), Math.round(min / 6) / 10]));
-    horasDia = aHoras(hd); horasNoche = aHoras(hn); horasJornada = aHoras(ho);
-  } catch (e) {
-    console.warn('⚠️  [JUST] Horas del núcleo no disponibles, se usa Datos_API:', e.message);
-  }
-  const nucleoOk = !!(horasDia && horasNoche && horasJornada);
-
-  const bruto = [];
-  for (const c of (tablero.conductores || [])) {
-    const dia = c.dias && c.dias[key];
-    if (!dia) continue;
-    const clave = normClave(c.nombre);
-    const just = justis.get(clave);
-    // CADA TURNO, SU VENTANA. El de día se mide contra 05:00-17:00 y el de noche contra
-    // 17:00-05:00, que es lo que dice su turno. Antes se medían contra dos ventanas que
-    // se SOLAPABAN (00→24 para los de día y 12→12 para los de noche): la de noche se
-    // metía 12 h en el día siguiente, así que 406,5 h de la madrugada del día D+1 se le
-    // apuntaban al día D. Por eso el reporte daba 938,3 h y Visibilidad 890,9 del MISMO día.
-    // Al que no tiene turno en la agenda —o hace TodoTurno— se le mide la jornada entera
-    // (05→05), porque no hay un tramo concreto que sea "el suyo".
-    const turno = (c.turno || '').trim();
-    const deSuTurno = clave =>
-      turno === 'Noche' ? (horasNoche.get(clave) ?? 0)
-      : turno === 'Día' || turno === 'Dia' ? (horasDia.get(clave) ?? 0)
-      : (horasJornada.get(clave) ?? 0);
-    const horas = !nucleoOk
-      ? dia.horas                                  // núcleo caído → la hoja para todos
-      : deSuTurno(clave);
-    const incluir = dia.debiaSalir || (horas != null && horas > 0) || !!just;
-    if (!incluir) continue;
-    bruto.push({
-      nombre: c.nombre, telefono: c.telefono || '', turno: c.turno || '', horas,
-      esNN: c.esNN, libra: !!dia.libra, debiaSalir: !!dia.debiaSalir, just
-    });
-  }
-
-  // No justificados primero (mayor→menor); justificados al final (también mayor→menor).
-  const cmp = (a, b) => (b.horas ?? -1) - (a.horas ?? -1) || a.nombre.localeCompare(b.nombre, 'es');
-  const orden = bruto.filter(f => !f.just).sort(cmp).concat(bruto.filter(f => f.just).sort(cmp));
-
-  const filas = orden.map((f, i) => {
-    const comun = { nro: i + 1, nombre: f.nombre, telefono: f.telefono, turno: f.turno, horas: f.horas, libra: f.libra, debiaSalir: f.debiaSalir };
-    if (f.just) {
-      const horasTexto = (f.horas != null && f.horas > 0) ? `${r1(f.horas)} (J)` : 'J';
-      return { ...comun, horasTexto, color: 'azul', observacion: f.just.observacion || '', esJ: true };
-    }
-    const b = banda(f.horas);
-    return { ...comun, horasTexto: (f.horas != null ? String(r1(f.horas)) : ''), color: b.color, observacion: b.obs, esJ: false };
-  });
-
-  // KM por conductor del NÚCLEO (route/list), para las columnas nuevas del Excel.
-  //
-  // Por DÍA OPERATIVO (05:00 → 05:00 del día siguiente), NO por turno ni por día
-  // natural. Da igual si el conductor es de día o de noche —el sistema no siempre
-  // lo sabe—: BOLT sabe qué coche usó y cuánto rodó conectado, y eso se le atribuye
-  // a ÉL (por conductor). La ventana operativa evita dos fallos: robarle la madrugada
-  // al de la víspera (día natural) y dejar en blanco a quien no tiene turno (filtrar
-  // por ventana de turno). Se cuenta lo que hizo en su jornada, sin más.
-  //
-  // En su propio try: si el núcleo no está poblado, el reporte sale igual.
-  try {
-    const rutas = require('./flotaViva/rutas');
-    await require('./flotaViva/db').preparar();
-    // Dos fuentes del núcleo (Postgres): los km medidos por Mapon (fv_ruta) y la
-    // matrícula con la que fichó en BOLT (destapa el caso REVISAR). Por TURNO, igual
-    // que las horas: los de noche 12→12, los demás día natural.
-    const [kmDia, kmNoche, boltDia, boltNoche] = await Promise.all([
-      rutas.kmConectadoDesconectado(iso, 'completo'),
-      rutas.kmConectadoDesconectado(iso, 'noche12'),
-      rutas.matriculasBoltPorConductor(iso, 'completo'),
-      rutas.matriculasBoltPorConductor(iso, 'noche12'),
-    ]);
-    const mapa = arr => new Map(arr.conductores.map(c => [normClave(c.conductor), c]));
-    const mapKmDia = mapa(kmDia), mapKmNoche = mapa(kmNoche);
-    const mapBoltDia = mapa(boltDia), mapBoltNoche = mapa(boltNoche);
-    filas.forEach(f => {
-      const noche = (f.turno || '').trim() === 'Noche';
-      const k = (noche ? mapKmNoche : mapKmDia).get(normClave(f.nombre));
-      if (k) {
-        // Caso normal: Mapon midió sus km. La(s) matrícula(s) con la(s) que se
-        // conectó en BOLT ese día operativo, la de más km primero.
-        f.kmBolt = k.enBolt;
-        f.kmDesc = k.desconectado;
-        f.matricula = (k.matriculas && k.matriculas.length) ? k.matriculas.join(', ') : null;
-        return;
-      }
-      // No hay km de Mapon. Si aun así fichó en BOLT con un coche, es REVISAR: el
-      // coche con el que fichó no tiene traza de Mapon (está en el taller y salió
-      // con otro NO dado de alta en BOLT, o su baliza está caída). No se puede medir
-      // el km — lo cuadra Tráfico a mano, que conoce el apaño. Se muestra la matrícula
-      // con la que fichó, que es el hilo del que tirar; el km va como "REVISAR".
-      const b = (noche ? mapBoltNoche : mapBoltDia).get(normClave(f.nombre));
-      if (b && b.matriculas && b.matriculas.length) {
-        f.matricula = b.matriculas.join(', ');
-        f.kmBolt = 'REVISAR';
-        f.kmDesc = 'REVISAR';
-        f.revisar = true;
-      } else {
-        f.kmBolt = null; f.kmDesc = null; f.matricula = null;
-      }
-    });
-  } catch (e) {
-    console.warn('⚠️  [JUST] KM del núcleo no disponible para el reporte:', e.message);
-  }
-
-  return {
-    fecha, diaSemana: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][idx],
-    dia: Number(key), filas, resumen: resumirFilas(filas)
-  };
-}
-
-// ── Resumen del día ─────────────────────────────────────────────────────────
-// Se calcula SOBRE LAS FILAS QUE SE IMPRIMEN, para que quien lea el Excel pueda
-// sumar a mano y le cuadre. Quien solo libraba no aparece en el reporte (reporteDia
-// ya lo deja fuera), y aun así se descarta aquí por si viniera con libranza y coche.
-function resumirFilas(filas) {
-  const hizo = f => (f.horas ?? 0) > 0;
-  const porTurno = {};
-  filas.forEach(f => {
-    const t = (f.turno || '').trim() || '(sin turno)';
-    porTurno[t] = r1((porTurno[t] || 0) + (f.horas ?? 0));
-  });
-  return {
-    salieron: filas.filter(hizo).length,
-    // Se les esperaba y no aparecieron. La libranza no cuenta como falta.
-    noSalieron: filas.filter(f => !hizo(f) && !f.libra).length,
-    cumplieron8: filas.filter(f => (f.horas ?? 0) >= 8).length,
-    menos4: filas.filter(f => hizo(f) && f.horas < 4).length,
-    justificados: filas.filter(f => f.esJ).length,
-    horasDia: porTurno['Día'] || 0,
-    horasNoche: porTurno['Noche'] || 0,
-    // TodoTurno y los que no tienen turno en la agenda (los NN) van aparte: así las
-    // cuatro líneas suman EXACTAMENTE el total y no hay horas escondidas.
-    horasTodoTurno: porTurno['TodoTurno'] || 0,
-    horasSinTurno: porTurno['(sin turno)'] || 0,
-    horasTotal: r1(filas.reduce((s, f) => s + (f.horas ?? 0), 0)),
-    personas: filas.length
-  };
-}
+// ── Reporte del día ─────────────────────────────────────────────────
+// Vive en repo/reporteHoras: PostgreSQL de punta a punta. Se reexporta desde
+// aquí porque es lo que llaman las rutas de Control desde siempre.
+const { reporteDia, resumirFilas, banda, fechaDeClave } = rep;
 
 // ── Excel del reporte (colores SOLO en la celda de horas) ───────────────────
 // Los colores de la banda son los de siempre —tráfico ya los tiene interiorizados—;
@@ -392,6 +145,13 @@ async function excelDia(reporte) {
   fila = lineaResumen(ws, fila, 'Cumplieron las 8 h (8 h o más)', r.cumplieron8);
   fila = lineaResumen(ws, fila, 'Salieron con menos de 4 h', r.menos4);
   fila = lineaResumen(ws, fila, 'Justificados con J  ·  valen 8 h para el pago', r.justificados, { tenue: true });
+  // Los que salieron sin estar en el cuadrante de ese día. Antes ni aparecían
+  // en el reporte —salían del cruce por nombre contra la hoja— y sus horas se
+  // perdían: es justo la gente por la que hay que preguntar.
+  if (r.fueraDelPlan) {
+    fila = lineaResumen(ws, fila, 'Salieron FUERA del cuadrante  ·  sin estar planificados', r.fueraDelPlan);
+    fila = lineaResumen(ws, fila, 'Horas que hicieron esos', r.horasFueraDelPlan, { horas: true, tenue: true });
+  }
   fila++;
   fila = lineaResumen(ws, fila, 'Horas hechas en el turno de DÍA', r.horasDia, { horas: true });
   fila = lineaResumen(ws, fila, 'Horas hechas en el turno de NOCHE', r.horasNoche, { horas: true });
@@ -428,4 +188,4 @@ async function excelDia(reporte) {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-module.exports = { fechaDeClave, banda, guardar, leerPorFecha, reporteDia, resumirFilas, excelDia, HOJA };
+module.exports = { fechaDeClave, banda, reporteDia, resumirFilas, excelDia };

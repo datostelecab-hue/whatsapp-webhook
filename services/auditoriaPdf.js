@@ -73,7 +73,11 @@ const cinta = (x1, y1, x2, y2, h1, h2) => {
  * @param {Object} datos  { titulo, subtitulo, rango, tramos: [{txt, color, tot}], matriculas }
  * @returns {Promise<Buffer>}
  */
-async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas }) {
+// `etiquetas` renombra un bucket para quien lo llama. Hace falta porque la misma
+// caja significa cosas distintas según la fuente: la Auditoría separa la ida a
+// recoger del viaje con pasajero, y el núcleo (BOLT en vivo) no — allí el verde
+// es "en viaje", las dos cosas juntas, y llamarlo "Con pasajero" es mentir.
+async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas, etiquetas = {} }) {
   const doc = await PDFDocument.create();
   doc.setTitle(titulo);
   doc.setCreator('Tibus Luxury · Auditoría de flota');
@@ -165,7 +169,7 @@ async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas })
     nodo(X[0], nTotal, C.dark, 'KM totales', `${nkm(total)} km`, false);
     nTramos.forEach(nt => nodo(X[1], nt, nt.item.color, nt.item.txt,
       `${nkm(nt.item.tot.totalMapon)} km · ${pc(nt.item.tot.totalMapon)}`, false));
-    nBuckets.forEach(nb => nodo(X[2], nb, nb.item.color, nb.item.txt,
+    nBuckets.forEach(nb => nodo(X[2], nb, nb.item.color, etiquetas[nb.item.id] || nb.item.txt,
       `${nkm(sumaBucket(nb.item.id))} km · ${pc(sumaBucket(nb.item.id))}`, true));
   } else {
     pg.drawText(limpiar('Sin kilómetros en este rango.'), { x: 40, y: aPdf((top + bottom) / 2), size: 12, font: reg, color: C.suave });
@@ -176,6 +180,10 @@ async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas })
   const viaje = s('totalPasajero'), camino = s('totalIda'), espera = s('totalEspera');
   const desc = s('totalDescanso'), cerrada = s('totalFuera');
   const enBolt = viaje + camino + espera, noDisp = desc + cerrada;
+  // Solo se enumera lo que tiene km. Un "0 de camino" no informa de nada: dice
+  // que no se recogió a nadie, cuando lo que pasa es que esa fuente no separa
+  // la ida del viaje con pasajero (el Sankey ya omitía ese nodo por lo mismo).
+  const trozo = (v, txt) => v > 0 ? [`${nkm(v)} ${txt}`] : [];
   const pcT = v => total > 0 ? Math.round(v / total * 100) + '%' : '—';
 
   pg.drawLine({ start: { x: 40, y: 120 }, end: { x: W - 40, y: 120 }, thickness: 0.7, color: C.linea });
@@ -186,9 +194,11 @@ async function generarPdfFlujo({ titulo, subtitulo, rango, tramos, matriculas })
     pg.drawText(limpiar(detalle), { x: x + 12, y: 50, size: 8, font: reg, color: C.suave });
   };
   caja(40, 'Trabajando en BOLT', `${pcT(enBolt)}  ·  ${nkm(enBolt)} km`,
-    `${nkm(viaje)} de viaje · ${nkm(camino)} de camino · ${nkm(espera)} en espera`, C.verde);
+    [...trozo(viaje, etiquetas.totalPasajero ? 'en viaje' : 'de viaje'),
+     ...trozo(camino, 'de camino'), ...trozo(espera, 'en espera')].join(' · '), C.verde);
   caja(40 + (W - 100) / 2 + 20, 'No disponible', `${pcT(noDisp)}  ·  ${nkm(noDisp)} km`,
-    `${nkm(desc)} en descanso · ${nkm(cerrada)} con la app cerrada`, noDisp > 0 ? C.rojo : C.gris);
+    [...trozo(desc, 'en descanso'), ...trozo(cerrada, 'con la app cerrada')].join(' · ') || 'nada',
+    noDisp > 0 ? C.rojo : C.gris);
 
   pg.drawText(limpiar('Los km los mide Mapon (GPS punto a punto); BOLT aporta el estado del conductor en cada momento.'),
     { x: 40, y: 24, size: 7.5, font: reg, color: C.suave });

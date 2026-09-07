@@ -61,6 +61,44 @@ async function horasVentana(dia, hIni, offDias, hFin) {
   };
 }
 
+// ── Cuánta gente hizo CADA TURNO de una jornada ──────────────────────────────
+// No es lo mismo "pasó por la franja" que "hizo ese turno", y la tarjeta decía
+// lo primero llamándolo lo segundo: el domingo salía "turno día · 80 cond"
+// cuando de día solo hubo 49. La causa es que el de noche que ficha a las 16:40
+// toca la ventana de día, y el de día que alarga hasta las 17:30 toca la de
+// noche, así que cada uno se contaba DOS veces y día + noche (82 + 71) se iba
+// muy por encima de la jornada (100).
+//
+// Aquí cada persona cuenta UNA sola vez, en el turno donde hizo el grueso de
+// sus horas efectivas. Así día + noche = la jornada, siempre.
+async function conductoresPorTurno(diaJornada) {
+  if (!fv.HAY_BD) return { dia: 0, noche: 0, total: 0 };
+  await fv.preparar();
+  const T = require('./flotaViva/rutas').TURNOS;
+  const r = await fv.consulta(
+    `WITH j AS (
+       SELECT ($1::date + ($2 || ' hours')::interval)       AT TIME ZONE 'Europe/Madrid' AS ini,
+              ($1::date + ($3 || ' hours')::interval)       AT TIME ZONE 'Europe/Madrid' AS corte,
+              (($1::date + 1) + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     ),
+     tr AS (
+       SELECT t.conductor_uuid AS uuid,
+              GREATEST(0, EXTRACT(EPOCH FROM (LEAST(COALESCE(t.hasta, now()), j.corte) - GREATEST(t.desde, j.ini))))   AS sd,
+              GREATEST(0, EXTRACT(EPOCH FROM (LEAST(COALESCE(t.hasta, now()), j.fin)   - GREATEST(t.desde, j.corte)))) AS sn
+         FROM fv_tramo t CROSS JOIN j
+         JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
+        WHERE t.desde < j.fin AND COALESCE(t.hasta, now()) > j.ini
+     ),
+     p AS (SELECT uuid, sum(sd) AS d, sum(sn) AS n FROM tr GROUP BY uuid)
+     SELECT count(*) FILTER (WHERE d + n > 0)::int      AS total,
+            count(*) FILTER (WHERE d >= n AND d > 0)::int AS dia,
+            count(*) FILTER (WHERE n > d)::int            AS noche
+       FROM p`,
+    [String(diaJornada).slice(0, 10), String(T.dia[0]), String(T.dia[2])]);
+  const x = r.rows[0] || {};
+  return { dia: Number(x.dia) || 0, noche: Number(x.noche) || 0, total: Number(x.total) || 0 };
+}
+
 // Dinero (neto) y viajes terminados de la MISMA ventana, desde bolt_order.
 async function dineroVentana(dia, hIni, offDias, hFin) {
   if (!db.HAY_BD) return { neto: 0, viajes: 0 };
@@ -176,7 +214,7 @@ async function resumen() {
   // Antes de las 05:00 la jornada que acaba de cerrarse es la de ANTEAYER.
   const ayerJornada = horaMadrid() < H0 ? diaISOhace(2) : ayer;
   const t = ventanaTurnos();
-  const [mes, dia, ayerDia, ayerJor, semana, turnoDia, turnoNoche, config] = await Promise.all([
+  const [mes, dia, ayerDia, ayerJor, semana, turnoDia, turnoNoche, cuentaDia, cuentaNoche, config] = await Promise.all([
     slice(primeroMes, 0, dm, 0),           // todo el mes, días naturales (los futuros no suman)
     slice(hoy, 0, 1, 0),                   // HOY, día natural 00:00 → 24:00 (parcial)
     slice(ayer, 0, 1, 0),                  // AYER, día natural completo
@@ -184,6 +222,10 @@ async function resumen() {
     slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
     slice(...t.dia.v),                     // turno DÍA (05→17)
     slice(...t.noche.v),                   // turno NOCHE (17→05, cruza medianoche)
+    // Cada persona en UN solo turno: el de la jornada a la que pertenece cada
+    // ventana (la de noche empieza el mismo día que su jornada).
+    conductoresPorTurno(t.dia.v[0]),
+    conductoresPorTurno(t.noche.v[0]),
     leerConfig(),
   ]);
   return {
@@ -193,9 +235,11 @@ async function resumen() {
     dia: { ...dia, etq: 'Hoy' },
     ayer: { ...ayerDia, etq: 'Ayer' },
     semana: { ...semana, etq: 'Esta semana' },
-    // POR TURNO (ventana del turno; la noche cruza medianoche)
-    turnoDia: { ...turnoDia, etq: t.dia.etq },
-    turnoNoche: { ...turnoNoche, etq: t.noche.etq },
+    // POR TURNO (ventana del turno; la noche cruza medianoche). Las HORAS son
+    // las de la ventana; los CONDUCTORES, los que hicieron ese turno — que no
+    // es lo mismo que los que pisaron la franja (ver conductoresPorTurno).
+    turnoDia: { ...turnoDia, conductores: cuentaDia.dia, etq: t.dia.etq },
+    turnoNoche: { ...turnoNoche, conductores: cuentaNoche.noche, etq: t.noche.etq },
     ayerJornada: { ...ayerJor, etq: 'Ayer · jornada completa', dia: ayerJornada },
     config,
   };
@@ -396,5 +440,5 @@ module.exports = {
   resumen, serieMes, ultimosDias, leerConfig, guardarConfig,
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
-  slice, horasVentana, dineroVentana,
+  slice, horasVentana, dineroVentana, conductoresPorTurno,
 };
