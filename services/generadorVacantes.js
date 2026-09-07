@@ -218,10 +218,15 @@ async function datosGenerador() {
     const z = c.zona || '(sin zona)';
     const dia = (c.huecos || []).filter(h => h.turno === 'Día').map(h => h.dia);
     const noche = (c.huecos || []).filter(h => h.turno === 'Noche').map(h => h.dia);
-    if (!dia.length && !noche.length) return;
+    // Un coche interesa si tiene hueco de CT **o la plaza de un FIJO vacía**.
+    // Antes solo contaba lo primero, y un coche sin fijo —pero con el descanso
+    // cubierto por el correturnos— no salía NI en el desplegable de "Fijo" ni en
+    // Pendientes: invisible justo el hueco más gordo.
+    const fijos = fijosDe(c);
+    if (!dia.length && !noche.length && fijos.fijoDia && fijos.fijoNoche) return;
     if (!zonasMap.has(z)) zonasMap.set(z, []);
     zonasMap.get(z).push({
-      matricula: c.matricula, dia, noche, ...fijosDe(c),
+      matricula: c.matricula, dia, noche, ...fijos,
       enVacanteDia: cubDia.has(c.matricula), enVacanteNoche: cubNoche.has(c.matricula)
     });
   });

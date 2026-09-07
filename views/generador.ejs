@@ -170,7 +170,8 @@
   function pintarPendientes() {
     const pend = [];
     DATOS.zonas.forEach(z => z.matriculas.forEach(m => {
-      if (huecosTurno(m).length && !enVacanteTurno(m)) pend.push({ ...m, zona: z.zona });
+      // Pendiente = hueco de CT en este turno O fijo de este turno sin asignar.
+      if ((huecosTurno(m).length || fijoTurnoVacio(m)) && !enVacanteTurno(m)) pend.push({ ...m, zona: z.zona });
     }));
     $('#pend-turno').textContent = `(${estado.turno}: ${pend.length})`;
     const wrap = $('#pendientes-wrap');
