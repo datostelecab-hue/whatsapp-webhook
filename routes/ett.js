@@ -18,6 +18,10 @@ const alta = require('../services/repo/alta');
 const actor = require('../services/repo/actor');
 const { generarExcelETT, nombreFichero } = require('../services/ettExcel');
 
+// La ETT con la que se trabaja. Se puede cambiar sin tocar código con la
+// variable ETT_NOMBRE; esto es lo que vale si nadie la pone.
+const ETT_POR_DEFECTO = 'GiGroup';
+
 const quien = async req => ({
   usuarioId: await actor.idDe(req),
   rol: (req.usuario || {}).rol || '',
@@ -134,7 +138,7 @@ router.post('/api/candidatura/:id/rrhh', responde(async req => {
   // configurado en el servidor y el alta se caía por falta de nombre.
   const q = await quien(req);
   const r = await cand.pasarARRHH(Number(req.params.id),
-    { tipo: 'ett', ...b, ettNombre: b.ettNombre || process.env.ETT_NOMBRE },
+    { tipo: 'ett', ...b, ettNombre: b.ettNombre || process.env.ETT_NOMBRE || ETT_POR_DEFECTO },
     q);
   console.log(`👤 [ETT] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
               (r.boltEnlazada ? ` — BOLT enlazada${r.boltReactivar ? ` (${r.boltEstado}: REACTIVAR)` : ''}`
@@ -168,7 +172,10 @@ router.post('/api/alta-rapida', responde(async req => {
   const hoy = new Date().toISOString().slice(0, 10);
   const q = await quien(req);
   const r = await alta.realizar(
-    { nombre, telefono, tipo: 'ett', ettNombre: b.ettNombre || process.env.ETT_NOMBRE || 'ETT', alta: hoy,
+    // El último recurso es el nombre de la ETT con la que se trabaja, no la
+    // palabra "ETT": ese literal llenó la base de 99 periodos que decían "ETT"
+    // a secas y no se sabía con quién estaban contratados.
+    { nombre, telefono, tipo: 'ett', ettNombre: b.ettNombre || process.env.ETT_NOMBRE || ETT_POR_DEFECTO, alta: hoy,
       barrio: String(b.barrio || '').trim().slice(0, 60) || undefined },
     q);
   console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id})` +

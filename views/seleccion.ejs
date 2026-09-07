@@ -212,7 +212,8 @@
       { id: 'tipo', etiqueta: 'Tipo de contrato', tipo: 'lista', obligatorio: true,
         valor: /ETT/i.test(d.tipo_contrato || '') ? 'ett' : 'propia',
         opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },
-      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', ayuda: 'Solo si el contrato es por ETT' },
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: 'GiGroup',
+        ayuda: 'Solo si el contrato es por ETT. Cámbialo si viene de otra.' },
     ], { nota: 'Se le abre el periodo de empleo. A partir de aquí es plantilla, no candidato.' });
     if (!v || !v.alta) return;
 

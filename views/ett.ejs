@@ -422,8 +422,10 @@
       { id: 'zonaId', etiqueta: 'Zona', tipo: 'lista', obligatorio: true,
         valor: d.base_zona_id || '',
         opciones: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })) },
-      { id: 'ettNombre', etiqueta: 'Nombre de la ETT',
-        ayuda: 'Si se deja vacío se usa el configurado en el servidor' },
+      // Viene puesto para que nadie lo teclee a mano: así se escribía
+      // "gigroup", "ETT" y "GiGroup" y parecían tres empresas distintas.
+      { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: 'GiGroup',
+        ayuda: 'Cámbialo solo si esta persona viene de otra ETT' },
       { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
         ayuda: 'Al darle de alta, a Tráfico le salta la alerta: aceptar lo coloca en las plazas de la vacante.' },
     ], { columnas: 2,
