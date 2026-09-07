@@ -84,6 +84,13 @@
     });
   }
 
+  // El NAF se escribe provincia/número/control, que es como viene en los papeles
+  // de la Seguridad Social. En la base va seguido: 280382817059 → 28/03828170/59.
+  const naf = v => {
+    const d = String(v || '').replace(/\D/g, '');
+    return d.length === 12 ? `${d.slice(0, 2)}/${d.slice(2, 10)}/${d.slice(10)}` : String(v || '');
+  };
+
   // Color de cada situación. El código va en la base; esto es solo cómo se ve.
   const tonoSituacion = c => ({
     activo: 'green', vacaciones: 'gold', baja_medica: 'warn',
@@ -562,7 +569,7 @@
       texto: 'Buscar nombre, DNI, BOLT, coche…',
       // Se busca por lo que IDENTIFICA además de por el nombre: por eso están
       // el DNI, la cuenta de BOLT y la matrícula.
-      campos: ['nombre_completo', 'nombre_legal', 'nombre_ss', 'dni_nie', 'bolt_id', 'matricula', 'telefono', 'zona'],
+      campos: ['nombre_completo', 'nombre_legal', 'naf', 'dni_nie', 'bolt_id', 'matricula', 'telefono', 'zona'],
     },
 
     subtitulo: (v, t) => {
@@ -663,12 +670,18 @@
       { titulo: 'Conductor', campo: 'nombre_completo', clase: 'font-semibold whitespace-nowrap',
         pinta: (v, f) => esc(v) + (f.empleo_tipo === 'ett'
           ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/30">ETT</span>' : '') },
-      { titulo: 'DNI', campo: 'dni_nie', clase: 'whitespace-nowrap tabular-nums',
-        pinta: v => v ? esc(v) : '<span class="text-telecab-warn">—</span>' },
+      // El DNI ya no se pinta: identifica pero no se mira, y ocupaba el sitio
+      // de lo que sí se mira. Se sigue pudiendo BUSCAR por él.
       { titulo: 'Situación', campo: 'situacion_etiqueta',
         pinta: (v, f) => etiqueta(v, tonoSituacion(f.situacion)) },
-      { titulo: 'Turno', campo: 'turno' },
-      { titulo: 'Libra', campo: 'libranzas', clase: 'whitespace-nowrap text-telecab-muted' },
+      { titulo: 'Turno', campo: 'turno', clase: 'whitespace-nowrap',
+        pinta: v => v ? esc(v) : '<span class="text-telecab-muted">—</span>' },
+      // Pequeño a propósito: acompaña al turno, no compite con él.
+      { titulo: 'Libra', campo: 'libranzas', clase: 'whitespace-nowrap',
+        pinta: (v, f) => !v ? '<span class="text-telecab-muted text-xs">—</span>'
+          : `<span class="text-telecab-muted text-xs tracking-wide" title="${
+              f.libranzas_del_cuadrante ? 'Días que libra según su plaza en el cuadrante' : 'Patrón de libranza puesto a mano'
+            }">${esc(v)}</span>` },
       { titulo: 'Coche', campo: 'matricula', clase: 'whitespace-nowrap',
         pinta: (v, f) => !v
           ? '<span class="text-telecab-muted">—</span>'
@@ -688,6 +701,19 @@
           return !v ? '' : esc(fecha(v)) +
             (f.anios >= 1 ? ` <span class="text-telecab-muted text-xs">${esc(f.anios)} a</span>` : '');
         } },
+      // Quién le cotiza: su número de la Seguridad Social si es de plantilla
+      // propia, o el nombre de la ETT si va por una. Quien va por ETT no tiene
+      // NAF con nosotros — lo cotiza la ETT — y por eso son excluyentes.
+      { titulo: 'SS / ETT', campo: 'naf', clase: 'whitespace-nowrap',
+        // A quien ya no está no se le atribuye nada: sin periodo abierto no se
+        // sabe por quién estaba contratado.
+        pinta: (v, f) => f.empleo_vigente === false
+          ? '<span class="text-telecab-muted">—</span>'
+          : f.empleo_tipo === 'ett'
+            ? `<span class="text-telecab-violet" title="Empresa de trabajo temporal">${esc(f.ett_nombre || 'ETT')}</span>`
+            : (v
+                ? `<span class="tabular-nums" title="Número de afiliación a la Seguridad Social">${esc(naf(v))}</span>`
+                : '<span class="text-telecab-warn" title="Sin número de la Seguridad Social">—</span>') },
       { titulo: 'Ficha', campo: 'faltan', clase: 'text-center', pinta: (v, f) => faltan(f) },
     ],
 

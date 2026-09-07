@@ -42,7 +42,8 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
   else if (soloVigentes) donde.push('c.empleo_vigente');
   if (tipo)      { params.push(tipo);            donde.push(`e.tipo = $${params.length}`); }
   if (situacion) { params.push(situacion);       donde.push(`(CASE WHEN NOT c.empleo_vigente THEN 'baja_empresa' ELSE COALESCE(s.estado, 'activo') END) = $${params.length}`); }
-  if (turnoId)   { params.push(Number(turnoId)); donde.push(`th.turno_id = $${params.length}`); }
+  // Mismo turno que se PINTA: el del historial o, si no lo hay, el de su plaza.
+  if (turnoId)   { params.push(Number(turnoId)); donde.push(`COALESCE(th.turno_id, pl.turno_id) = $${params.length}`); }
 
   const r = await db.consulta(`
     WITH ref AS (SELECT COALESCE($1::date, CURRENT_DATE) AS dia)
@@ -51,6 +52,9 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            ${NOMBRE}                       AS nombre_legal,
            c.nombre, c.apellidos, c.nombre_ss,
            c.dni_tipo, c.dni_nie, c.nacionalidad, c.email,
+           -- Número de afiliación a la Seguridad Social. Quien va por ETT no lo
+           -- tiene con nosotros: lo cotiza la ETT.
+           c.naf,
            c.es_centinela, c.empleo_vigente,
 
            -- Empleo vigente en la fecha: propia o ETT, desde cuándo.
@@ -84,7 +88,10 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            ultimo.baja        AS fecha_baja,
            ultimo.motivo_baja,
 
-           th.turno_id, t.etiqueta AS turno,
+           -- Turno: el del historial si alguien lo puso a mano; si no, el de su
+           -- PLAZA, que es donde vive de verdad (ver el LATERAL pl, abajo).
+           COALESCE(th.turno_id, pl.turno_id) AS turno_id,
+           COALESCE(t.etiqueta, pl.turno)     AS turno,
 
            tel.e164 AS telefono,
 
@@ -97,8 +104,11 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            coche.matricula, coche.vehiculo_id, coche.rol, coche.zona,
            coche.plazas AS plazas_abiertas,
 
-           -- Libranzas del patrón vigente, como 'L M' y no como siete columnas.
-           lib.dias AS libranzas,
+           -- Libranzas como 'L M' y no como siete columnas. El patrón manual
+           -- manda; si no lo hay —y hoy no lo tiene NADIE— se deducen del
+           -- cuadrante, que es lo que de verdad se cumple.
+           COALESCE(lib.dias, pl.libra) AS libranzas,
+           (lib.dias IS NULL AND pl.libra IS NOT NULL) AS libranzas_del_cuadrante,
 
            -- Documentación obligatoria que le falta. Sale de v_documento_falta,
            -- que es la única definición de "obligatorio" del sistema.
@@ -175,6 +185,51 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
         JOIN patron_libranza_dia d ON d.patron_id = pl.id
        WHERE pl.conductor_id = c.id
          AND pl.desde <= ref.dia AND (pl.hasta IS NULL OR pl.hasta >= ref.dia)) lib ON TRUE
+    -- TURNO Y LIBRANZA REALES: los de su plaza en el cuadrante.
+    --
+    -- conductor_turno_hist y patron_libranza son del modelo viejo y están
+    -- prácticamente vacías (3 filas y 0): por eso la columna Turno salía en
+    -- blanco para 218 de 220 y la de libranzas para todos. Lo que de verdad
+    -- dice en qué turno va alguien es la PLAZA que ocupa (cat_slot.turno_id), y
+    -- lo que dice qué días libra es la MISMA regla que aplica f_cobertura:
+    -- el CT trabaja los días de asignacion_dia; el fijo, todos menos el
+    -- descanso de su coche (ver el LATERAL de abajo). Se repite aquí en vez de llamar a f_cobertura
+    -- porque esto es el PATRÓN de la semana, no lo que pasó un día concreto:
+    -- una ausencia no cambia los días que libra.
+    LEFT JOIN LATERAL (
+      SELECT string_agg(DISTINCT tt.etiqueta, ' + ' ORDER BY tt.etiqueta) AS turno,
+             min(s3.turno_id)                                             AS turno_id,
+             (SELECT string_agg(CASE g.n WHEN 1 THEN 'L' WHEN 2 THEN 'M' WHEN 3 THEN 'X'
+                                         WHEN 4 THEN 'J' WHEN 5 THEN 'V' WHEN 6 THEN 'S'
+                                         ELSE 'D' END, ' ' ORDER BY g.n)
+                FROM generate_series(1, 7) AS g(n)
+               -- Libra el día en que NINGUNA de sus plazas le hace trabajar.
+               WHERE NOT EXISTS (
+                 SELECT 1
+                   FROM asignacion a4
+                   JOIN plaza p4    ON p4.id = a4.plaza_id AND p4.baja_at IS NULL
+                   JOIN cat_slot s4 ON s4.slot = p4.slot
+                  WHERE a4.conductor_id = c.id
+                    AND a4.desde <= ref.dia AND (a4.hasta IS NULL OR a4.hasta >= ref.dia)
+                    AND (CASE WHEN s4.rol = 'CT'
+                           THEN EXISTS (SELECT 1 FROM asignacion_dia ad
+                                         WHERE ad.asignacion_id = a4.id AND ad.dia_semana = g.n)
+                           ELSE NOT EXISTS (
+                             SELECT 1 FROM vehiculo_descanso vd
+                               JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+                              WHERE vd.vehiculo_id = p4.vehiculo_id
+                                AND vd.desde <= ref.dia
+                                AND (vd.hasta IS NULL OR vd.hasta >= ref.dia)
+                                AND vdd.dia_semana = g.n)
+                         END))) AS libra
+        FROM asignacion a3
+        JOIN plaza p3    ON p3.id = a3.plaza_id AND p3.baja_at IS NULL
+        JOIN cat_slot s3 ON s3.slot = p3.slot
+        LEFT JOIN turno tt ON tt.id = s3.turno_id
+       WHERE a3.conductor_id = c.id
+         AND a3.desde <= ref.dia AND (a3.hasta IS NULL OR a3.hasta >= ref.dia)
+      -- Sin plaza no hay fila: quien no tiene coche no "libra los siete días".
+      HAVING count(*) > 0) pl ON TRUE
     LEFT JOIN LATERAL (
       SELECT array_agg(f.etiqueta ORDER BY f.etiqueta) AS faltan
         FROM v_documento_falta f WHERE f.conductor_id = c.id) docs ON TRUE
