@@ -20,6 +20,7 @@ const router = express.Router();
 
 const plan = require('../services/repo/planificador');
 const actor = require('../services/repo/actor');
+const conds = require('../services/repo/conductores');
 
 const db = require('../services/db');
 const { DIAS_SEM, LETRAS_DIA } = require('../services/planificadorV2');
@@ -167,6 +168,20 @@ router.post('/api/libranza-excepcional', responde(async req => {
 router.delete('/api/libranza-excepcional/:id', responde(async req => {
   const r = await plan.borrarLibranzaExcepcional(req.params.id);
   return { ...r, tablero: await plan.tablero({ dia: req.query.dia }) };
+}));
+
+// ── El barrio del conductor (su zona de casa: "Aluche", "San Blas"…) ───────
+// Editable desde la carta del cuadrante y el banquillo. Escribe conductor.barrio
+// (campo operativo de la ficha), NUNCA localidad (el municipio de la gestoría).
+router.post('/api/barrio', responde(async req => {
+  const b = req.body || {};
+  const id = Number(b.conductorId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+  const barrio = String(b.barrio || '').trim().slice(0, 60);
+  await conds.actualizar(id, { barrio },
+    { usuarioId: await actor.idDe(req), rol: (req.usuario && req.usuario.rol) || '' });
+  console.log(`📍 [TABLERO] barrio del conductor ${id} = "${barrio}"`);
+  return { barrio };
 }));
 
 module.exports = router;

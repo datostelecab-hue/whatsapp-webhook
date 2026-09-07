@@ -143,7 +143,8 @@ router.post('/api/alta-rapida', responde(async req => {
   if (telefono.replace(/\D/g, '').length < 9) throw new Error('El teléfono no parece válido');
   const hoy = new Date().toISOString().slice(0, 10);
   const r = await alta.realizar(
-    { nombre, telefono, tipo: 'ett', ettNombre: b.ettNombre || process.env.ETT_NOMBRE || 'ETT', alta: hoy },
+    { nombre, telefono, tipo: 'ett', ettNombre: b.ettNombre || process.env.ETT_NOMBRE || 'ETT', alta: hoy,
+      barrio: String(b.barrio || '').trim().slice(0, 60) || undefined },
     await quien(req));
   console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id})` +
     (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));

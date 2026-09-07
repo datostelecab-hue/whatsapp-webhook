@@ -450,6 +450,11 @@ const CAMPOS = {
   puerta:            { grupo: 'Dirección', etiqueta: 'Puerta', ambito: 'sensible' },
   codigo_postal:     { grupo: 'Dirección', etiqueta: 'Código postal', ambito: 'sensible' },
   localidad:         { grupo: 'Dirección', etiqueta: 'Localidad', ambito: 'sensible' },
+  // La zona DE LA PERSONA para planificar ("Aluche", "San Blas"), texto libre.
+  // NO es la localidad (el municipio de la gestoría): por eso es operativo y
+  // Tráfico puede ponerla desde el planificador.
+  barrio:            { grupo: 'Dirección', etiqueta: 'Barrio (zona del conductor)', ambito: 'operativo',
+                       ayuda: 'Su zona de casa para planificar: Aluche, San Blas… No es la localidad de la gestoría' },
   provincia:         { grupo: 'Dirección', etiqueta: 'Provincia', ambito: 'sensible' },
   pais:              { grupo: 'Dirección', etiqueta: 'País', ambito: 'sensible' },
   lat:               { grupo: 'Dirección', etiqueta: 'Latitud', ambito: 'sensible', tipo: 'numero',

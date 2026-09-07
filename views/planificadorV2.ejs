@@ -117,6 +117,15 @@
         </div>
         <div id="banquillo" class="space-y-1 max-h-[60vh] overflow-y-auto pr-1"></div>
       </section>
+
+      <section class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+        <h3 class="font-semibold text-sm flex items-center gap-2 mb-1">
+          <i class="fa-solid fa-hourglass-half text-telecab-gold"></i>Fin de periodo de prueba
+          <span id="prueba-n" class="ml-auto text-xs text-telecab-muted"></span>
+        </h3>
+        <p class="text-[11px] text-telecab-muted mb-2">Los 3 meses desde el alta, del más próximo al más lejano.</p>
+        <div id="prueba-lista" class="space-y-1 max-h-72 overflow-y-auto pr-1"></div>
+      </section>
     </aside>
   </div>
 </div>
@@ -169,6 +178,7 @@
     pintarKpis();
     pintar();
     pintarLaterales();
+    pintarPrueba();
     pintarAvisos(j.avisos || []);
   }
 
@@ -219,8 +229,11 @@
       if (zona && zonaDeCoche(c, zc) !== zona) return false;
       if (soloHuecos && !tieneHueco(c)) return false;
       if (q) {
-        const txt = plano(c.matricula + ' ' + (c.personas || []).map(p =>
-          p && p.id ? (p.nombre || '') + ' ' + (((porId.get(String(p.id)) || {}).telefono) || '') : '').join(' '));
+        const txt = plano(c.matricula + ' ' + (c.personas || []).map(p => {
+          if (!p || !p.id) return '';
+          const per = porId.get(String(p.id)) || {};
+          return (p.nombre || '') + ' ' + (per.telefono || '') + ' ' + (per.barrio || '');
+        }).join(' '));
         if (!txt.includes(q)) return false;
       }
       return true;
@@ -488,11 +501,17 @@
           <span class="${nombreCls} transition">${esc(persona ? persona.nombre : p.nombre)}${ett}</span>
           ${tel ? `<span class="block text-[11px] text-telecab-muted font-mono tabular-nums">${esc(tel)}</span>`
                 : `<span class="block text-[11px] text-telecab-warn/80">sin teléfono</span>`}
+          <span data-barrio class="block text-[11px] ${(persona && persona.barrio) ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition" title="La zona del conductor (Aluche, San Blas…): pincha para cambiarla"><i class="fa-solid fa-house text-[9px]"></i> ${(persona && persona.barrio) ? esc(persona.barrio) : 'poner zona'}</span>
           <span class="block text-xs text-telecab-muted">${esc(sub)}</span>
           ${av ? `<span class="block text-[11px] text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}${av.hueco ? ' · sin cubrir' : ''}</span>` : ''}
           ${fut}
         </button>`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
+      // La zona se edita desde su propia línea, sin disparar el "asignar" de la carta.
+      wrap.querySelector('[data-barrio]').addEventListener('click', e => {
+        e.stopPropagation();
+        editarBarrio(persona || { id: p.id, nombre: p.nombre, barrio: '' });
+      });
     } else {
       // Un hueco tiene que SALTAR a la vista para localizarlos rápido: fondo tintado
       // + icono de aviso. El fijo vacío en rojo (crítico); el CT vacío en ámbar.
@@ -550,7 +569,7 @@
       if (banqTab === 'ett' && !p.esEtt) return false;
       if (banqTab === 'propios' && p.esEtt) return false;
       if (!q) return true;
-      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '') + ' ' + (p.barrio || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       return t.includes(q);
     });
     document.querySelectorAll('.banq-tab').forEach(b => {
@@ -563,8 +582,13 @@
       <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border">
         <div class="text-sm font-medium truncate">${esc(p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''}</div>
         <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
+        <button data-barrio="${p.id}" class="block text-[11px] text-left ${p.barrio ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition"><i class="fa-solid fa-house text-[9px]"></i> ${p.barrio ? esc(p.barrio) : 'poner zona'}</button>
         ${p.ausente ? `<div class="text-[11px] text-telecab-warn"><i class="fa-solid fa-plane-departure"></i> ${esc(p.estado)}${p.vuelveEl ? ` · vuelve ${isoAes(p.vuelveEl)}` : ''}</div>` : ''}
       </div>`).join('') : '<p class="text-xs text-telecab-muted text-center py-4">Nadie en el banquillo.</p>';
+    $('#banquillo').querySelectorAll('[data-barrio]').forEach(b => b.addEventListener('click', () => {
+      const c = porId.get(String(b.dataset.barrio));
+      if (c) editarBarrio(c);
+    }));
   }
 
   function pintarAvisos(avisos) {
@@ -700,6 +724,56 @@
       }
       if (j.tablero) aplicar(j.tablero);
     } catch (e) { alert(e.message); }
+  }
+
+  // ── El barrio (la zona del conductor: "Aluche", "San Blas"…) ──────────────
+  // Texto libre de Tráfico. Se escribe en la ficha (conductor.barrio) y se
+  // repinta en el sitio, sin recargar el tablero entero.
+  async function editarBarrio(c) {
+    const v = await Dialogo.formulario(`Zona de ${c.nombre}`, [
+      { id: 'barrio', etiqueta: 'Barrio / zona', tipo: 'texto', valor: c.barrio || '',
+        ayuda: 'Con tus palabras: Aluche, San Blas, Getafe… Vacío = quitarla.' },
+    ], { textoBoton: 'Guardar' });
+    if (v == null) return;
+    try {
+      const r = await fetch('/planificador-v2/api/barrio', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conductorId: c.id, barrio: (v.barrio || '').trim() }),
+      });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo guardar');
+      const per = porId.get(String(c.id));
+      if (per) per.barrio = j.barrio || '';
+      pintar(); pintarLaterales(); pintarPrueba();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo guardar la zona', texto: e.message, tono: 'error' });
+    }
+  }
+
+  // ── Fin del periodo de prueba, del más próximo al más lejano ──────────────
+  // Los 3 meses de convenio desde el alta (o la fecha apuntada, si la hay). Solo
+  // quienes SIGUEN en prueba: para ver venir a quién hay que decidirle pronto.
+  function pintarPrueba() {
+    const hoy = hoyISO();
+    const lista = (T.conductores || [])
+      .filter(c => c.finPrueba && c.finPrueba >= hoy)
+      .sort((a, b) => a.finPrueba.localeCompare(b.finPrueba));
+    $('#prueba-n').textContent = lista.length ? `${lista.length}` : '';
+    const dias = f => Math.round((new Date(f + 'T00:00:00') - new Date(hoy + 'T00:00:00')) / 864e5);
+    $('#prueba-lista').innerHTML = lista.length ? lista.map(c => {
+      const n = dias(c.finPrueba);
+      const tono = n <= 14 ? 'text-telecab-warn' : 'text-telecab-muted';
+      return `<div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border flex items-center gap-2">
+        <div class="min-w-0 flex-1">
+          <div class="text-sm truncate">${esc(c.nombre)}${c.esEtt ? ' <span class="text-telecab-violet text-xs">ETT</span>' : ''}</div>
+          <div class="text-[11px] text-telecab-muted">${c.alta ? 'alta ' + isoAes(c.alta) : ''}${c.barrio ? ' · ' + esc(c.barrio) : ''}</div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-xs font-semibold tabular-nums ${tono}">${isoAes(c.finPrueba)}</div>
+          <div class="text-[11px] ${tono}">${n === 0 ? 'hoy' : 'en ' + n + ' día' + (n === 1 ? '' : 's')}</div>
+        </div>
+      </div>`;
+    }).join('') : '<p class="text-xs text-telecab-muted text-center py-3">Nadie en periodo de prueba.</p>';
   }
 
   // ── Enviar los turnos del CUADRANTE por WhatsApp (un botón por cuadrante) ──
@@ -1005,7 +1079,7 @@
       const pinta = () => {
         const txt = (fondo.querySelector('[data-busca]').value || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
         const vis = lista.filter(c => {
-          const t = (c.nombre + ' ' + (c.dni || '') + ' ' + (c.telefono || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+          const t = (c.nombre + ' ' + (c.dni || '') + ' ' + (c.telefono || '') + ' ' + (c.barrio || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
           return t.includes(txt);
         });
         cont.innerHTML = vis.slice(0, 80).map(c => `
@@ -1013,7 +1087,7 @@
                   ${String(c.id) === String(actual) ? 'border-telecab-gold bg-telecab-gold/10' : 'border-telecab-border hover:bg-telecab-card2'}
                   ${!mismoTurno(c) ? 'opacity-60' : ''}">
             <div class="text-sm font-medium">${esc(c.nombre)}${c.esEtt ? ' <span class="text-telecab-violet text-xs">ETT</span>' : ''}</div>
-            <div class="text-[11px] text-telecab-muted">${c.telefono ? `<span class="font-mono tabular-nums">${esc(c.telefono)}</span> · ` : ''}${esc(c.turno || 'sin turno')}${c.plazas ? ' · ya colocado' : ' · banquillo'}${!mismoTurno(c) ? ' · otro turno' : ''}</div>
+            <div class="text-[11px] text-telecab-muted">${c.telefono ? `<span class="font-mono tabular-nums">${esc(c.telefono)}</span> · ` : ''}${esc(c.turno || 'sin turno')}${c.plazas ? ' · ya colocado' : ' · banquillo'}${!mismoTurno(c) ? ' · otro turno' : ''}${c.barrio ? ' · ' + esc(c.barrio) : ''}</div>
           </button>`).join('') || '<p class="text-xs text-telecab-muted text-center py-4">Nadie coincide.</p>';
         cont.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => cerrar(b.dataset.id)));
       };

@@ -283,6 +283,8 @@
       { id: 'nombre', etiqueta: 'Nombre y apellidos', tipo: 'texto', obligatorio: true },
       { id: 'telefono', etiqueta: 'Teléfono', tipo: 'texto', obligatorio: true,
         ayuda: 'Se enlaza solo con su cuenta de BOLT por este número.' },
+      { id: 'barrio', etiqueta: 'Zona (barrio)', tipo: 'texto',
+        ayuda: 'La zona del conductor: Aluche, San Blas… Sale en el planificador, debajo del teléfono.' },
     ], { textoBoton: 'Dar de alta',
          nota: 'Crea la ficha ETT y la pasa directa al planificador, como si ya estuviera contratado.' });
     if (!v || !v.nombre || !v.telefono) return;
