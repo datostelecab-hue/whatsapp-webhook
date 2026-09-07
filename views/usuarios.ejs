@@ -1,0 +1,252 @@
+<div class="max-w-[1400px] mx-auto px-4 py-6">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-users-gear text-telecab-gold"></i> Usuarios y permisos
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Quién entra a la plataforma y a qué módulos, elegidos uno a uno.
+        Los <b>Admin</b> y el <b>Desarrollador</b> entran a todo; el resto abre solo lo que marques aquí.
+      </p>
+    </div>
+    <button id="u-crear" class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
+      <i class="fa-solid fa-user-plus mr-1"></i> Crear usuario
+    </button>
+  </div>
+
+  <div class="grid lg:grid-cols-[360px_1fr] gap-4 items-start">
+
+    <!-- La lista de cuentas -->
+    <aside class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-telecab-border flex items-center gap-2">
+        <h2 class="text-sm font-semibold text-telecab-text">Cuentas</h2>
+        <span id="u-n" class="text-xs text-telecab-muted"></span>
+      </div>
+      <div id="u-lista" class="max-h-[75vh] overflow-y-auto">
+        <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+      </div>
+    </aside>
+
+    <!-- El detalle: la cuenta y su matriz de módulos -->
+    <section id="u-detalle" class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+      <p class="px-4 py-10 text-center text-sm text-telecab-muted">Elige una cuenta de la izquierda.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
+    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+
+  let D = null, SEL = null;
+
+  const ROLN = { superadmin: 'Admin', desarrollador: 'Desarrollador', oficina: 'Oficina', trafico: 'Tráfico' };
+  const ROL_TONO = {
+    superadmin: 'bg-telecab-gold/15 text-telecab-gold',
+    desarrollador: 'bg-telecab-violet/15 text-telecab-violet',
+    oficina: 'bg-sky-500/15 text-sky-500',
+    trafico: 'bg-emerald-500/15 text-emerald-500',
+  };
+  const EST_TONO = { activo: 'bg-emerald-500', provisional: 'bg-amber-500', bloqueado: 'bg-red-500' };
+  const chipRol = r => '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold ' + (ROL_TONO[r] || '') + '">' + esc(ROLN[r] || r) + '</span>';
+
+  async function api(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const j = await r.json();
+    if (j.status !== 'ok') throw new Error(j.msg || 'Error');
+    return j;
+  }
+
+  function pintarLista() {
+    const lista = D.usuarios;
+    $('#u-n').textContent = lista.length + ' cuenta(s)';
+    $('#u-lista').innerHTML = lista.map(u => `
+      <button data-id="${u.id}" class="w-full text-left px-4 py-2.5 border-b border-telecab-border/60 hover:bg-telecab-card2 transition ${SEL === u.id ? 'bg-telecab-card2 ring-1 ring-inset ring-telecab-gold/40' : ''}">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full shrink-0 ${EST_TONO[u.estado] || 'bg-telecab-border'}" title="${esc(u.estado)}"></span>
+          <span class="min-w-0 flex-1 text-sm font-medium text-telecab-text truncate">${esc((u.nombre + ' ' + (u.apellidos || '')).trim())}</span>
+          ${chipRol(u.rol)}
+        </div>
+        <div class="flex items-center gap-2 pl-4 mt-0.5">
+          <span class="text-[11px] text-telecab-muted truncate">${esc(u.email)}</span>
+          <span class="ml-auto text-[11px] text-telecab-muted whitespace-nowrap">${u.accesoTotal ? 'acceso total' : ((D.permisos[u.id] || []).length + ' módulos')}</span>
+        </div>
+      </button>`).join('');
+    $('#u-lista').querySelectorAll('[data-id]').forEach(b =>
+      b.addEventListener('click', () => { SEL = Number(b.dataset.id); pintarLista(); pintarDetalle(); }));
+  }
+
+  function pintarDetalle() {
+    const u = D.usuarios.find(x => x.id === SEL);
+    const box = $('#u-detalle');
+    if (!u) { box.innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Elige una cuenta de la izquierda.</p>'; return; }
+    const soyYo = u.email === D.yo;
+    const claves = new Set(D.permisos[u.id] || []);
+
+    const matriz = u.accesoTotal
+      ? `<div class="px-4 py-6 text-sm text-telecab-muted">
+           <i class="fa-solid fa-crown text-telecab-gold mr-1"></i>
+           <b class="text-telecab-text">${esc(ROLN[u.rol])}</b>: entra a TODOS los módulos por su rol. La matriz solo aplica a Oficina y Tráfico.
+         </div>`
+      : `<div class="px-4 py-3">
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            <p class="text-xs text-telecab-muted flex-1 min-w-[14rem]">Marca lo que puede abrir. Los submódulos van aparte: dar "Control" no da "KM y traza".</p>
+            <button data-plantilla="oficina" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-sky-500 hover:text-sky-500">Plantilla Oficina</button>
+            <button data-plantilla="trafico" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-emerald-500 hover:text-emerald-500">Plantilla Tráfico</button>
+            <button data-nada class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-telecab-red hover:text-telecab-red">Quitar todo</button>
+          </div>
+          <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+          ${D.catalogo.map(g => `
+            <div class="rounded-xl border border-telecab-border/70 bg-telecab-dark/30 p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-telecab-gold">${esc(g.grupo)}</span>
+                <button data-grupo="${esc(g.grupo)}" class="ml-auto text-[11px] text-telecab-muted hover:text-telecab-gold">todo</button>
+              </div>
+              <div class="space-y-1">
+              ${g.items.map(i => `
+                <label class="flex items-center gap-2 text-sm text-telecab-text cursor-pointer hover:text-telecab-gold transition">
+                  <input type="checkbox" data-clave="${esc(i.clave)}" ${claves.has(i.clave) ? 'checked' : ''} class="accent-telecab-gold">
+                  <span>${esc(i.etiqueta)}</span>
+                </label>
+                ${(i.hijos || []).map(h => `
+                <label class="flex items-center gap-2 text-sm text-telecab-muted cursor-pointer hover:text-telecab-gold transition pl-6">
+                  <input type="checkbox" data-clave="${esc(h.clave)}" ${claves.has(h.clave) ? 'checked' : ''} class="accent-telecab-gold">
+                  <span>↳ ${esc(h.etiqueta)}</span>
+                </label>`).join('')}`).join('')}
+              </div>
+            </div>`).join('')}
+          </div>
+          <div class="flex items-center gap-3 mt-4">
+            <button data-guardar class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">Guardar permisos</button>
+            <span data-msg class="text-xs text-telecab-muted"></span>
+          </div>
+        </div>`;
+
+    box.innerHTML = `
+      <div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center gap-3">
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 class="text-lg font-bold text-telecab-text">${esc((u.nombre + ' ' + (u.apellidos || '')).trim())}</h2>
+            ${chipRol(u.rol)}
+            ${u.estado === 'bloqueado' ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-red-500/15 text-red-500">Bloqueado</span>'
+              : u.estado === 'provisional' ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/15 text-amber-500">Provisional</span>' : ''}
+            ${soyYo ? '<span class="text-[11px] text-telecab-muted">(tú)</span>' : ''}
+          </div>
+          <p class="text-xs text-telecab-muted mt-0.5">
+            ${esc(u.email)}${u.telefono ? ' · ' + esc(u.telefono) : ''}
+            ${u.ultimo_acceso ? ' · último acceso ' + esc(u.ultimo_acceso) : ' · nunca ha entrado'}
+            ${u.creado_por ? ' · alta por ' + esc(u.creado_por) : ''}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <select data-rol class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
+            ${D.roles.map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROLN[r] || r}</option>`).join('')}
+          </select>
+          <button data-estado class="px-3 py-1.5 rounded-lg border text-xs ${u.estado === 'bloqueado'
+            ? 'border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10'
+            : 'border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red'}">
+            ${u.estado === 'bloqueado' ? 'Activar' : 'Bloquear'}</button>
+          <button data-reset class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold"
+            title="Le llega una contraseña provisional nueva por correo"><i class="fa-solid fa-key mr-1"></i>Reset</button>
+        </div>
+      </div>
+      ${matriz}`;
+
+    // ── Acciones de la cabecera ──
+    box.querySelector('[data-rol]').addEventListener('change', async e => {
+      try { await api('/usuarios/rol', { email: u.email, rol: e.target.value }); recargar(); }
+      catch (err) { await Dialogo.aviso({ titulo: 'No se pudo cambiar el rol', texto: err.message, tono: 'error' }); recargar(); }
+    });
+    box.querySelector('[data-estado]').addEventListener('click', async () => {
+      const bloquear = u.estado !== 'bloqueado';
+      const ok = await Dialogo.confirmar({
+        titulo: (bloquear ? 'Bloquear a ' : 'Activar a ') + u.nombre, tono: bloquear ? 'peligro' : 'pregunta',
+        si: bloquear ? 'Bloquear' : 'Activar', no: 'Cancelar',
+        texto: bloquear ? 'No podrá entrar a la plataforma hasta que se le reactive.' : 'Podrá volver a entrar con su contraseña.',
+      });
+      if (!ok) return;
+      try { await api('/usuarios/estado', { email: u.email, estado: bloquear ? 'bloqueado' : 'activo' }); recargar(); }
+      catch (err) { await Dialogo.aviso({ titulo: 'No se pudo', texto: err.message, tono: 'error' }); }
+    });
+    box.querySelector('[data-reset]').addEventListener('click', async () => {
+      const ok = await Dialogo.confirmar({
+        titulo: 'Resetear la contraseña de ' + u.nombre, tono: 'pregunta', si: 'Resetear', no: 'Cancelar',
+        texto: 'Se genera una provisional nueva y se le envía por correo; al entrar deberá crear la suya.',
+      });
+      if (!ok) return;
+      try {
+        const r = await api('/usuarios/reset', { email: u.email });
+        await Dialogo.aviso({ titulo: 'Contraseña reseteada', tono: 'ok',
+          html: '<p class="text-sm">' + (r.correoEnviado ? 'Enviada por correo.' : 'El correo NO salió; dictásela:') +
+                ' <b class="font-mono">' + esc(r.passwordProvisional) + '</b></p>' });
+      } catch (err) { await Dialogo.aviso({ titulo: 'No se pudo', texto: err.message, tono: 'error' }); }
+    });
+
+    // ── La matriz ──
+    if (!u.accesoTotal) {
+      const marcar = claves2 => box.querySelectorAll('[data-clave]').forEach(c => { c.checked = claves2.includes(c.dataset.clave); });
+      box.querySelectorAll('[data-plantilla]').forEach(b =>
+        b.addEventListener('click', () => marcar(D.semillas[b.dataset.plantilla] || [])));
+      const btnNada = box.querySelector('[data-nada]');
+      if (btnNada) btnNada.addEventListener('click', () => marcar([]));
+      box.querySelectorAll('[data-grupo]').forEach(b => b.addEventListener('click', () => {
+        const g = D.catalogo.find(x => x.grupo === b.dataset.grupo);
+        const todas = []; g.items.forEach(i => { todas.push(i.clave); (i.hijos || []).forEach(h => todas.push(h.clave)); });
+        const faltan = todas.some(c => !box.querySelector('[data-clave="' + c + '"]').checked);
+        todas.forEach(c => { box.querySelector('[data-clave="' + c + '"]').checked = faltan; });
+      }));
+      box.querySelector('[data-guardar]').addEventListener('click', async () => {
+        const msg = box.querySelector('[data-msg]');
+        const marcadas = [...box.querySelectorAll('[data-clave]')].filter(c => c.checked).map(c => c.dataset.clave);
+        msg.textContent = 'Guardando…';
+        try {
+          await api('/usuarios/permisos', { usuarioId: u.id, claves: marcadas });
+          D.permisos[u.id] = marcadas;
+          msg.textContent = '✓ Guardado. Le aplica ya (como mucho en 1 minuto).';
+          pintarLista();
+        } catch (err) { msg.textContent = 'Error: ' + err.message; }
+      });
+    }
+  }
+
+  async function crear() {
+    const v = await Dialogo.formulario('Crear usuario', [
+      { id: 'nombre', etiqueta: 'Nombre', obligatorio: true },
+      { id: 'apellidos', etiqueta: 'Apellidos', obligatorio: true },
+      { id: 'telefono', etiqueta: 'Teléfono', obligatorio: true },
+      { id: 'email', etiqueta: 'Correo (será su usuario)', obligatorio: true },
+      { id: 'rol', etiqueta: 'Rol', tipo: 'lista', obligatorio: true, valor: 'trafico',
+        opciones: D.roles.map(r => ({ valor: r, texto: ROLN[r] || r })),
+        ayuda: 'Oficina y Tráfico entran con la plantilla típica de su rol; luego afinas su matriz. Admin y Desarrollador entran a todo.' },
+    ], { textoBoton: 'Crear' });
+    if (!v || !v.email) return;
+    try {
+      const r = await api('/usuarios/crear', v);
+      await Dialogo.aviso({ titulo: 'Usuario creado', tono: 'ok',
+        html: '<p class="text-sm">' + (r.correoEnviado
+          ? 'Le ha llegado la contraseña provisional por correo.'
+          : 'El correo NO salió; díctale la provisional:') +
+          ' <b class="font-mono">' + esc(r.passwordProvisional) + '</b></p>' });
+      recargar();
+    } catch (err) { await Dialogo.aviso({ titulo: 'No se pudo crear', texto: err.message, tono: 'error' }); }
+  }
+
+  async function recargar() {
+    try {
+      const r = await (await fetch('/usuarios/api/datos')).json();
+      if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+      D = r;
+      if (SEL && !D.usuarios.some(u => u.id === SEL)) SEL = null;
+      pintarLista(); pintarDetalle();
+    } catch (e) {
+      $('#u-lista').innerHTML = '<p class="px-4 py-6 text-center text-sm text-red-500">' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#u-crear').addEventListener('click', crear);
+  recargar();
+})();
+</script>

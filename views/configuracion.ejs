@@ -47,8 +47,8 @@
     </div>
   </div>
 
-  <!-- Gestión de usuarios (solo superadmin) -->
-  <% if (typeof rol !== 'undefined' && rol === 'superadmin') { %>
+  <!-- Gestión de usuarios (solo el desarrollador; la matriz completa está en /usuarios) -->
+  <% if (typeof rol !== 'undefined' && rol === 'desarrollador') { %>
   <div class="bg-telecab-card border border-telecab-border rounded-2xl p-5" id="card-usuarios">
     <h2 class="text-sm font-semibold text-telecab-text mb-1 flex items-center gap-2"><i class="fa-solid fa-users-gear text-telecab-gold"></i> Usuarios</h2>
     <p class="text-xs text-telecab-muted mb-4">Crea accesos y asigna roles. Al crear un usuario se le envía una contraseña provisional a su correo; en su primer acceso elige la suya.</p>

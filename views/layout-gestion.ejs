@@ -235,31 +235,47 @@
             { href: '/bi', icono: 'fa-chart-pie', texto: 'Inteligencia de negocio', id: 'bi' }
           ] },
           { nombre: 'Sistema', icono: 'fa-database', rol: 'desarrollador', items: [
-            { href: '/explorador', icono: 'fa-database', texto: 'Base de datos', id: 'explorador' },
-            { href: '/migraciones', icono: 'fa-code-branch', texto: 'Migraciones', id: 'migraciones' }
+            { href: '/usuarios',    icono: 'fa-users-gear',  texto: 'Usuarios y permisos', id: 'usuarios', solo: 'desarrollador' },
+            { href: '/explorador',  icono: 'fa-database',    texto: 'Base de datos', id: 'explorador', solo: 'desarrollador' },
+            { href: '/migraciones', icono: 'fa-code-branch', texto: 'Migraciones', id: 'migraciones', solo: 'desarrollador' }
           ] }
         ];
+        // El menú pinta SOLO lo que el usuario puede abrir. `permisos` (res.locals)
+        // trae sus claves de usuario_permiso, o null si su rol tiene acceso total
+        // (Admin, Desarrollador). Lo marcado `solo` es de ese rol y de nadie más.
+        const misPermisos = (typeof permisos !== 'undefined' && permisos) ? new Set(permisos) : null;
+        const rolSesion = typeof rol !== 'undefined' ? rol : '';
+        const puedeVer = it => it.solo ? rolSesion === it.solo : (!misPermisos || misPermisos.has(it.href));
+        const gruposVisibles = grupos
+          .map(g => ({ nombre: g.nombre, icono: g.icono, rol: g.rol, items: g.items.filter(puedeVer) }))
+          .filter(g => g.items.length);
       %>
+      <% if (puedeVer({ href: '/pendientes' })) { %>
       <a href="/pendientes" class="nav-item <%= seccionActiva === 'pendientes' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'pendientes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-inbox w-5 text-center <%= seccionActiva === 'pendientes' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Pendientes</span>
         <span id="nav-pend-badge" class="hidden min-w-[18px] h-[18px] px-1 rounded-full bg-telecab-red text-white text-[10px] font-bold leading-none flex items-center justify-center"></span>
       </a>
+      <% } %>
 
+      <% if (puedeVer({ href: '/peticiones' })) { %>
       <a href="/peticiones" class="nav-item <%= seccionActiva === 'peticiones' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'peticiones' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-clipboard-list w-5 text-center <%= seccionActiva === 'peticiones' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Peticiones</span>
       </a>
+      <% } %>
 
+      <% if (puedeVer({ href: '/bitacora' })) { %>
       <a href="/bitacora" class="nav-item <%= seccionActiva === 'bitacora' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'bitacora' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
         <i class="fa-solid fa-book w-5 text-center <%= seccionActiva === 'bitacora' ? '' : 'text-telecab-muted' %>"></i>
         <span class="text-sm flex-1">Bitácora</span>
       </a>
+      <% } %>
 
-      <% grupos.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
+      <% gruposVisibles.forEach(function (g) { const abierto = g.items.some(i => i.id === seccionActiva); %>
         <div class="nav-grupo" data-rol="<%= g.rol || '' %>">
           <button type="button" class="grupo-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-telecab-text hover:bg-telecab-card2 transition">
             <i class="fa-solid <%= g.icono %> w-5 text-center text-telecab-muted"></i>
@@ -324,7 +340,7 @@
       </button>
       <h1 class="font-semibold text-telecab-text"><%= titulo || 'Gestión' %></h1>
 
-      <% const ROL_NOMBRE = { superadmin: 'Superadmin', desarrollador: 'Desarrollador', oficina: 'Oficina', trafico: 'Tráfico' }; %>
+      <% const ROL_NOMBRE = { superadmin: 'Admin', desarrollador: 'Desarrollador', oficina: 'Oficina', trafico: 'Tráfico' }; %>
       <div class="ml-auto flex items-center gap-2">
 
         <!-- Buzón de pendientes -->
@@ -468,16 +484,8 @@
   // Filtra los grupos del menú por rol (general = todos). El grupo de la sección
   // activa se deja SIEMPRE visible para no dejar al usuario sin salida.
   function aplicarRolNav() {
-    document.querySelectorAll('.nav-grupo[data-rol]').forEach(g => {
-      const gr = g.getAttribute('data-rol');
-      const activo = !!g.querySelector('.nav-item.activo');
-      g.classList.toggle('hidden', !(rol === 'superadmin' || rol === 'desarrollador' || gr === rol || activo));
-    });
-    // Ítems sueltos ocultos para ciertos roles (p. ej. Fichas no es para Tráfico).
-    document.querySelectorAll('[data-rol-not]').forEach(el => {
-      const veta = el.getAttribute('data-rol-not').split(',').map(s => s.trim());
-      el.classList.toggle('hidden', veta.includes(rol) && !el.classList.contains('activo'));
-    });
+    // El filtrado del menú lo hace el SERVIDOR con los permisos del usuario
+    // (usuario_permiso vía res.locals.permisos): aquí no queda nada que esconder.
   }
 
   function pintar() {

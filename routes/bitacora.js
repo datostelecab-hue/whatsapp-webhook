@@ -3,6 +3,7 @@ const router = express.Router();
 // Bitácora desde PostgreSQL (antes: hoja VISTA_FINAL en services/bitacora.js).
 const { leerBitacora, marcarLibranza, quitarLibranza } = require('../services/repo/bitacora');
 const repoJust = require('../services/repo/justificantes');
+const actor = require('../services/repo/actor');
 
 // La bitácora se rehace en cada carga; se cachea unos minutos para no repetir la
 // consulta en cada refresco. Al justificar se invalida, para que la 'J' salga ya.
@@ -37,7 +38,7 @@ router.post('/api/justificar', async (req, res) => {
       diaIso: b.dia,
       horas: (b.horas == null || b.horas === '') ? '' : Number(b.horas),
       observacion: b.observacion,
-      usuarioId: (req.usuario && req.usuario.id) || null,
+      usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
     });
     cache = null;   // que la próxima carga muestre la 'J' recién puesta
     console.log(`📝 [Bitácora] Justificante PG ${b.dia} · conductor ${r.conductorId}` +

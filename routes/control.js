@@ -7,6 +7,7 @@ const { enviarAtencionHora } = require('../services/whatsapp');
 const justificantes = require('../services/justificantes');   // (reporte: aún usa la hoja, se migra "luego")
 const repoJust = require('../services/repo/justificantes');    // justificar/leer: PostgreSQL
 const llamadas = require('../services/repo/llamadas');         // el "telefonito" de seguimiento
+const actor = require('../services/repo/actor');               // quién firma (id por email si la cookie es vieja)
 const callCenter = require('../services/callCenter');          // espejo de las llamadas en su hoja
 const { generarExcelTurnos } = require('../services/controlExcel');
 
@@ -188,7 +189,7 @@ router.post('/api/llamada', async (req, res) => {
     const u = req.usuario || {};
     const r = await llamadas.registrar({
       conductorId: b.conductorId, turno: b.turno, resultado: b.resultado, nota: b.nota,
-      usuarioId: u.id || null,
+      usuarioId: u.id || await actor.idDe(req),
     });
     let enCallCenter = false;
     try {
@@ -234,7 +235,7 @@ router.post('/api/justificar-directo', async (req, res) => {
       conductorId: b.conductorId, diaIso: dia,
       horas: (b.horas == null || b.horas === '') ? '' : Number(b.horas),
       observacion: b.observacion,
-      usuarioId: (req.usuario && req.usuario.id) || null,
+      usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
     });
     console.log(`📝 [Control] J en directo · ${dia} · conductor ${r.conductorId} (${b.horas || 'sin'} h) · ${(req.usuario || {}).nombre || ''}`);
     res.json({ status: 'ok', dia, ...r });
@@ -257,7 +258,7 @@ router.post('/justificar', async (req, res) => {
     const r = await repoJust.guardar({
       diaIso: iso, nombre: b.nombre,
       horas: (b.horas == null || b.horas === '') ? '' : Number(b.horas),
-      observacion: b.observacion, usuarioId: (req.usuario && req.usuario.id) || null,
+      observacion: b.observacion, usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
     });
     console.log(`📝 [Control] Justificante PG ${iso} · ${b.nombre} → conductor ${r.conductorId} (J en bitácora)`);
     res.json({ status: 'ok', fecha, ...r });

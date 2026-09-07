@@ -152,6 +152,7 @@ app.use('/', authRoutes);
 app.use(sesion.protegido);
 app.use(sesion.forzarCambio);
 app.use(sesion.controlAcceso);
+app.use(sesion.cargarPermisos);
 app.use('/usuarios', usuariosRoutes);
 
 app.use('/horas', boltHoras);

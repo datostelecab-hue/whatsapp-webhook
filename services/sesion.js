@@ -27,26 +27,13 @@ if (!SECRET) {
   console.warn('⚠️  [SESIÓN] SESSION_SECRET no está definida: uso un secreto efímero (las sesiones NO sobrevivirán a un reinicio). Defínela en Render.');
 }
 
-// Qué rol entra a cada módulo (prefijo de ruta). El superadmin entra a todo; lo
-// que no esté aquí es compartido (cualquier usuario autenticado): Pendientes,
-// Peticiones, Bitácora, Configuración, Visor, Notificaciones, Documentos…
-const ACCESO = {
-  '/vacantes': ['oficina'], '/seleccion': ['oficina'], '/ett': ['oficina'],
-  '/rrhh': ['oficina'], '/administracion': ['oficina'], '/fichas': ['oficina'],
-  '/ticketera': ['oficina'], '/reportes': ['oficina'], '/nominas': ['oficina'], '/convenio': ['oficina'],
-  '/incorporaciones': ['trafico'], '/planificador': ['trafico'], '/planificador-v2': ['trafico'], '/agenda': ['trafico'],
-  '/control': ['trafico'], '/flota-viva': ['trafico'], '/cobertura': ['trafico'], '/generador': ['trafico'],
-  '/matching': ['trafico'], '/vehiculos': ['trafico'], '/operaciones': ['trafico'], '/horas': ['trafico'],
-  '/visibilidad': ['trafico', 'oficina'],   // horas de flota: lo miran Tráfico y RRHH
-  '/bi': [],                              // inteligencia de negocio: SOLO dirección (superadmin / desarrollador). Lista vacía = nadie más.
-  '/sanciones': ['trafico'], '/callcenter': ['trafico'], '/migraciones': ['desarrollador'], '/explorador': ['desarrollador'],
-  // La plantilla la miran los dos departamentos: Trafico para saber quien
-  // puede conducir hoy, RRHH para saber quien esta de alta y con que.
-  '/plantilla': ['oficina', 'trafico'], '/conductores': ['oficina', 'trafico'],
-  // Exportar no ensena nada que no se este viendo ya: lo que llega son las
-  // filas que el navegador tiene delante. Vale con estar dentro.
-  '/exportar': ['oficina', 'trafico']
-};
+// El acceso ya NO va por rol con un mapa fijo: cada usuario lleva SUS módulos y
+// submódulos en la tabla usuario_permiso, elegidos uno a uno desde /usuarios.
+// El catálogo de claves (y el prefijo más largo que gobierna cada ruta) vive en
+// services/permisos.js. Los roles con acceso total (admin, desarrollador) entran
+// a todo sin filas; lo que no está en el catálogo es libre para quien esté
+// dentro (Configuración, Soporte, Exportar, Perfil…).
+const permisos = require('./permisos');
 
 // ── Firma / verificación del token ──────────────────────────────────────────
 function firmar(payload) {
@@ -80,6 +67,7 @@ const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept')
 /** Emite la cookie de sesión para un usuario. */
 function ponerSesion(res, u) {
   const payload = {
+    id: u.id || null,
     email: u.email, nombre: u.nombre, apellidos: u.apellidos || '', telefono: u.telefono || '', rol: u.rol,
     tema: u.tema || '',
     debe_cambiar: u.debe_cambiar === 'si' || u.debe_cambiar === true,
@@ -125,16 +113,53 @@ function forzarCambio(req, res, next) {
 // Roles con acceso TOTAL al sistema (el desarrollador es un superadmin + su ticketera IT).
 const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
 
-// Control de acceso por rol según el prefijo de la ruta.
-function controlAcceso(req, res, next) {
+// El id del usuario de la sesión; las sesiones viejas (sin id en la cookie) se
+// resuelven una vez por email y se recuerdan.
+const _idPorEmail = new Map();
+async function idDeSesion(u) {
+  if (!u) return null;
+  if (u.id) return u.id;
+  const k = String(u.email || '').toLowerCase();
+  if (!k) return null;
+  if (_idPorEmail.has(k)) return _idPorEmail.get(k);
+  try {
+    const usuarios = require('./usuarios');
+    const x = await usuarios.buscarUsuario(k);
+    if (x && x.id) { _idPorEmail.set(k, x.id); return x.id; }
+  } catch (_) {}
+  return null;
+}
+
+// Control de acceso POR USUARIO: manda la clave más específica del catálogo que
+// case con la ruta; si el usuario no la tiene concedida, fuera. Lo que no está
+// en el catálogo es libre (basta estar dentro).
+async function controlAcceso(req, res, next) {
   const u = req.usuario;
   if (!u) return next();               // ya lo cubre `protegido`
   if (ADMIN_TOTAL.includes(u.rol)) return next();
-  const seg = '/' + (req.path.split('/')[1] || '');
-  const permitidos = ACCESO[seg];
-  if (permitidos && !permitidos.includes(u.rol)) {
-    if (esApi(req)) return res.status(403).json({ status: 'error', msg: 'Sin permiso para esta sección' });
-    return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
+  const clave = permisos.claveDeRuta(req.path);
+  if (!clave) return next();
+  try {
+    const id = await idDeSesion(u);
+    const mias = id ? await permisos.clavesDe(id) : new Set();
+    if (mias.has(clave)) return next();
+  } catch (e) {
+    console.error('❌ [SESIÓN] control de acceso:', e.message);
+  }
+  if (esApi(req)) return res.status(403).json({ status: 'error', msg: 'Sin permiso para esta sección' });
+  return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
+}
+
+// Deja en res.locals.permisos las claves del usuario (null = acceso total), para
+// que el menú pinte solo lo que puede abrir. Va DESPUÉS de controlAcceso.
+async function cargarPermisos(req, res, next) {
+  const u = req.usuario;
+  res.locals.permisos = null;
+  if (u && !ADMIN_TOTAL.includes(u.rol)) {
+    try {
+      const id = await idDeSesion(u);
+      res.locals.permisos = id ? [...await permisos.clavesDe(id)] : [];
+    } catch (_) { res.locals.permisos = []; }
   }
   next();
 }
@@ -177,8 +202,9 @@ async function sembrarSuperadmin() {
 }
 
 module.exports = {
-  COOKIE, ACCESO,
+  COOKIE,
   ponerSesion, cerrarSesion,
-  cargarSesion, protegido, forzarCambio, controlAcceso, requiereSuperadmin, requiereDesarrollador,
+  cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,
+  requiereSuperadmin, requiereDesarrollador,
   sembrarSuperadmin
 };
