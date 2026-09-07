@@ -44,6 +44,19 @@
       <p class="px-4 py-10 text-center text-sm text-telecab-muted">Elige un parte de la izquierda.</p>
     </section>
   </div>
+
+  <!-- Llamadas de seguimiento: TODAS las pulsaciones del telefonito de En
+       directo en estos días — quién llamó, a quién, cuándo y con qué resultado. -->
+  <section class="mt-4 rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+    <div class="px-4 py-2.5 border-b border-telecab-border flex flex-wrap items-center gap-2">
+      <h2 class="text-sm font-semibold text-telecab-text">
+        <i class="fa-solid fa-phone-flip text-telecab-gold mr-1"></i> Llamadas de seguimiento</h2>
+      <span id="ll-n" class="text-xs text-telecab-muted"></span>
+      <input id="ll-filtro" placeholder="Conductor o agente…"
+        class="ml-auto px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-52">
+    </div>
+    <div id="ll-lista" class="max-h-[50vh] overflow-y-auto"></div>
+  </section>
 </div>
 
 <script src="/assets/js/flotaVivaGestion.js?v=<%= v %>"></script>
@@ -325,8 +338,41 @@
   $('#p-desde').value = iso(antes);
   GestionIncidencia.cargar();
   pintarHorario();
+  // ── Llamadas de seguimiento (el telefonito de En directo) ──────────────────
+  let LLAMADAS = [];
+  async function cargarLlamadas() {
+    try {
+      const q = new URLSearchParams();
+      if ($('#p-desde').value) q.set('desde', $('#p-desde').value);
+      if ($('#p-hasta').value) q.set('hasta', $('#p-hasta').value);
+      const d = await (await fetch('/control/api/llamadas?' + q)).json();
+      LLAMADAS = d.llamadas || [];
+    } catch (e) { LLAMADAS = []; }
+    pintarLlamadas();
+  }
+  function pintarLlamadas() {
+    const q = ($('#ll-filtro').value || '').trim().toLowerCase();
+    const filas = LLAMADAS.filter(l => !q ||
+      (l.conductor || '').toLowerCase().includes(q) || (l.quien || '').toLowerCase().includes(q));
+    $('#ll-n').textContent = filas.length ? filas.length + ' llamada(s)' : '';
+    $('#ll-lista').innerHTML = filas.length ? filas.map(l =>
+      '<div class="px-4 py-2 border-b border-telecab-border/60 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">' +
+        '<span class="tabular-nums text-xs text-telecab-muted w-28">' + dm(l.dia) + ' · ' + hora(l.at) + '</span>' +
+        '<span class="text-telecab-text font-medium min-w-[11rem]">' + esc(l.conductor) + '</span>' +
+        (l.turno ? '<span class="text-xs text-telecab-muted capitalize">' + esc(l.turno) + '</span>' : '') +
+        (l.resultado ? '<span class="text-xs px-1.5 py-0.5 rounded bg-telecab-dark/60 text-telecab-muted">' + esc(l.resultado) + '</span>' : '') +
+        (l.nota ? '<span class="text-xs text-telecab-muted flex-1 min-w-[10rem] truncate" title="' + esc(l.nota) + '">' + esc(l.nota) + '</span>' : '') +
+        '<span class="ml-auto text-xs text-telecab-muted" title="Quién llamó"><i class="fa-solid fa-headset mr-1"></i>' + esc(l.quien || 'sin usuario') + '</span>' +
+      '</div>').join('')
+      : '<p class="px-4 py-6 text-center text-sm text-telecab-muted">Sin llamadas apuntadas en estos días.</p>';
+  }
+
   $('#p-desde').addEventListener('change', cargarPartes);
   $('#p-hasta').addEventListener('change', cargarPartes);
+  $('#p-desde').addEventListener('change', cargarLlamadas);
+  $('#p-hasta').addEventListener('change', cargarLlamadas);
+  $('#ll-filtro').addEventListener('input', pintarLlamadas);
+  cargarLlamadas();
   cargarPartes();
 })();
 </script>

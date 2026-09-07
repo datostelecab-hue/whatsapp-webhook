@@ -11,7 +11,13 @@
 const db = require('../db');
 const { normClave } = require('../conductores');
 
-/** Nombre (como lo escribe BOLT/las pantallas) → conductor_id, por alias no ambiguo. */
+/**
+ * Nombre (como lo escribe BOLT/las pantallas) → conductor_id.
+ * 1º por `conductor_alias` (si algún día se puebla); 2º contra el PADRÓN: el
+ * nombre de BOLT vivo o el de la ficha, con normClave y solo si el candidato es
+ * ÚNICO (los vigentes tienen preferencia). Sin este respaldo, con la tabla de
+ * alias vacía —que es como está—, justificar por nombre no resolvía a nadie.
+ */
 async function resolverConductor(nombre) {
   const clave = normClave(nombre);
   if (!clave) return null;
@@ -20,7 +26,26 @@ async function resolverConductor(nombre) {
       WHERE alias_norm = $1 AND NOT ambiguo AND vigente
       ORDER BY (tipo = 'bolt_nombre') DESC
       LIMIT 1`, [clave]);
-  return r.rows.length ? Number(r.rows[0].conductor_id) : null;
+  if (r.rows.length) return Number(r.rows[0].conductor_id);
+
+  const p = await db.consulta(
+    `SELECT c.id, c.empleo_vigente AS vig,
+            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS ficha,
+            ext.externo_nombre AS bolt
+       FROM conductor c
+       LEFT JOIN LATERAL (
+         SELECT externo_nombre FROM conductor_externo
+          WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
+          ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) ext ON TRUE
+      WHERE NOT c.es_centinela`);
+  const unico = lista => {
+    if (!lista.length) return null;
+    const vivos = lista.filter(x => x.vig);
+    const ids = new Set((vivos.length ? vivos : lista).map(x => Number(x.id)));
+    return ids.size === 1 ? [...ids][0] : null;
+  };
+  return unico(p.rows.filter(x => normClave(x.bolt || '') === clave))
+      || unico(p.rows.filter(x => normClave(x.ficha || '') === clave));
 }
 
 /**

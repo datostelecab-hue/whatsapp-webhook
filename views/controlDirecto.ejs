@@ -211,8 +211,8 @@
               (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
               '">' + esc(f.rol) + '</span>' : '') +
           '</span>' +
-          '<span class="block font-mono text-[11px] leading-tight text-telecab-muted">' +
-            enlaceTel(f.telefono) + '</span>' +
+          '<span class="flex flex-wrap items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' +
+            enlaceTel(f.telefono) + accionesConductor(f) + '</span>' +
         '</span>' +
         '<span class="dopc min-w-0 flex items-center gap-1.5">' +
           '<span class="font-mono text-xs text-telecab-muted truncate">' + esc(mat) + '</span>' +
@@ -450,14 +450,115 @@
     wire();
   }
 
+  // ── Las acciones de la carta: el telefonito y la J ──────────────────────────
+  // El TELEFONITO deja traza de cada llamada (quién, cuándo, con qué resultado):
+  // se ve al momento en la carta —para que el segundo operador no repita la
+  // llamada—, en el Histórico ("Llamadas de seguimiento") y en el call center.
+  // La J justifica la jornada EN CURSO: horas que se justifican + motivo, con el
+  // usuario que lo hizo; la carta pasa a enseñar "J · X h · quién".
+  function accionesConductor(f) {
+    if (!f.conductorId) return '';
+    const ll = (DATOS.llamadas || {})[String(f.conductorId)];
+    const j = (DATOS.justificados || {})[String(f.conductorId)];
+    const btnTel = '<button data-tellog="' + esc(f.clave) + '" ' +
+      'title="' + (ll
+        ? esc(ll.n + ' llamada(s) esta jornada · última ' + hora(ll.ultima.at) +
+              (ll.ultima.quien ? ' · ' + ll.ultima.quien : '') +
+              (ll.ultima.resultado ? ' · ' + ll.ultima.resultado : '') + '. Pulsa para apuntar otra.')
+        : 'Apuntar que le has llamado: queda la traza (quién y cuándo) para el reporte y el call center') + '" ' +
+      'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (ll
+        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
+        : 'border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold') + '">' +
+      '<i class="fa-solid fa-phone-flip"></i>' + (ll ? ' ' + ll.n : '') + '</button>';
+    const btnJ = j
+      ? '<span title="' + esc('Justificado por ' + (j.quien || 'alguien') +
+            (j.horas != null ? ' · justifica ' + j.horas + ' h' : '') + (j.obs ? ' · ' + j.obs : '')) + '" ' +
+          'class="px-1.5 py-0.5 rounded-md text-[11px] leading-none font-semibold bg-sky-500/15 text-sky-500">J' +
+          (j.horas != null ? ' ' + j.horas + 'h' : '') + '</span>'
+      : '<button data-justdir="' + esc(f.clave) + '" ' +
+          'title="Justificar la jornada: horas que se justifican + motivo. Queda registrado tu usuario." ' +
+          'class="px-1.5 py-0.5 rounded-md border border-telecab-border text-[11px] leading-none font-semibold ' +
+          'text-telecab-muted hover:border-sky-500 hover:text-sky-500">J</button>';
+    return btnTel + btnJ;
+  }
+
+  function filaPorClave(clave) {
+    for (const t of ['dia', 'noche', 'todoturno']) {
+      const f = ((DATOS.porTurno || {})[t] || []).find(x => x.clave === clave);
+      if (f) return f;
+    }
+    return null;
+  }
+
+  // Los resultados del catálogo del call center (Asistencia · Conexión · "No se
+  // ha conectado a su puesto") más los universales de contacto.
+  const RESULTADOS_LLAMADA = ['Buzón / no contesta', 'Confirma que sale ya', 'No asistirá',
+                              'Incidencia que lo impide', 'No contactado', 'Número erróneo'];
+
+  async function apuntarLlamada(f) {
+    const v = await Dialogo.formulario('He llamado a ' + f.conductor, [
+      { id: 'resultado', etiqueta: 'Qué ha pasado', tipo: 'lista', opciones: RESULTADOS_LLAMADA,
+        obligatorio: true, valor: 'Buzón / no contesta' },
+      { id: 'nota', etiqueta: 'Nota (opcional)', tipo: 'texto' },
+    ], { textoBoton: 'Apuntar la llamada',
+         nota: 'Queda la traza (tú, la hora y el resultado) en la carta, en el Histórico y en el call center.' });
+    if (!v || !v.resultado) return;
+    try {
+      const r = await fetch('/control/api/llamada', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conductorId: f.conductorId, conductor: f.conductor, telefono: f.telefono,
+          matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '',
+          turno: turnoActivo, resultado: v.resultado, nota: v.nota || '',
+        }) });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo apuntar');
+      cargar();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo apuntar la llamada', texto: e.message, tono: 'error' });
+    }
+  }
+
+  async function justificarDirecto(f) {
+    // Lo que lleva EN ESTE TURNO (efectivo: viaje + espera), que es la cuenta
+    // que decide si hay que seguir llamando: justificadas + BOLT = jornada.
+    const lleva = Math.round((((f.actividad || {}).minutos || 0) / 60) * 10) / 10;
+    const sugerida = Math.max(0, Math.round((8 - lleva) * 10) / 10);
+    const v = await Dialogo.formulario('Justificar a ' + f.conductor, [
+      { id: 'horas', etiqueta: 'Horas que se justifican', valor: String(sugerida),
+        ayuda: 'En BOLT lleva ' + lleva + ' h efectivas en este turno. Se SUMAN: con ' + sugerida + ' justificadas, la jornada queda en 8 h.' },
+      { id: 'obs', etiqueta: 'Motivo (obligatorio)', tipo: 'texto', marcador: 'p. ej. coche en taller' },
+    ], { textoBoton: 'Justificar',
+         nota: 'Queda registrado tu usuario. La carta pasa a "J": el siguiente operador ya no le llama.' });
+    if (!v) return;
+    if (!String(v.obs || '').trim()) {
+      await Dialogo.aviso({ titulo: 'Falta el motivo', texto: 'El motivo es obligatorio para justificar.', tono: 'aviso' });
+      return;
+    }
+    try {
+      const r = await fetch('/control/api/justificar-directo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conductorId: f.conductorId, horas: v.horas, observacion: v.obs }) });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo justificar');
+      cargar();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo justificar', texto: e.message, tono: 'error' });
+    }
+  }
+
   function wire() {
     $('#d-lista').querySelectorAll('.dcab').forEach(cab =>
       cab.addEventListener('click', e => {
-        if (e.target.closest('[data-just],[data-llamar],a,button')) return;
+        if (e.target.closest('[data-just],[data-llamar],[data-tellog],[data-justdir],a,button')) return;
         const fila = cab.closest('.dfila');
         if (fila.querySelector('.ddet').classList.contains('hidden')) abrirFila(fila);
         else cerrarFila(fila);
       }));
+    $('#d-lista').querySelectorAll('[data-tellog]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.tellog); if (f) apuntarLlamada(f); }));
+    $('#d-lista').querySelectorAll('[data-justdir]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.justdir); if (f) justificarDirecto(f); }));
     GestionIncidencia.enganchar($('#d-lista'),
       id => {
         for (const t of ['dia', 'noche', 'todoturno']) {

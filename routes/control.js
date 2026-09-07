@@ -6,6 +6,8 @@ const { kmConectadoDesconectado } = require('../services/flotaViva/rutas');
 const { enviarAtencionHora } = require('../services/whatsapp');
 const justificantes = require('../services/justificantes');   // (reporte: aún usa la hoja, se migra "luego")
 const repoJust = require('../services/repo/justificantes');    // justificar/leer: PostgreSQL
+const llamadas = require('../services/repo/llamadas');         // el "telefonito" de seguimiento
+const callCenter = require('../services/callCenter');          // espejo de las llamadas en su hoja
 const { generarExcelTurnos } = require('../services/controlExcel');
 
 const MAX_ENVIO = 200;
@@ -28,7 +30,14 @@ router.get('/', (req, res) => {
 // Los datos del cockpit (JSON). El front lo refresca solo cada pocos segundos.
 router.get('/api/directo', async (req, res) => {
   try {
-    res.json({ status: 'ok', ...(await enDirecto({ dia: req.query.dia })) });
+    const base = await enDirecto({ dia: req.query.dia });
+    // Las llamadas hechas y los justificantes puestos EN ESTA JORNADA: es lo que
+    // evita que dos operadores llamen dos veces al mismo conductor.
+    const [llam, justis] = await Promise.all([
+      llamadas.resumenHoy().catch(() => ({})),
+      llamadas.justificadosHoy().catch(() => ({})),
+    ]);
+    res.json({ status: 'ok', ...base, llamadas: llam, justificados: justis });
   } catch (error) {
     console.error('❌ [Control] /api/directo:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
@@ -166,6 +175,71 @@ router.post('/enviar-ws', async (req, res) => {
   } catch (error) {
     console.error('❌ [Control] /enviar-ws:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// ── Llamadas de seguimiento (el "telefonito" de En directo) ─────────────────
+// Cada pulsación apunta la llamada en PostgreSQL (la verdad: quién, cuándo, turno
+// y resultado) y la ESPEJA en la hoja del call center como llamada saliente de
+// Asistencia · Conexión. Si la hoja no responde, la traza de aquí no se pierde.
+router.post('/api/llamada', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const u = req.usuario || {};
+    const r = await llamadas.registrar({
+      conductorId: b.conductorId, turno: b.turno, resultado: b.resultado, nota: b.nota,
+      usuarioId: u.id || null,
+    });
+    let enCallCenter = false;
+    try {
+      const agente = `${u.nombre || ''} ${u.apellidos || ''}`.trim() || u.email || '';
+      await callCenter.registrar({
+        direccion: 'saliente',
+        conductor: b.conductor || ('#' + b.conductorId),
+        telefono: b.telefono || '', matricula: b.matricula || '',
+        turno: b.turno === 'noche' ? 'Noche' : b.turno === 'dia' ? 'Día' : '',
+        cluster: 'Asistencia', subcluster: 'Conexión', motivo: 'No se ha conectado a su puesto',
+        resultado: b.resultado, estado: 'resuelta',
+        notas: ('Seguimiento desde Control. ' + (b.nota || '')).trim(),
+      }, agente);
+      enCallCenter = true;
+    } catch (e) {
+      console.error('⚠️ [Control] la llamada no llegó al call center (queda en PG):', e.message);
+    }
+    console.log(`📞 [Control] Llamada apuntada · conductor ${b.conductorId} · ${b.resultado || 'sin resultado'} · ${(req.usuario || {}).nombre || ''}`);
+    res.json({ status: 'ok', ...r, enCallCenter });
+  } catch (e) {
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
+// Las llamadas de un rango de días (la lista "Llamadas de seguimiento" del Histórico).
+router.get('/api/llamadas', async (req, res) => {
+  try {
+    res.json({ status: 'ok', llamadas: await llamadas.listar({ desde: req.query.desde, hasta: req.query.hasta }) });
+  } catch (e) {
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
+// Justificar DESDE EL COCKPIT, por conductor_id y para la jornada operativa en
+// curso: horas que se justifican + motivo, con el usuario que lo hizo. La carta
+// enseña luego "J · X h · quién", que es lo que le dice al segundo operador que
+// no hace falta volver a llamar.
+router.post('/api/justificar-directo', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const dia = llamadas.diaOperativoHoy();
+    const r = await repoJust.guardarPorId({
+      conductorId: b.conductorId, diaIso: dia,
+      horas: (b.horas == null || b.horas === '') ? '' : Number(b.horas),
+      observacion: b.observacion,
+      usuarioId: (req.usuario && req.usuario.id) || null,
+    });
+    console.log(`📝 [Control] J en directo · ${dia} · conductor ${r.conductorId} (${b.horas || 'sin'} h) · ${(req.usuario || {}).nombre || ''}`);
+    res.json({ status: 'ok', dia, ...r });
+  } catch (e) {
+    res.status(400).json({ status: 'error', msg: e.message });
   }
 });
 
