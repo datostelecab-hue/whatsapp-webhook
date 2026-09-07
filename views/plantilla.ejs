@@ -50,7 +50,7 @@
   async function autoEnlazarBolt() {
     const ok = await Dialogo.confirmar({
       titulo: 'Enlazar BOLT automáticamente', si: 'Enlazar', no: 'Cancelar',
-      html: '<p>Enlaza de un tirón todas las cuentas de BOLT cuyo <b>teléfono</b> coincide con una persona. Lo que no case se listará para resolver a mano.</p>',
+      html: '<p>Enlaza de un tirón todas las cuentas de BOLT cuyo <b>teléfono</b> coincide con una persona — incluidas las cuentas <b>viejas</b> de gente que ya tiene otra, para que sus horas se junten en la bitácora. Lo que no case se listará para resolver a mano.</p>',
     });
     if (!ok) return;
     let r;
@@ -58,17 +58,29 @@
     catch (e) { alert(e.message); return; }
     await plantilla.recargar();
     const pend = r.pendientes || [];
+    const dud = r.dudosas || [];
     const lista = pend.length
-      ? '<ul class="list-disc pl-5" style="max-height:40vh;overflow:auto">' +
+      ? '<ul class="list-disc pl-5" style="max-height:30vh;overflow:auto">' +
         pend.map(p => `<li>${esc(p.quien)}${p.es_ett ? ' <span class="text-telecab-violet">ETT</span>' : ''}${p.telefono ? '' : ' · <span class="text-telecab-warn">sin teléfono</span>'}</li>`).join('') + '</ul>'
       : '';
+    // Mismo teléfono pero OTRO nombre: puede ser un número reutilizado por otra
+    // persona. Nunca se enlaza en automático; se enseña para decidir a mano.
+    const listaDud = dud.length
+      ? '<ul class="list-disc pl-5" style="max-height:30vh;overflow:auto">' +
+        dud.map(d => `<li>La cuenta «${esc(d.nombre_en_bolt || '?')}» tiene el teléfono de <b>${esc(d.quien)}</b></li>`).join('') + '</ul>'
+      : '';
+    const total = (r.enlazadas || 0) + (r.hermanas || 0);
     await Dialogo.aviso({
-      titulo: `Enlazadas ${r.enlazadas} cuenta(s) de BOLT`,
-      tono: pend.length ? 'aviso' : 'info',
-      html: `<p><b>${r.enlazadas}</b> cuenta(s) enlazadas por teléfono.</p>` +
+      titulo: `Enlazadas ${total} cuenta(s) de BOLT`,
+      tono: (pend.length || dud.length) ? 'aviso' : 'info',
+      html: `<p><b>${r.enlazadas}</b> cuenta(s) enlazadas por teléfono` +
+        (r.hermanas ? ` y <b>${r.hermanas}</b> cuenta(s) viejas unidas a su dueño (sus horas ya suman en la bitácora)` : '') + '.</p>' +
+        (dud.length
+          ? `<p class="mt-2"><b>${dud.length}</b> cuenta(s) con el mismo teléfono pero <b>otro nombre</b> — revísalas a mano antes de enlazar:</p>${listaDud}`
+          : '') +
         (pend.length
           ? `<p class="mt-2"><b>${pend.length}</b> siguen sin cuenta de BOLT — enlázalos a mano o dales de alta en BOLT:</p>${lista}`
-          : '<p>Ya no queda nadie sin cuenta de BOLT.</p>'),
+          : '<p class="mt-2">Ya no queda nadie sin cuenta de BOLT.</p>'),
     });
   }
 

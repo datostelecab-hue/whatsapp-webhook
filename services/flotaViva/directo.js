@@ -331,6 +331,7 @@ async function enDirecto({ dia } = {}) {
       enBolt: a.km, desconectado: a.kmFuera,
       total: Math.round((a.km + a.kmFuera) * 10) / 10,
       minutos: a.minutos, conectadoAhora: a.conectadoAhora,
+      primera: a.primera || null,
     }))
     .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
 

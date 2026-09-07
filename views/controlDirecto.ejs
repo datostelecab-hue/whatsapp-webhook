@@ -317,21 +317,29 @@
   // ── Fila NN (rueda sin estar en el cuadrante) ────────────────────────────────
   // El PORQUÉ de que salga aquí y no en el plan: es lo que decide si hay que
   // preguntar (¿trabajando de vacaciones?, ¿cuenta sin ficha?) o no.
-  const NN_TONO = { sin_ficha: 'error', baja_empresa: 'error', ausente: 'aviso', sin_plaza: 'muted' };
+  const NN_TONO = { sin_ficha: 'text-red-500', baja_empresa: 'text-red-500', ausente: 'text-amber-500', sin_plaza: 'text-telecab-muted' };
+  // La fila NN va en LA MISMA rejilla que la cabecera: cada dato bajo su columna
+  // (antes era un flex por libre y las horas caían debajo de "KM").
   function filaNN(s) {
     const sit = s.situacion || {};
-    return '<div class="px-4 py-2.5 border-b border-telecab-border/70 flex flex-wrap items-center gap-x-4 gap-y-1">' +
-      '<span class="w-56 min-w-0">' +
-        '<span class="block truncate text-telecab-text font-medium">' + esc(s.conductor) + '</span>' +
+    return '<div class="dfila dcab-grid py-2.5 border-b border-telecab-border/70">' +
+      '<span class="dbarra ' + (s.conectadoAhora ? 'bg-emerald-500' : 'bg-telecab-border') + '"></span>' +
+      '<span class="min-w-0">' +
+        '<span class="block truncate text-telecab-text font-medium" title="' + esc(s.conductor) + '">' + esc(s.conductor) + '</span>' +
         '<span class="block font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) + '</span>' +
+        (sit.etiqueta ? '<span class="block text-[11px] font-medium ' + (NN_TONO[sit.codigo] || 'text-telecab-muted') + '">' + esc(sit.etiqueta) + '</span>' : '') +
       '</span>' +
-      (sit.etiqueta ? chip(sit.etiqueta, NN_TONO[sit.codigo] || 'muted') : '') +
-      (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Salió en el turno', 'muted')) +
-      '<span class="text-sm font-mono text-telecab-muted flex-1 min-w-[8rem]" title="Coche(s) usados en BOLT">' +
+      '<span class="dopc min-w-0 font-mono text-xs text-telecab-muted truncate" title="Coche(s) usados en BOLT">' +
         esc((s.matriculas || []).join(', ') || '—') + '</span>' +
-      '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas efectivas: viaje + espera. El descanso no cuenta.">' + horas(s.minutos) + ' h</span>' +
-      '<span class="text-xs tabular-nums text-emerald-500 w-20 text-right" title="Km en BOLT">' + (s.enBolt || 0) + ' km</span>' +
-      '<span class="text-xs tabular-nums text-amber-500 w-20 text-right" title="Km desconectado">' + (s.desconectado || 0) + ' km</span>' +
+      '<span>' + (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Salió en el turno', 'muted')) + '</span>' +
+      '<span class="dopc text-right text-xs text-telecab-muted tabular-nums" title="Primera conexión de la jornada">' +
+        (s.primera ? hora(s.primera) : '<span class="text-telecab-border">—</span>') + '</span>' +
+      '<span class="text-right text-xs tabular-nums" title="Horas efectivas: viaje + espera. El descanso no cuenta.">' +
+        cifra(horas(s.minutos), ' h', 'text-telecab-text font-medium') + '</span>' +
+      '<span class="dopc text-right text-xs tabular-nums" title="Km en BOLT">' + cifra(s.enBolt, ' km', 'text-emerald-500') + '</span>' +
+      '<span class="dopc text-right text-xs tabular-nums" title="Km desconectado">' + cifra(s.desconectado, ' km', 'text-amber-500') + '</span>' +
+      '<span class="text-right"><span class="text-telecab-border text-xs">—</span></span>' +
+      '<span></span>' +
       '</div>';
   }
 

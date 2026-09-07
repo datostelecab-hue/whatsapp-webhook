@@ -147,10 +147,57 @@ async function autoEnlazar({ soloEmpleados = true, usuarioId } = {}) {
       enlazadas++;
     } catch (e) { errores.push({ quien: s.quien, motivo: e.message }); }
   }
+
+  // ── SEGUNDA PASADA: cuentas HERMANAS ──────────────────────────────────────
+  // Cuentas libres cuyo teléfono es el de alguien que YA tiene cuenta de BOLT.
+  // `v_bolt_sugerencia` las excluye a propósito, así que el automático nunca
+  // las cogía: son las cuentas VIEJAS de la misma persona (recontrataciones,
+  // altas duplicadas) y sus horas quedaban huérfanas — en la bitácora parecía
+  // que esos días no trabajó. Al colgarlas del mismo conductor, las horas se
+  // suman solas (la bitácora agrega por conductor_id).
+  //
+  // Solo se enlaza en automático si el NOMBRE también coincide, con una cuenta
+  // ya enlazada o con la ficha: hay teléfonos REUTILIZADOS por otra persona
+  // (pasa de verdad) y esos se devuelven como `dudosas` para decidir a mano.
+  // Va DESPUÉS del bucle de sugerencias adrede: si a alguien se le acaba de
+  // enlazar su primera cuenta, esta pasada ya le ve las hermanas.
+  const herm = await db.consulta(
+    `SELECT ce.id AS cuenta_id, ce.externo_nombre AS nombre_en_bolt,
+            ce.estado_externo, ct.conductor_id,
+            btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
+            (unaccent(lower(ce.externo_nombre)) IN (
+               SELECT unaccent(lower(x.externo_nombre)) FROM conductor_externo x
+                WHERE x.conductor_id = ct.conductor_id AND x.sistema = 'bolt'
+                  AND x.externo_nombre IS NOT NULL)
+             OR unaccent(lower(ce.externo_nombre)) = unaccent(lower(btrim(
+                  c.nombre || ' ' || COALESCE(c.apellidos, ''))))
+             OR unaccent(lower(ce.externo_nombre)) = unaccent(lower(btrim(
+                  COALESCE(c.apellidos || ' ', '') || c.nombre)))) AS coincide_nombre
+       FROM conductor_externo ce
+       JOIN conductor_telefono ct
+         ON ct.vigente_hasta IS NULL
+        AND ct.sufijo9 = right(regexp_replace(ce.externo_telefono, '[^0-9]', '', 'g'), 9)
+       JOIN conductor c ON c.id = ct.conductor_id AND NOT c.es_centinela
+      WHERE ce.sistema = 'bolt' AND ce.conductor_id IS NULL
+        AND ce.externo_telefono IS NOT NULL
+        AND length(regexp_replace(ce.externo_telefono, '[^0-9]', '', 'g')) >= 9
+        AND EXISTS (SELECT 1 FROM conductor_externo x
+                     WHERE x.conductor_id = ct.conductor_id AND x.sistema = 'bolt')
+      ORDER BY quien`);
+  let hermanas = 0;
+  const dudosas = [];
+  for (const h of herm.rows) {
+    if (!h.coincide_nombre) { dudosas.push({ quien: h.quien, nombre_en_bolt: h.nombre_en_bolt, estado: h.estado_externo }); continue; }
+    try {
+      await enlazar({ cuentaId: h.cuenta_id, conductorId: h.conductor_id, usuarioId, origen: 'automatico' });
+      hermanas++;
+    } catch (e) { errores.push({ quien: h.quien, motivo: e.message }); }
+  }
+
   const pendientes = (await db.consulta(
     `SELECT conductor_id, quien, telefono, es_ett FROM v_conductor_sin_bolt
       WHERE ($1 = FALSE OR empleo_vigente) ORDER BY quien`, [soloEmpleados])).rows;
-  return { enlazadas, errores, pendientes };
+  return { enlazadas, hermanas, dudosas, errores, pendientes };
 }
 
 /** Deshace un enlace equivocado. La cuenta vuelve a la lista de libres. */
