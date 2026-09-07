@@ -291,18 +291,32 @@ async function enDirecto({ dia } = {}) {
     };
   }
 
-  // ── TRABAJANDO SIN PLAN (NN) ────────────────────────────────────────────────
-  // Quien ha trabajado hoy —o rueda ahora— sin estar en el Cuadrante. Se mira la
-  // jornada operativa entera (05→05) porque un NN no tiene turno que mirar.
+  // ── SALIERON FUERA DEL PLAN (NN) ────────────────────────────────────────────
+  // TODO el que ha salido hoy —o rueda ahora— sin estar PINTADO en las pestañas
+  // del plan (las celdas del cuadrante de hoy). Sin importar qué: de vacaciones,
+  // de baja, en el banquillo o ni siquiera en la plataforma — si BOLT lo vio
+  // rodar, aquí sale con su nombre de BOLT y su porqué. Antes se excluía a toda
+  // la PLANTILLA (tab.conductores) y el de vacaciones que sí trabajó no salía
+  // en NINGUNA pestaña: invisible. Se mira la jornada operativa entera (05→05)
+  // porque un NN no tiene turno que mirar.
   const idsPlan = new Set();
   const meter = v => { const n = Number(v); if (n) idsPlan.add(n); };
   const nombresPlan = new Set();
   const anota = n => { const k = normNombre(n); if (k) nombresPlan.add(k); };
-  ((tab && tab.conductores) || []).forEach(c => { meter(c && c.id); anota(c && c.nombre); anota(c && c.idBolt); });
   ((tab && tab.coches) || []).forEach(co => {
-    (co.personas || []).forEach(p => { meter(p && p.id); anota(p && p.nombre); });
     (co.semana || []).forEach(cell => { meter(cell && cell.id); anota(cell && cell.nombre); });
   });
+
+  // El porqué de cada uno: su situación en la plataforma (o que no está en ella).
+  const gentePorId = new Map((((tab && tab.conductores) || [])).map(c => [Number(c.id), c]));
+  const situacionDe = uuid => {
+    const cid = idDeUuid.get(uuid);
+    if (!cid) return { codigo: 'sin_ficha', etiqueta: 'Solo en BOLT · sin ficha' };
+    const ficha = gentePorId.get(cid);
+    if (!ficha) return { codigo: 'baja_empresa', etiqueta: 'De baja en la empresa' };
+    if (ficha.ausente) return { codigo: 'ausente', etiqueta: ficha.estado || 'Ausente' };
+    return { codigo: 'sin_plaza', etiqueta: 'En plantilla · sin plaza hoy' };
+  };
 
   const sinPlan = [...((actOper && actOper.porUuid) || new Map()).values()]
     .filter(a => !idsPlan.has(idDeUuid.get(a.uuid)))
@@ -311,12 +325,19 @@ async function enDirecto({ dia } = {}) {
     .map(a => ({
       conductor: a.nombre || ('#' + String(a.uuid).slice(0, 8)),
       telefono: a.telefono || '',
+      conductorId: idDeUuid.get(a.uuid) || '',
+      situacion: situacionDe(a.uuid),
       matricula: a.matricula, matriculas: a.matriculas,
       enBolt: a.km, desconectado: a.kmFuera,
       total: Math.round((a.km + a.kmFuera) * 10) / 10,
       minutos: a.minutos, conectadoAhora: a.conectadoAhora,
     }))
     .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
+
+  // Cuánta gente se ha conectado HOY a la plataforma (jornada 05→05), sea del
+  // plan o no: el número que responde "¿cuántos han salido?" sin letra pequeña.
+  const personasSalieron = [...((actOper && actOper.porUuid) || new Map()).values()]
+    .filter(a => a.minutos > 0).length;
 
   const resumen = {
     coches: filas.length,
@@ -330,6 +351,8 @@ async function enDirecto({ dia } = {}) {
     kmHoy: Math.round(filas.reduce((s, f) => s + (f.km || 0), 0) * 10) / 10,
     // Conductores que trabajaron sin estar en el plan.
     sinPlan: sinPlan.length,
+    // Personas distintas que se conectaron hoy (plan + fuera del plan).
+    personasSalieron,
   };
 
   // ── POR TURNO, POR CONDUCTOR (pestañas Día / Noche / TodoTurno / NN) ─────────

@@ -259,7 +259,7 @@
       '</div>';
 
     const cajas = turnoActivo === 'nn'
-      ? [tarjeta(arr.length, 'Ruedan sin estar en el cuadrante', 'text-amber-500')]
+      ? [tarjeta(arr.length, 'Salieron FUERA del plan · vacaciones, bajas, sin ficha…', 'text-amber-500')]
       : sinEmpezar
         // Un turno que no ha arrancado no tiene a nadie "sin salir": decir 0/61
         // invitaría a llamar a 61 personas a las diez de la mañana.
@@ -315,13 +315,18 @@
   }
 
   // ── Fila NN (rueda sin estar en el cuadrante) ────────────────────────────────
+  // El PORQUÉ de que salga aquí y no en el plan: es lo que decide si hay que
+  // preguntar (¿trabajando de vacaciones?, ¿cuenta sin ficha?) o no.
+  const NN_TONO = { sin_ficha: 'error', baja_empresa: 'error', ausente: 'aviso', sin_plaza: 'muted' };
   function filaNN(s) {
+    const sit = s.situacion || {};
     return '<div class="px-4 py-2.5 border-b border-telecab-border/70 flex flex-wrap items-center gap-x-4 gap-y-1">' +
       '<span class="w-56 min-w-0">' +
         '<span class="block truncate text-telecab-text font-medium">' + esc(s.conductor) + '</span>' +
         '<span class="block font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) + '</span>' +
       '</span>' +
-      (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Rodó hoy', 'muted')) +
+      (sit.etiqueta ? chip(sit.etiqueta, NN_TONO[sit.codigo] || 'muted') : '') +
+      (s.conectadoAhora ? chip('Conectado ahora', 'ok') : chip('Salió en el turno', 'muted')) +
       '<span class="text-sm font-mono text-telecab-muted flex-1 min-w-[8rem]" title="Coche(s) usados en BOLT">' +
         esc((s.matriculas || []).join(', ') || '—') + '</span>' +
       '<span class="text-xs text-telecab-muted tabular-nums w-16 text-right" title="Horas efectivas: viaje + espera. El descanso no cuenta.">' + horas(s.minutos) + ' h</span>' +
@@ -591,7 +596,9 @@
       pintarResumen();
       pintar();
       $('#d-actualizado').innerHTML = 'Flota hoy <b class="text-telecab-text tabular-nums">' +
-        ((d.resumen && d.resumen.kmHoy) || 0) + ' km</b> · ' + ((d.resumen && d.resumen.conectados) || 0) + ' conectados · ' +
+        ((d.resumen && d.resumen.kmHoy) || 0) + ' km</b> · ' +
+        '<b class="text-telecab-text tabular-nums">' + ((d.resumen && d.resumen.personasSalieron) || 0) + '</b> personas salieron · ' +
+        ((d.resumen && d.resumen.conectados) || 0) + ' conectados · ' +
         '<span class="' + ((d.resumen && d.resumen.alertas) ? 'text-red-500' : '') + '">' +
           ((d.resumen && d.resumen.alertas) || 0) + ' avisos</span> · ' +
         new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
