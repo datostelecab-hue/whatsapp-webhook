@@ -114,6 +114,16 @@ router.post('/api/candidatura/:id/descartar', responde(async req => {
   return r;
 }));
 
+// Vacantes DISPONIBLES (de la hoja, las del generador) para elegir al dar de alta.
+router.get('/api/vacantes-abiertas', responde(async () => {
+  const vac = require('../services/vacantes');
+  const abiertas = (await vac.leerVacantesGuardadas()).filter(vac.vacanteDisponible);
+  return { vacantes: abiertas.map(v => ({
+    id: v.id,
+    texto: `${v.puesto || 'CT'}${v.zonas ? ' · ' + v.zonas : ''}${v.libranzas ? ' · libra ' + v.libranzas : ''} (${v.id})`,
+  })) };
+}));
+
 router.post('/api/candidatura/:id/rrhh', responde(async req => {
   const b = req.body || {};
   // Por esta vía el contrato es de ETT salvo que se diga otra cosa: es de donde
@@ -122,13 +132,27 @@ router.post('/api/candidatura/:id/rrhh', responde(async req => {
   // El nombre de la ETT va DESPUÉS del cuerpo y no antes: el formulario lo manda
   // vacío cuando no se escribe nada, y colocado delante ese vacío pisaba el
   // configurado en el servidor y el alta se caía por falta de nombre.
+  const q = await quien(req);
   const r = await cand.pasarARRHH(Number(req.params.id),
     { tipo: 'ett', ...b, ettNombre: b.ettNombre || process.env.ETT_NOMBRE },
-    await quien(req));
+    q);
   console.log(`👤 [ETT] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
               (r.boltEnlazada ? ` — BOLT enlazada${r.boltReactivar ? ` (${r.boltEstado}: REACTIVAR)` : ''}`
                 : r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
-  return r;
+  // Con vacante elegida: nace la alerta de incorporación (se resuelve en el
+  // planificador: aceptar = auto-colocarlo en esas plazas; rechazar = a mano).
+  let incorporacion = null;
+  if (b.vacanteId && r.conductorId) {
+    try {
+      incorporacion = await require('../services/repo/incorporaciones').crear({
+        conductorId: r.conductorId, vacanteId: b.vacanteId, origen: 'ett', usuarioId: q.usuarioId });
+      console.log(`🔔 [ETT] Incorporación ${incorporacion.id} · ficha ${r.conductorId} → vacante ${b.vacanteId}`);
+    } catch (e) {
+      console.error('⚠️ [ETT] no se pudo crear la incorporación:', e.message);
+      r.avisos = [...(r.avisos || []), 'El alta salió bien, pero la vacante no se pudo reservar: ' + e.message];
+    }
+  }
+  return { ...r, incorporacion };
 }));
 
 // ALTA RÁPIDA: teléfono + nombre → alta de ETT directa (sin matriz ni candidatura) y
@@ -142,13 +166,25 @@ router.post('/api/alta-rapida', responde(async req => {
   if (!nombre) throw new Error('Falta el nombre');
   if (telefono.replace(/\D/g, '').length < 9) throw new Error('El teléfono no parece válido');
   const hoy = new Date().toISOString().slice(0, 10);
+  const q = await quien(req);
   const r = await alta.realizar(
     { nombre, telefono, tipo: 'ett', ettNombre: b.ettNombre || process.env.ETT_NOMBRE || 'ETT', alta: hoy,
       barrio: String(b.barrio || '').trim().slice(0, 60) || undefined },
-    await quien(req));
+    q);
   console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id})` +
     (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));
-  return r;
+  let incorporacion = null;
+  if (b.vacanteId && r.id) {
+    try {
+      incorporacion = await require('../services/repo/incorporaciones').crear({
+        conductorId: r.id, vacanteId: b.vacanteId, origen: 'ett-rapida', usuarioId: q.usuarioId });
+      console.log(`🔔 [ETT] Incorporación ${incorporacion.id} · ficha ${r.id} → vacante ${b.vacanteId}`);
+    } catch (e) {
+      console.error('⚠️ [ETT] no se pudo crear la incorporación:', e.message);
+      r.avisos = [...(r.avisos || []), 'El alta salió bien, pero la vacante no se pudo reservar: ' + e.message];
+    }
+  }
+  return { ...r, incorporacion };
 }));
 
 // Borrar una candidatura que no debería existir: un teléfono mal tecleado, una

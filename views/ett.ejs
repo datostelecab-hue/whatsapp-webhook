@@ -276,15 +276,27 @@
    * dónde lo dice el catálogo, así que esta pantalla no elige ningún estado:
    * manda el motivo y ya está.
    */
+  // Las vacantes abiertas del generador, para elegirla al dar de alta: la
+  // persona nace con destino y a Tráfico le llega la alerta de incorporación.
+  async function vacantesAbiertas() {
+    try {
+      const r = await (await fetch('/ett/api/vacantes-abiertas')).json();
+      return (r.vacantes || []).map(v => ({ valor: v.id, texto: v.texto }));
+    } catch (_) { return []; }
+  }
+
   // Alta rápida: teléfono + nombre → alta ETT directa + enlace BOLT por teléfono.
   // Pasa directa al planificador (no entra en la bolsa de candidatos).
   async function altaRapida() {
+    const vacs = await vacantesAbiertas();
     const v = await Dialogo.formulario('Alta rápida ETT', [
       { id: 'nombre', etiqueta: 'Nombre y apellidos', tipo: 'texto', obligatorio: true },
       { id: 'telefono', etiqueta: 'Teléfono', tipo: 'texto', obligatorio: true,
         ayuda: 'Se enlaza solo con su cuenta de BOLT por este número.' },
       { id: 'barrio', etiqueta: 'Zona (barrio)', tipo: 'texto',
         ayuda: 'La zona del conductor: Aluche, San Blas… Sale en el planificador, debajo del teléfono.' },
+      { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
+        ayuda: 'Si eliges una, a Tráfico le salta la alerta de incorporación en el planificador: aceptar la coloca en esas plazas.' },
     ], { textoBoton: 'Dar de alta',
          nota: 'Crea la ficha ETT y la pasa directa al planificador, como si ya estuviera contratado.' });
     if (!v || !v.nombre || !v.telefono) return;
@@ -394,6 +406,7 @@
     // antes por otro a poner turno y zona. Lo que pasaba de verdad es que se
     // contrataba sin turno, y esa persona llegaba al planificador sin poder
     // colocarse — el dato se había quedado en la cabeza de quien la entrevistó.
+    const vacs = await vacantesAbiertas();
     const v = await Dialogo.formulario('Contratar a ' + d.quien, [
       { id: 'alta', etiqueta: 'Fecha de alta', tipo: 'fecha',
         valor: fecha(d.inicio_previsto), obligatorio: true },
@@ -411,6 +424,8 @@
         opciones: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })) },
       { id: 'ettNombre', etiqueta: 'Nombre de la ETT',
         ayuda: 'Si se deja vacío se usa el configurado en el servidor' },
+      { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
+        ayuda: 'Al darle de alta, a Tráfico le salta la alerta: aceptar lo coloca en las plazas de la vacante.' },
     ], { columnas: 2,
          nota: 'Se le abre el periodo de empleo con contrato de ETT y su turno empieza el día '
              + 'del alta. A los tres meses pasa a plantilla propia.' });

@@ -108,7 +108,6 @@ const reportesRoutes = require('./routes/reportes');
 const nominasRoutes = require('./routes/nominas');
 const convenioRoutes = require('./routes/convenio');
 const bitacoraRoutes = require('./routes/bitacora');
-const incorporacionesRoutes = require('./routes/incorporaciones');
 const configuracionRoutes = require('./routes/configuracion');
 const notificacionesRoutes = require('./routes/notificaciones');
 const pendientesRoutes = require('./routes/pendientes');
@@ -189,7 +188,8 @@ app.use('/reportes', reportesRoutes);
 app.use('/nominas', nominasRoutes);
 app.use('/convenio', convenioRoutes);
 app.use('/bitacora', bitacoraRoutes);
-app.use('/incorporaciones', incorporacionesRoutes);
+// El módulo /incorporaciones se ELIMINÓ: su alerta vive en el planificador
+// (banner de incorporaciones, tabla `incorporacion`) y en Pendientes.
 app.use('/configuracion', configuracionRoutes);
 app.use('/notificaciones', notificacionesRoutes);
 app.use('/pendientes', pendientesRoutes);

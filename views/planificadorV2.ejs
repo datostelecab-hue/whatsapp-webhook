@@ -80,6 +80,7 @@
 
     <!-- ══════════ El cuadrante ══════════ -->
     <div class="flex-1 min-w-0">
+      <div id="incorporaciones" class="hidden mb-3 space-y-2"></div>
       <div id="avisos" class="hidden mb-3"></div>
       <div id="cuadrante" class="space-y-6"></div>
       <div id="vacio" class="hidden p-10 text-center text-telecab-muted border border-telecab-border rounded-2xl">
@@ -168,6 +169,66 @@
     aplicar(j);
   }
 
+  // ── Incorporaciones: la alerta que NO se va hasta aceptarla o rechazarla ──
+  // Alguien se dio de alta con una vacante del generador. Aceptar lo coloca en
+  // las plazas de la vacante (todo o nada); rechazar lo deja en el banquillo.
+  async function cargarIncorporaciones() {
+    let lista = [];
+    try {
+      const r = await (await fetch('/planificador-v2/api/incorporaciones')).json();
+      lista = r.incorporaciones || [];
+    } catch (_) {}
+    const cont = $('#incorporaciones');
+    cont.classList.toggle('hidden', !lista.length);
+    cont.innerHTML = lista.map(i => {
+      const det = i.detalle || {};
+      const mats = (det.matriculas || []).map(m =>
+        `<span class="font-mono">${esc(m.m)}</span> <span class="text-telecab-muted">(${esc(m.letras || '')}${m.zona ? ' · ' + esc(m.zona) : ''})</span>`).join(' + ');
+      return `<div class="px-4 py-3 rounded-2xl border border-telecab-gold/50 bg-telecab-gold/10 flex flex-wrap items-center gap-3">
+        <i class="fa-solid fa-bell text-telecab-gold"></i>
+        <div class="min-w-0 flex-1">
+          <div class="text-sm font-semibold text-telecab-text">${esc(i.nombre)}
+            ${i.telefono ? `<span class="font-mono font-normal text-xs text-telecab-muted ml-1">${esc(i.telefono)}</span>` : ''}
+            <span class="font-normal text-telecab-muted">— incorporación${i.alta ? ' · alta ' + isoAes(i.alta) : ''}</span></div>
+          <div class="text-xs text-telecab-muted mt-0.5">${esc(det.puesto || '')}${mats ? ' → ' + mats : ''}</div>
+        </div>
+        <button data-inc-ok="${esc(i.id)}" class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-xs font-semibold whitespace-nowrap">
+          <i class="fa-solid fa-check mr-1"></i>Aceptar y colocar</button>
+        <button data-inc-no="${esc(i.id)}" class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-telecab-red hover:text-telecab-red whitespace-nowrap">
+          Rechazar</button>
+      </div>`;
+    }).join('');
+    cont.querySelectorAll('[data-inc-ok]').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        const r = await fetch('/planificador-v2/api/incorporaciones/' + b.dataset.incOk + '/aceptar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dia: DIA }) });
+        const j = await r.json();
+        if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo colocar');
+        if (j.tablero) aplicar(j.tablero);
+        else cargar(DIA);
+      } catch (e) {
+        b.disabled = false;
+        await Dialogo.aviso({ titulo: 'No se pudo colocar', texto: e.message + ' La alerta se queda hasta que lo resuelvas (o recházala y colócalo a mano).', tono: 'error' });
+      }
+    }));
+    cont.querySelectorAll('[data-inc-no]').forEach(b => b.addEventListener('click', async () => {
+      const v = await Dialogo.formulario('Rechazar la incorporación', [
+        { id: 'motivo', etiqueta: 'Motivo (opcional)', tipo: 'texto' },
+      ], { textoBoton: 'Rechazar', nota: 'El conductor queda en el banquillo para colocarlo a mano y la vacante vuelve a Abierta.' });
+      if (v == null) return;
+      try {
+        const r = await fetch('/planificador-v2/api/incorporaciones/' + b.dataset.incNo + '/rechazar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motivo: v.motivo || '' }) });
+        const j = await r.json();
+        if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo rechazar');
+        cargarIncorporaciones();
+      } catch (e) {
+        await Dialogo.aviso({ titulo: 'No se pudo rechazar', texto: e.message, tono: 'error' });
+      }
+    }));
+  }
+
   function aplicar(j) {
     T = j;
     DIA = j.dia;
@@ -180,6 +241,7 @@
     pintarLaterales();
     pintarPrueba();
     pintarAvisos(j.avisos || []);
+    cargarIncorporaciones();
   }
 
   // ── KPIs y subtítulo ────────────────────────────────────────────────────────

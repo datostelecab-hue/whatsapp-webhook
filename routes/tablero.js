@@ -184,4 +184,26 @@ router.post('/api/barrio', responde(async req => {
   return { barrio };
 }));
 
+// ── Incorporaciones: la alerta que no se va hasta aceptarla o rechazarla ───
+// Nace al dar de alta con vacante (ETT). Aceptar = auto-colocar en las plazas
+// de la vacante (todo o nada); rechazar = queda en el banquillo y la vacante
+// vuelve a Abierta. Sustituye al módulo /incorporaciones.
+const inc = require('../services/repo/incorporaciones');
+
+router.get('/api/incorporaciones', responde(async () => ({ incorporaciones: await inc.pendientes() })));
+
+router.post('/api/incorporaciones/:id/aceptar', responde(async req => {
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await inc.aceptar(req.params.id, quien);
+  console.log(`✅ [TABLERO] Incorporación ${req.params.id} aceptada (${r.plazas} plaza(s))`);
+  return { ...r, tablero: await plan.tablero({ dia: (req.body || {}).dia }) };
+}));
+
+router.post('/api/incorporaciones/:id/rechazar', responde(async req => {
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await inc.rechazar(req.params.id, { ...quien, motivo: (req.body || {}).motivo });
+  console.log(`🚫 [TABLERO] Incorporación ${req.params.id} rechazada`);
+  return r;
+}));
+
 module.exports = router;

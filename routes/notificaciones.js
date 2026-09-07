@@ -4,6 +4,7 @@ const { leerTickets, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
 const { leerVacantesGuardadas } = require('../services/vacantes');
 const { leerPeticiones } = require('../services/peticiones');
+const repoInc = require('../services/repo/incorporaciones');
 const ticketsIT = require('../services/ticketsIT');
 
 // El tablero es caro de recalcular, así que se cachea un minuto: aunque cada
@@ -12,12 +13,13 @@ let cache = null, cacheTs = 0;
 const TTL = 60 * 1000;
 
 async function calcular() {
-  const [{ lista }, tablero, vacantesAll, peticiones, ticketsItLista] = await Promise.all([
+  const [{ lista }, tablero, vacantesAll, peticiones, ticketsItLista, incPend] = await Promise.all([
     leerTickets(),
     leerTablero().catch(() => null),
     leerVacantesGuardadas().catch(() => []),
     leerPeticiones().then(r => r.lista).catch(() => []),
-    ticketsIT.leerTickets().catch(() => [])
+    ticketsIT.leerTickets().catch(() => []),
+    repoInc.pendientes().catch(() => [])
   ]);
   const L = lista || [];
   // Tickets IT sin resolver: son los pendientes del desarrollador.
@@ -27,9 +29,10 @@ async function calcular() {
   const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT || t.estado === ESTADOS.LISTO_RRHH);
   const pendientesPin = L.filter(t => t.estado === ESTADOS.PENDIENTE_PIN);
   const petPendientes = (peticiones || []).filter(p => p.estado === 'Pendiente');
-  // Incorporaciones recién llegadas a Tráfico (deciden Aceptar / Asignar manual).
-  const incorporaciones = L.filter(t => t.etapa === ETAPAS.TRAFICO && t.estado === ESTADOS.ALTA);
-  const incIds = new Set(incorporaciones.map(t => (t.id_bolt || '').trim()).filter(Boolean));
+  // Incorporaciones pendientes (PostgreSQL): altas con vacante esperando que
+  // Tráfico las acepte o rechace EN EL PLANIFICADOR. La alerta no se va sola.
+  const incorporaciones = incPend;
+  const incIds = new Set();
   // Pendientes de asignar coche/turno, EXCLUYENDO las incorporaciones (esas salen aparte).
   const pendienteAsignar = ((tablero && tablero.conductores) || [])
     .filter(c => c.estadoCalculado === ESTADO_PENDIENTE && !incIds.has((c.idBolt || '').trim()));
@@ -78,9 +81,10 @@ async function calcular() {
     trafico: {
       total: incorporaciones.length + pendienteAsignar.length,
       items: [
-        ...incorporaciones.map(t => ({
-          texto: `${t.id_bolt || t.nombre || t.id} — incorporación por asignar`,
-          detalle: t.turno ? `Turno: ${t.turno}` : 'Llegó de Administración', href: '/incorporaciones'
+        ...incorporaciones.map(i => ({
+          texto: `${i.nombre} — incorporación por aceptar o rechazar`,
+          detalle: [((i.detalle || {}).puesto || ''), ((i.detalle || {}).zonas || '')].filter(Boolean).join(' · '),
+          href: '/planificador'
         })),
         ...pendienteAsignar.map(c => ({
           texto: `${c.nombre || c.id} — pendiente de asignar coche/turno`,

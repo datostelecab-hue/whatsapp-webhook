@@ -44,7 +44,6 @@ const CATALOGO = [
     { clave: '/convenio',       etiqueta: 'Convenio' },
   ] },
   { grupo: 'Tráfico', items: [
-    { clave: '/incorporaciones', etiqueta: 'Incorporaciones' },
     { clave: '/planificador',    etiqueta: 'Planificador' },
     { clave: '/agenda',          etiqueta: 'Agenda' },
     { clave: '/control',         etiqueta: 'Control · En directo', hijos: [
