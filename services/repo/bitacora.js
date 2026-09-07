@@ -23,6 +23,8 @@
 //                     tipo, zona, turno, vigente, alta, baja, altaIdx, bajaIdx, estado,
 //                     ausente, dias: [ <horas|'V'|'B'|'P'|'J'|'L'|null> ],
 //                     justif: { 'YYYY-MM-DD': { horas, obs } },
+//                     horasBolt: { 'YYYY-MM-DD': h },   // lo que hizo en BOLT un día cuya celda es marca
+//                     lManual: { 'YYYY-MM-DD': true },  // libranzas puestas a mano (bitacora_dia)
 //                     ausencias: [{ marca, etiqueta, desde, hasta }] }],
 //     hoyIdx, inicio, avisos: { sinFicha } }
 
@@ -42,6 +44,11 @@ function idxDe(iso) {
   return Math.round((Date.UTC(y, m - 1, d) - INICIO_MS) / MS_DIA);
 }
 
+// Índice de día → 'AAAA-MM-DD' (el inverso de idxDe, también en UTC).
+function isoDeIdx(i) {
+  return new Date(INICIO_MS + i * MS_DIA).toISOString().slice(0, 10);
+}
+
 function hoyMadridIso() {
   return new Intl.DateTimeFormat('en-CA',
     { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -54,7 +61,7 @@ async function leerBitacora() {
 
   // Las fechas se piden como TEXTO ('YYYY-MM-DD'): node-postgres devuelve DATE como
   // Date en zona local y eso desplaza un día según el reloj.
-  const [roster, ausencias, justis, horas, libranzas] = await Promise.all([
+  const [roster, ausencias, justis, horas, libranzas, manualBit] = await Promise.all([
     // TODA la plantilla, con el nombre de BOLT primero. La dimensión ya excluye a
     // los centinelas y resuelve contrato, zona, turno, teléfono y estado de hoy.
     db.consulta(
@@ -114,6 +121,14 @@ async function leerBitacora() {
              WHERE h.conductor_id = a.conductor_id AND ce.es_ausencia
                AND h.desde <= a.dia AND (h.hasta IS NULL OR h.hasta >= a.dia))`,
       [INICIO_ISO, hoyIso]),
+    // Libranzas puestas A MANO desde el panel del día (bitacora_dia). La 'J'
+    // manual NO se lee de aquí: su verdad es la tabla justificante.
+    db.consulta(
+      `SELECT conductor_id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia
+         FROM bitacora_dia
+        WHERE marca_manual AND marca = 'L'
+          AND dia_operativo BETWEEN $1::date AND $2::date`,
+      [INICIO_ISO, hoyIso]),
   ]);
 
   const nuevos = () => new Array(nDias).fill(null);
@@ -131,7 +146,7 @@ async function leerBitacora() {
       altaIdx: c.alta ? Math.max(0, idxDe(c.alta)) : null,
       bajaIdx: c.baja ? clamp(idxDe(c.baja)) : null,
       estado: c.estado_etiqueta || '', ausente: !!c.ausente,
-      dias: nuevos(), justif: {}, ausencias: [],
+      dias: nuevos(), justif: {}, ausencias: [], horasBolt: {}, lManual: {},
     });
   });
 
@@ -143,7 +158,7 @@ async function leerBitacora() {
     const c = porId.get(Number(id));
     if (c) return c;
     huerfanos.add(Number(id));
-    return { dias: basura, justif: {}, ausencias: [] };
+    return { dias: basura, justif: {}, ausencias: [], horasBolt: {}, lManual: {} };
   };
 
   // Orden de aplicación = prioridad de la celda (de menor a mayor): 'L' de base, luego
@@ -153,6 +168,10 @@ async function leerBitacora() {
   libranzas.rows.forEach(r => {
     const i = idxDe(r.dia);
     if (i >= 0 && i < nDias) de(r.conductor_id).dias[i] = 'L';
+  });
+  manualBit.rows.forEach(r => {
+    const i = idxDe(r.dia);
+    if (i >= 0 && i < nDias) { const c = de(r.conductor_id); c.dias[i] = 'L'; c.lManual[r.dia] = true; }
   });
   const porCondDia = new Map();
   horas.rows.forEach(r => {
@@ -181,7 +200,12 @@ async function leerBitacora() {
   justis.rows.forEach(r => {
     const c = de(r.conductor_id);
     const i = idxDe(r.dia);
-    if (i >= 0 && i < nDias) c.dias[i] = 'J';
+    if (i >= 0 && i < nDias) {
+      // Si ese día trabajó, las horas de BOLT no se pierden: quedan al lado de
+      // la J para poder decir "llevaba X apuntadas y en BOLT hizo Y".
+      if (typeof c.dias[i] === 'number') c.horasBolt[r.dia] = c.dias[i];
+      c.dias[i] = 'J';
+    }
     c.justif[r.dia] = {
       horas: r.horas_seg_momento != null ? Math.round(r.horas_seg_momento / 360) / 10 : null,
       obs: r.observacion || '',
@@ -190,7 +214,10 @@ async function leerBitacora() {
   ausencias.rows.forEach(r => {
     const c = de(r.conductor_id);
     const a = Math.max(0, idxDe(r.desde)), b = Math.min(nDias - 1, idxDe(r.hasta));
-    for (let i = a; i <= b; i++) c.dias[i] = r.marca;
+    for (let i = a; i <= b; i++) {
+      if (typeof c.dias[i] === 'number') c.horasBolt[isoDeIdx(i)] = c.dias[i];
+      c.dias[i] = r.marca;
+    }
     c.ausencias.push({ marca: r.marca, etiqueta: r.etiqueta, desde: r.desde, hasta: r.hasta, abierta: !!r.abierta });
   });
 
@@ -202,4 +229,34 @@ async function leerBitacora() {
   return { conductores, hoyIdx, inicio: INICIO, avisos: { sinFicha: huerfanos.size } };
 }
 
-module.exports = { leerBitacora, INICIO };
+// ── La libranza manual del panel del día ────────────────────────────────────
+// "Ese día le tocaba librar": lo dice una persona desde la bitácora y vive en
+// bitacora_dia (marca 'L', marca_manual). No toca al planificador, y al pintar
+// las horas reales siempre pisan la L (si al final trabajó, se ve que trabajó).
+function validar(conductorId, diaIso) {
+  const cid = Number(conductorId);
+  if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
+  return cid;
+}
+
+async function marcarLibranza(conductorId, diaIso) {
+  const cid = validar(conductorId, diaIso);
+  await db.consulta(
+    `INSERT INTO bitacora_dia (conductor_id, dia_operativo, marca, marca_manual)
+     VALUES ($1, $2::date, 'L', TRUE)
+     ON CONFLICT (conductor_id, dia_operativo)
+     DO UPDATE SET marca = 'L', marca_manual = TRUE, justificante_id = NULL`, [cid, diaIso]);
+  return { ok: true };
+}
+
+async function quitarLibranza(conductorId, diaIso) {
+  const cid = validar(conductorId, diaIso);
+  await db.consulta(
+    `DELETE FROM bitacora_dia
+      WHERE conductor_id = $1 AND dia_operativo = $2::date AND marca_manual AND marca = 'L'`,
+    [cid, diaIso]);
+  return { ok: true };
+}
+
+module.exports = { leerBitacora, marcarLibranza, quitarLibranza, INICIO };

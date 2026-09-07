@@ -94,4 +94,23 @@ async function leerPorFecha(diaIso) {
   return m;
 }
 
-module.exports = { resolverConductor, guardar, guardarPorId, leerPorFecha };
+/** Anula el justificante VIVO de un día (y quita su 'J' de la bitácora). */
+async function anularPorId({ conductorId, diaIso }) {
+  const cid = Number(conductorId);
+  if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
+  return db.transaccion(async cli => {
+    const r = await cli.query(
+      `UPDATE justificante SET anulado_at = now()
+        WHERE conductor_id = $1 AND dia_operativo = $2::date AND anulado_at IS NULL
+        RETURNING id`, [cid, diaIso]);
+    if (!r.rows.length) throw new Error('Ese día no tiene justificante vivo');
+    await cli.query(
+      `DELETE FROM bitacora_dia
+        WHERE conductor_id = $1 AND dia_operativo = $2::date AND justificante_id = $3`,
+      [cid, diaIso, r.rows[0].id]);
+    return { ok: true, justificanteId: r.rows[0].id };
+  });
+}
+
+module.exports = { resolverConductor, guardar, guardarPorId, anularPorId, leerPorFecha };

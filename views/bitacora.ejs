@@ -129,8 +129,8 @@
     if (k === 'futuro') return 'Todavía no ha llegado.';
     if (k === 'fuera') return c.altaIdx != null && d < c.altaIdx ? 'Antes de su alta.' : 'Después de su baja.';
     if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '');
-    if (k === 'J') { const j = c.justif[isoDe(d)] || {}; return 'Justificado' + (j.horas != null ? ' · llevaba ' + nf1.format(j.horas) + ' h' : '') + (j.obs ? ' · ' + j.obs : ''); }
-    if (k === 'L') return 'Libranza (le tocaba descansar)';
+    if (k === 'J') { const j = c.justif[isoDe(d)] || {}; const hb = (c.horasBolt || {})[isoDe(d)]; return 'Justificado' + (j.horas != null ? ' · llevaba ' + nf1.format(j.horas) + ' h' : '') + (hb != null ? ' · en BOLT ' + nf1.format(hb) + ' h' : '') + (j.obs ? ' · ' + j.obs : ''); }
+    if (k === 'L') return (c.lManual || {})[isoDe(d)] ? 'Libranza (puesta a mano)' : 'Libranza (le tocaba descansar)';
     if (esAus(k)) return NOM[k];
     return 'No salió: ni una hora, sin libranza ni ausencia.';
   }
@@ -359,8 +359,91 @@
     ];
     $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p></div>`).join('');
     pintarCalendario(c); pintarHoras(c); pintarAusencias(c);
-    $('#b-diainfo').classList.toggle('hidden', diaSel == null);
-    if (diaSel != null) $('#b-diainfo').innerHTML = `<b class="text-telecab-text capitalize">${esc(fmtLargo(diaSel))}</b> <span class="text-telecab-muted">· ${esc(textoDia(c, diaSel))}</span>`;
+    pintarDiaInfo(c);
+  }
+
+  // ── El panel del día: la etiqueta y las acciones ──────────────────────────
+  // Un día J enseña el MOTIVO, las horas que llevaba apuntadas y lo que hizo en
+  // BOLT (si hizo), con Editar/Anular. Un "no salió" se arregla AHÍ MISMO: o se
+  // justifica con horas y motivo, o se marca como libranza (manual, bitacora_dia).
+  function pintarDiaInfo(c) {
+    const box = $('#b-diainfo');
+    box.classList.toggle('hidden', diaSel == null);
+    if (diaSel == null) return;
+    const d = diaSel, k = clase(c, d), iso = isoDe(d);
+    const hb = (c.horasBolt || {})[iso];
+    const cab = `<b class="text-telecab-text capitalize">${esc(fmtLargo(d))}</b>`;
+    const boltTxt = hb != null ? `en BOLT hizo <b class="text-telecab-text">${nf1.format(hb)} h</b>` : 'sin horas en BOLT ese día';
+
+    if (k === 'J') {
+      const j = c.justif[iso] || {};
+      box.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2">
+          ${cab}
+          <span class="text-xs px-2 py-0.5 rounded-lg font-semibold" style="background:${tint('J')};color:${clr('J')}">Justificante${j.horas != null ? ` · llevaba ${nf1.format(j.horas)} h` : ''}</span>
+          <span class="text-xs text-telecab-muted">${boltTxt}</span>
+          ${puedeJustificar ? `<span class="ml-auto flex gap-1.5">
+            <button data-di="editar" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition"><i class="fa-solid fa-pen mr-1"></i>Editar</button>
+            <button data-di="anular" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition"><i class="fa-solid fa-ban mr-1"></i>Anular</button>
+          </span>` : ''}
+        </div>
+        ${j.obs ? `<p class="text-xs text-telecab-muted mt-1.5"><i class="fa-solid fa-quote-left mr-1 text-telecab-muted/50"></i>${esc(j.obs)}</p>` : '<p class="text-xs text-telecab-warn mt-1.5">Sin motivo apuntado.</p>'}
+        <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
+    } else if (k === 'nosalio' && puedeJustificar) {
+      box.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2">${cab}
+          <span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-red/15 text-telecab-red font-semibold">No salió</span>
+          <span class="text-xs text-telecab-muted">${boltTxt}</span></div>
+        <div class="flex flex-wrap items-end gap-2 mt-2">
+          <label class="text-[11px] text-telecab-muted">Horas que llevaba<br><input data-di="horas" type="number" step="0.1" min="0" max="24" placeholder="opcional" class="mt-1 w-24 bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text"></label>
+          <label class="flex-1 min-w-[160px] text-[11px] text-telecab-muted">Por qué no salió<br><input data-di="obs" type="text" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-2 py-1.5 text-sm text-telecab-text" placeholder="p. ej. coche en taller"></label>
+          <button data-di="justificar" class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold whitespace-nowrap"><i class="fa-solid fa-check mr-1"></i>Justificar</button>
+          <button data-di="libranza" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-text transition whitespace-nowrap" title="Ese día le tocaba librar: se marca a mano, sin tocar el planificador"><i class="fa-solid fa-bed mr-1"></i>Era libranza</button>
+        </div>
+        <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
+    } else if (k === 'L') {
+      const manual = (c.lManual || {})[iso];
+      box.innerHTML = `<div class="flex flex-wrap items-center gap-2">${cab}
+        <span class="text-xs px-2 py-0.5 rounded-lg bg-telecab-card2 text-telecab-muted font-semibold">Libranza${manual ? ' · puesta a mano' : ' · del planificador'}</span>
+        ${hb != null ? `<span class="text-xs text-telecab-muted">aun así, ${boltTxt}</span>` : ''}
+        ${manual && puedeJustificar ? `<button data-di="quitarl" class="ml-auto text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition"><i class="fa-solid fa-xmark mr-1"></i>Quitar la marca</button>` : ''}</div>
+        <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
+    } else {
+      box.innerHTML = `${cab} <span class="text-telecab-muted">· ${esc(textoDia(c, d))}</span>`;
+      return;
+    }
+
+    const msg = box.querySelector('[data-di-msg]');
+    const aviso = (t, mal) => { msg.classList.remove('hidden'); msg.textContent = t; msg.className = 'text-xs mt-1.5 ' + (mal ? 'text-telecab-red' : 'text-telecab-muted'); };
+    const post = async (url, body, okTxt) => {
+      aviso('Guardando…');
+      try {
+        const r = await (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+        if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+        aviso(okTxt);
+        await recargarYAbrir(c.conductorId, d);
+      } catch (e) { aviso('Error: ' + e.message, true); }
+    };
+    const on = (q, fn) => { const b = box.querySelector(`[data-di="${q}"]`); if (b) b.addEventListener('click', fn); };
+    on('justificar', () => {
+      const horas = box.querySelector('[data-di="horas"]').value;
+      const obs = box.querySelector('[data-di="obs"]').value.trim();
+      if (!obs) return aviso('El motivo es obligatorio.', true);
+      post('/bitacora/api/justificar', { conductorId: c.conductorId, dia: iso, horas, observacion: obs }, '✓ Justificado.');
+    });
+    on('libranza', () => post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso }, '✓ Marcado como libranza.'));
+    on('quitarl', () => post('/bitacora/api/libranza', { conductorId: c.conductorId, dia: iso, quitar: true }, '✓ Marca quitada.'));
+    on('anular', () => { if (confirm('¿Anular el justificante de este día? El registro queda anulado, no borrado.')) post('/bitacora/api/anular-justificante', { conductorId: c.conductorId, dia: iso }, '✓ Anulado.'); });
+    on('editar', () => {
+      const j = c.justif[iso] || {};
+      const form = $('#b-justif-form'); if (!form) return;
+      form.classList.remove('hidden');
+      $('#j-dia').value = iso;
+      $('#j-horas').value = j.horas != null ? j.horas : '';
+      $('#j-obs').value = j.obs || '';
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('#j-obs').focus();
+    });
   }
 
   // ── El calendario ─────────────────────────────────────────────────────────
@@ -449,13 +532,21 @@
       $('#b-default').innerHTML = '<p class="text-telecab-red text-sm">No se pudo cargar la bitácora: ' + esc(e.message) + '</p>';
     }
   }
-  async function recargarYAbrir(id) {
+  async function recargarYAbrir(id, dia) {
     try {
       const r = await (await fetch('/bitacora/api/datos')).json();
       if (r.status !== 'ok') return;
       DATA = r; MESES = construirMeses(r.inicio);
       pintarKpisFlota(); pintarLista();
-      DATA.conductores.find(x => x.conductorId === id) ? abrir(id) : pintarDefault();
+      if (!DATA.conductores.find(x => x.conductorId === id)) { pintarDefault(); return; }
+      abrir(id);
+      // Volver al día (y al mes) que se estaba mirando, para ver el cambio hecho.
+      if (dia != null) {
+        diaSel = dia;
+        const m = MESES.findIndex(x => dia >= x.start && dia < x.start + x.len);
+        if (m >= 0) mIdx = m;
+        render();
+      }
     } catch (e) { /* si falla, se queda como está */ }
   }
   $('#b-buscar').addEventListener('input', pintarLista);
