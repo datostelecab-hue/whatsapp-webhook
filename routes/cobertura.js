@@ -69,13 +69,27 @@ router.post('/enviar-turnos-todos', (req, res) => {
   res.json({ status: 'ok', msg: 'Envío iniciado' });
 });
 
+// Envía los turnos a UNA LISTA de conductores (un cuadrante del planificador, por
+// ejemplo). Misma maquinaria y mismo ritmo que el envío a todos; el panel sondea
+// el mismo /enviar-turnos/estado.
+router.post('/enviar-turnos-varios', (req, res) => {
+  if (_progTurnos.activo) return res.status(409).json({ status: 'error', msg: 'Ya hay un envío en marcha' });
+  const semana = semanaDe(req);
+  const ids = [...new Set((((req.body || {}).ids) || []).map(x => String(x).trim()).filter(Boolean))];
+  if (!ids.length) return res.status(400).json({ status: 'error', msg: 'No hay conductores a los que enviar' });
+  enviarTurnosBulk(semana, new Set(ids)).catch(e => console.error('❌ [Turnos] varios:', e.message));
+  res.json({ status: 'ok', msg: 'Envío iniciado', pedidos: ids.length });
+});
+
 router.get('/enviar-turnos/estado', (req, res) => res.json({ status: 'ok', progreso: progTurnos() }));
 
-async function enviarTurnosBulk(semana) {
+async function enviarTurnosBulk(semana, soloIds = null) {
   _progTurnos = { activo: true, total: 0, enviados: 0, errores: 0, sinTel: 0, iniciado: sello(), fin: null, detalle: [] };
   try {
     const { porConductor } = await cob.datos({ offsetSemana: semana });
-    const lista = porConductor.filter(e => e.dias.some(d => d.trabaja));   // solo los que trabajan
+    // Solo los que trabajan; con `soloIds`, además, solo los pedidos (el cuadrante).
+    const lista = porConductor.filter(e =>
+      (!soloIds || soloIds.has(String(e.id))) && e.dias.some(d => d.trabaja));
     _progTurnos.total = lista.length;
     for (const e of lista) {
       if (!e.telefono) { _progTurnos.sinTel++; _progTurnos.detalle.push(`${e.nombre}: sin teléfono`); continue; }

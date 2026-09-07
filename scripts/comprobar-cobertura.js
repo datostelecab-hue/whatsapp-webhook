@@ -29,7 +29,7 @@ const tab = {
     { id: '9', nombre: 'Luis', ausente: true, estado: 'Vacaciones', vuelveEl: '20/09/2026' },
   ],
   coches: [
-    { matricula: '1888LTJ', zona: 'Usera', operativo: true, estadoVeh: 'O', descanso: [3, 4],
+    { vehiculoId: 'A1', matricula: '1888LTJ', zona: 'Usera', operativo: true, estadoVeh: 'O', descanso: [3, 4],
       personas: [{ id: '1', nombre: 'María' }, { id: '2', nombre: 'Pedro' }, { id: '3', nombre: 'Ana' }, {}, {}, {}],
       semana: semanaA },
     { matricula: '5736LGK', zona: 'Canillejas', operativo: false, estadoVeh: 'T', descanso: [],
@@ -153,6 +153,40 @@ eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
   // Semana entera sin plan: se dice claro, no un saludo huérfano.
   ok(mensajeTurnos({ nombre: 'Ana', dias: maria2.dias.map(d => ({ ...d, sinPlan: true, trabaja: false })) })
        .includes('todavía no tengo cargados'), 'una semana entera sin plan se dice claro');
+
+  // ── Bordes de semana: el lunes recibe del domingo pasado, el domingo entrega ──
+  console.log('');
+  console.log('=== BORDES DE SEMANA ===');
+  const bordes = {
+    antes: new Map([['A1', { id: '7', nombre: 'Sergio', diaNombre: 'Domingo', turno: 'Noche', fecha: '2026-09-06', ord: 13 }]]),
+    despues: new Map([['A1', { id: '3', nombre: 'Ana', diaNombre: 'Lunes', turno: 'Día', fecha: '2026-09-14', ord: 0 }]]),
+  };
+  const D3 = cob.construir(tab, contac, 0, bordes);
+  eq(D3.relevos.length, 10, 'los relevos DE LA SEMANA no cambian (los bordes van aparte)');
+  eq((D3.relevosBorde || []).length, 2, 'dos relevos de borde (uno por cada lado)');
+  const maria3 = D3.porConductor.find(p => p.nombre === 'María');
+  ok(maria3.dias[0].recibeDe && maria3.dias[0].recibeDe.nombre === 'Sergio', 'el LUNES María recibe de Sergio (semana pasada)');
+  eq(maria3.dias[0].recibeDe.semanaPasada, true, 'marcado como de la semana pasada');
+  eq(maria3.dias[0].recibeDe.dia, 'Domingo', 'con el día en que lo deja (domingo)');
+  eq(maria3.dias[0].recibeDe.directo, true, 'directo: Dom-Noche → Lun-Día van pegados');
+  const pedro3 = D3.porConductor.find(p => p.nombre === 'Pedro');
+  const dom3 = pedro3.dias[6];
+  ok(dom3.entregaA && dom3.entregaA.nombre === 'Ana', 'el DOMINGO Pedro entrega a Ana (semana siguiente)');
+  eq(dom3.entregaA.semanaSiguiente, true, 'marcado como de la semana siguiente');
+  const msg3 = mensajeTurnos(maria3);
+  ok(msg3.includes('Sergio') && /lo deja el domingo pasado/.test(msg3), 'el WhatsApp del lunes dice de quién y cuándo lo recibe');
+  ok(/lo coge el lunes que viene/.test(mensajeTurnos(pedro3)), 'y el del domingo dice quién lo coge el lunes');
+  ok(/lo deja el jueves/.test(msg3), 'el viernes dice que Ana lo dejó el jueves (coche parado en medio)');
+  ok(!/Martes[^]*?lo deja el lunes/.test(msg3.split('Miércoles')[0]), 'en el relevo directo NO se nombra el día (confunde)');
+
+  // El mismo que lo dejó el domingo NO es un relevo: sigue con su coche.
+  const bordesMismo = {
+    antes: new Map([['A1', { id: '1', nombre: 'María', diaNombre: 'Domingo', turno: 'Noche', fecha: '2026-09-06', ord: 13 }]]),
+    despues: new Map(),
+  };
+  const D4 = cob.construir(tab, contac, 0, bordesMismo);
+  const maria4 = D4.porConductor.find(p => p.nombre === 'María');
+  eq(maria4.dias[0].recibeDe, null, 'si el coche lo dejó ella misma, el lunes no hay "recibe de"');
 
   console.log(fallos ? `\n❌ ${fallos} fallo(s)` : '\n✅ Todo correcto');
   process.exit(fallos ? 1 : 0);

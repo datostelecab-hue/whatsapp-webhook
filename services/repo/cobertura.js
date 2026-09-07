@@ -14,6 +14,9 @@
 //   · relevos[]    → el paso del coche de un conductor al siguiente, en orden.
 //   · porConductor → la semana de cada persona: qué coche lleva, de quién lo recibe
 //                    y a quién se lo entrega, con teléfono para llamar/escribir.
+//                    La cadena NO empieza en el lunes: el primer día se recibe del
+//                    que dejó el coche la SEMANA PASADA (normalmente el domingo), y
+//                    el último se entrega al que lo coge la siguiente.
 
 const plani = require('./planificador');
 const db = require('../db');
@@ -44,18 +47,77 @@ const corto = iso => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
  */
 async function datos({ offsetSemana = 0 } = {}) {
   const base = sumarDias(hoyMadrid(), Number(offsetSemana || 0) * 7);
-  const [tab, contac] = await Promise.all([
+  const [tab, contac, bordes] = await Promise.all([
     plani.tablero({ dia: base }),
     plani.contactos().catch(() => new Map()),
+    bordesDe(plani.lunesDe(base)),
   ]);
-  return construir(tab, contac, offsetSemana);
+  return construir(tab, contac, offsetSemana, bordes);
+}
+
+// ── Los bordes de la semana: el domingo pasado y el lunes que viene ──────────
+// La semana no empieza de cero: el coche viene de alguien (normalmente del que lo
+// dejó el DOMINGO anterior) y sigue con alguien después. Esto trae, por vehículo,
+// el ÚLTIMO tramo ocupado de la semana anterior y el PRIMERO de la siguiente,
+// para que el lunes diga de quién se recibe y el último día a quién se entrega.
+// El nombre sale con la regla de la casa: el de BOLT primero. Va directo contra
+// f_cobertura (la misma regla que alimenta el tablero), no contra otro tablero
+// entero: solo hacen falta los extremos.
+async function tramosSemana(desde, hasta) {
+  const r = await db.consulta(
+    `SELECT f.vehiculo_id, to_char(f.dia, 'YYYY-MM-DD') AS fecha,
+            t.codigo AS turno, f.conductor_id,
+            COALESCE(ext.externo_nombre,
+                     NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), ''),
+                     '#' || c.id::text) AS nombre
+       FROM f_cobertura($1::date, $2::date) f
+       JOIN turno t     ON t.id = f.turno_id
+       JOIN conductor c ON c.id = f.conductor_id
+       LEFT JOIN LATERAL (
+         SELECT externo_nombre FROM conductor_externo
+          WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
+          ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) ext ON TRUE
+      ORDER BY f.dia, (t.codigo = 'noche'), f.conductor_id`, [desde, hasta]);
+  return r.rows.map(x => {
+    const [y, m, d] = x.fecha.split('-').map(Number);
+    const dow = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;   // 0 = lunes
+    return {
+      vehiculoId: String(x.vehiculo_id),
+      id: String(x.conductor_id),
+      nombre: x.nombre || String(x.conductor_id),
+      fecha: x.fecha, diaNombre: DIAS_SEM[dow],
+      turno: x.turno === 'noche' ? 'Noche' : 'Día',
+      ord: dow * 2 + (x.turno === 'noche' ? 1 : 0),   // 0..13 dentro de su semana
+    };
+  });
+}
+
+/**
+ * { antes, despues }: por vehículo, el último tramo ocupado de la semana anterior
+ * y el primero de la siguiente. Si algo falla, bordes vacíos: la pantalla sale
+ * igual que hasta ahora, solo que sin la entrega del domingo.
+ */
+async function bordesDe(lunes) {
+  try {
+    const [ant, sig] = await Promise.all([
+      tramosSemana(sumarDias(lunes, -7), sumarDias(lunes, -1)),
+      tramosSemana(sumarDias(lunes, 7), sumarDias(lunes, 13)),
+    ]);
+    const antes = new Map(), despues = new Map();
+    ant.forEach(t => { const v = antes.get(t.vehiculoId); if (!v || t.ord >= v.ord) antes.set(t.vehiculoId, t); });
+    sig.forEach(t => { const v = despues.get(t.vehiculoId); if (!v || t.ord < v.ord) despues.set(t.vehiculoId, t); });
+    return { antes, despues };
+  } catch (e) {
+    console.error('⚠️ [COBERTURA] bordes de la semana:', e.message);
+    return { antes: new Map(), despues: new Map() };
+  }
 }
 
 /**
  * PURA: del tablero (+ contactos) a la forma que pinta la pantalla. Separada de
  * `datos` a propósito, para poder probarla sin base de datos.
  */
-function construir(tab, contac, offsetSemana = 0) {
+function construir(tab, contac, offsetSemana = 0, bordes = null) {
   const fechas = (tab && tab.fechas) || [];
   const gente = new Map((tab.conductores || []).map(c => [String(c.id), c]));
   const telDe = id => {
@@ -80,6 +142,7 @@ function construir(tab, contac, offsetSemana = 0) {
         }
       }
       return {
+        vehiculoId: c.vehiculoId != null ? String(c.vehiculoId) : '',
         matricula: c.matricula, zona: c.zona || '', cuadrante: c.cuadrante || '',
         operativo: c.operativo !== false, estadoVeh: c.estadoVeh || '',
         descanso: c.descanso || [], personas: c.personas || [],
@@ -99,6 +162,34 @@ function construir(tab, contac, offsetSemana = 0) {
   const relevos = [];
   coches.forEach(c => c.relevos.forEach(r => relevos.push(r)));
 
+  // ── Los bordes: la semana es una VENTANA sobre una cadena continua ──────────
+  // El primer ocupado de la semana RECIBE del último de la anterior (si son
+  // personas distintas), y el último ENTREGA al primero de la siguiente. Van
+  // aparte de `relevos` (que sigue contando solo los de la semana) y alimentan
+  // la ficha por conductor y el mensaje de WhatsApp.
+  const relevosBorde = [];
+  if (bordes) coches.forEach(c => {
+    if (!c.vehiculoId) return;
+    const ocupados = [];
+    c.semana.forEach((t, i) => { if (t.id) ocupados.push({ ...t, i }); });
+    if (!ocupados.length) return;
+    const prim = ocupados[0], ult = ocupados[ocupados.length - 1];
+    const a = bordes.antes && bordes.antes.get(c.vehiculoId);
+    if (a && String(a.id) !== String(prim.id)) relevosBorde.push({
+      matricula: c.matricula, semanaPasada: true,
+      entrega: { id: a.id, nombre: a.nombre, dia: a.diaNombre, turno: a.turno, fecha: a.fecha, semanaPasada: true },
+      recibe: { id: prim.id, nombre: prim.nombre, dia: prim.diaNombre, turno: prim.turno },
+      directo: 14 + prim.i - a.ord === 1,
+    });
+    const s = bordes.despues && bordes.despues.get(c.vehiculoId);
+    if (s && String(s.id) !== String(ult.id)) relevosBorde.push({
+      matricula: c.matricula, semanaSiguiente: true,
+      entrega: { id: ult.id, nombre: ult.nombre, dia: ult.diaNombre, turno: ult.turno },
+      recibe: { id: s.id, nombre: s.nombre, dia: s.diaNombre, turno: s.turno, fecha: s.fecha, semanaSiguiente: true },
+      directo: 14 + s.ord - ult.i === 1,
+    });
+  });
+
   return {
     semanaInfo: {
       // `inicio`/`fin`/`esActual` son los nombres que pinta la pantalla.
@@ -112,7 +203,8 @@ function construir(tab, contac, offsetSemana = 0) {
     cobertura: coberturaPorTurno(coches, gente, fechas),
     ausentesEnPlaza: ausentesEnPlaza(coches, gente),
     relevos,
-    porConductor: porConductor(coches, gente, telDe, hayPlan),
+    relevosBorde,
+    porConductor: porConductor(coches, gente, telDe, hayPlan, relevosBorde),
     // La pantalla pinta los operativos; los demás salen igual en `cobertura` con
     // su motivo ("en taller"), que es justo lo que hay que ver.
     coches: coches.filter(c => c.operativo).map(c => ({
@@ -227,7 +319,7 @@ function ausentesEnPlaza(coches, gente) {
  * La semana de CADA conductor: qué día trabaja, en qué coche, de quién lo recibe
  * y a quién se lo entrega. Es lo que se le manda por WhatsApp.
  */
-function porConductor(coches, gente, telDe, hayPlan = []) {
+function porConductor(coches, gente, telDe, hayPlan = [], relevosBorde = []) {
   // id → [{ dia, diaNombre, turno, matricula }]
   const slots = new Map();
   coches.forEach(coche => coche.semana.forEach(tr => {
@@ -238,6 +330,9 @@ function porConductor(coches, gente, telDe, hayPlan = []) {
 
   const relevos = [];
   coches.forEach(c => c.relevos.forEach(r => relevos.push(r)));
+  // Los bordes entran al MISMO buscador: su "recibe"/"entrega" apunta a un tramo
+  // de ESTA semana, así que casan igual que un relevo normal.
+  relevosBorde.forEach(r => relevos.push(r));
   const buscaRecibe = (id, s) => relevos.find(r =>
     r.matricula === s.matricula && r.recibe.id === id && r.recibe.dia === s.diaNombre && r.recibe.turno === s.turno);
   const buscaEntrega = (id, s) => relevos.find(r =>
@@ -258,8 +353,16 @@ function porConductor(coches, gente, telDe, hayPlan = []) {
         diaNombre, trabaja: true, sinPlan: false,
         turno: [...new Set(delDia.map(s => s.turno))].join(' y '),
         matricula: [...new Set(delDia.map(s => s.matricula))].join(' + '),
-        recibeDe: rec ? { nombre: rec.entrega.nombre, telefono: telDe(rec.entrega.id), directo: !!rec.directo } : null,
-        entregaA: ent ? { nombre: ent.recibe.nombre, telefono: telDe(ent.recibe.id), directo: !!ent.directo } : null,
+        // `dia` es CUÁNDO deja/coge el coche la otra persona; con `semanaPasada`/
+        // `semanaSiguiente` cuando ese día cae fuera de esta semana.
+        recibeDe: rec ? {
+          nombre: rec.entrega.nombre, telefono: telDe(rec.entrega.id), directo: !!rec.directo,
+          dia: rec.entrega.dia || '', semanaPasada: !!rec.entrega.semanaPasada,
+        } : null,
+        entregaA: ent ? {
+          nombre: ent.recibe.nombre, telefono: telDe(ent.recibe.id), directo: !!ent.directo,
+          dia: ent.recibe.dia || '', semanaSiguiente: !!ent.recibe.semanaSiguiente,
+        } : null,
       };
     });
     salida.push({

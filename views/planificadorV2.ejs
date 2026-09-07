@@ -219,7 +219,8 @@
       if (zona && zonaDeCoche(c, zc) !== zona) return false;
       if (soloHuecos && !tieneHueco(c)) return false;
       if (q) {
-        const txt = plano(c.matricula + ' ' + (c.personas || []).map(p => (p && p.nombre) || '').join(' '));
+        const txt = plano(c.matricula + ' ' + (c.personas || []).map(p =>
+          p && p.id ? (p.nombre || '') + ' ' + (((porId.get(String(p.id)) || {}).telefono) || '') : '').join(' '));
         if (!txt.includes(q)) return false;
       }
       return true;
@@ -295,7 +296,12 @@
       </h3>
       <button data-bloque class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50 transition"><i class="fa-solid fa-plus"></i> Bloque</button>
       <div class="flex items-center gap-2 ml-1">${chipCT(ctDia, 'día')}${chipCT(ctNoche, 'noche')}</div>
-      <button data-borrar-cua class="ml-auto text-xs text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i> borrar cuadrante</button>`;
+      ${lista.length ? `<button data-waturnos class="ml-auto px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
+              title="Enviar por WhatsApp a la gente de este cuadrante sus turnos de la semana que estás mirando">
+        <i class="fa-brands fa-whatsapp"></i> Enviar turnos</button>` : ''}
+      <button data-borrar-cua class="${lista.length ? '' : 'ml-auto '}text-xs text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i> borrar cuadrante</button>`;
+    const bWa = cab.querySelector('[data-waturnos]');
+    if (bWa) bWa.addEventListener('click', e => enviarTurnosCuadrante(cu.nombre, lista, e.currentTarget));
     cab.querySelector('[data-bloque]').addEventListener('click', () => anadirBloque(cu.id));
     cab.querySelector('[data-ct="día"]').addEventListener('click', () => asignarCTCuadrante(cu.id, 'dia', lista));
     cab.querySelector('[data-ct="noche"]').addEventListener('click', () => asignarCTCuadrante(cu.id, 'noche', lista));
@@ -314,9 +320,15 @@
 
   function seccionSueltos(lista) {
     const sec = document.createElement('section');
-    const cab = document.createElement('h3');
-    cab.className = 'text-sm font-semibold uppercase tracking-wide text-telecab-muted mb-2 flex items-center gap-2';
-    cab.innerHTML = `<i class="fa-solid fa-car-side"></i>Coches sueltos <span class="font-normal normal-case">${lista.length}</span>`;
+    const cab = document.createElement('div');
+    cab.className = 'flex flex-wrap items-center gap-2 mb-2';
+    cab.innerHTML = `
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-muted flex items-center gap-2">
+        <i class="fa-solid fa-car-side"></i>Coches sueltos <span class="font-normal normal-case">${lista.length}</span></h3>
+      <button data-waturnos class="ml-auto px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
+              title="Enviar por WhatsApp a la gente de estos coches sus turnos de la semana que estás mirando">
+        <i class="fa-brands fa-whatsapp"></i> Enviar turnos</button>`;
+    cab.querySelector('[data-waturnos]').addEventListener('click', e => enviarTurnosCuadrante('coches sueltos', lista, e.currentTarget));
     sec.appendChild(cab);
     sec.appendChild(tablaCoches(lista, false));
     return sec;
@@ -468,9 +480,14 @@
       const ett = persona && persona.esEtt ? ' <span class="text-telecab-violet">ETT</span>' : '';
       const av = avisoAusencia(persona);
       const nombreCls = av && av.tachado ? 'line-through text-telecab-muted' : 'font-medium group-hover:text-telecab-gold';
+      // El teléfono SIEMPRE a la vista bajo el nombre. El envío por WhatsApp va en
+      // la cabecera del cuadrante: UN botón por cuadrante, no uno por persona.
+      const tel = (persona && persona.telefono) || '';
       wrap.innerHTML = `
         <button class="text-left w-full group" data-asignar>
           <span class="${nombreCls} transition">${esc(persona ? persona.nombre : p.nombre)}${ett}</span>
+          ${tel ? `<span class="block text-[11px] text-telecab-muted font-mono tabular-nums">${esc(tel)}</span>`
+                : `<span class="block text-[11px] text-telecab-warn/80">sin teléfono</span>`}
           <span class="block text-xs text-telecab-muted">${esc(sub)}</span>
           ${av ? `<span class="block text-[11px] text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}${av.hueco ? ' · sin cubrir' : ''}</span>` : ''}
           ${fut}
@@ -533,7 +550,7 @@
       if (banqTab === 'ett' && !p.esEtt) return false;
       if (banqTab === 'propios' && p.esEtt) return false;
       if (!q) return true;
-      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       return t.includes(q);
     });
     document.querySelectorAll('.banq-tab').forEach(b => {
@@ -545,7 +562,7 @@
     $('#banquillo').innerHTML = gente.length ? gente.map(p => `
       <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border">
         <div class="text-sm font-medium truncate">${esc(p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''}</div>
-        <div class="text-[11px] text-telecab-muted">${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
+        <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
         ${p.ausente ? `<div class="text-[11px] text-telecab-warn"><i class="fa-solid fa-plane-departure"></i> ${esc(p.estado)}${p.vuelveEl ? ` · vuelve ${isoAes(p.vuelveEl)}` : ''}</div>` : ''}
       </div>`).join('') : '<p class="text-xs text-telecab-muted text-center py-4">Nadie en el banquillo.</p>';
   }
@@ -683,6 +700,57 @@
       }
       if (j.tablero) aplicar(j.tablero);
     } catch (e) { alert(e.message); }
+  }
+
+  // ── Enviar los turnos del CUADRANTE por WhatsApp (un botón por cuadrante) ──
+  // Avisa a toda la gente colocada en esos coches de sus turnos de la semana que
+  // se está MIRANDO; el detalle (coche, de quién recibe el lunes —incluido el que
+  // lo dejó el domingo pasado— y a quién entrega) lo sirve el bot cuando el
+  // conductor pulsa su botón. Reusa la maquinaria de Cobertura: manda con ritmo
+  // para no pasarse de los límites de Meta y recuerda qué semana verá cada uno.
+  const lunesDeIso = iso => sumarDias(iso, -((new Date(iso + 'T00:00:00').getDay() + 6) % 7));
+  async function enviarTurnosCuadrante(nombre, lista, btn) {
+    const ids = [...new Set(lista.flatMap(c => (c.personas || []).filter(p => p && p.id).map(p => String(p.id))))];
+    if (!ids.length) { await Dialogo.aviso({ titulo: 'Nadie colocado', texto: 'En estos coches no hay ningún conductor al que avisar.', tono: 'aviso' }); return; }
+    const off = Math.round((new Date(T.lunes + 'T00:00:00') - new Date(lunesDeIso(hoyISO()) + 'T00:00:00')) / 6048e5);
+    if (off < 0) { await Dialogo.aviso({ titulo: 'Semana pasada', texto: 'Estás mirando una semana que ya pasó: no tiene sentido avisar de esos turnos.', tono: 'aviso' }); return; }
+    if (off > 8) { await Dialogo.aviso({ titulo: 'Demasiado lejos', texto: 'Solo se pueden avisar turnos hasta 8 semanas vista.', tono: 'aviso' }); return; }
+    const sinTel = ids.filter(id => !((porId.get(id) || {}).telefono)).length;
+    const ok = await Dialogo.confirmar({
+      titulo: `Enviar turnos · ${nombre}`, tono: 'pregunta', si: 'Enviar', no: 'Cancelar',
+      html: `<p class="text-sm">Se avisa por WhatsApp a la gente de ${lista.length === 1 ? 'este coche' : `estos ${lista.length} coches`} — ${ids.length} persona(s)${sinTel ? `, ${sinTel} sin teléfono` : ''} — de sus turnos de la semana del <b>${isoAes(T.fechas[0])}</b>${off === 0 ? ' (la actual)' : ''}: su coche de cada día, de quién lo reciben y a quién se lo entregan. Solo a quienes trabajan esa semana.</p>`,
+    });
+    if (!ok) return;
+    const previo = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando…';
+    try {
+      const r = await fetch('/cobertura/enviar-turnos-varios', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, semana: off }),
+      });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo iniciar el envío');
+      seguirEnvio(btn, previo);
+    } catch (e) {
+      btn.disabled = false; btn.innerHTML = previo;
+      await Dialogo.aviso({ titulo: 'No se pudo enviar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  // El progreso del envío, en el propio botón (el estado es el de Cobertura).
+  async function seguirEnvio(btn, previo) {
+    for (let i = 0; i < 100; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      let p;
+      try { p = ((await (await fetch('/cobertura/enviar-turnos/estado')).json()).progreso) || {}; }
+      catch (_) { continue; }
+      if (p.activo) { btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${p.enviados}/${p.total}`; continue; }
+      const extra = (p.errores ? ` · ${p.errores} err` : '') + (p.sinTel ? ` · ${p.sinTel} sin tel` : '');
+      btn.innerHTML = `<i class="fa-solid fa-check"></i> ${p.enviados}/${p.total} enviados${extra}`;
+      btn.disabled = false;
+      return;
+    }
+    btn.disabled = false; btn.innerHTML = previo;
   }
 
   async function libranzaExcepcional(persona) {
@@ -922,7 +990,7 @@
             <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="p-3">
-            <input data-busca type="search" placeholder="Buscar nombre, DNI…" class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
+            <input data-busca type="search" placeholder="Buscar nombre, DNI, teléfono…" class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
             ${actual ? '<button data-quitar class="w-full mb-2 px-3 py-2 rounded-lg border border-telecab-red/40 text-telecab-red text-sm hover:bg-telecab-red/10"><i class="fa-solid fa-user-minus"></i> Dejar la plaza vacía</button>' : ''}
             <div data-lista class="space-y-1 max-h-[50vh] overflow-y-auto"></div>
           </div>
@@ -937,7 +1005,7 @@
       const pinta = () => {
         const txt = (fondo.querySelector('[data-busca]').value || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
         const vis = lista.filter(c => {
-          const t = (c.nombre + ' ' + (c.dni || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+          const t = (c.nombre + ' ' + (c.dni || '') + ' ' + (c.telefono || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
           return t.includes(txt);
         });
         cont.innerHTML = vis.slice(0, 80).map(c => `
@@ -945,7 +1013,7 @@
                   ${String(c.id) === String(actual) ? 'border-telecab-gold bg-telecab-gold/10' : 'border-telecab-border hover:bg-telecab-card2'}
                   ${!mismoTurno(c) ? 'opacity-60' : ''}">
             <div class="text-sm font-medium">${esc(c.nombre)}${c.esEtt ? ' <span class="text-telecab-violet text-xs">ETT</span>' : ''}</div>
-            <div class="text-[11px] text-telecab-muted">${esc(c.turno || 'sin turno')}${c.plazas ? ' · ya colocado' : ' · banquillo'}${!mismoTurno(c) ? ' · otro turno' : ''}</div>
+            <div class="text-[11px] text-telecab-muted">${c.telefono ? `<span class="font-mono tabular-nums">${esc(c.telefono)}</span> · ` : ''}${esc(c.turno || 'sin turno')}${c.plazas ? ' · ya colocado' : ' · banquillo'}${!mismoTurno(c) ? ' · otro turno' : ''}</div>
           </button>`).join('') || '<p class="text-xs text-telecab-muted text-center py-4">Nadie coincide.</p>';
         cont.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => cerrar(b.dataset.id)));
       };

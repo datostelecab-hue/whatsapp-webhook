@@ -229,8 +229,17 @@ function pintarPersonas() {
       return `${p.nombre} ${p.id} ${p.telefono} ${matriculas}`.toLowerCase().includes(texto);
     });
 
-  const recibeTxt = d => d.recibeDe ? `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}` : '';
-  const entregaTxt = d => d.entregaA ? `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}` : '';
+  // Cuándo es el paso del coche, solo cuando aporta: al cruzar la semana ("lo deja
+  // el domingo pasado": la cadena arranca en la anterior) o si el coche queda
+  // parado en medio (no directo). En el relevo directo pasa de mano en el momento.
+  const cuandoRec = d => { const r = d.recibeDe || {}; const dia = (r.dia || '').toLowerCase();
+    if (r.semanaPasada) return ` <span class="text-telecab-muted/70">· lo deja el ${esc(dia || 'domingo')} pasado</span>`;
+    return (!r.directo && r.dia && r.dia !== d.diaNombre) ? ` <span class="text-telecab-muted/70">· lo deja el ${esc(dia)}</span>` : ''; };
+  const cuandoEnt = d => { const e = d.entregaA || {}; const dia = (e.dia || '').toLowerCase();
+    if (e.semanaSiguiente) return ` <span class="text-telecab-muted/70">· lo coge el ${esc(dia || 'lunes')} que viene</span>`;
+    return (!e.directo && e.dia && e.dia !== d.diaNombre) ? ` <span class="text-telecab-muted/70">· lo coge el ${esc(dia)}</span>` : ''; };
+  const recibeTxt = d => d.recibeDe ? `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}${cuandoRec(d)}` : '';
+  const entregaTxt = d => d.entregaA ? `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}${cuandoEnt(d)}` : '';
 
   $('#lista-personas').innerHTML = lista.map(p => {
     const dias = p.dias.map(d => {

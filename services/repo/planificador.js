@@ -104,6 +104,7 @@ async function tablero({ dia } = {}) {
                        NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), '') || ' (sin nombre de BOLT)',
                        '#' || c.id::text)                    AS nombre,
               c.dni_nie,
+              tel.e164 AS telefono,
               e.alta, e.jornada_horas, e.tipo AS contrato_tipo, e.ett_nombre,
               j.dias_ct,
               th.turno_id, t.codigo AS turno_codigo, t.etiqueta AS turno,
@@ -129,6 +130,11 @@ async function tablero({ dia } = {}) {
            SELECT externo_id, externo_nombre FROM conductor_externo
             WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
             ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) ext ON TRUE
+         -- El teléfono principal vigente: en el cuadrante se ve y se usa (WhatsApp).
+         LEFT JOIN LATERAL (
+           SELECT e164 FROM conductor_telefono
+            WHERE conductor_id = c.id AND vigente_hasta IS NULL
+            ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
          LEFT JOIN conductor_estado_hist est
                 ON est.conductor_id = c.id
                AND est.desde <= $1 AND (est.hasta IS NULL OR est.hasta >= $1)
@@ -217,6 +223,7 @@ async function tablero({ dia } = {}) {
       id: String(c.id),
       nombre: c.nombre,
       dni: c.dni_nie || '',
+      telefono: c.telefono || '',
       turno: c.turno || '',
       turnoCodigo: c.turno_codigo || '',
       turnoId: c.turno_id || null,

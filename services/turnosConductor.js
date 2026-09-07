@@ -48,8 +48,23 @@ function mensajeTurnos(entrada) {
       i = j; continue;
     }
     L.push(`📅 *${diaLargo(d.diaNombre)}* · turno de ${d.turno} · coche *${d.matricula}*`);
-    if (d.recibeDe) L.push(`   🔑 Recibes el coche de *${d.recibeDe.nombre}*${tel(d.recibeDe)}`);
-    if (d.entregaA) L.push(`   🤝 Al terminar tu turno, lo entregas a *${d.entregaA.nombre}*${tel(d.entregaA)}`);
+    // De quién viene y a quién va el coche. Se dice CUÁNDO solo cuando aporta:
+    // siempre al cruzar la semana (el lunes se recibe del que lo dejó el domingo
+    // PASADO: la semana no empieza de cero) y cuando el coche queda parado en
+    // medio (relevo no directo). En el relevo directo el coche pasa de mano en el
+    // momento y nombrar el día del turno anterior solo confunde.
+    if (d.recibeDe) {
+      const r = d.recibeDe;
+      const cuando = r.semanaPasada ? ` (lo deja el ${diaLargo(r.dia).toLowerCase()} pasado)`
+        : (!r.directo && r.dia && r.dia !== d.diaNombre ? ` (lo deja el ${diaLargo(r.dia).toLowerCase()})` : '');
+      L.push(`   🔑 Recibes el coche de *${r.nombre}*${tel(r)}${cuando}`);
+    }
+    if (d.entregaA) {
+      const en = d.entregaA;
+      const cuando = en.semanaSiguiente ? ` (lo coge el ${diaLargo(en.dia).toLowerCase()} que viene)`
+        : (!en.directo && en.dia && en.dia !== d.diaNombre ? ` (lo coge el ${diaLargo(en.dia).toLowerCase()})` : '');
+      L.push(`   🤝 Al terminar tu turno, lo entregas a *${en.nombre}*${tel(en)}${cuando}`);
+    }
     L.push('');
     i++;
   }
