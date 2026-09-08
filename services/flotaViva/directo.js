@@ -105,6 +105,14 @@ function calcEstado({ plan, vivo, nIncidencias, operativo }) {
  * de las 05:00 y se le imputaban al turno de día.
  */
 const UMBRAL_SALIDA_MIN = Number(process.env.CONTROL_UMBRAL_SALIDA_MIN || 0);
+
+// La jornada que se espera de cada uno. Es el mismo 8 que usan la bitácora y la
+// J sugerida; se puede mover sin tocar código.
+const JORNADA_H = Number(process.env.CONTROL_JORNADA_H || 8);
+// Rechazar viajes: a partir de aquí el aviso se pone rojo. Rechazar alguno es
+// normal (va lejos, va a comer); rechazarlo casi todo es no estar trabajando.
+const RECHAZOS_ROJO = Number(process.env.CONTROL_RECHAZOS_ROJO || 15);
+const TASA_ROJA = Number(process.env.CONTROL_TASA_ACEPTACION_ROJA || 50);
 function salidaDe(a, vent) {
   if (!vent || !vent.empezada) return 'pendiente';
   if (!a) return 'no_salio';
@@ -311,6 +319,70 @@ async function enDirecto({ dia } = {}) {
     return null;
   }
 
+  /**
+   * ¿VA A TERMINAR SU JORNADA? La cuenta que decide si hay que llamar AHORA y no
+   * mañana: lo que lleva hecho más lo que le queda de turno. Si eso no llega a
+   * las 8 h, ya no llega — siga conectado o no—, y es el momento de preguntar
+   * qué ha pasado: si estuvo dos horas en el taller, eso se justifica con una J
+   * y la culpa es nuestra, no suya.
+   */
+  function proyectar(act, vent) {
+    if (!vent || !vent.empezada) return null;
+    const hechas = Math.round(((act && act.minutos) || 0) / 6) / 10;
+    const finVentana = vent.finPlan ? new Date(vent.finPlan).getTime() : null;
+    const restantes = finVentana
+      ? Math.max(0, Math.round(((finVentana - Date.now()) / 3600000) * 10) / 10)
+      : 0;
+    const maximo = Math.round((hechas + restantes) * 10) / 10;
+    const faltan = Math.round(Math.max(0, JORNADA_H - maximo) * 10) / 10;
+    return {
+      hechas, restantes, maximo, objetivo: JORNADA_H,
+      alcanza: maximo >= JORNADA_H,
+      faltan,
+      // El turno ya cerró: no es una previsión, es lo que pasó.
+      cerrado: restantes <= 0,
+    };
+  }
+
+  /**
+   * LOS AVISOS DE UNA PERSONA. Sustituyen a las alertas de Flota Viva, que se
+   * apagan: aquellas eran del COCHE (se desconectó la baliza, rueda en descanso)
+   * y estas son de la PERSONA y de su jornada, que es lo que se llama por
+   * teléfono. Cada uno trae ya su texto y su tono: la pantalla solo pinta.
+   */
+  function avisosDe({ proy, rech, salida }) {
+    const out = [];
+    if (proy && !proy.alcanza && salida !== 'pendiente') {
+      const faltan = String(proy.faltan).replace('.', ',');
+      if (proy.cerrado) {
+        out.push({ codigo: 'no_llego', tono: 'error', etq: 'No llegó · faltan ' + faltan + ' h',
+          detalle: 'Terminó su turno con ' + String(proy.hechas).replace('.', ',') + ' h de las ' + proy.objetivo + '.' });
+      } else if (salida === 'no_salio') {
+        out.push({ codigo: 'no_llegara', tono: 'error', etq: 'No llegará · faltan ' + faltan + ' h',
+          detalle: 'Aunque saliera ahora mismo solo le da tiempo a ' + String(proy.maximo).replace('.', ',') + ' h. Llámalo.' });
+      } else if (salida === 'conectado' || salida === 'descanso') {
+        out.push({ codigo: 'no_llegara', tono: 'error', etq: 'No terminará la jornada',
+          detalle: 'Lleva ' + String(proy.hechas).replace('.', ',') + ' h y le quedan ' + String(proy.restantes).replace('.', ',') +
+            ': aunque siga hasta el final se queda en ' + String(proy.maximo).replace('.', ',') + ' h. Llámalo y averigua qué pasó.' });
+      } else {
+        // Se desconectó antes de tiempo: es el caso que más se escapa.
+        out.push({ codigo: 'se_fue_pronto', tono: 'error', etq: 'Se fue con ' + String(proy.hechas).replace('.', ',') + ' h',
+          detalle: 'Le quedaban ' + String(proy.restantes).replace('.', ',') + ' h de turno y ya no está conectado. Llámalo.' });
+      }
+    }
+    if (rech && rech.total > 0) {
+      const malo = rech.total >= RECHAZOS_ROJO || (rech.tasa != null && rech.tasa < TASA_ROJA);
+      out.push({
+        codigo: 'rechazos', tono: malo ? 'error' : 'aviso',
+        etq: rech.total + ' rechazos',
+        detalle: rech.rechazados + ' rechazados · ' + rech.sinResponder + ' sin responder' +
+          (rech.cancelados ? ' · ' + rech.cancelados + ' cancelados tras aceptar' : '') +
+          ' · aceptó ' + rech.aceptados + (rech.tasa != null ? ' (' + rech.tasa + '% de aceptación)' : ''),
+      });
+    }
+    return out;
+  }
+
   /** La actividad, con los nombres que espera la pantalla. */
   function paraPintar(a) {
     if (!a) return null;
@@ -359,6 +431,12 @@ async function enDirecto({ dia } = {}) {
   // El promedio de horas del mes y su letra, para que quien llama sepa a quién
   // tiene al otro lado. Sale del mismo sitio que en el planificador.
   const rend = await require('../repo/rendimiento').leer().catch(() => new Map());
+  // Los viajes que ha tirado cada cuenta de BOLT en esta jornada. Va con red:
+  // si bolt_order no responde, el cockpit se ve igual sin esa columna.
+  const rechazos = await require('../repo/rechazos').porConductor(hoy).catch(e => {
+    console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
+  });
+  const fundirRechazos = require('../repo/rechazos').fundir;
 
   // El porqué de cada uno: su situación en la plataforma (o que no está en ella).
   const gentePorId = new Map((((tab && tab.conductores) || [])).map(c => [Number(c.id), c]));
@@ -390,6 +468,8 @@ async function enDirecto({ dia } = {}) {
       // Sus avisos: los provocó él, aunque no esté en el plan. Antes se contaban
       // en la cabecera y no se podían ver en ninguna pestaña.
       incidencias: porIncCond.get(a.uuid) || [],
+      rechazos: rechazos.get(a.uuid) || null,
+      avisos: avisosDe({ proy: null, rech: rechazos.get(a.uuid) || null, salida: 'salio' }),
     }))
     .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
 
@@ -495,23 +575,30 @@ async function enDirecto({ dia } = {}) {
       // más los del coche que tenía asignado que no tienen dueño (nadie conectado
       // en ese momento): esos no hay a quién dárselos y se quedan a la vista.
       // …de CUALQUIERA de sus cuentas de BOLT.
+      const cuentas = [...new Set([f.uuid, ...(f.uuids || [])].filter(Boolean))];
       const suyos = [];
-      new Set([f.uuid, ...(f.uuids || [])].filter(Boolean)).forEach(u =>
+      cuentas.forEach(u =>
         (porIncCond.get(u) || []).forEach(i => { if (!suyos.some(x => x.id === i.id)) suyos.push(i); }));
       const huerfanos = f.incidencias.filter(i => !i.conductorUuid);
       const mios = suyos.concat(huerfanos.filter(h => !suyos.some(x => x.id === h.id)));
       // Un coche distinto al planificado no es un error, pero tráfico quiere verlo.
       const vivas = (f.actividad && f.actividad.matriculas) || [];
       const cocheCambiado = vivas.length > 0 && !vivas.some(m => f.matriculas.includes(m));
+      const proy = proyectar(f.actividad, vent);
+      const rech = fundirRechazos(cuentas.map(u => rechazos.get(u)));
+      const salida = salidaDe(f.actividad, vent);
       return {
         clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid, telefono: f.telefono || '',
         rendimiento: rend.get(Number(f.conductorId)) || null,
+        proyeccion: proy,
+        rechazos: rech.ofertas ? rech : null,
+        avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, salida }),
         turno: f.turno,
         rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
         matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',
         cuadrante: [...f.cuadrantes][0] || '', cuadrantes: [...f.cuadrantes],
         actividad: paraPintar(f.actividad),
-        salida: salidaDe(f.actividad, vent),
+        salida,
         incidencias: mios,
         avisosDelCoche: f.incidencias.length,
         cocheCambiado,

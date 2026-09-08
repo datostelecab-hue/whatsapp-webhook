@@ -356,7 +356,28 @@ async function conectadoEnFranja(franja, diaOperativo) {
  * el parte del cierre necesita saber que ocurrieron, y si alguien ya llamó, esa
  * justificación tiene que sobrevivir.
  */
+// ── LAS ALERTAS DE FLOTA VIVA ESTÁN APAGADAS (08/09/2026) ───────────────────
+// Se retiran a favor de las de Control · En directo. El motivo: estas eran del
+// COCHE y por FRANJA (la baliza se cayó, el coche rueda en descanso, el coche no
+// apareció), y lo que Tráfico llama es a una PERSONA por su JORNADA: "lleva 3 h
+// y le faltan 5 para las 17:00, no va a terminar". Ese aviso vive ahora en la
+// carta de cada conductor, junto al teléfono para llamarle y la J para
+// justificarle, que es donde se puede hacer algo con él.
+//
+// El módulo NO se borra: el histórico de incidencias y los partes siguen ahí
+// para consultarlos, y `revisar()` cierra lo que quedara abierto. Para volver a
+// encenderlas basta con FV_ALERTAS=1.
+const ALERTAS_ACTIVAS = process.env.FV_ALERTAS === '1';
+
 async function revisar() {
+  if (!ALERTAS_ACTIVAS) {
+    // Se cierra lo que quedara vivo (una sola vez: después ya no hay nada) y se
+    // sale. Cerrar no es darlas por buenas: quedan como estaban en el parte.
+    const r = await db.consulta(
+      'UPDATE fv_incidencia SET resuelta_at = now() WHERE resuelta_at IS NULL RETURNING id');
+    if (r.rowCount) console.log(`🔕 [FLOTA VIVA] Alertas apagadas: cerradas ${r.rowCount} que quedaban abiertas`);
+    return { apagadas: true, cerradas: r.rowCount, abiertas: 0, nuevas: 0 };
+  }
   const lista = await franjas();
   const ahora = franjaDe(lista, new Date());
 
@@ -516,6 +537,7 @@ async function revisar() {
 }
 
 module.exports = {
+  ALERTAS_ACTIVAS,
   franjas, franjaDe, cruzaMedianoche, dentroDeFranja, localDe, vispera, abrir, resolver, habituales, cerrarFranjasPasadas,
   yaTrabajaronHoy, conectadoEnFranja, tomarCorte, estadoDeFranja, revisar,
   MAX_DESCANSO_MIN, MAX_KM_DESCANSO, GRACIA_MIN, DIAS_HABITO, VECES_HABITO, JORNADA_MIN, RELEVO_MIN,

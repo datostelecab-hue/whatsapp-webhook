@@ -30,7 +30,7 @@
   <!-- LO PRIMERO QUE SE VE. Tráfico abre esta pantalla para saber a quién llama, así
        que el número de los que faltan va grande y de rojo, y se puede pinchar para
        quedarse solo con ellos. Lo demás es contexto. -->
-  <div id="d-resumen" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3"></div>
+  <div id="d-resumen" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 mb-3"></div>
 
   <div class="mb-3 flex flex-wrap items-center gap-2">
     <i class="fa-solid fa-filter text-telecab-muted text-xs"></i>
@@ -79,7 +79,7 @@
       4.5rem                 /* horas efectivas */
       5rem                   /* km de trabajo */
       5rem                   /* km fuera */
-      4.75rem                /* avisos */
+      minmax(7rem, 9rem)     /* avisos: chips con texto, no un número */
       1.5rem;                /* el desplegable */
     align-items: center;
     column-gap: 0.75rem;
@@ -88,6 +88,22 @@
   .dcab-grid > span:first-child { padding: 0; }
   /* La barra de color ocupa el alto entero de la fila, no solo el del texto. */
   .dfila .dbarra { align-self: stretch; border-radius: 0 2px 2px 0; }
+
+  /* UNA ALERTA SIN ATENDER LATE. No es decoración: es lo que hace que no se
+     quede ahí media hora porque "ya la había visto". Deja de latir en cuanto se
+     apunta la llamada o se justifica, y entonces se queda en rojo quieto. */
+  @keyframes dlatido {
+    0%, 100% { background-color: rgb(239 68 68 / .07); }
+    50%      { background-color: rgb(239 68 68 / .20); }
+  }
+  .dfila.dalerta { animation: dlatido 1.8s ease-in-out infinite; box-shadow: inset 3px 0 0 0 rgb(239 68 68); }
+  .dfila.dalerta-ok { background-color: rgb(239 68 68 / .05); box-shadow: inset 3px 0 0 0 rgb(239 68 68 / .45); }
+  .dlate { animation: dlatido 1.8s ease-in-out infinite; }
+  /* A quien le moleste el movimiento (o lo tenga desactivado en su sistema) se
+     le deja el rojo fijo: la información es el color, no el parpadeo. */
+  @media (prefers-reduced-motion: reduce) {
+    .dfila.dalerta, .dlate { animation: none; background-color: rgb(239 68 68 / .16); }
+  }
 
   /* En pantallas estrechas se apilan las tres cosas que de verdad importan y el
      resto se esconde: llamar por teléfono desde el móvil sigue funcionando. */
@@ -241,6 +257,51 @@
       h + ' h·' + esc(r.letra) + '</span>';
   }
 
+  // LOS AVISOS DE LA COLUMNA. Los arma el servidor (directo.js avisosDe) y aquí
+  // solo se pintan: cada uno con su tono y su explicación al pasar el ratón.
+  // Sustituyen a las alertas de Flota Viva, que eran del COCHE; estas son de la
+  // PERSONA y de su jornada, que es lo que se llama por teléfono.
+  const AV_TONO = { error: 'bg-red-500/15 text-red-500', aviso: 'bg-amber-500/15 text-amber-500' };
+
+  // UNA ALERTA SIN ATENDER PALPITA HASTA QUE ALGUIEN LA TOCA. La carta se queda
+  // en rojo y latiendo mientras esa persona tenga un problema en su jornada y
+  // nadie haya hecho nada: en cuanto se apunta la llamada ("no va a salir") o se
+  // justifican las horas, deja de latir y se queda en rojo tranquilo. Así el
+  // controlador ve de un vistazo lo que le falta por atender, y una alerta no se
+  // queda ahí tres horas porque ya la había visto.
+  const alertaDe = f => (f.avisos || []).filter(a => a.tono === 'error');
+  const atendida = f => {
+    if (!f.conductorId) return false;
+    const k = String(f.conductorId);
+    return !!((DATOS.llamadas || {})[k] || (DATOS.justificados || {})[k]);
+  };
+  // 0 = sin alerta · 1 = alerta atendida (rojo quieto) · 2 = sin atender (late).
+  function nivelAlerta(f) {
+    if (!alertaDe(f).length) return 0;
+    return atendida(f) ? 1 : 2;
+  }
+  function avisosHTML(f) {
+    const av = f.avisos || [];
+    const nInc = (f.incidencias || []).length;
+    if (!av.length && !nInc) return '<span class="text-telecab-border text-xs">—</span>';
+    const chips = av.map(a =>
+      '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] ' +
+      (AV_TONO[a.tono] || AV_TONO.aviso) + '" title="' + esc(a.detalle || '') + '">' + esc(a.etq) + '</span>');
+    // Ya se llamó o ya se justificó: la alerta sigue ahí, pero atendida.
+    if (av.some(a => a.tono === 'error') && atendida(f)) {
+      const ll = (DATOS.llamadas || {})[String(f.conductorId)];
+      const j = (DATOS.justificados || {})[String(f.conductorId)];
+      chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-emerald-500/15 text-emerald-500" ' +
+        'title="' + esc(j ? ('Justificado por ' + (j.quien || 'alguien') + (j.obs ? ': ' + j.obs : ''))
+                          : ('Llamado ' + (ll ? hora(ll.ultima.at) + (ll.ultima.resultado ? ' · ' + ll.ultima.resultado : '') : ''))) +
+        '"><i class="fa-solid fa-check"></i> ' + (j ? 'J' : 'llamado') + '</span>');
+    }
+    // Las incidencias abiertas del coche siguen saliendo mientras queden vivas.
+    if (nInc) chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] ' +
+      AV_TONO.error + '" title="Avisos del coche">' + nInc + '</span>');
+    return '<span class="flex flex-wrap justify-end gap-1">' + chips.join('') + '</span>';
+  }
+
   function filaConductor(f) {
     const a = f.actividad || {};
     const nInc = (f.incidencias || []).length;
@@ -250,7 +311,9 @@
     const vivas = (a.matriculas || []);
     const plan = (f.matriculas || []).join(', ');
     const mat = vivas.join(', ') || plan || '—';
-    return '<div class="dfila border-b border-telecab-border/70 ' + e.fila +
+    const nivel = nivelAlerta(f);
+    return '<div class="dfila border-b border-telecab-border/70 ' +
+        (nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : e.fila) +
         '" data-mat="' + esc(f.clave) + '" data-cid="' + esc(f.conductorId || '') + '">' +
       '<div class="dcab dcab-grid py-2.5 cursor-pointer select-none hover:bg-telecab-dark/40">' +
         '<span class="dbarra ' + e.barra + '"></span>' +
@@ -292,8 +355,7 @@
         '<span class="dopc text-right text-xs tabular-nums" ' +
           'title="Km rodados FUERA de BOLT (en descanso o desconectado). No cuentan como trabajo.">' +
           cifra(a.kmFuera, ' km', 'text-amber-500') + '</span>' +
-        '<span class="text-right">' +
-          (nInc ? chip(String(nInc), 'error') : '<span class="text-telecab-border text-xs">—</span>') + '</span>' +
+        '<span class="text-right">' + avisosHTML(f) + '</span>' +
         '<span class="text-right"><i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform"></i></span>' +
       '</div>' +
       detalleConductor(f) +
@@ -351,6 +413,26 @@
             tarjetaTurnos('no_salio', 'Sin salir · a llamar', 'text-red-500',
               'cursor-pointer transition ' + (soloNoSalieron ? 'ring-2 ring-red-500/60' : 'hover:border-red-500/50')),
           ];
+    // Y, aparte, los que NO van a llegar a su jornada: da igual en qué grupo
+    // estén, es la lista de llamadas del turno.
+    const noLlega = t => (p[t] || []).filter(f => nivelAlerta(f) === 2).length;
+    const nlDia = noLlega('dia'), nlNoche = noLlega('noche'), nlTodo = noLlega('todoturno');
+    const total = ['dia', 'noche', 'todoturno'].reduce((s, t) => s + (p[t] || []).filter(f => alertaDe(f).length).length, 0);
+    if (turnoActivo !== 'nn' && !sinDato && total > 0) {
+      const sinAtender = nlDia + nlNoche + nlTodo;
+      cajas.push('<div class="rounded-xl border border-red-500/40 bg-red-500/[0.06] px-3 py-2' +
+          (sinAtender ? ' dlate' : '') + '">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none text-red-500">' + sinAtender + '</div>' +
+          '<div class="text-[11px] text-telecab-muted">Alertas sin atender' +
+            (total > sinAtender ? ' <span class="text-telecab-muted/70">· ' + (total - sinAtender) + ' ya vistas</span>' : '') + '</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Turno de día"><i class="fa-solid fa-sun text-telecab-gold/70"></i> ' + nlDia + '</span>' +
+          '<span title="Turno de noche"><i class="fa-solid fa-moon text-sky-400/70"></i> ' + nlNoche + '</span>' +
+          (nlTodo ? '<span title="TodoTurno"><i class="fa-solid fa-clock-rotate-left"></i> ' + nlTodo + '</span>' : '') +
+        '</div></div>');
+    }
     $('#d-resumen').innerHTML = cajas.join('');
     $('#d-cabecera').classList.toggle('hidden', !arr.length);
 
@@ -392,12 +474,32 @@
   }
 
   function detalleConductor(f) {
+    // Lo de la JORNADA primero (no llega a las horas, está rechazando viajes):
+    // es lo que se le pregunta por teléfono. Debajo, lo del coche.
+    const jor = (f.avisos || []).length
+      ? '<div class="space-y-1.5 mb-3">' + f.avisos.map(a =>
+          '<div class="rounded-lg border p-2 ' + (a.tono === 'error' ? 'border-red-500/40 bg-red-500/[0.06]' : 'border-amber-500/40 bg-amber-500/[0.06]') + '">' +
+            '<div class="text-sm font-medium ' + (a.tono === 'error' ? 'text-red-500' : 'text-amber-500') + '">' + esc(a.etq) + '</div>' +
+            (a.detalle ? '<div class="text-xs text-telecab-muted mt-0.5">' + esc(a.detalle) + '</div>' : '') +
+          '</div>').join('') + '</div>'
+      : '';
+    // Y lo que se puede hacer con ello: llamar y dejar traza, o justificar las
+    // horas que faltan si el motivo es nuestro (dos horas de taller, p. ej.).
+    const acciones = f.conductorId
+      ? '<div class="flex flex-wrap items-center gap-2 mb-3">' +
+          '<button data-tellog="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-solid fa-phone-flip mr-1"></i> He llamado</button>' +
+          '<button data-justdir="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-sky-500 hover:text-sky-500">' +
+            '<i class="fa-solid fa-file-circle-check mr-1"></i> Justificar horas</button>' +
+        '</div>'
+      : '';
     const inc = (f.incidencias || []).length
       ? '<div class="space-y-2">' + f.incidencias.map(incidenciaHTML).join('') + '</div>'
-      : '<p class="text-sm text-telecab-muted">Sin avisos abiertos.</p>';
+      : '<p class="text-sm text-telecab-muted">Sin avisos del coche.</p>';
     return '<div class="ddet hidden px-4 pb-3">' +
       '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
-        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos</div>' + inc + '</div>' +
+        jor + acciones +
+        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos del coche</div>' + inc + '</div>' +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos · últimas 24 h · ' +
           esc(f.conductor) + '</div><div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
       '</div></div>';
@@ -429,10 +531,7 @@
         cifra(horas(s.minutos), ' h', 'text-telecab-text font-medium') + '</span>' +
       '<span class="dopc text-right text-xs tabular-nums" title="Km en BOLT">' + cifra(s.enBolt, ' km', 'text-emerald-500') + '</span>' +
       '<span class="dopc text-right text-xs tabular-nums" title="Km desconectado">' + cifra(s.desconectado, ' km', 'text-amber-500') + '</span>' +
-      '<span class="text-right">' + ((s.incidencias || []).length
-        ? '<span title="' + esc(s.incidencias.map(i => i.etiqueta + (i.detalle ? ': ' + i.detalle : '')).join(' · ')) + '">' +
-            chip(String(s.incidencias.length), 'error') + '</span>'
-        : '<span class="text-telecab-border text-xs">—</span>') + '</span>' +
+      '<span class="text-right">' + avisosHTML(s) + '</span>' +
       '<span></span>' +
       '</div>';
   }
