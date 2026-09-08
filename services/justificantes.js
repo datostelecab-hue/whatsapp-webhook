@@ -102,7 +102,28 @@ async function excelDia(reporte) {
   const filaCab = fila;
   fila = est.cabeceraTabla(ws, fila, CAB_REPORTE);
 
+  // El reporte va POR TURNO, con su título antes de cada bloque: es como lo lee
+  // Tráfico. Antes era una lista de 138 nombres mezclando día y noche.
+  const TIT_TURNO = { 'Día': '☀️  TURNO DE DÍA', 'Dia': '☀️  TURNO DE DÍA', 'Noche': '🌙  TURNO DE NOCHE',
+                      'TodoTurno': '🕓  TODOTURNO · doblan día y noche' };
+  let turnoActual = null;
   reporte.filas.forEach((f, i) => {
+    const t = (f.turno || '').trim();
+    if (t !== turnoActual) {
+      turnoActual = t;
+      const n = reporte.filas.filter(x => (x.turno || '').trim() === t).length;
+      const h = Math.round(reporte.filas.filter(x => (x.turno || '').trim() === t)
+        .reduce((s, x) => s + (x.horas || 0), 0) * 10) / 10;
+      ws.mergeCells(`A${fila}:${ULTIMA_REPORTE}${fila}`);
+      const c = ws.getCell(`A${fila}`);
+      c.value = `${TIT_TURNO[t] || '👤  SIN TURNO EN EL CUADRANTE'}   ·   ${n} conductor(es)   ·   ${String(h).replace('.', ',')} h`;
+      c.font = { size: 11, bold: true, color: { argb: est.TEXTO } };
+      c.fill = est.relleno(t === 'Noche' ? 'FFDCE7FA' : t === 'Día' || t === 'Dia' ? 'FFFDF0D2' : 'FFEFEFEF');
+      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      c.border = est.TODOS_BORDES;
+      ws.getRow(fila).height = 20;
+      fila++;
+    }
     const row = ws.getRow(fila);
     [f.nro, f.nombre, f.telefono, f.turno || '', f.horasTexto, f.observacion,
      f.matricula || '', f.kmBolt == null ? '' : f.kmBolt, f.kmDesc == null ? '' : f.kmDesc].forEach((v, ci) => {
@@ -137,6 +158,8 @@ async function excelDia(reporte) {
   // Las columnas se congelan bajo la cabecera para no perderlas al bajar por la lista.
   ws.views = [{ state: 'frozen', ySplit: filaCab }];
   ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: fila - 1, column: N_REPORTE } };
+  // Agrupado por turno: la columna Turno ya no aporta nada al ojo, pero se deja
+  // para poder filtrar y para quien exporte los datos.
 
   // ── Resumen del día ───────────────────────────────────────────────────────
   fila++;
@@ -153,6 +176,11 @@ async function excelDia(reporte) {
   if (r.fueraDelPlan) {
     fila = lineaResumen(ws, fila, 'Salieron FUERA del cuadrante  ·  sin estar planificados', r.fueraDelPlan);
     fila = lineaResumen(ws, fila, 'Horas que hicieron esos', r.horasFueraDelPlan, { horas: true, tenue: true });
+  }
+  // De los de arriba, los que SÍ tienen plaza y trabajaron su día de libranza.
+  if (r.enLibranza) {
+    fila = lineaResumen(ws, fila, 'De ellos, trabajaron EN SU LIBRANZA', r.enLibranza, { tenue: true });
+    fila = lineaResumen(ws, fila, 'Horas trabajadas en libranza', r.horasEnLibranza, { horas: true, tenue: true });
   }
   fila++;
   // Son las horas de la JORNADA ENTERA de la gente de cada turno, no las de la

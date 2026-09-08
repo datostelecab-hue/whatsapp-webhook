@@ -29,6 +29,9 @@
 //     hoyIdx, inicio, avisos: { sinFicha } }
 
 const db = require('../db');
+// El corte de la jornada operativa (05:00). Sale de rutas.TURNOS para que el día
+// que se mueva no se quede esta pantalla sola diciendo otra cosa.
+const HORA_JORNADA = require('../flotaViva/rutas').TURNOS.dia[0];
 
 // El origen de la rejilla: 1 jun 2026 (mes 0-based: 5 = junio). 365 días.
 const INICIO = { y: 2026, m: 5, d: 1 };
@@ -90,18 +93,28 @@ async function leerBitacora() {
         WHERE anulado_at IS NULL AND dia_operativo BETWEEN $1::date AND $2::date`,
       [INICIO_ISO, hoyIso]),
     // Horas EFECTIVAS del núcleo: viaje + espera (s.efectivo). El descanso no es
-    // trabajo. Se funden los solapes en JS. El día es el de la hora de inicio, Madrid.
+    // trabajo. Se funden los solapes en JS.
+    //
+    // EL DÍA ES LA JORNADA OPERATIVA (05:00 → 05:00), no el día natural. Antes se
+    // partía por la MEDIANOCHE y a un conductor de NOCHE su turno le caía en dos
+    // días: la noche del lunes salía como 7 h el lunes y 5 h el martes, y ningún
+    // día de la bitácora decía lo que había trabajado de verdad. Con la jornada,
+    // el turno entero cae en el día en que EMPEZÓ, que es lo que cuenta para el
+    // convenio, y cuadra con el Reporte de horas y con Visibilidad.
     db.consulta(
       `SELECT ce.conductor_id,
-              to_char((t.desde AT TIME ZONE 'Europe/Madrid')::date, 'YYYY-MM-DD') AS dia,
+              to_char(((t.desde AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date,
+                      'YYYY-MM-DD') AS dia,
               t.desde, COALESCE(t.hasta, now()) AS hasta
          FROM fv_tramo t
          JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.efectivo
          JOIN fv_conductor fc      ON fc.uuid = t.conductor_uuid
          JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = fc.uuid
-        WHERE t.desde >= $1::date AND t.desde < ($2::date + 1)
+        WHERE t.desde >= $1::date AND t.desde < ($2::date + 2)
+          AND ((t.desde AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date
+              BETWEEN $1::date AND $2::date
         ORDER BY ce.conductor_id, t.desde`,
-      [INICIO_ISO, hoyIso]),
+      [INICIO_ISO, hoyIso, String(HORA_JORNADA)]),
     // Libranza 'L': asignado a una plaza ese día pero NO lo cubre (su coche descansa,
     // o es CT y no le toca) — la MISMA regla del planificador, f_cobertura.
     db.consulta(

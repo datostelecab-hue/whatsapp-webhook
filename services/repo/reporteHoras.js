@@ -73,22 +73,35 @@ async function planDelDia(iso) {
         WHERE f.conductor_id IS NOT NULL
         GROUP BY f.conductor_id
      ),
+     -- SU PLAZA, cubra o no ese día. El turno de una persona lo dice la plaza que
+     -- ocupa (cat_slot.turno_id), no si ese día le tocaba trabajar: un fijo de
+     -- NOCHE sigue siendo de noche el día que libra. Antes el turno salía solo de
+     -- f_cobertura y al librante se le quedaba en blanco; el reporte caía entonces
+     -- en "deducirlo" por sus horas y a Daniel Arenas (fijo noche que libra L y M)
+     -- le ponía "Día".
      asignados AS (
-       SELECT DISTINCT a.conductor_id
+       SELECT a.conductor_id,
+              count(DISTINCT s.turno_id)                                   AS turnos_plaza,
+              min(s.turno_id)                                              AS turno_id,
+              string_agg(DISTINCT v.matricula, ', ' ORDER BY v.matricula)  AS matriculas
          FROM asignacion a
-         JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN plaza p    ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN cat_slot s ON s.slot = p.slot
+         JOIN vehiculo v ON v.id = p.vehiculo_id
         WHERE a.conductor_id IS NOT NULL
           AND a.desde <= $1::date AND (a.hasta IS NULL OR a.hasta >= $1::date)
+        GROUP BY a.conductor_id
      )
      SELECT a.conductor_id,
             (c.conductor_id IS NOT NULL) AS debia_salir,
-            -- Quien cubre día Y noche el mismo día está doblando: TodoTurno, no
-            -- "Día" (min(turno_id) se quedaba con el primero).
-            CASE WHEN c.turnos > 1 THEN 'TodoTurno' ELSE t.etiqueta END AS turno,
-            c.matriculas AS matriculas_plan
+            -- Quien cubre (o tiene plaza en) día Y noche está doblando: TodoTurno.
+            CASE WHEN COALESCE(c.turnos, a.turnos_plaza) > 1 THEN 'TodoTurno'
+                 ELSE COALESCE(tc.etiqueta, ta.etiqueta) END AS turno,
+            COALESCE(c.matriculas, a.matriculas) AS matriculas_plan
        FROM asignados a
        LEFT JOIN cubre c ON c.conductor_id = a.conductor_id
-       LEFT JOIN turno t ON t.id = c.turno_id`, [iso]);
+       LEFT JOIN turno tc ON tc.id = c.turno_id
+       LEFT JOIN turno ta ON ta.id = a.turno_id`, [iso]);
   const m = new Map();
   r.rows.forEach(x => m.set(Number(x.conductor_id), {
     debiaSalir: !!x.debia_salir,
@@ -188,9 +201,8 @@ async function reporteDia(key) {
       conductorId: cid || null,
       nombre: (p && p.nombre) || a.nombre || `#${String(a.uuid).slice(0, 8)}`,
       telefono: (p && p.telefono) || a.telefono || '',
-      // El turno del cuadrante manda. Al que trabajó sin estar planificado se
-      // le pone el turno donde cayeron sus horas: decir "(sin turno)" de quien
-      // hizo la noche entera no ayuda a nadie.
+      // EL TURNO DE SU PLAZA MANDA, libre o no. Solo se deduce por las horas
+      // (día vs noche) cuando la persona no tiene plaza: ahí no hay nada mejor.
       turno: (pl && pl.turno) || turnoDeHecho([a.uuid]),
       uuids: [a.uuid],
       horas,
@@ -198,6 +210,10 @@ async function reporteDia(key) {
       debiaSalir: !!(pl && pl.debiaSalir),
       // NN = trabajó sin que el cuadrante lo esperase. Es el que hay que mirar.
       esNN: !pl || !pl.debiaSalir,
+      // Trabajó EN SU LIBRANZA: tiene plaza, pero ese día su coche descansaba o
+      // no le tocaba. No es lo mismo que "no está en el cuadrante", y para el
+      // convenio es justo lo que hay que ver.
+      enLibranza: !!(pl && pl.libra),
       sinFicha: !cid,
       matricula: (a.matriculas && a.matriculas.length) ? a.matriculas.join(', ') : null,
       kmBolt: a.km, kmDesc: a.kmFuera,
@@ -250,14 +266,23 @@ async function reporteDia(key) {
   const bruto = [...filasPorId.values(), ...sueltos]
     .filter(f => f.horas > 0 || f.debiaSalir || f.just);
 
-  // No justificados primero (mayor→menor); justificados al final.
+  // ORGANIZADO POR TURNO. Tráfico lee el reporte por turnos, no en una lista
+  // de 138 nombres mezclados: primero el bloque de DÍA, luego el de NOCHE, luego
+  // TodoTurno y, al final, quien no tiene turno. Dentro de cada bloque, los no
+  // justificados de más a menos horas y los justificados al final.
+  const ORDEN_TURNO = { 'Día': 0, 'Dia': 0, 'Noche': 1, 'TodoTurno': 2 };
+  const pesoTurno = f => ORDEN_TURNO[(f.turno || '').trim()] ?? 3;
   const cmp = (a, b) => (b.horas ?? -1) - (a.horas ?? -1) || a.nombre.localeCompare(b.nombre, 'es');
-  const orden = bruto.filter(f => !f.just).sort(cmp).concat(bruto.filter(f => f.just).sort(cmp));
+  const orden = bruto.slice().sort((a, b) =>
+    pesoTurno(a) - pesoTurno(b) ||
+    Number(!!a.just) - Number(!!b.just) ||
+    cmp(a, b));
 
   const filas = orden.map((f, i) => {
     const comun = {
       nro: i + 1, nombre: f.nombre, telefono: f.telefono, turno: f.turno, horas: f.horas,
       libra: f.libra, debiaSalir: f.debiaSalir, esNN: f.esNN, sinFicha: f.sinFicha,
+      enLibranza: f.enLibranza,
       matricula: f.matricula, kmBolt: f.kmBolt, kmDesc: f.kmDesc, revisar: f.revisar,
     };
     if (f.just) {
@@ -272,7 +297,8 @@ async function reporteDia(key) {
     // El aviso va con la observación automática: el que salió sin estar en el
     // cuadrante es justo el que hay que mirar, y antes no se distinguía.
     const nota = f.sinFicha ? 'Solo en BOLT · sin ficha'
-      : f.esNN && f.horas > 0 ? 'Fuera del cuadrante'
+      : (f.enLibranza && f.horas > 0) ? 'Trabajó en su libranza'
+      : (f.esNN && f.horas > 0) ? 'Fuera del cuadrante'
       : '';
     return {
       ...comun,
@@ -314,6 +340,9 @@ function resumirFilas(filas) {
     // Los que salieron sin estar en el cuadrante: el número que antes no existía.
     fueraDelPlan: filas.filter(f => f.esNN && hizo(f)).length,
     horasFueraDelPlan: r1(filas.filter(f => f.esNN && hizo(f)).reduce((s, f) => s + (f.horas ?? 0), 0)),
+    // De esos, los que SÍ tienen plaza y trabajaron el día que libraban.
+    enLibranza: filas.filter(f => f.enLibranza && hizo(f)).length,
+    horasEnLibranza: r1(filas.filter(f => f.enLibranza && hizo(f)).reduce((s, f) => s + (f.horas ?? 0), 0)),
     horasDia: porTurno['Día'] || 0,
     horasNoche: porTurno['Noche'] || 0,
     horasTodoTurno: porTurno['TodoTurno'] || 0,

@@ -214,12 +214,16 @@ async function resumen() {
   // Antes de las 05:00 la jornada que acaba de cerrarse es la de ANTEAYER.
   const ayerJornada = horaMadrid() < H0 ? diaISOhace(2) : ayer;
   const t = ventanaTurnos();
+  // TODO va por JORNADA OPERATIVA (05→05). El día natural partía por la medianoche
+  // el turno de noche —7 h a un día y 5 h al siguiente— y ningún día decía lo que
+  // trabajó de verdad la flota. Con la jornada, día + noche embaldosan el día sin
+  // hueco ni solape y cuadra con el Reporte de horas y con la Bitácora.
   const [mes, dia, ayerDia, ayerJor, semana, turnoDia, turnoNoche, cuentaDia, cuentaNoche, config] = await Promise.all([
-    slice(primeroMes, 0, dm, 0),           // todo el mes, días naturales (los futuros no suman)
-    slice(hoy, 0, 1, 0),                   // HOY, día natural 00:00 → 24:00 (parcial)
-    slice(ayer, 0, 1, 0),                  // AYER, día natural completo
-    slice(ayerJornada, H0, 1, H0),         // AYER, jornada 05:00 → 05:00 (= turno día + turno noche)
-    slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
+    slice(primeroMes, H0, dm, H0),         // el mes, por jornadas (las futuras no suman)
+    slice(hoy, H0, 1, H0),                 // HOY, jornada 05:00 → 05:00 (parcial)
+    slice(ayerJornada, H0, 1, H0),         // AYER, la última jornada cerrada
+    slice(ayerJornada, H0, 1, H0),         // (la tarjeta "jornada completa", el mismo dato)
+    slice(lunes, H0, 7, H0),               // lunes → lunes, por jornadas (parcial)
     slice(...t.dia.v),                     // turno DÍA (05→17)
     slice(...t.noche.v),                   // turno NOCHE (17→05, cruza medianoche)
     // Cada persona en UN solo turno: el de la jornada a la que pertenece cada
@@ -230,7 +234,8 @@ async function resumen() {
   ]);
   return {
     hoyISO: hoy,
-    // POR DÍA (día natural 00:00→24:00)
+    // POR JORNADA OPERATIVA (05:00 → 05:00): un turno de noche entero cuenta en
+    // el día en que empezó, no partido por la medianoche.
     mes: { ...mes, etq: 'Este mes' },
     dia: { ...dia, etq: 'Hoy' },
     ayer: { ...ayerDia, etq: 'Ayer' },
@@ -271,7 +276,8 @@ async function ultimosDias(n = 15) {
       sinFoto: !f,
     });
   }
-  const h = await horasVentana(hoy, 0, 1, 0);
+  // Hoy en vivo, por jornada operativa: la misma ventana que las fotos.
+  const h = await horasVentana(hoy, require('./flotaViva/rutas').TURNOS.dia[0], 1, require('./flotaViva/rutas').TURNOS.dia[0]);
   dias.push({
     dia: hoy, esHoy: true,
     total: r1((h.viajeSeg + h.esperaSeg) / 3600), waiting: r1(h.esperaSeg / 3600),
@@ -313,7 +319,8 @@ async function serieMes(anio, mes) {
   }
   // Hoy SIEMPRE en vivo por encima de su foto, para que el acumulado esté fresco.
   if (esMesActual) {
-    const h = await horasVentana(hoy, 0, 1, 0);
+    const H0 = require('./flotaViva/rutas').TURNOS.dia[0];
+    const h = await horasVentana(hoy, H0, 1, H0);
     fotos.set(Dh, { viajeSeg: h.viajeSeg, esperaSeg: h.esperaSeg });
   }
 
@@ -387,11 +394,14 @@ async function leerFotosMes(anio, mes) {
 }
 
 // ── Foto diaria: la escribe el cron (y el backfill) ──────────────────────────
-// Calcula el día NATURAL (00:00→24:00) de flota y lo guarda. El pasado queda fijo;
-// hoy/ayer se reescriben en cada pasada.
+// Calcula la JORNADA OPERATIVA (05:00→05:00) de flota y la guarda. El pasado queda
+// fijo; hoy/ayer se reescriben en cada pasada. (Era el día natural, que partía las
+// noches por la medianoche: el gráfico de capacidad repartía mal a los de noche.
+// Al cambiar la ventana hay que REHACER las fotos ya escritas: backfillMes.)
 async function capturarDia(diaIso) {
   if (!db.HAY_BD) return;
-  const h = await horasVentana(diaIso, 0, 1, 0);
+  const H0 = require('./flotaViva/rutas').TURNOS.dia[0];
+  const h = await horasVentana(diaIso, H0, 1, H0);
   await db.consulta(
     `INSERT INTO visibilidad_dia (dia, viaje_seg, espera_seg, descanso_seg, conductores, capturado_at)
      VALUES ($1::date, $2, $3, $4, $5, now())
