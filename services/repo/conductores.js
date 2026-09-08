@@ -409,7 +409,9 @@ async function catalogos() {
   const [situaciones, turnos, centros] = await Promise.all([
     // `es_fin_contrato` marca la que NO es una situación: 'Baja en la empresa' se
     // sigue eligiendo igual, pero no se guarda como estado — da de baja.
-    db.consulta(`SELECT codigo, etiqueta, es_ausencia, es_fin_contrato
+    // `fin_previsible` viaja también: es lo que dice si la pantalla tiene que
+    // exigir la fecha de vuelta (vacaciones y permiso sí, baja médica no).
+    db.consulta(`SELECT codigo, etiqueta, es_ausencia, es_fin_contrato, fin_previsible
                    FROM cat_estado_conductor ORDER BY orden, etiqueta`),
     db.consulta(`SELECT id, codigo, etiqueta FROM turno WHERE activo ORDER BY id`),
     db.consulta(`SELECT codigo, nombre FROM cat_centro_trabajo WHERE activo ORDER BY nombre`),
@@ -627,12 +629,30 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
   // por cosas distintas.
   if (cat.es_fin_contrato) return darDeBaja(id, { fecha: desde, motivo }, { usuarioId });
 
+  // LA FECHA DE VUELTA ES OBLIGATORIA en lo que tiene vuelta (vacaciones,
+  // permiso). Sin ella la ausencia no termina NUNCA: se guardaba `hasta` en NULL
+  // y todas las pantallas —cobertura, planificador, bitácora— leen eso como "está
+  // fuera indefinidamente". Pasó de verdad: unas vacaciones del 13/09 sin cerrar
+  // dejaron a esa persona de vacaciones hasta fin de año.
+  //
+  // En una baja médica sigue SIN pedirse: ahí la fecha la pone el alta médica y
+  // no nosotros, y ponerle una inventada sería peor.
+  const previsto = cat.fin_previsible ? (hastaPrevisto || null) : null;
+  if (cat.fin_previsible && !previsto) {
+    throw new Error(`Hace falta la fecha de vuelta: unas ${cat.etiqueta.toLowerCase()} sin fecha de fin no terminan nunca ` +
+      'y esa persona desaparece del cuadrante indefinidamente.');
+  }
+  if (previsto && desde && previsto < desde) {
+    throw new Error('La vuelta no puede ser anterior al día en que empieza la ausencia');
+  }
+
   return db.transaccion(async cli => {
-    // Una vuelta con fecha prevista solo tiene sentido si esa situación la
-    // admite: en una baja médica la fecha la pone el alta, no nosotros.
-    const previsto = cat.fin_previsible ? (hastaPrevisto || null) : null;
+    // Y la ausencia nace CERRADA en esa fecha (`hasta`), no solo "prevista": así
+    // el día que toca vuelve al cuadrante sola, sin que nadie tenga que acordarse
+    // de cerrarla. Si no vuelve, se amplía; que es justo lo que se quiere mirar.
     return vig.reemplazar('situacion', id, {
-      estado, hasta_previsto: previsto, motivo: motivo || null, usuario_id: usuarioId || null,
+      estado, hasta: previsto, hasta_previsto: previsto,
+      motivo: motivo || null, usuario_id: usuarioId || null,
     }, { desde, cli });
   });
 }

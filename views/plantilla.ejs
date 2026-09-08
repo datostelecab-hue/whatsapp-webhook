@@ -117,11 +117,25 @@
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(new Date()),
         ayuda: 'Se cierra la situación anterior el día antes.' },
       { id: 'hastaPrevisto', etiqueta: 'Vuelta prevista', tipo: 'fecha',
-        ayuda: 'Solo cuenta en vacaciones o permisos. En una baja médica la fecha la pone el alta, no nosotros.' },
+        ayuda: 'OBLIGATORIA en vacaciones y permisos: sin ella la ausencia no termina nunca y la persona '
+             + 'desaparece del cuadrante. En una baja médica se deja vacía: la fecha la pone el alta.' },
       { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
     ], { nota: 'Una ausencia NO le quita su plaza: el coche sigue siendo suyo. '
          + '"Baja en la empresa" sí: esa cierra su contrato.' });
     if (!v) return;
+
+    // Se avisa AQUÍ y no después del viaje al servidor: el que la pone es quien
+    // sabe la fecha, y volver a abrir el formulario con todo escrito molesta.
+    const cat = (CAT.situaciones || []).find(x => x.codigo === v.estado);
+    if (cat && cat.fin_previsible && !v.hastaPrevisto) {
+      await Dialogo.aviso({
+        titulo: 'Falta la fecha de vuelta',
+        texto: `Unas ${cat.etiqueta.toLowerCase()} sin fecha de vuelta no terminan nunca: esa persona `
+             + 'desaparecería del cuadrante indefinidamente. Pon cuándo se le espera de vuelta.',
+        tono: 'aviso',
+      });
+      return accionSituacion(d);
+    }
 
     // "Baja en la empresa" está en esta lista porque es donde se busca, pero no
     // es una situación en la que se esté: es el final del contrato. Así que

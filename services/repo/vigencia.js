@@ -128,15 +128,22 @@ async function reemplazar(tipo, entidadId, datos, { desde, cerrarAnterior = true
     if (cerrarAnterior) {
       // Se cierra el día ANTERIOR al nuevo: los rangos son inclusivos y si no
       // se solaparían un día.
+      //
+      // SE RECORTA CUALQUIER VIGENCIA QUE SE SOLAPE, tenga fin o no. Antes solo
+      // se tocaban las abiertas (`hasta IS NULL`), y desde que una ausencia nace
+      // con su fecha de vuelta eso dejaba solapes: a quien vuelve antes de
+      // tiempo se le ponía "activo" y sus vacaciones seguían cubriendo esos
+      // días, así que la cobertura lo seguía dejando fuera del cuadrante.
       await c.query(
         `UPDATE ${d.tabla} SET ${d.hasta} = (COALESCE($2::date, CURRENT_DATE) - 1)
-          WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL AND ${d.desde} < COALESCE($2::date, CURRENT_DATE)`,
+          WHERE ${d.entidad} = $1 AND ${d.desde} < COALESCE($2::date, CURRENT_DATE)
+            AND (${d.hasta} IS NULL OR ${d.hasta} >= COALESCE($2::date, CURRENT_DATE))`,
         [entidadId, dia]);
       // Una vigencia que empezaba HOY y se sustituye hoy mismo no llega a
       // existir: se borra en vez de dejarla con `hasta` anterior a `desde`.
       await c.query(
         `DELETE FROM ${d.tabla}
-          WHERE ${d.entidad} = $1 AND ${d.hasta} IS NULL AND ${d.desde} >= COALESCE($2::date, CURRENT_DATE)`,
+          WHERE ${d.entidad} = $1 AND ${d.desde} >= COALESCE($2::date, CURRENT_DATE)`,
         [entidadId, dia]);
     }
     const campos = { [d.entidad]: entidadId, [d.desde]: dia, ...datos };
