@@ -616,6 +616,22 @@
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
     }
 
+    // AUSENTE Y OCUPANDO PLAZA: la casilla para poner a quien lo cubre. Va aquí,
+    // pegada al aviso de que está de vacaciones, porque es justo cuando se
+    // piensa en ello: el que ve el hueco es el que sabe a quién meter.
+    if (p.id && persona && persona.ausente) {
+      const b = document.createElement('button');
+      b.className = 'mt-1 w-full text-left px-2 py-1 rounded-lg border border-dashed '
+        + 'border-telecab-gold/50 bg-telecab-gold/5 text-[11px] font-semibold text-telecab-gold '
+        + 'hover:bg-telecab-gold/15 transition';
+      b.innerHTML = '<i class="fa-solid fa-user-plus"></i> Cubrir esta plaza';
+      b.title = persona.vuelveEl
+        ? `Poner a alguien mientras ${persona.nombre.split(' ')[0]} no está. La plaza vuelve a ser suya el ${isoAes(persona.vuelveEl)}.`
+        : `Poner a alguien mientras ${persona.nombre.split(' ')[0]} no está. Su ausencia no tiene fecha de vuelta.`;
+      b.addEventListener('click', e => { e.stopPropagation(); cubrirUI(coche, p, col, persona); });
+      wrap.appendChild(b);
+    }
+
     // En un fijo colocado, atajo a la libranza excepcional.
     if (esFijo && p.id) {
       const b = document.createElement('button');
@@ -731,6 +747,53 @@
       if (hasta) slot.hasta = hasta;
       await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [slot] }]);
     } catch (e) { alert(e.message); }
+  }
+
+  /**
+   * Cubrir a quien está ausente SIN quitarle la plaza.
+   *
+   * Lo que lo diferencia de colocar a alguien a secas: la plaza vuelve a ser del
+   * titular el día que regresa, sin que nadie tenga que acordarse dentro de tres
+   * semanas. Por defecto el reemplazo dura lo que dura su ausencia; las dos
+   * fechas se pueden tocar porque a veces el sustituto entra dos días después.
+   */
+  async function cubrirUI(coche, p, col, titular) {
+    if (!p.plazaId) { await Dialogo.aviso({ titulo: 'Recarga', texto: 'Esta plaza no existe todavía en la base. Recarga el cuadrante.', tono: 'aviso' }); return; }
+    const nom = (titular.nombre || '').split(' ')[0];
+    const id = await pickConductor({
+      titulo: `Cubrir a ${nom} · ${coche.matricula} · ${col.tit}`,
+      turno: col.turno, actual: null,
+    });
+    if (!id) return;   // cancelado o "dejar vacía": aquí no aplica
+
+    const v = await Dialogo.formulario(`Mientras ${nom} está de ${String(titular.estado || '').toLowerCase()}`, [
+      { id: 'desde', etiqueta: 'Desde (opcional)', tipo: 'fecha',
+        ayuda: 'Vacío = desde que empieza su ausencia (o desde hoy, si ya empezó).' },
+      { id: 'hasta', etiqueta: 'Hasta (opcional)', tipo: 'fecha',
+        valor: titular.vuelveEl ? isoDeFecha(titular.vuelveEl) : '',
+        ayuda: titular.vuelveEl
+          ? `Vacío = hasta el ${isoAes(titular.vuelveEl)}, el último día de su ausencia. Al siguiente la plaza vuelve a ser suya.`
+          : 'Su ausencia NO tiene fecha de vuelta, así que sin esta fecha la plaza se queda del sustituto '
+            + 'hasta que alguien diga otra cosa.' },
+    ], { textoBoton: 'Cubrir' });
+    if (v === undefined || v === null) return;
+
+    try {
+      // `pedirTablero` ya repinta con el tablero que devuelve la ruta.
+      const r = await pedirTablero('/planificador-v2/api/cubrir', {
+        plazaId: p.plazaId, conductorId: id, dia: DIA,
+        desde: (v.desde || '').trim() || null,
+        hasta: (v.hasta || '').trim() || null,
+      });
+      const quien = ((T.conductores || []).find(c => String(c.id) === String(id)) || {}).nombre || 'El sustituto';
+      await Dialogo.aviso({
+        titulo: 'Plaza cubierta', tono: 'ok',
+        texto: `${quien} lleva ${coche.matricula} del ${isoAes(r.cubierta.desde)} `
+             + (r.cubierta.hasta ? `al ${isoAes(r.cubierta.hasta)}.` : 'en adelante, SIN fecha de fin.')
+             + (r.vuelve ? ` ${nom} recupera su plaza el ${isoAes(r.vuelve.desde)}.`
+                         : ` OJO: ${nom} no tiene vuelta programada; cuando vuelva habrá que devolvérsela a mano.`),
+      });
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
   async function cambiarEstado(coche) {

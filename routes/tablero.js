@@ -154,6 +154,23 @@ router.post('/api/reemplazar-matricula', responde(async req => {
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
 
+// Cubrir a quien está de vacaciones sin quitarle la plaza: el sustituto entra
+// mientras dura la ausencia y la plaza vuelve sola a su dueño el día que este
+// regresa. Sin fechas, se cogen las de la ausencia.
+router.post('/api/cubrir', responde(async req => {
+  const b = req.body || {};
+  const quien = { usuarioId: await actor.idDe(req) };
+  const r = await plan.cubrirAusencia({
+    plazaId: b.plazaId, conductorId: b.conductorId,
+    desde: b.desde || null, hasta: b.hasta === undefined ? undefined : (b.hasta || null),
+    dias: b.dias,
+  }, { dia: b.dia, ...quien });
+  console.log(`🛟 [TABLERO] plaza ${b.plazaId} cubierta por ${b.conductorId} ` +
+    `del ${r.cubierta.desde} al ${r.cubierta.hasta || 'sin fecha'}` +
+    (r.vuelve ? ` · vuelve su titular el ${r.vuelve.desde}` : ' · SIN vuelta programada'));
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
 // ── Libranza excepcional: el swap de una semana ────────────────────────────
 router.post('/api/libranza-excepcional', responde(async req => {
   const b = req.body || {};

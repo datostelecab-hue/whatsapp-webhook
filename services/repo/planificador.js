@@ -520,6 +520,13 @@ function vispera(dia) {
   return aISO(d);
 }
 
+/** El día siguiente: cuando vuelve el titular, justo después del reemplazo. */
+function siguiente(dia) {
+  const d = new Date(dia + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return aISO(d);
+}
+
 /**
  * "L M X" → [1, 2, 3].
  *
@@ -620,6 +627,116 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
     [plazaId, conductorId, entra, hastaFinal, usuarioId || null]);
   await guardarDias(cli, r.rows[0].id, plazaId, rol.rol, dias);
   return { id: r.rows[0].id, nueva: true };
+}
+
+/**
+ * CUBRE la ausencia de quien ocupa una plaza, sin quitarle la plaza.
+ *
+ * Es lo que se pide cuando alguien se va de vacaciones: que otro lleve su coche
+ * mientras tanto y que la plaza vuelva a ser suya el día que regresa. Con
+ * `colocar` a secas no salía: esa le quita la plaza al titular y ya, y a la
+ * vuelta había que acordarse de devolvérsela a mano.
+ *
+ * Sin fechas, se cogen las de su ausencia: la vuelta prevista de sus vacaciones
+ * ES el último día del reemplazo. Con fechas, mandan las fechas —a veces el
+ * sustituto entra dos días después, o se le deja un día más de margen—.
+ *
+ * Por dentro son tres tramos en la MISMA plaza, porque la base no deja dos
+ * asignaciones solapadas ahí (`ex_asig_plaza`):
+ *
+ *   titular ─────┤   sustituto ├───────┤   titular ├─────────
+ *              víspera        D        H         H+1
+ *
+ * El tercero solo se escribe si el reemplazo termina. Si la ausencia no tiene
+ * vuelta (una baja médica), no hay fecha que poner y la plaza se queda con el
+ * sustituto hasta que alguien diga otra cosa; se avisa desde la pantalla.
+ */
+async function cubrirAusencia({ plazaId, conductorId, desde, hasta, dias }, { dia, usuarioId } = {}) {
+  if (!plazaId) throw new Error('Falta la plaza');
+  if (!conductorId) throw new Error('Falta quién cubre');
+  const base = dia || hoy();
+
+  return db.transaccion(async cli => {
+    const plaza = (await cli.query('SELECT rol FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
+    if (!plaza) throw new Error('Esa plaza ya no existe');
+
+    // El titular es quien la tiene HOY: si la plaza está vacía no hay nada que
+    // cubrir, se coloca a alguien y punto.
+    const titular = await asignacionEn(cli, plazaId, base);
+    if (!titular) throw new Error('Esa plaza está libre: no hace falta cubrir a nadie, coloca al conductor directamente.');
+    if (String(titular.conductor_id) === String(conductorId)) {
+      throw new Error('Esa persona ya lleva esa plaza: elige a quien la cubre, no a quien se va.');
+    }
+
+    // La ausencia del titular, para las fechas por defecto. La MÁS PRÓXIMA que
+    // no haya terminado: sirve tanto si ya está fuera como si se va la semana
+    // que viene y se quiere dejar cubierto desde ya.
+    const aus = (await cli.query(
+      `SELECT h.desde, h.hasta, COALESCE(ce.etiqueta, h.estado) AS etiqueta
+         FROM conductor_estado_hist h
+         JOIN cat_estado_conductor ce ON ce.codigo = h.estado
+        WHERE h.conductor_id = $1 AND ce.es_ausencia
+          AND (h.hasta IS NULL OR h.hasta >= $2::date)
+        ORDER BY h.desde LIMIT 1`, [titular.conductor_id, base])).rows[0];
+
+    // Sin fechas puestas a mano: las de la ausencia. Nunca antes del día que se
+    // está planificando, que reescribir el pasado no arregla nada.
+    const entra = desde || (aus ? (fechaDe(aus.desde) > base ? fechaDe(aus.desde) : base) : base);
+    const sale = hasta !== undefined && hasta !== null && hasta !== ''
+      ? hasta
+      : (aus && aus.hasta ? fechaDe(aus.hasta) : null);
+    if (!desde && !aus) {
+      throw new Error('Esa persona no tiene ninguna ausencia apuntada: pon las fechas del reemplazo a mano, '
+        + 'o dale antes sus vacaciones desde la plantilla.');
+    }
+    if (sale && sale < entra) throw new Error('El reemplazo no puede terminar antes de empezar');
+
+    // Los días del sustituto: los que se digan o, si no, LOS MISMOS que tenía el
+    // titular. Un correturnos que cubre a otro cubre sus días, no unos nuevos.
+    let diasFinal = dias;
+    if ((!diasFinal || !diasFinal.length) && plaza.rol === 'CT') {
+      const d = await cli.query(
+        'SELECT array_agg(dia_semana ORDER BY dia_semana) AS d FROM asignacion_dia WHERE asignacion_id = $1',
+        [titular.id]);
+      diasFinal = (d.rows[0] || {}).d || null;
+    }
+
+    const finTitular = titular.hasta ? fechaDe(titular.hasta) : null;
+    // Se corta el tramo del titular la víspera. Si aún no había empezado, se
+    // borra: esa asignación no llegó a existir.
+    if (fechaDe(titular.desde) >= entra) {
+      await cli.query('DELETE FROM asignacion WHERE id = $1', [titular.id]);
+    } else {
+      await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [titular.id, vispera(entra)]);
+    }
+
+    const sus = await cli.query(
+      `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [plazaId, conductorId, entra, sale, usuarioId || null]);
+    await guardarDias(cli, sus.rows[0].id, plazaId, plaza.rol, diasFinal);
+
+    // Y la plaza VUELVE a ser del titular al día siguiente. Esto es todo el
+    // sentido de la operación: que nadie tenga que acordarse en tres semanas.
+    let vuelta = null;
+    if (sale && (!finTitular || finTitular > sale)) {
+      const tras = siguiente(sale);
+      const v = await cli.query(
+        `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [plazaId, titular.conductor_id, tras, finTitular, usuarioId || null]);
+      await guardarDias(cli, v.rows[0].id, plazaId, plaza.rol,
+        plaza.rol === 'CT' ? diasFinal : null);
+      vuelta = { id: String(v.rows[0].id), desde: tras };
+    }
+
+    return {
+      cubierta: { plazaId: String(plazaId), desde: entra, hasta: sale },
+      titular: String(titular.conductor_id),
+      ausencia: aus ? { etiqueta: aus.etiqueta, desde: fechaDe(aus.desde), hasta: fechaDe(aus.hasta) } : null,
+      vuelve: vuelta,
+    };
+  });
 }
 
 /** Los días que cubre un correturnos. Un fijo no tiene: cubre todos menos los que libra. */
@@ -1188,7 +1305,7 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
 }
 
 module.exports = {
-  tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso,
+  tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso, cubrirAusencia,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
   listarCuadrantes, salidasHoy, contactos, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
