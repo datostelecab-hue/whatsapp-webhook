@@ -93,6 +93,44 @@
         </div>
       </div>
     </div>
+
+    <!-- Asistencia: quién faltó y cuántas veces -->
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 sm:col-span-2">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-user-xmark text-telecab-gold text-lg mt-0.5"></i>
+        <div class="flex-1">
+          <div class="font-semibold text-telecab-text">Asistencia · los más reincidentes</div>
+          <p class="text-sm text-telecab-muted mt-0.5">
+            Quién <b>faltó</b> y cuántas veces, del más reincidente al que menos, y detrás la
+            <b>plantilla entera por promedio</b> de menor a mayor. Cada uno con su número al lado,
+            su teléfono, su coche y los días que faltó.
+            Una falta es <b>0 horas en BOLT sin justificante</b> en un día que le tocaba salir:
+            quien tiene su J no falta, y quien está de vacaciones tampoco, porque esos días ni le tocaba.
+          </p>
+          <p class="text-xs text-telecab-muted mt-2">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            La libranza que se aplica es la de <b>hoy</b>, hacia atrás: si su coche descansa los miércoles,
+            se da por librado el miércoles pasado. Y quien no tiene cuenta de BOLT enlazada va al final:
+            su 0 no significa que faltara, significa que no se puede leer.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 mt-3">
+            <label class="text-xs text-telecab-muted">Del</label>
+            <input id="as-desde" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <label class="text-xs text-telecab-muted">al</label>
+            <input id="as-hasta" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+            <a id="as-excel" href="/control/asistencia/excel"
+               class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+              <i class="fa-solid fa-file-excel mr-1"></i> Excel
+            </a>
+            <a id="as-pdf" href="/control/asistencia/pdf"
+               class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+              <i class="fa-solid fa-file-pdf mr-1"></i> PDF
+            </a>
+            <span class="text-[11px] text-telecab-muted">por defecto, del 1 del mes hasta ayer</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -133,5 +171,27 @@
     baja('/control/reporte/excel?dia=' + encodeURIComponent(key));
     setTimeout(() => baja('/control/sankey/pdf?dia=' + encodeURIComponent(key)), 500);
   });
+
+  // ── Asistencia ────────────────────────────────────────────────────────────
+  // Las fechas por defecto las decide el SERVIDOR (día 1 del mes → ayer, en hora
+  // de Madrid): calcularlas aquí saldría con el reloj del navegador, que no tiene
+  // por qué ser el mismo, y a las 00:30 daría un mes distinto.
+  const asSync = () => {
+    const d = $('#as-desde').value, h = $('#as-hasta').value;
+    const q = [];
+    if (d) q.push('desde=' + encodeURIComponent(d));
+    if (h) q.push('hasta=' + encodeURIComponent(h));
+    const cola = q.length ? '?' + q.join('&') : '';
+    $('#as-excel').href = '/control/asistencia/excel' + cola;
+    $('#as-pdf').href = '/control/asistencia/pdf' + cola;
+  };
+  $('#as-desde').addEventListener('change', asSync);
+  $('#as-hasta').addEventListener('change', asSync);
+  fetch('/control/asistencia/periodo').then(r => r.json()).then(j => {
+    if (j.status !== 'ok') return;
+    $('#as-desde').value = j.desde;
+    $('#as-hasta').value = j.hasta;
+    asSync();
+  }).catch(() => { /* sin fechas puestas, el enlace baja el periodo por defecto */ });
 })();
 </script>

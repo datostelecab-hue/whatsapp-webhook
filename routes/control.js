@@ -111,6 +111,49 @@ router.get('/reportes', (req, res) => {
 // botón detrás), y /justificar + /justificantes por NOMBRE (la J va por id
 // desde el cockpit y desde la bitácora).
 
+// El PDF de asistencia: quién faltó y cuántas veces, más la plantilla entera por
+// promedio. Por defecto, del día 1 del mes HASTA AYER — la jornada de hoy no ha
+// terminado y quien entra a las 17:00 aún no ha faltado a nada.
+router.get('/asistencia/pdf', async (req, res) => {
+  try {
+    const asistencia = require('../services/repo/asistencia');
+    const datos = await asistencia.faltas({ desde: req.query.desde, hasta: req.query.hasta });
+    const pdf = await require('../services/asistenciaPdf').generar(datos);
+    console.log(`📄 [Control] asistencia ${datos.desde}→${datos.hasta}: ` +
+      `${datos.reincidentes.length} con faltas de ${datos.todos.length}`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="asistencia-${datos.desde}-a-${datos.hasta}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    console.error('❌ [Control] /asistencia/pdf:', error.stack || error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// El mismo reporte en Excel: es el que se usa de verdad, porque se puede ordenar,
+// filtrar por turno y mandarle a cada jefe su trozo. El PDF es para imprimirlo.
+router.get('/asistencia/excel', async (req, res) => {
+  try {
+    const asistencia = require('../services/repo/asistencia');
+    const datos = await asistencia.faltas({ desde: req.query.desde, hasta: req.query.hasta });
+    const libro = await require('../services/asistenciaExcel').generar(datos);
+    console.log(`📊 [Control] asistencia (Excel) ${datos.desde}→${datos.hasta}: ` +
+      `${datos.reincidentes.length} con faltas de ${datos.todos.length}`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="asistencia-${datos.desde}-a-${datos.hasta}.xlsx"`);
+    res.send(libro);
+  } catch (error) {
+    console.error('❌ [Control] /asistencia/excel:', error.stack || error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+// Las fechas por defecto, para que la tarjeta las enseñe ya puestas.
+router.get('/asistencia/periodo', (req, res) =>
+  res.json({ status: 'ok', ...require('../services/repo/asistencia').periodoPorDefecto() }));
+
 // ── Llamadas de seguimiento (el "telefonito" de En directo) ─────────────────
 // Cada pulsación apunta la llamada en PostgreSQL (la verdad: quién, cuándo, turno
 // y resultado) y la ESPEJA en la hoja del call center como llamada saliente de

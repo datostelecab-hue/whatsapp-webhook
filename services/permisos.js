@@ -93,6 +93,7 @@ const RUTA_A_CLAVE = [
   ['/control/turnos/',            '/control/reportes'],
   ['/control/planificador/',      '/control/reportes'],
   ['/control/reporte-turnos/',    '/control/reportes'],
+  ['/control/asistencia',         '/control/reportes'],
   ['/control/api/km-traza',       '/control/km'],
   ['/control/api/km-diagnostico', '/control/km'],
   ['/control/api/llamadas',       '/flota-viva'],
