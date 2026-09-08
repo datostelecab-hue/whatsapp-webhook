@@ -59,11 +59,10 @@
     </div>
   </div>
 
-  <!-- ── EN VIVO: la JORNADA (05→05) y sus dos turnos. Todo mide la misma cosa,
-       así que día + noche = la jornada y la jornada cuadra con el Reporte de horas
-       y con la Bitácora. Antes la primera fila iba por día NATURAL (00→24), que
-       partía cada turno de noche por la medianoche: 7 h a un día y 5 h al
-       siguiente, y ningún día decía lo que había trabajado la flota. ──────────── -->
+  <!-- ── EN VIVO: por día natural y por turno. Son dos formas de mirar el mismo día
+       y las dos valen: la natural cuadra con BOLT y con el acumulado del mes; la
+       jornada, con el Reporte de horas y con la Bitácora. No dan lo mismo porque la
+       noche cruza la medianoche, y esa diferencia es justo lo que hay que ver. ──── -->
   <%
     function miniCard(id, label, nota, acento){
       return `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card/60 p-4">
@@ -83,8 +82,8 @@
   <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-5">
     <div>
       <div class="mb-2 flex items-center gap-2">
-        <span class="text-xs font-semibold text-telecab-text uppercase tracking-wider">Por jornada</span>
-        <span class="text-[11px] text-telecab-muted">05:00 → 05:00 · el turno de noche entero cuenta en el día que empezó</span>
+        <span class="text-xs font-semibold text-telecab-text uppercase tracking-wider">Por día natural</span>
+        <span class="text-[11px] text-telecab-muted">00:00 – 24:00 · lo que cuadra con BOLT y con el mes</span>
         <div class="flex-1 h-px bg-telecab-border/50"></div>
       </div>
       <div class="grid grid-cols-3 gap-3">
