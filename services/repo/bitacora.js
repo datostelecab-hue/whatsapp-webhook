@@ -57,6 +57,170 @@ function hoyMadridIso() {
     { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
+// ── HORAS POR JORNADA, RECORTADAS POR LA VENTANA ────────────────────────────
+// Devuelve Map(conductor_id -> Map('YYYY-MM-DD' -> segundos efectivos)).
+//
+// La jornada operativa va de 05:00 a 05:00 (Madrid) y el tramo SE RECORTA por
+// ella, igual que en el Reporte de horas: uno que empieza a las 04:22 y acaba a
+// las 05:36 deja 38 min en la jornada que cierra y 36 min en la que abre. Antes
+// se le daba entero al día en que empezaba y la bitácora discrepaba del reporte
+// en unos minutos por persona.
+//
+// Los solapes se funden en JS: si una persona tiene dos cuentas de BOLT que se
+// pisan, ese rato cuenta UNA vez.
+async function horasCalculadas(desdeIso, hastaIso) {
+  const r = await db.consulta(
+    `WITH tr AS (
+       SELECT ce.conductor_id, t.desde, COALESCE(t.hasta, now()) AS hasta
+         FROM fv_tramo t
+         JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.efectivo
+         JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = t.conductor_uuid
+        WHERE ce.conductor_id IS NOT NULL
+          -- Amplio por los dos lados: un tramo puede empezar la víspera y morir
+          -- dentro del rango, o empezar dentro y acabar al día siguiente.
+          AND t.desde < (($2::date + 1) + ($3 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'
+          AND COALESCE(t.hasta, now()) > ($1::date + ($3 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'
+     ),
+     -- Cada tramo, partido por las jornadas que toca (casi siempre una o dos).
+     trozos AS (
+       -- generate_series con interval devuelve TIMESTAMP: se castea a date antes
+       -- de sumarle días, o PostgreSQL no sabe qué es "timestamp + 1".
+       SELECT tr.conductor_id,
+              g.dia::date AS dia,
+              GREATEST(tr.desde, (g.dia::date + ($3 || ' hours')::interval)       AT TIME ZONE 'Europe/Madrid') AS d,
+              LEAST(tr.hasta,  ((g.dia::date + 1) + ($3 || ' hours')::interval)   AT TIME ZONE 'Europe/Madrid') AS h
+         FROM tr
+         CROSS JOIN LATERAL generate_series(
+           ((tr.desde AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date,
+           ((tr.hasta AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date,
+           interval '1 day') g(dia)
+     )
+     SELECT conductor_id, to_char(dia, 'YYYY-MM-DD') AS dia, d, h
+       FROM trozos
+      WHERE h > d AND dia BETWEEN $1::date AND $2::date
+      ORDER BY conductor_id, dia, d`,
+    [desdeIso, hastaIso, String(HORA_JORNADA)]);
+
+  const ivs = new Map();          // cid -> dia -> [[ini, fin], …]
+  r.rows.forEach(x => {
+    const cid = Number(x.conductor_id);
+    if (!ivs.has(cid)) ivs.set(cid, new Map());
+    const m = ivs.get(cid);
+    if (!m.has(x.dia)) m.set(x.dia, []);
+    m.get(x.dia).push([new Date(x.d).getTime(), new Date(x.h).getTime()]);
+  });
+
+  const out = new Map();
+  ivs.forEach((dias, cid) => {
+    const m = new Map();
+    dias.forEach((lista, dia) => {
+      lista.sort((a, b) => a[0] - b[0]);
+      let total = 0, ci = null, cf = null;
+      for (const [s, e] of lista) {
+        if (e <= s) continue;
+        if (cf === null || s > cf) { if (cf !== null) total += cf - ci; ci = s; cf = e; }
+        else if (e > cf) cf = e;
+      }
+      if (cf !== null) total += cf - ci;
+      m.set(dia, Math.round(total / 1000));            // ms → segundos
+    });
+    out.set(cid, m);
+  });
+  return out;
+}
+
+/**
+ * Sella un rango de jornadas en `bitacora_horas`: las calcula y las guarda. Se
+ * puede repetir (reescribe lo que haya) y es lo que llama el cron cuando cierra
+ * la jornada. Devuelve cuántas filas quedaron escritas.
+ */
+async function sellarHoras(desdeIso, hastaIso) {
+  const calc = await horasCalculadas(desdeIso, hastaIso);
+  const filas = [];
+  calc.forEach((dias, cid) => dias.forEach((seg, dia) => { if (seg > 0) filas.push([cid, dia, seg]); }));
+  // Se borra el rango y se reescribe: así un día que se quedó a cero (o una
+  // persona a la que se le desenlazó una cuenta) no arrastra su fila vieja.
+  await db.transaccion(async cli => {
+    await cli.query('DELETE FROM bitacora_horas WHERE dia_operativo BETWEEN $1::date AND $2::date',
+      [desdeIso, hastaIso]);
+    // En bloques: un INSERT de 30.000 filas con parámetros no cabe de una vez.
+    const TAM = 2000;
+    for (let i = 0; i < filas.length; i += TAM) {
+      const trozo = filas.slice(i, i + TAM);
+      const vals = trozo.map((_, k) => `($${k * 3 + 1},$${k * 3 + 2}::date,$${k * 3 + 3})`).join(',');
+      await cli.query(
+        `INSERT INTO bitacora_horas (conductor_id, dia_operativo, horas_seg) VALUES ${vals}`,
+        trozo.flat());
+    }
+    // Y LA MARCA de cada jornada del rango, tenga filas o no: un día en el que no
+    // trabajó nadie está sellado igual, y sin esto se recalculaba para siempre
+    // (junio entero, antes de encender la ingesta, en cada carga de la pantalla).
+    await cli.query(
+      `INSERT INTO bitacora_sello (dia_operativo, filas, capturado_at)
+       SELECT g.dia::date,
+              (SELECT count(*) FROM bitacora_horas b WHERE b.dia_operativo = g.dia::date),
+              now()
+         FROM generate_series($1::date, $2::date, interval '1 day') g(dia)
+       ON CONFLICT (dia_operativo)
+       DO UPDATE SET filas = EXCLUDED.filas, capturado_at = now()`,
+      [desdeIso, hastaIso]);
+  });
+  return { desde: desdeIso, hasta: hastaIso, filas: filas.length };
+}
+
+/**
+ * Las horas de toda la rejilla, del HISTÓRICO. Lo cerrado se lee de
+ * `bitacora_horas`; la jornada en curso y la anterior —que todavía reciben
+ * tramos con retraso— se calculan en vivo. Si el histórico tiene huecos (la
+ * primera vez, o un día que el cron se saltó), se sellan al vuelo.
+ */
+async function horasDeLaRejilla(hoyIso) {
+  // La jornada EN CURSO: antes de las 05:00 seguimos en la de ayer.
+  const enCurso = require('./llamadas').diaOperativoHoy();
+  const vivoDesde = isoDeIdx(Math.max(0, idxDe(enCurso) - 1));   // esa y la anterior
+
+  const [sellado, huecos] = await Promise.all([
+    db.consulta(
+      `SELECT conductor_id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia, horas_seg
+         FROM bitacora_horas
+        WHERE dia_operativo BETWEEN $1::date AND ($2::date - 1)`, [INICIO_ISO, vivoDesde]),
+    // Jornadas cerradas SIN SELLO: la primera vez son todas; después, como mucho
+    // el día que el cron no llegó a cerrar. Se mira el sello y no las filas
+    // porque un día sin nadie trabajando tampoco tiene filas, y se estaría
+    // recalculando para siempre.
+    db.consulta(
+      `SELECT to_char(g.dia, 'YYYY-MM-DD') AS dia
+         FROM generate_series($1::date, ($2::date - 1), interval '1 day') g(dia)
+        WHERE NOT EXISTS (SELECT 1 FROM bitacora_sello s WHERE s.dia_operativo = g.dia)
+        ORDER BY g.dia`, [INICIO_ISO, vivoDesde]),
+  ]);
+
+  const out = new Map();
+  const mete = (cid, dia, seg) => {
+    if (!out.has(cid)) out.set(cid, new Map());
+    out.get(cid).set(dia, seg);
+  };
+  sellado.rows.forEach(x => mete(Number(x.conductor_id), x.dia, Number(x.horas_seg) || 0));
+
+  // Huecos del pasado: se calculan y se SELLAN, para no repetirlo mañana.
+  if (huecos.rows.length) {
+    const dias = huecos.rows.map(x => x.dia);
+    const r = await sellarHoras(dias[0], dias[dias.length - 1]);
+    console.log(`📒 [BITÁCORA] Sellados ${dias.length} día(s) sin histórico (${dias[0]} → ${dias[dias.length - 1]}): ${r.filas} filas`);
+    const nuevo = await db.consulta(
+      `SELECT conductor_id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia, horas_seg
+         FROM bitacora_horas WHERE dia_operativo BETWEEN $1::date AND $2::date`,
+      [dias[0], dias[dias.length - 1]]);
+    nuevo.rows.forEach(x => mete(Number(x.conductor_id), x.dia, Number(x.horas_seg) || 0));
+  }
+
+  // La jornada en curso y la anterior, en vivo (no se sellan aquí: lo hace el cron
+  // cuando ya han cerrado).
+  const vivo = await horasCalculadas(vivoDesde, hoyIso);
+  vivo.forEach((dias, cid) => dias.forEach((seg, dia) => mete(cid, dia, seg)));
+  return out;
+}
+
 async function leerBitacora() {
   const hoyIso = hoyMadridIso();
   const hoyIdx = idxDe(hoyIso);
@@ -92,29 +256,10 @@ async function leerBitacora() {
          FROM justificante
         WHERE anulado_at IS NULL AND dia_operativo BETWEEN $1::date AND $2::date`,
       [INICIO_ISO, hoyIso]),
-    // Horas EFECTIVAS del núcleo: viaje + espera (s.efectivo). El descanso no es
-    // trabajo. Se funden los solapes en JS.
-    //
-    // EL DÍA ES LA JORNADA OPERATIVA (05:00 → 05:00), no el día natural. Antes se
-    // partía por la MEDIANOCHE y a un conductor de NOCHE su turno le caía en dos
-    // días: la noche del lunes salía como 7 h el lunes y 5 h el martes, y ningún
-    // día de la bitácora decía lo que había trabajado de verdad. Con la jornada,
-    // el turno entero cae en el día en que EMPEZÓ, que es lo que cuenta para el
-    // convenio, y cuadra con el Reporte de horas y con Visibilidad.
-    db.consulta(
-      `SELECT ce.conductor_id,
-              to_char(((t.desde AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date,
-                      'YYYY-MM-DD') AS dia,
-              t.desde, COALESCE(t.hasta, now()) AS hasta
-         FROM fv_tramo t
-         JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.efectivo
-         JOIN fv_conductor fc      ON fc.uuid = t.conductor_uuid
-         JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = fc.uuid
-        WHERE t.desde >= $1::date AND t.desde < ($2::date + 2)
-          AND ((t.desde AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date
-              BETWEEN $1::date AND $2::date
-        ORDER BY ce.conductor_id, t.desde`,
-      [INICIO_ISO, hoyIso, String(HORA_JORNADA)]),
+    // Horas: del HISTÓRICO SELLADO (bitacora_horas), no del núcleo. Ver
+    // `horasDeLaRejilla` justo debajo: lo cerrado se calculó una vez y no se
+    // vuelve a mover; solo la jornada en curso se mira en vivo.
+    horasDeLaRejilla(hoyIso),
     // Libranza 'L': asignado a una plaza ese día pero NO lo cubre (su coche descansa,
     // o es CT y no le toca) — la MISMA regla del planificador, f_cobertura.
     db.consulta(
@@ -186,28 +331,12 @@ async function leerBitacora() {
     const i = idxDe(r.dia);
     if (i >= 0 && i < nDias) { const c = de(r.conductor_id); c.dias[i] = 'L'; c.lManual[r.dia] = true; }
   });
-  const porCondDia = new Map();
-  horas.rows.forEach(r => {
-    const cid = Number(r.conductor_id);
-    if (!porCondDia.has(cid)) porCondDia.set(cid, new Map());
-    const m = porCondDia.get(cid);
-    if (!m.has(r.dia)) m.set(r.dia, []);
-    m.get(r.dia).push([new Date(r.desde).getTime(), new Date(r.hasta).getTime()]);
-  });
-  porCondDia.forEach((diasMap, cid) => {
+  horas.forEach((diasMap, cid) => {
     const arr = de(cid).dias;
-    diasMap.forEach((ivs, diaKey) => {
+    diasMap.forEach((seg, diaKey) => {
       const i = idxDe(diaKey);
       if (i < 0 || i >= nDias) return;
-      ivs.sort((a, b) => a[0] - b[0]);
-      let total = 0, ci = null, cf = null;
-      for (const [s, e] of ivs) {
-        if (e <= s) continue;
-        if (cf === null || s > cf) { if (cf !== null) total += cf - ci; ci = s; cf = e; }
-        else if (e > cf) cf = e;
-      }
-      if (cf !== null) total += cf - ci;
-      arr[i] = Math.round((total / 60000) / 6) / 10;   // ms → h con 1 decimal
+      arr[i] = Math.round((seg / 360)) / 10;           // segundos → h con 1 decimal
     });
   });
   justis.rows.forEach(r => {
@@ -314,4 +443,7 @@ async function quitarLibranza(conductorId, diaIso) {
   return { ok: true };
 }
 
-module.exports = { leerBitacora, leerVacaciones, marcarLibranza, quitarLibranza, INICIO };
+module.exports = {
+  // El histórico sellado: lo llama el cron al cerrar la jornada y la pantalla de
+  // la bitácora si hay que rehacer un tramo a mano.
+  sellarHoras, horasCalculadas, leerBitacora, leerVacaciones, marcarLibranza, quitarLibranza, INICIO };

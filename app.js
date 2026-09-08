@@ -504,6 +504,26 @@ programar('30 5 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ── BITÁCORA ────────────────────────────────────────────────────────────────
+// Al cerrar la jornada se SELLAN las horas de los días que ya terminaron
+// (bitacora_horas). A partir de ahí la bitácora los lee de ahí y no vuelve a
+// calcularlos: el pasado no se mueve porque hoy se enlace una cuenta de BOLT o
+// se cambie una plaza. Se sellan los TRES últimos días cerrados, no solo uno,
+// porque BOLT entrega tramos con retraso y el de anteayer puede haber crecido.
+programar('35 5 * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const bit = require('./services/repo/bitacora');
+    const enCurso = require('./services/repo/llamadas').diaOperativoHoy();
+    const menos = n => new Date(Date.parse(enCurso + 'T12:00:00Z') - n * 86400000).toISOString().slice(0, 10);
+    const r = await bit.sellarHoras(menos(3), menos(1));
+    console.log(`📒 [Bitácora] Selladas ${r.filas} fila(s) de horas · ${r.desde} → ${r.hasta}`);
+  } catch (error) {
+    console.error(`⚠️  [Bitácora] sellado de horas: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // (Los odometros de Mapon ya no tienen cron propio: son una tarea mas de la
 // ingesta, con su cadencia y su registro de si funciono.)
 
