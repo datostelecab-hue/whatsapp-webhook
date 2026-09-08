@@ -69,16 +69,28 @@ async function transaccion(fn) {
  * fichero a mano es una forma de que el módulo no funcione el día del despliegue
  * y nadie sepa por qué.
  */
-let preparada = false;
+// Se guarda LA PROMESA, no un booleano. Con el booleano la marca se ponía
+// DESPUÉS del await, así que varias llamadas a la vez pasaban todas el guardia y
+// aplicaban el esquema en paralelo: PostgreSQL las mataba con "deadlock
+// detected". Pasaba de verdad en un arranque en frío con varias peticiones a la
+// vez, que es justo lo que ocurre al desplegar.
+let preparando = null;
 async function preparar() {
-  if (preparada) return true;
-  const fs = require('fs');
-  const path = require('path');
-  const sql = fs.readFileSync(path.join(__dirname, 'esquema.sql'), 'utf8');
-  await consulta(sql);
-  preparada = true;
-  console.log('🗂️  [FLOTA VIVA] Esquema listo');
-  return true;
+  if (preparando) return preparando;
+  preparando = (async () => {
+    const fs = require('fs');
+    const path = require('path');
+    const sql = fs.readFileSync(path.join(__dirname, 'esquema.sql'), 'utf8');
+    await consulta(sql);
+    console.log('🗂️  [FLOTA VIVA] Esquema listo');
+    return true;
+  })().catch(e => {
+    // Si falla, se olvida: la siguiente petición vuelve a intentarlo en vez de
+    // quedarse con el error pegado para toda la vida del proceso.
+    preparando = null;
+    throw e;
+  });
+  return preparando;
 }
 
 module.exports = { consulta, transaccion, preparar, HAY_BD };

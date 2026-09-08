@@ -134,8 +134,12 @@ app.get('/', (req, res) => {
     return res.status(200).send(challenge);
   }
 
-  // Si no es verificación de Meta, a la app: con sesión al inicio, si no al login.
-  return res.redirect(req.usuario ? '/pendientes' : '/login');
+  // Si no es verificación de Meta, a la app: con sesión al INICIO, si no al login.
+  //
+  // Antes iba a /pendientes tuviera uno permiso o no, y quien no lo tenía se
+  // comía un "Sin permiso" nada más entrar: más de uno creyó que la web se había
+  // caído. /inicio no se bloquea nunca; ya decide él qué enseñar.
+  return res.redirect(req.usuario ? '/inicio' : '/login');
 });
 
 // ============================================================
@@ -152,6 +156,7 @@ app.use(sesion.protegido);
 app.use(sesion.forzarCambio);
 app.use(sesion.controlAcceso);
 app.use(sesion.cargarPermisos);
+app.use('/inicio', require('./routes/inicio'));
 app.use('/usuarios', usuariosRoutes);
 
 app.use('/horas', boltHoras);

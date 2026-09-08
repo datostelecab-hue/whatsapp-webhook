@@ -133,10 +133,17 @@ async function idDeSesion(u) {
 // Control de acceso POR USUARIO: manda la clave más específica del catálogo que
 // case con la ruta; si el usuario no la tiene concedida, fuera. Lo que no está
 // en el catálogo es libre (basta estar dentro).
+// La pantalla de inicio NO se bloquea NUNCA. Es donde cae todo el mundo al
+// entrar, y rebotarla contra "sin permiso" es lo que hacía que la gente creyera
+// que la web se había caído. Su clave (`/inicio`) sigue existiendo, pero la mira
+// la propia pantalla para decidir si enseña las cifras o el panel vacío.
+const SIEMPRE_ABIERTO = ['/inicio'];
+
 async function controlAcceso(req, res, next) {
   const u = req.usuario;
   if (!u) return next();               // ya lo cubre `protegido`
   if (ADMIN_TOTAL.includes(u.rol)) return next();
+  if (SIEMPRE_ABIERTO.some(r => req.path === r || req.path.startsWith(r + '/'))) return next();
   const clave = permisos.claveDeRuta(req.path);
   if (!clave) return next();
   try {

@@ -1,0 +1,199 @@
+<% if (!veCifras) { %>
+  <%# ── LA BIENVENIDA ────────────────────────────────────────────────────────
+      Para quien no tiene el permiso de las cifras. Antes esta gente aterrizaba
+      en un "Sin permiso" nada más entrar y creía que la web se había caído; el
+      candado no es un error, así que aquí no hay ninguno. Se le saluda, y se le
+      enseña por dónde seguir. %>
+  <div class="max-w-lg mx-auto text-center pt-16 pb-10 px-4">
+    <div class="flex justify-center mb-6">
+      <%- include('partials/logo-video', { tam: 'w-[180px] h-[180px]' }) %>
+    </div>
+    <h1 class="text-2xl font-bold text-telecab-text">Bienvenido a Telecab</h1>
+    <p class="text-sm text-telecab-muted mt-2">
+      <%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) ? usuario.nombre : '' %>,
+      esto es todo tuyo. Elige por dónde empezar.
+    </p>
+
+    <% if ((misModulos || []).length) { %>
+      <div class="mt-7 grid grid-cols-2 gap-2 text-left">
+        <% misModulos.forEach(function (m) { %>
+          <a href="<%= m.clave %>"
+             class="px-3 py-2.5 rounded-xl bg-telecab-card border border-telecab-border text-sm text-telecab-text
+                    hover:border-telecab-gold/50 hover:text-telecab-gold transition truncate">
+            <%= m.etiqueta %>
+          </a>
+        <% }); %>
+      </div>
+    <% } else { %>
+      <p class="mt-7 text-sm text-telecab-muted">
+        Todavía no tienes ningún módulo asignado. Avisa a quien te dio de alta para que te lo abra.
+      </p>
+    <% } %>
+  </div>
+
+<% } else { %>
+<div class="max-w-[1500px] mx-auto" id="panel">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+    <div class="flex items-center gap-3">
+      <%- include('partials/logo-video', { tam: 'w-12 h-12' }) %>
+      <div>
+        <h1 class="text-2xl font-bold text-telecab-text">
+          Hola<%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) ? ', ' + usuario.nombre : '' %>
+        </h1>
+        <p class="text-sm text-telecab-muted mt-0.5">
+          Cómo va la flota. <span id="i-jornada"></span>
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/visibilidad" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-chart-line mr-1"></i> Ver con gráficas
+      </a>
+      <button id="i-refrescar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-rotate mr-1"></i> Actualizar
+      </button>
+    </div>
+  </div>
+
+  <div id="i-error" class="hidden mb-4 px-4 py-3 rounded-xl border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red"></div>
+
+  <%
+    /* Una cifra grande con su pie. Es la única forma de tarjeta de esta pantalla:
+       sin gráficas, que esto se mira de pasada y de camino a otra cosa. */
+    function cifra(id, etq, unidad, pie, acento) {
+      return `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card p-4">
+        <p class="text-[11px] text-telecab-muted uppercase tracking-wide">${etq}</p>
+        <p class="text-3xl font-bold text-telecab-text mt-1 tabular-nums leading-none">
+          <span id="${id}">—</span>${unidad ? `<span class="text-sm text-telecab-muted font-normal ml-1">${unidad}</span>` : ''}
+        </p>
+        <p class="text-xs text-telecab-muted mt-2" id="${id}-pie">${pie || ''}</p>
+      </div>`;
+    }
+  %>
+
+  <!-- ── HOY ─────────────────────────────────────────────────────────────── -->
+  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">Hoy, en curso</h2>
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+    <%- cifra('k-hoy-h', 'Horas efectivas', 'h', 'viaje + espera') %>
+    <%- cifra('k-hoy-cond', 'Conductores', '', 'con actividad hoy') %>
+    <%- cifra('k-hoy-neto', 'Neto', '€', '<span id="k-hoy-viajes">—</span> viajes') %>
+    <%- cifra('k-hoy-util', 'Utilización', '%', 'del tiempo conectado, con pasajero') %>
+  </div>
+
+  <!-- ── POR TURNO ───────────────────────────────────────────────────────── -->
+  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
+    Por turno <span class="font-normal text-telecab-muted normal-case tracking-normal">· día 05–17 · noche 17–05</span>
+  </h2>
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+    <%- cifra('k-tdia-h', 'Turno día', 'h', '<span id="k-tdia-cond">—</span> conductores') %>
+    <%- cifra('k-tnoche-h', 'Turno noche', 'h', '<span id="k-tnoche-cond">—</span> conductores') %>
+    <%- cifra('k-ayer-h', 'Ayer · jornada', 'h', 'día + noche, 05→05', true) %>
+    <%- cifra('k-sem-h', 'Esta semana', 'h', 'desde el lunes') %>
+  </div>
+
+  <!-- ── LO QUE NO SE HIZO ───────────────────────────────────────────────────
+       Es la cifra nueva: no el descanso, sino LA RESTA. Quien tiene 2 h
+       justificadas y 3 h conectado lleva 5 de 8, así que deja 3 sin hacer. Se
+       cuenta por persona, sin compensar: que uno eche 12 h no tapa que otro
+       echara 4. Y solo de jornadas CERRADAS: a mitad del día aún se pueden hacer. -->
+  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
+    Horas no efectivas <span class="font-normal text-telecab-muted normal-case tracking-normal" id="i-ne-nota"></span>
+  </h2>
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+    <%- cifra('k-ne-h', 'Sin hacer · última jornada', 'h', '<span id="k-ne-pct">—</span> % de lo que tocaba') %>
+    <%- cifra('k-ne-sin', 'No salieron', '', 'de <span id="k-ne-personas">—</span> a los que tocaba') %>
+    <%- cifra('k-ne-just', 'Justificadas', 'h', 'de taller, gestiones… sí cuentan') %>
+    <%- cifra('k-ne-mes', 'Sin hacer · el mes', 'h', '<span id="k-ne-mes-pct">—</span> % de lo que tocaba') %>
+  </div>
+
+  <!-- ── KILÓMETROS ──────────────────────────────────────────────────────── -->
+  <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
+    Kilómetros <span class="font-normal text-telecab-muted normal-case tracking-normal">· GPS de Mapon, última jornada cerrada</span>
+  </h2>
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+    <%- cifra('k-km-total', 'Recorridos', 'km', 'toda la flota') %>
+    <%- cifra('k-km-con', 'Con pasajero', 'km', 'en viaje') %>
+    <%- cifra('k-km-sin', 'Sin pasajero', 'km', 'yendo a por el cliente, esperando o vacío') %>
+    <%- cifra('k-km-apr', 'Aprovechamiento', '%', 'del recorrido lleva a alguien dentro', true) %>
+  </div>
+
+  <p class="text-[11px] text-telecab-muted mb-8">
+    Las horas son las mismas que cuenta Visibilidad, con las mismas ventanas.
+    La comparación de kilómetros contra el informe de BOLT, matrícula a matrícula, está en
+    <a href="/operaciones/auditoria" class="text-telecab-gold hover:underline">Auditoría de flota</a>.
+  </p>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const num = (n, d) => (n == null ? '—' : Number(n).toLocaleString('es-ES',
+    { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }));
+  const pon = (id, v, d) => { const e = $('#' + id); if (e) e.textContent = num(v, d); };
+  const esFecha = iso => { if (!iso) return ''; const [a, m, dd] = iso.split('-'); return `${dd}/${m}/${a}`; };
+
+  async function cargar() {
+    const b = $('#i-refrescar');
+    if (b) b.disabled = true;
+    try {
+      const r = await fetch('/inicio/api/panel');
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo cargar');
+      pintar(j);
+      $('#i-error').classList.add('hidden');
+    } catch (e) {
+      const el = $('#i-error');
+      el.textContent = 'No se han podido cargar las cifras: ' + e.message;
+      el.classList.remove('hidden');
+    } finally { if (b) b.disabled = false; }
+  }
+
+  function pintar(j) {
+    const v = j.visibilidad || {};
+    $('#i-jornada').textContent = `Jornada del ${esFecha(j.jornadaEnCurso)}` +
+      (j.deCache ? '' : '');
+
+    // Hoy (día natural: es lo que cuadra con el informe de BOLT).
+    const hoy = v.dia || {};
+    pon('k-hoy-h', hoy.horasEfectivas, 1);
+    pon('k-hoy-cond', hoy.conductores);
+    pon('k-hoy-neto', hoy.neto);
+    pon('k-hoy-viajes', hoy.viajes);
+    pon('k-hoy-util', hoy.utilizacion, 1);
+
+    // Por turno.
+    pon('k-tdia-h', (v.turnoDia || {}).horasEfectivas, 1);
+    pon('k-tdia-cond', (v.turnoDia || {}).conductores);
+    pon('k-tnoche-h', (v.turnoNoche || {}).horasEfectivas, 1);
+    pon('k-tnoche-cond', (v.turnoNoche || {}).conductores);
+    pon('k-ayer-h', (v.ayerJornada || {}).horasEfectivas, 1);
+    pon('k-sem-h', (v.semana || {}).horasEfectivas, 1);
+
+    // Lo que no se hizo.
+    const ne = (j.noEfectivas || {}).cerrada || {};
+    const nem = (j.noEfectivas || {}).mes || {};
+    $('#i-ne-nota').textContent =
+      `· jornada del ${esFecha(j.jornadaCerrada)}, ya cerrada · ${j.jornadaH} h por persona`;
+    pon('k-ne-h', ne.horas, 1);
+    pon('k-ne-pct', ne.porcentaje, 1);
+    pon('k-ne-sin', ne.sinSalir);
+    pon('k-ne-personas', ne.personasDia);
+    pon('k-ne-just', ne.justificadas, 1);
+    pon('k-ne-mes', nem.horas, 1);
+    pon('k-ne-mes-pct', nem.porcentaje, 1);
+
+    // Kilómetros.
+    const km = (j.km || {}).cerrada || {};
+    pon('k-km-total', km.total);
+    pon('k-km-con', km.conPasajero);
+    pon('k-km-sin', km.sinPasajero);
+    pon('k-km-apr', km.aprovechamiento, 1);
+  }
+
+  const b = $('#i-refrescar');
+  if (b) b.addEventListener('click', cargar);
+  cargar();
+})();
+</script>
+<% } %>

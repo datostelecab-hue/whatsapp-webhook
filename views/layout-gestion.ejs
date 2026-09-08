@@ -249,6 +249,15 @@
           .map(g => ({ nombre: g.nombre, icono: g.icono, rol: g.rol, items: g.items.filter(puedeVer) }))
           .filter(g => g.items.length);
       %>
+      <%# Inicio SIEMPRE, sin `puedeVer`: la pantalla no se bloquea nunca y es
+          donde cae todo el mundo al entrar. Quitarla del menú a quien no tiene
+          las cifras le dejaría sin forma de volver a su bienvenida. %>
+      <a href="/inicio" class="nav-item <%= seccionActiva === 'inicio' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'inicio' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-house w-5 text-center <%= seccionActiva === 'inicio' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Inicio</span>
+      </a>
+
       <% if (puedeVer({ href: '/pendientes' })) { %>
       <a href="/pendientes" class="nav-item <%= seccionActiva === 'pendientes' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'pendientes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">

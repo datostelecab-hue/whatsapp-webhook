@@ -23,6 +23,10 @@ const db = require('./db');
 // `hijos` son submódulos con clave propia (prefijo más largo = permiso aparte).
 const CATALOGO = [
   { grupo: 'General', items: [
+    // El panel de inicio. Su pantalla se abre SIEMPRE (es donde cae todo el
+    // mundo al entrar); esta clave decide si se ven las cifras de la empresa o
+    // el panel vacío. Ver la excepción de `controlAcceso` en services/sesion.js.
+    { clave: '/inicio',     etiqueta: 'Panel de inicio (cifras)' },
     { clave: '/pendientes', etiqueta: 'Pendientes' },
     { clave: '/peticiones', etiqueta: 'Peticiones' },
     { clave: '/bitacora',   etiqueta: 'Bitácora' },
@@ -151,7 +155,7 @@ function semillaDeRol(rol) {
     case 'jefe_trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones'), '/bi']
       .filter(c => c !== '/documentos');
     case 'gestor_trafico': return [
-      '/pendientes', '/peticiones', '/bitacora', '/plantilla',
+      '/inicio', '/pendientes', '/peticiones', '/bitacora', '/plantilla',
       ...G('Tráfico'), ...G('Flota'), '/callcenter',
     ];
 
@@ -167,7 +171,7 @@ function semillaDeRol(rol) {
 
     // Administración es el papel y el dinero: contratos, nóminas, convenio.
     // No planifica ni ve el directo.
-    case 'administracion': return ['/pendientes', '/peticiones', '/plantilla', '/documentos', '/bitacora',
+    case 'administracion': return ['/inicio', '/pendientes', '/peticiones', '/plantilla', '/documentos', '/bitacora',
       '/rrhh', '/fichas', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett'];
 
     // Operaciones es el control de lo que pasa en la calle.
