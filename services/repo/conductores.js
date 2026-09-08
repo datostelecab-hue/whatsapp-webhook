@@ -657,6 +657,60 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
   });
 }
 
+/**
+ * CORRIGE una ausencia que ya está puesta: sus fechas o su motivo.
+ *
+ * `cambiarSituacion` no sirve para esto: esa abre una situación NUEVA desde una
+ * fecha y cierra la de antes, que es lo correcto cuando algo cambia de verdad
+ * (alguien vuelve antes, alguien se pone malo). Pero cuando lo que hay es un
+ * ERROR —el 13 en vez del 15, unas vacaciones a quien no le tocaban— lo que
+ * hace falta es tocar esa fila, no apilar otra encima. Hasta ahora eso solo se
+ * podía por base de datos.
+ */
+async function editarAusencia(id, filaId, { desde, hasta, motivo }, { usuarioId } = {}) {
+  const fila = (await db.consulta(
+    `SELECT h.*, c.fin_previsible, c.etiqueta
+       FROM conductor_estado_hist h
+       LEFT JOIN cat_estado_conductor c ON c.codigo = h.estado
+      WHERE h.id = $1 AND h.conductor_id = $2`, [filaId, id])).rows[0];
+  if (!fila) throw new Error('Esa ausencia no existe (o no es de esta persona)');
+
+  const cambios = {};
+  if (desde !== undefined) cambios.desde = desde || fila.desde;
+  if (motivo !== undefined) cambios.motivo = motivo || null;
+  if (hasta !== undefined) {
+    const h = hasta || null;
+    // La misma regla que al crearla: lo que tiene vuelta la necesita, o esa
+    // persona se queda fuera del cuadrante para siempre.
+    if (fila.fin_previsible && !h) {
+      throw new Error(`Unas ${String(fila.etiqueta || fila.estado).toLowerCase()} sin fecha de vuelta no terminan nunca: `
+        + 'esa persona desaparecería del cuadrante. Pon cuándo vuelve.');
+    }
+    cambios.hasta = h;
+    // `hasta_previsto` acompaña al fin real: si no, la ficha seguiría enseñando
+    // la vuelta vieja al lado de la nueva.
+    if (fila.fin_previsible) cambios.hasta_previsto = h;
+  }
+  if (!Object.keys(cambios).length) return { sinCambios: true };
+
+  cambios.usuario_id = usuarioId || null;
+  const r = await vig.editar('situacion', filaId, id, cambios);
+  return { editada: r.despues || r };
+}
+
+/** Borra una ausencia entera. Para lo que se metió por error y NO pasó. */
+async function borrarAusencia(id, filaId, { usuarioId } = {}) {
+  const fila = await vig.borrar('situacion', filaId, id);
+  // Que quede constancia: la fila se va, pero el que la borró no.
+  const f = vig.dia;
+  await audit.registrar({
+    tabla: 'conductor', id, usuarioId,
+    cambios: [{ campo: 'situacion',
+      antes: `${fila.estado} ${f(fila.desde)} → ${f(fila.hasta)}`, ahora: null }],
+  });
+  return { borrada: fila };
+}
+
 /** Cambia el turno. Cierra el anterior el día antes; nunca se solapan. */
 async function cambiarTurno(id, { turnoId, desde }, { usuarioId } = {}) {
   if (!turnoId) throw new Error('Falta el turno');
@@ -1001,7 +1055,8 @@ module.exports = {
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
-  crear, actualizar, cambiarSituacion, cambiarTurno, guardarLibranza,
+  crear, actualizar, cambiarSituacion, editarAusencia, borrarAusencia,
+  cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,
 };

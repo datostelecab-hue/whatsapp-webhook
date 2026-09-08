@@ -55,6 +55,20 @@ function def(tipo) {
   return { desde: 'desde', hasta: 'hasta', orden: null, mira: null, ...d };
 }
 
+/**
+ * Una fecha de la base a "AAAA-MM-DD", para enseñarla.
+ *
+ * NO vale `toISOString()`: una columna `date` la devuelve el driver como un Date
+ * a medianoche LOCAL, y pasarlo a UTC en Madrid lo tira al día anterior. Un
+ * mensaje que decía "pisa el tramo del 12" cuando el tramo empezaba el 13.
+ */
+function dia(x) {
+  if (!x) return 'sin fin';
+  if (!(x instanceof Date)) return String(x).slice(0, 10);
+  const p = n => String(n).padStart(2, '0');
+  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+}
+
 /** Las columnas a pedir: las de la tabla y, si hay catalogo, su etiqueta. */
 function cols(d) {
   return d.mira ? `t.*, m.${d.mira.campo} AS ${d.mira.como}` : 't.*';
@@ -158,6 +172,72 @@ async function reemplazar(tipo, entidadId, datos, { desde, cerrarAnterior = true
   return cli ? hacer(cli) : db.transaccion(hacer);
 }
 
+/**
+ * Cambia las FECHAS de una fila que ya existe, sin tocar las demás.
+ *
+ * Hasta ahora solo se sabía "abrir una vigencia nueva desde hoy": corregir una
+ * fecha mal puesta —unas vacaciones del 13 que en realidad eran del 15— había
+ * que hacerlo por base de datos, y eso lo hacía yo y no quien lo sabe.
+ *
+ * Se comprueba que no PISE a ninguna otra fila de la misma persona, porque el
+ * esquema tiene restricciones de exclusión que lo rechazarían con un error que
+ * no dice nada; aquí se dice cuál es la que estorba y en qué fechas.
+ */
+async function editar(tipo, filaId, entidadId, cambios = {}, { cli } = {}) {
+  const d = def(tipo);
+  const hacer = async c => {
+    const antes = (await c.query(
+      `SELECT * FROM ${d.tabla} WHERE id = $1 AND ${d.entidad} = $2`, [filaId, entidadId])).rows[0];
+    // El `entidadId` no sobra: sin él, un id de otra persona se editaría igual.
+    if (!antes) throw new Error('Esa fila del historial no existe (o no es de esta persona)');
+
+    // Las dos fechas a "AAAA-MM-DD" ANTES de compararlas: una viene del
+    // formulario como texto y la otra de la base como Date, y `String(Date)` da
+    // "Tue Sep 15 2026", que ordena por la T y no por el año.
+    const nuevo = { ...antes, ...cambios };
+    const desdeN = nuevo[d.desde] ? dia(nuevo[d.desde]) : null;
+    const hastaN = nuevo[d.hasta] ? dia(nuevo[d.hasta]) : null;
+    if (!desdeN) throw new Error('Hace falta la fecha de inicio');
+    if (hastaN && hastaN < desdeN) {
+      throw new Error('La fecha de fin no puede ser anterior a la de inicio');
+    }
+
+    const choca = (await c.query(
+      `SELECT * FROM ${d.tabla}
+        WHERE ${d.entidad} = $1 AND id <> $2
+          AND ${d.desde} <= COALESCE($4::date, 'infinity'::date)
+          AND COALESCE(${d.hasta}, 'infinity'::date) >= $3::date
+        ORDER BY ${d.desde} LIMIT 1`,
+      [entidadId, filaId, desdeN, hastaN])).rows[0];
+    if (choca) {
+      throw new Error(`Esas fechas pisan otro tramo suyo (${dia(choca[d.desde])} → ${dia(choca[d.hasta])}). `
+        + 'Cambia primero ese o ajusta las fechas.');
+    }
+
+    const cols = Object.keys(cambios);
+    if (!cols.length) return antes;
+    const r = await c.query(
+      `UPDATE ${d.tabla} SET ${cols.map((k, i) => `${k} = $${i + 3}`).join(', ')}
+        WHERE id = $1 AND ${d.entidad} = $2 RETURNING *`,
+      [filaId, entidadId, ...cols.map(k => cambios[k])]);
+    return { antes, despues: r.rows[0] };
+  };
+  return cli ? hacer(cli) : db.transaccion(hacer);
+}
+
+/**
+ * Borra una fila del historial. Es para lo que se metió por error: unas
+ * vacaciones a quien no le tocaban, un tramo duplicado. Lo que YA PASÓ no se
+ * borra, se corrige con `editar`.
+ */
+async function borrar(tipo, filaId, entidadId, { cli } = {}) {
+  const d = def(tipo);
+  const sql = `DELETE FROM ${d.tabla} WHERE id = $1 AND ${d.entidad} = $2 RETURNING *`;
+  const r = cli ? await cli.query(sql, [filaId, entidadId]) : await db.consulta(sql, [filaId, entidadId]);
+  if (!r.rows[0]) throw new Error('Esa fila del historial no existe (o no es de esta persona)');
+  return r.rows[0];
+}
+
 /** Cierra la vigencia abierta. Sin abrir otra: el fin de algo. */
 async function cerrar(tipo, entidadId, hasta, { cli } = {}) {
   const d = def(tipo);
@@ -238,5 +318,5 @@ module.exports = {
   TIPOS: Object.keys(TIPOS),
   comprobarMapa,
   vigente, vigentes, vigenteDeVarias, historial, abierta,
-  reemplazar, cerrar, contarVigentes,
+  reemplazar, editar, borrar, cerrar, contarVigentes, dia,
 };

@@ -156,6 +156,49 @@
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion`, 'POST', v));
   }
 
+  /**
+   * CORRIGE una ausencia que ya está puesta. No es lo mismo que cambiar la
+   * situación: aquella abre una nueva desde hoy y cierra la anterior —lo
+   * correcto cuando alguien vuelve antes o se pone malo—; esta toca la fila que
+   * hay, que es lo que hace falta cuando la fecha se metió mal.
+   */
+  async function editarAusencia(fila, d) {
+    const cat = (CAT.situaciones || []).find(x => x.codigo === fila.estado) || {};
+    const v = await pedirDatos(`Corregir: ${cat.etiqueta || fila.estado}`, [
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(fila.desde) },
+      { id: 'hasta', etiqueta: cat.fin_previsible ? 'Vuelve el' : 'Hasta', tipo: 'fecha',
+        valor: fila.hasta ? fecha(fila.hasta) : '',
+        ayuda: cat.fin_previsible
+          ? 'Obligatoria: el día que vuelve al cuadrante. Sin ella la ausencia no termina nunca.'
+          : 'Vacía mientras siga de baja. Se rellena el día del alta.' },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', valor: fila.motivo || '' },
+    ], { nota: 'Esto CORRIGE este tramo, no abre uno nuevo. Si lo que pasa es que vuelve antes de tiempo, '
+             + 'usa "Cambiar situación" y ponlo activo desde el día que vuelve.' });
+    if (!v) return;
+    if (cat.fin_previsible && !v.hasta) {
+      await Dialogo.aviso({ titulo: 'Falta la fecha de vuelta', tono: 'aviso',
+        texto: `Unas ${String(cat.etiqueta || fila.estado).toLowerCase()} sin fecha de vuelta no terminan nunca: `
+             + 'esa persona desaparecería del cuadrante.' });
+      return editarAusencia(fila, d);
+    }
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion/${fila.id}`, 'PUT', v));
+  }
+
+  /** Borra una ausencia entera: la que se metió por error y NO llegó a pasar. */
+  async function borrarAusencia(fila, d) {
+    const cat = (CAT.situaciones || []).find(x => x.codigo === fila.estado) || {};
+    const f = x => (x ? fecha(x) : 'sin fin');
+    const ok = await Dialogo.confirmar({
+      titulo: '¿Borrar este tramo del historial?',
+      texto: `${cat.etiqueta || fila.estado}, del ${f(fila.desde)} al ${f(fila.hasta)}.\n\n`
+           + 'Solo para lo que se metió por error. Si de verdad estuvo ausente, corrige las fechas '
+           + 'en vez de borrarlo: el historial es lo que explica sus horas de esos días.',
+      si: 'Sí, borrar', no: 'Cancelar', tono: 'peligro',
+    });
+    if (!ok) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion/${fila.id}`, 'DELETE'));
+  }
+
   async function accionTurno(d) {
     const v = await pedirDatos(`Cambiar el turno de ${d.nombre_completo}`, [
       { id: 'turnoId', etiqueta: 'Turno', tipo: 'lista', valor: d.turno_id,
@@ -942,8 +985,25 @@
                 pinta: (v, f) => etiqueta(v || f.estado, tonoSituacion(f.estado)) },
               { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
               { titulo: 'Hasta', campo: 'hasta',
-                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">Sigue</span>' },
+                // "Sigue" en ámbar y no en verde: una ausencia sin fecha de fin
+                // no es una buena noticia, es alguien fuera del cuadrante
+                // indefinidamente. En verde parecía que estaba bien.
+                pinta: (v, f) => v ? fecha(v)
+                  : `<span class="text-telecab-warn" title="Sin fecha de vuelta: no termina nunca">
+                       <i class="fa-solid fa-triangle-exclamation mr-1"></i>Sin fin</span>` },
+              { titulo: 'Días', pinta: (v, f) => {
+                  if (!f.hasta) return '';
+                  const dd = Math.round((new Date(f.hasta) - new Date(f.desde)) / 86400000) + 1;
+                  return `<span class="text-telecab-muted">${dd}</span>`;
+                } },
               { titulo: 'Motivo', campo: 'motivo' },
+            ],
+            // Corregir aquí y no por base de datos. Las fechas mal puestas son
+            // lo que deja a alguien de vacaciones hasta fin de año, y quien lo
+            // sabe es quien está mirando esta tabla.
+            acciones: [
+              { icono: 'fa-pen', titulo: 'Corregir las fechas', onClick: editarAusencia },
+              { icono: 'fa-trash', titulo: 'Borrar (solo si se metió por error)', onClick: borrarAusencia },
             ],
           },
         },

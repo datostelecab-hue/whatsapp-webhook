@@ -150,6 +150,15 @@ router.put('/api/conductor/:id', responde(async req =>
 router.post('/api/conductor/:id/situacion', responde(async req =>
   ({ vigencia: await con.cambiarSituacion(Number(req.params.id), req.body || {}, await quien(req)) })));
 
+// CORREGIR una ausencia ya puesta, o borrarla. No es lo mismo que POST: esa
+// abre una situación nueva desde una fecha; estas dos tocan la fila que ya hay,
+// que es lo que hace falta cuando lo que se metió está mal.
+router.put('/api/conductor/:id/situacion/:filaId', responde(async req =>
+  con.editarAusencia(Number(req.params.id), Number(req.params.filaId), req.body || {}, await quien(req))));
+
+router.delete('/api/conductor/:id/situacion/:filaId', responde(async req =>
+  con.borrarAusencia(Number(req.params.id), Number(req.params.filaId), await quien(req))));
+
 router.post('/api/conductor/:id/turno', responde(async req =>
   ({ vigencia: await con.cambiarTurno(Number(req.params.id), req.body || {}, await quien(req)) })));
 

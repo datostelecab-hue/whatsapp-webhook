@@ -789,7 +789,9 @@
     /**
      * Un bloque de la ficha. Tres formas, de la más declarativa a la más libre:
      *   · campos → rejilla de etiqueta/valor
-     *   · tabla  → una tabla dentro de la ficha (plazas, historial…)
+     *   · tabla  → una tabla dentro de la ficha (plazas, historial…), con
+     *               `acciones: [{ icono, titulo, visible(fila), onClick(fila, d) }]`
+     *               por fila si hay algo que corregir en ella
      *   · pinta  → puerta de salida: el módulo hace lo que quiera con el hueco
      */
     pintarBloque(b, d) {
@@ -847,18 +849,42 @@
           return caja;
         }
         hueco.className = 'overflow-x-auto';
-        const cuerpo = filas.map(f => `<tr>${b.tabla.columnas.map(c => {
+
+        // ACCIONES POR FILA (opcionales): corregir un tramo del historial,
+        // borrar el que se metió por error. Van en una última columna sin
+        // título, que es donde se buscan, y solo aparecen en las filas que las
+        // admiten —`visible(fila)`—, porque no todo es editable.
+        const acc = (b.tabla.acciones || []).length ? b.tabla.acciones : null;
+        const cuerpo = filas.map((f, i) => `<tr>${b.tabla.columnas.map(c => {
           const bruto = c.campo !== undefined ? valorDe(f, c.campo) : undefined;
           const html = c.pinta ? c.pinta(bruto, f, d) : esc(bruto);
           return `<td class="px-5 py-2.5 ${esc(c.clase || '')}">${html === undefined || html === null ? '' : html}</td>`;
-        }).join('')}</tr>`).join('');
+        }).join('') + (acc ? `<td class="px-5 py-2.5 text-right whitespace-nowrap">${
+          acc.filter(a => !a.visible || a.visible(f, d)).map((a, j) => `
+            <button data-fila="${i}" data-acc="${j}" title="${esc(a.titulo || '')}"
+              class="w-7 h-7 rounded-lg border border-telecab-border text-telecab-muted
+                     hover:border-telecab-gold/50 hover:text-telecab-gold transition ml-1">
+              <i class="fa-solid ${esc(a.icono || 'fa-pen')} text-xs"></i></button>`).join('')
+        }</td>` : '')}</tr>`).join('');
         hueco.innerHTML = `
           <table class="w-full text-sm">
             <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
-              <tr>${b.tabla.columnas.map(c => `<th class="text-left font-semibold px-5 py-2.5">${esc(c.titulo)}</th>`).join('')}</tr>
+              <tr>${b.tabla.columnas.map(c => `<th class="text-left font-semibold px-5 py-2.5">${esc(c.titulo)}</th>`).join('')
+                }${acc ? '<th class="px-5 py-2.5"></th>' : ''}</tr>
             </thead>
             <tbody class="divide-y divide-telecab-border/60">${cuerpo}</tbody>
           </table>`;
+        if (acc) {
+          hueco.querySelectorAll('button[data-acc]').forEach(bt => {
+            const f = filas[Number(bt.dataset.fila)];
+            // El índice se recalcula sobre la MISMA lista filtrada que pintó el
+            // botón; si no, al ocultar una acción en una fila se dispararía la
+            // de al lado.
+            const visibles = acc.filter(a => !a.visible || a.visible(f, d));
+            const a = visibles[Number(bt.dataset.acc)];
+            if (a) bt.addEventListener('click', () => a.onClick(f, d, this));
+          });
+        }
         return caja;
       }
 
