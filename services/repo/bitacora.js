@@ -221,10 +221,24 @@ async function horasDeLaRejilla(hoyIso) {
   return out;
 }
 
+// Cuántos días DESPUÉS de hoy entran en la rejilla. Sin esto, poner a alguien de
+// vacaciones para mañana no se veía en ninguna parte: su ficha salía en blanco y
+// había que acordarse. Con el futuro a la vista, RRHH ve lo que ya está decidido.
+//
+// 60 días cubren las vacaciones planificadas de un verano entero. Las LIBRANZAS
+// futuras se calculan solo 14 días (más allá el cuadrante es una intención, no
+// una promesa: cambia cada semana); las ausencias y las J van a todo el horizonte
+// porque son decisiones ya tomadas y con fecha.
+const DIAS_FUTURO = 60;
+const DIAS_FUTURO_LIBRANZA = 14;
+
 async function leerBitacora() {
   const hoyIso = hoyMadridIso();
   const hoyIdx = idxDe(hoyIso);
-  const nDias = Math.max(0, hoyIdx + 1);
+  const nDias = Math.max(0, hoyIdx + 1 + DIAS_FUTURO);
+  // Hasta dónde se piden los datos que SÍ tienen futuro.
+  const finIso = isoDeIdx(hoyIdx + DIAS_FUTURO);
+  const finLibranzaIso = isoDeIdx(hoyIdx + DIAS_FUTURO_LIBRANZA);
 
   // Las fechas se piden como TEXTO ('YYYY-MM-DD'): node-postgres devuelve DATE como
   // Date en zona local y eso desplaza un día según el reloj.
@@ -249,13 +263,13 @@ async function leerBitacora() {
          JOIN cat_estado_conductor ce ON ce.codigo = h.estado
         WHERE ce.es_ausencia AND ce.marca_bitacora IS NOT NULL
           AND h.desde <= $2::date AND COALESCE(h.hasta, $2::date) >= $1::date`,
-      [INICIO_ISO, hoyIso]),
+      [INICIO_ISO, finIso]),
     db.consulta(
       `SELECT conductor_id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia,
               horas_seg_momento, observacion
          FROM justificante
         WHERE anulado_at IS NULL AND dia_operativo BETWEEN $1::date AND $2::date`,
-      [INICIO_ISO, hoyIso]),
+      [INICIO_ISO, finIso]),
     // Horas: del HISTÓRICO SELLADO (bitacora_horas), no del núcleo. Ver
     // `horasDeLaRejilla` justo debajo: lo cerrado se calculó una vez y no se
     // vuelve a mover; solo la jornada en curso se mira en vivo.
@@ -278,7 +292,7 @@ async function leerBitacora() {
               JOIN cat_estado_conductor ce ON ce.codigo = h.estado
              WHERE h.conductor_id = a.conductor_id AND ce.es_ausencia
                AND h.desde <= a.dia AND (h.hasta IS NULL OR h.hasta >= a.dia))`,
-      [INICIO_ISO, hoyIso]),
+      [INICIO_ISO, finLibranzaIso]),
     // Libranzas puestas A MANO desde el panel del día (bitacora_dia). La 'J'
     // manual NO se lee de aquí: su verdad es la tabla justificante.
     db.consulta(
@@ -286,7 +300,7 @@ async function leerBitacora() {
          FROM bitacora_dia
         WHERE marca_manual AND marca = 'L'
           AND dia_operativo BETWEEN $1::date AND $2::date`,
-      [INICIO_ISO, hoyIso]),
+      [INICIO_ISO, finIso]),
   ]);
 
   const nuevos = () => new Array(nDias).fill(null);
@@ -368,7 +382,13 @@ async function leerBitacora() {
     (Number(b.vigente) - Number(a.vigente)) ||
     (a.vigente ? a.id.localeCompare(b.id, 'es') : String(b.baja || '').localeCompare(String(a.baja || ''))));
 
-  return { conductores, hoyIdx, inicio: INICIO, avisos: { sinFicha: huerfanos.size } };
+  return {
+    conductores, hoyIdx, inicio: INICIO,
+    // Hasta dónde llega la rejilla y hasta dónde vale la libranza proyectada:
+    // la pantalla pinta el futuro más apagado y no acusa a nadie de "no salió".
+    diasFuturo: DIAS_FUTURO, diasFuturoLibranza: DIAS_FUTURO_LIBRANZA,
+    avisos: { sinFicha: huerfanos.size },
+  };
 }
 
 // ── Vacaciones: lo disfrutado y lo PROGRAMADO, para asignar por meses ───────

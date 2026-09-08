@@ -179,13 +179,36 @@
   // Cada estado tiene SIEMPRE el mismo color, en la barra de la izquierda, en el
   // chip y en el resumen de arriba. Así el ojo aprende el código una vez.
   const ESTADO = {
-    no_salio:  { barra: 'bg-red-500',        etq: 'NO HA SALIDO',   tono: 'error', fila: 'bg-red-500/[0.05]' },
-    descanso:  { barra: 'bg-amber-500',      etq: 'En descanso',    tono: 'aviso', fila: '' },
-    conectado: { barra: 'bg-emerald-500',    etq: 'Conectado',      tono: 'ok',    fila: '' },
-    salio:     { barra: 'bg-telecab-border', etq: 'Salió',          tono: 'muted', fila: '' },
-    pendiente: { barra: 'bg-transparent',    etq: 'Aún no le toca', tono: 'muted', fila: '' },
+    no_salio:     { barra: 'bg-red-500',        etq: 'NO HA SALIDO',   tono: 'error', fila: 'bg-red-500/[0.05]' },
+    pendiente:    { barra: 'bg-transparent',    etq: 'Aún no le toca', tono: 'muted', fila: '' },
+    desconectado: { barra: 'bg-telecab-border', etq: 'Desconectado',   tono: 'muted', fila: '' },
+    descanso:     { barra: 'bg-amber-500',      etq: 'En descanso',    tono: 'aviso', fila: '' },
+    espera:       { barra: 'bg-telecab-gold',   etq: 'En espera',      tono: 'aviso', fila: '' },
+    viaje:        { barra: 'bg-emerald-500',    etq: 'En viaje',       tono: 'ok',    fila: '' },
   };
-  const est = f => ESTADO[f.salida] || ESTADO.pendiente;
+
+  // EL GRUPO DE CADA FILA. El servidor dice si salió o no (salidaDe); aquí se
+  // afina con lo que está haciendo AHORA MISMO (viaje / espera / descanso), que
+  // es lo que Tráfico necesita separar: no es lo mismo uno parado esperando
+  // pedido que uno con pasajero dentro.
+  function grupoDe(f) {
+    if (f.salida === 'no_salio') return 'no_salio';
+    if (f.salida === 'pendiente') return 'pendiente';
+    const s = (f.actividad || {}).situacion;
+    if (f.salida === 'descanso' || s === 'descanso') return 'descanso';
+    if (f.salida === 'conectado') return s === 'espera' ? 'espera' : 'viaje';
+    return 'desconectado';           // trabajó en su turno y ahora no está conectado
+  }
+  // El orden de la lista, de lo que hay que mirar a lo que ya está rodando.
+  const GRUPOS = [
+    { id: 'no_salio',     etq: 'No han salido · hay que llamar', icono: 'fa-phone-volume' },
+    { id: 'pendiente',    etq: 'Todavía no les toca',            icono: 'fa-hourglass-half' },
+    { id: 'desconectado', etq: 'Desconectados · ya no están',    icono: 'fa-plug-circle-xmark' },
+    { id: 'descanso',     etq: 'En descanso',                    icono: 'fa-mug-hot' },
+    { id: 'espera',       etq: 'En espera · disponibles',        icono: 'fa-clock' },
+    { id: 'viaje',        etq: 'En viaje · con pasajero',        icono: 'fa-car-side' },
+  ];
+  const est = f => ESTADO[grupoDe(f)] || ESTADO.pendiente;
 
   // Un cero no es un dato: es ruido. Se pinta apagado y con raya, para que los
   // números que SÍ dicen algo salten solos.
@@ -201,9 +224,14 @@
     A: 'bg-telecab-gold/20 text-telecab-gold',
     B: 'bg-amber-500/15 text-amber-500',
     C: 'bg-red-500/15 text-red-500',
+    N: 'bg-sky-500/15 text-sky-400',
   };
   function chipRend(r) {
-    if (!r || !r.dias) return '';
+    if (!r) return '';
+    // Recién incorporado: no se promedia hasta el cuarto día.
+    if (r.nuevo) return '<span class="shrink-0 px-1.5 py-0 rounded text-[10px] font-bold leading-[1.4] ' +
+      REND_TONO.N + '" title="Recién incorporado: todavía no se promedia (los 3 primeros días de alta)">NUEVO</span>';
+    if (!r.dias) return '';
     const h = String(r.horas).replace('.', ',');
     const tit = 'Promedio del mes: ' + h + ' h en ' + r.dias + ' día(s)' +
       (r.diasCero ? ' · ' + r.diasCero + ' sin salir sin justificar' : '') +
@@ -242,7 +270,11 @@
             enlaceTel(f.telefono) + accionesConductor(f) + '</span>' +
         '</span>' +
         '<span class="dopc min-w-0 flex items-center gap-1.5">' +
-          '<span class="font-mono text-xs text-telecab-muted truncate">' + esc(mat) + '</span>' +
+          '<span class="min-w-0">' +
+            '<span class="block font-mono text-xs text-telecab-muted truncate">' + esc(mat) + '</span>' +
+            // El cuadrante ya no es la cabecera del grupo: se dice aquí, pequeño.
+            (f.cuadrante ? '<span class="block text-[10px] text-telecab-muted/70 truncate" title="Cuadrante">' + esc(f.cuadrante) + '</span>' : '') +
+          '</span>' +
           (f.cocheCambiado
             ? '<span class="shrink-0 text-[10px] font-bold text-amber-500" title="No es el coche del plan (' +
               esc(plan) + ')">&ne;</span>' : '') +
@@ -286,26 +318,45 @@
       '</div>';
 
     const sinDato = DATOS && DATOS.hayActividad === false;
+    // LAS CUATRO CIFRAS QUE IMPORTAN, CON SU DESGLOSE POR TURNO. La flota
+    // trabaja en dos turnos a la vez y el número global no dice nada: "8 en
+    // espera" puede ser el día entero parado o la noche arrancando.
+    const cuentaEn = (lista, g) => (lista || []).filter(f => grupoDe(f) === g).length;
+    const porTurnos = g => ({
+      dia: cuentaEn(p.dia, g), noche: cuentaEn(p.noche, g), todo: cuentaEn(p.todoturno, g),
+    });
+    const tarjetaTurnos = (g, etq, color, extra) => {
+      const c = porTurnos(g);
+      const total = c.dia + c.noche + c.todo;
+      return '<div class="' + (extra || '') + ' rounded-xl border border-telecab-border bg-telecab-dark/40 px-3 py-2">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none ' + color + '">' + total + '</div>' +
+          '<div class="text-[11px] text-telecab-muted">' + etq + '</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Turno de día"><i class="fa-solid fa-sun text-telecab-gold/70"></i> ' + c.dia + '</span>' +
+          '<span title="Turno de noche"><i class="fa-solid fa-moon text-sky-400/70"></i> ' + c.noche + '</span>' +
+          (c.todo ? '<span title="TodoTurno: doblan día y noche"><i class="fa-solid fa-clock-rotate-left"></i> ' + c.todo + '</span>' : '') +
+        '</div></div>';
+    };
+
     const cajas = turnoActivo === 'nn'
       ? [tarjeta(arr.length, 'Salieron FUERA del plan · vacaciones, bajas, sin ficha…', 'text-amber-500')]
       : sinDato
         ? [tarjeta('?', 'Sin datos de actividad: no se sabe quién ha salido', 'text-red-500')]
-      : sinEmpezar
-        // Un turno que no ha arrancado no tiene a nadie "sin salir": decir 0/61
-        // invitaría a llamar a 61 personas a las diez de la mañana.
-        ? [tarjeta(arr.length, 'Planificados · el turno aún no empieza', 'text-telecab-muted')]
         : [
-            tarjeta(n('no_salio'), 'Sin salir · hay que llamar', 'text-red-500',
+            tarjetaTurnos('viaje', 'En viaje', 'text-emerald-500'),
+            tarjetaTurnos('espera', 'En espera', 'text-telecab-gold'),
+            tarjetaTurnos('descanso', 'En descanso', 'text-amber-500'),
+            tarjetaTurnos('no_salio', 'Sin salir · a llamar', 'text-red-500',
               'cursor-pointer transition ' + (soloNoSalieron ? 'ring-2 ring-red-500/60' : 'hover:border-red-500/50')),
-            tarjeta(n('conectado'), 'Rodando ahora', 'text-emerald-500'),
-            tarjeta(n('descanso'), 'En descanso', 'text-amber-500'),
-            tarjeta(avisos, 'Avisos abiertos', avisos ? 'text-red-500' : 'text-telecab-muted'),
           ];
     $('#d-resumen').innerHTML = cajas.join('');
     $('#d-cabecera').classList.toggle('hidden', !arr.length);
 
-    const caja = $('#d-resumen').firstElementChild;
-    if (caja && !sinEmpezar && !sinDato && turnoActivo !== 'nn') {
+    const cajasDom = $('#d-resumen').children;
+    const caja = cajasDom[cajasDom.length - 1];   // la de "sin salir · a llamar"
+    if (caja && !sinDato && turnoActivo !== 'nn') {
       caja.addEventListener('click', () => ponerFiltro(!soloNoSalieron));
     }
   }
@@ -467,27 +518,28 @@
       return;
     }
 
-    // Agrupar por cuadrante (planificador). Sin cuadrante van al final.
-    const grupos = new Map();
-    filas.forEach(f => {
-      const k = f.cuadrante || '(sin cuadrante)';
-      if (!grupos.has(k)) grupos.set(k, []);
-      grupos.get(k).push(f);
-    });
-    const claves = [...grupos.keys()].sort((a, b) =>
-      (a === '(sin cuadrante)') - (b === '(sin cuadrante)') || a.localeCompare(b, undefined, { numeric: true }));
+    // POR ESTADO, NO POR CUADRANTE. Quien mira esta pantalla no busca "el
+    // cuadrante 3": busca a quién llamar y quién está rodando. Arriba lo que
+    // exige acción (no han salido, todavía no les toca), abajo lo que ya está
+    // funcionando (en espera, en viaje). El cuadrante sigue en cada fila.
+    const grupos = new Map(GRUPOS.map(g => [g.id, []]));
+    filas.forEach(f => { const g = grupoDe(f); if (grupos.has(g)) grupos.get(g).push(f); });
 
-    // La cabecera del cuadrante se queda pegada arriba al bajar, y dice cuántos de
-    // los suyos faltan: es el dato que decide si hay que bajar a mirar ese grupo.
-    $('#d-lista').innerHTML = claves.map(k => {
-      const g = grupos.get(k);
-      const nf = g.filter(falta).length;
+    $('#d-lista').innerHTML = GRUPOS.map(g => {
+      const lista = grupos.get(g.id) || [];
+      if (!lista.length) return '';
+      // Dentro de cada grupo: por cuadrante y luego por nombre, para que la gente
+      // del mismo correturno siga saliendo junta.
+      lista.sort((a, b) =>
+        (a.cuadrante || '').localeCompare(b.cuadrante || '', undefined, { numeric: true }) ||
+        (a.conductor || '').localeCompare(b.conductor || ''));
+      const e = ESTADO[g.id];
       return '<div class="sticky top-0 z-10 px-4 py-1.5 bg-telecab-dark border-b border-telecab-border' +
           ' text-xs uppercase tracking-wide text-telecab-muted flex items-center gap-2">' +
-          '<i class="fa-solid fa-layer-group"></i> ' + esc(k) +
-          (nf ? ' <span class="normal-case text-red-500 font-medium">· ' + nf + ' sin salir</span>' : '') +
-          '<span class="ml-auto normal-case tabular-nums">' + g.length + '</span></div>' +
-        g.map(filaConductor).join('');
+          '<span class="w-1.5 h-1.5 rounded-full ' + (e ? e.barra : 'bg-telecab-border') + '"></span>' +
+          '<i class="fa-solid ' + g.icono + '"></i> ' + esc(g.etq) +
+          '<span class="ml-auto normal-case tabular-nums">' + lista.length + '</span></div>' +
+        lista.map(filaConductor).join('');
     }).join('');
 
     const salieron = filas.filter(salio).length;

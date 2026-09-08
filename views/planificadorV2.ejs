@@ -541,9 +541,14 @@
     A: 'bg-telecab-gold/20 text-telecab-gold border-telecab-gold/40',
     B: 'bg-amber-500/15 text-amber-500 border-amber-500/40',
     C: 'bg-red-500/15 text-red-500 border-red-500/40',
+    N: 'bg-sky-500/15 text-sky-400 border-sky-500/40',
   };
   function chipRend(r, mini) {
-    if (!r || !r.dias) return '';
+    if (!r) return '';
+    // Recién incorporado: no se promedia hasta el cuarto día. "0 h · C" en
+    // alguien que lleva dos días no dice nada malo de él, dice que no se sabe.
+    if (r.nuevo) return `<span class="shrink-0 inline-flex items-center px-1.5 py-0 rounded border text-[10px] font-bold leading-[1.4] ${REND_TONO.N}" title="Recién incorporado: todavía no se promedia (los 3 primeros días de alta)">NUEVO</span>`;
+    if (!r.dias) return '';
     const h = String(r.horas).replace('.', ',');
     const tit = `Promedio del mes: ${h} h en ${r.dias} día(s) contados` +
       (r.diasCero ? ` · ${r.diasCero} sin salir sin justificar (cuentan como 0)` : '') +

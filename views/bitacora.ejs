@@ -41,6 +41,10 @@
   .cal-dia:hover { transform: translateY(-1px); border-color: rgb(var(--tc-gold) / .6); box-shadow: 0 10px 24px -14px rgb(0 0 0 / .8); }
   .cal-dia.hoy { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 1px; }
   .cal-dia.sel { border-color: rgb(var(--tc-gold)); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .25); }
+  /* Lo ya decidido para el futuro (vacaciones, baja, libranza) se ve con su
+     color pero atenuado y con el borde punteado: es una promesa, no un hecho. */
+  .cal-dia.porvenir { opacity: .55; border-style: dashed; }
+  .mini > i.porvenir { opacity: .45; }
   .cal-dia.futuro, .cal-dia.fuera { opacity: .28; cursor: default; }
   .cal-dia.futuro:hover, .cal-dia.fuera:hover { transform: none; border-color: rgb(var(--tc-border) / .6); box-shadow: none; }
   .cal-num { font-size: 11px; color: rgb(var(--tc-muted)); font-weight: 600; line-height: 1; }
@@ -59,7 +63,23 @@
   .cal-dia.V { background: rgb(var(--tc-vac) / .22); border-color: rgb(var(--tc-vac) / .45); }
   .cal-dia.B { background: rgb(var(--tc-med) / .22); border-color: rgb(var(--tc-med) / .45); }
   .cal-dia.P { background: rgb(var(--tc-permiso) / .22); border-color: rgb(var(--tc-permiso) / .45); }
-  .cal-dia.J { background: rgb(var(--tc-just) / .25); border-color: rgb(var(--tc-just) / .5); }
+  /* Un día JUSTIFICADO lleva SIEMPRE el borde azul (de ahí se sabe que hay J),
+     y el fondo del color de las horas del día (justificadas + BOLT): si con la J
+     no llegó a la jornada, la celda sale roja aunque tenga justificante. */
+  .cal-dia.J { border-color: rgb(var(--tc-just) / .75); border-width: 2px; }
+  .cal-dia.jcero { background: rgb(var(--tc-red) / .18); }
+  .cal-dia.jcero .cal-val { color: rgb(var(--tc-red)); }
+  .cal-dia.jt1 { background: rgb(var(--tc-red) / .14); }
+  .cal-dia.jt1 .cal-val { color: rgb(var(--tc-red)); }
+  .cal-dia.jt2 { background: rgb(var(--tc-just) / .22); }
+  .cal-dia.jt3 { background: rgb(var(--tc-green) / .30); }
+  .cal-dia.jt2 .cal-val, .cal-dia.jt3 .cal-val { color: rgb(var(--tc-text)); }
+  /* La "J" pequeña dentro de la celda, para no perder de vista que es un día
+     justificado aunque el color venga de las horas. */
+  .cal-val.cal-j { display: flex; align-items: baseline; gap: .25rem; }
+  .cal-jmini { font-size: 9px; font-style: normal; font-weight: 800; padding: 0 .25rem;
+    border-radius: .25rem; background: rgb(var(--tc-just)); color: white; letter-spacing: .02em; }
+  .mini > i.J { background: rgb(var(--tc-just)); }
   /* El año: doce meses en miniatura, cada día un puntito. */
   .mini { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
   .mini > i { display: block; aspect-ratio: 1; border-radius: 2px; background: rgb(var(--tc-dark) / .5); }
@@ -124,25 +144,59 @@
   const esAus = v => v === 'V' || v === 'B' || v === 'P';
   const val = (c, d) => (d >= 0 && d < c.dias.length ? c.dias[d] : null);
 
+  // LAS HORAS DE UN DÍA SON LAS DE BOLT **MÁS** LAS JUSTIFICADAS. 2 h de taller
+  // justificadas y 5 rodando son un día de 7, y de 7 se colorea la celda: es la
+  // misma cuenta que hace la nómina. Antes un día con J se pintaba siempre del
+  // mismo azul, así que "J de 2 h y se fue a casa" y "J de 2 h + 8 en BOLT" se
+  // veían igual. Devuelve null si el día no es de trabajo (libranza, ausencia…).
+  function horasDe(c, d) {
+    const v = val(c, d);
+    if (typeof v === 'number') return v;
+    if (v === 'J') {
+      const iso = isoDe(d), j = c.justif[iso] || {};
+      return (j.horas || 0) + ((c.horasBolt || {})[iso] || 0);
+    }
+    return null;
+  }
+  // El tramo de color por horas: t1 flojo · t2 medio · t3 cumplió.
+  const tramo = h => h >= OBJETIVO ? 't3' : h >= OBJETIVO / 2 ? 't2' : 't1';
+
   // ── La clase de un día: qué se pinta y qué se dice ────────────────────────
   //   futuro · fuera (antes del alta / tras la baja) · t1/t2/t3 (trabajó, por horas)
   //   · V/B/P (ausencia) · J (justificado) · L (libranza) · nosalio
   function clase(c, d) {
-    if (d > DATA.hoyIdx) return 'futuro';
     if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return 'fuera';
     const v = val(c, d);
-    if (typeof v === 'number' && v > 0) return v >= OBJETIVO ? 't3' : v >= OBJETIVO / 2 ? 't2' : 't1';
-    if (esAus(v) || v === 'J' || v === 'L') return v;
+    // EL FUTURO SE VE. Si ya hay algo decidido para mañana —vacaciones, una baja,
+    // un permiso, una libranza— se pinta con su color, atenuado. Antes todo el
+    // futuro salía en blanco y poner a alguien de vacaciones para mañana no se
+    // notaba en ninguna pantalla.
+    if (d > DATA.hoyIdx) {
+      return (esAus(v) || v === 'J' || v === 'L') ? v + ' porvenir' : 'futuro';
+    }
+    if (typeof v === 'number' && v > 0) return tramo(v);
+    // La J se pinta del color de las horas del día (justificadas + BOLT), no de
+    // un azul fijo: una J de 2 h sin salir es un día flojo y tiene que verse.
+    if (v === 'J') { const h = horasDe(c, d) || 0; return 'J j' + (h > 0 ? tramo(h) : 'cero'); }
+    if (esAus(v) || v === 'L') return v;
     return 'nosalio';
   }
+  // La clase "de verdad" sin el sufijo, para comparar (k === 'V', etc.).
+  const soloClase = k => String(k).split(' ')[0];
   const trabajo = k => k === 't1' || k === 't2' || k === 't3';
   function textoDia(c, d) {
-    const k = clase(c, d), v = val(c, d);
+    const k = soloClase(clase(c, d)), v = val(c, d);
+    const porvenir = d > DATA.hoyIdx ? ' (programado)' : '';
     if (k === 'futuro') return 'Todavía no ha llegado.';
     if (k === 'fuera') return c.altaIdx != null && d < c.altaIdx ? 'Antes de su alta.' : 'Después de su baja.';
     if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '');
-    if (k === 'J') { const j = c.justif[isoDe(d)] || {}; const hb = (c.horasBolt || {})[isoDe(d)]; return 'Justificado' + (j.horas != null ? ' · justifica ' + nf1.format(j.horas) + ' h' : '') + (hb != null ? ' · en BOLT ' + nf1.format(hb) + ' h' : '') + ((j.horas != null || hb != null) ? ' · día de ' + nf1.format((j.horas || 0) + (hb || 0)) + ' h' : '') + (j.obs ? ' · ' + j.obs : ''); }
-    if (k === 'L') return (c.lManual || {})[isoDe(d)] ? 'Libranza (puesta a mano)' : 'Libranza (le tocaba descansar)';
+    if (k === 'J') {
+      const j = c.justif[isoDe(d)] || {}, hb = (c.horasBolt || {})[isoDe(d)], tot = horasDe(c, d) || 0;
+      return 'Día de ' + nf1.format(tot) + ' h' + (tot < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '') +
+        ' · justificadas ' + nf1.format(j.horas || 0) + ' h' +
+        ' + BOLT ' + nf1.format(hb || 0) + ' h' + (j.obs ? ' · ' + j.obs : '') + porvenir;
+    }
+    if (k === 'L') return ((c.lManual || {})[isoDe(d)] ? 'Libranza (puesta a mano)' : 'Libranza (le tocaba descansar)') + porvenir;
     if (esAus(k)) return NOM[k];
     return 'No salió: ni una hora, sin libranza ni ausencia.';
   }
@@ -151,14 +205,19 @@
   function resumen(c, a, b) {
     const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0, dias: 0, horasJ: 0 };
     for (let d = a; d <= b; d++) {
-      const k = clase(c, d); if (k === 'futuro' || k === 'fuera') continue;
+      const k = soloClase(clase(c, d));
+      if (k === 'futuro' || k === 'fuera' || d > DATA.hoyIdx) continue;
       r.dias++;
       if (trabajo(k)) { const v = val(c, d); r.horas += v; r.trabajados++; if (v < OBJETIVO) r.cortos++; }
+      else if (k === 'J') {
+        // Un día justificado ES un día trabajado para la cuenta de horas: entra
+        // con su total (justificadas + BOLT) y cuenta como corto si no llega.
+        const h = horasDe(c, d) || 0;
+        r.horas += h; r.trabajados++; if (h < OBJETIVO) r.cortos++;
+        r.J++; const j = c.justif[isoDe(d)]; if (j && j.horas != null) r.horasJ += j.horas;
+      }
       else if (r[k] != null) {
         r[k]++;
-        // Las horas JUSTIFICADAS del periodo: se suman aparte (para la nómina
-        // cuentan junto a las de BOLT, pero aquí no se mezclan con "Horas").
-        if (k === 'J') { const j = c.justif[isoDe(d)]; if (j && j.horas != null) r.horasJ += j.horas; }
       }
     }
     return r;
@@ -596,15 +655,21 @@
 
   // ── El calendario ─────────────────────────────────────────────────────────
   function celda(c, d, conNumero) {
-    const k = clase(c, d), v = val(c, d);
+    const k = soloClase(clase(c, d)), v = val(c, d);
     let contenido = '';
     if (trabajo(k)) contenido = `<span class="cal-val">${nf1.format(v)} h</span>`;
     else if (k === 'nosalio') contenido = '<span class="cal-val">no salió</span>';
     else if (k === 'L') contenido = '<span class="cal-val">libra</span>';
-    else if (k === 'J') contenido = `<span class="cal-tag" style="background:${clr('J')};color:white">J</span>`;
+    else if (k === 'J') {
+      // El número que vale para la nómina (justificadas + BOLT) y la "J" al lado
+      // en pequeño, para saber de dónde salen esas horas.
+      const iso = isoDe(d), j = c.justif[iso] || {}, hb = (c.horasBolt || {})[iso] || 0, tot = horasDe(c, d) || 0;
+      contenido = `<span class="cal-val cal-j">${nf1.format(tot)} h` +
+        `<i class="cal-jmini" title="${esc(nf1.format(j.horas || 0) + ' h justificadas + ' + nf1.format(hb) + ' h en BOLT')}">J${j.horas ? ' ' + nf1.format(j.horas) : ''}</i></span>`;
+    }
     else if (esAus(k)) contenido = `<span class="cal-tag" style="background:${clr(k)};color:white">${k}</span>`;
     const f = fechaDe(d);
-    return `<div class="cal-dia ${k} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">
+    return `<div class="cal-dia ${clase(c, d)} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">
       <span class="cal-num">${conNumero ? f.getUTCDate() : DOW[dowDe(d)]}${conNumero && level === 'semana' ? ' ' + DOW[dowDe(d)] : ''}</span>${contenido}</div>`;
   }
   function pintarCalendario(c) {

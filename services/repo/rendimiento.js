@@ -29,6 +29,10 @@ const ESCALA = [
   { letra: 'B', desde: 6,   texto: 'entre 6 y 8 h' },
   { letra: 'C', desde: -1,  texto: 'menos de 6 h' },
 ];
+// Los primeros días de alta NO se promedian: con dos días trabajados no se sabe
+// nada de nadie, y salía "0 h · C" como si fuera el peor de la flota. Se dice
+// "Nuevo conductor" (letra N) y a partir del cuarto día ya se promedia.
+const DIAS_NUEVO = 3;
 const letraDe = h => (ESCALA.find(e => h >= e.desde) || ESCALA[ESCALA.length - 1]).letra;
 
 /** Hoy en Madrid, 'YYYY-MM-DD'. */
@@ -103,15 +107,40 @@ async function calcular(hastaIso) {
        FROM cuenta
       GROUP BY conductor_id`, [desde, hasta]);
 
-  return r.rows.map(x => ({
-    conductorId: Number(x.conductor_id),
-    mes: desde,
-    dias: x.dias,
-    diasCero: x.dias_cero,
-    horasTotal: Number(x.horas_total) || 0,
-    horasProm: Number(x.horas_prom) || 0,
-    letra: letraDe(Number(x.horas_prom) || 0),
-  }));
+  // Los recién incorporados: menos de DIAS_NUEVO desde su alta vigente. Salen
+  // con letra 'N' y sin promedio, aunque tengan días con horas.
+  const nuevos = new Set((await db.consulta(
+    `SELECT DISTINCT e.conductor_id
+       FROM conductor_periodo_empleo e
+      WHERE e.baja IS NULL AND e.alta IS NOT NULL
+        AND e.alta > ($1::date - ($2 || ' days')::interval)`,
+    [hasta, String(DIAS_NUEVO)])).rows.map(x => Number(x.conductor_id)));
+
+  const filas = r.rows.map(x => {
+    const cid = Number(x.conductor_id);
+    const prom = Number(x.horas_prom) || 0;
+    const nuevo = nuevos.has(cid);
+    return {
+      conductorId: cid,
+      mes: desde,
+      nuevo,
+      dias: nuevo ? 0 : x.dias,
+      diasCero: nuevo ? 0 : x.dias_cero,
+      horasTotal: nuevo ? 0 : (Number(x.horas_total) || 0),
+      horasProm: nuevo ? 0 : prom,
+      letra: nuevo ? 'N' : letraDe(prom),
+    };
+  });
+
+  // Un recién incorporado que todavía no ha rodado ni un día no aparece en la
+  // consulta de arriba, y aun así hay que poder decir que es nuevo.
+  const yaEstan = new Set(filas.map(f => f.conductorId));
+  nuevos.forEach(cid => {
+    if (!yaEstan.has(cid)) {
+      filas.push({ conductorId: cid, mes: desde, nuevo: true, dias: 0, diasCero: 0, horasTotal: 0, horasProm: 0, letra: 'N' });
+    }
+  });
+  return filas;
 }
 
 /**
@@ -163,6 +192,7 @@ async function leer() {
     r.rows.forEach(x => m.set(Number(x.conductor_id), {
       horas: Number(x.horas_prom) || 0,
       letra: x.letra,
+      nuevo: x.letra === 'N',
       dias: x.dias,
       diasCero: x.dias_cero,
       mes: x.mes,
