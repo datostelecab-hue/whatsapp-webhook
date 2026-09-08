@@ -685,10 +685,15 @@ async function liberar(cli, plazaId, dia, usuarioId) {
   const desde = fechaDe(a.desde);
   if (desde >= dia) {
     await cli.query('DELETE FROM asignacion WHERE id = $1', [a.id]);
-    return { id: a.id, borrada: true };
+  } else {
+    await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [a.id, vispera(dia)]);
   }
-  await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [a.id, vispera(dia)]);
-  return { id: a.id, cerrada: vispera(dia) };
+  // SOLTAR una plaza también puede cambiar el turno: quien deja una de sus dos
+  // fijas vuelve a ser de un turno solo. Se recalcula con lo que le QUEDA; si no
+  // le queda ninguna, no se toca y el banquillo conserva el último que tuvo, que
+  // es justo para lo que se guarda.
+  await recordarTurno(cli, a.conductor_id, null, dia, usuarioId);
+  return desde >= dia ? { id: a.id, borrada: true } : { id: a.id, cerrada: vispera(dia) };
 }
 
 /**
@@ -742,6 +747,38 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
   return { id: r.rows[0].id, nueva: true };
 }
 
+// TodoTurno. El id vive en la tabla `turno` y no cambia; tenerlo aquí evita una
+// consulta en cada colocación solo para traducir la palabra.
+const TURNO_TODOTURNO = 3;
+
+/**
+ * QUÉ TURNO ES ALGUIEN, SEGÚN LAS PLAZAS QUE OCUPA.
+ *
+ * La regla la puso Tráfico y es la de Akieme: QUIEN CUBRE LAS DOS PLAZAS FIJAS
+ * DE UN COCHE es TodoTurno, porque lleva ese coche de punta a punta. No basta
+ * con "dos plazas fijas" a secas: dos plazas de DÍA en dos coches distintos no
+ * es TodoTurno, es un doble apunte que hay que mirar, y por eso se cuentan
+ * TURNOS DISTINTOS y no plazas.
+ *
+ * Los fijos mandan sobre los correturnos: quien es fijo de noche y además hace
+ * de correturnos de día sigue siendo de noche, que es donde está su coche.
+ */
+async function turnoSegunPlazas(cli, conductorId, dia) {
+  const r = await cli.query(
+    `SELECT s.rol, array_agg(DISTINCT s.turno_id) AS turnos
+       FROM asignacion a
+       JOIN plaza p    ON p.id = a.plaza_id AND p.baja_at IS NULL
+       JOIN cat_slot s ON s.slot = p.slot
+      WHERE a.conductor_id = $1
+        AND a.desde <= $2::date AND (a.hasta IS NULL OR a.hasta >= $2::date)
+      GROUP BY s.rol`,
+    [conductorId, dia]);
+  const de = rol => (r.rows.find(x => x.rol === rol) || {}).turnos || [];
+  const turnos = de('FIJO').length ? de('FIJO') : de('CT');
+  if (!turnos.length) return null;
+  return turnos.length > 1 ? TURNO_TODOTURNO : Number(turnos[0]);
+}
+
 /**
  * LE DEJA APUNTADO SU TURNO al colocarlo en una plaza.
  *
@@ -750,26 +787,42 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
  * lo único que lo decía. De 220 personas, 3 tenían turno propio y 172 lo
  * heredaban de su coche.
  *
- * Ahora, al colocarlo, se le escribe el turno de esa plaza si no tenía ninguno.
- * Es lo que hace que el banquillo recuerde el ÚLTIMO turno que se le asignó,
- * que es como se quiere buscar a la gente cuando hay que tapar un hueco.
+ * Se mira SIEMPRE el conjunto de sus plazas, no la que se acaba de tocar: dar a
+ * alguien la segunda plaza fija de su coche lo convierte en TodoTurno, y eso no
+ * se ve mirando solo la plaza nueva.
  *
- * Si YA tiene turno propio no se toca: puede habérselo puesto Tráfico a mano
- * ("este es de noche aunque hoy lo pongas de día") y esa decisión manda sobre
- * dónde lo hayan colocado un martes.
+ * Lo puesto A MANO no se toca. Tráfico puede decir "este es de noche aunque hoy
+ * lo pongas de día", y esa decisión manda sobre dónde lo coloquen un martes. Lo
+ * que sí se corrige es lo que puso este mismo código antes.
  */
-async function recordarTurno(cli, conductorId, turnoId, desde, usuarioId) {
-  if (!conductorId || !turnoId) return null;
-  const hay = await cli.query(
-    `SELECT 1 FROM conductor_turno_hist
-      WHERE conductor_id = $1 AND (hasta IS NULL OR hasta >= $2::date) LIMIT 1`,
-    [conductorId, desde]);
-  if (hay.rowCount) return null;
-  const r = await cli.query(
-    `INSERT INTO conductor_turno_hist (conductor_id, turno_id, desde, origen, usuario_id)
-     VALUES ($1, $2, $3::date, 'planificador', $4) RETURNING id`,
-    [conductorId, turnoId, desde, usuarioId || null]);
-  return r.rows[0] || null;
+async function recordarTurno(cli, conductorId, _turnoPlaza, desde, usuarioId) {
+  if (!conductorId) return null;
+  const turnoId = await turnoSegunPlazas(cli, conductorId, desde);
+  if (!turnoId) return null;
+
+  const actual = (await cli.query(
+    `SELECT id, turno_id, origen FROM conductor_turno_hist
+      WHERE conductor_id = $1 AND (hasta IS NULL OR hasta >= $2::date)
+      ORDER BY desde DESC LIMIT 1`,
+    [conductorId, desde])).rows[0];
+
+  if (!actual) {
+    const r = await cli.query(
+      `INSERT INTO conductor_turno_hist (conductor_id, turno_id, desde, origen, usuario_id)
+       VALUES ($1, $2, $3::date, 'planificador', $4) RETURNING id`,
+      [conductorId, turnoId, desde, usuarioId || null]);
+    return r.rows[0] || null;
+  }
+  if (actual.origen === 'manual') return null;              // lo decidió una persona
+  if (Number(actual.turno_id) === turnoId) return null;     // ya está bien
+
+  // Se corrige la fila vigente en vez de apilar otra: es el mismo turno de
+  // siempre, solo que la plaza dice ahora otra cosa.
+  await cli.query(
+    `UPDATE conductor_turno_hist SET turno_id = $2, origen = 'planificador', usuario_id = $3
+      WHERE id = $1`,
+    [actual.id, turnoId, usuarioId || null]);
+  return { id: actual.id, corregido: true };
 }
 
 /**
