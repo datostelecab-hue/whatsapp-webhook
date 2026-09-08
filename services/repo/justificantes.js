@@ -11,14 +11,29 @@
 const db = require('../db');
 const { normClave } = require('../conductores');
 
+// LOS CINCO TIPOS DE J. El código va a la base (hay CHECK en db/72); la
+// etiqueta es lo que se enseña. El texto libre de la observación se queda:
+// el tipo agrupa, la observación explica.
+const TIPOS_J = [
+  { codigo: 'taller',     etiqueta: 'Taller / ITV' },
+  { codigo: 'suspension', etiqueta: 'Suspensión BOLT' },
+  { codigo: 'medico',     etiqueta: 'Médico' },
+  { codigo: 'gestion',    etiqueta: 'Gestión / papeleo' },
+  { codigo: 'personal',   etiqueta: 'Personal / otro' },
+];
+const ES_TIPO_J = new Set(TIPOS_J.map(t => t.codigo));
+
 /**
  * Guarda/actualiza el justificante del día y pone la 'J' en la bitácora, por
  * conductor_id ya resuelto. `diaIso` = 'AAAA-MM-DD'. `horas` = horas QUE SE
  * JUSTIFICAN (se SUMAN a las de BOLT), número o texto ("7,5" vale) o vacío.
  */
-async function guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId }) {
+async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usuarioId }) {
   observacion = (observacion || '').toString().trim();
   if (!observacion) throw new Error('La observación es obligatoria para justificar');
+  // Sin tipo válido cae en 'personal': una J vieja o de otra pantalla no puede
+  // reventar por no traerlo.
+  tipo = ES_TIPO_J.has(String(tipo || '').trim()) ? String(tipo).trim() : 'personal';
   conductorId = Number(conductorId);
   if (!Number.isInteger(conductorId) || conductorId <= 0) throw new Error('Falta el conductor');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
@@ -43,13 +58,14 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId
     }
     // Un solo justificante vivo por conductor/día (índice parcial uq_just_vivo).
     const j = await cli.query(
-      `INSERT INTO justificante (conductor_id, dia_operativo, horas_seg_momento, observacion, usuario_id, escrito_en_bitacora)
-       VALUES ($1, $2::date, $3, $4, $5, TRUE)
+      `INSERT INTO justificante (conductor_id, dia_operativo, horas_seg_momento, observacion, tipo, usuario_id, escrito_en_bitacora)
+       VALUES ($1, $2::date, $3, $4, $5, $6, TRUE)
        ON CONFLICT (conductor_id, dia_operativo) WHERE anulado_at IS NULL
        DO UPDATE SET observacion = EXCLUDED.observacion,
                      horas_seg_momento = EXCLUDED.horas_seg_momento,
+                     tipo = EXCLUDED.tipo,
                      usuario_id = EXCLUDED.usuario_id
-       RETURNING id`, [conductorId, diaIso, horasSeg, observacion, usuarioId || null]);
+       RETURNING id`, [conductorId, diaIso, horasSeg, observacion, tipo, usuarioId || null]);
     const justId = j.rows[0].id;
     // La 'J' en la bitácora: marca_manual porque la pone una persona.
     await cli.query(
@@ -123,4 +139,4 @@ async function anularPorId({ conductorId, diaIso }) {
   });
 }
 
-module.exports = { guardarPorId, anularPorId, leerPorFecha };
+module.exports = { guardarPorId, anularPorId, leerPorFecha, TIPOS_J };

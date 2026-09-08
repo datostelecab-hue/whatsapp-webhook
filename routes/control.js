@@ -26,8 +26,36 @@ router.get('/', (req, res) => {
   res.render('controlDirecto', {
     titulo: 'Control · En directo',
     seccion: 'control',
-    layout: 'layout-gestion'
+    layout: 'layout-gestion',
+    // El buzón de resultados vive en el servidor (repo/llamadas): una sola
+    // lista para el cockpit y para las campañas.
+    resultadosLlamada: llamadas.RESULTADOS,
+    tiposJ: require('../services/repo/justificantes').TIPOS_J,
   });
+});
+
+// ── CAMPAÑAS DE LLAMADAS: la mañana en tres pasadas (09:00 / 11:00 / 12:00) ──
+// La 1 llama a los que no se han conectado; la 2 insiste sobre los etiquetados
+// (con su responsable) y verifica los "confirma que sale ya"; la 3 es el
+// repaso. Con las listas de activos, justificados por tipo y la lista roja.
+router.get('/campanas', (req, res) => {
+  res.render('controlCampanas', {
+    titulo: 'Control · Campañas',
+    seccion: 'control',
+    layout: 'layout-gestion',
+    resultadosLlamada: llamadas.RESULTADOS,
+    tiposJ: require('../services/repo/justificantes').TIPOS_J,
+  });
+});
+
+router.get('/api/campanas', async (req, res) => {
+  try {
+    const dia = ISO.test(req.query.dia || '') ? req.query.dia : undefined;
+    res.json({ status: 'ok', ...(await require('../services/repo/campanas').estado({ dia })) });
+  } catch (e) {
+    console.error('❌ [Control] /api/campanas:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
 });
 
 // Los datos del cockpit (JSON). El front lo refresca solo cada pocos segundos.
@@ -164,6 +192,9 @@ router.post('/api/llamada', async (req, res) => {
     const u = req.usuario || {};
     const r = await llamadas.registrar({
       conductorId: b.conductorId, turno: b.turno, resultado: b.resultado, nota: b.nota,
+      // De dónde viene la llamada: 'control' (el cockpit) o 'campana1/2/3'. Es
+      // lo que luego permite saber en qué pasada se etiquetó a cada uno.
+      origen: /^campana[123]$/.test(b.origen || '') ? b.origen : 'control',
       usuarioId: u.id || await actor.idDe(req),
       // La jornada que está mirando quien llama, para que la llamada caiga en la
       // misma carta donde se apuntó (de madrugada no es la fecha de hoy).
@@ -213,6 +244,7 @@ router.post('/api/justificar-directo', async (req, res) => {
       conductorId: b.conductorId, diaIso: dia,
       horas: horasLimpias(b.horas),
       observacion: b.observacion,
+      tipo: b.tipo,
       usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
     });
     console.log(`📝 [Control] J en directo · ${dia} · conductor ${r.conductorId} (${b.horas || 'sin'} h) · ${(req.usuario || {}).nombre || ''}`);

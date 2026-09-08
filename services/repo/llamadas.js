@@ -1,6 +1,23 @@
 // ============================================================
 // LLAMADAS DE SEGUIMIENTO — el "telefonito" de Control
 // ============================================================
+// EL BUZÓN DE RESULTADOS de una llamada de asistencia. Es el catálogo de las
+// campañas: lo que se marca aquí decide a qué cola va el conductor en la
+// campaña siguiente. Una sola lista para el cockpit y para las campañas; dos
+// listas se separan solas con el tiempo.
+//
+// 'Confirma que sale ya' es el "ya se conecta": en la campaña de las 11 se
+// VERIFICA contra la actividad real, no contra la palabra.
+const RESULTADOS = [
+  'Buzón',
+  'No contesta',
+  'Confirma que sale ya',
+  'Incidencia que lo impide',
+  'Número erróneo',
+  'No contactado',
+  'No asistirá',
+];
+
 // Cada pulsación deja constancia de la llamada a un conductor: quién llamó,
 // cuándo, en qué turno y con qué resultado. De aquí salen tres cosas:
 //   · la traza en la carta de En directo (para que dos operadores no se pisen),
@@ -132,7 +149,7 @@ async function listar({ desde, hasta } = {}) {
  */
 async function justificadosHoy(dia) {
   const r = await db.consulta(
-    `SELECT j.conductor_id, j.horas_seg_momento, j.observacion, COALESCE(u.nombre, '') AS quien
+    `SELECT j.conductor_id, j.horas_seg_momento, j.observacion, j.tipo, COALESCE(u.nombre, '') AS quien
        FROM justificante j
        LEFT JOIN usuario u ON u.id = j.usuario_id
       WHERE j.anulado_at IS NULL AND j.dia_operativo = $1::date`, [diaValido(dia)]);
@@ -140,10 +157,10 @@ async function justificadosHoy(dia) {
   r.rows.forEach(x => {
     m[String(x.conductor_id)] = {
       horas: x.horas_seg_momento != null ? Math.round(x.horas_seg_momento / 360) / 10 : null,
-      obs: x.observacion || '', quien: x.quien || '',
+      obs: x.observacion || '', quien: x.quien || '', tipo: x.tipo || 'personal',
     };
   });
   return m;
 }
 
-module.exports = { registrar, resumenHoy, listar, justificadosHoy, diaOperativoHoy };
+module.exports = { registrar, resumenHoy, listar, justificadosHoy, diaOperativoHoy, RESULTADOS };

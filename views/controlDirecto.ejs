@@ -733,10 +733,11 @@
     return null;
   }
 
-  // Los resultados del catálogo del call center (Asistencia · Conexión · "No se
-  // ha conectado a su puesto") más los universales de contacto.
-  const RESULTADOS_LLAMADA = ['Buzón / no contesta', 'Confirma que sale ya', 'No asistirá',
-                              'Incidencia que lo impide', 'No contactado', 'Número erróneo'];
+  // El buzón de resultados lo manda el servidor (repo/llamadas): la MISMA lista
+  // que usan las campañas, porque la etiqueta que se pone aquí decide la cola
+  // del conductor en la campaña siguiente. Dos listas se separan solas.
+  const RESULTADOS_LLAMADA = <%- JSON.stringify(resultadosLlamada || []) %>;
+  const TIPOS_J = <%- JSON.stringify(tiposJ || []) %>;
 
   async function apuntarLlamada(f) {
     const v = await Dialogo.formulario('He llamado a ' + f.conductor, [
@@ -777,6 +778,11 @@
     // sugerencia vale para el que ya ha terminado, y hay que decirlo.
     const rodando = ['conectado', 'descanso'].includes(f.salida);
     const v = await Dialogo.formulario('Justificar a ' + f.conductor, [
+      // El TIPO agrupa (las campañas y los reportes cuentan las J por tipo);
+      // el motivo en texto libre sigue siendo obligatorio y explica.
+      { id: 'tipo', etiqueta: 'Tipo', tipo: 'lista', obligatorio: true,
+        valor: (TIPOS_J[0] || {}).codigo,
+        opciones: TIPOS_J.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
       { id: 'horas', etiqueta: 'Horas que se justifican', valor: String(sugerida),
         ayuda: 'En BOLT lleva ' + lleva + ' h efectivas en este turno. Se SUMAN: con ' + sugerida + ' justificadas, la jornada queda en 8 h.' +
           (rodando ? ' OJO: sigue conectado; lo que haga a partir de ahora no se descuenta de lo justificado.' : '') },
@@ -797,7 +803,7 @@
     try {
       const r = await fetch('/control/api/justificar-directo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conductorId: f.conductorId, horas: h, observacion: v.obs, dia: DATOS && DATOS.dia }) });
+        body: JSON.stringify({ conductorId: f.conductorId, horas: h, observacion: v.obs, tipo: v.tipo, dia: DATOS && DATOS.dia }) });
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo justificar');
       cargar();

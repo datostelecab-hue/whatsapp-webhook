@@ -1,0 +1,317 @@
+<%- include('partials/control-nav', { sub: 'campanas' }) %>
+
+<div class="px-4 lg:px-6 pb-8 max-w-[1600px] mx-auto">
+
+  <!-- Cabecera -->
+  <div class="flex flex-wrap items-end justify-between gap-3 mt-4 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-phone-volume text-telecab-gold"></i> Campañas de llamadas
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        La mañana del turno de <b>día</b> en tres pasadas: se llama a quien no se ha conectado, se etiqueta
+        con el buzón, y cada etiqueta decide su cola en la campaña siguiente.
+        <span id="c-actualizado" class="text-telecab-muted/70"></span>
+      </p>
+    </div>
+    <button id="c-refrescar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-rotate mr-1"></i> Actualizar
+    </button>
+  </div>
+
+  <!-- Resumen -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">En el plan</p>
+      <p id="r-plan" class="text-xl font-bold mt-1">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Activos</p>
+      <p id="r-activos" class="text-xl font-bold mt-1 text-telecab-green">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Sin conectar</p>
+      <p id="r-pendientes" class="text-xl font-bold mt-1 text-telecab-warn">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Sin llamar aún</p>
+      <p id="r-sinllamar" class="text-xl font-bold mt-1 text-telecab-warn">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Justificados</p>
+      <p id="r-just" class="text-xl font-bold mt-1 text-sky-400">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Lista roja</p>
+      <p id="r-roja" class="text-xl font-bold mt-1 text-telecab-red">—</p>
+    </div>
+  </div>
+
+  <!-- Las tres campañas -->
+  <div id="c-tabs" class="flex flex-wrap gap-2 mb-3"></div>
+  <div id="c-detalle" class="mb-6"></div>
+
+  <!-- Las listas de consulta -->
+  <div class="grid lg:grid-cols-3 gap-4 items-start">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+      <button data-abre="l-activos" class="w-full px-4 py-3 flex items-center gap-2 text-left border-b border-telecab-border">
+        <i class="fa-solid fa-circle-check text-telecab-green"></i>
+        <span class="font-semibold text-sm">Activos · <span id="t-activos">—</span></span>
+        <i class="fa-solid fa-chevron-down ml-auto text-xs text-telecab-muted"></i>
+      </button>
+      <div id="l-activos" class="hidden max-h-[420px] overflow-y-auto"></div>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+      <button data-abre="l-just" class="w-full px-4 py-3 flex items-center gap-2 text-left border-b border-telecab-border">
+        <i class="fa-solid fa-file-circle-check text-sky-400"></i>
+        <span class="font-semibold text-sm">Justificados · <span id="t-just">—</span></span>
+        <i class="fa-solid fa-chevron-down ml-auto text-xs text-telecab-muted"></i>
+      </button>
+      <div id="l-just" class="hidden max-h-[420px] overflow-y-auto"></div>
+    </div>
+    <div class="bg-telecab-card border border-telecab-red/40 rounded-2xl overflow-hidden">
+      <button data-abre="l-roja" class="w-full px-4 py-3 flex items-center gap-2 text-left border-b border-telecab-red/30 bg-telecab-red/5">
+        <i class="fa-solid fa-triangle-exclamation text-telecab-red"></i>
+        <span class="font-semibold text-sm text-telecab-red">Lista roja · <span id="t-roja">—</span></span>
+        <i class="fa-solid fa-chevron-down ml-auto text-xs text-telecab-muted"></i>
+      </button>
+      <div id="l-roja" class="max-h-[420px] overflow-y-auto"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const hora = ts => (ts ? new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '');
+
+  // El buzón y los tipos de J los manda el servidor: una sola lista para todo.
+  const RESULTADOS = <%- JSON.stringify(resultadosLlamada || []) %>;
+  const TIPOS_J = <%- JSON.stringify(tiposJ || []) %>;
+
+  let D = null;              // el estado que manda /api/campanas
+  let tabVista = null;       // qué campaña se está mirando (null = la activa)
+
+  // ── El rendimiento al lado del nombre, igual que en el cockpit ──
+  const REND_TONO = { S: 'bg-emerald-500/20 text-emerald-400', A: 'bg-telecab-gold/20 text-telecab-gold',
+    B: 'bg-amber-500/15 text-amber-500', C: 'bg-red-500/15 text-red-500', N: 'bg-sky-500/15 text-sky-400' };
+  function chipRend(r) {
+    if (!r) return '';
+    if (r.nuevo) return '<span class="px-1.5 rounded text-[10px] font-bold ' + REND_TONO.N + '">NUEVO</span>';
+    if (!r.dias) return '';
+    return '<span class="px-1.5 rounded text-[10px] font-bold ' + (REND_TONO[r.letra] || REND_TONO.C) + '">' +
+      String(r.horas).replace('.', ',') + ' h · ' + r.letra + '</span>';
+  }
+
+  // ── Una fila de conductor, con su teléfono y sus botones ──
+  function fila(p, { conEtiqueta = false, conVerificacion = false } = {}) {
+    const etq = conEtiqueta && p.etiqueta
+      ? '<div class="text-[11px] mt-0.5"><span class="px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-text font-semibold">' + esc(p.etiqueta) + '</span>' +
+        ' <span class="text-telecab-muted">por <b>' + esc(p.etiquetadoPor || '¿?') + '</b> a las ' + hora(p.etiquetadoA) +
+        (p.llamadas > 1 ? ' · ' + p.llamadas + ' llamadas' : '') + '</span>' +
+        (p.nota ? '<div class="text-telecab-muted mt-0.5">«' + esc(p.nota) + '»</div>' : '') + '</div>'
+      : '';
+    const verif = conVerificacion && p.verificacion
+      ? (p.verificacion === 'cumplio'
+        ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400"><i class="fa-solid fa-check"></i> se conectó</span>'
+        : '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-telecab-red/15 text-telecab-red"><i class="fa-solid fa-xmark"></i> dijo que salía y sigue sin conectarse</span>')
+      : '';
+    return '<div class="px-4 py-2.5 border-b border-telecab-border/50 flex items-start gap-3" data-cid="' + esc(p.conductorId) + '">' +
+      '<div class="min-w-0 flex-1">' +
+        '<div class="flex items-center gap-2 flex-wrap">' +
+          '<span class="font-medium text-sm">' + esc(p.conductor) + '</span>' + chipRend(p.rendimiento) + verif +
+        '</div>' +
+        '<div class="text-[11px] text-telecab-muted font-mono tabular-nums">' + (esc(p.telefono) || 'sin teléfono') +
+          (p.matricula ? ' · ' + esc(p.matricula) : '') + (p.turno === 'todoturno' ? ' · TodoTurno' : '') + '</div>' +
+        etq +
+      '</div>' +
+      '<div class="flex items-center gap-1.5 shrink-0">' +
+        (p.telefono ? '<a href="tel:' + esc(p.telefono) + '" class="w-8 h-8 rounded-lg bg-telecab-card2 border border-telecab-border flex items-center justify-center text-telecab-green" title="Llamar"><i class="fa-solid fa-phone"></i></a>' : '') +
+        '<button data-etiquetar class="px-2.5 h-8 rounded-lg bg-telecab-gold text-telecab-dark text-xs font-semibold" title="Apuntar la llamada con su resultado">Etiquetar</button>' +
+        '<button data-j class="w-8 h-8 rounded-lg bg-telecab-card2 border border-telecab-border text-sky-400 text-xs font-bold" title="Justificar el día">J</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function seccion(titulo, filasHtml, vacio) {
+    return '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden mb-3">' +
+      '<div class="px-4 py-2.5 border-b border-telecab-border text-xs font-semibold uppercase tracking-wide text-telecab-muted">' + titulo + '</div>' +
+      (filasHtml || '<p class="px-4 py-6 text-center text-sm text-telecab-muted">' + vacio + '</p>') +
+    '</div>';
+  }
+
+  // ── Las tres campañas ──
+  function pintarTabs() {
+    const activa = D.campanaActiva;
+    const vista = tabVista || activa || 1;
+    $('#c-tabs').innerHTML = D.campanas.map(c => {
+      const on = c.n === vista;
+      const esLaActiva = c.n === activa;
+      return '<button data-tab="' + c.n + '" class="px-3.5 py-2 rounded-xl text-sm font-semibold border transition ' +
+        (on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' :
+              'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text') + '">' +
+        'Campaña ' + c.n + ' · ' + String(c.abre).padStart(2, '0') + ':00' +
+        (esLaActiva ? ' <span class="ml-1 inline-block w-2 h-2 rounded-full ' + (on ? 'bg-telecab-dark' : 'bg-telecab-green') + '"></span>' : '') +
+        (!c.abierta ? ' <span class="opacity-60">(aún no abre)</span>' : '') +
+        '</button>';
+    }).join('');
+    $('#c-tabs').querySelectorAll('[data-tab]').forEach(b =>
+      b.addEventListener('click', () => { tabVista = Number(b.dataset.tab); pintar(); }));
+  }
+
+  function pintarDetalle() {
+    const vista = tabVista || D.campanaActiva || 1;
+    const meta = D.campanas.find(c => c.n === vista) || {};
+    let html = '<p class="text-sm text-telecab-muted mb-3"><b class="text-telecab-text">' + esc(meta.titulo) + '.</b> ' + esc(meta.detalle) + '.' +
+      (!meta.abierta ? ' <span class="text-telecab-warn">Abre a las ' + String(meta.abre).padStart(2, '0') + ':00; se puede adelantar si hace falta.</span>' : '') + '</p>';
+
+    if (vista === 1) {
+      html += seccion('Sin conectar y sin llamar · ' + D.c1.length,
+        D.c1.map(p => fila(p)).join(''), 'Nadie pendiente de primera llamada.');
+    } else if (vista === 2) {
+      html += seccion('Etiquetados en la primera · a insistir · ' + D.c2.etiquetados.length,
+        D.c2.etiquetados.map(p => fila(p, { conEtiqueta: true, conVerificacion: true })).join(''),
+        'Nadie etiquetado pendiente.');
+      html += seccion('Con interrogación · nadie los ha llamado · ' + D.c2.interrogacion.length,
+        D.c2.interrogacion.map(p => fila(p)).join(''), 'No queda nadie sin llamar.');
+      html += seccion('Dijeron que salían y CUMPLIERON · ' + D.c2.cumplieron.length,
+        D.c2.cumplieron.map(p => fila(p, { conEtiqueta: true, conVerificacion: true })).join(''),
+        'Todavía ninguno verificado.');
+    } else {
+      html += seccion('Repaso · siguen sin conectarse · ' + D.c3.length,
+        D.c3.map(p => fila(p, { conEtiqueta: true, conVerificacion: true })).join(''),
+        'Nadie pendiente: todos conectados, justificados o avisados.');
+    }
+    $('#c-detalle').innerHTML = html;
+
+    // Los botones de cada fila.
+    $('#c-detalle').querySelectorAll('[data-cid]').forEach(el => {
+      const p = buscar(el.dataset.cid);
+      if (!p) return;
+      const be = el.querySelector('[data-etiquetar]');
+      if (be) be.addEventListener('click', () => etiquetar(p));
+      const bj = el.querySelector('[data-j]');
+      if (bj) bj.addEventListener('click', () => justificar(p));
+    });
+  }
+
+  function buscar(cid) {
+    const todos = [].concat(D.c3, D.c2.cumplieron, D.activos, D.listaRoja, D.noAsisten,
+      ...Object.values(D.justificados || {}));
+    return todos.find(p => p && String(p.conductorId) === String(cid)) || null;
+  }
+
+  // ── Las listas de consulta ──
+  function pintarListas() {
+    $('#t-activos').textContent = D.activos.length;
+    $('#l-activos').innerHTML = D.activos.map(p =>
+      '<div class="px-4 py-2 border-b border-telecab-border/50 flex items-center gap-2 text-sm">' +
+        '<i class="fa-solid fa-circle text-[6px] text-telecab-green"></i>' +
+        '<span class="flex-1 min-w-0 truncate">' + esc(p.conductor) + '</span>' +
+        '<span class="text-[11px] text-telecab-muted tabular-nums">' + Math.floor(p.minutos / 60) + 'h' + String(p.minutos % 60).padStart(2, '0') + '</span>' +
+      '</div>').join('') || '<p class="px-4 py-6 text-center text-sm text-telecab-muted">Nadie conectado todavía.</p>';
+
+    const tot = Object.values(D.justificados || {}).reduce((a, l) => a + l.length, 0);
+    $('#t-just').textContent = tot;
+    $('#l-just').innerHTML = TIPOS_J.map(t => {
+      const lista = (D.justificados || {})[t.codigo] || [];
+      if (!lista.length) return '';
+      return '<div class="px-4 py-1.5 bg-telecab-card2/60 text-[11px] font-semibold uppercase tracking-wide text-telecab-muted">' +
+          esc(t.etiqueta) + ' · ' + lista.length + '</div>' +
+        lista.map(p => '<div class="px-4 py-2 border-b border-telecab-border/50 text-sm">' +
+          '<div class="flex items-center gap-2"><span class="flex-1 min-w-0 truncate">' + esc(p.conductor) + '</span>' +
+          (p.j.horas != null ? '<span class="text-[11px] text-sky-400 font-semibold">J ' + String(p.j.horas).replace('.', ',') + ' h</span>' : '<span class="text-[11px] text-sky-400 font-semibold">J</span>') + '</div>' +
+          '<div class="text-[11px] text-telecab-muted truncate">«' + esc(p.j.obs) + '» · ' + esc(p.j.quien || '') + '</div>' +
+        '</div>').join('');
+    }).join('') || '<p class="px-4 py-6 text-center text-sm text-telecab-muted">Ninguna J hoy.</p>';
+
+    $('#t-roja').textContent = D.listaRoja.length;
+    $('#l-roja').innerHTML = D.listaRoja.map(p =>
+      '<div class="px-4 py-2 border-b border-telecab-border/50 text-sm" data-cid="' + esc(p.conductorId) + '">' +
+        '<div class="flex items-center gap-2">' +
+          '<span class="flex-1 min-w-0 truncate font-medium">' + esc(p.conductor) + '</span>' + chipRend(p.rendimiento) +
+          '<button data-etiquetar class="px-2 h-7 rounded-lg bg-telecab-gold text-telecab-dark text-[11px] font-semibold">Etiquetar</button>' +
+        '</div>' +
+        '<div class="text-[11px] text-telecab-muted font-mono tabular-nums">' + (esc(p.telefono) || 'sin teléfono') +
+          (p.etiqueta ? ' · ' + esc(p.etiqueta) + ' (' + esc(p.etiquetadoPor || '') + ')' : ' · sin llamar') + '</div>' +
+      '</div>').join('') || '<p class="px-4 py-6 text-center text-sm text-telecab-muted">Vacía. Buen día.</p>';
+    $('#l-roja').querySelectorAll('[data-cid]').forEach(el => {
+      const p = buscar(el.dataset.cid);
+      const b = el.querySelector('[data-etiquetar]');
+      if (p && b) b.addEventListener('click', () => etiquetar(p));
+    });
+  }
+
+  // ── Acciones: etiquetar (llamada) y justificar, contra las APIs de siempre ──
+  async function etiquetar(p) {
+    const v = await Dialogo.formulario('He llamado a ' + p.conductor, [
+      { id: 'resultado', etiqueta: 'Qué ha pasado', tipo: 'lista', obligatorio: true,
+        valor: RESULTADOS[0], opciones: RESULTADOS },
+      { id: 'nota', etiqueta: 'Nota (opcional)', tipo: 'texto-largo' },
+    ], { nota: 'Queda la traza: tú, la hora y el resultado. La etiqueta decide su cola en la campaña siguiente.' });
+    if (!v || !v.resultado) return;
+    try {
+      const r = await fetch('/control/api/llamada', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conductorId: p.conductorId, conductor: p.conductor, telefono: p.telefono,
+          matricula: p.matricula, turno: p.turno === 'todoturno' ? 'todoturno' : 'dia',
+          resultado: v.resultado, nota: v.nota || '', dia: D.dia,
+          origen: 'campana' + (tabVista || D.campanaActiva || 1),
+        }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo guardar');
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function justificar(p) {
+    const v = await Dialogo.formulario('Justificar a ' + p.conductor, [
+      { id: 'tipo', etiqueta: 'Tipo', tipo: 'lista', obligatorio: true,
+        valor: TIPOS_J[0].codigo, opciones: TIPOS_J.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
+      { id: 'horas', etiqueta: 'Horas que se justifican (opcional)', ayuda: 'Se SUMAN a las de BOLT. "7,5" vale.' },
+      { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo', obligatorio: true },
+    ], { nota: 'La J lo saca de las campañas y lo apunta en la bitácora con tu nombre.' });
+    if (!v || !v.observacion) return;
+    try {
+      const r = await fetch('/control/api/justificar-directo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conductorId: p.conductorId, dia: D.dia,
+          horas: v.horas || '', observacion: v.observacion, tipo: v.tipo }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo justificar');
+      cargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  // ── Carga y refresco ──
+  function pintar() { pintarTabs(); pintarDetalle(); pintarListas(); }
+
+  async function cargar() {
+    try {
+      const r = await fetch('/control/api/campanas').then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+      D = r;
+      $('#r-plan').textContent = D.resumen.plan;
+      $('#r-activos').textContent = D.resumen.activos;
+      $('#r-pendientes').textContent = D.resumen.pendientes;
+      $('#r-sinllamar').textContent = D.resumen.sinLlamar;
+      $('#r-just').textContent = D.resumen.justificados;
+      $('#r-roja').textContent = D.resumen.listaRoja;
+      $('#c-actualizado').textContent = '· actualizado ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      pintar();
+    } catch (e) {
+      $('#c-detalle').innerHTML = '<p class="px-4 py-8 text-center text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  document.querySelectorAll('[data-abre]').forEach(b =>
+    b.addEventListener('click', () => $('#' + b.dataset.abre).classList.toggle('hidden')));
+  $('#c-refrescar').addEventListener('click', cargar);
+  // El mismo pulso que el cockpit: cada 45 s, sin pisar un diálogo abierto.
+  setInterval(() => { if (!document.querySelector('.fixed.inset-0.z-\\[120\\]')) cargar(); }, 45000);
+  cargar();
+})();
+</script>

@@ -98,6 +98,7 @@ const RUTA_A_CLAVE = [
   ['/control/api/km-traza',       '/control/km'],
   ['/control/api/km-diagnostico', '/control/km'],
   ['/control/api/llamadas',       '/flota-viva'],
+  ['/control/campanas',           '/control'],
 ];
 
 // Todas las claves, aplanadas y de la más larga a la más corta (para que en el
