@@ -238,6 +238,21 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
  *
  * Devuelve { porNombre: Map(nombre → minutos), porUuid: Map(uuid → minutos) }.
  */
+// ── LA COTA DE ABAJO ────────────────────────────────────────────────────────
+// Un tramo que pisa una ventana cumple `desde < fin` y `hasta > ini`. Escrito
+// así, `desde < fin` lo cumple CASI TODA LA TABLA —todo lo anterior a ahora— y
+// `COALESCE(hasta, now()) > ini` no es indexable, así que PostgreSQL recorría
+// los ~3.300 tramos de cada coche para quedarse con 3. En el cockpit, que pide
+// los tres turnos, eso eran cuatro segundos de pantalla en blanco.
+//
+// Con esta cota el índice (vehiculo_uuid, desde) puede SALTAR en vez de barrer.
+// Deja fuera lo que empezó hace más de dos semanas y sigue abierto: eso no es
+// actividad de hoy, es un registro que se quedó colgado. Comprobado contra la
+// consulta sin cota en siete jornadas de agosto y septiembre, los tres turnos:
+// MISMO resultado fila a fila, y entre 2 y 12 veces más rápido. Con 2 días ya
+// aparecían diferencias; con 14, ninguna.
+const VENTANA_ATRAS = '14 days';
+
 async function minutosEfectivos(dia, turno = 'operativo') {
   const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
   const r = await db.consulta(
@@ -257,6 +272,7 @@ async function minutosEfectivos(dia, turno = 'operativo') {
        JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
        LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
       WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
+        AND t.desde >= v.ini - interval '${VENTANA_ATRAS}'
       ORDER BY uuid, conductor, desde`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
 
   // Se agrupa por las dos claves a la vez: el nombre es lo que esperan los reportes
@@ -593,6 +609,12 @@ async function actividadPorConductor(dia, turno = 'dia') {
           AND w.fin > w.ini
           AND t.desde < w.fin
           AND COALESCE(t.hasta, now()) > w.ini
+          -- AQUÍ NO VA LA COTA. Esta consulta cuenta también el DESCONECTADO, y
+          -- un coche parado puede llevar semanas en UN solo tramo abierto: al
+          -- acotar, esos minutos desaparecían. Comprobado: a un conductor del
+          -- 15/08 le pasaban 1.492 minutos desconectado a 52, y otro se caía de
+          -- la lista entero. Las otras dos consultas sí la llevan porque solo
+          -- miran situaciones efectivas y trayectos, que duran horas, no semanas.
      ),
      p AS (
        SELECT uuid, matricula, situacion, abierto, d, h,
@@ -636,6 +658,7 @@ async function actividadPorConductor(dia, turno = 'dia') {
          JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
          JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
                              AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
+                             AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
           AND w.fin > w.ini
           AND r.inicio >= w.ini AND r.inicio < w.fin

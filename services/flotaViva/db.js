@@ -31,9 +31,15 @@ function pool() {
   if (_pool) return _pool;
   _pool = new Pool({
     connectionString: URL,
-    // Cuatro conexiones sobran: esto es un cron cada cinco minutos y una
-    // pantalla. Pedir más solo le quita sitio al resto en un plan pequeño.
-    max: Number(process.env.FLOTA_VIVA_POOL_MAX) || 4,
+    // OCHO. Cuando esto era "un cron y una pantalla" cuatro sobraban, pero el
+    // cockpit de Control pide la actividad de los tres turnos a la vez y cada
+    // una son cuatro consultas: doce que entraban de cuatro en cuatro.
+    //
+    // En la MEDIANA no se nota (unos 2 s con cuatro y con ocho), pero el peor
+    // caso baja de 4,8 s a 2,0 s, y el peor caso es justo el que se siente como
+    // "esto va lento". Sitio hay: la base admite 100 conexiones y entre los dos
+    // pools no se pasa de veinte.
+    max: Number(process.env.FLOTA_VIVA_POOL_MAX) || 8,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
     ssl: esExterna ? { rejectUnauthorized: false } : false,
