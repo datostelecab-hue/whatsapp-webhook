@@ -8,12 +8,17 @@
         <i class="fa-solid fa-chart-column text-telecab-gold"></i> Campañas · informe del día
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
-        Cómo va la mañana, en números: cuántos llamados, cuántos contactados y por quién, campaña a campaña.
+        Cómo va el turno, en números: cuántos llamados, cuántos contactados y por quién, campaña a campaña.
+        <span id="i-ventanas"></span>
         <span id="i-actualizado" class="text-telecab-muted/70"></span>
       </p>
     </div>
     <div class="flex items-center gap-2">
-      <a href="/control/campanas?vista=gestor" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+      <div id="i-turnos" class="flex rounded-lg border border-telecab-border overflow-hidden">
+        <button data-turno="dia" class="px-3 py-2 text-sm bg-telecab-card text-telecab-muted"><i class="fa-solid fa-sun mr-1"></i> Día</button>
+        <button data-turno="noche" class="px-3 py-2 text-sm bg-telecab-card text-telecab-muted"><i class="fa-solid fa-moon mr-1"></i> Noche</button>
+      </div>
+      <a id="i-gestor" href="/control/campanas?vista=gestor" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-headset mr-1"></i> Ver lo que ven los gestores
       </a>
       <button id="i-refrescar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
@@ -69,6 +74,9 @@
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TIPOS = <%- JSON.stringify(tiposJ || []) %>;
   const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) + ' %' : '');
+  const hh = n => String(n).padStart(2, '0') + ':00';
+  const qsTurno = new URLSearchParams(location.search).get('turno');
+  let turnoVista = qsTurno === 'dia' || qsTurno === 'noche' ? qsTurno : null; // null = por reloj
 
   // Un desglose "etiqueta N" ordenado de más a menos. Vale para resultados y agentes.
   const chips = (obj, tono) => Object.entries(obj || {}).sort((a, b) => b[1] - a[1])
@@ -79,9 +87,12 @@
     const s = st || { llamadas: 0, conductores: 0, contactados: 0, noLocalizados: 0, porResultado: {}, porAgente: {} };
     return '<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">' +
       '<div class="flex items-center justify-between gap-2 mb-1">' +
-        '<h2 class="font-semibold text-telecab-text">Campaña ' + meta.n + ' · ' + String(meta.abre).padStart(2, '0') + ':00</h2>' +
-        (meta.abierta ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-green/15 text-telecab-green font-semibold">abierta</span>'
-                      : '<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-card2 text-telecab-muted">abre a las ' + String(meta.abre).padStart(2, '0') + ':00</span>') +
+        '<h2 class="font-semibold text-telecab-text">Campaña ' + meta.n + ' · ' + hh(meta.abre) + '–' + hh(meta.cierra) + '</h2>' +
+        (meta.estado === 'abierta'
+          ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-green/15 text-telecab-green font-semibold">abierta</span>'
+          : meta.estado === 'terminada'
+            ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-card2 text-telecab-muted">cerrada</span>'
+            : '<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-card2 text-telecab-muted">abre a las ' + hh(meta.abre) + '</span>') +
       '</div>' +
       '<p class="text-[11px] text-telecab-muted mb-3">' + esc(meta.detalle) + '</p>' +
       '<div class="grid grid-cols-3 gap-2 mb-3 text-center">' +
@@ -100,8 +111,19 @@
 
   async function cargar() {
     try {
-      const r = await fetch('/control/api/campanas-informe').then(x => x.json());
+      const r = await fetch('/control/api/campanas-informe' + (turnoVista ? '?turno=' + turnoVista : '')).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+
+      document.querySelectorAll('#i-turnos [data-turno]').forEach(b => {
+        const on = b.dataset.turno === r.turno;
+        b.className = 'px-3 py-2 text-sm transition ' + (on
+          ? 'bg-telecab-gold text-telecab-dark font-semibold'
+          : 'bg-telecab-card text-telecab-muted hover:text-telecab-text');
+      });
+      $('#i-ventanas').textContent = 'Las del turno ' + (r.turno === 'noche' ? 'noche' : 'día') +
+        ' van de ' + hh(r.campanas[0].abre) + ' a ' + hh(r.campanas[r.campanas.length - 1].cierra) +
+        (r.turno !== r.turnoDelReloj ? ' (ahora el reloj va por el turno ' + (r.turnoDelReloj === 'noche' ? 'noche' : 'día') + ').' : '.');
+      $('#i-gestor').href = '/control/campanas?vista=gestor' + (turnoVista ? '&turno=' + turnoVista : '');
 
       $('#g-plan').textContent = r.resumen.plan;
       $('#g-activos').textContent = r.resumen.activos;
@@ -110,9 +132,8 @@
       $('#g-just').textContent = r.resumen.justificados;
       $('#g-roja').textContent = r.resumen.listaRoja;
 
-      const st = r.estadisticas || {};
-      const total = Object.values(st).reduce((a, c) => ({ llamadas: a.llamadas + c.llamadas, conductores: a.conductores + c.conductores }),
-        { llamadas: 0, conductores: 0 });
+      const st = (r.estadisticas || {}).origenes || {};
+      const total = (r.estadisticas || {}).total || { llamadas: 0, conductores: 0 };
       $('#g-llamadas').textContent = total.llamadas;
       $('#g-conds').textContent = total.conductores ? 'a ' + total.conductores + ' pers.' : '';
 
@@ -147,6 +168,12 @@
     }
   }
 
+  document.querySelectorAll('#i-turnos [data-turno]').forEach(b =>
+    b.addEventListener('click', () => {
+      if (turnoVista === b.dataset.turno) return;
+      turnoVista = b.dataset.turno;
+      cargar();
+    }));
   $('#i-refrescar').addEventListener('click', cargar);
   setInterval(cargar, 60000);
   cargar();

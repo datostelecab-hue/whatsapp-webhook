@@ -82,48 +82,58 @@ const CONTACTADO = r => /confirma|incidencia|no asistir/i.test(String(r || ''));
  * cuántos conductores, por campaña (el `origen` de cada llamada), con el
  * desglose por resultado y por agente. No devuelve nombres de conductores:
  * el informe es de números; la gente está en la vista de gestor.
+ *
+ * Con `turno` mira solo las llamadas de ese turno (las de día arrastran a los
+ * TodoTurno y a lo viejo sin turno apuntado; 'noche' es solo noche), que cada
+ * turno tiene sus campañas y sus cuentas. `total` va aparte y con DISTINCT DE
+ * VERDAD: sumar los conductores de cada campaña contaría dos veces al que
+ * recibió llamadas en dos.
  */
-async function estadisticasHoy(dia) {
+async function estadisticasHoy(dia, turno) {
+  // El filtro es un literal fijo elegido aquí mismo, nunca texto del cliente.
+  const filtro = turno === 'noche' ? "AND l.turno = 'noche'"
+    : turno === 'dia' ? "AND l.turno IS DISTINCT FROM 'noche'" : '';
+
   const r = await db.consulta(
     `SELECT COALESCE(l.origen, 'control') AS origen, l.resultado,
             COALESCE(u.nombre, '¿?')      AS agente,
-            count(*)::int                  AS n,
-            count(DISTINCT l.conductor_id)::int AS conductores
+            count(*)::int                  AS n
        FROM llamada_seguimiento l
        LEFT JOIN usuario u ON u.id = l.usuario_id
-      WHERE l.dia_operativo = $1::date
+      WHERE l.dia_operativo = $1::date ${filtro}
       GROUP BY 1, 2, 3`, [diaValido(dia)]);
 
-  const vacio = () => ({ llamadas: 0, conductores: new Set(), contactados: new Set(),
-    noLocalizados: new Set(), porResultado: {}, porAgente: {} });
-  const porCampana = {};
+  const vacio = () => ({ llamadas: 0, conductores: 0, contactados: 0,
+    noLocalizados: 0, porResultado: {}, porAgente: {} });
+  const origenes = {};
   r.rows.forEach(x => {
-    const c = porCampana[x.origen] || (porCampana[x.origen] = vacio());
+    const c = origenes[x.origen] || (origenes[x.origen] = vacio());
     c.llamadas += x.n;
     c.porResultado[x.resultado || '(sin resultado)'] = (c.porResultado[x.resultado || '(sin resultado)'] || 0) + x.n;
     c.porAgente[x.agente] = (c.porAgente[x.agente] || 0) + x.n;
   });
 
-  // Los DISTINTOS conductores por campaña salen aparte: agregarlos desde el
-  // GROUP BY de arriba contaría dos veces al que tiene dos resultados.
+  // Los DISTINTOS conductores, por campaña Y el total del día: agregarlos
+  // desde el GROUP BY de arriba contaría dos veces al que tiene dos
+  // resultados, y sumar campañas contaría dos veces al llamado desde dos.
+  // ROLLUP añade la fila del total (origen NULL con grouping=1).
   const d = await db.consulta(
-    `SELECT COALESCE(origen, 'control') AS origen,
-            count(DISTINCT conductor_id)::int AS conductores,
-            count(DISTINCT conductor_id) FILTER (WHERE resultado ~* 'confirma|incidencia|no asistir')::int AS contactados
-       FROM llamada_seguimiento
-      WHERE dia_operativo = $1::date
-      GROUP BY 1`, [diaValido(dia)]);
+    `SELECT COALESCE(l.origen, 'control') AS origen,
+            GROUPING(COALESCE(l.origen, 'control')) AS es_total,
+            count(*)::int AS llamadas,
+            count(DISTINCT l.conductor_id)::int AS conductores,
+            count(DISTINCT l.conductor_id) FILTER (WHERE l.resultado ~* 'confirma|incidencia|no asistir')::int AS contactados
+       FROM (SELECT origen, conductor_id, resultado FROM llamada_seguimiento l
+              WHERE l.dia_operativo = $1::date ${filtro}) l
+      GROUP BY ROLLUP(COALESCE(l.origen, 'control'))`, [diaValido(dia)]);
+  let total = { llamadas: 0, conductores: 0, contactados: 0, noLocalizados: 0 };
   d.rows.forEach(x => {
-    const c = porCampana[x.origen] || (porCampana[x.origen] = vacio());
-    c.conductores = x.conductores;
-    c.contactados = x.contactados;
-    c.noLocalizados = x.conductores - x.contactados;
+    const fila = { llamadas: x.llamadas, conductores: x.conductores,
+      contactados: x.contactados, noLocalizados: x.conductores - x.contactados };
+    if (Number(x.es_total)) { total = fila; return; }
+    Object.assign(origenes[x.origen] || (origenes[x.origen] = vacio()), fila);
   });
-  // Los Set intermedios no salen de aquí.
-  Object.values(porCampana).forEach(c => {
-    if (c.conductores instanceof Set) { c.conductores = 0; c.contactados = 0; c.noLocalizados = 0; }
-  });
-  return porCampana;
+  return { origenes, total };
 }
 
 /**

@@ -9,14 +9,19 @@
         <i class="fa-solid fa-phone-volume text-telecab-gold"></i> Campañas de llamadas
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
-        La mañana del turno de <b>día</b> en tres pasadas: se llama a quien no se ha conectado, se etiqueta
-        con el buzón, y cada etiqueta decide su cola en la campaña siguiente.
+        Tres pasadas por turno: se llama a quien no se ha conectado, se etiqueta con el buzón,
+        y cada etiqueta decide su cola en la campaña siguiente.
+        <span id="c-ventanas"></span>
         <span id="c-actualizado" class="text-telecab-muted/70"></span>
       </p>
     </div>
     <div class="flex items-center gap-2">
+      <div id="c-turnos" class="flex rounded-lg border border-telecab-border overflow-hidden">
+        <button data-turno="dia" class="px-3 py-2 text-sm bg-telecab-card text-telecab-muted"><i class="fa-solid fa-sun mr-1"></i> Día</button>
+        <button data-turno="noche" class="px-3 py-2 text-sm bg-telecab-card text-telecab-muted"><i class="fa-solid fa-moon mr-1"></i> Noche</button>
+      </div>
       <% if (typeof esAdmin !== 'undefined' && esAdmin) { %>
-      <a href="/control/campanas" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+      <a id="c-informe" href="/control/campanas" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-chart-column mr-1"></i> Volver al informe
       </a>
       <% } %>
@@ -100,6 +105,9 @@
 
   let D = null;              // el estado que manda /api/campanas
   let tabVista = null;       // qué campaña se está mirando (null = la activa)
+  const qsTurno = new URLSearchParams(location.search).get('turno');
+  let turnoVista = qsTurno === 'dia' || qsTurno === 'noche' ? qsTurno : null; // null = por reloj
+  const hh = n => String(n).padStart(2, '0') + ':00';
 
   // ── El rendimiento al lado del nombre, igual que en el cockpit ──
   const REND_TONO = { S: 'bg-emerald-500/20 text-emerald-400', A: 'bg-telecab-gold/20 text-telecab-gold',
@@ -150,18 +158,21 @@
   }
 
   // ── Las tres campañas ──
+  // Sin campaña abierta, se abre la 1 si aún no empiezan o la 3 si ya cerraron.
+  const vistaPorDefecto = () => tabVista || D.campanaActiva ||
+    (D.campanas.every(c => c.estado === 'terminada') ? 3 : 1);
+
   function pintarTabs() {
-    const activa = D.campanaActiva;
-    const vista = tabVista || activa || 1;
+    const vista = vistaPorDefecto();
     $('#c-tabs').innerHTML = D.campanas.map(c => {
       const on = c.n === vista;
-      const esLaActiva = c.n === activa;
       return '<button data-tab="' + c.n + '" class="px-3.5 py-2 rounded-xl text-sm font-semibold border transition ' +
         (on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold' :
               'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text') + '">' +
-        'Campaña ' + c.n + ' · ' + String(c.abre).padStart(2, '0') + ':00' +
-        (esLaActiva ? ' <span class="ml-1 inline-block w-2 h-2 rounded-full ' + (on ? 'bg-telecab-dark' : 'bg-telecab-green') + '"></span>' : '') +
-        (!c.abierta ? ' <span class="opacity-60">(aún no abre)</span>' : '') +
+        'Campaña ' + c.n + ' · ' + hh(c.abre) + '–' + hh(c.cierra) +
+        (c.estado === 'abierta' ? ' <span class="ml-1 inline-block w-2 h-2 rounded-full ' + (on ? 'bg-telecab-dark' : 'bg-telecab-green') + '"></span>' : '') +
+        (c.estado === 'pronto' ? ' <span class="opacity-60">(aún no abre)</span>' : '') +
+        (c.estado === 'terminada' ? ' <span class="opacity-60">(cerrada)</span>' : '') +
         '</button>';
     }).join('');
     $('#c-tabs').querySelectorAll('[data-tab]').forEach(b =>
@@ -169,10 +180,11 @@
   }
 
   function pintarDetalle() {
-    const vista = tabVista || D.campanaActiva || 1;
+    const vista = vistaPorDefecto();
     const meta = D.campanas.find(c => c.n === vista) || {};
     let html = '<p class="text-sm text-telecab-muted mb-3"><b class="text-telecab-text">' + esc(meta.titulo) + '.</b> ' + esc(meta.detalle) + '.' +
-      (!meta.abierta ? ' <span class="text-telecab-warn">Abre a las ' + String(meta.abre).padStart(2, '0') + ':00; se puede adelantar si hace falta.</span>' : '') + '</p>';
+      (meta.estado === 'pronto' ? ' <span class="text-telecab-warn">Abre a las ' + hh(meta.abre) + '; se puede adelantar si hace falta.</span>' : '') +
+      (meta.estado === 'terminada' ? ' <span class="text-telecab-muted/80">Su ventana (' + hh(meta.abre) + '–' + hh(meta.cierra) + ') ya se cerró.</span>' : '') + '</p>';
 
     if (vista === 1) {
       html += seccion('Sin conectar y sin llamar · ' + D.c1.length,
@@ -264,9 +276,12 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conductorId: p.conductorId, conductor: p.conductor, telefono: p.telefono,
-          matricula: p.matricula, turno: p.turno === 'todoturno' ? 'todoturno' : 'dia',
+          matricula: p.matricula, turno: p.turno || D.turno,
           resultado: v.resultado, nota: v.nota || '', dia: D.dia,
-          origen: 'campana' + (tabVista || D.campanaActiva || 1),
+          // Se apunta a la campaña ABIERTA; mirando otra pestaña con una
+          // abierta, la llamada sigue siendo de la abierta (es la hora la
+          // que manda). Sin ninguna abierta, a la que se está mirando.
+          origen: 'campana' + (D.campanaActiva || tabVista || 1),
         }),
       }).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo guardar');
@@ -294,11 +309,27 @@
   }
 
   // ── Carga y refresco ──
-  function pintar() { pintarTabs(); pintarDetalle(); pintarListas(); }
+  function pintarTurnos() {
+    $('#c-turnos').querySelectorAll('[data-turno]').forEach(b => {
+      const on = b.dataset.turno === D.turno;
+      b.className = 'px-3 py-2 text-sm transition ' + (on
+        ? 'bg-telecab-gold text-telecab-dark font-semibold'
+        : 'bg-telecab-card text-telecab-muted hover:text-telecab-text');
+    });
+    const c = D.campanas;
+    $('#c-ventanas').textContent = 'Las del turno ' + (D.turno === 'noche' ? 'noche' : 'día') +
+      ' van de ' + hh(c[0].abre) + ' a ' + hh(c[c.length - 1].cierra) +
+      (D.turno !== D.turnoDelReloj ? ' (ahora el reloj va por el turno ' + (D.turnoDelReloj === 'noche' ? 'noche' : 'día') + ').' : '.') +
+      (D.resumen.aunNoLesToca ? ' ' + D.resumen.aunNoLesToca + ' del plan aún no arrancan su turno.' : '');
+    const a = $('#c-informe');
+    if (a) a.href = '/control/campanas' + (turnoVista ? '?turno=' + turnoVista : '');
+  }
+
+  function pintar() { pintarTurnos(); pintarTabs(); pintarDetalle(); pintarListas(); }
 
   async function cargar() {
     try {
-      const r = await fetch('/control/api/campanas').then(x => x.json());
+      const r = await fetch('/control/api/campanas' + (turnoVista ? '?turno=' + turnoVista : '')).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'Error');
       D = r;
       $('#r-plan').textContent = D.resumen.plan;
@@ -316,6 +347,13 @@
 
   document.querySelectorAll('[data-abre]').forEach(b =>
     b.addEventListener('click', () => $('#' + b.dataset.abre).classList.toggle('hidden')));
+  $('#c-turnos').querySelectorAll('[data-turno]').forEach(b =>
+    b.addEventListener('click', () => {
+      if (turnoVista === b.dataset.turno) return;
+      turnoVista = b.dataset.turno;
+      tabVista = null;
+      cargar();
+    }));
   $('#c-refrescar').addEventListener('click', cargar);
   // El mismo pulso que el cockpit: cada 45 s, sin pisar un diálogo abierto.
   setInterval(() => { if (!document.querySelector('.fixed.inset-0.z-\\[120\\]')) cargar(); }, 45000);

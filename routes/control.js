@@ -55,15 +55,17 @@ router.get('/campanas', (req, res) => {
   });
 });
 
+// Las campañas van POR TURNO (?turno=dia|noche); sin él decide el reloj.
+const turnoCampana = q => (q === 'dia' || q === 'noche' ? q : undefined);
+
 // El informe: el estado de las campañas (números, no gente) + las cuentas de
-// llamadas del día por campaña y por agente.
+// llamadas del día por campaña y por agente, del turno que se mire.
 router.get('/api/campanas-informe', async (req, res) => {
   try {
     const dia = ISO.test(req.query.dia || '') ? req.query.dia : llamadas.diaOperativoHoy();
-    const [estado, stats] = await Promise.all([
-      require('../services/repo/campanas').estado({ dia }),
-      llamadas.estadisticasHoy(dia),
-    ]);
+    const estado = await require('../services/repo/campanas').estado({ dia, turno: turnoCampana(req.query.turno) });
+    // Las cuentas, del turno que el estado eligió (pedido o por reloj).
+    const stats = await llamadas.estadisticasHoy(dia, estado.turno);
     res.json({ status: 'ok', ...estado, estadisticas: stats });
   } catch (e) {
     console.error('❌ [Control] /api/campanas-informe:', e.message);
@@ -74,7 +76,7 @@ router.get('/api/campanas-informe', async (req, res) => {
 router.get('/api/campanas', async (req, res) => {
   try {
     const dia = ISO.test(req.query.dia || '') ? req.query.dia : undefined;
-    res.json({ status: 'ok', ...(await require('../services/repo/campanas').estado({ dia })) });
+    res.json({ status: 'ok', ...(await require('../services/repo/campanas').estado({ dia, turno: turnoCampana(req.query.turno) })) });
   } catch (e) {
     console.error('❌ [Control] /api/campanas:', e.message);
     res.status(500).json({ status: 'error', msg: e.message });
