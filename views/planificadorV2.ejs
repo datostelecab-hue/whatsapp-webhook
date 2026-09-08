@@ -28,22 +28,57 @@
     </div>
   </div>
 
-  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+  <%# Se cuentan PERSONAS, no celdas. "Huecos día 174" no decía si faltaban tres
+      personas o treinta; "fijo día 61" sí. Y el correturnos se cuenta UNA vez
+      aunque esté repartido entre cuadrantes: L y M con una matrícula y X y J con
+      otra son UN correturnos de cuatro días, no dos de dos. %>
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Coches</p>
       <p id="k-coches" class="text-xl font-bold mt-1">—</p>
     </div>
+    <%# DOS NÚMEROS: el grande es el bruto —quién tiene la plaza en el papel— y el
+        pequeño el neto, descontando vacaciones y bajas. Con uno solo, 61 fijos de
+        día de los que 5 están de vacaciones se leen como 61 coches saliendo. %>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Huecos día</p>
-      <p id="k-hd" class="text-xl font-bold mt-1 text-telecab-warn">—</p>
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Fijo día</p>
+      <p class="mt-1 leading-none"><span id="k-fd" class="text-xl font-bold">—</span>
+        <span id="k-fd-n" class="text-sm text-telecab-muted font-semibold ml-1"></span></p>
+      <p class="text-[10px] text-telecab-muted mt-1">sin vacaciones ni bajas</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Huecos noche</p>
-      <p id="k-hn" class="text-xl font-bold mt-1 text-telecab-warn">—</p>
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Fijo noche</p>
+      <p class="mt-1 leading-none"><span id="k-fn" class="text-xl font-bold">—</span>
+        <span id="k-fn-n" class="text-sm text-telecab-muted font-semibold ml-1"></span></p>
+      <p class="text-[10px] text-telecab-muted mt-1">sin vacaciones ni bajas</p>
     </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">CT día</p>
+      <p class="mt-1 leading-none"><span id="k-ctd" class="text-xl font-bold">—</span>
+        <span id="k-ctd-n" class="text-sm text-telecab-muted font-semibold ml-1"></span></p>
+      <p class="text-[10px] text-telecab-muted mt-1">con 4 días o más</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">CT noche</p>
+      <p class="mt-1 leading-none"><span id="k-ctn" class="text-xl font-bold">—</span>
+        <span id="k-ctn-n" class="text-sm text-telecab-muted font-semibold ml-1"></span></p>
+      <p class="text-[10px] text-telecab-muted mt-1">con 4 días o más</p>
+    </div>
+
+    <%# La alerta. Se pincha y dice QUIÉNES son y cómo tienen repartidos los días:
+        una cifra sin nombres no se puede arreglar. %>
+    <button id="k-flojos-caja" type="button"
+            class="text-left bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft
+                   hover:border-telecab-red/50 transition">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">CT sin días</p>
+      <p class="mt-1 leading-none"><span id="k-flojos" class="text-xl font-bold text-telecab-red">—</span>
+        <span id="k-flojos-n" class="text-sm text-telecab-muted font-semibold ml-1"></span></p>
+      <p class="text-[10px] text-telecab-muted mt-1">menos de 4 · pincha para verlos</p>
+    </button>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">CT que faltan</p>
       <p id="k-ct" class="text-xl font-bold mt-1 text-telecab-gold">—</p>
+      <p class="text-[10px] text-telecab-muted mt-0.5">por contratar</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Huérfanos</p>
@@ -248,8 +283,26 @@
   function pintarKpis() {
     const r = T.resumen || {};
     $('#k-coches').textContent = r.coches ?? '—';
-    $('#k-hd').textContent = r.diasSinCubrirDia ?? '—';
-    $('#k-hn').textContent = r.diasSinCubrirNoche ?? '—';
+    // El bruto grande, el neto al lado. El neto SOLO se pinta si difiere: cuando
+    // no hay nadie de vacaciones, repetir el mismo número dos veces es ruido.
+    const par = (id, bruto, neto) => {
+      $('#' + id).textContent = bruto ?? '—';
+      const n = $('#' + id + '-n');
+      const hay = bruto != null && neto != null && neto !== bruto;
+      n.textContent = hay ? '· ' + neto : '';
+      n.title = hay ? `${bruto - neto} de vacaciones o de baja` : '';
+    };
+    par('k-fd', r.fijoDia, r.fijoDiaNeto);
+    par('k-fn', r.fijoNoche, r.fijoNocheNeto);
+    par('k-ctd', r.ctDia, r.ctDiaNeto);
+    par('k-ctn', r.ctNoche, r.ctNocheNeto);
+    par('k-flojos', r.ctFlojos, r.ctFlojosNeto);
+    // Sin ninguno, la tarjeta deja de gritar: el rojo tiene que significar algo.
+    const caja = $('#k-flojos-caja');
+    caja.classList.toggle('border-telecab-red/60', (r.ctFlojos || 0) > 0);
+    caja.classList.toggle('bg-telecab-red/5', (r.ctFlojos || 0) > 0);
+    $('#k-flojos').classList.toggle('text-telecab-red', (r.ctFlojos || 0) > 0);
+    $('#k-flojos').classList.toggle('text-telecab-muted', (r.ctFlojos || 0) === 0);
     $('#k-ct').textContent = (r.ctQueFaltanDia || 0) + (r.ctQueFaltanNoche || 0);
     $('#k-huerf').textContent = (T.huerfanos || []).length;
     $('#k-banq').textContent = (T.pendientes || []).length;
@@ -796,6 +849,51 @@
     } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
+  /**
+   * Quiénes son los correturnos flojos y cómo tienen repartidos los días.
+   *
+   * La cifra sola no se puede arreglar: hace falta el nombre, el teléfono para
+   * llamarle y VER el reparto, porque casi siempre el problema es que le falta
+   * el segundo cuadrante, no que sobre él.
+   */
+  async function verCtFlojos() {
+    const lista = ((T.resumen || {}).ctFlojosLista) || [];
+    if (!lista.length) {
+      await Dialogo.aviso({ titulo: 'Ningún correturnos corto', tono: 'ok',
+        texto: 'Todos los correturnos colocados llegan a 4 días o más entre todos sus cuadrantes.' });
+      return;
+    }
+    const filas = lista.map(x => `
+      <tr class="border-t border-telecab-border/60">
+        <td class="py-1.5 pr-2">
+          <div class="font-medium">${esc(x.nombre)}</div>
+          <div class="text-[11px] text-telecab-muted font-mono tabular-nums">${esc(x.telefono || 'sin teléfono')}</div>
+        </td>
+        <td class="py-1.5 px-2 text-center text-telecab-muted">${esc(x.turno)}${
+          x.ausente ? `<div class="text-[10px] text-telecab-warn">${esc(x.ausente)}</div>` : ''}</td>
+        <td class="py-1.5 px-2 text-center">
+          <span class="px-1.5 py-0.5 rounded font-bold ${x.dias <= 2 ? 'bg-telecab-red/15 text-telecab-red' : 'bg-telecab-warn/15 text-telecab-warn'}">${x.dias}</span>
+        </td>
+        <td class="py-1.5 pl-2 text-[11px] text-telecab-muted">${esc(x.reparto)}</td>
+      </tr>`).join('');
+    await Dialogo.aviso({
+      titulo: `${lista.length} correturnos con menos de 4 días`,
+      ancho: 'max-w-2xl', tono: 'aviso',
+      html: `
+        <p class="text-sm text-telecab-muted mb-3">Los días son los que cubre en TODA la semana sumando sus
+          cuadrantes: dos días en un coche y dos en otro son cuatro, no dos. Estos no llegan.</p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-[11px] uppercase tracking-wide text-telecab-muted">
+              <tr><th class="text-left pb-1">Conductor</th><th class="pb-1">Turno</th>
+                  <th class="pb-1">Días</th><th class="text-left pb-1 pl-2">Reparto</th></tr>
+            </thead>
+            <tbody>${filas}</tbody>
+          </table>
+        </div>`,
+    });
+  }
+
   async function cambiarEstado(coche) {
     const opciones = ESTADOS.map(e => ({ valor: e.codigo, texto: e.etiqueta }));
     const cod = await Dialogo.elegir({
@@ -1297,6 +1395,7 @@
   $('#banq-busca').addEventListener('input', pintarBanquillo);
   document.querySelectorAll('.banq-tab').forEach(b =>
     b.addEventListener('click', () => { banqTab = b.dataset.banqTab; pintarBanquillo(); }));
+  $('#k-flojos-caja').addEventListener('click', verCtFlojos);
   $('#btn-avisos').addEventListener('click', () => $('#avisos').classList.toggle('hidden'));
   $('#btn-nuevo-cua').addEventListener('click', nuevoCuadrante);
 

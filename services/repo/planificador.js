@@ -463,9 +463,100 @@ async function tablero({ dia } = {}) {
       ctQueFaltanDia: Math.ceil(diasSinCubrirDia / 6),
       ctQueFaltanNoche: Math.ceil(diasSinCubrirNoche / 6),
       pendientes: pendientes.length,
+      ...plantel(coches, gente),
     },
     avisos: avisosDe(coches, gente),
   };
+}
+
+/** Días de la semana en letras, para nombrar un reparto sin mirar el tablero. */
+const LETRA_DIA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+/**
+ * CUÁNTA GENTE HAY COLOCADA, por puesto y turno.
+ *
+ * Sustituye a "huecos día / huecos noche", que contaban CELDAS y no personas: 174
+ * huecos no dice si faltan tres personas o treinta. Aquí se cuentan PERSONAS.
+ *
+ * Y se cuentan UNA VEZ cada una, no una por plaza. Un correturnos puede estar
+ * repartido entre cuadrantes —L y M con una matrícula en el cuadrante 3, X y J con
+ * otra en el 20— y eso es UN correturnos de cuatro días, no dos de dos. Por eso el
+ * recuento va por persona y usa `diasAsignados`, que ya son los días DISTINTOS que
+ * cubre sumando todas sus plazas.
+ *
+ * Un CT se da por bien puesto con 4 días o más. Con menos es una alerta: ni cubre
+ * lo suyo ni cobra lo suyo. Y con más de 6 tampoco, que son los que marca el
+ * convenio como tope.
+ *
+ * DOS NÚMEROS POR PUESTO, no uno: el BRUTO es quién tiene esa plaza en el papel;
+ * el NETO descuenta a quien está de vacaciones o de baja. Los dos hacen falta y
+ * dicen cosas distintas: el bruto es la plantilla que se paga, el neto es la
+ * gente con la que se puede contar mañana. Con un solo número, 61 fijos de día
+ * de los que 5 están de vacaciones se leen como 61 coches saliendo.
+ */
+function plantel(coches, gente) {
+  const MIN_CT = 4, MAX_CT = 6;
+  // persona → { rol, turnos:Set, plazas:[{matricula, turno, dias}] }
+  const puesto = new Map();
+
+  coches.forEach(coche => {
+    (coche.personas || []).forEach(p => {
+      if (!p.id) return;
+      if (!puesto.has(p.id)) puesto.set(p.id, { rolFijo: false, rolCT: false, turnos: new Map(), plazas: [] });
+      const q = puesto.get(p.id);
+      if (p.rol === 'FIJO') q.rolFijo = true; else q.rolCT = true;
+      // Los días de ESA plaza: los puestos a mano o, si no, los que le tocan por
+      // ser el correturnos de ese coche.
+      const dias = (p.diasManual || []).some(Boolean)
+        ? (p.diasManual || []).map((v, i) => (v ? i : -1)).filter(i => i >= 0)
+        : (p.diasSugeridos || []);
+      q.turnos.set(p.turnoCodigo, (q.turnos.get(p.turnoCodigo) || 0) + dias.length);
+      q.plazas.push({ matricula: coche.matricula, turno: p.turno, rol: p.rol,
+                      dias: dias.map(i => LETRA_DIA[i]).join('') });
+    });
+  });
+
+  const r = {
+    fijoDia: 0, fijoNoche: 0, ctDia: 0, ctNoche: 0, ctFlojos: 0, ctPasados: 0,
+    // Los mismos, descontando a quien está de vacaciones o de baja.
+    fijoDiaNeto: 0, fijoNocheNeto: 0, ctDiaNeto: 0, ctNocheNeto: 0, ctFlojosNeto: 0,
+    ausentesColocados: 0, ctFlojosLista: [],
+  };
+  // Suma en el bruto siempre y en el neto solo si esa persona está disponible.
+  const suma = (clave, disponible) => { r[clave]++; if (disponible) r[clave + 'Neto']++; };
+
+  puesto.forEach((q, id) => {
+    const p = gente.get(id) || {};
+    // De vacaciones o de baja: tiene la plaza, pero mañana no sale con el coche.
+    const fuera = !!p.ausente;
+    if (fuera) r.ausentesColocados++;
+
+    // Su turno es aquel donde tiene MÁS días. Quien está en los dos sale por el
+    // que más pesa: contarlo dos veces inflaría el total de plantilla.
+    let turno = 'dia', max = -1;
+    q.turnos.forEach((n, t) => { if (n > max) { max = n; turno = t || 'dia'; } });
+
+    if (q.rolFijo) { suma(turno === 'noche' ? 'fijoNoche' : 'fijoDia', !fuera); return; }
+    if (!q.rolCT) return;
+
+    // LOS DÍAS DE LA PERSONA, no los de una plaza: `diasAsignados` ya son los días
+    // distintos que cubre sumando todo lo suyo.
+    const dias = p.diasAsignados || 0;
+    if (dias >= MIN_CT) suma(turno === 'noche' ? 'ctNoche' : 'ctDia', !fuera);
+    else {
+      suma('ctFlojos', !fuera);
+      r.ctFlojosLista.push({
+        id, nombre: p.nombre || id, telefono: p.telefono || '', dias,
+        turno: turno === 'noche' ? 'Noche' : 'Día',
+        ausente: fuera ? (p.estado || 'Ausente') : '',
+        reparto: q.plazas.map(x => `${x.matricula}${x.dias ? ' ' + x.dias : ' sin días'}`).join(' · '),
+      });
+    }
+    if (dias > MAX_CT) r.ctPasados++;
+  });
+
+  r.ctFlojosLista.sort((a, b) => a.dias - b.dias || a.nombre.localeCompare(b.nombre));
+  return r;
 }
 
 /**
