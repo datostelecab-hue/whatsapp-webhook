@@ -374,17 +374,30 @@ async function tablero({ dia } = {}) {
   const turnoIdDe = new Map();
   plazas.rows.forEach(p => turnoIdDe.set(p.turno_codigo, p.turno_id));
 
-  let diasSinCubrirDia = 0, diasSinCubrirNoche = 0;
+  // DOS CUENTAS DISTINTAS, no una.
+  //
+  // Un día sin cubrir en un coche que NO TIENE FIJO no es un correturnos que
+  // falte: es un fijo que falta. Meterlos en el mismo saco daba "faltan 53
+  // correturnos" cuando 39 de esos huecos eran plazas de fijo vacías; el número
+  // real de correturnos que faltan es 16. Un coche sin fijo no necesita quien lo
+  // releve: necesita quien lo lleve.
+  let diasSinCubrirDia = 0, diasSinCubrirNoche = 0;      // todo lo que no se cubre
+  let ctDiasDia = 0, ctDiasNoche = 0;                     // solo en coches CON su fijo
+  let fijosFaltanDia = 0, fijosFaltanNoche = 0;           // plazas de fijo vacías
   coches.forEach(coche => {
     ['dia', 'noche'].forEach((codigo, off) => {
       const lista = cubre.get(`${coche.vehiculoId}|${turnoIdDe.get(codigo)}`)
         || Array.from({ length: DIAS }, () => []);
-      let sinCubrir = 0;
+      // ¿Está puesta la plaza de fijo de ESTE turno? Los slots 0 y 1 son los
+      // fijos de día y de noche.
+      const hayFijo = !!((coche.personas || [])[off] || {}).id;
+      if (coche.operativo && !hayFijo) { if (off === 0) fijosFaltanDia++; else fijosFaltanNoche++; }
+      let sinCubrir = 0, sinCubrirCT = 0;
       for (let d = 0; d < DIAS; d++) {
         const quienes = lista[d];
         const celda = coche.semana[d * 2 + off];
         if (!quienes.length) {
-          if (coche.operativo) sinCubrir++;
+          if (coche.operativo) { sinCubrir++; if (hayFijo) sinCubrirCT++; }
           continue;
         }
         const p = gente.get(quienes[0]);
@@ -395,7 +408,8 @@ async function tablero({ dia } = {}) {
         celda.conflicto = quienes.length > 1;
         if (celda.conflicto) celda.otros = quienes.slice(1).map(i => (gente.get(i) || {}).nombre || i);
       }
-      if (off === 0) diasSinCubrirDia += sinCubrir; else diasSinCubrirNoche += sinCubrir;
+      if (off === 0) { diasSinCubrirDia += sinCubrir; ctDiasDia += sinCubrirCT; }
+      else { diasSinCubrirNoche += sinCubrir; ctDiasNoche += sinCubrirCT; }
       coche[off === 0 ? 'sinCubrirDia' : 'sinCubrirNoche'] = sinCubrir;
     });
   });
@@ -460,8 +474,14 @@ async function tablero({ dia } = {}) {
       // A dos días por coche, un correturnos de 40 horas cubre seis días. Es lo
       // que convierte "faltan 14 días" en "hacen falta 3 personas", que es la
       // pregunta que se hace de verdad.
-      ctQueFaltanDia: Math.ceil(diasSinCubrirDia / 6),
-      ctQueFaltanNoche: Math.ceil(diasSinCubrirNoche / 6),
+      //
+      // Y se cuentan SOLO los días de coches que ya tienen su fijo: un coche sin
+      // fijo no necesita quien lo releve, necesita quien lo lleve, y ese hueco se
+      // cuenta aparte en `fijosQueFaltan`.
+      ctQueFaltanDia: Math.ceil(ctDiasDia / 6),
+      ctQueFaltanNoche: Math.ceil(ctDiasNoche / 6),
+      fijosQueFaltanDia: fijosFaltanDia,
+      fijosQueFaltanNoche: fijosFaltanNoche,
       pendientes: pendientes.length,
       ...plantel(coches, gente),
     },

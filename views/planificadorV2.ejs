@@ -75,10 +75,18 @@
         <span id="k-flojos-n" class="text-sm text-telecab-muted font-semibold ml-1"></span></p>
       <p class="text-[10px] text-telecab-muted mt-1">menos de 4 · pincha para verlos</p>
     </button>
+    <%# Las dos mitades del mismo problema, separadas a propósito. Un coche SIN
+        FIJO no necesita quien lo releve, necesita quien lo lleve: contar sus días
+        como "correturnos que faltan" daba 53 cuando de verdad son 16. %>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Fijos que faltan</p>
+      <p id="k-fijofalta" class="text-xl font-bold mt-1 text-telecab-gold">—</p>
+      <p class="text-[10px] text-telecab-muted mt-1">plazas de fijo vacías</p>
+    </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">CT que faltan</p>
       <p id="k-ct" class="text-xl font-bold mt-1 text-telecab-gold">—</p>
-      <p class="text-[10px] text-telecab-muted mt-0.5">por contratar</p>
+      <p class="text-[10px] text-telecab-muted mt-1">solo de coches con su fijo</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Huérfanos</p>
@@ -303,7 +311,16 @@
     caja.classList.toggle('bg-telecab-red/5', (r.ctFlojos || 0) > 0);
     $('#k-flojos').classList.toggle('text-telecab-red', (r.ctFlojos || 0) > 0);
     $('#k-flojos').classList.toggle('text-telecab-muted', (r.ctFlojos || 0) === 0);
-    $('#k-ct').textContent = (r.ctQueFaltanDia || 0) + (r.ctQueFaltanNoche || 0);
+    const fijoFalta = (r.fijosQueFaltanDia || 0) + (r.fijosQueFaltanNoche || 0);
+    $('#k-fijofalta').textContent = fijoFalta;
+    $('#k-fijofalta').parentElement.title =
+      `${r.fijosQueFaltanDia || 0} de día y ${r.fijosQueFaltanNoche || 0} de noche`;
+    const ctFalta = (r.ctQueFaltanDia || 0) + (r.ctQueFaltanNoche || 0);
+    $('#k-ct').textContent = ctFalta;
+    $('#k-ct').parentElement.title =
+      `${r.ctQueFaltanDia || 0} de día y ${r.ctQueFaltanNoche || 0} de noche. ` +
+      'Solo cuenta los días sin cubrir de coches que YA tienen su fijo: un coche sin fijo ' +
+      'necesita un fijo, no un correturnos.';
     $('#k-huerf').textContent = (T.huerfanos || []).length;
     $('#k-banq').textContent = (T.pendientes || []).length;
     const semana = (T.fechas && T.fechas.length) ? `${isoAes(T.fechas[0])} – ${isoAes(T.fechas[6])}` : '';
