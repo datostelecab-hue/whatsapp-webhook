@@ -275,6 +275,14 @@
       </a>
       <% } %>
 
+      <% if (puedeVer({ href: '/justificantes' })) { %>
+      <a href="/justificantes" class="nav-item <%= seccionActiva === 'justificantes' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= seccionActiva === 'justificantes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-file-circle-check w-5 text-center <%= seccionActiva === 'justificantes' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Justificantes</span>
+      </a>
+      <% } %>
+
       <% if (puedeVer({ href: '/bitacora' })) { %>
       <a href="/bitacora" class="nav-item <%= seccionActiva === 'bitacora' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'bitacora' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">

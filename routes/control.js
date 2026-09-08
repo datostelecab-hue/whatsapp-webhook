@@ -39,13 +39,36 @@ router.get('/', (req, res) => {
 // (con su responsable) y verifica los "confirma que sale ya"; la 3 es el
 // repaso. Con las listas de activos, justificados por tipo y la lista roja.
 router.get('/campanas', (req, res) => {
-  res.render('controlCampanas', {
+  // DOS VISTAS de la misma cosa. El gestor ve la operativa (la gente, a quién
+  // llamar); admin y desarrollador entran al INFORME: cuántos llamados, cuántos
+  // contactados, por quién — cómo va el día, no la lista de gente. El informe
+  // enlaza a la vista de gestor (?vista=gestor) para cuando quieran bajar.
+  const esAdmin = ['superadmin', 'desarrollador'].includes((req.usuario || {}).rol);
+  const vista = esAdmin && req.query.vista !== 'gestor' ? 'controlCampanasInforme' : 'controlCampanas';
+  res.render(vista, {
     titulo: 'Control · Campañas',
     seccion: 'control',
     layout: 'layout-gestion',
+    esAdmin,
     resultadosLlamada: llamadas.RESULTADOS,
     tiposJ: require('../services/repo/justificantes').TIPOS_J,
   });
+});
+
+// El informe: el estado de las campañas (números, no gente) + las cuentas de
+// llamadas del día por campaña y por agente.
+router.get('/api/campanas-informe', async (req, res) => {
+  try {
+    const dia = ISO.test(req.query.dia || '') ? req.query.dia : llamadas.diaOperativoHoy();
+    const [estado, stats] = await Promise.all([
+      require('../services/repo/campanas').estado({ dia }),
+      llamadas.estadisticasHoy(dia),
+    ]);
+    res.json({ status: 'ok', ...estado, estadisticas: stats });
+  } catch (e) {
+    console.error('❌ [Control] /api/campanas-informe:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
 });
 
 router.get('/api/campanas', async (req, res) => {

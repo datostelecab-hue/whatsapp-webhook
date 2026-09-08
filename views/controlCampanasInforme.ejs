@@ -1,0 +1,154 @@
+<%- include('partials/control-nav', { sub: 'campanas' }) %>
+
+<div class="px-4 lg:px-6 pb-8 max-w-[1300px] mx-auto">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mt-4 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-chart-column text-telecab-gold"></i> Campañas · informe del día
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Cómo va la mañana, en números: cuántos llamados, cuántos contactados y por quién, campaña a campaña.
+        <span id="i-actualizado" class="text-telecab-muted/70"></span>
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/control/campanas?vista=gestor" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-headset mr-1"></i> Ver lo que ven los gestores
+      </a>
+      <button id="i-refrescar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-rotate mr-1"></i> Actualizar
+      </button>
+    </div>
+  </div>
+
+  <!-- El día de un vistazo -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-3">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">En el plan</p>
+      <p id="g-plan" class="text-xl font-bold mt-1">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Activos</p>
+      <p class="mt-1 leading-none"><span id="g-activos" class="text-xl font-bold text-telecab-green">—</span>
+        <span id="g-activos-pct" class="text-xs text-telecab-muted font-semibold"></span></p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Sin conectar</p>
+      <p id="g-pend" class="text-xl font-bold mt-1 text-telecab-warn">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Llamadas hoy</p>
+      <p class="mt-1 leading-none"><span id="g-llamadas" class="text-xl font-bold">—</span>
+        <span id="g-conds" class="text-xs text-telecab-muted font-semibold"></span></p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Justificados</p>
+      <p id="g-just" class="text-xl font-bold mt-1 text-sky-400">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-red/40 rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Lista roja</p>
+      <p id="g-roja" class="text-xl font-bold mt-1 text-telecab-red">—</p>
+    </div>
+  </div>
+
+  <!-- Las J por tipo -->
+  <div id="g-jtipos" class="flex flex-wrap gap-2 mb-5"></div>
+
+  <!-- Una tarjeta por campaña -->
+  <div id="i-campanas" class="grid lg:grid-cols-3 gap-4 items-start mb-4"></div>
+
+  <!-- Lo llamado desde el cockpit (fuera de campaña) -->
+  <div id="i-cockpit"></div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const TIPOS = <%- JSON.stringify(tiposJ || []) %>;
+  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) + ' %' : '');
+
+  // Un desglose "etiqueta N" ordenado de más a menos. Vale para resultados y agentes.
+  const chips = (obj, tono) => Object.entries(obj || {}).sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => '<span class="px-2 py-0.5 rounded-lg text-[11px] ' + (tono || 'bg-telecab-card2 text-telecab-text') + '">' +
+      esc(k) + ' <b>' + n + '</b></span>').join(' ');
+
+  function tarjetaCampana(meta, colaAhora, st) {
+    const s = st || { llamadas: 0, conductores: 0, contactados: 0, noLocalizados: 0, porResultado: {}, porAgente: {} };
+    return '<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">' +
+      '<div class="flex items-center justify-between gap-2 mb-1">' +
+        '<h2 class="font-semibold text-telecab-text">Campaña ' + meta.n + ' · ' + String(meta.abre).padStart(2, '0') + ':00</h2>' +
+        (meta.abierta ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-green/15 text-telecab-green font-semibold">abierta</span>'
+                      : '<span class="text-[11px] px-2 py-0.5 rounded-full bg-telecab-card2 text-telecab-muted">abre a las ' + String(meta.abre).padStart(2, '0') + ':00</span>') +
+      '</div>' +
+      '<p class="text-[11px] text-telecab-muted mb-3">' + esc(meta.detalle) + '</p>' +
+      '<div class="grid grid-cols-3 gap-2 mb-3 text-center">' +
+        '<div class="rounded-xl bg-telecab-card2/60 py-2"><p class="text-lg font-bold leading-none">' + colaAhora + '</p><p class="text-[10px] text-telecab-muted mt-1">en cola ahora</p></div>' +
+        '<div class="rounded-xl bg-telecab-card2/60 py-2"><p class="text-lg font-bold leading-none">' + s.llamadas + '</p><p class="text-[10px] text-telecab-muted mt-1">llamadas (' + s.conductores + ' pers.)</p></div>' +
+        '<div class="rounded-xl bg-telecab-card2/60 py-2"><p class="text-lg font-bold leading-none text-telecab-green">' + s.contactados + '</p><p class="text-[10px] text-telecab-muted mt-1">contactados · ' + s.noLocalizados + ' no loc.</p></div>' +
+      '</div>' +
+      (Object.keys(s.porResultado).length
+        ? '<p class="text-[10px] text-telecab-muted uppercase tracking-wide mb-1">Resultados</p><div class="flex flex-wrap gap-1.5 mb-2">' + chips(s.porResultado) + '</div>'
+        : '<p class="text-xs text-telecab-muted">Sin llamadas apuntadas en esta campaña.</p>') +
+      (Object.keys(s.porAgente).length
+        ? '<p class="text-[10px] text-telecab-muted uppercase tracking-wide mb-1 mt-2">Quién llamó</p><div class="flex flex-wrap gap-1.5">' + chips(s.porAgente, 'bg-telecab-gold/15 text-telecab-gold') + '</div>'
+        : '') +
+    '</div>';
+  }
+
+  async function cargar() {
+    try {
+      const r = await fetch('/control/api/campanas-informe').then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'Error');
+
+      $('#g-plan').textContent = r.resumen.plan;
+      $('#g-activos').textContent = r.resumen.activos;
+      $('#g-activos-pct').textContent = pct(r.resumen.activos, r.resumen.plan);
+      $('#g-pend').textContent = r.resumen.pendientes;
+      $('#g-just').textContent = r.resumen.justificados;
+      $('#g-roja').textContent = r.resumen.listaRoja;
+
+      const st = r.estadisticas || {};
+      const total = Object.values(st).reduce((a, c) => ({ llamadas: a.llamadas + c.llamadas, conductores: a.conductores + c.conductores }),
+        { llamadas: 0, conductores: 0 });
+      $('#g-llamadas').textContent = total.llamadas;
+      $('#g-conds').textContent = total.conductores ? 'a ' + total.conductores + ' pers.' : '';
+
+      // Las J del día por sus cinco tipos, aunque estén a cero: el hueco también informa.
+      $('#g-jtipos').innerHTML = '<span class="text-[11px] text-telecab-muted uppercase tracking-wide mr-1 self-center">J por tipo:</span>' +
+        TIPOS.map(t => {
+          const n = ((r.justificados || {})[t.codigo] || []).length;
+          return '<span class="px-2 py-1 rounded-lg text-xs ' + (n ? 'bg-sky-500/15 text-sky-400 font-semibold' : 'bg-telecab-card2 text-telecab-muted') + '">' +
+            esc(t.etiqueta) + ' <b>' + n + '</b></span>';
+        }).join('');
+
+      const colas = { 1: r.c1.length, 2: r.c2.etiquetados.length + r.c2.interrogacion.length, 3: r.c3.length };
+      $('#i-campanas').innerHTML = r.campanas.map(c =>
+        tarjetaCampana(c, colas[c.n] || 0, st['campana' + c.n])).join('');
+
+      // Lo llamado desde el cockpit no es de ninguna campaña, pero es trabajo
+      // hecho y sin él el informe diría que nadie ha llamado.
+      const ck = st.control;
+      $('#i-cockpit').innerHTML = ck && ck.llamadas
+        ? '<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">' +
+          '<h2 class="font-semibold text-telecab-text mb-1">Desde el cockpit (En directo)</h2>' +
+          '<p class="text-[11px] text-telecab-muted mb-2">Llamadas apuntadas fuera de las campañas: ' + ck.llamadas + ' a ' + ck.conductores + ' personas · ' +
+            ck.contactados + ' contactados.</p>' +
+          '<div class="flex flex-wrap gap-1.5 mb-2">' + chips(ck.porResultado) + '</div>' +
+          '<div class="flex flex-wrap gap-1.5">' + chips(ck.porAgente, 'bg-telecab-gold/15 text-telecab-gold') + '</div>' +
+        '</div>'
+        : '';
+
+      $('#i-actualizado').textContent = '· actualizado ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      $('#i-campanas').innerHTML = '<p class="px-4 py-8 text-center text-sm text-telecab-red lg:col-span-3">' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#i-refrescar').addEventListener('click', cargar);
+  setInterval(cargar, 60000);
+  cargar();
+})();
+</script>

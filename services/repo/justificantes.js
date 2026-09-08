@@ -11,15 +11,16 @@
 const db = require('../db');
 const { normClave } = require('../conductores');
 
-// LOS CINCO TIPOS DE J. El código va a la base (hay CHECK en db/72); la
-// etiqueta es lo que se enseña. El texto libre de la observación se queda:
-// el tipo agrupa, la observación explica.
+// LOS CINCO TIPOS DE J, por QUIÉN RESPONDE de ella (los puso Tráfico, db/73):
+// una J de tráfico la aprueba Tráfico, una de RRHH la aprueba RRHH. El texto
+// libre de la observación se queda: el tipo agrupa y enruta, la observación
+// explica.
 const TIPOS_J = [
-  { codigo: 'taller',     etiqueta: 'Taller / ITV' },
-  { codigo: 'suspension', etiqueta: 'Suspensión BOLT' },
-  { codigo: 'medico',     etiqueta: 'Médico' },
-  { codigo: 'gestion',    etiqueta: 'Gestión / papeleo' },
-  { codigo: 'personal',   etiqueta: 'Personal / otro' },
+  { codigo: 'trafico',   etiqueta: 'Tráfico' },
+  { codigo: 'rrhh',      etiqueta: 'RRHH' },
+  { codigo: 'bolt',      etiqueta: 'BOLT' },
+  { codigo: 'taller',    etiqueta: 'Taller' },
+  { codigo: 'companero', etiqueta: 'Por compañero' },
 ];
 const ES_TIPO_J = new Set(TIPOS_J.map(t => t.codigo));
 
@@ -31,9 +32,9 @@ const ES_TIPO_J = new Set(TIPOS_J.map(t => t.codigo));
 async function guardarPorId({ conductorId, diaIso, horas, observacion, tipo, usuarioId }) {
   observacion = (observacion || '').toString().trim();
   if (!observacion) throw new Error('La observación es obligatoria para justificar');
-  // Sin tipo válido cae en 'personal': una J vieja o de otra pantalla no puede
-  // reventar por no traerlo.
-  tipo = ES_TIPO_J.has(String(tipo || '').trim()) ? String(tipo).trim() : 'personal';
+  // Sin tipo válido cae en 'trafico' (quien justifica desde el cockpit ES
+  // Tráfico): una J de otra pantalla no puede reventar por no traerlo.
+  tipo = ES_TIPO_J.has(String(tipo || '').trim()) ? String(tipo).trim() : 'trafico';
   conductorId = Number(conductorId);
   if (!Number.isInteger(conductorId) || conductorId <= 0) throw new Error('Falta el conductor');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
@@ -139,4 +140,98 @@ async function anularPorId({ conductorId, diaIso }) {
   });
 }
 
-module.exports = { guardarPorId, anularPorId, leerPorFecha, TIPOS_J };
+// ── LA APROBACIÓN (el módulo /justificantes) ────────────────────────────────
+// La J nace PENDIENTE y el área responsable la aprueba o la rechaza. Estados
+// sin columna de estado: pendiente (ni aprobado ni anulado), aprobada
+// (aprobado_at) y rechazada (anulado_at, el circuito de anular de siempre,
+// ahora con quién y por qué).
+
+/** La cola del módulo: por estado y tipo, la más antigua primero. */
+async function listar({ estado = 'pendiente', tipo, desde, hasta, limite = 300 } = {}) {
+  const cond = ['1=1'];
+  const args = [];
+  const p = v => { args.push(v); return '$' + args.length; };
+  if (estado === 'pendiente') cond.push('j.aprobado_at IS NULL AND j.anulado_at IS NULL');
+  else if (estado === 'aprobada') cond.push('j.aprobado_at IS NOT NULL AND j.anulado_at IS NULL');
+  else if (estado === 'rechazada') cond.push('j.anulado_at IS NOT NULL');
+  if (tipo && ES_TIPO_J.has(tipo)) cond.push(`j.tipo = ${p(tipo)}`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(desde || '')) cond.push(`j.dia_operativo >= ${p(desde)}::date`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(hasta || '')) cond.push(`j.dia_operativo <= ${p(hasta)}::date`);
+
+  const r = await db.consulta(
+    `SELECT j.id, j.conductor_id, j.dia_operativo::text AS dia, j.tipo,
+            j.horas_seg_momento, j.observacion, j.creado_at,
+            j.aprobado_at, j.anulado_at, j.anulado_motivo,
+            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
+            COALESCE(uc.nombre, '')  AS puesta_por,
+            COALESCE(ua.nombre, '')  AS aprobada_por,
+            COALESCE(un.nombre, '')  AS rechazada_por
+       FROM justificante j
+       JOIN conductor c ON c.id = j.conductor_id
+       LEFT JOIN usuario uc ON uc.id = j.usuario_id
+       LEFT JOIN usuario ua ON ua.id = j.aprobado_por
+       LEFT JOIN usuario un ON un.id = j.anulado_por
+      WHERE ${cond.join(' AND ')}
+      ORDER BY j.dia_operativo, j.creado_at
+      LIMIT ${Math.min(Number(limite) || 300, 1000)}`, args);
+
+  return r.rows.map(x => ({
+    id: String(x.id), conductorId: String(x.conductor_id), conductor: x.conductor,
+    dia: x.dia, tipo: x.tipo,
+    horas: x.horas_seg_momento != null ? Math.round(x.horas_seg_momento / 360) / 10 : null,
+    observacion: x.observacion || '',
+    puestaPor: x.puesta_por, creadoAt: x.creado_at,
+    aprobadaPor: x.aprobada_por, aprobadoAt: x.aprobado_at,
+    rechazadaPor: x.rechazada_por, anuladoAt: x.anulado_at, anuladoMotivo: x.anulado_motivo || '',
+    estado: x.anulado_at ? 'rechazada' : (x.aprobado_at ? 'aprobada' : 'pendiente'),
+  }));
+}
+
+/** Cuántas pendientes hay de cada tipo, para las pestañas del módulo. */
+async function pendientesPorTipo() {
+  const r = await db.consulta(
+    `SELECT tipo, count(*)::int n FROM justificante
+      WHERE aprobado_at IS NULL AND anulado_at IS NULL GROUP BY 1`);
+  const m = {};
+  TIPOS_J.forEach(t => { m[t.codigo] = 0; });
+  r.rows.forEach(x => { m[x.tipo] = x.n; });
+  return m;
+}
+
+/** Aprueba una J pendiente. Idempotente no: dos aprobaciones son un error. */
+async function aprobar(id, { usuarioId } = {}) {
+  const r = await db.consulta(
+    `UPDATE justificante SET aprobado_at = now(), aprobado_por = $2
+      WHERE id = $1 AND aprobado_at IS NULL AND anulado_at IS NULL
+      RETURNING id`, [Number(id), usuarioId || null]);
+  if (!r.rows.length) throw new Error('Esa J no está pendiente (ya se aprobó, se rechazó, o no existe)');
+  return { ok: true, id: String(id) };
+}
+
+/**
+ * Rechaza una J: la ANULA con quién y por qué. Reusa el circuito de anular de
+ * siempre (quita la marca de la bitácora), así que rechazar deja el día como
+ * si la J no hubiera existido — que es lo que significa rechazarla.
+ */
+async function rechazar(id, { usuarioId, motivo } = {}) {
+  motivo = String(motivo || '').trim();
+  if (!motivo) throw new Error('El motivo del rechazo es obligatorio: el que la puso tiene que saber por qué');
+  return db.transaccion(async cli => {
+    const r = await cli.query(
+      `UPDATE justificante SET anulado_at = now(), anulado_por = $2, anulado_motivo = $3
+        WHERE id = $1 AND anulado_at IS NULL
+        RETURNING id, conductor_id, dia_operativo`, [Number(id), usuarioId || null, motivo]);
+    if (!r.rows.length) throw new Error('Esa J ya está anulada o no existe');
+    const j = r.rows[0];
+    await cli.query(
+      `DELETE FROM bitacora_dia
+        WHERE conductor_id = $1 AND dia_operativo = $2 AND justificante_id = $3 AND marca = 'J'`,
+      [j.conductor_id, j.dia_operativo, j.id]);
+    return { ok: true, id: String(j.id) };
+  });
+}
+
+module.exports = {
+  guardarPorId, anularPorId, leerPorFecha, TIPOS_J,
+  listar, pendientesPorTipo, aprobar, rechazar,
+};

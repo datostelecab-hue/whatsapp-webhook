@@ -72,6 +72,11 @@ const CATALOGO = [
     { clave: '/sanciones',  etiqueta: 'Sanciones velocidad' },
     { clave: '/callcenter', etiqueta: 'Call Center' },
   ] },
+  { grupo: 'Aprobaciones', items: [
+    // Quién entra aquí lo decide el desarrollador usuario a usuario: el módulo
+    // no viene sembrado en ningún rol (salvo los que llevan TODO el catálogo).
+    { clave: '/justificantes', etiqueta: 'Justificantes (aprobación)' },
+  ] },
   { grupo: 'Dirección', items: [
     { clave: '/bi', etiqueta: 'Inteligencia de negocio' },
   ] },

@@ -71,6 +71,62 @@ async function registrar({ conductorId, turno, resultado, nota, usuarioId, orige
 }
 
 /**
+ * ¿El resultado significa que HABLASTE con él? Contactado = confirma, tiene una
+ * incidencia o dice que no asistirá. Lo demás (buzón, no contesta, número
+ * erróneo, no contactado) es no localizado. Lo usa el informe de campañas.
+ */
+const CONTACTADO = r => /confirma|incidencia|no asistir/i.test(String(r || ''));
+
+/**
+ * LAS CUENTAS DEL DÍA para el informe de dirección: cuántas llamadas y a
+ * cuántos conductores, por campaña (el `origen` de cada llamada), con el
+ * desglose por resultado y por agente. No devuelve nombres de conductores:
+ * el informe es de números; la gente está en la vista de gestor.
+ */
+async function estadisticasHoy(dia) {
+  const r = await db.consulta(
+    `SELECT COALESCE(l.origen, 'control') AS origen, l.resultado,
+            COALESCE(u.nombre, '¿?')      AS agente,
+            count(*)::int                  AS n,
+            count(DISTINCT l.conductor_id)::int AS conductores
+       FROM llamada_seguimiento l
+       LEFT JOIN usuario u ON u.id = l.usuario_id
+      WHERE l.dia_operativo = $1::date
+      GROUP BY 1, 2, 3`, [diaValido(dia)]);
+
+  const vacio = () => ({ llamadas: 0, conductores: new Set(), contactados: new Set(),
+    noLocalizados: new Set(), porResultado: {}, porAgente: {} });
+  const porCampana = {};
+  r.rows.forEach(x => {
+    const c = porCampana[x.origen] || (porCampana[x.origen] = vacio());
+    c.llamadas += x.n;
+    c.porResultado[x.resultado || '(sin resultado)'] = (c.porResultado[x.resultado || '(sin resultado)'] || 0) + x.n;
+    c.porAgente[x.agente] = (c.porAgente[x.agente] || 0) + x.n;
+  });
+
+  // Los DISTINTOS conductores por campaña salen aparte: agregarlos desde el
+  // GROUP BY de arriba contaría dos veces al que tiene dos resultados.
+  const d = await db.consulta(
+    `SELECT COALESCE(origen, 'control') AS origen,
+            count(DISTINCT conductor_id)::int AS conductores,
+            count(DISTINCT conductor_id) FILTER (WHERE resultado ~* 'confirma|incidencia|no asistir')::int AS contactados
+       FROM llamada_seguimiento
+      WHERE dia_operativo = $1::date
+      GROUP BY 1`, [diaValido(dia)]);
+  d.rows.forEach(x => {
+    const c = porCampana[x.origen] || (porCampana[x.origen] = vacio());
+    c.conductores = x.conductores;
+    c.contactados = x.contactados;
+    c.noLocalizados = x.conductores - x.contactados;
+  });
+  // Los Set intermedios no salen de aquí.
+  Object.values(porCampana).forEach(c => {
+    if (c.conductores instanceof Set) { c.conductores = 0; c.contactados = 0; c.noLocalizados = 0; }
+  });
+  return porCampana;
+}
+
+/**
  * Las llamadas de la jornada operativa EN CURSO, por conductor:
  * { conductorId: { n, ultima: { at, quien, resultado, nota } } }. Es lo que pinta la
  * carta de En directo para que el segundo operador vea que ya se llamó.
@@ -163,4 +219,4 @@ async function justificadosHoy(dia) {
   return m;
 }
 
-module.exports = { registrar, resumenHoy, listar, justificadosHoy, diaOperativoHoy, RESULTADOS };
+module.exports = { registrar, resumenHoy, listar, justificadosHoy, diaOperativoHoy, RESULTADOS, estadisticasHoy, CONTACTADO };

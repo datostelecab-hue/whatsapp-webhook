@@ -157,6 +157,7 @@ app.use(sesion.forzarCambio);
 app.use(sesion.controlAcceso);
 app.use(sesion.cargarPermisos);
 app.use('/inicio', require('./routes/inicio'));
+app.use('/justificantes', require('./routes/justificantes'));
 app.use('/usuarios', usuariosRoutes);
 
 app.use('/horas', boltHoras);
