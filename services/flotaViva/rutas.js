@@ -80,16 +80,25 @@ async function guardarLote(trips) {
  * que da la MISMA matrícula que usa el cockpit (la de BOLT). Si se keyeara por la
  * de fv_ruta, no casaría y todo saldría en cero.
  *
- * Un trayecto cuenta en el día de su INICIO. Devuelve Map(matrícula -> {km, viajes}).
+ * Un trayecto cuenta en la jornada de su INICIO. La jornada es la OPERATIVA
+ * (05:00 → 05:00), la misma ventana que las horas y los NN del cockpit: antes
+ * cortaba por día natural y "Flota hoy X km" iba al lado de cifras 05→05 que no
+ * eran del mismo día. Devuelve Map(matrícula -> {km, viajes}).
  */
 async function kmPorCoche(dia) {
+  const [hi, off, hf] = TURNOS.operativo;
   const r = await db.consulta(
-    `SELECT v.matricula, round(sum(r.metros) / 1000.0, 1) AS km, count(*)::int AS viajes
+    `WITH w AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     )
+     SELECT v.matricula, round(sum(r.metros) / 1000.0, 1) AS km, count(*)::int AS viajes
        FROM fv_ruta r
+       CROSS JOIN w
        JOIN fv_vehiculo v ON v.mapon_unit = r.unit_id
       WHERE v.matricula IS NOT NULL
-        AND (r.inicio AT TIME ZONE 'Europe/Madrid')::date = $1::date
-      GROUP BY v.matricula`, [String(dia).slice(0, 10)]);
+        AND r.inicio >= w.ini AND r.inicio < w.fin
+      GROUP BY v.matricula`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
   const m = new Map();
   r.rows.forEach(x => m.set(x.matricula, { km: Number(x.km) || 0, viajes: x.viajes }));
   return m;
@@ -155,7 +164,8 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      ),
      solape AS (
-       SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor,
+       SELECT CASE WHEN t.conductor_uuid IS NULL THEN '(sin conductor)'
+                   ELSE COALESCE(co.nombre, t.conductor_uuid) END AS conductor,
               veh.matricula AS matricula,
               t.situacion,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
@@ -236,7 +246,10 @@ async function minutosEfectivos(dia, turno = 'operativo') {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      )
      SELECT t.conductor_uuid                          AS uuid,
-            COALESCE(co.nombre, '(sin conductor)')    AS conductor,
+            -- Sin nombre en fv_conductor NO es sin conductor: es una cuenta con
+            -- uuid (el backfill las crea sin nombre) y sus horas son de alguien.
+            CASE WHEN t.conductor_uuid IS NULL THEN '(sin conductor)'
+                 ELSE COALESCE(co.nombre, t.conductor_uuid) END AS conductor,
             GREATEST(t.desde, v.ini)                  AS desde,
             LEAST(COALESCE(t.hasta, now()), v.fin)     AS hasta
        FROM fv_tramo t
@@ -302,7 +315,8 @@ async function matriculasBoltPorConductor(dia, turno = 'operativo') {
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      )
-     SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor, veh.matricula,
+     SELECT CASE WHEN t.conductor_uuid IS NULL THEN '(sin conductor)'
+                 ELSE COALESCE(co.nombre, t.conductor_uuid) END AS conductor, veh.matricula,
             floor(sum(EXTRACT(EPOCH FROM (
               LEAST(COALESCE(t.hasta, now()), v.fin) - GREATEST(t.desde, v.ini)
             ))) / 60)::int AS minutos
@@ -449,7 +463,8 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
     // 3) Los tramos de BOLT del coche en la ventana, por conductor y situación:
     // dice si hubo conexión y si llevaba conductor (o si todo es "(sin conductor)").
     const tramos = (await db.consulta(
-      `SELECT COALESCE(co.nombre, '(sin conductor)') AS conductor, t.situacion, count(*)::int AS n
+      `SELECT CASE WHEN t.conductor_uuid IS NULL THEN '(sin conductor)'
+                   ELSE COALESCE(co.nombre, t.conductor_uuid) END AS conductor, t.situacion, count(*)::int AS n
          FROM fv_tramo t
          JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid AND veh.matricula = $1
          LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
@@ -651,11 +666,16 @@ async function actividadPorConductor(dia, turno = 'dia') {
     if (x.primera && (!a.primera || x.primera < a.primera)) a.primera = x.primera;
     if (x.ultima && (!a.ultima || x.ultima > a.ultima)) a.ultima = x.ultima;
     if (x.conectado_ahora) { a.conectadoAhora = true; a.situacionAhora = x.situacion_ahora || a.situacionAhora; }
-    if (x.matricula) a._mats.push({ matricula: x.matricula, minutos: Number(x.minutos) || 0 });
+    // Solo cuentan como "su coche" los que tienen trabajo o conexión viva: un
+    // tramo DESCONECTADO abierto hereda el conductor anterior, y ponía matrícula
+    // y "≠ no es el coche del plan" a quien aún no había salido.
+    if (x.matricula && (Number(x.minutos) > 0 || x.conectado_ahora)) {
+      a._mats.push({ matricula: x.matricula, minutos: Number(x.minutos) || 0 });
+    }
   });
 
-  // Los km encima de lo ya montado. Un conductor puede tener km de un coche del
-  // que no quedo tramo dentro de la ventana: entonces se crea su ficha igual.
+  // Los km encima de lo ya montado. Si el conductor no tiene ficha (sus tramos
+  // caen fuera de la ventana), esos km se descartan: son de otra jornada.
   rk.rows.forEach(x => {
     if (!porUuid.has(x.uuid)) return;
     const a = porUuid.get(x.uuid);

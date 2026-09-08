@@ -66,6 +66,7 @@ async function planDelDia(iso) {
   const r = await db.consulta(
     `WITH cubre AS (
        SELECT f.conductor_id, min(f.turno_id) AS turno_id,
+              count(DISTINCT f.turno_id) AS turnos,
               string_agg(DISTINCT v.matricula, ', ' ORDER BY v.matricula) AS matriculas
          FROM f_cobertura($1::date, $1::date) f
          JOIN vehiculo v ON v.id = f.vehiculo_id
@@ -81,7 +82,9 @@ async function planDelDia(iso) {
      )
      SELECT a.conductor_id,
             (c.conductor_id IS NOT NULL) AS debia_salir,
-            t.etiqueta AS turno,
+            -- Quien cubre día Y noche el mismo día está doblando: TodoTurno, no
+            -- "Día" (min(turno_id) se quedaba con el primero).
+            CASE WHEN c.turnos > 1 THEN 'TodoTurno' ELSE t.etiqueta END AS turno,
             c.matriculas AS matriculas_plan
        FROM asignados a
        LEFT JOIN cubre c ON c.conductor_id = a.conductor_id
@@ -141,18 +144,37 @@ async function reporteDia(key) {
   const repoJust = require('./justificantes');
   await require('../flotaViva/db').preparar();
 
-  const [act, plan, pad, justis] = await Promise.all([
+  const [act, plan, pad, justis, minDia, minNoche] = await Promise.all([
     // LA JORNADA ENTERA (05→05), no la ventana del turno: es lo que mide
     // Visibilidad y es lo que la persona trabajó, empiece cuando empiece.
     rutas.actividadPorConductor(iso, 'operativo'),
     planDelDia(iso),
     padron(),
-    repoJust.leerPorFecha(iso).catch(() => new Map()),
+    // Sin red: si las J no se pueden leer, el Excel no sale (antes salía sin
+    // ninguna J y nadie lo sabía).
+    repoJust.leerPorFecha(iso),
+    // Los minutos por ventana de turno, para saber de hecho en qué turno
+    // trabajó quien no estaba en el cuadrante.
+    rutas.minutosEfectivos(iso, 'dia').then(m => m.porUuid),
+    rutas.minutosEfectivos(iso, 'noche').then(m => m.porUuid),
   ]);
 
-  // Los justificantes vienen indexados por nombre; aquí hace falta por persona.
+  // Los justificantes, por persona (la clave 'id:<conductor_id>').
   const justPorId = new Map();
-  for (const j of justis.values()) if (j.conductorId) justPorId.set(Number(j.conductorId), j);
+  for (const [k, j] of justis.entries()) if (k.startsWith('id:')) justPorId.set(Number(j.conductorId), j);
+
+  /**
+   * El turno DE HECHO de quien trabajó sin estar en el cuadrante: donde cayó el
+   * grueso de sus horas efectivas (día 05→17 o noche 17→05). Antes se miraba la
+   * hora de su primera conexión, y al de noche que remató la noche anterior a
+   * las 05:00 le salía "Día" con sus 11 h de noche.
+   */
+  const turnoDeHecho = uuids => {
+    let d = 0, n = 0;
+    (uuids || []).forEach(u => { d += minDia.get(u) || 0; n += minNoche.get(u) || 0; });
+    if (!d && !n) return '';
+    return n > d ? 'Noche' : 'Día';
+  };
 
   // ── 1. Todo el que TRABAJÓ (o al menos se conectó) ────────────────────────
   const filasPorId = new Map();   // conductor_id → fila
@@ -169,7 +191,8 @@ async function reporteDia(key) {
       // El turno del cuadrante manda. Al que trabajó sin estar planificado se
       // le pone el turno donde cayeron sus horas: decir "(sin turno)" de quien
       // hizo la noche entera no ayuda a nadie.
-      turno: (pl && pl.turno) || turnoDeHecho(a),
+      turno: (pl && pl.turno) || turnoDeHecho([a.uuid]),
+      uuids: [a.uuid],
       horas,
       libra: !!(pl && pl.libra),
       debiaSalir: !!(pl && pl.debiaSalir),
@@ -184,7 +207,19 @@ async function reporteDia(key) {
       just: cid ? justPorId.get(cid) : null,
     };
     if (fila.revisar) { fila.kmBolt = 'REVISAR'; fila.kmDesc = 'REVISAR'; }
-    if (cid) filasPorId.set(cid, fila); else sueltos.push(fila);
+    if (!cid) { sueltos.push(fila); continue; }
+    if (!filasPorId.has(cid)) { filasPorId.set(cid, fila); continue; }
+    // La MISMA persona con otra cuenta de BOLT ese día: se suma, no se pisa.
+    const f = filasPorId.get(cid);
+    f.horas = r1(f.horas + fila.horas);
+    f.uuids.push(a.uuid);
+    if (!pl || !pl.turno) f.turno = turnoDeHecho(f.uuids);
+    f.matricula = [...new Set([...(f.matricula ? f.matricula.split(', ') : []), ...(fila.matricula ? fila.matricula.split(', ') : [])])].join(', ') || null;
+    const num = v => (typeof v === 'number' ? v : 0);
+    const revisar = f.revisar || fila.revisar;
+    f.kmBolt = revisar ? 'REVISAR' : Math.round((num(f.kmBolt) + num(fila.kmBolt)) * 10) / 10;
+    f.kmDesc = revisar ? 'REVISAR' : Math.round((num(f.kmDesc) + num(fila.kmDesc)) * 10) / 10;
+    f.revisar = revisar;
   }
 
   // ── 2. Los que DEBÍAN salir y no aparecen en BOLT: 0 h ────────────────────
@@ -227,7 +262,11 @@ async function reporteDia(key) {
     };
     if (f.just) {
       const horasTexto = (f.horas != null && f.horas > 0) ? `${r1(f.horas)} (J)` : 'J';
-      return { ...comun, horasTexto, color: 'azul', observacion: f.just.observacion || '', esJ: true };
+      // Las horas justificadas SE SUMAN a las de BOLT: van delante del motivo,
+      // que es lo que mira nómina. Antes el Excel decía "vale 8 h" para toda J.
+      const hj = f.just.horasJ;
+      const observacion = (hj != null ? `J ${String(hj).replace('.', ',')} h · ` : 'J · ') + (f.just.observacion || '');
+      return { ...comun, horasTexto, horasJ: hj, color: 'azul', observacion, esJ: true };
     }
     const b = banda(f.horas);
     // El aviso va con la observación automática: el que salió sin estar en el
@@ -246,19 +285,11 @@ async function reporteDia(key) {
 
   return {
     fecha, diaSemana: DIAS[idx], dia: Number(key), iso,
+    // Descargado entre las 00:00 y las 05:00, "ayer" es una jornada que sigue
+    // abierta (los de noche siguen rodando): el Excel lo dice, no lo esconde.
+    parcial: act.terminada === false,
     filas, resumen: resumirFilas(filas),
   };
-}
-
-/**
- * El turno de quien trabajó sin estar en el cuadrante: donde cayó la mayor
- * parte de sus horas. La ventana de día es 05→17 en Madrid.
- */
-function turnoDeHecho(a) {
-  if (!a.primera) return '';
-  const h = Number(new Intl.DateTimeFormat('en-GB',
-    { timeZone: TZ, hour: '2-digit', hour12: false }).format(new Date(a.primera)));
-  return (h >= 5 && h < 17) ? 'Día' : 'Noche';
 }
 
 // ── Resumen del día ─────────────────────────────────────────────────────────
@@ -278,6 +309,8 @@ function resumirFilas(filas) {
     cumplieron8: filas.filter(f => (f.horas ?? 0) >= 8).length,
     menos4: filas.filter(f => hizo(f) && f.horas < 4).length,
     justificados: filas.filter(f => f.esJ).length,
+    // Horas justificadas en total: se SUMAN a las de BOLT para la nómina.
+    horasJustificadas: r1(filas.filter(f => f.esJ).reduce((s, f) => s + (f.horasJ || 0), 0)),
     // Los que salieron sin estar en el cuadrante: el número que antes no existía.
     fueraDelPlan: filas.filter(f => f.esNN && hizo(f)).length,
     horasFueraDelPlan: r1(filas.filter(f => f.esNN && hizo(f)).reduce((s, f) => s + (f.horas ?? 0), 0)),

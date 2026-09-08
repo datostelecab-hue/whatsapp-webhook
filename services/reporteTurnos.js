@@ -23,84 +23,111 @@ const TZ = 'Europe/Madrid';
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA',
   { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-// Nombre normalizado para cruzar BOLT (fv_conductor) con el dominio: minúsculas, sin
-// acentos, tokens ordenados. Igual criterio que En directo, local para no acoplar.
-const normNombre = s => String(s || '').toLowerCase()
-  .normalize('NFD').replace(/[̀-ͯ]/g, '')
-  .replace(/[^a-z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean).sort().join(' ');
-
 const fmtTel = t => {
   const d = String(t || '').replace(/\D/g, '').slice(-9);
   return d.length === 9 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : (t || '');
 };
 
-// Puente nombre de BOLT → conductor_id (para teléfono y para saber si estaba previsto).
-async function puenteNombreId() {
+// Puente cuenta de BOLT (uuid) → conductor_id: TODAS las cuentas de cada persona.
+// Antes se cruzaba por NOMBRE y una persona con dos cuentas con nombres distintos
+// salía dos veces (o ninguna, si el nombre de BOLT no casaba con el de la ficha).
+async function puenteUuidId() {
   const m = new Map();
   const r = await db.consulta(
-    `SELECT conductor_id, externo_nombre FROM conductor_externo
-      WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_nombre IS NOT NULL`);
-  r.rows.forEach(x => m.set(normNombre(x.externo_nombre), Number(x.conductor_id)));
+    `SELECT conductor_id, externo_id FROM conductor_externo
+      WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_id IS NOT NULL`);
+  r.rows.forEach(x => m.set(String(x.externo_id), Number(x.conductor_id)));
   return m;
 }
 
-/** Estructura del reporte (pura, sin Excel). */
+/** El día anterior, 'YYYY-MM-DD'. */
+const ayerDe = iso => {
+  const [Y, M, D] = iso.split('-').map(Number);
+  return new Date(Date.UTC(Y, M - 1, D - 1, 12)).toISOString().slice(0, 10);
+};
+
+/**
+ * Estructura del reporte (pura, sin Excel).
+ *
+ *   Salió       trabajó en su turno y estaba previsto
+ *   Otro turno  trabajó en esta ventana pero estaba previsto en la OTRA (el de
+ *               noche que ficha a las 16:40, el de día que apura pasadas las 17:00,
+ *               el de la noche de ayer que remata a las 05:30). No es un NN.
+ *   NN          trabajó y no estaba en el plan de ninguno de los dos turnos
+ *   No salió    estaba previsto, la ventana ya cerró y no rodó
+ *   Pendiente   estaba previsto y la ventana aún no ha cerrado (o no ha empezado)
+ */
 async function datos(dia) {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoyMadrid();
-  await require('./flotaViva/db').preparar().catch(() => {});
+  await require('./flotaViva/db').preparar();
 
-  const [hDia, hNoche, kmDia, kmNoche, plan, contac, puente] = await Promise.all([
-    rutas.horasEfectivasPorConductor(d, 'dia').catch(() => new Map()),
-    rutas.horasEfectivasPorConductor(d, 'noche').catch(() => new Map()),
-    rutas.kmConectadoDesconectado(d, 'dia').catch(() => ({ conductores: [] })),
-    rutas.kmConectadoDesconectado(d, 'noche').catch(() => ({ conductores: [] })),
-    salidasHoy(d).catch(() => ({ turnos: [] })),
+  // Lo esencial va SIN red: si el núcleo o el plan no responden, la ruta
+  // contesta 500. Antes se tragaba el error y salía un Excel plausible con todos
+  // "No salió" (o todos NN) que alguien se podía creer.
+  const [aDia, aNoche, plan, planAyer, puente, contac] = await Promise.all([
+    rutas.actividadPorConductor(d, 'dia'),
+    rutas.actividadPorConductor(d, 'noche'),
+    salidasHoy(d),
+    salidasHoy(ayerDe(d)).catch(() => ({ turnos: [] })),
+    puenteUuidId(),
     contactos().catch(() => new Map()),
-    puenteNombreId().catch(() => new Map()),
   ]);
 
-  // Previstos por turno (conductor_id) + su nombre/teléfono del plan (para los que
-  // NO rodaron: hay que llamarlos igual).
-  const esp = { dia: new Set(), noche: new Set() };
-  const planInfo = new Map();   // id -> { nombre, telefono }
-  (plan.turnos || []).forEach(t => {
-    const set = esp[t.codigo];
-    (t.conductores || []).forEach(c => {
-      if (set) set.add(String(c.conductorId));
-      planInfo.set(String(c.conductorId), { nombre: c.conductor, telefono: c.telefono });
-    });
-  });
+  const setDe = (p, codigo) => new Set(
+    (((p.turnos || []).find(t => t.codigo === codigo) || {}).conductores || []).map(c => String(c.conductorId)));
+  const esp = { dia: setDe(plan, 'dia'), noche: setDe(plan, 'noche') };
+  // Quien está previsto en el OTRO turno (para el día, también la noche de ayer).
+  const otro = { dia: new Set([...esp.noche, ...setDe(planAyer, 'noche')]), noche: esp.dia };
+  // Nombre/teléfono del plan, para los que NO rodaron: hay que llamarlos igual.
+  const planInfo = new Map();
+  (plan.turnos || []).forEach(t => (t.conductores || []).forEach(c =>
+    planInfo.set(String(c.conductorId), { nombre: c.conductor, telefono: c.telefono })));
 
-  const construir = (horasMap, kmRes, espSet) => {
-    const matPorNom = new Map();
-    (kmRes.conductores || []).forEach(c => matPorNom.set(normNombre(c.conductor), c));
+  const construir = (act, espSet, otroSet) => {
+    // Por PERSONA (conductor_id), fundiendo sus cuentas de BOLT; sin ficha, por uuid.
+    const porPersona = new Map();
+    act.porUuid.forEach(a => {
+      const cid = puente.get(a.uuid);
+      const k = cid ? 'id:' + cid : 'uuid:' + a.uuid;
+      if (!porPersona.has(k)) {
+        porPersona.set(k, { id: cid ? String(cid) : null, nombre: a.nombre || '', telefono: a.telefono || '', minutos: 0, matriculas: [] });
+      }
+      const p = porPersona.get(k);
+      p.minutos += a.minutos || 0;
+      if (!p.nombre) p.nombre = a.nombre || '';
+      if (!p.telefono) p.telefono = a.telefono || '';
+      (a.matriculas || []).forEach(m => { if (!p.matriculas.includes(m)) p.matriculas.push(m); });
+    });
 
     const filas = [];
     const vistosId = new Set();
-    // 1) TODO el que rodó en la ventana (incluidos NN).
-    horasMap.forEach((min, nombre) => {
-      if (!nombre || nombre === '(sin conductor)') return;
-      const id = puente.get(normNombre(nombre));
-      const esperado = id != null && espSet.has(String(id));
-      const km = matPorNom.get(normNombre(nombre));
-      const horas = Math.round((min / 6)) / 10;   // min → h (1 decimal)
+    // 1) TODO el que rodó en la ventana.
+    porPersona.forEach(p => {
+      const esperado = p.id != null && espSet.has(p.id);
+      const deOtroTurno = !esperado && p.id != null && otroSet.has(p.id);
+      // Menos de un minuto sin estar previsto es el ruido de un login, no una fila.
+      if (p.minutos < 1 && !esperado) return;
+      const rodo = p.minutos >= 1;
+      const info = (p.id && planInfo.get(p.id)) || {};
       filas.push({
-        nombre,
-        telefono: (id != null && contac.get(String(id)) && contac.get(String(id)).telefono) || '',
-        matriculas: km ? km.matriculas : [],
-        horas,
-        estado: horas > 0 ? (esperado ? 'salio' : 'nn') : (esperado ? 'no_salio' : 'nn'),
+        nombre: p.nombre || info.nombre || ('#' + (p.id || '?')),
+        telefono: (p.id && contac.get(p.id) && contac.get(p.id).telefono) || info.telefono || p.telefono || '',
+        matriculas: p.matriculas,
+        horas: Math.round(p.minutos / 6) / 10,
+        estado: rodo
+          ? (esperado ? 'salio' : deOtroTurno ? 'otro_turno' : 'nn')
+          : (act.terminada ? 'no_salio' : 'pendiente'),
         esperado,
       });
-      if (id != null) vistosId.add(String(id));
+      if (p.id != null) vistosId.add(p.id);
     });
-    // 2) Previstos que NO rodaron → "No salió" (con su teléfono del plan, para llamar).
+    // 2) Previstos que NO rodaron: "No salió" si la ventana cerró; si no, pendiente.
     espSet.forEach(id => {
       if (vistosId.has(id)) return;
       const p = planInfo.get(id) || {};
       filas.push({
         nombre: p.nombre || ('#' + id), telefono: p.telefono || '',
-        matriculas: [], horas: 0, estado: 'no_salio', esperado: true,
+        matriculas: [], horas: 0, estado: act.terminada ? 'no_salio' : 'pendiente', esperado: true,
       });
     });
     // Los que rodaron primero (más horas arriba); los que no salieron, al final.
@@ -108,16 +135,18 @@ async function datos(dia) {
 
     const resumen = {
       trabajaron: filas.filter(f => f.horas > 0).length,
-      nn: filas.filter(f => f.estado === 'nn' && f.horas > 0).length,
+      nn: filas.filter(f => f.estado === 'nn').length,
+      otroTurno: filas.filter(f => f.estado === 'otro_turno').length,
       noSalieron: filas.filter(f => f.estado === 'no_salio').length,
+      pendientes: filas.filter(f => f.estado === 'pendiente').length,
       previstos: espSet.size,
       horas: Math.round(filas.reduce((s, f) => s + (f.horas || 0), 0) * 10) / 10,
     };
-    return { filas, resumen };
+    return { filas, resumen, empezada: !!act.empezada, terminada: !!act.terminada };
   };
 
-  const dDia = construir(hDia, kmDia, esp.dia);
-  const dNoche = construir(hNoche, kmNoche, esp.noche);
+  const dDia = construir(aDia, esp.dia, otro.dia);
+  const dNoche = construir(aNoche, esp.noche, otro.noche);
   return {
     dia: d, fecha: d.split('-').reverse().join('/'),
     turnos: [
@@ -132,8 +161,9 @@ const AZUL = 'FF1F4E79', CAB_DIA = 'FFFDF0D2', CAB_NOCHE = 'FFDCE7FA';
 const VERDE = 'FF16A34A', AMBAR = 'FFB45309', ROJO = 'FFC00000', NEGRO = 'FF1F2937';
 const CABECERAS = ['Nº', 'Conductor', 'Teléfono', 'Matrícula(s)', 'Horas', 'Estado'];
 const ANCHOS = [5, 30, 15, 20, 9, 12];
-const ETIQ_ESTADO = { salio: 'Salió', nn: 'NN (sin plan)', no_salio: 'No salió' };
-const COLOR_ESTADO = { salio: VERDE, nn: AMBAR, no_salio: ROJO };
+const GRIS = 'FF6B7280';
+const ETIQ_ESTADO = { salio: 'Salió', nn: 'NN (sin plan)', otro_turno: 'Otro turno', no_salio: 'No salió', pendiente: 'Pendiente' };
+const COLOR_ESTADO = { salio: VERDE, nn: AMBAR, otro_turno: GRIS, no_salio: ROJO, pendiente: GRIS };
 
 const relleno = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
 const borde = () => { const l = { style: 'thin', color: { argb: 'FFD1D5DB' } }; return { top: l, left: l, bottom: l, right: l }; };
@@ -142,7 +172,9 @@ function bloque(ws, fila, turno) {
   const ultima = 'F';
   ws.mergeCells(`A${fila}:${ultima}${fila}`);
   const tt = ws.getCell(`A${fila}`);
-  tt.value = `${turno.codigo === 'noche' ? '🌙' : '☀️'}  TURNO DE ${turno.etiqueta}  ·  ${turno.ventana}  ·  ${turno.resumen.trabajaron} rodaron`;
+  // Si la ventana no ha cerrado, se dice en el título: los "pendientes" no son faltas.
+  const estadoVentana = !turno.empezada ? '  ·  SIN EMPEZAR' : (!turno.terminada ? '  ·  EN CURSO' : '');
+  tt.value = `${turno.codigo === 'noche' ? '🌙' : '☀️'}  TURNO DE ${turno.etiqueta}  ·  ${turno.ventana}  ·  ${turno.resumen.trabajaron} rodaron${estadoVentana}`;
   tt.font = { size: 11, bold: true, color: { argb: AZUL } };
   tt.fill = relleno(turno.codigo === 'noche' ? CAB_NOCHE : CAB_DIA);
   tt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
@@ -188,7 +220,10 @@ function bloque(ws, fila, turno) {
   const rs = turno.resumen;
   ws.mergeCells(`A${fila}:${ultima}${fila}`);
   const res = ws.getCell(`A${fila}`);
-  res.value = `Rodaron ${rs.trabajaron}  ·  NN ${rs.nn}  ·  No salieron ${rs.noSalieron}  ·  Previstos ${rs.previstos}  ·  ${rs.horas} h`;
+  res.value = `Rodaron ${rs.trabajaron}  ·  NN ${rs.nn}` +
+    (rs.otroTurno ? `  ·  De otro turno ${rs.otroTurno}` : '') +
+    (rs.pendientes ? `  ·  Pendientes ${rs.pendientes}` : `  ·  No salieron ${rs.noSalieron}`) +
+    `  ·  Previstos ${rs.previstos}  ·  ${rs.horas} h`;
   res.font = { size: 10, italic: true, color: { argb: NEGRO } };
   res.alignment = { horizontal: 'right', indent: 1 }; res.border = borde();
   return fila + 2;

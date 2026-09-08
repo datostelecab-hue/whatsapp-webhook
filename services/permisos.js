@@ -77,6 +77,23 @@ const CATALOGO = [
 // llama a /planificador-v2/api/*).
 const ALIAS = { '/planificador-v2': '/planificador' };
 
+// Rutas que viven bajo un prefijo pero PERTENECEN a otro submódulo del catálogo.
+// Sin esto, '/control/reporte/excel' no casa con '/control/reportes' (el prefijo
+// exige '/control/reportes/…') y caía en '/control': quien solo tenía "Reportes
+// de control" abría la pestaña y cada botón le daba 403, y quien tenía "En
+// directo" sin Reportes descargaba todo igualmente. Lo mismo con KM y traza.
+// La lista de llamadas la lee el Histórico (Flota viva), así que es suya.
+const RUTA_A_CLAVE = [
+  ['/control/reporte/',           '/control/reportes'],
+  ['/control/sankey/',            '/control/reportes'],
+  ['/control/turnos/',            '/control/reportes'],
+  ['/control/planificador/',      '/control/reportes'],
+  ['/control/reporte-turnos/',    '/control/reportes'],
+  ['/control/api/km-traza',       '/control/km'],
+  ['/control/api/km-diagnostico', '/control/km'],
+  ['/control/api/llamadas',       '/flota-viva'],
+];
+
 // Todas las claves, aplanadas y de la más larga a la más corta (para que en el
 // control de acceso mande el prefijo más específico).
 const CLAVES = [];
@@ -92,6 +109,9 @@ function claveDeRuta(path) {
   let p = String(path || '');
   const seg = '/' + (p.split('/')[1] || '');
   if (ALIAS[seg]) p = ALIAS[seg] + p.slice(seg.length);
+  for (const [ruta, clave] of RUTA_A_CLAVE) {
+    if (p === ruta || p.startsWith(ruta)) return clave;
+  }
   for (const c of CLAVES) {
     if (p === c || p.startsWith(c + '/')) return c;
   }

@@ -109,7 +109,7 @@
   const horas = min => ((Number(min) || 0) / 60).toFixed(1);
   // El teléfono va SIEMPRE al lado del nombre: esta pantalla existe para llamar, y
   // buscar el número en otra pestaña es justo lo que hace que no se llame.
-  const tel9 = t => String(t || '').replace(/D/g, '').slice(-9);
+  const tel9 = t => String(t || '').replace(/\D/g, '').slice(-9);
   const telBonito = t => { const n = tel9(t); return n.length === 9 ? n.slice(0, 3) + ' ' + n.slice(3, 6) + ' ' + n.slice(6) : (t || ''); };
   const enlaceTel = (t, clase) => (tel9(t)
     ? '<a href="tel:' + esc(t) + '" onclick="event.stopPropagation()" ' +
@@ -134,6 +134,7 @@
     '<span class="px-2 py-0.5 rounded-md text-xs font-medium ' + (TONO[tono] || TONO.muted) + '">' + esc(txt) + '</span>';
 
   let DATOS = null;
+  let seq = 0;                           // nº de la última carga pedida: la única que se pinta
   const abiertos = new Set();            // filas desplegadas (se conservan al refrescar)
 
   // Turno activo. Arranca en el que corre AHORA: día 05–17, noche el resto.
@@ -162,7 +163,9 @@
       // mañana; se dice que está pendiente y ya.
       const vent = (DATOS && DATOS.ventanas && DATOS.ventanas[t.id]) || null;
       const sinEmpezar = vent && !vent.empezada;
-      if (t.id !== 'nn') num = sinEmpezar ? String(n) : (arr.filter(salio).length + '/' + n);
+      // Sin actividad del núcleo no hay veredicto: "?" y no "0/61".
+      const sinDato = DATOS && DATOS.hayActividad === false;
+      if (t.id !== 'nn') num = sinDato ? '?/' + n : sinEmpezar ? String(n) : (arr.filter(salio).length + '/' + n);
       return '<button data-turno="' + t.id + '" class="px-3 py-2 rounded-xl border text-sm flex items-center gap-2 ' +
         (activo ? 'border-telecab-gold bg-telecab-gold/10 text-telecab-text'
                 : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text') + '">' +
@@ -210,6 +213,9 @@
             (f.rol ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
               (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
               '">' + esc(f.rol) + '</span>' : '') +
+            // Dos personas en el mismo coche, turno y día: el cuadrante tiene un solape.
+            (f.conflicto ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-500" ' +
+              'title="Dos personas en el mismo coche, turno y día: hay un solape en el cuadrante">Solape</span>' : '') +
           '</span>' +
           '<span class="flex flex-wrap items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' +
             enlaceTel(f.telefono) + accionesConductor(f) + '</span>' +
@@ -258,8 +264,11 @@
         '<div class="text-[11px] text-telecab-muted mt-1">' + etq + '</div>' +
       '</div>';
 
+    const sinDato = DATOS && DATOS.hayActividad === false;
     const cajas = turnoActivo === 'nn'
       ? [tarjeta(arr.length, 'Salieron FUERA del plan · vacaciones, bajas, sin ficha…', 'text-amber-500')]
+      : sinDato
+        ? [tarjeta('?', 'Sin datos de actividad: no se sabe quién ha salido', 'text-red-500')]
       : sinEmpezar
         // Un turno que no ha arrancado no tiene a nadie "sin salir": decir 0/61
         // invitaría a llamar a 61 personas a las diez de la mañana.
@@ -268,19 +277,27 @@
             tarjeta(n('no_salio'), 'Sin salir · hay que llamar', 'text-red-500',
               'cursor-pointer transition ' + (soloNoSalieron ? 'ring-2 ring-red-500/60' : 'hover:border-red-500/50')),
             tarjeta(n('conectado'), 'Rodando ahora', 'text-emerald-500'),
-            tarjeta(n('descanso'), 'En descanso · con el coche parado', 'text-amber-500'),
+            tarjeta(n('descanso'), 'En descanso', 'text-amber-500'),
             tarjeta(avisos, 'Avisos abiertos', avisos ? 'text-red-500' : 'text-telecab-muted'),
           ];
     $('#d-resumen').innerHTML = cajas.join('');
     $('#d-cabecera').classList.toggle('hidden', !arr.length);
 
     const caja = $('#d-resumen').firstElementChild;
-    if (caja && !sinEmpezar && turnoActivo !== 'nn') {
-      caja.addEventListener('click', () => {
-        soloNoSalieron = !soloNoSalieron;
-        pintarResumen(); pintar();
-      });
+    if (caja && !sinEmpezar && !sinDato && turnoActivo !== 'nn') {
+      caja.addEventListener('click', () => ponerFiltro(!soloNoSalieron));
     }
+  }
+
+  // UN solo mando para "solo los que no han salido": la tarjeta roja y el botón
+  // de arriba lo cambian los dos y se ven los dos igual. Antes cada uno tocaba
+  // el estado por su cuenta y el botón se quedaba pintado al revés.
+  function ponerFiltro(v) {
+    soloNoSalieron = !!v;
+    $('#d-solo-nosalieron').className = 'px-3 py-1.5 rounded-lg border text-xs ' + (soloNoSalieron
+      ? 'border-telecab-red bg-telecab-red/10 text-telecab-red'
+      : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text');
+    pintarResumen(); pintar();
   }
 
   function incidenciaHTML(i) {
@@ -309,7 +326,7 @@
     return '<div class="ddet hidden px-4 pb-3">' +
       '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos</div>' + inc + '</div>' +
-        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos de hoy · ' +
+        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos · últimas 24 h · ' +
           esc(f.conductor) + '</div><div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
       '</div></div>';
   }
@@ -338,7 +355,10 @@
         cifra(horas(s.minutos), ' h', 'text-telecab-text font-medium') + '</span>' +
       '<span class="dopc text-right text-xs tabular-nums" title="Km en BOLT">' + cifra(s.enBolt, ' km', 'text-emerald-500') + '</span>' +
       '<span class="dopc text-right text-xs tabular-nums" title="Km desconectado">' + cifra(s.desconectado, ' km', 'text-amber-500') + '</span>' +
-      '<span class="text-right"><span class="text-telecab-border text-xs">—</span></span>' +
+      '<span class="text-right">' + ((s.incidencias || []).length
+        ? '<span title="' + esc(s.incidencias.map(i => i.etiqueta + (i.detalle ? ': ' + i.detalle : '')).join(' · ')) + '">' +
+            chip(String(s.incidencias.length), 'error') + '</span>'
+        : '<span class="text-telecab-border text-xs">—</span>') + '</span>' +
       '<span></span>' +
       '</div>';
   }
@@ -361,7 +381,7 @@
               '<span class="text-telecab-text w-24">' + esc(t.etiqueta || t.situacion) + '</span>' +
               '<span class="text-telecab-muted">' + esc(t.duracion || '') + '</span>' +
             '</div>').join('') + '</div>'
-        : '<span class="text-telecab-muted">Sin trazos hoy (aún no ha salido).</span>';
+        : '<span class="text-telecab-muted">Sin trazos en las últimas 24 h.</span>';
     } catch (e) {
       caja.innerHTML = '<span class="text-red-500">No se pudieron cargar los trazos.</span>';
       caja.dataset.cargado = '';
@@ -523,10 +543,16 @@
           conductorId: f.conductorId, conductor: f.conductor, telefono: f.telefono,
           matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '',
           turno: turnoActivo, resultado: v.resultado, nota: v.nota || '',
+          dia: DATOS && DATOS.dia,   // la jornada que se está mirando
         }) });
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo apuntar');
       cargar();
+      // El diálogo promete que queda en el call center: si no llegó, que se sepa.
+      if (j.enCallCenter === false) {
+        await Dialogo.aviso({ titulo: 'Apuntada aquí, pero no llegó al call center',
+          texto: 'Queda en la carta y en el Histórico. La hoja CALL_CENTER no respondió.', tono: 'aviso' });
+      }
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo apuntar la llamada', texto: e.message, tono: 'error' });
     }
@@ -537,9 +563,13 @@
     // que decide si hay que seguir llamando: justificadas + BOLT = jornada.
     const lleva = Math.round((((f.actividad || {}).minutos || 0) / 60) * 10) / 10;
     const sugerida = Math.max(0, Math.round((8 - lleva) * 10) / 10);
+    // Si sigue rodando, lo que haga después de justificar NO se descuenta: la
+    // sugerencia vale para el que ya ha terminado, y hay que decirlo.
+    const rodando = ['conectado', 'descanso'].includes(f.salida);
     const v = await Dialogo.formulario('Justificar a ' + f.conductor, [
       { id: 'horas', etiqueta: 'Horas que se justifican', valor: String(sugerida),
-        ayuda: 'En BOLT lleva ' + lleva + ' h efectivas en este turno. Se SUMAN: con ' + sugerida + ' justificadas, la jornada queda en 8 h.' },
+        ayuda: 'En BOLT lleva ' + lleva + ' h efectivas en este turno. Se SUMAN: con ' + sugerida + ' justificadas, la jornada queda en 8 h.' +
+          (rodando ? ' OJO: sigue conectado; lo que haga a partir de ahora no se descuenta de lo justificado.' : '') },
       { id: 'obs', etiqueta: 'Motivo (obligatorio)', tipo: 'texto', marcador: 'p. ej. coche en taller' },
     ], { textoBoton: 'Justificar',
          nota: 'Queda registrado tu usuario. La carta pasa a "J": el siguiente operador ya no le llama.' });
@@ -548,10 +578,16 @@
       await Dialogo.aviso({ titulo: 'Falta el motivo', texto: 'El motivo es obligatorio para justificar.', tono: 'aviso' });
       return;
     }
+    // "7,5" vale. "siete" no, y se dice aquí, no con un error de PostgreSQL.
+    const h = String(v.horas == null ? '' : v.horas).trim().replace(',', '.');
+    if (h && (!Number.isFinite(Number(h)) || Number(h) < 0 || Number(h) > 24)) {
+      await Dialogo.aviso({ titulo: 'Horas no válidas', texto: 'Escribe un número entre 0 y 24, por ejemplo 7,5.', tono: 'aviso' });
+      return;
+    }
     try {
       const r = await fetch('/control/api/justificar-directo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conductorId: f.conductorId, horas: v.horas, observacion: v.obs }) });
+        body: JSON.stringify({ conductorId: f.conductorId, horas: h, observacion: v.obs, dia: DATOS && DATOS.dia }) });
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo justificar');
       cargar();
@@ -586,8 +622,11 @@
   }
 
   async function cargar() {
+    const mio = ++seq;
     try {
       const d = await (await fetch('/control/api/directo')).json();
+      // Si mientras tanto se pidió otra carga, esta ya es vieja: no pisa a la nueva.
+      if (mio !== seq) return;
       if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo cargar');
       DATOS = d;
 
@@ -595,7 +634,12 @@
       if (!d.hayCuadrante) falta.push('el cuadrante');
       if (!d.hayFlotaViva) falta.push('la flota viva');
       const av = $('#d-aviso');
-      if (falta.length) {
+      if (d.hayActividad === false) {
+        // Sin el núcleo no hay veredicto de nadie: en rojo, no "0 por llamar".
+        av.className = 'mb-3 px-3 py-2 rounded-xl border border-red-500/40 bg-red-500/10 text-sm text-red-500';
+        av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> No responde la actividad del núcleo (horas y km): ' +
+          'no se puede saber quién ha salido' + (falta.length ? ' · tampoco ' + falta.join(' ni ') : '') + '.';
+      } else if (falta.length) {
         av.className = 'mb-3 px-3 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-600';
         av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> No responde ' + falta.join(' ni ') + '. Se muestra lo demás.';
       } else { av.className = 'hidden'; }
@@ -608,9 +652,13 @@
         '<b class="text-telecab-text tabular-nums">' + ((d.resumen && d.resumen.personasSalieron) || 0) + '</b> personas salieron · ' +
         ((d.resumen && d.resumen.conectados) || 0) + ' conectados · ' +
         '<span class="' + ((d.resumen && d.resumen.alertas) ? 'text-red-500' : '') + '">' +
-          ((d.resumen && d.resumen.alertas) || 0) + ' avisos</span> · ' +
+          ((d.resumen && d.resumen.alertas) || 0) + ' avisos' +
+          // Los que no caen en ninguna fila (coche sin plaza y sin conductor): se dicen.
+          ((d.resumen && d.resumen.alertasSinDueno) ? ' <span class="text-telecab-muted" title="Avisos de coches sin plaza en el cuadrante y sin conductor conocido: no hay a quién dárselos">(' +
+            d.resumen.alertasSinDueno + ' sin dueño)</span>' : '') + '</span> · ' +
         new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     } catch (e) {
+      if (mio !== seq) return;
       $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(e.message) + '</p>';
     }
   }
@@ -619,15 +667,12 @@
   cargar();
   $('#d-filtro').addEventListener('input', pintar);
   $('#d-refrescar').addEventListener('click', cargar);
-  $('#d-solo-nosalieron').addEventListener('click', () => {
-    soloNoSalieron = !soloNoSalieron;
-    $('#d-solo-nosalieron').className = 'px-3 py-1.5 rounded-lg border text-xs ' + (soloNoSalieron
-      ? 'border-telecab-red bg-telecab-red/10 text-telecab-red'
-      : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text');
-    pintar();
-  });
+  $('#d-solo-nosalieron').addEventListener('click', () => ponerFiltro(!soloNoSalieron));
 
-  // Auto-refresco cada 45 s, salvo con una fila abierta (se estaría trabajando con ella).
-  setInterval(() => { if (abiertos.size === 0) cargar(); }, 45000);
+  // Auto-refresco cada 45 s, salvo con una fila abierta EN PANTALLA (se estaría
+  // trabajando con ella). Se mira el DOM y no el Set de claves: al cambiar de
+  // pestaña la fila abierta desaparece pero su clave seguía en el Set, y el
+  // refresco se paraba para siempre sin que nada lo dijera.
+  setInterval(() => { if (!document.querySelector('#d-lista .ddet:not(.hidden)')) cargar(); }, 45000);
 })();
 </script>

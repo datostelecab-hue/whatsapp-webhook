@@ -20,12 +20,15 @@ const { normMat } = require('./fuentes');
 
 const TZ = 'Europe/Madrid';
 
-/** Hoy en Madrid, 'YYYY-MM-DD'. El plan y las incidencias son del día operativo. */
-function hoyMadrid() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
-}
+// LA JORNADA OPERATIVA de ahora mismo ('YYYY-MM-DD'): va de 05:00 a 05:00, así
+// que de madrugada (00:00–05:00) seguimos en la de AYER, porque la noche que
+// está rodando empezó la víspera. Es la MISMA regla que usan el telefonito y la
+// J (repo/llamadas), y tiene que serlo: antes esto era la fecha de calendario y
+// entre las 00:00 y las 05:00 el cockpit enseñaba el plan del día siguiente —la
+// noche en curso no salía en ninguna pestaña, NN vacío, 0 personas— mientras
+// las llamadas y las J se grababan en la jornada anterior. Cinco horas cada
+// noche sin ver a quien estaba trabajando.
+const { diaOperativoHoy } = require('../repo/llamadas');
 
 /** El día anterior a una fecha 'YYYY-MM-DD'. */
 function ayerDe(iso) {
@@ -122,7 +125,7 @@ function salidaDe(a, vent) {
  * fila trae su plan, su realidad y sus alertas ya cruzados.
  */
 async function enDirecto({ dia } = {}) {
-  const hoy = (dia && String(dia).slice(0, 10)) || hoyMadrid();
+  const hoy = (dia && String(dia).slice(0, 10)) || diaOperativoHoy();
   const ayer = ayerDe(hoy);
   const idx = idxDiaSemana(hoy);
 
@@ -254,25 +257,54 @@ async function enDirecto({ dia } = {}) {
   // guarda fv_tramo.conductor_uuid. Cruzar por ahí es exacto y no se rompe porque
   // el nombre de la plantilla y el de BOLT difieran ("Tukieth" vs "Yulieth"). El
   // nombre normalizado se deja de red, por si alguna cuenta vieja no trae el id.
-  const uuidDeId = new Map();          // conductor_id (plan) → uuid de BOLT
+  // Una persona puede tener VARIAS cuentas de BOLT (recontrataciones, altas
+  // duplicadas): se guardan todas, la activa primero. Antes se quedaba con una
+  // sola —la última del SELECT— y a 11 personas les tocaba justo la que no tenía
+  // actividad: el cockpit decía "No ha salido" a quien estaba rodando con la otra.
+  const uuidsDeId = new Map();         // conductor_id (plan) → [uuid de BOLT, …]
   const idDeUuid = new Map();          // uuid de BOLT        → conductor_id (plan)
   try {
     const rid = await require('../db').consulta(
       `SELECT conductor_id, externo_id
          FROM conductor_externo
-        WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_id IS NOT NULL`);
+        WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_id IS NOT NULL
+        ORDER BY conductor_id, (estado_externo = 'active') DESC, visto_at DESC NULLS LAST`);
     rid.rows.forEach(x => {
       const cid = Number(x.conductor_id);
-      uuidDeId.set(cid, String(x.externo_id));
+      if (!uuidsDeId.has(cid)) uuidsDeId.set(cid, []);
+      uuidsDeId.get(cid).push(String(x.externo_id));
       idDeUuid.set(String(x.externo_id), cid);
     });
   } catch (e) { console.error('⚠️  [EN DIRECTO] mapa BOLT→conductor:', e.message); }
 
+  /** Una sola actividad a partir de las de varias cuentas de la misma persona. */
+  function fundirActividad(lista) {
+    if (lista.length === 1) return lista[0];
+    const f = { ...lista[0], matriculas: [...(lista[0].matriculas || [])] };
+    for (const a of lista.slice(1)) {
+      f.minutos += a.minutos || 0;
+      f.minDescanso += a.minDescanso || 0;
+      f.minDesconectado += a.minDesconectado || 0;
+      f.km = Math.round((f.km + (a.km || 0)) * 10) / 10;
+      f.kmFuera = Math.round((f.kmFuera + (a.kmFuera || 0)) * 10) / 10;
+      if (a.primera && (!f.primera || a.primera < f.primera)) f.primera = a.primera;
+      if (a.ultima && (!f.ultima || a.ultima > f.ultima)) f.ultima = a.ultima;
+      // La cuenta que está conectada AHORA es la que manda (y la que se traza).
+      if (a.conectadoAhora) { f.conectadoAhora = true; f.situacionAhora = a.situacionAhora; f.uuid = a.uuid; }
+      (a.matriculas || []).forEach(m => { if (!f.matriculas.includes(m)) f.matriculas.push(m); });
+      if (!f.nombre) f.nombre = a.nombre;
+      if (!f.telefono) f.telefono = a.telefono;
+    }
+    f.matricula = f.matriculas[0] || null;
+    return f;
+  }
+
   /** La actividad de una persona del plan dentro de una ventana ya calculada. */
   function actividadDe(vent, conductorId, nombre) {
     if (!vent) return null;
-    const u = uuidDeId.get(Number(conductorId));
-    if (u && vent.porUuid.has(u)) return vent.porUuid.get(u);
+    const con = (uuidsDeId.get(Number(conductorId)) || [])
+      .filter(u => vent.porUuid.has(u)).map(u => vent.porUuid.get(u));
+    if (con.length) return fundirActividad(con);
     const clave = normNombre(nombre);
     if (!clave) return null;
     for (const a of vent.porUuid.values()) if (normNombre(a.nombre) === clave) return a;
@@ -303,12 +335,30 @@ async function enDirecto({ dia } = {}) {
   const meter = v => { const n = Number(v); if (n) idsPlan.add(n); };
   const nombresPlan = new Set();
   const anota = n => { const k = normNombre(n); if (k) nombresPlan.add(k); };
+  // SOLO las celdas de HOY, más la NOCHE DE AYER (remata pasadas las 05:00 y
+  // caería en NN sin ser nadie fuera del plan). Antes se recorría la semana
+  // entera, y quien libraba hoy pero estaba pintado otro día —y salía a hacer
+  // un doble— no aparecía en Día, ni en Noche, ni en NN: invisible.
+  const celdasPlan = co => {
+    const s = co.semana || [];
+    const cs = [s[idx * 2], s[idx * 2 + 1]];
+    // idx 0 = lunes: la noche de ayer es de la semana anterior, que el tablero de
+    // hoy no trae. Se acepta ese ruido una madrugada a la semana.
+    if (idx > 0) cs.push(s[(idx - 1) * 2 + 1]);
+    return cs.filter(Boolean);
+  };
   ((tab && tab.coches) || []).forEach(co => {
-    (co.semana || []).forEach(cell => { meter(cell && cell.id); anota(cell && cell.nombre); });
+    celdasPlan(co).forEach(cell => {
+      meter(cell.id); anota(cell.nombre);
+      // En una celda con conflicto (dos personas en el mismo coche, turno y día)
+      // tablero() solo guarda el NOMBRE de los demás: que no caigan en NN.
+      (cell.otros || []).forEach(anota);
+    });
   });
 
   // El porqué de cada uno: su situación en la plataforma (o que no está en ella).
   const gentePorId = new Map((((tab && tab.conductores) || [])).map(c => [Number(c.id), c]));
+  const gentePorNombre = new Map((((tab && tab.conductores) || [])).map(c => [normNombre(c.nombre), c]));
   const situacionDe = uuid => {
     const cid = idDeUuid.get(uuid);
     if (!cid) return { codigo: 'sin_ficha', etiqueta: 'Solo en BOLT · sin ficha' };
@@ -332,13 +382,18 @@ async function enDirecto({ dia } = {}) {
       total: Math.round((a.km + a.kmFuera) * 10) / 10,
       minutos: a.minutos, conectadoAhora: a.conectadoAhora,
       primera: a.primera || null,
+      // Sus avisos: los provocó él, aunque no esté en el plan. Antes se contaban
+      // en la cabecera y no se podían ver en ninguna pestaña.
+      incidencias: porIncCond.get(a.uuid) || [],
     }))
     .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
 
   // Cuánta gente se ha conectado HOY a la plataforma (jornada 05→05), sea del
   // plan o no: el número que responde "¿cuántos han salido?" sin letra pequeña.
-  const personasSalieron = [...((actOper && actOper.porUuid) || new Map()).values()]
-    .filter(a => a.minutos > 0).length;
+  // PERSONAS, no cuentas: dos cuentas de BOLT del mismo conductor son una.
+  const personasSalieron = new Set([...((actOper && actOper.porUuid) || new Map()).values()]
+    .filter(a => a.minutos > 0)
+    .map(a => idDeUuid.get(a.uuid) || a.uuid)).size;
 
   const resumen = {
     coches: filas.length,
@@ -374,11 +429,21 @@ async function enDirecto({ dia } = {}) {
       crudo[turno].push({
         conductorId: cell.id || '', conductor: cell.nombre || '', turno,
         telefono: (contac.get(String(cell.id)) || {}).telefono || (act && act.telefono) || '',
-        uuid: (act && act.uuid) || uuidDeId.get(Number(cell.id)) || '',
+        uuid: (act && act.uuid) || (uuidsDeId.get(Number(cell.id)) || [])[0] || '',
+        uuids: uuidsDeId.get(Number(cell.id)) || [],
         rol: rolDe.get(String(cell.id)) || '',
         matricula: c.matricula, cuadrante: cuadDe(c),
         actividad: act,
         incidencias: porInc.get(normMat(c.matricula)) || [],
+        conflicto: !!cell.conflicto,
+      });
+      // Los DEMÁS de una celda en conflicto también son del plan: tienen su fila
+      // (tablero() solo guarda su nombre; se busca su id en la plantilla) para
+      // que se vean y se les llame. Antes la segunda persona del solape no
+      // existía para el cockpit, y si salía caía en NN "sin plaza".
+      (cell.otros || []).forEach(nombre => {
+        const g = gentePorNombre.get(normNombre(nombre));
+        add({ id: g ? g.id : '', nombre, conflicto: true }, turno);
       });
     };
     add(cd, 'dia'); add(cn, 'noche');
@@ -391,7 +456,8 @@ async function enDirecto({ dia } = {}) {
       crudo.todoturno.push({
         conductorId: cd.id, conductor: cd.nombre || '', turno: 'todoturno',
         telefono: (contac.get(String(cd.id)) || {}).telefono || (act && act.telefono) || '',
-        uuid: (act && act.uuid) || uuidDeId.get(Number(cd.id)) || '',
+        uuid: (act && act.uuid) || (uuidsDeId.get(Number(cd.id)) || [])[0] || '',
+        uuids: uuidsDeId.get(Number(cd.id)) || [],
         rol: rolDe.get(String(cd.id)) || '',
         matricula: c.matricula, cuadrante: cuadDe(c),
         actividad: act,
@@ -404,9 +470,10 @@ async function enDirecto({ dia } = {}) {
     plazas.forEach(p => {
       const clave = p.conductorId ? ('id:' + p.conductorId) : ('n:' + normNombre(p.conductor));
       if (!m.has(clave)) m.set(clave, { clave, conductorId: p.conductorId, conductor: p.conductor,
-        uuid: p.uuid, telefono: p.telefono, turno: p.turno, roles: new Set(), matriculas: [], cuadrantes: new Set(),
-        actividad: p.actividad, incidencias: [] });
+        uuid: p.uuid, uuids: p.uuids || [], telefono: p.telefono, turno: p.turno, roles: new Set(), matriculas: [], cuadrantes: new Set(),
+        actividad: p.actividad, incidencias: [], conflicto: !!p.conflicto });
       const f = m.get(clave);
+      if (p.conflicto) f.conflicto = true;
       if (p.rol) f.roles.add(p.rol);
       if (p.uuid && !f.uuid) f.uuid = p.uuid;
       if (p.telefono && !f.telefono) f.telefono = p.telefono;
@@ -422,7 +489,10 @@ async function enDirecto({ dia } = {}) {
       // dan los suyos —los haya hecho en el coche que sea, que se cambian a diario—
       // más los del coche que tenía asignado que no tienen dueño (nadie conectado
       // en ese momento): esos no hay a quién dárselos y se quedan a la vista.
-      const suyos = (f.uuid && porIncCond.get(f.uuid)) || [];
+      // …de CUALQUIERA de sus cuentas de BOLT.
+      const suyos = [];
+      new Set([f.uuid, ...(f.uuids || [])].filter(Boolean)).forEach(u =>
+        (porIncCond.get(u) || []).forEach(i => { if (!suyos.some(x => x.id === i.id)) suyos.push(i); }));
       const huerfanos = f.incidencias.filter(i => !i.conductorUuid);
       const mios = suyos.concat(huerfanos.filter(h => !suyos.some(x => x.id === h.id)));
       // Un coche distinto al planificado no es un error, pero tráfico quiere verlo.
@@ -439,6 +509,7 @@ async function enDirecto({ dia } = {}) {
         incidencias: mios,
         avisosDelCoche: f.incidencias.length,
         cocheCambiado,
+        conflicto: f.conflicto,
       };
     });
   };
@@ -455,11 +526,23 @@ async function enDirecto({ dia } = {}) {
     (a.conductor || '').localeCompare(b.conductor || ''));
   ordena(porTurno.dia); ordena(porTurno.noche); ordena(porTurno.todoturno);
 
+  // La cabecera decía "3 avisos" y no había forma de llegar a ellos: los de un
+  // coche sin plaza o de alguien fuera del plan no caían en ninguna fila. Ahora
+  // los NN llevan los suyos, y lo que aun así no tiene dueño se dice aparte.
+  const atribuidos = new Set();
+  ['dia', 'noche', 'todoturno', 'nn'].forEach(t =>
+    (porTurno[t] || []).forEach(f => (f.incidencias || []).forEach(i => atribuidos.add(i.id))));
+  resumen.alertas = vistas.size;
+  resumen.alertasSinDueno = [...vistas].filter(id => !atribuidos.has(id)).length;
+
   return {
     dia: hoy,
     fecha: hoy.split('-').reverse().join('/'),
     hayCuadrante: !!tab,
     hayFlotaViva: !!est,
+    // Si el núcleo no responde, salidaDe() devuelve 'pendiente' para todos y la
+    // pantalla pintaba "0 por llamar" en verde, sin aviso. Ahora lo sabe.
+    hayActividad: !!(actDia && actNoche && actOper),
     ultimaVuelta: est ? est.ultimaVuelta : null,
     resumen,
     coches: filas,

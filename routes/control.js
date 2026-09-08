@@ -1,25 +1,27 @@
 const express = require('express');
-const ExcelJS = require('exceljs');
 const router = express.Router();
 const { enDirecto } = require('../services/flotaViva/directo');
 const { kmConectadoDesconectado } = require('../services/flotaViva/rutas');
-const { enviarAtencionHora } = require('../services/whatsapp');
 const justificantes = require('../services/justificantes');   // el Excel del reporte de horas (los datos, en repo/reporteHoras)
-const repoJust = require('../services/repo/justificantes');    // justificar/leer: PostgreSQL
+const repoJust = require('../services/repo/justificantes');    // justificar: PostgreSQL
 const llamadas = require('../services/repo/llamadas');         // el "telefonito" de seguimiento
 const actor = require('../services/repo/actor');               // quién firma (id por email si la cookie es vieja)
 const callCenter = require('../services/callCenter');          // espejo de las llamadas en su hoja
 const { generarExcelTurnos } = require('../services/controlExcel');
 
-const MAX_ENVIO = 200;
-
-// Hoy en Madrid, 'YYYY-MM-DD'. Los datos van por día operativo.
+// Hoy en Madrid, 'YYYY-MM-DD' (fecha de calendario: para los descargables que
+// piden un día concreto). El cockpit y sus acciones van por JORNADA OPERATIVA.
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA',
   { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+// Las horas que escribe una persona: "7,5" vale, "7.5" vale, "siete" no. Se
+// devuelven como texto limpio; los límites los pone repo/justificantes.
+const horasLimpias = h => (h == null || h === '') ? '' : String(h).trim().replace(',', '.');
 
 // EN DIRECTO — el cockpit. Fusiona el plan del Cuadrante con la realidad viva de
-// Flota Viva y las alertas abiertas. Sustituye al tablero de hojas (que sigue
-// disponible en /api/datos y en la vista 'control' por si hace falta volver).
+// Flota Viva y las alertas abiertas. El tablero clásico de hojas se retiró; lo
+// exportable vive en /control/reportes.
 router.get('/', (req, res) => {
   res.render('controlDirecto', {
     titulo: 'Control · En directo',
@@ -31,12 +33,17 @@ router.get('/', (req, res) => {
 // Los datos del cockpit (JSON). El front lo refresca solo cada pocos segundos.
 router.get('/api/directo', async (req, res) => {
   try {
-    const base = await enDirecto({ dia: req.query.dia });
+    // UNA sola jornada para todo: el plan, la actividad, las llamadas y las J.
+    // Antes el cockpit iba por fecha de calendario y las llamadas por jornada
+    // operativa, y entre las 00:00 y las 05:00 se pintaban badges del lunes
+    // sobre el plan del martes.
+    const dia = ISO.test(req.query.dia || '') ? req.query.dia : llamadas.diaOperativoHoy();
+    const base = await enDirecto({ dia });
     // Las llamadas hechas y los justificantes puestos EN ESTA JORNADA: es lo que
     // evita que dos operadores llamen dos veces al mismo conductor.
     const [llam, justis] = await Promise.all([
-      llamadas.resumenHoy().catch(() => ({})),
-      llamadas.justificadosHoy().catch(() => ({})),
+      llamadas.resumenHoy(dia).catch(() => ({})),
+      llamadas.justificadosHoy(dia).catch(() => ({})),
     ]);
     res.json({ status: 'ok', ...base, llamadas: llam, justificados: justis });
   } catch (error) {
@@ -98,57 +105,11 @@ router.get('/reportes', (req, res) => {
 // listas en pantalla que tenía Reportes ("Quién sale — para llamar" y "Control
 // del día") se quitaron el 07/09/2026: Reportes es SOLO descargables; lo que se
 // mira en vivo está en el cockpit, con el telefonito y la J al lado de cada uno.
-
-// Exporta a Excel las filas (ya filtradas y ordenadas en el cliente) con las columnas dadas.
-router.post('/excel', async (req, res) => {
-  try {
-    const b = req.body || {};
-    const columnas = Array.isArray(b.columnas) ? b.columnas : [];
-    const filas = Array.isArray(b.filas) ? b.filas : [];
-    if (!columnas.length) throw new Error('Sin columnas');
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Control');
-    ws.columns = columnas.map(c => ({ header: String(c.label || c.key), key: String(c.key), width: 22 }));
-    filas.forEach(f => ws.addRow(f));
-    ws.getRow(1).font = { bold: true };
-    const buffer = await wb.xlsx.writeBuffer();
-    const nombre = String(b.titulo || 'control').replace(/[^\w\-]+/g, '_');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${nombre}.xlsx"`);
-    res.send(Buffer.from(buffer));
-  } catch (error) {
-    console.error('❌ [Control] /excel:', error.message);
-    res.status(500).json({ status: 'error', msg: error.message });
-  }
-});
-
-// Envía la plantilla atencion_hora a los conductores seleccionados en la UI.
-// Solo actúa sobre la lista que manda el front (el usuario ya eligió y confirmó).
-router.post('/enviar-ws', async (req, res) => {
-  try {
-    const dest = (req.body && req.body.destinatarios) || [];
-    if (!Array.isArray(dest) || dest.length === 0) {
-      return res.status(400).json({ status: 'error', msg: 'Sin destinatarios' });
-    }
-    if (dest.length > MAX_ENVIO) {
-      return res.status(400).json({ status: 'error', msg: `Demasiados (máx ${MAX_ENVIO})` });
-    }
-
-    const detalle = [];
-    for (const d of dest) {
-      const r = await enviarAtencionHora(d.telefono, d.nombre);
-      detalle.push({ nombre: d.nombre, telefono: d.telefono, ...r });
-      await new Promise(ok => setTimeout(ok, 150));   // no saturar la API
-    }
-
-    const enviados = detalle.filter(x => x.ok).length;
-    console.log(`📤 [Control] atencion_hora: ${enviados}/${dest.length} enviados`);
-    res.json({ status: 'ok', enviados, fallidos: dest.length - enviados, detalle });
-  } catch (error) {
-    console.error('❌ [Control] /enviar-ws:', error.message);
-    res.status(500).json({ status: 'error', msg: error.message });
-  }
-});
+// Con el tablero se fueron también sus rutas huérfanas: el POST /excel (exportaba
+// filas que ya no mandaba nadie), el POST /enviar-ws (mandaba hasta 200
+// plantillas de WhatsApp a los números que llegaran en el cuerpo, sin ningún
+// botón detrás), y /justificar + /justificantes por NOMBRE (la J va por id
+// desde el cockpit y desde la bitácora).
 
 // ── Llamadas de seguimiento (el "telefonito" de En directo) ─────────────────
 // Cada pulsación apunta la llamada en PostgreSQL (la verdad: quién, cuándo, turno
@@ -161,6 +122,9 @@ router.post('/api/llamada', async (req, res) => {
     const r = await llamadas.registrar({
       conductorId: b.conductorId, turno: b.turno, resultado: b.resultado, nota: b.nota,
       usuarioId: u.id || await actor.idDe(req),
+      // La jornada que está mirando quien llama, para que la llamada caiga en la
+      // misma carta donde se apuntó (de madrugada no es la fecha de hoy).
+      dia: ISO.test(b.dia || '') ? b.dia : undefined,
     });
     let enCallCenter = false;
     try {
@@ -188,7 +152,7 @@ router.post('/api/llamada', async (req, res) => {
 // Las llamadas de un rango de días (la lista "Llamadas de seguimiento" del Histórico).
 router.get('/api/llamadas', async (req, res) => {
   try {
-    res.json({ status: 'ok', llamadas: await llamadas.listar({ desde: req.query.desde, hasta: req.query.hasta }) });
+    res.json({ status: 'ok', ...(await llamadas.listar({ desde: req.query.desde, hasta: req.query.hasta })) });
   } catch (e) {
     res.status(500).json({ status: 'error', msg: e.message });
   }
@@ -201,10 +165,10 @@ router.get('/api/llamadas', async (req, res) => {
 router.post('/api/justificar-directo', async (req, res) => {
   try {
     const b = req.body || {};
-    const dia = llamadas.diaOperativoHoy();
+    const dia = ISO.test(b.dia || '') ? b.dia : llamadas.diaOperativoHoy();
     const r = await repoJust.guardarPorId({
       conductorId: b.conductorId, diaIso: dia,
-      horas: (b.horas == null || b.horas === '') ? '' : Number(b.horas),
+      horas: horasLimpias(b.horas),
       observacion: b.observacion,
       usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
     });
@@ -212,46 +176,6 @@ router.post('/api/justificar-directo', async (req, res) => {
     res.json({ status: 'ok', dia, ...r });
   } catch (e) {
     res.status(400).json({ status: 'error', msg: e.message });
-  }
-});
-
-// ── Justificantes (letra J) ────────────────────────────────────────────────
-// Justifica un día pasado (Ayer / Hace 2 / Hace 3) a un conductor: guarda el
-// justificante con su observación (obligatoria) y, si tiene fila en la bitácora,
-// le pone la 'J' azul ese día. Los NN quedan solo en la hoja JUSTIFICANTES.
-router.post('/justificar', async (req, res) => {
-  try {
-    const b = req.body || {};
-    const dia = Number(b.dia);
-    if (![0, 1, 2, 3].includes(dia)) throw new Error('Día no válido para justificar (Hoy, Ayer, Hace 2 o Hace 3)');
-    const { Y, M, D, str: fecha } = justificantes.fechaDeClave(dia);
-    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
-    const r = await repoJust.guardar({
-      diaIso: iso, nombre: b.nombre,
-      horas: (b.horas == null || b.horas === '') ? '' : Number(b.horas),
-      observacion: b.observacion, usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
-    });
-    console.log(`📝 [Control] Justificante PG ${iso} · ${b.nombre} → conductor ${r.conductorId} (J en bitácora)`);
-    res.json({ status: 'ok', fecha, ...r });
-  } catch (e) {
-    res.status(400).json({ status: 'error', msg: e.message });
-  }
-});
-
-// Justificantes ya puestos de un día (para que el tablero marque a los justificados).
-router.get('/justificantes', async (req, res) => {
-  try {
-    const dia = Number(req.query.dia);
-    const key = [0, 1, 2, 3].includes(dia) ? dia : 1;
-    const { Y, M, D, str: fecha } = justificantes.fechaDeClave(key);
-    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
-    const m = await repoJust.leerPorFecha(iso);
-    // El Map trae la misma entrada bajo varias claves (nombre BOLT y canónico): dedup por conductor.
-    const vistos = new Set(); const justis = [];
-    for (const j of m.values()) { if (vistos.has(j.conductorId)) continue; vistos.add(j.conductorId); justis.push({ nombre: j.nombre, observacion: j.observacion }); }
-    res.json({ status: 'ok', fecha, justis });
-  } catch (e) {
-    res.status(500).json({ status: 'error', msg: e.message });
   }
 });
 

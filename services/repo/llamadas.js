@@ -30,19 +30,27 @@ function diaOperativoHoy() {
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
 }
 
-/** Apunta una llamada. Devuelve la fila con su hora, para pintarla al momento. */
-async function registrar({ conductorId, turno, resultado, nota, usuarioId, origen = 'control' }) {
+/** 'YYYY-MM-DD' válido, o la jornada operativa de ahora. */
+const diaValido = d => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : diaOperativoHoy());
+
+/**
+ * Apunta una llamada. Devuelve la fila con su hora, para pintarla al momento.
+ * `dia` es la jornada que está mirando quien llama (la del cockpit): así la
+ * llamada cae en la misma jornada que la carta donde se apuntó.
+ */
+async function registrar({ conductorId, turno, resultado, nota, usuarioId, origen = 'control', dia }) {
   const cid = Number(conductorId);
   if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
+  const jornada = diaValido(dia);
   const r = await db.consulta(
     `INSERT INTO llamada_seguimiento (conductor_id, usuario_id, origen, dia_operativo, turno, resultado, nota)
      VALUES ($1, $2, $3, $4::date, $5, $6, $7)
      RETURNING id, creado_at`,
-    [cid, usuarioId || null, origen, diaOperativoHoy(),
+    [cid, usuarioId || null, origen, jornada,
      String(turno || '').slice(0, 10) || null,
      String(resultado || '').trim().slice(0, 60) || null,
      String(nota || '').trim().slice(0, 300) || null]);
-  return { id: String(r.rows[0].id), creadoAt: r.rows[0].creado_at, dia: diaOperativoHoy() };
+  return { id: String(r.rows[0].id), creadoAt: r.rows[0].creado_at, dia: jornada };
 }
 
 /**
@@ -50,7 +58,7 @@ async function registrar({ conductorId, turno, resultado, nota, usuarioId, orige
  * { conductorId: { n, ultima: { at, quien, resultado } } }. Es lo que pinta la
  * carta de En directo para que el segundo operador vea que ya se llamó.
  */
-async function resumenHoy() {
+async function resumenHoy(dia) {
   const r = await db.consulta(
     `SELECT l.conductor_id, count(*)::int AS n,
             (array_agg(l.creado_at ORDER BY l.creado_at DESC))[1]  AS ultima_at,
@@ -59,7 +67,7 @@ async function resumenHoy() {
        FROM llamada_seguimiento l
        LEFT JOIN usuario u ON u.id = l.usuario_id
       WHERE l.dia_operativo = $1::date
-      GROUP BY l.conductor_id`, [diaOperativoHoy()]);
+      GROUP BY l.conductor_id`, [diaValido(dia)]);
   const m = {};
   r.rows.forEach(x => {
     m[String(x.conductor_id)] = {
@@ -70,7 +78,10 @@ async function resumenHoy() {
   return m;
 }
 
-/** Todas las llamadas de un rango de días (para el Histórico), la última primero. */
+/**
+ * Todas las llamadas de un rango de días (para el Histórico), la última primero.
+ * Devuelve { llamadas, truncado }: si el rango tiene más de 1000, se dice.
+ */
 async function listar({ desde, hasta } = {}) {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : diaOperativoHoy();
   const h = /^\d{4}-\d{2}-\d{2}$/.test(hasta || '') ? hasta : diaOperativoHoy();
@@ -95,12 +106,16 @@ async function listar({ desde, hasta } = {}) {
           ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
       WHERE l.dia_operativo BETWEEN $1::date AND $2::date
       ORDER BY l.creado_at DESC
-      LIMIT 1000`, [d, h]);
-  return r.rows.map(x => ({
-    id: String(x.id), conductorId: String(x.conductor_id), conductor: x.conductor,
-    telefono: x.telefono || '', dia: x.dia, turno: x.turno || '', resultado: x.resultado || '',
-    nota: x.nota || '', quien: x.quien || '', at: x.creado_at, origen: x.origen,
-  }));
+      LIMIT 1001`, [d, h]);
+  const truncado = r.rows.length > 1000;
+  return {
+    truncado,
+    llamadas: r.rows.slice(0, 1000).map(x => ({
+      id: String(x.id), conductorId: String(x.conductor_id), conductor: x.conductor,
+      telefono: x.telefono || '', dia: x.dia, turno: x.turno || '', resultado: x.resultado || '',
+      nota: x.nota || '', quien: x.quien || '', at: x.creado_at, origen: x.origen,
+    })),
+  };
 }
 
 /**
@@ -108,12 +123,12 @@ async function listar({ desde, hasta } = {}) {
  * { conductorId: { horas, obs, quien } }. La carta de En directo lo pinta para
  * que el segundo operador vea que ese día ya está justificado.
  */
-async function justificadosHoy() {
+async function justificadosHoy(dia) {
   const r = await db.consulta(
     `SELECT j.conductor_id, j.horas_seg_momento, j.observacion, COALESCE(u.nombre, '') AS quien
        FROM justificante j
        LEFT JOIN usuario u ON u.id = j.usuario_id
-      WHERE j.anulado_at IS NULL AND j.dia_operativo = $1::date`, [diaOperativoHoy()]);
+      WHERE j.anulado_at IS NULL AND j.dia_operativo = $1::date`, [diaValido(dia)]);
   const m = {};
   r.rows.forEach(x => {
     m[String(x.conductor_id)] = {

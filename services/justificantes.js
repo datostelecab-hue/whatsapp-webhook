@@ -95,7 +95,8 @@ async function excelDia(reporte) {
   const r = reporte.resumen || resumirFilas(reporte.filas);
   let fila = est.bandaCabecera(ws, est.registrarLogo(wb),
     `Reporte de horas · ${reporte.diaSemana} ${reporte.fecha}`,
-    `${r.personas} conductor(es) en el reporte   ·   ${String(r.horasTotal).replace('.', ',')} h en total   ·   generado el ${ahora()}`,
+    `${r.personas} conductor(es) en el reporte   ·   ${String(r.horasTotal).replace('.', ',')} h en total   ·   generado el ${ahora()}` +
+      (reporte.parcial ? '   ·   PARCIAL: la jornada 05→05 sigue en curso' : ''),
     N_REPORTE);
 
   const filaCab = fila;
@@ -144,7 +145,8 @@ async function excelDia(reporte) {
   fila = lineaResumen(ws, fila, 'No salieron  ·  sin contar libranzas', r.noSalieron);
   fila = lineaResumen(ws, fila, 'Cumplieron las 8 h (8 h o más)', r.cumplieron8);
   fila = lineaResumen(ws, fila, 'Salieron con menos de 4 h', r.menos4);
-  fila = lineaResumen(ws, fila, 'Justificados con J  ·  valen 8 h para el pago', r.justificados, { tenue: true });
+  fila = lineaResumen(ws, fila, 'Justificados con J', r.justificados, { tenue: true });
+  if (r.horasJustificadas) fila = lineaResumen(ws, fila, 'Horas justificadas  ·  se SUMAN a las de BOLT', r.horasJustificadas, { horas: true, tenue: true });
   // Los que salieron sin estar en el cuadrante de ese día. Antes ni aparecían
   // en el reporte —salían del cruce por nombre contra la hoja— y sus horas se
   // perdían: es justo la gente por la que hay que preguntar.
@@ -153,8 +155,10 @@ async function excelDia(reporte) {
     fila = lineaResumen(ws, fila, 'Horas que hicieron esos', r.horasFueraDelPlan, { horas: true, tenue: true });
   }
   fila++;
-  fila = lineaResumen(ws, fila, 'Horas hechas en el turno de DÍA', r.horasDia, { horas: true });
-  fila = lineaResumen(ws, fila, 'Horas hechas en el turno de NOCHE', r.horasNoche, { horas: true });
+  // Son las horas de la JORNADA ENTERA de la gente de cada turno, no las de la
+  // franja horaria: el de día que alargó hasta las 20:00 suma todo en "DÍA".
+  fila = lineaResumen(ws, fila, 'Horas de los conductores del turno de DÍA  ·  jornada completa', r.horasDia, { horas: true });
+  fila = lineaResumen(ws, fila, 'Horas de los conductores del turno de NOCHE  ·  jornada completa', r.horasNoche, { horas: true });
   // Solo se listan si aportan horas: si no, son ruido en el papel.
   if (r.horasTodoTurno) fila = lineaResumen(ws, fila, 'Horas hechas en TodoTurno', r.horasTodoTurno, { horas: true, tenue: true });
   if (r.horasSinTurno) fila = lineaResumen(ws, fila, 'Horas de conductores sin turno en la agenda', r.horasSinTurno, { horas: true, tenue: true });
@@ -168,7 +172,7 @@ async function excelDia(reporte) {
     ['verde', 'Efectivo — de 7,6 a 8,9 h'],
     ['amarillo', 'Poco efectivo — de 6,4 a 7,5 h'],
     ['rojo', 'No cumplieron — 6,3 h o menos'],
-    ['azul', 'Justificado (J) — cuenta 8 h para el pago'],
+    ['azul', 'Justificado (J) — sus horas justificadas se SUMAN a las de BOLT'],
     ['gris', 'Sin dato de horas ese día'],
     ['revisar', 'REVISAR — fichó en BOLT con un coche sin traza de Mapon; lo cuadra Tráfico']
   ].forEach(([color, texto]) => {

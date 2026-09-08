@@ -923,7 +923,11 @@ async function salidasHoy(dia) {
     `SELECT fc.conductor_id,
             t.codigo                                             AS turno_codigo,
             t.etiqueta                                           AS turno,
-            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
+            -- BOLT PRIMERO (regla de la casa): el mismo nombre que ven las
+            -- pantallas y los reportes, y no el de RRHH.
+            COALESCE(NULLIF(btrim(ext.externo_nombre), ''),
+                     NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), ''),
+                     '#' || c.id::text)                          AS conductor,
             tel.e164                                             AS telefono,
             bool_or(fc.rol = 'FIJO')                             AS es_fijo,
             array_agg(DISTINCT v.matricula)                      AS matriculas,
@@ -940,7 +944,11 @@ async function salidasHoy(dia) {
          SELECT e164 FROM conductor_telefono
           WHERE conductor_id = c.id AND vigente_hasta IS NULL
           ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
-      GROUP BY fc.conductor_id, t.codigo, t.etiqueta, c.nombre, c.apellidos, tel.e164`,
+       LEFT JOIN LATERAL (
+         SELECT externo_nombre FROM conductor_externo
+          WHERE conductor_id = c.id AND sistema = 'bolt'
+          ORDER BY (estado_externo = 'active') DESC, visto_at DESC NULLS LAST LIMIT 1) ext ON TRUE
+      GROUP BY fc.conductor_id, t.codigo, t.etiqueta, c.id, c.nombre, c.apellidos, tel.e164, ext.externo_nombre`,
     [d]);
 
   // Quién sale en AMBOS turnos hoy = TodoTurno de verdad (cubre día y noche).

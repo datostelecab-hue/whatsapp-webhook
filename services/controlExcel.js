@@ -135,8 +135,14 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
 
   // Una consulta por día (pocas): cada `salidasHoy` ya trae día y noche del
   // planificador (f_cobertura), deduplicado por persona y sin librantes ni ausentes.
+  // Sin red: si el planificador no responde, la ruta contesta 500. Antes el
+  // error se tragaba y la hoja decía "Nadie asignado a este turno" como si fuera
+  // verdad, y con eso se iba alguien a casa el viernes.
   const salidas = new Map();
-  for (const o of objetivos) salidas.set(o.iso, await salidasHoy(o.iso).catch(() => ({ turnos: [] })));
+  for (const o of objetivos) salidas.set(o.iso, await salidasHoy(o.iso));
+  // "HOY" solo si el día de partida es hoy de verdad: con ?desde= otro día, la
+  // primera hoja lleva sus dos turnos y su nombre de día.
+  const esHoy = dia0 === hoyMadrid();
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Tibus Luxury';
@@ -149,7 +155,7 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
     const nombreDia = DIAS_SEM[idxDia];
     const dd = ddmm(fecha);   // con guion: Excel no admite "/" en el nombre de una pestaña
     // HOY solo interesa la noche (el turno de día ya está en la calle cuando se imprime).
-    const codigos = n === 0 ? ['noche'] : ['dia', 'noche'];
+    const codigos = (n === 0 && esHoy) ? ['noche'] : ['dia', 'noche'];
 
     const ws = wb.addWorksheet(`${nombreDia} ${dd}`.slice(0, 31), {
       pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
@@ -157,10 +163,10 @@ async function generarExcelTurnos({ dias = 2, desde } = {}) {
     });
     ANCHOS.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-    const etiqueta = ['HOY', 'MAÑANA', 'PASADO MAÑANA'][n] || nombreDia.toUpperCase();
+    const etiqueta = (esHoy && ['HOY', 'MAÑANA', 'PASADO MAÑANA'][n]) || nombreDia.toUpperCase();
     let fila = est.bandaCabecera(ws, idLogo,
       `${etiqueta} · ${fmtFecha(fecha)}`,
-      `${n === 0 ? 'Solo turno de noche' : 'Turno de día y turno de noche'}   ·   del planificador   ·   generado el ${sello()}`,
+      `${codigos.length === 1 ? 'Solo turno de noche' : 'Turno de día y turno de noche'}   ·   del planificador   ·   generado el ${sello()}`,
       CABECERAS.length);
 
     codigos.forEach(codigo => {

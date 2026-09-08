@@ -43,6 +43,14 @@ function diasLibranza(conductor) {
   return conductor.libra.map((v, i) => (v ? DIAS_SEM[i] : null)).filter(Boolean).join('/');
 }
 
+// El descanso del COCHE (vehiculo_descanso, en ISODOW 1..7), que es lo que
+// manda en f_cobertura desde db/58. La columna GRUPO salía en blanco en todas
+// las filas porque leía la libranza del FIJO (patron_libranza), que nadie
+// tiene: 0 patrones frente a 132 coches con descanso.
+function descansoCoche(coche) {
+  return ((coche && coche.descanso) || []).map(d => DIAS_SEM[d - 1]).filter(Boolean).join('/');
+}
+
 // Estado del vehículo, para anotar (mini) los coches no operativos que se mantienen
 // en el anexo por tener conductores. El bueno ('✓') no se anota.
 const MOTIVO_VEH = { S: 'Siniestro', T: 'Transporte', X: 'En taller', R: 'Reservado', B: 'Baja' };
@@ -181,9 +189,16 @@ async function exportar(tablero) {
         runs.push({ text: '\n' + (c.estado || 'Ausente') + (c.vuelveEl ? ' hasta ' + cortoFecha(c.vuelveEl) : ''), font: { size: 8, italic: true, color: { argb: ROJO } } });
       }
     }
+    // La ventana del relevo. asignacion.desde SIEMPRE tiene valor, así que
+    // "desde d/m" en cada plaza no distinguía un relevo temporal de un titular
+    // con años de casa: solo se anota cuando hay "hasta", que es lo que hace
+    // que sea un relevo. (Un "desde reciente" no sirve: tras la migración del
+    // 26/08 todas las asignaciones son recientes.)
     const vent = [];
-    if (p && p.desde) vent.push('desde ' + cortoFecha(p.desde));
-    if (p && p.hasta) vent.push('hasta ' + cortoFecha(p.hasta));
+    if (p && p.hasta) {
+      if (p.desde) vent.push('desde ' + cortoFecha(p.desde));
+      vent.push('hasta ' + cortoFecha(p.hasta));
+    }
     if (vent.length) runs.push({ text: (runs.length ? '\n' : '') + vent.join(' · '), font: { size: 8, italic: true, color: { argb: AMBAR } } });
     return runs;
   };
@@ -201,7 +216,7 @@ async function exportar(tablero) {
     const fijoNoche = cond(coche.personas[1]);
 
     r.getCell(1).value = n++;
-    r.getCell(2).value = diasLibranza(fijoDia) || diasLibranza(fijoNoche);
+    r.getCell(2).value = descansoCoche(coche) || diasLibranza(fijoDia) || diasLibranza(fijoNoche);
     // Matrícula: si el coche NO está operativo (pero tiene conductores), se anota su
     // estado super pequeño, en rojo, debajo de la matrícula.
     r.getCell(3).value = coche.operativo

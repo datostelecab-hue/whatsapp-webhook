@@ -34,9 +34,10 @@
 
   <p class="text-xs text-telecab-muted mt-3">
     El km se reparte por tiempo entre los tramos de cada trayecto: es una aproximación
-    (asume velocidad uniforme), pero el total por conductor cuadra. Los tramos desconectados
-    no llevan conductor en BOLT, así que sus km caen en <b>(sin conductor)</b> — que es justo
-    lo que hay que vigilar.
+    (asume velocidad uniforme), pero el total por conductor cuadra. Los km rodados
+    <b>desconectado</b> se imputan al último conductor que llevó el coche (columna ámbar):
+    es lo que hay que vigilar. <b>(sin conductor)</b> son solo los tramos en los que BOLT
+    nunca registró a nadie al volante.
   </p>
 </div>
 
@@ -76,16 +77,22 @@
       '</div>';
   }
 
+  let seq = 0;   // la última carga pedida es la única que se pinta
   async function cargar() {
+    const mio = ++seq;
     const dia = $('#k-dia').value;
     const turno = $('#k-turno').value;
     $('#k-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>';
+    // Los totales del día anterior no se quedan al lado del error o del "Cargando".
+    $('#k-totales').innerHTML = '';
     let d;
     try {
       d = await (await fetch('/control/api/km-traza?dia=' + encodeURIComponent(dia) +
         '&turno=' + encodeURIComponent(turno))).json();
+      if (mio !== seq) return;
       if (d.status !== 'ok') throw new Error(d.msg || 'Error');
     } catch (e) {
+      if (mio !== seq) return;
       $('#k-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-500">' + esc(e.message) + '</p>';
       return;
     }

@@ -339,25 +339,42 @@
   GestionIncidencia.cargar();
   pintarHorario();
   // ── Llamadas de seguimiento (el telefonito de En directo) ──────────────────
-  let LLAMADAS = [];
+  let LLAMADAS = [], LLAMADAS_TRUNCADO = false, LLAMADAS_ERROR = '';
+  let seqLl = 0;   // la última carga pedida es la única que se pinta
   async function cargarLlamadas() {
+    const mia = ++seqLl;
     try {
       const q = new URLSearchParams();
       if ($('#p-desde').value) q.set('desde', $('#p-desde').value);
       if ($('#p-hasta').value) q.set('hasta', $('#p-hasta').value);
       const d = await (await fetch('/control/api/llamadas?' + q)).json();
-      LLAMADAS = d.llamadas || [];
-    } catch (e) { LLAMADAS = []; }
+      if (mia !== seqLl) return;
+      // Un 403 o un error venía como lista vacía: "nadie llamó" cuando era "no
+      // se pudo leer". Se distingue.
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudieron leer las llamadas');
+      LLAMADAS = d.llamadas || []; LLAMADAS_TRUNCADO = !!d.truncado; LLAMADAS_ERROR = '';
+    } catch (e) {
+      if (mia !== seqLl) return;
+      LLAMADAS = []; LLAMADAS_TRUNCADO = false; LLAMADAS_ERROR = e.message || 'Error';
+    }
     pintarLlamadas();
   }
+  // Fecha y hora DEL RELOJ de la llamada (la jornada operativa va en el title):
+  // "06/09 · 02:15" para una llamada hecha el 07/09 de madrugada confundía.
+  const dmAt = t => t ? new Date(t).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) : '';
   function pintarLlamadas() {
     const q = ($('#ll-filtro').value || '').trim().toLowerCase();
     const filas = LLAMADAS.filter(l => !q ||
       (l.conductor || '').toLowerCase().includes(q) || (l.quien || '').toLowerCase().includes(q));
-    $('#ll-n').textContent = filas.length ? filas.length + ' llamada(s)' : '';
+    $('#ll-n').textContent = (filas.length ? filas.length + ' llamada(s)' : '') +
+      (LLAMADAS_TRUNCADO ? ' · solo las 1000 más recientes, acorta el rango' : '');
+    if (LLAMADAS_ERROR) {
+      $('#ll-lista').innerHTML = '<p class="px-4 py-6 text-center text-sm text-red-500">' + esc(LLAMADAS_ERROR) + '</p>';
+      return;
+    }
     $('#ll-lista').innerHTML = filas.length ? filas.map(l =>
       '<div class="px-4 py-2 border-b border-telecab-border/60 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">' +
-        '<span class="tabular-nums text-xs text-telecab-muted w-28">' + dm(l.dia) + ' · ' + hora(l.at) + '</span>' +
+        '<span class="tabular-nums text-xs text-telecab-muted w-28" title="Jornada ' + esc(dm(l.dia)) + '">' + dmAt(l.at) + ' · ' + hora(l.at) + '</span>' +
         '<span class="text-telecab-text font-medium min-w-[11rem]">' + esc(l.conductor) + '</span>' +
         (l.turno ? '<span class="text-xs text-telecab-muted capitalize">' + esc(l.turno) + '</span>' : '') +
         (l.resultado ? '<span class="text-xs px-1.5 py-0.5 rounded bg-telecab-dark/60 text-telecab-muted">' + esc(l.resultado) + '</span>' : '') +

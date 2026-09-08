@@ -4,54 +4,17 @@
 // Tráfico justifica el día a un conductor que no llegó a horas. Aquí eso:
 //   · guarda (o actualiza) el justificante VIVO del día en la tabla `justificante`, y
 //   · escribe la marca 'J' en `bitacora_dia` (con enlace al justificante).
-// Todo por `conductor_id`: el nombre que llega (el "ID_BOLT" de las pantallas) se
-// resuelve a id por `conductor_alias` (alias_norm = el mismo normClave de siempre).
-// Cero hojas.
+// Todo por `conductor_id`, siempre: el cockpit y la bitácora lo tienen. La
+// resolución por NOMBRE que hubo aquí se retiró con la ruta que la usaba: el
+// nombre no identifica a nadie. Cero hojas.
 
 const db = require('../db');
 const { normClave } = require('../conductores');
 
 /**
- * Nombre (como lo escribe BOLT/las pantallas) → conductor_id.
- * 1º por `conductor_alias` (si algún día se puebla); 2º contra el PADRÓN: el
- * nombre de BOLT vivo o el de la ficha, con normClave y solo si el candidato es
- * ÚNICO (los vigentes tienen preferencia). Sin este respaldo, con la tabla de
- * alias vacía —que es como está—, justificar por nombre no resolvía a nadie.
- */
-async function resolverConductor(nombre) {
-  const clave = normClave(nombre);
-  if (!clave) return null;
-  const r = await db.consulta(
-    `SELECT conductor_id FROM conductor_alias
-      WHERE alias_norm = $1 AND NOT ambiguo AND vigente
-      ORDER BY (tipo = 'bolt_nombre') DESC
-      LIMIT 1`, [clave]);
-  if (r.rows.length) return Number(r.rows[0].conductor_id);
-
-  const p = await db.consulta(
-    `SELECT c.id, c.empleo_vigente AS vig,
-            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS ficha,
-            ext.externo_nombre AS bolt
-       FROM conductor c
-       LEFT JOIN LATERAL (
-         SELECT externo_nombre FROM conductor_externo
-          WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
-          ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) ext ON TRUE
-      WHERE NOT c.es_centinela`);
-  const unico = lista => {
-    if (!lista.length) return null;
-    const vivos = lista.filter(x => x.vig);
-    const ids = new Set((vivos.length ? vivos : lista).map(x => Number(x.id)));
-    return ids.size === 1 ? [...ids][0] : null;
-  };
-  return unico(p.rows.filter(x => normClave(x.bolt || '') === clave))
-      || unico(p.rows.filter(x => normClave(x.ficha || '') === clave));
-}
-
-/**
  * Guarda/actualiza el justificante del día y pone la 'J' en la bitácora, por
- * conductor_id ya resuelto. `diaIso` = 'AAAA-MM-DD'. `horas` = horas EXACTAS
- * justificadas (número) o vacío (sin horas concretas).
+ * conductor_id ya resuelto. `diaIso` = 'AAAA-MM-DD'. `horas` = horas QUE SE
+ * JUSTIFICAN (se SUMAN a las de BOLT), número o texto ("7,5" vale) o vacío.
  */
 async function guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId }) {
   observacion = (observacion || '').toString().trim();
@@ -59,9 +22,25 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId
   conductorId = Number(conductorId);
   if (!Number.isInteger(conductorId) || conductorId <= 0) throw new Error('Falta el conductor');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(diaIso || '')) throw new Error('Falta la fecha (AAAA-MM-DD)');
-  const horasSeg = (horas == null || horas === '') ? null : Math.round(Number(horas) * 3600);
+  // "7,5" es lo que escribe una persona en España; sin esto acababa en NaN y
+  // PostgreSQL contestaba con un error críptico. Y ni negativas ni más de 24.
+  let horasSeg = null;
+  if (horas != null && String(horas).trim() !== '') {
+    const n = Number(String(horas).trim().replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > 24) throw new Error('Horas no válidas: entre 0 y 24, por ejemplo 7,5');
+    horasSeg = Math.round(n * 3600);
+  }
 
   return db.transaccion(async cli => {
+    // Una libranza puesta A MANO por RRHH no se pisa con una J sin que nadie lo
+    // vea: antes la J la machacaba y, al anularla, se borraba la fila entera y
+    // la L manual desaparecía sin aviso.
+    const previa = await cli.query(
+      `SELECT marca, marca_manual FROM bitacora_dia
+        WHERE conductor_id = $1 AND dia_operativo = $2::date`, [conductorId, diaIso]);
+    if (previa.rows.length && previa.rows[0].marca === 'L' && previa.rows[0].marca_manual) {
+      throw new Error('Ese día está marcado a mano como libranza (L). Quita la libranza antes de justificarlo.');
+    }
     // Un solo justificante vivo por conductor/día (índice parcial uq_just_vivo).
     const j = await cli.query(
       `INSERT INTO justificante (conductor_id, dia_operativo, horas_seg_momento, observacion, usuario_id, escrito_en_bitacora)
@@ -83,37 +62,40 @@ async function guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId
   });
 }
 
-/** Como guardarPorId, pero resolviendo el conductor por su nombre de BOLT (alias). */
-async function guardar({ diaIso, nombre, horas, observacion, usuarioId }) {
-  if (!nombre) throw new Error('Falta el conductor');
-  const conductorId = await resolverConductor(nombre);
-  if (!conductorId) {
-    throw new Error(`No se pudo identificar a "${nombre}" en PostgreSQL (sin alias resoluble). ` +
-      `Hay que darle de alta el alias de BOLT antes de justificarlo.`);
-  }
-  return guardarPorId({ conductorId, diaIso, horas, observacion, usuarioId });
-}
-
 /**
- * Justificantes vivos de un día → Map(clave(nombre) -> {nombre, observacion, conductorId}).
- * La clave es normClave del nombre de BOLT (o del canónico), para que quien busque por
- * nombre —el reporte, el listado— lo encuentre igual que antes.
+ * Justificantes vivos de un día → Map con la MISMA entrada bajo varias claves:
+ * 'id:<conductor_id>' (la que hay que usar) y, de cortesía, el nombre de BOLT y
+ * el de la ficha normalizados. Cada entrada: { conductorId, nombre, observacion,
+ * horasJ } — horasJ son las horas QUE SE JUSTIFICAN (se suman a las de BOLT).
+ *
+ * Los nombres salen de la tabla `conductor` y de su cuenta de BOLT, no de
+ * v_agenda: v_agenda solo tiene a los vigentes, y la J de alguien ya de baja se
+ * quedaba sin ninguna clave y desaparecía del reporte.
  */
 async function leerPorFecha(diaIso) {
   const r = await db.consulta(
-    `SELECT j.conductor_id, j.observacion,
-            COALESCE(a.id_bolt, a.nombre_apellidos) AS nombre_bolt,
-            a.nombre_apellidos                       AS nombre_canonico
+    `SELECT j.conductor_id, j.observacion, j.horas_seg_momento,
+            ext.externo_nombre                                    AS nombre_bolt,
+            btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))  AS nombre_ficha
        FROM justificante j
-       LEFT JOIN v_agenda a ON a.conductor_id = j.conductor_id
+       LEFT JOIN conductor c ON c.id = j.conductor_id
+       LEFT JOIN LATERAL (
+         SELECT externo_nombre FROM conductor_externo
+          WHERE conductor_id = j.conductor_id AND sistema = 'bolt'
+          ORDER BY (estado_externo = 'active') DESC, visto_at DESC NULLS LAST LIMIT 1) ext ON TRUE
       WHERE j.anulado_at IS NULL AND j.dia_operativo = $1::date`, [diaIso]);
   const m = new Map();
   r.rows.forEach(x => {
-    const nombre = x.nombre_bolt || x.nombre_canonico || `#${x.conductor_id}`;
-    const entry = { nombre, observacion: x.observacion || '', conductorId: Number(x.conductor_id) };
-    for (const n of [x.nombre_bolt, x.nombre_canonico]) {
+    const cid = Number(x.conductor_id);
+    const nombre = x.nombre_bolt || x.nombre_ficha || `#${cid}`;
+    const entry = {
+      nombre, observacion: x.observacion || '', conductorId: cid,
+      horasJ: x.horas_seg_momento != null ? Math.round(x.horas_seg_momento / 360) / 10 : null,
+    };
+    m.set('id:' + cid, entry);
+    for (const n of [x.nombre_bolt, x.nombre_ficha]) {
       const k = normClave(n || '');
-      if (k) m.set(k, entry);
+      if (k && !m.has(k)) m.set(k, entry);
     }
   });
   return m;
@@ -130,12 +112,15 @@ async function anularPorId({ conductorId, diaIso }) {
         WHERE conductor_id = $1 AND dia_operativo = $2::date AND anulado_at IS NULL
         RETURNING id`, [cid, diaIso]);
     if (!r.rows.length) throw new Error('Ese día no tiene justificante vivo');
+    // Se quita la J, y solo la J: la fila solo existe por ella (guardarPorId no
+    // pisa una L manual), así que borrarla es lo correcto —pero se exige que
+    // siga siendo una J por si algo la cambió entre medias.
     await cli.query(
       `DELETE FROM bitacora_dia
-        WHERE conductor_id = $1 AND dia_operativo = $2::date AND justificante_id = $3`,
+        WHERE conductor_id = $1 AND dia_operativo = $2::date AND justificante_id = $3 AND marca = 'J'`,
       [cid, diaIso, r.rows[0].id]);
     return { ok: true, justificanteId: r.rows[0].id };
   });
 }
 
-module.exports = { resolverConductor, guardar, guardarPorId, anularPorId, leerPorFecha };
+module.exports = { guardarPorId, anularPorId, leerPorFecha };
