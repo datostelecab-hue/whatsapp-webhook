@@ -102,49 +102,63 @@ async function noEfectivas(desdeIso, hastaIso, jornadaH) {
 }
 
 /**
- * Los kilómetros de la jornada, del GPS de Mapon.
+ * Kilómetros: BOLT contra MAPON. La diferencia es lo que interesa.
  *
- * Salen de `fv_tramo.km_m`, que es lo que ya alimenta la Flota viva. Los tramos
- * marcados `km_dudoso` se dejan fuera: son saltos de señal y meterían
- * kilómetros que no ha hecho nadie.
+ * Mapon (el GPS) ve TODO lo que anda el coche. BOLT solo sabe de él mientras el
+ * conductor está conectado. Lo que sobra —Mapon menos BOLT— son kilómetros con
+ * el coche rodando y NADIE conectado: el coche se movió y la empresa no se
+ * enteró. Eso es lo que hay que mirar cada mañana.
  *
- * BOLT no guarda la distancia en PostgreSQL —`bolt_order` solo trae el dinero—,
- * así que la comparación "con pasajero contra sin pasajero" se hace por la
- * SITUACIÓN del tramo, que responde a la misma pregunta. La comparación
- * matrícula a matrícula contra el informe de BOLT sigue en Auditoría de flota.
+ * Los dos números salen del MISMO sitio, `fv_tramo`, que es lo que ya alimenta
+ * la Flota viva: cada tramo lleva su situación, y el catálogo dice cuáles
+ * cuentan como conectado. Así no se comparan dos fuentes con dos criterios
+ * distintos; se compara la misma traza partida en dos.
+ *
+ * Los tramos marcados `km_dudoso` quedan fuera: son saltos de señal y meterían
+ * kilómetros que no ha hecho nadie —y encima caerían del lado de "fuera de
+ * BOLT", que es justo el número que no se puede inflar—.
  */
 async function kilometros(desdeIso, hastaIso) {
   const r = await db.consulta(
     `WITH v AS (
-       SELECT t.situacion, t.km_m
+       SELECT t.situacion, t.km_m, t.km_dudoso AS dudoso,
+              COALESCE(cs.conectado, FALSE) AS conectado
          FROM fv_tramo t
-        WHERE NOT t.km_dudoso AND t.km_m IS NOT NULL
+         LEFT JOIN fv_cat_situacion cs ON cs.codigo = t.situacion
+        WHERE t.km_m IS NOT NULL
           AND t.desde >= (($1::date + time '05:00') AT TIME ZONE 'Europe/Madrid')
           AND t.desde <  ((($2::date + 1) + time '05:00') AT TIME ZONE 'Europe/Madrid')
      )
-     SELECT round(sum(km_m) / 1000.0, 1)                                        AS km_total,
-            round(sum(km_m) FILTER (WHERE situacion = 'viaje')    / 1000.0, 1)  AS km_viaje,
-            round(sum(km_m) FILTER (WHERE situacion = 'espera')   / 1000.0, 1)  AS km_espera,
-            round(sum(km_m) FILTER (WHERE situacion = 'descanso') / 1000.0, 1)  AS km_descanso,
-            round(sum(km_m) FILTER (WHERE situacion NOT IN ('viaje','espera','descanso'))
-                  / 1000.0, 1)                                                  AS km_otros
+     SELECT round(sum(km_m) FILTER (WHERE NOT dudoso) / 1000.0, 1)              AS km_mapon,
+            round(sum(km_m) FILTER (WHERE NOT dudoso AND conectado)              / 1000.0, 1) AS km_bolt,
+            round(sum(km_m) FILTER (WHERE NOT dudoso AND situacion = 'viaje')    / 1000.0, 1) AS km_viaje,
+            round(sum(km_m) FILTER (WHERE NOT dudoso AND situacion = 'espera')   / 1000.0, 1) AS km_espera,
+            round(sum(km_m) FILTER (WHERE NOT dudoso AND situacion = 'descanso') / 1000.0, 1) AS km_descanso,
+            -- Lo que se tira por salto de señal, para poder DECIRLO: si no, la
+            -- cifra de "fuera de BOLT" parece exacta y no lo es.
+            round(sum(km_m) FILTER (WHERE dudoso) / 1000.0, 1)                                AS km_descartados
        FROM v`,
     [desdeIso, hastaIso]);
 
   const num = v => (v == null ? 0 : Number(v));
+  const r1 = n => Math.round(n * 10) / 10;
   const x = r.rows[0] || {};
-  const total = num(x.km_total);
-  const conPasajero = num(x.km_viaje);
+  const mapon = num(x.km_mapon);
+  const bolt = num(x.km_bolt);
+  const fuera = r1(mapon - bolt);
   return {
-    total,
-    conPasajero,
-    // Lo que se rueda SIN pasajero: yendo a por el cliente, esperando o vacío.
-    sinPasajero: Math.round((total - conPasajero) * 10) / 10,
+    mapon, bolt,
+    // LA CIFRA: kilómetros que el GPS vio y BOLT no. Coche andando, nadie
+    // conectado.
+    fuera,
+    porcentajeFuera: mapon > 0 ? Math.round((fuera / mapon) * 1000) / 10 : null,
+    // El desglose de lo que SÍ estaba en BOLT, por si hace falta mirar dentro.
+    viaje: num(x.km_viaje),
     espera: num(x.km_espera),
     descanso: num(x.km_descanso),
-    otros: num(x.km_otros),
-    // Qué parte del recorrido lleva a alguien dentro. Es LA cifra del negocio.
-    aprovechamiento: total > 0 ? Math.round((conPasajero / total) * 1000) / 10 : null,
+    descartados: num(x.km_descartados),
+    conPasajero: num(x.km_viaje),
+    aprovechamiento: mapon > 0 ? Math.round((num(x.km_viaje) / mapon) * 1000) / 10 : null,
   };
 }
 

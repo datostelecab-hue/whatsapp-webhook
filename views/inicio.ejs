@@ -107,20 +107,27 @@
     <%- cifra('k-ne-mes', 'Sin hacer · el mes', 'h', '<span id="k-ne-mes-pct">—</span> % de lo que tocaba') %>
   </div>
 
-  <!-- ── KILÓMETROS ──────────────────────────────────────────────────────── -->
+  <!-- ── KILÓMETROS: BOLT CONTRA MAPON ───────────────────────────────────────
+       Mapon ve TODO lo que anda el coche; BOLT solo mientras hay alguien
+       conectado. La resta son kilómetros con el coche rodando y nadie dentro
+       del sistema: es la cifra que se mira, no el total. -->
   <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
-    Kilómetros <span class="font-normal text-telecab-muted normal-case tracking-normal">· GPS de Mapon, última jornada cerrada</span>
+    Kilómetros · BOLT contra Mapon
+    <span class="font-normal text-telecab-muted normal-case tracking-normal" id="i-km-nota"></span>
   </h2>
   <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-    <%- cifra('k-km-total', 'Recorridos', 'km', 'toda la flota') %>
-    <%- cifra('k-km-con', 'Con pasajero', 'km', 'en viaje') %>
-    <%- cifra('k-km-sin', 'Sin pasajero', 'km', 'yendo a por el cliente, esperando o vacío') %>
-    <%- cifra('k-km-apr', 'Aprovechamiento', '%', 'del recorrido lleva a alguien dentro', true) %>
+    <%- cifra('k-km-mapon', 'Mapon · todo lo rodado', 'km', 'lo que vio el GPS') %>
+    <%- cifra('k-km-bolt', 'BOLT · conectado', 'km', 'con el conductor dentro del sistema') %>
+    <%- cifra('k-km-fuera', 'Fuera de BOLT', 'km', 'coche andando y nadie conectado', true) %>
+    <%- cifra('k-km-pct', 'Proporción fuera', '%', 'de todo lo que rodó la flota', true) %>
   </div>
 
   <p class="text-[11px] text-telecab-muted mb-8">
-    Las horas son las mismas que cuenta Visibilidad, con las mismas ventanas.
-    La comparación de kilómetros contra el informe de BOLT, matrícula a matrícula, está en
+    Los dos números salen de la misma traza de Mapon partida en dos, no de dos fuentes distintas, así que
+    <b class="text-telecab-text">Mapon = BOLT + fuera</b> siempre cuadra. Los tramos con salto de señal se
+    descartan (<span id="k-km-dudoso">—</span> km esa jornada), y caerían del lado de "fuera", así que la cifra
+    se queda corta antes que larga. Las horas son las mismas que cuenta Visibilidad, con las mismas ventanas.
+    El detalle matrícula a matrícula está en
     <a href="/operaciones/auditoria" class="text-telecab-gold hover:underline">Auditoría de flota</a>.
   </p>
 </div>
@@ -183,12 +190,17 @@
     pon('k-ne-mes', nem.horas, 1);
     pon('k-ne-mes-pct', nem.porcentaje, 1);
 
-    // Kilómetros.
+    // Kilómetros: BOLT contra Mapon.
     const km = (j.km || {}).cerrada || {};
-    pon('k-km-total', km.total);
-    pon('k-km-con', km.conPasajero);
-    pon('k-km-sin', km.sinPasajero);
-    pon('k-km-apr', km.aprovechamiento, 1);
+    $('#i-km-nota').textContent = `· jornada del ${esFecha(j.jornadaCerrada)}`;
+    pon('k-km-mapon', km.mapon);
+    pon('k-km-bolt', km.bolt);
+    pon('k-km-fuera', km.fuera);
+    pon('k-km-pct', km.porcentajeFuera, 1);
+    pon('k-km-dudoso', km.descartados);
+    // El pie de "fuera de BOLT" cuenta el desglose de lo que sí estaba dentro.
+    const pie = document.querySelector('#k-km-bolt-pie');
+    if (pie) pie.textContent = `viaje ${num(km.viaje, 1)} · espera ${num(km.espera, 1)} · descanso ${num(km.descanso, 1)}`;
   }
 
   const b = $('#i-refrescar');
