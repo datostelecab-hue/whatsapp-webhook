@@ -64,17 +64,22 @@
        jornada, con el Reporte de horas y con la Bitácora. No dan lo mismo porque la
        noche cruza la medianoche, y esa diferencia es justo lo que hay que ver. ──── -->
   <%
-    function miniCard(id, label, nota, acento){
+    /* `meta` = la tarjeta lleva objetivo. Entonces la cifra se lee "458 / 500 h",
+       la barra mide el AVANCE HACIA LA META (no la utilización, que sigue abajo
+       en su línea) y el color va de rojo a verde según lo cerca que se esté. */
+    function miniCard(id, label, nota, acento, meta){
       return `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card/60 p-4">
         <div class="flex items-center justify-between gap-2">
           <p class="text-[11px] text-telecab-muted uppercase tracking-wide" id="${id}-etq" title="">${label}</p>
           <span class="text-[11px] text-telecab-muted tabular-nums shrink-0" id="${id}-cond"></span>
         </div>
-        <p class="text-2xl font-bold text-telecab-text mt-1 tabular-nums leading-none"><span id="${id}-h">—</span> <span class="text-sm text-telecab-muted font-normal">h</span></p>
-        <div class="mt-2.5 h-1.5 rounded-full bg-telecab-card2 overflow-hidden" title="% utilización">
+        <p class="text-2xl font-bold mt-1 tabular-nums leading-none">
+          <span id="${id}-h" class="text-telecab-text">—</span>${meta ? `<span id="${id}-meta" class="text-base text-telecab-muted font-semibold"></span>` : ''}
+          <span class="text-sm text-telecab-muted font-normal">h</span></p>
+        <div class="mt-2.5 h-1.5 rounded-full bg-telecab-card2 overflow-hidden" id="${id}-barcaja" title="${meta ? 'Avance sobre la meta del turno' : '% utilización'}">
           <div id="${id}-bar" class="h-full ${acento ? 'bg-telecab-gold' : 'bg-telecab-green'}" style="width:0%"></div>
         </div>
-        <p class="text-[11px] text-telecab-muted mt-1"><span id="${id}-util">—</span> % utilización${nota ? ' · ' + nota : ''}</p>
+        <p class="text-[11px] text-telecab-muted mt-1">${meta ? '<span id="' + id + '-pct">—</span> % de la meta · ' : ''}<span id="${id}-util">—</span> % utilización${nota ? ' · ' + nota : ''}</p>
       </div>`;
     }
   %>
@@ -99,9 +104,9 @@
         <div class="flex-1 h-px bg-telecab-border/50"></div>
       </div>
       <div class="grid grid-cols-3 gap-3">
-        <%- miniCard('m-tdia', 'Turno día', '') %>
-        <%- miniCard('m-tnoche', 'Turno noche', '') %>
-        <%- miniCard('m-ajor', 'Ayer · jornada', 'día + noche', true) %>
+        <%- miniCard('m-tdia', 'Turno día', '', false, true) %>
+        <%- miniCard('m-tnoche', 'Turno noche', '', false, true) %>
+        <%- miniCard('m-ajor', 'Ayer · jornada', 'día + noche', true, true) %>
       </div>
     </div>
   </div>
@@ -202,6 +207,20 @@
         <span class="text-xs text-telecab-muted">Vehículos</span>
         <input id="cfg-veh" type="number" step="1" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
       </label>
+      <div class="pt-3 border-t border-telecab-border/60">
+        <p class="text-xs text-telecab-muted mb-1">Meta por turno · horas al día</p>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block">
+            <span class="text-[11px] text-telecab-muted">Turno día</span>
+            <input id="cfg-mtd" type="number" step="1" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
+          </label>
+          <label class="block">
+            <span class="text-[11px] text-telecab-muted">Turno noche</span>
+            <input id="cfg-mtn" type="number" step="1" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
+          </label>
+        </div>
+        <p class="text-[11px] text-telecab-muted/70 mt-1">La jornada entera (día + noche) usa la suma: <span id="cfg-meta-dia">—</span> h.</p>
+      </div>
       <label class="block">
         <span class="text-xs text-telecab-muted">Días del mes <span class="text-telecab-muted/60">(vacío = automático)</span></span>
         <input id="cfg-dias" type="number" step="1" placeholder="auto" class="mt-1 w-full px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text">
@@ -223,6 +242,24 @@
   const cv  = (n, a) => { const v = getComputedStyle(raiz).getPropertyValue(n).trim(); return a == null ? `rgb(${v})` : `rgb(${v} / ${a})`; };
   const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
   const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+
+  /**
+   * EL COLOR DE LA META: rojo cuando se va lejos, verde al llegar, y todo lo de
+   * en medio de verdad en medio —no tres escalones—. Cuanto más cerca, más verde.
+   *
+   * Se interpola el TONO de HSL, que es una rueda: 0 es rojo y 120 es verde, y
+   * pasa por el naranja y el amarillo sin que haya que elegirlos a mano. Debajo
+   * del 40 % se queda en rojo del todo (por debajo de ahí ya da igual cuánto
+   * falte: es malo) y a partir del 100 no sigue virando: verde y ya.
+   *
+   * La saturación y la luminosidad son fijas para que los seis colores de la fila
+   * pesen lo mismo y ninguno destaque por estar más vivo que su vecino.
+   */
+  function colorMeta(pct) {
+    const p = Math.max(0, Math.min(100, Number(pct) || 0));
+    const t = Math.max(0, (p - 40) / 60);        // 0 en el 40 %, 1 en el 100 %
+    return `hsl(${Math.round(t * 120)} 72% 48%)`;
+  }
   const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
   const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
   const sig = x => (x > 0 ? '+' : '') + nf0.format(x);
@@ -269,6 +306,14 @@
     // La etiqueta corta se pinta; la larga de la API ("Turno noche · anoche") va al
     // title, que es donde cabe. Seis tarjetas en fila no perdonan un texto largo.
     const CORTA = { 'm-hoy': 'Hoy', 'm-ayer': 'Ayer', 'm-semana': 'Semana', 'm-tdia': 'Turno día', 'm-tnoche': 'Turno noche', 'm-ajor': 'Ayer · jornada' };
+    // Las metas por turno viven en la config del visor. La de la jornada entera es
+    // la SUMA de las dos: una jornada son sus dos turnos, y así no hay un tercer
+    // número que mantener y que se quede desfasado.
+    const cfg = r.config || {};
+    const metaDia = Number(cfg.meta_turno_dia_h) || 0;
+    const metaNoche = Number(cfg.meta_turno_noche_h) || 0;
+    const META = { 'm-tdia': metaDia, 'm-tnoche': metaNoche, 'm-ajor': metaDia + metaNoche };
+
     const pon = (id, s) => {
       if (!s) return;
       setTxt(id + '-etq', CORTA[id] || s.etq);
@@ -276,8 +321,28 @@
       setTxt(id + '-h', nf1.format(s.horasEfectivas));
       setTxt(id + '-util', s.utilizacion == null ? '—' : nf1.format(s.utilizacion));
       setTxt(id + '-cond', (s.conductores || 0) + ' cond.');
+
+      const meta = META[id] || 0;
       const bar = document.getElementById(id + '-bar');
-      if (bar) bar.style.width = Math.max(0, Math.min(100, s.utilizacion || 0)) + '%';
+      if (meta > 0) {
+        const pct = (s.horasEfectivas / meta) * 100;
+        setTxt(id + '-meta', ' / ' + nf0.format(meta));
+        setTxt(id + '-pct', nf1.format(pct));
+        const color = colorMeta(pct);
+        if (bar) {
+          bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+          bar.className = 'h-full transition-all';
+          bar.style.backgroundColor = color;
+        }
+        // La cifra también se tiñe: la barra se ve de lejos, el número es lo que
+        // se mira. Las dos cosas dicen lo mismo y no hay que interpretar nada.
+        const h = document.getElementById(id + '-h');
+        if (h) { h.classList.remove('text-telecab-text'); h.style.color = color; }
+        const caja = document.getElementById(id + '-barcaja');
+        if (caja) caja.title = `${nf1.format(s.horasEfectivas)} h de ${nf0.format(meta)} · ${nf1.format(pct)} %`;
+      } else if (bar) {
+        bar.style.width = Math.max(0, Math.min(100, s.utilizacion || 0)) + '%';
+      }
     };
     pon('m-hoy', r.dia); pon('m-ayer', r.ayer); pon('m-semana', r.semana);
     pon('m-tdia', r.turnoDia); pon('m-tnoche', r.turnoNoche); pon('m-ajor', r.ayerJornada);
@@ -458,7 +523,19 @@
     document.getElementById('cfg-meta').value = c.meta ?? '';
     document.getElementById('cfg-veh').value = c.vehiculos ?? '';
     document.getElementById('cfg-dias').value = c.dias_del_mes ?? '';
+    document.getElementById('cfg-mtd').value = c.meta_turno_dia_h ?? '';
+    document.getElementById('cfg-mtn').value = c.meta_turno_noche_h ?? '';
+    sumaMetas();
   }
+
+  // La suma se enseña mientras se escribe: es la meta del día, y verla evita
+  // guardar 500 y 400 creyendo que se han puesto las mil.
+  function sumaMetas() {
+    const n = id => Number(document.getElementById(id).value) || 0;
+    setTxt('cfg-meta-dia', String(n('cfg-mtd') + n('cfg-mtn')));
+  }
+  ['cfg-mtd', 'cfg-mtn'].forEach(id =>
+    document.getElementById(id).addEventListener('input', sumaMetas));
   const modal = document.getElementById('v-config-modal');
   const abrirCfg = () => modal.classList.remove('hidden');
   const cerrarCfg = () => modal.classList.add('hidden');
@@ -472,9 +549,13 @@
       meta: document.getElementById('cfg-meta').value,
       vehiculos: document.getElementById('cfg-veh').value,
       dias_del_mes: document.getElementById('cfg-dias').value,   // vacío → null (auto) en el server
+      meta_turno_dia_h: document.getElementById('cfg-mtd').value,
+      meta_turno_noche_h: document.getElementById('cfg-mtn').value,
     };
     const r = await fetch('/visibilidad/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) }).then(x => x.json()).catch(() => null);
-    if (r && r.status === 'ok') { cerrarCfg(); cargarSerie(); }
+    // Se recarga TAMBIÉN el resumen: las metas de turno viven en las tarjetas de
+    // arriba, y sin esto había que refrescar la página para verlas cambiadas.
+    if (r && r.status === 'ok') { cerrarCfg(); cargarSerie(); cargarResumen(); }
   });
 
   // ── Navegación de mes + refresco ──────────────────────────────────────────

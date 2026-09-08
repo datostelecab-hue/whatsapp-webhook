@@ -16,7 +16,13 @@ const db = require('./db');              // bolt_order, visibilidad_config, visi
 const fv = require('./flotaViva/db');    // fv_tramo (núcleo)
 
 // Config por defecto = la pestaña Config de la hoja. dias_del_mes null = días reales.
-const CONFIG_DEFECTO = { capacidad_diaria_h: 16, meta: 28157, vehiculos: 73, dias_del_mes: null };
+// `meta` es la del MES en horas. Las de turno son diarias y van aparte: la meta
+// del día son 1.000 h repartidas entre los dos turnos, y lo que interesa mirar a
+// media tarde es cómo va ESTE turno contra SU meta, no el mes contra la suya.
+const CONFIG_DEFECTO = {
+  capacidad_diaria_h: 16, meta: 28157, vehiculos: 73, dias_del_mes: null,
+  meta_turno_dia_h: 500, meta_turno_noche_h: 500,
+};
 
 // ── Utilidades de fecha (todo en hora de Madrid, como el núcleo) ──────────────
 const fmtFecha = (d) => new Intl.DateTimeFormat('en-CA',
@@ -154,7 +160,8 @@ async function leerConfig() {
 async function guardarConfig(patch) {
   const actual = await leerConfig();
   const limpio = {};
-  for (const k of ['capacidad_diaria_h', 'meta', 'vehiculos', 'dias_del_mes']) {
+  for (const k of ['capacidad_diaria_h', 'meta', 'vehiculos', 'dias_del_mes',
+                   'meta_turno_dia_h', 'meta_turno_noche_h']) {
     if (patch[k] === undefined) { limpio[k] = actual[k]; continue; }
     if (patch[k] === null || patch[k] === '') { limpio[k] = null; continue; }
     const n = Number(patch[k]);
