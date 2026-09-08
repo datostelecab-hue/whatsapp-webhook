@@ -504,6 +504,39 @@ programar('30 5 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ── RENDIMIENTO ─────────────────────────────────────────────────────────────
+// El promedio de horas del mes corrido y su letra (S/A/B/C), que se pintan al
+// lado del nombre en el planificador y en Control. A las 05:40, DESPUÉS de que
+// la bitácora selle la jornada (05:35): si se calculara antes, el último día
+// entraría a medias.
+programar('40 5 * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./services/repo/rendimiento').recalcular();
+    console.log(`⭐ [Rendimiento] ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
+  } catch (error) {
+    console.error(`⚠️  [Rendimiento] recálculo diario: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+// Y A LAS 12:00, solo los TODOTURNO. Su jornada no cierra a las 05:00 sino al
+// mediodía, así que a las 05:40 la suya está a medias y saldrían con la mitad de
+// horas. Son cuatro personas: no le cuesta nada al servidor.
+programar('0 12 * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const rend = require('./services/repo/rendimiento');
+    const ids = await rend.todoTurnoHoy();
+    if (!ids.length) return;
+    const r = await rend.recalcular({ soloIds: ids });
+    console.log(`⭐ [Rendimiento] TodoTurno al mediodía: ${r.filas} de ${ids.length}`);
+  } catch (error) {
+    console.error(`⚠️  [Rendimiento] recálculo TodoTurno: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // ── BITÁCORA ────────────────────────────────────────────────────────────────
 // Al cerrar la jornada se SELLAN las horas de los días que ya terminaron
 // (bitacora_horas). A partir de ahí la bitácora los lee de ahí y no vuelve a

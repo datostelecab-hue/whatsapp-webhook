@@ -219,6 +219,11 @@ async function tablero({ dia } = {}) {
     [String(r.plaza_id), { conductorId: String(r.conductor_id), nombre: r.nombre, desde: fechaDe(r.desde) }]));
 
   // ── Las personas, indexadas ────────────────────────────────────────────
+  // El promedio de horas del mes y su letra (S/A/B/C), para pintarlo al lado del
+  // nombre. Va aparte y con red: si no se ha calculado nunca, el cuadrante se ve
+  // igual, solo sin la letra.
+  const rend = await require('./rendimiento').leer().catch(() => new Map());
+
   const gente = new Map();
   conductores.rows.forEach(c => {
     const libra = new Array(DIAS).fill(false);
@@ -229,6 +234,9 @@ async function tablero({ dia } = {}) {
       dni: c.dni_nie || '',
       telefono: c.telefono || '',
       barrio: c.barrio || '',
+      // "(9,4 h · A)": el promedio del mes corrido y su tramo. `null` = todavía
+      // sin datos este mes (recién incorporado, o el cron aún no ha pasado).
+      rendimiento: rend.get(Number(c.id)) || null,
       finPrueba: fechaDe(c.fin_prueba),
       turno: c.turno || '',
       turnoCodigo: c.turno_codigo || '',

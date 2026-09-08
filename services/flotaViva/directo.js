@@ -356,6 +356,10 @@ async function enDirecto({ dia } = {}) {
     });
   });
 
+  // El promedio de horas del mes y su letra, para que quien llama sepa a quién
+  // tiene al otro lado. Sale del mismo sitio que en el planificador.
+  const rend = await require('../repo/rendimiento').leer().catch(() => new Map());
+
   // El porqué de cada uno: su situación en la plataforma (o que no está en ella).
   const gentePorId = new Map((((tab && tab.conductores) || [])).map(c => [Number(c.id), c]));
   const gentePorNombre = new Map((((tab && tab.conductores) || [])).map(c => [normNombre(c.nombre), c]));
@@ -376,6 +380,7 @@ async function enDirecto({ dia } = {}) {
       conductor: a.nombre || ('#' + String(a.uuid).slice(0, 8)),
       telefono: a.telefono || '',
       conductorId: idDeUuid.get(a.uuid) || '',
+      rendimiento: rend.get(idDeUuid.get(a.uuid)) || null,
       situacion: situacionDe(a.uuid),
       matricula: a.matricula, matriculas: a.matriculas,
       enBolt: a.km, desconectado: a.kmFuera,
@@ -500,6 +505,7 @@ async function enDirecto({ dia } = {}) {
       const cocheCambiado = vivas.length > 0 && !vivas.some(m => f.matriculas.includes(m));
       return {
         clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid, telefono: f.telefono || '',
+        rendimiento: rend.get(Number(f.conductorId)) || null,
         turno: f.turno,
         rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
         matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',

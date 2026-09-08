@@ -193,6 +193,26 @@
     ? '<span class="' + clase + '">' + v + (suf || '') + '</span>'
     : '<span class="text-telecab-border">—</span>');
 
+  // ── EL RENDIMIENTO: "10,4 h · S" al lado del nombre ─────────────────────────
+  // Para saber a quién se está llamando. Promedio del MES CORRIDO: BOLT + lo
+  // justificado, con los días que debía salir y no salió sin justificar como 0.
+  const REND_TONO = {
+    S: 'bg-emerald-500/20 text-emerald-400',
+    A: 'bg-telecab-gold/20 text-telecab-gold',
+    B: 'bg-amber-500/15 text-amber-500',
+    C: 'bg-red-500/15 text-red-500',
+  };
+  function chipRend(r) {
+    if (!r || !r.dias) return '';
+    const h = String(r.horas).replace('.', ',');
+    const tit = 'Promedio del mes: ' + h + ' h en ' + r.dias + ' día(s)' +
+      (r.diasCero ? ' · ' + r.diasCero + ' sin salir sin justificar' : '') +
+      ' · S 9h+ · A 8-9 · B 6-8 · C -6';
+    return '<span class="shrink-0 px-1.5 py-0 rounded text-[10px] font-bold leading-[1.4] ' +
+      (REND_TONO[r.letra] || REND_TONO.C) + '" title="' + esc(tit) + '">' +
+      h + ' h·' + esc(r.letra) + '</span>';
+  }
+
   function filaConductor(f) {
     const a = f.actividad || {};
     const nInc = (f.incidencias || []).length;
@@ -213,6 +233,7 @@
             (f.rol ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
               (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
               '">' + esc(f.rol) + '</span>' : '') +
+            chipRend(f.rendimiento) +
             // Dos personas en el mismo coche, turno y día: el cuadrante tiene un solape.
             (f.conflicto ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-500" ' +
               'title="Dos personas en el mismo coche, turno y día: hay un solape en el cuadrante">Solape</span>' : '') +
@@ -342,7 +363,9 @@
     return '<div class="dfila dcab-grid py-2.5 border-b border-telecab-border/70">' +
       '<span class="dbarra ' + (s.conectadoAhora ? 'bg-emerald-500' : 'bg-telecab-border') + '"></span>' +
       '<span class="min-w-0">' +
-        '<span class="block truncate text-telecab-text font-medium" title="' + esc(s.conductor) + '">' + esc(s.conductor) + '</span>' +
+        '<span class="flex items-center gap-1.5 min-w-0">' +
+          '<span class="truncate text-telecab-text font-medium" title="' + esc(s.conductor) + '">' + esc(s.conductor) + '</span>' +
+          chipRend(s.rendimiento) + '</span>' +
         '<span class="block font-mono text-[11px] leading-tight text-telecab-muted">' + enlaceTel(s.telefono) + '</span>' +
         (sit.etiqueta ? '<span class="block text-[11px] font-medium ' + (NN_TONO[sit.codigo] || 'text-telecab-muted') + '">' + esc(sit.etiqueta) + '</span>' : '') +
       '</span>' +
@@ -424,6 +447,7 @@
       (!q ||
         (f.conductor || '').toLowerCase().includes(q) ||
         (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
+        ((f.rendimiento && f.rendimiento.letra) || '').toLowerCase() === q ||
         ((f.actividad && f.actividad.matriculas) || []).join(' ').toLowerCase().includes(q)));
 
     if (!filas.length) {

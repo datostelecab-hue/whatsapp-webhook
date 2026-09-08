@@ -531,6 +531,27 @@
     return null;
   }
 
+  // ── EL RENDIMIENTO: "10,4 h · S" al lado del nombre ─────────────────────────
+  // Promedio de horas del MES CORRIDO y su letra (S >=9 · A 8-9 · B 6-8 · C <6).
+  // Cuenta lo de BOLT MÁS lo justificado (2 h de taller + 6 rodando = 8), y los
+  // días que debía salir y no salió sin justificar cuentan como 0. Librar, las
+  // vacaciones y las bajas no cuentan.
+  const REND_TONO = {
+    S: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    A: 'bg-telecab-gold/20 text-telecab-gold border-telecab-gold/40',
+    B: 'bg-amber-500/15 text-amber-500 border-amber-500/40',
+    C: 'bg-red-500/15 text-red-500 border-red-500/40',
+  };
+  function chipRend(r, mini) {
+    if (!r || !r.dias) return '';
+    const h = String(r.horas).replace('.', ',');
+    const tit = `Promedio del mes: ${h} h en ${r.dias} día(s) contados` +
+      (r.diasCero ? ` · ${r.diasCero} sin salir sin justificar (cuentan como 0)` : '') +
+      ' · S 9h+ · A 8-9 · B 6-8 · C -6';
+    return `<span class="shrink-0 inline-flex items-center gap-1 px-1.5 py-0 rounded border text-[10px] font-bold leading-[1.4] ${REND_TONO[r.letra] || REND_TONO.C}" title="${esc(tit)}">` +
+      `${h} h<span class="opacity-80">·</span>${r.letra}</span>`;
+  }
+
   function celdaPuesto(coche, p, col) {
     const esFijo = p.rol === 'FIJO' || col.slot < 2;
     const wrap = document.createElement('div');
@@ -561,6 +582,7 @@
       wrap.innerHTML = `
         <button class="text-left w-full group" data-asignar>
           <span class="${nombreCls} transition">${esc(persona ? persona.nombre : p.nombre)}${ett}</span>
+          ${chipRend(persona && persona.rendimiento)}
           ${tel ? `<span class="block text-[11px] text-telecab-muted font-mono tabular-nums">${esc(tel)}</span>`
                 : `<span class="block text-[11px] text-telecab-warn/80">sin teléfono</span>`}
           <span data-barrio class="block text-[11px] ${(persona && persona.barrio) ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition" title="La zona del conductor (Aluche, San Blas…): pincha para cambiarla"><i class="fa-solid fa-house text-[9px]"></i> ${(persona && persona.barrio) ? esc(persona.barrio) : 'poner zona'}</span>
@@ -631,7 +653,7 @@
       if (banqTab === 'ett' && !p.esEtt) return false;
       if (banqTab === 'propios' && p.esEtt) return false;
       if (!q) return true;
-      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '') + ' ' + (p.barrio || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '') + ' ' + (p.barrio || '') + ' ' + ((p.rendimiento && p.rendimiento.letra) || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       return t.includes(q);
     });
     document.querySelectorAll('.banq-tab').forEach(b => {
@@ -642,7 +664,7 @@
     $('#banq-n').textContent = `${gente.length}/${(T.pendientes || []).length}`;
     $('#banquillo').innerHTML = gente.length ? gente.map(p => `
       <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border">
-        <div class="text-sm font-medium truncate">${esc(p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''}</div>
+        <div class="text-sm font-medium truncate">${esc(p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''} ${chipRend(p.rendimiento)}</div>
         <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
         <button data-barrio="${p.id}" class="block text-[11px] text-left ${p.barrio ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition"><i class="fa-solid fa-house text-[9px]"></i> ${p.barrio ? esc(p.barrio) : 'poner zona'}</button>
         ${p.ausente ? `<div class="text-[11px] text-telecab-warn"><i class="fa-solid fa-plane-departure"></i> ${esc(p.estado)}${p.vuelveEl ? ` · vuelve ${isoAes(p.vuelveEl)}` : ''}</div>` : ''}
