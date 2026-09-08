@@ -705,7 +705,7 @@ async function liberar(cli, plazaId, dia, usuarioId) {
  */
 async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia, usuarioId }) {
   const entra = desde || dia;
-  const rol = (await cli.query('SELECT rol FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
+  const rol = (await cli.query('SELECT rol, turno_id FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
   if (!rol) throw new Error('Esa plaza ya no existe');
 
   // Auto-corte: si no hay "hasta" (o se pasa) y ya hay un ocupante FUTURO en la
@@ -727,6 +727,7 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
   if (actual && String(actual.conductor_id) === String(conductorId)) {
     await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [actual.id, hastaFinal]);
     await guardarDias(cli, actual.id, plazaId, rol.rol, dias);
+    await recordarTurno(cli, conductorId, rol.turno_id, entra, usuarioId);
     return { id: actual.id, ajustada: true };
   }
 
@@ -737,7 +738,38 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [plazaId, conductorId, entra, hastaFinal, usuarioId || null]);
   await guardarDias(cli, r.rows[0].id, plazaId, rol.rol, dias);
+  await recordarTurno(cli, conductorId, rol.turno_id, entra, usuarioId);
   return { id: r.rows[0].id, nueva: true };
+}
+
+/**
+ * LE DEJA APUNTADO SU TURNO al colocarlo en una plaza.
+ *
+ * El turno se venía LEYENDO de la plaza en vez de guardarse, y por eso al sacar
+ * a alguien del cuadrante se quedaba "sin turno" en el banquillo: la plaza era
+ * lo único que lo decía. De 220 personas, 3 tenían turno propio y 172 lo
+ * heredaban de su coche.
+ *
+ * Ahora, al colocarlo, se le escribe el turno de esa plaza si no tenía ninguno.
+ * Es lo que hace que el banquillo recuerde el ÚLTIMO turno que se le asignó,
+ * que es como se quiere buscar a la gente cuando hay que tapar un hueco.
+ *
+ * Si YA tiene turno propio no se toca: puede habérselo puesto Tráfico a mano
+ * ("este es de noche aunque hoy lo pongas de día") y esa decisión manda sobre
+ * dónde lo hayan colocado un martes.
+ */
+async function recordarTurno(cli, conductorId, turnoId, desde, usuarioId) {
+  if (!conductorId || !turnoId) return null;
+  const hay = await cli.query(
+    `SELECT 1 FROM conductor_turno_hist
+      WHERE conductor_id = $1 AND (hasta IS NULL OR hasta >= $2::date) LIMIT 1`,
+    [conductorId, desde]);
+  if (hay.rowCount) return null;
+  const r = await cli.query(
+    `INSERT INTO conductor_turno_hist (conductor_id, turno_id, desde, origen, usuario_id)
+     VALUES ($1, $2, $3::date, 'planificador', $4) RETURNING id`,
+    [conductorId, turnoId, desde, usuarioId || null]);
+  return r.rows[0] || null;
 }
 
 /**
