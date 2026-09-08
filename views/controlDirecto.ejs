@@ -287,14 +287,28 @@
     const chips = av.map(a =>
       '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] ' +
       (AV_TONO[a.tono] || AV_TONO.aviso) + '" title="' + esc(a.detalle || '') + '">' + esc(a.etq) + '</span>');
-    // Ya se llamó o ya se justificó: la alerta sigue ahí, pero atendida.
+    // Ya se llamó o ya se justificó: la alerta sigue ahí, pero atendida. El chip
+    // dice QUÉ pasó (el resultado de la llamada, o las horas justificadas), y al
+    // pasar el ratón, QUIÉN lo hizo, a qué hora y la nota que dejó. Sin eso el
+    // segundo controlador vuelve a llamar para preguntar lo mismo.
     if (av.some(a => a.tono === 'error') && atendida(f)) {
       const ll = (DATOS.llamadas || {})[String(f.conductorId)];
       const j = (DATOS.justificados || {})[String(f.conductorId)];
-      chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-emerald-500/15 text-emerald-500" ' +
-        'title="' + esc(j ? ('Justificado por ' + (j.quien || 'alguien') + (j.obs ? ': ' + j.obs : ''))
-                          : ('Llamado ' + (ll ? hora(ll.ultima.at) + (ll.ultima.resultado ? ' · ' + ll.ultima.resultado : '') : ''))) +
-        '"><i class="fa-solid fa-check"></i> ' + (j ? 'J' : 'llamado') + '</span>');
+      if (j) {
+        chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-sky-500/15 text-sky-400" ' +
+          'title="' + esc('Justificado por ' + (j.quien || 'alguien') +
+            (j.horas != null ? ' · justifica ' + j.horas + ' h' : '') + (j.obs ? ' · ' + j.obs : '')) + '">' +
+          '<i class="fa-solid fa-check"></i> J' + (j.horas != null ? ' ' + String(j.horas).replace('.', ',') + 'h' : '') + '</span>');
+      }
+      if (ll) {
+        const u = ll.ultima || {};
+        chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-emerald-500/15 text-emerald-500" ' +
+          'title="' + esc(ll.n + ' llamada(s) esta jornada · última a las ' + hora(u.at) +
+            (u.quien ? ' por ' + u.quien : '') + (u.resultado ? ' · ' + u.resultado : '') +
+            (u.nota ? ' · «' + u.nota + '»' : '')) + '">' +
+          '<i class="fa-solid fa-check"></i> ' + esc(u.resultado || 'llamado') +
+          (ll.n > 1 ? ' ×' + ll.n : '') + '</span>');
+      }
     }
     // Las incidencias abiertas del coche siguen saliendo mientras queden vivas.
     if (nInc) chips.push('<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] ' +
@@ -483,6 +497,27 @@
             (a.detalle ? '<div class="text-xs text-telecab-muted mt-0.5">' + esc(a.detalle) + '</div>' : '') +
           '</div>').join('') + '</div>'
       : '';
+    // LA TRAZA de lo que ya se hizo con esta persona hoy: quién llamó, cuándo,
+    // qué contestó y la nota. Es lo que evita la segunda llamada por lo mismo.
+    const ll = f.conductorId ? (DATOS.llamadas || {})[String(f.conductorId)] : null;
+    const jj = f.conductorId ? (DATOS.justificados || {})[String(f.conductorId)] : null;
+    const traza = (ll || jj)
+      ? '<div class="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-2 mb-3 space-y-1">' +
+          (ll ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-phone-flip text-emerald-500 mr-1"></i>' +
+              '<b>' + esc(ll.ultima.resultado || 'Llamado') + '</b>' +
+              ' · ' + hora(ll.ultima.at) +
+              (ll.ultima.quien ? ' · por ' + esc(ll.ultima.quien) : '') +
+              (ll.n > 1 ? ' · ' + ll.n + ' llamadas hoy' : '') +
+              (ll.ultima.nota ? '<div class="text-telecab-muted mt-0.5">«' + esc(ll.ultima.nota) + '»</div>' : '') +
+            '</div>' : '') +
+          (jj ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-file-circle-check text-sky-400 mr-1"></i>' +
+              '<b>Justificado' + (jj.horas != null ? ' ' + String(jj.horas).replace('.', ',') + ' h' : '') + '</b>' +
+              (jj.quien ? ' · por ' + esc(jj.quien) : '') +
+              (jj.obs ? '<div class="text-telecab-muted mt-0.5">«' + esc(jj.obs) + '»</div>' : '') +
+            '</div>' : '') +
+        '</div>'
+      : '';
+
     // Y lo que se puede hacer con ello: llamar y dejar traza, o justificar las
     // horas que faltan si el motivo es nuestro (dos horas de taller, p. ej.).
     const acciones = f.conductorId
@@ -498,7 +533,7 @@
       : '<p class="text-sm text-telecab-muted">Sin avisos del coche.</p>';
     return '<div class="ddet hidden px-4 pb-3">' +
       '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
-        jor + acciones +
+        jor + traza + acciones +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos del coche</div>' + inc + '</div>' +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos · últimas 24 h · ' +
           esc(f.conductor) + '</div><div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +

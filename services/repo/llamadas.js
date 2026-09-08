@@ -55,7 +55,7 @@ async function registrar({ conductorId, turno, resultado, nota, usuarioId, orige
 
 /**
  * Las llamadas de la jornada operativa EN CURSO, por conductor:
- * { conductorId: { n, ultima: { at, quien, resultado } } }. Es lo que pinta la
+ * { conductorId: { n, ultima: { at, quien, resultado, nota } } }. Es lo que pinta la
  * carta de En directo para que el segundo operador vea que ya se llamó.
  */
 async function resumenHoy(dia) {
@@ -63,6 +63,10 @@ async function resumenHoy(dia) {
     `SELECT l.conductor_id, count(*)::int AS n,
             (array_agg(l.creado_at ORDER BY l.creado_at DESC))[1]  AS ultima_at,
             (array_agg(l.resultado ORDER BY l.creado_at DESC))[1]  AS ultima_resultado,
+            -- LA NOTA TAMBIÉN. Es lo que escribió quien llamó ("dice que llega a
+            -- las 10, se le averió el coche"), y sin ella el segundo controlador
+            -- vuelve a llamar para preguntar lo mismo.
+            (array_agg(l.nota ORDER BY l.creado_at DESC))[1]       AS ultima_nota,
             (array_agg(COALESCE(u.nombre, '') ORDER BY l.creado_at DESC))[1] AS ultima_quien
        FROM llamada_seguimiento l
        LEFT JOIN usuario u ON u.id = l.usuario_id
@@ -72,7 +76,10 @@ async function resumenHoy(dia) {
   r.rows.forEach(x => {
     m[String(x.conductor_id)] = {
       n: x.n,
-      ultima: { at: x.ultima_at, quien: x.ultima_quien || '', resultado: x.ultima_resultado || '' },
+      ultima: {
+        at: x.ultima_at, quien: x.ultima_quien || '',
+        resultado: x.ultima_resultado || '', nota: x.ultima_nota || '',
+      },
     };
   });
   return m;
