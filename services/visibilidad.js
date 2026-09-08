@@ -460,4 +460,7 @@ module.exports = {
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
   slice, horasVentana, dineroVentana, conductoresPorTurno,
+  // La usa el panel de inicio para pedir los KM de las MISMAS ventanas que las
+  // horas: si cada pantalla eligiera su turno, las dos cifras no se podrian comparar.
+  ventanaTurnos,
 };

@@ -43,7 +43,7 @@ router.get('/', (req, res) => {
 router.get('/api/panel', async (req, res) => {
   if (!veCifras(res)) return res.status(403).json({ status: 'error', msg: 'Sin permiso para las cifras' });
   try {
-    res.json({ status: 'ok', ...(await inicio.panel()) });
+    res.json({ status: 'ok', ...(await inicio.panel({ forzar: req.query.forzar === '1' })) });
   } catch (error) {
     console.error('❌ [INICIO] panel:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });

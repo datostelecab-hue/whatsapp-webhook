@@ -102,63 +102,42 @@ async function noEfectivas(desdeIso, hastaIso, jornadaH) {
 }
 
 /**
- * Kilómetros: BOLT contra MAPON. La diferencia es lo que interesa.
+ * Kilómetros de una ventana de turno: los que se ruedan DENTRO de BOLT y los que
+ * se ruedan fuera.
  *
- * Mapon (el GPS) ve TODO lo que anda el coche. BOLT solo sabe de él mientras el
- * conductor está conectado. Lo que sobra —Mapon menos BOLT— son kilómetros con
- * el coche rodando y NADIE conectado: el coche se movió y la empresa no se
- * enteró. Eso es lo que hay que mirar cada mañana.
+ * · EN BOLT  = viaje + espera. Es trabajo.
+ * · FUERA    = descanso (el "busy" de BOLT) + desconectado. El coche anda y no
+ *              está produciendo, o directamente nadie ha fichado.
  *
- * Los dos números salen del MISMO sitio, `fv_tramo`, que es lo que ya alimenta
- * la Flota viva: cada tramo lleva su situación, y el catálogo dice cuáles
- * cuentan como conectado. Así no se comparan dos fuentes con dos criterios
- * distintos; se compara la misma traza partida en dos.
+ * LOS KM SALEN DE `fv_ruta`, NO DE `fv_tramo.km_m`. Esto se aprendió por las
+ * malas y está escrito en flotaViva/rutas.js: `km_m` es el salto de odómetro
+ * dentro del tramo, y el odómetro solo llega a ratos —de 3.551 tramos de un día,
+ * 188 traían km y el 43 % ni lectura—, así que los kilómetros caían en el tramo
+ * que estuviera abierto cuando Mapon habló. Con esa fuente este panel daba 1.570
+ * km para sesenta coches, que es imposible. `fv_ruta` son los TRAYECTOS de Mapon
+ * y es la fuente que cuadró con el informe de BOLT al 0,03 %.
  *
- * Los tramos marcados `km_dudoso` quedan fuera: son saltos de señal y meterían
- * kilómetros que no ha hecho nadie —y encima caerían del lado de "fuera de
- * BOLT", que es justo el número que no se puede inflar—.
+ * Se reparte cada trayecto entre las situaciones que pisa, en proporción al
+ * tiempo: un trayecto de 10 km que cae mitad en viaje y mitad en descanso son 5
+ * y 5, no 10 para el que estuviera abierto al final.
+ *
+ * No se calcula aquí: se pide a `rutas.kmConectadoDesconectado`, que es la misma
+ * función que usan el cockpit y los reportes. Dos formas de contar kilómetros
+ * darían dos verdades.
  */
-async function kilometros(desdeIso, hastaIso) {
-  const r = await db.consulta(
-    `WITH v AS (
-       SELECT t.situacion, t.km_m, t.km_dudoso AS dudoso,
-              COALESCE(cs.conectado, FALSE) AS conectado
-         FROM fv_tramo t
-         LEFT JOIN fv_cat_situacion cs ON cs.codigo = t.situacion
-        WHERE t.km_m IS NOT NULL
-          AND t.desde >= (($1::date + time '05:00') AT TIME ZONE 'Europe/Madrid')
-          AND t.desde <  ((($2::date + 1) + time '05:00') AT TIME ZONE 'Europe/Madrid')
-     )
-     SELECT round(sum(km_m) FILTER (WHERE NOT dudoso) / 1000.0, 1)              AS km_mapon,
-            round(sum(km_m) FILTER (WHERE NOT dudoso AND conectado)              / 1000.0, 1) AS km_bolt,
-            round(sum(km_m) FILTER (WHERE NOT dudoso AND situacion = 'viaje')    / 1000.0, 1) AS km_viaje,
-            round(sum(km_m) FILTER (WHERE NOT dudoso AND situacion = 'espera')   / 1000.0, 1) AS km_espera,
-            round(sum(km_m) FILTER (WHERE NOT dudoso AND situacion = 'descanso') / 1000.0, 1) AS km_descanso,
-            -- Lo que se tira por salto de señal, para poder DECIRLO: si no, la
-            -- cifra de "fuera de BOLT" parece exacta y no lo es.
-            round(sum(km_m) FILTER (WHERE dudoso) / 1000.0, 1)                                AS km_descartados
-       FROM v`,
-    [desdeIso, hastaIso]);
-
-  const num = v => (v == null ? 0 : Number(v));
+async function kilometros(dia, turno) {
+  const r = await require('../flotaViva/rutas').kmConectadoDesconectado(dia, turno);
+  const t = r.total || { enBolt: 0, desconectado: 0, total: 0 };
   const r1 = n => Math.round(n * 10) / 10;
-  const x = r.rows[0] || {};
-  const mapon = num(x.km_mapon);
-  const bolt = num(x.km_bolt);
-  const fuera = r1(mapon - bolt);
   return {
-    mapon, bolt,
-    // LA CIFRA: kilómetros que el GPS vio y BOLT no. Coche andando, nadie
-    // conectado.
-    fuera,
-    porcentajeFuera: mapon > 0 ? Math.round((fuera / mapon) * 1000) / 10 : null,
-    // El desglose de lo que SÍ estaba en BOLT, por si hace falta mirar dentro.
-    viaje: num(x.km_viaje),
-    espera: num(x.km_espera),
-    descanso: num(x.km_descanso),
-    descartados: num(x.km_descartados),
-    conPasajero: num(x.km_viaje),
-    aprovechamiento: mapon > 0 ? Math.round((num(x.km_viaje) / mapon) * 1000) / 10 : null,
+    dia: r.dia,
+    turno,
+    enBolt: r1(t.enBolt),
+    fuera: r1(t.desconectado),
+    total: r1(t.total),
+    // Qué parte de lo que rodó la flota se rodó sin estar produciendo. Es LA
+    // cifra: el total sube con la actividad, esto no.
+    porcentajeFuera: t.total > 0 ? Math.round((t.desconectado / t.total) * 1000) / 10 : null,
   };
 }
 
@@ -185,46 +164,81 @@ async function panel() {
   const cerrada = diaMenos(enCurso, 1);
   const primeroMes = enCurso.slice(0, 8) + '01';
 
+  // LOS KM, POR TURNO Y EN LAS MISMAS VENTANAS QUE LAS HORAS. Se piden a
+  // `visibilidad.ventanaTurnos()` en vez de elegirlas aquí: si cada pantalla
+  // escogiera su turno, las horas y los kilómetros no se podrían comparar.
+  const vt = visibilidad.ventanaTurnos();
+
   // LAS NO EFECTIVAS SOLO DE JORNADAS CERRADAS. Salen de `bitacora_horas`, que
   // es el histórico SELLADO: del día en curso no hay nada ahí todavía y saldría
   // que nadie ha hecho nada. Y aunque lo hubiera, no significaría gran cosa: a
   // media jornada las horas que faltan aún se pueden hacer.
-  const [visib, neCerrada, neMes, kmCerrada, kmCurso] = await Promise.all([
+  const [visib, neCerrada, neMes, kmDia, kmNoche, kmAyer] = await Promise.all([
     visibilidad.resumen(),
     noEfectivas(cerrada, cerrada, jornadaH),
     noEfectivas(primeroMes, cerrada, jornadaH),
-    kilometros(cerrada, cerrada),
-    kilometros(enCurso, enCurso),
+    kilometros(vt.dia.v[0], 'dia'),
+    kilometros(vt.noche.v[0], 'noche'),
+    // La jornada de ayer entera (05→05), que es la que se compara con las horas
+    // de "Ayer · jornada".
+    kilometros(cerrada, 'operativo'),
   ]);
 
   return {
     hoy, jornadaEnCurso: enCurso, jornadaCerrada: cerrada, jornadaH,
     visibilidad: visib,
     noEfectivas: { cerrada: neCerrada, mes: neMes },
-    km: { cerrada: kmCerrada, enCurso: kmCurso },
+    km: {
+      dia: { ...kmDia, etq: vt.dia.etq },
+      noche: { ...kmNoche, etq: vt.noche.etq },
+      ayer: { ...kmAyer, etq: 'Ayer · jornada' },
+    },
   };
 }
 
-// ── Caché corta ─────────────────────────────────────────────────────────────
-// Este panel lo abre TODO EL MUNDO al entrar, y son casi veinte consultas
-// pesadas. Sin caché, diez personas entrando a la vez son doscientas consultas
-// para pintar los mismos números. Un minuto es de sobra: las horas del mes no
-// cambian de un vistazo a otro.
-const TTL = 60 * 1000;
-let cache = null;
+// ── Caché: se sirve lo que hay y se refresca por detrás ─────────────────────
+// Este panel lo abre TODO EL MUNDO al entrar y son unas veinte consultas
+// pesadas: tarda unos nueve segundos en frío. Una pantalla de entrada no puede
+// tardar nueve segundos.
+//
+// Así que se sirve SIEMPRE lo último que se calculó, aunque esté pasado, y el
+// recálculo se lanza por detrás para el siguiente. Solo espera de verdad quien
+// entra el primero tras arrancar. Los datos de fondo se refrescan cada cinco
+// minutos (la ingesta), así que enseñar algo de hace tres no engaña a nadie —y
+// para saberlo está `calculadoAt`, que la pantalla enseña—.
+const FRESCO = 5 * 60 * 1000;    // más nuevo que esto, no se toca
+const VIEJO_TOPE = 30 * 60 * 1000;   // más viejo que esto, mejor esperar al nuevo
+let cache = null;      // { datos, ts }
+let enVuelo = null;    // el recálculo en curso, si lo hay
 
-async function panelCacheado() {
-  if (cache && Date.now() - cache.ts < TTL) return { ...cache.datos, deCache: true };
-  // La promesa se guarda ANTES de esperarla: si entran cinco a la vez mientras
-  // se calcula, las cinco esperan al MISMO cálculo en vez de lanzar cinco.
-  if (!cache || !cache.enVuelo) {
-    const enVuelo = panel().then(datos => {
-      cache = { datos, ts: Date.now(), enVuelo: null };
-      return datos;
-    }).catch(e => { cache = null; throw e; });
-    cache = { ...(cache || {}), enVuelo };
+function recalcular() {
+  if (enVuelo) return enVuelo;
+  enVuelo = panel()
+    .then(datos => { cache = { datos, ts: Date.now() }; return datos; })
+    .finally(() => { enVuelo = null; });
+  return enVuelo;
+}
+
+async function panelCacheado({ forzar = false } = {}) {
+  // Pedir refresco a mano recalcula de verdad. Es lo único que salta la caché:
+  // entrar a la pantalla NO recalcula, sirve lo último que hay.
+  if (forzar) {
+    const datos = await recalcular();
+    return { ...datos, calculadoAt: Date.now(), edadMs: 0 };
   }
-  return cache.enVuelo;
+  const edad = cache ? Date.now() - cache.ts : Infinity;
+  if (edad < FRESCO) return { ...cache.datos, calculadoAt: cache.ts, edadMs: edad };
+
+  // Hay algo y no es una antigualla: se devuelve YA y se refresca por detrás.
+  if (cache && edad < VIEJO_TOPE) {
+    recalcular().catch(e => console.error('❌ [INICIO] refresco en segundo plano:', e.message));
+    return { ...cache.datos, calculadoAt: cache.ts, edadMs: edad };
+  }
+
+  // Nada en caché (o demasiado viejo): toca esperar. Si entran cinco a la vez,
+  // las cinco esperan al MISMO cálculo, no lanzan cinco.
+  const datos = await recalcular();
+  return { ...datos, calculadoAt: Date.now(), edadMs: 0 };
 }
 
 module.exports = {

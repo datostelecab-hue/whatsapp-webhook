@@ -72,6 +72,21 @@
     }
   %>
 
+  <!-- ── EL MES: la cifra con la que se vive ─────────────────────────────── -->
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-3 mb-6">
+    <div class="rounded-2xl border border-telecab-gold/40 bg-telecab-card p-5 xl:col-span-1">
+      <p class="text-[11px] text-telecab-muted uppercase tracking-wide">Horas del mes</p>
+      <p class="text-4xl font-bold text-telecab-gold mt-1 tabular-nums leading-none">
+        <span id="k-mes-h">—</span><span class="text-base text-telecab-muted font-normal ml-1">h</span></p>
+      <p class="text-xs text-telecab-muted mt-2">
+        efectivas acumuladas · <span id="k-mes-cond">—</span> conductores</p>
+    </div>
+    <div class="xl:col-span-2 grid grid-cols-2 gap-3">
+      <%- cifra('k-mes-neto', 'Neto del mes', '€', '<span id="k-mes-viajes">—</span> viajes') %>
+      <%- cifra('k-mes-util', 'Utilización del mes', '%', 'del tiempo conectado, con pasajero') %>
+    </div>
+  </div>
+
   <!-- ── HOY ─────────────────────────────────────────────────────────────── -->
   <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">Hoy, en curso</h2>
   <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
@@ -107,26 +122,49 @@
     <%- cifra('k-ne-mes', 'Sin hacer · el mes', 'h', '<span id="k-ne-mes-pct">—</span> % de lo que tocaba') %>
   </div>
 
-  <!-- ── KILÓMETROS: BOLT CONTRA MAPON ───────────────────────────────────────
-       Mapon ve TODO lo que anda el coche; BOLT solo mientras hay alguien
-       conectado. La resta son kilómetros con el coche rodando y nadie dentro
-       del sistema: es la cifra que se mira, no el total. -->
+  <!-- ── KILÓMETROS, POR TURNO ───────────────────────────────────────────────
+       En las MISMAS ventanas que las horas de arriba, para poder compararlas.
+       EN BOLT = viaje + espera (trabajo). FUERA = descanso (el "busy") +
+       desconectado: el coche anda y no está produciendo. -->
   <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
-    Kilómetros · BOLT contra Mapon
-    <span class="font-normal text-telecab-muted normal-case tracking-normal" id="i-km-nota"></span>
+    Kilómetros por turno
+    <span class="font-normal text-telecab-muted normal-case tracking-normal">· en BOLT (viaje + espera) contra fuera (descanso + desconectado)</span>
   </h2>
-  <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-    <%- cifra('k-km-mapon', 'Mapon · todo lo rodado', 'km', 'lo que vio el GPS') %>
-    <%- cifra('k-km-bolt', 'BOLT · conectado', 'km', 'con el conductor dentro del sistema') %>
-    <%- cifra('k-km-fuera', 'Fuera de BOLT', 'km', 'coche andando y nadie conectado', true) %>
-    <%- cifra('k-km-pct', 'Proporción fuera', '%', 'de todo lo que rodó la flota', true) %>
+  <%
+    /* Una tarjeta de turno: el total grande y el reparto debajo, con su barra.
+       El % que se lee es el de FUERA, que es lo que se mira: el total sube con
+       la actividad, la proporción no. */
+    function kmTurno(id) {
+      return `<div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
+        <p class="text-[11px] text-telecab-muted uppercase tracking-wide" id="${id}-etq">—</p>
+        <p class="text-3xl font-bold text-telecab-text mt-1 tabular-nums leading-none">
+          <span id="${id}-tot">—</span><span class="text-sm text-telecab-muted font-normal ml-1">km</span></p>
+        <div class="mt-3 flex h-2 rounded-full overflow-hidden bg-telecab-card2" id="${id}-barra">
+          <div id="${id}-bar-bolt" class="h-full bg-telecab-green" style="width:0%"></div>
+          <div id="${id}-bar-fuera" class="h-full bg-telecab-red" style="width:0%"></div>
+        </div>
+        <div class="flex justify-between text-[11px] mt-1.5" id="${id}-pie">
+          <span class="text-telecab-green"><span id="${id}-bolt">—</span> km en BOLT</span>
+          <span class="text-telecab-red"><span id="${id}-fuera">—</span> km fuera · <span id="${id}-pct">—</span> %</span>
+        </div>
+        <p class="text-[11px] text-telecab-muted mt-1.5 hidden" id="${id}-vacio">El turno acaba de empezar: todavía no ha rodado nadie.</p>
+      </div>`;
+    }
+  %>
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-3 mb-4">
+    <%- kmTurno('k-kd') %>
+    <%- kmTurno('k-kn') %>
+    <%- kmTurno('k-ka') %>
   </div>
 
   <p class="text-[11px] text-telecab-muted mb-8">
-    Los dos números salen de la misma traza de Mapon partida en dos, no de dos fuentes distintas, así que
-    <b class="text-telecab-text">Mapon = BOLT + fuera</b> siempre cuadra. Los tramos con salto de señal se
-    descartan (<span id="k-km-dudoso">—</span> km esa jornada), y caerían del lado de "fuera", así que la cifra
-    se queda corta antes que larga. Las horas son las mismas que cuenta Visibilidad, con las mismas ventanas.
+    La ventana de día es 05:00–17:00 y la de noche 17:00–05:00, las mismas que las horas. Ojo: cada ventana
+    recoge también la <b class="text-telecab-text">cola del otro turno</b> —quien terminó a las 05:51 rodó
+    dentro del día—, así que estos kilómetros son los de LA FRANJA, no los de la gente del turno.
+    Los kilómetros salen de los <b class="text-telecab-text">trayectos de Mapon</b>, no del salto de odómetro:
+    esa otra fuente solo habla a ratos y daba menos de la décima parte de lo que rueda la flota. Cada trayecto
+    se reparte entre las situaciones que pisa en proporción al tiempo, así que un viaje que cae mitad en trabajo
+    y mitad en descanso cuenta mitad y mitad. Es la misma cuenta que usan el cockpit y los reportes.
     El detalle matrícula a matrícula está en
     <a href="/operaciones/auditoria" class="text-telecab-gold hover:underline">Auditoría de flota</a>.
   </p>
@@ -140,11 +178,14 @@
   const pon = (id, v, d) => { const e = $('#' + id); if (e) e.textContent = num(v, d); };
   const esFecha = iso => { if (!iso) return ''; const [a, m, dd] = iso.split('-'); return `${dd}/${m}/${a}`; };
 
-  async function cargar() {
+  async function cargar(forzar) {
     const b = $('#i-refrescar');
     if (b) b.disabled = true;
     try {
-      const r = await fetch('/inicio/api/panel');
+      // `forzar` solo cuando se pulsa Actualizar: entrar a la pantalla sirve lo
+      // cacheado (instantáneo), pero pedir refresco a mano tiene que recalcular de
+      // verdad o el botón no hace nada visible.
+      const r = await fetch('/inicio/api/panel' + (forzar ? '?forzar=1' : ''));
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo cargar');
       pintar(j);
@@ -158,8 +199,11 @@
 
   function pintar(j) {
     const v = j.visibilidad || {};
+    // De cuándo es lo que se está viendo. Hace falta decirlo: el panel sirve lo
+    // último calculado y refresca por detrás, así que puede tener unos minutos.
+    const edad = Math.round((j.edadMs || 0) / 1000);
     $('#i-jornada').textContent = `Jornada del ${esFecha(j.jornadaEnCurso)}` +
-      (j.deCache ? '' : '');
+      (edad > 60 ? ` · datos de hace ${Math.round(edad / 60)} min` : '');
 
     // Hoy (día natural: es lo que cuadra con el informe de BOLT).
     const hoy = v.dia || {};
@@ -190,21 +234,46 @@
     pon('k-ne-mes', nem.horas, 1);
     pon('k-ne-mes-pct', nem.porcentaje, 1);
 
-    // Kilómetros: BOLT contra Mapon.
-    const km = (j.km || {}).cerrada || {};
-    $('#i-km-nota').textContent = `· jornada del ${esFecha(j.jornadaCerrada)}`;
-    pon('k-km-mapon', km.mapon);
-    pon('k-km-bolt', km.bolt);
-    pon('k-km-fuera', km.fuera);
-    pon('k-km-pct', km.porcentajeFuera, 1);
-    pon('k-km-dudoso', km.descartados);
-    // El pie de "fuera de BOLT" cuenta el desglose de lo que sí estaba dentro.
-    const pie = document.querySelector('#k-km-bolt-pie');
-    if (pie) pie.textContent = `viaje ${num(km.viaje, 1)} · espera ${num(km.espera, 1)} · descanso ${num(km.descanso, 1)}`;
+    // El mes.
+    const mes = v.mes || {};
+    pon('k-mes-h', mes.horasEfectivas, 1);
+    pon('k-mes-cond', mes.conductores);
+    pon('k-mes-neto', mes.neto);
+    pon('k-mes-viajes', mes.viajes);
+    pon('k-mes-util', mes.utilizacion, 1);
+
+    // Kilómetros por turno. La barra parte el total en lo que se rodó dentro de
+    // BOLT y lo que se rodó fuera; los dos trozos suman el 100 %, así que se ve
+    // la proporción sin leer el número.
+    const ponKm = (id, k) => {
+      if (!k) return;
+      const e = $('#' + id + '-etq'); if (e) e.textContent = k.etq || '';
+      pon(id + '-tot', k.total);
+      pon(id + '-bolt', k.enBolt);
+      pon(id + '-fuera', k.fuera);
+      pon(id + '-pct', k.porcentajeFuera, 1);
+      const t = k.total || 0;
+      const pb = t > 0 ? (k.enBolt / t) * 100 : 0;
+      const bb = $('#' + id + '-bar-bolt'), bf = $('#' + id + '-bar-fuera');
+      if (bb) bb.style.width = pb + '%';
+      if (bf) bf.style.width = (t > 0 ? 100 - pb : 0) + '%';
+      const barra = $('#' + id + '-barra');
+      if (barra) barra.title = `${num(k.enBolt)} km en BOLT · ${num(k.fuera)} km fuera`;
+      // Un turno recién empezado son ceros de verdad, no un fallo. Se dice, en vez
+      // de enseñar "0 km fuera · — %", que parece la pantalla rota.
+      const vacio = t === 0;
+      const pie = $('#' + id + '-pie'), aviso = $('#' + id + '-vacio'), caja = $('#' + id + '-barra');
+      if (pie) pie.classList.toggle('hidden', vacio);
+      if (aviso) aviso.classList.toggle('hidden', !vacio);
+      if (caja) caja.classList.toggle('hidden', vacio);
+    };
+    ponKm('k-kd', (j.km || {}).dia);
+    ponKm('k-kn', (j.km || {}).noche);
+    ponKm('k-ka', (j.km || {}).ayer);
   }
 
   const b = $('#i-refrescar');
-  if (b) b.addEventListener('click', cargar);
+  if (b) b.addEventListener('click', () => cargar(true));
   cargar();
 })();
 </script>
