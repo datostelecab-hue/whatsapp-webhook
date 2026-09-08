@@ -125,10 +125,63 @@ const G = nombre => {
   (g ? g.items : []).forEach(i => { out.push(i.clave); (i.hijos || []).forEach(h => out.push(h.clave)); });
   return out;
 };
+// Todas las claves del catálogo, para los roles que las llevan todas.
+const TODO = () => CATALOGO.flatMap(g =>
+  g.items.flatMap(i => [i.clave, ...(i.hijos || []).map(h => h.clave)]));
+
+/**
+ * Con qué se ESTRENA cada rol. No es lo que puede ver para siempre: en cuanto
+ * el usuario existe, el permiso real es el suyo y se afina uno a uno en
+ * /usuarios. Esto solo evita que entre a una pantalla vacía el primer día.
+ *
+ * La regla al repartir: cada uno con lo SUYO y nada más. Es más fácil añadirle
+ * un módulo a quien lo pide que enterarse de que lleva un año viendo las
+ * nóminas de los demás.
+ */
 function semillaDeRol(rol) {
-  if (rol === 'oficina') return [...G('General'), ...G('Contratación'), ...G('RRHH'), '/visibilidad'];
-  if (rol === 'trafico') return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones')].filter(c => c !== '/documentos');
-  return [];   // superadmin/desarrollador: acceso total, sin filas
+  switch (rol) {
+    // --- los de siempre ---
+    case 'oficina': return [...G('General'), ...G('Contratación'), ...G('RRHH'), '/visibilidad'];
+    case 'trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones')].filter(c => c !== '/documentos');
+
+    // --- tráfico, en dos alturas ---
+    // El jefe lleva su área entera y además ve el negocio; el gestor hace el
+    // día a día y no entra ni en documentos ni en sanciones, que son de quien
+    // manda.
+    case 'jefe_trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones'), '/bi']
+      .filter(c => c !== '/documentos');
+    case 'gestor_trafico': return [
+      '/pendientes', '/peticiones', '/bitacora', '/plantilla',
+      ...G('Tráfico'), ...G('Flota'), '/callcenter',
+    ];
+
+    // El taller vive en los coches. Nada de personas más allá de saber quién
+    // lleva cada uno.
+    case 'taller': return ['/pendientes', '/peticiones', '/vehiculos', '/conductores', '/matching',
+      '/operaciones', '/operaciones/auditoria', '/control/km'];
+
+    // Quien recluta necesita el embudo entero y ver la plantilla para saber
+    // qué hueco está tapando. Las nóminas y las fichas sensibles, no.
+    case 'reclutador': return ['/pendientes', '/peticiones', '/plantilla', '/documentos',
+      ...G('Contratación'), '/generador', '/cobertura'];
+
+    // Administración es el papel y el dinero: contratos, nóminas, convenio.
+    // No planifica ni ve el directo.
+    case 'administracion': return ['/pendientes', '/peticiones', '/plantilla', '/documentos', '/bitacora',
+      '/rrhh', '/fichas', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett'];
+
+    // Operaciones es el control de lo que pasa en la calle.
+    case 'operaciones': return [...G('General'), ...G('Operaciones'), ...G('Flota'),
+      '/control', '/flota-viva', '/control/km', '/control/reportes', '/visibilidad', '/bitacora']
+      .filter(c => c !== '/documentos');
+
+    // Dirección lo ve TODO, pero por la matriz y no por `acceso_total`: así se
+    // ve en /usuarios lo que alcanza y se le puede quitar algo sin tocar código.
+    case 'gerencia':
+    case 'directiva': return TODO();
+
+    default: return [];   // superadmin/desarrollador: acceso total, sin filas
+  }
 }
 
 // ── Lectura con caché (el control de acceso corre en cada petición) ──────────

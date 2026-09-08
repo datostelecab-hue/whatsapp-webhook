@@ -19,8 +19,31 @@ const db = require('./db');
 const permisos = require('./permisos');
 
 const TZ = 'Europe/Madrid';
-const ROLES = ['superadmin', 'desarrollador', 'oficina', 'trafico'];
 const ESTADOS_U = { PROVISIONAL: 'provisional', ACTIVO: 'activo', BLOQUEADO: 'bloqueado' };
+
+// ── LOS ROLES SALEN DE LA BASE ──────────────────────────────────────────────
+// Antes eran una lista escrita a mano aquí (`['superadmin','desarrollador',
+// 'oficina','trafico']`) y otra copia con sus nombres bonitos en cada vista.
+// Añadir un rol obligaba a acordarse de los tres sitios, y el que se olvidara
+// dejaba un rol que existe en la tabla pero que nadie puede elegir.
+//
+// Con caché corta porque esto se pregunta en cada carga de /usuarios y la
+// tabla cambia una vez al año.
+const TTL_ROLES = 60 * 1000;
+let cacheRoles = null;
+
+async function roles() {
+  if (cacheRoles && Date.now() - cacheRoles.ts < TTL_ROLES) return cacheRoles.lista;
+  const r = await db.consulta('SELECT codigo, etiqueta, acceso_total FROM rol ORDER BY id');
+  const lista = r.rows.map(x => ({ codigo: x.codigo, etiqueta: x.etiqueta, accesoTotal: !!x.acceso_total }));
+  cacheRoles = { lista, ts: Date.now() };
+  return lista;
+}
+
+/** ¿Existe ese rol? Lo que sustituye a `ROLES.includes(...)`. */
+async function esRol(codigo) {
+  return (await roles()).some(r => r.codigo === codigo);
+}
 
 function fmt(ts) {
   if (!ts) return '';
@@ -104,7 +127,7 @@ async function buscarUsuario(email) {
 
 async function rolId(codigo) {
   const r = await db.consulta('SELECT id FROM rol WHERE codigo = $1', [codigo]);
-  if (!r.rows.length) throw new Error('Rol no válido');
+  if (!r.rows.length) throw new Error(`Rol no válido: "${codigo}"`);
   return r.rows[0].id;
 }
 
@@ -112,7 +135,7 @@ async function rolId(codigo) {
 async function crearUsuario({ email, nombre, apellidos, telefono, rol, creado_por }) {
   const e = normalizarEmail(email);
   if (!esEmail(e)) throw new Error('Email no válido');
-  if (!ROLES.includes(rol)) throw new Error('Rol no válido');
+  if (!await esRol(rol)) throw new Error(`Rol no válido: "${rol}"`);
   if (!String(nombre || '').trim()) throw new Error('Falta el nombre');
   if (await buscarUsuario(e)) throw new Error('Ya existe un usuario con ese email');
 
@@ -200,7 +223,7 @@ function descifrarPassCorreo(u) {
 const tienePassCorreo = u => !!(u && u.pass_correo);
 
 module.exports = {
-  ROLES, ESTADOS_U,
+  roles, esRol, ESTADOS_U,
   leerUsuarios, buscarUsuario, crearUsuario, actualizarUsuario,
   fijarPassword, generarTokenReset, tokenResetValido, registrarAcceso,
   guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,

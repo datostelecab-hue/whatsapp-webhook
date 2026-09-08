@@ -43,15 +43,29 @@
 
   let D = null, SEL = null;
 
-  const ROLN = { superadmin: 'Admin', desarrollador: 'Desarrollador', oficina: 'Oficina', trafico: 'Tráfico' };
+  // El NOMBRE de cada rol sale de la tabla `rol`, no de una copia escrita aquí:
+  // así un rol nuevo aparece solo, con su etiqueta, sin tocar esta pantalla.
+  const ROLN = r => ((D && D.roles || []).find(x => x.codigo === r) || {}).etiqueta || r;
+
+  // El COLOR sí vive aquí, porque es cosa de la pantalla y no del dato. Los que
+  // no tienen uno propio caen en el gris, que se lee igual de bien.
   const ROL_TONO = {
-    superadmin: 'bg-telecab-gold/15 text-telecab-gold',
-    desarrollador: 'bg-telecab-violet/15 text-telecab-violet',
-    oficina: 'bg-sky-500/15 text-sky-500',
-    trafico: 'bg-emerald-500/15 text-emerald-500',
+    superadmin:     'bg-telecab-gold/15 text-telecab-gold',
+    desarrollador:  'bg-telecab-violet/15 text-telecab-violet',
+    oficina:        'bg-sky-500/15 text-sky-500',
+    trafico:        'bg-emerald-500/15 text-emerald-500',
+    jefe_trafico:   'bg-emerald-500/15 text-emerald-500',
+    gestor_trafico: 'bg-emerald-500/10 text-emerald-400',
+    operaciones:    'bg-amber-500/15 text-amber-500',
+    taller:         'bg-orange-500/15 text-orange-400',
+    reclutador:     'bg-sky-500/10 text-sky-400',
+    administracion: 'bg-indigo-500/15 text-indigo-400',
+    gerencia:       'bg-telecab-gold/10 text-telecab-gold',
+    directiva:      'bg-telecab-gold/15 text-telecab-gold',
   };
   const EST_TONO = { activo: 'bg-emerald-500', provisional: 'bg-amber-500', bloqueado: 'bg-red-500' };
-  const chipRol = r => '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold ' + (ROL_TONO[r] || '') + '">' + esc(ROLN[r] || r) + '</span>';
+  const chipRol = r => '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold '
+    + (ROL_TONO[r] || 'bg-telecab-card2 text-telecab-muted') + '">' + esc(ROLN(r)) + '</span>';
 
   async function api(url, body) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -89,7 +103,8 @@
     const matriz = u.accesoTotal
       ? `<div class="px-4 py-6 text-sm text-telecab-muted">
            <i class="fa-solid fa-crown text-telecab-gold mr-1"></i>
-           <b class="text-telecab-text">${esc(ROLN[u.rol])}</b>: entra a TODOS los módulos por su rol. La matriz solo aplica a Oficina y Tráfico.
+           <b class="text-telecab-text">${esc(ROLN(u.rol))}</b>: entra a TODOS los módulos por su rol, así que no lleva matriz.
+           Solo la tienen Admin y Desarrollador; el resto de roles se afinan aquí uno a uno.
          </div>`
       : `<div class="px-4 py-3">
           <div class="flex flex-wrap items-center gap-2 mb-3">
@@ -143,7 +158,7 @@
         </div>
         <div class="flex items-center gap-2">
           <select data-rol class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text">
-            ${D.roles.map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROLN[r] || r}</option>`).join('')}
+            ${D.roles.map(r => `<option value="${esc(r.codigo)}" ${u.rol === r.codigo ? 'selected' : ''}>${esc(r.etiqueta)}</option>`).join('')}
           </select>
           <button data-estado class="px-3 py-1.5 rounded-lg border text-xs ${u.estado === 'bloqueado'
             ? 'border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10'
@@ -219,8 +234,9 @@
       { id: 'telefono', etiqueta: 'Teléfono', obligatorio: true },
       { id: 'email', etiqueta: 'Correo (será su usuario)', obligatorio: true },
       { id: 'rol', etiqueta: 'Rol', tipo: 'lista', obligatorio: true, valor: 'trafico',
-        opciones: D.roles.map(r => ({ valor: r, texto: ROLN[r] || r })),
-        ayuda: 'Oficina y Tráfico entran con la plantilla típica de su rol; luego afinas su matriz. Admin y Desarrollador entran a todo.' },
+        opciones: D.roles.map(r => ({ valor: r.codigo, texto: r.etiqueta })),
+        ayuda: 'Entra con los módulos típicos de su rol y luego se afina su matriz aquí mismo. '
+             + 'Admin y Desarrollador son los únicos que entran a todo sin matriz.' },
     ], { textoBoton: 'Crear' });
     if (!v || !v.email) return;
     try {

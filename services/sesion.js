@@ -152,9 +152,23 @@ async function controlAcceso(req, res, next) {
 
 // Deja en res.locals.permisos las claves del usuario (null = acceso total), para
 // que el menú pinte solo lo que puede abrir. Va DESPUÉS de controlAcceso.
+//
+// Y de paso el NOMBRE de su rol, que es lo que se lee bajo su nombre en la
+// cabecera. Sale de la tabla `rol` (con caché) y no de una lista escrita en la
+// plantilla: si no, cada rol nuevo aparecería ahí con su código en crudo
+// —"jefe_trafico"— hasta que alguien se acordara de esta vista.
 async function cargarPermisos(req, res, next) {
   const u = req.usuario;
   res.locals.permisos = null;
+  res.locals.rolNombre = u ? u.rol : '';
+  if (u) {
+    try {
+      // `usuarios` se pide aquí dentro y no arriba: los dos módulos se llaman
+      // entre sí y en el tope se quedarían a medio cargar.
+      const r = (await require('./usuarios').roles()).find(x => x.codigo === u.rol);
+      if (r) res.locals.rolNombre = r.etiqueta;
+    } catch (_) { /* con el código basta para pintar la cabecera */ }
+  }
   if (u && !ADMIN_TOTAL.includes(u.rol)) {
     try {
       const id = await idDeSesion(u);

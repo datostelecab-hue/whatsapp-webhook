@@ -39,7 +39,7 @@ router.get('/api/datos', async (req, res) => {
       permisos: porUsuario,
       catalogo: permisos.CATALOGO,
       semillas: { oficina: permisos.semillaDeRol('oficina'), trafico: permisos.semillaDeRol('trafico') },
-      roles: usuarios.ROLES,
+      roles: await usuarios.roles(),
       yo: req.usuario.email,
     });
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
@@ -83,7 +83,7 @@ router.post('/rol', async (req, res) => {
   try {
     const b = req.body || {};
     const email = usuarios.normalizarEmail(b.email);
-    if (!usuarios.ROLES.includes(b.rol)) throw new Error('Rol no válido');
+    if (!await usuarios.esRol(b.rol)) throw new Error(`Rol no válido: "${b.rol}"`);
     if (email === usuarios.normalizarEmail(req.usuario.email) && b.rol !== 'desarrollador') {
       throw new Error('No puedes quitarte a ti mismo el rol de desarrollador');
     }

@@ -339,7 +339,8 @@
       </button>
       <h1 class="font-semibold text-telecab-text"><%= titulo || 'Gestión' %></h1>
 
-      <% const ROL_NOMBRE = { superadmin: 'Admin', desarrollador: 'Desarrollador', oficina: 'Oficina', trafico: 'Tráfico' }; %>
+      <%# El nombre del rol viene del servidor (services/sesion.js, desde la tabla
+          `rol`). Antes era una lista aquí y cada rol nuevo salía en crudo. %>
       <div class="ml-auto flex items-center gap-2">
 
         <!-- Buzón de pendientes -->
@@ -363,7 +364,7 @@
         <div class="flex items-center gap-2 pl-2 ml-1 border-l border-telecab-border">
           <div class="hidden sm:block text-right leading-tight">
             <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '' %></span>
-            <span class="block text-[10px] uppercase tracking-wide text-telecab-gold"><%= (typeof usuario !== 'undefined' && usuario && (ROL_NOMBRE[usuario.rol] || usuario.rol)) || '' %></span>
+            <span class="block text-[10px] uppercase tracking-wide text-telecab-gold"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
           </div>
           <a href="/logout" title="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
             <i class="fa-solid fa-arrow-right-from-bracket"></i>
