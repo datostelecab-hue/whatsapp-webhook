@@ -658,6 +658,65 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
 }
 
 /**
+ * AÑADE un tramo de ausencia suelto, sin tocar nada de lo que ya hay.
+ *
+ * Es lo que hace falta cuando alguien pide las vacaciones partidas: 13 días
+ * este mes y 3 en noviembre. `cambiarSituacion` no sirve para el segundo,
+ * porque esa REEMPLAZA —cierra lo vigente el día antes—, y registrar el de
+ * noviembre le cerraría hoy la baja médica que tenga abierta.
+ *
+ * Aquí no se cierra ni se recorta nada: o el tramo cabe en un hueco libre, o se
+ * dice cuál es el que estorba. Nada se pierde en silencio.
+ */
+async function anadirAusencia(id, { estado, desde, hasta, motivo }, { usuarioId } = {}) {
+  if (!estado) throw new Error('Falta la situación');
+  if (!desde) throw new Error('Falta el día en que empieza');
+  const cat = (await db.consulta(
+    `SELECT codigo, etiqueta, fin_previsible, es_fin_contrato, es_ausencia
+       FROM cat_estado_conductor WHERE codigo = $1`, [estado])).rows[0];
+  if (!cat) throw new Error(`No existe la situación "${estado}"`);
+
+  // Irse de la empresa no es un tramo: es el final del contrato, y tiene su
+  // propio camino. Y "activo" tampoco: no se planifica estar trabajando.
+  if (cat.es_fin_contrato) throw new Error('La baja en la empresa no es un tramo: usa "Cambiar situación".');
+  if (!cat.es_ausencia) throw new Error('Aquí solo se añaden ausencias. Para volver al trabajo usa "Cambiar situación".');
+
+  const fin = hasta || null;
+  if (cat.fin_previsible && !fin) {
+    throw new Error(`Hace falta la fecha de vuelta: unas ${cat.etiqueta.toLowerCase()} sin fecha de fin no terminan nunca ` +
+      'y esa persona desaparece del cuadrante indefinidamente.');
+  }
+  if (fin && fin < desde) throw new Error('La vuelta no puede ser anterior al día en que empieza la ausencia');
+
+  // El hueco se comprueba aquí para poder decir CUÁL estorba. La base también
+  // lo impide —hay una restricción de exclusión—, pero su error no dice nada.
+  const choca = (await db.consulta(
+    `SELECT h.desde, h.hasta, COALESCE(c.etiqueta, h.estado) AS etiqueta
+       FROM conductor_estado_hist h
+       LEFT JOIN cat_estado_conductor c ON c.codigo = h.estado
+      WHERE h.conductor_id = $1
+        AND h.desde <= COALESCE($3::date, 'infinity'::date)
+        AND COALESCE(h.hasta, 'infinity'::date) >= $2::date
+      ORDER BY h.desde LIMIT 1`, [id, desde, fin])).rows[0];
+  if (choca) {
+    throw new Error(`Esas fechas pisan otro tramo suyo: ${choca.etiqueta}, `
+      + (choca.hasta
+          ? `del ${vig.dia(choca.desde)} al ${vig.dia(choca.hasta)}.`
+          // Una ausencia SIN FIN lo tapa todo hacia adelante, así que no hay
+          // hueco posible mientras siga abierta. Se dice, en vez de dejar al
+          // otro probando fechas a ver cuál le entra.
+          : `abierta desde el ${vig.dia(choca.desde)} y sin fecha de vuelta: mientras siga así `
+            + 'no cabe ningún tramo después. Ponle primero cuándo vuelve.'));
+  }
+
+  const r = await db.consulta(
+    `INSERT INTO conductor_estado_hist (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id)
+     VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7) RETURNING *`,
+    [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null, usuarioId || null]);
+  return { anadida: r.rows[0] };
+}
+
+/**
  * CORRIGE una ausencia que ya está puesta: sus fechas o su motivo.
  *
  * `cambiarSituacion` no sirve para esto: esa abre una situación NUEVA desde una
@@ -1055,7 +1114,7 @@ module.exports = {
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
-  crear, actualizar, cambiarSituacion, editarAusencia, borrarAusencia,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia,
   cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,

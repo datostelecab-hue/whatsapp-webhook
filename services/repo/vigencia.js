@@ -155,10 +155,18 @@ async function reemplazar(tipo, entidadId, datos, { desde, cerrarAnterior = true
         [entidadId, dia]);
       // Una vigencia que empezaba HOY y se sustituye hoy mismo no llega a
       // existir: se borra en vez de dejarla con `hasta` anterior a `desde`.
+      //
+      // PERO SOLO LO QUE SE PISA CON LA NUEVA. Antes se borraba TODO lo que
+      // empezara después, y eso se cargaba en silencio los tramos ya
+      // planificados: a quien tenía 13 días en septiembre y 3 en noviembre,
+      // dar de alta el de septiembre le borraba el de noviembre. Si la nueva
+      // termina, lo que empiece después de su fin no le estorba y se queda.
+      const finNuevo = datos[d.hasta] || null;
       await c.query(
         `DELETE FROM ${d.tabla}
-          WHERE ${d.entidad} = $1 AND ${d.desde} >= COALESCE($2::date, CURRENT_DATE)`,
-        [entidadId, dia]);
+          WHERE ${d.entidad} = $1 AND ${d.desde} >= COALESCE($2::date, CURRENT_DATE)
+            AND ($3::date IS NULL OR ${d.desde} <= $3::date)`,
+        [entidadId, dia, finNuevo]);
     }
     const campos = { [d.entidad]: entidadId, [d.desde]: dia, ...datos };
     const cols = Object.keys(campos);

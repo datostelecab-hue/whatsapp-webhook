@@ -157,6 +157,32 @@
   }
 
   /**
+   * AÑADE un tramo de ausencia sin tocar lo que ya hay. Para las vacaciones
+   * partidas: 13 días este mes y 3 en noviembre.
+   */
+  async function anadirAusencia(d) {
+    const aus = (CAT.situaciones || []).filter(x => x.es_ausencia && !x.es_fin_contrato);
+    const v = await pedirDatos(`Añadir un tramo a ${d.nombre_completo}`, [
+      { id: 'estado', etiqueta: 'Situación', tipo: 'lista', valor: (aus[0] || {}).codigo,
+        opciones: aus.map(x => ({ valor: x.codigo, texto: x.etiqueta })) },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha' },
+      { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha',
+        ayuda: 'El último día fuera. Al siguiente vuelve al cuadrante solo.' },
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
+    ], { nota: 'Esto NO cambia su situación de hoy: solo apunta ese tramo en su historial. '
+             + 'Es lo que se usa para las vacaciones partidas.' });
+    if (!v) return;
+    const cat = (CAT.situaciones || []).find(x => x.codigo === v.estado);
+    if (cat && cat.fin_previsible && !v.hasta) {
+      await Dialogo.aviso({ titulo: 'Falta la fecha de vuelta', tono: 'aviso',
+        texto: `Unas ${cat.etiqueta.toLowerCase()} sin fecha de vuelta no terminan nunca: `
+             + 'esa persona desaparecería del cuadrante.' });
+      return anadirAusencia(d);
+    }
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/ausencia`, 'POST', v));
+  }
+
+  /**
    * CORRIGE una ausencia que ya está puesta. No es lo mismo que cambiar la
    * situación: aquella abre una nueva desde hoy y cierra la anterior —lo
    * correcto cuando alguien vuelve antes o se pone malo—; esta toca la fila que
@@ -977,6 +1003,12 @@
         },
         {
           titulo: 'Historial de situaciones', icono: 'fa-clock-rotate-left',
+          // Añadir un tramo va AQUÍ y no arriba con "Cambiar situación": no es
+          // lo mismo cambiar lo de hoy que apuntar unos días de noviembre.
+          acciones: [
+            { texto: 'Añadir tramo', icono: 'fa-plus',
+              visible: d => d.empleo_vigente, onClick: anadirAusencia },
+          ],
           tabla: {
             datos: d => d.situaciones,
             vacio: 'Nunca ha estado ausente.',

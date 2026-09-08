@@ -150,6 +150,11 @@ router.put('/api/conductor/:id', responde(async req =>
 router.post('/api/conductor/:id/situacion', responde(async req =>
   ({ vigencia: await con.cambiarSituacion(Number(req.params.id), req.body || {}, await quien(req)) })));
 
+// AÑADIR un tramo de ausencia suelto: las vacaciones partidas, 13 días este
+// mes y 3 en noviembre. No reemplaza nada; si pisa otro tramo, lo dice.
+router.post('/api/conductor/:id/ausencia', responde(async req =>
+  con.anadirAusencia(Number(req.params.id), req.body || {}, await quien(req))));
+
 // CORREGIR una ausencia ya puesta, o borrarla. No es lo mismo que POST: esa
 // abre una situación nueva desde una fecha; estas dos tocan la fila que ya hay,
 // que es lo que hace falta cuando lo que se metió está mal.
