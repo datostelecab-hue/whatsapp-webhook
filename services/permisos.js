@@ -90,6 +90,7 @@ const ALIAS = { '/planificador-v2': '/planificador' };
 const RUTA_A_CLAVE = [
   ['/control/reporte/',           '/control/reportes'],
   ['/control/sankey/',            '/control/reportes'],
+  ['/control/cascada/',           '/control/reportes'],
   ['/control/turnos/',            '/control/reportes'],
   ['/control/planificador/',      '/control/reportes'],
   ['/control/reporte-turnos/',    '/control/reportes'],

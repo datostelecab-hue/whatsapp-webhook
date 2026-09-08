@@ -239,6 +239,32 @@ router.get('/reporte/excel', async (req, res) => {
 });
 
 // PDF del Sankey de flujo de KM del día (mismo `dia`=key que el reporte de horas).
+// LA CASCADA: el mismo dato que el Sankey, contado como una cuenta de
+// resultados. Se hizo porque dirección no leía el Sankey —hay que explicar cómo
+// se sigue una cinta de grosor variable— y un gráfico que hay que explicar no
+// sirve para una reunión. El Sankey se queda ahí abajo para quien lo prefiera.
+router.get('/cascada/pdf', async (req, res) => {
+  try {
+    const key = [1, 2, 3].includes(Number(req.query.dia)) ? Number(req.query.dia) : 1;
+    const { Y, M, D, str: fecha, idx } = justificantes.fechaDeClave(key);
+    const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
+    await require('../services/flotaViva/db').preparar();
+    const s = await require('../services/flotaViva/rutas').sankeyFlota(iso);
+    const diaSem = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][idx];
+    const pdf = await require('../services/kmCascadaPdf').generarPdfCascada({
+      titulo: `${diaSem} ${fecha} · jornada completa`,
+      subtitulo: 'Cada kilómetro que rodó la flota, repartido por lo que estaba haciendo el conductor en ese momento.',
+      tramos: s.tramos, matriculas: s.matriculas,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="km-cascada-${fecha.replace(/\//g, '-')}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    console.error('❌ [Control] /cascada/pdf:', e.stack || e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 // Reutiliza generarPdfFlujo de la Auditoría; el dato va POR MATRÍCULA (no duplica).
 router.get('/sankey/pdf', async (req, res) => {
   try {

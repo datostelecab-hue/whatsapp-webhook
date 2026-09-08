@@ -20,8 +20,14 @@
         <i class="fa-solid fa-clock text-telecab-gold text-lg mt-0.5"></i>
         <div class="flex-1">
           <div class="font-semibold text-telecab-text">Reporte de horas del día</div>
-          <p class="text-sm text-telecab-muted mt-0.5">De un clic: el <b>Excel</b> (horas efectivas de la jornada 05→05, KM y matrícula por conductor, con quien salió fuera del cuadrante) y el <b>PDF del Sankey</b> (flujo de KM de la flota, por coche). Cuadra con Visibilidad.</p>
-          <div class="flex items-center gap-2 mt-3">
+          <p class="text-sm text-telecab-muted mt-0.5">De un clic: el <b>Excel</b> (horas efectivas de la jornada 05→05, KM y matrícula por conductor, con quien salió fuera del cuadrante) y el <b>PDF de la cascada de KM</b>. Cuadra con Visibilidad.</p>
+          <p class="text-xs text-telecab-muted mt-2">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            La cascada es el gráfico para enseñar arriba: parte de todo lo que rodó la flota y va restando
+            —sin nadie fichado, en descanso, esperando aviso— hasta los km con pasajero. Se lee como una cuenta
+            de resultados y no hace falta explicarla.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 mt-3">
             <select id="r-horas-dia" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
               <option value="1">Ayer</option>
               <option value="2">Hace 2 días</option>
@@ -29,7 +35,12 @@
             </select>
             <button id="r-horas" type="button"
                class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
-              <i class="fa-solid fa-download mr-1"></i> Excel + Sankey
+              <i class="fa-solid fa-download mr-1"></i> Excel + cascada
+            </button>
+            <button id="r-sankey" type="button"
+               class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
+               title="El mismo dato en diagrama de flujo. Enseña por dónde se va cada km, pero hay que saber leerlo.">
+              <i class="fa-solid fa-diagram-project mr-1"></i> Sankey
             </button>
           </div>
         </div>
@@ -169,8 +180,12 @@
   $('#r-horas').addEventListener('click', () => {
     const key = $('#r-horas-dia').value;
     baja('/control/reporte/excel?dia=' + encodeURIComponent(key));
-    setTimeout(() => baja('/control/sankey/pdf?dia=' + encodeURIComponent(key)), 500);
+    setTimeout(() => baja('/control/cascada/pdf?dia=' + encodeURIComponent(key)), 500);
   });
+  // El Sankey sigue estando, aparte: a quien ya sabe leerlo le dice más que la
+  // cascada, porque enseña los dos turnos a la vez y por dónde se va cada km.
+  $('#r-sankey').addEventListener('click', () =>
+    baja('/control/sankey/pdf?dia=' + encodeURIComponent($('#r-horas-dia').value)));
 
   // ── Asistencia ────────────────────────────────────────────────────────────
   // Las fechas por defecto las decide el SERVIDOR (día 1 del mes → ayer, en hora
