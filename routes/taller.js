@@ -67,6 +67,25 @@ router.get('/api/cuadro', responde(async req => ({
 
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await repo.ficha(req.params.id) })));
 
+// El informe en PDF. Va SIEMPRE con la flota entera, no con lo que haya
+// filtrado en pantalla: el papel se lleva a una reunión y allí nadie sabe qué
+// filtro estaba puesto cuando se imprimió.
+router.get('/informe.pdf', async (req, res) => {
+  try {
+    const datos = await repo.todo();
+    const pdf = await require('../services/tallerPdf').generar(datos);
+    console.log(`📄 [Taller] informe: ${datos.resumen.total} coches, ` +
+      `${datos.resumen.toca} tocan revisión, ${datos.historial.length} apuntes`);
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="taller-${hoy}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    console.error('❌ [Taller] /informe.pdf:', e.stack || e.message);
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
 router.post('/api/mantenimiento', responde(exigeApuntar((req, usuarioId) =>
   repo.registrar(req.body, { usuarioId }))));
 

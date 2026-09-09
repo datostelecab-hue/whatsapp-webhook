@@ -351,7 +351,45 @@ async function intervalo(datos = {}) {
   return { id: vehiculoId, intervalo: km || INTERVALO };
 }
 
+/**
+ * TODO lo del módulo de una vez: el cuadro, las cifras y el historial entero.
+ * Es lo que se lleva el informe en PDF, y se saca de aquí y no de la vista para
+ * que el papel y la pantalla no puedan contar cosas distintas.
+ */
+async function todo() {
+  const filas = await cuadro();
+  const cuenta = c => filas.filter(f => f.estado === c).length;
+  const h = await db.consulta(`
+    SELECT v.matricula, m.tipo, to_char(m.fecha, 'YYYY-MM-DD') AS fecha, m.km,
+           m.taller, m.coste_cent, m.descripcion,
+           to_char(m.creado_at, 'YYYY-MM-DD') AS creado_at, u.nombre AS usuario
+      FROM mantenimiento m
+      JOIN vehiculo v ON v.id = m.vehiculo_id
+      LEFT JOIN usuario u ON u.id = m.usuario_id
+     WHERE m.anulado_at IS NULL AND v.baja_at IS NULL
+     ORDER BY v.matricula, m.km DESC NULLS LAST, m.id DESC`);
+
+  return {
+    filas,
+    intervalo: INTERVALO,
+    resumen: {
+      total: filas.length,
+      toca: cuenta('toca'), pronto: cuenta('pronto'), ok: cuenta('ok'),
+      sinDato: cuenta('sin_dato'), revisar: cuenta('revisar'),
+      sinOdometro: filas.filter(f => f.odometro == null).length,
+      sinRevision: filas.filter(f => f.revisionKm == null).length,
+    },
+    historial: h.rows.map(m => ({
+      matricula: m.matricula, tipo: m.tipo,
+      tipoEtiqueta: (TIPOS.find(t => t.codigo === m.tipo) || {}).etiqueta || m.tipo,
+      fecha: m.fecha, km: m.km == null ? null : Number(m.km),
+      taller: m.taller, coste: m.coste_cent == null ? null : Number(m.coste_cent) / 100,
+      descripcion: m.descripcion, creadoAt: m.creado_at, usuario: m.usuario,
+    })),
+  };
+}
+
 module.exports = {
   INTERVALO, TIPOS, ESTADOS, CODIGOS, CUENTAN, IMPOSIBLE,
-  cuadro, resumen, ficha, registrar, anular, anclar, intervalo,
+  cuadro, resumen, ficha, todo, registrar, anular, anclar, intervalo,
 };
