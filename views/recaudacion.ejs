@@ -88,6 +88,28 @@
   <!-- ── Panel: el recibo / el descuento / el cierre ──────────────────── -->
   <div id="r-panel" class="hidden mb-4"></div>
 
+  <!-- ── Filtros del cuadro ───────────────────────────────────────────── -->
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <div class="relative flex-1 min-w-[220px]">
+      <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
+      <input id="f-busca" type="search" placeholder="Buscar conductor…"
+        class="w-full pl-9 pr-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+    </div>
+    <select id="f-estado" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+      <option value="deuda">Solo los que deben</option>
+      <option value="">Todos</option>
+      <option value="dia">Al día</option>
+      <option value="favor">A su favor</option>
+      <option value="movimiento">Con movimiento en la quincena</option>
+    </select>
+    <select id="f-plantilla" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+      <option value="">En plantilla y fuera</option>
+      <option value="si">Solo en plantilla</option>
+      <option value="no">Solo los que ya no están</option>
+    </select>
+    <span id="f-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
+  </div>
+
   <!-- ── El cuadro, o la ficha de uno ─────────────────────────────────── -->
   <div id="r-ficha" class="hidden mb-4"></div>
   <div id="r-cuadro" class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
@@ -137,8 +159,99 @@
     if (!conductores) conductores = (await pedir('/recaudacion/api/candidatos')).conductores;
     return conductores;
   }
-  const opcionesConductor = () => conductores.map(c =>
-    '<option value="' + esc(c.id) + '">' + esc(c.nombre) + (c.enPlantilla ? '' : ' (ya no está)') + '</option>').join('');
+  /**
+   * BUSCADOR DE CONDUCTOR. Un <select> con doscientos nombres obliga a
+   * recorrerlos con la rueda, sale con la pinta que le pone el sistema
+   * operativo y no hay forma de maquetarlo. Esto es un campo de texto que
+   * filtra una lista nuestra: se escribe "gaz" y aparece Gaztelu.
+   *
+   * Guarda el id en un campo oculto, así que quien lo lee lo lee igual que
+   * antes: `[data-cond].value`.
+   */
+  function comboConductor(id, ini) {
+    return '<div class="relative" data-combo>' +
+      '<input data-combo-txt type="text" autocomplete="off" placeholder="Escribe un nombre…" ' +
+        'class="w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text">' +
+      '<input type="hidden" ' + id + '>' +
+      '<div data-combo-lista class="hidden absolute z-30 left-0 right-0 mt-1 max-h-60 overflow-auto ' +
+        'bg-telecab-card border border-telecab-border rounded-xl shadow-soft"></div>' +
+    '</div>';
+  }
+
+  /** Le da vida al buscador: filtrar, elegir, teclado. */
+  function activarCombo(caja, alElegir) {
+    const txt = caja.querySelector('[data-combo-txt]');
+    const oculto = caja.querySelector('input[type=hidden]');
+    const lista = caja.querySelector('[data-combo-lista]');
+    let marcado = -1, visibles = [];
+
+    // Sin tildes y sin mayúsculas: "muñoz" encuentra a MUNOZ y al revés.
+    const llave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    const pintar = () => {
+      const q = llave(txt.value.trim());
+      visibles = q ? conductores.filter(c => llave(c.nombre).includes(q)) : conductores;
+      marcado = visibles.length ? 0 : -1;
+      lista.innerHTML = visibles.length
+        ? visibles.slice(0, 80).map((c, i) =>
+            '<button type="button" data-i="' + i + '" class="w-full text-left px-3 py-2 text-sm ' +
+              (i === marcado ? 'bg-telecab-gold/15 text-telecab-text' : 'text-telecab-text hover:bg-telecab-card2') + '">' +
+              esc(c.nombre) +
+              (c.enPlantilla ? '' : '<span class="ml-1 text-[10px] text-telecab-muted">ya no está</span>') +
+            '</button>').join('') +
+          (visibles.length > 80 ? '<p class="px-3 py-2 text-[11px] text-telecab-muted">… y ' + (visibles.length - 80) + ' más. Afina la búsqueda.</p>' : '')
+        : '<p class="px-3 py-2 text-sm text-telecab-muted">Nadie con ese nombre.</p>';
+      lista.classList.remove('hidden');
+      lista.querySelectorAll('[data-i]').forEach(b =>
+        b.addEventListener('mousedown', e => { e.preventDefault(); elegir(visibles[Number(b.dataset.i)]); }));
+    };
+    const elegir = c => {
+      if (!c) return;
+      oculto.value = c.id; txt.value = c.nombre;
+      lista.classList.add('hidden');
+      if (alElegir) alElegir(c);
+    };
+    const mover = paso => {
+      if (!visibles.length) return;
+      marcado = (marcado + paso + visibles.length) % visibles.length;
+      lista.querySelectorAll('[data-i]').forEach((b, i) => {
+        b.className = 'w-full text-left px-3 py-2 text-sm ' +
+          (i === marcado ? 'bg-telecab-gold/15 text-telecab-text' : 'text-telecab-text hover:bg-telecab-card2');
+        if (i === marcado) b.scrollIntoView({ block: 'nearest' });
+      });
+    };
+
+    txt.addEventListener('input', () => { oculto.value = ''; pintar(); });
+    txt.addEventListener('focus', pintar);
+    txt.addEventListener('blur', () => setTimeout(() => lista.classList.add('hidden'), 120));
+    txt.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); mover(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mover(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); elegir(visibles[marcado]); }
+      else if (e.key === 'Escape') lista.classList.add('hidden');
+    });
+    return { fijar: cid => { const c = conductores.find(x => String(x.id) === String(cid)); if (c) elegir(c); } };
+  }
+
+  // ── Los filtros del cuadro ───────────────────────────────────────────
+  // Por defecto salen SOLO los que deben, que es a lo que se entra: la lista
+  // entera con cincuenta al día no dice nada.
+  const llaveTxt = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  function filtrar(filas) {
+    const q = llaveTxt(($('#f-busca').value || '').trim());
+    const est = $('#f-estado').value;
+    const pl = $('#f-plantilla').value;
+    return filas.filter(f => {
+      if (q && !llaveTxt(f.conductor).includes(q)) return false;
+      if (pl === 'si' && !f.enPlantilla) return false;
+      if (pl === 'no' && f.enPlantilla) return false;
+      if (est === 'deuda' && !(f.pendiente > 0.005)) return false;
+      if (est === 'dia' && Math.abs(f.pendiente) >= 0.005) return false;
+      if (est === 'favor' && !(f.pendiente < -0.005)) return false;
+      if (est === 'movimiento' && !(f.presencial || f.nomina || f.entrega)) return false;
+      return true;
+    });
+  }
 
   // ── El cuadre de caja: lo que hay y lo que falta ─────────────────────
   function pintarCaja() {
@@ -218,6 +331,17 @@
     if (!D.filas.length) {
       $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
         'Nada en esta quincena: ni cierre de BOLT cargado, ni dinero entregado, ni nadie arrastrando deuda.</p>';
+      $('#f-cuenta').textContent = '';
+      return;
+    }
+
+    const filas = filtrar(D.filas);
+    $('#f-cuenta').textContent = filas.length === D.filas.length
+      ? D.filas.length + ' conductores'
+      : filas.length + ' de ' + D.filas.length + ' conductores';
+    if (!filas.length) {
+      $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
+        'Nadie con esos filtros.</p>';
       return;
     }
     const cab = ['Conductor', 'Efectivo', 'En mano', 'Nómina', 'Devuelto', 'De antes', 'Pendiente'];
@@ -226,12 +350,14 @@
       '<thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted border-b border-telecab-border">' +
         cab.map((c, i) => '<th class="px-3 py-2.5 ' + (i ? 'text-right' : 'text-left') + ' font-semibold whitespace-nowrap">' + c + '</th>').join('') +
         '<th class="px-3 py-2.5"></th></tr></thead><tbody>' +
-      D.filas.map(f =>
+      filas.map(f =>
         '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition" data-cid="' + esc(f.conductorId) + '">' +
           '<td class="px-3 py-2.5"><button data-ficha class="text-left font-medium hover:text-telecab-gold transition">' +
             esc(f.conductor) + '</button>' +
             (f.enPlantilla ? '' : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">ya no está</span>') + '</td>' +
-          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.deuda) + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.deuda) +
+            (f.ajuste ? '<span class="ml-1 text-[10px] px-1 rounded bg-telecab-gold/20 text-telecab-gold font-bold" ' +
+              'title="' + esc(f.ajusteMotivo) + '">+' + eur(f.ajuste) + '</span>' : '') + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.presencial, 'text-telecab-green') + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.nomina, 'text-sky-400') + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.entrega, 'text-telecab-muted') + '</td>' +
@@ -263,9 +389,8 @@
         '</div>' +
         '<div class="p-4 space-y-4">' +
           '<div class="grid sm:grid-cols-[2fr,1fr,1fr] gap-3">' +
-            '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Recibí de' +
-              '<select data-cond class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text">' +
-                opcionesConductor() + '</select></label>' +
+            '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Recibí de' +
+              '<div class="mt-1">' + comboConductor('data-cond') + '</div></div>' +
             '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Fecha' +
               '<input data-fecha type="date" value="' + hoyIso() + '" max="' + hoyIso() + '" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text"></label>' +
             '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Importe' +
@@ -303,7 +428,8 @@
         '</div>' +
       '</div>';
 
-    if (conductorId) p.querySelector('[data-cond]').value = String(conductorId);
+    const combo = activarCombo(p.querySelector('[data-combo]'));
+    if (conductorId) combo.fijar(conductorId);
     p.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     // El total se recalcula EN CÉNTIMOS a cada tecla: en euros con decimales,
@@ -333,6 +459,11 @@
     p.querySelector('[data-guardar]').addEventListener('click', async () => {
       const centimos = recalcular();
       const aviso = p.querySelector('[data-aviso]');
+      if (!p.querySelector('[data-cond]').value) {
+        aviso.textContent = 'Elige de quién es el dinero: escribe su nombre y píncha en él.';
+        aviso.classList.remove('hidden');
+        return;
+      }
       if (centimos <= 0) {
         aviso.textContent = 'Cuenta los billetes y las monedas: el recibo no puede ser de cero.';
         aviso.classList.remove('hidden');
@@ -483,7 +614,9 @@
               '<div class="border-b border-telecab-border/50">' +
                 '<div class="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 bg-telecab-card2/30">' +
                   '<span class="font-semibold text-sm">' + esc(q.etiqueta) + '</span>' +
-                  '<span class="text-xs text-telecab-muted">efectivo <b class="text-telecab-text tabular-nums">' + eur(q.deuda) + '</b></span>' +
+                  '<span class="text-xs text-telecab-muted">efectivo <b class="text-telecab-text tabular-nums">' + eur(q.deuda) + '</b>' +
+                    (q.ajuste ? ' <span class="text-telecab-gold" title="' + esc(q.ajusteMotivo) + '">(' +
+                      eur(q.bolt) + ' de BOLT + ' + eur(q.ajuste) + ' arrastrados)</span>' : '') + '</span>' +
                   '<span class="text-xs text-telecab-muted">entregado <b class="text-telecab-green tabular-nums">' + eur(q.recaudado) + '</b></span>' +
                   '<span class="ml-auto text-xs text-telecab-muted">saldo tras esta quincena ' +
                     '<b class="tabular-nums ' + (q.saldo > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(q.saldo) + '</b></span>' +
@@ -550,6 +683,8 @@
   $('#q-luego').addEventListener('click', () => cargar(D.siguiente));
   $('#q-hoy').addEventListener('click', () => cargar(D.hoy));
   $('#r-nuevo').addEventListener('click', () => recibo(null));
+  ['#f-busca', '#f-estado', '#f-plantilla'].forEach(s =>
+    $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
   $('#r-salida').addEventListener('click', salidaCaja);
   $('#r-calcular').addEventListener('click', recalcular);
   $('#r-cierre').addEventListener('click', cargarCierre);

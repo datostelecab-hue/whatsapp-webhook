@@ -240,7 +240,65 @@ body input.bg-telecab-dark:focus, body select.bg-telecab-dark:focus, body textar
   border-color: rgb(var(--tc-gold) / .7) !important;
   box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18), inset 0 1px 2px rgb(0 0 0 / .25);
 }
-body select option { background-color: rgb(var(--tc-card)); color: rgb(var(--tc-text)); }
+/* ── LOS DESPLEGABLES ──────────────────────────────────────────────────────
+   Hay 44 repartidos por las pantallas y cada uno traía sus clases: unos
+   `bg-telecab-dark`, otros `bg-telecab-card`, otros `bg-telecab-card2`, otros
+   `.inp`. Solo los primeros estaban estilados, así que el resto salía con el
+   gris del sistema operativo, con su flecha y su tipografía, encima de una
+   interfaz que no se parece en nada.
+
+   Se estilan TODOS por elemento, no por clase: un `<select>` es un `<select>`
+   se le hayan puesto las clases que se le hayan puesto, y así el siguiente que
+   alguien escriba ya nace bien.
+
+   La flecha se dibuja con dos degradados en vez de con un SVG: un data-URI
+   lleva el color escrito dentro y no podría seguir al tema, y aquí hay catorce.
+   Con `rgb(var(--tc-muted))` cambia sola con cada uno. */
+body select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg,  transparent 50%, rgb(var(--tc-muted)) 50%),
+    linear-gradient(135deg, rgb(var(--tc-muted)) 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 1px), calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+body select:hover:not(:disabled) { border-color: rgb(var(--tc-gold) / .35) !important; }
+body select:focus-visible, body select:focus {
+  outline: none;
+  border-color: rgb(var(--tc-gold) / .7) !important;
+  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18);
+}
+body select:disabled { cursor: not-allowed; opacity: .55; }
+/* Un desplegable de varias líneas no lleva flecha: no se despliega. */
+body select[multiple], body select[size]:not([size='1']) {
+  background-image: none; padding-right: .75rem; cursor: default;
+}
+
+/* La lista desplegada la pinta el sistema y no se puede maquetar; lo que sí
+   admite es el color de cada opción. `color-scheme` (arriba, por tema) es lo
+   que hace que en los temas claros salga clara y en los oscuros oscura. */
+body select option {
+  background-color: rgb(var(--tc-card));
+  color: rgb(var(--tc-text));
+  padding: .35rem .5rem;
+}
+body select option:checked, body select option:hover {
+  background-color: rgb(var(--tc-gold) / .18);
+  color: rgb(var(--tc-text));
+}
+body select option:disabled { color: rgb(var(--tc-muted) / .7); }
+/* Los separadores que algunas listas usan para agrupar. */
+body select optgroup {
+  background-color: rgb(var(--tc-card2));
+  color: rgb(var(--tc-muted));
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+}
+
 ::placeholder { color: rgb(var(--tc-muted) / .8); }
 
 /* Las pastillas de estado (chips): un poco más redondas y con su filo. */

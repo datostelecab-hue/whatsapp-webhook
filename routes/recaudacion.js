@@ -112,6 +112,15 @@ router.get('/api/cierre/bolt', responde(async req => {
     total: +filas.reduce((a, c) => a + c.importe, 0).toFixed(2) };
 }));
 
+// Un arrastre (o una corrección) sobre una quincena, con su motivo.
+router.post('/api/cierre/ajuste', responde(async req => {
+  const b = req.body || {};
+  return repo.ajustarCierre({
+    conductorId: b.conductorId, anio: b.anio, mes: b.mes, quincena: b.quincena,
+    ajuste: b.ajuste, motivo: b.motivo, usuarioId: await quienEs(req),
+  });
+}));
+
 // El cierre de BOLT de una quincena: a mano, conductor a conductor.
 router.post('/api/cierre', responde(async req => {
   const b = req.body || {};

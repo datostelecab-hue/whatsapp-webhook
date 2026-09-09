@@ -139,10 +139,11 @@ async function cuadro(q) {
   const { desde, hasta } = rangoQuincena(q);
   const r = await db.consulta(
     `WITH cierre AS (
-       SELECT conductor_id, importe FROM recaudacion_cierre
+       SELECT conductor_id, importe + ajuste AS importe, ajuste, ajuste_motivo
+         FROM recaudacion_cierre
         WHERE anio = $1 AND mes = $2 AND quincena = $3),
      cierre_prev AS (
-       SELECT conductor_id, sum(importe) AS importe FROM recaudacion_cierre
+       SELECT conductor_id, sum(importe + ajuste) AS importe FROM recaudacion_cierre
         WHERE (anio, mes, quincena) < ($1, $2, $3) GROUP BY 1),
      mov AS (
        SELECT conductor_id,
@@ -163,6 +164,8 @@ async function cuadro(q) {
             trim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
             c.empleo_vigente,
             COALESCE(ci.importe, 0)   AS deuda,
+            COALESCE(ci.ajuste, 0)    AS ajuste,
+            ci.ajuste_motivo,
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
             COALESCE(m.entrega, 0)    AS entrega,
@@ -187,6 +190,10 @@ async function cuadro(q) {
       conductorId: String(x.conductor_id), conductor: x.conductor,
       enPlantilla: !!x.empleo_vigente,
       deuda, presencial, nomina, entrega, recaudado,
+      // El arrastre va aparte para poder explicarlo en pantalla: la deuda ya
+      // lo lleva sumado.
+      ajuste: Number(x.ajuste) || 0,
+      ajusteMotivo: x.ajuste_motivo || '',
       // Lo de la quincena y lo que se arrastra de antes, por separado.
       pendienteQuincena: +(deuda - recaudado).toFixed(2),
       arrastre: +arrastre.toFixed(2),
@@ -224,7 +231,7 @@ async function cuadro(q) {
 async function cuadre() {
   const r = await db.consulta(
     `SELECT
-       (SELECT COALESCE(sum(importe), 0) FROM recaudacion_cierre) AS deuda,
+       (SELECT COALESCE(sum(importe + ajuste), 0) FROM recaudacion_cierre) AS deuda,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0)        AS presencial,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)            AS nomina,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)           AS entrega,
@@ -290,7 +297,8 @@ async function ficha(conductorId) {
                 ORDER BY principal DESC NULLS LAST, id LIMIT 1) AS telefono
          FROM conductor c WHERE id = $1`, [id]),
     db.consulta(
-      `SELECT anio, mes, quincena, importe, origen FROM recaudacion_cierre
+      `SELECT anio, mes, quincena, importe, ajuste, ajuste_motivo, origen
+         FROM recaudacion_cierre
         WHERE conductor_id = $1 ORDER BY anio, mes, quincena`, [id]),
     db.consulta(
       `SELECT m.id, m.fecha, m.tipo, m.importe, m.desglose, m.observacion, m.creado_at,
@@ -318,12 +326,16 @@ async function ficha(conductorId) {
   const meter = q => {
     const k = clave(q);
     if (!mapa.has(k)) mapa.set(k, { ...q, etiqueta: etiquetaQuincena(q), corta: cortaQuincena(q),
-      deuda: 0, movimientos: [] });
+      deuda: 0, bolt: 0, ajuste: 0, ajusteMotivo: '', movimientos: [] });
     return mapa.get(k);
   };
   cierres.rows.forEach(x => {
     const q = { anio: x.anio, mes: x.mes, quincena: x.quincena };
-    meter(q).deuda = Number(x.importe);
+    const f = meter(q);
+    f.deuda = Number(x.importe) + (Number(x.ajuste) || 0);
+    f.bolt = Number(x.importe);
+    f.ajuste = Number(x.ajuste) || 0;
+    f.ajusteMotivo = x.ajuste_motivo || '';
   });
   movimientos.forEach(m => { if (m.fecha) meter(quincenaDe(m.fecha)).movimientos.push(m); });
 
@@ -553,6 +565,38 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
 }
 
 /**
+ * Suma (o resta) un ajuste a una quincena, con su motivo.
+ *
+ * Es lo que se usa para arrastrar lo que se cerró mal en la quincena anterior:
+ * el importe de BOLT se queda como está —que es la verdad de esos viajes— y el
+ * arrastre va aparte, explicado. Un recálculo desde BOLT no lo toca.
+ *
+ * `ajuste` reemplaza al que hubiera, no se acumula: llamar dos veces por el
+ * mismo motivo no puede cobrar dos veces.
+ */
+async function ajustarCierre({ conductorId, anio, mes, quincena, ajuste, motivo, usuarioId } = {}) {
+  const id = Number(conductorId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+  const q = quincenaValida({ anio, mes, quincena });
+  const m = (motivo || '').trim();
+  const signo = String(ajuste).trim().startsWith('-') ? -1 : 1;
+  const centimos = signo * aCentimos(String(ajuste).replace('-', ''));
+  if (centimos !== 0 && !m) throw new Error('Di por qué se ajusta: un número sin explicación no vale.');
+
+  const r = await db.consulta(
+    `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, ajuste, ajuste_motivo, origen, usuario_id)
+     VALUES ($1, $2, $3, $4, 0, $5, $6, 'manual', $7)
+     ON CONFLICT (conductor_id, anio, mes, quincena) DO UPDATE
+        SET ajuste = EXCLUDED.ajuste, ajuste_motivo = EXCLUDED.ajuste_motivo,
+            actualizado_at = now()
+     RETURNING importe, ajuste`,
+    [id, q.anio, q.mes, q.quincena, (centimos / 100).toFixed(2),
+      centimos === 0 ? null : m.slice(0, 255), usuarioId || null]);
+  return { importe: Number(r.rows[0].importe), ajuste: Number(r.rows[0].ajuste),
+    quincena: { ...q, etiqueta: etiquetaQuincena(q) } };
+}
+
+/**
  * Carga el cierre de BOLT de una quincena pegando el Excel tal cual: una línea
  * por conductor, "nombre <tab> importe". Se deja por si un mes hay que meterlo
  * a mano —un histórico viejo, una hoja que mandan de fuera—, pero lo normal es
@@ -623,5 +667,5 @@ module.exports = {
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
   etiquetaQuincena, cortaQuincena,
   cuadro, ficha, candidatos, anotar, anular, guardarCierre, importarCierre,
-  efectivoBolt, calcularDesdeBolt,
+  efectivoBolt, calcularDesdeBolt, ajustarCierre,
 };
