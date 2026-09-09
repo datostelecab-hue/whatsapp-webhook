@@ -67,24 +67,31 @@ router.get('/api/cuadro', responde(async req => ({
 
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await repo.ficha(req.params.id) })));
 
-// El informe en PDF. Va SIEMPRE con la flota entera, no con lo que haya
-// filtrado en pantalla: el papel se lleva a una reunión y allí nadie sabe qué
-// filtro estaba puesto cuando se imprimió.
-router.get('/informe.pdf', async (req, res) => {
+// El informe, en Excel y en PDF. Los dos van SIEMPRE con la flota entera, no
+// con lo que haya filtrado en pantalla: el fichero acaba en un correo y allí
+// nadie sabe qué filtro estaba puesto cuando se descargó.
+//
+// El Excel es el que se usa: se ordena, se filtra por zona y se le manda a cada
+// taller su trozo. El PDF es para imprimirlo y llevarlo a la reunión.
+const informe = (formato, tipoMime, ext) => async (req, res) => {
   try {
     const datos = await repo.todo();
-    const pdf = await require('../services/tallerPdf').generar(datos);
-    console.log(`📄 [Taller] informe: ${datos.resumen.total} coches, ` +
+    const fichero = await require(`../services/taller${formato}`).generar(datos);
+    console.log(`📄 [Taller] informe ${ext}: ${datos.resumen.total} coches, ` +
       `${datos.resumen.toca} tocan revisión, ${datos.historial.length} apuntes`);
     const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="taller-${hoy}.pdf"`);
-    res.send(pdf);
+    res.setHeader('Content-Type', tipoMime);
+    res.setHeader('Content-Disposition', `attachment; filename="taller-${hoy}.${ext}"`);
+    res.send(fichero);
   } catch (e) {
-    console.error('❌ [Taller] /informe.pdf:', e.stack || e.message);
+    console.error(`❌ [Taller] informe ${ext}:`, e.stack || e.message);
     res.status(400).json({ status: 'error', msg: e.message });
   }
-});
+};
+
+router.get('/informe.xlsx', informe('Excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'));
+router.get('/informe.pdf', informe('Pdf', 'application/pdf', 'pdf'));
 
 router.post('/api/mantenimiento', responde(exigeApuntar((req, usuarioId) =>
   repo.registrar(req.body, { usuarioId }))));
