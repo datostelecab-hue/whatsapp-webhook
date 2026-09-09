@@ -635,13 +635,22 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
   // fuera indefinidamente". Pasó de verdad: unas vacaciones del 13/09 sin cerrar
   // dejaron a esa persona de vacaciones hasta fin de año.
   //
-  // En una baja médica sigue SIN pedirse: ahí la fecha la pone el alta médica y
-  // no nosotros, y ponerle una inventada sería peor.
-  const previsto = cat.fin_previsible ? (hastaPrevisto || null) : null;
+  // En una baja médica sigue SIN PEDIRSE, que ahí la fecha la pone el alta y no
+  // nosotros. Pero si LA HAY, se guarda: `fin_previsible` decide si la fecha es
+  // OBLIGATORIA, nunca si está permitida.
+  //
+  // Antes esta línea era `cat.fin_previsible ? (hastaPrevisto || null) : null` y
+  // TIRABA la fecha escrita en cualquier ausencia sin fin previsible. Pasó de
+  // verdad el 09/09: dos partes que decían "del 08 al 10" y "hasta el jueves"
+  // se guardaron abiertos, y esas dos personas se quedaban fuera del cuadrante
+  // indefinidamente. Un parte de UN DÍA no tenía forma de entrar por aquí.
+  const previsto = hastaPrevisto || null;
   if (cat.fin_previsible && !previsto) {
     throw new Error(`Hace falta la fecha de vuelta: unas ${cat.etiqueta.toLowerCase()} sin fecha de fin no terminan nunca ` +
       'y esa persona desaparece del cuadrante indefinidamente.');
   }
+  // Un parte de un solo día (del 08 al 08) es válido y corriente: se comprueba
+  // que no sea ANTERIOR, no que sea posterior.
   if (previsto && desde && previsto < desde) {
     throw new Error('La vuelta no puede ser anterior al día en que empieza la ausencia');
   }
@@ -746,9 +755,10 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo }, { usuarioId 
         + 'esa persona desaparecería del cuadrante. Pon cuándo vuelve.');
     }
     cambios.hasta = h;
-    // `hasta_previsto` acompaña al fin real: si no, la ficha seguiría enseñando
-    // la vuelta vieja al lado de la nueva.
-    if (fila.fin_previsible) cambios.hasta_previsto = h;
+    // `hasta_previsto` acompaña SIEMPRE al fin real, también en una baja médica:
+    // si no, corregir un parte de "hasta el 15" a "hasta el 10" dejaba la ficha
+    // enseñando las dos fechas a la vez, la vieja como prevista.
+    cambios.hasta_previsto = h;
   }
   if (!Object.keys(cambios).length) return { sinCambios: true };
 

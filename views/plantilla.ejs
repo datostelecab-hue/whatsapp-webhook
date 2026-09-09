@@ -116,9 +116,11 @@
         opciones: (CAT.situaciones || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })) },
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(new Date()),
         ayuda: 'Se cierra la situación anterior el día antes.' },
-      { id: 'hastaPrevisto', etiqueta: 'Vuelta prevista', tipo: 'fecha',
-        ayuda: 'OBLIGATORIA en vacaciones y permisos: sin ella la ausencia no termina nunca y la persona '
-             + 'desaparece del cuadrante. En una baja médica se deja vacía: la fecha la pone el alta.' },
+      { id: 'hastaPrevisto', etiqueta: 'Último día fuera', tipo: 'fecha',
+        ayuda: 'El último día que NO viene; al siguiente vuelve al cuadrante solo. Puede ser el mismo '
+             + 'que el de inicio: un parte de un día se pone del 08 al 08. OBLIGATORIO en vacaciones y '
+             + 'permisos. En una baja médica, si el parte dice hasta cuándo, ponlo; si no se sabe, '
+             + 'déjalo vacío y sigue abierta hasta el alta.' },
       { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
     ], { nota: 'Una ausencia NO le quita su plaza: el coche sigue siendo suyo. '
          + '"Baja en la empresa" sí: esa cierra su contrato.' });
