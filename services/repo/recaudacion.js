@@ -137,30 +137,36 @@ function aCentimos(v) {
  */
 async function cuadro(q) {
   const { desde, hasta } = rangoQuincena(q);
-  const r = await db.consulta(
-    `WITH cierre AS (
-       SELECT conductor_id, importe + ajuste AS importe, ajuste, ajuste_motivo
+  // Las dos consultas son la misma cuenta sobre dos formas de identificar a
+  // alguien: por ficha (conductor_id) o por cuenta de BOLT (bolt_uuid), para
+  // quien cobró en efectivo y nunca tuvo ficha. `quien` es la clave común.
+  const cuentas = clave => `
+     WITH cierre AS (
+       SELECT ${clave} AS quien, importe + ajuste AS importe, ajuste, ajuste_motivo
          FROM recaudacion_cierre
-        WHERE anio = $1 AND mes = $2 AND quincena = $3),
+        WHERE anio = $1 AND mes = $2 AND quincena = $3 AND ${clave} IS NOT NULL),
      cierre_prev AS (
-       SELECT conductor_id, sum(importe + ajuste) AS importe FROM recaudacion_cierre
-        WHERE (anio, mes, quincena) < ($1, $2, $3) GROUP BY 1),
+       SELECT ${clave} AS quien, sum(importe + ajuste) AS importe FROM recaudacion_cierre
+        WHERE (anio, mes, quincena) < ($1, $2, $3) AND ${clave} IS NOT NULL GROUP BY 1),
      mov AS (
-       SELECT conductor_id,
+       SELECT ${clave} AS quien,
               sum(importe) FILTER (WHERE tipo = 'presencial') AS presencial,
               sum(importe) FILTER (WHERE tipo = 'nomina')     AS nomina,
               sum(importe) FILTER (WHERE tipo = 'entrega')    AS entrega
          FROM recaudacion_movimiento
-        WHERE anulado_at IS NULL AND conductor_id IS NOT NULL
+        WHERE anulado_at IS NULL AND ${clave} IS NOT NULL
           AND fecha BETWEEN $4::date AND $5::date
         GROUP BY 1),
      mov_prev AS (
-       SELECT conductor_id,
+       SELECT ${clave} AS quien,
               sum(CASE WHEN tipo = 'entrega' THEN -importe ELSE importe END) AS neto
          FROM recaudacion_movimiento
-        WHERE anulado_at IS NULL AND conductor_id IS NOT NULL AND fecha < $4::date
-        GROUP BY 1)
-     SELECT c.id AS conductor_id,
+        WHERE anulado_at IS NULL AND ${clave} IS NOT NULL AND fecha < $4::date
+        GROUP BY 1)`;
+
+  const [r, rb] = await Promise.all([
+    db.consulta(`${cuentas('conductor_id')}
+     SELECT c.id::text AS quien, NULL::text AS bolt_uuid,
             trim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
             c.empleo_vigente,
             COALESCE(ci.importe, 0)   AS deuda,
@@ -171,15 +177,41 @@ async function cuadro(q) {
             COALESCE(m.entrega, 0)    AS entrega,
             COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) AS arrastre
        FROM conductor c
-       LEFT JOIN cierre      ci ON ci.conductor_id = c.id
-       LEFT JOIN cierre_prev cp ON cp.conductor_id = c.id
-       LEFT JOIN mov         m  ON m.conductor_id  = c.id
-       LEFT JOIN mov_prev    mp ON mp.conductor_id = c.id
+       LEFT JOIN cierre      ci ON ci.quien = c.id
+       LEFT JOIN cierre_prev cp ON cp.quien = c.id
+       LEFT JOIN mov         m  ON m.quien  = c.id
+       LEFT JOIN mov_prev    mp ON mp.quien = c.id
       WHERE NOT c.es_centinela
-        AND (ci.importe IS NOT NULL OR m.conductor_id IS NOT NULL
-             OR COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) <> 0)
-      ORDER BY 2`,
-    [q.anio, q.mes, q.quincena, desde, hasta]);
+        AND (ci.importe IS NOT NULL OR m.quien IS NOT NULL
+             OR COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) <> 0)`,
+      [q.anio, q.mes, q.quincena, desde, hasta]),
+
+    // Los que no tienen ficha. El nombre sale del padrón de BOLT.
+    db.consulta(`${cuentas('bolt_uuid')},
+     gente AS (
+       SELECT quien FROM cierre UNION
+       SELECT quien FROM cierre_prev UNION
+       SELECT quien FROM mov UNION
+       SELECT quien FROM mov_prev)
+     SELECT g.quien, g.quien AS bolt_uuid,
+            COALESCE(e.externo_nombre, 'Cuenta de BOLT ' || left(g.quien, 8)) AS conductor,
+            NULL::boolean AS empleo_vigente,
+            COALESCE(ci.importe, 0)   AS deuda,
+            COALESCE(ci.ajuste, 0)    AS ajuste,
+            ci.ajuste_motivo,
+            COALESCE(m.presencial, 0) AS presencial,
+            COALESCE(m.nomina, 0)     AS nomina,
+            COALESCE(m.entrega, 0)    AS entrega,
+            COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) AS arrastre
+       FROM gente g
+       LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = g.quien
+       LEFT JOIN cierre      ci ON ci.quien = g.quien
+       LEFT JOIN cierre_prev cp ON cp.quien = g.quien
+       LEFT JOIN mov         m  ON m.quien  = g.quien
+       LEFT JOIN mov_prev    mp ON mp.quien = g.quien`,
+      [q.anio, q.mes, q.quincena, desde, hasta]),
+  ]);
+  r.rows = r.rows.concat(rb.rows).sort((a, b) => a.conductor.localeCompare(b.conductor));
 
   const filas = r.rows.map(x => {
     const deuda = Number(x.deuda), presencial = Number(x.presencial);
@@ -187,7 +219,10 @@ async function cuadro(q) {
     const recaudado = presencial + nomina - entrega;
     const arrastre = Number(x.arrastre);
     return {
-      conductorId: String(x.conductor_id), conductor: x.conductor,
+      // `conductorId` sigue siendo la clave con la que trabaja la pantalla; en
+      // los de BOLT es su uuid, y `sinFicha` es lo que la pinta en rojo.
+      conductorId: String(x.quien), conductor: x.conductor,
+      sinFicha: !!x.bolt_uuid,
       enPlantilla: !!x.empleo_vigente,
       deuda, presencial, nomina, entrega, recaudado,
       // El arrastre va aparte para poder explicarlo en pantalla: la deuda ya
@@ -239,7 +274,10 @@ async function cuadre() {
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_gastos'), 0)     AS gastos,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_caja_chica'), 0) AS caja_chica,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_nomina'), 0)     AS nominas_pagadas,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_apertura'), 0)   AS apertura
+       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_apertura'), 0)   AS apertura,
+       -- Lo que deben los que no tienen ficha, aparte: es la cifra que hay que
+       -- mirar aunque no se le pueda reclamar a una nómina.
+       (SELECT COALESCE(sum(importe + ajuste), 0) FROM recaudacion_cierre WHERE bolt_uuid IS NOT NULL) AS deuda_sin_ficha
      FROM recaudacion_movimiento WHERE anulado_at IS NULL`);
   const x = r.rows[0];
   const n = k => Number(x[k]) || 0;
@@ -255,6 +293,7 @@ async function cuadre() {
     nomina: dosDec(n('nomina')),
     devuelto: dosDec(n('entrega')),
     salidas: dosDec(salidas),
+    deudaSinFicha: dosDec(n('deuda_sin_ficha')),
     porSalida: {
       salida_banco: dosDec(n('banco')), salida_gastos: dosDec(n('gastos')),
       salida_caja_chica: dosDec(n('caja_chica')), salida_nomina: dosDec(n('nominas_pagadas')),
@@ -286,20 +325,30 @@ async function salidasDe(q) {
  * movimientos de cada una. Es lo que se mira antes de cobrarle.
  */
 async function ficha(conductorId) {
-  const id = Number(conductorId);
-  if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+  // La clave puede ser un id de la plantilla o el uuid de una cuenta de BOLT
+  // sin ficha. Un uuid trae guiones, así que distinguirlos es mirar si es un
+  // número.
+  const esUuid = !/^\d+$/.test(String(conductorId || '').trim());
+  const id = esUuid ? String(conductorId).trim() : Number(conductorId);
+  if (!esUuid && (!Number.isInteger(id) || id <= 0)) throw new Error('Falta el conductor');
+  const col = esUuid ? 'bolt_uuid' : 'conductor_id';
 
   const [c, cierres, movs] = await Promise.all([
-    db.consulta(
-      `SELECT id, trim(nombre || ' ' || COALESCE(apellidos, '')) AS conductor, empleo_vigente,
-              (SELECT e164 FROM conductor_telefono t WHERE t.conductor_id = c.id
-                AND t.vigente_hasta IS NULL
-                ORDER BY principal DESC NULLS LAST, id LIMIT 1) AS telefono
-         FROM conductor c WHERE id = $1`, [id]),
+    esUuid
+      ? db.consulta(
+        `SELECT externo_id AS id, externo_nombre AS conductor, NULL::boolean AS empleo_vigente,
+                NULL::text AS telefono
+           FROM conductor_externo WHERE sistema = 'bolt' AND externo_id = $1`, [id])
+      : db.consulta(
+        `SELECT id, trim(nombre || ' ' || COALESCE(apellidos, '')) AS conductor, empleo_vigente,
+                (SELECT e164 FROM conductor_telefono t WHERE t.conductor_id = c.id
+                  AND t.vigente_hasta IS NULL
+                  ORDER BY principal DESC NULLS LAST, id LIMIT 1) AS telefono
+           FROM conductor c WHERE id = $1`, [id]),
     db.consulta(
       `SELECT anio, mes, quincena, importe, ajuste, ajuste_motivo, origen
          FROM recaudacion_cierre
-        WHERE conductor_id = $1 ORDER BY anio, mes, quincena`, [id]),
+        WHERE ${col} = $1 ORDER BY anio, mes, quincena`, [id]),
     db.consulta(
       `SELECT m.id, m.fecha, m.tipo, m.importe, m.desglose, m.observacion, m.creado_at,
               m.anulado_at, m.anulado_motivo,
@@ -307,7 +356,7 @@ async function ficha(conductorId) {
          FROM recaudacion_movimiento m
          LEFT JOIN usuario u ON u.id = m.usuario_id
          LEFT JOIN usuario a ON a.id = m.anulado_por
-        WHERE m.conductor_id = $1 ORDER BY m.fecha DESC, m.id DESC`, [id]),
+        WHERE m.${col} = $1 ORDER BY m.fecha DESC, m.id DESC`, [id]),
   ]);
   if (!c.rows[0]) throw new Error('Ese conductor no existe');
 
@@ -357,7 +406,8 @@ async function ficha(conductorId) {
 
   return {
     conductor: { id: String(c.rows[0].id), nombre: c.rows[0].conductor,
-      telefono: c.rows[0].telefono || '', enPlantilla: !!c.rows[0].empleo_vigente },
+      telefono: c.rows[0].telefono || '', enPlantilla: !!c.rows[0].empleo_vigente,
+      sinFicha: esUuid },
     quincenas: lista,
     total: {
       deuda: +lista.reduce((a, q) => a + q.deuda, 0).toFixed(2),
@@ -482,22 +532,40 @@ async function guardarCierre({ conductorId, anio, mes, quincena, importe, origen
  */
 async function efectivoBolt(q) {
   const { desde, hasta } = rangoQuincena(q);
+  // Se agrupa por CUENTA de BOLT y no por conductor: hay cuentas que rodaron y
+  // cobraron en efectivo sin estar enlazadas con nadie de la plantilla, y esas
+  // eran justo las que se perdían en silencio. Cada una trae su conductor si lo
+  // tiene, y si no, su nombre de BOLT.
   const r = await db.consulta(
-    `SELECT e.conductor_id,
+    `SELECT o.driver_uuid::text AS uuid, e.conductor_id, e.externo_nombre,
             count(*)::int AS viajes,
             sum(COALESCE(o.precio, 0) - COALESCE(o.dto_efectivo, 0)
                 + COALESCE(o.tarifa_reserva, 0))::numeric(12,2) AS efectivo
        FROM bolt_order o
-       JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = o.driver_uuid::text
+       LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = o.driver_uuid::text
       WHERE o.metodo_pago = 'cash'
         AND o.estado = 'finished'
         AND (o.creado_ts AT TIME ZONE 'Europe/Madrid')::date BETWEEN $1::date AND $2::date
-      GROUP BY 1
+      GROUP BY 1, 2, 3
       HAVING sum(COALESCE(o.precio, 0) - COALESCE(o.dto_efectivo, 0) + COALESCE(o.tarifa_reserva, 0)) > 0`,
     [desde, hasta]);
-  return r.rows.map(x => ({
-    conductorId: String(x.conductor_id), viajes: x.viajes, importe: Number(x.efectivo),
-  }));
+
+  // Varias cuentas del mismo conductor se suman en una sola línea suya.
+  const porConductor = new Map();
+  const sinFicha = [];
+  r.rows.forEach(x => {
+    const importe = Number(x.efectivo);
+    if (x.conductor_id) {
+      const k = String(x.conductor_id);
+      const a = porConductor.get(k) || { conductorId: k, viajes: 0, importe: 0 };
+      a.viajes += x.viajes; a.importe = +(a.importe + importe).toFixed(2);
+      porConductor.set(k, a);
+    } else {
+      sinFicha.push({ boltUuid: x.uuid, nombre: x.externo_nombre || ('Cuenta ' + x.uuid.slice(0, 8)),
+        viajes: x.viajes, importe });
+    }
+  });
+  return [...porConductor.values(), ...sinFicha];
 }
 
 /**
@@ -510,58 +578,101 @@ async function efectivoBolt(q) {
 async function calcularDesdeBolt(q, { usuarioId } = {}) {
   const calculado = await efectivoBolt(q);
   const previos = new Map((await db.consulta(
-    `SELECT conductor_id, importe, origen FROM recaudacion_cierre
-      WHERE anio = $1 AND mes = $2 AND quincena = $3`, [q.anio, q.mes, q.quincena]))
-    .rows.map(x => [String(x.conductor_id), { importe: Number(x.importe), origen: x.origen }]));
+    `SELECT COALESCE(conductor_id::text, bolt_uuid) AS quien, importe, origen
+       FROM recaudacion_cierre WHERE anio = $1 AND mes = $2 AND quincena = $3`,
+    [q.anio, q.mes, q.quincena]))
+    .rows.map(x => [String(x.quien), { importe: Number(x.importe), origen: x.origen }]));
 
-  const nombres = new Map((await db.consulta(
-    `SELECT id, trim(nombre || ' ' || COALESCE(apellidos, '')) AS n FROM conductor`))
-    .rows.map(x => [String(x.id), x.n]));
+  const conductores = (await db.consulta(
+    `SELECT id, trim(nombre || ' ' || COALESCE(apellidos, '')) AS n FROM conductor`)).rows;
+  const nombres = new Map(conductores.map(x => [String(x.id), x.n]));
+
+  // RED DE SEGURIDAD. Una cuenta sin enlazar cuyo nombre es EL MISMO que el de
+  // alguien de la plantilla casi siempre es esa persona con el enlace sin
+  // hacer; darla de alta por su cuenta le apuntaría la deuda DOS VECES, una
+  // por su ficha y otra por su cuenta. Se deja fuera y se avisa para que
+  // alguien enlace la cuenta, que es el arreglo de verdad.
+  const llave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const porNombre = new Map();
+  conductores.forEach(c => { const k = llave(c.n); porNombre.set(k, porNombre.has(k) ? null : c); });
+  const sospechosas = [];
 
   // Lo puesto A MANO no se pisa NUNCA, coincida o no con lo que diga BOLT: si
   // Tráfico cuadró una cifra con el conductor por teléfono, o vino del volcado
   // del Excel viejo, esa es la buena. Antes solo se respetaba cuando los
   // números DIFERÍAN, así que el día que BOLT acertaba por casualidad la fila
   // pasaba a 'bolt' y perdía la protección para el siguiente recálculo.
-  const esManual = c => (previos.get(c.conductorId) || {}).origen === 'manual';
+  const esManual = c => (previos.get(c.clave) || {}).origen === 'manual';
 
   const cambios = [], nuevos = [], respetados = [];
-  for (const c of calculado) {
-    const antes = previos.get(c.conductorId);
+  // La clave de cada línea: la ficha si la tiene, y si no su cuenta de BOLT.
+  calculado.forEach(c => { c.clave = c.conductorId || c.boltUuid; });
+
+  // Las cuentas sin ficha que se parecen a alguien de la plantilla, fuera.
+  const seguras = calculado.filter(c => {
+    if (!c.boltUuid) return true;
+    const p = porNombre.get(llave(c.nombre));
+    if (p) { sospechosas.push({ ...c, pareceA: p.n, conductorId: String(p.id) }); return false; }
+    return true;
+  });
+
+  for (const c of seguras) {
+    const antes = previos.get(c.clave);
     if (esManual(c)) {
       // Solo se avisa de los que además NO cuadran: los que coinciden no son
       // noticia y llenarían el aviso de ruido.
       if (Math.abs(antes.importe - c.importe) > 0.005) {
-        respetados.push({ ...c, conductor: nombres.get(c.conductorId) || '?', antes: antes.importe });
+        respetados.push({ ...c, conductor: nombreDe(c, nombres), antes: antes.importe });
       }
       continue;
     }
-    if (!antes) nuevos.push({ ...c, conductor: nombres.get(c.conductorId) || '?' });
+    if (!antes) nuevos.push({ ...c, conductor: nombreDe(c, nombres) });
     else if (Math.abs(antes.importe - c.importe) > 0.005) {
-      cambios.push({ ...c, conductor: nombres.get(c.conductorId) || '?', antes: antes.importe });
+      cambios.push({ ...c, conductor: nombreDe(c, nombres), antes: antes.importe });
     }
   }
 
-  const aGuardar = calculado.filter(c => !esManual(c));
+  const aGuardar = seguras.filter(c => !esManual(c));
   if (aGuardar.length) {
     await db.transaccion(async cli => {
       for (const c of aGuardar) {
-        await cli.query(
-          `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
-           VALUES ($1, $2, $3, $4, $5, 'bolt', $6)
-           ON CONFLICT (conductor_id, anio, mes, quincena) DO UPDATE
-              SET importe = EXCLUDED.importe, origen = 'bolt',
-                  usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
-          [c.conductorId, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
+        // Dos índices únicos, uno por ficha y otro por cuenta: el ON CONFLICT
+        // tiene que apuntar al que toca en cada caso.
+        if (c.conductorId) {
+          await cli.query(
+            `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
+             VALUES ($1, $2, $3, $4, $5, 'bolt', $6)
+             ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL
+             DO UPDATE SET importe = EXCLUDED.importe, origen = 'bolt',
+                           usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
+            [c.conductorId, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
+        } else {
+          await cli.query(
+            `INSERT INTO recaudacion_cierre (bolt_uuid, anio, mes, quincena, importe, origen, usuario_id)
+             VALUES ($1, $2, $3, $4, $5, 'bolt', $6)
+             ON CONFLICT (bolt_uuid, anio, mes, quincena) WHERE bolt_uuid IS NOT NULL
+             DO UPDATE SET importe = EXCLUDED.importe, origen = 'bolt',
+                           usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
+            [c.boltUuid, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
+        }
       }
     });
   }
   return {
     quincena: { ...q, etiqueta: etiquetaQuincena(q) },
-    conductores: calculado.length,
-    total: +calculado.reduce((a, c) => a + c.importe, 0).toFixed(2),
+    conductores: seguras.length,
+    total: +seguras.reduce((a, c) => a + c.importe, 0).toFixed(2),
     nuevos, cambios, respetados,
+    // Las que no se han tocado por parecerse a alguien de la plantilla.
+    sospechosas,
+    sinFicha: seguras.filter(c => c.boltUuid).length,
   };
+}
+
+/** El nombre de una línea: el de su ficha, o el que da BOLT si no la tiene. */
+function nombreDe(c, nombres) {
+  return c.conductorId ? (nombres.get(c.conductorId) || '?') : (c.nombre || '?');
 }
 
 /**

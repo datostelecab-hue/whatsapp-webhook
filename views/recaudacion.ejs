@@ -101,6 +101,7 @@
       <option value="dia">Al día</option>
       <option value="favor">A su favor</option>
       <option value="movimiento">Con movimiento en la quincena</option>
+      <option value="sinficha">Sin ficha en la plantilla</option>
     </select>
     <select id="f-plantilla" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
       <option value="">En plantilla y fuera</option>
@@ -243,12 +244,15 @@
     const pl = $('#f-plantilla').value;
     return filas.filter(f => {
       if (q && !llaveTxt(f.conductor).includes(q)) return false;
-      if (pl === 'si' && !f.enPlantilla) return false;
-      if (pl === 'no' && f.enPlantilla) return false;
+      // Los sin ficha no son "en plantilla" ni "ya no está": se quedan siempre,
+      // que es justo lo que no puede volver a perderse de vista.
+      if (pl === 'si' && !f.enPlantilla && !f.sinFicha) return false;
+      if (pl === 'no' && (f.enPlantilla || f.sinFicha)) return false;
       if (est === 'deuda' && !(f.pendiente > 0.005)) return false;
       if (est === 'dia' && Math.abs(f.pendiente) >= 0.005) return false;
       if (est === 'favor' && !(f.pendiente < -0.005)) return false;
       if (est === 'movimiento' && !(f.presencial || f.nomina || f.entrega)) return false;
+      if (est === 'sinficha' && !f.sinFicha) return false;
       return true;
     });
   }
@@ -261,8 +265,11 @@
       'entró ' + eur(c.entradas) + ' en mano · salió ' + eur(c.salidas) +
       (c.devuelto > 0.005 ? ' · devuelto ' + eur(c.devuelto) : '');
     $('#c-pendiente').textContent = eur(c.pendiente);
-    $('#c-pendiente-det').textContent =
-      'de ' + eur(c.deuda) + ' cobrados en la calle · ' + eur(c.nomina) + ' recuperados por nomina';
+    $('#c-pendiente-det').innerHTML =
+      'de ' + eur(c.deuda) + ' cobrados en la calle · ' + eur(c.nomina) + ' recuperados por nómina' +
+      (c.deudaSinFicha > 0.005
+        ? ' · <span class="text-telecab-red font-semibold">' + eur(c.deudaSinFicha) + ' de gente sin ficha</span>'
+        : '');
   }
 
   function pintarSalidas() {
@@ -351,10 +358,20 @@
         cab.map((c, i) => '<th class="px-3 py-2.5 ' + (i ? 'text-right' : 'text-left') + ' font-semibold whitespace-nowrap">' + c + '</th>').join('') +
         '<th class="px-3 py-2.5"></th></tr></thead><tbody>' +
       filas.map(f =>
-        '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition" data-cid="' + esc(f.conductorId) + '">' +
-          '<td class="px-3 py-2.5"><button data-ficha class="text-left font-medium hover:text-telecab-gold transition">' +
+        '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition' +
+          (f.sinFicha ? ' bg-telecab-red/5' : '') + '" data-cid="' + esc(f.conductorId) + '">' +
+          '<td class="px-3 py-2.5"><button data-ficha class="text-left font-medium transition ' +
+            (f.sinFicha ? 'text-telecab-red hover:underline' : 'hover:text-telecab-gold') + '">' +
             esc(f.conductor) + '</button>' +
-            (f.enPlantilla ? '' : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">ya no está</span>') + '</td>' +
+            // Tres estados distintos, no dos: de alta, de baja, y SIN FICHA
+            // —rodó y cobró en BOLT y nunca se le dio de alta aquí—. Ese
+            // tercero no es una baja: a un baja se le puede llamar.
+            (f.sinFicha
+              ? '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-red/15 text-telecab-red font-bold border border-telecab-red/40" ' +
+                'title="Rodó y cobró en efectivo con su cuenta de BOLT, pero no está en la plantilla: no tiene ficha, ni de alta ni de baja">' +
+                'SIN FICHA</span>'
+              : f.enPlantilla ? ''
+              : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">ya no está</span>') + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.deuda) +
             (f.ajuste ? '<span class="ml-1 text-[10px] px-1 rounded bg-telecab-gold/20 text-telecab-gold font-bold" ' +
               'title="' + esc(f.ajusteMotivo) + '">+' + eur(f.ajuste) + '</span>' : '') + '</td>' +
@@ -597,9 +614,12 @@
       $('#r-ficha').innerHTML =
         '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
           '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center justify-between gap-2">' +
-            '<div><h2 class="font-bold text-telecab-text">' + esc(f.conductor.nombre) + '</h2>' +
+            '<div><h2 class="font-bold ' + (f.conductor.sinFicha ? 'text-telecab-red' : 'text-telecab-text') + '">' +
+              esc(f.conductor.nombre) +
+              (f.conductor.sinFicha ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-red/15 border border-telecab-red/40 align-middle">SIN FICHA</span>' : '') + '</h2>' +
               '<p class="text-[11px] text-telecab-muted font-mono tabular-nums">' + (esc(f.conductor.telefono) || 'sin teléfono') +
-              (f.conductor.enPlantilla ? '' : ' · ya no está en plantilla') + '</p></div>' +
+              (f.conductor.sinFicha ? ' · cuenta de BOLT sin ficha en la plantilla'
+                : f.conductor.enPlantilla ? '' : ' · ya no está en plantilla') + '</p></div>' +
             '<div class="flex items-center gap-4 text-right">' +
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Efectivo</p><p class="font-bold tabular-nums">' + eur(f.total.deuda) + '</p></div>' +
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Entregado</p><p class="font-bold text-telecab-green tabular-nums">' + eur(f.total.recaudado) + '</p></div>' +
