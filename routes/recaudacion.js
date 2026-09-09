@@ -50,6 +50,9 @@ router.get('/', async (req, res) => {
     denominaciones: repo.DENOMINACIONES.map(c => ({ centimos: c, etiqueta: repo.ETIQUETA_DEN(c) })),
     tiposMovimiento: repo.TIPOS,
     salidasCaja: repo.SALIDAS,
+    // Para poner nombre a lo que ya está apuntado, incluido el traspaso de
+    // apertura, que se lee pero no se elige.
+    etiquetasSalida: repo.TODAS_SALIDAS,
     puedeNomina: await puedeNomina(req),
   });
 });

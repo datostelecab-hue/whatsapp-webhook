@@ -107,6 +107,7 @@
   const DEN = <%- JSON.stringify(denominaciones || []) %>;
   const TIPOS = <%- JSON.stringify(tiposMovimiento || []) %>;
   const SALIDAS = <%- JSON.stringify(salidasCaja || []) %>;
+  const SALIDAS_TODAS = <%- JSON.stringify(etiquetasSalida || salidasCaja || []) %>;
   const PUEDE_NOMINA = <%= puedeNomina ? 'true' : 'false' %>;
 
   const nf = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -153,7 +154,7 @@
 
   function pintarSalidas() {
     const s = D.salidas || [];
-    const etq = t => (SALIDAS.find(x => x.codigo === t) || {}).etiqueta || t;
+    const etq = t => (SALIDAS_TODAS.find(x => x.codigo === t) || {}).etiqueta || t;
     if (!s.length) { $('#r-salidas').innerHTML = ''; return; }
     const porTipo = {};
     s.filter(x => !x.anulado).forEach(x => { porTipo[x.tipo] = (porTipo[x.tipo] || 0) + x.importe; });
@@ -161,7 +162,7 @@
       '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
         '<div class="px-4 py-2.5 border-b border-telecab-border flex flex-wrap items-center gap-x-3 gap-y-1">' +
           '<span class="text-xs font-semibold uppercase tracking-wide text-telecab-muted">Salio de la caja en esta quincena</span>' +
-          SALIDAS.map(t => (porTipo[t.codigo]
+          SALIDAS_TODAS.map(t => (porTipo[t.codigo]
             ? '<span class="text-[11px] px-2 py-0.5 rounded-lg bg-telecab-card2 text-telecab-text">' +
               esc(t.etiqueta) + ' <b class="tabular-nums">' + eur(porTipo[t.codigo]) + '</b></span>'
             : '')).join('') +

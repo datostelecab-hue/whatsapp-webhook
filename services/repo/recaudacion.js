@@ -47,11 +47,18 @@ const TIPOS = [
   { codigo: 'salida_gastos',     etiqueta: 'Gastos empresa',        caja: -1, deuda:  0, conductor: false },
   { codigo: 'salida_caja_chica', etiqueta: 'Caja chica',            caja: -1, deuda:  0, conductor: false },
   { codigo: 'salida_nomina',     etiqueta: 'Nómina',                caja: -1, deuda:  0, conductor: false },
+  // El traspaso del Excel que llevaban a mano: todo lo que salió de la caja
+  // ANTES de que existiera este módulo, sin desglosar porque no lo está en
+  // ninguna parte. `interno` lo deja fuera del desplegable: es de un solo uso.
+  { codigo: 'salida_apertura',   etiqueta: 'Traspaso de apertura',  caja: -1, deuda:  0, conductor: false, interno: true },
 ];
 const TIPO = c => TIPOS.find(x => x.codigo === c) || null;
 const ES_SALIDA = c => /^salida_/.test(String(c || ''));
-// Las cuatro bocas por las que sale el dinero de la caja.
-const SALIDAS = TIPOS.filter(t => !t.conductor);
+// Las cuatro bocas por las que sale el dinero de la caja, para el desplegable.
+// El traspaso de apertura no está: no se elige, se hizo una vez.
+const SALIDAS = TIPOS.filter(t => !t.conductor && !t.interno);
+// Todas las salidas, incluida la de apertura, para leer y sumar.
+const TODAS_SALIDAS = TIPOS.filter(t => !t.conductor);
 
 // ── LA QUINCENA ────────────────────────────────────────────────────────────
 // (año, mes, 1|2). La 1 es del 1 al 15; la 2 del 16 al último del mes, sea 28,
@@ -224,11 +231,12 @@ async function cuadre() {
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_banco'), 0)      AS banco,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_gastos'), 0)     AS gastos,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_caja_chica'), 0) AS caja_chica,
-       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_nomina'), 0)     AS nominas_pagadas
+       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_nomina'), 0)     AS nominas_pagadas,
+       COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_apertura'), 0)   AS apertura
      FROM recaudacion_movimiento WHERE anulado_at IS NULL`);
   const x = r.rows[0];
   const n = k => Number(x[k]) || 0;
-  const salidas = n('banco') + n('gastos') + n('caja_chica') + n('nominas_pagadas');
+  const salidas = n('banco') + n('gastos') + n('caja_chica') + n('nominas_pagadas') + n('apertura');
   const dosDec = v => +v.toFixed(2);
   return {
     // Lo que debe haber en el cajón ahora mismo.
@@ -243,6 +251,7 @@ async function cuadre() {
     porSalida: {
       salida_banco: dosDec(n('banco')), salida_gastos: dosDec(n('gastos')),
       salida_caja_chica: dosDec(n('caja_chica')), salida_nomina: dosDec(n('nominas_pagadas')),
+      salida_apertura: dosDec(n('apertura')),
     },
   };
 }
@@ -497,13 +506,22 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
     `SELECT id, trim(nombre || ' ' || COALESCE(apellidos, '')) AS n FROM conductor`))
     .rows.map(x => [String(x.id), x.n]));
 
+  // Lo puesto A MANO no se pisa NUNCA, coincida o no con lo que diga BOLT: si
+  // Tráfico cuadró una cifra con el conductor por teléfono, o vino del volcado
+  // del Excel viejo, esa es la buena. Antes solo se respetaba cuando los
+  // números DIFERÍAN, así que el día que BOLT acertaba por casualidad la fila
+  // pasaba a 'bolt' y perdía la protección para el siguiente recálculo.
+  const esManual = c => (previos.get(c.conductorId) || {}).origen === 'manual';
+
   const cambios = [], nuevos = [], respetados = [];
   for (const c of calculado) {
     const antes = previos.get(c.conductorId);
-    // Lo que alguien corrigió A MANO no se pisa: si Tráfico cuadró una cifra con
-    // BOLT por teléfono, el recálculo no puede deshacerlo por su cuenta.
-    if (antes && antes.origen === 'manual' && Math.abs(antes.importe - c.importe) > 0.005) {
-      respetados.push({ ...c, conductor: nombres.get(c.conductorId) || '?', antes: antes.importe });
+    if (esManual(c)) {
+      // Solo se avisa de los que además NO cuadran: los que coinciden no son
+      // noticia y llenarían el aviso de ruido.
+      if (Math.abs(antes.importe - c.importe) > 0.005) {
+        respetados.push({ ...c, conductor: nombres.get(c.conductorId) || '?', antes: antes.importe });
+      }
       continue;
     }
     if (!antes) nuevos.push({ ...c, conductor: nombres.get(c.conductorId) || '?' });
@@ -512,10 +530,7 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
     }
   }
 
-  const aGuardar = calculado.filter(c => {
-    const antes = previos.get(c.conductorId);
-    return !(antes && antes.origen === 'manual' && Math.abs(antes.importe - c.importe) > 0.005);
-  });
+  const aGuardar = calculado.filter(c => !esManual(c));
   if (aGuardar.length) {
     await db.transaccion(async cli => {
       for (const c of aGuardar) {
@@ -603,7 +618,7 @@ async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
 }
 
 module.exports = {
-  DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, ES_SALIDA,
+  DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, TODAS_SALIDAS, ES_SALIDA,
   cuadre, salidasDe,
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
   etiquetaQuincena, cortaQuincena,
