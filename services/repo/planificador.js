@@ -104,7 +104,7 @@ async function tablero({ dia } = {}) {
               -- El nombre a MOSTRAR: el de BOLT manda; si no tiene cuenta de BOLT,
               -- el suyo con "(sin nombre de BOLT)"; y si tampoco, su id.
               COALESCE(ext.externo_nombre,
-                       NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), '') || ' (sin nombre de BOLT)',
+                       NULLIF(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))), '') || ' (sin nombre de BOLT)',
                        '#' || c.id::text)                    AS nombre,
               c.dni_nie,
               tel.e164 AS telefono,
@@ -186,7 +186,7 @@ async function tablero({ dia } = {}) {
     // tablero): la que trabaja o la que libra cae dentro de la semana.
     db.consulta(
       `SELECT le.id, le.conductor_id, le.dia_trabaja, le.dia_libra, le.motivo,
-              btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor
+              COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor
          FROM libranza_excepcional le JOIN conductor c ON c.id = le.conductor_id
         WHERE le.dia_trabaja BETWEEN $1 AND $2 OR le.dia_libra BETWEEN $1 AND $2
         ORDER BY le.dia_trabaja`, [lunes, domingo]),
@@ -205,7 +205,7 @@ async function tablero({ dia } = {}) {
     db.consulta(
       `SELECT DISTINCT ON (a.plaza_id)
               a.plaza_id, a.conductor_id, a.desde,
-              btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre
+              COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
          FROM asignacion a
          JOIN plaza p     ON p.id = a.plaza_id AND p.baja_at IS NULL
          JOIN conductor c ON c.id = a.conductor_id
@@ -1118,7 +1118,7 @@ async function cambiarCoche({ deVehiculoId, aVehiculoId, dia, soloTurno, forzar 
   // nombre; `forzar` existe para cuando de verdad se quiera hacer.
   if (!forzar) {
     const ocupado = await db.consulta(
-      `SELECT btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS quien
+      `SELECT COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS quien
          FROM v_plaza p
          JOIN asignacion a ON a.plaza_id = p.plaza_id
                           AND a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $2)
@@ -1252,7 +1252,7 @@ async function salidasHoy(dia) {
             -- BOLT PRIMERO (regla de la casa): el mismo nombre que ven las
             -- pantallas y los reportes, y no el de RRHH.
             COALESCE(NULLIF(btrim(ext.externo_nombre), ''),
-                     NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), ''),
+                     NULLIF(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))), ''),
                      '#' || c.id::text)                          AS conductor,
             tel.e164                                             AS telefono,
             bool_or(fc.rol = 'FIJO')                             AS es_fijo,

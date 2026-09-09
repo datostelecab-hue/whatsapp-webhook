@@ -56,7 +56,7 @@ falta AS (
    WHERE COALESCE(h.seg, 0) = 0 AND j.conductor_id IS NULL
 )
 SELECT c.id,
-       btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
+       COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
        COALESCE(tel.e164, '')      AS telefono,
        COALESCE(veh.matricula, '') AS coche,
        COALESCE(tur.etiqueta, '')  AS turno,

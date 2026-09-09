@@ -93,7 +93,7 @@ async function leerPorFecha(diaIso) {
   const r = await db.consulta(
     `SELECT j.conductor_id, j.observacion, j.horas_seg_momento,
             ext.externo_nombre                                    AS nombre_bolt,
-            btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))  AS nombre_ficha
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')))  AS nombre_ficha
        FROM justificante j
        LEFT JOIN conductor c ON c.id = j.conductor_id
        LEFT JOIN LATERAL (
@@ -162,7 +162,7 @@ async function listar({ estado = 'pendiente', tipo, desde, hasta, limite = 300 }
     `SELECT j.id, j.conductor_id, j.dia_operativo::text AS dia, j.tipo,
             j.horas_seg_momento, j.observacion, j.creado_at,
             j.aprobado_at, j.anulado_at, j.anulado_motivo,
-            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor,
             COALESCE(uc.nombre, '')  AS puesta_por,
             COALESCE(ua.nombre, '')  AS aprobada_por,
             COALESCE(un.nombre, '')  AS rechazada_por

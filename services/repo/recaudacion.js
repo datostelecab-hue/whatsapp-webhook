@@ -175,7 +175,7 @@ async function cuadro(q) {
         WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
         GROUP BY 1)
      SELECT c.id::text AS quien, NULL::text AS bolt_uuid,
-            trim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor,
             c.empleo_vigente,
             ef.activo AS efectivo_activo, ef.visto AS efectivo_at,
             COALESCE(ci.importe, 0)   AS deuda,
@@ -364,7 +364,7 @@ async function ficha(conductorId) {
                 NULL::text AS telefono
            FROM conductor_externo WHERE sistema = 'bolt' AND externo_id = $1`, [id])
       : db.consulta(
-        `SELECT id, trim(nombre || ' ' || COALESCE(apellidos, '')) AS conductor, empleo_vigente,
+        `SELECT id, COALESCE(NULLIF(btrim(nombre_bolt), ''), trim(nombre || ' ' || COALESCE(apellidos, ''))) AS conductor, empleo_vigente,
                 (SELECT e164 FROM conductor_telefono t WHERE t.conductor_id = c.id
                   AND t.vigente_hasta IS NULL
                   ORDER BY principal DESC NULLS LAST, id LIMIT 1) AS telefono
@@ -453,7 +453,7 @@ function diaIso(v) {
 /** Los conductores a los que se les puede cobrar, para el desplegable. */
 async function candidatos() {
   const r = await db.consulta(
-    `SELECT c.id, trim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor, c.empleo_vigente
+    `SELECT c.id, COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor, c.empleo_vigente
        FROM conductor c WHERE NOT c.es_centinela
         AND (c.empleo_vigente OR EXISTS (SELECT 1 FROM recaudacion_cierre r WHERE r.conductor_id = c.id)
              OR EXISTS (SELECT 1 FROM recaudacion_movimiento m WHERE m.conductor_id = c.id))
@@ -608,7 +608,7 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
     .rows.map(x => [String(x.quien), { importe: Number(x.importe), origen: x.origen }]));
 
   const conductores = (await db.consulta(
-    `SELECT id, trim(nombre || ' ' || COALESCE(apellidos, '')) AS n FROM conductor`)).rows;
+    `SELECT id, COALESCE(NULLIF(btrim(nombre_bolt), ''), trim(nombre || ' ' || COALESCE(apellidos, ''))) AS n FROM conductor`)).rows;
   const nombres = new Map(conductores.map(x => [String(x.id), x.n]));
 
   // RED DE SEGURIDAD. Una cuenta sin enlazar cuyo nombre es EL MISMO que el de
@@ -744,7 +744,7 @@ async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
   if (lineas.length > 2000) throw new Error('Demasiadas líneas de golpe (máximo 2000)');
 
   const padron = (await db.consulta(
-    `SELECT c.id, trim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre
+    `SELECT c.id, COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
        FROM conductor c WHERE NOT c.es_centinela`)).rows;
   // Se compara sin tildes, sin dobles espacios y en minúsculas: el cierre de
   // BOLT escribe los nombres a su manera y así casan igual.

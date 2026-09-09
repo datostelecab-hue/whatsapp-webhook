@@ -66,7 +66,7 @@ async function ficha(id) {
   const plazas = (await db.consulta(`
     SELECT p.id, p.slot, t.etiqueta AS turno, s.rol, s.orden_ct,
            a.id AS asignacion_id, a.desde,
-           COALESCE(c.apellidos || ', ', '') || c.nombre AS conductor,
+           COALESCE(NULLIF(btrim(c.nombre_bolt), ''), COALESCE(c.apellidos || ', ', '') || c.nombre) AS conductor,
            c.id AS conductor_id
     FROM plaza p
     JOIN cat_slot s ON s.slot = p.slot

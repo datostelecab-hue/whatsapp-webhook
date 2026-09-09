@@ -19,7 +19,7 @@ const vig = require('./vigencia');
 const audit = require('./auditoria');
 
 // Nombre para mostrar. Se arma en SQL para poder ordenar y buscar por él.
-const NOMBRE = `btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)`;
+const NOMBRE = `btrim(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), COALESCE(c.apellidos || ', ', '') || c.nombre))`;
 // El nombre a MOSTRAR: siempre nos guiamos por el de BOLT. Si no tiene cuenta de
 // BOLT con nombre, el suyo con "(sin nombre de BOLT)" para que aparezca algo y no un
 // guion; y si tampoco tiene, su id. Requiere el LATERAL `bolt` (externo_nombre).

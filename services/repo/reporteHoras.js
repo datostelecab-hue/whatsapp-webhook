@@ -119,7 +119,7 @@ async function padron() {
   const r = await db.consulta(
     `SELECT c.id,
             COALESCE(NULLIF(btrim(ce.externo_nombre), ''),
-                     btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)) AS nombre,
+                     btrim(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), COALESCE(c.apellidos || ', ', '') || c.nombre))) AS nombre,
             tel.e164 AS telefono,
             ce.externo_id AS uuid,
             c.empleo_vigente

@@ -77,6 +77,22 @@ async function sincronizar(cuentas) {
       LEFT JOIN antes a ON a.externo_id = g.externo_id`,
     [uuids, nombres, tels, emails, estados, efectivos]);
 
+  // El nombre de BOLT se copia a la ficha del conductor enlazado. Vive ahí y no
+  // se resuelve por subconsulta porque lo leen 29 consultas repartidas por 15
+  // ficheros, algunas sobre cientos de filas: un SELECT por fila se paga.
+  // Con varias cuentas manda la ACTIVA; entre varias activas, la vista antes.
+  await db.consulta(`
+    UPDATE conductor c SET nombre_bolt = x.n
+      FROM (
+        SELECT DISTINCT ON (e.conductor_id)
+               e.conductor_id, btrim(e.externo_nombre) AS n
+          FROM conductor_externo e
+         WHERE e.sistema = 'bolt' AND e.conductor_id IS NOT NULL
+           AND btrim(COALESCE(e.externo_nombre, '')) <> ''
+         ORDER BY e.conductor_id, (e.estado_externo = 'active') DESC, e.visto_at DESC
+      ) x
+     WHERE x.conductor_id = c.id AND c.nombre_bolt IS DISTINCT FROM x.n`);
+
   // Las que hoy no ha devuelto BOLT y seguían activas: han desaparecido sin
   // pasar por 'deactivated'. Se marcan para que no ensucien el desplegable.
   const desaparecidas = await db.consulta(

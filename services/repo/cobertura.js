@@ -68,7 +68,7 @@ async function tramosSemana(desde, hasta) {
     `SELECT f.vehiculo_id, to_char(f.dia, 'YYYY-MM-DD') AS fecha,
             t.codigo AS turno, f.conductor_id,
             COALESCE(ext.externo_nombre,
-                     NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), ''),
+                     NULLIF(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))), ''),
                      '#' || c.id::text) AS nombre
        FROM f_cobertura($1::date, $2::date) f
        JOIN turno t     ON t.id = f.turno_id
@@ -405,7 +405,7 @@ async function conductorPorTelefono(phone) {
   if (t.length < 9) return null;
   const r = await db.consulta(
     `SELECT t.conductor_id,
-            btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS nombre,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
             c.empleo_vigente AS activo
        FROM conductor_telefono t
        JOIN conductor c ON c.id = t.conductor_id

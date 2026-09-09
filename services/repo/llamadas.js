@@ -180,7 +180,7 @@ async function listar({ desde, hasta } = {}) {
             l.turno, l.resultado, l.nota, l.creado_at, l.origen,
             COALESCE(u.nombre, '') AS quien,
             COALESCE(ext.externo_nombre,
-                     NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), ''),
+                     NULLIF(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))), ''),
                      '#' || c.id::text) AS conductor,
             tel.e164 AS telefono
        FROM llamada_seguimiento l
