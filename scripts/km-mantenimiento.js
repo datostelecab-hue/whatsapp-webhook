@@ -280,7 +280,7 @@ async function main() {
         esN(f.odoHoy == null ? null : Math.round(f.odoHoy)),
         esN(f.odoAntes == null ? null : Math.round(f.odoAntes)),
         f.trayectos ?? '', f.estadoMapon || '', f.ultimoDato || '',
-        f.enFlota ? 'si' : 'no', f.baja ? 'BAJA' : (f.estadoNuestro || ''),
+        !flota ? '' : f.enFlota ? 'si' : 'no', f.baja ? 'BAJA' : (f.estadoNuestro || ''),
         f.km != null && f.km >= UMBRAL ? 'SI' : '',
       ].join(';')),
     ].join('\n');
