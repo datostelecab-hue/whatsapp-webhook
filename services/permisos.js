@@ -76,6 +76,13 @@ const CATALOGO = [
     // Quién entra aquí lo decide el desarrollador usuario a usuario: el módulo
     // no viene sembrado en ningún rol (salvo los que llevan TODO el catálogo).
     { clave: '/justificantes', etiqueta: 'Justificantes (aprobación)' },
+    // PONER la J (y quitarla, y marcar libranza) desde la bitácora. Es un
+    // poder aparte de ABRIR la bitácora: media empresa la mira, y solo algunos
+    // escriben en ella. Antes era una lista de roles escrita en la vista
+    // —['trafico','desarrollador','superadmin']— así que el de taller no podía
+    // justificar sus propias averías y no había forma de dárselo sin tocar
+    // código. Y la API no comprobaba nada: el candado era solo el botón.
+    { clave: '/bitacora/justificar', etiqueta: 'Justificar días en la bitácora' },
   ] },
   { grupo: 'Dirección', items: [
     { clave: '/bi', etiqueta: 'Inteligencia de negocio' },
@@ -104,6 +111,11 @@ const RUTA_A_CLAVE = [
   ['/control/api/km-diagnostico', '/control/km'],
   ['/control/api/llamadas',       '/flota-viva'],
   ['/control/campanas',           '/control'],
+  // Escribir en la bitácora es otro permiso que leerla: sin estas tres líneas
+  // caerían en '/bitacora' y cualquiera que la abre podría justificar por API.
+  ['/bitacora/api/justificar',          '/bitacora/justificar'],
+  ['/bitacora/api/anular-justificante', '/bitacora/justificar'],
+  ['/bitacora/api/libranza',            '/bitacora/justificar'],
 ];
 
 // Todas las claves, aplanadas y de la más larga a la más corta (para que en el
@@ -154,7 +166,11 @@ function semillaDeRol(rol) {
   switch (rol) {
     // --- los de siempre ---
     case 'oficina': return [...G('General'), ...G('Contratación'), ...G('RRHH'), '/visibilidad'];
-    case 'trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones')].filter(c => c !== '/documentos');
+    // '/bitacora/justificar' va suelto y no por el grupo: Tráfico es quien
+    // justifica de siempre, pero el grupo 'Aprobaciones' lleva además la
+    // pantalla de aprobación, y esa la reparte el jefe a mano.
+    case 'trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones'), '/bitacora/justificar']
+      .filter(c => c !== '/documentos');
 
     // --- tráfico, en dos alturas ---
     // El jefe lleva su área entera y además ve el negocio; el gestor hace el

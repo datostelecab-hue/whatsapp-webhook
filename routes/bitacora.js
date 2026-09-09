@@ -12,9 +12,14 @@ let cache = null, ts = 0;
 const TTL = 3 * 60 * 1000;
 
 router.get('/', (req, res) => {
+  // Quién puede ESCRIBIR en la bitácora (justificar, anular, marcar libranza)
+  // sale de la matriz de permisos, no de una lista de roles. `permisos` en
+  // null es acceso total (superadmin y desarrollador).
+  const mias = res.locals.permisos;
   res.render('bitacora', {
     titulo: 'Bitácora', seccion: 'bitacora', layout: 'layout-gestion',
     rol: (req.usuario && req.usuario.rol) || '',
+    puedeJustificar: !mias || mias.includes('/bitacora/justificar'),
   });
 });
 

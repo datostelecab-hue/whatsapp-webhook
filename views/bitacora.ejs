@@ -108,7 +108,11 @@
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const rol = '<%= rol || "" %>';
-  const puedeJustificar = ['trafico', 'desarrollador', 'superadmin'].includes(rol);
+  // Lo decide el permiso '/bitacora/justificar' de la matriz de /usuarios, no
+  // el rol: así se le puede dar a taller (que justifica sus averías) sin abrirlo
+  // a todo el que lleve ese rol. El servidor lo comprueba igual en cada API;
+  // esto solo evita enseñar botones que darían 403.
+  const puedeJustificar = <%= puedeJustificar ? 'true' : 'false' %>;
   const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
   const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
 
