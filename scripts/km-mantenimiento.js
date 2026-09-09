@@ -3,6 +3,7 @@
 // ============================================================
 //   node scripts/km-mantenimiento.js
 //   node scripts/km-mantenimiento.js --dias=31 --umbral=15000 --csv=salida.csv
+//   node scripts/km-mantenimiento.js --flota=scripts/datos/flota-oscar.txt
 //   node scripts/km-mantenimiento.js --verificar=1194LCK     (diagnóstico)
 //
 // Responde a una pregunta muy concreta: de los coches que tenemos en Mapon,
@@ -10,29 +11,40 @@
 // revisión.
 //
 // ── De dónde sale cada número ────────────────────────────────────────────────
-//   · Odómetro de HOY       → unit/list.json, campo `mileage`, en METROS. Una
-//     sola llamada para toda la flota.
+//   · Contador del GPS      → unit/list.json, campo `mileage`, en METROS. Una
+//     sola llamada para toda la flota. OJO: NO es el odómetro del cuadro.
 //   · Km del PERIODO        → route/list.json por unidad, sumando los trayectos
 //     de tipo `route`. Es lo mismo que ya usa kmEnVentana() en producción.
-//   · Odómetro de HACE UN MES → el de hoy MENOS los km del periodo.
+//   · Contador hace un mes  → el de hoy MENOS los km del periodo.
 //
-// Lo último merece explicación. Nosotros no guardamos histórico de odómetros:
-// `vehiculo.km_odometro_m` se PISA en cada sincronización (cada 30 min), así que
-// no hay ninguna foto de hace un mes que consultar. Mapon sí tiene histórico
-// (unit_data/history_point.json y can_period.json), pero esos endpoints no están
-// probados contra esta cuenta y dependen del CAN de cada coche; route/list sí
-// está probado. Por eso la reconstrucción va por resta, y el odómetro de hace un
-// mes es un DERIVADO, no una lectura. Lo que decide la revisión —los km rodados
-// en el periodo— es medido, no derivado.
+// 🚨 EL CONTADOR DE MAPON NO ES EL ODÓMETRO DEL COCHE. Comprobado el 09/09/2026
+// contra los km de la última revisión que lleva el taller: de 27 coches con los
+// dos datos, 25 daban un imposible (el contador de Mapon POR DEBAJO del
+// odómetro que ya marcaba el coche en su revisión; 5886LBZ: 30.723 contra
+// 629.100). Lo que cuenta `mileage` son los km recorridos DESDE QUE SE INSTALÓ
+// EL DISPOSITIVO. La prueba: en 87 de 95 unidades el contador equivale a entre
+// 1 y 4 meses de su propio ritmo (mediana 2,3), las unidades recién dadas de
+// alta marcan ~0 (8512LDS: 1.046 km de contador y 1.041 rodados este mes), y la
+// única con un valor de odómetro real —3035LTX, 269.279— está puesta a mano.
 //
-// Para comprobar si el histórico de Mapon nos serviría (y dejar de restar), está
-// --verificar=MATRICULA: pide el punto histórico de esa unidad a la fecha de
-// inicio y enseña la respuesta cruda.
+// Consecuencia: km desde la última revisión NO se puede calcular solo con
+// Mapon. Hace falta UN anclaje por coche —el km del cuadro en una fecha— y a
+// partir de ahí Mapon mantiene la cuenta sola:
+//     km real hoy = km del anclaje + (contador de hoy − contador del anclaje)
+// Eso es una llamada al día para toda la flota y no caduca. Mientras no exista
+// ese anclaje, aquí solo se puede medir el ritmo: km rodados en la ventana.
+//
+// Y el histórico tampoco lo tenemos nosotros: `vehiculo.km_odometro_m` se PISA
+// en cada sincronización (cada 30 min). Por eso el contador de hace un mes es un
+// DERIVADO (hoy − km del periodo). Lo medido es el km del periodo.
+//
+// --verificar=MATRICULA prueba unit_data/history_point.json por si diera la
+// lectura del CAN, que sería el odómetro de verdad.
 //
 // ── Aviso sobre el umbral ────────────────────────────────────────────────────
-// Un mantenimiento de verdad se mide desde la ÚLTIMA REVISIÓN, no desde una
-// fecha redonda. Mientras no tengamos esa fecha por coche, el mes es la
-// referencia que hay. Este script no sustituye a ese dato: lo suple.
+// Un mantenimiento de verdad se mide desde la ÚLTIMA REVISIÓN. Mientras no haya
+// anclaje, el mes es la referencia que hay. Este script no sustituye ese dato:
+// lo suple, y deja dicho que lo suple.
 
 const path = require('path');
 const fs = require('fs');
@@ -51,6 +63,13 @@ process.argv.slice(2).forEach(a => {
 });
 const DIAS = Math.min(Number(args.dias) || 31, mapon.MAX_DIAS);
 const UMBRAL = Number(args.umbral) || 15000;
+// Lista de matrículas a las que hay que hacer seguimiento (una por línea). Con
+// ella, la tabla deja fuera los coches que no son de esta flota -- salvo los que
+// Mapon no sabe nombrar, que precisamente pueden ser los que faltan.
+const SEG = args.flota
+  ? new Set(fs.readFileSync(args.flota, 'utf8').split(/[\r\n]+/)
+      .map(x => x.toUpperCase().replace(/[^0-9A-Z]/g, '')).filter(Boolean))
+  : null;
 
 // useGrouping 'always': en es-ES los números de 4 cifras no llevan punto por
 // convención, y en una columna de odómetros eso descuadra la vista.
@@ -159,28 +178,39 @@ async function main() {
       estadoNuestro: nuestro ? (nuestro.estado_etiqueta || nuestro.estado_operativo) : null,
       baja: nuestro ? !!nuestro.baja_at : false,
       modeloNuestro: nuestro ? nuestro.marca_modelo : null,
+      enSeguimiento: !SEG || SEG.has(normMat(u.matricula)),
     });
     if (++hechas % 25 === 0) console.log(`   … ${hechas}/${unidades.size}`);
   });
 
   filas.sort((a, b) => (b.km ?? -1) - (a.km ?? -1));
 
-  const conDato = filas.filter(f => f.km != null);
+  // Con lista de seguimiento la tabla se queda con esos coches Y con las
+  // unidades que Mapon no sabe nombrar Y HAN RODADO: una de ellas puede ser
+  // justo el coche de la lista que "no aparece". Un equipo sin nombre y sin
+  // moverse no es ningun coche, es un GPS en un cajon.
+  const PLACA = /^[0-9]{4}[A-Z]{3}$/;
+  const visibles = SEG
+    ? filas.filter(f => f.enSeguimiento ||
+        (!PLACA.test(normMat(f.matricula)) && (f.km || 0) > 0))
+    : filas;
+  const conDato = visibles.filter(f => f.km != null);
   const pasan = conDato.filter(f => f.km >= UMBRAL);
-  const fallidas = filas.filter(f => f.error);
+  const fallidas = visibles.filter(f => f.error);
 
   // ── Tabla ──────────────────────────────────────────────────────────────────
-  const cab = ['', 'Matrícula', 'Vehículo', 'Km del mes', 'Km/día', 'Odóm. hoy', 'Hace 1 mes', 'Estado'];
+  const cab = ['', 'Matrícula', 'Vehículo', 'Km del mes', 'Km/día', 'GPS total', 'GPS 1 mes', 'Estado'];
   const anchos = [3, 10, 24, 11, 7, 11, 11, 18];
   const linea = c => c.map((x, i) => (i >= 3 && i <= 6 ? String(x).padStart(anchos[i]) : String(x).padEnd(anchos[i]))).join(' ');
   console.log('\n' + linea(cab));
   console.log('─'.repeat(anchos.reduce((a, b) => a + b + 1, 0)));
 
-  filas.forEach((f, i) => {
+  visibles.forEach((f, i) => {
     const marca = f.km != null && f.km >= UMBRAL ? '▲' : ' ';
     // Sin BD no se sabe si el coche es nuestro: la columna se deja en blanco.
     // Poner "no en flota" sin haber mirado sería afirmar lo que no se ha visto.
     const estado = [
+      SEG && !f.enSeguimiento ? 'fuera de lista' : '',
       !flota ? '' : f.enFlota ? (f.baja ? 'BAJA' : (f.estadoNuestro || '')) : 'no en flota',
       f.estadoMapon === 'nodata' || f.estadoMapon === 'nogps' ? `(${f.estadoMapon})` : '',
     ].filter(Boolean).join(' ');
@@ -198,6 +228,12 @@ async function main() {
   // ── Resumen ────────────────────────────────────────────────────────────────
   console.log(`\n📊 RESUMEN`);
   console.log(`   Unidades en Mapon .................. ${unidades.size}`);
+  if (SEG) {
+    const vistas = new Set(filas.map(f => normMat(f.matricula)));
+    const faltan = [...SEG].filter(m => !vistas.has(m)).sort();
+    console.log(`   De la lista de seguimiento ......... ${SEG.size}, de las que Mapon ve ${SEG.size - faltan.length}`);
+    console.log(`   De la lista SIN unidad en Mapon .... ${faltan.length}${faltan.length ? ': ' + faltan.join(', ') : ''}`);
+  }
   console.log(`   Con recorrido leído ................ ${conDato.length}`);
   console.log(`   ▲ Pasan de ${num(UMBRAL)} km ............... ${pasan.length}`);
   if (conDato.length) {
@@ -228,7 +264,6 @@ async function main() {
   // La matrícula española de hoy son 4 cifras y 3 letras. Lo que no encaje ahí
   // es un coche que Mapon no sabe nombrar: o va con el número del dispositivo,
   // o con el bastidor, o con un guion.
-  const PLACA = /^[0-9]{4}[A-Z]{3}$/;
   const sinPlaca = filas.filter(f => !PLACA.test(normMat(f.matricula)));
   const rodando = sinPlaca.filter(f => (f.km || 0) > 0);
   if (sinPlaca.length) {
@@ -273,7 +308,7 @@ async function main() {
   if (args.csv) {
     const esN = n => (n == null ? '' : String(n).replace('.', ','));
     const filasCsv = [
-      ['Matricula', 'Vehiculo', 'Unit ID', 'Km periodo', 'Km/dia', 'Odometro hoy', 'Odometro hace 1 mes', 'Trayectos', 'Estado Mapon', 'Ultima senal', 'En flota', 'Estado nuestro', 'Revision'].join(';'),
+      ['Matricula', 'Vehiculo', 'Unit ID', 'Km periodo', 'Km/dia', 'Km GPS desde instalacion', 'Km GPS hace 1 mes', 'Trayectos', 'Estado Mapon', 'Ultima senal', 'En flota', 'Estado nuestro', 'Revision'].join(';'),
       ...filas.map(f => [
         f.matricula, (f.modeloNuestro || f.vehiculo || ''), f.unitId,
         esN(f.km), esN(f.km == null ? null : Math.round(f.km / DIAS * 10) / 10),
