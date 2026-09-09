@@ -204,14 +204,24 @@ async function darDeBaja(id, usuarioId) {
 
 /**
  * Vuelca los odómetros de Mapon. Se llama desde el cron diario.
- * `lecturas` = Map(unit_id → { odometroM, ... }) tal como lo da mapon.unidades().
+ * `lecturas` = Map(unit_id → { odometroCanM, ... }) tal como lo da mapon.unidades().
+ *
+ * 🚨 Se escribe SOLO `odometroCanM`, que es el odómetro del cuadro leído del CAN.
+ * El otro campo de Mapon, `odometroM` (su `mileage`), NO es el odómetro del
+ * coche: son los km recorridos desde que se instaló el dispositivo. Se estuvo
+ * guardando ese, y por eso /vehiculos enseñaba 30.723 km en un coche que lleva
+ * 629.100 (5886LBZ, comprobado contra el taller el 09/09/2026).
+ *
+ * Los coches cuyo GPS no lee el CAN se quedan SIN dato en vez de con uno falso.
+ * Para esos hace falta un anclaje manual: km del cuadro en una fecha, y a partir
+ * de ahí `mileage` mantiene la cuenta sumando su propio incremento.
  */
 async function sincronizarOdometros(lecturas) {
-  if (!lecturas || !lecturas.size) return { actualizados: 0, sinEnlace: 0 };
-  let actualizados = 0, sinEnlace = 0;
+  if (!lecturas || !lecturas.size) return { actualizados: 0, sinEnlace: 0, sinCan: 0 };
+  let actualizados = 0, sinEnlace = 0, sinCan = 0;
   await db.transaccion(async cli => {
     for (const [unitId, u] of lecturas) {
-      if (!Number.isFinite(u.odometroM) || u.odometroM <= 0) continue;
+      if (!Number.isFinite(u.odometroCanM) || u.odometroCanM <= 0) { sinCan++; continue; }
       // El enlace pasa SIEMPRE por vehiculo_alias: la matrícula de Mapon no se
       // usa para casar, solo para diagnosticar descuadres.
       const r = await cli.query(
@@ -220,11 +230,11 @@ async function sincronizarOdometros(lecturas) {
                        WHERE sistema = 'mapon' AND externo_id = $1 AND visto_hasta IS NULL)
             AND baja_at IS NULL
           RETURNING id`,
-        [String(unitId), u.odometroM]);
+        [String(unitId), u.odometroCanM]);
       if (r.rowCount) actualizados++; else sinEnlace++;
     }
   });
-  return { actualizados, sinEnlace };
+  return { actualizados, sinEnlace, sinCan };
 }
 
 /**

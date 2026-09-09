@@ -131,19 +131,29 @@ async function unidades() {
   if (cacheUnidades.mapa.size && Date.now() - cacheUnidades.ts < TTL_UNIDADES) {
     return cacheUnidades.mapa;
   }
-  const r = await fetchMapon(`${API}/unit/list.json?key=${KEY}`);
+  // include[]=can trae el ODOMETRO DE VERDAD (el del cuadro, por CAN bus). Sin
+  // el, lo unico que hay es `mileage`, que NO es el odometro del coche.
+  const r = await fetchMapon(`${API}/unit/list.json?key=${KEY}&include[]=can`);
   const json = await r.json();
   const lista = (json && json.data && json.data.units) || [];
   if (!lista.length && cacheUnidades.mapa.size) return cacheUnidades.mapa;   // fallo puntual: se sigue con lo anterior
 
   const mapa = new Map();
   lista.forEach(u => {
+    // El odometro real llega en can.odom, en KILOMETROS con decimal. Solo lo
+    // dan los coches cuyo GPS lee el CAN: 90 de 144 en septiembre de 2026.
+    const odomCan = u.can && u.can.odom ? Number(u.can.odom.value) : NaN;
     mapa.set(u.unit_id, {
       matricula: txt(u.number) || txt(u.label) || `#${u.unit_id}`,
       vehiculo: [txt(u.make), txt(u.model)].filter(Boolean).join(' ') || txt(u.label) || 'Vehículo',
-      // `mileage` viene en METROS y ya llegaba en esta misma llamada: se estaba
-      // tirando. Es el odometro del coche, asi que sale gratis.
+      // 🚨 `mileage` NO es el odometro del coche, por mucho que lo parezca: son
+      // los km recorridos DESDE QUE SE INSTALO EL DISPOSITIVO. Comprobado el
+      // 09/09/2026 contra los km de la ultima revision del taller: 25 de 27
+      // coches daban un imposible (5886LBZ: 30.723 contra 629.100 reales). El
+      // odometro bueno es `odometroCanM`; este sirve para medir recorridos.
       odometroM: Number.isFinite(Number(u.mileage)) ? Math.round(Number(u.mileage)) : null,
+      odometroCanM: Number.isFinite(odomCan) ? Math.round(odomCan * 1000) : null,
+      odometroCanAt: u.can && u.can.odom ? txt(u.can.odom.gmt) || null : null,
       // `state` NO es una cadena: Mapon devuelve un objeto {name, start,
       // duration, debug_info}. Con txt() salia "[object Object]" en las 144
       // unidades. El nombre es lo unico que se usa aqui.
