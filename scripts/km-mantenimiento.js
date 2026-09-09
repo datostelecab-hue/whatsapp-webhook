@@ -178,8 +178,10 @@ async function main() {
 
   filas.forEach((f, i) => {
     const marca = f.km != null && f.km >= UMBRAL ? '▲' : ' ';
+    // Sin BD no se sabe si el coche es nuestro: la columna se deja en blanco.
+    // Poner "no en flota" sin haber mirado sería afirmar lo que no se ha visto.
     const estado = [
-      f.enFlota ? (f.baja ? 'BAJA' : (f.estadoNuestro || '')) : 'no en flota',
+      !flota ? '' : f.enFlota ? (f.baja ? 'BAJA' : (f.estadoNuestro || '')) : 'no en flota',
       f.estadoMapon === 'nodata' || f.estadoMapon === 'nogps' ? `(${f.estadoMapon})` : '',
     ].filter(Boolean).join(' ');
     console.log(linea([
@@ -222,6 +224,39 @@ async function main() {
     console.log(`\n⚠️  ${fallidas.length} unidad(es) sin recorrido:`);
     fallidas.forEach(f => console.log(`   · ${f.matricula} — ${f.error}`));
   }
+  // ── Identidad: sin esto, un listado de km no se puede llevar al taller ──────
+  // La matrícula española de hoy son 4 cifras y 3 letras. Lo que no encaje ahí
+  // es un coche que Mapon no sabe nombrar: o va con el número del dispositivo,
+  // o con el bastidor, o con un guion.
+  const PLACA = /^[0-9]{4}[A-Z]{3}$/;
+  const sinPlaca = filas.filter(f => !PLACA.test(normMat(f.matricula)));
+  const rodando = sinPlaca.filter(f => (f.km || 0) > 0);
+  if (sinPlaca.length) {
+    console.log(`\n⚠️  ${sinPlaca.length} unidad(es) sin matrícula española en Mapon` +
+      (rodando.length
+        ? `, y ${rodando.length} de ellas ${rodando.length === 1 ? 'HA RODADO' : 'HAN RODADO'} este mes:`
+        : ' (ninguna ha rodado: parecen equipos sin instalar)'));
+    rodando.sort((a, b) => b.km - a.km).forEach(f =>
+      console.log(`   · unit ${f.unitId} «${f.matricula}» — ${num(f.km)} km este mes` +
+        (f.odoHoy != null ? `, odómetro ${num(f.odoHoy)}` : '')));
+  }
+
+  // Dos unidades con la misma matrícula = un GPS viejo sin dar de baja, o una
+  // matrícula mal escrita. Los km de ese coche están repartidos entre las dos.
+  const porPlaca = new Map();
+  filas.forEach(f => {
+    const k = normMat(f.matricula);
+    if (!PLACA.test(k)) return;
+    if (!porPlaca.has(k)) porPlaca.set(k, []);
+    porPlaca.get(k).push(f);
+  });
+  const dobles = [...porPlaca.entries()].filter(([, v]) => v.length > 1);
+  if (dobles.length) {
+    console.log(`\n⚠️  ${dobles.length} matrícula(s) en DOS unidades de Mapon (sus km salen partidos):`);
+    dobles.forEach(([k, v]) => console.log(`   · ${k} → ` +
+      v.map(f => `unit ${f.unitId} (${num(f.km ?? 0)} km, odóm. ${f.odoHoy == null ? '—' : num(f.odoHoy)})`).join(' vs ')));
+  }
+
   const raros = filas.filter(f => f.odoIncoherente);
   if (raros.length) {
     console.log(`\n⚠️  ${raros.length} unidad(es) con el odómetro por debajo de sus propios km del mes ` +

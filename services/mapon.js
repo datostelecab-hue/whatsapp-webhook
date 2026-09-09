@@ -144,7 +144,11 @@ async function unidades() {
       // `mileage` viene en METROS y ya llegaba en esta misma llamada: se estaba
       // tirando. Es el odometro del coche, asi que sale gratis.
       odometroM: Number.isFinite(Number(u.mileage)) ? Math.round(Number(u.mileage)) : null,
-      estado: txt(u.state) || null,          // driving / standing / nodata / nogps / service
+      // `state` NO es una cadena: Mapon devuelve un objeto {name, start,
+      // duration, debug_info}. Con txt() salia "[object Object]" en las 144
+      // unidades. El nombre es lo unico que se usa aqui.
+      estado: txt(u.state && typeof u.state === 'object' ? u.state.name : u.state) || null,
+      // driving / standing / nodata / nogps / service
       ultimoDato: txt(u.last_update) || null,
       lat: Number(u.lat) || null, lng: Number(u.lng) || null
     });
