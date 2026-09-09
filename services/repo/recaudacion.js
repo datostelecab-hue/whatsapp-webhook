@@ -111,7 +111,15 @@ function cuentaDesglose(desglose) {
   const limpio = {};
   let centimos = 0;
   for (const c of DENOMINACIONES) {
-    const n = Number((desglose || {})[String(c)] || (desglose || {})[ETIQUETA_DEN(c)] || 0);
+    // SOLO por céntimos. Antes había un apaño que aceptaba además la etiqueta
+    // en euros —`desglose['500']` para los billetes de 500— y esa etiqueta es
+    // LA MISMA CLAVE que 500 céntimos, o sea la moneda de 5 €. Resultado: los
+    // billetes de 5 se contaban como billetes de 500, y un recibo de 250 €
+    // sumaba 2250. Lo mismo con los de 2 € ('200') y los de 1 € ('100').
+    //
+    // La pantalla manda céntimos y en céntimos se guarda: no hay dos formas de
+    // nombrar esto, así que tampoco puede haber dos lecturas.
+    const n = Number((desglose || {})[String(c)] || 0);
     if (!Number.isInteger(n) || n < 0) throw new Error(`La cantidad de ${ETIQUETA_DEN(c)} € tiene que ser un número entero de billetes o monedas`);
     if (n > 100000) throw new Error(`¿${n} unidades de ${ETIQUETA_DEN(c)} €? Revisa el recuento`);
     if (n > 0) { limpio[String(c)] = n; centimos += c * n; }
