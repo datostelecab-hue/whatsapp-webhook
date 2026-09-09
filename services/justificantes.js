@@ -41,8 +41,11 @@ const { reporteDia, resumirFilas, banda, fechaDeClave } = rep;
 // lo que cambia es el envoltorio: cabecera de la casa con el logo, tabla con bordes
 // y, al final, el resumen del día y la leyenda de colores.
 const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9', revisar: 'FFFFC000' };
-const CAB_REPORTE = ['Nº', 'Nombre', 'Teléfono', 'Turno', 'Horas', 'Observaciones', 'Matrícula', 'KM BOLT', 'KM descon.'];
-const ANCHOS_REPORTE = [6, 34, 16, 11, 12, 26, 15, 12, 12];
+// "Prom. mes" va pegada al nombre a propósito: es lo que convierte el dato del
+// día en un juicio. 6 h en alguien que promedia 9 es una caída; en alguien que
+// promedia 6, un martes normal.
+const CAB_REPORTE = ['Nº', 'Nombre', 'Prom. mes', 'Teléfono', 'Turno', 'Horas', 'Observaciones', 'Matrícula', 'KM BOLT', 'KM descon.'];
+const ANCHOS_REPORTE = [6, 34, 11, 16, 11, 12, 26, 15, 12, 12];
 const N_REPORTE = CAB_REPORTE.length;
 const ULTIMA_REPORTE = est.colLetra(N_REPORTE);
 
@@ -125,26 +128,32 @@ async function excelDia(reporte) {
       fila++;
     }
     const row = ws.getRow(fila);
-    [f.nro, f.nombre, f.telefono, f.turno || '', f.horasTexto, f.observacion,
+    [f.nro, f.nombre, f.promedioMes == null ? '' : f.promedioMes, f.telefono, f.turno || '',
+     f.horasTexto, f.observacion,
      f.matricula || '', f.kmBolt == null ? '' : f.kmBolt, f.kmDesc == null ? '' : f.kmDesc].forEach((v, ci) => {
       const c = row.getCell(ci + 1);
       c.value = v;
       c.border = est.TODOS_BORDES;
       c.alignment = { vertical: 'middle', horizontal: ci === 1 ? 'left' : 'center', indent: ci === 1 ? 1 : 0 };
       c.font = { size: 11, color: { argb: est.TEXTO } };
-      // Las dos columnas de KM (índices 7 y 8) en formato "0,0 km". La matrícula
-      // (índice 6) es texto y no se toca.
-      if (ci >= 7 && typeof v === 'number') c.numFmt = '0.0" km"';
+      // El promedio (índice 2) como número con una decimal y su "h".
+      if (ci === 2 && typeof v === 'number') {
+        c.numFmt = '0.0" h"';
+        c.font = { size: 11, color: { argb: 'FF6B7280' } };
+      }
+      // Las dos columnas de KM (ahora índices 8 y 9) en formato "0,0 km". La
+      // matrícula (índice 7) es texto y no se toca.
+      if (ci >= 8 && typeof v === 'number') c.numFmt = '0.0" km"';
       if (i % 2) c.fill = est.relleno('FFFAFBFC');
     });
-    // El COLOR va solo en la celda de horas, como siempre.
-    const cel = row.getCell(5);
+    // El COLOR va solo en la celda de horas, que con la columna nueva es la 6.
+    const cel = row.getCell(6);
     if (FILL[f.color]) cel.fill = est.relleno(FILL[f.color]);
     cel.font = { size: 11, bold: true, color: { argb: f.color === 'azul' ? 'FFFFFFFF' : 'FF1F2430' } };
     // REVISAR: las dos celdas de KM (8 y 9) en ámbar y negrita, para que salte a la
     // vista que ese km hay que cuadrarlo a mano (fichó con un coche sin traza de Mapon).
     if (f.revisar) {
-      [8, 9].forEach(cn => {
+      [9, 10].forEach(cn => {
         const kc = row.getCell(cn);
         kc.fill = est.relleno(FILL.revisar);
         kc.font = { size: 11, bold: true, color: { argb: 'FF5A4600' } };

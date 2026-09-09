@@ -527,20 +527,25 @@ programar('40 5 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
-// Y A LAS 12:00, solo los TODOTURNO. Su jornada no cierra a las 05:00 sino al
-// mediodía, así que a las 05:40 la suya está a medias y saldrían con la mitad de
-// horas. Son cuatro personas: no le cuesta nada al servidor.
+// Y A LAS 12:00 OTRA VEZ, ahora TODOS.
+//
+// Antes aquí solo se recalculaban los TodoTurno, porque su jornada no cierra a
+// las 05:00 sino al mediodía. Pero al turno de NOCHE le pasa lo mismo: a las
+// 05:40 lo suyo aún se está cerrando, y salían con horas de menos. Al mediodía
+// la jornada anterior está cerrada para TODO EL MUNDO, sin excepciones, así que
+// esta pasada deja el promedio bueno para todos.
+//
+// La de las 05:40 se queda: da una cifra utilizable a primera hora, cuando
+// Tráfico empieza a colocar gente. Esta la corrige. Son 200 filas sobre
+// histórico ya sellado: no le cuesta nada al servidor y es idempotente.
 programar('0 12 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
-    const rend = require('./services/repo/rendimiento');
-    const ids = await rend.todoTurnoHoy();
-    if (!ids.length) return;
-    const r = await rend.recalcular({ soloIds: ids });
-    console.log(`⭐ [Rendimiento] TodoTurno al mediodía: ${r.filas} de ${ids.length}`);
+    const r = await require('./services/repo/rendimiento').recalcular();
+    console.log(`⭐ [Rendimiento] mediodía (todos): ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
   } catch (error) {
-    console.error(`⚠️  [Rendimiento] recálculo TodoTurno: ${error.message}`);
+    console.error(`⚠️  [Rendimiento] recálculo del mediodía: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
 

@@ -157,7 +157,7 @@ async function reporteDia(key) {
   const repoJust = require('./justificantes');
   await require('../flotaViva/db').preparar();
 
-  const [act, plan, pad, justis, minDia, minNoche] = await Promise.all([
+  const [act, plan, pad, justis, minDia, minNoche, prom] = await Promise.all([
     // LA JORNADA ENTERA (05→05), no la ventana del turno: es lo que mide
     // Visibilidad y es lo que la persona trabajó, empiece cuando empiece.
     rutas.actividadPorConductor(iso, 'operativo'),
@@ -170,6 +170,11 @@ async function reporteDia(key) {
     // trabajó quien no estaba en el cuadrante.
     rutas.minutosEfectivos(iso, 'dia').then(m => m.porUuid),
     rutas.minutosEfectivos(iso, 'noche').then(m => m.porUuid),
+    // El promedio de horas del MES CORRIDO de cada uno. Va al lado del nombre
+    // para poder leer el día contra su costumbre: 6 h son pocas en alguien de
+    // 9 de media y normales en alguien de 6. Sin la letra: en un Excel que se
+    // manda fuera, una nota escolar al lado de un nombre sobra.
+    require('./rendimiento').leer().catch(() => new Map()),
   ]);
 
   // Los justificantes, por persona (la clave 'id:<conductor_id>').
@@ -281,6 +286,9 @@ async function reporteDia(key) {
   const filas = orden.map((f, i) => {
     const comun = {
       nro: i + 1, nombre: f.nombre, telefono: f.telefono, turno: f.turno, horas: f.horas,
+      // null cuando no hay promedio: alguien recién dado de alta, o un NN sin
+      // ficha. Se deja vacío en vez de poner un cero que parecería un suspenso.
+      promedioMes: (f.conductorId && (prom.get(Number(f.conductorId)) || {}).horas) ?? null,
       libra: f.libra, debiaSalir: f.debiaSalir, esNN: f.esNN, sinFicha: f.sinFicha,
       enLibranza: f.enLibranza,
       matricula: f.matricula, kmBolt: f.kmBolt, kmDesc: f.kmDesc, revisar: f.revisar,
