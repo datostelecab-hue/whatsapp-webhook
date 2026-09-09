@@ -74,12 +74,15 @@ async function tablero({ dia } = {}) {
     // Las plazas de los coches que se planifican. El orden es el de la
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
+      // Se ordena por el NÚMERO del cuadrante, no por su nombre: el texto pone
+      // "Cuadrante 10" antes que "Cuadrante 2", y así salía en pantalla y en la
+      // parrilla impresa.
       `SELECT plaza_id, vehiculo_id, matricula, zona, base_zona_id, estado_operativo,
               es_operativo, visible_cobertura, slot, turno_id, turno_codigo, turno, rol, orden_ct,
-              cuadrante_id, cuadrante
+              cuadrante_id, cuadrante, cuadrante_num
          FROM v_plaza
         WHERE visible_cobertura OR cuadrante_id IS NOT NULL
-        ORDER BY zona NULLS LAST, cuadrante NULLS LAST, matricula, slot`),
+        ORDER BY zona NULLS LAST, cuadrante_num NULLS LAST, matricula, slot`),
 
     // Lo que hay escrito para esta semana, con sus días si es correturnos.
     db.consulta(
@@ -308,6 +311,8 @@ async function tablero({ dia } = {}) {
         zonaId: p.base_zona_id || null,
         cuadranteId: p.cuadrante_id || null,
         cuadrante: p.cuadrante || '',
+        // El número suelto, para poder ordenar sin parsear el nombre.
+        cuadranteNum: p.cuadrante_num == null ? null : Number(p.cuadrante_num),
         // El descanso del coche (bloque): los días que libran sus fijos.
         descanso: descansoDe.get(String(p.vehiculo_id)) || [],
         // `estadoVeh` con el nombre que usa el front. Es el CODIGO de la base

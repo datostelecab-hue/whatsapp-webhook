@@ -3,13 +3,16 @@
  *
  *   Nº | GRUPO (días de libranza) | MATRÍCULA | FIJO DÍA | FIJO NOCHE | CT DÍA | CT NOCHE
  *
- * La organización es POR GRUPOS DE CORRETURNO, como en el anexo original: las
- * matrículas que comparten el/los mismo(s) correturno(s) van juntas en un
- * bloque, y el correturno se escribe UNA sola vez con su celda combinada
- * verticalmente abarcando todas las matrículas que cubre.
+ * La organización es POR CUADRANTE y en su orden: Cuadrante 2, Cuadrante 3…
+ * igual que el planificador en pantalla. Antes se agrupaba por CORRETURNO
+ * COMPARTIDO —componentes conexos: si un correturno cubría A y B, y otro B y C,
+ * los tres caían en el mismo bloque— y salía un papel imposible de seguir,
+ * porque el orden no se parecía en nada al de la pantalla y un coche podía
+ * aparecer en un bloque con coches de otro cuadrante.
  *
- * "Compartir correturno" se resuelve como componentes conexos: si un correturno
- * cubre los coches A y B, y otro cubre B y C, los tres caen en el mismo grupo.
+ * El correturno se sigue combinando verticalmente dentro del bloque cuando
+ * cubre varias matrículas del mismo cuadrante, que es lo que hacía legible el
+ * anexo; lo que cambia es quién manda en el orden.
  */
 
 const ExcelJS = require('exceljs');
@@ -74,62 +77,40 @@ const borde = () => {
   return { top: l, left: l, bottom: l, right: l };
 };
 
-// ---- Union-Find para agrupar coches que comparten correturno ----
-function nuevaUF() {
-  const padre = new Map();
-  const find = x => {
-    if (!padre.has(x)) padre.set(x, x);
-    while (padre.get(x) !== x) { padre.set(x, padre.get(padre.get(x))); x = padre.get(x); }
-    return x;
-  };
-  const union = (a, b) => { padre.set(find(a), find(b)); };
-  return { find, union };
-}
-
 /**
- * Agrupa los coches por correturno compartido.
- * @returns { grupos: [{ coches:[coche], ctIds:Set }], sueltos: [coche] }
+ * Agrupa los coches POR CUADRANTE, en el orden del planificador.
+ *
+ * El orden es por `cuadranteNum` —el número de la tabla, no el nombre—: por
+ * texto, "Cuadrante 10" va antes que "Cuadrante 2".
+ *
+ * @returns { grupos: [{ nombre, numero, zona, coches, ctIds }], sueltos: [coche] }
  */
-function agruparPorCorreturno(coches) {
+function agruparPorCuadrante(coches) {
   const idsCT = coche =>
     [2, 3, 4, 5].map(s => (coche.personas[s] || {}).id).filter(Boolean);
 
-  const uf = nuevaUF();
-  const cochesDeCT = new Map();     // idCorreturno -> [coche]
-
-  coches.forEach(coche => {
-    idsCT(coche).forEach(id => {
-      if (!cochesDeCT.has(id)) cochesDeCT.set(id, []);
-      cochesDeCT.get(id).push(coche);
-    });
-  });
-
-  // Un correturno une todos los coches donde aparece.
-  cochesDeCT.forEach(lista => {
-    for (let i = 1; i < lista.length; i++) uf.union(lista[0].idx, lista[i].idx);
-  });
-
-  const porRaiz = new Map();
+  const porCuadrante = new Map();
   const sueltos = [];
   coches.forEach(coche => {
-    if (!idsCT(coche).length) { sueltos.push(coche); return; }   // sin correturno
-    const raiz = uf.find(coche.idx);
-    if (!porRaiz.has(raiz)) porRaiz.set(raiz, { coches: [], ctIds: new Set() });
-    const g = porRaiz.get(raiz);
+    if (!coche.cuadranteId) { sueltos.push(coche); return; }
+    const k = String(coche.cuadranteId);
+    if (!porCuadrante.has(k)) {
+      porCuadrante.set(k, {
+        nombre: coche.cuadrante || ('Cuadrante ' + (coche.cuadranteNum ?? '?')),
+        numero: coche.cuadranteNum == null ? Number.MAX_SAFE_INTEGER : coche.cuadranteNum,
+        zona: coche.zona || '',
+        coches: [], ctIds: new Set(),
+      });
+    }
+    const g = porCuadrante.get(k);
     g.coches.push(coche);
+    if (!g.zona && coche.zona) g.zona = coche.zona;
     idsCT(coche).forEach(id => g.ctIds.add(id));
   });
 
-  const grupos = [...porRaiz.values()].map(g => ({
-    coches: g.coches.sort((a, b) => a.matricula.localeCompare(b.matricula)),
-    ctIds: g.ctIds
-  }));
-
-  // Los grupos se ordenan por zona y, dentro, por su primera matrícula.
-  grupos.sort((a, b) => {
-    const za = a.coches[0].zona || 'zzz', zb = b.coches[0].zona || 'zzz';
-    return za.localeCompare(zb) || a.coches[0].matricula.localeCompare(b.coches[0].matricula);
-  });
+  const grupos = [...porCuadrante.values()];
+  grupos.forEach(g => g.coches.sort((a, b) => a.matricula.localeCompare(b.matricula)));
+  grupos.sort((a, b) => a.numero - b.numero || a.nombre.localeCompare(b.nombre));
 
   return { grupos, sueltos: sueltos.sort((a, b) => a.matricula.localeCompare(b.matricula)) };
 }
@@ -162,7 +143,7 @@ async function exportar(tablero) {
   // si tienen conductores asignados (se anota su estado bajo la matrícula).
   const tieneConductores = c => (c.personas || []).some(p => p.id);
   const conMatricula = tablero.coches.filter(c => c.matricula && (c.operativo || tieneConductores(c)));
-  const { grupos, sueltos } = agruparPorCorreturno(conMatricula);
+  const { grupos, sueltos } = agruparPorCuadrante(conMatricula);
 
   let fila = 2;
   let n = 1;
@@ -246,13 +227,14 @@ async function exportar(tablero) {
     fila++;
   };
 
-  let numGrupo = 1;
   grupos.forEach(grupo => {
-    const zona = grupo.coches.find(c => c.zona) ? grupo.coches.find(c => c.zona).zona : '';
-    const nombresCT = [...grupo.ctIds].map(id => (porId.get(id) || {}).nombre || id).join(' · ');
-
-    // Título del grupo (fila combinada A:G)
-    escribirTitulo(ws, fila, `CORRETURNO ${numGrupo++}${zona ? ' · ' + zona.toUpperCase() : ''}${nombresCT ? '   —   ' + nombresCT : ''}`);
+    const nCoches = grupo.coches.length;
+    // Título del bloque: el cuadrante, su zona y cuántos coches lleva. Los
+    // nombres de los correturnos ya no van aquí —se repetían con la columna
+    // que los pinta— y hacían el título ilegible en cuadrantes grandes.
+    escribirTitulo(ws, fila,
+      `${grupo.nombre.toUpperCase()}${grupo.zona ? ' · ' + grupo.zona.toUpperCase() : ''}` +
+      `   —   ${nCoches} ${nCoches === 1 ? 'coche' : 'coches'}`);
     fila++;
 
     const filaIni = fila;
@@ -265,9 +247,9 @@ async function exportar(tablero) {
     combinarIguales(ws, 7, filaIni, filaFin);
   });
 
-  // Coches sin correturno asignado, al final.
+  // Los coches que no están en ningún cuadrante, al final del todo.
   if (sueltos.length) {
-    escribirTitulo(ws, fila, 'SIN CORRETURNO ASIGNADO');
+    escribirTitulo(ws, fila, 'SIN CUADRANTE ASIGNADO');
     fila++;
     sueltos.forEach(escribirCocheBase);
   }
