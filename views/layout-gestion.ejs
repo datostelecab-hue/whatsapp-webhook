@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Telecab · <%= titulo || 'Gestión' %></title>
-  <link rel="icon" type="image/png" href="/assets/logo-64.png">
+  <link rel="icon" type="image/png" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
+  <link rel="apple-touch-icon" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
 
   <!-- Tema del PERFIL (lo inyecta el servidor) ANTES de pintar, sin parpadeo. Si no
        hay (o falla), cae al localStorage del dispositivo. -->
