@@ -15,7 +15,7 @@ const db = require('./db');
 
 /**
  * Sincroniza el inventario con lo que devuelve BOLT. NO enlaza a nadie.
- * `cuentas` = [{ driver_uuid, nombre, phone, email, state }]
+ * `cuentas` = [{ driver_uuid, nombre, phone, email, state, has_cash_payment }]
  */
 async function sincronizar(cuentas) {
   if (!Array.isArray(cuentas) || !cuentas.length) return { vistas: 0, nuevas: 0, cambiadas: 0, desaparecidas: 0 };
@@ -35,6 +35,12 @@ async function sincronizar(cuentas) {
   const tels = filas.map(([, c]) => (c.phone || '').slice(0, 20) || null);
   const emails = filas.map(([, c]) => (c.email || '').slice(0, 160) || null);
   const estados = filas.map(([, c]) => (c.state || '').toLowerCase() || null);
+  // `has_cash_payment`: si BOLT le deja cobrar en mano. Se distingue el `false`
+  // del "no vino en la respuesta": lo primero es un dato y lo segundo un hueco,
+  // y decir "no tiene efectivo" cuando en realidad no lo sabemos sería peor que
+  // no decir nada.
+  const efectivos = filas.map(([, c]) =>
+    (c.has_cash_payment === true || c.has_cash_payment === false ? c.has_cash_payment : null));
 
   // El estado ANTERIOR se guarda en un CTE aparte porque `EXCLUDED` no se puede
   // mirar desde el RETURNING: allí solo existe la fila tal como queda.
@@ -46,14 +52,20 @@ async function sincronizar(cuentas) {
     ),
     guardadas AS (
       INSERT INTO conductor_externo
-        (sistema, externo_id, externo_nombre, externo_telefono, externo_email, estado_externo)
-      SELECT 'bolt', u, n, t, e, s
-        FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[]) AS x(u, n, t, e, s)
+        (sistema, externo_id, externo_nombre, externo_telefono, externo_email, estado_externo,
+         efectivo_activo, efectivo_at)
+      SELECT 'bolt', u, n, t, e, s, ef, CASE WHEN ef IS NOT NULL THEN now() END
+        FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[])
+             AS x(u, n, t, e, s, ef)
       ON CONFLICT (sistema, externo_id) DO UPDATE SET
         externo_nombre   = EXCLUDED.externo_nombre,
         externo_telefono = EXCLUDED.externo_telefono,
         externo_email    = EXCLUDED.externo_email,
         estado_externo   = EXCLUDED.estado_externo,
+        -- Si esta vuelta no trajo el dato, se conserva el de antes en vez de
+        -- borrarlo: un hueco no desmiente lo que ya se sabía.
+        efectivo_activo  = COALESCE(EXCLUDED.efectivo_activo, conductor_externo.efectivo_activo),
+        efectivo_at      = COALESCE(EXCLUDED.efectivo_at, conductor_externo.efectivo_at),
         visto_at         = now()
       RETURNING externo_id, (xmax = 0) AS es_nueva, estado_externo
     )
@@ -63,7 +75,7 @@ async function sincronizar(cuentas) {
                AND a.estado_externo IS DISTINCT FROM g.estado_externo)::int AS cambiadas
       FROM guardadas g
       LEFT JOIN antes a ON a.externo_id = g.externo_id`,
-    [uuids, nombres, tels, emails, estados]);
+    [uuids, nombres, tels, emails, estados, efectivos]);
 
   // Las que hoy no ha devuelto BOLT y seguían activas: han desaparecido sin
   // pasar por 'deactivated'. Se marcan para que no ensucien el desplegable.

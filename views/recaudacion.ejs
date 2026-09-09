@@ -102,6 +102,8 @@
       <option value="favor">A su favor</option>
       <option value="movimiento">Con movimiento en la quincena</option>
       <option value="sinficha">Sin ficha en la plantilla</option>
+      <option value="efectivo">Con el efectivo activado en BOLT</option>
+      <option value="efectivofuera">Efectivo activado y ya no trabaja aquí</option>
     </select>
     <select id="f-plantilla" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
       <option value="">En plantilla y fuera</option>
@@ -110,6 +112,7 @@
     </select>
     <span id="f-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
   </div>
+  <p id="t-efectivo" class="text-xs text-telecab-muted mb-3"></p>
 
   <!-- ── El cuadro, o la ficha de uno ─────────────────────────────────── -->
   <div id="r-ficha" class="hidden mb-4"></div>
@@ -141,6 +144,10 @@
     ? '<span class="text-telecab-muted/40">—</span>'
     : '<span class="' + (clase || '') + '">' + eur(n) + '</span>');
   const fecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+  // Un instante (no un día): "09/09 13:40". Lo usa el aviso de cuándo se leyó
+  // el padrón de BOLT, para no dar por actual un dato de hace horas.
+  const hora = ts => (ts ? new Date(ts).toLocaleString('es-ES',
+    { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
   const hoyIso = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
 
@@ -253,6 +260,8 @@
       if (est === 'favor' && !(f.pendiente < -0.005)) return false;
       if (est === 'movimiento' && !(f.presencial || f.nomina || f.entrega)) return false;
       if (est === 'sinficha' && !f.sinFicha) return false;
+      if (est === 'efectivo' && !f.efectivoActivo) return false;
+      if (est === 'efectivofuera' && !(f.efectivoActivo && !f.enPlantilla)) return false;
       return true;
     });
   }
@@ -334,6 +343,17 @@
     $('#t-entrega').textContent = eur(t.entrega);
     $('#t-pendiente').textContent = eur(t.pendiente);
     $('#t-condeuda').textContent = t.conDeuda ? t.conDeuda + (t.conDeuda === 1 ? ' persona' : ' personas') : '';
+    // Quien puede cobrar en mano y ya no trabaja aquí es un grifo abierto: se
+    // avisa arriba, no escondido en una columna.
+    $('#t-efectivo').innerHTML = t.conEfectivo
+      ? '<span class="text-telecab-green">' + t.conEfectivo + ' con el efectivo activado en BOLT</span>' +
+        (t.efectivoFuera
+          ? ' · <button id="t-fuera" class="text-telecab-red font-semibold underline decoration-dotted">' +
+            t.efectivoFuera + (t.efectivoFuera === 1 ? ' de ellos ya no trabaja aquí' : ' de ellos ya no trabajan aquí') + '</button>'
+          : '')
+      : '';
+    const bf = document.getElementById('t-fuera');
+    if (bf) bf.addEventListener('click', () => { $('#f-estado').value = 'efectivofuera'; pintarCuadro(); });
 
     if (!D.filas.length) {
       $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
@@ -351,11 +371,12 @@
         'Nadie con esos filtros.</p>';
       return;
     }
-    const cab = ['Conductor', 'Efectivo', 'En mano', 'Nómina', 'Devuelto', 'De antes', 'Pendiente'];
+    const cab = ['Conductor', 'BOLT', 'Efectivo', 'En mano', 'Nómina', 'Devuelto', 'De antes', 'Pendiente'];
     $('#r-cuadro').innerHTML =
       '<div class="overflow-x-auto"><table class="w-full text-sm">' +
       '<thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted border-b border-telecab-border">' +
-        cab.map((c, i) => '<th class="px-3 py-2.5 ' + (i ? 'text-right' : 'text-left') + ' font-semibold whitespace-nowrap">' + c + '</th>').join('') +
+        cab.map((c, i) => '<th class="px-3 py-2.5 ' + (i === 0 ? 'text-left' : i === 1 ? 'text-center' : 'text-right') +
+          ' font-semibold whitespace-nowrap"' + (i === 1 ? ' title="Si BOLT le deja cobrar en efectivo ahora mismo"' : '') + '>' + c + '</th>').join('') +
         '<th class="px-3 py-2.5"></th></tr></thead><tbody>' +
       filas.map(f =>
         '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition' +
@@ -372,6 +393,17 @@
                 'SIN FICHA</span>'
               : f.enPlantilla ? ''
               : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">ya no está</span>') + '</td>' +
+          // Tres estados, no dos: lo tiene, no lo tiene, o el padrón todavía
+          // no lo ha dicho de esa cuenta. El tercero no se pinta como un "no".
+          '<td class="px-3 py-2.5 text-center">' + (f.efectivoActivo === null
+            ? '<span class="text-telecab-muted/40" title="El padrón de BOLT aún no ha dicho nada de esta cuenta">?</span>'
+            : f.efectivoActivo
+              ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' +
+                (f.enPlantilla ? 'bg-telecab-green/15 text-telecab-green' : 'bg-telecab-red/20 text-telecab-red border border-telecab-red/40') +
+                '" title="' + (f.enPlantilla
+                  ? 'Puede cobrar en efectivo' + (f.efectivoAt ? ' · según el padrón de ' + hora(f.efectivoAt) : '')
+                  : 'PUEDE COBRAR EN EFECTIVO Y YA NO TRABAJA AQUÍ') + '">€</span>'
+              : '<span class="text-telecab-muted/40" title="No puede cobrar en efectivo">—</span>') + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.deuda) +
             (f.ajuste ? '<span class="ml-1 text-[10px] px-1 rounded bg-telecab-gold/20 text-telecab-gold font-bold" ' +
               'title="' + esc(f.ajusteMotivo) + '">+' + eur(f.ajuste) + '</span>' : '') + '</td>' +

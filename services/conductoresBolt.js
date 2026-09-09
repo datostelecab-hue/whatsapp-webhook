@@ -84,6 +84,10 @@ async function traerDriversBolt() {
           email: (d.email || '').toString().trim(),
           phone: (d.phone || '').toString().trim(),
           state: (d.state || '').toString().trim(),
+          // Si BOLT le deja cobrar en efectivo. Se pasa tal cual —true, false o
+          // undefined— para que quien lo guarde distinga "no tiene" de "no se
+          // sabe"; convertirlo a booleano aquí perdería esa diferencia.
+          has_cash_payment: d.has_cash_payment,
           flota: f.nombre || String(f.id)
         };
         const prev = porUuid.get(uuid);

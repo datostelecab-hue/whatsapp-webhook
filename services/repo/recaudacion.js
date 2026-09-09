@@ -165,10 +165,19 @@ async function cuadro(q) {
         GROUP BY 1)`;
 
   const [r, rb] = await Promise.all([
-    db.consulta(`${cuentas('conductor_id')}
+    db.consulta(`${cuentas('conductor_id')},
+     -- ¿Le deja BOLT cobrar en mano? Sale del padrón, que la ingesta refresca
+     -- cada hora. Un conductor puede tener varias cuentas: basta que UNA lo
+     -- tenga activado para que pueda cobrar en efectivo.
+     efectivo AS (
+       SELECT conductor_id, bool_or(efectivo_activo) AS activo, max(efectivo_at) AS visto
+         FROM conductor_externo
+        WHERE sistema = 'bolt' AND conductor_id IS NOT NULL
+        GROUP BY 1)
      SELECT c.id::text AS quien, NULL::text AS bolt_uuid,
             trim(c.nombre || ' ' || COALESCE(c.apellidos, '')) AS conductor,
             c.empleo_vigente,
+            ef.activo AS efectivo_activo, ef.visto AS efectivo_at,
             COALESCE(ci.importe, 0)   AS deuda,
             COALESCE(ci.ajuste, 0)    AS ajuste,
             ci.ajuste_motivo,
@@ -181,9 +190,15 @@ async function cuadro(q) {
        LEFT JOIN cierre_prev cp ON cp.quien = c.id
        LEFT JOIN mov         m  ON m.quien  = c.id
        LEFT JOIN mov_prev    mp ON mp.quien = c.id
+       LEFT JOIN efectivo    ef ON ef.conductor_id = c.id
       WHERE NOT c.es_centinela
         AND (ci.importe IS NOT NULL OR m.quien IS NOT NULL
-             OR COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) <> 0)`,
+             OR COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) <> 0
+             -- Y TAMBIÉN quien tiene el efectivo activado y es (o fue) de la
+             -- casa, aunque hoy no deba nada: si puede cobrar en mano, mañana
+             -- deberá, y a quien ya no trabaja aquí hay que quitárselo.
+             OR (ef.activo AND EXISTS (
+                   SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)))`,
       [q.anio, q.mes, q.quincena, desde, hasta]),
 
     // Los que no tienen ficha. El nombre sale del padrón de BOLT.
@@ -196,6 +211,7 @@ async function cuadro(q) {
      SELECT g.quien, g.quien AS bolt_uuid,
             COALESCE(e.externo_nombre, 'Cuenta de BOLT ' || left(g.quien, 8)) AS conductor,
             NULL::boolean AS empleo_vigente,
+            e.efectivo_activo, e.efectivo_at,
             COALESCE(ci.importe, 0)   AS deuda,
             COALESCE(ci.ajuste, 0)    AS ajuste,
             ci.ajuste_motivo,
@@ -224,6 +240,10 @@ async function cuadro(q) {
       conductorId: String(x.quien), conductor: x.conductor,
       sinFicha: !!x.bolt_uuid,
       enPlantilla: !!x.empleo_vigente,
+      // null = el padrón aún no lo ha dicho de esa cuenta; no es lo mismo que
+      // "no lo tiene".
+      efectivoActivo: x.efectivo_activo == null ? null : !!x.efectivo_activo,
+      efectivoAt: x.efectivo_at || null,
       deuda, presencial, nomina, entrega, recaudado,
       // El arrastre va aparte para poder explicarlo en pantalla: la deuda ya
       // lo lleva sumado.
@@ -247,6 +267,10 @@ async function cuadro(q) {
       pendiente: suma('pendiente'),
       // A cuántos les falta algo: es el número por el que preguntan.
       conDeuda: filas.filter(f => f.pendiente > 0.005).length,
+      // Cuántos pueden cobrar en efectivo ahora mismo, y de esos cuántos ya no
+      // trabajan aquí: eso último es un grifo abierto.
+      conEfectivo: filas.filter(f => f.efectivoActivo).length,
+      efectivoFuera: filas.filter(f => f.efectivoActivo && !f.enPlantilla).length,
     },
   };
 }
