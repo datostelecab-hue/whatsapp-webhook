@@ -63,6 +63,13 @@ const CATALOGO = [
     { clave: '/matching',    etiqueta: 'Matching' },
     { clave: '/vehiculos',   etiqueta: 'Vehículos' },
     { clave: '/conductores', etiqueta: 'Conductores' },
+    // MIRAR el taller lo quiere media empresa: tráfico necesita saber qué coche
+    // se le cae la semana que viene. APUNTAR es del taller, y es lo que mueve
+    // los números que deciden qué coche entra. Por eso son dos permisos, como
+    // leer la bitácora y justificar en ella.
+    { clave: '/taller', etiqueta: 'Taller · mantenimiento por km', hijos: [
+      { clave: '/taller/apuntar', etiqueta: 'Taller · apuntar mantenimientos y odómetros' },
+    ] },
   ] },
   { grupo: 'Operaciones', items: [
     { clave: '/operaciones', etiqueta: 'Alertas Mapon', hijos: [
@@ -121,6 +128,13 @@ const RUTA_A_CLAVE = [
   ['/control/campanas',           '/control'],
   // Escribir en la bitácora es otro permiso que leerla: sin estas tres líneas
   // caerían en '/bitacora' y cualquiera que la abre podría justificar por API.
+  // Apuntar en el taller es otro permiso que mirarlo: sin estas cuatro líneas
+  // caerían en '/taller' y cualquiera que abre la pantalla podría escribir por
+  // API el km que le diera la gana.
+  ['/taller/api/mantenimiento', '/taller/apuntar'],
+  ['/taller/api/anular',        '/taller/apuntar'],
+  ['/taller/api/ancla',         '/taller/apuntar'],
+  ['/taller/api/intervalo',     '/taller/apuntar'],
   ['/bitacora/api/justificar',          '/bitacora/justificar'],
   ['/bitacora/api/anular-justificante', '/bitacora/justificar'],
   ['/bitacora/api/libranza',            '/bitacora/justificar'],

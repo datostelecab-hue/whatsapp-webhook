@@ -39,7 +39,7 @@ async function odometros() {
   if (!unidades.size) throw new Error('Mapon no devolvió ninguna unidad');
   const r = await veh.sincronizarOdometros(unidades);
   console.log(`🛰️  [MAPON] Odómetros: ${r.actualizados} al día · ${r.sinEnlace} sin coche enlazado · ` +
-    `${r.sinCan} sin lectura del CAN (esos necesitan anclaje manual)`);
+    `${r.sinCan} sin lectura del CAN (esos necesitan ancla) · ${r.fotos} fotos del día`);
   return { ...r, unidades: unidades.size };
 }
 

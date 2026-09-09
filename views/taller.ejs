@@ -1,0 +1,517 @@
+<div class="p-4 lg:p-6 max-w-[1500px] mx-auto">
+
+  <!-- ── Cabecera ─────────────────────────────────────────────────────── -->
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-screwdriver-wrench text-telecab-gold"></i> Taller
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Mantenimiento por kilómetros. Un coche entra a revisión cuando lleva
+        <b><%= intervaloGeneral.toLocaleString('es-ES') %> km</b> desde la última,
+        y eso son dos cifras: el <b>odómetro de hoy</b> y el <b>km de su última revisión</b>.
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <% if (puedeApuntar) { %>
+      <button id="t-nuevo" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+        <i class="fa-solid fa-plus mr-1"></i> Apuntar mantenimiento
+      </button>
+      <% } %>
+      <button id="t-recargar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-rotate mr-1"></i> Recargar
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Los cuatro estados ───────────────────────────────────────────── -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+    <button data-estado="toca" class="tarjeta-estado bg-telecab-card border-2 border-telecab-red/40 rounded-2xl p-4 text-left">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Tocan revisión</p>
+      <p id="c-toca" class="text-3xl font-bold mt-1 text-telecab-red tabular-nums">—</p>
+      <p class="text-[11px] text-telecab-muted mt-1">Pasan del intervalo</p>
+    </button>
+    <button data-estado="pronto" class="tarjeta-estado bg-telecab-card border-2 border-telecab-warn/40 rounded-2xl p-4 text-left">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">A punto</p>
+      <p id="c-pronto" class="text-3xl font-bold mt-1 text-telecab-warn tabular-nums">—</p>
+      <p class="text-[11px] text-telecab-muted mt-1">Les quedan menos de 15 días</p>
+    </button>
+    <button data-estado="ok" class="tarjeta-estado bg-telecab-card border-2 border-telecab-green/40 rounded-2xl p-4 text-left">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Al día</p>
+      <p id="c-ok" class="text-3xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
+      <p class="text-[11px] text-telecab-muted mt-1">Con margen de sobra</p>
+    </button>
+    <button data-estado="sin_dato" class="tarjeta-estado bg-telecab-card border-2 border-telecab-border rounded-2xl p-4 text-left">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Sin dato</p>
+      <p id="c-sindato" class="text-3xl font-bold mt-1 text-telecab-muted tabular-nums">—</p>
+      <p id="c-sindato-det" class="text-[11px] text-telecab-muted mt-1">No se puede decir</p>
+    </button>
+  </div>
+
+  <!-- Los datos imposibles no son un estado más: son un aviso -->
+  <div id="c-revisar-caja" class="hidden mb-4 rounded-xl border border-telecab-violet/50 bg-telecab-violet/10 px-4 py-3">
+    <p class="text-sm text-telecab-text">
+      <i class="fa-solid fa-triangle-exclamation text-telecab-violet mr-1"></i>
+      <b id="c-revisar">0</b> coche(s) con un dato que no puede ser: el km de su última revisión
+      no cuadra con su odómetro. <button data-estado="revisar" class="tarjeta-estado underline text-telecab-violet">Verlos</button>
+    </p>
+  </div>
+
+  <!-- ── Filtros ──────────────────────────────────────────────────────── -->
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <div class="relative flex-1 min-w-[220px]">
+      <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-sm"></i>
+      <input id="f-busca" type="text" placeholder="Matrícula o modelo…"
+             class="w-full pl-9 pr-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+    </div>
+    <select id="f-estado" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+      <option value="">Todos los estados</option>
+      <% estados.forEach(function (e) { %>
+      <option value="<%= e.codigo %>"><%= e.etiqueta %></option>
+      <% }); %>
+    </select>
+    <span id="f-cuenta" class="text-xs text-telecab-muted"></span>
+  </div>
+
+  <!-- ── La tabla ─────────────────────────────────────────────────────── -->
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide">
+          <tr>
+            <th class="text-left  px-4 py-3">Matrícula</th>
+            <th class="text-left  px-3 py-3">Vehículo</th>
+            <th class="text-right px-3 py-3">Odómetro</th>
+            <th class="text-right px-3 py-3">Últ. revisión</th>
+            <th class="text-right px-3 py-3">Desde entonces</th>
+            <th class="text-left  px-3 py-3 w-40">Consumido</th>
+            <th class="text-right px-3 py-3">Ritmo</th>
+            <th class="text-right px-4 py-3">Le queda</th>
+          </tr>
+        </thead>
+        <tbody id="t-cuerpo" class="divide-y divide-telecab-border"></tbody>
+      </table>
+    </div>
+    <div id="t-vacio" class="hidden px-4 py-10 text-center text-sm text-telecab-muted">
+      No hay coches que encajen con el filtro.
+    </div>
+  </div>
+
+  <p class="text-[11px] text-telecab-muted mt-3">
+    El odómetro sale del CAN del coche (<b>C</b>) o de una lectura del cuadro anclada a mano (<b>A</b>).
+    El ritmo se calcula con las fotos diarias del odómetro de los últimos 30 días: un coche recién
+    dado de alta todavía no tiene ritmo, y eso no es un cero, es un “no se sabe”.
+  </p>
+</div>
+
+<!-- ══ Panel de ficha ═══════════════════════════════════════════════════ -->
+<div id="p-ficha" class="hidden fixed inset-0 z-40">
+  <div class="absolute inset-0 bg-black/50" data-cerrar></div>
+  <div class="absolute right-0 top-0 h-full w-full max-w-xl bg-telecab-dark border-l border-telecab-border overflow-y-auto">
+    <div class="sticky top-0 bg-telecab-dark border-b border-telecab-border px-5 py-4 flex items-start justify-between gap-3">
+      <div>
+        <h2 id="pf-matricula" class="text-xl font-bold text-telecab-text">—</h2>
+        <p id="pf-vehiculo" class="text-sm text-telecab-muted"></p>
+      </div>
+      <button data-cerrar class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div id="pf-cuerpo" class="p-5 space-y-5"></div>
+  </div>
+</div>
+
+<!-- ══ Modal: apuntar mantenimiento ═════════════════════════════════════ -->
+<div id="m-mant" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/60" data-cerrar-modal></div>
+  <div class="relative w-full max-w-lg bg-telecab-dark border border-telecab-border rounded-2xl p-5">
+    <h3 class="text-lg font-bold text-telecab-text mb-1">Apuntar mantenimiento</h3>
+    <p class="text-xs text-telecab-muted mb-4">
+      El km es el del <b>cuadro del coche</b>, no el del GPS. Es lo que decide la próxima revisión.
+    </p>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Coche</label>
+        <select id="mm-vehiculo" class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text"></select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Tipo</label>
+          <select id="mm-tipo" class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+            <% tipos.forEach(function (t) { %>
+            <option value="<%= t.codigo %>"><%= t.etiqueta %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Fecha</label>
+          <input id="mm-fecha" type="date" class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Km del cuadro</label>
+          <input id="mm-km" type="number" min="0" placeholder="0"
+                 class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text tabular-nums">
+          <p id="mm-km-pista" class="text-[11px] text-telecab-muted mt-1"></p>
+        </div>
+        <div>
+          <label class="block text-xs text-telecab-muted mb-1">Coste (€)</label>
+          <input id="mm-coste" type="text" placeholder="opcional"
+                 class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text tabular-nums">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Taller</label>
+        <input id="mm-taller" type="text" placeholder="opcional"
+               class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Qué se hizo</label>
+        <textarea id="mm-desc" rows="2" placeholder="opcional"
+                  class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text"></textarea>
+      </div>
+    </div>
+    <p id="mm-error" class="hidden text-sm text-telecab-red mt-3"></p>
+    <div class="flex justify-end gap-2 mt-5">
+      <button data-cerrar-modal class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted">Cancelar</button>
+      <button id="mm-guardar" class="px-4 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal: anclar odómetro ═══════════════════════════════════════════ -->
+<div id="m-ancla" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/60" data-cerrar-modal></div>
+  <div class="relative w-full max-w-md bg-telecab-dark border border-telecab-border rounded-2xl p-5">
+    <h3 class="text-lg font-bold text-telecab-text mb-1">Anclar el odómetro</h3>
+    <p class="text-xs text-telecab-muted mb-4">
+      Este coche no da su odómetro por el CAN. Lee el cuadro <b>una vez</b> y apúntalo aquí:
+      a partir de ahí el sistema le va sumando lo que recorra, y no hay que volver a mirarlo.
+    </p>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Km del cuadro ahora mismo</label>
+        <input id="ma-km" type="number" min="0"
+               class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text tabular-nums">
+      </div>
+      <div>
+        <label class="block text-xs text-telecab-muted mb-1">Nota</label>
+        <input id="ma-nota" type="text" placeholder="quién lo leyó, dónde…"
+               class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+      </div>
+    </div>
+    <p id="ma-error" class="hidden text-sm text-telecab-red mt-3"></p>
+    <div class="flex justify-end gap-2 mt-5">
+      <button data-cerrar-modal class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted">Cancelar</button>
+      <button id="ma-guardar" class="px-4 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">Anclar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const PUEDE = <%- JSON.stringify(!!puedeApuntar) %>;
+  const TIPOS = <%- JSON.stringify(tipos) %>;
+  const GENERAL = <%- JSON.stringify(intervaloGeneral) %>;
+
+  const $ = s => document.querySelector(s);
+  const n = v => (v == null ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 }));
+  const n1 = v => (v == null ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const dia = f => (f ? f.slice(8, 10) + '/' + f.slice(5, 7) + '/' + f.slice(0, 4) : '—');
+
+  const COLOR = {
+    toca:     { txt: 'text-telecab-red',    barra: 'bg-telecab-red',    etiqueta: 'Toca revisión' },
+    pronto:   { txt: 'text-telecab-warn',   barra: 'bg-telecab-warn',   etiqueta: 'A punto' },
+    ok:       { txt: 'text-telecab-green',  barra: 'bg-telecab-green',  etiqueta: 'Al día' },
+    sin_dato: { txt: 'text-telecab-muted',  barra: 'bg-telecab-border', etiqueta: 'Sin dato' },
+    revisar:  { txt: 'text-telecab-violet', barra: 'bg-telecab-violet', etiqueta: 'Dato imposible' },
+  };
+
+  let FILAS = [], TOTAL = 0;
+
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => ({ status: 'error', msg: 'respuesta ilegible' }));
+    if (j.status !== 'ok') throw new Error(j.msg || 'Error');
+    return j;
+  }
+
+  // ── Cargar y pintar ──────────────────────────────────────────────────
+  async function cargar() {
+    const q = new URLSearchParams();
+    if ($('#f-busca').value.trim()) q.set('busca', $('#f-busca').value.trim());
+    if ($('#f-estado').value) q.set('estado', $('#f-estado').value);
+    const j = await api('/taller/api/cuadro?' + q.toString());
+    FILAS = j.filas;
+    TOTAL = j.resumen.total;      // el total de la flota, no el del filtro
+    pintarResumen(j.resumen);
+    pintarTabla(j.filas);
+  }
+
+  function pintarResumen(r) {
+    $('#c-toca').textContent = r.toca;
+    $('#c-pronto').textContent = r.pronto;
+    $('#c-ok').textContent = r.ok;
+    $('#c-sindato').textContent = r.sinDato;
+    $('#c-sindato-det').textContent = r.sinOdometro + ' sin odómetro · ' + r.sinRevision + ' sin revisión apuntada';
+    $('#c-revisar').textContent = r.revisar;
+    $('#c-revisar-caja').classList.toggle('hidden', !r.revisar);
+  }
+
+  function pintarTabla(filas) {
+    $('#f-cuenta').textContent = filas.length + ' de ' + (TOTAL || filas.length) + ' coches';
+    $('#t-vacio').classList.toggle('hidden', filas.length > 0);
+    $('#t-cuerpo').innerHTML = filas.map(f => {
+      const c = COLOR[f.estado] || COLOR.sin_dato;
+      const pct = f.porcentaje == null ? 0 : Math.min(100, f.porcentaje);
+      const fuente = f.odometroFuente === 'can' ? 'C'
+        : (f.odometroFuente ? 'A' : '');
+      const queda = f.estado === 'toca'
+        ? '<span class="text-telecab-red font-semibold">pasado ' + n(-f.restan) + ' km</span>'
+        : (f.restan == null ? '—'
+          : n(f.restan) + ' km' + (f.dias != null ? ' <span class="text-telecab-muted">· ' + f.dias + ' d</span>' : ''));
+      return '<tr class="fila hover:bg-telecab-card2 cursor-pointer" data-id="' + f.id + '">' +
+        '<td class="px-4 py-3 font-semibold text-telecab-text whitespace-nowrap">' +
+          '<span class="inline-block w-2 h-2 rounded-full ' + c.barra + ' mr-2 align-middle" title="' + c.etiqueta + '"></span>' +
+          esc(f.matricula) + '</td>' +
+        '<td class="px-3 py-3 text-telecab-muted">' + esc(f.vehiculo) + '</td>' +
+        '<td class="px-3 py-3 text-right tabular-nums text-telecab-text">' + n(f.odometro) +
+          (fuente ? ' <span class="text-[10px] text-telecab-muted" title="' +
+            (fuente === 'C' ? 'del CAN del coche' : 'de una lectura anclada a mano') + '">' + fuente + '</span>' : '') +
+        '</td>' +
+        '<td class="px-3 py-3 text-right tabular-nums text-telecab-muted">' + n(f.revisionKm) + '</td>' +
+        '<td class="px-3 py-3 text-right tabular-nums font-semibold ' + c.txt + '">' +
+          (f.desde == null ? '—' : n(f.desde)) + '</td>' +
+        '<td class="px-3 py-3">' +
+          (f.porcentaje == null ? '<span class="text-xs text-telecab-muted">—</span>' :
+            '<div class="h-2 rounded-full bg-telecab-card2 overflow-hidden"><div class="h-full ' + c.barra +
+            '" style="width:' + pct + '%"></div></div>' +
+            '<span class="text-[10px] text-telecab-muted">' + f.porcentaje + '% de ' + n(f.intervalo) + '</span>') +
+        '</td>' +
+        '<td class="px-3 py-3 text-right tabular-nums text-telecab-muted">' +
+          (f.kmDia == null ? '—' : n1(f.kmDia) + ' km/d') + '</td>' +
+        '<td class="px-4 py-3 text-right tabular-nums">' + queda + '</td>' +
+      '</tr>';
+    }).join('');
+    document.querySelectorAll('#t-cuerpo .fila').forEach(tr =>
+      tr.addEventListener('click', () => abrirFicha(tr.dataset.id)));
+  }
+
+  // ── Ficha ────────────────────────────────────────────────────────────
+  async function abrirFicha(id) {
+    const j = await api('/taller/api/ficha/' + id);
+    const f = j.ficha;
+    const c = COLOR[f.estado] || COLOR.sin_dato;
+    $('#pf-matricula').textContent = f.matricula;
+    $('#pf-vehiculo').textContent = [f.vehiculo, f.anio, f.estadoOperativo, f.zona].filter(Boolean).join(' · ');
+
+    const dato = (t, v, extra) =>
+      '<div><p class="text-[11px] text-telecab-muted uppercase tracking-wide">' + t + '</p>' +
+      '<p class="text-lg font-semibold text-telecab-text tabular-nums">' + v +
+      (extra ? ' <span class="text-xs font-normal text-telecab-muted">' + extra + '</span>' : '') + '</p></div>';
+
+    let html = '<div class="rounded-xl border ' +
+      (f.estado === 'toca' ? 'border-telecab-red/50 bg-telecab-red/10'
+        : f.estado === 'pronto' ? 'border-telecab-warn/50 bg-telecab-warn/10'
+        : f.estado === 'ok' ? 'border-telecab-green/40 bg-telecab-green/5'
+        : 'border-telecab-border bg-telecab-card') + ' px-4 py-3">' +
+      '<p class="text-sm font-semibold ' + c.txt + '">' + c.etiqueta + '</p>' +
+      '<p class="text-xs text-telecab-muted mt-0.5">' +
+        (f.estado === 'sin_dato'
+          ? (f.odometro == null ? 'No tenemos su odómetro.' : 'No hay ninguna revisión apuntada.')
+          : f.estado === 'revisar'
+            ? 'El km de la última revisión no cuadra con el odómetro: uno de los dos está mal.'
+            : (f.desde != null ? n(f.desde) + ' km desde la última revisión, de ' + n(f.intervalo) + '.' : '')) +
+      '</p></div>';
+
+    html += '<div class="grid grid-cols-2 gap-4">' +
+      dato('Odómetro hoy', n(f.odometro),
+        f.odometroFuente === 'can' ? 'del CAN' : (f.odometroFuente ? 'anclado' : 'sin dato')) +
+      dato('Última revisión', n(f.revisionKm), f.revisionFecha ? dia(f.revisionFecha) : 'sin fecha') +
+      dato('Desde entonces', f.desde == null ? '—' : n(f.desde) + ' km') +
+      dato('Ritmo', f.kmDia == null ? '—' : n1(f.kmDia) + ' km/día',
+        f.diasRitmo ? 'medido en ' + f.diasRitmo + ' días' : 'aún sin histórico') +
+      '</div>';
+
+    html += '<div class="flex flex-wrap gap-2">';
+    if (PUEDE) {
+      html += '<button id="pf-apuntar" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">' +
+        '<i class="fa-solid fa-plus mr-1"></i> Apuntar mantenimiento</button>';
+      if (f.odometroFuente !== 'can') {
+        html += '<button id="pf-anclar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">' +
+          '<i class="fa-solid fa-anchor mr-1"></i> Anclar odómetro</button>';
+      }
+      html += '<button id="pf-intervalo" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted">' +
+        'Intervalo: ' + n(f.intervalo) + ' km' + (f.intervaloPropio ? ' (propio)' : '') + '</button>';
+    }
+    html += '</div>';
+
+    html += '<div><p class="text-xs text-telecab-muted uppercase tracking-wide mb-2">Historial (' + f.historial.length + ')</p>' +
+      (f.historial.length ? f.historial.map(m =>
+        '<div class="border border-telecab-border rounded-xl px-3 py-2 mb-2 ' + (m.anuladoAt ? 'opacity-50' : '') + '">' +
+          '<div class="flex items-center justify-between gap-2">' +
+            '<span class="text-sm font-semibold text-telecab-text">' + esc(m.tipoEtiqueta) + '</span>' +
+            '<span class="text-sm tabular-nums text-telecab-text">' + n(m.km) + ' km</span>' +
+          '</div>' +
+          '<p class="text-[11px] text-telecab-muted">' +
+            (m.fecha ? dia(m.fecha) : 'sin fecha') +
+            (m.taller ? ' · ' + esc(m.taller) : '') +
+            (m.coste != null ? ' · ' + n1(m.coste) + ' €' : '') +
+            (m.usuario ? ' · lo apuntó ' + esc(m.usuario) : '') +
+          '</p>' +
+          (m.descripcion ? '<p class="text-xs text-telecab-text mt-1">' + esc(m.descripcion) + '</p>' : '') +
+          (m.anuladoAt
+            ? '<p class="text-[11px] text-telecab-red mt-1">Anulado por ' + esc(m.anuladoPor || '—') + ': ' + esc(m.anuladoMotivo) + '</p>'
+            : (PUEDE ? '<button class="anular text-[11px] text-telecab-red underline mt-1" data-id="' + m.id + '">Anular</button>' : '')) +
+        '</div>').join('')
+        : '<p class="text-sm text-telecab-muted">Ninguno todavía.</p>') +
+      '</div>';
+
+    if (f.anclas.length) {
+      html += '<div><p class="text-xs text-telecab-muted uppercase tracking-wide mb-2">Lecturas del cuadro</p>' +
+        f.anclas.map(a => '<p class="text-xs text-telecab-muted">' + n(a.km) + ' km · ' + esc(a.leidoAt) +
+          (a.usuario ? ' · ' + esc(a.usuario) : '') + (a.nota ? ' · ' + esc(a.nota) : '') + '</p>').join('') +
+        '</div>';
+    }
+
+    $('#pf-cuerpo').innerHTML = html;
+    $('#p-ficha').classList.remove('hidden');
+
+    if ($('#pf-apuntar')) $('#pf-apuntar').addEventListener('click', () => abrirMant(f));
+    if ($('#pf-anclar')) $('#pf-anclar').addEventListener('click', () => abrirAncla(f));
+    if ($('#pf-intervalo')) $('#pf-intervalo').addEventListener('click', () => cambiarIntervalo(f));
+    document.querySelectorAll('#pf-cuerpo .anular').forEach(b => b.addEventListener('click', async () => {
+      const motivo = prompt('¿Por qué se anula? Queda apuntado con tu nombre.');
+      if (!motivo) return;
+      try {
+        await api('/taller/api/anular', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: b.dataset.id, motivo }),
+        });
+        await abrirFicha(f.id); await cargar();
+      } catch (e) { alert(e.message); }
+    }));
+  }
+
+  async function cambiarIntervalo(f) {
+    const v = prompt('¿Cada cuántos km toca revisión en ' + f.matricula + '?\n' +
+      'Vacío = el general del módulo (' + n(GENERAL) + ' km).',
+      f.intervaloPropio ? f.intervalo : '');
+    if (v === null) return;
+    try {
+      await api('/taller/api/intervalo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehiculoId: f.id, km: v.trim() }),
+      });
+      await abrirFicha(f.id); await cargar();
+    } catch (e) { alert(e.message); }
+  }
+
+  // ── Modales ──────────────────────────────────────────────────────────
+  function abrirMant(f) {
+    const sel = $('#mm-vehiculo');
+    sel.innerHTML = FILAS.map(x =>
+      '<option value="' + x.id + '">' + esc(x.matricula) + (x.vehiculo ? ' — ' + esc(x.vehiculo) : '') + '</option>').join('');
+    if (f) sel.value = f.id;
+    $('#mm-tipo').value = 'revision';
+    $('#mm-fecha').value = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+    $('#mm-km').value = '';
+    $('#mm-coste').value = '';
+    $('#mm-taller').value = '';
+    $('#mm-desc').value = '';
+    $('#mm-error').classList.add('hidden');
+    pistaKm();
+    $('#m-mant').classList.remove('hidden');
+  }
+
+  function pistaKm() {
+    const f = FILAS.find(x => String(x.id) === $('#mm-vehiculo').value);
+    $('#mm-km-pista').textContent = !f ? ''
+      : f.odometro == null ? 'No sabemos su odómetro: el km que pongas será el bueno.'
+      : 'Hoy marca ' + n(f.odometro) + ' km.';
+  }
+
+  function abrirAncla(f) {
+    $('#m-ancla').dataset.vehiculo = f.id;
+    $('#ma-km').value = '';
+    $('#ma-nota').value = '';
+    $('#ma-error').classList.add('hidden');
+    $('#m-ancla').classList.remove('hidden');
+  }
+
+  const cerrarModales = () => {
+    $('#m-mant').classList.add('hidden');
+    $('#m-ancla').classList.add('hidden');
+  };
+
+  // ── Enganches ────────────────────────────────────────────────────────
+  $('#f-busca').addEventListener('input', () => { clearTimeout(window._tb); window._tb = setTimeout(cargar, 250); });
+  $('#f-estado').addEventListener('change', cargar);
+  $('#t-recargar').addEventListener('click', cargar);
+  if ($('#t-nuevo')) $('#t-nuevo').addEventListener('click', () => abrirMant(null));
+  $('#mm-vehiculo').addEventListener('change', pistaKm);
+
+  document.querySelectorAll('.tarjeta-estado').forEach(b => b.addEventListener('click', () => {
+    $('#f-estado').value = $('#f-estado').value === b.dataset.estado ? '' : b.dataset.estado;
+    cargar();
+  }));
+
+  document.querySelectorAll('[data-cerrar]').forEach(b =>
+    b.addEventListener('click', () => $('#p-ficha').classList.add('hidden')));
+  document.querySelectorAll('[data-cerrar-modal]').forEach(b => b.addEventListener('click', cerrarModales));
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    cerrarModales();
+    $('#p-ficha').classList.add('hidden');
+  });
+
+  if ($('#mm-guardar')) $('#mm-guardar').addEventListener('click', async () => {
+    const err = $('#mm-error');
+    err.classList.add('hidden');
+    try {
+      await api('/taller/api/mantenimiento', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehiculoId: $('#mm-vehiculo').value,
+          tipo: $('#mm-tipo').value,
+          fecha: $('#mm-fecha').value,
+          km: $('#mm-km').value,
+          coste: $('#mm-coste').value,
+          taller: $('#mm-taller').value,
+          descripcion: $('#mm-desc').value,
+        }),
+      });
+      cerrarModales();
+      $('#p-ficha').classList.add('hidden');
+      await cargar();
+    } catch (e) { err.textContent = e.message; err.classList.remove('hidden'); }
+  });
+
+  if ($('#ma-guardar')) $('#ma-guardar').addEventListener('click', async () => {
+    const err = $('#ma-error');
+    err.classList.add('hidden');
+    try {
+      const j = await api('/taller/api/ancla', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehiculoId: $('#m-ancla').dataset.vehiculo,
+          km: $('#ma-km').value,
+          nota: $('#ma-nota').value,
+        }),
+      });
+      cerrarModales();
+      if (!j.seguira) {
+        alert('Anclado. Aviso: este coche no tiene contador de GPS, así que la lectura se queda quieta ' +
+              'y habrá que repetirla de vez en cuando.');
+      }
+      await abrirFicha($('#m-ancla').dataset.vehiculo);
+      await cargar();
+    } catch (e) { err.textContent = e.message; err.classList.remove('hidden'); }
+  });
+
+  cargar().catch(e => alert('No se pudo cargar el taller: ' + e.message));
+})();
+</script>

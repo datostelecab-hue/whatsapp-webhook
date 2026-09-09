@@ -169,6 +169,7 @@ app.use('/agenda', agendaRoutes);
 app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
+app.use('/taller', require('./routes/taller'));
 app.use('/plantilla', plantillaRoutes);
 // La pantalla se llamo /conductores mientras se construia. Quien tenga ese
 // enlace guardado no se encuentra un 404.

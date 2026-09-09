@@ -217,24 +217,46 @@ async function darDeBaja(id, usuarioId) {
  * de ahí `mileage` mantiene la cuenta sumando su propio incremento.
  */
 async function sincronizarOdometros(lecturas) {
-  if (!lecturas || !lecturas.size) return { actualizados: 0, sinEnlace: 0, sinCan: 0 };
-  let actualizados = 0, sinEnlace = 0, sinCan = 0;
+  if (!lecturas || !lecturas.size) return { actualizados: 0, sinEnlace: 0, sinCan: 0, fotos: 0 };
+  let actualizados = 0, sinEnlace = 0, sinCan = 0, fotos = 0;
   await db.transaccion(async cli => {
     for (const [unitId, u] of lecturas) {
-      if (!Number.isFinite(u.odometroCanM) || u.odometroCanM <= 0) { sinCan++; continue; }
+      const can = Number.isFinite(u.odometroCanM) && u.odometroCanM > 0 ? u.odometroCanM : null;
+      const gps = Number.isFinite(u.odometroM) && u.odometroM > 0 ? u.odometroM : null;
+      if (can == null) sinCan++;
+      if (can == null && gps == null) continue;
       // El enlace pasa SIEMPRE por vehiculo_alias: la matrícula de Mapon no se
       // usa para casar, solo para diagnosticar descuadres.
+      //
+      // El odómetro solo se toca si hay CAN — COALESCE deja el anterior si esta
+      // vez no vino. El contador del GPS se guarda siempre: es lo que mantiene
+      // vivas las anclas de los coches sin CAN.
       const r = await cli.query(
-        `UPDATE vehiculo SET km_odometro_m = $2, km_odometro_at = now()
+        `UPDATE vehiculo
+            SET km_odometro_m  = COALESCE($2, km_odometro_m),
+                km_odometro_at = CASE WHEN $2 IS NULL THEN km_odometro_at ELSE now() END,
+                km_gps_m       = COALESCE($3, km_gps_m)
           WHERE id = (SELECT vehiculo_id FROM vehiculo_alias
                        WHERE sistema = 'mapon' AND externo_id = $1 AND visto_hasta IS NULL)
             AND baja_at IS NULL
           RETURNING id`,
-        [String(unitId), u.odometroCanM]);
-      if (r.rowCount) actualizados++; else sinEnlace++;
+        [String(unitId), can, gps]);
+      if (r.rowCount) { if (can != null) actualizados++; } else sinEnlace++;
     }
+
+    // La foto del día. Sale de la vista, que es donde vive la regla del
+    // odómetro; aquí solo se copia. La última lectura del día es la que queda.
+    const f = await cli.query(`
+      INSERT INTO vehiculo_km_dia (vehiculo_id, dia, km, gps_m, visto_at)
+      SELECT o.vehiculo_id, (now() AT TIME ZONE 'Europe/Madrid')::date, o.km, v.km_gps_m, now()
+        FROM v_vehiculo_odometro o
+        JOIN vehiculo v ON v.id = o.vehiculo_id
+       WHERE o.km IS NOT NULL AND v.baja_at IS NULL
+      ON CONFLICT (vehiculo_id, dia) DO UPDATE
+        SET km = EXCLUDED.km, gps_m = EXCLUDED.gps_m, visto_at = now()`);
+    fotos = f.rowCount;
   });
-  return { actualizados, sinEnlace, sinCan };
+  return { actualizados, sinEnlace, sinCan, fotos };
 }
 
 /**
