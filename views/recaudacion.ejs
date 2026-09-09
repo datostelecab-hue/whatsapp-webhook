@@ -1,0 +1,559 @@
+<div class="p-4 lg:p-6 max-w-[1400px] mx-auto">
+
+  <!-- ── Cabecera ─────────────────────────────────────────────────────── -->
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-money-bill-wave text-telecab-gold"></i> Recaudación
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        El efectivo que cobran en la calle, por quincena. <b>Deuda</b> es lo que dice el cierre de BOLT;
+        <b>recaudado</b>, lo que ya ha entregado —en mano o descontado de nómina—; lo que queda es lo que hay que pedirle.
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button id="r-nuevo" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+        <i class="fa-solid fa-receipt mr-1"></i> Nuevo ingreso
+      </button>
+      <% if (puedeNomina) { %>
+      <button id="r-nomina" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-file-invoice-dollar mr-1"></i> Descuento de nómina
+      </button>
+      <% } %>
+      <button id="r-salida" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> Salida de caja
+      </button>
+      <button id="r-calcular" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+        <i class="fa-solid fa-rotate mr-1"></i> Recalcular desde BOLT
+      </button>
+      <button id="r-cierre" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text" title="Meter las cifras a mano, para un histórico viejo o una hoja de fuera">
+        <i class="fa-solid fa-file-import mr-1"></i> Pegar a mano
+      </button>
+    </div>
+  </div>
+
+  <!-- ── El cuadre de caja: las dos cifras que se miran al abrir ──────── -->
+  <div class="grid sm:grid-cols-2 gap-3 mb-5">
+    <div class="bg-telecab-card border-2 border-telecab-green/40 rounded-2xl p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Efectivo actual</p>
+      <p id="c-efectivo" class="text-3xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
+      <p id="c-efectivo-det" class="text-[11px] text-telecab-muted mt-1"></p>
+    </div>
+    <div class="bg-telecab-card border-2 border-telecab-red/40 rounded-2xl p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Pendiente de cobro</p>
+      <p id="c-pendiente" class="text-3xl font-bold mt-1 text-telecab-red tabular-nums">—</p>
+      <p id="c-pendiente-det" class="text-[11px] text-telecab-muted mt-1"></p>
+    </div>
+  </div>
+
+  <!-- ── La quincena que se mira ──────────────────────────────────────── -->
+  <div class="flex items-center justify-center gap-3 mb-4">
+    <button id="q-antes" class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text" title="Quincena anterior">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
+    <div class="text-center min-w-[220px]">
+      <p id="q-etiqueta" class="text-lg font-bold text-telecab-text leading-tight">—</p>
+      <button id="q-hoy" class="text-[11px] text-telecab-muted hover:text-telecab-gold underline decoration-dotted">ir a la de hoy</button>
+    </div>
+    <button id="q-luego" class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text" title="Quincena siguiente">
+      <i class="fa-solid fa-chevron-right"></i>
+    </button>
+  </div>
+
+  <!-- ── El resumen ───────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Efectivo de la quincena</p>
+      <p id="t-deuda" class="text-xl font-bold mt-1 tabular-nums">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Cobrado en mano</p>
+      <p id="t-presencial" class="text-xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Por nómina</p>
+      <p id="t-nomina" class="text-xl font-bold mt-1 text-sky-400 tabular-nums">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Devuelto</p>
+      <p id="t-entrega" class="text-xl font-bold mt-1 text-telecab-muted tabular-nums">—</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-red/40 rounded-2xl p-3">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Pendiente total</p>
+      <p class="mt-1 leading-none"><span id="t-pendiente" class="text-xl font-bold text-telecab-red tabular-nums">—</span>
+        <span id="t-condeuda" class="text-xs text-telecab-muted font-semibold"></span></p>
+    </div>
+  </div>
+
+  <!-- ── Panel: el recibo / el descuento / el cierre ──────────────────── -->
+  <div id="r-panel" class="hidden mb-4"></div>
+
+  <!-- ── El cuadro, o la ficha de uno ─────────────────────────────────── -->
+  <div id="r-ficha" class="hidden mb-4"></div>
+  <div id="r-cuadro" class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+    <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+  </div>
+
+  <!-- ── Lo que salió de la caja en esta quincena ─────────────────────── -->
+  <div id="r-salidas" class="mt-4"></div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const DEN = <%- JSON.stringify(denominaciones || []) %>;
+  const TIPOS = <%- JSON.stringify(tiposMovimiento || []) %>;
+  const SALIDAS = <%- JSON.stringify(salidasCaja || []) %>;
+  const PUEDE_NOMINA = <%= puedeNomina ? 'true' : 'false' %>;
+
+  const nf = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const eur = n => nf.format(Number(n) || 0) + ' €';
+  // Un cero no se pinta igual que una cifra: en una tabla de dinero, los ceros
+  // en gris dejan ver de un vistazo dónde hay algo.
+  const cifra = (n, clase) => (Math.abs(Number(n) || 0) < 0.005
+    ? '<span class="text-telecab-muted/40">—</span>'
+    : '<span class="' + (clase || '') + '">' + eur(n) + '</span>');
+  const fecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+  const hoyIso = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
+
+  let Q = null;            // la quincena que se mira
+  let D = null;            // el cuadro que devolvió el servidor
+  let conductores = null;  // el padrón para los desplegables (se pide una vez)
+  let fichaAbierta = null;
+
+  const pedir = async (url, opciones) => {
+    const r = await fetch(url, opciones).then(x => x.json());
+    if (r.status !== 'ok') throw new Error(r.msg || 'No se ha podido');
+    return r;
+  };
+  const fallo = e => Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' });
+
+  async function padron() {
+    if (!conductores) conductores = (await pedir('/recaudacion/api/candidatos')).conductores;
+    return conductores;
+  }
+  const opcionesConductor = () => conductores.map(c =>
+    '<option value="' + esc(c.id) + '">' + esc(c.nombre) + (c.enPlantilla ? '' : ' (ya no está)') + '</option>').join('');
+
+  // ── El cuadre de caja: lo que hay y lo que falta ─────────────────────
+  function pintarCaja() {
+    const c = D.caja || {};
+    $('#c-efectivo').textContent = eur(c.efectivo);
+    $('#c-efectivo-det').textContent =
+      'entró ' + eur(c.entradas) + ' en mano · salió ' + eur(c.salidas) +
+      (c.devuelto > 0.005 ? ' · devuelto ' + eur(c.devuelto) : '');
+    $('#c-pendiente').textContent = eur(c.pendiente);
+    $('#c-pendiente-det').textContent =
+      'de ' + eur(c.deuda) + ' cobrados en la calle · ' + eur(c.nomina) + ' recuperados por nomina';
+  }
+
+  function pintarSalidas() {
+    const s = D.salidas || [];
+    const etq = t => (SALIDAS.find(x => x.codigo === t) || {}).etiqueta || t;
+    if (!s.length) { $('#r-salidas').innerHTML = ''; return; }
+    const porTipo = {};
+    s.filter(x => !x.anulado).forEach(x => { porTipo[x.tipo] = (porTipo[x.tipo] || 0) + x.importe; });
+    $('#r-salidas').innerHTML =
+      '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
+        '<div class="px-4 py-2.5 border-b border-telecab-border flex flex-wrap items-center gap-x-3 gap-y-1">' +
+          '<span class="text-xs font-semibold uppercase tracking-wide text-telecab-muted">Salio de la caja en esta quincena</span>' +
+          SALIDAS.map(t => (porTipo[t.codigo]
+            ? '<span class="text-[11px] px-2 py-0.5 rounded-lg bg-telecab-card2 text-telecab-text">' +
+              esc(t.etiqueta) + ' <b class="tabular-nums">' + eur(porTipo[t.codigo]) + '</b></span>'
+            : '')).join('') +
+        '</div>' +
+        s.map(x =>
+          '<div class="px-4 py-2 flex flex-wrap items-baseline gap-2 text-sm border-b border-telecab-border/40 ' +
+            (x.anulado ? 'opacity-50' : '') + '" data-sid="' + esc(x.id) + '">' +
+            '<span class="text-telecab-muted tabular-nums text-xs w-[70px]">' + fecha(x.fecha) + '</span>' +
+            '<span class="font-semibold tabular-nums text-telecab-warn' + (x.anulado ? ' line-through' : '') + '">-' + eur(x.importe) + '</span>' +
+            '<span class="text-xs px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">' + esc(etq(x.tipo)) + '</span>' +
+            '<span class="text-xs text-telecab-muted">&laquo;' + esc(x.observacion) + '&raquo;</span>' +
+            '<span class="text-[11px] text-telecab-muted/70">&middot; ' + esc(x.quien) + '</span>' +
+            (x.anulado
+              ? '<span class="text-[11px] text-telecab-red">anulada por ' + esc(x.anuladoPor || '?') + ': &laquo;' + esc(x.anuladoMotivo) + '&raquo;</span>'
+              : '<button data-anular-s class="ml-auto text-[11px] px-2 py-0.5 rounded border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition">Anular</button>') +
+          '</div>').join('') +
+      '</div>';
+    $('#r-salidas').querySelectorAll('[data-anular-s]').forEach(b =>
+      b.addEventListener('click', () => anular(b.closest('[data-sid]').dataset.sid)));
+  }
+
+  // ── Sacar dinero de la caja ──────────────────────────────────────────
+  async function salidaCaja() {
+    const v = await Dialogo.formulario('Salida de caja', [
+      { id: 'tipo', etiqueta: 'A dónde va', tipo: 'lista', obligatorio: true,
+        valor: SALIDAS[0].codigo, opciones: SALIDAS.map(t => ({ valor: t.codigo, texto: t.etiqueta })) },
+      { id: 'fecha', etiqueta: 'Fecha', tipo: 'fecha', obligatorio: true, valor: hoyIso() },
+      { id: 'importe', etiqueta: 'Importe (€)', obligatorio: true, ayuda: 'Lo que sale del cajón. "250,00" vale.' },
+      { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'Obligatoria: a qué va ese dinero. Es lo que se mira cuando la caja no cuadra.' },
+    ], { nota: 'Baja el efectivo del cajón. NO cambia lo que los conductores deben.' });
+    if (!v || !v.importe || !v.observacion) return;
+    try {
+      await pedir('/recaudacion/api/movimiento', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(v),
+      });
+      await cargar(Q);
+    } catch (e) { fallo(e); }
+  }
+
+  // ── El cuadro de la quincena ─────────────────────────────────────────
+  function pintarCuadro() {
+    const t = D.total;
+    $('#q-etiqueta').textContent = D.quincena.etiqueta;
+    $('#t-deuda').textContent = eur(t.deuda);
+    $('#t-presencial').textContent = eur(t.presencial);
+    $('#t-nomina').textContent = eur(t.nomina);
+    $('#t-entrega').textContent = eur(t.entrega);
+    $('#t-pendiente').textContent = eur(t.pendiente);
+    $('#t-condeuda').textContent = t.conDeuda ? t.conDeuda + (t.conDeuda === 1 ? ' persona' : ' personas') : '';
+
+    if (!D.filas.length) {
+      $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
+        'Nada en esta quincena: ni cierre de BOLT cargado, ni dinero entregado, ni nadie arrastrando deuda.</p>';
+      return;
+    }
+    const cab = ['Conductor', 'Efectivo', 'En mano', 'Nómina', 'Devuelto', 'De antes', 'Pendiente'];
+    $('#r-cuadro').innerHTML =
+      '<div class="overflow-x-auto"><table class="w-full text-sm">' +
+      '<thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted border-b border-telecab-border">' +
+        cab.map((c, i) => '<th class="px-3 py-2.5 ' + (i ? 'text-right' : 'text-left') + ' font-semibold whitespace-nowrap">' + c + '</th>').join('') +
+        '<th class="px-3 py-2.5"></th></tr></thead><tbody>' +
+      D.filas.map(f =>
+        '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition" data-cid="' + esc(f.conductorId) + '">' +
+          '<td class="px-3 py-2.5"><button data-ficha class="text-left font-medium hover:text-telecab-gold transition">' +
+            esc(f.conductor) + '</button>' +
+            (f.enPlantilla ? '' : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">ya no está</span>') + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.deuda) + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.presencial, 'text-telecab-green') + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.nomina, 'text-sky-400') + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.entrega, 'text-telecab-muted') + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.arrastre, 'text-telecab-muted') + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums font-bold ' +
+            (f.pendiente > 0.005 ? 'text-telecab-red' : f.pendiente < -0.005 ? 'text-telecab-green' : '') + '">' +
+            (Math.abs(f.pendiente) < 0.005 ? '<span class="text-telecab-green">al día</span>' : eur(f.pendiente)) + '</td>' +
+          '<td class="px-3 py-2.5 text-right"><button data-cobrar class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition whitespace-nowrap">' +
+            '<i class="fa-solid fa-receipt mr-1"></i>Cobrar</button></td>' +
+        '</tr>').join('') +
+      '</tbody></table></div>';
+
+    $('#r-cuadro').querySelectorAll('[data-ficha]').forEach(b =>
+      b.addEventListener('click', () => abrirFicha(b.closest('[data-cid]').dataset.cid)));
+    $('#r-cuadro').querySelectorAll('[data-cobrar]').forEach(b =>
+      b.addEventListener('click', () => recibo(b.closest('[data-cid]').dataset.cid)));
+  }
+
+  // ── EL RECIBO, con la misma pinta que el de papel ────────────────────
+  async function recibo(conductorId) {
+    await padron();
+    const p = $('#r-panel');
+    p.classList.remove('hidden');
+    p.innerHTML =
+      '<div class="bg-telecab-card border-2 border-telecab-gold/40 rounded-2xl overflow-hidden">' +
+        '<div class="px-4 py-3 border-b border-telecab-border flex items-center justify-between gap-3">' +
+          '<h2 class="font-bold text-telecab-text tracking-wide"><i class="fa-solid fa-receipt text-telecab-gold mr-2"></i>RECIBO DE EFECTIVO</h2>' +
+          '<button data-cerrar class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark"></i></button>' +
+        '</div>' +
+        '<div class="p-4 space-y-4">' +
+          '<div class="grid sm:grid-cols-[2fr,1fr,1fr] gap-3">' +
+            '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Recibí de' +
+              '<select data-cond class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text">' +
+                opcionesConductor() + '</select></label>' +
+            '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Fecha' +
+              '<input data-fecha type="date" value="' + hoyIso() + '" max="' + hoyIso() + '" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text"></label>' +
+            '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Importe' +
+              '<p data-total class="mt-1 px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-gold/40 text-lg font-bold text-telecab-gold tabular-nums leading-tight">0,00 €</p></div>' +
+          '</div>' +
+
+          // La cuadrícula del recibo: una columna por billete y por moneda.
+          '<div class="overflow-x-auto rounded-xl border border-telecab-border">' +
+            '<table class="w-full text-center text-xs" data-rejilla>' +
+              '<thead><tr class="bg-telecab-card2/60">' +
+                '<th class="px-2 py-1.5 text-left text-[10px] uppercase tracking-wide text-telecab-muted whitespace-nowrap">Valor €</th>' +
+                DEN.map(d => '<th class="px-1 py-1.5 font-semibold text-telecab-text whitespace-nowrap">' + esc(d.etiqueta) + '</th>').join('') +
+                '<th class="px-2 py-1.5 text-[10px] uppercase tracking-wide text-telecab-gold">Total</th></tr></thead>' +
+              '<tbody>' +
+                '<tr class="border-t border-telecab-border">' +
+                  '<td class="px-2 py-1.5 text-left text-[10px] uppercase tracking-wide text-telecab-muted">Cantidad</td>' +
+                  DEN.map(d => '<td class="p-0.5"><input data-den="' + d.centimos + '" type="number" min="0" step="1" inputmode="numeric" ' +
+                    'class="w-full min-w-[44px] bg-telecab-dark border border-telecab-border rounded px-1 py-1.5 text-center text-sm text-telecab-text tabular-nums"></td>').join('') +
+                  '<td class="px-2 py-1.5 text-telecab-muted tabular-nums" data-uds>0</td></tr>' +
+                '<tr class="border-t border-telecab-border bg-telecab-card2/30">' +
+                  '<td class="px-2 py-1.5 text-left text-[10px] uppercase tracking-wide text-telecab-muted">Importe €</td>' +
+                  DEN.map(d => '<td class="px-1 py-1.5 text-telecab-muted tabular-nums" data-sub="' + d.centimos + '">—</td>').join('') +
+                  '<td class="px-2 py-1.5 font-bold text-telecab-gold tabular-nums" data-total2>0,00</td></tr>' +
+              '</tbody></table>' +
+          '</div>' +
+
+          '<label class="block text-[11px] text-telecab-muted uppercase tracking-wide">Observación' +
+            '<input data-obs type="text" maxlength="255" placeholder="p. ej. entrega de la quincena, o el número del recibo de papel" ' +
+              'class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text"></label>' +
+          '<p data-aviso class="text-xs text-telecab-warn hidden"></p>' +
+          '<div class="flex flex-wrap items-center justify-end gap-2">' +
+            '<button data-cancelar class="px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">Cancelar</button>' +
+            '<button data-guardar class="px-4 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold"><i class="fa-solid fa-check mr-1"></i>Guardar el ingreso</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    if (conductorId) p.querySelector('[data-cond]').value = String(conductorId);
+    p.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // El total se recalcula EN CÉNTIMOS a cada tecla: en euros con decimales,
+    // 0,10 + 0,20 no da 0,30 y el recibo no cuadraría con su propia suma.
+    const recalcular = () => {
+      let centimos = 0, uds = 0;
+      p.querySelectorAll('[data-den]').forEach(inp => {
+        const c = Number(inp.dataset.den);
+        const n = Math.max(0, Math.floor(Number(inp.value) || 0));
+        const sub = c * n;
+        centimos += sub; uds += n;
+        const celda = p.querySelector('[data-sub="' + c + '"]');
+        celda.textContent = n ? nf.format(sub / 100) : '—';
+        celda.className = 'px-1 py-1.5 tabular-nums ' + (n ? 'text-telecab-text font-semibold' : 'text-telecab-muted/40');
+      });
+      p.querySelector('[data-total]').textContent = nf.format(centimos / 100) + ' €';
+      p.querySelector('[data-total2]').textContent = nf.format(centimos / 100);
+      p.querySelector('[data-uds]').textContent = uds;
+      return centimos;
+    };
+    p.querySelectorAll('[data-den]').forEach(i => i.addEventListener('input', recalcular));
+
+    const cerrar = () => { p.classList.add('hidden'); p.innerHTML = ''; };
+    p.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+    p.querySelector('[data-cancelar]').addEventListener('click', cerrar);
+
+    p.querySelector('[data-guardar]').addEventListener('click', async () => {
+      const centimos = recalcular();
+      const aviso = p.querySelector('[data-aviso]');
+      if (centimos <= 0) {
+        aviso.textContent = 'Cuenta los billetes y las monedas: el recibo no puede ser de cero.';
+        aviso.classList.remove('hidden');
+        return;
+      }
+      const desglose = {};
+      p.querySelectorAll('[data-den]').forEach(i => {
+        const n = Math.max(0, Math.floor(Number(i.value) || 0));
+        if (n) desglose[i.dataset.den] = n;
+      });
+      const btn = p.querySelector('[data-guardar]');
+      btn.disabled = true; btn.classList.add('opacity-60');
+      try {
+        const r = await pedir('/recaudacion/api/movimiento', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conductorId: p.querySelector('[data-cond]').value,
+            fecha: p.querySelector('[data-fecha]').value,
+            tipo: 'presencial', importe: (centimos / 100).toFixed(2), desglose,
+            observacion: p.querySelector('[data-obs]').value,
+          }),
+        });
+        cerrar();
+        Dialogo.hecho ? Dialogo.hecho('Ingreso apuntado: ' + eur(r.importe)) : null;
+        await cargar();
+        if (fichaAbierta) await abrirFicha(fichaAbierta);
+      } catch (e) {
+        btn.disabled = false; btn.classList.remove('opacity-60');
+        aviso.textContent = e.message; aviso.classList.remove('hidden');
+      }
+    });
+  }
+
+  // ── El descuento de nómina (RRHH) ────────────────────────────────────
+  async function descuentoNomina() {
+    await padron();
+    const v = await Dialogo.formulario('Descuento de nómina', [
+      { id: 'conductorId', etiqueta: 'Conductor', tipo: 'lista', obligatorio: true,
+        opciones: conductores.map(c => ({ valor: c.id, texto: c.nombre })) },
+      { id: 'fecha', etiqueta: 'Fecha del descuento', tipo: 'fecha', obligatorio: true, valor: hoyIso(),
+        ayuda: 'La que corresponda a la nómina, no tiene por qué ser la de hoy.' },
+      { id: 'importe', etiqueta: 'Importe (€)', obligatorio: true, ayuda: 'Lo que se le descuenta. "125,50" vale.' },
+      { id: 'observacion', etiqueta: 'Observación', tipo: 'texto-largo' },
+    ], { nota: 'Queda apuntado con tu nombre y cuenta como recaudado, igual que si lo hubiera traído en mano.' });
+    if (!v || !v.importe) return;
+    try {
+      await pedir('/recaudacion/api/movimiento', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...v, tipo: 'nomina' }),
+      });
+      await cargar();
+      if (fichaAbierta) await abrirFicha(fichaAbierta);
+    } catch (e) { fallo(e); }
+  }
+
+  // ── Recalcular la quincena desde los pedidos en efectivo de BOLT ─────
+  async function recalcular() {
+    const previo = await Dialogo.confirmar({
+      titulo: 'Recalcular ' + D.quincena.etiqueta,
+      texto: 'Se vuelve a sumar el efectivo de BOLT (los viajes pagados en mano y terminados) y se ' +
+             'congela como la deuda de esta quincena. Lo que esté corregido a mano NO se toca.',
+      tono: 'pregunta',
+    });
+    if (!previo) return;
+    try {
+      const r = await pedir('/recaudacion/api/cierre/calcular', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Q),
+      });
+      await cargar(Q);
+      const lista = (t, arr, tono) => (arr.length
+        ? '<p class="mt-2 ' + tono + '">' + t + ':</p><ul class="mt-1 text-xs space-y-0.5 max-h-40 overflow-auto">' +
+          arr.slice(0, 40).map(x => '<li>· ' + esc(x.conductor) + ' — ' +
+            (x.antes != null ? eur(x.antes) + ' → ' : '') + eur(x.importe) + '</li>').join('') +
+          (arr.length > 40 ? '<li>· … y ' + (arr.length - 40) + ' más</li>' : '') + '</ul>'
+        : '');
+      await Dialogo.aviso({
+        titulo: r.conductores + (r.conductores === 1 ? ' conductor con efectivo' : ' conductores con efectivo'),
+        tono: r.cambios.length || r.respetados.length ? 'aviso' : 'info',
+        html: '<p>Suman <b>' + eur(r.total) + '</b> en ' + esc(r.quincena.etiqueta) + '.</p>' +
+          lista('Nuevos', r.nuevos, 'text-telecab-muted') +
+          lista('CAMBIARON respecto a lo que había', r.cambios, 'text-telecab-warn') +
+          lista('Corregidos a mano, respetados', r.respetados, 'text-telecab-muted'),
+      });
+    } catch (e) { fallo(e); }
+  }
+
+  // ── Cargar el cierre de BOLT de la quincena ──────────────────────────
+  async function cargarCierre() {
+    const v = await Dialogo.formulario('Cierre de BOLT · ' + D.quincena.etiqueta, [
+      { id: 'texto', etiqueta: 'Pega aquí las dos columnas', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'Una línea por conductor: el nombre y el efectivo de la quincena. Tal cual sale del Excel.' },
+    ], { nota: 'Se PISA lo que hubiera de esta quincena, no se suma. Los nombres que no se reconozcan se dicen uno a uno.' });
+    if (!v || !v.texto) return;
+    try {
+      const r = await pedir('/recaudacion/api/cierre/importar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...Q, texto: v.texto }),
+      });
+      await cargar();
+      await Dialogo.aviso({
+        titulo: r.guardados + (r.guardados === 1 ? ' conductor cargado' : ' conductores cargados'),
+        tono: r.sinCasar.length ? 'aviso' : 'info',
+        html: '<p>Suman <b>' + eur(r.total) + '</b> en ' + esc(r.quincena.etiqueta) + '.</p>' +
+          (r.sinCasar.length
+            ? '<p class="mt-2 text-telecab-warn">Estas ' + r.sinCasar.length + ' líneas se han quedado fuera:</p>' +
+              '<ul class="mt-1 text-xs space-y-0.5 max-h-48 overflow-auto">' +
+              r.sinCasar.map(x => '<li>· <code>' + esc(x.linea.slice(0, 60)) + '</code> — ' + esc(x.porque) + '</li>').join('') + '</ul>'
+            : '<p class="mt-2 text-telecab-green">Todas las líneas han casado.</p>'),
+      });
+    } catch (e) { fallo(e); }
+  }
+
+  // ── La ficha de un conductor: su histórico ───────────────────────────
+  async function abrirFicha(conductorId) {
+    try {
+      const f = await pedir('/recaudacion/api/conductor/' + encodeURIComponent(conductorId));
+      fichaAbierta = conductorId;
+      const etqTipo = t => (TIPOS.find(x => x.codigo === t) || {}).etiqueta || t;
+      const tono = t => (t === 'presencial' ? 'text-telecab-green' : t === 'nomina' ? 'text-sky-400' : 'text-telecab-muted');
+      const signo = t => (t === 'entrega' ? '−' : '+');
+
+      const desgloseTxt = d => {
+        if (!d) return '';
+        const partes = DEN.filter(x => d[String(x.centimos)])
+          .map(x => d[String(x.centimos)] + '×' + x.etiqueta);
+        return partes.length ? '<span class="text-telecab-muted/70">(' + esc(partes.join('  ')) + ')</span>' : '';
+      };
+
+      $('#r-ficha').classList.remove('hidden');
+      $('#r-ficha').innerHTML =
+        '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
+          '<div class="px-4 py-3 border-b border-telecab-border flex flex-wrap items-center justify-between gap-2">' +
+            '<div><h2 class="font-bold text-telecab-text">' + esc(f.conductor.nombre) + '</h2>' +
+              '<p class="text-[11px] text-telecab-muted font-mono tabular-nums">' + (esc(f.conductor.telefono) || 'sin teléfono') +
+              (f.conductor.enPlantilla ? '' : ' · ya no está en plantilla') + '</p></div>' +
+            '<div class="flex items-center gap-4 text-right">' +
+              '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Efectivo</p><p class="font-bold tabular-nums">' + eur(f.total.deuda) + '</p></div>' +
+              '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Entregado</p><p class="font-bold text-telecab-green tabular-nums">' + eur(f.total.recaudado) + '</p></div>' +
+              '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Pendiente</p>' +
+                '<p class="font-bold tabular-nums ' + (f.total.pendiente > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(f.total.pendiente) + '</p></div>' +
+              '<button data-cobrar-ficha class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold whitespace-nowrap"><i class="fa-solid fa-receipt mr-1"></i>Cobrar</button>' +
+              '<button data-cerrar-ficha class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark"></i></button>' +
+            '</div>' +
+          '</div>' +
+          (f.quincenas.length
+            ? f.quincenas.map(q =>
+              '<div class="border-b border-telecab-border/50">' +
+                '<div class="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 bg-telecab-card2/30">' +
+                  '<span class="font-semibold text-sm">' + esc(q.etiqueta) + '</span>' +
+                  '<span class="text-xs text-telecab-muted">efectivo <b class="text-telecab-text tabular-nums">' + eur(q.deuda) + '</b></span>' +
+                  '<span class="text-xs text-telecab-muted">entregado <b class="text-telecab-green tabular-nums">' + eur(q.recaudado) + '</b></span>' +
+                  '<span class="ml-auto text-xs text-telecab-muted">saldo tras esta quincena ' +
+                    '<b class="tabular-nums ' + (q.saldo > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(q.saldo) + '</b></span>' +
+                '</div>' +
+                (q.movimientos.length
+                  ? q.movimientos.map(m =>
+                    '<div class="px-4 py-2 flex flex-wrap items-baseline gap-2 text-sm ' + (m.anulado ? 'opacity-50' : '') + '" data-mid="' + esc(m.id) + '">' +
+                      '<span class="text-telecab-muted tabular-nums text-xs w-[70px]">' + fecha(m.fecha) + '</span>' +
+                      '<span class="font-semibold tabular-nums ' + tono(m.tipo) + (m.anulado ? ' line-through' : '') + '">' +
+                        signo(m.tipo) + eur(m.importe) + '</span>' +
+                      '<span class="text-xs px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">' + esc(etqTipo(m.tipo)) + '</span>' +
+                      desgloseTxt(m.desglose) +
+                      (m.observacion ? '<span class="text-xs text-telecab-muted">«' + esc(m.observacion) + '»</span>' : '') +
+                      '<span class="text-[11px] text-telecab-muted/70">· ' + esc(m.quien) + '</span>' +
+                      (m.anulado
+                        ? '<span class="text-[11px] text-telecab-red">anulado por ' + esc(m.anuladoPor || '¿?') + ': «' + esc(m.anuladoMotivo) + '»</span>'
+                        : '<button data-anular class="ml-auto text-[11px] px-2 py-0.5 rounded border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition">Anular</button>') +
+                    '</div>').join('')
+                  : '<p class="px-4 py-2 text-xs text-telecab-muted">Sin movimientos en esta quincena.</p>') +
+              '</div>').join('')
+            : '<p class="px-4 py-8 text-center text-sm text-telecab-muted">Sin nada apuntado todavía.</p>') +
+        '</div>';
+
+      const cerrarFicha = () => { $('#r-ficha').classList.add('hidden'); $('#r-ficha').innerHTML = ''; fichaAbierta = null; };
+      $('#r-ficha').querySelector('[data-cerrar-ficha]').addEventListener('click', cerrarFicha);
+      $('#r-ficha').querySelector('[data-cobrar-ficha]').addEventListener('click', () => recibo(conductorId));
+      $('#r-ficha').querySelectorAll('[data-anular]').forEach(b =>
+        b.addEventListener('click', () => anular(b.closest('[data-mid]').dataset.mid)));
+      $('#r-ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) { fallo(e); }
+  }
+
+  async function anular(movimientoId) {
+    const v = await Dialogo.formulario('Anular este movimiento', [
+      { id: 'motivo', etiqueta: 'Por qué se anula', tipo: 'texto-largo', obligatorio: true },
+    ], { tono: 'peligro', nota: 'El apunte no se borra: queda tachado, con tu nombre y con el motivo. Es dinero.' });
+    if (!v || !v.motivo) return;
+    try {
+      await pedir('/recaudacion/api/movimiento/' + encodeURIComponent(movimientoId) + '/anular', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: v.motivo }),
+      });
+      await cargar();
+      if (fichaAbierta) await abrirFicha(fichaAbierta);
+    } catch (e) { fallo(e); }
+  }
+
+  // ── Carga ────────────────────────────────────────────────────────────
+  const url = q => '/recaudacion/api/cuadro?anio=' + q.anio + '&mes=' + q.mes + '&quincena=' + q.quincena;
+
+  async function cargar(q) {
+    try {
+      D = await pedir(q ? url(q) : '/recaudacion/api/cuadro');
+      Q = { anio: D.quincena.anio, mes: D.quincena.mes, quincena: D.quincena.quincena };
+      pintarCaja();
+      pintarCuadro();
+      pintarSalidas();
+    } catch (e) {
+      $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#q-antes').addEventListener('click', () => cargar(D.anterior));
+  $('#q-luego').addEventListener('click', () => cargar(D.siguiente));
+  $('#q-hoy').addEventListener('click', () => cargar(D.hoy));
+  $('#r-nuevo').addEventListener('click', () => recibo(null));
+  $('#r-salida').addEventListener('click', salidaCaja);
+  $('#r-calcular').addEventListener('click', recalcular);
+  $('#r-cierre').addEventListener('click', cargarCierre);
+  if (PUEDE_NOMINA && $('#r-nomina')) $('#r-nomina').addEventListener('click', descuentoNomina);
+
+  cargar();
+})();
+</script>

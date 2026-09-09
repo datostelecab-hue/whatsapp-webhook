@@ -72,22 +72,34 @@ async function guardarOrders(ordenes, descargaId = null) {
     const creado = Number(o.order_created_timestamp);
     if (!driver || !creado) continue;
     const p = o.order_price || {};
+    // El método de pago y el precio desglosado se guardan desde el principio:
+    // sin ellos no hay forma de saber qué se cobró EN EFECTIVO, que es la deuda
+    // que el conductor tiene con la empresa (ver services/repo/recaudacion.js).
+    // En los pedidos cancelados BOLT manda todo el precio a NULL; se deja NULL
+    // y no cero, que "no cobró" y "cobró cero" no son lo mismo.
+    const num = v => (v === null || v === undefined ? null : Number(v));
     const r = await db.consulta(
       `INSERT INTO bolt_order
-         (order_ref, driver_uuid, estado, creado_ts, finalizado_ts, propina, peaje, neto, descarga_id)
+         (order_ref, driver_uuid, estado, creado_ts, finalizado_ts, propina, peaje, neto, descarga_id,
+          metodo_pago, precio, dto_efectivo, tarifa_reserva)
        VALUES ($1, $2, $3, to_timestamp($4),
                CASE WHEN $5 > 0 THEN to_timestamp($5) END,
-               $6, $7, $8, $9)
+               $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (driver_uuid, creado_ts) WHERE driver_uuid IS NOT NULL
        DO UPDATE SET
          estado = EXCLUDED.estado,
          finalizado_ts = COALESCE(EXCLUDED.finalizado_ts, bolt_order.finalizado_ts),
          propina = EXCLUDED.propina, peaje = EXCLUDED.peaje, neto = EXCLUDED.neto,
-         descarga_id = EXCLUDED.descarga_id, actualizado_at = now()
+         descarga_id = EXCLUDED.descarga_id, actualizado_at = now(),
+         metodo_pago = COALESCE(EXCLUDED.metodo_pago, bolt_order.metodo_pago),
+         precio = COALESCE(EXCLUDED.precio, bolt_order.precio),
+         dto_efectivo = COALESCE(EXCLUDED.dto_efectivo, bolt_order.dto_efectivo),
+         tarifa_reserva = COALESCE(EXCLUDED.tarifa_reserva, bolt_order.tarifa_reserva)
        RETURNING id`,
       [o.id || o.order_id || o.order_reference || null, driver, o.order_status || null,
        creado, Number(o.order_finished_timestamp) || 0,
-       Number(p.tip) || 0, Number(p.toll_fee) || 0, Number(p.net_earnings) || 0, descargaId]);
+       Number(p.tip) || 0, Number(p.toll_fee) || 0, Number(p.net_earnings) || 0, descargaId,
+       o.payment_method || null, num(p.ride_price), num(p.cash_discount), num(p.booking_fee)]);
     if (r.rowCount) tocadas++;
   }
   return tocadas;

@@ -84,6 +84,14 @@ const CATALOGO = [
     // código. Y la API no comprobaba nada: el candado era solo el botón.
     { clave: '/bitacora/justificar', etiqueta: 'Justificar días en la bitácora' },
   ] },
+  { grupo: 'Caja', items: [
+    // Nacen APAGADOS para todo el mundo, hasta para dirección: `manual` los
+    // saca de TODO(), así que ni siquiera los roles que llevan el catálogo
+    // entero los reciben. Los reparte el jefe uno a uno en /usuarios. Es una
+    // caja: quién puede tocarla no se decide por descarte.
+    { clave: '/recaudacion',        etiqueta: 'Recaudación del efectivo', manual: true },
+    { clave: '/recaudacion/nomina', etiqueta: 'Recaudación · descuentos de nómina (RRHH)', manual: true },
+  ] },
   { grupo: 'Dirección', items: [
     { clave: '/bi', etiqueta: 'Inteligencia de negocio' },
   ] },
@@ -149,9 +157,10 @@ const G = nombre => {
   (g ? g.items : []).forEach(i => { out.push(i.clave); (i.hijos || []).forEach(h => out.push(h.clave)); });
   return out;
 };
-// Todas las claves del catálogo, para los roles que las llevan todas.
+// Todas las claves del catálogo, para los roles que las llevan todas. Las
+// marcadas `manual` NO entran ni aquí: son las que se dan una a una.
 const TODO = () => CATALOGO.flatMap(g =>
-  g.items.flatMap(i => [i.clave, ...(i.hijos || []).map(h => h.clave)]));
+  g.items.filter(i => !i.manual).flatMap(i => [i.clave, ...(i.hijos || []).filter(h => !h.manual).map(h => h.clave)]));
 
 /**
  * Con qué se ESTRENA cada rol. No es lo que puede ver para siempre: en cuanto
