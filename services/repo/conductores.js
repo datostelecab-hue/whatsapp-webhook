@@ -57,8 +57,9 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            c.naf,
            c.es_centinela, c.empleo_vigente,
 
-           -- Empleo vigente en la fecha: propia o ETT, desde cuándo.
-           e.tipo AS empleo_tipo, e.ett_nombre, e.alta, e.baja,
+           -- Empleo vigente en la fecha: propia o ETT, desde cuándo, y con qué
+           -- jornada (para poder cambiarla desde la ficha sin adivinarla).
+           e.tipo AS empleo_tipo, e.ett_nombre, e.alta, e.baja, e.jornada_horas,
            COALESCE(e.fecha_antiguedad, e.alta) AS antiguedad,
            -- Años de casa, que es lo que se mira de un vistazo.
            round(EXTRACT(EPOCH FROM (age((SELECT dia FROM ref),
@@ -128,7 +129,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     -- DUPLICADA, las dos filas como "Activo". Quien ya se fue (sin periodo vivo) cae a
     -- e = NULL y lo recoge el LATERAL ultimo (contrato cerrado) de abajo.
     LEFT JOIN LATERAL (
-      SELECT tipo, ett_nombre, alta, baja, fecha_antiguedad
+      SELECT tipo, ett_nombre, alta, baja, fecha_antiguedad, jornada_horas
         FROM conductor_periodo_empleo
        WHERE conductor_id = c.id
          AND (baja IS NULL OR baja >= ref.dia)
@@ -1042,6 +1043,45 @@ async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
   });
 }
 
+// Las jornadas que admite el convenio. La misma lista que el CHECK
+// `ck_empleo_jornada` de la base: si crecen, crecen en los dos sitios.
+const JORNADAS = [20, 25, 30, 32, 35, 40];
+
+/**
+ * Cambia las horas del contrato ABIERTO (32, 40…).
+ *
+ * Toca la fila que hay, no abre un periodo nuevo: pasar de 40 a 32 horas es una
+ * novación del mismo contrato, no un contrato distinto —la antigüedad, el
+ * número y la relación laboral siguen siendo los mismos—, y partir el periodo
+ * dejaría dos altas donde solo hubo una.
+ *
+ * Queda en el historial de la ficha quién lo cambió y de qué a qué, que es lo
+ * que se preguntará el día que una nómina no cuadre.
+ */
+async function cambiarJornada(id, { jornadaHoras }, { usuarioId } = {}) {
+  const h = Number(jornadaHoras);
+  if (!JORNADAS.includes(h)) {
+    throw new Error(`Esa jornada no existe. Las que hay: ${JORNADAS.join(', ')} horas.`);
+  }
+  return db.transaccion(async cli => {
+    const e = (await cli.query(
+      `SELECT id, jornada_horas FROM conductor_periodo_empleo
+        WHERE conductor_id = $1 AND baja IS NULL`, [id])).rows[0];
+    if (!e) throw new Error('Esta persona no tiene ningún contrato abierto');
+    if (Number(e.jornada_horas) === h) return { sinCambios: true, jornadaHoras: h };
+
+    await cli.query(
+      'UPDATE conductor_periodo_empleo SET jornada_horas = $2 WHERE id = $1', [e.id, h]);
+    await audit.registrar({
+      tabla: 'conductor', id, usuarioId, cli,
+      cambios: [{ campo: 'jornada_horas',
+        antes: e.jornada_horas == null ? null : String(e.jornada_horas) + ' h',
+        ahora: String(h) + ' h' }],
+    });
+    return { jornadaHoras: h, antes: e.jornada_horas };
+  });
+}
+
 /**
  * Da de baja: cierra el empleo, la situación, el turno y las asignaciones.
  *
@@ -1120,6 +1160,7 @@ async function doblePlaza({ momento } = {}) {
 }
 
 module.exports = {
+  JORNADAS, cambiarJornada,
   campos,
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,

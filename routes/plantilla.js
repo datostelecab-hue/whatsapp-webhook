@@ -196,6 +196,11 @@ router.post('/api/conductor/:id/a-propia', responde(async req =>
   require('../services/repo/alta').convertirAPropia(
     Number(req.params.id), req.body || {}, await quien(req))));
 
+// Las horas del contrato abierto (32, 40…). No abre periodo nuevo: es una
+// novación del mismo contrato.
+router.post('/api/conductor/:id/jornada', responde(async req =>
+  con.cambiarJornada(Number(req.params.id), req.body || {}, await quien(req))));
+
 // El historial de ediciones de una ficha: quién tocó qué y cuándo.
 router.get('/api/conductor/:id/cambios', responde(async req =>
   ({ cambios: await audit.historial('conductor', Number(req.params.id)) })));

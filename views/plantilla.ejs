@@ -6,6 +6,8 @@
   const { fecha, hace, etiqueta, esc } = Listado.fmt;
 
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  // Las mismas que admite el CHECK de la base (ck_empleo_jornada).
+  const JORNADAS = [20, 25, 30, 32, 35, 40];
   const ROL = '<%= typeof rol !== "undefined" ? rol : "" %>';
   // Tráfico ve la ficha entera pero solo cambia lo suyo: turno y libranzas.
   const SOLO_OPERATIVO = ROL === 'trafico';
@@ -583,6 +585,42 @@
     return hacer(() => enviar(`/plantilla/api/conductor/${d.id}/baja`, 'POST', { fecha, motivo }));
   }
 
+  /**
+   * ETT → plantilla propia.
+   *
+   * NO es un campo que se edite: es un contrato que termina y otro que empieza.
+   * El servidor cierra el periodo de la ETT el día antes, abre el propio, le
+   * arrastra la antigüedad de la ETT y exige que su expediente esté completo
+   * —mientras venía por la agencia la relación laboral era de ellos; al pasar a
+   * plantilla es nuestra, y con ella la obligación de tener sus papeles.
+   */
+  async function accionAPropia(d) {
+    const v = await pedirDatos(`${d.nombre_completo} pasa a plantilla propia`, [
+      { id: 'desde', etiqueta: 'Primer día de contrato propio *', tipo: 'fecha', valor: fecha(new Date()),
+        ayuda: 'El periodo de la ETT se cierra el día anterior. No puede ser antes de su alta en la ETT.' },
+      { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista', valor: String(d.jornada_horas || 40),
+        opciones: JORNADAS.map(h => ({ valor: String(h), texto: h + ' horas' })) },
+      { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', tipo: 'fecha' },
+      { id: 'motivo', etiqueta: 'Motivo del cierre en la ETT', tipo: 'texto-largo' },
+    ], { textoBoton: 'Pasar a plantilla propia',
+         nota: 'Sigue en su coche y en su turno, y se le respeta la antigüedad desde que entró por '
+             + (d.ett_nombre || 'la ETT') + '. Si le falta algún documento, el sistema lo dirá y no dejará.' });
+    if (!v || !v.desde) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/a-propia`, 'POST', v));
+  }
+
+  /** Las horas del contrato abierto. Es una novación: no abre periodo nuevo. */
+  async function accionJornada(d) {
+    const v = await pedirDatos(`Jornada de ${d.nombre_completo}`, [
+      { id: 'jornadaHoras', etiqueta: 'Horas de contrato', tipo: 'lista', obligatorio: true,
+        valor: String(d.jornada_horas || 40),
+        opciones: JORNADAS.map(h => ({ valor: String(h), texto: h + ' horas' })) },
+    ], { nota: 'Cambia las horas del contrato que tiene abierto; no abre uno nuevo ni le toca la '
+             + 'antigüedad. Queda apuntado en su historial quién lo cambió y de cuánto a cuánto.' });
+    if (!v || !v.jornadaHoras) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/jornada`, 'POST', v));
+  }
+
   async function accionBaja(d) {
     const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
       { id: 'fecha', etiqueta: 'Fecha de baja', tipo: 'fecha', valor: fecha(new Date()) },
@@ -813,6 +851,13 @@
         { texto: 'Turno', icono: 'fa-clock', visible: () => true, onClick: accionTurno },
         { texto: 'Libranzas', icono: 'fa-calendar-week', onClick: accionLibranza },
         { texto: 'Editar datos', icono: 'fa-pen', visible: () => !SOLO_OPERATIVO, onClick: accionDatos },
+        // Solo a quien está de alta POR UNA ETT: al de plantilla propia no hay
+        // nada que convertirle.
+        { texto: 'Pasar a propia', icono: 'fa-building-user',
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente && d.empleo_tipo === 'ett',
+          onClick: accionAPropia },
+        { texto: 'Jornada', icono: 'fa-business-time',
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionJornada },
         { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
         // Solo aparece si está de baja: es la vuelta, no un alta nueva.
@@ -909,6 +954,8 @@
             { etiqueta: 'Plazas abiertas', clase: 'text-telecab-warn font-semibold',
               visible: d => d.plazas_abiertas > 1,
               valor: d => `${d.plazas_abiertas} a la vez` },
+            { etiqueta: 'Jornada', visible: d => !!d.jornada_horas,
+              valor: d => d.jornada_horas + ' horas' },
             { etiqueta: 'Causó baja el', visible: d => d.empleo_vigente === false,
               valor: d => fecha(d.fecha_baja) },
             { etiqueta: 'Motivo de la baja', ancho: 'sm:col-span-2',
