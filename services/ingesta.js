@@ -24,9 +24,15 @@ const db = require('./db');
 /**
  * Las tareas de ingesta.
  *
- * `cadaMin`  cada cuánto tiene sentido repetirla
- * `critica`  si fallar es un problema que hay que gritar (BOLT sí, Mapon no:
- *            Mapon se cae y el sistema tiene que seguir)
+ * `cadaMin`      cada cuánto tiene sentido repetirla
+ * `critica`      si fallar es un problema que hay que gritar (BOLT sí, Mapon no:
+ *                Mapon se cae y el sistema tiene que seguir)
+ * `reintentoMin` cuánto esperar tras un FALLO antes de volver a intentarlo.
+ *                Sin esto, `toca()` mira solo el último acierto: una tarea que
+ *                falla se reintenta en cada latido, o sea cada 5 minutos. Para
+ *                las baratas da igual; para la auditoría, que son 144 llamadas
+ *                a Mapon por vuelta, sería gastarse la cuota del día en una hora
+ *                repitiendo el mismo error.
  */
 const TAREAS = {
   padron_bolt: {
@@ -142,6 +148,49 @@ const TAREAS = {
     },
   },
 
+  // La auditoría de flota. Es la tarea más cara con diferencia —una llamada a
+  // Mapon por coche— y por eso va una vez al día, de madrugada. La dispara el
+  // cron de las 5:00 con `forzar`, pero está declarada aquí para que se vea en
+  // el panel de ingesta como todo lo demás: cuándo corrió, cuánto tardó, si
+  // falló y por qué. Antes era un cron mudo: si dejaba de funcionar, nadie se
+  // enteraba hasta que alguien echaba en falta un día en la pantalla.
+  //
+  // Y se cura sola: si ayer ya está, se ocupa del día pendiente más antiguo de
+  // la última semana. Un fallo suelto deja de necesitar que alguien lo vea.
+  auditoria_flota: {
+    fuente: 'mapon',
+    etiqueta: 'Auditoría de flota (KM por estado)',
+    cadaMin: Number(process.env.INGESTA_AUDITORIA_MIN) || 1440,
+    reintentoMin: Number(process.env.INGESTA_AUDITORIA_REINTENTO_MIN) || 60,
+    critica: false,
+    async ejecutar() {
+      const aud = require('./auditoriaFlota');
+      const repoAud = require('./repo/auditoriaFlota');
+      const hoy = aud.hoyMadrid();
+      const ayer = aud.diaMenos(hoy, 1);
+
+      // Los últimos 7 días cerrados: ayer y los seis anteriores.
+      const ventana = [];
+      for (let i = 1; i <= 7; i++) ventana.push(aud.diaMenos(hoy, i));
+      const buenos = new Set((await repoAud.dias({ desde: ventana[ventana.length - 1], hasta: ayer }))
+        .filter(d => d.ok).map(d => d.dia));
+      // Ayer manda; si ya está, el hueco más viejo. Uno por vuelta: cada día
+      // son ~20 segundos y 144 llamadas, y no hay prisa por recuperar la semana
+      // en un solo golpe.
+      const pendientes = ventana.filter(d => !buenos.has(d)).sort();
+      const dia = !buenos.has(ayer) ? ayer : pendientes[0];
+      if (!dia) return { registros: 0, detalle: { nada: 'los últimos 7 días ya están calculados' } };
+
+      try {
+        const r = await aud.procesarDia(dia);
+        return { registros: r.filas, detalle: { dia, repostajes: r.eventos, recuperado: dia !== ayer } };
+      } catch (e) {
+        await repoAud.marcarFallo(dia, e.message).catch(() => {});
+        throw new Error(`${dia}: ${e.message}`);
+      }
+    },
+  },
+
   unidades_mapon: {
     fuente: 'mapon',
     etiqueta: 'Odómetros de Mapon',
@@ -187,14 +236,26 @@ async function estado() {
   };
 }
 
-/** ¿Toca ya? Se mira el último ACIERTO, no el último intento. */
+/**
+ * ¿Toca ya? Se mira el último ACIERTO, no el último intento: un fallo suelto no
+ * puede dejar una tarea parada hasta su siguiente turno.
+ *
+ * Con `reintentoMin` se mira ADEMÁS el último intento, y ahí la lógica se
+ * invierte: se espera. Es para las tareas caras, donde reintentar cada cinco
+ * minutos lo que acaba de fallar cuesta más que quedarse quieto.
+ */
 async function toca(tarea) {
   const def = TAREAS[tarea];
   if (!def) throw new Error(`Tarea de ingesta desconocida: "${tarea}"`);
   const r = await db.consulta(
-    `SELECT max(empezada_at) AS ultimo FROM ingesta_ejecucion
-      WHERE tarea = $1 AND ok`, [tarea]);
-  const ultimo = r.rows[0].ultimo;
+    `SELECT max(empezada_at) FILTER (WHERE ok) AS ultimo,
+            max(empezada_at)                  AS intento
+       FROM ingesta_ejecucion WHERE tarea = $1`, [tarea]);
+  const { ultimo, intento } = r.rows[0];
+  if (def.reintentoMin && intento &&
+      (Date.now() - new Date(intento).getTime()) < def.reintentoMin * 60000) {
+    return false;
+  }
   if (!ultimo) return true;
   return (Date.now() - new Date(ultimo).getTime()) >= def.cadaMin * 60000;
 }

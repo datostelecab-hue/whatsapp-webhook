@@ -41,7 +41,9 @@ const BRAZOS = [
 // Lo que TODAVÍA llama por su cuenta. Cada línea es una deuda con su motivo.
 // Esta lista solo puede encoger.
 const PERMITIDOS = {
-  'services/auditoriaFlota.js':  'Auditoría de KM: pide rangos históricos que la ingesta no guarda todavía',
+  'services/auditoriaFlota.js':  'Auditoría de KM: ya ES una tarea de ingesta (auditoria_flota), pero la traza GPS ' +
+                                 'punto a punto la pide ella y se la come al vuelo: guardarla serían 200.000 puntos ' +
+                                 'al día para contestar a lo mismo',
   'services/boltHorasCore.js':   'Tubería de horas: su propio ciclo incremental cada 10 minutos',
   'services/boltResumen.js':     'Resumen de BOLT: se migra con la tubería de horas',
   'services/boltHistorico.js':   'Relleno de meses pasados: se lanza a mano y pide hasta 16 meses atrás, ' +

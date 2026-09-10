@@ -635,22 +635,18 @@ app.get('/whatsapp/plantillas', async (req, res) => {
 });
 
 // Auditoría de flota: a las 5:00 (poco tráfico) procesa el día de AYER, ya cerrado.
-// Es pesado —una llamada a Mapon por coche, unos 18 segundos el día entero— y por
-// eso va una sola vez al día. El resultado queda en PostgreSQL y el panel de
-// Operaciones solo lee de ahí: no vuelve a llamar a nadie.
+// Es la tarea más cara que hay —una llamada a Mapon por coche, unos 20 segundos—
+// y por eso va una sola vez al día.
+//
+// El cron solo pone la HORA: el trabajo lo hace la ingesta, que es quien lleva
+// la cuenta de lo que corrió, cuánto tardó y si falló. Antes esto era un cron
+// mudo, y si dejaba de funcionar nadie se enteraba hasta que alguien echaba en
+// falta un día en la pantalla. Si a las 5 falla, el latido lo reintenta solo
+// —con una hora de espera entre intentos, que para 144 llamadas a Mapon es la
+// diferencia entre reintentar y machacar.
 programar('0 5 * * *', async () => {
-  const auditoria = require('./services/auditoriaFlota');
-  const dia = auditoria.diaMenos(auditoria.hoyMadrid(), 1);
-  try {
-    console.log(`⏰ [CRON Auditoría] procesando ${dia}...`);
-    const r = await auditoria.procesarDia(dia);
-    console.log(`✅ [CRON Auditoría] ${dia}: ${r.filas} líneas, ${r.eventos} repostajes`);
-  } catch (error) {
-    console.error(`❌ [CRON Auditoría] Error: ${error.message}`);
-    // Que el día quede anotado como fallido y no como "nunca calculado": el
-    // panel los enseña distinto porque se arreglan distinto.
-    await require('./services/repo/auditoriaFlota').marcarFallo(dia, error.message).catch(() => {});
-  }
+  console.log('⏰ [CRON Auditoría] lanzando la tarea de ingesta...');
+  await require('./services/ingesta').ejecutar('auditoria_flota', { forzar: true });
 }, { timezone: 'Europe/Madrid' });
 
 // VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
