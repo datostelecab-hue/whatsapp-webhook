@@ -121,6 +121,9 @@ async function handleText(phone, text) {
 
     sesiones[phone] = {
       nombre,
+      // La ficha viaja en la sesión: es lo que permite que el registro de
+      // puertas diga QUIÉN abrió y no solo desde qué número.
+      conductorId: conductor.conductorId || null,
       matricula: resultado.matricula,
       unitId: resultado.unit_id,
       vehiculo: resultado.vehiculo,
@@ -153,34 +156,34 @@ async function handleButton(phone, buttonId) {
     return;
   }
 
-  if (buttonId === 'abrir_puertas') {
-    console.log(`🔓 Abriendo: ${sesion.vehiculo} (${sesion.matricula})`);
+  if (buttonId === 'abrir_puertas' || buttonId === 'cerrar_puertas') {
+    // Las dos ramas eran la misma escrita dos veces. Ahora una sola, que además
+    // es donde se apunta el registro: si estuviera duplicado, tarde o temprano
+    // una de las dos copias se quedaría sin anotar.
+    const abrir = buttonId === 'abrir_puertas';
+    const comando = abrir ? 'open_doors' : 'close_doors';
+    console.log(`${abrir ? '🔓 Abriendo' : '🔒 Cerrando'}: ${sesion.vehiculo} (${sesion.matricula})`);
 
+    const t0 = Date.now();
     const result = await callAppsScript('ejecutar_comando', {
-      matricula: sesion.matricula,
-      comando: 'open_doors'
+      matricula: sesion.matricula, comando
+    });
+    const ok = result.status === 'ok';
+
+    // Se apunta SIEMPRE, salga bien o mal, y sin esperar a que termine: que el
+    // registro falle no puede dejar a nadie sin abrir el coche.
+    require('../services/repo/puertas').registrar({
+      telefono: phone, conductorId: sesion.conductorId, conductor: sesion.nombre,
+      matricula: sesion.matricula, unitId: sesion.unitId, comando, ok,
+      respuesta: ok ? null : (result.msg || JSON.stringify(result).slice(0, 500)),
+      ms: Date.now() - t0,
     });
 
-    if (result.status === 'ok') {
-      sesion.estado = 'abierta';
-      await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, 'abierta');
+    if (ok) {
+      sesion.estado = abrir ? 'abierta' : 'cerrada';
+      await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado);
     } else {
-      await sendText(phone, '❌ Error al abrir puertas. Inténtalo de nuevo.');
-    }
-
-  } else if (buttonId === 'cerrar_puertas') {
-    console.log(`🔒 Cerrando: ${sesion.vehiculo} (${sesion.matricula})`);
-
-    const result = await callAppsScript('ejecutar_comando', {
-      matricula: sesion.matricula,
-      comando: 'close_doors'
-    });
-
-    if (result.status === 'ok') {
-      sesion.estado = 'cerrada';
-      await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, 'cerrada');
-    } else {
-      await sendText(phone, '❌ Error al cerrar puertas. Inténtalo de nuevo.');
+      await sendText(phone, `❌ Error al ${abrir ? 'abrir' : 'cerrar'} puertas. Inténtalo de nuevo.`);
     }
 
   } else if (buttonId === 'cambiar_matricula') {
@@ -190,15 +193,14 @@ async function handleButton(phone, buttonId) {
   } else if (buttonId === 'codigo_lavado') {
     console.log(`💧 Código de lavado solicitado por ${phone}`);
     const codigos = require('../services/codigosBallenoil');
-    // ID_BOLT = nombre tal como sale en BOLT (del padrón por teléfono); si no, el de la sesión.
-    let idBolt = sesion.nombre || '';
-    try {
-      const c = await require('../services/conductoresBolt').buscarPorTelefono(phone);
-      if (c && (c.nombre || '').trim()) idBolt = c.nombre.trim();
-    } catch (e) { console.error('⚠️ [Ballenoil] buscarPorTelefono:', e.message); }
+    // El nombre de la sesión YA es el de BOLT: conductorPorTelefono lo saca de
+    // `nombre_bolt` cuando lo hay. Antes esto volvía a preguntarlo al padrón en
+    // hoja de cálculo para obtener exactamente el mismo dato, con un catch que
+    // se tragaba el fallo.
+    const idBolt = sesion.nombre || '';
 
     let r = null;
-    try { r = await codigos.solicitarCodigo({ telefono: phone, idBolt }); }
+    try { r = await codigos.solicitarCodigo({ telefono: phone, idBolt, conductorId: sesion.conductorId }); }
     catch (e) { console.error('❌ [Ballenoil] solicitarCodigo:', e.message); }
 
     if (r && r.codigo) {
