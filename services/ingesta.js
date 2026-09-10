@@ -148,6 +148,35 @@ const TAREAS = {
     },
   },
 
+  // Las alertas de Mapon: velocidad, zonas, alimentación, batería. Antes las
+  // pedía la pantalla de Operaciones en CADA carga, así que si Mapon estaba
+  // caído la pantalla no decía "esto es de hace un rato", decía error; y como
+  // la ventana de la API es de 31 días, lo anterior no existía para nadie.
+  alertas_mapon: {
+    fuente: 'mapon',
+    etiqueta: 'Alertas de Mapon',
+    cadaMin: Number(process.env.INGESTA_ALERTAS_MIN) || 15,
+    critica: false,
+    async ejecutar() {
+      const mapon = require('./mapon');
+      const staging = require('./repo/staging');
+      const repoAl = require('./repo/alertasMapon');
+      const t0 = Date.now();
+      // Dos días de ventana con el latido cada 15 minutos: sobra solape, y el
+      // solape no cuesta nada porque las repetidas se descartan por su clave.
+      const hoy = new Date();
+      const desde = new Date(hoy.getTime() - 2 * 86400000);
+      const { alertas } = await mapon.leerAlertas({ desde, hasta: hoy });
+      const descargaId = await staging.registrarDescarga({
+        fuente: 'mapon', endpoint: 'alert/list.json (todas)',
+        params: { desde: desde.toISOString(), hasta: hoy.toISOString() },
+        payload: alertas, filas: alertas.length, ms: Date.now() - t0,
+      });
+      const nuevas = await repoAl.guardar(alertas, descargaId);
+      return { registros: nuevas, detalle: { traidas: alertas.length, nuevas } };
+    },
+  },
+
   // La auditoría de flota. Es la tarea más cara con diferencia —una llamada a
   // Mapon por coche— y por eso va una vez al día, de madrugada. La dispara el
   // cron de las 5:00 con `forzar`, pero está declarada aquí para que se vea en

@@ -31,6 +31,9 @@ const UMBRAL = Number(process.env.MAPON_UMBRAL_VELOCIDAD || 150);
 const TIPOS = {
   speeding:       { titulo: 'Exceso de velocidad',      icono: 'fa-gauge-high' },
   in_object:      { titulo: 'Entrada/Salida de zona',   icono: 'fa-location-dot' },
+  // El tipo MÁS frecuente de la cuenta (102 de 193 alertas en una semana) y no
+  // estaba en la lista: salía en pantalla con su código crudo, `not_in_obj`.
+  not_in_obj:     { titulo: 'Fuera de zona',            icono: 'fa-location-crosshairs' },
   no_power:       { titulo: 'Alimentación OFF',         icono: 'fa-plug-circle-xmark' },
   supply_voltage: { titulo: 'Voltaje de suministro',    icono: 'fa-car-battery' },
   battery_level:  { titulo: 'Nivel de batería',         icono: 'fa-battery-quarter' },

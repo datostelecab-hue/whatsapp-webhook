@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');
-const { TIPOS, UMBRAL, MAX_DIAS, leerAlertas, listarSetups } = require('../services/mapon');
+const { TIPOS, UMBRAL, MAX_DIAS, listarSetups } = require('../services/mapon');
+const alertasRepo = require('../services/repo/alertasMapon');
 const auditoria = require('../services/auditoriaFlota');
 const { cargarAuditoria } = auditoria;
 
@@ -12,17 +13,51 @@ router.get('/', (req, res) => {
   });
 });
 
+// Las alertas, de PostgreSQL. Ya no se llama a Mapon aquí: lo trae la ingesta
+// cada 15 minutos. La pantalla dice de cuándo es lo que enseña, que es lo que
+// permite distinguir "no ha pasado nada" de "hace rato que no llega nada".
 router.get('/api/alertas', async (req, res) => {
   try {
     const { desde, hasta, tipo } = req.query;
-    const r = await leerAlertas({ desde, hasta, tipo });
-    console.log(`🛰️  [OPERACIONES] ${r.alertas.length} alertas (${tipo || 'todas'}) ${desde || '-7d'} → ${hasta || 'hoy'}`);
-    res.json({ status: 'ok', ...r });
+    const r = rangoAlertas(desde, hasta);
+    const [alertas, tipos, frescura] = await Promise.all([
+      alertasRepo.listar({ ...r, tipo }),
+      alertasRepo.porTipo(r),
+      alertasRepo.frescura(),
+    ]);
+    console.log(`🛰️  [OPERACIONES] ${alertas.length} alertas (${tipo || 'todas'}) ${r.d} → ${r.h}`);
+    // El título y el icono son PRESENTACIÓN: se ponen aquí y no en la tabla,
+    // porque cambiar cómo se llama un tipo en pantalla no puede exigir una
+    // migración ni reescribir el histórico.
+    const conAdorno = alertas.map(a => ({
+      ...a,
+      tipoTitulo: (TIPOS[a.tipo] && TIPOS[a.tipo].titulo) || a.tipo,
+      icono: (TIPOS[a.tipo] && TIPOS[a.tipo].icono) || 'fa-circle-exclamation',
+    }));
+    res.json({
+      status: 'ok', alertas: conAdorno, tipos, frescura,
+      total: alertas.length, umbral: UMBRAL,
+      desde: r.d, hasta: r.h,
+      // La pantalla ya no puede quedarse sin datos porque Mapon no conteste:
+      // como mucho, con datos de hace un rato. Y lo dice.
+      truncado: alertas.length >= 1000,
+    });
   } catch (error) {
     console.error('❌ [OPERACIONES] /api/alertas:', error.message);
     res.status(400).json({ status: 'error', msg: error.message });
   }
 });
+
+/** El rango que se mira. Por defecto los últimos 7 días, como siempre. */
+function rangoAlertas(desde, hasta) {
+  const iso = d => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(d);
+  const esDia = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  const esES = v => /^\d{2}\/\d{2}\/\d{4}$/.test(v || '');
+  const aIso = v => (esES(v) ? v.slice(6) + '-' + v.slice(3, 5) + '-' + v.slice(0, 2) : v);
+  const d = esDia(aIso(desde)) ? aIso(desde) : iso(new Date(Date.now() - 7 * 86400000));
+  const h = esDia(aIso(hasta)) ? aIso(hasta) : iso(new Date());
+  return { desde: `${d}T00:00:00+02:00`, hasta: `${h}T23:59:59+02:00`, d, h };
+}
 
 // Diagnóstico: con qué límite está avisando Mapon ahora mismo.
 router.get('/api/setups', async (req, res) => {
