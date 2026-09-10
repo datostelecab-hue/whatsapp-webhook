@@ -229,25 +229,15 @@
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/situacion/${fila.id}`, 'DELETE'));
   }
 
-  async function accionTurno(d) {
-    const v = await pedirDatos(`Cambiar el turno de ${d.nombre_completo}`, [
-      { id: 'turnoId', etiqueta: 'Turno', tipo: 'lista', valor: d.turno_id,
-        opciones: (CAT.turnos || []).map(t => ({ valor: t.id, texto: t.etiqueta })) },
-      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(new Date()) },
-    ]);
-    if (!v) return;
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/turno`, 'POST', v));
-  }
-
-  async function accionLibranza(d) {
-    const actual = (d.patrones || []).find(p => !p.hasta);
-    const v = await pedirDatos(`Libranzas de ${d.nombre_completo}`, [
-      { id: 'dias', etiqueta: 'Días que libra', tipo: 'semana', valor: (actual && actual.dias) || [] },
-      { id: 'desde', etiqueta: 'A partir de', tipo: 'fecha', valor: fecha(new Date()) },
-    ], { nota: 'Se abre un patrón nuevo y se cierra el anterior. No se reescribe: si se reescribiera, la cobertura de las semanas pasadas dejaría de cuadrar con lo que de verdad pasó.' });
-    if (!v) return;
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/libranza`, 'POST', v));
-  }
+  // EL TURNO Y LAS LIBRANZAS NO SE EDITAN DESDE LA PLANTILLA.
+  //
+  // Aquí había dos formularios —"Cambiar el turno" y "Libranzas"— y los dos
+  // creaban una segunda verdad: el turno de alguien es el de su PLAZA y sus
+  // libranzas son el descanso de su COCHE, las dos cosas del planificador. Lo
+  // que se escribiera aquí lo pisaba el cuadrante al día siguiente, y mientras
+  // tanto la ficha y el tablero decían cosas distintas de la misma persona.
+  //
+  // Se cambian donde viven: en el planificador.
 
   async function accionTelefono(d) {
     const v = await pedirDatos(`Teléfono de ${d.nombre_completo}`, [
@@ -693,10 +683,39 @@
     await hacer(() => api(`/plantilla/api/documento/${doc.id}`, { method: 'DELETE' }));
   }
 
+  // El tono de la calificación, el MISMO que en el cuadrante y en la ficha: una
+  // C tiene que verse igual en las tres pantallas o parecerán cosas distintas.
+  const TONO_LETRA = {
+    A: 'bg-telecab-green/15 text-telecab-green border-telecab-green/40',
+    B: 'bg-telecab-gold/15 text-telecab-gold border-telecab-gold/40',
+    C: 'bg-telecab-warn/15 text-telecab-warn border-telecab-warn/40',
+    D: 'bg-telecab-red/15 text-telecab-red border-telecab-red/40',
+    'N/E': 'bg-telecab-muted/10 text-telecab-muted border-telecab-border',
+  };
+  const LETRAS = ['A', 'B', 'C', 'D', 'N/E'];
+
+  /** El chip de la letra con su cuenta al pasar el ratón. */
+  function chipLetra(f) {
+    if (!f.calificacion) return '<span class="text-telecab-muted text-xs">—</span>';
+    const n = v => (v == null ? '—' : String(v).replace('.', ','));
+    const t = f.calificacion === 'N/E'
+      ? 'Sin calificar todavía'
+      : `${n(f.calificacion_total)} puntos · ${n(f.calificacion_horas)} h/día · `
+        + `${n(f.calificacion_util)} % de utilización · ${n(f.calificacion_excesos)} exceso(s)`
+        + (f.calificacion_tope ? ' · la baja el tope por velocidad' : '');
+    return `<span class="inline-flex items-center justify-center min-w-[2rem] px-1.5 py-0.5 rounded-lg border
+                 text-[11px] font-bold ${TONO_LETRA[f.calificacion] || TONO_LETRA['N/E']}"
+                 title="${esc(t)}">${esc(f.calificacion)}${f.calificacion_tope ? '⚠' : ''}</span>`;
+  }
+
   const plantilla = Listado.montar({
     raiz: '#modulo',
     titulo: 'Plantilla',
     icono: 'fa-id-card',
+    // SE ABRE POR LA GENTE DE ALTA. Los de baja son casi la mitad de las filas y
+    // no se miran nunca al entrar: estaban ahí empujando hacia abajo a los que
+    // sí. Siguen a un clic, en su filtro y en su tarjeta.
+    filtrosIniciales: { empleo: 'alta' },
     clave: 'id',
     origen: '/plantilla/api/lista',
     vacio: 'No hay nadie que coincida.',
@@ -746,6 +765,16 @@
         { etiqueta: 'Fichas con huecos', valor: deAlta.filter(f => f.faltan.length).length, tono: 'warn',
           filtro: { id: 'ficha', valor: 'incompleta' },
           pie: `${h.sin_bolt || 0} sin BOLT · ${h.sin_telefono || 0} sin teléfono` },
+        // Solo cuando hay alguien en C o D: es la lista con la que se sienta uno
+        // a hablar, y si no hay nadie, la tarjeta sobra.
+        ...((() => {
+          const flojos = deAlta.filter(f => f.calificacion === 'C' || f.calificacion === 'D');
+          return flojos.length ? [{
+            etiqueta: 'En C o D', valor: flojos.length, tono: 'red',
+            filtro: { id: 'letra', valor: flojos.some(f => f.calificacion === 'D') ? 'D' : 'C' },
+            pie: `${deAlta.filter(f => f.calificacion === 'A').length} en A · ${deAlta.filter(f => f.calificacion === 'B').length} en B`,
+          }] : [];
+        })()),
       ];
     },
 
@@ -773,6 +802,16 @@
             { valor: 'baja', texto: 'De baja', cuenta: filas.filter(f => f.empleo_vigente === false).length },
           ];
         },
+      },
+      {
+        // Con qué letra está cada uno. Es la pregunta que se hace de verdad al
+        // abrir la plantilla: "a quién tengo en D".
+        id: 'letra', campo: 'calificacion', textoTodos: 'Todas las letras',
+        opciones: (filas) => LETRAS
+          .map(l => ({ valor: l, texto: l === 'N/E' ? 'Sin calificar' : 'Letra ' + l,
+            cuenta: filas.filter(f => f.calificacion === l).length }))
+          // Una letra que no tiene a nadie es ruido en el desplegable.
+          .filter(o => o.cuenta),
       },
       {
         id: 'situacion', campo: 'situacion', textoTodos: 'Todas las situaciones',
@@ -807,6 +846,8 @@
           ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/30">ETT</span>' : '') },
       // El DNI ya no se pinta: identifica pero no se mira, y ocupaba el sitio
       // de lo que sí se mira. Se sigue pudiendo BUSCAR por él.
+      { titulo: 'Letra', campo: 'calificacion', clase: 'text-center whitespace-nowrap',
+        pinta: (v, f) => chipLetra(f) },
       { titulo: 'Situación', campo: 'situacion_etiqueta',
         pinta: (v, f) => etiqueta(v, tonoSituacion(f.situacion)) },
       { titulo: 'Turno', campo: 'turno', clase: 'whitespace-nowrap',
@@ -860,8 +901,9 @@
       acciones: [
         { texto: 'Situación', icono: 'fa-user-clock', principal: true,
           visible: d => d.empleo_vigente, onClick: accionSituacion },
-        { texto: 'Turno', icono: 'fa-clock', visible: () => true, onClick: accionTurno },
-        { texto: 'Libranzas', icono: 'fa-calendar-week', onClick: accionLibranza },
+        // El TURNO y las LIBRANZAS no se editan desde aquí: los decide el
+        // planificador, que es donde vive la plaza. Cambiarlos en la ficha
+        // creaba una segunda verdad que al día siguiente el cuadrante pisaba.
         { texto: 'Editar datos', icono: 'fa-pen', visible: () => !SOLO_OPERATIVO, onClick: accionDatos },
         // Solo a quien está de alta POR UNA ETT: al de plantilla propia no hay
         // nada que convertirle.
@@ -876,9 +918,14 @@
         { texto: 'Volver a dar de alta', icono: 'fa-user-check', principal: true,
           visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: volverAAlta },
       ],
+      // La cabecera de arriba lo dice TODO: la hoja no vuelve a repetir el nombre
+      // ni la línea de identidad, que es lo que hacía que pareciera dos fichas.
       subtitulo: d => [
+        d.dni_nie,
         d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',
-        d.dni_nie, d.bolt_id ? 'BOLT ' + d.bolt_id : null,
+        d.jornada_horas ? d.jornada_horas + ' h/semana' : null,
+        d.alta ? 'alta ' + fecha(d.alta) : null,
+        d.bolt_id ? 'BOLT ' + d.bolt_id : 'sin cuenta de BOLT',
       ].filter(Boolean).join(' · '),
 
       bloques: [
@@ -894,14 +941,6 @@
             api(`/plantilla/api/ficha360/${d.id}`).then(f => {
               FichaConductor.pintar(hueco, f, {
                 persona: d,
-                nombre: d.nombre_completo,
-                subtitulo: [
-                  d.dni_nie,
-                  d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',
-                  d.jornada_horas ? d.jornada_horas + ' h/semana' : null,
-                  d.alta ? 'alta ' + fecha(d.alta) : null,
-                  d.bolt_id ? 'BOLT ' + d.bolt_id : 'sin cuenta de BOLT',
-                ].filter(Boolean).join(' · '),
                 estado: d.situacion_etiqueta,
                 estadoClase: {
                   green: 'border-telecab-green/40 text-telecab-green bg-telecab-green/10',
@@ -915,8 +954,6 @@
                 puedeEditar: !SOLO_OPERATIVO,
                 onEditar: grupo => accionDatos(d, grupo),
                 onSituacion: d.empleo_vigente ? () => accionSituacion(d) : null,
-                onTurno: () => accionTurno(d),
-                onLibranzas: () => accionLibranza(d),
               });
             }).catch(e => {
               hueco.innerHTML = `<p class="text-sm text-telecab-red">No se pudo cargar la ficha: ${esc(e.message)}</p>`;

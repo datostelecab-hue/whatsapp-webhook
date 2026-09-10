@@ -113,9 +113,21 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
 
            -- Documentación obligatoria que le falta. Sale de v_documento_falta,
            -- que es la única definición de "obligatorio" del sistema.
-           docs.faltan AS docs_faltan
+           docs.faltan AS docs_faltan,
+
+           -- LA CALIFICACIÓN A-D. Se pinta en la tabla y se filtra por ella: es
+           -- la pregunta con la que se abre la plantilla —"a quién tengo en D"—
+           -- y sin la letra en el listado habría que abrir a la gente de una en
+           -- una para saberlo.
+           cal.letra          AS calificacion,
+           cal.total          AS calificacion_total,
+           cal.tope_aplicado  AS calificacion_tope,
+           cal.horas_prom     AS calificacion_horas,
+           cal.util_prom      AS calificacion_util,
+           cal.excesos_total  AS calificacion_excesos
     FROM conductor c
     CROSS JOIN ref
+    LEFT JOIN v_conductor_calificacion cal ON cal.conductor_id = c.id
     -- El contrato abierto. SIN exigir que ya haya empezado: quien tiene fecha de
     -- alta para dentro de dos días está contratado, no de baja.
     --

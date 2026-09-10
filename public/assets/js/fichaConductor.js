@@ -116,21 +116,28 @@
     const fmt = cab.fecha || fecha;
 
     const letra = c ? c.letra : 'N/E';
-    const chipLetra = `<span class="inline-flex items-center justify-center w-7 h-7 rounded-full border text-[13px] font-bold align-middle ${TONO_LETRA[letra] || TONO_LETRA['N/E']}"
+    const chipLetra = `<span class="inline-flex items-center justify-center w-8 h-8 rounded-full border text-[15px] font-bold shrink-0 ${TONO_LETRA[letra] || TONO_LETRA['N/E']}"
         title="${esc(c && c.total != null ? `${num(c.total, 2)} puntos · ${c.desde ? fecha(c.desde) + ' – ' + fecha(c.hasta) : ''}` : (c && c.motivo) || 'sin calificar')}">${esc(letra)}</span>`;
 
-    // ── Cabecera ──────────────────────────────────────────────────────────
+    // ── La barra de arriba ──────────────────────────────────────
+    // NO lleva el nombre ni la línea de identidad: eso ya está en la cabecera de
+    // la pantalla, dos centímetros más arriba, y repetirlo hacía que pareciera
+    // que había dos fichas abiertas. Aquí va lo que la cabecera NO puede decir:
+    // la letra, la situación de hoy y de qué mes habla la hoja.
+    const puntos = c && c.total != null
+      ? num(c.total, 2) + ' puntos'
+        + (c.tope_aplicado
+          ? ' · <span class="text-telecab-warn">por puntos sería ' + esc(c.letra_por_puntos) + '</span>'
+          : '')
+      : esc((c && c.motivo) || 'sin calificar todavía');
     const cabecera = `
-      <div class="flex flex-wrap items-start justify-between gap-2 pb-2 border-b border-telecab-border">
-        <div class="min-w-0">
-          <h2 class="text-lg font-bold text-telecab-text leading-tight">
-            ${esc(cab.nombre || '')} ${chipLetra}</h2>
-          <p class="text-[11px] text-telecab-muted mt-0.5">${esc(cab.subtitulo || '')}</p>
-        </div>
-        <div class="text-right shrink-0">
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-telecab-border">
+        <div class="flex items-center gap-2 min-w-0">
+          ${chipLetra}
+          <span class="text-[12px] text-telecab-muted">${puntos}</span>
           ${cab.estado ? `<span class="text-[11px] px-2 py-0.5 rounded-full border ${esc(cab.estadoClase || 'border-telecab-border text-telecab-muted')}">${esc(cab.estado)}</span>` : ''}
-          <p class="text-[11px] text-telecab-muted mt-1">Ficha de ${esc(f.mes.nombre)}</p>
         </div>
+        <p class="text-[11px] text-telecab-muted shrink-0">Ficha de ${esc(f.mes.nombre)}</p>
       </div>`;
 
     // ── Lo que hay que arreglar, antes que nada ───────────────────────────

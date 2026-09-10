@@ -168,7 +168,10 @@
       this.clave = cfg.clave || 'id';
       this.filas = [];
       this.extra = {};
-      this.filtros = {};          // id de filtro → valor elegido
+      // Los filtros pueden arrancar PUESTOS. Es lo que permite que una pantalla
+      // se abra por lo que se mira el 99 % de las veces —la gente de alta— sin
+      // que nadie tenga que quitar el ruido a mano cada vez que entra.
+      this.filtros = { ...(cfg.filtrosIniciales || {}) };
       this.busca = '';
       this.abierto = null;        // clave del elemento abierto, o null
       this.propia = false;        // ¿la entrada del historial la pusimos nosotros?
