@@ -607,24 +607,44 @@
   // días que debía salir y no salió sin justificar cuentan como 0. Librar, las
   // vacaciones y las bajas no cuentan.
   const REND_TONO = {
-    S: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
-    A: 'bg-telecab-gold/20 text-telecab-gold border-telecab-gold/40',
-    B: 'bg-amber-500/15 text-amber-500 border-amber-500/40',
-    C: 'bg-red-500/15 text-red-500 border-red-500/40',
+    A: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    B: 'bg-telecab-gold/20 text-telecab-gold border-telecab-gold/40',
+    C: 'bg-amber-500/15 text-amber-500 border-amber-500/40',
+    D: 'bg-red-500/15 text-red-500 border-red-500/40',
     N: 'bg-sky-500/15 text-sky-400 border-sky-500/40',
   };
+  // LA LETRA ES LA CALIFICACIÓN A–D, no el promedio de horas.
+  //
+  // A partir del modelo ABCD, el chip pesa tres cosas: horas (50 %), utilización
+  // (30 %) y excesos de velocidad (20 %) sobre los últimos 14 días. El número que
+  // va delante sigue siendo las horas, porque es lo que se mira de un vistazo,
+  // pero la letra ya no sale solo de ahí.
+  function tituloRend(r) {
+    if (!r || !r.total && r.total !== 0) return 'Calificación ' + ((r && r.letra) || '');
+    const n = v => String(v == null ? '—' : v).replace('.', ',');
+    let t = 'Calificación ' + r.letra + ' · ' + n(r.total) + ' puntos'
+      + (r.desde ? ' (' + r.desde.slice(8, 10) + '/' + r.desde.slice(5, 7)
+                 + ' – ' + r.hasta.slice(8, 10) + '/' + r.hasta.slice(5, 7) + ')' : '')
+      + '\n· Horas ' + n(r.horas) + ' h/día en ' + r.dias + ' día(s) → ' + r.ptsHoras + ' pts (50 %)'
+      + '\n· Utilización ' + n(r.utilProm) + ' % → ' + r.ptsUtilizacion + ' pts (30 %)'
+      + '\n· Excesos de velocidad ' + n(r.excesos) + ' → ' + r.ptsVelocidad + ' pts (20 %)';
+    if (r.topeAplicado) t += '\n⚠ Por puntos sería ' + r.letraPorPuntos + ': la baja el tope por velocidad.';
+    if (r.diasTelemetria != null && r.diasTelemetria < 14) {
+      t += '\n⚠ Solo ' + r.diasTelemetria + ' día(s) de telemetría: faltan excesos por contar.';
+    }
+    return t;
+  }
+
   function chipRend(r, mini) {
     if (!r) return '';
     // Recién incorporado: no se promedia hasta el cuarto día. "0 h · C" en
     // alguien que lleva dos días no dice nada malo de él, dice que no se sabe.
-    if (r.nuevo) return `<span class="shrink-0 inline-flex items-center px-1.5 py-0 rounded border text-[10px] font-bold leading-[1.4] ${REND_TONO.N}" title="Recién incorporado: todavía no se promedia (los 3 primeros días de alta)">NUEVO</span>`;
+    // Sin calificación todavía (menos de 5 días trabajados, o sin telemetría).
+    if (r.nuevo) return `<span class="shrink-0 inline-flex items-center px-1.5 py-0 rounded border text-[10px] font-bold leading-[1.4] ${REND_TONO.N}" title="${esc('Sin calificar: ' + (r.motivo || 'datos insuficientes'))}">N/E</span>`;
     if (!r.dias) return '';
     const h = String(r.horas).replace('.', ',');
-    const tit = `Promedio del mes: ${h} h en ${r.dias} día(s) contados` +
-      (r.diasCero ? ` · ${r.diasCero} sin salir sin justificar (cuentan como 0)` : '') +
-      ' · S 9h+ · A 8-9 · B 6-8 · C -6';
-    return `<span class="shrink-0 inline-flex items-center gap-1 px-1.5 py-0 rounded border text-[10px] font-bold leading-[1.4] ${REND_TONO[r.letra] || REND_TONO.C}" title="${esc(tit)}">` +
-      `${h} h<span class="opacity-80">·</span>${r.letra}</span>`;
+    return `<span class="shrink-0 inline-flex items-center gap-1 px-1.5 py-0 rounded border text-[10px] font-bold leading-[1.4] ${REND_TONO[r.letra] || REND_TONO.D}" title="${esc(tituloRend(r))}">` +
+      `${h} h<span class="opacity-80">·</span>${r.letra}${r.topeAplicado ? '<span class="opacity-70">⚠</span>' : ''}</span>`;
   }
 
   function celdaPuesto(coche, p, col) {

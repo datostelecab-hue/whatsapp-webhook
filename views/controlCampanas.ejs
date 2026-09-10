@@ -109,14 +109,14 @@
   let turnoVista = qsTurno === 'dia' || qsTurno === 'noche' ? qsTurno : null; // null = por reloj
   const hh = n => String(n).padStart(2, '0') + ':00';
 
-  // ── El rendimiento al lado del nombre, igual que en el cockpit ──
-  const REND_TONO = { S: 'bg-emerald-500/20 text-emerald-400', A: 'bg-telecab-gold/20 text-telecab-gold',
-    B: 'bg-amber-500/15 text-amber-500', C: 'bg-red-500/15 text-red-500', N: 'bg-sky-500/15 text-sky-400' };
+  // ── La calificación al lado del nombre, igual que en el cockpit ──
+  const REND_TONO = { A: 'bg-emerald-500/20 text-emerald-400', B: 'bg-telecab-gold/20 text-telecab-gold',
+    C: 'bg-amber-500/15 text-amber-500', D: 'bg-red-500/15 text-red-500', N: 'bg-sky-500/15 text-sky-400' };
   function chipRend(r) {
     if (!r) return '';
-    if (r.nuevo) return '<span class="px-1.5 rounded text-[10px] font-bold ' + REND_TONO.N + '">NUEVO</span>';
+    if (r.nuevo) return '<span class="px-1.5 rounded text-[10px] font-bold ' + REND_TONO.N + '">N/E</span>';
     if (!r.dias) return '';
-    return '<span class="px-1.5 rounded text-[10px] font-bold ' + (REND_TONO[r.letra] || REND_TONO.C) + '">' +
+    return '<span class="px-1.5 rounded text-[10px] font-bold ' + (REND_TONO[r.letra] || REND_TONO.D) + '">' +
       String(r.horas).replace('.', ',') + ' h · ' + r.letra + '</span>';
   }
 

@@ -180,26 +180,46 @@ async function recalcular({ hasta, soloIds } = {}) {
 }
 
 /**
- * Lo guardado, para pintarlo: Map(conductor_id -> { horas, letra, dias, diasCero }).
- * Es una sola consulta y la usan el planificador y el cockpit en cada carga.
+ * LA LETRA QUE SE PINTA AL LADO DEL NOMBRE.
+ *
+ * Desde el modelo ABCD, esto ya NO es el promedio de horas del mes con su letra
+ * S/A/B/C: es la CALIFICACIÓN A–D de `conductor_calificacion`, que pesa horas
+ * (50 %), utilización (30 %) y excesos de velocidad (20 %) sobre 14 días.
+ *
+ * El cambio se hace AQUÍ y no en las cuatro pantallas que la pintan: el
+ * planificador, el cockpit, las campañas y el reporte de horas piden "el
+ * rendimiento de esta persona" y siguen pidiendo lo mismo. Lo que ha cambiado es
+ * la respuesta, y cambia en los cuatro sitios a la vez o no cambia bien.
+ *
+ * Se conserva la forma { horas, letra, dias } porque es la que consumen los
+ * chips, y se añade el desglose: un chip que dice "B" tiene que poder explicar
+ * por qué, y ahora la explicación son tres números y puede que un tope.
+ *
+ * `conductor_rendimiento` sigue viva y se sigue calculando: la usa el reporte de
+ * asistencia, que compara contra el promedio del mes corrido y no contra esto.
  */
 async function leer() {
   const m = new Map();
   try {
-    const r = await db.consulta(
-      `SELECT conductor_id, horas_prom, letra, dias, dias_cero, to_char(mes, 'YYYY-MM') AS mes
-         FROM conductor_rendimiento`);
-    r.rows.forEach(x => m.set(Number(x.conductor_id), {
-      horas: Number(x.horas_prom) || 0,
-      letra: x.letra,
-      nuevo: x.letra === 'N',
-      dias: x.dias,
-      diasCero: x.dias_cero,
-      mes: x.mes,
+    const cal = await require('./calificacion').leer();
+    cal.forEach((c, cid) => m.set(cid, {
+      horas: c.horasProm == null ? 0 : c.horasProm,
+      letra: c.letra,
+      // "N/E" es lo que antes era "N": todavía no se puede decir nada de esta
+      // persona. Los chips ya sabían pintar ese caso.
+      nuevo: c.letra === 'N/E',
+      dias: c.diasTrabajados || 0,
+      diasCero: 0,
+      // El desglose, para el tooltip y para la ficha.
+      total: c.total, utilProm: c.utilProm, excesos: c.excesosTotal,
+      ptsHoras: c.ptsHoras, ptsUtilizacion: c.ptsUtilizacion, ptsVelocidad: c.ptsVelocidad,
+      topeAplicado: c.topeAplicado, letraPorPuntos: c.letraPorPuntos,
+      diasTelemetria: c.diasTelemetria, motivo: c.motivo,
+      desde: c.desde, hasta: c.hasta, version: c.version,
     }));
   } catch (e) {
     // Sin la tabla (o sin migrar todavía) las pantallas van igual, sin la letra.
-    console.error('⚠️  [RENDIMIENTO] no se pudo leer:', e.message);
+    console.error('⚠️  [RENDIMIENTO] no se pudo leer la calificación:', e.message);
   }
   return m;
 }

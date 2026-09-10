@@ -501,8 +501,10 @@ programar('30 5 * * *', async () => {
 }, { timezone: 'Europe/Madrid' });
 
 // ── RENDIMIENTO ─────────────────────────────────────────────────────────────
-// El promedio de horas del mes corrido y su letra (S/A/B/C), que se pintan al
-// lado del nombre en el planificador y en Control. A las 05:40, DESPUÉS de que
+// Dos cosas que se calculan juntas porque dependen de lo mismo: el promedio de
+// horas del mes corrido (`conductor_rendimiento`, que usa el reporte de
+// asistencia) y la CALIFICACIÓN A-D de 14 días (`conductor_calificacion`), que
+// es la letra que se pinta al lado del nombre en el planificador y en Control. A las 05:40, DESPUÉS de que
 // la bitácora selle la jornada (05:35): si se calculara antes, el último día
 // entraría a medias.
 programar('40 5 * * *', async () => {
@@ -511,6 +513,10 @@ programar('40 5 * * *', async () => {
     if (!bd.HAY_BD) return;
     const r = await require('./services/repo/rendimiento').recalcular();
     console.log(`⭐ [Rendimiento] ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
+    const cal = require('./services/repo/calificacion');
+    const c = await cal.recalcular();
+    console.log(`⚖️  [Calificación] ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}` +
+      (c.telemetria.completa ? '' : ` · OJO: telemetría ${c.telemetria.dias}/${cal.MODELO.dias} días`));
   } catch (error) {
     console.error(`⚠️  [Rendimiento] recálculo diario: ${error.message}`);
   }
@@ -533,6 +539,8 @@ programar('0 12 * * *', async () => {
     if (!bd.HAY_BD) return;
     const r = await require('./services/repo/rendimiento').recalcular();
     console.log(`⭐ [Rendimiento] mediodía (todos): ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
+    const c = await require('./services/repo/calificacion').recalcular();
+    console.log(`⚖️  [Calificación] mediodía: ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}`);
   } catch (error) {
     console.error(`⚠️  [Rendimiento] recálculo del mediodía: ${error.message}`);
   }
