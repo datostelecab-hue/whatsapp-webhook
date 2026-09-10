@@ -310,9 +310,12 @@ async function guardar(data = {}, quien = {}) {
 
   const plazas = [];
   for (const m of mats) {
+    // Un fijo llega sin días de la pantalla; `crear` los deriva del descanso del
+    // coche (todos menos los que descansa). No se fuerzan a vacío aquí: eso era
+    // lo que dejaba la vacante anunciando que se libraba la semana entera.
     plazas.push({
       plazaId: await resolverPlaza({ ...m, rol, turno }),
-      dias: esFijo ? [] : m.dias,
+      dias: m.dias,
     });
   }
 
@@ -353,9 +356,13 @@ async function guardarRecambio(data = {}, quien = {}) {
   const pedidas = Array.isArray(data.plazas) && data.plazas.length
     ? new Set(data.plazas.map(String))
     : new Set(p.plazas.map(x => x.plazaId));
+  // Los días van TAL CUAL, también los de un fijo: `propuestaRecambio` ya los
+  // calcula como "todos menos el descanso del coche", que es lo que cubre. Antes
+  // se vaciaban por ser fijo y la vacante salía diciendo que libraba la semana
+  // entera.
   const plazas = p.plazas
     .filter(x => pedidas.has(x.plazaId))
-    .map(x => ({ plazaId: x.plazaId, dias: p.rol === 'CT' ? x.dias : [] }));
+    .map(x => ({ plazaId: x.plazaId, dias: (x.dias || []).slice() }));
   if (!plazas.length) throw new Error('No queda ninguna plaza en el recambio');
 
   const v = await vacantes.crear({

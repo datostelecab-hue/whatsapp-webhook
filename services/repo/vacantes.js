@@ -206,21 +206,19 @@ async function crear(v = {}, { usuarioId } = {}) {
     throw new Error('Una vacante de recambio tiene que decir a quién sustituye');
   }
 
-  // Un FIJO cubre toda la semana que su coche sale: no tiene días propios. Se
-  // limpian aquí y no en la pantalla, para que dé igual quién llame.
-  if (rol === 'FIJO') plazas.forEach(p => { p.dias = []; });
-
-  // Los días solo deciden la jornada de un correturnos; un fijo es jornada
-  // completa lleve el coche los días que lo lleve.
-  const diasCubiertos = rol === 'CT' ? new Set(plazas.flatMap(p => p.dias)).size : 0;
-  const jornada = v.jornadaHoras != null ? Number(v.jornadaHoras) : await jornadaDe(rol, diasCubiertos);
-
   return db.transaccion(async cli => {
     // Que las plazas existan y sean del rol y turno que dice la vacante: una
     // vacante de CT de noche sobre la plaza del fijo de día es un error de
     // pantalla, y aquí se ve antes de escribirla.
     const info = await cli.query(
-      `SELECT p.id, p.slot, s.rol, s.turno_id, v.matricula
+      `SELECT p.id, p.slot, s.rol, s.turno_id, v.matricula,
+              COALESCE(
+                (SELECT array_agg(vdd.dia_semana ORDER BY vdd.dia_semana)
+                   FROM vehiculo_descanso vd
+                   JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+                  WHERE vd.vehiculo_id = p.vehiculo_id
+                    AND vd.desde <= CURRENT_DATE AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)),
+                ARRAY[]::smallint[]) AS descanso
          FROM plaza p JOIN cat_slot s ON s.slot = p.slot
          JOIN vehiculo v ON v.id = p.vehiculo_id
         WHERE p.id = ANY($1::bigint[]) AND p.baja_at IS NULL`,
@@ -231,6 +229,30 @@ async function crear(v = {}, { usuarioId } = {}) {
       if (!d) throw new Error(`La plaza ${p.plazaId} no existe o está dada de baja`);
       if (d.rol !== rol) throw new Error(`La plaza de ${d.matricula} es de ${d.rol}, no de ${rol}`);
     }
+    // LOS DÍAS DE UNA PLAZA SON LOS QUE SE CUBREN, TAMBIÉN SI ES UN FIJO.
+    //
+    // Lo tuve al revés: como "un fijo no elige días", los dejaba vacíos. Pero
+    // `vacante_plaza_dia` no es "los días que ha elegido", es "los días que
+    // cubre", y la libranza que se ofrece se calcula como lo que NO cubre. Con
+    // la lista vacía, la vacante de un fijo salía anunciando "libra L M X J V S D"
+    // y cero días de trabajo: exactamente lo contrario de lo que es.
+    //
+    // Cuando no vienen dados se derivan del descanso del coche, que es de donde
+    // salen de verdad:
+    //   · FIJO → todos los días MENOS los que descansa su coche.
+    //   · CT   → los que descansa el coche, que es lo que significa correturnos.
+    plazas.forEach(p => {
+      if (p.dias.length) return;
+      const desc = (porId.get(String(p.plazaId)).descanso || []).map(Number);
+      p.dias = rol === 'FIJO' ? [1, 2, 3, 4, 5, 6, 7].filter(d => !desc.includes(d)) : desc.slice();
+    });
+
+    // La jornada, con los días ya resueltos. Un fijo es jornada completa lleve el
+    // coche los días que lo lleve; un correturnos, la que le den sus días.
+    const jornada = v.jornadaHoras != null
+      ? Number(v.jornadaHoras)
+      : await jornadaDe(rol, new Set(plazas.flatMap(p => p.dias)).size);
+
     const turnoId = Number(v.turnoId) || porId.get(String(plazas[0].plazaId)).turno_id;
     const distinto = plazas.find(p => porId.get(String(p.plazaId)).turno_id !== turnoId);
     if (distinto) {
