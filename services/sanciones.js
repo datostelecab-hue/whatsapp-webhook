@@ -1,12 +1,12 @@
 // ============================================================
 // EXCESOS DE VELOCIDAD (Operaciones) — avisar, siempre, y llevar la cuenta
 // ============================================================
-// Flujo (cron cada 15 min):
-//   1) Mapon da las alertas de 'speeding' (matrícula + hora + velocidad/límite).
-//   2) Por cada exceso NUEVO (dedup por la clave que da Mapon), se resuelve el
-//      conductor cruzando con BOLT: matrícula → vehicle_uuid (getVehicles) →
-//      state_logs filtrando ese vehículo → driver_uuid → nombre y teléfono, que
-//      ahora salen de PostgreSQL.
+// Flujo (cron cada 15 min). TODO SALE DE POSTGRESQL: este módulo no llama a
+// ninguna API. Las dos ingestas ya han traído lo que hace falta.
+//   1) `mapon_alerta` (ingesta de Mapon, cada 15 min) da los excesos de
+//      'speeding' con su clave, su instante y su matrícula.
+//   2) `fv_tramo` (ingesta de Bolt, cada 5 min) dice qué conductor llevaba ese
+//      coche y entre qué horas, y por tanto quién iba al volante en ese minuto.
 //   3) SE AVISA. Siempre, con la misma plantilla, tantas veces como haga falta.
 //   4) Queda registrado en `velocidad_exceso`, y de ahí salen las dos preguntas
 //      del módulo: cuántas veces se le ha dicho a cada uno, y qué ha pasado.
@@ -28,15 +28,41 @@
 //     sería peor. Queda registrado para mirarlo a mano.
 //   · MODO: 'test' por defecto (no envía nada, marca 'simulado'); 'live' envía.
 //     Se cambia con la variable de entorno SANCIONES_MODO=live.
+//
+// ── POR QUÉ YA NO SE LLAMA A NINGUNA API ──────────────────────────────
+// Porque ya lo sabíamos, y para eso se hizo la ingesta.
+//
+// Este módulo le preguntaba a Mapon por las alertas de velocidad —que la ingesta
+// acababa de guardar en `mapon_alerta`, con la MISMA clave que usa el dedup— y
+// después le preguntaba a Bolt quién conducía —que la ingesta tiene en
+// `fv_tramo`—. Dos APIs para leer lo que había en casa.
+//
+// Y lo de Bolt se hacía de la peor manera posible: por cada exceso, hasta SIETE
+// barridos paginados de `getFleetStateLogs` con ventanas crecientes hasta 15
+// días, contra las dos flotas. Medido el 10/09: la ventana de 15 días descarga
+// 65.884 logs y tarda 90 segundos, más los HTTP 429 de Bolt, que añaden 5 s cada
+// uno. Y ese camino —el largo— es justo el que recorren los coches que NO están
+// en Bolt: minuto y medio para acabar diciendo "no hay conductor". Por eso
+// "Revisar ahora" se quedaba pensando.
+//
+// Las mismas 30 alertas resueltas contra PostgreSQL: 2,6 segundos, el mismo
+// conductor en las 24 resolubles, cero discrepancias. Y más exacto, además,
+// porque se sabe si el exceso cae DENTRO del tramo de esa persona en vez de
+// "cuánto hace del último cambio de estado".
+//
+// ── Y SI LA INGESTA NO HA LLEGADO ───────────────────────────────────
+// Se ESPERA. Un exceso posterior al último tramo que trajo la ingesta no se
+// registra: se deja para la pasada siguiente. No es lo mismo "no había nadie" que
+// "todavía no lo sé", y escribir lo primero cuando pasa lo segundo es como se
+// acusa a alguien de conducir un coche que no llevaba, o como se deja sin avisar
+// a quien sí corrió.
 
-const bolt = require('./bolt');
-const mapon = require('./mapon');
+// Ni `bolt` ni `mapon`: lo que este módulo necesita ya está en PostgreSQL, puesto
+// por la ingesta. Lo único que sale fuera es el WhatsApp, que es el trabajo.
 const whatsapp = require('./whatsapp');
 const repo = require('./repo/velocidad');
 
 const PLANTILLA_ADVERTENCIA = 'advertencia_limite';
-const TTL_VEHICULOS = 6 * 3600 * 1000;                            // caché del mapa de vehículos: 6 h
-const VENTANAS_VEH = 3;                                           // ventanas de 30 días para getVehicles
 
 const modo = () => (process.env.SANCIONES_MODO === 'live' ? 'live' : 'test');
 const esLive = () => modo() === 'live';
@@ -100,92 +126,37 @@ const fmtMadrid = ms => new Intl.DateTimeFormat('es-ES', {
   timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
 }).format(new Date(ms));
 
-// ── Mapa de vehículos de Bolt (matrícula ↔ vehicle_uuid), cacheado ──────────
-let _cacheVeh = { ts: 0, porPlaca: new Map(), porUuid: new Map() };
-
-async function mapaVehiculos(forzar = false) {
-  if (!forzar && _cacheVeh.porPlaca.size && Date.now() - _cacheVeh.ts < TTL_VEHICULOS) return _cacheVeh;
-  const porPlaca = new Map();   // normPlaca -> { uuid, reg, flotas:Set }
-  const porUuid = new Map();    // uuid -> { reg, flotas:Set }
-  const ahora = Math.floor(Date.now() / 1000);
-  for (const flota of bolt.CONFIG_BOLT.flotas) {
-    // getVehicles (limit ≤ 100). Se probó que UNA ventana de 30 días ya cubre el 100%
-    // de la flota en uso; barremos 3 (90 días) por margen. Si alguna matrícula activa
-    // saliera como "desconocida", subir VENTANAS_VEH.
-    for (let w = 0; w < VENTANAS_VEH; w++) {
-      const end = ahora - w * 30 * 86400;
-      const start = end - 30 * 86400;
-      let vehiculos = [];
-      try {
-        vehiculos = await bolt.fetchAllPaginated('/fleetIntegration/v1/getVehicles',
-          { company_id: flota.id, start_ts: start, end_ts: end }, 'vehicles', 100, 'sanciones-veh');
-      } catch (e) { console.warn(`⚠️ [SANCIONES] getVehicles flota ${flota.id}: ${e.message}`); continue; }
-      vehiculos.forEach(v => {
-        const uuid = v.uuid; const reg = (v.reg_number || '').toString().trim();
-        if (!uuid || !reg) return;
-        const k = normPlaca(reg);
-        if (!porPlaca.has(k)) porPlaca.set(k, { uuid, reg, flotas: new Set() });
-        porPlaca.get(k).flotas.add(flota.id);
-        if (!porUuid.has(uuid)) porUuid.set(uuid, { reg, flotas: new Set() });
-        porUuid.get(uuid).flotas.add(flota.id);
-      });
-    }
-  }
-  if (porPlaca.size) _cacheVeh = { ts: Date.now(), porPlaca, porUuid };
-  else if (!_cacheVeh.porPlaca.size) throw new Error('No se pudo cargar el mapa de vehículos de Bolt');
-  console.log(`🚗 [SANCIONES] Mapa de vehículos: ${_cacheVeh.porPlaca.size} matrículas`);
-  return _cacheVeh;
-}
-
-// El último conductor que tuvo ese vehicle_uuid en [desde, hasta] (epoch s), en las
-// flotas indicadas. Devuelve driver_uuid o null.
-async function ultimoConductor(flotas, uuid, desde, hasta) {
-  let mejor = null;
-  for (const flotaId of flotas) {
-    let logs = [];
-    try {
-      logs = await bolt.fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs',
-        { company_id: flotaId, start_ts: desde, end_ts: hasta }, 'state_logs', 1000, 'sanciones-logs');
-    } catch (e) { console.warn(`⚠️ [SANCIONES] state_logs flota ${flotaId}: ${e.message}`); continue; }
-    logs.forEach(l => {
-      if (l.vehicle_uuid === uuid && l.created <= hasta && (!mejor || l.created > mejor.created)) {
-        mejor = { created: l.created, driver_uuid: l.driver_uuid, lat: l.lat, lng: l.lng };
-      }
-    });
-  }
-  return mejor;   // { created, driver_uuid, lat, lng } o null
-}
-
-// Resuelve la matrícula X en el momento tMs → { driver_uuid, ventanaSeg } o { error }.
+/**
+ * ¿Quién llevaba la matrícula X en el instante tMs?
+ *
+ * Una consulta a `fv_tramo`. Devuelve { driver_uuid, ventanaSeg, dentro } o
+ * { error }, donde el error puede ser 'esperando-ingesta' —que NO es un fallo:
+ * es que todavía no se puede saber, y hay que volver a preguntarlo luego—.
+ */
 async function conductorDeMatricula(matricula, tMs) {
-  const mapa = await mapaVehiculos();
-  const veh = mapa.porPlaca.get(normPlaca(matricula));
-  if (!veh) return { error: 'matricula-desconocida' };
-  const flotas = [...veh.flotas];
-  const t = Math.floor(tMs / 1000);
-  // Ventanas crecientes: normalmente el conductor está en los 15 min; si el coche
-  // estaba desconectado se amplía para hallar el último que lo condujo. La
-  // ventana es solo una estrategia de búsqueda para no descargarse 15 días de
-  // logs de golpe: la ANCHA contiene a la estrecha y ambas devuelven el mismo
-  // log (el más reciente anterior al exceso), así que ampliar no cambia a quién
-  // se señala, solo cuánto se busca.
-  for (const w of [15 * 60, 30 * 60, 60 * 60, 6 * 3600, 24 * 3600, 3 * 86400, 15 * 86400]) {
-    const m = await ultimoConductor(flotas, veh.uuid, t - w, t);
-    if (m && m.driver_uuid) {
-      // ANTIGÜEDAD REAL del log, no el ancho de la ventana que lo encontró.
-      //
-      // Devolvía `w`, y eso hacía que el 78 % de los excesos se anotara como
-      // "último log 60 min antes" cuando en realidad solo se sabía "entre 15 y
-      // 60". Con esa cifra no se puede decidir nada a 30 minutos: la resolución
-      // del dato era más gruesa que la regla que había que aplicarle.
-      return {
-        driver_uuid: m.driver_uuid, uuid: veh.uuid, flotas,
-        ventanaSeg: Math.max(0, t - m.created),
-        lat: m.lat, lng: m.lng,
-      };
-    }
+  // PRIMERO, ¿sabe la ingesta lo que pasó en ese minuto?
+  //
+  // Va antes que nada porque si no, un tramo todavía ABIERTO contesta que sí a
+  // cualquier instante posterior: el coche "sigue" con su último conductor, y un
+  // exceso de dentro de una hora saldría atribuido a quien iba esta tarde.
+  const fresca = await repo.frescuraIngesta();
+  if (!fresca || fresca.getTime() < tMs) {
+    return { error: 'esperando-ingesta', hasta: fresca ? fresca.toISOString() : null };
   }
-  return { error: 'sin-conductor', uuid: veh.uuid, flotas };
+
+  const m = await repo.quienConducia(matricula, new Date(tMs).toISOString());
+  if (m) {
+    return {
+      driver_uuid: m.driverUuid,
+      ventanaSeg: m.antiguedadSeg,
+      dentro: m.dentro, desconectado: m.desconectado, situacion: m.situacion,
+      desdeTramo: m.desde, hastaTramo: m.hasta,
+    };
+  }
+
+  return (await repo.conoceMatricula(matricula))
+    ? { error: 'sin-conductor' }
+    : { error: 'matricula-desconocida' };
 }
 
 // ── Padrón (driver_uuid → nombre, teléfono y ficha) ────────────────────────
@@ -221,35 +192,35 @@ let _ultimo = { ts: null, nuevos: 0, resumen: null };
 async function procesar(opciones = {}) {
   if (_corriendo) return { saltado: true, motivo: 'ya en curso' };
   _corriendo = true;
-  const res = { modo: modo(), leidas: 0, nuevas: 0, avisos: 0, sinConductor: 0, dudosas: 0, errores: 0, detalle: [] };
+  const res = { modo: modo(), leidas: 0, nuevas: 0, avisos: 0, sinConductor: 0,
+    dudosas: 0, errores: 0, esperando: 0, detalle: [] };
   try {
-    // Ventana de lectura: por defecto ~25 min (solape sobre los 15 del cron).
-    const minutos = Number(opciones.minutos) || 25;
+    // Ventana de lectura: por defecto los últimos 3 días. Ya no cuesta nada —es
+    // una consulta— y así una alerta que Mapon entregue con retraso se recoge
+    // igual. Lo que evita repetir avisos no es la ventana: es la clave.
+    const dias = Number(opciones.dias) || 3;
     const hasta = new Date();
-    const desde = new Date(hasta.getTime() - minutos * 60000);
-    const { alertas } = await mapon.leerAlertas({ desde, hasta, tipo: 'speeding' });
+    const desde = new Date(hasta.getTime() - dias * 86400000);
+
+    // Los excesos que la ingesta ya trajo y que aún no tienen fila en el libro.
+    // El dedup va en la propia consulta (NOT EXISTS), no en un Set en memoria.
+    const alertas = await repo.excesosPendientes({ desde, hasta });
     res.leidas = alertas.length;
 
-    // El dedup ya no se hace leyendo el libro entero: se preguntan las claves
-    // del rango, que son unas pocas. Con un margen de un día por si una alerta
-    // llega con retraso.
-    const margen = new Date(desde.getTime() - 86400000).toISOString();
-    const yaVistas = await repo.yaVistas(margen);
+    // Hasta dónde sabe la ingesta de Bolt: lo posterior no se puede resolver aún.
+    const fresca = await repo.frescuraIngesta();
+    res.ingestaHasta = fresca ? fresca.toISOString() : null;
 
-    // De la más antigua a la más reciente, que es como se leen los hechos.
-    const enOrden = [...alertas].sort((x, y) => x.orden - y.orden);
-
-    for (const a of enOrden) {
-      if (yaVistas.has(a.id)) continue;
-      const tMs = Date.parse(a.iso);
+    // Vienen de la más antigua a la más reciente, que es como se leen los hechos.
+    for (const a of alertas) {
+      const tMs = a.tMs;
       // Anterior al alta del sistema: ni se registra ni se avisa. Evita que una
       // consulta con rango amplio mande WhatsApps por excesos de hace meses.
       if (DESDE_TS && tMs < DESDE_TS) { res.previosAlAlta = (res.previosAlAlta || 0) + 1; continue; }
-      yaVistas.add(a.id);
       res.nuevas++;
 
       const base = {
-        clave: a.id, ocurridoAt: new Date(tMs).toISOString(), placa: normPlaca(a.matricula),
+        clave: a.clave, ocurridoAt: new Date(tMs).toISOString(), placa: normPlaca(a.matricula),
         velocidad: a.velocidad, limite: a.limite, exceso: a.exceso,
       };
 
@@ -258,11 +229,22 @@ async function procesar(opciones = {}) {
       try { r = await conductorDeMatricula(a.matricula, tMs); }
       catch (e) { r = { error: 'excepcion', msg: e.message }; }
 
+      // LA INGESTA NO HA LLEGADO A ESE MINUTO: no se escribe nada.
+      //
+      // Registrarlo como "sin conductor" sería mentir, y además definitivo: la
+      // clave quedaría en el libro y ese exceso no se volvería a mirar nunca. Se
+      // deja para la pasada siguiente, cuando la ingesta ya haya pasado por ahí.
+      if (r.error === 'esperando-ingesta') {
+        res.esperando++;
+        res.nuevas--;
+        continue;
+      }
+
       if (r.error || !r.driver_uuid) {
         res.sinConductor++;
         await repo.registrar({ ...base, estado: EST.SIN_CONDUCTOR,
-          nota: r.error === 'matricula-desconocida' ? 'La matrícula no está en BOLT'
-            : r.error === 'sin-conductor' ? 'Sin conductor en los logs (coche desconectado de BOLT)'
+          nota: r.error === 'matricula-desconocida' ? 'La matrícula no está en Bolt'
+            : r.error === 'sin-conductor' ? 'El coche estaba desconectado de Bolt en ese momento'
             : (r.msg || r.error || 'no se pudo resolver') });
         res.detalle.push({ matricula: a.matricula, estado: EST.SIN_CONDUCTOR });
         continue;
@@ -271,7 +253,7 @@ async function procesar(opciones = {}) {
       const { nombre, telefono, conductorId } = await datosConductor(r.driver_uuid);
       const quien = {
         driverUuid: r.driver_uuid, conductorId, conductor: nombre || null, telefono: telefono || null,
-        lat: r.lat, lng: r.lng, ventanaSeg: r.ventanaSeg,
+        ventanaSeg: r.ventanaSeg,
       };
 
       // ── Atribución dudosa: se registra, pero no se avisa ───────────────────
@@ -281,8 +263,9 @@ async function procesar(opciones = {}) {
       if (r.ventanaSeg > VENTANA_FIABLE_SEG) {
         res.dudosas++;
         await repo.registrar({ ...base, ...quien, estado: EST.DUDOSO,
-          nota: `Candidato: ${nombre || r.driver_uuid} (el último log del coche es de ` +
-            `${humanizar(r.ventanaSeg)} antes del exceso). Confirmar antes de avisar.` });
+          nota: `Candidato: ${nombre || r.driver_uuid} (se desconectó de la app ` +
+            `${humanizar(r.ventanaSeg)} antes del exceso; el coche pudo cambiar de manos). ` +
+            'Confirmar antes de avisar.' });
         res.detalle.push({ matricula: a.matricula, conductor: nombre, estado: EST.DUDOSO });
         continue;
       }
@@ -296,7 +279,9 @@ async function procesar(opciones = {}) {
         envioId: env.id || null,
         enviadoAt: estado === EST.AVISADO ? new Date().toISOString() : null,
         nota: estado === EST.ERROR ? (env.error || 'fallo de envío')
-          : `Conductor resuelto con un log de ${humanizar(r.ventanaSeg)} antes del exceso` });
+          : r.dentro
+            ? `Estaba en la app en ese momento (${r.situacion || 'en ruta'})`
+            : `Se desconectó de la app ${humanizar(r.ventanaSeg)} antes del exceso` });
       res.detalle.push({ matricula: a.matricula, conductor: nombre, estado });
     }
   } catch (e) {
@@ -323,7 +308,7 @@ function estadoModulo() {
 
 module.exports = {
   EST, DESDE_TS, PLANTILLA_ADVERTENCIA,
-  procesar, estadoModulo, conductorDeMatricula, mapaVehiculos, modo,
+  procesar, estadoModulo, conductorDeMatricula, modo,
   // La lectura la sirve el repositorio; se reexporta para que las rutas tengan
   // una sola puerta a este módulo.
   porConductor: (...a) => repo.porConductor(...a),

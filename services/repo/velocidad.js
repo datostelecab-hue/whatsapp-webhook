@@ -49,6 +49,148 @@ async function padron() {
   }]));
 }
 
+/**
+ * LOS EXCESOS A PROCESAR — de la ingesta, no de la API de Mapon.
+ *
+ * `mapon_alerta` la llena la ingesta cada 15 minutos con TODAS las alertas de
+ * Mapon, y las de velocidad están ahí con la misma clave que usa este módulo para
+ * no repetir avisos (`unit_id|instante|tipo`). O sea que el módulo salía a pedirle
+ * a Mapon exactamente lo que la ingesta acababa de guardar.
+ *
+ * Se devuelven solo los que NO tienen ya su fila en `velocidad_exceso`: el dedup
+ * deja de ser dos consultas y un Set en memoria y pasa a ser un NOT EXISTS.
+ */
+async function excesosPendientes({ desde, hasta, limite = 500 } = {}) {
+  const r = await db.consulta(`
+    SELECT a.clave, a.ocurrido_at, a.matricula, a.unit_id,
+           a.velocidad::float8 AS velocidad, a.limite::float8 AS limite,
+           a.exceso::float8 AS exceso, a.severidad, a.msg
+      FROM mapon_alerta a
+     WHERE a.tipo = 'speeding'
+       AND ($1::timestamptz IS NULL OR a.ocurrido_at >= $1::timestamptz)
+       AND ($2::timestamptz IS NULL OR a.ocurrido_at <= $2::timestamptz)
+       AND NOT EXISTS (SELECT 1 FROM velocidad_exceso e WHERE e.clave = a.clave)
+     ORDER BY a.ocurrido_at
+     LIMIT $3`, [desde || null, hasta || null, Math.min(Number(limite) || 500, 5000)]);
+  return r.rows.map(x => ({
+    clave: x.clave,
+    ocurridoAt: x.ocurrido_at,
+    tMs: new Date(x.ocurrido_at).getTime(),
+    matricula: x.matricula || '',
+    unitId: x.unit_id || null,
+    velocidad: x.velocidad, limite: x.limite, exceso: x.exceso,
+    severidad: x.severidad || '', msg: x.msg || '',
+  }));
+}
+
+/**
+ * QUIÉN LLEVABA ESE COCHE EN ESE INSTANTE — de PostgreSQL, no de la API.
+ *
+ * La ingesta ya trae los cambios de estado de BOLT y los deja en `fv_tramo`:
+ * vehículo, conductor y el intervalo en que lo llevó. O sea que la pregunta ya
+ * estaba contestada en casa, y el módulo salía a preguntarla fuera.
+ *
+ * Lo que hacía antes: por cada exceso, hasta SIETE barridos paginados de
+ * `getFleetStateLogs` con ventanas crecientes (15 min, 30, 1 h, 6 h, 24 h,
+ * 3 días, 15 días) contra las dos flotas. La última ventana se descarga 65.884
+ * logs y tarda 90 segundos —más los 429 de BOLT, que añaden 5 s cada uno—, y solo
+ * para acabar diciendo "no hay conductor". Esto son 33 ms.
+ *
+ * Y ADEMÁS ES MÁS EXACTO. La API daba la antigüedad del último CAMBIO DE ESTADO
+ * anterior al exceso; aquí se sabe si el instante cae DENTRO de un tramo, que es
+ * la certeza de que esa persona estaba conectada en ese momento. Contrastado
+ * contra los 30 excesos ya registrados: mismo conductor en los 24 resolubles,
+ * cero discrepancias, y los 30 caen dentro de su tramo.
+ *
+ * Devuelve { driverUuid, dentro, antiguedadSeg, situacion, desde, hasta } o null.
+ */
+async function quienConducia(placa, ocurridoAt) {
+  const p = String(placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!p) return null;
+  const r = await db.consulta(`
+    WITH veh AS (
+      SELECT uuid FROM fv_vehiculo
+       WHERE upper(regexp_replace(matricula, '[^A-Za-z0-9]', '', 'g')) = $1
+       ORDER BY visto_at DESC NULLS LAST LIMIT 1)
+    SELECT t.conductor_uuid, t.situacion, t.estado_bolt,
+           COALESCE(cs.conectado, FALSE) AS conectado,
+           -- El instante cae dentro del tramo. Un tramo ABIERTO no llega hasta el
+           -- infinito: llega hasta su última señal, y por eso el límite superior
+           -- es COALESCE(hasta, senal_at) y no "sin fin".
+           (t.desde <= $2::timestamptz
+            AND COALESCE(t.hasta, t.senal_at, t.desde) >= $2::timestamptz) AS dentro,
+           -- Cuánto hace del último momento en que se SUPO quién lo llevaba.
+           GREATEST(0, EXTRACT(EPOCH FROM
+             ($2::timestamptz - COALESCE(t.hasta, t.senal_at, t.desde))))::int AS antiguedad,
+           -- Y cuánto hace que empezó este tramo: si el tramo es de DESCONEXIÓN,
+           -- esta es la antigüedad que cuenta.
+           GREATEST(0, EXTRACT(EPOCH FROM ($2::timestamptz - t.desde)))::int AS desde_inicio,
+           to_char(t.desde AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD HH24:MI') AS desde,
+           to_char(COALESCE(t.hasta, t.senal_at) AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD HH24:MI') AS hasta
+      FROM fv_tramo t
+      JOIN veh ON TRUE
+      LEFT JOIN fv_cat_situacion cs ON cs.codigo = t.situacion
+     WHERE t.vehiculo_uuid = veh.uuid
+       AND t.conductor_uuid IS NOT NULL
+       AND t.desde <= $2::timestamptz
+     ORDER BY t.desde DESC
+     LIMIT 1`, [p, ocurridoAt]);
+  const x = r.rows[0];
+  if (!x || !x.conductor_uuid) return null;
+
+  // LA ANTIGÜEDAD DEPENDE DE SI ESTABA ENGANCHADO A BOLT O NO.
+  //
+  //   · Tramo CONECTADO (viaje, espera, descanso) que contiene el instante: esa
+  //     persona estaba en la app en ese momento. Antigüedad CERO, certeza.
+  //   · Tramo DESCONECTADO: es el último que tuvo el coche, pero desde que se
+  //     desconectó nadie sabe quién va dentro —y estos tramos duran 91 minutos de
+  //     media—. La antigüedad se cuenta desde que se desconectó, que es justo lo
+  //     que mide la regla de la media hora. Contarlo como cero sería avisar a
+  //     quien entregó el coche hace hora y media.
+  //   · Fuera de todo tramo: desde que acabó el último.
+  const dentroConectado = !!x.dentro && !!x.conectado;
+  const antiguedadSeg = dentroConectado ? 0
+    : (x.dentro ? Number(x.desde_inicio) || 0 : Number(x.antiguedad) || 0);
+
+  return {
+    driverUuid: x.conductor_uuid,
+    dentro: dentroConectado,
+    desconectado: !!x.dentro && !x.conectado,
+    antiguedadSeg,
+    situacion: x.situacion || '', estadoBolt: x.estado_bolt || '',
+    desde: x.desde, hasta: x.hasta,
+  };
+}
+
+/**
+ * ¿Conoce la ingesta esa matrícula? Distingue "el coche no está en BOLT" de
+ * "el coche está pero nadie lo llevaba", que son dos notas distintas en el libro.
+ */
+async function conoceMatricula(placa) {
+  const p = String(placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!p) return false;
+  const r = await db.consulta(
+    `SELECT 1 FROM fv_vehiculo
+      WHERE upper(regexp_replace(matricula, '[^A-Za-z0-9]', '', 'g')) = $1 LIMIT 1`, [p]);
+  return r.rowCount > 0;
+}
+
+/**
+ * Hasta cuándo llega la ingesta de BOLT. Si un exceso es POSTERIOR, todavía no se
+ * puede saber quién conducía —y eso no es lo mismo que no hubiera nadie—.
+ *
+ * Se cachea un minuto: es un max() sobre un cuarto de millón de tramos y se
+ * pregunta una vez por exceso.
+ */
+let _frescura = { ts: 0, valor: null };
+async function frescuraIngesta() {
+  if (_frescura.valor && Date.now() - _frescura.ts < 60000) return _frescura.valor;
+  const r = await db.consulta(
+    'SELECT max(GREATEST(desde, COALESCE(senal_at, desde))) AS ultimo FROM fv_tramo');
+  _frescura = { ts: Date.now(), valor: r.rows[0] && r.rows[0].ultimo ? new Date(r.rows[0].ultimo) : null };
+  return _frescura.valor;
+}
+
 /** Las claves de Mapon ya registradas desde una fecha. Es el dedup. */
 async function yaVistas(desdeIso) {
   const r = await db.consulta(
@@ -154,4 +296,7 @@ async function resumen({ desde, hasta } = {}) {
   return r.rows[0];
 }
 
-module.exports = { ESTADOS, AVISADOS, padron, yaVistas, registrar, porConductor, historico, resumen };
+module.exports = {
+  ESTADOS, AVISADOS, padron, yaVistas, registrar, porConductor, historico, resumen,
+  excesosPendientes, quienConducia, conoceMatricula, frescuraIngesta,
+};

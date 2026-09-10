@@ -21,7 +21,7 @@
         <i class="fa-solid fa-magnifying-glass mr-1"></i> Consultar
       </button>
       <button id="v-procesar" class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
-              title="Lee Mapon ahora mismo, resuelve quién conducía y avisa. Lo normal lo hace el cron cada 15 minutos.">
+              title="Procesa los excesos que ya trajo la ingesta, resuelve quién conducía con los tramos de Bolt y avisa. Lo normal lo hace el cron cada 15 minutos.">
         <i class="fa-solid fa-bolt mr-1"></i> Revisar ahora
       </button>
     </div>
@@ -311,11 +311,12 @@
       await Dialogo.aviso({
         titulo: j.nuevas ? `${j.nuevas} exceso(s) nuevo(s)` : 'Sin excesos nuevos',
         tono: j.errores ? 'aviso' : 'info',
-        html: `<p>${j.leidas} alerta(s) leídas de Mapon.</p>
+        html: `<p>${j.leidas} exceso(s) pendiente(s) en la ingesta de Mapon.</p>
           <ul class="mt-2 text-xs space-y-0.5">
             <li>· <b>${j.avisos}</b> aviso(s) ${j.modo === 'live' ? 'enviados' : 'simulados'}</li>
             <li>· ${j.sinConductor} sin conductor identificable</li>
             <li>· ${j.dudosas} con atribución dudosa (no se avisa)</li>
+            ${j.esperando ? `<li>· ${j.esperando} esperando a la ingesta de Bolt — se resuelven en la próxima pasada</li>` : ''}
             ${j.errores ? `<li class="text-telecab-red">· ${j.errores} envío(s) fallidos</li>` : ''}
           </ul>`,
       });

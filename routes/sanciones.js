@@ -60,12 +60,16 @@ router.get('/api/conductor/:uuid', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
-// Procesar AHORA (lo normal lo hace el cron cada 15 min). Lee Mapon, resuelve
-// quién conducía y avisa.
+// Procesar AHORA (lo normal lo hace el cron cada 15 min).
+//
+// Ya no sale a ninguna API: lee los excesos que trajo la ingesta de Mapon y
+// resuelve el conductor con los tramos que trajo la de Bolt. Antes esta ruta
+// podía tardar minutos —siete barridos paginados de state logs por exceso— y por
+// eso el botón se quedaba pensando; ahora son consultas.
 router.post('/api/procesar', async (req, res) => {
   try {
-    const minutos = Number((req.body || {}).minutos) || undefined;
-    res.json({ status: 'ok', ...(await vel.procesar({ minutos })) });
+    const dias = Number((req.body || {}).dias) || undefined;
+    res.json({ status: 'ok', ...(await vel.procesar({ dias })) });
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 

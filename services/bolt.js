@@ -38,6 +38,33 @@ async function getAccessToken() {
   throw new Error('Error token: ' + response.status);
 }
 
+// NINGUNA LLAMADA A BOLT PUEDE QUEDARSE ESPERANDO PARA SIEMPRE.
+//
+// El `fetch` de Node no trae tiempo límite: si Bolt acepta la conexión y no
+// contesta, la petición se cuelga y con ella lo que la lanzó —un cron, una
+// pantalla, el botón que alguien acaba de pulsar—. En Mapon esto ya se arregló,
+// precisamente porque pasó; aquí seguía sin arreglar.
+//
+// Dos minutos es generoso a propósito: un barrido de state logs de 15 días tarda
+// un minuto y medio de forma legítima. No es un límite de rendimiento, es el
+// seguro de que algo termina.
+const TIMEOUT_BOLT = Number(process.env.BOLT_TIMEOUT_MS) || 120000;
+
+async function conTiempoLimite(url, opciones) {
+  const ac = new AbortController();
+  const reloj = setTimeout(() => ac.abort(), TIMEOUT_BOLT);
+  try {
+    return await fetch(url, { ...(opciones || {}), signal: ac.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`Bolt no respondió en ${TIMEOUT_BOLT / 1000}s (${String(url).split('?')[0]})`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
 async function apiRequest(endpoint, method = 'POST', body = null) {
   const token = await getAccessToken();
   const options = {
@@ -52,7 +79,7 @@ async function apiRequest(endpoint, method = 'POST', body = null) {
     options.body = JSON.stringify(body);
   }
 
-  const response = await fetch(CONFIG_BOLT.apiBaseUrl + endpoint, options);
+  const response = await conTiempoLimite(CONFIG_BOLT.apiBaseUrl + endpoint, options);
   if (response.status === 401 || response.status === 403) {
     accessToken = null;
     return apiRequest(endpoint, method, body);
