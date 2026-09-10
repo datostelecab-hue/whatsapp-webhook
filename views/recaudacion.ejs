@@ -23,6 +23,10 @@
       <button id="r-salida" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> Salida de caja
       </button>
+      <button id="r-cuadra" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
+              title="Comprueba que la tabla, la caja y lo que dice BOLT cuentan lo mismo. No toca nada.">
+        <i class="fa-solid fa-scale-balanced mr-1"></i> ¿Cuadra?
+      </button>
       <button id="r-calcular" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-rotate mr-1"></i> Recalcular desde BOLT
       </button>
@@ -640,11 +644,50 @@
         : '');
       await Dialogo.aviso({
         titulo: r.conductores + (r.conductores === 1 ? ' conductor con efectivo' : ' conductores con efectivo'),
-        tono: r.cambios.length || r.respetados.length ? 'aviso' : 'info',
+        tono: r.cambios.length ? 'aviso' : 'info',
         html: '<p>Suman <b>' + eur(r.total) + '</b> desde ' + esc(r.desde) + '.</p>' +
           lista('Nuevos', r.nuevos, 'text-telecab-muted') +
           lista('CAMBIARON respecto a lo que había', r.cambios, 'text-telecab-warn') +
-          lista('Corregidos a mano, respetados', r.respetados, 'text-telecab-muted'),
+          (r.cambios.length
+            ? '<p class="mt-2 text-xs text-telecab-muted">Desde el corte el importe es el que mide BOLT. ' +
+              'Si alguna de esas cifras tenía una corrección hecha a mano, ahora hay que ponerla como ' +
+              '<b>ajuste</b>, que lleva su motivo y ningún recálculo lo toca.</p>'
+            : ''),
+      });
+      // Un recálculo puede dejar obsoleto un arrastre: si lo que faltaba en una
+      // quincena ya viene en su importe, el ajuste que lo cubría cobra dos
+      // veces. Por eso se comprueba justo después, no cuando alguien se acuerde.
+      if (r.cambios.length) await cuadra({ callado: true });
+    } catch (e) { fallo(e); }
+  }
+
+  // ── ¿Cuadra todo? ────────────────────────────────────────────────────
+  // Con `callado` solo abre el aviso si algo falla o hay que repasar: se llama
+  // sola después de un recálculo y no tiene sentido felicitarse cada vez.
+  async function cuadra({ callado = false } = {}) {
+    try {
+      const c = await pedir('/recaudacion/api/comprobar');
+      if (callado && c.ok && !c.revisar) return;
+      const icono = p => (p.ok ? (p.revisar ? '⚑' : '✓') : '✕');
+      const tono = p => (p.ok ? (p.revisar ? 'text-telecab-warn' : 'text-telecab-green') : 'text-telecab-red');
+      await Dialogo.aviso({
+        titulo: c.ok ? (c.revisar ? 'Cuadra, pero hay algo que repasar' : 'Cuadra todo') : 'NO cuadra',
+        tono: c.ok ? (c.revisar ? 'aviso' : 'info') : 'aviso',
+        html:
+          '<p class="text-sm">' + eur(c.cifras.deuda) + ' cobrados en la calle · ' +
+            eur(c.cifras.enMano) + ' entregados · <b>' + eur(c.cifras.aRecaudar) + ' por recaudar</b> · ' +
+            eur(c.cifras.efectivo) + ' en la caja.</p>' +
+          '<ul class="mt-3 space-y-1.5 text-xs">' +
+          c.pruebas.map(p =>
+            '<li class="' + tono(p) + '"><b>' + icono(p) + '</b> ' + esc(p.titulo) +
+              ' <span class="text-telecab-muted">— ' + esc(p.detalle) + '</span>' +
+              (p.gente
+                ? '<ul class="mt-1 ml-4 space-y-0.5 text-telecab-muted max-h-40 overflow-auto">' +
+                  p.gente.slice(0, 30).map(g => '<li>· ' + esc(g) + '</li>').join('') +
+                  (p.gente.length > 30 ? '<li>· … y ' + (p.gente.length - 30) + ' más</li>' : '') + '</ul>'
+                : '') +
+            '</li>').join('') +
+          '</ul>',
       });
     } catch (e) { fallo(e); }
   }
@@ -793,6 +836,7 @@
     $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
   $('#r-salida').addEventListener('click', salidaCaja);
   $('#r-calcular').addEventListener('click', recalcular);
+  $('#r-cuadra').addEventListener('click', () => cuadra());
   $('#r-cierre').addEventListener('click', cargarCierre);
   if (PUEDE_NOMINA && $('#r-nomina')) $('#r-nomina').addEventListener('click', descuentoNomina);
 

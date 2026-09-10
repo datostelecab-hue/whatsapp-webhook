@@ -72,6 +72,10 @@ router.get('/api/cuadro', responde(async req => {
   };
 }));
 
+// ¿Cuadra todo? Ocho comprobaciones que pueden fallar de verdad. No escribe
+// nada, así que se puede pulsar cuando se quiera.
+router.get('/api/comprobar', responde(async () => repo.comprobar()));
+
 // La ficha de un conductor: su histórico entero por quincenas.
 router.get('/api/conductor/:id', responde(async req => repo.ficha(req.params.id)));
 

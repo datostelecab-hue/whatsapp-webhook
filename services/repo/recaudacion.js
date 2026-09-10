@@ -107,6 +107,21 @@ function mueveQuincena(q, pasos) {
   return { anio: Math.floor(n / 12), mes: (n % 12) + 1, quincena };
 }
 
+/**
+ * Desde el corte, el importe lo pone BOLT y nadie lo teclea. Lo que sí se puede
+ * es AJUSTARLO: el ajuste va aparte, obliga a escribir un motivo y ningún
+ * recálculo lo toca. Escribir a mano el importe de una quincena que BOLT va a
+ * recalcular sería trabajo que se borra solo en la siguiente pasada.
+ */
+function exigeAntesDelCorte(q, que) {
+  if (!antesDelCorte(q)) {
+    throw new Error(
+      `${etiquetaQuincena(q)} va desde el corte (${etiquetaQuincena(CORTE)}): ahí el importe lo pone BOLT. ` +
+      `Para ${que} tendría que ser una quincena anterior; si lo que quieres es corregir esa cifra, ` +
+      `usa un ajuste, que lleva su motivo y no se pierde en el siguiente recálculo.`);
+  }
+}
+
 /** Todas las quincenas del corte a hoy, que son las que manda BOLT. */
 function quincenasDesdeCorte() {
   const fin = nQuincena(quincenaHoy());
@@ -572,11 +587,15 @@ async function guardarCierre({ conductorId, anio, mes, quincena, importe, origen
   if (q.anio !== Number(anio) || q.mes !== Number(mes) || q.quincena !== Number(quincena)) {
     throw new Error('Esa quincena no es válida');
   }
+  exigeAntesDelCorte(q, 'teclear un importe a mano');
   const centimos = aCentimos(importe);
   const r = await db.consulta(
     `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (conductor_id, anio, mes, quincena) DO UPDATE
+     -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
+     -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
+     -- entera falla con "no unique or exclusion constraint matching".
+     ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
         SET importe = EXCLUDED.importe, origen = EXCLUDED.origen,
             usuario_id = EXCLUDED.usuario_id, actualizado_at = now()
      RETURNING id, importe`,
@@ -666,14 +685,19 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
   conductores.forEach(c => { const k = llave(c.n); porNombre.set(k, porNombre.has(k) ? null : c); });
   const sospechosas = [];
 
-  // Lo puesto A MANO no se pisa NUNCA, coincida o no con lo que diga BOLT: si
-  // Tráfico cuadró una cifra con el conductor por teléfono, o vino del volcado
-  // del Excel viejo, esa es la buena. Antes solo se respetaba cuando los
-  // números DIFERÍAN, así que el día que BOLT acertaba por casualidad la fila
-  // pasaba a 'bolt' y perdía la protección para el siguiente recálculo.
-  const esManual = c => (previos.get(c.clave) || {}).origen === 'manual';
-
-  const cambios = [], nuevos = [], respetados = [];
+  // DESDE EL CORTE, EL IMPORTE ES EL DE BOLT Y NO SE NEGOCIA.
+  //
+  // Antes esta función respetaba cualquier fila puesta a mano. Tenía sentido
+  // cuando el importe era el único sitio donde apuntar una corrección, pero
+  // dejaba el módulo diciendo una cosa y haciendo otra: de 108 cierres desde
+  // agosto, 103 eran 'manual' y BOLT no llegaba a tocarlos, así que faltaban
+  // 1.060,85 € que los conductores sí habían cobrado.
+  //
+  // Ahora el reparto es limpio: el IMPORTE es lo que midió BOLT, y toda
+  // corrección humana vive en el AJUSTE, que esta función no toca jamás y que
+  // además obliga a escribir un motivo. Antes del corte no se llega aquí: el
+  // guardia de arriba lo impide.
+  const cambios = [], nuevos = [];
   // La clave de cada línea: la ficha si la tiene, y si no su cuenta de BOLT.
   calculado.forEach(c => { c.clave = c.conductorId || c.boltUuid; });
 
@@ -687,21 +711,13 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
 
   for (const c of seguras) {
     const antes = previos.get(c.clave);
-    if (esManual(c)) {
-      // Solo se avisa de los que además NO cuadran: los que coinciden no son
-      // noticia y llenarían el aviso de ruido.
-      if (Math.abs(antes.importe - c.importe) > 0.005) {
-        respetados.push({ ...c, conductor: nombreDe(c, nombres), antes: antes.importe });
-      }
-      continue;
-    }
     if (!antes) nuevos.push({ ...c, conductor: nombreDe(c, nombres) });
     else if (Math.abs(antes.importe - c.importe) > 0.005) {
-      cambios.push({ ...c, conductor: nombreDe(c, nombres), antes: antes.importe });
+      cambios.push({ ...c, conductor: nombreDe(c, nombres), antes: antes.importe, origen: antes.origen });
     }
   }
 
-  const aGuardar = seguras.filter(c => !esManual(c));
+  const aGuardar = seguras;
   if (aGuardar.length) {
     await db.transaccion(async cli => {
       for (const c of aGuardar) {
@@ -731,7 +747,7 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
     quincena: { ...q, etiqueta: etiquetaQuincena(q) },
     conductores: seguras.length,
     total: +seguras.reduce((a, c) => a + c.importe, 0).toFixed(2),
-    nuevos, cambios, respetados,
+    nuevos, cambios,
     // Las que no se han tocado por parecerse a alguien de la plantilla.
     sospechosas,
     sinFicha: seguras.filter(c => c.boltUuid).length,
@@ -748,14 +764,14 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
  */
 async function recalcularTodo({ usuarioId } = {}) {
   const quincenas = quincenasDesdeCorte();
-  const junta = { nuevos: [], cambios: [], respetados: [], sospechosas: [] };
+  const junta = { nuevos: [], cambios: [], sospechosas: [] };
   let total = 0, conductores = 0;
   for (const q of quincenas) {
     const r = await calcularDesdeBolt(q, { usuarioId });
     total += r.total;
     conductores = Math.max(conductores, r.conductores);
-    ['nuevos', 'cambios', 'respetados', 'sospechosas'].forEach(k =>
-      junta[k].push(...r[k].map(x => ({ ...x, quincena: etiquetaQuincena(q) }))));
+    ['nuevos', 'cambios', 'sospechosas'].forEach(k =>
+      junta[k].push(...(r[k] || []).map(x => ({ ...x, quincena: etiquetaQuincena(q) }))));
   }
   return {
     ...junta,
@@ -763,6 +779,125 @@ async function recalcularTodo({ usuarioId } = {}) {
     quincenas: quincenas.length,
     conductores,
     total: +total.toFixed(2),
+  };
+}
+
+/**
+ * ¿CUADRA TODO? Seis comprobaciones que pueden fallar de verdad.
+ *
+ * No repite la misma cuenta dos veces para darse la razón: cada una compara
+ * dos caminos independientes hasta el mismo número. Si los dos coinciden es
+ * porque el dato está bien, no porque la fórmula sea la misma.
+ *
+ * Se puede llamar cuando se quiera y no escribe nada.
+ */
+async function comprobar() {
+  const dosDec = v => +Number(v).toFixed(2);
+  const casi = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
+  const pruebas = [];
+  const mete = (titulo, ok, detalle, gente) =>
+    pruebas.push({ titulo, ok, detalle, gente: gente && gente.length ? gente : undefined });
+
+  const [tabla, caja] = await Promise.all([cuadro(), cuadre()]);
+  const suma = c => dosDec(tabla.filas.reduce((a, f) => a + f[c], 0));
+
+  // 1. La TABLA contra la CAJA. Son dos consultas distintas sobre las mismas
+  //    tablas: la tabla agrupa por persona y la caja suma en bloque. Si una
+  //    fila se queda fuera del listado —un centinela, un cierre huérfano— los
+  //    dos números dejan de coincidir y aquí se ve.
+  mete('La deuda de la tabla es la misma que la de la caja',
+    casi(suma('bolt'), caja.deuda),
+    `tabla ${suma('bolt')} € · caja ${caja.deuda} €`);
+  mete('Lo entregado en mano cuadra entre tabla y caja',
+    casi(suma('enMano'), dosDec(caja.entradas - caja.devuelto)),
+    `tabla ${suma('enMano')} € · caja ${dosDec(caja.entradas - caja.devuelto)} €`);
+  mete('Lo que queda por recaudar cuadra entre tabla y caja',
+    casi(suma('aRecaudar'), caja.pendiente),
+    `tabla ${suma('aRecaudar')} € · caja ${caja.pendiente} €`);
+
+  // 2. Desde el corte, el importe TIENE que ser el de BOLT. Si alguien lo
+  //    tecleó por otra vía, o un recálculo se quedó a medias, aquí sale.
+  const desviados = [];
+  for (const q of quincenasDesdeCorte()) {
+    const api = new Map((await efectivoBolt(q)).map(c => [String(c.conductorId || c.boltUuid), c.importe]));
+    const guard = (await db.consulta(
+      `SELECT COALESCE(conductor_id::text, bolt_uuid) AS k, importe
+         FROM recaudacion_cierre WHERE anio = $1 AND mes = $2 AND quincena = $3`,
+      [q.anio, q.mes, q.quincena])).rows;
+    guard.forEach(g => {
+      const dice = api.get(String(g.k)) || 0;
+      if (!casi(dice, g.importe)) {
+        desviados.push(`${etiquetaQuincena(q)} · ${g.k}: guardado ${dosDec(g.importe)} € y BOLT dice ${dosDec(dice)} €`);
+      }
+      api.delete(String(g.k));
+    });
+    api.forEach((v, k) => desviados.push(`${etiquetaQuincena(q)} · ${k}: BOLT dice ${dosDec(v)} € y no hay cierre`));
+  }
+  mete('Desde el corte, cada importe es el que dice BOLT', !desviados.length,
+    desviados.length ? `${desviados.length} fila(s) desviadas` : 'todas coinciden', desviados);
+
+  // 3. Antes del corte manda el Excel: ahí no puede haber nada venido de BOLT.
+  const intrusos = (await db.consulta(
+    `SELECT count(*)::int n FROM recaudacion_cierre
+      WHERE (anio, mes, quincena) < ($1, $2, $3) AND origen = 'bolt'`,
+    [CORTE.anio, CORTE.mes, CORTE.quincena])).rows[0].n;
+  mete('Antes del corte no hay nada calculado desde BOLT', intrusos === 0,
+    intrusos ? `${intrusos} fila(s) de BOLT en periodos que manda el Excel` : 'ninguna');
+
+  // 4. LA TRAMPA CARA: la misma persona cobrada dos veces en la misma quincena,
+  //    una por su ficha y otra por una cuenta de BOLT ya enlazada con ella.
+  const dobles = (await db.consulta(
+    `SELECT e.conductor_id, u.anio, u.mes, u.quincena, u.bolt_uuid, u.importe
+       FROM recaudacion_cierre u
+       JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = u.bolt_uuid
+                               AND e.conductor_id IS NOT NULL
+       JOIN recaudacion_cierre c ON c.conductor_id = e.conductor_id
+                               AND (c.anio, c.mes, c.quincena) = (u.anio, u.mes, u.quincena)
+      WHERE u.bolt_uuid IS NOT NULL`)).rows;
+  mete('Nadie está cobrado a la vez por su ficha y por su cuenta de BOLT', !dobles.length,
+    dobles.length ? `${dobles.length} caso(s)` : 'ninguno',
+    dobles.map(d => `conductor ${d.conductor_id} · ${etiquetaQuincena(d)} · cuenta ${String(d.bolt_uuid).slice(0, 8)} por ${dosDec(d.importe)} €`));
+
+  // 5. En la caja no puede haber salido más dinero del que entró.
+  mete('El efectivo de la caja no es negativo', caja.efectivo >= -0.005,
+    `${caja.efectivo} €`);
+
+  // 6. Un ajuste suele ser un ARRASTRE: lo que faltó en una quincena se cobra
+  //    en la siguiente, así que el par suma cero y el total sigue siendo el de
+  //    BOLT. Cuando los ajustes de alguien NO suman cero, se le está cobrando
+  //    (o perdonando) algo que BOLT no dice. Puede estar perfectamente
+  //    justificado, así que esto no es un fallo: es una lista que hay que
+  //    repasar, sobre todo después de un recálculo, porque un arrastre puede
+  //    quedarse obsoleto justo cuando su quincena de origen se corrige.
+  const descuadres = (await db.consulta(
+    `SELECT COALESCE(c.conductor_id::text, c.bolt_uuid) AS k,
+            COALESCE(NULLIF(btrim(co.nombre_bolt), ''),
+                     trim(co.nombre || ' ' || COALESCE(co.apellidos, ''))) AS nombre,
+            sum(c.ajuste)::numeric(12,2) AS ajuste,
+            string_agg(DISTINCT c.ajuste_motivo, ' | ') AS motivos
+       FROM recaudacion_cierre c
+       LEFT JOIN conductor co ON co.id = c.conductor_id
+      GROUP BY 1, 2 HAVING sum(c.ajuste) <> 0 ORDER BY 2`)).rows;
+  pruebas.push({
+    titulo: 'Los ajustes de cada persona se compensan entre sí',
+    ok: true,
+    revisar: descuadres.length > 0,
+    detalle: descuadres.length
+      ? `${descuadres.length} persona(s) con un saldo de ajustes distinto de cero`
+      : 'todos suman cero',
+    gente: descuadres.length
+      ? descuadres.map(d => `${d.nombre || d.k}: ${dosDec(d.ajuste)} € — ${d.motivos || 'sin motivo'}`)
+      : undefined,
+  });
+
+  return {
+    ok: pruebas.every(p => p.ok),
+    revisar: pruebas.some(p => p.revisar),
+    pruebas,
+    cifras: {
+      deuda: caja.deuda, enMano: suma('enMano'), aRecaudar: caja.pendiente,
+      efectivo: caja.efectivo, gente: tabla.filas.length,
+    },
   };
 }
 
@@ -793,12 +928,19 @@ async function ajustarCierre({ conductorId, anio, mes, quincena, ajuste, motivo,
   const r = await db.consulta(
     `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, ajuste, ajuste_motivo, origen, usuario_id)
      VALUES ($1, $2, $3, $4, 0, $5, $6, 'manual', $7)
-     ON CONFLICT (conductor_id, anio, mes, quincena) DO UPDATE
+     -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
+     -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
+     -- entera falla con "no unique or exclusion constraint matching".
+     ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
         SET ajuste = EXCLUDED.ajuste, ajuste_motivo = EXCLUDED.ajuste_motivo,
             actualizado_at = now()
      RETURNING importe, ajuste`,
     [id, q.anio, q.mes, q.quincena, (centimos / 100).toFixed(2),
-      centimos === 0 ? null : m.slice(0, 255), usuarioId || null]);
+      // Un ajuste que se pone a CERO conserva su motivo si se da uno. Es dinero:
+      // que una corrección desaparezca sin dejar dicho por qué es justo lo que
+      // no puede pasar. Un cero con motivo se lee como "aquí hubo un ajuste y
+      // esta es la razón de que ya no esté".
+      m ? m.slice(0, 255) : null, usuarioId || null]);
   return { importe: Number(r.rows[0].importe), ajuste: Number(r.rows[0].ajuste),
     quincena: { ...q, etiqueta: etiquetaQuincena(q) } };
 }
@@ -811,6 +953,7 @@ async function ajustarCierre({ conductorId, anio, mes, quincena, ajuste, motivo,
  */
 async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
   const q = quincenaValida({ anio, mes, quincena });
+  exigeAntesDelCorte(q, 'pegar un cierre del Excel');
   const lineas = String(texto || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (!lineas.length) throw new Error('No has pegado nada');
   if (lineas.length > 2000) throw new Error('Demasiadas líneas de golpe (máximo 2000)');
@@ -853,7 +996,10 @@ async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
         await cli.query(
           `INSERT INTO recaudacion_cierre (conductor_id, anio, mes, quincena, importe, origen, usuario_id)
            VALUES ($1, $2, $3, $4, $5, 'importado', $6)
-           ON CONFLICT (conductor_id, anio, mes, quincena) DO UPDATE
+           -- El índice es PARCIAL (WHERE conductor_id IS NOT NULL): sin repetir aquí
+     -- su condición, Postgres no encuentra a qué índice agarrarse y la escritura
+     -- entera falla con "no unique or exclusion constraint matching".
+     ON CONFLICT (conductor_id, anio, mes, quincena) WHERE conductor_id IS NOT NULL DO UPDATE
               SET importe = EXCLUDED.importe, origen = 'importado',
                   usuario_id = EXCLUDED.usuario_id, actualizado_at = now()`,
           [c.conductorId, q.anio, q.mes, q.quincena, c.importe.toFixed(2), usuarioId || null]);
@@ -873,6 +1019,6 @@ module.exports = {
   CORTE, cuadre, salidas,
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
   etiquetaQuincena, cortaQuincena, quincenasDesdeCorte, antesDelCorte,
-  cuadro, ficha, candidatos, anotar, anular, guardarCierre, importarCierre,
+  cuadro, ficha, candidatos, comprobar, anotar, anular, guardarCierre, importarCierre,
   efectivoBolt, calcularDesdeBolt, recalcularTodo, ajustarCierre,
 };
