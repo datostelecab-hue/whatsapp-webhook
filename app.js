@@ -635,17 +635,21 @@ app.get('/whatsapp/plantillas', async (req, res) => {
 });
 
 // Auditoría de flota: a las 5:00 (poco tráfico) procesa el día de AYER, ya cerrado.
-// Es pesado (una llamada a Mapon por coche), por eso va una sola vez al día y deja el
-// resultado en el Sheet; el panel de Operaciones solo lee de ahí.
+// Es pesado —una llamada a Mapon por coche, unos 18 segundos el día entero— y por
+// eso va una sola vez al día. El resultado queda en PostgreSQL y el panel de
+// Operaciones solo lee de ahí: no vuelve a llamar a nadie.
 programar('0 5 * * *', async () => {
+  const auditoria = require('./services/auditoriaFlota');
+  const dia = auditoria.diaMenos(auditoria.hoyMadrid(), 1);
   try {
-    const auditoria = require('./services/auditoriaFlota');
-    const dia = auditoria.diaMenos(auditoria.hoyMadrid(), 1);
     console.log(`⏰ [CRON Auditoría] procesando ${dia}...`);
     const r = await auditoria.procesarDia(dia);
-    console.log(`✅ [CRON Auditoría] ${dia}: ${r.filas} matrículas, ${r.eventos} repostajes`);
+    console.log(`✅ [CRON Auditoría] ${dia}: ${r.filas} líneas, ${r.eventos} repostajes`);
   } catch (error) {
     console.error(`❌ [CRON Auditoría] Error: ${error.message}`);
+    // Que el día quede anotado como fallido y no como "nunca calculado": el
+    // panel los enseña distinto porque se arreglan distinto.
+    await require('./services/repo/auditoriaFlota').marcarFallo(dia, error.message).catch(() => {});
   }
 }, { timezone: 'Europe/Madrid' });
 

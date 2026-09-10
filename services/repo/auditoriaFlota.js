@@ -128,7 +128,7 @@ async function guardarDia(r, { segundos } = {}) {
                x.orden, x.placa, v.id, NULLIF(x.vehiculo, ''), NULLIF(x.tipo, ''),
                x.litros, x.nivel_antes, x.lat, x.lng, NULLIF(x.direccion, ''), NULLIF(x.fuente, '')
           FROM jsonb_to_recordset($2::jsonb) AS x(
-                 ocurrido_at text, orden smallint, placa text, vehiculo text, tipo text,
+                 ocurrido_at text, orden bigint, placa text, vehiculo text, tipo text,
                  litros numeric, nivel_antes numeric, lat numeric, lng numeric,
                  direccion text, fuente text)
           LEFT JOIN vehiculo v ON v.matricula_norm = x.placa AND v.baja_at IS NULL
@@ -273,4 +273,28 @@ async function porConductor({ desde, hasta, tramo = 'completo', limite = 50 } = 
   return r.rows;
 }
 
-module.exports = { TRAMOS, guardarDia, marcarFallo, consultar, repostajes, dias, porConductor };
+/**
+ * uuid de BOLT → nombre, desde PostgreSQL.
+ *
+ * Antes esto salía de una hoja de cálculo (el padrón CONDUCTORES_BOLT), y
+ * cuando esa lectura fallaba el módulo no se enteraba: seguía adelante con el
+ * catch puesto y escribía "#181f6feb" en lugar del nombre de la persona. Un
+ * informe de quién rueda fuera de servicio lleno de identificadores no sirve
+ * para nada.
+ *
+ * Manda el nombre de BOLT, que es con el que trabaja la calle; detrás, el de la
+ * ficha; y solo si no hay ninguno, el que traiga la cuenta externa.
+ */
+async function nombresBolt() {
+  const r = await db.consulta(`
+    SELECT e.externo_id AS uuid,
+           COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
+                    NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), ''),
+                    NULLIF(btrim(e.externo_nombre), '')) AS nombre
+      FROM conductor_externo e
+      LEFT JOIN conductor c ON c.id = e.conductor_id
+     WHERE e.sistema = 'bolt' AND e.externo_id IS NOT NULL`);
+  return new Map(r.rows.filter(x => x.nombre).map(x => [x.uuid, x.nombre.trim()]));
+}
+
+module.exports = { TRAMOS, guardarDia, marcarFallo, consultar, repostajes, dias, porConductor, nombresBolt };

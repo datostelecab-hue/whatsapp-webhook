@@ -28,7 +28,6 @@
  */
 
 const { fetchRangoCompleto, fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
-const { leerPadron } = require('./conductoresBolt');
 const mapon = require('./mapon');
 const repo = require('./repo/auditoriaFlota');
 
@@ -451,9 +450,10 @@ async function computarDia(dia) {
   });
 
   // Nombre de cada conductor de BOLT (para decir QUIÉN usó el coche en cada tramo).
-  const padron = await leerPadron().catch(() => ({ db: new Map() }));
-  const nombrePorUuid = new Map();
-  (padron.db || new Map()).forEach((d, uuid) => nombrePorUuid.set(uuid, (d.nombre || '').trim()));
+  // Sale de PostgreSQL, no del padrón en hoja: aquello fallaba en silencio —el
+  // catch se lo tragaba— y el informe salía lleno de "#181f6feb" en vez de
+  // nombres. Si esto falla, que falle el día entero y se vea.
+  const nombrePorUuid = await repo.nombresBolt();
 
   // ── Qué matrículas se auditan: LAS QUE TUVIERON ACTIVIDAD EN BOLT ese día ──
   // Mapon tiene coches que no son de esta flota (otras plazas, bajas, reservas sin dar
