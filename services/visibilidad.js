@@ -28,7 +28,16 @@ const CONFIG_DEFECTO = {
 const fmtFecha = (d) => new Intl.DateTimeFormat('en-CA',
   { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 const hoyISO = () => fmtFecha(new Date());
-const diaISOhace = (n) => fmtFecha(new Date(Date.now() - n * 86400000));
+// "Hace n días" CAMINANDO EL CALENDARIO, no restando bloques de 24 h. Restar
+// 24 h y formatear en Madrid fallaba las madrugadas del cambio de hora: el día
+// después de adelantar el reloj, entre las 00:00 y la 01:00, "ayer" salía
+// anteayer — y con ello la tarjeta de Ayer, el lunes de la semana, el gráfico
+// de últimos días y qué días refresca el cron. El mediodía UTC es inmune.
+const diaISOhace = (n) => {
+  const [y, m, d] = hoyISO().split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d, 12) - n * 86400000);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+};
 const horaMadrid = () => Number(new Intl.DateTimeFormat('en-GB',
   { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }).format(new Date())) % 24;
 const diasEnMes = (anio, mes) => new Date(anio, mes, 0).getDate();   // mes 1-12
@@ -113,7 +122,7 @@ async function dineroVentana(dia, hIni, offDias, hFin) {
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      )
-     SELECT COALESCE(round(sum(o.neto), 2), 0)::float          AS neto,
+     SELECT COALESCE(round(sum(o.neto) FILTER (WHERE o.estado = 'finished'), 2), 0)::float AS neto,
             count(*) FILTER (WHERE o.estado = 'finished')::int AS viajes
        FROM bolt_order o CROSS JOIN v
       WHERE o.creado_ts >= v.ini AND o.creado_ts < v.fin`,
@@ -191,8 +200,12 @@ function ventanaTurnos() {
   const T = require('./flotaViva/rutas').TURNOS;
   const dia = (d) => [d, T.dia[0], T.dia[1], T.dia[2]];
   const noche = (d) => [d, T.noche[0], T.noche[1], T.noche[2]];
-  // Turno DÍA: siempre el de hoy (en curso o ya cerrado).
-  const turnoDia = { etq: 'Turno día · hoy', v: dia(hoy) };
+  // Turno DÍA: el de hoy (en curso o cerrado)… salvo de MADRUGADA. Antes de las
+  // 05:00 el turno de día de hoy AÚN NO HA EMPEZADO y la tarjeta salía a cero
+  // sin decir nada: el último turno de día que existe es el de ayer.
+  const turnoDia = H >= T.dia[0]
+    ? { etq: 'Turno día · hoy', v: dia(hoy) }
+    : { etq: 'Turno día · ayer', v: dia(ayer) };
   // Turno NOCHE: por la tarde/noche (>=17) la de ESTA noche (hoy 17→mañana 05); de
   // madrugada o de día, la que acaba de pasar (anoche 17→hoy 05).
   const turnoNoche = H >= T.noche[0]
@@ -314,7 +327,11 @@ async function serieMes(anio, mes) {
   const hoy = hoyISO();
   const [Yh, Mh, Dh] = hoy.split('-').map(Number);
   const esMesActual = (Yh === anio && Mh === mes);
-  const ultimoConDatos = esMesActual ? Dh : dm;   // en un mes pasado, todos los días
+  // Un mes FUTURO no tiene ni un día con datos: sin este cero, el navegador de
+  // meses pintaba los ceros como serie real (acumulado plano, brecha en rojo) y
+  // el backfill perezoso escribía fotos vacías de días que no han pasado.
+  const esFuturo = anio > Yh || (anio === Yh && mes > Mh);
+  const ultimoConDatos = esFuturo ? 0 : (esMesActual ? Dh : dm);   // mes pasado: todos los días
   for (let d = 1; d <= ultimoConDatos; d++) {
     const f = fotos.get(d);
     // Recalcula el día si FALTA o si su foto está a 0: un 0 puede ser una foto vieja
@@ -428,6 +445,8 @@ async function backfillMes(anio, mes) {
   const hoy = hoyISO();
   const [Yh, Mh, Dh] = hoy.split('-').map(Number);
   const esCorriente = Yh === anio && Mh === mes;
+  // Un mes futuro no se fotografía: serían fotos vacías de días sin pasar.
+  if (anio > Yh || (anio === Yh && mes > Mh)) return { anio, mes, dias: 0 };
   const hasta = esCorriente ? Dh : diasEnMes(anio, mes);
   let n = 0;
   for (let d = 1; d <= hasta; d++) {
