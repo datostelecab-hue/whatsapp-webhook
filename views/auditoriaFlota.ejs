@@ -86,6 +86,7 @@
   <!-- Pestañas -->
   <div class="flex gap-1 mb-4 border-b border-telecab-border" id="a-tabs">
     <button data-tab="km"  class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-road mr-1.5"></i> KM por estado</button>
+    <button data-tab="cond" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-user-clock mr-1.5"></i> Por conductor</button>
     <button data-tab="rep" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-gas-pump mr-1.5"></i> Repostajes</button>
     <button data-tab="top" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Top Offenders</button>
     <button data-tab="flujo" class="a-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition"><i class="fa-solid fa-diagram-project mr-1.5"></i> Flujo de KM</button>
@@ -168,6 +169,48 @@
       <b class="text-telecab-red">Fuera</b> = app <b>cerrada</b> (<span class="font-mono">inactive</span>): en ambos <b>no estaba a disposición de BOLT</b>, y suman
       <b class="text-telecab-red">No disp.</b> Si no consta el estado, cuenta como espera (no acusa).
       <b>h desc.</b> son horas marcado ocupado <i>aunque no ruede</i> — para ver pausas largas.
+    </p>
+  </section>
+
+  <!-- ══ Por conductor ══════════════════════════════════════════════════════
+       Lo que el histórico en hoja de cálculo no dejaba preguntar: quién rueda
+       fuera de servicio, en vez de qué coche. -->
+  <section data-panel="cond" class="hidden">
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <span class="text-xs text-telecab-muted uppercase tracking-wide">Tramo</span>
+      <div class="flex flex-wrap gap-1" id="a-cond-seg"></div>
+      <span id="a-cond-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
+    </div>
+
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
+      <div class="overflow-x-auto max-h-[36rem] overflow-y-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
+            <tr>
+              <th class="text-left  font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Conductor</th>
+              <th class="text-center font-semibold px-3 py-3">Días</th>
+              <th class="text-center font-semibold px-3 py-3">Coches</th>
+              <th class="text-right  font-semibold px-3 py-3 text-amber-400">Descanso</th>
+              <th class="text-right  font-semibold px-3 py-3 text-telecab-red">Fuera</th>
+              <th class="text-right  font-semibold px-3 py-3 text-telecab-red">No disp.</th>
+              <th class="text-right  font-semibold px-3 py-3">Km/día</th>
+              <th class="text-right  font-semibold px-3 py-3 text-amber-400">h desc.</th>
+              <th class="text-left   font-semibold px-3 py-3 w-40">Reparto</th>
+            </tr>
+          </thead>
+          <tbody id="a-tbody-cond" class="divide-y divide-telecab-border/60"></tbody>
+        </table>
+      </div>
+      <div id="a-vacio-cond" class="hidden p-8 text-center text-telecab-muted">
+        <i class="fa-solid fa-user-clock text-3xl mb-2 opacity-40"></i>
+        <p>Nadie rodó fuera de servicio en este rango.</p>
+      </div>
+    </div>
+    <p class="text-[11px] text-telecab-muted mt-2">
+      <b>Ojo al leerlo:</b> son los km <b>del coche</b> mientras esa persona estaba conectada con él, no los
+      que condujo ella. Si dos conductores comparten tramo, los dos cargan con el mismo total, así que
+      <b>esta columna no se suma</b>. Para afinar, mira por <b>turno de día</b> o <b>de noche</b>, que ya
+      separan los relevos. Quien no tenga ficha enlazada sale con su nombre de BOLT y sin enlace.
     </p>
   </section>
 
@@ -284,6 +327,14 @@ let DATA = { dias: [], km: [], eventos: [], ofensores: { fuera: [], repostaje: [
 let tab = 'km', filtroEv = '', busqueda = '', cargando = false, error = null, gen = 0, poll = null;
 // Tramo que se está viendo: 'turnos' (los dos en paralelo), 'dia', 'noche' o 'completo'.
 let segmento = 'turnos';
+// La pestaña "Por conductor" tiene su propio tramo: mirar por persona pide
+// separar los relevos (día / noche), y mirar por coche no.
+let segCond = 'dia', condFilas = null, condCargando = false;
+const SEGS_COND = [
+  { id: 'dia', txt: '☀️ Turno de día' },
+  { id: 'noche', txt: '🌙 Turno de noche' },
+  { id: 'completo', txt: '📅 Día natural' }
+];
 const SEGS = [
   { id: 'turnos', txt: '☀️🌙 Turnos (día + noche)' },
   { id: 'dia', txt: '☀️ Solo turno de día' },
@@ -394,6 +445,93 @@ function pintarKm() {
       <td class="px-3 py-2.5 text-right ${hd}">${k.hDescanso ? nkm(k.hDescanso) + ' h' : ''}</td>
       <td class="px-3 py-2.5 text-xs text-telecab-muted">${conductoresTxt(k.conductores)}</td>
       <td class="px-3 py-2.5">${barra(k)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Por conductor ───────────────────────────────────────────────────────────
+// Se pide aparte y solo cuando se abre la pestaña: es una consulta distinta y no
+// tiene sentido pagarla cada vez que alguien mira los kilómetros por coche.
+async function cargarConductores() {
+  if (condCargando) return;
+  condCargando = true;
+  pintarCond();
+  try {
+    const q = new URLSearchParams(rango());
+    q.set('tramo', segCond);
+    const r = await fetch('/operaciones/api/auditoria/conductores?' + q.toString());
+    const j = await r.json();
+    if (j.status !== 'ok') throw new Error(j.msg || 'no se pudo cargar');
+    condFilas = j.filas || [];
+  } catch (e) {
+    condFilas = [];
+    aviso('Por conductor: ' + e.message);
+  } finally {
+    condCargando = false;
+    pintarCond();
+  }
+}
+
+function pintarCond() {
+  $('#a-cond-seg').innerHTML = SEGS_COND.map(x => {
+    const on = segCond === x.id;
+    return `<button data-segc="${x.id}" class="a-segc px-2.5 py-1.5 rounded-lg border text-xs transition ${on
+      ? 'bg-telecab-gold/15 border-telecab-gold/50 text-telecab-gold font-semibold'
+      : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text'}">${x.txt}</button>`;
+  }).join('');
+  document.querySelectorAll('.a-segc').forEach(b => b.onclick = () => {
+    if (segCond === b.dataset.segc) return;
+    segCond = b.dataset.segc; condFilas = null; cargarConductores();
+  });
+
+  const cuerpo = $('#a-tbody-cond'), vacio = $('#a-vacio-cond');
+  if (condCargando) {
+    $('#a-cond-cuenta').textContent = '';
+    cuerpo.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-telecab-muted">' +
+      '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Cargando…</td></tr>';
+    vacio.classList.add('hidden');
+    return;
+  }
+  const filas = (condFilas || []).filter(f => {
+    const q = busqueda.trim().toLowerCase();
+    return !q || String(f.conductor || '').toLowerCase().includes(q);
+  });
+  $('#a-cond-cuenta').textContent = filas.length
+    ? filas.length + (filas.length === 1 ? ' conductor' : ' conductores')
+    : '';
+  vacio.classList.toggle('hidden', filas.length > 0);
+  if (!filas.length) { cuerpo.innerHTML = ''; return; }
+
+  // La escala de la barra es el MAYOR de la lista: comparar entre personas es la
+  // razón de esta pestaña, y una barra sobre el total de la flota no compara nada.
+  const tope = Math.max(...filas.map(f => (f.km_descanso || 0) + (f.km_fuera || 0)), 1);
+
+  cuerpo.innerHTML = filas.map(f => {
+    const noDisp = (f.km_descanso || 0) + (f.km_fuera || 0);
+    const porDia = f.dias ? noDisp / f.dias : 0;
+    const grave = porDia >= 100, medio = porDia >= 50;
+    const anchoD = Math.round((f.km_descanso || 0) / tope * 100);
+    const anchoF = Math.round((f.km_fuera || 0) / tope * 100);
+    return `<tr class="hover:bg-telecab-card2/50 transition ${grave ? 'bg-telecab-red/[0.04]' : ''}">
+      <td class="px-4 py-2.5 sticky left-0 bg-telecab-card whitespace-nowrap">
+        <span class="font-semibold">${esc(f.conductor)}</span>
+        ${f.conductor_id
+          ? `<a href="/plantilla?id=${f.conductor_id}" class="ml-1.5 text-telecab-muted hover:text-telecab-gold" title="Abrir su ficha"><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></a>`
+          : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted" title="Su cuenta de BOLT no está enlazada con ninguna ficha">sin ficha</span>'}
+      </td>
+      <td class="px-3 py-2.5 text-center tabular-nums text-telecab-muted">${f.dias}</td>
+      <td class="px-3 py-2.5 text-center tabular-nums text-telecab-muted">${f.coches}</td>
+      <td class="px-3 py-2.5 text-right tabular-nums ${f.km_descanso > 0 ? 'text-amber-400' : 'text-telecab-muted'}">${nkm(f.km_descanso)}</td>
+      <td class="px-3 py-2.5 text-right tabular-nums ${f.km_fuera > 0 ? 'text-telecab-red' : 'text-telecab-muted'}">${nkm(f.km_fuera)}</td>
+      <td class="px-3 py-2.5 text-right tabular-nums font-bold text-telecab-red">${nkm(noDisp)}</td>
+      <td class="px-3 py-2.5 text-right tabular-nums ${grave ? 'text-telecab-red font-bold' : medio ? 'text-telecab-gold font-semibold' : 'text-telecab-muted'}">${nkm(porDia)}</td>
+      <td class="px-3 py-2.5 text-right tabular-nums ${(f.h_descanso || 0) >= 4 ? 'text-telecab-red font-semibold' : 'text-telecab-muted'}">${f.h_descanso ? nkm(f.h_descanso) + ' h' : ''}</td>
+      <td class="px-3 py-2.5">
+        <div class="h-2 rounded-full bg-telecab-dark overflow-hidden flex" title="Ámbar: marcado ocupado · Rojo: app cerrada">
+          <div class="h-full bg-amber-400" style="width:${anchoD}%"></div>
+          <div class="h-full bg-telecab-red" style="width:${anchoF}%"></div>
+        </div>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -662,6 +800,8 @@ function activarTab(t) {
   });
   document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== t || cargando));
   if (t === 'km' && !cargando) pintarSelector();   // alterna tabla combinada / detalle
+  // Se pide al abrirla, no al cargar la página: es otra consulta.
+  if (t === 'cond' && !cargando) { if (condFilas === null) cargarConductores(); else pintarCond(); }
 }
 function aviso(t) { const b = $('#a-aviso'); if (!t) { b.classList.add('hidden'); return; } b.classList.remove('hidden'); b.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i>${esc(t)}`; }
 function rango() {

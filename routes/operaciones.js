@@ -57,6 +57,24 @@ router.get('/api/auditoria', async (req, res) => {
   }
 });
 
+// El mismo rango, pero PREGUNTADO POR PERSONA. No existía: con el histórico en
+// una hoja de cálculo los conductores iban en una celda separados por comas y no
+// había forma de ir de la persona a sus kilómetros. Ahora es una consulta.
+router.get('/api/auditoria/conductores', async (req, res) => {
+  try {
+    const { desde, hasta, tramo } = req.query;
+    const { ini, fin } = require('../services/auditoriaFlota').resolverRango({ desde, hasta });
+    const dias = require('../services/auditoriaFlota').ejeDias(ini, fin);
+    const filas = await auditoria.porConductor({
+      desde: dias[0], hasta: dias[dias.length - 1], tramo, limite: 200,
+    });
+    res.json({ status: 'ok', filas });
+  } catch (error) {
+    console.error('❌ [OPERACIONES] /api/auditoria/conductores:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
 // Procesa (o reprocesa) un rango de días: es PESADO — una llamada a Mapon por coche y
 // día —, así que corre en segundo plano y el panel sondea el progreso. Lo normal es que
 // lo haga el cron de las 5am; esto es para backfill o para rehacer un día concreto.
