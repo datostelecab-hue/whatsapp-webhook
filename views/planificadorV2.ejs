@@ -498,8 +498,10 @@
     const bWa = cab.querySelector('[data-waturnos]');
     if (bWa) bWa.addEventListener('click', e => enviarTurnosCuadrante(cu.nombre, lista, e.currentTarget));
     cab.querySelector('[data-bloque]').addEventListener('click', () => anadirBloque(cu.id));
-    cab.querySelector('[data-ct="día"]').addEventListener('click', () => asignarCTCuadrante(cu.id, 'dia', lista));
-    cab.querySelector('[data-ct="noche"]').addEventListener('click', () => asignarCTCuadrante(cu.id, 'noche', lista));
+    cab.querySelector('[data-ct="día"]').addEventListener('click', () =>
+      asignarCTCuadrante(cu.id, 'dia', lista, (ctDia && ctDia !== 'varios') ? ctDia.id : null));
+    cab.querySelector('[data-ct="noche"]').addEventListener('click', () =>
+      asignarCTCuadrante(cu.id, 'noche', lista, (ctNoche && ctNoche !== 'varios') ? ctNoche.id : null));
     cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(cu.id, cu.nombre));
     sec.appendChild(cab);
     if (lista.length) {
@@ -941,7 +943,11 @@
       { id: 'desde', etiqueta: 'Desde (opcional)', tipo: 'fecha',
         ayuda: 'Vacío = desde que empieza su ausencia (o desde hoy, si ya empezó).' },
       { id: 'hasta', etiqueta: 'Hasta (opcional)', tipo: 'fecha',
-        valor: titular.vuelveEl ? isoDeFecha(titular.vuelveEl) : '',
+        // El campo fecha del formulario se escribe dd/mm/aaaa (él lo devuelve en
+        // ISO). Aquí decía isoDeFecha(), una función que NUNCA existió: con
+        // fecha de vuelta —el caso normal, unas vacaciones— el diálogo reventaba
+        // antes de abrirse y "Cubrir esta plaza" no hacía nada.
+        valor: titular.vuelveEl ? isoAes(titular.vuelveEl) : '',
         ayuda: titular.vuelveEl
           ? `Vacío = hasta el ${isoAes(titular.vuelveEl)}, el último día de su ausencia. Al siguiente la plaza vuelve a ser suya.`
           : 'Su ausencia NO tiene fecha de vuelta, así que sin esta fecha la plaza se queda del sustituto '
@@ -1304,8 +1310,12 @@
     } catch (e) { alert(e.message); }
   }
 
-  async function asignarCTCuadrante(cuadranteId, turno, lista) {
-    const id = await pickConductor({ titulo: `CT ${turno} del cuadrante`, turno, actual: null });
+  async function asignarCTCuadrante(cuadranteId, turno, lista, actual) {
+    // `actual` = el CT que ya tiene el cuadrante (si es uno solo): así el selector
+    // ofrece "Dejar la plaza vacía", que es el ÚNICO camino para quitar un CT de
+    // todos los bloques de golpe — el servidor lo admite desde siempre
+    // (conductorId vacío) pero la pantalla no daba forma de pedirlo.
+    const id = await pickConductor({ titulo: `CT ${turno} del cuadrante`, turno, actual: actual || null });
     if (id === undefined) return;   // cancelado
     let vehiculos = [];
     if (id) {

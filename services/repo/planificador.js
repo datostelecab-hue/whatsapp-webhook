@@ -1291,7 +1291,10 @@ async function salidasHoy(dia) {
           ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
        LEFT JOIN LATERAL (
          SELECT externo_nombre FROM conductor_externo
-          WHERE conductor_id = c.id AND sistema = 'bolt'
+          -- Solo el enlace VIGENTE: sin el visto_hasta, un enlace viejo ya
+          -- sustituido podía prestar su nombre (las demás consultas del módulo
+          -- ya filtraban así).
+          WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
           ORDER BY (estado_externo = 'active') DESC, visto_at DESC NULLS LAST LIMIT 1) ext ON TRUE
       GROUP BY fc.conductor_id, t.codigo, t.etiqueta, c.id, c.nombre, c.apellidos, tel.e164, ext.externo_nombre`,
     [d]);
