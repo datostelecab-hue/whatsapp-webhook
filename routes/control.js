@@ -207,6 +207,35 @@ router.get('/asistencia/excel', async (req, res) => {
 router.get('/asistencia/periodo', (req, res) =>
   res.json({ status: 'ok', ...require('../services/repo/asistencia').periodoPorDefecto() }));
 
+// ── Auditoría de los lunes · SIN TARJETA, a propósito ───────────────────────
+// Cuatro hojas —resumen, por conductor, por matrícula y el detalle de faltas y
+// justificantes— de los N últimos lunes ya cerrados: quién debía salir, quién
+// salió, cuántas horas hizo y, si no salió, por qué.
+//
+// Se pidió como un vistazo puntual, no como un reporte de cada semana, así que
+// NO tiene botón en /control/reportes: una tarjeta más en esa pantalla sería
+// estorbo para algo que casi nunca se va a pulsar. Se baja por URL cuando haga
+// falta y el día que se quiera fija, la tarjeta son diez líneas de EJS.
+//
+//   /control/auditoria-lunes/excel            → los 4 últimos lunes
+//   /control/auditoria-lunes/excel?lunes=8    → los 8 últimos (máximo 12)
+router.get('/auditoria-lunes/excel', async (req, res) => {
+  try {
+    const datos = await require('../services/repo/auditoriaLunes').informe({ lunes: req.query.lunes });
+    const libro = await require('../services/auditoriaLunesExcel').generar(datos);
+    console.log(`📊 [Control] auditoría de lunes ${datos.dias.join(', ')}: ` +
+      `${datos.conductores.length} conductores · ${datos.totales.faltas} faltas · ` +
+      `${datos.detalle.length} casos a mirar`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="auditoria-lunes-${datos.dias[0]}-a-${datos.dias[datos.dias.length - 1]}.xlsx"`);
+    res.send(libro);
+  } catch (error) {
+    console.error('❌ [Control] /auditoria-lunes/excel:', error.stack || error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
 // ── Llamadas de seguimiento (el "telefonito" de En directo) ─────────────────
 // Cada pulsación apunta la llamada en PostgreSQL (la verdad: quién, cuándo, turno
 // y resultado) y la ESPEJA en la hoja del call center como llamada saliente de

@@ -30,7 +30,16 @@ const borde = { style: 'thin', color: { argb: GRIS_BORDE } };
 const TODOS_BORDES = { top: borde, left: borde, bottom: borde, right: borde };
 
 const relleno = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
-const colLetra = n => String.fromCharCode(64 + n);   // 1→A … 26→Z
+// 1→A … 26→Z … 27→AA. La versión de una sola letra se quedaba corta en cuanto un
+// libro pasaba de 26 columnas: la 30 devolvía '^' y el mergeCells de la banda
+// reventaba con un rango imposible ("A1:^1").
+function colLetra(n) {
+  let s = '';
+  for (let x = Math.max(1, Math.floor(n)); x > 0; x = Math.floor((x - 1) / 26)) {
+    s = String.fromCharCode(65 + ((x - 1) % 26)) + s;
+  }
+  return s;
+}
 
 let _logoOk = null;
 const hayLogo = () => (_logoOk === null ? (_logoOk = fs.existsSync(LOGO)) : _logoOk);
