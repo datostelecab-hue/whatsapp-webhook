@@ -1,34 +1,40 @@
 // ============================================================
-// SANCIONES POR EXCESO DE VELOCIDAD (Operaciones) — registro legal + avisos
+// EXCESOS DE VELOCIDAD (Operaciones) — avisar, siempre, y llevar la cuenta
 // ============================================================
 // Flujo (cron cada 15 min):
 //   1) Mapon da las alertas de 'speeding' (matrícula + hora + velocidad/límite).
-//   2) Por cada exceso NUEVO (dedup por clave unit_id|hora), se resuelve el
-//      conductor cruzando con Bolt: matrícula → vehicle_uuid (getVehicles) →
-//      state_logs [T-15min…ampliable] filtrando ese vehículo → driver_uuid →
-//      nombre + teléfono (padrón CONDUCTORES_BOLT).
-//   3) Reincidencia dentro de 3 MESES: la 1ª vez → 'advertencia_limite' (auto);
-//      la 2ª+ → 'reincidencia_de_velocidad' (NO se manda sola: queda PENDIENTE de
-//      aprobación manual, porque abre expediente disciplinario).
-//   4) Todo se registra en un libro APARTE ("logs de velocidad"), append-only.
-//   · Si no se puede resolver el conductor con confianza → NO se avisa: queda
-//     "pendiente-revisión". En algo legal, mejor no sancionar a quien no toca.
+//   2) Por cada exceso NUEVO (dedup por la clave que da Mapon), se resuelve el
+//      conductor cruzando con BOLT: matrícula → vehicle_uuid (getVehicles) →
+//      state_logs filtrando ese vehículo → driver_uuid → nombre y teléfono, que
+//      ahora salen de PostgreSQL.
+//   3) SE AVISA. Siempre, con la misma plantilla, tantas veces como haga falta.
+//   4) Queda registrado en `velocidad_exceso`, y de ahí salen las dos preguntas
+//      del módulo: cuántas veces se le ha dicho a cada uno, y qué ha pasado.
+//
+// ── Lo que este módulo YA NO HACE ───────────────────────────────────────────
+// Antes era un expediente sancionador: la primera vez avisaba y, a partir de la
+// segunda dentro de tres meses, abría un caso que alguien tenía que aprobar a
+// mano para mandar OTRA plantilla más dura. En la práctica eso lo convertía en
+// una bandeja de aprobaciones, y lo que de verdad se quería saber —quién sigue
+// corriendo después de que se le diga— quedaba enterrado entre estados.
+//
+// Ahora el mensaje es siempre el mismo y siempre automático. La escalada, si
+// hace falta, la decide una persona mirando quién acumula avisos: eso es
+// información, no un trámite.
+//
+// ── Lo que sí se mantiene, porque sigue siendo verdad ───────────────────────
+//   · Si no se sabe con confianza quién conducía, NO se avisa. Avisar al que no
+//     fue era malo cuando pasaba una vez; ahora que es automático y repetido,
+//     sería peor. Queda registrado para mirarlo a mano.
 //   · MODO: 'test' por defecto (no envía nada, marca 'simulado'); 'live' envía.
 //     Se cambia con la variable de entorno SANCIONES_MODO=live.
 
 const bolt = require('./bolt');
 const mapon = require('./mapon');
 const whatsapp = require('./whatsapp');
-const { leerPadron } = require('./conductoresBolt');
-const { leerTelefonosDB } = require('./control');
-const { normClave } = require('./conductores');
-const { readSheet, writeSheet, ensureSheet, appendRows } = require('./sheets');
+const repo = require('./repo/velocidad');
 
-const LIBRO = '18E7ZJpc29aGDAAFNIyrvhScuMgEuYR8qNG1FGVY9_Ns';   // libro "logs de velocidad" (aparte)
-const HOJA = 'REGISTRO';                                          // pestaña del log legal
-const VENTANA_MESES = 3;                                          // reincidencia dentro de 3 meses
 const PLANTILLA_ADVERTENCIA = 'advertencia_limite';
-const PLANTILLA_REINCIDENCIA = 'reincidencia_de_velocidad';
 const TTL_VEHICULOS = 6 * 3600 * 1000;                            // caché del mapa de vehículos: 6 h
 const VENTANAS_VEH = 3;                                           // ventanas de 30 días para getVehicles
 
@@ -71,22 +77,15 @@ const VENTANA_FIABLE_SEG = Number(process.env.SANCIONES_VENTANA_FIABLE || 3600);
 const humanizar = seg => seg < 3600 ? `${Math.round(seg / 60)} min`
   : seg < 86400 ? `${Math.round(seg / 3600)} h` : `${Math.round(seg / 86400)} días`;
 
-// Estados del registro (columna N).
+// Los estados que puede tener un exceso. Viven también en el CHECK de la tabla:
+// si aquí se añade uno, allí también.
 const EST = {
-  ENVIADO: 'enviado',                 // advertencia enviada
-  SIMULADO: 'simulado',               // modo test: se habría enviado
-  PEND_APROB: 'pendiente-aprobacion', // reincidencia esperando OK manual
-  APROB_ENVIADA: 'reincidencia-enviada',
-  APROB_SIMULADA: 'reincidencia-simulada',
-  PEND_REVISION: 'pendiente-revision',// no se pudo resolver el conductor
-  ERROR: 'error'
+  AVISADO: 'avisado',              // se le mandó el WhatsApp
+  SIMULADO: 'simulado',            // modo pruebas: se habría mandado
+  SIN_CONDUCTOR: 'sin_conductor',  // el coche no tenía a nadie identificable
+  DUDOSO: 'dudoso',                // hay candidato, pero el log es demasiado viejo
+  ERROR: 'error'                   // se intentó mandar y falló
 };
-// Estados que SÍ cuentan como una infracción atribuida a un conductor (para la reincidencia).
-const CUENTAN = new Set([EST.ENVIADO, EST.SIMULADO, EST.PEND_APROB, EST.APROB_ENVIADA, EST.APROB_SIMULADA]);
-
-const CAB = ['Clave', 'Fecha (Madrid)', 'Fecha (UTC)', 'ts', 'Matrícula', 'Conductor', 'driver_uuid',
-  'Teléfono', 'Velocidad', 'Límite', 'Exceso', 'Aviso', 'Plantilla', 'Estado', 'Envío ID', 'Envío ts', 'Notas', 'Ubicación'];
-const RANGO_LOG = `'${HOJA}'!A:R`;   // 18 columnas (la última = ubicación lat,lng)
 
 const normPlaca = s => (s || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '');
 const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; };
@@ -166,65 +165,30 @@ async function conductorDeMatricula(matricula, tMs) {
   return { error: 'sin-conductor', uuid: veh.uuid, flotas };
 }
 
-// ── Padrón (driver_uuid → nombre/teléfono), con caché corto ─────────────────
+// ── Padrón (driver_uuid → nombre, teléfono y ficha) ────────────────────────
+// De PostgreSQL. Antes eran dos hojas de cálculo encadenadas —el padrón de BOLT
+// y una tabla de teléfonos por nombre—, cada una con su `.catch()`: cuando
+// fallaban, el módulo se quedaba sin teléfono, el aviso no salía y nadie se
+// enteraba de por qué. Se cachea un minuto porque una tanda de excesos se
+// procesa entera de golpe.
 let _cachePadron = { ts: 0, mapa: null };
-let _cacheTelDB = { ts: 0, mapa: null };
 async function datosConductor(driverUuid) {
-  if (!_cachePadron.mapa || Date.now() - _cachePadron.ts > 10 * 60 * 1000) {
-    const padron = await leerPadron().catch(() => ({ db: new Map() }));
-    _cachePadron = { ts: Date.now(), mapa: padron.db || new Map() };
+  if (!_cachePadron.mapa || Date.now() - _cachePadron.ts > 60 * 1000) {
+    _cachePadron = { ts: Date.now(), mapa: await repo.padron() };
   }
-  const reg = _cachePadron.mapa.get(driverUuid) || _cachePadron.mapa.get(String(driverUuid)) || {};
-  let telefono = (reg.phone || '').toString().trim();
-  const nombre = (reg.nombre || '').toString().trim();
-  if (!telefono && nombre) {   // fallback: teléfono por nombre desde DB_CONDUCTORES
-    if (!_cacheTelDB.mapa || Date.now() - _cacheTelDB.ts > 10 * 60 * 1000) {
-      _cacheTelDB = { ts: Date.now(), mapa: await leerTelefonosDB().catch(() => new Map()) };
-    }
-    telefono = _cacheTelDB.mapa.get(normClave(nombre)) || '';
-  }
-  return { nombre, telefono };
+  return _cachePadron.mapa.get(String(driverUuid)) || { nombre: '', telefono: '', conductorId: null };
 }
 
-// ── Log legal (append-only) ─────────────────────────────────────────────────
-let _logListo = false;
-async function ensureLog() {
-  if (_logListo) return;
-  await ensureSheet(LIBRO, HOJA);
-  const filas = await readSheet(LIBRO, `'${HOJA}'!A1:R1`).catch(() => []);
-  if (!filas.length || !(filas[0] || []).length) await writeSheet(LIBRO, `'${HOJA}'!A1`, [CAB]);
-  _logListo = true;
-}
-
-async function leerLog() {
-  await ensureLog();
-  const filas = await readSheet(LIBRO, `'${HOJA}'!A2:R100000`).catch(() => []);
-  return (filas || []).map((f, i) => ({
-    fila: i + 2,
-    clave: (f[0] || '').toString(),
-    fechaLocal: f[1], fechaUtc: f[2], ts: num(f[3]),
-    matricula: (f[4] || '').toString(), conductor: (f[5] || '').toString(), driverUuid: (f[6] || '').toString(),
-    telefono: (f[7] || '').toString(), velocidad: num(f[8]), limite: num(f[9]), exceso: num(f[10]),
-    aviso: (f[11] || '').toString(), plantilla: (f[12] || '').toString(), estado: (f[13] || '').toString(),
-    envioId: (f[14] || '').toString(), envioTs: (f[15] || '').toString(), notas: (f[16] || '').toString(),
-    ubicacion: (f[17] || '').toString()
-  })).filter(r => r.clave);
-}
-
-// ¿Cuántas infracciones previas atribuidas a ese conductor dentro de la ventana?
-// Nunca se miran hechos anteriores al alta del sistema: aunque el libro conserve filas
-// viejas, no cuentan para la reincidencia (al conductor no se le avisó de aquello).
-function previosEnVentana(log, driverUuid, tsMs) {
-  const limite = new Date(tsMs); limite.setMonth(limite.getMonth() - VENTANA_MESES);
-  const desde = Math.max(limite.getTime(), DESDE_TS || 0);
-  return log.filter(r => r.driverUuid && r.driverUuid === driverUuid && CUENTAN.has(r.estado) &&
-    r.ts != null && r.ts >= desde && r.ts < tsMs).length;
-}
-
-async function enviar(plantilla, telefono, nombre, matricula) {
+/**
+ * El aviso. Es SIEMPRE el mismo: la plantilla 'advertencia_limite', ya aprobada
+ * en Meta, con el nombre y la matrícula como variables. No hay una segunda
+ * plantilla ni un segundo tono: si alguien no hace caso, lo que cambia no es el
+ * mensaje sino el número de veces que aparece en la lista.
+ */
+async function enviar(telefono, nombre, matricula) {
   if (!esLive()) return { ok: true, simulado: true };
   if (!telefono) return { ok: false, error: 'sin-telefono' };
-  return whatsapp.enviarPlantillaPosicional(telefono, plantilla, [nombre, matricula]);
+  return whatsapp.enviarPlantillaPosicional(telefono, PLANTILLA_ADVERTENCIA, [nombre, matricula]);
 }
 
 // ── Procesar (lo llama el cron) ─────────────────────────────────────────────
@@ -234,7 +198,7 @@ let _ultimo = { ts: null, nuevos: 0, resumen: null };
 async function procesar(opciones = {}) {
   if (_corriendo) return { saltado: true, motivo: 'ya en curso' };
   _corriendo = true;
-  const res = { modo: modo(), leidas: 0, nuevas: 0, advertencias: 0, reincidencias: 0, sinConductor: 0, errores: 0, detalle: [] };
+  const res = { modo: modo(), leidas: 0, nuevas: 0, avisos: 0, sinConductor: 0, dudosas: 0, errores: 0, detalle: [] };
   try {
     // Ventana de lectura: por defecto ~25 min (solape sobre los 15 del cron).
     const minutos = Number(opciones.minutos) || 25;
@@ -243,88 +207,78 @@ async function procesar(opciones = {}) {
     const { alertas } = await mapon.leerAlertas({ desde, hasta, tipo: 'speeding' });
     res.leidas = alertas.length;
 
-    const log = await leerLog();
-    const yaVistas = new Set(log.map(r => r.clave));
+    // El dedup ya no se hace leyendo el libro entero: se preguntan las claves
+    // del rango, que son unas pocas. Con un margen de un día por si una alerta
+    // llega con retraso.
+    const margen = new Date(desde.getTime() - 86400000).toISOString();
+    const yaVistas = await repo.yaVistas(margen);
 
-    // De la MÁS ANTIGUA a la más reciente. Mapon las devuelve al revés, y como la
-    // reincidencia solo mira hechos ANTERIORES (ts < ts del actual), procesándolas de
-    // nueva a vieja ninguna veía a las demás: varios excesos de la misma tanda salían
-    // todos como "1ª advertencia" y se enviaban varios WhatsApp al mismo conductor.
+    // De la más antigua a la más reciente, que es como se leen los hechos.
     const enOrden = [...alertas].sort((x, y) => x.orden - y.orden);
 
     for (const a of enOrden) {
-      if (yaVistas.has(a.id)) continue;                 // dedup: ya registrada
+      if (yaVistas.has(a.id)) continue;
       const tMs = Date.parse(a.iso);
-      // Anterior al alta del sistema: ni se registra ni cuenta. Evita que una consulta
-      // con rango amplio vuelva a llenar el libro de hechos que nunca se comunicaron.
+      // Anterior al alta del sistema: ni se registra ni se avisa. Evita que una
+      // consulta con rango amplio mande WhatsApps por excesos de hace meses.
       if (DESDE_TS && tMs < DESDE_TS) { res.previosAlAlta = (res.previosAlAlta || 0) + 1; continue; }
       yaVistas.add(a.id);
       res.nuevas++;
-      const fila = new Array(CAB.length).fill('');
-      fila[0] = a.id; fila[1] = fmtMadrid(tMs); fila[2] = a.iso; fila[3] = String(tMs);
-      fila[4] = a.matricula; fila[8] = a.velocidad ?? ''; fila[9] = a.limite ?? ''; fila[10] = a.exceso ?? '';
 
-      // Resolver conductor.
+      const base = {
+        clave: a.id, ocurridoAt: new Date(tMs).toISOString(), placa: normPlaca(a.matricula),
+        velocidad: a.velocidad, limite: a.limite, exceso: a.exceso,
+      };
+
+      // ── ¿Quién conducía? ──────────────────────────────────────────────────
       let r;
       try { r = await conductorDeMatricula(a.matricula, tMs); }
       catch (e) { r = { error: 'excepcion', msg: e.message }; }
 
       if (r.error || !r.driver_uuid) {
-        fila[13] = EST.PEND_REVISION;
-        fila[16] = r.error === 'matricula-desconocida' ? 'Matrícula no está en Bolt' :
-          r.error === 'sin-conductor' ? 'Sin conductor en los logs (coche desconectado)' : (r.msg || r.error || 'no resuelto');
         res.sinConductor++;
-        await appendRows(LIBRO, RANGO_LOG, [fila]);
-        res.detalle.push({ matricula: a.matricula, estado: fila[13] });
+        await repo.registrar({ ...base, estado: EST.SIN_CONDUCTOR,
+          nota: r.error === 'matricula-desconocida' ? 'La matrícula no está en BOLT'
+            : r.error === 'sin-conductor' ? 'Sin conductor en los logs (coche desconectado de BOLT)'
+            : (r.msg || r.error || 'no se pudo resolver') });
+        res.detalle.push({ matricula: a.matricula, estado: EST.SIN_CONDUCTOR });
         continue;
       }
 
-      const { nombre, telefono } = await datosConductor(r.driver_uuid);
-      fila[5] = nombre || '(sin nombre)'; fila[6] = r.driver_uuid; fila[7] = telefono;
-      fila[17] = (r.lat != null && r.lng != null) ? `${r.lat},${r.lng}` : '';   // ubicación del log
+      const { nombre, telefono, conductorId } = await datosConductor(r.driver_uuid);
+      const quien = {
+        driverUuid: r.driver_uuid, conductorId, conductor: nombre || null, telefono: telefono || null,
+        lat: r.lat, lng: r.lng, ventanaSeg: r.ventanaSeg,
+      };
 
-      // Atribución dudosa: el conductor se dedujo de un log demasiado antiguo. Se deja
-      // constancia con el nombre del candidato, pero NO se avisa ni cuenta como
-      // infracción suya hasta que alguien lo confirme a mano.
+      // ── Atribución dudosa: se registra, pero no se avisa ───────────────────
+      // El coche cambia de manos cada turno. Si el último log del que se deduce
+      // el conductor es de hace horas, "el último que lo condujo" puede
+      // perfectamente no ser quien iba al volante.
       if (r.ventanaSeg > VENTANA_FIABLE_SEG) {
-        fila[11] = 'Atribución dudosa';
-        fila[13] = EST.PEND_REVISION;
-        fila[16] = `Candidato: ${nombre || r.driver_uuid} (último log del coche ${humanizar(r.ventanaSeg)} antes del exceso). ` +
-          `El coche cambia de conductor cada turno: confirmar antes de avisar.`;
-        res.dudosas = (res.dudosas || 0) + 1;
-        await appendRows(LIBRO, RANGO_LOG, [fila]);
-        res.detalle.push({ matricula: a.matricula, conductor: nombre, aviso: fila[11], estado: fila[13] });
+        res.dudosas++;
+        await repo.registrar({ ...base, ...quien, estado: EST.DUDOSO,
+          nota: `Candidato: ${nombre || r.driver_uuid} (el último log del coche es de ` +
+            `${humanizar(r.ventanaSeg)} antes del exceso). Confirmar antes de avisar.` });
+        res.detalle.push({ matricula: a.matricula, conductor: nombre, estado: EST.DUDOSO });
         continue;
       }
-      fila[16] = `Conductor resuelto con log de ${humanizar(r.ventanaSeg)} antes del exceso`;
 
-      const previos = previosEnVentana(log, r.driver_uuid, tMs);
-      const esReincidente = previos >= 1;
-
-      if (esReincidente) {
-        // La reincidencia NO se manda sola: queda pendiente de aprobación manual.
-        fila[11] = `Reincidencia (${previos + 1}ª en ${VENTANA_MESES} meses)`;
-        fila[12] = PLANTILLA_REINCIDENCIA;
-        fila[13] = EST.PEND_APROB;
-        res.reincidencias++;
-      } else {
-        // 1ª advertencia: automática (según el modo).
-        fila[11] = '1ª advertencia';
-        fila[12] = PLANTILLA_ADVERTENCIA;
-        const env = await enviar(PLANTILLA_ADVERTENCIA, telefono, nombre, a.matricula);
-        if (env.ok && env.simulado) { fila[13] = EST.SIMULADO; }
-        else if (env.ok) { fila[13] = EST.ENVIADO; fila[14] = env.id || ''; fila[15] = String(Date.now()); }
-        else { fila[13] = EST.ERROR; fila[16] = env.error || 'fallo de envío'; res.errores++; }
-        res.advertencias++;
-      }
-      // Añadir al log en memoria para que la reincidencia cuente dentro de la MISMA corrida.
-      log.push({ clave: a.id, driverUuid: r.driver_uuid, estado: fila[13], ts: tMs });
-      await appendRows(LIBRO, RANGO_LOG, [fila]);
-      res.detalle.push({ matricula: a.matricula, conductor: nombre, aviso: fila[11], estado: fila[13] });
+      // ── Se avisa. Siempre. ────────────────────────────────────────────────
+      const env = await enviar(telefono, nombre, a.matricula);
+      const estado = env.ok ? (env.simulado ? EST.SIMULADO : EST.AVISADO) : EST.ERROR;
+      if (estado === EST.ERROR) res.errores++; else res.avisos++;
+      await repo.registrar({ ...base, ...quien, estado,
+        plantilla: PLANTILLA_ADVERTENCIA,
+        envioId: env.id || null,
+        enviadoAt: estado === EST.AVISADO ? new Date().toISOString() : null,
+        nota: estado === EST.ERROR ? (env.error || 'fallo de envío')
+          : `Conductor resuelto con un log de ${humanizar(r.ventanaSeg)} antes del exceso` });
+      res.detalle.push({ matricula: a.matricula, conductor: nombre, estado });
     }
   } catch (e) {
     res.error = e.message;
-    console.error('❌ [SANCIONES] procesar:', e.stack || e.message);
+    console.error('❌ [VELOCIDAD] procesar:', e.stack || e.message);
   } finally {
     _corriendo = false;
     _ultimo = { ts: Date.now(), nuevos: res.nuevas, resumen: res };
@@ -332,39 +286,24 @@ async function procesar(opciones = {}) {
   return res;
 }
 
-// ── Aprobar / rechazar una reincidencia pendiente ───────────────────────────
-async function aprobar(clave) {
-  const log = await leerLog();
-  const r = log.find(x => x.clave === clave && x.estado === EST.PEND_APROB);
-  if (!r) throw new Error('No hay una reincidencia pendiente con esa clave');
-  const env = await enviar(PLANTILLA_REINCIDENCIA, r.telefono, r.conductor, r.matricula);
-  const estado = env.ok && env.simulado ? EST.APROB_SIMULADA : env.ok ? EST.APROB_ENVIADA : EST.ERROR;
-  // Actualiza SOLO el estado/envío de esa fila (los hechos legales no se tocan).
-  await writeSheet(LIBRO, `'${HOJA}'!N${r.fila}:Q${r.fila}`, [[
-    estado, env.ok ? (env.id || '') : '', env.ok ? String(Date.now()) : '', env.ok ? '' : (env.error || 'fallo')
-  ]]);
-  return { ok: env.ok, estado, id: env.id, error: env.error };
-}
-
-async function rechazar(clave, motivo) {
-  const log = await leerLog();
-  const r = log.find(x => x.clave === clave && x.estado === EST.PEND_APROB);
-  if (!r) throw new Error('No hay una reincidencia pendiente con esa clave');
-  await writeSheet(LIBRO, `'${HOJA}'!N${r.fila}:Q${r.fila}`, [['descartada', '', '', (motivo || 'descartada a mano')]]);
-  return { ok: true };
-}
-
 function estadoModulo() {
   return {
     modo: modo(), corriendo: _corriendo, ultimo: _ultimo,
-    // Desde cuándo cuenta el sistema (lo de antes no genera avisos ni reincidencia).
-    desde: DESDE_TS ? new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(DESDE_TS)) : null,
-    ventanaMeses: VENTANA_MESES
+    plantilla: PLANTILLA_ADVERTENCIA,
+    // Desde cuándo cuenta el sistema: lo anterior no genera avisos. Se llama
+    // `altaSistema` y no `desde` porque la pantalla ya tiene un `desde` —el del
+    // rango que se mira— y son cosas distintas: mezclarlos dejaba el rango a
+    // null y la pantalla en blanco.
+    altaSistema: DESDE_TS ? new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(DESDE_TS)) : null,
   };
 }
 
 module.exports = {
-  LIBRO, HOJA, EST, VENTANA_MESES, DESDE_TS,
-  procesar, aprobar, rechazar, leerLog, estadoModulo,
-  conductorDeMatricula, mapaVehiculos, modo, previosEnVentana
+  EST, DESDE_TS, PLANTILLA_ADVERTENCIA,
+  procesar, estadoModulo, conductorDeMatricula, mapaVehiculos, modo,
+  // La lectura la sirve el repositorio; se reexporta para que las rutas tengan
+  // una sola puerta a este módulo.
+  porConductor: (...a) => repo.porConductor(...a),
+  historico: (...a) => repo.historico(...a),
+  resumen: (...a) => repo.resumen(...a),
 };

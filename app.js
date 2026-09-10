@@ -680,7 +680,7 @@ if (process.env.SANCIONES_CRON === 'on') {
     try {
       const sanciones = require('./services/sanciones');
       const r = await sanciones.procesar();
-      if (r && r.nuevas) console.log(`🚦 [CRON Sanciones] ${JSON.stringify({ modo: r.modo, nuevas: r.nuevas, advertencias: r.advertencias, reincidencias: r.reincidencias, sinConductor: r.sinConductor })}`);
+      if (r && r.nuevas) console.log(`🚦 [CRON Velocidad] ${JSON.stringify({ modo: r.modo, nuevas: r.nuevas, avisos: r.avisos, sinConductor: r.sinConductor, dudosas: r.dudosas, errores: r.errores })}`);
     } catch (error) {
       console.error(`❌ [CRON Sanciones] ${error.stack || error.message}`);
     }

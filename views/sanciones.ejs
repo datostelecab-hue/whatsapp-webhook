@@ -1,194 +1,321 @@
-<div class="max-w-7xl mx-auto">
-  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+<div class="p-4 lg:p-6 max-w-[1500px] mx-auto">
+
+  <!-- ── Cabecera ─────────────────────────────────────────────────────── -->
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
     <div>
       <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-gauge-high text-telecab-gold"></i> Sanciones por velocidad
-        <span id="modo" class="text-xs px-2 py-0.5 rounded-full align-middle"></span>
+        <i class="fa-solid fa-gauge-high text-telecab-gold"></i> Excesos de velocidad
       </h1>
-      <p class="text-sm text-telecab-muted mt-1">Exceso de velocidad (Mapon) → conductor (Bolt) → advertencia por WhatsApp + registro legal. La 1ª es automática; la reincidencia (3 meses) requiere tu aprobación.</p>
+      <p class="text-sm text-telecab-muted mt-1">
+        Cada exceso se avisa por WhatsApp con la misma plantilla, siempre.
+        Lo que se mira aquí es <b>quién sigue corriendo después de que se le diga</b>.
+      </p>
     </div>
-    <button id="btn-procesar" class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold font-medium hover:bg-telecab-gold/25">
-      <i class="fa-solid fa-rotate mr-1"></i> Procesar ahora
+    <div class="flex flex-wrap items-center gap-2">
+      <input id="v-desde" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm text-telecab-text"
+             readonly placeholder="dd/mm/aaaa" data-max="today">
+      <span class="text-telecab-muted text-sm">a</span>
+      <input id="v-hasta" class="js-fecha w-28 px-2.5 py-2 bg-telecab-card border border-telecab-border rounded-xl text-sm text-telecab-text"
+             readonly placeholder="dd/mm/aaaa" data-max="today">
+      <button id="v-consultar" class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark text-sm font-semibold">
+        <i class="fa-solid fa-magnifying-glass mr-1"></i> Consultar
+      </button>
+      <button id="v-procesar" class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
+              title="Lee Mapon ahora mismo, resuelve quién conducía y avisa. Lo normal lo hace el cron cada 15 minutos.">
+        <i class="fa-solid fa-bolt mr-1"></i> Revisar ahora
+      </button>
+    </div>
+  </div>
+
+  <!-- El modo importa mucho: en pruebas NO sale ningún WhatsApp. -->
+  <div id="v-modo" class="hidden mb-4 rounded-xl px-4 py-3 text-sm"></div>
+
+  <!-- ── Las cifras ───────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Excesos</p>
+      <p id="v-excesos" class="text-3xl font-bold mt-1 text-telecab-text tabular-nums">—</p>
+      <p id="v-gente" class="text-[11px] text-telecab-muted mt-1"></p>
+    </div>
+    <div class="bg-telecab-card border-2 border-telecab-green/40 rounded-2xl p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Avisos enviados</p>
+      <p id="v-avisos" class="text-3xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
+      <p class="text-[11px] text-telecab-muted mt-1">Uno por cada exceso atribuido</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Sin avisar</p>
+      <p id="v-sinavisar" class="text-3xl font-bold mt-1 text-telecab-muted tabular-nums">—</p>
+      <p class="text-[11px] text-telecab-muted mt-1">No se supo quién conducía</p>
+    </div>
+    <div class="bg-telecab-card border-2 border-telecab-red/40 rounded-2xl p-4">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Punta</p>
+      <p id="v-punta" class="text-3xl font-bold mt-1 text-telecab-red tabular-nums">—</p>
+      <p id="v-fallos" class="text-[11px] text-telecab-muted mt-1"></p>
+    </div>
+  </div>
+
+  <div id="v-aviso" class="hidden mb-4 rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4 text-sm text-telecab-red"></div>
+
+  <!-- ── Pestañas ─────────────────────────────────────────────────────── -->
+  <div class="flex gap-1 mb-4 border-b border-telecab-border" id="v-tabs">
+    <button data-tab="cond" class="v-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition">
+      <i class="fa-solid fa-user-clock mr-1.5"></i> Quién no hace caso
+    </button>
+    <button data-tab="hist" class="v-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition">
+      <i class="fa-solid fa-clock-rotate-left mr-1.5"></i> Histórico de excesos
     </button>
   </div>
 
-  <div id="msg" class="hidden mb-4 rounded-lg border border-telecab-border bg-telecab-card px-4 py-3 text-sm"></div>
-
-  <!-- ══ Reincidencias pendientes de aprobación ══ -->
-  <section id="sec-aprob" class="hidden mb-6">
-    <h2 class="text-sm font-semibold text-telecab-red mb-2 flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> Reincidencias pendientes de aprobar <span id="n-aprob" class="text-xs text-telecab-muted"></span></h2>
-    <div id="lista-aprob" class="grid gap-3 lg:grid-cols-2"></div>
-  </section>
-
-  <!-- ══ Pendientes de revisión (sin conductor) ══ -->
-  <section id="sec-revision" class="hidden mb-6">
-    <h2 class="text-sm font-semibold text-telecab-warn mb-2 flex items-center gap-2"><i class="fa-solid fa-user-magnifying-glass"></i> Sin conductor resuelto (revisar a mano) <span id="n-revision" class="text-xs text-telecab-muted"></span></h2>
-    <div id="lista-revision" class="rounded-xl bg-telecab-card border border-telecab-border divide-y divide-telecab-border/60 text-sm"></div>
-  </section>
-
-  <!-- ══ Reincidentes (contador por conductor, últimos 3 meses) ══ -->
-  <section id="sec-reinc" class="hidden mb-6">
-    <h2 class="text-sm font-semibold text-telecab-violet mb-2 flex items-center gap-2"><i class="fa-solid fa-repeat"></i> Reincidentes (últimos 3 meses) <span id="n-reinc" class="text-xs text-telecab-muted"></span></h2>
-    <div id="lista-reinc" class="flex flex-wrap gap-2"></div>
-  </section>
-
-  <!-- ══ Registro completo ══ -->
-  <section>
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-sm font-semibold text-telecab-text">Registro</h2>
-      <input id="filtro" type="search" placeholder="Matrícula o conductor…" class="px-3 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text text-sm w-64 max-w-full">
-    </div>
-    <div class="rounded-xl bg-telecab-card border border-telecab-border overflow-hidden">
-      <div class="overflow-x-auto">
+  <!-- ══ Quién no hace caso ══ -->
+  <section data-panel="cond">
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+      <div class="overflow-x-auto max-h-[34rem] overflow-y-auto">
         <table class="w-full text-sm">
-          <thead class="text-xs text-telecab-muted bg-telecab-card2/50">
+          <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
             <tr>
-              <th class="text-left px-3 py-2">Fecha</th>
-              <th class="text-left px-3 py-2">Matrícula</th>
-              <th class="text-left px-3 py-2">Conductor</th>
-              <th class="text-right px-3 py-2">Vel.</th>
-              <th class="text-right px-3 py-2">Límite</th>
-              <th class="text-left px-3 py-2">Aviso</th>
-              <th class="text-left px-3 py-2">Estado</th>
-              <th class="text-center px-3 py-2">Mapa</th>
+              <th class="text-left   font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Conductor</th>
+              <th class="text-center font-semibold px-3 py-3">Avisos</th>
+              <th class="text-center font-semibold px-3 py-3">Excesos</th>
+              <th class="text-right  font-semibold px-3 py-3">Punta</th>
+              <th class="text-right  font-semibold px-3 py-3">Exceso medio</th>
+              <th class="text-center font-semibold px-3 py-3">Coches</th>
+              <th class="text-left   font-semibold px-3 py-3">Desde</th>
+              <th class="text-left   font-semibold px-3 py-3">Último</th>
+              <th class="text-left   font-semibold px-3 py-3 w-32">Insistencia</th>
             </tr>
           </thead>
-          <tbody id="tbody"></tbody>
+          <tbody id="v-tbody-cond" class="divide-y divide-telecab-border/60"></tbody>
         </table>
+      </div>
+      <div id="v-vacio-cond" class="hidden p-10 text-center text-telecab-muted">
+        <i class="fa-solid fa-gauge-simple text-3xl mb-2 opacity-40"></i>
+        <p>Nadie ha pasado del límite en este rango.</p>
+      </div>
+    </div>
+    <p class="text-[11px] text-telecab-muted mt-2">
+      <b>Avisos</b> son los WhatsApp que se le han mandado; <b>excesos</b>, las veces que pasó del límite
+      —la diferencia son los que no se le pudieron atribuir con seguridad—. La barra compara
+      <b>avisos por día transcurrido</b> desde su primer exceso: diez avisos en tres días son una racha,
+      diez en seis meses son una costumbre, y no se arreglan igual.
+    </p>
+  </section>
+
+  <!-- ══ Histórico ══ -->
+  <section data-panel="hist" class="hidden">
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <select id="v-estado" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+        <option value="">Todos los excesos</option>
+        <option value="avisado">Solo los avisados</option>
+        <option value="revisar">Los que hay que mirar a mano</option>
+        <option value="simulado">Simulados (modo pruebas)</option>
+      </select>
+      <input id="v-busca" type="search" placeholder="Conductor o matrícula…"
+             class="flex-1 min-w-[200px] px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+      <span id="v-cuenta" class="text-xs text-telecab-muted"></span>
+    </div>
+
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+      <div class="overflow-x-auto max-h-[34rem] overflow-y-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
+            <tr>
+              <th class="text-left  font-semibold px-4 py-3">Cuándo</th>
+              <th class="text-left  font-semibold px-3 py-3">Matrícula</th>
+              <th class="text-left  font-semibold px-3 py-3">Conductor</th>
+              <th class="text-right font-semibold px-3 py-3">Velocidad</th>
+              <th class="text-right font-semibold px-3 py-3">Límite</th>
+              <th class="text-right font-semibold px-3 py-3 text-telecab-red">Exceso</th>
+              <th class="text-left  font-semibold px-3 py-3">Qué se hizo</th>
+              <th class="text-left  font-semibold px-3 py-3">Dónde</th>
+            </tr>
+          </thead>
+          <tbody id="v-tbody-hist" class="divide-y divide-telecab-border/60"></tbody>
+        </table>
+      </div>
+      <div id="v-vacio-hist" class="hidden p-10 text-center text-telecab-muted">
+        <i class="fa-solid fa-clock-rotate-left text-3xl mb-2 opacity-40"></i>
+        <p>Sin excesos con esos filtros.</p>
       </div>
     </div>
   </section>
 </div>
 
 <script>
-const $ = s => document.querySelector(s);
-const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let LOG = [], MODO = 'test';
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const n1 = v => (v == null ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
+  const dia = f => (f ? f.slice(8, 10) + '/' + f.slice(5, 7) + (f.length > 10 ? ' ' + f.slice(11, 16) : '') : '—');
+  const hoyDdmm = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); };
+  const aIso = v => { const m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
 
-// Solo tokens de la marca: la paleta suelta de Tailwind (purple-300, amber-400…)
-// está pensada para fondo oscuro y se vuelve ilegible en los 6 temas claros.
-const BADGE = {
-  'enviado': ['Enviada','bg-telecab-green/15 text-telecab-green'],
-  'simulado': ['Simulada (test)','bg-telecab-card2 text-telecab-muted'],
-  'pendiente-aprobacion': ['Pend. aprobar','bg-telecab-red/15 text-telecab-red'],
-  'reincidencia-enviada': ['Reincidencia enviada','bg-telecab-violet/15 text-telecab-violet'],
-  'reincidencia-simulada': ['Reincidencia (test)','bg-telecab-card2 text-telecab-muted'],
-  'pendiente-revision': ['Sin conductor','bg-telecab-warn/15 text-telecab-warn'],
-  'descartada': ['Descartada','bg-telecab-card2 text-telecab-muted/60'],
-  'error': ['Error','bg-telecab-red/15 text-telecab-red']
-};
-const badge = e => { const b = BADGE[e] || [e,'bg-telecab-card2 text-telecab-muted']; return `<span class="text-xs px-2 py-0.5 rounded-full ${b[1]}">${esc(b[0])}</span>`; };
+  const ESTADO = {
+    avisado:       { txt: 'Avisado',           cls: 'bg-telecab-green/15 text-telecab-green' },
+    simulado:      { txt: 'Simulado',          cls: 'bg-telecab-card2 text-telecab-muted' },
+    sin_conductor: { txt: 'Sin conductor',     cls: 'bg-telecab-card2 text-telecab-muted' },
+    dudoso:        { txt: 'Atribución dudosa', cls: 'bg-telecab-warn/15 text-telecab-warn' },
+    error:         { txt: 'Falló el envío',    cls: 'bg-telecab-red/20 text-telecab-red' },
+  };
 
-async function cargar() {
-  const [est, lg] = await Promise.all([
-    fetch('/sanciones/api/estado').then(r=>r.json()),
-    fetch('/sanciones/api/log').then(r=>r.json())
-  ]);
-  MODO = (lg && lg.modo) || (est && est.modo) || 'test';
-  $('#modo').innerHTML = MODO==='live'
-    ? '<span class="bg-telecab-green/15 text-telecab-green px-2 py-0.5 rounded-full">EN VIVO</span>'
-    : '<span class="bg-telecab-warn/15 text-telecab-warn px-2 py-0.5 rounded-full">MODO TEST (no envía)</span>';
-  LOG = (lg && lg.log) || [];
-  render();
-}
+  let D = null, tab = 'cond', busca = '';
 
-function render() {
-  // Pendientes de aprobación (reincidencias)
-  const aprob = LOG.filter(r => r.estado === 'pendiente-aprobacion').sort((a,b)=>(b.ts||0)-(a.ts||0));
-  $('#sec-aprob').classList.toggle('hidden', !aprob.length);
-  $('#n-aprob').textContent = aprob.length ? `(${aprob.length})` : '';
-  $('#lista-aprob').innerHTML = aprob.map(r => `
-    <div class="rounded-xl border border-telecab-red/40 bg-telecab-red/5 p-4">
-      <div class="flex items-baseline justify-between">
-        <span class="font-semibold text-telecab-text">${esc(r.conductor)||'(sin nombre)'}</span>
-        <span class="text-xs text-telecab-muted">${esc(r.fechaLocal)}</span>
-      </div>
-      <div class="text-sm text-telecab-muted mt-1">Matrícula <b class="text-telecab-text">${esc(r.matricula)}</b> · ${r.velocidad||'?'} km/h (límite ${r.limite||'?'}) · ${esc(r.aviso)}</div>
-      <div class="text-xs text-telecab-muted mt-1">${r.telefono ? '📱 '+esc(r.telefono) : '<span class="text-telecab-red">⚠️ sin teléfono</span>'}</div>
-      <div class="flex gap-2 mt-3">
-        <button data-aprob="${esc(r.clave)}" class="px-3 py-1.5 rounded-lg bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/40 text-sm font-medium hover:bg-telecab-violet/25"><i class="fa-brands fa-whatsapp mr-1"></i> Aprobar y enviar</button>
-        <button data-rechazo="${esc(r.clave)}" class="px-3 py-1.5 rounded-lg bg-telecab-card2 text-telecab-muted text-sm hover:text-telecab-text">Descartar</button>
-      </div>
-    </div>`).join('');
+  function verTab(t) {
+    tab = t;
+    document.querySelectorAll('.v-tab').forEach(b => {
+      const on = b.dataset.tab === t;
+      b.className = 'v-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition ' +
+        (on ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+    });
+    document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== t));
+  }
 
-  // Reincidentes: por conductor, infracciones atribuidas dentro de los últimos 3 meses.
-  const CUENTAN = new Set(['enviado','simulado','pendiente-aprobacion','reincidencia-enviada','reincidencia-simulada']);
-  const corte3m = new Date(); corte3m.setMonth(corte3m.getMonth()-3); const desde3 = corte3m.getTime();
-  const porCond = {};
-  LOG.forEach(r => {
-    if (!r.driverUuid || !CUENTAN.has(r.estado) || !r.ts || r.ts < desde3) return;
-    porCond[r.driverUuid] = porCond[r.driverUuid] || { nombre: r.conductor, n: 0 };
-    porCond[r.driverUuid].n++; if (r.conductor) porCond[r.driverUuid].nombre = r.conductor;
+  function aviso(t) {
+    const b = $('#v-aviso');
+    if (!t) return b.classList.add('hidden');
+    b.classList.remove('hidden');
+    b.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-2"></i>' + esc(t);
+  }
+
+  function pintarModo() {
+    const b = $('#v-modo');
+    const live = D.modo === 'live';
+    b.className = 'mb-4 rounded-xl px-4 py-3 text-sm border ' + (live
+      ? 'border-telecab-green/40 bg-telecab-green/5 text-telecab-text'
+      : 'border-telecab-warn/50 bg-telecab-warn/10 text-telecab-text');
+    b.innerHTML = live
+      ? `<i class="fa-solid fa-paper-plane text-telecab-green mr-2"></i>Modo <b>real</b>: cada exceso atribuido
+         manda un WhatsApp con la plantilla <span class="font-mono text-xs">${esc(D.plantilla || '')}</span>.`
+      : `<i class="fa-solid fa-flask text-telecab-warn mr-2"></i>Modo <b>pruebas</b>: se registra todo pero
+         <b>no sale ningún WhatsApp</b>. Los excesos salen como «simulado». Para enviar de verdad,
+         <span class="font-mono text-xs">SANCIONES_MODO=live</span>.`;
+    b.classList.remove('hidden');
+  }
+
+  function pintarCifras() {
+    const r = D.resumen || {};
+    $('#v-excesos').textContent = r.excesos ?? 0;
+    $('#v-gente').textContent = r.gente ? r.gente + (r.gente === 1 ? ' conductor' : ' conductores') : '';
+    $('#v-avisos').textContent = r.avisos ?? 0;
+    $('#v-sinavisar').textContent = r.sin_avisar ?? 0;
+    $('#v-punta').textContent = r.punta ? n1(r.punta) + ' km/h' : '—';
+    $('#v-fallos').textContent = r.fallos ? r.fallos + ' envío(s) fallidos' : '';
+  }
+
+  function pintarCond() {
+    const filas = (D.conductores || []).filter(f =>
+      !busca || (f.conductor || '').toLowerCase().includes(busca));
+    $('#v-vacio-cond').classList.toggle('hidden', filas.length > 0);
+    // La barra mide INSISTENCIA: avisos por día transcurrido desde el primero.
+    // Es lo que separa un mal día de una costumbre.
+    const ritmo = f => (f.avisos || 0) / Math.max(1, f.dias_entre || 1);
+    const tope = Math.max(...filas.map(ritmo), 0.001);
+
+    $('#v-tbody-cond').innerHTML = filas.map(f => {
+      const r = ritmo(f), pct = Math.round(r / tope * 100);
+      const grave = f.avisos >= 5, medio = f.avisos >= 3;
+      return `<tr class="hover:bg-telecab-card2/50 transition ${grave ? 'bg-telecab-red/[0.04]' : ''}">
+        <td class="px-4 py-2.5 sticky left-0 bg-telecab-card whitespace-nowrap">
+          <span class="font-semibold">${esc(f.conductor)}</span>
+          ${f.conductor_id
+            ? `<a href="/plantilla?id=${f.conductor_id}" class="ml-1.5 text-telecab-muted hover:text-telecab-gold" title="Abrir su ficha"><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></a>`
+            : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted" title="Su cuenta de BOLT no está enlazada con ninguna ficha">sin ficha</span>'}
+          ${f.telefono ? `<div class="text-[11px] text-telecab-muted">${esc(f.telefono)}</div>` : ''}
+        </td>
+        <td class="px-3 py-2.5 text-center tabular-nums font-bold ${grave ? 'text-telecab-red' : medio ? 'text-telecab-warn' : 'text-telecab-text'}">${f.avisos}</td>
+        <td class="px-3 py-2.5 text-center tabular-nums text-telecab-muted">${f.excesos}</td>
+        <td class="px-3 py-2.5 text-right tabular-nums text-telecab-red">${n1(f.punta)}</td>
+        <td class="px-3 py-2.5 text-right tabular-nums text-telecab-muted">+${n1(f.exceso_medio)}</td>
+        <td class="px-3 py-2.5 text-center tabular-nums text-telecab-muted">${f.coches}</td>
+        <td class="px-3 py-2.5 text-telecab-muted text-xs">${dia(f.primero)}</td>
+        <td class="px-3 py-2.5 text-telecab-muted text-xs">${dia(f.ultimo)}</td>
+        <td class="px-3 py-2.5">
+          <div class="h-2 rounded-full bg-telecab-dark overflow-hidden">
+            <div class="h-full ${grave ? 'bg-telecab-red' : medio ? 'bg-telecab-warn' : 'bg-telecab-gold'}" style="width:${pct}%"></div>
+          </div>
+          <span class="text-[10px] text-telecab-muted">${n1(r)} al día · ${f.dias_entre} d</span>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function pintarHist() {
+    const q = busca;
+    const filas = (D.historico || []).filter(h =>
+      !q || (`${h.conductor || ''} ${h.placa || ''}`).toLowerCase().includes(q));
+    $('#v-cuenta').textContent = filas.length
+      ? filas.length + (filas.length === 1 ? ' exceso' : ' excesos') : '';
+    $('#v-vacio-hist').classList.toggle('hidden', filas.length > 0);
+    $('#v-tbody-hist').innerHTML = filas.map(h => {
+      const e = ESTADO[h.estado] || { txt: h.estado, cls: 'bg-telecab-card2 text-telecab-muted' };
+      return `<tr class="hover:bg-telecab-card2/50 transition">
+        <td class="px-4 py-2.5 whitespace-nowrap text-telecab-muted">${esc(h.cuando)}</td>
+        <td class="px-3 py-2.5 font-semibold whitespace-nowrap">${esc(h.placa || '—')}</td>
+        <td class="px-3 py-2.5">${h.conductor ? esc(h.conductor) : '<span class="text-telecab-muted">—</span>'}</td>
+        <td class="px-3 py-2.5 text-right tabular-nums font-semibold">${n1(h.velocidad)}</td>
+        <td class="px-3 py-2.5 text-right tabular-nums text-telecab-muted">${n1(h.limite)}</td>
+        <td class="px-3 py-2.5 text-right tabular-nums font-bold text-telecab-red">+${n1(h.exceso)}</td>
+        <td class="px-3 py-2.5">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${e.cls}" ${h.nota ? `title="${esc(h.nota)}"` : ''}>${e.txt}</span>
+        </td>
+        <td class="px-3 py-2.5 text-xs">${h.lat != null && h.lng != null
+          ? `<a href="https://maps.google.com/?q=${h.lat},${h.lng}" target="_blank" rel="noopener"
+               class="text-telecab-muted hover:text-telecab-gold">ver mapa <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i></a>`
+          : '<span class="text-telecab-muted/50">—</span>'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function cargar() {
+    aviso('');
+    try {
+      const q = new URLSearchParams();
+      if (aIso($('#v-desde').value)) q.set('desde', aIso($('#v-desde').value));
+      if (aIso($('#v-hasta').value)) q.set('hasta', aIso($('#v-hasta').value));
+      if ($('#v-estado').value) q.set('estado', $('#v-estado').value);
+      const r = await fetch('/sanciones/api/datos?' + q.toString());
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'no se pudo cargar');
+      D = j;
+      if (!$('#v-desde').value) $('#v-desde').value = dia(j.desde) + '/' + j.desde.slice(0, 4);
+      if (!$('#v-hasta').value) $('#v-hasta').value = dia(j.hasta) + '/' + j.hasta.slice(0, 4);
+      pintarModo(); pintarCifras(); pintarCond(); pintarHist();
+    } catch (e) { aviso('No se pudo cargar: ' + e.message); }
+  }
+
+  // ── Enganches ────────────────────────────────────────────────────────
+  document.querySelectorAll('.v-tab').forEach(b => b.addEventListener('click', () => verTab(b.dataset.tab)));
+  $('#v-consultar').addEventListener('click', cargar);
+  $('#v-estado').addEventListener('change', cargar);
+  $('#v-busca').addEventListener('input', () => {
+    busca = $('#v-busca').value.trim().toLowerCase();
+    if (D) { pintarCond(); pintarHist(); }
   });
-  const reinc = Object.values(porCond).filter(c => c.n >= 2).sort((a,b)=>b.n-a.n);
-  $('#sec-reinc').classList.toggle('hidden', !reinc.length);
-  $('#n-reinc').textContent = reinc.length ? `(${reinc.length})` : '';
-  // El nombre va en el color de texto normal: sobre la píldora morada clara es
-  // lo único que se lee bien en los temas claros. El contador sí en morado.
-  $('#lista-reinc').innerHTML = reinc.map(c => `<span class="px-3 py-1.5 rounded-full bg-telecab-violet/12 border border-telecab-violet/30 text-telecab-text text-sm">${esc(c.nombre)||'(sin nombre)'} <b class="ml-1 text-telecab-violet">×${c.n}</b></span>`).join('');
+  $('#v-procesar').addEventListener('click', async () => {
+    const b = $('#v-procesar');
+    b.disabled = true; b.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Revisando…';
+    try {
+      const r = await fetch('/sanciones/api/procesar', { method: 'POST' });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'error');
+      await cargar();
+      await Dialogo.aviso({
+        titulo: j.nuevas ? `${j.nuevas} exceso(s) nuevo(s)` : 'Sin excesos nuevos',
+        tono: j.errores ? 'aviso' : 'info',
+        html: `<p>${j.leidas} alerta(s) leídas de Mapon.</p>
+          <ul class="mt-2 text-xs space-y-0.5">
+            <li>· <b>${j.avisos}</b> aviso(s) ${j.modo === 'live' ? 'enviados' : 'simulados'}</li>
+            <li>· ${j.sinConductor} sin conductor identificable</li>
+            <li>· ${j.dudosas} con atribución dudosa (no se avisa)</li>
+            ${j.errores ? `<li class="text-telecab-red">· ${j.errores} envío(s) fallidos</li>` : ''}
+          </ul>`,
+      });
+    } catch (e) { aviso('No se pudo revisar: ' + e.message); }
+    finally { b.disabled = false; b.innerHTML = '<i class="fa-solid fa-bolt mr-1"></i> Revisar ahora'; }
+  });
 
-  // Sin conductor (revisión)
-  const rev = LOG.filter(r => r.estado === 'pendiente-revision').sort((a,b)=>(b.ts||0)-(a.ts||0));
-  $('#sec-revision').classList.toggle('hidden', !rev.length);
-  $('#n-revision').textContent = rev.length ? `(${rev.length})` : '';
-  $('#lista-revision').innerHTML = rev.map(r => `
-    <div class="px-4 py-2.5 flex flex-wrap items-baseline gap-x-2">
-      <span class="text-telecab-muted text-xs">${esc(r.fechaLocal)}</span>
-      <span class="font-medium text-telecab-text">${esc(r.matricula)}</span>
-      <span class="text-telecab-muted">· ${r.velocidad||'?'} km/h</span>
-      <span class="text-telecab-warn text-xs">· ${esc(r.notas)}</span>
-    </div>`).join('');
-
-  filtrar();
-}
-
-function filtrar() {
-  const q = ($('#filtro').value||'').toLowerCase().trim();
-  const filas = LOG.filter(r => !q || (r.matricula+' '+r.conductor).toLowerCase().includes(q)).sort((a,b)=>(b.ts||0)-(a.ts||0));
-  $('#tbody').innerHTML = filas.map(r => `
-    <tr class="border-t border-telecab-border/50">
-      <td class="px-3 py-2 text-telecab-muted whitespace-nowrap">${esc(r.fechaLocal)}</td>
-      <td class="px-3 py-2 text-telecab-text">${esc(r.matricula)}</td>
-      <td class="px-3 py-2">${esc(r.conductor)||'<span class="text-telecab-muted/50">—</span>'}</td>
-      <td class="px-3 py-2 text-right ${r.velocidad>=150?'text-telecab-red font-semibold':''}">${r.velocidad??''}</td>
-      <td class="px-3 py-2 text-right text-telecab-muted">${r.limite??''}</td>
-      <td class="px-3 py-2 text-telecab-muted">${esc(r.aviso)}</td>
-      <td class="px-3 py-2">${badge(r.estado)}</td>
-      <td class="px-3 py-2 text-center">${r.ubicacion
-        ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(r.ubicacion)}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline" title="${esc(r.ubicacion)}"><i class="fa-solid fa-location-dot"></i></a>`
-        : '<span class="text-telecab-muted/40">—</span>'}</td>
-    </tr>`).join('') || '<tr><td colspan="8" class="px-3 py-6 text-center text-telecab-muted">Sin registros todavía</td></tr>';
-}
-$('#filtro').addEventListener('input', filtrar);
-
-function msg(t, err) { const m = $('#msg'); m.classList.remove('hidden'); m.textContent = t; m.style.color = err ? 'var(--tc-red,#f87171)' : ''; }
-
-$('#btn-procesar').addEventListener('click', async () => {
-  const b = $('#btn-procesar'); b.disabled = true; msg('Procesando (leyendo Mapon y resolviendo conductores)…', false);
-  try {
-    const r = await (await fetch('/sanciones/api/procesar', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
-    if (r.status==='ok') msg(`✅ ${r.nuevas} nuevas · ${r.advertencias} advertencia(s) · ${r.reincidencias} reincidencia(s) a aprobar · ${r.sinConductor} sin conductor${r.errores?' · '+r.errores+' error(es)':''}`, false);
-    else msg('❌ '+(r.msg||'error'), true);
-  } catch(e){ msg('Error: '+e.message, true); }
-  b.disabled = false; cargar();
-});
-
-document.addEventListener('click', async e => {
-  const ap = e.target.closest('[data-aprob]'); const rc = e.target.closest('[data-rechazo]');
-  if (ap) {
-    if (!confirm('¿Aprobar y ENVIAR la plantilla de reincidencia? Traslada el caso a dirección (expediente).')) return;
-    ap.disabled = true;
-    const r = await (await fetch('/sanciones/api/aprobar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clave:ap.dataset.aprob})})).json();
-    msg(r.status==='ok' && r.ok ? '✅ Reincidencia enviada' : ('❌ '+(r.error||r.msg||'no se pudo')), !(r.status==='ok'&&r.ok));
-    cargar();
-  }
-  if (rc) {
-    const motivo = prompt('Motivo para descartar (opcional):') || '';
-    const r = await (await fetch('/sanciones/api/rechazar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clave:rc.dataset.rechazo, motivo})})).json();
-    msg(r.status==='ok' ? '✅ Descartada' : ('❌ '+(r.msg||'error')), r.status!=='ok');
-    cargar();
-  }
-});
-
-cargar();
+  verTab('cond');
+  cargar();
+})();
 </script>
