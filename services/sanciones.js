@@ -64,16 +64,23 @@ function inicioSistemaTs() {
 const DESDE_TS = inicioSistemaTs();
 
 /**
- * Hasta qué antigüedad se considera FIABLE la atribución del exceso a un conductor.
+ * MEDIA HORA. Hasta ahí la atribución es un dato; a partir de ahí es una conjetura.
  *
- * conductorDeMatricula amplía la búsqueda hasta 15 días si el coche estaba desconectado
- * de BOLT. Pasado un rato eso deja de ser un dato y pasa a ser una conjetura: estos
- * coches cambian de manos cada turno (día/noche), así que "el último que lo condujo hace
- * 6 horas" puede perfectamente NO ser quien iba al volante. Por encima de este margen el
- * caso se registra pero queda PENDIENTE DE REVISIÓN y no se avisa a nadie: es preferible
- * revisar a mano que acusar a quien no fue.
+ * El motivo es el relevo. Estos coches cambian de manos cada turno, y entre que
+ * uno lo deja y el otro se conecta hay un hueco de silencio en los logs. Si el
+ * último rastro es de hace 45 minutos, el exceso puede perfectamente ser del que
+ * acaba de recibir el coche y aún no se ha puesto en marcha en BOLT: avisar al
+ * anterior sería cargarle lo que hizo otro.
+ *
+ * Media hora es el margen en el que un relevo normal ya ha dejado huella. Por
+ * encima, el caso se registra pero NO se avisa a nadie y queda para mirarlo a
+ * mano: es preferible revisar que acusar al que no fue.
+ *
+ * (La intención a futuro es que el propio `busy` haga de fichaje del relevo —el
+ * que entrega lo quita, el que recibe lo pone— y entonces la responsabilidad
+ * dejará de deducirse y pasará a estar declarada. Mientras tanto, media hora.)
  */
-const VENTANA_FIABLE_SEG = Number(process.env.SANCIONES_VENTANA_FIABLE || 3600);
+const VENTANA_FIABLE_SEG = Number(process.env.SANCIONES_VENTANA_FIABLE || 1800);
 const humanizar = seg => seg < 3600 ? `${Math.round(seg / 60)} min`
   : seg < 86400 ? `${Math.round(seg / 3600)} h` : `${Math.round(seg / 86400)} días`;
 
@@ -157,10 +164,26 @@ async function conductorDeMatricula(matricula, tMs) {
   const flotas = [...veh.flotas];
   const t = Math.floor(tMs / 1000);
   // Ventanas crecientes: normalmente el conductor está en los 15 min; si el coche
-  // estaba desconectado se amplía para hallar el último que lo condujo.
-  for (const w of [15 * 60, 60 * 60, 6 * 3600, 24 * 3600, 3 * 86400, 15 * 86400]) {
+  // estaba desconectado se amplía para hallar el último que lo condujo. La
+  // ventana es solo una estrategia de búsqueda para no descargarse 15 días de
+  // logs de golpe: la ANCHA contiene a la estrecha y ambas devuelven el mismo
+  // log (el más reciente anterior al exceso), así que ampliar no cambia a quién
+  // se señala, solo cuánto se busca.
+  for (const w of [15 * 60, 30 * 60, 60 * 60, 6 * 3600, 24 * 3600, 3 * 86400, 15 * 86400]) {
     const m = await ultimoConductor(flotas, veh.uuid, t - w, t);
-    if (m && m.driver_uuid) return { driver_uuid: m.driver_uuid, uuid: veh.uuid, flotas, ventanaSeg: w, lat: m.lat, lng: m.lng };
+    if (m && m.driver_uuid) {
+      // ANTIGÜEDAD REAL del log, no el ancho de la ventana que lo encontró.
+      //
+      // Devolvía `w`, y eso hacía que el 78 % de los excesos se anotara como
+      // "último log 60 min antes" cuando en realidad solo se sabía "entre 15 y
+      // 60". Con esa cifra no se puede decidir nada a 30 minutos: la resolución
+      // del dato era más gruesa que la regla que había que aplicarle.
+      return {
+        driver_uuid: m.driver_uuid, uuid: veh.uuid, flotas,
+        ventanaSeg: Math.max(0, t - m.created),
+        lat: m.lat, lng: m.lng,
+      };
+    }
   }
   return { error: 'sin-conductor', uuid: veh.uuid, flotas };
 }
