@@ -83,6 +83,21 @@ function rangoQuincena({ anio, mes, quincena }) {
 const etiquetaQuincena = q => `${q.quincena === 1 ? '1–15' : '16–' + ultimoDia(q.anio, q.mes)} ${MESES[q.mes - 1]} ${q.anio}`;
 const cortaQuincena = q => `Q${q.quincena} ${MESES[q.mes - 1]} ${String(q.anio).slice(2)}`;
 
+/**
+ * EL CORTE. Antes de esta quincena la verdad la pone el Excel que llevaba el
+ * taller a mano —está volcado en `recaudacion_cierre` con origen 'importado' o
+ * 'manual'—; desde ella, la pone BOLT.
+ *
+ * No es una preferencia: antes del 1 de agosto de 2026 no guardábamos las
+ * órdenes de BOLT con su método de pago, así que recalcular julio desde la API
+ * daría cero y borraría de un plumazo el histórico que nos pasaron. El guardia
+ * de calcularDesdeBolt() está para que eso no pueda ocurrir ni por accidente.
+ */
+const CORTE = { anio: 2026, mes: 8, quincena: 1 };
+
+const nQuincena = q => (q.anio * 12 + (q.mes - 1)) * 2 + (q.quincena - 1);
+const antesDelCorte = q => nQuincena(q) < nQuincena(CORTE);
+
 /** La quincena de hoy, y moverse por ellas sin pelearse con los meses. */
 const quincenaHoy = () => quincenaDe(new Date());
 function mueveQuincena(q, pasos) {
@@ -90,6 +105,16 @@ function mueveQuincena(q, pasos) {
   const quincena = (n % 2) + 1;
   n = Math.floor(n / 2);
   return { anio: Math.floor(n / 12), mes: (n % 12) + 1, quincena };
+}
+
+/** Todas las quincenas del corte a hoy, que son las que manda BOLT. */
+function quincenasDesdeCorte() {
+  const fin = nQuincena(quincenaHoy());
+  const out = [];
+  for (let n = nQuincena(CORTE); n <= fin; n++) {
+    out.push(mueveQuincena(CORTE, n - nQuincena(CORTE)));
+  }
+  return out;
 }
 
 /** Normaliza lo que llega por la URL; si no vale, la quincena de hoy. */
@@ -143,33 +168,43 @@ function aCentimos(v) {
  * arrastre distinto de cero: los que no deben nada ni han traído nada no
  * ensucian la lista.
  */
-async function cuadro(q) {
-  const { desde, hasta } = rangoQuincena(q);
+/**
+ * EL CUADRO: una línea por conductor, con el ACUMULADO de todo lo habido.
+ *
+ * Ya no va por quincenas. La quincena sigue existiendo por dentro —es la caja
+ * donde se guarda cada cierre de BOLT— pero aquí no se mira: lo que hace falta
+ * saber de alguien es cuánto ha generado en total, cuánto ha entregado en total
+ * y cuánto le queda. Que eso venga de seis quincenas o de una no cambia lo que
+ * hay que pedirle.
+ *
+ * Las cinco columnas y de dónde sale cada una:
+ *
+ *   Conductor          su nombre de BOLT si lo tiene, que es el operativo
+ *   Efectivo activado  del padrón de BOLT, que la ingesta refresca cada hora
+ *   Total en mano      lo que ha entregado en ventanilla, menos lo devuelto
+ *   Total en BOLT      todo lo que cobró en efectivo: el Excel hasta el corte
+ *                      y BOLT desde el corte
+ *   Total a recaudar   lo de BOLT menos lo entregado (en mano y por nómina)
+ *
+ * La nómina no tiene columna propia porque casi nadie la usa, pero SÍ resta en
+ * "a recaudar": si no, la cuenta no cerraría y alguien pediría dos veces el
+ * mismo dinero. Va como dato aparte en cada fila para poder enseñarla al lado.
+ */
+async function cuadro() {
   // Las dos consultas son la misma cuenta sobre dos formas de identificar a
   // alguien: por ficha (conductor_id) o por cuenta de BOLT (bolt_uuid), para
   // quien cobró en efectivo y nunca tuvo ficha. `quien` es la clave común.
   const cuentas = clave => `
      WITH cierre AS (
-       SELECT ${clave} AS quien, importe + ajuste AS importe, ajuste, ajuste_motivo
-         FROM recaudacion_cierre
-        WHERE anio = $1 AND mes = $2 AND quincena = $3 AND ${clave} IS NOT NULL),
-     cierre_prev AS (
-       SELECT ${clave} AS quien, sum(importe + ajuste) AS importe FROM recaudacion_cierre
-        WHERE (anio, mes, quincena) < ($1, $2, $3) AND ${clave} IS NOT NULL GROUP BY 1),
+       SELECT ${clave} AS quien, sum(importe + ajuste) AS bolt
+         FROM recaudacion_cierre WHERE ${clave} IS NOT NULL GROUP BY 1),
      mov AS (
        SELECT ${clave} AS quien,
-              sum(importe) FILTER (WHERE tipo = 'presencial') AS presencial,
-              sum(importe) FILTER (WHERE tipo = 'nomina')     AS nomina,
-              sum(importe) FILTER (WHERE tipo = 'entrega')    AS entrega
+              COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0) AS presencial,
+              COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)     AS nomina,
+              COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega
          FROM recaudacion_movimiento
         WHERE anulado_at IS NULL AND ${clave} IS NOT NULL
-          AND fecha BETWEEN $4::date AND $5::date
-        GROUP BY 1),
-     mov_prev AS (
-       SELECT ${clave} AS quien,
-              sum(CASE WHEN tipo = 'entrega' THEN -importe ELSE importe END) AS neto
-         FROM recaudacion_movimiento
-        WHERE anulado_at IS NULL AND ${clave} IS NOT NULL AND fecha < $4::date
         GROUP BY 1)`;
 
   const [r, rb] = await Promise.all([
@@ -186,62 +221,46 @@ async function cuadro(q) {
             COALESCE(NULLIF(btrim(c.nombre_bolt), ''), trim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS conductor,
             c.empleo_vigente,
             ef.activo AS efectivo_activo, ef.visto AS efectivo_at,
-            COALESCE(ci.importe, 0)   AS deuda,
-            COALESCE(ci.ajuste, 0)    AS ajuste,
-            ci.ajuste_motivo,
+            COALESCE(ci.bolt, 0)      AS bolt,
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
-            COALESCE(m.entrega, 0)    AS entrega,
-            COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) AS arrastre
+            COALESCE(m.entrega, 0)    AS entrega
        FROM conductor c
-       LEFT JOIN cierre      ci ON ci.quien = c.id
-       LEFT JOIN cierre_prev cp ON cp.quien = c.id
-       LEFT JOIN mov         m  ON m.quien  = c.id
-       LEFT JOIN mov_prev    mp ON mp.quien = c.id
-       LEFT JOIN efectivo    ef ON ef.conductor_id = c.id
+       LEFT JOIN cierre   ci ON ci.quien = c.id
+       LEFT JOIN mov      m  ON m.quien  = c.id
+       LEFT JOIN efectivo ef ON ef.conductor_id = c.id
       WHERE NOT c.es_centinela
-        AND (ci.importe IS NOT NULL OR m.quien IS NOT NULL
-             OR COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) <> 0
+        AND (ci.quien IS NOT NULL OR m.quien IS NOT NULL
              -- Y TAMBIÉN quien tiene el efectivo activado y es (o fue) de la
              -- casa, aunque hoy no deba nada: si puede cobrar en mano, mañana
              -- deberá, y a quien ya no trabaja aquí hay que quitárselo.
              OR (ef.activo AND EXISTS (
-                   SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)))`,
-      [q.anio, q.mes, q.quincena, desde, hasta]),
+                   SELECT 1 FROM conductor_periodo_empleo pe WHERE pe.conductor_id = c.id)))`),
 
     // Los que no tienen ficha. El nombre sale del padrón de BOLT.
     db.consulta(`${cuentas('bolt_uuid')},
-     gente AS (
-       SELECT quien FROM cierre UNION
-       SELECT quien FROM cierre_prev UNION
-       SELECT quien FROM mov UNION
-       SELECT quien FROM mov_prev)
+     gente AS (SELECT quien FROM cierre UNION SELECT quien FROM mov)
      SELECT g.quien, g.quien AS bolt_uuid,
             COALESCE(e.externo_nombre, 'Cuenta de BOLT ' || left(g.quien, 8)) AS conductor,
             NULL::boolean AS empleo_vigente,
             e.efectivo_activo, e.efectivo_at,
-            COALESCE(ci.importe, 0)   AS deuda,
-            COALESCE(ci.ajuste, 0)    AS ajuste,
-            ci.ajuste_motivo,
+            COALESCE(ci.bolt, 0)      AS bolt,
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
-            COALESCE(m.entrega, 0)    AS entrega,
-            COALESCE(cp.importe, 0) - COALESCE(mp.neto, 0) AS arrastre
+            COALESCE(m.entrega, 0)    AS entrega
        FROM gente g
        LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = g.quien
-       LEFT JOIN cierre      ci ON ci.quien = g.quien
-       LEFT JOIN cierre_prev cp ON cp.quien = g.quien
-       LEFT JOIN mov         m  ON m.quien  = g.quien
-       LEFT JOIN mov_prev    mp ON mp.quien = g.quien`,
-      [q.anio, q.mes, q.quincena, desde, hasta]),
+       LEFT JOIN cierre ci ON ci.quien = g.quien
+       LEFT JOIN mov    m  ON m.quien  = g.quien`),
   ]);
   r.rows = r.rows.concat(rb.rows).sort((a, b) => a.conductor.localeCompare(b.conductor));
 
   const filas = r.rows.map(x => {
-    const deuda = Number(x.deuda), presencial = Number(x.presencial);
-    const nomina = Number(x.nomina), entrega = Number(x.entrega);
-    const recaudado = presencial + nomina - entrega;
-    const arrastre = Number(x.arrastre);
+    const bolt = Number(x.bolt);
+    const presencial = Number(x.presencial), nomina = Number(x.nomina), entrega = Number(x.entrega);
+    // Lo devuelto sale de la caja y deshace una entrega: resta de lo entregado
+    // en mano, no suma a la deuda.
+    const enMano = +(presencial - entrega).toFixed(2);
     return {
       // `conductorId` sigue siendo la clave con la que trabaja la pantalla; en
       // los de BOLT es su uuid, y `sinFicha` es lo que la pinta en rojo.
@@ -252,29 +271,21 @@ async function cuadro(q) {
       // "no lo tiene".
       efectivoActivo: x.efectivo_activo == null ? null : !!x.efectivo_activo,
       efectivoAt: x.efectivo_at || null,
-      deuda, presencial, nomina, entrega, recaudado,
-      // El arrastre va aparte para poder explicarlo en pantalla: la deuda ya
-      // lo lleva sumado.
-      ajuste: Number(x.ajuste) || 0,
-      ajusteMotivo: x.ajuste_motivo || '',
-      // Lo de la quincena y lo que se arrastra de antes, por separado.
-      pendienteQuincena: +(deuda - recaudado).toFixed(2),
-      arrastre: +arrastre.toFixed(2),
-      pendiente: +(arrastre + deuda - recaudado).toFixed(2),
+      bolt: +bolt.toFixed(2),
+      enMano, nomina: +nomina.toFixed(2), entrega: +entrega.toFixed(2),
+      aRecaudar: +(bolt - enMano - nomina).toFixed(2),
     };
   });
 
   const suma = campo => +filas.reduce((a, f) => a + f[campo], 0).toFixed(2);
   return {
-    quincena: { ...q, etiqueta: etiquetaQuincena(q), corta: cortaQuincena(q), ...rangoQuincena(q) },
     filas,
     total: {
       gente: filas.length,
-      deuda: suma('deuda'), presencial: suma('presencial'), nomina: suma('nomina'),
-      entrega: suma('entrega'), recaudado: suma('recaudado'),
-      pendiente: suma('pendiente'),
+      bolt: suma('bolt'), enMano: suma('enMano'), nomina: suma('nomina'),
+      aRecaudar: suma('aRecaudar'),
       // A cuántos les falta algo: es el número por el que preguntan.
-      conDeuda: filas.filter(f => f.pendiente > 0.005).length,
+      conDeuda: filas.filter(f => f.aRecaudar > 0.005).length,
       // Cuántos pueden cobrar en efectivo ahora mismo, y de esos cuántos ya no
       // trabajan aquí: eso último es un grifo abierto.
       conEfectivo: filas.filter(f => f.efectivoActivo).length,
@@ -334,17 +345,21 @@ async function cuadre() {
   };
 }
 
-/** Las salidas de caja de una quincena, para verlas donde se hicieron. */
-async function salidasDe(q) {
-  const { desde, hasta } = rangoQuincena(q);
+/**
+ * Las salidas de caja, las últimas primero. Ya no se cortan por quincena: el
+ * dinero del cajón no se reinicia el día 16, y la pregunta que se hace mirando
+ * esta lista —"¿de dónde ha salido lo que falta?"— tampoco.
+ */
+async function salidas({ limite = 60 } = {}) {
   const r = await db.consulta(
     `SELECT m.id, m.fecha, m.tipo, m.importe, m.observacion, m.anulado_at, m.anulado_motivo,
             u.nombre AS quien, a.nombre AS anulo
        FROM recaudacion_movimiento m
        LEFT JOIN usuario u ON u.id = m.usuario_id
        LEFT JOIN usuario a ON a.id = m.anulado_por
-      WHERE m.conductor_id IS NULL AND m.fecha BETWEEN $1::date AND $2::date
-      ORDER BY m.fecha DESC, m.id DESC`, [desde, hasta]);
+      WHERE m.conductor_id IS NULL
+      ORDER BY m.fecha DESC, m.id DESC
+      LIMIT $1`, [Math.min(Number(limite) || 60, 500)]);
   return r.rows.map(m => ({
     id: String(m.id), fecha: diaIso(m.fecha), tipo: m.tipo, importe: Number(m.importe),
     observacion: m.observacion || '', quien: m.quien || '¿?',
@@ -608,6 +623,12 @@ async function efectivoBolt(q) {
  * cuando no cuadre la caja.
  */
 async function calcularDesdeBolt(q, { usuarioId } = {}) {
+  // Antes del corte la verdad es el Excel, no BOLT. Recalcular julio desde una
+  // API que no tiene esos datos pondría ceros donde hay dinero cobrado.
+  if (antesDelCorte(q)) {
+    throw new Error(
+      `${etiquetaQuincena(q)} es anterior al ${etiquetaQuincena(CORTE)}: eso lo manda el Excel, no BOLT.`);
+  }
   const calculado = await efectivoBolt(q);
   const previos = new Map((await db.consulta(
     `SELECT COALESCE(conductor_id::text, bolt_uuid) AS quien, importe, origen
@@ -699,6 +720,34 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
     // Las que no se han tocado por parecerse a alguien de la plantilla.
     sospechosas,
     sinFicha: seguras.filter(c => c.boltUuid).length,
+  };
+}
+
+/**
+ * Recalcula DE UNA VEZ todas las quincenas desde el corte hasta hoy.
+ *
+ * Es lo que hace el botón de la pantalla ahora que la quincena no se ve: quien
+ * lo pulsa no está pensando "recalcúlame la segunda de septiembre", está
+ * pensando "ponme al día lo que dice BOLT". Los avisos de las quincenas se
+ * juntan en uno solo, con su etiqueta delante para saber de dónde sale cada uno.
+ */
+async function recalcularTodo({ usuarioId } = {}) {
+  const quincenas = quincenasDesdeCorte();
+  const junta = { nuevos: [], cambios: [], respetados: [], sospechosas: [] };
+  let total = 0, conductores = 0;
+  for (const q of quincenas) {
+    const r = await calcularDesdeBolt(q, { usuarioId });
+    total += r.total;
+    conductores = Math.max(conductores, r.conductores);
+    ['nuevos', 'cambios', 'respetados', 'sospechosas'].forEach(k =>
+      junta[k].push(...r[k].map(x => ({ ...x, quincena: etiquetaQuincena(q) }))));
+  }
+  return {
+    ...junta,
+    desde: etiquetaQuincena(CORTE),
+    quincenas: quincenas.length,
+    conductores,
+    total: +total.toFixed(2),
   };
 }
 
@@ -806,9 +855,9 @@ async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
 
 module.exports = {
   DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, TODAS_SALIDAS, ES_SALIDA,
-  cuadre, salidasDe,
+  CORTE, cuadre, salidas,
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
-  etiquetaQuincena, cortaQuincena,
+  etiquetaQuincena, cortaQuincena, quincenasDesdeCorte, antesDelCorte,
   cuadro, ficha, candidatos, anotar, anular, guardarCierre, importarCierre,
-  efectivoBolt, calcularDesdeBolt, ajustarCierre,
+  efectivoBolt, calcularDesdeBolt, recalcularTodo, ajustarCierre,
 };

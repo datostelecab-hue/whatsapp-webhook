@@ -431,3 +431,67 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
 .dialogo.dialogo-saliendo { animation: dlgFondo .12s ease-in reverse; }
 @keyframes dlgFondo { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dlgCaja { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+
+/* ============================================================
+   EL OJO — tapar una cifra que no debe leerse por encima del hombro
+   ============================================================
+   Nace para la caja de recaudación: el conductor llega a entregar su efectivo
+   y se planta delante de una pantalla que dice cuánto hay en el cajón. Con el
+   ojo cerrado la cifra sigue ahí, ocupando su sitio y con su forma, pero no se
+   lee: se desenfoca. Tapar con puntos movería el ancho de la tarjeta cada vez.
+
+   El estado lo guarda quien la usa (localStorage), así que la caja se abre ya
+   tapada y nadie tiene que acordarse de esconderla antes de que entre nadie. */
+body .tc-secreto {
+  transition: filter .3s cubic-bezier(.4, 0, .2, 1), opacity .3s ease;
+}
+body .tc-secreto[data-oculto="1"] {
+  filter: blur(10px);
+  opacity: .5;
+  /* Sin esto se puede seleccionar el texto borroso y leerlo en el portapapeles. */
+  user-select: none; -webkit-user-select: none;
+  pointer-events: none;
+}
+
+body .tc-ojo {
+  --tc-ojo-tam: 2.1rem;
+  position: relative;
+  width: var(--tc-ojo-tam); height: var(--tc-ojo-tam);
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--tc-border));
+  background: rgb(var(--tc-card2) / .6);
+  color: rgb(var(--tc-muted));
+  cursor: pointer;
+  transition: color .2s ease, border-color .2s ease, background .2s ease, transform .12s ease;
+}
+body .tc-ojo:hover {
+  color: rgb(var(--tc-gold));
+  border-color: rgb(var(--tc-gold) / .55);
+  background: rgb(var(--tc-gold) / .10);
+}
+body .tc-ojo:active { transform: scale(.92); }
+body .tc-ojo:focus-visible {
+  outline: 2px solid rgb(var(--tc-gold) / .7);
+  outline-offset: 2px;
+}
+
+/* Los dos iconos viven a la vez, uno encima del otro, y se cruzan al pulsar:
+   así el cambio es un gesto y no un parpadeo. */
+body .tc-ojo i {
+  position: absolute;
+  transition: opacity .22s ease, transform .28s cubic-bezier(.4, 0, .2, 1);
+}
+body .tc-ojo .tc-ojo-ver     { opacity: 1; transform: none; }
+body .tc-ojo .tc-ojo-tapar   { opacity: 0; transform: scale(.5) rotate(-25deg); }
+body .tc-ojo[aria-pressed="true"] .tc-ojo-ver   { opacity: 0; transform: scale(.5) rotate(25deg); }
+body .tc-ojo[aria-pressed="true"] .tc-ojo-tapar { opacity: 1; transform: none; }
+/* Cerrado se queda dorado: es un aviso de que hay algo tapado, no un botón más. */
+body .tc-ojo[aria-pressed="true"] {
+  color: rgb(var(--tc-gold));
+  border-color: rgb(var(--tc-gold) / .4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .tc-secreto, body .tc-ojo, body .tc-ojo i { transition: none; }
+}

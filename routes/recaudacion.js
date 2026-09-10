@@ -57,21 +57,17 @@ router.get('/', async (req, res) => {
   });
 });
 
-// El cuadro de una quincena. Sin parámetros, la de hoy.
+// El cuadro: el acumulado de todo, sin quincenas. La quincena sigue estando
+// por dentro (es la caja donde se guarda cada cierre de BOLT) pero ya no se
+// navega: lo que se pregunta de alguien es cuánto debe en total.
 router.get('/api/cuadro', responde(async req => {
-  const q = repo.quincenaValida(req.query);
   const [cuadro, caja, salidas] = await Promise.all([
-    repo.cuadro(q), repo.cuadre(), repo.salidasDe(q),
+    repo.cuadro(), repo.cuadre(), repo.salidas(),
   ]);
   return {
     ...cuadro,
-    // El cuadre es de TODO lo habido, no de la quincena que se mire: el dinero
-    // del cajón no se reinicia el día 16.
     caja, salidas,
-    // Para las flechas de "anterior/siguiente" sin que el front sepa de meses.
-    anterior: repo.mueveQuincena(q, -1),
-    siguiente: repo.mueveQuincena(q, +1),
-    hoy: repo.quincenaHoy(),
+    corte: repo.etiquetaQuincena(repo.CORTE),
     puedeNomina: await puedeNomina(req),
   };
 }));
@@ -99,17 +95,24 @@ router.post('/api/movimiento/:id/anular', responde(async req => repo.anular(req.
   usuarioId: await quienEs(req), motivo: (req.body || {}).motivo,
 })));
 
-// Recalcular la quincena desde los pedidos en efectivo de BOLT. Es el camino
-// normal: la cifra no se teclea, se calcula y se congela.
+// Poner al día lo que dice BOLT, de la quincena del corte hasta hoy. La cifra
+// no se teclea: se calcula y se congela. Lo anterior al corte lo manda el
+// Excel y el repo se niega a tocarlo.
 router.post('/api/cierre/calcular', responde(async req =>
-  repo.calcularDesdeBolt(repo.quincenaValida(req.body || {}), { usuarioId: await quienEs(req) })));
+  repo.recalcularTodo({ usuarioId: await quienEs(req) })));
 
-// Lo que BOLT dice AHORA MISMO, sin congelar nada: para mirar antes de tocar.
-router.get('/api/cierre/bolt', responde(async req => {
-  const q = repo.quincenaValida(req.query);
-  const filas = await repo.efectivoBolt(q);
-  return { quincena: q, conductores: filas.length,
-    total: +filas.reduce((a, c) => a + c.importe, 0).toFixed(2) };
+// Lo que BOLT dice AHORA MISMO desde el corte, sin congelar nada: para mirar
+// antes de tocar.
+router.get('/api/cierre/bolt', responde(async () => {
+  let total = 0;
+  const gente = new Set();
+  for (const q of repo.quincenasDesdeCorte()) {
+    for (const c of await repo.efectivoBolt(q)) {
+      total += c.importe;
+      gente.add(c.conductorId || c.boltUuid);
+    }
+  }
+  return { desde: repo.etiquetaQuincena(repo.CORTE), conductores: gente.size, total: +total.toFixed(2) };
 }));
 
 // Un arrastre (o una corrección) sobre una quincena, con su motivo.

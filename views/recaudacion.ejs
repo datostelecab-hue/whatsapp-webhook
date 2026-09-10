@@ -7,8 +7,8 @@
         <i class="fa-solid fa-money-bill-wave text-telecab-gold"></i> Recaudación
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
-        El efectivo que cobran en la calle, por quincena. <b>Deuda</b> es lo que dice el cierre de BOLT;
-        <b>recaudado</b>, lo que ya ha entregado —en mano o descontado de nómina—; lo que queda es lo que hay que pedirle.
+        El efectivo que cobran en la calle, acumulado. <b>Total en BOLT</b> es todo lo que ha cobrado en mano;
+        <b>total en mano</b>, lo que ya ha entregado en ventanilla; y lo que queda es lo que hay que pedirle.
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
@@ -35,9 +35,18 @@
   <!-- ── El cuadre de caja: las dos cifras que se miran al abrir ──────── -->
   <div class="grid sm:grid-cols-2 gap-3 mb-5">
     <div class="bg-telecab-card border-2 border-telecab-green/40 rounded-2xl p-4">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Efectivo actual</p>
-      <p id="c-efectivo" class="text-3xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
-      <p id="c-efectivo-det" class="text-[11px] text-telecab-muted mt-1"></p>
+      <div class="flex items-start justify-between gap-2">
+        <p class="text-xs text-telecab-muted uppercase tracking-wide">Efectivo actual</p>
+        <!-- El conductor viene a entregar y se planta delante de esta cifra. -->
+        <button id="c-ojo" class="tc-ojo shrink-0" aria-pressed="false"
+                aria-controls="c-efectivo" title="Tapar el dinero de la caja">
+          <i class="fa-regular fa-eye tc-ojo-ver" aria-hidden="true"></i>
+          <i class="fa-regular fa-eye-slash tc-ojo-tapar" aria-hidden="true"></i>
+          <span class="sr-only">Tapar o destapar el dinero de la caja</span>
+        </button>
+      </div>
+      <p id="c-efectivo" class="tc-secreto text-3xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
+      <p id="c-efectivo-det" class="tc-secreto text-[11px] text-telecab-muted mt-1"></p>
     </div>
     <div class="bg-telecab-card border-2 border-telecab-red/40 rounded-2xl p-4">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Pendiente de cobro</p>
@@ -46,41 +55,21 @@
     </div>
   </div>
 
-  <!-- ── La quincena que se mira ──────────────────────────────────────── -->
-  <div class="flex items-center justify-center gap-3 mb-4">
-    <button id="q-antes" class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text" title="Quincena anterior">
-      <i class="fa-solid fa-chevron-left"></i>
-    </button>
-    <div class="text-center min-w-[220px]">
-      <p id="q-etiqueta" class="text-lg font-bold text-telecab-text leading-tight">—</p>
-      <button id="q-hoy" class="text-[11px] text-telecab-muted hover:text-telecab-gold underline decoration-dotted">ir a la de hoy</button>
-    </div>
-    <button id="q-luego" class="w-9 h-9 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text" title="Quincena siguiente">
-      <i class="fa-solid fa-chevron-right"></i>
-    </button>
-  </div>
-
-  <!-- ── El resumen ───────────────────────────────────────────────────── -->
-  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+  <!-- ── El resumen: las mismas tres cifras que la tabla, sumadas ────── -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Efectivo de la quincena</p>
-      <p id="t-deuda" class="text-xl font-bold mt-1 tabular-nums">—</p>
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Total en mano</p>
+      <p id="t-enmano" class="text-xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
+      <p id="t-enmano-det" class="text-[11px] text-telecab-muted mt-0.5"></p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Cobrado en mano</p>
-      <p id="t-presencial" class="text-xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
-    </div>
-    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Por nómina</p>
-      <p id="t-nomina" class="text-xl font-bold mt-1 text-sky-400 tabular-nums">—</p>
-    </div>
-    <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Devuelto</p>
-      <p id="t-entrega" class="text-xl font-bold mt-1 text-telecab-muted tabular-nums">—</p>
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Total recaudado en BOLT</p>
+      <p id="t-bolt" class="text-xl font-bold mt-1 tabular-nums">—</p>
+      <p id="t-bolt-det" class="text-[11px] text-telecab-muted mt-0.5"></p>
     </div>
     <div class="bg-telecab-card border border-telecab-red/40 rounded-2xl p-3">
-      <p class="text-xs text-telecab-muted uppercase tracking-wide">Pendiente total</p>
-      <p class="mt-1 leading-none"><span id="t-pendiente" class="text-xl font-bold text-telecab-red tabular-nums">—</span>
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">Total a recaudar</p>
+      <p class="mt-1 leading-none"><span id="t-arecaudar" class="text-xl font-bold text-telecab-red tabular-nums">—</span>
         <span id="t-condeuda" class="text-xs text-telecab-muted font-semibold"></span></p>
     </div>
   </div>
@@ -100,7 +89,6 @@
       <option value="">Todos</option>
       <option value="dia">Al día</option>
       <option value="favor">A su favor</option>
-      <option value="movimiento">Con movimiento en la quincena</option>
       <option value="sinficha">Sin ficha en la plantilla</option>
       <option value="efectivo">Con el efectivo activado en BOLT</option>
       <option value="efectivofuera">Efectivo activado y ya no trabaja aquí</option>
@@ -151,7 +139,6 @@
   const hoyIso = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
 
-  let Q = null;            // la quincena que se mira
   let D = null;            // el cuadro que devolvió el servidor
   let conductores = null;  // el padrón para los desplegables (se pide una vez)
   let fichaAbierta = null;
@@ -255,16 +242,37 @@
       // que es justo lo que no puede volver a perderse de vista.
       if (pl === 'si' && !f.enPlantilla && !f.sinFicha) return false;
       if (pl === 'no' && (f.enPlantilla || f.sinFicha)) return false;
-      if (est === 'deuda' && !(f.pendiente > 0.005)) return false;
-      if (est === 'dia' && Math.abs(f.pendiente) >= 0.005) return false;
-      if (est === 'favor' && !(f.pendiente < -0.005)) return false;
-      if (est === 'movimiento' && !(f.presencial || f.nomina || f.entrega)) return false;
+      if (est === 'deuda' && !(f.aRecaudar > 0.005)) return false;
+      if (est === 'dia' && Math.abs(f.aRecaudar) >= 0.005) return false;
+      if (est === 'favor' && !(f.aRecaudar < -0.005)) return false;
       if (est === 'sinficha' && !f.sinFicha) return false;
       if (est === 'efectivo' && !f.efectivoActivo) return false;
       if (est === 'efectivofuera' && !(f.efectivoActivo && !f.enPlantilla)) return false;
       return true;
     });
   }
+
+  // ── El ojo de la caja ────────────────────────────────────────────────
+  // Arranca TAPADO mientras nadie diga lo contrario: la pantalla se abre con
+  // un conductor delante más veces de las que se abre a solas, y acordarse de
+  // taparla a tiempo no es un plan.
+  const LLAVE_OJO = 'telecab-caja-oculta';
+  function leerOjo() {
+    try { return localStorage.getItem(LLAVE_OJO) !== '0'; } catch (e) { return true; }
+  }
+  function aplicarOjo(oculta) {
+    const b = $('#c-ojo');
+    b.setAttribute('aria-pressed', oculta ? 'true' : 'false');
+    b.title = oculta ? 'Enseñar el dinero de la caja' : 'Tapar el dinero de la caja';
+    document.querySelectorAll('.tc-secreto').forEach(e =>
+      e.setAttribute('data-oculto', oculta ? '1' : '0'));
+  }
+  $('#c-ojo').addEventListener('click', () => {
+    const oculta = $('#c-ojo').getAttribute('aria-pressed') !== 'true';
+    try { localStorage.setItem(LLAVE_OJO, oculta ? '1' : '0'); } catch (e) { /* sin memoria, pero funciona */ }
+    aplicarOjo(oculta);
+  });
+  aplicarOjo(leerOjo());
 
   // ── El cuadre de caja: lo que hay y lo que falta ─────────────────────
   function pintarCaja() {
@@ -290,7 +298,7 @@
     $('#r-salidas').innerHTML =
       '<div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">' +
         '<div class="px-4 py-2.5 border-b border-telecab-border flex flex-wrap items-center gap-x-3 gap-y-1">' +
-          '<span class="text-xs font-semibold uppercase tracking-wide text-telecab-muted">Salio de la caja en esta quincena</span>' +
+          '<span class="text-xs font-semibold uppercase tracking-wide text-telecab-muted">Lo que ha salido de la caja</span>' +
           SALIDAS_TODAS.map(t => (porTipo[t.codigo]
             ? '<span class="text-[11px] px-2 py-0.5 rounded-lg bg-telecab-card2 text-telecab-text">' +
               esc(t.etiqueta) + ' <b class="tabular-nums">' + eur(porTipo[t.codigo]) + '</b></span>'
@@ -329,19 +337,22 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(v),
       });
-      await cargar(Q);
+      await cargar();
     } catch (e) { fallo(e); }
   }
 
-  // ── El cuadro de la quincena ─────────────────────────────────────────
+  // ── El cuadro ────────────────────────────────────────────────────────
+  // Cinco columnas y ni una más. Lo que se pregunta delante de un conductor es
+  // quién es, si puede seguir cobrando en efectivo, cuánto ha traído, cuánto ha
+  // cobrado y cuánto falta. El desglose por quincenas vive en su ficha, que es
+  // donde se mira cuando alguien discute una cifra.
   function pintarCuadro() {
     const t = D.total;
-    $('#q-etiqueta').textContent = D.quincena.etiqueta;
-    $('#t-deuda').textContent = eur(t.deuda);
-    $('#t-presencial').textContent = eur(t.presencial);
-    $('#t-nomina').textContent = eur(t.nomina);
-    $('#t-entrega').textContent = eur(t.entrega);
-    $('#t-pendiente').textContent = eur(t.pendiente);
+    $('#t-enmano').textContent = eur(t.enMano);
+    $('#t-enmano-det').textContent = t.nomina > 0.005 ? 'y ' + eur(t.nomina) + ' por nómina' : '';
+    $('#t-bolt').textContent = eur(t.bolt);
+    $('#t-bolt-det').textContent = D.corte ? 'Excel hasta el corte · BOLT desde ' + D.corte : '';
+    $('#t-arecaudar').textContent = eur(t.aRecaudar);
     $('#t-condeuda').textContent = t.conDeuda ? t.conDeuda + (t.conDeuda === 1 ? ' persona' : ' personas') : '';
     // Quien puede cobrar en mano y ya no trabaja aquí es un grifo abierto: se
     // avisa arriba, no escondido en una columna.
@@ -357,7 +368,7 @@
 
     if (!D.filas.length) {
       $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' +
-        'Nada en esta quincena: ni cierre de BOLT cargado, ni dinero entregado, ni nadie arrastrando deuda.</p>';
+        'Nada todavía: ni efectivo cargado desde BOLT, ni dinero entregado.</p>';
       $('#f-cuenta').textContent = '';
       return;
     }
@@ -371,12 +382,18 @@
         'Nadie con esos filtros.</p>';
       return;
     }
-    const cab = ['Conductor', 'BOLT', 'Efectivo', 'En mano', 'Nómina', 'Devuelto', 'De antes', 'Pendiente'];
+    const cab = [
+      { t: 'Conductor', al: 'text-left' },
+      { t: 'Efectivo', al: 'text-center', ay: 'Si BOLT le deja cobrar en efectivo ahora mismo' },
+      { t: 'Total en mano', al: 'text-right', ay: 'Lo que ha entregado en ventanilla, menos lo devuelto' },
+      { t: 'Total en BOLT', al: 'text-right', ay: 'Todo el efectivo que ha cobrado en la calle' },
+      { t: 'Total a recaudar', al: 'text-right', ay: 'Lo de BOLT menos lo que ya ha entregado' },
+    ];
     $('#r-cuadro').innerHTML =
       '<div class="overflow-x-auto"><table class="w-full text-sm">' +
       '<thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted border-b border-telecab-border">' +
-        cab.map((c, i) => '<th class="px-3 py-2.5 ' + (i === 0 ? 'text-left' : i === 1 ? 'text-center' : 'text-right') +
-          ' font-semibold whitespace-nowrap"' + (i === 1 ? ' title="Si BOLT le deja cobrar en efectivo ahora mismo"' : '') + '>' + c + '</th>').join('') +
+        cab.map(c => '<th class="px-3 py-2.5 ' + c.al + ' font-semibold whitespace-nowrap"' +
+          (c.ay ? ' title="' + c.ay + '"' : '') + '>' + c.t + '</th>').join('') +
         '<th class="px-3 py-2.5"></th></tr></thead><tbody>' +
       filas.map(f =>
         '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition' +
@@ -404,16 +421,16 @@
                   ? 'Puede cobrar en efectivo' + (f.efectivoAt ? ' · según el padrón de ' + hora(f.efectivoAt) : '')
                   : 'PUEDE COBRAR EN EFECTIVO Y YA NO TRABAJA AQUÍ') + '">€</span>'
               : '<span class="text-telecab-muted/40" title="No puede cobrar en efectivo">—</span>') + '</td>' +
-          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.deuda) +
-            (f.ajuste ? '<span class="ml-1 text-[10px] px-1 rounded bg-telecab-gold/20 text-telecab-gold font-bold" ' +
-              'title="' + esc(f.ajusteMotivo) + '">+' + eur(f.ajuste) + '</span>' : '') + '</td>' +
-          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.presencial, 'text-telecab-green') + '</td>' +
-          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.nomina, 'text-sky-400') + '</td>' +
-          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.entrega, 'text-telecab-muted') + '</td>' +
-          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.arrastre, 'text-telecab-muted') + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.enMano, 'text-telecab-green') +
+            // La nómina no tiene columna, pero SÍ resta de lo que se le pide:
+            // sin esto la resta no cuadraría a ojo y alguien pediría dos veces.
+            (f.nomina > 0.005
+              ? '<div class="text-[10px] text-sky-400" title="Descontado de su nómina">+ ' + eur(f.nomina) + ' nómina</div>'
+              : '') + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.bolt) + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums font-bold ' +
-            (f.pendiente > 0.005 ? 'text-telecab-red' : f.pendiente < -0.005 ? 'text-telecab-green' : '') + '">' +
-            (Math.abs(f.pendiente) < 0.005 ? '<span class="text-telecab-green">al día</span>' : eur(f.pendiente)) + '</td>' +
+            (f.aRecaudar > 0.005 ? 'text-telecab-red' : f.aRecaudar < -0.005 ? 'text-telecab-green' : '') + '">' +
+            (Math.abs(f.aRecaudar) < 0.005 ? '<span class="text-telecab-green">al día</span>' : eur(f.aRecaudar)) + '</td>' +
           '<td class="px-3 py-2.5 text-right"><button data-cobrar class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition whitespace-nowrap">' +
             '<i class="fa-solid fa-receipt mr-1"></i>Cobrar</button></td>' +
         '</tr>').join('') +
@@ -571,28 +588,27 @@
   // ── Recalcular la quincena desde los pedidos en efectivo de BOLT ─────
   async function recalcular() {
     const previo = await Dialogo.confirmar({
-      titulo: 'Recalcular ' + D.quincena.etiqueta,
-      texto: 'Se vuelve a sumar el efectivo de BOLT (los viajes pagados en mano y terminados) y se ' +
-             'congela como la deuda de esta quincena. Lo que esté corregido a mano NO se toca.',
+      titulo: 'Poner al día lo que dice BOLT',
+      texto: 'Se vuelve a sumar el efectivo de BOLT (los viajes pagados en mano y terminados) desde ' +
+             (D.corte || 'el corte') + ' hasta hoy. Lo anterior al corte lo manda el Excel y no se toca. ' +
+             'Lo que esté corregido a mano tampoco.',
       tono: 'pregunta',
     });
     if (!previo) return;
     try {
-      const r = await pedir('/recaudacion/api/cierre/calcular', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Q),
-      });
-      await cargar(Q);
+      const r = await pedir('/recaudacion/api/cierre/calcular', { method: 'POST' });
+      await cargar();
       const lista = (t, arr, tono) => (arr.length
         ? '<p class="mt-2 ' + tono + '">' + t + ':</p><ul class="mt-1 text-xs space-y-0.5 max-h-40 overflow-auto">' +
           arr.slice(0, 40).map(x => '<li>· ' + esc(x.conductor) + ' — ' +
-            (x.antes != null ? eur(x.antes) + ' → ' : '') + eur(x.importe) + '</li>').join('') +
+            (x.antes != null ? eur(x.antes) + ' → ' : '') + eur(x.importe) +
+            (x.quincena ? ' <span class="text-telecab-muted">(' + esc(x.quincena) + ')</span>' : '') + '</li>').join('') +
           (arr.length > 40 ? '<li>· … y ' + (arr.length - 40) + ' más</li>' : '') + '</ul>'
         : '');
       await Dialogo.aviso({
         titulo: r.conductores + (r.conductores === 1 ? ' conductor con efectivo' : ' conductores con efectivo'),
         tono: r.cambios.length || r.respetados.length ? 'aviso' : 'info',
-        html: '<p>Suman <b>' + eur(r.total) + '</b> en ' + esc(r.quincena.etiqueta) + '.</p>' +
+        html: '<p>Suman <b>' + eur(r.total) + '</b> desde ' + esc(r.desde) + '.</p>' +
           lista('Nuevos', r.nuevos, 'text-telecab-muted') +
           lista('CAMBIARON respecto a lo que había', r.cambios, 'text-telecab-warn') +
           lista('Corregidos a mano, respetados', r.respetados, 'text-telecab-muted'),
@@ -602,15 +618,23 @@
 
   // ── Cargar el cierre de BOLT de la quincena ──────────────────────────
   async function cargarCierre() {
-    const v = await Dialogo.formulario('Cierre de BOLT · ' + D.quincena.etiqueta, [
+    // La pantalla ya no navega por quincenas, pero el Excel del que sale esto
+    // SÍ viene por quincenas y hay que decir a cuál pertenece: si no, no se
+    // sabría a qué periodo pisar.
+    const v = await Dialogo.formulario('Cargar un cierre desde el Excel', [
+      { id: 'periodo', etiqueta: 'Periodo (aaaa-mm-Q)', tipo: 'texto', obligatorio: true,
+        ayuda: 'Q1 es del 1 al 15 y Q2 del 16 a fin de mes. Por ejemplo 2026-07-2.' },
       { id: 'texto', etiqueta: 'Pega aquí las dos columnas', tipo: 'texto-largo', obligatorio: true,
-        ayuda: 'Una línea por conductor: el nombre y el efectivo de la quincena. Tal cual sale del Excel.' },
-    ], { nota: 'Se PISA lo que hubiera de esta quincena, no se suma. Los nombres que no se reconozcan se dicen uno a uno.' });
+        ayuda: 'Una línea por conductor: el nombre y el efectivo de esa quincena. Tal cual sale del Excel.' },
+    ], { nota: 'Se PISA lo que hubiera de ese periodo, no se suma. Los nombres que no se reconozcan se dicen uno a uno.' });
     if (!v || !v.texto) return;
+    const m = String(v.periodo || '').trim().match(/^(\d{4})[-\/](\d{1,2})[-\/]?Q?([12])$/i);
+    if (!m) return Dialogo.aviso({ titulo: 'El periodo no vale', tono: 'aviso',
+      html: '<p>Se escribe <code>aaaa-mm-Q</code>, por ejemplo <code>2026-07-2</code>.</p>' });
     try {
       const r = await pedir('/recaudacion/api/cierre/importar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...Q, texto: v.texto }),
+        body: JSON.stringify({ anio: +m[1], mes: +m[2], quincena: +m[3], texto: v.texto }),
       });
       await cargar();
       await Dialogo.aviso({
@@ -717,23 +741,20 @@
   }
 
   // ── Carga ────────────────────────────────────────────────────────────
-  const url = q => '/recaudacion/api/cuadro?anio=' + q.anio + '&mes=' + q.mes + '&quincena=' + q.quincena;
-
-  async function cargar(q) {
+  async function cargar() {
     try {
-      D = await pedir(q ? url(q) : '/recaudacion/api/cuadro');
-      Q = { anio: D.quincena.anio, mes: D.quincena.mes, quincena: D.quincena.quincena };
+      D = await pedir('/recaudacion/api/cuadro');
       pintarCaja();
       pintarCuadro();
       pintarSalidas();
+      // Las cifras se repintan enteras en cada carga, así que el ojo tiene que
+      // volver a taparlas: si no, un "Recargar" las enseñaría sin avisar.
+      aplicarOjo($('#c-ojo').getAttribute('aria-pressed') === 'true');
     } catch (e) {
       $('#r-cuadro').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-red">' + esc(e.message) + '</p>';
     }
   }
 
-  $('#q-antes').addEventListener('click', () => cargar(D.anterior));
-  $('#q-luego').addEventListener('click', () => cargar(D.siguiente));
-  $('#q-hoy').addEventListener('click', () => cargar(D.hoy));
   $('#r-nuevo').addEventListener('click', () => recibo(null));
   ['#f-busca', '#f-estado', '#f-plantilla'].forEach(s =>
     $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
