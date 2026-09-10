@@ -89,6 +89,20 @@ router.get('/api/ficha/:id', async (req, res) => {
   }
 });
 
+// LA HOJA DE UNA PERSONA: calificación, mes, papeles, conducción y lo hablado.
+//
+// Va aparte de `/api/ficha` a propósito: aquella es la ficha administrativa —con
+// sus historiales y sus acciones— y esta es la de un vistazo. Se piden las dos,
+// pero la segunda solo cuando alguien abre a alguien, y no en cada listado.
+router.get('/api/ficha360/:id', async (req, res) => {
+  try {
+    res.json({ status: 'ok', ...(await require('../services/repo/ficha360').leer(req.params.id)) });
+  } catch (error) {
+    console.error('❌ [PLANTILLA] /api/ficha360:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
 // Cuentas de BOLT sin dueño: es la lista que se ofrece para enlazar a mano.
 router.get('/api/bolt-libres', async (req, res) => {
   try { res.json({ cuentas: await con.boltLibres(req.query.q) }); }

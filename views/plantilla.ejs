@@ -521,13 +521,20 @@
     return CAMPOS_FICHA;
   }
 
-  async function accionDatos(d) {
+  /**
+   * Editar los datos de la ficha. Con `soloGrupo` se abre solo ese apartado
+   * —"Dirección", "Contacto"—, que es como se edita desde la hoja: se pincha
+   * en el lápiz del bloque que se está mirando y salen sus campos, no los treinta.
+   */
+  async function accionDatos(d, soloGrupo) {
     let meta;
     try { meta = await camposFicha(); } catch (e) { return alert(e.message); }
 
     const editables = new Set(meta.editables || []);
     const campos = Object.entries(meta.campos || {})
-      .filter(([k]) => editables.has(k))
+      // '*' = todos los apartados. Lo usa el lápiz de "Datos personales", que
+      // enseña campos de identidad, dirección, contacto y Seguridad Social.
+      .filter(([k, def]) => editables.has(k) && (!soloGrupo || soloGrupo === '*' || def.grupo === soloGrupo))
       .map(([k, def]) => ({
         id: k,
         etiqueta: def.etiqueta || k,
@@ -539,9 +546,14 @@
         valor: def.tipo === 'fecha' ? fecha(d[k]) : (d[k] == null ? '' : String(d[k])),
       }));
 
-    if (!campos.length) return alert('Tu rol no puede editar ningún campo de la ficha.');
+    if (!campos.length) {
+      return alert(soloGrupo && soloGrupo !== '*'
+        ? `Tu rol no puede editar los campos de "${soloGrupo}".`
+        : 'Tu rol no puede editar ningún campo de la ficha.');
+    }
 
-    const v = await pedirDatos(`Datos de ${d.nombre_completo}`, campos, {
+    const v = await pedirDatos(
+      `${soloGrupo && soloGrupo !== '*' ? soloGrupo : 'Datos'} de ${d.nombre_completo}`, campos, {
       ancho: 'max-w-3xl', columnas: 2,
       nota: SOLO_OPERATIVO
         ? 'Tu rol solo edita lo operativo. El resto lo lleva RRHH.'
@@ -871,14 +883,44 @@
 
       bloques: [
         {
-          // Lo primero es lo que hay que arreglar. Si no falta nada, no aparece.
-          titulo: 'Falta por completar', icono: 'fa-triangle-exclamation',
-          visible: d => (d.faltan || []).length > 0,
+          // LA HOJA DE LA PERSONA, lo primero y sin título: es la ficha entera de
+          // un vistazo —calificación, mes, papeles, conducción y lo hablado— y
+          // debajo quedan los bloques que tienen ACCIONES (documentos, teléfonos,
+          // cuentas) y los historiales, que son otra cosa: el detalle de auditoría.
+          titulo: null,
           pinta: (d, hueco) => {
             hueco.className = 'p-5';
-            hueco.innerHTML = `<ul class="text-sm space-y-1">${d.faltan.map(x =>
-              `<li class="flex items-center gap-2 text-telecab-warn">
-                 <i class="fa-solid fa-circle-exclamation text-xs"></i>${esc(x)}</li>`).join('')}</ul>`;
+            hueco.innerHTML = '<p class="text-sm text-telecab-muted">Cargando la ficha…</p>';
+            api(`/plantilla/api/ficha360/${d.id}`).then(f => {
+              FichaConductor.pintar(hueco, f, {
+                persona: d,
+                nombre: d.nombre_completo,
+                subtitulo: [
+                  d.dni_nie,
+                  d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',
+                  d.jornada_horas ? d.jornada_horas + ' h/semana' : null,
+                  d.alta ? 'alta ' + fecha(d.alta) : null,
+                  d.bolt_id ? 'BOLT ' + d.bolt_id : 'sin cuenta de BOLT',
+                ].filter(Boolean).join(' · '),
+                estado: d.situacion_etiqueta,
+                estadoClase: {
+                  green: 'border-telecab-green/40 text-telecab-green bg-telecab-green/10',
+                  warn: 'border-telecab-warn/40 text-telecab-warn bg-telecab-warn/10',
+                  red: 'border-telecab-red/40 text-telecab-red bg-telecab-red/10',
+                }[tonoSituacion(d.situacion)] || 'border-telecab-border text-telecab-muted',
+                fecha,
+                // LA HOJA ES EDITABLE: cada apartado con su lápiz, y el lápiz abre
+                // los campos DE ESE apartado, no los treinta de la ficha. Lo que se
+                // puede tocar lo decide el rol, igual que antes.
+                puedeEditar: !SOLO_OPERATIVO,
+                onEditar: grupo => accionDatos(d, grupo),
+                onSituacion: d.empleo_vigente ? () => accionSituacion(d) : null,
+                onTurno: () => accionTurno(d),
+                onLibranzas: () => accionLibranza(d),
+              });
+            }).catch(e => {
+              hueco.innerHTML = `<p class="text-sm text-telecab-red">No se pudo cargar la ficha: ${esc(e.message)}</p>`;
+            });
           },
         },
         {
@@ -939,44 +981,6 @@
               hueco.innerHTML = `<p class="text-sm text-telecab-red">${esc(e.message)}</p>`;
             });
           },
-        },
-        {
-          titulo: 'Situación hoy', icono: 'fa-user-clock',
-          campos: [
-            { etiqueta: 'Situación', html: true,
-              valor: d => etiqueta(d.situacion_etiqueta, tonoSituacion(d.situacion)) },
-            { etiqueta: 'Desde', valor: d => fecha(d.situacion_desde) },
-            { etiqueta: 'Vuelta prevista', valor: d => fecha(d.hasta_previsto),
-              visible: d => !!d.hasta_previsto },
-            { etiqueta: 'Turno', valor: d => d.turno },
-            { etiqueta: 'Libra', valor: d => d.libranzas },
-            { etiqueta: 'Coche', valor: d => d.matricula ? `${d.matricula}${d.zona ? ' · ' + d.zona : ''}` : '' },
-            { etiqueta: 'Plazas abiertas', clase: 'text-telecab-warn font-semibold',
-              visible: d => d.plazas_abiertas > 1,
-              valor: d => `${d.plazas_abiertas} a la vez` },
-            { etiqueta: 'Jornada', visible: d => !!d.jornada_horas,
-              valor: d => d.jornada_horas + ' horas' },
-            { etiqueta: 'Causó baja el', visible: d => d.empleo_vigente === false,
-              valor: d => fecha(d.fecha_baja) },
-            { etiqueta: 'Motivo de la baja', ancho: 'sm:col-span-2',
-              visible: d => d.empleo_vigente === false && !!d.motivo_baja,
-              valor: d => d.motivo_baja },
-          ],
-        },
-        {
-          titulo: 'Datos personales', icono: 'fa-id-card',
-          campos: [
-            { etiqueta: 'Nombre', valor: d => d.nombre },
-            { etiqueta: 'Apellidos', valor: d => d.apellidos },
-            { etiqueta: 'En la Seguridad Social', valor: d => d.nombre_ss },
-            { etiqueta: d => d.dni_tipo || 'DNI', valor: d => d.dni_nie },
-            { etiqueta: 'NAF', valor: d => d.naf },
-            { etiqueta: 'Legajo', valor: d => d.legajo },
-            { etiqueta: 'Nacimiento', valor: d => fecha(d.fecha_nacimiento) },
-            { etiqueta: 'Nacionalidad', valor: d => d.nacionalidad },
-            { etiqueta: 'Correo', valor: d => d.email },
-            { etiqueta: 'Dirección', valor: d => d.direccion, ancho: 'sm:col-span-2 lg:col-span-3' },
-          ],
         },
         {
           titulo: 'Teléfonos', icono: 'fa-phone',
