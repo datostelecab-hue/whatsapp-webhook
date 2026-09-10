@@ -467,10 +467,25 @@ async function ficha(conductorId) {
 /** Las fechas de PostgreSQL a "AAAA-MM-DD" por sus componentes locales. */
 function diaIso(v) {
   if (!v) return null;
-  const d = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
   const dd = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}`;
+  if (v instanceof Date) {
+    return Number.isNaN(v.getTime()) ? null
+      : `${v.getFullYear()}-${dd(v.getMonth() + 1)}-${dd(v.getDate())}`;
+  }
+  // Una cadena se lee POR COMPONENTES, nunca con new Date(). Dos motivos:
+  //   · "10/09/2026" es el 10 de septiembre aquí y el 9 de octubre para
+  //     new Date(), que la lee a la inglesa. El calendario de la casa escribe
+  //     justo en ese formato, así que sin esto un recibo del día 10 entraría
+  //     con fecha de octubre y caería en otra quincena.
+  //   · new Date('2026-09-10') es medianoche UTC, que en Madrid es el día 9.
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);          // dd/mm/aaaa
+  if (m) return `${m[3]}-${dd(+m[2])}-${dd(+m[1])}`;
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);                             // aaaa-mm-dd
+  if (m) return `${m[1]}-${dd(+m[2])}-${dd(+m[3])}`;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null
+    : `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}`;
 }
 
 /** Los conductores a los que se les puede cobrar, para el desplegable. */

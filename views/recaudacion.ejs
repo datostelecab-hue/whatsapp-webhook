@@ -148,6 +148,10 @@
     { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
   const hoyIso = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
+  // El calendario de la casa (input.js-fecha, en layout-gestion) escribe y lee
+  // en dd/mm/aaaa. El servidor ya entiende los dos formatos.
+  const hoyDdmm = () => { const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); };
 
   let D = null;            // el cuadro que devolvió el servidor
   let conductores = null;  // el padrón para los desplegables (se pide una vez)
@@ -486,7 +490,8 @@
             '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Recibí de' +
               '<div class="mt-1">' + comboConductor('data-cond') + '</div></div>' +
             '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Fecha' +
-              '<input data-fecha type="date" value="' + hoyIso() + '" max="' + hoyIso() + '" class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text"></label>' +
+              '<input data-fecha class="js-fecha mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text" ' +
+                'value="' + hoyDdmm() + '" data-max="today" readonly placeholder="dd/mm/aaaa"></label>' +
             '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Importe' +
               '<p data-total class="mt-1 px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-gold/40 text-lg font-bold text-telecab-gold tabular-nums leading-tight">0,00 €</p></div>' +
           '</div>' +

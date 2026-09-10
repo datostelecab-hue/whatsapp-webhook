@@ -59,6 +59,24 @@ const ESTADOS = [
 const ent = v => (v == null || v === '' ? null : Math.round(Number(v)));
 const txt = v => (v == null ? null : String(v).trim() || null);
 
+/**
+ * Una fecha escrita como sea → 'AAAA-MM-DD', leída POR COMPONENTES.
+ *
+ * Nunca con new Date(cadena): "10/09/2026" es el 10 de septiembre aquí y el 9
+ * de octubre para JavaScript, que la lee a la inglesa. Y new Date('2026-09-10')
+ * es medianoche UTC, que en Madrid todavía es el día 9.
+ */
+function aIso(v) {
+  const s = txt(v);
+  if (!s) return null;
+  const dd = n => String(n).padStart(2, '0');
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${dd(+m[2])}-${dd(+m[1])}`;
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${dd(+m[2])}-${dd(+m[3])}`;
+  return null;
+}
+
 /** Euros escritos como sea ("1.234,50", "1234.5") → céntimos. */
 function aCentimos(v) {
   if (v == null || v === '') return null;
@@ -267,10 +285,10 @@ async function registrar(datos = {}, { usuarioId } = {}) {
   if (!CODIGOS.includes(tipo)) throw new Error(`Tipo de mantenimiento desconocido: ${tipo}`);
 
   const km = ent(datos.km);
-  const fecha = txt(datos.fecha);
+  const fecha = aIso(datos.fecha);
   if (km == null && !fecha) throw new Error('Hace falta al menos el km o la fecha');
   if (km != null && (km < 0 || km > 2000000)) throw new Error('Ese kilometraje no puede ser');
-  if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error('La fecha va en formato aaaa-mm-dd');
+  if (txt(datos.fecha) && !fecha) throw new Error('Esa fecha no se entiende: va en dd/mm/aaaa');
 
   const [v] = (await db.consulta(
     `SELECT v.matricula, o.km AS odometro

@@ -153,7 +153,8 @@
         </div>
         <div>
           <label class="block text-xs text-telecab-muted mb-1">Fecha</label>
-          <input id="mm-fecha" type="date" class="w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text">
+          <input id="mm-fecha" class="js-fecha w-full px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-text"
+                 data-max="today" readonly placeholder="dd/mm/aaaa">
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3">
@@ -425,7 +426,9 @@
       '<option value="' + x.id + '">' + esc(x.matricula) + (x.vehiculo ? ' — ' + esc(x.vehiculo) : '') + '</option>').join('');
     if (f) sel.value = f.id;
     $('#mm-tipo').value = 'revision';
-    $('#mm-fecha').value = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+    // El calendario de la casa escribe dd/mm/aaaa; el servidor lo entiende.
+    $('#mm-fecha').value = new Date().toLocaleDateString('es-ES',
+      { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric' });
     $('#mm-km').value = '';
     $('#mm-coste').value = '';
     $('#mm-taller').value = '';
