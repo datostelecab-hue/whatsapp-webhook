@@ -179,7 +179,14 @@ async function datosConductor(driverUuid) {
  * plantilla ni un segundo tono: si alguien no hace caso, lo que cambia no es el
  * mensaje sino el número de veces que aparece en la lista.
  */
-async function enviar(telefono, nombre, matricula) {
+async function enviar(telefono, nombre, matricula, sinAvisar) {
+  // RELLENO HACIA ATRÁS: se registra el exceso, no se manda el WhatsApp.
+  //
+  // Un aviso por algo que pasó hace diez días no avisa de nada —el conductor ya
+  // no se acuerda de ese trayecto— y además llegarían treinta de golpe. Pero el
+  // exceso sí tiene que quedar contado: es lo que alimenta la calificación, y
+  // para eso da igual que se avisara o no. Un exceso es un exceso.
+  if (sinAvisar) return { ok: true, simulado: true, relleno: true };
   if (!esLive()) return { ok: true, simulado: true };
   if (!telefono) return { ok: false, error: 'sin-telefono' };
   return whatsapp.enviarPlantillaPosicional(telefono, PLANTILLA_ADVERTENCIA, [nombre, matricula]);
@@ -271,7 +278,7 @@ async function procesar(opciones = {}) {
       }
 
       // ── Se avisa. Siempre. ────────────────────────────────────────────────
-      const env = await enviar(telefono, nombre, a.matricula);
+      const env = await enviar(telefono, nombre, a.matricula, opciones.sinAvisar);
       const estado = env.ok ? (env.simulado ? EST.SIMULADO : EST.AVISADO) : EST.ERROR;
       if (estado === EST.ERROR) res.errores++; else res.avisos++;
       await repo.registrar({ ...base, ...quien, estado,
@@ -279,6 +286,8 @@ async function procesar(opciones = {}) {
         envioId: env.id || null,
         enviadoAt: estado === EST.AVISADO ? new Date().toISOString() : null,
         nota: estado === EST.ERROR ? (env.error || 'fallo de envío')
+          : env.relleno
+            ? `Relleno hacia atrás: se cuenta, no se avisó (${r.dentro ? 'estaba en la app' : 'se desconectó ' + humanizar(r.ventanaSeg) + ' antes'})`
           : r.dentro
             ? `Estaba en la app en ese momento (${r.situacion || 'en ruta'})`
             : `Se desconectó de la app ${humanizar(r.ventanaSeg)} antes del exceso` });
