@@ -74,7 +74,6 @@ const CATALOGO = [
   { grupo: 'Operaciones', items: [
     { clave: '/operaciones', etiqueta: 'Alertas Mapon', hijos: [
       { clave: '/operaciones/auditoria', etiqueta: 'Auditoría flota' },
-      { clave: '/operaciones/vivo',      etiqueta: 'Auditoría en vivo' },
     ] },
     { clave: '/sanciones',  etiqueta: 'Sanciones velocidad' },
     { clave: '/callcenter', etiqueta: 'Call Center' },

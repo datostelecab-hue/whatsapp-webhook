@@ -42,7 +42,6 @@ const BRAZOS = [
 // Esta lista solo puede encoger.
 const PERMITIDOS = {
   'services/auditoriaFlota.js':  'Auditoría de KM: pide rangos históricos que la ingesta no guarda todavía',
-  'services/auditoriaVivo.js':   'Auditoría en vivo: necesita el estado al segundo, no cada 5 minutos',
   'services/boltHorasCore.js':   'Tubería de horas: su propio ciclo incremental cada 10 minutos',
   'services/boltResumen.js':     'Resumen de BOLT: se migra con la tubería de horas',
   'services/boltHistorico.js':   'Relleno de meses pasados: se lanza a mano y pide hasta 16 meses atrás, ' +

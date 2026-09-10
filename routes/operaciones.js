@@ -3,7 +3,6 @@ const router = express.Router();
 const ExcelJS = require('exceljs');
 const { TIPOS, UMBRAL, MAX_DIAS, leerAlertas, listarSetups } = require('../services/mapon');
 const auditoria = require('../services/auditoriaFlota');
-const vivo = require('../services/auditoriaVivo');
 const { cargarAuditoria } = auditoria;
 
 router.get('/', (req, res) => {
@@ -87,46 +86,6 @@ router.get('/auditoria/procesar/detener', pararAuditoria);
 // ── Diagnóstico del fichaje: ¿deja Mapon crear/asignar conductores con esta clave? ──
 // Solo lectura por defecto. Con ?crear=NOMBRE intenta dar de alta ese conductor y
 // devuelve la respuesta CRUDA de Mapon, que es lo único que dice el motivo real.
-// ── Auditoría EN VIVO: coches planificados que ruedan estando en descanso ──
-router.get('/vivo', (req, res) => {
-  res.render('auditoriaVivo', {
-    titulo: 'Auditoría en vivo',
-    seccion: 'vivo',
-    layout: 'layout-gestion'
-  });
-});
-
-router.get('/api/vivo', (req, res) => res.json({ status: 'ok', ...vivo.estado() }));
-
-// Fuerza una vuelta sin esperar al temporizador.
-router.post('/api/vivo/refrescar', async (req, res) => {
-  try { await vivo.pasada(); res.json({ status: 'ok', ...vivo.estado() }); }
-  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
-});
-
-// Justificar cierra el caso dejando dicho por qué (el motivo es obligatorio).
-router.post('/api/vivo/justificar', async (req, res) => {
-  // El usuario de la sesión va en req.usuario (lo deja sesion.identificar), no en req.session.
-  const quien = req.usuario ? (req.usuario.nombre || req.usuario.email || '') : '';
-  const b = req.body || {};
-  const r = await vivo.justificar(b.clave, b.motivo, quien);
-  if (!r.ok) return res.status(400).json({ status: 'error', msg: r.msg });
-  res.json({ status: 'ok', ...vivo.estado() });
-});
-
-// Relee el expediente de la hoja y reemplaza lo que hay en memoria. Es lo que
-// hay que llamar si alguien edita o borra filas a mano en AUDITORIA_VIVO.
-router.post('/api/vivo/recargar', async (req, res) => {
-  try { res.json({ status: 'ok', ...(await require('../services/auditoriaVivo').recargarExpediente()) }); }
-  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
-});
-
-// Borra el expediente entero (memoria + hoja). Sin vuelta atrás.
-router.post('/api/vivo/vaciar', async (req, res) => {
-  try { res.json({ status: 'ok', ...(await require('../services/auditoriaVivo').vaciarExpediente()) }); }
-  catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
-});
-
 router.get('/fichaje/diagnostico', async (req, res) => {
   const mapon = require('../services/mapon');
   const q = req.query || {};
