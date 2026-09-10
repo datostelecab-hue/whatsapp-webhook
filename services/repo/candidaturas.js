@@ -28,7 +28,10 @@ const CAMPOS = {
   carne_vtc:         { etiqueta: 'Carné VTC', tipo: 'booleano' },
   prueba_conduccion: { etiqueta: 'Prueba de conducción', tipo: 'booleano' },
   apto_medico:       { etiqueta: 'Apto médico', tipo: 'booleano' },
-  vacante_ref:       { etiqueta: 'Vacante' },
+  // La vacante que este candidato viene a cubrir. `vacante_ref` era el id de la
+  // hoja y se queda por lo escrito; la verdad es la foránea.
+  vacante_id:        { etiqueta: 'Vacante', tipo: 'numero' },
+  vacante_ref:       { etiqueta: 'Vacante (referencia vieja)' },
   turno_id:          { etiqueta: 'Turno', tipo: 'numero' },
   base_zona_id:      { etiqueta: 'Zona', tipo: 'numero' },
   inicio_previsto:   { etiqueta: 'Fecha de inicio', tipo: 'fecha' },
@@ -271,6 +274,22 @@ function despiezar(datos) {
  * a `conductor`, los del proceso a `candidatura`. Sin él volveríamos a tener
  * dos copias del nombre y del DNI, que es de lo que veníamos huyendo.
  */
+/**
+ * El valor tal y como va a la columna. Vaciar es vaciar: `''`, `null` y
+ * `undefined` son lo mismo.
+ *
+ * `Number(null)` es 0, y ese 0 se escribía en la columna. Quitarle la vacante a
+ * una ficha intentaba apuntar a la vacante 0 —que no existe— y reventaba la
+ * clave ajena; quitarle el turno o la zona habría hecho lo mismo, y quitarle la
+ * jornada habría dejado a alguien con un contrato de 0 horas sin que se viera.
+ */
+function valorDe(def, v) {
+  if (v === '' || v === null || v === undefined) return null;
+  if ((def || {}).tipo !== 'numero') return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function guardar(id, datos = {}, quien = {}) {
   const c = (await db.consulta('SELECT conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
   if (!c) throw new Error('No existe esa candidatura');
@@ -292,12 +311,20 @@ async function guardar(id, datos = {}, quien = {}) {
     const cols = [], vals = [];
     for (const [k, v] of Object.entries(deProceso)) {
       cols.push(`${k} = $${cols.length + 1}`);
-      vals.push(v === '' ? null : (CAMPOS[k].tipo === 'numero' ? Number(v) : v));
+      vals.push(valorDe(CAMPOS[k], v));
     }
     vals.push(Number(id));
     await db.consulta(
       `UPDATE candidatura SET ${cols.join(', ')}, actualizado_at = now() WHERE id = $${vals.length}`, vals);
   }
+
+  // LA VACANTE SE RESERVA AL ENGANCHARLA, Y SE SUELTA AL SOLTARLA.
+  //
+  // Una vacante con candidato deja de ofrecerse: si no, dos reclutadores
+  // trabajan la misma plaza y el segundo se entera el día del alta. Y si a este
+  // candidato se le quita, vuelve a estar disponible — a esa vacante nunca
+  // llegó a entrar nadie.
+  if (deProceso.vacante_id !== undefined) await engancharVacante(Number(id), deProceso.vacante_id, quien);
 
   // El teléfono no es un campo de la ficha: tiene su propia tabla y su propia
   // vigencia, así que va por su función.
@@ -321,6 +348,53 @@ async function guardar(id, datos = {}, quien = {}) {
   }
 
   return { id: Number(id), conductorId: c.conductor_id };
+}
+
+/**
+ * Engancha (o suelta) la vacante de una candidatura y mueve su estado.
+ *
+ * Se llama al guardar la ficha y al cerrarla. Nunca lanza por culpa de la
+ * vacante: que una reserva no se pueda mover no puede impedir guardar los datos
+ * de una persona, pero sí tiene que quedar dicho en el registro.
+ */
+async function engancharVacante(id, vacanteId, quien = {}) {
+  const vac = require('./vacantes');
+  try {
+    const k = (await db.consulta(
+      'SELECT vacante_id, vacante_ref FROM candidatura WHERE id = $1', [Number(id)])).rows[0] || {};
+    const nueva = vacanteId ? String(vacanteId) : null;
+
+    // La que tenía antes, si es otra, vuelve a estar disponible.
+    if (k.vacante_ref && (!nueva || String(k.vacante_id) !== nueva)) {
+      await vac.cambiarEstado(k.vacante_ref, 'abierta', { usuarioId: quien.usuarioId });
+    }
+    if (!nueva) {
+      await db.consulta('UPDATE candidatura SET vacante_ref = NULL WHERE id = $1', [Number(id)]);
+      return { vacante: null };
+    }
+    const v = await vac.ficha(nueva);
+    if (!v) throw new Error(`No existe la vacante ${nueva}`);
+    // El código se guarda al lado: es lo que se lee en la ficha y lo que
+    // entienden los módulos que todavía hablan el idioma de la hoja.
+    await db.consulta('UPDATE candidatura SET vacante_ref = $2 WHERE id = $1', [Number(id), v.codigo]);
+    await vac.cambiarEstado(v.id, 'proceso', { usuarioId: quien.usuarioId });
+    return { vacante: v.codigo, puesto: v.puesto };
+  } catch (e) {
+    console.error(`⚠️  [CANDIDATURA ${id}] vacante ${vacanteId}: ${e.message}`);
+    return { vacante: null, aviso: e.message };
+  }
+}
+
+/** Suelta la vacante de una candidatura que se cierra: nadie llegó a ocuparla. */
+async function soltarVacante(id, quien = {}) {
+  const k = (await db.consulta(
+    'SELECT vacante_ref FROM candidatura WHERE id = $1', [Number(id)])).rows[0] || {};
+  if (!k.vacante_ref) return;
+  try {
+    await require('./vacantes').cambiarEstado(k.vacante_ref, 'abierta', { usuarioId: quien.usuarioId });
+  } catch (e) {
+    console.error(`⚠️  [CANDIDATURA ${id}] no se pudo liberar ${k.vacante_ref}: ${e.message}`);
+  }
 }
 
 /**
@@ -358,6 +432,11 @@ async function cambiarEstado(id, estado, { motivo, motivoCodigo, usuarioId } = {
             actualizado_at = now()
       WHERE id = $4`,
     [estado, motivo || null, e.es_salida, Number(id), limpia, motivoCodigo || null]);
+
+  // Se cae del proceso: su vacante vuelve a ofrecerse. Sin esto, un descarte
+  // dejaba la plaza bloqueada para siempre y había que acordarse de reabrirla a
+  // mano —o sea, nunca—.
+  if (e.es_salida) await soltarVacante(id, { usuarioId });
 
   await audit.registrar({
     tabla: 'candidatura', id: Number(id), usuarioId,
@@ -510,9 +589,49 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
     'SELECT situacion_bolt, telefono_bolt FROM v_conductor_alta_bolt WHERE conductor_id = $1',
     [c.conductor_id]);
 
+  // LA VACANTE TIENE QUE LLEGAR AL PLANIFICADOR.
+  //
+  // Contratar a alguien para una vacante y que Tráfico no se entere es el
+  // agujero que quedaba: la alerta de incorporación solo nacía por la vía de la
+  // ETT, así que a quien venía por Selección se le abría el contrato y su plaza
+  // seguía figurando vacía. Alguien tenía que acordarse de colocarlo, mirando
+  // una pantalla distinta.
+  //
+  // Ahora nace aquí también, con la foto de las plazas prometidas y la fecha de
+  // alta: en el planificador sale "entra Fulano el día X" antes de que llegue, y
+  // si era un RECAMBIO, sale al lado de quien se va.
+  let incorporacion = null, avisoVacante = null;
+  const vref = (await db.consulta('SELECT vacante_ref FROM candidatura WHERE id = $1', [Number(id)]))
+    .rows.map(x => x.vacante_ref)[0];
+  if (vref) {
+    try {
+      incorporacion = await require('./incorporaciones').crear({
+        conductorId: c.conductor_id, vacanteId: vref, origen: 'seleccion',
+        desde: contrato.alta, usuarioId: quien.usuarioId,
+      });
+      console.log(`🔔 [CANDIDATURA] Incorporación ${incorporacion.id} · ${c.quien} → ${vref} ` +
+        `(${incorporacion.plazas} plaza(s), desde ${contrato.alta})`);
+    } catch (e) {
+      avisoVacante = `El alta salió bien, pero la vacante ${vref} no se pudo reservar: ${e.message}`;
+      console.error(`⚠️  [CANDIDATURA] ${avisoVacante}`);
+    }
+  }
+
   return {
     id: Number(id), conductorId: c.conductor_id, quien: c.quien,
     bolt: s.rows[0] || null,
+    // Dónde y cuándo cae en el planificador. Es lo que Selección tiene que poder
+    // contestar sin llamar a Tráfico.
+    vacante: vref || null,
+    incorporacion: incorporacion ? {
+      id: incorporacion.id, plazas: incorporacion.plazas,
+      puesto: (incorporacion.detalle || {}).puesto || '',
+      matriculas: ((incorporacion.detalle || {}).plazas || []).map(x => x.matricula).join(' · '),
+      libranzas: (incorporacion.detalle || {}).libranzas || '',
+      sustituye: (incorporacion.detalle || {}).sustituye || '',
+      desde: contrato.alta,
+    } : null,
+    avisoVacante,
     // Resultado del auto-enlace: si se enganchó, en qué estado está la cuenta, y los
     // avisos (p.ej. "está desactivada, reactívala en BOLT").
     boltEnlazada, boltEstado, boltAvisos,

@@ -1,56 +1,85 @@
 // ============================================================
 // INCORPORACIONES — la alerta que no se va hasta aceptarla o rechazarla
 // ============================================================
-// Cuando alguien se da de alta CON UNA VACANTE elegida (alta rápida o
-// contratación de la ETT), nace aquí una alerta 'pendiente' con la FOTO de la
-// vacante (puesto, turno, matrículas y días). Tráfico la ve en el planificador
-// y en Pendientes, y solo hay dos salidas:
+// Cuando alguien se da de alta CON UNA VACANTE —desde Selección, desde la ETT o
+// desde el alta rápida—, nace aquí una alerta 'pendiente' con la FOTO de la
+// vacante: qué plazas se le prometieron, con qué coche, qué días y desde cuándo.
+// Tráfico la ve en el planificador y en Pendientes, y solo hay dos salidas:
 //
-//   · ACEPTAR  → auto-asignación a las plazas de la vacante en el planificador
-//                de PostgreSQL (plan.guardar, todo o nada: si una matrícula no
-//                tiene plaza libre, no se escribe nada y la alerta se queda).
-//                La vacante de la hoja se CIERRA.
+//   · ACEPTAR  → se coloca en las plazas prometidas (todo o nada). La vacante
+//                queda CUBIERTA.
 //   · RECHAZAR → el conductor queda en el banquillo para colocarlo a mano y la
-//                vacante VUELVE a Abierta (nunca se colocó a nadie).
+//                vacante vuelve a estar ABIERTA (a esa vacante nunca entró nadie).
 //
-// Esto sustituye al módulo /incorporaciones, que escribía en el planificador de
-// HOJAS (muerto desde la migración) y cuya alerta se podía perder de vista.
+// ── Qué cambió al mover la vacante a PostgreSQL ─────────────────────────────
+// Antes la vacante guardaba MATRÍCULAS, así que aceptar significaba salir a
+// buscar una plaza libre de ese coche y turno. Si entre la promesa y el alta
+// alguien la ocupaba, el alta fallaba en el último paso —con la persona ya
+// contratada— y no había forma de saber que iba a pasar.
+//
+// Ahora la vacante apunta a la PLAZA desde el primer momento, y eso además hace
+// posible el RECAMBIO: la plaza puede estar ocupada por quien se va. Colocar
+// cierra su asignación la víspera (lo hace `colocar`, no esto), así que el
+// relevo queda encadenado sin un solo día de coche parado.
 
 const db = require('../db');
 const plan = require('./planificador');
+const vacantes = require('./vacantes');
 
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-const norm = s => String(s == null ? '' : s).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const fecha = d => (ISO.test(String(d || '')) ? String(d) : null);
 
 /**
- * Crea la alerta al dar de alta con vacante. Toma la foto de la vacante de la
- * hoja y la marca "En proceso de alta" para que Selección deje de ofrecerla.
- * Sin vacanteId no hace nada (el alta sin vacante sigue siendo normal).
+ * Crea la alerta al dar de alta con vacante. Toma la foto de la vacante y la
+ * marca "en proceso" para que Selección deje de ofrecerla.
+ * Sin vacante no hace nada: el alta sin vacante sigue siendo un alta normal.
+ *
+ * @param {{conductorId, vacanteId, origen, desde, usuarioId}} o
+ *        `vacanteId` acepta el código ('V…') o el id numérico.
  */
-async function crear({ conductorId, vacanteId, origen = 'ett', usuarioId } = {}) {
-  const vId = String(vacanteId || '').trim();
+async function crear({ conductorId, vacanteId, origen = 'ett', desde, usuarioId } = {}) {
+  const ref = String(vacanteId || '').trim();
   const cid = Number(conductorId);
-  if (!vId || !Number.isInteger(cid) || cid <= 0) return null;
+  if (!ref || !Number.isInteger(cid) || cid <= 0) return null;
 
-  const vacantes = require('../vacantes');
-  const v = (await vacantes.leerVacantesGuardadas()).find(x => x.id === vId);
-  if (!v) throw new Error(`No existe la vacante ${vId}`);
-  if (!vacantes.vacanteDisponible(v)) throw new Error(`La vacante ${vId} ya está ${v.estado}`);
+  const v = await vacantes.ficha(ref);
+  if (!v) throw new Error(`No existe la vacante ${ref}`);
+  if (v.estado === 'cubierta' || v.estado === 'anulada') {
+    throw new Error(`La vacante ${v.codigo} ya está ${v.estado}`);
+  }
 
+  // La foto: si mañana alguien toca la vacante, la alerta sigue diciendo lo que
+  // se prometió el día del alta.
   const detalle = {
-    puesto: v.puesto || '', turno: v.turno || 'Día', zonas: v.zonas || '',
-    libranzas: v.libranzas || '', objetivo: v.objetivo || v.dias || '',
-    matriculas: (v.matriculas || []).map(m => ({
-      m: m.m, zona: m.zona || '', d: (m.d || []).slice(),
-      letras: m.letras || (m.d || []).map(d => LETRAS[d]).join(''),
+    codigo: v.codigo, vacanteId: v.id, puesto: v.puesto, rol: v.rol,
+    turno: v.turno, zonas: v.zonas, libranzas: v.libranzas,
+    jornadaHoras: v.jornadaHoras, motivo: v.motivo,
+    sustituye: v.sustituye || '', sustituyeA: v.sustituyeA || null,
+    salidaPrevista: v.salidaPrevista || null,
+    desde: fecha(desde),
+    plazas: (v.plazas || []).map(p => ({
+      plazaId: p.plazaId, matricula: p.matricula, zona: p.zona,
+      rol: p.rol, turno: p.turno,
+      dias: p.dias.slice(), letras: p.letras,
+      ocupa: p.ocupa || '', ocupaId: p.ocupaId || null,
+    })),
+    // Se mantiene la forma vieja al lado para que nada de lo que aún la lee se
+    // quede sin datos. Los días, en índice 0..6, como los escribía la hoja.
+    matriculas: (v.plazas || []).map(p => ({
+      m: p.matricula, zona: p.zona, d: p.dias.map(d => d - 1), letras: p.letras.replace(/ /g, ''),
     })),
   };
+
   const r = await db.consulta(
     `INSERT INTO incorporacion (conductor_id, vacante_id, origen, detalle, usuario_alta)
      VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING id`,
-    [cid, vId, origen, JSON.stringify(detalle), usuarioId || null]);
-  try { await vacantes.actualizarEstadoVacante(vId, 'En proceso de alta'); } catch (_) {}
-  return { id: String(r.rows[0].id), vacanteId: vId };
+    [cid, v.codigo, origen, JSON.stringify(detalle), usuarioId || null]);
+
+  try { await vacantes.cambiarEstado(v.id, 'proceso', { usuarioId }); } catch (e) {
+    console.error(`⚠️  [Incorporación] no se pudo reservar ${v.codigo}: ${e.message}`);
+  }
+  return { id: String(r.rows[0].id), vacanteId: v.codigo, plazas: detalle.plazas.length, detalle };
 }
 
 /** Las alertas pendientes, con el conductor con nombre de BOLT y teléfono. */
@@ -91,45 +120,65 @@ async function viva(id) {
 }
 
 /**
- * ACEPTAR: coloca al conductor en las plazas de la vacante, en el planificador
- * de PostgreSQL. Todo o nada: si una matrícula no está o no tiene plaza libre,
- * se lanza el motivo, no se escribe nada y la alerta SIGUE pendiente.
+ * ACEPTAR: coloca al conductor en las plazas PROMETIDAS.
+ *
+ * Todo o nada: `plan.guardar` va en una transacción, así que si una plaza ya no
+ * existe no se escribe ninguna y la alerta sigue pendiente.
+ *
+ * `desde` decide el día. Por defecto, el alta del conductor —empieza cuando
+ * empieza él—; si la vacante era de recambio, ese mismo día se cierra la
+ * asignación del que se va, la víspera.
  */
-async function aceptar(id, { usuarioId } = {}) {
+async function aceptar(id, { usuarioId, desde } = {}) {
   const inc = await viva(id);
   const det = inc.detalle || {};
-  const rol = /^\s*CT/i.test(det.puesto || '') ? 'CT' : 'FIJO';
-  const turno = det.turno === 'Noche' ? 'Noche' : 'Día';
 
-  const tab = await plan.tablero({});
-  const cambios = [];
-  const usadas = new Set();
-  for (const m of (det.matriculas || [])) {
-    const coche = (tab.coches || []).find(c => norm(c.matricula) === norm(m.m));
-    if (!coche) throw new Error(`La matrícula ${m.m} no está en el planificador`);
-    const p = (coche.personas || []).find(x =>
-      x.rol === rol && x.turno === turno && !x.id && x.plazaId && !usadas.has(x.plazaId));
-    if (!p) throw new Error(`No hay plaza libre de ${rol === 'CT' ? 'correturno' : 'fijo'} ${turno} en ${m.m}`);
-    usadas.add(p.plazaId);
-    const slot = { plazaId: p.plazaId, id: String(inc.conductor_id) };
-    if (rol === 'CT' && Array.isArray(m.d) && m.d.length) slot.dias = m.d.map(d => LETRAS[d]).join(' ');
-    cambios.push({ vehiculoId: coche.vehiculoId, slots: [slot] });
+  // Las plazas de la foto. Si la alerta es vieja y solo trae matrículas, se
+  // resuelven contra la vacante viva antes de rendirse.
+  let plazas = (det.plazas || []).filter(p => p.plazaId);
+  if (!plazas.length && inc.vacante_id) {
+    const v = await vacantes.ficha(inc.vacante_id);
+    plazas = (v && v.plazas) || [];
   }
-  if (!cambios.length) throw new Error('La vacante no trae matrículas');
+  if (!plazas.length) throw new Error('La vacante no trae plazas: colócalo a mano desde el planificador');
 
-  await plan.guardar(cambios, { usuarioId });
+  const dia = fecha(desde) || fecha(det.desde) || (await db.consulta(
+    `SELECT alta::text AS alta FROM conductor_periodo_empleo
+      WHERE conductor_id = $1 AND baja IS NULL ORDER BY alta DESC LIMIT 1`,
+    [inc.conductor_id])).rows.map(x => x.alta)[0] || null;
+
+  const slots = plazas.map(p => {
+    const s = { plazaId: String(p.plazaId), id: String(inc.conductor_id) };
+    if (dia) s.desde = dia;
+    // Un fijo no lleva días: cubre toda la semana que su coche sale.
+    if (p.rol === 'CT' && (p.dias || []).length) {
+      s.dias = p.dias.map(d => LETRAS[d - 1]).join(' ');
+    }
+    return s;
+  });
+
+  const r = await plan.guardar([{ slots }], { dia, usuarioId });
+
   await db.consulta(
     `UPDATE incorporacion SET estado = 'aceptada', usuario_res = $2, resuelto_at = now()
       WHERE id = $1 AND estado = 'pendiente'`, [inc.id, usuarioId || null]);
   if (inc.vacante_id) {
-    try { await require('../vacantes').actualizarEstadoVacante(inc.vacante_id, 'Cerrada'); } catch (_) {}
+    try {
+      await vacantes.cambiarEstado(inc.vacante_id, 'cubierta',
+        { motivo: 'Cubierta al aceptar la incorporación', usuarioId });
+    } catch (e) {
+      console.error(`⚠️  [Incorporación] no se pudo cerrar ${inc.vacante_id}: ${e.message}`);
+    }
   }
-  return { ok: true, plazas: cambios.length };
+  // Quién se quedó sin plaza al colocarlo: en un recambio, el que se va. Se
+  // devuelve para poder decirlo en pantalla en vez de que se descubra solo.
+  const relevados = r.hechos.filter(h => h.que === 'coloca' && h.cerrada);
+  return { ok: true, plazas: slots.length, desde: dia, relevados: relevados.length, hechos: r.hechos };
 }
 
 /**
  * RECHAZAR: el conductor queda en el banquillo para colocarlo a mano y la
- * vacante vuelve a Abierta (a esa vacante no llegó a entrar nadie).
+ * vacante vuelve a estar abierta (a esa vacante no llegó a entrar nadie).
  */
 async function rechazar(id, { usuarioId, motivo } = {}) {
   const inc = await viva(id);
@@ -139,7 +188,9 @@ async function rechazar(id, { usuarioId, motivo } = {}) {
       WHERE id = $1 AND estado = 'pendiente'`,
     [inc.id, String(motivo || '').trim().slice(0, 300) || null, usuarioId || null]);
   if (inc.vacante_id) {
-    try { await require('../vacantes').actualizarEstadoVacante(inc.vacante_id, 'Abierta'); } catch (_) {}
+    try { await vacantes.cambiarEstado(inc.vacante_id, 'abierta', { usuarioId }); } catch (e) {
+      console.error(`⚠️  [Incorporación] no se pudo reabrir ${inc.vacante_id}: ${e.message}`);
+    }
   }
   return { ok: true };
 }

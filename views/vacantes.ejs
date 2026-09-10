@@ -1,80 +1,130 @@
-<div class="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
+<div class="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
 
   <!-- Totales -->
-  <div class="grid grid-cols-3 gap-3">
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
     <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
-      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Vacantes abiertas</p>
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Por reclutar</p>
       <p id="t-abiertas" class="text-2xl font-bold text-telecab-gold">–</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
-      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Día ☀️</p>
-      <p id="t-dia" class="text-2xl font-bold text-telecab-text">–</p>
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Con candidato</p>
+      <p id="t-proceso" class="text-2xl font-bold text-telecab-violet">–</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
-      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Noche 🌙</p>
-      <p id="t-noche" class="text-2xl font-bold text-telecab-text">–</p>
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Recambios</p>
+      <p id="t-recambios" class="text-2xl font-bold text-telecab-text">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Plazas prometidas</p>
+      <p id="t-plazas" class="text-2xl font-bold text-telecab-text">–</p>
+    </div>
+    <div class="bg-telecab-card border border-telecab-border rounded-2xl px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wide text-telecab-muted">Día ☀️ / Noche 🌙</p>
+      <p class="text-2xl font-bold text-telecab-text"><span id="t-dia">–</span><span class="text-telecab-muted text-base mx-1">/</span><span id="t-noche">–</span></p>
     </div>
   </div>
 
-  <div class="flex items-center justify-between">
-    <p class="text-xs text-telecab-muted">Vacantes que Tráfico armó y guardó en el generador. Son las que Selección recluta.</p>
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <p class="text-xs text-telecab-muted">
+      Lo que Tráfico armó en el <a href="/generador" class="text-telecab-gold hover:underline">generador</a> y
+      Selección tiene que reclutar. Cada vacante apunta a <b>plazas reales</b> del planificador, así que la
+      matrícula que se promete es la que se ocupa.
+    </p>
     <button id="btn-recargar" class="text-xs px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
       <i class="fa-solid fa-rotate mr-1"></i> Recargar
     </button>
   </div>
 
-  <div id="lista" class="grid gap-3 sm:grid-cols-2"></div>
+  <div id="lista" class="grid gap-3 lg:grid-cols-2"></div>
 
   <div id="resueltas-wrap" class="hidden mt-6">
     <h2 class="text-sm font-semibold text-telecab-text mb-3 flex items-center gap-2">
-      <i class="fa-solid fa-circle-check text-telecab-green"></i> Vacantes resueltas <span id="t-resueltas" class="text-telecab-muted font-normal"></span>
+      <i class="fa-solid fa-circle-check text-telecab-green"></i> Cerradas <span id="t-resueltas" class="text-telecab-muted font-normal"></span>
     </h2>
-    <div id="lista-resueltas" class="grid gap-3 sm:grid-cols-2 opacity-80"></div>
+    <div id="lista-resueltas" class="grid gap-3 lg:grid-cols-2 opacity-70"></div>
   </div>
 
 </div>
 
 <script>
+(function () {
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fecha = iso => (iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
 
-  const COLOR_VAC = {
-    'Abierta': 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30',
-    'En proceso de alta': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-    'Cerrada': 'bg-telecab-green/10 text-telecab-green border-telecab-green/30'
-  };
-  const COLOR_ETAPA = {
-    'Preselección': 'text-telecab-muted', 'Coordinación de entrevista': 'text-sky-400',
-    'Entrevistado': 'text-telecab-gold', 'Reconocimiento médico': 'text-orange-400',
-    'Relevamiento de datos': 'text-telecab-gold', 'Pendiente en BOLT': 'text-telecab-gold',
-    'Aprobado en BOLT': 'text-telecab-green', 'Alta procesada - habilitado': 'text-telecab-green',
-    'Descartado': 'text-telecab-red', 'Rechazado en BOLT': 'text-telecab-red'
+  // El estado se dice con la palabra que se usa hablando, no con el código.
+  const ESTADO = {
+    abierta:  { txt: 'Por reclutar', cls: 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' },
+    proceso:  { txt: 'Con candidato', cls: 'bg-telecab-violet/10 text-telecab-violet border-telecab-violet/30' },
+    cubierta: { txt: 'Cubierta',     cls: 'bg-telecab-green/10 text-telecab-green border-telecab-green/30' },
+    anulada:  { txt: 'Anulada',      cls: 'bg-telecab-muted/10 text-telecab-muted border-telecab-border' },
   };
 
   function ficha(v) {
-    const mats = (v.matriculas || []).map(m =>
-      `<span class="inline-flex items-center gap-1 mr-1.5 mb-1 px-2 py-0.5 rounded-lg bg-telecab-dark/60 border border-telecab-border">
-         <span class="font-mono text-telecab-text">${esc(m.m)}</span>
-         <span class="text-telecab-gold text-xs">${esc(m.letras || '')}</span></span>`).join('');
-    const cands = (v.candidatos || []).length
-      ? `<div class="mt-3 pt-2 border-t border-telecab-border/60">
-           <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Candidatos (${v.candidatos.length})</p>` +
-        v.candidatos.map(c => `<div class="flex items-center justify-between text-sm py-0.5">
-             <span class="text-telecab-text truncate">${esc(c.nombre)}</span>
-             <span class="${COLOR_ETAPA[c.estado] || 'text-telecab-muted'} text-xs whitespace-nowrap ml-2">${esc(c.estado)}</span></div>`).join('') +
-        `</div>`
-      : `<div class="mt-3 pt-2 border-t border-telecab-border/60 text-[11px] text-telecab-muted">Sin candidatos asignados aún.</div>`;
+    const e = ESTADO[v.estado] || ESTADO.abierta;
+
+    // Las plazas, una por línea: matrícula, los días que cubre y —lo que antes
+    // no se veía— quién la tiene hoy. En un recambio, ese es el que se va.
+    const plazas = (v.plazas || []).map(p => `
+      <div class="flex items-center justify-between gap-2 text-sm py-1 border-b border-telecab-border/40 last:border-0">
+        <span class="flex items-center gap-2 min-w-0">
+          <span class="font-mono text-telecab-text shrink-0">${esc(p.matricula)}</span>
+          ${p.letras ? `<span class="text-[11px] px-1.5 py-0.5 rounded bg-telecab-dark/60 border border-telecab-border text-telecab-gold shrink-0">${esc(p.letras)}</span>` : ''}
+          <span class="text-[11px] text-telecab-muted truncate">${esc(p.zona || '')}</span>
+        </span>
+        ${p.ocupa
+          ? `<span class="text-[11px] text-telecab-muted whitespace-nowrap truncate max-w-[45%]" title="Quien la ocupa hoy"><i class="fa-solid fa-user text-[9px]"></i> ${esc(p.ocupa)}</span>`
+          : `<span class="text-[11px] text-telecab-warn whitespace-nowrap">vacía</span>`}
+      </div>`).join('');
+
+    const releva = v.motivo === 'recambio'
+      ? `<div class="mt-2 px-3 py-2 rounded-xl bg-telecab-violet/5 border border-telecab-violet/25 text-sm">
+           <i class="fa-solid fa-right-left text-telecab-violet mr-1"></i>
+           Releva a <b class="text-telecab-text">${esc(v.sustituye || '—')}</b>
+           ${v.salidaPrevista ? `<span class="text-telecab-muted">· sale el ${fecha(v.salidaPrevista)}</span>` : ''}
+         </div>` : '';
+
+    const candidato = v.candidato
+      ? `<div class="mt-2 px-3 py-2 rounded-xl bg-telecab-green/5 border border-telecab-green/25 text-sm">
+           <i class="fa-solid fa-user-check text-telecab-green mr-1"></i>
+           <b class="text-telecab-text">${esc(v.candidato)}</b>
+           <span class="text-telecab-muted">· ${esc(v.estadoCandidatura || '')}</span>
+           ${v.inicioPrevisto ? `<span class="text-telecab-gold font-semibold">· entra el ${fecha(v.inicioPrevisto)}</span>` : ''}
+         </div>`
+      : `<div class="mt-2 text-[11px] text-telecab-muted"><i class="fa-solid fa-user-slash mr-1"></i> Sin candidato asignado.
+           <a href="/seleccion" class="text-telecab-gold hover:underline">Ir a Selección</a></div>`;
+
+    const acciones = (v.estado === 'abierta' || v.estado === 'proceso')
+      ? `<button data-anular="${esc(v.id)}" class="text-[11px] px-2 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition">
+           <i class="fa-solid fa-ban mr-1"></i> Anular</button>`
+      : (v.estado === 'anulada'
+        ? `<button data-reabrir="${esc(v.id)}" class="text-[11px] px-2 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition">
+             <i class="fa-solid fa-rotate-left mr-1"></i> Reabrir</button>`
+        : '');
+
     return `<div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
-      <div class="flex items-center justify-between mb-2">
-        <h3 class="text-base font-semibold text-telecab-text"><i class="fa-solid fa-briefcase text-telecab-gold mr-1"></i> ${esc(v.puesto)}</h3>
-        <span class="text-[11px] px-2 py-0.5 rounded-full border ${COLOR_VAC[v.estado] || COLOR_VAC['Abierta']}">${esc(v.estado || 'Abierta')}</span>
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <h3 class="text-base font-semibold text-telecab-text">
+          <i class="fa-solid ${v.motivo === 'recambio' ? 'fa-right-left' : 'fa-briefcase'} text-telecab-gold mr-1"></i>
+          ${esc(v.puesto)}
+        </h3>
+        <span class="text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap ${e.cls}">${e.txt}</span>
       </div>
-      <p class="text-sm text-telecab-muted mb-2"><i class="fa-solid fa-location-dot mr-1 text-telecab-gold/70"></i> ${esc(v.zonas || '—')}</p>
-      <div class="mb-2"><span class="text-xs text-telecab-muted">Matrículas:</span><br>${mats || '<span class="text-telecab-muted text-sm">—</span>'}</div>
-      <p class="text-sm text-telecab-text">Libranzas: <span class="font-mono text-telecab-muted">${esc(v.libranzas || '—')}</span>
-        <span class="text-telecab-muted">· ${/^Fijo/.test(v.puesto || '') ? 'toda la semana' : (v.dias || 0) + ' días'}</span></p>
-      ${cands}
-      <p class="text-[11px] text-telecab-muted mt-2">${esc(v.fecha || '')} · ${esc(v.id)}</p>
+
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-telecab-muted mb-2">
+        <span><i class="fa-solid fa-location-dot mr-1 text-telecab-gold/70"></i>${esc(v.zonas || '—')}</span>
+        <span><i class="fa-solid fa-calendar-day mr-1 text-telecab-gold/70"></i>${v.dias || 0} día(s)</span>
+        <span><i class="fa-solid fa-bed mr-1 text-telecab-gold/70"></i>libra <b class="text-telecab-text">${esc(v.libranzas || '—')}</b></span>
+      </div>
+
+      <div class="rounded-xl border border-telecab-border/60 bg-telecab-dark/30 px-3 py-1">${plazas || '<p class="text-sm text-telecab-muted py-1">Sin plazas.</p>'}</div>
+      ${releva}
+      ${candidato}
+
+      <div class="flex items-center justify-between mt-3 pt-2 border-t border-telecab-border/60">
+        <p class="text-[11px] text-telecab-muted font-mono">${esc(v.codigo)}</p>
+        ${acciones}
+      </div>
     </div>`;
   }
 
@@ -82,18 +132,44 @@
     const r = await (await fetch('/vacantes/api/datos')).json();
     if (r.status !== 'ok') return;
     $('#t-abiertas').textContent = r.contadores.abiertas;
+    $('#t-proceso').textContent = r.contadores.proceso;
+    $('#t-recambios').textContent = r.contadores.recambios;
+    $('#t-plazas').textContent = r.contadores.plazas;
     $('#t-dia').textContent = r.contadores.dia;
     $('#t-noche').textContent = r.contadores.noche;
+
     const cont = $('#lista');
-    if (!r.vacantes.length) cont.innerHTML = '<p class="text-telecab-muted col-span-full">No hay vacantes pendientes. Tráfico las arma en el Generador de vacantes.</p>';
-    else cont.innerHTML = r.vacantes.map(ficha).join('');
+    cont.innerHTML = r.vacantes.length
+      ? r.vacantes.map(ficha).join('')
+      : '<p class="text-telecab-muted col-span-full">No hay vacantes pendientes. Tráfico las arma en el <a href="/generador" class="text-telecab-gold hover:underline">generador</a>.</p>';
 
     const res = r.resueltas || [];
     $('#resueltas-wrap').classList.toggle('hidden', !res.length);
     $('#t-resueltas').textContent = res.length ? '(' + res.length + ')' : '';
     $('#lista-resueltas').innerHTML = res.map(ficha).join('');
+    enganchar();
+  }
+
+  function enganchar() {
+    document.querySelectorAll('[data-anular]').forEach(b => b.addEventListener('click', async () => {
+      const motivo = await Dialogo.formulario('Anular la vacante', [
+        { id: 'motivo', etiqueta: '¿Por qué ya no hace falta?', tipo: 'texto',
+          ayuda: 'El coche se fue al taller, el que se iba se queda, se cubrió por otra vía…' },
+      ], { textoBoton: 'Anular', nota: 'La vacante no se borra: queda anulada, con su motivo y su fecha.' });
+      if (!motivo) return;
+      const r = await (await fetch('/vacantes/api/anular/' + b.dataset.anular,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(motivo) })).json();
+      if (r.status !== 'ok') return Dialogo.aviso({ titulo: 'No se pudo anular', texto: r.msg, tono: 'aviso' });
+      cargar();
+    }));
+    document.querySelectorAll('[data-reabrir]').forEach(b => b.addEventListener('click', async () => {
+      const r = await (await fetch('/vacantes/api/reabrir/' + b.dataset.reabrir, { method: 'POST' })).json();
+      if (r.status !== 'ok') return Dialogo.aviso({ titulo: 'No se pudo reabrir', texto: r.msg, tono: 'aviso' });
+      cargar();
+    }));
   }
 
   $('#btn-recargar').addEventListener('click', cargar);
   cargar();
+})();
 </script>

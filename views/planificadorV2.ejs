@@ -638,6 +638,26 @@
       ? `<span class="block text-[11px] text-telecab-gold font-semibold mt-0.5"><i class="fa-solid fa-arrow-right-long"></i> ${esc(p.futuro.nombre)} · llega ${isoAes(p.futuro.desde)}</span>`
       : '';
 
+    // LA PLAZA ESTÁ PROMETIDA en una vacante. El cuadrante era el último en
+    // enterarse: un hueco que Tráfico ve rojo puede llevar dos semanas
+    // reclutándose, y se colocaba a alguien a mano encima de una plaza ya
+    // ofrecida. Ahora lo dice la propia celda, y dice qué fase lleva.
+    const vac = p.vacante;
+    const vacHtml = !vac ? '' : (() => {
+      const quien = vac.candidato
+        ? `${esc(vac.candidato)}${vac.inicioPrevisto ? ' · entra ' + isoAes(vac.inicioPrevisto) : ''}`
+        : 'sin candidato todavía';
+      const releva = vac.motivo === 'recambio'
+        ? ` · releva a ${esc((vac.sale || '').split(' ')[0] || '')}` +
+          (vac.salidaPrevista ? ` (sale ${isoAes(vac.salidaPrevista)})` : '')
+        : '';
+      const tono = vac.estado === 'proceso' ? 'text-telecab-violet' : 'text-sky-400';
+      const icono = vac.motivo === 'recambio' ? 'fa-right-left' : 'fa-briefcase';
+      return `<span class="block text-[11px] ${tono} font-semibold mt-0.5"
+                    title="Vacante ${esc(vac.codigo)}${vac.letras ? ' · días ' + esc(vac.letras) : ''}. ${vac.estado === 'proceso' ? 'Ya tiene candidato en proceso.' : 'Selección la está reclutando.'}">
+                <i class="fa-solid ${icono} text-[9px]"></i> ${esc(vac.codigo)} · ${quien}${releva}</span>`;
+    })();
+
     if (p.id) {
       // Sub-línea: para el fijo, los días que libra; para el CT, sus días.
       let sub = '';
@@ -664,6 +684,7 @@
           <span class="block text-xs text-telecab-muted">${esc(sub)}</span>
           ${av ? `<span class="block text-[11px] text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}${av.hueco ? ' · sin cubrir' : ''}</span>` : ''}
           ${fut}
+          ${vacHtml}
         </button>`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
       // La zona se edita desde su propia línea, sin disparar el "asignar" de la carta.
@@ -674,14 +695,23 @@
     } else {
       // Un hueco tiene que SALTAR a la vista para localizarlos rápido: fondo tintado
       // + icono de aviso. El fijo vacío en rojo (crítico); el CT vacío en ámbar.
-      const cls = esFijo
-        ? 'border-telecab-red/60 bg-telecab-red/10 text-telecab-red'
-        : 'border-telecab-warn/60 bg-telecab-warn/10 text-telecab-warn';
+      // Un hueco YA PROMETIDO no es el mismo hueco: no hay que salir a buscar a
+      // nadie, hay que esperar a que llegue. Se pinta distinto para que no se
+      // cuente dos veces la misma falta.
+      const cls = vac
+        ? 'border-sky-500/60 bg-sky-500/10 text-sky-400'
+        : esFijo
+          ? 'border-telecab-red/60 bg-telecab-red/10 text-telecab-red'
+          : 'border-telecab-warn/60 bg-telecab-warn/10 text-telecab-warn';
+      const texto = vac
+        ? (vac.candidato ? 'Hueco · candidato en camino' : 'Hueco · en vacante')
+        : (esFijo ? 'Hueco · sin fijo' : 'Hueco · colocar CT');
       wrap.innerHTML = `
         <button class="text-left w-full px-2 py-1 rounded-lg border border-dashed font-semibold transition ${cls} hover:brightness-110"
                 data-asignar>
-          <i class="fa-solid fa-triangle-exclamation text-xs"></i> ${esFijo ? 'Hueco · sin fijo' : 'Hueco · colocar CT'}
+          <i class="fa-solid ${vac ? 'fa-hourglass-half' : 'fa-triangle-exclamation'} text-xs"></i> ${texto}
         </button>
+        ${vacHtml}
         ${fut}`;
       wrap.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
     }

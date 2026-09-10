@@ -118,13 +118,17 @@ router.post('/api/candidatura/:id/descartar', responde(async req => {
   return r;
 }));
 
-// Vacantes DISPONIBLES (de la hoja, las del generador) para elegir al dar de alta.
+// Vacantes ABIERTAS (las del generador, en PostgreSQL) para elegir al dar de alta.
+// El texto lleva la jornada y, si es un recambio, a quién releva: quien contrata
+// desde aquí tiene que saber qué está ofreciendo antes de prometerlo.
 router.get('/api/vacantes-abiertas', responde(async () => {
-  const vac = require('../services/vacantes');
-  const abiertas = (await vac.leerVacantesGuardadas()).filter(vac.vacanteDisponible);
+  const abiertas = await require('../services/repo/vacantes').disponibles();
   return { vacantes: abiertas.map(v => ({
-    id: v.id,
-    texto: `${v.puesto || 'CT'}${v.zonas ? ' · ' + v.zonas : ''}${v.libranzas ? ' · libra ' + v.libranzas : ''} (${v.id})`,
+    id: v.codigo,
+    texto: [v.puesto, v.zonas, v.matriculas,
+      v.libranzas ? 'libra ' + v.libranzas : '',
+      v.motivo === 'recambio' && v.sustituye ? '↔ releva a ' + v.sustituye : '',
+    ].filter(Boolean).join(' · ') + ` (${v.codigo})`,
   })) };
 }));
 

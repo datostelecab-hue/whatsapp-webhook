@@ -1,25 +1,33 @@
 // ============================================================
-// GENERADOR DE VACANTES (correturnos)
+// GENERADOR DE VACANTES
 // ============================================================
-// Arma la semana de un conductor nuevo encadenando huecos de varias matrículas.
-// Regla del negocio: los turnos fijos libran 2 días, y en esos 2 días entra el
-// correturno. Por eso cada matrícula aporta un BLOQUE = sus días de hueco (2 en
-// el caso normal), y se cogen enteros. La vacante se pide por CONTRATO: 32 h =
-// 4 días (2 bloques), 40 h = 6 días (3 bloques) — lo dice cat_jornada, no una
-// lista escrita aquí. Los bloques deben tener días DISJUNTOS (un conductor no
-// puede estar en dos coches el mismo día). Prioriza la misma zona; si no
-// completa, propone la zona más cercana (por coordenadas de base_zona), y
-// Tráfico decide si la toma.
+// Arma el puesto que hay que salir a cubrir. Dos maneras, y la segunda es nueva:
+//
+//   · HUECO — la de siempre. Un correturnos se monta encadenando los días de
+//     descanso de varias matrículas: los turnos fijos libran 2 días y en esos 2
+//     entra el CT, así que cada matrícula aporta un BLOQUE que se coge entero.
+//     Se pide por CONTRATO (32 h = 4 días = 2 bloques; 40 h = 6 días = 3), lo
+//     dice `cat_jornada` y no una lista escrita aquí. Los bloques tienen que
+//     tener días DISJUNTOS —nadie está en dos coches el mismo día— y se prefiere
+//     la misma zona; si no completa, se propone la más cercana por coordenadas.
+//
+//   · RECAMBIO — a alguien se le va a sacar y hay que buscar quien lo sustituya.
+//     No es un hueco: la plaza TIENE dueño. Se elige a la persona y la vacante
+//     sale sola de lo que ocupa hoy —sus plazas, su zona, sus libranzas, los días
+//     que cubre— y con el contrato que corresponde a eso. Esto antes no se podía
+//     ni escribir: el generador solo sabía mirar plazas vacías.
 //
 // La fuente es el tablero de POSTGRESQL (repo/planificador): un HUECO de CT es
 // un día en que el coche descansa (sus fijos libran) y el tramo de ese turno se
-// queda sin nadie según f_cobertura. Antes esto leía el tablero de la hoja, que
-// se quedó congelado con la migración: generaba vacantes de un mundo que ya no
-// existe.
+// queda sin nadie según f_cobertura.
+//
+// Y lo que se guarda son PLAZAS, no matrículas. La vacante apunta a la plaza
+// real desde el primer momento, así que el planificador puede pintarla reservada
+// y al colocar al candidato no hay que salir a buscar sitio: ya estaba dicho.
 
 const plani = require('./repo/planificador');
+const vacantes = require('./repo/vacantes');
 const db = require('./db');
-const { leerVacantesGuardadas } = require('./vacantes');
 
 const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -37,12 +45,13 @@ async function cargarCochesBases() {
     plani.tablero({}),
     db.consulta('SELECT nombre, lat::float AS lat, lng::float AS lng FROM base_zona WHERE activa'),
   ]);
-  // La zona del coche es la de su CUADRANTE (la del coche a pelo suele venir vacía).
+  // La zona del coche es la de su CUADRANTE cuando el coche no la lleva puesta;
+  // desde db/91 la resuelve `v_plaza`, así que el tablero ya viene con ella.
   const zonaCua = new Map((tab.cuadrantes || []).map(cu => [String(cu.id), cu.zona || '']));
   const coches = (tab.coches || [])
     .filter(c => c.operativo && c.matricula)
     .map(c => {
-      const zona = (c.cuadranteId && zonaCua.get(String(c.cuadranteId))) || c.zona || '';
+      const zona = c.zona || (c.cuadranteId && zonaCua.get(String(c.cuadranteId))) || '';
       // HUECO de CT = día de descanso del coche (1-7) cuyo tramo de ese turno se
       // queda SIN NADIE en la semana del tablero (la verdad de f_cobertura).
       const huecos = [];
@@ -52,31 +61,38 @@ async function cargarCochesBases() {
           if (!celda.id) huecos.push({ dia: Number(d) - 1, turno });
         });
       });
-      return { matricula: c.matricula, zona, personas: c.personas || [], huecos };
+      // LA PLAZA, no solo la matrícula. La de CT que esté libre (la primera de
+      // las dos) y la de fijo con su ocupante, si lo tiene.
+      const plazaCt = {}, plazaFijo = {};
+      ['Día', 'Noche'].forEach(t => {
+        const ct = (c.personas || []).find(x => x.rol === 'CT' && x.turno === t && !x.id && x.plazaId);
+        plazaCt[t] = ct ? ct.plazaId : null;
+        const fj = (c.personas || []).find(x => x.rol === 'FIJO' && x.turno === t && x.plazaId);
+        plazaFijo[t] = fj ? { plazaId: fj.plazaId, ocupa: fj.id || '', nombre: fj.nombre || '' } : null;
+      });
+      return {
+        vehiculoId: String(c.vehiculoId), matricula: c.matricula, zona,
+        cuadrante: c.cuadrante || '', personas: c.personas || [], huecos, plazaCt, plazaFijo,
+      };
     });
   return { coches, bases: basesQ.rows };
 }
 
-// Cuántos días trabaja el contrato (32 h → 4, 40 h → 6): lo dice cat_jornada.
-let _contratos = null;
-async function contratos() {
-  if (_contratos) return _contratos;
-  const r = await db.consulta('SELECT horas::float AS horas, etiqueta, dias_ct FROM cat_jornada WHERE activa ORDER BY orden');
-  _contratos = r.rows.map(x => ({ horas: Number(x.horas), etiqueta: x.etiqueta, dias: Number(x.dias_ct) }));
-  return _contratos;
-}
+/** Cuántos días trabaja el contrato (32 h → 4, 40 h → 6): lo dice cat_jornada. */
+const contratos = () => vacantes.jornadas().then(js => js.map(j => ({
+  horas: j.horas, etiqueta: j.etiqueta, dias: j.dias,
+})));
 
-/** Matrículas ya reservadas en una vacante ABIERTA, por turno (Set por turno). */
+/** Matrículas ya reservadas en una vacante VIVA, por turno (Set por turno). */
 async function reservadasPorTurno() {
   const dia = new Set(), noche = new Set();
   try {
-    (await leerVacantesGuardadas())
-      .filter(v => v.estado !== 'Cerrada' && v.estado !== 'Cubierta')
-      .forEach(v => {
-        const set = v.turno === 'Noche' ? noche : dia;
-        (v.matriculas || []).forEach(m => set.add(m.m));
-      });
-  } catch (_) { /* si no se puede leer, no se reserva nada */ }
+    (await vacantes.comprometidas()).forEach(c => {
+      (c.turno === 'Noche' ? noche : dia).add(c.matricula);
+    });
+  } catch (e) {
+    console.error('⚠️  [Generador] no se pudieron leer las reservas:', e.message);
+  }
   return { dia, noche };
 }
 
@@ -95,7 +111,12 @@ function bloquesDe(coches, turno) {
     const dias = (c.huecos || []).filter(h => h.turno === turno)
       .map(h => h.dia).sort((a, b) => a - b);
     if (!dias.length) return null;
-    return { matricula: c.matricula, zona: c.zona || '(sin zona)', dias, ...fijosDe(c) };
+    return {
+      matricula: c.matricula, vehiculoId: c.vehiculoId,
+      zona: c.zona || '(sin zona)', cuadrante: c.cuadrante,
+      plazaId: c.plazaCt[turno] || null,
+      dias, ...fijosDe(c),
+    };
   }).filter(Boolean);
 }
 
@@ -145,14 +166,12 @@ function rellenoParcial(inicio, candidatos, objetivo) {
 }
 
 /**
- * Genera una propuesta de vacante.
- * @param {{zona, turno, dias, matricula}} opt
+ * Genera una propuesta de vacante de HUECO.
+ * @param {{zona, turno, dias, contrato, matricula}} opt
  */
 async function generarVacante(opt = {}) {
   const zona = String(opt.zona || '').trim();
   const turno = opt.turno === 'Noche' ? 'Noche' : 'Día';
-  // La vacante se pide por CONTRATO (32/40 h) y el catálogo dice los días; se
-  // admite `dias` a pelo por compatibilidad.
   const cts = await contratos();
   const ct = cts.find(c => c.horas === Number(opt.contrato)) || null;
   const objetivo = ct ? ct.dias
@@ -161,8 +180,6 @@ async function generarVacante(opt = {}) {
   if (!zona || !matricula) throw new Error('Faltan la zona y la matrícula de partida');
 
   const { coches, bases } = await cargarCochesBases();
-  // Una matrícula ya reservada en otra vacante abierta NO se puede reutilizar (si
-  // no, se crearían dos vacantes para el mismo coche/turno).
   const reservadas = (await reservadasPorTurno())[turno === 'Noche' ? 'noche' : 'dia'];
   if (reservadas.has(matricula)) {
     throw new Error(`La matrícula ${matricula} ya está reservada en una vacante abierta de ${turno}`);
@@ -172,7 +189,6 @@ async function generarVacante(opt = {}) {
   if (!inicio) throw new Error(`La matrícula ${matricula} no tiene huecos de ${turno} en ${zona}`);
 
   const dist = distanciaEntreZonas(bases);
-  // Candidatos ordenados por preferencia: misma zona primero, luego por cercanía.
   const candidatos = bloques.filter(b => b !== inicio).sort((a, b) => {
     const sa = a.zona === zona, sb = b.zona === zona;
     if (sa !== sb) return sa ? -1 : 1;
@@ -183,34 +199,29 @@ async function generarVacante(opt = {}) {
   const exacto = buscarExacto(inicio, candidatos, objetivo);
   const elegidos = exacto || rellenoParcial(inicio, candidatos, objetivo);
 
-  // Cada bloque en formato de salida (matrícula · ambos fijos · días · zona/km).
   const aSalida = b => ({
-    matricula: b.matricula,
-    zona: b.zona,
+    matricula: b.matricula, vehiculoId: b.vehiculoId, plazaId: b.plazaId,
+    zona: b.zona, cuadrante: b.cuadrante,
     fijoDia: b.fijoDia, fijoNoche: b.fijoNoche,
     sugerido: b.zona !== zona,
     km: b.zona !== zona ? Math.round(dist(zona, b.zona) * 10) / 10 : 0,
-    dias: b.dias.map(d => ({ dia: d, nombre: DIAS_SEM[d] }))
+    dias: b.dias.map(d => ({ dia: d, nombre: DIAS_SEM[d] })),
   });
 
-  // Pool = matrícula de partida + candidatos en orden de preferencia (misma zona,
-  // luego por cercanía). El front lo usa para que Tráfico añada/quite a criterio.
   const pool = [inicio, ...candidatos].slice(0, 60).map(aSalida);
 
   return {
     zona, turno, objetivo,
     contrato: ct ? ct.horas : null,
-    propuesta: elegidos.map(b => b.matricula),   // asignación automática (matrículas)
-    pool
+    propuesta: elegidos.map(b => b.matricula),
+    pool,
   };
 }
 
 /** Datos para la interfaz: zonas → matrículas con sus huecos (por turno) y si ya
- *  están dentro de una vacante guardada (para saber qué queda pendiente). */
+ *  están dentro de una vacante viva (para saber qué queda pendiente). */
 async function datosGenerador() {
   const { coches } = await cargarCochesBases();
-
-  // Matrículas ya reservadas por una vacante abierta, por turno.
   const { dia: cubDia, noche: cubNoche } = await reservadasPorTurno();
 
   const zonasMap = new Map();
@@ -226,8 +237,14 @@ async function datosGenerador() {
     if (!dia.length && !noche.length && fijos.fijoDia && fijos.fijoNoche) return;
     if (!zonasMap.has(z)) zonasMap.set(z, []);
     zonasMap.get(z).push({
-      matricula: c.matricula, dia, noche, ...fijos,
-      enVacanteDia: cubDia.has(c.matricula), enVacanteNoche: cubNoche.has(c.matricula)
+      matricula: c.matricula, vehiculoId: c.vehiculoId, dia, noche, ...fijos,
+      // La plaza de fijo de cada turno, para poder guardar una vacante de fijo
+      // apuntando a la plaza y no a un texto.
+      plazaFijoDia: (c.plazaFijo['Día'] || {}).plazaId || null,
+      plazaFijoNoche: (c.plazaFijo['Noche'] || {}).plazaId || null,
+      plazaCtDia: c.plazaCt['Día'] || null,
+      plazaCtNoche: c.plazaCt['Noche'] || null,
+      enVacanteDia: cubDia.has(c.matricula), enVacanteNoche: cubNoche.has(c.matricula),
     });
   });
   const zonas = [...zonasMap.entries()]
@@ -236,4 +253,127 @@ async function datosGenerador() {
   return { zonas, dias: DIAS_SEM, contratos: await contratos() };
 }
 
-module.exports = { generarVacante, datosGenerador };
+// ── Guardar ─────────────────────────────────────────────────────────────────
+
+/**
+ * Resuelve la PLAZA de una matrícula para un rol y turno.
+ *
+ * Si la pantalla ya mandó `plazaId`, se respeta (viene del tablero y es la
+ * buena). Si no —o si esa plaza ya se ocupó entre medias—, se busca:
+ *   · FIJO → su única plaza de ese turno.
+ *   · CT   → la primera de las dos que esté libre y sin comprometer.
+ */
+async function resolverPlaza({ matricula, plazaId, rol, turno, permitirOcupada }) {
+  const r = await db.consulta(
+    `SELECT p.plaza_id, p.matricula, p.orden_ct,
+            (SELECT a.conductor_id FROM asignacion a
+              WHERE a.plaza_id = p.plaza_id AND a.hasta IS NULL AND a.retirada_at IS NULL
+              LIMIT 1) AS ocupa,
+            EXISTS (SELECT 1 FROM v_plaza_comprometida c WHERE c.plaza_id = p.plaza_id) AS comprometida
+       FROM v_plaza p
+      WHERE p.matricula = $1 AND p.rol = $2 AND p.turno = $3
+      ORDER BY p.orden_ct NULLS FIRST, p.slot`,
+    [String(matricula || '').trim().toUpperCase(), rol, turno]);
+  if (!r.rows.length) throw new Error(`${matricula} no tiene plaza de ${rol} ${turno}`);
+
+  const pedida = plazaId && r.rows.find(x => String(x.plaza_id) === String(plazaId));
+  const vale = x => !x.comprometida && (permitirOcupada || !x.ocupa);
+  const elegida = (pedida && vale(pedida)) ? pedida : r.rows.find(vale);
+  if (!elegida) {
+    const razon = r.rows.every(x => x.comprometida)
+      ? 'ya está prometida en otra vacante'
+      : 'ya tiene a alguien';
+    throw new Error(`La plaza de ${rol === 'CT' ? 'correturnos' : 'fijo'} ${turno} de ${matricula} ${razon}`);
+  }
+  return String(elegida.plaza_id);
+}
+
+/**
+ * Guarda la vacante que armó Tráfico en el generador (modo HUECO).
+ * @param {{tipo:'fijo'|'ct', turno, contrato, matriculas:[{matricula,plazaId,dias:[0..6],zona}], notas}} data
+ */
+async function guardar(data = {}, quien = {}) {
+  const esFijo = data.tipo === 'fijo';
+  const turno = data.turno === 'Noche' ? 'Noche' : 'Día';
+  const rol = esFijo ? 'FIJO' : 'CT';
+  const mats = (data.matriculas || [])
+    .map(m => ({
+      matricula: String(m.matricula || '').trim().toUpperCase(),
+      plazaId: m.plazaId || null,
+      // La pantalla habla en índices 0..6; la base, en ISODOW 1..7.
+      dias: (m.dias || []).map(d => Number(d) + 1).filter(d => d >= 1 && d <= 7).sort((a, b) => a - b),
+      zona: m.zona || '',
+    }))
+    .filter(m => m.matricula);
+  if (!mats.length) throw new Error('La vacante no tiene matrículas');
+  if (esFijo && mats.length > 1) throw new Error('Una vacante de fijo es de UNA matrícula');
+
+  const plazas = [];
+  for (const m of mats) {
+    plazas.push({
+      plazaId: await resolverPlaza({ ...m, rol, turno }),
+      dias: esFijo ? [] : m.dias,
+    });
+  }
+
+  const zonaId = await db.consulta(
+    'SELECT base_zona_id FROM v_plaza WHERE plaza_id = $1', [plazas[0].plazaId]);
+
+  const v = await vacantes.crear({
+    rol, motivo: 'nueva', turnoId: null,
+    zonaId: (zonaId.rows[0] || {}).base_zona_id || null,
+    jornadaHoras: [32, 40].includes(Number(data.contrato)) ? Number(data.contrato) : null,
+    notas: data.notas,
+    plazas,
+  }, quien);
+
+  const ficha = await vacantes.ficha(v.id);
+  return {
+    id: ficha.codigo, vacanteId: ficha.id, puesto: ficha.puesto, turno: ficha.turno,
+    zonas: ficha.zonas, libranzas: ficha.libranzas, dias: ficha.dias,
+    jornadaHoras: ficha.jornadaHoras, matriculas: ficha.matriculas,
+  };
+}
+
+/**
+ * Guarda una vacante de RECAMBIO a partir de la propuesta.
+ *
+ * Se acepta que las plazas estén OCUPADAS —es el punto: el dueño se va— pero no
+ * que estén ya prometidas en otra vacante.
+ */
+async function guardarRecambio(data = {}, quien = {}) {
+  const cid = Number(data.conductorId);
+  if (!cid) throw new Error('Falta el conductor al que se sustituye');
+  const p = await vacantes.propuestaRecambio(cid);
+  if (p.yaTiene && !data.forzar) {
+    throw new Error(`${p.conductor.nombre} ya tiene la vacante ${p.yaTiene} abierta para sustituirlo`);
+  }
+
+  // Se pueden quitar plazas: a veces se sustituye solo una parte del correturno.
+  const pedidas = Array.isArray(data.plazas) && data.plazas.length
+    ? new Set(data.plazas.map(String))
+    : new Set(p.plazas.map(x => x.plazaId));
+  const plazas = p.plazas
+    .filter(x => pedidas.has(x.plazaId))
+    .map(x => ({ plazaId: x.plazaId, dias: p.rol === 'CT' ? x.dias : [] }));
+  if (!plazas.length) throw new Error('No queda ninguna plaza en el recambio');
+
+  const v = await vacantes.crear({
+    rol: p.rol, motivo: 'recambio',
+    turnoId: p.turnoId, zonaId: p.zonaId,
+    sustituyeA: cid,
+    salidaPrevista: data.salidaPrevista || null,
+    notas: data.notas || `Recambio de ${p.conductor.nombre}`,
+    plazas,
+  }, quien);
+
+  const ficha = await vacantes.ficha(v.id);
+  return { ...ficha, sustituyeNombre: p.conductor.nombre };
+}
+
+module.exports = {
+  generarVacante, datosGenerador, guardar, guardarRecambio, contratos,
+  // El recambio se lee del repositorio: aquí solo se guarda.
+  plantillaPlanificada: vacantes.plantillaPlanificada,
+  propuestaRecambio: vacantes.propuestaRecambio,
+};

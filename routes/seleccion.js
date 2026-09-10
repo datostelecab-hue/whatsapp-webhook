@@ -15,7 +15,7 @@
 const express = require('express');
 const multer = require('multer');
 const router = express.Router();
-const { leerVacantesGuardadas, vacanteDisponible } = require('../services/vacantes');
+const vac = require('../services/repo/vacantes');
 const { geocodificar, geocodificarEstructurado } = require('../services/geocoding');
 const drive = require('../services/drive');
 const { generarFichaPDF } = require('../services/fichaAlta');
@@ -63,9 +63,14 @@ const DOCUMENTOS = [
 router.get('/', async (req, res) => {
   let vacantes = [], catalogos = { estados: [], canales: [], turnos: [], zonas: [], funnel: [] };
   try {
-    // Solo vacantes DISPONIBLES: las "En proceso de alta" ya tienen candidato y
-    // las Cerradas están resueltas.
-    vacantes = (await leerVacantesGuardadas()).filter(vacanteDisponible);
+    // Solo las ABIERTAS: una vacante "en proceso" ya tiene candidato, y ofrecerla
+    // otra vez es cómo dos reclutadores acababan trabajando la misma plaza.
+    //
+    // Vienen con TODO lo que hace falta para elegir bien: matrículas, zona,
+    // libranzas, la jornada que se ofrece y —si es un recambio— a quién
+    // sustituye. Antes era un texto con el puesto y la zona, y quien reclutaba no
+    // sabía si estaba ofreciendo 32 h o 40.
+    vacantes = await vac.disponibles();
   } catch (e) { console.error('❌ [Selección] vacantes:', e.message); }
   try { catalogos = await cand.catalogos(); } catch (e) {
     console.error('❌ [Selección] catálogos:', e.message);

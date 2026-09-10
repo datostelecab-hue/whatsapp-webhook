@@ -70,7 +70,7 @@ async function tablero({ dia } = {}) {
   const fechas = semanaDesde(lunes);
   const domingo = fechas[DIAS - 1];
 
-  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos, proximos] = await Promise.all([
+  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos, proximos, comprometidas] = await Promise.all([
     // Las plazas de los coches que se planifican. El orden es el de la
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
@@ -211,9 +211,25 @@ async function tablero({ dia } = {}) {
          JOIN conductor c ON c.id = a.conductor_id
         WHERE a.desde > $1 AND a.retirada_at IS NULL
         ORDER BY a.plaza_id, a.desde`, [efectivo]),
+
+    // QUÉ PLAZAS ESTÁN PROMETIDAS en una vacante viva. Es lo que faltaba para
+    // que el cuadrante no fuera el último en enterarse: una plaza que Tráfico
+    // ve vacía puede estar reclutándose desde hace dos semanas, y una que ve
+    // ocupada puede tener ya al relevo buscado.
+    db.consulta('SELECT * FROM v_plaza_comprometida'),
   ]);
 
   const descansoDe = new Map(descansos.rows.map(r => [String(r.vehiculo_id), (r.dias || []).map(Number)]));
+
+  // Plaza → la vacante que la tiene prometida.
+  const vacanteDe = new Map(comprometidas.rows.map(r => [String(r.plaza_id), {
+    codigo: r.codigo, estado: r.estado, motivo: r.motivo,
+    letras: r.letras || '',
+    // En un recambio, quién se va y cuándo.
+    sale: r.ocupa || '', salidaPrevista: fechaDe(r.salida_prevista),
+    // Y quién viene, si Selección ya le enganchó candidato.
+    candidato: r.candidato || '', inicioPrevisto: fechaDe(r.inicio_previsto),
+  }]));
 
   const sugeridoDe = new Map(sugeridos.rows.map(r => [String(r.plaza_id), r.dias_sugeridos || []]));
 
@@ -355,6 +371,8 @@ async function tablero({ dia } = {}) {
       // El PRÓXIMO DUEÑO, si esta plaza tiene una asignación futura: para avisar
       // "→ Carlos, llega el X" aunque ahora esté vacía o con un temporal.
       futuro: proximoDe.get(String(p.plaza_id)) || null,
+      // La vacante que tiene prometida esta plaza, si la hay.
+      vacante: vacanteDe.get(String(p.plaza_id)) || null,
     };
   });
 
@@ -371,6 +389,7 @@ async function tablero({ dia } = {}) {
           k % 2 === 0 ? 'Día' : 'Noche'),
         id: '', nombre: '', asignacionId: '', desde: '', hasta: '',
         diasManual: new Array(DIAS).fill(false), diasSugeridos: [], huerfano: false,
+        vacante: null,
       };
     }
   });

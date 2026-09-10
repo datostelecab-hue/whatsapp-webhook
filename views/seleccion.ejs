@@ -135,7 +135,16 @@
       canal: (CAT.canales || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })),
       turno_id: (CAT.turnos || []).map(x => ({ valor: x.id, texto: x.etiqueta })),
       base_zona_id: (CAT.zonas || []).map(x => ({ valor: x.id, texto: x.nombre })),
-      vacante_ref: VACANTES.map(x => ({ valor: x.id, texto: x.puesto + ' · ' + x.zonas })),
+      // La vacante se elige de la LISTA de las abiertas, y el texto dice todo lo
+      // que hace falta para no elegir a ciegas: puesto y jornada, zona,
+      // matrículas, libranza y, si es un recambio, a quién sustituye.
+      vacante_id: VACANTES.map(x => ({
+        valor: x.id,
+        texto: [x.puesto, x.zonas, x.matriculas,
+          x.libranzas ? 'libra ' + x.libranzas : '',
+          x.motivo === 'recambio' && x.sustituye ? '↔ releva a ' + x.sustituye : '',
+        ].filter(Boolean).join(' · '),
+      })),
     };
 
     const campos = (CAT.campos || []).map(c => ({
@@ -409,7 +418,7 @@
             { etiqueta: 'Etapa', valor: d => d.etapa_etiqueta },
             { etiqueta: 'Canal', valor: d => d.canal_etiqueta },
             { etiqueta: 'Responsable', valor: d => d.responsable },
-            { etiqueta: 'Vacante', valor: d => d.vacante_ref },
+            { etiqueta: 'Vacante', valor: d => d.vacante_ref, ancho: 'sm:col-span-2' },
             { etiqueta: 'Turno', valor: d => d.turno },
             { etiqueta: 'Zona', valor: d => d.zona },
             { etiqueta: 'Inicio previsto', valor: d => fecha(d.inicio_previsto) },
