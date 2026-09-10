@@ -1349,6 +1349,257 @@ async function salidasHoy(dia) {
  * enriquecer la parrilla sin tocar la consulta del tablero.
  * @returns {Promise<Map<string,{telefono:string, zona:string}>>}
  */
+// ── QUIÉN SALE Y —SOBRE TODO— QUIÉN NO ───────────────────────────
+// `salidasHoy` contesta a quién hay que llamar, y eso está bien para llamar. Pero
+// no contesta la otra mitad: CUÁNTOS COCHES SE QUEDAN PARADOS Y POR QUÉ. Un coche
+// sin nadie y un coche cuyo fijo está de baja se ven exactamente igual —no
+// aparecen— y no son lo mismo: uno hay que cubrirlo hoy y el otro hay que
+// reclutarlo.
+//
+// Esto va por COCHE, no por conductor: los coches operativos del cuadrante, cada
+// uno con sus dos turnos, y cada turno con quien sale o con la razón de que no
+// salga. Así el reporte cuadra con la flota: si hay 71 coches operativos, salen
+// 71 filas por turno, siempre, y la suma de los que no salen es lo que falta.
+//
+// La clave es tener DOS lecturas del mismo día:
+//   · el PLAN  — a quién le tocaba (la regla de f_cobertura, sin descontar
+//                 ausentes: descanso del coche, días del correturnos y libranzas
+//                 excepcionales).
+//   · la COBERTURA — quién lo cubre de verdad (f_cobertura, que ya los descuenta).
+// La diferencia entre las dos es, exactamente, el motivo.
+
+// El orden en que se leen los grupos. Lo pidió Tráfico así y tiene sentido: se
+// empieza por lo que funciona y se baja hasta lo que hay que resolver.
+const GRUPOS = [
+  { codigo: 'sale',        etiqueta: 'Sale (sin incidencias)' },
+  { codigo: 'baja_medica', etiqueta: 'Planificado pero de BAJA MÉDICA' },
+  { codigo: 'permiso',     etiqueta: 'Planificado pero con PERMISO' },
+  { codigo: 'vacaciones',  etiqueta: 'Planificado pero de VACACIONES' },
+  { codigo: 'ausente',     etiqueta: 'Planificado pero ausente (otros)' },
+  { codigo: 'sin_nadie',   etiqueta: 'NO SALE · sin nadie planificado' },
+];
+const ORDEN_GRUPO = new Map(GRUPOS.map((g, i) => [g.codigo, i]));
+
+// De qué estado del catálogo sale cada grupo. Lo que no esté aquí y sea ausencia
+// cae en 'ausente', que es la red: un estado nuevo no se pierde, sale agrupado.
+const GRUPO_DE_ESTADO = { baja_medica: 'baja_medica', permiso: 'permiso', vacaciones: 'vacaciones' };
+
+/**
+ * Los coches del cuadrante un día, turno a turno, con quien sale o el motivo.
+ *
+ * @param {string} [dia] 'YYYY-MM-DD'
+ * @returns {Promise<{dia, turnos:[{codigo, etiqueta, coches:[], resumen:{}}], grupos, totales}>}
+ */
+async function salidasPorCoche(dia) {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoy();
+  const cuad = new Map((await listarCuadrantes()).map(c => [String(c.id), c]));
+
+  // El PLAN del día: misma regla que f_cobertura SIN el filtro de ausentes.
+  const PLAN = `
+    SELECT p.vehiculo_id, s.turno_id, s.rol, s.orden_ct, a.conductor_id, p.id AS plaza_id
+      FROM asignacion a
+      JOIN plaza p    ON p.id = a.plaza_id AND p.baja_at IS NULL
+      JOIN cat_slot s ON s.slot = p.slot
+     WHERE a.retirada_at IS NULL
+       AND a.desde <= $1::date AND (a.hasta IS NULL OR a.hasta >= $1::date)
+       AND (CASE WHEN s.rol = 'CT'
+            THEN EXISTS (SELECT 1 FROM asignacion_dia ad
+                          WHERE ad.asignacion_id = a.id
+                            AND ad.dia_semana = EXTRACT(ISODOW FROM $1::date)::smallint)
+            ELSE (NOT EXISTS (SELECT 1 FROM vehiculo_descanso vd
+                                JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+                               WHERE vd.vehiculo_id = p.vehiculo_id
+                                 AND vd.desde <= $1::date AND (vd.hasta IS NULL OR vd.hasta >= $1::date)
+                                 AND vdd.dia_semana = EXTRACT(ISODOW FROM $1::date)::smallint)
+                  OR EXISTS (SELECT 1 FROM libranza_excepcional le
+                              WHERE le.conductor_id = a.conductor_id AND le.dia_trabaja = $1::date))
+                 AND NOT EXISTS (SELECT 1 FROM libranza_excepcional le
+                                  WHERE le.conductor_id = a.conductor_id AND le.dia_libra = $1::date)
+            END)`;
+
+  const [universo, previstos, cobertura] = await Promise.all([
+    // Un coche del cuadrante, por turno. Se cuelga de la plaza de FIJO porque
+    // todo coche tiene exactamente una por turno: así sale una fila por
+    // (coche, turno) sin duplicar por los cuatro huecos de correturnos.
+    db.consulta(
+      `SELECT vp.vehiculo_id, vp.matricula, COALESCE(vp.zona, '') AS zona,
+              vp.cuadrante, vp.cuadrante_num, vp.cuadrante_id,
+              vp.estado_operativo, vp.es_operativo,
+              COALESCE(cev.etiqueta, vp.estado_operativo) AS estado_coche,
+              vp.turno_id, vp.turno_codigo, vp.turno,
+              EXISTS (SELECT 1 FROM vehiculo_descanso vd
+                        JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+                       WHERE vd.vehiculo_id = vp.vehiculo_id
+                         AND vd.desde <= $1::date AND (vd.hasta IS NULL OR vd.hasta >= $1::date)
+                         AND vdd.dia_semana = EXTRACT(ISODOW FROM $1::date)::smallint) AS descansa_hoy,
+              COALESCE((SELECT array_agg(vdd.dia_semana ORDER BY vdd.dia_semana)
+                          FROM vehiculo_descanso vd
+                          JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+                         WHERE vd.vehiculo_id = vp.vehiculo_id
+                           AND vd.desde <= $1::date AND (vd.hasta IS NULL OR vd.hasta >= $1::date)),
+                       ARRAY[]::smallint[]) AS descanso,
+              -- La vacante que tenga prometida alguna de sus plazas de este turno:
+              -- un coche parado que YA se está reclutando no es el mismo problema.
+              (SELECT c.codigo FROM v_plaza_comprometida c
+                 JOIN v_plaza w ON w.plaza_id = c.plaza_id
+                WHERE w.vehiculo_id = vp.vehiculo_id AND w.turno_id = vp.turno_id
+                LIMIT 1) AS vacante
+         FROM v_plaza vp
+         LEFT JOIN cat_estado_vehiculo cev ON cev.codigo = vp.estado_operativo
+        WHERE vp.rol = 'FIJO'
+        ORDER BY vp.turno_id, vp.cuadrante_num NULLS LAST, vp.matricula`, [d]),
+
+    // A quién le tocaba, con su estado de ese día.
+    db.consulta(
+      `WITH plan AS (${PLAN})
+       SELECT pl.vehiculo_id, pl.turno_id, pl.rol, pl.orden_ct, pl.conductor_id,
+              COALESCE(NULLIF(btrim(ext.externo_nombre), ''),
+                       NULLIF(COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
+                                       btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))), ''),
+                       '#' || c.id::text)                    AS conductor,
+              tel.e164                                       AS telefono,
+              est.estado, ce.etiqueta AS estado_etiqueta, ce.es_ausencia,
+              est.hasta::text                                AS vuelve
+         FROM plan pl
+         JOIN conductor c ON c.id = pl.conductor_id
+         LEFT JOIN LATERAL (
+           SELECT e164 FROM conductor_telefono
+            WHERE conductor_id = c.id AND vigente_hasta IS NULL
+            ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT externo_nombre FROM conductor_externo
+            WHERE conductor_id = c.id AND sistema = 'bolt'
+            ORDER BY (estado_externo = 'active') DESC, visto_at DESC NULLS LAST LIMIT 1) ext ON TRUE
+         LEFT JOIN conductor_estado_hist est
+                ON est.conductor_id = c.id
+               AND est.desde <= $1::date AND (est.hasta IS NULL OR est.hasta >= $1::date)
+         LEFT JOIN cat_estado_conductor ce ON ce.codigo = est.estado`, [d]),
+
+    // Y quién lo cubre de verdad.
+    db.consulta('SELECT DISTINCT vehiculo_id, turno_id, conductor_id FROM f_cobertura($1::date, $1::date)', [d]),
+  ]);
+
+  const cubren = new Set(cobertura.rows.map(x => `${x.vehiculo_id}|${x.turno_id}|${x.conductor_id}`));
+  // TodoTurno de verdad: quien cubre el DÍA Y LA NOCHE DEL MISMO COCHE. No basta
+  // con salir en dos turnos —eso puede ser un correturnos en dos coches—: lo que
+  // se marca es a quien lleva un coche de punta a punta.
+  const turnosDe = new Map();
+  cobertura.rows.forEach(x => {
+    const k = `${x.conductor_id}|${x.vehiculo_id}`;
+    if (!turnosDe.has(k)) turnosDe.set(k, new Set());
+    turnosDe.get(k).add(String(x.turno_id));
+  });
+  const esTodoTurno = (cid, vid) => (turnosDe.get(`${cid}|${vid}`) || new Set()).size > 1;
+  const porSitio = new Map();          // 'vehiculo|turno' -> [previstos]
+  previstos.rows.forEach(x => {
+    const k = `${x.vehiculo_id}|${x.turno_id}`;
+    if (!porSitio.has(k)) porSitio.set(k, []);
+    porSitio.get(k).push({
+      conductorId: String(x.conductor_id),
+      conductor: x.conductor || '',
+      telefono: x.telefono || '',
+      rol: x.rol,
+      plaza: x.rol === 'CT' ? `CT${x.orden_ct || ''}` : 'Fijo',
+      estado: x.estado || null,
+      estadoEtiqueta: x.estado_etiqueta || '',
+      ausente: !!x.es_ausencia,
+      vuelve: x.vuelve || '',
+      cubre: cubren.has(`${x.vehiculo_id}|${x.turno_id}|${x.conductor_id}`),
+    });
+  });
+
+  const porTurno = new Map();
+  universo.rows.forEach(v => {
+    const k = `${v.vehiculo_id}|${v.turno_id}`;
+    const gente = porSitio.get(k) || [];
+    const sale = gente.filter(g => g.cubre);
+    const fallan = gente.filter(g => !g.cubre);
+    const descanso = (v.descanso || []).map(Number);
+
+    let grupo, motivo = '', quien = null;
+    if (sale.length) {
+      grupo = 'sale';
+      quien = sale[0];
+      // Dos cubriendo el mismo coche y turno: la base lo permite (un fijo y su
+      // correturnos) y hay que verlo, no esconderlo.
+      if (sale.length > 1) motivo = 'Ojo: ' + sale.length + ' personas cubriendo el mismo turno';
+    } else if (fallan.length) {
+      // Le tocaba a alguien y no va a salir. El motivo es SU estado.
+      quien = fallan.find(g => g.ausente) || fallan[0];
+      grupo = quien.ausente ? (GRUPO_DE_ESTADO[quien.estado] || 'ausente') : 'ausente';
+      motivo = quien.estadoEtiqueta || 'No cubre';
+      if (quien.vuelve) motivo += ' · vuelve el ' + quien.vuelve.split('-').reverse().join('/');
+    } else {
+      grupo = 'sin_nadie';
+      // Por qué no hay nadie: o el coche descansa hoy y no tiene correturnos, o
+      // la plaza está vacía. Son dos problemas distintos y se resuelven distinto.
+      motivo = v.descansa_hoy
+        ? 'El coche descansa hoy (' + descanso.map(x => LETRAS[x - 1]).join(' ') + ') y no tiene correturnos'
+        : 'Plaza sin asignar';
+      if (!v.es_operativo) motivo = 'Coche no operativo: ' + v.estado_coche;
+      if (v.vacante) motivo += ' · en la vacante ' + v.vacante;
+    }
+
+    const q = cuad.get(String(v.cuadrante_id));
+    const fila = {
+      vehiculoId: String(v.vehiculo_id),
+      matricula: v.matricula,
+      zona: v.zona || (q ? q.zona : ''),
+      cuadrante: q ? q.nombre : (v.cuadrante || ''),
+      cuadranteNum: q ? q.numero : (v.cuadrante_num == null ? null : Number(v.cuadrante_num)),
+      estadoCoche: v.estado_coche,
+      operativo: !!v.es_operativo,
+      descanso, descansaHoy: !!v.descansa_hoy,
+      descansoLetras: descanso.map(x => LETRAS[x - 1]).join(' '),
+      vacante: v.vacante || '',
+      grupo, motivo,
+      conductor: quien ? quien.conductor : '',
+      conductorId: quien ? quien.conductorId : null,
+      telefono: quien ? quien.telefono : '',
+      plaza: quien ? quien.plaza : '',
+      todoTurno: !!(quien && quien.cubre && esTodoTurno(quien.conductorId, String(v.vehiculo_id))),
+      // Los demás que tenían algo que ver con este turno (el fijo cuando sale su
+      // correturnos, el segundo que cubre, el que falla si sale otro).
+      otros: gente.filter(g => g !== quien)
+        .map(g => `${g.conductor} (${g.plaza}${g.cubre ? '' : ' · ' + (g.estadoEtiqueta || 'no cubre')})`),
+    };
+
+    if (!porTurno.has(v.turno_codigo)) {
+      porTurno.set(v.turno_codigo, { codigo: v.turno_codigo, etiqueta: v.turno, coches: [] });
+    }
+    porTurno.get(v.turno_codigo).coches.push(fila);
+  });
+
+  // El orden que se lee: primero por grupo (lo que funciona arriba, lo que hay
+  // que resolver abajo) y dentro de cada grupo por cuadrante y matrícula.
+  porTurno.forEach(t => {
+    t.coches.sort((a, b) =>
+      (ORDEN_GRUPO.get(a.grupo) - ORDEN_GRUPO.get(b.grupo)) ||
+      ((a.cuadranteNum ?? 9999) - (b.cuadranteNum ?? 9999)) ||
+      a.matricula.localeCompare(b.matricula));
+    t.resumen = GRUPOS.reduce((acc, g) => {
+      acc[g.codigo] = t.coches.filter(c => c.operativo && c.grupo === g.codigo).length;
+      return acc;
+    }, {});
+    t.operativos = t.coches.filter(c => c.operativo).length;
+    t.salen = t.resumen.sale;
+  });
+
+  const ORDEN = ['dia', 'noche', 'todoturno', 'desconocido'];
+  const turnos = [...porTurno.values()].sort((a, b) => {
+    const ia = ORDEN.indexOf(a.codigo), ib = ORDEN.indexOf(b.codigo);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+
+  return {
+    dia: d, turnos, grupos: GRUPOS,
+    totales: {
+      coches: new Set(universo.rows.map(x => x.vehiculo_id)).size,
+      operativos: new Set(universo.rows.filter(x => x.es_operativo).map(x => x.vehiculo_id)).size,
+    },
+  };
+}
+
 async function contactos() {
   const r = await db.consulta(
     `SELECT c.id,
@@ -1527,6 +1778,7 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
 module.exports = {
   tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso, cubrirAusencia,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
-  listarCuadrantes, salidasHoy, contactos, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
+  listarCuadrantes, salidasHoy, salidasPorCoche, GRUPOS_SALIDA: GRUPOS,
+  contactos, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,
   lunesDe, semanaDesde, fechaDe, parsearDias, vispera, DIAS, LETRAS,
 };
