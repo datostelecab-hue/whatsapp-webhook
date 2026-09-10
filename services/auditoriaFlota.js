@@ -30,22 +30,12 @@
 const { fetchRangoCompleto, fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
 const { leerPadron } = require('./conductoresBolt');
 const mapon = require('./mapon');
-const sheets = require('./sheets');
+const repo = require('./repo/auditoriaFlota');
 
 const ZONA = 'Europe/Madrid';
 const MAX_DIAS = 31;
 const CONC_MAPON = 3;         // llamadas Mapon en paralelo (deja hueco bajo el tope de 5)
 const MARGEN_SEG = 4 * 3600;  // margen para pedidos/trayectos que cruzan la medianoche
-
-const ID_AUDITORIA = process.env.ID_AUDITORIA || '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';
-const TAB_KM = 'AUDITORIA_KM';
-const TAB_FUEL = 'AUDITORIA_REPOSTAJES';
-const TAB_DIAS = 'AUDITORIA_DIAS';
-const CAB_KM = ['dia', 'turno', 'placa', 'matricula', 'vehiculo', 'km_mapon', 'km_pasajero', 'km_ida', 'km_espera', 'km_descanso', 'km_fuera',
-  'h_pedido', 'h_espera', 'h_descanso', 'h_fuera', 'km_bolt', 'viajes_bolt', 'conductores', 'actualizado'];
-const ANCHO_KM = 19;      // columnas de TAB_KM (A:S)
-const CAB_FUEL = ['dia', 'hora', 'orden', 'placa', 'matricula', 'vehiculo', 'tipo', 'litros', 'nivel_antes', 'lat', 'lng', 'direccion', 'fuente', 'actualizado'];
-const CAB_DIAS = ['dia', 'actualizado'];
 
 // ── Utilidades ───────────────────────────────────────────────────────────────
 
@@ -399,7 +389,11 @@ async function leerFuelDia(dia) {
 function conductoresEnVentana(logs, ini, fin, nombrePorUuid) {
   const uuids = new Set();
   (logs || []).forEach(l => { if (l.t >= ini && l.t < fin && l.driver) uuids.add(l.driver); });
-  return [...uuids].map(u => (nombrePorUuid.get(u) || '').trim() || `#${String(u).slice(0, 8)}`).sort();
+  // Se devuelve el UUID además del nombre: es lo que permite enlazar con la
+  // ficha del conductor al guardar, y por tanto ir de la persona a sus km.
+  return [...uuids]
+    .map(u => ({ uuid: String(u), nombre: (nombrePorUuid.get(u) || '').trim() || `#${String(u).slice(0, 8)}` }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
 
 async function computarDia(dia) {
@@ -514,112 +508,15 @@ async function computarDia(dia) {
   return { dia, filas: [...filas.values()], eventos };
 }
 
-// ── Serialización / Sheet ─────────────────────────────────────────────────────
-
-const filaKmASheet = o => [o.dia, o.turno || 'completo', o.placa, o.matricula, o.vehiculo,
-  o.kmMapon || '', o.kmPasajero || '', o.kmIda || '', o.kmEspera || '', o.kmDescanso || '', o.kmFuera || '',
-  o.hPedido || '', o.hEspera || '', o.hDescanso || '', o.hFuera || '', o.kmBolt || '', o.viajesBolt || '',
-  (o.conductores || []).join(' · '), ahora()];
-function leerFilasKm(valores) {
-  return (valores || []).slice(1).filter(r => r[0]).map(r => ({
-    dia: String(r[0]), turno: String(r[1] || 'completo'), placa: String(r[2] || ''),
-    matricula: String(r[3] || ''), vehiculo: String(r[4] || ''),
-    kmMapon: num(r[5]), kmPasajero: num(r[6]), kmIda: num(r[7]), kmEspera: num(r[8]), kmDescanso: num(r[9]), kmFuera: num(r[10]),
-    hPedido: num(r[11]), hEspera: num(r[12]), hDescanso: num(r[13]), hFuera: num(r[14]),
-    kmBolt: num(r[15]), viajesBolt: Math.round(num(r[16])),
-    conductores: String(r[17] || '').split('·').map(s => s.trim()).filter(Boolean)
-  }));
-}
-const eventoASheet = e => [e.dia, e.hora, e.orden, e.placa, e.matricula, e.vehiculo, e.tipo, e.litros,
-  e.nivelAntes == null ? '' : e.nivelAntes, e.lat == null ? '' : e.lat, e.lng == null ? '' : e.lng, e.direccion || '', e.fuente, ahora()];
-function leerEventos(valores) {
-  return (valores || []).slice(1).filter(r => r[0]).map(r => ({
-    dia: String(r[0]), hora: String(r[1] || ''), orden: Number(r[2]) || 0, placa: String(r[3] || ''),
-    matricula: String(r[4] || ''), vehiculo: String(r[5] || ''), tipo: String(r[6] || ''),
-    litros: num(r[7]), nivelAntes: r[8] === '' || r[8] == null ? null : num(r[8]),
-    lat: r[9] === '' || r[9] == null ? null : num(r[9]), lng: r[10] === '' || r[10] == null ? null : num(r[10]),
-    direccion: String(r[11] || ''), fuente: String(r[12] || '')
-  }));
-}
-
-// Comprobar las pestañas cuesta 4 llamadas a Sheets y solo hace falta UNA VEZ por
-// arranque: repetirlo en cada día de un backfill fue lo que agotó la cuota de la API
-// (60 peticiones por minuto y usuario) y tumbó todo el ERP, login incluido.
-let _tabsListas = false;
-async function ensureTabs() {
-  if (_tabsListas) return;
-  await sheets.ensureSheet(ID_AUDITORIA, TAB_KM);
-  await sheets.ensureSheet(ID_AUDITORIA, TAB_FUEL);
-  await sheets.ensureSheet(ID_AUDITORIA, TAB_DIAS);
-  let [a, b, c] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A1:S1`, `${TAB_FUEL}!A1:N1`, `${TAB_DIAS}!A1:B1`]);
-  // Migración: si la cabecera de KM no cuadra (esquema viejo), se rehace la tabla
-  // y se vacía el control de días para reconstruir con el esquema nuevo.
-  const hdr = (a[0] || []).map(String);
-  if (hdr.length && hdr.join('|') !== CAB_KM.join('|')) {
-    await sheets.clearSheet(ID_AUDITORIA, `${TAB_KM}!A:Z`);
-    await sheets.clearSheet(ID_AUDITORIA, `${TAB_DIAS}!A:B`);
-    a = []; c = [];
-    console.log('♻️  [AUDITORÍA] esquema KM actualizado: el histórico se reconstruirá');
-  }
-  const tareas = [];
-  if (!a.length) tareas.push({ range: `${TAB_KM}!A1`, values: [CAB_KM] });
-  if (!b.length) tareas.push({ range: `${TAB_FUEL}!A1`, values: [CAB_FUEL] });
-  if (!c.length) tareas.push({ range: `${TAB_DIAS}!A1`, values: [CAB_DIAS] });
-  if (tareas.length) await sheets.writeMany(ID_AUDITORIA, tareas);
-  _tabsListas = true;
-}
-/**
- * Reescribe una tabla ENTERA sin dejarla nunca vacía a medias: primero se amplía la
- * rejilla (values.update no la agranda: pasadas las 1000 filas por defecto fallaba
- * DESPUÉS del borrado y se perdía todo el histórico), luego se escriben los datos
- * nuevos y solo al final se limpia el sobrante. Así un fallo a mitad deja datos
- * viejos o nuevos, pero nunca la hoja en blanco.
- */
-async function reescribir(tab, values, anchoCols, filasPrevias) {
-  const necesarias = values.length + 1;
-  await sheets.ensureGrid(ID_AUDITORIA, tab, necesarias + 200, anchoCols);
-  if (values.length) await sheets.writeSheetRaw(ID_AUDITORIA, `${tab}!A2`, values);
-  const sobra = (filasPrevias || 0) - values.length;
-  if (sobra > 0) {
-    const finCol = String.fromCharCode(64 + anchoCols);
-    await sheets.clearSheet(ID_AUDITORIA, `${tab}!A${necesarias + 1}:${finCol}${necesarias + sobra}`);
-  }
-}
-
-// Un guardado a la vez (el histórico se reescribe entero).
-let _cola = Promise.resolve();
-function enCola(fn) { const r = _cola.then(fn, fn); _cola = r.catch(() => {}); return r; }
-
-async function guardarDias(resultados) {
-  if (!resultados.length) return;
-  return enCola(async () => {
-    await ensureTabs();
-    const dias = new Set(resultados.map(r => r.dia));
-    const [valKm, valFuel, valDias] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A:S`, `${TAB_FUEL}!A:N`, `${TAB_DIAS}!A:B`]);
-    const previasKm = Math.max(0, (valKm || []).length - 1), previasFuel = Math.max(0, (valFuel || []).length - 1);
-    let filasKm = leerFilasKm(valKm).filter(r => !dias.has(r.dia));
-    let eventos = leerEventos(valFuel).filter(r => !dias.has(r.dia));
-    resultados.forEach(r => { filasKm = filasKm.concat(r.filas); eventos = eventos.concat(r.eventos); });
-    await reescribir(TAB_KM, filasKm.map(filaKmASheet), ANCHO_KM, previasKm);
-    await reescribir(TAB_FUEL, eventos.map(eventoASheet), 14, previasFuel);
-    // El control de días se escribe en RAW: con USER_ENTERED, Sheets convertía
-    // 'aaaa-mm-dd' en fecha y al releerlo ('11/08/2026') no casaba nunca, así que
-    // TODOS los días salían siempre como pendientes.
-    const cong = new Set((valDias || []).slice(1).map(r => String(r[0]).trim()).filter(Boolean));
-    const previasDias = cong.size;
-    dias.forEach(d => cong.add(d));
-    if (cong.size !== previasDias) {
-      await reescribir(TAB_DIAS, [...cong].sort().map(d => [d, ahora()]), 2, previasDias);
-    }
-  });
-}
-
 /** Calcula y guarda UN día (lo que llama el cron con el día de ayer). */
 async function procesarDia(dia) {
+  const arranque = Date.now();
   const r = await computarDia(dia);
-  await guardarDias([r]);
-  console.log(`📊 [AUDITORÍA] ${dia}: ${r.filas.length} matrículas, ${r.eventos.length} repostajes`);
-  return { dia, filas: r.filas.length, eventos: r.eventos.length };
+  const seg = Math.round((Date.now() - arranque) / 1000);
+  const g = await repo.guardarDia(r, { segundos: seg });
+  console.log(`📊 [AUDITORÍA] ${dia}: ${g.filas} líneas de ${new Set(r.filas.map(f => f.placa)).size} ` +
+    `matrículas, ${g.eventos} repostajes (${seg}s)`);
+  return { dia, filas: g.filas, eventos: g.eventos };
 }
 
 // ── Backfill por rango (en segundo plano; el panel sondea el progreso) ─────────
@@ -644,11 +541,6 @@ function detener() {
  * extremos se reprocesaban de balde todos los días buenos de en medio.
  * Un día que falle no aborta el resto: se anota y se sigue.
  */
-// Días que se calculan antes de escribir en el Sheet. Guardar día a día reescribía el
-// libro entero cada vez (~12 llamadas por día) y agotaba la cuota de Google. En lotes,
-// el coste de escritura se reparte entre varios días.
-const DIAS_POR_LOTE = Number(process.env.AUDITORIA_LOTE || 5);
-
 async function procesarRango({ desde, hasta, dias: lista } = {}) {
   if (_prog.activo) throw new Error('Ya hay un procesado en marcha');
   let dias;
@@ -663,30 +555,24 @@ async function procesarRango({ desde, hasta, dias: lista } = {}) {
   _parar = false;
   _prog = { activo: true, total: dias.length, hechos: 0, dia: null, iniciado: ahora(), fin: null, error: null, fallidos: [] };
   try {
-    // Se calculan varios días y se GUARDAN DE UNA VEZ: el guardado reescribe el libro
-    // entero, así que hacerlo por día multiplicaba las llamadas a Sheets hasta agotar
-    // la cuota. Un lote pequeño mantiene la resiliencia (si se corta, se pierde solo
-    // el lote en curso) y baja el coste de la API a la quinta parte.
-    let lote = [];
-    const volcar = async () => {
-      if (!lote.length) return;
-      await guardarDias(lote);
-      console.log(`📊 [AUDITORÍA] guardados ${lote.length} día(s): ${lote.map(x => x.dia).join(', ')}`);
-      lote = [];
-    };
+    // Día a día. Cuando esto vivía en una hoja había que agrupar en lotes porque
+    // cada guardado reescribía el libro entero y agotaba la cuota de Google; en
+    // PostgreSQL un día es una transacción y guardarlo cuesta lo mismo suelto que
+    // acompañado. Ahora si el backfill se corta, lo calculado está guardado.
     for (const d of dias) {
       if (_parar) { _prog.error = 'Detenido a mano'; console.warn('🛑 [AUDITORÍA] backfill detenido'); break; }
       _prog.dia = d;
       try {
-        lote.push(await computarDia(d));
-        if (lote.length >= DIAS_POR_LOTE) await volcar();
+        await procesarDia(d);
       } catch (e) {
         _prog.fallidos.push(`${d}: ${e.message}`);
         console.error(`❌ [AUDITORÍA] ${d}:`, e.message);
+        // Queda anotado que ese día se intentó y falló: así se distingue de uno
+        // que nunca se ha calculado, que es una situación distinta.
+        await repo.marcarFallo(d, e.message).catch(() => {});
       }
       _prog.hechos++;
     }
-    await volcar();
     if (_prog.fallidos.length) _prog.error = `${_prog.fallidos.length} día(s) sin procesar: ${_prog.fallidos.slice(0, 3).join(' · ')}`;
   } catch (e) {
     _prog.error = e.message;
@@ -766,34 +652,41 @@ function construirRespuesta(dias, filasKmRec, eventosRec, segmento = 'completo')
 }
 
 /**
- * Lee el rango del histórico. Va por la MISMA cola que los guardados: si no, una
- * consulta que caiga en mitad de una reescritura vería la tabla a medias y pintaría
- * una auditoría vacía (que se lee como "aquí no ha rodado nadie por fuera").
+ * Lee el rango del histórico. Ya no hay cola ni hoja: son tres consultas a
+ * PostgreSQL que traen SOLO el rango pedido. Antes se leía el libro entero —los
+ * cinco tramos de todos los días habidos— y se descartaba en memoria, así que
+ * pedir una semana costaba exactamente lo mismo que pedir un año.
  */
-function cargarAuditoria({ desde, hasta } = {}) {
-  const { ini, fin } = resolverRango({ desde, hasta });   // valida antes de encolar
-  return enCola(async () => {
-    const dias = ejeDias(ini, fin);
-    await ensureTabs();
-    const [valKm, valFuel, valDias] = await sheets.readMany(ID_AUDITORIA, [`${TAB_KM}!A:S`, `${TAB_FUEL}!A:N`, `${TAB_DIAS}!A:B`]);
-    const procesados = new Set((valDias || []).slice(1).map(r => String(r[0]).trim()).filter(Boolean));
-    const filas = leerFilasKm(valKm), eventos = leerEventos(valFuel);
-    // Se arma cada tramo por separado: el día natural (la vista de siempre) y los dos
-    // turnos, para poder verlos juntos sin volver a consultar.
-    const base = construirRespuesta(dias, filas, eventos, 'completo');
-    const segmentos = Object.fromEntries(SEGMENTOS.map(s =>
-      [s, s === 'completo' ? base.km : construirRespuesta(dias, filas, eventos, s).km]));
-    const pendientes = dias.filter(d => !procesados.has(d));
-    // Todo lo guardado ya es de matrículas CON ACTIVIDAD EN BOLT (se filtran al
-    // calcular el día), así que no hace falta ningún filtro adicional aquí.
-    const enRango = new Set(dias);
-    const matriculas = new Set(filas.filter(r => enRango.has(r.dia)).map(r => r.placa));
-    return {
-      ...base, segmentos, etiquetas: ETIQUETA_SEG,
-      matriculasBolt: matriculas.size,
-      desde: ini.toISOString(), hasta: fin.toISOString(), pendientes, generado: ahora()
-    };
-  });
+async function cargarAuditoria({ desde, hasta } = {}) {
+  const { ini, fin } = resolverRango({ desde, hasta });
+  const dias = ejeDias(ini, fin);
+  const d1 = dias[0], d2 = dias[dias.length - 1];
+
+  const [filas, eventos, calculados] = await Promise.all([
+    repo.consultar({ desde: d1, hasta: d2, tramo: '*' }),
+    repo.repostajes({ desde: d1, hasta: d2 }),
+    repo.dias({ desde: d1, hasta: d2 }),
+  ]);
+
+  // Se arma cada tramo por separado: el día natural (la vista de siempre) y los
+  // turnos, para poder verlos juntos sin volver a consultar.
+  const base = construirRespuesta(dias, filas, eventos, 'completo');
+  const segmentos = Object.fromEntries(SEGMENTOS.map(s =>
+    [s, s === 'completo' ? base.km : construirRespuesta(dias, filas, eventos, s).km]));
+
+  // Pendiente es lo que no se ha calculado NUNCA o se intentó y falló. Un día
+  // fallido no puede confundirse con uno que nadie ha pedido todavía: el
+  // primero hay que reintentarlo, el segundo solo programarlo.
+  const buenos = new Set(calculados.filter(c => c.ok).map(c => c.dia));
+  const pendientes = dias.filter(d => !buenos.has(d));
+  const fallidos = calculados.filter(c => !c.ok).map(c => ({ dia: c.dia, error: c.error }));
+
+  return {
+    ...base, segmentos, etiquetas: ETIQUETA_SEG,
+    matriculasBolt: new Set(filas.map(r => r.placa)).size,
+    desde: ini.toISOString(), hasta: fin.toISOString(),
+    pendientes, fallidos, generado: ahora()
+  };
 }
 
 module.exports = {
@@ -802,5 +695,7 @@ module.exports = {
   SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana,
   normPlaca, diaLocal, limitesDiaMadrid, offsetMadridSeg, mergeIv, enIntervalos,
   construirIv, estadoEn, bucketDe, atribuirRecorrido, tiempoPorEstado, haversineKm, construirRespuesta,
-  leerFilasKm, leerEventos, resolverRango, ejeDias, MAX_DIAS
+  resolverRango, ejeDias, MAX_DIAS,
+  // El ranking por conductor se sirve tal cual desde el repositorio.
+  porConductor: (...a) => repo.porConductor(...a)
 };
