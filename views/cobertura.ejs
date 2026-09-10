@@ -27,6 +27,9 @@
     </button>
   </div>
 
+  <!-- ══ El registro de avisos: quién avisó, a cuántos y cuántas veces ══ -->
+  <section id="avisos-dia" class="mb-5"></section>
+
   <!-- ══ Titulares de vacaciones/baja que siguen en su plaza (esos turnos NO salen) ══ -->
   <div id="ausentes-plaza" class="mb-5"></div>
 
@@ -84,11 +87,100 @@ async function cargar() {
       : '—';
     $('#sem-prev').disabled = SEMANA === 0;
     pintar();
+    cargarAvisos();
   } catch (e) {
     $('#cargando').innerHTML = '<p class="text-telecab-red">' + esc(e.message) + '</p>';
     return;
   }
   $('#cargando').classList.add('hidden');
+}
+
+// ════════ El registro de avisos (semáforo por persona + informe del día) ════════
+let AVI = null;        // estado de la semana mirada: { conductores: { id: {...} } }
+let INF = null;        // informe del día elegido
+let INF_DIA = '';      // '' = hoy
+let INF_ABIERTO = false;
+
+async function cargarAvisos() {
+  try {
+    const [e, i] = await Promise.all([
+      (await fetch('/cobertura/api/avisos-estado?semana=' + SEMANA)).json(),
+      (await fetch('/cobertura/api/avisos-informe' + (INF_DIA ? '?dia=' + INF_DIA : ''))).json(),
+    ]);
+    AVI = e.status === 'ok' ? e : null;
+    INF = i.status === 'ok' ? i : null;
+  } catch (_) { AVI = null; INF = null; }
+  pintarInformeAvisos();
+  pintarPersonas();
+}
+
+// El chip de una persona: verde avisada y al día, rojo si sus turnos CAMBIARON
+// después del aviso, gris si trabaja y nadie le ha avisado aún.
+function chipAviso(p) {
+  if (!AVI || !AVI.conductores) return '';
+  const base = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold border';
+  const a = AVI.conductores[p.id];
+  if (a) {
+    return a.cambiado
+      ? `<span class="${base} bg-telecab-red/15 text-telecab-red border-telecab-red/40"
+           title="Se le avisó ${esc(a.ultimoAt)}${a.ultimoPor ? ' (' + esc(a.ultimoPor) + ')' : ''} pero sus turnos han CAMBIADO después: toca reenviar">
+           <i class="fa-solid fa-triangle-exclamation"></i> Cambió tras el aviso</span>`
+      : `<span class="${base} bg-telecab-green/15 text-telecab-green border-telecab-green/40"
+           title="Último aviso ${esc(a.ultimoAt)}${a.ultimoPor ? ' por ' + esc(a.ultimoPor) : ''} · ${a.veces} envío(s) esta semana · sin cambios desde entonces">
+           <i class="fa-solid fa-check"></i> Avisado${a.veces > 1 ? ' ×' + a.veces : ''}</span>`;
+  }
+  return p.dias.some(d => d.trabaja)
+    ? `<span class="${base} border-telecab-border text-telecab-muted" title="Trabaja esta semana y todavía no se le han enviado los turnos">Sin avisar</span>`
+    : '';
+}
+
+function pintarInformeAvisos() {
+  const c = $('#avisos-dia');
+  if (!INF) { c.innerHTML = ''; return; }
+  const hoy = !INF_DIA;
+  const usuarios = (INF.porUsuario || [])
+    .map(u => `<span class="font-medium text-telecab-text">${esc(u.usuario)}</span> ${u.envios} a ${u.personas} persona(s)`)
+    .join(' <span class="text-telecab-muted">·</span> ');
+  const filas = (INF.detalle || []).map(d => `
+    <tr class="border-t border-telecab-border/50">
+      <td class="px-3 py-1.5">${esc(d.nombre)}</td>
+      <td class="px-3 py-1.5 text-telecab-muted">${esc(d.cuadrante || '—')}</td>
+      <td class="px-3 py-1.5 text-center font-semibold">${d.vecesHoy}</td>
+      <td class="px-3 py-1.5 text-center text-telecab-muted" title="Veces avisado en total de la semana que se le mandó">${d.vecesSemana}</td>
+      <td class="px-3 py-1.5 text-center">${esc(d.ultima)}</td>
+      <td class="px-3 py-1.5">${esc(d.por || '—')}</td>
+      <td class="px-3 py-1.5">${d.ultimoResultado === 'ok' ? '<span class="text-telecab-green">✓</span>'
+        : d.ultimoResultado === 'sin-telefono' ? '<span class="text-telecab-warn">sin teléfono</span>'
+        : '<span class="text-telecab-red">error</span>'}</td>
+    </tr>`).join('');
+  c.innerHTML = `
+    <div class="rounded-xl bg-telecab-card border border-telecab-border px-4 py-3">
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <span class="font-semibold text-telecab-text"><i class="fa-solid fa-clipboard-check text-telecab-gold mr-1"></i>
+          Avisos ${hoy ? 'de hoy' : 'del día'}</span>
+        <input id="inf-dia" type="date" value="${esc(INF_DIA)}"
+               class="px-2 py-1 rounded-lg bg-telecab-dark border border-telecab-border text-telecab-text text-xs">
+        <span class="text-telecab-text"><b>${INF.personas || 0}</b> persona(s) avisadas · <b>${INF.envios || 0}</b> envío(s)</span>
+        ${usuarios ? `<span class="text-telecab-muted">—</span> <span class="text-telecab-muted">${usuarios}</span>` : ''}
+        ${INF.errores ? `<span class="text-telecab-red">${INF.errores} con error</span>` : ''}
+        ${INF.sin_telefono ? `<span class="text-telecab-warn">${INF.sin_telefono} sin teléfono</span>` : ''}
+        <button id="inf-abrir" class="ml-auto text-xs text-telecab-muted hover:text-telecab-text transition">
+          ${INF_ABIERTO ? 'Ocultar detalle ▴' : 'Ver detalle ▾'}</button>
+      </div>
+      ${INF_ABIERTO ? ((INF.detalle || []).length ? `
+      <div class="mt-3 overflow-x-auto max-h-80 overflow-y-auto rounded-lg border border-telecab-border/60">
+        <table class="w-full text-xs">
+          <thead class="sticky top-0 bg-telecab-dark text-telecab-muted">
+            <tr><th class="px-3 py-2 text-left">Conductor</th><th class="px-3 py-2 text-left">Cuadrante</th>
+                <th class="px-3 py-2">Veces (día)</th><th class="px-3 py-2">Veces (semana)</th>
+                <th class="px-3 py-2">Última</th><th class="px-3 py-2 text-left">Avisó</th><th class="px-3 py-2 text-left">Resultado</th></tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>` : '<p class="mt-3 text-xs text-telecab-muted">Ese día no se avisó a nadie.</p>') : ''}
+    </div>`;
+  $('#inf-abrir').addEventListener('click', () => { INF_ABIERTO = !INF_ABIERTO; pintarInformeAvisos(); });
+  $('#inf-dia').addEventListener('change', ev => { INF_DIA = ev.target.value || ''; cargarAvisos(); });
 }
 
 function pintar() {
@@ -265,7 +357,7 @@ function pintarPersonas() {
         <div class="mb-3 flex items-start justify-between gap-2">
           <div>
             <div class="text-telecab-text font-semibold">${esc(p.nombre || p.id)}</div>
-            <div class="text-xs text-telecab-muted">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''}</div>
+            <div class="text-xs text-telecab-muted flex items-center gap-2 flex-wrap">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''} ${chipAviso(p)}</div>
           </div>
           <button class="btn-turno shrink-0 px-3 py-1.5 rounded-lg bg-green-600/15 text-green-400 text-xs font-medium hover:bg-green-600/25 disabled:opacity-40"
                   data-id="${esc(p.id)}" ${p.telefono ? '' : 'disabled'} title="${p.telefono ? 'Enviar sus turnos por WhatsApp' : 'Sin teléfono en la agenda'}">
@@ -305,6 +397,7 @@ $('#lista-personas').addEventListener('click', async e => {
     const d = await r.json();
     if (d.status !== 'ok') { alert(d.msg || 'No se pudo enviar'); b.innerHTML = o; b.disabled = false; return; }
     b.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Enviado';
+    cargarAvisos();   // el aviso queda registrado: chip verde y el informe al día
   } catch (err) { alert('Error: ' + err.message); b.innerHTML = o; b.disabled = false; }
 });
 
@@ -326,7 +419,7 @@ async function pollTurnos() {
     $('#turnos-estado').textContent = p.activo
       ? `Enviando… ${p.enviados}/${p.total}${p.errores ? ' · ' + p.errores + ' err' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin tel' : ''}`
       : (p.total ? `✅ ${p.enviados}/${p.total} enviados${p.errores ? ' · ' + p.errores + ' con error' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin teléfono' : ''}` : '');
-    if (!p.activo) { clearInterval(_pollTurnos); _pollTurnos = null; $('#btn-turnos-todos').disabled = false; }
+    if (!p.activo) { clearInterval(_pollTurnos); _pollTurnos = null; $('#btn-turnos-todos').disabled = false; cargarAvisos(); }
   } catch (_) {}
 }
 function arrancarPollTurnos() { $('#turnos-estado').textContent = 'Iniciando…'; if (!_pollTurnos) _pollTurnos = setInterval(pollTurnos, 3000); pollTurnos(); }

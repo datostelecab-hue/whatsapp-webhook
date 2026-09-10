@@ -188,6 +188,7 @@
   const tonoEstado = cod => TONO_ESTADO[cod] || 'muted';
 
   let T = null;                       // el tablero que llega del servidor
+  let AV = null;                      // avisos de turnos de la semana mirada (semáforo por cuadrante)
   let DIA = null;                     // fecha efectiva (AAAA-MM-DD)
   const porId = new Map();            // conductor id -> conductor
 
@@ -285,6 +286,55 @@
     pintarPrueba();
     pintarAvisos(j.avisos || []);
     cargarIncorporaciones();
+    cargarAvisosTurnos();
+  }
+
+  // ── El semáforo de avisos: qué cuadrantes están avisados y cuáles cambiaron ──
+  // Se pide aparte del tablero (es otra pregunta: al registro de envíos) y se
+  // repinta cuando llega. Si la semana mirada ya pasó, no hay nada que avisar.
+  let _avToken = 0;
+  async function cargarAvisosTurnos() {
+    const mio = ++_avToken;
+    AV = null;
+    const off = Math.round((new Date(T.lunes + 'T00:00:00') - new Date(lunesDeIso(hoyISO()) + 'T00:00:00')) / 6048e5);
+    if (off < 0 || off > 8) { pintar(); return; }
+    try {
+      const j = await (await fetch('/cobertura/api/avisos-estado?semana=' + off)).json();
+      if (mio !== _avToken) return;                    // llegó tarde: ya se mira otra semana
+      if (j.status === 'ok') { AV = j; pintar(); }
+    } catch (_) { /* sin registro no hay semáforo, y ya está */ }
+  }
+
+  // El chip del cuadrante: VERDE avisado, ROJO cambiado desde el aviso, gris sin
+  // avisar. Se decide con la gente que tiene turnos AHORA en estos coches: si a
+  // alguien le cambió la semana después del aviso (o entró alguien sin avisar),
+  // el aviso ya no vale y toca reenviar.
+  function chipAvisoCuadrante(lista) {
+    if (!AV || !AV.conductores) return '';
+    const conTurnos = new Set(AV.conTurnos || []);
+    const ids = [...new Set(lista.flatMap(c => (c.personas || []).filter(p => p && p.id).map(p => String(p.id))))]
+      .filter(id => conTurnos.has(id));
+    if (!ids.length) return '';
+    const infos = ids.map(id => AV.conductores[id]).filter(Boolean);
+    const base = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border';
+    if (!infos.length) {
+      return `<span class="${base} border-telecab-border text-telecab-muted" title="A esta gente aún no se le han enviado los turnos de esta semana">
+        <i class="fa-regular fa-bell"></i> Sin avisar</span>`;
+    }
+    const u = infos.reduce((a, b) => (b.ultimoTs > a.ultimoTs ? b : a));
+    const cambiados = infos.filter(i => i.cambiado).length;
+    const sinAviso = ids.length - infos.length;
+    const veces = Math.max(...infos.map(i => i.veces));
+    if (cambiados || sinAviso) {
+      const que = [cambiados ? `${cambiados} con los turnos CAMBIADOS desde el aviso` : '',
+                   sinAviso ? `${sinAviso} sin avisar` : ''].filter(Boolean).join(' y ');
+      return `<span class="${base} bg-telecab-red/15 text-telecab-red border-telecab-red/40"
+        title="${esc(`El cuadrante cambió después de avisar: ${que}. Último aviso ${u.ultimoAt}${u.ultimoPor ? ' por ' + u.ultimoPor : ''}. Toca volver a enviar los turnos.`)}">
+        <i class="fa-solid fa-triangle-exclamation"></i> Cambiado · reavisar</span>`;
+    }
+    return `<span class="${base} bg-telecab-green/15 text-telecab-green border-telecab-green/40"
+      title="${esc(`Avisado ${u.ultimoAt}${u.ultimoPor ? ' por ' + u.ultimoPor : ''} · ${veces} envío(s) · sin cambios desde entonces`)}">
+      <i class="fa-solid fa-check"></i> Avisado ${esc(u.ultimoAt)}${u.ultimoPor ? ' · ' + esc(u.ultimoPor) : ''}${veces > 1 ? ` · ×${veces}` : ''}</span>`;
   }
 
   // ── KPIs y subtítulo ────────────────────────────────────────────────────────
@@ -441,7 +491,7 @@
       </h3>
       <button data-bloque class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50 transition"><i class="fa-solid fa-plus"></i> Bloque</button>
       <div class="flex items-center gap-2 ml-1">${chipCT(ctDia, 'día')}${chipCT(ctNoche, 'noche')}</div>
-      ${lista.length ? `<button data-waturnos class="ml-auto px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
+      ${lista.length ? `<span class="ml-auto"></span>${chipAvisoCuadrante(lista)}<button data-waturnos class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
               title="Enviar por WhatsApp a la gente de este cuadrante sus turnos de la semana que estás mirando">
         <i class="fa-brands fa-whatsapp"></i> Enviar turnos</button>` : ''}
       <button data-borrar-cua class="${lista.length ? '' : 'ml-auto '}text-xs text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i> borrar cuadrante</button>`;
@@ -470,7 +520,8 @@
     cab.innerHTML = `
       <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-muted flex items-center gap-2">
         <i class="fa-solid fa-car-side"></i>Coches sueltos <span class="font-normal normal-case">${lista.length}</span></h3>
-      <button data-waturnos class="ml-auto px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
+      <span class="ml-auto"></span>${chipAvisoCuadrante(lista)}
+      <button data-waturnos class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
               title="Enviar por WhatsApp a la gente de estos coches sus turnos de la semana que estás mirando">
         <i class="fa-brands fa-whatsapp"></i> Enviar turnos</button>`;
     cab.querySelector('[data-waturnos]').addEventListener('click', e => enviarTurnosCuadrante('coches sueltos', lista, e.currentTarget));
@@ -1117,7 +1168,8 @@
     try {
       const r = await fetch('/cobertura/enviar-turnos-varios', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, semana: off }),
+        // `cuadrante` va al registro: "William avisó al cuadrante X a tal hora".
+        body: JSON.stringify({ ids, semana: off, cuadrante: nombre }),
       });
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo iniciar el envío');
@@ -1139,6 +1191,7 @@
       const extra = (p.errores ? ` · ${p.errores} err` : '') + (p.sinTel ? ` · ${p.sinTel} sin tel` : '');
       btn.innerHTML = `<i class="fa-solid fa-check"></i> ${p.enviados}/${p.total} enviados${extra}`;
       btn.disabled = false;
+      cargarAvisosTurnos();   // el envío acaba de apuntarse: que el chip se ponga verde
       return;
     }
     btn.disabled = false; btn.innerHTML = previo;
