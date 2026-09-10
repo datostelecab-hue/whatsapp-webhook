@@ -7,8 +7,18 @@
 const db = require('../db');
 
 const ESTADOS = ['avisado', 'simulado', 'sin_conductor', 'dudoso', 'error'];
-/** Los que cuentan como "se le dijo": es lo que se acumula por conductor. */
-const AVISADOS = ['avisado', 'simulado'];
+
+/**
+ * "Avisado" es SOLO 'avisado'. Un 'simulado' es un exceso que en modo pruebas
+ * se habría avisado y no se avisó: al conductor no le llegó nada.
+ *
+ * Los tuve juntos y estaba mal. La lista de "quién no hace caso" es lo que
+ * alguien lleva delante cuando se sienta a hablar con un conductor, y decirle
+ * "te hemos avisado cinco veces" cuando no ha recibido ni uno es la peor manera
+ * posible de empezar esa conversación. Los simulados se cuentan aparte y se ven
+ * aparte.
+ */
+const AVISADOS = ['avisado'];
 
 const txt = (v, n) => (v == null ? null : String(v).trim().slice(0, n) || null);
 const dec = v => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
@@ -87,6 +97,7 @@ async function porConductor({ desde, hasta, limite = 300 } = {}) {
            max(e.telefono) AS telefono,
            count(*)::int                                               AS excesos,
            count(*) FILTER (WHERE e.estado = ANY($3))::int             AS avisos,
+           count(*) FILTER (WHERE e.estado = 'simulado')::int          AS simulados,
            count(*) FILTER (WHERE e.estado = 'error')::int             AS fallos,
            max(e.velocidad)::float8                                    AS punta,
            round(avg(e.exceso), 1)::float8                             AS exceso_medio,
@@ -132,6 +143,7 @@ async function resumen({ desde, hasta } = {}) {
   const r = await db.consulta(`
     SELECT count(*)::int                                          AS excesos,
            count(*) FILTER (WHERE estado = ANY($3))::int           AS avisos,
+           count(*) FILTER (WHERE estado = 'simulado')::int        AS simulados,
            count(*) FILTER (WHERE estado = 'error')::int           AS fallos,
            count(*) FILTER (WHERE estado IN ('sin_conductor','dudoso'))::int AS sin_avisar,
            count(DISTINCT driver_uuid) FILTER (WHERE driver_uuid IS NOT NULL)::int AS gente,

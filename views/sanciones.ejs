@@ -40,7 +40,7 @@
     <div class="bg-telecab-card border-2 border-telecab-green/40 rounded-2xl p-4">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Avisos enviados</p>
       <p id="v-avisos" class="text-3xl font-bold mt-1 text-telecab-green tabular-nums">—</p>
-      <p class="text-[11px] text-telecab-muted mt-1">Uno por cada exceso atribuido</p>
+      <p id="v-avisos-det" class="text-[11px] text-telecab-muted mt-1">Uno por cada exceso atribuido</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Sin avisar</p>
@@ -74,7 +74,7 @@
           <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
             <tr>
               <th class="text-left   font-semibold px-4 py-3 sticky left-0 bg-telecab-card2">Conductor</th>
-              <th class="text-center font-semibold px-3 py-3">Avisos</th>
+              <th class="text-center font-semibold px-3 py-3" title="WhatsApp que ha recibido de verdad">Avisos</th>
               <th class="text-center font-semibold px-3 py-3">Excesos</th>
               <th class="text-right  font-semibold px-3 py-3">Punta</th>
               <th class="text-right  font-semibold px-3 py-3">Exceso medio</th>
@@ -93,7 +93,8 @@
       </div>
     </div>
     <p class="text-[11px] text-telecab-muted mt-2">
-      <b>Avisos</b> son los WhatsApp que se le han mandado; <b>excesos</b>, las veces que pasó del límite
+      <b>Avisos</b> son los WhatsApp que ha recibido DE VERDAD — un «simulado» se cuenta aparte porque
+      al conductor no le llegó nada—; <b>excesos</b>, las veces que pasó del límite
       —la diferencia son los que no se le pudieron atribuir con seguridad—. La barra compara
       <b>avisos por día transcurrido</b> desde su primer exceso: diez avisos en tres días son una racha,
       diez en seis meses son una costumbre, y no se arreglan igual.
@@ -198,6 +199,12 @@
     $('#v-excesos').textContent = r.excesos ?? 0;
     $('#v-gente').textContent = r.gente ? r.gente + (r.gente === 1 ? ' conductor' : ' conductores') : '';
     $('#v-avisos').textContent = r.avisos ?? 0;
+    // Un simulado NO es un aviso: es lo que se habría mandado. Mezclarlos hacía
+    // que la pantalla dijera que a alguien se le avisó cinco veces cuando no
+    // había recibido ninguno.
+    $('#v-avisos-det').textContent = r.simulados
+      ? `y ${r.simulados} simulado(s), que NO se enviaron`
+      : 'Uno por cada exceso atribuido';
     $('#v-sinavisar').textContent = r.sin_avisar ?? 0;
     $('#v-punta').textContent = r.punta ? n1(r.punta) + ' km/h' : '—';
     $('#v-fallos').textContent = r.fallos ? r.fallos + ' envío(s) fallidos' : '';
@@ -223,7 +230,8 @@
             : '<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted" title="Su cuenta de BOLT no está enlazada con ninguna ficha">sin ficha</span>'}
           ${f.telefono ? `<div class="text-[11px] text-telecab-muted">${esc(f.telefono)}</div>` : ''}
         </td>
-        <td class="px-3 py-2.5 text-center tabular-nums font-bold ${grave ? 'text-telecab-red' : medio ? 'text-telecab-warn' : 'text-telecab-text'}">${f.avisos}</td>
+        <td class="px-3 py-2.5 text-center tabular-nums font-bold ${grave ? 'text-telecab-red' : medio ? 'text-telecab-warn' : 'text-telecab-text'}">${f.avisos}
+          ${f.simulados ? `<div class="text-[10px] font-normal text-telecab-muted" title="En modo pruebas: no se le envió nada">+${f.simulados} simul.</div>` : ''}</td>
         <td class="px-3 py-2.5 text-center tabular-nums text-telecab-muted">${f.excesos}</td>
         <td class="px-3 py-2.5 text-right tabular-nums text-telecab-red">${n1(f.punta)}</td>
         <td class="px-3 py-2.5 text-right tabular-nums text-telecab-muted">+${n1(f.exceso_medio)}</td>
