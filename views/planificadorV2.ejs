@@ -1180,10 +1180,35 @@
     const id = await pickConductor({ titulo: tit, turno: col.turno, actual: p.id ? String(p.id) : null });
     if (id === undefined) return;   // cancelado
 
-    // Quitar a alguien no necesita comprobación ninguna.
+    // QUITAR A ALGUIEN. No necesita comprobación, pero CON EVENTO hay que
+    // preguntar lo mismo que al colocar: quitarlo estos días o quitarlo del
+    // todo. Fue justo esto lo que rompió el finde de la F1 — se vaciaron las
+    // plazas de correturnos para dejar solo fijos y se quedaron vacías para
+    // siempre, así que el lunes esa gente no tenía plaza y el WhatsApp se lo
+    // dijo. Ahora por defecto se les devuelve la plaza al acabar el evento.
     if (!id) {
-      try { await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [{ plazaId: p.plazaId, id: '' }] }]); }
-      catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+      let slotVacio = { plazaId: p.plazaId, id: '' };
+      if (ev && p.id) {
+        const q = await Dialogo.formulario(`Quitar a ${p.nombre} de ${coche.matricula}`, [
+          { id: 'alcance', etiqueta: '¿Lo quitas para siempre o solo estos días?', tipo: 'opciones',
+            obligatorio: true, valor: 'evento', opciones: [
+              { valor: 'evento', texto: `Solo durante el evento (${isoAes(ev.desde)} → ${isoAes(ev.hasta)})`,
+                detalle: 'Recupera su plaza al acabar, y su WhatsApp de la semana que viene sale bien.' },
+              { valor: 'permanente', texto: 'Quitarlo del cuadrante',
+                detalle: 'Deja de tener esa plaza. No vuelve solo.' },
+            ] },
+        ], { textoBoton: 'Quitar', ancho: 'max-w-lg' });
+        if (!q) return;
+        if (((q.alcance || {}).valor || 'evento') === 'evento') slotVacio.eventoId = ev.id;
+      }
+      try {
+        const j = await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [slotVacio] }]);
+        if (slotVacio.eventoId) {
+          await Dialogo.aviso({ titulo: 'Quitado solo durante el evento', tono: 'ok',
+            texto: `${p.nombre} recupera ${coche.matricula} el ${isoAes(ev.hasta)} +1. ` +
+              'En su WhatsApp verá que esos días libra y que la semana que viene vuelve a lo de siempre.' });
+        }
+      } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
       return;
     }
 

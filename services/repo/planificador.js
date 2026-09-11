@@ -850,9 +850,13 @@ async function comprobarPlan({ plazaId, conductorId, dias, desde, hasta } = {}, 
     if (!laborales.includes(dow)) continue;
     const delDia = cob.rows.filter(r => r.dia === d);
 
-    // ¿Ya está en otro coche ese día? Cualquier turno: no se puede doblar.
+    // ¿Ya está en OTRO COCHE ese día? Lo imposible es llevar dos coches, no
+    // hacer día y noche del MISMO: eso es un TodoTurno, existe desde siempre
+    // (turnoSegunPlazas lo reconoce solo) y es justo lo que hace falta un fin
+    // de semana de evento. Por eso se compara el vehículo, no el turno.
     const suyos = delDia.filter(r => String(r.conductor_id) === String(conductorId)
-      && String(r.plaza_id) !== String(plazaId));
+      && String(r.plaza_id) !== String(plazaId)
+      && String(r.vehiculo_id) !== String(p.vehiculo_id));
     // ¿Y quién lleva ESTE coche y turno ese día, aparte de él?
     //
     // Ojo con quién NO cuenta: el que tiene ESTA MISMA PLAZA. Ponerse en una
@@ -1011,14 +1015,50 @@ async function asignacionEn(cli, plazaId, dia) {
  * esas semanas tiene que seguir cuadrando. Solo se borra la asignación que
  * todavía no había empezado, porque esa no llegó a pasar.
  */
-async function liberar(cli, plazaId, dia, usuarioId) {
+async function liberar(cli, plazaId, dia, usuarioId, evento) {
   const a = await asignacionEn(cli, plazaId, dia);
   if (!a) return null;
   const desde = fechaDe(a.desde);
+
+  // QUITAR A ALGUIEN DURANTE UN EVENTO ES QUITARLO ESOS DÍAS, NO PARA SIEMPRE.
+  //
+  // Este es el fallo que rompió el finde de la F1: se vaciaron las plazas de
+  // correturnos para dejar solo fijos, y como "dejar vacía" cerraba la
+  // asignación sin fecha de vuelta, el lunes esa gente no tenía plaza — y el
+  // WhatsApp se lo dijo tal cual ("la semana que viene no tienes turnos").
+  // Ahora se les devuelve su plaza el día siguiente al evento, igual que cuando
+  // a alguien se le sustituye.
+  let vuelta = null;
+  if (evento && evento.hasta && desde < dia) {
+    const d = (await cli.query(
+      `SELECT a.conductor_id, a.hasta, a.evento_id,
+              (SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana)
+                 FROM asignacion_dia ad WHERE ad.asignacion_id = a.id) AS dias
+         FROM asignacion a WHERE a.id = $1`, [a.id])).rows[0];
+    // Si lo que se quita ya era un apaño del mismo evento, no se repone: quien
+    // tiene que volver es el original, y su vuelta ya está puesta.
+    if (d && String(d.evento_id || '') !== String(evento.id)) {
+      vuelta = { conductorId: d.conductor_id, hasta: fechaDe(d.hasta), dias: d.dias || [] };
+    }
+  }
+
   if (desde >= dia) {
     await cli.query('DELETE FROM asignacion WHERE id = $1', [a.id]);
   } else {
     await cli.query('UPDATE asignacion SET hasta = $2 WHERE id = $1', [a.id, vispera(dia)]);
+  }
+
+  if (vuelta) {
+    const rol = (await cli.query('SELECT rol FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
+    const desdeVuelta = siguiente(evento.hasta);
+    if (!vuelta.hasta || vuelta.hasta >= desdeVuelta) {
+      const v = await cli.query(
+        `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id)
+         VALUES ($1, $2, $3::date, $4, $5) RETURNING id`,
+        [plazaId, vuelta.conductorId, desdeVuelta, vuelta.hasta || null, usuarioId || null]);
+      await guardarDias(cli, v.rows[0].id, plazaId, (rol || {}).rol, vuelta.dias);
+      await recordarTurno(cli, vuelta.conductorId, null, desdeVuelta, usuarioId);
+    }
   }
   // SOLTAR una plaza también puede cambiar el turno: quien deja una de sus dos
   // fijas vuelve a ser de un turno solo. Se recalcula con lo que le QUEDA; si no
@@ -1454,7 +1494,10 @@ async function guardar(cambios = [], { dia, usuarioId } = {}) {
         }
 
         if (!s.id) {
-          const r = await liberar(cli, s.plazaId, s.desde || efectivo, usuarioId);
+          // Vaciar una plaza durante un evento es vaciarla ESOS DÍAS: se le
+          // devuelve al que estaba en cuanto acabe. Ver `liberar`.
+          const evVacia = s.eventoId ? await eventoParaApano(cli, s.eventoId) : null;
+          const r = await liberar(cli, s.plazaId, s.desde || efectivo, usuarioId, evVacia);
           if (r) hechos.push({ que: 'libera', plazaId: s.plazaId, ...r });
           continue;
         }

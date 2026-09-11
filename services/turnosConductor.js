@@ -158,7 +158,14 @@ function mensajeEvento(entrada, proxima, evento, entregas = [], opciones = {}) {
   const dePro = lineasDeDias(proxima, { fechas: opciones.fechasProxima });
   L.push('✅ *Y la semana que viene vuelves a lo normal:*', '');
   if (dePro.length) L.push(...dePro);
-  else L.push('😴 La semana que viene no tienes turnos asignados todavía.', '');
+  else {
+    // NUNCA "no tienes turnos". Durante un evento el cuadrante se mueve mucho, y
+    // a un conductor al que le acaban de cambiar el fin de semana esa frase le
+    // suena a que se ha quedado sin trabajo. Si de verdad no hay nada cargado,
+    // se dice que no lo hay todavía y a quién preguntar — que es lo que es.
+    L.push('ℹ️ Todavía no tengo cargado tu cuadro de la semana que viene. ' +
+      'En cuanto esté, te aviso; si tienes dudas, pregunta en la oficina.', '');
+  }
 
   return L.join('\n').trim();
 }
