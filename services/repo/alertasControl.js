@@ -263,21 +263,35 @@ async function candidatos(franja, ahora = new Date()) {
         WHERE o.driver_uuid IS NOT NULL
           AND o.creado_ts >= f.ini AND o.creado_ts < LEAST(f.fin, f.ahora)
         GROUP BY 1),
-     -- Km rodados en descanso/desconectado, prorrateados por el tiempo que el
-     -- tramo pasa DENTRO de la franja.
-     tr AS (
-       SELECT t.conductor_uuid AS uuid, t.km_m,
-              EXTRACT(epoch FROM (LEAST(COALESCE(t.hasta, f.ahora), f.fin, f.ahora)
-                                  - GREATEST(t.desde, f.ini)))          AS solape,
-              EXTRACT(epoch FROM (COALESCE(t.hasta, f.ahora) - t.desde)) AS total
-         FROM fv_tramo t CROSS JOIN f
-        WHERE t.situacion IN ('descanso', 'desconectado')
-          AND t.conductor_uuid IS NOT NULL
-          AND t.desde < LEAST(f.fin, f.ahora) AND COALESCE(t.hasta, f.ahora) > f.ini),
+     -- KM RODADOS FUERA DE LA APP dentro de la franja, de fv_ruta.
+     --
+     -- Al principio esto salía de fv_tramo.km_m prorrateado por tiempo, y
+     -- estaba MAL: el odómetro solo llega a ratos —hoy 188 de 3.551 tramos
+     -- traen km— y sus metros caen en el tramo que estuviera abierto cuando
+     -- Mapon habló. Medido el 11/09: con km_m NADIE pasaba de 20 km en la
+     -- franja de mañana; con fv_ruta pasan seis, y el primero lleva 119. O sea,
+     -- la alerta no habría sonado nunca.
+     --
+     -- fv_ruta es la fuente de la casa (cuadró con BOLT al 0,03 %): cada
+     -- trayecto de Mapon se reparte entre los tramos que toca en proporción al
+     -- tiempo, y los que caen en descanso o desconectado son los que no
+     -- deberían existir. Un trayecto cuenta en la franja donde EMPIEZA.
      km AS (
-       SELECT uuid,
-              sum(km_m * CASE WHEN total > 0 THEN LEAST(1, GREATEST(0, solape / total)) ELSE 0 END) AS km_m
-         FROM tr GROUP BY 1),
+       SELECT t.conductor_uuid AS uuid,
+              sum(r.metros * GREATEST(0, EXTRACT(epoch FROM (
+                    LEAST(r.fin, COALESCE(t.hasta, f.ahora)) - GREATEST(r.inicio, t.desde))))
+                  / NULLIF(EXTRACT(epoch FROM (r.fin - r.inicio)), 0))
+                FILTER (WHERE t.situacion NOT IN ('viaje', 'espera'))  AS km_m
+         FROM fv_ruta r
+         CROSS JOIN f
+         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
+         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
+                             AND t.desde < r.fin AND COALESCE(t.hasta, f.ahora) > r.inicio
+                             AND t.desde >= f.ini - interval '14 days'
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
+          AND r.inicio >= f.ini AND r.inicio < LEAST(f.fin, f.ahora)
+          AND t.conductor_uuid IS NOT NULL
+        GROUP BY 1),
      -- Horas EFECTIVAS de su jornada operativa (05:00 → ahora).
      horas AS (
        SELECT t.conductor_uuid AS uuid,

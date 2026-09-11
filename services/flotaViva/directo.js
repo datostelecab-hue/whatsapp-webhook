@@ -373,8 +373,24 @@ async function enDirecto({ dia } = {}) {
    * y estas son de la PERSONA y de su jornada, que es lo que se llama por
    * teléfono. Cada uno trae ya su texto y su tono: la pantalla solo pinta.
    */
-  function avisosDe({ proy, rech, salida, just }) {
+  function avisosDe({ proy, rech, salida, just, kmFuera }) {
     const out = [];
+
+    // RUEDA CON LA APP APAGADA (o en descanso) DENTRO DE LA FRANJA. Es la
+    // llamada más concreta que hay: "¿por qué has hecho 24 km fuera de BOLT
+    // desde las ocho?". La respuesta —taller, un recado de tráfico, la oficina
+    // de RRHH— se apunta en la llamada y ESO es la justificación de esos km.
+    if (kmFuera && UMBRAL_KM_FRANJA && kmFuera.km >= UMBRAL_KM_FRANJA) {
+      const desde = String(kmFuera.franja.ini).padStart(2, '0') + ':00';
+      out.push({
+        codigo: 'km_parado', tono: 'error',
+        etq: String(kmFuera.km).replace('.', ',') + ' km fuera de la app',
+        detalle: 'Desde las ' + desde + ' ha rodado ' + String(kmFuera.km).replace('.', ',') +
+          ' km en descanso o desconectado' +
+          (kmFuera.matriculas.length ? ' (' + kmFuera.matriculas.join(', ') + ')' : '') +
+          '. Llámalo y apunta por qué: taller, un recado de tráfico, RRHH…',
+      });
+    }
 
     // UNA J RECHAZADA ES UNA LLAMADA NUEVA. Alguien miró el caso y dijo que no,
     // así que las horas que se daban por tapadas vuelven a faltar y hay que
@@ -493,6 +509,43 @@ async function enDirecto({ dia } = {}) {
     console.error('⚠️  [EN DIRECTO] justificantes:', e.message); return {};
   });
 
+  // ── LOS KM FUERA DE LA APP, PERO SOLO LOS DE LA FRANJA DE VIGILANCIA ────────
+  // La columna "Km fuera" cuenta la JORNADA entera (05→05) y eso incluye el
+  // relevo, donde rodar fuera de BOLT es normal: ir a por el coche, la entrega,
+  // volver a la base. Medido el 11/09: Irma llevaba 39,3 km fuera en la jornada
+  // y 30,6 eran del relevo — no había nada que preguntarle. Por eso la alerta
+  // mira SOLO desde que abre la franja (08:00 o 20:00): ahí rodar con la app
+  // apagada o en descanso sí hay que explicarlo.
+  //
+  // Cambia el número por completo: con la jornada entera pasaban de 20 km 22
+  // personas; con la franja, 6. Y esas 6 son llamadas de verdad.
+  const cfgAlertas = await require('../repo/alertasControl').leerConfig().catch(() => null);
+  const franjaAhora = cfgAlertas
+    ? require('../repo/alertasControl').franjaDe(cfgAlertas, new Date()) : null;
+  // Solo tiene sentido en la jornada EN CURSO: mirando un día pasado no hay
+  // "franja de ahora" que vigilar.
+  const franjaViva = franjaAhora && franjaAhora.dia === hoy ? franjaAhora : null;
+  const kmFranja = franjaViva
+    ? await rutas.kmFueraEnVentana(hoy, String(franjaViva.ini),
+        franjaViva.fin > franjaViva.ini ? 0 : 1, String(franjaViva.fin))
+        .catch(e => { console.error('⚠️  [EN DIRECTO] km de la franja:', e.message); return new Map(); })
+    : new Map();
+  const UMBRAL_KM_FRANJA = (cfgAlertas && cfgAlertas.tipos.km_parado.activo)
+    ? Number(cfgAlertas.tipos.km_parado.umbral) || 20 : null;
+
+  /** Los km de la franja de una persona, sumando todas sus cuentas de BOLT. */
+  const kmFranjaDe = cuentas => {
+    if (!franjaViva) return null;
+    const a = { km: 0, matriculas: [], franja: franjaViva };
+    cuentas.filter(Boolean).forEach(u => {
+      const k = kmFranja.get(u);
+      if (!k) return;
+      a.km = Math.round((a.km + k.kmFuera) * 10) / 10;
+      k.matriculas.forEach(m => { if (!a.matriculas.includes(m)) a.matriculas.push(m); });
+    });
+    return a.km > 0 ? a : null;
+  };
+
   // El porqué de cada uno: su situación en la plataforma (o que no está en ella).
   const gentePorId = new Map((((tab && tab.conductores) || [])).map(c => [Number(c.id), c]));
   const gentePorNombre = new Map((((tab && tab.conductores) || [])).map(c => [normNombre(c.nombre), c]));
@@ -524,7 +577,13 @@ async function enDirecto({ dia } = {}) {
       // en la cabecera y no se podían ver en ninguna pestaña.
       incidencias: porIncCond.get(a.uuid) || [],
       rechazos: rechazos.get(a.uuid) || null,
-      avisos: avisosDe({ proy: null, rech: rechazos.get(a.uuid) || null, salida: 'salio' }),
+      // Los km fuera de la app también aquí. Quien rueda con la app apagada SIN
+      // estar en el plan es justo a quien más hay que preguntar, y antes se
+      // quedaba fuera del aviso: hoy el que más lleva —119 km en la franja— es
+      // de esta lista.
+      kmFranja: kmFranjaDe([a.uuid]),
+      avisos: avisosDe({ proy: null, rech: rechazos.get(a.uuid) || null, salida: 'salio',
+        kmFuera: kmFranjaDe([a.uuid]) }),
     }))
     .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
 
@@ -661,13 +720,25 @@ async function enDirecto({ dia } = {}) {
       const proy = proyectar(f.actividad, vent, just);
       const rech = fundirRechazos(cuentas.map(u => rechazos.get(u)));
       const salida = salidaDe(f.actividad, vent);
+      // Los km fuera de la app EN LA FRANJA, sumando todas sus cuentas de BOLT.
+      //
+      // Van en TODAS las filas de esa persona —igual que los rechazos—, no solo
+      // en la del turno en curso. Se probó a atarlo a la ventana del turno para
+      // no repetirlo y se perdían cuatro de los seis casos reales: la gente que
+      // rueda fuera de la app a esas horas suele estar donde no toca, y filtrar
+      // por turno la escondía. Y repetirlo no molesta: la llamada se apunta por
+      // conductor, así que contestar una vez apaga todas sus filas a la vez.
+      const kmF = kmFranjaDe(cuentas);
       return {
         clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid, telefono: f.telefono || '',
         rendimiento: rend.get(Number(f.conductorId)) || null,
         proyeccion: proy,
         justificante: just,
+        // Km fuera de la app desde que abrió la franja de vigilancia (null fuera
+        // de franja). La columna "Km fuera" sigue siendo la jornada entera.
+        kmFranja: kmF,
         rechazos: rech.ofertas ? rech : null,
-        avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, salida, just }),
+        avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, salida, just, kmFuera: kmF }),
         turno: f.turno,
         rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
         matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',

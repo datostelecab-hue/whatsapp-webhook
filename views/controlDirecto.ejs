@@ -465,8 +465,17 @@
         // Km con el coche rodando FUERA de BOLT (descanso o desconectado). No son
         // trabajo y son justo lo que hay que preguntar.
         '<span class="dopc text-right text-xs tabular-nums" ' +
-          'title="Km rodados FUERA de BOLT (en descanso o desconectado). No cuentan como trabajo.">' +
-          cifra(a.kmFuera, ' km', 'text-amber-500') + '</span>' +
+          'title="' + esc('Km rodados FUERA de BOLT (en descanso o desconectado) en toda su jornada. No cuentan como trabajo.'
+            + (f.kmFranja ? '\nDe ellos, ' + n1(f.kmFranja.km) + ' km desde las '
+                + String(f.kmFranja.franja.ini).padStart(2, '0') + ':00, que es lo que hay que preguntar: '
+                + 'antes de esa hora está el relevo, donde rodar fuera de la app es normal.' : '')) + '">' +
+          cifra(a.kmFuera, ' km', 'text-amber-500') +
+          // La parte que cae DENTRO de la franja de vigilancia, que es la que se
+          // llama: los del relevo (05:00→08:00) no se preguntan.
+          (f.kmFranja ? '<span class="block text-[10px] leading-tight ' +
+            (f.kmFranja.km >= 20 ? 'text-red-500 font-semibold' : 'text-telecab-muted') + '">' +
+            n1(f.kmFranja.km) + ' desde las ' + String(f.kmFranja.franja.ini).padStart(2, '0') + 'h</span>' : '') +
+          '</span>' +
         '<span class="dopc text-right">' + aceptacionHTML(f.rechazos) + '</span>' +
         '<span class="text-right">' + avisosHTML(f) + '</span>' +
         '<span class="text-right"><i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform"></i></span>' +
