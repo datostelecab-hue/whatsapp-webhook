@@ -178,6 +178,7 @@ app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
 app.use('/visibilidad', require('./routes/visibilidad'));
+app.use('/alertas', require('./routes/alertas'));
 app.use('/bi', require('./routes/bi'));   // inteligencia de negocio (solo dirección)
 app.use('/vacantes', vacantesRoutes);
 app.use('/generador', generadorRoutes);
@@ -695,6 +696,27 @@ if (process.env.SANCIONES_CRON === 'on') {
   });
   console.log('🚦 [Sanciones] Cron de velocidad ACTIVADO (cada 15 min)');
 }
+
+// ALERTAS DE CONTROL: cada 5 minutos DENTRO de las franjas de vigilancia
+// (08:00-13:00 y 20:00-01:00, más el margen de cortesía). Fuera de ellas el
+// propio módulo no hace nada, pero no se programa a todas horas para no
+// preguntar 288 veces al día lo que solo importa en diez.
+//
+// Nace en modo PRUEBAS (registra las alertas y no manda nada) y sin
+// destinatarios: hasta que no se elija a alguien en /alertas, no sale un solo
+// WhatsApp por mucho que alguien rechace.
+programar('*/5 8-13,20-23,0-1 * * *', async () => {
+  try {
+    const r = await require('./services/repo/alertasControl').revisar({});
+    if (r && r.nuevas) {
+      console.log(`🔔 [CRON Alertas] franja ${r.franja} · ${r.pasan} por encima del umbral · ` +
+        `${r.nuevas} nueva(s) · ${r.enviadas} envío(s)${r.modo !== 'live' ? ' (PRUEBAS)' : ''}` +
+        `${r.cortadas ? ` · ${r.cortadas} cortadas por el tope` : ''}`);
+    }
+  } catch (error) {
+    console.error(`❌ [CRON Alertas] ${error.stack || error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
 
 // ============================================================
 // INICIAR SERVIDOR

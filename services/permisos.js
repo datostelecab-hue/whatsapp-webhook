@@ -77,6 +77,13 @@ const CATALOGO = [
     ] },
     { clave: '/sanciones',  etiqueta: 'Sanciones velocidad' },
     { clave: '/callcenter', etiqueta: 'Call Center' },
+    // MIRAR las alertas es una cosa; decidir QUIÉN las recibe y a partir de
+    // cuántos rechazos suenan es otra, y esa segunda no la reparte ningún rol:
+    // `manual` la deja apagada hasta para quien lleva el catálogo entero, y se
+    // da usuario a usuario desde /usuarios.
+    { clave: '/alertas', etiqueta: 'Alertas de control (rechazos y km)', hijos: [
+      { clave: '/alertas/config', etiqueta: 'Alertas · elegir destinatarios y umbrales', manual: true },
+    ] },
   ] },
   { grupo: 'Aprobaciones', items: [
     // Quién entra aquí lo decide el desarrollador usuario a usuario: el módulo

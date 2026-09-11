@@ -121,6 +121,54 @@ const TAREAS = {
     },
   },
 
+  // LAS ÓRDENES DE HACE UN RATO, cada diez minutos.
+  //
+  // `orders_bolt` trae 48 horas cada hora: es perfecto para el dinero (una orden
+  // MADURA durante horas y hay que volver a por su precio final) y muy malo para
+  // avisar de nada. Las alertas de control preguntan "¿cuántas ha rechazado en
+  // esta franja?", y con la ventana de una hora la respuesta llegaba con hasta
+  // sesenta minutos de retraso: para cuando sonaba el aviso, el conductor ya
+  // había hecho el turno entero.
+  //
+  // Esta trae solo DOS HORAS. Son unas 2.000 órdenes por pasada en vez de las
+  // ~50.000 de la de 48 h: veinticinco veces más barata, y por eso se puede
+  // pedir cada diez minutos. Escribe en la MISMA tabla y por la misma puerta
+  // (`guardarOrders` es idempotente), así que no duplica nada ni estorba a la
+  // otra; simplemente adelanta el aterrizaje de lo recién ocurrido.
+  orders_recientes_bolt: {
+    fuente: 'bolt',
+    etiqueta: 'Órdenes recientes de BOLT (2 h)',
+    cadaMin: Number(process.env.INGESTA_ORDERS_RECIENTES_MIN) || 10,
+    critica: false,
+    async ejecutar() {
+      const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+      const staging = require('./repo/staging');
+      const hasta = Math.floor(Date.now() / 1000);
+      const desde = hasta - (Number(process.env.INGESTA_ORDERS_RECIENTES_H) || 2) * 3600;
+
+      let todas = [];
+      const t0 = Date.now();
+      for (const f of CONFIG_BOLT.flotas) {
+        const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders',
+          { company_ids: [f.id], company_id: f.id, time_range_filter_type: 'created',
+            start_ts: desde, end_ts: hasta }, 'orders', 1000, `ingesta orders recientes ${f.id}`);
+        todas = todas.concat(ordenes);
+      }
+      // Se apunta la descarga PERO SIN EL CRUDO. La de 48 h ya deja su copia
+      // cada hora y este payload se repite cada diez minutos: guardarlo serían
+      // cientos de MB al día de lo mismo, que es justo lo que la poda diaria
+      // viene a borrar. La fila sí se crea, para no dejar sin descarga_id (ni
+      // borrárselo al UPDATE) a las órdenes que pasan por aquí.
+      const descargaId = await staging.registrarDescarga({
+        fuente: 'bolt', endpoint: 'getFleetOrders (recientes)',
+        params: { start_ts: desde, end_ts: hasta }, payload: null,
+        filas: todas.length, ms: Date.now() - t0,
+      });
+      const tocadas = await staging.guardarOrders(todas, descargaId);
+      return { registros: tocadas, detalle: { traidas: todas.length, tocadas, ventanaH: (hasta - desde) / 3600 } };
+    },
+  },
+
   zonas_mapon: {
     fuente: 'mapon',
     etiqueta: 'Zonas de Mapon (entrada/salida)',
