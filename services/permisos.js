@@ -51,7 +51,7 @@ const CATALOGO = [
     { clave: '/planificador',    etiqueta: 'Planificador' },
     { clave: '/agenda',          etiqueta: 'Agenda' },
     { clave: '/control',         etiqueta: 'Control · En directo', hijos: [
-      { clave: '/flota-viva',       etiqueta: 'Flota viva + Histórico' },
+      { clave: '/control/historico', etiqueta: 'Histórico de control' },
       { clave: '/control/km',       etiqueta: 'KM y traza' },
       { clave: '/control/reportes', etiqueta: 'Reportes de control' },
     ] },
@@ -119,8 +119,14 @@ const ALIAS = { '/planificador-v2': '/planificador' };
 // exige '/control/reportes/…') y caía en '/control': quien solo tenía "Reportes
 // de control" abría la pestaña y cada botón le daba 403, y quien tenía "En
 // directo" sin Reportes descargaba todo igualmente. Lo mismo con KM y traza.
-// La lista de llamadas la lee el Histórico (Flota viva), así que es suya.
+// La lista de llamadas la lee el Histórico, así que es suya.
+//
+// Y '/flota-viva' ya no es un módulo: sus pantallas se retiraron el 11/09 y lo
+// que queda son las APIs del núcleo que consume En directo (la traza de un
+// conductor, las incidencias del coche). Sin esta línea quedarían SIN dueño en
+// el catálogo, o sea, abiertas a cualquiera que tenga sesión.
 const RUTA_A_CLAVE = [
+  ['/flota-viva',                 '/control'],
   ['/control/reporte/',           '/control/reportes'],
   ['/control/sankey/',            '/control/reportes'],
   ['/control/cascada/',           '/control/reportes'],
@@ -130,7 +136,8 @@ const RUTA_A_CLAVE = [
   ['/control/asistencia',         '/control/reportes'],
   ['/control/api/km-traza',       '/control/km'],
   ['/control/api/km-diagnostico', '/control/km'],
-  ['/control/api/llamadas',       '/flota-viva'],
+  ['/control/api/llamadas',       '/control/historico'],
+  ['/control/api/historico',      '/control/historico'],
   ['/control/campanas',           '/control'],
   // Escribir en la bitácora es otro permiso que leerla: sin estas tres líneas
   // caerían en '/bitacora' y cualquiera que la abre podría justificar por API.
@@ -229,7 +236,7 @@ function semillaDeRol(rol) {
 
     // Operaciones es el control de lo que pasa en la calle.
     case 'operaciones': return [...G('General'), ...G('Operaciones'), ...G('Flota'),
-      '/control', '/flota-viva', '/control/km', '/control/reportes', '/visibilidad', '/bitacora']
+      '/control', '/control/historico', '/control/km', '/control/reportes', '/visibilidad', '/bitacora']
       .filter(c => c !== '/documentos');
 
     // Dirección lo ve TODO, pero por la matriz y no por `acceso_total`: así se

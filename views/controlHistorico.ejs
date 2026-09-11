@@ -1,0 +1,388 @@
+<%- include('partials/control-nav', { sub: 'historico' }) %>
+
+<div class="max-w-[1400px] mx-auto">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-clock-rotate-left text-telecab-gold"></i> Histórico
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1">
+        Qué pasó ese día y qué se hizo: quién no salió, qué alertas levantó cada uno,
+        a quién se llamó y qué contestó.
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button id="h-ayer" class="px-2.5 py-2 rounded-lg bg-telecab-card border border-telecab-border
+        text-sm text-telecab-muted hover:text-telecab-text" title="Día anterior">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+      <input id="h-dia" type="date" value="<%= hoy %>"
+        class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+      <button id="h-manana" class="px-2.5 py-2 rounded-lg bg-telecab-card border border-telecab-border
+        text-sm text-telecab-muted hover:text-telecab-text" title="Día siguiente">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+      <button id="h-hoy" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border
+        text-sm text-telecab-muted hover:text-telecab-text">Hoy</button>
+      <button id="h-excel" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold
+        shadow-gold hover:brightness-110">
+        <i class="fa-solid fa-file-excel mr-1"></i> Informe
+      </button>
+    </div>
+  </div>
+
+  <!-- La jornada es 05:00 → 05:00: decirlo aquí evita la pregunta de siempre. -->
+  <p class="text-xs text-telecab-muted mb-3">
+    <i class="fa-solid fa-circle-info mr-1"></i>
+    Jornada operativa <strong>05:00 → 05:00</strong>. Las horas que cuentan son las de BOLT
+    más las <span class="text-emerald-400">justificaciones aprobadas</span>;
+    las <span class="text-sky-400">presuntas</span> están pendientes de aprobar.
+  </p>
+
+  <div id="h-resumen" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-4"></div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-telecab-border bg-telecab-dark/60 text-xs uppercase tracking-wide text-telecab-muted">
+        Llamadas por agente
+      </div>
+      <div id="h-agentes" class="divide-y divide-telecab-border/60"></div>
+    </div>
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-telecab-border bg-telecab-dark/60 text-xs uppercase tracking-wide text-telecab-muted">
+        Alertas del día · qué se atendió
+      </div>
+      <div id="h-alertas" class="divide-y divide-telecab-border/60"></div>
+    </div>
+  </div>
+
+  <div class="mb-3 flex flex-wrap items-center gap-2">
+    <i class="fa-solid fa-filter text-telecab-muted text-xs"></i>
+    <input id="h-filtro" placeholder="Conductor, agente o alerta"
+      class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-xs text-telecab-text w-64">
+    <div id="h-vistas" class="flex flex-wrap gap-1.5"></div>
+    <span id="h-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
+  </div>
+
+  <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+    <div id="h-lista">
+      <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+    </div>
+  </div>
+
+  <div id="h-nn-caja" class="hidden mt-4 rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
+    <div class="px-4 py-2.5 border-b border-telecab-border bg-telecab-dark/60 text-xs uppercase tracking-wide text-telecab-muted">
+      Rodaron sin estar en el cuadrante
+    </div>
+    <div id="h-nn" class="divide-y divide-telecab-border/60"></div>
+  </div>
+</div>
+
+<style>
+  /* Una alerta SIN comentario de llamada es trabajo pendiente, y se ve en rojo
+     aunque el día ya esté cerrado: el informe de fin de mes se escribe con eso. */
+  .hsin { box-shadow: inset 3px 0 0 0 rgb(239 68 68); }
+  .hcon { box-shadow: inset 3px 0 0 0 rgb(16 185 129 / .6); }
+  .hfila summary { list-style: none; cursor: pointer; }
+  .hfila summary::-webkit-details-marker { display: none; }
+  .hfila[open] .hchevron { transform: rotate(90deg); }
+  .hchevron { transition: transform .15s ease; }
+</style>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
+    m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const num = n => String(Math.round(Number(n || 0) * 10) / 10).replace('.', ',');
+
+  let datos = null, vista = 'todo', filtro = '';
+
+  // Caminar el calendario, no restar bloques de 24 h: el día del cambio de hora
+  // tiene 23 o 25 y la resta se salta una jornada.
+  function mueve(iso, n) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d, 12) + n * 86400000);
+    return t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0') +
+      '-' + String(t.getUTCDate()).padStart(2, '0');
+  }
+
+  const TONO_SALIDA = {
+    no_salio: 'bg-red-500/15 text-red-300 border-red-500/30',
+    salio: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+    conectado: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+    descanso: 'bg-amber-500/10 text-amber-300 border-amber-500/25',
+    pendiente: 'bg-telecab-dark text-telecab-muted border-telecab-border',
+  };
+  const TONO_J = {
+    aprobada: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+    pendiente: 'bg-sky-500/10 text-sky-300 border-sky-500/25',
+    rechazada: 'bg-red-500/15 text-red-300 border-red-500/30',
+  };
+  const TURNO = { dia: 'Día', noche: 'Noche', todoturno: 'TodoTurno' };
+  const J_ETQ = { aprobada: 'aprobada', pendiente: 'presunta', rechazada: 'rechazada' };
+
+  const tarjeta = (etq, valor, tono, titulo) =>
+    '<div class="rounded-xl border ' + (tono || 'border-telecab-border bg-telecab-card') +
+    ' px-3 py-2.5"' + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' +
+      '<div class="text-xl font-bold leading-none">' + esc(String(valor)) + '</div>' +
+      '<div class="text-[11px] uppercase tracking-wide mt-1 opacity-75">' + esc(etq) + '</div>' +
+    '</div>';
+
+  function pintaResumen(r) {
+    const sp = datos.sinPlan.length;
+    $('#h-resumen').innerHTML =
+      tarjeta('Con plaza', r.conductores) +
+      tarjeta('No salieron', r.noSalieron,
+        r.noSalieron ? 'border-red-500/30 bg-red-500/10 text-red-300' : null,
+        'Nadie de su cuenta de BOLT rodó en la ventana de su turno') +
+      tarjeta('Con alertas', r.conAlerta,
+        r.conAlerta ? 'border-amber-500/25 bg-amber-500/10 text-amber-300' : null) +
+      tarjeta('Sin comentar', r.sinAtender,
+        r.sinAtender ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                     : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+        'Alertas rojas para las que nadie apuntó qué dijo el conductor') +
+      tarjeta('Llamadas', r.llamadas, null, r.llamados + ' conductores distintos') +
+      tarjeta('Horas J', num(r.horasJAprobadas) + ' / ' + num(r.horasJPendientes),
+        'border-telecab-border bg-telecab-card',
+        'Aprobadas (cuentan) / presuntas (pendientes de aprobar)');
+
+    $('#h-agentes').innerHTML = datos.agentes.length
+      ? datos.agentes.map(a =>
+          '<div class="px-4 py-2.5 flex items-center gap-3 text-sm">' +
+            '<span class="font-semibold text-telecab-text flex-1 truncate">' + esc(a.agente) + '</span>' +
+            '<span class="text-telecab-muted text-xs">' + a.conductores + ' conductores</span>' +
+            (a.alertasContestadas
+              ? '<span class="text-xs px-2 py-0.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">' +
+                a.alertasContestadas + ' alertas</span>' : '') +
+            '<span class="font-bold text-telecab-gold w-10 text-right">' + a.llamadas + '</span>' +
+          '</div>').join('')
+      : '<p class="px-4 py-6 text-center text-sm text-telecab-muted">Nadie apuntó ninguna llamada.</p>';
+
+    $('#h-alertas').innerHTML = datos.alertas.length
+      ? datos.alertas.map(a => {
+          const falta = a.n - a.contestadas;
+          return '<div class="px-4 py-2.5 flex items-center gap-3 text-sm">' +
+            '<span class="flex-1 truncate ' + (a.tono === 'error' ? 'text-telecab-text' : 'text-telecab-muted') + '">' +
+              esc(a.etiqueta) + '</span>' +
+            '<span class="text-xs text-telecab-muted">' + a.conductores + ' pers.</span>' +
+            (falta
+              ? '<span class="text-xs px-2 py-0.5 rounded-full border border-red-500/30 bg-red-500/10 text-red-300">' +
+                falta + ' sin comentar</span>'
+              : '<span class="text-xs px-2 py-0.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">' +
+                'todas</span>') +
+            '<span class="font-bold text-telecab-gold w-8 text-right">' + a.n + '</span>' +
+          '</div>';
+        }).join('')
+      : '<p class="px-4 py-6 text-center text-sm text-telecab-muted">Ningún conductor levantó alertas.</p>';
+  }
+
+  /** Las llamadas de alguien, con lo que contestó de cada alerta. */
+  const pintaLlamadas = llamadas => llamadas.map(l =>
+    '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 px-3 py-2">' +
+      '<div class="flex flex-wrap items-center gap-2 text-xs">' +
+        '<span class="font-mono text-telecab-gold">' + esc(l.hora) + '</span>' +
+        '<span class="font-semibold text-telecab-text">' + esc(l.agente) + '</span>' +
+        (l.tipo ? '<span class="px-1.5 py-0.5 rounded border border-telecab-border text-telecab-muted">' +
+          esc(l.tipo) + '</span>' : '') +
+        (l.resultado ? '<span class="text-telecab-text">' + esc(l.resultado) + '</span>' : '') +
+        (l.origen && l.origen !== 'control'
+          ? '<span class="text-telecab-muted">· ' + esc(l.origen) + '</span>' : '') +
+      '</div>' +
+      (l.nota ? '<p class="text-xs text-telecab-muted mt-1">' + esc(l.nota) + '</p>' : '') +
+      ((l.alertas || []).length
+        ? '<ul class="mt-1.5 space-y-1">' + l.alertas.map(a =>
+            '<li class="text-xs flex gap-2">' +
+              '<i class="fa-solid fa-reply text-telecab-gold/70 mt-0.5"></i>' +
+              '<span><span class="text-telecab-muted">' + esc(a.etiqueta || a.alerta) + ':</span> ' +
+              esc(a.comentario) + '</span></li>').join('') + '</ul>'
+        : '') +
+    '</div>').join('');
+
+  function filaConductor(c) {
+    const sinComentar = c.alertas.filter(a => a.tono === 'error' && !a.contestada).length;
+    const barra = c.alertas.length ? (sinComentar ? 'hsin' : 'hcon') : '';
+    const jEstado = c.justificante ? c.justificante.estado : (c.jRechazadas.length ? 'rechazada' : '');
+
+    const chips = c.alertas.map(a =>
+      '<span class="text-[11px] px-1.5 py-0.5 rounded border ' +
+        (a.contestada ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+          : a.tono === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-300'
+          : a.tono === 'presunto' ? 'border-sky-500/25 bg-sky-500/10 text-sky-300'
+          : 'border-amber-500/25 bg-amber-500/10 text-amber-300') + '" title="' + esc(a.detalle) + '">' +
+        (a.contestada ? '<i class="fa-solid fa-check mr-1 opacity-70"></i>' : '') +
+        esc(a.etiqueta) + '</span>').join(' ');
+
+    return '<details class="hfila ' + barra + ' border-b border-telecab-border/60">' +
+      '<summary class="px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 hover:bg-telecab-dark/30">' +
+        '<i class="fa-solid fa-chevron-right hchevron text-telecab-muted text-xs w-3"></i>' +
+        '<span class="font-semibold text-telecab-text min-w-[11rem] flex-1 truncate">' + esc(c.conductor) + '</span>' +
+        '<span class="text-[11px] px-1.5 py-0.5 rounded border border-telecab-border text-telecab-muted">' +
+          esc(TURNO[c.turno] || c.turno) + '</span>' +
+        '<span class="text-[11px] px-2 py-0.5 rounded-full border ' +
+          (TONO_SALIDA[c.salida] || TONO_SALIDA.pendiente) + '">' + esc(c.salidaEtiqueta) + '</span>' +
+        '<span class="text-xs text-telecab-muted w-24 text-right" title="Horas que cuentan (BOLT + J aprobadas)">' +
+          '<strong class="text-telecab-text">' + num(c.horasFirmes) + ' h</strong>' +
+          (c.horasPresuntas > c.horasFirmes
+            ? '<span class="text-sky-400"> +' + num(c.horasPresuntas - c.horasFirmes) + '</span>' : '') +
+        '</span>' +
+        (jEstado ? '<span class="text-[11px] px-1.5 py-0.5 rounded border ' + TONO_J[jEstado] + '">J ' +
+          esc(J_ETQ[jEstado]) + '</span>' : '') +
+        '<span class="flex flex-wrap gap-1 justify-end">' + chips + '</span>' +
+        '<span class="text-xs text-telecab-muted w-20 text-right">' +
+          (c.llamadas.length
+            ? '<i class="fa-solid fa-phone mr-1"></i>' + c.llamadas.length
+            : '<span class="opacity-50">sin llamar</span>') + '</span>' +
+      '</summary>' +
+      '<div class="px-4 pb-3 pt-1 grid grid-cols-1 lg:grid-cols-2 gap-3">' +
+        '<div class="space-y-2">' +
+          '<p class="text-[11px] uppercase tracking-wide text-telecab-muted">Qué vio el sistema</p>' +
+          '<div class="text-xs text-telecab-muted space-y-1">' +
+            '<div>Teléfono: <a class="text-telecab-gold" href="tel:' + esc(c.telefono) + '">' +
+              (esc(c.telefono) || '—') + '</a>' +
+              (c.cuadrante ? ' · Cuadrante ' + esc(c.cuadrante) : '') +
+              ((c.matriculas || []).length ? ' · ' + esc(c.matriculas.join(', ')) : '') + '</div>' +
+            '<div>Primera conexión: ' + (esc(c.primera) || '—') +
+              ' · ' + num(c.horasBolt) + ' h en BOLT · ' + num(c.km) + ' km' +
+              (c.kmFuera ? ' · <span class="text-amber-300">' + num(c.kmFuera) + ' km fuera de la app</span>' : '') + '</div>' +
+            (c.rechazos
+              ? '<div>' + c.rechazos.ofertas + ' ofertas · ' + c.rechazos.aceptados + ' aceptadas' +
+                (c.rechazos.tasa != null ? ' (' + c.rechazos.tasa + ' %)' : '') +
+                (c.rechazos.rechazados ? ' · <span class="text-red-300">' + c.rechazos.rechazados + ' rechazadas a dedo</span>' : '') +
+                (c.rechazos.sinResponder ? ' · ' + c.rechazos.sinResponder + ' sin contestar' : '') + '</div>'
+              : '') +
+          '</div>' +
+          (c.alertas.length
+            ? '<ul class="space-y-1.5">' + c.alertas.map(a =>
+                '<li class="text-xs">' +
+                  '<span class="font-semibold ' + (a.contestada ? 'text-emerald-300' : 'text-red-300') + '">' +
+                    esc(a.nombre) + '</span>' +
+                  '<p class="text-telecab-muted">' + esc(a.detalle) + '</p>' +
+                  (a.respuestas.length
+                    ? a.respuestas.map(r => '<p class="text-telecab-text mt-0.5">' +
+                        '<i class="fa-solid fa-quote-left text-telecab-gold/60 mr-1 text-[10px]"></i>' +
+                        esc(r.comentario) + ' <span class="text-telecab-muted">— ' + esc(r.agente) +
+                        ', ' + esc(r.hora) + '</span></p>').join('')
+                    : '<p class="text-red-300/80 mt-0.5">Nadie apuntó qué dijo.</p>') +
+                '</li>').join('') + '</ul>'
+            : '<p class="text-xs text-telecab-muted">Sin alertas.</p>') +
+        '</div>' +
+        '<div class="space-y-2">' +
+          '<p class="text-[11px] uppercase tracking-wide text-telecab-muted">Las llamadas y las horas</p>' +
+          (c.llamadas.length
+            ? '<div class="space-y-1.5">' + pintaLlamadas(c.llamadas) + '</div>'
+            : '<p class="text-xs text-telecab-muted">No se apuntó ninguna llamada.</p>') +
+          (c.justificante
+            ? '<div class="rounded-lg border ' + TONO_J[c.justificante.estado] + ' px-3 py-2 text-xs">' +
+                '<strong>' + num(c.justificante.horas) + ' h · ' + esc(J_ETQ[c.justificante.estado]) + '</strong>' +
+                (c.justificante.tipo ? ' <span class="opacity-70">(' + esc(c.justificante.tipo) + ')</span>' : '') +
+                (c.justificante.obs ? '<p class="mt-0.5 opacity-90">' + esc(c.justificante.obs) + '</p>' : '') +
+                '<p class="mt-0.5 opacity-60">La pidió ' + (esc(c.justificante.quien) || '—') +
+                  (c.justificante.aprobadaPor ? ' · la aprobó ' + esc(c.justificante.aprobadaPor) : '') + '</p>' +
+              '</div>'
+            : '') +
+          c.jRechazadas.map(r =>
+            '<div class="rounded-lg border ' + TONO_J.rechazada + ' px-3 py-2 text-xs">' +
+              '<strong>' + num(r.horas) + ' h · rechazada</strong>' +
+              (r.obs ? '<p class="mt-0.5 opacity-90">' + esc(r.obs) + '</p>' : '') +
+              '<p class="mt-0.5 opacity-80">Motivo: ' + (esc(r.motivo) || 'sin apuntar') +
+                (r.porQuien ? ' — ' + esc(r.porQuien) : '') + '</p>' +
+            '</div>').join('') +
+        '</div>' +
+      '</div>' +
+    '</details>';
+  }
+
+  const VISTAS = [
+    { id: 'todo', etq: 'Todo lo que pasó', hay: c => c.alertas.length || c.llamadas.length || c.salida === 'no_salio' || c.justificante },
+    { id: 'nosalio', etq: 'No salieron', hay: c => c.salida === 'no_salio' },
+    { id: 'sincomentar', etq: 'Alertas sin comentar', hay: c => c.alertas.some(a => a.tono === 'error' && !a.contestada) },
+    { id: 'llamados', etq: 'Con llamada', hay: c => c.llamadas.length > 0 },
+    { id: 'justificados', etq: 'Con justificante', hay: c => c.justificante || c.jRechazadas.length },
+    { id: 'todos', etq: 'Toda la plantilla', hay: () => true },
+  ];
+
+  function pintaLista() {
+    const v = VISTAS.find(x => x.id === vista) || VISTAS[0];
+    const f = filtro.trim().toLowerCase();
+    const casa = c => !f || (c.conductor + ' ' + (c.matriculas || []).join(' ') + ' ' +
+      c.alertas.map(a => a.nombre).join(' ') + ' ' +
+      c.llamadas.map(l => l.agente + ' ' + l.resultado + ' ' + l.nota).join(' ')).toLowerCase().includes(f);
+
+    const lista = datos.conductores.filter(c => v.hay(c) && casa(c));
+    $('#h-lista').innerHTML = lista.length
+      ? lista.map(filaConductor).join('')
+      : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nada que contar con este filtro.</p>';
+    $('#h-cuenta').textContent = lista.length + ' de ' + datos.conductores.length;
+
+    $('#h-vistas').innerHTML = VISTAS.map(x => {
+      const n = datos.conductores.filter(x.hay).length;
+      return '<button data-vista="' + x.id + '" class="px-2.5 py-1.5 rounded-lg border text-xs ' +
+        (x.id === vista ? 'bg-telecab-gold text-telecab-dark border-telecab-gold font-semibold'
+          : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text') + '">' +
+        esc(x.etq) + ' <span class="opacity-70">' + n + '</span></button>';
+    }).join('');
+    $('#h-vistas').querySelectorAll('button').forEach(b =>
+      b.addEventListener('click', () => { vista = b.dataset.vista; pintaLista(); }));
+  }
+
+  function pintaNN() {
+    const caja = $('#h-nn-caja');
+    if (!datos.sinPlan.length) { caja.classList.add('hidden'); return; }
+    caja.classList.remove('hidden');
+    $('#h-nn').innerHTML = datos.sinPlan.map(n =>
+      '<div class="px-4 py-2.5 text-sm">' +
+        '<div class="flex flex-wrap items-center gap-x-3 gap-y-1">' +
+          '<span class="font-semibold text-telecab-text flex-1 truncate">' + esc(n.conductor) + '</span>' +
+          '<span class="text-[11px] px-1.5 py-0.5 rounded border border-telecab-border text-telecab-muted">' +
+            esc(n.turnoEtiqueta || n.turno) + '</span>' +
+          '<span class="text-xs text-telecab-muted">' + esc(n.situacion) + '</span>' +
+          '<span class="text-xs text-telecab-muted">' + num(n.horasBolt) + ' h · ' + num(n.km) + ' km' +
+            (n.kmFuera ? ' · <span class="text-amber-300">' + num(n.kmFuera) + ' km fuera</span>' : '') + '</span>' +
+        '</div>' +
+        (n.alertas.length
+          ? '<div class="flex flex-wrap gap-1 mt-1">' + n.alertas.map(a =>
+              '<span class="text-[11px] px-1.5 py-0.5 rounded border ' +
+                (a.contestada ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                  : 'border-red-500/30 bg-red-500/10 text-red-300') + '">' + esc(a.etiqueta) + '</span>').join('') +
+            '</div>' : '') +
+        (n.llamadas.length ? '<div class="mt-1.5 space-y-1.5">' + pintaLlamadas(n.llamadas) + '</div>' : '') +
+      '</div>').join('');
+  }
+
+  async function carga() {
+    const dia = $('#h-dia').value;
+    $('#h-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>';
+    try {
+      const r = await fetch('/control/api/historico?dia=' + encodeURIComponent(dia));
+      const d = await r.json();
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo leer el día');
+      datos = d;
+      pintaResumen(d.resumen);
+      pintaLista();
+      pintaNN();
+    } catch (e) {
+      $('#h-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-red-400">' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#h-dia').addEventListener('change', carga);
+  $('#h-ayer').addEventListener('click', () => { $('#h-dia').value = mueve($('#h-dia').value, -1); carga(); });
+  $('#h-manana').addEventListener('click', () => { $('#h-dia').value = mueve($('#h-dia').value, 1); carga(); });
+  $('#h-hoy').addEventListener('click', () => { $('#h-dia').value = '<%= hoy %>'; carga(); });
+  $('#h-filtro').addEventListener('input', e => { filtro = e.target.value; if (datos) pintaLista(); });
+
+  // El informe: el día que se está mirando, o la semana que acaba en él si se
+  // pulsa con Mayúsculas (el tope del servidor son 7 días).
+  $('#h-excel').addEventListener('click', e => {
+    const dia = $('#h-dia').value;
+    location.href = e.shiftKey
+      ? '/control/historico/excel?desde=' + mueve(dia, -6) + '&hasta=' + dia
+      : '/control/historico/excel?dia=' + dia;
+  });
+  $('#h-excel').title = 'Excel del día. Con Mayúsculas pulsado, la semana que termina ese día.';
+
+  carga();
+})();
+</script>

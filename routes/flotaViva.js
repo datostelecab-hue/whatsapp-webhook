@@ -1,7 +1,16 @@
 // ============================================================
-// FLOTA VIVA — rutas
+// FLOTA VIVA — lo que queda de ella (11/09/2026)
 // ============================================================
-// Fichero nuevo y aparte: no toca ninguna ruta existente.
+// LAS PANTALLAS DE FLOTA VIVA YA NO EXISTEN. El mural de coches y su histórico
+// de partes contaban un sistema de alertas de vehículo que lleva apagado desde
+// el 08/09, así que enseñaban una foto fija: quien entraba veía un tablero en
+// verde de un día que no era hoy. El Histórico es ahora /control/historico, y
+// cuenta lo que de verdad pasa —quién no salió, a quién se llamó y qué dijo—.
+//
+// El fichero sigue vivo por el NÚCLEO: fv_tramo, fv_ruta y las incidencias del
+// coche siguen siendo la fuente de la casa y En directo consume estas APIs (la
+// traza de un conductor, las incidencias, la gestión de una incidencia). Lo que
+// se ha ido son las dos vistas; las dos URLs redirigen para no romper favoritos.
 
 const express = require('express');
 const router = express.Router();
@@ -20,18 +29,10 @@ const responde = fn => async (req, res) => {
   }
 };
 
-router.get('/', (req, res) => {
-  res.render('flotaViva', {
-    titulo: 'Control · Flota viva', seccion: 'control', layout: 'layout-gestion',
-  });
-});
-
-// El reporte: que paso en cada franja y que se hizo.
-router.get('/partes', (req, res) => {
-  res.render('flotaVivaPartes', {
-    titulo: 'Control · Histórico', seccion: 'control', layout: 'layout-gestion',
-  });
-});
+// Las dos pantallas retiradas. 301 no: un permanente se queda cacheado en el
+// navegador para siempre y ata las manos si mañana hay que volver a usar la URL.
+router.get('/', (req, res) => res.redirect(302, '/control'));
+router.get('/partes', (req, res) => res.redirect(302, '/control/historico'));
 
 router.get('/api/estado', responde(async () => {
   await db.preparar();

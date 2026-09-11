@@ -244,18 +244,28 @@ async function aQuienAviso() {
  * Los conductores de una franja con sus tres cifras y sus horas. Una sola
  * consulta: órdenes, tramos y ficha viven en la misma base.
  */
-async function candidatos(franja, ahora = new Date()) {
+async function candidatos(franja) {
   const [dia, hIni, offFin, hFin] = paramsFranja(franja);
-  // La jornada operativa a la que pertenece este instante: 05:00 → 05:00. Antes
-  // de las cinco seguimos en la jornada de ayer.
-  const jornadaDia = horaMadrid(ahora) < 5 ? sumarDias(hoyMadrid(ahora), -1) : hoyMadrid(ahora);
+  // LA JORNADA DE LA FRANJA ES LA DE LA FRANJA, no la del reloj.
+  //
+  // Antes salía de `ahora`, y en vivo daba igual —la franja en curso es siempre
+  // la de la jornada en curso—, pero dejaba esta consulta inservible para mirar
+  // atrás: preguntando por la franja de mañana del día 3 contaba los viajes
+  // desde las 05:00 de HOY. Una franja pertenece siempre a la jornada de su
+  // propio día (la de noche empieza a las 20:00 y muere antes de las 05:00 del
+  // siguiente), así que el día de la franja ES la jornada. Con eso el Histórico
+  // puede reconstruir las alertas de un día ya cerrado.
+  const jornadaDia = String(franja.dia).slice(0, 10);
 
   const r = await db.consulta(
     `WITH f AS (
        SELECT ($1::date + ($2 || ' hours')::interval)            AT TIME ZONE 'Europe/Madrid' AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin,
               ($5::date + interval '5 hours')                     AT TIME ZONE 'Europe/Madrid' AS jini,
-              now() AS ahora),
+              -- EL FINAL DE LA JORNADA, no "ahora" a secas: en la jornada en
+              -- curso son lo mismo (aún no ha llegado), pero en una cerrada
+              -- now() se llevaría por delante los días siguientes.
+              LEAST((($5::date + 1) + interval '5 hours') AT TIME ZONE 'Europe/Madrid', now()) AS jfin),
      -- DOS VENTANAS, no una, porque las dos faltas no son la misma:
      --   · NO RESPONDER, solo dentro de la FRANJA. Fuera está el cambio de
      --     turno, y ahí que se escape alguna oferta es lo esperable.
@@ -267,18 +277,18 @@ async function candidatos(franja, ahora = new Date()) {
               -- corra en el margen de cortesía de las 13:05).
               count(*) FILTER (WHERE o.estado = 'driver_did_not_respond'
                                  AND o.creado_ts >= f.ini
-                                 AND o.creado_ts < LEAST(f.fin, f.ahora))::int AS sin_respuesta,
+                                 AND o.creado_ts < LEAST(f.fin, f.jfin))::int AS sin_respuesta,
               count(*) FILTER (WHERE o.estado = 'finished'
                                  AND o.creado_ts >= f.ini
-                                 AND o.creado_ts < LEAST(f.fin, f.ahora))::int AS hechos,
+                                 AND o.creado_ts < LEAST(f.fin, f.jfin))::int AS hechos,
               count(*) FILTER (WHERE o.creado_ts >= f.ini
-                                 AND o.creado_ts < LEAST(f.fin, f.ahora))::int AS ofertas,
+                                 AND o.creado_ts < LEAST(f.fin, f.jfin))::int AS ofertas,
               -- En toda la JORNADA, hasta AHORA. Lo que rechazó a las 15:30
               -- (entre franja y franja) tiene que sonar cuando abra la siguiente.
               count(*) FILTER (WHERE o.estado = 'driver_rejected')::int        AS rechazo_directo
          FROM bolt_order o CROSS JOIN f
         WHERE o.driver_uuid IS NOT NULL
-          AND o.creado_ts >= f.jini AND o.creado_ts < f.ahora
+          AND o.creado_ts >= f.jini AND o.creado_ts < f.jfin
         GROUP BY 1),
      -- KM RODADOS FUERA DE LA APP dentro de la franja, de fv_ruta.
      --
@@ -296,28 +306,28 @@ async function candidatos(franja, ahora = new Date()) {
      km AS (
        SELECT t.conductor_uuid AS uuid,
               sum(r.metros * GREATEST(0, EXTRACT(epoch FROM (
-                    LEAST(r.fin, COALESCE(t.hasta, f.ahora)) - GREATEST(r.inicio, t.desde))))
+                    LEAST(r.fin, COALESCE(t.hasta, f.jfin)) - GREATEST(r.inicio, t.desde))))
                   / NULLIF(EXTRACT(epoch FROM (r.fin - r.inicio)), 0))
                 FILTER (WHERE t.situacion NOT IN ('viaje', 'espera'))  AS km_m
          FROM fv_ruta r
          CROSS JOIN f
          JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
          JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND COALESCE(t.hasta, f.ahora) > r.inicio
+                             AND t.desde < r.fin AND COALESCE(t.hasta, f.jfin) > r.inicio
                              AND t.desde >= f.ini - interval '14 days'
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND r.inicio >= f.ini AND r.inicio < LEAST(f.fin, f.ahora)
+          AND r.inicio >= f.ini AND r.inicio < LEAST(f.fin, f.jfin)
           AND t.conductor_uuid IS NOT NULL
         GROUP BY 1),
      -- Horas EFECTIVAS de su jornada operativa (05:00 → ahora).
      horas AS (
        SELECT t.conductor_uuid AS uuid,
-              sum(EXTRACT(epoch FROM (LEAST(COALESCE(t.hasta, f.ahora), f.ahora)
+              sum(EXTRACT(epoch FROM (LEAST(COALESCE(t.hasta, f.jfin), f.jfin)
                                       - GREATEST(t.desde, f.jini)))) AS seg
          FROM fv_tramo t
          JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
          CROSS JOIN f
-        WHERE t.desde < f.ahora AND COALESCE(t.hasta, f.ahora) > f.jini
+        WHERE t.desde < f.jfin AND COALESCE(t.hasta, f.jfin) > f.jini
         GROUP BY 1),
      todos AS (SELECT uuid FROM ords UNION SELECT uuid FROM km)
      SELECT t.uuid,
@@ -399,7 +409,7 @@ async function revisar({ ahora = new Date(), forzar = false } = {}) {
   const franja = franjaDe(config, ahora);
   if (!franja) return { activa: false, motivo: 'fuera-de-franja', nuevas: 0, enviadas: 0 };
 
-  const lista = await candidatos(franja, ahora);
+  const lista = await candidatos(franja);
   const gente = await aQuienAviso();
   const simulado = config.modo !== 'live';
 
@@ -534,7 +544,7 @@ async function estado({ dia } = {}) {
   if (franja && !config.sinTabla) {
     // Lo que YA está por encima del umbral ahora mismo, esté avisado o no: es la
     // diferencia entre "saltó una alerta" y "esto está pasando".
-    const lista = await candidatos(franja, ahora).catch(() => []);
+    const lista = await candidatos(franja).catch(() => []);
     enVivo = [];
     for (const c of lista) {
       for (const [tipo, def] of Object.entries(config.tipos)) {

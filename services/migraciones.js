@@ -25,9 +25,21 @@ const DIR = path.join(__dirname, '..', 'db');
 const normalizar = txt => String(txt).replace(/\r\n/g, '\n').trimEnd();
 const huella = txt => crypto.createHash('sha256')
   .update(normalizar(txt), 'utf8').digest('hex').slice(0, 16);
-const ficheros = () => fs.existsSync(DIR)
-  ? fs.readdirSync(DIR).filter(f => f.endsWith('.sql')).sort()
-  : [];
+// EL ORDEN ES POR NÚMERO, NO POR NOMBRE.
+//
+// Con `.sort()` a secas se ordena como texto, y el texto dice que "100" va
+// ANTES que "99" (compara el '1' con el '9'). Mientras los ficheros fueron de
+// dos cifras daba igual; al llegar a la 100 el corredor habría empezado a
+// aplicar las nuevas antes que las viejas, y una migración que depende de la
+// anterior habría reventado en producción sin motivo aparente. Se ordena por el
+// número de delante y, a igualdad, por el nombre.
+const ficheros = () => {
+  const num = f => { const m = /^(\d+)/.exec(f); return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER; };
+  return fs.existsSync(DIR)
+    ? fs.readdirSync(DIR).filter(f => f.endsWith('.sql'))
+        .sort((a, b) => num(a) - num(b) || a.localeCompare(b))
+    : [];
+};
 
 async function asegurarRegistro() {
   await db.consulta(`

@@ -1,14 +1,15 @@
 <%
-  // Sub-navegacion de Control de trafico. El modulo une el tablero de asistencia
-  // (Control) y el vivo (Flota Viva) bajo un mismo apartado; estas pastillas
-  // cambian entre sus partes. `sub` dice cual esta activa. Flota Viva ya no vive
-  // en Operaciones: es una parte de aqui.
+  // Sub-navegacion de Control de trafico. `sub` dice cual esta activa.
+  //
+  // "Flota viva" ya no esta: su mural de coches contaba un sistema de alertas de
+  // vehiculo apagado desde el 08/09, asi que enseñaba una foto fija de un dia
+  // que no era hoy. El Historico es ahora de Control y cuenta lo que de verdad
+  // pasa: quien no salio, a quien se llamo y que dijo.
   const _sub = typeof sub !== 'undefined' ? sub : 'directo';
   const _pills = [
     { id: 'directo',   href: '/control',            texto: 'En directo',   icono: 'fa-satellite-dish' },
     { id: 'campanas',  href: '/control/campanas',   texto: 'Campañas',     icono: 'fa-phone-volume' },
-    { id: 'flota',     href: '/flota-viva',          texto: 'Flota viva',   icono: 'fa-tower-cell' },
-    { id: 'historico', href: '/flota-viva/partes',   texto: 'Histórico',    icono: 'fa-clock-rotate-left' },
+    { id: 'historico', href: '/control/historico',  texto: 'Histórico',    icono: 'fa-clock-rotate-left' },
     { id: 'km',        href: '/control/km',          texto: 'KM y traza',   icono: 'fa-route' },
     { id: 'reportes',  href: '/control/reportes',    texto: 'Reportes',     icono: 'fa-chart-pie' },
   ];

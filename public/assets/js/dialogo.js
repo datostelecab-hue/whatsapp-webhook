@@ -274,7 +274,7 @@
         const pintaCasos = () => {
           const ops = (grupoSel.opciones || []).map(norm);
           lista.innerHTML = ops.map(o => `
-            <button type="button" data-o="${esc(o.valor)}"
+            <button type="button" data-o="${esc(o.valor)}" data-texto="${esc(o.texto)}"
               class="w-full text-left px-3 py-2 rounded-lg border text-sm transition
                 ${String(o.valor) === String(elegido)
                   ? 'bg-telecab-gold/15 border-telecab-gold text-telecab-text font-medium'
@@ -287,7 +287,12 @@
             elegido = b.dataset.o;
             caja.dataset.valor = elegido;
             caja.dataset.grupo = grupoSel.codigo || '';
-            caja.dataset.texto = b.textContent.trim();
+            // El TEXTO DEL CASO, no el del botón. Un caso puede llevar debajo su
+            // explicación (las alertas la llevan siempre), y `textContent` las
+            // pegaba sin espacio: en la base quedaron resultados como
+            // "1 viaje rechazadoLos rechazó ÉL, con el dedo. No se puede…",
+            // recortados a 60 caracteres y sin sentido en el informe.
+            caja.dataset.texto = b.dataset.texto || b.textContent.trim();
             pintaCasos();
           }));
         };

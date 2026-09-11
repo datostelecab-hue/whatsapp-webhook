@@ -1004,10 +1004,13 @@
       campos.push({
         id: 'alertas', etiqueta: 'Y qué te ha dicho de cada alerta', tipo: 'items',
         comentarioObligatorio: true,
+        // La etiqueta del item SE GUARDA tal cual en llamada_alerta, así que es
+        // el nombre de la alerta y nada más: el "ya contestada" es estado de
+        // este momento y va debajo, con lo que se contestó.
         items: pend.map(a => ({
           codigo: a.codigo, tono: a.tono,
-          etiqueta: a.etiqueta + (ya[a.codigo] ? ' · ya contestada' : ''),
-          detalle: ya[a.codigo] ? '«' + ya[a.codigo].comentario + '»' : a.detalle,
+          etiqueta: a.etiqueta,
+          detalle: ya[a.codigo] ? 'Ya contestada: «' + ya[a.codigo].comentario + '»' : a.detalle,
         })),
         ayuda: sinContestar.length === 0
           ? 'Todas contestadas. Puedes volver a preguntar por alguna si ha cambiado.'

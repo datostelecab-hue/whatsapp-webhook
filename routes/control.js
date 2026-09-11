@@ -107,6 +107,78 @@ router.get('/api/directo', async (req, res) => {
   }
 });
 
+// ── HISTÓRICO ───────────────────────────────────────────────────────────────
+// Lo que pasó un día y lo que se hizo con ello: quién no salió, qué alertas
+// levantó cada uno, a quién se llamó, qué contestó y qué horas se justificaron.
+// Sustituye al histórico de partes de Flota Viva, que contaba las incidencias
+// de un sistema de alertas de vehículo apagado desde el 08/09.
+router.get('/historico', (req, res) => {
+  res.render('controlHistorico', {
+    titulo: 'Control · Histórico', seccion: 'control', layout: 'layout-gestion',
+    hoy: llamadas.diaOperativoHoy(),
+  });
+});
+
+router.get('/api/historico', async (req, res) => {
+  try {
+    const parte = await require('../services/repo/historicoControl').parte(req.query.dia);
+    res.json({ status: 'ok', ...parte });
+  } catch (error) {
+    console.error('❌ [Control] /api/historico:', error.stack || error.message);
+    res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// EL INFORME. Un día por defecto; con ?desde=&hasta= apila varios en las mismas
+// hojas con la fecha delante (para la tabla dinámica del mes).
+//
+// El tope de días NO es capricho: cada día recalcula el cockpit entero contra el
+// núcleo (unos 5 s), así que un mes de una sentada serían dos minutos y medio de
+// petición colgada. Se baja por semanas.
+const MAX_DIAS_INFORME = 7;
+router.get('/historico/excel', async (req, res) => {
+  try {
+    const repo = require('../services/repo/historicoControl');
+    const hoy = llamadas.diaOperativoHoy();
+    const desde = ISO.test(req.query.desde || '') ? req.query.desde
+      : (ISO.test(req.query.dia || '') ? req.query.dia : hoy);
+    const hasta = ISO.test(req.query.hasta || '') ? req.query.hasta : desde;
+    if (hasta < desde) throw new Error('El "hasta" es anterior al "desde"');
+
+    // Se camina el calendario (no se restan bloques de 24 h: el día del cambio
+    // de hora tiene 23 o 25 y la resta se salta una jornada).
+    const dias = [];
+    for (let d = desde; d <= hasta && dias.length < MAX_DIAS_INFORME; ) {
+      dias.push(d);
+      const [y, m, dd] = d.split('-').map(Number);
+      const t = new Date(Date.UTC(y, m - 1, dd, 12) + 86400000);
+      d = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+    }
+
+    // De uno en uno: cada parte ya paraleliza sus consultas por dentro y
+    // lanzarlos todos a la vez ahogaría el pool.
+    const partes = [];
+    for (const d of dias) partes.push(await repo.parte(d));
+
+    const libro = await require('../services/historicoControlExcel').generar(partes);
+    const total = partes.reduce((a, p) => ({
+      llamadas: a.llamadas + p.resumen.llamadas,
+      noSalieron: a.noSalieron + p.resumen.noSalieron,
+      alertas: a.alertas + p.conductores.reduce((n, c) => n + c.alertas.length, 0),
+    }), { llamadas: 0, noSalieron: 0, alertas: 0 });
+    console.log(`📊 [Control] histórico (Excel) ${dias[0]}→${dias[dias.length - 1]}: ` +
+      `${total.noSalieron} no salieron · ${total.alertas} alertas · ${total.llamadas} llamadas`);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="control-historico-${dias[0]}` +
+      (dias.length > 1 ? `-a-${dias[dias.length - 1]}` : '') + '.xlsx"');
+    res.send(libro);
+  } catch (error) {
+    console.error('❌ [Control] /historico/excel:', error.stack || error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
 // ── KM y traza (Fase 3) ─────────────────────────────────────────────────────
 // El km CONECTADO vs DESCONECTADO por conductor, del núcleo (route/list cruzado
 // con los tramos). Es la fuente buena: el km del `mileage` era el que daba 0.
