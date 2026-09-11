@@ -141,6 +141,22 @@ const TURNOS = {
   // va con la noche que la trajo, no con el día siguiente. El turno de DÍA usa el día
   // natural ('completo', 00:00→24:00).
   noche12: [12, 1, 12],
+  // LA NOCHE, COMO LA MIRA EL COCKPIT: se MIDE desde mediodía y termina a las
+  // 05:00. Es la misma regla de Tráfico que `noche12` —el turno de noche va de
+  // mediodía a mediodía, así su madrugada no se le imputa al día siguiente—,
+  // recortada al final real del turno.
+  //
+  // Por qué no vale 17→05 aquí: lo que un conductor de noche hace a las 06:00
+  // es la COLA DE SU TURNO DE AYER, y con la ventana de 05:00 se le contaba como
+  // actividad de hoy: le salían alertas de rechazos por viajes de la noche
+  // anterior. Y al revés, el que empieza a las 13:00 no aparecía por ninguna
+  // parte hasta las 17:00. Midiendo desde las 12:00 las dos cosas caen donde
+  // les toca.
+  //
+  // OJO: medir no es reclamar. Que la ventana esté abierta a las 12:30 no
+  // significa que a quien entra a las 17:00 haya que llamarle por no estar; eso
+  // lo decide `reclamable` en el cockpit (directo.js).
+  nocheControl: [12, 1, HORA_DIA],
 };
 
 /**

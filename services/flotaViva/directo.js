@@ -114,7 +114,17 @@ const JORNADA_H = Number(process.env.CONTROL_JORNADA_H || 8);
 const RECHAZOS_ROJO = Number(process.env.CONTROL_RECHAZOS_ROJO || 15);
 const TASA_ROJA = Number(process.env.CONTROL_TASA_ACEPTACION_ROJA || 50);
 function salidaDe(a, vent) {
-  if (!vent || !vent.empezada) return 'pendiente';
+  if (!vent) return 'pendiente';
+  // MEDIR NO ES RECLAMAR. La ventana de la noche se abre a mediodía para que lo
+  // que empiece antes de las 17:00 cuente, pero a quien entra a las 17:00 no se
+  // le llama a las 12:30 por no estar: eso serían sesenta y dos falsas alarmas
+  // cada tarde. Antes de su hora solo se dice algo de él si YA está rodando —y
+  // entonces la respuesta es que sí, ha salido—.
+  if (!vent.reclamable) {
+    if (!a) return 'pendiente';
+    if (a.conectadoAhora) return a.situacionAhora === 'descanso' ? 'descanso' : 'conectado';
+    return (a.minutos > UMBRAL_SALIDA_MIN || a.km > 0) ? 'salio' : 'pendiente';
+  }
   if (!a) return 'no_salio';
   // El DESCANSO ('busy' en BOLT) es estar con el coche y la app abierta pero NO
   // trabajando. Salió —el coche está con él— pero no es lo mismo que estar rodando,
@@ -144,7 +154,7 @@ async function enDirecto({ dia } = {}) {
   // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
   const plani = require('../repo/planificador');   // base principal (Cuadrante)
   const rutas = require('./rutas');
-  const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper] = await Promise.all([
+  const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper, actNocheReloj] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
     // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
@@ -165,9 +175,34 @@ async function enDirecto({ dia } = {}) {
     // porque sus sobras cruzaban el corte de las 05:00. Y la del día operativo
     // entero (05→05) es la que sirve para los NN, que no tienen turno asignado.
     rutas.actividadPorConductor(hoy, 'dia').catch(e => { console.error('❌ [EN DIRECTO] actividad día:', e.message); return null; }),
-    rutas.actividadPorConductor(hoy, 'noche').catch(e => { console.error('❌ [EN DIRECTO] actividad noche:', e.message); return null; }),
+    // La noche se mide desde MEDIODÍA (ver TURNOS.nocheControl): lo que hace un
+    // conductor de noche a las 06:00 es la cola de su turno de ayer, y lo que
+    // empieza a las 13:00 ya es de hoy.
+    rutas.actividadPorConductor(hoy, 'nocheControl').catch(e => { console.error('❌ [EN DIRECTO] actividad noche:', e.message); return null; }),
     rutas.actividadPorConductor(hoy, 'operativo').catch(e => { console.error('❌ [EN DIRECTO] actividad jornada:', e.message); return null; }),
+    // Y la noche "de reloj" (17:00→05:00), SOLO para repartir a los NN: a ellos
+    // no se les mide por su turno —no tienen— sino por el turno que está en
+    // curso, y ese corta a las 17:00 en punto.
+    rutas.actividadPorConductor(hoy, 'noche').catch(() => null),
   ]);
+
+  // ── DESDE CUÁNDO SE PUEDE RECLAMAR CADA TURNO ──────────────────────────────
+  // La ventana de la noche se abre a mediodía para MEDIR, pero su hora de entrar
+  // sigue siendo las 17:00. `reclamable` es lo que dice si ya toca llamar al que
+  // no está; `empezada` sigue diciendo si la ventana mide. En un día pasado, todo
+  // terminó, así que todo es reclamable.
+  const RECLAMA_TRAS = { dia: 0, noche: (17 - 12) * 3600000, operativo: 0 };
+  const marcarReclamable = (vent, clave) => {
+    if (!vent) return vent;
+    const desfase = RECLAMA_TRAS[clave] || 0;
+    vent.reclamaAt = vent.ini ? new Date(vent.ini).getTime() + desfase : null;
+    vent.reclamable = !!vent.terminada || (vent.reclamaAt != null && Date.now() >= vent.reclamaAt);
+    return vent;
+  };
+  marcarReclamable(actDia, 'dia');
+  marcarReclamable(actNoche, 'noche');
+  marcarReclamable(actOper, 'operativo');
+  marcarReclamable(actNocheReloj, 'dia');   // 17→05: su inicio YA es su hora
 
   // ── Realidad viva: matrícula normalizada → su fila de fv_ahora ──────────────
   const vivos = new Map();
@@ -498,10 +533,24 @@ async function enDirecto({ dia } = {}) {
   const rend = await require('../repo/rendimiento').leer().catch(() => new Map());
   // Los viajes que ha tirado cada cuenta de BOLT en esta jornada. Va con red:
   // si bolt_order no responde, el cockpit se ve igual sin esa columna.
-  const rechazos = await require('../repo/rechazos').porConductor(hoy).catch(e => {
-    console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
-  });
-  const fundirRechazos = require('../repo/rechazos').fundir;
+  // LOS RECHAZOS, EN LA VENTANA DE SU TURNO. Dos lecturas, no una:
+  //
+  //   05:00→05:00  para el día, los TodoTurno y los NN de día.
+  //   12:00→12:00  para la NOCHE, por la misma razón que la actividad: a un
+  //                conductor de noche los viajes que dejó pasar a las 06:00 son
+  //                de su turno de AYER, y con la jornada 05→05 se le pintaban
+  //                hoy. Le salía el aviso de rechazos a las dos de la tarde por
+  //                algo que hizo antes de irse a dormir.
+  const repoRech = require('../repo/rechazos');
+  const [rechazos, rechazosNoche] = await Promise.all([
+    repoRech.porConductor(hoy).catch(e => {
+      console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
+    }),
+    repoRech.porConductor(hoy, { hora: 12 }).catch(() => new Map()),
+  ]);
+  const fundirRechazos = repoRech.fundir;
+  /** El mapa de rechazos que le toca a una fila según su turno. */
+  const rechazosDe = turno => (turno === 'noche' ? rechazosNoche : rechazos);
   // Los justificantes de la jornada CON SU ESTADO. Entran aquí dentro y no en la
   // ruta porque la proyección los necesita: sin ellos volvería a decirle "no
   // terminará la jornada" a quien tiene tres horas de taller justificadas.
@@ -558,11 +607,35 @@ async function enDirecto({ dia } = {}) {
     return { codigo: 'sin_plaza', etiqueta: 'En plantilla · sin plaza hoy' };
   };
 
-  const sinPlan = [...((actOper && actOper.porUuid) || new Map()).values()]
-    .filter(a => !idsPlan.has(idDeUuid.get(a.uuid)))
-    .filter(a => !nombresPlan.has(normNombre(a.nombre)))
-    .filter(a => a.minutos > 0 || a.km > 0 || a.conectadoAhora)
+  // LOS NN, PARTIDOS EN DÍA Y NOCHE.
+  //
+  // Antes salían de la jornada entera (05→05) en una sola lista, así que sus
+  // horas no eran de ningún turno: iban a un saco aparte. Y a estas personas
+  // hay que llamarlas igual que a las del plan, así que sus horas tienen que
+  // sumar donde de verdad las hicieron.
+  //
+  // El corte es el del RELOJ, 17:00 en punto (no el de mediodía de los de
+  // noche): un NN no tiene turno propio, se le imputa el que está en curso. Por
+  // eso quien sigue rodando a las 17:00 aparece DOS VECES en la pestaña: una
+  // fila con lo que hizo hasta las 16:59 y otra con lo de después. No es un
+  // duplicado, son dos turnos distintos del mismo señor.
+  const esNN = a => !idsPlan.has(idDeUuid.get(a.uuid))
+    && !nombresPlan.has(normNombre(a.nombre))
+    && (a.minutos > 0 || a.km > 0 || a.conectadoAhora);
+  const ventanasNN = [
+    { turno: 'dia', etq: 'Día', vent: actDia },
+    { turno: 'noche', etq: 'Noche', vent: actNocheReloj },
+  ];
+  const sinPlan = ventanasNN.flatMap(({ turno, etq, vent }) =>
+    [...((vent && vent.porUuid) || new Map()).values()]
+      .filter(esNN)
+      .map(a => ({ ...a, _turno: turno, _turnoEtq: etq })))
     .map(a => ({
+      // Una clave propia por FILA (la misma persona puede tener la de día y la
+      // de noche): es lo que usan los botones de llamar y justificar para
+      // encontrar su fila.
+      clave: 'nn|' + a._turno + '|' + a.uuid,
+      turno: a._turno, turnoEtiqueta: a._turnoEtq,
       conductor: a.nombre || ('#' + String(a.uuid).slice(0, 8)),
       telefono: a.telefono || '',
       conductorId: idDeUuid.get(a.uuid) || '',
@@ -576,16 +649,19 @@ async function enDirecto({ dia } = {}) {
       // Sus avisos: los provocó él, aunque no esté en el plan. Antes se contaban
       // en la cabecera y no se podían ver en ninguna pestaña.
       incidencias: porIncCond.get(a.uuid) || [],
-      rechazos: rechazos.get(a.uuid) || null,
+      // Con la ventana de SU turno, igual que los del plan.
+      rechazos: rechazosDe(a._turno).get(a.uuid) || null,
       // Los km fuera de la app también aquí. Quien rueda con la app apagada SIN
       // estar en el plan es justo a quien más hay que preguntar, y antes se
       // quedaba fuera del aviso: hoy el que más lleva —119 km en la franja— es
       // de esta lista.
       kmFranja: kmFranjaDe([a.uuid]),
-      avisos: avisosDe({ proy: null, rech: rechazos.get(a.uuid) || null, salida: 'salio',
+      avisos: avisosDe({ proy: null, rech: rechazosDe(a._turno).get(a.uuid) || null, salida: 'salio',
         kmFuera: kmFranjaDe([a.uuid]) }),
     }))
-    .sort((a, b) => Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
+    .sort((a, b) =>
+      (a.turno === b.turno ? 0 : a.turno === 'dia' ? -1 : 1) ||
+      Number(b.conectadoAhora) - Number(a.conectadoAhora) || b.total - a.total);
 
   // Cuánta gente se ha conectado HOY a la plataforma (jornada 05→05), sea del
   // plan o no: el número que responde "¿cuántos han salido?" sin letra pequeña.
@@ -718,7 +794,9 @@ async function enDirecto({ dia } = {}) {
       const cocheCambiado = vivas.length > 0 && !vivas.some(m => f.matriculas.includes(m));
       const just = justificantes[String(f.conductorId)] || null;
       const proy = proyectar(f.actividad, vent, just);
-      const rech = fundirRechazos(cuentas.map(u => rechazos.get(u)));
+      // Cada uno con la ventana de SU turno (la noche, desde mediodía).
+      const mapaRech = rechazosDe(f.turno);
+      const rech = fundirRechazos(cuentas.map(u => mapaRech.get(u)));
       const salida = salidaDe(f.actividad, vent);
       // Los km fuera de la app EN LA FRANJA, sumando todas sus cuentas de BOLT.
       //
@@ -790,8 +868,11 @@ async function enDirecto({ dia } = {}) {
     // La ventana de cada turno, para que la pantalla sepa si ya ha empezado. Un
     // turno que no ha arrancado no tiene a nadie "sin salir": no le toca a nadie.
     ventanas: {
-      dia:   actDia   ? { ini: actDia.ini,   fin: actDia.finPlan,   empezada: actDia.empezada,   terminada: actDia.terminada }   : null,
-      noche: actNoche ? { ini: actNoche.ini, fin: actNoche.finPlan, empezada: actNoche.empezada, terminada: actNoche.terminada } : null,
+      // `empezada` es lo que la pantalla lee para decir "este turno todavía no
+      // ha empezado", y eso es la hora de ENTRAR, no la de empezar a medir: la
+      // noche se mide desde mediodía pero su turno empieza a las 17:00.
+      dia:   actDia   ? { ini: actDia.ini,   fin: actDia.finPlan,   empezada: !!actDia.reclamable,   terminada: actDia.terminada }   : null,
+      noche: actNoche ? { ini: actNoche.ini, fin: actNoche.finPlan, empezada: !!actNoche.reclamable, terminada: actNoche.terminada } : null,
     },
   };
 }

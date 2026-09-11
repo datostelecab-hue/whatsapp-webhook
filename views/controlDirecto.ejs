@@ -729,7 +729,14 @@
   // (antes era un flex por libre y las horas caían debajo de "KM").
   function filaNN(s) {
     const sit = s.situacion || {};
-    return '<div class="dfila dcab-grid py-2.5 border-b border-telecab-border/70">' +
+    // A los NN también hay que llamarlos, así que su fila late y se despliega
+    // igual que las del plan: mismo nivel de alerta, mismo botón, misma traza.
+    const nivel = nivelAlerta(s);
+    return '<div class="dfila ' +
+        (nivel === 2 ? 'dalerta' : nivel === 1 ? 'dalerta-ok' : '') +
+        ' border-b border-telecab-border/70" data-mat="' + esc(s.clave || ('nn-' + s.conductorId + '-' + s.turno)) +
+        '" data-cid="' + esc(s.conductorId || '') + '">' +
+      '<div class="dcab dcab-grid py-2.5 cursor-pointer select-none hover:bg-telecab-dark/40">' +
       '<span class="dbarra ' + (s.conectadoAhora ? 'bg-emerald-500' : 'bg-telecab-border') + '"></span>' +
       '<span class="min-w-0">' +
         '<span class="flex items-center gap-1.5 min-w-0">' +
@@ -747,8 +754,13 @@
         cifra(horas(s.minutos), ' h', 'text-telecab-text font-medium') + '</span>' +
       '<span class="dopc text-right text-xs tabular-nums" title="Km en BOLT">' + cifra(s.enBolt, ' km', 'text-emerald-500') + '</span>' +
       '<span class="dopc text-right text-xs tabular-nums" title="Km desconectado">' + cifra(s.desconectado, ' km', 'text-amber-500') + '</span>' +
+      // La columna de aceptados, que faltaba: sin ella la fila tenía diez celdas
+      // para una rejilla de once y se descuadraba entera.
+      '<span class="dopc text-right">' + aceptacionHTML(s.rechazos) + '</span>' +
       '<span class="text-right">' + avisosHTML(s) + '</span>' +
-      '<span></span>' +
+      '<span class="text-right"><i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform"></i></span>' +
+      '</div>' +
+      detalleConductor(s) +
       '</div>';
   }
 
@@ -800,10 +812,32 @@
       const filas = todas.filter(s => !q ||
         (s.conductor || '').toLowerCase().includes(q) ||
         (s.matriculas || []).join(' ').toLowerCase().includes(q));
+      // PARTIDOS POR TURNO. Sus horas son del turno en que las hicieron, y quien
+      // sigue rodando pasadas las 17:00 sale en los dos: arriba lo que hizo de
+      // día, abajo lo de la noche. Antes iban todos en un montón con las horas
+      // de la jornada entera, que no eran de ningún turno.
+      const porT = [
+        { id: 'dia', etq: 'Día', icono: 'fa-sun', desc: 'Lo que hicieron entre las 05:00 y las 17:00' },
+        { id: 'noche', etq: 'Noche', icono: 'fa-moon', desc: 'Desde las 17:00' },
+      ];
       $('#d-lista').innerHTML = filas.length
-        ? filas.map(filaNN).join('')
+        ? porT.map(t => {
+            const lista = filas.filter(f => (f.turno || 'dia') === t.id);
+            if (!lista.length) return '';
+            const hs = lista.reduce((n, f) => n + (f.minutos || 0), 0) / 60;
+            return '<div class="px-4 py-1.5 bg-telecab-dark/60 border-y border-telecab-border/70 ' +
+                'text-[11px] uppercase tracking-wide text-telecab-muted flex items-center gap-2" title="' + esc(t.desc) + '">' +
+                '<i class="fa-solid ' + t.icono + '"></i>' + t.etq +
+                '<span class="ml-auto tabular-nums normal-case">' + lista.length + ' conductor(es) · ' +
+                n1(hs) + ' h que suman al turno</span></div>' +
+              lista.map(filaNN).join('');
+          }).join('')
         : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nadie rodando sin plan. 👌</p>';
-      $('#d-cuenta').textContent = (q ? filas.length + ' de ' + todas.length : todas.length) + ' conductor(es)';
+      $('#d-cuenta').textContent = (q ? filas.length + ' de ' + todas.length : todas.length) + ' fila(s)';
+      // Los NN ya tienen botones (llamar, justificar) y se despliegan: hay que
+      // engancharlos igual que a los del plan. Antes esta rama salía sin pasar
+      // por aquí porque sus filas no tenían nada que pulsar.
+      wire();
       return;
     }
 
@@ -907,7 +941,9 @@
   }
 
   function filaPorClave(clave) {
-    for (const t of ['dia', 'noche', 'todoturno']) {
+    // 'nn' entra en la lista: a los que ruedan sin plan también se les llama y
+    // se les justifica, así que sus botones tienen que encontrar su fila.
+    for (const t of ['dia', 'noche', 'todoturno', 'nn']) {
       const f = ((DATOS.porTurno || {})[t] || []).find(x => x.clave === clave);
       if (f) return f;
     }
