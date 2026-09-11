@@ -62,7 +62,7 @@ async function cierreDe(evento) {
   const r = await db.consulta(
     `WITH cob AS (
        SELECT c.dia, c.turno_id, c.conductor_id, c.vehiculo_id
-         FROM f_cobertura($1::date, $2::date) c
+         FROM f_cobertura($1::date, $2::date, TRUE) c
          JOIN plaza p ON p.id = c.plaza_id
         WHERE p.slot = ANY($3::smallint[])
      ),
@@ -318,14 +318,14 @@ async function entregas(ev) {
        -- Lo último que hace cada conductor DENTRO del evento, coche por coche.
        SELECT DISTINCT ON (c.conductor_id, c.vehiculo_id, c.turno_id)
               c.conductor_id, c.vehiculo_id, c.turno_id, c.dia
-         FROM f_cobertura($1::date, $2::date) c
+         FROM f_cobertura($1::date, $2::date, TRUE) c
         ORDER BY c.conductor_id, c.vehiculo_id, c.turno_id, c.dia DESC
      ),
      luego AS (
        -- Y lo PRIMERO que pasa en ese coche y turno cuando el evento ya acabó.
        SELECT DISTINCT ON (c.vehiculo_id, c.turno_id)
               c.vehiculo_id, c.turno_id, c.conductor_id, c.dia
-         FROM f_cobertura(($2::date + 1), ($2::date + 8)) c
+         FROM f_cobertura(($2::date + 1), ($2::date + 8), TRUE) c
         ORDER BY c.vehiculo_id, c.turno_id, c.dia
      )
      SELECT f.conductor_id, v.matricula, t.codigo AS turno,

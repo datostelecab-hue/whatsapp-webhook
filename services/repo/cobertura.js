@@ -70,7 +70,7 @@ async function tramosSemana(desde, hasta) {
             COALESCE(ext.externo_nombre,
                      NULLIF(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))), ''),
                      '#' || c.id::text) AS nombre
-       FROM f_cobertura($1::date, $2::date) f
+       FROM f_cobertura($1::date, $2::date, TRUE) f
        JOIN turno t     ON t.id = f.turno_id
        JOIN conductor c ON c.id = f.conductor_id
        LEFT JOIN LATERAL (

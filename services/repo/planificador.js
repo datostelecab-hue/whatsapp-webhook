@@ -95,7 +95,10 @@ async function tablero({ dia } = {}) {
         ORDER BY a.desde`, [lunes, domingo]),
 
     // Día a día, quién cubre qué. La regla vive en la base.
-    db.consulta('SELECT * FROM f_cobertura($1, $2)', [lunes, domingo]),
+    // TRUE = si el dia cae en un evento vivo, la ausencia no quita a nadie: lo
+    // planificado en un evento se confirmo por telefono. El expediente
+    // (rendimiento, asistencia, bitacora) llama a la misma funcion SIN el TRUE.
+    db.consulta('SELECT * FROM f_cobertura($1, $2, TRUE)', [lunes, domingo]),
 
     // Quién se puede planificar. No hay "agenda": es la plantilla con contrato
     // abierto, su turno, su libranza y su jornada.
@@ -825,7 +828,7 @@ async function comprobarPlan({ plazaId, conductorId, dias, desde, hasta } = {}, 
               c.plaza_id, c.rol, v.matricula, t.codigo AS turno_codigo, t.etiqueta AS turno,
               COALESCE(NULLIF(btrim(co.nombre_bolt), ''),
                        btrim(co.nombre || ' ' || COALESCE(co.apellidos, ''))) AS conductor
-         FROM f_cobertura($1::date, $2::date) c
+         FROM f_cobertura($1::date, $2::date, TRUE) c
          JOIN vehiculo v  ON v.id = c.vehiculo_id
          JOIN turno t     ON t.id = c.turno_id
          JOIN conductor co ON co.id = c.conductor_id
@@ -1724,7 +1727,7 @@ async function salidasHoy(dia) {
               FILTER (WHERE v.cuadrante_id IS NOT NULL)          AS cuadrante_ids,
             min(bz.nombre)                                       AS zona
        FROM f_cobertura(COALESCE($1::date, CURRENT_DATE),
-                        COALESCE($1::date, CURRENT_DATE)) fc
+                        COALESCE($1::date, CURRENT_DATE), TRUE) fc
        JOIN conductor c ON c.id = fc.conductor_id
        JOIN turno t     ON t.id = fc.turno_id
        JOIN vehiculo v  ON v.id = fc.vehiculo_id
@@ -1923,7 +1926,7 @@ async function salidasPorCoche(dia) {
          LEFT JOIN cat_estado_conductor ce ON ce.codigo = est.estado`, [d]),
 
     // Y quién lo cubre de verdad.
-    db.consulta('SELECT DISTINCT vehiculo_id, turno_id, conductor_id FROM f_cobertura($1::date, $1::date)', [d]),
+    db.consulta('SELECT DISTINCT vehiculo_id, turno_id, conductor_id FROM f_cobertura($1::date, $1::date, TRUE)', [d]),
   ]);
 
   const cubren = new Set(cobertura.rows.map(x => `${x.vehiculo_id}|${x.turno_id}|${x.conductor_id}`));
