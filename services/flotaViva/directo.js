@@ -326,18 +326,41 @@ async function enDirecto({ dia } = {}) {
    * qué ha pasado: si estuvo dos horas en el taller, eso se justifica con una J
    * y la culpa es nuestra, no suya.
    */
-  function proyectar(act, vent) {
+  function proyectar(act, vent, just) {
     if (!vent || !vent.empezada) return null;
     const hechas = Math.round(((act && act.minutos) || 0) / 6) / 10;
     const finVentana = vent.finPlan ? new Date(vent.finPlan).getTime() : null;
     const restantes = finVentana
       ? Math.max(0, Math.round(((finVentana - Date.now()) / 3600000) * 10) / 10)
       : 0;
-    const maximo = Math.round((hechas + restantes) * 10) / 10;
+
+    // LAS HORAS JUSTIFICADAS CUENTAN, Y HASTA AHORA NO CONTABAN NINGUNA.
+    //
+    // Este era el fallo gordo: la proyección sumaba BOLT + lo que queda de turno
+    // y nada más, así que a alguien con tres horas de taller justificadas se le
+    // seguía diciendo "no terminará la jornada" y se le volvía a llamar para
+    // preguntarle lo que ya había contestado. No era el visto bueno lo que lo
+    // frenaba: la J no entraba en la cuenta ni aprobada.
+    //
+    // Y no todas valen igual. Una APROBADA es una hora; una PENDIENTE es una
+    // hora PRESUNTA —vale para no volver a llamar, pero si la rechazan el
+    // agujero vuelve—, y por eso van separadas hasta arriba: la pantalla las
+    // pinta en azul para que nadie las dé por buenas antes de tiempo.
+    const j = just || {};
+    const justificadas = j.estado === 'aprobada' ? (Number(j.horas) || 0) : 0;
+    const presuntas = j.estado === 'pendiente' ? (Number(j.horas) || 0) : 0;
+    const rechazadas = (j.rechazadas || []).length;
+
+    const maximo = Math.round((hechas + restantes + justificadas + presuntas) * 10) / 10;
+    const conFirmes = Math.round((hechas + restantes + justificadas) * 10) / 10;
     const faltan = Math.round(Math.max(0, JORNADA_H - maximo) * 10) / 10;
     return {
-      hechas, restantes, maximo, objetivo: JORNADA_H,
+      hechas, restantes, justificadas, presuntas, rechazadas,
+      maximo, objetivo: JORNADA_H,
       alcanza: maximo >= JORNADA_H,
+      // Llega, PERO solo contando lo que aún no ha aprobado nadie. Si se rechaza
+      // vuelve a faltarle, así que no es lo mismo que llegar de verdad.
+      soloPresunto: maximo >= JORNADA_H && conFirmes < JORNADA_H,
       faltan,
       // El turno ya cerró: no es una previsión, es lo que pasó.
       cerrado: restantes <= 0,
@@ -350,8 +373,34 @@ async function enDirecto({ dia } = {}) {
    * y estas son de la PERSONA y de su jornada, que es lo que se llama por
    * teléfono. Cada uno trae ya su texto y su tono: la pantalla solo pinta.
    */
-  function avisosDe({ proy, rech, salida }) {
+  function avisosDe({ proy, rech, salida, just }) {
     const out = [];
+
+    // UNA J RECHAZADA ES UNA LLAMADA NUEVA. Alguien miró el caso y dijo que no,
+    // así que las horas que se daban por tapadas vuelven a faltar y hay que
+    // volver a hablar con el conductor — con el motivo del rechazo delante,
+    // que es lo que hay que contarle.
+    ((just || {}).rechazadas || []).forEach(r => {
+      out.push({
+        codigo: 'j_rechazada', tono: 'error',
+        etq: 'Justificación rechazada' + (r.horas ? ' · ' + String(r.horas).replace('.', ',') + ' h' : ''),
+        detalle: (r.motivo ? '«' + r.motivo + '»' : 'Sin motivo apuntado')
+          + (r.porQuien ? ' · la rechazó ' + r.porQuien : '')
+          + '. Esas horas ya no cuentan: vuelve a llamarlo.',
+      });
+    });
+
+    // Llega, pero solo porque se le cuenta una J que nadie ha aprobado todavía.
+    // No es una alerta —no hay nada que llamar— pero tampoco es "todo bien".
+    if (proy && proy.soloPresunto && salida !== 'pendiente') {
+      out.push({
+        codigo: 'j_presunta', tono: 'presunto',
+        etq: 'Llega con ' + String(proy.presuntas).replace('.', ',') + ' h presuntas',
+        detalle: 'Su justificante está PENDIENTE de aprobar. Si lo rechazan, le faltarán '
+          + String(Math.round(Math.max(0, JORNADA_H - (proy.maximo - proy.presuntas)) * 10) / 10).replace('.', ',') + ' h.',
+      });
+    }
+
     if (proy && !proy.alcanza && salida !== 'pendiente') {
       const faltan = String(proy.faltan).replace('.', ',');
       if (proy.cerrado) {
@@ -437,6 +486,12 @@ async function enDirecto({ dia } = {}) {
     console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
   });
   const fundirRechazos = require('../repo/rechazos').fundir;
+  // Los justificantes de la jornada CON SU ESTADO. Entran aquí dentro y no en la
+  // ruta porque la proyección los necesita: sin ellos volvería a decirle "no
+  // terminará la jornada" a quien tiene tres horas de taller justificadas.
+  const justificantes = await require('../repo/llamadas').justificadosHoy(hoy).catch(e => {
+    console.error('⚠️  [EN DIRECTO] justificantes:', e.message); return {};
+  });
 
   // El porqué de cada uno: su situación en la plataforma (o que no está en ella).
   const gentePorId = new Map((((tab && tab.conductores) || [])).map(c => [Number(c.id), c]));
@@ -494,6 +549,15 @@ async function enDirecto({ dia } = {}) {
     sinPlan: sinPlan.length,
     // Personas distintas que se conectaron hoy (plan + fuera del plan).
     personasSalieron,
+    // LAS J DE LA JORNADA, por estado. Arriba y a la vista, que es donde se
+    // pidieron: las aprobadas ya son horas, las pendientes son una promesa que
+    // alguien tiene que mirar, y las rechazadas son llamadas por hacer.
+    justificantes: Object.values(justificantes).reduce((a, j) => {
+      if (j.estado === 'aprobada') { a.aprobadas++; a.horasAprobadas += (j.horas || 0); }
+      else if (j.estado === 'pendiente') { a.pendientes++; a.horasPendientes += (j.horas || 0); }
+      a.rechazadas += (j.rechazadas || []).length;
+      return a;
+    }, { aprobadas: 0, pendientes: 0, rechazadas: 0, horasAprobadas: 0, horasPendientes: 0 }),
     // ACEPTACIÓN DE LA JORNADA. El número de la casa: de todo lo que BOLT ha
     // ofrecido a la flota entre las 05:00 y ahora, cuánto se ha cogido.
     //
@@ -593,15 +657,17 @@ async function enDirecto({ dia } = {}) {
       // Un coche distinto al planificado no es un error, pero tráfico quiere verlo.
       const vivas = (f.actividad && f.actividad.matriculas) || [];
       const cocheCambiado = vivas.length > 0 && !vivas.some(m => f.matriculas.includes(m));
-      const proy = proyectar(f.actividad, vent);
+      const just = justificantes[String(f.conductorId)] || null;
+      const proy = proyectar(f.actividad, vent, just);
       const rech = fundirRechazos(cuentas.map(u => rechazos.get(u)));
       const salida = salidaDe(f.actividad, vent);
       return {
         clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid, telefono: f.telefono || '',
         rendimiento: rend.get(Number(f.conductorId)) || null,
         proyeccion: proy,
+        justificante: just,
         rechazos: rech.ofertas ? rech : null,
-        avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, salida }),
+        avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, salida, just }),
         turno: f.turno,
         rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
         matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',

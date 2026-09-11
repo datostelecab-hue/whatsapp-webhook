@@ -264,11 +264,27 @@ async function leerBitacora() {
         WHERE ce.es_ausencia AND ce.marca_bitacora IS NOT NULL
           AND h.desde <= $2::date AND COALESCE(h.hasta, $2::date) >= $1::date`,
       [INICIO_ISO, finIso]),
+    // SOLO LAS APROBADAS SON HORAS. Antes entraba todo lo no anulado, así que
+    // una J recién puesta y sin mirar por nadie ya sumaba en la nómina: el visto
+    // bueno no servía de nada. Ahora vienen las tres —aprobada, pendiente y
+    // rechazada— con su estado, y es la rejilla la que decide qué suma: las
+    // aprobadas cuentan, las pendientes se pintan como PRESUNTAS (en azul) y
+    // las rechazadas no cuentan pero se ven, que alguien tiene que volver a
+    // llamar por ellas.
     db.consulta(
-      `SELECT conductor_id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia,
-              horas_seg_momento, observacion
-         FROM justificante
-        WHERE anulado_at IS NULL AND dia_operativo BETWEEN $1::date AND $2::date`,
+      `SELECT j.conductor_id, to_char(j.dia_operativo, 'YYYY-MM-DD') AS dia,
+              j.horas_seg_momento, j.observacion, j.tipo,
+              CASE WHEN j.anulado_at IS NOT NULL THEN 'rechazada'
+                   WHEN j.aprobado_at IS NOT NULL THEN 'aprobada'
+                   ELSE 'pendiente' END        AS estado,
+              j.anulado_motivo,
+              COALESCE(un.nombre, '')          AS rechazada_por,
+              COALESCE(ua.nombre, '')          AS aprobada_por
+         FROM justificante j
+         LEFT JOIN usuario un ON un.id = j.anulado_por
+         LEFT JOIN usuario ua ON ua.id = j.aprobado_por
+        WHERE j.dia_operativo BETWEEN $1::date AND $2::date
+        ORDER BY j.creado_at`,
       [INICIO_ISO, finIso]),
     // Horas: del HISTÓRICO SELLADO (bitacora_horas), no del núcleo. Ver
     // `horasDeLaRejilla` justo debajo: lo cerrado se calculó una vez y no se
@@ -318,7 +334,7 @@ async function leerBitacora() {
       altaIdx: c.alta ? Math.max(0, idxDe(c.alta)) : null,
       bajaIdx: c.baja ? clamp(idxDe(c.baja)) : null,
       estado: c.estado_etiqueta || '', ausente: !!c.ausente,
-      dias: nuevos(), justif: {}, ausencias: [], horasBolt: {}, lManual: {},
+      dias: nuevos(), justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {},
     });
   });
 
@@ -330,7 +346,7 @@ async function leerBitacora() {
     const c = porId.get(Number(id));
     if (c) return c;
     huerfanos.add(Number(id));
-    return { dias: basura, justif: {}, ausencias: [], horasBolt: {}, lManual: {} };
+    return { dias: basura, justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {} };
   };
 
   // Orden de aplicación = prioridad de la celda (de menor a mayor): 'L' de base, luego
@@ -356,16 +372,30 @@ async function leerBitacora() {
   justis.rows.forEach(r => {
     const c = de(r.conductor_id);
     const i = idxDe(r.dia);
+    const horas = r.horas_seg_momento != null ? Math.round(r.horas_seg_momento / 360) / 10 : null;
+    const ficha = {
+      horas, obs: r.observacion || '', tipo: r.tipo || 'personal', estado: r.estado,
+      motivo: r.anulado_motivo || '', porQuien: r.estado === 'rechazada' ? (r.rechazada_por || '') : (r.aprobada_por || ''),
+    };
+
+    // UNA RECHAZADA NO MARCA EL DÍA. El día vuelve a ser lo que era —trabajado a
+    // medias, o sin salir— y por eso no pisa la casilla: solo se guarda aparte
+    // para que se vea que se intentó justificar y se lo tumbaron.
+    if (r.estado === 'rechazada') {
+      (c.jRechazadas[r.dia] = c.jRechazadas[r.dia] || []).push(ficha);
+      return;
+    }
+
     if (i >= 0 && i < nDias) {
       // Si ese día trabajó, las horas de BOLT no se pierden: quedan al lado de
       // la J para poder decir "llevaba X apuntadas y en BOLT hizo Y".
       if (typeof c.dias[i] === 'number') c.horasBolt[r.dia] = c.dias[i];
+      // La pendiente marca el día IGUAL —hay una J puesta ahí— y lo que cambia
+      // es su `estado`, no la marca: inventar una letra nueva obligaría a
+      // repasar las quince funciones de la rejilla que comparan con 'J'.
       c.dias[i] = 'J';
     }
-    c.justif[r.dia] = {
-      horas: r.horas_seg_momento != null ? Math.round(r.horas_seg_momento / 360) / 10 : null,
-      obs: r.observacion || '',
-    };
+    c.justif[r.dia] = ficha;
   });
   ausencias.rows.forEach(r => {
     const c = de(r.conductor_id);

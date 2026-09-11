@@ -80,6 +80,12 @@
   .cal-jmini { font-size: 9px; font-style: normal; font-weight: 800; padding: 0 .25rem;
     border-radius: .25rem; background: rgb(var(--tc-just)); color: white; letter-spacing: .02em; }
   .mini > i.J { background: rgb(var(--tc-just)); }
+  /* UNA J PENDIENTE DE APROBAR es una hora PRESUNTA: va en azul y con el borde
+     punteado, porque puede desaparecer. Si la rechazan, esas horas nunca
+     existieron; hasta que alguien la apruebe, no cuentan en la nómina. */
+  .cal-dia.jpend .cal-jmini { background: rgb(var(--tc-azul)); }
+  .cal-dia.jpend .cal-val { color: rgb(var(--tc-azul)); }
+  .cal-dia.jpend { outline: 1px dashed rgb(var(--tc-azul) / .55); outline-offset: -2px; }
   /* El año: doce meses en miniatura, cada día un puntito. */
   .mini { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
   .mini > i { display: block; aspect-ratio: 1; border-radius: 2px; background: rgb(var(--tc-dark) / .5); }
@@ -153,15 +159,32 @@
   // misma cuenta que hace la nómina. Antes un día con J se pintaba siempre del
   // mismo azul, así que "J de 2 h y se fue a casa" y "J de 2 h + 8 en BOLT" se
   // veían igual. Devuelve null si el día no es de trabajo (libranza, ausencia…).
+  // SOLO LAS J APROBADAS SON HORAS. Una J pendiente todavía no la ha mirado
+  // nadie: si la rechazan, esas horas nunca existieron, y contarlas en la nómina
+  // antes de que alguien diga que sí es pagar una promesa. Las pendientes se
+  // enseñan aparte, en azul, con `horasConPresuntas`.
   function horasDe(c, d) {
     const v = val(c, d);
     if (typeof v === 'number') return v;
     if (v === 'J') {
       const iso = isoDe(d), j = c.justif[iso] || {};
-      return (j.horas || 0) + ((c.horasBolt || {})[iso] || 0);
+      const firmes = j.estado === 'aprobada' ? (j.horas || 0) : 0;
+      return firmes + ((c.horasBolt || {})[iso] || 0);
     }
     return null;
   }
+  /** Lo que sería el día SI se aprueba lo que está pendiente. */
+  function horasConPresuntas(c, d) {
+    const base = horasDe(c, d);
+    if (base == null) return null;
+    const j = c.justif[isoDe(d)] || {};
+    return j.estado === 'pendiente' ? Math.round((base + (j.horas || 0)) * 10) / 10 : base;
+  }
+  /** La J de ese día, si está pendiente de que alguien la apruebe. */
+  const jPendiente = (c, d) => {
+    const j = c.justif[isoDe(d)] || {};
+    return j.estado === 'pendiente' ? j : null;
+  };
   // El tramo de color por horas: t1 flojo · t2 medio · t3 cumplió.
   const tramo = h => h >= OBJETIVO ? 't3' : h >= OBJETIVO / 2 ? 't2' : 't1';
 
@@ -181,7 +204,13 @@
     if (typeof v === 'number' && v > 0) return tramo(v);
     // La J se pinta del color de las horas del día (justificadas + BOLT), no de
     // un azul fijo: una J de 2 h sin salir es un día flojo y tiene que verse.
-    if (v === 'J') { const h = horasDe(c, d) || 0; return 'J j' + (h > 0 ? tramo(h) : 'cero'); }
+    // El color se decide con las horas PRESUNTAS —si la J se aprueba, el día es
+    // ese— pero se marca `jpend` para que se vea que aún no es firme.
+    if (v === 'J') {
+      const p = jPendiente(c, d);
+      const h = (p ? horasConPresuntas(c, d) : horasDe(c, d)) || 0;
+      return 'J j' + (h > 0 ? tramo(h) : 'cero') + (p ? ' jpend' : '');
+    }
     if (esAus(v) || v === 'L') return v;
     return 'nosalio';
   }
@@ -195,10 +224,20 @@
     if (k === 'fuera') return c.altaIdx != null && d < c.altaIdx ? 'Antes de su alta.' : 'Después de su baja.';
     if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '');
     if (k === 'J') {
-      const j = c.justif[isoDe(d)] || {}, hb = (c.horasBolt || {})[isoDe(d)], tot = horasDe(c, d) || 0;
-      return 'Día de ' + nf1.format(tot) + ' h' + (tot < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '') +
+      const j = c.justif[isoDe(d)] || {}, hb = (c.horasBolt || {})[isoDe(d)] || 0;
+      const firme = horasDe(c, d) || 0;
+      // Una J PENDIENTE no suma todavía: decir "día de 6,1 h · justificadas 6,1
+      // + BOLT 6,1" era una cuenta que no cuadra a la vista. Se dice lo que hay
+      // hoy y lo que sería si la aprueban.
+      if (j.estado === 'pendiente') {
+        return 'Día de ' + nf1.format(firme) + ' h (solo BOLT)' +
+          ' · ' + nf1.format(j.horas || 0) + ' h justificadas PENDIENTES de aprobar' +
+          ' → sería un día de ' + nf1.format(firme + (j.horas || 0)) + ' h' +
+          (j.obs ? ' · ' + j.obs : '') + porvenir;
+      }
+      return 'Día de ' + nf1.format(firme) + ' h' + (firme < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '') +
         ' · justificadas ' + nf1.format(j.horas || 0) + ' h' +
-        ' + BOLT ' + nf1.format(hb || 0) + ' h' + (j.obs ? ' · ' + j.obs : '') + porvenir;
+        ' + BOLT ' + nf1.format(hb) + ' h' + (j.obs ? ' · ' + j.obs : '') + porvenir;
     }
     if (k === 'L') return ((c.lManual || {})[isoDe(d)] ? 'Libranza (puesta a mano)' : 'Libranza (le tocaba descansar)') + porvenir;
     if (esAus(k)) return NOM[k];
@@ -576,23 +615,83 @@
   // BOLT: 2 de taller + 8 conectado = día de 10) y la suma, con Editar/Anular.
   // Un "no salió" se arregla AHÍ MISMO: o se
   // justifica con horas y motivo, o se marca como libranza (manual, bitacora_dia).
+  /**
+   * LO QUE PASÓ ESE DÍA, debajo de la marca: las justificaciones que se
+   * RECHAZARON (con su motivo y quién lo dijo) y las LLAMADAS que se le
+   * hicieron, con lo que contestó de cada alerta.
+   *
+   * Es lo que convierte la bitácora en algo que se puede leer meses después: la
+   * casilla dice "día de 5 h", y debajo está el porqué —se le llamó a las 9:40,
+   * dijo que el coche estaba en el taller, se le puso una J de 3 h y RRHH la
+   * tumbó porque el parte no llegó—. Sin esto hay que preguntar a quien estuvo
+   * de turno ese día, y a los dos meses ya nadie se acuerda.
+   */
+  function pintarExtraDia(box, c, iso) {
+    const rech = (c.jRechazadas || {})[iso] || [];
+    const caja = document.createElement('div');
+    caja.className = 'mt-2 space-y-1.5';
+    caja.innerHTML = rech.map(r => `
+      <div class="rounded-lg border border-telecab-red/40 bg-telecab-red/[0.06] px-2.5 py-1.5">
+        <div class="text-xs font-semibold text-telecab-red">
+          <i class="fa-solid fa-xmark mr-1"></i>Justificación rechazada${r.horas != null ? ` · ${nf1.format(r.horas)} h` : ''}
+          ${r.porQuien ? `<span class="font-normal text-telecab-muted">· la rechazó ${esc(r.porQuien)}</span>` : ''}
+        </div>
+        ${r.obs ? `<div class="text-[11px] text-telecab-muted mt-0.5">Pedía: «${esc(r.obs)}»</div>` : ''}
+        <div class="text-[11px] text-telecab-red/90">${r.motivo ? 'Motivo del rechazo: «' + esc(r.motivo) + '»' : 'Sin motivo apuntado.'}</div>
+      </div>`).join('') + '<div data-seg class="text-[11px] text-telecab-muted">Buscando las llamadas de ese día…</div>';
+    box.appendChild(caja);
+
+    const dest = caja.querySelector('[data-seg]');
+    fetch('/bitacora/api/dia?conductor=' + encodeURIComponent(c.conductorId) + '&dia=' + encodeURIComponent(iso))
+      .then(r => r.json())
+      .then(r => {
+        const ll = (r && r.llamadas) || [];
+        if (!ll.length) { dest.remove(); return; }
+        dest.className = 'rounded-lg border border-telecab-border bg-telecab-dark/30 px-2.5 py-2';
+        dest.innerHTML = `<div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">
+            Llamadas de ese día · ${ll.length}</div>` +
+          ll.map(l => `<div class="text-xs py-1 border-t border-telecab-border/40 first:border-0">
+            <span class="text-telecab-muted tabular-nums">${esc(l.hora)}</span>
+            ${l.tipo ? `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-telecab-card2 text-telecab-muted">${esc(l.tipo)}</span>` : ''}
+            <b class="ml-1 text-telecab-text">${esc(l.resultado || '—')}</b>
+            ${l.quien ? `<span class="text-telecab-muted">· ${esc(l.quien)}</span>` : ''}
+            ${l.nota ? `<div class="text-telecab-muted">«${esc(l.nota)}»</div>` : ''}
+            ${(l.alertas || []).map(a => `<div class="text-telecab-muted pl-3">
+                <i class="fa-solid fa-angle-right text-[9px] mr-1 text-telecab-muted/60"></i>
+                <span class="text-telecab-text">${esc(a.etiqueta || a.alerta)}</span>: «${esc(a.comentario)}»</div>`).join('')}
+          </div>`).join('');
+      })
+      .catch(() => dest.remove());
+  }
+
   function pintarDiaInfo(c) {
     const box = $('#b-diainfo');
     box.classList.toggle('hidden', diaSel == null);
     if (diaSel == null) return;
-    const d = diaSel, k = clase(c, d), iso = isoDe(d);
+    // `clase` devuelve la clase CON sufijos ('J jt3', 'V porvenir'), así que hay
+    // que limpiarla para comparar — como hacen `celda` y `textoDia`. Sin esto el
+    // `k === 'J'` de abajo nunca era cierto y la ficha de un día justificado caía
+    // al caso genérico: ni se veía el justificante ni sus botones de editar o
+    // anular, que llevaban ahí sin poder pulsarse.
+    const d = diaSel, k = soloClase(clase(c, d)), iso = isoDe(d);
     const hb = (c.horasBolt || {})[iso];
     const cab = `<b class="text-telecab-text capitalize">${esc(fmtLargo(d))}</b>`;
     const boltTxt = hb != null ? `en BOLT hizo <b class="text-telecab-text">${nf1.format(hb)} h</b>` : 'sin horas en BOLT ese día';
 
     if (k === 'J') {
       const j = c.justif[iso] || {};
+      const pend = j.estado === 'pendiente';
+      // Lo que CUENTA hoy (aprobadas + BOLT) y lo que contaría si se aprueba.
+      const firme = (j.estado === 'aprobada' ? (j.horas || 0) : 0) + (hb || 0);
       box.innerHTML = `
         <div class="flex flex-wrap items-center gap-2">
           ${cab}
-          <span class="text-xs px-2 py-0.5 rounded-lg font-semibold" style="background:${tint('J')};color:${clr('J')}">Justificante${j.horas != null ? ` · justifica ${nf1.format(j.horas)} h` : ' · sin horas'}</span>
+          <span class="text-xs px-2 py-0.5 rounded-lg font-semibold" style="background:${pend ? 'rgb(var(--tc-azul)/.15)' : tint('J')};color:${pend ? 'rgb(var(--tc-azul))' : clr('J')}">
+            Justificante${j.horas != null ? ` · ${nf1.format(j.horas)} h` : ' · sin horas'} · ${pend ? 'PENDIENTE de aprobar' : 'aprobado'}${!pend && j.porQuien ? ' por ' + esc(j.porQuien) : ''}</span>
           <span class="text-xs text-telecab-muted">${boltTxt}</span>
-          <span class="text-xs font-semibold text-telecab-text" title="Justificadas + BOLT: lo que cuenta para la nómina">→ día de ${nf1.format((j.horas || 0) + (hb || 0))} h</span>
+          ${pend
+            ? `<span class="text-xs font-semibold" style="color:rgb(var(--tc-azul))" title="Mientras no se apruebe, esas horas son PRESUNTAS y no cuentan para la nómina">→ día de ${nf1.format(firme + (j.horas || 0))} h presuntas <span class="text-telecab-muted font-normal">(firmes: ${nf1.format(firme)} h)</span></span>`
+            : `<span class="text-xs font-semibold text-telecab-text" title="Justificadas aprobadas + BOLT: lo que cuenta para la nómina">→ día de ${nf1.format(firme)} h</span>`}
           ${puedeJustificar ? `<span class="ml-auto flex gap-1.5">
             <button data-di="editar" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition"><i class="fa-solid fa-pen mr-1"></i>Editar</button>
             <button data-di="anular" class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-red hover:text-telecab-red transition"><i class="fa-solid fa-ban mr-1"></i>Anular</button>
@@ -621,8 +720,10 @@
         <p data-di-msg class="text-xs mt-1.5 hidden"></p>`;
     } else {
       box.innerHTML = `${cab} <span class="text-telecab-muted">· ${esc(textoDia(c, d))}</span>`;
+      pintarExtraDia(box, c, iso);
       return;
     }
+    pintarExtraDia(box, c, iso);
 
     const msg = box.querySelector('[data-di-msg]');
     const aviso = (t, mal) => { msg.classList.remove('hidden'); msg.textContent = t; msg.className = 'text-xs mt-1.5 ' + (mal ? 'text-telecab-red' : 'text-telecab-muted'); };
@@ -665,11 +766,17 @@
     else if (k === 'nosalio') contenido = '<span class="cal-val">no salió</span>';
     else if (k === 'L') contenido = '<span class="cal-val">libra</span>';
     else if (k === 'J') {
-      // El número que vale para la nómina (justificadas + BOLT) y la "J" al lado
-      // en pequeño, para saber de dónde salen esas horas.
-      const iso = isoDe(d), j = c.justif[iso] || {}, hb = (c.horasBolt || {})[iso] || 0, tot = horasDe(c, d) || 0;
+      // El número que vale para la nómina (justificadas APROBADAS + BOLT) y la
+      // "J" al lado en pequeño. Si la J está pendiente, el número es PRESUNTO y
+      // va en azul: todavía no es una hora.
+      const iso = isoDe(d), j = c.justif[iso] || {}, hb = (c.horasBolt || {})[iso] || 0;
+      const pend = j.estado === 'pendiente';
+      const tot = (pend ? horasConPresuntas(c, d) : horasDe(c, d)) || 0;
+      const tip = pend
+        ? nf1.format(j.horas || 0) + ' h justificadas PENDIENTES de aprobar (presuntas) + ' + nf1.format(hb) + ' h en BOLT'
+        : nf1.format(j.horas || 0) + ' h justificadas y aprobadas + ' + nf1.format(hb) + ' h en BOLT';
       contenido = `<span class="cal-val cal-j">${nf1.format(tot)} h` +
-        `<i class="cal-jmini" title="${esc(nf1.format(j.horas || 0) + ' h justificadas + ' + nf1.format(hb) + ' h en BOLT')}">J${j.horas ? ' ' + nf1.format(j.horas) : ''}</i></span>`;
+        `<i class="cal-jmini" title="${esc(tip)}">J${pend ? '?' : ''}${j.horas ? ' ' + nf1.format(j.horas) : ''}</i></span>`;
     }
     else if (esAus(k)) contenido = `<span class="cal-tag" style="background:${clr(k)};color:white">${k}</span>`;
     const f = fechaDe(d);

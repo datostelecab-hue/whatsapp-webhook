@@ -30,7 +30,7 @@
   <!-- LO PRIMERO QUE SE VE. Tráfico abre esta pantalla para saber a quién llama, así
        que el número de los que faltan va grande y de rojo, y se puede pinchar para
        quedarse solo con ellos. Lo demás es contexto. -->
-  <div id="d-resumen" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-3"></div>
+  <div id="d-resumen" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2 mb-3"></div>
 
   <div class="mb-3 flex flex-wrap items-center gap-2">
     <i class="fa-solid fa-filter text-telecab-muted text-xs"></i>
@@ -282,7 +282,13 @@
   // solo se pintan: cada uno con su tono y su explicación al pasar el ratón.
   // Sustituyen a las alertas de Flota Viva, que eran del COCHE; estas son de la
   // PERSONA y de su jornada, que es lo que se llama por teléfono.
-  const AV_TONO = { error: 'bg-red-500/15 text-red-500', aviso: 'bg-amber-500/15 text-amber-500' };
+  // El AZUL es el tono de lo PRESUNTO: cuenta, pero todavía no es firme porque
+  // depende de que alguien apruebe la justificación.
+  const AV_TONO = {
+    error: 'bg-red-500/15 text-red-500',
+    aviso: 'bg-amber-500/15 text-amber-500',
+    presunto: 'bg-sky-500/15 text-sky-400',
+  };
 
   // UNA ALERTA SIN ATENDER PALPITA HASTA QUE ALGUIEN LA TOCA. La carta se queda
   // en rojo y latiendo mientras esa persona tenga un problema en su jornada y
@@ -344,6 +350,35 @@
     return '<span class="text-xs font-semibold tabular-nums ' + color + '" title="' + esc(tip) + '">'
       + t + ' %</span>';
   }
+
+  // ── LAS HORAS PRESUNTAS, EN AZUL ────────────────────────────────────────────
+  // Una J pendiente tapa el agujero PERO NO ES UNA HORA todavía: si la rechazan,
+  // vuelve a faltar. El azul dice exactamente eso —"esto cuenta, pero aún no es
+  // firme"— y evita las dos equivocaciones: dar por bueno lo que nadie ha
+  // aprobado, y volver a llamar a quien ya contestó.
+  function horasHTML(f) {
+    const a = f.actividad || {};
+    const j = f.justificante || {};
+    // `horas()` devuelve TEXTO ('4.7'), que es lo que se pinta; para sumarle la
+    // J hace falta el número, o "4.7" + 6,1 acaba siendo NaN.
+    const bolt = (Number(a.minutos) || 0) / 60;
+    const efectiva = j.estado === 'aprobada' ? (j.horas || 0) : 0;
+    const presunta = j.estado === 'pendiente' ? (j.horas || 0) : 0;
+    if (!efectiva && !presunta) {
+      return '<span class="text-right text-xs tabular-nums" title="Horas EFECTIVAS: viaje + espera. El descanso no cuenta.">'
+        + cifra(horas(a.minutos), ' h', 'text-telecab-text font-medium') + '</span>';
+    }
+    const total = Math.round((bolt + efectiva + presunta) * 10) / 10;
+    const tip = n1(bolt) + ' h en BOLT'
+      + (efectiva ? ' + ' + n1(efectiva) + ' h justificadas y APROBADAS' : '')
+      + (presunta ? ' + ' + n1(presunta) + ' h justificadas PENDIENTES de aprobar (presuntas)' : '')
+      + ' = ' + n1(total) + ' h';
+    return '<span class="text-right text-xs tabular-nums" title="' + esc(tip) + '">'
+      + '<span class="' + (presunta ? 'text-sky-400' : 'text-telecab-text') + ' font-medium">' + n1(total) + ' h</span>'
+      + (presunta ? '<span class="block text-[10px] text-sky-400/80 leading-tight">' + n1(presunta) + ' h presuntas</span>' : '')
+      + '</span>';
+  }
+  const n1 = v => String(Math.round(Number(v) * 10) / 10).replace('.', ',');
 
   function avisosHTML(f) {
     const av = f.avisos || [];
@@ -424,9 +459,7 @@
         '<span>' + chip(e.etq, e.tono) + '</span>' +
         '<span class="dopc text-right text-xs text-telecab-muted tabular-nums" ' +
           'title="Primera conexión de su turno">' + (a.primera ? hora(a.primera) : '<span class="text-telecab-border">—</span>') + '</span>' +
-        '<span class="text-right text-xs tabular-nums" ' +
-          'title="Horas EFECTIVAS: viaje + espera. El descanso no cuenta.">' +
-          cifra(horas(a.minutos), ' h', 'text-telecab-text font-medium') + '</span>' +
+        horasHTML(f) +
         '<span class="dopc text-right text-xs tabular-nums" title="Km rodados trabajando">' +
           cifra(a.km, ' km', 'text-emerald-500') + '</span>' +
         // Km con el coche rodando FUERA de BOLT (descanso o desconectado). No son
@@ -534,6 +567,27 @@
           (ac.cancelados ? '<span title="Soltados tras aceptar"><i class="fa-solid fa-rotate-left text-red-500/70"></i> ' + ac.cancelados + '</span>' : '') +
         '</div></div>');
     }
+    // LAS JUSTIFICACIONES DE LA JORNADA, por estado. Las aprobadas ya son horas;
+    // las pendientes son una promesa que alguien tiene que mirar (y hasta que la
+    // mire, las horas de esa gente son presuntas); las rechazadas son llamadas
+    // por hacer. Los tres números juntos, porque las tres cosas se gestionan.
+    const js = (DATOS && DATOS.resumen && DATOS.resumen.justificantes) || null;
+    if (turnoActivo !== 'nn' && js && (js.aprobadas || js.pendientes || js.rechazadas)) {
+      cajas.push('<div class="rounded-xl border ' +
+        (js.rechazadas ? 'border-red-500/40 bg-red-500/[0.06]' : 'border-telecab-border bg-telecab-dark/40') +
+        ' px-3 py-2" title="Justificaciones de esta jornada. Solo las APROBADAS cuentan como horas en la bitácora.">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none text-telecab-text">' + (js.aprobadas + js.pendientes) + '</div>' +
+          '<div class="text-[11px] text-telecab-muted">Justificaciones</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Aprobadas: ya son horas"><i class="fa-solid fa-check text-emerald-500/70"></i> ' + js.aprobadas + '</span>' +
+          '<span class="' + (js.pendientes ? 'text-sky-400' : '') + '" title="Pendientes de aprobar: sus horas son PRESUNTAS">' +
+            '<i class="fa-regular fa-clock"></i> ' + js.pendientes + '</span>' +
+          (js.rechazadas ? '<span class="text-red-500" title="Rechazadas: hay que volver a llamar">' +
+            '<i class="fa-solid fa-xmark"></i> ' + js.rechazadas + '</span>' : '') +
+        '</div></div>');
+    }
     $('#d-resumen').innerHTML = cajas.join('');
     $('#d-cabecera').classList.toggle('hidden', !arr.length);
 
@@ -601,8 +655,13 @@
     const jor = (f.avisos || []).length
       ? '<div class="space-y-1.5 mb-3">' + f.avisos.map(a => {
           const d = dichas[a.codigo];
-          return '<div class="rounded-lg border p-2 ' + (a.tono === 'error' ? 'border-red-500/40 bg-red-500/[0.06]' : 'border-amber-500/40 bg-amber-500/[0.06]') + '">' +
-            '<div class="text-sm font-medium ' + (a.tono === 'error' ? 'text-red-500' : 'text-amber-500') + '">' + esc(a.etq) +
+          const marco = a.tono === 'error' ? 'border-red-500/40 bg-red-500/[0.06]'
+            : a.tono === 'presunto' ? 'border-sky-500/40 bg-sky-500/[0.06]'
+            : 'border-amber-500/40 bg-amber-500/[0.06]';
+          const texto = a.tono === 'error' ? 'text-red-500'
+            : a.tono === 'presunto' ? 'text-sky-400' : 'text-amber-500';
+          return '<div class="rounded-lg border p-2 ' + marco + '">' +
+            '<div class="text-sm font-medium ' + texto + '">' + esc(a.etq) +
               (d ? ' <span class="text-emerald-500 font-normal"><i class="fa-solid fa-check"></i> contestada</span>' : '') + '</div>' +
             (a.detalle ? '<div class="text-xs text-telecab-muted mt-0.5">' + esc(a.detalle) + '</div>' : '') +
             (d ? '<div class="text-xs text-emerald-500/90 mt-1">«' + esc(d.comentario) + '»' +

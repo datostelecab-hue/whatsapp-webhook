@@ -33,6 +33,21 @@ router.get('/api/datos', async (req, res) => {
   }
 });
 
+// LAS LLAMADAS DE UN DÍA, con lo que contestó de cada alerta. Va aparte del
+// payload gordo (que se cachea entero para toda la plantilla y 365 días): esto
+// solo se pide cuando alguien abre UN día de UNA persona.
+router.get('/api/dia', async (req, res) => {
+  try {
+    const cid = Number(req.query.conductor);
+    const dia = String(req.query.dia || '');
+    if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) throw new Error('Falta el día');
+    res.json({ status: 'ok', ...(await require('../services/repo/llamadas').delDia(cid, dia)) });
+  } catch (e) {
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
 // Las vacaciones de la plantilla vigente (disfrutadas + programadas) por meses.
 let cacheVac = null, tsVac = 0;
 router.get('/api/vacaciones', async (req, res) => {

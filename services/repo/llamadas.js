@@ -151,6 +151,38 @@ async function registrar({ conductorId, turno, resultado, nota, usuarioId, orige
 }
 
 /**
+ * LAS LLAMADAS DE UN CONDUCTOR EN UN DÍA, con lo que contestó de cada alerta.
+ * Es el "y por qué" de la casilla de la bitácora: la marca dice qué pasó y esto
+ * dice qué contó él cuando se le llamó.
+ */
+async function delDia(conductorId, dia) {
+  const cid = Number(conductorId);
+  if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
+  const jornada = diaValido(dia);
+  const r = await db.consulta(
+    `SELECT l.id, l.tipo, l.resultado, l.nota, l.origen,
+            to_char(l.creado_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
+            COALESCE(u.nombre, '') AS quien,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                        'alerta', a.alerta, 'etiqueta', a.etiqueta, 'comentario', a.comentario)
+                      ORDER BY a.id)
+                 FROM llamada_alerta a WHERE a.llamada_id = l.id), '[]'::json) AS alertas
+       FROM llamada_seguimiento l
+       LEFT JOIN usuario u ON u.id = l.usuario_id
+      WHERE l.conductor_id = $1 AND l.dia_operativo = $2::date
+      ORDER BY l.creado_at`, [cid, jornada]);
+  return {
+    dia: jornada,
+    llamadas: r.rows.map(x => ({
+      id: String(x.id), hora: x.hora, tipo: x.tipo || '', resultado: x.resultado || '',
+      nota: x.nota || '', quien: x.quien || '', origen: x.origen || '',
+      alertas: x.alertas || [],
+    })),
+  };
+}
+
+/**
  * ¿El resultado significa que HABLASTE con él? Contactado = confirma, tiene una
  * incidencia o dice que no asistirá. Lo demás (buzón, no contesta, número
  * erróneo, no contactado) es no localizado. Lo usa el informe de campañas.
@@ -317,20 +349,57 @@ async function listar({ desde, hasta } = {}) {
  * { conductorId: { horas, obs, quien } }. La carta de En directo lo pinta para
  * que el segundo operador vea que ese día ya está justificado.
  */
+/**
+ * Los justificantes de una jornada, CON SU ESTADO — que es lo que cambia todo:
+ *
+ *   · pendiente → horas PRESUNTAS. Valen para no llamar otra vez a quien ya
+ *                 dijo "estuve en el taller", pero todavía no son horas: si se
+ *                 rechaza, el agujero vuelve.
+ *   · aprobada  → horas EFECTIVAS. Son las únicas que cuentan en la bitácora.
+ *   · rechazada → no cuenta Y ADEMÁS hay que volver a llamar: alguien miró el
+ *                 caso y dijo que no. Por eso las rechazadas se devuelven en
+ *                 lista aparte, con su motivo, quién y cuándo.
+ *
+ * Antes esto devolvía `anulado_at IS NULL` sin más, así que una J pendiente se
+ * contaba igual que una aprobada y una rechazada desaparecía sin dejar rastro:
+ * el conductor se quedaba sin sus horas y nadie se enteraba.
+ */
 async function justificadosHoy(dia) {
+  const jornada = diaValido(dia);
   const r = await db.consulta(
-    `SELECT j.conductor_id, j.horas_seg_momento, j.observacion, j.tipo, COALESCE(u.nombre, '') AS quien
+    `SELECT j.conductor_id, j.id, j.horas_seg_momento, j.observacion, j.tipo,
+            j.aprobado_at, j.anulado_at, j.anulado_motivo, j.creado_at,
+            COALESCE(u.nombre, '')  AS quien,
+            COALESCE(ua.nombre, '') AS aprobada_por,
+            COALESCE(un.nombre, '') AS rechazada_por
        FROM justificante j
-       LEFT JOIN usuario u ON u.id = j.usuario_id
-      WHERE j.anulado_at IS NULL AND j.dia_operativo = $1::date`, [diaValido(dia)]);
+       LEFT JOIN usuario u  ON u.id  = j.usuario_id
+       LEFT JOIN usuario ua ON ua.id = j.aprobado_por
+       LEFT JOIN usuario un ON un.id = j.anulado_por
+      WHERE j.dia_operativo = $1::date
+      ORDER BY j.creado_at`, [jornada]);
+
   const m = {};
   r.rows.forEach(x => {
-    m[String(x.conductor_id)] = {
-      horas: x.horas_seg_momento != null ? Math.round(x.horas_seg_momento / 360) / 10 : null,
-      obs: x.observacion || '', quien: x.quien || '', tipo: x.tipo || 'personal',
+    const k = String(x.conductor_id);
+    const horas = x.horas_seg_momento != null ? Math.round(x.horas_seg_momento / 360) / 10 : null;
+    const base = {
+      id: String(x.id), horas, obs: x.observacion || '',
+      quien: x.quien || '', tipo: x.tipo || 'personal', creadoAt: x.creado_at,
     };
+    const c = m[k] || (m[k] = { horas: null, estado: null, rechazadas: [] });
+    if (x.anulado_at) {
+      c.rechazadas.push({ ...base, motivo: x.anulado_motivo || '',
+        porQuien: x.rechazada_por || '', at: x.anulado_at });
+      return;
+    }
+    // La viva (solo puede haber una por conductor y día: lo impide uq_just_vivo).
+    Object.assign(c, base, {
+      estado: x.aprobado_at ? 'aprobada' : 'pendiente',
+      aprobadaPor: x.aprobada_por || '', aprobadoAt: x.aprobado_at || null,
+    });
   });
   return m;
 }
 
-module.exports = { registrar, resumenHoy, listar, justificadosHoy, diaOperativoHoy, RESULTADOS, CATALOGO, TIPOS, estadisticasHoy, CONTACTADO };
+module.exports = { registrar, resumenHoy, listar, justificadosHoy, delDia, diaOperativoHoy, RESULTADOS, CATALOGO, TIPOS, estadisticasHoy, CONTACTADO };
