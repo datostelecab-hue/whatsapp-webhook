@@ -30,6 +30,7 @@ router.get('/', (req, res) => {
     // El buzón de resultados vive en el servidor (repo/llamadas): una sola
     // lista para el cockpit y para las campañas.
     resultadosLlamada: llamadas.RESULTADOS,
+    catalogoLlamada: llamadas.CATALOGO,
     tiposJ: require('../services/repo/justificantes').TIPOS_J,
   });
 });
@@ -51,6 +52,7 @@ router.get('/campanas', (req, res) => {
     layout: 'layout-gestion',
     esAdmin,
     resultadosLlamada: llamadas.RESULTADOS,
+    catalogoLlamada: llamadas.CATALOGO,
     tiposJ: require('../services/repo/justificantes').TIPOS_J,
   });
 });
@@ -246,6 +248,8 @@ router.post('/api/llamada', async (req, res) => {
     const u = req.usuario || {};
     const r = await llamadas.registrar({
       conductorId: b.conductorId, turno: b.turno, resultado: b.resultado, nota: b.nota,
+      // El tipo (taller, rrhh, tráfico…) y lo que contestó de CADA alerta.
+      tipo: b.tipo, alertas: b.alertas,
       // De dónde viene la llamada: 'control' (el cockpit) o 'campana1/2/3'. Es
       // lo que luego permite saber en qué pasada se etiquetó a cada uno.
       origen: /^campana[123]$/.test(b.origen || '') ? b.origen : 'control',

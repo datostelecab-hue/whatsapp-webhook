@@ -18,6 +18,61 @@ const RESULTADOS = [
   'No asistirá',
 ];
 
+/**
+ * LA CASUÍSTICA, EN DOS NIVELES: primero POR DÓNDE VIENE y luego QUÉ PASA.
+ *
+ * Con una lista plana de siete resultados, todo lo que no fuera "no se conecta"
+ * acababa en "Incidencia que lo impide" + una nota escrita a mano: el motivo
+ * real —que el taller no le ha soltado el coche, que el relevo no ha llegado,
+ * que dice estar de baja— se perdía en texto libre y no se podía contar. Con el
+ * tipo delante, la misma llamada queda clasificada y se puede preguntar cuántas
+ * veces al mes Tráfico no entrega un coche a tiempo.
+ *
+ * Los siete de siempre viven bajo 'seguimiento' y NO cambian de nombre: son los
+ * que alimentan las colas de las campañas (services/callCenter) y renombrarlos
+ * rompería el histórico.
+ *
+ * 'alerta' va con los casos VACÍOS a propósito: sus casos son las alertas que
+ * ese conductor tiene abiertas en ese momento, y eso lo rellena la pantalla.
+ */
+const CATALOGO = [
+  { codigo: 'seguimiento', etiqueta: 'Seguimiento', icono: 'fa-phone', casos: RESULTADOS },
+  { codigo: 'taller', etiqueta: 'Taller', icono: 'fa-screwdriver-wrench', casos: [
+    'El coche está en revisión',
+    'Avería: no puede salir',
+    'Avería en ruta',
+    'Pinchazo o neumáticos',
+    'Golpe o siniestro',
+    'Va camino del taller',
+    'Esperando recambio',
+    'Sin luz de puerta / mampara / taxímetro',
+    'Limpieza o ITV',
+  ] },
+  { codigo: 'rrhh', etiqueta: 'RRHH', icono: 'fa-id-card', casos: [
+    'Presunta baja médica',
+    'Presuntas vacaciones',
+    'Presunta libranza',
+    'Presunto permiso retribuido',
+    'Dice que está de baja en la empresa',
+    'Asunto propio sin avisar',
+    'No ha entregado el justificante',
+    'Problema con su nómina o contrato',
+  ] },
+  { codigo: 'trafico', etiqueta: 'Tráfico', icono: 'fa-satellite-dish', casos: [
+    'No le han entregado el coche',
+    'El relevo no ha llegado',
+    'No tiene coche asignado',
+    'Su coche lo lleva otro',
+    'Problema con las llaves',
+    'No sabe qué coche le toca',
+    'Cambió el turno sin avisar',
+    'Se ha quedado sin combustible o carga',
+    'Problema con la app de BOLT',
+  ] },
+  { codigo: 'alerta', etiqueta: 'Alerta', icono: 'fa-triangle-exclamation', casos: [] },
+];
+const TIPOS = CATALOGO.map(c => c.codigo);
+
 // Cada pulsación deja constancia de la llamada a un conductor: quién llamó,
 // cuándo, en qué turno y con qué resultado. De aquí salen tres cosas:
 //   · la traza en la carta de En directo (para que dos operadores no se pisen),
@@ -55,19 +110,44 @@ const diaValido = d => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : diaOperativoHo
  * `dia` es la jornada que está mirando quien llama (la del cockpit): así la
  * llamada cae en la misma jornada que la carta donde se apuntó.
  */
-async function registrar({ conductorId, turno, resultado, nota, usuarioId, origen = 'control', dia }) {
+async function registrar({ conductorId, turno, resultado, nota, usuarioId, origen = 'control',
+                           dia, tipo, alertas }) {
   const cid = Number(conductorId);
   if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
   const jornada = diaValido(dia);
-  const r = await db.consulta(
-    `INSERT INTO llamada_seguimiento (conductor_id, usuario_id, origen, dia_operativo, turno, resultado, nota)
-     VALUES ($1, $2, $3, $4::date, $5, $6, $7)
-     RETURNING id, creado_at`,
-    [cid, usuarioId || null, origen, jornada,
-     String(turno || '').slice(0, 10) || null,
-     String(resultado || '').trim().slice(0, 60) || null,
-     String(nota || '').trim().slice(0, 300) || null]);
-  return { id: String(r.rows[0].id), creadoAt: r.rows[0].creado_at, dia: jornada };
+  // Las respuestas por alerta: sin comentario no entran (lo repite el CHECK de
+  // la base, pero aquí se descartan sin dar un error feo).
+  const porAlerta = (Array.isArray(alertas) ? alertas : [])
+    .map(a => ({
+      codigo: String((a || {}).codigo || '').trim().slice(0, 40),
+      etiqueta: String((a || {}).etiqueta || '').trim().slice(0, 160) || null,
+      comentario: String((a || {}).comentario || '').trim().slice(0, 300),
+    }))
+    .filter(a => a.codigo && a.comentario);
+
+  return db.transaccion(async cli => {
+    const r = await cli.query(
+      `INSERT INTO llamada_seguimiento (conductor_id, usuario_id, origen, dia_operativo, turno, resultado, nota, tipo)
+       VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8)
+       RETURNING id, creado_at`,
+      [cid, usuarioId || null, origen, jornada,
+       String(turno || '').slice(0, 10) || null,
+       String(resultado || '').trim().slice(0, 60) || null,
+       String(nota || '').trim().slice(0, 300) || null,
+       TIPOS.includes(tipo) ? tipo : null]);
+    const id = r.rows[0].id;
+
+    for (const a of porAlerta) {
+      // La MISMA alerta preguntada dos veces el mismo día se apunta las dos: la
+      // segunda respuesta puede ser distinta ("ya viene" a las 9, "se ha vuelto
+      // a caer" a las 11) y perderla sería perder la historia de la jornada.
+      await cli.query(
+        `INSERT INTO llamada_alerta (llamada_id, conductor_id, dia_operativo, alerta, etiqueta, comentario)
+         VALUES ($1, $2, $3::date, $4, $5, $6)`,
+        [id, cid, jornada, a.codigo, a.etiqueta, a.comentario]);
+    }
+    return { id: String(id), creadoAt: r.rows[0].creado_at, dia: jornada, alertas: porAlerta.length };
+  });
 }
 
 /**
@@ -155,15 +235,39 @@ async function resumenHoy(dia) {
        LEFT JOIN usuario u ON u.id = l.usuario_id
       WHERE l.dia_operativo = $1::date
       GROUP BY l.conductor_id`, [diaValido(dia)]);
+  // QUÉ ALERTAS YA TIENEN RESPUESTA HOY, por conductor. Es lo que apaga el
+  // parpadeo de su fila en Control: mientras le quede una sin contestar, late.
+  const a = await db.consulta(
+    `SELECT conductor_id, alerta,
+            (array_agg(comentario ORDER BY creado_at DESC))[1] AS comentario,
+            (array_agg(creado_at  ORDER BY creado_at DESC))[1] AS at
+       FROM llamada_alerta
+      WHERE dia_operativo = $1::date
+      GROUP BY conductor_id, alerta`, [diaValido(dia)]);
+  const porCond = {};
+  a.rows.forEach(x => {
+    const k = String(x.conductor_id);
+    (porCond[k] = porCond[k] || {})[x.alerta] = { comentario: x.comentario, at: x.at };
+  });
+
   const m = {};
   r.rows.forEach(x => {
-    m[String(x.conductor_id)] = {
+    const k = String(x.conductor_id);
+    m[k] = {
       n: x.n,
       ultima: {
         at: x.ultima_at, quien: x.ultima_quien || '',
         resultado: x.ultima_resultado || '', nota: x.ultima_nota || '',
       },
+      alertas: porCond[k] || {},
     };
+  });
+  // Una llamada SIEMPRE deja fila en `llamada_seguimiento`, así que `porCond`
+  // no puede traer a nadie que no esté ya en `m`; se comprueba por si acaso,
+  // que perder la traza de una alerta contestada haría latir la fila para
+  // siempre.
+  Object.keys(porCond).forEach(k => {
+    if (!m[k]) m[k] = { n: 0, ultima: {}, alertas: porCond[k] };
   });
   return m;
 }
@@ -229,4 +333,4 @@ async function justificadosHoy(dia) {
   return m;
 }
 
-module.exports = { registrar, resumenHoy, listar, justificadosHoy, diaOperativoHoy, RESULTADOS, estadisticasHoy, CONTACTADO };
+module.exports = { registrar, resumenHoy, listar, justificadosHoy, diaOperativoHoy, RESULTADOS, CATALOGO, TIPOS, estadisticasHoy, CONTACTADO };

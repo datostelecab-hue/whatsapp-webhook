@@ -193,6 +193,46 @@
                 const vacio = c.obligatorio ? '' : '<option value=""></option>';
                 campo = `<select id="pd-${c.id}" class="${base}">${vacio}${ops.map(o =>
                   `<option value="${esc(o.valor)}" ${String(o.valor) === String(c.valor || '') ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}</select>`;
+              } else if (c.tipo === 'opciones') {
+                // UN SELECTOR CON LA CARA DE LA CASA, no el desplegable del
+                // navegador. El <select> nativo se pinta con los colores del
+                // sistema operativo —fondo blanco, azul de Windows— y en una
+                // pantalla oscura canta: parece de otra aplicación.
+                //
+                // Y admite DOS NIVELES: `grupos` pinta primero el tipo (Taller,
+                // RRHH, Tráfico…) y debajo solo sus casos. Con treinta casos en
+                // una lista plana hay que leerlos todos; agrupados se elige por
+                // dónde viene el problema, que es como se piensa al llamar.
+                const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: c.opciones || [] }];
+                const solo = grupos.length === 1 && !grupos[0].etiqueta;
+                campo = `<div id="pd-${c.id}" data-opciones>
+                  ${solo ? '' : `<div class="flex flex-wrap gap-1.5 mb-2" data-grupos>${grupos.map((g, i) =>
+                    `<button type="button" data-g="${esc(g.codigo)}"
+                       class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition
+                         ${i === 0 ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+                                   : 'bg-telecab-card2 border-telecab-border text-telecab-muted hover:border-telecab-gold/50'}">
+                       ${g.icono ? `<i class="fa-solid ${esc(g.icono)} mr-1"></i>` : ''}${esc(g.etiqueta)}</button>`).join('')}</div>`}
+                  <div class="grid gap-1 max-h-56 overflow-y-auto" data-casos></div>
+                  <p class="hidden text-[11px] text-telecab-muted mt-1" data-vacio></p>
+                </div>`;
+              } else if (c.tipo === 'items') {
+                // UNA LISTA DE COSAS QUE SE MARCAN Y SE COMENTAN, una a una. En
+                // una sola llamada se pregunta por TODO lo que tiene abierto, y
+                // cada respuesta es distinta: un comentario por cosa, no uno
+                // para el montón.
+                campo = `<div id="pd-${c.id}" data-items class="space-y-1.5">${(c.items || []).map(it => `
+                  <div class="rounded-xl border border-telecab-border bg-telecab-card2/40 px-3 py-2" data-item="${esc(it.codigo)}">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                      <input type="checkbox" data-marca class="mt-0.5 w-4 h-4 accent-telecab-gold shrink-0">
+                      <span class="min-w-0 flex-1">
+                        <span class="block text-sm font-medium ${it.tono === 'error' ? 'text-telecab-red' : 'text-telecab-text'}">${esc(it.etiqueta)}</span>
+                        ${it.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(it.detalle)}</span>` : ''}
+                      </span>
+                    </label>
+                    <input data-comentario disabled placeholder="Qué te ha dicho sobre esto…"
+                      class="hidden w-full mt-1.5 px-2.5 py-1.5 bg-telecab-card border border-telecab-border rounded-lg text-sm
+                             focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+                  </div>`).join('') || '<p class="text-xs text-telecab-muted">Nada pendiente.</p>'}</div>`;
               } else if (c.tipo === 'semana') {
                 const puestos = c.valor || [];
                 campo = `<div class="flex gap-1" id="pd-${c.id}">${[1,2,3,4,5,6,7].map(n =>
@@ -222,6 +262,63 @@
         </div>`;
       document.body.appendChild(fondo);
 
+      // ── El selector de la casa: grupo arriba, casos debajo ──────────────
+      campos.filter(c => c.tipo === 'opciones').forEach(c => {
+        const caja = fondo.querySelector('#pd-' + c.id);
+        const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: c.opciones || [] }];
+        const lista = caja.querySelector('[data-casos]');
+        const vacio = caja.querySelector('[data-vacio]');
+        let grupoSel = grupos[0], elegido = c.valor || null;
+        const norm = o => (typeof o === 'string' ? { valor: o, texto: o } : o);
+
+        const pintaCasos = () => {
+          const ops = (grupoSel.opciones || []).map(norm);
+          lista.innerHTML = ops.map(o => `
+            <button type="button" data-o="${esc(o.valor)}"
+              class="w-full text-left px-3 py-2 rounded-lg border text-sm transition
+                ${String(o.valor) === String(elegido)
+                  ? 'bg-telecab-gold/15 border-telecab-gold text-telecab-text font-medium'
+                  : 'bg-telecab-card2/40 border-telecab-border text-telecab-text hover:border-telecab-gold/50'}">
+              ${esc(o.texto)}${o.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(o.detalle)}</span>` : ''}
+            </button>`).join('');
+          vacio.classList.toggle('hidden', ops.length > 0);
+          vacio.textContent = grupoSel.vacio || 'No hay casos para este tipo.';
+          lista.querySelectorAll('[data-o]').forEach(b => b.addEventListener('click', () => {
+            elegido = b.dataset.o;
+            caja.dataset.valor = elegido;
+            caja.dataset.grupo = grupoSel.codigo || '';
+            caja.dataset.texto = b.textContent.trim();
+            pintaCasos();
+          }));
+        };
+        caja.querySelectorAll('[data-g]').forEach(b => b.addEventListener('click', () => {
+          grupoSel = grupos.find(g => String(g.codigo) === b.dataset.g) || grupos[0];
+          // Cambiar de tipo BORRA el caso elegido: un "Buzón" de seguimiento no
+          // significa nada bajo Taller, y dejarlo marcado invita a enviarlo.
+          elegido = null; delete caja.dataset.valor;
+          caja.querySelectorAll('[data-g]').forEach(x => {
+            const on = x === b;
+            x.className = 'px-2.5 py-1 rounded-lg text-xs font-semibold border transition ' +
+              (on ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+                  : 'bg-telecab-card2 border-telecab-border text-telecab-muted hover:border-telecab-gold/50');
+          });
+          pintaCasos();
+        }));
+        pintaCasos();
+      });
+
+      // ── La lista de cosas que se marcan y se comentan ───────────────────
+      fondo.querySelectorAll('[data-items] [data-item]').forEach(fila => {
+        const marca = fila.querySelector('[data-marca]');
+        const com = fila.querySelector('[data-comentario]');
+        marca.addEventListener('change', () => {
+          com.classList.toggle('hidden', !marca.checked);
+          com.disabled = !marca.checked;
+          fila.classList.toggle('border-telecab-gold/50', marca.checked);
+          if (marca.checked) com.focus();
+        });
+      });
+
       // Los días de la semana se marcan pinchando.
       fondo.querySelectorAll('[id^="pd-"] [data-dia]').forEach(b => {
         b.addEventListener('click', () => {
@@ -243,16 +340,42 @@
       fondo.querySelector('form').addEventListener('submit', async e => {
         e.preventDefault();
         const salida = {};
+        const fallos = [];
         campos.forEach(c => {
           const el = fondo.querySelector('#pd-' + c.id);
           if (c.tipo === 'semana') {
             salida[c.id] = [...el.querySelectorAll('[data-dia]')]
               .filter(b => b.classList.contains('bg-telecab-gold'))
               .map(b => Number(b.dataset.dia));
+          } else if (c.tipo === 'opciones') {
+            const v = el.dataset.valor || '';
+            if (!v && c.obligatorio) fallos.push(`Elige ${c.etiqueta.toLowerCase()}.`);
+            salida[c.id] = v ? { valor: v, grupo: el.dataset.grupo || '', texto: el.dataset.texto || v } : null;
+          } else if (c.tipo === 'items') {
+            const marcados = [...el.querySelectorAll('[data-item]')]
+              .filter(f => f.querySelector('[data-marca]').checked)
+              .map(f => ({
+                codigo: f.dataset.item,
+                etiqueta: f.querySelector('.font-medium').textContent.trim(),
+                comentario: f.querySelector('[data-comentario]').value.trim(),
+              }));
+            // UN COMENTARIO POR CADA UNA. Marcar sin escribir nada es decir "ya
+            // pregunté" sin dejar la respuesta, y eso es justo lo que hace que
+            // el siguiente controlador vuelva a llamar por lo mismo.
+            if (c.comentarioObligatorio && marcados.some(x => !x.comentario)) {
+              fallos.push('Escribe qué te ha dicho en cada una de las que marcas.');
+            }
+            salida[c.id] = marcados;
           } else {
             salida[c.id] = c.tipo === 'fecha' ? aISO(el.value.trim()) : el.value.trim();
           }
         });
+        const aviso = fondo.querySelector('[data-error]');
+        if (fallos.length) {
+          aviso.textContent = fallos.join(' ');
+          aviso.classList.remove('hidden');
+          return;
+        }
         cerrar(salida);
       });
 

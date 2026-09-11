@@ -291,12 +291,34 @@
   // controlador ve de un vistazo lo que le falta por atender, y una alerta no se
   // queda ahí tres horas porque ya la había visto.
   const alertaDe = f => (f.avisos || []).filter(a => a.tono === 'error');
-  const atendida = f => {
-    if (!f.conductorId) return false;
+  // ── CUÁNDO DEJA DE LATIR UNA FILA ───────────────────────────────────────────
+  // Antes bastaba CUALQUIER llamada o justificante del día: se apuntaba una
+  // llamada por lo primero y la fila se quedaba quieta con las otras dos alertas
+  // sin preguntar. Ahora hace falta una respuesta apuntada POR CADA alerta —y
+  // con comentario, que sin él no es una respuesta—, que es exactamente lo que
+  // se pidió: no deja de parpadear hasta que cada una tenga la suya.
+  //
+  // El justificante sigue valiendo para las alertas de HORAS: si a alguien se le
+  // justifican las dos horas de taller que le faltaban, ya no hay nada que
+  // preguntarle sobre que no llega a la jornada.
+  const ALERTAS_DE_HORAS = ['no_llego', 'no_llegara', 'se_fue_pronto'];
+  function alertasSinRespuesta(f) {
+    if (!f.conductorId) return alertaDe(f);
     const k = String(f.conductorId);
-    return !!((DATOS.llamadas || {})[k] || (DATOS.justificados || {})[k]);
-  };
-  // 0 = sin alerta · 1 = alerta atendida (rojo quieto) · 2 = sin atender (late).
+    const dichas = ((DATOS.llamadas || {})[k] || {}).alertas || {};
+    const justificado = !!(DATOS.justificados || {})[k];
+    return alertaDe(f).filter(a =>
+      !dichas[a.codigo] && !(justificado && ALERTAS_DE_HORAS.includes(a.codigo)));
+  }
+  const atendida = f => alertaSinRespuestaCache(f).length === 0;
+  // El nivel se pregunta varias veces por fila en cada pintado (clase, orden,
+  // resumen): se calcula una vez y se recuerda mientras dure este juego de datos.
+  let _cacheAlertas = new WeakMap();
+  function alertaSinRespuestaCache(f) {
+    if (!_cacheAlertas.has(f)) _cacheAlertas.set(f, alertasSinRespuesta(f));
+    return _cacheAlertas.get(f);
+  }
+  // 0 = sin alerta · 1 = todas contestadas (rojo quieto) · 2 = queda alguna (late).
   function nivelAlerta(f) {
     if (!alertaDe(f).length) return 0;
     return atendida(f) ? 1 : 2;
@@ -572,12 +594,21 @@
       : '';
     // Lo de la JORNADA primero (no llega a las horas, está rechazando viajes):
     // es lo que se le pregunta por teléfono. Debajo, lo del coche.
+    // Cada aviso con SU respuesta si ya se preguntó. Es lo que contesta a la
+    // pregunta "¿y por qué sigue esto en rojo?": porque de esta no se ha dicho
+    // nada todavía.
+    const dichas = contestadas(f);
     const jor = (f.avisos || []).length
-      ? '<div class="space-y-1.5 mb-3">' + f.avisos.map(a =>
-          '<div class="rounded-lg border p-2 ' + (a.tono === 'error' ? 'border-red-500/40 bg-red-500/[0.06]' : 'border-amber-500/40 bg-amber-500/[0.06]') + '">' +
-            '<div class="text-sm font-medium ' + (a.tono === 'error' ? 'text-red-500' : 'text-amber-500') + '">' + esc(a.etq) + '</div>' +
+      ? '<div class="space-y-1.5 mb-3">' + f.avisos.map(a => {
+          const d = dichas[a.codigo];
+          return '<div class="rounded-lg border p-2 ' + (a.tono === 'error' ? 'border-red-500/40 bg-red-500/[0.06]' : 'border-amber-500/40 bg-amber-500/[0.06]') + '">' +
+            '<div class="text-sm font-medium ' + (a.tono === 'error' ? 'text-red-500' : 'text-amber-500') + '">' + esc(a.etq) +
+              (d ? ' <span class="text-emerald-500 font-normal"><i class="fa-solid fa-check"></i> contestada</span>' : '') + '</div>' +
             (a.detalle ? '<div class="text-xs text-telecab-muted mt-0.5">' + esc(a.detalle) + '</div>' : '') +
-          '</div>').join('') + '</div>'
+            (d ? '<div class="text-xs text-emerald-500/90 mt-1">«' + esc(d.comentario) + '»' +
+                 (d.at ? ' <span class="text-telecab-muted">· ' + hora(d.at) + '</span>' : '') + '</div>' : '') +
+          '</div>';
+        }).join('') + '</div>'
       : '';
     // LA TRAZA de lo que ya se hizo con esta persona hoy: quién llamó, cuándo,
     // qué contestó y la nota. Es lo que evita la segunda llamada por lo mismo.
@@ -819,23 +850,79 @@
   // que usan las campañas, porque la etiqueta que se pone aquí decide la cola
   // del conductor en la campaña siguiente. Dos listas se separan solas.
   const RESULTADOS_LLAMADA = <%- JSON.stringify(resultadosLlamada || []) %>;
+  const CATALOGO_LLAMADA = <%- JSON.stringify(catalogoLlamada || []) %>;
   const TIPOS_J = <%- JSON.stringify(tiposJ || []) %>;
 
+  /**
+   * TODO lo que este conductor tiene abierto ahora mismo: los avisos de su
+   * jornada (no llega a las horas, rechaza viajes) y las alertas de su coche
+   * (rueda desconectado, lleva dos horas en descanso).
+   *
+   * Es la lista por la que hay que preguntarle, y por la que su fila late.
+   */
+  function alertasPendientes(f) {
+    const out = (f.avisos || []).map(a => ({
+      codigo: a.codigo, etiqueta: a.etq, detalle: a.detalle || '', tono: a.tono,
+    }));
+    (f.incidencias || []).forEach(i => {
+      if (out.some(x => x.codigo === i.codigo)) return;
+      out.push({ codigo: i.codigo, etiqueta: i.etiqueta || i.codigo, detalle: i.detalle || '', tono: 'error' });
+    });
+    return out;
+  }
+  // Las que YA tienen respuesta apuntada hoy (código → { comentario, at }).
+  const contestadas = f => ((DATOS.llamadas || {})[String(f.conductorId)] || {}).alertas || {};
+
   async function apuntarLlamada(f) {
-    const v = await Dialogo.formulario('He llamado a ' + f.conductor, [
-      { id: 'resultado', etiqueta: 'Qué ha pasado', tipo: 'lista', opciones: RESULTADOS_LLAMADA,
-        obligatorio: true, valor: 'Buzón / no contesta' },
-      { id: 'nota', etiqueta: 'Nota (opcional)', tipo: 'texto' },
-    ], { textoBoton: 'Apuntar la llamada',
-         nota: 'Queda la traza (tú, la hora y el resultado) en la carta, en el Histórico y en el call center.' });
-    if (!v || !v.resultado) return;
+    const pend = alertasPendientes(f);
+    const ya = contestadas(f);
+    // Las que faltan van marcadas de salida: lo normal es preguntar por todas, y
+    // que haya que acordarse de marcarlas es como se quedan a medias.
+    const sinContestar = pend.filter(a => !ya[a.codigo]);
+
+    const campos = [
+      { id: 'caso', etiqueta: 'Qué ha pasado', tipo: 'opciones', obligatorio: true,
+        grupos: CATALOGO_LLAMADA.map(g => ({
+          codigo: g.codigo, etiqueta: g.etiqueta, icono: g.icono,
+          // El tipo "Alerta" no tiene lista fija: sus casos son lo que ESTE
+          // conductor tiene abierto en este momento.
+          opciones: g.codigo === 'alerta'
+            ? pend.map(a => ({ valor: a.codigo, texto: a.etiqueta, detalle: a.detalle }))
+            : (g.casos || []),
+          vacio: g.codigo === 'alerta' ? 'Este conductor no tiene ninguna alerta abierta.' : undefined,
+        })) },
+    ];
+    if (pend.length) {
+      campos.push({
+        id: 'alertas', etiqueta: 'Y qué te ha dicho de cada alerta', tipo: 'items',
+        comentarioObligatorio: true,
+        items: pend.map(a => ({
+          codigo: a.codigo, tono: a.tono,
+          etiqueta: a.etiqueta + (ya[a.codigo] ? ' · ya contestada' : ''),
+          detalle: ya[a.codigo] ? '«' + ya[a.codigo].comentario + '»' : a.detalle,
+        })),
+        ayuda: sinContestar.length === 0
+          ? 'Todas contestadas. Puedes volver a preguntar por alguna si ha cambiado.'
+          : sinContestar.length === 1
+            ? 'Su fila seguirá parpadeando hasta que esta tenga respuesta.'
+            : 'Su fila seguirá parpadeando hasta que las ' + sinContestar.length + ' que faltan tengan respuesta.',
+      });
+    }
+    campos.push({ id: 'nota', etiqueta: 'Nota general (opcional)', tipo: 'texto' });
+
+    const v = await Dialogo.formulario('He llamado a ' + f.conductor, campos, {
+      textoBoton: 'Apuntar la llamada', ancho: 'max-w-lg',
+      nota: 'Queda la traza (tú, la hora y el resultado) en la carta, en el Histórico y en el call center.',
+    });
+    if (!v || !v.caso) return;
     try {
       const r = await fetch('/control/api/llamada', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conductorId: f.conductorId, conductor: f.conductor, telefono: f.telefono,
           matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '',
-          turno: turnoActivo, resultado: v.resultado, nota: v.nota || '',
+          turno: turnoActivo, tipo: v.caso.grupo, resultado: v.caso.texto, nota: v.nota || '',
+          alertas: v.alertas || [],
           dia: DATOS && DATOS.dia,   // la jornada que se está mirando
         }) });
       const j = await r.json();
@@ -927,6 +1014,9 @@
       if (mio !== seq) return;
       if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo cargar');
       DATOS = d;
+      // Datos nuevos, cuentas nuevas: las filas llegan recreadas, pero el mapa
+      // se vacía igual para no arrastrar nada de la carga anterior.
+      _cacheAlertas = new WeakMap();
 
       const falta = [];
       if (!d.hayCuadrante) falta.push('el cuadrante');
