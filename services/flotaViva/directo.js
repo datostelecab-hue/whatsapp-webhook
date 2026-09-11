@@ -408,7 +408,7 @@ async function enDirecto({ dia } = {}) {
    * y estas son de la PERSONA y de su jornada, que es lo que se llama por
    * teléfono. Cada uno trae ya su texto y su tono: la pantalla solo pinta.
    */
-  function avisosDe({ proy, rech, salida, just, kmFuera }) {
+  function avisosDe({ proy, rech, rechFranja, salida, just, kmFuera }) {
     const out = [];
 
     // RUEDA CON LA APP APAGADA (o en descanso) DENTRO DE LA FRANJA. Es la
@@ -470,14 +470,43 @@ async function enDirecto({ dia } = {}) {
           detalle: 'Le quedaban ' + String(proy.restantes).replace('.', ',') + ' h de turno y ya no está conectado. Llámalo.' });
       }
     }
-    if (rech && rech.total > 0) {
-      const malo = rech.total >= RECHAZOS_ROJO || (rech.tasa != null && rech.tasa < TASA_ROJA);
+    // LOS DOS RECHAZOS NO SON LA MISMA FALTA, y hasta ahora iban en un chip
+    // común ("14 rechazos") que los sumaba. Se separan porque se miden distinto
+    // y se llaman distinto:
+    //
+    //   RECHAZAR A DEDO no está permitido NUNCA —ni antes de ver el viaje ni
+    //   después—, así que basta UNO y cuenta en toda la jornada, a la hora que
+    //   sea.
+    //
+    //   NO RESPONDER aguanta hasta cinco y SOLO dentro de la franja: fuera está
+    //   el cambio de turno, y ahí que se escape alguna oferta es lo normal. Se
+    //   le pide ir conectado en espera, pero el reproche es en su franja.
+    if (rech && rech.rechazados >= 1) {
       out.push({
-        codigo: 'rechazos', tono: malo ? 'error' : 'aviso',
-        etq: rech.total + ' rechazos',
-        detalle: rech.rechazados + ' rechazados · ' + rech.sinResponder + ' sin responder' +
-          (rech.cancelados ? ' · ' + rech.cancelados + ' cancelados tras aceptar' : '') +
-          ' · aceptó ' + rech.aceptados + (rech.tasa != null ? ' (' + rech.tasa + '% de aceptación)' : ''),
+        codigo: 'rechazo_directo', tono: 'error',
+        etq: rech.rechazados + (rech.rechazados === 1 ? ' viaje rechazado' : ' viajes rechazados'),
+        detalle: 'Los rechazó ÉL, con el dedo. No se puede rechazar un viaje, ni antes de verlo ni '
+          + 'después de verlo. Llámalo y apunta qué dice.',
+      });
+    }
+    if (rechFranja && rechFranja.sinResponder >= UMBRAL_SIN_RESPUESTA) {
+      const desde = String(rechFranja.franja.ini).padStart(2, '0') + ':00';
+      out.push({
+        codigo: 'sin_respuesta', tono: 'error',
+        etq: rechFranja.sinResponder + ' sin contestar',
+        detalle: 'Desde las ' + desde + ' ha dejado pasar ' + rechFranja.sinResponder +
+          ' ofertas sin contestar. Puede ser cobertura o el móvil: llámalo y mira si necesita algo.',
+      });
+    }
+    // El resumen de lo demás (canceladas tras aceptar, tasa baja) sigue a la
+    // vista pero en ámbar: es para mirar, no para llamar.
+    if (rech && rech.ofertas > 0 && rech.tasa != null && rech.tasa < TASA_ROJA && !rech.rechazados) {
+      out.push({
+        codigo: 'aceptacion_baja', tono: 'aviso',
+        etq: rech.tasa + ' % de aceptación',
+        detalle: 'Aceptó ' + rech.aceptados + ' de ' + rech.ofertas + ' ofertas de su jornada · ' +
+          rech.sinResponder + ' sin responder' +
+          (rech.cancelados ? ' · ' + rech.cancelados + ' soltadas tras aceptar' : ''),
       });
     }
     return out;
@@ -582,6 +611,23 @@ async function enDirecto({ dia } = {}) {
   const UMBRAL_KM_FRANJA = (cfgAlertas && cfgAlertas.tipos.km_parado.activo)
     ? Number(cfgAlertas.tipos.km_parado.umbral) || 20 : null;
 
+  // Y LOS "SIN CONTESTAR" DE LA FRANJA, por la misma razón que los km: fuera de
+  // ella está el cambio de turno. La MISMA ventana que los kilómetros, que es lo
+  // que se pidió.
+  const UMBRAL_SIN_RESPUESTA = (cfgAlertas && cfgAlertas.tipos.sin_respuesta.activo)
+    ? Number(cfgAlertas.tipos.sin_respuesta.umbral) || 5 : null;
+  const rechFranjaMapa = franjaViva
+    ? await repoRech.porVentana(hoy, String(franjaViva.ini),
+        franjaViva.fin > franjaViva.ini ? 0 : 1, String(franjaViva.fin))
+        .catch(e => { console.error('⚠️  [EN DIRECTO] rechazos de la franja:', e.message); return new Map(); })
+    : new Map();
+  /** Los "sin contestar" de la franja de una persona, sumando sus cuentas. */
+  const rechFranjaDe = cuentas => {
+    if (!franjaViva || !UMBRAL_SIN_RESPUESTA) return null;
+    const f = fundirRechazos(cuentas.filter(Boolean).map(u => rechFranjaMapa.get(u)));
+    return f.ofertas > 0 ? { ...f, franja: franjaViva } : null;
+  };
+
   /** Los km de la franja de una persona, sumando todas sus cuentas de BOLT. */
   const kmFranjaDe = cuentas => {
     if (!franjaViva) return null;
@@ -656,8 +702,8 @@ async function enDirecto({ dia } = {}) {
       // quedaba fuera del aviso: hoy el que más lleva —119 km en la franja— es
       // de esta lista.
       kmFranja: kmFranjaDe([a.uuid]),
-      avisos: avisosDe({ proy: null, rech: rechazosDe(a._turno).get(a.uuid) || null, salida: 'salio',
-        kmFuera: kmFranjaDe([a.uuid]) }),
+      avisos: avisosDe({ proy: null, rech: rechazosDe(a._turno).get(a.uuid) || null,
+        rechFranja: rechFranjaDe([a.uuid]), salida: 'salio', kmFuera: kmFranjaDe([a.uuid]) }),
     }))
     .sort((a, b) =>
       (a.turno === b.turno ? 0 : a.turno === 'dia' ? -1 : 1) ||
@@ -816,7 +862,8 @@ async function enDirecto({ dia } = {}) {
         // de franja). La columna "Km fuera" sigue siendo la jornada entera.
         kmFranja: kmF,
         rechazos: rech.ofertas ? rech : null,
-        avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, salida, just, kmFuera: kmF }),
+        avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, rechFranja: rechFranjaDe(cuentas),
+          salida, just, kmFuera: kmF }),
         turno: f.turno,
         rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
         matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',

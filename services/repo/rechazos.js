@@ -61,6 +61,52 @@ async function porConductor(diaIso, { hora = 5 } = {}) {
   return m;
 }
 
+/**
+ * Lo mismo, pero en UNA VENTANA CUALQUIERA (no una jornada de 24 h): la franja
+ * de vigilancia, por ejemplo.
+ *
+ * Hace falta porque los dos tipos de rechazo NO se miden igual:
+ *
+ *   · NO RESPONDER se mira SOLO dentro de la franja. Fuera de ella está el
+ *     cambio de turno, y ahí que a alguien se le escapen ofertas es lo
+ *     esperable — se le pidió ir conectado en espera, pero el reproche es
+ *     dentro de su franja. Contarlo todo el día convertía el aviso en ruido.
+ *   · RECHAZAR A DEDO se mira en TODA la jornada, porque no está permitido
+ *     nunca: ni antes de ver el viaje ni después de verlo. Da igual la hora.
+ */
+async function porVentana(diaIso, hIni, offFin, hFin) {
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval)            AT TIME ZONE 'Europe/Madrid' AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     )
+     SELECT o.driver_uuid,
+            count(*) FILTER (WHERE o.estado = 'finished')::int                      AS aceptados,
+            count(*) FILTER (WHERE o.estado = 'driver_rejected')::int               AS rechazados,
+            count(*) FILTER (WHERE o.estado = 'driver_did_not_respond')::int        AS sin_responder,
+            count(*) FILTER (WHERE o.estado = 'driver_cancelled_after_accept')::int AS cancelados
+       FROM bolt_order o CROSS JOIN v
+      WHERE o.driver_uuid IS NOT NULL
+        AND o.creado_ts >= v.ini AND o.creado_ts < LEAST(v.fin, now())
+      GROUP BY o.driver_uuid`,
+    [String(diaIso).slice(0, 10), String(hIni), Number(offFin) || 0, String(hFin)]);
+
+  const m = new Map();
+  r.rows.forEach(x => {
+    const rechazados = Number(x.rechazados) || 0;
+    const sinResponder = Number(x.sin_responder) || 0;
+    const cancelados = Number(x.cancelados) || 0;
+    const aceptados = Number(x.aceptados) || 0;
+    const total = rechazados + sinResponder + cancelados;
+    const ofertas = aceptados + total;
+    m.set(x.driver_uuid, {
+      rechazados, sinResponder, cancelados, aceptados, total, ofertas,
+      tasa: ofertas > 0 ? Math.round((aceptados / ofertas) * 100) : null,
+    });
+  });
+  return m;
+}
+
 /** Suma de varias cuentas de BOLT de la misma persona. */
 function fundir(lista) {
   const f = { rechazados: 0, sinResponder: 0, cancelados: 0, aceptados: 0, total: 0, ofertas: 0, tasa: null };
@@ -72,4 +118,4 @@ function fundir(lista) {
   return f;
 }
 
-module.exports = { porConductor, fundir, RECHAZO };
+module.exports = { porConductor, porVentana, fundir, RECHAZO };

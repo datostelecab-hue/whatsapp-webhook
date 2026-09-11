@@ -985,7 +985,11 @@
     const sinContestar = pend.filter(a => !ya[a.codigo]);
 
     const campos = [
+      // Obligatorio SALVO que ya haya contestado por alerta: marcar las alertas
+      // y escribir qué dijo de cada una es decir qué ha pasado, y no hay que
+      // hacerlo dos veces.
       { id: 'caso', etiqueta: 'Qué ha pasado', tipo: 'opciones', obligatorio: true,
+        obligatorioSalvo: 'alertas',
         grupos: CATALOGO_LLAMADA.map(g => ({
           codigo: g.codigo, etiqueta: g.etiqueta, icono: g.icono,
           // El tipo "Alerta" no tiene lista fija: sus casos son lo que ESTE
@@ -1018,15 +1022,22 @@
       textoBoton: 'Apuntar la llamada', ancho: 'max-w-lg',
       nota: 'Queda la traza (tú, la hora y el resultado) en la carta, en el Histórico y en el call center.',
     });
-    if (!v || !v.caso) return;
+    if (!v) return;
+    const contestadasAhora = v.alertas || [];
+    if (!v.caso && !contestadasAhora.length) return;
+    // Si no eligió caso pero contestó por alerta, el resultado de la llamada ES
+    // eso: de qué se le preguntó. Así la llamada nunca queda sin clasificar.
+    const tipo = v.caso ? v.caso.grupo : 'alerta';
+    const resultado = v.caso ? v.caso.texto
+      : contestadasAhora.map(a => a.etiqueta).join(' · ').slice(0, 60);
     try {
       const r = await fetch('/control/api/llamada', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conductorId: f.conductorId, conductor: f.conductor, telefono: f.telefono,
           matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '',
-          turno: turnoActivo, tipo: v.caso.grupo, resultado: v.caso.texto, nota: v.nota || '',
-          alertas: v.alertas || [],
+          turno: turnoActivo, tipo, resultado, nota: v.nota || '',
+          alertas: contestadasAhora,
           dia: DATOS && DATOS.dia,   // la jornada que se está mirando
         }) });
       const j = await r.json();

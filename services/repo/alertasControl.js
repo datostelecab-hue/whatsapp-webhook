@@ -48,7 +48,7 @@ const MODELO = {
     // expediente.
     sin_respuesta: {
       etiqueta: 'Viajes perdidos por NO RESPONDER', corto: 'no responde',
-      umbral: 5, unidad: 'viajes', activo: true,
+      umbral: 5, unidad: 'viajes', activo: true, ventana: 'franja',
     },
     // AL PRIMERO. Aquí no se rechaza ningún viaje, de ningún tipo: rechazar uno
     // ya es motivo de llamada. Si resulta que iba lejísimos, se justifica por
@@ -57,13 +57,16 @@ const MODELO = {
     // Y va SEPARADO de `sin_respuesta` a propósito: no responder puede ser
     // cobertura o un móvil que se cuelga, y eso se atiende ayudando al
     // conductor, no sancionándole.
+    // Y en TODA LA JORNADA, no solo en la franja: rechazar no está permitido a
+    // ninguna hora, así que uno hecho a las 15:30 —entre franja y franja— tiene
+    // que sonar igual en cuanto abra la siguiente.
     rechazo_directo: {
       etiqueta: 'Viajes RECHAZADOS por el conductor', corto: 'rechaza',
-      umbral: 1, unidad: 'viajes', activo: true,
+      umbral: 1, unidad: 'viajes', activo: true, ventana: 'jornada',
     },
     km_parado: {
       etiqueta: 'KM rodando en descanso o desconectado', corto: 'rueda parado',
-      umbral: 20, unidad: 'km', activo: true,
+      umbral: 20, unidad: 'km', activo: true, ventana: 'franja',
     },
   },
   // CORTAFUEGOS. Si un día se disparan cuarenta, algo pasa con los datos o con
@@ -253,15 +256,29 @@ async function candidatos(franja, ahora = new Date()) {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin,
               ($5::date + interval '5 hours')                     AT TIME ZONE 'Europe/Madrid' AS jini,
               now() AS ahora),
+     -- DOS VENTANAS, no una, porque las dos faltas no son la misma:
+     --   · NO RESPONDER, solo dentro de la FRANJA. Fuera está el cambio de
+     --     turno, y ahí que se escape alguna oferta es lo esperable.
+     --   · RECHAZAR A DEDO, en toda la JORNADA (desde las 05:00): no está
+     --     permitido a ninguna hora, ni antes de ver el viaje ni después.
      ords AS (
        SELECT o.driver_uuid AS uuid,
-              count(*) FILTER (WHERE o.estado = 'driver_did_not_respond')::int AS sin_respuesta,
-              count(*) FILTER (WHERE o.estado = 'driver_rejected')::int        AS rechazo_directo,
-              count(*) FILTER (WHERE o.estado = 'finished')::int               AS hechos,
-              count(*)::int                                                    AS ofertas
+              -- En la FRANJA (y hasta el final de la franja, aunque la revisión
+              -- corra en el margen de cortesía de las 13:05).
+              count(*) FILTER (WHERE o.estado = 'driver_did_not_respond'
+                                 AND o.creado_ts >= f.ini
+                                 AND o.creado_ts < LEAST(f.fin, f.ahora))::int AS sin_respuesta,
+              count(*) FILTER (WHERE o.estado = 'finished'
+                                 AND o.creado_ts >= f.ini
+                                 AND o.creado_ts < LEAST(f.fin, f.ahora))::int AS hechos,
+              count(*) FILTER (WHERE o.creado_ts >= f.ini
+                                 AND o.creado_ts < LEAST(f.fin, f.ahora))::int AS ofertas,
+              -- En toda la JORNADA, hasta AHORA. Lo que rechazó a las 15:30
+              -- (entre franja y franja) tiene que sonar cuando abra la siguiente.
+              count(*) FILTER (WHERE o.estado = 'driver_rejected')::int        AS rechazo_directo
          FROM bolt_order o CROSS JOIN f
         WHERE o.driver_uuid IS NOT NULL
-          AND o.creado_ts >= f.ini AND o.creado_ts < LEAST(f.fin, f.ahora)
+          AND o.creado_ts >= f.jini AND o.creado_ts < f.ahora
         GROUP BY 1),
      -- KM RODADOS FUERA DE LA APP dentro de la franja, de fv_ruta.
      --
@@ -359,8 +376,13 @@ function textoAlerta(tipo, valor, cfgTipo, franja) {
   if (tipo === 'km_parado') {
     return `${fmtNum(valor)} km rodando en descanso o desconectado (franja ${horas})`;
   }
-  const que = tipo === 'sin_respuesta' ? 'viajes perdidos por NO RESPONDER' : 'viajes RECHAZADOS por él';
-  return `${fmtNum(valor)} ${que} (franja ${horas})`;
+  // El rechazo directo se cuenta en toda la jornada, así que decir "(franja
+  // 08:00-13:00)" sería mentir sobre de dónde salen esos viajes.
+  if (tipo === 'rechazo_directo') {
+    return `${fmtNum(valor)} ${valor === 1 ? 'viaje RECHAZADO' : 'viajes RECHAZADOS'} por él hoy `
+      + '(no se puede rechazar ningún viaje)';
+  }
+  return `${fmtNum(valor)} viajes perdidos por NO RESPONDER (franja ${horas})`;
 }
 
 // ── LA REVISIÓN ─────────────────────────────────────────────────────────────

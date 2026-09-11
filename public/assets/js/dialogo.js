@@ -339,6 +339,9 @@
 
       fondo.querySelector('form').addEventListener('submit', async e => {
         e.preventDefault();
+        // DOS PASADAS: primero se lee TODO y luego se valida. Con una sola, un
+        // campo que depende de otro (el caso, que se da por contestado si hay
+        // alertas marcadas) se validaba antes de que el otro existiera.
         const salida = {};
         const fallos = [];
         campos.forEach(c => {
@@ -349,7 +352,6 @@
               .map(b => Number(b.dataset.dia));
           } else if (c.tipo === 'opciones') {
             const v = el.dataset.valor || '';
-            if (!v && c.obligatorio) fallos.push(`Elige ${c.etiqueta.toLowerCase()}.`);
             salida[c.id] = v ? { valor: v, grupo: el.dataset.grupo || '', texto: el.dataset.texto || v } : null;
           } else if (c.tipo === 'items') {
             const marcados = [...el.querySelectorAll('[data-item]')]
@@ -359,17 +361,31 @@
                 etiqueta: f.querySelector('.font-medium').textContent.trim(),
                 comentario: f.querySelector('[data-comentario]').value.trim(),
               }));
-            // UN COMENTARIO POR CADA UNA. Marcar sin escribir nada es decir "ya
-            // pregunté" sin dejar la respuesta, y eso es justo lo que hace que
-            // el siguiente controlador vuelva a llamar por lo mismo.
-            if (c.comentarioObligatorio && marcados.some(x => !x.comentario)) {
-              fallos.push('Escribe qué te ha dicho en cada una de las que marcas.');
-            }
             salida[c.id] = marcados;
           } else {
             salida[c.id] = c.tipo === 'fecha' ? aISO(el.value.trim()) : el.value.trim();
           }
         });
+        // ── Segunda pasada: validar con TODO ya leído ──────────────────────
+        campos.forEach(c => {
+          if (c.tipo === 'opciones') {
+            // `obligatorioSalvo` deja que OTRO campo lo dé por contestado.
+            // Marcar las alertas y escribir qué dijo de cada una YA ES decir qué
+            // ha pasado: pedir además un caso de la lista era hacer repetir lo
+            // mismo, y el "elige qué ha pasado" saltaba con la respuesta escrita
+            // ahí delante.
+            const cubierto = c.obligatorioSalvo && (salida[c.obligatorioSalvo] || []).length > 0;
+            if (c.obligatorio && !salida[c.id] && !cubierto) fallos.push(`Elige ${c.etiqueta.toLowerCase()}.`);
+          } else if (c.tipo === 'items' && c.comentarioObligatorio) {
+            // UN COMENTARIO POR CADA UNA. Marcar sin escribir nada es decir "ya
+            // pregunté" sin dejar la respuesta, y eso es justo lo que hace que
+            // el siguiente controlador vuelva a llamar por lo mismo.
+            if ((salida[c.id] || []).some(x => !x.comentario)) {
+              fallos.push('Escribe qué te ha dicho en cada una de las que marcas.');
+            }
+          }
+        });
+
         const aviso = fondo.querySelector('[data-error]');
         if (fallos.length) {
           aviso.textContent = fallos.join(' ');
