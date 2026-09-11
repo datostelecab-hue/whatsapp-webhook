@@ -221,6 +221,19 @@ async function tablero({ dia } = {}) {
 
   const descansoDe = new Map(descansos.rows.map(r => [String(r.vehiculo_id), (r.dias || []).map(Number)]));
 
+  // EL EVENTO y LOS RELEVOS. Van aparte de la tanda de arriba porque los dos
+  // dependen de f_cobertura y se calculan, no se leen: el evento para saber
+  // cuándo deja de serlo, y los relevos para poder decir en la celda "hoy este
+  // coche no lo lleva el del cuadrante". Con red: si fallan, el tablero se ve
+  // igual —es lo de siempre— solo que sin refuerzo.
+  const [relevos, eventos] = await Promise.all([
+    relevosEntre(lunes, domingo).catch(e => { console.error('⚠️  [PLAN] relevos:', e.message); return []; }),
+    require('./eventos').estado({ dia: efectivo })
+      .catch(e => { console.error('⚠️  [PLAN] eventos:', e.message); return null; }),
+  ]);
+  const relevoDe = new Map();
+  relevos.forEach(r => relevoDe.set(`${r.vehiculoId}|${r.turnoCodigo}|${r.dia}`, r));
+
   // Plaza → la vacante que la tiene prometida.
   const vacanteDe = new Map(comprometidas.rows.map(r => [String(r.plaza_id), {
     codigo: r.codigo, estado: r.estado, motivo: r.motivo,
@@ -420,6 +433,11 @@ async function tablero({ dia } = {}) {
       for (let d = 0; d < DIAS; d++) {
         const quienes = lista[d];
         const celda = coche.semana[d * 2 + off];
+        // El relevo se marca ANTES de mirar si hay alguien: si a quien apartamos
+        // no le sustituyó nadie al final, la celda queda vacía y el motivo es
+        // justo lo que hay que leer ahí.
+        const rel0 = relevoDe.get(`${coche.vehiculoId}|${codigo}|${fechas[d]}`);
+        if (rel0) celda.relevo = { id: rel0.id, sale: rel0.sale, entra: rel0.entra, motivo: rel0.motivo };
         if (!quienes.length) {
           if (coche.operativo) { sinCubrir++; if (hayFijo) sinCubrirCT++; }
           continue;
@@ -431,6 +449,9 @@ async function tablero({ dia } = {}) {
         // que compartan PLAZA, no que un fijo y su correturnos se solapen.
         celda.conflicto = quienes.length > 1;
         if (celda.conflicto) celda.otros = quienes.slice(1).map(i => (gente.get(i) || {}).nombre || i);
+        // ¿A alguien se le apartó de este coche este día? La cobertura ya lo ha
+        // quitado —por eso el nombre de arriba es el bueno— pero hay que DECIRLO:
+        // es lo que contesta "¿y por qué no sale el del cuadrante?".
       }
       if (off === 0) { diasSinCubrirDia += sinCubrir; ctDiasDia += sinCubrirCT; }
       else { diasSinCubrirNoche += sinCubrir; ctDiasNoche += sinCubrirCT; }
@@ -458,6 +479,16 @@ async function tablero({ dia } = {}) {
     zonas,
     dias: LETRAS,
     coches,
+    // MODO EVENTOS: `vigente` es lo único que decide si se ven las columnas de
+    // refuerzo. Va entero (con su hora de cierre calculada) para poder decir en
+    // pantalla cuándo vuelve la normalidad y por qué es esa hora y no otra.
+    eventos: eventos || { eventos: [], vigente: null, slotsRefuerzo: [4, 5] },
+    // Las plazas de refuerzo se enseñan si hay evento… o si hay alguien dentro:
+    // un refuerzo que sobrevive a su evento no puede quedarse invisible.
+    refuerzoVisible: !!((eventos && eventos.vigente)
+      || coches.some(c => [4, 5].some(s => ((c.personas || [])[s] || {}).id))),
+    relevos,
+    motivosRelevo: MOTIVOS_RELEVO,
     conductores: [...gente.values()],
     // El banquillo. Van las personas enteras y no sus ids: el front las pinta
     // por nombre y no tendria de donde sacarlo.
@@ -685,6 +716,264 @@ function parsearDias(txt) {
     }
   }
   return [...dias].sort((a, b) => a - b);
+}
+
+// ── PLANIFICAR SIN PISAR A NADIE ────────────────────────────────────────────
+// Dos cosas físicamente imposibles que el tablero dejaba hacer en silencio:
+//
+//   1. QUE ALGUIEN LLEVE DOS COCHES EL MISMO DÍA. Da igual que uno sea de día y
+//      otro de noche: no se puede, y además tienen que descansar. Por eso al
+//      colocar a alguien hay que decir QUÉ DÍAS va a trabajar en esa matrícula
+//      y comprobar que esos días los tiene libres. Trabajar en su libranza sí
+//      vale —un correturnos vive de eso—; lo que no vale es doblar.
+//
+//   2. QUE DOS PERSONAS LLEVEN EL MISMO COCHE EL MISMO DÍA Y TURNO. El coche
+//      tiene que estar libre ese día. Si aun así hay que meter a alguien —el
+//      del cuadrante ha dicho que no sale, o está haciendo otra cosa en la
+//      empresa— se puede A LA FUERZA, pero apartando al otro con nombre y
+//      motivo. Eso es `plan_relevo`: el día que llegue, Control sabrá a quién
+//      llamar, que es de lo que va todo esto.
+
+/** Por qué se aparta al del cuadrante. El texto libre sigue siendo obligatorio. */
+const MOTIVOS_RELEVO = [
+  { codigo: 'no_sale',         etiqueta: 'El planificado no saldrá (no quiere)' },
+  { codigo: 'otras_funciones', etiqueta: 'Estará con otras funciones en la empresa, no conducirá' },
+  { codigo: 'descansa',        etiqueta: 'Le toca descansar y no puede doblar' },
+  { codigo: 'no_localizado',   etiqueta: 'No se le localiza' },
+  { codigo: 'baja_o_permiso',  etiqueta: 'Está de baja, permiso o similar' },
+  { codigo: 'refuerzo',        etiqueta: 'Refuerzo por evento: hace falta el coche' },
+  { codigo: 'otro',            etiqueta: 'Otro (lo explico abajo)' },
+];
+const ES_MOTIVO = new Set(MOTIVOS_RELEVO.map(m => m.codigo));
+
+/** Suma días a un ISO caminando el calendario (a prueba del cambio de hora). */
+function masDias(iso, n) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d, 12) + n * 86400000);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** ISODOW (1=lunes) de un 'AAAA-MM-DD', sin pasar por la zona horaria local. */
+function isodow(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return ((new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7) + 1;
+}
+
+/**
+ * ¿SE PUEDE PONER A ESTA PERSONA EN ESTA PLAZA ESTOS DÍAS?
+ *
+ * Devuelve los días que va a trabajar en esa matrícula y, de cada uno, lo que
+ * impide ponerlo. Se mira UNA SEMANA desde el día de entrada: es el ciclo
+ * completo del cuadrante, y con eso salen todos los choques que se repiten.
+ *
+ * Un FIJO no elige días: trabaja todos menos los del descanso del coche. Se
+ * calculan igual y se enseñan, porque la pregunta "¿qué días va a hacer?" es la
+ * misma y la respuesta también tiene que verse antes de guardar.
+ */
+async function comprobarPlan({ plazaId, conductorId, dias, desde, hasta } = {}, cli) {
+  if (!plazaId) throw new Error('Falta la plaza');
+  if (!conductorId) throw new Error('Falta el conductor');
+  // Con `cli` la comprobacion corre DENTRO de la transaccion que esta guardando,
+  // asi que ve lo que esa misma tanda acaba de colocar. Sin el, contra el pool.
+  const q = cli ? (sql, args) => cli.query(sql, args) : (sql, args) => db.consulta(sql, args);
+
+  const p = (await q(
+    `SELECT p.id, p.vehiculo_id, p.slot, s.rol, s.turno_id, s.orden_ct,
+            v.matricula, t.codigo AS turno_codigo, t.etiqueta AS turno,
+            COALESCE(
+              (SELECT array_agg(vdd.dia_semana ORDER BY vdd.dia_semana)
+                 FROM vehiculo_descanso vd
+                 JOIN vehiculo_descanso_dia vdd ON vdd.descanso_id = vd.id
+                WHERE vd.vehiculo_id = p.vehiculo_id
+                  AND vd.desde <= CURRENT_DATE AND (vd.hasta IS NULL OR vd.hasta >= CURRENT_DATE)),
+              '{}') AS descanso
+       FROM plaza p
+       JOIN cat_slot s ON s.slot = p.slot
+       JOIN turno t    ON t.id = s.turno_id
+       JOIN vehiculo v ON v.id = p.vehiculo_id
+      WHERE p.id = $1 AND p.baja_at IS NULL`, [plazaId])).rows[0];
+  if (!p) throw new Error('Esa plaza ya no existe');
+
+  const entra = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : hoy();
+  // Una semana, o menos si el "hasta" llega antes (un refuerzo de dos días).
+  let fin = masDias(entra, 6);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(hasta || '') && hasta < fin) fin = hasta;
+
+  // Los días que va a trabajar en ESTA matrícula.
+  let laborales;
+  if (p.rol === 'CT') {
+    laborales = Array.isArray(dias) && dias.length
+      ? [...new Set(dias.map(Number).filter(d => d >= 1 && d <= 7))].sort((a, b) => a - b)
+      : ((await q('SELECT dias_sugeridos FROM v_plaza_ct_sugerida WHERE plaza_id = $1', [plazaId]))
+          .rows[0] || {}).dias_sugeridos || [];
+  } else {
+    const descanso = new Set((p.descanso || []).map(Number));
+    laborales = [1, 2, 3, 4, 5, 6, 7].filter(d => !descanso.has(d));
+  }
+
+  // TODO lo que hace falta, en una consulta: lo que ya cubre ESA persona en la
+  // ventana (choques) y quién cubre ESE coche y turno (el que habría que
+  // apartar). Va de f_cobertura porque es la única verdad de "le tocaba salir".
+  //
+  // UNA DETRÁS DE OTRA, no en paralelo: cuando esto corre dentro de una
+  // transacción `q` es el MISMO cliente de pg, y un cliente no atiende dos
+  // consultas a la vez (avisa y en pg@9 será un error). Son tres consultas
+  // pequeñas; el paralelo no se nota y el fallo sí.
+  const cob = await (
+    q(
+      `SELECT to_char(c.dia, 'YYYY-MM-DD') AS dia, c.vehiculo_id, c.turno_id, c.conductor_id,
+              c.plaza_id, c.rol, v.matricula, t.codigo AS turno_codigo, t.etiqueta AS turno,
+              COALESCE(NULLIF(btrim(co.nombre_bolt), ''),
+                       btrim(co.nombre || ' ' || COALESCE(co.apellidos, ''))) AS conductor
+         FROM f_cobertura($1::date, $2::date) c
+         JOIN vehiculo v  ON v.id = c.vehiculo_id
+         JOIN turno t     ON t.id = c.turno_id
+         JOIN conductor co ON co.id = c.conductor_id
+        WHERE c.conductor_id = $3 OR (c.vehiculo_id = $4 AND c.turno_id = $5)
+        ORDER BY c.dia`, [entra, fin, conductorId, p.vehiculo_id, p.turno_id]));
+  const lib = await q(
+    `SELECT COALESCE(array_agg(d.dia_semana ORDER BY d.dia_semana), '{}') AS dias
+       FROM patron_libranza pl
+       JOIN patron_libranza_dia d ON d.patron_id = pl.id
+      WHERE pl.conductor_id = $1
+        AND pl.desde <= $2::date AND (pl.hasta IS NULL OR pl.hasta >= $2::date)`,
+    [conductorId, entra]);
+  const quien = await q(
+    `SELECT COALESCE(NULLIF(btrim(nombre_bolt), ''),
+                     btrim(nombre || ' ' || COALESCE(apellidos, ''))) AS nombre
+       FROM conductor WHERE id = $1`, [conductorId]);
+
+  const libra = new Set((lib.rows[0].dias || []).map(Number));
+  const filas = [];
+  for (let d = entra; d <= fin; d = masDias(d, 1)) {
+    const dow = isodow(d);
+    if (!laborales.includes(dow)) continue;
+    const delDia = cob.rows.filter(r => r.dia === d);
+
+    // ¿Ya está en otro coche ese día? Cualquier turno: no se puede doblar.
+    const suyos = delDia.filter(r => String(r.conductor_id) === String(conductorId)
+      && String(r.plaza_id) !== String(plazaId));
+    // ¿Y quién lleva ESTE coche y turno ese día, aparte de él?
+    const enElCoche = delDia.filter(r => String(r.vehiculo_id) === String(p.vehiculo_id)
+      && String(r.turno_id) === String(p.turno_id)
+      && String(r.conductor_id) !== String(conductorId));
+
+    filas.push({
+      dia: d, diaSemana: dow, letra: LETRAS[dow - 1],
+      // Trabajar en su libranza VALE (es lo que hace un correturnos); que ese
+      // día NO sea de libranza es lo que hay que mirar, porque significa que le
+      // toca estar en otro sitio.
+      esLibranza: libra.has(dow),
+      choca: suyos.map(r => ({ matricula: r.matricula, turno: r.turno, rol: r.rol })),
+      ocupado: enElCoche.map(r => ({
+        conductorId: String(r.conductor_id), conductor: r.conductor,
+        rol: r.rol, plazaId: String(r.plaza_id),
+      })),
+    });
+  }
+
+  const conChoque = filas.filter(f => f.choca.length);
+  const conOcupado = filas.filter(f => f.ocupado.length);
+  return {
+    plazaId: String(plazaId),
+    conductorId: String(conductorId),
+    conductor: (quien.rows[0] || {}).nombre || '',
+    matricula: p.matricula,
+    turno: p.turno, rol: p.rol,
+    etiqueta: etiquetaPlaza(p.rol, p.orden_ct, p.turno),
+    desde: entra, hasta: fin,
+    dias: laborales, letras: laborales.map(d => LETRAS[d - 1]).join(' '),
+    filas,
+    // DOS VEREDICTOS DISTINTOS, y no se arreglan igual:
+    //   · doblar es imposible y no se puede forzar: primero hay que sacarlo del
+    //     otro coche, y eso es otra decisión con su propio motivo.
+    //   · el coche ocupado SÍ se puede forzar, apartando al otro con su porqué.
+    bloqueado: conChoque.length > 0,
+    forzable: conChoque.length === 0 && conOcupado.length > 0,
+    limpio: conChoque.length === 0 && conOcupado.length === 0,
+    motivos: MOTIVOS_RELEVO,
+  };
+}
+
+/**
+ * Aparta del coche, día a día, a quien lo tenía en el cuadrante.
+ *
+ * No se le toca la asignación: la semana que viene vuelve a llevarlo. Se le
+ * aparta de ESOS días, con quién entra, el motivo y la firma.
+ */
+async function apartar(cli, { plazaId, conductorId, dias, desde, hasta, motivoCodigo, motivo, eventoId },
+                       { usuarioId } = {}) {
+  const motivoTxt = String(motivo || '').trim();
+  if (!motivoTxt) throw new Error('Para planificar a la fuerza hay que decir POR QUÉ se deja fuera al otro');
+  const cod = ES_MOTIVO.has(String(motivoCodigo || '')) ? motivoCodigo : 'otro';
+
+  const plan = await comprobarPlan({ plazaId, conductorId, dias, desde, hasta }, cli);
+  if (plan.bloqueado) {
+    const f = plan.filas.find(x => x.choca.length);
+    throw new Error(`${plan.conductor} ya lleva ${f.choca[0].matricula} (${f.choca[0].turno}) el ` +
+      `${f.dia.split('-').reverse().join('/')}. Nadie puede llevar dos coches el mismo día: ` +
+      'sácalo antes de ese coche.');
+  }
+
+  const p = (await cli.query(
+    'SELECT vehiculo_id, turno_id FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
+  const puestos = [];
+  for (const f of plan.filas) {
+    for (const o of f.ocupado) {
+      const r = await cli.query(
+        `INSERT INTO plan_relevo (dia, turno_id, vehiculo_id, conductor_sale, conductor_entra,
+                                  motivo_codigo, motivo, evento_id, usuario_id)
+         VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (dia, turno_id, vehiculo_id, conductor_sale) WHERE anulado_at IS NULL
+         DO UPDATE SET conductor_entra = EXCLUDED.conductor_entra,
+                       motivo_codigo = EXCLUDED.motivo_codigo,
+                       motivo = EXCLUDED.motivo,
+                       usuario_id = EXCLUDED.usuario_id,
+                       creado_at = now()
+         RETURNING id`,
+        [f.dia, p.turno_id, p.vehiculo_id, Number(o.conductorId), Number(conductorId),
+         cod, motivoTxt.slice(0, 300), eventoId || null, usuarioId || null]);
+      puestos.push({ id: String(r.rows[0].id), dia: f.dia, sale: o.conductor, entra: plan.conductor });
+    }
+  }
+  return puestos;
+}
+
+/** Deshacer un relevo: el del cuadrante vuelve a ser el que conduce ese día. */
+async function quitarRelevo(id) {
+  const r = await db.consulta(
+    'UPDATE plan_relevo SET anulado_at = now() WHERE id = $1 AND anulado_at IS NULL RETURNING id',
+    [Number(id)]);
+  if (!r.rows.length) throw new Error('Ese relevo no existe o ya estaba deshecho');
+  return { ok: true, id: String(id) };
+}
+
+/** Los relevos vivos de un rango, para pintarlos en el tablero y en Control. */
+async function relevosEntre(desde, hasta) {
+  const r = await db.consulta(
+    `SELECT pr.id, to_char(pr.dia, 'YYYY-MM-DD') AS dia, pr.turno_id, pr.vehiculo_id,
+            pr.motivo_codigo, pr.motivo, pr.creado_at,
+            t.codigo AS turno_codigo, v.matricula,
+            pr.conductor_sale, pr.conductor_entra,
+            COALESCE(NULLIF(btrim(cs.nombre_bolt), ''), btrim(cs.nombre || ' ' || COALESCE(cs.apellidos, ''))) AS sale,
+            COALESCE(NULLIF(btrim(ce.nombre_bolt), ''), btrim(ce.nombre || ' ' || COALESCE(ce.apellidos, ''))) AS entra,
+            COALESCE(u.nombre, '') AS quien
+       FROM plan_relevo pr
+       JOIN turno t     ON t.id = pr.turno_id
+       JOIN vehiculo v  ON v.id = pr.vehiculo_id
+       JOIN conductor cs ON cs.id = pr.conductor_sale
+       JOIN conductor ce ON ce.id = pr.conductor_entra
+       LEFT JOIN usuario u ON u.id = pr.usuario_id
+      WHERE pr.anulado_at IS NULL AND pr.dia BETWEEN $1::date AND $2::date
+      ORDER BY pr.dia, v.matricula`, [desde, hasta]);
+  return r.rows.map(x => ({
+    id: String(x.id), dia: x.dia, turnoId: x.turno_id, turnoCodigo: x.turno_codigo,
+    vehiculoId: String(x.vehiculo_id), matricula: x.matricula,
+    saleId: String(x.conductor_sale), sale: x.sale,
+    entraId: String(x.conductor_entra), entra: x.entra,
+    motivoCodigo: x.motivo_codigo, motivo: x.motivo,
+    quien: x.quien, creadoAt: x.creado_at,
+  }));
 }
 
 /** La asignación viva de una plaza en una fecha. */
@@ -1101,11 +1390,50 @@ async function guardar(cambios = [], { dia, usuarioId } = {}) {
           if (r) hechos.push({ que: 'libera', plazaId: s.plazaId, ...r });
           continue;
         }
+
+        // ANTES DE COLOCAR, LAS DOS IMPOSIBILIDADES.
+        //
+        // Doblar coche el mismo día no se puede de ninguna manera. Meterse en un
+        // coche que ese día ya tiene conductor sí, pero solo A LA FUERZA y
+        // apartando al otro con su motivo: es lo que hace que el día que llegue,
+        // Control sepa a quién llamar. La pantalla ya lo pregunta antes; esto es
+        // la red, porque la API también se puede llamar a pelo.
+        const plan = await comprobarPlan({
+          plazaId: s.plazaId, conductorId: Number(s.id),
+          dias: dias || [], desde: s.desde || efectivo, hasta: s.hasta || null,
+        }, cli);
+        if (plan.bloqueado) {
+          const f = plan.filas.find(x => x.choca.length);
+          throw new Error(`${plan.conductor} ya lleva ${f.choca[0].matricula} (${f.choca[0].turno}) el ` +
+            `${f.dia.split('-').reverse().join('/')}. Nadie lleva dos coches el mismo día: ` +
+            'sácalo de ese antes.');
+        }
+        if (plan.forzable && !s.forzar) {
+          const f = plan.filas.find(x => x.ocupado.length);
+          const err = new Error(`${f.ocupado[0].conductor} ya lleva ${plan.matricula} ` +
+            `(${plan.turno.toLowerCase()}) el ${f.dia.split('-').reverse().join('/')}. ` +
+            'Para ponerlo igual hay que apartarlo y decir por qué.');
+          err.codigo = 'coche_ocupado';
+          err.plan = plan;
+          throw err;
+        }
+
         const r = await colocar(cli, {
           plazaId: s.plazaId, conductorId: Number(s.id),
           desde: s.desde || null, hasta: s.hasta || null, dias: dias || [],
         }, { dia: efectivo, usuarioId });
         hechos.push({ que: 'coloca', plazaId: s.plazaId, conductorId: s.id, ...r });
+
+        // A la fuerza: se aparta al del cuadrante DESPUÉS de colocar, porque el
+        // relevo nombra a los dos y el que entra ya tiene que estar puesto.
+        if (s.forzar && plan.forzable) {
+          const puestos = await apartar(cli, {
+            plazaId: s.plazaId, conductorId: Number(s.id), dias: dias || [],
+            desde: s.desde || efectivo, hasta: s.hasta || null,
+            motivoCodigo: s.motivoCodigo, motivo: s.motivo, eventoId: s.eventoId || null,
+          }, { usuarioId });
+          puestos.forEach(x => hechos.push({ que: 'aparta', ...x }));
+        }
       }
     }
   });
@@ -1686,6 +2014,7 @@ async function asignarCTcuadrante({ cuadranteId, turno, conductorId, vehiculos }
   // Los bloques (coches) que cubre el CT. Si no se dice, todos los del cuadrante.
   const elegidos = Array.isArray(vehiculos) && vehiculos.length ? new Set(vehiculos.map(String)) : null;
   let n = 0;
+  const saltados = [];   // bloques que ese dia ya tenian conductor: se hacen a mano
   await db.transaccion(async cli => {
     const plazas = await cli.query(
       `SELECT p.id AS plaza_id, p.vehiculo_id
@@ -1694,6 +2023,23 @@ async function asignarCTcuadrante({ cuadranteId, turno, conductorId, vehiculos }
     for (const pl of plazas.rows) {
       const cubre = !elegidos || elegidos.has(String(pl.vehiculo_id));
       if (conductorId && cubre) {
+        // LA MISMA REGLA QUE AL COLOCAR DE UNO EN UNO. Un CT cubre los días que
+        // libra el fijo de CADA coche, así que en un cuadrante sano nunca se
+        // pisan; pero si dos bloques sugieren el mismo día, esto es una persona
+        // llevando dos coches a la vez y hay que verlo AQUÍ, no en la calle.
+        const chk = await comprobarPlan(
+          { plazaId: pl.plaza_id, conductorId: Number(conductorId), dias: [], desde: efectivo }, cli);
+        if (chk.bloqueado) {
+          const f = chk.filas.find(x => x.choca.length);
+          throw new Error(`${chk.conductor} ya lleva ${f.choca[0].matricula} (${f.choca[0].turno}) el ` +
+            `${f.dia.split('-').reverse().join('/')}: no puede llevar también ${chk.matricula} ese día. ` +
+            'Quita ese bloque de la lista o cámbiale los días.');
+        }
+        // El coche ya tiene quien lo lleve esos días. Eso SÍ se puede forzar,
+        // pero apartando a alguien con su motivo, y eso es una decisión de una
+        // persona sobre un coche concreto: no se hace en bloque. Se salta y se
+        // dice cuál, para que se haga a mano.
+        if (chk.forzable) { saltados.push(chk.matricula); continue; }
         // Sin días: guardarDias los saca de v_plaza_ct_sugerida (el descanso del coche).
         await colocar(cli, { plazaId: pl.plaza_id, conductorId: Number(conductorId), desde: efectivo, hasta: null, dias: [] },
           { dia: efectivo, usuarioId });
@@ -1704,7 +2050,7 @@ async function asignarCTcuadrante({ cuadranteId, turno, conductorId, vehiculos }
       n++;
     }
   });
-  return { dia: efectivo, coches: n };
+  return { dia: efectivo, coches: n, saltados };
 }
 
 /**
@@ -1780,6 +2126,7 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
 
 module.exports = {
   tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso, cubrirAusencia,
+  comprobarPlan, quitarRelevo, relevosEntre, MOTIVOS_RELEVO,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
   listarCuadrantes, salidasHoy, salidasPorCoche, GRUPOS_SALIDA: GRUPOS,
   contactos, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,

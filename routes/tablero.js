@@ -46,7 +46,11 @@ const responde = fn => async (req, res) => {
     if (!res.headersSent) res.json({ status: 'ok', ...(r && typeof r === 'object' ? r : {}) });
   } catch (e) {
     console.error(`❌ [TABLERO] ${req.method} ${req.path}: ${e.message}`);
-    res.status(400).json({ status: 'error', msg: e.message });
+    // Un "el coche ya lo lleva otro" NO es un error a secas: es una pregunta. Se
+    // devuelve con su código y la comprobación entera para que la pantalla
+    // ofrezca planificar a la fuerza sin tener que volver a consultar.
+    res.status(400).json({ status: 'error', msg: e.message,
+      ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.plan ? { plan: e.plan } : {}) });
   }
 };
 
@@ -80,6 +84,50 @@ router.post('/api/guardar', responde(async req => {
   // Se devuelve el tablero ya recalculado: el front lo sustituye entero y así no
   // se queda pintando algo que la base ya no dice.
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
+// ── MODO EVENTOS: abrir las plazas de refuerzo unos días ──────────────────
+// La F1, una marcha, un concierto: días en los que hay que sacar más coches.
+// Abre CT2 de día y de noche con fecha de caducidad, y se cierra solo cuando
+// termina el último turno planificado en ellas (los de noche, a las 05:00 del
+// día siguiente). Ver services/repo/eventos.
+const eventos = require('../services/repo/eventos');
+
+router.get('/api/eventos', responde(async req => eventos.estado({ dia: req.query.dia })));
+
+router.post('/api/eventos', responde(async req => {
+  const b = req.body || {};
+  const r = await eventos.crear(b, { usuarioId: await actor.idDe(req) });
+  return { ...r, tablero: await plan.tablero({ dia: b.desde }) };
+}));
+
+router.post('/api/eventos/:id', responde(async req => {
+  const b = req.body || {};
+  const r = await eventos.editar(req.params.id, b);
+  return { ...r, tablero: await plan.tablero({ dia: b.dia || b.desde }) };
+}));
+
+router.post('/api/eventos/:id/cancelar', responde(async req => {
+  const b = req.body || {};
+  const r = await eventos.cancelar(req.params.id, {
+    usuarioId: await actor.idDe(req), nota: b.nota,
+  });
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
+// ── ¿Se puede poner a esta persona aquí estos días? ───────────────────────
+// Contesta con los días que va a trabajar en esa matrícula y, de cada uno, si
+// choca con otro coche suyo (imposible) o si el coche ya tiene conductor (se
+// puede forzar apartándolo). La pantalla lo pregunta ANTES de guardar.
+router.post('/api/comprobar', responde(async req => {
+  const b = req.body || {};
+  return { plan: await plan.comprobarPlan(b) };
+}));
+
+// Deshacer un relevo: el del cuadrante vuelve a ser quien conduce ese día.
+router.post('/api/relevo/:id/quitar', responde(async req => {
+  const r = await plan.quitarRelevo(req.params.id);
+  return { ...r, tablero: await plan.tablero({ dia: (req.body || {}).dia }) };
 }));
 
 // ── Un coche se cambia por otro y sus conductores se van con él ───────────

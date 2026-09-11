@@ -442,6 +442,15 @@
             // Dos personas en el mismo coche, turno y día: el cuadrante tiene un solape.
             (f.conflicto ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-500" ' +
               'title="Dos personas en el mismo coche, turno y día: hay un solape en el cuadrante">Solape</span>' : '') +
+            // ENTRÓ A LA FUERZA: hoy este coche no lo lleva el del cuadrante.
+            // Sin esto, quien llama ve un nombre que no es el del papel y no
+            // sabe si el bueno es este o el otro.
+            ((f.relevos || []).length
+              ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-telecab-gold/20 text-telecab-gold" ' +
+                'title="' + esc('Conduce él, no el del cuadrante:\n' + f.relevos.map(r =>
+                  '· ' + r.matricula + ': en lugar de ' + r.sale + ' — «' + r.motivo + '»').join('\n')) + '">' +
+                'En lugar de ' + esc(String(f.relevos[0].sale).split(' ')[0]) + '</span>'
+              : '') +
           '</span>' +
           '<span class="flex flex-wrap items-center gap-1.5 font-mono text-[11px] leading-tight text-telecab-muted">' +
             enlaceTel(f.telefono) + accionesConductor(f) + '</span>' +

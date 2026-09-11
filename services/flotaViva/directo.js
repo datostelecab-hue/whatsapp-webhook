@@ -775,6 +775,11 @@ async function enDirecto({ dia } = {}) {
         actividad: act,
         incidencias: porInc.get(normMat(c.matricula)) || [],
         conflicto: !!cell.conflicto,
+        // PLANIFICADO A LA FUERZA: hoy este coche no lo lleva el del cuadrante.
+        // La cobertura ya pone aquí al que entra —por eso el nombre es el bueno—
+        // pero hay que DECIRLO, que es justo lo que contesta al teléfono la
+        // pregunta "¿y este quién es, si el cuadrante pone a otro?".
+        relevo: cell.relevo || null,
       });
       // Los DEMÁS de una celda en conflicto también son del plan: tienen su fila
       // (tablero() solo guarda su nombre; se busca su id en la plantilla) para
@@ -810,9 +815,14 @@ async function enDirecto({ dia } = {}) {
       const clave = p.conductorId ? ('id:' + p.conductorId) : ('n:' + normNombre(p.conductor));
       if (!m.has(clave)) m.set(clave, { clave, conductorId: p.conductorId, conductor: p.conductor,
         uuid: p.uuid, uuids: p.uuids || [], telefono: p.telefono, turno: p.turno, roles: new Set(), matriculas: [], cuadrantes: new Set(),
-        actividad: p.actividad, incidencias: [], conflicto: !!p.conflicto });
+        actividad: p.actividad, incidencias: [], conflicto: !!p.conflicto, relevos: [] });
       const f = m.get(clave);
       if (p.conflicto) f.conflicto = true;
+      // Puede entrar a la fuerza en más de un coche el mismo día (dos plazas):
+      // se guardan todos, que cada uno tiene su porqué.
+      if (p.relevo && !f.relevos.some(r => r.id === p.relevo.id)) {
+        f.relevos.push({ ...p.relevo, matricula: p.matricula });
+      }
       if (p.rol) f.roles.add(p.rol);
       if (p.uuid && !f.uuid) f.uuid = p.uuid;
       if (p.telefono && !f.telefono) f.telefono = p.telefono;
@@ -874,6 +884,9 @@ async function enDirecto({ dia } = {}) {
         avisosDelCoche: f.incidencias.length,
         cocheCambiado,
         conflicto: f.conflicto,
+        // Entró a la fuerza: a quién se apartó y por qué. Es lo que hay que
+        // tener delante al llamar, y lo que evita llamar al que no toca.
+        relevos: f.relevos,
       };
     });
   };

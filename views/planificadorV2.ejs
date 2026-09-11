@@ -25,8 +25,23 @@
         <i class="fa-solid fa-chevron-right text-xs"></i>
       </button>
       <button id="hoy" class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-sm transition">Hoy</button>
+      <%# MODO EVENTOS. Abre las dos plazas de refuerzo (CT2 dia y noche) unos
+          dias y se cierra SOLO: no hay nada que recordar apagar. %>
+      <button id="btn-evento" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border
+                     hover:border-telecab-gold/40 text-sm transition">
+        <i class="fa-solid fa-bolt"></i><span id="btn-evento-txt">Modo eventos</span>
+      </button>
     </div>
   </div>
+
+  <%# La franja del evento: qué es, hasta cuándo y —lo que de verdad se pregunta—
+      a qué hora vuelve el cuadrante a la normalidad. %>
+  <div id="franja-evento" class="hidden mb-4"></div>
+
+  <%# Lo planificado A LA FUERZA esta semana: a quién se apartó de qué coche y
+      por qué. Tiene que verse sin buscarlo — es lo que explica que el cuadrante
+      diga una cosa y la calle otra— y poder deshacerse de un clic. %>
+  <div id="franja-relevos" class="hidden mb-4"></div>
 
   <%# Se cuentan PERSONAS, no celdas. "Huecos día 174" no decía si faltaban tres
       personas o treinta; "fijo día 61" sí. Y el correturnos se cuenta UNA vez
@@ -281,12 +296,159 @@
     $('#f-dia').value = isoAes(j.dia);
     pintarZonas();
     pintarKpis();
+    pintarEvento();
+    pintarRelevos();
     pintar();
     pintarLaterales();
     pintarPrueba();
     pintarAvisos(j.avisos || []);
     cargarIncorporaciones();
     cargarAvisosTurnos();
+  }
+
+  // ══════════ MODO EVENTOS ══════════
+  //
+  // Un evento abre las dos plazas de refuerzo (CT2 día y noche) y se cierra
+  // SOLO. La hora de cierre no es la del papel: es la del final del ÚLTIMO turno
+  // planificado en refuerzo, y los turnos de noche mueren a las 05:00 del día
+  // siguiente. Esa frase es lo que va en la franja, porque es la pregunta que se
+  // hace Tráfico ("¿y cuándo vuelve esto a la normalidad?").
+
+  const horaLarga = ts => new Date(ts).toLocaleString('es-ES', {
+    weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+
+  function pintarEvento() {
+    const caja = $('#franja-evento');
+    const ev = (T.eventos || {}).vigente;
+    const btn = $('#btn-evento');
+    $('#btn-evento-txt').textContent = ev ? ev.nombre : 'Modo eventos';
+    btn.classList.toggle('bg-telecab-gold', !!ev);
+    btn.classList.toggle('text-telecab-dark', !!ev);
+    btn.classList.toggle('font-semibold', !!ev);
+    btn.classList.toggle('border-telecab-gold', !!ev);
+
+    if (!ev) { caja.classList.add('hidden'); caja.innerHTML = ''; return; }
+    caja.classList.remove('hidden');
+    const enRefuerzo = ev.genteRefuerzo || 0;
+    caja.innerHTML = `
+      <div class="rounded-2xl border border-telecab-gold/40 bg-telecab-gold/10 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span class="flex items-center gap-2 font-bold text-telecab-gold">
+          <i class="fa-solid fa-bolt"></i>${esc(ev.nombre)}</span>
+        <span class="text-sm">${isoAes(ev.desde)} → ${isoAes(ev.hasta)}</span>
+        <span class="text-sm text-telecab-muted">Refuerzo abierto: <b class="text-telecab-text">CT día 2</b>
+          y <b class="text-telecab-text">CT noche 2</b>${enRefuerzo ? ` · ${enRefuerzo} persona(s)` : ' · sin nadie todavía'}</span>
+        <span class="text-sm ${ev.alargado ? 'text-telecab-warn' : 'text-telecab-muted'}">
+          <i class="fa-solid fa-clock text-[11px]"></i>
+          vuelve a la normalidad el <b>${esc(horaLarga(ev.cierraAt))}</b>${
+            ev.alargado ? ' <span class="text-[11px]">(el último turno de refuerzo acaba después del evento)</span>' : ''}</span>
+        ${ev.nota ? `<span class="text-[11px] text-telecab-muted italic">${esc(ev.nota)}</span>` : ''}
+        <span class="ml-auto flex items-center gap-2">
+          <button data-ev-editar class="px-2.5 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-xs hover:border-telecab-gold/50">
+            <i class="fa-solid fa-pen"></i> Fechas</button>
+          <button data-ev-cancelar class="px-2.5 py-1.5 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs">
+            <i class="fa-solid fa-xmark"></i> Cancelar</button>
+        </span>
+      </div>
+      ${(ev.ultimos || []).length ? `
+        <p class="text-[11px] text-telecab-muted mt-1.5 pl-1">Último en salir:
+          ${esc(ev.ultimos[0].conductor)} · ${esc(ev.ultimos[0].matricula)} ·
+          ${esc(ev.ultimos[0].turno)} del ${isoAes(ev.ultimos[0].dia)}</p>` : ''}`;
+    caja.querySelector('[data-ev-editar]').addEventListener('click', () => editarEvento(ev));
+    caja.querySelector('[data-ev-cancelar]').addEventListener('click', () => cancelarEvento(ev));
+  }
+
+  /** Lo planificado a la fuerza esta semana, con quién lo hizo y por qué. */
+  function pintarRelevos() {
+    const caja = $('#franja-relevos');
+    const lista = T.relevos || [];
+    if (!lista.length) { caja.classList.add('hidden'); caja.innerHTML = ''; return; }
+    caja.classList.remove('hidden');
+    caja.innerHTML = `
+      <div class="rounded-2xl border border-telecab-warn/40 bg-telecab-warn/5 px-4 py-3">
+        <p class="text-sm font-semibold text-telecab-warn mb-2">
+          <i class="fa-solid fa-user-xmark"></i> ${lista.length} planificación(es) a la fuerza esta semana
+          <span class="font-normal text-telecab-muted">· en Control saldrá quien de verdad conduce</span></p>
+        <div class="space-y-1.5">
+          ${lista.map(r => `
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-rel="${esc(r.id)}">
+              <span class="font-mono text-xs text-telecab-muted w-20">${isoAes(r.dia)}</span>
+              <span class="font-semibold">${esc(r.matricula)}</span>
+              <span class="text-xs text-telecab-muted">${esc(r.turnoCodigo === 'noche' ? 'noche' : 'día')}</span>
+              <span><span class="line-through text-telecab-muted">${esc(r.sale)}</span>
+                <i class="fa-solid fa-arrow-right-long text-telecab-gold text-[10px] mx-1"></i>
+                <b>${esc(r.entra)}</b></span>
+              <span class="text-xs text-telecab-muted italic">«${esc(r.motivo)}»${r.quien ? ' — ' + esc(r.quien) : ''}</span>
+              <button data-deshacer class="ml-auto px-2 py-0.5 rounded-lg border border-telecab-border text-[11px] text-telecab-muted hover:text-telecab-text">
+                deshacer</button>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    caja.querySelectorAll('[data-rel]').forEach(el => {
+      const r = lista.find(x => x.id === el.dataset.rel);
+      el.querySelector('[data-deshacer]').addEventListener('click', async () => {
+        const ok = await Dialogo.confirmar({
+          titulo: `¿${r.sale} vuelve a conducir ${r.matricula} el ${isoAes(r.dia)}?`,
+          texto: 'Se deshace el apartado. El cuadrante vuelve a mandar ese día.', tono: 'aviso' });
+        if (!ok) return;
+        try { await pedirTablero(`/planificador-v2/api/relevo/${r.id}/quitar`, { dia: DIA }); }
+        catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+      });
+    });
+  }
+
+  async function abrirEvento() {
+    const ev = (T.eventos || {}).vigente;
+    if (ev) { await editarEvento(ev); return; }
+    const v = await Dialogo.formulario('Modo eventos', [
+      { id: 'nombre', etiqueta: 'Qué evento es', tipo: 'texto', obligatorio: true,
+        marcador: 'F1 Madrid, Marcha del Orgullo, concierto…' },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', obligatorio: true, valor: isoAes(DIA) },
+      { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', obligatorio: true },
+      { id: 'nota', etiqueta: 'Nota (opcional)', tipo: 'texto' },
+    ], {
+      textoBoton: 'Abrir el refuerzo', ancho: 'max-w-lg', columnas: 2,
+      nota: 'Se abren CT día 2 y CT noche 2 en todos los coches. Se cierran SOLAS cuando termine el último ' +
+        'turno planificado en ellas: si el último es de noche, a las 05:00 del día siguiente.',
+    });
+    if (!v) return;
+    try {
+      const j = await pedirTablero('/planificador-v2/api/eventos', {
+        nombre: v.nombre, desde: v.desde, hasta: v.hasta, nota: v.nota,
+      });
+      const nuevo = (j.tablero.eventos || {}).vigente;
+      await Dialogo.aviso({ titulo: 'Refuerzo abierto', tono: 'ok',
+        texto: nuevo
+          ? `${nuevo.nombre}: ya puedes colocar gente en CT día 2 y CT noche 2. ` +
+            `Vuelve a la normalidad el ${horaLarga(nuevo.cierraAt)}.`
+          : 'El evento queda programado; las columnas se abren al llegar la fecha.' });
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function editarEvento(ev) {
+    const v = await Dialogo.formulario(`Fechas de "${ev.nombre}"`, [
+      { id: 'nombre', etiqueta: 'Nombre', tipo: 'texto', valor: ev.nombre },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: isoAes(ev.desde) },
+      { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', valor: isoAes(ev.hasta) },
+      { id: 'nota', etiqueta: 'Nota', tipo: 'texto', valor: ev.nota },
+    ], { textoBoton: 'Guardar', ancho: 'max-w-lg', columnas: 2,
+         nota: 'Alargarlo o acortarlo no borra lo ya planificado en el refuerzo.' });
+    if (!v) return;
+    try { await pedirTablero(`/planificador-v2/api/eventos/${ev.id}`, { ...v, dia: DIA }); }
+    catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function cancelarEvento(ev) {
+    const v = await Dialogo.formulario(`Cancelar "${ev.nombre}"`, [
+      { id: 'nota', etiqueta: 'Por qué se cancela', tipo: 'texto-largo', obligatorio: true },
+    ], { textoBoton: 'Cancelar el evento', ancho: 'max-w-lg',
+         nota: 'Lo ya trabajado se queda. Lo planificado en refuerzo que aún no ha empezado se quita, y lo que ' +
+           'está en curso se cierra hoy: si no, quedarían plazas abiertas sin evento que las sostenga.' });
+    if (!v) return;
+    try {
+      const j = await pedirTablero(`/planificador-v2/api/eventos/${ev.id}/cancelar`, { nota: v.nota, dia: DIA });
+      await Dialogo.aviso({ titulo: 'Evento cancelado', tono: 'ok',
+        texto: `${j.borradas} plaza(s) de refuerzo sin empezar quitadas y ${j.cerradas} cerrada(s).` });
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
   // ── El semáforo de avisos: qué cuadrantes están avisados y cuáles cambiaron ──
@@ -423,12 +585,21 @@
   }
 
   // Las 4 columnas del Excel: Fijo día/noche, CT día/noche (slots 0,1,2,3).
-  const COLS = [
+  // LAS COLUMNAS DEL TABLERO. Las cuatro de siempre, y en MODO EVENTOS dos más:
+  // las plazas de refuerzo. No son nuevas —los slots 4 y 5 existen en la base
+  // desde el primer día para los 100 coches— simplemente no se enseñaban, porque
+  // abrirlas a mano significa que alguien tiene que acordarse de cerrarlas.
+  const COLS_BASE = [
     { slot: 0, tit: 'Fijo día',  turno: 'dia' },
     { slot: 1, tit: 'Fijo noche', turno: 'noche' },
     { slot: 2, tit: 'CT día',    turno: 'dia' },
     { slot: 3, tit: 'CT noche',  turno: 'noche' },
   ];
+  const COLS_REFUERZO = [
+    { slot: 4, tit: 'CT día 2',   turno: 'dia',   refuerzo: true },
+    { slot: 5, tit: 'CT noche 2', turno: 'noche', refuerzo: true },
+  ];
+  const cols = () => (T && T.refuerzoVisible ? COLS_BASE.concat(COLS_REFUERZO) : COLS_BASE);
 
   // El CT (día/noche) de un cuadrante: el ocupante de la plaza CT en sus coches.
   // Si es el mismo en todos, ese es el CT del cuadrante; si difieren, 'varios'.
@@ -461,7 +632,7 @@
           <tr>
             <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Matrícula</th>
             <th class="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Descanso</th>
-            ${COLS.map(c => `<th class="text-left font-semibold px-3 py-2.5">${c.tit}</th>`).join('')}
+            ${cols().map(c => `<th class="text-left font-semibold px-3 py-2.5">${c.tit}</th>`).join('')}
             <th class="w-10"></th>
           </tr>
         </thead>
@@ -612,7 +783,7 @@
     tr.appendChild(tdDesc);
 
     // Las 4 columnas de puestos.
-    COLS.forEach(col => {
+    cols().forEach(col => {
       const p = (coche.personas || [])[col.slot] || {};
       const td = document.createElement('td');
       td.className = 'px-3 py-2.5';
@@ -894,9 +1065,54 @@
     return j;
   }
 
+  /** Pregunta al servidor qué días haría y con qué choca. */
+  async function comprobarPlan(cuerpo) {
+    const r = await fetch('/planificador-v2/api/comprobar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    });
+    const j = await r.json();
+    if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo comprobar');
+    return j.plan;
+  }
+
+  /** El parte de la comprobación, día a día, para enseñarlo antes de guardar. */
+  function htmlPlan(plan) {
+    const fila = f => {
+      const choca = f.choca.length;
+      const ocup = f.ocupado.length;
+      const tono = choca ? 'text-telecab-red' : ocup ? 'text-telecab-warn' : 'text-telecab-green';
+      const icono = choca ? 'fa-ban' : ocup ? 'fa-user-xmark' : 'fa-check';
+      const dice = choca
+        ? `ya lleva ${esc(f.choca.map(c => c.matricula + ' (' + c.turno.toLowerCase() + ')').join(', '))}`
+        : ocup
+          ? `lo lleva ${esc(f.ocupado.map(o => o.conductor).join(', '))}`
+          : 'el coche está libre';
+      return `<tr class="border-t border-telecab-border/60">
+        <td class="py-1.5 pr-3 font-semibold">${f.letra} <span class="text-telecab-muted font-normal">${isoAes(f.dia)}</span></td>
+        <td class="py-1.5 pr-3 text-[11px] ${f.esLibranza ? 'text-telecab-green' : 'text-telecab-muted'}">
+          ${f.esLibranza ? 'libra ese día' : 'no es su libranza'}</td>
+        <td class="py-1.5 ${tono}"><i class="fa-solid ${icono} text-[10px] mr-1"></i>${dice}</td>
+      </tr>`;
+    };
+    return `
+      <p class="text-sm text-telecab-muted mb-2">
+        <b class="text-telecab-text">${esc(plan.conductor)}</b> haría
+        <b class="text-telecab-gold">${esc(plan.letras || '—')}</b> en <b>${esc(plan.matricula)}</b>
+        (${esc(plan.etiqueta)}).</p>
+      <table class="w-full text-sm"><tbody>${plan.filas.map(fila).join('')}</tbody></table>`;
+  }
+
   // Colocar / cambiar / quitar a alguien en un puesto.
+  //
+  // Colocar ya no es "elige a alguien y listo". Antes de guardar hay que saber
+  // QUÉ DÍAS va a trabajar en esa matrícula y comprobar dos cosas que el tablero
+  // dejaba hacer en silencio: que nadie lleve dos coches el mismo día (imposible,
+  // y además tienen que descansar) y que el coche esté libre ese día. Lo segundo
+  // se puede forzar; lo primero no.
   async function asignar(coche, p, col) {
     if (!p.plazaId) { await Dialogo.aviso({ titulo: 'Recarga', texto: 'Esta plaza no existe todavía en la base. Recarga el cuadrante.', tono: 'aviso' }); return; }
+    const ev = (T.eventos || {}).vigente;
     // Si la plaza tiene DUEÑO FUTURO, se recuerda en el título: estás planificando
     // "mientras llega él".
     const tit = `${col.tit} · ${coche.matricula}` +
@@ -904,22 +1120,104 @@
     const id = await pickConductor({ titulo: tit, turno: col.turno, actual: p.id ? String(p.id) : null });
     if (id === undefined) return;   // cancelado
 
-    // Colocando a alguien (no quitando) sobre una plaza con dueño futuro: se ofrece un
-    // "hasta" OPCIONAL. Vacío = el auto-corte lo cierra la víspera de que llegue el dueño.
-    let hasta = null;
-    if (id && p.futuro) {
-      const v = await Dialogo.formulario(`Mientras llega ${p.futuro.nombre}`, [
-        { id: 'hasta', etiqueta: 'Hasta (último día, opcional)', tipo: 'fecha',
-          ayuda: `Vacío = hasta la víspera de que llegue ${p.futuro.nombre} (${isoAes(p.futuro.desde)}).` },
-      ], { textoBoton: 'Colocar' });
-      if (v === undefined || v === null) return;   // cancelado
-      hasta = (v.hasta || '').trim() || null;
+    // Quitar a alguien no necesita comprobación ninguna.
+    if (!id) {
+      try { await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [{ plazaId: p.plazaId, id: '' }] }]); }
+      catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+      return;
     }
+
+    // Los días de partida: los suyos si ya los tenía, si no los sugeridos (los
+    // que libra el fijo del coche). Un FIJO no elige: hace todos menos el
+    // descanso del coche, y eso lo calcula el servidor.
+    const esCT = p.rol === 'CT' || col.slot >= 2;
+    const diasPrevios = (p.diasManual || []).some(Boolean)
+      ? (p.diasManual || []).map((v, i) => v ? i + 1 : null).filter(Boolean)
+      : (p.diasSugeridos || []).map(d => d + 1);
+
+    // El refuerzo de un evento CADUCA con el evento: las fechas vienen puestas y
+    // no hay que acordarse de cerrarlas. Eso es lo que lo hace "momentáneo".
+    const campos = [];
+    if (esCT) {
+      campos.push({ id: 'dias', etiqueta: 'Qué días trabaja en esta matrícula', tipo: 'semana',
+        valor: diasPrevios });
+    }
+    campos.push({ id: 'desde', etiqueta: 'Desde', tipo: 'fecha',
+      valor: col.refuerzo && ev ? isoAes(ev.desde) : '',
+      ayuda: col.refuerzo && ev ? `Refuerzo de "${ev.nombre}".` : 'Vacío = desde el día que estás mirando.' });
+    campos.push({ id: 'hasta', etiqueta: 'Hasta (último día)', tipo: 'fecha',
+      valor: col.refuerzo && ev ? isoAes(ev.hasta) : (p.hasta ? isoAes(p.hasta) : ''),
+      ayuda: col.refuerzo && ev
+        ? 'El refuerzo se cierra con el evento: no lo dejes vacío.'
+        : (p.futuro ? `Vacío = hasta la víspera de que llegue ${p.futuro.nombre} (${isoAes(p.futuro.desde)}).`
+                    : 'Vacío = indefinido.') });
+
+    const v = await Dialogo.formulario(tit, campos, {
+      textoBoton: 'Comprobar y colocar', ancho: 'max-w-lg',
+      nota: esCT
+        ? 'Se comprobará que esos días los tiene libres y que el coche no lo lleva ya otro.'
+        : 'Un fijo hace todos los días menos el descanso del coche. Se comprobará igual.',
+    });
+    if (!v) return;
+
+    const base = {
+      plazaId: p.plazaId, conductorId: id,
+      dias: esCT ? (v.dias || []) : [],
+      desde: (v.desde || '').trim() || DIA,
+      hasta: (v.hasta || '').trim() || null,
+    };
+    if (esCT && !base.dias.length) {
+      await Dialogo.aviso({ titulo: 'Faltan los días', tono: 'aviso',
+        texto: 'Un correturnos sin días no cubre nada: marca al menos uno.' });
+      return;
+    }
+
+    let plan;
+    try { plan = await comprobarPlan(base); }
+    catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido comprobar', texto: e.message, tono: 'error' }); return; }
+
+    // IMPOSIBLE: ya lleva otro coche esos días. No hay "a la fuerza" que valga.
+    if (plan.bloqueado) {
+      await Dialogo.aviso({
+        titulo: 'No puede llevar dos coches el mismo día', tono: 'error', ancho: 'max-w-lg',
+        html: htmlPlan(plan) +
+          '<p class="text-sm text-telecab-red mt-3">Para ponerlo aquí, primero hay que sacarlo del otro coche ' +
+          'esos días (o cambiarle los días).</p>',
+      });
+      return;
+    }
+
+    // FORZABLE: el coche ya tiene conductor ese día. Se puede, apartándolo.
+    let forzar = null;
+    if (plan.forzable) {
+      const f = await Dialogo.formulario('El coche ya tiene conductor esos días', [
+        { id: 'motivoCodigo', etiqueta: 'Por qué se aparta al del cuadrante', tipo: 'opciones',
+          obligatorio: true, opciones: (plan.motivos || []).map(m => ({ valor: m.codigo, texto: m.etiqueta })) },
+        { id: 'motivo', etiqueta: 'Cuéntalo con tus palabras', tipo: 'texto-largo', obligatorio: true },
+      ], {
+        textoBoton: 'Planificar a la fuerza', ancho: 'max-w-lg',
+        nota: 'No se le quita la plaza: se le aparta SOLO esos días. El día que llegue, Control dirá que ' +
+          'conduce ' + plan.conductor + ' y por qué.',
+      });
+      if (!f) return;
+      forzar = { forzar: true, motivoCodigo: (f.motivoCodigo || {}).valor || 'otro', motivo: f.motivo };
+    }
+
     try {
-      const slot = { plazaId: p.plazaId, id: id || '' };
-      if (hasta) slot.hasta = hasta;
-      await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [slot] }]);
-    } catch (e) { alert(e.message); }
+      const slot = { plazaId: p.plazaId, id, dias: base.dias, desde: base.desde,
+        ...(base.hasta ? { hasta: base.hasta } : {}), ...(forzar || {}),
+        ...(col.refuerzo && ev ? { eventoId: ev.id } : {}) };
+      const j = await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [slot] }]);
+      const apartados = (j.hechos || []).filter(h => h.que === 'aparta');
+      if (apartados.length) {
+        await Dialogo.aviso({
+          titulo: 'Colocado a la fuerza', tono: 'aviso',
+          texto: `${plan.conductor} lleva ${coche.matricula} esos días. Se ha apartado a ` +
+            [...new Set(apartados.map(a => a.sale))].join(', ') +
+            ` (${apartados.length} día(s)), con el motivo apuntado.`,
+        });
+      }
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
   /**
@@ -1325,8 +1623,18 @@
       if (!vehiculos.length) { alert('Elige al menos un bloque para el CT'); return; }
     }
     try {
-      await pedirTablero('/planificador-v2/api/cuadrante/ct', { cuadranteId, turno, conductorId: id || '', vehiculos, dia: DIA });
-    } catch (e) { alert(e.message); }
+      const j = await pedirTablero('/planificador-v2/api/cuadrante/ct',
+        { cuadranteId, turno, conductorId: id || '', vehiculos, dia: DIA });
+      // Los bloques que ese día ya tenían conductor NO se tocan en bloque:
+      // meterse ahí es apartar a alguien, y eso lleva motivo y nombre.
+      if ((j.saltados || []).length) {
+        await Dialogo.aviso({
+          titulo: 'Hay bloques que ya tenían conductor', tono: 'aviso',
+          texto: `No se ha tocado ${j.saltados.join(', ')}: esos días ya los cubre otro. ` +
+            'Si aun así tiene que entrar, hazlo coche a coche desde su columna y di por qué se aparta al otro.',
+        });
+      }
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
   // Elegir qué bloques (coches del cuadrante) cubre un CT. Por defecto, todos.
@@ -1528,6 +1836,7 @@
   $('#k-flojos-caja').addEventListener('click', verCtFlojos);
   $('#btn-avisos').addEventListener('click', () => $('#avisos').classList.toggle('hidden'));
   $('#btn-nuevo-cua').addEventListener('click', nuevoCuadrante);
+  $('#btn-evento').addEventListener('click', abrirEvento);
 
   // Arranque.
   irA(hoyISO());
