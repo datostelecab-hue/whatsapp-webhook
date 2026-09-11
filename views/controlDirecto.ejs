@@ -30,7 +30,7 @@
   <!-- LO PRIMERO QUE SE VE. Tráfico abre esta pantalla para saber a quién llama, así
        que el número de los que faltan va grande y de rojo, y se puede pinchar para
        quedarse solo con ellos. Lo demás es contexto. -->
-  <div id="d-resumen" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 mb-3"></div>
+  <div id="d-resumen" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-3"></div>
 
   <div class="mb-3 flex flex-wrap items-center gap-2">
     <i class="fa-solid fa-filter text-telecab-muted text-xs"></i>
@@ -54,6 +54,7 @@
       <span class="text-right" title="Horas efectivas: viaje + espera">Efectivas</span>
       <span class="dopc text-right" title="Km rodados trabajando">Km</span>
       <span class="dopc text-right" title="Km rodados fuera de BOLT (descanso o desconectado)">Km fuera</span>
+      <span class="dopc text-right" title="Viajes aceptados sobre los que le ha ofrecido BOLT en su jornada (05:00 → 05:00)">Aceptados</span>
       <span class="text-right">Avisos</span>
       <span></span>
     </div>
@@ -79,6 +80,7 @@
       4.5rem                 /* horas efectivas */
       5rem                   /* km de trabajo */
       5rem                   /* km fuera */
+      4.5rem                 /* % de viajes aceptados en la jornada */
       minmax(7rem, 9rem)     /* avisos: chips con texto, no un número */
       1.5rem;                /* el desplegable */
     align-items: center;
@@ -299,6 +301,28 @@
     if (!alertaDe(f).length) return 0;
     return atendida(f) ? 1 : 2;
   }
+  // ── % DE VIAJES ACEPTADOS, siempre por JORNADA (05:00 → 05:00) ──────────────
+  // Hasta ahora este número solo existía escondido en el tooltip del aviso de
+  // rechazos, así que solo se veía cuando ya iba mal. Es al revés: es la cifra
+  // con la que se mira a alguien ANTES de que vaya mal.
+  //
+  // El denominador son las ofertas que dependían de ÉL: lo que cancela el
+  // cliente no cuenta (no es suyo), y lo que acepta y luego suelta sí resta.
+  // Un guion no es un cero: a quien no le han ofrecido nada todavía no se le
+  // puede medir la aceptación.
+  const ACEPT_ROJO = 50, ACEPT_AMBAR = 75;
+  function aceptacionHTML(r) {
+    if (!r || !r.ofertas) return '<span class="text-xs text-telecab-border">—</span>';
+    const t = r.tasa;
+    const color = t < ACEPT_ROJO ? 'text-red-500' : t < ACEPT_AMBAR ? 'text-amber-500' : 'text-emerald-500';
+    const tip = r.aceptados + ' de ' + r.ofertas + ' ofertas de su jornada'
+      + (r.rechazados ? ' · ' + r.rechazados + ' rechazadas' : '')
+      + (r.sinResponder ? ' · ' + r.sinResponder + ' sin contestar' : '')
+      + (r.cancelados ? ' · ' + r.cancelados + ' soltadas tras aceptar' : '');
+    return '<span class="text-xs font-semibold tabular-nums ' + color + '" title="' + esc(tip) + '">'
+      + t + ' %</span>';
+  }
+
   function avisosHTML(f) {
     const av = f.avisos || [];
     const nInc = (f.incidencias || []).length;
@@ -388,6 +412,7 @@
         '<span class="dopc text-right text-xs tabular-nums" ' +
           'title="Km rodados FUERA de BOLT (en descanso o desconectado). No cuentan como trabajo.">' +
           cifra(a.kmFuera, ' km', 'text-amber-500') + '</span>' +
+        '<span class="dopc text-right">' + aceptacionHTML(f.rechazos) + '</span>' +
         '<span class="text-right">' + avisosHTML(f) + '</span>' +
         '<span class="text-right"><i class="fa-solid fa-chevron-down dchev text-telecab-muted text-xs transition-transform"></i></span>' +
       '</div>' +
@@ -466,6 +491,27 @@
           (nlTodo ? '<span title="TodoTurno"><i class="fa-solid fa-clock-rotate-left"></i> ' + nlTodo + '</span>' : '') +
         '</div></div>');
     }
+    // LA ACEPTACIÓN DE LA FLOTA en la jornada. Va al final y NO cambia con la
+    // pestaña: es de toda la jornada, no del turno que se esté mirando, y
+    // mezclarla con las otras cuatro (que sí son del turno) haría creer que el
+    // 62 % es "del turno de día".
+    const ac = (DATOS && DATOS.resumen && DATOS.resumen.aceptacion) || null;
+    if (turnoActivo !== 'nn' && ac && ac.ofertas) {
+      const col = ac.tasa < ACEPT_ROJO ? 'text-red-500' : ac.tasa < ACEPT_AMBAR ? 'text-amber-500' : 'text-emerald-500';
+      cajas.push('<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 px-3 py-2" ' +
+        'title="Viajes aceptados sobre lo que BOLT ha ofrecido a la flota en la jornada (05:00 → 05:00). ' +
+        'Lo que cancela el cliente no cuenta; lo que se acepta y luego se suelta, sí resta.">' +
+        '<div class="flex items-baseline gap-2">' +
+          '<div class="text-2xl font-bold tabular-nums leading-none ' + col + '">' + ac.tasa + ' %</div>' +
+          '<div class="text-[11px] text-telecab-muted">Viajes aceptados</div>' +
+        '</div>' +
+        '<div class="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] tabular-nums text-telecab-muted">' +
+          '<span title="Viajes hechos"><i class="fa-solid fa-check text-emerald-500/70"></i> ' + ac.aceptados + '</span>' +
+          '<span title="Rechazados por el conductor"><i class="fa-solid fa-ban text-red-500/70"></i> ' + ac.rechazados + '</span>' +
+          '<span title="Sin contestar"><i class="fa-solid fa-phone-slash text-amber-500/70"></i> ' + ac.sinResponder + '</span>' +
+          (ac.cancelados ? '<span title="Soltados tras aceptar"><i class="fa-solid fa-rotate-left text-red-500/70"></i> ' + ac.cancelados + '</span>' : '') +
+        '</div></div>');
+    }
     $('#d-resumen').innerHTML = cajas.join('');
     $('#d-cabecera').classList.toggle('hidden', !arr.length);
 
@@ -507,6 +553,23 @@
   }
 
   function detalleConductor(f) {
+    // La aceptación, con todo el desglose. En la fila va el porcentaje a secas
+    // (y en el móvil ni eso, que la columna se esconde); aquí se ve de qué está
+    // hecho, que es lo que hace falta para llamarle sabiendo lo que le pasa.
+    const rr = f.rechazos;
+    const acept = (rr && rr.ofertas)
+      ? '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 p-2 mb-3">' +
+          '<div class="text-xs text-telecab-muted mb-1">Viajes de su jornada (05:00 → 05:00)</div>' +
+          '<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">' +
+            '<span class="text-base font-bold tabular-nums ' +
+              (rr.tasa < ACEPT_ROJO ? 'text-red-500' : rr.tasa < ACEPT_AMBAR ? 'text-amber-500' : 'text-emerald-500') +
+              '">' + rr.tasa + ' % aceptados</span>' +
+            '<span class="text-telecab-muted"><b class="text-emerald-500">' + rr.aceptados + '</b> hechos de ' + rr.ofertas + ' ofertas</span>' +
+            (rr.rechazados ? '<span class="text-telecab-muted"><b class="text-red-500">' + rr.rechazados + '</b> rechazados</span>' : '') +
+            (rr.sinResponder ? '<span class="text-telecab-muted"><b class="text-amber-500">' + rr.sinResponder + '</b> sin contestar</span>' : '') +
+            (rr.cancelados ? '<span class="text-telecab-muted"><b class="text-red-500">' + rr.cancelados + '</b> soltados tras aceptar</span>' : '') +
+          '</div></div>'
+      : '';
     // Lo de la JORNADA primero (no llega a las horas, está rechazando viajes):
     // es lo que se le pregunta por teléfono. Debajo, lo del coche.
     const jor = (f.avisos || []).length
@@ -552,7 +615,7 @@
       : '<p class="text-sm text-telecab-muted">Sin avisos del coche.</p>';
     return '<div class="ddet hidden px-4 pb-3">' +
       '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
-        jor + traza + acciones +
+        acept + jor + traza + acciones +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos del coche</div>' + inc + '</div>' +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos · últimas 24 h · ' +
           esc(f.conductor) + '</div><div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +

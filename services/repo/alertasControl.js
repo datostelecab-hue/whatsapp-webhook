@@ -41,13 +41,25 @@ const MODELO = {
   // no se llegaba a avisar nunca.
   graciaMin: 10,
   tipos: {
+    // NO RESPONDER NO ES RECHAZAR. Puede ser cobertura, el móvil colgado o el
+    // soporte del salpicadero. Por eso aguanta hasta cinco y por eso NO baja la
+    // calificación del conductor (el modelo ABCD no cuenta rechazos, §15): lo
+    // que dispara es una comprobación —"¿qué le pasa, necesita algo?"—, no un
+    // expediente.
     sin_respuesta: {
       etiqueta: 'Viajes perdidos por NO RESPONDER', corto: 'no responde',
       umbral: 5, unidad: 'viajes', activo: true,
     },
+    // AL PRIMERO. Aquí no se rechaza ningún viaje, de ningún tipo: rechazar uno
+    // ya es motivo de llamada. Si resulta que iba lejísimos, se justifica por
+    // teléfono — pero se pregunta. Por eso el umbral es 1 y no un "a partir de".
+    //
+    // Y va SEPARADO de `sin_respuesta` a propósito: no responder puede ser
+    // cobertura o un móvil que se cuelga, y eso se atiende ayudando al
+    // conductor, no sancionándole.
     rechazo_directo: {
       etiqueta: 'Viajes RECHAZADOS por el conductor', corto: 'rechaza',
-      umbral: 5, unidad: 'viajes', activo: true,
+      umbral: 1, unidad: 'viajes', activo: true,
     },
     km_parado: {
       etiqueta: 'KM rodando en descanso o desconectado', corto: 'rueda parado',

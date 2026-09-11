@@ -46,6 +46,15 @@ const MODELO = {
   minDiasTrabajados: 5,        // por debajo → N/E, nunca D
   minHorasDiaTrabajado: 1,     // qué cuenta como "día trabajado" (§9.1)
   pesos: { horas: 0.50, utilizacion: 0.30, velocidad: 0.20 },
+  // LOS RECHAZOS NO PUNTÚAN, y el hueco de `pts_rechazos` en la tabla es para un
+  // modelo futuro, no un olvido (§15). Decisión de Tráfico del 11/09/2026 sobre
+  // los DOS tipos, que no son lo mismo:
+  //   · NO RESPONDER no puede bajar la calificación: detrás hay cobertura mala,
+  //     móviles colgados y soportes flojos, y castigar eso sería castigar al que
+  //     peor equipo tiene. Levanta un aviso para ir a AYUDARLE (/alertas).
+  //   · RECHAZAR es otra cosa —aquí no se rechaza ningún viaje— pero también se
+  //     atiende por teléfono, porque un viaje larguísimo sí puede justificarse.
+  // Si algún día entran al modelo, entran con su propia versión y recalibrando.
   // Cada tabla, de mayor a menor. Se lee "el primero cuyo `desde` se alcanza".
   horas: [
     { desde: 9, pts: 100 }, { desde: 8, pts: 90 }, { desde: 7, pts: 70 },

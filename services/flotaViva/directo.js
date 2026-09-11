@@ -494,6 +494,15 @@ async function enDirecto({ dia } = {}) {
     sinPlan: sinPlan.length,
     // Personas distintas que se conectaron hoy (plan + fuera del plan).
     personasSalieron,
+    // ACEPTACIÓN DE LA JORNADA. El número de la casa: de todo lo que BOLT ha
+    // ofrecido a la flota entre las 05:00 y ahora, cuánto se ha cogido.
+    //
+    // Se suma sobre las CUENTAS de BOLT y no sobre las filas del cockpit, que
+    // son coche-turno: un correturnos que pasa por dos coches saldría dos veces
+    // y el porcentaje mentiría. Lo que cancela el cliente no entra ni arriba ni
+    // abajo —no es del conductor—; lo que acepta y luego suelta sí resta, porque
+    // el cliente ya estaba esperando.
+    aceptacion: fundirRechazos([...rechazos.values()]),
   };
 
   // ── POR TURNO, POR CONDUCTOR (pestañas Día / Noche / TodoTurno / NN) ─────────
