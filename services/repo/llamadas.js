@@ -360,6 +360,11 @@ async function listar({ desde, hasta } = {}) {
  *                 caso y dijo que no. Por eso las rechazadas se devuelven en
  *                 lista aparte, con su motivo, quién y cuándo.
  *
+ * Una rechazada deja de pedir llamada cuando el caso se cierra: o se REHIZO
+ * (hay otra J para ese conductor y ese día creada después del rechazo) o
+ * alguien la DIO POR CERRADA en /justificantes. Sin eso la alerta no se apagaba
+ * nunca y el conductor arrastraba el aviso para siempre.
+ *
  * Antes esto devolvía `anulado_at IS NULL` sin más, así que una J pendiente se
  * contaba igual que una aprobada y una rechazada desaparecía sin dejar rastro:
  * el conductor se quedaba sin sus horas y nadie se enteraba.
@@ -368,7 +373,13 @@ async function justificadosHoy(dia) {
   const jornada = diaValido(dia);
   const r = await db.consulta(
     `SELECT j.conductor_id, j.id, j.horas_seg_momento, j.observacion, j.tipo,
-            j.aprobado_at, j.anulado_at, j.anulado_motivo, j.creado_at,
+            j.aprobado_at, j.anulado_at, j.anulado_motivo, j.creado_at, j.cerrada_at,
+            EXISTS (SELECT 1 FROM justificante j2
+                     WHERE j2.conductor_id = j.conductor_id
+                       AND j2.dia_operativo = j.dia_operativo
+                       AND j2.id <> j.id
+                       AND j.anulado_at IS NOT NULL
+                       AND j2.creado_at > j.anulado_at) AS rehecha,
             COALESCE(u.nombre, '')  AS quien,
             COALESCE(ua.nombre, '') AS aprobada_por,
             COALESCE(un.nombre, '') AS rechazada_por
@@ -389,8 +400,12 @@ async function justificadosHoy(dia) {
     };
     const c = m[k] || (m[k] = { horas: null, estado: null, rechazadas: [] });
     if (x.anulado_at) {
-      c.rechazadas.push({ ...base, motivo: x.anulado_motivo || '',
-        porQuien: x.rechazada_por || '', at: x.anulado_at });
+      // Solo las que siguen ABIERTAS piden llamada. Las cerradas y las que ya
+      // se rehicieron se quedan en el histórico, no en la carta de En directo.
+      if (!x.cerrada_at && !x.rehecha) {
+        c.rechazadas.push({ ...base, motivo: x.anulado_motivo || '',
+          porQuien: x.rechazada_por || '', at: x.anulado_at });
+      }
       return;
     }
     // La viva (solo puede haber una por conductor y día: lo impide uq_just_vivo).

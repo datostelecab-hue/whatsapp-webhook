@@ -37,6 +37,7 @@ router.get('/api/cola', responde(async req => ({
     desde: req.query.desde, hasta: req.query.hasta,
   }),
   pendientes: await repo.pendientesPorTipo(),
+  cuentas: await repo.cuentas({ desde: req.query.desde, hasta: req.query.hasta }),
 })));
 
 router.post('/api/:id/aprobar', responde(async req =>
@@ -47,5 +48,22 @@ router.post('/api/:id/rechazar', responde(async req =>
     usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
     motivo: (req.body || {}).motivo,
   })));
+
+// Los dos finales de una J RECHAZADA. Sin ellos el caso se quedaba abierto para
+// siempre: la alerta "Justificación rechazada" pedía llamar y no había forma de
+// decir que ya se había llamado.
+router.post('/api/:id/rehacer', responde(async req =>
+  repo.rehacer(req.params.id, {
+    ...(req.body || {}),
+    usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
+  })));
+
+router.post('/api/:id/cerrar', responde(async req =>
+  repo.cerrar(req.params.id, {
+    usuarioId: (req.usuario && req.usuario.id) || await actor.idDe(req),
+    nota: (req.body || {}).nota,
+  })));
+
+router.post('/api/:id/reabrir', responde(async req => repo.reabrir(req.params.id)));
 
 module.exports = router;

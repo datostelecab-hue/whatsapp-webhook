@@ -10,6 +10,10 @@
     { id: 'directo',   href: '/control',            texto: 'En directo',   icono: 'fa-satellite-dish' },
     { id: 'campanas',  href: '/control/campanas',   texto: 'Campañas',     icono: 'fa-phone-volume' },
     { id: 'historico', href: '/control/historico',  texto: 'Histórico',    icono: 'fa-clock-rotate-left' },
+    // Vive en /justificantes (tiene su propio permiso, lo reparte el jefe), pero
+    // se trabaja desde aqui: quien rechaza una J es quien esta mirando el
+    // directo, y las rechazadas hay que volver a llamarlas.
+    { id: 'justificantes', href: '/justificantes',  texto: 'Justificantes', icono: 'fa-file-circle-check' },
     { id: 'km',        href: '/control/km',          texto: 'KM y traza',   icono: 'fa-route' },
     { id: 'reportes',  href: '/control/reportes',    texto: 'Reportes',     icono: 'fa-chart-pie' },
   ];
