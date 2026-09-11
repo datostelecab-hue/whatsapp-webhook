@@ -854,9 +854,18 @@ async function comprobarPlan({ plazaId, conductorId, dias, desde, hasta } = {}, 
     const suyos = delDia.filter(r => String(r.conductor_id) === String(conductorId)
       && String(r.plaza_id) !== String(plazaId));
     // ¿Y quién lleva ESTE coche y turno ese día, aparte de él?
+    //
+    // Ojo con quién NO cuenta: el que tiene ESTA MISMA PLAZA. Ponerse en una
+    // plaza ocupada es la sustitución de toda la vida —el que estaba la suelta
+    // y punto— y pedir un motivo por eso convertía en "a la fuerza" el
+    // movimiento más normal del cuadrante. Lo que hay que preguntar es por el
+    // que lleva el coche desde OTRA plaza (el fijo cuando entras de refuerzo,
+    // el CT1 cuando entras de CT2): ese sí sigue teniendo su plaza y hay que
+    // apartarlo de ese día diciendo por qué.
     const enElCoche = delDia.filter(r => String(r.vehiculo_id) === String(p.vehiculo_id)
       && String(r.turno_id) === String(p.turno_id)
-      && String(r.conductor_id) !== String(conductorId));
+      && String(r.conductor_id) !== String(conductorId)
+      && String(r.plaza_id) !== String(plazaId));
 
     filas.push({
       dia: d, diaSemana: dow, letra: LETRAS[dow - 1],
@@ -937,6 +946,16 @@ async function apartar(cli, { plazaId, conductorId, dias, desde, hasta, motivoCo
     }
   }
   return puestos;
+}
+
+/** El evento al que pertenece un apaño (sus fechas), o null si no vale. */
+async function eventoParaApano(cli, eventoId) {
+  const r = await cli.query(
+    `SELECT id, to_char(desde, 'YYYY-MM-DD') AS desde, to_char(hasta, 'YYYY-MM-DD') AS hasta
+       FROM evento_operativo
+      WHERE id = $1 AND cancelado_at IS NULL AND restaurado_at IS NULL`, [Number(eventoId)]);
+  if (!r.rows.length) throw new Error('Ese evento ya no está abierto: el cambio sería permanente, quita la marca de "solo durante el evento"');
+  return r.rows[0];
 }
 
 /** Deshacer un relevo: el del cuadrante vuelve a ser el que conduce ese día. */
@@ -1021,10 +1040,28 @@ async function liberar(cli, plazaId, dia, usuarioId) {
  * mismo coche y turno. Es lo que significa un correturnos: cubrir justo los días
  * que el fijo no está.
  */
-async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia, usuarioId }) {
+async function colocar(cli, { plazaId, conductorId, desde, hasta, dias, evento }, { dia, usuarioId }) {
   const entra = desde || dia;
   const rol = (await cli.query('SELECT rol, turno_id FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
   if (!rol) throw new Error('Esa plaza ya no existe');
+
+  // ── SI ES UN APAÑO DE EVENTO, LA VUELTA SE PREPARA AHORA ──────────────────
+  // Colocar a alguien en una plaza ocupada cierra la asignación del que estaba.
+  // Sin más, al acabar el evento esa plaza se quedaría VACÍA y el cuadrante no
+  // volvería solo a lo de antes. Así que aquí, en el mismo movimiento:
+  //
+  //   1. el apaño se cierra el último día del evento (aunque no se diga), y
+  //   2. al que sale se le REPONE ya, con fecha de entrada el día siguiente y
+  //      los mismos días y el mismo "hasta" que tenía.
+  //
+  // Hacerlo ahora y no al cerrar el evento tiene una consecuencia que se nota:
+  // la base dice la verdad sobre el futuro desde el primer minuto, así que el
+  // WhatsApp de "tus turnos de la semana que viene" ya sale bien sin que nadie
+  // haya cerrado nada.
+  const repuestos = [];
+  if (evento && evento.hasta) {
+    if (!hasta || hasta > evento.hasta) hasta = evento.hasta;
+  }
 
   // Auto-corte: si no hay "hasta" (o se pasa) y ya hay un ocupante FUTURO en la
   // plaza, se cierra la vispera de su llegada. Asi se puede colocar a alguien
@@ -1049,15 +1086,46 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia,
     return { id: actual.id, ajustada: true };
   }
 
+  // A QUIÉN HAY QUE REPONER: el que está ahora, si esto es un apaño de evento.
+  // Se lee ANTES de soltarlo, que después ya no está.
+  let desalojado = null;
+  if (evento && evento.hasta && actual) {
+    const d = (await cli.query(
+      `SELECT a.conductor_id, a.desde, a.hasta, a.evento_id,
+              (SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana)
+                 FROM asignacion_dia ad WHERE ad.asignacion_id = a.id) AS dias
+         FROM asignacion a WHERE a.id = $1`, [actual.id])).rows[0];
+    // Si al que echamos ya era OTRO APAÑO DEL MISMO EVENTO, no se repone: el que
+    // hay que devolver es el original, y su vuelta ya está puesta desde la
+    // primera vez. Reponer al segundo dejaría dos personas en la misma plaza.
+    if (d && String(d.evento_id || '') !== String(evento.id)) {
+      desalojado = { conductorId: d.conductor_id, hasta: fechaDe(d.hasta), dias: d.dias || [] };
+    }
+  }
+
   if (actual) await liberar(cli, plazaId, entra, usuarioId);
 
   const r = await cli.query(
-    `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [plazaId, conductorId, entra, hastaFinal, usuarioId || null]);
+    `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id, evento_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [plazaId, conductorId, entra, hastaFinal, usuarioId || null, (evento && evento.id) || null]);
   await guardarDias(cli, r.rows[0].id, plazaId, rol.rol, dias);
   await recordarTurno(cli, conductorId, rol.turno_id, entra, usuarioId);
-  return { id: r.rows[0].id, nueva: true };
+
+  // Y la vuelta del desalojado, al día siguiente del evento. Si su asignación ya
+  // se acababa dentro del evento, no se repone: no había a dónde volver.
+  if (desalojado && hastaFinal) {
+    const vuelve = siguiente(hastaFinal);
+    if (!desalojado.hasta || desalojado.hasta >= vuelve) {
+      const v = await cli.query(
+        `INSERT INTO asignacion (plaza_id, conductor_id, desde, hasta, usuario_id)
+         VALUES ($1, $2, $3::date, $4, $5) RETURNING id`,
+        [plazaId, desalojado.conductorId, vuelve, desalojado.hasta || null, usuarioId || null]);
+      await guardarDias(cli, v.rows[0].id, plazaId, rol.rol, desalojado.dias);
+      repuestos.push({ id: String(v.rows[0].id), conductorId: String(desalojado.conductorId), desde: vuelve });
+    }
+  }
+  return { id: r.rows[0].id, nueva: true, ...(repuestos.length ? { repuestos } : {}) };
 }
 
 // TodoTurno. El id vive en la tabla `turno` y no cambia; tenerlo aquí evita una
@@ -1418,11 +1486,16 @@ async function guardar(cambios = [], { dia, usuarioId } = {}) {
           throw err;
         }
 
+        // TEMPORAL DEL EVENTO o cambio de verdad: lo dice quien planifica, no lo
+        // adivinamos. Con `eventoId` el apaño caduca con el evento y al que se
+        // echa se le repone con fecha de vuelta; sin él, el cambio se queda.
+        const ev = s.eventoId ? await eventoParaApano(cli, s.eventoId) : null;
         const r = await colocar(cli, {
           plazaId: s.plazaId, conductorId: Number(s.id),
-          desde: s.desde || null, hasta: s.hasta || null, dias: dias || [],
+          desde: s.desde || null, hasta: s.hasta || null, dias: dias || [], evento: ev,
         }, { dia: efectivo, usuarioId });
         hechos.push({ que: 'coloca', plazaId: s.plazaId, conductorId: s.id, ...r });
+        (r.repuestos || []).forEach(x => hechos.push({ que: 'repone', plazaId: s.plazaId, ...x }));
 
         // A la fuerza: se aparta al del cuadrante DESPUÉS de colocar, porque el
         // relevo nombra a los dos y el que entra ya tiene que estar puesto.
@@ -2124,9 +2197,18 @@ async function reemplazarMatricula(deVehiculoId, aVehiculoId, { dia, usuarioId }
   return { dia: efectivo, movidos };
 }
 
+// Para la VUELTA de un evento (repo/eventos): soltar una plaza y volver a poner
+// a quien estaba. Van sin comprobaciones a propósito — no se está planificando
+// nada nuevo, se está deshaciendo un apaño y devolviendo el cuadrante a lo que
+// ya era. La comprobación es de cuando alguien decide algo, no de cuando se
+// desanda lo decidido.
+const liberarPlaza = (cli, plazaId, dia, usuarioId) => liberar(cli, plazaId, dia, usuarioId);
+const reponer = (cli, { plazaId, conductorId, desde, hasta, dias }, { usuarioId } = {}) =>
+  colocar(cli, { plazaId, conductorId, desde, hasta, dias }, { dia: desde, usuarioId });
+
 module.exports = {
   tablero, guardar, cambiarCoche, reemplazarMatricula, fijarDescanso, cubrirAusencia,
-  comprobarPlan, quitarRelevo, relevosEntre, MOTIVOS_RELEVO,
+  comprobarPlan, quitarRelevo, relevosEntre, MOTIVOS_RELEVO, liberarPlaza, reponer,
   crearLibranzaExcepcional, borrarLibranzaExcepcional,
   listarCuadrantes, salidasHoy, salidasPorCoche, GRUPOS_SALIDA: GRUPOS,
   contactos, crearCuadrante, anadirBloque, borrarCuadrante, meterCoche, asignarCTcuadrante,

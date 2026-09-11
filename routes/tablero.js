@@ -115,6 +115,22 @@ router.post('/api/eventos/:id/cancelar', responde(async req => {
   return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
 }));
 
+// Devolver el cuadrante a la normalidad a mano (el repaso de las 05:10 lo hace
+// solo, pero a veces hace falta ya).
+router.post('/api/eventos/:id/restaurar', responde(async req => {
+  const b = req.body || {};
+  const r = await eventos.restaurar(req.params.id, {
+    usuarioId: await actor.idDe(req), nota: b.nota || 'A mano desde el planificador',
+  });
+  return { ...r, tablero: await plan.tablero({ dia: b.dia }) };
+}));
+
+// El mensaje que recibiría un conductor por WhatsApp durante el evento. Para
+// poder LEERLO antes de mandarlo: es el que explica la vuelta a la normalidad.
+router.get('/api/eventos/mensaje', responde(async req =>
+  ({ mensaje: await require('../services/turnosConductor')
+      .mensajeSiHayEvento({ phone: req.query.telefono }) })));
+
 // ── ¿Se puede poner a esta persona aquí estos días? ───────────────────────
 // Contesta con los días que va a trabajar en esa matrícula y, de cada uno, si
 // choca con otro coche suyo (imposible) o si el coche ya tiene conductor (se

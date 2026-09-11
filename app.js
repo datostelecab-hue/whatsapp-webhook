@@ -502,6 +502,27 @@ programar('30 5 * * *', async () => {
 }, { timezone: 'Europe/Madrid' });
 
 // ── RENDIMIENTO ─────────────────────────────────────────────────────────────
+// EL CUADRANTE VUELVE A LA NORMALIDAD DESPUÉS DE UN EVENTO.
+//
+// Cada apaño de evento ya nace con fecha de fin y con la vuelta del desalojado
+// puesta, así que el cuadrante se recompone solo. Esto es el REPASO: cerrar el
+// evento y reconciliar contra la foto de antes por si algo quedó torcido. A las
+// 05:10, justo después de que muera el último turno de noche (05:00) y antes de
+// que nadie mire el tablero.
+programar('10 5 * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./services/repo/eventos').repasar();
+    if (r.devueltos) {
+      console.log(`🎪 [Eventos] ${r.devueltos} evento(s) devueltos a la normalidad ` +
+        `(${r.hechos.reduce((n, h) => n + h.arreglos.length, 0)} plaza(s) recolocadas)`);
+    }
+  } catch (error) {
+    console.error(`⚠️  [Eventos] repaso diario: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // Dos cosas que se calculan juntas porque dependen de lo mismo: el promedio de
 // horas del mes corrido (`conductor_rendimiento`, que usa el reporte de
 // asistencia) y la CALIFICACIÓN A-D de 14 días (`conductor_calificacion`), que

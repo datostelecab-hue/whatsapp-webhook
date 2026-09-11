@@ -226,7 +226,21 @@ async function handleButton(phone, buttonId) {
 async function enviarTurnos(phone, nombreSesion) {
   try {
     const cob = require('../services/repo/cobertura');
-    const { mensajeTurnos, resolver } = require('../services/turnosConductor');
+    const { mensajeTurnos, resolver, mensajeSiHayEvento } = require('../services/turnosConductor');
+
+    // MODO EVENTOS: durante un evento, sus turnos NO son los suyos. Se le manda
+    // otro mensaje —los días del apaño, a quién entrega el coche al terminar y
+    // su semana normal siguiente— porque recibir el cuadro de siempre y luego
+    // encontrarse otro coche es la llamada garantizada del sábado.
+    const ev = await mensajeSiHayEvento({ phone, nombreSesion }).catch(e => {
+      console.error('⚠️ [Turnos] mensaje de evento:', e.message); return null;
+    });
+    if (ev) {
+      console.log(`📅 [Turnos] …${String(phone).slice(-4)} → turnos de evento "${ev.evento.nombre}"`);
+      await sendText(phone, ev.texto);
+      return;
+    }
+
     // La semana que se le anunció al mandar el aviso (0 = actual). Si no hay apunte, la actual.
     const offset = require('../services/avisoTurnos').offsetDe(phone);
     const { porConductor } = await cob.datos({ offsetSemana: offset });

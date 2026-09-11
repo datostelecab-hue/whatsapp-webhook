@@ -77,6 +77,171 @@ function mensajeTurnos(entrada) {
   return L.join('\n').trim();
 }
 
+/** "2026-09-13" → "domingo 13/09". */
+function fechaLarga(iso) {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const nombre = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][
+    (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7];
+  return `${nombre} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+}
+
+/** Los días de una entrada semanal, ya formateados (los que trabaja). */
+function lineasDeDias(entrada, { soloDias = null, fechas = null } = {}) {
+  const L = [];
+  const dias = (entrada && entrada.dias) || [];
+  const tel = x => (x.telefono ? ` (${x.telefono})` : '');
+  dias.forEach((d, i) => {
+    if (d.sinPlan || !d.trabaja) return;
+    // `soloDias` recorta a los días del evento: el resto de la semana no es
+    // temporal y se cuenta después, con su turno normal.
+    if (soloDias && !soloDias.includes(i)) return;
+    const cuando = fechas && fechas[i] ? ` ${fechaLarga(fechas[i]).split(' ')[1]}` : '';
+    L.push(`📅 *${diaLargo(d.diaNombre)}${cuando}* · turno de ${d.turno} · coche *${d.matricula}*`);
+    if (d.recibeDe) {
+      const r = d.recibeDe;
+      const c = r.semanaPasada ? ` (lo deja el ${diaLargo(r.dia).toLowerCase()} pasado)`
+        : (!r.directo && r.dia && r.dia !== d.diaNombre ? ` (lo deja el ${diaLargo(r.dia).toLowerCase()})` : '');
+      L.push(`   🔑 Recibes el coche de *${r.nombre}*${tel(r)}${c}`);
+    }
+    if (d.entregaA) {
+      const e = d.entregaA;
+      const c = e.semanaSiguiente ? ` (lo coge el ${diaLargo(e.dia).toLowerCase()} que viene)`
+        : (!e.directo && e.dia && e.dia !== d.diaNombre ? ` (lo coge el ${diaLargo(e.dia).toLowerCase()})` : '');
+      L.push(`   🤝 Al terminar tu turno, lo entregas a *${e.nombre}*${tel(e)}${c}`);
+    }
+    L.push('');
+  });
+  return L;
+}
+
+/**
+ * EL MENSAJE CUANDO HAY UN EVENTO.
+ *
+ * Durante un evento los turnos no son los suyos: son un apaño de tres días. Un
+ * conductor que recibe su cuadro normal y luego se encuentra otro coche no
+ * entiende nada, así que se le dice las tres cosas, en este orden:
+ *
+ *   1. que es TEMPORAL y por qué,
+ *   2. qué hace esos días,
+ *   3. A QUIÉN LE ENTREGA EL COCHE cuando se acabe —que es lo que hace que todo
+ *      vuelva a su sitio sin una llamada— y
+ *   4. sus turnos de la semana siguiente, ya normales.
+ *
+ * @param {object} entrada     su semana DEL EVENTO (la del tablero de esos días)
+ * @param {object} proxima     su semana siguiente, ya normal (puede ser null)
+ * @param {object} evento      { nombre, desde, hasta, cierraAt }
+ * @param {array}  entregas    [{ matricula, turno, quien, telefono, dia }]
+ * @param {object} opciones    { fechas, fechasProxima, diasEvento }
+ */
+function mensajeEvento(entrada, proxima, evento, entregas = [], opciones = {}) {
+  const nombre = (entrada && entrada.nombre) || (proxima && proxima.nombre) || '';
+  const L = [`👋 Hola ${nombre}.`, ''];
+  L.push(`⚡ Como motivo por el evento de *${evento.nombre}* tus turnos temporales serán estos:`, '');
+
+  const delEvento = lineasDeDias(entrada, { soloDias: opciones.diasEvento, fechas: opciones.fechas });
+  if (delEvento.length) L.push(...delEvento);
+  else L.push('😴 Durante el evento no tienes turnos asignados: libras.', '');
+
+  // A QUIÉN SE LE DA EL COCHE AL TERMINAR. Es la frase que evita el lío del
+  // lunes: el apaño se acaba y el coche tiene que volver a su gente.
+  if (entregas.length) {
+    L.push(`🔁 *Cuando termine el evento* (${fechaLarga(evento.hasta)}, al acabar tu turno):`);
+    entregas.forEach(e => {
+      L.push(`   🤝 El coche *${e.matricula}* se lo entregas a *${e.quien}*` +
+        (e.telefono ? ` (${e.telefono})` : '') +
+        (e.dia ? ` — lo coge el ${fechaLarga(e.dia)}` : ''));
+    });
+    L.push('');
+  }
+
+  const dePro = lineasDeDias(proxima, { fechas: opciones.fechasProxima });
+  L.push('✅ *Y la semana que viene vuelves a lo normal:*', '');
+  if (dePro.length) L.push(...dePro);
+  else L.push('😴 La semana que viene no tienes turnos asignados todavía.', '');
+
+  return L.join('\n').trim();
+}
+
+const TZ_ES = 'Europe/Madrid';
+const hoyEs = () => new Intl.DateTimeFormat('en-CA',
+  { timeZone: TZ_ES, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const masDias = (iso, n) => {
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d, 12) + n * 86400000);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+};
+const lunesDe = iso => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return masDias(iso, -(((new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7)));
+};
+/** Cuántas semanas hay del lunes de `a` al lunes de `b`. */
+const semanasEntre = (a, b) => Math.round(
+  (Date.parse(lunesDe(b) + 'T12:00:00Z') - Date.parse(lunesDe(a) + 'T12:00:00Z')) / (7 * 86400000));
+
+/**
+ * SI HAY UN EVENTO VIVO, el mensaje completo del conductor; si no, null.
+ *
+ * Junta tres cosas que viven en sitios distintos: su semana del evento (el
+ * tablero de esos días), a quién entrega el coche al terminar (el plan de
+ * después, que ya es el bueno porque cada apaño nació con fecha de vuelta) y su
+ * semana siguiente. El bot solo tiene que mandarlo.
+ */
+async function mensajeSiHayEvento({ phone, nombreSesion } = {}) {
+  const eventos = require('./repo/eventos');
+  const hoy = hoyEs();
+  const ev = await eventos.vigenteEn(hoy).catch(e => {
+    console.error('⚠️ [Turnos] evento vigente:', e.message); return null;
+  });
+  if (!ev) return null;
+
+  // Las semanas que hacen falta: la del evento (desde hoy) y la de después.
+  const offEvento = Math.max(0, semanasEntre(hoy, ev.desde > hoy ? ev.desde : hoy));
+  const offDespues = semanasEntre(hoy, masDias(ev.hasta, 1));
+  const semanas = new Map();
+  const dameSemana = async off => {
+    if (!semanas.has(off)) semanas.set(off, await cob.datos({ offsetSemana: off }));
+    return semanas.get(off);
+  };
+
+  const sEvento = await dameSemana(offEvento);
+  const { entrada, como, quien } = await resolver(sEvento.porConductor, { phone, nombreSesion });
+  const id = entrada ? String(entrada.id) : null;
+  // Ni identificado ni con turnos: que siga el camino normal, que ya sabe
+  // explicarlo mejor (y así un evento no rompe el "no te encuentro").
+  if (!id && como !== 'sin-turnos') return null;
+
+  const sDespues = offDespues === offEvento ? sEvento : await dameSemana(offDespues);
+  const proxima = id ? (sDespues.porConductor || []).find(x => String(x.id) === id) : null;
+
+  // Solo los días de la semana que caen DENTRO del evento y no han pasado: el
+  // resto de esa semana ya es normal y va en el bloque de después.
+  const ini = sEvento.semanaInfo.desde;
+  const diasEvento = [];
+  const fechas = [];
+  for (let i = 0; i < 7; i++) {
+    const f = masDias(ini, i);
+    fechas.push(f);
+    if (f >= ev.desde && f <= ev.hasta && f >= hoy) diasEvento.push(i);
+  }
+
+  const mapa = await eventos.entregas(ev).catch(e => {
+    console.error('⚠️ [Turnos] entregas del evento:', e.message); return new Map();
+  });
+  const mias = id ? (mapa.get(id) || []) : [];
+
+  const fechasProxima = [];
+  for (let i = 0; i < 7; i++) fechasProxima.push(masDias(sDespues.semanaInfo.desde, i));
+
+  return {
+    evento: ev,
+    texto: mensajeEvento(
+      entrada || { nombre: quien || '', dias: [] },
+      proxima, ev, mias,
+      { diasEvento, fechas, fechasProxima }),
+  };
+}
+
 // Nombre normalizado para la red de seguridad: sin tildes, en minúsculas y con las
 // palabras ordenadas, para que "Juan Pérez Gómez" y "Gómez, Juan Perez" casen.
 const normNombre = s => String(s || '').toLowerCase()
@@ -131,4 +296,4 @@ async function resolver(lista, { phone, nombreSesion } = {}) {
   return { entrada: null, como: 'no-identificado' };
 }
 
-module.exports = { mensajeTurnos, resolver, normNombre, tel9 };
+module.exports = { mensajeTurnos, mensajeEvento, mensajeSiHayEvento, resolver, normNombre, tel9, fechaLarga };

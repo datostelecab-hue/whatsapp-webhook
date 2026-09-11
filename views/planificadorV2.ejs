@@ -343,8 +343,14 @@
             ev.alargado ? ' <span class="text-[11px]">(el último turno de refuerzo acaba después del evento)</span>' : ''}</span>
         ${ev.nota ? `<span class="text-[11px] text-telecab-muted italic">${esc(ev.nota)}</span>` : ''}
         <span class="ml-auto flex items-center gap-2">
+          <button data-ev-wa class="px-2.5 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-xs hover:border-telecab-gold/50"
+                  title="Ver el WhatsApp que recibe un conductor durante el evento, antes de mandarlo">
+            <i class="fa-brands fa-whatsapp"></i> Ver aviso</button>
           <button data-ev-editar class="px-2.5 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-xs hover:border-telecab-gold/50">
             <i class="fa-solid fa-pen"></i> Fechas</button>
+          <button data-ev-volver class="px-2.5 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-xs hover:border-telecab-gold/50"
+                  title="Devolver el cuadrante a como estaba antes del evento (se hace solo a las 05:10, esto es para adelantarlo)">
+            <i class="fa-solid fa-rotate-left"></i> Volver ya</button>
           <button data-ev-cancelar class="px-2.5 py-1.5 rounded-lg bg-telecab-red/10 border border-telecab-red/40 text-telecab-red text-xs">
             <i class="fa-solid fa-xmark"></i> Cancelar</button>
         </span>
@@ -355,6 +361,60 @@
           ${esc(ev.ultimos[0].turno)} del ${isoAes(ev.ultimos[0].dia)}</p>` : ''}`;
     caja.querySelector('[data-ev-editar]').addEventListener('click', () => editarEvento(ev));
     caja.querySelector('[data-ev-cancelar]').addEventListener('click', () => cancelarEvento(ev));
+    caja.querySelector('[data-ev-volver]').addEventListener('click', () => volverEvento(ev));
+    caja.querySelector('[data-ev-wa]').addEventListener('click', () => verAvisoEvento(ev));
+  }
+
+  /**
+   * EL WHATSAPP DEL EVENTO, ANTES DE MANDARLO.
+   *
+   * Durante un evento, "Ver mis turnos" no contesta con el cuadro de siempre:
+   * contesta con los días del apaño, a quién entrega el coche al terminar y su
+   * semana normal siguiente. Esto lo enseña tal cual, para poder leerlo antes de
+   * que lo lean cien personas.
+   */
+  async function verAvisoEvento(ev) {
+    const ejemplo = ((ev.ultimos || [])[0] || {});
+    const v = await Dialogo.formulario('Ver el aviso de un conductor', [
+      { id: 'telefono', etiqueta: 'Teléfono del conductor', tipo: 'texto', obligatorio: true,
+        marcador: '6XXXXXXXX',
+        ayuda: ejemplo.conductor ? `Por ejemplo, el de ${ejemplo.conductor}.` : 'El de cualquiera del cuadrante.' },
+    ], { textoBoton: 'Ver el mensaje', ancho: 'max-w-md' });
+    if (!v) return;
+    try {
+      const r = await fetch('/planificador-v2/api/eventos/mensaje?telefono=' + encodeURIComponent(v.telefono));
+      const j = await r.json();
+      if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo');
+      if (!j.mensaje) {
+        await Dialogo.aviso({ titulo: 'Sin mensaje de evento', tono: 'aviso',
+          texto: 'Con ese teléfono no sale el aviso del evento: o no lo reconozco, o no hay evento vivo. ' +
+            'Recibiría el mensaje normal de turnos.' });
+        return;
+      }
+      await Dialogo.aviso({
+        titulo: 'Esto es lo que recibe por WhatsApp', ancho: 'max-w-lg',
+        html: '<pre class="whitespace-pre-wrap text-[13px] leading-relaxed bg-telecab-card2/60 ' +
+          'border border-telecab-border rounded-xl p-3">' + esc(j.mensaje.texto) + '</pre>',
+      });
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
+  }
+
+  async function volverEvento(ev) {
+    const ok = await Dialogo.confirmar({
+      titulo: `¿Devolver el cuadrante a como estaba antes de "${ev.nombre}"?`,
+      texto: 'Los apaños del evento se cierran y cada plaza vuelve a quien la tenía en la foto de antes. ' +
+        'Lo ya trabajado no se toca. Esto pasa solo a las 05:10; el botón es para adelantarlo.',
+      si: 'Devolver ya', tono: 'aviso' });
+    if (!ok) return;
+    try {
+      const j = await pedirTablero(`/planificador-v2/api/eventos/${ev.id}/restaurar`, { dia: DIA });
+      await Dialogo.aviso({ titulo: 'Cuadrante devuelto a la normalidad', tono: 'ok',
+        texto: j.arreglos.length
+          ? `${j.arreglos.length} plaza(s) recolocadas: ` +
+            j.arreglos.slice(0, 6).map(a => `${a.matricula} → ${a.vuelve}`).join(', ') +
+            (j.arreglos.length > 6 ? '…' : '')
+          : 'No hizo falta mover nada: cada apaño ya tenía su fecha de vuelta puesta.' });
+    } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
 
   /** Lo planificado a la fuerza esta semana, con quién lo hizo y por qué. */
@@ -1142,13 +1202,27 @@
       campos.push({ id: 'dias', etiqueta: 'Qué días trabaja en esta matrícula', tipo: 'semana',
         valor: diasPrevios });
     }
+    // CON EVENTO VIVO, LA PRIMERA PREGUNTA ES OTRA: ¿esto es un apaño de estos
+    // días o un cambio de verdad? De la respuesta depende que el cuadrante
+    // vuelva solo a lo de antes. Un apaño se cierra con el evento y AL QUE SE
+    // ECHA se le repone con fecha de vuelta en el mismo movimiento.
+    if (ev) {
+      campos.push({ id: 'alcance', etiqueta: '¿Hasta cuándo?', tipo: 'opciones',
+        obligatorio: true, valor: 'evento', opciones: [
+          { valor: 'evento', texto: `Solo durante el evento (${isoAes(ev.desde)} → ${isoAes(ev.hasta)})`,
+            detalle: 'Al terminar, el cuadrante vuelve solo a como estaba y al que estaba aquí se le repone.' },
+          { valor: 'permanente', texto: 'Cambio permanente',
+            detalle: 'Se queda después del evento. Al que estaba aquí NO se le repone.' },
+        ] });
+    }
     campos.push({ id: 'desde', etiqueta: 'Desde', tipo: 'fecha',
-      valor: col.refuerzo && ev ? isoAes(ev.desde) : '',
-      ayuda: col.refuerzo && ev ? `Refuerzo de "${ev.nombre}".` : 'Vacío = desde el día que estás mirando.' });
+      valor: ev && ev.desde > DIA ? isoAes(ev.desde) : '',
+      ayuda: ev ? `Vacío = hoy. El evento "${ev.nombre}" va del ${isoAes(ev.desde)} al ${isoAes(ev.hasta)}.`
+                : 'Vacío = desde el día que estás mirando.' });
     campos.push({ id: 'hasta', etiqueta: 'Hasta (último día)', tipo: 'fecha',
-      valor: col.refuerzo && ev ? isoAes(ev.hasta) : (p.hasta ? isoAes(p.hasta) : ''),
-      ayuda: col.refuerzo && ev
-        ? 'El refuerzo se cierra con el evento: no lo dejes vacío.'
+      valor: p.hasta ? isoAes(p.hasta) : '',
+      ayuda: ev
+        ? 'Si es del evento, se rellena solo con la fecha de fin: no hace falta tocarlo.'
         : (p.futuro ? `Vacío = hasta la víspera de que llegue ${p.futuro.nombre} (${isoAes(p.futuro.desde)}).`
                     : 'Vacío = indefinido.') });
 
@@ -1160,11 +1234,14 @@
     });
     if (!v) return;
 
+    // Con evento, "solo durante el evento" es lo normal: si no se toca nada, eso
+    // es lo que sale, que es lo que casi siempre se quiere un viernes por la tarde.
+    const deEvento = !!ev && ((v.alcance || {}).valor || 'evento') === 'evento';
     const base = {
       plazaId: p.plazaId, conductorId: id,
       dias: esCT ? (v.dias || []) : [],
       desde: (v.desde || '').trim() || DIA,
-      hasta: (v.hasta || '').trim() || null,
+      hasta: deEvento ? ev.hasta : ((v.hasta || '').trim() || null),
     };
     if (esCT && !base.dias.length) {
       await Dialogo.aviso({ titulo: 'Faltan los días', tono: 'aviso',
@@ -1206,16 +1283,23 @@
     try {
       const slot = { plazaId: p.plazaId, id, dias: base.dias, desde: base.desde,
         ...(base.hasta ? { hasta: base.hasta } : {}), ...(forzar || {}),
-        ...(col.refuerzo && ev ? { eventoId: ev.id } : {}) };
+        ...(deEvento ? { eventoId: ev.id } : {}) };
       const j = await guardarCambios([{ vehiculoId: coche.vehiculoId, slots: [slot] }]);
       const apartados = (j.hechos || []).filter(h => h.que === 'aparta');
-      if (apartados.length) {
-        await Dialogo.aviso({
-          titulo: 'Colocado a la fuerza', tono: 'aviso',
-          texto: `${plan.conductor} lleva ${coche.matricula} esos días. Se ha apartado a ` +
-            [...new Set(apartados.map(a => a.sale))].join(', ') +
-            ` (${apartados.length} día(s)), con el motivo apuntado.`,
-        });
+      const repuestos = (j.hechos || []).filter(h => h.que === 'repone');
+      if (apartados.length || repuestos.length) {
+        const L = [];
+        if (apartados.length) {
+          L.push(`${plan.conductor} lleva ${coche.matricula} esos días. Se ha apartado a ` +
+            [...new Set(apartados.map(a => a.sale))].join(', ') + ` (${apartados.length} día(s)).`);
+        }
+        if (repuestos.length) {
+          // Lo que hace que el cuadrante vuelva solo: el que sale ya tiene fecha
+          // de vuelta puesta, y se dice para que nadie tenga que fiarse.
+          L.push(`La plaza vuelve a su dueño el ${isoAes(repuestos[0].desde)}: no hay que acordarse de nada.`);
+        }
+        await Dialogo.aviso({ titulo: apartados.length ? 'Colocado a la fuerza' : 'Colocado por el evento',
+          tono: apartados.length ? 'aviso' : 'ok', texto: L.join(' ') });
       }
     } catch (e) { await Dialogo.aviso({ titulo: 'No se ha podido', texto: e.message, tono: 'error' }); }
   }
