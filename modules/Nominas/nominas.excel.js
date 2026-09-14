@@ -13,6 +13,21 @@
 // Los importes van como NÚMEROS con formato de euro, nunca como texto: si van
 // escritos "1.234,50 €" no se suman, no se ordenan y la gestoría los tiene que
 // teclear otra vez.
+//
+// ── DOS COLUMNAS DE NOMBRE, Y LAS DOS HACEN FALTA ───────────────────────────
+// La misma persona se llama de dos maneras y este fichero lo leen dos mundos
+// distintos:
+//
+//   ID de BOLT    "Muhammad Bilal Ashraf" — como figura su cuenta en la
+//                 plataforma. Es por donde se cruza esta hoja con cualquier
+//                 informe de BOLT y por donde lo busca Tráfico.
+//   Nombre de la  "ASHRAF MUHAMMAD, BILAL" — apellidos primero, coma, nombres.
+//   seguridad     Es el que entiende la gestoría y el que va en un documento
+//   social        oficial.
+//
+// Ninguna de las dos está mal y ninguna sustituye a la otra: sin la primera no
+// se puede comprobar una cifra contra BOLT, y sin la segunda no se puede pasar
+// la hoja a nóminas. Por eso van las dos, una al lado de la otra.
 
 const ExcelJS = require('exceljs');
 const E = require('../../services/excelEstilo');
@@ -36,7 +51,8 @@ const ARRANQUE = {
 
 // Título, ancho, clave de la fila y formato. El orden es el de la pantalla.
 const COLUMNAS = [
-  ['Conductor', 32, 'nombre', null],
+  ['ID de BOLT', 30, 'nombreBolt', null],
+  ['Nombre de la seguridad social', 36, 'nombreSS', null],
   ['DNI/NIE', 13, 'dni', null],
   ['Tipo', 8, '_tipo', null],
   ['Jornada', 9, '_jornada', null],
@@ -44,7 +60,10 @@ const COLUMNAS = [
   ['Desde día', 10, 'primerDia', '0'],
   ['Arranque del prorrateo', 32, '_arranque', null],
   ['Horas', 9, 'horas', HORAS],
+  ['Horas justificadas', 15, 'horasJustificadas', HORAS],
+  ['Días justificados', 14, 'diasJustificados', '0'],
   ['Objetivo (h)', 11, 'horasObjetivo', HORAS],
+  ['Horas no justificadas', 18, 'horasNoJustificadas', HORAS],
   ['Diferencia (h)', 12, 'deltaHoras', HORAS],
   ['% Utilización', 12, '_util', '0.0"%"'],
   ['Propinas', 11, 'propinas', EUROS],
@@ -58,10 +77,16 @@ const COLUMNAS = [
 ];
 
 // Las que se suman en el pie.
-const SUMABLES = new Set(['propinas', 'peajes', 'nocturnas', 'mboFAS', 'mboHsExt', 'compensacion', 'diasExtra', 'total']);
+const SUMABLES = new Set(['horas', 'horasJustificadas', 'diasJustificados', 'horasNoJustificadas',
+  'propinas', 'peajes', 'nocturnas', 'mboFAS', 'mboHsExt', 'compensacion', 'diasExtra', 'total']);
 
 function valorDe(f, clave) {
   switch (clave) {
+    // Si falta uno de los dos nombres se pone el de la ficha antes que dejar la
+    // celda vacía: quien lee la hoja tiene que poder saber de quién es la fila
+    // aunque a esa persona le falte un dato.
+    case 'nombreBolt': return f.nombreBolt || f.nombre || '';
+    case 'nombreSS': return f.nombreSS || f.nombre || '';
     case '_tipo': return f.ett ? 'ETT' : 'Propia';
     case '_jornada': return f.jornada ? f.jornada + ' h' : '';
     case '_alta': return fechaCorta(f.alta);
@@ -70,6 +95,11 @@ function valorDe(f, clave) {
     default: return f[clave];
   }
 }
+
+// La posición (1..N) de una columna por su clave. Se busca en vez de escribir el
+// número: el día que se meta una columna en medio, los realces no se quedan
+// señalando la de al lado.
+const COL = clave => COLUMNAS.findIndex(c => c[2] === clave) + 1;
 
 /** El libro. Devuelve los bytes; quien llama solo tiene que servirlo. */
 async function generarExcelNomina(r) {
@@ -101,8 +131,17 @@ async function generarExcelNomina(r) {
     // Quien va sin fecha de alta cobra con el criterio viejo: se marca, porque
     // es el único caso en el que la cifra depende de un dato que falta.
     if (f.origenArranque === 'primer-log') {
-      row.getCell(7).fill = E.relleno('FFFEF3C7');
-      row.getCell(7).font = { color: { argb: 'FF92400E' } };
+      const c = row.getCell(COL('_arranque'));
+      c.fill = E.relleno('FFFEF3C7');
+      c.font = { color: { argb: 'FF92400E' } };
+    }
+    // Las horas que siguen sin explicación, en rojo. Es la columna por la que se
+    // abre esta hoja, y una cifra que hay que buscar a ojo entre veinte no
+    // sirve de nada.
+    if (f.horasNoJustificadas > 0) {
+      const c = row.getCell(COL('horasNoJustificadas'));
+      c.fill = E.relleno('FFFEE2E2');
+      c.font = { bold: true, color: { argb: 'FF991B1B' } };
     }
   }
 
@@ -164,7 +203,14 @@ async function generarExcelNomina(r) {
     '',
     'Objetivo de horas  = (días desde el arranque ÷ días del mes) × días objetivo × horas meta.',
     '   El arranque es el día 1 si ya estaba de alta, o su día de alta si entró ese mes.',
-    'Diferencia         = horas hechas − objetivo de horas.',
+    'Horas justificadas = por cada día con J APROBADA, lo que le faltara a ese día para la jornada.',
+    '   Un día en el que no salió nada suma la jornada entera; uno en el que rodó 3 h suma 5.',
+    '   No se distingue el tipo ni el motivo de la J, y nunca suma por encima de la jornada:',
+    '   una J cubre lo que no se pudo hacer, no se añade a lo que sí se hizo.',
+    '   Las J PENDIENTES de aprobar no cuentan, y las rechazadas tampoco.',
+    'Horas NO justif.   = objetivo − horas hechas − horas justificadas.  Cero si llegó.',
+    '   Es lo que falta y no tiene explicación. La columna va en rojo cuando no es cero.',
+    'Diferencia         = horas hechas − objetivo de horas.  SIN las justificadas: ver abajo.',
     'MBO horas extra    = diferencia × € por hora extra × utilización.  Solo si la diferencia es positiva.',
     'MBO FAS            = (facturación neta − umbral) × % MBO FAS.  Solo si supera el umbral de SU jornada.',
     'Nocturnas          = € hora nocturna × horas nocturnas × factor.',
@@ -173,6 +219,13 @@ async function generarExcelNomina(r) {
     '   Los dos MBO no se suman: se cobra el que salga más alto. Por eso en muchas filas',
     '   la columna "Compensación" va a cero aunque "MBO horas extra" tenga un número:',
     '   ese mes ganó el MBO FAS.',
+    '',
+    'LAS J NO DAN EXTRAS',
+    '',
+    'Las horas justificadas cuentan para saber lo que FALTA, no para cobrar de más. El MBO',
+    'de horas extra sale solo de las horas rodadas: se paga por conducir de más, y una J es',
+    'precisamente no haber conducido. Quien tiene 100 h rodadas y 80 justificadas ha cubierto',
+    'su objetivo —no debe horas— pero no ha hecho ninguna hora extra.',
     '',
     'DE DÓNDE SALEN LOS DATOS',
     '',
@@ -184,6 +237,9 @@ async function generarExcelNomina(r) {
     'y facturación neta',
     'DNI, jornada,       de la ficha del conductor y de su periodo de empleo.',
     'ETT y fecha de alta',
+    'Horas justificadas  de los justificantes APROBADOS, los mismos que pinta la bitácora.',
+    'Los dos nombres     el de BOLT, del padrón de la plataforma; el de la seguridad social,',
+    '                    de la ficha de RRHH.',
     '',
     'Nada de esto se pide a ninguna API al generar la nómina ni se lee de ninguna hoja de',
     'cálculo: todo está en la base de datos.',

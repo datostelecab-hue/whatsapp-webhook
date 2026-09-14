@@ -175,6 +175,9 @@ async function horasDelMes(desdeIso, hastaIso) {
   const out = new Map();
   acc.forEach((dias, cid) => {
     let horasSeg = 0, nocSeg = 0, viajeSeg = 0, esperaSeg = 0, primerDia = 0;
+    // Los segundos de cada dia sueltos. Hacen falta para las J: una J cubre lo
+    // que falte de ESE dia, asi que hay que saber que se rodo en el.
+    const porDia = new Map();
     dias.forEach((c, dia) => {
       const efectivo = fundir(c.todo);
       const seg = segundosDe(efectivo);
@@ -184,10 +187,48 @@ async function horasDelMes(desdeIso, hastaIso) {
       viajeSeg += segundosDe(fundir(c.viaje));
       esperaSeg += segundosDe(fundir(c.espera));
       const d = Number(dia.slice(8));
+      porDia.set(d, seg);
       if (!primerDia || d < primerDia) primerDia = d;
     });
-    if (horasSeg > 0) out.set(cid, { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia });
+    if (horasSeg > 0) out.set(cid, { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia });
   });
+  return out;
+}
+
+/**
+ * Los dias con JUSTIFICANTE del mes, por persona.
+ * Devuelve Map(conductor_id -> { aprobados: [dia del mes...], pendientes: n }).
+ *
+ * SOLO CUENTAN LAS APROBADAS. Una J nace pendiente y el area responsable la
+ * aprueba o la rechaza; contar una pendiente seria darla por buena antes del
+ * visto bueno, que es justo lo que el circuito de aprobacion vino a evitar. Las
+ * pendientes se devuelven CONTADAS, no en la lista, para poder avisar de que
+ * hay J en la cola que cambiarian estos numeros.
+ *
+ * Las rechazadas no salen: ese dia vuelve a ser lo que era, sin justificar.
+ *
+ * NO se leen las horas de la J. La columna existe, pero en agosto de 2026 no
+ * dice nada: 114 de 182 traen un "8" puesto a ojo y 13 traen las horas que esa
+ * persona ya habia rodado ese dia. Cuanto vale una J lo decide el servicio.
+ */
+async function justificantesDelMes(desdeIso, hastaIso) {
+  const r = await db.consulta(
+    `SELECT conductor_id,
+            EXTRACT(DAY FROM dia_operativo)::int AS dia,
+            (aprobado_at IS NOT NULL) AS aprobada
+       FROM justificante
+      WHERE dia_operativo BETWEEN $1::date AND $2::date
+        AND anulado_at IS NULL
+      ORDER BY conductor_id, dia_operativo`,
+    [desdeIso, hastaIso]);
+
+  const out = new Map();
+  for (const x of r.rows) {
+    const cid = Number(x.conductor_id);
+    if (!out.has(cid)) out.set(cid, { aprobados: [], pendientes: 0 });
+    if (x.aprobada) out.get(cid).aprobados.push(Number(x.dia));
+    else out.get(cid).pendientes++;
+  }
   return out;
 }
 
@@ -208,8 +249,16 @@ async function dineroDelMes(desdeIso, hastaIso) {
 }
 
 /**
- * La ficha laboral de cada persona: Map(conductor_id → { nombre, dni, ett,
- * jornada, alta }).
+ * La ficha laboral: Map(conductor_id → { nombre, nombreBolt, nombreSS, dni,
+ * ett, jornada, alta }).
+ *
+ * TRES NOMBRES, y los tres hacen falta:
+ *   nombre      el de la ficha, "NOMBRE APELLIDOS". Es el de la pantalla.
+ *   nombreBolt  como figura su cuenta en BOLT. Por ahi lo busca Trafico y por
+ *               ahi se cruza con cualquier informe de la plataforma.
+ *   nombreSS    como lo tiene RRHH: apellidos primero, coma, nombres. El que
+ *               entiende la gestoria. Si no esta escrito se compone de la
+ *               ficha, que es de donde salio el dia que se cargo.
  *
  * El periodo que manda es el que estaba VIGENTE el mes de trabajo, no el último:
  * quien se fue en julio y volvió en septiembre con otro contrato tiene que
@@ -223,6 +272,32 @@ async function fichasDelMes(hastaIso) {
   const r = await db.consulta(
     `SELECT c.id,
             btrim(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellidos, '')) AS nombre,
+            c.nombre_bolt,
+            -- EL NOMBRE DE LA SEGURIDAD SOCIAL: apellidos primero, coma, nombres.
+            --
+            -- Manda lo que RRHH tenga escrito (nombre_ss), y si no lo tiene se
+            -- compone de la ficha. La coma se normaliza a ", " venga como venga:
+            -- en la base hay "MIJON RUBIO,PEDRO" pegado y el resto separado, y
+            -- una lista que mezcla los dos estilos parece hecha a trozos.
+            --
+            -- Lo que NO se hace es adivinar donde acaban los apellidos cuando el
+            -- nombre viene entero en una sola pieza ("PICO CABEZAS JOSE"): no se
+            -- sabe si son dos apellidos y un nombre o uno y dos, y en algun caso
+            -- —"RAZVAN OCTAVIAN TIRNOVAN"— el orden es el contrario. Partirlo a
+            -- ojo cambiaria el nombre legal de alguien en un papel que va a la
+            -- gestoria. Se deja como esta, y nombre_ss_en_forma avisa de ello.
+            regexp_replace(
+              COALESCE(NULLIF(btrim(c.nombre_ss), ''),
+                       NULLIF(btrim(
+                         CASE WHEN btrim(COALESCE(c.apellidos, '')) <> ''
+                               AND btrim(COALESCE(c.nombre, ''))    <> ''
+                              THEN btrim(c.apellidos) || ', ' || btrim(c.nombre)
+                              ELSE btrim(COALESCE(c.apellidos, '') || COALESCE(c.nombre, ''))
+                         END), '')),
+              -- Sin barra invertida a proposito: esto vive dentro de un template
+              -- literal de JavaScript, que se come los escapes, y un ',\s*' que
+              -- llega a PostgreSQL como ',s*' no reemplaza lo que se cree.
+              ', *', ', ') AS nombre_ss,
             c.dni_nie,
             pe.tipo,
             pe.jornada_horas,
@@ -241,6 +316,14 @@ async function fichasDelMes(hastaIso) {
     [hastaIso]);
   return new Map(r.rows.map(x => [Number(x.id), {
     nombre: x.nombre || '',
+    nombreBolt: x.nombre_bolt || '',
+    nombreSS: x.nombre_ss || '',
+    // Si de verdad quedo en "apellidos, nombres" o salio de una pieza. Se mira
+    // el valor YA compuesto y no las columnas de origen: alguien con apellidos
+    // en la ficha puede tener ademas un nombre_ss guardado sin coma, y entonces
+    // manda el guardado. La marca tiene que decir lo que se ve, no lo que se
+    // esperaba.
+    nombreSSEnForma: /, /.test(x.nombre_ss || ''),
     dni: x.dni_nie || '',
     ett: x.tipo === 'ett',
     jornada: x.jornada_horas == null ? null : Number(x.jornada_horas),
@@ -276,9 +359,21 @@ async function sinSellarEnBitacora(desdeIso, hastaIso, ids) {
 // LO CONGELADO
 // ────────────────────────────────────────────────────────────────────────────
 
-const COLS_FILA = ['conductor_id', 'nombre', 'dni', 'ett', 'jornada', 'primer_dia', 'alta',
-  'origen_arranque', 'horas', 'horas_objetivo', 'delta_horas', 'util_pct', 'propinas', 'peajes',
+const COLS_FILA = ['conductor_id', 'nombre', 'nombre_bolt', 'nombre_ss', 'dni', 'ett', 'jornada',
+  'primer_dia', 'alta', 'origen_arranque', 'horas', 'horas_justificadas', 'horas_no_justificadas',
+  'dias_justificados', 'horas_objetivo', 'delta_horas', 'util_pct', 'propinas', 'peajes',
   'nocturnas', 'mbo_fas', 'mbo_hs_ext', 'compensacion', 'dias_extra', 'total'];
+
+// Los valores de una fila, EN EL ORDEN DE COLS_FILA. Van pegados a la lista a
+// proposito: si se anade una columna arriba y no aqui, el INSERT falla en voz
+// alta en vez de guardar los numeros corridos una posicion.
+const valoresDeFila = f => [
+  f.conductorId || null, f.nombre, f.nombreBolt || null, f.nombreSS || null, f.dni || null,
+  !!f.ett, f.jornada || null, f.primerDia || null, f.alta || null, f.origenArranque,
+  f.horas, f.horasJustificadas, f.horasNoJustificadas, f.diasJustificados,
+  f.horasObjetivo, f.deltaHoras, f.utilPct, f.propinas, f.peajes,
+  f.nocturnas, f.mboFAS, f.mboHsExt, f.compensacion, f.diasExtra, f.total,
+];
 
 /** Congela una nómina. Reescribe la del mes si ya hubiera una. */
 async function congelar(r, usuarioId) {
@@ -295,16 +390,14 @@ async function congelar(r, usuarioId) {
     // parámetros y PostgreSQL admite 65.535, pero el día que sean 3.000 personas
     // el INSERT de una sola vez reventaría sin avisar.
     const TAM = 200;
+    const N = COLS_FILA.length + 1;          // las columnas + el nomina_id
     for (let i = 0; i < r.filas.length; i += TAM) {
       const trozo = r.filas.slice(i, i + TAM);
       const valores = [];
       const marcas = trozo.map((f, k) => {
-        valores.push(id, f.conductorId || null, f.nombre, f.dni || null, !!f.ett, f.jornada || null,
-          f.primerDia || null, f.alta || null, f.origenArranque, f.horas, f.horasObjetivo, f.deltaHoras,
-          f.utilPct, f.propinas, f.peajes, f.nocturnas, f.mboFAS, f.mboHsExt, f.compensacion,
-          f.diasExtra, f.total);
-        const base = k * 21;
-        return '(' + Array.from({ length: 21 }, (_, j) => '$' + (base + j + 1)).join(',') + ')';
+        valores.push(id, ...valoresDeFila(f));
+        const base = k * N;
+        return '(' + Array.from({ length: N }, (_, j) => '$' + (base + j + 1)).join(',') + ')';
       }).join(',');
       await cli.query(
         `INSERT INTO nomina_fila (nomina_id, ${COLS_FILA.join(', ')}) VALUES ${marcas}`, valores);
@@ -329,11 +422,16 @@ async function leerCongelada(mes, ano) {
     congelada: true, congeladaAt: n.congelada_at, congeladaPor: n.quien || '',
     filas: f.rows.map(x => ({
       conductorId: x.conductor_id == null ? null : Number(x.conductor_id),
-      nombre: x.nombre, dni: x.dni || '', ett: x.ett,
+      nombre: x.nombre, nombreBolt: x.nombre_bolt || '', nombreSS: x.nombre_ss || '',
+      dni: x.dni || '', ett: x.ett,
       jornada: x.jornada == null ? null : Number(x.jornada),
       primerDia: x.primer_dia == null ? null : Number(x.primer_dia),
       alta: x.alta || '', origenArranque: x.origen_arranque,
-      horas: Number(x.horas), horasObjetivo: Number(x.horas_objetivo), deltaHoras: Number(x.delta_horas),
+      horas: Number(x.horas),
+      horasJustificadas: Number(x.horas_justificadas),
+      horasNoJustificadas: Number(x.horas_no_justificadas),
+      diasJustificados: Number(x.dias_justificados),
+      horasObjetivo: Number(x.horas_objetivo), deltaHoras: Number(x.delta_horas),
       utilPct: x.util_pct == null ? null : Number(x.util_pct),
       propinas: Number(x.propinas), peajes: Number(x.peajes), nocturnas: Number(x.nocturnas),
       mboFAS: Number(x.mbo_fas), mboHsExt: Number(x.mbo_hs_ext), compensacion: Number(x.compensacion),
@@ -363,7 +461,7 @@ async function descongelar(mes, ano) {
 
 module.exports = {
   leerConfig, guardarConfig,
-  horasDelMes, dineroDelMes, fichasDelMes, sinSellarEnBitacora,
+  horasDelMes, dineroDelMes, fichasDelMes, justificantesDelMes, sinSellarEnBitacora,
   congelar, leerCongelada, mesesCongelados, descongelar,
   // Expuestos para poder probarlos sin base de datos.
   _fundir: fundir, _segundosNocturnos: segundosNocturnos,

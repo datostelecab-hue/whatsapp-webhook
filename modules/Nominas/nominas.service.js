@@ -26,6 +26,33 @@
 //    menudo; en PostgreSQL la tiene el 100 % de la plantilla, así que el cuarto
 //    caso ya casi no se da.
 //
+// 3. LAS J CUENTAN, Y VALEN EL DIA ENTERO. Un dia con justificante aprobado
+//    (coche en taller, cuenta suspendida, medico) no es un dia sin trabajar:
+//    es un dia que alguien dio por bueno. La nomina lo separa en dos cifras
+//    que es justo lo que RRHH pregunta —cuanto de lo que falta esta explicado
+//    y cuanto no—:
+//
+//      HORAS JUSTIFICADAS     lo que cubren las J aprobadas
+//      HORAS NO JUSTIFICADAS  lo que sigue faltando para el objetivo despues
+//                             de sumar las horas de BOLT y las justificadas
+//
+//    Una J vale la JORNADA ENTERA (las horas meta del dia, 8), sin distinguir
+//    tipo ni motivo. La tabla `justificante` tiene una columna de horas, pero
+//    no dice nada util: de las 182 J aprobadas de agosto de 2026, 114 traen un
+//    "8" puesto a ojo y otras 13 traen las MISMAS horas que esa persona ya
+//    habia rodado ese dia —sumarlas seria contar dos veces el mismo rato—.
+//
+//    Y TOPADA POR LO QUE FALTE DE ESE DIA. Una J cubre lo que no se pudo
+//    hacer, no ocho horas encima de lo que si se hizo: quien rodo 3 h y tiene
+//    J ese dia suma 5 justificadas, no 8, y el dia queda en 8, no en 11. Para
+//    los 104 dias de agosto en que no se rodo nada, que son la mayoria, la J
+//    vale las 8 enteras, que es lo esperado.
+//
+//    LAS J NO DAN EXTRAS. El MBO de horas extra sigue saliendo SOLO de las
+//    horas de BOLT: se paga por conducir de mas, y una J es precisamente no
+//    haber conducido. Quien tiene 100 h rodadas y 80 justificadas ha cubierto
+//    su objetivo, pero no ha hecho ninguna hora extra.
+//
 // ── LO QUE SE GUARDA ────────────────────────────────────────────────────────
 // Solo el resultado CONGELADO. No hay "snapshot de datos crudos" como en las
 // hojas: allí hacía falta porque volver a bajar de BOLT tardaba minutos, aquí
@@ -139,7 +166,20 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   const diasDesde = diasDelMes - primerDia + 1;                    // del arranque a fin de mes
   const diasOperTgt = r2((diasDesde / diasDelMes) * cfg.diasObjetivo);
   const hsTgt = diasOperTgt * cfg.horasMetaDia;
+
+  // El MBO de horas extra sale SOLO de lo rodado: se paga por conducir de mas,
+  // y una J es justo no haber conducido. Las justificadas entran mas abajo,
+  // donde se mira lo que FALTA, que es otra pregunta.
   const delta = c.horas - hsTgt;
+
+  // ── Las J ────────────────────────────────────────────────────────────────
+  // Solo las de su ventana: una J anterior a su alta no cubre un objetivo que
+  // todavia no existia. Cada una vale la jornada del dia, topada por lo que le
+  // faltara a ese dia para llegar (ver la cabecera del fichero).
+  const jus = (c.jDias || []).filter(d => d >= primerDia);
+  const horasJustificadas = jus.reduce(
+    (a, d) => a + Math.max(0, cfg.horasMetaDia - ((c.horasPorDia && c.horasPorDia.get(d)) || 0) / 3600), 0);
+  const horasNoJustificadas = Math.max(0, hsTgt - c.horas - horasJustificadas);
 
   const jornada = jornadaDe(c.jornada);
   const umbral = jornada === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40;
@@ -154,6 +194,9 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   return {
     conductorId: c.conductorId,
     nombre: c.nombre,
+    nombreBolt: c.nombreBolt || '',
+    nombreSS: c.nombreSS || '',
+    nombreSSEnForma: c.nombreSSEnForma !== false,
     dni: c.dni || '',
     ett: !!c.ett,
     jornada,
@@ -161,6 +204,9 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     alta: c.alta || '',
     origenArranque: origen,      // alta-anterior | alta-en-mes | primer-log
     horas: r2(c.horas),
+    horasJustificadas: r2(horasJustificadas),
+    horasNoJustificadas: r2(horasNoJustificadas),
+    diasJustificados: jus.length,
     horasObjetivo: r2(hsTgt),
     deltaHoras: r2(delta),
     utilPct: c.utilPct != null ? r2(c.utilPct) : null,
@@ -190,10 +236,11 @@ async function calcular(mesNom, anoNom, opciones = {}) {
   const desde = `${anoD}-${pad(mesD)}-01`;
   const hasta = `${anoD}-${pad(mesD)}-${pad(diasDelMes)}`;
 
-  const [horas, dinero, fichas] = await Promise.all([
+  const [horas, dinero, fichas, justificantes] = await Promise.all([
     repo.horasDelMes(desde, hasta),
     repo.dineroDelMes(desde, hasta),
     repo.fichasDelMes(hasta),
+    repo.justificantesDelMes(desde, hasta),
   ]);
 
   // Entra quien TRABAJÓ ese mes. El dinero sin horas no hace nómina variable:
@@ -204,17 +251,53 @@ async function calcular(mesNom, anoNom, opciones = {}) {
     const f = fichas.get(cid) || {};
     const d = dinero.get(cid) || { neto: 0, propinas: 0, peajes: 0 };
     const efectivos = h.viajeSeg + h.esperaSeg;
+    const j = justificantes.get(cid) || { aprobados: [], pendientes: 0 };
     gente.push({
       conductorId: cid,
       nombre: f.nombre || `#${cid}`,
+      nombreBolt: f.nombreBolt || '',
+      nombreSS: f.nombreSS || '',
+      nombreSSEnForma: f.nombreSSEnForma !== false,
       dni: f.dni || '',
       ett: !!f.ett,
       jornada: f.jornada,
       alta: f.alta || '',
       primerDia: h.primerDia,
       horas: h.horasSeg / 3600,
+      horasPorDia: h.porDia,
+      jDias: j.aprobados,
+      jPendientes: j.pendientes,
       nocturnasH: h.nocSeg / 3600,
       utilPct: efectivos > 0 ? (h.viajeSeg / efectivos) * 100 : null,
+      neto: d.neto, propinas: d.propinas, peajes: d.peajes,
+    });
+  });
+
+  // QUIEN NO RODO NADA PERO TIENE J. No sale de `horas` —ahi solo esta quien
+  // tiene tramos—, y sin esto el mes entero de quien estuvo de baja con todo
+  // justificado se perdia: ni horas, ni justificadas, ni fila. Entra con cero
+  // horas de BOLT y sus J, que es exactamente lo que paso.
+  justificantes.forEach((j, cid) => {
+    if (horas.has(cid) || !j.aprobados.length) return;
+    const f = fichas.get(cid) || {};
+    const d = dinero.get(cid) || { neto: 0, propinas: 0, peajes: 0 };
+    gente.push({
+      conductorId: cid,
+      nombre: f.nombre || `#${cid}`,
+      nombreBolt: f.nombreBolt || '',
+      nombreSS: f.nombreSS || '',
+      nombreSSEnForma: f.nombreSSEnForma !== false,
+      dni: f.dni || '',
+      ett: !!f.ett,
+      jornada: f.jornada,
+      alta: f.alta || '',
+      primerDia: Math.min(...j.aprobados),
+      horas: 0,
+      horasPorDia: new Map(),
+      jDias: j.aprobados,
+      jPendientes: j.pendientes,
+      nocturnasH: 0,
+      utilPct: null,
       neto: d.neto, propinas: d.propinas, peajes: d.peajes,
     });
   });
@@ -237,8 +320,10 @@ async function calcular(mesNom, anoNom, opciones = {}) {
     t.propinas += f.propinas; t.peajes += f.peajes; t.nocturnas += f.nocturnas;
     t.mboFAS += f.mboFAS; t.compensacion += f.compensacion;
     t.diasExtra += f.diasExtra; t.total += f.total;
+    t.horasJustificadas += f.horasJustificadas; t.horasNoJustificadas += f.horasNoJustificadas;
     return t;
-  }, { propinas: 0, peajes: 0, nocturnas: 0, mboFAS: 0, compensacion: 0, diasExtra: 0, total: 0 });
+  }, { propinas: 0, peajes: 0, nocturnas: 0, mboFAS: 0, compensacion: 0, diasExtra: 0, total: 0,
+       horasJustificadas: 0, horasNoJustificadas: 0 });
   Object.keys(totales).forEach(k => { totales[k] = r2(totales[k]); });
 
   // ¿El mes de trabajo aún no terminó? → datos incompletos (aún no toca esa nómina).
@@ -258,6 +343,18 @@ async function calcular(mesNom, anoNom, opciones = {}) {
     congelada: false,
     avisos: {
       sinDni: filas.filter(f => !f.dni).length,
+      // Sin nombre de BOLT no se puede cruzar esta fila con un informe de la
+      // plataforma, que es la mitad de para lo que sirve la columna.
+      sinNombreBolt: filas.filter(f => !f.nombreBolt).length,
+      // A quien la ficha no le separa apellidos de nombres: su nombre de la
+      // seguridad social sale de una pieza, sin la coma. No se parte a ojo.
+      sinApellidosSeparados: filas.filter(f => !f.nombreSSEnForma).length,
+      // J en la cola: nadie las ha aprobado todavia, asi que NO cuentan. Si se
+      // aprueban, las horas justificadas de este mes suben.
+      jPendientes: dentro.reduce((a, c) => a + (c.jPendientes || 0), 0),
+      conJ: filas.filter(f => f.diasJustificados > 0).length,
+      // Quien sigue debiendo horas despues de contarle todo lo justificado.
+      conHorasSinJustificar: filas.filter(f => f.horasNoJustificadas > 0).length,
       sinDinero: filas.length > 0 && filas.every(f => !f.propinas && !f.peajes && !f.mboFAS),
       trabajoIncompleto,
       // Sin fecha de alta: cobran con el criterio viejo, pero conviene rellenarla.

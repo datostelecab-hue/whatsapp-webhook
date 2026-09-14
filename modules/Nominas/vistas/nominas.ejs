@@ -61,7 +61,7 @@
   <!-- ══ Tabla ══ -->
   <div id="tabla-wrap" class="hidden rounded-xl bg-telecab-card border border-telecab-border overflow-hidden">
     <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-telecab-border">
-      <input id="filtro" type="search" placeholder="Nombre o DNI…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm w-56 max-w-full">
+      <input id="filtro" type="search" placeholder="Nombre (ficha o BOLT) o DNI…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm w-56 max-w-full">
       <div class="flex rounded-lg overflow-hidden border border-telecab-border text-xs">
         <button data-tipo="todos" class="ftipo px-3 py-1.5 bg-telecab-gold/15 text-telecab-gold font-medium">Todos</button>
         <button data-tipo="propia" class="ftipo px-3 py-1.5 text-telecab-muted hover:text-telecab-text border-l border-telecab-border">Propia</button>
@@ -80,8 +80,10 @@
             <th class="text-left px-3 py-2">Tipo</th>
             <th class="text-left px-3 py-2">Jornada</th>
             <th class="text-right px-3 py-2" title="Día desde el que cuenta el mes (su fecha de alta, o el día 1 si ya estaba)">Desde</th>
-            <th class="text-right px-3 py-2" title="Horas efectivas: viaje + espera, jornada 05→05">Horas</th>
+            <th class="text-right px-3 py-2" title="Horas efectivas rodadas: viaje + espera, jornada 05→05">Horas</th>
+            <th class="text-right px-3 py-2" title="Horas cubiertas por J aprobadas. Cada J vale la jornada del día, sin pasar de ahí">Justif.</th>
             <th class="text-right px-3 py-2" title="Horas que se le pedían ese mes">Objetivo</th>
+            <th class="text-right px-3 py-2" title="Lo que falta para el objetivo después de sumar BOLT y las J">Sin justif.</th>
             <th class="text-right px-3 py-2">Propinas</th>
             <th class="text-right px-3 py-2">Peajes</th>
             <th class="text-right px-3 py-2">Nocturnas</th>
@@ -206,19 +208,23 @@ function render() {
 }
 function filtrarYpintar() {
   const q = ($('#filtro').value||'').toLowerCase().trim();
+  // Se busca por CUALQUIERA de los tres nombres y por el DNI: RRHH escribe el de
+  // la ficha y Trafico el de BOLT, y son distintos a proposito.
   const filas = RESULTADO.filas.filter(f =>
     (FILTRO_TIPO==='todos' || (FILTRO_TIPO==='ett' ? f.ett : !f.ett)) &&
-    (!q || (f.nombre+' '+(f.dni||'')).toLowerCase().includes(q)));
+    (!q || [f.nombre, f.nombreBolt, f.nombreSS, f.dni].join(' ').toLowerCase().includes(q)));
   $('#resumen-tabla').textContent = `${filas.length} conductores · Nómina ${MESES[RESULTADO.mes-1]} ${RESULTADO.ano}` +
     (RESULTADO.mesDatosNombre ? ` · datos de ${RESULTADO.mesDatosNombre} ${RESULTADO.anoDatos}` : '');
   $('#tbody').innerHTML = filas.map(f => `<tr class="border-t border-telecab-border/50 hover:bg-telecab-card2/40">
-    <td class="px-3 py-2 text-telecab-text">${esc(f.nombre)}</td>
+    <td class="px-3 py-2 text-telecab-text">${esc(f.nombre)}${mismoNombre(f)?'':`<br><span class="text-[11px] text-telecab-muted">BOLT: ${esc(f.nombreBolt)}</span>`}</td>
     <td class="px-3 py-2 text-telecab-muted">${esc(f.dni)||'<span class="text-telecab-red/70">—</span>'}</td>
     <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${f.ett?'bg-telecab-violet/15 text-telecab-violet':'bg-telecab-card2 text-telecab-muted'}">${f.ett?'ETT':'Propia'}</span></td>
     <td class="px-3 py-2 text-telecab-muted whitespace-nowrap">${f.jornada?f.jornada+' horas':'<span class="text-telecab-muted/50">—</span>'}</td>
     <td class="px-3 py-2 text-right text-telecab-muted" title="${esc(arranque(f))}">${f.primerDia}${f.origenArranque==='primer-log'?' <span class="text-telecab-warn">*</span>':''}</td>
     <td class="px-3 py-2 text-right">${(Number(f.horas)||0).toFixed(1)}</td>
-    <td class="px-3 py-2 text-right ${f.deltaHoras>0?'text-telecab-green':'text-telecab-muted'}" title="Diferencia: ${(Number(f.deltaHoras)||0).toFixed(1)} h">${(Number(f.horasObjetivo)||0).toFixed(1)}</td>
+    <td class="px-3 py-2 text-right ${f.horasJustificadas>0?'text-telecab-azul':'text-telecab-muted/50'}" title="${f.diasJustificados||0} día(s) con justificante aprobado">${(Number(f.horasJustificadas)||0).toFixed(1)}${f.diasJustificados?` <span class="text-[10px] text-telecab-muted">(${f.diasJustificados}d)</span>`:''}</td>
+    <td class="px-3 py-2 text-right ${f.deltaHoras>0?'text-telecab-green':'text-telecab-muted'}" title="Diferencia contra lo rodado: ${(Number(f.deltaHoras)||0).toFixed(1)} h">${(Number(f.horasObjetivo)||0).toFixed(1)}</td>
+    <td class="px-3 py-2 text-right ${f.horasNoJustificadas>0?'text-telecab-red font-semibold':'text-telecab-muted/40'}" title="${f.horasNoJustificadas>0?'Le faltan horas y no hay J que las explique':'Cubrió su objetivo'}">${(Number(f.horasNoJustificadas)||0).toFixed(1)}</td>
     <td class="px-3 py-2 text-right">${eur(f.propinas)}</td>
     <td class="px-3 py-2 text-right">${eur(f.peajes)}</td>
     <td class="px-3 py-2 text-right">${eur(f.nocturnas)}</td>
@@ -227,10 +233,14 @@ function filtrarYpintar() {
     <td class="px-3 py-2 text-right ${f.diasExtra>0?'':'text-telecab-muted/50'}">${(Number(f.diasExtra)||0).toFixed(2)}</td>
     <td class="px-3 py-2 text-right">${f.utilPct==null?'<span class="text-telecab-red/70">—</span>':f.utilPct.toFixed(0)+'%'}</td>
     <td class="px-3 py-2 text-right font-semibold text-telecab-text">${eur(f.total)}</td></tr>`).join('')
-    || '<tr><td colspan="15" class="px-3 py-6 text-center text-telecab-muted">Sin coincidencias</td></tr>';
-  const t = filas.reduce((a,f)=>{['propinas','peajes','nocturnas','mboFAS','compensacion','diasExtra','total'].forEach(k=>a[k]+=f[k]||0);return a;},{propinas:0,peajes:0,nocturnas:0,mboFAS:0,compensacion:0,diasExtra:0,total:0});
+    || '<tr><td colspan="17" class="px-3 py-6 text-center text-telecab-muted">Sin coincidencias</td></tr>';
+  const t = filas.reduce((a,f)=>{['horas','horasJustificadas','horasNoJustificadas','propinas','peajes','nocturnas','mboFAS','compensacion','diasExtra','total'].forEach(k=>a[k]+=f[k]||0);return a;},{horas:0,horasJustificadas:0,horasNoJustificadas:0,propinas:0,peajes:0,nocturnas:0,mboFAS:0,compensacion:0,diasExtra:0,total:0});
   $('#tfoot').innerHTML = `<tr>
-    <td class="px-3 py-2" colspan="7">TOTAL${FILTRO_TIPO!=='todos'?' '+FILTRO_TIPO.toUpperCase():''} (${filas.length})</td>
+    <td class="px-3 py-2" colspan="5">TOTAL${FILTRO_TIPO!=='todos'?' '+FILTRO_TIPO.toUpperCase():''} (${filas.length})</td>
+    <td class="px-3 py-2 text-right">${t.horas.toFixed(1)}</td>
+    <td class="px-3 py-2 text-right text-telecab-azul">${t.horasJustificadas.toFixed(1)}</td>
+    <td></td>
+    <td class="px-3 py-2 text-right ${t.horasNoJustificadas>0?'text-telecab-red':''}">${t.horasNoJustificadas.toFixed(1)}</td>
     <td class="px-3 py-2 text-right">${eur(t.propinas)}</td>
     <td class="px-3 py-2 text-right">${eur(t.peajes)}</td>
     <td class="px-3 py-2 text-right">${eur(t.nocturnas)}</td>
@@ -240,6 +250,11 @@ function filtrarYpintar() {
     <td></td>
     <td class="px-3 py-2 text-right text-telecab-gold">${eur(t.total)}</td></tr>`;
 }
+// Los dos nombres son la misma persona escrita de dos formas; solo se ensena el
+// de BOLT cuando de verdad difiere, o la tabla se llena de ruido.
+const norm = s2 => String(s2||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+const mismoNombre = f => !f.nombreBolt || norm(f.nombre).split('').sort().join('') === norm(f.nombreBolt).split('').sort().join('');
+
 const arranque = f => f.origenArranque==='alta-anterior' ? 'Ya estaba de alta: mes completo'
   : f.origenArranque==='alta-en-mes' ? ('Alta el '+(dia(f.alta)||'?')+': objetivo prorrateado desde ese día')
   : 'SIN fecha de alta: se usa su primer día con horas';
@@ -263,6 +278,11 @@ function pintarAvisos(a, cfg) {
   if (exc.length) av.push(['red',`⛔ ${exc.length} conductor(es) con horas pero FECHA DE ALTA posterior a ${mesD}: fuera de esta nómina. Revisa su alta si es un error → ${exc.map(e=>`${e.nombre} (alta ${dia(e.alta)||'—'}, ${e.horas} h)`).join(' · ')}`]);
   if (a.sinAlta>0) av.push(['amber',`${a.sinAlta} conductor(es) SIN fecha de alta (marcados con *): se les prorratea desde su primer día con horas. Rellénales el alta en su periodo de empleo.`]);
   if (a.altaEnMes>0) av.push(['muted',`${a.altaEnMes} conductor(es) se dieron de alta durante ${mesD}: son los únicos con el objetivo prorrateado.`]);
+  if (a.jPendientes>0) av.push(['amber',`⏳ ${a.jPendientes} justificante(s) de ${mesD} siguen PENDIENTES de aprobar: todavía no cuentan. Si se aprueban, las horas justificadas suben y las no justificadas bajan. Se revisan en /justificantes.`]);
+  if (a.conJ>0) av.push(['muted',`${a.conJ} conductor(es) tienen días justificados. Cada J vale la jornada entera (${(cfg||{}).horasMetaDia||8} h) sin distinguir el motivo, y nunca suma por encima de lo que falte de ese día.`]);
+  if (a.conHorasSinJustificar>0) av.push(['amber',`⚠️ ${a.conHorasSinJustificar} conductor(es) siguen por debajo de su objetivo después de contarles las J: son las "horas no justificadas" de la columna roja.`]);
+  if (a.sinNombreBolt>0) av.push(['muted',`${a.sinNombreBolt} conductor(es) sin nombre de BOLT: en el Excel sale el de la ficha en su lugar.`]);
+  if (a.sinApellidosSeparados>0) av.push(['muted',`${a.sinApellidosSeparados} conductor(es) tienen el nombre en una sola pieza (la ficha no separa apellidos de nombres), as\u00ed que en la columna "Nombre de la seguridad social" salen sin la coma. No se parte a ojo: en unos casos son dos apellidos y en otros uno, y alguno va en orden inverso. Se arregla rellen\u00e1ndoles los apellidos en su ficha.`]);
   const ss = (a.sinSellar||[]);
   if (ss.length) av.push(['muted',`${ss.length} conductor(es) tienen horas aquí que la bitácora NO tiene selladas (se les enlazó la cuenta de BOLT después de cerrar el mes): la nómina los cuenta, la bitácora no. Si quieres que cuadren, resella el mes desde la bitácora → ${ss.map(x=>x.nombre).join(' · ')}`]);
   const c = cfg || {};
