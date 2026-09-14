@@ -130,6 +130,29 @@ async function buscarUsuario(email) {
   return aObjeto(r.rows[0]);
 }
 
+/**
+ * El mismo usuario, pero buscado por id.
+ *
+ * Hace falta porque la sesion lleva el id, no el email: pedirlo por email
+ * obligaria a quien ya tiene el id a dar un rodeo. Se cachea unos segundos
+ * porque la barra de fichaje lo pregunta en CADA pantalla.
+ */
+const _porId = new Map();
+const TTL_POR_ID = 20 * 1000;
+async function buscarUsuarioPorId(id) {
+  const k = Number(id);
+  if (!Number.isInteger(k) || k <= 0) return null;
+  const c = _porId.get(k);
+  if (c && c.hasta > Date.now()) return c.u;
+  const r = await db.consulta(SELECT + ' WHERE u.id = $1', [k]);
+  const u = aObjeto(r.rows[0]);
+  _porId.set(k, { u, hasta: Date.now() + TTL_POR_ID });
+  return u;
+}
+
+/** Olvida lo cacheado de alguien. Lo llama quien acaba de cambiarle algo. */
+const olvidarUsuario = id => _porId.delete(Number(id));
+
 async function rolId(codigo) {
   const r = await db.consulta('SELECT id FROM rol WHERE codigo = $1', [codigo]);
   if (!r.rows.length) throw new Error(`Rol no válido: "${codigo}"`);
@@ -241,6 +264,9 @@ async function fijarFichaObligatorio(id, debe) {
     'UPDATE usuario SET ficha_obligatorio = $2 WHERE id = $1 RETURNING email',
     [Number(id), !!debe]);
   if (!r.rowCount) throw new Error('No existe ese usuario');
+  // Sin esto, la barra de fichaje tardaria hasta 20 s en enterarse de que a
+  // alguien le acaban de activar el fichaje, y pareceria que no funciona.
+  olvidarUsuario(id);
   return buscarUsuario(r.rows[0].email);
 }
 
@@ -305,7 +331,7 @@ const olvidarCorte = id => _corte.delete(Number(id));
 
 module.exports = {
   roles, esRol, ESTADOS_U,
-  leerUsuarios, buscarUsuario, crearUsuario, actualizarUsuario,
+  leerUsuarios, buscarUsuario, buscarUsuarioPorId, olvidarUsuario, crearUsuario, actualizarUsuario,
   fijarPassword, generarTokenReset, tokenResetValido, registrarAcceso,
   guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,
   hashPassword, verificarHash, generarPasswordProvisional,

@@ -1,0 +1,343 @@
+<style>
+  /* El botón grande. Es lo único que hace la gente aquí, así que ocupa lo que
+     tiene que ocupar y se pulsa bien con el pulgar en un móvil. */
+  .fi-boton { width: 100%; padding: 1.4rem 1rem; border: 0; border-radius: 1.1rem; cursor: pointer;
+    font-weight: 800; font-size: 1.15rem; color: rgb(var(--tc-dark));
+    display: flex; align-items: center; justify-content: center; gap: .65rem;
+    transition: transform .14s ease, box-shadow .18s ease, filter .2s ease; }
+  .fi-boton:hover { transform: translateY(-1px); }
+  .fi-boton:active { transform: translateY(0); }
+  .fi-boton[disabled] { filter: saturate(.35); cursor: progress; transform: none; }
+  .fi-entrar { background: linear-gradient(135deg, rgb(var(--tc-green) / .95), rgb(var(--tc-green) / .7)); }
+  .fi-salir  { background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold)) 55%, rgb(var(--tc-gold-deep))); }
+
+  /* El cronómetro. Tabular para que no baile al cambiar de minuto. */
+  .fi-reloj { font-size: clamp(2.6rem, 9vw, 4rem); font-weight: 800; letter-spacing: -.03em;
+    line-height: 1; font-variant-numeric: tabular-nums; }
+
+  /* Las filas son dos maquetas distintas porque son dos cosas distintas: en MI
+     mes la primera columna es la fecha; en el parte, la persona. Copiar la
+     misma rejilla para las dos dejaba el nombre repetido dos veces. */
+  .fi-fila { display: grid; gap: .5rem; align-items: center;
+    padding: .55rem .7rem; border-radius: .6rem; font-size: .82rem; }
+  .fi-mio   { grid-template-columns: 5.5rem 1fr 1fr 4.5rem auto; }
+  .fi-parte { grid-template-columns: minmax(6rem, 1.4fr) 1fr 1fr 4.5rem auto; }
+  /* En un móvil no caben cinco columnas. Se apilan en dos, que es lo que de
+     verdad se mira desde el teléfono: quién/cuándo y cuánto. */
+  @media (max-width: 640px) {
+    .fi-fila { grid-template-columns: 1fr auto; row-gap: .15rem; }
+    .fi-fila > :nth-child(1) { grid-column: 1 / -1; font-weight: 600; }
+  }
+  .fi-fila + .fi-fila { border-top: 1px solid rgb(var(--tc-border) / .5); }
+  .fi-fila:hover { background: rgb(var(--tc-card2) / .5); }
+  .fi-tag { font-size: 10px; font-weight: 700; padding: .1rem .4rem; border-radius: .35rem; }
+</style>
+
+<div class="grid grid-cols-1 lg:grid-cols-[22rem_1fr] gap-4">
+
+  <!-- ── Fichar ─────────────────────────────────────────────────────────── -->
+  <div class="rounded-2xl border border-telecab-border bg-telecab-card p-5">
+    <div id="fi-panel">
+      <p class="text-sm text-telecab-muted"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Cargando…</p>
+    </div>
+  </div>
+
+  <!-- ── Mi mes ─────────────────────────────────────────────────────────── -->
+  <div class="rounded-2xl border border-telecab-border bg-telecab-card p-5">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <div>
+        <h2 class="text-sm font-semibold text-telecab-text">Mis jornadas</h2>
+        <p class="text-xs text-telecab-muted">Lo que has fichado este mes. Es tu registro: puedes pedirlo cuando quieras.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="fi-mes" type="month"
+               class="px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text">
+        <span id="fi-total" class="text-sm font-bold text-telecab-gold tabular-nums">—</span>
+      </div>
+    </div>
+    <div id="fi-mis-dias" class="text-sm text-telecab-muted">—</div>
+  </div>
+</div>
+
+<% if (esDesarrollador) { %>
+<!-- ── El registro, solo para quien puede corregirlo ────────────────────── -->
+<div class="rounded-2xl border border-telecab-border bg-telecab-card p-5 mt-4">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <div>
+      <h2 class="text-sm font-semibold text-telecab-text">
+        <i class="fa-solid fa-user-shield text-telecab-gold mr-1"></i>El registro de todos
+      </h2>
+      <p class="text-xs text-telecab-muted">
+        Quién fichó y quién no. Corregir queda con tu nombre, el motivo y la hora original al lado:
+        un registro que se edita sin rastro no vale ante Inspección.
+      </p>
+    </div>
+    <input id="fi-dia" type="date"
+           class="px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text">
+  </div>
+  <div id="fi-avisos" class="mb-3"></div>
+  <div id="fi-parte" class="text-sm text-telecab-muted">—</div>
+</div>
+<% } %>
+
+<script>
+(function () {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const esc = t => String(t == null ? '' : t).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  const ES_DEV = <%= esDesarrollador ? 'true' : 'false' %>;
+
+  const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }) : '—';
+  const fecha = d => new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+  const dur = m => m == null ? '—' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0');
+
+  const api = async (url, cuerpo) => {
+    const r = await fetch(url, cuerpo ? {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
+    } : undefined).then(x => x.json());
+    if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo');
+    return r;
+  };
+
+  // ── LA UBICACIÓN ─────────────────────────────────────────────────────────
+  // Se pide SIEMPRE, pero NUNCA bloquea el fichaje. El registro de jornada es
+  // obligatorio por ley: si el navegador dice que no, o el GPS no coge, o el
+  // móvil está en modo avión, esa persona no puede quedarse sin fichar. Se
+  // guarda el fichaje marcado como 'denegada' o 'error' y así el hueco se ve.
+  //
+  // Y un aviso que sorprende: la geolocalización solo funciona sobre HTTPS. En
+  // producción lo es; en una prueba por HTTP plano todo llegaría como 'error'.
+  function ubicacion() {
+    return new Promise(resolve => {
+      if (!navigator.geolocation) return resolve({ estado: 'error' });
+      let contestado = false;
+      const responder = v => { if (!contestado) { contestado = true; resolve(v); } };
+      // Tope propio: hay dispositivos en los que el navegador se queda pensando
+      // y sin esto el botón se quedaría girando para siempre.
+      const reloj = setTimeout(() => responder({ estado: 'error' }), 12000);
+      navigator.geolocation.getCurrentPosition(
+        p => { clearTimeout(reloj); responder({ estado: 'ok', lat: p.coords.latitude, lng: p.coords.longitude, precision: p.coords.accuracy }); },
+        e => { clearTimeout(reloj); responder({ estado: e && e.code === 1 ? 'denegada' : 'error' }); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    });
+  }
+
+  // ── El panel de fichar ───────────────────────────────────────────────────
+  let E = null, cron = 0;
+
+  function pintarPanel() {
+    const p = $('#fi-panel');
+    if (!E.debeFichar) {
+      p.innerHTML = `
+        <div class="text-center py-6">
+          <i class="fa-regular fa-circle-check text-3xl text-telecab-muted mb-3"></i>
+          <p class="text-sm font-semibold text-telecab-text">No tienes que fichar</p>
+          <p class="text-xs text-telecab-muted mt-1">Tu cuenta no está marcada para registrar jornada.
+            Si crees que debería estarlo, díselo a quien lleva el sistema.</p>
+        </div>`;
+      return;
+    }
+
+    const abierta = !!E.abierto;
+    p.innerHTML = `
+      <p class="text-xs uppercase tracking-wider text-telecab-muted mb-1">${abierta ? 'Llevas trabajando' : 'Jornada'}</p>
+      <p class="fi-reloj ${abierta ? 'text-telecab-green' : 'text-telecab-muted'}" id="fi-cron">
+        ${abierta ? dur(E.abierto.minutos) : '—'}
+      </p>
+      <p class="text-xs text-telecab-muted mt-1 mb-4" id="fi-desde">
+        ${abierta ? 'Entraste a las ' + hora(E.abierto.entrada) : 'Todavía no has fichado hoy'}
+      </p>
+
+      ${E.olvidada ? `
+        <div class="flex items-start gap-2 mb-3 px-3 py-2 rounded-xl border border-telecab-warn/40 bg-telecab-warn/10">
+          <i class="fa-solid fa-triangle-exclamation text-telecab-warn mt-0.5"></i>
+          <p class="text-xs text-telecab-warn leading-snug">
+            Esta jornada es del <b>${esc(fecha(E.abierto.dia))}</b> y sigue abierta: te fuiste sin fichar la salida.
+            Ciérrala y pide que te la corrijan.
+          </p>
+        </div>` : ''}
+
+      <button id="fi-btn" class="fi-boton ${abierta ? 'fi-salir' : 'fi-entrar'}">
+        <i class="fa-solid ${abierta ? 'fa-right-from-bracket' : 'fa-right-to-bracket'}"></i>
+        <span>${abierta ? 'Fichar salida' : 'Fichar entrada'}</span>
+      </button>
+      <p class="text-[11px] text-telecab-muted mt-3 leading-snug">
+        Se guarda tu ubicación al fichar. Si tu móvil no la da, el fichaje se guarda igual
+        y queda marcado como <b>sin ubicación</b>.
+      </p>
+      <p id="fi-msg" class="text-xs mt-2"></p>`;
+
+    $('#fi-btn').addEventListener('click', () => fichar(abierta ? 'salir' : 'entrar'));
+    arrancarCron();
+  }
+
+  // El cronómetro se pinta en el cliente: pedir la hora al servidor cada minuto
+  // para ver subir un número no tiene sentido.
+  function arrancarCron() {
+    clearInterval(cron);
+    if (!E || !E.abierto) return;
+    const desde = new Date(E.abierto.entrada).getTime();
+    const tic = () => {
+      const m = Math.max(0, Math.round((Date.now() - desde) / 60000));
+      const el = $('#fi-cron'); if (el) el.textContent = dur(m);
+    };
+    tic();
+    cron = setInterval(tic, 20000);
+  }
+
+  async function fichar(que) {
+    const b = $('#fi-btn'), msg = $('#fi-msg');
+    b.disabled = true;
+    b.querySelector('span').textContent = 'Buscando tu ubicación…';
+    msg.textContent = '';
+    const ubi = await ubicacion();
+    b.querySelector('span').textContent = que === 'entrar' ? 'Fichando entrada…' : 'Fichando salida…';
+    try {
+      await api('/fichaje/api/' + que, { ubicacion: ubi });
+      if (ubi.estado !== 'ok') {
+        msg.className = 'text-xs mt-2 text-telecab-warn';
+        msg.textContent = ubi.estado === 'denegada'
+          ? 'Fichado, pero sin ubicación: tu navegador no dio permiso.'
+          : 'Fichado, pero sin ubicación: no se pudo leer el GPS.';
+      }
+      await cargarEstado();
+      cargarMiMes();
+      if (ES_DEV) cargarParte();
+      // Que la barra de arriba se entere YA. Si no, se ficha la entrada y el
+      // botón de la barra sigue diciendo "Fichar entrada": parece que no ha
+      // funcionado y se vuelve a pulsar.
+      if (typeof window.__refrescarFichaje === 'function') window.__refrescarFichaje();
+    } catch (e) {
+      msg.className = 'text-xs mt-2 text-telecab-red';
+      msg.textContent = e.message;
+      b.disabled = false;
+      b.querySelector('span').textContent = que === 'entrar' ? 'Fichar entrada' : 'Fichar salida';
+    }
+  }
+
+  async function cargarEstado() {
+    E = await api('/fichaje/api/estado');
+    pintarPanel();
+  }
+
+  // ── Mi mes ───────────────────────────────────────────────────────────────
+  const TAG_UBI = {
+    ok: '', denegada: ['sin ubicación', 'warn'], error: ['sin ubicación', 'warn'], sin_pedir: ['a mano', 'muted'],
+  };
+  function tagUbi(estado) {
+    const t = TAG_UBI[estado];
+    if (!t) return '';
+    return `<span class="fi-tag bg-telecab-${t[1]}/15 text-telecab-${t[1]}">${t[0]}</span>`;
+  }
+  const mapa = (lat, lng) => (lat == null ? '' :
+    `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener"
+        class="text-telecab-gold hover:underline" title="Ver en el mapa"><i class="fa-solid fa-location-dot"></i></a>`);
+
+  async function cargarMiMes() {
+    const mes = $('#fi-mes').value;
+    try {
+      const r = await api('/fichaje/api/mi-mes' + (mes ? '?mes=' + mes : ''));
+      $('#fi-mes').value = r.mes;
+      $('#fi-total').textContent = r.total || '0 h 00';
+      if (!r.filas.length) { $('#fi-mis-dias').innerHTML = '<p class="text-sm text-telecab-muted py-6 text-center">Nada fichado este mes.</p>'; return; }
+      $('#fi-mis-dias').innerHTML = r.filas.map(f => `
+        <div class="fi-fila fi-mio">
+          <span class="text-telecab-muted capitalize">${esc(fecha(f.dia))}</span>
+          <span class="text-telecab-text">${hora(f.entrada)} ${mapa(f.entrada_lat, f.entrada_lng)}</span>
+          <span class="text-telecab-text">${f.salida ? hora(f.salida) + ' ' + mapa(f.salida_lat, f.salida_lng) : '<span class="text-telecab-warn">sin cerrar</span>'}</span>
+          <span class="font-semibold text-telecab-text tabular-nums">${dur(f.minutos)}</span>
+          <span class="flex items-center gap-1 justify-end">
+            ${tagUbi(f.entrada_ubicacion)}
+            ${f.corregido ? `<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="${esc(f.corregido_motivo || '')}">corregido</span>` : ''}
+          </span>
+        </div>`).join('');
+    } catch (e) {
+      $('#fi-mis-dias').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  $('#fi-mes').addEventListener('change', cargarMiMes);
+
+  // ── El registro de todos (solo desarrollador) ────────────────────────────
+  async function cargarParte() {
+    if (!ES_DEV) return;
+    const dia = $('#fi-dia').value;
+    try {
+      const r = await api('/fichaje/api/parte' + (dia ? '?dia=' + dia : ''));
+      $('#fi-dia').value = r.dia;
+      const sc = await api('/fichaje/api/sin-cerrar');
+
+      const avisos = [];
+      if (r.sinFichar) avisos.push(['fa-user-slash', 'telecab-red', r.sinFichar + ' sin fichar hoy']);
+      if (r.sinUbicacion) avisos.push(['fa-location-dot', 'telecab-warn', r.sinUbicacion + ' sin ubicación']);
+      if (sc.filas.length) avisos.push(['fa-clock', 'telecab-warn', sc.filas.length + ' jornada(s) de días pasados sin cerrar']);
+      $('#fi-avisos').innerHTML = avisos.length ? avisos.map(([i, c, t]) =>
+        `<span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-${c}/10 text-${c} mr-2">
+           <i class="fa-solid ${i}"></i>${esc(t)}</span>`).join('') : '';
+
+      $('#fi-parte').innerHTML = r.filas.map(f => `
+        <div class="fi-fila fi-parte">
+          <span class="text-telecab-text truncate" title="${esc(f.quien)}">${esc(f.quien)}</span>
+          <span class="text-telecab-text">${f.entrada ? hora(f.entrada) + ' ' + mapa(f.entrada_lat, f.entrada_lng) : '<span class="text-telecab-red">no fichó</span>'}</span>
+          <span class="text-telecab-text">${f.salida ? hora(f.salida) + ' ' + mapa(f.salida_lat, f.salida_lng) : (f.entrada ? '<span class="text-telecab-warn">abierta</span>' : '')}</span>
+          <span class="flex items-center gap-1.5 justify-end">
+            <span class="font-semibold tabular-nums">${dur(f.minutos)}</span>
+            ${f.entrada ? tagUbi(f.entrada_ubicacion) : ''}
+            <button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
+                    data-corregir="${f.id || ''}" data-usuario="${f.usuario_id}" data-quien="${esc(f.quien)}">
+              ${f.id ? 'corregir' : 'añadir'}</button>
+          </span>
+        </div>`).join('');
+
+      $('#fi-parte').querySelectorAll('[data-corregir]').forEach(b =>
+        b.addEventListener('click', () => corregir(b.dataset.corregir, b.dataset.usuario, b.dataset.quien, r.dia)));
+    } catch (e) {
+      $('#fi-parte').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  async function corregir(id, usuarioId, quien, dia) {
+    // `Dialogo.formulario` es posicional: (titulo, campos, opciones), y los
+    // campos van por `id`. Las horas se piden como texto con marcador porque el
+    // diálogo de la casa no tiene tipo 'hora' y no hace falta inventarlo para
+    // dos campos: se valida aquí al vuelo.
+    const r = await Dialogo.formulario(
+      (id ? 'Corregir el fichaje de ' : 'Añadir un fichaje de ') + quien,
+      [
+        { id: 'entrada', etiqueta: 'Entrada (hh:mm)', tipo: 'texto', marcador: '08:30', obligatorio: !id },
+        { id: 'salida', etiqueta: 'Salida (hh:mm) — vacío la deja como está', tipo: 'texto', marcador: '17:00' },
+        { id: 'motivo', etiqueta: 'Motivo de la corrección', tipo: 'texto', marcador: 'Se fue sin fichar', obligatorio: true },
+      ],
+      { textoBoton: 'Guardar', nota: 'Hora de Madrid. Se guarda lo que había antes, con tu nombre y el motivo: el original no se pisa.' });
+    if (!r) return;
+
+    const HORA = /^([01]?\d|2[0-3]):[0-5]\d$/;
+    const malas = ['entrada', 'salida'].filter(k => r[k] && !HORA.test(r[k].trim()));
+    if (malas.length) {
+      await Dialogo.aviso({ titulo: 'Hora mal escrita', tono: 'error',
+        texto: 'Escribe la hora como hh:mm (por ejemplo 08:30). Revisa: ' + malas.join(' y ') + '.' });
+      return;
+    }
+    // 'HH:MM' + el día de la pantalla → un instante. Se manda con el desfase de
+    // Madrid a pelo NO: se manda la hora local y que la base la interprete con
+    // su zona, que es la que manda en todo el ERP.
+    const aIso = h => (h && h.trim()) ? dia + 'T' + h.trim().padStart(5, '0') + ':00' : null;
+    try {
+      await api('/fichaje/api/corregir', {
+        id: id || null, usuarioId: id ? null : Number(usuarioId),
+        entrada: aIso(r.entrada), salida: aIso(r.salida), motivo: r.motivo,
+      });
+      cargarParte(); cargarMiMes(); cargarEstado();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo corregir', texto: e.message, tono: 'error' });
+    }
+  }
+
+  if (ES_DEV) $('#fi-dia').addEventListener('change', cargarParte);
+
+  // ── Arranque ─────────────────────────────────────────────────────────────
+  cargarEstado().catch(e => { $('#fi-panel').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>'; });
+  cargarMiMes();
+  if (ES_DEV) cargarParte();
+})();
+</script>

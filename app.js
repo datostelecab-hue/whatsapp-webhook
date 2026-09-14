@@ -180,6 +180,7 @@ app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
 app.use('/taller', require('./modules/Vehiculos/taller.controller'));
+app.use('/fichaje', require('./modules/Fichaje/fichaje.controller'));
 app.use('/plantilla', plantillaRoutes);
 // La pantalla se llamo /conductores mientras se construia. Quien tenga ese
 // enlace guardado no se encuentra un 404.

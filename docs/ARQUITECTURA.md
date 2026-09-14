@@ -229,6 +229,7 @@ decidirlo antes de mover nada.
 | **Informes** | `reportes`, `exportar`, `bi`, `visibilidad`, `resumen` |
 | **Administracion** | `administracion`, `recaudacion` |
 | **Usuarios** ✓ | `usuarios`, `auth` — **hecho** |
+| **Fichaje** ✓ | `fichaje` — **hecho**, nació ya en `modules/` |
 | **WhatsApp** | `botPuertas`, `notificaciones` |
 | **Bolt** | `boltHoras` |
 | **Soporte** | `soporte`, `ticketsTelecab` |
