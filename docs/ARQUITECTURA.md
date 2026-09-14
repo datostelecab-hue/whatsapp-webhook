@@ -185,7 +185,7 @@ Hoy, para tocar "conductores" hay que abrir `routes/plantilla.js`,
 `services/repo/ficha360.js`, `services/repo/alta.js` y `views/plantilla.ejs`:
 siete carpetas distintas. Después, una.
 
-### Hecho: Vehículos
+### Hecho: Vehículos (entero, con Taller)
 
 El primero, y con él se estrenó la mecánica. Está en `modules/Vehiculos/`
 (con su `LEEME.md`). Lo que enseñó:
@@ -201,6 +201,11 @@ El primero, y con él se estrenó la mecánica. Está en `modules/Vehiculos/`
 - **Las vistas caben.** `app.js` pasa a tener dos raíces (`views/` y la carpeta
   `vistas/` de cada módulo mudado) y `res.render('vehiculos')` no cambia ni una
   letra. Cuidado con dejar una copia vieja en `views/`: Express serviría esa.
+- **Mover código destapa lo que estaba escondido.** El controlador de Taller
+  elegía el generador del informe con `` require(`../services/taller${formato}`) ``.
+  Esa dependencia no la veía ni un `grep` —`tallerPdf` y `tallerExcel` parecían
+  código muerto— ni ninguna herramienta, y un require así se rompe en silencio
+  justo al mover ficheros. Ahora está declarado.
 - **Lo que NO se hizo, y a propósito:** `crear()` abre las 6 plazas y las
   vigencias, o sea negocio viviendo en el repositorio. La primera mudanza tenía
   que ser mecánica y revisable de un vistazo; mezclarla con una reescritura de
@@ -214,7 +219,7 @@ decidirlo antes de mover nada.
 | Módulo | Rutas que se lleva |
 |---|---|
 | **Conductores** | `plantilla`, `fichas`, `agenda`, `libranzas` |
-| **Vehiculos** ✓ | `vehiculos` **(hecho)**, `taller` (pendiente) |
+| **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
 | **Control** | `control`, `alertas`, `callCenter`, `justificantes`, `flotaViva` **(?)** |
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
