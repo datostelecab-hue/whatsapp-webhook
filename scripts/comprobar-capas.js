@@ -307,6 +307,23 @@ function revisarControlador(fichero) {
     faltas.push({ que: 'entra al repositorio de OTRO modulo (se entra por su servicio)', detalle: rel });
   }
 
+  // EL TRINQUETE. La cadena es Controlador → Servicio → Repositorio, así que un
+  // controlador no debería hablar con un repositorio. Hoy lo hacen casi todos
+  // los de routes/, y convertir eso en cuarenta infracciones no ayudaría a
+  // nadie: se volvería ruido y en dos semanas nadie miraría la salida.
+  //
+  // Así que la regla aprieta solo hacia adelante: para lo que ya vive en
+  // modules/ —donde la arquitectura nueva ya está decidida— es una FALTA; para
+  // lo de routes/ es un aviso, y se irá cerrando según se mude cada módulo.
+  //
+  // `repo/actor` no cuenta: es transversal (quién eres), no datos de nadie.
+  const repos = [...new Set(imps.filter(i => i.capa === 'repositorio' && !TRANSVERSALES.has(i.rel)).map(i => i.rel))];
+  for (const rel of repos) {
+    const aviso = { que: 'habla directamente con un repositorio (debería ir por el servicio)',
+      detalle: rel, capaSaltada: true };
+    if (fichero.startsWith('modules/')) faltas.push(aviso); else avisos.push(aviso);
+  }
+
   // Nombres de los módulos de dominio que importa, para contarlos por manejador.
   const dominio = imps.filter(i => i.capa === 'repositorio' || i.capa === 'servicio').map(i => i.rel);
   const alias = new Map();
@@ -402,12 +419,26 @@ if (!SOLO_MEDIR) {
   }
   if (!hubo) console.log('  ninguno');
 
+  // Los dos tipos de aviso NO son lo mismo, y mezclarlos ahoga al pequeño.
+  // Saltarse la capa de servicio lo hacen casi todos los controladores viejos:
+  // es UNA deuda conocida que se cierra sola al mudar cada módulo, y listarla
+  // cuarenta veces tapa lo otro. Así que se resume. La lógica escondida en un
+  // manejador hay que mirarla una a una, y esa sí se detalla.
+  const saltanCapa = infC.filter(x => x.avisos.some(a => a.capaSaltada));
+  if (saltanCapa.length) {
+    console.log('\n═══ SE SALTAN LA CAPA DE SERVICIO (deuda de la Fase 2) ═══');
+    console.log(`  ${saltanCapa.length} controlador(es) de routes/ hablan directamente con un repositorio.`);
+    console.log('  Se cierra al mudar cada módulo; dentro de modules/ ya es infracción.');
+    if (TODO) saltanCapa.forEach(x => console.log(`      · ${x.fichero.replace('routes/', '')}`));
+    else console.log('  Con --todo, la lista.');
+  }
+
   console.log('\n═══ PARA MIRAR (probable lógica de negocio en el controlador) ═══');
-  const conAvisos = infC.filter(x => x.avisos.length);
+  const conAvisos = infC.filter(x => x.avisos.some(a => !a.capaSaltada));
   if (!conAvisos.length) console.log('  ninguno');
   for (const x of conAvisos) {
     console.log(`\n  ${x.fichero}  (${x.lineas} líneas, ${x.manejadores} rutas)`);
-    x.avisos.forEach(a => console.log(`      · ${a.que}: ${a.detalle}`));
+    x.avisos.filter(a => !a.capaSaltada).forEach(a => console.log(`      · ${a.que}: ${a.detalle}`));
   }
 }
 
