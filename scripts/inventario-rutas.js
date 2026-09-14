@@ -23,7 +23,10 @@ const fs = require('fs');
 const path = require('path');
 
 const RAIZ = path.join(__dirname, '..');
-const FOTO = path.join(__dirname, 'datos', 'rutas.json');
+// En scripts/ y NO en scripts/datos/: esa carpeta esta ignorada por git porque
+// guarda PII de la migracion, y esta foto tiene que viajar en el repositorio —
+// si no, no sirve para comparar entre commits, que es justo para lo que es.
+const FOTO = path.join(__dirname, 'rutas-base.json');
 
 // ── Anular lo que arranca cosas ────────────────────────────────────────────
 // MODO_PRUEBAS deja los crons sin programar (lo hace el propio app.js) y corta
@@ -109,7 +112,7 @@ if (arg === '--lista') {
 if (arg === '--guardar') {
   fs.mkdirSync(path.dirname(FOTO), { recursive: true });
   fs.writeFileSync(FOTO, JSON.stringify({ rutas: lista }, null, 2) + '\n');
-  console.log(`Foto guardada: ${lista.length} ruta(s) en scripts/datos/rutas.json`);
+  console.log(`Foto guardada: ${lista.length} ruta(s) en scripts/rutas-base.json`);
   process.exit(0);
 }
 
