@@ -218,7 +218,8 @@ decidirlo antes de mover nada.
 
 | Módulo | Rutas que se lleva |
 |---|---|
-| **Conductores** | `plantilla`, `fichas`, `agenda`, `libranzas`, y el índice de documentos (`repo/documentos`) |
+| **Conductores** | `plantilla`, `fichas`, `agenda`, `libranzas` |
+| **Documentos** ✓ | `documentos` — **hecho** |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
 | **Control** | `control`, `alertas`, `callCenter`, `justificantes`, `flotaViva` **(?)** |
@@ -265,9 +266,28 @@ posible es mínimo, y dejando para el final los que más gente toca:
 **Usuarios** → **Seleccion** → **Conductores** → **Planificacion** → **Control**
 → el resto.
 
-### "Documentación" NO es un módulo (revisado el 14/09)
+### Hecho: Documentos
 
-Estaba en la primera versión de este reparto y era un error. Al mirarlo:
+**Sí es un módulo**, y de los importantes: es el archivo documental de la
+empresa, la alternativa a tener los papeles en el ordenador de alguien. Lo que
+NO era es lo que decía la primera versión de este reparto (ver abajo).
+
+Está en `modules/Documentos/` (con su `LEEME.md`). Lo que tiene de propio:
+
+- **Es genérico, no "del conductor".** El ámbito viaja como dato:
+  `subir('vehiculo', 12, …)` y `subir('conductor', 83, …)` son la misma
+  operación. Los dos ámbitos funcionan ya — la tabla tiene las dos columnas y el
+  catálogo de tipos distingue ámbito —, así que el día que Vehículos quiera
+  guardar una ficha técnica no hay que tocar nada.
+- **El almacén también se cambia por dentro.** `ALMACEN` es un mapa de motores,
+  hoy solo Drive. Si los bytes se mudan, ninguna pantalla se entera.
+- **Se quitó la duplicación.** Plantilla y Selección tenían cada una su propia
+  colección de rutas de documentos sobre el repositorio. Ahora las dos entran
+  por la puerta del módulo.
+
+### Lo que "Documentación" NO era (revisado el 14/09)
+
+La primera versión de este reparto lo metió por el nombre, sin mirarlo:
 
 - **No tiene pantalla.** No existe `views/documentos.ejs`. Sus 6 rutas son API
   y el OAuth de Google (`/auth`, `/auth/callback`).
@@ -276,14 +296,15 @@ Estaba en la primera versión de este reparto y era un error. Al mirarlo:
 - **El índice SÍ está en PG** (`repo/documentos`, tabla `documento`), pero lo
   consumen `plantilla` y `seleccion`, no `/documentos`.
 
-Así que se parte: la fontanería de Drive se queda donde está, y el índice se va
-dentro de **Conductores** — los documentos son de la ficha del conductor.
+Lo que se hizo: el módulo se queda con **el índice y la API genérica**, y
+absorbe la fontanería de Drive (el OAuth vive ahí porque es de Drive, y Drive es
+el almacén). Las tres rutas viejas que hablan con Drive a pelo se quedan
+marcadas para borrar: ninguna vista las llama.
 
-**Antes de mover nada de esto hay que decidir si el archivo se va a usar.** Hoy
-la tabla tiene **14 filas de 2 conductores** (de 218), subidas el 3 y 4 de
-septiembre: son las pruebas de la migración. Se notó en el caso de la suspensión
-de BOLT del 12/09, donde no se pudo descartar una caducidad de documentos porque
-ese conductor —como otros 216— no tiene ninguno cargado.
+**Lo que falta no es arquitectura, son datos.** La tabla tiene 14 filas de 2
+conductores (de 218), subidas el 3 y 4 de septiembre. Se notó en el caso de la
+suspensión de BOLT del 12/09, donde no se pudo descartar una caducidad de
+documentos porque ese conductor —como otros 216— no tiene ninguno cargado.
 
 `flotaViva` no se mueve todavía: tiene base de datos propia y siete de los
 quince incumplimientos. Primero se decide si se integra o se queda fuera; mover

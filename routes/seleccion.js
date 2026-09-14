@@ -20,7 +20,8 @@ const { geocodificar, geocodificarEstructurado } = require('../services/geocodin
 const drive = require('../services/drive');
 const { generarFichaPDF } = require('../services/fichaAlta');
 const cand = require('../services/repo/candidaturas');
-const docs = require('../services/repo/documentos');
+// Por la PUERTA del modulo de Documentos (ver modules/Documentos/).
+const docs = require('../modules/Documentos/documentos.service');
 const actor = require('../services/repo/actor');
 
 // Los archivos llegan como multipart (no JSON), así que esquivan el límite
@@ -163,8 +164,7 @@ router.post('/api/candidatura/:id/documento', subida.single('archivo'), responde
   const f = await cand.ficha(id);
   if (!f) throw new Error('No existe esa candidatura');
 
-  const doc = await docs.subir({
-    conductorId: f.conductor_id,
+  const doc = await docs.subir('conductor', f.conductor_id, {
     tipo: def.tipo,
     nombre: `${def.label} — ${req.file.originalname}`,
     mime: req.file.mimetype,

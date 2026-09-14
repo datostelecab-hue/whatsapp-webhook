@@ -15,7 +15,9 @@
 const express = require('express');
 const router = express.Router();
 const con = require('../services/repo/conductores');
-const docs = require('../services/repo/documentos');
+// Por la PUERTA del modulo de Documentos, no por su repositorio: asi el archivo
+// puede cambiar por dentro (otro almacen, otro ambito) sin tocar esta pantalla.
+const docs = require('../modules/Documentos/documentos.service');
 const audit = require('../services/repo/auditoria');
 const actor = require('../services/repo/actor');
 const bolt = require('../services/cazamientoBolt');
@@ -224,15 +226,14 @@ router.get('/api/conductor/:id/cambios', responde(async req =>
 router.get('/api/tipos-documento', responde(async () => ({ tipos: await docs.tipos('conductor') })));
 
 router.get('/api/conductor/:id/documentos', responde(async req => ({
-  documentos: await docs.listar({
-    conductorId: Number(req.params.id),
-    incluirReemplazados: req.query.historico === '1',
-  }),
+  documentos: await docs.listar('conductor', req.params.id,
+    { incluirReemplazados: req.query.historico === '1' }),
 })));
 
-router.post('/api/documento', responde(async req => ({
-  documento: await docs.subir({ ...(req.body || {}) }, await quien(req)),
-})));
+router.post('/api/documento', responde(async req => {
+  const { conductorId, ...datos } = req.body || {};
+  return { documento: await docs.subir('conductor', conductorId, datos, await quien(req)) };
+}));
 
 router.put('/api/documento/:id', responde(async req =>
   ({ documento: await docs.actualizar(Number(req.params.id), req.body || {}, await quien(req)) })));
