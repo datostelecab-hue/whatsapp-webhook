@@ -314,6 +314,7 @@
     "POST /ett/api/candidatura/:id/descartar",
     "POST /ett/api/candidatura/:id/estado",
     "POST /ett/api/candidatura/:id/rrhh",
+    "POST /ett/api/excel-elegidos",
     "POST /ett/api/importar",
     "POST /ett/api/solicitud/:id/enviado",
     "POST /explorador/api/consulta",

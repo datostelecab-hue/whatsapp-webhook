@@ -244,6 +244,46 @@
    * aparece y no hay forma de saber por qué. Así que primero se pide la matriz
    * —que sí devuelve el motivo— y solo si sale bien se lanza la descarga.
    */
+  /**
+   * El Excel de los que estan marcados con la casilla.
+   *
+   * Va por POST —la lista de elegidos no cabe comoda en una URL— y por eso hay
+   * que guardar el fichero a mano: una descarga por POST no la sabe hacer un
+   * enlace. Si el servidor se niega, aqui SI se puede contar por que, que es lo
+   * que no se puede hacer con una descarga normal.
+   */
+  async function descargarElegidos() {
+    const elegidos = ett.filasSeleccionadas();
+    if (!elegidos.length) {
+      await Dialogo.aviso({ titulo: 'No has elegido a nadie', tono: 'aviso',
+        texto: 'Marca la casilla de los candidatos que quieras mandar. Pueden ser de tandas distintas.' });
+      return;
+    }
+    try {
+      const r = await fetch('/ett/api/excel-elegidos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: elegidos.map(c => c.id) }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        await Dialogo.aviso({ titulo: 'No se puede generar', tono: 'error',
+          texto: e.msg || 'No se pudo generar el Excel.' });
+        return;
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1]
+        || 'Candidatos_ETT.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      // Sin esto, cada descarga deja el fichero entero retenido en memoria.
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo descargar', texto: e.message, tono: 'error' });
+    }
+  }
+
   async function descargarExcel() {
     const t = await elegirSolicitud('Excel para la agencia', { soloEnviables: true });
     if (!t) return;
@@ -502,7 +542,23 @@
       { texto: 'Alta rápida', icono: 'fa-bolt', principal: false, onClick: altaRapida },
       { texto: 'Excel para la ETT', icono: 'fa-file-excel', principal: false,
         onClick: descargarExcel },
+      { id: 'elegidos', texto: 'Excel de los elegidos', icono: 'fa-square-check',
+        principal: false, activa: false, onClick: () => descargarElegidos() },
     ],
+
+    // Casillas en la lista. Sirven para mandarle a la agencia un Excel suelto
+    // con quien uno quiera —de la tanda que sea, las veces que haga falta—
+    // sin pasar por la regla de "la solicitud se manda entera".
+    seleccion: true,
+    alSeleccionar: elegidos => {
+      const b = document.querySelector('[data-accion="elegidos"]');
+      if (b) {
+        b.disabled = !elegidos.length;
+        b.querySelector('span').textContent = elegidos.length
+          ? 'Excel de ' + elegidos.length + ' elegido(s)'
+          : 'Excel de los elegidos';
+      }
+    },
 
     // El recuento de candidatos ya lo dice la tira de cifras, así que aquí se
     // dice lo otro que hace falta saber al entrar: cuántas tandas hay abiertas.

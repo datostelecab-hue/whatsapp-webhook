@@ -249,11 +249,36 @@
       };
 
       // Cabecera de la tabla.
-      this.el.cabecera.innerHTML = c.columnas.map(col =>
+      // ── SELECCIÓN (opcional) ───────────────────────────────────────────
+      // Nace apagada: se enciende con `seleccion: true` y ninguna lista de las
+      // que ya existen cambia. La casilla de la cabecera marca y desmarca LO
+      // QUE SE ESTÁ VIENDO, no la lista entera: con un filtro puesto, "todos"
+      // tiene que significar "todos estos", que es lo que espera quien lo pulsa.
+      this.sel = new Set();
+      const casillaCab = c.seleccion
+        ? `<th class="w-9 px-3 py-2.5 border-b-2 border-telecab-border">
+             <input type="checkbox" data-parte="sel-todos" title="Marcar lo que se ve"
+                    class="w-3.5 h-3.5 accent-telecab-gold cursor-pointer"></th>`
+        : '';
+
+      this.el.cabecera.innerHTML = casillaCab + c.columnas.map(col =>
         `<th class="text-left font-semibold px-3 py-2.5 text-[11px] uppercase tracking-wider
                     text-telecab-text/70 border-b-2 border-telecab-border whitespace-nowrap
                     ${esc(col.claseCabecera || '')}">${esc(col.titulo || '')}</th>`
       ).join('') + '<th class="w-8 border-b-2 border-telecab-border"></th>';
+
+      if (c.seleccion) {
+        const cbTodos = this.el.cabecera.querySelector('[data-parte="sel-todos"]');
+        if (cbTodos) cbTodos.addEventListener('change', () => {
+          // Sobre lo VISIBLE, no sobre la lista entera: con un filtro puesto,
+          // "todos" significa "todos estos".
+          const vistos = this.visibles().map(f => String(f[this.clave]));
+          if (cbTodos.checked) vistos.forEach(k => this.sel.add(k));
+          else vistos.forEach(k => this.sel.delete(k));
+          this.pintarFilas();
+          this.avisarSeleccion();
+        });
+      }
 
       // Exportar: lo tienen todas las listas salvo que se pida lo contrario.
       // Antes esto se programaba pantalla por pantalla y solo lo tenia una.
@@ -272,7 +297,11 @@
           a.principal === false
             ? 'bg-telecab-card border border-telecab-border hover:bg-telecab-card2'
             : 'bg-telecab-gold text-telecab-dark hover:bg-telecab-gold-soft shadow-gold'
-        }">${a.icono ? `<i class="fa-solid ${esc(a.icono)}"></i>` : ''}<span>${esc(a.texto || '')}</span></button>`);
+        }"${a.id ? ` data-accion="${esc(a.id)}"` : ''}>${
+          a.icono ? `<i class="fa-solid ${esc(a.icono)}"></i>` : ''}<span>${esc(a.texto || '')}</span></button>`);
+        // Una accion puede nacer apagada (`activa: false`) y encenderla quien
+        // sepa cuando toca — por ejemplo, al marcar la primera casilla.
+        if (a.activa === false) b.disabled = true;
         b.addEventListener('click', () => a.onClick(this));
         this.el.acciones.appendChild(b);
       });
@@ -543,14 +572,71 @@
           const html = col.pinta ? col.pinta(bruto, f) : esc(bruto);
           return `<td class="px-3 py-2 align-middle ${esc(col.clase || '')}">${html === undefined || html === null ? '' : html}</td>`;
         }).join('');
-        return `<tr data-clave="${esc(f[this.clave])}"
+        const clave = f[this.clave];
+        const casilla = c.seleccion
+          ? `<td class="px-3 align-middle"><input type="checkbox" data-sel="${esc(clave)}"
+               class="w-3.5 h-3.5 accent-telecab-gold cursor-pointer"
+               ${this.sel.has(String(clave)) ? 'checked' : ''}></td>`
+          : '';
+        return `<tr data-clave="${esc(clave)}"
                     class="border-b border-telecab-border/70 even:bg-telecab-card2/30
-                           hover:bg-telecab-gold/10 cursor-pointer transition-colors">${celdas}<td class="px-2 text-telecab-muted"><i class="fa-solid fa-chevron-right text-xs"></i></td></tr>`;
+                           hover:bg-telecab-gold/10 cursor-pointer transition-colors">${casilla}${celdas}<td class="px-2 text-telecab-muted"><i class="fa-solid fa-chevron-right text-xs"></i></td></tr>`;
       }).join('');
 
       this.el.cuerpo.querySelectorAll('tr[data-clave]').forEach(tr => {
-        tr.addEventListener('click', () => this.abrir(tr.dataset.clave, { historial: true }));
+        tr.addEventListener('click', e => {
+          // Pinchar la casilla NO abre la ficha: son dos gestos distintos sobre
+          // la misma fila, y abrir una ficha al marcar es de las cosas que hacen
+          // que la gente deje de usar la casilla.
+          if (e.target.closest('input[type=checkbox]')) return;
+          this.abrir(tr.dataset.clave, { historial: true });
+        });
       });
+
+      if (c.seleccion) {
+        this.el.cuerpo.querySelectorAll('input[data-sel]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            if (cb.checked) this.sel.add(String(cb.dataset.sel));
+            else this.sel.delete(String(cb.dataset.sel));
+            this.avisarSeleccion();
+          });
+        });
+        this.pintarCasillaTodos();
+      }
+    }
+
+    // ── Selección ────────────────────────────────────────────────────────────
+    /** Las claves marcadas, en el orden en que salen en la lista. */
+    seleccionados() {
+      return this.visibles().map(f => String(f[this.clave])).filter(k => this.sel.has(k));
+    }
+
+    /** Las FILAS marcadas, que es lo que suele querer quien pregunta. */
+    filasSeleccionadas() {
+      return this.filas.filter(f => this.sel.has(String(f[this.clave])));
+    }
+
+    limpiarSeleccion() { this.sel.clear(); this.pintarFilas(); this.avisarSeleccion(); }
+
+    avisarSeleccion() {
+      if (this.cfg.alSeleccionar) this.cfg.alSeleccionar(this.filasSeleccionadas(), this);
+      this.pintarCasillaTodos();
+    }
+
+    /**
+     * La casilla de la cabecera: marcada, a medias o vacía según lo que se vea.
+     *
+     * El estado INTERMEDIO importa: sin él, con tres de diez marcados la casilla
+     * sale vacía y el primer clic desmarca en vez de marcar, que es justo lo
+     * contrario de lo que se espera.
+     */
+    pintarCasillaTodos() {
+      const cb = this.el.cabecera.querySelector('[data-parte="sel-todos"]');
+      if (!cb) return;
+      const vistos = this.visibles().map(f => String(f[this.clave]));
+      const marcados = vistos.filter(k => this.sel.has(k)).length;
+      cb.checked = vistos.length > 0 && marcados === vistos.length;
+      cb.indeterminate = marcados > 0 && marcados < vistos.length;
     }
 
     /**
@@ -774,7 +860,11 @@
             : a.principal
               ? 'bg-telecab-gold text-telecab-dark hover:bg-telecab-gold-soft shadow-gold'
               : 'bg-telecab-card border border-telecab-border hover:bg-telecab-card2'
-        }">${a.icono ? `<i class="fa-solid ${esc(a.icono)}"></i>` : ''}<span>${esc(a.texto || '')}</span></button>`);
+        }"${a.id ? ` data-accion="${esc(a.id)}"` : ''}>${
+          a.icono ? `<i class="fa-solid ${esc(a.icono)}"></i>` : ''}<span>${esc(a.texto || '')}</span></button>`);
+        // Una accion puede nacer apagada (`activa: false`) y encenderla quien
+        // sepa cuando toca — por ejemplo, al marcar la primera casilla.
+        if (a.activa === false) b.disabled = true;
         b.addEventListener('click', () => a.onClick(d, this));
         cab.querySelector('[data-acciones]').appendChild(b);
       });

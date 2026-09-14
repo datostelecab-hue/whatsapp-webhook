@@ -236,6 +236,30 @@ const solicitudDe = req => ({
 // sale bien se lanza la descarga.
 router.get('/api/comprobar', responde(async req => ({ filas: (await cand.paraETT(solicitudDe(req))).length })));
 
+// ── EL EXCEL DE LOS ELEGIDOS A MANO ────────────────────────────────────────
+// La otra forma de mandarle algo a la agencia. La de la tanda entera sigue
+// igual: es LA respuesta oficial a una peticion suya y por eso va completa o no
+// va. Esta es para el resto de veces — "mandame otra vez estos cinco", gente de
+// tandas distintas, lo que se quedo a medias — y se puede generar las veces que
+// haga falta.
+//
+// Va por POST y no por GET porque la lista de elegidos puede ser larga y no
+// cabe comoda en una URL. Como una descarga por POST no la sabe hacer un enlace,
+// la pantalla lo pide por fetch y guarda el fichero desde el navegador.
+router.post('/api/excel-elegidos', async (req, res) => {
+  try {
+    const ids = (req.body || {}).ids;
+    const bytes = await generarExcelETT(await cand.paraETTElegidos(ids));
+    res.setHeader('Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreFichero()}"`);
+    res.send(Buffer.from(bytes));
+  } catch (e) {
+    console.error('❌ [ETT] excel elegidos:', e.message);
+    res.status(400).json({ status: 'error', msg: e.message, sinDecidir: e.sinDecidir || null });
+  }
+});
+
 router.get('/api/excel', async (req, res) => {
   try {
     // Devuelve los bytes ya hechos, no el libro.

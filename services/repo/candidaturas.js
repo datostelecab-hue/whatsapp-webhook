@@ -1087,6 +1087,41 @@ async function registrarEnvio(solicitudId, { formato = 'excel', usuarioId } = {}
  * de entrevista mezclaba dos solicitudes que citaran el mismo día y partía en
  * dos las que ocupaban dos jornadas.
  */
+/**
+ * Los candidatos ELEGIDOS a mano para un Excel suelto.
+ *
+ * Es la otra forma de mandarle algo a la agencia, y no sustituye a la de la
+ * tanda entera: aquella tiene reglas —la solicitud se manda completa o no se
+ * manda— porque es LA respuesta oficial a una peticion suya. Esta es para el
+ * resto de veces: "mandame otra vez estos cinco", gente de tandas distintas, o
+ * lo que se quedo a medias.
+ *
+ * LA UNICA REGLA QUE SE MANTIENE: solo sale quien tiene algo que decir. Mandar
+ * a alguien sin decidir deja a esa persona en tierra de nadie al otro lado —ni
+ * contratada, ni descartada, ni esperando—, y eso da igual si va en una tanda o
+ * en una lista suelta.
+ */
+async function paraETTElegidos(ids) {
+  const lista = [...new Set((ids || []).map(Number).filter(Number.isInteger))];
+  if (!lista.length) throw new Error('No has elegido a nadie');
+
+  let filas = await listar({ canal: 'bolsa_ett', incluirCerradas: true });
+  const porId = new Map(filas.map(c => [Number(c.id), c]));
+
+  const faltan = lista.filter(id => !porId.has(id));
+  if (faltan.length) throw new Error('Hay ' + faltan.length + ' candidato(s) que ya no estan en la bolsa');
+
+  const elegidos = lista.map(id => porId.get(id));
+  const sinDecidir = elegidos.filter(c => !c.inicio_previsto && !c.etiqueta_ett);
+  if (sinDecidir.length) {
+    const e = new Error('Hay ' + sinDecidir.length + ' sin decidir y no se pueden mandar: '
+      + sinDecidir.map(c => c.quien).join(', '));
+    e.sinDecidir = sinDecidir.map(c => ({ id: c.id, quien: c.quien, estado: c.estado_etiqueta }));
+    throw e;
+  }
+  return mapearParaETT(elegidos);
+}
+
 async function paraETT({ solicitudId } = {}) {
   // SOLO HAY SEGUNDO ENVIO SI QUEDA ALGUIEN PENDIENTE DE ASIGNAR.
   //
@@ -1122,6 +1157,18 @@ async function paraETT({ solicitudId } = {}) {
     throw e;
   }
 
+  return mapearParaETT(filas);
+}
+
+/**
+ * De filas de la base a las columnas que espera la agencia.
+ *
+ * Vive aparte porque lo usan LAS DOS formas de generar el Excel —la tanda
+ * entera y los elegidos a mano— y el formato tiene que ser el mismo byte a
+ * byte: la agencia lee las columnas tal cual, y dos mapeos que se parecen es
+ * como acaban diferenciandose.
+ */
+function mapearParaETT(filas) {
   const dosCifras = n => String(n).padStart(2, '0');
 
   // Una fecha como la escribe la agencia: DD/MM/AAAA.
@@ -1255,5 +1302,5 @@ async function eliminar(id, { usuarioId } = {}) {
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
   cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
-  paraETT, solicitudesETT, registrarEnvio,
+  paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
 };
