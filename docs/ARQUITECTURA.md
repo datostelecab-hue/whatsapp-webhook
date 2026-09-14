@@ -218,14 +218,13 @@ decidirlo antes de mover nada.
 
 | Módulo | Rutas que se lleva |
 |---|---|
-| **Conductores** | `plantilla`, `fichas`, `agenda`, `libranzas` |
+| **Conductores** | `plantilla`, `fichas`, `agenda`, `libranzas`, y el índice de documentos (`repo/documentos`) |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
 | **Control** | `control`, `alertas`, `callCenter`, `justificantes`, `flotaViva` **(?)** |
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
 | **RRHH** | `rrhh`, `nominas`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
 | **Seleccion** | `seleccion`, `ett`, `generador`, `matching`, `vacantes` **(?)** |
-| **Documentacion** | `documentos` |
 | **Informes** | `reportes`, `exportar`, `bi`, `visibilidad`, `resumen` |
 | **Administracion** | `administracion`, `recaudacion` |
 | **Usuarios** | `usuarios`, `auth` |
@@ -262,9 +261,29 @@ Uno cada vez, y cada uno en su commit:
 Empezando por el más pequeño y aislado, para estrenar la mecánica donde el daño
 posible es mínimo, y dejando para el final los que más gente toca:
 
-~~**Vehiculos**~~ (hecho) → **Documentacion** →
+~~**Vehiculos**~~ (hecho) →
 **Usuarios** → **Seleccion** → **Conductores** → **Planificacion** → **Control**
 → el resto.
+
+### "Documentación" NO es un módulo (revisado el 14/09)
+
+Estaba en la primera versión de este reparto y era un error. Al mirarlo:
+
+- **No tiene pantalla.** No existe `views/documentos.ejs`. Sus 6 rutas son API
+  y el OAuth de Google (`/auth`, `/auth/callback`).
+- **`routes/documentos.js` no toca PostgreSQL.** Solo `services/drive`. Es
+  fontanería del adaptador, y la usan también `rrhh`, `seleccion` y `soporte`.
+- **El índice SÍ está en PG** (`repo/documentos`, tabla `documento`), pero lo
+  consumen `plantilla` y `seleccion`, no `/documentos`.
+
+Así que se parte: la fontanería de Drive se queda donde está, y el índice se va
+dentro de **Conductores** — los documentos son de la ficha del conductor.
+
+**Antes de mover nada de esto hay que decidir si el archivo se va a usar.** Hoy
+la tabla tiene **14 filas de 2 conductores** (de 218), subidas el 3 y 4 de
+septiembre: son las pruebas de la migración. Se notó en el caso de la suspensión
+de BOLT del 12/09, donde no se pudo descartar una caducidad de documentos porque
+ese conductor —como otros 216— no tiene ninguno cargado.
 
 `flotaViva` no se mueve todavía: tiene base de datos propia y siete de los
 quince incumplimientos. Primero se decide si se integra o se queda fuera; mover
