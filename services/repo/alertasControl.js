@@ -76,6 +76,18 @@ const MODELO = {
   // En pruebas se registra la alerta y NO se manda nada (estado 'simulada').
   modo: 'test',
   plantilla: (process.env.PLANTILLA_ALERTA_CONTROL || 'alerta_control').trim(),
+  // Una plantilla PROPIA para cada tipo, si se quiere. Nacen vacías a propósito:
+  // mientras lo estén, los tres tipos salen por la genérica y esto no cambia
+  // nada. Se encienden poniendo el nombre aprobado en Meta, y si la de un tipo
+  // no existe todavía, ese aviso vuelve solo a la genérica (ver `mandar`).
+  //
+  // Con plantilla propia, el texto fijo ya dice QUÉ ha pasado, así que la cuarta
+  // variable lleva solo la cifra ("3 viajes") en vez de la frase entera.
+  plantillasPorTipo: {
+    rechazo_directo: (process.env.PLANTILLA_ALERTA_RECHAZO_DIRECTO || '').trim(),
+    sin_respuesta: (process.env.PLANTILLA_ALERTA_SIN_RESPUESTA || '').trim(),
+    km_parado: (process.env.PLANTILLA_ALERTA_KM_PARADO || '').trim(),
+  },
 };
 
 const TZ = 'Europe/Madrid';
@@ -140,7 +152,10 @@ async function leerConfig() {
     // quedar tapado por una config vieja que no lo conoce.
     const tipos = {};
     for (const [k, def] of Object.entries(MODELO.tipos)) tipos[k] = { ...def, ...((guardado.tipos || {})[k] || {}) };
-    return { ...MODELO, ...guardado, tipos };
+    // Igual con las plantillas por tipo: un tipo nuevo del MODELO no puede
+    // quedar fuera porque la config guardada sea de antes.
+    const plantillasPorTipo = { ...MODELO.plantillasPorTipo, ...(guardado.plantillasPorTipo || {}) };
+    return { ...MODELO, ...guardado, tipos, plantillasPorTipo };
   } catch (e) {
     // Sin la tabla (migración sin aplicar) el módulo se ve, pero no alerta.
     return { ...MODELO, sinTabla: true };
@@ -163,6 +178,11 @@ async function guardarConfig(patch, { usuarioId } = {}) {
     maxPorFranja: Math.max(1, num((patch || {}).maxPorFranja, actual.maxPorFranja)),
     modo: (patch || {}).modo === 'live' ? 'live' : 'test',
     plantilla: String((patch || {}).plantilla || actual.plantilla).trim().slice(0, 60) || MODELO.plantilla,
+    plantillasPorTipo: Object.fromEntries(Object.keys(actual.tipos).map(k => {
+      const p = ((patch || {}).plantillasPorTipo || {})[k];
+      const v = p === undefined ? (actual.plantillasPorTipo || {})[k] : p;
+      return [k, String(v || '').trim().slice(0, 60)];
+    })),
   };
   await db.consulta(
     `INSERT INTO alerta_control_config (clave, valor, actualizado_at, usuario_id)
@@ -395,6 +415,32 @@ function textoAlerta(tipo, valor, cfgTipo, franja) {
   return `${fmtNum(valor)} viajes perdidos por NO RESPONDER (franja ${horas})`;
 }
 
+/**
+ * ¿Falla porque esa plantilla no se puede usar (no existe, está en pausa o
+ * deshabilitada), y no por otra cosa?
+ *
+ * Solo en ese caso tiene sentido reintentar con la genérica. Un fallo de número
+ * de parámetros o de teléfono daría igual con otra plantilla y gastaría envíos.
+ * El 132001 llega aquí ya habiendo probado los cuatro códigos de español, que es
+ * lo que hace `services/whatsapp.js` por su cuenta.
+ */
+const esPlantillaQueNoExiste = e =>
+  /132001|132015|132016|does not exist|not exist in the translation|paused|disabled/i.test(e || '');
+
+/**
+ * La misma cuarta variable, pero para las plantillas que ya dicen QUÉ ha pasado
+ * en su texto fijo: ahí repetir la frase entera sonaría a eco. Solo la cifra.
+ *
+ * Los km SÍ se quedan con la franja: sin ella, "24,6 km" no dice de cuándo son.
+ */
+function textoCorto(tipo, valor, franja) {
+  if (tipo === 'km_parado') {
+    const horas = `${String(franja.ini).padStart(2, '0')}:00-${String(franja.fin).padStart(2, '0')}:00`;
+    return `${fmtNum(valor)} km (franja ${horas})`;
+  }
+  return `${fmtNum(valor)} ${valor === 1 ? 'viaje' : 'viajes'}`;
+}
+
 // ── LA REVISIÓN ─────────────────────────────────────────────────────────────
 /**
  * Mira la franja en curso, abre las alertas nuevas y las manda.
@@ -467,19 +513,33 @@ async function mandar(alertaId, p, franja, config, gente, simulado) {
     await db.consulta(`UPDATE alerta_control SET estado = 'sin_destinatarios' WHERE id = $1`, [alertaId]);
     return { ok: 0, fallos: 0, estado: 'sin_destinatarios' };
   }
-  const texto = textoAlerta(p.tipo, p.valor, config.tipos[p.tipo], franja);
-  const vars = [
+  // Si este tipo tiene plantilla propia se usa, y entonces la cuarta variable va
+  // corta porque el texto fijo de esa plantilla ya explica el motivo.
+  const propia = ((config.plantillasPorTipo || {})[p.tipo] || '').trim();
+  const cabecera = [
     p.nombreBolt || '—',
     p.telefono || 'sin teléfono',
     fmtHoras(p.horasEfectivas),
-    texto,
   ];
+  const vars = [...cabecera, propia ? textoCorto(p.tipo, p.valor, franja)
+    : textoAlerta(p.tipo, p.valor, config.tipos[p.tipo], franja)];
+  // La de reserva: si la propia aún no está aprobada en Meta, el aviso NO se
+  // pierde — sale por la genérica con su frase larga.
+  const reserva = propia
+    ? { plantilla: config.plantilla, vars: [...cabecera, textoAlerta(p.tipo, p.valor, config.tipos[p.tipo], franja)] }
+    : null;
 
   let ok = 0, fallos = 0;
   for (const d of gente) {
     let r;
     if (simulado) r = { ok: true };
-    else r = await whatsapp.enviarPlantillaPosicional(d.telefono, config.plantilla, vars);
+    else {
+      r = await whatsapp.enviarPlantillaPosicional(d.telefono, propia || config.plantilla, vars);
+      if (!r.ok && reserva && esPlantillaQueNoExiste(r.error)) {
+        console.log(`📩 [ALERTAS] "${propia}" no está disponible en Meta: este aviso sale por "${reserva.plantilla}"`);
+        r = await whatsapp.enviarPlantillaPosicional(d.telefono, reserva.plantilla, reserva.vars);
+      }
+    }
     if (r.ok) ok++; else fallos++;
     await db.consulta(
       `INSERT INTO alerta_control_envio (alerta_id, usuario_id, usuario, telefono, ok, simulado, error)
@@ -565,5 +625,5 @@ async function estado({ dia } = {}) {
 module.exports = {
   MODELO, revisar, estado, historial, candidatos,
   leerConfig, guardarConfig, destinatarios, guardarDestinatarios, aQuienAviso,
-  franjaDe, textoAlerta,
+  franjaDe, textoAlerta, textoCorto, esPlantillaQueNoExiste,
 };

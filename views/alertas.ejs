@@ -283,6 +283,12 @@
                    class="w-20 px-2 py-1 bg-telecab-card border border-telecab-border rounded-lg text-sm text-center tabular-nums">
             <span class="text-xs text-telecab-muted">${esc(t.unidad)}</span>
           </div>
+          <label class="flex items-center gap-1.5 w-full">
+            <span class="text-xs text-telecab-muted whitespace-nowrap">plantilla propia</span>
+            <input data-plantilla="${esc(t.codigo)}" value="${esc((c.plantillasPorTipo || {})[t.codigo] || '')}"
+                   placeholder="vacío = usa la general"
+                   class="flex-1 min-w-[160px] px-2 py-1 bg-telecab-card border border-telecab-border rounded-lg text-xs">
+          </label>
         </div>`).join('');
       $('#a-dest').innerHTML = (E.destinatarios || []).map(d => `
         <label class="flex items-center gap-2 px-3 py-2 rounded-xl border ${d.recibe ? 'border-telecab-gold/40 bg-telecab-gold/5' : 'border-telecab-border'} ${d.sinTelefono ? 'opacity-60' : ''}">
@@ -308,8 +314,14 @@
             activo: document.querySelector(`[data-activo="${k}"]`).checked,
           };
         });
+        // Vacía = ese tipo sale por la general. Se manda igualmente para poder
+        // BORRAR una que ya no se quiere: si no se enviara, quedaría puesta.
+        const plantillasPorTipo = {};
+        document.querySelectorAll('[data-plantilla]').forEach(i => {
+          plantillasPorTipo[i.dataset.plantilla] = i.value.trim();
+        });
         const cuerpo = {
-          tipos, modo: $('#a-modo').checked ? 'live' : 'test',
+          tipos, plantillasPorTipo, modo: $('#a-modo').checked ? 'live' : 'test',
           plantilla: $('#a-plantilla').value.trim(),
           maxPorFranja: Number($('#a-max').value) || 25,
         };
