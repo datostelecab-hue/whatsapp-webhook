@@ -51,7 +51,6 @@ const PERMITIDOS = {
   'services/conductores.js':     'Módulo viejo sobre hojas: muere cuando la agenda pase a PostgreSQL',
   'services/sanciones.js':       'Sanciones: lee excesos de velocidad de Mapon en su propio cron',
   'services/fichaje.js':         'Fichaje: ESCRIBE en Mapon (enlaza conductor y coche), no lee',
-  'routes/nominas.js':           'Nóminas: se migra con la tubería de horas',
   'routes/operaciones.js':       'Panel de operaciones: se migra con las auditorías',
   // Nacio en `main`, donde esta regla no existia, y con su PROPIA base de datos
   // (`fv_*`). Entra por la puerta grande el dia que su padron se funda con el

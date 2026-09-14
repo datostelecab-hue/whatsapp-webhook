@@ -44,7 +44,7 @@ const CATALOGO = [
     { clave: '/administracion', etiqueta: 'Administración' },
     { clave: '/ticketera',      etiqueta: 'Ticketera RRHH' },
     { clave: '/reportes',       etiqueta: 'Reportes RRHH' },
-    { clave: '/nominas',        etiqueta: 'Nóminas extras' },
+    { clave: '/nominas',        etiqueta: 'Nóminas' },
     { clave: '/convenio',       etiqueta: 'Convenio' },
   ] },
   { grupo: 'Tráfico', items: [

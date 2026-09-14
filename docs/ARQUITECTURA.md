@@ -224,7 +224,8 @@ decidirlo antes de mover nada.
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
 | **Control** | `control`, `alertas`, `callCenter`, `justificantes`, `flotaViva` **(?)** |
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
-| **RRHH** | `rrhh`, `nominas`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
+| **RRHH** | `rrhh`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
+| **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
 | **Seleccion** | `seleccion`, `ett`, `generador`, `matching`, `vacantes` **(?)** |
 | **Informes** | `reportes`, `exportar`, `bi`, `visibilidad`, `resumen` |
 | **Administracion** | `administracion`, `recaudacion` |
@@ -263,8 +264,8 @@ Uno cada vez, y cada uno en su commit:
 Empezando por el más pequeño y aislado, para estrenar la mecánica donde el daño
 posible es mínimo, y dejando para el final los que más gente toca:
 
-~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ (hechos) →
-**Usuarios** → **Seleccion** → **Conductores** → **Planificacion** → **Control**
+~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
+(hechos) → **Seleccion** → **Conductores** → **Planificacion** → **Control**
 → el resto.
 
 ### Hecho: Documentos
@@ -310,3 +311,50 @@ documentos porque ese conductor —como otros 216— no tiene ninguno cargado.
 `flotaViva` no se mueve todavía: tiene base de datos propia y siete de los
 quince incumplimientos. Primero se decide si se integra o se queda fuera; mover
 de sitio algo que no se sabe si va a seguir existiendo es trabajo tirado.
+
+### Hecho: Nóminas (y de paso, fuera de las hojas)
+
+Está en `modules/Nominas/` (con su `LEEME.md`). Es el primero que no solo se
+muda: **cambia de fuente de datos**.
+
+Antes leía las horas de la hoja mensual del libro de horas, el DNI y la fecha de
+alta de AGENDA_V2, y guardaba su configuración, su snapshot y sus meses cerrados
+en tres hojas más. Encima tenía una ruta `/nominas/diagnostico` que preguntaba a
+la API de BOLT en caliente — una pantalla que dependía de una API ajena, que es
+justo lo que `scripts/comprobar-ingesta.js` persigue.
+
+Ahora:
+
+| Dato | De dónde sale |
+|---|---|
+| Horas, nocturnas, utilización | `fv_tramo` (la ingesta de BOLT) |
+| Propinas, peajes, facturación | `v_ordenes_conductor`, sobre `bolt_order` |
+| DNI, jornada, ETT, fecha de alta | `conductor` + `conductor_periodo_empleo` |
+| Config y meses congelados | `nomina_config`, `nomina_mes`, `nomina_fila` (db/108) |
+
+Las **fórmulas no se han tocado**: `calcularFila` es la cadena del AppScript
+original. Lo comprobado es que las horas coinciden con la bitácora sellada
+(225 de 225 comparables en agosto de 2026) y que el dinero coincide con las
+órdenes al céntimo.
+
+Se cayeron seis rutas a propósito, y el inventario las señala:
+
+- `POST /generar` y `GET /estado` existían porque bajar el mes de BOLT tardaba
+  minutos: había que lanzarlo en segundo plano y sondear una barra de progreso.
+  Calcular ahora tarda cuatro segundos, así que `GET /cargar` lo hace y contesta.
+- `GET /congelada` se funde en `GET /cargar`, que devuelve lo congelado cuando
+  existe.
+- `POST /recalcular` es ahora `POST /calcular`, y además **no guarda la config**:
+  sirve para ver qué saldría con otras tarifas antes de decidir.
+- `GET /descargar` es `GET /nomina.xlsx` (con el punto, para que el navegador
+  nombre bien la descarga).
+- `GET /diagnostico` no se sustituye: perseguía descuadres entre la hoja y el
+  panel de BOLT, y sin hoja de por medio no hay descuadre que perseguir.
+
+**Lo que se aprendió, y sirve para los que faltan**: un módulo que vivía sobre
+hojas no se muda, se rehace. Mover los ficheros es media hora; lo que cuesta es
+medir primero si PostgreSQL tiene TODO lo que el cálculo necesita. Aquí se midió
+antes de escribir una línea, y apareció el único hueco real: `bolt_state_log`
+solo llega a septiembre, así que las nocturnas y la utilización no podían salir
+de ahí — sí de `fv_tramo`, que cubre desde julio y distingue viaje de espera,
+que es exactamente `has_order` y `waiting_orders`.

@@ -2,9 +2,12 @@
   <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
     <div>
       <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-money-check-dollar text-telecab-gold"></i> Nóminas extras
+        <i class="fa-solid fa-money-check-dollar text-telecab-gold"></i> Nóminas
       </h1>
-      <p class="text-sm text-telecab-muted mt-1">Compensación variable, calculada desde Bolt. <b class="text-telecab-text">A mes vencido</b>: la nómina de un mes usa los datos del mes anterior (la de Julio = trabajo de Junio).</p>
+      <p class="text-sm text-telecab-muted mt-1">
+        Compensación variable del mes. <b class="text-telecab-text">A mes vencido</b>: la nómina de un mes
+        usa los datos del anterior (la de Julio = trabajo de Junio).
+      </p>
     </div>
     <div class="flex items-center gap-2">
       <select id="mes" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-text"></select>
@@ -20,23 +23,30 @@
     </button>
     <div id="cfg-body" class="hidden px-4 pb-4">
       <div id="cfg-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
-      <p class="text-xs text-telecab-muted mt-3">Los marcados con <span class="text-telecab-gold">●</span> afectan al total. Cambia lo que quieras y pulsa <b>Recalcular</b> (no vuelve a descargar de Bolt).</p>
-      <div class="flex gap-2 mt-3">
+      <p class="text-xs text-telecab-muted mt-3">
+        Los marcados con <span class="text-telecab-gold">●</span> afectan al total.
+        <b>Probar</b> recalcula con estos valores sin guardarlos; <b>Guardar</b> los deja puestos para siempre.
+      </p>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <button id="btn-probar" class="px-4 py-2 rounded-lg bg-telecab-violet/15 text-telecab-violet text-sm font-medium hover:bg-telecab-violet/25">
+          <i class="fa-solid fa-calculator mr-1"></i> Probar con estos valores
+        </button>
         <button id="btn-guardar-cfg" class="px-4 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/25">Guardar config</button>
-        <button id="btn-recalcular" class="px-4 py-2 rounded-lg bg-telecab-violet/15 text-telecab-violet text-sm font-medium hover:bg-telecab-violet/25"><i class="fa-solid fa-calculator mr-1"></i> Recalcular con este config</button>
       </div>
     </div>
   </div>
 
   <!-- ══ Acciones ══ -->
   <div class="flex flex-wrap items-center gap-2 mb-4">
-    <button id="btn-generar" class="px-4 py-2 rounded-lg bg-telecab-green/15 text-telecab-green font-medium hover:bg-telecab-green/25">
-      <i class="fa-solid fa-rotate mr-1"></i> Generar nómina del mes
+    <button id="btn-recargar" class="px-4 py-2 rounded-lg bg-telecab-green/15 text-telecab-green font-medium hover:bg-telecab-green/25">
+      <i class="fa-solid fa-rotate mr-1"></i> Recalcular el mes
     </button>
-    <label class="text-sm text-telecab-muted flex items-center gap-1.5">
-      <input id="actualizar" type="checkbox" checked> descargar datos frescos de Bolt
-    </label>
     <span class="flex-1"></span>
+    <% if (esDesarrollador) { %>
+    <button id="btn-descongelar" class="px-4 py-2 rounded-lg bg-telecab-card border border-telecab-border text-telecab-muted text-sm hover:text-telecab-red hidden">
+      <i class="fa-solid fa-fire mr-1"></i> Descongelar
+    </button>
+    <% } %>
     <button id="btn-congelar" class="px-4 py-2 rounded-lg bg-telecab-red/15 text-telecab-red text-sm font-medium hover:bg-telecab-red/25 disabled:opacity-40" disabled>
       <i class="fa-solid fa-snowflake mr-1"></i> Congelar
     </button>
@@ -54,7 +64,7 @@
       <input id="filtro" type="search" placeholder="Nombre o DNI…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm w-56 max-w-full">
       <div class="flex rounded-lg overflow-hidden border border-telecab-border text-xs">
         <button data-tipo="todos" class="ftipo px-3 py-1.5 bg-telecab-gold/15 text-telecab-gold font-medium">Todos</button>
-        <button data-tipo="tibus" class="ftipo px-3 py-1.5 text-telecab-muted hover:text-telecab-text border-l border-telecab-border">Tibus</button>
+        <button data-tipo="propia" class="ftipo px-3 py-1.5 text-telecab-muted hover:text-telecab-text border-l border-telecab-border">Propia</button>
         <button data-tipo="ett" class="ftipo px-3 py-1.5 text-telecab-muted hover:text-telecab-text border-l border-telecab-border">ETT</button>
       </div>
       <span id="fuente" class="text-xs"></span>
@@ -69,8 +79,9 @@
             <th class="text-left px-3 py-2">DNI/NIE</th>
             <th class="text-left px-3 py-2">Tipo</th>
             <th class="text-left px-3 py-2">Jornada</th>
-            <th class="text-right px-3 py-2" title="Primer día con horas del mes (arranque del prorrateo)">Desde</th>
-            <th class="text-right px-3 py-2">Horas</th>
+            <th class="text-right px-3 py-2" title="Día desde el que cuenta el mes (su fecha de alta, o el día 1 si ya estaba)">Desde</th>
+            <th class="text-right px-3 py-2" title="Horas efectivas: viaje + espera, jornada 05→05">Horas</th>
+            <th class="text-right px-3 py-2" title="Horas que se le pedían ese mes">Objetivo</th>
             <th class="text-right px-3 py-2">Propinas</th>
             <th class="text-right px-3 py-2">Peajes</th>
             <th class="text-right px-3 py-2">Nocturnas</th>
@@ -89,7 +100,7 @@
 </div>
 
 <script type="application/json" id="datos-servidor">
-  <%- JSON.stringify({ mesActual: mesActual, anoActual: anoActual, campos: campos }) %>
+  <%- JSON.stringify({ mesActual: mesActual, anoActual: anoActual, campos: campos, esDesarrollador: esDesarrollador }) %>
 </script>
 <script>
 const CFG = JSON.parse(document.getElementById('datos-servidor').textContent);
@@ -97,7 +108,7 @@ const $ = s => document.querySelector(s);
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const eur = n => (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
-let RESULTADO = null, poll = null;
+let RESULTADO = null, FUENTE = '', cargando = false;
 
 // ── Selectores de mes/año ──
 MESES.forEach((m,i)=>{ const o=document.createElement('option'); o.value=i+1; o.textContent=m; if(i+1===CFG.mesActual)o.selected=true; $('#mes').appendChild(o); });
@@ -122,56 +133,74 @@ async function cargarConfig() {
 }
 $('#btn-guardar-cfg').addEventListener('click', async () => {
   const r = await (await fetch('/nominas/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:recogerConfig()})})).json();
-  msgProgreso(r.status==='ok'?'✅ Config guardada':'❌ '+(r.msg||'error'), r.status!=='ok');
+  if (r.status==='ok') { pintarConfig(r.config); msg('✅ Config guardada. Vuelve a recalcular el mes para verla aplicada.'); }
+  else msg('❌ '+(r.msg||'error'), true);
 });
 
-// ── Generar (pesado, con sondeo) ──
-$('#btn-generar').addEventListener('click', async () => {
-  if (poll) return;
-  $('#btn-generar').disabled = true; $('#tabla-wrap').classList.add('hidden'); $('#btn-congelar').disabled = true; $('#btn-descargar').classList.add('hidden');
-  msgProgreso('Iniciando…', false);
-  const r = await (await fetch('/nominas/generar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano(),actualizar:$('#actualizar').checked})})).json();
-  if (r.status!=='ok') { msgProgreso('❌ '+(r.msg||'error'), true); $('#btn-generar').disabled=false; return; }
-  poll = setInterval(sondear, 2000); sondear();
-});
-async function sondear() {
-  const e = await (await fetch('/nominas/estado')).json();
-  if (e.error) { clearInterval(poll); poll=null; msgProgreso('❌ '+e.error, true); $('#btn-generar').disabled=false; return; }
-  if (e.generando) { msgProgreso('⏳ '+(e.fase||'Procesando…'), false); return; }
-  clearInterval(poll); poll=null; $('#btn-generar').disabled=false;
-  if (e.resultado) { RESULTADO = e.resultado; render(); msgProgreso('✅ Nómina generada — revisa y congela', false); }
+// ── Cargar el mes ──
+// Si está congelado sale lo congelado; si no, se calcula al vuelo. Una nómina
+// congelada NO se recalcula: es lo que se pagó.
+async function cargar() {
+  if (cargando) return;
+  cargando = true;
+  RESULTADO = null; $('#tabla-wrap').classList.add('hidden'); $('#btn-congelar').disabled = true;
+  $('#btn-descargar').classList.add('hidden'); $('#fuente').innerHTML = ''; $('#avisos').innerHTML = '';
+  if ($('#btn-descongelar')) $('#btn-descongelar').classList.add('hidden');
+  msg('⏳ Calculando el mes…');
+  try {
+    const r = await (await fetch(`/nominas/cargar?mes=${mes()}&ano=${ano()}`)).json();
+    if (r.status==='ok' && r.resultado) {
+      RESULTADO = r.resultado; FUENTE = r.fuente; render();
+      msg(r.fuente==='congelada'
+        ? `❄️ Nómina congelada el ${fecha(RESULTADO.congeladaAt)}${RESULTADO.congeladaPor?' por '+RESULTADO.congeladaPor:''}. Es la que se pagó: no se recalcula.`
+        : '✅ Calculada con los datos de la base. Revisa y congela cuando esté conforme.');
+    } else msg('❌ '+(r.msg||'no se pudo calcular'), true);
+  } catch (e) { msg('No se pudo cargar: ' + e.message, true); }
+  cargando = false;
 }
+$('#mes').addEventListener('change', cargar);
+$('#ano').addEventListener('change', cargar);
+$('#btn-recargar').addEventListener('click', cargar);
 
-// ── Recalcular (rápido) ──
-$('#btn-recalcular').addEventListener('click', async () => {
-  msgProgreso('⏳ Recalculando con el config…', false);
-  const r = await (await fetch('/nominas/recalcular',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano(),config:recogerConfig()})})).json();
-  if (r.status==='ok') { RESULTADO = r.resultado; RESULTADO._fuente='datos'; render(); msgProgreso('✅ Recalculado (sin tocar Bolt). Congela cuando esté conforme.', false); }
-  else msgProgreso('❌ '+(r.msg||'error'), true);
+// ── Probar una config sin guardarla ──
+$('#btn-probar').addEventListener('click', async () => {
+  if (FUENTE === 'congelada' && !confirm('Este mes está CONGELADO. Lo que pruebes no cambia lo congelado: es solo para ver qué saldría. ¿Seguir?')) return;
+  msg('⏳ Recalculando con esos valores…');
+  const r = await (await fetch('/nominas/calcular',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano(),config:recogerConfig()})})).json();
+  if (r.status==='ok') { RESULTADO = r.resultado; FUENTE = 'prueba'; render(); msg('🧪 Simulación con esos valores. No está guardado ni congelado.'); }
+  else msg('❌ '+(r.msg||'error'), true);
 });
 
-// ── Congelar ──
+// ── Congelar / descongelar ──
 $('#btn-congelar').addEventListener('click', async () => {
   const dm = RESULTADO && RESULTADO.mesDatosNombre ? ` (trabajo de ${RESULTADO.mesDatosNombre})` : '';
-  if (!confirm(`¿Congelar la nómina de ${MESES[mes()-1]} ${ano()}${dm}? Se escribe la hoja NOMINA_${MESES[mes()-1].toLowerCase()}-${ano()} con estos valores.`)) return;
-  msgProgreso('⏳ Congelando…', false);
+  if (!confirm(`¿Congelar la nómina de ${MESES[mes()-1]} ${ano()}${dm}?\n\nSe guardan estos números tal cual. A partir de ahí no se recalculan, pase lo que pase con los datos.`)) return;
+  msg('⏳ Congelando…');
   const r = await (await fetch('/nominas/congelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
-  if (r.status==='ok' && RESULTADO) { RESULTADO._fuente='congelada'; RESULTADO.congelada=true; render(); }
-  msgProgreso(r.status==='ok'?`✅ Congelada en "${r.hoja}" · ${r.conductores} conductores · total ${eur(r.total)}`:'❌ '+(r.msg||'error'), r.status!=='ok');
+  if (r.status==='ok') { msg(`❄️ Congelada · ${r.conductores} conductores · total ${eur(r.total)}`); cargar(); }
+  else msg('❌ '+(r.msg||'error'), true);
+});
+if ($('#btn-descongelar')) $('#btn-descongelar').addEventListener('click', async () => {
+  if (!confirm(`¿Descongelar ${MESES[mes()-1]} ${ano()}?\n\nSe BORRA la nómina guardada y vuelve a calcularse desde los datos de hoy. Si ya se pagó, los números pueden salir distintos.`)) return;
+  const r = await (await fetch('/nominas/descongelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
+  if (r.status==='ok') { msg(r.borrada?'Descongelada. Vuelve a calcularse en vivo.':'No había ninguna congelada.'); cargar(); }
+  else msg('❌ '+(r.msg||'error'), true);
 });
 
-// ── Descargar ──
-$('#btn-descargar').addEventListener('click', e => { e.preventDefault(); window.open(`/nominas/descargar?mes=${mes()}&ano=${ano()}`,'_blank'); });
+$('#btn-descargar').addEventListener('click', e => { e.preventDefault(); window.open(`/nominas/nomina.xlsx?mes=${mes()}&ano=${ano()}`,'_blank'); });
 
-// ── Render de la tabla ──
+// ── Render ──
 let FILTRO_TIPO = 'todos';
 function render() {
   if (!RESULTADO || !RESULTADO.filas) { $('#tabla-wrap').classList.add('hidden'); return; }
   $('#tabla-wrap').classList.remove('hidden');
-  $('#btn-congelar').disabled = false; $('#btn-descargar').classList.remove('hidden');
-  const badge = RESULTADO._fuente==='congelada' ? ['❄️ congelada','bg-telecab-violet/15 text-telecab-violet']
-    : RESULTADO._fuente==='datos' ? ['📦 recalculado (sin congelar)','bg-telecab-card2 text-telecab-muted'] : null;
-  $('#fuente').innerHTML = badge ? `<span class="px-2 py-0.5 rounded-full ${badge[1]}">${badge[0]}</span>` : '';
+  $('#btn-congelar').disabled = false;
+  $('#btn-descargar').classList.remove('hidden');
+  if ($('#btn-descongelar')) $('#btn-descongelar').classList.toggle('hidden', FUENTE !== 'congelada');
+  const badge = FUENTE==='congelada' ? ['❄️ congelada','bg-telecab-violet/15 text-telecab-violet']
+    : FUENTE==='prueba' ? ['🧪 simulación','bg-telecab-warn/15 text-telecab-warn']
+    : ['⚡ calculada en vivo','bg-telecab-card2 text-telecab-muted'];
+  $('#fuente').innerHTML = `<span class="px-2 py-0.5 rounded-full ${badge[1]}">${badge[0]}</span>`;
   pintarAvisos(RESULTADO.avisos, RESULTADO.config);
   filtrarYpintar();
 }
@@ -185,10 +214,11 @@ function filtrarYpintar() {
   $('#tbody').innerHTML = filas.map(f => `<tr class="border-t border-telecab-border/50 hover:bg-telecab-card2/40">
     <td class="px-3 py-2 text-telecab-text">${esc(f.nombre)}</td>
     <td class="px-3 py-2 text-telecab-muted">${esc(f.dni)||'<span class="text-telecab-red/70">—</span>'}</td>
-    <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${f.ett?'bg-telecab-violet/15 text-telecab-violet':'bg-telecab-card2 text-telecab-muted'}">${f.ett?'ETT':'Tibus'}</span></td>
+    <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${f.ett?'bg-telecab-violet/15 text-telecab-violet':'bg-telecab-card2 text-telecab-muted'}">${f.ett?'ETT':'Propia'}</span></td>
     <td class="px-3 py-2 text-telecab-muted whitespace-nowrap">${f.jornada?f.jornada+' horas':'<span class="text-telecab-muted/50">—</span>'}</td>
-    <td class="px-3 py-2 text-right text-telecab-muted">${f.primerDia}</td>
+    <td class="px-3 py-2 text-right text-telecab-muted" title="${esc(arranque(f))}">${f.primerDia}${f.origenArranque==='primer-log'?' <span class="text-telecab-warn">*</span>':''}</td>
     <td class="px-3 py-2 text-right">${(Number(f.horas)||0).toFixed(1)}</td>
+    <td class="px-3 py-2 text-right ${f.deltaHoras>0?'text-telecab-green':'text-telecab-muted'}" title="Diferencia: ${(Number(f.deltaHoras)||0).toFixed(1)} h">${(Number(f.horasObjetivo)||0).toFixed(1)}</td>
     <td class="px-3 py-2 text-right">${eur(f.propinas)}</td>
     <td class="px-3 py-2 text-right">${eur(f.peajes)}</td>
     <td class="px-3 py-2 text-right">${eur(f.nocturnas)}</td>
@@ -197,10 +227,10 @@ function filtrarYpintar() {
     <td class="px-3 py-2 text-right ${f.diasExtra>0?'':'text-telecab-muted/50'}">${(Number(f.diasExtra)||0).toFixed(2)}</td>
     <td class="px-3 py-2 text-right">${f.utilPct==null?'<span class="text-telecab-red/70">—</span>':f.utilPct.toFixed(0)+'%'}</td>
     <td class="px-3 py-2 text-right font-semibold text-telecab-text">${eur(f.total)}</td></tr>`).join('')
-    || '<tr><td colspan="14" class="px-3 py-6 text-center text-telecab-muted">Sin coincidencias</td></tr>';
+    || '<tr><td colspan="15" class="px-3 py-6 text-center text-telecab-muted">Sin coincidencias</td></tr>';
   const t = filas.reduce((a,f)=>{['propinas','peajes','nocturnas','mboFAS','compensacion','diasExtra','total'].forEach(k=>a[k]+=f[k]||0);return a;},{propinas:0,peajes:0,nocturnas:0,mboFAS:0,compensacion:0,diasExtra:0,total:0});
   $('#tfoot').innerHTML = `<tr>
-    <td class="px-3 py-2" colspan="6">TOTAL${FILTRO_TIPO!=='todos'?' '+FILTRO_TIPO.toUpperCase():''} (${filas.length})</td>
+    <td class="px-3 py-2" colspan="7">TOTAL${FILTRO_TIPO!=='todos'?' '+FILTRO_TIPO.toUpperCase():''} (${filas.length})</td>
     <td class="px-3 py-2 text-right">${eur(t.propinas)}</td>
     <td class="px-3 py-2 text-right">${eur(t.peajes)}</td>
     <td class="px-3 py-2 text-right">${eur(t.nocturnas)}</td>
@@ -210,6 +240,9 @@ function filtrarYpintar() {
     <td></td>
     <td class="px-3 py-2 text-right text-telecab-gold">${eur(t.total)}</td></tr>`;
 }
+const arranque = f => f.origenArranque==='alta-anterior' ? 'Ya estaba de alta: mes completo'
+  : f.origenArranque==='alta-en-mes' ? ('Alta el '+(dia(f.alta)||'?')+': objetivo prorrateado desde ese día')
+  : 'SIN fecha de alta: se usa su primer día con horas';
 $('#filtro').addEventListener('input', filtrarYpintar);
 document.querySelectorAll('.ftipo').forEach(b => b.addEventListener('click', () => {
   FILTRO_TIPO = b.dataset.tipo;
@@ -219,47 +252,34 @@ document.querySelectorAll('.ftipo').forEach(b => b.addEventListener('click', () 
   if (RESULTADO) filtrarYpintar();
 }));
 
-// Auto-carga del mes SIN Bolt (congelado o snapshot). Se llama al abrir y al cambiar de mes/año.
-async function autocargar() {
-  if (poll) return;
-  RESULTADO = null; $('#tabla-wrap').classList.add('hidden'); $('#btn-congelar').disabled = true;
-  $('#btn-descargar').classList.add('hidden'); $('#fuente').innerHTML = ''; $('#avisos').innerHTML = '';
-  msgProgreso('Buscando datos guardados del mes…', false);
-  try {
-    const r = await (await fetch(`/nominas/cargar?mes=${mes()}&ano=${ano()}`)).json();
-    if (r.status==='ok' && r.resultado) {
-      RESULTADO = r.resultado; RESULTADO._fuente = r.fuente; render();
-      msgProgreso(r.fuente==='congelada' ? '✅ Mes congelado cargado (sin tocar Bolt)' : '✅ Datos del mes cargados y recalculados (sin tocar Bolt)', false);
-    } else {
-      msgProgreso('Este mes aún no se ha generado. Pulsa "Generar nómina del mes" para bajarlo de Bolt.', false);
-    }
-  } catch (e) { msgProgreso('No se pudo cargar: ' + e.message, true); }
-}
-$('#mes').addEventListener('change', autocargar);
-$('#ano').addEventListener('change', autocargar);
-
 function pintarAvisos(a, cfg) {
   if (!a) { $('#avisos').innerHTML=''; return; }
   const av=[];
-  if (a.sinEfec) av.push(['red','⚠️ La hoja del mes no tiene utilización (% Efec). Marca "descargar datos frescos" y vuelve a generar para calcularla.']);
-  if (a.sinDinero) av.push(['red','⚠️ La hoja del mes no tiene facturación (FAS/propinas/peajes). Regenera el mes.']);
-  if (a.sinDni>0) av.push(['amber',`${a.sinDni} conductor(es) sin DNI/NIE en la agenda (aparecen con —). Complétalos en AGENDA_V2 si hace falta.`]);
-  if (a.trabajoIncompleto) av.push(['amber',`⚠️ El mes de trabajo (${RESULTADO?RESULTADO.mesDatosNombre:''}) aún no ha terminado: los datos están incompletos. Esta nómina se genera el mes siguiente.`]);
-  // Altas: quién quedó fuera y quién va sin fecha (el prorrateo sale de AGENDA_V2 col G).
+  const mesD = RESULTADO ? RESULTADO.mesDatosNombre : 'el mes';
+  if (a.sinDinero) av.push(['red','⚠️ Ninguna persona tiene propinas, peajes ni facturación en ese mes: falta la ingesta de pedidos de BOLT.']);
+  if (a.sinDni>0) av.push(['amber',`${a.sinDni} conductor(es) sin DNI/NIE en su ficha (aparecen con —). Complétalos en la ficha del conductor.`]);
+  if (a.trabajoIncompleto) av.push(['amber',`⚠️ El mes de trabajo (${mesD}) aún no ha terminado: los datos están incompletos. Esta nómina se cierra el mes siguiente.`]);
   const exc = (a.excluidos||[]);
-  if (exc.length) av.push(['red',`⛔ ${exc.length} conductor(es) con horas pero FECHA DE ALTA posterior a ${RESULTADO?RESULTADO.mesDatosNombre:'ese mes'}: fuera de esta nómina. Revisa su fecha en la agenda si es un error → ${exc.map(e=>`${e.nombre} (alta ${e.alta||'—'}, ${e.horas} h)`).join(' · ')}`]);
-  if (a.sinAlta>0) av.push(['amber',`${a.sinAlta} conductor(es) SIN fecha de alta: se les prorratea desde su primer día con horas (criterio antiguo). Rellena la columna G de AGENDA_V2 para afinarlo.`]);
-  if (a.altaEnMes>0) av.push(['muted',`${a.altaEnMes} conductor(es) se dieron de alta durante ${RESULTADO?RESULTADO.mesDatosNombre:'el mes'}: son los únicos con el objetivo prorrateado.`]);
+  if (exc.length) av.push(['red',`⛔ ${exc.length} conductor(es) con horas pero FECHA DE ALTA posterior a ${mesD}: fuera de esta nómina. Revisa su alta si es un error → ${exc.map(e=>`${e.nombre} (alta ${dia(e.alta)||'—'}, ${e.horas} h)`).join(' · ')}`]);
+  if (a.sinAlta>0) av.push(['amber',`${a.sinAlta} conductor(es) SIN fecha de alta (marcados con *): se les prorratea desde su primer día con horas. Rellénales el alta en su periodo de empleo.`]);
+  if (a.altaEnMes>0) av.push(['muted',`${a.altaEnMes} conductor(es) se dieron de alta durante ${mesD}: son los únicos con el objetivo prorrateado.`]);
+  const ss = (a.sinSellar||[]);
+  if (ss.length) av.push(['muted',`${ss.length} conductor(es) tienen horas aquí que la bitácora NO tiene selladas (se les enlazó la cuenta de BOLT después de cerrar el mes): la nómina los cuenta, la bitácora no. Si quieres que cuadren, resella el mes desde la bitácora → ${ss.map(x=>x.nombre).join(' · ')}`]);
   const c = cfg || {};
-  av.push(['muted',`Hora extra: ${c.eurHoraExtra||0} €/h × utilización · Nocturna: ${c.eurHoraNoc||0} × h × ${c.factorNoc||0} · FAS: (neto − umbral) × ${c.pctMBOFAS||0} · umbral 40h=${c.umbralFAS40||0} / 32h=${c.umbralFAS32||0}`]);
-  $('#avisos').innerHTML = av.map(([c,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c==='amber'?'bg-telecab-warn/15 text-telecab-warn border border-telecab-warn/35':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');
+  av.push(['muted',`Hora extra: ${c.eurHoraExtra||0} €/h × utilización · Nocturna: ${c.eurHoraNoc||0} × h × ${c.factorNoc||0} · FAS: (neto − umbral) × ${c.pctMBOFAS||0} · umbral 40h=${c.umbralFAS40||0} / 32h=${c.umbralFAS32||0} · objetivo ${c.horasMetaDia||0} h × ${c.diasObjetivo||0} días`]);
+  $('#avisos').innerHTML = av.map(([c2,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c2==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c2==='amber'?'bg-telecab-warn/15 text-telecab-warn border border-telecab-warn/35':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');
 }
 
-function msgProgreso(txt, err) {
+const fecha = v => { try { return new Date(v).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ''; } };
+// Las fechas de alta vienen en AAAA-MM-DD (que es como se guardan) y se enseñan
+// como se leen aquí. Se le da la vuelta al texto y ya: pasarlas por Date las
+// movería un día, que es el fallo clásico de este proyecto con las fechas.
+const dia = iso => (iso ? String(iso).slice(0,10).split('-').reverse().join('/') : '');
+function msg(txt, err) {
   const p = $('#progreso'); p.classList.remove('hidden');
   p.textContent = txt; p.style.color = err ? 'var(--tc-red, #f87171)' : '';
 }
 
 cargarConfig();
-autocargar();
+cargar();
 </script>
