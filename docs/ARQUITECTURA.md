@@ -185,6 +185,27 @@ Hoy, para tocar "conductores" hay que abrir `routes/plantilla.js`,
 `services/repo/ficha360.js`, `services/repo/alta.js` y `views/plantilla.ejs`:
 siete carpetas distintas. Después, una.
 
+### Hecho: Vehículos
+
+El primero, y con él se estrenó la mecánica. Está en `modules/Vehiculos/`
+(con su `LEEME.md`). Lo que enseñó:
+
+- **Mover la carpeta es lo de menos; lo que cambia es la puerta.** El
+  planificador entraba directamente a `repo/vehiculos`. Ahora le pide
+  `estadosVehiculo()` al servicio. Mientras otro módulo pueda meter la mano en
+  el repositorio, el módulo no puede cambiar por dentro — y poder cambiar por
+  dentro es lo único que se gana agrupando. Lo comprueba `comprobar-capas.js`.
+- **A veces el servicio ya existe sin llamarse así.** `sincroMapon.js` orquestaba
+  el adaptador de Mapon y el repositorio: era el servicio de Vehículos. No hubo
+  que inventar una capa.
+- **Las vistas caben.** `app.js` pasa a tener dos raíces (`views/` y la carpeta
+  `vistas/` de cada módulo mudado) y `res.render('vehiculos')` no cambia ni una
+  letra. Cuidado con dejar una copia vieja en `views/`: Express serviría esa.
+- **Lo que NO se hizo, y a propósito:** `crear()` abre las 6 plazas y las
+  vigencias, o sea negocio viviendo en el repositorio. La primera mudanza tenía
+  que ser mecánica y revisable de un vistazo; mezclarla con una reescritura de
+  reglas habría dado un cambio que ya no se puede revisar.
+
 ### El reparto propuesto
 
 Las 47 rutas actuales, agrupadas. Lo marcado con **(?)** es discutible y hay que
@@ -193,7 +214,7 @@ decidirlo antes de mover nada.
 | Módulo | Rutas que se lleva |
 |---|---|
 | **Conductores** | `plantilla`, `fichas`, `agenda`, `libranzas` |
-| **Vehiculos** | `vehiculos`, `taller` |
+| **Vehiculos** ✓ | `vehiculos` **(hecho)**, `taller` (pendiente) |
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
 | **Control** | `control`, `alertas`, `callCenter`, `justificantes`, `flotaViva` **(?)** |
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
@@ -236,7 +257,7 @@ Uno cada vez, y cada uno en su commit:
 Empezando por el más pequeño y aislado, para estrenar la mecánica donde el daño
 posible es mínimo, y dejando para el final los que más gente toca:
 
-**Vehiculos** (2 rutas, controlador ya limpio) → **Documentacion** →
+~~**Vehiculos**~~ (hecho) → **Documentacion** →
 **Usuarios** → **Seleccion** → **Conductores** → **Planificacion** → **Control**
 → el resto.
 
