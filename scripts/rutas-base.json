@@ -46,6 +46,7 @@
     "GET /bitacora/api/datos",
     "GET /bitacora/api/dia",
     "GET /bitacora/api/vacaciones",
+    "GET /bitacora/general",
     "GET /boda-igna-cruz",
     "GET /boda-igna-cruz/estado",
     "GET /boda-igna-cruz/plantillas",

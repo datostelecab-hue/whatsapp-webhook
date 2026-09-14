@@ -353,8 +353,10 @@
     $('#b-default').innerHTML =
       `<div class="flex items-center justify-between flex-wrap gap-2 mb-1">
          <h2 class="text-lg font-semibold text-telecab-text flex items-center gap-2"><i class="fa-solid fa-calendar-day text-telecab-gold"></i> Hoy, ${esc(fmtLargo(hoy))}</h2>
-         <button id="b-vac-btn" class="text-xs px-3 py-2 rounded-lg font-semibold" style="background:${tint('V')};color:${clr('V')}"><i class="fa-solid fa-umbrella-beach mr-1"></i>Vacaciones por meses</button>
-       </div>
+         <div class="flex items-center gap-2">
+           <a href="/bitacora/general" class="text-xs px-3 py-2 rounded-lg font-semibold bg-telecab-gold/15 text-telecab-gold hover:bg-telecab-gold/25 transition"><i class="fa-solid fa-table-cells mr-1"></i>Bitácora general</a>
+           <button id="b-vac-btn" class="text-xs px-3 py-2 rounded-lg font-semibold" style="background:${tint('V')};color:${clr('V')}"><i class="fa-solid fa-umbrella-beach mr-1"></i>Vacaciones por meses</button>
+         </div>
        <p class="text-xs text-telecab-muted mb-4">Quién falta hoy y por qué. Elige a alguien en la lista para ver su calendario completo, día a día.</p>
        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">${bloque('B', porTipo.B)}${bloque('V', porTipo.V)}${bloque('P', porTipo.P)}</div>
        ${aus.length ? '' : '<p class="text-telecab-muted text-sm">Nadie ausente hoy.</p>'}
@@ -851,11 +853,39 @@
       const r = await (await fetch('/bitacora/api/datos')).json();
       if (r.status !== 'ok') throw new Error(r.msg || 'Error');
       DATA = r; MESES = construirMeses(r.inicio);
-      pintarKpisFlota(); pintarFiltros(); pintarLista(); pintarDefault();
+      pintarKpisFlota(); pintarFiltros(); pintarLista();
+      // ENLACE DIRECTO: /bitacora?conductor=83&dia=2026-09-04 abre esa persona
+      // en ese dia. Lo usa la Bitacora general para saltar del cuadro grande al
+      // detalle: sin esto, pinchar una celda te dejaba en la pantalla de inicio
+      // y habia que volver a buscar a la persona a mano, que es justo el paso
+      // que se queria ahorrar.
+      if (!abrirDesdeUrl()) pintarDefault();
     } catch (e) {
       $('#b-default').innerHTML = '<p class="text-telecab-red text-sm">No se pudo cargar la bitácora: ' + esc(e.message) + '</p>';
     }
   }
+  /** Abre lo que pida la URL. Devuelve si ha abierto algo. */
+  function abrirDesdeUrl() {
+    const q = new URLSearchParams(location.search);
+    const id = Number(q.get('conductor'));
+    if (!Number.isInteger(id) || id <= 0) return false;
+    if (!DATA.conductores.find(x => x.conductorId === id)) return false;
+    abrir(id);
+    const dia = q.get('dia');
+    if (dia && /^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+      // idxDe vive en la rejilla: el indice del dia desde el inicio.
+      const [y, m, d] = dia.split('-').map(Number);
+      const i = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d)) / 86400000);
+      if (i >= 0) {
+        diaSel = i;
+        const mm = MESES.findIndex(x => i >= x.start && i < x.start + x.len);
+        if (mm >= 0) mIdx = mm;
+        render();
+      }
+    }
+    return true;
+  }
+
   async function recargarYAbrir(id, dia) {
     try {
       const r = await (await fetch('/bitacora/api/datos')).json();

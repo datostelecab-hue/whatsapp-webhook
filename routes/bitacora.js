@@ -23,6 +23,17 @@ router.get('/', (req, res) => {
   });
 });
 
+// ── LA BITACORA GENERAL ────────────────────────────────────────────────────
+// La plantilla entera contra el calendario entero, como la hoja de Excel de la
+// que nacio esto. NO tiene API propia: lee el MISMO /api/datos que la bitacora
+// del dia a dia, que ya trae la rejilla resuelta para toda la plantilla y todos
+// los dias. Dos consultas distintas del mismo dato acabarian pintando distinto.
+router.get('/general', (req, res) => {
+  res.render('bitacoraGeneral', {
+    titulo: 'Bitácora general', seccion: 'bitacora', layout: 'layout-gestion',
+  });
+});
+
 router.get('/api/datos', async (req, res) => {
   try {
     if (!cache || Date.now() - ts > TTL) { cache = await leerBitacora(); ts = Date.now(); }

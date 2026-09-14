@@ -1,0 +1,686 @@
+<style>
+  /* ── BITÁCORA GENERAL ───────────────────────────────────────────────────────
+     La plantilla entera contra el calendario entero, como la hoja de Excel de
+     la que nació esto: para pasar el dedo por la columna de alguien y ver de un
+     vistazo quién lleva más rojos.
+
+     VA EN CANVAS, NO EN DIVS. 218 personas por 365 días son 80.000 celdas: el
+     DOM se arrodilla, y con él el zoom. En canvas se dibuja SOLO lo que cabe en
+     pantalla, así que da igual que el año tenga 365 días o 3.650. */
+  .bg-marco { position: relative; border: 1px solid rgb(var(--tc-border)); border-radius: 1rem;
+    overflow: hidden; background: rgb(var(--tc-card) / var(--tc-card-a)); }
+  #bg-lienzo { display: block; width: 100%; cursor: crosshair; }
+  #bg-lienzo.arrastrando { cursor: grabbing; }
+
+  /* El globo del dato: sigue al ratón, así que va en posición absoluta sobre el
+     lienzo y nunca recibe el ratón (o parpadearía al pasar por debajo). */
+  .bg-globo { position: absolute; z-index: 20; pointer-events: none; opacity: 0;
+    transition: opacity .1s ease; min-width: 11rem; max-width: 17rem;
+    background: rgb(var(--tc-card2)); border: 1px solid rgb(var(--tc-border));
+    border-radius: .7rem; padding: .55rem .7rem; box-shadow: 0 18px 40px -18px rgb(0 0 0 / .85); }
+  .bg-globo.on { opacity: 1; }
+  .bg-globo b { display: block; font-size: .8rem; font-weight: 700; line-height: 1.2; }
+  .bg-globo .bg-g-dia { font-size: .68rem; color: rgb(var(--tc-muted)); margin-bottom: .3rem; }
+  .bg-globo .bg-g-val { font-size: .95rem; font-weight: 800; letter-spacing: -.01em; }
+  .bg-globo .bg-g-nota { font-size: .68rem; color: rgb(var(--tc-muted)); margin-top: .25rem; line-height: 1.35; }
+
+  .bg-chip { font-size: 11px; padding: .3rem .7rem; border-radius: .6rem; cursor: pointer;
+    border: 1px solid rgb(var(--tc-border) / .8); color: rgb(var(--tc-muted)); background: transparent;
+    transition: border-color .15s ease, color .15s ease, background .15s ease; }
+  .bg-chip:hover { color: rgb(var(--tc-text)); }
+  .bg-chip.on { border-color: rgb(var(--tc-gold)); color: rgb(var(--tc-text)); background: rgb(var(--tc-gold) / .12); }
+
+  .bg-ley { display: flex; align-items: center; gap: .35rem; font-size: 11px; color: rgb(var(--tc-muted)); }
+  .bg-ley i { width: .8rem; height: .8rem; border-radius: .22rem; display: inline-block; }
+</style>
+
+<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <h1 class="text-xl font-bold text-telecab-text">Bitácora general</h1>
+    <p class="text-xs text-telecab-muted mt-0.5">
+      Toda la plantilla contra el calendario. Rueda para desplazarte, <b>Ctrl + rueda</b> para acercar,
+      arrastra para moverte. Pincha una celda para abrir ese día en la bitácora.
+    </p>
+  </div>
+  <a href="/bitacora" class="text-xs px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition">
+    <i class="fa-solid fa-arrow-left mr-1"></i>Bitácora
+  </a>
+</div>
+
+<!-- ── Los mandos ─────────────────────────────────────────────────────────── -->
+<div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+  <div class="flex items-center gap-1">
+    <span class="text-[11px] uppercase tracking-wider text-telecab-muted mr-1">Ver</span>
+    <button class="bg-chip" data-rango="dia">Día</button>
+    <button class="bg-chip" data-rango="semana">Semana</button>
+    <button class="bg-chip on" data-rango="mes">Mes</button>
+    <button class="bg-chip" data-rango="anio">Año</button>
+    <button class="bg-chip" data-rango="todo">Todo</button>
+  </div>
+
+  <div class="flex items-center gap-1">
+    <button id="bg-antes" class="bg-chip" title="Periodo anterior"><i class="fa-solid fa-chevron-left"></i></button>
+    <span id="bg-periodo" class="text-xs font-semibold text-telecab-text min-w-[11rem] text-center tabular-nums">—</span>
+    <button id="bg-despues" class="bg-chip" title="Periodo siguiente"><i class="fa-solid fa-chevron-right"></i></button>
+    <button id="bg-hoy" class="bg-chip">Hoy</button>
+  </div>
+
+  <div class="flex items-center gap-1">
+    <span class="text-[11px] uppercase tracking-wider text-telecab-muted mr-1">Orden</span>
+    <button class="bg-chip on" data-orden="nombre">Nombre</button>
+    <button class="bg-chip" data-orden="rojos">Más rojos</button>
+    <button class="bg-chip" data-orden="horas">Menos horas</button>
+  </div>
+
+  <label class="flex items-center gap-1.5 text-xs text-telecab-muted cursor-pointer">
+    <input id="bg-bajas" type="checkbox" class="w-3.5 h-3.5 accent-telecab-gold">
+    Incluir bajas
+  </label>
+
+  <input id="bg-busca" type="search" placeholder="Buscar por nombre…" autocomplete="off"
+         class="px-3 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text w-48 focus:outline-none focus:border-telecab-gold">
+
+  <div class="flex items-center gap-1 ml-auto">
+    <button id="bg-menos" class="bg-chip" title="Alejar"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+    <input id="bg-zoom" type="range" min="3" max="34" value="16" class="w-28 accent-telecab-gold">
+    <button id="bg-mas" class="bg-chip" title="Acercar"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+  </div>
+</div>
+
+<!-- ── La leyenda ─────────────────────────────────────────────────────────── -->
+<div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-3" id="bg-leyenda"></div>
+
+<div class="bg-marco" id="bg-marco">
+  <canvas id="bg-lienzo"></canvas>
+  <div class="bg-globo" id="bg-globo"></div>
+  <div id="bg-cargando" class="absolute inset-0 flex items-center justify-center text-sm text-telecab-muted">
+    <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Cargando la plantilla…
+  </div>
+</div>
+
+<p class="text-[11px] text-telecab-muted mt-2" id="bg-pie">—</p>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── LAS REGLAS DE COLOR ───────────────────────────────────────────────────
+  // Son las MISMAS que la bitácora del día a día. Si dos pantallas del mismo
+  // dato pintan distinto, la gente deja de fiarse de las dos.
+  //
+  //   rojo         no llegó a la jornada (y no hay justificante que lo tape)
+  //   verde        trabajó: más lleno cuanto más cerca del objetivo
+  //   J            justificante — el color sale de las HORAS del día, no de un
+  //                azul fijo: una J de 2 h sin salir es un día flojo y se ve
+  //   azul         vacaciones
+  //   ámbar        baja médica
+  //   morado       permiso
+  //   pizarra      libranza
+  //
+  // LA LIBRANZA NO VA EN VERDE, y es a propósito. En la hoja de Excel iba en
+  // verde chillón, pero aquí el verde YA significa "cumplió su jornada": si la
+  // libranza también fuera verde, el ojo no podría separar "descansó" de
+  // "trabajó bien" — que es justo lo que se viene a mirar.
+  const OBJETIVO = 8;   // horas de una jornada. La misma cifra que la bitácora.
+  const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+
+  const raiz = getComputedStyle(document.documentElement);
+  const tk = n => (raiz.getPropertyValue(n) || '').trim();
+  const rgb = (v, a) => 'rgb(' + v + ' / ' + a + ')';
+
+  const C = {
+    verde: tk('--tc-green'), rojo: tk('--tc-red'), azul: tk('--tc-azul'),
+    vac: tk('--tc-vac') || '59 130 246', med: tk('--tc-med') || '245 158 11',
+    permiso: tk('--tc-permiso') || '168 85 247', just: tk('--tc-just') || '29 78 216',
+    texto: tk('--tc-text'), muted: tk('--tc-muted'), borde: tk('--tc-border'),
+    card: tk('--tc-card2'), fondo: tk('--tc-dark'), oro: tk('--tc-gold'),
+  };
+
+  const LEYENDA = [
+    ['No llegó a la jornada', rgb(C.rojo, .55)],
+    ['Trabajó (más lleno, más horas)', rgb(C.verde, .55)],
+    ['Justificante', rgb(C.just, .75)],
+    ['Vacaciones', rgb(C.vac, .6)],
+    ['Baja médica', rgb(C.med, .6)],
+    ['Permiso', rgb(C.permiso, .6)],
+    ['Libranza', rgb(C.muted, .32)],
+    ['Fuera de plantilla', rgb(C.borde, .35)],
+  ];
+  document.getElementById('bg-leyenda').innerHTML = LEYENDA.map(([t, c]) =>
+    '<span class="bg-ley"><i style="background:' + c + '"></i>' + t + '</span>').join('');
+
+  // ── Estado ────────────────────────────────────────────────────────────────
+  let DATA = null;          // lo que devuelve /bitacora/api/datos
+  let filas = [];           // conductores ya filtrados y ordenados
+  let celda = 16;           // lado de la celda en píxeles: ESTO es el zoom
+  let desdeIdx = 0, hastaIdx = 0;   // el tramo de días que se está viendo
+  let scrollY = 0, scrollX = 0;
+  let rango = 'mes', ancla = 0;     // `ancla` = un índice de día dentro del periodo
+  let orden = 'nombre', busca = '', conBajas = false;
+  let hover = null;                 // { f, d } la celda bajo el ratón
+  let maxRojos = 0;                 // el peor del periodo, para escalar la barra de calor
+
+  const ANCHO_NOMBRE = 190;   // la columna congelada de la izquierda
+  const ALTO_CAB = 34;        // la cabecera congelada de arriba
+
+  const lienzo = document.getElementById('bg-lienzo');
+  const ctx = lienzo.getContext('2d');
+  const globo = document.getElementById('bg-globo');
+  const marco = document.getElementById('bg-marco');
+
+  // ── Fechas ────────────────────────────────────────────────────────────────
+  const MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const DOW = ['L','M','X','J','V','S','D'];
+  // `inicio` viene del servidor como { y, m, d } con el MES EN BASE 0, y las
+  // cuentas van en UTC — la misma formula que la bitacora del dia a dia. En UTC
+  // a proposito: con fechas locales, los dos dias del ano en que cambia la hora
+  // desplazan un dia la rejilla entera.
+  const fechaDe = i => new Date(Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d + i));
+  const isoDe = i => { const d = fechaDe(i);
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); };
+  const dowDe = i => (fechaDe(i).getUTCDay() + 6) % 7;   // 0 = lunes
+  // El indice del dia de una fecha, para moverse por meses y anos.
+  const idxDe = d => Math.round((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+    - Date.UTC(DATA.inicio.y, DATA.inicio.m, DATA.inicio.d)) / 86400000);
+  const finde = i => dowDe(i) >= 5;
+
+  // ── La celda: qué es y de qué color ───────────────────────────────────────
+  const esAus = v => v === 'V' || v === 'B' || v === 'P';
+  const val = (c, d) => (d >= 0 && d < c.dias.length ? c.dias[d] : null);
+
+  /** Las horas REALES del día: las de BOLT más las justificadas APROBADAS. */
+  function horasDe(c, d) {
+    const v = val(c, d);
+    if (typeof v === 'number') return v;
+    if (v === 'J') {
+      const iso = isoDe(d), j = c.justif[iso] || {};
+      return (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[iso] || 0);
+    }
+    return null;
+  }
+
+  /**
+   * El color de una celda. Devuelve null si no hay que pintar nada.
+   * El verde sube con las horas: así, al alejar, una fila floja se ve pálida y
+   * una buena se ve maciza sin leer un solo número.
+   */
+  function colorDe(c, d) {
+    if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return rgb(C.borde, .18);
+    const v = val(c, d);
+    if (d > DATA.hoyIdx) {
+      // El futuro ya decidido se ve, pero apagado: es una promesa, no un hecho.
+      if (v === 'V') return rgb(C.vac, .22);
+      if (v === 'B') return rgb(C.med, .22);
+      if (v === 'P') return rgb(C.permiso, .22);
+      if (v === 'L') return rgb(C.muted, .14);
+      return null;
+    }
+    if (v === 'V') return rgb(C.vac, .6);
+    if (v === 'B') return rgb(C.med, .6);
+    if (v === 'P') return rgb(C.permiso, .6);
+    if (v === 'L') return rgb(C.muted, .32);
+    if (v === 'J') {
+      const h = horasDe(c, d) || 0;
+      // La J con horas suficientes es un día bueno; sin ellas, es un día flojo
+      // con papel. El borde azul de después dice que hay justificante.
+      return h >= OBJETIVO ? rgb(C.verde, .5) : h > 0 ? rgb(C.just, .45) : rgb(C.rojo, .45);
+    }
+    if (typeof v === 'number' && v > 0) {
+      const t = Math.min(1, v / OBJETIVO);
+      return rgb(C.verde, (0.12 + t * 0.48).toFixed(3));
+    }
+    return rgb(C.rojo, .45);
+  }
+
+  /** ¿Cuenta como "rojo" para ordenar por los peores? */
+  function esRojo(c, d) {
+    if (d > DATA.hoyIdx) return false;
+    if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return false;
+    const v = val(c, d);
+    if (esAus(v) || v === 'L') return false;
+    if (v === 'J') return (horasDe(c, d) || 0) < OBJETIVO;
+    if (typeof v === 'number') return v < OBJETIVO;
+    return true;   // ni horas, ni libranza, ni ausencia: no salió
+  }
+
+  // ── El periodo que se ve ──────────────────────────────────────────────────
+  function tramo() {
+    const total = DATA.conductores[0] ? DATA.conductores[0].dias.length : 0;
+    const clamp = i => Math.max(0, Math.min(total - 1, i));
+    if (rango === 'todo') return [0, total - 1];
+    if (rango === 'dia') return [clamp(ancla), clamp(ancla)];
+    if (rango === 'semana') { const l = ancla - dowDe(ancla); return [clamp(l), clamp(l + 6)]; }
+    if (rango === 'mes') {
+      const f = fechaDe(ancla);
+      const primero = ancla - (f.getUTCDate() - 1);
+      const dias = new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth() + 1, 0)).getUTCDate();
+      return [clamp(primero), clamp(primero + dias - 1)];
+    }
+    // año
+    const f = fechaDe(ancla);
+    return [clamp(idxDe(new Date(Date.UTC(f.getUTCFullYear(), 0, 1)))),
+            clamp(idxDe(new Date(Date.UTC(f.getUTCFullYear(), 11, 31))))];
+  }
+
+  function etiquetaPeriodo() {
+    const f = fechaDe(ancla);
+    if (rango === 'todo') return 'Todo el histórico';
+    if (rango === 'dia') return f.toLocaleDateString('es-ES', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (rango === 'semana') { const [a, b] = tramo(); return 'Semana del ' + fechaDe(a).getUTCDate() + ' al ' + fechaDe(b).getUTCDate() + ' de ' + MES[fechaDe(b).getUTCMonth()]; }
+    if (rango === 'mes') return MES[f.getUTCMonth()][0].toUpperCase() + MES[f.getUTCMonth()].slice(1) + ' ' + f.getUTCFullYear();
+    return String(f.getUTCFullYear());
+  }
+
+  function mover(pasos) {
+    const f = fechaDe(ancla);
+    let n = ancla;
+    if (rango === 'dia') n = ancla + pasos;
+    else if (rango === 'semana') n = ancla + pasos * 7;
+    else if (rango === 'mes') n = idxDe(new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth() + pasos, Math.min(f.getUTCDate(), 28))));
+    else if (rango === 'anio') n = idxDe(new Date(Date.UTC(f.getUTCFullYear() + pasos, f.getUTCMonth(), Math.min(f.getUTCDate(), 28))));
+    const total = DATA.conductores[0] ? DATA.conductores[0].dias.length : 1;
+    ancla = Math.max(0, Math.min(total - 1, n));
+    recalcular();
+  }
+
+  // ── Filtrar y ordenar ─────────────────────────────────────────────────────
+  function recalcular() {
+    const [a, b] = tramo();
+    desdeIdx = a; hastaIdx = b;
+
+    const q = busca.trim().toLowerCase();
+    filas = DATA.conductores.filter(c => {
+      if (!conBajas && !c.vigente) return false;
+      if (q && c.id.toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+
+    // Las cuentas del tramo VISIBLE: ordenar por "más rojos" tiene que mirar lo
+    // que se está viendo, no el año entero. Si no, cambiar de mes no cambiaría
+    // el orden y la lista mentiría.
+    for (const c of filas) {
+      let r = 0, h = 0, dias = 0;
+      for (let d = a; d <= b; d++) {
+        if (esRojo(c, d)) r++;
+        const x = horasDe(c, d);
+        if (x != null) { h += x; dias++; }
+      }
+      c._rojos = r; c._horas = h; c._media = dias ? h / dias : null;
+    }
+
+    maxRojos = filas.reduce((m, c) => Math.max(m, c._rojos), 0);
+
+    if (orden === 'rojos') filas.sort((x, y) => y._rojos - x._rojos || x.id.localeCompare(y.id, 'es'));
+    else if (orden === 'horas') filas.sort((x, y) => (x._media == null ? 1e9 : x._media) - (y._media == null ? 1e9 : y._media) || x.id.localeCompare(y.id, 'es'));
+    else filas.sort((x, y) => (Number(y.vigente) - Number(x.vigente)) || x.id.localeCompare(y.id, 'es'));
+
+    document.getElementById('bg-periodo').textContent = etiquetaPeriodo();
+    const totalRojos = filas.reduce((s, c) => s + c._rojos, 0);
+    document.getElementById('bg-pie').textContent =
+      filas.length + ' conductor(es) · ' + (b - a + 1) + ' día(s) · ' + totalRojos + ' celda(s) en rojo en este periodo';
+    scrollY = 0; scrollX = 0;
+    pintar();
+  }
+
+  // ── Dibujar ───────────────────────────────────────────────────────────────
+  let an = 0, al = 0, dpr = 1;
+  function medir() {
+    const r = marco.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    an = Math.max(320, Math.round(r.width));
+    // Alto: lo que quede de pantalla, con un mínimo para que siempre se vea algo.
+    al = Math.max(360, Math.round(window.innerHeight - r.top - 70));
+    lienzo.style.height = al + 'px';
+    lienzo.width = an * dpr; lienzo.height = al * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  const nDias = () => hastaIdx - desdeIdx + 1;
+  const anchoTotal = () => nDias() * celda;
+  const altoTotal = () => filas.length * celda;
+  const maxX = () => Math.max(0, anchoTotal() - (an - ANCHO_NOMBRE));
+  const maxY = () => Math.max(0, altoTotal() - (al - ALTO_CAB));
+
+  function pintar() {
+    if (!DATA) return;
+    scrollX = Math.max(0, Math.min(maxX(), scrollX));
+    scrollY = Math.max(0, Math.min(maxY(), scrollY));
+
+    ctx.fillStyle = rgb(C.fondo, 1);
+    ctx.fillRect(0, 0, an, al);
+
+    const visX = an - ANCHO_NOMBRE, visY = al - ALTO_CAB;
+    // SOLO SE DIBUJA LO QUE CABE. Aquí está el truco de que esto aguante un año
+    // entero de 218 personas: el bucle no recorre 80.000 celdas, recorre las
+    // que entran en pantalla.
+    const d0 = Math.max(0, Math.floor(scrollX / celda));
+    const d1 = Math.min(nDias() - 1, Math.ceil((scrollX + visX) / celda));
+    const f0 = Math.max(0, Math.floor(scrollY / celda));
+    const f1 = Math.min(filas.length - 1, Math.ceil((scrollY + visY) / celda));
+
+    // ── Las celdas ──
+    for (let f = f0; f <= f1; f++) {
+      const c = filas[f];
+      const y = ALTO_CAB + f * celda - scrollY;
+      for (let d = d0; d <= d1; d++) {
+        const idx = desdeIdx + d;
+        const x = ANCHO_NOMBRE + d * celda - scrollX;
+        // El fin de semana, un pelo más oscuro de fondo: da ritmo a la rejilla y
+        // deja contar semanas de un vistazo sin mirar la cabecera.
+        if (finde(idx)) { ctx.fillStyle = rgb(C.muted, .06); ctx.fillRect(x, y, celda, celda); }
+        const col = colorDe(c, idx);
+        if (col) { ctx.fillStyle = col; ctx.fillRect(x, y, celda, celda); }
+        // La J se marca con una esquina, no con el color: el color ya lo usan
+        // las horas, y hace falta saber que hay papel de por medio.
+        if (val(c, idx) === 'J' && celda >= 7) {
+          const j = c.justif[isoDe(idx)] || {};
+          ctx.fillStyle = j.estado === 'pendiente' ? rgb(C.azul, .95) : rgb(C.just, .95);
+          ctx.beginPath();
+          ctx.moveTo(x + celda, y); ctx.lineTo(x + celda, y + Math.min(6, celda * .42));
+          ctx.lineTo(x + celda - Math.min(6, celda * .42), y); ctx.closePath(); ctx.fill();
+        }
+        // Las horas, solo si la celda da para leerlas.
+        if (celda >= 22) {
+          const v = val(c, idx);
+          let txt = '';
+          if (typeof v === 'number' && v > 0) {
+            // SE TRUNCA, NO SE REDONDEA. Un dia de 7,6 h esta por debajo del
+            // objetivo y su celda sale roja; redondeando mostraria "8" —justo la
+            // cifra del objetivo— y el numero contradiria al color. Truncar
+            // nunca sube a nadie a una cifra que no ha hecho.
+            txt = celda >= 30 ? nf1.format(v) : String(Math.floor(v));
+          }
+          else if (v === 'L' || esAus(v)) txt = v;
+          else if (v === 'J') txt = 'J';
+          if (txt) {
+            ctx.fillStyle = rgb(C.texto, .85);
+            ctx.font = '600 ' + Math.round(celda * .42) + 'px Inter, system-ui, sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(txt, x + celda / 2, y + celda / 2);
+          }
+        }
+      }
+    }
+
+    // ── La rejilla, solo cuando las celdas son grandes ──
+    if (celda >= 9) {
+      ctx.strokeStyle = rgb(C.borde, .5); ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let d = d0; d <= d1 + 1; d++) { const x = Math.floor(ANCHO_NOMBRE + d * celda - scrollX) + .5; ctx.moveTo(x, ALTO_CAB); ctx.lineTo(x, al); }
+      for (let f = f0; f <= f1 + 1; f++) { const y = Math.floor(ALTO_CAB + f * celda - scrollY) + .5; ctx.moveTo(ANCHO_NOMBRE, y); ctx.lineTo(an, y); }
+      ctx.stroke();
+    }
+
+    // ── La marca de HOY: una línea que se ve a cualquier zoom ──
+    const hoyRel = DATA.hoyIdx - desdeIdx;
+    if (hoyRel >= 0 && hoyRel < nDias()) {
+      const x = ANCHO_NOMBRE + hoyRel * celda - scrollX;
+      if (x > ANCHO_NOMBRE - celda && x < an) {
+        ctx.strokeStyle = rgb(C.oro, .9); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x + celda / 2, ALTO_CAB); ctx.lineTo(x + celda / 2, al); ctx.stroke();
+      }
+    }
+
+    // ── La columna de nombres (congelada) ──
+    ctx.fillStyle = rgb(C.card, 1);
+    ctx.fillRect(0, ALTO_CAB, ANCHO_NOMBRE, al - ALTO_CAB);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    for (let f = f0; f <= f1; f++) {
+      const c = filas[f];
+      const y = ALTO_CAB + f * celda - scrollY;
+      if (hover && hover.f === f) { ctx.fillStyle = rgb(C.oro, .1); ctx.fillRect(0, y, ANCHO_NOMBRE, celda); }
+      if (celda < 11) {
+        // DEMASIADO PEQUENO PARA UN NOMBRE. En vez de dejar la columna vacia
+        // —que parece un fallo— se dibuja una barra de calor con los rojos de
+        // esa persona. A este zoom no se viene a leer nombres: se viene a ver
+        // quien destaca, y la barra lo dice mejor que un texto ilegible. El
+        // nombre lo da el globo al pasar por encima.
+        if (c._rojos > 0 && maxRojos > 0) {
+          const w = 8 + (ANCHO_NOMBRE - 20) * (c._rojos / maxRojos);
+          ctx.fillStyle = rgb(C.rojo, .25 + .55 * (c._rojos / maxRojos));
+          ctx.fillRect(8, y + Math.max(0, (celda - Math.max(2, celda - 1)) / 2), w, Math.max(2, celda - 1));
+        }
+        continue;
+      }
+      {
+        ctx.font = (c.vigente ? '500 ' : '400 ') + Math.min(12, Math.max(9, Math.round(celda * .55))) + 'px Inter, system-ui, sans-serif';
+        ctx.fillStyle = rgb(c.vigente ? C.texto : C.muted, c.vigente ? .92 : .55);
+        let n = c.id;
+        // Recortar a ojo: medir cada nombre con measureText en cada fotograma
+        // costaría más que dibujarlo.
+        const cabe = Math.floor((ANCHO_NOMBRE - 34) / 6.1);
+        if (n.length > cabe) n = n.slice(0, cabe - 1) + '…';
+        ctx.fillText(n, 8, y + celda / 2);
+        // Los rojos del periodo, a la derecha del nombre: es la columna por la
+        // que se ordena y por la que se viene a mirar.
+        if (c._rojos > 0) {
+          ctx.font = '700 ' + Math.min(11, Math.max(8, Math.round(celda * .5))) + 'px Inter, system-ui, sans-serif';
+          ctx.fillStyle = rgb(C.rojo, .9);
+          ctx.textAlign = 'right'; ctx.fillText(String(c._rojos), ANCHO_NOMBRE - 8, y + celda / 2);
+          ctx.textAlign = 'left';
+        }
+      }
+    }
+    ctx.strokeStyle = rgb(C.borde, 1); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ANCHO_NOMBRE + .5, 0); ctx.lineTo(ANCHO_NOMBRE + .5, al); ctx.stroke();
+
+    // ── La cabecera (congelada) ──
+    ctx.fillStyle = rgb(C.card, 1);
+    ctx.fillRect(0, 0, an, ALTO_CAB);
+    ctx.textBaseline = 'middle';
+    let mesAnterior = -1;
+    for (let d = d0; d <= d1; d++) {
+      const idx = desdeIdx + d;
+      const x = ANCHO_NOMBRE + d * celda - scrollX;
+      const f = fechaDe(idx);
+      if (f.getUTCMonth() !== mesAnterior) {
+        mesAnterior = f.getUTCMonth();
+        ctx.fillStyle = rgb(C.oro, .95);
+        ctx.font = '700 10px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(MES[f.getUTCMonth()].slice(0, 3).toUpperCase(), x + 2, 10);
+        ctx.strokeStyle = rgb(C.oro, .35); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(Math.floor(x) + .5, 0); ctx.lineTo(Math.floor(x) + .5, al); ctx.stroke();
+      }
+      if (celda >= 13) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = rgb(finde(idx) ? C.oro : C.muted, .8);
+        ctx.font = '600 9px Inter, system-ui, sans-serif';
+        ctx.fillText(DOW[dowDe(idx)], x + celda / 2, 20);
+        ctx.fillStyle = rgb(C.texto, .8);
+        ctx.font = '600 10px Inter, system-ui, sans-serif';
+        ctx.fillText(String(f.getUTCDate()), x + celda / 2, 29);
+      } else if (celda >= 6 && f.getUTCDate() === 1) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = rgb(C.texto, .7);
+        ctx.font = '600 9px Inter, system-ui, sans-serif';
+        ctx.fillText('1', x + celda / 2, 26);
+      }
+    }
+    ctx.fillStyle = rgb(C.card, 1); ctx.fillRect(0, 0, ANCHO_NOMBRE, ALTO_CAB);
+    ctx.fillStyle = rgb(C.muted, .9);
+    ctx.font = '600 11px Inter, system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(celda < 11 ? 'Conductor · rojos' : 'Conductor', 8, ALTO_CAB / 2);
+    if (orden === 'rojos') {
+      ctx.fillStyle = rgb(C.rojo, .9); ctx.textAlign = 'right';
+      ctx.font = '700 10px Inter, system-ui, sans-serif';
+      ctx.fillText('rojos', ANCHO_NOMBRE - 8, ALTO_CAB / 2);
+    }
+    ctx.strokeStyle = rgb(C.borde, 1);
+    ctx.beginPath(); ctx.moveTo(0, ALTO_CAB + .5); ctx.lineTo(an, ALTO_CAB + .5); ctx.stroke();
+
+    // ── El recuadro de la celda bajo el ratón ──
+    if (hover) {
+      const x = ANCHO_NOMBRE + (hover.d - desdeIdx) * celda - scrollX;
+      const y = ALTO_CAB + hover.f * celda - scrollY;
+      if (x >= ANCHO_NOMBRE - celda && y >= ALTO_CAB - celda) {
+        ctx.strokeStyle = rgb(C.oro, 1); ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, celda - 2, celda - 2);
+      }
+    }
+  }
+
+  // ── El globo con el dato ──────────────────────────────────────────────────
+  const NOMBRE_MARCA = { V: 'Vacaciones', B: 'Baja médica', P: 'Permiso', L: 'Libranza' };
+
+  function contarGlobo(c, d) {
+    const v = val(c, d), iso = isoDe(d);
+    const f = fechaDe(d).toLocaleDateString('es-ES', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
+    let valor = '', nota = '';
+    if ((c.altaIdx != null && d < c.altaIdx)) { valor = 'Antes del alta'; }
+    else if (c.bajaIdx != null && d > c.bajaIdx) { valor = 'Ya de baja'; }
+    else if (d > DATA.hoyIdx) { valor = NOMBRE_MARCA[v] || 'Por venir'; nota = 'Aún no ha pasado.'; }
+    else if (NOMBRE_MARCA[v]) { valor = NOMBRE_MARCA[v]; }
+    else if (v === 'J') {
+      const j = c.justif[iso] || {};
+      const h = horasDe(c, d) || 0;
+      valor = nf1.format(h) + ' h · justificante';
+      nota = (j.estado === 'pendiente' ? 'Pendiente de aprobar. ' : j.estado === 'aprobada' ? 'Aprobado. ' : '')
+           + (j.obs || '');
+    }
+    else if (typeof v === 'number' && v > 0) {
+      valor = nf1.format(v) + ' h';
+      if (v < OBJETIVO) nota = 'Por debajo de las ' + OBJETIVO + ' h.';
+    }
+    else { valor = 'No salió'; nota = 'Sin horas y sin justificante.'; }
+    return { f, valor, nota };
+  }
+
+  function moverGlobo(px, py, c, d) {
+    const g = contarGlobo(c, d);
+    globo.innerHTML = '<b>' + c.id.replace(/[<>&]/g, '') + '</b>'
+      + '<div class="bg-g-dia">' + g.f + '</div>'
+      + '<div class="bg-g-val">' + g.valor + '</div>'
+      + (g.nota ? '<div class="bg-g-nota">' + g.nota.replace(/[<>&]/g, '') + '</div>' : '');
+    globo.classList.add('on');
+    const r = globo.getBoundingClientRect();
+    // Que no se salga por la derecha ni por abajo.
+    globo.style.left = Math.min(px + 14, an - r.width - 8) + 'px';
+    globo.style.top = Math.min(py + 14, al - r.height - 8) + 'px';
+  }
+
+  // ── Ratón ─────────────────────────────────────────────────────────────────
+  function celdaEn(px, py) {
+    if (px < ANCHO_NOMBRE || py < ALTO_CAB) return null;
+    const f = Math.floor((py - ALTO_CAB + scrollY) / celda);
+    const d = Math.floor((px - ANCHO_NOMBRE + scrollX) / celda) + desdeIdx;
+    if (f < 0 || f >= filas.length || d < desdeIdx || d > hastaIdx) return null;
+    return { f, d };
+  }
+
+  let arrastrando = false, ax = 0, ay = 0, sx0 = 0, sy0 = 0, movido = false;
+
+  lienzo.addEventListener('mousemove', e => {
+    const r = lienzo.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    if (arrastrando) {
+      if (Math.abs(e.clientX - ax) + Math.abs(e.clientY - ay) > 3) movido = true;
+      scrollX = sx0 - (e.clientX - ax);
+      scrollY = sy0 - (e.clientY - ay);
+      pintar();
+      return;
+    }
+    const c = celdaEn(px, py);
+    const cambio = (!c && hover) || (c && (!hover || c.f !== hover.f || c.d !== hover.d));
+    hover = c;
+    if (c) moverGlobo(px, py, filas[c.f], c.d); else globo.classList.remove('on');
+    if (cambio) pintar();
+  });
+  lienzo.addEventListener('mouseleave', () => { hover = null; globo.classList.remove('on'); pintar(); });
+  lienzo.addEventListener('mousedown', e => {
+    arrastrando = true; movido = false;
+    ax = e.clientX; ay = e.clientY; sx0 = scrollX; sy0 = scrollY;
+    lienzo.classList.add('arrastrando');
+  });
+  window.addEventListener('mouseup', () => { arrastrando = false; lienzo.classList.remove('arrastrando'); });
+
+  // Pinchar una celda abre ESE día de ESA persona en la bitácora de siempre.
+  // Arrastrar no cuenta como pinchar.
+  lienzo.addEventListener('click', e => {
+    if (movido) return;
+    const r = lienzo.getBoundingClientRect();
+    const c = celdaEn(e.clientX - r.left, e.clientY - r.top);
+    if (!c) return;
+    const p = filas[c.f];
+    location.href = '/bitacora?conductor=' + encodeURIComponent(p.conductorId) + '&dia=' + isoDe(c.d);
+  });
+
+  // Rueda: vertical normal, horizontal con Shift, ZOOM con Ctrl.
+  lienzo.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const r = lienzo.getBoundingClientRect();
+      const px = e.clientX - r.left - ANCHO_NOMBRE;
+      // El día que está bajo el cursor se queda bajo el cursor: sin esto, al
+      // acercar se pierde el sitio que se estaba mirando.
+      const diaBajo = (scrollX + px) / celda;
+      const antes = celda;
+      celda = Math.max(3, Math.min(34, celda + (e.deltaY < 0 ? 2 : -2)));
+      if (celda !== antes) {
+        scrollX = diaBajo * celda - px;
+        document.getElementById('bg-zoom').value = celda;
+        pintar();
+      }
+      return;
+    }
+    e.preventDefault();
+    if (e.shiftKey) scrollX += e.deltaY;
+    else { scrollY += e.deltaY; scrollX += e.deltaX; }
+    pintar();
+  }, { passive: false });
+
+  // ── Mandos ────────────────────────────────────────────────────────────────
+  const marca = (sel, attr, v) => document.querySelectorAll(sel).forEach(b => b.classList.toggle('on', b.dataset[attr] === v));
+
+  document.querySelectorAll('[data-rango]').forEach(b => b.addEventListener('click', () => {
+    rango = b.dataset.rango; marca('[data-rango]', 'rango', rango);
+    // Al cambiar de rango, un zoom que quepa: el año con celdas de 16 px no
+    // entra en ninguna pantalla y lo primero que se ve es un trozo inútil.
+    celda = rango === 'anio' || rango === 'todo' ? 5 : rango === 'mes' ? 16 : 30;
+    document.getElementById('bg-zoom').value = celda;
+    recalcular();
+  }));
+  document.querySelectorAll('[data-orden]').forEach(b => b.addEventListener('click', () => {
+    orden = b.dataset.orden; marca('[data-orden]', 'orden', orden); recalcular();
+  }));
+  document.getElementById('bg-antes').addEventListener('click', () => mover(-1));
+  document.getElementById('bg-despues').addEventListener('click', () => mover(1));
+  document.getElementById('bg-hoy').addEventListener('click', () => { ancla = DATA.hoyIdx; recalcular(); });
+  document.getElementById('bg-bajas').addEventListener('change', e => { conBajas = e.target.checked; recalcular(); });
+  let tBusca = 0;
+  document.getElementById('bg-busca').addEventListener('input', e => {
+    clearTimeout(tBusca);
+    tBusca = setTimeout(() => { busca = e.target.value; recalcular(); }, 180);
+  });
+  const zoom = document.getElementById('bg-zoom');
+  zoom.addEventListener('input', e => { celda = Number(e.target.value); pintar(); });
+  document.getElementById('bg-mas').addEventListener('click', () => { celda = Math.min(34, celda + 3); zoom.value = celda; pintar(); });
+  document.getElementById('bg-menos').addEventListener('click', () => { celda = Math.max(3, celda - 3); zoom.value = celda; pintar(); });
+
+  window.addEventListener('resize', () => { medir(); pintar(); });
+
+  // ── Arranque ──────────────────────────────────────────────────────────────
+  fetch('/bitacora/api/datos')
+    .then(r => r.json())
+    .then(r => {
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar');
+      DATA = r;
+      ancla = DATA.hoyIdx;
+      document.getElementById('bg-cargando').remove();
+      medir();
+      recalcular();
+    })
+    .catch(e => {
+      // El cartel puede haberse quitado ya (si lo que fallo fue el primer
+      // pintado, no la descarga). Sin esta guarda, el propio manejador de
+      // errores petaba y tapaba el error DE VERDAD, que es lo que paso al
+      // escribir esto: el fallo real era otro y aqui solo se veia "cannot set
+      // innerHTML of null".
+      console.error('[Bitácora general]', e);
+      const cart = document.getElementById('bg-cargando');
+      const msg = '<span class="text-telecab-red text-sm">' + String(e && e.message || e).replace(/[<>&]/g, '') + '</span>';
+      if (cart) cart.innerHTML = msg;
+      else document.getElementById('bg-pie').innerHTML = msg;
+    });
+})();
+</script>
