@@ -99,4 +99,25 @@ async function preparar() {
   return preparando;
 }
 
-module.exports = { consulta, transaccion, preparar, HAY_BD };
+/**
+ * Envuelve un grupo de funciones para que ASEGUREN el esquema antes de correr.
+ *
+ * Antes lo hacía quien llamaba: cada ruta que fuera a leer de flota viva tenía
+ * que acordarse de `preparar()` primero. Eso es una precondición de la base
+ * viviendo en un controlador —que además es saltarse dos capas— y se rompe el
+ * día que alguien añade una ruta y no se acuerda: falla en producción, no aquí.
+ *
+ * Sale barato porque `preparar` recuerda su promesa: a partir de la primera vez
+ * es esperar algo ya resuelto.
+ */
+function conEsquema(funciones) {
+  const out = {};
+  for (const [nombre, fn] of Object.entries(funciones)) {
+    out[nombre] = typeof fn === 'function'
+      ? async (...args) => { await preparar(); return fn(...args); }
+      : fn;
+  }
+  return out;
+}
+
+module.exports = { consulta, transaccion, preparar, conEsquema, HAY_BD };

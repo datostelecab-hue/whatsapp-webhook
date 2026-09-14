@@ -812,8 +812,11 @@ async function actividadPorConductor(dia, turno = 'dia') {
   };
 }
 
-module.exports = {
+// Todas aseguran el esquema antes de correr: quien lee flota viva no tiene que
+// acordarse de prepararla, que es como se colaba esa precondicion en las rutas.
+module.exports = db.conEsquema({
   ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
   horasEfectivasPorConductor, minutosEfectivos, matriculasBoltPorConductor,
-  bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, kmFueraEnVentana, TURNOS,
-};
+  bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, kmFueraEnVentana,
+});
+module.exports.TURNOS = TURNOS;

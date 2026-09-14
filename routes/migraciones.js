@@ -5,7 +5,6 @@
 const express = require('express');
 const router = express.Router();
 const sesion = require('../services/sesion');
-const db = require('../services/db');
 const migra = require('../services/migraciones');
 
 router.use(sesion.requiereDesarrollador);
@@ -21,7 +20,7 @@ router.get('/', (req, res) => {
 // Estado de la conexión y qué migraciones hay aplicadas o pendientes.
 router.get('/api/estado', async (req, res) => {
   try {
-    res.json({ status: 'ok', bd: await db.estado(), migraciones: await migra.estado() });
+    res.json({ status: 'ok', bd: await migra.estadoBd(), migraciones: await migra.estado() });
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 

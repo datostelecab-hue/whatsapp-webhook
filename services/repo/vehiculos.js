@@ -110,12 +110,29 @@ async function resumen() {
 }
 
 /** Catálogos para los desplegables. */
+/**
+ * Los estados de vehículo, de la base.
+ *
+ * Antes el planificador salía con esta misma consulta escrita a mano en su
+ * controlador (`routes/tablero.js`), que es saltarse dos capas. Vive aquí, que
+ * es donde vive todo lo que sepa de `cat_estado_vehiculo`.
+ *
+ * `visible_cobertura` importa: quien dice qué estado sale en el cuadrante es la
+ * tabla, no una lista de símbolos escrita en el código.
+ */
+async function estadosVehiculo() {
+  const r = await db.consulta(
+    `SELECT codigo, etiqueta, es_operativo, visible_cobertura
+       FROM cat_estado_vehiculo ORDER BY orden`);
+  return r.rows;
+}
+
 async function catalogos() {
   const [estados, zonas] = await Promise.all([
-    db.consulta('SELECT codigo, etiqueta, es_operativo FROM cat_estado_vehiculo ORDER BY orden'),
+    estadosVehiculo(),
     db.consulta('SELECT id, nombre FROM base_zona WHERE activa ORDER BY nombre'),
   ]);
-  return { estados: estados.rows, zonas: zonas.rows };
+  return { estados, zonas: zonas.rows };
 }
 
 /** Alta de un coche. La matrícula se normaliza sola en la base. */
@@ -341,7 +358,7 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
 }
 
 module.exports = {
-  listar, ficha, resumen, catalogos,
+  listar, ficha, resumen, catalogos, estadosVehiculo,
   crear, actualizar, darDeBaja,
   enlazarMapon, sincronizarOdometros,
 };

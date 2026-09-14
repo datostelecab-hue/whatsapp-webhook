@@ -22,23 +22,8 @@ const plan = require('../services/repo/planificador');
 const actor = require('../services/repo/actor');
 const conds = require('../services/repo/conductores');
 
-const db = require('../services/db');
+const veh = require('../services/repo/vehiculos');
 const { DIAS_SEM, LETRAS_DIA } = require('../services/planificadorV2');
-
-/**
- * Los estados de vehiculo, de la BASE.
- *
- * Antes salian de una lista de simbolos de la hoja ('✓', 'S', 'T'...) y el front
- * decidia si un coche estaba operativo comparando con el '✓'. En la base el
- * codigo es 'O' y quien dice que significa operativo es `cat_estado_vehiculo`,
- * asi que la lista viene de ahi con su bandera puesta.
- */
-async function estadosVehiculo() {
-  const r = await db.consulta(
-    `SELECT codigo, etiqueta, es_operativo, visible_cobertura
-       FROM cat_estado_vehiculo ORDER BY orden`);
-  return r.rows;
-}
 
 const responde = fn => async (req, res) => {
   try {
@@ -56,7 +41,7 @@ const responde = fn => async (req, res) => {
 
 router.get('/', async (req, res) => {
   let estados = [];
-  try { estados = await estadosVehiculo(); }
+  try { estados = await veh.estadosVehiculo(); }
   catch (e) { console.error('❌ [TABLERO] catálogo de estados:', e.message); }
   res.render('planificadorV2', {
     titulo: 'Planificador',

@@ -536,9 +536,16 @@ async function revisar() {
   return { franja: franja.codigo, diaOperativo, abiertas, nuevas, desdeInicio };
 }
 
-module.exports = {
-  ALERTAS_ACTIVAS,
-  franjas, franjaDe, cruzaMedianoche, dentroDeFranja, localDe, vispera, abrir, resolver, habituales, cerrarFranjasPasadas,
-  yaTrabajaronHoy, conectadoEnFranja, tomarCorte, estadoDeFranja, revisar,
-  MAX_DESCANSO_MIN, MAX_KM_DESCANSO, GRACIA_MIN, DIAS_HABITO, VECES_HABITO, JORNADA_MIN, RELEVO_MIN,
-};
+// Las que tocan la base aseguran el esquema solas (ver db.conEsquema). Las
+// puras —saber si una franja cruza medianoche— no lo necesitan y se quedan
+// fuera para no volverlas asincronas sin motivo.
+module.exports = Object.assign(
+  db.conEsquema({
+    franjas, abrir, resolver, habituales, cerrarFranjasPasadas,
+    yaTrabajaronHoy, conectadoEnFranja, tomarCorte, estadoDeFranja, revisar,
+  }),
+  {
+    ALERTAS_ACTIVAS,
+    franjaDe, cruzaMedianoche, dentroDeFranja, localDe, vispera,
+    MAX_DESCANSO_MIN, MAX_KM_DESCANSO, GRACIA_MIN, DIAS_HABITO, VECES_HABITO, JORNADA_MIN, RELEVO_MIN,
+  });

@@ -187,7 +187,6 @@ router.get('/km', (req, res) => {
 });
 router.get('/api/km-traza', async (req, res) => {
   try {
-    await require('../services/flotaViva/db').preparar();
     const dia = (req.query.dia && String(req.query.dia).slice(0, 10)) || hoyMadrid();
     const turno = ['dia', 'noche', 'completo'].includes(req.query.turno) ? req.query.turno : 'completo';
     res.json({ status: 'ok', ...(await kmConectadoDesconectado(dia, turno)) });
@@ -410,7 +409,6 @@ router.get('/cascada/pdf', async (req, res) => {
     const key = [1, 2, 3].includes(Number(req.query.dia)) ? Number(req.query.dia) : 1;
     const { Y, M, D, str: fecha, idx } = justificantes.fechaDeClave(key);
     const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
-    await require('../services/flotaViva/db').preparar();
     const s = await require('../services/flotaViva/rutas').sankeyFlota(iso);
     const diaSem = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][idx];
     const pdf = await require('../services/kmCascadaPdf').generarPdfCascada({
@@ -433,7 +431,6 @@ router.get('/sankey/pdf', async (req, res) => {
     const key = [1, 2, 3].includes(Number(req.query.dia)) ? Number(req.query.dia) : 1;
     const { Y, M, D, str: fecha, idx } = justificantes.fechaDeClave(key);
     const iso = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`;
-    await require('../services/flotaViva/db').preparar();
     const { sankeyFlota } = require('../services/flotaViva/rutas');
     const { generarPdfFlujo } = require('../services/auditoriaPdf');
     const { rgb } = require('pdf-lib');

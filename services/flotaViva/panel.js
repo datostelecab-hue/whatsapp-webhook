@@ -501,7 +501,8 @@ async function partes({ desde, hasta } = {}) {
   }));
 }
 
-module.exports = {
+// Aseguran el esquema solas (ver db.conEsquema).
+module.exports = db.conEsquema({
   estado, historial, historialConductor, incidencias, gestiones, justificar, seguir, seguimientos,
   clasificacionDe, cierre, partes, duracion,
-};
+});

@@ -17,7 +17,6 @@ const router = express.Router();
 
 const panel = require('../services/flotaViva/panel');
 const motor = require('../services/flotaViva/motor');
-const db = require('../services/flotaViva/db');
 
 const responde = fn => async (req, res) => {
   try {
@@ -35,7 +34,6 @@ router.get('/', (req, res) => res.redirect(302, '/control'));
 router.get('/partes', (req, res) => res.redirect(302, '/control/historico'));
 
 router.get('/api/estado', responde(async () => {
-  await db.preparar();
   return panel.estado();
 }));
 
@@ -58,7 +56,6 @@ router.post('/api/refrescar', responde(async () => {
 // Lo que hay que llamar ahora. Se pide aparte del estado porque se mira mucho
 // mas a menudo y pesa mucho menos.
 router.get('/api/incidencias', responde(async req => {
-  await db.preparar();
   return {
     incidencias: await panel.incidencias({
       dia: req.query.dia, franja: req.query.franja,
@@ -79,7 +76,6 @@ router.get('/api/incidencia/:id/clasificacion', responde(async req =>
 // desplegar, asi que un texto fijo queda desfasado el dia que alguien mueve un
 // turno — y encima diciendo que no se avisa a unas horas a las que si se avisa.
 router.get('/api/franjas', responde(async () => {
-  await db.preparar();
   const f = await require('../services/flotaViva/franjas').franjas();
   return {
     franjas: f.map(x => ({
@@ -92,7 +88,6 @@ router.get('/api/franjas', responde(async () => {
 // Las formas de cerrar una incidencia. Las pide la pantalla para pintar los
 // botones: cuales hay y cual crea llamada lo dice la base, no el front.
 router.get('/api/gestiones', responde(async () => {
-  await db.preparar();
   return { gestiones: await panel.gestiones() };
 }));
 

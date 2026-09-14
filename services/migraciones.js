@@ -151,7 +151,15 @@ async function reiniciar({ confirmar } = {}) {
   return { vaciada: true, ...(await aplicar()) };
 }
 
-module.exports = { estado, aplicar, inventario, ficheros, reiniciar };
+/**
+ * El estado de la conexion, para el panel.
+ *
+ * Va aqui y no en el controlador para que la pantalla no tenga que importar el
+ * pool: quien habla con la base es esta capa, y el controlador solo pide.
+ */
+const estadoBd = () => db.estado();
+
+module.exports = { estado, estadoBd, aplicar, inventario, ficheros, reiniciar };
 
 // Permite lanzarlo también desde la línea de órdenes:
 //   node services/migraciones.js          → aplica lo pendiente
