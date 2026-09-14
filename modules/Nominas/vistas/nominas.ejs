@@ -55,6 +55,31 @@
     </a>
   </div>
 
+  <!-- ══ Parte de la ETT ══ -->
+  <!-- Va aparte y con su propio selector A PROPÓSITO: este fichero se pide por
+       mes TRABAJADO (eliges agosto, salen los datos de agosto) mientras que la
+       nómina de arriba va a mes vencido. Compartir el selector sería la forma
+       más rápida de que alguien mande el mes equivocado a la agencia. -->
+  <div class="rounded-xl bg-telecab-card border border-telecab-border mb-5 px-4 py-3">
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="flex-1 min-w-[16rem]">
+        <div class="text-telecab-text font-medium text-sm">
+          <i class="fa-solid fa-file-arrow-down mr-2 text-telecab-violet"></i> Parte de trabajo de la ETT
+        </div>
+        <p class="text-xs text-telecab-muted mt-1">
+          Horas trabajadas (rodadas + justificadas), nocturnidad <b>en horas</b>, propinas y peajes.
+          Sin MBO: eso lo paga la agencia, no nosotros.
+          <b class="text-telecab-warn">Va por mes trabajado</b>, no a mes vencido.
+        </p>
+      </div>
+      <select id="ett-mes" class="px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm"></select>
+      <input id="ett-ano" type="number" min="2024" max="2100" class="w-24 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-telecab-text text-sm">
+      <button id="btn-ett" class="px-4 py-2 rounded-lg bg-telecab-violet/15 text-telecab-violet text-sm font-medium hover:bg-telecab-violet/25">
+        <i class="fa-solid fa-file-excel mr-1"></i> Excel de la ETT
+      </button>
+    </div>
+  </div>
+
   <div id="progreso" class="hidden mb-4 rounded-lg border border-telecab-border bg-telecab-card px-4 py-3 text-sm text-telecab-text"></div>
   <div id="avisos" class="mb-4 space-y-2"></div>
 
@@ -193,6 +218,16 @@ if ($('#btn-descongelar')) $('#btn-descongelar').addEventListener('click', async
 
 $('#btn-descargar').addEventListener('click', e => { e.preventDefault(); window.open(`/nominas/nomina.xlsx?mes=${mes()}&ano=${ano()}`,'_blank'); });
 
+// ── El parte de la ETT, por mes TRABAJADO ──
+// Arranca en el mes en curso, que es lo que se pide el 90 % de las veces.
+MESES.forEach((m,i)=>{ const o=document.createElement('option'); o.value=i+1; o.textContent=m; if(i+1===CFG.mesActual)o.selected=true; $('#ett-mes').appendChild(o); });
+$('#ett-ano').value = CFG.anoActual;
+$('#btn-ett').addEventListener('click', () => {
+  const m = parseInt($('#ett-mes').value,10), a = parseInt($('#ett-ano').value,10);
+  window.open(`/nominas/ett.xlsx?mes=${m}&ano=${a}`,'_blank');
+  msg(`📄 Bajando el parte de la ETT del trabajo de ${MESES[m-1]} ${a}.`);
+});
+
 // ── Render ──
 let FILTRO_TIPO = 'todos';
 function render() {
@@ -288,6 +323,8 @@ function pintarAvisos(a, cfg) {
   if (a.conJ>0) av.push(['muted',`${a.conJ} conductor(es) tienen días justificados. Cada J vale la jornada entera (${(cfg||{}).horasMetaDia||8} h) sin distinguir el motivo, y nunca suma por encima de lo que falte de ese día. Las justificadas CUENTAN para la diferencia: un día justificado no le resta a nadie sus horas extra.`]);
   if (a.conRecorte>0) av.push(['amber',`✂️ ${a.conRecorte} conductor(es) no llegan al ${Math.round(((cfg||{}).utilMinima||0.65)*100)} % de utilización: se les retiran ${(RESULTADO?RESULTADO.totales.horasEsperaQuitadas:0).toFixed(1)} h de ESPERA en total para llevarlos al mínimo. Nunca se quita viaje.` + (a.recortadosSinExtra>0?` A ${a.recortadosSinExtra} de ellos el recorte les deja sin las horas extra que tenían.`:'')]);
   if (a.conHorasSinJustificar>0) av.push(['amber',`⚠️ ${a.conHorasSinJustificar} conductor(es) siguen por debajo de su objetivo después de contarles las J: son las "horas no justificadas" de la columna roja.`]);
+  const nEtt = RESULTADO ? RESULTADO.filas.filter(f=>f.ett).length : 0;
+  if (nEtt>0) av.push(['muted',`${nEtt} conductor(es) son de ETT: cobran nocturnidad, propinas y peajes, pero NINGÚN MBO (ni horas extra ni facturación) porque los contrata y los paga la agencia. Sus cifras salen aparte en el "Parte de trabajo de la ETT".`]);
   if (a.sinNombreBolt>0) av.push(['muted',`${a.sinNombreBolt} conductor(es) sin nombre de BOLT: en el Excel sale el de la ficha en su lugar.`]);
   if (a.sinApellidosSeparados>0) av.push(['muted',`${a.sinApellidosSeparados} conductor(es) tienen el nombre en una sola pieza (la ficha no separa apellidos de nombres), as\u00ed que en la columna "Nombre de la seguridad social" salen sin la coma. No se parte a ojo: en unos casos son dos apellidos y en otros uno, y alguno va en orden inverso. Se arregla rellen\u00e1ndoles los apellidos en su ficha.`]);
   const ss = (a.sinSellar||[]);

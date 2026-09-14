@@ -288,10 +288,105 @@ async function generarExcelNomina(r) {
   return wb.xlsx.writeBuffer();
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// EL FICHERO DE LA ETT
+// ════════════════════════════════════════════════════════════════════════════
+// A quien viene por agencia lo contrata y lo paga ella. Nosotros le medimos el
+// trabajo y se lo pasamos: esto es un PARTE DE TRABAJO, no una nómina.
+//
+// Por eso lleva solo cuatro cifras y ningún euro de MBO:
+//
+//   Horas trabajadas   lo rodado más lo justificado
+//   Nocturnidad        EN HORAS, no en euros: la ETT las abona con SU tarifa
+//   Propinas y peajes  en euros, que esos son del conductor tal cual
+//
+// Y por eso va por mes TRABAJADO: se elige agosto y salen los datos de agosto.
+// La nómina va a mes vencido porque es un pago; un parte de trabajo lleva el
+// mes que dice. El subtítulo lo repite para que nadie lo confunda.
+
+const COL_ETT = [
+  ['ID de BOLT', 30, 'nombreBolt', null],
+  ['Nombre de la seguridad social', 36, 'nombreSS', null],
+  ['DNI/NIE', 13, 'dni', null],
+  ['Horas rodadas', 13, 'horas', HORAS],
+  ['Horas justificadas', 15, 'horasJustificadas', HORAS],
+  ['HORAS TRABAJADAS', 17, 'horasTrabajadas', HORAS],
+  ['Nocturnidad (horas)', 17, 'nocturnasHoras', HORAS],
+  ['Propinas', 11, 'propinas', EUROS],
+  ['Peajes', 10, 'peajes', EUROS],
+];
+
+/** El parte de la ETT de un mes trabajado. Devuelve los bytes. */
+async function generarExcelETT(r) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Telecab';
+  const idLogo = E.registrarLogo(wb);
+  const ws = wb.addWorksheet(`ETT ${r.mesNombre} ${r.ano}`);
+  COL_ETT.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
+
+  const sub2 = `Personal de ETT · TRABAJO DE ${r.mesNombre.toUpperCase()} ${r.ano}` +
+    ` (no es a mes vencido: son los datos de ese mismo mes) · ${r.filas.length} conductores` +
+    (r.trabajoIncompleto ? ' · ¡EL MES AÚN NO HA TERMINADO!' : '') + ` · generado ${sello()}`;
+  let fila = E.bandaCabecera(ws, idLogo, 'PARTE DE TRABAJO · ETT', sub2, COL_ETT.length);
+  const filaCab = fila;
+  fila = E.cabeceraTabla(ws, fila, COL_ETT.map(c => c[0]));
+  const primera = fila;
+
+  for (const f of r.filas) {
+    const row = ws.getRow(fila++);
+    COL_ETT.forEach(([, , clave, fmt], i) => {
+      const c = row.getCell(i + 1);
+      c.value = clave === 'nombreBolt' ? (f.nombreBolt || f.nombre || '')
+        : clave === 'nombreSS' ? (f.nombreSS || f.nombre || '')
+        : f[clave];
+      if (fmt) c.numFmt = fmt;
+      c.border = E.TODOS_BORDES;
+      if (clave === 'horasTrabajadas') c.font = { bold: true };
+    });
+  }
+
+  const ultima = fila - 1;
+  const pie = ws.getRow(fila);
+  pie.getCell(1).value = `TOTAL (${r.filas.length})`;
+  pie.getCell(1).font = { bold: true };
+  COL_ETT.forEach(([, , clave, fmt], i) => {
+    const c = pie.getCell(i + 1);
+    c.fill = E.relleno('FFF7F8FA');
+    c.border = E.TODOS_BORDES;
+    if (!fmt || ultima < primera) return;
+    const L = E.colLetra(i + 1);
+    c.value = { formula: `SUM(${L}${primera}:${L}${ultima})` };
+    c.numFmt = fmt;
+    c.font = { bold: true };
+  });
+
+  ws.views = [{ state: 'frozen', ySplit: filaCab }];
+  if (ultima >= primera) {
+    ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: COL_ETT.length } };
+  }
+
+  // Una nota al pie, porque este fichero sale de la empresa.
+  const n = ws.getRow(fila + 2);
+  n.getCell(1).value = 'Horas trabajadas = horas rodadas en BOLT + horas justificadas. ' +
+    'Una J cubre la jornada del día (8 h), sin pasar de ahí.';
+  n.getCell(1).font = { size: 9, color: { argb: E.TENUE } };
+  const n2 = ws.getRow(fila + 3);
+  n2.getCell(1).value = 'La nocturnidad va EN HORAS (franja de 22:00 a 06:00). Las propinas y los peajes, en euros.';
+  n2.getCell(1).font = { size: 9, color: { argb: E.TENUE } };
+  const n3 = ws.getRow(fila + 4);
+  n3.getCell(1).value = 'El mes va del día 1 a las 00:00 al último a las 23:59.';
+  n3.getCell(1).font = { size: 9, color: { argb: E.TENUE } };
+
+  return wb.xlsx.writeBuffer();
+}
+
+/** parte-ett-agosto-2026.xlsx */
+const nombreFicheroETT = r => `parte-ett-${(r.mesNombre || '').toLowerCase()}-${r.ano}.xlsx`;
+
 /** nomina-variable-septiembre-2026.xlsx */
 function nombreFichero(r) {
   const mes = (r.mesNombre || '').toLowerCase() || String(r.mes);
   return `nomina-variable-${mes}-${r.ano}.xlsx`;
 }
 
-module.exports = { generarExcelNomina, nombreFichero };
+module.exports = { generarExcelNomina, nombreFichero, generarExcelETT, nombreFicheroETT };

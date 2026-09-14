@@ -5,7 +5,7 @@
 // mismas que llevaban meses cuadrando; lo que ha cambiado es de dónde salen los
 // datos: antes de Google Sheets y de la API de BOLT, ahora de PostgreSQL.
 //
-// ── LAS CINCO REGLAS QUE HAY QUE SABER ────────────────────────────────────────
+// ── LAS SEIS REGLAS QUE HAY QUE SABER ────────────────────────────────────────
 //
 // 1. A MES VENCIDO. La nómina de un mes se calcula con los datos del mes
 //    ANTERIOR: la de julio paga el trabajo de junio; la de enero, el de
@@ -103,6 +103,26 @@
 //    bitacora para quien trabaja de noche. No es un fallo: son dos preguntas
 //    distintas y cada una tiene su ventana.
 //
+// 6. EL MBO ES SOLO DE PLANTILLA PROPIA. A quien viene por ETT lo contrata la
+//    agencia y es ella quien le paga: nosotros no le debemos horas extra ni
+//    participacion en la facturacion. Asi que a las filas de ETT se les pone a
+//    CERO todo el MBO —el de horas extra y el FAS— y con el los dias extra,
+//    que es la misma idea contada en dias.
+//
+//    Pero SI entran en la nomina, y con sus variables: nocturnidad, propinas y
+//    peajes son suyas se las pague quien se las pague, y la ETT necesita el
+//    numero para pagarselas. De ahi el Excel aparte (`/nominas/ett.xlsx`), que
+//    lleva justo eso: horas trabajadas (rodadas + justificadas), nocturnidad EN
+//    HORAS, propinas y peajes.
+//
+//    OJO CON EL MES DE ESE EXCEL: va por mes TRABAJADO, no a mes vencido. Se
+//    elige agosto y salen los datos de agosto. La nomina va a mes vencido
+//    porque es un pago; el fichero de la ETT es un parte de trabajo.
+//
+//    Las horas, el objetivo y la diferencia SI se calculan para la ETT y se
+//    ensenan: son una medida, no un pago. Lo que se pone a cero es todo lo que
+//    se cobra.
+//
 // ── LO QUE SE GUARDA ────────────────────────────────────────────────────────
 // Solo el resultado CONGELADO. No hay "snapshot de datos crudos" como en las
 // hojas: allí hacía falta porque volver a bajar de BOLT tardaba minutos, aquí
@@ -118,8 +138,12 @@ const DEFAULTS = {
   // Sueldo base y umbral FAS son DISTINTOS por jornada (40h vs 32h). Los de 32h
   // arrancan igual que los de 40h para no cambiar nada hasta poner los reales.
   sueldoBase40: 1445, sueldoBase32: 1445,   // informativos (no entran en el total, como en el Excel)
-  horasMetaDia: 8,      // horas objetivo por día operativo
-  diasObjetivo: 22,     // días operativos de un mes completo
+  horasMetaDia: 8,      // lo que vale un día: cuánto cubre una J y cuántas horas
+                        // hacen un "día extra". No es el objetivo del mes.
+  horasMetaMes40: 172,  // EL OBJETIVO DEL MES para una jornada de 40 h. El de
+                        // cualquier otra jornada sale de aquí por regla de tres
+                        // (32 h → 172 × 32/40 = 137,6), y se prorratea por los
+                        // días que esa persona estuvo de alta.
   eurHoraExtra: 7,      // € por hora extra × utilización.
                         // OJO: el .gs traía 9, pero la celda de config real (mayo y junio)
                         // tiene 7 y las fórmulas leían la celda → el valor REAL usado fue 7.
@@ -137,8 +161,8 @@ const DEFAULTS = {
 const CONFIG_CAMPOS = [
   { key: 'sueldoBase40', label: 'Sueldo base 40h (€)', usado: false },
   { key: 'sueldoBase32', label: 'Sueldo base 32h (€)', usado: false },
-  { key: 'horasMetaDia', label: 'Horas meta por día', usado: true },
-  { key: 'diasObjetivo', label: 'Días operativos objetivo (mes completo)', usado: true },
+  { key: 'horasMetaDia', label: 'Horas de un día (vale una J, y un día extra)', usado: true },
+  { key: 'horasMetaMes40', label: 'Objetivo del mes con jornada de 40 h', usado: true },
   { key: 'eurHoraExtra', label: '€ por hora extra', usado: true },
   { key: 'lUtilizacion', label: 'L utilización (informativo)', usado: false },
   { key: 'utilMinima', label: 'Utilización mínima (fracción, 0.65 = 65%)', usado: true },
@@ -196,11 +220,20 @@ function situarAlta(altaIso, mesTrabajo, anoTrabajo) {
 }
 
 /**
- * Jornada en horas para elegir umbral FAS y sueldo base. 40 si no consta: es la
- * jornada de la inmensa mayoría y dejar el umbral bajo por un dato vacío
- * regalaría MBO FAS que no toca.
+ * Jornada en horas. Manda en tres sitios: el objetivo del mes, el umbral FAS y
+ * el sueldo base.
+ *
+ * 40 si no consta, y no es pereza: es la jornada de la inmensa mayoría, y
+ * suponer menos le bajaría el objetivo a alguien por un dato vacío —le
+ * regalaría horas extra— además de dejarle el umbral FAS bajo.
  */
 const jornadaDe = h => (Number(h) === 32 ? 32 : 40);
+
+/**
+ * El objetivo del mes de esa jornada, por regla de tres sobre el de 40 h.
+ *   40 h → 172      32 h → 172 × 32/40 = 137,6
+ */
+const objetivoDe = (jornada, cfg) => cfg.horasMetaMes40 * (jornada / 40);
 
 // ── El cálculo de UNA persona ───────────────────────────────────────────────
 // Es la cadena del .gs, intacta. Si algo de aquí cambia, cambia lo que cobra
@@ -217,8 +250,11 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
 
   const primerDia = Math.min(Math.max(arranque, 1), diasDelMes);
   const diasDesde = diasDelMes - primerDia + 1;                    // del arranque a fin de mes
-  const diasOperTgt = r2((diasDesde / diasDelMes) * cfg.diasObjetivo);
-  const hsTgt = diasOperTgt * cfg.horasMetaDia;
+
+  // El objetivo sale de SU jornada (40 h → 172, 32 h → 137,6) y se prorratea
+  // por la parte del mes que estuvo de alta.
+  const jornada = jornadaDe(c.jornada);
+  const hsTgt = objetivoDe(jornada, cfg) * (diasDesde / diasDelMes);
 
   // ── Las J ────────────────────────────────────────────────────────────────
   // Solo las de su ventana: una J anterior a su alta no cubre un objetivo que
@@ -260,14 +296,22 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   // `delta` en negativo. Se guarda aparte porque es la pregunta de RRHH.
   const horasNoJustificadas = Math.max(0, -delta);
 
-  const jornada = jornadaDe(c.jornada);
   const umbral = jornada === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40;
-  const mboHsExt = delta > 0 ? (delta * cfg.eurHoraExtra) * util : 0;   // € extra × utilización
   const eurNoc = cfg.eurHoraNoc * c.nocturnasH * cfg.factorNoc;
-  const mboFAS = c.neto > umbral ? (c.neto - umbral) * cfg.pctMBOFAS : 0;
+
+  // EL MBO ES SOLO DE PLANTILLA PROPIA (regla 6). A quien viene por ETT lo
+  // contrata la agencia: nosotros no le debemos horas extra ni participación en
+  // la facturación. Se pone a cero todo lo que se cobra por eso —los dos MBO y
+  // los días extra—; lo que es medida (horas, objetivo, diferencia) se queda.
+  const propia = !c.ett;
+  const mboHsExt = propia && delta > 0 ? (delta * cfg.eurHoraExtra) * util : 0;   // € extra × utilización
+  const mboFAS = propia && c.neto > umbral ? (c.neto - umbral) * cfg.pctMBOFAS : 0;
   const totalMBO = Math.max(mboHsExt, mboFAS);                     // gana el mayor de los dos MBO
   const compensacion = mboHsExt > mboFAS ? mboHsExt : 0;          // informativo: cuánto puso el MBO de horas
-  const diasExtra = delta > cfg.horasMetaDia ? delta / cfg.horasMetaDia : 0;
+  const diasExtra = propia && delta > cfg.horasMetaDia ? delta / cfg.horasMetaDia : 0;
+
+  // Nocturnidad, propinas y peajes son suyas se las pague quien se las pague:
+  // esas SÍ las lleva todo el mundo, y son las que la ETT tiene que abonar.
   const total = eurNoc + c.peajes + c.propinas + totalMBO;
 
   return {
@@ -290,6 +334,11 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     horasObjetivo: r2(hsTgt),
     deltaHoras: r2(delta),
     utilPct: c.utilPct != null ? r2(c.utilPct) : null,
+    // Las nocturnas van dos veces a propósito: en euros (lo que se paga) y en
+    // horas (lo que la ETT necesita para pagarlas ella). Una no se deduce de la
+    // otra sin saber la tarifa del mes, y una nómina congelada tiene que
+    // poder explicarse sola.
+    nocturnasHoras: r2(c.nocturnasH || 0),
     propinas: r2(c.propinas),
     peajes: r2(c.peajes),
     nocturnas: r2(eurNoc),
@@ -463,6 +512,54 @@ async function calcular(mesNom, anoNom, opciones = {}) {
   };
 }
 
+/** El mes siguiente. La nomina PAGA en el mes siguiente al que se trabaja. */
+const mesSiguiente = (mes, ano) => (mes === 12 ? { mes: 1, ano: ano + 1 } : { mes: mes + 1, ano });
+
+/**
+ * Lo que hay que pasarle a la ETT de un mes TRABAJADO.
+ *
+ * OJO CON EL MES: aqui se elige agosto y salen los datos de agosto. La nomina
+ * va a mes vencido —la de septiembre paga agosto— porque es un pago; esto es un
+ * parte de trabajo, y un parte de trabajo lleva el mes que dice.
+ *
+ * Por dentro reutiliza `calcular` del mes de pago correspondiente, para que las
+ * cifras sean LAS MISMAS que las de la nomina y no dos cuentas paralelas que
+ * algun dia se separen.
+ *
+ * Solo lleva lo que la ETT tiene que pagar: horas trabajadas (rodadas mas
+ * justificadas), nocturnidad EN HORAS, propinas y peajes. Ningun MBO, porque no
+ * les corresponde (regla 6).
+ */
+async function paraETT(mesTrabajo, anoTrabajo) {
+  const pago = mesSiguiente(mesTrabajo, anoTrabajo);
+  const r = await calcular(pago.mes, pago.ano);
+  const filas = r.filas
+    .filter(f => f.ett)
+    .map(f => ({
+      ...f,
+      // Lo que la ETT llama "horas trabajadas": lo rodado mas lo justificado.
+      // Sin el recorte por utilizacion: ese recorte existe para no pagar horas
+      // extra por estar conectado, y aqui no se paga ninguna hora extra.
+      horasTrabajadas: r2(f.horas + f.horasJustificadas),
+    }))
+    .sort((a, b) => b.horasTrabajadas - a.horasTrabajadas);
+
+  const totales = filas.reduce((t, f) => {
+    t.horas += f.horas; t.horasJustificadas += f.horasJustificadas;
+    t.horasTrabajadas += f.horasTrabajadas; t.nocturnasHoras += f.nocturnasHoras;
+    t.propinas += f.propinas; t.peajes += f.peajes;
+    return t;
+  }, { horas: 0, horasJustificadas: 0, horasTrabajadas: 0, nocturnasHoras: 0, propinas: 0, peajes: 0 });
+  Object.keys(totales).forEach(k => { totales[k] = r2(totales[k]); });
+
+  return {
+    mes: mesTrabajo, ano: anoTrabajo, mesNombre: MESES_NOM[mesTrabajo - 1],
+    desde: r.desde, hasta: r.hasta,
+    trabajoIncompleto: r.avisos.trabajoIncompleto,
+    filas, totales,
+  };
+}
+
 /**
  * Lo que la pantalla enseña al abrir un mes: la congelada si existe, y si no el
  * cálculo en vivo. Es una sola puerta para que la vista no tenga que decidir.
@@ -490,8 +587,9 @@ const mesesCongelados = () => repo.mesesCongelados();
 module.exports = {
   DEFAULTS, CONFIG_CAMPOS, MESES_NOM,
   leerConfig, guardarConfig,
-  calcular, cargar, congelar, descongelar, mesesCongelados,
+  calcular, cargar, congelar, descongelar, mesesCongelados, paraETT,
   leerCongelada: (mes, ano) => repo.leerCongelada(mes, ano),
   // Expuestos para poder probar el prorrateo y el cálculo sin base de datos.
   _situarAlta: situarAlta, _calcularFila: calcularFila, _mesVencido: mesVencido,
+  _objetivoDe: objetivoDe, _mesSiguiente: mesSiguiente,
 };

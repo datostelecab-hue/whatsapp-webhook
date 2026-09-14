@@ -178,6 +178,7 @@
     "GET /nominas/cargar",
     "GET /nominas/config",
     "GET /nominas/congeladas",
+    "GET /nominas/ett.xlsx",
     "GET /nominas/nomina.xlsx",
     "GET /notificaciones",
     "GET /operaciones",

@@ -18,7 +18,7 @@ GET  /nominas/congeladas      qué meses están cerrados
 GET  /nominas/nomina.xlsx     el Excel
 ```
 
-## Las cinco reglas
+## Las seis reglas
 
 **A mes vencido.** La nómina de un mes se calcula con los datos del mes **anterior**: la de
 julio paga el trabajo de junio; la de enero, el de diciembre del año pasado. El mes que se
@@ -121,10 +121,32 @@ dos personas eso les cambiaba si superaban o no el umbral del MBO FAS.
 > no es un fallo.** Son dos preguntas distintas —"¿cuántas horas cayeron en este mes?" y
 > "¿cómo fue ese turno?"— y cada una tiene su ventana.
 
+**El MBO es solo de plantilla propia.** A quien viene por ETT lo contrata la agencia y es
+ella quien le paga: no le debemos horas extra ni participación en la facturación. A esas
+filas se les pone a **cero** todo el MBO —el de horas y el FAS— y con él los días extra.
+
+Pero **sí entran en la nómina, y con sus variables**: nocturnidad, propinas y peajes son
+suyas se las pague quien se las pague. Las horas, el objetivo y la diferencia también se les
+calculan y se enseñan: son una medida, no un pago. Lo que se pone a cero es lo que se cobra.
+
+Para pasárselas a la agencia está el **parte de trabajo de la ETT**
+(`GET /nominas/ett.xlsx`), con lo justo que ella tiene que abonar:
+
+| Columna | Qué lleva |
+|---|---|
+| Horas rodadas · Horas justificadas · **HORAS TRABAJADAS** | La suma de las dos, sin el recorte por utilización: ahí no se paga ninguna hora extra |
+| Nocturnidad **(horas)** | En horas, no en euros: la ETT las abona con **su** tarifa |
+| Propinas · Peajes | En euros, que esos son del conductor tal cual |
+
+> **Ese Excel va por mes TRABAJADO**, no a mes vencido: se elige agosto y salen los datos de
+> agosto. La nómina va a mes vencido porque es un pago; un parte de trabajo lleva el mes que
+> dice. Por eso tiene su propio selector en la pantalla, separado del de la nómina.
+
 ## La fórmula
 
 ```
-objetivo de horas = (días desde el arranque ÷ días del mes) × días objetivo × horas meta
+objetivo de horas = objetivo de SU jornada × (días desde el arranque ÷ días del mes)
+                    40 h → 172      32 h → 172 × 32/40 = 137,6
 horas en espera   = (viaje + espera) − viaje ÷ utilización mínima   (0 si ya llegaba)
   quitadas
 diferencia        = (horas rodadas − horas quitadas + horas justificadas) − objetivo
@@ -142,9 +164,11 @@ TOTAL = nocturnas + peajes + propinas + el MAYOR de los dos MBO
 columna "Compensación" va a cero aunque "MBO horas extra" tenga un número — ese mes ganó
 el FAS.
 
-El umbral FAS y el sueldo base son **distintos por jornada** (40 h y 32 h). Quien no tenga
-jornada anotada cuenta como 40: es la de casi todos, y dejarle el umbral bajo regalaría
-MBO FAS que no le toca.
+**El objetivo sale de su jornada**, por regla de tres sobre el de 40 h: 172 para jornada
+completa, 137,6 para la de 32 h. El umbral FAS y el sueldo base también son distintos por
+jornada. Quien no tenga jornada anotada cuenta como 40, y no es pereza: es la de casi todos,
+y suponer menos le bajaría el objetivo por un dato vacío —le regalaría horas extra— además
+de dejarle el umbral FAS bajo.
 
 `€ por hora extra` vale **7, no 9**. El AppScript original traía 9, pero sus fórmulas leían
 la celda de configuración, y la celda real de mayo y junio tenía 7. Reproduciendo junio con
@@ -161,6 +185,7 @@ la celda de configuración, y la celda real de mayo y junio tenía 7. Reproducie
 | DNI, jornada, ETT, fecha de alta | `conductor` + `conductor_periodo_empleo` |
 | Días justificados | `justificante` (solo las aprobadas), la misma tabla que pinta la bitácora |
 | Los dos nombres | `conductor.nombre_bolt` y `conductor.nombre_ss` |
+| ETT o plantilla propia | `conductor_periodo_empleo.tipo` |
 
 **Ni una hoja de cálculo ni una llamada a ninguna API.** Antes las horas salían de la hoja
 mensual del libro de horas, el DNI y el alta de AGENDA_V2, y la configuración, el snapshot
