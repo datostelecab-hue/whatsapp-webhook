@@ -36,7 +36,9 @@ router.post('/login', async (req, res) => {
     if (u.estado === usuarios.ESTADOS_U.BLOQUEADO) return fallo('Tu cuenta está desactivada. Contacta con el administrador.');
     limite.limpiar('ip:' + ip);
     limite.limpiar('mail:' + email);
-    sesion.ponerSesion(res, u);
+    // "Mantener sesion iniciada": 30 dias en vez de 12 h. Solo es seguro porque
+    // se puede cortar desde el servidor (usuarios.cortarSesiones).
+    sesion.ponerSesion(res, u, { recordar: b.recordar === 'si' || b.recordar === 'on' || b.recordar === true });
     usuarios.registrarAcceso(email);
     if (u.debe_cambiar === 'si') return res.redirect('/cambiar-password');
     return res.redirect(rutaSegura(next) ? next : '/');
@@ -70,7 +72,13 @@ router.post('/cambiar-password', async (req, res) => {
     if (!primerAcceso && !usuarios.verificarHash(String(b.actual || ''), u.hash)) return fallo('La contraseña actual no es correcta.');
     await usuarios.fijarPassword(email, b.nueva);
     const actualizado = await usuarios.buscarUsuario(email);
-    sesion.ponerSesion(res, actualizado);   // re-emite la sesión ya sin "debe_cambiar"
+    // Cambiar la contrasena echa a TODAS las demas sesiones: es lo que uno
+    // espera de un cambio de contrasena, y es la unica forma de recuperar una
+    // cuenta cuya sesion larga se quedo abierta en un ordenador ajeno.
+    try {
+      if (actualizado.id) { await usuarios.cortarSesiones(actualizado.id); usuarios.olvidarCorte(actualizado.id); }
+    } catch (e) { console.error('❌ [AUTH] no se pudieron cortar las sesiones:', e.message); }
+    sesion.ponerSesion(res, actualizado, { recordar: !!(req.usuario && req.usuario.larga) });
     return res.redirect('/');
   } catch (e) {
     return fallo(e.message || 'No se pudo cambiar la contraseña.');

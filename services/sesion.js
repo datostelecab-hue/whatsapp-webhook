@@ -11,7 +11,17 @@
 const crypto = require('crypto');
 
 const COOKIE = 'telecab_sesion';
-const DURACION_MS = 12 * 60 * 60 * 1000;   // 12 h
+const DURACION_MS = 12 * 60 * 60 * 1000;            // 12 h, lo normal
+// "Mantener sesión iniciada". 30 días: lo bastante para no escribir la
+// contraseña a diario y lo bastante corto para que una sesión olvidada muera
+// sola en un mes.
+//
+// UNA SESIÓN LARGA SOLO ES SEGURA SI SE PUEDE CORTAR. La cookie va firmada y el
+// servidor no la consulta contra la base, así que sin un corte, bloquear a
+// alguien no haría nada durante 30 días: su firma seguiría siendo válida. Por
+// eso existe `usuario.sesiones_desde` (db/105) y por eso `cargarSesion`
+// comprueba las largas contra él. Sin esa comprobación, esto sería un agujero.
+const DURACION_LARGA_MS = 30 * 24 * 60 * 60 * 1000;
 const PROD = process.env.NODE_ENV === 'production';
 
 // Versión de los assets estáticos. Cambia en cada arranque —o sea, en cada
@@ -64,25 +74,60 @@ function leerCookie(req, nombre) {
 
 const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept') || '').includes('application/json');
 
-/** Emite la cookie de sesión para un usuario. */
-function ponerSesion(res, u) {
+/**
+ * Emite la cookie de sesión para un usuario.
+ *
+ * Con `recordar`, la sesión dura 30 días en vez de 12 h. Se marca dentro del
+ * token (`larga`) para que `cargarSesion` sepa que a esa hay que comprobarle el
+ * corte; las cortas no lo necesitan y así no pagan una consulta.
+ *
+ * Re-emitir una sesión (cambiar el tema, cambiar la contraseña) CONSERVA lo que
+ * era: si alguien marcó "mantener sesión iniciada", cambiar su tema no debería
+ * echarle a las 12 h.
+ */
+function ponerSesion(res, u, { recordar } = {}) {
+  const larga = recordar === undefined ? false : !!recordar;
+  const dura = larga ? DURACION_LARGA_MS : DURACION_MS;
   const payload = {
     id: u.id || null,
     email: u.email, nombre: u.nombre, apellidos: u.apellidos || '', telefono: u.telefono || '', rol: u.rol,
     tema: u.tema || '',
     debe_cambiar: u.debe_cambiar === 'si' || u.debe_cambiar === true,
-    iat: Date.now(), exp: Date.now() + DURACION_MS
+    larga,
+    iat: Date.now(), exp: Date.now() + dura
   };
-  res.cookie(COOKIE, firmar(payload), { httpOnly: true, sameSite: 'lax', secure: PROD, path: '/', maxAge: DURACION_MS });
+  res.cookie(COOKIE, firmar(payload), { httpOnly: true, sameSite: 'lax', secure: PROD, path: '/', maxAge: dura });
 }
+
+/** Re-emite conservando si era larga. Para cuando cambia el perfil, no el acceso. */
+const renovarSesion = (res, u, anterior) => ponerSesion(res, u, { recordar: !!(anterior && anterior.larga) });
 function cerrarSesion(res) {
   res.clearCookie(COOKIE, { httpOnly: true, sameSite: 'lax', secure: PROD, path: '/' });
 }
 
 // ── Middlewares ─────────────────────────────────────────────────────────────
 // Decodifica la cookie (si hay) y la deja en req.usuario / res.locals. Nunca corta.
-function cargarSesion(req, res, next) {
+async function cargarSesion(req, res, next) {
   const u = verificar(leerCookie(req, COOKIE));
+  // A las LARGAS se les comprueba el corte del servidor: bloquear a alguien, o
+  // cambiarle la contraseña, tiene que echarle aunque su firma siga siendo
+  // buena. A las de 12 h no se les comprueba: no compensa una consulta por
+  // petición cuando el peor caso es medio día.
+  if (u && u.larga && u.id) {
+    try {
+      const usuarios = require('../modules/Usuarios/usuarios.service');
+      if (!await usuarios.sesionSigueValiendo(u.id, u.iat)) {
+        cerrarSesion(res);
+        req.usuario = null; res.locals.usuario = null; res.locals.rol = null;
+        res.locals.tema = null; res.locals.v = ARRANQUE;
+        return next();
+      }
+    } catch (e) {
+      // Si la base no contesta NO se echa a nadie: sería dejar la aplicación
+      // sin acceso por un fallo de red. Se anota y se sigue.
+      console.error('❌ [SESIÓN] no se pudo comprobar el corte:', e.message);
+    }
+  }
   req.usuario = u || null;
   res.locals.usuario = u || null;
   res.locals.rol = u ? u.rol : null;
@@ -224,7 +269,7 @@ async function sembrarSuperadmin() {
 
 module.exports = {
   COOKIE,
-  ponerSesion, cerrarSesion,
+  ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS,
   cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,
   requiereSuperadmin, requiereDesarrollador,
   sembrarSuperadmin

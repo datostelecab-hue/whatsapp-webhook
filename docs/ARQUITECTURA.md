@@ -228,7 +228,7 @@ decidirlo antes de mover nada.
 | **Seleccion** | `seleccion`, `ett`, `generador`, `matching`, `vacantes` **(?)** |
 | **Informes** | `reportes`, `exportar`, `bi`, `visibilidad`, `resumen` |
 | **Administracion** | `administracion`, `recaudacion` |
-| **Usuarios** | `usuarios`, `auth` |
+| **Usuarios** ✓ | `usuarios`, `auth` — **hecho** |
 | **WhatsApp** | `botPuertas`, `notificaciones` |
 | **Bolt** | `boltHoras` |
 | **Soporte** | `soporte`, `ticketsTelecab` |
@@ -262,7 +262,7 @@ Uno cada vez, y cada uno en su commit:
 Empezando por el más pequeño y aislado, para estrenar la mecánica donde el daño
 posible es mínimo, y dejando para el final los que más gente toca:
 
-~~**Vehiculos**~~ (hecho) →
+~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ (hechos) →
 **Usuarios** → **Seleccion** → **Conductores** → **Planificacion** → **Control**
 → el resto.
 

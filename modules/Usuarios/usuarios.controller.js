@@ -34,6 +34,7 @@ router.get('/api/datos', async (req, res) => {
       usuarios: lista.map(u => ({
         id: u.id, email: u.email, nombre: u.nombre, apellidos: u.apellidos, telefono: u.telefono,
         rol: u.rol, accesoTotal: u.accesoTotal, estado: u.estado, debe_cambiar: u.debe_cambiar === 'si',
+        fichaObligatorio: !!u.fichaObligatorio,
         creado_por: u.creado_por, fecha_creacion: u.fecha_creacion, ultimo_acceso: u.ultimo_acceso,
       })),
       permisos: porUsuario,
@@ -118,6 +119,13 @@ router.post('/estado', async (req, res) => {
       }
     }
     await usuarios.actualizarUsuario(email, { estado });
+    // BLOQUEAR TIENE QUE ECHARLE YA. Sin esto, alguien con "mantener sesion
+    // iniciada" seguiria entrando 30 dias despues de bloquearlo: su cookie va
+    // firmada y el servidor no la consulta. El corte es lo que la mata.
+    if (estado === usuarios.ESTADOS_U.BLOQUEADO) {
+      const u = await usuarios.buscarUsuario(email);
+      if (u && u.id) { await usuarios.cortarSesiones(u.id); usuarios.olvidarCorte(u.id); }
+    }
     console.log(`🚦 [Usuarios] ${email}: ${estado} — por ${req.usuario.email}`);
     res.json({ status: 'ok' });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
@@ -135,8 +143,35 @@ router.post('/reset', async (req, res) => {
       to: email, subject: 'Nueva contraseña provisional — Telecab',
       text: `Se ha restablecido el acceso de ${email}.\n\nContraseña provisional: ${prov}\n\nEntra y el sistema te pedirá crear una nueva.`
     });
+    if (u.id) { await usuarios.cortarSesiones(u.id); usuarios.olvidarCorte(u.id); }
     console.log(`🔑 [Usuarios] Reset de ${email} — por ${req.usuario.email}`);
     res.json({ status: 'ok', correoEnviado: !!r.enviado, passwordProvisional: prov });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
+// ── Quien tiene que fichar ─────────────────────────────────────────────────
+// Se elige UNO A UNO, no por rol: en cuanto haya un jefe de trafico que si
+// ficha y otro que no, la regla del rol se rompe. Nace apagado para todos.
+router.post('/fichaje', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const u = await usuarios.fijarFichaObligatorio(Number(b.id), b.debe === true || b.debe === 'si');
+    console.log(`⏱️  [Usuarios] ${u.email}: ${u.fichaObligatorio ? 'SI ficha' : 'no ficha'} — por ${req.usuario.email}`);
+    res.json({ status: 'ok', fichaObligatorio: u.fichaObligatorio });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
+// Echar a alguien de todos sus dispositivos, sin bloquearle la cuenta. Es lo que
+// se pulsa cuando alguien se dejo la sesion abierta en un ordenador ajeno.
+router.post('/cerrar-sesiones', async (req, res) => {
+  try {
+    const email = usuarios.normalizarEmail((req.body || {}).email);
+    const u = await usuarios.buscarUsuario(email);
+    if (!u) throw new Error('No existe ese usuario');
+    const r = await usuarios.cortarSesiones(u.id);
+    usuarios.olvidarCorte(u.id);
+    console.log(`🔒 [Usuarios] Sesiones de ${email} cerradas — por ${req.usuario.email}`);
+    res.json({ status: 'ok', ...r });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 

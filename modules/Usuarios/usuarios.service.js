@@ -91,6 +91,7 @@ const SELECT = `
          COALESCE(u.token_reset, '') AS token_reset, u.token_expira,
          convert_from(COALESCE(u.pass_correo_cifrada, ''::bytea), 'UTF8') AS pass_correo,
          COALESCE(u.tema, '') AS tema,
+         u.ficha_obligatorio, u.sesiones_desde,
          COALESCE(cp.email, '') AS creado_por,
          u.creado_at, u.ultimo_acceso
     FROM usuario u
@@ -108,6 +109,10 @@ function aObjeto(x) {
     token_reset: x.token_reset || '',
     token_expira: x.token_expira ? String(new Date(x.token_expira).getTime()) : '',
     pass_correo: x.pass_correo || '', tema: x.tema || '',
+    // Si esta persona tiene que fichar su jornada. Se elige una a una.
+    fichaObligatorio: !!x.ficha_obligatorio,
+    // Corte de sesiones: las emitidas antes de esta marca ya no valen.
+    sesionesDesde: x.sesiones_desde ? new Date(x.sesiones_desde).getTime() : null,
     creado_por: x.creado_por || '',
     fecha_creacion: fmt(x.creado_at), ultimo_acceso: fmt(x.ultimo_acceso),
   };
@@ -222,11 +227,89 @@ function descifrarPassCorreo(u) {
 }
 const tienePassCorreo = u => !!(u && u.pass_correo);
 
+
+// ── Quién ficha ────────────────────────────────────────────────────────────
+/**
+ * Marca (o desmarca) que esta persona tiene que fichar su jornada.
+ *
+ * Va por usuario y no por rol a propósito: en cuanto haya un jefe de tráfico que
+ * sí ficha y otro que no, la regla del rol se rompe y hay que inventar
+ * excepciones. Aquí lo decide una persona marcando una casilla.
+ */
+async function fijarFichaObligatorio(id, debe) {
+  const r = await db.consulta(
+    'UPDATE usuario SET ficha_obligatorio = $2 WHERE id = $1 RETURNING email',
+    [Number(id), !!debe]);
+  if (!r.rowCount) throw new Error('No existe ese usuario');
+  return buscarUsuario(r.rows[0].email);
+}
+
+/** Los que tienen que fichar. Pocos, y con índice propio. */
+async function losQueFichan() {
+  const r = await db.consulta(`
+    SELECT u.id, u.email, btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS nombre, r.codigo AS rol
+      FROM usuario u JOIN rol r ON r.id = u.rol_id
+     WHERE u.ficha_obligatorio AND u.estado <> 'bloqueado'
+     ORDER BY nombre`);
+  return r.rows.map(x => ({ ...x, id: Number(x.id) }));
+}
+
+// ── Cortar sesiones ────────────────────────────────────────────────────────
+/**
+ * Invalida TODAS las sesiones abiertas de un usuario, aquí y ahora.
+ *
+ * Hace falta porque la sesión es una cookie firmada que el servidor no consulta
+ * contra la base: mientras la firma sea válida, se entra. Con sesiones de 12 h
+ * eso se aguantaba; con una de 30 días, bloquear a alguien no haría nada durante
+ * un mes.
+ *
+ * No se guardan sesiones en ningún sitio: se guarda LA FECHA DEL CORTE, y toda
+ * cookie emitida antes deja de valer. Una columna en vez de una tabla.
+ */
+async function cortarSesiones(id) {
+  const r = await db.consulta(
+    'UPDATE usuario SET sesiones_desde = now() WHERE id = $1 RETURNING email, sesiones_desde',
+    [Number(id)]);
+  if (!r.rowCount) throw new Error('No existe ese usuario');
+  console.log(`🔒 [USUARIOS] Sesiones cortadas para ${r.rows[0].email}`);
+  return { email: r.rows[0].email, desde: new Date(r.rows[0].sesiones_desde).getTime() };
+}
+
+/**
+ * ¿Sigue valiendo una sesión emitida en `iat` para el usuario `id`?
+ *
+ * Se cachea unos segundos porque esto se pregunta en CADA petición de una sesión
+ * larga. El corte no es instantáneo al segundo, pero sí en menos de un minuto,
+ * que para echar a alguien del sistema es de sobra — y evita una consulta por
+ * cada imagen que pida el navegador.
+ */
+const _corte = new Map();   // id -> { valor, hasta }
+const TTL_CORTE = 30 * 1000;
+
+async function sesionSigueValiendo(id, iat) {
+  if (!id || !iat) return true;
+  const k = Number(id);
+  const ahora = Date.now();
+  let c = _corte.get(k);
+  if (!c || c.hasta < ahora) {
+    const r = await db.consulta('SELECT sesiones_desde FROM usuario WHERE id = $1', [k]);
+    const v = r.rows[0] && r.rows[0].sesiones_desde ? new Date(r.rows[0].sesiones_desde).getTime() : 0;
+    c = { valor: v, hasta: ahora + TTL_CORTE };
+    _corte.set(k, c);
+  }
+  return iat >= c.valor;
+}
+
+/** Olvida lo cacheado de alguien: lo llama quien acaba de cortarle la sesión. */
+const olvidarCorte = id => _corte.delete(Number(id));
+
 module.exports = {
   roles, esRol, ESTADOS_U,
   leerUsuarios, buscarUsuario, crearUsuario, actualizarUsuario,
   fijarPassword, generarTokenReset, tokenResetValido, registrarAcceso,
   guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,
   hashPassword, verificarHash, generarPasswordProvisional,
-  normalizarEmail, esEmail
+  normalizarEmail, esEmail,
+  fijarFichaObligatorio, losQueFichan,
+  cortarSesiones, sesionSigueValiendo, olvidarCorte
 };

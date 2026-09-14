@@ -166,7 +166,21 @@
             ${u.estado === 'bloqueado' ? 'Activar' : 'Bloquear'}</button>
           <button data-reset class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold"
             title="Le llega una contraseña provisional nueva por correo"><i class="fa-solid fa-key mr-1"></i>Reset</button>
+          <button data-sesiones class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-telecab-red hover:text-telecab-red"
+            title="Cierra su sesión en todos los dispositivos, sin bloquearle la cuenta"><i class="fa-solid fa-right-from-bracket mr-1"></i>Cerrar sesiones</button>
         </div>
+      </div>
+      <div class="px-4 py-3 border-b border-telecab-border">
+        <label class="flex items-start gap-2 cursor-pointer group w-fit">
+          <input data-ficha type="checkbox" ${u.fichaObligatorio ? 'checked' : ''}
+                 class="w-4 h-4 mt-0.5 accent-telecab-gold shrink-0">
+          <span class="text-sm text-telecab-text leading-snug">
+            Tiene que fichar su jornada
+            <span class="block text-[11px] text-telecab-muted">
+              Se elige persona a persona. La directiva y la gerencia no fichan; el resto, quien tú marques.
+            </span>
+          </span>
+        </label>
       </div>
       ${matriz}`;
 
@@ -180,11 +194,33 @@
       const ok = await Dialogo.confirmar({
         titulo: (bloquear ? 'Bloquear a ' : 'Activar a ') + u.nombre, tono: bloquear ? 'peligro' : 'pregunta',
         si: bloquear ? 'Bloquear' : 'Activar', no: 'Cancelar',
-        texto: bloquear ? 'No podrá entrar a la plataforma hasta que se le reactive.' : 'Podrá volver a entrar con su contraseña.',
+        texto: bloquear
+          ? 'No podrá entrar a la plataforma hasta que se le reactive, y se le cierra la sesión en todos sus dispositivos ahora mismo.'
+          : 'Podrá volver a entrar con su contraseña.',
       });
       if (!ok) return;
       try { await api('/usuarios/estado', { email: u.email, estado: bloquear ? 'bloqueado' : 'activo' }); recargar(); }
       catch (err) { await Dialogo.aviso({ titulo: 'No se pudo', texto: err.message, tono: 'error' }); }
+    });
+    box.querySelector('[data-ficha]').addEventListener('change', async e => {
+      const debe = e.target.checked;
+      try { await api('/usuarios/fichaje', { id: u.id, debe: debe ? 'si' : 'no' }); recargar(); }
+      catch (err) {
+        e.target.checked = !debe;
+        await Dialogo.aviso({ titulo: 'No se pudo guardar', texto: err.message, tono: 'error' });
+      }
+    });
+    box.querySelector('[data-sesiones]').addEventListener('click', async () => {
+      const ok = await Dialogo.confirmar({
+        titulo: 'Cerrar las sesiones de ' + u.nombre, tono: 'peligro', si: 'Cerrar sesiones', no: 'Cancelar',
+        texto: 'Se le cierra la sesión en TODOS los dispositivos, también las de "mantener sesión iniciada". '
+             + 'Su cuenta sigue activa: podrá volver a entrar con su contraseña.',
+      });
+      if (!ok) return;
+      try {
+        await api('/usuarios/cerrar-sesiones', { email: u.email });
+        await Dialogo.aviso({ titulo: 'Sesiones cerradas', texto: 'Tendrá que volver a identificarse en todos sus dispositivos.', tono: 'ok' });
+      } catch (err) { await Dialogo.aviso({ titulo: 'No se pudo', texto: err.message, tono: 'error' }); }
     });
     box.querySelector('[data-reset]').addEventListener('click', async () => {
       const ok = await Dialogo.confirmar({

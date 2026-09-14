@@ -20,6 +20,25 @@
          class="w-full bg-telecab-dark border border-telecab-border rounded-xl px-3 py-2 text-telecab-text mb-4 focus:outline-none focus:border-telecab-gold transition"
          placeholder="••••••••">
 
+  <label class="flex items-start gap-2 mb-4 cursor-pointer group">
+    <input id="recordar" name="recordar" type="checkbox" value="si"
+           class="w-4 h-4 mt-0.5 accent-telecab-gold shrink-0">
+    <span class="text-xs text-telecab-muted leading-snug group-hover:text-telecab-text transition">
+      Mantener la sesión iniciada
+      <span class="block text-[11px] text-telecab-muted/70">30 días sin volver a escribir la contraseña.</span>
+    </span>
+  </label>
+
+  <!-- El aviso sale SOLO al marcarla: puesto siempre, se lee una vez y deja de
+       verse. Y va aquí y no en un texto de ayuda porque la decisión se toma
+       justo en este momento. -->
+  <p id="aviso-recordar" class="hidden text-[11px] leading-snug text-telecab-warn bg-telecab-warn/10 border border-telecab-warn/30 rounded-xl px-3 py-2 mb-4">
+    <b>Solo en tu equipo personal.</b> En un ordenador compartido de la oficina,
+    cualquiera que lo abra entrará con tu nombre y lo que haga quedará a tu
+    nombre. Si te pasa, cambia tu contraseña: eso cierra la sesión en todos los
+    dispositivos.
+  </p>
+
   <button class="w-full px-4 py-2.5 rounded-xl bg-telecab-gold text-telecab-dark font-semibold hover:bg-telecab-gold-soft transition">
     Entrar
   </button>
@@ -28,3 +47,16 @@
     <a href="/olvide-password" class="text-xs text-telecab-muted hover:text-telecab-gold transition">¿Olvidaste tu contraseña?</a>
   </div>
 </form>
+
+<script>
+  // El aviso de la sesión larga aparece al marcar la casilla. Sin JavaScript la
+  // casilla sigue funcionando: el aviso es ayuda, no un requisito.
+  (function () {
+    const c = document.getElementById('recordar');
+    const a = document.getElementById('aviso-recordar');
+    if (!c || !a) return;
+    const pinta = () => a.classList.toggle('hidden', !c.checked);
+    c.addEventListener('change', pinta);
+    pinta();
+  })();
+</script>

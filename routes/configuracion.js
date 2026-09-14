@@ -23,7 +23,7 @@ router.post('/mi-perfil', async (req, res) => {
     });
     // Contraseña de correo (CIFRADA) — solo si el usuario ha escrito una nueva.
     if (b.pass_correo) await usuarios.guardarPassCorreo(req.usuario.email, b.pass_correo);
-    sesion.ponerSesion(res, actualizado);   // refresca la firma en la cookie de sesión
+    sesion.renovarSesion(res, actualizado, req.usuario);   // refresca la firma, conservando si era larga
     res.json({
       status: 'ok',
       usuario: { nombre: actualizado.nombre, apellidos: actualizado.apellidos, telefono: actualizado.telefono },
@@ -40,7 +40,7 @@ router.post('/mi-tema', async (req, res) => {
     const tema = String((req.body || {}).tema || '').trim().slice(0, 24);
     if (!tema) throw new Error('Tema vacío');
     const actualizado = await usuarios.actualizarUsuario(req.usuario.email, { tema });
-    sesion.ponerSesion(res, actualizado);   // re-emite la cookie con el tema nuevo
+    sesion.renovarSesion(res, actualizado, req.usuario);   // el tema nuevo, sin acortar la sesión
     res.json({ status: 'ok', tema });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
