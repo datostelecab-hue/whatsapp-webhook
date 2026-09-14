@@ -360,8 +360,8 @@ async function sinSellarEnBitacora(desdeIso, hastaIso, ids) {
 // ────────────────────────────────────────────────────────────────────────────
 
 const COLS_FILA = ['conductor_id', 'nombre', 'nombre_bolt', 'nombre_ss', 'dni', 'ett', 'jornada',
-  'primer_dia', 'alta', 'origen_arranque', 'horas', 'horas_justificadas', 'horas_no_justificadas',
-  'dias_justificados', 'horas_objetivo', 'delta_horas', 'util_pct', 'propinas', 'peajes',
+  'primer_dia', 'alta', 'origen_arranque', 'horas', 'horas_espera_quitadas', 'horas_justificadas',
+  'horas_no_justificadas', 'dias_justificados', 'horas_objetivo', 'delta_horas', 'util_pct', 'propinas', 'peajes',
   'nocturnas', 'mbo_fas', 'mbo_hs_ext', 'compensacion', 'dias_extra', 'total'];
 
 // Los valores de una fila, EN EL ORDEN DE COLS_FILA. Van pegados a la lista a
@@ -370,7 +370,7 @@ const COLS_FILA = ['conductor_id', 'nombre', 'nombre_bolt', 'nombre_ss', 'dni', 
 const valoresDeFila = f => [
   f.conductorId || null, f.nombre, f.nombreBolt || null, f.nombreSS || null, f.dni || null,
   !!f.ett, f.jornada || null, f.primerDia || null, f.alta || null, f.origenArranque,
-  f.horas, f.horasJustificadas, f.horasNoJustificadas, f.diasJustificados,
+  f.horas, f.horasEsperaQuitadas, f.horasJustificadas, f.horasNoJustificadas, f.diasJustificados,
   f.horasObjetivo, f.deltaHoras, f.utilPct, f.propinas, f.peajes,
   f.nocturnas, f.mboFAS, f.mboHsExt, f.compensacion, f.diasExtra, f.total,
 ];
@@ -428,6 +428,7 @@ async function leerCongelada(mes, ano) {
       primerDia: x.primer_dia == null ? null : Number(x.primer_dia),
       alta: x.alta || '', origenArranque: x.origen_arranque,
       horas: Number(x.horas),
+      horasEsperaQuitadas: Number(x.horas_espera_quitadas),
       horasJustificadas: Number(x.horas_justificadas),
       horasNoJustificadas: Number(x.horas_no_justificadas),
       diasJustificados: Number(x.dias_justificados),

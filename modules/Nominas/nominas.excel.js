@@ -60,6 +60,7 @@ const COLUMNAS = [
   ['Desde día', 10, 'primerDia', '0'],
   ['Arranque del prorrateo', 32, '_arranque', null],
   ['Horas', 9, 'horas', HORAS],
+  ['Horas quitadas en espera para llegar a la utilización mínima', 26, 'horasEsperaQuitadas', HORAS],
   ['Horas justificadas', 15, 'horasJustificadas', HORAS],
   ['Días justificados', 14, 'diasJustificados', '0'],
   ['Objetivo (h)', 11, 'horasObjetivo', HORAS],
@@ -77,7 +78,7 @@ const COLUMNAS = [
 ];
 
 // Las que se suman en el pie.
-const SUMABLES = new Set(['horas', 'horasJustificadas', 'diasJustificados', 'horasNoJustificadas',
+const SUMABLES = new Set(['horas', 'horasEsperaQuitadas', 'horasJustificadas', 'diasJustificados', 'horasNoJustificadas',
   'propinas', 'peajes', 'nocturnas', 'mboFAS', 'mboHsExt', 'compensacion', 'diasExtra', 'total']);
 
 function valorDe(f, clave) {
@@ -134,6 +135,14 @@ async function generarExcelNomina(r) {
       const c = row.getCell(COL('_arranque'));
       c.fill = E.relleno('FFFEF3C7');
       c.font = { color: { argb: 'FF92400E' } };
+    }
+    // La espera retirada, en ámbar: es la explicación de por qué a alguien con
+    // muchas horas le sale poca diferencia, y hay que poder encontrarla sin
+    // leerse la fila entera.
+    if (f.horasEsperaQuitadas > 0) {
+      const c = row.getCell(COL('horasEsperaQuitadas'));
+      c.fill = E.relleno('FFFEF3C7');
+      c.font = { bold: true, color: { argb: 'FF92400E' } };
     }
     // Las horas que siguen sin explicación, en rojo. Es la columna por la que se
     // abre esta hoja, y una cifra que hay que buscar a ojo entre veinte no
@@ -208,7 +217,11 @@ async function generarExcelNomina(r) {
     '   No se distingue el tipo ni el motivo de la J, y nunca suma por encima de la jornada:',
     '   una J cubre lo que no se pudo hacer, no se añade a lo que sí se hizo.',
     '   Las J PENDIENTES de aprobar no cuentan, y las rechazadas tampoco.',
-    'Diferencia         = (horas hechas + horas justificadas) − objetivo.',
+    'Horas quitadas     = las de ESPERA que se retiran para llegar a la utilización mínima.',
+    'en espera            utilización = viaje ÷ (viaje + espera). Si no llega al mínimo, se quita',
+    '                     X = (viaje + espera) − viaje ÷ mínimo, y queda exactamente en el mínimo.',
+    '                     NUNCA se quita viaje, y nunca más espera de la que esa persona tuvo.',
+    'Diferencia         = (horas hechas − horas quitadas en espera + horas justificadas) − objetivo.',
     '   Con las justificadas DENTRO: un día justificado no le resta a nadie. Quien rodó',
     '   205,6 h y tuvo dos días justificados lleva 221,6 contra un objetivo de 176, y su',
     '   exceso son 45,6 h, no 29,6.',
@@ -222,6 +235,15 @@ async function generarExcelNomina(r) {
     '   Los dos MBO no se suman: se cobra el que salga más alto. Por eso en muchas filas',
     '   la columna "Compensación" va a cero aunque "MBO horas extra" tenga un número:',
     '   ese mes ganó el MBO FAS.',
+    '',
+    'POR QUÉ SE QUITAN HORAS DE ESPERA',
+    '',
+    'La hora extra se paga por CONDUCIR de más, no por estar conectado de más. Las horas',
+    'efectivas son viaje + espera, así que quien pasa el mes con la app abierta y poca carrera',
+    'acumula horas igual que quien no para. Con 211,4 h y un 52,7 % de utilización, 100 de esas',
+    'horas fueron espera: el recorte deja 171,3 h y su exceso sobre el objetivo desaparece.',
+    '',
+    'A quien ya llega al mínimo no se le quita nada, y a nadie se le toca una hora de viaje.',
     '',
     'POR QUÉ LAS J NO REGALAN HORAS EXTRA',
     '',
@@ -240,6 +262,7 @@ async function generarExcelNomina(r) {
     '                    operativa de 05:00 a 05:00 y con los solapes fundidos: si alguien',
     '                    tiene dos cuentas que se pisan, ese rato cuenta una vez.',
     'Utilización         viaje ÷ (viaje + espera). Es el has_order sobre el tiempo conectado.',
+    '                    La columna enseña la REAL, antes del recorte: es el diagnóstico.',
     'Propinas, peajes    de las órdenes de BOLT ya ingeridas.',
     'y facturación neta',
     'DNI, jornada,       de la ficha del conductor y de su periodo de empleo.',

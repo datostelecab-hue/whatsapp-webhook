@@ -18,7 +18,7 @@ GET  /nominas/congeladas      qué meses están cerrados
 GET  /nominas/nomina.xlsx     el Excel
 ```
 
-## Las tres reglas
+## Las cuatro reglas
 
 **A mes vencido.** La nómina de un mes se calcula con los datos del mes **anterior**: la de
 julio paga el trabajo de junio; la de enero, el de diciembre del año pasado. El mes que se
@@ -71,11 +71,44 @@ Las dos reglas van juntas —la J vale el día entero, pero topada— y separarl
 cálculo: sin el tope, quien rodó 3 h un día justificado sumaría 11 h de ese día y cobraría
 extras por horas que no hizo.
 
+**La hora extra se paga por conducir, no por estar conectado.** Las horas efectivas son
+viaje + espera, así que quien pasa el mes con la app abierta y poca carrera acumula horas
+igual que quien no para. El caso que lo destapó: 211,4 h en el mes y 35,4 de exceso sobre el
+objetivo… con un **52,7 % de utilización**. De sus 211 horas, 100 fueron espera.
+
+Así que todo el mundo tiene que llegar a una **utilización mínima** (65 %, editable desde el
+panel). A quien no llega se le quitan horas **de espera** —nunca de viaje— hasta que la
+alcanza, y eso sale en su propia columna: *Horas quitadas en espera para llegar a la
+utilización mínima*.
+
+```
+utilización = viaje ÷ (viaje + espera)
+X           = (viaje + espera) − viaje ÷ mínimo
+```
+
+Dos propiedades que la hacen segura, comprobadas sobre agosto de 2026 (86 personas
+afectadas, 1.138,9 h retiradas):
+
+- **X nunca pasa de la espera que esa persona tuvo.** Sale de la propia fórmula: `X ≤ espera`
+  equivale a `viaje ≤ viaje ÷ mínimo`, cierto siempre que el mínimo sea menor que 1. No se
+  le puede quitar ni un minuto de viaje a nadie, por mal que esté su utilización.
+- **Después del recorte todos quedan exactamente en el mínimo.** Quien ya llegaba no pierde
+  nada.
+
+La única excepción es quien no hizo **ningún** viaje: 0 dividido entre lo que sea es 0 %, así
+que no hay recorte que lo lleve al mínimo. El límite es quitarle toda la espera, y es lo que
+se hace (4 personas en agosto).
+
+La columna de **% Utilización** sigue enseñando la **real**, la de antes del recorte: es el
+diagnóstico, y esconderla dejaría la cifra retirada sin explicación.
+
 ## La fórmula
 
 ```
 objetivo de horas = (días desde el arranque ÷ días del mes) × días objetivo × horas meta
-diferencia        = (horas rodadas + horas justificadas) − objetivo
+horas en espera   = (viaje + espera) − viaje ÷ utilización mínima   (0 si ya llegaba)
+  quitadas
+diferencia        = (horas rodadas − horas quitadas + horas justificadas) − objetivo
 MBO horas extra   = diferencia × € hora extra × utilización     (solo si la diferencia es positiva)
 MBO FAS           = (facturación neta − umbral) × % MBO FAS     (solo si supera el umbral de SU jornada)
 nocturnas         = € hora nocturna × horas nocturnas × factor
@@ -104,7 +137,7 @@ la celda de configuración, y la celda real de mayo y junio tenía 7. Reproducie
 |---|---|
 | Horas efectivas | `fv_tramo`, situaciones efectivas (viaje + espera), jornada 05→05, solapes fundidos |
 | Nocturnas | El trozo de esas horas entre las 22:00 y las 06:00 (hora de Madrid) |
-| Utilización | viaje ÷ (viaje + espera) — el `has_order` de BOLT sobre el tiempo conectado |
+| Utilización | viaje ÷ (viaje + espera) — el `has_order` de BOLT sobre el tiempo conectado. La columna enseña la REAL, antes del recorte |
 | Propinas, peajes, facturación neta | `v_ordenes_conductor`, sobre `bolt_order` |
 | DNI, jornada, ETT, fecha de alta | `conductor` + `conductor_periodo_empleo` |
 | Días justificados | `justificante` (solo las aprobadas), la misma tabla que pinta la bitácora |

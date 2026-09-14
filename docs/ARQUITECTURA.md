@@ -331,6 +331,7 @@ Ahora:
 | Propinas, peajes, facturación | `v_ordenes_conductor`, sobre `bolt_order` |
 | DNI, jornada, ETT, fecha de alta | `conductor` + `conductor_periodo_empleo` |
 | Días justificados | `justificante`, solo las aprobadas (db/109) |
+| Recorte por utilización mínima | el reparto viaje/espera de `fv_tramo` (db/110) |
 | Config y meses congelados | `nomina_config`, `nomina_mes`, `nomina_fila` (db/108) |
 
 Las **fórmulas no se han tocado**: `calcularFila` es la cadena del AppScript
