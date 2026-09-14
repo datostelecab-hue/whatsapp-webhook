@@ -807,7 +807,44 @@ async function calcularDesdeBolt(q, { usuarioId } = {}) {
  * juntan en uno solo, con su etiqueta delante para saber de dónde sale cada uno.
  */
 async function recalcularTodo({ usuarioId } = {}) {
-  const quincenas = quincenasDesdeCorte();
+  return recalcularEstas(quincenasDesdeCorte(), { usuarioId });
+}
+
+/**
+ * Las quincenas que TODAVIA PUEDEN CAMBIAR: la de hoy y la anterior.
+ *
+ * Es lo que corre el cron, y la anterior va dentro por dos motivos:
+ *   · Una orden de BOLT MADURA. Nace pendiente y su precio no se cierra hasta
+ *     el final; la ingesta la re-descarga hasta 48 h despues. Un viaje del dia
+ *     15 a las 23:50 puede cambiar de importe el 17.
+ *   · Los primeros dias de una quincena nueva, la anterior es justo la que se
+ *     esta cobrando en ventanilla.
+ *
+ * Una quincena mas vieja que esas dos ya no se mueve sola: sus ordenes estan
+ * cerradas. Si alguna vez hiciera falta rehacerla —un backfill de un mes
+ * antiguo— esta el boton de la pantalla, que sigue recorriendolas TODAS.
+ */
+function quincenasVivas() {
+  const hoy = quincenaHoy();
+  return [mueveQuincena(hoy, -1), hoy].filter(q => !antesDelCorte(q));
+}
+
+/**
+ * Lo mismo que el boton, pero solo sobre lo que puede cambiar. Es lo que se
+ * deja corriendo solo, y por eso tiene que costar LO MISMO dentro de dos anos
+ * que hoy.
+ *
+ * `recalcularTodo` recorre todas las quincenas desde el corte, y esa lista
+ * crece para siempre: hoy son 3 y tarda 5 s, en un ano serian 24 y 42 s. A mano
+ * da igual —se pulsa una vez al dia— pero cada cinco minutos serian 3,3 horas
+ * diarias de base de datos haciendo una cuenta que ya estaba hecha.
+ */
+async function recalcularReciente({ usuarioId } = {}) {
+  return recalcularEstas(quincenasVivas(), { usuarioId });
+}
+
+/** El motor de los dos: recorre las quincenas que se le den y junta los avisos. */
+async function recalcularEstas(quincenas, { usuarioId } = {}) {
   const junta = { nuevos: [], cambios: [], sospechosas: [] };
   let total = 0, conductores = 0;
   for (const q of quincenas) {
@@ -819,7 +856,7 @@ async function recalcularTodo({ usuarioId } = {}) {
   }
   return {
     ...junta,
-    desde: etiquetaQuincena(CORTE),
+    desde: quincenas.length ? etiquetaQuincena(quincenas[0]) : etiquetaQuincena(CORTE),
     quincenas: quincenas.length,
     conductores,
     total: +total.toFixed(2),
@@ -1060,6 +1097,7 @@ async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
 
 module.exports = {
   DIAS_REZAGADO,
+  recalcularReciente, quincenasVivas,
   DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, TODAS_SALIDAS, ES_SALIDA,
   CORTE, cuadre, salidas,
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
