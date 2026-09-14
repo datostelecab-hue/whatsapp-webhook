@@ -217,7 +217,11 @@ async function cuadro() {
        SELECT ${clave} AS quien,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0) AS presencial,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)     AS nomina,
-              COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega
+              COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega,
+              -- La última vez que ESTE dinero bajó de verdad. 'entrega' es lo
+              -- contrario —dinero que se le devolvió— así que no cuenta: si
+              -- contara, devolverle 20 € parecería que acaba de pagar.
+              max(fecha) FILTER (WHERE tipo IN ('presencial', 'nomina'))   AS ultima_entrega
          FROM recaudacion_movimiento
         WHERE anulado_at IS NULL AND ${clave} IS NOT NULL
         GROUP BY 1)`;
@@ -239,7 +243,8 @@ async function cuadro() {
             COALESCE(ci.bolt, 0)      AS bolt,
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
-            COALESCE(m.entrega, 0)    AS entrega
+            COALESCE(m.entrega, 0)    AS entrega,
+            m.ultima_entrega
        FROM conductor c
        LEFT JOIN cierre   ci ON ci.quien = c.id
        LEFT JOIN mov      m  ON m.quien  = c.id
@@ -262,7 +267,8 @@ async function cuadro() {
             COALESCE(ci.bolt, 0)      AS bolt,
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
-            COALESCE(m.entrega, 0)    AS entrega
+            COALESCE(m.entrega, 0)    AS entrega,
+            m.ultima_entrega
        FROM gente g
        LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = g.quien
        LEFT JOIN cierre ci ON ci.quien = g.quien
@@ -270,13 +276,20 @@ async function cuadro() {
   ]);
   r.rows = r.rows.concat(rb.rows).sort((a, b) => a.conductor.localeCompare(b.conductor));
 
+  const hoy = hoyIso();
   const filas = r.rows.map(x => {
     const bolt = Number(x.bolt);
     const presencial = Number(x.presencial), nomina = Number(x.nomina), entrega = Number(x.entrega);
     // Lo devuelto sale de la caja y deshace una entrega: resta de lo entregado
     // en mano, no suma a la deuda.
     const enMano = +(presencial - entrega).toFixed(2);
+    const ultimaEntrega = diaIso(x.ultima_entrega);
     return {
+      ultimaEntrega,
+      // Cuántos días lleva sin pasar por ventanilla. `null` = no ha entregado
+      // NUNCA, que no es lo mismo que cero y de hecho es lo más urgente: la
+      // pantalla lo pinta como "nunca" y lo ordena por delante de todos.
+      diasSinEntregar: ultimaEntrega ? diasEntre(ultimaEntrega, hoy) : null,
       // `conductorId` sigue siendo la clave con la que trabaja la pantalla; en
       // los de BOLT es su uuid, y `sinFicha` es lo que la pinta en rojo.
       conductorId: String(x.quien), conductor: x.conductor,
@@ -301,6 +314,12 @@ async function cuadro() {
       aRecaudar: suma('aRecaudar'),
       // A cuántos les falta algo: es el número por el que preguntan.
       conDeuda: filas.filter(f => f.aRecaudar > 0.005).length,
+      // Y de esos, a cuántos hace más de una semana que no se les ve. Debe
+      // dinero mucha gente todos los días; el que lleva diez días sin aparecer
+      // es otra cosa. Solo cuenta a quien DEBE: quien está al día y no viene es
+      // que no tiene nada que traer.
+      rezagados: filas.filter(f => f.aRecaudar > 0.005 &&
+        (f.diasSinEntregar === null || f.diasSinEntregar > DIAS_REZAGADO)).length,
       // Cuántos pueden cobrar en efectivo ahora mismo, y de esos cuántos ya no
       // trabajan aquí: eso último es un grifo abierto.
       conEfectivo: filas.filter(f => f.efectivoActivo).length,
@@ -477,6 +496,31 @@ async function ficha(conductorId) {
       pendiente: acumulado,
     },
   };
+}
+
+// Más de una semana sin pasar por ventanilla es lo que se considera ir con
+// retraso. Sale de cómo se entrega de verdad: los recibos van de semana en
+// semana, así que ocho días ya es haberse saltado una vuelta.
+const DIAS_REZAGADO = 7;
+
+/** Hoy en Madrid, "AAAA-MM-DD". */
+const hoyIso = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+
+/**
+ * Días enteros entre dos "AAAA-MM-DD".
+ *
+ * Con Date.UTC a propósito: restar dos fechas locales cruza dos cambios de hora
+ * al año y devuelve 6,958 días donde hay 7. En UTC todos los días miden lo
+ * mismo y la resta es exacta.
+ */
+function diasEntre(desdeIso, hastaIso) {
+  const t = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; };
+  const a = t(desdeIso), b = t(hastaIso);
+  if (a == null || b == null) return null;
+  return Math.round((b - a) / 86400000);
 }
 
 /** Las fechas de PostgreSQL a "AAAA-MM-DD" por sus componentes locales. */
@@ -1015,6 +1059,7 @@ async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
 }
 
 module.exports = {
+  DIAS_REZAGADO,
   DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, TODAS_SALIDAS, ES_SALIDA,
   CORTE, cuadre, salidas,
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,

@@ -107,6 +107,15 @@
       <option value="efectivo">Con el efectivo activado en BOLT</option>
       <option value="efectivofuera">Efectivo activado y ya no trabaja aquí</option>
     </select>
+    <select id="f-dias" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text"
+      title="Cuánto hace que no pasa por ventanilla. Solo mira a quien debe algo: el que está al día y no viene es que no tiene nada que traer">
+      <option value="">Venga cuando venga</option>
+      <option value="3">+3 días sin entregar</option>
+      <option value="7">+7 días sin entregar</option>
+      <option value="14">+14 días sin entregar</option>
+      <option value="30">+30 días sin entregar</option>
+      <option value="nunca">No ha entregado nunca</option>
+    </select>
     <select id="f-plantilla" class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
       <option value="">En plantilla y fuera</option>
       <option value="si">Solo en plantilla</option>
@@ -246,6 +255,63 @@
     return { fijar: cid => { const c = conductores.find(x => String(x.id) === String(cid)); if (c) elegir(c); } };
   }
 
+  // ── Los días sin entregar ────────────────────────────────────────────
+  // Más de una semana es ir con retraso: los recibos van de semana en semana,
+  // así que ocho días ya es haberse saltado una vuelta. El mismo umbral que
+  // usa el servidor para contar los rezagados.
+  const DIAS_REZAGADO = 7;
+
+  /**
+   * La celda de "sin entregar".
+   *
+   * A quien NO debe nada no se le pinta: que lleve veinte días sin venir es lo
+   * normal si no tiene nada que traer, y pintarlo en rojo llenaría la lista de
+   * alarmas falsas justo donde hay que mirar.
+   *
+   * Un número NEGATIVO no es un error: es un recibo con fecha futura. Hay dos
+   * del traspaso del Excel fechados al día 15. Se dice en vez de taparlo.
+   */
+  function sinEntregar(f) {
+    if (!(f.aRecaudar > 0.005)) return '<span class="text-telecab-muted/30">—</span>';
+    if (f.diasSinEntregar === null) {
+      return '<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-telecab-red/20 text-telecab-red ' +
+        'border border-telecab-red/40" title="No ha entregado nunca">nunca</span>';
+    }
+    const d = f.diasSinEntregar;
+    if (d < 0) {
+      return '<span class="text-telecab-warn" title="Su último recibo lleva fecha del ' + esc(f.ultimaEntrega) +
+        ', que todavía no ha llegado: revisa esa fecha">fecha futura</span>';
+    }
+    const tono = d > DIAS_REZAGADO * 2 ? 'text-telecab-red font-bold'
+      : d > DIAS_REZAGADO ? 'text-telecab-warn font-semibold'
+      : 'text-telecab-muted';
+    const txt = d === 0 ? 'hoy' : d === 1 ? 'ayer' : d + ' días';
+    return '<span class="' + tono + '" title="Última entrega: ' + esc(f.ultimaEntrega || '—') + '">' + txt + '</span>';
+  }
+
+  // ── La ordenación del cuadro ─────────────────────────────────────────
+  // Por nombre al abrir, que es como se busca a alguien. Pinchando una cabecera
+  // se ordena por esa columna, y pinchándola otra vez se le da la vuelta.
+  const ORDEN = { k: 'conductor', desc: false };
+
+  function ordenar(filas) {
+    const k = ORDEN.k, signo = ORDEN.desc ? -1 : 1;
+    filas.sort((a, b) => {
+      if (k === 'conductor') return signo * String(a.conductor).localeCompare(String(b.conductor), 'es');
+      // "Nunca ha entregado" es lo más urgente que hay, así que ordenando por
+      // días tiene que salir por delante del que lleva cien. Va al infinito, no
+      // a cero: a cero se colaría entre los que acaban de pagar.
+      const v = x => {
+        if (k !== 'diasSinEntregar') return Number(x[k]) || 0;
+        if (!(x.aRecaudar > 0.005)) return -Infinity;      // no debe: al fondo
+        return x.diasSinEntregar === null ? Infinity : x.diasSinEntregar;
+      };
+      const d = v(a) - v(b);
+      // A igualdad, por nombre: así la lista no baila entre repintados.
+      return d ? signo * d : String(a.conductor).localeCompare(String(b.conductor), 'es');
+    });
+  }
+
   // ── Los filtros del cuadro ───────────────────────────────────────────
   // Por defecto salen SOLO los que deben, que es a lo que se entra: la lista
   // entera con cincuenta al día no dice nada.
@@ -254,7 +320,16 @@
     const q = llaveTxt(($('#f-busca').value || '').trim());
     const est = $('#f-estado').value;
     const pl = $('#f-plantilla').value;
+    const dias = $('#f-dias').value;
     return filas.filter(f => {
+      // El filtro de días SOLO mira a quien debe algo. Quien está al día y no
+      // aparece no es un rezagado: es que no tiene nada que traer, y meterlo en
+      // la lista de los que hay que perseguir la vuelve inútil.
+      if (dias) {
+        if (!(f.aRecaudar > 0.005)) return false;
+        if (dias === 'nunca') { if (f.diasSinEntregar !== null) return false; }
+        else if (!(f.diasSinEntregar === null || f.diasSinEntregar > Number(dias))) return false;
+      }
       if (q && !llaveTxt(f.conductor).includes(q)) return false;
       // Los sin ficha no son "en plantilla" ni "ya no está": se quedan siempre,
       // que es justo lo que no puede volver a perderse de vista.
@@ -419,17 +494,26 @@
       return;
     }
     const cab = [
-      { t: 'Conductor', al: 'text-left' },
+      { t: 'Conductor', al: 'text-left', k: 'conductor' },
       { t: 'Efectivo', al: 'text-center', ay: 'Si BOLT le deja cobrar en efectivo ahora mismo' },
-      { t: 'Total en mano', al: 'text-right', ay: 'Lo que ha entregado en ventanilla, menos lo devuelto' },
-      { t: 'Total en BOLT', al: 'text-right', ay: 'Todo el efectivo que ha cobrado en la calle' },
-      { t: 'Total a recaudar', al: 'text-right', ay: 'Lo de BOLT menos lo que ya ha entregado' },
+      { t: 'Total en mano', al: 'text-right', k: 'enMano', ay: 'Lo que ha entregado en ventanilla, menos lo devuelto' },
+      { t: 'Total en BOLT', al: 'text-right', k: 'bolt', ay: 'Todo el efectivo que ha cobrado en la calle' },
+      { t: 'Total a recaudar', al: 'text-right', k: 'aRecaudar', ay: 'Lo de BOLT menos lo que ya ha entregado' },
+      { t: 'Sin entregar', al: 'text-right', k: 'diasSinEntregar',
+        ay: 'Cuánto hace que no pasa por ventanilla. Solo se pinta a quien debe algo' },
     ];
+    ordenar(filas);
     $('#r-cuadro').innerHTML =
       '<div class="overflow-x-auto"><table class="w-full text-sm">' +
       '<thead><tr class="text-[11px] uppercase tracking-wide text-telecab-muted border-b border-telecab-border">' +
-        cab.map(c => '<th class="px-3 py-2.5 ' + c.al + ' font-semibold whitespace-nowrap"' +
-          (c.ay ? ' title="' + c.ay + '"' : '') + '>' + c.t + '</th>').join('') +
+        cab.map(c => '<th class="px-3 py-2.5 ' + c.al + ' font-semibold whitespace-nowrap' +
+          (c.k ? ' cursor-pointer select-none hover:text-telecab-gold transition' : '') + '"' +
+          (c.k ? ' data-orden="' + c.k + '"' : '') +
+          (c.ay ? ' title="' + c.ay + (c.k ? ' · pincha para ordenar' : '') + '"'
+                : c.k ? ' title="Pincha para ordenar"' : '') + '>' + c.t +
+          (c.k ? '<span class="ml-1 ' + (ORDEN.k === c.k ? 'text-telecab-gold' : 'text-telecab-muted/30') + '">' +
+            (ORDEN.k === c.k ? (ORDEN.desc ? '\u25bc' : '\u25b2') : '\u21c5') + '</span>' : '') +
+          '</th>').join('') +
         '<th class="px-3 py-2.5"></th></tr></thead><tbody>' +
       filas.map(f =>
         '<tr class="border-b border-telecab-border/40 hover:bg-telecab-card2/40 transition' +
@@ -467,11 +551,21 @@
           '<td class="px-3 py-2.5 text-right tabular-nums font-bold ' +
             (f.aRecaudar > 0.005 ? 'text-telecab-red' : f.aRecaudar < -0.005 ? 'text-telecab-green' : '') + '">' +
             (Math.abs(f.aRecaudar) < 0.005 ? '<span class="text-telecab-green">al día</span>' : eur(f.aRecaudar)) + '</td>' +
+          '<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">' + sinEntregar(f) + '</td>' +
           '<td class="px-3 py-2.5 text-right"><button data-cobrar class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition whitespace-nowrap">' +
             '<i class="fa-solid fa-receipt mr-1"></i>Cobrar</button></td>' +
         '</tr>').join('') +
       '</tbody></table></div>';
 
+    $('#r-cuadro').querySelectorAll('[data-orden]').forEach(th =>
+      th.addEventListener('click', () => {
+        const k = th.dataset.orden;
+        // Pinchar la misma columna le da la vuelta; pinchar otra empieza por lo
+        // más alto, que es lo que se busca al ordenar por una cifra.
+        if (ORDEN.k === k) ORDEN.desc = !ORDEN.desc;
+        else { ORDEN.k = k; ORDEN.desc = k !== 'conductor'; }
+        pintarCuadro();
+      }));
     $('#r-cuadro').querySelectorAll('[data-ficha]').forEach(b =>
       b.addEventListener('click', () => abrirFicha(b.closest('[data-cid]').dataset.cid)));
     $('#r-cuadro').querySelectorAll('[data-cobrar]').forEach(b =>
@@ -832,7 +926,7 @@
   }
 
   $('#r-nuevo').addEventListener('click', () => recibo(null));
-  ['#f-busca', '#f-estado', '#f-plantilla'].forEach(s =>
+  ['#f-busca', '#f-estado', '#f-plantilla', '#f-dias'].forEach(s =>
     $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
   $('#r-salida').addEventListener('click', salidaCaja);
   $('#r-calcular').addEventListener('click', recalcular);
