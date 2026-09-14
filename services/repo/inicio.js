@@ -26,7 +26,7 @@ const JORNADA_DEFECTO = 8;
 
 /** El día operativo (jornada 05→05) al que pertenece una hora de un día. */
 function jornadaDe(iso, hora) {
-  const H0 = require('../flotaViva/rutas').TURNOS.dia[0];
+  const H0 = require('../nucleo').HORA_DIA;
   if (hora >= H0) return iso;
   return diaMenos(iso, 1);
 }

@@ -46,7 +46,7 @@ const txt = v => (v === null || v === undefined ? '' : String(v));
  * luego la descarta con `.slice(1)`.
  */
 async function filas() {
-  const { A, A_HEADERS } = require('../planificadorV2');
+  const { A, A_HEADERS } = require('../nucleo');
 
   const r = await db.consulta('SELECT * FROM v_agenda ORDER BY nombre_apellidos');
 
@@ -100,7 +100,7 @@ async function filas() {
  * error — solo datos que faltan en sitios raros semanas después.
  */
 async function comprobarCobertura() {
-  const { A, A_HEADERS } = require('../planificadorV2');
+  const { A, A_HEADERS } = require('../nucleo');
   // Las que el motor calcula y por eso no se rellenan aquí.
   const CALCULADAS = new Set([
     A.BINOMIO, A.ASG_LUN, A.ASG_MAR, A.ASG_MIE, A.ASG_JUE, A.ASG_VIE, A.ASG_SAB, A.ASG_DOM,

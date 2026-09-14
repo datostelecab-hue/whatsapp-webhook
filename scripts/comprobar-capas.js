@@ -168,6 +168,12 @@ const ADAPTADORES = new Set([
   'services/modoPruebas',
 ]);
 
+// EL NÚCLEO: constantes y funciones puras (services/nucleo.js). Ni base, ni
+// red, ni reglas. Lo puede usar cualquier capa por la misma razón que los
+// adaptadores —es el suelo—, pero se distingue de ellos a propósito: un
+// adaptador habla con el mundo de fuera y puede fallar; el núcleo no hace nada.
+const NUCLEO = new Set(['services/nucleo']);
+
 // Los pools de conexión: services/db y el propio de flota viva.
 const esBase = rel => rel === 'services/db' || /\/db$/.test(rel);
 
@@ -187,6 +193,7 @@ function importes(desnudo, desde) {
     const rel = path.relative(RAIZ, abs).replace(/\\/g, '/').replace(/\.js$/, '');
     let capa = 'otro';
     if (esBase(rel)) capa = 'base';
+    else if (NUCLEO.has(rel)) capa = 'nucleo';
     else if (ADAPTADORES.has(rel)) capa = 'adaptador';
     else if (rel.startsWith('services/repo/')) capa = 'repositorio';
     else if (rel.startsWith('services/')) capa = 'servicio';

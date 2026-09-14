@@ -9,7 +9,7 @@
 // nombre no identifica a nadie. Cero hojas.
 
 const db = require('../db');
-const { normClave } = require('../conductores');
+const { normClave } = require('../nucleo');
 
 // LOS CINCO TIPOS DE J, por QUIÉN RESPONDE de ella (los puso Tráfico, db/73):
 // una J de tráfico la aprueba Tráfico, una de RRHH la aprueba RRHH. El texto

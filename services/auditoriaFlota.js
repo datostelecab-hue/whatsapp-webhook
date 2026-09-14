@@ -118,8 +118,8 @@ function tsDeHoraLocal(dia, hora) {
 // Además, el DÍA NATURAL partido por la mitad (00–12 y 12–24), que es otra forma de
 // mirarlo cuando el relevo no cae a las 5: no depende de los turnos y permite un
 // segundo flujo comparable entre coches.
-const HORA_TURNO_DIA = Number(process.env.AUDITORIA_HORA_DIA || 5);
-const HORA_TURNO_NOCHE = Number(process.env.AUDITORIA_HORA_NOCHE || 17);
+// Del nucleo: era la segunda copia de la misma constante (ver services/nucleo.js).
+const { HORA_DIA: HORA_TURNO_DIA, HORA_NOCHE: HORA_TURNO_NOCHE } = require('./nucleo');
 const SEGMENTOS = ['completo', 'dia', 'noche', 'manana', 'tarde'];
 const ETIQUETA_SEG = {
   completo: 'Día natural (00:00–24:00)',

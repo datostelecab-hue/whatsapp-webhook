@@ -88,7 +88,7 @@ function iguales(cabecera, hoja, base) {
  */
 async function comparar() {
   const plan = require('../planificadorV2');
-  const { A, A_HEADERS } = plan;
+  const { A, A_HEADERS } = require('../nucleo');
   const { readMany } = require('../sheets');
 
   // La hoja, siempre desde Google (aunque el interruptor esté en postgres).

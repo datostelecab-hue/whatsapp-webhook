@@ -35,29 +35,12 @@ const P = {
 };
 
 // Columnas de AGENDA_V2 (1-based)
-const A = {
-  ACTIVO: 1, ESTADO: 2, NOMBRE: 3, ID_BOLT: 4, DNI: 5, NAF: 6, FECHA_ALTA: 7,
-  FIN_PRUEBA: 8, EN_PRUEBA: 9, RECOMENDADOR: 10, TURNO: 11, CONTRATO: 12,
-  L_LUN: 13, L_MAR: 14, L_MIE: 15, L_JUE: 16, L_VIE: 17, L_SAB: 18, L_DOM: 19,
-  MATRICULA: 20, BINOMIO: 21, COORDENADAS: 22, DIRECCION: 23, TELEFONO: 24,
-  TEL_EMERG: 25, OBSERVACIONES: 26,
-  ASG_LUN: 27, ASG_MAR: 28, ASG_MIE: 29, ASG_JUE: 30, ASG_VIE: 31, ASG_SAB: 32, ASG_DOM: 33,
-  // Fecha de reincorporación para ausencias temporales (opcional). Columna AH.
-  REINCORPORACION: 34,
-  // Si su ID_BOLT es PROVISIONAL — o sea, todavía no está dado de alta en BOLT.
-  // Solo la rellena la agenda leída de PostgreSQL; desde la hoja viene vacía, y
-  // entonces se comporta como antes.
-  BOLT_PENDIENTE: 35
-};
-
-const A_HEADERS = [
-  'ACTIVO', 'ESTADO', 'NOMBRE_APELLIDOS', 'ID_BOLT', 'DNI_NIE', 'NAF', 'FECHA_ALTA',
-  'FIN_PERIODO_PRUEBA', 'EN_PRUEBA', 'RECOMENDADOR', 'TURNO', 'CONTRATO',
-  'LIB_LUN', 'LIB_MAR', 'LIB_MIE', 'LIB_JUE', 'LIB_VIE', 'LIB_SAB', 'LIB_DOM',
-  'MATRICULA', 'BINOMIO', 'COORDENADAS', 'DIRECCION_COMPLETA', 'TELEFONO',
-  'TEL_EMERGENCIA', 'OBSERVACIONES',
-  'ASG_LUN', 'ASG_MAR', 'ASG_MIE', 'ASG_JUE', 'ASG_VIE', 'ASG_SAB', 'ASG_DOM'
-];
+// El mapa de columnas de la agenda vive en el NUCLEO: es un contrato de datos
+// (donde esta cada cosa), no una regla de negocio, y lo necesitan tambien dos
+// repositorios. Mientras vivio aqui dentro, esos repositorios tenian que llamar
+// hacia arriba para saber en que columna va el telefono. Se sigue reexportando
+// para no cambiar a los diez sitios que ya lo piden a este modulo.
+const { A, A_HEADERS } = require('./nucleo');
 
 const P_HEADERS = [
   'TURNO', 'ESTADO_VEHICULO', 'MATRICULA', 'ID_BOLT', 'ZONA',

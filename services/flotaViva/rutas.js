@@ -122,8 +122,10 @@ async function kmPorCoche(dia) {
  */
 // Los turnos, IGUAL que la Auditoría flota (mismas variables de entorno para que
 // no se desincronicen): día 05:00→17:00, noche 17:00→05:00 del día siguiente.
-const HORA_DIA = Number(process.env.AUDITORIA_HORA_DIA || 5);
-const HORA_NOCHE = Number(process.env.AUDITORIA_HORA_NOCHE || 17);
+// Las horas que parten la jornada vienen del nucleo: estaban repetidas aqui y
+// en auditoriaFlota.js, y dos copias de la constante que parte el dia es la
+// forma mas silenciosa de que dos pantallas dejen de cuadrar.
+const { HORA_DIA, HORA_NOCHE } = require('../nucleo');
 // [hora_inicio, offset_días_fin, hora_fin]. "completo" es el día natural (00→24),
 // y NO es la suma de día+noche: la madrugada 00:00–05:00 es del turno de noche de
 // la víspera, así que se cuenta aparte.

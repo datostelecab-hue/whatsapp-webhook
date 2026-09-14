@@ -31,7 +31,9 @@
 const db = require('../db');
 // El corte de la jornada operativa (05:00). Sale de rutas.TURNOS para que el día
 // que se mueva no se quede esta pantalla sola diciendo otra cosa.
-const HORA_JORNADA = require('../flotaViva/rutas').TURNOS.dia[0];
+// La hora a la que empieza la jornada operativa. Del nucleo: pedirsela a
+// flotaViva/rutas era llamar hacia arriba por un numero.
+const HORA_JORNADA = require('../nucleo').HORA_DIA;
 
 // El origen de la rejilla: 1 jun 2026 (mes 0-based: 5 = junio). 365 días.
 const INICIO = { y: 2026, m: 5, d: 1 };
