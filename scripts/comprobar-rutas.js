@@ -9,6 +9,22 @@
 // una ruta y dejar la vista llamando a la vieja. No revienta al arrancar ni lo
 // ve ningún editor; aparece cuando alguien pulsa ese botón concreto y recibe un
 // 404 que nadie sabe explicar.
+//
+// ── HASTA DÓNDE LLEGA, Y HASTA DÓNDE NO ─────────────────────────────────────
+// Solo ve CADENAS LITERALES que empiecen por el prefijo del módulo. Eso cubre:
+//
+//   '/ett/api/ficha/' + id            ✔  se comprueba el principio
+//   `/ett/api/ficha/${id}`            ✔  el ${…} vale por un segmento
+//   '/ett/api/lista'                  ✔  entera
+//
+// Lo que NO ve es el trozo que va DESPUÉS de una concatenación:
+//
+//   '/ett/api/solicitud/' + id + '/enviado'
+//
+// De ahí solo lee `/ett/api/solicitud/`, porque `/enviado` es otra cadena que
+// no empieza por el prefijo. Si alguien escribe `/enviadoo`, esto no se entera.
+// Está comprobado, y se deja dicho: una herramienta que promete más de lo que
+// da es peor que una que avisa de dónde acaba.
 
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +37,10 @@ const PARES = [
   ['modules/Vehiculos/vistas/vehiculos.ejs', 'modules/Vehiculos/vehiculos.controller.js', '/vehiculos'],
   ['views/migraciones.ejs', 'routes/migraciones.js', '/migraciones'],
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],
+  ['modules/Seleccion/vistas/seleccion.ejs', 'modules/Seleccion/seleccion.controller.js', '/seleccion'],
+  ['modules/Seleccion/vistas/ett.ejs', 'modules/Seleccion/ett.controller.js', '/ett'],
+  ['modules/Seleccion/vistas/vacantes.ejs', 'modules/Seleccion/vacantes.controller.js', '/vacantes'],
+  ['modules/Seleccion/vistas/generador.ejs', 'modules/Seleccion/generador.controller.js', '/generador'],
 ];
 
 let fallos = 0;
@@ -43,13 +63,39 @@ for (const [vista, fichero, prefijo] of PARES) {
   // acusaba de "sin ruta" a una que existe: un falso positivo, que en una
   // herramienta como esta es peor que no comprobar nada.
   const patron = new RegExp('["\'`](' + prefijo + '/[A-Za-z0-9_\\-/.]*)', 'g');
-  const pedidas = [...new Set([...texto.matchAll(patron)].map(m => m[1].replace(/\/+$/, '')))];
+  // UNA URL QUE ACABA EN BARRA LLEVA ALGO DETRÁS. No todas las vistas escriben
+  // `/api/ficha/${id}`: muchas concatenan —`'/api/ficha/' + id`— y ahí la
+  // cadena literal termina en barra. Recortarla sin más dejaba `/api/ficha`,
+  // que no casa con `/api/ficha/:id`, y el comprobador acusaba de "sin ruta" a
+  // ocho URL que existen. Un falso positivo en una herramienta como esta es
+  // peor que no comprobar nada: se deja de mirar la salida.
+  //
+  // Así que la barra final se sustituye por el comodín, que es lo que de verdad
+  // significa: aquí viene un parámetro.
+  const pedidas = [...new Set([...texto.matchAll(patron)]
+    .map(m => (m[1].endsWith('/') ? m[1] + '_' : m[1].replace(/\/+$/, ''))))];
 
   const definidas = [...fs.readFileSync(pr, 'utf8').matchAll(/router\.\w+\('([^']+)'/g)]
     .map(m => m[1]);
 
   const falla = pedidas.filter(p => {
     const cola = p.slice(prefijo.length) || '/';
+
+    // Las que venían con barra al final llevan un trozo pegado detrás, y ese
+    // trozo puede ser más de un segmento: `'/api/solicitud/' + id + '/enviado'`
+    // deja en el código la cadena `/api/solicitud/`, y la ruta de verdad es
+    // `/api/solicitud/:id/enviado`.
+    //
+    // Para esas la comparación va AL REVÉS: en vez de preguntar si la ruta casa
+    // con la URL, se pregunta si alguna RUTA EMPIEZA POR esa URL. Probarlo del
+    // otro lado —la ruta como principio de la URL— parecía equivalente y no lo
+    // es: la ruta `/` es principio de absolutamente todo y daba por buena
+    // cualquier cosa, incluido un `/api/anularrr/` mal escrito a propósito.
+    if (cola.endsWith('/_')) {
+      const trozo = cola.slice(0, -1);                       // sin el comodín final
+      return !definidas.some(d => d.replace(/:[^/]+/g, '_').startsWith(trozo));
+    }
+
     return !definidas.some(d => new RegExp('^' + d.replace(/:[^/]+/g, '[^/]+') + '$').test(cola));
   });
 

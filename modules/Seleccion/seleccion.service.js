@@ -1,0 +1,206 @@
+// ============================================================
+// SELECCIÓN · SERVICIO — de un teléfono a una ficha de alta
+// ============================================================
+// El recorrido de un candidato: entra por un número de teléfono, se le va
+// llenando la ficha, se le piden los papeles y, si llega al final, se le abre
+// contrato y pasa a RRHH.
+//
+// La clave es el ID DE LA CANDIDATURA. El teléfono sirve para BUSCAR a alguien
+// —es lo que se sabe de un candidato antes que nada— pero no identifica: una
+// persona puede cambiar de número y haber tenido dos procesos.
+//
+// Aquí vive lo que el controlador tenía dentro y no le tocaba:
+//   · el CATÁLOGO de documentos que hay que pedir,
+//   · el RESUMEN del embudo,
+//   · y las dos orquestaciones largas, la de subir un documento y la de armar
+//     la ficha de alta en PDF con sus adjuntos.
+
+const cand = require('./candidaturas.repo');
+const vacantes = require('./vacantes.service');
+// Por la PUERTA del módulo de Documentos, nunca por su repositorio.
+const docs = require('../Documentos/documentos.service');
+const drive = require('../../services/drive');
+const { generarFichaPDF } = require('../../services/fichaAlta');
+const { geocodificar, geocodificarEstructurado } = require('../../services/geocoding');
+
+/**
+ * Los documentos que pide la ficha de alta.
+ *
+ * La pantalla dice "carné" y el catálogo de la base dice "permiso de conducir".
+ * La traducción vive AQUÍ y en ningún otro sitio: cuando estaba repartida entre
+ * la vista y la ruta, añadir un documento eran dos ficheros y olvidarse de uno
+ * dejaba un papel que se pedía pero no se guardaba.
+ */
+const DOCUMENTOS = [
+  { key: 'dni',            tipo: 'dni',             label: 'DNI/NIE (frente)' },
+  { key: 'dni_reverso',    tipo: 'dni_reverso',     label: 'DNI/NIE (reverso)' },
+  { key: 'carnet',         tipo: 'permiso',         label: 'Carné de conducir (frente)' },
+  { key: 'carnet_reverso', tipo: 'permiso_reverso', label: 'Carné de conducir (reverso)' },
+  { key: 'bancario',       tipo: 'cuenta',          label: 'Certificado bancario' },
+  { key: 'seg_social',     tipo: 'vida_laboral',    label: 'Vida laboral / certificado SS' },
+  { key: 'penales',        tipo: 'penales',         label: 'Certificado de delitos sexuales' },
+];
+
+// ── Lo que hace falta para pintar la pantalla ──────────────────────────────
+
+/**
+ * Lo que necesita la pantalla al abrirse. Ninguna de las dos consultas puede
+ * tumbar la página: si las vacantes fallan se recluta igual, y sin catálogos se
+ * ve la lista aunque los desplegables salgan vacíos.
+ */
+async function paraLaPantalla() {
+  const vacio = { estados: [], canales: [], turnos: [], zonas: [], funnel: [] };
+  const [v, c] = await Promise.all([
+    // Solo las ABIERTAS: una vacante "en proceso" ya tiene candidato, y ofrecerla
+    // otra vez es cómo dos reclutadores acababan trabajando la misma plaza.
+    //
+    // Vienen con TODO lo que hace falta para elegir bien: matrículas, zona,
+    // libranzas, la jornada que se ofrece y —si es un recambio— a quién
+    // sustituye. Antes era un texto con el puesto y la zona, y quien reclutaba
+    // no sabía si estaba ofreciendo 32 h o 40.
+    vacantes.disponibles().catch(e => { console.error('❌ [Selección] vacantes:', e.message); return []; }),
+    cand.catalogos().catch(e => { console.error('❌ [Selección] catálogos:', e.message); return vacio; }),
+  ]);
+  return { vacantes: v, catalogos: c, documentos: DOCUMENTOS };
+}
+
+/**
+ * La lista con su resumen: cuántos hay en cada etapa del embudo.
+ *
+ * Los contadores se calculan sobre las filas que ya se han traído: son decenas,
+ * no hace falta otra consulta. Y el embudo sale del catálogo, en su orden y con
+ * su etiqueta, para que la pantalla no lleve su propia copia de las etapas —que
+ * es como acaban discrepando.
+ */
+async function lista({ incluirCerradas } = {}) {
+  const [filas, { estados, funnel }] = await Promise.all([
+    cand.listar({ incluirCerradas: !!incluirCerradas }),
+    cand.catalogos(),
+  ]);
+
+  const porEstado = {};
+  filas.forEach(f => { porEstado[f.estado] = (porEstado[f.estado] || 0) + 1; });
+
+  return {
+    filas,
+    resumen: {
+      total: filas.length,
+      enFunnel: filas.filter(f => f.en_funnel).length,
+      porEstado,
+      funnel: funnel.map(c => {
+        const e = estados.find(x => x.codigo === c) || {};
+        return { codigo: c, etiqueta: e.etiqueta, cuantos: porEstado[c] || 0 };
+      }),
+    },
+  };
+}
+
+/** La ficha entera, con lo que le falta y los papeles que hay que pedirle. */
+async function ficha(id) {
+  const f = await cand.ficha(Number(id));
+  if (!f) throw new Error('No existe esa candidatura');
+  return { ...f, faltan: await cand.faltantes(f.id), documentosPedidos: DOCUMENTOS };
+}
+
+// ── Los papeles ────────────────────────────────────────────────────────────
+
+/**
+ * Guarda un documento de la candidatura. Los bytes van a Drive; lo que queda
+ * aquí es el índice, con su tipo y su caducidad.
+ *
+ * El documento es DE LA PERSONA, no de la candidatura: por eso se cuelga del
+ * `conductor_id`. Alguien que se cae del proceso y vuelve seis meses después no
+ * tiene que traer otra vez el DNI.
+ */
+async function subirDocumento(id, { tipo, emision, caduca, archivo }, quien) {
+  const def = DOCUMENTOS.find(d => d.key === tipo);
+  if (!def) throw new Error('Tipo de documento no válido');
+  if (!archivo) throw new Error('No llegó ningún archivo');
+
+  const f = await cand.ficha(Number(id));
+  if (!f) throw new Error('No existe esa candidatura');
+
+  const doc = await docs.subir('conductor', f.conductor_id, {
+    tipo: def.tipo,
+    nombre: `${def.label} — ${archivo.originalname}`,
+    mime: archivo.mimetype,
+    base64: archivo.buffer.toString('base64'),
+    fechaEmision: emision || null,
+    fechaCaduca: caduca || null,
+  }, quien);
+
+  return { doc, faltan: await cand.faltantes(Number(id)) };
+}
+
+const retirarDocumento = (docId, quien) =>
+  docs.retirar(Number(docId), { borrarArchivo: true, ...quien });
+
+/**
+ * La FICHA DE ALTA en PDF, con los documentos ya subidos incrustados detrás, y
+ * guardada en la carpeta de Drive de esa persona.
+ *
+ * Un documento que no se puede bajar NO tumba la ficha: se anota y se sigue. La
+ * ficha con seis adjuntos de siete sirve para firmar; un error 500 no sirve
+ * para nada, y quien está delante del candidato no puede hacer nada con él.
+ */
+async function fichaPDF(id) {
+  const n = Number(id);
+  const [datos, f] = await Promise.all([cand.paraFicha(n), cand.ficha(n)]);
+  if (!f) throw new Error('No existe esa candidatura');
+
+  const adjuntos = [];
+  for (const def of DOCUMENTOS) {
+    const d = (f.documentos || []).find(x => x.tipo === def.tipo && x.vigente);
+    if (!d) continue;
+    try {
+      const a = await docs.descargar(d.id);
+      adjuntos.push({ label: def.label.toUpperCase(), bytes: a.bytes, mime: a.mime });
+    } catch (e) {
+      console.error(`❌ [Selección] no se pudo descargar ${def.key}: ${e.message}`);
+    }
+  }
+
+  const pdf = await generarFichaPDF(datos, adjuntos);
+  const nombre = `FICHA DE ALTA - ${(datos.nombre || datos.telefono || n).toString().trim()}.pdf`;
+  const archivo = await drive.subir(String(datos.conductorId), {
+    nombre, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64'),
+  });
+  return { link: archivo.webViewLink, nombre, adjuntos: adjuntos.length };
+}
+
+// ── El proceso ─────────────────────────────────────────────────────────────
+
+const catalogos = () => cand.catalogos();
+const porTelefono = tel => cand.porTelefono(tel);
+const abrir = (telefono, datos, quien) => cand.abrir(telefono, datos, quien);
+const guardar = (id, datos, quien) => cand.guardar(Number(id), datos, quien);
+const cambiarEstado = (id, estado, motivo, quien) =>
+  cand.cambiarEstado(Number(id), estado, { motivo, ...quien });
+const eliminar = (id, quien) => cand.eliminar(Number(id), quien);
+
+/** Selección termina: se le abre el contrato y pasa a RRHH. */
+async function pasarARRHH(id, datos, quien) {
+  const r = await cand.pasarARRHH(Number(id), datos, quien);
+  console.log(`👤 [SELECCIÓN] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
+    (r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
+  return r;
+}
+
+// ── La dirección ───────────────────────────────────────────────────────────
+// Se queda como estaba: es un servicio externo que no tiene que ver con dónde
+// se guarden los datos. Con la vía puesta se pregunta por campos, que acierta
+// mucho más que mandar la dirección entera en una línea.
+const direccion = b => ((b.via && b.via.trim())
+  ? geocodificarEstructurado({
+    via: b.via, numero: b.numero, tipoVia: b.tipoVia,
+    codigoPostal: b.codigo_postal, localidad: b.localidad, provincia: b.provincia,
+  })
+  : geocodificar(b.direccion));
+
+module.exports = {
+  DOCUMENTOS,
+  paraLaPantalla, lista, ficha, catalogos, porTelefono,
+  abrir, guardar, cambiarEstado, pasarARRHH, eliminar,
+  subirDocumento, retirarDocumento, fichaPDF,
+  direccion,
+};

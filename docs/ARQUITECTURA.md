@@ -226,7 +226,7 @@ decidirlo antes de mover nada.
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
 | **RRHH** | `rrhh`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
 | **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
-| **Seleccion** | `seleccion`, `ett`, `generador`, `matching`, `vacantes` **(?)** |
+| **Seleccion** ✓ | `seleccion`, `ett`, `generador`, `vacantes` — **hecho, el módulo entero** |
 | **Informes** | `reportes`, `exportar`, `bi`, `visibilidad`, `resumen` |
 | **Administracion** | `administracion`, `recaudacion` |
 | **Usuarios** ✓ | `usuarios`, `auth` — **hecho** |
@@ -265,7 +265,7 @@ Empezando por el más pequeño y aislado, para estrenar la mecánica donde el da
 posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
-(hechos) → **Seleccion** → **Conductores** → **Planificacion** → **Control**
+~~**Seleccion**~~ (hechos) → **Conductores** → **Planificacion** → **Control**
 → el resto.
 
 ### Hecho: Documentos
@@ -361,3 +361,49 @@ antes de escribir una línea, y apareció el único hueco real: `bolt_state_log`
 solo llega a septiembre, así que las nocturnas y la utilización no podían salir
 de ahí — sí de `fv_tramo`, que cubre desde julio y distingue viaje de espera,
 que es exactamente `has_order` y `waiting_orders`.
+
+### Hecho: Selección (las cuatro pantallas)
+
+Está en `modules/Seleccion/` (con su `LEEME.md`). Es el módulo más grande hasta ahora: 44
+rutas, cuatro pantallas y 2.000 líneas de repositorio.
+
+Se hizo **en dos commits** —primero Vacantes y el Generador, después Selección y ETT—
+porque una pantalla que se rompe al mover es fácil de encontrar en un commit de dos
+ficheros y muy difícil en uno de catorce.
+
+**Lo que costó no fue mover ficheros.** Dentro de `modules/` el trinquete aprieta: un
+controlador que habla con un repositorio pasa de aviso a FALTA. Así que las cuatro
+pantallas necesitaban la capa de servicio que no tenían, y ahí es donde estaba metida la
+lógica de negocio:
+
+| Se sacó del controlador | A |
+|---|---|
+| Qué es una vacante viva, y cuántas plazas suma | `vacantes.service` |
+| El catálogo de documentos que se le piden a un candidato | `seleccion.service` |
+| El resumen del embudo | `seleccion.service` |
+| Subir un documento y armar la ficha de alta en PDF con sus adjuntos | `seleccion.service` |
+| Cómo se decide el nombre de la ETT, y en qué orden | `ett.service` |
+| Las dos altas con su reserva de vacante, que puede fallar sin tumbar el alta | `ett.service` |
+
+La deuda de controladores que hablan con repositorios baja de **18 a 14**, y los avisos de
+55 a 47. Los 7 incumplimientos siguen siendo los 7 de siempre.
+
+**Dos cosas que este módulo enseñó, y sirven para los que faltan:**
+
+`matching` **no era de Selección** pese al nombre: solo usa el tablero del planificador. Es
+de Planificación. Segunda vez que el nombre de una ruta engaña sobre a qué módulo pertenece
+—la primera fue "Documentación"—, así que la regla es mirar de qué habla, no cómo se llama.
+
+Un repositorio que se muda arrastra **sus hermanos**: `candidaturas.repo` requería por
+ruta relativa a otros siete repos de `services/repo/`. Cinco se quedan fuera (van a
+`../../services/repo/`) y dos entran con él. Eso no lo dice el checker de capas: lo dice
+`node -e "require(…)"`, que es el primer comando que hay que correr después de un `git mv`.
+
+**Y un falso positivo que se arregló de camino.** `comprobar-rutas.js` acusaba de "sin ruta"
+a ocho URL que existen, porque las vistas las construyen concatenando —`'/api/ficha/' + id`—
+y el comprobador recortaba la barra final hasta dejar `/api/ficha`, que no casa con
+`/api/ficha/:id`. Ahora la barra final se lee como lo que significa: aquí viene un
+parámetro. Al arreglarlo apareció un segundo fallo —la ruta `/` era principio de todo y daba
+por buena cualquier URL— que se cazó con una prueba de sabotaje. Y queda apuntado en el
+propio fichero hasta dónde llega la herramienta: el trozo que va *después* de una
+concatenación (`… + id + '/enviado'`) no lo ve, y eso está comprobado.
