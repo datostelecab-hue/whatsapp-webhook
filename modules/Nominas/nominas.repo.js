@@ -6,10 +6,11 @@
 //
 // De dónde sale cada número de la nómina:
 //
-//   Horas efectivas   fv_tramo, situaciones efectivas (viaje + espera), ventana
-//                     05→05 y solapes fundidos. LA MISMA definición que la
-//                     bitácora y el Reporte de horas: si los tres no dan lo
-//                     mismo, es que uno está mal.
+//   Horas efectivas   fv_tramo, situaciones efectivas (viaje + espera), por
+//                     DÍA NATURAL y con los solapes fundidos. Ojo: la bitácora
+//                     mide por jornada 05→05, así que para quien trabaja de
+//                     noche los dos numeros NO coinciden, y es a proposito.
+//                     Ver la nota larga de HORA_CORTE mas abajo.
 //   Nocturnas         el trozo de esas mismas horas que cae entre las 22:00 y
 //                     las 06:00 (hora de Madrid).
 //   Utilización       viaje / (viaje + espera). 'viaje' es el has_order de BOLT
@@ -29,8 +30,34 @@
 
 const db = require('../../services/db');
 
-// La jornada operativa empieza a las 05:00 (Madrid), igual que en todo el ERP.
-const HORA_JORNADA = 5;
+// ── LA NÓMINA CUENTA POR DÍA NATURAL, Y ES LA ÚNICA QUE LO HACE ────────────
+//
+// El resto del ERP mide por JORNADA OPERATIVA: de las 05:00 a las 05:00, de
+// modo que un turno de noche que acaba a las 03:51 pertenece al día anterior.
+// Eso es lo correcto para la bitácora, el reporte de horas y Visibilidad, que
+// son control de TURNOS: quieren ver la noche entera junta.
+//
+// Una nómina no es eso. Una nómina paga LO QUE PASÓ EN EL MES, y el mes va del
+// día 1 a las 00:00 al último a las 23:59. Un conductor de noche que rueda la
+// madrugada del 1 de septiembre cobra esas horas en septiembre, aunque para la
+// bitácora sean del turno del 31 de agosto.
+//
+// Y hay una razón práctica además de la conceptual: el dinero (facturación,
+// propinas, peajes) sale de `v_ordenes_conductor`, que agrupa por día natural.
+// Cuando las horas se recortaban a las 05:00 y el dinero a medianoche, las dos
+// mitades del mismo cálculo miraban ventanas distintas y en el borde del mes
+// no cuadraban: la facturación de la madrugada del 1 de septiembre (2.825,85 €
+// en 914 pedidos) quedaba fuera de agosto mientras sus horas quedaban dentro, y
+// a dos personas eso les cambiaba si superaban o no el umbral del MBO FAS.
+// Con el corte a medianoche, horas, dinero y J miran exactamente lo mismo.
+//
+// Las J se leen igual: una J del 1 de septiembre cubre ese día natural entero.
+//
+// CONSECUENCIA ESPERADA: las horas de la nómina NO coinciden con las de la
+// bitácora para quien trabaja de noche, y no es un fallo. Son dos preguntas
+// distintas —"¿cuántas horas cayeron en este mes?" y "¿cómo fue ese turno?"— y
+// cada una tiene su ventana.
+const HORA_CORTE = 0;
 // Franja nocturna del convenio, la misma que usaba la hoja de horas.
 const NOC_DESDE = 22, NOC_HASTA = 6;
 
@@ -66,10 +93,14 @@ async function guardarConfig(valores, usuarioId) {
 // LOS DATOS DEL MES DE TRABAJO
 // ────────────────────────────────────────────────────────────────────────────
 
-// Los trozos de tramo EFECTIVO del rango, ya recortados por la jornada 05→05 y
+// Los trozos de tramo EFECTIVO del rango, ya recortados por el DÍA NATURAL y
 // etiquetados con su situación. Es la consulta de `bitacora.horasCalculadas`
-// con una columna más (la situación), porque la nómina necesita separar el
-// viaje de la espera para la utilización.
+// con dos diferencias: la hora de corte es 0 y no 5 (ver arriba), y viene la
+// situación, porque la nómina necesita separar el viaje de la espera para la
+// utilización.
+//
+// El tramo SE RECORTA por el día, no se le da entero al día en que empieza: uno
+// que va de las 23:22 a las 00:36 deja 38 minutos en un día y 36 en el otro.
 const SQL_TROZOS = `
   WITH tr AS (
     SELECT ce.conductor_id, t.situacion, t.desde, COALESCE(t.hasta, now()) AS hasta
@@ -149,15 +180,16 @@ function segundosNocturnos(ini, fin) {
 }
 
 /**
- * Horas, nocturnas y utilización de cada persona en el mes de trabajo.
- * Devuelve Map(conductor_id → { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia }).
+ * Horas, nocturnas y utilización de cada persona en el mes de trabajo, por DÍA
+ * NATURAL (ver la nota de HORA_CORTE arriba).
+ * Devuelve Map(conductor_id → { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia }).
  *
  * El plegado de intervalos se hace en JS, como en la bitácora: si alguien tiene
  * dos cuentas de BOLT que se pisan, ese rato cuenta UNA vez. En SQL saldría, pero
  * con window functions que nadie va a poder leer dentro de un año.
  */
 async function horasDelMes(desdeIso, hastaIso) {
-  const r = await db.consulta(SQL_TROZOS, [desdeIso, hastaIso, String(HORA_JORNADA)]);
+  const r = await db.consulta(SQL_TROZOS, [desdeIso, hastaIso, String(HORA_CORTE)]);
 
   // cid → dia → { todo: [], viaje: [], espera: [] }
   const acc = new Map();
@@ -332,14 +364,18 @@ async function fichasDelMes(hastaIso) {
 }
 
 /**
- * Quién trabajó ese mes pero NO está sellado en la bitácora.
+ * Quién trabajó ese mes pero NO está en la bitácora, ni con una hora.
  *
  * La bitácora sella las horas el día que la jornada cierra y ya no las recalcula
  * —el pasado no se mueve—, así que a quien se le enlace la cuenta de BOLT más
  * tarde no aparece allí aunque sí trabajara. La nómina no puede permitirse eso
- * (dejaría a alguien sin cobrar 137 horas), por eso calcula ella. Pero entonces
- * los dos números se separan, y en vez de callarlo se dice quiénes son: si el
- * desfase molesta, `POST /bitacora/api/resellar` lo arregla.
+ * (dejaría a alguien sin cobrar 137 horas), por eso calcula ella.
+ *
+ * Esto NO es la lista de "a quién le bailan las horas entre las dos pantallas":
+ * a quien trabaja de noche le bailan siempre, porque las dos miden ventanas
+ * distintas a propósito (ver HORA_CORTE). Es la lista de quien la bitácora no
+ * tiene en absoluto, que sí es algo que conviene saber; se arregla con
+ * `POST /bitacora/api/resellar`.
  */
 async function sinSellarEnBitacora(desdeIso, hastaIso, ids) {
   if (!ids.length) return [];

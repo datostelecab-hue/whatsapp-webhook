@@ -18,7 +18,7 @@ GET  /nominas/congeladas      qué meses están cerrados
 GET  /nominas/nomina.xlsx     el Excel
 ```
 
-## Las cuatro reglas
+## Las cinco reglas
 
 **A mes vencido.** La nómina de un mes se calcula con los datos del mes **anterior**: la de
 julio paga el trabajo de junio; la de enero, el de diciembre del año pasado. El mes que se
@@ -102,6 +102,25 @@ se hace (4 personas en agosto).
 La columna de **% Utilización** sigue enseñando la **real**, la de antes del recorte: es el
 diagnóstico, y esconderla dejaría la cifra retirada sin explicación.
 
+**El mes es el mes: del día 1 a las 00:00 al último a las 23:59.** Sin cortes raros y sin la
+jornada operativa 05→05 del resto del ERP.
+
+La bitácora y el reporte de horas miden por **jornada** (05:00 a 05:00), que es lo correcto
+para control de turnos: quieren ver la noche entera junta. Una nómina no es eso: paga lo que
+pasó **en el mes**. Quien rueda la madrugada del 1 de septiembre cobra esas horas en
+septiembre, aunque para la bitácora sean del turno del 31 de agosto. Igual con las J: una J
+del 1 de septiembre cubre ese día natural entero.
+
+Así **horas, dinero y J miran la misma ventana**. Cuando las horas se cortaban a las 05:00 y
+el dinero a medianoche —que es como agrupa `v_ordenes_conductor`— las dos mitades del
+cálculo no cuadraban en el borde del mes: la facturación de la madrugada del 1 de septiembre
+(2.825,85 € en 914 pedidos) quedaba fuera de agosto mientras sus horas quedaban dentro, y a
+dos personas eso les cambiaba si superaban o no el umbral del MBO FAS.
+
+> **Las horas de la nómina no coinciden con las de la bitácora para quien trabaja de noche, y
+> no es un fallo.** Son dos preguntas distintas —"¿cuántas horas cayeron en este mes?" y
+> "¿cómo fue ese turno?"— y cada una tiene su ventana.
+
 ## La fórmula
 
 ```
@@ -135,7 +154,7 @@ la celda de configuración, y la celda real de mayo y junio tenía 7. Reproducie
 
 | Dato | Fuente |
 |---|---|
-| Horas efectivas | `fv_tramo`, situaciones efectivas (viaje + espera), jornada 05→05, solapes fundidos |
+| Horas efectivas | `fv_tramo`, situaciones efectivas (viaje + espera), **día natural**, solapes fundidos |
 | Nocturnas | El trozo de esas horas entre las 22:00 y las 06:00 (hora de Madrid) |
 | Utilización | viaje ÷ (viaje + espera) — el `has_order` de BOLT sobre el tiempo conectado. La columna enseña la REAL, antes del recorte |
 | Propinas, peajes, facturación neta | `v_ordenes_conductor`, sobre `bolt_order` |
@@ -148,20 +167,19 @@ mensual del libro de horas, el DNI y el alta de AGENDA_V2, y la configuración, 
 y los meses cerrados vivían en tres hojas más; encima había una ruta de diagnóstico que
 preguntaba a BOLT en caliente. Todo eso está en PostgreSQL.
 
-Las horas son **la misma definición** que la bitácora y que el Reporte de horas. Están
-comprobadas: en agosto de 2026, las 225 personas comparables salen idénticas a la bitácora
-sellada.
-
-## Las horas que la bitácora no tiene
+## La gente que la bitácora no tiene
 
 La bitácora **sella** las horas el día que la jornada cierra y ya no las recalcula, para que
 el pasado no se mueva. Consecuencia: a quien se le enlace su cuenta de BOLT más tarde no
 aparece allí, aunque sí trabajara.
 
 La nómina no puede permitirse eso — dejaría a alguien sin cobrar 137 horas —, así que
-calcula ella y **cuenta a todo el que trabajó**. A cambio, los dos números se separan para
-esas personas, y en vez de callarlo el panel las nombra. Si el desfase molesta, se arregla
-resellando el mes desde la bitácora (`POST /bitacora/api/resellar`, del desarrollador).
+calcula ella y **cuenta a todo el que trabajó**. El panel nombra a quien la bitácora no tiene
+en absoluto, que sí conviene saberlo; se arregla resellando el mes
+(`POST /bitacora/api/resellar`, del desarrollador).
+
+Eso **no** es la lista de "a quién le bailan las horas entre las dos pantallas": a quien
+trabaja de noche le bailan siempre, porque las dos miden ventanas distintas a propósito.
 
 ## Los dos nombres del Excel
 

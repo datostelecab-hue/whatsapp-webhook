@@ -5,7 +5,7 @@
 // mismas que llevaban meses cuadrando; lo que ha cambiado es de dónde salen los
 // datos: antes de Google Sheets y de la API de BOLT, ahora de PostgreSQL.
 //
-// ── LAS CUATRO REGLAS QUE HAY QUE SABER ────────────────────────────────────────
+// ── LAS CINCO REGLAS QUE HAY QUE SABER ────────────────────────────────────────
 //
 // 1. A MES VENCIDO. La nómina de un mes se calcula con los datos del mes
 //    ANTERIOR: la de julio paga el trabajo de junio; la de enero, el de
@@ -81,6 +81,27 @@
 //
 //    La cifra retirada se ensena en su columna: a quien le baja la nomina por
 //    esto merece ver cuantas horas se le han quitado, no un "sale asi".
+//
+// 5. EL MES ES EL MES: DEL DIA 1 A LAS 00:00 AL ULTIMO A LAS 23:59. Sin
+//    cortes raros y sin la jornada operativa 05->05 del resto del ERP.
+//
+//    La bitacora y el reporte de horas miden por JORNADA (05:00 a 05:00), que
+//    es lo correcto para control de TURNOS: quieren ver la noche entera junta.
+//    Una nomina no es eso: paga lo que paso EN EL MES. Quien rueda la madrugada
+//    del 1 de septiembre cobra esas horas en septiembre, aunque para la bitacora
+//    sean del turno del 31 de agosto.
+//
+//    Igual con las J: una J del 1 de septiembre cubre ese dia natural entero,
+//    de 00:00 a 23:59.
+//
+//    Y asi horas, dinero y J miran la MISMA ventana. Cuando las horas se
+//    cortaban a las 05:00 y el dinero a medianoche (que es como agrupa
+//    v_ordenes_conductor) las dos mitades del calculo no cuadraban en el borde
+//    del mes, y a dos personas eso les cambiaba si pasaban o no el umbral FAS.
+//
+//    CONSECUENCIA ESPERADA: las horas de la nomina no coinciden con las de la
+//    bitacora para quien trabaja de noche. No es un fallo: son dos preguntas
+//    distintas y cada una tiene su ventana.
 //
 // ── LO QUE SE GUARDA ────────────────────────────────────────────────────────
 // Solo el resultado CONGELADO. No hay "snapshot de datos crudos" como en las
