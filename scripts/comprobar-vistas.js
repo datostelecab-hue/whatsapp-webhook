@@ -37,11 +37,29 @@ const sinEjs = s => s
   .replace(/<%[-=]([\s\S]*?)%>/g, '(0)')
   .replace(/<%([\s\S]*?)%>/g, '');
 
-const ficheros = fs.readdirSync(DIR).filter(f => f.endsWith('.ejs')).sort();
+// Las vistas viven en DOS sitios mientras dura la Fase 2: views/ y la carpeta
+// `vistas/` de cada modulo ya mudado. Una vista que se escape de aqui es una
+// pantalla que se queda cargando para siempre sin un solo mensaje en el
+// servidor, que es justo lo que este comprobador existe para evitar.
+const MODULOS = path.join(__dirname, '..', 'modules');
+const ficheros = fs.readdirSync(DIR).filter(f => f.endsWith('.ejs')).sort()
+  .map(f => ({ nombre: f, ruta: path.join(DIR, f) }));
+
+if (fs.existsSync(MODULOS)) {
+  for (const m of fs.readdirSync(MODULOS, { withFileTypes: true })) {
+    if (!m.isDirectory()) continue;
+    const dv = path.join(MODULOS, m.name, 'vistas');
+    if (!fs.existsSync(dv)) continue;
+    for (const f of fs.readdirSync(dv).filter(x => x.endsWith('.ejs')).sort()) {
+      ficheros.push({ nombre: `${m.name}/${f}`, ruta: path.join(dv, f) });
+    }
+  }
+}
+
 let fallos = 0, revisados = 0;
 
-for (const f of ficheros) {
-  const html = fs.readFileSync(path.join(DIR, f), 'utf8');
+for (const { nombre: f, ruta } of ficheros) {
+  const html = fs.readFileSync(ruta, 'utf8');
   for (const s of scriptsDe(html)) {
     const codigo = sinEjs(s.codigo);
     if (!codigo.trim()) continue;

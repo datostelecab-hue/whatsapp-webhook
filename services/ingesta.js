@@ -276,7 +276,7 @@ const TAREAS = {
     // parar el resto de la ingesta ni llenar los logs de alarmas rojas.
     critica: false,
     async ejecutar() {
-      const r = await require('./sincroMapon').diaria();
+      const r = await require('../modules/Vehiculos/vehiculos.service').diaria();
       return { registros: r.odometros.actualizados, detalle: r };
     },
   },

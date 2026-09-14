@@ -32,7 +32,7 @@ const PUERTA = ['services/ingesta.js'];
 const BRAZOS = [
   'services/cazamientoBolt.js',
   'services/conductoresBolt.js',
-  'services/sincroMapon.js',
+  'modules/Vehiculos/vehiculos.service.js',
   'services/mapon.js',
   'services/bolt.js',
   'services/repo/vehiculosBolt.js',

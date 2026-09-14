@@ -134,7 +134,49 @@ function cadenasDe(src) {
   return trozos;
 }
 
+// Cuenta lineas de verdad: en un fichero con CRLF, partir solo por el salto
+// de linea deja un retorno de carro suelto en cada una.
+const nLineas = t => t.split(/\r?\n/).length;
+
 const ES_SQL = /\b(SELECT\s+[\s\S]*\bFROM\b|INSERT\s+INTO\b|UPDATE\s+\w+\s+SET\b|DELETE\s+FROM\b)/i;
+
+/**
+ * A qué módulo pertenece un fichero, si es que pertenece a alguno.
+ * 'modules/Vehiculos/vehiculos.repo' → 'Vehiculos'.
+ */
+const moduloDe = rel => { const m = /^modules\/([^/]+)\//.exec(rel || ''); return m ? m[1] : null; };
+
+/**
+ * LA REGLA QUE HACE QUE MODULARIZAR SIRVA DE ALGO: desde fuera de un módulo se
+ * entra por su SERVICIO, nunca por su repositorio.
+ *
+ * Si el planificador lee directamente `vehiculos.repo`, entonces Vehículos ya
+ * no puede cambiar por dentro sin romper al planificador — y poder cambiar por
+ * dentro era justo lo que se iba a ganar agrupándolo. Una carpeta sin esta
+ * regla es una carpeta, no un módulo.
+ */
+function invadeOtroModulo(ficheroPropio, rel) {
+  const suyo = moduloDe(rel);
+  if (!suyo || !/\.repo$/.test(rel)) return false;
+  return moduloDe(ficheroPropio) !== suyo;
+}
+
+/**
+ * ¿Es este fichero un REEXPORTADOR? O sea, todo su cuerpo es
+ * `module.exports = require('…')` y nada más.
+ *
+ * Son los puentes que deja la Fase 2 en la ruta vieja cuando un módulo se muda,
+ * para que una referencia que se haya escapado siga funcionando en vez de dar
+ * un 500. Que un reexportador apunte al repositorio de un módulo NO es saltarse
+ * la regla: es exactamente su trabajo, porque tiene que seguir ofreciendo la
+ * misma puerta que ofrecía el fichero al que sustituye.
+ *
+ * No se callan: se listan aparte, porque son deuda con fecha de caducidad.
+ */
+function esReexportador(desnudo) {
+  const cuerpo = desnudo.replace(/\s+/g, ' ').trim();
+  return /^module\.exports\s*=\s*require\(\s*['"][^'"]+['"]\s*\)\s*;?$/.test(cuerpo);
+}
 
 // ── LA LISTA QUE HAY QUE DISCUTIR ──────────────────────────────────────────
 // `services/` guarda hoy dos cosas que no se parecen en nada:
@@ -198,6 +240,11 @@ function importes(desnudo, desde) {
     else if (rel.startsWith('services/repo/')) capa = 'repositorio';
     else if (rel.startsWith('services/')) capa = 'servicio';
     else if (rel.startsWith('routes/')) capa = 'controlador';
+    // Dentro de modules/ la capa la dice el sufijo del fichero. Las mismas
+    // reglas valen ahi: mudarse de carpeta no exime de nada.
+    else if (/^modules\/[^/]+\/.*\.repo$/.test(rel)) capa = 'repositorio';
+    else if (/^modules\/[^/]+\/.*\.service$/.test(rel)) capa = 'servicio';
+    else if (/^modules\/[^/]+\/.*\.controller$/.test(rel)) capa = 'controlador';
     out.push({ spec, rel, capa });
   }
   return out;
@@ -244,12 +291,20 @@ function revisarControlador(fichero) {
   const conCadenas = sinComentarios(src);
   const imps = importes(conCadenas, abs);
   const faltas = [], avisos = [];
+  if (esReexportador(desnudo)) {
+    return { fichero, capa: 'controlador', puente: true, faltas, avisos,
+      manejadores: 0, lineas: nLineas(src), dominio: [],
+      apuntaA: (imps[0] || {}).rel };
+  }
 
   for (const rel of new Set(imps.filter(i => i.capa === 'base').map(i => i.rel))) {
     faltas.push({ que: 'importa el pool de la base', detalle: rel });
   }
   for (const s of cadenasDe(src)) {
     if (ES_SQL.test(s)) { faltas.push({ que: 'lleva SQL dentro', detalle: s.replace(/\s+/g, ' ').trim().slice(0, 70) + '…' }); break; }
+  }
+  for (const rel of new Set(imps.filter(i => invadeOtroModulo(fichero, i.rel)).map(i => i.rel))) {
+    faltas.push({ que: 'entra al repositorio de OTRO modulo (se entra por su servicio)', detalle: rel });
   }
 
   // Nombres de los módulos de dominio que importa, para contarlos por manejador.
@@ -284,7 +339,7 @@ function revisarControlador(fichero) {
   }
 
   return { fichero, capa: 'controlador', faltas, avisos, manejadores: manes.length,
-    lineas: src.split('\n').length, dominio: [...new Set(dominio)] };
+    lineas: nLineas(src), dominio: [...new Set(dominio)] };
 }
 
 // ── Revisar un repositorio ─────────────────────────────────────────────────
@@ -293,6 +348,10 @@ function revisarRepositorio(fichero) {
   const src = fs.readFileSync(abs, 'utf8');
   const imps = importes(sinComentarios(src), abs);
   const faltas = [];
+  if (esReexportador(desnudar(src))) {
+    return { fichero, capa: 'repositorio', puente: true, faltas, avisos: [],
+      lineas: nLineas(src), apuntaA: (imps[0] || {}).rel };
+  }
   // La flecha va hacia abajo. Un repositorio que llama a un servicio de dominio
   // deja de ser la capa de datos: ya no se puede leer ni probar una sin la otra.
   // Los adaptadores no cuentan: son el suelo, no una capa de encima.
@@ -302,15 +361,31 @@ function revisarRepositorio(fichero) {
   for (const rel of new Set(imps.filter(i => i.capa === 'controlador').map(i => i.rel))) {
     faltas.push({ que: 'llama a un controlador', detalle: rel });
   }
-  return { fichero, capa: 'repositorio', faltas, avisos: [], lineas: src.split('\n').length };
+  for (const rel of new Set(imps.filter(i => invadeOtroModulo(fichero, i.rel)).map(i => i.rel))) {
+    faltas.push({ que: 'entra al repositorio de OTRO modulo (se entra por su servicio)', detalle: rel });
+  }
+  return { fichero, capa: 'repositorio', faltas, avisos: [], lineas: nLineas(src) };
 }
 
 // ── Arranque ───────────────────────────────────────────────────────────────
-const rutas = fs.readdirSync(path.join(RAIZ, 'routes')).filter(f => f.endsWith('.js')).sort();
-const repos = fs.readdirSync(path.join(RAIZ, 'services', 'repo')).filter(f => f.endsWith('.js')).sort();
+// Se miran los dos sitios A LA VEZ: `routes/` y `services/repo/` (la casa
+// vieja) y `modules/*/` (la nueva). Durante la Fase 2 conviven, y un modulo ya
+// mudado que se escape del comprobador seria justo la forma de perder lo
+// ganado en la Fase 1 sin enterarse.
+const dir = p => { try { return fs.readdirSync(path.join(RAIZ, p)); } catch (e) { return []; } };
 
-const infC = rutas.map(f => revisarControlador('routes/' + f));
-const infR = repos.map(f => revisarRepositorio('services/repo/' + f));
+const rutas = dir('routes').filter(f => f.endsWith('.js')).sort().map(f => 'routes/' + f);
+const repos = dir('services/repo').filter(f => f.endsWith('.js')).sort().map(f => 'services/repo/' + f);
+
+for (const m of dir('modules')) {
+  for (const f of dir('modules/' + m).sort()) {
+    if (f.endsWith('.controller.js')) rutas.push(`modules/${m}/${f}`);
+    else if (f.endsWith('.repo.js')) repos.push(`modules/${m}/${f}`);
+  }
+}
+
+const infC = rutas.map(revisarControlador);
+const infR = repos.map(revisarRepositorio);
 const todos = [...infC, ...infR];
 
 const nFaltas = todos.reduce((a, x) => a + x.faltas.length, 0);
@@ -334,6 +409,13 @@ if (!SOLO_MEDIR) {
     console.log(`\n  ${x.fichero}  (${x.lineas} líneas, ${x.manejadores} rutas)`);
     x.avisos.forEach(a => console.log(`      · ${a.que}: ${a.detalle}`));
   }
+}
+
+const puentes = todos.filter(x => x.puente);
+if (!SOLO_MEDIR && puentes.length) {
+  console.log('\n═══ REEXPORTADORES (la ruta vieja, viva a propósito) ═══');
+  console.log('  Se borran cuando inventario-muerto.js diga que no los apunta nadie.');
+  for (const x of puentes) console.log(`  · ${x.fichero}  →  ${x.apuntaA}`);
 }
 
 console.log('\n═══ LA FOTO ═══');

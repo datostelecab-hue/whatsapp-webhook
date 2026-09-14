@@ -35,7 +35,17 @@ app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), { ma
 // Configurar EJS con layouts
 app.use(expressLayouts);
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
+// DOS raices de vistas, no una. Express busca en orden, asi que un modulo ya
+// mudado puede llevarse su .ejs dentro (modules/Vehiculos/vistas/) sin que
+// `res.render('vehiculos')` cambie ni una letra, y el layout comun sigue
+// encontrandose en views/. Durante la Fase 2 conviven las dos casas.
+const RAICES_VISTAS = [path.join(__dirname, 'views')];
+for (const m of require('fs').readdirSync(path.join(__dirname, 'modules'), { withFileTypes: true })) {
+  if (!m.isDirectory()) continue;
+  const v = path.join(__dirname, 'modules', m.name, 'vistas');
+  if (require('fs').existsSync(v)) RAICES_VISTAS.push(v);
+}
+app.set('views', RAICES_VISTAS);
 app.set('layout', 'layout');
 
 // Marca de version para los estaticos. Los archivos de /assets se cachean un
@@ -89,7 +99,7 @@ const resumenRoutes = require('./routes/resumen');
 const agendaRoutes = require('./routes/agenda');
 const matchingRoutes = require('./routes/matching');
 const coberturaRoutes = require('./routes/cobertura');
-const vehiculosRoutes = require('./routes/vehiculos');
+const vehiculosRoutes = require('./modules/Vehiculos/vehiculos.controller');
 const plantillaRoutes = require('./routes/plantilla');
 const documentosRoutes = require('./routes/documentos');
 const libranzasRoutes = require('./routes/libranzas');

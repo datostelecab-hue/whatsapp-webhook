@@ -22,7 +22,9 @@ const plan = require('../services/repo/planificador');
 const actor = require('../services/repo/actor');
 const conds = require('../services/repo/conductores');
 
-const veh = require('../services/repo/vehiculos');
+// Los estados de coche se le piden al MODULO de vehiculos por su puerta, no a
+// su repositorio: ver modules/Vehiculos/vehiculos.service.js.
+const veh = require('../modules/Vehiculos/vehiculos.service');
 const { DIAS_SEM, LETRAS_DIA } = require('../services/planificadorV2');
 
 const responde = fn => async (req, res) => {
