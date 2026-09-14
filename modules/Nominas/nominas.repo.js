@@ -386,7 +386,13 @@ async function sinSellarEnBitacora(desdeIso, hastaIso, ids) {
       WHERE c.id = ANY($3::bigint[])
         AND NOT EXISTS (
           SELECT 1 FROM bitacora_horas b
-           WHERE b.conductor_id = c.id AND b.dia_operativo BETWEEN $1::date AND $2::date)`,
+           WHERE b.conductor_id = c.id
+             -- UN DIA MAS POR DETRAS. La nomina cuenta dias naturales y la
+             -- bitacora jornadas 05->05, asi que los dias naturales 1..31 de
+             -- agosto caen en las jornadas del 31 de JULIO al 31 de agosto.
+             -- Sin ese dia extra, quien solo rodo la madrugada del dia 1 salia
+             -- acusado de no estar en la bitacora cuando si esta, un dia antes.
+             AND b.dia_operativo BETWEEN ($1::date - 1) AND $2::date)`,
     [desdeIso, hastaIso, ids]);
   return r.rows.map(x => ({ id: Number(x.id), nombre: x.nombre }));
 }

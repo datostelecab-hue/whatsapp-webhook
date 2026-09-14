@@ -291,7 +291,11 @@ function pintarAvisos(a, cfg) {
   if (a.sinNombreBolt>0) av.push(['muted',`${a.sinNombreBolt} conductor(es) sin nombre de BOLT: en el Excel sale el de la ficha en su lugar.`]);
   if (a.sinApellidosSeparados>0) av.push(['muted',`${a.sinApellidosSeparados} conductor(es) tienen el nombre en una sola pieza (la ficha no separa apellidos de nombres), as\u00ed que en la columna "Nombre de la seguridad social" salen sin la coma. No se parte a ojo: en unos casos son dos apellidos y en otros uno, y alguno va en orden inverso. Se arregla rellen\u00e1ndoles los apellidos en su ficha.`]);
   const ss = (a.sinSellar||[]);
-  if (ss.length) av.push(['muted',`${ss.length} conductor(es) tienen horas aquí que la bitácora NO tiene selladas (se les enlazó la cuenta de BOLT después de cerrar el mes): la nómina los cuenta, la bitácora no. Si quieres que cuadren, resella el mes desde la bitácora → ${ss.map(x=>x.nombre).join(' · ')}`]);
+  if (ss.length) av.push(['muted',`${ss.length} conductor(es) trabajaron y la bitácora no los tiene NI UNA HORA (se les enlazó la cuenta de BOLT después de cerrar el mes): la nómina sí los cuenta. Se arregla resellando el mes desde la bitácora → ${ss.map(x=>x.nombre).join(' · ')}`]);
+  // No confundir esto con "las horas no cuadran entre las dos pantallas": a
+  // quien trabaja de noche no le cuadran nunca, porque la nómina mide el día
+  // natural y la bitácora la jornada 05→05. Es a propósito.
+  av.push(['muted',`Las horas de esta pantalla van por DÍA NATURAL (del 1 a las 00:00 al último a las 23:59), no por la jornada 05→05 de la bitácora: una nómina paga lo que pasó en el mes. Para quien trabaja de noche los dos números no coinciden, y es correcto.`]);
   const c = cfg || {};
   av.push(['muted',`Hora extra: ${c.eurHoraExtra||0} €/h × utilización · Nocturna: ${c.eurHoraNoc||0} × h × ${c.factorNoc||0} · FAS: (neto − umbral) × ${c.pctMBOFAS||0} · umbral 40h=${c.umbralFAS40||0} / 32h=${c.umbralFAS32||0} · objetivo ${c.horasMetaDia||0} h × ${c.diasObjetivo||0} días`]);
   $('#avisos').innerHTML = av.map(([c2,t])=>`<div class="rounded-lg px-3 py-2 text-sm ${c2==='red'?'bg-telecab-red/10 text-telecab-red border border-telecab-red/30':c2==='amber'?'bg-telecab-warn/15 text-telecab-warn border border-telecab-warn/35':'bg-telecab-card2/40 text-telecab-muted'}">${esc(t)}</div>`).join('');

@@ -418,7 +418,11 @@ async function calcular(mesNom, anoNom, opciones = {}) {
 
   // Quién trabajó pero no está sellado en la bitácora: ahí los dos números se
   // separan y conviene decirlo antes de que alguien compare las pantallas.
-  const sinSellar = await repo.sinSellarEnBitacora(desde, hasta, filas.map(f => f.conductorId).filter(Boolean));
+  // Solo se pregunta por quien RODO. A quien tiene el mes entero justificado y
+  // cero horas de BOLT la bitacora tampoco lo tiene, y con razon: no trabajo.
+  // Meterlo aqui seria acusarla de perder a alguien que nunca estuvo.
+  const sinSellar = await repo.sinSellarEnBitacora(desde, hasta,
+    filas.filter(f => f.conductorId && f.horas > 0).map(f => f.conductorId));
 
   return {
     mes: mesNom, ano: anoNom, mesNombre: MESES_NOM[mesNom - 1], diasDelMes,
