@@ -685,21 +685,21 @@ programar('20 4 * * *', async () => {
 //   · Las cuentas sin ficha que se parecen a alguien de la plantilla se quedan
 //     fuera, para no apuntarle la deuda dos veces a la misma persona.
 //
-// CADA CINCO MINUTOS, PEGADO A LA INGESTA. La ingesta trae los pedidos en el
-// minuto 0, 5, 10... y esto los convierte en deuda dos minutos despues, asi que
-// quien viene a la ventanilla ve como mucho siete minutos de retraso.
+// CADA MEDIA HORA. La ingesta trae los pedidos cada cinco minutos, pero no hay
+// ninguna prisa en que un viaje tarde media hora en convertirse en deuda: quien
+// viene a la ventanilla ve, como mucho, media hora de retraso.
 //
 // Y solo mira LAS QUINCENAS QUE PUEDEN CAMBIAR —la de hoy y la anterior—, no
-// todas desde el corte como hace el boton. La diferencia no es cosmetica: la
-// lista de quincenas crece para siempre, y recorrerla entera cada cinco minutos
-// seria 3,3 horas diarias de base de datos dentro de un ano (42 s por pasada,
-// 288 pasadas) haciendo una cuenta que ya estaba hecha. Asi cuesta 3 s siempre.
-programar('2,7,12,17,22,27,32,37,42,47,52,57 * * * *', async () => {
+// todas desde el corte como hace el boton. Eso no es por la frecuencia sino
+// porque la lista de quincenas crece para siempre: recorrerla entera costaria
+// 42 s por pasada dentro de un ano y 83 s dentro de dos, rehaciendo una cuenta
+// que ya estaba hecha. Mirando solo lo vivo cuesta 3 s, hoy y siempre.
+programar('7,37 * * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
     const r = await require('./services/repo/recaudacion').recalcularReciente({});
-    // Solo se escribe cuando algo se movió: un cron que habla cada cinco minutos
+    // Solo se escribe cuando algo se movió: un cron que habla cada media hora
     // para decir "nada" es ruido que acaba tapando el aviso que sí importa.
     const cambios = (r.cambios || []).length, nuevos = (r.nuevos || []).length;
     if (cambios || nuevos) {
