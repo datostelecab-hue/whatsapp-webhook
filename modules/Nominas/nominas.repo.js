@@ -333,10 +333,13 @@ async function fichasDelMes(hastaIso) {
             c.dni_nie,
             pe.tipo,
             pe.jornada_horas,
-            to_char(pe.alta, 'YYYY-MM-DD') AS alta
+            to_char(pe.alta, 'YYYY-MM-DD') AS alta,
+            -- La BAJA, con to_char por lo mismo que el alta: leer un DATE de
+            -- PostgreSQL con toISOString devuelve el dia anterior en Madrid.
+            to_char(pe.baja, 'YYYY-MM-DD') AS baja
        FROM conductor c
        LEFT JOIN LATERAL (
-         SELECT p.tipo, p.jornada_horas, p.alta
+         SELECT p.tipo, p.jornada_horas, p.alta, p.baja
            FROM conductor_periodo_empleo p
           WHERE p.conductor_id = c.id
           ORDER BY (p.alta <= $1::date AND (p.baja IS NULL OR p.baja >= $1::date)) DESC,
@@ -360,6 +363,7 @@ async function fichasDelMes(hastaIso) {
     ett: x.tipo === 'ett',
     jornada: x.jornada_horas == null ? null : Number(x.jornada_horas),
     alta: x.alta || '',
+    baja: x.baja || '',
   }]));
 }
 

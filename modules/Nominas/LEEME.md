@@ -130,13 +130,38 @@ suyas se las pague quien se las pague. Las horas, el objetivo y la diferencia ta
 calculan y se enseñan: son una medida, no un pago. Lo que se pone a cero es lo que se cobra.
 
 Para pasárselas a la agencia está el **parte de trabajo de la ETT**
-(`GET /nominas/ett.xlsx`), con lo justo que ella tiene que abonar:
+(`GET /nominas/ett.xlsx`), que no es una nómina: es **lo que le costamos**. Sale con el
+formato que ella ya usa, columna por columna, y con una única añadida —la fecha de baja—:
 
-| Columna | Qué lleva |
-|---|---|
-| Horas rodadas · Horas justificadas · **HORAS TRABAJADAS** | La suma de las dos, sin el recorte por utilización: ahí no se paga ninguna hora extra |
-| Nocturnidad **(horas)** | En horas, no en euros: la ETT las abona con **su** tarifa |
-| Propinas · Peajes | En euros, que esos son del conductor tal cual |
+```
+Conductor · DNI/NIE · Fecha incorporación · Fecha baja · HORAS · €/h · €/Total ·
+Horas Nocturnas · Plus Nocturnidad · Total Plus Nocturnidad ·
+Total coste trabajador · Propinas € · Peajes €
+```
+
+Las tres cuentas, que son las que la agencia repasa:
+
+```
+€/Total                = HORAS × €/h                         (15,20 €)
+Total Plus Nocturnidad = Horas Nocturnas × Plus Nocturnidad  (1,31 € POR HORA)
+Total coste trabajador = €/Total + Total Plus Nocturnidad
+```
+
+El **plus nocturno es € por hora**, no un porcentaje. No se parece en nada al de la nómina
+de casa —que es `€ hora × horas × factor`— y mezclarlos sería facturar mal. Los dos precios
+se editan desde el panel, como el resto.
+
+Las **HORAS llevan el recorte por utilización**, igual que las de casa: la hora de espera de
+quien no llega al mínimo no se le paga a un conductor nuestro y tampoco se le factura a la
+agencia. Es la misma hora y vale lo mismo, la cobre quien la cobre.
+
+> Por eso el fichero lleva una **segunda pestaña, "Horas descontadas"**: a quién se le ha
+> quitado, cuánto, con qué utilización y cuánto supone en euros. Un descuento sin su
+> argumento al lado es un número que la agencia no puede comprobar, y lo primero que hace un
+> número así es no creerse.
+
+La **fecha de baja** solo sale cuando cae **dentro del mes** que se pide: una de hace tres
+meses no pinta nada en ese parte, y una del mes que viene todavía no ha pasado.
 
 > **Ese Excel va por mes TRABAJADO**, no a mes vencido: se elige agosto y salen los datos de
 > agosto. La nómina va a mes vencido porque es un pago; un parte de trabajo lleva el mes que

@@ -155,6 +155,13 @@ const DEFAULTS = {
   pctMBOFAS: 0.4,       // fracción del exceso de facturación sobre el umbral
   eurHoraNoc: 8.16,     // € hora nocturna
   factorNoc: 0.1,       // multiplicador de nocturnas (€hora × horas × 0.1)
+
+  // ── LO QUE SE LE FACTURA A LA ETT ──────────────────────────────────────
+  // Nada de esto entra en la nómina: son los dos precios del PARTE que se le
+  // manda a la agencia, y por eso viven aquí y no en el código. Los de arriba
+  // dicen lo que cobra un conductor nuestro; estos, lo que cuesta uno suyo.
+  ettEurHora: 15.2,       // € por hora trabajada
+  ettPlusNocturno: 1.31,  // € POR HORA nocturna (no es un porcentaje)
 };
 
 // Orden y etiquetas para el panel. `usado` = si afecta al total (el resto son informativos).
@@ -171,6 +178,8 @@ const CONFIG_CAMPOS = [
   { key: 'pctMBOFAS', label: '% MBO FAS (fracción, 0.4 = 40%)', usado: true },
   { key: 'eurHoraNoc', label: '€ hora nocturna', usado: true },
   { key: 'factorNoc', label: 'Factor nocturnas', usado: true },
+  { key: 'ettEurHora', label: 'ETT · € por hora trabajada', usado: false },
+  { key: 'ettPlusNocturno', label: 'ETT · € por hora nocturna (plus)', usado: false },
 ];
 
 const MESES_NOM = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -325,8 +334,13 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
     jornada,
     primerDia,
     alta: c.alta || '',
+    baja: c.baja || '',
     origenArranque: origen,      // alta-anterior | alta-en-mes | primer-log
     horas: r2(c.horas),
+    // El reparto de esas horas. No es adorno: es el argumento del recorte, y
+    // sin el la agencia solo ve un numero que le resta y no lo puede comprobar.
+    horasViaje: r2(viaje),
+    horasEspera: r2(espera),
     horasEsperaQuitadas: r2(horasEsperaQuitadas),
     horasJustificadas: r2(horasJustificadas),
     horasNoJustificadas: r2(horasNoJustificadas),
@@ -391,6 +405,7 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       ett: !!f.ett,
       jornada: f.jornada,
       alta: f.alta || '',
+      baja: f.baja || '',
       primerDia: h.primerDia,
       horas: h.horasSeg / 3600,
       viajeH: h.viajeSeg / 3600,
@@ -422,6 +437,7 @@ async function calcular(mesNom, anoNom, opciones = {}) {
       ett: !!f.ett,
       jornada: f.jornada,
       alta: f.alta || '',
+      baja: f.baja || '',
       primerDia: Math.min(...j.aprobados),
       horas: 0,
       viajeH: 0,
@@ -533,29 +549,61 @@ const mesSiguiente = (mes, ano) => (mes === 12 ? { mes: 1, ano: ano + 1 } : { me
 async function paraETT(mesTrabajo, anoTrabajo) {
   const pago = mesSiguiente(mesTrabajo, anoTrabajo);
   const r = await calcular(pago.mes, pago.ano);
+  const cfg = r.config;
+  // Solo la baja que cae DENTRO del mes que se pide. Una de hace tres meses no
+  // pinta nada en este parte, y una del mes que viene todavia no ha pasado: en
+  // el mes del informe esa persona segue trabajando.
+  const bajaDelMes = baja => (baja && baja >= r.desde && baja <= r.hasta ? baja : '');
+
   const filas = r.filas
     .filter(f => f.ett)
-    .map(f => ({
-      ...f,
-      // Lo que la ETT llama "horas trabajadas": lo rodado mas lo justificado.
-      // Sin el recorte por utilizacion: ese recorte existe para no pagar horas
-      // extra por estar conectado, y aqui no se paga ninguna hora extra.
-      horasTrabajadas: r2(f.horas + f.horasJustificadas),
-    }))
+    .map(f => {
+      // LAS HORAS QUE SE LE PAGAN A LA AGENCIA LLEVAN EL RECORTE POR
+      // UTILIZACION, igual que las de casa. La hora de espera de quien no llega
+      // al minimo no se le paga a un conductor nuestro y tampoco se le factura
+      // a la ETT: es la misma hora y vale lo mismo, la cobre quien la cobre.
+      const horasTrabajadas = r2(f.horas - f.horasEsperaQuitadas + f.horasJustificadas);
+      const importeHoras = r2(horasTrabajadas * cfg.ettEurHora);
+      // El plus nocturno es € POR HORA, no un porcentaje: 1,31 € cada hora
+      // nocturna. No se parece en nada al de la nomina de casa (€hora x factor)
+      // y mezclarlos seria facturar mal.
+      const plusNocturno = r2(f.nocturnasHoras * cfg.ettPlusNocturno);
+      return {
+        ...f,
+        horasTrabajadas,
+        importeHoras,
+        plusNocturno,
+        // Lo que la agencia se ahorra por el recorte, en euros. En horas ya lo
+        // tiene; en euros es lo que va a mirar.
+        importeDescontado: r2(f.horasEsperaQuitadas * cfg.ettEurHora),
+        // Lo que cuesta esa persona: sus horas mas su nocturnidad.
+        costeTrabajador: r2(importeHoras + plusNocturno),
+        bajaEnElMes: bajaDelMes(f.baja),
+      };
+    })
     .sort((a, b) => b.horasTrabajadas - a.horasTrabajadas);
 
   const totales = filas.reduce((t, f) => {
     t.horas += f.horas; t.horasJustificadas += f.horasJustificadas;
+    t.horasEsperaQuitadas += f.horasEsperaQuitadas;
     t.horasTrabajadas += f.horasTrabajadas; t.nocturnasHoras += f.nocturnasHoras;
+    t.importeHoras += f.importeHoras; t.plusNocturno += f.plusNocturno;
+    t.importeDescontado += f.importeDescontado;
+    t.costeTrabajador += f.costeTrabajador;
     t.propinas += f.propinas; t.peajes += f.peajes;
     return t;
-  }, { horas: 0, horasJustificadas: 0, horasTrabajadas: 0, nocturnasHoras: 0, propinas: 0, peajes: 0 });
+  }, { horas: 0, horasJustificadas: 0, horasEsperaQuitadas: 0, horasTrabajadas: 0,
+       nocturnasHoras: 0, importeHoras: 0, plusNocturno: 0, costeTrabajador: 0,
+       importeDescontado: 0, propinas: 0, peajes: 0 });
   Object.keys(totales).forEach(k => { totales[k] = r2(totales[k]); });
 
   return {
     mes: mesTrabajo, ano: anoTrabajo, mesNombre: MESES_NOM[mesTrabajo - 1],
     desde: r.desde, hasta: r.hasta,
     trabajoIncompleto: r.avisos.trabajoIncompleto,
+    eurHora: cfg.ettEurHora, plusNocturno: cfg.ettPlusNocturno,
+    utilMinima: cfg.utilMinima,
+    bajasEnElMes: filas.filter(f => f.bajaEnElMes).length,
     filas, totales,
   };
 }

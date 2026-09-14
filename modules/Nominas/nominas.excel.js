@@ -288,72 +288,134 @@ async function generarExcelNomina(r) {
   return wb.xlsx.writeBuffer();
 }
 
+/** nomina-variable-septiembre-2026.xlsx */
+function nombreFichero(r) {
+  const mes = (r.mesNombre || '').toLowerCase() || String(r.mes);
+  return `nomina-variable-${mes}-${r.ano}.xlsx`;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
-// EL FICHERO DE LA ETT
+// EL PARTE DE LA ETT
 // ════════════════════════════════════════════════════════════════════════════
 // A quien viene por agencia lo contrata y lo paga ella. Nosotros le medimos el
-// trabajo y se lo pasamos: esto es un PARTE DE TRABAJO, no una nómina.
+// trabajo y se lo facturamos: esto no es una nómina, es LO QUE LE COSTAMOS.
 //
-// Por eso lleva solo cuatro cifras y ningún euro de MBO:
+// El formato es el que la agencia ya usa, columna por columna. No se ha
+// "mejorado" ninguna: un fichero de intercambio lo lee alguien que tiene el
+// suyo al lado y lo compara a ojo, y una columna que baila hace dudar de todo
+// lo demás. Lo único añadido es la FECHA DE BAJA, que hacía falta.
 //
-//   Horas trabajadas   lo rodado más lo justificado
-//   Nocturnidad        EN HORAS, no en euros: la ETT las abona con SU tarifa
-//   Propinas y peajes  en euros, que esos son del conductor tal cual
+//   Conductor · DNI/NIE · Fecha incorporación · Fecha baja · HORAS · €/h ·
+//   €/Total · Horas Nocturnas · Plus Nocturnidad · Total Plus Nocturnidad ·
+//   Total coste trabajador · Propinas € · Peajes €
 //
-// Y por eso va por mes TRABAJADO: se elige agosto y salen los datos de agosto.
-// La nómina va a mes vencido porque es un pago; un parte de trabajo lleva el
-// mes que dice. El subtítulo lo repite para que nadie lo confunda.
+// LAS TRES CUENTAS, que son las que la agencia va a repasar:
+//   €/Total                = HORAS × €/h
+//   Total Plus Nocturnidad = Horas Nocturnas × Plus Nocturnidad
+//   Total coste trabajador = €/Total + Total Plus Nocturnidad
+//
+// EL PLUS NOCTURNO ES € POR HORA (1,31 € cada hora nocturna), no un
+// porcentaje. No se parece en nada al de la nómina de casa —que es € hora ×
+// horas × un factor— y mezclarlos sería facturar mal.
+//
+// LAS HORAS LLEVAN EL RECORTE POR UTILIZACIÓN, igual que las de casa. La hora
+// de espera de quien no llega al mínimo no se le paga a un conductor nuestro y
+// tampoco se le factura a la agencia: es la misma hora y vale lo mismo, la
+// cobre quien la cobre. La SEGUNDA PESTAÑA existe para eso: dice a quién se le
+// ha descontado, cuánto, y con qué utilización — que es el argumento.
+//
+// Y va por mes TRABAJADO, no a mes vencido: se elige agosto y salen los datos
+// de agosto. La nómina va a mes vencido porque es un pago; un parte de trabajo
+// lleva el mes que dice. El subtítulo lo repite para que nadie lo confunda.
 
+// Formato de CONTABILIDAD: un cero sale como "- €" en vez de "0,00 €", que es
+// como lo tiene la agencia en su hoja y como se lee de un vistazo una columna
+// con muchos ceros.
+const CONTA = '_-* #,##0.00\\ "€"_-;\\-* #,##0.00\\ "€"_-;_-* "-"\\ "€"_-;_-@_-';
+const HORAS_ETT = '#,##0.0#';
+const FECHA = 'd/m/yyyy';
+
+/**
+ * 'AAAA-MM-DD' a una fecha que Excel escriba EN SU DÍA.
+ *
+ * En UTC a propósito. Un `new Date('2026-07-09')` local es medianoche de
+ * Madrid, y esa medianoche en UTC es el día 8 a las 22:00: Excel guarda el
+ * instante y al abrirlo se lee el 8. Es el mismo fallo que ya se documentó en
+ * el proyecto con las fechas de PostgreSQL, y que se coló una vez entero en el
+ * Excel de la gestoría: 249 fechas de ingreso, todas un día antes.
+ */
+function fechaUTC(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+}
+
+// Título, ancho, de dónde sale y con qué formato. El orden es el de su hoja.
 const COL_ETT = [
-  ['ID de BOLT', 30, 'nombreBolt', null],
-  ['Nombre de la seguridad social', 36, 'nombreSS', null],
-  ['DNI/NIE', 13, 'dni', null],
-  ['Horas rodadas', 13, 'horas', HORAS],
-  ['Horas justificadas', 15, 'horasJustificadas', HORAS],
-  ['HORAS TRABAJADAS', 17, 'horasTrabajadas', HORAS],
-  ['Nocturnidad (horas)', 17, 'nocturnasHoras', HORAS],
-  ['Propinas', 11, 'propinas', EUROS],
-  ['Peajes', 10, 'peajes', EUROS],
+  ['Conductor', 34, f => f.nombreSS || f.nombre, null],
+  ['DNI/NIE', 13, f => f.dni, null],
+  ['Fecha incorporación', 17, f => fechaUTC(f.alta), FECHA],
+  ['Fecha baja', 13, f => fechaUTC(f.bajaEnElMes), FECHA],
+  ['HORAS', 10, f => f.horasTrabajadas, HORAS_ETT],
+  ['€/h', 8, (f, r) => r.eurHora, '#,##0.00'],
+  ['€/Total', 12, f => f.importeHoras, '#,##0.00'],
+  ['Horas Nocturnas', 14, f => f.nocturnasHoras, HORAS_ETT],
+  ['Plus Nocturnidad', 14, (f, r) => r.plusNocturno, '#,##0.00'],
+  ['Total Plus Nocturnidad', 18, f => f.plusNocturno, CONTA],
+  ['Total coste trabajador', 18, f => f.costeTrabajador, CONTA],
+  ['Propinas €', 11, f => f.propinas, CONTA],
+  ['Peajes €', 10, f => f.peajes, CONTA],
 ];
 
-/** El parte de la ETT de un mes trabajado. Devuelve los bytes. */
-async function generarExcelETT(r) {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'Telecab';
-  const idLogo = E.registrarLogo(wb);
-  const ws = wb.addWorksheet(`ETT ${r.mesNombre} ${r.ano}`);
-  COL_ETT.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
+// La segunda pestaña: por qué a alguien se le pagan menos horas de las que
+// estuvo conectado. Sin esto, el recorte es un número que la agencia no puede
+// discutir ni comprobar, y lo primero que hace un número así es no creerse.
+const COL_DESCUENTO = [
+  ['Conductor', 34, f => f.nombreSS || f.nombre, null],
+  ['DNI/NIE', 13, f => f.dni, null],
+  ['Horas conectado', 14, f => f.horas, HORAS_ETT],
+  ['De las cuales, en viaje', 18, f => f.horasViaje, HORAS_ETT],
+  ['De las cuales, esperando', 19, f => f.horasEspera, HORAS_ETT],
+  ['% Utilización', 12, f => (f.utilPct == null ? null : f.utilPct / 100), '0.0%'],
+  ['Mínimo exigido', 13, (f, r) => r.utilMinima, '0.0%'],
+  ['Horas de espera descontadas', 22, f => f.horasEsperaQuitadas, HORAS_ETT],
+  ['Horas justificadas', 15, f => f.horasJustificadas, HORAS_ETT],
+  ['HORAS QUE SE PAGAN', 18, f => f.horasTrabajadas, HORAS_ETT],
+  ['Importe descontado', 16, f => f.importeDescontado, CONTA],
+];
 
-  const sub2 = `Personal de ETT · TRABAJO DE ${r.mesNombre.toUpperCase()} ${r.ano}` +
-    ` (no es a mes vencido: son los datos de ese mismo mes) · ${r.filas.length} conductores` +
-    (r.trabajoIncompleto ? ' · ¡EL MES AÚN NO HA TERMINADO!' : '') + ` · generado ${sello()}`;
-  let fila = E.bandaCabecera(ws, idLogo, 'PARTE DE TRABAJO · ETT', sub2, COL_ETT.length);
+/** Pinta una tabla con la banda de la casa, su cabecera, su pie y su filtro. */
+function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce } = {}) {
+  columnas.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
+  let fila = E.bandaCabecera(ws, idLogo, titulo, subtitulo, columnas.length);
   const filaCab = fila;
-  fila = E.cabeceraTabla(ws, fila, COL_ETT.map(c => c[0]));
+  fila = E.cabeceraTabla(ws, fila, columnas.map(c => c[0]));
   const primera = fila;
 
-  for (const f of r.filas) {
+  for (const f of filas) {
     const row = ws.getRow(fila++);
-    COL_ETT.forEach(([, , clave, fmt], i) => {
+    columnas.forEach(([, , saca, fmt], i) => {
       const c = row.getCell(i + 1);
-      c.value = clave === 'nombreBolt' ? (f.nombreBolt || f.nombre || '')
-        : clave === 'nombreSS' ? (f.nombreSS || f.nombre || '')
-        : f[clave];
+      const v = saca(f, r);
+      c.value = v === undefined ? null : v;
       if (fmt) c.numFmt = fmt;
       c.border = E.TODOS_BORDES;
-      if (clave === 'horasTrabajadas') c.font = { bold: true };
     });
+    if (realce) realce(row, f);
   }
 
   const ultima = fila - 1;
   const pie = ws.getRow(fila);
-  pie.getCell(1).value = `TOTAL (${r.filas.length})`;
+  pie.getCell(1).value = `TOTAL (${filas.length})`;
   pie.getCell(1).font = { bold: true };
-  COL_ETT.forEach(([, , clave, fmt], i) => {
+  columnas.forEach(([, , , fmt], i) => {
     const c = pie.getCell(i + 1);
     c.fill = E.relleno('FFF7F8FA');
     c.border = E.TODOS_BORDES;
-    if (!fmt || ultima < primera) return;
+    // Solo se suma lo que tiene sentido sumar. Un precio por hora repetido en
+    // doscientas filas no se suma, y un porcentaje tampoco: sumarlos daría un
+    // número sin significado en negrita, que es peor que una celda vacía.
+    const sumable = fmt && fmt !== FECHA && !/%/.test(fmt) && !['€/h', 'Plus Nocturnidad', 'Mínimo exigido'].includes(columnas[i][0]);
+    if (!sumable || ultima < primera) return;
     const L = E.colLetra(i + 1);
     c.value = { formula: `SUM(${L}${primera}:${L}${ultima})` };
     c.numFmt = fmt;
@@ -362,31 +424,79 @@ async function generarExcelETT(r) {
 
   ws.views = [{ state: 'frozen', ySplit: filaCab }];
   if (ultima >= primera) {
-    ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: COL_ETT.length } };
+    ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: ultima, column: columnas.length } };
   }
+  return fila;
+}
 
-  // Una nota al pie, porque este fichero sale de la empresa.
-  const n = ws.getRow(fila + 2);
-  n.getCell(1).value = 'Horas trabajadas = horas rodadas en BOLT + horas justificadas. ' +
-    'Una J cubre la jornada del día (8 h), sin pasar de ahí.';
-  n.getCell(1).font = { size: 9, color: { argb: E.TENUE } };
-  const n2 = ws.getRow(fila + 3);
-  n2.getCell(1).value = 'La nocturnidad va EN HORAS (franja de 22:00 a 06:00). Las propinas y los peajes, en euros.';
-  n2.getCell(1).font = { size: 9, color: { argb: E.TENUE } };
-  const n3 = ws.getRow(fila + 4);
-  n3.getCell(1).value = 'El mes va del día 1 a las 00:00 al último a las 23:59.';
-  n3.getCell(1).font = { size: 9, color: { argb: E.TENUE } };
+/** Una nota al pie, en pequeño. Este fichero sale de la empresa. */
+function nota(ws, fila, lineas) {
+  lineas.forEach((t, i) => {
+    const c = ws.getRow(fila + 2 + i).getCell(1);
+    c.value = t;
+    c.font = { size: 9, color: { argb: E.TENUE } };
+  });
+}
+
+/** El parte de la ETT de un mes trabajado. Devuelve los bytes. */
+async function generarExcelETT(r) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Telecab';
+  const idLogo = E.registrarLogo(wb);
+
+  const sub = `Personal de ETT · TRABAJO DE ${r.mesNombre.toUpperCase()} ${r.ano}` +
+    ` (no es a mes vencido: son los datos de ese mismo mes) · ${r.filas.length} conductores` +
+    (r.bajasEnElMes ? ` · ${r.bajasEnElMes} baja(s) en el mes` : '') +
+    (r.trabajoIncompleto ? ' · ¡EL MES AÚN NO HA TERMINADO!' : '') + ` · generado ${sello()}`;
+
+  // ── Pestaña 1: el parte ───────────────────────────────────────────────────
+  const ws = wb.addWorksheet(`ETT ${r.mesNombre} ${r.ano}`);
+  const fin = tabla(ws, idLogo, 'PARTE DE TRABAJO · ETT', sub, COL_ETT, r.filas, r, {
+    // A quien causó baja ese mes, marcado: es lo primero que la agencia busca.
+    realce: (row, f) => {
+      if (!f.bajaEnElMes) return;
+      const c = row.getCell(4);
+      c.fill = E.relleno('FFFEE2E2');
+      c.font = { bold: true, color: { argb: 'FF991B1B' } };
+    },
+  });
+  nota(ws, fin, [
+    `€/Total = HORAS × ${r.eurHora} €/h.  Total Plus Nocturnidad = Horas Nocturnas × ${r.plusNocturno} € ` +
+      '(es € POR HORA nocturna, no un porcentaje).  Total coste trabajador = la suma de los dos.',
+    'HORAS = lo rodado en BOLT, menos las horas de espera descontadas por baja utilización, más las ' +
+      'horas justificadas (una J cubre la jornada del día, 8 h, sin pasar de ahí).',
+    'El detalle de los descuentos, con el porcentaje de utilización de cada uno, está en la segunda pestaña.',
+    'Las horas van por día natural: del día 1 a las 00:00 al último a las 23:59.',
+  ]);
+
+  // ── Pestaña 2: por qué se descuenta ──────────────────────────────────────
+  const conDescuento = r.filas.filter(f => f.horasEsperaQuitadas > 0.005);
+  const wd = wb.addWorksheet('Horas descontadas');
+  const fin2 = tabla(wd, idLogo, 'HORAS DESCONTADAS POR UTILIZACIÓN',
+    `${conDescuento.length} de ${r.filas.length} conductores no llegan al ` +
+    `${(r.utilMinima * 100).toFixed(0)} % de utilización · ` +
+    `${r.totales.horasEsperaQuitadas} h descontadas en total · trabajo de ${r.mesNombre} ${r.ano}`,
+    COL_DESCUENTO, conDescuento, r, {
+      realce: (row, f) => {
+        const c = row.getCell(6);
+        c.fill = E.relleno('FFFEE2E2');
+        c.font = { bold: true, color: { argb: 'FF991B1B' } };
+      },
+    });
+  nota(wd, fin2, [
+    'La UTILIZACIÓN es el tiempo en viaje sobre el tiempo conectado: viaje ÷ (viaje + espera). ' +
+      'Mide cuánto de lo que se factura es servicio y cuánto es esperar.',
+    `Quien no llega al ${(r.utilMinima * 100).toFixed(0)} % se le retiran horas DE ESPERA —nunca de viaje— ` +
+      'hasta que lo alcanza. Después del descuento, todos quedan exactamente en ese mínimo.',
+    'Nunca se descuenta más espera de la que esa persona tuvo: sale de la propia fórmula, ' +
+      'X = (viaje + espera) − viaje ÷ mínimo.',
+    'A quien ya llega al mínimo no se le quita nada, y por eso no aparece en esta pestaña.',
+  ]);
 
   return wb.xlsx.writeBuffer();
 }
 
 /** parte-ett-agosto-2026.xlsx */
 const nombreFicheroETT = r => `parte-ett-${(r.mesNombre || '').toLowerCase()}-${r.ano}.xlsx`;
-
-/** nomina-variable-septiembre-2026.xlsx */
-function nombreFichero(r) {
-  const mes = (r.mesNombre || '').toLowerCase() || String(r.mes);
-  return `nomina-variable-${mes}-${r.ano}.xlsx`;
-}
 
 module.exports = { generarExcelNomina, nombreFichero, generarExcelETT, nombreFicheroETT };
