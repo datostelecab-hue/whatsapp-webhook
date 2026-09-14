@@ -117,7 +117,7 @@ function componerRaw(mail) {
 
 async function enviarComoUsuario(emailRemitente, { to, subject, text, html, attachments } = {}) {
   try {
-    const usuarios = require('./usuarios');
+    const usuarios = require('../modules/Usuarios/usuarios.service');
     const u = await usuarios.buscarUsuario(emailRemitente);
     if (!u) return { enviado: false, motivo: `El remitente ${emailRemitente} no existe` };
     const pass = usuarios.descifrarPassCorreo(u);

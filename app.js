@@ -125,8 +125,8 @@ const peticionesRoutes = require('./routes/peticiones');
 const operacionesRoutes = require('./routes/operaciones');
 const sancionesRoutes = require('./routes/sanciones');
 const bodaRoutes = require('./routes/boda');
-const authRoutes = require('./routes/auth');
-const usuariosRoutes = require('./routes/usuarios');
+const authRoutes = require('./modules/Usuarios/auth.controller');
+const usuariosRoutes = require('./modules/Usuarios/usuarios.controller');
 const sesion = require('./services/sesion');
 const { procesarYUnificar } = require('./services/boltHorasCore');
 

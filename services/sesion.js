@@ -123,7 +123,7 @@ async function idDeSesion(u) {
   if (!k) return null;
   if (_idPorEmail.has(k)) return _idPorEmail.get(k);
   try {
-    const usuarios = require('./usuarios');
+    const usuarios = require('../modules/Usuarios/usuarios.service');
     const x = await usuarios.buscarUsuario(k);
     if (x && x.id) { _idPorEmail.set(k, x.id); return x.id; }
   } catch (_) {}
@@ -172,7 +172,7 @@ async function cargarPermisos(req, res, next) {
     try {
       // `usuarios` se pide aquí dentro y no arriba: los dos módulos se llaman
       // entre sí y en el tope se quedarían a medio cargar.
-      const r = (await require('./usuarios').roles()).find(x => x.codigo === u.rol);
+      const r = (await require('../modules/Usuarios/usuarios.service').roles()).find(x => x.codigo === u.rol);
       if (r) res.locals.rolNombre = r.etiqueta;
     } catch (_) { /* con el código basta para pintar la cabecera */ }
   }
@@ -206,7 +206,7 @@ function requiereDesarrollador(req, res, next) {
 async function sembrarSuperadmin() {
   const email = (process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
   if (!email) { console.log('   Superadmin semilla: SUPERADMIN_EMAIL no definido (omito).'); return; }
-  const usuarios = require('./usuarios');
+  const usuarios = require('../modules/Usuarios/usuarios.service');
   try {
     if (await usuarios.buscarUsuario(email)) { console.log(`   Superadmin semilla: ${email} ya existe.`); return; }
     const nombre = (process.env.SUPERADMIN_NOMBRE || 'Superadmin').trim();
