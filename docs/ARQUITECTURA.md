@@ -37,7 +37,18 @@ services/repo/conductores.js UPDATE conductor_periodo_empleo SET baja = …
 PostgreSQL
 ```
 
-### Y una quinta cosa que NO es una capa: los adaptadores
+### Y dos cosas que NO son una capa
+
+**El núcleo** (`services/nucleo.js`): constantes y funciones puras. Ni base de
+datos, ni red, ni decisiones — nada que pueda fallar, nada que haya que simular
+para probarlo. Las horas que parten la jornada (05→05), el normalizador de
+nombres, el mapa de columnas de la agenda. Lo usa cualquier capa.
+
+Nació al ordenar esto: de los diez repositorios que llamaban hacia arriba, cinco
+no querían el servicio — querían una constante atrapada dentro de él. Y dos de
+esas constantes estaban **duplicadas** en dos módulos distintos.
+
+**Los adaptadores**
 
 `services/whatsapp.js`, `drive.js`, `sheets.js`, `mapon.js`, `bolt.js`,
 `correo.js`, `cripto.js`, `geocoding.js`, `excelEstilo.js`…
@@ -46,8 +57,8 @@ Hablan con el mundo de fuera o son herramienta pura. **No saben nada del
 negocio**, y por eso los puede usar cualquiera, igual que `fs` o `path`. Son el
 suelo, no un piso.
 
-Esta distinción es la que hace que la regla "un repositorio no llama a un
-servicio" sea aplicable: sin ella, `alertasControl` llamando a `whatsapp` daría
+La distinción entre adaptador y servicio de dominio es la que hace que la regla
+"un repositorio no llama a un servicio" sea aplicable: sin ella, `alertasControl` llamando a `whatsapp` daría
 una infracción falsa y en dos semanas nadie miraría el comprobador. La lista
 está escrita a mano en `scripts/comprobar-capas.js`; añadir uno es una decisión
 que se ve en el commit, no algo que se adivina por el nombre.
@@ -103,17 +114,30 @@ Salida de `node scripts/comprobar-capas.js` a 14/09/2026:
 normal en un proyecto de este tamaño, y quiere decir que la Fase 1 no es
 reescribir: es cerrar quince agujeros concretos y poner el comprobador a vigilar.
 
-**Los 15 incumplimientos reales:**
+**Se empezó con 15 incumplimientos. Quedan 7.**
 
-| Qué | Dónde |
+Cerrados:
+
+| Qué | Cómo |
 |---|---|
-| Importan el pool de la base | `routes/control.js`, `routes/flotaViva.js`, `routes/migraciones.js`, `routes/tablero.js` |
-| Llevan SQL dentro | `routes/tablero.js` |
-| Repositorio llamando hacia arriba | `repo/agenda`, `repo/bitacora`, `repo/campanas`, `repo/compararAgenda`, `repo/conductores`, `repo/historicoControl`, `repo/inicio` (×2), `repo/justificantes`, `repo/reporteHoras` |
+| 4 controladores importaban el pool | `migraciones` lo pide a su servicio; `control` y `flotaViva` ya no preparan el esquema a mano (lo aseguran los propios módulos con `db.conEsquema`) |
+| `routes/tablero.js` llevaba la ÚNICA consulta SQL de las 420 rutas | se fue a `repo/vehiculos.estadosVehiculo()` |
+| 5 repositorios llamaban hacia arriba por una constante | las constantes bajaron a `services/nucleo.js` |
 
-Los de `flotaViva/*` son un caso aparte: ese módulo tiene **su propia base de
-datos** (`FLOTA_VIVA_DB_URL`) y se enganchó al ERP por el lateral. Siete de los
-quince salen de ahí.
+Pendientes — estas son inversiones de verdad, no constantes:
+
+| Repositorio | Llama a |
+|---|---|
+| `repo/campanas`, `repo/historicoControl` | `flotaViva/directo` |
+| `repo/inicio` | `visibilidad` y `flotaViva/rutas` |
+| `repo/reporteHoras` | `flotaViva/rutas` |
+| `repo/conductores` | `cazamientoBolt` |
+| `repo/compararAgenda` | `planificadorV2` |
+
+Cuatro de los siete apuntan a `flotaViva/*`, que es un caso aparte: ese módulo
+tiene **su propia base de datos** (`FLOTA_VIVA_DB_URL`) y se enganchó al ERP por
+el lateral. Arreglarlos de uno en uno antes de decidir si ese módulo se integra
+o se queda fuera sería trabajo tirado.
 
 **Los 20 avisos** son manejadores largos (el peor: 105 líneas en
 `GET /operaciones/auditoria/excel`) y rutas que orquestan tres o más módulos.
