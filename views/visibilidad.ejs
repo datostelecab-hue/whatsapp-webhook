@@ -132,7 +132,7 @@
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
       <div>
         <h2 class="text-sm font-semibold text-telecab-text">Acumulado vs Ideal vs Crítico</h2>
-        <p class="text-xs text-telecab-muted">El acumulado real llega hasta hoy. El ideal y el crítico siguen hasta fin de mes porque son el objetivo, no un dato. En rojo, la zona en la que la meta ya no se alcanza.</p>
+        <p class="text-xs text-telecab-muted">El acumulado real llega hasta el último día CERRADO: hoy aún corre y se deja fuera. El ideal y el crítico siguen hasta fin de mes porque son el objetivo, no un dato. En rojo, la zona en la que la meta ya no se alcanza.</p>
       </div>
       <div id="g-acum-estado" class="text-xs tabular-nums"></div>
     </div>
@@ -142,7 +142,7 @@
   <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
     <div class="xl:col-span-2 rounded-2xl border border-telecab-border bg-telecab-card p-4">
       <h2 class="text-sm font-semibold text-telecab-text">Horas efectivas por día</h2>
-      <p class="text-xs text-telecab-muted mb-2">Total del día (oro) y cuánto de eso fue espera (ámbar).</p>
+      <p class="text-xs text-telecab-muted mb-2">Total del día (oro) y cuánto de eso fue espera (ámbar). Solo días cerrados.</p>
       <div class="relative h-[260px]"><canvas id="g-dia"></canvas></div>
     </div>
     <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
@@ -153,7 +153,7 @@
         </div>
         <div class="text-right">
           <p id="g-brecha-num" class="text-2xl font-bold tabular-nums leading-none">—</p>
-          <p class="text-[11px] text-telecab-muted mt-0.5">a día de hoy</p>
+          <p id="g-brecha-sub" class="text-[11px] text-telecab-muted mt-0.5">al último día cerrado</p>
         </div>
       </div>
       <div class="relative h-[220px] mt-2"><canvas id="g-brecha"></canvas></div>
@@ -441,8 +441,13 @@
   function pintarGraficos(r) {
     const dias = r.dias, ultimo = r.ultimoConDatos;
     const labels = dias.map(d => d.dia);
-    // Lo REAL se corta en hoy: un día por venir no es un cero, es un hueco.
-    const real = f => dias.map(d => (d.dia > ultimo ? null : f(d)));
+    // Estos tres gráficos solo miran días CERRADOS. Hoy va a medias: su barra siempre
+    // sale hundida y, al entrar en el acumulado, hunde también la brecha. Aquí la
+    // pregunta es cómo cerramos AYER, así que en el mes en curso la serie real acaba
+    // en el día anterior; en un mes pasado no hay nada que recortar.
+    const cierre = r.hoyDia != null ? Math.max(0, r.hoyDia - 1) : ultimo;
+    // Lo REAL se corta ahí: hoy y los días por venir no son un cero, son un hueco.
+    const real = f => dias.map(d => (d.dia > cierre ? null : f(d)));
     const idxHoy = r.hoyDia != null ? r.hoyDia - 1 : null;
     ['acum', 'dia', 'brecha'].forEach(k => { if (charts[k]) charts[k].destroy(); });
     const gridColor = cv('--tc-border', 0.35);
@@ -450,8 +455,9 @@
 
     // ── Acumulado vs ideal vs crítico: lo real hasta hoy, el objetivo hasta fin de mes,
     //    y la zona crítica sombreada en rojo (debajo del crítico la meta ya no llega).
-    const ultimoReal = dias[Math.max(0, Math.min(dias.length, ultimo) - 1)] || {};
+    const ultimoReal = cierre > 0 ? (dias[Math.min(dias.length, cierre) - 1] || {}) : {};
     const est = document.getElementById('g-acum-estado');
+    if (est && !ultimoReal.dia) est.innerHTML = '<span class="text-telecab-muted">Sin días cerrados todavía este mes</span>';
     if (est && ultimoReal.dia) {
       const ok = ultimoReal.sobreCritico >= 0;
       est.innerHTML = '<span class="text-telecab-muted">Día ' + ultimoReal.dia + ':</span> ' +
@@ -501,8 +507,10 @@
     if (num) {
       const b = ultimoReal.brecha;
       num.textContent = b == null ? '—' : sig(b) + ' h';
-      num.className = 'text-2xl font-bold tabular-nums leading-none ' + (b >= 0 ? 'text-telecab-green' : 'text-telecab-red');
+      num.className = 'text-2xl font-bold tabular-nums leading-none ' +
+        (b == null ? 'text-telecab-muted' : b >= 0 ? 'text-telecab-green' : 'text-telecab-red');
     }
+    setTxt('g-brecha-sub', ultimoReal.dia ? 'al cierre del día ' + ultimoReal.dia : 'sin días cerrados');
     const brechas = real(d => d.brecha);
     charts.brecha = new Chart(document.getElementById('g-brecha'), {
       type: 'bar',
