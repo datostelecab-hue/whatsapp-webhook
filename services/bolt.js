@@ -316,8 +316,72 @@ async function partirRango(endpoint, baseBody, dataKey, startTs, endTs, corte, p
   return tramo1.concat(tramo2);
 }
 
+// ── EL PADRON DE CONDUCTORES ────────────────────────────────────────────────
+// Ventanas de 30 dias porque la API no admite rangos mas largos; dos ventanas
+// cubren ~60 dias, que es de sobra para ver a todo el que sigue vivo.
+const PADRON_VENTANA_SEG = 30 * 86400;
+const PADRON_VENTANAS = 2;
+
+/**
+ * Los drivers actuales de todas las flotas, con sus campos completos.
+ * Devuelve Map(driver_uuid -> registro).
+ *
+ * Si alguien esta en VARIAS FLOTAS nos quedamos con el registro mas vivo (state
+ * active): si no, dar de baja en una flota marcaria de baja a quien sigue
+ * trabajando en otra.
+ *
+ * Vive AQUI y no en quien la usa porque es "como se le pregunta a BOLT", que es
+ * justo lo que este fichero es. Estaba metida en `conductoresBolt.js`, que
+ * ademas escribe en una hoja de calculo, y eso convertia cualquier repositorio
+ * que la llamara en un repositorio que depende de las hojas.
+ */
+async function traerDrivers() {
+  const ahoraSeg = Math.floor(Date.now() / 1000);
+  const ventanas = [];
+  for (let k = 0; k < PADRON_VENTANAS; k++) {
+    const fin = ahoraSeg - k * PADRON_VENTANA_SEG;
+    ventanas.push([fin - PADRON_VENTANA_SEG, fin]);
+  }
+
+  const porUuid = new Map();
+  for (const f of CONFIG_BOLT.flotas) {
+    const antes = porUuid.size;
+    for (const [startTs, endTs] of ventanas) {
+      const drivers = await fetchAllPaginated(
+        '/fleetIntegration/v1/getDrivers',
+        { company_id: f.id, start_ts: startTs, end_ts: endTs },
+        'drivers', 1000, `padron-${f.id}`
+      );
+      drivers.forEach(d => {
+        const uuid = d.driver_uuid ? String(d.driver_uuid) : null;
+        if (!uuid) return;
+        const rec = {
+          driver_uuid: uuid,
+          partner_uuid: d.partner_uuid ? String(d.partner_uuid) : '',
+          nombre: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
+          email: (d.email || '').toString().trim(),
+          phone: (d.phone || '').toString().trim(),
+          state: (d.state || '').toString().trim(),
+          // Si BOLT le deja cobrar en efectivo. Se pasa tal cual —true, false o
+          // undefined— para que quien lo guarde distinga "no tiene" de "no se
+          // sabe"; convertirlo a booleano aqui perderia esa diferencia.
+          has_cash_payment: d.has_cash_payment,
+          flota: f.nombre || String(f.id)
+        };
+        const prev = porUuid.get(uuid);
+        if (!prev) porUuid.set(uuid, rec);
+        else if (prev.state !== 'active' && rec.state === 'active') porUuid.set(uuid, rec);
+      });
+    }
+    console.log(`👥 [padron-${f.id}] ${porUuid.size - antes} conductores nuevos en esta flota ` +
+                `(acumulado ${porUuid.size})`);
+  }
+  return porUuid;
+}
+
 module.exports = {
   CONFIG_BOLT,
+  traerDrivers,
   getAccessToken,
   apiRequest,
   fetchAllPaginated,

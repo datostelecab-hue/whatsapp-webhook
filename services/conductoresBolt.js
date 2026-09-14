@@ -22,7 +22,7 @@
 // (El bug "coordenadas fuera de las dimensiones" del .gs desaparece solo: la API
 //  de Sheets expande la hoja sola al escribir.)
 
-const { CONFIG_BOLT, fetchAllPaginated } = require('./bolt');
+const { CONFIG_BOLT, fetchAllPaginated, traerDrivers } = require('./bolt');
 const { readSheet, writeSheetRaw, ensureSheet } = require('./sheets');
 
 const ID_PLANIFICADOR = '1Fe2LHbzf4_OyJkk3W08yJcm_1xJrZXG6U_z6-sIF35o';
@@ -51,55 +51,12 @@ function ahoraMadrid() {
   return `${g('day')}/${g('month')}/${g('year')} ${g('hour')}:${g('minute')}:${g('second')}`;
 }
 
-/**
- * Trae los drivers actuales de todas las flotas con sus campos completos.
- * Devuelve Map(driver_uuid -> registro). Si un conductor está en varias flotas,
- * nos quedamos con el registro "más vivo" (state active) para no marcar de baja
- * a quien sigue trabajando en otra flota.
- */
-async function traerDriversBolt() {
-  const ahoraSeg = Math.floor(Date.now() / 1000);
-  const ventanas = [];
-  for (let k = 0; k < NUM_VENTANAS; k++) {
-    const fin = ahoraSeg - k * VENTANA_SEG;
-    ventanas.push([fin - VENTANA_SEG, fin]);
-  }
-
-  const porUuid = new Map();
-  for (const f of CONFIG_BOLT.flotas) {
-    const antes = porUuid.size;
-    for (const [startTs, endTs] of ventanas) {
-      const drivers = await fetchAllPaginated(
-        '/fleetIntegration/v1/getDrivers',
-        { company_id: f.id, start_ts: startTs, end_ts: endTs },
-        'drivers', 1000, `padron-${f.id}`
-      );
-      drivers.forEach(d => {
-        const uuid = d.driver_uuid ? String(d.driver_uuid) : null;
-        if (!uuid) return;
-        const rec = {
-          driver_uuid: uuid,
-          partner_uuid: d.partner_uuid ? String(d.partner_uuid) : '',
-          nombre: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
-          email: (d.email || '').toString().trim(),
-          phone: (d.phone || '').toString().trim(),
-          state: (d.state || '').toString().trim(),
-          // Si BOLT le deja cobrar en efectivo. Se pasa tal cual —true, false o
-          // undefined— para que quien lo guarde distinga "no tiene" de "no se
-          // sabe"; convertirlo a booleano aquí perdería esa diferencia.
-          has_cash_payment: d.has_cash_payment,
-          flota: f.nombre || String(f.id)
-        };
-        const prev = porUuid.get(uuid);
-        if (!prev) porUuid.set(uuid, rec);
-        else if (prev.state !== 'active' && rec.state === 'active') porUuid.set(uuid, rec);
-      });
-    }
-    console.log(`👥 [padron-${f.id}] ${porUuid.size - antes} conductores nuevos en esta flota ` +
-                `(acumulado ${porUuid.size})`);
-  }
-  return porUuid;
-}
+// El padrón se lee del ADAPTADOR de BOLT, que es donde vive "cómo se le
+// pregunta a BOLT". Estaba aquí dentro, y eso obligaba a cualquiera que la
+// necesitara —incluido un repositorio— a depender de este fichero, que además
+// escribe en una hoja de cálculo. Se reexporta con el nombre de siempre para no
+// romper a quien ya la llamaba.
+const traerDriversBolt = () => traerDrivers();
 
 /**
  * Lee el padrón actual. Devuelve { db: Map(uuid -> registro), filas: nº de filas

@@ -33,7 +33,7 @@ const RAIZ = path.join(__dirname, '..');
 
 // vista → fichero de rutas y prefijo con el que está montada.
 const PARES = [
-  ['views/plantilla.ejs', 'routes/plantilla.js', '/plantilla'],
+  ['modules/Conductores/vistas/plantilla.ejs', 'modules/Conductores/plantilla.controller.js', '/plantilla'],
   ['modules/Vehiculos/vistas/vehiculos.ejs', 'modules/Vehiculos/vehiculos.controller.js', '/vehiculos'],
   ['views/migraciones.ejs', 'routes/migraciones.js', '/migraciones'],
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],

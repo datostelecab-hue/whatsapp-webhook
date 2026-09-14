@@ -218,7 +218,7 @@ decidirlo antes de mover nada.
 
 | Módulo | Rutas que se lleva |
 |---|---|
-| **Conductores** | `plantilla`, `fichas`, `agenda`, `libranzas` |
+| **Conductores** ✓ | `plantilla` — **hecho**. `fichas`, `agenda` y `libranzas` NO: cuelgan de las hojas (ver abajo) |
 | **Documentos** ✓ | `documentos` — **hecho** |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
@@ -265,7 +265,7 @@ Empezando por el más pequeño y aislado, para estrenar la mecánica donde el da
 posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
-~~**Seleccion**~~ (hechos) → **Conductores** → **Planificacion** → **Control**
+~~**Seleccion**~~ ~~**Conductores**~~ (hechos) → **Planificacion** → **Control**
 → el resto.
 
 ### Hecho: Documentos
@@ -407,3 +407,30 @@ parámetro. Al arreglarlo apareció un segundo fallo —la ruta `/` era principi
 por buena cualquier URL— que se cazó con una prueba de sabotaje. Y queda apuntado en el
 propio fichero hasta dónde llega la herramienta: el trozo que va *después* de una
 concatenación (`… + id + '/enviado'`) no lo ve, y eso está comprobado.
+
+### Hecho: Conductores (solo `plantilla`, y el motivo importa)
+
+Está en `modules/Conductores/` (con su `LEEME.md`).
+
+**El reparto de arriba decía cuatro rutas y solo se movió una.** `agenda`, `fichas` y
+`libranzas` cuelgan las tres de `services/planificadorV2.js`, que lee de las hojas
+`AGENDA_V2`, `PLANIFICADOR_V2` y `BASES`. Meterlas en un módulo sería meter Sheets dentro,
+en la dirección contraria a la que va el proyecto. Se mudan cuando esa parte pase a
+PostgreSQL, y hasta entonces están mejor donde están.
+
+Es la tercera vez que el reparto propuesto no sobrevive al código —antes fueron
+"Documentación" y `matching`—, así que conviene decirlo como regla: **el reparto del
+documento es una hipótesis, y lo que decide es de qué come cada ruta.**
+
+**Y CAYÓ LA PRIMERA INFRACCIÓN DE CAPAS**, de 7 a 6. `services/cazamientoBolt.js` entró al
+módulo como `cazamiento.repo.js`, y con eso `conductores.repo` dejó de llamar "hacia arriba"
+a un servicio: ahora llama al repositorio de al lado.
+
+Al moverlo apareció otra, y el arreglo enseña dónde estaba el problema de verdad: el
+cazamiento pedía el padrón de BOLT a `services/conductoresBolt.js`, que es un padrón **sobre
+hojas** con la llamada a la API metida dentro. La llamada se mudó a `services/bolt.js` —el
+adaptador, que es donde vive "cómo se le pregunta a BOLT"— y ahora los dos la usan de ahí.
+Una función en el fichero equivocado estaba obligando a un repositorio a depender de Sheets.
+
+La deuda de controladores que hablan con repositorios baja de 14 a 13, y los avisos de 47
+a 43.
