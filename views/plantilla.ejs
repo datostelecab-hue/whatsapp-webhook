@@ -457,6 +457,28 @@
    * los datos es la ingesta, cada pocos minutos. Lo único que hace falta saber
    * aquí es si están al día — y eso se pregunta a la base, no a la API.
    */
+  /**
+   * El Excel de la gestoria: SU misma pestaña, con nuestros datos.
+   *
+   * Se pregunta el alcance antes de descargar. La gente de la ETT no sale nunca
+   * —la contrata la agencia y sus altas las lleva ella—, y eso no es una opcion
+   * aqui: lo decide la consulta, que es donde no se puede desmarcar sin querer.
+   */
+  async function excelGestoria() {
+    const r = await Dialogo.formulario('Excel para la gestoría',
+      [{ id: 'estado', etiqueta: '¿A quién incluyo?', tipo: 'lista', valor: 'alta', obligatorio: true,
+         opciones: [
+           { valor: 'alta', texto: 'Solo los que siguen de alta' },
+           { valor: 'baja', texto: 'Solo los que ya causaron baja' },
+           { valor: 'todos', texto: 'Los dos' },
+         ] }],
+      { textoBoton: 'Descargar',
+        nota: 'Sale la pestaña PLANTILLA con sus 40 columnas, tal cual la leen ellos. '
+            + 'Solo plantilla propia: la gente de la ETT nunca entra.' });
+    if (!r) return;
+    window.location.href = '/plantilla/api/gestoria.xlsx?estado=' + encodeURIComponent(r.estado);
+  }
+
   async function verFrescura() {
     let e;
     try { e = await api('/plantilla/api/frescura'); }
@@ -783,6 +805,8 @@
       ...(SOLO_OPERATIVO ? [] : [{ texto: 'Dar de alta', icono: 'fa-user-plus', onClick: altaNueva }]),
       ...(SOLO_OPERATIVO ? [] : [{ texto: 'Enlazar BOLT', icono: 'fa-link', onClick: autoEnlazarBolt }]),
       { texto: 'Datos', icono: 'fa-clock-rotate-left', principal: false, onClick: verFrescura },
+      ...(SOLO_OPERATIVO ? [] : [{ texto: 'Excel gestoría', icono: 'fa-building-columns',
+        principal: false, onClick: excelGestoria }]),
     ],
 
     filtros: [

@@ -223,6 +223,27 @@ router.get('/api/conductor/:id/cambios', responde(async req =>
 
 // ---------- documentos ----------
 
+// ── EL EXCEL DE LA GESTORIA ────────────────────────────────────────────────
+// La MISMA pestaña que nos mandan ellos, devuelta con nuestros datos. Solo
+// plantilla propia —la ETT la lleva la agencia— y con tres alcances: quien
+// sigue, quien ya se fue, o los dos.
+router.get('/api/gestoria.xlsx', async (req, res) => {
+  try {
+    const estado = ['alta', 'baja', 'todos'].includes(req.query.estado) ? req.query.estado : 'alta';
+    const { generarExcelGestoria, nombreFichero } = require('../services/gestoriaExcel');
+    const filas = await con.paraGestoria({ estado });
+    const bytes = await generarExcelGestoria(filas);
+    console.log(`📄 [PLANTILLA] Excel para la gestoría (${estado}): ${filas.length} fila(s)`);
+    res.setHeader('Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreFichero(estado)}"`);
+    res.send(Buffer.from(bytes));
+  } catch (e) {
+    console.error('❌ [PLANTILLA] gestoría:', e.message);
+    res.status(500).json({ status: 'error', msg: e.message });
+  }
+});
+
 router.get('/api/tipos-documento', responde(async () => ({ tipos: await docs.tipos('conductor') })));
 
 router.get('/api/conductor/:id/documentos', responde(async req => ({

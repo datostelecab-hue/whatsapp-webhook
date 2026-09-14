@@ -36,7 +36,12 @@ for (const [vista, fichero, prefijo] of PARES) {
   // comprueba es la FORMA de la URL, no el valor.
   const texto = fs.readFileSync(pv, 'utf8').replace(/\$\{[^}]*\}/g, '_');
 
-  const patron = new RegExp('["\'`](' + prefijo + '/[A-Za-z0-9_\\-/]*)', 'g');
+  // El PUNTO cuenta como parte de la URL. Hay rutas que lo llevan a propósito
+  // —/informe.xlsx, /api/gestoria.xlsx— porque así el navegador nombra bien la
+  // descarga. Sin admitirlo, la URL se cortaba en el punto y el comprobador
+  // acusaba de "sin ruta" a una que existe: un falso positivo, que en una
+  // herramienta como esta es peor que no comprobar nada.
+  const patron = new RegExp('["\'`](' + prefijo + '/[A-Za-z0-9_\\-/.]*)', 'g');
   const pedidas = [...new Set([...texto.matchAll(patron)].map(m => m[1].replace(/\/+$/, '')))];
 
   const definidas = [...fs.readFileSync(pr, 'utf8').matchAll(/router\.\w+\('([^']+)'/g)]

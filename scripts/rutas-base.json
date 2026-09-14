@@ -217,6 +217,7 @@
     "GET /plantilla/api/ficha/:id",
     "GET /plantilla/api/ficha360/:id",
     "GET /plantilla/api/frescura",
+    "GET /plantilla/api/gestoria.xlsx",
     "GET /plantilla/api/lista",
     "GET /plantilla/api/tipos-documento",
     "GET /recaudacion",

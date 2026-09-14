@@ -1171,7 +1171,59 @@ async function doblePlaza({ momento } = {}) {
   return r.rows;
 }
 
+/**
+ * La plantilla tal como la espera la gestoria.
+ *
+ * SOLO PLANTILLA PROPIA. La ETT NUNCA sale: esas personas las contrata la
+ * agencia y sus altas y bajas las lleva ella, asi que mandarselas a nuestra
+ * gestoria seria pedirle que tramite a gente que no es nuestra. No es un filtro
+ * que se pueda quitar desde la pantalla, es una condicion del listado.
+ *
+ * `estado` decide a quien se manda:
+ *   'alta'   solo los que siguen (periodo sin fecha de baja)
+ *   'baja'   solo los que ya se fueron
+ *   'todos'  los dos
+ *
+ * Una persona con DOS periodos —se fue y volvio— sale DOS VECES, una por
+ * periodo, que es como lo ve la gestoria: son dos contratos distintos.
+ */
+async function paraGestoria({ estado = 'alta' } = {}) {
+  const donde = estado === 'alta' ? 'AND pe.baja IS NULL'
+    : estado === 'baja' ? 'AND pe.baja IS NOT NULL' : '';
+  const r = await db.consulta(`
+    SELECT c.legajo, c.nombre_ss, c.nombre, c.apellidos, c.dni_tipo, c.dni_nie,
+           c.centro_codigo, ct.nombre AS centro_nombre,
+           to_char(c.fecha_nacimiento, 'DD/MM/YYYY') AS nacimiento,
+           c.naf_provincia, c.naf_numero, c.naf_control,
+           c.sexo, c.estado_civil,
+           c.pais_nacimiento_codigo, c.pais_nacimiento,
+           c.via_tipo, c.via_nombre, c.via_numero, c.escalera, c.piso, c.puerta,
+           c.localidad, c.codigo_postal, c.provincia, c.pais_codigo, c.pais,
+           tel.e164 AS telefono, c.email,
+           -- COMO TEXTO, no como DATE. El driver devuelve un DATE como
+           -- medianoche LOCAL, y esa medianoche en UTC cae el dia ANTERIOR: al
+           -- escribirla en el Excel salia el 20 en vez del 21. Se saca ya
+           -- formateada y el generador la reconstruye en UTC.
+           to_char(pe.alta, 'YYYY-MM-DD') AS alta,
+           to_char(pe.baja, 'DD/MM/YYYY') AS baja,
+           to_char(pe.fecha_antiguedad, 'DD/MM/YYYY') AS antiguedad,
+           pe.jornada_horas
+      FROM conductor c
+      JOIN conductor_periodo_empleo pe ON pe.conductor_id = c.id AND pe.tipo = 'propia'
+      LEFT JOIN cat_centro_trabajo ct ON ct.codigo = c.centro_codigo
+      LEFT JOIN LATERAL (
+        SELECT e164 FROM conductor_telefono t
+         WHERE t.conductor_id = c.id AND t.principal AND t.vigente_hasta IS NULL
+         ORDER BY t.id LIMIT 1) tel ON TRUE
+     WHERE NOT c.es_centinela ${donde}
+     -- Por legajo, que es la numeracion de la propia gestoria. Quien no lo
+     -- tenga (alta reciente) va al final y no mezclado por un hueco.
+     ORDER BY (c.legajo IS NULL), c.legajo, c.apellidos, c.nombre`);
+  return r.rows;
+}
+
 module.exports = {
+  paraGestoria,
   JORNADAS, cambiarJornada,
   campos,
   crearPersona,
