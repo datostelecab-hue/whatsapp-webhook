@@ -108,11 +108,10 @@
   // Son las MISMAS que la bitácora del día a día. Si dos pantallas del mismo
   // dato pintan distinto, la gente deja de fiarse de las dos.
   //
-  //   rojo         no llegó a la jornada (y no hay justificante que lo tape)
-  //   verde        trabajó: más lleno cuanto más cerca del objetivo
-  //   J            justificante — el color sale de las HORAS del día, no de un
-  //                azul fijo: una J de 2 h sin salir es un día flojo y se ve
-  //   azul         vacaciones
+  //   rojo         el día no llegó a las 8 h — AUNQUE tenga justificante
+  //   verde        llegó a 8 h: conduciendo, o conduciendo + justificante
+  //   azul         justificante que cubre la jornada ENTERA sin salir
+  //   azul (vac)   vacaciones
   //   ámbar        baja médica
   //   morado       permiso
   //   pizarra      libranza
@@ -121,6 +120,23 @@
   // verde chillón, pero aquí el verde YA significa "cumplió su jornada": si la
   // libranza también fuera verde, el ojo no podría separar "descansó" de
   // "trabajó bien" — que es justo lo que se viene a mirar.
+  //
+  // ── LOS DÍAS CON JUSTIFICANTE, QUE SON LOS QUE TIENEN MIGA ────────────────
+  // UN DÍA SON HORAS, VENGAN DE DONDE VENGAN. 5 h rodando en BOLT más una J de
+  // 3 h son 8 h: jornada cumplida, y se pinta verde igual que si las hubiera
+  // conducido todas. Es la misma cuenta que hace la nómina.
+  //
+  // De ahí salen tres casos, y los tres se ven distintos:
+  //
+  //   J + BOLT >= 8      VERDE   cumplió, con papel de por medio o sin él
+  //   J pura >= 8        AZUL    cubrió la jornada entera SIN SALIR (taller,
+  //                              médico, juzgado). Cuenta para la nómina, pero
+  //                              no es lo mismo que haber conducido: por eso no
+  //                              se pinta del mismo verde que quien salió.
+  //   lo que no llegue a 8   ROJO    aunque tenga J. Una J de 2 h con 3 h en
+  //                              BOLT son 5 h: es un día corto y tiene que
+  //                              verse como tal. Antes esto salía azul y se
+  //                              disimulaba entre los días buenos.
   const OBJETIVO = 8;   // horas de una jornada. La misma cifra que la bitácora.
   const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
 
@@ -137,9 +153,9 @@
   };
 
   const LEYENDA = [
-    ['No llegó a la jornada', rgb(C.rojo, .55)],
-    ['Trabajó (más lleno, más horas)', rgb(C.verde, .55)],
-    ['Justificante', rgb(C.just, .75)],
+    ['No llegó a las 8 h (aunque tenga J)', rgb(C.rojo, .55)],
+    ['8 h o más — conduciendo, o con J', rgb(C.verde, .55)],
+    ['J que cubre la jornada sin salir', rgb(C.just, .75)],
     ['Vacaciones', rgb(C.vac, .6)],
     ['Baja médica', rgb(C.med, .6)],
     ['Permiso', rgb(C.permiso, .6)],
@@ -188,14 +204,27 @@
   const esAus = v => v === 'V' || v === 'B' || v === 'P';
   const val = (c, d) => (d >= 0 && d < c.dias.length ? c.dias[d] : null);
 
-  /** Las horas REALES del día: las de BOLT más las justificadas APROBADAS. */
+  /**
+   * El desglose de un día con J: lo justificado, lo rodado y la suma.
+   *
+   * Cuenta también las PENDIENTES. En la nómina no suman hasta que alguien las
+   * apruebe —eso lo decide la bitácora—, pero para MIRAR la rejilla sí: si una
+   * J pendiente no contara, el día saldría rojo y mandaría a llamar a alguien
+   * que ya ha dado explicaciones y solo está esperando el visto bueno. Que está
+   * pendiente lo dice la esquina azul clara de la celda.
+   */
+  function desglose(c, d) {
+    const iso = isoDe(d), j = c.justif[iso] || {};
+    const jh = j.horas || 0;
+    const bolt = (c.horasBolt || {})[iso] || 0;
+    return { jh, bolt, total: Math.round((jh + bolt) * 10) / 10, estado: j.estado || '', obs: j.obs || '' };
+  }
+
+  /** Las horas de un día, sea como sea. Null si no es un día de trabajo. */
   function horasDe(c, d) {
     const v = val(c, d);
     if (typeof v === 'number') return v;
-    if (v === 'J') {
-      const iso = isoDe(d), j = c.justif[iso] || {};
-      return (j.estado === 'aprobada' ? (j.horas || 0) : 0) + ((c.horasBolt || {})[iso] || 0);
-    }
+    if (v === 'J') return desglose(c, d).total;
     return null;
   }
 
@@ -220,10 +249,9 @@
     if (v === 'P') return rgb(C.permiso, .6);
     if (v === 'L') return rgb(C.muted, .32);
     if (v === 'J') {
-      const h = horasDe(c, d) || 0;
-      // La J con horas suficientes es un día bueno; sin ellas, es un día flojo
-      // con papel. El borde azul de después dice que hay justificante.
-      return h >= OBJETIVO ? rgb(C.verde, .5) : h > 0 ? rgb(C.just, .45) : rgb(C.rojo, .45);
+      const g = desglose(c, d);
+      if (g.total < OBJETIVO) return rgb(C.rojo, .45);          // no llegó, con papel o sin él
+      return g.bolt > 0 ? rgb(C.verde, .5) : rgb(C.just, .55);  // cumplió · cumplió sin salir
     }
     if (typeof v === 'number' && v > 0) {
       const t = Math.min(1, v / OBJETIVO);
@@ -238,7 +266,7 @@
     if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return false;
     const v = val(c, d);
     if (esAus(v) || v === 'L') return false;
-    if (v === 'J') return (horasDe(c, d) || 0) < OBJETIVO;
+    if (v === 'J') return desglose(c, d).total < OBJETIVO;
     if (typeof v === 'number') return v < OBJETIVO;
     return true;   // ni horas, ni libranza, ni ausencia: no salió
   }
@@ -532,11 +560,16 @@
     else if (d > DATA.hoyIdx) { valor = NOMBRE_MARCA[v] || 'Por venir'; nota = 'Aún no ha pasado.'; }
     else if (NOMBRE_MARCA[v]) { valor = NOMBRE_MARCA[v]; }
     else if (v === 'J') {
-      const j = c.justif[iso] || {};
-      const h = horasDe(c, d) || 0;
-      valor = nf1.format(h) + ' h · justificante';
-      nota = (j.estado === 'pendiente' ? 'Pendiente de aprobar. ' : j.estado === 'aprobada' ? 'Aprobado. ' : '')
-           + (j.obs || '');
+      // LA CUENTA, A LA VISTA. Es la pregunta que se hace cualquiera delante de
+      // una celda con J: ¿cuánto puso el papel y cuánto puso él?
+      const g = desglose(c, d);
+      valor = nf1.format(g.total) + ' h';
+      const suma = g.bolt > 0
+        ? 'J ' + nf1.format(g.jh) + ' h + ' + nf1.format(g.bolt) + ' h en BOLT.'
+        : 'Justificante de ' + nf1.format(g.jh) + ' h, sin salir.';
+      const juicio = g.total < OBJETIVO ? ' Por debajo de las ' + OBJETIVO + ' h.' : '';
+      const firme = g.estado === 'pendiente' ? ' PENDIENTE de aprobar.' : '';
+      nota = suma + juicio + firme + (g.obs ? ' · ' + g.obs : '');
     }
     else if (typeof v === 'number' && v > 0) {
       valor = nf1.format(v) + ' h';

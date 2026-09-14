@@ -63,17 +63,24 @@
   .cal-dia.V { background: rgb(var(--tc-vac) / .22); border-color: rgb(var(--tc-vac) / .45); }
   .cal-dia.B { background: rgb(var(--tc-med) / .22); border-color: rgb(var(--tc-med) / .45); }
   .cal-dia.P { background: rgb(var(--tc-permiso) / .22); border-color: rgb(var(--tc-permiso) / .45); }
-  /* Un día JUSTIFICADO lleva SIEMPRE el borde azul (de ahí se sabe que hay J),
-     y el fondo del color de las horas del día (justificadas + BOLT): si con la J
-     no llegó a la jornada, la celda sale roja aunque tenga justificante. */
+  /* Un día JUSTIFICADO lleva SIEMPRE el borde azul: de ahí se sabe que hay J,
+     venga el fondo del color que venga. */
   .cal-dia.J { border-color: rgb(var(--tc-just) / .75); border-width: 2px; }
-  .cal-dia.jcero { background: rgb(var(--tc-red) / .18); }
-  .cal-dia.jcero .cal-val { color: rgb(var(--tc-red)); }
-  .cal-dia.jt1 { background: rgb(var(--tc-red) / .14); }
-  .cal-dia.jt1 .cal-val { color: rgb(var(--tc-red)); }
-  .cal-dia.jt2 { background: rgb(var(--tc-just) / .22); }
-  .cal-dia.jt3 { background: rgb(var(--tc-green) / .30); }
-  .cal-dia.jt2 .cal-val, .cal-dia.jt3 .cal-val { color: rgb(var(--tc-text)); }
+  /* UN DÍA SON HORAS, VENGAN DE DONDE VENGAN: las de BOLT más las de la J.
+     De ahí salen tres casos y los tres se ven distintos.
+
+       jcumple   J + BOLT >= 8   verde, igual que un día conducido entero
+       jpura     J >= 8 sin BOLT azul: cubrió la jornada SIN SALIR (taller,
+                 médico, juzgado). Cuenta para la nómina, pero no es lo mismo
+                 que haber conducido, y pintarlo del mismo verde lo escondía.
+       jcorto    no llega a 8    ROJO, aunque tenga papel. Una J de 2 h con 3 h
+                 en BOLT son 5 h: antes salía azul y se disimulaba entre los
+                 días buenos. */
+  .cal-dia.jcumple { background: rgb(var(--tc-green) / .30); }
+  .cal-dia.jpura   { background: rgb(var(--tc-just) / .26); }
+  .cal-dia.jcorto  { background: rgb(var(--tc-red) / .16); }
+  .cal-dia.jcorto .cal-val { color: rgb(var(--tc-red)); }
+  .cal-dia.jcumple .cal-val, .cal-dia.jpura .cal-val { color: rgb(var(--tc-text)); }
   /* La "J" pequeña dentro de la celda, para no perder de vista que es un día
      justificado aunque el color venga de las horas. */
   .cal-val.cal-j { display: flex; align-items: baseline; gap: .25rem; }
@@ -202,14 +209,21 @@
       return (esAus(v) || v === 'J' || v === 'L') ? v + ' porvenir' : 'futuro';
     }
     if (typeof v === 'number' && v > 0) return tramo(v);
-    // La J se pinta del color de las horas del día (justificadas + BOLT), no de
-    // un azul fijo: una J de 2 h sin salir es un día flojo y tiene que verse.
+    // La J NO se pinta de un azul fijo: el color sale de las HORAS del día
+    // (justificadas + BOLT), y de ahí los tres casos —jcumple, jpura, jcorto—
+    // que están explicados arriba, con las clases.
+    //
     // El color se decide con las horas PRESUNTAS —si la J se aprueba, el día es
     // ese— pero se marca `jpend` para que se vea que aún no es firme.
     if (v === 'J') {
       const p = jPendiente(c, d);
+      // Con la pendiente incluida: si no, un día ya explicado y a la espera del
+      // visto bueno saldría rojo y mandaría a llamar otra vez a quien ya dio la
+      // cara. Que está pendiente lo dice `jpend` (azul y borde punteado).
       const h = (p ? horasConPresuntas(c, d) : horasDe(c, d)) || 0;
-      return 'J j' + (h > 0 ? tramo(h) : 'cero') + (p ? ' jpend' : '');
+      const bolt = (c.horasBolt || {})[isoDe(d)] || 0;
+      const cual = h < OBJETIVO ? 'jcorto' : bolt > 0 ? 'jcumple' : 'jpura';
+      return 'J ' + cual + (p ? ' jpend' : '');
     }
     if (esAus(v) || v === 'L') return v;
     return 'nosalio';
@@ -670,7 +684,7 @@
     const box = $('#b-diainfo');
     box.classList.toggle('hidden', diaSel == null);
     if (diaSel == null) return;
-    // `clase` devuelve la clase CON sufijos ('J jt3', 'V porvenir'), así que hay
+    // `clase` devuelve la clase CON sufijos ('J jcumple', 'V porvenir'), así que hay
     // que limpiarla para comparar — como hacen `celda` y `textoDia`. Sin esto el
     // `k === 'J'` de abajo nunca era cierto y la ficha de un día justificado caía
     // al caso genérico: ni se veía el justificante ni sus botones de editar o
