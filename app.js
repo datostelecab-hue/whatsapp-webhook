@@ -661,6 +661,57 @@ programar('20 4 * * *', async () => {
   }
 });
 
+// ── LA DEUDA DE EFECTIVO, AL DÍA ────────────────────────────────────────────
+// Cada media hora se vuelve a medir lo que BOLT dice que cobró en mano cada
+// conductor, desde el corte hasta hoy.
+//
+// POR QUÉ EXISTE ESTE CRON. La deuda solo se recalculaba cuando alguien pulsaba
+// el botón de la pantalla, y eso se hizo por última vez el 10 de septiembre. El
+// día 14, Elián Fernando Bonilla vino a entregar dinero y la pantalla le pedía
+// 289,05 € cuando debía 773,75: le faltaban los 484,70 € que había cobrado en
+// efectivo del 10 al 14, porque la quincena EN CURSO sigue viva y nadie la
+// volvía a mirar. No era el único: 44 personas y 6.140,40 € sin apuntar.
+//
+// Las quincenas ya cerradas estaban perfectas al céntimo, así que el cálculo
+// nunca estuvo mal; lo que faltaba era que alguien lo ejecutara. La ingesta trae
+// los pedidos cada 5 minutos y la deuda no los seguía.
+//
+// ES SEGURO AUTOMATIZARLO, y esa es la razón de poder hacerlo sin supervisión:
+//   · No toca nada anterior al corte, donde la verdad es el Excel y no BOLT:
+//     `calcularDesdeBolt` se niega en redondo.
+//   · No pisa JAMÁS los ajustes hechos a mano, que viven en otra columna y
+//     llevan su motivo escrito. Solo reescribe el importe medido por BOLT.
+//   · Es idempotente: dos pasadas seguidas dejan lo mismo.
+//   · Las cuentas sin ficha que se parecen a alguien de la plantilla se quedan
+//     fuera, para no apuntarle la deuda dos veces a la misma persona.
+//
+// Cada media hora y no cada cinco: recorre todas las quincenas desde el corte y
+// no hay ninguna prisa en que un viaje tarde media hora en aparecer en la deuda.
+// Quien viene a la ventanilla ve, como mucho, media hora de retraso.
+programar('7,37 * * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const r = await require('./services/repo/recaudacion').recalcularTodo({});
+    // Solo se escribe cuando algo se movió: un cron que habla cada media hora
+    // para decir "nada" es ruido que acaba tapando el aviso que sí importa.
+    const cambios = (r.cambios || []).length, nuevos = (r.nuevos || []).length;
+    if (cambios || nuevos) {
+      console.log(`💶 [CRON Recaudación] Deuda al día: ${nuevos} nuevo(s), ${cambios} cambio(s)`);
+    }
+    // Esto sí se dice siempre que pase: es una cuenta de BOLT sin enlazar que se
+    // llama como alguien de la plantilla, y hasta que alguien la enlace esa
+    // deuda no se le está reclamando a nadie.
+    if ((r.sospechosas || []).length) {
+      console.warn(`⚠️  [CRON Recaudación] ${r.sospechosas.length} cuenta(s) de BOLT sin enlazar que ` +
+        'se parecen a gente de la plantilla: ' +
+        r.sospechosas.slice(0, 5).map(x => `${x.nombre} ≈ ${x.pareceA}`).join(' · '));
+    }
+  } catch (error) {
+    console.error(`❌ [CRON Recaudación] No se pudo poner la deuda al día: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // Diagnóstico de plantillas de WhatsApp: nombre, IDIOMA y estado exactos tal como los
 // tiene Meta. Es lo que resuelve el error #132001 ("Template name does not exist in the
 // translation"), que casi siempre es un idioma distinto del que se pide (es vs es_ES).
