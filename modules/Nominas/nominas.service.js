@@ -48,10 +48,16 @@
 //    los 104 dias de agosto en que no se rodo nada, que son la mayoria, la J
 //    vale las 8 enteras, que es lo esperado.
 //
-//    LAS J NO DAN EXTRAS. El MBO de horas extra sigue saliendo SOLO de las
-//    horas de BOLT: se paga por conducir de mas, y una J es precisamente no
-//    haber conducido. Quien tiene 100 h rodadas y 80 justificadas ha cubierto
-//    su objetivo, pero no ha hecho ninguna hora extra.
+//    LAS J CUENTAN TAMBIEN PARA EL EXCESO. La diferencia contra el objetivo se
+//    mide con las justificadas dentro: quien rodo 205,6 h y tuvo dos dias
+//    justificados lleva 221,6 contra un objetivo de 176, y su exceso son 45,6
+//    horas, no 29,6. Un dia justificado no puede restarle a nadie.
+//
+//    Y NO REGALA HORAS EXTRA, justo por el tope de arriba: como la J nunca sube
+//    un dia por encima de la jornada, las justificadas solo pueden llevar a
+//    alguien HASTA su objetivo. Para pasarse hay que haber rodado de mas los
+//    demas dias, que es lo que la hora extra paga. Las dos reglas —vale el dia
+//    entero, pero topada— van juntas: separarlas rompe el calculo.
 //
 // ── LO QUE SE GUARDA ────────────────────────────────────────────────────────
 // Solo el resultado CONGELADO. No hay "snapshot de datos crudos" como en las
@@ -167,11 +173,6 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   const diasOperTgt = r2((diasDesde / diasDelMes) * cfg.diasObjetivo);
   const hsTgt = diasOperTgt * cfg.horasMetaDia;
 
-  // El MBO de horas extra sale SOLO de lo rodado: se paga por conducir de mas,
-  // y una J es justo no haber conducido. Las justificadas entran mas abajo,
-  // donde se mira lo que FALTA, que es otra pregunta.
-  const delta = c.horas - hsTgt;
-
   // ── Las J ────────────────────────────────────────────────────────────────
   // Solo las de su ventana: una J anterior a su alta no cubre un objetivo que
   // todavia no existia. Cada una vale la jornada del dia, topada por lo que le
@@ -179,7 +180,22 @@ function calcularFila(c, diasDelMes, cfg, mesTrabajo, anoTrabajo) {
   const jus = (c.jDias || []).filter(d => d >= primerDia);
   const horasJustificadas = jus.reduce(
     (a, d) => a + Math.max(0, cfg.horasMetaDia - ((c.horasPorDia && c.horasPorDia.get(d)) || 0) / 3600), 0);
-  const horasNoJustificadas = Math.max(0, hsTgt - c.horas - horasJustificadas);
+
+  // LA DIFERENCIA SE MIDE CON LAS J DENTRO. Un dia justificado cuenta como la
+  // jornada que habria hecho, asi que no le resta a nadie: quien rodo 205,6 h y
+  // tuvo dos dias justificados lleva 221,6 contra un objetivo de 176, y su
+  // exceso son 45,6 h, no 29,6.
+  //
+  // Esto no regala horas extra porque la J esta TOPADA: nunca sube un dia por
+  // encima de la jornada, de modo que las justificadas solo pueden llevar a
+  // alguien HASTA su objetivo. Para pasarse hay que haber rodado de mas los
+  // demas dias, que es precisamente lo que la hora extra paga.
+  const horasComputadas = c.horas + horasJustificadas;
+  const delta = horasComputadas - hsTgt;
+
+  // Las dos caras de la misma cifra: lo que sobra es `delta`, y lo que falta es
+  // `delta` en negativo. Se guarda aparte porque es la pregunta de RRHH.
+  const horasNoJustificadas = Math.max(0, -delta);
 
   const jornada = jornadaDe(c.jornada);
   const umbral = jornada === 32 ? cfg.umbralFAS32 : cfg.umbralFAS40;

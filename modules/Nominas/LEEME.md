@@ -58,22 +58,30 @@ mayoría— la J vale las 8 enteras.
 Solo cuentan las **aprobadas**. Las pendientes no (el panel avisa de cuántas hay en la
 cola) y las rechazadas tampoco: ese día vuelve a ser lo que era.
 
-**Las J no dan extras.** El MBO de horas extra sigue saliendo solo de las horas rodadas: se
-paga por conducir de más, y una J es precisamente no haber conducido. Quien tiene 100 h
-rodadas y 80 justificadas ha cubierto su objetivo —no debe horas— pero no ha hecho ninguna
-hora extra.
+**Las J cuentan también para el exceso.** La diferencia contra el objetivo se mide con las
+justificadas dentro: quien rodó 205,6 h y tuvo dos días justificados lleva 221,6 contra un
+objetivo de 176, y su exceso son **45,6 h, no 29,6**. Un día justificado no puede restarle
+a nadie sus horas extra.
+
+Y **no regala horas extra**, justo por el tope de arriba: como la J nunca sube un día por
+encima de la jornada, las justificadas solo pueden llevar a alguien **hasta** su objetivo.
+Para pasarse hay que haber rodado de más los otros días, que es lo que la hora extra paga.
+
+Las dos reglas van juntas —la J vale el día entero, pero topada— y separarlas rompe el
+cálculo: sin el tope, quien rodó 3 h un día justificado sumaría 11 h de ese día y cobraría
+extras por horas que no hizo.
 
 ## La fórmula
 
 ```
 objetivo de horas = (días desde el arranque ÷ días del mes) × días objetivo × horas meta
-diferencia        = horas hechas − objetivo
+diferencia        = (horas rodadas + horas justificadas) − objetivo
 MBO horas extra   = diferencia × € hora extra × utilización     (solo si la diferencia es positiva)
 MBO FAS           = (facturación neta − umbral) × % MBO FAS     (solo si supera el umbral de SU jornada)
 nocturnas         = € hora nocturna × horas nocturnas × factor
 
 horas justificadas    = Σ, por cada día con J aprobada, max(0, jornada − lo rodado ese día)
-horas NO justificadas = max(0, objetivo − horas rodadas − horas justificadas)
+horas NO justificadas = la diferencia cuando sale negativa, o sea max(0, −diferencia)
 
 TOTAL = nocturnas + peajes + propinas + el MAYOR de los dos MBO
 ```
