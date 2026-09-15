@@ -39,6 +39,8 @@ const PARES = [
   ['modules/Control/vistas/controlCampanasInforme.ejs', 'modules/Control/control.controller.js', '/control'],
   ['modules/Control/vistas/controlHistorico.ejs', 'modules/Control/control.controller.js', '/control'],
   ['modules/Control/vistas/kmTraza.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Control/vistas/reportes.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Control/vistas/partials/control-nav.ejs', 'modules/Control/control.controller.js', '/control'],
   ['modules/Control/vistas/alertas.ejs', 'modules/Control/alertas.controller.js', '/alertas'],
   ['modules/Control/vistas/callCenter.ejs', 'modules/Control/callcenter.controller.js', '/callcenter'],
   ['modules/Control/vistas/justificantes.ejs', 'modules/Control/justificantes.controller.js', '/justificantes'],

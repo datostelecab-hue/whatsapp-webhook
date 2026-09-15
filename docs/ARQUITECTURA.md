@@ -261,7 +261,7 @@ decidirlo antes de mover nada.
 | **RRHH** | `convenio` y `pendientes` — **hecho**. `rrhh`, `peticiones` y `ticketera` NO: las tres cuelgan de las hojas |
 | **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
 | **Seleccion** ✓ | `seleccion`, `ett`, `generador`, `vacantes` — **hecho, el módulo entero** |
-| **Informes** | `reportes`, `exportar`, `bi`, `visibilidad`, `resumen` |
+| ~~**Informes**~~ | **NO es un módulo.** Los informes son de Control y su pestaña está en `/control/reportes`: horas, turnos, parrilla, asistencia, Sankey —todo de tráfico—. El resto (`exportar`, `bi`, `visibilidad`, `resumen`) se reparte por su tema |
 | **Administracion** | `administracion`, `recaudacion` |
 | **Usuarios** ✓ | `usuarios`, `auth` — **hecho** |
 | **Fichaje** ✓ | `fichaje` — **hecho**, nació ya en `modules/` |

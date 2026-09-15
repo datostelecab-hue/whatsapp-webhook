@@ -1,3 +1,24 @@
+// ============================================================
+// /reportes — el parte diario a la ETT, y una redirección
+// ============================================================
+// AQUÍ NO ESTÁN LOS INFORMES. Los informes son de Control y viven en
+// `/control/reportes`: horas del día, reporte por turnos, parrilla del
+// planificador, asistencia, Sankey. Todo lo que se saca ahí es de tráfico.
+//
+// Esta ruta renderizaba UNA COPIA de esa misma pantalla, y eso era un problema
+// de verdad y no de orden: la entrada del menú llevaba el permiso "Reportes
+// RRHH", que va en el paquete de RRHH, mientras que TODOS los botones de la
+// pantalla apuntan a `/control/*`. Quien tuviera ese permiso y no el de Control
+// veía la pantalla entera y le fallaba cada botón, sin saber por qué. Ahora
+// redirige: hay UNA pantalla de informes y es la de Control.
+//
+// Lo que sí es de esta ruta es el PARTE DIARIO A LA ETT: las horas de ayer de
+// los conductores de la agencia, en Excel y por correo. No es un informe de
+// tráfico —es de la ETT— y su sitio natural es Nóminas, junto al parte mensual.
+// No se mueve todavía porque `services/reportes.js` lee de las hojas
+// (planificadorV2 + el libro de horas), y meter Sheets dentro de un módulo es la
+// dirección contraria a la que va el proyecto.
+
 const express = require('express');
 const router = express.Router();
 const { reporteHorasEttAyer, generarExcelEttAyer } = require('../services/reportes');
@@ -8,9 +29,9 @@ const ETT_POR_DEFECTO = 'camilobedoya9985@gmail.com';   // pruebas; se guarda el
 const esEmail = e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e || '').trim());
 const nombreFichero = fecha => `Horas_ETT_${String(fecha).replace(/\//g, '-')}.xlsx`;
 
-router.get('/', (req, res) => {
-  res.render('reportes', { titulo: 'Reportes', seccion: 'reportes', layout: 'layout-gestion' });
-});
+// 302 y no 301: un permanente se queda cacheado en el navegador para siempre y
+// ata las manos si mañana esta URL vuelve a tener pantalla propia.
+router.get('/', (req, res) => res.redirect(302, '/control/reportes'));
 
 // Datos del reporte (para la vista previa) + el destinatario ETT guardado.
 router.get('/api/horas-ett-ayer', async (req, res) => {

@@ -204,7 +204,11 @@
             { href: '/administracion', icono: 'fa-gas-pump',         texto: 'Administración', id: 'administracion' },
             { href: '/plantilla',      icono: 'fa-id-card',          texto: 'Plantilla',      id: 'plantilla' },
             { href: '/ticketera',      icono: 'fa-ticket',          texto: 'Ticketera RRHH', id: 'ticketera' },
-            { href: '/reportes',       icono: 'fa-file-lines',      texto: 'Reportes',       id: 'reportes' },
+            // "Reportes" NO va aquí. Los informes son de Control —horas, turnos,
+            // parrilla, asistencia, Sankey: todo de tráfico— y su pestaña está
+            // dentro de /control. Esta entrada llevaba a una copia de esa misma
+            // pantalla con el permiso de RRHH, así que quien la abría veía los
+            // botones y le fallaban todos: apuntan a /control/*.
             { href: '/nominas',        icono: 'fa-money-check-dollar', texto: 'Nóminas', id: 'nominas' },
             { href: '/convenio',       icono: 'fa-scale-balanced',   texto: 'Convenio',       id: 'convenio' }
           ] },
