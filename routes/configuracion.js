@@ -102,7 +102,9 @@ router.post('/correo', sesion.requiereSuperadmin, async (req, res) => {
     const tienePass = !!cambios.correo_pass_cifrada || !!actual.correo_pass_cifrada;
     // El envío se activa solo si están los datos mínimos.
     cambios.correo_activo = (cambios.correo_host && cambios.correo_user && tienePass) ? 'si' : '';
-    await configApp.guardarConfig(cambios);
+    // Quién lo cambió queda apuntado: "¿quién tocó el correo de salida?" es la
+    // pregunta que se hace cuando algo deja de enviarse, y la hoja no lo decía.
+    await configApp.guardarConfig(cambios, (req.usuario || {}).id);
     res.json({ status: 'ok', estado: await correo.estadoCorreo() });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
