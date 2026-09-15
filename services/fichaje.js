@@ -21,13 +21,7 @@
  */
 
 const mapon = require('./mapon');
-const sheets = require('./sheets');
-
-const ID_FICHAJE = process.env.ID_FICHAJE || '18LiwQTyzQAzNxtwXzX-HSEhM3HhbggrOmMF56Fprt3g';
-const HOJA = 'FICHAJE_TURNOS';
-const CAB = ['id', 'telefono', 'nombre', 'matricula', 'unit_id', 'mapon_driver_id',
-  'inicio', 'fin', 'km', 'trayectos', 'trayectos_atribuidos', 'estado', 'notas', 'unit_previa'];
-const RANGO = `${HOJA}!A:N`;
+const repo = require('./repo/fichajeTurno');
 
 // Teléfonos autorizados MIENTRAS está en pruebas, con el NOMBRE que se les pone (el
 // mismo que se crea/asigna en Mapon: la mayoría de conductores no están dados de alta
@@ -211,43 +205,20 @@ const nombreDe = telefono => PRUEBAS[tel9(telefono)] || '';
 
 // ── Libro de turnos ───────────────────────────────────────────────────────────
 
-async function leerLibro() {
-  await sheets.ensureSheet(ID_FICHAJE, HOJA);
-  const filas = await sheets.readSheet(ID_FICHAJE, RANGO);
-  if (!filas.length) {
-    await sheets.writeSheetRaw(ID_FICHAJE, `${HOJA}!A1`, [CAB]);
-    return [];
-  }
-  return filas.slice(1).map((r, i) => ({
-    fila: i + 2,
-    id: String(r[0] || ''), telefono: String(r[1] || ''), nombre: String(r[2] || ''),
-    matricula: String(r[3] || ''), unitId: String(r[4] || ''), driverId: String(r[5] || ''),
-    inicio: Number(r[6]) || 0, fin: Number(r[7]) || 0,
-    km: r[8] === '' || r[8] == null ? null : Number(r[8]),
-    trayectos: Number(r[9]) || 0, atribuidos: Number(r[10]) || 0,
-    estado: String(r[11] || ''), notas: String(r[12] || ''), unitPrevia: String(r[13] || '')
-  })).filter(t => t.id);
-}
-
-const aFila = t => [t.id, t.telefono, t.nombre, t.matricula, t.unitId, t.driverId,
-  t.inicio || '', t.fin || '', t.km == null ? '' : t.km, t.trayectos || '', t.atribuidos || '',
-  t.estado, t.notas || '', t.unitPrevia || ''];
-
-async function guardarFila(t) {
-  await sheets.writeSheetRaw(ID_FICHAJE, `${HOJA}!A${t.fila}:N${t.fila}`, [aFila(t)]);
-}
-async function añadirFila(t) {
-  await sheets.appendRows(ID_FICHAJE, RANGO, [aFila(t)]);
-}
+// ── El libro ────────────────────────────────────────────────────────────────
+// Era una pestaña; desde el 15/09/2026 es una tabla (db/125). Lo que se gana no
+// es velocidad —aunque leer el libro entero para saber si alguien tiene turno
+// abierto tampoco era gratis—: es que UN TURNO ABIERTO POR PERSONA Y POR COCHE
+// lo garantizan dos índices únicos.
+//
+// En la hoja no había forma de impedirlo. Dos personas abriendo turno sobre el
+// mismo coche a la vez escribían dos filas y las dos se creían dueñas —que es
+// justo lo que este libro tiene que poder contestar sin dudas—.
 
 /** Turno abierto de un teléfono (o null). */
-const abiertoDe = (libro, telefono) =>
-  libro.find(t => t.estado === 'abierto' && tel9(t.telefono) === tel9(telefono)) || null;
+const abiertoDe = telefono => repo.abiertoDe(telefono);
 /** Turno abierto sobre una matrícula por OTRA persona (o null). */
-const abiertoDeCoche = (libro, matricula, telefono) =>
-  libro.find(t => t.estado === 'abierto' && normMat(t.matricula) === normMat(matricula)
-    && tel9(t.telefono) !== tel9(telefono)) || null;
-
+const abiertoDeCoche = (matricula, telefono) => repo.abiertoDeCoche(matricula, telefono);
 // ── Conductor en Mapon ────────────────────────────────────────────────────────
 
 /**
@@ -293,9 +264,9 @@ async function soltarEnMapon(t) {
 }
 
 /** Cierra los turnos que llevan demasiado tiempo abiertos (olvidos). */
-async function cerrarOlvidados(libro) {
+async function cerrarOlvidados() {
   const limite = ahoraSeg() - MAX_HORAS_TURNO * 3600;
-  for (const t of libro.filter(x => x.estado === 'abierto' && x.inicio && x.inicio < limite)) {
+  for (const t of (await repo.abiertos()).filter(x => x.inicio && x.inicio < limite)) {
     try { await soltarEnMapon(t); } catch (e) { /* se cierra igual */ }
     // Se bloquea también en el cierre automático, PERO sin `porOrden`: aquí no ha
     // dicho nadie que haya terminado. Solo lo dice el reloj, y el reloj se
@@ -309,16 +280,15 @@ async function cerrarOlvidados(libro) {
     t.estado = 'auto-cerrado';
     t.notas = `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar` +
       (BLOQUEO_ACTIVO && !mot.hecho ? ` · motor NO bloqueado: ${mot.motivo}` : '');
-    await guardarFila(t);
+    await repo.actualizar(t);
     console.log(`⏱️ [FICHAJE] Turno de ${t.nombre} (${t.matricula}) auto-cerrado`);
   }
 }
 
 /** Estado actual: { abierto, turno } */
 async function estado(telefono) {
-  const libro = await leerLibro();
-  await cerrarOlvidados(libro);
-  const t = abiertoDe(libro, telefono);
+  await cerrarOlvidados();
+  const t = await abiertoDe(telefono);
   return { abierto: !!t, turno: t };
 }
 
@@ -327,17 +297,16 @@ async function estado(telefono) {
  * asigna el conductor en Mapon y apunta el turno en el libro.
  */
 async function iniciar({ telefono, nombre, matricula }) {
-  const libro = await leerLibro();
-  await cerrarOlvidados(libro);
+  await cerrarOlvidados();
 
-  const yaAbierto = abiertoDe(libro, telefono);
+  const yaAbierto = await abiertoDe(telefono);
   if (yaAbierto) {
     return { ok: false, motivo: 'ya-abierto', turno: yaAbierto };
   }
   const unidad = await mapon.unidadPorMatricula(matricula);
   if (!unidad) return { ok: false, motivo: 'sin-matricula' };
 
-  const ocupado = abiertoDeCoche(libro, unidad.matricula, telefono);
+  const ocupado = await abiertoDeCoche(unidad.matricula, telefono);
   if (ocupado) return { ok: false, motivo: 'coche-ocupado', turno: ocupado };
 
   // El enlace en Mapon no debe impedir fichar: si falla, el turno se abre igual y se
@@ -362,12 +331,29 @@ async function iniciar({ telefono, nombre, matricula }) {
     console.error('⚠️ [FICHAJE] asignar:', e.message);
   }
 
+  // A QUIÉN es, si lo sabemos. El fichaje está en pruebas y responde a una lista
+  // de teléfonos que no tienen por qué ser conductores, así que puede faltar —y
+  // el turno se abre igual—. Pero cuando se sabe, se ata: es lo que permite que
+  // la auditoría pase de señalar matrículas a señalar personas.
+  let conductorId = null;
+  try {
+    const p = await require('../modules/Conductores/plantilla.service')
+      .buscarPersona({ telefono });
+    conductorId = p ? p.id : null;
+  } catch (e) { console.error('⚠️ [FICHAJE] no se pudo identificar el teléfono:', e.message); }
+
   const turno = {
-    id: `${tel9(telefono)}-${ahoraSeg()}`, telefono: tel9(telefono), nombre,
+    id: `${tel9(telefono)}-${ahoraSeg()}`, telefono: tel9(telefono), nombre, conductorId,
     matricula: unidad.matricula, unitId: String(unidad.unitId), driverId: String(driverId || ''),
     inicio: ahoraSeg(), fin: 0, km: null, trayectos: 0, atribuidos: 0, estado: 'abierto', notas, unitPrevia
   };
-  await añadirFila(turno);
+  // Si entre la comprobación de arriba y este INSERT ha entrado otro mensaje,
+  // la base lo para y aquí se contesta lo mismo que si se hubiera visto antes.
+  const guardado = await repo.crear(turno);
+  if (!guardado) {
+    const otro = await abiertoDeCoche(unidad.matricula, telefono) || await abiertoDe(telefono);
+    return { ok: false, motivo: otro && otro.telefono !== turno.telefono ? 'coche-ocupado' : 'ya-abierto', turno: otro };
+  }
   // Con el turno YA registrado se libera el motor: si algo fallara, el turno consta
   // igual y el coche se puede desbloquear a mano desde el panel.
   const mot = await liberarMotor(unidad.unitId);
@@ -388,9 +374,8 @@ async function kmDelTurno(turno, hasta) {
 
 /** Cierra el turno: quita la asignación en Mapon y calcula los km del periodo. */
 async function terminar(telefono) {
-  const libro = await leerLibro();
-  await cerrarOlvidados(libro);
-  const t = abiertoDe(libro, telefono);
+  await cerrarOlvidados();
+  const t = await abiertoDe(telefono);
   if (!t) return { ok: false, motivo: 'sin-turno' };
 
   // EN MARCHA NO SE TERMINA EL TURNO.
@@ -430,7 +415,7 @@ async function terminar(telefono) {
   t.trayectos = km ? km.trayectos : 0;
   t.atribuidos = km ? km.conConductor : 0;
   t.estado = 'cerrado';
-  await guardarFila(t);
+  await repo.actualizar(t);
   console.log(`🔴 [FICHAJE] ${t.nombre} termina turno en ${t.matricula}: ${t.km} km` +
     (BLOQUEO_ACTIVO ? ` · motor ${mot.hecho ? 'BLOQUEADO' : 'NO bloqueado: ' + mot.motivo}` : ''));
   return { ok: true, turno: t, km, motor: mot, bloqueoActivo: BLOQUEO_ACTIVO };
@@ -459,8 +444,7 @@ async function repasarBloqueos({ soloMirar = false } = {}) {
   if (!BLOQUEO_ACTIVO && !soloMirar) {
     return { activo: false, motivo: 'FICHAJE_BLOQUEO_MOTOR no está a 1', bloqueados: [], omitidos: [] };
   }
-  const libro = await leerLibro();
-  const conTurno = new Set(libro.filter(t => t.estado === 'abierto').map(t => String(t.unitId)));
+  const conTurno = new Set((await repo.abiertos()).map(t => String(t.unitId)));
 
   // HASTA DÓNDE LLEGA EL REPASO.
   //
@@ -471,7 +455,7 @@ async function repasarBloqueos({ soloMirar = false } = {}) {
   //
   // Sin esto el cron miraría la flota entera y bloquearía coches de gente que ni
   // sabe que esto existe, con la llave en la mano.
-  const conocidos = new Set(libro.map(t => String(t.unitId)).filter(Boolean));
+  const conocidos = new Set((await repo.unitsConocidos()).map(String));
   const alcanza = v => TODA_LA_FLOTA
     || conocidos.has(String(v.unitId))
     || MATRICULAS.includes(normMat(v.matricula));
