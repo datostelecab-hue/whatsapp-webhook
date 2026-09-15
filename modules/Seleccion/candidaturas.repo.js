@@ -1299,8 +1299,145 @@ async function eliminar(id, { usuarioId } = {}) {
   });
 }
 
+// ============================================================
+// EL TRAMO FINAL: RRHH y ADMINISTRACIÓN
+// ============================================================
+// Lo que pasa DESPUÉS de «Listo para RRHH». Vivía en `services/tickets.js`,
+// sobre la pestaña TICKETS, con su propio embudo en paralelo al de aquí.
+//
+// ── Y ESO TENÍA UN AGUJERO ──────────────────────────────────────────────────
+// El último paso de aquel camino llamaba a `crearConductor`, que escribe la
+// ficha en la hoja AGENDA_V2. Desde que el cuadrante se lee de PostgreSQL, esa
+// hoja NO LA LEE NADIE: quien pasara por ahí no aparecía en la Plantilla ni en
+// el cuadrante. Sin error y sin aviso.
+//
+// Aquí no hace falta ningún traspaso: `pasarARRHH` YA dio de alta a la persona
+// —abrió su contrato, le puso el turno y le enlazó la cuenta de BOLT—. Lo que
+// queda de RRHH y de Administración es papeleo sobre alguien que ya existe: el
+// Excel para la gestoría y el PIN de la tarjeta de combustible.
+
+/**
+ * Las fichas del tramo final. Tres montones, que son las tres preguntas que se
+ * hacen en esas dos pantallas:
+ *
+ *   porTramitar  esperando a RRHH (listo_rrhh)
+ *   pendientePin esperando el PIN de Ballenoil (pendiente_pin)
+ *   hechas       ya con PIN, o ya en Tráfico
+ */
+async function tramoFinal() {
+  const r = await db.consulta(
+    `SELECT * FROM v_candidatura
+      WHERE estado IN ('listo_rrhh', 'pendiente_pin', 'alta', 'asignado', 'no_alta', 'rechazado_rrhh')
+      ORDER BY estado_orden, creado_at DESC`);
+  return r.rows;
+}
+
+/**
+ * Apunta que la ficha ya fue en un Excel de altas, y con cuál.
+ *
+ * Es lo que impide dar la misma alta dos veces: RRHH no puede tramitar a quien
+ * no ha ido antes en un Excel. La regla viene del camino viejo y se conserva
+ * porque el motivo sigue vivo —la gestoría cobra por alta—.
+ */
+async function marcarExcelAlta(ids, referencia) {
+  if (!ids || !ids.length) return 0;
+  const r = await db.consulta(
+    `UPDATE candidatura SET excel_alta = $2, actualizado_at = now()
+      WHERE id = ANY($1::bigint[]) RETURNING id`,
+    [ids.map(Number), String(referencia || '').slice(0, 120)]);
+  return r.rowCount;
+}
+
+/**
+ * RRHH tramita: la ficha pasa a esperar el PIN de Ballenoil.
+ *
+ * NO da de alta a nadie: eso ya lo hizo `pasarARRHH`. Aquí solo se apuntan las
+ * fechas que decide RRHH y se mueve de montón.
+ */
+async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {}) {
+  const c = (await db.consulta(
+    'SELECT estado, excel_alta, conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
+  if (!c) throw new Error('No existe esa candidatura');
+  if (c.estado !== 'listo_rrhh') throw new Error('Esta ficha no está esperando a RRHH');
+  if (!c.excel_alta) {
+    throw new Error('Esta ficha aún no ha ido en ningún Excel de altas. ' +
+      'Inclúyela primero en un Excel y luego tramítala.');
+  }
+  const r = await db.consulta(
+    `UPDATE candidatura
+        SET estado = 'pendiente_pin',
+            alta_at = COALESCE($2::timestamptz, now()),
+            habilitado_at = $3::timestamptz,
+            actualizado_at = now()
+      WHERE id = $1 AND estado = 'listo_rrhh'
+      RETURNING id`,
+    [Number(id), fechaAlta || null, fechaHabilitado || null]);
+  if (!r.rowCount) throw new Error('Alguien la tramitó mientras tanto: vuelve a cargar');
+  return ficha(id);
+}
+
+/**
+ * Administración guarda el PIN de Ballenoil. Último paso.
+ *
+ * Antes, además, creaba la ficha en la hoja de la agenda. Ya no: la persona
+ * lleva de alta desde que Selección la pasó a RRHH.
+ */
+async function guardarPin(id, { pin, obs } = {}) {
+  const p = String(pin == null ? '' : pin).trim();
+  if (!p) throw new Error('Falta el PIN de Ballenoil');
+  const r = await db.consulta(
+    `UPDATE candidatura
+        SET pin_ballenoil = $2,
+            obs_ballenoil = COALESCE($3, obs_ballenoil),
+            estado = CASE WHEN estado = 'pendiente_pin' THEN 'alta' ELSE estado END,
+            asignado_at = COALESCE(asignado_at, now()),
+            actualizado_at = now()
+      WHERE id = $1
+      RETURNING id`,
+    [Number(id), p.slice(0, 40), obs == null ? null : String(obs).slice(0, 500)]);
+  if (!r.rowCount) throw new Error('No existe esa candidatura');
+  return ficha(id);
+}
+
+/**
+ * El PIN de Ballenoil de un teléfono. Lo pide el bot cuando el conductor da al
+ * botón «VER PIN».
+ *
+ * Se busca por PERSONA y no por candidatura: alguien puede haber tenido dos
+ * procesos y el PIN es suyo, no del papeleo. Se devuelve el más reciente que
+ * tenga uno.
+ */
+async function pinPorTelefono(telefono) {
+  const t = String(telefono || '').replace(/\D/g, '');
+  if (t.length < 9) return null;
+  const r = await db.consulta(
+    `SELECT k.pin_ballenoil, k.obs_ballenoil, c.id AS conductor_id,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
+                     btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)) AS quien
+       FROM conductor_telefono ct
+       JOIN conductor c  ON c.id = ct.conductor_id
+       LEFT JOIN candidatura k ON k.conductor_id = c.id
+                              AND btrim(COALESCE(k.pin_ballenoil, '')) <> ''
+      WHERE ct.vigente_hasta IS NULL AND ct.sufijo9 = right($1, 9)
+      ORDER BY k.actualizado_at DESC NULLS LAST
+      LIMIT 1`, [t]);
+  const x = r.rows[0];
+  return x ? { pin: x.pin_ballenoil || '', obs: x.obs_ballenoil || '',
+               conductorId: String(x.conductor_id), quien: x.quien } : null;
+}
+
+/** Cuántas fichas hay esperando en cada sitio. Lo pide la campana. */
+async function pendientes() {
+  const r = await db.consulta(
+    `SELECT estado, count(*)::int n FROM candidatura
+      WHERE estado IN ('listo_rrhh', 'pendiente_pin', 'rechazado_rrhh')
+      GROUP BY 1`);
+  return Object.fromEntries(r.rows.map(x => [x.estado, x.n]));
+}
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
   cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
+  // El tramo final: RRHH y Administración.
+  tramoFinal, marcarExcelAlta, tramitarAlta, guardarPin, pinPorTelefono, pendientes,
 };

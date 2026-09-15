@@ -186,6 +186,55 @@ async function pasarARRHH(id, datos, quien) {
   return r;
 }
 
+// ── El tramo final: RRHH y Administración ──────────────────────────────────
+// Lo que pasa DESPUÉS de «Listo para RRHH», y que hasta el 15/09/2026 vivía en
+// `services/tickets.js` sobre una hoja, con su propio embudo en paralelo.
+//
+// Aquí no se da de alta a nadie: `pasarARRHH` ya lo hizo —abrió el contrato, puso
+// el turno, enlazó BOLT—. Lo que queda es papeleo sobre alguien que YA existe.
+
+/** Las tres bandejas del tramo final, listas para pintar. */
+async function tramoFinal() {
+  const filas = await cand.tramoFinal();
+  const esETT = c => c.canal === 'bolsa_ett' || /ETT/i.test(c.canal_etiqueta || '');
+  const preparar = c => ({
+    id: String(c.id), conductorId: String(c.conductor_id),
+    quien: c.quien, telefono: c.telefono || '', dni: c.dni_nie || '', email: c.email || '',
+    naf: c.naf || '', turno: c.turno || '', zona: c.zona || '',
+    canal: c.canal_etiqueta || '', ett: esETT(c),
+    jornadaHoras: c.jornada_horas, tipoContrato: c.tipo_contrato || '',
+    estado: c.estado, estadoEtiqueta: c.estado_etiqueta,
+    excelAlta: c.excel_alta || '', pin: c.pin_ballenoil || '', obsPin: c.obs_ballenoil || '',
+    inicioPrevisto: c.inicio_previsto, altaAt: c.alta_at, habilitadoAt: c.habilitado_at,
+    empleoVigente: !!c.empleo_vigente, motivo: c.motivo || '',
+  });
+  const por = e => filas.filter(c => c.estado === e).map(preparar);
+  return {
+    porTramitar: por('listo_rrhh'),
+    pendientePin: por('pendiente_pin'),
+    hechas: filas.filter(c => c.estado === 'alta' || c.estado === 'asignado').map(preparar),
+    noAlta: filas.filter(c => c.estado === 'no_alta' || c.estado === 'rechazado_rrhh').map(preparar),
+  };
+}
+
+/** RRHH tramita el alta: la ficha pasa a esperar el PIN de Ballenoil. */
+const tramitarAlta = (id, datos, quien) => cand.tramitarAlta(Number(id), datos, quien);
+
+/** Apunta en qué Excel de altas fue cada ficha. */
+const marcarExcelAlta = (ids, referencia) => cand.marcarExcelAlta(ids, referencia);
+
+/** Administración guarda el PIN de Ballenoil. Último paso del alta. */
+async function guardarPin(id, datos, quien) {
+  const f = await cand.guardarPin(Number(id), datos);
+  console.log(`💳 [ADMINISTRACIÓN] PIN de Ballenoil guardado a ${f.quien || id}`);
+  return f;
+}
+
+/** El PIN de un teléfono. Lo pide el bot. */
+const pinPorTelefono = tel => cand.pinPorTelefono(tel);
+
+/** Cuántas fichas esperan en cada sitio. Lo pide la campana. */
+const pendientesTramo = () => cand.pendientes();
 // ── La dirección ───────────────────────────────────────────────────────────
 // Se queda como estaba: es un servicio externo que no tiene que ver con dónde
 // se guarden los datos. Con la vía puesta se pregunta por campos, que acierta
@@ -201,6 +250,7 @@ module.exports = {
   DOCUMENTOS,
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
   abrir, guardar, cambiarEstado, pasarARRHH, eliminar,
+  tramoFinal, tramitarAlta, marcarExcelAlta, guardarPin, pinPorTelefono, pendientesTramo,
   subirDocumento, retirarDocumento, fichaPDF,
   direccion,
 };
