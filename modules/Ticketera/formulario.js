@@ -120,6 +120,20 @@ async function emparejar(cabeceras) {
   return { porCampo, sueltas };
 }
 
+// ── LO QUE TIENE LONGITUD DE VERDAD Y LO QUE NO ─────────────────────────────
+// Un DNI, un teléfono y una matrícula SÍ tienen una forma; una respuesta de
+// formulario, no. Pero la gente escribe lo que quiere: «610189077 y también el
+// 600123456» en el hueco del teléfono, o la matrícula con una nota al lado.
+//
+// Cortarlo a lo bruto perdería el dato; dejarlo pasar entero rechaza el TICKET
+// ENTERO, que es lo que pasó con `prioridad`. Así que se guarda la versión
+// normalizada en su columna y, si hubo que tocarla, la respuesta original va
+// también a la descripción. No se pierde nada y no se cae nada.
+function acotar(valor, max) {
+  const v = String(valor == null ? '' : valor).trim();
+  return { valor: v.slice(0, max), recortado: v.length > max, original: v };
+}
+
 /** dd/mm/aaaa, aaaa-mm-dd o una fecha de Google → aaaa-mm-dd. '' si no se entiende. */
 function fecha(v) {
   if (v == null || v === '') return '';
@@ -188,16 +202,25 @@ async function respuestasDesde(desde = 0) {
     // Una fila sin NADA escrito es un hueco de la hoja, no una respuesta.
     if (!row.some(v => String(v == null ? '' : v).trim())) continue;
 
+    // Los tres que tienen forma. Si hubo que recortarlos, el original se
+    // apunta abajo con su pregunta.
+    const dni = acotar(dame(row, 'dni'), 24);
+    const tel = acotar(dame(row, 'telefono'), 24);
+    const mat = acotar(dame(row, 'matricula'), 16);
+    const recortados = [dni, tel, mat].filter(x => x.recortado)
+      .map(x => ({ titulo: 'Tal como lo escribió', valor: x.original }));
+
     respuestas.push({
       fila: nFila,
       marca: marca(row[porCampo.marca]),
-      dni: dame(row, 'dni'),
-      nombre: dame(row, 'nombre'),
-      telefono: dame(row, 'telefono'),
+      dni: dni.valor,
+      nombre: acotar(dame(row, 'nombre'), 160).valor,
+      telefono: tel.valor,
       email: dame(row, 'email'),
       gestion: dame(row, 'gestion'),
+      // Sin acotar: es una respuesta de formulario y la columna es TEXT.
       prioridad: dame(row, 'prioridad'),
-      matricula: dame(row, 'matricula'),
+      matricula: mat.valor,
       // Las vacaciones traen fecha de inicio y fin; el cambio de libranza, el día
       // que se quiere librar y el que se recupera. Son la misma pareja de fechas
       // con otro nombre, y aquí se guardan en el mismo sitio.
@@ -207,7 +230,8 @@ async function respuestasDesde(desde = 0) {
       // las preguntas que no conocemos, y por eso no se pierde ninguna.
       extras: sueltas
         .map(s => ({ titulo: s.titulo, valor: String(row[s.i] == null ? '' : row[s.i]).trim() }))
-        .filter(x => x.valor),
+        .filter(x => x.valor)
+        .concat(recortados),
     });
   }
 

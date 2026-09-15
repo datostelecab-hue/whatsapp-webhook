@@ -50,50 +50,69 @@ async function sincronizar({ desde } = {}) {
 
   let nuevas = 0, repetidas = 0, sinIdentificar = 0;
   const creados = [];
+  const fallos = [];
 
   for (const r of respuestas) {
-    const clas = await clasificar(r.gestion);
+    // UNA FILA MALA NO PUEDE TUMBAR LA PASADA. Pasó de verdad: una respuesta
+    // con la prioridad larga («Incidencia grave (requiere…)») no cabía en su
+    // columna, la excepción subía, y con ella se quedaron fuera TODAS las
+    // respuestas posteriores —no una, todas—, pasada tras pasada.
+    //
+    // Ahora cada fila va por su cuenta: la que falle se apunta con su número y
+    // su motivo, y las demás siguen entrando.
+    try {
+      const clas = await clasificar(r.gestion);
 
-    // QUIÉN LO PIDE. Por DNI primero, teléfono después y nombre el último, que
-    // es el orden en que esos datos identifican de verdad a alguien. Si no se
-    // resuelve, el ticket entra igual con lo que escribió: un ticket sin dueño
-    // se puede enlazar después, uno que no existe no.
-    const persona = await plantilla.buscarPersona({
-      dni: r.dni, telefono: r.telefono, nombreBolt: r.nombre,
-    }).catch(() => null);
-    if (!persona) sinIdentificar++;
+      // QUIÉN LO PIDE. Por DNI primero, teléfono después y nombre el último, que
+      // es el orden en que esos datos identifican de verdad a alguien. Si no se
+      // resuelve, el ticket entra igual con lo que escribió: un ticket sin dueño
+      // se puede enlazar después, uno que no existe no.
+      const persona = await plantilla.buscarPersona({
+        dni: r.dni, telefono: r.telefono, nombreBolt: r.nombre,
+      }).catch(() => null);
+      if (!persona) sinIdentificar++;
 
-    const creado = await repo.alta({
-      origen: 'formulario',
-      filaForm: r.fila,
-      marca: r.marca,
-      conductorId: persona ? persona.id : null,
-      dni: r.dni, nombre: r.nombre, telefono: r.telefono,
-      area: clas.area, subtipo: clas.subtipo,
-      gestion: r.gestion, prioridad: r.prioridad,
-      descripcion: form.descripcion(r),
-      matricula: r.matricula,
-      fechaIni: r.fechaIni, fechaFin: r.fechaFin,
-      responsable: '',
-    });
+      const creado = await repo.alta({
+        origen: 'formulario',
+        filaForm: r.fila,
+        marca: r.marca,
+        conductorId: persona ? persona.id : null,
+        dni: r.dni, nombre: r.nombre, telefono: r.telefono,
+        area: clas.area, subtipo: clas.subtipo,
+        gestion: r.gestion, prioridad: r.prioridad,
+        descripcion: form.descripcion(r),
+        matricula: r.matricula,
+        fechaIni: r.fechaIni, fechaFin: r.fechaFin,
+        responsable: '',
+      });
 
-    if (!creado) { repetidas++; continue; }
-    nuevas++;
-    creados.push({ ...creado, area: clas.area, quien: persona ? persona.nombre : (r.nombre || r.dni) });
-    await repo.apuntar(creado.id, {
-      despues: 'pendiente',
-      nota: `Alta desde el formulario (fila ${r.fila})` +
-            (persona ? ` · identificado por ${persona.por}` : ' · SIN identificar'),
-      quien: 'formulario',
-    });
+      if (!creado) { repetidas++; continue; }
+      nuevas++;
+      creados.push({ ...creado, area: clas.area, quien: persona ? persona.nombre : (r.nombre || r.dni) });
+      await repo.apuntar(creado.id, {
+        despues: 'pendiente',
+        nota: `Alta desde el formulario (fila ${r.fila})` +
+              (persona ? ` · identificado por ${persona.por}` : ' · SIN identificar'),
+        quien: 'formulario',
+      });
+    } catch (e) {
+      fallos.push({ fila: r.fila, quien: r.nombre || r.dni || '', motivo: e.message });
+      console.error(`❌ [TICKETERA] fila ${r.fila} (${r.nombre || '?'}): ${e.message}`);
+    }
   }
 
-  await configApp.guardarConfig({ [CLAVE_MARCA]: String(ultimaFila) }).catch(() => {});
+  // LA MARCA DE AGUA SE QUEDA ANTES DEL PRIMER FALLO, no al final. Así la fila
+  // que falló se vuelve a intentar en cada pasada: el día que se arregle la
+  // causa, entra sola. Releer unas filas de más no cuesta nada —el índice único
+  // impide que se dupliquen—; perderlas para siempre, sí.
+  const hasta = fallos.length ? Math.min(...fallos.map(f => f.fila)) - 1 : ultimaFila;
+  await configApp.guardarConfig({ [CLAVE_MARCA]: String(Math.max(marca, hasta)) }).catch(() => {});
   if (nuevas) avisar(creados);
 
   console.log(`🎫 [TICKETERA] ${nuevas} nuevo(s), ${repetidas} ya estaba(n), ` +
-    `${sinIdentificar} sin identificar · filas ${marca + 1}→${ultimaFila}`);
-  return { nuevas, repetidas, sinIdentificar, desde: marca, hasta: ultimaFila, sueltas, porCampo };
+    `${sinIdentificar} sin identificar` + (fallos.length ? `, ${fallos.length} CON FALLO` : '') +
+    ` · filas ${marca + 1}→${ultimaFila}`);
+  return { nuevas, repetidas, sinIdentificar, fallos, desde: marca, hasta, sueltas, porCampo };
 }
 
 /** Un correo por área con lo que le acaba de entrar. */

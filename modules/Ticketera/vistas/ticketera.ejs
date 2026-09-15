@@ -246,8 +246,13 @@
     aviso('Leyendo el formulario…');
     const r = await api('/sincronizar');
     if (r.status !== 'ok') return aviso(r.msg, 'error');
-    aviso(`${r.nuevas} nuevo(s), ${r.repetidas} ya estaban, ${r.sinIdentificar} sin identificar.`,
-      r.nuevas ? 'ok' : null);
+    // Los fallos se dicen ENTEROS, con su fila: una respuesta que no entra es
+    // una persona esperando una contestación que no va a llegar.
+    const fallos = r.fallos || [];
+    aviso(`${r.nuevas} nuevo(s), ${r.repetidas} ya estaban, ${r.sinIdentificar} sin identificar.` +
+      (fallos.length ? `  ⚠ ${fallos.length} fila(s) NO entraron: ` +
+        fallos.map(f => `${f.fila} (${f.quien}) — ${f.motivo}`).join(' · ') : ''),
+      fallos.length ? 'error' : (r.nuevas ? 'ok' : null));
     cargar();
   });
 
