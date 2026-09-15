@@ -51,19 +51,53 @@ const falsoMapon = {
   ] }),
 };
 
-let filas = [];
-const falsoSheets = {
-  ensureSheet: async () => true,
-  readSheet: async () => filas,
-  writeSheetRaw: async (id, rango, datos) => {
-    const m = rango.match(/A(\d+)/);
-    filas[m ? Number(m[1]) - 1 : 0] = datos[0];
+// La base de mentira. Antes esto era una hoja falsa; desde que el fichaje vive
+// en PostgreSQL lo que se finge es el repositorio, que es por donde pasa todo
+// lo que se guarda.
+//
+// Se copian A PROPOSITO los dos indices unicos de db/125 —una persona, un turno
+// abierto; un coche, un turno abierto— devolviendo null igual que hace `crear`
+// cuando la base lo rechaza. Sin eso la prueba pasaria por caminos que en
+// produccion no existen.
+let turnos = [];
+const tel9 = t => String(t == null ? '' : t).replace(/\D/g, '').slice(-9);
+const norm = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+const abierto = t => t.estado === 'abierto';
+
+const falsoRepo = {
+  abiertoDe: async telefono =>
+    turnos.find(t => abierto(t) && tel9(t.telefono) === tel9(telefono)) || null,
+  abiertoDeCoche: async (matricula, telefono) =>
+    turnos.find(t => abierto(t) && norm(t.matricula) === norm(matricula)
+      && tel9(t.telefono) !== tel9(telefono)) || null,
+  abiertos: async () => turnos.filter(abierto),
+  unitsConocidos: async () => [...new Set(turnos.map(t => t.unitId).filter(Boolean))],
+  crear: async t => {
+    if (turnos.some(x => abierto(x) && tel9(x.telefono) === tel9(t.telefono))) return null;
+    if (turnos.some(x => abierto(x) && norm(x.matricula) === norm(t.matricula))) return null;
+    const g = { ...t, estado: 'abierto', filaId: turnos.length + 1 };
+    turnos.push(g);
+    return g;
   },
-  appendRows: async (id, r, datos) => { datos.forEach(d => filas.push(d)); },
+  actualizar: async t => {
+    const i = turnos.findIndex(x => x.id === t.id);
+    if (i < 0) return null;
+    turnos[i] = { ...turnos[i], ...t };
+    return turnos[i];
+  },
+  quienLlevaba: async (matricula, cuando) =>
+    turnos.filter(t => norm(t.matricula) === norm(matricula)
+      && t.inicio <= cuando && (t.fin || Infinity) >= cuando)
+      .sort((a, b) => b.inicio - a.inicio)[0] || null,
 };
 
 require.cache[require.resolve(path.join(RAIZ, 'services/mapon.js'))] = { exports: falsoMapon, loaded: true, id: 'falso-mapon' };
-require.cache[require.resolve(path.join(RAIZ, 'services/sheets.js'))] = { exports: falsoSheets, loaded: true, id: 'falso-sheets' };
+require.cache[require.resolve(path.join(RAIZ, 'services/repo/fichajeTurno.js'))] = { exports: falsoRepo, loaded: true, id: 'falso-repo' };
+// Al abrir turno se busca a la persona por el telefono para atar el turno a su
+// ficha. Aqui se contesta que no se la conoce, que es lo que pasa con la
+// mayoria de los numeros del fichaje: el turno se abre igual.
+require.cache[require.resolve(path.join(RAIZ, 'modules/Conductores/plantilla.service.js'))] =
+  { exports: { buscarPersona: async () => null }, loaded: true, id: 'falsa-plantilla' };
 const f = require(path.join(RAIZ, 'services/fichaje.js'));
 
 let mal = 0;
