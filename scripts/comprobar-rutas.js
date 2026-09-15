@@ -57,6 +57,7 @@ const PARES = [
   ['modules/RRHH/vistas/convenioNomina.ejs', 'modules/RRHH/convenio.controller.js', '/convenio'],
   ['modules/RRHH/vistas/convenioAbsentismo.ejs', 'modules/RRHH/convenio.controller.js', '/convenio'],
   ['modules/RRHH/vistas/partials/convenio-nav.ejs', 'modules/RRHH/convenio.controller.js', '/convenio'],
+  ['modules/Administracion/vistas/recaudacion.ejs', 'modules/Administracion/recaudacion.controller.js', '/recaudacion'],
   ['modules/Vehiculos/vistas/vehiculos.ejs', 'modules/Vehiculos/vehiculos.controller.js', '/vehiculos'],
   ['views/migraciones.ejs', 'routes/migraciones.js', '/migraciones'],
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],

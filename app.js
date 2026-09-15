@@ -168,7 +168,7 @@ app.use(sesion.controlAcceso);
 app.use(sesion.cargarPermisos);
 app.use('/inicio', require('./routes/inicio'));
 app.use('/justificantes', require('./modules/Control/justificantes.controller'));
-app.use('/recaudacion', require('./routes/recaudacion'));
+app.use('/recaudacion', require('./modules/Administracion/recaudacion.controller'));
 app.use('/usuarios', usuariosRoutes);
 
 app.use('/horas', boltHoras);
@@ -735,7 +735,7 @@ programar('7,37 * * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
-    const r = await require('./services/repo/recaudacion').recalcularReciente({});
+    const r = await require('./modules/Administracion/recaudacion.service').recalcularReciente({});
     // Solo se escribe cuando algo se movió: un cron que habla cada media hora
     // para decir "nada" es ruido que acaba tapando el aviso que sí importa.
     const cambios = (r.cambios || []).length, nuevos = (r.nuevos || []).length;

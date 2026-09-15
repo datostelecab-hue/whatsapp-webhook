@@ -262,7 +262,7 @@ decidirlo antes de mover nada.
 | **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
 | **Seleccion** ✓ | `seleccion`, `ett`, `generador`, `vacantes` — **hecho, el módulo entero** |
 | ~~**Informes**~~ | **NO es un módulo.** Los informes son de Control y su pestaña está en `/control/reportes`: horas, turnos, parrilla, asistencia, Sankey —todo de tráfico—. El resto (`exportar`, `bi`, `visibilidad`, `resumen`) se reparte por su tema |
-| **Administracion** | `administracion`, `recaudacion` |
+| **Administracion** | `recaudacion` — **hecho**. `administracion` NO: cuelga de `tickets`, `conductoresBolt` y `planificadorV2`, los tres sobre hojas |
 | **Usuarios** ✓ | `usuarios`, `auth` — **hecho** |
 | **Fichaje** ✓ | `fichaje` — **hecho**, nació ya en `modules/` |
 | **WhatsApp** | `botPuertas`, `notificaciones` |
@@ -300,7 +300,7 @@ posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
 ~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ ~~**Planificacion**~~
-~~**Operaciones**~~ ~~**RRHH**~~ (hechos) → **Informes**, **Administracion** y el resto.
+~~**Operaciones**~~ ~~**RRHH**~~ ~~**Administracion**~~ (hechos) → lo que queda en hojas.
 
 ### Hecho: Documentos
 
@@ -481,6 +481,27 @@ Dos cosas más:
   mensuales nunca se han cargado. No es un fallo del módulo: falta el Hito 2 de
   la migración del convenio, y conviene saberlo antes de dar por buena una
   pantalla que sale en blanco.
+
+### Hecho: Administración (solo recaudación)
+
+Está en `modules/Administracion/` (con su `LEEME.md`), y entra **una de las dos**
+rutas: `recaudacion`, que es PostgreSQL puro. `administracion` se queda: cuelga
+de `tickets` y `conductoresBolt` —los dos sobre hojas— y de `planificadorV2`.
+
+Lo único que tenía dentro el controlador y no le tocaba era **el guardia del
+permiso de nómina**, que ahora vive en el servicio. Merece la pena decir por qué
+importa: son dos permisos distintos —cobrar en mano y apuntar un descuento de
+nómina— y el segundo se comprueba **al apuntar**, no solo al pintar la pantalla.
+Esconder un botón no es una autorización: quien conozca la URL la llama igual.
+
+Comprobado contra los cuatro usuarios reales de producción: el guardia coincide
+con la matriz de permisos uno a uno, y dice que no a un id desconocido, a un id
+vacío y a cualquier fallo de la consulta. En caja, la duda se resuelve cerrando.
+
+**`codigosBallenoil` no entra**, aunque también es PostgreSQL puro: lo usan
+`administracion` (que se queda) y el bot de las puertas, y meterlo aquí
+obligaría al bot a entrar por la puerta de este módulo para repartir códigos de
+lavado.
 
 ### Hecho: Nóminas (y de paso, fuera de las hojas)
 

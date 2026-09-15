@@ -24,7 +24,7 @@
 // no puede moverse sola porque BOLT corrija un viaje tres semanas después. Se
 // recalcula cuando alguien lo pide, y se ve que cambió.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 // Los billetes y monedas del recibo, de mayor a menor. En CÉNTIMOS: con euros
 // en coma flotante, 0.1 + 0.2 no da 0.3 y el recibo no cuadraría con su total.
