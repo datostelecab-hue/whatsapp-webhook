@@ -258,7 +258,7 @@ decidirlo antes de mover nada.
 | **Planificacion** ✓ | `tablero` (planificador) y `cobertura` — **hecho**. `matching`, `agenda`, `fichas` y `libranzas` NO: cuelgan de las hojas. `vacantes` se fue a Selección |
 | **Control** ✓ | `control`, `alertas`, `callCenter`, `justificantes` y las APIs de `flotaViva` — **hecho, el módulo entero**. El núcleo `fv_*` NO: no es un módulo (ver abajo) |
 | **Operaciones** ✓ | `operaciones`, `sanciones`, `bitacora` — **hecho, el módulo entero** |
-| **RRHH** | `rrhh`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
+| **RRHH** | `convenio` y `pendientes` — **hecho**. `rrhh`, `peticiones` y `ticketera` NO: las tres cuelgan de las hojas |
 | **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
 | **Seleccion** ✓ | `seleccion`, `ett`, `generador`, `vacantes` — **hecho, el módulo entero** |
 | **Informes** | `reportes`, `exportar`, `bi`, `visibilidad`, `resumen` |
@@ -300,7 +300,7 @@ posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
 ~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ ~~**Planificacion**~~
-~~**Operaciones**~~ (hechos) → **RRHH**, **Informes**, **Administracion** y el resto.
+~~**Operaciones**~~ ~~**RRHH**~~ (hechos) → **Informes**, **Administracion** y el resto.
 
 ### Hecho: Documentos
 
@@ -448,6 +448,39 @@ fue el reparto —ya es mecánico— sino **la red de seguridad**:
   `zonas_mapon`. Compilaba y arrancaba. Lo cazó la comprobación en vivo, que
   pide la lista de tareas y exige que las dos estén. **Un parche se ancla en el
   nombre de lo que cambia, no en una forma que se repite.**
+
+### Hecho: RRHH (a medias, y con el motivo escrito)
+
+Está en `modules/RRHH/` (con su `LEEME.md`), y entran **dos de las cinco** rutas
+del reparto: `convenio` —sus cuatro pantallas, su repositorio y el Excel de la
+gestoría— y `pendientes`. Las otras tres se quedan, y conviene decir por qué
+para que nadie lo intente otra vez:
+
+| Ruta | Motor | Además |
+|---|---|---|
+| `/rrhh` | `services/tickets.js` (880 líneas, sobre hojas) | lo usan también `administracion`, `botPuertas`, `fichas` y `notificaciones` |
+| `/peticiones` | `services/peticiones.js` (hojas) + `planificadorV2` | |
+| `/ticketera` | `services/ticketsRRHH.js` (hojas) + `planificadorV2` | |
+
+Es la misma regla que dejó fuera a `agenda`, `fichas` y `libranzas`. Y
+`tickets.js` tiene un agravante propio: lo consumen cuatro rutas de fuera, así
+que mudarlo obligaría a media casa a entrar por la puerta de RRHH para algo que
+hoy es infraestructura compartida.
+
+Dos cosas más:
+
+- **El partial se mudó con sus vistas.** `partials/convenio-nav.ejs` entra en
+  `modules/RRHH/vistas/partials/` porque solo lo usan esas cuatro pantallas —al
+  revés que `control-nav`, que se quedó en `views/` porque `reportes.ejs`, sin
+  mudar, también lo incluye. EJS busca primero al lado de la plantilla y después
+  en las raíces de `views`, así que las dos formas funcionan; la diferencia es
+  de quién es el fichero.
+- **El convenio no tiene datos.** Comprobado contra producción: `trabajadores`,
+  `nominaMes`, `periodos` y `absentismo` devuelven CERO filas. Las pantallas
+  funcionan y las fichas individuales sí traen datos reales, pero los objetivos
+  mensuales nunca se han cargado. No es un fallo del módulo: falta el Hito 2 de
+  la migración del convenio, y conviene saberlo antes de dar por buena una
+  pantalla que sale en blanco.
 
 ### Hecho: Nóminas (y de paso, fuera de las hojas)
 

@@ -7,7 +7,7 @@
 // convenio vive aqui: todas estan en las funciones y vistas de la base. Este
 // modulo es el cristal por el que se miran, no otra copia de la logica.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 const filas = async (sql, params) => (await db.consulta(sql, params)).rows;
 const una = async (sql, params) => (await db.consulta(sql, params)).rows[0] || null;
