@@ -21,7 +21,7 @@
 // Cruzarlo aquí y no en la pantalla es lo que permite que el Excel y la web
 // cuenten exactamente lo mismo.
 
-const db = require('../db');
+const repo = require('./historico.repo');
 
 /** Etiquetas de los grupos de salida, para que el informe se lea sin código. */
 const SALIDA = {
@@ -47,30 +47,6 @@ const ALERTA = {
 };
 const nombreAlerta = (codigo, etq) => ALERTA[codigo] || String(etq || codigo || '');
 
-/** Todas las llamadas de una jornada, con lo que se contestó de cada alerta. */
-async function llamadasDelDia(dia) {
-  const r = await db.consulta(
-    `SELECT l.id, l.conductor_id, l.tipo, l.resultado, l.nota, l.origen, l.turno,
-            l.creado_at,
-            to_char(l.creado_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
-            COALESCE(u.nombre, '(sin usuario)') AS agente,
-            COALESCE(
-              (SELECT json_agg(json_build_object(
-                        'alerta', a.alerta, 'etiqueta', a.etiqueta, 'comentario', a.comentario)
-                      ORDER BY a.id)
-                 FROM llamada_alerta a WHERE a.llamada_id = l.id), '[]'::json) AS alertas
-       FROM llamada_seguimiento l
-       LEFT JOIN usuario u ON u.id = l.usuario_id
-      WHERE l.dia_operativo = $1::date
-      ORDER BY l.creado_at`, [dia]);
-  return r.rows.map(x => ({
-    id: String(x.id), conductorId: String(x.conductor_id), hora: x.hora, at: x.creado_at,
-    agente: x.agente, tipo: x.tipo || '', resultado: x.resultado || '',
-    nota: x.nota || '', origen: x.origen || '', turno: x.turno || '',
-    alertas: x.alertas || [],
-  }));
-}
-
 /**
  * LAS ALERTAS DE FRANJA DE UN DÍA ENTERO, reconstruidas.
  *
@@ -84,7 +60,7 @@ async function llamadasDelDia(dia) {
  * franja y tipo.
  */
 async function alertasDeFranja(dia) {
-  const AC = require('./alertasControl');
+  const AC = require('../../services/repo/alertasControl');
   const cfg = await AC.leerConfig();
   if (cfg.sinTabla) return new Map();
   const franjas = (cfg.franjas || []).map(f => ({ ...f, dia }));
@@ -127,13 +103,13 @@ async function alertasDeFranja(dia) {
  * @param {string} dia jornada operativa 'AAAA-MM-DD'
  */
 async function parte(dia) {
-  const { enDirecto } = require('../flotaViva/directo');
-  const llamadasRepo = require('./llamadas');
+  const { enDirecto } = require('../../services/flotaViva/directo');
+  const llamadasRepo = require('../../services/repo/llamadas');
   const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dia || '')) ? dia : llamadasRepo.diaOperativoHoy();
 
   const [vivo, llamadas, justis, franjas] = await Promise.all([
     enDirecto({ dia: d }).catch(e => { console.error('⚠️ [HISTÓRICO] en directo:', e.message); return null; }),
-    llamadasDelDia(d).catch(() => []),
+    repo.llamadasDelDia(d).catch(() => []),
     llamadasRepo.justificadosHoy(d).catch(() => ({})),
     alertasDeFranja(d).catch(e => { console.error('⚠️ [HISTÓRICO] franjas:', e.message); return new Map(); }),
   ]);
@@ -317,4 +293,4 @@ async function parte(dia) {
   };
 }
 
-module.exports = { parte, llamadasDelDia, SALIDA, ALERTA, nombreAlerta };
+module.exports = { parte, SALIDA, ALERTA, nombreAlerta };

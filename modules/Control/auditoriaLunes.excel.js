@@ -14,7 +14,7 @@
 // Es la misma escala en las tres hojas para no tener que aprenderse dos.
 
 const ExcelJS = require('exceljs');
-const E = require('./excelEstilo');
+const E = require('../../services/excelEstilo');
 
 const esFecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
 const cortoDia = iso => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');

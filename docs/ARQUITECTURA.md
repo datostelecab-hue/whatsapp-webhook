@@ -100,21 +100,19 @@ se cumple a medias y es deuda conocida (ver más abajo).
 
 ## Dónde estamos hoy
 
-Salida de `node scripts/comprobar-capas.js` a 14/09/2026:
+Salida de `node scripts/comprobar-capas.js` a 15/09/2026:
 
 | | |
 |---|---|
-| Controladores | 47 ficheros · 420 rutas · 6.894 líneas |
-| Repositorios | 42 ficheros · 16.204 líneas |
-| Servicios y adaptadores | 67 ficheros · 20.900 líneas |
-| Vistas | 54 · 21.714 líneas |
+| Controladores | 58 ficheros · 439 rutas · 6.344 líneas |
+| Repositorios | 51 ficheros · 16.919 líneas |
 
-**La buena noticia:** los controladores ya están casi limpios. De 420 rutas,
+**La buena noticia:** los controladores ya están casi limpios. De 439 rutas,
 **solo una lleva SQL** y cuatro ficheros importan un pool de base. Eso no es lo
 normal en un proyecto de este tamaño, y quiere decir que la Fase 1 no es
 reescribir: es cerrar quince agujeros concretos y poner el comprobador a vigilar.
 
-**Se empezó con 15 incumplimientos. Quedan 7.**
+**Se empezó con 15 incumplimientos. Quedan 4.**
 
 Cerrados:
 
@@ -126,20 +124,19 @@ Cerrados:
 
 Pendientes — estas son inversiones de verdad, no constantes:
 
-| Repositorio | Llama a |
-|---|---|
-| `repo/campanas`, `repo/historicoControl` | `flotaViva/directo` |
-| `repo/inicio` | `visibilidad` y `flotaViva/rutas` |
-| `repo/reporteHoras` | `flotaViva/rutas` |
-| `repo/conductores` | `cazamientoBolt` |
-| `repo/compararAgenda` | `planificadorV2` |
+| Repositorio | Llama a | Estado |
+|---|---|---|
+| ~~`repo/campanas`, `repo/historicoControl`~~ | `flotaViva/directo` | **cerradas** al mudar Control: ninguno de los dos era un repositorio |
+| ~~`repo/conductores`~~ | `cazamientoBolt` | **cerrada** al mudar Conductores: pasó a ser el repositorio de al lado |
+| `repo/inicio` | `visibilidad` y `flotaViva/rutas` | |
+| `repo/reporteHoras` | `flotaViva/rutas` | cae con Justificantes |
+| `repo/compararAgenda` | `planificadorV2` | cae cuando la agenda salga de las hojas |
 
-Cuatro de los siete apuntan a `flotaViva/*`, que es un caso aparte: ese módulo
-tiene **su propia base de datos** (`FLOTA_VIVA_DB_URL`) y se enganchó al ERP por
-el lateral. Arreglarlos de uno en uno antes de decidir si ese módulo se integra
-o se queda fuera sería trabajo tirado.
+Las dos que apuntaban a `flotaViva/directo` no se arreglaron: **desaparecieron**
+al ponerle a cada fichero el nombre de lo que hace (ver *Hecho: Control*). Las
+que quedan son inversiones de verdad.
 
-**Los 20 avisos** son manejadores largos (el peor: 105 líneas en
+**Los 31 avisos** son manejadores largos (el peor: 105 líneas en
 `GET /operaciones/auditoria/excel`) y rutas que orquestan tres o más módulos.
 No son errores; son el mapa de dónde está la lógica que tiene que bajar a un
 servicio.
@@ -150,7 +147,7 @@ No hay pruebas automáticas, ni linter, ni `npm scripts`. La red de seguridad de
 este refactor son cuatro comprobadores que no necesitan nada instalado:
 
 ```bash
-node scripts/inventario-rutas.js     # las 420 URL siguen montadas donde estaban
+node scripts/inventario-rutas.js     # las 439 URL siguen montadas donde estaban
 node scripts/comprobar-capas.js      # nadie se ha saltado una capa
 node scripts/comprobar-modulos.js    # todo carga y exporta lo que dice
 node scripts/comprobar-vistas.js     # el JavaScript de las pantallas compila
@@ -160,6 +157,10 @@ node scripts/comprobar-vistas.js     # el JavaScript de las pantallas compila
 aplicación de verdad, recorre el árbol de routers de Express y compara con
 `scripts/rutas-base.json`. Si mover un módulo pierde una URL, sale ahí y no seis
 semanas después cuando alguien pulse ese botón.
+
+Hay dos más, del mismo espíritu: `comprobar-rutas.js` (toda URL que pide una
+vista existe como ruta) y `comprobar-ingesta.js` (nadie llama a BOLT o a Mapon
+por su cuenta sin apuntar el motivo).
 
 ---
 
@@ -222,7 +223,7 @@ decidirlo antes de mover nada.
 | **Documentos** ✓ | `documentos` — **hecho** |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
-| **Control** | `control`, `alertas`, `callCenter`, `justificantes`, `flotaViva` **(?)** |
+| **Control** | `control` — **hecho**. `alertas`, `callCenter` y `justificantes`, en la siguiente tanda; `flotaViva` NO (es núcleo, ver abajo) |
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
 | **RRHH** | `rrhh`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
 | **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
@@ -265,8 +266,8 @@ Empezando por el más pequeño y aislado, para estrenar la mecánica donde el da
 posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
-~~**Seleccion**~~ ~~**Conductores**~~ (hechos) → **Planificacion** → **Control**
-→ el resto.
+~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ (hechos) → el resto de Control
+(`alertas`, `callCenter`, `justificantes`) → **Planificacion** → el resto.
 
 ### Hecho: Documentos
 
@@ -308,9 +309,47 @@ conductores (de 218), subidas el 3 y 4 de septiembre. Se notó en el caso de la
 suspensión de BOLT del 12/09, donde no se pudo descartar una caducidad de
 documentos porque ese conductor —como otros 216— no tiene ninguno cargado.
 
-`flotaViva` no se mueve todavía: tiene base de datos propia y siete de los
-quince incumplimientos. Primero se decide si se integra o se queda fuera; mover
-de sitio algo que no se sabe si va a seguir existiendo es trabajo tirado.
+`flotaViva` **no se mueve, y ya no es "todavía": no es un módulo.** `fv_tramo`,
+`fv_ruta` y compañía son el núcleo de la ingesta, y los leen Nóminas,
+Visibilidad, Bitácora, Sanciones e Inicio además de Control. Meterlo dentro de
+un módulo obligaría a media casa a entrar por la puerta de ese módulo. Se queda
+en `services/flotaViva/`, que es donde vive "cómo se le pregunta al núcleo",
+igual que `services/bolt.js`.
+
+Lo que SÍ queda pendiente de él es **el pool**: `FLOTA_VIVA_DB_URL` nació
+apuntando a otra base, pero hoy seis repositorios leen `fv_*` por el pool
+principal (`services/db`) contra la misma base de Render. Son dos pools sobre un
+solo PostgreSQL, y colapsarlos es un rato de trabajo tranquilo que conviene
+hacer antes de que alguien dé por hecho que son bases distintas.
+
+### Hecho: Control (el cockpit)
+
+Está en `modules/Control/` (con su `LEEME.md`). El más grande de los mudados
+hasta ahora: 512 líneas de controlador con **veinte manejadores** que orquestaban
+por su cuenta —el bucle del informe de varios días, el espejo de la llamada en
+el call center, los colores del Sankey—. Todo eso bajó a `control.service.js` y
+el controlador se quedó en 150 líneas que no deciden nada.
+
+Lo que enseñó, y es lo más útil de esta mudanza:
+
+- **Dos de las seis infracciones no se arreglaron: desaparecieron.**
+  `repo/campanas` no tenía una sola consulta, y `repo/historicoControl` mezclaba
+  dos consultas con un cruce de cuatro fuentes. Mientras estuvieron en
+  `services/repo/`, llamar a `enDirecto` era saltarse una capa. Se les puso el
+  nombre de lo que hacen —`campanas.service`, y `historico` partido en servicio
+  y repositorio— y el comprobador dejó de quejarse **sin mover una línea de
+  lógica**. Una infracción de capas puede ser un error de diseño o puede ser un
+  fichero mal clasificado, y conviene mirar cuál de las dos es antes de
+  refactorizar.
+- **Las vistas con `include` funcionan desde el módulo sin tocarlas.** Las cinco
+  llaman a `partials/control-nav`, que se queda en `views/`: EJS busca primero
+  al lado de la plantilla y después en las raíces de `views`, así que el partial
+  compartido no hay que duplicarlo ni moverlo.
+- **Aquí no se dejaron reexportadores.** En los módulos anteriores sí, por si se
+  escapaba una referencia. En este se comprobó antes, fichero a fichero, que los
+  once que se mudé solo los usaba `routes/control.js` —y no hay `require()`
+  dinámicos en el proyecto salvo el de Taller, que ya está declarado—. Un puente
+  que se sabe que no apunta a nadie es deuda recién creada.
 
 ### Hecho: Nóminas (y de paso, fuera de las hojas)
 

@@ -14,7 +14,7 @@
 // el periodo, el número se queda CORTO (marca menos faltas), que es el lado
 // bueno por el que equivocarse en algo que se usa para llamar a la gente.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 const SQL = `
 WITH

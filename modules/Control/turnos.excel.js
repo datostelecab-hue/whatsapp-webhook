@@ -35,8 +35,8 @@
 // lo que se imprime es exactamente lo que se ve en pantalla.
 
 const ExcelJS = require('exceljs');
-const { salidasPorCoche } = require('./repo/planificador');
-const est = require('./excelEstilo');
+const { salidasPorCoche } = require('../../services/repo/planificador');
+const est = require('../../services/excelEstilo');
 
 const TZ = 'Europe/Madrid';
 

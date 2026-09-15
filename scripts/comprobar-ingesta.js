@@ -49,13 +49,14 @@ const PERMITIDOS = {
   'services/boltHistorico.js':   'Relleno de meses pasados: se lanza a mano y pide hasta 16 meses atrás, ' +
                                  'que es justo lo contrario de un latido cada 5 minutos',
   'services/conductores.js':     'Módulo viejo sobre hojas: muere cuando la agenda pase a PostgreSQL',
-  'services/sanciones.js':       'Sanciones: lee excesos de velocidad de Mapon en su propio cron',
   'services/fichaje.js':         'Fichaje: ESCRIBE en Mapon (enlaza conductor y coche), no lee',
   'routes/operaciones.js':       'Panel de operaciones: se migra con las auditorías',
   // Nacio en `main`, donde esta regla no existia, y con su PROPIA base de datos
   // (`fv_*`). Entra por la puerta grande el dia que su padron se funda con el
   // nucleo; hasta entonces la excepcion queda apuntada, no escondida.
   'services/flotaViva/fuentes.js': 'Flota viva: modulo aparte con su propia base. Se unifica tras la migracion',
+  'services/flotaViva/backfill.js': 'Relleno del núcleo hacia atrás: se lanza a mano y reconstruye meses de ' +
+                                 'state-logs coche a coche, justo lo contrario de un latido cada 5 minutos',
 };
 
 // Donde NUNCA puede haber una llamada: si una pantalla depende de una API,

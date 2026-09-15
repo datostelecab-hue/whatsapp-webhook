@@ -9,7 +9,7 @@
 // voz alta en la reunión y "el 7" es más rápido que el nombre entero.
 
 const ExcelJS = require('exceljs');
-const E = require('./excelEstilo');
+const E = require('../../services/excelEstilo');
 
 const esFecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
 const n1 = v => (v == null ? null : Math.round(Number(v) * 10) / 10);

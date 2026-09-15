@@ -34,6 +34,11 @@ const RAIZ = path.join(__dirname, '..');
 // vista → fichero de rutas y prefijo con el que está montada.
 const PARES = [
   ['modules/Conductores/vistas/plantilla.ejs', 'modules/Conductores/plantilla.controller.js', '/plantilla'],
+  ['modules/Control/vistas/controlDirecto.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Control/vistas/controlCampanas.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Control/vistas/controlCampanasInforme.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Control/vistas/controlHistorico.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Control/vistas/kmTraza.ejs', 'modules/Control/control.controller.js', '/control'],
   ['modules/Vehiculos/vistas/vehiculos.ejs', 'modules/Vehiculos/vehiculos.controller.js', '/vehiculos'],
   ['views/migraciones.ejs', 'routes/migraciones.js', '/migraciones'],
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],

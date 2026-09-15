@@ -28,10 +28,15 @@
 // llamadas (llamada_seguimiento) y de las J (justificante). Esta capa solo
 // REPARTE en colas. Si el cockpit y las campañas dijeran cosas distintas, uno
 // de los dos mentiría.
+//
+// VIVÍA EN `services/repo/`, Y NO ERA UN REPOSITORIO: no tiene una sola
+// consulta. Pide el cockpit, las llamadas y las J, y reparte en colas —eso es
+// negocio—. Mientras estuvo etiquetado como repositorio, llamar a `enDirecto`
+// contaba como saltarse una capa; con el nombre bueno, deja de serlo.
 
-const { enDirecto } = require('../flotaViva/directo');
-const llamadas = require('./llamadas');
-const { TIPOS_J } = require('./justificantes');
+const { enDirecto } = require('../../services/flotaViva/directo');
+const llamadas = require('../../services/repo/llamadas');
+const { TIPOS_J } = require('../../services/repo/justificantes');
 
 // Las ventanas de cada turno. `cierra` de la 3 es el FIN DEL TURNO.
 const VENTANAS = {

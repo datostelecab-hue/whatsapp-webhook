@@ -32,7 +32,7 @@
 // faltar a un día en el que todavía no trabajaba aquí. Quien entró el martes
 // pasado tiene un solo lunes que contar.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 // El descanso del coche se guarda como ISODOW (1 = lunes).
 const LUNES = 1;

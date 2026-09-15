@@ -20,7 +20,7 @@
 // entero se filtra y se suma en una tabla dinámica sin pegar seis ficheros.
 
 const ExcelJS = require('exceljs');
-const E = require('./excelEstilo');
+const E = require('../../services/excelEstilo');
 
 const esFecha = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
 

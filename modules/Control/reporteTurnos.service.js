@@ -15,9 +15,9 @@
 // excelTurnos(reporte)→ Buffer del .xlsx (puro: se puede probar sin BD)
 
 const ExcelJS = require('exceljs');
-const rutas = require('./flotaViva/rutas');
-const { salidasHoy, contactos } = require('./repo/planificador');
-const db = require('./db');
+const rutas = require('../../services/flotaViva/rutas');
+const { salidasHoy, contactos } = require('../../services/repo/planificador');
+const db = require('../../services/db');
 
 const TZ = 'Europe/Madrid';
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA',
@@ -59,7 +59,7 @@ const ayerDe = iso => {
  */
 async function datos(dia) {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoyMadrid();
-  await require('./flotaViva/db').preparar();
+  await require('../../services/flotaViva/db').preparar();
 
   // Lo esencial va SIN red: si el núcleo o el plan no responden, la ruta
   // contesta 500. Antes se tragaba el error y salía un Excel plausible con todos
