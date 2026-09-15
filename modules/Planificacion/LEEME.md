@@ -27,6 +27,7 @@ cobertura.repo.js         el SQL de la semana · avisos.repo.js  el registro de 
 avisoTurnos.service.js    qué semana verá quien pulse el botón del WhatsApp
 turnos.service.js         el mensaje que lee el conductor en el bot
 parrilla.excel.js         el ANEXO que se imprime
+hoja.repo.js              las filas de PLANIFICADOR_V2 y BASES, desde PostgreSQL
 vistas/planificadorV2.ejs · vistas/cobertura.ejs
 ```
 
@@ -136,9 +137,41 @@ segundo sitio para mirar lo que ya está en Plantilla —turno, libranzas, coche
 teléfono— y además era la única pantalla que **escribía** en la hoja `AGENDA_V2`.
 `matching` no se usaba.
 
-**`fichas` y `libranzas` siguen fuera.** Cuelgan de `services/planificadorV2.js`,
-que todavía lee `PLANIFICADOR_V2` y `BASES` de las hojas. Los CONDUCTORES ya no:
-salen siempre de PostgreSQL.
+**`fichas` y `libranzas` siguen fuera**, pero ya no por las hojas: desde el
+15/09/2026 el motor viejo NO LEE GOOGLE para nada. Los conductores salen de
+`repo/agenda` y los coches, las plazas y las zonas de aquí (`hoja.repo`). Lo que
+queda es solo mudanza de ficheros.
+
+## El último trozo del motor viejo que leía Google
+
+`services/planificadorV2.js` sigue vivo porque ~18 sitios lo llaman, y su
+`calcularTablero` es una función PURA que recibe los valores de las hojas tal
+cual venían. `hoja.repo` le da esas mismas filas desde la base.
+
+**Se siguen produciendo filas con forma de hoja a propósito.** Reescribir
+`calcularTablero` —mil líneas de reglas probadas contra 87 coches— para que lea
+otra forma es justo el cambio que no se puede revisar de un vistazo. La forma
+rara vive en un solo fichero y se tira entera el día que el motor muera.
+
+La hoja `PLANIFICADOR_V2` era, a estas alturas, **una copia**: el cuadrante que
+se usa a diario ya estaba en PostgreSQL y la hoja solo alimentaba al motor. Dos
+fuentes del mismo dato, y una sin nadie que la actualizara.
+
+Tres traducciones que importan, y la primera es la que podía romperlo todo:
+
+- **El ID_BOLT se le pide a `v_agenda`, no se recalcula.** Es la clave con la que
+  el motor cruza las dos mitades, y es un NOMBRE, no un uuid: armarlo aquí con
+  otra expresión —aunque fuera "la misma" escrita dos veces— bastaría para que
+  un conductor apareciera en la agenda y no en su coche.
+- **El estado del coche va en el símbolo de la hoja.** La base tiene códigos y el
+  motor compara contra `✓`: se traduce solo el operativo, el resto son las
+  mismas letras.
+- **Las fechas en ISO**, que `parseFecha` acepta, para no dar el rodeo por
+  dd/mm/aaaa y arriesgarse a invertir día y mes.
+
+**Comprobado plaza a plaza**: el motor viejo leyendo de PostgreSQL y el
+planificador del módulo dicen lo mismo en las **480 plazas de los 80 coches**,
+sin una sola diferencia.
 
 **`repo/incorporaciones` y `repo/alta` siguen en `services/repo/`.** Son la
 frontera entre Selección, Conductores y este módulo, y los tres las usan. Un

@@ -1305,25 +1305,38 @@ function validarEsquema(agendaFilas, planFilas) {
  * dejaría a todo el mundo sin turno ni libranzas y el planificador lo daría por
  * bueno. Un error ruidoso es mejor que un cuadrante en blanco que parece cierto.
  *
- * El PLANIFICADOR (los coches y sus plazas) y las BASES sí siguen viniendo de la
- * hoja. Ese es el siguiente paso, no este.
+ * Y DESDE EL 15/09/2026, EL PLANIFICADOR Y LAS BASES TAMPOCO SE LEEN DE GOOGLE.
+ * Esta función ya no abre el libro: los conductores salen de `repo/agenda`, y
+ * los coches, sus plazas y las zonas del módulo de Planificación, que es donde
+ * viven de verdad desde la migración.
+ *
+ * La hoja `PLANIFICADOR_V2` era, a estas alturas, una COPIA: el cuadrante que se
+ * usa a diario ya estaba en PostgreSQL —35 cuadrantes, 600 plazas, 459
+ * asignaciones— y la hoja solo servía para alimentar a este motor. Dos fuentes
+ * para el mismo dato, y una de ellas sin nadie que la actualizara.
+ *
+ * Se siguen produciendo FILAS con la forma de la hoja a propósito:
+ * `calcularTablero` son mil líneas de reglas probadas contra 87 coches, y
+ * reescribirlas para que lean otra forma es justo el cambio que no se puede
+ * revisar de un vistazo. La forma rara vive en `Planificacion/hoja.repo`, en un
+ * solo sitio, y se tira entera el día que este motor muera.
  */
 async function leerCrudo() {
-  const [leidas, agendaFilas] = await Promise.all([
-    readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.plan, RANGOS.bases]),
+  const plani = require('../modules/Planificacion/tablero.service');
+  const [agendaFilas, planFilas, bases] = await Promise.all([
     require('./repo/agenda').filas().catch(e => {
       throw new Error(`No se pudo leer la agenda de PostgreSQL: ${e.message}`);
     }),
+    plani.filasDeHoja({ P, cabecera: P_HEADERS, porCoche: FILAS_POR_COCHE, maxCoches: N_MAT })
+      .catch(e => { throw new Error(`No se pudo leer el cuadrante de PostgreSQL: ${e.message}`); }),
+    // Las zonas son para calcular a qué base le pilla más cerca cada conductor.
+    // Si fallan, el tablero sale igual y solo se queda sin esa sugerencia: no
+    // vale la pena tumbar el cuadrante entero por una distancia.
+    plani.basesDeZona().catch(e => {
+      console.error('⚠️ [PLANIFICADOR] No se pudieron leer las zonas:', e.message);
+      return [];
+    }),
   ]);
-  const [planFilas, basesFilas] = leidas;
-
-  const bases = basesFilas.slice(1)
-    .map(f => {
-      const nombre = txt(f[0]);
-      const coord = parseCoords(f[1]);
-      return nombre && coord ? { nombre, lat: coord.lat, lng: coord.lng } : null;
-    })
-    .filter(Boolean);
 
   return {
     agendaFilas,

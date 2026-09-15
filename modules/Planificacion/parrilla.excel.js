@@ -101,9 +101,21 @@ const borde = () => {
  *
  * @returns { grupos: [{ nombre, numero, zona, coches, ctIds }], sueltos: [coche] }
  */
-function agruparPorCuadrante(coches) {
+function agruparPorCuadrante(coches, cuadrantes) {
   const idsCT = coche =>
     [2, 3, 4, 5].map(s => (coche.personas[s] || {}).id).filter(Boolean);
+
+  // CÓMO SE LLAMA UN CUADRANTE LO DICE EL TABLERO, NO LA TABLA.
+  //
+  // El tablero RENUMERA los cuadrantes para la pantalla: los presenta seguidos,
+  // 1, 2, 3…, saltándose los que se borraron. Así, el que en la base es el id 2
+  // y se llama "Cuadrante 2" se enseña como "CUADRANTE 1".
+  //
+  // El papel leía el número crudo de `v_plaza` y decía "Cuadrante 2" donde la
+  // pantalla decía "Cuadrante 1". Con el papel en la mano y el tablero abierto
+  // al lado, eso es exactamente la clase de discrepancia que hace dudar de todo
+  // lo demás. Se emparejan por id, que es lo único que no cambia.
+  const porId = new Map((cuadrantes || []).map(c => [String(c.id), c]));
 
   const porCuadrante = new Map();
   const sueltos = [];
@@ -111,10 +123,12 @@ function agruparPorCuadrante(coches) {
     if (!coche.cuadranteId) { sueltos.push(coche); return; }
     const k = String(coche.cuadranteId);
     if (!porCuadrante.has(k)) {
+      const cu = porId.get(k);
       porCuadrante.set(k, {
-        nombre: coche.cuadrante || ('Cuadrante ' + (coche.cuadranteNum ?? '?')),
-        numero: coche.cuadranteNum == null ? Number.MAX_SAFE_INTEGER : coche.cuadranteNum,
-        zona: coche.zona || '',
+        nombre: (cu && cu.nombre) || coche.cuadrante || ('Cuadrante ' + (coche.cuadranteNum ?? '?')),
+        numero: (cu && cu.numero != null) ? cu.numero
+          : (coche.cuadranteNum == null ? Number.MAX_SAFE_INTEGER : coche.cuadranteNum),
+        zona: (cu && cu.zona) || coche.zona || '',
         coches: [], ctIds: new Set(),
       });
     }
@@ -159,7 +173,7 @@ async function exportar(tablero) {
   // si tienen conductores asignados (se anota su estado bajo la matrícula).
   const tieneConductores = c => (c.personas || []).some(p => p.id);
   const conMatricula = tablero.coches.filter(c => c.matricula && (c.operativo || tieneConductores(c)));
-  const { grupos, sueltos } = agruparPorCuadrante(conMatricula);
+  const { grupos, sueltos } = agruparPorCuadrante(conMatricula, tablero.cuadrantes);
 
   let fila = 2;
   let n = 1;
@@ -190,6 +204,14 @@ async function exportar(tablero) {
    *   · EL RELEVO DE UNA AUSENCIA. El titular de vacaciones y quien le cubre son
    *     dos personas en la misma plaza, y en el papel solo salía una.
    */
+  // ¿ESTÁN ABIERTAS LAS PLAZAS DE REFUERZO? Los slots 4 y 5 (CT2 día y noche)
+  // existen en la base para los 100 coches desde el primer día, pero solo se
+  // abren durante un evento —la F1, una marcha— y el tablero solo las enseña
+  // entonces (`refuerzoVisible`). Una plaza de refuerzo cerrada NO es un hueco
+  // por cubrir: es una plaza que no existe esta semana.
+  const refuerzoAbierto = !!tablero.refuerzoVisible;
+  const esRefuerzo = p => p && (p.slot === 4 || p.slot === 5);
+
   const fichaRuns = (p, esFijo) => {
     const c = cond(p);
     const runs = [];
@@ -209,7 +231,7 @@ async function exportar(tablero) {
         linea((c.estado || 'Ausente') + (c.vuelveEl ? ' hasta ' + cortoFecha(c.vuelveEl) : ''),
           { size: 8, italic: true, color: { argb: ROJO } });
       }
-    } else if (p) {
+    } else if (p && !(esRefuerzo(p) && !refuerzoAbierto)) {
       // EL HUECO, dicho con palabras. Un cuadro amarillo en blanco no distingue
       // "hay que buscar a alguien" de "ya viene de camino".
       const vac = p.vacante;
@@ -298,7 +320,8 @@ async function exportar(tablero) {
       //
       // Y un hueco ya prometido va en azul, no en amarillo: no hay que buscar a
       // nadie, hay que esperar a que llegue. Pintarlos igual los cuenta dos veces.
-      const plazas = (PLAZAS_COL[c] || []).map(s => coche.personas[s]).filter(Boolean);
+      const plazas = (PLAZAS_COL[c] || []).map(s => coche.personas[s])
+        .filter(p => p && !(esRefuerzo(p) && !refuerzoAbierto));
       if (!plazas.length) { cel.fill = relleno(BLANCO); continue; }
       const falta = plazas.some(p => !hayPersona(p));
       const prometida = plazas.every(p => hayPersona(p) || p.vacante);

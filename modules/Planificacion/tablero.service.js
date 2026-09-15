@@ -301,6 +301,22 @@ const reponer = (...a) => plan.reponer(...a);
  */
 const repasarEventos = () => eventos.repasar();
 
+/**
+ * LAS FILAS DE LA HOJA `PLANIFICADOR_V2` Y LAS `BASES`, desde PostgreSQL.
+ *
+ * Es el último trozo del motor viejo que leía de Google. Se sirve por aquí —y no
+ * dejando que `planificadorV2` entre al repositorio— porque las tablas del
+ * cuadrante son de este módulo: quién ocupa qué plaza y qué días lo decide aquí.
+ *
+ * El que llama pasa SU propio mapa de columnas y SUS cabeceras: la forma de la
+ * hoja es suya, no nuestra, y el día que el motor muera esto se tira entero sin
+ * tener que buscar qué constante era de quién.
+ */
+const filasDeHoja = opciones => require('./hoja.repo').filas(opciones);
+
+/** Las zonas con coordenadas (la pestaña BASES). */
+const basesDeZona = () => require('./hoja.repo').bases();
+
 /** La parrilla en Excel (formato ANEXO), desde el cuadrante real. */
 const parrilla = async dia => {
   const t = await plan.tablero({ dia });
@@ -317,5 +333,6 @@ module.exports = {
   guardarBarrio,
   // La puerta
   contactos, salidasHoy, salidasPorCoche, lunesDe, parrilla, GRUPOS_SALIDA,
+  filasDeHoja, basesDeZona,
   liberarPlaza, reponer, repasarEventos,
 };
