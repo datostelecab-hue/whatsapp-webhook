@@ -70,6 +70,16 @@ router.post('/horas-ett-ayer/enviar', async (req, res) => {
 
     const reporte = await reporteHorasEttAyer();
     if (!reporte.filas.length) throw new Error('No hay conductores ETT para reportar');
+    // SIN DATOS NO SE MANDA. El reporte se pinta igual de bien con las horas a
+    // cero, así que un envío a ciegas llega a la ETT con la misma cara de
+    // siempre diciendo que no trabajó nadie. Es la pantalla la que avisa; aquí
+    // se cierra la puerta, que es lo que sale del edificio.
+    if (!reporte.disponible) {
+      throw new Error(reporte.hastaDia
+        ? `La hoja de horas solo llega al día ${reporte.hastaDia} y el reporte es del ${reporte.fecha}: `
+          + 'saldría con cero horas para todos. No se envía.'
+        : 'La hoja de horas no tiene datos del mes del reporte: saldría con cero horas para todos. No se envía.');
+    }
     const buffer = await generarExcelEttAyer(reporte);
 
     const r = await correo.enviarComoUsuario(req.usuario.email, {

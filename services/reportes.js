@@ -26,7 +26,15 @@ async function reporteHorasEttAyer() {
   const { Y, M, D, idx } = ayerMadrid();
   const [tablero, datos] = await Promise.all([leerTablero(), leerHorasDatosApi()]);
   const conductores = (tablero && tablero.conductores) || [];
-  const disponible = datos.mes === M && datos.ano === Y;   // Datos_API es del mes de ayer
+  // "Disponible" son DOS cosas, y la segunda se aprendió por las malas: que la
+  // hoja sea del mes de ayer, y que la hoja llegue hasta ayer. Los crons que la
+  // rellenan están apagados por defecto desde el 03/09/2026 (`HOJAS_CRONS`), así
+  // que puede estar del mes correcto y congelada en el día 3. Sin esta segunda
+  // comprobación, el reporte salía con CERO horas para todo el mundo y con la
+  // misma cara de siempre: se manda a la ETT y nadie ve que no hay datos.
+  const alDia = !datos.ultimoDia || datos.ultimoDia >= D;
+  const disponible = datos.mes === M && datos.ano === Y && alDia;
+  const hastaDia = datos.ultimoDia || null;
 
   const filas = conductores
     .filter(c => /ETT/i.test(c.contrato || '') && (c.idBolt || '').trim())
@@ -53,7 +61,9 @@ async function reporteHorasEttAyer() {
   return {
     fecha: `${String(D).padStart(2, '0')}/${String(M).padStart(2, '0')}/${Y}`,
     diaSemana: DIAS[idx],
-    disponible, filas, totalHoras
+    // `hastaDia`: hasta qué día del mes llega la hoja. Se devuelve para poder
+    // decir POR QUÉ no hay datos en vez de enseñar una tabla de ceros.
+    disponible, hastaDia, filas, totalHoras
   };
 }
 

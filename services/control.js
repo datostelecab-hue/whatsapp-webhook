@@ -15,6 +15,16 @@
 // no guarda ningún identificador, solo el nombre de BOLT, así que quien se
 // escriba distinto en los dos sitios no cruza y sale como NN. En PostgreSQL ese
 // enlace ya está hecho y lo confirmó una persona.
+//
+// ── Y ESTA HOJA PUEDE ESTAR PARADA ──────────────────────────────────────────
+// Quien la rellenaba son los crons de horas, y están APAGADOS por defecto desde
+// el 03/09/2026 (`HOJAS_CRONS`, en app.js). Con ellos apagados la hoja se queda
+// congelada en el último día que escribieron.
+//
+// El problema no es que falte un dato: es que un día sin datos se leía como un
+// día de CERO HORAS, y quien lo consume escribe ese cero. Por eso se devuelve
+// `ultimoDia`: el último día del mes del que la hoja sabe ALGO. Pasado ese día
+// no se sabe nada, que no es lo mismo que saber que no trabajó nadie.
 
 const { normClave } = require('./conductores');
 const { readSheet } = require('./sheets');
@@ -31,7 +41,12 @@ function numero(v) {
   return isNaN(n) ? null : n;
 }
 
-/** Datos_API → { mes, ano, horas: Map(clave -> { diaDelMes: horas }) }. */
+/**
+ * Datos_API → { mes, ano, horas: Map(clave -> { diaDelMes: horas }), ultimoDia }.
+ *
+ * `ultimoDia` es el día más alto del que ALGUIEN tiene horas. Es la frontera
+ * entre "ese día no trabajó" y "de ese día esta hoja no sabe nada".
+ */
 async function leerHorasDatosApi() {
   const filas = await readSheet(ID_GESTION, `${HOJA_DATOS}!A:AZ`);
   const horas = new Map();
@@ -69,7 +84,19 @@ async function leerHorasDatosApi() {
     }
     if (!horas.has(clave)) { horas.set(clave, porDia); nombres.set(clave, nombre); }
   }
-  return { mes, ano, horas, nombres };
+
+  // Hasta dónde llega la hoja. Se mira el último día con horas > 0 y no el
+  // último con celda escrita, porque una pasada a medias deja ceros: un día
+  // entero a cero en una flota de doscientos conductores no es un día de
+  // descanso general, es un día que no se llegó a escribir.
+  let ultimoDia = 0;
+  horas.forEach(porDia => {
+    for (const d of Object.keys(porDia)) {
+      if (porDia[d] > 0 && Number(d) > ultimoDia) ultimoDia = Number(d);
+    }
+  });
+
+  return { mes, ano, horas, nombres, ultimoDia };
 }
 
 module.exports = { leerHorasDatosApi };

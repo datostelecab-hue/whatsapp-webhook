@@ -193,6 +193,22 @@ async function reconstruirVistaFinal(opciones = {}) {
   const datos = await leerHorasDatosApi();
   const horasVigentes = datos.mes === hoyM && datos.ano === hoyY;
 
+  // HASTA DÓNDE SABE LA HOJA. Esto no es un detalle: los crons que rellenan
+  // Datos_API están APAGADOS por defecto desde el 03/09/2026 (`HOJAS_CRONS` en
+  // app.js), y esta reconstrucción NO lo está — corre cada hora al minuto 45.
+  //
+  // Sin este freno, cada pasada leía una hoja congelada, veía los días
+  // posteriores sin horas y escribía CERO en todos ellos, para todo el mundo,
+  // una vez por hora. Un día del que no se sabe nada no es un día de cero
+  // horas, y aquí la diferencia entre las dos cosas es que se machaca o no el
+  // histórico de horas de la plantilla.
+  const ultimoDia = datos.ultimoDia || 0;
+  if (horasVigentes && ultimoDia && ultimoDia < hoy.getUTCDate() - 1) {
+    console.warn(`⚠️  [VISTA_FINAL] Datos_API solo llega al día ${ultimoDia} y hoy es ${hoy.getUTCDate()}: ` +
+      `los días posteriores se CONSERVAN como están (no se escriben ceros). ` +
+      `Si esto no es lo esperado, los crons de horas están apagados (HOJAS_CRONS).`);
+  }
+
   // 3b) Registro de bajas (CONDUCTORES_OUT) para clasificar a quien ya no está
   //     en la agenda: si está en el registro es "out"; si no, "Sin mapear".
   let outPorClave = new Map();
@@ -230,6 +246,17 @@ async function reconstruirVistaFinal(opciones = {}) {
     const h = porDia ? porDia[f.getUTCDate()] : null;
     const trabajo = h != null && h > 0;
     const enSemanaViva = f >= lunes && f <= domingo;
+
+    // DE ESTE DÍA LA HOJA NO SABE NADA (está parada; ver el aviso de arriba). Se
+    // CONSERVA lo que hubiera, que es lo mismo que se hace con los meses
+    // congelados. Escribir un 0 sería afirmar que no trabajó, y no lo sabemos.
+    //
+    // La única excepción es la 'L' de la semana viva: no sale de las horas sino
+    // del patrón de libranza, así que se sigue pintando aunque no haya datos.
+    if (ultimoDia && f.getUTCDate() > ultimoDia) {
+      if (esLibranza && enSemanaViva) return { valor: 'L' };
+      return { valor: viejo ? (viejo.fila[3 + idx] ?? '') : '' };
+    }
 
     // La 'L' de semanas YA PASADAS se CONGELA (se respeta la escrita, igual que V/B/P/J),
     // PERO si ese día hizo horas (>0) mandan las HORAS con su borde especial: libraba pero
