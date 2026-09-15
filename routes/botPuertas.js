@@ -75,22 +75,48 @@ async function handleText(phone, text) {
   // ANTES de la comprobación de la agenda, porque quien prueba puede no estar en ella.
   if (await fichajeBot.manejarTexto(phone, text)) return;
 
-  // Quién es, de la BASE (PostgreSQL): el teléfono identifica solo -su sufijo de 9
-  // dígitos es único-. Antes esto preguntaba a Apps Script, que leía la hoja.
-  // Autoriza a quien está DE ALTA; quien ya causó baja deja de abrir puertas.
-  const conductor = await require('../modules/Planificacion/cobertura.service')
-    .conductorPorTelefono(phone).catch(e => {
-      console.error('❌ [Puertas] conductorPorTelefono:', e.message);
-      return null;
+  // ── ¿PUEDE ABRIR? ─────────────────────────────────────────────────────────
+  // Lo decide `repo/puertas.quienPuedeAbrir`, que mira DOS cosas para un
+  // conductor —que esté de alta aquí y que su cuenta de BOLT esté activa— y una
+  // para la gente de oficina: el permiso `/puertas`, que se da uno a uno.
+  //
+  // Antes bastaba con tener contrato. Alguien con la cuenta de BOLT parada
+  // seguía abriendo coches que no iba a conducir.
+  const acceso = await require('../services/repo/puertas').quienPuedeAbrir(phone)
+    .catch(e => {
+      console.error('❌ [Puertas] quienPuedeAbrir:', e.message);
+      return { puede: false, motivo: 'error' };
     });
 
-  if (!conductor || !conductor.activo) {
-    console.warn(`🚫 [Puertas] Sin autorizar …${String(phone).slice(-4)}` +
-                 (conductor ? ` (${conductor.nombre}: no está de alta)` : ' (teléfono no está en la plantilla)'));
-    await sendText(phone, '❌ No estás autorizado. Tu número no está en la base de datos.');
+  if (!acceso.puede) {
+    // SE DICE QUÉ FALTA. «No estás autorizado» a secas manda a la persona a
+    // preguntar a tráfico, y tráfico a mirar la hoja: cada motivo tiene una
+    // salida distinta y la más rápida es decirla.
+    const PORQUE = {
+      sin_numero:  '❌ No te reconozco por este número.',
+      no_esta:     '❌ No estás autorizado. Tu número no está en la base de datos.',
+      sin_alta:    '❌ No estás autorizado: no constas de alta ahora mismo. Habla con RRHH.',
+      sin_bolt:    '❌ Tu cuenta de BOLT no está activa, así que no puedo abrirte el coche. Habla con tráfico.',
+      bloqueado:   '❌ Tu usuario está bloqueado.',
+      sin_permiso: '❌ Tu usuario no tiene permiso para abrir puertas.',
+      error:       '❌ Ahora mismo no puedo comprobar tu acceso. Inténtalo en un minuto.',
+    };
+    console.warn(`🚫 [Puertas] Sin autorizar …${String(phone).slice(-4)} (${acceso.motivo}` +
+                 `${acceso.nombre ? ': ' + acceso.nombre : ''})`);
+    await sendText(phone, PORQUE[acceso.motivo] || PORQUE.no_esta);
     return;
   }
 
+  // El resto del bot habla de «conductor». Cuando quien escribe es alguien de
+  // oficina con permiso, no hay conductorId y eso está bien: el registro de la
+  // orden guardará su nombre y su número, que es lo que hace falta para saber
+  // quién abrió qué.
+  const conductor = {
+    conductorId: acceso.conductorId || null,
+    nombre: acceso.nombre,
+    activo: true,
+    esUsuario: acceso.tipo === 'usuario',
+  };
   const nombre = conductor.nombre;
 
   // Palabra clave para pedir el PIN de repostaje (además del botón de la plantilla).

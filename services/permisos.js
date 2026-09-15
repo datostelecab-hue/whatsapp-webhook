@@ -101,6 +101,16 @@ const CATALOGO = [
     { clave: '/recaudacion',        etiqueta: 'Recaudación del efectivo', manual: true },
     { clave: '/recaudacion/nomina', etiqueta: 'Recaudación · descuentos de nómina (RRHH)', manual: true },
   ] },
+  { grupo: 'Puertas', items: [
+    // ESTO NO ES UNA PANTALLA: es abrir la puerta de un coche por WhatsApp.
+    // Nace apagado para TODO el mundo, incluidos los roles que llevan el
+    // catálogo entero, igual que la caja. Una puerta es física y quién la abre
+    // no se decide por descarte: se da una a una.
+    //
+    // Los conductores NO lo necesitan —ellos abren su coche por estar de alta y
+    // activos en BOLT—. Esto es para la gente de oficina.
+    { clave: '/puertas', etiqueta: 'Abrir puertas por WhatsApp', manual: true },
+  ] },
   { grupo: 'Dirección', items: [
     { clave: '/bi', etiqueta: 'Inteligencia de negocio' },
   ] },
