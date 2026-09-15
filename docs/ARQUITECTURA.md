@@ -252,10 +252,10 @@ decidirlo antes de mover nada.
 
 | Módulo | Rutas que se lleva |
 |---|---|
-| **Conductores** ✓ | `plantilla` — **hecho**. `fichas`, `agenda` y `libranzas` NO: cuelgan de las hojas (ver abajo) |
+| **Conductores** ✓ | `plantilla` — **hecho**. `agenda` **BORRADA** (Plantilla ya es la agenda). `fichas` y `libranzas` NO: cuelgan de las hojas |
 | **Documentos** ✓ | `documentos` — **hecho** |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
-| **Planificacion** ✓ | `tablero` (planificador) y `cobertura` — **hecho**. `matching`, `agenda`, `fichas` y `libranzas` NO: cuelgan de las hojas. `vacantes` se fue a Selección |
+| **Planificacion** ✓ | `tablero` (planificador) y `cobertura` — **hecho**. `matching` **BORRADO**. `fichas` y `libranzas` NO: cuelgan de las hojas. `vacantes` se fue a Selección |
 | **Control** ✓ | `control`, `alertas`, `callCenter`, `justificantes` y las APIs de `flotaViva` — **hecho, el módulo entero**. El núcleo `fv_*` NO: no es un módulo (ver abajo) |
 | **Operaciones** ✓ | `operaciones`, `sanciones`, `bitacora` — **hecho, el módulo entero** |
 | **RRHH** | `convenio` y `pendientes` — **hecho**. `rrhh`, `peticiones` y `ticketera` NO: las tres cuelgan de las hojas |

@@ -72,11 +72,22 @@ la usan de ahí. `conductoresBolt` la reexporta con su nombre de siempre.
 `tickets`, `candidaturas.repo` y `ett.service`. Si entrara aquí, Selección estaría entrando
 al repositorio de otro módulo. Se coloca cuando se decida dónde vive la frontera.
 
-**`agenda`, `fichas` y `libranzas` NO son de aquí todavía**, aunque el reparto original las
-ponía en Conductores. Las tres cuelgan de `services/planificadorV2.js`, que lee de las hojas
-`AGENDA_V2`, `PLANIFICADOR_V2` y `BASES`. Meterlas en un módulo sería meter Sheets dentro,
-justo en la dirección contraria a la que va el proyecto. Se mudan cuando esa parte pase a
-PostgreSQL.
+**`agenda` SE BORRÓ (15/09/2026).** Esta pantalla ES la agenda: el turno, las
+libranzas, el coche y el teléfono de cada persona. Había dos sitios donde mirar
+lo mismo, y uno de los dos —el de tráfico— leía y **escribía** en la hoja
+`AGENDA_V2`. Con ella se fue `/matching`, que tampoco se usaba.
+
+**Y la libranza ya no se teclea: sale del cuadrante.** El fijo libra el descanso
+de su coche; el CT, los días que no le pusieron. La columna "Libra" lo enseña y
+el tooltip distingue si viene del cuadrante o de un patrón puesto a mano. La
+regla vive UNA sola vez, en la vista `v_conductor_libranza` (`db/113`), para que
+Plantilla y la agenda de PostgreSQL no puedan decir cosas distintas de la misma
+persona.
+
+**`fichas` y `libranzas` siguen fuera**: cuelgan de `services/planificadorV2.js`,
+que lee de las hojas `PLANIFICADOR_V2` y `BASES`. Meterlas en un módulo sería
+meter Sheets dentro, justo en la dirección contraria a la que va el proyecto. Se
+mudan cuando esa parte pase a PostgreSQL.
 
 ## Lo que aún no está bien
 
