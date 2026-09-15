@@ -5,6 +5,12 @@
 const express = require('express');
 const router = express.Router();
 const cc = require('./callcenter.service');
+const actor = require('../../services/repo/actor');
+
+// Quién atiende. El nombre se sigue guardando porque es lo que se lee en la
+// pantalla; el id se añade ahora que hay tabla, para poder contar por persona
+// sin depender de cómo se escribiera su nombre ese día.
+const quien = async req => ({ usuarioId: await actor.idDe(req) });
 
 const responde = (fn, codigo = 500) => async (req, res) => {
   try {
@@ -38,7 +44,7 @@ router.get('/api/datos', responde(req =>
   cc.panelDelPeriodo({ desde: (req.query || {}).desde, hasta: (req.query || {}).hasta })));
 
 router.post('/api/registrar', responde(async req => {
-  const llamada = await cc.registrar(req.body || {}, agenteDe(req));
+  const llamada = await cc.registrar(req.body || {}, agenteDe(req), await quien(req));
   console.log(`📞 [CallCenter] ${agenteDe(req)}: ${llamada.motivo} · ${llamada.conductor} · ${llamada.resultado}`);
   return { llamada };
 }, 400));
@@ -46,7 +52,8 @@ router.post('/api/registrar', responde(async req => {
 // Resolver una pendiente: nota obligatoria, resultado final opcional.
 router.post('/api/resolver', responde(async req => {
   const b = req.body || {};
-  return { llamada: await cc.resolver(b.clave, { resolucion: b.resolucion, resultado: b.resultado }, agenteDe(req)) };
+  return { llamada: await cc.resolver(b.clave,
+    { resolucion: b.resolucion, resultado: b.resultado }, agenteDe(req), await quien(req)) };
 }, 400));
 
 module.exports = router;

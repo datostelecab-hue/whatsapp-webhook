@@ -29,17 +29,57 @@
 // añade a la descripción como «Pregunta: respuesta». Una pregunta nueva aparece
 // en el ticket desde el primer día sin tocar una línea.
 
-const { readSheet } = require('../../services/sheets');
+const { readSheet, getSheetIds } = require('../../services/sheets');
 const db = require('../../services/db');
 const { norm } = require('./clasificar');
 
-// El libro de la ticketera. Es SUYO: no es el del planificador ni el de horas.
+// El libro de la ticketera («Operaciones 1.0»). Es SUYO: no es el del
+// planificador ni el de horas.
 const LIBRO = '1wPiOmvW77TJFNINtGwBqrjudz-lZMfY29RPAUsPmaPg';
-const HOJA = 'BBDD';
 
-// Se leen todas las columnas: no se sabe cuántas preguntas tiene el formulario
-// hoy, y poner un tope es la forma de perder la que se añada mañana.
-const RANGO = `${HOJA}!A:BZ`;
+// ── QUÉ PESTAÑA ES LA DE LAS RESPUESTAS ────────────────────────────────────
+// NO se escribe un nombre fijo, y esto no es precaución teórica: el primer
+// intento buscó «BBDD» y la pestaña se llama «BBDD Tickets». Google contestó
+// «Unable to parse range» y las cinco bandejas salieron en rojo.
+//
+// Además, una hoja de respuestas de un Formulario se llama «Form_Responses1»
+// hasta que alguien la renombra, y renombrarla es lo normal. Así que se
+// PREGUNTA al libro qué pestañas tiene y se elige, por este orden:
+//
+//   1. la que diga `config_app.ticketera_hoja`, si alguien la ha fijado
+//   2. una que empiece por «BBDD»
+//   3. una que empiece por «Form_Responses» (el nombre de fábrica)
+//
+// Si no aparece ninguna, se dice CUÁLES hay. Un «no encuentro la hoja» a secas
+// obliga a abrir el libro para averiguar cómo se llama.
+const CLAVE_HOJA = 'ticketera_hoja';
+
+let _hoja = null, _hojaTs = 0;
+
+async function nombreDeLaHoja() {
+  if (_hoja && Date.now() - _hojaTs < 10 * 60 * 1000) return _hoja;
+
+  const cfg = await require('../../services/configApp').leerConfig().catch(() => ({}));
+  const fijada = String(cfg[CLAVE_HOJA] || '').trim();
+
+  const pestanas = Object.keys(await getSheetIds(LIBRO));
+  const elegida = (fijada && pestanas.includes(fijada) && fijada)
+    || pestanas.find(t => norm(t).startsWith('bbdd'))
+    || pestanas.find(t => norm(t).startsWith('form_responses'));
+
+  if (!elegida) {
+    throw new Error('No encuentro la hoja de respuestas del formulario. ' +
+      `El libro tiene estas pestañas: ${pestanas.join(', ')}. ` +
+      'Pon el nombre exacto en el ajuste `ticketera_hoja`.');
+  }
+  _hoja = elegida; _hojaTs = Date.now();
+  return elegida;
+}
+
+// Un nombre con espacios hay que ENTRECOMILLARLO en un rango A1, o Google no lo
+// entiende. Y se leen todas las columnas: no se sabe cuántas preguntas tiene el
+// formulario hoy, y poner un tope es la forma de perder la que se añada mañana.
+const rango = hoja => `'${String(hoja).replace(/'/g, "''")}'!A:BZ`;
 
 let campos = null, camposTs = 0;
 const TTL = 60 * 1000;
@@ -129,8 +169,9 @@ function marca(v) {
  * en el ticket, para poder volver a la respuesta original si algo no cuadra.
  */
 async function respuestasDesde(desde = 0) {
-  const filas = await readSheet(LIBRO, RANGO);
-  if (!filas.length) return { cabeceras: [], respuestas: [], ultimaFila: 0, sueltas: [] };
+  const hoja = await nombreDeLaHoja();
+  const filas = await readSheet(LIBRO, rango(hoja));
+  if (!filas.length) return { cabeceras: [], respuestas: [], ultimaFila: 0, sueltas: [], hoja };
 
   const cabeceras = filas[0];
   const { porCampo, sueltas } = await emparejar(cabeceras);
@@ -171,6 +212,7 @@ async function respuestasDesde(desde = 0) {
   }
 
   return {
+    hoja,
     cabeceras: cabeceras.map(h => String(h == null ? '' : h).trim()),
     respuestas,
     ultimaFila: filas.length,
@@ -189,4 +231,4 @@ function descripcion(r) {
   return r.extras.map(x => `${x.titulo}: ${x.valor}`).join('\n');
 }
 
-module.exports = { respuestasDesde, descripcion, emparejar, LIBRO, HOJA };
+module.exports = { respuestasDesde, descripcion, emparejar, nombreDeLaHoja, LIBRO };

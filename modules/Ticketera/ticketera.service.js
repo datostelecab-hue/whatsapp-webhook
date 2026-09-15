@@ -348,10 +348,10 @@ async function aplicar(id, { desde, hasta } = {}, quien = {}) {
  * columna alimenta qué campo y cuáles van a parar a la descripción.
  */
 async function diagnostico() {
-  const { cabeceras, porCampo, sueltas, ultimaFila } = await form.respuestasDesde(1e9);
+  const { cabeceras, porCampo, sueltas, ultimaFila, hoja } = await form.respuestasDesde(1e9);
   const cfg = await configApp.leerConfig().catch(() => ({}));
   return {
-    libro: form.LIBRO, hoja: form.HOJA,
+    libro: form.LIBRO, hoja,
     filasEnLaHoja: ultimaFila,
     leidoHasta: Number(cfg[CLAVE_MARCA]) || 0,
     reconocidas: Object.entries(porCampo || {})

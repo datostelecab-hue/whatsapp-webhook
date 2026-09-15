@@ -8,14 +8,10 @@
 // ("exceso de velocidad" es conducta, aunque también sea operativa) y el TIPO de
 // incidencia (qué clase de siniestro, qué avería) va en las notas, no en el motivo.
 //
-// Persistencia: hoja CALL_CENTER en el libro de sanciones (CALLCENTER_LIBRO para
-// cambiarlo). Se escribe solo al registrar y al resolver — nada de refrescos que
-// gasten cuota (60/min compartidas por todo el ERP).
+// Persistencia: PostgreSQL (`llamada_cc`). Vivía en una hoja; ver la nota de
+// «Persistencia» más abajo.
 
-const { readSheet, writeSheet, appendRows, ensureSheet } = require('../../services/sheets');
 
-const LIBRO = process.env.CALLCENTER_LIBRO || '18E7ZJpc29aGDAAFNIyrvhScuMgEuYR8qNG1FGVY9_Ns';
-const HOJA = 'CALL_CENTER';
 const TZ = 'Europe/Madrid';
 
 // ── Catálogo ──────────────────────────────────────────────────────────────────
@@ -150,41 +146,53 @@ function validarClasificacion({ cluster, subcluster, motivo, resultado }) {
 }
 
 // ── Fechas (el servidor corre con TZ=Europe/Madrid; Render lo tiene puesto) ───
-const legible = ts => new Intl.DateTimeFormat('es-ES', {
-  timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-}).format(ts * 1000);
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
 // 'YYYY-MM-DD' → epoch (s) a las 00:00 de Madrid. Se apoya en el TZ del proceso.
 const inicioDia = f => Math.floor(new Date(`${f}T00:00:00`).getTime() / 1000);
 const finDia = f => inicioDia(f) + 86400;
 
-// ── Persistencia ──────────────────────────────────────────────────────────────
-// Columnas A:T — 'Resolución' la última para poder añadir más al final sin romper nada.
-const CABECERA = ['Clave', 'Ts', 'Fecha', 'Agente', 'Dirección', 'Conductor', 'Teléfono', 'Matrícula', 'Turno',
-  'Cluster', 'Subcluster', 'Motivo', 'Resultado', 'Acción', 'Notas', 'Estado', 'Ts resuelta', 'Resuelta el', 'Resuelta por', 'Resolución'];
+// ── Persistencia ────────────────────────────────────────────────
+// En PostgreSQL desde el 15/09/2026. Antes, una hoja. Dos razones y la segunda
+// es la que importa:
+//
+//   1. Cada llamada era una escritura en Google, y cerrarla otra. Esto se usa
+//      MIENTRAS se habla por teléfono: esperar a Google con alguien al otro
+//      lado es justo el momento en que no se quiere esperar.
+//
+//   2. Resolver una llamada era leer-modificar-escribir sobre una fila
+//      localizada por su POSICIÓN. Dos personas cerrando a la vez podían
+//      escribir una sobre la otra y nada lo impedía. Ahora es un WHERE.
+//
+// EL HISTORIAL VIEJO NO SE TRAE, y es una decisión, no un olvido: todas las
+// llamadas se han hecho desde los botones de teléfono de Control, y ahí está el
+// registro. Copiar una hoja que duplica lo que ya hay solo serviría para tener
+// dos versiones de lo mismo.
+//
+// El CATÁLOGO de arriba NO se ha movido a la base, a propósito: no son datos,
+// es el vocabulario con el que se clasifica, y cada cambio arrastra reglas —qué
+// resultados valen para qué motivo, qué cuenta como «no contactado»—. En tablas
+// daría la ilusión de que se cambia desde una pantalla.
 
-let _hojaLista = false;
-async function asegurarHoja() {
-  if (_hojaLista) return;
-  await ensureSheet(LIBRO, HOJA);
-  const fila1 = await readSheet(LIBRO, `${HOJA}!A1:T1`).catch(() => []);
-  if (!fila1.length || !fila1[0][0]) await writeSheet(LIBRO, `${HOJA}!A1`, [CABECERA]);
-  _hojaLista = true;
+const repo = require('./callcenter.repo');
+
+/**
+ * A quién se llamó, en id de la base. La reincidencia se cuenta POR PERSONA, y
+ * por nombre se contaría mal en cuanto alguien lo escriba distinto. Si no se
+ * resuelve, la llamada se guarda igual con el nombre tecleado: perder la llamada
+ * sería peor que perder el enlace.
+ */
+async function resolverPersona(d) {
+  try {
+    const plantilla = require('../Conductores/plantilla.service');
+    const p = await plantilla.buscarPersona({
+      telefono: d.telefono, nombreBolt: d.conductor, dni: d.dni,
+    });
+    return p ? p.id : null;
+  } catch (_) { return null; }
 }
 
-const aFila = ll => [ll.clave, ll.ts, legible(ll.ts), ll.agente, ll.direccion, ll.conductor, ll.telefono, ll.matricula,
-  ll.turno, ll.cluster, ll.subcluster, ll.motivo, ll.resultado, ll.accion, ll.notas, ll.estado,
-  ll.tsResuelta || '', ll.tsResuelta ? legible(ll.tsResuelta) : '', ll.resueltaPor || '', ll.resolucion || ''];
-
-const deFila = f => ({
-  clave: f[0] || '', ts: Number(f[1]) || 0, agente: f[3] || '', direccion: f[4] || '', conductor: f[5] || '',
-  telefono: f[6] || '', matricula: f[7] || '', turno: f[8] || '', cluster: f[9] || '', subcluster: f[10] || '',
-  motivo: f[11] || '', resultado: f[12] || '', accion: f[13] || '', notas: f[14] || '', estado: f[15] || '',
-  tsResuelta: Number(f[16]) || 0, resueltaPor: f[18] || '', resolucion: f[19] || ''
-});
-
 /** Registra una llamada. Devuelve la llamada canónica tal como quedó guardada. */
-async function registrar(datos, agente) {
+async function registrar(datos, agente, quien = {}) {
   const d = datos || {};
   const cls = validarClasificacion(d);
   if (!String(d.conductor || '').trim()) throw new Error('Falta el conductor');
@@ -192,47 +200,57 @@ async function registrar(datos, agente) {
   const turno = ['Día', 'Noche'].includes(d.turno) ? d.turno : '';
   const estado = low(d.estado) === 'pendiente' ? 'pendiente' : 'resuelta';
   const ts = Math.floor(Date.now() / 1000);
-  const ll = {
+  return repo.guardar({
     clave: `cc-${ts}-${Math.random().toString(36).slice(2, 6)}`,
-    ts, agente: agente || '', direccion,
+    ts, agente: agente || '', agenteId: quien.usuarioId || null, direccion,
+    conductorId: await resolverPersona(d),
     conductor: String(d.conductor).trim(), telefono: String(d.telefono || '').trim(),
     matricula: String(d.matricula || '').trim().toUpperCase(), turno,
     ...cls,
     accion: String(d.accion || '').trim(), notas: String(d.notas || '').trim(),
     estado,
-    // Resuelta en la propia llamada → la resolución es instantánea (cuenta aparte en KPIs).
+    // Resuelta en la propia llamada → la resolución es instantánea (cuenta aparte
+    // en los KPIs).
     tsResuelta: estado === 'resuelta' ? ts : 0,
-    resueltaPor: estado === 'resuelta' ? (agente || '') : '', resolucion: ''
-  };
-  await asegurarHoja();
-  await appendRows(LIBRO, `${HOJA}!A:T`, [aFila(ll)]);
-  return ll;
+    resueltaPor: estado === 'resuelta' ? (agente || '') : '', resolucion: '',
+  });
 }
 
-/** Cierra una llamada pendiente. La nota de resolución es obligatoria. */
-async function resolver(clave, { resolucion, resultado } = {}, agente) {
+/**
+ * Cierra una llamada pendiente. La nota de resolución es obligatoria: una
+ * llamada que se cierra sin decir en qué quedó no sirve para nada dos semanas
+ * después, que es cuando se mira.
+ */
+async function resolver(clave, { resolucion, resultado } = {}, agente, quien = {}) {
   if (!String(resolucion || '').trim()) throw new Error('La nota de resolución es obligatoria');
-  await asegurarHoja();
-  const claves = await readSheet(LIBRO, `${HOJA}!A2:A`);
-  const idx = claves.findIndex(f => (f[0] || '') === clave);
-  if (idx < 0) throw new Error('No encuentro esa llamada');
-  const n = idx + 2;
-  const [fila] = await readSheet(LIBRO, `${HOJA}!A${n}:T${n}`);
-  const ll = deFila(fila);
-  if (ll.estado === 'resuelta') throw new Error('Esa llamada ya está resuelta');
-  const ts = Math.floor(Date.now() / 1000);
-  ll.estado = 'resuelta'; ll.tsResuelta = ts; ll.resueltaPor = agente || ''; ll.resolucion = String(resolucion).trim();
-  if (resultado) ll.resultado = validarClasificacion({ ...ll, resultado }).resultado;
-  await writeSheet(LIBRO, `${HOJA}!A${n}:T${n}`, [aFila(ll)]);
-  return ll;
+
+  // Se puede CORREGIR el resultado al cerrar (la llamada acabó de otra forma de
+  // la que parecía). Se valida contra el motivo de la llamada que hay guardada,
+  // no contra lo que venga en la petición: si no, se colaría cualquier resultado
+  // mandando también un motivo inventado.
+  let res = null;
+  if (resultado) {
+    const actual = await repo.una(clave);
+    if (!actual) throw new Error('No encuentro esa llamada');
+    res = validarClasificacion({ ...actual, resultado }).resultado;
+  }
+
+  const ll = await repo.cerrar(clave, {
+    resolucion: String(resolucion).trim(), resultado: res,
+    agente: agente || '', agenteId: quien.usuarioId || null,
+    ts: Math.floor(Date.now() / 1000),
+  });
+  if (ll) return ll;
+
+  // No se actualizó nada: o no existe, o ya estaba cerrada. Se distingue, porque
+  // son dos problemas distintos para quien está delante.
+  const estado = await repo.existe(clave);
+  if (!estado) throw new Error('No encuentro esa llamada');
+  throw new Error('Esa llamada ya está resuelta');
 }
 
-/** Todas las llamadas de la hoja, ya parseadas (en el orden de la hoja). */
-async function listar() {
-  await asegurarHoja();
-  const filas = await readSheet(LIBRO, `${HOJA}!A2:T`).catch(() => []);
-  return filas.map(deFila).filter(ll => ll.clave && ll.ts);
-}
+/** Todas las llamadas, de la más nueva a la más vieja. */
+const listar = () => repo.listar();
 
 // ── KPIs (función pura: se prueba sin Sheets) ─────────────────────────────────
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
@@ -377,7 +395,7 @@ async function panelDelPeriodo({ desde, hasta } = {}) {
 }
 
 module.exports = {
-  CATALOGO, RESULTADOS_UNIVERSALES, CABECERA,
+  CATALOGO, RESULTADOS_UNIVERSALES,
   validarClasificacion, registrar, resolver, listar, kpis, conductoresForm,
   panelDelPeriodo, inicioDia, finDia, hoyMadrid
 };
