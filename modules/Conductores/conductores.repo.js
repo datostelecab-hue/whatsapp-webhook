@@ -690,7 +690,7 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
  * Aquí no se cierra ni se recorta nada: o el tramo cabe en un hueco libre, o se
  * dice cuál es el que estorba. Nada se pierde en silencio.
  */
-async function anadirAusencia(id, { estado, desde, hasta, motivo, peticionId }, { usuarioId } = {}) {
+async function anadirAusencia(id, { estado, desde, hasta, motivo }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
   if (!desde) throw new Error('Falta el día en que empieza');
   const cat = (await db.consulta(
@@ -731,16 +731,13 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo, peticionId }, 
             + 'no cabe ningún tramo después. Ponle primero cuándo vuelve.'));
   }
 
-  // `peticionId` ata la ausencia al papel que la autorizó. Es opcional porque
-  // RRHH también las mete a mano desde la ficha, sin petición de por medio; pero
-  // cuando viene de una, "¿quién autorizó estas vacaciones?" se contesta
-  // siguiendo la clave en vez de buscando en un correo.
+  // Quién la abrió queda en `usuario_id`, que es la pregunta que de verdad se
+  // hace: "¿quién le puso estas vacaciones?".
   const r = await db.consulta(
     `INSERT INTO conductor_estado_hist
-       (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, peticion_id)
-     VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8) RETURNING *`,
-    [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null,
-     usuarioId || null, peticionId || null]);
+       (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id)
+     VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7) RETURNING *`,
+    [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null, usuarioId || null]);
   return { anadida: r.rows[0] };
 }
 

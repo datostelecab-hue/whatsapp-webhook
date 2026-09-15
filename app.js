@@ -199,7 +199,6 @@ app.use('/bitacora', bitacoraRoutes);
 app.use('/configuracion', configuracionRoutes);
 app.use('/notificaciones', notificacionesRoutes);
 app.use('/pendientes', pendientesRoutes);
-app.use('/peticiones', require('./modules/RRHH/peticiones.controller'));
 app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
 app.use('/callcenter', require('./modules/Control/callcenter.controller'));

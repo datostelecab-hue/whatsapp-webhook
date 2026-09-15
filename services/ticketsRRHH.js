@@ -23,7 +23,10 @@ const RANGO = 'A:Z';
 const TZ = 'Europe/Madrid';
 
 // Subtipo del formulario → tipo de petición del planificador (Peticiones).
-const MAPA_PLANNING = { VACACIONES: 'Vacaciones', BAJA_AUSENCIA: 'Baja Médica', PERMISO_RETRIBUIDO: 'Permiso Retribuido' };
+// Subtipo del formulario → estado del catálogo (`cat_estado_conductor`). El
+// código, no la etiqueta: la etiqueta es lo que se enseña y puede cambiar.
+const MAPA_PLANNING = { VACACIONES: 'vacaciones', BAJA_AUSENCIA: 'baja_medica', PERMISO_RETRIBUIDO: 'permiso' };
+const ETIQUETA_PLANNING = { vacaciones: 'Vacaciones', baja_medica: 'Baja Médica', permiso: 'Permiso Retribuido' };
 // Estados con los que se puede archivar un ticket.
 const ESTADOS_RESOLUCION = ['Ejecutado', 'Aprobado', 'Rechazado', 'No procede'];
 
@@ -56,6 +59,12 @@ function horasEntre(a, b) {
 }
 // "01/08/2026 00:00" → "01/08/2026" (Peticiones trabaja con dd/mm/aaaa sin hora).
 function soloFecha(s) { const m = String(s || '').match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/); return m ? `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3]}` : ''; }
+// dd/mm/aaaa → aaaa-mm-dd, que es como entiende las fechas PostgreSQL. Vacío si
+// no se entiende: una fecha a medias no se adivina, se rechaza.
+function isoDeFecha(s) {
+  const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
 
 // ---- Lectura ----
 async function leerHoja(hoja) {
@@ -194,33 +203,50 @@ async function resolverConductor(t) {
 }
 
 /**
- * Aplica un ticket de Vacaciones / Baja / Permiso al planificador (vía Peticiones):
- * resuelve el conductor, mapea el subtipo a tipo de petición y llama a crearYAplicar,
- * que libera la plaza y escribe las letras. Deja el ticket como "Ejecutado". NO lo
- * mueve a resueltos (eso lo decide RRHH aparte, por si quiere revisar antes).
+ * Aplica un ticket de Vacaciones / Baja / Permiso: abre el tramo de ausencia en
+ * PostgreSQL y deja el ticket como «Ejecutado». NO lo mueve a resueltos: eso lo
+ * decide RRHH aparte, por si quiere revisarlo antes.
+ *
+ * ── POR QUÉ ENTRA POR LA PUERTA DE CONDUCTORES ─────────────────────────────
+ * Abrir una ausencia tiene reglas: no puede pisar otro tramo de la misma
+ * persona, unas vacaciones necesitan fecha de vuelta o esa persona desaparece
+ * del cuadrante para siempre, y cerrar una vigencia y abrir la siguiente va en
+ * una transacción. Eso vive en `plantilla.service` y se pide ahí. Repetirlo
+ * aquí sería tener dos definiciones de qué es estar de vacaciones, y la de la
+ * ticketera sería la floja.
+ *
+ * (Hasta el 15/09/2026 esto pasaba por el módulo de Peticiones, que a su vez
+ *  escribía en dos hojas. Ese módulo se borró: quien puede tocar la Plantilla
+ *  cambia la situación en la ficha, y eso es todo el circuito.)
  */
 async function aplicarAlPlanificador(ticketId, { usuario, desde, hasta, motivo, tipo } = {}) {
   const { t, idx } = await buscarEnTickets(ticketId);
-  const tipoPet = (tipo || MAPA_PLANNING[(t.subtipo || '').toUpperCase()] || '').trim();
-  if (!tipoPet) throw new Error(`El subtipo "${t.subtipo || '—'}" no se aplica al planificador (solo Vacaciones / Baja / Permiso)`);
+  const estado = (tipo || MAPA_PLANNING[(t.subtipo || '').toUpperCase()] || '').trim();
+  if (!ETIQUETA_PLANNING[estado]) {
+    throw new Error(`El subtipo "${t.subtipo || '—'}" no abre una ausencia (solo Vacaciones / Baja / Permiso)`);
+  }
 
   const cond = await resolverConductor(t);
   if (!cond) throw new Error(`No identifico al conductor (ID_BOLT "${t.id_bolt || '—'}", ni por DNI ni por teléfono). ` +
     'Corrige el DNI o el ID_BOLT del ticket antes de aplicar.');
 
-  const d = soloFecha(desde || t.fecha_inicio_evento);
-  const h = soloFecha(hasta || t.fecha_fin_evento);
+  const d = isoDeFecha(soloFecha(desde || t.fecha_inicio_evento));
+  const h = isoDeFecha(soloFecha(hasta || t.fecha_fin_evento));
+  if (!d) throw new Error('El ticket no trae fecha de inicio: ponla antes de aplicar');
 
-  const peticiones = require('../modules/RRHH/peticiones.service');
-  await peticiones.crearYAplicar({
-    tipo: tipoPet, id_conductor: cond.id, conductor: cond.nombre,
-    desde: d, hasta: h,
-    motivo: (motivo || t.descripcion_compilada || '').toString(),
-    responsable: (usuario || '').toString().trim()
-  });
+  // SE APLICA ANTES DE MARCAR EL TICKET. Si el tramo choca con otro suyo, el
+  // ticket sigue pendiente en vez de quedar «Ejecutado» sin que se haya
+  // ejecutado nada.
+  const plantilla = require('../modules/Conductores/plantilla.service');
+  await plantilla.anadirAusencia(cond.id, {
+    estado, desde: d, hasta: h || null,
+    motivo: (motivo || t.descripcion_compilada || '').toString().slice(0, 500) || null,
+  }, { usuarioId: null });
 
   await actualizar(HOJA_T, idx, t._fila, { estado: 'Ejecutado', afecta_planning: 'SÍ' });
-  return { idBolt: cond.idBolt, conductor: cond.nombre, tipo: tipoPet, desde: d, hasta: h };
+  console.log(`✅ [TICKETERA] ${ETIQUETA_PLANNING[estado]} de ${cond.nombre} (por ${cond.por}) ` +
+    `${d}${h ? ' → ' + h : ''}, aplicada por ${usuario || '—'}`);
+  return { conductorId: cond.id, conductor: cond.nombre, tipo: ETIQUETA_PLANNING[estado], desde: d, hasta: h };
 }
 
 module.exports = {

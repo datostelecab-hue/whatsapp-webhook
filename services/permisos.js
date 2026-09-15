@@ -28,7 +28,6 @@ const CATALOGO = [
     // el panel vacío. Ver la excepción de `controlAcceso` en services/sesion.js.
     { clave: '/inicio',     etiqueta: 'Panel de inicio (cifras)' },
     { clave: '/pendientes', etiqueta: 'Pendientes' },
-    { clave: '/peticiones', etiqueta: 'Peticiones' },
     { clave: '/bitacora',   etiqueta: 'Bitácora' },
     { clave: '/plantilla',  etiqueta: 'Plantilla' },
     { clave: '/documentos', etiqueta: 'Documentos' },
@@ -212,23 +211,23 @@ function semillaDeRol(rol) {
     case 'jefe_trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones'), '/bi']
       .filter(c => c !== '/documentos');
     case 'gestor_trafico': return [
-      '/inicio', '/pendientes', '/peticiones', '/bitacora', '/plantilla',
+      '/inicio', '/pendientes', '/bitacora', '/plantilla',
       ...G('Tráfico'), ...G('Flota'), '/callcenter',
     ];
 
     // El taller vive en los coches. Nada de personas más allá de saber quién
     // lleva cada uno.
-    case 'taller': return ['/pendientes', '/peticiones', '/vehiculos', '/conductores',
+    case 'taller': return ['/pendientes', '/vehiculos', '/conductores',
       '/operaciones', '/operaciones/auditoria', '/control/km'];
 
     // Quien recluta necesita el embudo entero y ver la plantilla para saber
     // qué hueco está tapando. Las nóminas y las fichas sensibles, no.
-    case 'reclutador': return ['/pendientes', '/peticiones', '/plantilla', '/documentos',
+    case 'reclutador': return ['/pendientes', '/plantilla', '/documentos',
       ...G('Contratación'), '/generador', '/cobertura'];
 
     // Administración es el papel y el dinero: contratos, nóminas, convenio.
     // No planifica ni ve el directo.
-    case 'administracion': return ['/inicio', '/pendientes', '/peticiones', '/plantilla', '/documentos', '/bitacora',
+    case 'administracion': return ['/inicio', '/pendientes', '/plantilla', '/documentos', '/bitacora',
       '/rrhh', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett'];
 
     // Operaciones es el control de lo que pasa en la calle.

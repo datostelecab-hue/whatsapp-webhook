@@ -272,14 +272,6 @@
       </a>
       <% } %>
 
-      <% if (puedeVer({ href: '/peticiones' })) { %>
-      <a href="/peticiones" class="nav-item <%= seccionActiva === 'peticiones' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
-                <%= seccionActiva === 'peticiones' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
-        <i class="fa-solid fa-clipboard-list w-5 text-center <%= seccionActiva === 'peticiones' ? '' : 'text-telecab-muted' %>"></i>
-        <span class="text-sm flex-1">Peticiones</span>
-      </a>
-      <% } %>
-
       <% if (puedeVer({ href: '/justificantes' })) { %>
       <a href="/justificantes" class="nav-item <%= seccionActiva === 'justificantes' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'justificantes' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">

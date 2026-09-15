@@ -3,7 +3,6 @@ const router = express.Router();
 const { leerTickets, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
 const { leerVacantesGuardadas } = require('../services/vacantes');
-const peticionesSrv = require('../modules/RRHH/peticiones.service');
 const repoInc = require('../services/repo/incorporaciones');
 const ticketsIT = require('../services/ticketsIT');
 
@@ -13,11 +12,10 @@ let cache = null, cacheTs = 0;
 const TTL = 60 * 1000;
 
 async function calcular() {
-  const [{ lista }, tablero, vacantesAll, peticiones, ticketsItLista, incPend] = await Promise.all([
+  const [{ lista }, tablero, vacantesAll, ticketsItLista, incPend] = await Promise.all([
     leerTickets(),
     leerTablero().catch(() => null),
     leerVacantesGuardadas().catch(() => []),
-    peticionesSrv.listar().catch(() => []),
     ticketsIT.leerTickets().catch(() => []),
     repoInc.pendientes().catch(() => [])
   ]);
@@ -28,7 +26,6 @@ async function calcular() {
   const rechazadosRRHH = L.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
   const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT || t.estado === ESTADOS.LISTO_RRHH);
   const pendientesPin = L.filter(t => t.estado === ESTADOS.PENDIENTE_PIN);
-  const petPendientes = (peticiones || []).filter(p => p.estado === 'Pendiente');
   // Incorporaciones pendientes (PostgreSQL): altas con vacante esperando que
   // Tráfico las acepte o rechace EN EL PLANIFICADOR. La alerta no se va sola.
   const incorporaciones = incPend;
@@ -57,15 +54,13 @@ async function calcular() {
         }))
       ]
     },
-    // RRHH: aprobados en BOLT esperando el alta + peticiones de Tráfico por resolver
-    // + fichas en Administración esperando el PIN de Ballenoil (último paso).
+    // RRHH: aprobados en BOLT esperando el alta + fichas en Administración
+    // esperando el PIN de Ballenoil (último paso).
+    // (Las peticiones de Tráfico ya no están: ese circuito se borró el 15/09/2026.
+    //  Quien puede tocar la Plantilla cambia la situación en la ficha.)
     rrhh: {
-      total: porTramitar.length + petPendientes.length + pendientesPin.length,
+      total: porTramitar.length + pendientesPin.length,
       items: [
-        ...petPendientes.map(p => ({
-          texto: `Petición: ${p.tipo} de ${p.conductor || p.id_conductor}`,
-          detalle: p.desde ? `${p.desde} → ${p.hasta}` : (p.motivo || ''), href: '/peticiones'
-        })),
         ...porTramitar.map(t => ({
           texto: `${t.nombre || t.id} — aprobado en BOLT, pendiente de alta`,
           detalle: '', href: `/rrhh?tel=${encodeURIComponent(t.id)}`
