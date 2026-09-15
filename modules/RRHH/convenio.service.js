@@ -26,6 +26,7 @@
 //    al cerrado, que es el caso normal.
 
 const repo = require('./convenio.repo');
+const motor = require('./convenio.motor');
 
 /** Ver las notas 1 y 2. */
 async function mesPorDefecto() {
@@ -120,8 +121,36 @@ async function nominaExcel(q, quien) {
   return r;
 }
 
+// ── El motor ────────────────────────────────────────────────
+// Contratos, objetivos y derivación de la jornada. Se exponen por aquí —y no
+// desde `convenio.motor` directamente— porque este fichero es la puerta del
+// módulo: el cron de `app.js` entra por ella como cualquier otro de fuera.
+
+/** Cómo está el módulo. Lo primero que hay que mirar si una pantalla sale vacía. */
+const estadoDelMotor = () => motor.estado();
+
+/** Abrir los contratos que falten y cerrar los de quien causó baja. */
+const sincronizarContratos = opciones => motor.sincronizarContratos(opciones);
+
+/** Publicar los objetivos de un mes (el pedido, o el que toca por defecto). */
+async function publicarObjetivos(q) {
+  const { anio, mes } = await mesDe(q);
+  return motor.publicarObjetivos(anio, mes);
+}
+
+/** Derivar la jornada de un rango de días. */
+const derivar = ({ desde, hasta } = {}) => motor.derivarRango({ desde, hasta });
+
+/** La pasada de cada noche: derivar AYER. */
+const derivarAyer = () => motor.derivarAyer();
+
+/** Poner el módulo al día de una sentada: contratos, objetivos y lo que falte. */
+const ponerAlDia = opciones => motor.ponerAlDia(opciones);
+
 module.exports = {
   mesPorDefecto, paraLaPantalla,
+  estadoDelMotor, sincronizarContratos, publicarObjetivos,
+  derivar, derivarAyer, ponerAlDia,
   trabajadores, ficha,
   periodos, fichaPeriodo, cerrar, regularizar,
   absentismo, absentismoModulo,

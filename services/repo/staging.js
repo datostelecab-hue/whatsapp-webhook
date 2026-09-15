@@ -161,6 +161,29 @@ async function enArea(vehiculoUuidBolt, momentoEpochSeg) {
   return !!(r.rows[0] && r.rows[0].dentro);
 }
 
+/**
+ * LO MISMO, PERO DE MUCHOS DE UNA VEZ. Devuelve un Map de índice → dentro.
+ *
+ * No es una optimización prematura: la derivación de la jornada del convenio
+ * pregunta esto por CADA tramo de espera, y hay ~1.700 al día. De uno en uno
+ * contra una base que está en Frankfurt son veinte minutos por día derivado; en
+ * una sola ida y vuelta, segundos. El cálculo no cambia: es la misma función de
+ * la base, llamada una vez por fila en vez de una vez por petición.
+ */
+async function enAreaVarios(pares) {
+  const m = new Map();
+  const utiles = (pares || []).map((p, i) => ({ ...p, i })).filter(p => p.veh);
+  if (!utiles.length) return m;
+  const r = await db.consulta(
+    `SELECT x.i::int AS i, f_en_area(x.veh, to_timestamp(x.t)) AS dentro
+       FROM unnest($1::text[], $2::bigint[]) WITH ORDINALITY AS x(veh, t, i)`,
+    [utiles.map(p => p.veh), utiles.map(p => p.t)]);
+  // `WITH ORDINALITY` numera desde 1 en el orden del array, no en el de `pares`:
+  // se traduce de vuelta al índice original para no depender de ese detalle.
+  r.rows.forEach(f => m.set(utiles[f.i - 1].i, !!f.dentro));
+  return m;
+}
+
 /** Los conductores con eventos en un dia. Para saber a quien derivar. */
 async function conductoresConLogs(dia) {
   const r = await db.consulta(
@@ -175,5 +198,5 @@ async function conductoresConLogs(dia) {
 
 module.exports = {
   registrarDescarga, guardarStateLogs, guardarOrders, guardarZonas,
-  logsDeConductorDia, conductoresConLogs, enArea,
+  logsDeConductorDia, conductoresConLogs, enArea, enAreaVarios,
 };

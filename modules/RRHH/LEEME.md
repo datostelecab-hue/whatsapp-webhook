@@ -17,7 +17,10 @@ de absentismo.
 ```
 convenio.controller.js   HTTP. No decide nada.
 convenio.service.js      qué mes se mira, el cierre, la regularización
-convenio.repo.js         el SQL del convenio
+convenio.repo.js         el SQL del panel, el cierre y la nómina
+convenio.motor.js        contratos, objetivos y derivación de la jornada
+contratos.repo.js        el SQL de contrato y objetivo_mensual
+jornada.repo.js          de los estados de BOLT a asientos del convenio (Hito 2)
 nomina.excel.js          el libro que se manda a la gestoría
 pendientes.controller.js una pantalla, sin dominio detrás
 vistas/                  convenio · convenioCierre · convenioNomina ·
@@ -83,11 +86,86 @@ puerta de RRHH para algo que hoy es infraestructura compartida.
 
 Se mudan cuando esa parte pase a PostgreSQL.
 
+## El motor: lo que estaba escrito y no estaba enchufado
+
+El Hito 2 —convertir los cambios de estado de BOLT en asientos del convenio—
+estaba **escrito desde hacía meses y no lo llamaba nadie**. `jornada.repo`
+(antes `services/repo/jornada.js`) no aparecía en un solo `require` del
+proyecto. Resultado: cero contratos, cero objetivos, cero asientos, cero
+registros, y las cuatro pantallas de /convenio en blanco pareciendo rotas.
+
+Lo que faltaba está en `convenio.motor.js`, en el orden en que hay que hacerlo:
+
+```
+1. CONTRATOS   sin contrato no hay objetivo: objetivo_mensual cuelga de contrato
+2. OBJETIVOS   sin objetivo no hay contra qué comparar
+3. DERIVACIÓN  los asientos y el registro del art. 18.9
+```
+
+Y se enchufa por tres sitios: el **cron de las 05:50** (deriva ayer; el día 1 de
+cada mes abre contratos y publica objetivos), las **rutas `/convenio/api/motor/*`**
+(para arrancar, ponerse al día o saber por qué algo sale vacío) y
+`convenio.service`, que es la puerta por la que entra el cron.
+
+### Las cuatro decisiones que se tomaron
+
+**Contrato solo para plantilla propia.** El objetivo mensual, el cierre y la
+nómina son obligaciones NUESTRAS; a la gente de la ETT la contrata la agencia.
+Lo que sí se les calcula es el REGISTRO DE JORNADA, porque cuántas horas hizo
+alguien en nuestros coches es un hecho y hace falta para el parte de la agencia.
+
+**Grupo G3A por omisión** (conductores de aplicación): es lo que son casi todos
+y lo que el propio esquema documenta como normal. Quien no lo sea se corrige a
+mano; abrir un contrato mal es mejor que no abrirlo, porque uno equivocado se ve
+y uno que falta no.
+
+**40 horas cuando no consta.** 77 de las 215 personas no tenían `jornada_horas`
+anotada. Sale contado aparte en el resultado, para que RRHH sepa a cuántos hay
+que mirarles la ficha.
+
+**El contrato empieza el día del alta**, aunque sea de 2022. El objetivo se
+prorratea por días de alta EN EL MES, así que una antigüedad larga no inventa
+objetivos de meses viejos.
+
+### El agujero que apareció al generar objetivos de verdad
+
+`f_objetivo_min` prorrateaba las 1.776 h del convenio por días de alta **y nada
+más**: a quien tiene 32 horas le exigía lo mismo que a quien tiene 40, un 25 %
+de más todos los meses. Con `contrato` vacío no se notaba. `db/112` añade
+`contrato.horas_semana` y escala el objetivo por ella, leyendo la semana completa
+de `agreement_parameter` (NON_DRIVER_WEEKLY_HOURS) y no de una constante.
+
+Comprobado contra las seis combinaciones que hay en producción: 40 h y mes
+completo → 8.758 min; 32 h → 7.007; y los prorrateos de 28, 27, 26 y 23 días de
+alta, todos clavados.
+
+### Dos consultas que hacían la derivación inviable
+
+Derivar un día tardaba **cuatro minutos**, y esto corre cada noche:
+
+- `enArea` se preguntaba **una vez por tramo de espera** —~1.700 al día— contra
+  una base que está en Frankfurt. Ahora va en una sola ida y vuelta
+  (`staging.enAreaVarios`): medido, 37× más rápido y la misma respuesta.
+- `guardarAsientos` insertaba **de uno en uno**. Ahora es un `unnest` con el
+  mismo `ON CONFLICT`: la idempotencia no depende de cuántas filas viajen juntas.
+
+Con las dos, un día baja a **17 segundos**, y los 13 días de historia que había
+en `bolt_state_log` se derivaron en dos minutos.
+
 ## Lo que aún no está bien
 
-**El convenio no tiene datos cargados.** Comprobado contra producción el
-15/09/2026: `trabajadores`, `nominaMes`, `periodos` y `absentismo` devuelven
-**cero filas**. Las pantallas funcionan, el Excel se genera y las fichas
-individuales sí traen datos reales (salen de la tabla de conductores), pero los
-objetivos mensuales del convenio nunca se han cargado. Eso no es un fallo de
-este módulo: falta el Hito 2 de la migración del convenio.
+**LA ESPERA NO CUENTA COMO TRABAJO, Y NO ES UN FALLO DEL CÓDIGO.** El art. 18.7
+dice que estar conectado esperando solo es trabajo efectivo si estás DENTRO DEL
+ÁREA. El área se prueba con las zonas de Mapon, y hoy hay **17 cruces de zona en
+dos semanas, sobre 2 zonas**, para una flota de ~100 coches. Consecuencia: de los
+minutos derivados, **138.481 de espera caen a TE_NO (no computa) y CERO a TE_A1**.
+
+Son 2.308 horas en trece días que el convenio no reconoce como trabajo. El
+cálculo es correcto; lo que falta es configurar las zonas en Mapon. Hasta que se
+haga, el "cumplido estricto" del panel va a salir muy por debajo del total, y la
+diferencia es exactamente la columna `espera_fuera_area`.
+
+**Absentismo y nómina siguen vacíos**, y eso sí son otros hitos: las ausencias
+del convenio (Hito 4) y las variables de nómina (Hito 8) tienen sus propias
+tablas y nadie las ha llenado. El panel de jornada, que es lo que arregla el
+Hito 2, ya sale con sus 145 personas.

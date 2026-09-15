@@ -13,7 +13,7 @@
 //   1. tramosDeLogs: los cambios de estado en tramos con inicio y fin reales.
 //   2. asientosDeDia: cada tramo a un asiento, segun la tabla, y el aux diario.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 // Tope de un tramo, igual que en el sistema de horas: si BOLT deja de reportar
 // sin pasar por 'inactive', ese hueco no es tiempo trabajado. Configurable.
@@ -122,19 +122,24 @@ function asientosDeDia({ tramos, catalogo, conductorId, dia, areaConfirmada = nu
  * nuevo. El efecto lo pone el disparador del ledger desde el tipo.
  */
 async function guardarAsientos(asientos) {
-  let nuevos = 0;
-  for (const a of asientos) {
-    const r = await db.consulta(
-      `INSERT INTO asiento_jornada
-         (conductor_id, dia_operativo, tipo, minutos, supuesto_te, origen, ref_externa)
-       VALUES ($1, $2::date, $3, $4, $5, $6, $7)
-       ON CONFLICT (origen, ref_externa) WHERE anulado_at IS NULL AND ref_externa IS NOT NULL
-       DO NOTHING
-       RETURNING id`,
-      [a.conductorId, a.dia, a.tipo, a.minutos, a.supuestoTe, a.origen, a.refExterna]);
-    if (r.rowCount) nuevos++;
-  }
-  return nuevos;
+  if (!asientos.length) return 0;
+  // TODOS DE UNA VEZ, no uno por uno. Un día de plantilla entera son ~1.700
+  // asientos, y una ida y vuelta por cada uno contra una base que está en
+  // Frankfurt convierte una tarea de segundos en una de minutos. El
+  // `ON CONFLICT` sigue siendo el mismo: la idempotencia no depende de cuántas
+  // filas viajen juntas.
+  const r = await db.consulta(
+    `INSERT INTO asiento_jornada
+       (conductor_id, dia_operativo, tipo, minutos, supuesto_te, origen, ref_externa)
+     SELECT * FROM unnest($1::bigint[], $2::date[], $3::text[], $4::int[],
+                          $5::text[], $6::text[], $7::text[])
+     ON CONFLICT (origen, ref_externa) WHERE anulado_at IS NULL AND ref_externa IS NOT NULL
+     DO NOTHING
+     RETURNING id`,
+    [asientos.map(a => a.conductorId), asientos.map(a => a.dia), asientos.map(a => a.tipo),
+     asientos.map(a => a.minutos), asientos.map(a => a.supuestoTe),
+     asientos.map(a => a.origen), asientos.map(a => a.refExterna)]);
+  return r.rowCount;
 }
 
 /**
@@ -150,7 +155,7 @@ async function guardarAsientos(asientos) {
  * si un tramo de espera estaba dentro del area (TE_A1) o no (TE_NO).
  */
 async function derivarDia(conductorId, dia, { areaConfirmada = null } = {}) {
-  const staging = require('./staging');
+  const staging = require('../../services/repo/staging');
   const [logs, catalogo] = await Promise.all([
     staging.logsDeConductorDia(conductorId, dia),
     catalogoEstados(),
@@ -167,13 +172,19 @@ async function derivarDia(conductorId, dia, { areaConfirmada = null } = {}) {
   // -en una prueba, por ejemplo-, esa manda.
   let gate = areaConfirmada;
   if (!gate) {
-    const dentro = new Map();
-    for (const tr of tramos) {
+    // TODAS LAS ÁREAS EN UNA IDA Y VUELTA, no una por tramo. Hay ~1.700 tramos
+    // de espera al día en toda la plantilla; de uno en uno contra una base que
+    // está en Frankfurt, derivar un solo día son veinte minutos. El cálculo es
+    // el mismo —la misma función de la base—, solo cambia cuántas veces se
+    // cruza la red.
+    const condicionados = tramos.filter(tr => {
       const regla = catalogo.get(tr.estado);
-      if (regla && regla.condicionado && tr.veh) {
-        dentro.set(tr.desde, await staging.enArea(tr.veh, tr.desde));
-      }
-    }
+      return regla && regla.condicionado && tr.veh;
+    });
+    const respuestas = await staging.enAreaVarios(
+      condicionados.map(tr => ({ veh: tr.veh, t: tr.desde })));
+    const dentro = new Map();
+    condicionados.forEach((tr, i) => dentro.set(tr.desde, respuestas.get(i) === true));
     gate = tr => dentro.get(tr.desde) === true;
   }
 
@@ -289,7 +300,7 @@ async function guardarRegistro(r) {
 
 /** Deriva la jornada de TODOS los conductores con eventos ese dia. */
 async function derivarTodos(dia, opciones = {}) {
-  const staging = require('./staging');
+  const staging = require('../../services/repo/staging');
   const ids = await staging.conductoresConLogs(dia);
   let asientos = 0, nuevos = 0;
   for (const id of ids) {

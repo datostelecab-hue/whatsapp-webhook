@@ -10,6 +10,7 @@
 const express = require('express');
 const router = express.Router();
 const convenio = require('./convenio.service');
+const sesion = require('../../services/sesion');   // para el guard del desarrollador
 
 const responde = fn => async (req, res) => {
   try { res.json({ status: 'ok', ...(await fn(req)) }); }
@@ -75,5 +76,30 @@ router.get('/api/nomina/export', async (req, res) => {
     res.status(400).json({ status: 'error', msg: e.message });
   }
 });
+
+// ── El motor ────────────────────────────────────────────────
+// Lo normal lo hace el cron de cada noche. Estas rutas son para arrancar el
+// módulo, para ponerlo al día si se quedó atrás y para saber por qué una
+// pantalla sale vacía —que es una pregunta distinta de "no hay datos"—.
+
+// La Única de solo lectura: dice cuántos contratos, objetivos y días derivados
+// hay, y qué días de BOLT faltan por derivar.
+router.get('/api/motor/estado', responde(() => convenio.estadoDelMotor()));
+
+// Las tres que ESCRIBEN. Solo el desarrollador: abren contratos, publican
+// objetivos y reescriben el registro de jornada de toda la plantilla.
+router.post('/api/motor/contratos', sesion.requiereDesarrollador,
+  responde(req => convenio.sincronizarContratos(req.body || {})));
+
+router.post('/api/motor/objetivos', sesion.requiereDesarrollador,
+  responde(req => convenio.publicarObjetivos(req.body || {})));
+
+// Un rango de días: ?desde=AAAA-MM-DD&hasta=AAAA-MM-DD. Idempotente.
+router.post('/api/motor/derivar', sesion.requiereDesarrollador,
+  responde(req => convenio.derivar(req.body || {})));
+
+// Todo de una sentada: contratos, objetivos del mes y lo que falte por derivar.
+router.post('/api/motor/al-dia', sesion.requiereDesarrollador,
+  responde(req => convenio.ponerAlDia(req.body || {})));
 
 module.exports = router;

@@ -579,6 +579,43 @@ programar('0 12 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ── CONVENIO: EL REGISTRO DE JORNADA DEL ART. 18.9 ──────────────────────────
+// A las 05:50 se deriva AYER: los cambios de estado de BOLT se convierten en
+// asientos del convenio (art. 18.6) y en el registro diario de jornada, que es
+// una obligación legal literal y no un informe nuestro.
+//
+// AYER Y NO HOY: la jornada de hoy no ha terminado, y la de un turno de noche ni
+// siquiera ha empezado a cerrarse. Derivar un día a medias no rompe nada —es
+// idempotente— pero deja un registro que dice menos horas de las que hubo.
+//
+// Va DESPUÉS del sellado de la bitácora (05:35) a propósito: las dos leen lo
+// mismo y no hay razón para que se pisen en el pool.
+//
+// El primer día de cada mes, además, se abren los contratos que falten y se
+// publican los objetivos del mes que entra. Los objetivos se COMUNICAN por
+// anticipado (art. 18.1), así que tienen que existir el día 1, no el 30.
+programar('50 5 * * *', async () => {
+  try {
+    const bd = require('./services/db');
+    if (!bd.HAY_BD) return;
+    const convenio = require('./modules/RRHH/convenio.service');
+
+    const hoy = new Intl.DateTimeFormat('en-CA',
+      { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    if (hoy.slice(8, 10) === '01') {
+      await convenio.sincronizarContratos({});
+      await convenio.publicarObjetivos({ anio: Number(hoy.slice(0, 4)), mes: Number(hoy.slice(5, 7)) });
+    }
+
+    const r = await convenio.derivarAyer();
+    if (r && r.nuevos) {
+      console.log(`[CRON Convenio] ${r.desde}: ${r.conductores} conductor(es) · ${r.nuevos} asiento(s) nuevo(s)`);
+    }
+  } catch (error) {
+    console.error(`[Convenio] derivación diaria: ${error.message}`);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // ── BITÁCORA ────────────────────────────────────────────────────────────────
 // Al cerrar la jornada se SELLAN las horas de los días que ya terminaron
 // (bitacora_horas). A partir de ahí la bitácora los lee de ahí y no vuelve a
