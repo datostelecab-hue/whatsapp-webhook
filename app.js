@@ -92,8 +92,6 @@ process.on('uncaughtException', (error) => {
 
 // Importar rutas
 const botPuertas = require('./routes/botPuertas');
-const boltHoras = require('./routes/boltHoras');
-const resumenRoutes = require('./routes/resumen');
 // Planificador legacy (Google Sheets) ELIMINADO. /planificador sirve ahora el
 // tablero PostgreSQL (modules/Planificacion), el mismo que /planificador-v2.
 const coberturaRoutes = require('./modules/Planificacion/cobertura.controller');
@@ -124,7 +122,6 @@ const bodaRoutes = require('./routes/boda');
 const authRoutes = require('./modules/Usuarios/auth.controller');
 const usuariosRoutes = require('./modules/Usuarios/usuarios.controller');
 const sesion = require('./services/sesion');
-const { procesarYUnificar } = require('./services/boltHorasCore');
 
 // Carga la sesión (si hay cookie) en req.usuario / res.locals para todas las peticiones.
 app.use(sesion.cargarSesion);
@@ -167,8 +164,6 @@ app.use('/justificantes', require('./modules/Control/justificantes.controller'))
 app.use('/recaudacion', require('./modules/Administracion/recaudacion.controller'));
 app.use('/usuarios', usuariosRoutes);
 
-app.use('/horas', boltHoras);
-app.use('/resumen', resumenRoutes);
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)
 app.use('/cobertura', coberturaRoutes);
@@ -296,70 +291,10 @@ if (pruebas.ACTIVO) {
     'escrituras de Sheets/WhatsApp/Mapon bloqueadas. Detalle en /modo-pruebas'));
 }
 
-// ── CRONS DE HOJAS (LEGADO) — APAGADOS por defecto ───────────────────────────
-// El núcleo (PostgreSQL) ya tiene las horas y Visibilidad las muestra en vivo, así
-// que los cron que reescribían Datos_API / el resumen en Sheets sobran: doble-tiraban
-// de BOLT (parte de los 429) y de la cuota de Sheets (60/min, la que tumbó el ERP).
-// Se reactivan con HOJAS_CRONS=on solo si hiciera falta refrescar el viejo reporte de
-// Datos_API mientras se termina de migrar. (El cron de las :10 y :40 tampoco está
-// aquí: ya no escribe ninguna hoja, solo cruza los tickets con el padrón.)
-const HOJAS_CRONS = process.env.HOJAS_CRONS === 'on';
-if (!HOJAS_CRONS && !pruebas.ACTIVO) {
-  console.log('📴 [HOJAS] Crons de hojas (Horas / Horas⚡ / Resumen) APAGADOS (HOJAS_CRONS!=on)');
-}
-
-// Horas de conductores — DOS carriles:
-//
-//  · Cada hora en punto, pasada COMPLETA del mes. Es la de reparación: si una
-//    pasada corta se comió una lectura a medias de Bolt, o si alguien tocó la
-//    agenda, aquí se corrige solo en menos de una hora. No se quita nunca.
-//  · Cada 10 minutos, pasada INCREMENTAL que rehace solo ayer y hoy. Es la que
-//    hace que el control de tráfico esté fresco sin machacar la API de Bolt.
-//
-// Las dos escriben la misma hoja (Datos_API), así que da igual cuál llegue
-// última. Se desfasan del minuto 0 para no solaparse con la completa.
-if (HOJAS_CRONS) programar('0 * * * *', async () => {
-  const ahora = new Date();
-  const mes = ahora.getMonth() + 1;
-  const ano = ahora.getFullYear();
-  console.log(`⏰ [CRON Horas] procesarYUnificar(${mes}, ${ano})...`);
-  try {
-    const result = await procesarYUnificar(mes, ano);
-    console.log(`✅ [CRON Horas] Completado: ${result.conductores} conductores`);
-  } catch (error) {
-    console.error(`❌ [CRON Horas] Error: ${error.message}`);
-  }
-}, { timezone: 'Europe/Madrid' });
-
-if (HOJAS_CRONS && process.env.HORAS_INCREMENTAL !== 'off') {
-  let enMarcha = false;
-  programar('5,15,25,35,45,55 * * * *', async () => {
-    // Una pasada corta que se alargue no debe pisar a la siguiente.
-    if (enMarcha) return console.log('⏭️  [CRON Horas⚡] La anterior sigue en marcha, se salta');
-    enMarcha = true;
-    try {
-      const { refrescarHorasIncremental } = require('./services/boltHorasCore');
-      const r = await refrescarHorasIncremental();
-      console.log(`⚡ [CRON Horas⚡] ${r.modo}${r.dias ? ' días ' + r.dias.join(',') : ''} · ${r.conductores} conductores`);
-    } catch (error) {
-      // Que falle una pasada corta no es grave: la completa de la hora repara.
-      console.error(`⚠️  [CRON Horas⚡] ${error.message}`);
-    } finally { enMarcha = false; }
-  }, { timezone: 'Europe/Madrid' });
-  if (!pruebas.ACTIVO) console.log('⚡ [Horas] Refresco incremental ACTIVADO (cada 10 min)');
-}
-
-// Resumen de flotas: cada hora al minuto 15
-if (HOJAS_CRONS) programar('15 * * * *', async () => {
-  console.log('⏰ [CRON Resumen] actualizarTodo()...');
-  try {
-    const { actualizarTodo } = require('./services/boltResumen');
-    const result = await actualizarTodo();
-    console.log(`✅ [CRON Resumen] Completado: ${JSON.stringify(result)}`);
-  } catch (error) {
-    console.error(`❌ [CRON Resumen] Error: ${error.message}`);
-  }
-});
+// (Aquí vivían los crons que rellenaban la hoja Datos_API y el libro de resumen
+// de flotas, con su interruptor HOJAS_CRONS. La tubería entera se borró el
+// 15/09/2026: las horas están en PostgreSQL y las miran Visibilidad, la
+// Bitácora y el reporte de Control.)
 
 // TICKETS PENDIENTES EN BOLT: cada media hora (:10 y :40, para no chocar con
 // los otros crons) se cruzan los tickets «Pendiente en BOLT» con el padrón: los

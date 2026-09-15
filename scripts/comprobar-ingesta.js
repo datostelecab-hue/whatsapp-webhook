@@ -49,10 +49,8 @@ const PERMITIDOS = {
   'modules/Operaciones/mapon.diagnostico.js':
                                  'La herramienta de Mapon: existe justo para preguntarle a la API en crudo. ' +
                                  'No tiene pantalla y no la llama nadie: se pide por URL cuando hace falta',
-  'services/boltHorasCore.js':   'Tubería de horas: su propio ciclo incremental cada 10 minutos',
-  'services/boltResumen.js':     'Resumen de BOLT: se migra con la tubería de horas',
-  'services/boltHistorico.js':   'Relleno de meses pasados: se lanza a mano y pide hasta 16 meses atrás, ' +
-                                 'que es justo lo contrario de un latido cada 5 minutos',
+  // (La tubería de horas sobre hojas —boltHorasCore, boltResumen, boltHistorico—
+  //  se borró el 15/09/2026. Ya no hay excepción que apuntar.)
   'services/conductores.js':     'Módulo viejo sobre hojas: muere cuando la agenda pase a PostgreSQL',
   'services/fichaje.js':         'Fichaje: ESCRIBE en Mapon (enlaza conductor y coche), no lee',
   // Nacio en `main`, donde esta regla no existia, y con su PROPIA base de datos
