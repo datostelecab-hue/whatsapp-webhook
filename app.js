@@ -221,53 +221,6 @@ app.use('/flota-viva', require('./modules/Control/flota.controller'));
 //    ya enruta por phone_number_id lo que llega al número de la boda. ──────────────
 app.use('/boda-igna-cruz', bodaRoutes);
 
-// Procesado manual de ausencias V/B/P (auto-estado + reincorporaciones + letras)
-// sin esperar al cron.
-app.get('/vista-final/ausencias-auto', async (req, res) => {
-  console.log('🔧 [VISTA_FINAL] ausencias (auto-estado + reincorporaciones + letras) manual...');
-  try {
-    const { aplicarAusenciasAutomaticas, aplicarReincorporaciones, escribirLetrasAusencia } = require('./services/vistaFinal');
-    const estado = await aplicarAusenciasAutomaticas();
-    const reincorporaciones = await aplicarReincorporaciones();
-    const letras = await escribirLetrasAusencia();
-    console.log(`✅ [VISTA_FINAL] ausencias: ${JSON.stringify({ estado, reincorporaciones, letras })}`);
-    res.json({ ok: true, estado, reincorporaciones, letras });
-  } catch (error) {
-    console.error(`❌ [VISTA_FINAL] Error: ${error.stack || error.message}`);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
-
-// Reconstrucción manual de VISTA_FINAL (para probar sin esperar al cron).
-app.get('/vista-final/reconstruir', async (req, res) => {
-  console.log('🔧 [VISTA_FINAL] reconstruirVistaFinal() manual...');
-  try {
-    const { reconstruirVistaFinal } = require('./services/vistaFinal');
-    const r = await reconstruirVistaFinal();
-    console.log(`✅ [VISTA_FINAL] ${JSON.stringify(r)}`);
-    res.json({ ok: true, ...r });
-  } catch (error) {
-    console.error(`❌ [VISTA_FINAL] Error: ${error.stack || error.message}`);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
-
-// Recuperación ÚNICA: restaura las L borradas de las semanas pasadas del mes en curso
-// re-aplicando el patrón vivo de AGENDA_V2 (sin tocar celdas con horas >0). Correcto si
-// nadie cambió su libranza desde entonces. Después, el cron ya las conserva congeladas.
-app.get('/vista-final/recuperar-libranzas', async (req, res) => {
-  console.log('🩹 [VISTA_FINAL] recuperar libranzas pasadas (re-aplicando patrón)...');
-  try {
-    const { reconstruirVistaFinal } = require('./services/vistaFinal');
-    const r = await reconstruirVistaFinal({ recuperarLibranzas: true });
-    console.log(`✅ [VISTA_FINAL] libranzas recuperadas: ${JSON.stringify(r)}`);
-    res.json({ ok: true, recuperado: true, ...r });
-  } catch (error) {
-    console.error(`❌ [VISTA_FINAL] Error: ${error.stack || error.message}`);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
-
 // ============================================================
 // CRON
 // ============================================================
@@ -673,29 +626,6 @@ programar('0 5 * * *', async () => {
   console.log('⏰ [CRON Auditoría] lanzando la tarea de ingesta...');
   await require('./services/ingesta').ejecutar('auditoria_flota', { forzar: true });
 }, { timezone: 'Europe/Madrid' });
-
-// VISTA_FINAL: reescribe el mes en curso (horas + libranzas de la semana) cada
-// hora al minuto 45, dejando margen tras el refresco de Datos_API (minuto 0).
-programar('45 * * * *', async () => {
-  console.log('⏰ [CRON VISTA_FINAL] vacaciones automáticas + reconstruirVistaFinal()...');
-  try {
-    const { reconstruirVistaFinal, aplicarAusenciasAutomaticas, aplicarReincorporaciones, escribirLetrasAusencia } = require('./services/vistaFinal');
-    // 1) A quien le empieza/corre hoy una ausencia (V/B/P) → estado automático.
-    const aus = await aplicarAusenciasAutomaticas();
-    if (aus.aplicados) console.log(`🏖️ [CRON VISTA_FINAL] ${aus.aplicados} ausencia(s): ${aus.conductores.join(', ')}`);
-    // 1bis) La inversa: a quien se le ACABARON las letras (hoy ya no hay V/B/P) se le
-    //       reincorpora solo → Activo si su semana está cubierta, si no Pendiente Asignar.
-    const rein = await aplicarReincorporaciones();
-    if (rein.reincorporados) console.log(`🎉 [CRON VISTA_FINAL] ${rein.reincorporados} reincorporación(es): ${rein.conductores.join(', ')}`);
-    // 2) Con fecha de reincorporación → rellenar las letras del periodo en la bitácora.
-    const let2 = await escribirLetrasAusencia();
-    if (let2.celdas) console.log(`📝 [CRON VISTA_FINAL] ${let2.celdas} celda(s) de ausencia: ${let2.conductores.join(', ')}`);
-    const result = await reconstruirVistaFinal();
-    console.log(`✅ [CRON VISTA_FINAL] Completado: ${JSON.stringify(result)}`);
-  } catch (error) {
-    console.error(`❌ [CRON VISTA_FINAL] Error: ${error.stack || error.message}`);
-  }
-});
 
 // SANCIONES DE VELOCIDAD: cada 15 min (con desfase) busca excesos en Mapon, resuelve el
 // conductor y registra/avisa. APAGADO por defecto: se activa con SANCIONES_CRON=on cuando

@@ -117,4 +117,8 @@ module.exports = {
   // El cron nocturno sella lo de ayer por su cuenta: entra por aquí, no por el
   // repositorio, que es lo que deja cambiar esto por dentro.
   sellarHoras: (desde, hasta) => repo.sellarHoras(desde, hasta),
+  // Las horas de UNA jornada, por persona. Las pide el reporte de la ETT: si
+  // las contara por su cuenta, dos pantallas dirían cosas distintas del mismo
+  // día y una de ellas se le manda a un tercero.
+  horasDeJornada: diaIso => repo.horasDeJornada(diaIso),
 };

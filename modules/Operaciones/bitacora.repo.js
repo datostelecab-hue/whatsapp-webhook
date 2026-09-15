@@ -495,7 +495,29 @@ async function quitarLibranza(conductorId, diaIso) {
   return { ok: true };
 }
 
+/**
+ * LAS HORAS DE UNA JORNADA, por persona: Map(conductor_id -> segundos).
+ *
+ * Del histórico SELLADO si ese día ya se cerró, y calculadas en vivo si no.
+ * Ese orden importa: lo sellado no se mueve porque hoy se enlace una cuenta de
+ * BOLT o se cambie una plaza, y es lo que enseña la Bitácora. Un informe que
+ * recalculara por su cuenta podría dar otro número para el mismo día.
+ */
+async function horasDeJornada(diaIso) {
+  const sello = await db.consulta(
+    'SELECT 1 FROM bitacora_sello WHERE dia_operativo = $1::date', [diaIso]);
+  if (sello.rows.length) {
+    const r = await db.consulta(
+      'SELECT conductor_id, horas_seg FROM bitacora_horas WHERE dia_operativo = $1::date', [diaIso]);
+    return new Map(r.rows.map(x => [Number(x.conductor_id), Number(x.horas_seg) || 0]));
+  }
+  const calc = await horasCalculadas(diaIso, diaIso);
+  const out = new Map();
+  calc.forEach((dias, cid) => { const seg = dias.get(diaIso); if (seg) out.set(cid, seg); });
+  return out;
+}
+
 module.exports = {
   // El histórico sellado: lo llama el cron al cerrar la jornada y la pantalla de
   // la bitácora si hay que rehacer un tramo a mano.
-  sellarHoras, horasCalculadas, leerBitacora, leerVacaciones, marcarLibranza, quitarLibranza, INICIO };
+  sellarHoras, horasCalculadas, horasDeJornada, leerBitacora, leerVacaciones, marcarLibranza, quitarLibranza, INICIO };

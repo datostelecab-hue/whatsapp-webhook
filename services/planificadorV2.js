@@ -255,11 +255,6 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
   const offsetSemana = Number(opciones.offsetSemana) || 0;
   const { dias: fechasSemana, hoy: fechaHoy, lunes: lunesSemana } = fechasSemanaActual(offsetSemana);
 
-  // Reincorporación derivada de la bitácora (VISTA_FINAL): clave(nombreBolt) → Date.
-  // La pasa leerTablero. normClave se pide en diferido porque conductores.js importa
-  // este módulo (evita el ciclo de require).
-  const finAusencias = opciones.finAusencias || new Map();
-  const { normClave } = require('./conductores');
 
   // ---- 1. Índice de conductores ----
   // porId indexa solo a los que tienen ID de Bolt: son los únicos que se pueden
@@ -276,8 +271,6 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
     if (!idBolt && !nombre) return;
 
     const libra = LIB_COL.map(c => esCheck(v[c - 1]));
-    // Reincorporación derivada de la bitácora si no hay una puesta a mano.
-    const reincAuto = finAusencias.get(normClave(idBolt)) || null;
     const info = {
       fila: idx + 2,                     // fila real en la hoja
       idBolt,
@@ -306,8 +299,12 @@ function calcularTablero(agendaVals, planVals, bases = [], opciones = {}) {
       // Ventana del conductor: alta como "desde" por defecto; reincorporación
       // para volver de una ausencia temporal.
       fechaAltaD: parseFecha(txt(v[A.FECHA_ALTA - 1])),
-      reincorporacion: txt(v[A.REINCORPORACION - 1]) || fmtFecha(reincAuto),
-      reincorporacionD: parseFecha(txt(v[A.REINCORPORACION - 1])) || reincAuto
+      // Cuándo vuelve. Sale de la columna REINCORPORACION de la agenda, que en
+      // PostgreSQL es el `hasta_previsto` de la ausencia: se pone sola al abrir
+      // el tramo y desaparece al cerrarlo. Antes había que deducirla releyendo
+      // dónde se acababan las letras V/B/P en una hoja.
+      reincorporacion: txt(v[A.REINCORPORACION - 1]),
+      reincorporacionD: parseFecha(txt(v[A.REINCORPORACION - 1]))
     };
     info.ausenteTemporal = AUSENCIAS_TEMPORALES.includes(info.estado);
     if (idBolt) porId.set(idBolt, info);
@@ -1350,17 +1347,12 @@ async function leerCrudo() {
 /** Lee y devuelve el tablero ya calculado. */
 async function leerTablero(opciones = {}) {
   const crudo = await leerCrudo();
-  // Reincorporaciones automáticas desde la bitácora (VISTA_FINAL). Require diferido:
-  // vistaFinal importa este módulo. Si la lectura falla, se sigue sin ellas (se cae a
-  // la columna REINCORPORACION manual).
-  let finAusencias = new Map();
-  try {
-    finAusencias = await require('./vistaFinal').leerFinAusencias();
-  } catch (e) {
-    console.error('⚠️ [PLANIFICADOR] No se pudieron leer reincorporaciones de VISTA_FINAL:', e.message);
-  }
-  const tablero = calcularTablero(crudo.agendaFilas.slice(1), crudo.planFilas.slice(1), crudo.bases,
-    { ...opciones, finAusencias });
+  // LAS REINCORPORACIONES YA VIENEN EN LA AGENDA. Antes se sacaban releyendo la
+  // hoja VISTA_FINAL para ver dónde se acababan las letras V/B/P. Ahora la
+  // ausencia es un tramo con fecha de fin en PostgreSQL, y `v_agenda` la trae
+  // ya en la columna REINCORPORACION (= `hasta_previsto`). No hay nada que
+  // deducir ni una segunda fuente que pueda decir otra cosa.
+  const tablero = calcularTablero(crudo.agendaFilas.slice(1), crudo.planFilas.slice(1), crudo.bases, opciones);
   tablero.esquema = crudo.esquema;
   return tablero;
 }

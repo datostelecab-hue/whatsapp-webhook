@@ -15,13 +15,13 @@
 // Lo que sí es de esta ruta es el PARTE DIARIO A LA ETT: las horas de ayer de
 // los conductores de la agencia, en Excel y por correo. No es un informe de
 // tráfico —es de la ETT— y su sitio natural es Nóminas, junto al parte mensual.
-// No se mueve todavía porque `services/reportes.js` lee de las hojas
-// (planificadorV2 + el libro de horas), y meter Sheets dentro de un módulo es la
-// dirección contraria a la que va el proyecto.
+// Y desde el 15/09/2026 ya vive ahí: el reporte lo arma
+// `modules/RRHH/reporteEtt`, sobre PostgreSQL. Lo que queda en esta ruta es la
+// cáscara —quien lo pide, a quién se lo manda y con qué correo—.
 
 const express = require('express');
 const router = express.Router();
-const { reporteHorasEttAyer, generarExcelEttAyer } = require('../services/reportes');
+const ett = require('../modules/RRHH/reporteEtt.service');
 const correo = require('../services/correo');
 const configApp = require('../services/configApp');
 
@@ -37,7 +37,7 @@ router.get('/', (req, res) => res.redirect(302, '/control/reportes'));
 router.get('/api/horas-ett-ayer', async (req, res) => {
   try {
     const [reporte, cfg] = await Promise.all([
-      reporteHorasEttAyer(),
+      ett.reporte(),
       configApp.leerConfig().catch(() => ({}))
     ]);
     res.json({ status: 'ok', ...reporte, destinatario: cfg.correo_ett || ETT_POR_DEFECTO, correoListo: (await correo.estadoCorreo().catch(() => ({}))) });
@@ -50,8 +50,8 @@ router.get('/api/horas-ett-ayer', async (req, res) => {
 // Descargar el Excel.
 router.get('/horas-ett-ayer/excel', async (req, res) => {
   try {
-    const reporte = await reporteHorasEttAyer();
-    const buffer = await generarExcelEttAyer(reporte);
+    const reporte = await ett.reporte();
+    const buffer = await ett.excel(reporte);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombreFichero(reporte.fecha)}"`);
     res.send(buffer);
@@ -68,19 +68,17 @@ router.post('/horas-ett-ayer/enviar', async (req, res) => {
     const to = String((req.body || {}).to || '').trim();
     if (!esEmail(to)) throw new Error('El correo de la ETT no es válido');
 
-    const reporte = await reporteHorasEttAyer();
+    const reporte = await ett.reporte();
     if (!reporte.filas.length) throw new Error('No hay conductores ETT para reportar');
     // SIN DATOS NO SE MANDA. El reporte se pinta igual de bien con las horas a
     // cero, así que un envío a ciegas llega a la ETT con la misma cara de
     // siempre diciendo que no trabajó nadie. Es la pantalla la que avisa; aquí
     // se cierra la puerta, que es lo que sale del edificio.
-    if (!reporte.disponible) {
-      throw new Error(reporte.hastaDia
-        ? `La hoja de horas solo llega al día ${reporte.hastaDia} y el reporte es del ${reporte.fecha}: `
-          + 'saldría con cero horas para todos. No se envía.'
-        : 'La hoja de horas no tiene datos del mes del reporte: saldría con cero horas para todos. No se envía.');
+    if (!reporte.conHoras) {
+      throw new Error(`Ningún conductor de ETT tiene horas el ${reporte.fecha}: el reporte saldría `
+        + 'entero a cero. Revisa que la ingesta de BOLT esté al día antes de mandarlo.');
     }
-    const buffer = await generarExcelEttAyer(reporte);
+    const buffer = await ett.excel(reporte);
 
     const r = await correo.enviarComoUsuario(req.usuario.email, {
       to,
