@@ -40,7 +40,6 @@ const CATALOGO = [
   ] },
   { grupo: 'RRHH', items: [
     { clave: '/rrhh',           etiqueta: 'RRHH' },
-    { clave: '/fichas',         etiqueta: 'Fichas (datos sensibles)' },
     { clave: '/administracion', etiqueta: 'Administración' },
     { clave: '/ticketera',      etiqueta: 'Ticketera RRHH' },
     { clave: '/reportes',       etiqueta: 'Reportes RRHH' },
@@ -230,7 +229,7 @@ function semillaDeRol(rol) {
     // Administración es el papel y el dinero: contratos, nóminas, convenio.
     // No planifica ni ve el directo.
     case 'administracion': return ['/inicio', '/pendientes', '/peticiones', '/plantilla', '/documentos', '/bitacora',
-      '/rrhh', '/fichas', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett'];
+      '/rrhh', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett'];
 
     // Operaciones es el control de lo que pasa en la calle.
     case 'operaciones': return [...G('General'), ...G('Operaciones'), ...G('Flota'),

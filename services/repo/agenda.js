@@ -34,7 +34,18 @@ function fecha(v) {
 }
 
 // La hoja usaba 'SI' / '' para los booleanos y el motor los lee así.
-const si = v => (v ? 'SI' : '');
+// LAS CASILLAS VAN COMO BOOLEANOS, NO COMO "SI".
+//
+// En la hoja estas columnas eran CHECKBOXES, así que Google devolvía `true` /
+// `false`, y el motor las lee con `esCheck`, que solo acepta `true`, `'TRUE'` o
+// `'VERDADERO'`. Mientras esto escribió `'SI'`, el motor las daba TODAS por
+// falsas: los 214 conductores salían con `activo: false` y sin una sola
+// libranza, en silencio y sin que nada fallara.
+//
+// Y la libranza no es un adorno: de `tablero.conductores[].libra` cuelgan el
+// control de horas, los reportes y VISTA_FINAL. Los tres creían que no libraba
+// nadie.
+const si = v => !!v;
 // Para lo que puede no saberse: vacio NO quiere decir "no", quiere decir que
 // nadie lo ha rellenado todavia. Un 'NO' se afirma; un hueco se deja en blanco.
 const siNo = v => (v === null || v === undefined ? '' : (v ? 'SI' : 'NO'));

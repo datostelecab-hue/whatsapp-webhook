@@ -252,7 +252,7 @@ decidirlo antes de mover nada.
 
 | Módulo | Rutas que se lleva |
 |---|---|
-| **Conductores** ✓ | `plantilla` — **hecho**. `agenda` **BORRADA** (Plantilla ya es la agenda). `fichas` y `libranzas` NO: cuelgan de las hojas |
+| **Conductores** ✓ | `plantilla` — **hecho, y es lo único que queda**. `agenda`, `fichas` y `libranzas` **BORRADAS**: Plantilla ya es las tres |
 | **Documentos** ✓ | `documentos` — **hecho** |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** ✓ | `tablero` (planificador) y `cobertura` — **hecho**. `matching` **BORRADO**. `fichas` y `libranzas` NO: cuelgan de las hojas. `vacantes` se fue a Selección |

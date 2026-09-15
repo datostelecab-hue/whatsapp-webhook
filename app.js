@@ -100,7 +100,6 @@ const coberturaRoutes = require('./modules/Planificacion/cobertura.controller');
 const vehiculosRoutes = require('./modules/Vehiculos/vehiculos.controller');
 const plantillaRoutes = require('./routes/plantilla');
 const documentosRoutes = require('./modules/Documentos/documentos.controller');
-const libranzasRoutes = require('./routes/libranzas');
 const controlRoutes = require('./modules/Control/control.controller');
 const vacantesRoutes = require('./routes/vacantes');
 const generadorRoutes = require('./routes/generador');
@@ -108,7 +107,6 @@ const seleccionRoutes = require('./routes/seleccion');
 const ettRoutes = require('./routes/ett');
 const rrhhRoutes = require('./routes/rrhh');
 const administracionRoutes = require('./routes/administracion');
-const fichasRoutes = require('./routes/fichas');
 const ticketeraRoutes = require('./routes/ticketera');
 const soporteRoutes = require('./routes/soporte');
 const ticketsTelecabRoutes = require('./routes/ticketsTelecab');
@@ -182,7 +180,6 @@ app.use('/plantilla', plantillaRoutes);
 // enlace guardado no se encuentra un 404.
 app.get('/conductores', (req, res) => res.redirect(301, '/plantilla'));
 app.use('/documentos', documentosRoutes);
-app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
 app.use('/visibilidad', require('./routes/visibilidad'));
 app.use('/alertas', require('./modules/Control/alertas.controller'));
@@ -196,7 +193,6 @@ app.use('/administracion', administracionRoutes);
 // La exportacion a Excel de la Plantilla vieja no se perdio: se generalizo aqui
 // y ahora la usa cualquier listado.
 app.use('/exportar', require('./routes/exportar'));
-app.use('/fichas', fichasRoutes);
 app.use('/ticketera', ticketeraRoutes);
 app.use('/soporte', soporteRoutes);
 app.use('/tickets-telecab', ticketsTelecabRoutes);
@@ -378,26 +374,6 @@ if (HOJAS_CRONS) programar('15 * * * *', async () => {
   }
 });
 
-// Libranzas: AGENDA_V2 → L_Acumuladas, cada hora al minuto 30.
-// APAGADO por defecto. Actívalo con LIBRANZAS_CRON=on en Render SOLO después de
-// neutralizar acumularLSemanales en el Apps Script, o ambos escribirán
-// L_Acumuladas y se pisarán. La ruta POST /libranzas/sync funciona igualmente
-// para pruebas manuales aunque el cron esté apagado.
-if (process.env.LIBRANZAS_CRON === 'on') {
-  programar('30 * * * *', async () => {
-    console.log('⏰ [CRON Libranzas] sincronizarLibranzas()...');
-    try {
-      const { sincronizarLibranzas } = require('./services/libranzas');
-      const result = await sincronizarLibranzas();
-      console.log(`✅ [CRON Libranzas] Completado: ${JSON.stringify(result)}`);
-    } catch (error) {
-      console.error(`❌ [CRON Libranzas] Error: ${error.message}`);
-    }
-  });
-  console.log('   Cron Libranzas: ACTIVO (minuto 30)');
-} else {
-  console.log('   Cron Libranzas: apagado (LIBRANZAS_CRON!=on)');
-}
 
 // CONDUCTORES_BOLT: padrón de creación de conductores, cada media hora (:10 y
 // :40, para no chocar con los otros crons). Sella el created_at propio.

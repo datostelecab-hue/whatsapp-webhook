@@ -84,10 +84,36 @@ regla vive UNA sola vez, en la vista `v_conductor_libranza` (`db/113`), para que
 Plantilla y la agenda de PostgreSQL no puedan decir cosas distintas de la misma
 persona.
 
-**`fichas` y `libranzas` siguen fuera**: cuelgan de `services/planificadorV2.js`,
-que lee de las hojas `PLANIFICADOR_V2` y `BASES`. Meterlas en un módulo sería
-meter Sheets dentro, justo en la dirección contraria a la que va el proyecto. Se
-mudan cuando esa parte pase a PostgreSQL.
+**`fichas` y `libranzas` SE BORRARON (15/09/2026), no se mudaron.**
+
+`/fichas` era el expediente que se montó sobre un Excel para tapar la falta de
+información, y RRHH entraba por ahí. Esta pantalla ya tiene todas esas fichas
+—y los papeles, por el módulo de Documentos—, así que eran dos sitios para lo
+mismo, y el de menos datos era el que tenía los papeles en una hoja.
+
+`/libranzas` eran cuatro herramientas sin pantalla: dos auditorías de la agenda
+y dos puentes hacia `L_Acumuladas` y `VISTA_FINAL`. Las libranzas se ven aquí y
+salen del cuadrante; las auditorías decían cero problemas.
+
+**Pero no se fueron de balde.** Al mirarlas apareció un fallo que llevaba desde
+que la agenda pasó a PostgreSQL: ver abajo.
+
+## El fallo que apareció al ir a borrarlas
+
+`repo/agenda` escribía `'SI'` en las columnas de casilla —ACTIVO y los siete
+días de libranza— y el motor las lee con `esCheck`, que solo acepta `true`,
+`'TRUE'` o `'VERDADERO'`. En la hoja esas columnas eran CHECKBOXES y Google
+devolvía booleanos; al reconstruirlas desde la base se escribió texto.
+
+**Resultado: los 214 conductores salían del motor con `activo: false` y sin una
+sola libranza.** En silencio, sin que nada fallara.
+
+`activo` resultó no usarlo nadie. `libra` sí: de él cuelgan `services/control`,
+`services/reportes` y `services/vistaFinal` —que alimenta el reporte de horas de
+Control—. Los tres creían que no libraba nadie.
+
+Arreglado: `si()` devuelve booleanos. De 0 a **171 conductores con libranza**,
+los mismos 171 que enseña esta pantalla.
 
 ## Lo que aún no está bien
 
