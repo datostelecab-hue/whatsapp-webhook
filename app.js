@@ -96,8 +96,6 @@ const boltHoras = require('./routes/boltHoras');
 const resumenRoutes = require('./routes/resumen');
 // Planificador legacy (Google Sheets) ELIMINADO. /planificador sirve ahora el
 // tablero PostgreSQL (modules/Planificacion), el mismo que /planificador-v2.
-const agendaRoutes = require('./routes/agenda');
-const matchingRoutes = require('./routes/matching');
 const coberturaRoutes = require('./modules/Planificacion/cobertura.controller');
 const vehiculosRoutes = require('./modules/Vehiculos/vehiculos.controller');
 const plantillaRoutes = require('./routes/plantilla');
@@ -175,8 +173,6 @@ app.use('/horas', boltHoras);
 app.use('/resumen', resumenRoutes);
 app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
 app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)
-app.use('/agenda', agendaRoutes);
-app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
 app.use('/taller', require('./modules/Vehiculos/taller.controller'));

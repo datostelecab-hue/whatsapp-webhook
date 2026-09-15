@@ -49,7 +49,6 @@ const CATALOGO = [
   ] },
   { grupo: 'Tráfico', items: [
     { clave: '/planificador',    etiqueta: 'Planificador' },
-    { clave: '/agenda',          etiqueta: 'Agenda' },
     { clave: '/control',         etiqueta: 'Control · En directo', hijos: [
       { clave: '/control/historico', etiqueta: 'Histórico de control' },
       { clave: '/control/km',       etiqueta: 'KM y traza' },
@@ -60,7 +59,6 @@ const CATALOGO = [
     { clave: '/generador',   etiqueta: 'Generar vacantes' },
   ] },
   { grupo: 'Flota', items: [
-    { clave: '/matching',    etiqueta: 'Matching' },
     { clave: '/vehiculos',   etiqueta: 'Vehículos' },
     { clave: '/conductores', etiqueta: 'Conductores' },
     // MIRAR el taller lo quiere media empresa: tráfico necesita saber qué coche
@@ -221,7 +219,7 @@ function semillaDeRol(rol) {
 
     // El taller vive en los coches. Nada de personas más allá de saber quién
     // lleva cada uno.
-    case 'taller': return ['/pendientes', '/peticiones', '/vehiculos', '/conductores', '/matching',
+    case 'taller': return ['/pendientes', '/peticiones', '/vehiculos', '/conductores',
       '/operaciones', '/operaciones/auditoria', '/control/km'];
 
     // Quien recluta necesita el embudo entero y ver la plantilla para saber
