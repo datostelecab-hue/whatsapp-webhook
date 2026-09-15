@@ -202,6 +202,7 @@
           { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'oficina', items: [
             { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' },
             { href: '/administracion', icono: 'fa-gas-pump',         texto: 'Administración', id: 'administracion' },
+            { href: '/administracion/tickets', icono: 'fa-ticket',   texto: 'Tickets Administración', id: 'administracion' },
             { href: '/plantilla',      icono: 'fa-id-card',          texto: 'Plantilla',      id: 'plantilla' },
             { href: '/ticketera',      icono: 'fa-ticket',          texto: 'Ticketera RRHH', id: 'ticketera' },
             // "Reportes" NO va aquí. Los informes son de Control —horas, turnos,
@@ -214,6 +215,7 @@
           ] },
           { nombre: 'Tráfico', icono: 'fa-satellite-dish', rol: 'trafico', items: [
             { href: '/planificador', icono: 'fa-table-cells-large',  texto: 'Planificador',     id: 'planificador' },
+            { href: '/planificador/tickets', icono: 'fa-ticket',     texto: 'Tickets Tráfico',   id: 'planificador' },
             { href: '/control',      icono: 'fa-satellite-dish',     texto: 'Control',          id: 'control' },
             { href: '/visibilidad',  icono: 'fa-chart-line',         texto: 'Visibilidad',      id: 'visibilidad' },
             { href: '/cobertura',    icono: 'fa-calendar-week',      texto: 'Cobertura',        id: 'cobertura' },
@@ -222,6 +224,7 @@
           { nombre: 'Flota', icono: 'fa-car-side', rol: 'trafico', items: [
             { href: '/vehiculos', icono: 'fa-car-side',     texto: 'Vehículos', id: 'vehiculos' },
             { href: '/taller',    icono: 'fa-screwdriver-wrench', texto: 'Taller', id: 'taller' },
+            { href: '/taller/tickets', icono: 'fa-ticket',     texto: 'Tickets del taller', id: 'taller' },
             // La MISMA pantalla que ve RRHH. Aparece en los dos departamentos
             // porque los dos la necesitan, no porque haya dos pantallas.
             { href: '/plantilla', icono: 'fa-id-card',      texto: 'Plantilla', id: 'plantilla' }
@@ -231,7 +234,10 @@
             { href: '/sanciones',   icono: 'fa-gauge-high',      texto: 'Sanciones velocidad', id: 'sanciones' },
             { href: '/operaciones/auditoria', icono: 'fa-clipboard-check', texto: 'Auditoría flota', id: 'auditoria' },
             { href: '/alertas', icono: 'fa-bell', texto: 'Alertas de control', id: 'alertas' },
-            { href: '/callcenter', icono: 'fa-headset', texto: 'Call Center', id: 'callcenter' }
+            { href: '/callcenter', icono: 'fa-headset', texto: 'Call Center', id: 'callcenter' },
+            // Los que el reparto no supo clasificar. Antes caían en RRHH y se
+            // perdían entre trescientos; aquí se ven.
+            { href: '/operaciones/sin-traza', icono: 'fa-circle-question', texto: 'Tickets sin traza', id: 'operaciones' }
           ] },
           // Solo lo ve la dirección: el layout enseña un grupo si su rol coincide con el de
           // la sesión, y 'direccion' no es el rol de nadie; superadmin y desarrollador lo ven todo.

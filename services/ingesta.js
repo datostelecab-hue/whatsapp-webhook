@@ -241,6 +241,28 @@ const TAREAS = {
       const r = await require('../modules/Vehiculos/vehiculos.service').diaria();
       return { registros: r.odometros.actualizados, detalle: r };
     },
+
+  // LA ÚNICA PUERTA QUE SIGUE DANDO A GOOGLE, y solo de entrada: se LEEN las
+  // respuestas del formulario con el que los conductores piden cosas, y no se
+  // escribe nada en esa hoja.
+  //
+  // Se puede repetir sin miedo: el índice único sobre `fila_form` impide que la
+  // misma respuesta entre dos veces, así que una pasada cortada a medias se
+  // arregla sola en la siguiente. La marca de agua es para no releer mil filas,
+  // no es la garantía.
+  //
+  // NO es crítica: que Google falle un rato no puede teñir de rojo la ingesta de
+  // BOLT y de Mapon, que es de lo que vive el cuadrante.
+  tickets_formulario: {
+    fuente: 'formulario',
+    etiqueta: 'Tickets del formulario',
+    cadaMin: Number(process.env.INGESTA_TICKETS_MIN) || 10,
+    critica: false,
+    async ejecutar() {
+      const r = await require('../modules/Ticketera/ticketera.service').sincronizar();
+      return { registros: r.nuevas, detalle: r };
+    },
+  },
   },
 };
 

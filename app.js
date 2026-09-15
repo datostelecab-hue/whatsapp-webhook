@@ -105,7 +105,6 @@ const seleccionRoutes = require('./routes/seleccion');
 const ettRoutes = require('./routes/ett');
 const rrhhRoutes = require('./routes/rrhh');
 const administracionRoutes = require('./routes/administracion');
-const ticketeraRoutes = require('./routes/ticketera');
 const soporteRoutes = require('./routes/soporte');
 const ticketsTelecabRoutes = require('./routes/ticketsTelecab');
 const reportesRoutes = require('./routes/reportes');
@@ -187,7 +186,30 @@ app.use('/administracion', administracionRoutes);
 // La exportacion a Excel de la Plantilla vieja no se perdio: se generalizo aqui
 // y ahora la usa cualquier listado.
 app.use('/exportar', require('./routes/exportar'));
-app.use('/ticketera', ticketeraRoutes);
+// ── LA TICKETERA: cinco bandejas, un solo módulo ────────────────────────────
+// Lo que piden los conductores por el formulario, repartido por áreas. Cada
+// bandeja cuelga del módulo al que pertenece el trabajo, así que el permiso sale
+// del prefijo y no hace falta ninguna clave nueva.
+//
+// La de OPERACIONES es la que no existía: el Apps Script mandaba a RRHH todo lo
+// que no encajaba con ninguna regla y ahí se perdía entre trescientos tickets.
+// Son justo los que hay que mirar.
+const ticketera = require('./modules/Ticketera/ticketera.controller');
+app.use('/ticketera', ticketera.para('RRHH', {
+  titulo: 'Ticketera RRHH', seccion: 'ticketera',
+  subtitulo: 'Vacaciones, bajas, permisos, nóminas, cuentas y papeles. Al aplicar una ausencia se abre el tramo en la ficha de la persona.' }));
+app.use('/administracion/tickets', ticketera.para('ADMIN', {
+  titulo: 'Tickets de Administración', seccion: 'administracion',
+  subtitulo: 'Ballenoil y reintegros de gastos.' }));
+app.use('/planificador/tickets', ticketera.para('TRAFICO', {
+  titulo: 'Tickets de Tráfico', seccion: 'planificador',
+  subtitulo: 'Cambios de libranza que piden los conductores.' }));
+app.use('/taller/tickets', ticketera.para('TALLER', {
+  titulo: 'Tickets del taller', seccion: 'taller',
+  subtitulo: 'Incidencias del vehículo que avisan los conductores.' }));
+app.use('/operaciones/sin-traza', ticketera.para('OPERACIONES', {
+  titulo: 'Tickets sin traza', seccion: 'operaciones',
+  subtitulo: 'Los que el reparto automático no supo clasificar. Cada uno es o algo que no habíamos previsto, o una regla que se quedó corta: al moverlo a su bandeja se ve cuál de las dos.' }));
 app.use('/soporte', soporteRoutes);
 app.use('/tickets-telecab', ticketsTelecabRoutes);
 app.use('/reportes', reportesRoutes);
