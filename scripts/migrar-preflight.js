@@ -64,7 +64,7 @@ const pct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : '';
 
   // Nombres para el FALLBACK de justificantes: normClave -> cuántas fichas únicas lo
   // llevan (>1 = ambiguo, no se usa). Mismo criterio que el cargador.
-  const { normClave } = require('../services/conductores');
+  const { normClave } = require('../services/nucleo');
   const nomCount = new Map();
   const meterNom = (nom, esEtt, fila) => {
     if (skip.has((esEtt ? 'E' : 'P') + fila)) return;

@@ -35,7 +35,7 @@
 
 const ExcelJS = require('exceljs');
 const db = require('../services/db');
-const { normClave } = require('../services/conductores');
+const { normClave } = require('../services/nucleo');
 
 const arg = n => (process.argv.find(a => a.startsWith('--' + n + '=')) || '').split('=')[1] || '';
 const RUTA = process.argv.slice(2).find(a => !a.startsWith('--')) ||

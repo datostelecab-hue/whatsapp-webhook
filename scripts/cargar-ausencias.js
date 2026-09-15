@@ -15,7 +15,7 @@ const path = require('path');
 const ExcelJS = require('exceljs');
 const db = require('../services/db');
 const con = require('../services/repo/conductores');
-const { normClave } = require('../services/conductores');
+const { normClave } = require('../services/nucleo');
 
 const NL = String.fromCharCode(10);
 const DIR = process.argv[2] || 'C:/Users/ricar/Downloads';

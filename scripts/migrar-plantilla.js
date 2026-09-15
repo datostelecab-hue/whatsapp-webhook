@@ -31,7 +31,7 @@ const con = require('../services/repo/conductores');
 const veh = require('../modules/Vehiculos/vehiculos.service');
 const alta = require('../services/repo/alta');
 const repoJust = require('../services/repo/justificantes');
-const { normClave } = require('../services/conductores');
+const { normClave } = require('../services/nucleo');
 
 // ── Argumentos ───────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);

@@ -338,29 +338,30 @@ function kpis(llamadas, todas) {
   };
 }
 
-// ── Conductores para el formulario (agenda + asignación de HOY del planificador) ──
+// ── Conductores para el formulario ─────────────────────────────────────────
+// A quién se puede llamar, con su coche y su turno.
+//
+// Sale de la PLANTILLA, que es la lista de personas del sistema. Antes lo daba
+// el motor viejo leyendo la rejilla de la semana, y contestaba a OTRA pregunta:
+// «quién tiene hueco en un coche HOY». Eso dejaba fuera a todo el que librara
+// hoy —112 de 215— que es justo a quien a veces hay que llamar.
 let _condCache = { ts: 0, lista: [] };
 async function conductoresForm() {
   if (Date.now() - _condCache.ts < 10 * 60 * 1000) return _condCache.lista;
-  const planif = require('../../services/planificadorV2');
-  const t = await planif.leerTablero({ offsetSemana: 0 });
-  const d = (new Date(`${hoyMadrid()}T12:00:00Z`).getUTCDay() + 6) % 7;   // 0 = lunes
-  const hoy = new Map();   // id → { matricula, turno }
-  (t.coches || []).forEach(c => {
-    if (!c.matricula) return;
-    [['Día', c.semana && c.semana[d * 2]], ['Noche', c.semana && c.semana[d * 2 + 1]]].forEach(([turno, slot]) => {
-      if (!slot || !slot.id) return;
-      const prev = hoy.get(slot.id);
-      if (prev && prev.matricula === c.matricula) prev.turno = 'Día y Noche';
-      else if (!prev) hoy.set(slot.id, { matricula: c.matricula, turno });
-    });
-  });
+  const { filas } = await require('../Conductores/plantilla.service').lista({});
   _condCache = {
     ts: Date.now(),
-    lista: (t.conductores || []).map(c => ({
-      id: c.idBolt || c.id, nombre: c.nombre || c.idBolt || c.id, telefono: c.telefono || '',
-      ...(hoy.get(c.idBolt || c.id) || { matricula: '', turno: '' })
-    })).filter(c => c.id).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    lista: filas
+      .filter(c => c.empleo_vigente && !c.es_centinela)
+      .map(c => ({
+        id: String(c.id),
+        nombre: c.nombre_completo || c.nombre || `Conductor ${c.id}`,
+        telefono: c.telefono || '',
+        // Con dos coches vienen separados por '+': es quien cubre día y noche.
+        matricula: c.matricula || '',
+        turno: c.turno || '',
+      }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
   };
   return _condCache.lista;
 }

@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const seleccion = require('../modules/Seleccion/seleccion.service');
-const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
-const { leerVacantesGuardadas } = require('../services/vacantes');
+const plantilla = require('../modules/Conductores/plantilla.service');
+const vacantes = require('../modules/Seleccion/vacantes.service');
 const repoInc = require('../services/repo/incorporaciones');
 const ticketera = require('../modules/Ticketera/ticketera.service');
 
@@ -12,10 +12,10 @@ let cache = null, cacheTs = 0;
 const TTL = 60 * 1000;
 
 async function calcular() {
-  const [tramo, tablero, vacantesAll, ticketsItLista, incPend] = await Promise.all([
+  const [tramo, gente, vacantesAll, ticketsItLista, incPend] = await Promise.all([
     seleccion.tramoFinal().catch(() => ({ porTramitar: [], pendientePin: [], hechas: [], noAlta: [] })),
-    leerTablero().catch(() => null),
-    leerVacantesGuardadas().catch(() => []),
+    plantilla.lista({}).then(r => r.filas).catch(() => []),
+    vacantes.listar({ incluirCerradas: false }).catch(() => []),
     ticketera.datos('IT', { cerrados: false }).then(r => r.tickets).catch(() => []),
     repoInc.pendientes().catch(() => [])
   ]);
@@ -35,13 +35,22 @@ async function calcular() {
   // Tráfico las acepte o rechace EN EL PLANIFICADOR. La alerta no se va sola.
   const incorporaciones = incPend;
   const incIds = new Set();
-  // Pendientes de asignar coche/turno, EXCLUYENDO las incorporaciones (esas salen aparte).
-  const pendienteAsignar = ((tablero && tablero.conductores) || [])
-    .filter(c => c.estadoCalculado === ESTADO_PENDIENTE && !incIds.has((c.idBolt || '').trim()));
-  // Vacantes abiertas que Selección debe reclutar.
-  // "Por reclutar" = solo las disponibles (excluye En proceso de alta / Cerrada / Cubierta).
-  const vacantesAbiertas = (vacantesAll || []).filter(v =>
-    v.estado !== 'Cerrada' && v.estado !== 'Cubierta' && v.estado !== 'En proceso de alta');
+  // PENDIENTES DE ASIGNAR: de alta, sin coche y sin una ausencia encima.
+  //
+  // Antes lo contestaba el motor viejo con su `estadoCalculado`, y contestaba
+  // mal para esta pregunta: decía 40 donde hay 8. De los 18 que se pudieron
+  // comprobar, 10 estaban de BAJA MÉDICA —no están pendientes de asignar, están
+  // de baja— y 3 YA TENÍAN COCHE. Los otros 22 ni siquiera se pudieron casar,
+  // porque había que casarlos POR NOMBRE.
+  //
+  // Aquí la persona es un id y el coche es una asignación vigente.
+  const pendienteAsignar = (gente || [])
+    .filter(c => c.empleo_vigente && !c.es_centinela && !c.matricula && !c.ausente
+             && !incIds.has(String(c.id)));
+  // Vacantes que Selección debe reclutar. «Por reclutar» es SOLO «abierta»: una
+  // «en proceso» ya tiene candidato, y ofrecerla otra vez es cómo dos
+  // reclutadores acababan trabajando la misma plaza.
+  const vacantesAbiertas = (vacantesAll || []).filter(v => v.estado === 'abierta');
 
   return {
     // Reclutador (Selección): vacantes abiertas por llenar + fichas que RRHH
@@ -88,8 +97,8 @@ async function calcular() {
           href: '/planificador'
         })),
         ...pendienteAsignar.map(c => ({
-          texto: `${c.nombre || c.id} — pendiente de asignar coche/turno`,
-          detalle: c.turno ? `Turno: ${c.turno}` : '', href: '/planificador'
+          texto: `${c.nombre_completo || c.id} — pendiente de asignar coche/turno`,
+          detalle: c.turno ? `Turno: ${c.turno}` : 'sin turno', href: '/planificador'
         }))
       ]
     },

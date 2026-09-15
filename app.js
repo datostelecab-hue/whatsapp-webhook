@@ -696,10 +696,8 @@ app.listen(port, () => {
     // ¿Sigue cuadrando el mapa de vigencias con las tablas reales?
     require('./services/repo/vigencia').comprobarMapa().catch(e =>
       console.error('⚠️  [VIGENCIA] No se pudo comprobar: ' + e.message));
-    // ¿Cubre el constructor de la agenda todas sus columnas? Si falta una,
-    // llega VACÍA a los 24 módulos que leen conductores.
-    require('./services/repo/agenda').comprobarCobertura().catch(e =>
-      console.error('⚠️  [AGENDA] No se pudo comprobar: ' + e.message));
-    console.log('👥 [AGENDA] Los conductores se leen de PostgreSQL');
+    // (Aquí se comprobaba que el constructor de filas de la agenda cubriera
+    //  todas las columnas de la hoja. Ese constructor murió con el motor viejo
+    //  el 15/09/2026: ya no hay filas de hoja que construir.)
   }
 });
