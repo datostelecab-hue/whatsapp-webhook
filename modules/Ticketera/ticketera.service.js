@@ -119,6 +119,110 @@ function avisar(creados) {
   });
 }
 
+// ── Soporte técnico: los tickets que se abren DESDE DENTRO ───────────────
+//
+// La otra ticketera: cualquiera con cuenta reporta un fallo o pide una mejora,
+// y el desarrollador los atiende. Vive en la MISMA tabla que los del formulario
+// porque es la misma cosa —alguien pide algo, alguien se hace cargo, queda el
+// rastro— y con dos tablas habría dos formas de contestar «¿cuánto tardamos?».
+//
+// Lo que cambia es el área (IT) y sus subtipos, que es justo para lo que están.
+
+const SUBTIPO_IT = {
+  Bug: 'IT_BUG', Requerimiento: 'IT_REQUERIMIENTO', Mejora: 'IT_MEJORA',
+  Consulta: 'IT_CONSULTA', Otro: 'IT_OTRO',
+};
+const TIPOS_IT = Object.keys(SUBTIPO_IT);
+const PRIORIDADES = ['Baja', 'Media', 'Alta'];
+
+/** Abre un ticket de soporte. Lo puede hacer cualquiera que haya entrado. */
+async function crearSoporte({ tipo, prioridad, titulo, descripcion, adjuntos }, quien = {}) {
+  const tit = String(titulo || '').trim();
+  if (!tit) throw new Error('Ponle un título al ticket');
+  const creado = await repo.altaInterna({
+    origen: 'soporte',
+    usuarioId: quien.usuarioId || null,
+    nombre: quien.nombre || '',
+    area: 'IT',
+    subtipo: SUBTIPO_IT[tipo] || 'IT_OTRO',
+    titulo: tit,
+    prioridad: PRIORIDADES.includes(prioridad) ? prioridad : 'Media',
+    descripcion: String(descripcion || '').trim(),
+    adjuntos: Array.isArray(adjuntos) ? adjuntos : [],
+  });
+  await repo.apuntar(creado.id, { despues: 'pendiente', nota: tit,
+    usuarioId: quien.usuarioId, quien: quien.nombre || '' });
+  console.log(`🎫 [SOPORTE] ${creado.codigo} "${tit}" por ${quien.nombre || '?'}`);
+  return creado;
+}
+
+// Soporte habla en sus palabras de siempre: Nuevo / En curso / Resuelto /
+// Descartado. Debajo son los estados de la ticketera, que significan lo mismo.
+// La traducción vive AQUÍ, en un sitio, y no repartida entre la pantalla y la
+// ruta: así añadir un estado no obliga a buscar dónde más estaba escrito.
+const ETIQUETA_IT = { pendiente: 'Nuevo', en_curso: 'En curso',
+                      ejecutado: 'Resuelto', no_procede: 'Descartado' };
+const CODIGO_IT = Object.fromEntries(Object.entries(ETIQUETA_IT).map(([k, v]) => [v, k]));
+
+/**
+ * La bandeja del desarrollador, en el vocabulario de soporte.
+ *
+ * Trae TODOS, cerrados incluidos: en soporte se mira tanto lo que falta como lo
+ * que se hizo. Los contadores salen de `cierra` del catálogo y no de una lista
+ * de estados escrita a mano, que habría que ampliar cada vez que se añada uno.
+ */
+async function bandejaIT() {
+  const { tickets } = await datos('IT', { cerrados: true });
+  const lista = tickets.map(t => ({
+    id: t.id, ref: t.codigo,
+    fecha_creacion: t.creado,
+    solicitante_email: t.usuarioEmail, solicitante_nombre: t.quien,
+    tipo: t.subtipo, prioridad: t.prioridad,
+    titulo: t.gestion, descripcion: t.descripcion,
+    estado: ETIQUETA_IT[t.estado] || t.estadoEtiqueta,
+    abierto: !t.cerrado,
+    adjuntos: t.adjuntos, notas_dev: t.notas,
+    fecha_actualizacion: t.asignado || '', fecha_resolucion: t.resuelto || '',
+    horas: t.horas,
+  }));
+  const cuenta = campo => lista.reduce((m, t) => {
+    const k = (t[campo] || '').trim() || '—'; m[k] = (m[k] || 0) + 1; return m;
+  }, {});
+  return {
+    tickets: lista,
+    opciones: { tipos: TIPOS_IT, prioridades: PRIORIDADES, estados: Object.values(ETIQUETA_IT) },
+    contadores: {
+      total: lista.length,
+      abiertos: lista.filter(t => t.abierto).length,
+      nuevos: lista.filter(t => t.estado === 'Nuevo').length,
+    },
+    porEstado: cuenta('estado'), porTipo: cuenta('tipo'),
+  };
+}
+
+/** Cambia el estado desde soporte, que habla con etiquetas y no con códigos. */
+async function estadoIT(id, { estado, notas }, quien = {}) {
+  const codigo = CODIGO_IT[String(estado || '').trim()];
+  if (!codigo) throw new Error('Estado no válido');
+  // Cerrar exige decir en qué quedó. En soporte eso son las notas del
+  // desarrollador, que es lo que ya se escribe: no se pide nada nuevo.
+  return cambiarEstado(id, { estado: codigo, resolucion: notas || estado }, quien);
+}
+
+/** Los que ha abierto quien mira. Para poder seguir el suyo sin ver los demás. */
+const mios = async usuarioId =>
+  ({ tickets: usuarioId ? await repo.mios(usuarioId) : [], tipos: TIPOS_IT, prioridades: PRIORIDADES });
+
+async function notas(id, texto, quien = {}) {
+  await repo.guardarNotas(id, texto);
+  return repo.una(id);
+}
+
+async function adjuntos(id, lista) {
+  await repo.guardarAdjuntos(id, lista);
+  return repo.una(id);
+}
+
 // ── La pantalla ────────────────────────────────────────────────────────────
 
 async function datos(areaCodigo, { cerrados } = {}) {
@@ -260,6 +364,7 @@ async function diagnostico() {
 
 module.exports = {
   sincronizar, datos, ficha, asignar, cambiarEstado, observaciones,
+  crearSoporte, mios, notas, adjuntos, bandejaIT, estadoIT, TIPOS_IT, PRIORIDADES,
   enlazar, reclasificar, aplicar, diagnostico,
   abiertosPorArea: repo.abiertosPorArea,
 };

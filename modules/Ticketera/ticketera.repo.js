@@ -14,7 +14,7 @@ const CAMPOS = `
   t.conductor_id, t.dni, t.nombre, t.telefono,
   t.area_codigo, t.subtipo_codigo, t.tipo_gestion, t.prioridad,
   t.descripcion, t.matricula, t.observaciones, t.resolucion,
-  t.estado, t.responsable, t.responsable_id,
+  t.estado, t.responsable, t.responsable_id, t.usuario_id, t.adjuntos, t.notas,
   to_char(t.fecha_ini, 'DD/MM/YYYY')  AS fecha_ini,
   to_char(t.fecha_fin, 'DD/MM/YYYY')  AS fecha_fin,
   to_char(t.fecha_ini, 'YYYY-MM-DD')  AS fecha_ini_iso,
@@ -32,21 +32,31 @@ const CAMPOS = `
   -- El nombre de la persona SEGÚN LA BASE, que puede no ser el que escribió en
   -- el formulario. Se enseñan los dos: si no coinciden, eso es el dato.
   c.nombre_bolt AS conductor_bolt,
-  btrim(COALESCE(c.apellidos || ', ', '') || COALESCE(c.nombre, '')) AS conductor_nombre`;
+  btrim(COALESCE(c.apellidos || ', ', '') || COALESCE(c.nombre, '')) AS conductor_nombre,
+  u.email AS usuario_email,
+  btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, '')) AS usuario_nombre`;
 
 const DE = `
   FROM ticket t
   JOIN cat_ticket_subtipo s ON s.codigo = t.subtipo_codigo
   JOIN cat_ticket_area    a ON a.codigo = t.area_codigo
   JOIN cat_ticket_estado  e ON e.codigo = t.estado
-  LEFT JOIN conductor     c ON c.id     = t.conductor_id`;
+  LEFT JOIN conductor     c ON c.id     = t.conductor_id
+  LEFT JOIN usuario       u ON u.id     = t.usuario_id`;
 
 function aFila(x) {
   return {
     id: String(x.id), codigo: x.codigo, origen: x.origen, filaForm: x.fila_form,
     conductorId: x.conductor_id ? String(x.conductor_id) : null,
     // Quién lo pide: el de la base si está enlazado, y si no lo que escribió.
-    quien: x.conductor_bolt || x.conductor_nombre || x.nombre || x.dni || '(sin identificar)',
+    // Quien lo pide: el usuario si lo abrio desde dentro, el conductor si
+    // vino por el formulario, y lo que escribiera si no se identifica.
+    quien: x.usuario_nombre || x.usuario_email
+        || x.conductor_bolt || x.conductor_nombre || x.nombre || x.dni || '(sin identificar)',
+    usuarioId: x.usuario_id ? String(x.usuario_id) : null,
+    usuarioEmail: x.usuario_email || '',
+    adjuntos: Array.isArray(x.adjuntos) ? x.adjuntos : [],
+    notas: x.notas || '',
     escribio: x.nombre || '',
     dni: x.dni || '', telefono: x.telefono || '',
     area: x.area, areaCodigo: x.area_codigo,
@@ -125,6 +135,46 @@ async function alta(t) {
   return r.rows[0] || null;     // null = ya estaba
 }
 
+/**
+ * Alta de un ticket abierto DESDE DENTRO (soporte técnico). No viene del
+ * formulario, así que no tiene fila ni DNI: tiene un usuario con cuenta.
+ */
+async function altaInterna(t) {
+  const r = await db.consulta(
+    `INSERT INTO ticket
+       (codigo, origen, usuario_id, nombre, area_codigo, subtipo_codigo,
+        tipo_gestion, prioridad, descripcion, adjuntos)
+     SELECT a.prefijo || '-' ||
+            to_char(now() AT TIME ZONE 'Europe/Madrid', 'YYYYMMDD') || '-' ||
+            lpad(x.n, GREATEST(4, length(x.n)), '0'),
+            $1, $2, $3, a.codigo, $5, $6, $7, $8, $9::jsonb
+       FROM cat_ticket_area a
+       CROSS JOIN LATERAL (SELECT nextval('ticket_codigo_seq')::text AS n) x
+      WHERE a.codigo = $4
+     RETURNING id, codigo`,
+    [t.origen || 'soporte', t.usuarioId || null, t.nombre || null, t.area, t.subtipo,
+     t.titulo || null, t.prioridad || null, t.descripcion || null,
+     JSON.stringify(t.adjuntos || [])]);
+  return r.rows[0];
+}
+
+/** Los que ha abierto una persona. Es lo que ve quien pidió ayuda. */
+async function mios(usuarioId, limite = 100) {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS} ${DE} WHERE t.usuario_id = $1 ORDER BY t.creado_at DESC LIMIT $2`,
+    [Number(usuarioId), limite]);
+  return r.rows.map(aFila);
+}
+
+async function guardarNotas(id, texto) {
+  await db.consulta('UPDATE ticket SET notas = $2 WHERE id = $1', [Number(id), texto || null]);
+}
+
+async function guardarAdjuntos(id, adjuntos) {
+  await db.consulta('UPDATE ticket SET adjuntos = $2::jsonb WHERE id = $1',
+    [Number(id), JSON.stringify(adjuntos || [])]);
+}
+
 /** Cambia el estado. Devuelve false si otro llegó antes y ya lo había cerrado. */
 async function cambiarEstado(id, { estado, resolucion, cierra }) {
   const r = await db.consulta(
@@ -197,6 +247,7 @@ async function catalogos() {
 }
 
 module.exports = {
-  bandeja, una, abiertosPorArea, alta, cambiarEstado, asignar,
+  bandeja, una, abiertosPorArea, alta, altaInterna, mios, cambiarEstado, asignar,
+  guardarNotas, guardarAdjuntos,
   guardarObservaciones, enlazar, reclasificar, apuntar, historia, catalogos,
 };

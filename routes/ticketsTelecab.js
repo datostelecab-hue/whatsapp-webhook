@@ -1,10 +1,26 @@
+// ============================================================
+// /tickets-telecab — la bandeja de soporte, solo del desarrollador
+// ============================================================
+// Todo lo que se ha reportado desde «Soporte técnico». La pantalla se queda como
+// estaba; lo que cambia es de dónde salen los datos: la tabla `ticket`, la misma
+// que los del formulario, en vez de una hoja propia.
+//
+// La primera vez que se abre se trae lo que hubiera en la hoja vieja. Ver
+// `modules/Ticketera/rescateIT`.
+
 const express = require('express');
 const router = express.Router();
 const sesion = require('../services/sesion');
-const it = require('../services/ticketsIT');
+const ticketera = require('../modules/Ticketera/ticketera.service');
+const rescate = require('../modules/Ticketera/rescateIT');
+const actor = require('../services/repo/actor');
 
-// Todo el módulo es EXCLUSIVO del desarrollador (excluye incluso al superadmin).
 router.use(sesion.requiereDesarrollador);
+
+const quien = async req => ({
+  usuarioId: await actor.idDe(req),
+  nombre: `${(req.usuario && req.usuario.nombre) || ''} ${(req.usuario && req.usuario.apellidos) || ''}`.trim(),
+});
 
 router.get('/', (req, res) => {
   res.render('tickets-telecab', { titulo: 'Tickets Telecab', seccion: 'tickets-telecab', layout: 'layout-gestion' });
@@ -12,30 +28,25 @@ router.get('/', (req, res) => {
 
 router.get('/api/datos', async (req, res) => {
   try {
-    const tickets = await it.leerTickets();
-    const cuenta = (campo) => tickets.reduce((m, t) => { const k = (t[campo] || '').trim() || '—'; m[k] = (m[k] || 0) + 1; return m; }, {});
-    const abiertos = tickets.filter(t => t.estado !== 'Resuelto' && t.estado !== 'Descartado');
-    res.json({
-      status: 'ok', tickets,
-      opciones: { tipos: it.TIPOS, prioridades: it.PRIORIDADES, estados: it.ESTADOS },
-      contadores: { total: tickets.length, abiertos: abiertos.length, nuevos: tickets.filter(t => t.estado === 'Nuevo').length },
-      porEstado: cuenta('estado'), porTipo: cuenta('tipo')
-    });
+    // Una sola vez: lo que quedara en la hoja vieja. Falla en silencio si no hay
+    // credenciales de Google, que es lo normal fuera del servidor.
+    await rescate.rescatar().catch(e => console.error('⚠️  [SOPORTE] rescate:', e.message));
+    res.json({ status: 'ok', ...(await ticketera.bandejaIT()) });
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
 router.post('/estado', async (req, res) => {
   try {
     const b = req.body || {};
-    const t = await it.cambiarEstado(b.id, String(b.estado || '').trim());
-    res.json({ status: 'ok', estado: t.estado });
+    const t = await ticketera.estadoIT(b.id, b, await quien(req));
+    res.json({ status: 'ok', estado: b.estado, ticket: t.codigo });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 
 router.post('/notas', async (req, res) => {
   try {
     const b = req.body || {};
-    await it.guardarNotas(b.id, b.notas);
+    await ticketera.notas(b.id, b.notas, await quien(req));
     res.json({ status: 'ok' });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });

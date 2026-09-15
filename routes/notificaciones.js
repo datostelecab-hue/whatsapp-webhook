@@ -4,7 +4,7 @@ const { leerTickets, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
 const { leerVacantesGuardadas } = require('../services/vacantes');
 const repoInc = require('../services/repo/incorporaciones');
-const ticketsIT = require('../services/ticketsIT');
+const ticketera = require('../modules/Ticketera/ticketera.service');
 
 // El tablero es caro de recalcular, así que se cachea un minuto: aunque cada
 // página pida las notificaciones al cargar, solo se recalcula una vez por minuto.
@@ -16,12 +16,15 @@ async function calcular() {
     leerTickets(),
     leerTablero().catch(() => null),
     leerVacantesGuardadas().catch(() => []),
-    ticketsIT.leerTickets().catch(() => []),
+    ticketera.datos('IT', { cerrados: false }).then(r => r.tickets).catch(() => []),
     repoInc.pendientes().catch(() => [])
   ]);
   const L = lista || [];
   // Tickets IT sin resolver: son los pendientes del desarrollador.
-  const itAbiertos = (ticketsItLista || []).filter(t => t.estado === 'Nuevo' || t.estado === 'En curso');
+  // Ya vienen solo los abiertos: la bandeja los filtra por `cierra` del
+  // catálogo, no por una lista de estados escrita aquí que habría que ampliar
+  // cada vez que se añada uno.
+  const itAbiertos = ticketsItLista || [];
 
   const rechazadosRRHH = L.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
   const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT || t.estado === ESTADOS.LISTO_RRHH);
@@ -91,8 +94,8 @@ async function calcular() {
     soporte: {
       total: itAbiertos.length,
       items: itAbiertos.map(t => ({
-        texto: t.titulo || t.id,
-        detalle: `${t.tipo || ''}${t.prioridad ? ' · ' + t.prioridad : ''}${t.solicitante_nombre ? ' · ' + t.solicitante_nombre : ''}`,
+        texto: t.gestion || t.codigo,
+        detalle: `${t.subtipo || ''}${t.prioridad ? ' · ' + t.prioridad : ''}${t.quien ? ' · ' + t.quien : ''}`,
         href: '/tickets-telecab'
       }))
     }
