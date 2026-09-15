@@ -116,6 +116,16 @@ const frescura = () => require('../../services/ingesta').estado();
  */
 const buscarPersona = pistas => con.buscarPersona(pistas || {});
 
+/**
+ * El PIN de la tarjeta de combustible. Lo pone Administración y lo lee el bot.
+ * Es de la persona, no de su candidatura: ver db/124.
+ */
+const guardarPinBallenoil = (id, datos, quien) => con.guardarPinBallenoil(Number(id), datos, quien || {});
+const pinPorTelefono = tel => con.pinPorTelefono(tel);
+
+/** A quién se le puede poner un PIN de Ballenoil. */
+const paraBallenoil = () => con.paraBallenoil();
+
 // ── Escritura ──────────────────────────────────────────────────────────────
 // Casi todo es pasar el recado: la regla de cada cambio vive en el repositorio,
 // que es quien sabe cerrar una vigencia y abrir la siguiente en una sola
@@ -224,6 +234,7 @@ const documentosQueVencen = dias => docs.porVencer({ dias });
 
 module.exports = {
   paraLaPantalla, lista, ficha, hoja, catalogos, campos, buscarPersona,
+  guardarPinBallenoil, pinPorTelefono, paraBallenoil,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,

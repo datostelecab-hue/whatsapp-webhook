@@ -269,23 +269,12 @@ if (pruebas.ACTIVO) {
 // 15/09/2026: las horas están en PostgreSQL y las miran Visibilidad, la
 // Bitácora y el reporte de Control.)
 
-// TICKETS PENDIENTES EN BOLT: cada media hora (:10 y :40, para no chocar con
-// los otros crons) se cruzan los tickets «Pendiente en BOLT» con el padrón: los
-// que ya aparecen pasan a «Aprobado en BOLT» y avisan a RRHH.
-//
-// AQUÍ YA NO SE REFRESCA EL PADRÓN. Lo hace la ingesta (tarea `padron_bolt`),
-// que pide los conductores al mismo sitio y los guarda en `conductor_externo`.
-// Antes había dos trabajos haciendo el mismo trabajo: uno contra PostgreSQL y
-// otro contra una hoja de cálculo.
-programar('10,40 * * * *', async () => {
-  try {
-    const { conciliarTicketsBolt } = require('./services/tickets');
-    const conc = await conciliarTicketsBolt();
-    if (conc.total) console.log(`✅ [CRON BOLT-RRHH] ${conc.total} conductor(es) detectado(s) en BOLT → RRHH`);
-  } catch (error) {
-    console.error(`❌ [CRON BOLT-RRHH] Error: ${error.stack || error.message}`);
-  }
-});
+// (Aquí corría cada media hora un cron que cruzaba los tickets «Pendiente en
+// BOLT» con el padrón. Se borró el 15/09/2026 al pasar Selección a PostgreSQL:
+// ese estado está marcado OBSOLETO en el catálogo —`cat_estado_candidatura`— y
+// el enlace con la cuenta de BOLT lo hace ya `pasarARRHH`, que la busca por
+// teléfono y la ata sola, más la pasada del padrón de la ingesta. El cron
+// vigilaba un paso del embudo que ya no existe.)
 
 // ── LA INGESTA ──────────────────────────────────────────────────────────────
 // El latido: cada 5 minutos se mira qué toca traer de BOLT y de Mapon.

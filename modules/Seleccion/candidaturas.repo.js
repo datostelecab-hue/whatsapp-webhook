@@ -1377,55 +1377,24 @@ async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {})
 }
 
 /**
- * Administración guarda el PIN de Ballenoil. Último paso.
+ * La candidatura, ya con el PIN puesto, pasa a estar de alta.
  *
- * Antes, además, creaba la ficha en la hoja de la agenda. Ya no: la persona
- * lleva de alta desde que Selección la pasó a RRHH.
+ * SOLO mueve la candidatura. El PIN lo escribe Conductores —es de la persona,
+ * db/124— y quien encadena las dos cosas es el servicio: un repositorio que
+ * llama a otro módulo deja de ser un repositorio.
  */
-async function guardarPin(id, { pin, obs } = {}) {
-  const p = String(pin == null ? '' : pin).trim();
-  if (!p) throw new Error('Falta el PIN de Ballenoil');
-  const r = await db.consulta(
+async function avanzarTrasPin(id) {
+  const c = (await db.consulta(
+    'SELECT conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
+  if (!c) throw new Error('No existe esa candidatura');
+  await db.consulta(
     `UPDATE candidatura
-        SET pin_ballenoil = $2,
-            obs_ballenoil = COALESCE($3, obs_ballenoil),
-            estado = CASE WHEN estado = 'pendiente_pin' THEN 'alta' ELSE estado END,
+        SET estado = CASE WHEN estado = 'pendiente_pin' THEN 'alta' ELSE estado END,
             asignado_at = COALESCE(asignado_at, now()),
             actualizado_at = now()
-      WHERE id = $1
-      RETURNING id`,
-    [Number(id), p.slice(0, 40), obs == null ? null : String(obs).slice(0, 500)]);
-  if (!r.rowCount) throw new Error('No existe esa candidatura');
-  return ficha(id);
+      WHERE id = $1`, [Number(id)]);
+  return { conductorId: c.conductor_id };
 }
-
-/**
- * El PIN de Ballenoil de un teléfono. Lo pide el bot cuando el conductor da al
- * botón «VER PIN».
- *
- * Se busca por PERSONA y no por candidatura: alguien puede haber tenido dos
- * procesos y el PIN es suyo, no del papeleo. Se devuelve el más reciente que
- * tenga uno.
- */
-async function pinPorTelefono(telefono) {
-  const t = String(telefono || '').replace(/\D/g, '');
-  if (t.length < 9) return null;
-  const r = await db.consulta(
-    `SELECT k.pin_ballenoil, k.obs_ballenoil, c.id AS conductor_id,
-            COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
-                     btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)) AS quien
-       FROM conductor_telefono ct
-       JOIN conductor c  ON c.id = ct.conductor_id
-       LEFT JOIN candidatura k ON k.conductor_id = c.id
-                              AND btrim(COALESCE(k.pin_ballenoil, '')) <> ''
-      WHERE ct.vigente_hasta IS NULL AND ct.sufijo9 = right($1, 9)
-      ORDER BY k.actualizado_at DESC NULLS LAST
-      LIMIT 1`, [t]);
-  const x = r.rows[0];
-  return x ? { pin: x.pin_ballenoil || '', obs: x.obs_ballenoil || '',
-               conductorId: String(x.conductor_id), quien: x.quien } : null;
-}
-
 /** Cuántas fichas hay esperando en cada sitio. Lo pide la campana. */
 async function pendientes() {
   const r = await db.consulta(
@@ -1439,5 +1408,5 @@ module.exports = {
   cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
   // El tramo final: RRHH y Administración.
-  tramoFinal, marcarExcelAlta, tramitarAlta, guardarPin, pinPorTelefono, pendientes,
+  tramoFinal, marcarExcelAlta, tramitarAlta, avanzarTrasPin, pendientes,
 };

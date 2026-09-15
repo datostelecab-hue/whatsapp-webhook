@@ -223,16 +223,35 @@ const tramitarAlta = (id, datos, quien) => cand.tramitarAlta(Number(id), datos, 
 /** Apunta en qué Excel de altas fue cada ficha. */
 const marcarExcelAlta = (ids, referencia) => cand.marcarExcelAlta(ids, referencia);
 
-/** Administración guarda el PIN de Ballenoil. Último paso del alta. */
+/**
+ * Administración guarda el PIN de Ballenoil. Último paso del alta.
+ *
+ * Son DOS cosas de dos dueños y por eso se encadenan AQUÍ: el PIN es de la
+ * persona y lo escribe Conductores (db/124); mover la candidatura de montón es
+ * de este módulo. Un repositorio que llamara al otro módulo dejaría de ser un
+ * repositorio —y el verificador de capas lo dice—.
+ *
+ * Primero el PIN: si eso falla, la candidatura se queda esperando, que es la
+ * verdad. Al revés figuraría como resuelta sin PIN que mandar.
+ */
 async function guardarPin(id, datos, quien) {
-  const f = await cand.guardarPin(Number(id), datos);
-  console.log(`💳 [ADMINISTRACIÓN] PIN de Ballenoil guardado a ${f.quien || id}`);
-  return f;
+  const c = await cand.ficha(Number(id));
+  if (!c) throw new Error('No existe esa candidatura');
+  const plantilla = require('../Conductores/plantilla.service');
+  const p = await plantilla.guardarPinBallenoil(c.conductor_id, datos, quien || {});
+  await cand.avanzarTrasPin(Number(id));
+  console.log(`💳 [ADMINISTRACIÓN] PIN de Ballenoil guardado a ${p.quien}`);
+  return cand.ficha(Number(id));
 }
 
-/** El PIN de un teléfono. Lo pide el bot. */
-const pinPorTelefono = tel => cand.pinPorTelefono(tel);
-
+/**
+ * El PIN de un teléfono. Lo pide el bot.
+ *
+ * Se le pregunta a Conductores, que es de quien es el dato; este módulo lo
+ * reexporta porque la pantalla que lo pone —Administración— entra por aquí.
+ */
+const pinPorTelefono = tel =>
+  require('../Conductores/plantilla.service').pinPorTelefono(tel);
 /** Cuántas fichas esperan en cada sitio. Lo pide la campana. */
 const pendientesTramo = () => cand.pendientes();
 // ── La dirección ───────────────────────────────────────────────────────────

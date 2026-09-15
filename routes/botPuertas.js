@@ -308,12 +308,13 @@ async function handleTemplateButton(phone, label) {
 // Entrega al conductor su PIN de repostaje (de su ficha) + el instructivo. Va en texto
 // libre porque su pulsación/mensaje abre la ventana de 24 h (no hace falta plantilla).
 async function enviarPinBallenoil(phone) {
-  const tel = String(phone).replace(/\D/g, '').slice(-9);
+  // De PostgreSQL, y buscando por PERSONA y no por papeleo: alguien puede haber
+  // tenido dos procesos de selección y el PIN es suyo, no de la candidatura.
   let t = null;
-  try { t = await require('../services/tickets').leerTicket(tel); }
-  catch (e) { console.error('❌ [Ballenoil PIN] leerTicket:', e.message); }
-  const pin = (t && (t.pin_ballenoil || '')).toString().trim();
-  const nombre = (t && ((t.id_bolt || '').trim() || `${t.nombre || ''} ${t.apellidos || ''}`.trim())) || '';
+  try { t = await require('../modules/Seleccion/seleccion.service').pinPorTelefono(phone); }
+  catch (e) { console.error('❌ [Ballenoil PIN]', e.message); }
+  const pin = (t && (t.pin || '')).toString().trim();
+  const nombre = (t && (t.quien || '')).trim();
   if (pin) {
     await sendText(phone, `${nombre ? 'Hola ' + nombre + '. ' : ''}🔑 Tu *PIN de repostaje Ballenoil* es *${pin}*.\nEs personal e intransferible.\n\n${INSTRUCTIVO_REPOSTAJE}`);
   } else {
