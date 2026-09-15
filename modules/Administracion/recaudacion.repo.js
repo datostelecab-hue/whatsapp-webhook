@@ -40,9 +40,19 @@ const ETIQUETA_DEN = c => (c >= 100 ? String(c / 100) : '0,' + String(c).padStar
 // Un descuento de nómina baja la deuda y no mete un billete en la caja. Una
 // salida al banco vacía la caja y no cambia lo que nadie debe.
 const TIPOS = [
-  { codigo: 'presencial',        etiqueta: 'En mano',               caja: +1, deuda: +1, conductor: true },
+  // `cuenta`: este dinero se CUENTA encima de la mesa, billete a billete, y el
+  // recuento manda sobre el importe tecleado. Los demás movimientos son cifras
+  // (una nómina, una transferencia al banco): no hay nada que contar.
+  { codigo: 'presencial',        etiqueta: 'En mano',               caja: +1, deuda: +1, conductor: true, cuenta: true },
   { codigo: 'nomina',            etiqueta: 'Descontado de nómina',  caja:  0, deuda: +1, conductor: true },
   { codigo: 'entrega',           etiqueta: 'Devuelto al conductor', caja: -1, deuda: -1, conductor: true },
+  // EL CAMBIO QUE SE LE DA PARA TRABAJAR. Sale del cajón y ÉL LO DEBE: no es
+  // suyo, es de la casa, y vuelve con la recaudación. Mismos signos que
+  // 'entrega' —sale dinero, sube lo que debe— pero es otra cosa y por eso es
+  // otro tipo: 'entrega' deshace un ingreso suyo, esto le presta dinero
+  // nuestro. Mezclarlos haría imposible contestar «¿cuánto cambio tenemos en la
+  // calle?», que es la pregunta por la que existe.
+  { codigo: 'cambio',            etiqueta: 'Cambio entregado',      caja: -1, deuda: -1, conductor: true, cuenta: true },
   { codigo: 'salida_banco',      etiqueta: 'Banco',                 caja: -1, deuda:  0, conductor: false },
   { codigo: 'salida_gastos',     etiqueta: 'Gastos empresa',        caja: -1, deuda:  0, conductor: false },
   { codigo: 'salida_caja_chica', etiqueta: 'Caja chica',            caja: -1, deuda:  0, conductor: false },
@@ -218,6 +228,7 @@ async function cuadro() {
               COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0) AS presencial,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)     AS nomina,
               COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)    AS entrega,
+              COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)     AS cambio,
               -- La última vez que ESTE dinero bajó de verdad. 'entrega' es lo
               -- contrario —dinero que se le devolvió— así que no cuenta: si
               -- contara, devolverle 20 € parecería que acaba de pagar.
@@ -244,6 +255,7 @@ async function cuadro() {
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
             COALESCE(m.entrega, 0)    AS entrega,
+            COALESCE(m.cambio, 0)     AS cambio,
             m.ultima_entrega
        FROM conductor c
        LEFT JOIN cierre   ci ON ci.quien = c.id
@@ -268,6 +280,7 @@ async function cuadro() {
             COALESCE(m.presencial, 0) AS presencial,
             COALESCE(m.nomina, 0)     AS nomina,
             COALESCE(m.entrega, 0)    AS entrega,
+            COALESCE(m.cambio, 0)     AS cambio,
             m.ultima_entrega
        FROM gente g
        LEFT JOIN conductor_externo e ON e.sistema = 'bolt' AND e.externo_id = g.quien
@@ -280,6 +293,9 @@ async function cuadro() {
   const filas = r.rows.map(x => {
     const bolt = Number(x.bolt);
     const presencial = Number(x.presencial), nomina = Number(x.nomina), entrega = Number(x.entrega);
+    // El cambio que se le dio y aún no ha vuelto. SUMA a lo que debe, encima de
+    // lo que diga BOLT: BOLT no sabe nada de este dinero —lo ponemos nosotros—.
+    const cambio = Number(x.cambio);
     // Lo devuelto sale de la caja y deshace una entrega: resta de lo entregado
     // en mano, no suma a la deuda.
     const enMano = +(presencial - entrega).toFixed(2);
@@ -301,7 +317,8 @@ async function cuadro() {
       efectivoAt: x.efectivo_at || null,
       bolt: +bolt.toFixed(2),
       enMano, nomina: +nomina.toFixed(2), entrega: +entrega.toFixed(2),
-      aRecaudar: +(bolt - enMano - nomina).toFixed(2),
+      cambio: +cambio.toFixed(2),
+      aRecaudar: +(bolt + cambio - enMano - nomina).toFixed(2),
     };
   });
 
@@ -311,6 +328,7 @@ async function cuadro() {
     total: {
       gente: filas.length,
       bolt: suma('bolt'), enMano: suma('enMano'), nomina: suma('nomina'),
+      cambio: suma('cambio'),
       aRecaudar: suma('aRecaudar'),
       // A cuántos les falta algo: es el número por el que preguntan.
       conDeuda: filas.filter(f => f.aRecaudar > 0.005).length,
@@ -347,6 +365,7 @@ async function cuadre() {
        COALESCE(sum(importe) FILTER (WHERE tipo = 'presencial'), 0)        AS presencial,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'nomina'), 0)            AS nomina,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'entrega'), 0)           AS entrega,
+       COALESCE(sum(importe) FILTER (WHERE tipo = 'cambio'), 0)            AS cambio,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_banco'), 0)      AS banco,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_gastos'), 0)     AS gastos,
        COALESCE(sum(importe) FILTER (WHERE tipo = 'salida_caja_chica'), 0) AS caja_chica,
@@ -362,13 +381,17 @@ async function cuadre() {
   const dosDec = v => +v.toFixed(2);
   return {
     // Lo que debe haber en el cajón ahora mismo.
-    efectivo: dosDec(n('presencial') - n('entrega') - salidas),
-    // Lo que queda por cobrarle a la gente.
-    pendiente: dosDec(n('deuda') - (n('presencial') + n('nomina') - n('entrega'))),
+    // El cambio también salió del cajón: si no se resta, la caja dice que tiene
+    // un dinero que está en el bolsillo de un conductor.
+    efectivo: dosDec(n('presencial') - n('entrega') - n('cambio') - salidas),
+    // Lo que queda por cobrarle a la gente, incluido el cambio que se le prestó.
+    pendiente: dosDec(n('deuda') + n('cambio') - (n('presencial') + n('nomina') - n('entrega'))),
     deuda: dosDec(n('deuda')),
     entradas: dosDec(n('presencial')),
     nomina: dosDec(n('nomina')),
     devuelto: dosDec(n('entrega')),
+    // Cuánto cambio nuestro hay ahora mismo en la calle.
+    cambio: dosDec(n('cambio')),
     salidas: dosDec(salidas),
     deudaSinFicha: dosDec(n('deuda_sin_ficha')),
     porSalida: {
@@ -480,8 +503,13 @@ async function ficha(conductorId) {
     q.presencial = +vivos.filter(m => m.tipo === 'presencial').reduce((a, m) => a + m.importe, 0).toFixed(2);
     q.nomina = +vivos.filter(m => m.tipo === 'nomina').reduce((a, m) => a + m.importe, 0).toFixed(2);
     q.entrega = +vivos.filter(m => m.tipo === 'entrega').reduce((a, m) => a + m.importe, 0).toFixed(2);
+    // El cambio va APARTE de lo entregado, no restandolo. Es dinero nuestro que
+    // se le presta: sube lo que debe sin tocar lo que ha traido. Metido dentro
+    // de `recaudado` la ficha ensenaria "entregado 300" a quien entrego 500 y se
+    // llevo 200 de suelto, que es mentira por los dos lados.
+    q.cambio = +vivos.filter(m => m.tipo === 'cambio').reduce((a, m) => a + m.importe, 0).toFixed(2);
     q.recaudado = +(q.presencial + q.nomina - q.entrega).toFixed(2);
-    acumulado = +(acumulado + q.deuda - q.recaudado).toFixed(2);
+    acumulado = +(acumulado + q.deuda + q.cambio - q.recaudado).toFixed(2);
     q.saldo = acumulado;
   });
 
@@ -493,6 +521,7 @@ async function ficha(conductorId) {
     total: {
       deuda: +lista.reduce((a, q) => a + q.deuda, 0).toFixed(2),
       recaudado: +lista.reduce((a, q) => a + q.recaudado, 0).toFixed(2),
+      cambio: +lista.reduce((a, q) => a + q.cambio, 0).toFixed(2),
       pendiente: acumulado,
     },
   };
@@ -582,7 +611,7 @@ async function anotar({ conductorId, fecha, tipo, importe, desglose, observacion
   if (dia > diaIso(new Date())) throw new Error('No se puede apuntar dinero con fecha futura');
 
   let centimos, limpio = null;
-  if (tipo === 'presencial') {
+  if (def.cuenta) {
     const cuenta = cuentaDesglose(desglose);
     limpio = cuenta.desglose;
     // Si vino el desglose, MANDA él: es lo que se contó encima de la mesa.
@@ -892,6 +921,9 @@ async function comprobar() {
   mete('Lo entregado en mano cuadra entre tabla y caja',
     casi(suma('enMano'), dosDec(caja.entradas - caja.devuelto)),
     `tabla ${suma('enMano')} € · caja ${dosDec(caja.entradas - caja.devuelto)} €`);
+  mete('El cambio en la calle cuadra entre tabla y caja',
+    casi(suma('cambio'), caja.cambio),
+    `tabla ${suma('cambio')} € · caja ${caja.cambio} €`);
   mete('Lo que queda por recaudar cuadra entre tabla y caja',
     casi(suma('aRecaudar'), caja.pendiente),
     `tabla ${suma('aRecaudar')} € · caja ${caja.pendiente} €`);

@@ -20,6 +20,10 @@
         <i class="fa-solid fa-file-invoice-dollar mr-1"></i> Descuento de nómina
       </button>
       <% } %>
+      <button id="r-cambio" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text"
+              title="El dinero que se le da para que tenga cambio. Sale de la caja y él lo debe">
+        <i class="fa-solid fa-hand-holding-dollar mr-1"></i> Añadir cambio
+      </button>
       <button id="r-salida" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
         <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i> Salida de caja
       </button>
@@ -391,10 +395,13 @@
     $('#c-efectivo').textContent = eur(c.efectivo);
     $('#c-efectivo-det').textContent =
       'entró ' + eur(c.entradas) + ' en mano · salió ' + eur(c.salidas) +
-      (c.devuelto > 0.005 ? ' · devuelto ' + eur(c.devuelto) : '');
+      (c.devuelto > 0.005 ? ' · devuelto ' + eur(c.devuelto) : '') +
+      (c.cambio > 0.005 ? ' · ' + eur(c.cambio) + ' en cambio por la calle' : '');
     $('#c-pendiente').textContent = eur(c.pendiente);
     $('#c-pendiente-det').innerHTML =
-      'de ' + eur(c.deuda) + ' cobrados en la calle · ' + eur(c.nomina) + ' recuperados por nómina' +
+      'de ' + eur(c.deuda) + ' cobrados en la calle' +
+      (c.cambio > 0.005 ? ' + ' + eur(c.cambio) + ' de cambio prestado' : '') +
+      ' · ' + eur(c.nomina) + ' recuperados por nómina' +
       (c.deudaSinFicha > 0.005
         ? ' · <span class="text-telecab-red font-semibold">' + eur(c.deudaSinFicha) + ' de gente sin ficha</span>'
         : '');
@@ -498,7 +505,9 @@
       { t: 'Efectivo', al: 'text-center', ay: 'Si BOLT le deja cobrar en efectivo ahora mismo' },
       { t: 'Total en mano', al: 'text-right', k: 'enMano', ay: 'Lo que ha entregado en ventanilla, menos lo devuelto' },
       { t: 'Total en BOLT', al: 'text-right', k: 'bolt', ay: 'Todo el efectivo que ha cobrado en la calle' },
-      { t: 'Total a recaudar', al: 'text-right', k: 'aRecaudar', ay: 'Lo de BOLT menos lo que ya ha entregado' },
+      { t: 'Cambio', al: 'text-right', k: 'cambio',
+        ay: 'El cambio que se le dio para trabajar y aún no ha vuelto. Lo ponemos nosotros: BOLT no sabe nada de este dinero' },
+      { t: 'Total a recaudar', al: 'text-right', k: 'aRecaudar', ay: 'Lo de BOLT, MÁS el cambio que se le dio, menos lo que ya ha entregado' },
       { t: 'Sin entregar', al: 'text-right', k: 'diasSinEntregar',
         ay: 'Cuánto hace que no pasa por ventanilla. Solo se pinta a quien debe algo' },
     ];
@@ -548,12 +557,23 @@
               ? '<div class="text-[10px] text-sky-400" title="Descontado de su nómina">+ ' + eur(f.nomina) + ' nómina</div>'
               : '') + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums">' + cifra(f.bolt) + '</td>' +
+          // El cambio se pinta en ámbar y no en rojo: no es que deba de más, es
+          // dinero nuestro que lleva encima. Se ve aparte para poder preguntar
+          // «¿cuánto cambio tenemos en la calle?» de un vistazo.
+          '<td class="px-3 py-2.5 text-right tabular-nums">' +
+            (f.cambio > 0.005
+              ? '<span class="text-telecab-warn" title="Cambio que se le dio y aún no ha vuelto">' + eur(f.cambio) + '</span>'
+              : '<span class="text-telecab-muted/30">—</span>') + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums font-bold ' +
             (f.aRecaudar > 0.005 ? 'text-telecab-red' : f.aRecaudar < -0.005 ? 'text-telecab-green' : '') + '">' +
             (Math.abs(f.aRecaudar) < 0.005 ? '<span class="text-telecab-green">al día</span>' : eur(f.aRecaudar)) + '</td>' +
           '<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">' + sinEntregar(f) + '</td>' +
-          '<td class="px-3 py-2.5 text-right"><button data-cobrar class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition whitespace-nowrap">' +
-            '<i class="fa-solid fa-receipt mr-1"></i>Cobrar</button></td>' +
+          '<td class="px-3 py-2.5 text-right whitespace-nowrap">' +
+            '<button data-cobrar class="text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold transition">' +
+              '<i class="fa-solid fa-receipt mr-1"></i>Cobrar</button>' +
+            '<button data-cambio class="ml-1 text-xs px-2.5 py-1 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-warn hover:text-telecab-warn transition" ' +
+              'title="Darle cambio para trabajar"><i class="fa-solid fa-hand-holding-dollar"></i></button>' +
+          '</td>' +
         '</tr>').join('') +
       '</tbody></table></div>';
 
@@ -568,30 +588,48 @@
       }));
     $('#r-cuadro').querySelectorAll('[data-ficha]').forEach(b =>
       b.addEventListener('click', () => abrirFicha(b.closest('[data-cid]').dataset.cid)));
+    $('#r-cuadro').querySelectorAll('[data-cambio]').forEach(b =>
+      b.addEventListener('click', () => recibo(b.closest('[data-cid]').dataset.cid, 'cambio')));
     $('#r-cuadro').querySelectorAll('[data-cobrar]').forEach(b =>
       b.addEventListener('click', () => recibo(b.closest('[data-cid]').dataset.cid)));
   }
 
   // ── EL RECIBO, con la misma pinta que el de papel ────────────────────
-  async function recibo(conductorId) {
+  /**
+   * EL RECIBO, en sus dos sentidos. Es la MISMA cuadrícula de billetes y
+   * monedas porque es el mismo acto —contar dinero delante de alguien—; lo que
+   * cambia es hacia dónde va:
+   *
+   *   'ingreso'  el conductor trae lo que debe   → entra en caja, debe menos
+   *   'cambio'   se le da para que tenga suelto  → sale de caja, debe MÁS
+   *
+   * Se distinguen a la vista —color, título, el verbo del botón— porque contar
+   * 600 € y apuntarlos al revés descuadra la caja por 1.200.
+   */
+  async function recibo(conductorId, modo) {
+    const esCambio = modo === 'cambio';
     await padron();
     const p = $('#r-panel');
     p.classList.remove('hidden');
     p.innerHTML =
-      '<div class="bg-telecab-card border-2 border-telecab-gold/40 rounded-2xl overflow-hidden">' +
+      '<div class="bg-telecab-card border-2 ' + (esCambio ? 'border-telecab-warn/50' : 'border-telecab-gold/40') + ' rounded-2xl overflow-hidden">' +
         '<div class="px-4 py-3 border-b border-telecab-border flex items-center justify-between gap-3">' +
-          '<h2 class="font-bold text-telecab-text tracking-wide"><i class="fa-solid fa-receipt text-telecab-gold mr-2"></i>RECIBO DE EFECTIVO</h2>' +
+          '<h2 class="font-bold text-telecab-text tracking-wide"><i class="fa-solid ' +
+            (esCambio ? 'fa-hand-holding-dollar text-telecab-warn' : 'fa-receipt text-telecab-gold') + ' mr-2"></i>' +
+            (esCambio ? 'CAMBIO ENTREGADO' : 'RECIBO DE EFECTIVO') + '</h2>' +
           '<button data-cerrar class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark"></i></button>' +
         '</div>' +
         '<div class="p-4 space-y-4">' +
           '<div class="grid sm:grid-cols-[2fr,1fr,1fr] gap-3">' +
-            '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Recibí de' +
+            '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">' + (esCambio ? 'Entregado a' : 'Recibí de') +
               '<div class="mt-1">' + comboConductor('data-cond') + '</div></div>' +
             '<label class="text-[11px] text-telecab-muted uppercase tracking-wide">Fecha' +
               '<input data-fecha class="js-fecha mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text" ' +
                 'value="' + hoyDdmm() + '" data-max="today" readonly placeholder="dd/mm/aaaa"></label>' +
             '<div class="text-[11px] text-telecab-muted uppercase tracking-wide">Importe' +
-              '<p data-total class="mt-1 px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-gold/40 text-lg font-bold text-telecab-gold tabular-nums leading-tight">0,00 €</p></div>' +
+              '<p data-total class="mt-1 px-3 py-2 rounded-lg bg-telecab-dark border ' +
+                (esCambio ? 'border-telecab-warn/50 text-telecab-warn' : 'border-telecab-gold/40 text-telecab-gold') +
+                ' text-lg font-bold tabular-nums leading-tight">0,00 €</p></div>' +
           '</div>' +
 
           // La cuadrícula del recibo: una columna por billete y por moneda.
@@ -614,13 +652,21 @@
               '</tbody></table>' +
           '</div>' +
 
+          (esCambio
+            ? '<p class="text-xs text-telecab-warn/90 bg-telecab-warn/5 border border-telecab-warn/30 rounded-lg px-3 py-2">' +
+                '<i class="fa-solid fa-circle-info mr-1"></i>Este dinero <b>sale de la caja</b> y se le suma a lo que debe, ' +
+                'por encima de lo que diga BOLT. Vuelve cuando lo entregue con su recaudación.</p>'
+            : '') +
           '<label class="block text-[11px] text-telecab-muted uppercase tracking-wide">Observación' +
-            '<input data-obs type="text" maxlength="255" placeholder="p. ej. entrega de la quincena, o el número del recibo de papel" ' +
+            '<input data-obs type="text" maxlength="255" placeholder="' +
+              (esCambio ? 'p. ej. cambio para el turno de noche' : 'p. ej. entrega de la quincena, o el número del recibo de papel') + '" ' +
               'class="mt-1 w-full bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 text-sm text-telecab-text"></label>' +
           '<p data-aviso class="text-xs text-telecab-warn hidden"></p>' +
           '<div class="flex flex-wrap items-center justify-end gap-2">' +
             '<button data-cancelar class="px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">Cancelar</button>' +
-            '<button data-guardar class="px-4 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold"><i class="fa-solid fa-check mr-1"></i>Guardar el ingreso</button>' +
+            '<button data-guardar class="px-4 py-2 rounded-lg text-sm font-semibold ' +
+              (esCambio ? 'bg-telecab-warn text-telecab-dark' : 'bg-telecab-gold text-telecab-dark') + '">' +
+              '<i class="fa-solid fa-check mr-1"></i>' + (esCambio ? 'Guardar el cambio' : 'Guardar el ingreso') + '</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -657,7 +703,9 @@
       const centimos = recalcular();
       const aviso = p.querySelector('[data-aviso]');
       if (!p.querySelector('[data-cond]').value) {
-        aviso.textContent = 'Elige de quién es el dinero: escribe su nombre y píncha en él.';
+        aviso.textContent = esCambio
+          ? 'Elige a quién se le da el cambio: escribe su nombre y pincha en él.'
+          : 'Elige de quién es el dinero: escribe su nombre y pincha en él.';
         aviso.classList.remove('hidden');
         return;
       }
@@ -679,12 +727,12 @@
           body: JSON.stringify({
             conductorId: p.querySelector('[data-cond]').value,
             fecha: p.querySelector('[data-fecha]').value,
-            tipo: 'presencial', importe: (centimos / 100).toFixed(2), desglose,
+            tipo: esCambio ? 'cambio' : 'presencial', importe: (centimos / 100).toFixed(2), desglose,
             observacion: p.querySelector('[data-obs]').value,
           }),
         });
         cerrar();
-        Dialogo.hecho ? Dialogo.hecho('Ingreso apuntado: ' + eur(r.importe)) : null;
+        Dialogo.hecho ? Dialogo.hecho((esCambio ? 'Cambio entregado: ' : 'Ingreso apuntado: ') + eur(r.importe)) : null;
         await cargar();
         if (fichaAbierta) await abrirFicha(fichaAbierta);
       } catch (e) {
@@ -826,8 +874,12 @@
       const f = await pedir('/recaudacion/api/conductor/' + encodeURIComponent(conductorId));
       fichaAbierta = conductorId;
       const etqTipo = t => (TIPOS.find(x => x.codigo === t) || {}).etiqueta || t;
-      const tono = t => (t === 'presencial' ? 'text-telecab-green' : t === 'nomina' ? 'text-sky-400' : 'text-telecab-muted');
-      const signo = t => (t === 'entrega' ? '−' : '+');
+      // El cambio en ámbar, como en la tabla: no es un ingreso ni una devolución,
+      // es dinero de la casa que anda por la calle.
+      const tono = t => (t === 'presencial' ? 'text-telecab-green' : t === 'nomina' ? 'text-sky-400'
+        : t === 'cambio' ? 'text-telecab-warn' : 'text-telecab-muted');
+      // Sale dinero del cajón en los dos casos, aunque por razones distintas.
+      const signo = t => (t === 'entrega' || t === 'cambio' ? '−' : '+');
 
       const desgloseTxt = d => {
         if (!d) return '';
@@ -849,9 +901,15 @@
             '<div class="flex items-center gap-4 text-right">' +
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Efectivo</p><p class="font-bold tabular-nums">' + eur(f.total.deuda) + '</p></div>' +
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Entregado</p><p class="font-bold text-telecab-green tabular-nums">' + eur(f.total.recaudado) + '</p></div>' +
+              (f.total.cambio > 0.005
+                ? '<div title="Cambio que se le dio para trabajar"><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Cambio</p>' +
+                  '<p class="font-bold text-telecab-warn tabular-nums">' + eur(f.total.cambio) + '</p></div>'
+                : '') +
               '<div><p class="text-[10px] uppercase tracking-wide text-telecab-muted">Pendiente</p>' +
                 '<p class="font-bold tabular-nums ' + (f.total.pendiente > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(f.total.pendiente) + '</p></div>' +
               '<button data-cobrar-ficha class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold whitespace-nowrap"><i class="fa-solid fa-receipt mr-1"></i>Cobrar</button>' +
+              '<button data-cambio-ficha class="px-3 py-2 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-warn hover:text-telecab-warn text-sm whitespace-nowrap transition" ' +
+                'title="Darle cambio para trabajar"><i class="fa-solid fa-hand-holding-dollar mr-1"></i>Cambio</button>' +
               '<button data-cerrar-ficha class="w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text"><i class="fa-solid fa-xmark"></i></button>' +
             '</div>' +
           '</div>' +
@@ -864,6 +922,10 @@
                     (q.ajuste ? ' <span class="text-telecab-gold" title="' + esc(q.ajusteMotivo) + '">(' +
                       eur(q.bolt) + ' de BOLT + ' + eur(q.ajuste) + ' arrastrados)</span>' : '') + '</span>' +
                   '<span class="text-xs text-telecab-muted">entregado <b class="text-telecab-green tabular-nums">' + eur(q.recaudado) + '</b></span>' +
+                  (q.cambio > 0.005
+                    ? '<span class="text-xs text-telecab-muted" title="Cambio que se le dio en esta quincena">cambio ' +
+                      '<b class="text-telecab-warn tabular-nums">' + eur(q.cambio) + '</b></span>'
+                    : '') +
                   '<span class="ml-auto text-xs text-telecab-muted">saldo tras esta quincena ' +
                     '<b class="tabular-nums ' + (q.saldo > 0.005 ? 'text-telecab-red' : 'text-telecab-green') + '">' + eur(q.saldo) + '</b></span>' +
                 '</div>' +
@@ -889,6 +951,7 @@
       const cerrarFicha = () => { $('#r-ficha').classList.add('hidden'); $('#r-ficha').innerHTML = ''; fichaAbierta = null; };
       $('#r-ficha').querySelector('[data-cerrar-ficha]').addEventListener('click', cerrarFicha);
       $('#r-ficha').querySelector('[data-cobrar-ficha]').addEventListener('click', () => recibo(conductorId));
+      $('#r-ficha').querySelector('[data-cambio-ficha]').addEventListener('click', () => recibo(conductorId, 'cambio'));
       $('#r-ficha').querySelectorAll('[data-anular]').forEach(b =>
         b.addEventListener('click', () => anular(b.closest('[data-mid]').dataset.mid)));
       $('#r-ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -925,7 +988,8 @@
     }
   }
 
-  $('#r-nuevo').addEventListener('click', () => recibo(null));
+  $('#r-nuevo').addEventListener('click', () => recibo(null, 'ingreso'));
+  $('#r-cambio').addEventListener('click', () => recibo(null, 'cambio'));
   ['#f-busca', '#f-estado', '#f-plantilla', '#f-dias'].forEach(s =>
     $(s).addEventListener('input', () => { if (D) pintarCuadro(); }));
   $('#r-salida').addEventListener('click', salidaCaja);
