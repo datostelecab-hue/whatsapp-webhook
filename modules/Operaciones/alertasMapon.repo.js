@@ -4,7 +4,7 @@
 // Guardar lo que trae la ingesta y servir lo que pinta la pantalla. El módulo
 // de Operaciones ya no habla con la API de Mapon: habla con esto.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 const n1 = v => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 const txt = (v, n) => (v == null ? null : String(v).trim().slice(0, n) || null);

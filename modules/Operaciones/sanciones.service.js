@@ -59,8 +59,8 @@
 
 // Ni `bolt` ni `mapon`: lo que este módulo necesita ya está en PostgreSQL, puesto
 // por la ingesta. Lo único que sale fuera es el WhatsApp, que es el trabajo.
-const whatsapp = require('./whatsapp');
-const repo = require('./repo/velocidad');
+const whatsapp = require('../../services/whatsapp');
+const repo = require('./velocidad.repo');
 
 const PLANTILLA_ADVERTENCIA = 'advertencia_limite';
 

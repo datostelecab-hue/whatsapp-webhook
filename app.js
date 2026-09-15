@@ -117,13 +117,13 @@ const ticketsTelecabRoutes = require('./routes/ticketsTelecab');
 const reportesRoutes = require('./routes/reportes');
 const nominasRoutes = require('./modules/Nominas/nominas.controller');
 const convenioRoutes = require('./routes/convenio');
-const bitacoraRoutes = require('./routes/bitacora');
+const bitacoraRoutes = require('./modules/Operaciones/bitacora.controller');
 const configuracionRoutes = require('./routes/configuracion');
 const notificacionesRoutes = require('./routes/notificaciones');
 const pendientesRoutes = require('./routes/pendientes');
 const peticionesRoutes = require('./routes/peticiones');
-const operacionesRoutes = require('./routes/operaciones');
-const sancionesRoutes = require('./routes/sanciones');
+const operacionesRoutes = require('./modules/Operaciones/operaciones.controller');
+const sancionesRoutes = require('./modules/Operaciones/sanciones.controller');
 const bodaRoutes = require('./routes/boda');
 const authRoutes = require('./modules/Usuarios/auth.controller');
 const usuariosRoutes = require('./modules/Usuarios/usuarios.controller');
@@ -589,7 +589,7 @@ programar('35 5 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
-    const bit = require('./services/repo/bitacora');
+    const bit = require('./modules/Operaciones/bitacora.service');
     const enCurso = require('./services/repo/llamadas').diaOperativoHoy();
     const menos = n => new Date(Date.parse(enCurso + 'T12:00:00Z') - n * 86400000).toISOString().slice(0, 10);
     const r = await bit.sellarHoras(menos(3), menos(1));
@@ -776,7 +776,7 @@ programar('45 * * * *', async () => {
 if (process.env.SANCIONES_CRON === 'on') {
   programar('3,18,33,48 * * * *', async () => {
     try {
-      const sanciones = require('./services/sanciones');
+      const sanciones = require('./modules/Operaciones/sanciones.service');
       const r = await sanciones.procesar();
       if (r && r.nuevas) console.log(`🚦 [CRON Velocidad] ${JSON.stringify({ modo: r.modo, nuevas: r.nuevas, avisos: r.avisos, sinConductor: r.sinConductor, dudosas: r.dudosas, errores: r.errores })}`);
     } catch (error) {

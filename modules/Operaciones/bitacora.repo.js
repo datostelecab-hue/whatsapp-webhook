@@ -28,12 +28,12 @@
 //                     ausencias: [{ marca, etiqueta, desde, hasta }] }],
 //     hoyIdx, inicio, avisos: { sinFicha } }
 
-const db = require('../db');
+const db = require('../../services/db');
 // El corte de la jornada operativa (05:00). Sale de rutas.TURNOS para que el día
 // que se mueva no se quede esta pantalla sola diciendo otra cosa.
 // La hora a la que empieza la jornada operativa. Del nucleo: pedirsela a
 // flotaViva/rutas era llamar hacia arriba por un numero.
-const HORA_JORNADA = require('../nucleo').HORA_DIA;
+const HORA_JORNADA = require('../../services/nucleo').HORA_DIA;
 
 // El origen de la rejilla: 1 jun 2026 (mes 0-based: 5 = junio). 365 días.
 const INICIO = { y: 2026, m: 5, d: 1 };
@@ -178,7 +178,7 @@ async function sellarHoras(desdeIso, hastaIso) {
  */
 async function horasDeLaRejilla(hoyIso) {
   // La jornada EN CURSO: antes de las 05:00 seguimos en la de ayer.
-  const enCurso = require('./llamadas').diaOperativoHoy();
+  const enCurso = require('../../services/repo/llamadas').diaOperativoHoy();
   const vivoDesde = isoDeIdx(Math.max(0, idxDe(enCurso) - 1));   // esa y la anterior
 
   const [sellado, huecos] = await Promise.all([

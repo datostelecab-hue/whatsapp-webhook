@@ -206,22 +206,7 @@ const TAREAS = {
     cadaMin: Number(process.env.INGESTA_ALERTAS_MIN) || 15,
     critica: false,
     async ejecutar() {
-      const mapon = require('./mapon');
-      const staging = require('./repo/staging');
-      const repoAl = require('./repo/alertasMapon');
-      const t0 = Date.now();
-      // Dos días de ventana con el latido cada 15 minutos: sobra solape, y el
-      // solape no cuesta nada porque las repetidas se descartan por su clave.
-      const hoy = new Date();
-      const desde = new Date(hoy.getTime() - 2 * 86400000);
-      const { alertas } = await mapon.leerAlertas({ desde, hasta: hoy });
-      const descargaId = await staging.registrarDescarga({
-        fuente: 'mapon', endpoint: 'alert/list.json (todas)',
-        params: { desde: desde.toISOString(), hasta: hoy.toISOString() },
-        payload: alertas, filas: alertas.length, ms: Date.now() - t0,
-      });
-      const nuevas = await repoAl.guardar(alertas, descargaId);
-      return { registros: nuevas, detalle: { traidas: alertas.length, nuevas } };
+      return require('../modules/Operaciones/operaciones.service').pasadaDeAlertas();
     },
   },
 
@@ -241,30 +226,7 @@ const TAREAS = {
     reintentoMin: Number(process.env.INGESTA_AUDITORIA_REINTENTO_MIN) || 60,
     critica: false,
     async ejecutar() {
-      const aud = require('./auditoriaFlota');
-      const repoAud = require('./repo/auditoriaFlota');
-      const hoy = aud.hoyMadrid();
-      const ayer = aud.diaMenos(hoy, 1);
-
-      // Los últimos 7 días cerrados: ayer y los seis anteriores.
-      const ventana = [];
-      for (let i = 1; i <= 7; i++) ventana.push(aud.diaMenos(hoy, i));
-      const buenos = new Set((await repoAud.dias({ desde: ventana[ventana.length - 1], hasta: ayer }))
-        .filter(d => d.ok).map(d => d.dia));
-      // Ayer manda; si ya está, el hueco más viejo. Uno por vuelta: cada día
-      // son ~20 segundos y 144 llamadas, y no hay prisa por recuperar la semana
-      // en un solo golpe.
-      const pendientes = ventana.filter(d => !buenos.has(d)).sort();
-      const dia = !buenos.has(ayer) ? ayer : pendientes[0];
-      if (!dia) return { registros: 0, detalle: { nada: 'los últimos 7 días ya están calculados' } };
-
-      try {
-        const r = await aud.procesarDia(dia);
-        return { registros: r.filas, detalle: { dia, repostajes: r.eventos, recuperado: dia !== ayer } };
-      } catch (e) {
-        await repoAud.marcarFallo(dia, e.message).catch(() => {});
-        throw new Error(`${dia}: ${e.message}`);
-      }
+      return require('../modules/Operaciones/operaciones.service').pasadaDiaria();
     },
   },
 

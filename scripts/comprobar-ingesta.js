@@ -30,9 +30,10 @@ const PUERTA = ['services/ingesta.js'];
 
 // Lo que la ingesta usa por debajo: son sus brazos, no puertas nuevas.
 const BRAZOS = [
-  'services/cazamientoBolt.js',
+  'modules/Conductores/cazamiento.repo.js',   // era services/cazamientoBolt.js
   'services/conductoresBolt.js',
   'modules/Vehiculos/vehiculos.service.js',
+  'modules/Operaciones/operaciones.service.js',
   'services/mapon.js',
   'services/bolt.js',
   'services/repo/vehiculosBolt.js',
@@ -41,16 +42,19 @@ const BRAZOS = [
 // Lo que TODAVÍA llama por su cuenta. Cada línea es una deuda con su motivo.
 // Esta lista solo puede encoger.
 const PERMITIDOS = {
-  'services/auditoriaFlota.js':  'Auditoría de KM: ya ES una tarea de ingesta (auditoria_flota), pero la traza GPS ' +
+  'modules/Operaciones/auditoria.service.js':
+                                 'Auditoría de KM: ya ES una tarea de ingesta (auditoria_flota), pero la traza GPS ' +
                                  'punto a punto la pide ella y se la come al vuelo: guardarla serían 200.000 puntos ' +
                                  'al día para contestar a lo mismo',
+  'modules/Operaciones/mapon.diagnostico.js':
+                                 'La herramienta de Mapon: existe justo para preguntarle a la API en crudo. ' +
+                                 'No tiene pantalla y no la llama nadie: se pide por URL cuando hace falta',
   'services/boltHorasCore.js':   'Tubería de horas: su propio ciclo incremental cada 10 minutos',
   'services/boltResumen.js':     'Resumen de BOLT: se migra con la tubería de horas',
   'services/boltHistorico.js':   'Relleno de meses pasados: se lanza a mano y pide hasta 16 meses atrás, ' +
                                  'que es justo lo contrario de un latido cada 5 minutos',
   'services/conductores.js':     'Módulo viejo sobre hojas: muere cuando la agenda pase a PostgreSQL',
   'services/fichaje.js':         'Fichaje: ESCRIBE en Mapon (enlaza conductor y coche), no lee',
-  'routes/operaciones.js':       'Panel de operaciones: se migra con las auditorías',
   // Nacio en `main`, donde esta regla no existia, y con su PROPIA base de datos
   // (`fv_*`). Entra por la puerta grande el dia que su padron se funda con el
   // nucleo; hasta entonces la excepcion queda apuntada, no escondida.
@@ -61,7 +65,7 @@ const PERMITIDOS = {
 
 // Donde NUNCA puede haber una llamada: si una pantalla depende de una API,
 // tarda lo que tarde esa API y se cae cuando ella se cae.
-const PROHIBIDO_SIEMPRE = [/^routes\//, /^views\//];
+const PROHIBIDO_SIEMPRE = [/^routes\//, /^views\//, /\.controller\.js$/, /^modules\/[^/]+\/vistas\//];
 
 function ficherosDe(dir, ext) {
   const salida = [];
@@ -76,7 +80,11 @@ function ficherosDe(dir, ext) {
   return salida;
 }
 
+// `modules/` ENTRA, y faltaba. Mientras no estuvo, cada módulo mudado salía del
+// alcance de esta regla sin que nadie lo decidiera: un fichero que llamaba a
+// BOLT por su cuenta dejaba de estar vigilado el día que cambiaba de carpeta.
 const ficheros = [...ficherosDe('services', ['.js']), ...ficherosDe('routes', ['.js']),
+                  ...ficherosDe('modules', ['.js', '.ejs']),
                   ...ficherosDe('views', ['.ejs'])];
 
 let infracciones = 0, deuda = 0;

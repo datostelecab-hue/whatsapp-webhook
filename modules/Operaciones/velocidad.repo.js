@@ -4,7 +4,7 @@
 // Guardar un exceso, saber cuáles ya se registraron, y las dos preguntas que se
 // le hacen al módulo: quién acumula avisos, y qué ha pasado.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 const ESTADOS = ['avisado', 'simulado', 'sin_conductor', 'dudoso', 'error'];
 

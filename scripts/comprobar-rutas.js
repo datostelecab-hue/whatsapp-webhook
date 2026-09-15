@@ -45,6 +45,11 @@ const PARES = [
   ['modules/Planificacion/vistas/planificadorV2.ejs', 'modules/Planificacion/tablero.controller.js', '/planificador-v2'],
   ['modules/Planificacion/vistas/planificadorV2.ejs', 'modules/Planificacion/cobertura.controller.js', '/cobertura'],
   ['modules/Planificacion/vistas/cobertura.ejs', 'modules/Planificacion/cobertura.controller.js', '/cobertura'],
+  ['modules/Operaciones/vistas/operaciones.ejs', 'modules/Operaciones/operaciones.controller.js', '/operaciones'],
+  ['modules/Operaciones/vistas/auditoriaFlota.ejs', 'modules/Operaciones/operaciones.controller.js', '/operaciones'],
+  ['modules/Operaciones/vistas/sanciones.ejs', 'modules/Operaciones/sanciones.controller.js', '/sanciones'],
+  ['modules/Operaciones/vistas/bitacora.ejs', 'modules/Operaciones/bitacora.controller.js', '/bitacora'],
+  ['modules/Operaciones/vistas/bitacoraGeneral.ejs', 'modules/Operaciones/bitacora.controller.js', '/bitacora'],
   ['modules/Vehiculos/vistas/vehiculos.ejs', 'modules/Vehiculos/vehiculos.controller.js', '/vehiculos'],
   ['views/migraciones.ejs', 'routes/migraciones.js', '/migraciones'],
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],
@@ -66,7 +71,13 @@ for (const [vista, fichero, prefijo] of PARES) {
 
   // Los trozos interpolados (`${d.id}`) se sustituyen por un comodín: lo que se
   // comprueba es la FORMA de la URL, no el valor.
-  const texto = fs.readFileSync(pv, 'utf8').replace(/\$\{[^}]*\}/g, '_');
+  // Y LAS LÍNEAS DE COMENTARIO SE TIRAN. Una vista explica en un `//` de qué
+  // permiso depende un botón —`'/bitacora/justificar'`— y eso no es una URL que
+  // nadie pida: es prosa. Solo se quitan las líneas que EMPIEZAN por `//`, no
+  // cualquier `//` del texto, que se llevaría por delante medio `https://`.
+  const texto = fs.readFileSync(pv, 'utf8')
+    .replace(/^[ \t]*\/\/.*$/gm, '')
+    .replace(/\$\{[^}]*\}/g, '_');
 
   // El PUNTO cuenta como parte de la URL. Hay rutas que lo llevan a propósito
   // —/informe.xlsx, /api/gestoria.xlsx— porque así el navegador nombra bien la

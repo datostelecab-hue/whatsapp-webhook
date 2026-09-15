@@ -226,7 +226,7 @@ decidirlo antes de mover nada.
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** ✓ | `tablero` (planificador) y `cobertura` — **hecho**. `matching`, `agenda`, `fichas` y `libranzas` NO: cuelgan de las hojas. `vacantes` se fue a Selección |
 | **Control** ✓ | `control`, `alertas`, `callCenter`, `justificantes` y las APIs de `flotaViva` — **hecho, el módulo entero**. El núcleo `fv_*` NO: no es un módulo (ver abajo) |
-| **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
+| **Operaciones** ✓ | `operaciones`, `sanciones`, `bitacora` — **hecho, el módulo entero** |
 | **RRHH** | `rrhh`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
 | **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
 | **Seleccion** ✓ | `seleccion`, `ett`, `generador`, `vacantes` — **hecho, el módulo entero** |
@@ -268,8 +268,8 @@ Empezando por el más pequeño y aislado, para estrenar la mecánica donde el da
 posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
-~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ ~~**Planificacion**~~ (hechos)
-→ el resto (Operaciones, RRHH, Informes, Administracion…).
+~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ ~~**Planificacion**~~
+~~**Operaciones**~~ (hechos) → **RRHH**, **Informes**, **Administracion** y el resto.
 
 ### Hecho: Documentos
 
@@ -395,6 +395,28 @@ turnos y la parrilla. Lo que enseñó:
   limpieza porque sí: la copia del motor del planificador obligaba al tablero a
   llamar hacia arriba, a un servicio de hojas, solo para saber cómo se abrevia
   "miércoles".
+
+### Hecho: Operaciones
+
+Está en `modules/Operaciones/` (con su `LEEME.md`): las alertas de Mapon, la
+auditoría de flota, los excesos de velocidad y la bitácora. Lo que enseñó no
+fue el reparto —ya es mecánico— sino **la red de seguridad**:
+
+- **Dos comprobadores no miraban en `modules/`.** `comprobar-ingesta.js`, que
+  vigila que nadie llame a BOLT o a Mapon por su cuenta, dejaba fuera de su
+  alcance a cada módulo mudado sin que nadie lo decidiera; al arreglarlo
+  aparecieron dos ficheros reales sin vigilancia. Y `comprobar-rutas.js` acusaba
+  de "sin ruta" a una URL escrita **dentro de un comentario**. Sumado a lo de
+  `inventario-muerto.js` en la tanda de Control, son ya tres herramientas que
+  mintieron por la misma causa: **la Fase 2 mueve código a una carpeta que los
+  comprobadores no conocían.** Vale la pena mirar los demás antes de seguir.
+- **Un parche mal anclado casi se lleva por delante una tarea de la ingesta.**
+  Al reescribir `services/ingesta.js` para que entrara por la puerta del módulo,
+  la búsqueda se hizo por un `async ejecutar() {` suelto y cogió el bloque
+  equivocado: se comió la tarea `alertas_mapon` entera y el cuerpo de
+  `zonas_mapon`. Compilaba y arrancaba. Lo cazó la comprobación en vivo, que
+  pide la lista de tareas y exige que las dos estén. **Un parche se ancla en el
+  nombre de lo que cambia, no en una forma que se repite.**
 
 ### Hecho: Nóminas (y de paso, fuera de las hojas)
 

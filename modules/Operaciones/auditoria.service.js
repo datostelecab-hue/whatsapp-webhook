@@ -27,9 +27,9 @@
  * LEEN. Backfill manual por rango con procesarRango().
  */
 
-const { fetchRangoCompleto, fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
-const mapon = require('./mapon');
-const repo = require('./repo/auditoriaFlota');
+const { fetchRangoCompleto, fetchAllPaginated, CONFIG_BOLT } = require('../../services/bolt');
+const mapon = require('../../services/mapon');
+const repo = require('./auditoria.repo');
 
 const ZONA = 'Europe/Madrid';
 const MAX_DIAS = 31;
@@ -119,7 +119,7 @@ function tsDeHoraLocal(dia, hora) {
 // mirarlo cuando el relevo no cae a las 5: no depende de los turnos y permite un
 // segundo flujo comparable entre coches.
 // Del nucleo: era la segunda copia de la misma constante (ver services/nucleo.js).
-const { HORA_DIA: HORA_TURNO_DIA, HORA_NOCHE: HORA_TURNO_NOCHE } = require('./nucleo');
+const { HORA_DIA: HORA_TURNO_DIA, HORA_NOCHE: HORA_TURNO_NOCHE } = require('../../services/nucleo');
 const SEGMENTOS = ['completo', 'dia', 'noche', 'manana', 'tarde'];
 const ETIQUETA_SEG = {
   completo: 'Día natural (00:00–24:00)',

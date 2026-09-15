@@ -18,7 +18,7 @@
 // conductor nuestro corresponde cada línea, que es justo lo que la hoja no
 // podía hacer.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 const TRAMOS = ['completo', 'dia', 'noche', 'manana', 'tarde'];
 const n2 = v => Math.round((Number(v) || 0) * 100) / 100;

@@ -5,7 +5,7 @@
 // tiene la gente guardada; el módulo ya no sanciona, avisa.
 const express = require('express');
 const router = express.Router();
-const vel = require('../services/sanciones');
+const vel = require('./sanciones.service');
 
 /**
  * El rango que se mira. Por defecto, los últimos 30 días: el módulo va de
