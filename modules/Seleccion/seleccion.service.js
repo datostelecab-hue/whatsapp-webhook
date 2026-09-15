@@ -165,9 +165,27 @@ async function fichaPDF(id) {
   const archivo = await drive.subir(String(datos.conductorId), {
     nombre, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64'),
   });
-  return { link: archivo.webViewLink, nombre, adjuntos: adjuntos.length };
+  // Se devuelven TAMBIÉN los bytes. El PDF acaba de generarse aquí; que quien
+  // quiere verlo tenga que volver a bajárselo de Drive es un viaje de más para
+  // el mismo fichero que ya está en memoria.
+  return { link: archivo.webViewLink, nombre, adjuntos: adjuntos.length,
+           bytes: Buffer.from(pdf), mime: 'application/pdf' };
 }
 
+/**
+ * Baja un documento de la persona por la clave que usa la pantalla («carné» y
+ * no «permiso»). La traducción es la del catálogo de arriba, que vive en un
+ * solo sitio.
+ */
+async function descargarDocumento(id, key) {
+  const def = DOCUMENTOS.find(d => d.key === key);
+  if (!def) throw new Error('Tipo de documento no válido');
+  const f = await cand.ficha(Number(id));
+  if (!f) throw new Error('No existe esa candidatura');
+  const d = (f.documentos || []).find(x => x.tipo === def.tipo && x.vigente);
+  if (!d) throw new Error(`No tiene subido el ${def.label.toLowerCase()}`);
+  return docs.descargar(d.id);
+}
 // ── El proceso ─────────────────────────────────────────────────────────────
 
 const catalogos = () => cand.catalogos();
@@ -205,6 +223,9 @@ async function tramoFinal() {
     jornadaHoras: c.jornada_horas, tipoContrato: c.tipo_contrato || '',
     estado: c.estado, estadoEtiqueta: c.estado_etiqueta,
     excelAlta: c.excel_alta || '', pin: c.pin_ballenoil || '', obsPin: c.obs_ballenoil || '',
+    // Qué papeles tiene, en el idioma de la pantalla («carné» y no «permiso»).
+    documentos: DOCUMENTOS.map(d => ({ key: d.key, label: d.label,
+      tiene: (c.docs || []).includes(d.tipo) })),
     inicioPrevisto: c.inicio_previsto, altaAt: c.alta_at, habilitadoAt: c.habilitado_at,
     empleoVigente: !!c.empleo_vigente, motivo: c.motivo || '',
   });
@@ -217,6 +238,55 @@ async function tramoFinal() {
   };
 }
 
+/**
+ * El Excel de altas que se le manda a la gestoría, y la marca de que esas
+ * fichas ya fueron en uno.
+ *
+ * Tres reglas, y las tres vienen de que la gestoría COBRA POR ALTA:
+ *
+ *   · Una ficha solo puede ir en UN Excel. Si ya está en otro, se dice en cuál.
+ *   · La ETT no se mezcla con lo nuestro: todas las del Excel, del mismo tipo.
+ *   · Y se marca DESPUÉS de generarlo: si el fichero falla, nadie se queda
+ *     marcado como enviado sin haberlo estado.
+ */
+async function excelDeAltas({ ids, fecha, tipo }) {
+  const esEtt = tipo === 'ett';
+  if (!Array.isArray(ids) || !ids.length) throw new Error('No hay fichas seleccionadas');
+  if (!String(fecha || '').trim()) throw new Error('Elige la fecha del grupo de altas');
+
+  const todas = await cand.tramoFinal();
+  const pedidas = new Set(ids.map(String));
+  const fichas = todas.filter(c => pedidas.has(String(c.id)));
+  if (!fichas.length) throw new Error('No se encontraron esas fichas');
+
+  const deEtt = c => c.canal === 'bolsa_ett' || /ETT/i.test(c.canal_etiqueta || '');
+  const noCoincide = fichas.filter(c => deEtt(c) !== esEtt);
+  if (noCoincide.length) {
+    throw new Error(`Estas no son de ${esEtt ? 'ETT' : 'nuestras'}: ` +
+      noCoincide.map(c => c.quien).join(', '));
+  }
+
+  // La etiqueta lleva «ETT» delante para distinguir los grupos —y para que
+  // Plantilla los separe—.
+  const etiqueta = (esEtt ? 'ETT ' : '') + String(fecha).trim();
+  const enOtro = fichas.filter(c => c.excel_alta && String(c.excel_alta).trim() !== etiqueta);
+  if (enOtro.length) {
+    throw new Error('Ya están en otro Excel: ' +
+      enOtro.map(c => `${c.quien} (${c.excel_alta})`).join(', '));
+  }
+
+  const datos = await cand.paraAltasExcel(fichas.map(c => c.id));
+  const { generarAltasExcel } = require('../../services/altasExcel');
+  const buffer = await generarAltasExcel(datos, fecha);
+
+  await cand.marcarExcelAlta(
+    fichas.filter(c => String(c.excel_alta || '').trim() !== etiqueta).map(c => c.id), etiqueta);
+
+  const nombre = 'Altas' + (esEtt ? ' ETT' : '') + ' ' +
+    (String(fecha).replace(/\//g, '-') || 'grupo') + '.xlsx';
+  console.log(`📄 [RRHH] Excel de altas «${etiqueta}» con ${fichas.length} ficha(s)`);
+  return { buffer: Buffer.from(buffer), nombre };
+}
 /** RRHH tramita el alta: la ficha pasa a esperar el PIN de Ballenoil. */
 const tramitarAlta = (id, datos, quien) => cand.tramitarAlta(Number(id), datos, quien);
 
@@ -269,7 +339,7 @@ module.exports = {
   DOCUMENTOS,
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
   abrir, guardar, cambiarEstado, pasarARRHH, eliminar,
-  tramoFinal, tramitarAlta, marcarExcelAlta, guardarPin, pinPorTelefono, pendientesTramo,
-  subirDocumento, retirarDocumento, fichaPDF,
+  tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, guardarPin, pinPorTelefono, pendientesTramo,
+  subirDocumento, retirarDocumento, descargarDocumento, fichaPDF,
   direccion,
 };

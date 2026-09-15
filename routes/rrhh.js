@@ -1,49 +1,75 @@
+// ============================================================
+// /rrhh — el tablero de RRHH: verificar la ficha y tramitar el alta
+// ============================================================
+// Recibe lo que Selección deja listo, comprueba que los papeles están, mete a la
+// persona en un Excel de altas para la gestoría y la manda a Administración a
+// por el PIN de Ballenoil.
+//
+// ── QUÉ CAMBIÓ AL SALIR DE LAS HOJAS (15/09/2026) ───────────────────────────
+// AQUÍ NO SE DA DE ALTA A NADIE, y no es que se haya quitado: es que ya no hacía
+// falta. `pasarARRHH` abre el contrato, pone el turno y enlaza la cuenta de BOLT
+// en el momento en que Selección suelta la ficha. Los que esperan en esta
+// pantalla ya tienen contrato.
+//
+// Lo que queda es lo de RRHH de verdad: mirar que los papeles estén, generar el
+// Excel que se le manda a la gestoría, y decidir si sigue adelante o no.
+//
+// Los documentos son DE LA PERSONA y viven en su tabla, así que el mismo DNI
+// vale para quien se cayó del proceso y volvió seis meses después.
+
 const express = require('express');
 const router = express.Router();
-const {
-  leerTickets, leerTicket, procesarAltaRRHH, noContinuarRRHH, devolverRRHH,
-  guardarCelda, parseDoc, DOCUMENTOS, ESTADOS
-} = require('../services/tickets');
-const { generarAltasExcel } = require('../services/altasExcel');
-const drive = require('../services/drive');
+const seleccion = require('../modules/Seleccion/seleccion.service');
+const actor = require('../services/repo/actor');
 
-// Una ficha es de ETT según su canal de origen ("… (ETT)"). Las de ETT solo van
-// en Excels de ETT; el resto, en los nuestros (general).
-const esETT = t => /ETT/i.test(((t && t.canal) || '').toString());
+const quien = async req => ({ usuarioId: await actor.idDe(req) });
+const tel9 = v => String(v == null ? '' : v).replace(/\D/g, '').slice(-9);
 
-// Tablero de RRHH: recibe los "Aprobado en BOLT" y tramita el alta.
 router.get('/', (req, res) => {
-  res.render('rrhh', {
-    titulo: 'RRHH',
-    seccion: 'rrhh',
-    layout: 'layout-gestion'
-  });
+  res.render('rrhh', { titulo: 'RRHH', seccion: 'rrhh', layout: 'layout-gestion' });
 });
+
+/**
+ * Busca una ficha del tramo por el teléfono, que es la llave que usa la
+ * pantalla. Debajo ya no hay una hoja indexada por teléfono: hay candidaturas
+ * con su id, y el teléfono se resuelve aquí.
+ */
+async function porTelefono(tel, monton) {
+  const t = await seleccion.tramoFinal();
+  const donde = monton ? t[monton] : [...t.porTramitar, ...t.pendientePin, ...t.hechas, ...t.noAlta];
+  const f = donde.find(c => tel9(c.telefono) === tel9(tel));
+  if (!f) throw new Error('No encuentro esa ficha' + (monton ? ' en ese montón' : ''));
+  return f;
+}
 
 router.get('/api/datos', async (req, res) => {
   try {
-    const { lista } = await leerTickets();
-    // Cada ficha lleva su flag ETT y sus documentos parseados (para verificar en
-    // RRHH sin ir a otra pantalla). Las columnas doc_* crudas se quitan del payload.
-    const preparar = t => {
-      const documentos = DOCUMENTOS.map(d => {
-        const doc = parseDoc(t[d.col]);
-        return { key: d.key, label: d.label, tiene: !!(doc && doc.id), mime: (doc && doc.mime) || '', link: (doc && doc.link) || '' };
-      });
-      const fp = parseDoc(t.ficha_pdf);
-      const { doc_dni, doc_dni_reverso, doc_carnet, doc_carnet_reverso,
-              doc_bancario, doc_seg_social, doc_penales, ficha_pdf, ...campos } = t;
-      return { ...campos, ett: esETT(t), documentos, ficha_pdf_link: (fp && fp.link) || '' };
-    };
-    const porTramitar = lista.filter(t => t.estado === ESTADOS.APROBADO_BOLT || t.estado === ESTADOS.LISTO_RRHH).map(preparar);
-    const altas = lista.filter(t => t.estado === ESTADOS.ALTA).map(preparar);
-    const noAlta = lista.filter(t => t.estado === ESTADOS.NO_ALTA).map(preparar);
+    const t = await seleccion.tramoFinal();
+    // `id` sigue siendo el teléfono: es con lo que la pantalla llama a todo lo
+    // demás y no hay razón para hacerle aprender otra llave.
+    const map = c => ({
+      id: c.telefono, candidaturaId: c.id, conductorId: c.conductorId,
+      nombre: c.quien, apellidos: '', telefono: c.telefono,
+      dni: c.dni, email: c.email, num_seg_social: c.naf,
+      turno: c.turno, zona: c.zona, canal: c.canal, ett: c.ett,
+      jornada: c.jornadaHoras, contrato: c.tipoContrato,
+      fecha_inicio: c.inicioPrevisto ? String(c.inicioPrevisto).slice(0, 10) : '',
+      excel_alta: c.excelAlta, estado: c.estadoEtiqueta, motivo: c.motivo,
+      documentos: c.documentos,
+      // El PDF de la ficha de alta se genera al pedirlo, así que siempre hay:
+      // antes era un enlace guardado que podía apuntar a una versión vieja.
+      ficha_pdf_link: `/rrhh/doc?tel=${encodeURIComponent(c.telefono || '')}&tipo=ficha_pdf`,
+    });
+    const porTramitar = t.porTramitar.map(map);
+    const altas = [...t.pendientePin, ...t.hechas].map(map);
+    const noAlta = t.noAlta.map(map);
     res.json({
       status: 'ok', porTramitar, altas, noAlta,
       contadores: {
         porTramitar: porTramitar.length, altas: altas.length, noAlta: noAlta.length,
-        ett: porTramitar.filter(t => t.ett).length, general: porTramitar.filter(t => !t.ett).length
-      }
+        ett: porTramitar.filter(x => x.ett).length,
+        general: porTramitar.filter(x => !x.ett).length,
+      },
     });
   } catch (error) {
     console.error('❌ [RRHH] /api/datos:', error.message);
@@ -51,112 +77,93 @@ router.get('/api/datos', async (req, res) => {
   }
 });
 
-// Tramitar el alta → crea la ficha en AGENDA_V2 (Pendiente Asignar) y pasa a Tráfico.
+/** Tramitar: la ficha pasa a Administración a por el PIN. No da ningún alta. */
 router.post('/alta', async (req, res) => {
   try {
     const b = req.body || {};
-    const t = await procesarAltaRRHH(b.tel, {
-      fecha_alta: b.fecha_alta, fecha_habilitado: b.fecha_habilitado
-    });
+    const f = await porTelefono(b.tel, 'porTramitar');
+    const t = await seleccion.tramitarAlta(f.id,
+      { fechaAlta: b.fecha_alta, fechaHabilitado: b.fecha_habilitado }, await quien(req));
+    console.log(`👤 [RRHH] ${f.quien} tramitada → a por el PIN de Ballenoil`);
     res.json({ status: 'ok', ticket: t });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 
-// RRHH decide no continuar con el alta.
+/** RRHH decide no continuar con el alta. */
 router.post('/no-continuar', async (req, res) => {
   try {
     const b = req.body || {};
-    const t = await noContinuarRRHH(b.tel, b.motivo);
+    const f = await porTelefono(b.tel);
+    const t = await seleccion.cambiarEstado(f.id, 'no_alta', b.motivo, await quien(req));
     res.json({ status: 'ok', ticket: t });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 
-// RRHH devuelve la ficha a Selección (Rechazado RRHH) con el motivo.
+/** RRHH devuelve la ficha a Selección con el motivo. */
 router.post('/devolver', async (req, res) => {
   try {
     const b = req.body || {};
-    const t = await devolverRRHH(b.tel, b.motivo);
+    const f = await porTelefono(b.tel);
+    const t = await seleccion.cambiarEstado(f.id, 'rechazado_rrhh', b.motivo, await quien(req));
     res.json({ status: 'ok', ticket: t });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 
-// Genera el Excel de Altas para un grupo de fichas + una fecha elegidos por RRHH.
+/** El Excel de altas de un grupo de fichas + la fecha que elige RRHH. */
 router.post('/altas-excel', async (req, res) => {
   try {
-    const { tels, fecha } = req.body || {};
-    const tipo = (req.body || {}).tipo === 'ett' ? 'ett' : 'general';
-    if (!Array.isArray(tels) || !tels.length) {
-      return res.status(400).json({ status: 'error', msg: 'No hay fichas seleccionadas' });
-    }
-    if (!fecha || !String(fecha).trim()) {
-      return res.status(400).json({ status: 'error', msg: 'Elige la fecha del grupo de altas' });
-    }
-    const { lista } = await leerTickets();
-    const pedidos = new Set(tels.map(t => String(t)));
-    const fichas = (lista || []).filter(t => pedidos.has(String(t.id)));
-    if (!fichas.length) return res.status(400).json({ status: 'error', msg: 'No se encontraron esas fichas' });
+    const b = req.body || {};
+    // La pantalla manda teléfonos; aquí se traducen a candidaturas.
+    const t = await seleccion.tramoFinal();
+    const pedidos = new Set((b.tels || []).map(tel9));
+    const ids = [...t.porTramitar, ...t.pendientePin]
+      .filter(c => pedidos.has(tel9(c.telefono))).map(c => c.id);
 
-    // La ETT no se mezcla con lo nuestro: todas las fichas del Excel deben ser del
-    // mismo tipo que el Excel que se está generando.
-    const noCoincide = fichas.filter(t => esETT(t) !== (tipo === 'ett'));
-    if (noCoincide.length) {
-      return res.status(400).json({ status: 'error',
-        msg: `Estas no son de ${tipo === 'ett' ? 'ETT' : 'nuestras'}: ` + noCoincide.map(t => t.nombre || t.id).join(', ') });
-    }
-
-    // El valor de excel_alta lleva "ETT " delante para diferenciar los grupos (y que
-    // Plantilla los separe). Una ficha solo puede ir en UN Excel.
-    const etiquetaExcel = (tipo === 'ett' ? 'ETT ' : '') + String(fecha).trim();
-    const yaEnOtro = fichas.filter(t => t.excel_alta && String(t.excel_alta).trim() !== etiquetaExcel);
-    if (yaEnOtro.length) {
-      return res.status(400).json({ status: 'error',
-        msg: 'Ya están en otro Excel: ' + yaEnOtro.map(t => `${t.nombre || t.id} (${t.excel_alta})`).join(', ') });
-    }
-
-    const buffer = await generarAltasExcel(fichas, fecha);
-    for (const t of fichas) {
-      if (String(t.excel_alta || '').trim() !== etiquetaExcel) {
-        try { await guardarCelda(t.id, 'excel_alta', etiquetaExcel); }
-        catch (e) { console.error('❌ [RRHH] marcar excel_alta:', e.message); }
-      }
-    }
-    const etiqueta = String(fecha || '').replace(/[\/]/g, '-') || 'grupo';
-    const nombre = 'Altas' + (tipo === 'ett' ? ' ETT' : '') + ' ' + etiqueta + '.xlsx';
+    const { buffer, nombre } = await seleccion.excelDeAltas({
+      ids, fecha: b.fecha, tipo: b.tipo === 'ett' ? 'ett' : 'general',
+    });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
-    res.send(Buffer.from(buffer));
+    res.send(buffer);
   } catch (error) {
     console.error('❌ [RRHH] altas-excel:', error.message);
-    res.status(500).json({ status: 'error', msg: error.message });
+    res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 
-// Proxy para ver/abrir un documento de Drive sin salir de RRHH: descarga el
-// archivo con la cuenta de servicio y lo devuelve con su tipo (para <img> o
-// abrir en pestaña). Así RRHH verifica las fotos/PDF desde la propia tarjeta.
+/**
+ * Ver un documento sin salir de RRHH: se descarga con la cuenta de servicio y se
+ * devuelve con su tipo, para pintarlo en un <img> o abrirlo en una pestaña.
+ *
+ * `ficha_pdf` no es un documento guardado: es la ficha de alta, que se genera al
+ * pedirla. Antes era un enlace apuntando a un PDF de Drive que podía ser de
+ * antes del último cambio de datos.
+ */
 router.get('/doc', async (req, res) => {
   try {
-    const tel = (req.query.tel || '').toString();
-    const tipo = (req.query.tipo || '').toString();
-    const col = tipo === 'ficha_pdf' ? 'ficha_pdf' : (DOCUMENTOS.find(d => d.key === tipo) || {}).col;
-    if (!col) return res.status(400).send('Tipo de documento no válido');
-    const t = await leerTicket(tel);
-    if (!t) return res.status(404).send('Ficha no encontrada');
-    const doc = parseDoc(t[col]);
-    if (!doc || !doc.id) return res.status(404).send('Sin documento');
-    const { bytes, mime } = await drive.descargar(doc.id);
+    const tipo = String(req.query.tipo || '');
+    const f = await porTelefono(req.query.tel);
+
+    if (tipo === 'ficha_pdf') {
+      const pdf = await seleccion.fichaPDF(f.id);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${pdf.nombre}"`);
+      return res.send(pdf.bytes);
+    }
+
+    const { bytes, mime } = await seleccion.descargarDocumento(f.id, tipo);
     res.setHeader('Content-Type', mime || 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.send(bytes);
   } catch (error) {
-    console.error('❌ [RRHH] doc preview:', error.message);
-    res.status(500).send('Error al cargar el documento');
+    console.error('❌ [RRHH] doc:', error.message);
+    res.status(404).send(error.message || 'Sin documento');
   }
 });
 

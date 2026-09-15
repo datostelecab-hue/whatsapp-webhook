@@ -1325,11 +1325,65 @@ async function eliminar(id, { usuarioId } = {}) {
  *   hechas       ya con PIN, o ya en Tráfico
  */
 async function tramoFinal() {
+  // Los papeles vienen EN LA MISMA CONSULTA, como un array de tipos vigentes.
+  // RRHH mira «qué le falta a este» de un vistazo sobre la lista entera; pedirlos
+  // ficha a ficha serían veinte consultas para pintar una pantalla.
   const r = await db.consulta(
-    `SELECT * FROM v_candidatura
-      WHERE estado IN ('listo_rrhh', 'pendiente_pin', 'alta', 'asignado', 'no_alta', 'rechazado_rrhh')
-      ORDER BY estado_orden, creado_at DESC`);
+    `SELECT v.*, COALESCE(d.tipos, ARRAY[]::text[]) AS docs
+       FROM v_candidatura v
+       LEFT JOIN LATERAL (
+         SELECT array_agg(DISTINCT doc.tipo) AS tipos
+           FROM documento doc
+          WHERE doc.conductor_id = v.conductor_id AND doc.vigente) d ON TRUE
+      WHERE v.estado IN ('listo_rrhh', 'pendiente_pin', 'alta', 'asignado', 'no_alta', 'rechazado_rrhh')
+      ORDER BY v.estado_orden, v.creado_at DESC`);
   return r.rows;
+}
+
+/**
+ * Las fichas que van en un Excel de altas, con lo que pide la gestoría.
+ *
+ * EL IBAN SE DESCIFRA AQUÍ y solo aquí: en la base está cifrado (`iban_cifrado`)
+ * y el Excel que se le manda a la gestoría lo necesita en claro. Va en una sola
+ * consulta y no ficha a ficha —son grupos de diez o quince—.
+ */
+async function paraAltasExcel(ids) {
+  if (!ids || !ids.length) return [];
+  const r = await db.consulta(
+    `SELECT k.id, c.nombre, c.apellidos, c.dni_nie, c.email, c.nacionalidad,
+            c.direccion, c.codigo_postal, c.naf, c.iban_cifrado,
+            to_char(c.fecha_nacimiento, 'DD/MM/YYYY') AS fecha_nacimiento,
+            to_char(k.inicio_previsto, 'DD/MM/YYYY')  AS fecha_inicio,
+            to_char(k.deteccion_at, 'DD/MM/YYYY')     AS fecha_deteccion,
+            COALESCE(k.jornada_horas, pe.jornada_horas) AS jornada,
+            tel.e164 AS telefono
+       FROM candidatura k
+       JOIN conductor c ON c.id = k.conductor_id
+       LEFT JOIN conductor_periodo_empleo pe ON pe.conductor_id = c.id AND pe.baja IS NULL
+       LEFT JOIN LATERAL (
+         SELECT e164 FROM conductor_telefono
+          WHERE conductor_id = c.id AND vigente_hasta IS NULL
+          ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
+      WHERE k.id = ANY($1::bigint[])
+      ORDER BY c.apellidos, c.nombre`, [ids.map(Number)]);
+
+  const cripto = require('../../services/cripto');
+  return r.rows.map(f => {
+    let iban = '';
+    if (f.iban_cifrado) {
+      // Si no se puede descifrar se DICE en la celda, no se deja en blanco: un
+      // hueco pasa desapercibido y la gestoría da el alta sin cuenta.
+      try { iban = cripto.descifrar(f.iban_cifrado); } catch (_) { iban = '(no se pudo descifrar)'; }
+    }
+    return {
+      id: f.telefono || '', nombre: f.nombre || '', apellidos: f.apellidos || '',
+      dni: f.dni_nie || '', email: f.email || '', nacionalidad: f.nacionalidad || '',
+      direccion: f.direccion || '', codigo_postal: f.codigo_postal || '',
+      num_seg_social: f.naf || '', fecha_nacimiento: f.fecha_nacimiento || '',
+      fecha_inicio: f.fecha_inicio || '', fecha_deteccion: f.fecha_deteccion || '',
+      jornada: f.jornada ? String(f.jornada) : '', iban,
+    };
+  });
 }
 
 /**
@@ -1408,5 +1462,5 @@ module.exports = {
   cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
   // El tramo final: RRHH y Administración.
-  tramoFinal, marcarExcelAlta, tramitarAlta, avanzarTrasPin, pendientes,
+  tramoFinal, paraAltasExcel, marcarExcelAlta, tramitarAlta, avanzarTrasPin, pendientes,
 };

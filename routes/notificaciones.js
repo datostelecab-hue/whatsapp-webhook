@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { leerTickets, ESTADOS, ETAPAS } = require('../services/tickets');
+const seleccion = require('../modules/Seleccion/seleccion.service');
 const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
 const { leerVacantesGuardadas } = require('../services/vacantes');
 const repoInc = require('../services/repo/incorporaciones');
@@ -12,23 +12,25 @@ let cache = null, cacheTs = 0;
 const TTL = 60 * 1000;
 
 async function calcular() {
-  const [{ lista }, tablero, vacantesAll, ticketsItLista, incPend] = await Promise.all([
-    leerTickets(),
+  const [tramo, tablero, vacantesAll, ticketsItLista, incPend] = await Promise.all([
+    seleccion.tramoFinal().catch(() => ({ porTramitar: [], pendientePin: [], hechas: [], noAlta: [] })),
     leerTablero().catch(() => null),
     leerVacantesGuardadas().catch(() => []),
     ticketera.datos('IT', { cerrados: false }).then(r => r.tickets).catch(() => []),
     repoInc.pendientes().catch(() => [])
   ]);
-  const L = lista || [];
+
   // Tickets IT sin resolver: son los pendientes del desarrollador.
   // Ya vienen solo los abiertos: la bandeja los filtra por `cierra` del
   // catálogo, no por una lista de estados escrita aquí que habría que ampliar
   // cada vez que se añada uno.
   const itAbiertos = ticketsItLista || [];
 
-  const rechazadosRRHH = L.filter(t => t.estado === ESTADOS.RECHAZADO_RRHH);
-  const porTramitar = L.filter(t => t.estado === ESTADOS.APROBADO_BOLT || t.estado === ESTADOS.LISTO_RRHH);
-  const pendientesPin = L.filter(t => t.estado === ESTADOS.PENDIENTE_PIN);
+  // Del tramo final de Selección, ya en PostgreSQL. Los estados salen del
+  // catálogo y no de una lista escrita aquí.
+  const rechazadosRRHH = tramo.noAlta.filter(c => c.estado === 'rechazado_rrhh');
+  const porTramitar = tramo.porTramitar;
+  const pendientesPin = tramo.pendientePin;
   // Incorporaciones pendientes (PostgreSQL): altas con vacante esperando que
   // Tráfico las acepte o rechace EN EL PLANIFICADOR. La alerta no se va sola.
   const incorporaciones = incPend;
@@ -51,9 +53,9 @@ async function calcular() {
           texto: `Vacante por reclutar: ${v.puesto || 'CT'}${v.zonas ? ' · ' + v.zonas : ''}`,
           detalle: v.libranzas ? `Libra: ${v.libranzas}` : '', href: '/vacantes'
         })),
-        ...rechazadosRRHH.map(t => ({
-          texto: `${t.nombre || t.id} — devuelto por RRHH`,
-          detalle: t.motivo || '', href: `/seleccion?tel=${encodeURIComponent(t.id)}`
+        ...rechazadosRRHH.map(c => ({
+          texto: `${c.quien} — devuelto por RRHH`,
+          detalle: c.motivo || '', href: `/seleccion?tel=${encodeURIComponent(c.telefono || '')}`
         }))
       ]
     },
@@ -64,13 +66,14 @@ async function calcular() {
     rrhh: {
       total: porTramitar.length + pendientesPin.length,
       items: [
-        ...porTramitar.map(t => ({
-          texto: `${t.nombre || t.id} — aprobado en BOLT, pendiente de alta`,
-          detalle: '', href: `/rrhh?tel=${encodeURIComponent(t.id)}`
+        ...porTramitar.map(c => ({
+          texto: `${c.quien} — listo para RRHH`,
+          detalle: c.excelAlta ? `Excel ${c.excelAlta}` : 'aún sin Excel de altas',
+          href: `/rrhh?tel=${encodeURIComponent(c.telefono || '')}`
         })),
-        ...pendientesPin.map(t => ({
-          texto: `${t.nombre || t.id} — pendiente de alta en Ballenoil`,
-          detalle: 'Administración', href: `/administracion?tel=${encodeURIComponent(t.id)}`
+        ...pendientesPin.map(c => ({
+          texto: `${c.quien} — pendiente del PIN de Ballenoil`,
+          detalle: 'Administración', href: `/administracion?tel=${encodeURIComponent(c.telefono || '')}`
         }))
       ]
     },
