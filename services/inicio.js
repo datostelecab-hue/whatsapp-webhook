@@ -17,8 +17,8 @@
 //   · KILÓMETROS — cuánto se rueda CON pasajero y cuánto sin él. Los da el GPS
 //     de Mapon, que es lo que hay en PostgreSQL.
 
-const db = require('../db');
-const visibilidad = require('../visibilidad');
+const db = require('./db');
+const visibilidad = require('./visibilidad');
 
 // La jornada de referencia, en horas. Sale de la config de Visibilidad para no
 // tener dos sitios donde tocar los mismos números; 8 h si nadie la ha puesto.
@@ -26,7 +26,7 @@ const JORNADA_DEFECTO = 8;
 
 /** El día operativo (jornada 05→05) al que pertenece una hora de un día. */
 function jornadaDe(iso, hora) {
-  const H0 = require('../nucleo').HORA_DIA;
+  const H0 = require('./nucleo').HORA_DIA;
   if (hora >= H0) return iso;
   return diaMenos(iso, 1);
 }
@@ -126,7 +126,7 @@ async function noEfectivas(desdeIso, hastaIso, jornadaH) {
  * darían dos verdades.
  */
 async function kilometros(dia, turno) {
-  const r = await require('../flotaViva/rutas').kmConectadoDesconectado(dia, turno);
+  const r = await require('./flotaViva/rutas').kmConectadoDesconectado(dia, turno);
   const t = r.total || { enBolt: 0, desconectado: 0, total: 0 };
   const r1 = n => Math.round(n * 10) / 10;
   return {

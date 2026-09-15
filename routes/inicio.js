@@ -11,7 +11,7 @@
 
 const express = require('express');
 const router = express.Router();
-const inicio = require('../services/repo/inicio');
+const inicio = require('../services/inicio');
 const permisos = require('../services/permisos');
 
 const ADMIN_TOTAL = ['superadmin', 'desarrollador'];

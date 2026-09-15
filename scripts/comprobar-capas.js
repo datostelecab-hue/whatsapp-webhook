@@ -231,7 +231,7 @@ const TRANSVERSALES = new Set(['services/repo/actor', 'services/sesion', 'servic
 // siete ficheros, dos son SQL puro sobre las tablas `fv_*` y dos no tocan la
 // base siquiera.
 //
-// Esto importaba de verdad: `repo/inicio` y `reporteHoras.repo` salían acusados
+// Esto importaba de verdad: `inicio` (entonces `repo/inicio`) y `reporteHoras.repo` salían acusados
 // de llamar hacia arriba por pedirle los km a `flotaViva/rutas`, que es un
 // repositorio con 16 consultas dentro. La acusación era del etiquetado, no del
 // código.

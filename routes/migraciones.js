@@ -40,27 +40,6 @@ router.post('/api/aplicar', async (req, res) => {
   } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
 });
 
-// Compara la agenda de la hoja con la de PostgreSQL. No cambia nada: es el
-// paso previo a que 24 modulos dejen de leer AGENDA_V2.
-router.get('/api/comparar-agenda', async (req, res) => {
-  try {
-    const t0 = Date.now();
-    const r = await require('../services/repo/compararAgenda').comparar();
-    console.log(`🔍 [AGENDA] Comparadas ${r.emparejadas} filas · ${r.conDiferencias} con diferencias`);
-    res.json({ status: 'ok', segundos: ((Date.now() - t0) / 1000).toFixed(1), ...r });
-  } catch (e) {
-    console.error('❌ [AGENDA] comparar:', e.message);
-    res.status(500).json({ status: 'error', msg: e.message });
-  }
-});
-
-// De dónde se están leyendo los conductores ahora mismo. Ya no hay de dónde
-// elegir —la variable AGENDA_ORIGEN se quitó el 15/09/2026— pero la ruta se
-// queda: la pantalla la llama, y responder la verdad es mejor que un 404.
-router.get('/api/origen-agenda', (req, res) => {
-  res.json({ status: 'ok', origen: 'postgres', fijo: true });
-});
-
 // Radiografía de lo que hay creado.
 router.get('/api/inventario', async (req, res) => {
   try { res.json({ status: 'ok', ...(await migra.inventario()) }); }
