@@ -21,20 +21,32 @@
 const fs = require('fs');
 const path = require('path');
 
-const DIR = path.join(__dirname, '..', 'services', 'repo');
-const ficheros = fs.readdirSync(DIR).filter(f => f.endsWith('.js')).sort();
+// LOS REPOSITORIOS, vivan donde vivan. `services/repo/` es la casa vieja y
+// `modules/<X>/algo.repo.js` la nueva; mientras solo se miraba la primera, cada
+// modulo mudado salia de la comprobacion sin que nadie lo decidiera.
+const RAIZ = path.join(__dirname, '..');
+const DIR = path.join(RAIZ, 'services', 'repo');
+const ficheros = fs.readdirSync(DIR).filter(f => f.endsWith('.js')).sort()
+  .map(f => ({ rel: 'repo/' + f, abs: path.join(DIR, f) }));
+for (const m of fs.readdirSync(path.join(RAIZ, 'modules'), { withFileTypes: true })) {
+  if (!m.isDirectory()) continue;
+  const d = path.join(RAIZ, 'modules', m.name);
+  for (const f of fs.readdirSync(d).filter(x => x.endsWith('.repo.js')).sort()) {
+    ficheros.push({ rel: m.name + '/' + f, abs: path.join(d, f) });
+  }
+}
 
 let fallos = 0;
 const exportado = [];
 
-for (const f of ficheros) {
+for (const { rel: f, abs } of ficheros) {
   try {
-    const m = require(path.join(DIR, f));
+    const m = require(abs);
     const nombres = Object.keys(m || {});
     // Un módulo que no exporta nada casi siempre es un olvido, no una decisión.
     if (!nombres.length) {
       fallos++;
-      console.log(`  x repo/${f}: no exporta nada`);
+      console.log(`  x ${f}: no exporta nada`);
       continue;
     }
     // Y una exportación que es `undefined` es el caso que se busca: el nombre
@@ -42,12 +54,12 @@ for (const f of ficheros) {
     const vacias = nombres.filter(k => m[k] === undefined);
     if (vacias.length) {
       fallos++;
-      console.log(`  x repo/${f}: exporta ${vacias.map(v => '"' + v + '"').join(', ')} como undefined`);
+      console.log(`  x ${f}: exporta ${vacias.map(v => '"' + v + '"').join(', ')} como undefined`);
     }
-    exportado.push(`  ok repo/${f}: ${nombres.length} exportación(es)`);
+    exportado.push(`  ok ${f}: ${nombres.length} exportación(es)`);
   } catch (e) {
     fallos++;
-    console.log(`  x repo/${f}: no carga — ${String(e.message).split('\n')[0]}`);
+    console.log(`  x ${f}: no carga — ${String(e.message).split('\n')[0]}`);
   }
 }
 
@@ -67,41 +79,64 @@ console.log(fallos ? `${fallos} NO cargan bien` : 'Todos cargan y exportan lo qu
 // no se entiende con seguridad no se marca: un comprobador que grita en falso
 // enseña a ignorarlo.
 
-const SERV = path.join(__dirname, '..', 'services');
+/** Todos los .js de una carpeta, bajando a sus subcarpetas. */
+function jsDe(dir) {
+  const salida = [];
+  const rec = d => {
+    for (const e of fs.readdirSync(path.join(RAIZ, d), { withFileTypes: true })) {
+      const rel = d + '/' + e.name;
+      if (e.isDirectory()) { if (e.name !== 'node_modules') rec(rel); continue; }
+      if (e.name.endsWith('.js')) salida.push(rel);
+    }
+  };
+  rec(dir);
+  return salida;
+}
 
-/** Los nombres que exporta un servicio, o null si no se puede saber. */
-function exporta(rel) {
-  const ruta = path.join(SERV, rel + '.js');
-  if (!fs.existsSync(ruta)) return null;
-  const txt = fs.readFileSync(ruta, 'utf8');
+/** Los nombres que exporta un fichero, o null si no se puede saber. */
+function exporta(abs) {
+  if (!fs.existsSync(abs)) return null;
+  const txt = fs.readFileSync(abs, 'utf8');
   const m = txt.match(/module\.exports\s*=\s*\{([\s\S]*?)\}\s*;/);
   if (!m) return null;                       // exporta otra cosa (un router, una clase)
   if (/\.\.\./.test(m[1])) return null;      // hay un spread: no se ve todo
   const nombres = new Set();
-  for (const trozo of m[1].split(',')) {
-    const t = trozo.replace(/\/\/[^\n]*/g, '').trim();
+  // LOS COMENTARIOS SE QUITAN ANTES DE PARTIR POR COMAS, y el orden importa.
+  // Al revés, una coma DENTRO de un comentario —«si cada pantalla eligiera su
+  // turno, las dos cifras no se podrían comparar»— parte el comentario en dos y
+  // el nombre que venía detrás se pierde. Eso hizo que `visibilidad` pareciera
+  // no exportar `ventanaTurnos`, que exporta desde siempre: una acusación en
+  // falso, que es la peor avería que puede tener un comprobador.
+  for (const trozo of m[1].replace(/\/\/[^\n]*/g, '').split(',')) {
+    const t = trozo.trim();
     const n = t.match(/^([A-Za-z_$][\w$]*)\s*(?::|$)/);
     if (n) nombres.add(n[1]);
   }
   return nombres.size ? nombres : null;
 }
 
+// SE MIRA DESDE `modules/` TAMBIÉN, Y HACIA `modules/` TAMBIÉN. Cuando esto solo
+// resolvía requires que llevaran `services/` dentro, cada módulo mudado perdía
+// la comprobación en los dos sentidos a la vez: ni se miraba lo que llamaba, ni
+// se comprobaba a quién llamaba. La cuenta bajó de 259 llamadas a 117 sin que
+// nadie lo notara, que es justo como se pierde una red de seguridad.
 let malLlamados = 0, llamadas = 0;
-for (const dir of ['routes', 'services']) {
-  const carpeta = path.join(__dirname, '..', dir);
-  for (const f of fs.readdirSync(carpeta).filter(x => x.endsWith('.js'))) {
-    const txt = fs.readFileSync(path.join(carpeta, f), 'utf8').replace(/\/\/[^\n]*/g, '');
-    // const alias = require('../services/loQueSea')
-    for (const r of txt.matchAll(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(['"][^'"]*services\/([\w/]+)['"]\)/g)) {
-      const [, alias, rel] = r;
-      const nombres = exporta(rel);
-      if (!nombres) continue;
-      for (const c of txt.matchAll(new RegExp('\\b' + alias + '\\.([A-Za-z_$][\\w$]*)\\s*\\(', 'g'))) {
-        llamadas++;
-        if (nombres.has(c[1])) continue;
-        malLlamados++;
-        console.log(`  x ${dir}/${f}: llama a ${alias}.${c[1]}() y services/${rel} no lo exporta`);
-      }
+for (const f of [...jsDe('routes'), ...jsDe('services'), ...jsDe('modules')]) {
+  const txt = fs.readFileSync(path.join(RAIZ, f), 'utf8').replace(/\/\/[^\n]*/g, '');
+  for (const r of txt.matchAll(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(['"](\.[^'"]+)['"]\)/g)) {
+    const [, alias, spec] = r;
+    const abs = path.resolve(RAIZ, path.dirname(f), spec) + '.js';
+    const nombres = exporta(abs);
+    if (!nombres) continue;
+    const destino = path.relative(RAIZ, abs).replace(/\\/g, '/');
+    // `\b` NO BASTA: entre el punto y la letra también hay frontera, así que
+    // `f.alta.split(…)` casaba con el alias `alta` y acusaba a `repo/alta` de no
+    // exportar `split`. Delante del alias no puede haber ni punto ni letra.
+    for (const c of txt.matchAll(new RegExp('(?<![.\\w$])' + alias + '\\.([A-Za-z_$][\\w$]*)\\s*\\(', 'g'))) {
+      llamadas++;
+      if (nombres.has(c[1])) continue;
+      malLlamados++;
+      console.log(`  x ${f}: llama a ${alias}.${c[1]}() y ${destino} no lo exporta`);
     }
   }
 }
@@ -226,13 +261,10 @@ function soloCodigo(txt) {
 }
 
 let sinDefinir = 0, nombresVistos = 0;
-for (const dir of [['services'], ['services', 'repo'], ['routes'], ['scripts']]) {
-  const carpeta = path.join(__dirname, '..', ...dir);
-  if (!fs.existsSync(carpeta)) continue;
-  const mote = dir.join('/') + '/';
-
-  for (const f of fs.readdirSync(carpeta).filter(x => x.endsWith('.js'))) {
-    const txt = soloCodigo(fs.readFileSync(path.join(carpeta, f), 'utf8'));
+{
+  const mote = '';
+  for (const f of [...jsDe('services'), ...jsDe('routes'), ...jsDe('scripts'), ...jsDe('modules')]) {
+    const txt = soloCodigo(fs.readFileSync(path.join(RAIZ, f), 'utf8'));
 
     // Dónde aparece cada nombre, y cuántas de esas veces es una llamada.
     const veces = new Map(), comoLlamada = new Map();

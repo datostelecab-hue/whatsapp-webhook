@@ -162,7 +162,38 @@ semanas después cuando alguien pulse ese botón.
 
 Hay dos más, del mismo espíritu: `comprobar-rutas.js` (toda URL que pide una
 vista existe como ruta) y `comprobar-ingesta.js` (nadie llama a BOLT o a Mapon
-por su cuenta sin apuntar el motivo).
+por su cuenta sin apuntar el motivo). Y uno para el final de la Fase 2:
+`inventario-muerto.js`, que dice qué ficheros ya no alcanza nadie.
+
+### La red de seguridad también se rompe, y se rompió
+
+**Cuatro de los siete comprobadores no miraban en `modules/`.** No es una
+coincidencia: la Fase 2 mueve código a una carpeta que ninguno conocía, así que
+**cada módulo mudado salía del alcance de las reglas sin que nadie lo
+decidiera**. Y una herramienta que deja de mirar no avisa de que ha dejado de
+mirar: sigue diciendo "todo bien", con menos ficheros dentro.
+
+| Comprobador | Qué decía de menos | Qué apareció al arreglarlo |
+|---|---|---|
+| `inventario-muerto.js` | daba por HUÉRFANOS a `excelEstilo`, `exportarPlanificador` y `repo/rechazos` | vivos los tres: su único cliente ya se había mudado |
+| `comprobar-ingesta.js` | no vigilaba ningún módulo | dos ficheros llamando a BOLT/Mapon sin permiso apuntado |
+| `comprobar-modulos.js` | 117 llamadas comprobadas de 1.588 | tres acusaciones, dos de ellas **en falso por fallos suyos** |
+| `comprobar-rutas.js` | — | acusaba a una URL escrita dentro de un comentario |
+
+Los dos fallos propios de `comprobar-modulos.js` merecen quedar escritos, porque
+son el tipo de avería que hace que se deje de mirar la salida:
+
+- **Partía la lista de exportaciones por comas ANTES de quitar los comentarios.**
+  Una coma dentro de un comentario —«si cada pantalla eligiera su turno, las dos
+  cifras no se podrían comparar»— se llevaba por delante el nombre que venía
+  detrás. Por eso `visibilidad` parecía no exportar `ventanaTurnos`, que exporta
+  desde siempre.
+- **Usaba `` delante del alias**, y entre un punto y una letra también hay
+  frontera: `f.alta.split(…)` casaba con el alias `alta` y acusaba a `repo/alta`
+  de no exportar `split`.
+
+Los dos están arreglados y comprobados con un sabotaje: se renombra a mano una
+función que se llama desde otro módulo y el comprobador la caza.
 
 ---
 
