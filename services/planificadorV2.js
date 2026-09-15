@@ -60,8 +60,8 @@ const SLOTS = [
   { etiqueta: 'CT2 Noche', turno: 'Noche', rol: 'CT' }
 ];
 
-const DIAS_SEM = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const LETRAS_DIA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+// Del núcleo: había seis copias de esto repartidas por el proyecto.
+const { DIAS_CORTOS: DIAS_SEM, LETRAS_DIA } = require('./nucleo');
 const TURNOS = ['Día', 'Noche'];                        // turnos de una plaza de coche
 const TURNOS_CONDUCTOR = ['Día', 'Noche', 'TodoTurno']; // turno que puede tener un conductor
 const CONTRATOS = ['32h', '40h', '32h ETT', '40h ETT'];

@@ -19,7 +19,7 @@
 // guarda: se calcula al leer, porque cambia cada vez que alguien toca el
 // cuadrante y guardada mentiría.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 const TZ = 'Europe/Madrid';
 
@@ -209,7 +209,7 @@ async function fotografiar(cli, eventoId, dia) {
  * reabre desde el día de la vuelta hacia delante, nunca hacia atrás.
  */
 async function restaurar(id, { usuarioId, nota } = {}) {
-  const plani = require('./planificador');
+  const plani = require('./planificador.repo');
   const ev = (await db.consulta(
     `SELECT id, nombre, to_char(desde, 'YYYY-MM-DD') AS desde, to_char(hasta, 'YYYY-MM-DD') AS hasta,
             cancelado_at, restaurado_at

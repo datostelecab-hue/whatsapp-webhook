@@ -23,10 +23,10 @@
 // relevo queda encadenado sin un solo día de coche parado.
 
 const db = require('../db');
-const plan = require('./planificador');
 const vacantes = require('./vacantes');
 
-const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+// Las letras de la semana, para traducir los días de un CT. Del núcleo.
+const { LETRAS_DIA: LETRAS } = require('../nucleo');
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const fecha = d => (ISO.test(String(d || '')) ? String(d) : null);
 
@@ -120,16 +120,20 @@ async function viva(id) {
 }
 
 /**
- * ACEPTAR: coloca al conductor en las plazas PROMETIDAS.
+ * LO QUE HAY QUE ESCRIBIR PARA COLOCARLO: las plazas prometidas, ya en forma de
+ * `slots`, y el día desde el que valen.
  *
- * Todo o nada: `plan.guardar` va en una transacción, así que si una plaza ya no
- * existe no se escribe ninguna y la alerta sigue pendiente.
+ * AQUÍ NO SE COLOCA A NADIE, y ese es el cambio: colocar es escribir en el
+ * cuadrante, o sea Planificación, y este fichero lo usan también Selección y la
+ * ETT. Mientras lo hacía él, un repositorio compartido tenía dentro el
+ * repositorio de otro módulo. Ahora prepara el encargo y lo cumple
+ * `tablero.service.aceptarIncorporacion`, que es quien tiene el cuadrante.
  *
  * `desde` decide el día. Por defecto, el alta del conductor —empieza cuando
  * empieza él—; si la vacante era de recambio, ese mismo día se cierra la
  * asignación del que se va, la víspera.
  */
-async function aceptar(id, { usuarioId, desde } = {}) {
+async function encargoDeColocar(id, { desde } = {}) {
   const inc = await viva(id);
   const det = inc.detalle || {};
 
@@ -157,23 +161,26 @@ async function aceptar(id, { usuarioId, desde } = {}) {
     return s;
   });
 
-  const r = await plan.guardar([{ slots }], { dia, usuarioId });
+  return { id: inc.id, vacanteId: inc.vacante_id, conductorId: inc.conductor_id, dia, slots };
+}
 
+/**
+ * Darla por ACEPTADA y cerrar su vacante. Se llama DESPUÉS de colocar: si la
+ * colocación falla —`plan.guardar` es todo o nada—, la alerta sigue pendiente y
+ * se puede reintentar.
+ */
+async function marcarAceptada(id, { usuarioId, vacanteId } = {}) {
   await db.consulta(
     `UPDATE incorporacion SET estado = 'aceptada', usuario_res = $2, resuelto_at = now()
-      WHERE id = $1 AND estado = 'pendiente'`, [inc.id, usuarioId || null]);
-  if (inc.vacante_id) {
+      WHERE id = $1 AND estado = 'pendiente'`, [Number(id), usuarioId || null]);
+  if (vacanteId) {
     try {
-      await vacantes.cambiarEstado(inc.vacante_id, 'cubierta',
+      await vacantes.cambiarEstado(vacanteId, 'cubierta',
         { motivo: 'Cubierta al aceptar la incorporación', usuarioId });
     } catch (e) {
-      console.error(`⚠️  [Incorporación] no se pudo cerrar ${inc.vacante_id}: ${e.message}`);
+      console.error(`⚠️  [Incorporación] no se pudo cerrar ${vacanteId}: ${e.message}`);
     }
   }
-  // Quién se quedó sin plaza al colocarlo: en un recambio, el que se va. Se
-  // devuelve para poder decirlo en pantalla en vez de que se descubra solo.
-  const relevados = r.hechos.filter(h => h.que === 'coloca' && h.cerrada);
-  return { ok: true, plazas: slots.length, desde: dia, relevados: relevados.length, hechos: r.hechos };
 }
 
 /**
@@ -195,4 +202,4 @@ async function rechazar(id, { usuarioId, motivo } = {}) {
   return { ok: true };
 }
 
-module.exports = { crear, pendientes, aceptar, rechazar };
+module.exports = { crear, pendientes, encargoDeColocar, marcarAceptada, rechazar };

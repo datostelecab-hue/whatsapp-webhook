@@ -88,4 +88,24 @@ const A_HEADERS = [
   'ASG_LUN', 'ASG_MAR', 'ASG_MIE', 'ASG_JUE', 'ASG_VIE', 'ASG_SAB', 'ASG_DOM',
 ];
 
-module.exports = { HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, A, A_HEADERS };
+// ── LOS DÍAS DE LA SEMANA ──────────────────────────────────────────────────
+// Empiezan en LUNES (índice 0), como el cuadrante y como `getDay()` NO hace.
+// Esa es la única razón por la que esto merece estar aquí: el orden europeo no
+// es el que trae JavaScript, así que cada copia suelta es una ocasión de
+// escribirlo mal en domingo.
+//
+// Había SEIS copias: en `planificadorV2`, en `repo/cobertura`, en el Excel de
+// turnos, en el de la parrilla, en el generador de vacantes y en Control. Media
+// docena de arrays idénticos que nadie iba a mantener a la vez, y uno de ellos
+// —el del motor del planificador— obligaba al tablero a llamar hacia arriba,
+// a un servicio de hojas, solo para saber cómo se abrevia "miércoles".
+const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const DIAS_LARGOS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+// Miércoles es X, no M: es la letra que usan los cuadrantes de toda la vida
+// porque la M ya está cogida por el martes.
+const LETRAS_DIA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+module.exports = {
+  HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, A, A_HEADERS,
+  DIAS_CORTOS, DIAS_LARGOS, LETRAS_DIA,
+};

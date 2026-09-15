@@ -152,7 +152,7 @@ async function enDirecto({ dia } = {}) {
   await require('../../services/flotaViva/db').preparar().catch(() => {});
 
   // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
-  const plani = require('../../services/repo/planificador');   // base principal (Cuadrante)
+  const plani = require('../Planificacion/tablero.service');   // la PUERTA de Planificación   // base principal (Cuadrante)
   const rutas = require('../../services/flotaViva/rutas');
   const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper, actNocheReloj] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),

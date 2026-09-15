@@ -13,7 +13,7 @@
 // orden o si el teléfono no estaba en el padrón). Ahora el teléfono identifica
 // solo, contra la base; el nombre queda de red por si acaso.
 
-const cob = require('./repo/cobertura');
+const cob = require('./cobertura.repo');
 
 // El planner usa días abreviados; para el mensaje al conductor van completos.
 const DIAS_LARGOS = {
@@ -195,7 +195,7 @@ const semanasEntre = (a, b) => Math.round(
  * semana siguiente. El bot solo tiene que mandarlo.
  */
 async function mensajeSiHayEvento({ phone, nombreSesion } = {}) {
-  const eventos = require('./repo/eventos');
+  const eventos = require('./eventos.repo');
   const hoy = hoyEs();
   const ev = await eventos.vigenteEn(hoy).catch(e => {
     console.error('⚠️ [Turnos] evento vigente:', e.message); return null;

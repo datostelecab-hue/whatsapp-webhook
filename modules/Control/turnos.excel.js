@@ -35,12 +35,12 @@
 // lo que se imprime es exactamente lo que se ve en pantalla.
 
 const ExcelJS = require('exceljs');
-const { salidasPorCoche } = require('../../services/repo/planificador');
+const { salidasPorCoche } = require('../Planificacion/tablero.service');
 const est = require('../../services/excelEstilo');
 
 const TZ = 'Europe/Madrid';
 
-const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const { DIAS_LARGOS: DIAS_SEM } = require('../../services/nucleo');
 
 const CAB_DIA = 'FFFDF0D2';     // cabecera del turno de día (dorado suave)
 const CAB_NOCHE = 'FFDCE7FA';   // cabecera del turno de noche (azul suave)

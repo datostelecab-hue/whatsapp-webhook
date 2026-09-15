@@ -16,7 +16,7 @@
 
 const ExcelJS = require('exceljs');
 const rutas = require('../../services/flotaViva/rutas');
-const { salidasHoy, contactos } = require('../../services/repo/planificador');
+const { salidasHoy, contactos } = require('../Planificacion/tablero.service');
 const db = require('../../services/db');
 
 const TZ = 'Europe/Madrid';

@@ -16,10 +16,10 @@
  */
 
 const ExcelJS = require('exceljs');
-const { contactos } = require('./repo/planificador');   // teléfono + localidad, del núcleo (PostgreSQL)
+const { contactos } = require('./planificador.repo');   // teléfono + localidad, del núcleo (PostgreSQL)
 
 // Lunes … Domingo (0=lunes, como el índice del Cuadrante).
-const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const { DIAS_LARGOS: DIAS_SEM } = require('../../services/nucleo');
 
 const AZUL = 'FF1F4E79';        // cabecera principal
 const AZUL_MEDIO = 'FF2E75B6';  // títulos de grupo

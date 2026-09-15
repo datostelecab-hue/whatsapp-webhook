@@ -95,10 +95,10 @@ const botPuertas = require('./routes/botPuertas');
 const boltHoras = require('./routes/boltHoras');
 const resumenRoutes = require('./routes/resumen');
 // Planificador legacy (Google Sheets) ELIMINADO. /planificador sirve ahora el
-// tablero PostgreSQL (routes/tablero.js), el mismo que /planificador-v2.
+// tablero PostgreSQL (modules/Planificacion), el mismo que /planificador-v2.
 const agendaRoutes = require('./routes/agenda');
 const matchingRoutes = require('./routes/matching');
-const coberturaRoutes = require('./routes/cobertura');
+const coberturaRoutes = require('./modules/Planificacion/cobertura.controller');
 const vehiculosRoutes = require('./modules/Vehiculos/vehiculos.controller');
 const plantillaRoutes = require('./routes/plantilla');
 const documentosRoutes = require('./modules/Documentos/documentos.controller');
@@ -173,8 +173,8 @@ app.use('/usuarios', usuariosRoutes);
 
 app.use('/horas', boltHoras);
 app.use('/resumen', resumenRoutes);
-app.use('/planificador', require('./routes/tablero'));
-app.use('/planificador-v2', require('./routes/tablero'));   // alias (el front llama a /planificador-v2/api/*)
+app.use('/planificador', require('./modules/Planificacion/tablero.controller'));
+app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'));   // alias (el front llama a /planificador-v2/api/*)
 app.use('/agenda', agendaRoutes);
 app.use('/matching', matchingRoutes);
 app.use('/cobertura', coberturaRoutes);
@@ -524,7 +524,7 @@ programar('10 5 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
-    const r = await require('./services/repo/eventos').repasar();
+    const r = await require('./modules/Planificacion/tablero.service').repasarEventos();
     if (r.devueltos) {
       console.log(`🎪 [Eventos] ${r.devueltos} evento(s) devueltos a la normalidad ` +
         `(${r.hechos.reduce((n, h) => n + h.arreglos.length, 0)} plaza(s) recolocadas)`);

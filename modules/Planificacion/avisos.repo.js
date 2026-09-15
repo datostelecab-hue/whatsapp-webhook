@@ -15,8 +15,8 @@
 // El estado del CUADRANTE (verde/rojo/gris) lo compone la pantalla del
 // planificador con esto: ella sabe qué personas tiene cada cuadrante delante.
 
-const db = require('../db');
-const plani = require('./planificador');
+const db = require('../../services/db');
+const plani = require('./planificador.repo');
 
 /**
  * La huella de la semana de cada conductor: sus tramos (día 1-7, turno, coche)

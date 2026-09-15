@@ -1,5 +1,5 @@
 // Test de la cobertura PG (parte pura, sin base de datos).
-const cob = require('../services/repo/cobertura');
+const cob = require('../modules/Planificacion/cobertura.repo');
 
 let fallos = 0;
 const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { console.log('  ✗ ' + msg); fallos++; } };
@@ -113,7 +113,7 @@ eq(D.resumen.sinCubrir, 2, '2 tramos sin cubrir');
 eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
 
 (async () => {
-  const { mensajeTurnos, resolver } = require('../services/turnosConductor');
+  const { mensajeTurnos, resolver } = require('../modules/Planificacion/turnos.service');
 
   console.log('\n=== MENSAJE DE WHATSAPP ===');
   const msg = mensajeTurnos(maria);

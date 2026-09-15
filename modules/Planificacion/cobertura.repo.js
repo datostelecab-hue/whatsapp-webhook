@@ -18,10 +18,10 @@
 //                    que dejó el coche la SEMANA PASADA (normalmente el domingo), y
 //                    el último se entrega al que lo coge la siguiente.
 
-const plani = require('./planificador');
-const db = require('../db');
+const plani = require('./planificador.repo');
+const db = require('../../services/db');
 
-const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const { DIAS_LARGOS: DIAS_SEM } = require('../../services/nucleo');
 const TURNOS = ['Día', 'Noche'];
 const TZ = 'Europe/Madrid';
 

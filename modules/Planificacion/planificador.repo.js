@@ -19,7 +19,7 @@
 // base. Este módulo la consulta y le da forma de tablero. Si mañana cambia lo
 // que significa un correturnos, se cambia en un sitio.
 
-const db = require('../db');
+const db = require('../../services/db');
 
 // Lunes = 1, como ISODOW. El tablero pinta de lunes a domingo.
 const DIAS = 7;
@@ -231,7 +231,7 @@ async function tablero({ dia } = {}) {
   // igual —es lo de siempre— solo que sin refuerzo.
   const [relevos, eventos] = await Promise.all([
     relevosEntre(lunes, domingo).catch(e => { console.error('⚠️  [PLAN] relevos:', e.message); return []; }),
-    require('./eventos').estado({ dia: efectivo })
+    require('./eventos.repo').estado({ dia: efectivo })
       .catch(e => { console.error('⚠️  [PLAN] eventos:', e.message); return null; }),
   ]);
   const relevoDe = new Map();
@@ -257,7 +257,7 @@ async function tablero({ dia } = {}) {
   // El promedio de horas del mes y su letra (S/A/B/C), para pintarlo al lado del
   // nombre. Va aparte y con red: si no se ha calculado nunca, el cuadrante se ve
   // igual, solo sin la letra.
-  const rend = await require('./rendimiento').leer().catch(() => new Map());
+  const rend = await require('../../services/repo/rendimiento').leer().catch(() => new Map());
 
   const gente = new Map();
   conductores.rows.forEach(c => {

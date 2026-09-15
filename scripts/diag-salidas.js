@@ -28,7 +28,7 @@ const hoyMadrid = () => new Intl.DateTimeFormat('en-CA', {
 }).format(new Date());
 
 (async () => {
-  const { salidasHoy } = require('../services/repo/planificador');
+  const { salidasHoy } = require('../modules/Planificacion/planificador.repo');
   const db = require('../services/db');
   const dia = diaArg || hoyMadrid();
 

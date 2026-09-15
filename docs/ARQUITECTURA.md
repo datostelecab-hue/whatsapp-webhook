@@ -112,7 +112,8 @@ Salida de `node scripts/comprobar-capas.js` a 15/09/2026:
 normal en un proyecto de este tamaño, y quiere decir que la Fase 1 no es
 reescribir: es cerrar quince agujeros concretos y poner el comprobador a vigilar.
 
-**Se empezó con 15 incumplimientos. Quedan 2.**
+**Se empezó con 15 incumplimientos. Quedan 2**, y las dos apuntan a lo mismo:
+lo que sigue en hojas.
 
 Cerrados:
 
@@ -129,6 +130,7 @@ Pendientes — estas son inversiones de verdad, no constantes:
 | ~~`repo/campanas`, `repo/historicoControl`~~ | `flotaViva/directo` | **cerradas**: ninguno de los dos era un repositorio |
 | ~~`repo/conductores`~~ | `cazamientoBolt` | **cerrada**: pasó a ser el repositorio de al lado |
 | ~~`repo/inicio`, `repo/reporteHoras`~~ | `flotaViva/rutas` | **cerradas**: `rutas` tampoco era un servicio, son 16 consultas |
+| ~~`repo/incorporaciones`~~ | `repo/planificador` | **cerrada** al mudar Planificación: ya no coloca, prepara el encargo |
 | `repo/inicio` | `visibilidad` | |
 | `repo/compararAgenda` | `planificadorV2` | cae cuando la agenda salga de las hojas |
 
@@ -222,7 +224,7 @@ decidirlo antes de mover nada.
 | **Conductores** ✓ | `plantilla` — **hecho**. `fichas`, `agenda` y `libranzas` NO: cuelgan de las hojas (ver abajo) |
 | **Documentos** ✓ | `documentos` — **hecho** |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
-| **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
+| **Planificacion** ✓ | `tablero` (planificador) y `cobertura` — **hecho**. `matching`, `agenda`, `fichas` y `libranzas` NO: cuelgan de las hojas. `vacantes` se fue a Selección |
 | **Control** ✓ | `control`, `alertas`, `callCenter`, `justificantes` y las APIs de `flotaViva` — **hecho, el módulo entero**. El núcleo `fv_*` NO: no es un módulo (ver abajo) |
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
 | **RRHH** | `rrhh`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
@@ -266,8 +268,8 @@ Empezando por el más pequeño y aislado, para estrenar la mecánica donde el da
 posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
-~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ (hechos) → **Planificacion**
-→ el resto.
+~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ ~~**Planificacion**~~ (hechos)
+→ el resto (Operaciones, RRHH, Informes, Administracion…).
 
 ### Hecho: Documentos
 
@@ -364,6 +366,35 @@ Lo que enseñó, y es lo más útil de esta mudanza:
   once que se mudé solo los usaba `routes/control.js` —y no hay `require()`
   dinámicos en el proyecto salvo el de Taller, que ya está declarado—. Un puente
   que se sabe que no apunta a nadie es deuda recién creada.
+
+### Hecho: Planificación (el cuadrante)
+
+Está en `modules/Planificacion/` (con su `LEEME.md`). Entran el tablero y la
+cobertura —los dos ya sobre PostgreSQL— con sus cuatro repositorios, el aviso de
+turnos y la parrilla. Lo que enseñó:
+
+- **La puerta se nota más aquí que en ningún módulo anterior.** Cinco sitios
+  leían el cuadrante entrando directamente a `repo/planificador`: Control (por
+  cuatro caminos distintos), Selección y el bot de las puertas. `tablero.service`
+  expone solo lo que piden, y `tablero({ dia })` **conserva la firma del
+  repositorio** a propósito: cambiarla al poner la puerta habría sido meter un
+  error de firma en cinco sitios a cambio de nada.
+- **Aun así se coló uno, y no lo vio la lectura del código.** El controlador
+  pasaba `req.query.dia` como posicional a una función que desestructura
+  `{ dia }`, así que el tablero ignoraba la fecha y pintaba siempre la semana de
+  hoy. Compila, no lanza, y la pantalla se ve perfecta. Lo cazó una comprobación
+  en vivo que pide dos semanas distintas y exige que las respuestas difieran —que
+  es el tipo de prueba que hay que escribir cuando no hay tipos—.
+- **Un repositorio compartido que escribía en el de otro módulo.**
+  `repo/incorporaciones` colocaba gente en el cuadrante, y lo usan también
+  Selección y la ETT. Se partió: él prepara el encargo (qué plazas, desde
+  cuándo) y `tablero.service` coloca. Se marca aceptada **después** de colocar,
+  no antes: `plan.guardar` es todo o nada, así que si una plaza ya no existe la
+  alerta sigue pendiente en vez de cerrarse sin haber colocado a nadie.
+- **Seis copias de los días de la semana** bajaron a `services/nucleo.js`. No es
+  limpieza porque sí: la copia del motor del planificador obligaba al tablero a
+  llamar hacia arriba, a un servicio de hojas, solo para saber cómo se abrevia
+  "miércoles".
 
 ### Hecho: Nóminas (y de paso, fuera de las hojas)
 

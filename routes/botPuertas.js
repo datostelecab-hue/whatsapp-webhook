@@ -78,7 +78,7 @@ async function handleText(phone, text) {
   // Quién es, de la BASE (PostgreSQL): el teléfono identifica solo -su sufijo de 9
   // dígitos es único-. Antes esto preguntaba a Apps Script, que leía la hoja.
   // Autoriza a quien está DE ALTA; quien ya causó baja deja de abrir puertas.
-  const conductor = await require('../services/repo/cobertura')
+  const conductor = await require('../modules/Planificacion/cobertura.service')
     .conductorPorTelefono(phone).catch(e => {
       console.error('❌ [Puertas] conductorPorTelefono:', e.message);
       return null;
@@ -225,8 +225,8 @@ async function handleButton(phone, buttonId) {
 // de orden o teléfonos que no estuvieran en BOLT.
 async function enviarTurnos(phone, nombreSesion) {
   try {
-    const cob = require('../services/repo/cobertura');
-    const { mensajeTurnos, resolver, mensajeSiHayEvento } = require('../services/turnosConductor');
+    const cob = require('../modules/Planificacion/cobertura.service');
+    const { mensajeTurnos, resolver, mensajeSiHayEvento } = require('../modules/Planificacion/turnos.service');
 
     // MODO EVENTOS: durante un evento, sus turnos NO son los suyos. Se le manda
     // otro mensaje —los días del apaño, a quién entrega el coche al terminar y
@@ -242,8 +242,8 @@ async function enviarTurnos(phone, nombreSesion) {
     }
 
     // La semana que se le anunció al mandar el aviso (0 = actual). Si no hay apunte, la actual.
-    const offset = require('../services/avisoTurnos').offsetDe(phone);
-    const { porConductor } = await cob.datos({ offsetSemana: offset });
+    const offset = require('../modules/Planificacion/avisoTurnos.service').offsetDe(phone);
+    const { porConductor } = await cob.datos(offset);
     const { entrada, como, quien } = await resolver(porConductor, { phone, nombreSesion });
 
     if (entrada) {

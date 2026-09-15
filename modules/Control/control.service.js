@@ -307,7 +307,7 @@ async function reporteHorasExcel(dia) {
   return { bytes, nombre: `reporte-horas-${rep.fecha.replace(/\//g, '-')}.xlsx` };
 }
 
-const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const { DIAS_LARGOS: DIAS_SEMANA } = require('../../services/nucleo');
 
 /** La fecha de la clave 1|2|3, en ISO y en texto, con su día de la semana. */
 function fechaDeClave(dia) {
@@ -369,9 +369,8 @@ async function turnosExcel({ dias, desde } = {}) {
  */
 async function parrillaExcel(dia) {
   const d = iso(dia) || hoyMadrid();
-  const tablero = await require('../../services/repo/planificador').tablero({ dia: d });
-  const buffer = await require('../../services/exportarPlanificador').exportar(tablero);
-  return { bytes: Buffer.from(buffer), nombre: `Planificador_${d}.xlsx` };
+  return { bytes: await require('../Planificacion/tablero.service').parrilla(d),
+    nombre: `Planificador_${d}.xlsx` };
 }
 
 /**

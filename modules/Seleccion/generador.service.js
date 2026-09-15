@@ -25,11 +25,11 @@
 // real desde el primer momento, así que el planificador puede pintarla reservada
 // y al colocar al candidato no hay que salir a buscar sitio: ya estaba dicho.
 
-const plani = require('../../services/repo/planificador');
+const plani = require('../Planificacion/tablero.service');   // la PUERTA de Planificación
 const vacantes = require('./vacantes.repo');
 const db = require('../../services/db');
 
-const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const { DIAS_LARGOS: DIAS_SEM } = require('../../services/nucleo');
 
 function haversine(la1, lo1, la2, lo2) {
   const R = 6371, rad = Math.PI / 180;
