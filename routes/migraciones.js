@@ -54,9 +54,11 @@ router.get('/api/comparar-agenda', async (req, res) => {
   }
 });
 
-// De dónde se están leyendo los conductores ahora mismo.
+// De dónde se están leyendo los conductores ahora mismo. Ya no hay de dónde
+// elegir —la variable AGENDA_ORIGEN se quitó el 15/09/2026— pero la ruta se
+// queda: la pantalla la llama, y responder la verdad es mejor que un 404.
 router.get('/api/origen-agenda', (req, res) => {
-  res.json({ status: 'ok', origen: require('../services/planificadorV2').AGENDA_ORIGEN });
+  res.json({ status: 'ok', origen: 'postgres', fijo: true });
 });
 
 // Radiografía de lo que hay creado.

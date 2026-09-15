@@ -23,7 +23,8 @@ const { DIAS_LARGOS: DIAS_SEM } = require('../../services/nucleo');
 
 const AZUL = 'FF1F4E79';        // cabecera principal
 const AZUL_MEDIO = 'FF2E75B6';  // títulos de grupo
-const AMARILLO = 'FFFFFF00';    // turno sin conductor
+const AMARILLO = 'FFFFFF00';    // turno sin conductor: hay que buscar a alguien
+const AZUL_SUAVE = 'FFDDEBF7';  // turno sin conductor pero YA PROMETIDO (vacante)
 const BLANCO = 'FFFFFFFF';
 const NEGRO = 'FF000000';
 const BORDE = 'FF808080';
@@ -66,6 +67,21 @@ function cortoFecha(s) {
   if (m) return `${+m[1]}/${+m[2]}`;
   m = t.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
   if (m) return `${+m[3]}/${+m[2]}`;
+  return t;
+}
+
+/**
+ * La fecha ENTERA, dd/mm/aaaa. Para lo que pasa en el futuro.
+ *
+ * El "8/9" compacto vale para la ventana de un relevo —se lee al lado de su
+ * "hasta" y el año se da por hecho—, pero "llega el 18/9" impreso en diciembre
+ * no dice si es de este año o del que viene. Y esto se imprime y se cuelga.
+ */
+function fechaLarga(s) {
+  if (!s) return '';
+  const t = String(s).trim();
+  const m = t.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  if (m) return `${String(+m[3]).padStart(2, '0')}/${String(+m[2]).padStart(2, '0')}/${m[1]}`;
   return t;
 }
 
@@ -153,23 +169,68 @@ async function exportar(tablero) {
   // final, la ventana Desde/Hasta del relevo (8 cursiva ámbar).
   const AMBAR = 'FF9C5A00';
   const ROJO = 'FFC00000';
-  const fichaRuns = (p) => {
+  const AZUL_TXT = 'FF1F6FB2';
+
+  /** ¿Hay alguien AHORA en esta plaza? Decide el color de la celda, no el texto. */
+  const hayPersona = p => !!(p && p.id);
+
+  /**
+   * LA CELDA DE UNA PLAZA, con todo lo que el planificador enseña en pantalla.
+   *
+   * Hasta ahora imprimía solo a quien estaba hoy, y una plaza vacía salía en
+   * blanco sobre amarillo. Eso perdía las tres cosas que más se preguntan
+   * mirando el papel:
+   *
+   *   · QUIÉN LLEGA. Una plaza puede estar vacía —o con un temporal— y tener ya
+   *     dueño para dentro de dos semanas. En el papel parecía un hueco que hay
+   *     que salir a cubrir.
+   *   · QUE EL HUECO YA ESTÁ PROMETIDO. Un hueco en vacante, y más si Selección
+   *     ya le enganchó candidato, no es el mismo hueco: no hay que buscar a
+   *     nadie, hay que esperar. Contarlos juntos infla la falta.
+   *   · EL RELEVO DE UNA AUSENCIA. El titular de vacaciones y quien le cubre son
+   *     dos personas en la misma plaza, y en el papel solo salía una.
+   */
+  const fichaRuns = (p, esFijo) => {
     const c = cond(p);
     const runs = [];
-    if (p && p.id) {
+    const linea = (texto, font) => runs.push({ text: (runs.length ? '\n' : '') + texto, font });
+
+    if (hayPersona(p)) {
       const info = contac.get(String(p.id)) || {};
       const nombre = (c && c.nombre) || p.id;
       const tel = info.telefono || (c && c.telefono) || '';
       runs.push({ text: nombre, font: { size: 10, color: { argb: NEGRO } } });
-      if (tel) runs.push({ text: '\nTel: ' + tel, font: { size: 9, color: { argb: NEGRO } } });
-      if (info.zona) runs.push({ text: '\nZona: ' + info.zona, font: { size: 8, color: { argb: NEGRO } } });
-      if (c && c.esEtt) runs.push({ text: '\nETT' + (c.ettNombre ? ' · ' + c.ettNombre : ''), font: { size: 8, bold: true, color: { argb: AMBAR } } });
+      if (tel) linea('Tel: ' + tel, { size: 9, color: { argb: NEGRO } });
+      if (info.zona) linea('Zona: ' + info.zona, { size: 8, color: { argb: NEGRO } });
+      if (c && c.esEtt) linea('ETT' + (c.ettNombre ? ' · ' + c.ettNombre : ''), { size: 8, bold: true, color: { argb: AMBAR } });
       // El titular sigue en su plaza aunque hoy esté ausente (vacaciones, baja…): se
       // anota, no se borra. La cobertura del día es otra pantalla.
       if (c && c.ausente) {
-        runs.push({ text: '\n' + (c.estado || 'Ausente') + (c.vuelveEl ? ' hasta ' + cortoFecha(c.vuelveEl) : ''), font: { size: 8, italic: true, color: { argb: ROJO } } });
+        linea((c.estado || 'Ausente') + (c.vuelveEl ? ' hasta ' + cortoFecha(c.vuelveEl) : ''),
+          { size: 8, italic: true, color: { argb: ROJO } });
+      }
+    } else if (p) {
+      // EL HUECO, dicho con palabras. Un cuadro amarillo en blanco no distingue
+      // "hay que buscar a alguien" de "ya viene de camino".
+      const vac = p.vacante;
+      linea(vac ? (vac.candidato ? '⚠ Hueco · candidato en camino' : '⚠ Hueco · en vacante')
+                : (esFijo ? '⚠ Hueco · sin fijo' : '⚠ Hueco · colocar CT'),
+        { size: 9, bold: true, color: { argb: vac ? AZUL_TXT : (esFijo ? ROJO : AMBAR) } });
+      if (vac) {
+        if (vac.codigo) linea('Vacante ' + vac.codigo + (vac.letras ? ' · ' + vac.letras : ''),
+          { size: 8, color: { argb: AZUL_TXT } });
+        if (vac.candidato) linea(vac.candidato + (vac.inicioPrevisto ? ' · previsto ' + fechaLarga(vac.inicioPrevisto) : ''),
+          { size: 8, color: { argb: AZUL_TXT } });
+        // En un recambio, quién se va y cuándo: explica por qué el hueco existe.
+        if (vac.sale) linea('Sale ' + vac.sale + (vac.salidaPrevista ? ' el ' + fechaLarga(vac.salidaPrevista) : ''),
+          { size: 8, italic: true, color: { argb: AZUL_TXT } });
       }
     }
+
+    // Una asignación sin persona detrás. No es un hueco: es un dato roto, y en
+    // el papel tiene que verse como tal para que alguien lo arregle.
+    if (p && p.huerfano) linea('(asignada a alguien que ya no está)', { size: 8, italic: true, color: { argb: ROJO } });
+
     // La ventana del relevo. asignacion.desde SIEMPRE tiene valor, así que
     // "desde d/m" en cada plaza no distinguía un relevo temporal de un titular
     // con años de casa: solo se anota cuando hay "hasta", que es lo que hace
@@ -180,7 +241,15 @@ async function exportar(tablero) {
       if (p.desde) vent.push('desde ' + cortoFecha(p.desde));
       vent.push('hasta ' + cortoFecha(p.hasta));
     }
-    if (vent.length) runs.push({ text: (runs.length ? '\n' : '') + vent.join(' · '), font: { size: 8, italic: true, color: { argb: AMBAR } } });
+    if (vent.length) linea(vent.join(' · '), { size: 8, italic: true, color: { argb: AMBAR } });
+
+    // EL QUE LLEGA. Va el último a propósito: se lee después de saber quién hay
+    // hoy, que es el orden en que se pregunta. Con el año entero, porque esto se
+    // imprime y se cuelga.
+    if (p && p.futuro) {
+      linea('→ ' + p.futuro.nombre + ' · llega ' + fechaLarga(p.futuro.desde),
+        { size: 9, bold: true, color: { argb: AMBAR } });
+    }
     return runs;
   };
   const wrap = runs => runs.length ? { richText: runs } : '';
@@ -206,11 +275,14 @@ async function exportar(tablero) {
           { text: coche.matricula, font: { bold: true, size: 10, color: { argb: NEGRO } } },
           { text: '\n' + (MOTIVO_VEH[coche.estadoVeh] || 'no operativo'), font: { size: 8, italic: true, color: { argb: 'FFC00000' } } }
         ] };
-    r.getCell(4).value = wrap(fichaRuns(coche.personas[0]));
-    r.getCell(5).value = wrap(fichaRuns(coche.personas[1]));
+    r.getCell(4).value = wrap(fichaRuns(coche.personas[0], true));
+    r.getCell(5).value = wrap(fichaRuns(coche.personas[1], true));
     // Los correturnos de este coche, por si el bloque no los combina (grupo de 1).
-    r.getCell(6).value = wrap(juntar(fichaRuns(coche.personas[2]), fichaRuns(coche.personas[4])));
-    r.getCell(7).value = wrap(juntar(fichaRuns(coche.personas[3]), fichaRuns(coche.personas[5])));
+    r.getCell(6).value = wrap(juntar(fichaRuns(coche.personas[2], false), fichaRuns(coche.personas[4], false)));
+    r.getCell(7).value = wrap(juntar(fichaRuns(coche.personas[3], false), fichaRuns(coche.personas[5], false)));
+
+    // De qué plazas depende el color de cada columna de turno.
+    const PLAZAS_COL = { 4: [0], 5: [1], 6: [2, 4], 7: [3, 5] };
 
     for (let c = 1; c <= 7; c++) {
       const cel = r.getCell(c);
@@ -218,10 +290,19 @@ async function exportar(tablero) {
       cel.border = borde();
       // Las celdas con richText ya llevan su fuente por tramo; el resto, fuente base.
       if (!(cel.value && cel.value.richText)) cel.font = { color: { argb: NEGRO }, size: 10 };
-      // Columnas de turno sin conductor → amarillo (plazas por cubrir).
-      const esTurno = c >= 4;
-      const vacio = !celdaTexto(cel.value).trim();
-      cel.fill = relleno(esTurno && vacio ? AMARILLO : BLANCO);
+
+      // EL COLOR SE DECIDE POR SI HAY GENTE, NO POR SI HAY TEXTO. Antes se
+      // miraba si la celda estaba vacía, y ahora un hueco SÍ escribe ("Hueco ·
+      // sin fijo"): con la regla vieja, las plazas por cubrir habrían dejado de
+      // salir amarillas justo al empezar a explicarse.
+      //
+      // Y un hueco ya prometido va en azul, no en amarillo: no hay que buscar a
+      // nadie, hay que esperar a que llegue. Pintarlos igual los cuenta dos veces.
+      const plazas = (PLAZAS_COL[c] || []).map(s => coche.personas[s]).filter(Boolean);
+      if (!plazas.length) { cel.fill = relleno(BLANCO); continue; }
+      const falta = plazas.some(p => !hayPersona(p));
+      const prometida = plazas.every(p => hayPersona(p) || p.vacante);
+      cel.fill = relleno(!falta ? BLANCO : (prometida ? AZUL_SUAVE : AMARILLO));
     }
     if (coche.operativo) r.getCell(3).font = { bold: true, color: { argb: NEGRO }, size: 10 };
     fila++;

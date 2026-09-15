@@ -1281,45 +1281,41 @@ function validarEsquema(agendaFilas, planFilas) {
   return { ok: problemas.length === 0, problemas };
 }
 
-/** Lee las tres hojas en una sola petición, sin interpretar nada. */
 /**
- * De dónde salen los CONDUCTORES.
+ * LOS CONDUCTORES SALEN DE POSTGRESQL. Punto.
  *
- *   'sheets'   → AGENDA_V2, como siempre (por defecto)
- *   'postgres' → se reconstruyen desde la base
+ * Esto vivió detrás de la variable `AGENDA_ORIGEN`, apagada por defecto, y tenía
+ * sentido mientras la base no estaba lista: de esta función cuelgan la
+ * cobertura, el control de horas, el bot y las nóminas, y poder volver atrás sin
+ * desplegar valía más que ahorrarse la variable.
  *
- * Va detrás de un interruptor y APAGADO por defecto a propósito: de esta
- * función cuelgan el planificador, la cobertura, el control de horas, el bot y
- * las nóminas. Poder volver atrás cambiando una variable de entorno, sin
- * desplegar, vale más que ahorrarse la variable.
+ * Ya no. La variable se quita (15/09/2026) porque mantenerla cuesta más de lo
+ * que protege:
  *
- * El planificador (los coches y las plazas) sigue viniendo de la hoja: eso es
- * el siguiente paso, no este.
+ *   · LA HOJA YA NO SE EDITA. `/agenda` era la única pantalla que escribía en
+ *     AGENDA_V2 y se borró: hoy el turno, la libranza y el coche se tocan en
+ *     Plantilla y en el planificador, que escriben en la base. Volver a la hoja
+ *     sería volver a una foto que ya nadie actualiza — o sea, no es una vuelta
+ *     atrás, es leer datos viejos creyendo que son los de hoy.
+ *   · UN INTERRUPTOR QUE NADIE VA A ACCIONAR ES UNA RAMA QUE NADIE PRUEBA. Con
+ *     dos caminos, el que no se usa se pudre en silencio y el día que hiciera
+ *     falta tampoco funcionaría.
+ *
+ * Si la base falla, esto REVIENTA en vez de seguir con una agenda vacía: eso
+ * dejaría a todo el mundo sin turno ni libranzas y el planificador lo daría por
+ * bueno. Un error ruidoso es mejor que un cuadrante en blanco que parece cierto.
+ *
+ * El PLANIFICADOR (los coches y sus plazas) y las BASES sí siguen viniendo de la
+ * hoja. Ese es el siguiente paso, no este.
  */
-const AGENDA_ORIGEN = (process.env.AGENDA_ORIGEN || 'sheets').toLowerCase();
-
 async function leerCrudo() {
-  const desdeBase = AGENDA_ORIGEN === 'postgres';
-
-  // El planificador y las bases se siguen leyendo de la hoja en los dos casos;
-  // lo único que cambia es de dónde salen los conductores.
-  const rangos = desdeBase ? [RANGOS.plan, RANGOS.bases] : [RANGOS.agenda, RANGOS.plan, RANGOS.bases];
-  const leidas = await readMany(SPREADSHEET_PLANIFICADOR, rangos);
-
-  let agendaFilas, planFilas, basesFilas;
-  if (desdeBase) {
-    [planFilas, basesFilas] = leidas;
-    try {
-      agendaFilas = await require('./repo/agenda').filas();
-    } catch (e) {
-      // Si la base falla, NO se sigue con una agenda vacía: eso dejaría a todo
-      // el mundo sin turno ni libranzas y el planificador lo daría por bueno.
-      throw new Error(`No se pudo leer la agenda de PostgreSQL: ${e.message}. ` +
-                      `Para volver a la hoja: AGENDA_ORIGEN=sheets`);
-    }
-  } else {
-    [agendaFilas, planFilas, basesFilas] = leidas;
-  }
+  const [leidas, agendaFilas] = await Promise.all([
+    readMany(SPREADSHEET_PLANIFICADOR, [RANGOS.plan, RANGOS.bases]),
+    require('./repo/agenda').filas().catch(e => {
+      throw new Error(`No se pudo leer la agenda de PostgreSQL: ${e.message}`);
+    }),
+  ]);
+  const [planFilas, basesFilas] = leidas;
 
   const bases = basesFilas.slice(1)
     .map(f => {
@@ -1333,7 +1329,7 @@ async function leerCrudo() {
     agendaFilas,
     planFilas,
     bases,
-    origenAgenda: desdeBase ? 'postgres' : 'sheets',
+    origenAgenda: 'postgres',
     esquema: validarEsquema(agendaFilas, planFilas),
   };
 }
@@ -1996,7 +1992,7 @@ module.exports = {
   CAMPOS_OPERATIVOS, CAMPOS_SENSIBLES, validarCampo,
   ESTADOS_CONDUCTOR, ESTADOS_ESPECIALES, HOJAS, DIAS_SEM, LETRAS_DIA, ESTADOS_VEHICULO, TURNOS, TURNOS_CONDUCTOR, CONTRATOS,
   RANGOS, ULTIMA_FILA_PLAN, colLetra,
-  validarEsquema, leerCrudo, leerTablero, guardarTablero, AGENDA_ORIGEN,
+  validarEsquema, leerCrudo, leerTablero, guardarTablero,
   aplicarCambios, guardarCambios,
   HOJAS,
   PLAN_FILA_CAB, PLAN_FILA_INI, FILAS_POR_COCHE, N_MAT,

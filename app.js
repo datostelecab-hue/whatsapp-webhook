@@ -865,7 +865,6 @@ app.listen(port, () => {
     // llega VACÍA a los 24 módulos que leen conductores.
     require('./services/repo/agenda').comprobarCobertura().catch(e =>
       console.error('⚠️  [AGENDA] No se pudo comprobar: ' + e.message));
-    const origen = require('./services/planificadorV2').AGENDA_ORIGEN;
-    console.log(`👥 [AGENDA] Los conductores se leen de: ${origen === 'postgres' ? 'PostgreSQL' : 'la hoja AGENDA_V2'}`);
+    console.log('👥 [AGENDA] Los conductores se leen de PostgreSQL');
   }
 });

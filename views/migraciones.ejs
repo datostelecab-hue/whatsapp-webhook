@@ -265,8 +265,11 @@
         </div>
 
         ${limpio ? `<p class="text-telecab-green font-semibold">
-            <i class="fa-solid fa-check"></i> Las dos fuentes dicen lo mismo.
-            Se puede cambiar AGENDA_ORIGEN a "postgres".</p>` : ''}
+            <i class="fa-solid fa-check"></i> Las dos fuentes dicen lo mismo.</p>` : ''}
+        <p class="text-xs text-telecab-muted mt-1">
+          Los conductores ya se leen SIEMPRE de PostgreSQL. Esta comparación se
+          queda porque la hoja aún se puede mirar, pero lo que diga no cambia de
+          dónde lee el sistema.</p>
 
         ${d.porColumna.length ? `
           <p class="font-semibold text-telecab-text mb-1">Diferencias por columna</p>

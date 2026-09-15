@@ -108,13 +108,37 @@ cada uno su array. Bajaron a `services/nucleo.js` como `DIAS_CORTOS`,
 planificador obligaba al tablero a llamar hacia arriba, a un servicio de hojas,
 solo para saber cómo se abrevia "miércoles".
 
+## La parrilla impresa dice lo que dice la pantalla
+
+El Excel del ANEXO imprimía solo a quien estaba HOY en cada plaza, y una plaza
+vacía salía en blanco sobre amarillo. Eso perdía las tres cosas que más se
+preguntan mirando el papel, y ahora salen:
+
+- **Quién llega.** Una plaza puede estar vacía —o con un temporal— y tener ya
+  dueño para dentro de dos semanas: `→ Cristian Jiménez · llega 18/09/2026`. Con
+  el año entero, porque esto se imprime y se cuelga: "llega el 18/9" leído en
+  diciembre no dice de qué año es.
+- **Que el hueco ya está prometido.** Un hueco en vacante —y más si Selección ya
+  le engachó candidato— no es el mismo hueco: no hay que buscar a nadie, hay que
+  esperar. Va en azul y no en amarillo, porque contarlos juntos infla la falta.
+- **El relevo de una ausencia.** El titular de vacaciones y quien le cubre son
+  dos personas en la misma plaza; antes solo salía una.
+
+Y el color de la celda pasó a decidirse por **si hay gente, no por si hay
+texto**. Antes se miraba si la celda estaba vacía; ahora un hueco SÍ escribe, así
+que con la regla vieja las plazas por cubrir habrían dejado de salir amarillas
+justo al empezar a explicarse.
+
 ## Lo que se quedó fuera, y por qué
 
-**`matching`, `agenda`, `fichas` y `libranzas` NO son de aquí todavía.** Las
-cuatro cuelgan de `services/planificadorV2.js`, que lee de las hojas `AGENDA_V2`,
-`PLANIFICADOR_V2` y `BASES`. Meterlas en un módulo sería meter Sheets dentro,
-justo en la dirección contraria a la que va el proyecto. Se mudan cuando esa
-parte pase a PostgreSQL — y esa es, hoy, la última cosa gorda que queda en hojas.
+**`agenda` y `matching` SE BORRARON** (15/09/2026). La agenda de tráfico era un
+segundo sitio para mirar lo que ya está en Plantilla —turno, libranzas, coche,
+teléfono— y además era la única pantalla que **escribía** en la hoja `AGENDA_V2`.
+`matching` no se usaba.
+
+**`fichas` y `libranzas` siguen fuera.** Cuelgan de `services/planificadorV2.js`,
+que todavía lee `PLANIFICADOR_V2` y `BASES` de las hojas. Los CONDUCTORES ya no:
+salen siempre de PostgreSQL.
 
 **`repo/incorporaciones` y `repo/alta` siguen en `services/repo/`.** Son la
 frontera entre Selección, Conductores y este módulo, y los tres las usan. Un
