@@ -15,8 +15,8 @@
 // separado —cada uno a su pool— y se cruzan aquí en JS por matrícula normalizada,
 // que es lo único que comparten. Así funciona apunten donde apunten las dos.
 
-const panel = require('./panel');
-const { normMat } = require('./fuentes');
+const panel = require('./panel.service');
+const { normMat } = require('../../services/flotaViva/fuentes');
 
 const TZ = 'Europe/Madrid';
 
@@ -28,7 +28,7 @@ const TZ = 'Europe/Madrid';
 // noche en curso no salía en ninguna pestaña, NN vacío, 0 personas— mientras
 // las llamadas y las J se grababan en la jornada anterior. Cinco horas cada
 // noche sin ver a quien estaba trabajando.
-const { diaOperativoHoy } = require('../repo/llamadas');
+const { diaOperativoHoy } = require('../../services/repo/llamadas');
 
 /** El día anterior a una fecha 'YYYY-MM-DD'. */
 function ayerDe(iso) {
@@ -149,11 +149,11 @@ async function enDirecto({ dia } = {}) {
 
   // Las tablas fv_* tienen que existir antes de consultarlas. Es idempotente y
   // se cachea: solo hace algo la primera vez tras arrancar.
-  await require('./db').preparar().catch(() => {});
+  await require('../../services/flotaViva/db').preparar().catch(() => {});
 
   // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
-  const plani = require('../repo/planificador');   // base principal (Cuadrante)
-  const rutas = require('./rutas');
+  const plani = require('../../services/repo/planificador');   // base principal (Cuadrante)
+  const rutas = require('../../services/flotaViva/rutas');
   const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper, actNocheReloj] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
@@ -307,7 +307,7 @@ async function enDirecto({ dia } = {}) {
   const uuidsDeId = new Map();         // conductor_id (plan) → [uuid de BOLT, …]
   const idDeUuid = new Map();          // uuid de BOLT        → conductor_id (plan)
   try {
-    const rid = await require('../db').consulta(
+    const rid = await require('../../services/db').consulta(
       `SELECT conductor_id, externo_id
          FROM conductor_externo
         WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_id IS NOT NULL
@@ -559,7 +559,7 @@ async function enDirecto({ dia } = {}) {
 
   // El promedio de horas del mes y su letra, para que quien llama sepa a quién
   // tiene al otro lado. Sale del mismo sitio que en el planificador.
-  const rend = await require('../repo/rendimiento').leer().catch(() => new Map());
+  const rend = await require('../../services/repo/rendimiento').leer().catch(() => new Map());
   // Los viajes que ha tirado cada cuenta de BOLT en esta jornada. Va con red:
   // si bolt_order no responde, el cockpit se ve igual sin esa columna.
   // LOS RECHAZOS, EN LA VENTANA DE SU TURNO. Dos lecturas, no una:
@@ -570,7 +570,7 @@ async function enDirecto({ dia } = {}) {
   //                de su turno de AYER, y con la jornada 05→05 se le pintaban
   //                hoy. Le salía el aviso de rechazos a las dos de la tarde por
   //                algo que hizo antes de irse a dormir.
-  const repoRech = require('../repo/rechazos');
+  const repoRech = require('../../services/repo/rechazos');
   const [rechazos, rechazosNoche] = await Promise.all([
     repoRech.porConductor(hoy).catch(e => {
       console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
@@ -583,7 +583,7 @@ async function enDirecto({ dia } = {}) {
   // Los justificantes de la jornada CON SU ESTADO. Entran aquí dentro y no en la
   // ruta porque la proyección los necesita: sin ellos volvería a decirle "no
   // terminará la jornada" a quien tiene tres horas de taller justificadas.
-  const justificantes = await require('../repo/llamadas').justificadosHoy(hoy).catch(e => {
+  const justificantes = await require('../../services/repo/llamadas').justificadosHoy(hoy).catch(e => {
     console.error('⚠️  [EN DIRECTO] justificantes:', e.message); return {};
   });
 
@@ -597,9 +597,9 @@ async function enDirecto({ dia } = {}) {
   //
   // Cambia el número por completo: con la jornada entera pasaban de 20 km 22
   // personas; con la franja, 6. Y esas 6 son llamadas de verdad.
-  const cfgAlertas = await require('../repo/alertasControl').leerConfig().catch(() => null);
+  const cfgAlertas = await require('./alertas.repo').leerConfig().catch(() => null);
   const franjaAhora = cfgAlertas
-    ? require('../repo/alertasControl').franjaDe(cfgAlertas, new Date()) : null;
+    ? require('./alertas.repo').franjaDe(cfgAlertas, new Date()) : null;
   // Solo tiene sentido en la jornada EN CURSO: mirando un día pasado no hay
   // "franja de ahora" que vigilar.
   const franjaViva = franjaAhora && franjaAhora.dia === hoy ? franjaAhora : null;

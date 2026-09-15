@@ -167,7 +167,7 @@ app.use(sesion.forzarCambio);
 app.use(sesion.controlAcceso);
 app.use(sesion.cargarPermisos);
 app.use('/inicio', require('./routes/inicio'));
-app.use('/justificantes', require('./routes/justificantes'));
+app.use('/justificantes', require('./modules/Control/justificantes.controller'));
 app.use('/recaudacion', require('./routes/recaudacion'));
 app.use('/usuarios', usuariosRoutes);
 
@@ -189,7 +189,7 @@ app.use('/documentos', documentosRoutes);
 app.use('/libranzas', libranzasRoutes);
 app.use('/control', controlRoutes);
 app.use('/visibilidad', require('./routes/visibilidad'));
-app.use('/alertas', require('./routes/alertas'));
+app.use('/alertas', require('./modules/Control/alertas.controller'));
 app.use('/bi', require('./routes/bi'));   // inteligencia de negocio (solo dirección)
 app.use('/vacantes', vacantesRoutes);
 app.use('/generador', generadorRoutes);
@@ -216,7 +216,7 @@ app.use('/pendientes', pendientesRoutes);
 app.use('/peticiones', peticionesRoutes);
 app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
-app.use('/callcenter', require('./routes/callCenter'));
+app.use('/callcenter', require('./modules/Control/callcenter.controller'));
 app.use('/migraciones', require('./routes/migraciones'));
 app.use('/explorador', require('./routes/explorador'));
 
@@ -229,7 +229,7 @@ app.get('/modo-pruebas', (req, res) => {
 // Módulo nuevo y aparte. Todo lo suyo vive en services/flotaViva/, sus tablas
 // empiezan por `fv_` y su conexión es propia (FLOTA_VIVA_DB_URL). Aquí solo se
 // engancha.
-app.use('/flota-viva', require('./routes/flotaViva'));
+app.use('/flota-viva', require('./modules/Control/flota.controller'));
 
 // ── BODA (favor aparte, módulo OCULTO): panel solo-superadmin para enviar las
 //    invitaciones por WhatsApp. No está en el menú ni en ACCESO. El webhook (POST /)
@@ -796,7 +796,7 @@ if (process.env.SANCIONES_CRON === 'on') {
 // WhatsApp por mucho que alguien rechace.
 programar('*/5 8-13,20-23,0-1 * * *', async () => {
   try {
-    const r = await require('./services/repo/alertasControl').revisar({});
+    const r = await require('./modules/Control/alertas.service').revisar({});
     if (r && r.nuevas) {
       console.log(`🔔 [CRON Alertas] franja ${r.franja} · ${r.pasan} por encima del umbral · ` +
         `${r.nuevas} nueva(s) · ${r.enviadas} envío(s)${r.modo !== 'live' ? ' (PRUEBAS)' : ''}` +

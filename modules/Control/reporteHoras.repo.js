@@ -32,7 +32,7 @@
 //               JUSTIFICANTES, así que una J puesta desde la bitácora no salía
 //               en el Excel.
 
-const db = require('../db');
+const db = require('../../services/db');
 const TZ = 'Europe/Madrid';
 
 const r1 = n => Math.round(n * 10) / 10;
@@ -153,9 +153,9 @@ async function padron() {
  */
 async function reporteDia(key) {
   const { str: fecha, iso, idx } = fechaDeClave(key);
-  const rutas = require('../flotaViva/rutas');
-  const repoJust = require('./justificantes');
-  await require('../flotaViva/db').preparar();
+  const rutas = require('../../services/flotaViva/rutas');
+  const repoJust = require('../../services/repo/justificantes');
+  await require('../../services/flotaViva/db').preparar();
 
   const [act, plan, pad, justis, minDia, minNoche, prom] = await Promise.all([
     // LA JORNADA ENTERA (05→05), no la ventana del turno: es lo que mide
@@ -174,7 +174,7 @@ async function reporteDia(key) {
     // para poder leer el día contra su costumbre: 6 h son pocas en alguien de
     // 9 de media y normales en alguien de 6. Sin la letra: en un Excel que se
     // manda fuera, una nota escolar al lado de un nombre sobra.
-    require('./rendimiento').leer().catch(() => new Map()),
+    require('../../services/repo/rendimiento').leer().catch(() => new Map()),
   ]);
 
   // Los justificantes, por persona (la clave 'id:<conductor_id>').

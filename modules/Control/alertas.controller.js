@@ -1,5 +1,5 @@
 // ============================================================
-// ALERTAS DE CONTROL — la pantalla y su API
+// ALERTAS DE CONTROL — controlador
 // ============================================================
 // Ver las alertas y el histórico va con el permiso '/alertas'. CAMBIAR quién
 // las recibe y los umbrales va con '/alertas/config', que nace apagado para
@@ -8,8 +8,8 @@
 
 const express = require('express');
 const router = express.Router();
-const alertas = require('../services/repo/alertasControl');
-const actor = require('../services/repo/actor');
+const alertas = require('./alertas.service');
+const actor = require('../../services/repo/actor');
 
 const responde = fn => async (req, res) => {
   try {
@@ -29,30 +29,20 @@ router.get('/', (req, res) => {
   });
 });
 
-router.get('/api/estado', responde(async req => alertas.estado({ dia: req.query.dia })));
+router.get('/api/estado', responde(req => alertas.estado({ dia: req.query.dia })));
 
-router.get('/api/historial', responde(async req => alertas.historial({ dia: req.query.dia })));
+router.get('/api/historial', responde(req => alertas.historial({ dia: req.query.dia })));
 
 // Revisar AHORA (el botón). Hace lo mismo que el cron: si la franja está
 // cerrada no manda nada, y lo ya avisado no se repite.
-router.post('/api/revisar', responde(async () => {
-  const r = await alertas.revisar({});
-  console.log(`🔔 [ALERTAS] Revisión manual: ${r.nuevas || 0} nueva(s), ${r.enviadas || 0} envío(s)`);
-  return { resultado: r, ...(await alertas.estado({})) };
-}));
+router.post('/api/revisar', responde(() => alertas.revisarYMirar()));
 
 // ── Ajustes (permiso aparte) ────────────────────────────────────────────────
-router.post('/config/api/guardar', responde(async req => {
-  const config = await alertas.guardarConfig(req.body || {}, { usuarioId: await actor.idDe(req) });
-  console.log(`⚙️ [ALERTAS] Ajustes guardados · modo ${config.modo}`);
-  return { config };
-}));
 
-router.post('/config/api/destinatarios', responde(async req => {
-  const lista = await alertas.guardarDestinatarios((req.body || {}).ids, { usuarioId: await actor.idDe(req) });
-  const reciben = lista.filter(x => x.recibe);
-  console.log(`👥 [ALERTAS] Reciben ahora: ${reciben.map(x => x.nombre).join(', ') || '(nadie)'}`);
-  return { destinatarios: lista };
-}));
+router.post('/config/api/guardar', responde(async req =>
+  alertas.guardarConfig(req.body || {}, { usuarioId: await actor.idDe(req) })));
+
+router.post('/config/api/destinatarios', responde(async req =>
+  alertas.guardarDestinatarios((req.body || {}).ids, { usuarioId: await actor.idDe(req) })));
 
 module.exports = router;

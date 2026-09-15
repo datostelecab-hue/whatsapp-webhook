@@ -18,8 +18,8 @@ const ExcelJS = require('exceljs');
 // El reporte del día se construye ENTERO en PostgreSQL (repo/reporteHoras): la
 // lista de gente y las horas salen del mismo sitio y se cruzan por el uuid de
 // BOLT. Aquí queda solo el Excel, que es lo que este módulo sabe hacer.
-const rep = require('./repo/reporteHoras');
-const est = require('./excelEstilo');
+const rep = require('./reporteHoras.repo');
+const est = require('../../services/excelEstilo');
 
 const TZ = 'Europe/Madrid';
 

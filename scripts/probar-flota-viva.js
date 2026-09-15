@@ -57,7 +57,7 @@ console.log('\n== Las franjas, con su cruce de medianoche ==');
 
 // ── 2. El puente con el Call Center ─────────────────────────────────────────
 console.log('\n== El mapeo a clasificaciones del Call Center ==');
-const cc = require(path.join(RAIZ, 'services/callCenter'));
+const cc = require(path.join(RAIZ, 'modules/Control/callcenter.service'));
 const sql = fs.readFileSync(path.join(RAIZ, 'services/flotaViva/esquema.sql'), 'utf8');
 
 // Se leen del propio esquema las cuatro filas del UPDATE, para contrastar lo que
@@ -152,7 +152,7 @@ comprobar('alguna gestion crea llamada',
 // llamadas en el Call Center para lo mismo — en el libro de OTRO equipo, donde
 // nadie va a ir a borrarlas. Por eso se vigila que la condicion siga puesta.
 console.log('\n== El guardian de las dos manos ==');
-const svcPanel = fs.readFileSync(path.join(RAIZ, 'services/flotaViva/panel.js'), 'utf8');
+const svcPanel = fs.readFileSync(path.join(RAIZ, 'modules/Control/panel.service.js'), 'utf8');
 const elUpdate = svcPanel.slice(svcPanel.indexOf('SET justificada_at = now()'));
 
 comprobar('el UPDATE solo cierra lo que sigue abierto',

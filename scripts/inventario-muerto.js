@@ -39,7 +39,13 @@ const DETALLE = process.argv.includes('--detalle');
 // `db/` queda fuera a propósito: son migraciones ya aplicadas contra una base
 // real. Borrar una no libera nada y rompe la historia de cómo llegó el esquema
 // a donde está. Eso se archiva, no se barre.
-const CARPETAS = ['services', 'routes', 'views', 'scripts', 'public/assets'];
+//
+// `modules/` ENTRA, y no es un detalle: faltaba, y mientras faltó esta lista
+// mentía justo al revés de como conviene. Un fichero de `services/` cuyo único
+// cliente ya se había mudado a un módulo —`excelEstilo`, `exportarPlanificador`,
+// `repo/rechazos`— salía como HUÉRFANO estando vivísimo. Y esta lista es la que
+// se va a usar para borrar de verdad al final de la Fase 2.
+const CARPETAS = ['services', 'routes', 'views', 'scripts', 'public/assets', 'modules'];
 
 function ficherosDe(dir) {
   const salida = [];
@@ -155,6 +161,10 @@ const quienMenciona = f => {
 };
 
 const clase = f => {
+  // LOS .md SON DOCUMENTACIÓN, no código: nadie los requiere y nadie debe. El
+  // `LEEME.md` de cada módulo salía como HUÉRFANO —o sea, en la lista de "esto
+  // se puede borrar"— por hacer exactamente lo que tiene que hacer.
+  if (f.endsWith('.md')) return 'HERRAMIENTA';
   if (DESDE_APP.has(f)) return 'VIVO';
   if (DESDE_SCRIPTS.has(f)) return 'HERRAMIENTA';
   const menciones = quienMenciona(f);

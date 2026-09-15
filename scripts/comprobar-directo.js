@@ -8,7 +8,7 @@
 //
 // No toca la base de datos: prueba la función pura.
 
-const { salidaDe } = require('../services/flotaViva/directo');
+const { salidaDe } = require('../modules/Control/cockpit.service');
 
 let fallos = 0;
 const eq = (a, b, msg) => {

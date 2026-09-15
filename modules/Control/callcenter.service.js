@@ -12,7 +12,7 @@
 // cambiarlo). Se escribe solo al registrar y al resolver — nada de refrescos que
 // gasten cuota (60/min compartidas por todo el ERP).
 
-const { readSheet, writeSheet, appendRows, ensureSheet } = require('./sheets');
+const { readSheet, writeSheet, appendRows, ensureSheet } = require('../../services/sheets');
 
 const LIBRO = process.env.CALLCENTER_LIBRO || '18E7ZJpc29aGDAAFNIyrvhScuMgEuYR8qNG1FGVY9_Ns';
 const HOJA = 'CALL_CENTER';
@@ -324,7 +324,7 @@ function kpis(llamadas, todas) {
 let _condCache = { ts: 0, lista: [] };
 async function conductoresForm() {
   if (Date.now() - _condCache.ts < 10 * 60 * 1000) return _condCache.lista;
-  const planif = require('./planificadorV2');
+  const planif = require('../../services/planificadorV2');
   const t = await planif.leerTablero({ offsetSemana: 0 });
   const d = (new Date(`${hoyMadrid()}T12:00:00Z`).getUTCDay() + 6) % 7;   // 0 = lunes
   const hoy = new Map();   // id → { matricula, turno }
@@ -347,8 +347,37 @@ async function conductoresForm() {
   return _condCache.lista;
 }
 
+/**
+ * LO QUE PINTA EL PANEL, de una sola vuelta: los KPIs del periodo, sus llamadas
+ * y las pendientes DE CUALQUIER FECHA.
+ *
+ * Las pendientes van aparte del periodo a propósito: una llamada sin resolver
+ * de hace tres días sigue sin resolver hoy, y si solo saliera dentro de su
+ * ventana desaparecería de la vista justo cuando más falta hace verla.
+ *
+ * El tope de 800 llamadas es para que un mes entero no mande un JSON de varios
+ * megas al navegador. Los KPIs se calculan sobre el periodo COMPLETO, antes de
+ * recortar: la cifra no depende de cuántas quepan en la tabla.
+ */
+async function panelDelPeriodo({ desde, hasta } = {}) {
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const hoy = hoyMadrid();
+  const d = ISO.test(desde || '') ? desde : hoy;
+  const h = ISO.test(hasta || '') ? hasta : hoy;
+  const d0 = inicioDia(d), d1 = finDia(h);
+
+  const todas = await listar();
+  const periodo = todas.filter(x => x.ts >= d0 && x.ts < d1);
+  return {
+    desde: d, hasta: h,
+    kpis: kpis(periodo, todas),
+    llamadas: [...periodo].sort((a, b) => b.ts - a.ts).slice(0, 800),
+    pendientes: todas.filter(x => x.estado === 'pendiente').sort((a, b) => a.ts - b.ts),
+  };
+}
+
 module.exports = {
   CATALOGO, RESULTADOS_UNIVERSALES, CABECERA,
   validarClasificacion, registrar, resolver, listar, kpis, conductoresForm,
-  inicioDia, finDia, hoyMadrid
+  panelDelPeriodo, inicioDia, finDia, hoyMadrid
 };

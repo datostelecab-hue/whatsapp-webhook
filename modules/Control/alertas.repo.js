@@ -25,8 +25,8 @@
 // OPERATIVA (05:00 → ahora), no las de la franja: quien recibe el aviso quiere
 // saber si el tío lleva dos horas o diez, no cuánto lleva desde las ocho.
 
-const db = require('../db');
-const whatsapp = require('../whatsapp');
+const db = require('../../services/db');
+const whatsapp = require('../../services/whatsapp');
 
 // ── EL MODELO: todo lo que se puede discutir, en un sitio ───────────────────
 const MODELO = {

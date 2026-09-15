@@ -14,7 +14,7 @@
 //   PARADOS         llevan mucho sin usarse. Aquí lo que importa es quién fue el
 //                   último y cuánto hace de eso.
 
-const db = require('./db');
+const db = require('../../services/flotaViva/db');
 
 // El enlace con el Call Center se puede apagar.
 //
@@ -31,7 +31,7 @@ const CC_ACTIVO = String(process.env.FLOTA_VIVA_CC || '').toLowerCase() !== 'off
 // aparcado. Ajustable: en una flota de noche puede no encajar.
 const RECIEN_MIN = Number(process.env.FLOTA_VIVA_RECIEN_MIN) || 120;
 
-const { duracion } = require('./formato');
+const { duracion } = require('../../services/flotaViva/formato');
 
 const fila = r => ({
   matricula: r.matricula || '(sin matrícula)',
@@ -342,7 +342,7 @@ async function justificar(id, { gestion = 'llamada', motivo, resultado, accion, 
     // lo que se quiere probar— pero NO se escribe en su hoja.
     if (!CC_ACTIVO) {
       try {
-        require('../callCenter').validarClasificacion(datos);
+        require('./callcenter.service').validarClasificacion(datos);
         ensayo = datos;
       } catch (e) { errorLlamada = e.message; }
       return {
@@ -352,7 +352,7 @@ async function justificar(id, { gestion = 'llamada', motivo, resultado, accion, 
     }
 
     try {
-      const cc = require('../callCenter');
+      const cc = require('./callcenter.service');
       llamada = await cc.registrar(datos, quien || '');
     } catch (e) {
       // La justificación NO se deshace: quedó guardada arriba. Solo se dice que
@@ -427,7 +427,7 @@ async function clasificacionDe(id) {
       WHERE i.id = $1`, [Number(id)])).rows[0];
   if (!r || !r.cc_motivo) return null;
 
-  const cc = require('../callCenter');
+  const cc = require('./callcenter.service');
   const m = cc.CATALOGO
     .filter(c => c.cluster === r.cc_cluster)
     .flatMap(c => c.subclusters.filter(s => s.nombre === r.cc_subcluster))

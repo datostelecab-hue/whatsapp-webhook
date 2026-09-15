@@ -112,7 +112,7 @@ Salida de `node scripts/comprobar-capas.js` a 15/09/2026:
 normal en un proyecto de este tamaño, y quiere decir que la Fase 1 no es
 reescribir: es cerrar quince agujeros concretos y poner el comprobador a vigilar.
 
-**Se empezó con 15 incumplimientos. Quedan 4.**
+**Se empezó con 15 incumplimientos. Quedan 2.**
 
 Cerrados:
 
@@ -126,15 +126,15 @@ Pendientes — estas son inversiones de verdad, no constantes:
 
 | Repositorio | Llama a | Estado |
 |---|---|---|
-| ~~`repo/campanas`, `repo/historicoControl`~~ | `flotaViva/directo` | **cerradas** al mudar Control: ninguno de los dos era un repositorio |
-| ~~`repo/conductores`~~ | `cazamientoBolt` | **cerrada** al mudar Conductores: pasó a ser el repositorio de al lado |
-| `repo/inicio` | `visibilidad` y `flotaViva/rutas` | |
-| `repo/reporteHoras` | `flotaViva/rutas` | cae con Justificantes |
+| ~~`repo/campanas`, `repo/historicoControl`~~ | `flotaViva/directo` | **cerradas**: ninguno de los dos era un repositorio |
+| ~~`repo/conductores`~~ | `cazamientoBolt` | **cerrada**: pasó a ser el repositorio de al lado |
+| ~~`repo/inicio`, `repo/reporteHoras`~~ | `flotaViva/rutas` | **cerradas**: `rutas` tampoco era un servicio, son 16 consultas |
+| `repo/inicio` | `visibilidad` | |
 | `repo/compararAgenda` | `planificadorV2` | cae cuando la agenda salga de las hojas |
 
-Las dos que apuntaban a `flotaViva/directo` no se arreglaron: **desaparecieron**
-al ponerle a cada fichero el nombre de lo que hace (ver *Hecho: Control*). Las
-que quedan son inversiones de verdad.
+**Cuatro de las siete no se arreglaron: desaparecieron** al ponerle a cada
+fichero el nombre de lo que hace (ver *Hecho: Control*). Las dos que quedan son
+inversiones de verdad.
 
 **Los 31 avisos** son manejadores largos (el peor: 105 líneas en
 `GET /operaciones/auditoria/excel`) y rutas que orquestan tres o más módulos.
@@ -223,7 +223,7 @@ decidirlo antes de mover nada.
 | **Documentos** ✓ | `documentos` — **hecho** |
 | **Vehiculos** ✓ | `vehiculos`, `taller` — **hecho, el módulo entero** |
 | **Planificacion** | `tablero` (planificador), `cobertura`, `vacantes` **(?)** |
-| **Control** | `control` — **hecho**. `alertas`, `callCenter` y `justificantes`, en la siguiente tanda; `flotaViva` NO (es núcleo, ver abajo) |
+| **Control** ✓ | `control`, `alertas`, `callCenter`, `justificantes` y las APIs de `flotaViva` — **hecho, el módulo entero**. El núcleo `fv_*` NO: no es un módulo (ver abajo) |
 | **Operaciones** | `operaciones`, `sanciones`, `bitacora` |
 | **RRHH** | `rrhh`, `convenio`, `peticiones`, `ticketera`, `pendientes` |
 | **Nominas** ✓ | `nominas` — **hecho**, y de paso salió de Google Sheets |
@@ -266,8 +266,8 @@ Empezando por el más pequeño y aislado, para estrenar la mecánica donde el da
 posible es mínimo, y dejando para el final los que más gente toca:
 
 ~~**Vehiculos**~~ ~~**Documentos**~~ ~~**Usuarios**~~ ~~**Fichaje**~~ ~~**Nominas**~~
-~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ (hechos) → el resto de Control
-(`alertas`, `callCenter`, `justificantes`) → **Planificacion** → el resto.
+~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ (hechos) → **Planificacion**
+→ el resto.
 
 ### Hecho: Documentos
 
@@ -345,6 +345,20 @@ Lo que enseñó, y es lo más útil de esta mudanza:
   llaman a `partials/control-nav`, que se queda en `views/`: EJS busca primero
   al lado de la plantilla y después en las raíces de `views`, así que el partial
   compartido no hay que duplicarlo ni moverlo.
+- **La segunda tanda trajo el módulo entero**: `alertas`, `callCenter`,
+  `justificantes` y las APIs que quedaban de Flota Viva. Y con ellas dos
+  infracciones más, por la misma causa: `services/flotaViva/rutas` y `franjas`
+  no son servicios de dominio sino **repositorios** —16 y 12 consultas sobre las
+  tablas `fv_*`—, y por vivir en `services/` el comprobador los daba por
+  servicios. Ahora hay una lista, `CAPA_DECLARADA`, escrita fichero a fichero
+  como la de adaptadores: adivinar por carpeta colaría lo que alguien deje ahí
+  mañana.
+- **`inventario-muerto.js` no miraba en `modules/`,** y eso lo hacía mentir justo
+  al revés de como conviene: un fichero de `services/` cuyo único cliente ya se
+  había mudado a un módulo —`excelEstilo`, `exportarPlanificador`,
+  `repo/rechazos`— salía como HUÉRFANO estando vivo. Esa lista es la que se va a
+  usar para borrar de verdad al final de la Fase 2, así que un falso positivo
+  ahí no es ruido: es un despliegue roto.
 - **Aquí no se dejaron reexportadores.** En los módulos anteriores sí, por si se
   escapaba una referencia. En este se comprobó antes, fichero a fichero, que los
   once que se mudé solo los usaba `routes/control.js` —y no hay `require()`

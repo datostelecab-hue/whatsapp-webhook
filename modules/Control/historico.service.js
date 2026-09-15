@@ -60,7 +60,7 @@ const nombreAlerta = (codigo, etq) => ALERTA[codigo] || String(etq || codigo || 
  * franja y tipo.
  */
 async function alertasDeFranja(dia) {
-  const AC = require('../../services/repo/alertasControl');
+  const AC = require('./alertas.repo');
   const cfg = await AC.leerConfig();
   if (cfg.sinTabla) return new Map();
   const franjas = (cfg.franjas || []).map(f => ({ ...f, dia }));
@@ -103,7 +103,7 @@ async function alertasDeFranja(dia) {
  * @param {string} dia jornada operativa 'AAAA-MM-DD'
  */
 async function parte(dia) {
-  const { enDirecto } = require('../../services/flotaViva/directo');
+  const { enDirecto } = require('./cockpit.service');
   const llamadasRepo = require('../../services/repo/llamadas');
   const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dia || '')) ? dia : llamadasRepo.diaOperativoHoy();
 

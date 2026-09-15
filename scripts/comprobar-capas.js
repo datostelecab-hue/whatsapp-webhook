@@ -225,6 +225,27 @@ const esBase = rel => rel === 'services/db' || /\/db$/.test(rel);
 // cualquier ruta de dos pasos pareciera que orquesta tres módulos.
 const TRANSVERSALES = new Set(['services/repo/actor', 'services/sesion', 'services/permisos']);
 
+// EL NÚCLEO DE LA INGESTA (`services/flotaViva/`). Nació fuera del reparto de
+// capas —en otra rama, con su propia variable de conexión— y por vivir en
+// `services/` todo él contaba como "servicio de dominio". No lo es: de sus
+// siete ficheros, dos son SQL puro sobre las tablas `fv_*` y dos no tocan la
+// base siquiera.
+//
+// Esto importaba de verdad: `repo/inicio` y `reporteHoras.repo` salían acusados
+// de llamar hacia arriba por pedirle los km a `flotaViva/rutas`, que es un
+// repositorio con 16 consultas dentro. La acusación era del etiquetado, no del
+// código.
+//
+// Va escrito fichero a fichero y no por carpeta, por la misma razón que la
+// lista de arriba: una regla por carpeta colaría cualquier cosa que alguien
+// deje ahí mañana.
+const CAPA_DECLARADA = new Map([
+  ['services/flotaViva/rutas',   'repositorio'],   // 16 consultas sobre fv_ruta / fv_tramo
+  ['services/flotaViva/franjas', 'repositorio'],   // 12 consultas sobre fv_tramo
+  ['services/flotaViva/fuentes', 'adaptador'],     // habla con BOLT y con Mapon
+  ['services/flotaViva/formato', 'nucleo'],        // 19 líneas de formato, sin base ni red
+]);
+
 /** Los require() de un fichero, ya clasificados por capa. */
 function importes(desnudo, desde) {
   const out = [];
@@ -234,7 +255,8 @@ function importes(desnudo, desde) {
     const abs = path.resolve(path.dirname(desde), spec);
     const rel = path.relative(RAIZ, abs).replace(/\\/g, '/').replace(/\.js$/, '');
     let capa = 'otro';
-    if (esBase(rel)) capa = 'base';
+    if (CAPA_DECLARADA.has(rel)) capa = CAPA_DECLARADA.get(rel);
+    else if (esBase(rel)) capa = 'base';
     else if (NUCLEO.has(rel)) capa = 'nucleo';
     else if (ADAPTADORES.has(rel)) capa = 'adaptador';
     else if (rel.startsWith('services/repo/')) capa = 'repositorio';

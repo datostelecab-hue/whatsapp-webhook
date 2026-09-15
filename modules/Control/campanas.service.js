@@ -34,7 +34,7 @@
 // negocio—. Mientras estuvo etiquetado como repositorio, llamar a `enDirecto`
 // contaba como saltarse una capa; con el nombre bueno, deja de serlo.
 
-const { enDirecto } = require('../../services/flotaViva/directo');
+const { enDirecto } = require('./cockpit.service');
 const llamadas = require('../../services/repo/llamadas');
 const { TIPOS_J } = require('../../services/repo/justificantes');
 

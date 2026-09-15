@@ -39,6 +39,9 @@ const PARES = [
   ['modules/Control/vistas/controlCampanasInforme.ejs', 'modules/Control/control.controller.js', '/control'],
   ['modules/Control/vistas/controlHistorico.ejs', 'modules/Control/control.controller.js', '/control'],
   ['modules/Control/vistas/kmTraza.ejs', 'modules/Control/control.controller.js', '/control'],
+  ['modules/Control/vistas/alertas.ejs', 'modules/Control/alertas.controller.js', '/alertas'],
+  ['modules/Control/vistas/callCenter.ejs', 'modules/Control/callcenter.controller.js', '/callcenter'],
+  ['modules/Control/vistas/justificantes.ejs', 'modules/Control/justificantes.controller.js', '/justificantes'],
   ['modules/Vehiculos/vistas/vehiculos.ejs', 'modules/Vehiculos/vehiculos.controller.js', '/vehiculos'],
   ['views/migraciones.ejs', 'routes/migraciones.js', '/migraciones'],
   ['modules/Nominas/vistas/nominas.ejs', 'modules/Nominas/nominas.controller.js', '/nominas'],
@@ -77,7 +80,20 @@ for (const [vista, fichero, prefijo] of PARES) {
   //
   // Así que la barra final se sustituye por el comodín, que es lo que de verdad
   // significa: aquí viene un parámetro.
+  // UNA CLAVE DE PERMISO NO ES UNA URL, aunque se escriba igual. Los permisos
+  // del ERP SON prefijos de ruta —`/alertas/config`— y una vista que pinta media
+  // pantalla solo para quien puede lleva dentro
+  // `permisos.includes('/alertas/config')`. Eso no es una petición: es una
+  // pregunta, y esa clave no tiene por qué existir como ruta suya (debajo
+  // cuelgan `/config/api/guardar` y `/config/api/destinatarios`, que sí existen).
+  //
+  // Sin esta excepción el comprobador acusaba de "sin ruta" a una clave de
+  // permiso correcta, que es justo el falso positivo que hace que alguien deje
+  // de mirar la salida.
+  const claves = new Set([...texto.matchAll(/\.includes\(\s*["'`]([^"'`]+)/g)].map(m => m[1]));
+
   const pedidas = [...new Set([...texto.matchAll(patron)]
+    .filter(m => !claves.has(m[1]))
     .map(m => (m[1].endsWith('/') ? m[1] + '_' : m[1].replace(/\/+$/, ''))))];
 
   const definidas = [...fs.readFileSync(pr, 'utf8').matchAll(/router\.\w+\('([^']+)'/g)]

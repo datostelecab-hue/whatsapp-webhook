@@ -35,7 +35,7 @@
 //    entra a las 17:00 aún no ha faltado a nada. El periodo por defecto lo pone
 //    el repositorio; aquí solo se respeta.
 
-const { enDirecto } = require('../../services/flotaViva/directo');
+const { enDirecto } = require('./cockpit.service');
 const rutas = require('../../services/flotaViva/rutas');
 const llamadas = require('../../services/repo/llamadas');       // el "telefonito"
 const repoJust = require('../../services/repo/justificantes');  // justificar: PostgreSQL
@@ -44,10 +44,10 @@ const historicoSrv = require('./historico.service');
 const asistencia = require('./asistencia.repo');
 const auditoriaLunes = require('./auditoriaLunes.repo');
 const reporteTurnos = require('./reporteTurnos.service');
-// El reporte de horas del día (datos en repo/reporteHoras) y el Excel con las
-// bandas de color. Sigue en services/ hasta que se mude Justificantes.
-const justificantes = require('../../services/justificantes');
-const callCenter = require('../../services/callCenter');        // espejo en su hoja
+// El reporte de horas del día, con sus bandas de color (los datos, en
+// `reporteHoras.repo`), y el espejo de la llamada en la hoja del call center.
+const justificantes = require('./reporteHoras.service');
+const callCenter = require('./callcenter.service');
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const iso = v => (ISO.test(v || '') ? v : null);
