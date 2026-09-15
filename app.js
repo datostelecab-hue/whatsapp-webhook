@@ -228,19 +228,6 @@ app.use('/flota-viva', require('./modules/Control/flota.controller'));
 //    ya enruta por phone_number_id lo que llega al número de la boda. ──────────────
 app.use('/boda-igna-cruz', bodaRoutes);
 
-// Actualización manual del padrón CONDUCTORES_BOLT (para probar sin esperar al cron).
-app.get('/conductores-bolt/actualizar', async (req, res) => {
-  console.log('🔧 [CONDUCTORES_BOLT] actualizarConductoresBolt() manual...');
-  try {
-    const { actualizarConductoresBolt } = require('./services/conductoresBolt');
-    const r = await actualizarConductoresBolt();
-    res.json(r);
-  } catch (error) {
-    console.error(`❌ [CONDUCTORES_BOLT] Error: ${error.stack || error.message}`);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
-
 // Procesado manual de ausencias V/B/P (auto-estado + reincorporaciones + letras)
 // sin esperar al cron.
 app.get('/vista-final/ausencias-auto', async (req, res) => {
@@ -314,8 +301,8 @@ if (pruebas.ACTIVO) {
 // que los cron que reescribían Datos_API / el resumen en Sheets sobran: doble-tiraban
 // de BOLT (parte de los 429) y de la cuota de Sheets (60/min, la que tumbó el ERP).
 // Se reactivan con HOJAS_CRONS=on solo si hiciera falta refrescar el viejo reporte de
-// Datos_API mientras se termina de migrar. (El cron CONDUCTORES_BOLT NO está aquí:
-// sigue vivo porque la conciliación de tickets con RRHH aún lee esa hoja del padrón.)
+// Datos_API mientras se termina de migrar. (El cron de las :10 y :40 tampoco está
+// aquí: ya no escribe ninguna hoja, solo cruza los tickets con el padrón.)
 const HOJAS_CRONS = process.env.HOJAS_CRONS === 'on';
 if (!HOJAS_CRONS && !pruebas.ACTIVO) {
   console.log('📴 [HOJAS] Crons de hojas (Horas / Horas⚡ / Resumen) APAGADOS (HOJAS_CRONS!=on)');
@@ -374,23 +361,21 @@ if (HOJAS_CRONS) programar('15 * * * *', async () => {
   }
 });
 
-
-// CONDUCTORES_BOLT: padrón de creación de conductores, cada media hora (:10 y
-// :40, para no chocar con los otros crons). Sella el created_at propio.
+// TICKETS PENDIENTES EN BOLT: cada media hora (:10 y :40, para no chocar con
+// los otros crons) se cruzan los tickets «Pendiente en BOLT» con el padrón: los
+// que ya aparecen pasan a «Aprobado en BOLT» y avisan a RRHH.
+//
+// AQUÍ YA NO SE REFRESCA EL PADRÓN. Lo hace la ingesta (tarea `padron_bolt`),
+// que pide los conductores al mismo sitio y los guarda en `conductor_externo`.
+// Antes había dos trabajos haciendo el mismo trabajo: uno contra PostgreSQL y
+// otro contra una hoja de cálculo.
 programar('10,40 * * * *', async () => {
-  console.log('⏰ [CRON CONDUCTORES_BOLT] actualizarConductoresBolt()...');
   try {
-    const { actualizarConductoresBolt } = require('./services/conductoresBolt');
-    const result = await actualizarConductoresBolt();
-    console.log(`✅ [CRON CONDUCTORES_BOLT] ${JSON.stringify(result)}`);
-
-    // Tras refrescar el padrón, cruzar los tickets "Pendiente en BOLT": los que
-    // ya aparecen en BOLT pasan a "Aprobado en BOLT" y alertan a RRHH.
     const { conciliarTicketsBolt } = require('./services/tickets');
     const conc = await conciliarTicketsBolt();
-    if (conc.total) console.log(`🔔 [CRON CONDUCTORES_BOLT] ${conc.total} conductor(es) detectado(s) en BOLT → RRHH`);
+    if (conc.total) console.log(`✅ [CRON BOLT-RRHH] ${conc.total} conductor(es) detectado(s) en BOLT → RRHH`);
   } catch (error) {
-    console.error(`❌ [CRON CONDUCTORES_BOLT] Error: ${error.stack || error.message}`);
+    console.error(`❌ [CRON BOLT-RRHH] Error: ${error.stack || error.message}`);
   }
 });
 
