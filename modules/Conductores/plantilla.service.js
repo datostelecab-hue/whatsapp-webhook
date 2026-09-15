@@ -110,6 +110,12 @@ const altaEnBolt = ({ todos, situacion } = {}) =>
 const boltEstado = () => cazamiento.estado();
 const frescura = () => require('../../services/ingesta').estado();
 
+/**
+ * ¿Quién es esta persona? Por DNI, teléfono o nombre de BOLT, en ese orden.
+ * La usa la ticketera para saber a quién aplicarle lo que pide un formulario.
+ */
+const buscarPersona = pistas => con.buscarPersona(pistas || {});
+
 // ── Escritura ──────────────────────────────────────────────────────────────
 // Casi todo es pasar el recado: la regla de cada cambio vive en el repositorio,
 // que es quien sabe cerrar una vigencia y abrir la siguiente en una sola
@@ -217,7 +223,7 @@ const descargarDocumento = id => docs.descargar(Number(id));
 const documentosQueVencen = dias => docs.porVencer({ dias });
 
 module.exports = {
-  paraLaPantalla, lista, ficha, hoja, catalogos, campos,
+  paraLaPantalla, lista, ficha, hoja, catalogos, campos, buscarPersona,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,

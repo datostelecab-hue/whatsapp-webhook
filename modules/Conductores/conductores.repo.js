@@ -690,7 +690,7 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
  * Aquí no se cierra ni se recorta nada: o el tramo cabe en un hueco libre, o se
  * dice cuál es el que estorba. Nada se pierde en silencio.
  */
-async function anadirAusencia(id, { estado, desde, hasta, motivo }, { usuarioId } = {}) {
+async function anadirAusencia(id, { estado, desde, hasta, motivo, peticionId }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
   if (!desde) throw new Error('Falta el día en que empieza');
   const cat = (await db.consulta(
@@ -731,10 +731,16 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo }, { usuarioId 
             + 'no cabe ningún tramo después. Ponle primero cuándo vuelve.'));
   }
 
+  // `peticionId` ata la ausencia al papel que la autorizó. Es opcional porque
+  // RRHH también las mete a mano desde la ficha, sin petición de por medio; pero
+  // cuando viene de una, "¿quién autorizó estas vacaciones?" se contesta
+  // siguiendo la clave en vez de buscando en un correo.
   const r = await db.consulta(
-    `INSERT INTO conductor_estado_hist (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id)
-     VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7) RETURNING *`,
-    [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null, usuarioId || null]);
+    `INSERT INTO conductor_estado_hist
+       (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, peticion_id)
+     VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8) RETURNING *`,
+    [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null,
+     usuarioId || null, peticionId || null]);
   return { anadida: r.rows[0] };
 }
 
@@ -1222,8 +1228,58 @@ async function paraGestoria({ estado = 'alta' } = {}) {
   return r.rows;
 }
 
+/**
+ * ¿QUIÉN ES ESTA PERSONA? Por su nombre de BOLT, su DNI o su teléfono.
+ *
+ * Lo pregunta la ticketera: un conductor manda un formulario y hay que saber a
+ * quién aplicarle las vacaciones. El formulario a veces trae el ID_BOLT, a veces
+ * solo el DNI, y a veces solo el número desde el que escribe.
+ *
+ * EL ORDEN NO ES CAPRICHOSO. Primero el DNI, que es lo único que identifica a
+ * una persona por ley y no se repite. Después el teléfono, por los 9 últimos
+ * dígitos, que es como se guardan. El nombre de BOLT va el ÚLTIMO y solo si es
+ * exacto: hay homónimos en el padrón —tres en el real— y casar a alguien por
+ * nombre le imputa las vacaciones a otro.
+ *
+ * Devuelve null si no lo tiene claro, que es mejor que acertar de casualidad.
+ */
+async function buscarPersona({ nombreBolt, dni, telefono } = {}) {
+  const limpio = v => String(v == null ? '' : v).trim();
+  const tel9 = limpio(telefono).replace(/\D/g, '').slice(-9);
+  const dniL = limpio(dni).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const nb = limpio(nombreBolt);
+
+  const r = await db.consulta(
+    `SELECT c.id, c.empleo_vigente,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
+                     NULLIF(btrim(COALESCE(c.apellidos || ', ', '') || c.nombre), ''),
+                     'Conductor ' || c.id) AS nombre,
+            -- Por qué se le encontró: sirve para poder decirlo cuando falla.
+            CASE WHEN $1 <> '' AND upper(regexp_replace(COALESCE(c.dni_nie, ''), '[^A-Za-z0-9]', '', 'g')) = $1 THEN 1
+                 WHEN $2 <> '' AND EXISTS (SELECT 1 FROM conductor_telefono t
+                                            WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
+                                              AND t.sufijo9 = $2) THEN 2
+                 ELSE 3 END AS por
+       FROM conductor c
+      WHERE NOT c.es_centinela
+        AND ( ($1 <> '' AND upper(regexp_replace(COALESCE(c.dni_nie, ''), '[^A-Za-z0-9]', '', 'g')) = $1)
+           OR ($2 <> '' AND EXISTS (SELECT 1 FROM conductor_telefono t
+                                     WHERE t.conductor_id = c.id AND t.vigente_hasta IS NULL
+                                       AND t.sufijo9 = $2))
+           OR ($3 <> '' AND btrim(COALESCE(c.nombre_bolt, '')) = $3) )
+      ORDER BY por, c.empleo_vigente DESC, c.id`,
+    [dniL, tel9.length === 9 ? tel9 : '', nb]);
+
+  if (!r.rows.length) return null;
+  // Dos personas distintas con la misma pista: no se elige, se dice que no.
+  if (r.rows.length > 1 && r.rows[0].por === r.rows[1].por) return null;
+  const x = r.rows[0];
+  return { id: Number(x.id), nombre: x.nombre, empleoVigente: !!x.empleo_vigente,
+           por: { 1: 'dni', 2: 'telefono', 3: 'nombre_bolt' }[x.por] };
+}
+
 module.exports = {
-  paraGestoria,
+  paraGestoria, buscarPersona,
   JORNADAS, cambiarJornada,
   campos,
   crearPersona,

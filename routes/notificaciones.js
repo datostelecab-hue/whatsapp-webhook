@@ -3,7 +3,7 @@ const router = express.Router();
 const { leerTickets, ESTADOS, ETAPAS } = require('../services/tickets');
 const { leerTablero, ESTADO_PENDIENTE } = require('../services/planificadorV2');
 const { leerVacantesGuardadas } = require('../services/vacantes');
-const { leerPeticiones } = require('../services/peticiones');
+const peticionesSrv = require('../modules/RRHH/peticiones.service');
 const repoInc = require('../services/repo/incorporaciones');
 const ticketsIT = require('../services/ticketsIT');
 
@@ -17,7 +17,7 @@ async function calcular() {
     leerTickets(),
     leerTablero().catch(() => null),
     leerVacantesGuardadas().catch(() => []),
-    leerPeticiones().then(r => r.lista).catch(() => []),
+    peticionesSrv.listar().catch(() => []),
     ticketsIT.leerTickets().catch(() => []),
     repoInc.pendientes().catch(() => [])
   ]);

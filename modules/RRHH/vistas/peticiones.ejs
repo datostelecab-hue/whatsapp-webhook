@@ -5,7 +5,7 @@
       <h1 class="text-lg font-semibold text-telecab-text flex items-center gap-2">
         <i class="fa-solid fa-clipboard-list text-telecab-gold"></i> Peticiones a RRHH
       </h1>
-      <p class="text-xs text-telecab-muted mt-0.5">Tráfico solicita bajas y ausencias (con Desde–Hasta); RRHH las aprueba/rechaza o las crea y aplica directo. Al aplicarse, el estado cambia al momento y la bitácora se rellena en el rango.</p>
+      <p class="text-xs text-telecab-muted mt-0.5">Tráfico solicita bajas y ausencias (con Desde–Hasta); RRHH las aprueba/rechaza o las crea y aplica directo. Al aplicarse se abre el tramo de ausencia: el estado y la plaza se mueven solos el día que empieza y el día que termina.</p>
     </div>
     <button id="btn-recargar" class="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-telecab-border text-telecab-muted hover:border-telecab-gold transition">
       <i class="fa-solid fa-rotate mr-1"></i> Recargar
@@ -73,6 +73,7 @@
 <script>
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const YO = <%- JSON.stringify(yo || '') %>;   // quién mira: ya hay login, no hace falta teclearlo
   const rol = '<%= rol || "" %>';                                // rol REAL de la sesión
   const esTrafico = rol === 'trafico' || rol === 'superadmin';   // crea petición (queda pendiente)
   const esRRHH = rol === 'oficina' || rol === 'superadmin';      // resuelve + crea y aplica directo
@@ -126,7 +127,7 @@
     const rein = p.tipo === 'Reingreso';
     const sh = SIN_HASTA.includes(p.tipo);   // despido: solo fecha de efecto
     const bloqueFechas = rein
-      ? `<p class="text-xs text-telecab-muted mb-2"><i class="fa-solid fa-arrow-rotate-left mr-1 text-telecab-gold"></i>Reingreso inmediato: al aprobar vuelve a la agenda como <b class="text-telecab-text">Pendiente Asignar</b>.</p>`
+      ? `<p class="text-xs text-telecab-muted mb-2"><i class="fa-solid fa-arrow-rotate-left mr-1 text-telecab-gold"></i>Al aprobar queda <b class="text-telecab-text">autorizado</b>. El alta se completa en su ficha (Plantilla → Dar de alta): ahí se eligen contrato, jornada y antigüedad.</p>`
       : `<div class="flex flex-wrap items-end gap-2 mb-2">
           <div><label class="block text-[11px] text-telecab-muted mb-0.5">${sh ? 'Fecha de efecto' : 'Desde'}</label><input class="pp-desde js-fecha inp !w-32 text-sm" value="${esc(p.desde)}" placeholder="dd/mm/aaaa"></div>
           ${sh ? '' : `<div><label class="block text-[11px] text-telecab-muted mb-0.5">Hasta</label><input class="pp-hasta js-fecha inp !w-32 text-sm" value="${esc(p.hasta)}" placeholder="dd/mm/aaaa"></div>`}
@@ -142,7 +143,7 @@
        ${bloqueFechas}
        <div class="mb-2">
          <label class="block text-[11px] text-telecab-muted mb-0.5">Responsable RRHH <span class="text-telecab-muted/70">(quién resuelve)</span></label>
-         <input class="pp-resp inp !w-56 text-sm" placeholder="Tu nombre">
+         <input class="pp-resp inp !w-56 text-sm" value="${esc(YO)}" placeholder="Tu nombre">
        </div>
        <div class="flex gap-2">
          <button class="pp-ap px-3 py-1.5 rounded-lg bg-telecab-green/15 border border-telecab-green/40 text-telecab-green text-xs font-semibold hover:bg-telecab-green/25 transition"><i class="fa-solid fa-check mr-1"></i> Aprobar</button>
@@ -159,7 +160,11 @@
         if (!desde || (!sh && !hasta)) { alert(sh ? 'Pon la fecha de efecto.' : 'Pon las fechas Desde y Hasta.'); return; }
       }
       const r = await api('/peticiones/aprobar', { id: p.id, desde, hasta, resuelto_por });
-      if (r.status === 'ok') cargar(); else alert(r.msg || 'No se pudo aprobar');
+      if (r.status !== 'ok') { alert(r.msg || 'No se pudo aprobar'); return; }
+      // El reingreso deja algo por hacer: se dice, en vez de desaparecer la
+      // tarjeta y que nadie sepa que falta el alta.
+      if (r.siguientePaso) alert(r.msg);
+      cargar();
     });
     el.querySelector('.pp-rz').addEventListener('click', async () => {
       const resuelto_por = responsable();
@@ -256,10 +261,14 @@
     $('#btn-crear-directa').addEventListener('click', async () => {
       const b = recolectar(); if (!b) return;
       const r = await api('/peticiones/crear-directa', b);
-      if (r.status === 'ok') { aviso('Aplicada: estado y bitácora actualizados.', 'text-telecab-green'); limpiar(); cargar(); }
+      if (r.status === 'ok') { aviso(r.msg || 'Aplicada.', 'text-telecab-green'); limpiar(); cargar(); }
       else aviso(r.msg || 'No se pudo aplicar', 'text-telecab-red');
     });
   }
+
+  // Ya hay login: el responsable viene puesto y se puede cambiar si alguien
+  // resuelve en nombre de otro.
+  if (YO && $('#f-solicitante')) $('#f-solicitante').value = YO;
 
   $('#btn-recargar').addEventListener('click', cargar);
   cargar();

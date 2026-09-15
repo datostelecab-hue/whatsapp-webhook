@@ -9,9 +9,9 @@
 // por posición. Cada tipo de gestión trae su info en DESCRIPCION_COMPILADA.
 //
 // Vacaciones / Baja / Permiso llevan AFECTA_PLANNING = SÍ: al aprobarlas se aplican
-// al planificador reutilizando Peticiones (crearYAplicar), que libera la plaza y
-// escribe las letras V/B/P. El conductor se resuelve por ID_BOLT y, si el formulario
-// no lo identificó (SIN_IDENTIFICAR), por DNI o teléfono contra el tablero.
+// reutilizando Peticiones (crearYAplicar), que abre el tramo de ausencia en
+// PostgreSQL. A la persona la identifica Conductores por DNI, teléfono o nombre de
+// BOLT —en ese orden, y diciendo que no cuando hay dos que encajan.
 
 const { readSheet, writeMany, appendRows, deleteRows, getSheetIds, ensureSheet } = require('./sheets');
 const { SPREADSHEET_PLANIFICADOR } = require('./planificadorV2');
@@ -178,18 +178,19 @@ async function resolver(ticketId, { usuario, estado, observaciones } = {}) {
  * Devuelve { idBolt, nombre } o null.
  */
 async function resolverConductor(t) {
-  const planif = require('./planificadorV2');
-  const norm = s => String(s || '').trim().toLowerCase();
-  const tel9 = s => String(s || '').replace(/\D/g, '').slice(-9);
-  const tablero = await planif.leerTablero().catch(() => null);
-  const conductores = (tablero && tablero.conductores) || [];
-
-  const idb = norm(t.id_bolt), dni = norm(t.dni), tel = tel9(t.telefono);
-  let c = null;
-  if (idb && idb !== 'sin_identificar') c = conductores.find(x => x.idBolt && norm(x.idBolt) === idb);
-  if (!c && dni) c = conductores.find(x => x.dni && norm(x.dni) === dni);
-  if (!c && tel) c = conductores.find(x => tel9(x.telefono) === tel);
-  return c ? { idBolt: c.idBolt, nombre: c.nombre } : null;
+  // CONTRA POSTGRESQL, no contra el tablero. El formulario trae lo que el
+  // conductor escribió: a veces su nombre de BOLT, a veces solo el DNI, a veces
+  // solo el número desde el que manda. Conductores sabe resolver eso, y sabe
+  // decir que NO cuando hay dos personas que encajan —que es mejor que
+  // aplicarle las vacaciones a un homónimo.
+  const plantilla = require('../modules/Conductores/plantilla.service');
+  const idb = String(t.id_bolt || '').trim();
+  const c = await plantilla.buscarPersona({
+    dni: t.dni,
+    telefono: t.telefono,
+    nombreBolt: idb.toLowerCase() === 'sin_identificar' ? '' : idb,
+  });
+  return c ? { id: c.id, nombre: c.nombre, por: c.por } : null;
 }
 
 /**
@@ -204,14 +205,15 @@ async function aplicarAlPlanificador(ticketId, { usuario, desde, hasta, motivo, 
   if (!tipoPet) throw new Error(`El subtipo "${t.subtipo || '—'}" no se aplica al planificador (solo Vacaciones / Baja / Permiso)`);
 
   const cond = await resolverConductor(t);
-  if (!cond) throw new Error(`No identifico al conductor en la agenda (ID_BOLT "${t.id_bolt || '—'}", ni por DNI/teléfono). Corrige el ID_BOLT o el DNI del ticket antes de aplicar.`);
+  if (!cond) throw new Error(`No identifico al conductor (ID_BOLT "${t.id_bolt || '—'}", ni por DNI ni por teléfono). ` +
+    'Corrige el DNI o el ID_BOLT del ticket antes de aplicar.');
 
   const d = soloFecha(desde || t.fecha_inicio_evento);
   const h = soloFecha(hasta || t.fecha_fin_evento);
 
-  const peticiones = require('./peticiones');
+  const peticiones = require('../modules/RRHH/peticiones.service');
   await peticiones.crearYAplicar({
-    tipo: tipoPet, id_conductor: cond.idBolt, conductor: cond.nombre,
+    tipo: tipoPet, id_conductor: cond.id, conductor: cond.nombre,
     desde: d, hasta: h,
     motivo: (motivo || t.descripcion_compilada || '').toString(),
     responsable: (usuario || '').toString().trim()
