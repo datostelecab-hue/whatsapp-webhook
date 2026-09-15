@@ -37,21 +37,28 @@ async function registrar(o) {
 /**
  * ¿QUIÉN PUEDE ABRIR UNA PUERTA? El teléfono desde el que escriben.
  *
- * Dos caminos, y ninguno de los dos es «tener el número apuntado»:
+ * Dos caminos:
  *
- *   1. UN CONDUCTOR, si está de alta en el sistema Y su cuenta de BOLT está
- *      ACTIVA. Las dos cosas, porque son dos cosas distintas: alguien puede
- *      seguir con contrato mientras BOLT le tiene la cuenta parada, y en ese
- *      rato no va a conducir. Antes bastaba con el contrato.
+ *   1. UN CONDUCTOR DE ALTA, por el número con el que se le dio de alta. Quien
+ *      ya causó baja deja de abrir.
  *
  *   2. UNA PERSONA DEL SISTEMA con el permiso `/puertas`. Se da una a una en
  *      /usuarios y no lo trae ningún rol —ni los que llevan el catálogo
  *      entero—: una puerta es física, y quién la abre no se decide por
  *      descarte.
  *
+ * ── LO QUE AQUÍ NO SE MIRA: BOLT ────────────────────────────────────────────
+ * Durante unas horas del 15/09/2026 esto exigió también tener la cuenta de
+ * BOLT activa, y se echó atrás el mismo día por una razón que no se ve desde el
+ * código: a quien BOLT le suspende la cuenta SE LE DA OTRA, y entre una y otra
+ * sigue viniendo a trabajar. Cerrarle la puerta en ese hueco es cerrársela a
+ * alguien que está de alta y en el turno.
+ *
+ * Eran 12 personas de 215. Queda escrito para que no se vuelva a «arreglar».
+ *
  * Devuelve también POR QUÉ no, cuando no. «No estás autorizado» a secas deja a
- * la persona sin saber si le falta el alta, si es BOLT, o si se equivocó de
- * número; y a quien lo mire desde aquí, igual.
+ * la persona sin saber si le falta el alta o si se equivocó de número; y a
+ * quien lo mire desde aquí, igual.
  *
  * El número NO se valida. Se comparan los nueve últimos dígitos y ya: quien
  * tenga uno raro apuntado simplemente no casa, y no hay riesgo en ello —desde
@@ -65,10 +72,7 @@ async function quienPuedeAbrir(phone) {
   const c = (await db.consulta(
     `SELECT c.id, c.empleo_vigente,
             COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
-                     btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
-            EXISTS (SELECT 1 FROM conductor_externo e
-                     WHERE e.conductor_id = c.id AND e.sistema = 'bolt'
-                       AND e.estado_externo = 'active' AND e.visto_hasta IS NULL) AS en_bolt
+                     btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
        FROM conductor_telefono t
        JOIN conductor c ON c.id = t.conductor_id
       WHERE t.vigente_hasta IS NULL AND t.sufijo9 = $1
@@ -76,7 +80,6 @@ async function quienPuedeAbrir(phone) {
 
   if (c) {
     if (!c.empleo_vigente) return { puede: false, motivo: 'sin_alta', nombre: c.nombre };
-    if (!c.en_bolt)        return { puede: false, motivo: 'sin_bolt', nombre: c.nombre };
     return { puede: true, tipo: 'conductor', conductorId: String(c.id), nombre: c.nombre };
   }
 
@@ -92,12 +95,11 @@ async function quienPuedeAbrir(phone) {
       ORDER BY (u.estado = 'activo') DESC, u.id
       LIMIT 1`, [s9])).rows[0];
 
-  if (!u)                      return { puede: false, motivo: 'no_esta' };
-  if (u.estado !== 'activo')   return { puede: false, motivo: 'bloqueado', nombre: u.nombre };
-  if (!u.tiene)                return { puede: false, motivo: 'sin_permiso', nombre: u.nombre };
+  if (!u)                    return { puede: false, motivo: 'no_esta' };
+  if (u.estado !== 'activo') return { puede: false, motivo: 'bloqueado', nombre: u.nombre };
+  if (!u.tiene)              return { puede: false, motivo: 'sin_permiso', nombre: u.nombre };
   return { puede: true, tipo: 'usuario', usuarioId: u.id, nombre: u.nombre || 'Usuario ' + u.id };
 }
-
 /** El histórico, lo último primero. Con filtros porque son tres preguntas. */
 async function historial({ desde, hasta, matricula, conductorId, soloFallos = false, limite = 500 } = {}) {
   const par = [desde, hasta];

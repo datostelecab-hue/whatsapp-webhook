@@ -76,12 +76,11 @@ async function handleText(phone, text) {
   if (await fichajeBot.manejarTexto(phone, text)) return;
 
   // ── ¿PUEDE ABRIR? ─────────────────────────────────────────────────────────
-  // Lo decide `repo/puertas.quienPuedeAbrir`, que mira DOS cosas para un
-  // conductor —que esté de alta aquí y que su cuenta de BOLT esté activa— y una
-  // para la gente de oficina: el permiso `/puertas`, que se da uno a uno.
+  // Lo decide `repo/puertas.quienPuedeAbrir`: un conductor abre por estar DE
+  // ALTA —el número con el que se le dio de alta—, y la gente de oficina por
+  // tener el permiso `/puertas`, que se da uno a uno en /usuarios.
   //
-  // Antes bastaba con tener contrato. Alguien con la cuenta de BOLT parada
-  // seguía abriendo coches que no iba a conducir.
+  // BOLT no entra aquí a propósito: ver la nota en `repo/puertas`.
   const acceso = await require('../services/repo/puertas').quienPuedeAbrir(phone)
     .catch(e => {
       console.error('❌ [Puertas] quienPuedeAbrir:', e.message);
@@ -96,7 +95,6 @@ async function handleText(phone, text) {
       sin_numero:  '❌ No te reconozco por este número.',
       no_esta:     '❌ No estás autorizado. Tu número no está en la base de datos.',
       sin_alta:    '❌ No estás autorizado: no constas de alta ahora mismo. Habla con RRHH.',
-      sin_bolt:    '❌ Tu cuenta de BOLT no está activa, así que no puedo abrirte el coche. Habla con tráfico.',
       bloqueado:   '❌ Tu usuario está bloqueado.',
       sin_permiso: '❌ Tu usuario no tiene permiso para abrir puertas.',
       error:       '❌ Ahora mismo no puedo comprobar tu acceso. Inténtalo en un minuto.',
