@@ -16,6 +16,17 @@
       <p id="sub" class="text-sm text-telecab-muted mt-0.5">Cargando…</p>
     </div>
 
+    <%# Quien no tiene el permiso de editar ve el cuadrante entero, pero de
+        lejos. El distintivo no es adorno: sin él, la pantalla parece rota
+        cuando un botón no hace nada. %>
+    <% if (!puedeEditar) { %>
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-telecab-card
+                   border border-telecab-border text-xs text-telecab-muted"
+            title="Puedes mirar el cuadrante, pero no cambiarlo. El permiso lo da un administrador en /usuarios.">
+        <i class="fa-solid fa-eye"></i>Solo lectura
+      </span>
+    <% } %>
+
     <div class="ml-auto flex items-center gap-2">
       <button id="sem-prev" class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition" title="Semana anterior">
         <i class="fa-solid fa-chevron-left text-xs"></i>
@@ -27,10 +38,12 @@
       <button id="hoy" class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-sm transition">Hoy</button>
       <%# MODO EVENTOS. Abre las dos plazas de refuerzo (CT2 dia y noche) unos
           dias y se cierra SOLO: no hay nada que recordar apagar. %>
-      <button id="btn-evento" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border
-                     hover:border-telecab-gold/40 text-sm transition">
-        <i class="fa-solid fa-bolt"></i><span id="btn-evento-txt">Modo eventos</span>
-      </button>
+      <% if (puedeEditar) { %>
+        <button id="btn-evento" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border
+                       hover:border-telecab-gold/40 text-sm transition">
+          <i class="fa-solid fa-bolt"></i><span id="btn-evento-txt">Modo eventos</span>
+        </button>
+      <% } %>
     </div>
   </div>
 
@@ -126,9 +139,11 @@
     <label class="flex items-center gap-2 text-sm text-telecab-muted ml-1">
       <input type="checkbox" id="f-huecos" class="accent-telecab-gold"> Solo con huecos
     </label>
+    <% if (puedeEditar) { %>
     <button id="btn-nuevo-cua" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
       <i class="fa-solid fa-plus"></i>Nuevo cuadrante
     </button>
+    <% } %>
     <button id="btn-avisos" class="ml-auto hidden items-center gap-2 px-3 py-2 rounded-xl bg-telecab-warn/10 border border-telecab-warn/30 text-telecab-warn text-sm">
       <i class="fa-solid fa-triangle-exclamation"></i><span id="btn-avisos-n">0</span> avisos
     </button>
@@ -191,6 +206,38 @@
 
 <script>
 (function () {
+  // ── SOLO LECTURA ──────────────────────────────────────────────────────────
+  // El candado DE VERDAD esta en el servidor: cualquier peticion al
+  // planificador que no sea un GET exige el permiso '/planificador/editar'.
+  // Esto de aqui es para que la pantalla no mienta.
+  //
+  // Se envuelve `fetch` en vez de apagar los botones uno a uno a proposito: en
+  // este cuadrante se escribe desde treinta sitios —arrastrar una persona, el
+  // menu de un coche, el panel de eventos, los relevos— y una lista de botones
+  // se queda corta el dia que se añada el treinta y uno. Asi cualquier camino
+  // que intente escribir se para en el mismo sitio y con el mismo aviso.
+  const PUEDE_EDITAR = <%- JSON.stringify(!!puedeEditar) %>;
+  if (!PUEDE_EDITAR) {
+    const fetchReal = window.fetch.bind(window);
+    let avisando = false;
+    window.fetch = function (url, opciones) {
+      const metodo = String((opciones && opciones.method) || 'GET').toUpperCase();
+      if (metodo === 'GET') return fetchReal(url, opciones);
+      if (!avisando) {
+        avisando = true;
+        Promise.resolve(Dialogo.aviso({
+          titulo: 'Solo lectura', tono: 'aviso',
+          html: '<p>Puedes mirar el cuadrante, pero no cambiarlo.</p>' +
+                '<p class="mt-2 text-sm text-telecab-muted">Si necesitas planificar, pide el permiso ' +
+                '<b>Planificador · editar</b> a quien lleve los usuarios.</p>',
+        })).catch(() => {}).then(() => { avisando = false; });
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ status: 'error', msg: 'Solo lectura' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }));
+    };
+  }
+
   const DIAS_LETRA = <%- JSON.stringify(letrasDia) %>;              // ['L','M','X','J','V','S','D']
   const ESTADOS = <%- JSON.stringify(estadosVehiculo) %>;           // catálogo de estados del coche
   const ESTADO_ETQ = new Map(ESTADOS.map(e => [e.codigo, e.etiqueta]));
@@ -320,12 +367,16 @@
   function pintarEvento() {
     const caja = $('#franja-evento');
     const ev = (T.eventos || {}).vigente;
+    // En solo lectura el boton de eventos no esta en la pagina, pero la FRANJA
+    // si se pinta: saber que hay un evento abierto es mirar, no tocar.
     const btn = $('#btn-evento');
-    $('#btn-evento-txt').textContent = ev ? ev.nombre : 'Modo eventos';
-    btn.classList.toggle('bg-telecab-gold', !!ev);
-    btn.classList.toggle('text-telecab-dark', !!ev);
-    btn.classList.toggle('font-semibold', !!ev);
-    btn.classList.toggle('border-telecab-gold', !!ev);
+    if (btn) {
+      $('#btn-evento-txt').textContent = ev ? ev.nombre : 'Modo eventos';
+      btn.classList.toggle('bg-telecab-gold', !!ev);
+      btn.classList.toggle('text-telecab-dark', !!ev);
+      btn.classList.toggle('font-semibold', !!ev);
+      btn.classList.toggle('border-telecab-gold', !!ev);
+    }
 
     if (!ev) { caja.classList.add('hidden'); caja.innerHTML = ''; return; }
     caja.classList.remove('hidden');
@@ -1944,8 +1995,9 @@
     b.addEventListener('click', () => { banqTab = b.dataset.banqTab; pintarBanquillo(); }));
   $('#k-flojos-caja').addEventListener('click', verCtFlojos);
   $('#btn-avisos').addEventListener('click', () => $('#avisos').classList.toggle('hidden'));
-  $('#btn-nuevo-cua').addEventListener('click', nuevoCuadrante);
-  $('#btn-evento').addEventListener('click', abrirEvento);
+  // Estos dos no existen en modo solo lectura (los quita la plantilla).
+  if ($('#btn-nuevo-cua')) $('#btn-nuevo-cua').addEventListener('click', nuevoCuadrante);
+  if ($('#btn-evento')) $('#btn-evento').addEventListener('click', abrirEvento);
 
   // Arranque.
   irA(hoyISO());

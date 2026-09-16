@@ -46,7 +46,19 @@ const CATALOGO = [
     { clave: '/convenio',       etiqueta: 'Convenio' },
   ] },
   { grupo: 'Tráfico', items: [
-    { clave: '/planificador',    etiqueta: 'Planificador' },
+    // MIRAR el planificador lo necesita media empresa: RRHH quiere saber dónde
+    // cae una persona, Operaciones qué coche sale mañana, el taller cuándo
+    // puede llevarse un coche. TOCARLO es de Tráfico.
+    //
+    // Y aquí el permiso de escribir NO va por una lista de rutas como en la
+    // bitácora o el taller: va por MÉTODO. El tablero tiene veinte endpoints
+    // que escriben y una lista a mano se queda corta el día que alguien añade
+    // el veintiuno — que es justo el día en que un candado tiene que seguir
+    // cerrado. Ver `claveDeRuta`.
+    { clave: '/planificador', etiqueta: 'Planificador', hijos: [
+      { clave: '/planificador/editar', etiqueta: 'Planificador · editar (guardar cambios)',
+        escribir: true },
+    ] },
     { clave: '/control',         etiqueta: 'Control · En directo', hijos: [
       { clave: '/control/historico', etiqueta: 'Histórico de control' },
       { clave: '/control/km',       etiqueta: 'KM y traza' },
@@ -133,6 +145,11 @@ const ALIAS = { '/planificador-v2': '/planificador' };
 // el catálogo, o sea, abiertas a cualquiera que tenga sesión.
 const RUTA_A_CLAVE = [
   ['/flota-viva',                 '/control'],
+  // Los tickets de Tráfico cuelgan de /planificador pero NO son planificar:
+  // cerrarlos o comentarlos son POST, y sin esta línea el reparto por método
+  // les exigiría el permiso de editar el tablero. Quien abre la bandeja puede
+  // trabajarla.
+  ['/planificador/tickets',       '/planificador'],
   ['/control/reporte/',           '/control/reportes'],
   ['/control/sankey/',            '/control/reportes'],
   ['/control/cascada/',           '/control/reportes'],
@@ -159,6 +176,17 @@ const RUTA_A_CLAVE = [
   ['/bitacora/api/libranza',            '/bitacora/justificar'],
 ];
 
+// Los módulos que separan LEER de ESCRIBIR por método: clave base → clave de
+// escritura. Sale del propio catálogo, así que marcar el hijo con
+// `escribir: true` es lo único que hay que hacer para partir un módulo en dos.
+const CLAVE_ESCRIBIR = new Map();
+CATALOGO.forEach(g => g.items.forEach(i =>
+  (i.hijos || []).forEach(h => { if (h.escribir) CLAVE_ESCRIBIR.set(i.clave, h.clave); })));
+
+// HEAD y OPTIONS van con GET a propósito: ninguno cambia nada, y OPTIONS lo
+// manda el navegador solo.
+const SOLO_LEE = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 // Todas las claves, aplanadas y de la más larga a la más corta (para que en el
 // control de acceso mande el prefijo más específico).
 const CLAVES = [];
@@ -169,16 +197,33 @@ CATALOGO.forEach(g => g.items.forEach(i => {
 CLAVES.sort((a, b) => b.length - a.length);
 const ES_CLAVE = new Set(CLAVES);
 
-/** La clave del catálogo que gobierna esta ruta (la más específica), o null si es libre. */
-function claveDeRuta(path) {
+/**
+ * La clave del catálogo que gobierna esta ruta (la más específica), o null si es
+ * libre.
+ *
+ * EL MÉTODO IMPORTA en los módulos partidos en mirar/tocar: un GET a
+ * /planificador pide '/planificador' y un POST pide '/planificador/editar'. Así
+ * el candado no depende de acordarse de apuntar cada endpoint nuevo en una
+ * lista — se cierra solo.
+ *
+ * La tabla explícita (`RUTA_A_CLAVE`) manda por encima de todo esto: lo que
+ * está ahí apuntado se resuelve tal cual, mire lo que mire el método. Es la
+ * puerta de atrás para los casos que no son lo que parecen, como la bandeja de
+ * tickets que cuelga del planificador.
+ */
+function claveDeRuta(path, metodo) {
   let p = String(path || '');
   const seg = '/' + (p.split('/')[1] || '');
   if (ALIAS[seg]) p = ALIAS[seg] + p.slice(seg.length);
   for (const [ruta, clave] of RUTA_A_CLAVE) {
     if (p === ruta || p.startsWith(ruta)) return clave;
   }
+  const lee = SOLO_LEE.has(String(metodo || 'GET').toUpperCase());
   for (const c of CLAVES) {
-    if (p === c || p.startsWith(c + '/')) return c;
+    if (p === c || p.startsWith(c + '/')) {
+      const escribir = CLAVE_ESCRIBIR.get(c);
+      return escribir && !lee ? escribir : c;
+    }
   }
   return null;
 }
@@ -301,4 +346,4 @@ async function sembrar(usuarioId, rol, { usuarioMod, cli } = {}) {
   return claves.length;
 }
 
-module.exports = { CATALOGO, CLAVES, ALIAS, claveDeRuta, semillaDeRol, clavesDe, guardar, sembrar, invalidar };
+module.exports = { CATALOGO, CLAVES, ALIAS, CLAVE_ESCRIBIR, claveDeRuta, semillaDeRol, clavesDe, guardar, sembrar, invalidar };

@@ -19,6 +19,27 @@ const express = require('express');
 const router = express.Router();
 const tablero = require('./tablero.service');
 const actor = require('../../services/repo/actor');
+const permisos = require('../../services/permisos');
+
+// Los que lo abren todo sin filas en la matriz.
+const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
+
+/**
+ * Quien puede TOCAR el tablero, y no solo mirarlo.
+ *
+ * El candado de verdad no esta aqui: lo pone `controlAcceso` sobre cualquier
+ * peticion que no sea un GET al planificador. Esto es para que la pantalla no
+ * mienta —que no ensene botones que van a contestar 403— y se pinte en modo
+ * solo lectura.
+ */
+async function puedeEditar(req) {
+  const u = req.usuario || {};
+  if (ADMIN_TOTAL.includes(u.rol)) return true;
+  try {
+    const id = await actor.idDe(req);
+    return id ? (await permisos.clavesDe(id)).has('/planificador/editar') : false;
+  } catch (_) { return false; }
+}
 
 const responde = fn => async (req, res) => {
   try {
@@ -42,6 +63,7 @@ const quien = async req => ({ usuarioId: await actor.idDe(req) });
 router.get('/', async (req, res) => {
   res.render('planificadorV2', {
     titulo: 'Planificador', seccion: 'planificador', layout: 'layout-gestion',
+    puedeEditar: await puedeEditar(req),
     ...(await tablero.paraLaPantalla()),
   });
 });

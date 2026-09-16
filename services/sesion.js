@@ -189,7 +189,9 @@ async function controlAcceso(req, res, next) {
   if (!u) return next();               // ya lo cubre `protegido`
   if (ADMIN_TOTAL.includes(u.rol)) return next();
   if (SIEMPRE_ABIERTO.some(r => req.path === r || req.path.startsWith(r + '/'))) return next();
-  const clave = permisos.claveDeRuta(req.path);
+  // Con el METODO: en los modulos partidos en mirar/tocar, un GET pide el
+  // permiso de leer y todo lo demas el de escribir (ver `claveDeRuta`).
+  const clave = permisos.claveDeRuta(req.path, req.method);
   if (!clave) return next();
   try {
     const id = await idDeSesion(u);
