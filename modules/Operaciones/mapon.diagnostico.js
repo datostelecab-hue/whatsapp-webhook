@@ -27,6 +27,7 @@ const mapon = require('../../services/mapon');
 /**
  * @param {object} q los parámetros tal y como llegan por la URL.
  *   ?buscar=Claude          conductores cuyo nombre coincide (para ver DUPLICADOS)
+ *   ?telefono=640389649     a quién enlazaría el fichaje ese número (solo lectura)
  *   ?matricula=0417MMZ      resuelve la unidad y dice qué conductor tiene puesto
  *   ?reles=1                ¿tienen los coches relé instalado? (solo lectura)
  *   ?crudo=1                qué devuelve Mapon TAL CUAL para esa unidad
@@ -51,6 +52,25 @@ async function diagnostico(q = {}) {
     out.coincidencias = lista
       .map(d => ({ id: d.id || d.driver_id, nombre: `${d.name || ''} ${d.surname || ''}`.trim(), tel: d.phone || '' }))
       .filter(d => d.nombre.toLowerCase().includes(buscar));
+  }
+
+  // A QUIÉN ENLAZARÍA EL FICHAJE este teléfono, sin dar de alta a nadie. Es la
+  // forma de comprobar el enlace con Mapon sin abrir un turno de verdad: dice
+  // con qué nombre saldría en el coche y si ese conductor ya existe allí.
+  const telefono = (q.telefono || '').toString().replace(/\D/g, '');
+  if (telefono) {
+    const fj = require('../../services/fichaje');
+    out.telefono = { numero: telefono };
+    try {
+      const quien = await fj.quienFicha(telefono);
+      out.telefono.quien = quien;
+      if (quien.nombre) {
+        const id = await fj.conductorMapon(quien.nombre, telefono, { crear: false });
+        out.telefono.enMapon = id
+          ? { driverId: id, unidadAhora: await mapon.unidadDeConductor(id).catch(() => null) }
+          : 'NO existe todavía en Mapon (se crearía al fichar)';
+      }
+    } catch (e) { out.telefono.error = e.message; }
   }
 
   let unitId = q.unit ? String(q.unit) : null;

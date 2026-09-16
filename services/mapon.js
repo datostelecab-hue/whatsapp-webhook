@@ -447,11 +447,27 @@ async function unidadPorMatricula(matricula) {
   return null;
 }
 
-/** Todos los conductores dados de alta en Mapon. */
+/**
+ * Todos los conductores dados de alta en Mapon.
+ *
+ * Se pide `include[]=phone` a proposito. Sin el, esta cuenta devuelve los
+ * conductores SIN telefono, y entonces no hay forma de reconocer al que ya
+ * existe: se le crea otra vez y Mapon contesta 1002 "The phone has already been
+ * taken" — que fue exactamente lo que dejo al fichaje sin enlace en Mapon el
+ * 16/09/2026. Si la cuenta no admite el include, se repite la peticion pelada.
+ */
 async function listarConductores() {
-  const j = await pedir('driver/list.json', '');
-  const d = j && j.data;
-  return (d && (d.drivers || (Array.isArray(d) ? d : null))) || [];
+  const saca = j => {
+    const d = j && j.data;
+    return (d && (d.drivers || (Array.isArray(d) ? d : null))) || [];
+  };
+  try {
+    const lista = saca(await pedir('driver/list.json', incluir('phone')));
+    if (lista.length) return lista;
+  } catch (e) {
+    console.error('\u26a0\ufe0f [MAPON] driver/list con include=phone:', e.message);
+  }
+  return saca(await pedir('driver/list.json', ''));
 }
 
 /** Crea un conductor. Mapon exige nombre Y apellidos. Devuelve su id. */
@@ -517,6 +533,11 @@ async function relesDeFlota() {
     unitId: u.unit_id,
     matricula: txt(u.number) || `#${u.unit_id}`,
     estado: (u.state && u.state.name) || '',
+    // El contacto y la velocidad viajan con el rele a proposito: es lo unico que
+    // permite ver si un coche que figura BLOQUEADO esta en realidad andando, que
+    // es como se descubre que el corte no corta.
+    velocidad: Number(u.speed) || 0,
+    ignicion: u.ignition === undefined || u.ignition === null ? null : !!Number(u.ignition),
     reles: (u.relays || []).map(r => ({
       relay_id: r.relay_id, tipo: r.type, titulo: txt(r.title),
       activo: r.relay_state, habilitado: r.enabled,
@@ -636,9 +657,17 @@ async function crudoUnidad(unitId) {
   return out;
 }
 
-/** El relé de corte de motor de una unidad (o el primero que haya), o null. */
+/**
+ * El rele de CORTE DE MOTOR de una unidad, o null.
+ *
+ * Solo `engine_block`. Antes, si el coche no tenia ese tipo, se devolvia el
+ * primer rele que hubiera — y eso es accionar a ciegas un rele desconocido de un
+ * coche real (el bloqueo de puertas, una sirena, lo que el instalador pusiera
+ * ahi). Un coche sin corte de motor tiene que decir que no tiene corte de motor,
+ * no ofrecer otra cosa parecida.
+ */
 const releDeCorte = info => !info ? null
-  : (info.reles.find(r => r.tipo === 'engine_block') || info.reles[0] || null);
+  : (info.reles.find(r => r.tipo === 'engine_block') || null);
 
 /**
  * Manda la orden de cambio de relé.

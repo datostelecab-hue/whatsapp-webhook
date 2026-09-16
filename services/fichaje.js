@@ -285,38 +285,74 @@ const abiertoDeCoche = (matricula, telefono) => repo.abiertoDeCoche(matricula, t
  *     existente (aparecía su nombre completo en vez del que queríamos) y además le
  *     movía el coche que tuviera puesto. Ya no: se casa por nombre exacto.
  */
-async function conductorMapon(nombre, telefono) {
+async function conductorMapon(nombre, telefono, { crear = true } = {}) {
   const nom = String(nombre || '').trim();
   if (!nom) return null;
   const t9 = tel9(telefono);
-  let lista = [];
-  try { lista = await mapon.listarConductores(); } catch (e) { console.error('⚠️ [FICHAJE] driver/list:', e.message); }
+  const listar = async () => {
+    try { return await mapon.listarConductores(); }
+    catch (e) { console.error('⚠️ [FICHAJE] driver/list:', e.message); return []; }
+  };
+  let lista = await listar();
+  const idDe = d => d.id || d.driver_id;
 
   // 1 · POR TELÉFONO, que es lo único que no se escribe de dos maneras. Buscar
   // solo por nombre creaba un conductor nuevo cada vez que alguien tenía un
   // acento de más o el apellido en otro orden, y en Mapon se acumulaban
   // "Camilo Bedoya" y "Camilo Bedoya Corrales" como si fueran dos personas.
-  // Mapon no promete el nombre del campo, así que se miran los tres que usa.
-  const telDe = d => tel9(d.phone || d.phone_number || d.mobile || '');
+  //
+  // Y se mira en TODOS los campos del conductor, no en una lista de nombres que
+  // nos hayamos imaginado ('phone', 'mobile'...). Mapon no documenta cómo se
+  // llama ese campo ni si viene, y darlo por hecho dejó al fichaje sin enlace:
+  // no encontrábamos a nadie, creyéndolo nuevo lo creábamos, y Mapon contestaba
+  // 1002 "The phone has already been taken" — el turno se abría pero el coche se
+  // quedaba sin nombre en el mapa, que es justo lo que este módulo existe para
+  // poner. Solo se comparan valores con pinta de teléfono, para que un id largo
+  // o una fecha no pasen por uno.
+  const PINTA_DE_TEL = /^[\d\s+()-]{9,20}$/;
+  const tieneElTelefono = d => !!t9 && Object.values(d || {}).some(v => {
+    const txt = String(v == null ? '' : v);
+    return PINTA_DE_TEL.test(txt) && tel9(txt) === t9;
+  });
   if (t9) {
-    const porTel = lista.find(d => telDe(d) === t9);
-    if (porTel) return porTel.id || porTel.driver_id;
+    const porTel = lista.find(tieneElTelefono);
+    if (porTel) return idDe(porTel);
   }
 
   // 2 · Por nombre, ya sin acentos ni mayúsculas.
   const clave = norm(nom);
-  const porNombre = lista.find(d => norm(`${d.name || ''} ${d.surname || ''}`) === clave);
-  if (porNombre) return porNombre.id || porNombre.driver_id;
+  const mismoNombre = d => norm(`${d.name || ''} ${d.surname || ''}`) === clave;
+  const porNombre = lista.find(mismoNombre);
+  if (porNombre) return idDe(porNombre);
 
-  // 3 · No está: se crea con SU nombre y SU teléfono.
+  // 3 · No está. Con `crear:false` se dice que no está y ya: así el diagnóstico
+  // puede preguntar "¿a quién resolvería este teléfono?" sin dar de alta a nadie.
+  if (!crear) return null;
   const partes = nom.split(/\s+/);
-  const id = await mapon.crearConductor({
-    nombre: partes[0],
-    apellidos: partes.slice(1).join(' ') || '-',
-    telefono: t9 ? `+34${t9}` : undefined
-  });
-  console.log(`🆕 [FICHAJE] Conductor creado en Mapon: "${nom}"${t9 ? ` · +34${t9}` : ''} (id ${id})`);
-  return id;
+  const alta = { nombre: partes[0], apellidos: partes.slice(1).join(' ') || '-' };
+  try {
+    const id = await mapon.crearConductor({ ...alta, telefono: t9 ? `+34${t9}` : undefined });
+    console.log(`🆕 [FICHAJE] Conductor creado en Mapon: "${nom}"${t9 ? ` · +34${t9}` : ''} (id ${id})`);
+    return id;
+  } catch (e) {
+    if (!/1002|already been taken/i.test(e.message)) throw e;
+
+    // EL TELÉFONO YA ES DE ALGUIEN EN MAPON y la lista no nos lo enseñó. Antes,
+    // esto tumbaba el enlace entero: sin driver no se asigna el coche, y el
+    // turno quedaba anotado "Mapon no enlazó al conductor". Que Mapon no sepa
+    // enseñar un teléfono no puede costar el nombre sobre el coche.
+    lista = await listar();
+    const ya = lista.find(tieneElTelefono) || lista.find(mismoNombre);
+    if (ya) {
+      console.log(`♻️ [FICHAJE] El teléfono ya era de un conductor de Mapon: se reutiliza (id ${idDe(ya)})`);
+      return idDe(ya);
+    }
+    // Ni por teléfono ni por nombre. Se crea SIN teléfono: el nombre sobre el
+    // coche vale más que la ficha completa, y el teléfono se puede añadir luego.
+    const id = await mapon.crearConductor(alta);
+    console.log(`🆕 [FICHAJE] Conductor creado en Mapon SIN teléfono (+34${t9} ya estaba cogido): "${nom}" (id ${id})`);
+    return id;
+  }
 }
 
 // ── Operaciones ───────────────────────────────────────────────────────────────
@@ -532,14 +568,32 @@ async function repasarBloqueos({ soloMirar = false } = {}) {
     || MATRICULAS.includes(normMat(v.matricula));
 
   const flota = await mapon.relesDeFlota();
-  const bloqueados = [], omitidos = [], fallidos = [];
+  const bloqueados = [], omitidos = [], fallidos = [], fugas = [];
 
   for (const v of (flota.vehiculos || [])) {
     if (!alcanza(v)) continue;
     const rele = (v.reles || []).find(r => r.tipo === 'engine_block' && r.habilitado);
     if (!rele) continue;
-    // Ya está bloqueado: nada que hacer.
-    if (Number(rele.activo) === RELE_BLOQUEADO) continue;
+    // Ya está bloqueado: nada que hacer… salvo que esté andando.
+    if (Number(rele.activo) === RELE_BLOQUEADO) {
+      // UN COCHE BLOQUEADO QUE SE MUEVE ES UN CORTE QUE NO CORTA.
+      //
+      // El relé dice 1 y el coche arranca igual: entonces lo que ese relé abre
+      // no es el circuito que enciende el motor, y el control es de mentira. Es
+      // un fallo de instalación y no hay orden por API que lo arregle, así que
+      // aquí solo se NOMBRA — en silencio parecería que la flota está cerrada.
+      // Sin turno abierto, porque con turno el coche anda porque debe andar.
+      const anda = v.estado === 'driving' || v.velocidad > 0 || v.ignicion === true;
+      if (anda && !conTurno.has(String(v.unitId))) {
+        fugas.push({
+          matricula: v.matricula, unitId: v.unitId,
+          motivo: v.estado === 'driving' || v.velocidad > 0
+            ? `rodando a ${v.velocidad} km/h con el corte puesto`
+            : 'con el contacto dado y el corte puesto',
+        });
+      }
+      continue;
+    }
     // Alguien lo está usando y lo ha dicho. Se respeta.
     if (conTurno.has(String(v.unitId))) {
       omitidos.push({ matricula: v.matricula, motivo: 'turno abierto' });
@@ -556,16 +610,19 @@ async function repasarBloqueos({ soloMirar = false } = {}) {
     else fallidos.push({ matricula: v.matricula, motivo: r.motivo });
   }
 
-  if (bloqueados.length || fallidos.length) {
+  if (bloqueados.length || fallidos.length || fugas.length) {
     console.log(`🔒 [FICHAJE] Repaso: ${bloqueados.length} bloqueado(s)` +
       (fallidos.length ? `, ${fallidos.length} sin poder` : '') +
       (omitidos.length ? `, ${omitidos.length} en uso` : ''));
   }
-  return { activo: BLOQUEO_ACTIVO, soloMirar, bloqueados, omitidos, fallidos };
+  fugas.forEach(f => console.error(
+    `🚨 [FICHAJE] ${f.matricula}: EL CORTE NO CORTA — ${f.motivo}. Revisar la instalación del relé.`));
+  return { activo: BLOQUEO_ACTIVO, soloMirar, bloqueados, omitidos, fallidos, fugas };
 }
 
 module.exports = {
   esPruebas, nombreDe, quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
+  conductorMapon,
   liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, repasarBloqueos,
   horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO, MIN_PARADO,
   MATRICULAS, TODA_LA_FLOTA
