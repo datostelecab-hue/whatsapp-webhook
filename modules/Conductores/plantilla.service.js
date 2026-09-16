@@ -170,8 +170,29 @@ const enlazarBolt = (id, cuentaId, quien) => con.enlazarBolt(Number(id), cuentaI
 const soltarBolt = async (id, cuentaId, quien) =>
   ({ soltada: await con.soltarBolt(Number(id), Number(cuentaId), quien) });
 
-const darDeAlta = async (id, datos, quien) =>
-  ({ periodoId: await con.darDeAlta(Number(id), datos, quien) });
+/**
+ * Dar de alta desde la ficha.
+ *
+ * Y de paso poner al dia su candidatura, si tenia una a medias. Antes no: el
+ * alta se daba aqui y el proceso se quedaba donde estaba, asi que la ETT veia
+ * «Coordinacion de entrevista» para alguien que llevaba tres dias conduciendo
+ * —y el Excel que se le manda a la agencia le contaba como pendiente—.
+ *
+ * Se entra por el servicio de Seleccion, que es su puerta, y se pide aqui
+ * dentro porque los dos modulos se llaman entre si. Si falla, el alta NO se
+ * cae: la persona ya tiene contrato y eso es lo que importa.
+ */
+const darDeAlta = async (id, datos, quien) => {
+  const periodoId = await con.darDeAlta(Number(id), datos, quien);
+  let candidatura = null;
+  try {
+    candidatura = await require('../Seleccion/seleccion.service')
+      .alContratar(Number(id), { alta: (datos || {}).alta }, quien);
+  } catch (e) {
+    console.error('⚠️  [PLANTILLA] candidatura no actualizada al dar de alta:', e.message);
+  }
+  return { periodoId, candidatura };
+};
 const darDeBaja = async (id, datos, quien) =>
   ({ dado: await con.darDeBaja(Number(id), datos, quien) });
 

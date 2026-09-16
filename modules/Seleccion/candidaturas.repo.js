@@ -247,12 +247,38 @@ async function abrirContratada(conductorId, datos = {}, quien = {}) {
       ORDER BY id DESC LIMIT 1`, [id])).rows[0];
 
   if (viva) {
-    // Solo se rellena el hueco: si ya habia una fecha decidida, manda la suya.
-    if (datos.alta && !viva.inicio_previsto) {
+    // LA QUE YA EXISTE SE ADELANTA HASTA EL FINAL, que es el caso que se veia
+    // raro en la pantalla: alguien que entro por la matriz de la agencia, se le
+    // dio de alta desde otro sitio, y la ETT lo seguia viendo en «Coordinacion
+    // de entrevista» tres dias despues de estar conduciendo.
+    //
+    // Solo hacia adelante y solo desde el embudo: lo dice el ORDEN del catalogo,
+    // no una lista escrita aqui. Quien ya esta en `pendiente_pin` o mas alla no
+    // retrocede, y a una salida —descartado, no se presento— no se la pisa:
+    // esas son decisiones de una persona y tienen orden 89 para arriba.
+    const r = await db.consulta(
+      `UPDATE candidatura k
+          SET estado = 'listo_rrhh',
+              inicio_previsto = COALESCE(k.inicio_previsto, $2::date),
+              apto_at = COALESCE(k.apto_at, now()),
+              actualizado_at = now()
+         FROM cat_estado_candidatura e
+        WHERE k.id = $1 AND e.codigo = k.estado
+          AND e.orden < (SELECT orden FROM cat_estado_candidatura WHERE codigo = 'listo_rrhh')
+        RETURNING k.id`,
+      [Number(viva.id), datos.alta || null]);
+    if (!r.rows.length && datos.alta && !viva.inicio_previsto) {
+      // No se ha movido de estado (ya estaba al final, o es una salida), pero la
+      // fecha de alta si le falta y sin ella el Excel la cuenta como "sin decidir".
       await guardar(Number(viva.id), { inicio_previsto: datos.alta }, quien);
     }
-    return { id: Number(viva.id), conductorId: id, yaExistia: true };
+    return { id: Number(viva.id), conductorId: id, yaExistia: true, adelantada: !!r.rows.length };
   }
+
+  // `soloSiExiste`: al dar de alta desde la ficha no se inventa un candidato.
+  // Quien no traia proceso —una alta de plantilla propia, un traspaso— no tiene
+  // por que aparecer en la bolsa de la agencia.
+  if (datos.soloSiExiste) return { id: null, conductorId: id, yaExistia: false, creada: false };
 
   const r = await db.consulta(
     `INSERT INTO candidatura

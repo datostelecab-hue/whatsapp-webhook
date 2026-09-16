@@ -335,10 +335,20 @@ const direccion = b => ((b.via && b.via.trim())
   })
   : geocodificar(b.direccion));
 
+/**
+ * AL CONTRATAR A ALGUIEN POR OTRA PUERTA: que su candidatura lo diga.
+ *
+ * La usa el alta desde la ficha de Plantilla. Aqui no se abre proceso a quien
+ * no lo tiene —eso seria inventarse un candidato—: solo se adelanta el que ya
+ * estaba a medias. Quien no tenga ninguna se queda como esta.
+ */
+const alContratar = (conductorId, { alta } = {}, quien = {}) =>
+  cand.abrirContratada(Number(conductorId), { alta, soloSiExiste: true }, quien);
+
 module.exports = {
   DOCUMENTOS,
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
-  abrir, guardar, cambiarEstado, pasarARRHH, eliminar,
+  abrir, guardar, cambiarEstado, pasarARRHH, eliminar, alContratar,
   tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, guardarPin, pinPorTelefono, pendientesTramo,
   subirDocumento, retirarDocumento, descargarDocumento, fichaPDF,
   direccion,
