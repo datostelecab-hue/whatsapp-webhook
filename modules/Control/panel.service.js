@@ -137,25 +137,39 @@ async function historial(matricula, dias = 2) {
  * uuid con los que rodó; de ahí sus tramos. Cada trazo lleva su matrícula, porque el
  * conductor puede cambiar de coche a lo largo del día.
  */
-async function historialConductor(conductorId, dias = 1) {
+async function historialConductor(conductorId, opciones = 1) {
+  // Admite las dos formas: el `dias` de siempre (En directo mira hacia atrás
+  // desde ahora) y `{ dia }` para una jornada cerrada (el Histórico mira un día
+  // concreto, 05:00 → 05:00, que es la ventana con la que cuenta todo el ERP).
+  const o = (opciones && typeof opciones === 'object') ? opciones : { dias: opciones };
+  const dias = String(Number(o.dias) > 0 ? Number(o.dias) : 1);
+  const dia = o.dia ? String(o.dia).slice(0, 10) : null;
+
   const r = await db.consulta(
-    `WITH tr AS (
+    `WITH w AS (
+       SELECT CASE WHEN $3::date IS NULL THEN now() - ($2 || ' days')::interval
+                   ELSE ($3::date + interval '5 hours') AT TIME ZONE 'Europe/Madrid' END AS ini,
+              CASE WHEN $3::date IS NULL THEN now()
+                   ELSE LEAST((($3::date + 1) + interval '5 hours') AT TIME ZONE 'Europe/Madrid', now())
+              END AS fin
+     ),
+     tr AS (
        SELECT t.id, t.vehiculo_uuid, t.situacion, t.desde,
               COALESCE(t.hasta, now()) AS hasta
-         FROM fv_tramo t
+         FROM fv_tramo t CROSS JOIN w
         WHERE t.conductor_uuid IN (
                 SELECT externo_id FROM conductor_externo
                  WHERE sistema = 'bolt' AND conductor_id = $1 AND externo_id IS NOT NULL)
-          AND t.desde >= now() - ($2 || ' days')::interval
+          AND t.desde >= w.ini AND t.desde < w.fin
      ),
      -- Los trayectos de Mapon de esa misma ventana, con un margen por detrás:
      -- uno que empezó antes puede seguir rodando dentro del primer tramo.
      ru AS (
        SELECT r.unit_id, r.inicio, r.fin, r.metros
-         FROM fv_ruta r
+         FROM fv_ruta r CROSS JOIN w
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND r.inicio >= now() - ($2 || ' days')::interval - interval '6 hours'
-          AND r.inicio <= now()
+          AND r.inicio >= w.ini - interval '6 hours'
+          AND r.inicio <= w.fin
      ),
      -- LOS QUE SIGUEN ABIERTOS. Mapon da el trayecto en cuanto arranca, con
      -- fin en NULL y 0 metros, y no le pone los kilómetros hasta que el coche
@@ -163,9 +177,10 @@ async function historialConductor(conductorId, dias = 1) {
      -- 0 km y parece que el dato esté mal — y no lo está: aún no ha llegado.
      abierta AS (
        SELECT r.unit_id, r.inicio
-         FROM fv_ruta r
+         FROM fv_ruta r CROSS JOIN w
         WHERE r.fin IS NULL
-          AND r.inicio >= now() - ($2 || ' days')::interval - interval '12 hours'
+          AND r.inicio >= w.ini - interval '12 hours'
+          AND r.inicio <= w.fin
      ),
      -- LOS KM DE CADA TRAMO SALEN DE fv_ruta, NO DE fv_tramo.km_m.
      --
@@ -192,15 +207,15 @@ async function historialConductor(conductorId, dias = 1) {
             EXISTS (SELECT 1 FROM abierta a
                      WHERE a.unit_id = v.mapon_unit
                        AND a.inicio < COALESCE(t.hasta, now()))            AS en_curso
-       FROM fv_tramo t
+       FROM fv_tramo t CROSS JOIN w
        JOIN fv_vehiculo v      ON v.uuid = t.vehiculo_uuid
        JOIN fv_cat_situacion s ON s.codigo = t.situacion
        LEFT JOIN km ON km.id = t.id
       WHERE t.conductor_uuid IN (
               SELECT externo_id FROM conductor_externo
                WHERE sistema = 'bolt' AND conductor_id = $1 AND externo_id IS NOT NULL)
-        AND t.desde >= now() - ($2 || ' days')::interval
-      ORDER BY t.desde DESC`, [Number(conductorId), String(dias)]);
+        AND t.desde >= w.ini AND t.desde < w.fin
+      ORDER BY t.desde DESC`, [Number(conductorId), dias, dia]);
   return r.rows.map(x => ({
     matricula: x.matricula || '(sin matrícula)',
     situacion: x.situacion, etiqueta: x.etiqueta,

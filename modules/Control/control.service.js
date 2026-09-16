@@ -132,6 +132,17 @@ async function campanasInforme({ dia, turno } = {}) {
 
 const historico = dia => historicoSrv.parte(dia);
 
+/**
+ * Los trazos de una persona en una jornada concreta, con los km de cada uno.
+ *
+ * Es el mismo listado que En directo enseña al desplegar una fila, pero mirando
+ * un día cerrado en vez de las últimas 24 h. Se pide al abrir el bloque y no
+ * con el parte entero: son 20-30 líneas por persona y el parte trae ochenta.
+ */
+const trazos = (conductorId, dia) =>
+  require('./panel.service').historialConductor(Number(conductorId), { dia })
+    .then(historial => ({ historial }));
+
 // Cada día del informe recalcula el cockpit entero (unos 5 s). Ver la nota 3.
 const MAX_DIAS_INFORME = 7;
 
@@ -375,7 +386,7 @@ module.exports = {
   hoyMadrid, diaOperativoHoy,
   paraLaPantalla, vistaDeCampanas,
   directo, campanas, campanasInforme,
-  historico, historicoExcel,
+  historico, historicoExcel, trazos,
   apuntarLlamada, listarLlamadas, justificarEnDirecto,
   kmTraza, kmDiagnostico,
   asistenciaPdf, asistenciaExcel, asistenciaPeriodo, auditoriaLunesExcel,

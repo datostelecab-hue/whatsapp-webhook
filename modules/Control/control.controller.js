@@ -95,6 +95,11 @@ router.get('/api/campanas-informe', responde(req =>
 
 router.get('/api/historico', responde(req => control.historico(req.query.dia)));
 
+// Los trazos de una persona ese día, con los km de cada uno. Bajo demanda: el
+// parte trae ochenta personas y nadie despliega ochenta.
+router.get('/api/trazos/:conductorId', responde(req =>
+  control.trazos(req.params.conductorId, req.query.dia)));
+
 router.get('/api/km-traza', responde(req => control.kmTraza(req.query.dia, req.query.turno)));
 
 // Ej: /control/api/km-diagnostico?dia=2026-09-01&mats=9521MMX,6663LCY&mapon=1

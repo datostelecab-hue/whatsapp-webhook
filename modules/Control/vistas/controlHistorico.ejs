@@ -96,6 +96,9 @@
   const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
     m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
   const num = n => String(Math.round(Number(n || 0) * 10) / 10).replace('.', ',');
+  // La hora de un instante, para los trazos. Las llamadas ya vienen con la
+  // suya hecha del servidor; esto es para lo que llega en crudo.
+  const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
 
   let datos = null, vista = 'todo', filtro = '';
 
@@ -214,7 +217,8 @@
         (a.contestada ? '<i class="fa-solid fa-check mr-1 opacity-70"></i>' : '') +
         esc(a.etiqueta) + '</span>').join(' ');
 
-    return '<details class="hfila ' + barra + ' border-b border-telecab-border/60">' +
+    return '<details class="hfila ' + barra + ' border-b border-telecab-border/60" ' +
+      'data-cid="' + esc(c.conductorId || '') + '">' +
       '<summary class="px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 hover:bg-telecab-dark/30">' +
         '<i class="fa-solid fa-chevron-right hchevron text-telecab-muted text-xs w-3"></i>' +
         '<span class="font-semibold text-telecab-text min-w-[11rem] flex-1 truncate">' + esc(c.conductor) + '</span>' +
@@ -290,6 +294,15 @@
                 (r.porQuien ? ' — ' + esc(r.porQuien) : '') + '</p>' +
             '</div>').join('') +
         '</div>' +
+        // LOS TRAZOS DE SU JORNADA, con los km de cada uno. Se piden al abrir la
+        // fila y no con el parte: son treinta líneas por persona y el parte trae
+        // ochenta personas.
+        '<div class="lg:col-span-2">' +
+          '<p class="text-[11px] uppercase tracking-wide text-telecab-muted">Sus trazos de la jornada</p>' +
+          '<p class="text-[10px] text-telecab-muted/70 mb-1">Los km de cada trazo salen de los trayectos de Mapon, ' +
+            'repartidos por tiempo. En ámbar, los que rodó fuera de BOLT.</p>' +
+          '<div class="htrazos text-telecab-muted text-xs">Se cargan al abrir…</div>' +
+        '</div>' +
       '</div>' +
     '</details>';
   }
@@ -315,6 +328,7 @@
       ? lista.map(filaConductor).join('')
       : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nada que contar con este filtro.</p>';
     $('#h-cuenta').textContent = lista.length + ' de ' + datos.conductores.length;
+    enganchaTrazos();
 
     $('#h-vistas').innerHTML = VISTAS.map(x => {
       const n = datos.conductores.filter(x.hay).length;
@@ -325,6 +339,15 @@
     }).join('');
     $('#h-vistas').querySelectorAll('button').forEach(b =>
       b.addEventListener('click', () => { vista = b.dataset.vista; pintaLista(); }));
+  }
+
+  /** El evento `toggle` NO burbujea, así que se ata a cada fila al pintarla. */
+  function enganchaTrazos() {
+    $('#h-lista').querySelectorAll('details.hfila').forEach(det => {
+      if (det.dataset.enganchado) return;
+      det.dataset.enganchado = '1';
+      det.addEventListener('toggle', () => { if (det.open) cargaTrazos(det); });
+    });
   }
 
   function pintaNN() {
@@ -349,6 +372,38 @@
             '</div>' : '') +
         (n.llamadas.length ? '<div class="mt-1.5 space-y-1.5">' + pintaLlamadas(n.llamadas) + '</div>' : '') +
       '</div>').join('');
+  }
+
+  /** Los trazos de una persona, una sola vez por apertura. */
+  async function cargaTrazos(det) {
+    const caja = det.querySelector('.htrazos');
+    if (!caja || caja.dataset.cargado) return;
+    caja.dataset.cargado = '1';
+    const cid = (det.dataset.cid || '').trim();
+    const dia = $('#h-dia').value;
+    if (!cid) { caja.textContent = 'Sin ficha enlazada a BOLT — sin trazos.'; return; }
+    try {
+      const r = await fetch('/control/api/trazos/' + encodeURIComponent(cid) + '?dia=' + encodeURIComponent(dia));
+      const d = await r.json();
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudieron leer');
+      const h = d.historial || [];
+      caja.innerHTML = h.length
+        ? '<div class="space-y-1">' + h.map(t =>
+            '<div class="flex items-center gap-2">' +
+              '<span class="tabular-nums text-telecab-muted w-24">' + hora(t.desde) +
+                (t.hasta ? '–' + hora(t.hasta) : '–sin cerrar') + '</span>' +
+              '<span class="font-mono text-telecab-muted w-20">' + esc(t.matricula || '') + '</span>' +
+              '<span class="text-telecab-text w-24">' + esc(t.etiqueta || t.situacion) + '</span>' +
+              '<span class="text-telecab-muted w-20">' + esc(t.duracion || '') + '</span>' +
+              '<span class="tabular-nums ' + (t.fuera ? 'text-amber-300 font-semibold' : 'text-telecab-muted') + '">' +
+                (t.enCurso && !t.km ? '<span class="opacity-60 italic">en curso</span>' : num(t.km || 0) + ' km') +
+              '</span>' +
+            '</div>').join('') + '</div>'
+        : 'Sin trazos esa jornada.';
+    } catch (e) {
+      caja.textContent = 'No se pudieron cargar los trazos.';
+      caja.dataset.cargado = '';
+    }
   }
 
   async function carga() {
