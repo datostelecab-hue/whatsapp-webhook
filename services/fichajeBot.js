@@ -26,7 +26,9 @@ const MAT = /^[A-Za-z0-9]{6,8}$/;
 /** Panel principal: según haya turno abierto o no, ofrece unos botones u otros. */
 async function panel(telefono, cabecera) {
   const { abierto, turno } = await fichaje.estado(telefono);
-  const nombre = fichaje.nombreDe(telefono) || 'conductor';
+  // El mismo nombre que se pone en Mapon: su ficha, su usuario o, si no hay
+  // ninguno, el de la lista de pruebas.
+  const nombre = (await fichaje.nombreParaSaludar(telefono)) || 'conductor';
   if (abierto) {
     const desde = fichaje.horaES(turno.inicio);
     const txt = (cabecera ? cabecera + '\n\n' : '') +
@@ -85,7 +87,7 @@ async function manejarBoton(telefono, buttonId) {
 }
 
 async function abrirTurno(telefono, matricula) {
-  const nombre = fichaje.nombreDe(telefono) || 'Conductor';
+  const nombre = (await fichaje.nombreParaSaludar(telefono)) || 'Conductor';
   let r;
   try {
     r = await fichaje.iniciar({ telefono, nombre, matricula });

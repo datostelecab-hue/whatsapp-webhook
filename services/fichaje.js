@@ -200,8 +200,62 @@ function duracion(seg) {
 
 /** ¿Este teléfono participa en la prueba? */
 const esPruebas = telefono => Object.prototype.hasOwnProperty.call(PRUEBAS, tel9(telefono));
-/** Nombre con el que saludar (el configurado en la lista de pruebas, si lo hay). */
+/** El nombre que le pone la lista de pruebas, si es que le pone alguno. */
 const nombreDe = telefono => PRUEBAS[tel9(telefono)] || '';
+
+/** Sin acentos, sin dobles espacios y en minúsculas: para comparar nombres. */
+const norm = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * QUIÉN ESTÁ FICHANDO, con su nombre de verdad.
+ *
+ * El nombre no es un adorno de la conversación: es el que se crea y se asigna
+ * en MAPON, así que es el que Tráfico va a ver sobre el coche en el mapa y el
+ * que queda en el histórico de la plataforma. Que ahí pusiera "Claude code" —el
+ * nombre que traía la lista de pruebas— era justo lo que había que quitar.
+ *
+ * El orden dice quién manda:
+ *   1 · su FICHA de conductor, si conduce para nosotros. Además ata el turno a
+ *       su id, que es lo que permite a la auditoría señalar personas y no
+ *       matrículas.
+ *   2 · su USUARIO del sistema. Hoy quien prueba esto es de oficina; mañana
+ *       serán los que abran puertas sin ser conductores.
+ *   3 · la lista de pruebas, que era lo único que había antes.
+ *
+ * Si ninguna sabe su nombre se devuelve vacío y el turno NO se abre: fichar sin
+ * nombre dejaría un coche asignado a nadie en Mapon, que es peor que no fichar.
+ */
+async function quienFicha(telefono) {
+  const t9 = tel9(telefono);
+  try {
+    const p = await require('../modules/Conductores/plantilla.service').buscarPersona({ telefono: t9 });
+    if (p && p.nombre) return { nombre: String(p.nombre).trim(), conductorId: p.id, usuarioId: null, origen: 'conductor' };
+  } catch (e) { console.error('⚠️ [FICHAJE] no se pudo mirar la plantilla:', e.message); }
+
+  try {
+    const u = await require('../modules/Usuarios/usuarios.service').buscarUsuarioPorTelefono(t9);
+    if (u && u.nombre) {
+      return { nombre: `${u.nombre} ${u.apellidos || ''}`.trim(), conductorId: null, usuarioId: u.id, origen: 'usuario' };
+    }
+  } catch (e) { console.error('⚠️ [FICHAJE] no se pudo mirar los usuarios:', e.message); }
+
+  const n = nombreDe(t9);
+  return { nombre: n, conductorId: null, usuarioId: null, origen: n ? 'lista de pruebas' : 'desconocido' };
+}
+
+/** Con quién se habla en el WhatsApp. El mismo nombre que verá Mapon. */
+const nombreParaSaludar = async telefono => (await quienFicha(telefono)).nombre || '';
+
+/**
+ * La referencia del turno: la que sale en los mensajes y en el panel.
+ *
+ * Lleva MILÉSIMAS y no segundos, y no es un detalle: terminar un turno y abrir
+ * otro dentro del mismo segundo daba dos veces la misma referencia, la base la
+ * rechazaba por repetida —es UNIQUE— y el conductor recibía un "ya tienes un
+ * turno abierto" cuando acababa de cerrarlo. Un doble toque en el botón bastaba.
+ */
+const referencia = telefono => `${tel9(telefono)}-${Date.now()}`;
 
 // ── Libro de turnos ───────────────────────────────────────────────────────────
 
@@ -234,19 +288,34 @@ const abiertoDeCoche = (matricula, telefono) => repo.abiertoDeCoche(matricula, t
 async function conductorMapon(nombre, telefono) {
   const nom = String(nombre || '').trim();
   if (!nom) return null;
+  const t9 = tel9(telefono);
   let lista = [];
   try { lista = await mapon.listarConductores(); } catch (e) { console.error('⚠️ [FICHAJE] driver/list:', e.message); }
-  const clave = nom.toLowerCase();
-  const encontrado = lista.find(d => `${d.name || ''} ${d.surname || ''}`.trim().toLowerCase() === clave);
-  if (encontrado) return encontrado.id || encontrado.driver_id;
 
+  // 1 · POR TELÉFONO, que es lo único que no se escribe de dos maneras. Buscar
+  // solo por nombre creaba un conductor nuevo cada vez que alguien tenía un
+  // acento de más o el apellido en otro orden, y en Mapon se acumulaban
+  // "Camilo Bedoya" y "Camilo Bedoya Corrales" como si fueran dos personas.
+  // Mapon no promete el nombre del campo, así que se miran los tres que usa.
+  const telDe = d => tel9(d.phone || d.phone_number || d.mobile || '');
+  if (t9) {
+    const porTel = lista.find(d => telDe(d) === t9);
+    if (porTel) return porTel.id || porTel.driver_id;
+  }
+
+  // 2 · Por nombre, ya sin acentos ni mayúsculas.
+  const clave = norm(nom);
+  const porNombre = lista.find(d => norm(`${d.name || ''} ${d.surname || ''}`) === clave);
+  if (porNombre) return porNombre.id || porNombre.driver_id;
+
+  // 3 · No está: se crea con SU nombre y SU teléfono.
   const partes = nom.split(/\s+/);
   const id = await mapon.crearConductor({
     nombre: partes[0],
     apellidos: partes.slice(1).join(' ') || '-',
-    telefono: telefono ? `+34${tel9(telefono)}` : undefined
+    telefono: t9 ? `+34${t9}` : undefined
   });
-  console.log(`🆕 [FICHAJE] Conductor creado en Mapon: "${nom}" (id ${id})`);
+  console.log(`🆕 [FICHAJE] Conductor creado en Mapon: "${nom}"${t9 ? ` · +34${t9}` : ''} (id ${id})`);
   return id;
 }
 
@@ -303,6 +372,11 @@ async function iniciar({ telefono, nombre, matricula }) {
   if (yaAbierto) {
     return { ok: false, motivo: 'ya-abierto', turno: yaAbierto };
   }
+
+  // QUIÉN ES, antes que nada: su nombre es lo que va a ver Mapon sobre el coche.
+  const quien = await quienFicha(telefono);
+  const nom = quien.nombre || String(nombre || '').trim();
+  if (!nom) return { ok: false, motivo: 'sin-nombre' };
   const unidad = await mapon.unidadPorMatricula(matricula);
   if (!unidad) return { ok: false, motivo: 'sin-matricula' };
 
@@ -316,7 +390,7 @@ async function iniciar({ telefono, nombre, matricula }) {
   // para devolvérselo al terminar y no dejarle la ficha tocada.
   let driverId = '', notas = '', unitPrevia = '', errorMapon = '';
   try {
-    driverId = await conductorMapon(nombre, telefono);
+    driverId = await conductorMapon(nom, telefono);
     if (driverId) {
       const previa = await mapon.unidadDeConductor(driverId).catch(() => null);
       if (previa && String(previa.unitId) !== String(unidad.unitId)) {
@@ -331,19 +405,14 @@ async function iniciar({ telefono, nombre, matricula }) {
     console.error('⚠️ [FICHAJE] asignar:', e.message);
   }
 
-  // A QUIÉN es, si lo sabemos. El fichaje está en pruebas y responde a una lista
-  // de teléfonos que no tienen por qué ser conductores, así que puede faltar —y
-  // el turno se abre igual—. Pero cuando se sabe, se ata: es lo que permite que
-  // la auditoría pase de señalar matrículas a señalar personas.
-  let conductorId = null;
-  try {
-    const p = await require('../modules/Conductores/plantilla.service')
-      .buscarPersona({ telefono });
-    conductorId = p ? p.id : null;
-  } catch (e) { console.error('⚠️ [FICHAJE] no se pudo identificar el teléfono:', e.message); }
+  // La ficha, si la tiene. Puede faltar —el fichaje responde a teléfonos que no
+  // tienen por qué ser conductores— y el turno se abre igual; pero cuando se
+  // sabe, se ata: es lo que permite que la auditoría pase de señalar matrículas
+  // a señalar personas.
+  const conductorId = quien.conductorId || null;
 
   const turno = {
-    id: `${tel9(telefono)}-${ahoraSeg()}`, telefono: tel9(telefono), nombre, conductorId,
+    id: referencia(telefono), telefono: tel9(telefono), nombre: nom, conductorId,
     matricula: unidad.matricula, unitId: String(unidad.unitId), driverId: String(driverId || ''),
     inicio: ahoraSeg(), fin: 0, km: null, trayectos: 0, atribuidos: 0, estado: 'abierto', notas, unitPrevia
   };
@@ -357,9 +426,11 @@ async function iniciar({ telefono, nombre, matricula }) {
   // Con el turno YA registrado se libera el motor: si algo fallara, el turno consta
   // igual y el coche se puede desbloquear a mano desde el panel.
   const mot = await liberarMotor(unidad.unitId);
-  console.log(`🟢 [FICHAJE] ${nombre} inicia turno en ${unidad.matricula} (unit ${unidad.unitId})` +
+  console.log(`🟢 [FICHAJE] ${nom} (${quien.origen}) inicia turno en ${unidad.matricula} (unit ${unidad.unitId})` +
+    (driverId ? ` · Mapon driver ${driverId}` : ' · SIN enlace en Mapon') +
     (BLOQUEO_ACTIVO ? ` · motor ${mot.hecho ? 'LIBRE' : 'NO liberado: ' + mot.motivo}` : ''));
-  return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId, errorMapon, motor: mot, bloqueoActivo: BLOQUEO_ACTIVO };
+  return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId, errorMapon,
+    motor: mot, bloqueoActivo: BLOQUEO_ACTIVO, quien };
 }
 
 /** Km recorridos por el coche desde que empezó el turno hasta ahora. */
@@ -494,7 +565,7 @@ async function repasarBloqueos({ soloMirar = false } = {}) {
 }
 
 module.exports = {
-  esPruebas, nombreDe, estado, iniciar, terminar, kmDelTurno,
+  esPruebas, nombreDe, quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
   liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, repasarBloqueos,
   horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO, MIN_PARADO,
   MATRICULAS, TODA_LA_FLOTA

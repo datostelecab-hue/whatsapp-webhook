@@ -76,6 +76,11 @@ async function unitsConocidos() {
   return r.rows.map(x => x.unit_id);
 }
 
+// Los dos indices unicos que dicen "esta persona / este coche YA tiene turno
+// abierto" (db/125). Se miran por su nombre para no confundirlos con cualquier
+// otra unicidad de la tabla.
+const ABIERTO = new Set(['uq_ft_persona_abierta', 'uq_ft_coche_abierto']);
+
 /**
  * Abre un turno.
  *
@@ -100,7 +105,11 @@ async function crear(t) {
        t.unitId || '', t.driverId || '', t.unitPrevia || '', t.inicio, t.notas || '']);
     return aTurno(r.rows[0]);
   } catch (e) {
-    if (e.code === '23505') return null;      // ya hay uno abierto
+    // SOLO los dos indices de "turno abierto" significan "ya lo tiene". Un
+    // 23505 cualquiera —la referencia repetida, por ejemplo— NO es eso, y
+    // tragarselo aqui lo disfrazaba: el conductor recibia "ya tienes un turno
+    // abierto" cuando no lo tenia, y no habia forma de saber por que.
+    if (e.code === '23505' && ABIERTO.has(e.constraint)) return null;
     throw e;
   }
 }

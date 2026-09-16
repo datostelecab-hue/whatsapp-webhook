@@ -131,6 +131,25 @@ async function buscarUsuario(email) {
 }
 
 /**
+ * El usuario que tiene ESTE telefono, o null.
+ *
+ * Por los ULTIMOS NUEVE digitos, como en el resto del sistema: el mismo numero
+ * esta escrito de cuatro maneras distintas (con +34, con 0034, con espacios) y
+ * comparar cadenas enteras solo acierta por casualidad.
+ *
+ * La usa el fichaje por WhatsApp para saber a quien esta saludando cuando quien
+ * ficha no es un conductor sino alguien de oficina.
+ */
+async function buscarUsuarioPorTelefono(telefono) {
+  const t9 = String(telefono == null ? '' : telefono).replace(/\D/g, '').slice(-9);
+  if (t9.length !== 9) return null;
+  const r = await db.consulta(
+    SELECT + " WHERE right(regexp_replace(COALESCE(u.telefono, ''), '[^0-9]', '', 'g'), 9) = $1"
+    + ' ORDER BY u.id LIMIT 1', [t9]);
+  return aObjeto(r.rows[0]);
+}
+
+/**
  * El mismo usuario, pero buscado por id.
  *
  * Hace falta porque la sesion lleva el id, no el email: pedirlo por email
@@ -331,7 +350,8 @@ const olvidarCorte = id => _corte.delete(Number(id));
 
 module.exports = {
   roles, esRol, ESTADOS_U,
-  leerUsuarios, buscarUsuario, buscarUsuarioPorId, olvidarUsuario, crearUsuario, actualizarUsuario,
+  leerUsuarios, buscarUsuario, buscarUsuarioPorId, buscarUsuarioPorTelefono,
+  olvidarUsuario, crearUsuario, actualizarUsuario,
   fijarPassword, generarTokenReset, tokenResetValido, registrarAcceso,
   guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,
   hashPassword, verificarHash, generarPasswordProvisional,
