@@ -540,7 +540,11 @@
    * —"Dirección", "Contacto"—, que es como se edita desde la hoja: se pincha
    * en el lápiz del bloque que se está mirando y salen sus campos, no los treinta.
    */
-  async function accionDatos(d, soloGrupo) {
+  async function accionDatos(d, grupoPedido) {
+    // Un apartado es un NOMBRE. Si llega cualquier otra cosa —el componente, un
+    // evento— se trata como "todos": vale más abrir de más que contestar con un
+    // "[object Object]" que no dice nada a nadie.
+    const soloGrupo = typeof grupoPedido === 'string' ? grupoPedido : '';
     let meta;
     try { meta = await camposFicha(); } catch (e) { return alert(e.message); }
 
@@ -930,7 +934,13 @@
         // El TURNO y las LIBRANZAS no se editan desde aquí: los decide el
         // planificador, que es donde vive la plaza. Cambiarlos en la ficha
         // creaba una segunda verdad que al día siguiente el cuadrante pisaba.
-        { texto: 'Editar datos', icono: 'fa-pen', visible: () => !SOLO_OPERATIVO, onClick: accionDatos },
+        // OJO CON LA FLECHA: el listado llama `onClick(d, this)`, y ese `this` es
+        // el propio componente. Pasando `accionDatos` a pelo, el componente
+        // entraba como `soloGrupo` y no casaba con ningún apartado, así que el
+        // botón contestaba «Tu rol no puede editar los campos de "[object
+        // Object]"» — a todo el mundo, tuviera el rol que tuviera.
+        { texto: 'Editar datos', icono: 'fa-pen', visible: () => !SOLO_OPERATIVO,
+          onClick: d => accionDatos(d) },
         // Solo a quien está de alta POR UNA ETT: al de plantilla propia no hay
         // nada que convertirle.
         { texto: 'Pasar a propia', icono: 'fa-building-user',
