@@ -111,13 +111,22 @@ async function motor(unitId, bloquear, { porOrden = false } = {}) {
     const info = await mapon.relesDeUnidad(unitId);
     const rele = mapon.releDeCorte(info);
     if (!rele || !rele.habilitado) return { hecho: false, motivo: 'sin relé de corte' };
-    // El equipo declara control_while_moving=0: con el coche rodando no se toca,
-    // ni para bloquear ni para liberar.
+    // CON EL COCHE EN MARCHA NO SE CORTA. Pero SOLTAR sí se intenta siempre.
+    //
+    // Antes esta regla valía para las dos cosas, y eso cerraba una trampa: el
+    // 5646MDM (16/09/2026) se quedó parado con el corte puesto y, como Mapon lo
+    // daba por "Conduciendo" a 0 km/h, no había forma de soltarlo —y sin soltarlo
+    // no se podía apagar, y sin apagarlo no dejaba de estar "conduciendo"—. Para
+    // salir hubo que mandar la orden a mano, saltando esta comprobación.
+    //
+    // Soltar no deja tirado a nadie nunca; negarse a soltar, sí. Si el equipo lo
+    // rechaza de verdad (control_while_moving=0), lo dirá Mapon y se verá en el
+    // motivo — pero la decisión es suya, no nuestra.
     //
     // `reintentable` porque el repaso SÍ lo recogerá cuando el coche pare. Sin
     // esta marca el mensaje se quedaba en "no se ha bloqueado" a secas, y quien
     // lo leía no sabía si tenía que hacer algo o no.
-    if (info.enMarcha) {
+    if (bloquear && info.enMarcha) {
       return { hecho: false, motivo: `coche en marcha (${info.velocidad} km/h)`, reintentable: true };
     }
     // YA ESTÁ COMO SE QUIERE: no se manda nada.
