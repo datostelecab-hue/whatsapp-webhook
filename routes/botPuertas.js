@@ -129,7 +129,17 @@ async function handleText(phone, text) {
     return;
   }
 
-  const matriculaRegex = /^[A-Za-z0-9]{4,8}$/;
+  // QUE PAREZCA UNA MATRICULA DE VERDAD, no cualquier palabra corta.
+  //
+  // Con {4,8} y sin mas, "hola" era una matricula perfectamente valida: seis
+  // letras o menos y a buscar en Mapon. Ignacio saludó al bot y le contestó
+  // «Matrícula "HOLA" no encontrada» sin saludarle siquiera. Lo mismo con
+  // "buenas", "gracias", "adios" o "vale".
+  //
+  // Toda matricula española lleva digitos y tiene entre 6 y 8 caracteres: la
+  // moderna son 4 numeros y 3 letras; la antigua, provincia + 4 numeros +
+  // letras. Exigir un digito basta para que ninguna palabra pase por coche.
+  const matriculaRegex = /^(?=.*\d)[A-Za-z0-9]{6,8}$/;
   
   if (matriculaRegex.test(text)) {
     const matricula = text.toUpperCase();
