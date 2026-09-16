@@ -33,6 +33,22 @@
         </label>
       </div>
 
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <label class="block">
+          <span class="text-xs text-telecab-muted">Base imponible (€)</span>
+          <input name="base" inputmode="decimal" placeholder="1203,41"
+                 class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 tabular-nums">
+          <!-- Es contra la BASE contra lo que cuadran las líneas: los talleres
+               facturan los artículos sin IVA. -->
+          <span class="text-[11px] text-telecab-muted">Es con esta contra la que cuadran las líneas.</span>
+        </label>
+        <label class="block">
+          <span class="text-xs text-telecab-muted">IVA (€)</span>
+          <input name="iva" inputmode="decimal" placeholder="252,72"
+                 class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 tabular-nums">
+        </label>
+      </div>
+
       <div>
         <div class="flex items-center justify-between mb-2">
           <div>
@@ -265,13 +281,17 @@
   function recalcular() {
     const suma = [...$('#fm-lineas').querySelectorAll('tr')]
       .reduce((a, tr) => a + num(tr.querySelector('[name=importe]').value), 0);
+    // Si el total lleva IVA y las lineas son la base, restarlos canta el IVA
+    // como si faltara dinero. Se compara contra la base cuando la hay.
     const total = num($('#fm-form').total.value);
-    const dif = +(total - suma).toFixed(2);
+    const base = num($('#fm-form').base.value);
+    const contra = base || total;
+    const dif = +(contra - suma).toFixed(2);
     // El descuadre se AVISA, no se impide: una factura trae portes, descuentos y
     // redondeos que no son de ningún coche. Obligar a cuadrarlo al céntimo
     // acabaría con alguien inventándose una línea para poder guardar.
     $('#fm-suma').innerHTML = `Las líneas suman <strong>${esc(eur(suma))}</strong>` +
-      (total ? ` · total de la factura <strong>${esc(eur(total))}</strong>` +
+      (contra ? ` · ${base ? 'base' : 'total'} de la factura <strong>${esc(eur(contra))}</strong>` +
         (Math.abs(dif) >= 0.01
           ? ` · <span class="text-telecab-warn">quedan ${esc(eur(dif))} sin repartir</span>`
           : ' · <span class="text-telecab-green">cuadra</span>') : '');
@@ -304,6 +324,20 @@
     $('#fm-cancelar').addEventListener('click', cerrar);
     $('#fm-mas').addEventListener('click', anadirFila);
     $('#fm-form').total.addEventListener('input', recalcular);
+    $('#fm-form').base.addEventListener('input', recalcular);
+
+    // Cortesia con quien teclea: si pone el total y no la base, se le ofrece la
+    // del 21%. Se RELLENA el campo, no se calcula por detras: asi lo ve y lo
+    // corrige si esa factura lleva otro IVA.
+    $('#fm-form').total.addEventListener('blur', () => {
+      const f = $('#fm-form');
+      const t = num(f.total.value);
+      if (t && !num(f.base.value)) {
+        f.base.value = (t / 1.21).toFixed(2).replace('.', ',');
+        f.iva.value = (t - t / 1.21).toFixed(2).replace('.', ',');
+        recalcular();
+      }
+    });
 
     $('#fm-form').addEventListener('submit', async ev => {
       ev.preventDefault();
@@ -318,6 +352,7 @@
       }));
       const cuerpo = {
         proveedorId: f.proveedorId.value, numero: f.numero.value, fecha: f.fecha.value,
+        base: f.base.value, iva: f.iva.value,
         total: f.total.value, notas: f.notas.value, lineas,
       };
       try {

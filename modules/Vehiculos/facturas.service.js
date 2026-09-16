@@ -58,10 +58,17 @@ async function alta(datos = {}, quien = {}) {
   const r = await repo.crear({ ...datos, sede, lineas }, quien);
   const f = await repo.ficha(r.id);
   const suma = f.lineasDetalle.reduce((a, l) => a + l.importe, 0);
+  // EL DESCUADRE SE MIDE CONTRA LA BASE, NO CONTRA EL TOTAL.
+  //
+  // Los talleres facturan los artículos SIN IVA y el total con él. Comparándolo
+  // con el total, una factura perfecta avisaba de que "quedan 528,76 € sin
+  // repartir" — que era justo el IVA. Se vio al cargar las nueve facturas
+  // reales: las siete daban descuadre y ninguna lo tenía.
+  const referencia = f.base != null ? f.base : f.total;
   return {
     ...r,
     // Se devuelve para que la pantalla lo diga, no para impedir el alta.
-    descuadre: +(f.total - suma).toFixed(2),
+    descuadre: +(referencia - suma).toFixed(2),
     lineas: f.lineasDetalle.length,
     // Dos avisos distintos, porque se arreglan de forma distinta: el NN se le
     // reclama al taller y la matrícula desconocida se comprueba aquí.
