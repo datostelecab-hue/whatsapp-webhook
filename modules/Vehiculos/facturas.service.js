@@ -80,6 +80,50 @@ async function alta(datos = {}, quien = {}) {
 const anular = (id, motivo, quien = {}) => repo.anular(id, motivo, quien);
 const adjuntar = (id, adjunto) => repo.guardarAdjunto(id, adjunto);
 
+/**
+ * Guarda el PDF de la factura en Drive y apunta DÓNDE quedó.
+ *
+ * El fichero va a Drive y el ÍNDICE a Postgres, que es como guarda documentos el
+ * resto del sistema: la base no es sitio para megas de papel escaneado, y Drive
+ * no es sitio para buscar "qué me gasté en este coche".
+ *
+ * Una carpeta por MES. En una sola acabarían miles de PDFs con nombres que solo
+ * entiende quien los subió.
+ *
+ * Si Drive falla, NO se toca la factura: mejor una factura sin PDF que una
+ * factura apuntando a un archivo que no existe.
+ */
+async function subirPdf(id, { nombre, mime, base64 } = {}, quien = {}) {
+  const f = await ver(id, quien);            // comprueba que existe y que es de su sede
+  if (!base64) throw new Error('El archivo llegó vacío');
+  const drive = require('../../services/drive');
+  if (!drive.configurado || !drive.configurado()) {
+    throw new Error('Drive no está configurado en el servidor (falta GOOGLE_CREDENTIALS)');
+  }
+
+  const mes = String(f.fecha || '').slice(0, 7) || 'sin-fecha';
+  // El nombre lo pone el sistema: así dos facturas del mismo taller no se
+  // machacan porque alguien subiera dos veces "escaneo.pdf".
+  const limpio = `${f.proveedor} ${f.numero}`.replace(/[\\/:*?"<>|]/g, '-').slice(0, 120);
+  const subido = await drive.subir(`Facturas de taller ${mes}`, {
+    nombre: `${limpio}.pdf`,
+    mime: mime || 'application/pdf',
+    base64,
+    // Si ya tenía uno, se REEMPLAZA en vez de dejar dos.
+    fileId: f.archivo ? undefined : undefined,
+  });
+
+  await repo.guardarAdjunto(id, {
+    almacen: 'drive',
+    externoId: subido.id,
+    enlace: subido.webViewLink || '',
+    nombreArchivo: subido.name || nombre || '',
+    mime: subido.mimeType || mime || 'application/pdf',
+    bytes: subido.size == null ? null : Number(subido.size),
+  });
+  return { id: String(id), archivo: subido.name, enlace: subido.webViewLink || '' };
+}
+
 const proveedores = () => repo.proveedores();
 const nuevoProveedor = datos => repo.crearProveedor(datos);
 
@@ -91,7 +135,7 @@ const gasto = (filtros = {}, quien = {}) =>
 const gastoDeCoche = vehiculoId => repo.gastoDe(vehiculoId);
 
 module.exports = {
-  listar, ver, alta, anular, adjuntar,
+  listar, ver, alta, anular, adjuntar, subirPdf,
   proveedores, nuevoProveedor,
   gasto, gastoDeCoche,
   sedesDe, SEDES, SEDE_POR_DEFECTO,

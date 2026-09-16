@@ -15,6 +15,10 @@
 
 const express = require('express');
 const router = express.Router();
+
+// El PDF llega en base64 dentro del JSON, y una factura escaneada pasa de largo
+// los 2 MB del parser global — que por eso se salta esta ruta en app.js.
+router.use('/api/pdf', express.json({ limit: '30mb' }));
 // Por el SERVICIO, que es la puerta. El repositorio no se toca desde aquí.
 const facturas = require('./facturas.service');
 const actor = require('../../services/repo/actor');
@@ -108,5 +112,9 @@ router.post('/api/anular', responde(exigeApuntar((req, ctx) =>
   facturas.anular(req.body.id, req.body.motivo, ctx))));
 
 router.post('/api/proveedor', responde(exigeApuntar(req => facturas.nuevoProveedor(req.body))));
+
+/** El PDF de la factura: a Drive, y en la base solo dónde quedó. */
+router.post('/api/pdf', responde(exigeApuntar((req, ctx) =>
+  facturas.subirPdf(req.body.id, req.body, ctx))));
 
 module.exports = router;

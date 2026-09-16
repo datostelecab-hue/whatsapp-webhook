@@ -177,6 +177,8 @@
       subtitulo: d => [fecha(d.fecha), eur(d.total), d.anulada ? 'ANULADA' : ''].filter(Boolean).join(' · '),
 
       acciones: [
+        ...(PUEDE ? [{ texto: 'Subir PDF', icono: 'fa-file-arrow-up', principal: true,
+          visible: d => !d.anulada, onClick: subirPdf }] : []),
         ...(PUEDE ? [{ texto: 'Anular', icono: 'fa-ban', peligro: true,
           visible: d => !d.anulada, onClick: anular }] : []),
       ],
@@ -368,6 +370,45 @@
         if (avisos.length) Dialogo.abrir({ titulo: 'Factura guardada', html: avisos.join('<br>'), tono: 'ok', opciones: [{ texto: 'Entendido' }] });
       } catch (e) { Dialogo.aviso({ titulo: 'No se pudo guardar', texto: e.message, tono: 'error' }); }
     });
+  }
+
+  /**
+   * El PDF de la factura, a Drive.
+   *
+   * El fichero se lee en el navegador y viaja en base64 dentro del JSON, como
+   * el resto de adjuntos del sistema. Se avisa del tamaño antes de mandarlo:
+   * un escaneo de 20 MB tarda, y sin aviso parece que se ha colgado.
+   */
+  async function subirPdf(d) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,image/*';
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      if (file.size > 25 * 1024 * 1024) {
+        return Dialogo.aviso({ titulo: 'Demasiado grande',
+          texto: `Ese archivo ocupa ${(file.size / 1048576).toFixed(1)} MB y el límite son 25.`, tono: 'error' });
+      }
+      const base64 = await new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result).split(',')[1]);
+        fr.onerror = () => rej(new Error('No se pudo leer el archivo'));
+        fr.readAsDataURL(file);
+      });
+      try {
+        const r = await pedir('/facturas/api/pdf', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: d.id, nombre: file.name, mime: file.type, base64 }),
+        });
+        lista.recargar();
+        Dialogo.abrir({ titulo: 'PDF guardado', tono: 'ok',
+          html: `Está en Drive como <strong>${esc(r.archivo)}</strong>.` +
+            (r.enlace ? ` <a href="${esc(r.enlace)}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline">Abrirlo</a>` : ''),
+          opciones: [{ texto: 'Entendido' }] });
+      } catch (e) { Dialogo.aviso({ titulo: 'No se pudo subir', texto: e.message, tono: 'error' }); }
+    });
+    input.click();
   }
 
   async function anular(d) {

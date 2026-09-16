@@ -10,7 +10,7 @@ const jsonGlobal = express.json({ limit: '2mb' });
 // Rutas que suben archivos en base64 y ponen su PROPIO limite mas alto dentro
 // de su router. Tienen que saltarse este parser: si corre antes, rechaza la
 // peticion por tamano y el limite de dentro no llega a aplicarse nunca.
-const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento'];
+const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento', '/facturas/api/pdf'];
 app.use((req, res, next) => {
   if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);
