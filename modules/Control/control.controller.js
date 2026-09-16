@@ -100,6 +100,10 @@ router.get('/api/historico', responde(req => control.historico(req.query.dia)));
 router.get('/api/trazos/:conductorId', responde(req =>
   control.trazos(req.params.conductorId, req.query.dia)));
 
+// Toda su historia de llamadas, la de Control y la del Call Center juntas.
+router.get('/api/historial-llamadas/:conductorId', responde(req =>
+  control.historialLlamadas(req.params.conductorId)));
+
 router.get('/api/km-traza', responde(req => control.kmTraza(req.query.dia, req.query.turno)));
 
 // Ej: /control/api/km-diagnostico?dia=2026-09-01&mats=9521MMX,6663LCY&mapon=1

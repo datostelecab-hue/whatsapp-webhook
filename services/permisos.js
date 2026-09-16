@@ -161,6 +161,7 @@ const RUTA_A_CLAVE = [
   ['/control/api/km-diagnostico', '/control/km'],
   ['/control/api/llamadas',       '/control/historico'],
   ['/control/api/trazos',         '/control/historico'],
+  ['/control/api/historial-llamadas', '/control/historico'],
   ['/control/api/historico',      '/control/historico'],
   ['/control/campanas',           '/control'],
   // Escribir en la bitácora es otro permiso que leerla: sin estas tres líneas

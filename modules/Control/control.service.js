@@ -143,6 +143,21 @@ const trazos = (conductorId, dia) =>
   require('./panel.service').historialConductor(Number(conductorId), { dia })
     .then(historial => ({ historial }));
 
+/**
+ * TODAS las llamadas que se le han hecho a una persona, no las de ese día.
+ *
+ * No se calcula aquí: es la misma historia que enseña el Call Center en su
+ * pestaña «Por conductor» —las de Control y las suyas, juntas y ordenadas—, y
+ * dos formas de contar las llamadas de alguien acabarían diciendo cosas
+ * distintas el día que una de las dos se quede sin tocar.
+ *
+ * Se sirve desde aquí y no desde /callcenter para que el permiso sea el de esta
+ * pantalla: quien lleva el Histórico tiene que poder abrir el historial de
+ * alguien sin que le den además el módulo de Call Center entero.
+ */
+const historialLlamadas = conductorId =>
+  require('./callcenter.service').historiaConductor(Number(conductorId));
+
 // Cada día del informe recalcula el cockpit entero (unos 5 s). Ver la nota 3.
 const MAX_DIAS_INFORME = 7;
 
@@ -386,7 +401,7 @@ module.exports = {
   hoyMadrid, diaOperativoHoy,
   paraLaPantalla, vistaDeCampanas,
   directo, campanas, campanasInforme,
-  historico, historicoExcel, trazos,
+  historico, historicoExcel, trazos, historialLlamadas,
   apuntarLlamada, listarLlamadas, justificarEnDirecto,
   kmTraza, kmDiagnostico,
   asistenciaPdf, asistenciaExcel, asistenciaPeriodo, auditoriaLunesExcel,
