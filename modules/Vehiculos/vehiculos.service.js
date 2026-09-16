@@ -66,7 +66,7 @@ async function diaria() {
 // qué la puerta existe igualmente.
 const listar = opciones => veh.listar(opciones);
 const ficha = id => veh.ficha(id);
-const resumen = () => veh.resumen();
+const resumen = sedes => veh.resumen(sedes);
 const catalogos = () => veh.catalogos();
 const crear = (datos, usuarioId) => veh.crear(datos, usuarioId);
 const actualizar = (id, campos, usuarioId) => veh.actualizar(id, campos, usuarioId);

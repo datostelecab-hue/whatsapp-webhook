@@ -20,6 +20,21 @@ const router = express.Router();
 const taller = require('./taller.service');
 const actor = require('../../services/repo/actor');
 const permisos = require('../../services/permisos');
+const facturas = require('./facturas.service');
+
+/**
+ * Las sedes que ve quien pregunta. Sin la llave '/vehiculos/sedes', solo Madrid
+ * — que es la flota que Óscar mantiene. Ante cualquier fallo, Madrid.
+ */
+async function sedesDe(req) {
+  const u = req.usuario || {};
+  if (ADMIN_TOTAL.includes(u.rol)) return facturas.SEDES;
+  try {
+    const id = (u && u.id) || await actor.idDe(req);
+    const claves = id ? await permisos.clavesDe(id) : null;
+    return claves && claves.has('/vehiculos/sedes') ? facturas.SEDES : [facturas.SEDE_POR_DEFECTO];
+  } catch (_) { return [facturas.SEDE_POR_DEFECTO]; }
+}
 
 const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
 
@@ -62,7 +77,7 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/api/cuadro', responde(async req => ({
-  filas: await taller.cuadro({ busca: req.query.busca, estado: req.query.estado }),
+  filas: await taller.cuadro({ busca: req.query.busca, estado: req.query.estado, sedes: await sedesDe(req) }),
   resumen: await taller.resumen(),
 })));
 

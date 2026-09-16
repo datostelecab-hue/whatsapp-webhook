@@ -94,15 +94,23 @@ function aCentimos(v) {
  * si entra a taller. Se calcula ENTERO en SQL menos el semáforo, que se decide
  * aquí para que la regla se lea de un vistazo.
  */
-async function cuadro({ busca, estado } = {}) {
+/**
+ * `sedes` es opcional por lo mismo que en vehiculos.repo: aquí también entran
+ * procesos que necesitan la flota entera. Quien filtra es la pantalla.
+ */
+async function cuadro({ busca, estado, sedes } = {}) {
   // Solo lo que USA el SQL: Postgres rechaza la consulta si sobran parámetros.
   // El umbral de aviso y el de "imposible" se aplican después, en pintar().
   const params = [INTERVALO, CUENTAN];
-  let filtroBusca = '';
+  let filtroBusca = '', filtroSede = '';
   if (busca && String(busca).trim()) {
     params.push('%' + String(busca).trim().toUpperCase().replace(/[^0-9A-Z]/g, '') + '%');
     params.push('%' + String(busca).trim() + '%');
     filtroBusca = `AND (v.matricula_norm LIKE $${params.length - 1} OR v.marca_modelo ILIKE $${params.length})`;
+  }
+  if (Array.isArray(sedes) && sedes.length) {
+    params.push(sedes);
+    filtroSede = `AND v.sede = ANY($${params.length}::varchar[])`;
   }
 
   const r = await db.consulta(`
@@ -145,7 +153,7 @@ async function cuadro({ busca, estado } = {}) {
       LEFT JOIN v_vehiculo_odometro o ON o.vehiculo_id = v.id
       LEFT JOIN ult u                 ON u.vehiculo_id = v.id
       LEFT JOIN ritmo r               ON r.vehiculo_id = v.id
-     WHERE v.baja_at IS NULL ${filtroBusca}
+     WHERE v.baja_at IS NULL ${filtroBusca} ${filtroSede}
      ORDER BY v.matricula`, params);
 
   const filas = r.rows.map(pintar);

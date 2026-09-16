@@ -121,6 +121,7 @@
 (function () {
   const TONO = <%- JSON.stringify(TONO_ESTADO) %>;
   const { fecha, fechaHora, hace, km, etiqueta, caduca, esc } = Listado.fmt;
+  const VER_SEDES = <%- JSON.stringify(!!verTodasLasSedes) %>;
 
   // ---------- la pantalla ----------
 
@@ -183,6 +184,9 @@
       { titulo: 'Seguro', campo: 'seguro_caduca', clase: 'whitespace-nowrap',
         pinta: (v, f) => caduca(f.dias_seguro, fecha(v)) },
       { titulo: 'Zona', campo: 'zona' },
+      ...(VER_SEDES ? [{ titulo: 'Sede', campo: 'sede',
+        pinta: v => etiqueta(v === 'barcelona' ? 'Barcelona' : 'Madrid',
+          v === 'barcelona' ? 'violet' : 'muted') }] : []),
       { titulo: 'Kilómetros', campo: 'km_odometro_m', clase: 'whitespace-nowrap tabular-nums',
         pinta: (v, f) => v
           ? `${km(v)} <span class="text-telecab-muted text-xs">${esc(hace(f.km_odometro_at))}</span>`

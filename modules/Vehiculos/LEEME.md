@@ -2,7 +2,7 @@
 
 El maestro de coches: alta, ficha, estados, zonas, plazas y el enlace con Mapon.
 
-Son dos áreas con las mismas capas cada una. Comparten módulo porque hablan del
+Son TRES áreas con las mismas capas cada una. Comparten módulo porque hablan del
 mismo objeto —el coche— pero no de lo mismo: una lleva el maestro (alta, ficha,
 zona, plazas) y otra cuándo le toca revisión. Un solo trío para las dos daría un
 fichero que no abre nadie entero.
@@ -19,7 +19,48 @@ taller.repo.js            su SQL
 taller.excel.js           el informe en Excel
 taller.pdf.js             el mismo, para imprimir
 vistas/taller.ejs         la pantalla (/taller)
+
+facturas.controller.js    idem para /facturas
+facturas.service.js       LA PUERTA de las facturas de taller
+facturas.repo.js          su SQL
+vistas/facturas.ejs       la pantalla (/facturas)
 ```
+
+## Una factura NO es de un coche
+
+Es lo que hay que entender antes de tocar `facturas.*`, y se vio mirando las
+facturas de verdad: iPark manda una al mes con varios albaranes dentro, cada uno
+con su matrícula; MotorLine manda una por coche; y DISCOM factura un bidón de
+aceite de 200 litros que no es de ninguno.
+
+Por eso la matrícula vive en las LÍNEAS. Y una línea tiene tres estados que no
+se pueden mezclar, porque cada uno se arregla de una forma:
+
+| | | |
+|---|---|---|
+| enlazada | la matrícula casó con una ficha | el gasto va a ese coche |
+| **NN** | el papel no dice de qué coche es | se le **reclama al taller** |
+| no reconocida | el papel sí lo dice y no la tenemos | se **comprueba aquí** |
+
+Los dos últimos empezaron contados juntos y lo destapó una prueba: una matrícula
+mal tecleada salía como NN, y entonces se le reclama al taller algo que sí había
+puesto.
+
+## La sede
+
+`vehiculo.sede` (madrid/barcelona) es de qué OPERACIÓN es el coche;
+`base_zona_id` es desde qué barrio sale dentro de ella. Son dos preguntas y por
+eso son dos campos: con uno solo hay que elegir entre saber que un coche está en
+Barcelona o saber que sale de Usera.
+
+Quién ve qué lo decide el permiso `/vehiculos/sedes`. Sin él se ve solo Madrid,
+que es lo que mantiene Óscar.
+
+⚠️ **En `facturas.repo` el filtro de sedes es OBLIGATORIO** —se niega a listar
+sin él— y en `vehiculos.repo` y `taller.repo` es OPCIONAL. No es una
+incoherencia: por esos dos también entran el cron de Mapon y el planificador, y
+a un coche de Barcelona hay que seguir apuntándole los kilómetros aunque Óscar
+no lo vea. Quien filtra es la pantalla.
 
 ## La puerta
 

@@ -16,10 +16,21 @@ const vig = require('../../services/repo/vigencia');
  * Listado con todo lo que la pantalla necesita, en UNA consulta.
  * Antes esto eran tres lecturas de hojas enteras cruzadas en JavaScript.
  */
-async function listar({ estado, zona, busca, incluirBajas = false } = {}) {
+/**
+ * `sedes` es OPCIONAL y sin él NO se filtra, al revés que en facturas.
+ *
+ * No es un descuido: por aquí también entran el cron de Mapon y el planificador,
+ * y esos necesitan la flota ENTERA — a un coche de Barcelona hay que seguir
+ * apuntándole los kilómetros aunque Óscar no lo vea—. Quien filtra es la
+ * PANTALLA, y el controlador lo pasa siempre.
+ */
+async function listar({ estado, zona, busca, sedes, incluirBajas = false } = {}) {
   const params = [];
   const donde = [];
   if (!incluirBajas) donde.push('v.baja_at IS NULL');
+  if (Array.isArray(sedes) && sedes.length) {
+    params.push(sedes); donde.push(`v.sede = ANY($${params.length}::varchar[])`);
+  }
   if (estado) { params.push(estado); donde.push(`v.estado_operativo = $${params.length}`); }
   if (zona)   { params.push(Number(zona)); donde.push(`v.base_zona_id = $${params.length}`); }
   if (busca && String(busca).trim()) {
@@ -30,7 +41,7 @@ async function listar({ estado, zona, busca, incluirBajas = false } = {}) {
   }
 
   const r = await db.consulta(`
-    SELECT v.id, v.matricula, v.marca_modelo, v.anio,
+    SELECT v.id, v.matricula, v.marca_modelo, v.anio, v.sede,
            v.fecha_matriculacion, v.itv_caduca, v.aseguradora, v.seguro_caduca,
            v.estado_operativo, e.etiqueta AS estado_etiqueta, e.es_operativo,
            v.base_zona_id, b.nombre AS zona,
@@ -92,20 +103,26 @@ async function ficha(id) {
 }
 
 /** Contadores para las tarjetas de la cabecera. */
-async function resumen() {
+async function resumen(sedes) {
+  // Las cuentas de arriba tienen que cuadrar con la lista de abajo: si la
+  // pantalla enseña 89 coches y el contador dice 94, quien lo mira deja de
+  // fiarse de los dos números.
+  const filtro = Array.isArray(sedes) && sedes.length ? sedes : null;
   const r = await db.consulta(`
     SELECT e.codigo, e.etiqueta, e.es_operativo, e.orden,
            count(v.id)::int coches
     FROM cat_estado_vehiculo e
     LEFT JOIN vehiculo v ON v.estado_operativo = e.codigo AND v.baja_at IS NULL
-    GROUP BY e.codigo, e.etiqueta, e.es_operativo, e.orden ORDER BY e.orden`);
+                        AND ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
+    GROUP BY e.codigo, e.etiqueta, e.es_operativo, e.orden ORDER BY e.orden`, [filtro]);
   const alertas = await db.consulta(`
     SELECT count(*) FILTER (WHERE itv_caduca    < CURRENT_DATE)                    itv_caducada,
            count(*) FILTER (WHERE itv_caduca    BETWEEN CURRENT_DATE AND CURRENT_DATE + 30) itv_pronto,
            count(*) FILTER (WHERE seguro_caduca < CURRENT_DATE)                    seguro_caducado,
            count(*) FILTER (WHERE seguro_caduca BETWEEN CURRENT_DATE AND CURRENT_DATE + 30) seguro_pronto,
            count(*) FILTER (WHERE km_odometro_at < now() - INTERVAL '3 days')       odometro_viejo
-    FROM vehiculo WHERE baja_at IS NULL`);
+    FROM vehiculo WHERE baja_at IS NULL
+      AND ($1::varchar[] IS NULL OR sede = ANY($1::varchar[]))`, [filtro]);
   return { porEstado: r.rows, alertas: alertas.rows[0] };
 }
 

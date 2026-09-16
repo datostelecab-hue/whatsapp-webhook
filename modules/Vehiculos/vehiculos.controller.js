@@ -22,6 +22,8 @@ const router = express.Router();
 // fuera llama al repositorio: ver vehiculos.service.js.
 const veh = require('./vehiculos.service');
 const actor = require('../../services/repo/actor');
+const permisos = require('../../services/permisos');
+const facturas = require('./facturas.service');
 
 router.get('/', async (req, res) => {
   let catalogos = { estados: [], zonas: [] };
@@ -31,6 +33,9 @@ router.get('/', async (req, res) => {
   res.render('vehiculos', {
     titulo: 'Vehículos', seccion: 'vehiculos', layout: 'layout-gestion',
     estadosVehiculo: catalogos.estados, zonas: catalogos.zonas,
+    // Solo quien ve las DOS sedes necesita una columna que las distinga: a quien
+    // ve Madrid entero, una columna con "Madrid" en las 89 filas no le dice nada.
+    verTodasLasSedes: (await sedesDe(req)).length > 1,
   });
 });
 
@@ -38,11 +43,27 @@ router.get('/', async (req, res) => {
 
 // La lista y los contadores viajan juntos: son una sola pantalla y así no se
 // pintan desincronizados.
+/**
+ * Las sedes que ve quien pregunta. El sistema se usa en Madrid: quien no tenga
+ * '/vehiculos/sedes' ve solo Madrid, que es lo que Óscar controla. Ante
+ * cualquier fallo, Madrid — nunca de más.
+ */
+async function sedesDe(req) {
+  const u = req.usuario || {};
+  if (['superadmin', 'desarrollador'].includes(u.rol)) return facturas.SEDES;
+  try {
+    const id = (u && u.id) || await actor.idDe(req);
+    const claves = id ? await permisos.clavesDe(id) : null;
+    return claves && claves.has('/vehiculos/sedes') ? facturas.SEDES : [facturas.SEDE_POR_DEFECTO];
+  } catch (_) { return [facturas.SEDE_POR_DEFECTO]; }
+}
+
 router.get('/api/lista', async (req, res) => {
   try {
+    const sedes = await sedesDe(req);
     const [filas, resumen] = await Promise.all([
-      veh.listar({ incluirBajas: req.query.bajas === '1' }),
-      veh.resumen(),
+      veh.listar({ incluirBajas: req.query.bajas === '1', sedes }),
+      veh.resumen(sedes),
     ]);
     res.json({ filas, resumen });
   } catch (error) {
