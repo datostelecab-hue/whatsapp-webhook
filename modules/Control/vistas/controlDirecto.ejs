@@ -725,8 +725,13 @@
       '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
         acept + jor + traza + acciones +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos del coche</div>' + inc + '</div>' +
-        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Trazos · últimas 24 h · ' +
-          esc(f.conductor) + '</div><div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
+        '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted">Trazos · últimas 24 h · ' +
+          esc(f.conductor) + '</div>' +
+          // Se dice una vez aquí y no en cada línea: un trayecto entra cuando el
+          // coche PARA, así que lo que está rodando ahora todavía marca 0 km.
+          '<div class="text-[10px] text-telecab-muted/70 mb-1">Los km de cada trazo salen de los trayectos de Mapon, ' +
+          'repartidos por tiempo. Un trayecto suma cuando el coche para: lo que se está rodando ahora aún marca 0.</div>' +
+          '<div class="dtrazos text-telecab-muted">Cargando trazos…</div></div>' +
       '</div></div>';
   }
 
@@ -789,7 +794,14 @@
               '<span class="tabular-nums text-telecab-muted w-24">' + hora(t.desde) + (t.hasta ? '–' + hora(t.hasta) : '–ahora') + '</span>' +
               '<span class="font-mono text-telecab-muted w-20">' + esc(t.matricula || '') + '</span>' +
               '<span class="text-telecab-text w-24">' + esc(t.etiqueta || t.situacion) + '</span>' +
-              '<span class="text-telecab-muted">' + esc(t.duracion || '') + '</span>' +
+              '<span class="text-telecab-muted w-20">' + esc(t.duracion || '') + '</span>' +
+              // LOS KM DE ESE TRAZO. En ámbar cuando se rodaron FUERA de BOLT
+              // (descanso o desconectado): es la línea que hay que preguntar.
+              // Un 0 km también dice algo —el coche estuvo parado— así que se
+              // pinta siempre y no solo cuando hay kilómetros.
+              '<span class="tabular-nums ' + (t.fuera ? 'text-amber-500 font-semibold' : 'text-telecab-muted') + '" ' +
+                'title="' + (t.fuera ? 'Rodados fuera de BOLT: no cuentan como trabajo' : 'Km rodados en este trazo') + '">' +
+                n1(t.km || 0) + ' km</span>' +
             '</div>').join('') + '</div>'
         : '<span class="text-telecab-muted">Sin trazos en las últimas 24 h.</span>';
     } catch (e) {

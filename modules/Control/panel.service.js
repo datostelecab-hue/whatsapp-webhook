@@ -139,11 +139,50 @@ async function historial(matricula, dias = 2) {
  */
 async function historialConductor(conductorId, dias = 1) {
   const r = await db.consulta(
-    `SELECT v.matricula, t.situacion, s.etiqueta, t.desde, t.hasta,
-            EXTRACT(EPOCH FROM (COALESCE(t.hasta, now()) - t.desde))::bigint AS segundos
+    `WITH tr AS (
+       SELECT t.id, t.vehiculo_uuid, t.situacion, t.desde,
+              COALESCE(t.hasta, now()) AS hasta
+         FROM fv_tramo t
+        WHERE t.conductor_uuid IN (
+                SELECT externo_id FROM conductor_externo
+                 WHERE sistema = 'bolt' AND conductor_id = $1 AND externo_id IS NOT NULL)
+          AND t.desde >= now() - ($2 || ' days')::interval
+     ),
+     -- Los trayectos de Mapon de esa misma ventana, con un margen por detrás:
+     -- uno que empezó antes puede seguir rodando dentro del primer tramo.
+     ru AS (
+       SELECT r.unit_id, r.inicio, r.fin, r.metros
+         FROM fv_ruta r
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
+          AND r.inicio >= now() - ($2 || ' days')::interval - interval '6 hours'
+          AND r.inicio <= now()
+     ),
+     -- LOS KM DE CADA TRAMO SALEN DE fv_ruta, NO DE fv_tramo.km_m.
+     --
+     -- km_m es el salto de odómetro dentro del tramo y el odómetro solo llega
+     -- a ratos: los kilómetros acaban cayendo en el tramo que estuviera abierto
+     -- cuando Mapon habló —11,1 km imputados a un descanso de 12 minutos—. Aquí
+     -- se hace lo mismo que en el cockpit y en los reportes: cada trayecto se
+     -- reparte entre los tramos que pisa EN PROPORCIÓN AL TIEMPO, así que un
+     -- viaje de 10 km que cae mitad en espera y mitad desconectado son 5 y 5.
+     km AS (
+       SELECT tr.id,
+              sum(ru.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                    LEAST(ru.fin, tr.hasta) - GREATEST(ru.inicio, tr.desde))))
+                  / NULLIF(EXTRACT(EPOCH FROM (ru.fin - ru.inicio)), 0)) AS metros
+         FROM tr
+         JOIN fv_vehiculo v ON v.uuid = tr.vehiculo_uuid
+         JOIN ru ON ru.unit_id = v.mapon_unit
+                AND ru.inicio < tr.hasta AND ru.fin > tr.desde
+        GROUP BY tr.id
+     )
+     SELECT v.matricula, t.situacion, s.etiqueta, t.desde, t.hasta,
+            EXTRACT(EPOCH FROM (COALESCE(t.hasta, now()) - t.desde))::bigint AS segundos,
+            round(COALESCE(km.metros, 0)::numeric / 1000.0, 1) AS km
        FROM fv_tramo t
        JOIN fv_vehiculo v      ON v.uuid = t.vehiculo_uuid
        JOIN fv_cat_situacion s ON s.codigo = t.situacion
+       LEFT JOIN km ON km.id = t.id
       WHERE t.conductor_uuid IN (
               SELECT externo_id FROM conductor_externo
                WHERE sistema = 'bolt' AND conductor_id = $1 AND externo_id IS NOT NULL)
@@ -153,6 +192,11 @@ async function historialConductor(conductorId, dias = 1) {
     matricula: x.matricula || '(sin matrícula)',
     situacion: x.situacion, etiqueta: x.etiqueta,
     desde: x.desde, hasta: x.hasta, duracion: duracion(x.segundos),
+    km: x.km == null ? 0 : Number(x.km),
+    // Rodar en viaje o en espera es trabajo; en descanso o desconectado, no.
+    // Se dice aquí y no en la pantalla para que el día que cambie el catálogo
+    // no haya dos sitios que lo decidan.
+    fuera: !['viaje', 'espera'].includes(x.situacion) && Number(x.km) > 0.05,
   }));
 }
 
