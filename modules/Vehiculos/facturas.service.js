@@ -78,6 +78,17 @@ async function alta(datos = {}, quien = {}) {
 }
 
 const anular = (id, motivo, quien = {}) => repo.anular(id, motivo, quien);
+
+/**
+ * Le pone coche a una línea que estaba sin él (o le corrige la matrícula).
+ * Se comprueba antes que la factura sea de una sede que esa persona pueda ver.
+ */
+async function asignarCoche(facturaId, lineaId, datos, quien = {}) {
+  await ver(facturaId, quien);
+  const r = await repo.ponerCoche(lineaId, datos);
+  if (String(r.facturaId) !== String(facturaId)) throw new Error('Esa línea no es de esa factura');
+  return r;
+}
 const adjuntar = (id, adjunto) => repo.guardarAdjunto(id, adjunto);
 
 /**
@@ -135,7 +146,7 @@ const gasto = (filtros = {}, quien = {}) =>
 const gastoDeCoche = vehiculoId => repo.gastoDe(vehiculoId);
 
 module.exports = {
-  listar, ver, alta, anular, adjuntar, subirPdf,
+  listar, ver, alta, anular, adjuntar, subirPdf, asignarCoche,
   proveedores, nuevoProveedor,
   gasto, gastoDeCoche,
   sedesDe, SEDES, SEDE_POR_DEFECTO,

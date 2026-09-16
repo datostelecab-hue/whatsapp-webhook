@@ -231,6 +231,36 @@ async function anular(id, motivo, { usuarioId } = {}) {
   return { id: String(id) };
 }
 
+/**
+ * Le pone matrícula (y kilómetros) a una línea.
+ *
+ * Es la operación del día a día: llega una factura sin matrícula, se reclama al
+ * taller, el taller dice de qué coche era y hay que poder apuntarlo sin volver a
+ * teclear la factura entera.
+ *
+ * La matrícula se guarda SIEMPRE como texto, se reconozca o no. Si el coche no
+ * está en la flota eso no es un fallo que haya que esconder: es un dato — puede
+ * ser de otra empresa del grupo, o estar mal escrito— y la pantalla lo dice.
+ */
+async function ponerCoche(lineaId, { matricula, km } = {}) {
+  const mat = normMat(matricula);
+  if (!mat) throw new Error('Falta la matrícula');
+  const v = await db.consulta(
+    'SELECT id FROM vehiculo WHERE matricula_norm = $1 ORDER BY baja_at NULLS FIRST LIMIT 1', [mat]);
+  const vehiculoId = v.rows[0] ? v.rows[0].id : null;
+  const r = await db.consulta(
+    `UPDATE factura_taller_linea
+        SET vehiculo_id = $2,
+            matricula_texto = $3,
+            km = COALESCE($4, km)
+      WHERE id = $1
+      RETURNING id, factura_id`,
+    [Number(lineaId), vehiculoId, String(matricula).trim().toUpperCase(),
+     km == null || km === '' ? null : Math.round(Number(km))]);
+  if (!r.rows.length) throw new Error('Esa línea no existe');
+  return { id: String(r.rows[0].id), facturaId: String(r.rows[0].factura_id), reconocido: !!vehiculoId };
+}
+
 /** El PDF: se guarda dónde quedó, no el fichero. */
 async function guardarAdjunto(id, { almacen, externoId, enlace, nombreArchivo, mime, bytes }) {
   const r = await db.consulta(
@@ -327,7 +357,7 @@ async function gastoDe(vehiculoId) {
 
 module.exports = {
   proveedores, crearProveedor,
-  lista, ficha, crear, anular, guardarAdjunto,
+  lista, ficha, crear, anular, guardarAdjunto, ponerCoche,
   gastoPorVehiculo, gastoDe,
   EXIGE_MATRICULA_DESDE,
 };

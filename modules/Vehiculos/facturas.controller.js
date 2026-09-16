@@ -113,6 +113,10 @@ router.post('/api/anular', responde(exigeApuntar((req, ctx) =>
 
 router.post('/api/proveedor', responde(exigeApuntar(req => facturas.nuevoProveedor(req.body))));
 
+/** Ponerle coche a una línea NN, cuando el taller por fin dice de cuál era. */
+router.post('/api/linea/coche', responde(exigeApuntar((req, ctx) =>
+  facturas.asignarCoche(req.body.facturaId, req.body.lineaId, req.body, ctx))));
+
 /** El PDF de la factura: a Drive, y en la base solo dónde quedó. */
 router.post('/api/pdf', responde(exigeApuntar((req, ctx) =>
   facturas.subirPdf(req.body.id, req.body, ctx))));

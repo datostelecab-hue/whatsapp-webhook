@@ -222,6 +222,13 @@
               { titulo: 'Importe', campo: 'importe', clase: 'tabular-nums whitespace-nowrap',
                 pinta: v => eur(v) },
             ],
+            // La operacion del dia a dia: llega la factura sin matricula, se le
+            // reclama al taller y cuando contesta hay que poder apuntarlo sin
+            // volver a teclear la factura entera.
+            acciones: PUEDE ? [
+              { icono: 'fa-car', titulo: 'Decir de que coche es (o corregirlo)',
+                onClick: (linea, d) => asignarCoche(d.id, linea) },
+            ] : [],
           },
         },
       ],
@@ -409,6 +416,36 @@
       } catch (e) { Dialogo.aviso({ titulo: 'No se pudo subir', texto: e.message, tono: 'error' }); }
     });
     input.click();
+  }
+
+  /**
+   * Ponerle coche a una línea.
+   *
+   * Es lo del día a día: llega una factura sin matrícula, se le reclama al taller,
+   * el taller dice de qué coche era y hay que apuntarlo sin volver a teclear la
+   * factura entera. También sirve para corregir una mal escrita.
+   */
+  async function asignarCoche(facturaId, linea) {
+    const v = await Dialogo.formulario('¿De qué coche es esta línea?', [
+      { id: 'matricula', etiqueta: 'Matrícula', obligatorio: true, valor: linea.matricula || '',
+        ayuda: 'Se guarda tal como la escribas, aunque el coche no esté en la flota.' },
+      { id: 'km', etiqueta: 'Kilómetros', valor: linea.km == null ? '' : String(linea.km),
+        ayuda: 'Los que marcaba el coche ese día, si vienen en el papel.' },
+    ], { nota: `${linea.albaran ? 'Albarán ' + linea.albaran + ' · ' : ''}${eur(linea.importe)}` });
+    if (!v || !v.matricula) return;
+    try {
+      const r = await pedir('/facturas/api/linea/coche', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facturaId, lineaId: linea.id, matricula: v.matricula, km: v.km }),
+      });
+      lista.recargar();
+      if (!r.reconocido) {
+        Dialogo.abrir({ titulo: 'Guardada', tono: 'aviso',
+          html: `Apuntada como <strong>${esc(v.matricula.toUpperCase())}</strong>, pero <strong>ese coche no está en la flota</strong>. ` +
+                'Compruébalo: o está mal escrita, o es un coche que no llevamos nosotros.',
+          opciones: [{ texto: 'Entendido' }] });
+      }
+    } catch (e) { Dialogo.aviso({ titulo: 'No se pudo', texto: e.message, tono: 'error' }); }
   }
 
   async function anular(d) {
