@@ -68,15 +68,15 @@ const CATALOGO = [
     { clave: '/cobertura',   etiqueta: 'Cobertura' },
     { clave: '/generador',   etiqueta: 'Generar vacantes' },
   ] },
-  { grupo: 'Flota', items: [
+  { grupo: 'Taller', items: [
     { clave: '/vehiculos',   etiqueta: 'Vehículos' },
     { clave: '/conductores', etiqueta: 'Conductores' },
     // MIRAR el taller lo quiere media empresa: tráfico necesita saber qué coche
     // se le cae la semana que viene. APUNTAR es del taller, y es lo que mueve
     // los números que deciden qué coche entra. Por eso son dos permisos, como
     // leer la bitácora y justificar en ella.
-    { clave: '/taller', etiqueta: 'Taller · mantenimiento por km', hijos: [
-      { clave: '/taller/apuntar', etiqueta: 'Taller · apuntar mantenimientos y odómetros' },
+    { clave: '/taller', etiqueta: 'Mantenimientos', hijos: [
+      { clave: '/taller/apuntar', etiqueta: 'Mantenimientos · apuntar revisiones y odómetros' },
     ] },
   ] },
   { grupo: 'Operaciones', items: [
@@ -258,18 +258,18 @@ function semillaDeRol(rol) {
     // '/bitacora/justificar' va suelto y no por el grupo: Tráfico es quien
     // justifica de siempre, pero el grupo 'Aprobaciones' lleva además la
     // pantalla de aprobación, y esa la reparte el jefe a mano.
-    case 'trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones'), '/bitacora/justificar']
+    case 'trafico': return [...G('General'), ...G('Tráfico'), ...G('Taller'), ...G('Operaciones'), '/bitacora/justificar']
       .filter(c => c !== '/documentos');
 
     // --- tráfico, en dos alturas ---
     // El jefe lleva su área entera y además ve el negocio; el gestor hace el
     // día a día y no entra ni en documentos ni en sanciones, que son de quien
     // manda.
-    case 'jefe_trafico': return [...G('General'), ...G('Tráfico'), ...G('Flota'), ...G('Operaciones'), '/bi']
+    case 'jefe_trafico': return [...G('General'), ...G('Tráfico'), ...G('Taller'), ...G('Operaciones'), '/bi']
       .filter(c => c !== '/documentos');
     case 'gestor_trafico': return [
       '/inicio', '/pendientes', '/bitacora', '/plantilla',
-      ...G('Tráfico'), ...G('Flota'), '/callcenter',
+      ...G('Tráfico'), ...G('Taller'), '/callcenter',
     ];
 
     // El taller vive en los coches. Nada de personas más allá de saber quién
@@ -288,7 +288,7 @@ function semillaDeRol(rol) {
       '/rrhh', '/administracion', '/ticketera', '/reportes', '/nominas', '/convenio', '/ett'];
 
     // Operaciones es el control de lo que pasa en la calle.
-    case 'operaciones': return [...G('General'), ...G('Operaciones'), ...G('Flota'),
+    case 'operaciones': return [...G('General'), ...G('Operaciones'), ...G('Taller'),
       '/control', '/control/historico', '/control/km', '/control/reportes', '/visibilidad', '/bitacora']
       .filter(c => c !== '/documentos');
 
