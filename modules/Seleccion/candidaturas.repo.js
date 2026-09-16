@@ -221,6 +221,51 @@ async function abrir(telefono, datos = {}, quien = {}) {
 }
 
 /**
+ * La candidatura de quien YA ESTA CONTRATADO, abierta al final del proceso.
+ *
+ * El alta rapida de la ETT crea la ficha y abre el contrato sin pasar por
+ * seleccion: dos campos y a trabajar. Pero la pantalla de la ETT y el Excel que
+ * se le manda a la agencia leen CANDIDATURAS, asi que quien entra por esa puerta
+ * no existe para la agencia — y es justo a quien hay que facturarle.
+ *
+ * Por eso aqui no se abre un proceso: se abre YA TERMINADO. Mismo estado en el
+ * que lo deja `pasarARRHH` (`listo_rrhh`, que es "contratado, papeles en RRHH")
+ * y con la fecha de alta escrita, que es lo que hace que el Excel diga
+ * «Contratado» en vez de «Pendiente» (ver `mapearParaETT`).
+ *
+ * Si ya tenia una candidatura viva no se abre otra: se le completa lo que le
+ * falte. Dos candidaturas de la misma persona son dos filas en el Excel de la
+ * agencia, y la agencia cobra por fila.
+ */
+async function abrirContratada(conductorId, datos = {}, quien = {}) {
+  const id = Number(conductorId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+
+  const viva = (await db.consulta(
+    `SELECT id, inicio_previsto FROM candidatura
+      WHERE conductor_id = $1 AND cerrado_at IS NULL
+      ORDER BY id DESC LIMIT 1`, [id])).rows[0];
+
+  if (viva) {
+    // Solo se rellena el hueco: si ya habia una fecha decidida, manda la suya.
+    if (datos.alta && !viva.inicio_previsto) {
+      await guardar(Number(viva.id), { inicio_previsto: datos.alta }, quien);
+    }
+    return { id: Number(viva.id), conductorId: id, yaExistia: true };
+  }
+
+  const r = await db.consulta(
+    `INSERT INTO candidatura
+       (conductor_id, estado, canal, inicio_previsto, jornada_horas, tipo_contrato,
+        responsable, apto_at)
+     VALUES ($1, 'listo_rrhh', $2, $3, $4, $5, $6, now())
+     RETURNING id`,
+    [id, datos.canal || null, datos.alta || null, datos.jornadaHoras || null,
+     datos.tipoContrato || null, datos.responsable || null]);
+  return { id: Number(r.rows[0].id), conductorId: id, yaExistia: false };
+}
+
+/**
  * Convierte lo que se escribe de una pieza en lo que la base guarda separado.
  *
  * Tres casos, y los tres por la misma razon: la gestoria pide la direccion
@@ -1458,7 +1503,7 @@ async function pendientes() {
   return Object.fromEntries(r.rows.map(x => [x.estado, x.n]));
 }
 module.exports = {
-  CAMPOS, catalogos, listar, ficha, porTelefono, abrir, guardar,
+  CAMPOS, catalogos, listar, ficha, porTelefono, abrir, abrirContratada, guardar,
   cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
   // El tramo final: RRHH y Administración.

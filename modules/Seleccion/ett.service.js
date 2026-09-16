@@ -179,6 +179,9 @@ async function pasarARRHH(id, datos, quien) {
  *
  * Reutiliza `alta.realizar`: crea la ficha, abre el periodo de empleo (así pasa
  * directo al planificador, como si ya estuviera contratado) y engancha su BOLT.
+ * Y le abre su candidatura YA TERMINADA, para que la agencia lo vea: sin ella
+ * esta persona trabaja pero no sale ni en esta pantalla ni en el Excel que se
+ * le manda a la ETT.
  */
 async function altaRapida(datos, quien) {
   const b = datos || {};
@@ -192,11 +195,35 @@ async function altaRapida(datos, quien) {
     nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: hoy,
     barrio: String(b.barrio || '').trim().slice(0, 60) || undefined,
   }, quien);
+
+  // SU CANDIDATURA, aunque no haya habido proceso.
+  //
+  // Esta pantalla y el Excel que se le manda a la agencia leen CANDIDATURAS. Sin
+  // esto, quien entra por el alta rápida trabaja desde el primer día pero no
+  // existe para la ETT —y es exactamente a quien hay que facturarle—: no salía
+  // en la lista, no se le podía elegir y no viajaba en el Excel.
+  //
+  // Se abre ya terminada (ver `abrirContratada`) y con la fecha de alta puesta,
+  // que es lo que hace que la agencia lea «Contratado». Si falla, el alta no se
+  // cae: la persona ya tiene contrato y coche, y esto se puede arreglar después.
+  let candidatura = null;
+  try {
+    candidatura = await cand.abrirContratada(r.id, {
+      canal: CANAL, alta: hoy, tipoContrato: 'ETT',
+      jornadaHoras: b.jornadaHoras ? Number(b.jornadaHoras) : null,
+    }, quien);
+  } catch (e) {
+    console.error('⚠️ [ETT] no se pudo abrir la candidatura:', e.message);
+    r.avisos = [...(r.avisos || []),
+      'El alta salió bien, pero no aparecerá en la lista de la ETT: ' + e.message];
+  }
+
   console.log(`⚡ [ETT] Alta rápida ${nombre} (ficha ${r.id})` +
+    (candidatura ? ` · candidatura ${candidatura.id}${candidatura.yaExistia ? ' (ya la tenía)' : ''}` : '') +
     (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));
 
   const incorporacion = await reservarVacante(r, r.id, b.vacanteId, 'ett-rapida', quien.usuarioId);
-  return { ...r, incorporacion };
+  return { ...r, candidatura, incorporacion };
 }
 
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
