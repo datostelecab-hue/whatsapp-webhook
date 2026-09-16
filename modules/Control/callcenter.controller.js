@@ -22,11 +22,13 @@ const responde = (fn, codigo = 500) => async (req, res) => {
   }
 };
 
-/** Quién atiende, tal y como se firma en la hoja. */
+/** Quién atiende, tal y como se firma en la llamada. */
 const agenteDe = req => {
   const u = req.usuario || {};
   return `${u.nombre || ''} ${u.apellidos || ''}`.trim() || u.email || '';
 };
+
+const rango = req => ({ desde: (req.query || {}).desde, hasta: (req.query || {}).hasta });
 
 router.get('/', (req, res) => {
   res.render('callCenter', { titulo: 'Call Center', seccion: 'callcenter', layout: 'layout-gestion' });
@@ -40,8 +42,13 @@ router.get('/api/catalogo', (req, res) =>
 router.get('/api/conductores', responde(async () => ({ conductores: await cc.conductoresForm() })));
 
 // Los KPIs del periodo, sus llamadas y las pendientes de cualquier fecha.
-router.get('/api/datos', responde(req =>
-  cc.panelDelPeriodo({ desde: (req.query || {}).desde, hasta: (req.query || {}).hasta })));
+router.get('/api/datos', responde(req => cc.panelDelPeriodo(rango(req))));
+
+// La pestaña «Por conductor»: una fila por persona llamada en el periodo.
+router.get('/api/por-conductor', responde(req => cc.porConductor(rango(req))));
+
+// La historia COMPLETA de una persona, de las dos fuentes y sin ventana.
+router.get('/api/historia/:conductorId', responde(req => cc.historiaConductor(req.params.conductorId), 400));
 
 router.post('/api/registrar', responde(async req => {
   const llamada = await cc.registrar(req.body || {}, agenteDe(req), await quien(req));

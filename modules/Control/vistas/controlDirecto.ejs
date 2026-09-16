@@ -1055,11 +1055,8 @@
       const j = await r.json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo apuntar');
       cargar();
-      // El diálogo promete que queda en el call center: si no llegó, que se sepa.
-      if (j.enCallCenter === false) {
-        await Dialogo.aviso({ titulo: 'Apuntada aquí, pero no llegó al call center',
-          texto: 'Queda en la carta y en el Histórico. La hoja CALL_CENTER no respondió.', tono: 'aviso' });
-      }
+      // Ya no hay nada que avisar: la llamada se escribe en un solo sitio y el
+      // Call Center la lee de ahí. Antes se copiaba, y la copia podía fallar.
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo apuntar la llamada', texto: e.message, tono: 'error' });
     }

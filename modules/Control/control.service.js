@@ -13,10 +13,11 @@
 //    sobre el plan del martes y dos operadores llamaban al mismo conductor.
 //    La jornada la dice `repo/llamadas.diaOperativoHoy()`, y es la única.
 //
-// 2. LA LLAMADA SE APUNTA PRIMERO, SE ESPEJA DESPUÉS. PostgreSQL es la verdad;
-//    la hoja del call center es una copia para que el equipo de llamadas lo vea
-//    en su herramienta. Si la hoja no responde, la llamada NO se pierde y la
-//    respuesta lo dice (`enCallCenter: false`) en vez de fallar entera.
+// 2. LA LLAMADA SE ESCRIBE UNA SOLA VEZ, en `llamada_seguimiento`. Hasta db/131
+//    se copiaba además al Call Center con una clasificación clavada en el
+//    código, así que allí todas las llamadas parecían la misma. Ahora el Call
+//    Center las LEE de aquí y las clasifica por su tipo y su caso: una copia
+//    envejece, una lectura no puede.
 //
 // 3. EL INFORME DEL HISTÓRICO SE CAMINA, NO SE RESTA. Cada día recalcula el
 //    cockpit contra el núcleo (unos 5 s), así que hay un tope de 7: un mes de
@@ -45,9 +46,8 @@ const asistencia = require('./asistencia.repo');
 const auditoriaLunes = require('./auditoriaLunes.repo');
 const reporteTurnos = require('./reporteTurnos.service');
 // El reporte de horas del día, con sus bandas de color (los datos, en
-// `reporteHoras.repo`), y el espejo de la llamada en la hoja del call center.
+// `reporteHoras.repo`).
 const justificantes = require('./reporteHoras.service');
-const callCenter = require('./callcenter.service');
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const iso = v => (ISO.test(v || '') ? v : null);
@@ -174,8 +174,13 @@ async function historicoExcel({ desde, hasta, dia } = {}) {
 // ── Las llamadas de seguimiento ────────────────────────────────────────────
 
 /**
- * APUNTAR UNA LLAMADA. Primero PostgreSQL (la verdad: quién, cuándo, turno y
- * resultado) y después el espejo en la hoja del call center. Ver la nota 2.
+ * APUNTAR UNA LLAMADA. Se escribe UNA VEZ, en `llamada_seguimiento`.
+ *
+ * Hasta db/131 esto escribía además un espejo en el Call Center, y el espejo
+ * mentía: la clasificación iba clavada en el código, así que una avería en ruta
+ * y un conductor que no coge el teléfono entraban al Call Center como la misma
+ * cosa. Ahora el Call Center LEE estas llamadas y las clasifica por su tipo y
+ * su caso. Una llamada, una fila, un sitio.
  *
  * `origen` dice en qué pasada se etiquetó a cada uno: el cockpit ('control') o
  * la campaña 1, 2 o 3.
@@ -184,7 +189,7 @@ async function apuntarLlamada(b, usuario, usuarioId) {
   const u = usuario || {};
   const r = await llamadas.registrar({
     conductorId: b.conductorId, turno: b.turno, resultado: b.resultado, nota: b.nota,
-    tipo: b.tipo, alertas: b.alertas,
+    tipo: b.tipo, alertas: b.alertas, matricula: b.matricula,
     origen: /^campana[123]$/.test(b.origen || '') ? b.origen : 'control',
     usuarioId: u.id || usuarioId,
     // La jornada que está mirando quien llama, para que la llamada caiga en la
@@ -192,26 +197,9 @@ async function apuntarLlamada(b, usuario, usuarioId) {
     dia: iso(b.dia) || undefined,
   });
 
-  let enCallCenter = false;
-  try {
-    const agente = `${u.nombre || ''} ${u.apellidos || ''}`.trim() || u.email || '';
-    await callCenter.registrar({
-      direccion: 'saliente',
-      conductor: b.conductor || ('#' + b.conductorId),
-      telefono: b.telefono || '', matricula: b.matricula || '',
-      turno: b.turno === 'noche' ? 'Noche' : b.turno === 'dia' ? 'Día' : '',
-      cluster: 'Asistencia', subcluster: 'Conexión', motivo: 'No se ha conectado a su puesto',
-      resultado: b.resultado, estado: 'resuelta',
-      notas: ('Seguimiento desde Control. ' + (b.nota || '')).trim(),
-    }, agente);
-    enCallCenter = true;
-  } catch (e) {
-    console.error('⚠️ [Control] la llamada no llegó al call center (queda en PG):', e.message);
-  }
-
   console.log(`📞 [Control] Llamada apuntada · conductor ${b.conductorId} · ` +
     `${b.resultado || 'sin resultado'} · ${u.nombre || ''}`);
-  return { ...r, enCallCenter };
+  return r;
 }
 
 /** Las llamadas de un rango de días (la lista del Histórico). */

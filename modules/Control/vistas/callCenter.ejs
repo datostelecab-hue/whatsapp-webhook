@@ -1,211 +1,383 @@
-<div class="max-w-7xl mx-auto">
-  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+<%
+/* ============================================================
+   CALL CENTER — la pantalla
+   ============================================================
+   Cuatro pestañas, y el orden es el del trabajo real:
+
+     · Panel        cómo va la cosa hoy: KPIs, lo que queda abierto y de qué se
+                    llama.
+     · Registrar    la llamada que se está haciendo AHORA. Es la única pestaña
+                    con formulario, y por eso es la que se abre con una tecla.
+     · Por conductor la pregunta que no se podía contestar: «¿cuántas veces
+                    hemos hablado con este y de qué?». Junta las llamadas del
+                    Call Center con las del telefonito de Control · En directo.
+     · Llamadas     todas, con filtros, para buscar una concreta.
+
+   LAS DOS FUENTES SE VEN SIEMPRE. Cada llamada lleva de dónde viene (Control,
+   Call Center, En vivo) porque no se gestionan igual: una de Control ya está
+   cerrada —se marcó lo que pasó y ya está— y una del Call Center puede quedar
+   pendiente de seguimiento. Esconder la diferencia haría pensar que las 548 de
+   Control están «resueltas» por alguien.
+*/ %>
+<div class="max-w-[95rem] mx-auto">
+
+  <!-- ══ Cabecera ══════════════════════════════════════════════════════════ -->
+  <div class="flex flex-wrap items-end justify-between gap-4 mb-5">
     <div>
-      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2.5">
         <i class="fa-solid fa-headset text-telecab-gold"></i> Call Center
       </h1>
-      <p class="text-sm text-telecab-muted mt-1">
-        Cada llamada queda clasificada en <b>cluster → subcluster → motivo → resultado → acción</b>:
-        de ahí salen los KPIs y las reincidencias sin trabajo extra.
+      <p class="text-sm text-telecab-muted mt-1 max-w-2xl">
+        Todas las llamadas a conductores en un sitio: las que se teclean aquí y las del
+        telefonito de <b class="text-telecab-text">Control · En directo</b>. Cada una queda clasificada
+        <b class="text-telecab-text">cluster → motivo → resultado</b>, y de ahí salen los KPIs y las reincidencias.
       </p>
     </div>
-    <div class="flex items-center gap-2 flex-wrap">
-      <div id="chips-periodo" class="flex items-center gap-1 bg-telecab-card border border-telecab-border rounded-xl p-1">
-        <button data-p="hoy"  class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">Hoy</button>
-        <button data-p="7"    class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">7 días</button>
-        <button data-p="30"   class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">30 días</button>
-        <button data-p="mes"  class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">Este mes</button>
+    <div class="flex items-end gap-2 flex-wrap">
+      <div id="chips-periodo" class="flex items-center gap-0.5 bg-telecab-card border border-telecab-border rounded-xl p-1">
+        <button data-p="hoy" class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">Hoy</button>
+        <button data-p="7"   class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">7 días</button>
+        <button data-p="30"  class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">30 días</button>
+        <button data-p="mes" class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">Este mes</button>
+        <button data-p="todo" class="chip-p px-3 py-1.5 rounded-lg text-xs font-semibold">Todo</button>
       </div>
-      <button id="btn-refrescar" class="px-3 py-2 rounded-lg bg-telecab-gold/15 text-telecab-gold text-sm font-medium hover:bg-telecab-gold/25">
+      <button id="btn-refrescar" title="Volver a leer"
+              class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border text-telecab-muted hover:border-telecab-gold/40 hover:text-telecab-gold transition">
         <i class="fa-solid fa-rotate"></i>
       </button>
     </div>
   </div>
 
-  <!-- ══ KPIs ══ -->
-  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
-    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">Llamadas</div>
-      <div id="k-total" class="text-2xl font-bold text-telecab-text">—</div>
-      <div id="k-dir" class="text-[11px] text-telecab-muted mt-0.5"></div>
-    </div>
-    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">Resueltas</div>
-      <div id="k-resueltas" class="text-2xl font-bold text-telecab-green">—</div>
-      <div id="k-enllamada" class="text-[11px] text-telecab-muted mt-0.5"></div>
-    </div>
-    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">Pendientes</div>
-      <div id="k-pendientes" class="text-2xl font-bold text-telecab-warn">—</div>
-      <div class="text-[11px] text-telecab-muted mt-0.5">de seguimiento</div>
-    </div>
-    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">No contactadas</div>
-      <div id="k-nocontacto" class="text-2xl font-bold text-telecab-red">—</div>
-      <div id="k-sinlocalizar" class="text-[11px] text-telecab-muted mt-0.5"></div>
-    </div>
-    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">Resolución media</div>
-      <div id="k-media" class="text-2xl font-bold text-telecab-text">—</div>
-      <div class="text-[11px] text-telecab-muted mt-0.5">de las que quedan pendientes</div>
-    </div>
-    <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-      <div class="text-xs text-telecab-muted mb-1">Reincidencias</div>
-      <div id="k-reinc" class="text-2xl font-bold text-telecab-violet">—</div>
-      <div class="text-[11px] text-telecab-muted mt-0.5">conductor + motivo, 30 días</div>
-    </div>
+  <!-- ══ Pestañas ══════════════════════════════════════════════════════════ -->
+  <div class="flex gap-1 mb-5 border-b border-telecab-border overflow-x-auto">
+    <button data-tab="panel" class="cc-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition whitespace-nowrap">
+      <i class="fa-solid fa-gauge-high mr-1.5"></i> Panel
+    </button>
+    <button data-tab="registrar" class="cc-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition whitespace-nowrap">
+      <i class="fa-solid fa-phone-volume mr-1.5"></i> Registrar llamada
+    </button>
+    <button data-tab="conductores" class="cc-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition whitespace-nowrap">
+      <i class="fa-solid fa-address-book mr-1.5"></i> Por conductor
+      <span id="n-conductores" class="ml-1 text-[11px] opacity-70"></span>
+    </button>
+    <button data-tab="llamadas" class="cc-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition whitespace-nowrap">
+      <i class="fa-solid fa-list mr-1.5"></i> Llamadas
+      <span id="n-llamadas" class="ml-1 text-[11px] opacity-70"></span>
+    </button>
   </div>
 
-  <div class="grid grid-cols-1 xl:grid-cols-5 gap-4">
-    <!-- ══ Registrar llamada ══ -->
-    <div class="xl:col-span-2">
-      <form id="form-llamada" class="rounded-xl bg-telecab-card border border-telecab-border p-4 xl:sticky xl:top-4">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="font-semibold text-telecab-text"><i class="fa-solid fa-phone-volume text-telecab-gold mr-1"></i> Registrar llamada</h2>
-          <div class="flex rounded-lg overflow-hidden border border-telecab-border text-xs font-semibold">
-            <button type="button" data-d="saliente" class="btn-dir px-3 py-1.5">📤 Saliente</button>
-            <button type="button" data-d="entrante" class="btn-dir px-3 py-1.5">📥 Entrante</button>
-          </div>
-        </div>
+  <!-- ══════════════════════════════════════════════════════════════════════
+       PANEL
+       ══════════════════════════════════════════════════════════════════════ -->
+  <section data-panel="panel" class="space-y-4">
 
-        <label class="block text-xs text-telecab-muted mb-1">Conductor</label>
-        <input id="f-conductor" list="lista-conductores" required autocomplete="off" placeholder="Empieza a escribir…"
-               class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
-        <datalist id="lista-conductores"></datalist>
-
-        <div class="grid grid-cols-3 gap-2 mb-2">
-          <div>
-            <label class="block text-xs text-telecab-muted mb-1">Teléfono</label>
-            <input id="f-telefono" class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
-          </div>
-          <div>
-            <label class="block text-xs text-telecab-muted mb-1">Matrícula</label>
-            <input id="f-matricula" class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text uppercase">
-          </div>
-          <div>
-            <label class="block text-xs text-telecab-muted mb-1">Turno</label>
-            <select id="f-turno" class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
-              <option value="">—</option><option>Día</option><option>Noche</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 mb-2">
-          <div>
-            <label class="block text-xs text-telecab-muted mb-1">Cluster</label>
-            <select id="f-cluster" required class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
-          </div>
-          <div>
-            <label class="block text-xs text-telecab-muted mb-1">Subcluster</label>
-            <select id="f-subcluster" required class="w-full px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
-          </div>
-        </div>
-        <label class="block text-xs text-telecab-muted mb-1">Motivo</label>
-        <select id="f-motivo" required class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
-
-        <label class="block text-xs text-telecab-muted mb-1">Resultado</label>
-        <select id="f-resultado" required class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
-
-        <label class="block text-xs text-telecab-muted mb-1">Acción tomada</label>
-        <input id="f-accion" list="lista-acciones" autocomplete="off" placeholder="Opcional"
-               class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text">
-        <datalist id="lista-acciones"></datalist>
-
-        <label class="block text-xs text-telecab-muted mb-1">Notas <span class="opacity-60">(tipo de siniestro, detalle de la avería…)</span></label>
-        <textarea id="f-notas" rows="2" class="w-full mb-3 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></textarea>
-
-        <label class="flex items-center gap-2 mb-3 text-sm text-telecab-text cursor-pointer">
-          <input id="f-pendiente" type="checkbox" class="accent-current">
-          Queda <b>pendiente de seguimiento</b>
-        </label>
-
-        <button id="btn-guardar" class="w-full py-2.5 rounded-lg bg-telecab-gold text-black font-semibold hover:opacity-90">
-          <i class="fa-solid fa-floppy-disk mr-1"></i> Registrar llamada
-        </button>
-      </form>
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft p-4">
+        <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-1">Llamadas</div>
+        <div id="k-total" class="text-3xl font-bold text-telecab-text tabular-nums">—</div>
+        <div id="k-fuentes" class="text-[11px] text-telecab-muted mt-1 leading-tight"></div>
+      </div>
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft p-4">
+        <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-1">Conductores</div>
+        <div id="k-conductores" class="text-3xl font-bold text-telecab-azul tabular-nums">—</div>
+        <div id="k-media-cond" class="text-[11px] text-telecab-muted mt-1 leading-tight"></div>
+      </div>
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft p-4">
+        <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-1">Contacto</div>
+        <div id="k-contacto" class="text-3xl font-bold text-telecab-green tabular-nums">—</div>
+        <div id="k-nocontacto" class="text-[11px] text-telecab-muted mt-1 leading-tight"></div>
+      </div>
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft p-4">
+        <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-1">Pendientes</div>
+        <div id="k-pendientes" class="text-3xl font-bold text-telecab-warn tabular-nums">—</div>
+        <div class="text-[11px] text-telecab-muted mt-1 leading-tight">de seguimiento, de cualquier fecha</div>
+      </div>
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft p-4">
+        <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-1">Cierre medio</div>
+        <div id="k-media" class="text-3xl font-bold text-telecab-text tabular-nums">—</div>
+        <div id="k-enllamada" class="text-[11px] text-telecab-muted mt-1 leading-tight"></div>
+      </div>
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft p-4">
+        <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-1">Reincidencias</div>
+        <div id="k-reinc" class="text-3xl font-bold text-telecab-violet tabular-nums">—</div>
+        <div class="text-[11px] text-telecab-muted mt-1 leading-tight">mismo motivo, 30 días</div>
+      </div>
     </div>
 
-    <!-- ══ Panel derecho ══ -->
-    <div class="xl:col-span-3 space-y-4">
-
-      <!-- Pendientes de seguimiento -->
-      <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-        <h2 class="font-semibold text-telecab-text mb-3"><i class="fa-solid fa-hourglass-half text-telecab-warn mr-1"></i>
-          Pendientes de seguimiento <span id="n-pendientes" class="text-telecab-muted font-normal"></span></h2>
-        <div id="lista-pendientes" class="space-y-2"></div>
+    <!-- Pendientes de seguimiento: lo único que pide acción -->
+    <div id="caja-pendientes" class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+      <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+        <i class="fa-solid fa-hourglass-half text-telecab-warn text-sm"></i>
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Pendientes de seguimiento</h2>
+        <span id="n-pendientes" class="ml-auto text-xs text-telecab-muted"></span>
       </div>
+      <div id="lista-pendientes" class="p-4 space-y-2"></div>
+    </div>
 
-      <!-- Distribución -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-          <h3 class="text-sm font-semibold text-telecab-text mb-3">Llamadas por cluster</h3>
-          <div id="g-clusters" class="space-y-2"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+        <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+          <i class="fa-solid fa-layer-group text-telecab-gold text-sm"></i>
+          <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">De qué se llama</h3>
         </div>
-        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-          <h3 class="text-sm font-semibold text-telecab-text mb-3">Motivos que más llamadas generan</h3>
-          <div id="g-motivos" class="space-y-2"></div>
-        </div>
+        <div id="g-clusters" class="p-5 space-y-3"></div>
       </div>
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+        <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+          <i class="fa-solid fa-ranking-star text-telecab-violet text-sm"></i>
+          <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Motivos que más llamadas generan</h3>
+        </div>
+        <div id="g-motivos" class="p-5 space-y-3"></div>
+      </div>
+    </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-          <h3 class="text-sm font-semibold text-telecab-text mb-2">Conductores con más llamadas</h3>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+        <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+          <i class="fa-solid fa-user-clock text-telecab-azul text-sm"></i>
+          <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">A quién se llama más</h3>
+          <span class="ml-auto text-[11px] text-telecab-muted">pincha para ver su historia</span>
+        </div>
+        <div class="overflow-x-auto">
           <table class="w-full text-sm">
-            <thead><tr class="text-[11px] text-telecab-muted text-left">
-              <th class="py-1">Conductor</th><th class="text-center">Llamadas</th><th class="text-center">Motivos ≠</th><th class="text-center">Pend.</th>
-            </tr></thead>
+            <thead class="text-[11px] text-telecab-muted uppercase tracking-wide">
+              <tr><th class="text-left font-semibold px-5 py-2">Conductor</th>
+                  <th class="text-center font-semibold px-2 py-2">Llam.</th>
+                  <th class="text-center font-semibold px-2 py-2">Motivos</th>
+                  <th class="text-center font-semibold px-2 py-2">Pend.</th></tr>
+            </thead>
             <tbody id="t-conductores"></tbody>
           </table>
         </div>
-        <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-          <h3 class="text-sm font-semibold text-telecab-text mb-2">Reincidencias <span class="text-[11px] text-telecab-muted font-normal">(≥2 en 30 días)</span></h3>
-          <div id="t-reincidencias" class="space-y-1.5"></div>
-          <div class="mt-3 pt-3 border-t border-telecab-border/60 flex items-center gap-4 text-xs text-telecab-muted">
-            <span>Turno Día: <b id="k-tdia" class="text-telecab-text">—</b></span>
-            <span>Noche: <b id="k-tnoche" class="text-telecab-text">—</b></span>
-            <span>Sin turno: <b id="k-tsin" class="text-telecab-text">—</b></span>
-          </div>
-        </div>
       </div>
-
-      <!-- Llamadas del periodo -->
-      <div class="rounded-xl bg-telecab-card border border-telecab-border p-4">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h2 class="font-semibold text-telecab-text"><i class="fa-solid fa-list text-telecab-gold mr-1"></i> Llamadas del periodo</h2>
-          <div class="flex items-center gap-2">
-            <input id="fil-texto" placeholder="Buscar…" class="px-3 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text w-36">
-            <select id="fil-cluster" class="px-2 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text"><option value="">Todos los clusters</option></select>
-            <select id="fil-estado" class="px-2 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-text">
-              <option value="">Todas</option><option value="resuelta">Resueltas</option><option value="pendiente">Pendientes</option>
-            </select>
-          </div>
+      <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+        <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+          <i class="fa-solid fa-repeat text-telecab-violet text-sm"></i>
+          <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Reincidencias</h3>
+          <span class="ml-auto text-[11px] text-telecab-muted">≥2 por el mismo motivo en 30 días</span>
         </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm min-w-[640px]">
-            <thead><tr class="text-[11px] text-telecab-muted text-left border-b border-telecab-border/60">
-              <th class="py-2">Fecha</th><th></th><th>Conductor</th><th>Motivo</th><th>Resultado</th><th>Estado</th><th>Agente</th>
-            </tr></thead>
-            <tbody id="t-llamadas"></tbody>
-          </table>
+        <div id="t-reincidencias" class="p-4 space-y-1.5 max-h-80 overflow-y-auto"></div>
+        <div class="px-5 py-3 border-t border-telecab-border flex flex-wrap items-center gap-4 text-xs text-telecab-muted">
+          <span>Turno Día <b id="k-tdia" class="text-telecab-text tabular-nums">—</b></span>
+          <span>Noche <b id="k-tnoche" class="text-telecab-text tabular-nums">—</b></span>
+          <span>Sin turno <b id="k-tsin" class="text-telecab-text tabular-nums">—</b></span>
         </div>
-        <div id="t-vacio" class="hidden text-center text-sm text-telecab-muted py-6">Sin llamadas en este periodo.</div>
       </div>
     </div>
-  </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       REGISTRAR
+       ══════════════════════════════════════════════════════════════════════ -->
+  <section data-panel="registrar" class="hidden">
+    <div class="grid grid-cols-1 xl:grid-cols-5 gap-4">
+      <form id="form-llamada" class="xl:col-span-3 rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+        <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-3">
+          <i class="fa-solid fa-phone-volume text-telecab-gold text-sm"></i>
+          <h2 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Registrar llamada</h2>
+          <div class="ml-auto flex rounded-lg overflow-hidden border border-telecab-border text-xs font-semibold">
+            <button type="button" data-d="saliente" class="btn-dir px-3 py-1.5"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Saliente</button>
+            <button type="button" data-d="entrante" class="btn-dir px-3 py-1.5"><i class="fa-solid fa-arrow-down mr-1"></i>Entrante</button>
+          </div>
+        </div>
+
+        <div class="p-5 space-y-4">
+          <div>
+            <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Conductor</label>
+            <input id="f-conductor" list="lista-conductores" required autocomplete="off" placeholder="Empieza a escribir el nombre…"
+                   class="inp w-full px-3 py-2.5 rounded-xl text-sm">
+            <datalist id="lista-conductores"></datalist>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Teléfono</label>
+              <input id="f-telefono" class="inp w-full px-3 py-2.5 rounded-xl text-sm tabular-nums">
+            </div>
+            <div>
+              <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Matrícula</label>
+              <input id="f-matricula" class="inp w-full px-3 py-2.5 rounded-xl text-sm uppercase">
+            </div>
+            <div>
+              <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Turno</label>
+              <select id="f-turno" class="inp w-full px-3 py-2.5 rounded-xl text-sm">
+                <option value="">—</option><option>Día</option><option>Noche</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- La cascada de clasificación, en su propio bloque: es lo que da
+               valor a la llamada dos semanas después. -->
+          <div class="rounded-xl border border-telecab-border bg-telecab-card2/40 p-4 space-y-3">
+            <div class="flex items-center gap-2 text-[11px] text-telecab-muted uppercase tracking-wide">
+              <i class="fa-solid fa-sitemap"></i> Clasificación
+            </div>
+            <div id="chips-cluster" class="flex flex-wrap gap-1.5"></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-telecab-muted mb-1.5">Subcluster</label>
+                <select id="f-subcluster" required class="inp w-full px-3 py-2.5 rounded-xl text-sm"></select>
+              </div>
+              <div>
+                <label class="block text-xs text-telecab-muted mb-1.5">Motivo</label>
+                <select id="f-motivo" required class="inp w-full px-3 py-2.5 rounded-xl text-sm"></select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-telecab-muted mb-1.5">Resultado</label>
+              <select id="f-resultado" required class="inp w-full px-3 py-2.5 rounded-xl text-sm"></select>
+            </div>
+            <input type="hidden" id="f-cluster">
+          </div>
+
+          <div>
+            <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">Acción tomada</label>
+            <input id="f-accion" list="lista-acciones" autocomplete="off" placeholder="Opcional"
+                   class="inp w-full px-3 py-2.5 rounded-xl text-sm">
+            <datalist id="lista-acciones"></datalist>
+          </div>
+
+          <div>
+            <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
+              Notas <span class="normal-case opacity-70">(tipo de siniestro, detalle de la avería…)</span>
+            </label>
+            <textarea id="f-notas" rows="3" class="inp w-full px-3 py-2.5 rounded-xl text-sm"></textarea>
+          </div>
+
+          <label class="flex items-start gap-2.5 text-sm text-telecab-text cursor-pointer rounded-xl border border-telecab-border px-3 py-2.5 hover:border-telecab-warn/40 transition">
+            <input id="f-pendiente" type="checkbox" class="accent-current mt-0.5">
+            <span>Queda <b>pendiente de seguimiento</b>
+              <span class="block text-[11px] text-telecab-muted">Se marca sola cuando el resultado lo pide (escalado, buzón, cita con taller…)</span>
+            </span>
+          </label>
+
+          <button id="btn-guardar" class="w-full py-3 rounded-xl bg-telecab-gold text-telecab-dark font-semibold hover:bg-telecab-gold-soft transition">
+            <i class="fa-solid fa-floppy-disk mr-1.5"></i> Registrar llamada
+          </button>
+        </div>
+      </form>
+
+      <!-- La ficha de a quién se está llamando: su historia, al lado, mientras
+           se habla. Es lo que evita preguntarle lo mismo por tercera vez. -->
+      <div class="xl:col-span-2">
+        <div id="ficha-rapida" class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden xl:sticky xl:top-4">
+          <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-telecab-azul text-sm"></i>
+            <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Lo que ya se le ha dicho</h3>
+          </div>
+          <div id="ficha-rapida-cuerpo" class="p-5 text-sm text-telecab-muted">
+            Elige un conductor y aquí sale de qué se le ha llamado antes.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       POR CONDUCTOR
+       ══════════════════════════════════════════════════════════════════════ -->
+  <section data-panel="conductores" class="hidden">
+
+    <!-- Lista -->
+    <div id="cond-lista" class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+      <div class="px-5 py-3 border-b border-telecab-border flex flex-wrap items-center gap-3">
+        <i class="fa-solid fa-address-book text-telecab-gold text-sm"></i>
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Conductores llamados</h2>
+        <span id="cond-rango" class="text-[11px] text-telecab-muted"></span>
+        <div class="ml-auto flex items-center gap-2">
+          <input id="cond-busca" placeholder="Buscar…" class="inp px-3 py-1.5 rounded-lg text-xs w-40">
+          <select id="cond-orden" class="inp px-2 py-1.5 rounded-lg text-xs">
+            <option value="n">Más llamadas</option>
+            <option value="ultima">Más reciente</option>
+            <option value="reincide">Más reincidencia</option>
+            <option value="nocontacto">Más sin contacto</option>
+            <option value="nombre">Por nombre</option>
+          </select>
+        </div>
+      </div>
+      <div class="overflow-x-auto max-h-[38rem] overflow-y-auto">
+        <table class="w-full text-sm min-w-[52rem]">
+          <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide sticky top-0 z-10">
+            <tr>
+              <th class="text-left   font-semibold px-5 py-2.5">Conductor</th>
+              <th class="text-center font-semibold px-2 py-2.5">Llamadas</th>
+              <th class="text-left   font-semibold px-3 py-2.5">Reparto</th>
+              <th class="text-left   font-semibold px-3 py-2.5">Motivo principal</th>
+              <th class="text-center font-semibold px-2 py-2.5" title="Motivos distintos">Mot.</th>
+              <th class="text-center font-semibold px-2 py-2.5" title="Buzón, no contesta, número erróneo">Sin&nbsp;contacto</th>
+              <th class="text-left   font-semibold px-3 py-2.5">Última</th>
+            </tr>
+          </thead>
+          <tbody id="t-por-conductor"></tbody>
+        </table>
+      </div>
+      <div id="cond-vacio" class="hidden px-5 py-10 text-center text-sm text-telecab-muted">
+        Nadie ha recibido llamadas en este periodo.
+      </div>
+    </div>
+
+    <!-- Ficha -->
+    <div id="cond-ficha" class="hidden"></div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       LLAMADAS
+       ══════════════════════════════════════════════════════════════════════ -->
+  <section data-panel="llamadas" class="hidden">
+    <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+      <div class="px-5 py-3 border-b border-telecab-border flex flex-wrap items-center gap-2">
+        <i class="fa-solid fa-list text-telecab-gold text-sm"></i>
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Llamadas del periodo</h2>
+        <div class="ml-auto flex items-center gap-2 flex-wrap">
+          <input id="fil-texto" placeholder="Buscar…" class="inp px-3 py-1.5 rounded-lg text-xs w-40">
+          <select id="fil-fuente" class="inp px-2 py-1.5 rounded-lg text-xs">
+            <option value="">Las dos fuentes</option>
+            <option value="control">Solo Control</option>
+            <option value="callcenter">Solo Call Center</option>
+          </select>
+          <select id="fil-cluster" class="inp px-2 py-1.5 rounded-lg text-xs"><option value="">Todos los clusters</option></select>
+          <select id="fil-estado" class="inp px-2 py-1.5 rounded-lg text-xs">
+            <option value="">Todas</option><option value="resuelta">Resueltas</option><option value="pendiente">Pendientes</option>
+          </select>
+        </div>
+      </div>
+      <div class="overflow-x-auto max-h-[42rem] overflow-y-auto">
+        <table class="w-full text-sm min-w-[58rem]">
+          <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide sticky top-0 z-10">
+            <tr>
+              <th class="text-left font-semibold px-5 py-2.5">Cuándo</th>
+              <th class="text-left font-semibold px-2 py-2.5">Origen</th>
+              <th class="text-left font-semibold px-3 py-2.5">Conductor</th>
+              <th class="text-left font-semibold px-3 py-2.5">Motivo</th>
+              <th class="text-left font-semibold px-3 py-2.5">Resultado</th>
+              <th class="text-left font-semibold px-3 py-2.5">Agente</th>
+            </tr>
+          </thead>
+          <tbody id="t-llamadas"></tbody>
+        </table>
+      </div>
+      <div id="t-vacio" class="hidden px-5 py-10 text-center text-sm text-telecab-muted">Sin llamadas en este periodo.</div>
+      <div id="t-truncado" class="hidden px-5 py-2.5 border-t border-telecab-border text-[11px] text-telecab-warn"></div>
+    </div>
+  </section>
 </div>
 
 <!-- ══ Modal resolver ══ -->
-<div id="modal-resolver" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-  <div class="bg-telecab-card border border-telecab-border rounded-2xl w-full max-w-md p-5">
+<div id="modal-resolver" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-md p-5">
     <h3 class="font-semibold text-telecab-text mb-1">Resolver seguimiento</h3>
-    <p id="m-resumen" class="text-xs text-telecab-muted mb-3"></p>
-    <label class="block text-xs text-telecab-muted mb-1">Resultado final <span class="opacity-60">(opcional, sustituye al inicial)</span></label>
-    <select id="m-resultado" class="w-full mb-2 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></select>
-    <label class="block text-xs text-telecab-muted mb-1">¿Cómo se resolvió? <b class="text-telecab-red">*</b></label>
-    <textarea id="m-nota" rows="3" class="w-full mb-3 px-3 py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-sm text-telecab-text"></textarea>
+    <p id="m-resumen" class="text-xs text-telecab-muted mb-4"></p>
+    <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
+      Resultado final <span class="normal-case opacity-70">(opcional, sustituye al inicial)</span>
+    </label>
+    <select id="m-resultado" class="inp w-full mb-3 px-3 py-2.5 rounded-xl text-sm"></select>
+    <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1.5">
+      ¿Cómo se resolvió? <b class="text-telecab-red">*</b>
+    </label>
+    <textarea id="m-nota" rows="3" class="inp w-full mb-4 px-3 py-2.5 rounded-xl text-sm"></textarea>
     <div class="flex gap-2 justify-end">
-      <button id="m-cancelar" class="px-4 py-2 rounded-lg bg-telecab-card2 text-telecab-text text-sm">Cancelar</button>
-      <button id="m-ok" class="px-4 py-2 rounded-lg bg-telecab-green text-white text-sm font-semibold">Resolver</button>
+      <button id="m-cancelar" class="px-4 py-2 rounded-xl bg-telecab-card2 border border-telecab-border text-telecab-text text-sm">Cancelar</button>
+      <button id="m-ok" class="px-4 py-2 rounded-xl bg-telecab-green text-white text-sm font-semibold">Resolver</button>
     </div>
   </div>
 </div>
@@ -218,8 +390,44 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  let CAT = [], UNIV = [], CONDUCTORES = [], DATOS = null;
-  let direccion = 'saliente', periodo = 'hoy', resolviendo = null;
+  let CAT = [], UNIV = [], CONDUCTORES = [], DATOS = null, PORCOND = null, HISTORIA = null;
+  let direccion = 'saliente', periodo = '7', tab = 'panel', resolviendo = null;
+  let cluster = '';                 // el cluster elegido en el formulario
+  let condOrden = 'n', condBusca = '';
+
+  // ── Vocabulario visual ──────────────────────────────────────────────────────
+  // Un color por cluster, el mismo en las barras, en las píldoras y en la ficha:
+  // si «Vehículo» es rojo en el gráfico tiene que ser rojo en la tabla, o son
+  // dos cosas distintas para quien mira.
+  const TONO_CLUSTER = {
+    'Asistencia': 'gold', 'Tráfico': 'azul', 'Operativa': 'violet', 'Vehículo': 'red',
+    'Tecnología': 'green', 'RRHH': 'warn', 'Nómina': 'gold-soft', 'Turnos': 'azul',
+    'Conducta': 'red', 'Cliente': 'violet'
+  };
+  const tono = c => TONO_CLUSTER[c] || 'muted';
+  const iconoCluster = c => (CAT.find(x => x.cluster === c) || {}).icono || 'fa-circle-dot';
+
+  // De dónde viene la llamada. Se ve SIEMPRE: una de Control ya nació cerrada y
+  // una del Call Center puede quedar pendiente, y eso cambia qué se espera de ella.
+  function fuenteDe(x) {
+    if (x.fuente === 'control') {
+      const camp = /^campana(\d)$/.exec(x.origen || '');
+      return camp
+        ? { texto: 'Campaña ' + camp[1], icono: 'fa-bullhorn', color: 'azul' }
+        : { texto: 'Control', icono: 'fa-satellite-dish', color: 'azul' };
+    }
+    if (x.origen === 'flota_viva') return { texto: 'En vivo', icono: 'fa-tower-broadcast', color: 'violet' };
+    return { texto: 'Call Center', icono: 'fa-headset', color: 'gold' };
+  }
+  const pildoraFuente = x => {
+    const f = fuenteDe(x);
+    return `<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap
+      bg-telecab-${f.color}/10 text-telecab-${f.color} border border-telecab-${f.color}/30">
+      <i class="fa-solid ${f.icono}"></i>${esc(f.texto)}</span>`;
+  };
+  const pildoraCluster = c => `<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap
+      bg-telecab-${tono(c)}/10 text-telecab-${tono(c)} border border-telecab-${tono(c)}/30">
+      <i class="fa-solid ${iconoCluster(c)}"></i>${esc(c)}</span>`;
 
   // ── Utilidades ──────────────────────────────────────────────────────────────
   const hoyISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
@@ -227,11 +435,26 @@
     const hoy = hoyISO();
     if (periodo === 'hoy') return { desde: hoy, hasta: hoy };
     if (periodo === 'mes') return { desde: hoy.slice(0, 8) + '01', hasta: hoy };
+    // «Todo» es una fecha anterior a la primera llamada del sistema: así no hay
+    // que preguntar a la base cuándo empezó todo solo para pintar un chip.
+    if (periodo === 'todo') return { desde: '2020-01-01', hasta: hoy };
     const d = new Date(hoy + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - (Number(periodo) - 1));
     return { desde: d.toISOString().slice(0, 10), hasta: hoy };
   }
   const fmtFecha = ts => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(ts * 1000);
-  const PIDE_SEGUIMIENTO = /pendiente|escalado|quedó|taller|grúa|revisión en base|no contactado|buzón/i;
+  const fmtDia = ts => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' }).format(ts * 1000);
+  const fmtHora = ts => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }).format(ts * 1000);
+  const claveDia = ts => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(ts * 1000);
+  // «hace 3 días»: para la columna «última» se lee mucho mejor que una fecha.
+  function hace(ts) {
+    const s = Math.floor(Date.now() / 1000) - ts;
+    if (s < 3600) return 'hace ' + Math.max(1, Math.round(s / 60)) + ' min';
+    if (s < 86400) return 'hace ' + Math.round(s / 3600) + ' h';
+    const d = Math.round(s / 86400);
+    return d === 1 ? 'ayer' : 'hace ' + d + ' días';
+  }
+  const PIDE_SEGUIMIENTO = /pendiente|escalado|quedó|taller|grúa|revisión en base|no contactado|buzón|aportará|solicitar/i;
+  const SIN_CONTACTO = /^(no contactado|buzón|buzón \/ no contesta|no contesta|número erróneo)$/i;
 
   function toast(msg, mal) {
     const t = $('toast');
@@ -241,31 +464,62 @@
     clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), 3500);
   }
 
+  // ── Pestañas ────────────────────────────────────────────────────────────────
+  function verTab(t) {
+    tab = t;
+    document.querySelectorAll('.cc-tab').forEach(b => {
+      const on = b.dataset.tab === t;
+      b.className = 'cc-tab px-4 py-2.5 text-sm font-medium -mb-px border-b-2 transition whitespace-nowrap ' +
+        (on ? 'text-telecab-gold border-telecab-gold' : 'text-telecab-muted border-transparent hover:text-telecab-text');
+    });
+    document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== t));
+    // «Por conductor» se trae sola la primera vez que se abre: es otra consulta
+    // y no tiene sentido pagarla si nadie mira esa pestaña.
+    if (t === 'conductores' && !PORCOND) cargaConductores();
+  }
+
   // ── Formulario: cascada de clasificación ────────────────────────────────────
-  const opciones = (sel, lista, ph) => {
-    sel.innerHTML = (ph ? `<option value="" disabled selected>${ph}</option>` : '') +
-      lista.map(x => `<option>${esc(x)}</option>`).join('');
-  };
-  function pintaClusters() { opciones($('f-cluster'), CAT.map(c => c.cluster), 'Elige…'); pintaSubclusters(); }
-  function clusterSel() { return CAT.find(c => c.cluster === $('f-cluster').value) || CAT[0]; }
+  const opciones = (sel, lista) => { sel.innerHTML = lista.map(x => `<option>${esc(x)}</option>`).join(''); };
+
+  function pintaClusters() {
+    // Los clusters como fichas, no como un desplegable: son diez y la elección
+    // es la que más condiciona lo que viene después, así que se ven todos.
+    $('chips-cluster').innerHTML = CAT.map(c => `
+      <button type="button" data-c="${esc(c.cluster)}"
+        class="chip-cluster inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition">
+        <i class="fa-solid ${esc(c.icono)}"></i>${esc(c.cluster)}</button>`).join('');
+    document.querySelectorAll('.chip-cluster').forEach(b => b.onclick = () => eligeCluster(b.dataset.c));
+    eligeCluster(cluster || (CAT[0] || {}).cluster || '');
+  }
+  function eligeCluster(c) {
+    cluster = c; $('f-cluster').value = c;
+    document.querySelectorAll('.chip-cluster').forEach(b => {
+      const on = b.dataset.c === c;
+      const t = tono(b.dataset.c);
+      b.className = 'chip-cluster inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ' +
+        (on ? `bg-telecab-${t}/20 text-telecab-${t} border-telecab-${t}/50`
+            : 'bg-telecab-card border-telecab-border text-telecab-muted hover:text-telecab-text');
+    });
+    pintaSubclusters();
+  }
+  const clusterSel = () => CAT.find(c => c.cluster === cluster) || CAT[0];
   function pintaSubclusters() {
     const c = clusterSel(); if (!c) return;
-    if (!$('f-cluster').value) $('f-cluster').value = c.cluster;
     opciones($('f-subcluster'), c.subclusters.map(s => s.nombre));
     pintaMotivos();
   }
-  function subclusterSel() { const c = clusterSel(); return c && (c.subclusters.find(s => s.nombre === $('f-subcluster').value) || c.subclusters[0]); }
+  const subclusterSel = () => { const c = clusterSel(); return c && (c.subclusters.find(s => s.nombre === $('f-subcluster').value) || c.subclusters[0]); };
   function pintaMotivos() {
     const s = subclusterSel(); if (!s) return;
     opciones($('f-motivo'), s.motivos.map(m => m.motivo));
     pintaResultados();
   }
-  function motivoSel() { const s = subclusterSel(); return s && (s.motivos.find(m => m.motivo === $('f-motivo').value) || s.motivos[0]); }
+  const motivoSel = () => { const s = subclusterSel(); return s && (s.motivos.find(m => m.motivo === $('f-motivo').value) || s.motivos[0]); };
   function pintaResultados() {
     const m = motivoSel(); if (!m) return;
     $('f-resultado').innerHTML =
       m.resultados.map(r => `<option>${esc(r)}</option>`).join('') +
-      `<option disabled>──────────</option>` +
+      '<option disabled>──── sin contacto ────</option>' +
       UNIV.map(r => `<option>${esc(r)}</option>`).join('');
     $('lista-acciones').innerHTML = (m.acciones || []).map(a => `<option value="${esc(a)}">`).join('');
     sugierePendiente();
@@ -275,17 +529,70 @@
   function pintaDireccion() {
     document.querySelectorAll('.btn-dir').forEach(b => {
       const on = b.dataset.d === direccion;
-      b.className = 'btn-dir px-3 py-1.5 ' + (on ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted');
+      b.className = 'btn-dir px-3 py-1.5 ' + (on ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted hover:text-telecab-text');
     });
   }
 
-  function autorrellena() {
+  // Al elegir conductor se rellena su ficha Y se trae su historia: quien llama
+  // necesita saber de qué se le habló la última vez ANTES de empezar a hablar.
+  let fichaPide = 0;
+  async function autorrellena() {
     const v = $('f-conductor').value.trim().toLowerCase();
     const c = CONDUCTORES.find(x => x.nombre.toLowerCase() === v || String(x.id).toLowerCase() === v);
     if (!c) return;
     if (c.telefono) $('f-telefono').value = c.telefono;
     if (c.matricula) $('f-matricula').value = c.matricula;
     $('f-turno').value = c.turno === 'Día y Noche' ? 'Día' : (c.turno || '');
+
+    const mio = ++fichaPide;
+    $('ficha-rapida-cuerpo').innerHTML = '<div class="text-telecab-muted text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Buscando su historia…</div>';
+    try {
+      const j = await fetch('/callcenter/api/historia/' + encodeURIComponent(c.id)).then(r => r.json());
+      if (mio !== fichaPide) return;                    // llegó tarde: manda la última
+      if (j.status !== 'ok') throw new Error(j.msg);
+      pintaFichaRapida(c, j);
+    } catch (e) {
+      if (mio === fichaPide) $('ficha-rapida-cuerpo').innerHTML =
+        '<div class="text-telecab-red text-sm">No se pudo leer su historia: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  function pintaFichaRapida(c, h) {
+    const r = h.resumen;
+    if (!r.total) {
+      $('ficha-rapida-cuerpo').innerHTML =
+        `<div class="text-sm text-telecab-muted">A <b class="text-telecab-text">${esc(c.nombre)}</b> no se le ha llamado nunca.</div>`;
+      return;
+    }
+    $('ficha-rapida-cuerpo').innerHTML = `
+      <div class="flex items-baseline gap-2 mb-3">
+        <span class="text-2xl font-bold text-telecab-text tabular-nums">${r.total}</span>
+        <span class="text-xs text-telecab-muted">llamadas · ${r.ultimos30} en 30 días</span>
+      </div>
+      ${r.noContacto ? `<div class="mb-3 text-[11px] rounded-lg px-2.5 py-1.5 bg-telecab-red/10 text-telecab-red border border-telecab-red/30">
+        <i class="fa-solid fa-phone-slash mr-1"></i> ${r.noContacto} veces no se le localizó</div>` : ''}
+      <div class="space-y-1.5 mb-4">
+        ${r.porMotivo.slice(0, 5).map(m => `
+          <div class="flex items-center justify-between gap-2 text-xs">
+            <span class="text-telecab-text truncate">${esc(m.nombre)}</span>
+            <span class="text-telecab-muted tabular-nums shrink-0">×${m.n}</span>
+          </div>`).join('')}
+      </div>
+      <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-2">Las últimas</div>
+      <div class="space-y-2">
+        ${h.llamadas.slice(0, 4).map(l => `
+          <div class="rounded-lg border border-telecab-border px-2.5 py-2">
+            <div class="flex items-center gap-1.5 mb-1">${pildoraFuente(l)}
+              <span class="text-[10px] text-telecab-muted ml-auto">${esc(fmtFecha(l.ts))}</span></div>
+            <div class="text-xs text-telecab-text">${esc(l.motivo)}</div>
+            <div class="text-[11px] text-telecab-muted">${esc(l.resultado)}${l.notas ? ' · ' + esc(l.notas.slice(0, 70)) : ''}</div>
+          </div>`).join('')}
+      </div>
+      <button type="button" data-ver-todo="${esc(h.conductorId)}"
+        class="mt-3 w-full py-2 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/40 transition">
+        Ver su historia entera</button>`;
+    const b = $('ficha-rapida-cuerpo').querySelector('[data-ver-todo]');
+    if (b) b.onclick = () => { verTab('conductores'); abreConductor(b.dataset.verTodo); };
   }
 
   // ── Carga y pintado del panel ───────────────────────────────────────────────
@@ -300,91 +607,342 @@
   function pintaKpis() {
     const k = DATOS.kpis;
     $('k-total').textContent = k.total;
-    $('k-dir').textContent = `${k.salientes} salientes · ${k.entrantes} entrantes`;
-    $('k-resueltas').textContent = k.total ? k.pctResueltas + '%' : '—';
-    $('k-enllamada').textContent = k.resueltasEnLlamada ? `${k.resueltasEnLlamada} en la propia llamada` : '';
+    $('k-fuentes').innerHTML = k.total
+      ? `<span class="text-telecab-azul">${k.deControl}</span> de Control · <span class="text-telecab-gold">${k.delCallCenter}</span> del Call Center`
+      : 'sin llamadas';
+    $('k-conductores').textContent = k.conductores;
+    $('k-media-cond').textContent = k.conductores
+      ? (Math.round(k.total / k.conductores * 10) / 10).toString().replace('.', ',') + ' llamadas por persona' : '';
+    const contactadas = k.total - k.noContactadas;
+    $('k-contacto').textContent = k.total ? (100 - k.pctNoContactadas) + '%' : '—';
+    $('k-nocontacto').innerHTML = k.total
+      ? `${contactadas} contactadas · <span class="text-telecab-red">${k.noContactadas} no</span>` : '';
     $('k-pendientes').textContent = DATOS.pendientes.length;
-    $('k-nocontacto').textContent = k.total ? k.pctNoContactadas + '%' : '—';
-    $('k-sinlocalizar').textContent = k.sinLocalizar.length ? `${k.sinLocalizar.length} sin localizar aún` : '';
     $('k-media').textContent = k.conSeguimiento ? k.mediaResolucionH + ' h' : '—';
+    $('k-enllamada').textContent = k.resueltasEnLlamada
+      ? `${k.resueltasEnLlamada} se cerraron en la propia llamada` : 'nada con seguimiento';
     $('k-reinc').textContent = k.reincidencias.length;
     $('k-tdia').textContent = k.porTurno['Día']; $('k-tnoche').textContent = k.porTurno['Noche']; $('k-tsin').textContent = k.porTurno['—'];
+    $('n-llamadas').textContent = k.total ? '· ' + k.total : '';
   }
 
   function pintaPendientes() {
     const caja = $('lista-pendientes');
     const P = DATOS.pendientes;
-    $('n-pendientes').textContent = P.length ? `· ${P.length}` : '';
-    caja.innerHTML = P.length ? '' : '<div class="text-sm text-telecab-muted">Nada pendiente. 🎉</div>';
+    $('n-pendientes').textContent = P.length ? P.length + ' abiertas' : '';
+    if (!P.length) {
+      caja.innerHTML = '<div class="text-sm text-telecab-muted py-2"><i class="fa-solid fa-check text-telecab-green mr-1.5"></i>Nada pendiente.</div>';
+      return;
+    }
+    caja.innerHTML = '';
     P.forEach(x => {
       const div = document.createElement('div');
-      div.className = 'flex items-center justify-between gap-3 rounded-lg border border-telecab-warn/40 bg-telecab-warn/10 px-3 py-2';
+      div.className = 'flex items-center justify-between gap-3 rounded-xl border border-telecab-warn/40 bg-telecab-warn/[0.07] px-3.5 py-2.5';
       div.innerHTML = `
         <div class="min-w-0">
-          <div class="text-sm text-telecab-text font-medium truncate">${esc(x.conductor)} <span class="text-telecab-muted font-normal">· ${esc(x.motivo)}</span></div>
-          <div class="text-[11px] text-telecab-muted truncate">${fmtFecha(x.ts)} · ${esc(x.resultado)}${x.matricula ? ' · ' + esc(x.matricula) : ''}${x.notas ? ' · ' + esc(x.notas) : ''}</div>
+          <div class="flex items-center gap-2 mb-0.5">
+            ${pildoraCluster(x.cluster)}
+            <span class="text-sm text-telecab-text font-medium truncate">${esc(x.conductor)}</span>
+          </div>
+          <div class="text-[11px] text-telecab-muted truncate">
+            ${esc(x.motivo)} · ${esc(x.resultado)} · ${esc(fmtFecha(x.ts))}${x.notas ? ' · ' + esc(x.notas) : ''}
+          </div>
         </div>
-        <button class="shrink-0 px-3 py-1.5 rounded-lg bg-telecab-green/15 text-telecab-green text-xs font-semibold hover:bg-telecab-green/25">Resolver</button>`;
+        <button class="shrink-0 px-3 py-1.5 rounded-lg bg-telecab-green/15 text-telecab-green text-xs font-semibold hover:bg-telecab-green/25 transition">
+          Resolver</button>`;
       div.querySelector('button').onclick = () => abreResolver(x);
       caja.appendChild(div);
     });
   }
 
-  function barra(caja, filas, color) {
+  function barra(caja, filas, colorFijo) {
     const max = Math.max(1, ...filas.map(f => f.n));
-    caja.innerHTML = filas.length ? '' : '<div class="text-sm text-telecab-muted">Sin datos.</div>';
-    filas.forEach(f => {
-      caja.insertAdjacentHTML('beforeend', `
+    const total = filas.reduce((a, f) => a + f.n, 0) || 1;
+    if (!filas.length) { caja.innerHTML = '<div class="text-sm text-telecab-muted">Sin datos.</div>'; return; }
+    caja.innerHTML = filas.map(f => {
+      const t = colorFijo || tono(f.nombre);
+      return `
         <div>
-          <div class="flex justify-between text-xs mb-0.5">
-            <span class="text-telecab-text truncate pr-2">${esc(f.nombre)}</span>
-            <span class="text-telecab-muted">${f.n}</span>
+          <div class="flex justify-between items-baseline text-xs mb-1 gap-2">
+            <span class="text-telecab-text truncate">${esc(f.nombre)}</span>
+            <span class="text-telecab-muted tabular-nums shrink-0">${f.n}
+              <span class="opacity-60">${Math.round(f.n / total * 100)}%</span></span>
           </div>
           <div class="h-2 rounded-full bg-telecab-card2 overflow-hidden">
-            <div class="h-full rounded-full bg-telecab-${color}" style="width:${Math.round(f.n / max * 100)}%"></div>
+            <div class="h-full rounded-full bg-telecab-${t}" style="width:${Math.max(2, Math.round(f.n / max * 100))}%"></div>
           </div>
-        </div>`);
-    });
+        </div>`;
+    }).join('');
   }
 
   function pintaGraficos() {
     const k = DATOS.kpis;
-    barra($('g-clusters'), k.porCluster, 'gold');
+    barra($('g-clusters'), k.porCluster);
     barra($('g-motivos'), k.porMotivo, 'violet');
+
     $('t-conductores').innerHTML = k.porConductor.map(c => `
-      <tr class="border-t border-telecab-border/40">
-        <td class="py-1.5 text-telecab-text">${esc(c.nombre)}</td>
-        <td class="text-center font-semibold text-telecab-text">${c.n}</td>
-        <td class="text-center text-telecab-muted">${c.motivos}</td>
-        <td class="text-center ${c.pendientes ? 'text-telecab-warn font-semibold' : 'text-telecab-muted'}">${c.pendientes || ''}</td>
-      </tr>`).join('') || '<tr><td colspan="4" class="py-2 text-sm text-telecab-muted">Sin datos.</td></tr>';
+      <tr class="border-t border-telecab-border/40 hover:bg-telecab-card2/60 transition">
+        <td class="px-5 py-2 text-telecab-text truncate max-w-[16rem]">${esc(c.nombre)}</td>
+        <td class="px-2 py-2 text-center font-semibold text-telecab-text tabular-nums">${c.n}</td>
+        <td class="px-2 py-2 text-center text-telecab-muted tabular-nums">${c.motivos}</td>
+        <td class="px-2 py-2 text-center tabular-nums ${c.pendientes ? 'text-telecab-warn font-semibold' : 'text-telecab-muted'}">${c.pendientes || '—'}</td>
+      </tr>`).join('') || '<tr><td colspan="4" class="px-5 py-6 text-sm text-telecab-muted text-center">Sin datos.</td></tr>';
+
     $('t-reincidencias').innerHTML = k.reincidencias.map(r => `
-      <div class="flex items-center justify-between rounded-lg bg-telecab-violet/10 border border-telecab-violet/30 px-3 py-1.5 text-xs">
-        <span class="text-telecab-text truncate pr-2">${esc(r.conductor)} <span class="text-telecab-muted">· ${esc(r.motivo)}</span></span>
-        <span class="shrink-0 font-bold text-telecab-violet">×${r.n}</span>
-      </div>`).join('') || '<div class="text-sm text-telecab-muted">Ninguna. 👌</div>';
+      <div data-cond="${esc(r.conductorId || '')}"
+           class="flex items-center justify-between gap-2 rounded-lg bg-telecab-violet/[0.08] border border-telecab-violet/30 px-3 py-2 text-xs ${r.conductorId ? 'cursor-pointer hover:bg-telecab-violet/15' : ''}">
+        <span class="text-telecab-text truncate">${esc(r.conductor)}
+          <span class="text-telecab-muted">· ${esc(r.motivo)}</span></span>
+        <span class="shrink-0 font-bold text-telecab-violet tabular-nums">×${r.n}</span>
+      </div>`).join('') || '<div class="text-sm text-telecab-muted py-2"><i class="fa-solid fa-check text-telecab-green mr-1.5"></i>Ninguna.</div>';
+    $('t-reincidencias').querySelectorAll('[data-cond]').forEach(d => {
+      if (!d.dataset.cond) return;
+      d.onclick = () => { verTab('conductores'); abreConductor(d.dataset.cond); };
+    });
   }
 
   function pintaTabla() {
     const txt = $('fil-texto').value.trim().toLowerCase();
-    const fc = $('fil-cluster').value, fe = $('fil-estado').value;
+    const fc = $('fil-cluster').value, fe = $('fil-estado').value, ff = $('fil-fuente').value;
     const filas = DATOS.llamadas.filter(x =>
       (!fc || x.cluster === fc) && (!fe || x.estado === fe) &&
-      (!txt || `${x.conductor} ${x.matricula} ${x.motivo} ${x.resultado} ${x.notas}`.toLowerCase().includes(txt)));
+      (!ff || (ff === 'control' ? x.fuente === 'control' : x.fuente !== 'control')) &&
+      (!txt || `${x.conductor} ${x.matricula} ${x.motivo} ${x.resultado} ${x.notas} ${x.agente}`.toLowerCase().includes(txt)));
     $('t-vacio').classList.toggle('hidden', !!filas.length);
+    // Dos recortes distintos y se dicen distinto: uno recorta la TABLA (los KPIs
+    // siguen contando todo) y el otro recortó la LECTURA (entonces los KPIs
+    // tampoco cuentan todo, y eso hay que decirlo).
+    const aviso = DATOS.tope
+      ? 'El periodo tiene más de 20.000 llamadas: se han leído las más recientes. Acorta el periodo para que los números cuenten todas.'
+      : DATOS.truncado ? 'Se muestran las 800 más recientes del periodo. Los números de arriba sí cuentan todas.' : '';
+    $('t-truncado').classList.toggle('hidden', !aviso);
+    $('t-truncado').textContent = aviso;
+
     $('t-llamadas').innerHTML = filas.map(x => `
-      <tr class="border-b border-telecab-border/30">
-        <td class="py-2 text-xs text-telecab-muted whitespace-nowrap">${fmtFecha(x.ts)}</td>
-        <td class="text-xs">${x.direccion === 'entrante' ? '📥' : '📤'}</td>
-        <td class="text-telecab-text">${esc(x.conductor)}${x.matricula ? `<span class="text-[10px] text-telecab-muted ml-1">${esc(x.matricula)}</span>` : ''}</td>
-        <td><span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-card2 text-telecab-muted">${esc(x.cluster)}</span>
-            <span class="text-xs text-telecab-text">${esc(x.motivo)}</span></td>
-        <td class="text-xs text-telecab-muted">${esc(x.resultado)}</td>
-        <td>${x.estado === 'pendiente'
-          ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-telecab-warn/15 text-telecab-warn font-semibold">pendiente</span>'
-          : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-telecab-green/15 text-telecab-green font-semibold">resuelta</span>'}</td>
-        <td class="text-xs text-telecab-muted">${esc(x.agente)}</td>
+      <tr class="border-t border-telecab-border/30 hover:bg-telecab-card2/50 transition">
+        <td class="px-5 py-2 text-xs text-telecab-muted whitespace-nowrap tabular-nums">${esc(fmtFecha(x.ts))}</td>
+        <td class="px-2 py-2">${pildoraFuente(x)}</td>
+        <td class="px-3 py-2">
+          <span class="${x.conductorId ? 'cursor-pointer hover:text-telecab-gold' : ''} text-telecab-text" ${x.conductorId ? `data-cond="${esc(x.conductorId)}"` : ''}>${esc(x.conductor)}</span>
+          ${x.matricula ? `<span class="text-[10px] text-telecab-muted ml-1.5">${esc(x.matricula)}</span>` : ''}
+        </td>
+        <td class="px-3 py-2">
+          <div class="flex items-center gap-1.5">${pildoraCluster(x.cluster)}</div>
+          <div class="text-xs text-telecab-text mt-0.5">${esc(x.motivo)}</div>
+        </td>
+        <td class="px-3 py-2 text-xs ${SIN_CONTACTO.test(x.resultado) ? 'text-telecab-red' : 'text-telecab-muted'}">
+          ${esc(x.resultado)}
+          ${x.estado === 'pendiente' ? '<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-telecab-warn/15 text-telecab-warn font-semibold">pendiente</span>' : ''}
+        </td>
+        <td class="px-3 py-2 text-xs text-telecab-muted truncate max-w-[9rem]">${esc(x.agente || '—')}</td>
       </tr>`).join('');
+    $('t-llamadas').querySelectorAll('[data-cond]').forEach(d =>
+      d.onclick = () => { verTab('conductores'); abreConductor(d.dataset.cond); });
+  }
+
+  // ── Por conductor ───────────────────────────────────────────────────────────
+  async function cargaConductores() {
+    const r = rangoPeriodo();
+    $('t-por-conductor').innerHTML =
+      '<tr><td colspan="7" class="px-5 py-8 text-center text-sm text-telecab-muted"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Leyendo…</td></tr>';
+    const j = await fetch(`/callcenter/api/por-conductor?desde=${r.desde}&hasta=${r.hasta}`).then(x => x.json());
+    if (j.status !== 'ok') { toast(j.msg || 'Error cargando conductores', true); return; }
+    PORCOND = j;
+    $('cond-rango').textContent = `${j.desde.split('-').reverse().join('/')} → ${j.hasta.split('-').reverse().join('/')}`;
+    $('n-conductores').textContent = j.conductores.length ? '· ' + j.conductores.length : '';
+    pintaPorConductor();
+  }
+
+  function pintaPorConductor() {
+    if (!PORCOND) return;
+    const ORDEN = {
+      n: (a, b) => b.n - a.n,
+      ultima: (a, b) => b.ultima.ts - a.ultima.ts,
+      reincide: (a, b) => b.reincide - a.reincide || b.n - a.n,
+      nocontacto: (a, b) => b.noContacto - a.noContacto || b.n - a.n,
+      nombre: (a, b) => a.conductor.localeCompare(b.conductor, 'es'),
+    };
+    const filas = PORCOND.conductores
+      .filter(c => !condBusca || `${c.conductor} ${c.matricula} ${c.motivoTop}`.toLowerCase().includes(condBusca))
+      .sort(ORDEN[condOrden] || ORDEN.n);
+
+    $('cond-vacio').classList.toggle('hidden', !!filas.length);
+    $('t-por-conductor').innerHTML = filas.map(c => {
+      // El reparto entre las dos fuentes, en una barra de dos tramos: se lee de
+      // un vistazo si a esta persona la llama Control o el Call Center.
+      const pc = Math.round(c.deControl / c.n * 100);
+      return `
+      <tr data-cond="${esc(c.conductorId || '')}" class="border-t border-telecab-border/40 hover:bg-telecab-card2/60 transition ${c.conductorId ? 'cursor-pointer' : ''}">
+        <td class="px-5 py-2.5">
+          <div class="text-telecab-text font-medium truncate max-w-[15rem]">${esc(c.conductor)}</div>
+          <div class="text-[11px] text-telecab-muted tabular-nums">${esc(c.telefono || '')}${c.matricula ? ' · ' + esc(c.matricula) : ''}</div>
+        </td>
+        <td class="px-2 py-2.5 text-center">
+          <span class="text-lg font-bold text-telecab-text tabular-nums">${c.n}</span>
+          ${c.pendientes ? `<div class="text-[10px] text-telecab-warn font-semibold">${c.pendientes} pend.</div>` : ''}
+        </td>
+        <td class="px-3 py-2.5 w-36">
+          <div class="h-1.5 rounded-full bg-telecab-gold/40 overflow-hidden flex">
+            <div class="h-full bg-telecab-azul" style="width:${pc}%"></div>
+          </div>
+          <div class="text-[10px] text-telecab-muted mt-1">
+            <span class="text-telecab-azul">${c.deControl} Control</span>
+            ${c.delCallCenter ? ` · <span class="text-telecab-gold">${c.delCallCenter} CC</span>` : ''}
+          </div>
+        </td>
+        <td class="px-3 py-2.5">
+          <div class="flex items-center gap-1.5">${pildoraCluster(c.clusterTop)}</div>
+          <div class="text-xs text-telecab-text mt-0.5 truncate max-w-[16rem]">${esc(c.motivoTop)}</div>
+        </td>
+        <td class="px-2 py-2.5 text-center tabular-nums ${c.reincide ? 'text-telecab-violet font-semibold' : 'text-telecab-muted'}">
+          ${c.motivosDistintos}${c.reincide ? `<div class="text-[10px]">${c.reincide} repetido${c.reincide > 1 ? 's' : ''}</div>` : ''}
+        </td>
+        <td class="px-2 py-2.5 text-center tabular-nums ${c.noContacto ? 'text-telecab-red font-semibold' : 'text-telecab-muted'}">${c.noContacto || '—'}</td>
+        <td class="px-3 py-2.5">
+          <div class="text-xs text-telecab-text">${esc(hace(c.ultima.ts))}</div>
+          <div class="text-[11px] text-telecab-muted truncate max-w-[13rem]">${esc(c.ultima.resultado)}</div>
+        </td>
+      </tr>`;
+    }).join('');
+    $('t-por-conductor').querySelectorAll('[data-cond]').forEach(tr => {
+      if (!tr.dataset.cond) return;
+      tr.onclick = () => abreConductor(tr.dataset.cond);
+    });
+  }
+
+  // ── La ficha: su historia entera ────────────────────────────────────────────
+  async function abreConductor(id) {
+    if (!id) return;
+    verTab('conductores');
+    $('cond-lista').classList.add('hidden');
+    $('cond-ficha').classList.remove('hidden');
+    $('cond-ficha').innerHTML = '<div class="py-16 text-center text-telecab-muted"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Leyendo su historia…</div>';
+    const j = await fetch('/callcenter/api/historia/' + encodeURIComponent(id)).then(x => x.json());
+    if (j.status !== 'ok') { toast(j.msg || 'No se pudo leer', true); volverLista(); return; }
+    HISTORIA = j;
+    pintaHistoria(j);
+  }
+  function volverLista() {
+    $('cond-ficha').classList.add('hidden');
+    $('cond-lista').classList.remove('hidden');
+  }
+
+  function pintaHistoria(h) {
+    const r = h.resumen;
+    // La línea de tiempo se agrupa por DÍA: así se ve cuándo se le llamó tres
+    // veces en una mañana, que es un dato distinto de tres llamadas en un mes.
+    const dias = [];
+    h.llamadas.forEach(l => {
+      const k = claveDia(l.ts);
+      let d = dias[dias.length - 1];
+      if (!d || d.clave !== k) { d = { clave: k, ts: l.ts, llamadas: [] }; dias.push(d); }
+      d.llamadas.push(l);
+    });
+
+    $('cond-ficha').innerHTML = `
+      <div class="flex flex-wrap items-center gap-3 mb-5">
+        <button data-volver class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition flex items-center justify-center" title="Volver (Esc)">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <div class="min-w-0">
+          <h2 class="text-xl font-bold text-telecab-text truncate">${esc(h.conductor || 'Conductor ' + h.conductorId)}</h2>
+          <p class="text-sm text-telecab-muted tabular-nums">${esc(h.telefono || 'sin teléfono')}</p>
+        </div>
+        ${h.telefono ? `<a href="tel:${esc(h.telefono)}" class="ml-auto px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark text-sm font-semibold hover:bg-telecab-gold-soft transition">
+          <i class="fa-solid fa-phone mr-1.5"></i>Llamar</a>` : ''}
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        ${[['Llamadas', r.total, 'text-telecab-text', r.primera ? 'desde ' + fmtFecha(r.primera).slice(0, 5) : ''],
+           ['En 30 días', r.ultimos30, 'text-telecab-azul', ''],
+           ['Sin contacto', r.noContacto, r.noContacto ? 'text-telecab-red' : 'text-telecab-muted', r.total ? Math.round(r.noContacto / r.total * 100) + '% de las veces' : ''],
+           ['Pendientes', r.pendientes, r.pendientes ? 'text-telecab-warn' : 'text-telecab-muted', 'de seguimiento'],
+           ['Motivos ≠', r.porMotivo.length, 'text-telecab-violet', 'razones distintas']]
+          .map(([t, v, c, sub]) => `
+            <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft p-4">
+              <div class="text-[11px] text-telecab-muted uppercase tracking-wide mb-1">${t}</div>
+              <div class="text-2xl font-bold ${c} tabular-nums">${v}</div>
+              <div class="text-[11px] text-telecab-muted mt-0.5">${esc(sub)}</div>
+            </div>`).join('')}
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="space-y-4">
+          <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+            <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+              <i class="fa-solid fa-layer-group text-telecab-gold text-sm"></i>
+              <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">De qué se le ha llamado</h3>
+            </div>
+            <div class="p-5 space-y-2.5">
+              ${r.porMotivo.map(m => `
+                <div class="flex items-center justify-between gap-2 text-xs">
+                  <span class="text-telecab-text">${esc(m.nombre)}</span>
+                  <span class="tabular-nums shrink-0 ${m.n >= 2 ? 'text-telecab-violet font-bold' : 'text-telecab-muted'}">×${m.n}</span>
+                </div>`).join('') || '<div class="text-sm text-telecab-muted">—</div>'}
+            </div>
+          </div>
+          <div class="rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+            <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+              <i class="fa-solid fa-user-headset text-telecab-azul text-sm"></i>
+              <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Quién le ha llamado</h3>
+            </div>
+            <div class="p-5 space-y-2.5">
+              ${r.porAgente.map(a => `
+                <div class="flex items-center justify-between gap-2 text-xs">
+                  <span class="text-telecab-text truncate">${esc(a.nombre)}</span>
+                  <span class="text-telecab-muted tabular-nums shrink-0">×${a.n}</span>
+                </div>`).join('') || '<div class="text-sm text-telecab-muted">Sin agente apuntado.</div>'}
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2 rounded-2xl bg-telecab-card border border-telecab-border shadow-soft overflow-hidden">
+          <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
+            <i class="fa-solid fa-timeline text-telecab-violet text-sm"></i>
+            <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Todas las llamadas</h3>
+            <span class="ml-auto text-[11px] text-telecab-muted">
+              ${r.deControl} de Control · ${r.delCallCenter} del Call Center</span>
+          </div>
+          <div class="p-5 max-h-[46rem] overflow-y-auto">
+            ${dias.length ? dias.map(d => `
+              <div class="mb-5 last:mb-0">
+                <div class="flex items-center gap-2 mb-2.5">
+                  <span class="text-xs font-semibold text-telecab-text first-letter:uppercase">${esc(fmtDia(d.ts))}</span>
+                  <span class="text-[11px] text-telecab-muted">${d.llamadas.length} llamada${d.llamadas.length > 1 ? 's' : ''}</span>
+                  <div class="flex-1 h-px bg-telecab-border/60"></div>
+                </div>
+                <div class="space-y-2 pl-1">
+                  ${d.llamadas.map(l => tarjetaLlamada(l)).join('')}
+                </div>
+              </div>`).join('')
+            : '<div class="py-10 text-center text-sm text-telecab-muted">Ninguna llamada.</div>'}
+          </div>
+        </div>
+      </div>`;
+    $('cond-ficha').querySelector('[data-volver]').onclick = volverLista;
+  }
+
+  function tarjetaLlamada(l) {
+    const t = tono(l.cluster);
+    return `
+      <div class="relative rounded-xl border border-telecab-border bg-telecab-card2/40 pl-4 pr-3.5 py-2.5">
+        <span class="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-full bg-telecab-${t}"></span>
+        <div class="flex flex-wrap items-center gap-2 mb-1">
+          <span class="text-xs font-semibold text-telecab-text tabular-nums">${esc(fmtHora(l.ts))}</span>
+          ${pildoraFuente(l)}
+          ${pildoraCluster(l.cluster)}
+          ${l.turno ? `<span class="text-[10px] text-telecab-muted">${esc(l.turno)}</span>` : ''}
+          ${l.estado === 'pendiente'
+            ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-telecab-warn/15 text-telecab-warn font-semibold">pendiente</span>' : ''}
+          ${l.agente ? `<span class="ml-auto text-[10px] text-telecab-muted truncate">${esc(l.agente)}</span>` : ''}
+        </div>
+        <div class="text-sm text-telecab-text">${esc(l.motivo)}</div>
+        <div class="text-xs mt-0.5 ${SIN_CONTACTO.test(l.resultado) ? 'text-telecab-red' : 'text-telecab-muted'}">
+          <i class="fa-solid ${SIN_CONTACTO.test(l.resultado) ? 'fa-phone-slash' : 'fa-comment-dots'} mr-1"></i>${esc(l.resultado)}
+        </div>
+        ${l.notas ? `<div class="text-xs text-telecab-muted mt-1.5 pt-1.5 border-t border-telecab-border/50 whitespace-pre-line">${esc(l.notas)}</div>` : ''}
+        ${l.resolucion ? `<div class="text-xs text-telecab-green mt-1.5"><i class="fa-solid fa-check mr-1"></i>${esc(l.resolucion)}</div>` : ''}
+      </div>`;
   }
 
   // ── Resolver ────────────────────────────────────────────────────────────────
@@ -397,6 +955,7 @@
       ((m && m.resultados) || []).concat(UNIV).map(r => `<option>${esc(r)}</option>`).join('');
     $('m-nota').value = '';
     $('modal-resolver').classList.remove('hidden');
+    $('m-nota').focus();
   }
   $('m-cancelar').onclick = () => $('modal-resolver').classList.add('hidden');
   $('m-ok').onclick = async () => {
@@ -423,6 +982,9 @@
         body: JSON.stringify({
           direccion, conductor: $('f-conductor').value, telefono: $('f-telefono').value,
           matricula: $('f-matricula').value, turno: $('f-turno').value,
+          // El id de la persona, cuando se eligió de la lista: así la llamada
+          // queda atada a SU ficha y no a cómo se escribiera su nombre hoy.
+          conductorId: (CONDUCTORES.find(c => c.nombre === $('f-conductor').value.trim()) || {}).id,
           cluster: $('f-cluster').value, subcluster: $('f-subcluster').value,
           motivo: $('f-motivo').value, resultado: $('f-resultado').value,
           accion: $('f-accion').value, notas: $('f-notas').value,
@@ -434,25 +996,38 @@
       toast('Llamada registrada ✔');
       ['f-conductor', 'f-telefono', 'f-matricula', 'f-accion', 'f-notas'].forEach(id => $(id).value = '');
       $('f-turno').value = ''; $('f-pendiente').checked = false;
+      $('ficha-rapida-cuerpo').innerHTML = 'Elige un conductor y aquí sale de qué se le ha llamado antes.';
+      $('ficha-rapida-cuerpo').className = 'p-5 text-sm text-telecab-muted';
+      PORCOND = null;                       // la pestaña de conductores ya no vale
       cargaDatos();
+      $('f-conductor').focus();
     } finally { b.disabled = false; }
   };
 
   // ── Eventos ─────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.cc-tab').forEach(b => b.onclick = () => verTab(b.dataset.tab));
   document.querySelectorAll('.btn-dir').forEach(b => b.onclick = () => { direccion = b.dataset.d; pintaDireccion(); });
   document.querySelectorAll('.chip-p').forEach(b => b.onclick = () => {
     periodo = b.dataset.p;
     document.querySelectorAll('.chip-p').forEach(x => x.className = 'chip-p px-3 py-1.5 rounded-lg text-xs font-semibold ' +
       (x.dataset.p === periodo ? 'bg-telecab-gold/20 text-telecab-gold' : 'text-telecab-muted hover:text-telecab-text'));
+    PORCOND = null; volverLista();
     cargaDatos();
+    if (tab === 'conductores') cargaConductores();
   });
-  $('f-cluster').onchange = pintaSubclusters;
   $('f-subcluster').onchange = pintaMotivos;
   $('f-motivo').onchange = pintaResultados;
   $('f-resultado').onchange = sugierePendiente;
   $('f-conductor').onchange = autorrellena;
-  ['fil-texto', 'fil-cluster', 'fil-estado'].forEach(id => { $(id).oninput = pintaTabla; });
-  $('btn-refrescar').onclick = cargaDatos;
+  ['fil-texto', 'fil-cluster', 'fil-estado', 'fil-fuente'].forEach(id => { $(id).oninput = pintaTabla; });
+  $('cond-busca').oninput = () => { condBusca = $('cond-busca').value.trim().toLowerCase(); pintaPorConductor(); };
+  $('cond-orden').onchange = () => { condOrden = $('cond-orden').value; pintaPorConductor(); };
+  $('btn-refrescar').onclick = () => { PORCOND = null; cargaDatos(); if (tab === 'conductores') cargaConductores(); };
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!$('modal-resolver').classList.contains('hidden')) { $('modal-resolver').classList.add('hidden'); return; }
+    if (!$('cond-ficha').classList.contains('hidden')) volverLista();
+  });
 
   // ── Arranque ────────────────────────────────────────────────────────────────
   (async () => {
@@ -465,8 +1040,8 @@
     $('lista-conductores').innerHTML = CONDUCTORES.map(c =>
       `<option value="${esc(c.nombre)}">${esc([c.matricula, c.turno].filter(Boolean).join(' · '))}</option>`).join('');
     $('fil-cluster').innerHTML += CAT.map(c => `<option>${esc(c.cluster)}</option>`).join('');
-    pintaClusters(); pintaDireccion();
-    document.querySelector('.chip-p[data-p="hoy"]').click();
+    pintaClusters(); pintaDireccion(); verTab('panel');
+    document.querySelector('.chip-p[data-p="7"]').click();
   })();
 })();
 </script>

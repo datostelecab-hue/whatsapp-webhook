@@ -3,6 +3,11 @@
 // ============================================================
 // Guardar una llamada y cerrarla. La clasificación se valida ANTES, en el
 // servicio: aquí ya llega buena.
+//
+// Aquí solo viven las llamadas TECLEADAS en el Call Center (y las que crea
+// Flota Viva al justificar). Las del telefonito de Control viven en
+// `llamada_seguimiento` y las lee `services/repo/llamadas.paraCallCenter`: el
+// servicio junta las dos. Ver la nota de db/131.
 
 const db = require('../../services/db');
 
@@ -14,13 +19,14 @@ const CAMPOS = `
   clave,
   EXTRACT(EPOCH FROM creado_at)::bigint  AS ts,
   EXTRACT(EPOCH FROM resuelto_at)::bigint AS ts_resuelta,
-  agente, direccion, conductor_id, conductor, telefono, matricula, turno,
+  agente, direccion, origen, conductor_id, conductor, telefono, matricula, turno,
   cluster, subcluster, motivo, resultado, accion, notas,
   estado, resuelta_por, resolucion`;
 
 const aLlamada = x => ({
   clave: x.clave, ts: Number(x.ts) || 0,
   agente: x.agente || '', direccion: x.direccion || '',
+  origen: x.origen || 'callcenter',
   conductorId: x.conductor_id ? String(x.conductor_id) : null,
   conductor: x.conductor || '', telefono: x.telefono || '',
   matricula: x.matricula || '', turno: x.turno || '',
@@ -31,10 +37,39 @@ const aLlamada = x => ({
   resueltaPor: x.resuelta_por || '', resolucion: x.resolucion || '',
 });
 
-/** Todas, de la más nueva a la más vieja. */
-async function listar({ limite = 5000 } = {}) {
+/**
+ * Las de una ventana, de la más nueva a la más vieja.
+ *
+ * `desde`/`hasta` son epoch en SEGUNDOS, no fechas. Es a propósito: comparar
+ * una `date` con una `timestamptz` obliga a una conversión de zona horaria que
+ * se hace al revés de lo que uno espera, y así la ventana la decide quien sabe
+ * qué día pidió el usuario, una sola vez y arriba.
+ */
+async function listar({ desde = 0, hasta = 0, limite = 20000 } = {}) {
+  const h = hasta || Math.floor(Date.now() / 1000) + 86400;
   const r = await db.consulta(
-    `SELECT ${CAMPOS} FROM llamada_cc ORDER BY creado_at DESC LIMIT $1`, [limite]);
+    `SELECT ${CAMPOS} FROM llamada_cc
+      WHERE creado_at >= to_timestamp($1) AND creado_at < to_timestamp($2)
+      ORDER BY creado_at DESC LIMIT $3`, [desde || 0, h, limite]);
+  return r.rows.map(aLlamada);
+}
+
+/**
+ * Las que siguen abiertas, de cualquier fecha y de la más vieja a la más nueva.
+ * Van aparte del periodo a propósito: una llamada sin resolver de hace tres
+ * días sigue sin resolver hoy.
+ */
+async function pendientes() {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS} FROM llamada_cc WHERE estado = 'pendiente' ORDER BY creado_at`);
+  return r.rows.map(aLlamada);
+}
+
+/** Todas las de una persona, la última primero. Para su historia. */
+async function deConductor(conductorId) {
+  const r = await db.consulta(
+    `SELECT ${CAMPOS} FROM llamada_cc WHERE conductor_id = $1 ORDER BY creado_at DESC LIMIT 2000`,
+    [Number(conductorId)]);
   return r.rows.map(aLlamada);
 }
 
@@ -42,13 +77,13 @@ async function listar({ limite = 5000 } = {}) {
 async function guardar(ll) {
   const r = await db.consulta(
     `INSERT INTO llamada_cc
-       (clave, creado_at, agente, agente_id, direccion, conductor_id, conductor, telefono,
+       (clave, creado_at, agente, agente_id, direccion, origen, conductor_id, conductor, telefono,
         matricula, turno, cluster, subcluster, motivo, resultado, accion, notas,
         estado, resuelto_at, resuelta_por, resolucion)
-     VALUES ($1, to_timestamp($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-             $15, $16, $17, CASE WHEN $18::bigint > 0 THEN to_timestamp($18::bigint) END, $19, $20)
+     VALUES ($1, to_timestamp($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+             $16, $17, $18, CASE WHEN $19::bigint > 0 THEN to_timestamp($19::bigint) END, $20, $21)
      RETURNING ${CAMPOS}`,
-    [ll.clave, ll.ts, ll.agente || '', ll.agenteId || null, ll.direccion,
+    [ll.clave, ll.ts, ll.agente || '', ll.agenteId || null, ll.direccion, ll.origen || 'callcenter',
      ll.conductorId || null, ll.conductor, ll.telefono || '', ll.matricula || '', ll.turno || '',
      ll.cluster, ll.subcluster, ll.motivo, ll.resultado, ll.accion || '', ll.notas || '',
      ll.estado, ll.tsResuelta || 0, ll.resueltaPor || '', ll.resolucion || '']);
@@ -89,4 +124,4 @@ async function existe(clave) {
   return r.rows.length ? r.rows[0].estado : null;
 }
 
-module.exports = { listar, una, guardar, cerrar, existe };
+module.exports = { listar, pendientes, deConductor, una, guardar, cerrar, existe };

@@ -279,8 +279,7 @@ async function justificar(id, { gestion = 'llamada', motivo, resultado, accion, 
   if (!inc) throw new Error('No existe esa incidencia');
 
   // PRIMERO se guarda aquí. La justificación es lo que necesita el parte del
-  // cierre, y no puede perderse porque el Call Center —que escribe en una hoja—
-  // falle o esté sin cuota.
+  // cierre, y no puede perderse porque falle la escritura en el Call Center.
   //
   // EL PRIMERO QUE LLEGA LA CIERRA. Ese `justificada_at IS NULL` es la mitad de
   // esta función.
@@ -332,6 +331,10 @@ async function justificar(id, { gestion = 'llamada', motivo, resultado, accion, 
       matricula: inc.matricula || '',
       turno: inc.franja === 'noche' ? 'Noche' : 'Día',
       cluster: inc.cc_cluster, subcluster: inc.cc_subcluster, motivo: inc.cc_motivo,
+      // De dónde nace: justificar una incidencia de /operaciones/vivo ES una
+      // llamada, pero no se tecleó en la pantalla del Call Center y conviene
+      // poder separarlas (db/131).
+      origen: 'flota_viva',
       resultado: String(resultado || '').trim(),
       accion: String(accion || '').trim(),
       notas: texto,

@@ -29,8 +29,11 @@ const RESULTADOS = [
  * veces al mes Tráfico no entrega un coche a tiempo.
  *
  * Los siete de siempre viven bajo 'seguimiento' y NO cambian de nombre: son los
- * que alimentan las colas de las campañas (services/callCenter) y renombrarlos
- * rompería el histórico.
+ * que alimentan las colas de las campañas (`campanas.service`) y renombrarlos
+ * rompería el histórico. Los casos de los demás tipos tampoco: el Call Center
+ * los traduce a su catálogo por el texto exacto
+ * (`callcenter.service.DESDE_CONTROL`), así que renombrar uno aquí lo manda al
+ * motivo por defecto de su tipo sin avisar.
  *
  * 'alerta' va con los casos VACÍOS a propósito: sus casos son las alertas que
  * ese conductor tiene abiertas en ese momento, y eso lo rellena la pantalla.
@@ -74,12 +77,13 @@ const CATALOGO = [
 const TIPOS = CATALOGO.map(c => c.codigo);
 
 // Cada pulsación deja constancia de la llamada a un conductor: quién llamó,
-// cuándo, en qué turno y con qué resultado. De aquí salen tres cosas:
+// cuándo, en qué turno y con qué resultado. De aquí salen cuatro cosas:
 //   · la traza en la carta de En directo (para que dos operadores no se pisen),
-//   · la lista "Llamadas de seguimiento" del Histórico, y
-//   · el reporte de "sí lo llamé".
-// El espejo en la hoja CALL_CENTER lo hace la ruta (best-effort); la verdad es
-// esta tabla.
+//   · la lista "Llamadas de seguimiento" del Histórico,
+//   · el reporte de "sí lo llamé", y
+//   · el Call Center, que desde db/131 LEE estas llamadas (`paraCallCenter`)
+//     en vez de quedarse con una copia mal clasificada.
+// No hay espejo en ninguna hoja: esta tabla es la única.
 
 const db = require('../db');
 
@@ -111,7 +115,7 @@ const diaValido = d => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : diaOperativoHo
  * llamada cae en la misma jornada que la carta donde se apuntó.
  */
 async function registrar({ conductorId, turno, resultado, nota, usuarioId, origen = 'control',
-                           dia, tipo, alertas }) {
+                           dia, tipo, alertas, matricula }) {
   const cid = Number(conductorId);
   if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
   const jornada = diaValido(dia);
@@ -127,14 +131,18 @@ async function registrar({ conductorId, turno, resultado, nota, usuarioId, orige
 
   return db.transaccion(async cli => {
     const r = await cli.query(
-      `INSERT INTO llamada_seguimiento (conductor_id, usuario_id, origen, dia_operativo, turno, resultado, nota, tipo)
-       VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8)
+      `INSERT INTO llamada_seguimiento (conductor_id, usuario_id, origen, dia_operativo, turno, resultado, nota, tipo, matricula)
+       VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, $9)
        RETURNING id, creado_at`,
       [cid, usuarioId || null, origen, jornada,
        String(turno || '').slice(0, 10) || null,
        String(resultado || '').trim().slice(0, 60) || null,
        String(nota || '').trim().slice(0, 300) || null,
-       TIPOS.includes(tipo) ? tipo : null]);
+       TIPOS.includes(tipo) ? tipo : null,
+       // El coche que llevaba cuando se le llamó. La pantalla ya lo mandaba y
+       // se tiraba por no haber columna (db/131): es lo que permite preguntar
+       // si un coche concreto genera llamadas.
+       String(matricula || '').trim().toUpperCase().slice(0, 16) || null]);
     const id = r.rows[0].id;
 
     for (const a of porAlerta) {
@@ -345,6 +353,64 @@ async function listar({ desde, hasta } = {}) {
 }
 
 /**
+ * LAS LLAMADAS DE CONTROL TAL Y COMO LAS LEE EL CALL CENTER.
+ *
+ * El Call Center ya no COPIA estas llamadas —lo hizo hasta db/131 y las copiaba
+ * mal, todas con la misma clasificación clavada—: las lee de aquí y las
+ * clasifica al vuelo. Por eso esta consulta devuelve el tipo, el resultado y lo
+ * que contestó de cada alerta: con eso `callcenter.service.clasificarControl`
+ * sabe de qué iba la llamada.
+ *
+ * `desde`/`hasta` son epoch en SEGUNDOS, no fechas: aquí se filtra por el
+ * INSTANTE de la llamada (que es lo que compara el Call Center), no por la
+ * jornada operativa. Son dos preguntas distintas y mezclarlas movía llamadas de
+ * día. Con `conductorId` se trae su historia entera, sin ventana.
+ */
+async function paraCallCenter({ desde = 0, hasta = 0, conductorId = null, limite = 20000 } = {}) {
+  const cid = conductorId == null ? null : Number(conductorId);
+  const h = hasta || Math.floor(Date.now() / 1000) + 86400;
+  const r = await db.consulta(
+    `SELECT l.id, l.conductor_id, l.origen, l.tipo, l.resultado, l.nota, l.turno, l.matricula,
+            EXTRACT(EPOCH FROM l.creado_at)::bigint AS ts,
+            to_char(l.dia_operativo, 'YYYY-MM-DD') AS dia,
+            COALESCE(u.nombre, '') AS agente,
+            COALESCE(ext.externo_nombre,
+                     NULLIF(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))), ''),
+                     '#' || c.id::text) AS conductor,
+            tel.e164 AS telefono,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                        'alerta', a.alerta, 'etiqueta', a.etiqueta, 'comentario', a.comentario)
+                      ORDER BY a.id)
+                 FROM llamada_alerta a WHERE a.llamada_id = l.id), '[]'::json) AS alertas
+       FROM llamada_seguimiento l
+       JOIN conductor c ON c.id = l.conductor_id
+       LEFT JOIN usuario u ON u.id = l.usuario_id
+       LEFT JOIN LATERAL (
+         SELECT externo_nombre FROM conductor_externo
+          WHERE conductor_id = c.id AND sistema = 'bolt' AND visto_hasta IS NULL
+          ORDER BY (estado_externo = 'active') DESC, visto_desde DESC LIMIT 1) ext ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT e164 FROM conductor_telefono
+          WHERE conductor_id = c.id AND vigente_hasta IS NULL
+          ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
+      WHERE ($3::bigint IS NULL OR l.conductor_id = $3::bigint)
+        AND ($3::bigint IS NOT NULL
+             OR (l.creado_at >= to_timestamp($1) AND l.creado_at < to_timestamp($2)))
+      ORDER BY l.creado_at DESC
+      LIMIT $4`, [desde || 0, h, cid, limite]);
+
+  return r.rows.map(x => ({
+    id: String(x.id), ts: Number(x.ts) || 0, dia: x.dia,
+    conductorId: String(x.conductor_id), conductor: x.conductor,
+    telefono: x.telefono || '', matricula: x.matricula || '',
+    turno: x.turno || '', tipo: x.tipo || '', origen: x.origen || 'control',
+    resultado: x.resultado || '', nota: x.nota || '', agente: x.agente || '',
+    alertas: x.alertas || [],
+  }));
+}
+
+/**
  * Los justificantes VIVOS de la jornada operativa en curso, por conductor:
  * { conductorId: { horas, obs, quien } }. La carta de En directo lo pinta para
  * que el segundo operador vea que ese día ya está justificado.
@@ -417,4 +483,4 @@ async function justificadosHoy(dia) {
   return m;
 }
 
-module.exports = { registrar, resumenHoy, listar, justificadosHoy, delDia, diaOperativoHoy, RESULTADOS, CATALOGO, TIPOS, estadisticasHoy, CONTACTADO };
+module.exports = { registrar, resumenHoy, listar, paraCallCenter, justificadosHoy, delDia, diaOperativoHoy, RESULTADOS, CATALOGO, TIPOS, estadisticasHoy, CONTACTADO };
