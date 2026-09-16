@@ -167,6 +167,7 @@ app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
 app.use('/taller', require('./modules/Vehiculos/taller.controller'));
+app.use('/facturas', require('./modules/Vehiculos/facturas.controller'));
 app.use('/fichaje', require('./modules/Fichaje/fichaje.controller'));
 app.use('/plantilla', plantillaRoutes);
 // La pantalla se llamo /conductores mientras se construia. Quien tenga ese

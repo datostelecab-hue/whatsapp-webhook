@@ -1,0 +1,354 @@
+<div id="modulo"></div>
+
+<!-- Alta de factura. Vive fuera del componente porque es propio de esta
+     pantalla: el componente pone la lista y la ficha, no sabe de facturas.
+     Y la tabla de líneas crece: una factura de iPark trae media docena. -->
+<div id="fm" class="hidden fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-4xl my-8">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
+      <h3 class="font-bold text-lg">Nueva factura de taller</h3>
+      <button type="button" id="fm-cerrar" class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted transition">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <form id="fm-form" class="p-5 space-y-5">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <label class="block">
+          <span class="text-xs text-telecab-muted">Taller</span>
+          <select name="proveedorId" required class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2"></select>
+        </label>
+        <label class="block">
+          <span class="text-xs text-telecab-muted">Nº de factura</span>
+          <input name="numero" required placeholder="26/04137" class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2">
+        </label>
+        <label class="block">
+          <span class="text-xs text-telecab-muted">Fecha</span>
+          <input name="fecha" type="date" required class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2">
+        </label>
+        <label class="block">
+          <span class="text-xs text-telecab-muted">Total con IVA (€)</span>
+          <input name="total" required inputmode="decimal" placeholder="1456,13"
+                 class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 tabular-nums">
+        </label>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <span class="font-semibold">Qué se hizo y a qué coche</span>
+            <!-- Se dice aquí y no en un manual: es la duda que tiene quien está
+                 tecleando una factura con un albarán sin matrícula delante. -->
+            <p class="text-xs text-telecab-muted mt-0.5">
+              Una línea por coche. Si la factura no dice de qué coche es, deja la matrícula
+              vacía y quedará como <strong>NN</strong> — el gasto cuenta igual.
+            </p>
+          </div>
+          <button type="button" id="fm-mas" class="text-sm px-3 py-1.5 rounded-lg bg-telecab-card2 hover:bg-telecab-border transition">
+            <i class="fa-solid fa-plus mr-1"></i> Añadir línea
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-xs text-telecab-muted">
+              <tr>
+                <th class="text-left font-medium pb-1">Matrícula</th>
+                <th class="text-left font-medium pb-1">Albarán</th>
+                <th class="text-left font-medium pb-1">Fecha</th>
+                <th class="text-left font-medium pb-1">Km</th>
+                <th class="text-left font-medium pb-1">Concepto</th>
+                <th class="text-left font-medium pb-1">Importe (€)</th>
+                <th class="pb-1"></th>
+              </tr>
+            </thead>
+            <tbody id="fm-lineas"></tbody>
+          </table>
+        </div>
+        <p id="fm-suma" class="text-xs text-telecab-muted mt-2 tabular-nums"></p>
+      </div>
+
+      <label class="block">
+        <span class="text-xs text-telecab-muted">Notas</span>
+        <input name="notas" class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2">
+      </label>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-telecab-border">
+        <button type="button" id="fm-cancelar" class="px-4 py-2 rounded-lg bg-telecab-card2 hover:bg-telecab-border transition">Cancelar</button>
+        <button type="submit" class="px-4 py-2 rounded-lg bg-telecab-gold text-black font-semibold hover:opacity-90 transition">Guardar factura</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(() => {
+  const { fecha, etiqueta, esc, euros } = Listado.fmt;
+  const PUEDE = <%- JSON.stringify(!!puedeApuntar) %>;
+  const TODAS_SEDES = <%- JSON.stringify(!!verTodasLasSedes) %>;
+  const EXIGE_DESDE = <%- JSON.stringify(exigeMatriculaDesde) %>;
+  const $ = s => document.querySelector(s);
+
+  const eur = v => (v == null ? '—' : euros(v));
+  const pedir = async (url, opciones) => {
+    const r = await fetch(url, opciones);
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo');
+    return d;
+  };
+
+  // ---------- la lista ----------
+
+  const lista = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Facturas de taller',
+    icono: 'fa-file-invoice',
+    clave: 'id',
+    origen: '/facturas/api/lista',
+    vacio: 'No hay facturas todavía.',
+    buscar: { texto: 'Buscar por nº, taller o matrícula…', campos: ['numero', 'proveedor'] },
+
+    subtitulo: (v, t) => (v.length === t.length ? `${t.length} facturas` : `${v.length} de ${t.length} facturas`),
+
+    kpis: filas => {
+      const total = filas.reduce((a, f) => a + f.total, 0);
+      const nn = filas.reduce((a, f) => a + f.nn, 0);
+      const reclamables = filas.filter(f => f.nnReclamable).length;
+      return [
+        { etiqueta: 'Facturado', valor: eur(total), tono: 'gold', pie: `${filas.length} facturas` },
+        { etiqueta: 'Coches distintos', valor: new Set(filas.flatMap(f => f.coches ? [f.id] : [])).size
+            ? filas.reduce((a, f) => a + f.coches, 0) : 0, tono: 'green' },
+        // El NN no es una curiosidad: es dinero que no se puede imputar a nadie.
+        { etiqueta: 'Sin matrícula (NN)', valor: eur(nn), tono: nn ? 'warn' : 'muted',
+          pie: `${filas.reduce((a, f) => a + f.nnLineas, 0)} líneas` },
+        { etiqueta: 'Por reclamar', valor: reclamables, tono: reclamables ? 'red' : 'muted',
+          pie: `facturas desde ${fecha(EXIGE_DESDE)} sin matrícula` },
+      ];
+    },
+
+    filtros: [{
+      id: 'taller', campo: 'proveedor', textoTodos: 'Todos los talleres',
+      opciones: filas => [...new Set(filas.map(f => f.proveedor))].sort()
+        .map(p => ({ valor: p, texto: p, cuenta: filas.filter(f => f.proveedor === p).length })),
+    }],
+
+    acciones: [
+      ...(PUEDE ? [{ texto: 'Nueva factura', icono: 'fa-plus', onClick: () => abrir() }] : []),
+      { texto: 'Gasto por coche', icono: 'fa-chart-column', principal: false, onClick: verGasto },
+    ],
+
+    columnas: [
+      { titulo: 'Fecha', campo: 'fecha', clase: 'whitespace-nowrap', pinta: v => fecha(v) },
+      { titulo: 'Taller', campo: 'proveedor', clase: 'font-medium' },
+      { titulo: 'Nº', campo: 'numero', clase: 'tabular-nums whitespace-nowrap' },
+      { titulo: 'Coches', campo: 'coches', clase: 'tabular-nums',
+        pinta: (v, f) => ((v ? v : '') +
+          (f.nnLineas ? ` ${etiqueta('NN ×' + f.nnLineas, f.nnReclamable ? 'red' : 'warn')}` : '') +
+          (f.desconocidas ? ` ${etiqueta('? ×' + f.desconocidas, 'warn')}` : ''))
+          || '<span class="text-telecab-muted">—</span>' },
+      { titulo: 'Total', campo: 'total', clase: 'tabular-nums whitespace-nowrap font-semibold',
+        pinta: v => eur(v) },
+      ...(TODAS_SEDES ? [{ titulo: 'Sede', campo: 'sede',
+        pinta: v => etiqueta(v === 'barcelona' ? 'Barcelona' : 'Madrid', v === 'barcelona' ? 'violet' : 'muted') }] : []),
+      { titulo: 'PDF', campo: 'archivo',
+        pinta: (v, f) => (f.enlace
+          ? `<a href="${esc(f.enlace)}" target="_blank" rel="noopener" class="text-telecab-gold hover:underline"><i class="fa-solid fa-file-pdf"></i></a>`
+          : '<span class="text-telecab-muted">—</span>') },
+    ],
+
+    detalle: {
+      origen: id => `/facturas/api/ficha/${id}`,
+      titulo: d => `${d.proveedor} · ${d.numero}`,
+      subtitulo: d => [fecha(d.fecha), eur(d.total), d.anulada ? 'ANULADA' : ''].filter(Boolean).join(' · '),
+
+      acciones: [
+        ...(PUEDE ? [{ texto: 'Anular', icono: 'fa-ban', peligro: true,
+          visible: d => !d.anulada, onClick: anular }] : []),
+      ],
+
+      bloques: [
+        {
+          titulo: 'La factura', icono: 'fa-file-invoice',
+          campos: [
+            { etiqueta: 'Taller', valor: d => d.proveedor },
+            { etiqueta: 'Número', valor: d => d.numero },
+            { etiqueta: 'Fecha', valor: d => fecha(d.fecha) },
+            { etiqueta: 'Base', valor: d => eur(d.base) },
+            { etiqueta: 'IVA', valor: d => eur(d.iva) },
+            { etiqueta: 'Total', valor: d => eur(d.total), clase: 'font-semibold' },
+            { etiqueta: 'Sede', valor: d => (d.sede === 'barcelona' ? 'Barcelona' : 'Madrid') },
+            { etiqueta: 'Anulada', valor: d => (d.anulada ? d.anuladoMotivo : '') },
+            { etiqueta: 'Notas', valor: d => d.notas, ancho: 'sm:col-span-2 lg:col-span-3' },
+          ],
+        },
+        {
+          titulo: 'Qué se hizo y a qué coche', icono: 'fa-screwdriver-wrench',
+          tabla: {
+            datos: d => d.lineasDetalle,
+            vacio: 'Esta factura no tiene líneas.',
+            columnas: [
+              { titulo: 'Coche', campo: 'matricula',
+                // Tres estados distintos y cada uno quiere decir algo:
+                //  · reconocido      → la matrícula casó con una ficha
+                //  · matrícula suelta → venía en el papel pero no la conocemos
+                //  · NN               → el papel no dice de qué coche es
+                pinta: (v, l) => (l.reconocido
+                  ? `<span class="font-semibold">${esc(v)}</span>`
+                  : v
+                    ? `${esc(v)} ${etiqueta('no está en la flota', 'warn')}`
+                    : etiqueta('NN', 'warn')) },
+              { titulo: 'Albarán', campo: 'albaran', clase: 'tabular-nums' },
+              { titulo: 'Fecha', campo: 'fecha', pinta: v => fecha(v) },
+              { titulo: 'Km', campo: 'km', clase: 'tabular-nums',
+                pinta: v => (v == null ? '—' : v.toLocaleString('es-ES')) },
+              { titulo: 'Concepto', campo: 'concepto' },
+              { titulo: 'Importe', campo: 'importe', clase: 'tabular-nums whitespace-nowrap',
+                pinta: v => eur(v) },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  // ---------- gasto por coche ----------
+
+  async function verGasto() {
+    let d;
+    try { d = await pedir('/facturas/api/gasto'); }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo', texto: e.message, tono: 'error' }); }
+    const filas = (d.coches || []).map(c => `
+      <tr class="border-t border-telecab-border">
+        <td class="py-1.5 font-semibold">${esc(c.matricula)}</td>
+        <td class="py-1.5 text-telecab-muted">${esc(c.modelo || '')}</td>
+        <td class="py-1.5 tabular-nums">${c.facturas}</td>
+        <td class="py-1.5 tabular-nums">${c.ultimoKm == null ? '—' : c.ultimoKm.toLocaleString('es-ES')}</td>
+        <td class="py-1.5 tabular-nums font-semibold">${esc(eur(c.gasto))}</td>
+      </tr>`).join('');
+    const nn = d.sinCoche || {};
+    Dialogo.abrir({ titulo: 'Gasto por coche', ancho: 'max-w-3xl',
+      opciones: [{ texto: 'Cerrar' }], html: `
+      <div class="overflow-x-auto max-h-[60vh]">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-telecab-muted"><tr>
+            <th class="text-left font-medium pb-1">Matrícula</th>
+            <th class="text-left font-medium pb-1">Modelo</th>
+            <th class="text-left font-medium pb-1">Facturas</th>
+            <th class="text-left font-medium pb-1">Último km</th>
+            <th class="text-left font-medium pb-1">Gasto</th>
+          </tr></thead>
+          <tbody>${filas || '<tr><td colspan="5" class="py-3 text-telecab-muted">Todavía no hay gasto imputado a ningún coche.</td></tr>'}</tbody>
+        </table>
+      </div>
+      ${nn.lineas ? `<p class="mt-3 text-sm text-telecab-warn">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+        ${esc(eur(nn.importe))} en ${nn.lineas} línea(s) <strong>sin matrícula</strong>, que no se pueden imputar a ningún coche.
+        ${nn.reclamables ? `De esas, <strong>${nn.reclamables}</strong> son posteriores al ${esc(fecha(EXIGE_DESDE))}: hay que reclamárselas al taller.` : ''}
+      </p>` : ''}` });
+  }
+
+  // ---------- alta ----------
+
+  const filaHTML = () => `
+    <tr class="border-t border-telecab-border">
+      <td class="py-1 pr-2"><input name="matricula" placeholder="NN si no consta"
+          class="w-28 bg-telecab-dark border border-telecab-border rounded px-2 py-1 uppercase"></td>
+      <td class="py-1 pr-2"><input name="albaran" class="w-24 bg-telecab-dark border border-telecab-border rounded px-2 py-1"></td>
+      <td class="py-1 pr-2"><input name="fecha" type="date" class="bg-telecab-dark border border-telecab-border rounded px-2 py-1"></td>
+      <td class="py-1 pr-2"><input name="km" inputmode="numeric" class="w-24 bg-telecab-dark border border-telecab-border rounded px-2 py-1 tabular-nums"></td>
+      <td class="py-1 pr-2"><input name="concepto" class="w-full bg-telecab-dark border border-telecab-border rounded px-2 py-1"></td>
+      <td class="py-1 pr-2"><input name="importe" inputmode="decimal" class="w-24 bg-telecab-dark border border-telecab-border rounded px-2 py-1 tabular-nums"></td>
+      <td class="py-1"><button type="button" class="quitar w-7 h-7 rounded text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i></button></td>
+    </tr>`;
+
+  const num = v => { const n = Number(String(v || '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
+
+  function recalcular() {
+    const suma = [...$('#fm-lineas').querySelectorAll('tr')]
+      .reduce((a, tr) => a + num(tr.querySelector('[name=importe]').value), 0);
+    const total = num($('#fm-form').total.value);
+    const dif = +(total - suma).toFixed(2);
+    // El descuadre se AVISA, no se impide: una factura trae portes, descuentos y
+    // redondeos que no son de ningún coche. Obligar a cuadrarlo al céntimo
+    // acabaría con alguien inventándose una línea para poder guardar.
+    $('#fm-suma').innerHTML = `Las líneas suman <strong>${esc(eur(suma))}</strong>` +
+      (total ? ` · total de la factura <strong>${esc(eur(total))}</strong>` +
+        (Math.abs(dif) >= 0.01
+          ? ` · <span class="text-telecab-warn">quedan ${esc(eur(dif))} sin repartir</span>`
+          : ' · <span class="text-telecab-green">cuadra</span>') : '');
+  }
+
+  function anadirFila() {
+    $('#fm-lineas').insertAdjacentHTML('beforeend', filaHTML());
+    const tr = $('#fm-lineas').lastElementChild;
+    tr.querySelector('.quitar').addEventListener('click', () => { tr.remove(); recalcular(); });
+    tr.querySelector('[name=importe]').addEventListener('input', recalcular);
+  }
+
+  async function abrir() {
+    const f = $('#fm-form');
+    f.reset();
+    $('#fm-lineas').innerHTML = '';
+    anadirFila();
+    recalcular();
+    try {
+      const { proveedores } = await pedir('/facturas/api/proveedores');
+      f.proveedorId.innerHTML = proveedores
+        .map(p => `<option value="${esc(p.id)}">${esc(p.nombre)}</option>`).join('');
+    } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo', texto: e.message, tono: 'error' }); }
+    $('#fm').classList.remove('hidden');
+  }
+  const cerrar = () => $('#fm').classList.add('hidden');
+
+  if (PUEDE) {
+    $('#fm-cerrar').addEventListener('click', cerrar);
+    $('#fm-cancelar').addEventListener('click', cerrar);
+    $('#fm-mas').addEventListener('click', anadirFila);
+    $('#fm-form').total.addEventListener('input', recalcular);
+
+    $('#fm-form').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const f = ev.target;
+      const lineas = [...$('#fm-lineas').querySelectorAll('tr')].map(tr => ({
+        matricula: tr.querySelector('[name=matricula]').value,
+        albaran: tr.querySelector('[name=albaran]').value,
+        fecha: tr.querySelector('[name=fecha]').value || null,
+        km: tr.querySelector('[name=km]').value,
+        concepto: tr.querySelector('[name=concepto]').value,
+        importe: tr.querySelector('[name=importe]').value,
+      }));
+      const cuerpo = {
+        proveedorId: f.proveedorId.value, numero: f.numero.value, fecha: f.fecha.value,
+        total: f.total.value, notas: f.notas.value, lineas,
+      };
+      try {
+        const r = await pedir('/facturas/api/factura', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
+        });
+        cerrar();
+        lista.recargar();
+        const avisos = [];
+        if (r.sinCoche) avisos.push(`${r.sinCoche} línea(s) quedaron como <strong>NN</strong>: la factura no dice de qué coche son.`);
+        if (r.desconocidas) avisos.push(`${r.desconocidas} matrícula(s) <strong>no están en la flota</strong>. Compruébalas: o vienen mal del taller, o son coches que no llevamos.`);
+        if (Math.abs(r.descuadre) >= 0.01) avisos.push(`Quedan ${eur(r.descuadre)} del total sin repartir entre las líneas.`);
+        if (avisos.length) Dialogo.abrir({ titulo: 'Factura guardada', html: avisos.join('<br>'), tono: 'ok', opciones: [{ texto: 'Entendido' }] });
+      } catch (e) { Dialogo.aviso({ titulo: 'No se pudo guardar', texto: e.message, tono: 'error' }); }
+    });
+  }
+
+  async function anular(d) {
+    const v = await Dialogo.formulario('Anular la factura', [
+      { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo', obligatorio: true,
+        ayuda: 'Queda guardado con tu nombre. Es lo que se mira cuando el gasto del mes no cuadra.' },
+    ], { nota: 'Una factura no se borra: se anula y queda el motivo.' });
+    const motivo = v && v.motivo;
+    if (!motivo) return;
+    try {
+      await pedir('/facturas/api/anular', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: d.id, motivo }),
+      });
+      lista.recargar();
+    } catch (e) { Dialogo.aviso({ titulo: 'No se pudo anular', texto: e.message, tono: 'error' }); }
+  }
+})();
+</script>

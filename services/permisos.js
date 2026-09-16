@@ -69,7 +69,12 @@ const CATALOGO = [
     { clave: '/generador',   etiqueta: 'Generar vacantes' },
   ] },
   { grupo: 'Taller', items: [
-    { clave: '/vehiculos',   etiqueta: 'Vehículos' },
+    { clave: '/vehiculos',   etiqueta: 'Vehículos', hijos: [
+      // El sistema se usa en Madrid. Quien no tenga esta llave ve SOLO Madrid,
+      // que es lo que Óscar controla; con ella se ven también los de Barcelona.
+      // `manual` porque no la reparte ningún rol: se da persona a persona.
+      { clave: '/vehiculos/sedes', etiqueta: 'Ver también los vehículos de Barcelona', manual: true },
+    ] },
     { clave: '/conductores', etiqueta: 'Conductores' },
     // MIRAR el taller lo quiere media empresa: tráfico necesita saber qué coche
     // se le cae la semana que viene. APUNTAR es del taller, y es lo que mueve
@@ -77,6 +82,11 @@ const CATALOGO = [
     // leer la bitácora y justificar en ella.
     { clave: '/taller', etiqueta: 'Mantenimientos', hijos: [
       { clave: '/taller/apuntar', etiqueta: 'Mantenimientos · apuntar revisiones y odómetros' },
+    ] },
+    // MIRAR lo que se gasta en la flota lo quiere dirección; METERLO es del
+    // taller. Mismo reparto que en mantenimientos, y por el mismo motivo.
+    { clave: '/facturas', etiqueta: 'Facturas de taller', hijos: [
+      { clave: '/facturas/apuntar', etiqueta: 'Facturas · dar de alta y anular' },
     ] },
   ] },
   { grupo: 'Operaciones', items: [
