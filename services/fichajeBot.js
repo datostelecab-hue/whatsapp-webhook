@@ -16,10 +16,6 @@ const BTN_INICIAR = 'turno_iniciar';
 const BTN_TERMINAR = 'turno_terminar';
 const BTN_KM = 'turno_km';
 const BTN_MOTOR = 'turno_motor';
-// "Termina igualmente": cierra el turno aunque Mapon siga diciendo que el coche
-// está encendido. Existe porque el contacto llega con unos segundos de retraso y
-// nadie puede quedarse sin poder terminar su jornada por eso.
-const BTN_TERMINAR_IGUAL = 'turno_terminar_igual';
 
 // Espera de matrícula tras pulsar "Iniciar turno" (en memoria: si Render reinicia, el
 // conductor solo tiene que volver a pulsar el botón).
@@ -85,7 +81,6 @@ async function manejarBoton(telefono, buttonId) {
     return true;
   }
   if (buttonId === BTN_TERMINAR) { await cerrarTurno(telefono); return true; }
-  if (buttonId === BTN_TERMINAR_IGUAL) { await cerrarTurno(telefono, { forzar: true }); return true; }
   if (buttonId === BTN_KM) { await verKm(telefono); return true; }
   if (buttonId === BTN_MOTOR) { await desbloquear(telefono); return true; }
   return false;
@@ -175,10 +170,10 @@ async function verKm(telefono) {
      { id: BTN_MOTOR, titulo: '🔓 Desbloquear' }]);
 }
 
-async function cerrarTurno(telefono, { forzar = false } = {}) {
+async function cerrarTurno(telefono) {
   let r;
   try {
-    r = await fichaje.terminar(telefono, { forzar });
+    r = await fichaje.terminar(telefono);
   } catch (e) {
     console.error('❌ [FICHAJE] terminar:', e.message);
     await enviarTexto(telefono, `❌ No se pudo cerrar el turno: ${e.message}`);
@@ -195,19 +190,25 @@ async function cerrarTurno(telefono, { forzar = false } = {}) {
       [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' }]);
     return;
   }
-  // PARADO PERO ENCENDIDO. Terminar aquí corta el motor con el contacto puesto, y
-  // entonces el coche ya no se deja apagar — arranca, anda, y el botón de apagado
-  // deja de responder—. Es peor que no bloquearlo: se le deja el coche encendido
-  // y sin salida. Se le pide que lo apague y el turno sigue abierto.
+  // PARADO PERO ENCENDIDO: NO SE TERMINA, Y NO HAY ATAJO.
+  //
+  // Terminar aquí corta el motor con el contacto puesto, y entonces el coche ya no
+  // se deja apagar —arranca, anda, y el botón de apagado deja de responder—. Es
+  // peor que no bloquearlo: se le deja el coche encendido y sin salida.
+  //
+  // Hubo un botón de "ya lo apagué" para saltarse esto y se quitó a propósito: con
+  // el coche en marcha el turno NO ha terminado, y un atajo aquí solo sirve para
+  // volver al problema. Si Mapon aún no se ha enterado, se espera unos segundos y
+  // se vuelve a pulsar; si Mapon calla del todo, `terminar` ya deja cerrar.
   if (!r.ok && r.motivo === 'coche-encendido') {
     await enviarBotones(telefono,
       '🔑 *Apaga el coche primero*\n\n' +
-      'Tienes el contacto puesto. Al terminar el turno se bloquea el motor, y si lo ' +
-      'hago ahora *te quedas sin poder apagarlo*.\n\n' +
+      'Tienes el contacto puesto, así que tu turno no ha terminado. Al cerrarlo se ' +
+      'bloquea el motor, y si lo hago ahora *te quedas sin poder apagarlo*.\n\n' +
       'Apágalo del todo y vuelve a pulsar *Terminar turno*.\n\n' +
       '_Tu turno sigue abierto: no has perdido nada._',
       [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' },
-       { id: BTN_TERMINAR_IGUAL, titulo: '⏭️ Ya lo apagué' }]);
+       { id: BTN_KM, titulo: '📍 Ver km ahora' }]);
     return;
   }
   if (!r.ok) return panel(telefono, '⚠️ No tenías ningún turno abierto.');

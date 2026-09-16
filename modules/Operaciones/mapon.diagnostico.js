@@ -36,6 +36,7 @@ const mapon = require('../../services/mapon');
  *   ?probarrele=0|1         prueba el corte por POST y por GET  ← ACTÚA
  *   ?rele=0|1               corta o libera el motor             ← ACTÚA
  *   ?repaso=1|aplicar       simula (o aplica) el repaso de bloqueos
+ *   ?liberar=1|aplicar      SUELTA el motor de todo lo que el fichaje bloqueó
  *   ?crear=NOMBRE           crea el conductor si no existe      ← ESCRIBE
  *   ?asignar=1  ?soltar=1   le pone o le quita el coche         ← ESCRIBE
  */
@@ -151,6 +152,16 @@ async function diagnostico(q = {}) {
         });
       }
     } catch (e) { out.errorRele = e.message; }
+  }
+
+  // DESHACER: suelta el motor de todo lo que el fichaje haya podido bloquear.
+  // ?liberar=1 dice a quién soltaría; ?liberar=aplicar lo hace. Soltar nunca deja
+  // a nadie tirado, así que no hay más salvaguardas que las del propio `motor`.
+  if (q.liberar) {
+    try {
+      const fj = require('../../services/fichaje');
+      out.liberar = await fj.liberarConocidos({ soloMirar: String(q.liberar) !== 'aplicar' });
+    } catch (e) { out.errorLiberar = e.message; }
   }
 
   // ?repaso=1 SIMULA: dice a qué coches se les cortaría el motor y por qué se
