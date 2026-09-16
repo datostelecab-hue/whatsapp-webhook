@@ -105,6 +105,18 @@ async function enviarAUno({ id, semana }, quienEs) {
     throw new Error('Ese conductor no tiene teléfono en su ficha');
   }
 
+  // A QUIEN YA NO ESTÁ NO SE LE MANDA NADA.
+  //
+  // Sigue saliendo en la pantalla porque sus turnos de esta semana ocurrieron y
+  // sus relevos nombran a compañeros que sí están; pero mandarle el cuadrante a
+  // alguien a quien has dado de baja no tiene ningún sentido. La pantalla apaga
+  // el botón, y aquí se cierra la puerta de verdad: por URL también se dice que
+  // no. Queda registrado, que para eso está el libro de avisos.
+  if (entrada.deBaja) {
+    await apuntar({ ...base, resultado: 'error', detalle: 'ya no está de alta' });
+    throw new Error(`${entrada.nombre} ya no está de alta: no se le envían turnos`);
+  }
+
   const r = await enviarAvisoTurnos(entrada.telefono, entrada.nombre);
   await apuntar({ ...base, resultado: r.ok ? 'ok' : 'error', detalle: r.ok ? null : r.error });
   if (!r.ok) throw new Error(r.error);
@@ -149,8 +161,10 @@ async function enviarABastantes(semana, soloIds = null, ctx = {}) {
     });
 
     // Solo los que trabajan; con `soloIds`, además, solo los pedidos.
+    // `!e.deBaja`: quien causó baja a mitad de semana conserva sus turnos hechos
+    // y por eso sigue en la lista, pero no se le avisa de nada.
     const lista = porConductor.filter(e =>
-      (!soloIds || soloIds.has(String(e.id))) && e.dias.some(d => d.trabaja));
+      (!soloIds || soloIds.has(String(e.id))) && !e.deBaja && e.dias.some(d => d.trabaja));
     _prog.total = lista.length;
 
     for (const e of lista) {

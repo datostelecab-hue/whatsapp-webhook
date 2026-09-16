@@ -134,6 +134,15 @@ function chipAviso(p) {
     : '';
 }
 
+/** Quien trabajó esta semana pero ya NO está de alta. */
+function chipBaja(p) {
+  if (!p.deBaja) return '';
+  return `<span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border
+      bg-telecab-red/15 text-telecab-red border-telecab-red/40"
+      title="Ya no está de alta: se le ven los turnos que hizo, pero no se le avisa">
+      <i class="fa-solid fa-user-slash"></i> Ya no está</span>`;
+}
+
 function pintarInformeAvisos() {
   const c = $('#avisos-dia');
   if (!INF) { c.innerHTML = ''; return; }
@@ -338,7 +347,7 @@ function pintarPersonas() {
       if (!d.trabaja) return `
         <div class="flex items-baseline gap-3 text-sm py-1">
           <span class="w-24 shrink-0 font-medium text-telecab-muted">${esc(d.diaNombre)}</span>
-          <span class="${d.sinPlan ? "text-telecab-muted/40 italic" : "text-telecab-muted/60"}">${d.sinPlan ? "Sin plan cargado" : "Libra"}</span>
+          <span class="${d.sinPlan ? "text-telecab-muted/40 italic" : "text-telecab-muted/60"}">${d.sinPlan ? "Sin plan cargado" : (p.deBaja ? "—" : "Libra")}</span>
         </div>`;
       const rec = recibeTxt(d), ent = entregaTxt(d);
       return `
@@ -357,10 +366,10 @@ function pintarPersonas() {
         <div class="mb-3 flex items-start justify-between gap-2">
           <div>
             <div class="text-telecab-text font-semibold">${esc(p.nombre || p.id)}</div>
-            <div class="text-xs text-telecab-muted flex items-center gap-2 flex-wrap">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''} ${chipAviso(p)}</div>
+            <div class="text-xs text-telecab-muted flex items-center gap-2 flex-wrap">${esc(p.id)}${p.telefono ? ' · ' + esc(p.telefono) : ''} ${chipBaja(p)}${chipAviso(p)}</div>
           </div>
           <button class="btn-turno shrink-0 px-3 py-1.5 rounded-lg bg-green-600/15 text-green-400 text-xs font-medium hover:bg-green-600/25 disabled:opacity-40"
-                  data-id="${esc(p.id)}" ${p.telefono ? '' : 'disabled'} title="${p.telefono ? 'Enviar sus turnos por WhatsApp' : 'Sin teléfono en la agenda'}">
+                  data-id="${esc(p.id)}" ${p.telefono && !p.deBaja ? '' : 'disabled'} title="${p.deBaja ? 'Ya no está de alta: no se le avisa' : (p.telefono ? 'Enviar sus turnos por WhatsApp' : 'Sin teléfono en la agenda')}">
             <i class="fa-brands fa-whatsapp mr-1"></i> Enviar
           </button>
         </div>
@@ -402,7 +411,9 @@ $('#lista-personas').addEventListener('click', async e => {
 });
 
 $('#btn-turnos-todos').addEventListener('click', async () => {
-  const n = (D.porConductor || []).filter(p => p.telefono && p.dias.some(d => d.trabaja)).length;
+  // Los de baja no entran en la cuenta porque tampoco entran en el envío (lo
+  // decide el servidor, esto solo es no mentir sobre cuántos van a recibirlo).
+  const n = (D.porConductor || []).filter(p => p.telefono && !p.deBaja && p.dias.some(d => d.trabaja)).length;
   if (!confirm(`¿Enviar los turnos de esta semana a los ${n} conductores que trabajan y tienen teléfono?`)) return;
   $('#btn-turnos-todos').disabled = true;
   try {

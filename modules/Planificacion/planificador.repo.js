@@ -2054,14 +2054,24 @@ async function contactos() {
   const r = await db.consulta(
     `SELECT c.id,
             tel.e164     AS telefono,
-            c.localidad  AS zona
+            c.localidad  AS zona,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
+                     NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), '')) AS nombre,
+            c.empleo_vigente AS activo
        FROM conductor c
        LEFT JOIN LATERAL (
          SELECT e164 FROM conductor_telefono
           WHERE conductor_id = c.id AND vigente_hasta IS NULL
           ORDER BY principal DESC, id LIMIT 1) tel ON TRUE`);
   const m = new Map();
-  r.rows.forEach(x => m.set(String(x.id), { telefono: x.telefono || '', zona: x.zona || '' }));
+  // El NOMBRE y el ALTA viajan con el contacto a propósito: esta consulta es la
+  // única que mira a TODOS los conductores, de alta o no. Las pantallas que solo
+  // conocen a los activos se quedaban sin saber cómo se llama quien ya se fue —y
+  // acababan enseñando su número de ficha— y, peor, sin saber que se había ido.
+  r.rows.forEach(x => m.set(String(x.id), {
+    telefono: x.telefono || '', zona: x.zona || '',
+    nombre: x.nombre || '', activo: x.activo !== false,
+  }));
   return m;
 }
 

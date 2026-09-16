@@ -188,6 +188,41 @@ eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
   const maria4 = D4.porConductor.find(p => p.nombre === 'María');
   eq(maria4.dias[0].recibeDe, null, 'si el coche lo dejó ella misma, el lunes no hay "recibe de"');
 
+  // ── QUIEN CAUSO BAJA A MITAD DE SEMANA ──────────────────────────
+  // Caso real (16/09/2026): Pedro Maso, ETT, baja el lunes 14. Trabajo ESE lunes,
+  // asi que sus turnos existen; pero el TABLERO solo conoce a los de alta, y sin
+  // el su tarjeta salia titulada '382' —su numero de ficha— y con un boton para
+  // enviarle el cuadrante por WhatsApp.
+  console.log('\n=== QUIEN CAUSO BAJA A MITAD DE SEMANA ===');
+  const semanaC = Array.from({ length: 14 }, vacia);
+  semanaC[1] = cel('382', 'Pedro Maso Postigo');          // lunes noche
+  semanaC[2] = cel('1', 'Maria');                          // martes dia
+  const tabBaja = {
+    ...tab,
+    conductores: [{ id: '1', nombre: 'Maria', ausente: false }],    // 382 ya NO esta
+    coches: [{ vehiculoId: 'C1', matricula: '9985LBC', zona: 'Usera', operativo: true,
+               estadoVeh: 'O', descanso: [], personas: [], semana: semanaC }],
+  };
+  const contacBaja = new Map([
+    ['382', { telefono: '607721795', nombre: 'Pedro Maso Postigo', activo: false }],
+    ['1', { telefono: '600111222', nombre: 'Maria', activo: true }],
+  ]);
+  const DB = cob.construir(tabBaja, contacBaja, 0);
+  const p382 = DB.porConductor.find(x => x.id === '382');
+  ok(!!p382, 'sigue apareciendo: sus turnos del lunes ocurrieron de verdad');
+  eq(p382.nombre, 'Pedro Maso Postigo', 'y con su NOMBRE, no con su numero de ficha');
+  eq(p382.deBaja, true, 'marcado como que ya no esta');
+  eq(p382.telefono, '607721795', 'su telefono sigue ahi, para el historico');
+  const pMaria = DB.porConductor.find(x => x.id === '1');
+  eq(pMaria.deBaja, false, 'y a quien sigue de alta no se le marca nada');
+
+  // Sin ficha en la agenda no se puede afirmar que este de baja: no saberlo no
+  // es lo mismo que saber que no.
+  const DC = cob.construir(tabBaja, new Map(), 0);
+  const sinFicha = DC.porConductor.find(x => x.id === '382');
+  eq(sinFicha.deBaja, false, 'sin datos de la ficha NO se le da por baja');
+  eq(sinFicha.nombre, 'Pedro Maso Postigo', 'y el nombre lo salva su propio tramo');
+
   console.log(fallos ? `\n❌ ${fallos} fallo(s)` : '\n✅ Todo correcto');
   process.exit(fallos ? 1 : 0);
 })();

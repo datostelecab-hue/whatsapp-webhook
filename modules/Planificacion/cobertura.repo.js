@@ -124,6 +124,9 @@ function construir(tab, contac, offsetSemana = 0, bordes = null) {
     const c = contac.get(String(id));
     return (c && c.telefono) || '';
   };
+  // La ficha de cualquiera, esté de alta o no: es de donde sale el nombre de
+  // quien ya se fue y la marca de que se fue.
+  const fichaDe = id => contac.get(String(id)) || {};
 
   // ── Los coches, con su semana en 14 tramos (Lun-Día, Lun-Noche, Mar-Día…) ──
   const coches = (tab.coches || [])
@@ -204,7 +207,7 @@ function construir(tab, contac, offsetSemana = 0, bordes = null) {
     ausentesEnPlaza: ausentesEnPlaza(coches, gente),
     relevos,
     relevosBorde,
-    porConductor: porConductor(coches, gente, telDe, hayPlan, relevosBorde),
+    porConductor: porConductor(coches, gente, telDe, hayPlan, relevosBorde, fichaDe),
     // La pantalla pinta los operativos; los demás salen igual en `cobertura` con
     // su motivo ("en taller"), que es justo lo que hay que ver.
     coches: coches.filter(c => c.operativo).map(c => ({
@@ -319,13 +322,14 @@ function ausentesEnPlaza(coches, gente) {
  * La semana de CADA conductor: qué día trabaja, en qué coche, de quién lo recibe
  * y a quién se lo entrega. Es lo que se le manda por WhatsApp.
  */
-function porConductor(coches, gente, telDe, hayPlan = [], relevosBorde = []) {
+function porConductor(coches, gente, telDe, hayPlan = [], relevosBorde = [], fichaDe = () => ({})) {
   // id → [{ dia, diaNombre, turno, matricula }]
   const slots = new Map();
   coches.forEach(coche => coche.semana.forEach(tr => {
     if (!tr.id) return;
     if (!slots.has(tr.id)) slots.set(tr.id, []);
-    slots.get(tr.id).push({ dia: tr.dia, diaNombre: tr.diaNombre, turno: tr.turno, matricula: coche.matricula });
+    slots.get(tr.id).push({ dia: tr.dia, diaNombre: tr.diaNombre, turno: tr.turno,
+      matricula: coche.matricula, nombre: tr.nombre || '' });
   }));
 
   const relevos = [];
@@ -365,10 +369,24 @@ function porConductor(coches, gente, telDe, hayPlan = [], relevosBorde = []) {
         } : null,
       };
     });
+    // EL NOMBRE, POR TRES CAMINOS ANTES DE RENDIRSE AL NÚMERO.
+    //
+    // `gente` son los conductores del TABLERO, y el tablero solo conoce a los que
+    // están de alta. Quien causa baja a mitad de semana desaparece de ahí pero
+    // sigue teniendo turnos hechos, así que su tarjeta salía titulada con su id
+    // —"382"— como si fuera un nombre. Su ficha y sus propios tramos sí saben
+    // cómo se llama.
+    const ficha = fichaDe(id);
+    const delTramo = (mis.find(s => s.nombre) || {}).nombre || '';
     salida.push({
       id: String(id),
-      nombre: (persona && persona.nombre) || String(id),
+      nombre: (persona && persona.nombre) || ficha.nombre || delTramo || String(id),
       telefono: telDe(id),
+      // Trabajó esta semana pero YA NO ESTÁ de alta. Se sigue viendo —sus turnos
+      // pasaron de verdad y sus relevos nombran a otros— pero no se le avisa:
+      // mandarle el cuadrante a alguien a quien has despedido es, como poco, una
+      // falta de respeto.
+      deBaja: ficha.activo === false,
       dias,
     });
   }
