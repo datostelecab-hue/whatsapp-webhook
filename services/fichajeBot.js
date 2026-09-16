@@ -16,6 +16,10 @@ const BTN_INICIAR = 'turno_iniciar';
 const BTN_TERMINAR = 'turno_terminar';
 const BTN_KM = 'turno_km';
 const BTN_MOTOR = 'turno_motor';
+// "Termina igualmente": cierra el turno aunque Mapon siga diciendo que el coche
+// está encendido. Existe porque el contacto llega con unos segundos de retraso y
+// nadie puede quedarse sin poder terminar su jornada por eso.
+const BTN_TERMINAR_IGUAL = 'turno_terminar_igual';
 
 // Espera de matrícula tras pulsar "Iniciar turno" (en memoria: si Render reinicia, el
 // conductor solo tiene que volver a pulsar el botón).
@@ -33,7 +37,7 @@ async function panel(telefono, cabecera) {
     const desde = fichaje.horaES(turno.inicio);
     const txt = (cabecera ? cabecera + '\n\n' : '') +
       `🟢 *Turno abierto*\n🚘 ${turno.matricula}\n🕐 Desde las ${desde}\n\n` +
-      `Cuando acabes pulsa *Terminar turno* y te digo los km que has hecho.`;
+      `Cuando acabes, apaga el coche y pulsa *Terminar turno*: te digo los km que has hecho.`;
     await enviarBotones(telefono, txt, [
       { id: BTN_TERMINAR, titulo: '🔴 Terminar turno' },
       { id: BTN_KM, titulo: '📍 Ver km ahora' },
@@ -81,6 +85,7 @@ async function manejarBoton(telefono, buttonId) {
     return true;
   }
   if (buttonId === BTN_TERMINAR) { await cerrarTurno(telefono); return true; }
+  if (buttonId === BTN_TERMINAR_IGUAL) { await cerrarTurno(telefono, { forzar: true }); return true; }
   if (buttonId === BTN_KM) { await verKm(telefono); return true; }
   if (buttonId === BTN_MOTOR) { await desbloquear(telefono); return true; }
   return false;
@@ -125,7 +130,8 @@ async function abrirTurno(telefono, matricula) {
     `🟢 *Turno iniciado*\n\n🚘 ${t.matricula}${r.vehiculo ? ` · ${r.vehiculo}` : ''}\n🕐 ${fichaje.horaES(t.inicio)}\n` +
     `${r.enlazado ? '🔗 Enlazado a tu nombre en Mapon'
       : `⚠️ No se pudo enlazar en Mapon (el turno queda registrado igual)\n_${(r.errorMapon || 'motivo desconocido').slice(0, 220)}_`}` +
-    `${motor}\n\nA partir de ahora cuento los km. Cuando acabes, pulsa *Terminar turno*.`,
+    `${motor}\n\nA partir de ahora cuento los km. Cuando acabes, ` +
+    `${r.bloqueoActivo ? '*apaga el coche* y pulsa *Terminar turno*.' : 'pulsa *Terminar turno*.'}`,
     [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' },
      { id: BTN_MOTOR, titulo: '🔓 Desbloquear' }]);
 }
@@ -169,10 +175,10 @@ async function verKm(telefono) {
      { id: BTN_MOTOR, titulo: '🔓 Desbloquear' }]);
 }
 
-async function cerrarTurno(telefono) {
+async function cerrarTurno(telefono, { forzar = false } = {}) {
   let r;
   try {
-    r = await fichaje.terminar(telefono);
+    r = await fichaje.terminar(telefono, { forzar });
   } catch (e) {
     console.error('❌ [FICHAJE] terminar:', e.message);
     await enviarTexto(telefono, `❌ No se pudo cerrar el turno: ${e.message}`);
@@ -187,6 +193,21 @@ async function cerrarTurno(telefono) {
       'seguro y apaga el coche. Cuando estés parado, vuelve a pulsar *Terminar turno*.\n\n' +
       '_Tu turno sigue abierto: no has perdido nada._',
       [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' }, { id: BTN_KM, titulo: '📍 Ver km ahora' }]);
+    return;
+  }
+  // PARADO PERO ENCENDIDO. Terminar aquí corta el motor con el contacto puesto, y
+  // entonces el coche ya no se deja apagar — arranca, anda, y el botón de apagado
+  // deja de responder—. Es peor que no bloquearlo: se le deja el coche encendido
+  // y sin salida. Se le pide que lo apague y el turno sigue abierto.
+  if (!r.ok && r.motivo === 'coche-encendido') {
+    await enviarBotones(telefono,
+      '🔑 *Apaga el coche primero*\n\n' +
+      'Tienes el contacto puesto. Al terminar el turno se bloquea el motor, y si lo ' +
+      'hago ahora *te quedas sin poder apagarlo*.\n\n' +
+      'Apágalo del todo y vuelve a pulsar *Terminar turno*.\n\n' +
+      '_Tu turno sigue abierto: no has perdido nada._',
+      [{ id: BTN_TERMINAR, titulo: '🔴 Terminar turno' },
+       { id: BTN_TERMINAR_IGUAL, titulo: '⏭️ Ya lo apagué' }]);
     return;
   }
   if (!r.ok) return panel(telefono, '⚠️ No tenías ningún turno abierto.');

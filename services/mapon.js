@@ -537,7 +537,7 @@ async function relesDeFlota() {
     // permite ver si un coche que figura BLOQUEADO esta en realidad andando, que
     // es como se descubre que el corte no corta.
     velocidad: Number(u.speed) || 0,
-    ignicion: u.ignition === undefined || u.ignition === null ? null : !!Number(u.ignition),
+    ignicion: contactoPuesto(u.ignition),
     reles: (u.relays || []).map(r => ({
       relay_id: r.relay_id, tipo: r.type, titulo: txt(r.title),
       activo: r.relay_state, habilitado: r.enabled,
@@ -581,6 +581,32 @@ function segundosDesde(v) {
 }
 
 /**
+ * ¿Está el coche ENCENDIDO? true / false / null (no lo sabemos).
+ *
+ * Mapon no devuelve un 0 o un 1: devuelve `{ gmt: '…', value: 'on' }`. El código
+ * hacía `!!Number(u.ignition)` sobre ese objeto — que da NaN, y NaN es false—,
+ * así que el sistema creía SIEMPRE que el contacto estaba quitado. De ahí que
+ * nunca frenara el corte por tener el coche encendido.
+ *
+ * Se aceptan las tres formas por si otro equipo la manda distinta, y lo que no
+ * se entiende se devuelve como null: "no lo sé" nunca puede leerse como "no".
+ */
+function contactoPuesto(v) {
+  if (v === undefined || v === null) return null;
+  const s = typeof v === 'object' ? (v.value !== undefined ? v.value : v.state) : v;
+  if (s === undefined || s === null || s === '') return null;
+  if (typeof s === 'boolean') return s;
+  if (typeof s === 'number') return !!s;
+  const t = String(s).trim().toLowerCase();
+  if (['on', '1', 'true', 'yes', 'ign_on'].includes(t)) return true;
+  if (['off', '0', 'false', 'no', 'ign_off'].includes(t)) return false;
+  return null;
+}
+
+/** Cuándo se midió el contacto, en segundos desde entonces (null si no se sabe). */
+const contactoVisto = v => (v && typeof v === 'object' && v.gmt) ? segundosDesde(v.gmt) : null;
+
+/**
  * Relés y estado de marcha de UNA unidad.
  *
  * Devuelve además CUÁNTO lleva parada y si tiene el contacto puesto, porque
@@ -611,7 +637,10 @@ async function relesDeUnidad(unitId) {
     enMarcha: estado === 'driving',
     velocidad: Number(u.speed) || 0,
     // Contacto: true / false / null (no lo sabemos).
-    ignicion: ign === undefined || ign === null ? null : !!Number(ign),
+    ignicion: contactoPuesto(ign),
+    // Y de cuándo es esa medida: con un dato viejo no se le dice a nadie que
+    // tiene el coche encendido.
+    ignicionSeg: contactoVisto(ign),
     // Segundos que lleva en el estado actual. null = no lo sabemos.
     segParado: estado === 'driving' ? 0
       : (Number.isFinite(duracion) && duracion >= 0 ? Math.floor(duracion) : segundosDesde(desdeCuando)),
@@ -999,6 +1028,6 @@ module.exports = {
   unidadPorMatricula, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
   comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,
-  relesDeFlota, relesDeUnidad, releDeCorte, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
+  relesDeFlota, relesDeUnidad, releDeCorte, contactoPuesto, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar
 };

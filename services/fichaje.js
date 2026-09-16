@@ -70,12 +70,23 @@ const MAX_SIN_SENAL = Number(process.env.FICHAJE_MAX_SIN_SENAL || 15);
 function puedeInmovilizar(info, { porOrden = false } = {}) {
   if (!info) return 'no se puede leer el estado del coche';
   if (info.enMarcha || info.velocidad > 0) return `coche en marcha (${info.velocidad} km/h)`;
+
+  // EL CONTACTO PUESTO PARA A TODO EL MUNDO, también a quien lo pide.
+  //
+  // Cortar con el coche encendido no lo apaga: lo deja a medias. En el Corolla
+  // se comprobó el 16/09/2026 — arranca, anda… y ya no se puede apagar, porque
+  // el corte está metido en la línea que el coche necesita para completar el
+  // apagado. El conductor se queda con un coche encendido que no responde.
+  //
+  // Antes esto no frenaba nada por dos motivos a la vez: `porOrden` se saltaba
+  // la comprobación, y además `ignicion` se leía siempre como false (ver
+  // `contactoPuesto` en mapon.js). Los dos están arreglados.
+  if (info.ignicion === true) return 'el coche está encendido';
   if (porOrden) return null;
 
   if (info.segSinSenal != null && info.segSinSenal > MAX_SIN_SENAL * 60) {
     return `sin señal desde hace ${Math.round(info.segSinSenal / 60)} min`;
   }
-  if (info.ignicion === true) return 'tiene el contacto puesto';
   // null = Mapon no lo dice. No es una autorización.
   if (info.segParado == null) return 'no se sabe cuánto lleva parado';
   if (info.segParado < MIN_PARADO * 60) {
@@ -151,6 +162,8 @@ async function estadoMotor(unitId) {
       enMarcha: info.enMarcha,
       velocidad: info.velocidad,
       estado: info.estado,
+      ignicion: info.ignicion,
+      ignicionSeg: info.ignicionSeg,
     };
   } catch (e) {
     return { sabemos: false, motivo: e.message };
@@ -479,8 +492,15 @@ async function kmDelTurno(turno, hasta) {
   }
 }
 
-/** Cierra el turno: quita la asignación en Mapon y calcula los km del periodo. */
-async function terminar(telefono) {
+/**
+ * Cierra el turno: quita la asignación en Mapon y calcula los km del periodo.
+ *
+ * `forzar` lo manda el conductor cuando insiste tras el aviso de "apaga el coche"
+ * — el dato de Mapon llega con unos segundos de retraso y no se le puede dejar
+ * atrapado por eso—. Entonces el turno se cierra pero el motor NO se bloquea: de
+ * eso se encarga el repaso cuando el coche esté de verdad apagado y quieto.
+ */
+async function terminar(telefono, { forzar = false } = {}) {
   await cerrarOlvidados();
   const t = await abiertoDe(telefono);
   if (!t) return { ok: false, motivo: 'sin-turno' };
@@ -497,10 +517,22 @@ async function terminar(telefono) {
   //
   // Y solo si SABEMOS que va en marcha. Si Mapon no contesta se le deja cerrar:
   // la duda nunca puede dejar a alguien sin poder terminar su jornada.
-  if (BLOQUEO_ACTIVO) {
+  // Y CON EL COCHE ENCENDIDO TAMPOCO.
+  //
+  // Es el mismo problema un paso más cerca: parado pero con el contacto puesto,
+  // el corte entra y el coche ya no se deja apagar. Primero se apaga, luego se
+  // termina. El turno se queda abierto mientras tanto.
+  //
+  // Solo si lo SABEMOS y el dato es reciente: con Mapon callado o con una medida
+  // vieja se le deja cerrar, porque la duda no puede dejar a nadie sin terminar
+  // su jornada.
+  if (BLOQUEO_ACTIVO && !forzar) {
     const m = await estadoMotor(t.unitId);
     if (m.sabemos && m.enMarcha) {
       return { ok: false, motivo: 'coche-en-marcha', velocidad: m.velocidad, turno: t };
+    }
+    if (m.sabemos && m.ignicion === true && (m.ignicionSeg == null || m.ignicionSeg <= 10 * 60)) {
+      return { ok: false, motivo: 'coche-encendido', turno: t };
     }
   }
 
