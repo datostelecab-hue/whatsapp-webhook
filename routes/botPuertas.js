@@ -338,6 +338,9 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
         text: `🚗 ${nombre}\n🚘 ${vehiculo} (${matricula})\n${emoji} ${textoEstado}`
       },
       action: {
+        // El tercer botón solo sale para quien tenga habilitado el fichaje: así
+        // la misma persona pasa de abrir el coche a fichar sin cambiar de
+        // conversación, y para todos los demás el panel queda como estaba.
         buttons: [
           {
             type: 'reply',
@@ -346,7 +349,8 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
           {
             type: 'reply',
             reply: { id: 'cerrar_puertas', title: '🔒 Cerrar' }
-          }
+          },
+          ...(fichajeBot.botonDeTurno(to) ? [fichajeBot.botonDeTurno(to)] : [])
         ]
       }
     }

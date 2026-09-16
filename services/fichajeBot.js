@@ -16,6 +16,8 @@ const BTN_INICIAR = 'turno_iniciar';
 const BTN_TERMINAR = 'turno_terminar';
 const BTN_KM = 'turno_km';
 const BTN_MOTOR = 'turno_motor';
+// Abre el panel del turno desde el bot de puertas, sin salir de la conversación.
+const BTN_PANEL = 'turno_panel';
 
 // Espera de matrícula tras pulsar "Iniciar turno" (en memoria: si Render reinicia, el
 // conductor solo tiene que volver a pulsar el botón).
@@ -64,11 +66,29 @@ async function manejarTexto(telefono, texto) {
     return true;
   }
 
-  if (/^cancelar$/i.test(t)) { await panel(telefono, '❎ Cancelado.'); return true; }
-  if (/km/i.test(t) && t.length < 12) { await verKm(telefono); return true; }
+  // SOLO SE QUEDA LO QUE ES SUYO.
+  //
+  // Antes cualquier texto de un teléfono en pruebas abría el panel del turno y
+  // devolvía `true`, y con eso el mensaje **nunca llegaba al bot de puertas**:
+  // apuntar a alguien a las pruebas del fichaje le quitaba las puertas sin que
+  // nadie lo hubiera decidido. Los dos bots comparten número, así que el fichaje
+  // se queda su palabra y devuelve el resto.
+  if (!/^(turno|turnos|fichaje|fichar|fichar turno)$/i.test(t)) return false;
   await panel(telefono);
   return true;
 }
+
+/**
+ * El botón de turno para el panel de PUERTAS, o null si ese número no participa
+ * en las pruebas del fichaje.
+ *
+ * Vive aquí para que el bot de puertas no tenga que saber nada del fichaje:
+ * pregunta, y pone lo que le den. Es lo que permite a la misma persona abrir el
+ * coche y fichar sin cambiar de conversación.
+ */
+const botonDeTurno = telefono => (fichaje.esPruebas(telefono)
+  ? { type: 'reply', reply: { id: BTN_PANEL, title: '🕑 Turno' } }
+  : null);
 
 /** Botón pulsado. Devuelve true si era del fichaje. */
 async function manejarBoton(telefono, buttonId) {
@@ -80,6 +100,7 @@ async function manejarBoton(telefono, buttonId) {
     await enviarTexto(telefono, '🚘 Escribe la *matrícula* del coche que vas a llevar (sin espacios ni guiones).\n\nEjemplo: *1234ABC*');
     return true;
   }
+  if (buttonId === BTN_PANEL) { await panel(telefono); return true; }
   if (buttonId === BTN_TERMINAR) { await cerrarTurno(telefono); return true; }
   if (buttonId === BTN_KM) { await verKm(telefono); return true; }
   if (buttonId === BTN_MOTOR) { await desbloquear(telefono); return true; }
@@ -231,4 +252,4 @@ async function cerrarTurno(telefono) {
     [{ id: BTN_INICIAR, titulo: '🟢 Iniciar turno' }]);
 }
 
-module.exports = { manejarTexto, manejarBoton, panel };
+module.exports = { manejarTexto, manejarBoton, panel, botonDeTurno };
