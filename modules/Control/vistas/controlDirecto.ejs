@@ -800,8 +800,13 @@
               // Un 0 km también dice algo —el coche estuvo parado— así que se
               // pinta siempre y no solo cuando hay kilómetros.
               '<span class="tabular-nums ' + (t.fuera ? 'text-amber-500 font-semibold' : 'text-telecab-muted') + '" ' +
-                'title="' + (t.fuera ? 'Rodados fuera de BOLT: no cuentan como trabajo' : 'Km rodados en este trazo') + '">' +
-                n1(t.km || 0) + ' km</span>' +
+                'title="' + (t.enCurso && !t.km
+                  ? 'El coche sigue rodando: Mapon no da los km del trayecto hasta que para'
+                  : t.fuera ? 'Rodados fuera de BOLT: no cuentan como trabajo' : 'Km rodados en este trazo') + '">' +
+                // Un 0 con un trayecto abierto encima NO es cero: es "todavía no".
+                (t.enCurso && !t.km
+                  ? '<span class="text-telecab-muted/60 italic">en curso</span>'
+                  : n1(t.km || 0) + ' km') + '</span>' +
             '</div>').join('') + '</div>'
         : '<span class="text-telecab-muted">Sin trazos en las últimas 24 h.</span>';
     } catch (e) {

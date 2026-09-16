@@ -157,6 +157,16 @@ async function historialConductor(conductorId, dias = 1) {
           AND r.inicio >= now() - ($2 || ' days')::interval - interval '6 hours'
           AND r.inicio <= now()
      ),
+     -- LOS QUE SIGUEN ABIERTOS. Mapon da el trayecto en cuanto arranca, con
+     -- fin en NULL y 0 metros, y no le pone los kilómetros hasta que el coche
+     -- para. Sin esto, un conductor que lleva media hora rodando aparece con
+     -- 0 km y parece que el dato esté mal — y no lo está: aún no ha llegado.
+     abierta AS (
+       SELECT r.unit_id, r.inicio
+         FROM fv_ruta r
+        WHERE r.fin IS NULL
+          AND r.inicio >= now() - ($2 || ' days')::interval - interval '12 hours'
+     ),
      -- LOS KM DE CADA TRAMO SALEN DE fv_ruta, NO DE fv_tramo.km_m.
      --
      -- km_m es el salto de odómetro dentro del tramo y el odómetro solo llega
@@ -178,7 +188,10 @@ async function historialConductor(conductorId, dias = 1) {
      )
      SELECT v.matricula, t.situacion, s.etiqueta, t.desde, t.hasta,
             EXTRACT(EPOCH FROM (COALESCE(t.hasta, now()) - t.desde))::bigint AS segundos,
-            round(COALESCE(km.metros, 0)::numeric / 1000.0, 1) AS km
+            round(COALESCE(km.metros, 0)::numeric / 1000.0, 1) AS km,
+            EXISTS (SELECT 1 FROM abierta a
+                     WHERE a.unit_id = v.mapon_unit
+                       AND a.inicio < COALESCE(t.hasta, now()))            AS en_curso
        FROM fv_tramo t
        JOIN fv_vehiculo v      ON v.uuid = t.vehiculo_uuid
        JOIN fv_cat_situacion s ON s.codigo = t.situacion
@@ -197,6 +210,10 @@ async function historialConductor(conductorId, dias = 1) {
     // Se dice aquí y no en la pantalla para que el día que cambie el catálogo
     // no haya dos sitios que lo decidan.
     fuera: !['viaje', 'espera'].includes(x.situacion) && Number(x.km) > 0.05,
+    // Hay un trayecto rodando encima de este trazo: sus km AÚN NO ESTÁN, no es
+    // que sean cero. Un cero provisional y un cero de verdad no son lo mismo y
+    // la pantalla los pinta distinto.
+    enCurso: !!x.en_curso,
   }));
 }
 
