@@ -6,8 +6,10 @@
   const { fecha, hace, etiqueta, esc } = Listado.fmt;
 
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
-  // Las mismas que admite el CHECK de la base (ck_empleo_jornada).
-  const JORNADAS = [20, 25, 30, 32, 35, 40];
+  // Lo habitual, para no escribir a mano lo de siempre. La base admite
+  // cualquier entero de 1 a 40 (db/130): estas jornadas raras —18, 21, 24, 27,
+  // 29— son contratos de verdad de la ETT, no erratas.
+  const JORNADAS = [18, 20, 21, 24, 25, 27, 29, 30, 32, 35, 40];
   const ROL = '<%= typeof rol !== "undefined" ? rol : "" %>';
   // Tráfico ve la ficha entera pero solo cambia lo suyo: turno y libranzas.
   const SOLO_OPERATIVO = ROL === 'trafico';
@@ -361,7 +363,7 @@
       { id: 'antiguedad', etiqueta: 'Antigüedad reconocida', tipo: 'fecha',
         ayuda: 'Si se le respeta la antigüedad de su etapa anterior, ponla aquí.' },
       { id: 'jornadaHoras', etiqueta: 'Jornada', tipo: 'lista',
-        opciones: [20, 25, 30, 32, 35, 40].map(h => ({ valor: h, texto: h + ' horas' })) },
+        opciones: JORNADAS.map(h => ({ valor: h, texto: h + ' horas' })) },
       { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', tipo: 'fecha' },
     ], { textoBoton: 'Volver a dar de alta',
          nota: `Ya tiene ${previos} periodo(s) de empleo en su historial. Este se añade, no los sustituye.` });
@@ -396,7 +398,7 @@
       { id: 'antiguedad', etiqueta: 'Antigüedad reconocida', grupo: 'Contrato', tipo: 'fecha',
         ayuda: 'Solo si arrastra antigüedad de antes, por una subrogación.' },
       { id: 'jornadaHoras', etiqueta: 'Jornada', grupo: 'Contrato', tipo: 'lista',
-        opciones: [20, 25, 30, 32, 35, 40].map(h => ({ valor: h, texto: h + ' horas' })) },
+        opciones: JORNADAS.map(h => ({ valor: h, texto: h + ' horas' })) },
       { id: 'finPrueba', etiqueta: 'Fin del periodo de prueba', grupo: 'Contrato', tipo: 'fecha' },
 
       { id: 'turnoId', etiqueta: 'Turno', grupo: 'Cómo trabaja', tipo: 'lista',

@@ -236,7 +236,18 @@ function situarAlta(altaIso, mesTrabajo, anoTrabajo) {
  * suponer menos le bajaría el objetivo a alguien por un dato vacío —le
  * regalaría horas extra— además de dejarle el umbral FAS bajo.
  */
-const jornadaDe = h => (Number(h) === 32 ? 32 : 40);
+// La jornada del contrato, si la sabemos. Antes esto aplastaba TODO a 32 o 40
+// porque era lo unico que habia en la base; desde que la relacion de contratos
+// de la ETT trajo jornadas de 18, 21, 24, 27 y 29 horas, aplastarlas le pondria
+// a un contrato de 20 h el objetivo de uno de 40 —172 h— y su "diferencia de
+// horas" seria mentira.
+//
+// Sin jornada escrita se sigue suponiendo 40: es lo que se hacia y lo que
+// llevan casi todos.
+const jornadaDe = h => {
+  const n = Number(h);
+  return Number.isFinite(n) && n >= 1 && n <= 40 ? n : 40;
+};
 
 /**
  * El objetivo del mes de esa jornada, por regla de tres sobre el de 40 h.

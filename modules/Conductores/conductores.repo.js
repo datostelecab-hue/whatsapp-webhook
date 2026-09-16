@@ -1058,9 +1058,15 @@ async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
   });
 }
 
-// Las jornadas que admite el convenio. La misma lista que el CHECK
-// `ck_empleo_jornada` de la base: si crecen, crecen en los dos sitios.
-const JORNADAS = [20, 25, 30, 32, 35, 40];
+// Las jornadas que se ofrecen en el desplegable. Ya NO son "las que existen":
+// la relacion de contratos de la ETT trajo jornadas de 18, 21, 24, 27 y 29
+// horas, asi que la lista cerrada era un dato disfrazado de codigo. Lo que
+// manda es el CHECK de la base (db/130): un entero de 1 a 40.
+//
+// Esta lista se queda porque un desplegable tiene que ofrecer algo, y ofrece lo
+// habitual — pero ya no decide que es valido.
+const JORNADAS = [18, 20, 21, 24, 25, 27, 29, 30, 32, 35, 40];
+const TOPE_JORNADA = 40;   // el maximo legal de la jornada ordinaria
 
 /**
  * Cambia las horas del contrato ABIERTO (32, 40…).
@@ -1075,8 +1081,10 @@ const JORNADAS = [20, 25, 30, 32, 35, 40];
  */
 async function cambiarJornada(id, { jornadaHoras }, { usuarioId } = {}) {
   const h = Number(jornadaHoras);
-  if (!JORNADAS.includes(h)) {
-    throw new Error(`Esa jornada no existe. Las que hay: ${JORNADAS.join(', ')} horas.`);
+  // La que diga el contrato, no la que quepa en la lista: lo unico que tiene
+  // que ser cierto es que sea un numero entero de horas y no pase del tope.
+  if (!Number.isInteger(h) || h < 1 || h > TOPE_JORNADA) {
+    throw new Error(`Esa jornada no vale: tienen que ser horas enteras, de 1 a ${TOPE_JORNADA}.`);
   }
   return db.transaccion(async cli => {
     const e = (await cli.query(
@@ -1397,7 +1405,7 @@ async function pinPorTelefono(telefono) {
 }
 module.exports = {
   paraGestoria, buscarPersona, guardarPinBallenoil, pinPorTelefono, paraBallenoil,
-  JORNADAS, cambiarJornada,
+  JORNADAS, TOPE_JORNADA, cambiarJornada,
   campos,
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
