@@ -144,8 +144,18 @@ async function diagnostico(q = {}) {
       const info = await mapon.relesDeUnidad(unitId);
       out.antesDeTodo = info;
       const rele = mapon.releDeCorte(info);
+      // LA MISMA REGLA QUE EL FICHAJE, y no una comprobación propia más floja.
+      //
+      // Aquí solo se miraba que no fuera rodando. Pero cortar con el CONTACTO
+      // PUESTO deja el coche arrancado y sin poder apagarse (comprobado en el
+      // 7222LVG el 16/09/2026), y esta URL es justo la que se usa a mano cuando
+      // hay prisa — que es cuando menos se piensa. `porOrden` porque lo pide una
+      // persona: basta con que esté quieto y sin contacto.
+      const no = rele && String(q.rele) === '1'
+        ? require('../../services/fichaje').puedeInmovilizar(info, { porOrden: true })
+        : null;
       if (!rele) out.errorRele = 'Ese vehículo no reporta ningún relé';
-      else if (info.enMarcha) out.errorRele = `El coche está EN MARCHA (${info.velocidad} km/h): no se toca el relé`;
+      else if (no) out.errorRele = `No se corta: ${no}`;
       else {
         out.rele = await mapon.cambiarReleConfirmado({
           unitId, relayId: rele.relay_id, estado: String(q.rele) === '1',
