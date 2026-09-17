@@ -337,6 +337,34 @@ async function gastoPorVehiculo({ sedes, desde, hasta } = {}) {
   };
 }
 
+/**
+ * Las matrículas de la flota que esa persona puede ver, con su modelo y su
+ * último odómetro.
+ *
+ * Es para que teclear una factura sea elegir de una lista y no escribir de
+ * memoria: así no entran matrículas inventadas y el kilometraje se puede
+ * ofrecer solo. Salen también las de baja — una factura de hace tres meses
+ * puede ser de un coche que ya se vendió.
+ */
+async function flota(sedes) {
+  if (!Array.isArray(sedes) || !sedes.length) throw new Error('Hay que decir de qué sedes');
+  const r = await db.consulta(
+    `SELECT v.matricula, v.marca_modelo, v.sede, v.baja_at IS NOT NULL AS de_baja,
+            v.km_odometro_m, v.estado_operativo
+       FROM vehiculo v
+      WHERE v.sede = ANY($1::varchar[])
+      ORDER BY v.baja_at NULLS FIRST, v.matricula`, [sedes]);
+  return r.rows.map(v => ({
+    matricula: v.matricula,
+    modelo: v.marca_modelo || '',
+    sede: v.sede,
+    deBaja: v.de_baja,
+    // El odómetro se guarda en metros; aquí interesa en kilómetros, que es como
+    // lo escribe el taller en el albarán.
+    km: v.km_odometro_m ? Math.round(Number(v.km_odometro_m) / 1000) : null,
+  }));
+}
+
 /** El gasto de UN coche, para su ficha. */
 async function gastoDe(vehiculoId) {
   const r = await db.consulta(
@@ -358,6 +386,6 @@ async function gastoDe(vehiculoId) {
 module.exports = {
   proveedores, crearProveedor,
   lista, ficha, crear, anular, guardarAdjunto, ponerCoche,
-  gastoPorVehiculo, gastoDe,
+  gastoPorVehiculo, gastoDe, flota,
   EXIGE_MATRICULA_DESDE,
 };

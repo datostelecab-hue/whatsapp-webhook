@@ -116,8 +116,11 @@ async function subirPdf(id, { nombre, mime, base64 } = {}, quien = {}) {
   // El nombre lo pone el sistema: así dos facturas del mismo taller no se
   // machacan porque alguien subiera dos veces "escaneo.pdf".
   const limpio = `${f.proveedor} ${f.numero}`.replace(/[\\/:*?"<>|]/g, '-').slice(0, 120);
+  // La extensión, la que traiga el fichero. No todas las facturas son PDF: las
+  // escaneadas llegan en imagen, y llamar «.pdf» a un JPG hace que no abra.
+  const ext = (String(nombre || '').match(/[.]([a-z0-9]{2,5})$/i) || [, 'pdf'])[1].toLowerCase();
   const subido = await drive.subir(`Facturas de taller ${mes}`, {
-    nombre: `${limpio}.pdf`,
+    nombre: `${limpio}.${ext}`,
     mime: mime || 'application/pdf',
     base64,
     // Si ya tenía uno, se REEMPLAZA en vez de dejar dos.
@@ -145,10 +148,13 @@ const gasto = (filtros = {}, quien = {}) =>
 /** Lo gastado en UN coche, para pintarlo en su ficha. */
 const gastoDeCoche = vehiculoId => repo.gastoDe(vehiculoId);
 
+/** Las matrículas que puede elegir quien está tecleando una factura. */
+const flota = (quien = {}) => repo.flota(sedesDe(quien));
+
 module.exports = {
   listar, ver, alta, anular, adjuntar, subirPdf, asignarCoche,
   proveedores, nuevoProveedor,
-  gasto, gastoDeCoche,
+  gasto, gastoDeCoche, flota,
   sedesDe, SEDES, SEDE_POR_DEFECTO,
   EXIGE_MATRICULA_DESDE: repo.EXIGE_MATRICULA_DESDE,
 };

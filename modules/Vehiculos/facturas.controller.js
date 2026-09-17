@@ -94,6 +94,9 @@ router.get('/api/ficha/:id', responde(async req => ({
 
 router.get('/api/proveedores', responde(async () => ({ proveedores: await facturas.proveedores() })));
 
+/** Las matrículas para el formulario: las de SU sede, con modelo y odómetro. */
+router.get('/api/flota', responde(async req => ({ flota: await facturas.flota(await quien(req)) })));
+
 /** El cuadro de gasto por coche: para lo que existe todo esto. */
 router.get('/api/gasto', responde(async req => (
   await facturas.gasto({ desde: req.query.desde, hasta: req.query.hasta }, await quien(req))

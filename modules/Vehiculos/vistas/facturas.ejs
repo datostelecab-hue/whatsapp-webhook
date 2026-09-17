@@ -3,6 +3,11 @@
 <!-- Alta de factura. Vive fuera del componente porque es propio de esta
      pantalla: el componente pone la lista y la ficha, no sabe de facturas.
      Y la tabla de líneas crece: una factura de iPark trae media docena. -->
+<!-- Las matriculas de la flota que esta persona puede tocar. Se rellena al
+     abrir el formulario, no al cargar la pagina: quien solo mira facturas no
+     necesita bajarse los 95 coches. -->
+<datalist id="flota-lista"></datalist>
+
 <div id="fm" class="hidden fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
   <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-4xl my-8">
     <div class="flex items-center justify-between px-5 py-4 border-b border-telecab-border">
@@ -15,37 +20,36 @@
     <form id="fm-form" class="p-5 space-y-5">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <label class="block">
-          <span class="text-xs text-telecab-muted">Taller</span>
-          <select name="proveedorId" required class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2"></select>
+          <span class="text-xs text-telecab-muted uppercase tracking-wide">Taller</span>
+          <select name="proveedorId" required class="w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40"></select>
         </label>
         <label class="block">
-          <span class="text-xs text-telecab-muted">Nº de factura</span>
-          <input name="numero" required placeholder="26/04137" class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2">
+          <span class="text-xs text-telecab-muted uppercase tracking-wide">Nº de factura</span>
+          <input name="numero" required placeholder="26/04137" class="w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
         </label>
         <label class="block">
-          <span class="text-xs text-telecab-muted">Fecha</span>
-          <input name="fecha" type="date" required class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2">
+          <span class="text-xs text-telecab-muted uppercase tracking-wide">Fecha</span>
+          <!-- `js-fecha`: el calendario de la casa (layout-gestion). Trabaja en
+               dd/mm/aaaa y se convierte a ISO al guardar. -->
+          <input name="fecha" required class="js-fecha w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40" placeholder="dd/mm/aaaa" autocomplete="off">
         </label>
         <label class="block">
-          <span class="text-xs text-telecab-muted">Total con IVA (€)</span>
-          <input name="total" required inputmode="decimal" placeholder="1456,13"
-                 class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 tabular-nums">
+          <span class="text-xs text-telecab-muted uppercase tracking-wide">Total con IVA (€)</span>
+          <input name="total" required inputmode="decimal" placeholder="1456,13" class="w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 tabular-nums">
         </label>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <label class="block">
-          <span class="text-xs text-telecab-muted">Base imponible (€)</span>
-          <input name="base" inputmode="decimal" placeholder="1203,41"
-                 class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 tabular-nums">
+          <span class="text-xs text-telecab-muted uppercase tracking-wide">Base imponible (€)</span>
+          <input name="base" inputmode="decimal" placeholder="1203,41" class="w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 tabular-nums">
           <!-- Es contra la BASE contra lo que cuadran las líneas: los talleres
                facturan los artículos sin IVA. -->
-          <span class="text-[11px] text-telecab-muted">Es con esta contra la que cuadran las líneas.</span>
+          <span class="text-[11px] text-telecab-muted">Se rellena sola al poner el total. Es contra esta contra la que cuadran las líneas.</span>
         </label>
         <label class="block">
-          <span class="text-xs text-telecab-muted">IVA (€)</span>
-          <input name="iva" inputmode="decimal" placeholder="252,72"
-                 class="w-full mt-1 bg-telecab-dark border border-telecab-border rounded-lg px-3 py-2 tabular-nums">
+          <span class="text-xs text-telecab-muted uppercase tracking-wide">IVA (€)</span>
+          <input name="iva" inputmode="decimal" placeholder="252,72" class="w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 tabular-nums">
         </label>
       </div>
 
@@ -105,6 +109,9 @@
   const $ = s => document.querySelector(s);
 
   const eur = v => (v == null ? '—' : euros(v));
+  // La flota, en memoria mientras dura el formulario: se usa para la lista de
+  // matriculas y para ofrecer el kilometraje de cada coche.
+  let FLOTA = new Map();
   const pedir = async (url, opciones) => {
     const r = await fetch(url, opciones);
     const d = await r.json();
@@ -273,16 +280,21 @@
 
   // ---------- alta ----------
 
+  // La matrícula va contra la LISTA DE LA FLOTA (datalist): se escriben dos
+  // dígitos y sale el coche. Pero es una lista, no una jaula — se puede escribir
+  // una que no esté, porque el taller a veces factura coches que no llevamos, y
+  // eso hay que poder apuntarlo tal cual.
+  const MINI = 'bg-telecab-card2 border border-telecab-border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40';
   const filaHTML = () => `
     <tr class="border-t border-telecab-border">
-      <td class="py-1 pr-2"><input name="matricula" placeholder="NN si no consta"
-          class="w-28 bg-telecab-dark border border-telecab-border rounded px-2 py-1 uppercase"></td>
-      <td class="py-1 pr-2"><input name="albaran" class="w-24 bg-telecab-dark border border-telecab-border rounded px-2 py-1"></td>
-      <td class="py-1 pr-2"><input name="fecha" type="date" class="bg-telecab-dark border border-telecab-border rounded px-2 py-1"></td>
-      <td class="py-1 pr-2"><input name="km" inputmode="numeric" class="w-24 bg-telecab-dark border border-telecab-border rounded px-2 py-1 tabular-nums"></td>
-      <td class="py-1 pr-2"><input name="concepto" class="w-full bg-telecab-dark border border-telecab-border rounded px-2 py-1"></td>
-      <td class="py-1 pr-2"><input name="importe" inputmode="decimal" class="w-24 bg-telecab-dark border border-telecab-border rounded px-2 py-1 tabular-nums"></td>
-      <td class="py-1"><button type="button" class="quitar w-7 h-7 rounded text-telecab-muted hover:text-telecab-red transition"><i class="fa-solid fa-trash"></i></button></td>
+      <td class="py-1 pr-2"><input name="matricula" list="flota-lista" placeholder="vacío = NN"
+          class="w-32 uppercase ${MINI}" autocomplete="off"></td>
+      <td class="py-1 pr-2"><input name="albaran" class="w-24 ${MINI}"></td>
+      <td class="py-1 pr-2"><input name="fecha" class="js-fecha w-28 ${MINI}" placeholder="dd/mm/aaaa" autocomplete="off"></td>
+      <td class="py-1 pr-2"><input name="km" inputmode="numeric" class="w-24 tabular-nums ${MINI}"></td>
+      <td class="py-1 pr-2"><input name="concepto" class="w-full ${MINI}"></td>
+      <td class="py-1 pr-2"><input name="importe" inputmode="decimal" class="w-24 tabular-nums ${MINI}"></td>
+      <td class="py-1"><button type="button" class="quitar w-7 h-7 rounded text-telecab-muted hover:text-telecab-red transition" title="Quitar la línea"><i class="fa-solid fa-trash"></i></button></td>
     </tr>`;
 
   const num = v => { const n = Number(String(v || '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
@@ -311,6 +323,28 @@
     const tr = $('#fm-lineas').lastElementChild;
     tr.querySelector('.quitar').addEventListener('click', () => { tr.remove(); recalcular(); });
     tr.querySelector('[name=importe]').addEventListener('input', recalcular);
+
+    // La fecha de la linea, la de la factura mientras no se diga otra cosa: casi
+    // siempre coinciden, y cuando no, se cambia.
+    const fFactura = $('#fm-form').fecha.value;
+    if (fFactura) tr.querySelector('[name=fecha]').value = fFactura;
+
+    // Al elegir coche se ofrece SU kilometraje. Se ofrece, no se impone: el del
+    // papel es el del dia del taller y el nuestro es el de hoy, asi que solo se
+    // rellena si el campo esta vacio, y avisa de cual es cual.
+    const mat = tr.querySelector('[name=matricula]');
+    const km = tr.querySelector('[name=km]');
+    mat.addEventListener('change', () => {
+      const v = FLOTA.get(mat.value.trim().toUpperCase());
+      mat.value = mat.value.trim().toUpperCase();
+      if (v && v.km && !km.value.trim()) {
+        km.value = v.km;
+        km.title = 'Los que tenemos nosotros de ' + v.matricula + '. Si el papel dice otros, manda el papel.';
+        km.classList.add('text-telecab-muted');
+      }
+      mat.title = v ? `${v.modelo}${v.deBaja ? ' (de baja)' : ''}` : 'No esta en la flota: se guardara tal cual';
+    });
+    km.addEventListener('input', () => km.classList.remove('text-telecab-muted'));
   }
 
   async function abrir() {
@@ -320,9 +354,20 @@
     anadirFila();
     recalcular();
     try {
-      const { proveedores } = await pedir('/facturas/api/proveedores');
+      const [{ proveedores }, { flota }] = await Promise.all([
+        pedir('/facturas/api/proveedores'),
+        pedir('/facturas/api/flota'),
+      ]);
       f.proveedorId.innerHTML = proveedores
         .map(p => `<option value="${esc(p.id)}">${esc(p.nombre)}</option>`).join('');
+
+      // La lista de matriculas, con el modelo al lado para no equivocarse entre
+      // dos parecidas. Las de baja se marcan: una factura vieja puede ser de un
+      // coche que ya se vendio, y hay que poder apuntarla igual.
+      FLOTA = new Map(flota.map(v => [v.matricula, v]));
+      $('#flota-lista').innerHTML = flota.map(v =>
+        `<option value="${esc(v.matricula)}">${esc(v.modelo)}${v.deBaja ? ' · de baja' : ''}${
+          v.sede === 'barcelona' ? ' · Barcelona' : ''}</option>`).join('');
     } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo', texto: e.message, tono: 'error' }); }
     $('#fm').classList.remove('hidden');
   }
@@ -351,16 +396,18 @@
     $('#fm-form').addEventListener('submit', async ev => {
       ev.preventDefault();
       const f = ev.target;
+      // El calendario de la casa trabaja en dd/mm/aaaa; la base quiere ISO.
+      const aISO = Dialogo.aISO;
       const lineas = [...$('#fm-lineas').querySelectorAll('tr')].map(tr => ({
         matricula: tr.querySelector('[name=matricula]').value,
         albaran: tr.querySelector('[name=albaran]').value,
-        fecha: tr.querySelector('[name=fecha]').value || null,
+        fecha: aISO(tr.querySelector('[name=fecha]').value) || null,
         km: tr.querySelector('[name=km]').value,
         concepto: tr.querySelector('[name=concepto]').value,
         importe: tr.querySelector('[name=importe]').value,
       }));
       const cuerpo = {
-        proveedorId: f.proveedorId.value, numero: f.numero.value, fecha: f.fecha.value,
+        proveedorId: f.proveedorId.value, numero: f.numero.value, fecha: aISO(f.fecha.value),
         base: f.base.value, iva: f.iva.value,
         total: f.total.value, notas: f.notas.value, lineas,
       };
