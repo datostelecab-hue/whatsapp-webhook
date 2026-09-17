@@ -259,14 +259,34 @@ async function kmPorCoche(dia) {
     `WITH w AS (
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
+     ),
+${FUENTE_KM}
+     -- Los KM salen de la fuente elegida (odómetro si el coche lo da), prorrateados
+     -- a la ventana. Los VIAJES no: un viaje es un trayecto de Mapon y se cuentan
+     -- de ahí siempre — el odómetro no sabe de viajes, solo de metros, y contar
+     -- sus tramos daría "600 viajes" en un coche que hizo veinte.
+     km AS (
+       SELECT v.matricula,
+              sum(r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                    LEAST(r.fin, w.fin) - GREATEST(r.inicio, w.ini))))
+                  / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0)) AS metros
+         FROM km_src r CROSS JOIN w
+         JOIN fv_vehiculo v ON v.mapon_unit = r.unit_id
+        WHERE v.matricula IS NOT NULL
+        GROUP BY v.matricula
+     ),
+     viajes AS (
+       SELECT v.matricula, count(*)::int AS n
+         FROM fv_ruta r CROSS JOIN w
+         JOIN fv_vehiculo v ON v.mapon_unit = r.unit_id
+        WHERE v.matricula IS NOT NULL
+          AND r.inicio >= w.ini AND r.inicio < w.fin
+        GROUP BY v.matricula
      )
-     SELECT v.matricula, round(sum(r.metros) / 1000.0, 1) AS km, count(*)::int AS viajes
-       FROM fv_ruta r
-       CROSS JOIN w
-       JOIN fv_vehiculo v ON v.mapon_unit = r.unit_id
-      WHERE v.matricula IS NOT NULL
-        AND r.inicio >= w.ini AND r.inicio < w.fin
-      GROUP BY v.matricula`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+     SELECT COALESCE(km.matricula, viajes.matricula) AS matricula,
+            round(COALESCE(km.metros, 0)::numeric / 1000.0, 1) AS km,
+            COALESCE(viajes.n, 0) AS viajes
+       FROM km FULL JOIN viajes ON viajes.matricula = km.matricula`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
   const m = new Map();
   r.rows.forEach(x => m.set(x.matricula, { km: Number(x.km) || 0, viajes: x.viajes }));
   return m;
@@ -349,22 +369,33 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      ),
-     solape AS (
+     w AS (SELECT ini, fin FROM v),
+${FUENTE_KM}
+     tramo_km AS (
        SELECT CASE WHEN t.conductor_uuid IS NULL THEN '(sin conductor)'
                    ELSE COALESCE(co.nombre, t.conductor_uuid) END AS conductor,
-              veh.matricula AS matricula,
-              t.situacion,
-              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
-                LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
-                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
-         FROM fv_ruta r
-         CROSS JOIN v
-         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
-         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
+              veh.matricula, veh.mapon_unit AS unit_id, t.situacion,
+              GREATEST(t.desde, w.ini)                      AS d,
+              LEAST(COALESCE(t.hasta, now()), w.fin)        AS h
+         FROM fv_tramo t
+         CROSS JOIN w
+         JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
          LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
-        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND r.inicio >= v.ini AND r.inicio < v.fin
+        WHERE veh.mapon_unit IS NOT NULL
+          AND t.desde < w.fin
+          AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
+          AND COALESCE(t.hasta, now()) > w.ini
+     ),
+     solape AS (
+       -- Prorrateado por la ventana TAMBIÉN, no solo por el tramo: si no, un
+       -- trozo a caballo del corte cuenta entero en los dos días.
+       SELECT tk.conductor, tk.matricula, tk.situacion,
+              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(r.fin, tk.h) - GREATEST(r.inicio, tk.d))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
+         FROM km_src r
+         JOIN tramo_km tk ON tk.unit_id = r.unit_id AND tk.d < r.fin AND tk.h > r.inicio
+        WHERE tk.h > tk.d
      )
      -- Por conductor Y matrícula: un conductor puede haber cogido más de un coche
      -- en su jornada. Se agrupa en JS para dar el total del conductor + la lista
@@ -513,7 +544,14 @@ const FUENTE_KM = `
                 LEAST(o.fin, w.fin) - GREATEST(o.inicio, w.ini))))
                 / NULLIF(EXTRACT(EPOCH FROM (o.fin - o.inicio)), 0) AS en_ventana
          FROM fv_odometro o CROSS JOIN w
-        WHERE o.fin > o.inicio AND o.inicio < w.fin AND o.fin > w.ini
+        -- LA COTA EN CONSTANTES NO SOBRA. La ventana se calcula aquí dentro y se usa
+        -- muchas veces, así que Postgres la materializa y deja de saber qué
+        -- fechas lleva: sin este recorte sobre $1 se leía la tabla entera —1,3
+        -- millones de tramos y subiendo— en cada pregunta, y En directo pasó de
+        -- segundos a medio minuto. Con la cota, entra por el índice.
+        WHERE o.inicio >= $1::date - interval '1 day'
+          AND o.inicio <  $1::date + interval '3 days'
+          AND o.fin > o.inicio AND o.inicio < w.fin AND o.fin > w.ini
      ),
      gps_v AS (
        SELECT r.unit_id, r.inicio, r.fin, r.metros, FALSE AS por_can,
@@ -521,7 +559,9 @@ const FUENTE_KM = `
                 LEAST(r.fin, w.fin) - GREATEST(r.inicio, w.ini))))
                 / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS en_ventana
          FROM fv_ruta r CROSS JOIN w
-        WHERE r.fin IS NOT NULL AND r.fin > r.inicio AND r.inicio < w.fin AND r.fin > w.ini
+        WHERE r.inicio >= $1::date - interval '1 day'
+          AND r.inicio <  $1::date + interval '3 days'
+          AND r.fin IS NOT NULL AND r.fin > r.inicio AND r.inicio < w.fin AND r.fin > w.ini
      ),
      fuente AS (
        SELECT COALESCE(c.unit_id, g.unit_id) AS unit_id,
@@ -542,6 +582,26 @@ const FUENTE_KM = `
 // usan la franja de Control y la actividad por conductor, y estaba COPIADO en
 // las dos: la primera vez que se tocó una hubo que acordarse de la otra.
 const SOLAPE_KM = `
+     -- EL CORTE DEL TRAMO SE CALCULA UNA VEZ POR TRAMO. Antes el corte —que
+     -- lleva dos subconsultas dentro— iba metido en el SELECT y en el JOIN del
+     -- reparto, o sea que se resolvía dos veces por CADA trozo de km. Con los
+     -- trayectos del GPS eran mil y pico y se notaba poco; con el odómetro son
+     -- cuarenta mil al día y la pantalla se caía a medio minuto. Sacándolo a su
+     -- propia CTE se resuelve unas tres mil veces —una por tramo— y el reparto
+     -- pasa a ser un cruce normal.
+     tramo_km AS (
+       SELECT t.conductor_uuid AS uuid, veh.matricula, veh.mapon_unit AS unit_id, t.situacion,
+              GREATEST(t.desde, w.ini)     AS d,
+              LEAST(${FIN_KM}, w.fin)      AS h
+         FROM fv_tramo t
+         CROSS JOIN w
+         JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
+        WHERE w.fin > w.ini
+          AND t.conductor_uuid IS NOT NULL
+          AND veh.mapon_unit IS NOT NULL
+          AND t.desde < w.fin
+          AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
+     ),
      solape AS (
        -- UN TRAYECTO SE REPARTE POR EL TIEMPO QUE PASA DENTRO, no cuenta entero
        -- donde empieza.
@@ -559,22 +619,14 @@ const SOLAPE_KM = `
        -- Ahora los metros se prorratean por el solape con la ventana Y con el
        -- tramo, que es lo que ya se hacía entre conductores: cada jornada se
        -- queda los kilómetros que de verdad vio.
-       SELECT t.conductor_uuid AS uuid, veh.matricula, t.situacion,
+       SELECT tk.uuid, tk.matricula, tk.situacion, r.por_can,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
-                LEAST(r.fin, ${FIN_KM}, w.fin) - GREATEST(r.inicio, t.desde, w.ini))))
-                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo,
-              r.por_can
+                LEAST(r.fin, tk.h) - GREATEST(r.inicio, tk.d))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
          FROM km_src r
-         CROSS JOIN w
-         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
-         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND ${FIN_KM} > r.inicio
-                             AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
-        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND w.fin > w.ini
-          -- Solapa con la ventana: ya no hace falta que empiece dentro.
-          AND r.inicio < w.fin AND r.fin > w.ini
-          AND t.conductor_uuid IS NOT NULL
+         JOIN tramo_km tk ON tk.unit_id = r.unit_id
+                         AND tk.d < r.fin AND tk.h > r.inicio
+        WHERE tk.h > tk.d
      )`;
 
 /**
@@ -749,19 +801,28 @@ async function bucketsTurno(dia, turno) {
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'          AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
      ),
+     w AS (SELECT ini, fin FROM v),
+${FUENTE_KM}
+     tramo_km AS (
+       SELECT veh.matricula, veh.mapon_unit AS unit_id, t.situacion,
+              GREATEST(t.desde, w.ini)               AS d,
+              LEAST(COALESCE(t.hasta, now()), w.fin) AS h
+         FROM fv_tramo t
+         CROSS JOIN w
+         JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
+        WHERE veh.mapon_unit IS NOT NULL
+          AND t.desde < w.fin
+          AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
+          AND COALESCE(t.hasta, now()) > w.ini
+     ),
      solape AS (
-       SELECT veh.matricula,
-              t.situacion,
+       SELECT tk.matricula, tk.situacion,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
-                LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
+                LEAST(r.fin, tk.h) - GREATEST(r.inicio, tk.d))))
                 / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
-         FROM fv_ruta r
-         CROSS JOIN v
-         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
-         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
-        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND r.inicio >= v.ini AND r.inicio < v.fin
+         FROM km_src r
+         JOIN tramo_km tk ON tk.unit_id = r.unit_id AND tk.d < r.fin AND tk.h > r.inicio
+        WHERE tk.h > tk.d
      )
      SELECT
        round(coalesce(sum(metros_trozo) FILTER (WHERE situacion = 'viaje'), 0) / 1000.0, 1)        AS viaje,
