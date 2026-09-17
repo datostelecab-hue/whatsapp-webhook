@@ -271,6 +271,67 @@ async function kmConectadoDesconectado(dia, turno = 'completo') {
 // aparecían diferencias; con 14, ninguna.
 const VENTANA_ATRAS = '14 days';
 
+// ── HASTA CUÁNDO CUENTAN LOS KM DE UN TRAMO ─────────────────────────────────
+// Un tramo CERRADO termina cuando dice BOLT y no hay nada que discutir. Un
+// tramo ABIERTO es otra cosa: BOLT dijo "desconectado" y no volvió a decir
+// nada, así que `COALESCE(t.hasta, now())` lo estiraba hasta hoy y ese tramo
+// absorbía TODO lo que el coche hiciera después — aunque lo condujera otro.
+//
+// Pasó de verdad y a lo grande. Macilon Dos Santos se desconectó del 7550KYT el
+// 15/09 a las 06:41, se fue a otro coche, y el reporte le apuntó 256 km "fuera
+// de servicio" que eran 217 de ese coche más sus 38 reales. En total había 21
+// tramos abiertos de más de 12 h imputando unos 2.500 km a gente que no iba
+// dentro, y eso es un número con el que se llama a la gente.
+//
+// Se corta en lo que pase ANTES de estas tres:
+//
+//   1. Otro conductor se conecta a ese coche. A partir de ahí los km son suyos:
+//      es el hecho más fuerte que hay y no hace falta suponer nada.
+//   2. ÉL aparece en otro coche. Nadie conduce dos a la vez.
+//   3. Un tope de 12 h. Solo salta cuando no ocurre ninguna de las dos, que es
+//      justo el caso feo: el coche se va de la flota —a Barcelona, al taller— y
+//      nadie vuelve a conectarse con él en BOLT, así que ningún hecho cierra el
+//      tramo. Son 12 h y no otra cifra para decir lo mismo que la auditoría de
+//      flota, que ya da por caduco un estado con esa misma edad.
+//
+// LEAST ignora los NULL, así que las dos subconsultas no necesitan envoltorio:
+// si no hay siguiente tramo, no cuentan.
+const TOPE_TRAMO_ABIERTO = '12 hours';
+const FIN_KM = `CASE WHEN t.hasta IS NOT NULL THEN t.hasta ELSE LEAST(
+         now(),
+         t.desde + interval '${TOPE_TRAMO_ABIERTO}',
+         (SELECT min(o.desde) FROM fv_tramo o
+           WHERE o.vehiculo_uuid = t.vehiculo_uuid
+             AND o.conductor_uuid IS NOT NULL
+             AND o.conductor_uuid <> t.conductor_uuid
+             AND o.desde > t.desde),
+         (SELECT min(x.desde) FROM fv_tramo x
+           WHERE x.conductor_uuid = t.conductor_uuid
+             AND x.vehiculo_uuid <> t.vehiculo_uuid
+             AND x.desde > t.desde)
+       ) END`;
+
+// El reparto de los metros de un trayecto entre los tramos que lo solapan. Lo
+// usan la franja de Control y la actividad por conductor, y estaba COPIADO en
+// las dos: la primera vez que se tocó una hubo que acordarse de la otra.
+const SOLAPE_KM = `
+     solape AS (
+       SELECT t.conductor_uuid AS uuid, veh.matricula, t.situacion,
+              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(r.fin, ${FIN_KM}) - GREATEST(r.inicio, t.desde))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
+         FROM fv_ruta r
+         CROSS JOIN w
+         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
+         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
+                             AND t.desde < r.fin AND ${FIN_KM} > r.inicio
+                             AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
+          AND w.fin > w.ini
+          AND r.inicio >= w.ini AND r.inicio < w.fin
+          AND t.conductor_uuid IS NOT NULL
+     )`;
+
 /**
  * KM RODADOS FUERA DE LA APP dentro de UNA VENTANA CUALQUIERA (no un turno del
  * catálogo): los metros de los trayectos de Mapon que caen en un tramo de
@@ -297,22 +358,7 @@ async function kmFueraEnVentana(dia, hIni, offFin, hFin) {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
      ),
      w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
-     solape AS (
-       SELECT t.conductor_uuid AS uuid, veh.matricula, t.situacion,
-              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
-                LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
-                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
-         FROM fv_ruta r
-         CROSS JOIN w
-         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
-         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
-                             AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
-        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND w.fin > w.ini
-          AND r.inicio >= w.ini AND r.inicio < w.fin
-          AND t.conductor_uuid IS NOT NULL
-     )
+${SOLAPE_KM}
      SELECT uuid, matricula,
             round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion IN ('viaje','espera')), 0)::numeric / 1000.0, 1)     AS km,
             round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera
@@ -725,22 +771,7 @@ async function actividadPorConductor(dia, turno = 'dia') {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
      ),
      w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
-     solape AS (
-       SELECT t.conductor_uuid AS uuid, veh.matricula, t.situacion,
-              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
-                LEAST(r.fin, COALESCE(t.hasta, now())) - GREATEST(r.inicio, t.desde))))
-                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
-         FROM fv_ruta r
-         CROSS JOIN w
-         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
-         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND COALESCE(t.hasta, now()) > r.inicio
-                             AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
-        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND w.fin > w.ini
-          AND r.inicio >= w.ini AND r.inicio < w.fin
-          AND t.conductor_uuid IS NOT NULL
-     )
+${SOLAPE_KM}
      SELECT uuid, matricula,
             round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion IN ('viaje','espera')), 0)::numeric / 1000.0, 1)     AS km,
             round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera
