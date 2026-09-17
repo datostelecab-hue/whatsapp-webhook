@@ -32,6 +32,12 @@
 <style>
   /* La celda del calendario: cuadrada, con el número arriba y el dato abajo. */
   .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  /* Ese dia trabajo con la cuenta de otro. Un punto y no un color de fondo: el
+     fondo ya dice cuantas horas hizo, y son dos cosas distintas. */
+  .cal-fantasma {
+    position: absolute; top: .3rem; right: .3rem; width: .42rem; height: .42rem;
+    border-radius: 50%; background: rgb(var(--tc-gold)); box-shadow: 0 0 0 2px rgb(var(--tc-dark) / .8);
+  }
   .cal-dia {
     position: relative; aspect-ratio: 1 / .78; border-radius: .8rem; padding: .45rem .55rem;
     display: flex; flex-direction: column; justify-content: space-between;
@@ -236,7 +242,12 @@
     const porvenir = d > DATA.hoyIdx ? ' (programado)' : '';
     if (k === 'futuro') return 'Todavía no ha llegado.';
     if (k === 'fuera') return c.altaIdx != null && d < c.altaIdx ? 'Antes de su alta.' : 'Después de su baja.';
-    if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '');
+    // Si ese día trabajó con la cuenta de otro, hay que decirlo: la hora cuenta
+    // igual, pero quien mire esto dentro de tres meses tiene que poder entender
+    // por qué en BOLT ese día sale el nombre de otra persona.
+    const fant = (c.fantasma || {})[isoDe(d)];
+    if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '') +
+      (fant ? ' · HORAS DE CUENTA FANTASMA «' + fant + '»' : '');
     if (k === 'J') {
       const j = c.justif[isoDe(d)] || {}, hb = (c.horasBolt || {})[isoDe(d)] || 0;
       const firme = horasDe(c, d) || 0;
@@ -796,7 +807,10 @@
     }
     else if (esAus(k)) contenido = `<span class="cal-tag" style="background:${clr(k)};color:white">${k}</span>`;
     const f = fechaDe(d);
-    return `<div class="cal-dia ${clase(c, d)} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">
+    // Un punto en la esquina: no se puede poner el nombre de la cuenta dentro de
+    // una celda de 20 px, pero sí avisar de que ahí hay algo que mirar.
+    const marcaF = (c.fantasma || {})[isoDe(d)] ? '<i class="cal-fantasma"></i>' : '';
+    return `<div class="cal-dia ${clase(c, d)} ${d === DATA.hoyIdx ? 'hoy' : ''} ${d === diaSel ? 'sel' : ''}" data-d="${d}" title="${esc(textoDia(c, d))}">${marcaF}
       <span class="cal-num">${conNumero ? f.getUTCDate() : DOW[dowDe(d)]}${conNumero && level === 'semana' ? ' ' + DOW[dowDe(d)] : ''}</span>${contenido}</div>`;
   }
   function pintarCalendario(c) {

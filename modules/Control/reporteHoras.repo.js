@@ -115,7 +115,7 @@ async function planDelDia(iso) {
 // ── Quién es cada cuenta de BOLT, y quién es cada conductor nuestro ──────────
 // El puente duro: conductor_externo.externo_id = el conductor_uuid del núcleo.
 // Nada de nombres.
-async function padron() {
+async function padron(iso) {
   const r = await db.consulta(
     `SELECT c.id,
             COALESCE(NULLIF(btrim(ce.externo_nombre), ''),
@@ -145,7 +145,25 @@ async function padron() {
     `SELECT externo_id, conductor_id FROM conductor_externo
       WHERE sistema = 'bolt' AND conductor_id IS NOT NULL`);
   todas.rows.forEach(x => idDeUuid.set(x.externo_id, Number(x.conductor_id)));
-  return { porId, idDeUuid };
+
+  // Y LAS PRESTADAS DE ESE DIA, que van DESPUES a proposito: si una cuenta
+  // estaba prestada ese dia, sus horas son de quien la usaba, no de su titular.
+  // Sin esto el reporte las mandaba a "NN" o se las apuntaba a otro.
+  const fantasmaDe = new Map();        // uuid -> nombre de la cuenta prestada
+  if (iso) {
+    const pres = await db.consulta(
+      `SELECT ce.externo_id, f.conductor_id,
+              COALESCE(ce.externo_nombre, '(sin nombre en BOLT)') AS cuenta
+         FROM cuenta_fantasma f
+         JOIN conductor_externo ce ON ce.id = f.cuenta_id
+        WHERE f.anulado_at IS NULL
+          AND f.desde <= $1::date AND (f.hasta IS NULL OR f.hasta >= $1::date)`, [iso]);
+    pres.rows.forEach(x => {
+      idDeUuid.set(x.externo_id, Number(x.conductor_id));
+      fantasmaDe.set(x.externo_id, x.cuenta);
+    });
+  }
+  return { porId, idDeUuid, fantasmaDe };
 }
 
 /**
@@ -162,7 +180,7 @@ async function reporteDia(key) {
     // Visibilidad y es lo que la persona trabajó, empiece cuando empiece.
     rutas.actividadPorConductor(iso, 'operativo'),
     planDelDia(iso),
-    padron(),
+    padron(iso),
     // Sin red: si las J no se pueden leer, el Excel no sale (antes salía sin
     // ninguna J y nadie lo sabía).
     repoJust.leerPorFecha(iso),

@@ -436,6 +436,13 @@
           '<span class="flex items-center gap-2 min-w-0">' +
             '<span class="truncate text-telecab-text font-medium" title="' + esc(f.conductor) + '">' +
               esc(f.conductor) + '</span>' +
+            // Sale con SU nombre, pero rodando con la cuenta de otro. Hay que
+            // decirlo aquí: quien lo busque en BOLT no encontrará este nombre, y
+            // quien vea el de la cuenta creerá que es otra persona.
+            (f.fantasma ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
+              'bg-telecab-gold/20 text-telecab-gold" title="En BOLT sale como «' + esc(f.fantasma) +
+              '»: es una cuenta fantasma, sus horas ya se le cuentan a él">' +
+              '<i class="fa-solid fa-user-secret mr-1"></i>FANTASMA</span>' : '') +
             (f.rol ? '<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ' +
               (f.rol === 'FIJO' ? 'bg-telecab-violet/20 text-telecab-violet' : 'bg-telecab-border/40 text-telecab-muted') +
               '">' + esc(f.rol) + '</span>' : '') +
@@ -670,6 +677,16 @@
     // Cada aviso con SU respuesta si ya se preguntó. Es lo que contesta a la
     // pregunta "¿y por qué sigue esto en rojo?": porque de esta no se ha dicho
     // nada todavía.
+    // Lo primero del detalle, antes que nada: si esta rodando con la cuenta de
+    // otro, todo lo que venga debajo hay que leerlo sabiendolo.
+    const avisoF = f.fantasma
+      ? '<div class="rounded-lg border border-telecab-gold/40 bg-telecab-gold/[0.08] p-2 mb-3 text-xs">' +
+          '<i class="fa-solid fa-user-secret text-telecab-gold mr-1"></i>' +
+          'Está trabajando con la <b>cuenta fantasma</b> de <b>' + esc(f.fantasma) + '</b>. ' +
+          'En BOLT y en Mapon sale con ese nombre; aquí y en sus horas, con el suyo.' +
+        '</div>'
+      : '';
+
     const dichas = contestadas(f);
     const jor = (f.avisos || []).length
       ? '<div class="space-y-1.5 mb-3">' + f.avisos.map(a => {
@@ -730,7 +747,7 @@
       : '<p class="text-sm text-telecab-muted">Sin avisos del coche.</p>';
     return '<div class="ddet hidden px-4 pb-3">' +
       '<div class="rounded-xl border border-telecab-border bg-telecab-dark/40 p-3 space-y-3 text-sm">' +
-        acept + jor + traza + acciones +
+        avisoF + acept + jor + traza + acciones +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Avisos del coche</div>' + inc + '</div>' +
         '<div><div class="text-[11px] uppercase tracking-wide text-telecab-muted">Trazos · últimas 24 h · ' +
           esc(f.conductor) + '</div>' +

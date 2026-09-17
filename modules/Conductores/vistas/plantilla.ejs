@@ -286,6 +286,117 @@
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt/${cuenta.id}`, 'DELETE'));
   }
 
+  // ── CUENTAS FANTASMA ───────────────────────────────────────────────────────
+  // A alguien le suspenden su cuenta y Tráfico le presta la de otro para que no
+  // se quede en tierra. Sus horas se las quedaba la cuenta; aquí se dice de
+  // quién son de verdad, y desde cuándo hasta cuándo.
+
+  /** Una cuenta prestable, con lo que hace falta para no equivocarse al elegirla. */
+  const textoPrestable = c => {
+    const trozos = [c.nombre];
+    if (c.telefono) trozos.push(c.telefono);
+    if (c.estado && c.estado !== 'active') trozos.push(c.estado);
+    // Si ya está prestada, decirlo AQUÍ evita que alguien la elija y se coma el
+    // rechazo después de haber tecleado las fechas.
+    if (c.prestamos) {
+      trozos.push(c.ocupadaHasta === 'abierta'
+        ? 'YA PRESTADA, sin cerrar'
+        : 'ya prestada hasta ' + fecha(c.ocupadaHasta));
+    }
+    return trozos.join(' · ');
+  };
+
+  /** Lo que pasó con las horas, para no dejar a nadie preguntándose si sirvió. */
+  function avisarDelSellado(r) {
+    if (r && r.avisoSellado) {
+      return Dialogo.aviso({ titulo: 'Guardado, pero las horas no se han movido', tono: 'error', texto: r.avisoSellado });
+    }
+    if (r && r.resellado) {
+      return Dialogo.aviso({
+        titulo: 'Hecho', tono: 'ok',
+        texto: `Se han recalculado las jornadas del ${fecha(r.resellado.desde)} al ${fecha(r.resellado.hasta)}. ` +
+               'Sus horas ya salen en la bitácora, en la asistencia y en el promedio.',
+      });
+    }
+  }
+
+  async function accionFantasma(d) {
+    let cuentas = [];
+    try { cuentas = (await api('/plantilla/api/fantasma/prestables')).cuentas || []; }
+    catch (e) { return alert(e.message); }
+    if (!cuentas.length) {
+      return alert('No hay ninguna cuenta de BOLT sin dueño que prestar.\n\n' +
+        'Una cuenta fantasma es una cuenta que NO es de nadie. Si la que buscas ya está ' +
+        'enlazada a una persona, suéltala primero desde su ficha.');
+    }
+
+    const v = await pedirDatos(`Enlazar cuenta fantasma a ${d.nombre_completo}`, [
+      { id: 'cuentaId', etiqueta: 'Cuenta que usó', tipo: 'lista',
+        opciones: cuentas.map(c => ({ valor: c.id, texto: textoPrestable(c) })) },
+      { id: 'desde', etiqueta: 'Desde', tipo: 'fecha' },
+      { id: 'hasta', etiqueta: 'Hasta (en blanco si la sigue usando)', tipo: 'fecha' },
+      { id: 'motivo', etiqueta: 'Por qué', marcador: 'le suspendieron la suya' },
+    ], { nota: 'Las horas de esa cuenta en esas fechas pasarán a ser de esta persona: saldrán en su ' +
+               'bitácora, contarán en su promedio y dejarán de marcarle falta. Una cuenta no puede estar ' +
+               'prestada a dos personas a la vez.' });
+    if (!v) return;
+    if (!v.desde) return alert('Hace falta la fecha de inicio: sin ella no se sabe qué días son suyos.');
+
+    await hacer(async () => {
+      const r = await enviar(`/plantilla/api/conductor/${d.id}/fantasma`, 'POST', v);
+      await avisarDelSellado(r);
+    });
+  }
+
+  /** Elegir uno de sus enlaces, cuando tiene varios. */
+  async function elegirFantasma(d, filtro, titulo) {
+    const lista = (d.fantasmas || []).filter(filtro);
+    if (!lista.length) return null;
+    if (lista.length === 1) return lista[0];
+    const v = await pedirDatos(titulo, [
+      { id: 'id', etiqueta: 'Enlace', tipo: 'lista',
+        opciones: lista.map(f => ({ valor: f.id,
+          texto: `${f.cuenta} · ${fecha(f.desde)} → ${f.hasta ? fecha(f.hasta) : 'sigue usándola'}` })) },
+    ]);
+    return v ? lista.find(f => String(f.id) === String(v.id)) : null;
+  }
+
+  /** Ya le han devuelto su cuenta: se cierra el préstamo HOY. */
+  async function accionCerrarFantasma(d) {
+    const f = await elegirFantasma(d, x => x.abierto, 'Cerrar qué préstamo');
+    if (!f) return;
+    const ok = await Dialogo.confirmar({
+      titulo: 'Cerrar el préstamo hoy', si: 'Cerrar', no: 'Cancelar', tono: 'pregunta',
+      html: `<div class="rounded-xl border border-telecab-border bg-telecab-card2 p-3 text-sm">
+               <p class="font-semibold">${esc(f.cuenta)}</p>
+               <p class="text-telecab-muted">desde el ${fecha(f.desde)}</p>
+             </div>
+             <p>A partir de mañana, las horas de esa cuenta dejan de ser de
+                <b>${esc(d.nombre_completo)}</b>. Lo de antes no se toca.</p>`,
+    });
+    if (!ok) return;
+    await hacer(async () => {
+      const r = await enviar(`/plantilla/api/fantasma/${f.id}/cerrar`, 'POST', {});
+      await avisarDelSellado(r);
+    });
+  }
+
+  /** El enlace estaba mal. No se borra: se anula, y las horas vuelven. */
+  async function accionAnularFantasma(d) {
+    const f = await elegirFantasma(d, x => !x.anulado, 'Anular qué enlace');
+    if (!f) return;
+    const v = await pedirDatos('Anular el enlace', [
+      { id: 'motivo', etiqueta: 'Por qué se anula', marcador: 'me equivoqué de persona' },
+    ], { nota: `Las ${fecha(f.desde)} → ${f.hasta ? fecha(f.hasta) : 'hoy'} de «${f.cuenta}» dejan de ser ` +
+               'de esta persona y vuelven a donde estaban. El enlace no se borra: queda anulado, con ' +
+               'quién lo anuló y por qué.' });
+    if (!v) return;
+    await hacer(async () => {
+      const r = await enviar(`/plantilla/api/fantasma/${f.id}`, 'DELETE', v);
+      await avisarDelSellado(r);
+    });
+  }
+
   async function accionBolt(d) {
     let sugeridas = [], libres = [], estado = {};
     try {
@@ -1069,6 +1180,37 @@
               { titulo: 'Desde', campo: 'vigente_desde', pinta: v => fecha(v) },
               { titulo: 'Hasta', campo: 'vigente_hasta',
                 pinta: v => v ? fecha(v) : '<span class="text-telecab-green">En uso</span>' },
+            ],
+          },
+        },
+        {
+          // La cuenta que NO es suya pero con la que trabajó. Va en su propia
+          // tarjeta y no mezclada con las de arriba: aquellas dicen quién es en
+          // cada sistema, y esta dice un préstamo con fechas, que es otra cosa.
+          titulo: 'Cuentas fantasma', icono: 'fa-user-secret',
+          acciones: [
+            { texto: 'Enlazar cuenta fantasma', onClick: accionFantasma },
+            { texto: 'Cerrar', icono: 'fa-flag-checkered',
+              visible: d => !SOLO_OPERATIVO && (d.fantasmas || []).some(f => f.abierto),
+              onClick: accionCerrarFantasma },
+            { texto: 'Anular', icono: 'fa-ban',
+              visible: d => !SOLO_OPERATIVO && (d.fantasmas || []).some(f => !f.anulado),
+              onClick: accionAnularFantasma },
+          ],
+          tabla: {
+            datos: d => d.fantasmas,
+            vacio: 'Ninguna. Aquí se apunta cuando sale a trabajar con la cuenta de otro.',
+            columnas: [
+              { titulo: 'Cuenta usada', campo: 'cuenta', clase: 'font-semibold' },
+              { titulo: 'Desde', campo: 'desde', pinta: v => fecha(v) },
+              { titulo: 'Hasta', campo: 'hasta',
+                pinta: v => v ? fecha(v) : '<span class="text-telecab-green">La sigue usando</span>' },
+              { titulo: 'Motivo', campo: 'motivo' },
+              { titulo: 'Lo apuntó', campo: 'creadoPor' },
+              { titulo: 'Estado', campo: 'anulado',
+                pinta: (v, f) => v
+                  ? etiqueta('Anulado' + (f.anuladoMotivo ? ' · ' + f.anuladoMotivo : ''), 'red')
+                  : etiqueta('Cuenta sus horas', 'green') },
             ],
           },
         },

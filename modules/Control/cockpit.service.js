@@ -304,19 +304,40 @@ async function enDirecto({ dia } = {}) {
   // duplicadas): se guardan todas, la activa primero. Antes se quedaba con una
   // sola —la última del SELECT— y a 11 personas les tocaba justo la que no tenía
   // actividad: el cockpit decía "No ha salido" a quien estaba rodando con la otra.
+  //
+  // Y LAS PRESTADAS. Si a alguien le suspendieron su cuenta y hoy sale con la de
+  // otro, ese trazo es SUYO: sin esto, el cockpit diría "no ha salido" de quien
+  // está rodando, que es justo lo que llevó a hacer las cuentas fantasma.
+  // Solo las vigentes HOY: el cockpit mira el día de hoy, no el histórico.
   const uuidsDeId = new Map();         // conductor_id (plan) → [uuid de BOLT, …]
   const idDeUuid = new Map();          // uuid de BOLT        → conductor_id (plan)
+  const fantasmaDeId = new Map();      // conductor_id        → nombre de la cuenta prestada
   try {
     const rid = await require('../../services/db').consulta(
-      `SELECT conductor_id, externo_id
+      // El orden importa: primero las SUYAS (y de esas, la activa), y después la
+      // prestada. Así `fundirActividad` sigue viendo su cuenta de siempre como
+      // la principal y la prestada como una más.
+      `SELECT conductor_id, externo_id, NULL::text AS prestada, 0 AS propia,
+              (estado_externo = 'active') AS activa, visto_at
          FROM conductor_externo
         WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_id IS NOT NULL
-        ORDER BY conductor_id, (estado_externo = 'active') DESC, visto_at DESC NULLS LAST`);
+       UNION ALL
+       SELECT f.conductor_id, ce.externo_id,
+              COALESCE(ce.externo_nombre, '(sin nombre en BOLT)'), 1,
+              TRUE, ce.visto_at
+         FROM cuenta_fantasma f
+         JOIN conductor_externo ce ON ce.id = f.cuenta_id
+        WHERE f.anulado_at IS NULL
+          AND f.desde <= CURRENT_DATE
+          AND (f.hasta IS NULL OR f.hasta >= CURRENT_DATE)
+          AND ce.externo_id IS NOT NULL
+        ORDER BY 1, 4, 5 DESC, 6 DESC NULLS LAST`);
     rid.rows.forEach(x => {
       const cid = Number(x.conductor_id);
       if (!uuidsDeId.has(cid)) uuidsDeId.set(cid, []);
       uuidsDeId.get(cid).push(String(x.externo_id));
       idDeUuid.set(String(x.externo_id), cid);
+      if (x.prestada) fantasmaDeId.set(cid, String(x.prestada));
     });
   } catch (e) { console.error('⚠️  [EN DIRECTO] mapa BOLT→conductor:', e.message); }
 
@@ -865,6 +886,10 @@ async function enDirecto({ dia } = {}) {
       const kmF = kmFranjaDe(cuentas);
       return {
         clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid, telefono: f.telefono || '',
+        // Sale con SU nombre, pero hay que decir que está rodando con la cuenta
+        // de otro: si no, quien lo busque en BOLT no lo encuentra y quien vea
+        // ese nombre en BOLT creerá que es otra persona.
+        fantasma: fantasmaDeId.get(Number(f.conductorId)) || null,
         rendimiento: rend.get(Number(f.conductorId)) || null,
         proyeccion: proy,
         justificante: just,

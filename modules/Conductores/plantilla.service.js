@@ -50,6 +50,10 @@ async function lista({ momento, soloVigentes } = {}) {
 async function ficha(id, { momento } = {}) {
   const f = await con.ficha(Number(id), { momento: momento || null });
   if (!f) throw new Error('No existe ese conductor');
+  // Las cuentas prestadas van en la ficha y no en una llamada aparte porque la
+  // pantalla las pinta en una tarjeta más, igual que las suyas. Si esto fallara
+  // no debe tumbar la ficha entera: se ve sin ellas.
+  f.fantasmas = await require('./fantasma.service').listar(id).catch(() => []);
   return f;
 }
 

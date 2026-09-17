@@ -25,6 +25,7 @@
 //                     justif: { 'YYYY-MM-DD': { horas, obs } },
 //                     horasBolt: { 'YYYY-MM-DD': h },   // lo que hizo en BOLT un día cuya celda es marca
 //                     lManual: { 'YYYY-MM-DD': true },  // libranzas puestas a mano (bitacora_dia)
+//                     fantasma: { 'YYYY-MM-DD': 'nombre de la cuenta' }, // trabajó con la cuenta de otro
 //                     ausencias: [{ marca, etiqueta, desde, hasta }] }],
 //     hoyIdx, inicio, avisos: { sinFicha } }
 
@@ -363,6 +364,8 @@ async function leerBitacora() {
       bajaIdx: c.baja ? clamp(idxDe(c.baja)) : null,
       estado: c.estado_etiqueta || '', ausente: !!c.ausente,
       dias: nuevos(), justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {},
+      // Dia -> nombre de la cuenta prestada con la que trabajo ese dia.
+      fantasma: {},
     });
   });
 
@@ -374,7 +377,7 @@ async function leerBitacora() {
     const c = porId.get(Number(id));
     if (c) return c;
     huerfanos.add(Number(id));
-    return { dias: basura, justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {} };
+    return { dias: basura, justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {}, fantasma: {} };
   };
 
   // Orden de aplicación = prioridad de la celda (de menor a mayor): 'L' de base, luego
@@ -433,6 +436,34 @@ async function leerBitacora() {
       c.dias[i] = r.marca;
     }
     c.ausencias.push({ marca: r.marca, etiqueta: r.etiqueta, desde: r.desde, hasta: r.hasta, abierta: !!r.abierta });
+  });
+
+  // CUALES DE ESAS HORAS SON DE UNA CUENTA PRESTADA.
+  //
+  // Las horas ya vienen puestas en la celda —de eso se encarga el calculo, que
+  // decide de quien son por dia—. Esto solo MARCA cuales vinieron de una cuenta
+  // que no es suya, para que la pantalla lo diga: la hora cuenta igual, pero
+  // quien mire la bitacora dentro de tres meses tiene que poder saber por que
+  // ese dia salio con el nombre de otro en BOLT.
+  const fin = isoDeIdx(nDias - 1);
+  const prestadas = await db.consulta(
+    `SELECT f.conductor_id,
+            to_char(f.desde, 'YYYY-MM-DD') AS desde,
+            to_char(COALESCE(f.hasta, $2::date), 'YYYY-MM-DD') AS hasta,
+            COALESCE(ce.externo_nombre, '(sin nombre en BOLT)') AS cuenta
+       FROM cuenta_fantasma f
+       JOIN conductor_externo ce ON ce.id = f.cuenta_id
+      WHERE f.anulado_at IS NULL
+        AND f.desde <= $2::date
+        AND (f.hasta IS NULL OR f.hasta >= $1::date)`, [INICIO_ISO, fin]);
+  prestadas.rows.forEach(r => {
+    const c = porId.get(Number(r.conductor_id));
+    if (!c) return;
+    for (let i = Math.max(0, idxDe(r.desde)); i <= Math.min(nDias - 1, idxDe(r.hasta)); i++) {
+      // Solo donde de verdad hay horas: marcar un dia libre como "de cuenta
+      // fantasma" seria decir que trabajo cuando no lo hizo.
+      if (typeof c.dias[i] === 'number') c.fantasma[isoDeIdx(i)] = r.cuenta;
+    }
   });
 
   // Vigentes primero, por nombre; los de baja al final, la más reciente antes.
