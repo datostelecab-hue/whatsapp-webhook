@@ -63,6 +63,11 @@
       <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
     </div>
   </div>
+
+  <!-- Al final y fuera de la lista a propósito: esto NO es una persona que no ha
+       salido, es un COCHE rodando sin que nadie esté conectado a él. La pregunta
+       tampoco es la misma: no es "a quién llamo" sino "quién lo está usando". -->
+  <div id="d-sinduenio" class="hidden mt-4"></div>
 </div>
 
 <style>
@@ -632,7 +637,7 @@
     $('#d-solo-nosalieron').className = 'px-3 py-1.5 rounded-lg border text-xs ' + (soloNoSalieron
       ? 'border-telecab-red bg-telecab-red/10 text-telecab-red'
       : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text');
-    pintarResumen(); pintar();
+    pintarResumen(); pintar(); pintarSinDuenio();
   }
 
   function incidenciaHTML(i) {
@@ -1171,6 +1176,60 @@
         return { id };
       },
       () => cargar());
+  }
+
+  /**
+   * COCHES QUE RUEDAN SIN QUE NADIE ESTÉ CONECTADO.
+   *
+   * Sale al final de la lista, aparte, porque no es una fila de conductor: no
+   * hay a quién llamar todavía. Lo que se enseña es el coche, los km que ha
+   * hecho sin dueño y quién fue el último que lo llevó — que es por donde se
+   * empieza a preguntar, no a quien se acusa.
+   */
+  /** Un número con un decimal, como el resto de kilómetros de la pantalla. */
+  const km1 = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function pintarSinDuenio() {
+    const caja = $('#d-sinduenio');
+    const lista = DATOS.sinDuenio || [];
+    if (!lista.length) { caja.classList.add('hidden'); caja.innerHTML = ''; return; }
+    const totalKm = lista.reduce((s, x) => s + x.kmSinDuenio, 0);
+    caja.classList.remove('hidden');
+    caja.innerHTML =
+      '<div class="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] overflow-hidden">' +
+        '<div class="px-4 py-3 border-b border-amber-500/20 flex flex-wrap items-baseline gap-2">' +
+          '<span class="font-semibold text-amber-300">' +
+            '<i class="fa-solid fa-car-burst mr-2"></i>Coches rodando sin nadie conectado</span>' +
+          '<span class="text-xs text-telecab-muted">' + lista.length + ' coche' + (lista.length > 1 ? 's' : '') +
+            ' · ' + km1(totalKm) + ' km que no son de nadie</span>' +
+          '<span class="ml-auto text-[11px] text-telecab-muted">' +
+            'Nadie ha fichado con ellos en BOLT, pero Mapon los ve moverse.</span>' +
+        '</div>' +
+        '<div class="divide-y divide-amber-500/10">' +
+        lista.map(x =>
+          '<div class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">' +
+            '<span class="font-mono font-semibold text-telecab-text w-24">' + esc(x.matricula) + '</span>' +
+            '<span class="tabular-nums font-semibold text-amber-300 w-24">' + km1(x.kmSinDuenio) + ' km</span>' +
+            '<span class="text-xs text-telecab-muted w-32">de ' + km1(x.km) + ' km del coche</span>' +
+            (x.desde
+              ? '<span class="text-xs text-telecab-muted">sin nadie desde <b class="text-telecab-text">' +
+                esc(cuandoCorto(x.desde)) + '</b></span>'
+              : '') +
+            (x.ultimoConductor
+              ? '<span class="text-xs text-telecab-muted ml-auto">último que lo llevó: ' +
+                '<b class="text-telecab-text">' + esc(x.ultimoConductor) + '</b></span>'
+              : '') +
+          '</div>').join('') +
+        '</div>' +
+      '</div>';
+  }
+
+  /** «16/09 06:41», que es lo que hace falta para saber cuánto lleva así. */
+  function cuandoCorto(v) {
+    const d = new Date(v);
+    if (isNaN(d)) return String(v);
+    const p = n => String(n).padStart(2, '0');
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
   async function cargar() {

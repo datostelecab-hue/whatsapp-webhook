@@ -847,9 +847,85 @@ ${SOLAPE_KM}
 
 // Todas aseguran el esquema antes de correr: quien lee flota viva no tiene que
 // acordarse de prepararla, que es como se colaba esa precondicion en las rutas.
+/**
+ * COCHES QUE RUEDAN SIN QUE NADIE ESTÉ CONECTADO EN BOLT.
+ *
+ * Es la pregunta que el sistema nunca se hacía. Un coche solo avanza su línea
+ * de estados cuando llega un apunte SUYO de BOLT; si nadie se conecta con él,
+ * no llega ninguno y se queda "desconectado" para siempre — rodando, porque
+ * Mapon sí lo ve. Así estuvo el 7550KYT 56 horas y 585 km.
+ *
+ * Antes esos km se le colgaban al último que lo condujo, aunque llevara dos
+ * días en otro coche. Ahora ya no, y por eso hace falta esto: los kilómetros
+ * que no son de nadie no pueden desaparecer sin más, porque significan que
+ * alguien conduce sin fichar.
+ *
+ * LO QUE CUENTA ES LA RESTA: los km que el coche hizo en la ventana menos los
+ * que se le han podido atribuir a alguien. Lo que sobra es lo huérfano. Se hace
+ * así y no buscando tramos raros porque la resta no se puede despistar: si
+ * mañana cambian las reglas de atribución, esto sigue cuadrando solo.
+ */
+async function kmSinDuenio(dia, turno = 'operativo') {
+  const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
+  const r = await db.consulta(
+    `WITH v AS (
+       SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
+              (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
+     ),
+     w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
+     -- Lo que rodó cada coche en la ventana, sin mirar quién iba dentro.
+     total AS (
+       SELECT veh.uuid, veh.matricula, sum(r.metros) AS metros
+         FROM fv_ruta r
+         CROSS JOIN w
+         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
+          AND w.fin > w.ini AND r.inicio >= w.ini AND r.inicio < w.fin
+        GROUP BY 1, 2
+     ),
+${SOLAPE_KM},
+     -- Y lo que sí se le pudo colgar a alguien.
+     conDuenio AS (
+       SELECT matricula, sum(metros_trozo) AS metros FROM solape GROUP BY 1
+     )
+     SELECT t.matricula,
+            round((t.metros / 1000.0)::numeric, 1)                                   AS km_total,
+            round((GREATEST(0, t.metros - COALESCE(c.metros, 0)) / 1000.0)::numeric, 1) AS km_sin_duenio,
+            -- Con qué se quedó la línea de ese coche, para saber desde cuándo y
+            -- a quién preguntarle: el último que lo llevó es por donde se empieza.
+            ab.situacion, ab.desde AS abierto_desde,
+            co.nombre AS ultimo_conductor
+       FROM total t
+       LEFT JOIN conDuenio c ON c.matricula = t.matricula
+       -- El tramo que estaba abierto DENTRO de la ventana, no el de ahora: mirando
+       -- un día pasado, "el abierto" puede haber empezado después y diría una
+       -- fecha que no tiene nada que ver con esos kilómetros.
+       LEFT JOIN LATERAL (
+         SELECT ft.situacion, ft.desde, ft.conductor_uuid
+           FROM fv_tramo ft, w
+          WHERE ft.vehiculo_uuid = t.uuid
+            AND ft.desde < w.fin
+            AND COALESCE(ft.hasta, now()) > w.ini
+          ORDER BY ft.desde DESC LIMIT 1) ab ON TRUE
+       LEFT JOIN fv_conductor co ON co.uuid = ab.conductor_uuid
+      WHERE t.metros - COALESCE(c.metros, 0) > 0
+      ORDER BY 3 DESC`,
+    [String(dia).slice(0, 10), String(hi), off, String(hf)]);
+
+  return r.rows.map(x => ({
+    matricula: x.matricula,
+    km: Number(x.km_total),
+    kmSinDuenio: Number(x.km_sin_duenio),
+    situacion: x.situacion || null,
+    desde: x.abierto_desde || null,
+    ultimoConductor: x.ultimo_conductor || null,
+  }));
+}
+
 module.exports = db.conEsquema({
   ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
   horasEfectivasPorConductor, minutosEfectivos, matriculasBoltPorConductor,
   bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, kmFueraEnVentana,
+  kmSinDuenio,
 });
 module.exports.TURNOS = TURNOS;

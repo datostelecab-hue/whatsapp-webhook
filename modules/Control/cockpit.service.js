@@ -632,6 +632,20 @@ async function enDirecto({ dia } = {}) {
   const UMBRAL_KM_FRANJA = (cfgAlertas && cfgAlertas.tipos.km_parado.activo)
     ? Number(cfgAlertas.tipos.km_parado.umbral) || 20 : null;
 
+  // ── COCHES QUE RUEDAN SIN QUE NADIE ESTÉ CONECTADO ────────────────────────
+  // La pregunta que el sistema nunca se hacía. Un coche solo avanza su línea de
+  // estados cuando llega un apunte SUYO de BOLT; si nadie se conecta con él no
+  // llega ninguno, y se queda "desconectado" para siempre — rodando, porque
+  // Mapon sí lo ve. Así estuvo el 7550KYT 56 horas y 585 km.
+  //
+  // Antes esos km se le colgaban al último que lo condujo aunque llevara dos
+  // días en otro coche. Ya no, y por eso hay que enseñarlos: unos kilómetros que
+  // no son de nadie significan que alguien conduce sin fichar.
+  const MIN_KM_SIN_DUENIO = Number(process.env.CONTROL_MIN_KM_SIN_DUENIO || 5);
+  const sinDuenio = (await rutas.kmSinDuenio(hoy, 'operativo')
+    .catch(e => { console.error('⚠️  [EN DIRECTO] km sin dueño:', e.message); return []; }))
+    .filter(x => x.kmSinDuenio >= MIN_KM_SIN_DUENIO);
+
   // Y LOS "SIN CONTESTAR" DE LA FRANJA, por la misma razón que los km: fuera de
   // ella está el cambio de turno. La MISMA ventana que los kilómetros, que es lo
   // que se pidió.
@@ -949,6 +963,9 @@ async function enDirecto({ dia } = {}) {
     resumen,
     coches: filas,
     sinPlan,
+    // Al final de la lista: no es una persona, es un COCHE, y lo que se pregunta
+    // no es "quién no ha salido" sino "quién lo está usando sin fichar".
+    sinDuenio,
     porTurno,
     // La ventana de cada turno, para que la pantalla sepa si ya ha empezado. Un
     // turno que no ha arrancado no tiene a nadie "sin salir": no le toca a nadie.
