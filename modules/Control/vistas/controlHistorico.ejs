@@ -97,6 +97,15 @@
   const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g,
     m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
   const num = n => String(Math.round(Number(n || 0) * 10) / 10).replace('.', ',');
+
+  // Los km buenos son los del ODÓMETRO del coche (bus CAN). Unos pocos equipos no
+  // lo leen y ahí solo hay la estimación del GPS, que corta curvas y pierde lo
+  // que no ve: el número vale, pero no está medido con la misma vara y hay que
+  // decirlo.
+  const marcaGps = f => (f && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta')
+    ? ' <span class="rounded px-1 py-[1px] text-[9px] font-bold bg-amber-500/15 text-amber-400" ' +
+      'title="KM POR GPS: este coche no da odómetro, el dato es la estimación de Mapon">GPS</span>'
+    : '');
   // La hora de un instante, para los trazos. Las llamadas ya vienen con la
   // suya hecha del servidor; esto es para lo que llega en crudo.
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -249,7 +258,7 @@
               (c.cuadrante ? ' · Cuadrante ' + esc(c.cuadrante) : '') +
               ((c.matriculas || []).length ? ' · ' + esc(c.matriculas.join(', ')) : '') + '</div>' +
             '<div>Primera conexión: ' + (esc(c.primera) || '—') +
-              ' · ' + num(c.horasBolt) + ' h en BOLT · ' + num(c.km) + ' km' +
+              ' · ' + num(c.horasBolt) + ' h en BOLT · ' + num(c.km) + ' km' + marcaGps(c) +
               (c.kmFuera ? ' · <span class="text-amber-300">' + num(c.kmFuera) + ' km fuera de la app</span>' : '') + '</div>' +
             (c.rechazos
               ? '<div>' + c.rechazos.ofertas + ' ofertas · ' + c.rechazos.aceptados + ' aceptadas' +
@@ -379,6 +388,7 @@
             esc(n.turnoEtiqueta || n.turno) + '</span>' +
           '<span class="text-xs text-telecab-muted">' + esc(n.situacion) + '</span>' +
           '<span class="text-xs text-telecab-muted">' + num(n.horasBolt) + ' h · ' + num(n.km) + ' km' +
+            marcaGps(n) +
             (n.kmFuera ? ' · <span class="text-amber-300">' + num(n.kmFuera) + ' km fuera</span>' : '') + '</span>' +
         '</div>' +
         (n.alertas.length

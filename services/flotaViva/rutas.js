@@ -71,6 +71,151 @@ async function guardarLote(trips) {
   }
 }
 
+// ── EL ODÓMETRO DEL CUADRO (CAN) ────────────────────────────────────────────
+// Un salto de odómetro entre dos lecturas es creíble mientras no pida ir a más
+// de 160 km/h de media. Por encima no es un viaje: es que el equipo cambió de
+// coche, o que la lectura vino sucia. Esos se tiran — meter 300 km falsos en la
+// jornada de alguien es mucho peor que quedarse corto.
+const VELOCIDAD_IMPOSIBLE = 160;
+// PERO EL ODÓMETRO CUENTA DE KILÓMETRO EN KILÓMETRO, y el salto se apunta cuando
+// cae, no cuando toca. Dos lecturas separadas veinte segundos con un kilómetro
+// de diferencia son 180 km/h en el papel y un coche normal en la calle. Sin esta
+// holgura el filtro se comía km buenos: a Carlos Borelli le quitaba 16 de 292 y
+// a Macilon 30 de 414. Se perdonan dos kilómetros antes de juzgar la velocidad;
+// los saltos de verdad —los de un equipo que cambió de coche— son de cientos.
+const HOLGURA_CUENTA_KM = 2;
+// Y un hueco de más de un día no se reparte: el coche pudo hacer esos km
+// cualquier tarde de las que el equipo estuvo callado, y colgárselos al tramo
+// que toque sería inventar. Ese coche se queda sin CAN en esa ventana y pasa
+// por GPS, que es justo lo que hace `FUENTE_KM` cuando el CAN no llega.
+const HUECO_MAXIMO_H = 24;
+
+/**
+ * Mete en el núcleo (fv_odometro) el odómetro CAN de la flota en un rango.
+ *
+ * Idempotente por (unit_id, inicio): repetir una ventana no duplica, solo
+ * refresca. Por eso el motor puede pedir tres horas cada vuelta sin cuidado.
+ *
+ * VA DE UNA UNIDAD EN UNA porque la API no deja pedir la flota entera de un
+ * golpe —a diferencia de route/list—, así que son ~85 llamadas por pasada. Se
+ * va con cola de 4: la cuenta admite 5 simultáneas y el poller de sanciones
+ * también consume.
+ *
+ * Lo que se guarda no son las lecturas: son los TRAMOS entre lectura y lectura,
+ * con sus metros. Esa forma —idéntica a la de fv_ruta— es lo que permite que el
+ * reparto entre conductores y ventanas siga siendo el mismo prorrateo de
+ * siempre, sin una segunda matemática que mantener.
+ */
+async function ingestarOdometro({ desde, hasta, ventanaDias = 7, soloActivos = false } = {}) {
+  await db.preparar();
+  const fin = hasta ? new Date(hasta) : new Date();
+  const ini = desde ? new Date(desde) : new Date(fin.getTime() - 3 * 3600 * 1000);
+
+  // EN CADA VUELTA NO SE PREGUNTA POR LOS OCHENTA Y CINCO. Son ochenta y cinco
+  // llamadas —la API no deja pedir la flota de un golpe— y la mayoría son coches
+  // aparcados que van a contestar lo mismo que hace cinco minutos.
+  //
+  // «Activo» se mira por DOS caminos a propósito: o Mapon le vio trayectos, o
+  // alguien está conectado en BOLT con él. Con uno solo se cae justo el coche que
+  // más falta hace: el 0454MMZ, con el GPS medio muerto (45 km de 518), no tiene
+  // apenas trayectos y es precisamente donde el odómetro salva el dato.
+  //
+  // Aun así, una vez a la hora se barre la flota entera (lo decide quien llama):
+  // lo que se escape por los dos sitios entra ahí.
+  const unidades = (await db.consulta(
+    `SELECT v.mapon_unit AS unit, v.matricula
+       FROM fv_vehiculo v
+       JOIN fv_matricula m ON m.matricula = v.matricula AND m.activa
+      WHERE v.mapon_unit IS NOT NULL
+        AND ($1::boolean IS NOT TRUE
+             OR EXISTS (SELECT 1 FROM fv_ruta r
+                         WHERE r.unit_id = v.mapon_unit
+                           AND r.inicio < $3::timestamptz AND COALESCE(r.fin, now()) > $2::timestamptz)
+             OR EXISTS (SELECT 1 FROM fv_tramo t
+                         WHERE t.vehiculo_uuid = v.uuid
+                           AND t.situacion IN ('viaje','espera','descanso')
+                           AND t.desde < $3::timestamptz AND COALESCE(t.hasta, now()) > $2::timestamptz))
+      ORDER BY v.matricula`,
+    [!!soloActivos, ini.toISOString(), fin.toISOString()])).rows;
+  if (!unidades.length) return { unidades: 0, conCan: 0, tramos: 0, km: 0, sinCan: [], desde: iso(ini), hasta: iso(fin) };
+
+  let tramos = 0, metros = 0, conCan = 0;
+  const sinCan = [];
+
+  for (let v = new Date(ini); v < fin;) {
+    const vFin = new Date(v.getTime() + ventanaDias * 86400000);
+    const hastaV = vFin < fin ? vFin : fin;
+    const desdeIso = iso(v), hastaIso = iso(hastaV);
+
+    let i = 0;
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (i < unidades.length) {
+        const u = unidades[i++];
+        let lecturas = [];
+        try {
+          lecturas = await fuentes.odometroCan(u.unit, desdeIso, hastaIso);
+        } catch (e) {
+          // Un coche que falla no puede tumbar la ingesta de los otros ochenta.
+          console.error(`⚠️  [odómetro] ${u.matricula}: ${e.message}`);
+          continue;
+        }
+        const seg = segmentar(u.unit, lecturas);
+        if (!seg.length) { sinCan.push(u.matricula); continue; }
+        conCan++;
+        await guardarOdometro(seg);
+        tramos += seg.length;
+        metros += seg.reduce((s, x) => s + x.metros, 0);
+      }
+    }));
+    console.log(`   📟 [odómetro] ${desdeIso.slice(0, 10)}…${hastaIso.slice(0, 10)}: ` +
+                `${conCan} coche(s) con CAN, ${tramos} tramo(s)`);
+    v = vFin;
+  }
+  return {
+    unidades: unidades.length, conCan, tramos,
+    km: Math.round(metros / 100) / 10,
+    sinCan: [...new Set(sinCan)],
+    desde: iso(ini), hasta: iso(fin),
+  };
+}
+
+/** De lecturas acumuladas a tramos con metros. Aquí se cae lo que no es creíble. */
+function segmentar(unitId, lecturas) {
+  const out = [];
+  for (let k = 1; k < lecturas.length; k++) {
+    const a = lecturas[k - 1], b = lecturas[k];
+    const seg = (b.t - a.t) / 1000;
+    if (seg <= 0 || seg > HUECO_MAXIMO_H * 3600) continue;
+    const km = b.km - a.km;
+    // Hacia atrás es un reinicio del contador o un equipo que cambió de coche.
+    if (!(km >= 0)) continue;
+    if ((km - HOLGURA_CUENTA_KM) / (seg / 3600) > VELOCIDAD_IMPOSIBLE) continue;
+    if (km === 0) continue;                       // el coche parado no ocupa sitio
+    out.push({ unitId, inicio: a.t, fin: b.t, metros: Math.round(km * 1000) });
+  }
+  return out;
+}
+
+/** Sube los tramos de odómetro por lotes con upsert. */
+async function guardarOdometro(seg) {
+  const LOTE = 500;
+  for (let i = 0; i < seg.length; i += LOTE) {
+    const chunk = seg.slice(i, i + LOTE);
+    const vals = [], params = [];
+    chunk.forEach((x, k) => {
+      const b = k * 4;
+      vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4})`);
+      params.push(x.unitId, x.inicio.toISOString(), x.fin.toISOString(), x.metros);
+    });
+    await db.consulta(
+      `INSERT INTO fv_odometro (unit_id, inicio, fin, metros)
+       VALUES ${vals.join(',')}
+       ON CONFLICT (unit_id, inicio) DO UPDATE SET
+         fin = EXCLUDED.fin, metros = EXCLUDED.metros, ingerida_at = now()`,
+      params);
+  }
+}
+
 /**
  * Km por coche en un día operativo (hora peninsular), leído del núcleo.
  *
@@ -311,6 +456,65 @@ const FIN_KM = `CASE WHEN t.hasta IS NOT NULL THEN t.hasta ELSE LEAST(
              AND x.desde > t.desde)
        ) END`;
 
+// ── DE DÓNDE SALEN LOS KM: DEL CUADRO SI SE PUEDE, DEL GPS SI NO ────────────
+//
+// Dos fuentes para la misma pregunta y no dicen lo mismo:
+//
+//   · fv_ruta  son los km que Mapon CALCULA uniendo los puntos del GPS. Corta
+//     las curvas y, cuando el equipo pierde cobertura, pierde el trozo entero.
+//   · fv_odometro es el número del CUADRO, leído del bus CAN. No se estima.
+//
+// Medido en la flota el 16/09/2026: el GPS se queda un 4 % por debajo del
+// odómetro, y coche a coche la mediana es un 0,4 % — o sea que donde los dos
+// funcionan, dicen lo mismo. La diferencia está en los coches donde el GPS falla:
+// el 0454MMZ marcó 45 km de GPS contra 518 reales. Por eso manda el CAN.
+//
+// PERO NO LO TIENEN TODOS. Nueve coches llevan un equipo que no lee el CAN, y
+// algún otro calla a ratos. Ahí no hay nada que discutir: se va con el GPS y la
+// pantalla lo dice ("KM POR GPS"), que es mejor que un hueco o que un cero.
+//
+// LA ELECCIÓN ES POR COCHE Y POR VENTANA, no una configuración. Un equipo que
+// hoy lee el CAN y mañana no, cambia de fuente solo. El criterio es simple: si
+// el CAN se queda MUY por debajo del GPS es que calló un rato, y entonces no
+// vale. Si está por encima o cerca, vale. El 85 % es holgado a propósito: la
+// diferencia normal entre los dos es del 1 %, así que solo salta cuando de
+// verdad falta serie.
+const UMBRAL_CAN = Number(process.env.FV_UMBRAL_CAN || 0.85);
+
+// Requiere una CTE `w` (ini, fin) ya declarada, y deja puestas `km_src`
+// —los tramos de la fuente elegida, en la forma de fv_ruta— y `fuente`.
+const FUENTE_KM = `
+     can_v AS (
+       SELECT o.unit_id, o.inicio, o.fin, o.metros, TRUE AS por_can,
+              o.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(o.fin, w.fin) - GREATEST(o.inicio, w.ini))))
+                / NULLIF(EXTRACT(EPOCH FROM (o.fin - o.inicio)), 0) AS en_ventana
+         FROM fv_odometro o CROSS JOIN w
+        WHERE o.fin > o.inicio AND o.inicio < w.fin AND o.fin > w.ini
+     ),
+     gps_v AS (
+       SELECT r.unit_id, r.inicio, r.fin, r.metros, FALSE AS por_can,
+              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(r.fin, w.fin) - GREATEST(r.inicio, w.ini))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS en_ventana
+         FROM fv_ruta r CROSS JOIN w
+        WHERE r.fin IS NOT NULL AND r.fin > r.inicio AND r.inicio < w.fin AND r.fin > w.ini
+     ),
+     fuente AS (
+       SELECT COALESCE(c.unit_id, g.unit_id) AS unit_id,
+              (c.unit_id IS NOT NULL AND COALESCE(c.m, 0) >= ${UMBRAL_CAN} * COALESCE(g.m, 0)) AS por_can
+         FROM      (SELECT unit_id, sum(en_ventana) AS m FROM can_v GROUP BY unit_id) c
+         FULL JOIN (SELECT unit_id, sum(en_ventana) AS m FROM gps_v GROUP BY unit_id) g
+                ON g.unit_id = c.unit_id
+     ),
+     km_src AS (
+       SELECT k.unit_id, k.inicio, k.fin, k.metros, TRUE AS por_can
+         FROM can_v k JOIN fuente f ON f.unit_id = k.unit_id AND f.por_can
+       UNION ALL
+       SELECT k.unit_id, k.inicio, k.fin, k.metros, FALSE AS por_can
+         FROM gps_v k JOIN fuente f ON f.unit_id = k.unit_id AND NOT f.por_can
+     ),`;
+
 // El reparto de los metros de un trayecto entre los tramos que lo solapan. Lo
 // usan la franja de Control y la actividad por conductor, y estaba COPIADO en
 // las dos: la primera vez que se tocó una hubo que acordarse de la otra.
@@ -335,8 +539,9 @@ const SOLAPE_KM = `
        SELECT t.conductor_uuid AS uuid, veh.matricula, t.situacion,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
                 LEAST(r.fin, ${FIN_KM}, w.fin) - GREATEST(r.inicio, t.desde, w.ini))))
-                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
-         FROM fv_ruta r
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo,
+              r.por_can
+         FROM km_src r
          CROSS JOIN w
          JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
          JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
@@ -375,10 +580,15 @@ async function kmFueraEnVentana(dia, hIni, offFin, hFin) {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
      ),
      w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
+${FUENTE_KM}
 ${SOLAPE_KM}
      SELECT uuid, matricula,
             round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion IN ('viaje','espera')), 0)::numeric / 1000.0, 1)     AS km,
-            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera,
+            -- De dónde salieron esos km. Solo cuentan las filas que aportan algo:
+            -- un tramo que solapa un trozo de cero metros no dice nada de la fuente.
+            bool_or(por_can AND metros_trozo > 0)       AS hay_can,
+            bool_or(NOT por_can AND metros_trozo > 0)   AS hay_gps
        FROM solape GROUP BY uuid, matricula`,
     [String(dia).slice(0, 10), String(hIni), Number(offFin) || 0, String(hFin)]);
 
@@ -788,10 +998,15 @@ async function actividadPorConductor(dia, turno = 'dia') {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
      ),
      w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
+${FUENTE_KM}
 ${SOLAPE_KM}
      SELECT uuid, matricula,
             round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion IN ('viaje','espera')), 0)::numeric / 1000.0, 1)     AS km,
-            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera,
+            -- De dónde salieron esos km. Solo cuentan las filas que aportan algo:
+            -- un tramo que solapa un trozo de cero metros no dice nada de la fuente.
+            bool_or(por_can AND metros_trozo > 0)       AS hay_can,
+            bool_or(NOT por_can AND metros_trozo > 0)   AS hay_gps
        FROM solape GROUP BY uuid, matricula`,
     [String(dia).slice(0, 10), String(hi), off, String(hf)]);
 
@@ -803,6 +1018,7 @@ ${SOLAPE_KM}
       porUuid.set(x.uuid, {
         uuid: x.uuid, nombre: x.nombre || '', telefono: x.telefono || '',
         minutos: 0, minDescanso: 0, minDesconectado: 0, km: 0, kmFuera: 0,
+        fuenteKm: null,
         primera: null, ultima: null, conectadoAhora: false, situacionAhora: null,
         _mats: [],
       });
@@ -829,6 +1045,15 @@ ${SOLAPE_KM}
     const a = porUuid.get(x.uuid);
     a.km = Math.round((a.km + (Number(x.km) || 0)) * 10) / 10;
     a.kmFuera = Math.round((a.kmFuera + (Number(x.km_fuera) || 0)) * 10) / 10;
+    // DE DÓNDE SALEN SUS KM. No es un detalle técnico: un conductor con el
+    // odómetro del cuadro y otro con la estimación del GPS no están medidos con
+    // la misma vara, y quien mire la pantalla tiene derecho a saberlo.
+    if (x.hay_can) a._can = true;
+    if (x.hay_gps) a._gps = true;
+  });
+  porUuid.forEach(a => {
+    a.fuenteKm = a._can && a._gps ? 'mixta' : (a._gps ? 'gps' : (a._can ? 'can' : null));
+    delete a._can; delete a._gps;
   });
   // LOS MINUTOS, DE LA MISMA FUENTE QUE LOS REPORTES. La consulta de arriba agrupa
   // por (conductor, coche), y sumar esos trozos contaría dos veces el rato en que a
@@ -890,6 +1115,7 @@ async function kmSinDuenio(dia, turno = 'operativo') {
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
      ),
      w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
+${FUENTE_KM}
      -- Lo que rodó cada coche en la ventana, sin mirar quién iba dentro.
      total AS (
        -- Prorrateado por la ventana, igual que el reparto de abajo: si el total
@@ -898,8 +1124,9 @@ async function kmSinDuenio(dia, turno = 'operativo') {
        SELECT veh.uuid, veh.matricula,
               sum(r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
                     LEAST(r.fin, w.fin) - GREATEST(r.inicio, w.ini))))
-                  / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0)) AS metros
-         FROM fv_ruta r
+                  / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0)) AS metros,
+              bool_and(r.por_can) AS por_can
+         FROM km_src r
          CROSS JOIN w
          JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
@@ -946,7 +1173,7 @@ ${SOLAPE_KM},
 }
 
 module.exports = db.conEsquema({
-  ingestarRutas, guardarLote, kmPorCoche, kmConectadoDesconectado,
+  ingestarRutas, guardarLote, ingestarOdometro, kmPorCoche, kmConectadoDesconectado,
   horasEfectivasPorConductor, minutosEfectivos, matriculasBoltPorConductor,
   bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, kmFueraEnVentana,
   kmSinDuenio,

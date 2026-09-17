@@ -174,6 +174,9 @@ async function parte(dia) {
       horasFirmes: Math.round((horasBolt + jAprobadas) * 10) / 10,
       horasPresuntas: Math.round((horasBolt + jAprobadas + jPresuntas) * 10) / 10,
       km: a.km || 0, kmFuera: a.kmFuera || 0,
+      // Con qué vara se midieron: odómetro del coche ('can') o estimación del
+      // GPS ('gps'), que es lo único que hay en los coches que no leen el CAN.
+      fuenteKm: a.fuenteKm || null,
       rechazos: f.rechazos || null,
       // Las alertas que levantó ese día, con lo que se contestó de cada una.
       //
@@ -271,7 +274,7 @@ async function parte(dia) {
         conductor: n.conductor, telefono: n.telefono || '',
         turno: n.turno || '', turnoEtiqueta: n.turnoEtiqueta || '',
         horasBolt: Math.round(((n.minutos || 0) / 60) * 10) / 10,
-        km: n.enBolt || 0, kmFuera: n.desconectado || 0,
+        km: n.enBolt || 0, kmFuera: n.desconectado || 0, fuenteKm: n.fuenteKm || null,
         matriculas: n.matriculas || [],
         situacion: (n.situacion || {}).etiqueta || '',
         // Un NN tiene DOS filas (día y noche) a propósito, así que cada una se

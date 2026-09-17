@@ -351,6 +351,10 @@ async function enDirecto({ dia } = {}) {
       f.minDesconectado += a.minDesconectado || 0;
       f.km = Math.round((f.km + (a.km || 0)) * 10) / 10;
       f.kmFuera = Math.round((f.kmFuera + (a.kmFuera || 0)) * 10) / 10;
+      // Dos cuentas de la misma persona pueden ir con varas distintas: si una da
+      // odómetro y la otra no, la fila es mixta y hay que decirlo.
+      f.fuenteKm = f.fuenteKm === a.fuenteKm ? f.fuenteKm
+        : (f.fuenteKm && a.fuenteKm ? 'mixta' : (f.fuenteKm || a.fuenteKm));
       if (a.primera && (!f.primera || a.primera < f.primera)) f.primera = a.primera;
       if (a.ultima && (!f.ultima || a.ultima > f.ultima)) f.ultima = a.ultima;
       // La cuenta que está conectada AHORA es la que manda (y la que se traza).
@@ -537,7 +541,7 @@ async function enDirecto({ dia } = {}) {
   function paraPintar(a) {
     if (!a) return null;
     return {
-      minutos: a.minutos, km: a.km, kmFuera: a.kmFuera,
+      minutos: a.minutos, km: a.km, kmFuera: a.kmFuera, fuenteKm: a.fuenteKm || null,
       minDescanso: a.minDescanso, minDesconectado: a.minDesconectado,
       conectado: a.conectadoAhora, situacion: a.situacionAhora,
       primera: a.primera, ultima: a.ultima,
@@ -723,7 +727,7 @@ async function enDirecto({ dia } = {}) {
       rendimiento: rend.get(idDeUuid.get(a.uuid)) || null,
       situacion: situacionDe(a.uuid),
       matricula: a.matricula, matriculas: a.matriculas,
-      enBolt: a.km, desconectado: a.kmFuera,
+      enBolt: a.km, desconectado: a.kmFuera, fuenteKm: a.fuenteKm || null,
       total: Math.round((a.km + a.kmFuera) * 10) / 10,
       minutos: a.minutos, conectadoAhora: a.conectadoAhora,
       primera: a.primera || null,

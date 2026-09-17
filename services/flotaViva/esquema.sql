@@ -648,4 +648,43 @@ CREATE INDEX IF NOT EXISTS idx_fv_ruta_inicio  ON fv_ruta (inicio);
 COMMENT ON TABLE fv_ruta IS
   'Nucleo de km: un trayecto de Mapon (route/list) por fila. Fuente buena de km, no el mileage estancado';
 
+-- == EL ODOMETRO DEL COCHE (CAN) ==========================================
+-- LA MISMA FORMA QUE fv_ruta, A PROPOSITO: un tramo con sus horas y sus metros.
+--
+-- fv_ruta son los km que Mapon CALCULA con el GPS: une los puntos por los que
+-- paso el coche y mide esa linea. Es una estimacion, y se queda corta — corta
+-- las curvas, y cuando el GPS pierde cobertura pierde el trozo entero. Contra el
+-- odometro de la propia flota sale un 4 % por debajo, y en algun coche suelto un
+-- 90 % (el 0454MMZ: 45 km de GPS contra 518 reales el 16/09/2026).
+--
+-- Esto otro es el numero del CUADRO, leido del bus CAN del coche
+-- (unit_data/can_period.json → total_distance). No se estima: se lee. Llega cada
+-- 90 segundos de mediana mientras el coche anda, en kilometros enteros, y es
+-- acumulado, asi que dos lecturas se restan y ya esta.
+--
+-- Se guarda por TRAMOS entre lectura y lectura —no lecturas sueltas— para que el
+-- reparto entre conductores y ventanas sea EXACTAMENTE el mismo prorrateo por
+-- solape que ya se hace con los trayectos. Misma forma, misma matematica, una
+-- sola regla que mantener.
+--
+-- NO LO TIENEN TODOS: hay nueve coches cuyo equipo no lee el CAN (GPS antiguo) y
+-- otros que callan a ratos. Esos van por GPS y la pantalla lo dice. Quien decide
+-- coche a coche es `FUENTE_KM` en rutas.js, no esta tabla.
+CREATE TABLE IF NOT EXISTS fv_odometro (
+  unit_id     BIGINT      NOT NULL,
+  inicio      TIMESTAMPTZ NOT NULL,
+  fin         TIMESTAMPTZ NOT NULL,
+  metros      INTEGER     NOT NULL,
+  ingerida_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (unit_id, inicio)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fv_odometro_unit_fin ON fv_odometro (unit_id, fin);
+CREATE INDEX IF NOT EXISTS idx_fv_odometro_inicio   ON fv_odometro (inicio);
+
+COMMENT ON TABLE fv_odometro IS
+  'Odometro CAN por tramos: los km que marca el cuadro del coche, no los que estima el GPS';
+COMMENT ON COLUMN fv_odometro.metros IS
+  'Diferencia de odometro entre las dos lecturas. Nunca negativa y nunca un salto imposible: eso se filtra al ingerir';
+
 COMMIT;

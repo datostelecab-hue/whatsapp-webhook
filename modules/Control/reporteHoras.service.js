@@ -96,10 +96,12 @@ async function excelDia(reporte) {
   ANCHOS_REPORTE.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const r = reporte.resumen || resumirFilas(reporte.filas);
+  const nGps = reporte.filas.filter(x => x.fuenteKm === 'gps' || x.fuenteKm === 'mixta').length;
   let fila = est.bandaCabecera(ws, est.registrarLogo(wb),
     `Reporte de horas · ${reporte.diaSemana} ${reporte.fecha}`,
     `${r.personas} conductor(es) en el reporte   ·   ${String(r.horasTotal).replace('.', ',')} h en total   ·   generado el ${ahora()}` +
-      (reporte.parcial ? '   ·   PARCIAL: la jornada 05→05 sigue en curso' : ''),
+      (reporte.parcial ? '   ·   PARCIAL: la jornada 05→05 sigue en curso' : '') +
+      (nGps ? `   ·   ${nGps} fila(s) en ámbar: KM POR GPS (ese coche no da odómetro)` : ''),
     N_REPORTE);
 
   const filaCab = fila;
@@ -144,7 +146,26 @@ async function excelDia(reporte) {
       // Las dos columnas de KM (ahora índices 8 y 9) en formato "0,0 km". La
       // matrícula (índice 7) es texto y no se toca.
       if (ci >= 8 && typeof v === 'number') c.numFmt = '0.0" km"';
-      if (i % 2) c.fill = est.relleno('FFFAFBFC');
+      // KM POR GPS. Los km buenos son los del ODÓMETRO del coche; unos pocos
+      // coches llevan un equipo que no lee el CAN y de esos solo hay la
+      // estimación del GPS, que corta las curvas y pierde lo que no ve. El
+      // número sigue valiendo —por eso se deja como número y suma—, pero la
+      // celda avisa de con qué vara está medido. Sin esto, dos filas iguales
+      // parecen igual de firmes y no lo son.
+      if (ci >= 8 && typeof v === 'number' && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta')) {
+        c.fill = est.relleno('FFFFF4D6');
+        c.font = { size: 11, color: { argb: 'FF92610A' }, italic: true };
+        c.note = {
+          texts: [{ text: f.fuenteKm === 'gps'
+            ? 'KM POR GPS: el equipo de este coche no da el odómetro. El dato es la estimación de Mapon con los puntos del GPS, que suele quedarse algo corta.'
+            : 'KM POR GPS EN PARTE: llevó más de un coche y alguno no da odómetro. Ese trozo va con la estimación del GPS.' }],
+        };
+      }
+      // OJO AL ORDEN: la banda de filas alternas va después y pisaría el ámbar de
+      // "KM POR GPS" —se comía la mitad de los avisos, los de las filas pares—.
+      // Por eso no toca las dos columnas de km cuando ya están marcadas.
+      const marcada = ci >= 8 && (f.fuenteKm === 'gps' || f.fuenteKm === 'mixta') && typeof v === 'number';
+      if (i % 2 && !marcada) c.fill = est.relleno('FFFAFBFC');
     });
     // El COLOR va solo en la celda de horas, que con la columna nueva es la 6.
     const cel = row.getCell(6);

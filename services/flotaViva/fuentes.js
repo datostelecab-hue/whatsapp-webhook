@@ -209,6 +209,40 @@ async function rutasDeUnidad(unitId, from, till) {
     `&from=${encodeURIComponent(from)}&till=${encodeURIComponent(till)}`);
 }
 
+/**
+ * EL ODÓMETRO DEL COCHE, leído del bus CAN — no estimado con el GPS.
+ *
+ * `route/list` da los km que Mapon CALCULA uniendo los puntos del GPS: corta las
+ * curvas y, si el equipo pierde cobertura, pierde el trozo. Esto otro es el
+ * número del cuadro (`total_distance`), que el coche cuenta solo. Contra la flota
+ * entera el GPS sale un 4 % por debajo, y en un coche suelto puede ser un 90 %.
+ *
+ * Tres cosas que hay que saber de esta llamada:
+ *
+ *   · Es DE UNA EN UNA. `unit_id[]=a&unit_id[]=b` devuelve solo la primera y sin
+ *     `unit_id` da error: no hay forma de pedir la flota entera de un golpe, como
+ *     sí la hay con route/list. Por eso quien la usa va con cola de 4.
+ *   · `include[]=total_distance` baja la respuesta de 240 KB a 27 KB. Sin eso
+ *     vienen además las revoluciones (5.201 puntos en un día) y el combustible,
+ *     que aquí no se miran.
+ *   · No lo tienen todos los coches: los equipos que no leen el CAN devuelven la
+ *     serie vacía. Eso NO es un error, es un coche que irá por GPS.
+ *
+ * Devuelve las lecturas crudas —{ t: Date, km: Number }— en orden. Interpretarlas
+ * (restar, descartar saltos) es cosa de quien las ingiere, no de la fuente.
+ */
+async function odometroCan(unitId, from, till) {
+  const j = await pedirMapon('unit_data/can_period.json',
+    `unit_id=${encodeURIComponent(unitId)}` +
+    `&from=${encodeURIComponent(from)}&till=${encodeURIComponent(till)}` +
+    '&include[]=total_distance');
+  const u = ((j.data && j.data.units) || [])[0] || {};
+  return (u.total_distance || [])
+    .map(x => ({ t: fecha(x.gmt), km: Number(x.value) }))
+    .filter(x => x.t && Number.isFinite(x.km))
+    .sort((a, b) => a.t - b.t);
+}
+
 /** Mapon da la hora como 'Y-m-d H:i:s' UTC o ISO; se normaliza a ISO con Z. */
 function isoMapon(g) {
   if (!g) return null;
@@ -248,4 +282,5 @@ async function trayectosFlota(from, till) {
   return out;
 }
 
-module.exports = { vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, rutasDeUnidad, trayectosFlota, normMat };
+module.exports = {
+  odometroCan, vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, rutasDeUnidad, trayectosFlota, normMat };

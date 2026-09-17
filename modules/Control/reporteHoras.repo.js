@@ -240,6 +240,12 @@ async function reporteDia(key) {
       sinFicha: !cid,
       matricula: (a.matriculas && a.matriculas.length) ? a.matriculas.join(', ') : null,
       kmBolt: a.km, kmDesc: a.kmFuera,
+      // CON QUÉ VARA SE MIDIERON ESOS KM. 'can' es el odómetro del cuadro del
+      // coche; 'gps' es la estimación de Mapon uniendo los puntos, que es lo
+      // único que hay en los coches cuyo equipo no lee el CAN. No es lo mismo y
+      // el reporte lo dice, porque si no, dos filas con el mismo número parecen
+      // igual de firmes y no lo son.
+      fuenteKm: a.fuenteKm || null,
       // Fichó en BOLT con un coche pero Mapon no midió nada: no se puede dar el
       // km por bueno. Lo cuadra Tráfico, que conoce el apaño del taller.
       revisar: !!(a.matriculas && a.matriculas.length) && !a.km && !a.kmFuera && (a.minutos || 0) > 0,
@@ -256,6 +262,7 @@ async function reporteDia(key) {
     f.matricula = [...new Set([...(f.matricula ? f.matricula.split(', ') : []), ...(fila.matricula ? fila.matricula.split(', ') : [])])].join(', ') || null;
     const num = v => (typeof v === 'number' ? v : 0);
     const revisar = f.revisar || fila.revisar;
+    f.fuenteKm = f.fuenteKm === fila.fuenteKm ? f.fuenteKm : (f.fuenteKm && fila.fuenteKm ? 'mixta' : (f.fuenteKm || fila.fuenteKm));
     f.kmBolt = revisar ? 'REVISAR' : Math.round((num(f.kmBolt) + num(fila.kmBolt)) * 10) / 10;
     f.kmDesc = revisar ? 'REVISAR' : Math.round((num(f.kmDesc) + num(fila.kmDesc)) * 10) / 10;
     f.revisar = revisar;
@@ -268,7 +275,7 @@ async function reporteDia(key) {
     filasPorId.set(cid, {
       conductorId: cid, nombre: (p && p.nombre) || `#${cid}`, telefono: (p && p.telefono) || '',
       turno: pl.turno || '', horas: 0, libra: false, debiaSalir: true, esNN: false, sinFicha: false,
-      matricula: pl.matriculaPlan || null, kmBolt: null, kmDesc: null, revisar: false,
+      matricula: pl.matriculaPlan || null, kmBolt: null, kmDesc: null, fuenteKm: null, revisar: false,
       just: justPorId.get(cid) || null,
     });
   }
@@ -281,7 +288,7 @@ async function reporteDia(key) {
     filasPorId.set(cid, {
       conductorId: cid, nombre: (p && p.nombre) || j.nombre || `#${cid}`, telefono: (p && p.telefono) || '',
       turno: (pl && pl.turno) || '', horas: 0, libra: !!(pl && pl.libra), debiaSalir: !!(pl && pl.debiaSalir),
-      esNN: !pl, sinFicha: false, matricula: null, kmBolt: null, kmDesc: null, revisar: false, just: j,
+      esNN: !pl, sinFicha: false, matricula: null, kmBolt: null, kmDesc: null, fuenteKm: null, revisar: false, just: j,
     });
   }
 
@@ -309,7 +316,7 @@ async function reporteDia(key) {
       promedioMes: (f.conductorId && (prom.get(Number(f.conductorId)) || {}).horas) ?? null,
       libra: f.libra, debiaSalir: f.debiaSalir, esNN: f.esNN, sinFicha: f.sinFicha,
       enLibranza: f.enLibranza,
-      matricula: f.matricula, kmBolt: f.kmBolt, kmDesc: f.kmDesc, revisar: f.revisar,
+      matricula: f.matricula, kmBolt: f.kmBolt, kmDesc: f.kmDesc, fuenteKm: f.fuenteKm || null, revisar: f.revisar,
     };
     if (f.just) {
       const horasTexto = (f.horas != null && f.horas > 0) ? `${r1(f.horas)} (J)` : 'J';

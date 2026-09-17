@@ -242,10 +242,29 @@ async function pasada() {
       console.error('⚠️  [FLOTA VIVA] La ingesta de rutas falló:', e.message);
     }
 
+    // Y el ODÓMETRO DEL CUADRO, que es de donde salen los km cuando el coche lo
+    // da. No sustituye a lo de arriba: los trayectos siguen haciendo falta —para
+    // saber CUÁNDO rodó el coche y para los que no leen el CAN—, pero los metros
+    // buenos son estos. En su propio try por lo mismo: si Mapon tose, la vuelta
+    // sigue.
+    //
+    // Al filo de cada hora se barre la flota entera; el resto de vueltas, solo
+    // los coches que se han movido o llevan a alguien conectado.
+    let odom = null;
+    try {
+      odom = await require('./rutas').ingestarOdometro({
+        desde: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+        soloActivos: new Date().getMinutes() >= 5,
+      });
+    } catch (e) {
+      console.error('⚠️  [FLOTA VIVA] La ingesta del odómetro falló:', e.message);
+    }
+
     console.log(`🚦 [FLOTA VIVA] ${coches.length} coche(s) · ${conectados} conectado(s) · ` +
                 `${cambios} cambio(s) · ${ms} ms` +
-                (rutas ? ` · ${rutas.trayectos} trayecto(s)` : ''));
-    return { vehiculos: coches.length, conectados, cambios, ms, incidencias, rutas };
+                (rutas ? ` · ${rutas.trayectos} trayecto(s)` : '') +
+                (odom ? ` · odómetro: ${odom.conCan}/${odom.unidades} coche(s)` : ''));
+    return { vehiculos: coches.length, conectados, cambios, ms, incidencias, rutas, odom };
   } catch (e) {
     await db.consulta('UPDATE fv_vuelta SET terminada_at = now(), error = $2 WHERE id = $1',
       [vuelta, e.message]).catch(() => {});
