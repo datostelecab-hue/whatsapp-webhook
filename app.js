@@ -455,7 +455,7 @@ programar('10 5 * * *', async () => {
 
 // Dos cosas que se calculan juntas porque dependen de lo mismo: el promedio de
 // horas del mes corrido (`conductor_rendimiento`, que usa el reporte de
-// asistencia) y la CALIFICACIÓN A-D de 14 días (`conductor_calificacion`), que
+// asistencia) y la CALIFICACIÓN A-D del MES CORRIDO (`conductor_calificacion`), que
 // es la letra que se pinta al lado del nombre en el planificador y en Control. A las 05:40, DESPUÉS de que
 // la bitácora selle la jornada (05:35): si se calculara antes, el último día
 // entraría a medias.
@@ -468,7 +468,7 @@ programar('40 5 * * *', async () => {
     const cal = require('./services/repo/calificacion');
     const c = await cal.recalcular();
     console.log(`⚖️  [Calificación] ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}` +
-      (c.telemetria.completa ? '' : ` · OJO: telemetría ${c.telemetria.dias}/${cal.MODELO.dias} días`));
+      (c.telemetria.completa ? '' : ` · OJO: telemetría incompleta, ${c.telemetria.dias} día(s) con datos`));
   } catch (error) {
     console.error(`⚠️  [Rendimiento] recálculo diario: ${error.message}`);
   }
