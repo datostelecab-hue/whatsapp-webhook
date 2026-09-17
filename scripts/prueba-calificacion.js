@@ -13,24 +13,31 @@
 const { calificar, MODELO } = require('../services/repo/calificacion');
 
 const CASOS = [
-  { n: 1,  h: 9.2, u: 84, e: 1, dias: 14, ph: 100, pu: 100, pv: 90,  total: 98.00, letra: 'A', que: 'Caso alto normal' },
-  { n: 2,  h: 8.5, u: 92, e: 3, dias: 14, ph: 90,  pu: 100, pv: 70,  total: 89.00, letra: 'B', que: 'Tope de seguridad: 89 pts serían A, baja a B' },
-  { n: 3,  h: 7.1, u: 68, e: 0, dias: 14, ph: 70,  pu: 50,  pv: 100, total: 70.00, letra: 'B', que: 'Frontera exacta B (70,00 → B, no C)' },
-  { n: 4,  h: 5.4, u: 58, e: 7, dias: 14, ph: 30,  pu: 45,  pv: 0,   total: 28.50, letra: 'D', que: 'Caso bajo' },
-  { n: 5,  h: 9.5, u: 95, e: 5, dias: 14, ph: 100, pu: 100, pv: 30,  total: 86.00, letra: 'C', que: 'Tope duro: 86 pts serían A, baja a C' },
-  { n: 6,  h: 9.0, u: 80, e: 0, dias: 14, ph: 100, pu: 100, pv: 100, total: 100.00, letra: 'A', que: 'Máximo perfecto en umbrales exactos' },
-  { n: 7,  h: 4.9, u: 95, e: 0, dias: 14, ph: 0,   pu: 100, pv: 100, total: 50.00, letra: 'D', que: 'Horas por debajo del mínimo hunden el total' },
-  { n: 8,  h: 8.0, u: 69, e: 1, dias: 14, ph: 90,  pu: 50,  pv: 90,  total: 78.00, letra: 'B', que: 'Escalón de utilización (lado bajo)' },
-  { n: 9,  h: 8.0, u: 70, e: 1, dias: 14, ph: 90,  pu: 85,  pv: 90,  total: 88.50, letra: 'A', que: 'Escalón de utilización: 1 punto porcentual mueve B→A' },
-  { n: 10, h: 9.0, u: 90, e: 0, dias: 4,                                            letra: 'N/E', que: 'Con dias_trabajados = 4' },
+  { n: 1,  h: 9.2, u: 84, e: 1, dias: 14, du: 14, ph: 100, pu: 100, pv: 90,  total: 98.00, letra: 'A', que: 'Caso alto normal' },
+  { n: 2,  h: 8.5, u: 92, e: 3, dias: 14, du: 14, ph: 90,  pu: 100, pv: 70,  total: 89.00, letra: 'B', que: 'Tope de seguridad: 89 pts serían A, baja a B' },
+  { n: 3,  h: 7.1, u: 68, e: 0, dias: 14, du: 14, ph: 70,  pu: 50,  pv: 100, total: 70.00, letra: 'B', que: 'Frontera exacta B (70,00 → B, no C)' },
+  { n: 4,  h: 5.4, u: 58, e: 7, dias: 14, du: 14, ph: 30,  pu: 45,  pv: 0,   total: 28.50, letra: 'D', que: 'Caso bajo' },
+  { n: 5,  h: 9.5, u: 95, e: 5, dias: 14, du: 14, ph: 100, pu: 100, pv: 30,  total: 86.00, letra: 'C', que: 'Tope duro: 86 pts serían A, baja a C' },
+  { n: 6,  h: 9.0, u: 80, e: 0, dias: 14, du: 14, ph: 100, pu: 100, pv: 100, total: 100.00, letra: 'A', que: 'Máximo perfecto en umbrales exactos' },
+  { n: 7,  h: 4.9, u: 95, e: 0, dias: 14, du: 14, ph: 0,   pu: 100, pv: 100, total: 50.00, letra: 'D', que: 'Horas por debajo del mínimo hunden el total' },
+  { n: 8,  h: 8.0, u: 69, e: 1, dias: 14, du: 14, ph: 90,  pu: 50,  pv: 90,  total: 78.00, letra: 'B', que: 'Escalón de utilización (lado bajo)' },
+  { n: 9,  h: 8.0, u: 70, e: 1, dias: 14, du: 14, ph: 90,  pu: 85,  pv: 90,  total: 88.50, letra: 'A', que: 'Escalón de utilización: 1 punto porcentual mueve B→A' },
+  { n: 10, h: 9.0, u: 90, e: 0, dias: 4, du: 4, du: 4,                                            letra: 'N/E', que: 'Con dias_trabajados = 4' },
 ];
 
 // Casos propios, de los bordes que la especificación deja implícitos.
 const EXTRA = [
-  { n: 'e1', h: 9.0, u: 80, e: null, dias: 14, letra: 'N/E', que: 'Telemetría caída: N/E, no se asume 0 excesos (§9.3)' },
-  { n: 'e2', h: 9.0, u: 80, e: 0, dias: 5, letra: 'A', que: 'Justo 5 días trabajados: sí se califica' },
-  { n: 'e3', h: 12.9, u: 99, e: 6, dias: 14, letra: 'C', que: '6 excesos: 0 pts de velocidad, el tope lo deja en C' },
-  { n: 'e4', h: 0, u: 0, e: 0, dias: 14, letra: 'D', que: 'Sin horas ni utilización pero sin excesos: 20,00 → D' },
+  { n: 'e1', h: 9.0, u: 80, e: null, dias: 14, du: 14, letra: 'N/E', que: 'Telemetría caída: N/E, no se asume 0 excesos (§9.3)' },
+  { n: 'e2', h: 9.0, u: 80, e: 0, dias: 5, du: 5, letra: 'A', que: 'Justo 5 días trabajados: sí se califica' },
+  { n: 'e3', h: 12.9, u: 99, e: 6, dias: 14, du: 14, letra: 'C', que: '6 excesos: 0 pts de velocidad, el tope lo deja en C' },
+  // EL 2.0 PARTE ESTE CASO EN DOS, y la diferencia importa.
+  // Quien CONDUJO y lo hizo mal tiene utilización medida —aunque sea 0 %— y
+  // sigue sacando su D. Quien no condujo NINGÚN día no tiene utilización que
+  // medir, y puntuar con un 0 lo que no se ha podido medir le ponía una C a
+  // quien pasó el mes entero de baja. Eso es N/E, no una nota mediocre.
+  { n: 'e4', h: 0, u: 0, e: 0, dias: 14, du: 14, letra: 'D', que: 'Condujo y lo hizo mal: 20,00 → D' },
+  { n: 'e5', h: 8, u: 0, e: 0, dias: 16, du: 0, letra: 'N/E', que: 'Mes entero de baja: 8 h/día pero ni un día que medir' },
+  { n: 'e6', h: 0, u: 0, e: 0, dias: 0, du: 0, letra: 'N/E', que: 'En el banquillo: ningún día asignado, nada que contar' },
 ];
 
 let fallos = 0;
@@ -43,7 +50,8 @@ console.log(`Modelo ${MODELO.version} · ${CASOS.length} casos de la especificac
 console.log('  #    horas  util  exc  días   pts h/u/v      total   letra   resultado');
 
 for (const c of [...CASOS, ...EXTRA]) {
-  const r = calificar({ horasProm: c.h, utilProm: c.u, excesosTotal: c.e, diasTrabajados: c.dias });
+  const r = calificar({ horasProm: c.h, utilProm: c.u, excesosTotal: c.e,
+    diasTrabajados: c.dias, diasUtilizacion: c.du });
   const errores = [
     dif('letra', c.letra, r.letra),
     c.total != null ? dif('total', c.total.toFixed(2), (r.total || 0).toFixed(2)) : null,

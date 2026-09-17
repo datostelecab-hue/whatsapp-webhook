@@ -1,15 +1,15 @@
 // ============================================================
-// CALIFICACIÓN DE CONDUCTORES A–D — modelo "ABCD" 1.0
+// CALIFICACIÓN DE CONDUCTORES A–D — modelo "ABCD" 2.0
 // ============================================================
 // Una letra por conductor y periodo, de tres métricas ponderadas:
 //
-//   HORAS         50 %   promedio diario sobre los días TRABAJADOS
+//   HORAS         50 %   promedio diario sobre TODOS los días del periodo
 //   UTILIZACIÓN   30 %   promedio diario del % de tiempo con pasajero
 //   VELOCIDAD     20 %   SUMA ACUMULADA de excesos del periodo
 //
 // La trampa del modelo, y está avisada en la especificación: las dos primeras
 // son promedios diarios y la tercera es un total. Un conductor con 3 excesos en
-// catorce días tiene 3, no 0,21.
+// el mes tiene 3, no 0,10.
 //
 // ── De dónde sale cada cosa, y por qué ──────────────────────────────────────
 //
@@ -41,10 +41,29 @@ const db = require('../db');
 
 // ── EL MODELO ───────────────────────────────────────────────────────────────
 const MODELO = {
-  version: '1.0',
-  dias: 14,                    // ventana de análisis, días naturales inclusive
+  // 2.0 — EL PERIODO ES EL MES Y CUENTAN TODOS LOS DÍAS DESDE EL ALTA.
+  //
+  // En 1.0 la ventana eran 14 días y solo contaban los días con horas: quien
+  // libraba, estaba de vacaciones o simplemente no salía, no existía para el
+  // cálculo. Eso tenía dos efectos malos a la vez. A quien acababa de entrar no
+  // se le podía puntuar (Elena, de alta el 8, tenía 4 días con horas de los 9
+  // que llevaba, y salía N/E), y a quien faltaba no se le notaba: sus ausencias
+  // no bajaban nada porque ni se miraban.
+  //
+  // Ahora el periodo es el MES CORRIDO, desde su alta si entró a mitad, y cada
+  // día del periodo vale algo:
+  //   · trabajó            → sus horas de Bolt MÁS las justificadas
+  //   · libró, vacaciones,
+  //     baja o permiso     → 8 h, para que no le baje la media por descansar
+  //   · no salió, sin nada
+  //     que lo justifique  → 0, y eso sí baja
+  version: '2.0',
+  periodo: 'mes',              // del día 1 (o su alta) al último día cerrado
   minDiasTrabajados: 5,        // por debajo → N/E, nunca D
-  minHorasDiaTrabajado: 1,     // qué cuenta como "día trabajado" (§9.1)
+  minHorasDiaTrabajado: 1,     // qué cuenta como día CON HORAS de Bolt (§9.1)
+  // Lo que vale un día cubierto (libranza, vacaciones, baja, permiso). Es el
+  // objetivo de jornada: ni premia ni castiga descansar cuando toca.
+  horasDiaCubierto: 8,
   pesos: { horas: 0.50, utilizacion: 0.30, velocidad: 0.20 },
   // LOS RECHAZOS NO PUNTÚAN, y el hueco de `pts_rechazos` en la tabla es para un
   // modelo futuro, no un olvido (§15). Decisión de Tráfico del 11/09/2026 sobre
@@ -103,13 +122,27 @@ function redondear2(n) {
  * EL CÁLCULO, sobre números ya resueltos. Sin base de datos: es lo que hace que
  * los casos de prueba de la especificación se puedan correr tal cual.
  */
-function calificar({ horasProm, utilProm, excesosTotal, diasTrabajados }) {
+function calificar({ horasProm, utilProm, excesosTotal, diasTrabajados, diasUtilizacion }) {
   if (!(diasTrabajados >= MODELO.minDiasTrabajados)) {
     return {
       letra: 'N/E',
-      motivo: `menos de ${MODELO.minDiasTrabajados} días trabajados (${diasTrabajados || 0})`,
+      motivo: `lleva menos de ${MODELO.minDiasTrabajados} días en el periodo (${diasTrabajados || 0})`,
       diasTrabajados: diasTrabajados || 0,
       versionModelo: MODELO.version,
+    };
+  }
+  // SIN UN SOLO DÍA CONDUCIENDO NO HAY UTILIZACIÓN QUE MEDIR.
+  //
+  // Quien pasó el mes entero de baja tiene sus días a 8 h —así lo quiere la
+  // regla, y con razón— pero cero días con actividad. Metiendo su utilización
+  // como 0 % se lleva 0 de los 30 puntos de esa mitad y sale con una C por estar
+  // enfermo. Es el mismo principio que ya aplica el modelo a las J (§9.2): un
+  // día sin horas de Bolt no tiene utilización, y no se puede puntuar lo que no
+  // se ha podido medir. Nada que medir es N/E, no una nota mediocre.
+  if (!(diasUtilizacion >= 1)) {
+    return {
+      letra: 'N/E', motivo: 'ningún día con actividad que medir en el periodo',
+      diasTrabajados, horasProm: redondear2(horasProm), versionModelo: MODELO.version,
     };
   }
   // Sin telemetría no se asume cero: asumirlo premiaría un fallo del sistema (§9.3).
@@ -147,23 +180,59 @@ function calificar({ horasProm, utilProm, excesosTotal, diasTrabajados }) {
 
 // ── Los datos del periodo ───────────────────────────────────────────────────
 
-/** El primer día del periodo que acaba en `hasta` (14 días naturales inclusive). */
+/**
+ * El primer día del periodo: el 1 del mes en que cae `hasta`.
+ *
+ * El mes CORRIDO, no los últimos 30 días: es como se mira todo lo demás en la
+ * casa (el promedio del planificador, la asistencia) y es lo que entiende quien
+ * la lee — «la letra de septiembre», no «la de los últimos catorce días».
+ * A quien entró a mitad de mes se le recorta a su alta, pero eso se hace por
+ * persona dentro de la consulta, no aquí.
+ */
 function inicioDe(hasta) {
-  const d = new Date(String(hasta).slice(0, 10) + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() - (MODELO.dias - 1));
-  return d.toISOString().slice(0, 10);
+  return String(hasta).slice(0, 8) + '01';
+}
+
+/** Días naturales del periodo, para saber si la telemetría lo cubre entero. */
+function largoDe(desde, hasta) {
+  const a = new Date(String(desde).slice(0, 10) + 'T12:00:00Z');
+  const b = new Date(String(hasta).slice(0, 10) + 'T12:00:00Z');
+  return Math.max(1, Math.round((b - a) / 86400000) + 1);
 }
 
 /**
  * Las tres métricas de todo el mundo para un periodo.
  *
- * Un día cuenta como TRABAJADO si sus horas (Bolt + justificadas) llegan al
- * mínimo. La utilización promedia solo los días con horas de Bolt: un día
- * entero de taller no tiene utilización que medir.
+ * CUENTAN TODOS LOS DÍAS DEL PERIODO, no solo aquellos en los que rodó. Cada
+ * día vale sus horas (Bolt + justificadas), u 8 h si estaba cubierto —libranza,
+ * vacaciones, baja o permiso—, o 0 si debía salir y no salió sin nada que lo
+ * explique. Así el que descansa cuando toca no pierde media y el que falta sí.
+ *
+ * La UTILIZACIÓN va por otro camino y no cambia: promedia solo los días con
+ * tiempo efectivo de Bolt, porque un día de libranza o de taller no tiene
+ * utilización que medir y meterlo como 0 hundiría a quien no condujo.
  */
 async function metricas(desde, hasta) {
   const r = await db.consulta(
     `WITH
+     -- EL PERIODO DE CADA UNO. El mes, pero nunca antes de su alta: a quien
+     -- entró el día 8 se le cuentan sus días, no el mes entero con ceros
+     -- delante. Es justo lo que hacía que a los recién llegados no se les
+     -- pudiera puntuar.
+     periodo AS (
+       SELECT e.conductor_id,
+              GREATEST($1::date, e.alta)                  AS desde,
+              LEAST($2::date, COALESCE(e.baja, $2::date)) AS hasta
+         FROM conductor_periodo_empleo e
+         JOIN conductor c ON c.id = e.conductor_id AND NOT c.es_centinela
+        WHERE e.baja IS NULL
+     ),
+     dias AS (
+       SELECT p.conductor_id, g.dia::date AS dia
+         FROM periodo p
+         CROSS JOIN LATERAL generate_series(p.desde, p.hasta, interval '1 day') g(dia)
+        WHERE p.hasta >= p.desde
+     ),
      -- Horas del día: las selladas de Bolt MÁS las justificadas. Se suman.
      horas AS (
        SELECT conductor_id, dia, sum(bolt)::bigint AS seg_bolt, sum(seg)::bigint AS seg_total
@@ -194,26 +263,69 @@ async function metricas(desde, hasta) {
           AND t.desde >= ($1::date - 1) AND t.desde < ($2::date + 2)
         GROUP BY 1, 2
      ),
-     dias AS (
-       SELECT COALESCE(h.conductor_id, u.conductor_id) AS conductor_id,
-              COALESCE(h.dia, u.dia)                   AS dia,
-              COALESCE(h.seg_total, 0)                 AS seg_total,
-              COALESCE(h.seg_bolt, 0)                  AS seg_bolt,
+     -- A quién le TOCABA salir cada día. Lo que no está aquí es libranza.
+     tocaba AS (
+       SELECT DISTINCT conductor_id, dia FROM f_cobertura($1::date, $2::date)
+        WHERE conductor_id IS NOT NULL
+     ),
+     -- SIN CUADRANTE NO HAY LIBRANZA QUE VALGA.
+     --
+     -- "No le tocaba" solo significa "libró" si el cuadrante le da trabajo algún
+     -- día del periodo. A quien no le toca NINGÚN día no está librando: no se le
+     -- ha dado coche. Mirar solo si tiene plaza no basta —se probó— y salían diez
+     -- personas con 16 días a 8 h y cero horas rodadas, con letra C sin haber
+     -- salido una sola vez. Antes de esto eran N/E, que es lo honesto.
+     en_cuadrante AS (
+       SELECT DISTINCT conductor_id FROM tocaba
+     ),
+     -- Vacaciones, bajas y permisos: los estados que la bitácora marca.
+     aus AS (
+       SELECT DISTINCT h.conductor_id, g.dia::date AS dia
+         FROM conductor_estado_hist h
+         JOIN cat_estado_conductor e ON e.codigo = h.estado AND e.marca_bitacora IS NOT NULL
+         CROSS JOIN LATERAL generate_series(
+           GREATEST(h.desde, $1::date),
+           LEAST(COALESCE(h.hasta, $2::date), $2::date),
+           interval '1 day') g(dia)
+     ),
+     -- LO QUE VALE CADA DÍA. El orden de los CASE es la regla entera:
+     --   1. Trabajó            → sus horas (Bolt + justificadas). Manda sobre todo.
+     --   2. Vacaciones/baja/permiso → 8 h: descansar cuando toca no puede bajar la media.
+     --   3. Le tocaba y no salió   → 0. Este es el que baja, y para eso está.
+     --   4. No le tocaba, pero el cuadrante le da trabajo otros días → 8 h (libró).
+     --   5. Ni trabajo ni plan  → NULL: ese día no se cuenta ni para bien ni para
+     --      mal. No es una libranza, es que no se le dio coche.
+     valor AS (
+       SELECT d.conductor_id, d.dia,
+              CASE
+                WHEN COALESCE(h.seg_total, 0) > 0   THEN h.seg_total
+                WHEN a.conductor_id IS NOT NULL     THEN $3::bigint
+                WHEN t.conductor_id IS NOT NULL     THEN 0
+                WHEN q.conductor_id IS NOT NULL     THEN $3::bigint
+                ELSE NULL
+              END                       AS seg,
+              COALESCE(h.seg_total, 0)  AS seg_real,
               u.seg_viaje, u.seg_efectivo
-         FROM horas h
-         FULL JOIN util u ON u.conductor_id = h.conductor_id AND u.dia = h.dia
-        WHERE COALESCE(h.dia, u.dia) BETWEEN $1::date AND $2::date
+         FROM dias d
+         LEFT JOIN horas h        ON h.conductor_id = d.conductor_id AND h.dia = d.dia
+         LEFT JOIN aus a          ON a.conductor_id = d.conductor_id AND a.dia = d.dia
+         LEFT JOIN tocaba t       ON t.conductor_id = d.conductor_id AND t.dia = d.dia
+         LEFT JOIN en_cuadrante q ON q.conductor_id = d.conductor_id
+         LEFT JOIN util u         ON u.conductor_id = d.conductor_id AND u.dia = d.dia
      )
      SELECT conductor_id,
-            count(*) FILTER (WHERE seg_total >= $3)::int                    AS dias_trabajados,
-            round((sum(seg_total) FILTER (WHERE seg_total >= $3) / 3600.0)
-                  / NULLIF(count(*) FILTER (WHERE seg_total >= $3), 0), 2)  AS horas_prom,
-            count(*) FILTER (WHERE seg_efectivo >= $3)::int                 AS dias_utilizacion,
+            count(seg)::int                                                 AS dias_trabajados,
+            round((sum(seg) / 3600.0) / NULLIF(count(seg), 0), 2)           AS horas_prom,
+            count(*) FILTER (WHERE seg_efectivo >= $4)::int                 AS dias_utilizacion,
             round(avg(100.0 * seg_viaje / NULLIF(seg_efectivo, 0))
-                  FILTER (WHERE seg_efectivo >= $3), 2)                     AS util_prom
-       FROM dias
+                  FILTER (WHERE seg_efectivo >= $4), 2)                     AS util_prom,
+            -- El desglose, para poder explicar el número sin abrir la base.
+            count(*) FILTER (WHERE seg_real >= $4)::int                     AS dias_con_horas,
+            count(*) FILTER (WHERE seg_real = 0 AND seg > 0)::int           AS dias_cubiertos,
+            count(*) FILTER (WHERE seg = 0)::int                            AS dias_cero
+       FROM valor
       GROUP BY conductor_id`,
-    [desde, hasta, MODELO.minHorasDiaTrabajado * 3600]);
+    [desde, hasta, MODELO.horasDiaCubierto * 3600, MODELO.minHorasDiaTrabajado * 3600]);
   return r.rows;
 }
 
@@ -279,11 +391,16 @@ async function calcular(hasta) {
         utilProm: Number(f.util_prom) || 0,
         excesosTotal: hayTelemetria ? (excesos.get(cid) || 0) : null,
         diasTrabajados: f.dias_trabajados,
+        diasUtilizacion: f.dias_utilizacion,
       });
       return {
         conductorId: cid, nombre: nombres.get(cid) || ('#' + cid),
         periodoInicio: ini, periodoFin: fin,
         diasUtilizacion: f.dias_utilizacion,
+        // De qué está hecho el promedio: cuántos días rodó, cuántos estuvo
+        // cubierto (a 8 h) y cuántos salieron a cero. Sin esto, «5,8 h» es un
+        // número que nadie puede discutir porque nadie sabe de dónde sale.
+        diasConHoras: f.dias_con_horas, diasCubiertos: f.dias_cubiertos, diasCero: f.dias_cero,
         // Con cuántos días de telemetría se calculó esta letra. Si son menos que
         // la ventana, los excesos están infravalorados y la letra sale mejor de
         // lo que es: hay que poder decirlo al mirar la fila, no al mirar el log.
@@ -294,7 +411,8 @@ async function calcular(hasta) {
 
   return {
     periodoInicio: ini, periodoFin: fin, version: MODELO.version,
-    telemetria: { dias: tele.dias, desdeElPrimero: tele.primero, completa: tele.dias >= MODELO.dias },
+    telemetria: { dias: tele.dias, desdeElPrimero: tele.primero,
+      completa: tele.dias >= largoDe(ini, fin) },
     filas: res.sort((a, b) => (b.total || -1) - (a.total || -1) || a.nombre.localeCompare(b.nombre, 'es')),
   };
 }
