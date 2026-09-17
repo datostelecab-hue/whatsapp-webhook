@@ -18,6 +18,13 @@ El mapa del proyecto. Cada nota cuenta una pieza y enlaza con las de al lado; si
 - **[[Arquitectura]]** — Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una
 - **[[Estado y pendientes]]** — Lo que está abierto hoy. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
 
+## Referencia de las APIs
+
+Dos documentos anteriores al vault, que siguen siendo la referencia buena y los cita el código:
+
+- **[[API_MAPON]]** — el mapa de la API de Mapon endpoint a endpoint, con lo que sirve y lo que no.
+- **[[PLANTILLAS-WHATSAPP]]** — los textos exactos de las plantillas aprobadas por Meta.
+
 ## El núcleo — cómo funciona por dentro
 
 - **[[Base de datos]]** — Todo el ERP vive en PostgreSQL (15 o superior).

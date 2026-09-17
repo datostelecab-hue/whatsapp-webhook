@@ -7,7 +7,7 @@ aliases: [API de Mapon, GPS]
 
 Mapon es el GPS de la flota: ~144 turismos con equipo instalado. Dice **dónde está el coche, cuánto ha rodado, si está encendido y qué marca el cuadro**. Lo que no dice es quién lo conduce — eso lo pone [[BOLT]]. Ninguna de las dos fuentes sirve sola: BOLT no sabe que un coche "en descanso" lleva cuarenta kilómetros hechos, y Mapon no sabe quién lo lleva.
 
-El cliente vive en `services/mapon.js`, con una segunda vía en `services/flotaViva/fuentes.js` (duplicación pequeña y consciente, que desaparece cuando las ramas se junten). El mapa completo de la API está en `docs/API_MAPON.md`.
+El cliente vive en `services/mapon.js`, con una segunda vía en `services/flotaViva/fuentes.js` (duplicación pequeña y consciente, que desaparece cuando las ramas se junten). El mapa completo de la API está en [[API_MAPON]] (`docs/API_MAPON.md`).
 
 ## Cómo se entra
 

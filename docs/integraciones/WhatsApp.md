@@ -37,7 +37,7 @@ Para diagnosticar están `listarPlantillas()` —nombre, idioma, estado, categor
 
 ## Plantillas
 
-El detalle completo, con los textos exactos y las reglas de Meta, está en `docs/PLANTILLAS-WHATSAPP.md`. Se crean sin teclearlas a mano con `node scripts/crear-plantillas-whatsapp.js --ver` (y `--go` para mandarlas a revisión).
+El detalle completo, con los textos exactos y las reglas de Meta, está en [[PLANTILLAS-WHATSAPP]] (`docs/PLANTILLAS-WHATSAPP.md`). Se crean sin teclearlas a mano con `node scripts/crear-plantillas-whatsapp.js --ver` (y `--go` para mandarlas a revisión).
 
 **Aprobadas y en uso:**
 
