@@ -297,25 +297,39 @@ function tiempoPorEstado(iv, ini, fin) {
  * puntos GPS va al estado de su punto de INICIO; luego se escala el trayecto para
  * que sume EXACTO la distancia que da Mapon (evita el subconteo de la línea recta).
  */
-function atribuirRecorrido(trips, iv) {
+function atribuirRecorrido(trips, iv, ventana = null) {
+  // UN TRAYECTO SE REPARTE POR DONDE PASA, no cuenta entero donde empieza.
+  //
+  // La regla de antes funcionaba con trayectos cortos y era demoledora con uno
+  // largo: Carlos Arturo Borelli hizo uno de 249 km y SIETE HORAS que arrancó a
+  // las 04:45, un cuarto de hora antes de abrir la jornada, y su mañana entera
+  // se contó en el día anterior. En diez días había 330 trayectos y 22.302 km
+  // mal colocados. Como aquí ya se va punto a punto, basta con mirar la hora de
+  // cada tramo: el trayecto se parte solo por el corte.
+  const dentro = t => !ventana || (t >= ventana.desde && t < ventana.hasta);
   const km = { pasajero: 0, ida: 0, espera: 0, descanso: 0, fuera: 0 };
   trips.forEach(trip => {
     const pts = trip.puntos || [];
     const distKm = (trip.distancia || 0) / 1000;
     if (pts.length < 2) {
+      // Sin traza no hay por dónde partirlo: se queda entero donde empieza, que
+      // es lo único que se sabe de él.
       const t = trip.inicioTs != null ? trip.inicioTs : (pts[0] && pts[0].t);
-      if (t != null && distKm) km[bucketDe(t, iv)] += distKm;
+      if (t != null && distKm && dentro(t)) km[bucketDe(t, iv)] += distKm;
       return;
     }
     const seg = [];
     let sumRaw = 0;
     for (let i = 1; i < pts.length; i++) {
       const d = haversineKm(pts[i - 1], pts[i]);
-      seg.push([d, bucketDe(pts[i - 1].t, iv)]);
+      seg.push([d, bucketDe(pts[i - 1].t, iv), pts[i - 1].t]);
       sumRaw += d;
     }
+    // LA ESCALA SE CALCULA SOBRE EL TRAYECTO ENTERO, aunque luego solo se sumen
+    // los tramos de dentro: es lo que hace que los trozos de las dos ventanas
+    // sumen exactamente los metros que dio Mapon, sin inventar ni perder.
     const escala = sumRaw > 0 ? distKm / sumRaw : 0;
-    seg.forEach(([d, b]) => { km[b] += d * escala; });
+    seg.forEach(([d, b, t]) => { if (dentro(t)) km[b] += d * escala; });
   });
   return km;
 }
@@ -476,13 +490,15 @@ async function computarDia(dia) {
 
     for (const seg of SEGMENTOS) {
       const { start: s0, end: s1 } = ventanas[seg];
-      // Un trayecto cuenta entero en el tramo donde EMPIEZA (mismo criterio que el día).
-      const tripsSeg = trips.filter(t => t.inicioTs != null && t.inicioTs >= s0 && t.inicioTs < s1);
+      // Los que TOCAN el tramo, no solo los que empiezan en él: `atribuirRecorrido`
+      // se queda con los puntos de dentro y parte el trayecto por el corte.
+      const finDe = t => (t.puntos && t.puntos.length ? t.puntos[t.puntos.length - 1].t : t.inicioTs);
+      const tripsSeg = trips.filter(t => t.inicioTs != null && t.inicioTs < s1 && finDe(t) >= s0);
       const b = (billed[placa] && billed[placa][seg]) || { km: 0, viajes: 0 };
       const conductores = conductoresEnVentana(logsCoche, s0, s1, nombrePorUuid);
       if (!tripsSeg.length && !b.viajes && !conductores.length) continue;   // ni se movió ni hubo nadie
 
-      const km = atribuirRecorrido(tripsSeg, iv);
+      const km = atribuirRecorrido(tripsSeg, iv, { desde: s0, hasta: s1 });
       const h = tiempoPorEstado(iv, s0, s1);
       const clave = `${placa}|${seg}`;
       const prev = filas.get(clave);

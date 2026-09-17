@@ -316,9 +316,25 @@ const FIN_KM = `CASE WHEN t.hasta IS NOT NULL THEN t.hasta ELSE LEAST(
 // las dos: la primera vez que se tocó una hubo que acordarse de la otra.
 const SOLAPE_KM = `
      solape AS (
+       -- UN TRAYECTO SE REPARTE POR EL TIEMPO QUE PASA DENTRO, no cuenta entero
+       -- donde empieza.
+       --
+       -- La regla de antes —"cuenta en la ventana donde EMPIEZA"— funciona con
+       -- trayectos cortos y es demoledora con uno largo. Carlos Arturo Borelli
+       -- hizo un trayecto de 249 km y SIETE HORAS que arrancó a las 04:45, un
+       -- cuarto de hora antes de que abriera la jornada: su mañana entera se
+       -- contó en el día anterior y a él le quedaron 52 km en 8,2 h de trabajo.
+       -- Y el error va doble, porque esos 249 km se los llevaba quien condujera
+       -- a las 04:45, que no los hizo.
+       --
+       -- Eran 330 trayectos y 22.302 km mal colocados en diez días.
+       --
+       -- Ahora los metros se prorratean por el solape con la ventana Y con el
+       -- tramo, que es lo que ya se hacía entre conductores: cada jornada se
+       -- queda los kilómetros que de verdad vio.
        SELECT t.conductor_uuid AS uuid, veh.matricula, t.situacion,
               r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
-                LEAST(r.fin, ${FIN_KM}) - GREATEST(r.inicio, t.desde))))
+                LEAST(r.fin, ${FIN_KM}, w.fin) - GREATEST(r.inicio, t.desde, w.ini))))
                 / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
          FROM fv_ruta r
          CROSS JOIN w
@@ -328,7 +344,8 @@ const SOLAPE_KM = `
                              AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
           AND w.fin > w.ini
-          AND r.inicio >= w.ini AND r.inicio < w.fin
+          -- Solapa con la ventana: ya no hace falta que empiece dentro.
+          AND r.inicio < w.fin AND r.fin > w.ini
           AND t.conductor_uuid IS NOT NULL
      )`;
 
@@ -875,12 +892,18 @@ async function kmSinDuenio(dia, turno = 'operativo') {
      w AS (SELECT ini, LEAST(fin_plan, now()) AS fin FROM v),
      -- Lo que rodó cada coche en la ventana, sin mirar quién iba dentro.
      total AS (
-       SELECT veh.uuid, veh.matricula, sum(r.metros) AS metros
+       -- Prorrateado por la ventana, igual que el reparto de abajo: si el total
+       -- contara trayectos enteros y el reparto solo los trozos de dentro, la
+       -- resta daría km sin dueño que no existen.
+       SELECT veh.uuid, veh.matricula,
+              sum(r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                    LEAST(r.fin, w.fin) - GREATEST(r.inicio, w.ini))))
+                  / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0)) AS metros
          FROM fv_ruta r
          CROSS JOIN w
          JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND w.fin > w.ini AND r.inicio >= w.ini AND r.inicio < w.fin
+          AND w.fin > w.ini AND r.inicio < w.fin AND r.fin > w.ini
         GROUP BY 1, 2
      ),
 ${SOLAPE_KM},
