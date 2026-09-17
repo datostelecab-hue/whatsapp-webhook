@@ -25,9 +25,9 @@ const quien = async req => ({
   nombre: [(req.usuario || {}).nombre, (req.usuario || {}).apellidos].filter(Boolean).join(' ').trim(),
   // DESDE DÓNDE. Lo piden las cuentas fantasma, que mueven horas y por tanto
   // dinero: si alguien entrara con la cuenta de otro, esto es lo único que lo
-  // delataría. La IP sale de la cabecera del proxy igual que en el login.
-  ip: ((req.headers['x-forwarded-for'] || '').split(',')[0].trim())
-      || req.socket.remoteAddress || null,
+  // delataría. `req.ip` y no la cabecera a mano: con `trust proxy` (app.js)
+  // Express descarta lo que el cliente pueda haber metido delante.
+  ip: req.ip || req.socket.remoteAddress || null,
   agente: req.headers['user-agent'] || null,
 });
 

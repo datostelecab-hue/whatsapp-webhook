@@ -18,7 +18,11 @@ router.get('/login', (req, res) => {
 router.post('/login', async (req, res) => {
   const b = req.body || {};
   const email = usuarios.normalizarEmail(b.email);
-  const ip = ((req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || 'ip?';
+  // `req.ip`, no la cabecera a mano: con `trust proxy` puesto en app.js, Express
+  // ya descarta lo que el cliente haya metido delante en X-Forwarded-For. Leer
+  // el primer valor de esa cabecera —como se hacía— dejaba esquivar este mismo
+  // freno cambiándola en cada intento.
+  const ip = req.ip || req.socket.remoteAddress || 'ip?';
   const next = b.next || '/';
   const fallo = msg => res.status(401).render('login', { titulo: 'Acceso', layout: LAYOUT, error: msg, next });
 

@@ -3,6 +3,27 @@ const path = require('path');
 const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
 const app = express();
+
+// ── DETRÁS DE UN PROXY: la IP de verdad ─────────────────────────────────────
+// Render pone su proxy delante, así que la IP del socket es siempre la suya y
+// la del cliente viaja en `X-Forwarded-For`. Sin esto, quien quisiera leerla
+// tenía que abrir la cabecera a mano y quedarse con el PRIMER valor — que es
+// justamente el que puede escribir el propio cliente: basta con mandar tu
+// `X-Forwarded-For` para aparecer con la IP que te dé la gana.
+//
+// Con `trust proxy = 1` Express cuenta UN salto de confianza (el de Render) y
+// `req.ip` devuelve el que de verdad entró, ignorando lo que el cliente haya
+// metido delante. Son dos cosas las que dependen de ello y las dos importan:
+//
+//   · el freno de fuerza bruta del login, que cuenta fallos POR IP y hasta
+//     ahora se esquivaba cambiando esa cabecera en cada intento;
+//   · el libro de las cuentas fantasma, que apunta desde dónde se mueven las
+//     horas de una persona a otra.
+//
+// Es 1 y no `true` a propósito: `true` se fía de la cadena entera, que es lo
+// mismo que no fiarse de nada. Si algún día se mete otro proxy delante (un
+// Cloudflare, por ejemplo), este número sube a 2.
+app.set('trust proxy', 1);
 // Parser JSON global (2mb). Las rutas que suben archivos en base64 (documentos de
 // conductores y adjuntos de soporte) se SALTAN este parser y aplican su propio
 // límite mayor dentro de su router; si no, este 2mb las capaba silenciosamente.
