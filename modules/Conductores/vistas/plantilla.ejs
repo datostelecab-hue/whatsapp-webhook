@@ -1277,7 +1277,16 @@
               { titulo: 'Cuenta', campo: 'cuenta' },
               { titulo: 'Quién', campo: 'usuario', clase: 'font-semibold' },
               { titulo: 'Desde', campo: 'ip', clase: 'tabular-nums',
-                pinta: v => v || '<span class="text-telecab-muted">—</span>' },
+                // La IP a secas no le dice nada a nadie; «dentro» o «fuera» sí.
+                // Se enseñan las dos: si la etiqueta fuera mal, la IP lo delata.
+                pinta: (v, f) => {
+                  if (!v) return '<span class="text-telecab-muted">—</span>';
+                  const etq = f.enLaEmpresa === null ? ''
+                    : f.enLaEmpresa
+                      ? '<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-300">en la empresa</span>'
+                      : '<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-300">fuera</span>';
+                  return `<span class="text-telecab-muted">${esc(v)}</span>${etq}`;
+                } },
               { titulo: 'Dispositivo', campo: 'agente', pinta: v => dispositivo(v) },
               { titulo: 'Detalle', campo: 'detalle', pinta: v => detalleLibro(v) },
             ],

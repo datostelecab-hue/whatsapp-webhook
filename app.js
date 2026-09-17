@@ -20,10 +20,21 @@ const app = express();
 //   · el libro de las cuentas fantasma, que apunta desde dónde se mueven las
 //     horas de una persona a otra.
 //
-// Es 1 y no `true` a propósito: `true` se fía de la cadena entera, que es lo
-// mismo que no fiarse de nada. Si algún día se mete otro proxy delante (un
-// Cloudflare, por ejemplo), este número sube a 2.
-app.set('trust proxy', 1);
+// SON DOS SALTOS, NO UNO. Se puso 1 y se comprobó contra la realidad: una
+// acción hecha desde la oficina —IP pública 80.103.26.249— quedó apuntada como
+// 188.114.111.197, que es el proxy de delante. Con 1 se estaba guardando la IP
+// de ese proxy, la misma para todo el mundo, y eso convertía el libro en un
+// campo inútil y el freno del login en un contador compartido por la empresa
+// entera.
+//
+// No es `true`: eso se fía de la cadena entera, que es lo mismo que no fiarse de
+// nada, porque el cliente puede escribir por delante lo que quiera. Con un
+// número, Express cuenta desde la derecha —donde solo escriben los proxies— y lo
+// que el cliente se invente se queda siempre más a la izquierda.
+//
+// Si mañana cambia la infraestructura, el libro de cuentas fantasma guarda la
+// cadena entera (db/136): se mira ahí y se ajusta este número, sin adivinar.
+app.set('trust proxy', 2);
 // Parser JSON global (2mb). Las rutas que suben archivos en base64 (documentos de
 // conductores y adjuntos de soporte) se SALTAN este parser y aplican su propio
 // límite mayor dentro de su router; si no, este 2mb las capaba silenciosamente.

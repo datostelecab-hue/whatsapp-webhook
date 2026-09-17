@@ -77,8 +77,23 @@ function comprobarFechas(desde, hasta) {
 }
 
 const listar = conductorId => repo.deConductor(conductorId);
-/** El libro de auditoría de esa persona: cada acción, con quién y desde dónde. */
-const libro = conductorId => repo.libroDeConductor(conductorId);
+/**
+ * El libro de auditoría de esa persona: cada acción, con quién y desde dónde.
+ *
+ * El «dentro / fuera de la empresa» se decide AQUÍ y no se guarda: las líneas de
+ * empresa cambian de IP, y una etiqueta guardada haría que las filas viejas
+ * mintieran para siempre. Guardando solo la IP, se recalculan solas.
+ */
+async function libro(conductorId) {
+  const red = require('../../services/redEmpresa');
+  const filas = await repo.libroDeConductor(conductorId);
+  return filas.map(f => ({
+    ...f,
+    // null y no false cuando no hay IP: «no se sabe» y «desde fuera» no son lo
+    // mismo, y las acciones anteriores al libro no tienen IP ninguna.
+    enLaEmpresa: f.ip ? red.esDeLaEmpresa(f.ip) : null,
+  }));
+}
 const prestables = q => repo.prestables(q);
 const vivos = () => repo.vivos();
 const enRango = (desde, hasta) => repo.enRango(desde, hasta);
