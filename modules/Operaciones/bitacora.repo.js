@@ -72,22 +72,32 @@ function hoyMadridIso() {
 // pisan, ese rato cuenta UNA vez.
 async function horasCalculadas(desdeIso, hastaIso) {
   const r = await db.consulta(
-    `WITH tr AS (
-       SELECT ce.conductor_id, t.desde, COALESCE(t.hasta, now()) AS hasta
+    // LAS CUENTAS QUE CUENTAN: las que tienen dueño y las que están prestadas.
+    // Se filtra aquí y no al final para no meter en el troceado los tramos de
+    // cuentas que no son de nadie, que son la mayoría de las libres.
+    `WITH cuentas AS (
+       SELECT ce.id AS cuenta_id, ce.externo_id AS uuid, ce.conductor_id
+         FROM conductor_externo ce
+        WHERE ce.sistema = 'bolt'
+          AND (ce.conductor_id IS NOT NULL
+               OR EXISTS (SELECT 1 FROM cuenta_fantasma f
+                           WHERE f.cuenta_id = ce.id AND f.anulado_at IS NULL))
+     ),
+     tr AS (
+       SELECT cu.cuenta_id, cu.conductor_id, t.desde, COALESCE(t.hasta, now()) AS hasta
          FROM fv_tramo t
-         JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.efectivo
-         JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = t.conductor_uuid
-        WHERE ce.conductor_id IS NOT NULL
-          -- Amplio por los dos lados: un tramo puede empezar la víspera y morir
-          -- dentro del rango, o empezar dentro y acabar al día siguiente.
-          AND t.desde < (($2::date + 1) + ($3 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'
+         JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
+         JOIN cuentas cu         ON cu.uuid = t.conductor_uuid
+        WHERE -- Amplio por los dos lados: un tramo puede empezar la víspera y morir
+              -- dentro del rango, o empezar dentro y acabar al día siguiente.
+              t.desde < (($2::date + 1) + ($3 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'
           AND COALESCE(t.hasta, now()) > ($1::date + ($3 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'
      ),
      -- Cada tramo, partido por las jornadas que toca (casi siempre una o dos).
      trozos AS (
        -- generate_series con interval devuelve TIMESTAMP: se castea a date antes
        -- de sumarle días, o PostgreSQL no sabe qué es "timestamp + 1".
-       SELECT tr.conductor_id,
+       SELECT tr.cuenta_id, tr.conductor_id,
               g.dia::date AS dia,
               GREATEST(tr.desde, (g.dia::date + ($3 || ' hours')::interval)       AT TIME ZONE 'Europe/Madrid') AS d,
               LEAST(tr.hasta,  ((g.dia::date + 1) + ($3 || ' hours')::interval)   AT TIME ZONE 'Europe/Madrid') AS h
@@ -96,10 +106,26 @@ async function horasCalculadas(desdeIso, hastaIso) {
            ((tr.desde AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date,
            ((tr.hasta AT TIME ZONE 'Europe/Madrid') - ($3 || ' hours')::interval)::date,
            interval '1 day') g(dia)
+     ),
+     -- DE QUIÉN SON ESTAS HORAS ESTE DÍA.
+     --
+     -- Se decide aquí y no antes porque depende del DÍA: la misma cuenta puede
+     -- ser de su dueño en mayo y estar prestada en septiembre. Si hay fantasma
+     -- vigente ese día manda el fantasma, porque es lo que Tráfico sabe y el
+     -- sistema no; si no lo hay, manda el dueño de siempre.
+     dueno AS (
+       SELECT COALESCE(f.conductor_id, z.conductor_id) AS conductor_id, z.dia, z.d, z.h
+         FROM trozos z
+         LEFT JOIN cuenta_fantasma f
+                ON f.cuenta_id = z.cuenta_id
+               AND f.anulado_at IS NULL
+               AND z.dia >= f.desde
+               AND (f.hasta IS NULL OR z.dia <= f.hasta)
      )
      SELECT conductor_id, to_char(dia, 'YYYY-MM-DD') AS dia, d, h
-       FROM trozos
-      WHERE h > d AND dia BETWEEN $1::date AND $2::date
+       FROM dueno
+      WHERE conductor_id IS NOT NULL
+        AND h > d AND dia BETWEEN $1::date AND $2::date
       ORDER BY conductor_id, dia, d`,
     [desdeIso, hastaIso, String(HORA_JORNADA)]);
 

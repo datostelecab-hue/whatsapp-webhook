@@ -166,9 +166,37 @@ const guardarTelefono = async (id, e164, quien) =>
  * `cuentaId` es el id de la FILA de conductor_externo, el que dan las vistas de
  * libres y sugerencias. NO es el driver_uuid: ese identifica en BOLT, no aquí.
  */
-const enlazarBolt = (id, cuentaId, quien) => con.enlazarBolt(Number(id), cuentaId, quien);
-const soltarBolt = async (id, cuentaId, quien) =>
-  ({ soltada: await con.soltarBolt(Number(id), Number(cuentaId), quien) });
+/**
+ * ENLAZAR UNA CUENTA NO BASTA: HAY QUE REHACER SUS DÍAS.
+ *
+ * Las horas viven en `bitacora_horas`, que se sella por jornada. Una jornada ya
+ * sellada no se vuelve a calcular sola, así que enlazar hoy una cuenta que
+ * rodó la semana pasada dejaba esas horas en tierra para siempre: no salían en
+ * la bitácora, ni en la asistencia, ni en el promedio, ni en la nómina.
+ *
+ * Pasó de verdad: a Oualid Saguiri se le enlazó su cuenta el 10/09 y sus casi
+ * cinco horas del día 2 —sellado el día 8— no llegaron nunca a su ficha.
+ * Se descubrió comparando el cálculo con lo sellado, no porque nadie lo notara.
+ */
+async function rehacerDiasDeLaCuenta(cuentaId) {
+  const desde = await con.primerDiaDeCuenta(Number(cuentaId));
+  if (!desde) return { resellado: null };
+  const fantasma = require('./fantasma.service');
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  return fantasma.rehacer(fantasma.rangoAfectado({
+    desde: desde < fantasma.MINIMO ? fantasma.MINIMO : desde, hasta: hoy,
+  }));
+}
+
+const enlazarBolt = async (id, cuentaId, quien) => {
+  const r = await con.enlazarBolt(Number(id), cuentaId, quien);
+  return { ...(r && typeof r === 'object' ? r : {}), ...(await rehacerDiasDeLaCuenta(cuentaId)) };
+};
+const soltarBolt = async (id, cuentaId, quien) => ({
+  soltada: await con.soltarBolt(Number(id), Number(cuentaId), quien),
+  // Al soltarla, sus horas dejan de ser de esa persona: mismo problema al revés.
+  ...(await rehacerDiasDeLaCuenta(cuentaId)),
+});
 
 /**
  * Dar de alta desde la ficha.

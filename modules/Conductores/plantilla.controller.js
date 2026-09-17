@@ -11,6 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const plantilla = require('./plantilla.service');
+const fantasma = require('./fantasma.service');
 const actor = require('../../services/repo/actor');
 
 // Los archivos llegan en base64 dentro del JSON. El parser global es de 2 MB y
@@ -135,6 +136,27 @@ router.post('/api/conductor/:id/bolt', responde(async req =>
 
 router.delete('/api/conductor/:id/bolt/:cuentaId', responde(async req =>
   plantilla.soltarBolt(req.params.id, req.params.cuentaId, await quien(req))));
+
+// ── Cuentas fantasma ────────────────────────────────────────────────────────
+// Cuando a alguien le suspenden su cuenta y sale a trabajar con la de otro. Ver
+// modules/Conductores/fantasma.service.js.
+router.get('/api/conductor/:id/fantasma', responde(req => fantasma.listar(req.params.id)
+  .then(enlaces => ({ enlaces }))));
+
+router.get('/api/fantasma/prestables', responde(req => fantasma.prestables(req.query.q)
+  .then(cuentas => ({ cuentas }))));
+
+router.post('/api/conductor/:id/fantasma', responde(async req =>
+  fantasma.enlazar({ ...(req.body || {}), conductorId: req.params.id }, await quien(req))));
+
+router.put('/api/fantasma/:enlaceId', responde(async req =>
+  fantasma.cambiarFechas({ ...(req.body || {}), id: req.params.enlaceId }, await quien(req))));
+
+router.post('/api/fantasma/:enlaceId/cerrar', responde(async req =>
+  fantasma.cerrarHoy(req.params.enlaceId, await quien(req))));
+
+router.delete('/api/fantasma/:enlaceId', responde(async req =>
+  fantasma.anular({ id: req.params.enlaceId, motivo: (req.body || {}).motivo }, await quien(req))));
 
 router.post('/api/conductor/:id/alta', responde(async req =>
   plantilla.darDeAlta(req.params.id, req.body || {}, await quien(req))));

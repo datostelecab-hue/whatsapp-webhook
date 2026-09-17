@@ -838,6 +838,23 @@ async function guardarLibranza(id, dias, { desde, usuarioId } = {}) {
  *
  * `cuentaId` es el id de la fila que da `v_bolt_libres`.
  */
+/**
+ * El primer dia en que esa cuenta de BOLT rodo, en hora peninsular.
+ *
+ * Sirve para saber DESDE CUANDO hay que rehacer la bitacora cuando la cuenta
+ * cambia de manos: sellar de mas es lento, sellar de menos deja horas en tierra.
+ * Devuelve null si esa cuenta no ha rodado nunca, y entonces no hay nada que
+ * rehacer.
+ */
+async function primerDiaDeCuenta(cuentaId) {
+  const r = await db.consulta(
+    `SELECT to_char(min((t.desde AT TIME ZONE 'Europe/Madrid')::date), 'YYYY-MM-DD') AS dia
+       FROM conductor_externo ce
+       JOIN fv_tramo t ON t.conductor_uuid = ce.externo_id
+      WHERE ce.id = $1`, [Number(cuentaId)]);
+  return (r.rows[0] || {}).dia || null;
+}
+
 async function enlazarBolt(id, cuentaId, { usuarioId } = {}) {
   const r = await bolt.enlazar({ cuentaId, conductorId: id, usuarioId });
   await audit.registrar({
@@ -1412,6 +1429,6 @@ module.exports = {
   CAMPOS, camposDe, GENERADAS,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia,
   cambiarTurno, guardarLibranza,
-  enlazarBolt, soltarBolt, guardarTelefono,
+  enlazarBolt, soltarBolt, primerDiaDeCuenta, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,
 };
