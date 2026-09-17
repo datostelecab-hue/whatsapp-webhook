@@ -265,6 +265,38 @@ app.get('/modo-pruebas', (req, res) => {
   res.json({ status: 'ok', ...pruebas.estado(), cronsOmitidos: _cronsOmitidos });
 });
 
+// ── ¿DESDE DÓNDE ME VE EL SISTEMA? ──────────────────────────────────────────
+// Para saber con qué IP entra un dispositivo hay que preguntárselo AL PROPIO
+// SISTEMA, no a una página de fuera: son dos conexiones distintas y pueden
+// salir por caminos distintos —pasó con un móvil que en ipinfo daba la IP de la
+// oficina y aquí llegaba con la del operador—. Abriendo esto en el mismo
+// navegador y en el mismo momento, no hay nada que interpretar.
+//
+// Sirve además para dar de alta una red nueva: se abre desde allí, se copia la
+// IP y se añade a REDES_EMPRESA.
+//
+// No lleva permiso: no enseña nada que quien está dentro no pueda ver de sí
+// mismo, y el día que haga falta comprobarlo siempre es con prisa.
+app.get('/mi-red', (req, res) => {
+  const red = require('./services/redEmpresa');
+  const ip = req.ip || req.socket.remoteAddress || null;
+  res.json({
+    status: 'ok',
+    ip,
+    enLaEmpresa: ip ? red.esDeLaEmpresa(ip) : null,
+    // La prueba, no solo la conclusión: si el número de saltos de `trust proxy`
+    // se quedara corto otra vez, aquí se ve en la cadena.
+    cadena: req.headers['x-forwarded-for'] || null,
+    ipCliente: req.headers['cf-connecting-ip'] || null,
+    // El valor de verdad, no uno escrito a mano: si alguien lo cambia, aquí se ve.
+    saltosDeConfianza: app.get('trust proxy'),
+    redesDeLaEmpresa: red.REDES,
+    equipo: /Android|iPhone|iPad|Mobile/i.test(req.headers['user-agent'] || '') ? 'móvil' : 'ordenador',
+    agente: req.headers['user-agent'] || null,
+    quien: (req.usuario || {}).nombre || null,
+  });
+});
+
 // ── FLOTA VIVA: qué está haciendo ahora mismo cada coche de BOLT ────────────
 // Módulo nuevo y aparte. Todo lo suyo vive en services/flotaViva/, sus tablas
 // empiezan por `fv_` y su conexión es propia (FLOTA_VIVA_DB_URL). Aquí solo se
