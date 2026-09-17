@@ -44,9 +44,46 @@ async function padron() {
       FROM conductor_externo e
       LEFT JOIN conductor c ON c.id = e.conductor_id
      WHERE e.sistema = 'bolt' AND e.externo_id IS NOT NULL`);
-  return new Map(r.rows.map(x => [x.uuid, {
+  const mapa = new Map(r.rows.map(x => [x.uuid, {
     nombre: x.nombre || '', telefono: x.telefono || '', conductorId: x.conductor_id || null,
+    prestada: [],
   }]));
+
+  // ── Y LAS CUENTAS PRESTADAS ─────────────────────────────────────────────
+  // Si a alguien le suspendieron la suya y sale con la de otro, el exceso es
+  // SUYO. Sin esto la cuenta no tiene dueño, el aviso no se manda a nadie, no
+  // entra en su libro de sanciones y tampoco le baja la calificación —donde la
+  // velocidad pesa un 20 %—. Un conductor con la cuenta prestada conducía sin
+  // consecuencias.
+  //
+  // Va con FECHAS porque la misma cuenta puede estar prestada a uno en
+  // septiembre y a otro en octubre; quien resuelve es `datosConductor`, que
+  // sabe cuándo ocurrió el exceso.
+  //
+  // El TELÉFONO es el de la persona, no el de la cuenta: el aviso tiene que
+  // llegarle a quien iba al volante.
+  const f = await db.consulta(`
+    SELECT ce.externo_id AS uuid, f.conductor_id,
+           COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
+                    NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), '')) AS nombre,
+           tel.e164 AS telefono,
+           to_char(f.desde, 'YYYY-MM-DD') AS desde,
+           to_char(f.hasta, 'YYYY-MM-DD') AS hasta
+      FROM cuenta_fantasma f
+      JOIN conductor_externo ce ON ce.id = f.cuenta_id
+      JOIN conductor c          ON c.id = f.conductor_id
+      LEFT JOIN LATERAL (SELECT e164 FROM conductor_telefono
+                          WHERE conductor_id = c.id AND vigente_hasta IS NULL
+                          ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
+     WHERE f.anulado_at IS NULL AND ce.externo_id IS NOT NULL`);
+  f.rows.forEach(x => {
+    if (!mapa.has(x.uuid)) mapa.set(x.uuid, { nombre: '', telefono: '', conductorId: null, prestada: [] });
+    mapa.get(x.uuid).prestada.push({
+      conductorId: Number(x.conductor_id), nombre: x.nombre || '',
+      telefono: x.telefono || '', desde: x.desde, hasta: x.hasta,
+    });
+  });
+  return mapa;
 }
 
 /**

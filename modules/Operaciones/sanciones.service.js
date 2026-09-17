@@ -166,11 +166,21 @@ async function conductorDeMatricula(matricula, tMs) {
 // enteraba de por qué. Se cachea un minuto porque una tanda de excesos se
 // procesa entera de golpe.
 let _cachePadron = { ts: 0, mapa: null };
-async function datosConductor(driverUuid) {
+async function datosConductor(driverUuid, tMs) {
   if (!_cachePadron.mapa || Date.now() - _cachePadron.ts > 60 * 1000) {
     _cachePadron = { ts: Date.now(), mapa: await repo.padron() };
   }
-  return _cachePadron.mapa.get(String(driverUuid)) || { nombre: '', telefono: '', conductorId: null };
+  const x = _cachePadron.mapa.get(String(driverUuid));
+  if (!x) return { nombre: '', telefono: '', conductorId: null };
+  // SI ESE DÍA LA CUENTA ESTABA PRESTADA, el exceso es de quien la usaba.
+  // Manda el préstamo sobre el titular: es lo que Tráfico sabe y el sistema no.
+  const dia = tMs
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(tMs))
+    : null;
+  const p = dia && (x.prestada || []).find(f => dia >= f.desde && (!f.hasta || dia <= f.hasta));
+  return p
+    ? { nombre: p.nombre, telefono: p.telefono, conductorId: p.conductorId, cuentaPrestada: true }
+    : { nombre: x.nombre, telefono: x.telefono, conductorId: x.conductorId };
 }
 
 /**
@@ -257,7 +267,7 @@ async function procesar(opciones = {}) {
         continue;
       }
 
-      const { nombre, telefono, conductorId } = await datosConductor(r.driver_uuid);
+      const { nombre, telefono, conductorId } = await datosConductor(r.driver_uuid, tMs);
       const quien = {
         driverUuid: r.driver_uuid, conductorId, conductor: nombre || null, telefono: telefono || null,
         ventanaSeg: r.ventanaSeg,

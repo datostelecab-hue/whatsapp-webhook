@@ -105,13 +105,21 @@ async function guardarDia(r, { segundos } = {}) {
     if (conductores.length) {
       await cli.query(`
         INSERT INTO auditoria_km_conductor (dia, tramo, placa, driver_uuid, nombre, conductor_id)
-        SELECT $1::date, x.tramo, x.placa, x.driver_uuid, NULLIF(x.nombre, ''), e.conductor_id
+        SELECT $1::date, x.tramo, x.placa, x.driver_uuid, NULLIF(x.nombre, ''),
+               -- SI ESE DÍA LA CUENTA ESTABA PRESTADA, los km son de quien la
+               -- usaba. Manda el préstamo sobre el titular, igual que en las
+               -- horas: sin esto, los km de una cuenta sin dueño no llegaban a
+               -- nadie y quien la usó salía sin kilómetros en la auditoría.
+               COALESCE(f.conductor_id, e.conductor_id)
           FROM jsonb_to_recordset($2::jsonb) AS x(
                  tramo text, placa text, driver_uuid text, nombre text)
           -- De la cuenta de BOLT a la ficha, si está enlazada. Es lo que permite
           -- ir de la persona a sus km fuera de servicio.
           LEFT JOIN conductor_externo e
-                 ON e.sistema = 'bolt' AND e.externo_id = x.driver_uuid AND e.conductor_id IS NOT NULL
+                 ON e.sistema = 'bolt' AND e.externo_id = x.driver_uuid
+          LEFT JOIN cuenta_fantasma f
+                 ON f.cuenta_id = e.id AND f.anulado_at IS NULL
+                AND $1::date >= f.desde AND (f.hasta IS NULL OR $1::date <= f.hasta)
          WHERE EXISTS (SELECT 1 FROM auditoria_km k
                         WHERE k.dia = $1::date AND k.tramo = x.tramo AND k.placa = x.placa)
         ON CONFLICT (dia, tramo, placa, driver_uuid) DO NOTHING`,
