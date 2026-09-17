@@ -1,4 +1,5 @@
 <%- include('partials/control-nav', { sub: 'directo' }) %>
+<%- include('partials/historial-llamadas') %>
 
 <div class="max-w-[1400px] mx-auto">
 
@@ -716,6 +717,12 @@
             '<i class="fa-solid fa-phone-flip mr-1"></i> He llamado</button>' +
           '<button data-justdir="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-sky-500 hover:text-sky-500">' +
             '<i class="fa-solid fa-file-circle-check mr-1"></i> Justificar horas</button>' +
+          // Arriba se ve lo de HOY. Esto abre todo lo demás, y se abre en una
+          // ventana encima a propósito: la ficha del directo se mira para
+          // decidir en dos segundos si hay que llamar, y meterle aquí dentro
+          // veinte llamadas viejas la convierte en algo que hay que leer.
+          '<button data-histllam="' + esc(f.conductorId) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-solid fa-clock-rotate-left mr-1"></i> Historial de llamadas</button>' +
         '</div>'
       : '';
     const inc = (f.incidencias || []).length
@@ -1134,6 +1141,8 @@
       b.addEventListener('click', () => { const f = filaPorClave(b.dataset.tellog); if (f) apuntarLlamada(f); }));
     $('#d-lista').querySelectorAll('[data-justdir]').forEach(b =>
       b.addEventListener('click', () => { const f = filaPorClave(b.dataset.justdir); if (f) justificarDirecto(f); }));
+    $('#d-lista').querySelectorAll('[data-histllam]').forEach(b =>
+      b.addEventListener('click', () => HistorialLlamadas.abrir(b.dataset.histllam)));
     GestionIncidencia.enganchar($('#d-lista'),
       id => {
         for (const t of ['dia', 'noche', 'todoturno']) {

@@ -764,12 +764,20 @@ async function porConductor({ desde, hasta } = {}) {
   };
 }
 
+// Tope de llamadas que viajan al navegador de una sola vez. La pantalla las
+// pagina de diez en diez, así que no se ven todas juntas de todos modos, y el
+// día que alguien acumule cientos esto evita mandar un mamotreto por una
+// ventana que se abre para mirar las últimas. Hoy el que más tiene, quince.
+const MAX_HISTORIAL = 300;
+
 /**
  * LA HISTORIA COMPLETA DE UNA PERSONA, de las dos fuentes y sin ventana.
  *
- * Sin ventana a propósito: esta pantalla se abre para contestar «¿cuántas veces
- * hemos hablado con este y de qué?», y esa pregunta no tiene fecha. Son como
- * mucho unos cientos de filas por persona.
+ * Sin ventana de fechas a propósito: esta pantalla se abre para contestar
+ * «¿cuántas veces hemos hablado con este y de qué?», y esa pregunta no tiene
+ * fecha. Se pide entera de una vez y se pagina en el navegador, porque las
+ * cifras del resumen necesitan la lista completa: paginar contra la base
+ * costaría dos consultas por página en vez de una por apertura.
  */
 async function historiaConductor(conductorId) {
   const id = Number(conductorId);
@@ -790,11 +798,16 @@ async function historiaConductor(conductorId) {
     .sort((a, b) => b.n - a.n);
 
   const D30 = Math.floor(Date.now() / 1000) - 30 * 86400;
+  // Se manda un tope de filas, pero las CUENTAS de abajo se sacan de la lista
+  // entera: si alguien tuviera mil llamadas, el total tiene que seguir diciendo
+  // mil aunque solo viajen las 300 últimas. La pantalla avisa de que recortó.
+  const mostradas = L.slice(0, MAX_HISTORIAL);
   return {
     conductorId: String(id),
     conductor: (L[0] || {}).conductor || '',
     telefono: (L.find(x => x.telefono) || {}).telefono || '',
-    llamadas: L,
+    llamadas: mostradas,
+    truncado: L.length > mostradas.length,
     resumen: {
       total: L.length,
       ultimos30: L.filter(x => x.ts >= D30).length,

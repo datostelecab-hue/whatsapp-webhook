@@ -1,4 +1,5 @@
 <%- include('partials/control-nav', { sub: 'historico' }) %>
+<%- include('partials/historial-llamadas') %>
 
 <div class="max-w-[1400px] mx-auto">
 
@@ -362,7 +363,7 @@
       // `stopPropagation` para que pulsar el botón no cierre la fila: está
       // dentro del <details> y el clic llegaría al summary.
       if (b) b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation();
-        verHistorialLlamadas(b.dataset.histllam); });
+        HistorialLlamadas.abrir(b.dataset.histllam); });
     });
   }
 
@@ -388,78 +389,6 @@
             '</div>' : '') +
         (n.llamadas.length ? '<div class="mt-1.5 space-y-1.5">' + pintaLlamadas(n.llamadas) + '</div>' : '') +
       '</div>').join('');
-  }
-
-  /** Fecha y hora de un epoch en segundos, como se lee: «16/09 14:07». */
-  const cuando = ts => {
-    if (!ts) return '';
-    const d = new Date(Number(ts) * 1000);
-    const dd = n => String(n).padStart(2, '0');
-    return dd(d.getDate()) + '/' + dd(d.getMonth() + 1) + ' ' + dd(d.getHours()) + ':' + dd(d.getMinutes());
-  };
-
-  /**
-   * TODA la historia de llamadas de una persona, encima de la pantalla.
-   *
-   * Las llamadas que se ven en su fila son las de ESE día. Esto trae las de
-   * siempre —las de Control y las del Call Center, juntas— porque lo que se
-   * pregunta al tercer aviso es si ya se le dijo antes y qué contestó.
-   */
-  async function verHistorialLlamadas(cid) {
-    let d;
-    try {
-      const r = await fetch('/control/api/historial-llamadas/' + encodeURIComponent(cid));
-      d = await r.json();
-      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo leer');
-    } catch (e) {
-      return Dialogo.aviso({ titulo: 'No se pudo abrir el historial', tono: 'error', texto: e.message });
-    }
-    const L = d.llamadas || [], R = d.resumen || {};
-    const chip = (n, etq, tono) => '<span class="text-[11px] px-2 py-0.5 rounded-full border ' + tono + '">' +
-      '<b>' + n + '</b> ' + etq + '</span>';
-    const html =
-      '<div class="flex flex-wrap gap-1.5 mb-3">' +
-        chip(R.total || 0, 'en total', 'border-telecab-border text-telecab-text') +
-        chip(R.ultimos30 || 0, 'en 30 días', 'border-telecab-gold/40 text-telecab-gold') +
-        chip(R.deControl || 0, 'desde Control', 'border-telecab-border text-telecab-muted') +
-        chip(R.delCallCenter || 0, 'del Call Center', 'border-telecab-border text-telecab-muted') +
-        (R.noContacto ? chip(R.noContacto, 'sin contacto', 'border-red-500/40 text-red-300') : '') +
-        (R.pendientes ? chip(R.pendientes, 'sin resolver', 'border-amber-500/40 text-amber-300') : '') +
-      '</div>' +
-      ((R.porMotivo || []).length
-        ? '<p class="text-xs text-telecab-muted mb-3">Por qué se le llama: ' +
-          R.porMotivo.slice(0, 4).map(m => esc(m.nombre) + ' <b class="text-telecab-text">' + m.n + '</b>').join(' · ') +
-          '</p>'
-        : '') +
-      (L.length
-        ? '<div class="max-h-[55vh] overflow-y-auto pr-1 space-y-1.5">' + L.map(x =>
-            '<div class="rounded-lg border border-telecab-border/70 px-3 py-2">' +
-              '<div class="flex flex-wrap items-baseline gap-x-2 text-xs">' +
-                '<span class="tabular-nums text-telecab-muted">' + cuando(x.ts) + '</span>' +
-                '<span class="font-semibold text-telecab-text">' + (esc(x.motivo) || 'Sin motivo') + '</span>' +
-                (x.resultado ? '<span class="text-telecab-gold">' + esc(x.resultado) + '</span>' : '') +
-                '<span class="ml-auto text-[10px] px-1.5 py-0.5 rounded border ' +
-                  (x.fuente === 'control' ? 'border-sky-500/30 text-sky-300' : 'border-telecab-border text-telecab-muted') + '">' +
-                  (x.fuente === 'control' ? 'Control' : 'Call Center') + '</span>' +
-              '</div>' +
-              '<div class="text-[11px] text-telecab-muted mt-0.5">' +
-                (x.agente ? esc(x.agente) : 'sin agente') +
-                (x.cluster ? ' · ' + esc(x.cluster) : '') +
-                (x.turno ? ' · ' + esc(x.turno) : '') +
-                (x.estado === 'pendiente' ? ' · <span class="text-amber-300">sin resolver</span>' : '') +
-              '</div>' +
-              (x.notas ? '<p class="text-xs text-telecab-text mt-1">«' + esc(x.notas) + '»</p>' : '') +
-              ((x.alertas || []).length
-                ? '<p class="text-[11px] text-telecab-muted mt-1">' + x.alertas.map(a =>
-                    esc(a.alerta) + (a.comentario ? ': «' + esc(a.comentario) + '»' : '')).join(' · ') + '</p>'
-                : '') +
-            '</div>').join('') + '</div>'
-        : '<p class="text-sm text-telecab-muted">A esta persona no se le ha llamado nunca.</p>');
-
-    return Dialogo.aviso({
-      titulo: (d.conductor || 'Historial de llamadas') + (d.telefono ? ' · ' + d.telefono : ''),
-      tono: 'info', ancho: 'max-w-3xl', html,
-    });
   }
 
   /** Los trazos de una persona, una sola vez por apertura. */

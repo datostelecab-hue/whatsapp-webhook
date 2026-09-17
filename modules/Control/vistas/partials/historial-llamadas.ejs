@@ -1,0 +1,175 @@
+<%#
+  HISTORIAL DE LLAMADAS DE UNA PERSONA — la ventana, compartida.
+
+  La usan «En directo» (desde la ficha del conductor, para saber si a ese ya se
+  le llamó antes de volver a llamarle) y «Histórico» (para repasar lo que se
+  hizo). Vive aquí y no dentro de cada vista porque son la MISMA ventana: dos
+  copias acabarían enseñando cosas distintas en cuanto se tocara una.
+
+  Se abre con `HistorialLlamadas.abrir(conductorId)`.
+%>
+<script>
+/*
+ * Se pide UNA vez y se pagina en el navegador.
+ *
+ * Podría paginarse contra la base, pero saldría peor: las cifras de arriba
+ * (total, últimos 30 días, por qué se le llama) necesitan la lista ENTERA, así
+ * que cada página costaría dos consultas en vez de una. Pidiéndolo de golpe hay
+ * una sola consulta por apertura y pasar de página es instantáneo.
+ *
+ * Que no se desmadre lo garantiza el servidor, que recorta a las más recientes
+ * y avisa de que lo hizo; hoy la persona con más llamadas de la empresa tiene
+ * quince.
+ */
+window.HistorialLlamadas = window.HistorialLlamadas || (function () {
+  const POR_PAGINA = 10;
+
+  // Propio, y no el de la vista que incluya esto: este trozo tiene que
+  // funcionar igual lo incluya quien lo incluya.
+  const esc = s => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  /** Fecha y hora de un epoch en segundos, como se lee: «16/09 14:07». */
+  const cuando = ts => {
+    if (!ts) return '';
+    const d = new Date(Number(ts) * 1000);
+    const dd = n => String(n).padStart(2, '0');
+    return dd(d.getDate()) + '/' + dd(d.getMonth() + 1) + ' ' + dd(d.getHours()) + ':' + dd(d.getMinutes());
+  };
+
+  // Lo que se está enseñando ahora mismo. Solo hay una ventana abierta a la vez.
+  let vista = null;   // { datos, pagina }
+
+  const chip = (n, etq, tono) =>
+    '<span class="text-[11px] px-2 py-0.5 rounded-full border ' + tono + '">' +
+      '<b>' + n + '</b> ' + esc(etq) + '</span>';
+
+  /** Una llamada. */
+  function pintaUna(x) {
+    return '<div class="rounded-lg border border-telecab-border/70 px-3 py-2">' +
+      '<div class="flex flex-wrap items-baseline gap-x-2 text-xs">' +
+        '<span class="tabular-nums text-telecab-muted">' + cuando(x.ts) + '</span>' +
+        '<span class="font-semibold text-telecab-text">' + (esc(x.motivo) || 'Sin motivo') + '</span>' +
+        (x.resultado ? '<span class="text-telecab-gold">' + esc(x.resultado) + '</span>' : '') +
+        '<span class="ml-auto text-[10px] px-1.5 py-0.5 rounded border ' +
+          (x.fuente === 'control' ? 'border-sky-500/30 text-sky-300' : 'border-telecab-border text-telecab-muted') + '">' +
+          (x.fuente === 'control' ? 'Control' : 'Call Center') + '</span>' +
+      '</div>' +
+      '<div class="text-[11px] text-telecab-muted mt-0.5">' +
+        (x.agente ? esc(x.agente) : 'sin agente') +
+        (x.cluster ? ' · ' + esc(x.cluster) : '') +
+        (x.turno ? ' · ' + esc(x.turno) : '') +
+        (x.estado === 'pendiente' ? ' · <span class="text-amber-300">sin resolver</span>' : '') +
+      '</div>' +
+      (x.notas ? '<p class="text-xs text-telecab-text mt-1">«' + esc(x.notas) + '»</p>' : '') +
+      ((x.alertas || []).length
+        ? '<p class="text-[11px] text-telecab-muted mt-1">' + x.alertas.map(a =>
+            esc(a.alerta) + (a.comentario ? ': «' + esc(a.comentario) + '»' : '')).join(' · ') + '</p>'
+        : '') +
+    '</div>';
+  }
+
+  /** Solo la lista y el pie: es lo único que cambia al pasar de página. */
+  function pintaPagina() {
+    const L = vista.datos.llamadas || [];
+    const paginas = Math.max(1, Math.ceil(L.length / POR_PAGINA));
+    if (vista.pagina >= paginas) vista.pagina = paginas - 1;
+    if (vista.pagina < 0) vista.pagina = 0;
+    const desde = vista.pagina * POR_PAGINA;
+    const trozo = L.slice(desde, desde + POR_PAGINA);
+
+    const boton = (accion, icono, activo) =>
+      '<button data-hl-pag="' + accion + '" ' + (activo ? '' : 'disabled ') +
+        'class="w-8 h-8 rounded-lg border border-telecab-border text-telecab-muted ' +
+        (activo ? 'hover:border-telecab-gold hover:text-telecab-gold' : 'opacity-30 cursor-not-allowed') +
+        ' transition"><i class="fa-solid ' + icono + '"></i></button>';
+
+    // El pie solo aparece cuando hay más de una página: con cuatro llamadas,
+    // unas flechas apagadas son ruido.
+    const pie = paginas > 1
+      ? '<div class="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-telecab-border">' +
+          '<span class="text-[11px] text-telecab-muted tabular-nums">' +
+            (desde + 1) + '–' + (desde + trozo.length) + ' de ' + L.length + '</span>' +
+          '<div class="flex items-center gap-1">' +
+            boton('primera', 'fa-angles-left', vista.pagina > 0) +
+            boton('anterior', 'fa-angle-left', vista.pagina > 0) +
+            '<span class="px-2 text-xs text-telecab-text tabular-nums">' +
+              (vista.pagina + 1) + ' / ' + paginas + '</span>' +
+            boton('siguiente', 'fa-angle-right', vista.pagina < paginas - 1) +
+            boton('ultima', 'fa-angles-right', vista.pagina < paginas - 1) +
+          '</div>' +
+        '</div>'
+      : '';
+
+    return (trozo.length
+      ? '<div class="space-y-1.5">' + trozo.map(pintaUna).join('') + '</div>'
+      : '<p class="text-sm text-telecab-muted">A esta persona no se le ha llamado nunca.</p>') + pie;
+  }
+
+  /** La ventana entera: las cifras de arriba no cambian al pasar de página. */
+  function pintaTodo() {
+    const R = vista.datos.resumen || {};
+    return '<div class="flex flex-wrap gap-1.5 mb-3">' +
+        chip(R.total || 0, 'en total', 'border-telecab-border text-telecab-text') +
+        chip(R.ultimos30 || 0, 'en 30 días', 'border-telecab-gold/40 text-telecab-gold') +
+        chip(R.deControl || 0, 'desde Control', 'border-telecab-border text-telecab-muted') +
+        chip(R.delCallCenter || 0, 'del Call Center', 'border-telecab-border text-telecab-muted') +
+        (R.noContacto ? chip(R.noContacto, 'sin contacto', 'border-red-500/40 text-red-300') : '') +
+        (R.pendientes ? chip(R.pendientes, 'sin resolver', 'border-amber-500/40 text-amber-300') : '') +
+      '</div>' +
+      ((R.porMotivo || []).length
+        ? '<p class="text-xs text-telecab-muted mb-3">Por qué se le llama: ' +
+          R.porMotivo.slice(0, 4).map(m => esc(m.nombre) + ' <b class="text-telecab-text">' + m.n + '</b>').join(' · ') +
+          '</p>'
+        : '') +
+      (vista.datos.truncado
+        ? '<p class="text-[11px] text-amber-300 mb-3"><i class="fa-solid fa-scissors mr-1"></i>' +
+          'Se muestran las ' + (vista.datos.llamadas || []).length + ' más recientes de ' + (R.total || 0) + '.</p>'
+        : '') +
+      '<div data-hl-lista>' + pintaPagina() + '</div>';
+  }
+
+  // Delegado en `document` y no atado al abrir: el contenido de la ventana se
+  // vuelve a pintar en cada página, y unos listeners atados a los botones de
+  // antes se quedarían apuntando a nodos que ya no existen.
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-hl-pag]');
+    if (!b || !vista) return;
+    const caja = document.querySelector('.dialogo [data-hl-lista]');
+    if (!caja) return;
+    const paginas = Math.max(1, Math.ceil((vista.datos.llamadas || []).length / POR_PAGINA));
+    const ir = { primera: 0, anterior: vista.pagina - 1, siguiente: vista.pagina + 1, ultima: paginas - 1 };
+    vista.pagina = ir[b.dataset.hlPag];
+    caja.innerHTML = pintaPagina();
+  });
+
+  async function abrir(conductorId) {
+    const cid = String(conductorId || '').trim();
+    if (!cid) {
+      return Dialogo.aviso({ titulo: 'Sin ficha', tono: 'aviso',
+        texto: 'Esta persona no está enlazada con una ficha, así que no hay historial que abrir.' });
+    }
+    let d;
+    try {
+      const r = await fetch('/control/api/historial-llamadas/' + encodeURIComponent(cid));
+      d = await r.json();
+      if (d.status !== 'ok') throw new Error(d.msg || 'No se pudo leer');
+    } catch (e) {
+      return Dialogo.aviso({ titulo: 'No se pudo abrir el historial', tono: 'error', texto: e.message });
+    }
+    // Siempre se abre por la más reciente, que es lo que se va a mirar.
+    vista = { datos: d, pagina: 0 };
+    const fin = Dialogo.aviso({
+      titulo: (d.conductor || 'Historial de llamadas') + (d.telefono ? ' · ' + d.telefono : ''),
+      tono: 'info', ancho: 'max-w-3xl', html: pintaTodo(),
+    });
+    // Al cerrar se suelta: si no, los botones de una ventana vieja seguirían
+    // repintando sobre datos de otra persona.
+    fin.then(() => { vista = null; });
+    return fin;
+  }
+
+  return { abrir, POR_PAGINA };
+})();
+</script>
