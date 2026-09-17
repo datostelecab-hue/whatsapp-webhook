@@ -471,18 +471,28 @@ ${FUENTE_KM}
 const VENTANA_ATRAS = '14 days';
 
 // ── HASTA CUÁNDO CUENTAN LOS KM DE UN TRAMO ─────────────────────────────────
-// Un tramo CERRADO termina cuando dice BOLT y no hay nada que discutir. Un
-// tramo ABIERTO es otra cosa: BOLT dijo "desconectado" y no volvió a decir
-// nada, así que `COALESCE(t.hasta, now())` lo estiraba hasta hoy y ese tramo
-// absorbía TODO lo que el coche hiciera después — aunque lo condujera otro.
+// Un tramo de BOLT dura lo que dura, y cuando dice "desconectado" puede durar
+// DÍAS: nadie vuelve a tocar ese coche y la línea se queda abierta. Estirarlo
+// hasta su final hace que absorba TODO lo que el coche hiciera después, aunque
+// lo condujera otro o aunque su dueño llevara dos días en otro coche.
 //
 // Pasó de verdad y a lo grande. Macilon Dos Santos se desconectó del 7550KYT el
 // 15/09 a las 06:41, se fue a otro coche, y el reporte le apuntó 256 km "fuera
-// de servicio" que eran 217 de ese coche más sus 38 reales. En total había 21
-// tramos abiertos de más de 12 h imputando unos 2.500 km a gente que no iba
-// dentro, y eso es un número con el que se llama a la gente.
+// de servicio" que eran 217 de ese coche más sus 38 reales.
 //
-// Se corta en lo que pase ANTES de estas tres:
+// EL CORTE VALE PARA TODOS LOS TRAMOS, ABIERTOS Y CERRADOS. La primera versión
+// solo cortaba los abiertos, y por eso el número VOLVIÓ: el 17/09 el motor cerró
+// el tramo de Macilon con 58 horas de duración, dejó de ser "abierto" y sus 219
+// km reaparecieron en el reporte del día 16. Que un tramo esté cerrado no lo
+// hace creíble — lo único que dice es que alguien volvió a conectarse al fin.
+// Medido el 17/09/2026: 512 tramos cerrados de más de 12 h en treinta días,
+// 11.327 horas en total, todos desconectados. Eso son miles de km colgados de
+// gente que no iba dentro, y con esos números se llama a la gente.
+//
+// Se corta en lo que pase ANTES de estas cuatro:
+//
+//   0. El final del propio tramo, cuando lo hay. Un tramo normal dura minutos y
+//      manda él: las otras tres ni se notan.
 //
 //   1. Otro conductor se conecta a ese coche. A partir de ahí los km son suyos:
 //      es el hecho más fuerte que hay y no hace falta suponer nada.
@@ -496,8 +506,15 @@ const VENTANA_ATRAS = '14 days';
 // LEAST ignora los NULL, así que las dos subconsultas no necesitan envoltorio:
 // si no hay siguiente tramo, no cuentan.
 const TOPE_TRAMO_ABIERTO = '12 hours';
-const FIN_KM = `CASE WHEN t.hasta IS NOT NULL THEN t.hasta ELSE LEAST(
-         now(),
+const FIN_KM = `CASE
+       -- UN TRAMO NORMAL MANDA ÉL, y se sale por aquí sin preguntar nada más.
+       -- No es solo limpieza: las dos subconsultas de abajo cuestan, y hacerlas
+       -- para los cien mil tramos cortos de la quincena tumbaba En directo a más
+       -- de dos minutos. Solo se pagan donde hacen falta: en los monstruos.
+       WHEN t.hasta IS NOT NULL AND t.hasta <= t.desde + interval '${TOPE_TRAMO_ABIERTO}'
+         THEN t.hasta
+       ELSE LEAST(
+         COALESCE(t.hasta, now()),
          t.desde + interval '${TOPE_TRAMO_ABIERTO}',
          (SELECT min(o.desde) FROM fv_tramo o
            WHERE o.vehiculo_uuid = t.vehiculo_uuid
@@ -1266,3 +1283,7 @@ module.exports.TURNOS = TURNOS;
 // La Auditoría decide con el MISMO umbral: dos criterios distintos para elegir
 // fuente darían dos cifras distintas del mismo día, que es justo lo que no puede pasar.
 module.exports.UMBRAL_CAN = UMBRAL_CAN;
+// El corte del tramo, para quien tenga que repartir km fuera de aqui. Se
+// exporta en vez de copiarse: una alerta que reparta con otra regla acusa a
+// gente con un numero que la pantalla no ensena.
+module.exports.FIN_KM = FIN_KM;

@@ -26,6 +26,10 @@
 // saber si el tío lleva dos horas o diez, no cuánto lleva desde las ocho.
 
 const db = require('../../services/db');
+// El corte de los tramos, tal cual lo usa Control. NO se copia aqui: si la
+// alerta repartiera los km con una regla y la pantalla con otra, se llamaria a
+// la gente con un numero que no sale por ningun lado.
+const { FIN_KM } = require('../../services/flotaViva/rutas');
 const whatsapp = require('../../services/whatsapp');
 
 // ── EL MODELO: todo lo que se puede discutir, en un sitio ───────────────────
@@ -325,15 +329,21 @@ async function candidatos(franja) {
      -- deberían existir. Un trayecto cuenta en la franja donde EMPIEZA.
      km AS (
        SELECT t.conductor_uuid AS uuid,
+              -- EL TRAMO SE CORTA, con la MISMA regla que Control. Un tramo
+              -- "desconectado" puede durar dias —nadie vuelve a tocar ese
+              -- coche— y sin cortarlo se le cuelgan al ultimo que lo condujo
+              -- todos los km que el coche haga despues. Con eso se le manda un
+              -- WhatsApp a alguien que no iba dentro: a Macilon le salieron 219
+              -- km de un coche que habia dejado dos dias antes.
               sum(r.metros * GREATEST(0, EXTRACT(epoch FROM (
-                    LEAST(r.fin, COALESCE(t.hasta, f.jfin)) - GREATEST(r.inicio, t.desde))))
+                    LEAST(r.fin, ${FIN_KM}) - GREATEST(r.inicio, t.desde))))
                   / NULLIF(EXTRACT(epoch FROM (r.fin - r.inicio)), 0))
                 FILTER (WHERE t.situacion NOT IN ('viaje', 'espera'))  AS km_m
          FROM fv_ruta r
          CROSS JOIN f
          JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
          JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND COALESCE(t.hasta, f.jfin) > r.inicio
+                             AND t.desde < r.fin AND ${FIN_KM} > r.inicio
                              AND t.desde >= f.ini - interval '14 days'
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
           AND r.inicio >= f.ini AND r.inicio < LEAST(f.fin, f.jfin)
