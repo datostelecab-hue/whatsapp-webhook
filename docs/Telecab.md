@@ -47,4 +47,4 @@ El sistema nació encima de **Google Sheets** y se está terminando de sacar de 
 
 Todo en español: el código, los comentarios, los nombres de las cosas y estas notas. Los comentarios explican **por qué** algo es como es, no qué hace la línea de abajo; cuando un fallo costó tiempo, se queda escrito con su cifra para que nadie lo repita. → [[Reglas de la casa]] · [[Trampas conocidas]]
 
-Relacionado: [[INDICE]] · [[Estado y pendientes]] · [[ARQUITECTURA]]
+Relacionado: [[INDICE]] · [[Estado y pendientes]] · [[Arquitectura]]

@@ -1,3 +1,8 @@
+---
+tags: [arquitectura, como-se-trabaja]
+aliases: [Arquitectura]
+---
+
 # Arquitectura
 
 Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una

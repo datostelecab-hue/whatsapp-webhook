@@ -15,7 +15,7 @@ El mapa del proyecto. Cada nota cuenta una pieza y enlaza con las de al lado; si
 ## Empezar por aquí
 
 - **[[Telecab]]** — El negocio y la forma en que se trabaja. Sin esto, la mitad de las decisiones del sistema no se entienden.
-- **[[ARQUITECTURA]]** — Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una
+- **[[Arquitectura]]** — Cómo está organizado el código, qué puede llamar a qué, y cómo se mueve una
 - **[[Estado y pendientes]]** — Lo que está abierto hoy. Esta nota se actualiza; si algo de aquí ya está hecho, se borra de aquí y se cuenta donde toque.
 
 ## El núcleo — cómo funciona por dentro

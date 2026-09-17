@@ -45,7 +45,7 @@ El día natural no sirve para esta flota: parte los turnos de noche por la mitad
 
 ## 2026-08 · Un módulo por negocio
 
-El código se reparte en módulos con sus capas (controlador → servicio → repositorio) y desde fuera se entra por el `.service`. Hay comprobadores que lo vigilan. → [[ARQUITECTURA]] · [[Reglas de la casa]] · [[Comprobadores]]
+El código se reparte en módulos con sus capas (controlador → servicio → repositorio) y desde fuera se entra por el `.service`. Hay comprobadores que lo vigilan. → [[Arquitectura]] · [[Reglas de la casa]] · [[Comprobadores]]
 
 ## 2026-08 · Migración desde cero
 

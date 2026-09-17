@@ -13,7 +13,7 @@ Lo que se respeta sí o sí en este repositorio. No son buenas intenciones: casi
 todas las vigila un script de `scripts/comprobar-*.js`, y las que no, están
 escritas en el comentario de cabecera del fichero al que afectan.
 
-Contexto general en [[ARQUITECTURA]]. Las herramientas que las hacen cumplir, en
+Contexto general en [[Arquitectura]]. Las herramientas que las hacen cumplir, en
 [[Comprobadores]]. Lo que ya salió mal por saltárselas, en [[Trampas conocidas]].
 
 ---

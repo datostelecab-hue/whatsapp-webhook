@@ -18,7 +18,7 @@ Ninguno sustituye a probar contra la realidad. Todos documentan en su cabecera
 hasta dónde llegan, porque *una herramienta que promete más de lo que da es peor
 que una que avisa de dónde acaba*.
 
-Contexto en [[ARQUITECTURA]] y en [[Reglas de la casa]].
+Contexto en [[Arquitectura]] y en [[Reglas de la casa]].
 
 ---
 
