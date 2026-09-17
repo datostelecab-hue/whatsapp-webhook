@@ -147,8 +147,13 @@
   // pantalla necesito lo mismo quedaba claro que no era suyo: pedir unos datos
   // y devolverlos es de aqui.
   //
-  // `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'semana'|'texto-largo',
+  // `campos` = [{ id, etiqueta, tipo: 'texto'|'fecha'|'lista'|'opciones'|'semana'|'texto-largo',
   //               opciones, valor, ayuda, grupo, obligatorio, marcador }]
+  //
+  // 'lista' es el <select> del navegador y 'opciones' es el selector de la casa.
+  // Con muchas opciones, 'opciones' admite ademas
+  // `buscador: { marcador, tope }`: pinta un filtro, ensena como mucho `tope`
+  // (10 por defecto) y dice cuantas quedan fuera.
   // Devuelve los valores, o null si se cancela.
 
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -205,6 +210,18 @@
                 // dónde viene el problema, que es como se piensa al llamar.
                 const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: c.opciones || [] }];
                 const solo = grupos.length === 1 && !grupos[0].etiqueta;
+                // CON MUCHAS OPCIONES, UN BUSCADOR Y UN TOPE.
+                //
+                // Una lista de mil y pico cuentas de BOLT no se lee: se busca.
+                // Se pintan `tope` como mucho (10 por defecto) y debajo se dice
+                // cuántas quedan fuera, para que quede claro que hay más y que
+                // el camino es teclear, no seguir bajando con la rueda.
+                const busca = c.buscador
+                  ? `<input data-buscar type="search" autocomplete="off"
+                       placeholder="${esc((c.buscador && c.buscador.marcador) || 'Escribe para filtrar…')}"
+                       class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl
+                              text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">`
+                  : '';
                 campo = `<div id="pd-${c.id}" data-opciones>
                   ${solo ? '' : `<div class="flex flex-wrap gap-1.5 mb-2" data-grupos>${grupos.map((g, i) =>
                     `<button type="button" data-g="${esc(g.codigo)}"
@@ -212,8 +229,10 @@
                          ${i === 0 ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
                                    : 'bg-telecab-card2 border-telecab-border text-telecab-muted hover:border-telecab-gold/50'}">
                        ${g.icono ? `<i class="fa-solid ${esc(g.icono)} mr-1"></i>` : ''}${esc(g.etiqueta)}</button>`).join('')}</div>`}
+                  ${busca}
                   <div class="grid gap-1 max-h-56 overflow-y-auto" data-casos></div>
                   <p class="hidden text-[11px] text-telecab-muted mt-1" data-vacio></p>
+                  <p class="hidden text-[11px] text-telecab-gold mt-1" data-hay-mas></p>
                 </div>`;
               } else if (c.tipo === 'items') {
                 // UNA LISTA DE COSAS QUE SE MARCAN Y SE COMENTAN, una a una. En
@@ -268,11 +287,38 @@
         const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: c.opciones || [] }];
         const lista = caja.querySelector('[data-casos]');
         const vacio = caja.querySelector('[data-vacio]');
+        const hayMas = caja.querySelector('[data-hay-mas]');
+        const buscar = caja.querySelector('[data-buscar]');
+        const TOPE = (c.buscador && c.buscador.tope) || 10;
         let grupoSel = grupos[0], elegido = c.valor || null;
         const norm = o => (typeof o === 'string' ? { valor: o, texto: o } : o);
+        // Sin tildes y en minúsculas: quien busca "Ocana" tiene que encontrar a
+        // "Ocaña", y nadie teclea la ñ para filtrar.
+        const plano = s => String(s == null ? '' : s)
+          .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
         const pintaCasos = () => {
-          const ops = (grupoSel.opciones || []).map(norm);
+          const todas = (grupoSel.opciones || []).map(norm);
+          const q = plano(buscar ? buscar.value.trim() : '');
+          // Se busca en el texto Y en el detalle: el detalle lleva el teléfono,
+          // y por teléfono es como se encuentra una cuenta sin dudar.
+          const filtradas = q
+            ? todas.filter(o => plano(o.texto).includes(q) || plano(o.detalle).includes(q))
+            : todas;
+          // Lo ya elegido se queda visible aunque el filtro lo deje fuera: si no,
+          // parece que se ha desmarcado solo.
+          const ops = buscar ? filtradas.slice(0, TOPE) : filtradas;
+          if (buscar && elegido && !ops.some(o => String(o.valor) === String(elegido))) {
+            const yaEsta = todas.find(o => String(o.valor) === String(elegido));
+            if (yaEsta) ops.unshift(yaEsta);
+          }
+          if (hayMas) {
+            const fuera = filtradas.length - ops.length;
+            hayMas.classList.toggle('hidden', fuera <= 0);
+            hayMas.textContent = fuera > 0
+              ? `Se ven ${ops.length} de ${filtradas.length}. Escribe para afinar y ver el resto.`
+              : '';
+          }
           lista.innerHTML = ops.map(o => `
             <button type="button" data-o="${esc(o.valor)}" data-texto="${esc(o.texto)}"
               class="w-full text-left px-3 py-2 rounded-lg border text-sm transition
@@ -282,7 +328,11 @@
               ${esc(o.texto)}${o.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(o.detalle)}</span>` : ''}
             </button>`).join('');
           vacio.classList.toggle('hidden', ops.length > 0);
-          vacio.textContent = grupoSel.vacio || 'No hay casos para este tipo.';
+          // Decir "no hay casos" cuando lo que pasa es que el filtro no encuentra
+          // nada manda a buscar el problema donde no está.
+          vacio.textContent = (buscar && buscar.value.trim())
+            ? `Nada que coincida con «${buscar.value.trim()}».`
+            : (grupoSel.vacio || 'No hay casos para este tipo.');
           lista.querySelectorAll('[data-o]').forEach(b => b.addEventListener('click', () => {
             elegido = b.dataset.o;
             caja.dataset.valor = elegido;
@@ -296,6 +346,12 @@
             pintaCasos();
           }));
         };
+        if (buscar) {
+          buscar.addEventListener('input', pintaCasos);
+          // Enter dentro del buscador no puede enviar el formulario: se está
+          // filtrando, no confirmando.
+          buscar.addEventListener('keydown', ev => { if (ev.key === 'Enter') ev.preventDefault(); });
+        }
         caja.querySelectorAll('[data-g]').forEach(b => b.addEventListener('click', () => {
           grupoSel = grupos.find(g => String(g.codigo) === b.dataset.g) || grupos[0];
           // Cambiar de tipo BORRA el caso elegido: un "Buzón" de seguimiento no

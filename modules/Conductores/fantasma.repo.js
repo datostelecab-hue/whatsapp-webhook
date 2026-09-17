@@ -103,7 +103,11 @@ async function vigentesHoy() {
  * horas ya son de alguien, y prestarla sería quitárselas a esa persona sin que
  * nadie se entere.
  */
-async function prestables(q, limite = 60) {
+// Se mandan TODAS, no las primeras. El filtro va en la pantalla, que enseña diez
+// y busca al teclear: cortar aquí a sesenta hacía que la cuenta que buscabas
+// sencillamente no estuviera, sin decir por qué. Son filas pequeñas y no llegan
+// a dos mil.
+async function prestables(q, limite = 3000) {
   const busca = String(q || '').trim();
   const filtro = busca
     ? `AND (unaccent(lower(COALESCE(ce.externo_nombre, ''))) LIKE unaccent(lower($2))
@@ -113,7 +117,7 @@ async function prestables(q, limite = 60) {
     ? [limite, '%' + busca + '%', '%' + busca.replace(/\D/g, '') + '%']
     : [limite];
   const r = await db.consulta(
-    `SELECT ce.id, ce.externo_id AS uuid, ce.externo_nombre AS nombre,
+    `SELECT ce.id, ce.externo_nombre AS nombre,
             ce.externo_telefono AS telefono, ce.estado_externo AS estado,
             -- Si ya está prestada y sin cerrar, la pantalla tiene que decirlo
             -- ANTES de que alguien intente enlazarla y se coma el rechazo.
@@ -126,8 +130,10 @@ async function prestables(q, limite = 60) {
       WHERE ce.sistema = 'bolt' AND ce.conductor_id IS NULL ${filtro}
       ORDER BY ce.externo_nombre
       LIMIT $1`, params);
+  // SIN el uuid: son 36 caracteres por fila que la pantalla no usa para nada y
+  // que en mil doscientas cuentas son 60 KB de los 219 que viajan al abrir.
   return r.rows.map(x => ({
-    id: String(x.id), uuid: x.uuid, nombre: x.nombre || '(sin nombre en BOLT)',
+    id: String(x.id), nombre: x.nombre || '(sin nombre en BOLT)',
     telefono: x.telefono || '', estado: x.estado || '',
     prestamos: x.prestamos,
     ocupadaHasta: x.ocupada_hasta && String(x.ocupada_hasta).startsWith('9999')

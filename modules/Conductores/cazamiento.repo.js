@@ -109,7 +109,10 @@ async function sincronizar(cuentas) {
 }
 
 /** IDs de BOLT libres. `q` filtra por nombre o teléfono para el desplegable. */
-async function libres(q, limite = 50) {
+// Se mandan TODAS, no las primeras cincuenta. Quien elige a mano filtra en la
+// pantalla (selector de la casa, diez a la vez): cortarlas aqui hacia que la
+// cuenta buscada sencillamente no apareciera, sin decir por que.
+async function libres(q, limite = 3000) {
   const busca = String(q || '').trim();
   if (!busca) {
     return (await db.consulta(

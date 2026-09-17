@@ -291,9 +291,9 @@
   // se quede en tierra. Sus horas se las quedaba la cuenta; aquí se dice de
   // quién son de verdad, y desde cuándo hasta cuándo.
 
-  /** Una cuenta prestable, con lo que hace falta para no equivocarse al elegirla. */
-  const textoPrestable = c => {
-    const trozos = [c.nombre];
+  /** La segunda línea de cada cuenta: lo que hace falta para no confundirla. */
+  const detallePrestable = c => {
+    const trozos = [];
     if (c.telefono) trozos.push(c.telefono);
     if (c.estado && c.estado !== 'active') trozos.push(c.estado);
     // Si ya está prestada, decirlo AQUÍ evita que alguien la elija y se coma el
@@ -331,8 +331,12 @@
     }
 
     const v = await pedirDatos(`Enlazar cuenta fantasma a ${d.nombre_completo}`, [
-      { id: 'cuentaId', etiqueta: 'Cuenta que usó', tipo: 'lista',
-        opciones: cuentas.map(c => ({ valor: c.id, texto: textoPrestable(c) })) },
+      // El selector de la casa, no el <select> del navegador: con mil y pico
+      // cuentas aquello era una lista infinita con los colores de Windows.
+      // Se ven diez y se filtra escribiendo, por nombre o por teléfono.
+      { id: 'cuentaId', etiqueta: 'Cuenta que usó', tipo: 'opciones', obligatorio: true,
+        buscador: { marcador: 'Busca por nombre o teléfono…', tope: 10 },
+        opciones: cuentas.map(c => ({ valor: c.id, texto: c.nombre, detalle: detallePrestable(c) })) },
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha' },
       { id: 'hasta', etiqueta: 'Hasta (en blanco si la sigue usando)', tipo: 'fecha' },
       { id: 'motivo', etiqueta: 'Por qué', marcador: 'le suspendieron la suya' },
@@ -341,9 +345,12 @@
                'prestada a dos personas a la vez.' });
     if (!v) return;
     if (!v.desde) return alert('Hace falta la fecha de inicio: sin ella no se sabe qué días son suyos.');
+    // El selector de la casa devuelve { valor, grupo, texto }, no el id suelto.
+    const cuentaId = v.cuentaId && v.cuentaId.valor;
+    if (!cuentaId) return alert('Elige la cuenta que usó.');
 
     await hacer(async () => {
-      const r = await enviar(`/plantilla/api/conductor/${d.id}/fantasma`, 'POST', v);
+      const r = await enviar(`/plantilla/api/conductor/${d.id}/fantasma`, 'POST', { ...v, cuentaId });
       await avisarDelSellado(r);
     });
   }
@@ -354,11 +361,12 @@
     if (!lista.length) return null;
     if (lista.length === 1) return lista[0];
     const v = await pedirDatos(titulo, [
-      { id: 'id', etiqueta: 'Enlace', tipo: 'lista',
-        opciones: lista.map(f => ({ valor: f.id,
-          texto: `${f.cuenta} · ${fecha(f.desde)} → ${f.hasta ? fecha(f.hasta) : 'sigue usándola'}` })) },
+      { id: 'id', etiqueta: 'Enlace', tipo: 'opciones', obligatorio: true,
+        opciones: lista.map(f => ({ valor: f.id, texto: f.cuenta,
+          detalle: `${fecha(f.desde)} → ${f.hasta ? fecha(f.hasta) : 'sigue usándola'}` })) },
     ]);
-    return v ? lista.find(f => String(f.id) === String(v.id)) : null;
+    const id = v && v.id && v.id.valor;
+    return id ? lista.find(f => String(f.id) === String(id)) : null;
   }
 
   /** Ya le han devuelto su cuenta: se cierra el préstamo HOY. */
@@ -446,14 +454,20 @@
     }
 
     const v = await pedirDatos(`Enlazar cuenta de BOLT a ${d.nombre_completo}`, [
-      { id: 'cuentaId', etiqueta: 'Cuenta', tipo: 'lista',
+      // Mismo problema que en las fantasma: son mil y pico cuentas. Selector de
+      // la casa, diez a la vez y se filtra escribiendo.
+      { id: 'cuentaId', etiqueta: 'Cuenta', tipo: 'opciones', obligatorio: true,
+        buscador: { marcador: 'Busca por nombre o teléfono…', tope: 10 },
         opciones: libres.map(c => ({
           valor: c.id,
-          texto: `${c.nombre_en_bolt || '(sin nombre)'}${c.externo_telefono ? ' · ' + c.externo_telefono : ''}`,
+          texto: c.nombre_en_bolt || '(sin nombre)',
+          detalle: c.externo_telefono || '',
         })) },
     ], { nota: 'Ninguna cuenta libre tiene el teléfono de esta persona, así que hay que elegirla a mano. Comprueba de quién es antes: una cuenta mal enlazada le imputa las horas a otro.' });
     if (!v) return;
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt`, 'POST', v));
+    const cuentaId = v.cuentaId && v.cuentaId.valor;
+    if (!cuentaId) return alert('Elige la cuenta.');
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt`, 'POST', { cuentaId }));
   }
 
   /**
