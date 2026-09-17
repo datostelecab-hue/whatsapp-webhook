@@ -29,6 +29,12 @@ const quien = async req => ({
   // Express descarta lo que el cliente pueda haber metido delante.
   ip: req.ip || req.socket.remoteAddress || null,
   agente: req.headers['user-agent'] || null,
+  // Y LA PRUEBA, no solo la conclusión: `ip` es lo que Express DEDUJO contando
+  // saltos de proxy, y si ese número está mal la IP guardada es la de un proxy.
+  // Con la cadena entera delante eso se ve y se corrige sin adivinar.
+  cadena: req.headers['x-forwarded-for'] || null,
+  // Si hay un Cloudflare delante, esta es la buena y la pone él.
+  ipCliente: req.headers['cf-connecting-ip'] || null,
 });
 
 /** Envoltorio: recoge el error y lo devuelve legible, sin repetirlo diez veces. */

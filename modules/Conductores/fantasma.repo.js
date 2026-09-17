@@ -217,12 +217,13 @@ async function apuntar({ fantasmaId, accion, quien = {}, detalle = null }) {
   try {
     await db.consulta(
       `INSERT INTO cuenta_fantasma_log
-         (fantasma_id, accion, usuario_id, usuario, ip, agente, detalle)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         (fantasma_id, accion, usuario_id, usuario, ip, agente, detalle, cadena, ip_cliente)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [Number(fantasmaId), accion, quien.usuarioId || null,
        (quien.nombre || '').slice(0, 160) || null,
        (quien.ip || '').slice(0, 64) || null, quien.agente || null,
-       detalle ? JSON.stringify(detalle) : null]);
+       detalle ? JSON.stringify(detalle) : null,
+       quien.cadena || null, (quien.ipCliente || '').slice(0, 64) || null]);
   } catch (e) {
     console.error(`⚠️  [FANTASMA] no se pudo apuntar «${accion}» del enlace ${fantasmaId}: ${e.message}`);
   }
@@ -237,6 +238,7 @@ async function libroDe(fantasmaId) {
   return r.rows.map(x => ({
     accion: x.accion, usuario: x.usuario || '', ip: x.ip || '',
     agente: x.agente || '', detalle: x.detalle || null, cuando: x.ocurrido_at,
+    cadena: x.cadena || '', ipCliente: x.ip_cliente || '',
   }));
 }
 
@@ -244,6 +246,7 @@ async function libroDe(fantasmaId) {
 async function libroDeConductor(conductorId) {
   const r = await db.consulta(
     `SELECT l.fantasma_id, l.accion, l.usuario, l.ip, l.agente, l.detalle, l.ocurrido_at,
+            l.cadena, l.ip_cliente,
             COALESCE(ce.externo_nombre, '(sin nombre en BOLT)') AS cuenta
        FROM cuenta_fantasma_log l
        JOIN cuenta_fantasma f     ON f.id = l.fantasma_id
@@ -255,6 +258,7 @@ async function libroDeConductor(conductorId) {
     enlaceId: String(x.fantasma_id), accion: x.accion, cuenta: x.cuenta,
     usuario: x.usuario || '', ip: x.ip || '', agente: x.agente || '',
     detalle: x.detalle || null, cuando: x.ocurrido_at,
+    cadena: x.cadena || '', ipCliente: x.ip_cliente || '',
   }));
 }
 
