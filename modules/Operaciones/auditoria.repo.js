@@ -45,6 +45,9 @@ async function guardarDia(r, { segundos } = {}) {
     km_espera: n2(f.kmEspera), km_descanso: n2(f.kmDescanso), km_fuera: n2(f.kmFuera),
     h_pedido: n2(f.hPedido), h_espera: n2(f.hEspera), h_descanso: n2(f.hDescanso), h_fuera: n2(f.hFuera),
     km_bolt: n2(f.kmBolt), viajes_bolt: Math.round(Number(f.viajesBolt) || 0),
+    // 'can' = el odómetro del coche; 'gps' = la estimación de Mapon, que es lo
+    // único que hay en los coches cuyo equipo no lee el CAN.
+    fuente_km: f.fuenteKm === 'can' || f.fuenteKm === 'gps' ? f.fuenteKm : null,
   }));
 
   // Los conductores llegan como {uuid, nombre}; de la época de la hoja pueden
@@ -86,16 +89,16 @@ async function guardarDia(r, { segundos } = {}) {
       await cli.query(`
         INSERT INTO auditoria_km (dia, tramo, placa, vehiculo_id, vehiculo,
           km_mapon, km_pasajero, km_ida, km_espera, km_descanso, km_fuera,
-          h_pedido, h_espera, h_descanso, h_fuera, km_bolt, viajes_bolt)
+          h_pedido, h_espera, h_descanso, h_fuera, km_bolt, viajes_bolt, fuente_km)
         SELECT $1::date, x.tramo, x.placa, v.id, NULLIF(x.vehiculo, ''),
                x.km_mapon, x.km_pasajero, x.km_ida, x.km_espera, x.km_descanso, x.km_fuera,
-               x.h_pedido, x.h_espera, x.h_descanso, x.h_fuera, x.km_bolt, x.viajes_bolt
+               x.h_pedido, x.h_espera, x.h_descanso, x.h_fuera, x.km_bolt, x.viajes_bolt, x.fuente_km
           FROM jsonb_to_recordset($2::jsonb) AS x(
                  tramo text, placa text, vehiculo text,
                  km_mapon numeric, km_pasajero numeric, km_ida numeric, km_espera numeric,
                  km_descanso numeric, km_fuera numeric,
                  h_pedido numeric, h_espera numeric, h_descanso numeric, h_fuera numeric,
-                 km_bolt numeric, viajes_bolt int)
+                 km_bolt numeric, viajes_bolt int, fuente_km text)
           -- El coche de la flota, si lo reconocemos. Que no lo reconozcamos no
           -- es motivo para perder la línea: es motivo para mirarla.
           LEFT JOIN vehiculo v ON v.matricula_norm = x.placa AND v.baja_at IS NULL`,
@@ -195,7 +198,7 @@ async function consultar({ desde, hasta, tramo = 'completo', placa, soloFuera = 
            k.km_mapon::float8, k.km_pasajero::float8, k.km_ida::float8, k.km_espera::float8,
            k.km_descanso::float8, k.km_fuera::float8,
            k.h_pedido::float8, k.h_espera::float8, k.h_descanso::float8, k.h_fuera::float8,
-           k.km_bolt::float8, k.viajes_bolt,
+           k.km_bolt::float8, k.viajes_bolt, k.fuente_km,
            COALESCE((SELECT array_agg(COALESCE(c.nombre, c.driver_uuid) ORDER BY c.nombre)
                        FROM auditoria_km_conductor c
                       WHERE c.dia = k.dia AND c.tramo = k.tramo AND c.placa = k.placa),
@@ -210,7 +213,7 @@ async function consultar({ desde, hasta, tramo = 'completo', placa, soloFuera = 
     kmMapon: x.km_mapon, kmPasajero: x.km_pasajero, kmIda: x.km_ida, kmEspera: x.km_espera,
     kmDescanso: x.km_descanso, kmFuera: x.km_fuera,
     hPedido: x.h_pedido, hEspera: x.h_espera, hDescanso: x.h_descanso, hFuera: x.h_fuera,
-    kmBolt: x.km_bolt, viajesBolt: x.viajes_bolt,
+    kmBolt: x.km_bolt, viajesBolt: x.viajes_bolt, fuenteKm: x.fuente_km || null,
     conductores: x.conductores || [],
   }));
 }

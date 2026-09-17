@@ -196,6 +196,29 @@ function segmentar(unitId, lecturas) {
   return out;
 }
 
+/**
+ * El odómetro de UN coche en un rango, leído del núcleo (no de la API).
+ *
+ * Lo usa la Auditoría de flota, que vive en otro módulo y necesita los mismos
+ * metros que Control para no dar dos cifras distintas del mismo día. Devuelve
+ * los tramos en SEGUNDOS epoch, que es como trabaja allí.
+ *
+ * Si vuelve vacío es que ese coche no da odómetro (o calló): quien llame decide
+ * —la Auditoría se va al GPS y lo dice—, aquí no se inventa nada.
+ */
+async function odometroDeUnidad({ unitId, fromTs, tillTs }) {
+  const r = await db.consulta(
+    `SELECT EXTRACT(EPOCH FROM inicio)::bigint AS desde,
+            EXTRACT(EPOCH FROM fin)::bigint    AS hasta,
+            metros
+       FROM fv_odometro
+      WHERE unit_id = $1
+        AND inicio < to_timestamp($3) AND fin > to_timestamp($2)
+      ORDER BY inicio`,
+    [Number(unitId), Number(fromTs), Number(tillTs)]);
+  return r.rows.map(x => ({ desde: Number(x.desde), hasta: Number(x.hasta), metros: Number(x.metros) }));
+}
+
 /** Sube los tramos de odómetro por lotes con upsert. */
 async function guardarOdometro(seg) {
   const LOTE = 500;
@@ -1173,9 +1196,12 @@ ${SOLAPE_KM},
 }
 
 module.exports = db.conEsquema({
-  ingestarRutas, guardarLote, ingestarOdometro, kmPorCoche, kmConectadoDesconectado,
+  ingestarRutas, guardarLote, ingestarOdometro, odometroDeUnidad, kmPorCoche, kmConectadoDesconectado,
   horasEfectivasPorConductor, minutosEfectivos, matriculasBoltPorConductor,
   bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, kmFueraEnVentana,
   kmSinDuenio,
 });
 module.exports.TURNOS = TURNOS;
+// La Auditoría decide con el MISMO umbral: dos criterios distintos para elegir
+// fuente darían dos cifras distintas del mismo día, que es justo lo que no puede pasar.
+module.exports.UMBRAL_CAN = UMBRAL_CAN;

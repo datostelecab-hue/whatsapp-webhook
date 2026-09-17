@@ -32,6 +32,10 @@ const COLS_TRAMO = [
   { header: 'Matrícula', key: 'mat', width: 14 }, { header: 'Vehículo', key: 'veh', width: 20 },
   { header: 'Conductores (BOLT)', key: 'cond', width: 38 },
   { header: 'KM total (Mapon)', key: 'mapon', width: 16 },
+  // Con qué vara se midieron esos km. Va pegada al total a propósito: quien lea
+  // la columna de al lado tiene que ver en el acto si es el odómetro del coche o
+  // la estimación del GPS, que no valen lo mismo.
+  { header: 'Medido con', key: 'fuente', width: 12 },
   { header: 'Con pasajero', key: 'pas', width: 13 }, { header: 'Ida a recoger', key: 'ida', width: 13 },
   { header: 'Espera (disponible)', key: 'esp', width: 18 },
   { header: 'DESCANSO (ocupado)', key: 'des', width: 19 }, { header: 'FUERA (app cerrada)', key: 'fue', width: 19 },
@@ -60,7 +64,9 @@ function detalleDeTramo(wb, r, tabla) {
   ws.columns = COLS_TRAMO;
   [...filas].sort((a, b) => b.totalNoDisp - a.totalNoDisp).forEach(k => ws.addRow({
     mat: k.matricula, veh: k.vehiculo, cond: (k.conductores || []).join(' · '),
-    mapon: k.totalMapon, pas: k.totalPasajero, ida: k.totalIda, esp: k.totalEspera,
+    mapon: k.totalMapon,
+    fuente: k.fuenteKm === 'can' ? 'Odómetro' : k.fuenteKm === 'gps' ? 'GPS' : k.fuenteKm === 'mixta' ? 'Odóm. y GPS' : '',
+    pas: k.totalPasajero, ida: k.totalIda, esp: k.totalEspera,
     des: k.totalDescanso, fue: k.totalFuera, nod: k.totalNoDisp,
     pctn: k.pctNoDisp == null ? '' : k.pctNoDisp / 100,
     pctp: k.pctPasajero == null ? '' : k.pctPasajero / 100,

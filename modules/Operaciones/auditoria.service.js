@@ -30,6 +30,9 @@
 const { fetchRangoCompleto, fetchAllPaginated, CONFIG_BOLT } = require('../../services/bolt');
 const mapon = require('../../services/mapon');
 const repo = require('./auditoria.repo');
+// El núcleo de km de Flota viva: de ahí sale el odómetro ya ingerido. Se entra
+// por su servicio, no por su tabla, que es la regla de la casa.
+const flotaRutas = require('../../services/flotaViva/rutas');
 
 const ZONA = 'Europe/Madrid';
 const MAX_DIAS = 31;
@@ -334,6 +337,39 @@ function atribuirRecorrido(trips, iv, ventana = null) {
   return km;
 }
 
+/**
+ * Lo mismo, pero repartiendo el ODÓMETRO DEL COCHE en vez de la traza del GPS.
+ *
+ * Es la fuente buena: el GPS estima uniendo puntos —corta curvas y pierde lo que
+ * no ve—, mientras que esto es el número del cuadro, que el coche cuenta solo.
+ *
+ * El reparto es idéntico en espíritu al de arriba: cada trocito de tiempo cae en
+ * el estado que hubiera en ese momento. Como entre dos lecturas del odómetro
+ * pasan 90 segundos de mediana y un cambio de estado puede caer en medio, cada
+ * tramo se parte en rodajas de un minuto y cada rodaja va a su cubo. Sin eso, un
+ * tramo a caballo entre "en viaje" y "desconectado" se iría entero a uno de los
+ * dos.
+ */
+function atribuirOdometro(segs, iv, ventana) {
+  const RODAJA = 60;
+  const km = { pasajero: 0, ida: 0, espera: 0, descanso: 0, fuera: 0 };
+  (segs || []).forEach(sg => {
+    const dur = sg.hasta - sg.desde;
+    if (!(dur > 0) || !(sg.metros > 0)) return;
+    const a = ventana ? Math.max(sg.desde, ventana.desde) : sg.desde;
+    const b = ventana ? Math.min(sg.hasta, ventana.hasta) : sg.hasta;
+    if (!(b > a)) return;
+    const kmSeg = sg.metros / 1000;
+    const n = Math.max(1, Math.ceil((b - a) / RODAJA));
+    const paso = (b - a) / n;
+    for (let i = 0; i < n; i++) {
+      const medio = Math.round(a + paso * (i + 0.5));
+      km[bucketDe(medio, iv)] += kmSeg * (paso / dur);
+    }
+  });
+  return km;
+}
+
 // ── BOLT: pedidos, logs y vehículos de un rango ───────────────────────────────
 
 /**
@@ -484,6 +520,22 @@ async function computarDia(dia) {
     const placa = normPlaca(info.matricula);
     if (!placa) return;
     const { trips } = await mapon.leerRecorridoUnidad({ unitId, fromTs, tillTs });
+    // EL ODÓMETRO DEL COCHE, del núcleo de Flota viva (ya ingerido, sin llamar a
+    // la API otra vez). Es la fuente buena de km; el GPS queda de suplente.
+    //
+    // La decisión se toma UNA VEZ POR COCHE Y DÍA, no por tramo: si la mañana
+    // fuera por odómetro y la noche por GPS, el día completo no sería la suma de
+    // sus partes. Y con el MISMO umbral que Control, para que las dos pantallas
+    // no puedan discrepar del mismo día.
+    let odoDia = [];
+    try {
+      odoDia = await flotaRutas.odometroDeUnidad({ unitId, fromTs, tillTs });
+    } catch (e) {
+      console.error(`⚠️  [AUDITORÍA] odómetro de ${placa}: ${e.message}`);
+    }
+    const kmCanDia = odoDia.reduce((n, x) => n + x.metros, 0) / 1000;
+    const kmGpsDia = trips.reduce((n, t) => n + (t.distancia || 0), 0) / 1000;
+    const porCan = odoDia.length > 0 && kmCanDia >= flotaRutas.UMBRAL_CAN * kmGpsDia;
     const logsCoche = logsPorPlaca[placa] || [];
     const iv = construirIv(ordenesPorPlaca[placa] || [], logsCoche);
     const hh = s => Math.round(s / 360) / 10;   // segundos → horas con 1 decimal
@@ -496,9 +548,12 @@ async function computarDia(dia) {
       const tripsSeg = trips.filter(t => t.inicioTs != null && t.inicioTs < s1 && finDe(t) >= s0);
       const b = (billed[placa] && billed[placa][seg]) || { km: 0, viajes: 0 };
       const conductores = conductoresEnVentana(logsCoche, s0, s1, nombrePorUuid);
-      if (!tripsSeg.length && !b.viajes && !conductores.length) continue;   // ni se movió ni hubo nadie
+      const odoSeg = porCan && odoDia.some(x => x.desde < s1 && x.hasta > s0);
+      if (!tripsSeg.length && !odoSeg && !b.viajes && !conductores.length) continue;   // ni se movió ni hubo nadie
 
-      const km = atribuirRecorrido(tripsSeg, iv, { desde: s0, hasta: s1 });
+      const km = porCan
+        ? atribuirOdometro(odoDia, iv, { desde: s0, hasta: s1 })
+        : atribuirRecorrido(tripsSeg, iv, { desde: s0, hasta: s1 });
       const h = tiempoPorEstado(iv, s0, s1);
       const clave = `${placa}|${seg}`;
       const prev = filas.get(clave);
@@ -515,7 +570,9 @@ async function computarDia(dia) {
         kmPasajero: round1(km.pasajero), kmIda: round1(km.ida), kmEspera: round1(km.espera),
         kmDescanso: round1(km.descanso), kmFuera: round1(km.fuera),
         hPedido: hh(h.has_order), hEspera: hh(h.waiting_orders), hDescanso: hh(h.busy), hFuera: hh(h.inactive),
-        kmBolt: round1(b.km), viajesBolt: b.viajes, conductores
+        kmBolt: round1(b.km), viajesBolt: b.viajes, conductores,
+        // Con qué vara se midió: el odómetro del coche o la estimación del GPS.
+        fuenteKm: porCan ? 'can' : 'gps'
       });
     }
   });
@@ -612,7 +669,8 @@ function construirRespuesta(dias, filasKmRec, eventosRec, segmento = 'completo')
     if (!set.has(r.dia)) return;
     if ((r.turno || 'completo') !== segmento) return;
     let o = porPlaca.get(r.placa);
-    if (!o) { o = { placa: r.placa, matricula: r.matricula, vehiculo: r.vehiculo, dias: {}, conductores: new Set() }; porPlaca.set(r.placa, o); }
+    if (!o) { o = { placa: r.placa, matricula: r.matricula, vehiculo: r.vehiculo, dias: {}, conductores: new Set(), fuentes: new Set() }; porPlaca.set(r.placa, o); }
+    if (r.fuenteKm) o.fuentes.add(r.fuenteKm);
     (r.conductores || []).forEach(c => o.conductores.add(c));
     // Se ACUMULA: si el histórico trajera dos filas del mismo (día, matrícula),
     // sobrescribir haría desaparecer esos km sin ningún aviso.
@@ -642,7 +700,13 @@ function construirRespuesta(dias, filasKmRec, eventosRec, segmento = 'completo')
       hPedido: round1(a.hPedido), hEspera: round1(a.hEspera), hDescanso: round1(a.hDescanso), hFuera: round1(a.hFuera),
       pctNoDisp: totalMapon > 0 ? Math.round(noDisp / totalMapon * 100) : null,
       pctFuera: totalMapon > 0 ? Math.round(a.fuera / totalMapon * 100) : null,
-      pctPasajero: totalMapon > 0 ? Math.round(a.pasajero / totalMapon * 100) : null
+      pctPasajero: totalMapon > 0 ? Math.round(a.pasajero / totalMapon * 100) : null,
+      // CON QUÉ VARA. 'can' es el odómetro del coche; 'gps' es la estimación de
+      // Mapon, que es lo único que hay cuando el equipo no lee el CAN. En un
+      // rango de varios días puede haber de las dos ('mixta'): un equipo que
+      // calla unos días y habla otros. Las filas viejas no lo llevan y se quedan
+      // en null — se calcularon antes de haber odómetro.
+      fuenteKm: o.fuentes.size > 1 ? 'mixta' : ([...o.fuentes][0] || null)
     };
   }).sort((x, y) => y.totalNoDisp - x.totalNoDisp);
 
@@ -710,7 +774,7 @@ module.exports = {
   // exportados para pruebas
   SEGMENTOS, ETIQUETA_SEG, limitesSegmento, tsDeHoraLocal, conductoresEnVentana,
   normPlaca, diaLocal, limitesDiaMadrid, offsetMadridSeg, mergeIv, enIntervalos,
-  construirIv, estadoEn, bucketDe, atribuirRecorrido, tiempoPorEstado, haversineKm, construirRespuesta,
+  construirIv, estadoEn, bucketDe, atribuirRecorrido, atribuirOdometro, tiempoPorEstado, haversineKm, construirRespuesta,
   resolverRango, ejeDias, MAX_DIAS,
   // El ranking por conductor se sirve tal cual desde el repositorio.
   porConductor: (...a) => repo.porConductor(...a)

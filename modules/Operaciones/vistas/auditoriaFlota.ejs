@@ -163,7 +163,10 @@
       </div>
     </div>
     <p class="text-[11px] text-telecab-muted mt-2">
-      Todos los km los mide <b>Mapon</b> (GPS punto a punto); <b>BOLT</b> solo aporta las horas exactas de aceptación, recogida y bajada.
+      Los km salen del <b>odómetro del coche</b> (bus CAN), no de la traza del GPS: el GPS estima uniendo puntos y se queda corto
+      —un 4 % de media, y mucho más cuando el equipo pierde cobertura—. Los coches cuyo equipo no lee el CAN van con la estimación
+      del GPS y lo avisan con <span class="rounded px-1 py-[1px] text-[9px] font-bold bg-amber-500/15 text-amber-400">GPS</span>.
+      <b>BOLT</b> solo aporta las horas exactas de aceptación, recogida y bajada.
       <b>Espera</b> = sin pedido pero <b>disponible</b> (<span class="font-mono">waiting_orders</span>): es trabajo normal.
       <b class="text-amber-400">Descanso</b> = marcado <b>ocupado</b> (<span class="font-mono">busy</span>) y
       <b class="text-telecab-red">Fuera</b> = app <b>cerrada</b> (<span class="font-mono">inactive</span>): en ambos <b>no estaba a disposición de BOLT</b>, y suman
@@ -346,6 +349,13 @@ const pad = n => String(n).padStart(2, '0');
 const fmt = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
 const ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const nkm = v => (v == null ? '' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
+// Los km buenos son los del odómetro del coche; unos pocos solo tienen la
+// estimación del GPS, y eso hay que poder verlo de un vistazo en la tabla.
+const marcaGps = k => (k.fuenteKm === 'gps' || k.fuenteKm === 'mixta'
+  ? ` <span class="rounded px-1 py-[1px] text-[9px] font-bold bg-amber-500/15 text-amber-400" title="${k.fuenteKm === 'gps'
+      ? 'KM POR GPS: el equipo de este coche no da el odómetro. Es la estimación de Mapon uniendo los puntos.'
+      : 'KM POR GPS en parte del rango: algunos días este coche no dio odómetro.'}">GPS</span>`
+  : '');
 
 // Los KPI y los contadores siguen el filtro de matrícula: si no, junto a la fila de
 // un solo coche se leían los totales de toda la flota como si fueran suyos.
@@ -434,7 +444,7 @@ function pintarKm() {
     const hd = k.hDescanso >= 4 ? 'text-telecab-red font-bold' : k.hDescanso >= 2 ? 'text-amber-400 font-semibold' : 'text-telecab-muted';
     return `<tr class="hover:bg-telecab-card2/50 transition ${k.pctNoDisp >= 25 ? 'bg-telecab-red/[0.04]' : ''}">
       <td class="px-4 py-2.5 font-semibold sticky left-0 bg-telecab-card whitespace-nowrap" title="${esc(k.vehiculo)}">${esc(k.matricula)}</td>
-      <td class="px-3 py-2.5 text-right">${nkm(k.totalMapon)}</td>
+      <td class="px-3 py-2.5 text-right">${nkm(k.totalMapon)}${marcaGps(k)}</td>
       <td class="px-3 py-2.5 text-right text-telecab-green">${nkm(k.totalPasajero)}</td>
       <td class="px-3 py-2.5 text-right text-telecab-gold">${nkm(k.totalIda)}</td>
       <td class="px-3 py-2.5 text-right text-telecab-muted">${nkm(k.totalEspera)}</td>
