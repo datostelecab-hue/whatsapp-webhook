@@ -192,33 +192,45 @@
                 : '';
               const base = 'w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40';
               let campo;
-              if (c.tipo === 'lista') {
-                const ops = (c.opciones || []).map(o => (typeof o === 'string' ? { valor: o, texto: o } : o));
-                // Se deja elegir "sin dato": obligar a un valor inventaría uno.
-                const vacio = c.obligatorio ? '' : '<option value=""></option>';
-                campo = `<select id="pd-${c.id}" class="${base}">${vacio}${ops.map(o =>
-                  `<option value="${esc(o.valor)}" ${String(o.valor) === String(c.valor || '') ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}</select>`;
-              } else if (c.tipo === 'opciones') {
+              if (c.tipo === 'lista' || c.tipo === 'opciones') {
                 // UN SELECTOR CON LA CARA DE LA CASA, no el desplegable del
                 // navegador. El <select> nativo se pinta con los colores del
                 // sistema operativo —fondo blanco, azul de Windows— y en una
                 // pantalla oscura canta: parece de otra aplicación.
                 //
-                // Y admite DOS NIVELES: `grupos` pinta primero el tipo (Taller,
+                // 'lista' y 'opciones' se ven IGUAL; lo que cambia es lo que
+                // devuelven (ver la lectura de vuelta). 'lista' da el valor a
+                // secas, como el <select> de siempre, y por eso las treinta y
+                // tantas pantallas que ya la usan no hubo que tocarlas.
+                //
+                // Admite DOS NIVELES: `grupos` pinta primero el tipo (Taller,
                 // RRHH, Tráfico…) y debajo solo sus casos. Con treinta casos en
                 // una lista plana hay que leerlos todos; agrupados se elige por
                 // dónde viene el problema, que es como se piensa al llamar.
-                const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: c.opciones || [] }];
+                const opsBase = (c.opciones || []).map(o => (typeof o === 'string' ? { valor: o, texto: o } : o));
+                // «Sin dato» solo en 'lista' y solo si no es obligatoria: es lo
+                // que hacía la opción en blanco del <select>, y sin ella no
+                // habría forma de DESELEGIR lo que ya viene puesto.
+                const conVacio = (c.tipo === 'lista' && !c.obligatorio)
+                  ? [{ valor: '', texto: '— Sin dato —' }].concat(opsBase)
+                  : opsBase;
+                // Se guardan para que el enganche de más abajo use EXACTAMENTE
+                // estas: recalcularlas allí dejaba fuera el «Sin dato» y el
+                // botón no llegaba a existir.
+                c._opciones = conVacio;
+                const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: conVacio }];
                 const solo = grupos.length === 1 && !grupos[0].etiqueta;
-                // CON MUCHAS OPCIONES, UN BUSCADOR Y UN TOPE.
-                //
-                // Una lista de mil y pico cuentas de BOLT no se lee: se busca.
-                // Se pintan `tope` como mucho (10 por defecto) y debajo se dice
-                // cuántas quedan fuera, para que quede claro que hay más y que
-                // el camino es teclear, no seguir bajando con la rueda.
-                const busca = c.buscador
+                // CON MUCHAS OPCIONES, UN BUSCADOR Y UN TOPE. Una lista de mil y
+                // pico cuentas no se lee: se busca. Se pintan `tope` como mucho
+                // (10 por defecto) y debajo se dice cuántas quedan fuera, para
+                // que quede claro que el camino es teclear y no seguir bajando
+                // con la rueda. Por debajo de una docena la lista se ve de un
+                // vistazo y el buscador sobra.
+                const buscador = c.buscador || (conVacio.length > 12 ? { tope: 10 } : null);
+                c._buscador = buscador;
+                const busca = buscador
                   ? `<input data-buscar type="search" autocomplete="off"
-                       placeholder="${esc((c.buscador && c.buscador.marcador) || 'Escribe para filtrar…')}"
+                       placeholder="${esc(buscador.marcador || 'Escribe para filtrar…')}"
                        class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl
                               text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">`
                   : '';
@@ -282,14 +294,14 @@
       document.body.appendChild(fondo);
 
       // ── El selector de la casa: grupo arriba, casos debajo ──────────────
-      campos.filter(c => c.tipo === 'opciones').forEach(c => {
+      campos.filter(c => c.tipo === 'opciones' || c.tipo === 'lista').forEach(c => {
         const caja = fondo.querySelector('#pd-' + c.id);
-        const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: c.opciones || [] }];
+        const grupos = c.grupos || [{ codigo: '', etiqueta: '', opciones: c._opciones || c.opciones || [] }];
         const lista = caja.querySelector('[data-casos]');
         const vacio = caja.querySelector('[data-vacio]');
         const hayMas = caja.querySelector('[data-hay-mas]');
         const buscar = caja.querySelector('[data-buscar]');
-        const TOPE = (c.buscador && c.buscador.tope) || 10;
+        const TOPE = (c._buscador && c._buscador.tope) || 10;
         let grupoSel = grupos[0], elegido = c.valor || null;
         const norm = o => (typeof o === 'string' ? { valor: o, texto: o } : o);
         // Sin tildes y en minúsculas: quien busca "Ocana" tiene que encontrar a
@@ -411,6 +423,14 @@
             salida[c.id] = [...el.querySelectorAll('[data-dia]')]
               .filter(b => b.classList.contains('bg-telecab-gold'))
               .map(b => Number(b.dataset.dia));
+          } else if (c.tipo === 'lista') {
+            // AQUÍ ESTÁ LA DIFERENCIA con 'opciones', y es la que importa:
+            // 'lista' devuelve el valor A SECAS, como cuando era un <select>.
+            // Así las treinta y tantas pantallas que ya la usan siguen
+            // funcionando sin tocar ni una: cambiar todas a un objeto era
+            // treinta oportunidades de olvidar un desenvuelto y mandar
+            // "[object Object]" a la base sin que nadie se entere.
+            salida[c.id] = el.dataset.valor || '';
           } else if (c.tipo === 'opciones') {
             const v = el.dataset.valor || '';
             salida[c.id] = v ? { valor: v, grupo: el.dataset.grupo || '', texto: el.dataset.texto || v } : null;
@@ -429,7 +449,7 @@
         });
         // ── Segunda pasada: validar con TODO ya leído ──────────────────────
         campos.forEach(c => {
-          if (c.tipo === 'opciones') {
+          if (c.tipo === 'opciones' || c.tipo === 'lista') {
             // `obligatorioSalvo` deja que OTRO campo lo dé por contestado.
             // Marcar las alertas y escribir qué dijo de cada una YA ES decir qué
             // ha pasado: pedir además un caso de la lista era hacer repetir lo

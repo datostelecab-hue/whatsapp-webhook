@@ -331,10 +331,9 @@
     }
 
     const v = await pedirDatos(`Enlazar cuenta fantasma a ${d.nombre_completo}`, [
-      // El selector de la casa, no el <select> del navegador: con mil y pico
-      // cuentas aquello era una lista infinita con los colores de Windows.
-      // Se ven diez y se filtra escribiendo, por nombre o por teléfono.
-      { id: 'cuentaId', etiqueta: 'Cuenta que usó', tipo: 'opciones', obligatorio: true,
+      // Se ven diez y se filtra escribiendo, por nombre o por teléfono: son mil
+      // y pico cuentas y ninguna lista de mil se lee, se busca.
+      { id: 'cuentaId', etiqueta: 'Cuenta que usó', tipo: 'lista', obligatorio: true,
         buscador: { marcador: 'Busca por nombre o teléfono…', tope: 10 },
         opciones: cuentas.map(c => ({ valor: c.id, texto: c.nombre, detalle: detallePrestable(c) })) },
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha' },
@@ -345,12 +344,8 @@
                'prestada a dos personas a la vez.' });
     if (!v) return;
     if (!v.desde) return alert('Hace falta la fecha de inicio: sin ella no se sabe qué días son suyos.');
-    // El selector de la casa devuelve { valor, grupo, texto }, no el id suelto.
-    const cuentaId = v.cuentaId && v.cuentaId.valor;
-    if (!cuentaId) return alert('Elige la cuenta que usó.');
-
     await hacer(async () => {
-      const r = await enviar(`/plantilla/api/conductor/${d.id}/fantasma`, 'POST', { ...v, cuentaId });
+      const r = await enviar(`/plantilla/api/conductor/${d.id}/fantasma`, 'POST', v);
       await avisarDelSellado(r);
     });
   }
@@ -361,12 +356,11 @@
     if (!lista.length) return null;
     if (lista.length === 1) return lista[0];
     const v = await pedirDatos(titulo, [
-      { id: 'id', etiqueta: 'Enlace', tipo: 'opciones', obligatorio: true,
+      { id: 'id', etiqueta: 'Enlace', tipo: 'lista', obligatorio: true,
         opciones: lista.map(f => ({ valor: f.id, texto: f.cuenta,
           detalle: `${fecha(f.desde)} → ${f.hasta ? fecha(f.hasta) : 'sigue usándola'}` })) },
     ]);
-    const id = v && v.id && v.id.valor;
-    return id ? lista.find(f => String(f.id) === String(id)) : null;
+    return v && v.id ? lista.find(f => String(f.id) === String(v.id)) : null;
   }
 
   /** Ya le han devuelto su cuenta: se cierra el préstamo HOY. */
@@ -454,9 +448,8 @@
     }
 
     const v = await pedirDatos(`Enlazar cuenta de BOLT a ${d.nombre_completo}`, [
-      // Mismo problema que en las fantasma: son mil y pico cuentas. Selector de
-      // la casa, diez a la vez y se filtra escribiendo.
-      { id: 'cuentaId', etiqueta: 'Cuenta', tipo: 'opciones', obligatorio: true,
+      // Mismo caso que en las fantasma: diez a la vez y se filtra escribiendo.
+      { id: 'cuentaId', etiqueta: 'Cuenta', tipo: 'lista', obligatorio: true,
         buscador: { marcador: 'Busca por nombre o teléfono…', tope: 10 },
         opciones: libres.map(c => ({
           valor: c.id,
@@ -465,9 +458,7 @@
         })) },
     ], { nota: 'Ninguna cuenta libre tiene el teléfono de esta persona, así que hay que elegirla a mano. Comprueba de quién es antes: una cuenta mal enlazada le imputa las horas a otro.' });
     if (!v) return;
-    const cuentaId = v.cuentaId && v.cuentaId.valor;
-    if (!cuentaId) return alert('Elige la cuenta.');
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt`, 'POST', { cuentaId }));
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/bolt`, 'POST', v));
   }
 
   /**
