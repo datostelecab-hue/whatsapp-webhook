@@ -4,3 +4,8 @@ package-lock.json
 
 # Datos de migración con PII (no versionar)
 scripts/datos/
+
+# Obsidian: el vault es este mismo repositorio, pero su configuración y el
+# estado de las ventanas son de cada ordenador, no del proyecto. Las NOTAS sí
+# se versionan: viven en docs/ y son parte de la documentación.
+.obsidian/
