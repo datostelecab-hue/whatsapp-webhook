@@ -506,14 +506,7 @@ const VENTANA_ATRAS = '14 days';
 // LEAST ignora los NULL, así que las dos subconsultas no necesitan envoltorio:
 // si no hay siguiente tramo, no cuentan.
 const TOPE_TRAMO_ABIERTO = '12 hours';
-const FIN_KM = `CASE
-       -- UN TRAMO NORMAL MANDA ÉL, y se sale por aquí sin preguntar nada más.
-       -- No es solo limpieza: las dos subconsultas de abajo cuestan, y hacerlas
-       -- para los cien mil tramos cortos de la quincena tumbaba En directo a más
-       -- de dos minutos. Solo se pagan donde hacen falta: en los monstruos.
-       WHEN t.hasta IS NOT NULL AND t.hasta <= t.desde + interval '${TOPE_TRAMO_ABIERTO}'
-         THEN t.hasta
-       ELSE LEAST(
+const FIN_KM = `LEAST(
          COALESCE(t.hasta, now()),
          t.desde + interval '${TOPE_TRAMO_ABIERTO}',
          (SELECT min(o.desde) FROM fv_tramo o
@@ -525,7 +518,7 @@ const FIN_KM = `CASE
            WHERE x.conductor_uuid = t.conductor_uuid
              AND x.vehiculo_uuid <> t.vehiculo_uuid
              AND x.desde > t.desde)
-       ) END`;
+       )`;
 
 // ── DE DÓNDE SALEN LOS KM: DEL CUADRO SI SE PUEDE, DEL GPS SI NO ────────────
 //
@@ -606,7 +599,17 @@ const SOLAPE_KM = `
      -- cuarenta mil al día y la pantalla se caía a medio minuto. Sacándolo a su
      -- propia CTE se resuelve unas tres mil veces —una por tramo— y el reparto
      -- pasa a ser un cruce normal.
-     tramo_km AS (
+     -- MATERIALIZED NO ES UN ADORNO. Sin él Postgres mete esta CTE dentro del
+     -- cruce de abajo y acaba resolviendo el corte —con sus dos subconsultas—
+     -- una vez por cada pareja (tramo, trozo de km): tres mil por cincuenta mil
+     -- son ciento cincuenta millones de veces, y la consulta pasa de segundos a
+     -- minuto y medio. Con MATERIALIZED se calcula una vez por tramo y ya está.
+     tramo_km AS MATERIALIZED (
+       -- MIRAR ATRÁS SOLO LO QUE EL TOPE PERMITE. Ningún tramo cuenta más allá
+       -- de su inicio más el tope, así que uno que empezó antes de eso no puede
+       -- aportar un metro a esta ventana. Antes se barrían catorce días —cincuenta
+       -- mil tramos— para descartarlos uno a uno; con la cota son tres mil, y por
+       -- eso el corte se puede permitir preguntar por cada uno sin que se note.
        SELECT t.conductor_uuid AS uuid, veh.matricula, veh.mapon_unit AS unit_id, t.situacion,
               GREATEST(t.desde, w.ini)     AS d,
               LEAST(${FIN_KM}, w.fin)      AS h
@@ -617,7 +620,7 @@ const SOLAPE_KM = `
           AND t.conductor_uuid IS NOT NULL
           AND veh.mapon_unit IS NOT NULL
           AND t.desde < w.fin
-          AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
+          AND t.desde >= w.ini - interval '${TOPE_TRAMO_ABIERTO}'
      ),
      solape AS (
        -- UN TRAYECTO SE REPARTE POR EL TIEMPO QUE PASA DENTRO, no cuenta entero
@@ -1287,3 +1290,4 @@ module.exports.UMBRAL_CAN = UMBRAL_CAN;
 // exporta en vez de copiarse: una alerta que reparta con otra regla acusa a
 // gente con un numero que la pantalla no ensena.
 module.exports.FIN_KM = FIN_KM;
+module.exports.TOPE_TRAMO_ABIERTO = TOPE_TRAMO_ABIERTO;

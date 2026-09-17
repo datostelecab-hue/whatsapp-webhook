@@ -29,7 +29,7 @@ const db = require('../../services/db');
 // El corte de los tramos, tal cual lo usa Control. NO se copia aqui: si la
 // alerta repartiera los km con una regla y la pantalla con otra, se llamaria a
 // la gente con un numero que no sale por ningun lado.
-const { FIN_KM } = require('../../services/flotaViva/rutas');
+const { FIN_KM, TOPE_TRAMO_ABIERTO } = require('../../services/flotaViva/rutas');
 const whatsapp = require('../../services/whatsapp');
 
 // ── EL MODELO: todo lo que se puede discutir, en un sitio ───────────────────
@@ -327,27 +327,43 @@ async function candidatos(franja) {
      -- trayecto de Mapon se reparte entre los tramos que toca en proporción al
      -- tiempo, y los que caen en descanso o desconectado son los que no
      -- deberían existir. Un trayecto cuenta en la franja donde EMPIEZA.
+     -- LOS TRAMOS, YA CORTADOS Y DE UNA SOLA VEZ.
+     --
+     -- El corte es el MISMO que usa Control (FIN_KM): un tramo "desconectado"
+     -- puede durar dias —nadie vuelve a tocar ese coche— y sin cortarlo se le
+     -- cuelgan al ultimo que lo condujo todos los km que el coche haga despues.
+     -- Con eso se le manda un WhatsApp a alguien que no iba dentro: a Macilon le
+     -- salieron 219 km de un coche que habia dejado dos dias antes.
+     --
+     -- MATERIALIZED y en su propia CTE por lo mismo que en Control: metido en el
+     -- ON del cruce, Postgres resuelve el corte —con sus dos subconsultas— una
+     -- vez por cada pareja de tramo y trayecto. Asi tardaba quince segundos; asi
+     -- tarda medio.
+     --
+     -- Y solo se mira lo que el tope permite hacia atras: ningun tramo cuenta
+     -- mas alla de su inicio mas el tope, asi que uno anterior a eso no puede
+     -- aportar un metro.
+     km_tramo AS MATERIALIZED (
+       SELECT t.conductor_uuid AS uuid, veh.mapon_unit AS unit_id, t.situacion,
+              t.desde AS d, ${FIN_KM} AS h
+         FROM fv_tramo t
+         CROSS JOIN f
+         JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
+        WHERE t.conductor_uuid IS NOT NULL
+          AND veh.mapon_unit IS NOT NULL
+          AND t.desde < LEAST(f.fin, f.jfin)
+          AND t.desde >= f.ini - interval '${TOPE_TRAMO_ABIERTO}'),
      km AS (
-       SELECT t.conductor_uuid AS uuid,
-              -- EL TRAMO SE CORTA, con la MISMA regla que Control. Un tramo
-              -- "desconectado" puede durar dias —nadie vuelve a tocar ese
-              -- coche— y sin cortarlo se le cuelgan al ultimo que lo condujo
-              -- todos los km que el coche haga despues. Con eso se le manda un
-              -- WhatsApp a alguien que no iba dentro: a Macilon le salieron 219
-              -- km de un coche que habia dejado dos dias antes.
+       SELECT k.uuid,
               sum(r.metros * GREATEST(0, EXTRACT(epoch FROM (
-                    LEAST(r.fin, ${FIN_KM}) - GREATEST(r.inicio, t.desde))))
+                    LEAST(r.fin, k.h) - GREATEST(r.inicio, k.d))))
                   / NULLIF(EXTRACT(epoch FROM (r.fin - r.inicio)), 0))
-                FILTER (WHERE t.situacion NOT IN ('viaje', 'espera'))  AS km_m
+                FILTER (WHERE k.situacion NOT IN ('viaje', 'espera'))  AS km_m
          FROM fv_ruta r
          CROSS JOIN f
-         JOIN fv_vehiculo veh ON veh.mapon_unit = r.unit_id
-         JOIN fv_tramo t      ON t.vehiculo_uuid = veh.uuid
-                             AND t.desde < r.fin AND ${FIN_KM} > r.inicio
-                             AND t.desde >= f.ini - interval '14 days'
+         JOIN km_tramo k ON k.unit_id = r.unit_id AND k.d < r.fin AND k.h > r.inicio
         WHERE r.fin IS NOT NULL AND r.fin > r.inicio
           AND r.inicio >= f.ini AND r.inicio < LEAST(f.fin, f.jfin)
-          AND t.conductor_uuid IS NOT NULL
         GROUP BY 1),
      -- Horas EFECTIVAS de su jornada operativa (05:00 → ahora).
      horas AS (
