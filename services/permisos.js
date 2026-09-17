@@ -30,6 +30,10 @@ const CATALOGO = [
     { clave: '/pendientes', etiqueta: 'Pendientes' },
     { clave: '/bitacora',   etiqueta: 'Bitácora' },
     { clave: '/plantilla',  etiqueta: 'Plantilla' },
+    // Enlazar una cuenta fantasma MUEVE HORAS de una persona a otra, y las
+    // horas son nómina, promedio y cuadrante. Va aparte de '/plantilla'
+    // porque ahí entra medio RRHH y esto no es de medio RRHH.
+    { clave: '/plantilla/fantasma', etiqueta: 'Enlazar cuentas fantasma' },
     { clave: '/documentos', etiqueta: 'Documentos' },
   ] },
   { grupo: 'Contratación', items: [
@@ -176,6 +180,15 @@ const RUTA_A_CLAVE = [
   // directo tiene que poder ver si a esa persona ya se le llamó sin que haya
   // que darle además el módulo del Histórico entero.
   ['/control/api/historial-llamadas', '/control'],
+  // LAS CUENTAS FANTASMA CUELGAN TODAS DE UN PREFIJO LIMPIO, y por eso las
+  // rutas se llaman así: enlazar mueve horas —y dinero— de una persona a otra.
+  // Si alguna colgara de '/plantilla/api/conductor/...' caería en '/plantilla'
+  // por prefijo y cualquiera que abre la plantilla podría hacerlo.
+  //
+  // Mirar la lista NO pasa por aquí: va dentro de la ficha, con '/plantilla'.
+  // Ver que alguien trabajó con una cuenta prestada es información de RRHH;
+  // moverla, no.
+  ['/plantilla/api/fantasma', '/plantilla/fantasma'],
   ['/control/api/historico',      '/control/historico'],
   ['/control/campanas',           '/control'],
   // Escribir en la bitácora es otro permiso que leerla: sin estas tres líneas

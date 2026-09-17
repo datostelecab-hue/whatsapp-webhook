@@ -22,6 +22,13 @@ router.use('/api/documento', express.json({ limit: '30mb' }));
 const quien = async req => ({
   usuarioId: await actor.idDe(req),
   rol: (req.usuario || {}).rol || '',
+  nombre: [(req.usuario || {}).nombre, (req.usuario || {}).apellidos].filter(Boolean).join(' ').trim(),
+  // DESDE DÓNDE. Lo piden las cuentas fantasma, que mueven horas y por tanto
+  // dinero: si alguien entrara con la cuenta de otro, esto es lo único que lo
+  // delataría. La IP sale de la cabecera del proxy igual que en el login.
+  ip: ((req.headers['x-forwarded-for'] || '').split(',')[0].trim())
+      || req.socket.remoteAddress || null,
+  agente: req.headers['user-agent'] || null,
 });
 
 /** Envoltorio: recoge el error y lo devuelve legible, sin repetirlo diez veces. */
@@ -140,14 +147,19 @@ router.delete('/api/conductor/:id/bolt/:cuentaId', responde(async req =>
 // ── Cuentas fantasma ────────────────────────────────────────────────────────
 // Cuando a alguien le suspenden su cuenta y sale a trabajar con la de otro. Ver
 // modules/Conductores/fantasma.service.js.
-router.get('/api/conductor/:id/fantasma', responde(req => fantasma.listar(req.params.id)
-  .then(enlaces => ({ enlaces }))));
-
+//
+// TODAS cuelgan de '/api/fantasma' a propósito, y por eso el conductor va en el
+// cuerpo y no en la URL: el permiso se resuelve por PREFIJO, así que una ruta
+// del tipo '/api/conductor/:id/fantasma' caería en '/plantilla' y cualquiera
+// que abre la plantilla podría mover horas de una persona a otra.
+//
+// La LISTA no está aquí: viaja dentro de la ficha, con el permiso de plantilla.
+// Ver que alguien trabajó con una cuenta prestada es información de RRHH.
 router.get('/api/fantasma/prestables', responde(req => fantasma.prestables(req.query.q)
   .then(cuentas => ({ cuentas }))));
 
-router.post('/api/conductor/:id/fantasma', responde(async req =>
-  fantasma.enlazar({ ...(req.body || {}), conductorId: req.params.id }, await quien(req))));
+router.post('/api/fantasma', responde(async req =>
+  fantasma.enlazar(req.body || {}, await quien(req))));
 
 router.put('/api/fantasma/:enlaceId', responde(async req =>
   fantasma.cambiarFechas({ ...(req.body || {}), id: req.params.enlaceId }, await quien(req))));

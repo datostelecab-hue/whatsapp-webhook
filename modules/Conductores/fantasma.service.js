@@ -77,6 +77,8 @@ function comprobarFechas(desde, hasta) {
 }
 
 const listar = conductorId => repo.deConductor(conductorId);
+/** El libro de auditoría de esa persona: cada acción, con quién y desde dónde. */
+const libro = conductorId => repo.libroDeConductor(conductorId);
 const prestables = q => repo.prestables(q);
 const vivos = () => repo.vivos();
 const enRango = (desde, hasta) => repo.enRango(desde, hasta);
@@ -111,6 +113,8 @@ async function enlazar({ conductorId, cuentaId, desde, hasta, motivo }, quien = 
     throw new Error(`La cuenta «${cu.nombre}» ya está prestada en esas fechas a ${quienes || 'otra persona'}. ` +
       'Las horas de un día son de una sola persona: cierra el otro periodo antes.');
   }
+  await repo.apuntar({ fantasmaId: fila.id, accion: 'enlazar', quien,
+    detalle: { cuenta: fila.cuenta, desde: fila.desde, hasta: fila.hasta, motivo: fila.motivo || null } });
   return { ...fila, ...(await rehacer(rangoAfectado(fila))) };
 }
 
@@ -128,6 +132,12 @@ async function cambiarFechas({ id, desde, hasta }, quien = {}) {
     const quienes = ch.map(c => `${c.conductor} (${c.desde}${c.hasta ? ' → ' + c.hasta : ' → sigue usándola'})`).join(', ');
     throw new Error(`Con esas fechas pisaría a ${quienes || 'otro periodo'} en la misma cuenta.`);
   }
+  // Cambiar las fechas es la acción con la que se estiran unas horas sin que se
+  // note: va al libro con el ANTES y el DESPUÉS, no solo con lo que queda.
+  await repo.apuntar({ fantasmaId: r.despues.id, accion: 'fechas', quien,
+    detalle: { cuenta: r.despues.cuenta,
+      antes: { desde: r.antes.desde, hasta: r.antes.hasta },
+      despues: { desde: r.despues.desde, hasta: r.despues.hasta } } });
   return { ...r.despues, ...(await rehacer(rangoAfectado(r.antes, r.despues))) };
 }
 
@@ -137,6 +147,8 @@ async function cambiarFechas({ id, desde, hasta }, quien = {}) {
  */
 async function anular({ id, motivo }, quien = {}) {
   const fila = await repo.anular({ id, motivo, usuarioId: quien.usuarioId });
+  await repo.apuntar({ fantasmaId: fila.id, accion: 'anular', quien,
+    detalle: { cuenta: fila.cuenta, desde: fila.desde, hasta: fila.hasta, motivo: motivo || null } });
   return { ...fila, ...(await rehacer(rangoAfectado(fila))) };
 }
 
@@ -153,7 +165,7 @@ async function cerrarHoy(id, quien = {}) {
 }
 
 module.exports = {
-  listar, prestables, vivos, enRango, vigentesHoy,
+  listar, libro, prestables, vivos, enRango, vigentesHoy,
   enlazar, cambiarFechas, anular, cerrarHoy,
   rangoAfectado, rehacer, MINIMO,
 };

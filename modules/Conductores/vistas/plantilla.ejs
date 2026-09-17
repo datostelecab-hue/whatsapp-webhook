@@ -3,7 +3,7 @@
 <script>
 (function () {
   const CAT = <%- JSON.stringify(catalogos || {}) %>;
-  const { fecha, hace, etiqueta, esc } = Listado.fmt;
+  const { fecha, fechaHora, hace, etiqueta, esc } = Listado.fmt;
 
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
   // Lo habitual, para no escribir a mano lo de siempre. La base admite
@@ -13,6 +13,13 @@
   const ROL = '<%= typeof rol !== "undefined" ? rol : "" %>';
   // Tráfico ve la ficha entera pero solo cambia lo suyo: turno y libranzas.
   const SOLO_OPERATIVO = ROL === 'trafico';
+  // ENLAZAR UNA CUENTA FANTASMA MUEVE HORAS de una persona a otra, y las horas
+  // son nómina. Lo toca quien tenga la llave —hoy William— y quien abre todo.
+  // MIRARLO no: ver que alguien trabajó con una cuenta prestada es información
+  // que RRHH necesita para entender su ficha.
+  const PERMISOS = <%- JSON.stringify(typeof permisos !== 'undefined' ? permisos : []) %>;
+  const PUEDE_FANTASMA = ['superadmin', 'desarrollador'].includes(ROL)
+    || PERMISOS.includes('/plantilla/fantasma');
 
   /** Llama a la API y devuelve el JSON, o lanza con el mensaje del servidor. */
   async function api(url, opciones) {
@@ -291,6 +298,38 @@
   // se quede en tierra. Sus horas se las quedaba la cuenta; aquí se dice de
   // quién son de verdad, y desde cuándo hasta cuándo.
 
+  /**
+   * El `User-Agent` en una palabra. No hace falta más: lo que se quiere saber
+   * es si fue desde el ordenador de la oficina o desde el teléfono.
+   */
+  function dispositivo(ua) {
+    const t = String(ua || '');
+    if (!t) return '<span class="text-telecab-muted">—</span>';
+    const movil = /Android|iPhone|iPad|Mobile/i.test(t);
+    const nav = /Edg\//.test(t) ? 'Edge' : /Chrome\//.test(t) ? 'Chrome'
+      : /Firefox\//.test(t) ? 'Firefox' : /Safari\//.test(t) ? 'Safari' : 'otro';
+    const so = /Windows/i.test(t) ? 'Windows' : /Android/i.test(t) ? 'Android'
+      : /iPhone|iPad|Mac OS/i.test(t) ? 'Apple' : /Linux/i.test(t) ? 'Linux' : '';
+    return `<span title="${esc(t)}"><i class="fa-solid ${movil ? 'fa-mobile-screen' : 'fa-desktop'} mr-1 text-telecab-muted"></i>` +
+      `${esc(nav)}${so ? ' · ' + esc(so) : ''}</span>`;
+  }
+
+  /** Lo que cambió, en una línea. El JSON crudo no lo lee nadie. */
+  function detalleLibro(d) {
+    if (!d) return '';
+    if (d.antes && d.despues) {
+      const f = x => `${x.desde || '?'} → ${x.hasta || 'sin cerrar'}`;
+      return `<span class="text-telecab-muted">${esc(f(d.antes))}</span> ` +
+        `<i class="fa-solid fa-arrow-right mx-1 text-telecab-muted"></i>` +
+        `<span class="text-telecab-text">${esc(f(d.despues))}</span>`;
+    }
+    const trozos = [];
+    if (d.desde) trozos.push(`${d.desde} → ${d.hasta || 'sin cerrar'}`);
+    if (d.motivo) trozos.push('«' + d.motivo + '»');
+    if (d.nota) trozos.push(d.nota);
+    return esc(trozos.join(' · '));
+  }
+
   /** La segunda línea de cada cuenta: lo que hace falta para no confundirla. */
   const detallePrestable = c => {
     const trozos = [];
@@ -345,7 +384,7 @@
     if (!v) return;
     if (!v.desde) return alert('Hace falta la fecha de inicio: sin ella no se sabe qué días son suyos.');
     await hacer(async () => {
-      const r = await enviar(`/plantilla/api/conductor/${d.id}/fantasma`, 'POST', v);
+      const r = await enviar('/plantilla/api/fantasma', 'POST', { ...v, conductorId: d.id });
       await avisarDelSellado(r);
     });
   }
@@ -1194,12 +1233,12 @@
           // cada sistema, y esta dice un préstamo con fechas, que es otra cosa.
           titulo: 'Cuentas fantasma', icono: 'fa-user-secret',
           acciones: [
-            { texto: 'Enlazar cuenta fantasma', onClick: accionFantasma },
+            { texto: 'Enlazar cuenta fantasma', visible: () => PUEDE_FANTASMA, onClick: accionFantasma },
             { texto: 'Cerrar', icono: 'fa-flag-checkered',
-              visible: d => !SOLO_OPERATIVO && (d.fantasmas || []).some(f => f.abierto),
+              visible: d => PUEDE_FANTASMA && (d.fantasmas || []).some(f => f.abierto),
               onClick: accionCerrarFantasma },
             { texto: 'Anular', icono: 'fa-ban',
-              visible: d => !SOLO_OPERATIVO && (d.fantasmas || []).some(f => !f.anulado),
+              visible: d => PUEDE_FANTASMA && (d.fantasmas || []).some(f => !f.anulado),
               onClick: accionAnularFantasma },
           ],
           tabla: {
@@ -1216,6 +1255,31 @@
                 pinta: (v, f) => v
                   ? etiqueta('Anulado' + (f.anuladoMotivo ? ' · ' + f.anuladoMotivo : ''), 'red')
                   : etiqueta('Cuenta sus horas', 'green') },
+            ],
+          },
+        },
+        {
+          // EL LIBRO. Enlazar mueve horas —y por tanto nómina— de una persona a
+          // otra, así que cada acción deja quién, cuándo, desde qué IP y con qué
+          // dispositivo. Está para poder mirar atrás si algún día una cuenta se
+          // usa desde donde no debe.
+          titulo: 'Cuentas fantasma · quién lo tocó', icono: 'fa-clipboard-list',
+          visible: d => (d.fantasmaLibro || []).length > 0,
+          tabla: {
+            datos: d => d.fantasmaLibro,
+            vacio: 'Sin movimientos.',
+            columnas: [
+              { titulo: 'Cuándo', campo: 'cuando', clase: 'tabular-nums',
+                pinta: v => fechaHora(v) },
+              { titulo: 'Qué', campo: 'accion',
+                pinta: v => etiqueta({ enlazar: 'Enlazó', fechas: 'Cambió fechas', anular: 'Anuló' }[v] || v,
+                  v === 'anular' ? 'red' : v === 'fechas' ? 'gold' : 'green') },
+              { titulo: 'Cuenta', campo: 'cuenta' },
+              { titulo: 'Quién', campo: 'usuario', clase: 'font-semibold' },
+              { titulo: 'Desde', campo: 'ip', clase: 'tabular-nums',
+                pinta: v => v || '<span class="text-telecab-muted">—</span>' },
+              { titulo: 'Dispositivo', campo: 'agente', pinta: v => dispositivo(v) },
+              { titulo: 'Detalle', campo: 'detalle', pinta: v => detalleLibro(v) },
             ],
           },
         },

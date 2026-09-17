@@ -53,7 +53,11 @@ async function ficha(id, { momento } = {}) {
   // Las cuentas prestadas van en la ficha y no en una llamada aparte porque la
   // pantalla las pinta en una tarjeta más, igual que las suyas. Si esto fallara
   // no debe tumbar la ficha entera: se ve sin ellas.
-  f.fantasmas = await require('./fantasma.service').listar(id).catch(() => []);
+  const fant = require('./fantasma.service');
+  f.fantasmas = await fant.listar(id).catch(() => []);
+  // El libro solo si tiene enlaces: a la inmensa mayoría de fichas le sobra una
+  // consulta más para devolver una lista vacía.
+  f.fantasmaLibro = f.fantasmas.length ? await fant.libro(id).catch(() => []) : [];
   return f;
 }
 

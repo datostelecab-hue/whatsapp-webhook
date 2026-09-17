@@ -202,7 +202,64 @@ async function anular({ id, motivo, usuarioId }) {
   return uno(id);
 }
 
+/**
+ * EL LIBRO: cada acción sobre una cuenta fantasma, con quién y desde dónde.
+ *
+ * Se apunta SIEMPRE, también al cambiar las fechas —que es la acción con la que
+ * se estiran unas horas sin que se note— y también al anular. Va en tabla
+ * aparte y no en columnas de `cuenta_fantasma` porque un enlace se toca varias
+ * veces y lo que hace falta es la serie entera, no la última vez.
+ *
+ * Si el apunte fallara NO se tumba la operación: el enlace ya está hecho y
+ * negarlo a posteriori sería peor. Se deja dicho en consola.
+ */
+async function apuntar({ fantasmaId, accion, quien = {}, detalle = null }) {
+  try {
+    await db.consulta(
+      `INSERT INTO cuenta_fantasma_log
+         (fantasma_id, accion, usuario_id, usuario, ip, agente, detalle)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [Number(fantasmaId), accion, quien.usuarioId || null,
+       (quien.nombre || '').slice(0, 160) || null,
+       (quien.ip || '').slice(0, 64) || null, quien.agente || null,
+       detalle ? JSON.stringify(detalle) : null]);
+  } catch (e) {
+    console.error(`⚠️  [FANTASMA] no se pudo apuntar «${accion}» del enlace ${fantasmaId}: ${e.message}`);
+  }
+}
+
+/** El libro de un enlace, de lo más reciente a lo más antiguo. */
+async function libroDe(fantasmaId) {
+  const r = await db.consulta(
+    `SELECT accion, usuario, ip, agente, detalle, ocurrido_at
+       FROM cuenta_fantasma_log WHERE fantasma_id = $1
+      ORDER BY ocurrido_at DESC, id DESC`, [Number(fantasmaId)]);
+  return r.rows.map(x => ({
+    accion: x.accion, usuario: x.usuario || '', ip: x.ip || '',
+    agente: x.agente || '', detalle: x.detalle || null, cuando: x.ocurrido_at,
+  }));
+}
+
+/** El libro de TODOS los enlaces de una persona, para pintarlo en su ficha. */
+async function libroDeConductor(conductorId) {
+  const r = await db.consulta(
+    `SELECT l.fantasma_id, l.accion, l.usuario, l.ip, l.agente, l.detalle, l.ocurrido_at,
+            COALESCE(ce.externo_nombre, '(sin nombre en BOLT)') AS cuenta
+       FROM cuenta_fantasma_log l
+       JOIN cuenta_fantasma f     ON f.id = l.fantasma_id
+       JOIN conductor_externo ce  ON ce.id = f.cuenta_id
+      WHERE f.conductor_id = $1
+      ORDER BY l.ocurrido_at DESC, l.id DESC
+      LIMIT 100`, [Number(conductorId)]);
+  return r.rows.map(x => ({
+    enlaceId: String(x.fantasma_id), accion: x.accion, cuenta: x.cuenta,
+    usuario: x.usuario || '', ip: x.ip || '', agente: x.agente || '',
+    detalle: x.detalle || null, cuando: x.ocurrido_at,
+  }));
+}
+
 module.exports = {
   deConductor, vivos, enRango, vigentesHoy, prestables, choquesDe, cuenta, uno,
   crear, cambiarFechas, anular, esSolape,
+  apuntar, libroDe, libroDeConductor,
 };
