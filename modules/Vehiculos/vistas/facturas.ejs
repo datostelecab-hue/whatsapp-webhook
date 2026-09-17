@@ -6,7 +6,7 @@
 <!-- Las matriculas de la flota que esta persona puede tocar. Se rellena al
      abrir el formulario, no al cargar la pagina: quien solo mira facturas no
      necesita bajarse los 95 coches. -->
-<datalist id="flota-lista"></datalist>
+
 
 <div id="fm" class="hidden fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
   <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-4xl my-8">
@@ -21,7 +21,8 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <label class="block">
           <span class="text-xs text-telecab-muted uppercase tracking-wide">Taller</span>
-          <select name="proveedorId" required class="w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40"></select>
+          <input name="proveedorId" data-picker readonly required placeholder="Elige el taller"
+                 class="w-full mt-1 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
         </label>
         <label class="block">
           <span class="text-xs text-telecab-muted uppercase tracking-wide">Nº de factura</span>
@@ -112,6 +113,7 @@
   // La flota, en memoria mientras dura el formulario: se usa para la lista de
   // matriculas y para ofrecer el kilometraje de cada coche.
   let FLOTA = new Map();
+  let PROVEEDORES = [];
   const pedir = async (url, opciones) => {
     const r = await fetch(url, opciones);
     const d = await r.json();
@@ -287,7 +289,7 @@
   const MINI = 'bg-telecab-card2 border border-telecab-border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40';
   const filaHTML = () => `
     <tr class="border-t border-telecab-border">
-      <td class="py-1 pr-2"><input name="matricula" list="flota-lista" placeholder="vacío = NN"
+      <td class="py-1 pr-2"><input name="matricula" placeholder="vacío = NN"
           class="w-32 uppercase ${MINI}" autocomplete="off"></td>
       <td class="py-1 pr-2"><input name="albaran" class="w-24 ${MINI}"></td>
       <td class="py-1 pr-2"><input name="fecha" class="js-fecha w-28 ${MINI}" placeholder="dd/mm/aaaa" autocomplete="off"></td>
@@ -296,6 +298,76 @@
       <td class="py-1 pr-2"><input name="importe" inputmode="decimal" class="w-24 tabular-nums ${MINI}"></td>
       <td class="py-1"><button type="button" class="quitar w-7 h-7 rounded text-telecab-muted hover:text-telecab-red transition" title="Quitar la línea"><i class="fa-solid fa-trash"></i></button></td>
     </tr>`;
+
+  // ── UN SELECTOR EN LÍNEA CON LA CARA DE LA CASA ────────────────────────────
+  // El <datalist> y el <select> del navegador se pintan con los colores del
+  // sistema operativo —fondo blanco, azul de Windows— y en una pantalla oscura
+  // parecen de otra aplicación. `Dialogo.formulario` ya tiene el de la casa,
+  // pero es para ventanas: esto son celdas de una tabla.
+  //
+  // Se ven DIEZ como mucho y se filtra escribiendo: la flota son cien coches y
+  // ninguna lista de cien se lee, se busca.
+  //
+  // Sigue siendo una lista y no una jaula: en la matrícula se puede teclear una
+  // que no esté, porque el taller a veces factura coches que no llevamos y eso
+  // hay que poder apuntarlo tal cual.
+  const TOPE_PICKER = 10;
+  const plano = t => String(t == null ? '' : t)
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+  function engancharPicker(input, opciones, { libre = false, alElegir } = {}) {
+    const caja = document.createElement('div');
+    caja.className = 'absolute z-50 mt-1 w-max min-w-full max-h-64 overflow-y-auto rounded-xl ' +
+      'border border-telecab-border bg-telecab-card shadow-soft hidden';
+    const envoltorio = document.createElement('div');
+    envoltorio.className = 'relative';
+    input.parentNode.insertBefore(envoltorio, input);
+    envoltorio.appendChild(input);
+    envoltorio.appendChild(caja);
+
+    let abierto = false;
+    const cerrar = () => { abierto = false; caja.classList.add('hidden'); };
+
+    const pintar = () => {
+      const q = libre ? plano(input.value) : '';
+      const todas = opciones();
+      const casan = q ? todas.filter(o => plano(o.texto).includes(q) || plano(o.detalle).includes(q)) : todas;
+      const ops = casan.slice(0, TOPE_PICKER);
+      const fuera = casan.length - ops.length;
+      caja.innerHTML = (ops.length
+        ? ops.map(o => `<button type="button" data-v="${esc(o.valor)}"
+              class="w-full text-left px-3 py-2 text-sm text-telecab-text hover:bg-telecab-gold/15 transition">
+              <span class="font-semibold">${esc(o.texto)}</span>
+              ${o.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(o.detalle)}</span>` : ''}
+            </button>`).join('')
+        : `<p class="px-3 py-2 text-xs text-telecab-muted">Nada que coincida${q ? ' con «' + esc(input.value.trim()) + '»' : ''}.</p>`)
+        + (fuera > 0
+          ? `<p class="px-3 py-1.5 text-[11px] text-telecab-gold border-t border-telecab-border">
+               Se ven ${ops.length} de ${casan.length}. Sigue escribiendo para afinar.</p>`
+          : '');
+      caja.querySelectorAll('[data-v]').forEach(b => b.addEventListener('mousedown', ev => {
+        // `mousedown` y no `click`: el blur del input cierra la caja antes de
+        // que llegue el click, y el botón se quedaba sin pulsar.
+        ev.preventDefault();
+        const o = opciones().find(x => String(x.valor) === b.dataset.v);
+        input.value = libre ? (o ? o.texto : b.dataset.v) : (o ? o.texto : '');
+        input.dataset.valor = b.dataset.v;
+        cerrar();
+        if (alElegir) alElegir(o);
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }));
+      abierto = true;
+      caja.classList.remove('hidden');
+    };
+
+    input.addEventListener('focus', pintar);
+    if (libre) input.addEventListener('input', () => { delete input.dataset.valor; pintar(); });
+    else input.addEventListener('click', pintar);
+    input.addEventListener('blur', () => setTimeout(cerrar, 120));
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape' && abierto) { ev.preventDefault(); cerrar(); }
+    });
+  }
 
   const num = v => { const n = Number(String(v || '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 
@@ -334,6 +406,12 @@
     // rellena si el campo esta vacio, y avisa de cual es cual.
     const mat = tr.querySelector('[name=matricula]');
     const km = tr.querySelector('[name=km]');
+    // La lista de la flota, con el modelo debajo para no confundir dos parecidas.
+    engancharPicker(mat, () => [...FLOTA.values()].map(v => ({
+      valor: v.matricula, texto: v.matricula,
+      detalle: `${v.modelo}${v.deBaja ? ' · de baja' : ''}${v.sede === 'barcelona' ? ' · Barcelona' : ''}`,
+    })), { libre: true });
+
     mat.addEventListener('change', () => {
       const v = FLOTA.get(mat.value.trim().toUpperCase());
       mat.value = mat.value.trim().toUpperCase();
@@ -350,6 +428,9 @@
   async function abrir() {
     const f = $('#fm-form');
     f.reset();
+    // `reset()` vacía el texto pero no el id que lleva pegado: sin esto, abrir
+    // el formulario otra vez guardaría la factura con el taller de la anterior.
+    delete f.proveedorId.dataset.valor;
     $('#fm-lineas').innerHTML = '';
     anadirFila();
     recalcular();
@@ -358,8 +439,16 @@
         pedir('/facturas/api/proveedores'),
         pedir('/facturas/api/flota'),
       ]);
-      f.proveedorId.innerHTML = proveedores
-        .map(p => `<option value="${esc(p.id)}">${esc(p.nombre)}</option>`).join('');
+      // El taller: el mismo selector, sin filtro —son tres— y de solo lectura,
+      // que aquí no vale escribir uno que no esté: el proveedor tiene que existir
+      // en la base con su CIF para que la factura sirva de algo.
+      PROVEEDORES = proveedores;
+      if (!f.proveedorId.dataset.enganchado) {
+        f.proveedorId.dataset.enganchado = '1';
+        engancharPicker(f.proveedorId, () => PROVEEDORES.map(p => ({
+          valor: p.id, texto: p.nombre, detalle: [p.nif, p.poblacion].filter(Boolean).join(' · '),
+        })));
+      }
 
       // La lista de matriculas, con el modelo al lado para no equivocarse entre
       // dos parecidas. Las de baja se marcan: una factura vieja puede ser de un
@@ -407,7 +496,7 @@
         importe: tr.querySelector('[name=importe]').value,
       }));
       const cuerpo = {
-        proveedorId: f.proveedorId.value, numero: f.numero.value, fecha: aISO(f.fecha.value),
+        proveedorId: f.proveedorId.dataset.valor || '', numero: f.numero.value, fecha: aISO(f.fecha.value),
         base: f.base.value, iva: f.iva.value,
         total: f.total.value, notas: f.notas.value, lineas,
       };
