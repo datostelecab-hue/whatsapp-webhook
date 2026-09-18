@@ -21,6 +21,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **El Excel de altas y el tramo de Ballenoil** (`tramitarAlta`, `avanzarTrasPin`, `services/altasExcel.js`) ya no los usa el recorrido nuevo. No se han borrado porque las 32 de arriba todavía pasan por ahí: cuando esa bandeja quede vacía, se pueden retirar.
 - **El importador de códigos de lavado de Ballenoil** del bot de WhatsApp es otra cosa y sigue vivo: lo que desapareció es el paso del PIN en el alta.
 
+## Fuera del ERP: lo que hay que crear en otro sitio (18/09/2026)
+
+- **El setup de «fuera de zona» de «Zona Notificación», en Mapon.** La geocerca existe (id 3029835) pero **no hay ningún setup que dispare cuando un coche sale de ella**: del 11 al 18/09 no saltó ni una. El código del ERP ya la trata, así que el aviso empezará a sonar solo en cuanto se cree el setup desde la app de Mapon. El de «Zona Madrid» sí está vivo. → [[Control Alertas]]
+- **Las plantillas `zona_notificacion` y `zona_madrid` en Meta.** Mientras no estén aprobadas, los avisos salen por la plantilla genérica con su frase larga; no se pierde ninguno.
+
 ## Pendientes técnicos
 
 - **Credenciales escritas en el código.** Casi todo está bien puesto en variables de entorno, pero quedan dos cosas:

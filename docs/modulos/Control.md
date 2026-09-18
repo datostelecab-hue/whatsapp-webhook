@@ -103,4 +103,4 @@ Lo que se quedó fuera y no por descuido: `services/repo/llamadas` y `services/r
 
 ## Ver también
 
-[[Control En directo]] · [[Control Reportes]] · [[Control Alertas]] · [[Flota viva]] · [[Jornada y turnos]] · [[Permisos]] · [[Glosario]]
+[[Control En directo]] · [[Control Reportes]] · [[Control Alertas]] · [[Control Coches sin cuadrante]] · [[Flota viva]] · [[Jornada y turnos]] · [[Permisos]] · [[Glosario]]

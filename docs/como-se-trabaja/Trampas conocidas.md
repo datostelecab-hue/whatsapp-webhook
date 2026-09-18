@@ -1173,6 +1173,53 @@ además llevara un correturnos de noche pesaba **0 contra 2** y se contaba como 
 de noche: la plantilla de día perdía una persona y la de noche se inventaba otra.
 El turno de un fijo lo dice **su plaza de fijo**.
 
+### `ON CONFLICT` sobre un índice PARCIAL tiene que repetir su predicado
+
+`modules/Control/alertas.repo.js`
+
+Sin el `WHERE` del índice, Postgres no sabe a qué índice te refieres y contesta
+**42P10** («no unique or exclusion constraint matching the ON CONFLICT
+specification»). Y peor: si en la tabla hay OTRO índice único que sí encaja con
+esas columnas, el `ON CONFLICT` apunta a ese y la violación del que te importaba
+sale como excepción sin atrapar. *Una salida de zona repetida tiraba la revisión
+entera de alertas.*
+
+### Un coche puede salirse de la zona dos veces, y son dos avisos
+
+`db/141-una-alerta-por-salida-de-zona.sql`
+
+«Un aviso por conductor, tipo y franja» es la regla buena para las alertas de
+persona y la equivocada para las de zona: dos salidas en la misma franja con el
+mismo conductor dentro son **dos sitios, dos horas y dos llamadas**. La clave de
+una alerta de zona es el **id de la alerta de Mapon**, no la persona.
+
+### Ir a por el pasajero y llevarlo son la MISMA situación
+
+`services/zonasMapon.js`
+
+En flota viva, `has_order`, `riding` y `on_order` caen todos en `viaje`. Las dos
+cosas son su trabajo, así que las dos tienen que callar la alerta de salir del
+área. **Tratar «va de camino» como «está libre» haría sonar la alerta cada vez
+que alguien lleva un cliente a Alcalá**, que es como se mata una alerta: no
+apagándola, sino haciendo que no signifique nada.
+
+### La cobertura de un coche hay que mirarla POR TURNO
+
+`modules/Control/cochesLibres.repo.js`
+
+Un coche con fijo de día siempre sale «planificado» si preguntas por el coche
+entero. El 5646MDM tiene fijo de día y su correturnos de noche está de baja: sus
+noches de miércoles y jueves no las cubría nadie y **no aparecían en ninguna
+pantalla**. Ahí es cuando se lo llevó alguien de fuera.
+
+### Un coche que nadie ficha no deja un solo apunte de BOLT
+
+`modules/Control/cochesLibres.repo.js`
+
+Por eso los km de esa pantalla salen de `fv_ruta` (Mapon) y no de BOLT:
+preguntarle a BOLT por un coche que nadie ha fichado devuelve silencio, y el
+silencio se lee como «no se movió».
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

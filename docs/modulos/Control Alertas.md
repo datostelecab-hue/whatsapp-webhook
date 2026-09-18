@@ -16,12 +16,48 @@ Tres cosas, y cada una tiene su umbral configurable:
 | Tipo | Qué es | Umbral por defecto | Ventana |
 |---|---|---|---|
 | `sin_respuesta` | deja pasar ofertas **sin contestar** | 5 viajes | la franja |
-| `rechazo_directo` | **las rechaza él, con el dedo** | 1 viaje | la jornada entera |
+| `rechazo_directo` | **las rechaza él, con el dedo** | 1 viaje, y solo por debajo del 75 % de utilización | la jornada entera |
 | `km_parado` | **rueda** estando en descanso o desconectado | 20 km | la franja |
+| `zona_notificacion` | sale del área de trabajo **sin viaje** | cada salida | la franja |
+| `zona_madrid` | sale de **Zona Madrid**, aunque vaya de viaje | cada salida | siempre |
 
 **No responder no es rechazar.** Puede ser cobertura, el móvil colgado o el soporte del salpicadero. Por eso aguanta hasta cinco, por eso **no baja la calificación del conductor** (el modelo ABCD no cuenta rechazos, §15) y por eso lo que dispara es una comprobación —"¿qué le pasa, necesita algo?"— y no un expediente.
 
 **Rechazar a dedo salta al primero.** Aquí no se rechaza ningún viaje de ningún tipo: rechazar uno ya es motivo de llamada. Si resulta que iba lejísimos, se justifica por teléfono — pero se pregunta. Por eso el umbral es 1 y no un "a partir de". Y se mide en **toda la jornada**, no solo en la franja: rechazar no está permitido a ninguna hora, así que uno hecho a las 15:30 —entre franja y franja— tiene que sonar igual en cuanto abra la siguiente. Por lo mismo, el texto del mensaje no dice "(franja 08:00-13:00)" para este tipo: sería mentir sobre de dónde salen esos viajes.
+
+### El rechazo solo suena si NO está dando servicio
+
+Rechazar sigue sin estar permitido, pero **un rechazo no significa lo mismo en los dos casos**: quien va al 90 % de utilización está cargado de trabajo y rechazó uno que le venía mal; quien va al 60 % está eligiendo viajes.
+
+Por debajo del **75 %** se avisa; de ahí para arriba **la alerta no se abre siquiera** — ni en pantalla ni por WhatsApp. La pantalla aplica el mismo filtro que el envío a propósito: si dijera «esto está pasando» de gente a la que nunca se va a avisar, Tráfico llamaría igual y el filtro no habría servido de nada.
+
+Utilización = **horas en viaje sobre horas efectivas** (viaje + espera) de su jornada. Es la misma cifra de [[Calificacion de conductores]] y de la ficha 360, pero se calcula aquí sobre `fv_tramo` y **no** sobre las vistas de BI (`bi_*`): la alerta tiene que poder contestar ahora mismo, sin esperar a que BI esté calculado.
+
+> [!note] Sin utilización se avisa igual
+> Cero horas efectivas no es «cero por ciento», es «no se sabe» — y alguien con cero horas que además rechaza es justo el caso que hay que mirar.
+
+Medido el 18/09/2026 en la franja de mañana: de **21 conductores con rechazo directo, 16 dejan de sonar y quedan 5**. Se callan quien lleva 10 rechazos al 86,4 % y quien lleva 6 al 93 %; sigue sonando quien lleva 14 al 45,9 %.
+
+### Las dos alertas de zona
+
+Mapon vigila geocercas y dispara `not_in_obj` cuando un coche se sale. Las alertas entran por la puerta de siempre —la pasada de [[Ingesta|flota viva]], cada 5 minutos— y se guardan crudas en `mapon_zona_alerta`. → [[Mapon]]
+
+**Las dos zonas no significan lo mismo, y por eso son dos tipos:**
+
+- **«Zona Notificación»** es el área de trabajo. Salir de ahí **sin viaje** y en horas de vigilancia es raro —tienen que estar cerca de la M30—; salir **con viaje** es su trabajo. Solo cuenta para coches del cuadrante.
+- **«Zona Madrid»** es enorme: de ahí no se sale ni con pasajero. Suena esté de viaje o no, a cualquier hora, y también con coches que no están en el cuadrante — que son los que más preocupan.
+
+> [!warning] Ir a por el pasajero y llevarlo son la MISMA situación
+> En flota viva, `has_order` (va de camino), `riding` (lo lleva) y `on_order` caen todos en `viaje`. Las dos cosas son su trabajo, así que las dos callan la alerta de notificación. Sin ese filtro sonaría cada vez que alguien lleva un cliente a Alcalá.
+
+**La franja se mide sobre la HORA DE LA SALIDA**, no sobre la del cron: si no, una salida de las 12:58 dejaría de contar por revisarse a las 13:06 — que es justo para lo que existen los minutos de cortesía.
+
+**El conductor sale del TRAMO, no de la alerta**: Mapon no sabe quién va dentro. Y cuando no hay tramo, el aviso lo dice con todas las letras —«SIN CONDUCTOR FICHADO»—, porque ese es el caso que hay que mirar primero. → [[Control Coches sin cuadrante]]
+
+Plantillas propias `zona_notificacion` y `zona_madrid`, con la reserva de siempre: si aún no están aprobadas en Meta, el aviso sale por la genérica y no se pierde.
+
+> [!danger] Depende de un setup que vive en Mapon, no aquí
+> «Zona Madrid» ya dispara. **«Zona Notificación» no tiene setup de *fuera de zona* en la cuenta de Mapon** (en la semana del 11 al 18/09 no disparó ni una), así que ese aviso no sonará hasta que se cree desde la app de Mapon. El código está listo y no hay forma de saberlo desde aquí: una alerta que no llega es indistinguible de una zona de la que nadie sale.
 
 ## La franja
 
@@ -45,6 +81,13 @@ Dos franjas al día, en hora de Madrid, definidas en el `MODELO` de `alertas.rep
 La franja pertenece siempre a la jornada de su propio día. Eso se corrigió para poder **mirar hacia atrás**: antes la jornada salía de `ahora` y en vivo daba igual, pero preguntando por la franja de mañana del día 3 contaba los viajes desde las 05:00 de hoy. Con el arreglo, el [[Control]] · Histórico puede reconstruir las alertas de un día ya cerrado recorriendo las dos franjas con la **misma consulta** que dispara los WhatsApps.
 
 ## Un mensaje por alerta: lo garantiza el índice único
+
+> [!warning] Son DOS índices, y cada uno manda en lo suyo
+> `uq_alerta_control_persona (tipo, driver_uuid, franja_dia, franja)` es «un aviso por conductor y franja», y es **parcial**: solo vale donde `mapon_alerta_id IS NULL`. En las de zona manda `uq_alerta_control_mapon`, cuya clave es el **id de la alerta de Mapon** — la única definición honesta de «esta salida ya se avisó».
+>
+> Hizo falta separarlos (db/141): un coche puede salirse de la zona dos veces en la misma franja con el mismo conductor dentro, y son dos salidas. Con el índice entero la segunda **reventaba el INSERT** con una violación de unicidad que el `ON CONFLICT` no atrapaba —mira el otro índice— y se caía la revisión completa.
+>
+> Y un `ON CONFLICT` sobre un índice **parcial** tiene que repetir su predicado (`... WHERE mapon_alerta_id IS NOT NULL`), o Postgres contesta `42P10`.
 
 La regla es que el mismo conductor puede levantar las tres alertas en la misma franja —son tres avisos distintos— pero **cada una suena una sola vez**: que siga rechazando después del aviso no vuelve a molestar a nadie.
 
