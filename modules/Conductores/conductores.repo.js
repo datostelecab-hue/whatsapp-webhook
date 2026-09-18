@@ -248,12 +248,21 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
         FROM v_documento_falta f WHERE f.conductor_id = c.id) docs ON TRUE
     WHERE NOT c.es_centinela
       ${donde.length ? 'AND ' + donde.join(' AND ') : ''}
-    -- POR FECHA DE ALTA, DEL ÚLTIMO EN ENTRAR AL PRIMERO.
+    -- POR LA FECHA QUE LA LISTA ENSEÑA, DE LA MÁS RECIENTE A LA MÁS ANTIGUA.
     --
     -- Alfabético ordena una guía de teléfonos, no una plantilla: en una lista de
     -- doscientas personas, las que se acaban de incorporar son las que hay que
     -- mirar —les falta documentación, no tienen cuenta de BOLT, están en periodo
     -- de prueba— y estaban repartidas por toda la lista según su apellido.
+    --
+    -- Y ES LA MISMA COLUMNA QUE SE PINTA, no una cualquiera. La columna «Desde»
+    -- enseña el alta de quien está vigente y la BAJA de quien ya no está —porque
+    -- de quien se fue lo que importa es cuándo se fue—, y ordenar por el alta
+    -- dejaba esa bandeja con fechas que parecían puestas al azar. La baja del
+    -- último contrato cerrado
+    -- solo existe si no está vigente, así que el COALESCE dice exactamente lo
+    -- mismo que la celda: los recién llegados arriba en una bandeja, los que
+    -- acaban de irse arriba en la otra.
     --
     -- La fecha puede faltar (fichas antiguas sin ella): esas van al final, no al
     -- principio, porque una fecha que no existe no es una incorporación de hoy.
@@ -265,7 +274,7 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
     -- EL ORDEN LO PONE LA BASE Y LOS FILTROS NO LO TOCAN: la pantalla filtra
     -- sobre esta misma lista sin reordenarla, así que el criterio vale igual
     -- mirando a todos, a los de baja o a los que entran.
-    ORDER BY e.alta DESC NULLS LAST, ${NOMBRE_BOLT}`, params);
+    ORDER BY COALESCE(ultimo.baja, e.alta) DESC NULLS LAST, ${NOMBRE_BOLT}`, params);
 
   // Lo que le falta a cada ficha. Se calcula aquí y no en la vista para que
   // valga igual en la pantalla, en un aviso o en un informe.
