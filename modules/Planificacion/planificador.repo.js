@@ -462,14 +462,45 @@ async function tablero({ dia } = {}) {
     });
   });
 
-  // ── El banquillo ───────────────────────────────────────────────────────
-  // Quien no tiene ninguna plaza esta semana. Incluye a los que empiezan más
-  // adelante: se les ve para poder colocarlos antes de que entren.
-  // El banquillo = sin plaza y disponibles: los activos, mas los ausentes con
-  // VUELTA PREVISTA (vacaciones/permiso, para poder planificar su regreso). Se
-  // quedan fuera las ausencias indefinidas (baja medica, suspension): no se sabe
-  // cuando vuelven.
-  const pendientes = [...gente.values()].filter(p => !p.plazas && (!p.ausente || p.finPrevisible));
+  // ── El banquillo, y los que NO son banquillo ───────────────────────────
+  //
+  // El banquillo es para PLANIFICAR, así que solo lleva a quien se puede
+  // planificar hoy. Antes cargaba también con los de vacaciones y los de
+  // permiso —con su etiqueta, pero mezclados— y había que leerse la lista
+  // entera para saber a quién se podía colocar de verdad.
+  //
+  // Ahora son tres listas y cada una contesta a una pregunta distinta:
+  //
+  //   pendientes   a quién puedo poner en un coche AHORA.
+  //   ausentesConVuelta  quién vuelve y cuándo (vacaciones, permiso): se
+  //                planifica su regreso, no su hoy.
+  //   ausentesSinFecha   quién está fuera sin fecha de vuelta (baja médica,
+  //                suspensión). No se planifica, pero tiene que verse: antes
+  //                desaparecía de la pantalla y nadie sabía por qué faltaba.
+  //
+  // Y EN EL BANQUILLO ENTRAN TAMBIÉN LOS CORRETURNOS A MEDIO PONER. Un CT con
+  // dos días puestos de los cuatro que le tocan no está colocado: le faltan dos
+  // días de trabajo y dos días de sueldo. Tenía su aviso arriba, pero no había
+  // dónde ir a arreglarlo — la lista de a quién colocar no lo incluía porque
+  // "ya tenía plaza".
+  // EL SUELO SON CUATRO DÍAS, no «lo que le falte para su tope».
+  //
+  // Medido el 18/09/2026: con el tope por contrato (6 días en un 40 h) entraban
+  // 92 personas, y 85 de ellas eran «5 de 6». Eso no es un correturnos a medio
+  // poner, es el reparto normal de la semana, y el banquillo dejaba de servir
+  // para lo que sirve. Cuatro días es donde un CT deja de estar mal puesto —ni
+  // cubre lo suyo ni cobra lo suyo por debajo de ahí—, y es la misma cifra con
+  // la que se avisa arriba.
+  const CT_SUELO_DIAS = 4;
+  const todos = [...gente.values()];
+  const sinPlaza = todos.filter(p => !p.plazas);
+  const ctIncompleto = p => p.plazas > 0 && !p.ausente
+    && p.diasQueDebeCT != null && p.diasAsignados < Math.min(CT_SUELO_DIAS, p.diasQueDebeCT);
+
+  const pendientes = sinPlaza.filter(p => !p.ausente)
+    .concat(todos.filter(ctIncompleto).map(p => ({ ...p, faltanDias: p.diasQueDebeCT - p.diasAsignados })));
+  const ausentesConVuelta = sinPlaza.filter(p => p.ausente && p.finPrevisible);
+  const ausentesSinFecha = sinPlaza.filter(p => p.ausente && !p.finPrevisible);
   const cuadrantes = await listarCuadrantes();
   const zonas = (await db.consulta('SELECT id, nombre FROM base_zona WHERE activa ORDER BY nombre')).rows
     .map(z => ({ id: z.id, nombre: z.nombre }));
@@ -496,6 +527,8 @@ async function tablero({ dia } = {}) {
     // El banquillo. Van las personas enteras y no sus ids: el front las pinta
     // por nombre y no tendria de donde sacarlo.
     pendientes,
+    ausentesConVuelta,
+    ausentesSinFecha,
     // Conductores sin coche porque el suyo salio de cobertura (taller...): hay
     // que recolocarlos, normalmente en un coche de emergencia.
     huerfanos: huerfanos.rows.map(h => ({

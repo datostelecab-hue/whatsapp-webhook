@@ -192,6 +192,25 @@
         <div id="banquillo" class="space-y-1 max-h-[60vh] overflow-y-auto pr-1"></div>
       </section>
 
+      <!-- Fuera del banquillo a propósito: no se pueden planificar hoy, pero
+           tienen que verse. Antes los de vacaciones salían mezclados con quien
+           sí se podía colocar, y los de baja médica no salían en ninguna parte. -->
+      <section id="panel-vuelven" class="hidden bg-telecab-card border border-telecab-border rounded-2xl p-4">
+        <h3 class="font-semibold text-sm flex items-center gap-2 mb-2">
+          <i class="fa-solid fa-plane-arrival text-telecab-gold"></i>Vuelven
+          <span id="vuelven-n" class="ml-auto text-xs text-telecab-muted"></span>
+        </h3>
+        <div id="vuelven" class="space-y-1 max-h-[30vh] overflow-y-auto pr-1"></div>
+      </section>
+
+      <section id="panel-sinfecha" class="hidden bg-telecab-card border border-telecab-border rounded-2xl p-4">
+        <h3 class="font-semibold text-sm flex items-center gap-2 mb-2">
+          <i class="fa-solid fa-user-injured text-telecab-muted"></i>Sin fecha de vuelta
+          <span id="sinfecha-n" class="ml-auto text-xs text-telecab-muted"></span>
+        </h3>
+        <div id="sinfecha" class="space-y-1 max-h-[30vh] overflow-y-auto pr-1"></div>
+      </section>
+
       <section class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
         <h3 class="font-semibold text-sm flex items-center gap-2 mb-1">
           <i class="fa-solid fa-hourglass-half text-telecab-gold"></i>Fin de periodo de prueba
@@ -690,10 +709,16 @@
       if (zona && zonaDeCoche(c, zc) !== zona) return false;
       if (soloHuecos && !tieneHueco(c)) return false;
       if (q) {
+        // TAMBIÉN LOS QUE ESTÁN POR LLEGAR. Una plaza puede estar vacía hoy y
+        // tener dueño para el lunes («→ Cristian · llega 21/09»), y buscar por
+        // su nombre contestaba «no hay nada» justo cuando lo que quieres es ver
+        // dónde cae. Lo mismo con la vacante que tiene prometida la plaza.
         const txt = plano(c.matricula + ' ' + (c.personas || []).map(p => {
-          if (!p || !p.id) return '';
-          const per = porId.get(String(p.id)) || {};
-          return (p.nombre || '') + ' ' + (per.telefono || '') + ' ' + (per.barrio || '');
+          if (!p) return '';
+          const per = p.id ? (porId.get(String(p.id)) || {}) : {};
+          return [p.nombre, per.telefono, per.barrio,
+            p.futuro && p.futuro.nombre,
+            p.vacante && (p.vacante.codigo || p.vacante.sustituye)].filter(Boolean).join(' ');
         }).join(' '));
         if (!txt.includes(q)) return false;
       }
@@ -1126,6 +1151,32 @@
       </span>`).join('');
 
     pintarBanquillo();
+    pintarAusentes();
+  }
+
+  /**
+   * Los que NO se pueden planificar hoy, en sus propias tarjetas.
+   *
+   * Están fuera del banquillo a propósito: el banquillo es la lista de a quién
+   * puedo poner en un coche, y mezclar ahí a quien está de vacaciones obliga a
+   * leérsela entera para saber quién sirve. Pero tienen que verse —el de baja
+   * médica antes no salía en ninguna parte y su ausencia no se explicaba sola.
+   */
+  function pintarAusentes() {
+    const pinta = (lista, idPanel, idLista, idNum, conFecha) => {
+      const l = lista || [];
+      $('#' + idPanel).classList.toggle('hidden', !l.length);
+      $('#' + idNum).textContent = l.length;
+      $('#' + idLista).innerHTML = l.map(p => `
+        <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/40 border border-telecab-border/70">
+          <div class="text-sm truncate">${esc(p.nombre)}</div>
+          <div class="text-[11px] text-telecab-muted">${esc(p.estado || '')}${
+            conFecha && p.vuelveEl ? ` · vuelve <span class="text-telecab-gold">${isoAes(p.vuelveEl)}</span>` : ''
+          }${p.turno ? ' · ' + esc(p.turno) : ''}</div>
+        </div>`).join('');
+    };
+    pinta(T.ausentesConVuelta, 'panel-vuelven', 'vuelven', 'vuelven-n', true);
+    pinta(T.ausentesSinFecha, 'panel-sinfecha', 'sinfecha', 'sinfecha-n', false);
   }
 
   let banqTab = 'todos';   // todos | ett | propios
@@ -1135,7 +1186,7 @@
       if (banqTab === 'ett' && !p.esEtt) return false;
       if (banqTab === 'propios' && p.esEtt) return false;
       if (!q) return true;
-      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '') + ' ' + (p.barrio || '') + ' ' + ((p.rendimiento && p.rendimiento.letra) || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const t = (p.nombre + ' ' + (p.dni || '') + ' ' + (p.ettNombre || '') + ' ' + (p.telefono || '') + ' ' + (p.barrio || '') + ' ' + (p.turno || '') + ' ' + ((p.rendimiento && p.rendimiento.letra) || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       return t.includes(q);
     });
     document.querySelectorAll('.banq-tab').forEach(b => {
@@ -1148,6 +1199,7 @@
       <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border">
         <div class="text-sm font-medium truncate">${esc(p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''} ${chipRend(p.rendimiento)}</div>
         <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
+        ${p.faltanDias ? `<div class="text-[11px] text-telecab-gold"><i class="fa-solid fa-calendar-day text-[9px]"></i> correturnos a medio poner: ${p.diasAsignados} de ${p.diasQueDebeCT} días</div>` : ''}
         <button data-barrio="${p.id}" class="block text-[11px] text-left ${p.barrio ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition"><i class="fa-solid fa-house text-[9px]"></i> ${p.barrio ? esc(p.barrio) : 'poner zona'}</button>
         ${p.ausente ? `<div class="text-[11px] text-telecab-warn"><i class="fa-solid fa-plane-departure"></i> ${esc(p.estado)}${p.vuelveEl ? ` · vuelve ${isoAes(p.vuelveEl)}` : ''}</div>` : ''}
       </div>`).join('') : '<p class="text-xs text-telecab-muted text-center py-4">Nadie en el banquillo.</p>';
