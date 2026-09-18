@@ -224,10 +224,11 @@ async function tablero({ dia } = {}) {
     // mirando el presente (donde la plaza está vacía o con un temporal).
     db.consulta(
       `SELECT DISTINCT ON (a.plaza_id)
-              a.plaza_id, a.conductor_id, a.desde,
+              a.plaza_id, a.conductor_id, a.desde, v.matricula,
               COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
          FROM asignacion a
          JOIN plaza p     ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN vehiculo v  ON v.id = p.vehiculo_id
          JOIN conductor c ON c.id = a.conductor_id
         WHERE a.desde > $1 AND a.retirada_at IS NULL
         ORDER BY a.plaza_id, a.desde`, [efectivo]),
@@ -269,6 +270,20 @@ async function tablero({ dia } = {}) {
   // Plaza → su próximo dueño (nombre + fecha en que llega), si hay uno futuro.
   const proximoDe = new Map(proximos.rows.map(r =>
     [String(r.plaza_id), { conductorId: String(r.conductor_id), nombre: r.nombre, desde: fechaDe(r.desde) }]));
+
+  // Y AL REVÉS: persona → a qué coche entra y qué día.
+  //
+  // El banquillo dice «sin plaza», y es verdad HOY, pero hay quien ya tiene su
+  // coche escrito para el lunes. Sin decirlo, Tráfico lo coloca en otro sitio y
+  // el lunes esa persona sale en dos cuadrantes a la vez.
+  const llegaDe = new Map();
+  proximos.rows.forEach(r => {
+    const k = String(r.conductor_id);
+    if (!llegaDe.has(k)) llegaDe.set(k, { desde: fechaDe(r.desde), matriculas: [] });
+    const v = llegaDe.get(k);
+    if (fechaDe(r.desde) < v.desde) v.desde = fechaDe(r.desde);
+    if (!v.matriculas.includes(r.matricula)) v.matriculas.push(r.matricula);
+  });
 
   // ── Las personas, indexadas ────────────────────────────────────────────
   // El promedio de horas del mes y su letra (S/A/B/C), para pintarlo al lado del
@@ -318,6 +333,8 @@ async function tablero({ dia } = {}) {
       rolFijo: false,
       rolCT: false,
       diasDePlaza: new Set(),
+      // A qué coche entra y cuándo, si tiene plaza escrita para más adelante.
+      llega: llegaDe.get(String(c.id)) || null,
     });
   });
 
@@ -472,7 +489,33 @@ async function tablero({ dia } = {}) {
       // fijos de día y de noche.
       const hayFijo = !!((coche.personas || [])[off] || {}).id;
       if (coche.operativo && !hayFijo) { if (off === 0) fijosFaltanDia++; else fijosFaltanNoche++; }
-      let sinCubrir = 0, sinCubrirCT = 0;
+
+      // LOS DÍAS DE CORRETURNOS QUE NADIE TIENE ESCRITOS.
+      //
+      // No es lo mismo que «los días que esta semana no se cubrieron», que es lo
+      // que se contaba antes y sale de `f_cobertura`. La cobertura mira UNA
+      // semana concreta, así que apuntaba como hueco cada día anterior a que el
+      // titular entrase en el coche y cada día de quien está de baja. Medido el
+      // 18/09/2026: de los huecos de coches con fijo, 117 eran de días YA
+      // PASADOS y 47 de hoy en adelante, y la tarjeta pedía 28 correturnos
+      // cuando al cuadrante le faltan 15. Se contrató por un número que medía
+      // el pasado de la semana que tuvieras abierta.
+      //
+      // Lo que un coche necesita de correturnos son los días que libra su fijo
+      // (`diasSugeridos`); lo que tiene es lo que sus CT llevan escrito. La
+      // resta no depende de la semana que estés mirando.
+      const plazasCt = [(coche.personas || [])[off + 2], (coche.personas || [])[off + 4]].filter(Boolean);
+      const pide = new Set();
+      plazasCt.forEach(x => (x.diasSugeridos || []).forEach(d => pide.add(d)));
+      // Sin fijo del que heredar los días, el descanso del coche dice cuáles son.
+      if (!pide.size) (coche.descanso || []).forEach(d => pide.add(d - 1));
+      const conDueno = new Set();
+      plazasCt.forEach(x => { if (x.id) (x.diasManual || []).forEach((v, i) => { if (v) conDueno.add(i); }); });
+      let ctSinDueno = 0;
+      if (coche.operativo && hayFijo) pide.forEach(d => { if (!conDueno.has(d)) ctSinDueno++; });
+      if (off === 0) ctDiasDia += ctSinDueno; else ctDiasNoche += ctSinDueno;
+
+      let sinCubrir = 0;
       for (let d = 0; d < DIAS; d++) {
         const quienes = lista[d];
         const celda = coche.semana[d * 2 + off];
@@ -482,7 +525,7 @@ async function tablero({ dia } = {}) {
         const rel0 = relevoDe.get(`${coche.vehiculoId}|${codigo}|${fechas[d]}`);
         if (rel0) celda.relevo = { id: rel0.id, sale: rel0.sale, entra: rel0.entra, motivo: rel0.motivo };
         if (!quienes.length) {
-          if (coche.operativo) { sinCubrir++; if (hayFijo) sinCubrirCT++; }
+          if (coche.operativo) sinCubrir++;
           continue;
         }
         const p = gente.get(quienes[0]);
@@ -496,8 +539,7 @@ async function tablero({ dia } = {}) {
         // quitado —por eso el nombre de arriba es el bueno— pero hay que DECIRLO:
         // es lo que contesta "¿y por qué no sale el del cuadrante?".
       }
-      if (off === 0) { diasSinCubrirDia += sinCubrir; ctDiasDia += sinCubrirCT; }
-      else { diasSinCubrirNoche += sinCubrir; ctDiasNoche += sinCubrirCT; }
+      if (off === 0) diasSinCubrirDia += sinCubrir; else diasSinCubrirNoche += sinCubrir;
       coche[off === 0 ? 'sinCubrirDia' : 'sinCubrirNoche'] = sinCubrir;
     });
   });
@@ -627,6 +669,10 @@ async function tablero({ dia } = {}) {
       // Y se cuentan SOLO los días de coches que ya tienen su fijo: un coche sin
       // fijo no necesita quien lo releve, necesita quien lo lleve, y ese hueco se
       // cuenta aparte en `fijosQueFaltan`.
+      //
+      // `diasSinCubrir*` es OTRA cosa y se queda como está: los días de ESTA
+      // semana en que nadie sale con el coche. Sirve para el día a día (quién no
+      // va a salir), no para decidir a cuánta gente hay que contratar.
       ctQueFaltanDia: Math.ceil(ctDiasDia / 6),
       ctQueFaltanNoche: Math.ceil(ctDiasNoche / 6),
       fijosQueFaltanDia: fijosFaltanDia,
@@ -672,10 +718,20 @@ function plantel(coches, gente) {
     (coche.personas || []).forEach(p => {
       if (!p.id) return;
       if (!puesto.has(p.id)) {
-        puesto.set(p.id, { rolFijo: false, rolCT: false, turnos: new Map(), plazas: [], dias: new Set() });
+        puesto.set(p.id, { rolFijo: false, rolCT: false, turnoFijo: '', turnos: new Map(), plazas: [], dias: new Set() });
       }
       const q = puesto.get(p.id);
-      if (p.rol === 'FIJO') q.rolFijo = true; else q.rolCT = true;
+      if (p.rol === 'FIJO') {
+        q.rolFijo = true;
+        // EL TURNO DE UN FIJO LO DICE SU PLAZA DE FIJO, y nada más. Abajo el
+        // turno se decide por «donde tiene más días», y un fijo no tiene días
+        // puestos en ninguna parte: los suyos son todos menos el descanso del
+        // coche. Así que un fijo de día que además lleva un correturnos de
+        // noche pesaba 0 contra 2 y se contaba como fijo de NOCHE. Hoy no hay
+        // nadie así —lo comprobé el 18/09/2026—, pero el día que lo haya, la
+        // plantilla de día perdería una persona y la de noche se inventaría una.
+        if (!q.turnoFijo || p.turnoCodigo === 'dia') q.turnoFijo = p.turnoCodigo;
+      } else q.rolCT = true;
       // Los días de ESA plaza: los puestos a mano o, si no, los que le tocan por
       // ser el correturnos de ese coche.
       const dias = (p.diasManual || []).some(Boolean)
@@ -711,7 +767,7 @@ function plantel(coches, gente) {
     let turno = 'dia', max = -1;
     q.turnos.forEach((n, t) => { if (n > max) { max = n; turno = t || 'dia'; } });
 
-    if (q.rolFijo) { suma(turno === 'noche' ? 'fijoNoche' : 'fijoDia', !fuera); return; }
+    if (q.rolFijo) { suma(q.turnoFijo === 'noche' ? 'fijoNoche' : 'fijoDia', !fuera); return; }
     if (!q.rolCT) return;
 
     // LOS DÍAS ESCRITOS EN SUS CUADRANTES, no los que cubre ESTA semana.

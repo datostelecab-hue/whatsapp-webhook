@@ -667,8 +667,9 @@
     $('#k-ct').textContent = ctFalta;
     $('#k-ct').parentElement.title =
       `${r.ctQueFaltanDia || 0} de día y ${r.ctQueFaltanNoche || 0} de noche. ` +
-      'Solo cuenta los días sin cubrir de coches que YA tienen su fijo: un coche sin fijo ' +
-      'necesita un fijo, no un correturnos.';
+      'Son los días que libra un fijo y NADIE tiene escritos en su cuadrante, a seis días por ' +
+      'correturnos. No mira la semana que tengas abierta: un día ya pasado no es un hueco. ' +
+      'Y solo de coches que YA tienen su fijo: un coche sin fijo necesita un fijo, no un correturnos.';
     $('#k-huerf').textContent = (T.huerfanos || []).length;
     $('#k-banq').textContent = (T.pendientes || []).length;
     const semana = (T.fechas && T.fechas.length) ? `${isoAes(T.fechas[0])} – ${isoAes(T.fechas[6])}` : '';
@@ -1201,6 +1202,7 @@
         <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
         ${p.faltanDias ? `<div class="text-[11px] text-telecab-gold"><i class="fa-solid fa-calendar-day text-[9px]"></i> correturnos a medio poner: ${p.diasPuestos} de ${p.diasQueDebeCT} días${
           (p.diasDePlaza || []).length ? ` (lleva ${p.diasDePlaza.map(d => 'LMXJVSD'[d - 1] || '?').join('')})` : ''}</div>` : ''}
+        ${p.llega ? `<div class="text-[11px] text-telecab-violet"><i class="fa-solid fa-arrow-right-to-bracket text-[9px]"></i> ya entra el ${isoAes(p.llega.desde)} en ${esc(p.llega.matriculas.join(' · '))}</div>` : ''}
         <button data-barrio="${p.id}" class="block text-[11px] text-left ${p.barrio ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition"><i class="fa-solid fa-house text-[9px]"></i> ${p.barrio ? esc(p.barrio) : 'poner zona'}</button>
         ${p.ausente ? `<div class="text-[11px] text-telecab-warn"><i class="fa-solid fa-plane-departure"></i> ${esc(p.estado)}${p.vuelveEl ? ` · vuelve ${isoAes(p.vuelveEl)}` : ''}</div>` : ''}
       </div>`).join('') : '<p class="text-xs text-telecab-muted text-center py-4">Nadie en el banquillo.</p>';
