@@ -106,6 +106,29 @@ Un correturnos se da por bien puesto con **4 días o más** y con **6 como tope*
 
 `avisosDe()` dice con nombres lo que hay que mirar: huecos de fijo, conflictos (dos personas en la misma celda), gente colocada sin turno, gente sin cuenta de BOLT, ausentes que ocupan plaza y correturnos con menos días de los que le tocan por contrato.
 
+**El turno de un fijo lo dice su plaza de fijo.** El de un correturnos sale de dónde tiene más días, que para él significa algo; para un fijo no, porque no tiene días puestos en ninguna parte —los suyos son todos menos el descanso del coche—. Un fijo de día que además llevara un correturnos de noche pesaba 0 contra 2 y salía como fijo de noche.
+
+### Qué cuenta cada tarjeta, y de dónde lo saca
+
+Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no era.
+
+| Tarjeta | Cuenta | Sale de |
+|---|---|---|
+| Fijo día / noche | personas con plaza de fijo, por el turno de esa plaza | `asignacion` vigente |
+| CT día / noche | correturnos con 4 días o más | días escritos en sus cuadrantes |
+| Fijos que faltan | plazas de fijo vacías en coches operativos | `asignacion` vigente |
+| CT que faltan | días que libra un fijo y **nadie tiene escritos**, ÷6 | el cuadrante |
+| Huérfanos | gente asignada a un coche fuera de cobertura | `v_conductor_huerfano` |
+| Banquillo | activos sin plaza + correturnos a medio poner | ver más abajo |
+
+> [!warning] «CT que faltan» decía 28 y eran 15
+> Contaba los días que `f_cobertura` no llenó **en la semana abierta**. De los huecos de coches con fijo, **117 eran de días ya pasados** y 47 de hoy en adelante; 24 de ellos ya tenían dueño escrito. Se contrataba por un número que medía el pasado de la semana que tuvieras abierta. Ahora: 264 días de CT que pide el cuadrante, 181 con dueño, **83 sin nadie → 15 personas**.
+>
+> `diasSinCubrir*` **se queda con la cobertura**, y está bien: esa es otra pregunta —quién no va a salir esta semana— y ahí la fuente buena es `f_cobertura`. Lo que no se puede es contratar con ella.
+
+> [!tip] El banquillo dice quién ya tiene coche esperándole
+> Estar sin plaza **hoy** no es estar libre: hay quien tiene su coche escrito para el lunes. Sin decirlo, Tráfico lo coloca en otro sitio y esa persona sale en dos cuadrantes a la vez. La ficha lo avisa: «ya entra el 21/09 en 0524MMZ · 8930KVC». Es el reverso de [[#El buscador ve también lo que aún no ha pasado]].
+
 ## El modo eventos
 
 La F1 en Madrid, una marcha, un concierto: días en los que hay que sacar más coches de los que el cuadrante tiene puestos. Las plazas ya existían —los **slots 4 y 5 son CT día 2 y CT noche 2**, creados desde el primer día para los 100 coches— pero estaban ocultas, porque abrirlas a mano significa que alguien tiene que acordarse de cerrarlas, y nadie se acuerda (`modules/Planificacion/eventos.repo.js`).
