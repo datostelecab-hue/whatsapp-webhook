@@ -36,6 +36,20 @@ La ficha de un vistazo **no calcula nada nuevo**: la letra la pone `calificacion
 
 **`momento` deja mirar una fecha pasada**: quién estaba de alta, en qué turno y en qué coche. Con las hojas esto no se podía preguntar.
 
+## La lista va por fecha de alta, del último al primero
+
+Alfabético ordena una guía de teléfonos, no una plantilla. En una lista de más de doscientas personas, **las recién incorporadas son las que hay que mirar** —les falta documentación, no tienen cuenta de BOLT, están en periodo de prueba— y estaban repartidas por toda la lista según su apellido.
+
+`ORDER BY e.alta DESC NULLS LAST`, con el nombre de desempate para que dos altas del mismo día salgan siempre igual: sin él, dos recargas de la misma pantalla podían dar dos ordenaciones distintas de las mismas personas.
+
+**Sin fecha van al final**, no al principio: una fecha que no existe no es una incorporación de hoy. De las 427 fichas hay 208 sin `alta`, pero **ninguna de ellas está vigente** — son fichas antiguas, y con el filtro de siempre («de alta») no se ven.
+
+> [!note] Los filtros no reordenan nada
+> El orden lo pone la base UNA vez y la pantalla solo filtra: `visibles()` del componente **Listado** ([[Reglas de la casa]]) es un `.filter()` puro sobre las mismas filas, y el buscador tampoco ordena por relevancia. Por eso el criterio vale igual mirando a todos, a los de baja, a los que entran o escribiendo en la caja de búsqueda — y lo que se exporta sale en ese mismo orden.
+
+> [!warning] En la bandeja de bajas, la columna no acompaña
+> La columna «Desde» enseña el alta de quien está vigente y **la baja** de quien ya no está. Como el orden es por alta, esa bandeja sale con fechas que parecen desordenadas. Es coherente —son dos datos distintos— pero no se lee bien; ordenarla por fecha de baja es un cambio de una línea si algún día estorba.
+
 ## La regla de identidad
 
 > **El nombre NO identifica.** Sirve para leer la fila, nada más. Quien identifica es el id, y hacia fuera el **DNI** y la **cuenta de BOLT**.

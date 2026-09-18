@@ -248,7 +248,24 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
         FROM v_documento_falta f WHERE f.conductor_id = c.id) docs ON TRUE
     WHERE NOT c.es_centinela
       ${donde.length ? 'AND ' + donde.join(' AND ') : ''}
-    ORDER BY ${NOMBRE_BOLT}`, params);
+    -- POR FECHA DE ALTA, DEL ÚLTIMO EN ENTRAR AL PRIMERO.
+    --
+    -- Alfabético ordena una guía de teléfonos, no una plantilla: en una lista de
+    -- doscientas personas, las que se acaban de incorporar son las que hay que
+    -- mirar —les falta documentación, no tienen cuenta de BOLT, están en periodo
+    -- de prueba— y estaban repartidas por toda la lista según su apellido.
+    --
+    -- La fecha puede faltar (fichas antiguas sin ella): esas van al final, no al
+    -- principio, porque una fecha que no existe no es una incorporación de hoy.
+    --
+    -- Y el nombre se queda de desempate, para que dos altas del mismo día salgan
+    -- siempre en el mismo orden: sin él, dos recargas de la misma pantalla
+    -- podían dar dos ordenaciones distintas de las mismas personas.
+    --
+    -- EL ORDEN LO PONE LA BASE Y LOS FILTROS NO LO TOCAN: la pantalla filtra
+    -- sobre esta misma lista sin reordenarla, así que el criterio vale igual
+    -- mirando a todos, a los de baja o a los que entran.
+    ORDER BY e.alta DESC NULLS LAST, ${NOMBRE_BOLT}`, params);
 
   // Lo que le falta a cada ficha. Se calcula aquí y no en la vista para que
   // valga igual en la pantalla, en un aviso o en un informe.
