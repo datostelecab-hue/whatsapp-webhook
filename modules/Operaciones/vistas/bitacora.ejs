@@ -271,10 +271,22 @@
 
   // ── Resúmenes ────────────────────────────────────────────────────────────
   function resumen(c, a, b) {
-    const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0, dias: 0, horasJ: 0 };
+    const r = { horas: 0, trabajados: 0, cortos: 0, nosalio: 0, L: 0, J: 0, V: 0, B: 0, P: 0,
+                dias: 0, horasJ: 0, ausFuturas: 0 };
     for (let d = a; d <= b; d++) {
       const k = soloClase(clase(c, d));
-      if (k === 'futuro' || k === 'fuera' || d > DATA.hoyIdx) continue;
+      if (k === 'futuro' || k === 'fuera') continue;
+      // EL FUTURO NO SE HA TRABAJADO, PERO UNA AUSENCIA FUTURA YA ESTÁ DECIDIDA.
+      //
+      // El resto de cifras cortan en hoy y hacen bien: nadie ha trabajado
+      // mañana. Una ausencia no es lo mismo — está firmada, con sus fechas, y
+      // por eso el calendario ya la pinta—. Cortándola en hoy, el número decía
+      // «8 ausencias» mientras en pantalla se veían 19 casillas azules, y las
+      // dos cosas eran de la misma persona y del mismo mes.
+      if (d > DATA.hoyIdx) {
+        if (k === 'V' || k === 'B' || k === 'P') { r[k]++; r.ausFuturas++; }
+        continue;
+      }
       r.dias++;
       if (trabajo(k)) { const v = val(c, d); r.horas += v; r.trabajados++; if (v < OBJETIVO) r.cortos++; }
       else if (k === 'J') {
@@ -615,6 +627,28 @@
     diaSel = null; render();
   }
 
+  /**
+   * LA TARJETA DE AUSENCIAS DICE CUÁL, no «ausencias» a secas.
+   *
+   * «8 ausencias» de alguien que está de vacaciones se lee como un reproche, y
+   * no lo es: unas vacaciones son un derecho, no una falta. Cuando todas las del
+   * periodo son de un tipo, la tarjeta se llama por su nombre —«Vacaciones»,
+   * «Baja médica», «Permiso»— y solo se queda en «Ausencias» cuando hay mezcla,
+   * que es cuando la palabra genérica sí dice algo.
+   */
+  function ausenciasKpi(s) {
+    const tipos = [['V', 'Vacaciones'], ['B', 'Baja médica'], ['P', 'Permiso']].filter(([k]) => s[k]);
+    const total = s.V + s.B + s.P;
+    const etiqueta = tipos.length === 1 ? tipos[0][1] : 'Ausencias';
+    // Con un solo tipo, el nombre ya lo dice todo y repetirlo debajo sobra: ahi
+    // solo va lo que el numero no puede contar, que es cuantas aun no han pasado.
+    const detalle = tipos.length > 1
+      ? tipos.map(([k, n]) => `${s[k]} de ${n.toLowerCase()}`).join(' · ')
+        + (s.ausFuturas ? ` · ${s.ausFuturas} por venir` : '')
+      : (s.ausFuturas ? `${s.ausFuturas} aún por venir` : '');
+    return [etiqueta, total, total ? 'text-telecab-azul' : 'text-telecab-text', detalle];
+  }
+
   function render() {
     const c = sel(); if (!c) return;
     document.querySelectorAll('.b-seg').forEach(b => {
@@ -629,10 +663,12 @@
       ['Días trabajados', s.trabajados, 'text-telecab-green'],
       ['Media por día', s.trabajados ? nf1.format(s.horas / s.trabajados) + ' h' : '—', s.trabajados && s.horas / s.trabajados < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text'],
       ['Días sin salir', s.nosalio, s.nosalio ? 'text-telecab-red' : 'text-telecab-text'],
-      ['Ausencias', s.V + s.B + s.P, 'text-telecab-text'],
+      ausenciasKpi(s),
       ['Justificados', s.J ? `${s.J}${s.horasJ ? ' · ' + nf1.format(s.horasJ) + ' h' : ''}` : 0, s.J ? 'text-telecab-azul' : 'text-telecab-text'],
     ];
-    $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p></div>`).join('');
+    $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"${
+      k[3] ? ` title="${esc(k[3])}"` : ''}><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p>${
+      k[3] ? `<p class="text-[10px] text-telecab-muted truncate">${esc(k[3])}</p>` : ''}</div>`).join('');
     pintarCalendario(c); pintarHoras(c); pintarAusencias(c);
     pintarDiaInfo(c);
   }

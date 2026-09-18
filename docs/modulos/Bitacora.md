@@ -51,6 +51,12 @@ Las horas reales **pisan la L**: si al final trabajó, se ve que trabajó.
 
 **Se ven 60 días de futuro.** Sin eso, poner a alguien de vacaciones para mañana no se veía en ninguna parte: su ficha salía en blanco y había que acordarse. Las libranzas futuras solo se calculan **14 días**, porque más allá el cuadrante es una intención y no una promesa: cambia cada semana. Las ausencias y las J van a todo el horizonte, porque son decisiones ya tomadas y con fecha.
 
+### Las cifras cortan en hoy, salvo las ausencias
+
+Nadie ha trabajado mañana, así que horas, días trabajados, media y «días sin salir» se cuentan solo hasta hoy. **Una ausencia no es lo mismo**: está firmada, con sus fechas, y por eso el calendario ya la pinta atenuada. Cortándola en hoy, la tarjeta decía «8 ausencias» mientras en pantalla se veían **19 casillas azules** — misma persona, mismo mes, dos cifras distintas.
+
+**Y la tarjeta se llama por su nombre.** «8 ausencias» de alguien que está de vacaciones se lee como un reproche, y no lo es: unas vacaciones son un derecho, no una falta. Cuando todas las del periodo son de un tipo, la tarjeta pone «Vacaciones», «Baja médica» o «Permiso»; «Ausencias» se queda solo para cuando hay mezcla, que es cuando la palabra genérica sí dice algo. Debajo, cuántas aún no han pasado.
+
 ## El sellado: por qué el pasado no se recalcula solo
 
 `bitacora_horas` guarda el histórico ya calculado —una fila por conductor y jornada, en segundos— y `bitacora_sello` guarda **qué jornadas están selladas**, tengan filas o no.
