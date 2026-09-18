@@ -169,6 +169,26 @@ El color de la celda pasó a decidirse por **si hay gente, no por si hay texto**
 
 Un fallo que se vio ahí: la columna GRUPO salía en blanco en todas las filas porque leía la libranza del FIJO (`patron_libranza`), que **no tiene nadie**: 0 patrones frente a 132 coches con descanso. Lo que manda es el descanso del **coche**.
 
+## El banquillo es para planificar, y solo eso
+
+Tres listas en la columna lateral, y cada una contesta a una pregunta distinta (`planificador.repo.js`):
+
+| Lista | Quién va | Para qué |
+|---|---|---|
+| **Banquillo** | activos sin plaza **+ correturnos a medio poner** | a quién puedo poner en un coche ahora |
+| **Vuelven** | vacaciones y permisos, con fecha | planificar su regreso |
+| **Sin fecha de vuelta** | baja médica, suspensiones | no se planifican, pero su ausencia tiene que explicarse |
+
+Antes era una sola lista con los de vacaciones dentro y su etiqueta al lado, y había que leérsela entera para saber quién servía. Los de baja médica no salían en ninguna parte.
+
+**Un correturnos a medio poner sí es banquillo.** Con dos días puestos no está colocado: le faltan días de trabajo y de sueldo. Tenía su aviso arriba pero no había dónde ir a arreglarlo, porque la lista de a quién colocar lo daba por puesto.
+
+El corte son **cuatro días**, no «lo que le falte para su tope». Medido el 18/09/2026: con el tope por contrato entraban 92 personas y 85 eran «5 de 6» —el reparto normal de una semana, no un problema—; con el suelo de cuatro son 8, y son los de dos y tres días. El banquillo pasó de 99 nombres a 15.
+
+## El buscador ve también lo que aún no ha pasado
+
+El filtro del tablero mira la matrícula, quien está puesto, **quien está por llegar** (`p.futuro`) y la vacante que tiene prometida la plaza. Una plaza vacía hoy puede tener dueño para el lunes, y buscar su nombre contestaba «no hay nada» justo cuando querías ver dónde cae.
+
 ## Incorporaciones: el traspaso desde Selección
 
 Cuando alguien se da de alta nace una alerta que Tráfico ve en el planificador. Desde el 18/09/2026 nace **siempre**, con vacante o sin ella, porque el caso que faltaba era justo el peor: alguien entra sin plaza prometida y el cuadrante no se entera de que hay una persona nueva esperando coche.
