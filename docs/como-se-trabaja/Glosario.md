@@ -103,7 +103,7 @@ Es irreversible; lo que sobra o falta después va por
 
 PLAN (el cuadrante) × REALIDAD (`fv_ahora`) × ALERTAS, fundidos en JavaScript por
 matrícula normalizada. Va por [[#Jornada operativa|jornada operativa]]. Ver
-[[Control-En-directo]].
+[[Control En directo]].
 
 ### Comprobador
 

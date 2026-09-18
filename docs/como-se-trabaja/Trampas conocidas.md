@@ -1133,6 +1133,46 @@ avería silenciosa de este tipo de módulos."*
 
 El control de acceso mapea por **prefijo más largo**, y todo cae bajo `/documentos`.
 
+### `cat_jornada.dias_ct` lo tiene TODO EL MUNDO, fijos incluidos
+
+`modules/Planificacion/planificador.repo.js`
+
+Está en el catálogo de jornadas —40 h son 6 días, menos son 4—, así que **no sirve
+para saber quién es correturnos**. Quien lo dice es el **rol de su plaza**
+(`cat_slot.rol`). Usándolo como filtro, los fijos pasaban: *Igor Borges, fijo de
+noche que libra X y J, salía en el banquillo como «3 de 6 días».* A un fijo no se
+le ponen días: libra el descanso de su coche y trabaja el resto.
+
+### La cobertura mide UNA semana: no sirve para contar días de cuadrante
+
+`modules/Planificacion/planificador.repo.js`
+
+`f_cobertura` contesta a **«¿quién sale mañana?»**. Por eso apunta como hueco todo
+día anterior a que el titular entrara en el coche, y todo día de quien está de baja.
+Dos tarjetas la usaban para decir si un cuadrante está completo, y las dos mentían:
+
+- **«CT sin días» avisaba de 12 y once tenían sus cuatro días puestos.** A
+  Francisco, que entró en sus dos coches el viernes 18 con L M X J escritos, le
+  salían **cero**: sus cuatro días ya habían pasado cuando llegó. La columna
+  «Reparto» de esa misma tarjeta ya enseñaba las letras buenas.
+- **«CT que faltan» decía 28 y eran 15.** De los huecos de coches con fijo, **117
+  eran de días ya pasados**; 24 tenían dueño escrito. Se contrataba por un número
+  que medía el pasado de la semana que tuvieras abierta.
+
+**El remedio:** para saber si un cuadrante está completo hay que mirar el
+cuadrante —los días escritos, que no cambian según la semana que estés viendo—.
+Para saber quién no va a salir esta semana, la cobertura. → [[Planificacion]]
+
+### El turno de un fijo no sale de «dónde tiene más días»
+
+`modules/Planificacion/planificador.repo.js`
+
+Un correturnos sí se puede clasificar así; un fijo no tiene días puestos en ninguna
+parte, porque los suyos son todos menos el descanso del coche. Un fijo de día que
+además llevara un correturnos de noche pesaba **0 contra 2** y se contaba como fijo
+de noche: la plantilla de día perdía una persona y la de noche se inventaba otra.
+El turno de un fijo lo dice **su plaza de fijo**.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

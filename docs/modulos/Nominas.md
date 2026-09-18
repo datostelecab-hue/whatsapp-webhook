@@ -175,7 +175,9 @@ Quien causa baja a mitad de mes deja **dos** nóminas variables sin pagar: la de
 
 No recalcula nada: pide los dos meses al **mismo `calcular`** que pinta la pantalla y coge su fila. Un finiquito que saliera de otra cuenta acabaría diciendo algo distinto de la nómina.
 
-> **El objetivo de horas no se prorratea por la baja.** Se prorratea desde el alta, pero no *hasta* la baja: a quien se va el día 11 se le pide el objetivo del mes entero y su diferencia sale muy negativa, así que no cobra MBO por horas extra. El Excel lo dice en sus notas y enseña los días que de verdad estuvo de alta. Cambiarlo cambia lo que cobra la gente, así que está en [[Estado y pendientes]] esperando decisión.
+> **El objetivo de horas no se prorratea por la baja, y así se queda.** Se prorratea desde el alta, pero no *hasta* la baja: a quien se va el día 11 se le pide el objetivo del mes entero y su diferencia sale muy negativa, así que no cobra MBO por horas extra. El Excel lo dice en sus notas y enseña los días que de verdad estuvo de alta.
+>
+> **Decidido el 18/09/2026:** no se prorratea. Lo que se paga al que se va son sus **horas**, que se calculan aparte y se cobran enteras; el objetivo mensual es otra cosa y no se toca. → «Extras pendientes» en [[Conductores]].
 
 ## Congelar
 
