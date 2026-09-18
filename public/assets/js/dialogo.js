@@ -177,9 +177,16 @@
       fondo.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm';
       fondo.innerHTML = `
         <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full ${ancho} my-8">
-          <div class="px-5 py-4 border-b border-telecab-border">
-            <h3 class="font-bold">${esc(titulo)}</h3>
-            ${nota ? `<p class="text-xs text-telecab-muted mt-1">${esc(nota)}</p>` : ''}
+          <div class="px-5 py-4 border-b border-telecab-border flex items-start gap-3">
+            <div class="min-w-0 flex-1">
+              <h3 class="font-bold">${esc(titulo)}</h3>
+              ${nota ? `<p class="text-xs text-telecab-muted mt-1">${esc(nota)}</p>` : ''}
+            </div>
+            <button type="button" data-cerrar aria-label="Cerrar"
+                    class="shrink-0 w-8 h-8 rounded-lg text-telecab-muted hover:text-telecab-text
+                           hover:bg-telecab-card2 transition">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
           </div>
           <form class="p-5 max-h-[70vh] overflow-y-auto grid gap-x-4 gap-y-3 ${
             columnas === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}">
@@ -407,7 +414,14 @@
       const cerrar = v => { fondo.remove(); document.removeEventListener('keydown', esc2); resolver(v); };
       const esc2 = e => { if (e.key === 'Escape') cerrar(null); };
       document.addEventListener('keydown', esc2);
-      fondo.addEventListener('click', e => { if (e.target === fondo) cerrar(null); });
+      // EL CLIC FUERA NO CIERRA UN FORMULARIO.
+      //
+      // Aquí se teclean treinta campos —la ficha entera de una persona— y un
+      // clic despistado en el fondo los tiraba todos sin preguntar. Para salir
+      // están la X de la cabecera, el botón de cancelar y la tecla Escape, que
+      // son tres gestos deliberados. Los avisos y las confirmaciones sí siguen
+      // cerrándose con el fondo: ahí no hay nada escrito que perder.
+      fondo.querySelector('[data-cerrar]').addEventListener('click', () => cerrar(null));
       fondo.querySelector('[data-cancelar]').addEventListener('click', () => cerrar(null));
 
       fondo.querySelector('form').addEventListener('submit', async e => {

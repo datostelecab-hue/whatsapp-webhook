@@ -507,7 +507,37 @@ async function descongelar(mes, ano) {
   return r.rowCount > 0;
 }
 
+/**
+ * La persona y su periodo de empleo, para el finiquito. Se coge el ÚLTIMO
+ * periodo: alguien puede haber entrado, salido y vuelto, y lo que se liquida es
+ * la salida de ahora.
+ */
+async function personaConBaja(conductorId) {
+  const r = await db.consulta(
+    `SELECT c.id, c.dni_nie AS dni,
+            COALESCE(NULLIF(btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')), ''),
+                     '#' || c.id::text) AS nombre,
+            c.nombre_bolt, c.nombre_ss,
+            p.alta::text AS alta, p.baja::text AS baja, p.motivo_baja,
+            p.jornada_horas
+       FROM conductor c
+       LEFT JOIN LATERAL (
+         SELECT alta, baja, motivo_baja, jornada_horas
+           FROM conductor_periodo_empleo
+          WHERE conductor_id = c.id
+          ORDER BY alta DESC LIMIT 1) p ON TRUE
+      WHERE c.id = $1`, [Number(conductorId)]);
+  const x = r.rows[0];
+  if (!x) return null;
+  return {
+    id: x.id, nombre: x.nombre, nombreBolt: x.nombre_bolt || '', nombreSS: x.nombre_ss || '',
+    dni: x.dni || '', alta: x.alta || '', baja: x.baja || '',
+    motivoBaja: x.motivo_baja || '', jornada: x.jornada_horas || null,
+  };
+}
+
 module.exports = {
+  personaConBaja,
   leerConfig, guardarConfig,
   horasDelMes, dineroDelMes, fichasDelMes, justificantesDelMes, sinSellarEnBitacora,
   congelar, leerCongelada, mesesCongelados, descongelar,

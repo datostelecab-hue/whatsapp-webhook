@@ -126,6 +126,22 @@ router.get('/nomina.xlsx', async (req, res) => {
   }
 });
 
+// EL FINIQUITO DE LA VARIABLE de una persona que se va. No lleva mes: los dos
+// que quedan por pagar salen de su propia fecha de baja. Se pide desde la ficha
+// del conductor, que es donde se está cuando surge la pregunta.
+router.get('/finiquito.xlsx', async (req, res) => {
+  try {
+    const r = await nominas.finiquito(req.query.conductor);
+    const bytes = await excel.generarExcelFiniquito(r);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${excel.nombreFicheroFiniquito(r)}"`);
+    res.end(Buffer.from(bytes));
+  } catch (e) {
+    console.error('❌ [NÓMINAS] finiquito:', e.message);
+    res.status(400).send('Error: ' + e.message);
+  }
+});
+
 // El parte de la ETT. OJO: el mes de esta ruta es el TRABAJADO, no el de pago.
 // Se pide agosto y salen los datos de agosto; la nómina, en cambio, va a mes
 // vencido. Son dos documentos distintos y por eso son dos rutas distintas.

@@ -749,6 +749,32 @@
   }
 
   /**
+   * El Excel de lo que se le debe a quien se va: las dos nóminas variables que
+   * quedan por pagar. Se descarga; no se guarda en ningún sitio, porque quien
+   * lo pide lo va a mandar a la gestoría y ahí se acaba su vida.
+   */
+  async function accionFiniquito(d) {
+    const url = '/nominas/finiquito.xlsx?conductor=' + encodeURIComponent(d.id);
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error((await r.text()) || 'No se pudo generar');
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'extras-pendientes-' + String(d.nombre_completo || d.id).toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-') + '.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (e) {
+      await Dialogo.aviso({
+        titulo: 'No se pudo sacar',
+        texto: String(e.message || e).replace(/^Error:\s*/, ''),
+        tono: 'error',
+      });
+    }
+  }
+
+  /**
    * La confirmación de una baja, UNA sola para las dos puertas: el botón de
    * arriba y elegir "Baja en la empresa" en el desplegable de situación.
    *
@@ -1108,6 +1134,12 @@
         // Solo aparece si está de baja: es la vuelta, no un alta nueva.
         { texto: 'Volver a dar de alta', icono: 'fa-user-check', principal: true,
           visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: volverAAlta },
+        // LO QUE SE LE DEBE AL IRSE. Quien causa baja a mitad de mes deja dos
+        // nóminas variables sin pagar —la del mes anterior y la del mes de la
+        // baja— y ninguna de las dos llega ya por el camino normal. Se saca
+        // desde aquí, que es donde estás cuando surge la pregunta.
+        { texto: 'Extras pendientes', icono: 'fa-file-invoice-dollar',
+          visible: d => !SOLO_OPERATIVO && !d.empleo_vigente, onClick: accionFiniquito },
       ],
       // La cabecera de arriba lo dice TODO: la hoja no vuelve a repetir el nombre
       // ni la línea de identidad, que es lo que hacía que pareciera dos fichas.

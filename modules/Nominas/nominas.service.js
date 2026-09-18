@@ -623,6 +623,76 @@ async function paraETT(mesTrabajo, anoTrabajo) {
  * Lo que la pantalla enseña al abrir un mes: la congelada si existe, y si no el
  * cálculo en vivo. Es una sola puerta para que la vista no tenga que decidir.
  */
+/**
+ * LO QUE SE LE DEBE A ALGUIEN QUE SE VA.
+ *
+ * Cuando alguien causa baja a mitad de mes, su variable queda partida en dos
+ * nóminas que aún no se han pagado: la del mes anterior —que se paga el mes de
+ * la baja— y la del propio mes de la baja, que ya no llega a pagarse nunca por
+ * el camino normal. Sacarlo a mano era abrir dos meses de nómina en la pantalla
+ * y buscar su fila en cada uno.
+ *
+ * NO SE RECALCULA NADA APARTE: se piden los dos meses al mismo `calcular` que
+ * pinta la pantalla y se coge su fila. Si las cifras del finiquito salieran de
+ * otra cuenta, tarde o temprano dirían algo distinto de la nómina.
+ *
+ * OJO CON EL OBJETIVO DE HORAS: se prorratea desde la fecha de ALTA, no hasta
+ * la de baja. A quien se va el día 11 se le sigue pidiendo el mes entero, así
+ * que su "diferencia de horas" sale muy negativa y no cobra MBO por horas
+ * extra. Aquí se devuelven los días que de verdad estuvo de alta para que se
+ * vea, pero el número es el mismo que enseña la nómina: cambiarlo cambia lo que
+ * cobra la gente y eso no se hace de pasada.
+ */
+async function finiquito(conductorId) {
+  const cid = Number(conductorId);
+  if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
+
+  const persona = await repo.personaConBaja(cid);
+  if (!persona) throw new Error('No encuentro a esa persona');
+  if (!persona.baja) throw new Error(`${persona.nombre} no está de baja: el finiquito es para quien se va`);
+
+  const [ab, mb] = [Number(persona.baja.slice(0, 4)), Number(persona.baja.slice(5, 7))];
+  const anterior = mesVencido(mb, ab);
+
+  // Los dos meses de TRABAJO: el de la baja y el de antes. El `calcular` va por
+  // mes de PAGO, que es el siguiente al trabajado.
+  const trabajos = [anterior, { mes: mb, ano: ab }];
+  const cfg = await leerConfig();
+  const meses = [];
+  for (const t of trabajos) {
+    const pago = mesSiguiente(t.mes, t.ano);
+    const r = await calcular(pago.mes, pago.ano, { config: cfg });
+    const fila = (r.filas || []).find(x => Number(x.conductorId) === cid) || null;
+    const diasDelMes = new Date(t.ano, t.mes, 0).getDate();
+    meses.push({
+      mes: t.mes, ano: t.ano,
+      etiqueta: `${MESES_NOM[t.mes - 1]} ${t.ano}`,
+      esMesDeLaBaja: t.mes === mb && t.ano === ab,
+      diasDelMes,
+      diasDeAlta: diasDeAltaEnMes(persona, t.mes, t.ano, diasDelMes),
+      fila,
+    });
+  }
+
+  const total = meses.reduce((n, m) => n + (m.fila ? Number(m.fila.total) || 0 : 0), 0);
+  return { persona, meses, total: r2(total), config: cfg };
+}
+
+/** Cuántos días de ese mes estuvo la persona de alta. */
+function diasDeAltaEnMes(persona, mes, ano, diasDelMes) {
+  const dentro = (iso, cual) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    if (!m) return cual === 'alta' ? 1 : diasDelMes;
+    const a = Number(m[1]), me = Number(m[2]), d = Number(m[3]);
+    if (a < ano || (a === ano && me < mes)) return cual === 'alta' ? 1 : 0;
+    if (a > ano || (a === ano && me > mes)) return cual === 'alta' ? diasDelMes + 1 : diasDelMes;
+    return d;
+  };
+  const desde = dentro(persona.alta, 'alta');
+  const hasta = dentro(persona.baja, 'baja');
+  return Math.max(0, Math.min(hasta, diasDelMes) - Math.max(desde, 1) + 1);
+}
+
 async function cargar(mes, ano) {
   const cong = await repo.leerCongelada(mes, ano);
   if (cong) {
@@ -646,7 +716,7 @@ const mesesCongelados = () => repo.mesesCongelados();
 module.exports = {
   DEFAULTS, CONFIG_CAMPOS, MESES_NOM,
   leerConfig, guardarConfig,
-  calcular, cargar, congelar, descongelar, mesesCongelados, paraETT,
+  calcular, cargar, congelar, descongelar, mesesCongelados, paraETT, finiquito,
   leerCongelada: (mes, ano) => repo.leerCongelada(mes, ano),
   // Expuestos para poder probar el prorrateo y el cálculo sin base de datos.
   _situarAlta: situarAlta, _calcularFila: calcularFila, _mesVencido: mesVencido,

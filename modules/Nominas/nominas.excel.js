@@ -496,7 +496,111 @@ async function generarExcelETT(r) {
   return wb.xlsx.writeBuffer();
 }
 
+/** '2026-09-11' → '11/09/2026'. Un finiquito lo lee una persona, no una máquina. */
+const enDiaMesAno = iso => (/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))
+  ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—');
+
+/**
+ * EL FINIQUITO DE LA VARIABLE: lo que se le debe a quien se va.
+ *
+ * Una fila por concepto y un bloque por mes, en vez de la tabla ancha de la
+ * nómina: aquí se mira UNA persona y lo que importa es de dónde sale cada euro,
+ * no comparar a nadie con nadie. Quien lo abre está a punto de pagar.
+ */
+async function generarExcelFiniquito(r) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Telecab';
+  const idLogo = E.registrarLogo(wb);
+  const p = r.persona;
+  const ws = wb.addWorksheet('Finiquito variable');
+
+  const COLS = [
+    ['Concepto', 42], ['Cantidad', 14], ['Importe', 14],
+  ];
+  COLS.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
+
+  let fila = E.bandaCabecera(ws, idLogo,
+    `COMPENSACIÓN VARIABLE PENDIENTE · ${p.nombre}`,
+    `DNI ${p.dni || '—'} · alta ${enDiaMesAno(p.alta)} · baja ${enDiaMesAno(p.baja)}` +
+      (p.motivoBaja ? ` (${p.motivoBaja.toLowerCase()})` : '') +
+      ` · jornada ${p.jornada || '—'} h · generado ${sello()}`,
+    COLS.length);
+
+  const linea = (texto, cantidad, importe, { fuerte = false, tono = null } = {}) => {
+    const row = ws.getRow(fila++);
+    row.getCell(1).value = texto;
+    row.getCell(2).value = cantidad === undefined ? null : cantidad;
+    row.getCell(3).value = importe === undefined ? null : importe;
+    if (importe !== undefined && importe !== null) row.getCell(3).numFmt = '#,##0.00 €';
+    [1, 2, 3].forEach(i => {
+      const c = row.getCell(i);
+      c.border = E.TODOS_BORDES;
+      c.font = { size: 11, bold: fuerte, color: { argb: tono || E.TEXTO } };
+      c.alignment = { vertical: 'middle', horizontal: i === 1 ? 'left' : 'right', indent: i === 1 ? 1 : 0 };
+      if (fuerte) c.fill = E.relleno('FFF3F4F6');
+    });
+    return row;
+  };
+
+  r.meses.forEach(m => {
+    const cab = ws.getRow(fila++);
+    ws.mergeCells(`A${cab.number}:C${cab.number}`);
+    const c = cab.getCell(1);
+    c.value = `${m.etiqueta.toUpperCase()}${m.esMesDeLaBaja ? '  ·  MES DE LA BAJA' : ''}` +
+      `   —   ${m.diasDeAlta} de ${m.diasDelMes} días de alta`;
+    c.font = { size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+    c.fill = E.relleno(m.esMesDeLaBaja ? 'FF7C2D12' : 'FF374151');
+    c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    c.border = E.TODOS_BORDES;
+    cab.height = 20;
+
+    const f = m.fila;
+    if (!f) { linea('Sin actividad en este mes', null, 0); return; }
+    linea('Horas nocturnas', f.nocturnasHoras, f.nocturnas);
+    linea('Propinas', null, f.propinas);
+    linea('Peajes', null, f.peajes);
+    linea('MBO (el mayor de horas extra y facturación)', null, f.compensacion);
+    linea(`Total de ${m.etiqueta}`, null, f.total, { fuerte: true });
+
+    // El detalle que explica por qué el MBO es el que es.
+    linea('   Horas rodadas (viaje + espera, ya descontada la baja utilización)', f.horas, null);
+    linea('   Horas justificadas', f.horasJustificadas, null);
+    linea('   Objetivo del mes según su jornada', f.horasObjetivo, null);
+    linea('   Diferencia sobre el objetivo', f.deltaHoras, null);
+    fila++;
+  });
+
+  const tot = linea('TOTAL A PAGAR', null, r.total, { fuerte: true });
+  tot.getCell(3).font = { size: 12, bold: true, color: { argb: 'FF065F46' } };
+  tot.height = 22;
+
+  const avisos = [
+    'Estas son las dos nóminas variables que quedan por pagar: la del mes anterior a la baja ' +
+      '—que se habría pagado el mes de la baja— y la del propio mes de la baja.',
+    'Las cifras son las MISMAS que enseña la pantalla de Nóminas para esos meses: este documento ' +
+      'no recalcula nada por su cuenta.',
+    'Las horas van por día natural (del 1 a las 00:00 al último a las 23:59) y las nocturnas son ' +
+      'el trozo entre las 22:00 y las 06:00.',
+  ];
+  const mesBaja = r.meses.find(m => m.esMesDeLaBaja);
+  if (mesBaja && mesBaja.diasDeAlta < mesBaja.diasDelMes) {
+    avisos.push('OJO CON EL OBJETIVO DE HORAS DEL MES DE LA BAJA: se prorratea desde la fecha de alta, ' +
+      `pero NO hasta la de baja. A esta persona se le pide el objetivo del mes entero ` +
+      `(${mesBaja.fila ? mesBaja.fila.horasObjetivo : '—'} h) habiendo estado de alta ${mesBaja.diasDeAlta} ` +
+      `de ${mesBaja.diasDelMes} días, así que su diferencia sale negativa y no cobra MBO por horas extra.`);
+  }
+  nota(ws, fila + 1, avisos);
+  return wb.xlsx.writeBuffer();
+}
+
+/** finiquito-variable-arcos-alcivar-genesis.xlsx */
+const nombreFicheroFiniquito = r => 'finiquito-variable-' +
+  String(r.persona.nombre || 'conductor').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) + '.xlsx';
+
 /** parte-ett-agosto-2026.xlsx */
 const nombreFicheroETT = r => `parte-ett-${(r.mesNombre || '').toLowerCase()}-${r.ano}.xlsx`;
 
-module.exports = { generarExcelNomina, nombreFichero, generarExcelETT, nombreFicheroETT };
+module.exports = { generarExcelNomina, nombreFichero, generarExcelETT, nombreFicheroETT,
+  generarExcelFiniquito, nombreFicheroFiniquito };
