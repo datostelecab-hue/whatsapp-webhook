@@ -22,10 +22,19 @@ const audit = require('../../services/repo/auditoria');
 
 // Las columnas del embudo que se pueden escribir desde la pantalla. Lo que no
 // esté aquí, o es de la persona o no se toca.
+// FUERA DE ESTA LISTA, A PROPOSITO (18/09/2026):
+//
+//   · `carne_vtc`      no se exige para contratar y obligaba a teclear "true"
+//                      en un hueco de texto para poder seguir.
+//   · `excel_alta`     lo escribe `marcarExcel` cuando la ficha va en un envio,
+//                      no una persona a mano.
+//   · `pin_ballenoil`  y sus observaciones: Ballenoil ya no forma parte del alta.
+//
+// Las columnas se quedan en la base por lo ya escrito; lo que desaparece es el
+// hueco donde teclearlas.
 const CAMPOS = {
   canal:             { etiqueta: 'Canal de origen' },
   experiencia:       { etiqueta: 'Experiencia', tipo: 'booleano' },
-  carne_vtc:         { etiqueta: 'Carné VTC', tipo: 'booleano' },
   prueba_conduccion: { etiqueta: 'Prueba de conducción', tipo: 'booleano' },
   apto_medico:       { etiqueta: 'Apto médico', tipo: 'booleano' },
   // La vacante que este candidato viene a cubrir. `vacante_ref` era el id de la
@@ -41,9 +50,6 @@ const CAMPOS = {
   notas:             { etiqueta: 'Notas' },
   num_hijos:         { etiqueta: 'Nº de hijos', tipo: 'numero' },
   tipo_carnet:       { etiqueta: 'Tipo de carné' },
-  excel_alta:        { etiqueta: 'Excel de altas' },
-  pin_ballenoil:     { etiqueta: 'PIN de Ballenoil' },
-  obs_ballenoil:     { etiqueta: 'Observaciones de Ballenoil' },
 };
 
 /** Los catálogos que la pantalla necesita para pintar sus desplegables. */
@@ -628,8 +634,22 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
     }
   }
 
+  // QUEDA DADO DE ALTA, NO «ESPERANDO A RRHH» (18/09/2026).
+  //
+  // El recorrido tenía dos paradas más —«Listo para RRHH» y «Pendiente de alta
+  // en Ballenoil»— y ninguna de las dos hacía nada que no estuviera ya hecho
+  // aquí: el contrato está abierto, el turno puesto y la cuenta de BOLT
+  // enlazada. Lo que le falta a esta persona no es papeleo nuestro, es un coche
+  // en el cuadrante, y de eso avisa la incorporación que nace abajo.
+  //
+  // Las 32 fichas que estaban en «Listo para RRHH» el día del cambio se quedan
+  // donde están: su bandeja sigue funcionando hasta que se vacíe sola.
   await db.consulta(
-    `UPDATE candidatura SET estado = 'listo_rrhh', apto_at = now(), actualizado_at = now()
+    `UPDATE candidatura
+        SET estado = 'alta',
+            apto_at = now(),
+            alta_at = COALESCE(alta_at, now()),
+            actualizado_at = now()
       WHERE id = $1`, [Number(id)]);
 
   // ENLACE AUTOMÁTICO A BOLT por teléfono — mismo criterio que alta.realizar: si
@@ -671,21 +691,26 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
   // Ahora nace aquí también, con la foto de las plazas prometidas y la fecha de
   // alta: en el planificador sale "entra Fulano el día X" antes de que llegue, y
   // si era un RECAMBIO, sale al lado de quien se va.
+  // Y SIN VACANTE TAMBIÉN AVISA. Quien entra sin plaza prometida necesita una
+  // igual; la alerta se queda en el planificador hasta que alguien le dé una.
   let incorporacion = null, avisoVacante = null;
   const vref = (await db.consulta('SELECT vacante_ref FROM candidatura WHERE id = $1', [Number(id)]))
     .rows.map(x => x.vacante_ref)[0];
-  if (vref) {
-    try {
-      incorporacion = await require('../../services/repo/incorporaciones').crear({
-        conductorId: c.conductor_id, vacanteId: vref, origen: 'seleccion',
-        desde: contrato.alta, usuarioId: quien.usuarioId,
-      });
-      console.log(`🔔 [CANDIDATURA] Incorporación ${incorporacion.id} · ${c.quien} → ${vref} ` +
-        `(${incorporacion.plazas} plaza(s), desde ${contrato.alta})`);
-    } catch (e) {
-      avisoVacante = `El alta salió bien, pero la vacante ${vref} no se pudo reservar: ${e.message}`;
-      console.error(`⚠️  [CANDIDATURA] ${avisoVacante}`);
+  try {
+    incorporacion = await require('../../services/repo/incorporaciones').crear({
+      conductorId: c.conductor_id, vacanteId: vref || null, origen: 'seleccion',
+      desde: contrato.alta, usuarioId: quien.usuarioId,
+    });
+    if (incorporacion) {
+      console.log(`🔔 [CANDIDATURA] Incorporación ${incorporacion.id} · ${c.quien} → ` +
+        (vref ? `${vref} (${incorporacion.plazas} plaza(s), desde ${contrato.alta})`
+              : `sin vacante, desde ${contrato.alta}`));
     }
+  } catch (e) {
+    avisoVacante = vref
+      ? `El alta salió bien, pero la vacante ${vref} no se pudo reservar: ${e.message}`
+      : `El alta salió bien, pero no se pudo avisar al planificador: ${e.message}`;
+    console.error(`⚠️  [CANDIDATURA] ${avisoVacante}`);
   }
 
   return {
@@ -741,13 +766,28 @@ async function faltantes(id, tipo) {
  */
 async function paraFicha(id) {
   const r = await db.consulta(
-    `SELECT k.id, k.inicio_previsto, k.num_hijos,
+    `SELECT k.id, k.num_hijos,
             c.id AS conductor_id, c.nombre, c.apellidos, c.dni_nie, c.email,
-            c.fecha_nacimiento, c.estado_civil, c.naf, c.direccion, c.codigo_postal,
+            c.estado_civil, c.naf, c.direccion, c.codigo_postal,
             c.observaciones, c.iban_cifrado,
             tel.e164 AS telefono,
-            per.fecha_emision AS carnet_expedicion,
-            per.fecha_caduca  AS carnet_caducidad
+            -- LAS FECHAS SALEN YA ESCRITAS DE LA BASE, en dd/mm/aaaa.
+            --
+            -- Antes venían como DATE y se formateaban en JS con
+            -- String(v).slice(0,10), que sobre un Date de node no da
+            -- "2000-07-06" sino "Thu Jul 06 2000 ...". La ficha que se manda a
+            -- la gestoría salía con "Thu Jul 06" en la fecha de nacimiento y
+            -- con "Thu Dec 12" en la del carné. Es la trampa de siempre: un
+            -- DATE de PostgreSQL se formatea con to_char y no con toISOString
+            -- ni con String().
+            to_char(c.fecha_nacimiento, 'DD/MM/YYYY') AS fecha_nacimiento,
+            to_char(per.fecha_emision,  'DD/MM/YYYY') AS carnet_expedicion,
+            to_char(per.fecha_caduca,   'DD/MM/YYYY') AS carnet_caducidad,
+            -- La fecha de inicio es la prevista mientras es candidato y la REAL
+            -- en cuanto se le abre el contrato: si no, la ficha de alguien que
+            -- ya entró salía con el hueco en blanco, que es justo el dato que
+            -- la gestoría necesita para el alta en la Seguridad Social.
+            to_char(COALESCE(k.inicio_previsto, emp.alta), 'DD/MM/YYYY') AS fecha_inicio
        FROM candidatura k
        JOIN conductor c ON c.id = k.conductor_id
        LEFT JOIN LATERAL (
@@ -758,11 +798,13 @@ async function paraFicha(id) {
          SELECT fecha_emision, fecha_caduca FROM documento
           WHERE conductor_id = c.id AND tipo = 'permiso' AND vigente
           ORDER BY id DESC LIMIT 1) per ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT alta FROM conductor_periodo_empleo
+          WHERE conductor_id = c.id ORDER BY alta DESC LIMIT 1) emp ON TRUE
       WHERE k.id = $1`, [Number(id)]);
   const f = r.rows[0];
   if (!f) throw new Error('No existe esa candidatura');
 
-  const fecha = v => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '');
   let iban = '';
   if (f.iban_cifrado) {
     const cripto = require('../../services/cripto');
@@ -773,11 +815,11 @@ async function paraFicha(id) {
     conductorId: f.conductor_id,
     id: f.telefono, telefono: f.telefono,
     nombre: f.nombre, apellidos: f.apellidos, dni: f.dni_nie, email: f.email,
-    fecha_nacimiento: fecha(f.fecha_nacimiento), estado_civil: f.estado_civil,
+    fecha_nacimiento: f.fecha_nacimiento || '', estado_civil: f.estado_civil,
     num_hijos: f.num_hijos, num_seg_social: f.naf,
     direccion: f.direccion, codigo_postal: f.codigo_postal,
-    carnet_expedicion: fecha(f.carnet_expedicion), carnet_caducidad: fecha(f.carnet_caducidad),
-    fecha_inicio: fecha(f.inicio_previsto),
+    carnet_expedicion: f.carnet_expedicion || '', carnet_caducidad: f.carnet_caducidad || '',
+    fecha_inicio: f.fecha_inicio || '',
     iban, observaciones: f.observaciones,
   };
 }

@@ -149,7 +149,17 @@ async function subir({ conductorId, vehiculoId, tipo, nombre, mime, base64,
     'SELECT codigo, etiqueta, ambito, caduca FROM cat_tipo_documento WHERE codigo = $1 AND activo', [tipo])).rows[0];
   if (!t) throw new Error(`Tipo de documento desconocido: "${tipo}"`);
   if (t.ambito !== d.ambito) throw new Error(`"${t.etiqueta}" es un documento de ${t.ambito}, no de ${d.ambito}`);
-  if (t.caduca && !fechaCaduca) throw new Error(`"${t.etiqueta}" caduca: hace falta la fecha de caducidad`);
+  // LA CADUCIDAD YA NO SE EXIGE (18/09/2026).
+  //
+  // Antes, un tipo marcado como `caduca` no dejaba subir el papel sin teclear la
+  // fecha. La idea era buena —sin fecha no hay aviso de vencimiento— pero el
+  // precio lo pagaba quien sube: dos fechas a mano por documento, con la imagen
+  // delante, y por eso salían mal (en una ficha de alta real el carné decía
+  // 12/12/2024 donde el papel ponía 12/02/2024).
+  //
+  // Un papel subido sin fecha vale; un papel que nadie sube porque el formulario
+  // no le deja, no. Quien quiera el aviso puede poner la fecha después, desde la
+  // ficha del conductor o del vehículo.
 
   const subido = await motor.subir({
     carpeta: carpetaDe(d.ambito, d.id), nombre, mime, base64,

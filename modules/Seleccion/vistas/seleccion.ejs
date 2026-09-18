@@ -147,19 +147,32 @@
       })),
     };
 
+    // UN SÍ O UN NO SE ELIGE, NO SE TECLEA. El diálogo no conoce el tipo
+    // «booleano», así que lo pintaba como un hueco de texto y había que escribir
+    // literalmente "true" para poder seguir. Se traduce aquí al selector de la
+    // casa, con su tercera opción: en estos campos «no consta» no es «no».
+    const SI_NO = [
+      { valor: '', texto: '— Sin dato —' },
+      { valor: 'si', texto: 'Sí' },
+      { valor: 'no', texto: 'No' },
+    ];
+    const esBooleano = c => c.tipo === 'booleano';
+    const aSiNo = v => (v == null || v === '' ? '' : (v === true || v === 'true' || v === 't' ? 'si' : 'no'));
+
     const campos = (CAT.campos || []).map(c => ({
       id: c.id,
       etiqueta: c.etiqueta || c.id,
       grupo: c.grupo,
       ayuda: c.id === 'iban' && d.tiene_iban
         ? 'Ya hay uno guardado. Escribe solo si quieres cambiarlo.' : c.ayuda,
-      tipo: LISTAS[c.id] ? 'lista' : (c.tipo || 'texto'),
-      opciones: LISTAS[c.id] || c.opciones,
+      tipo: LISTAS[c.id] ? 'lista' : esBooleano(c) ? 'opciones' : (c.tipo || 'texto'),
+      opciones: LISTAS[c.id] || (esBooleano(c) ? SI_NO : c.opciones),
       // El IBAN nunca vuelve del servidor: está cifrado. Se deja vacío y solo se
       // manda si se escribe algo, para no borrarlo sin querer al guardar.
       valor: c.id === 'iban' ? ''
-        : c.tipo === 'fecha' ? fecha(d[c.id])
-          : (d[c.id] == null ? '' : String(d[c.id])),
+        : esBooleano(c) ? aSiNo(d[c.id])
+          : c.tipo === 'fecha' ? fecha(d[c.id])
+            : (d[c.id] == null ? '' : String(d[c.id])),
     }));
 
     const v = await Dialogo.formulario('Datos de ' + d.quien, campos, {
@@ -175,7 +188,12 @@
       const ahora = v[c.id] == null ? '' : String(v[c.id]);
       if (c.id === 'iban') { if (ahora) cambios.iban = ahora; return; }
       const antes = c.tipo === 'fecha' ? (Dialogo.aISO(c.valor) || '') : (c.valor || '');
-      if (ahora !== antes) cambios[c.id] = v[c.id];
+      if (ahora === antes) return;
+      // El sí/no vuelve a ser booleano —o nulo— antes de salir hacia el servidor:
+      // lo que la base guarda es un BOOLEAN, no la palabra "si".
+      cambios[c.id] = c.tipo === 'opciones' && c.opciones === SI_NO
+        ? (ahora === '' ? null : ahora === 'si')
+        : v[c.id];
     });
     if (!Object.keys(cambios).length) return;
     await hacer(() => enviar('/seleccion/api/candidatura/' + d.id, 'PUT', cambios));
@@ -202,12 +220,19 @@
     }
   }
 
-  /** Selección termina: se abre el contrato y la persona pasa a RRHH. */
+  /**
+   * Selección termina aquí: se le abre el contrato y YA ESTÁ DE ALTA.
+   *
+   * Antes esto solo dejaba la ficha «esperando a RRHH», y después venían dos
+   * paradas más —el Excel de altas y el PIN de Ballenoil— que no cambiaban nada
+   * de lo que la persona necesita para trabajar. Lo que le falta a partir de
+   * aquí no es papeleo nuestro: es un coche, y de eso avisa el planificador.
+   */
   async function accionRRHH(d) {
     if ((d.faltan || []).length) {
       return Dialogo.aviso({
         titulo: 'Todavía falta algo',
-        html: '<p class="text-sm">Antes de pasar a RRHH hay que completar:</p>'
+        html: '<p class="text-sm">Antes de darle de alta hay que completar:</p>'
           + '<ul class="text-sm mt-2 space-y-1 list-disc pl-4">'
           + d.faltan.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>',
         tono: 'aviso',
@@ -223,14 +248,19 @@
         opciones: [{ valor: 'propia', texto: 'Plantilla propia' }, { valor: 'ett', texto: 'ETT' }] },
       { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: 'GiGroup',
         ayuda: 'Solo si el contrato es por ETT. Cámbialo si viene de otra.' },
-    ], { nota: 'Se le abre el periodo de empleo. A partir de aquí es plantilla, no candidato.' });
+    ], { nota: 'Se le abre el periodo de empleo y queda dado de alta. '
+             + 'El planificador recibe el aviso para colocarlo.' });
     if (!v || !v.alta) return;
 
     const r = await hacer(() => enviar('/seleccion/api/candidatura/' + d.id + '/rrhh', 'POST', v));
     if (!r) return;
     await Dialogo.aviso({
-      titulo: 'Pasa a RRHH',
+      titulo: 'Dado de alta',
       html: '<p class="text-sm">Ficha nº ' + esc(r.conductorId) + ' creada.</p>'
+        + '<p class="text-sm mt-2">'
+        + (r.incorporacion && r.incorporacion.plazas
+          ? 'El planificador ya tiene el aviso con sus ' + esc(r.incorporacion.plazas) + ' plaza(s).'
+          : 'El planificador ya tiene el aviso para colocarlo.') + '</p>'
         + (r.faltaBolt
           ? '<p class="text-sm mt-2 text-telecab-warn"><b>No tiene cuenta de BOLT.</b> '
             + 'Sin ella no puede conducir: hay que darle de alta antes de que se incorpore.</p>'
@@ -278,30 +308,73 @@
 
   // ── Documentos ──────────────────────────────────────────────────────────
 
+  /**
+   * Sube un papel y punto. NO se preguntan fechas.
+   *
+   * Antes, cada subida abría un formulario pidiendo emisión y caducidad, y el
+   * servidor las exigía en los tipos que caducan. Eran dos fechas tecleadas a
+   * mano por papel, con el documento delante — y por eso salían mal: en la ficha
+   * de un alta real el carné decía 12/12/2024 cuando el papel ponía 12/02/2024.
+   * Las fechas ya están en la imagen; quien la mire las ve.
+   */
   async function subirDocumento(d, key, archivo) {
     const fd = new FormData();
     fd.append('tipo', key);
     fd.append('archivo', archivo, archivo.name);
-    // Los tipos que caducan piden su fecha, y el servidor lo exige. Un documento
-    // caducado que nadie vigila es peor que no tenerlo.
-    const cad = await Dialogo.formulario('Fechas del documento', [
-      { id: 'emision', etiqueta: 'Fecha de emisión', tipo: 'fecha' },
-      { id: 'caduca', etiqueta: 'Fecha de caducidad', tipo: 'fecha' },
-    ], { textoBoton: 'Subir', nota: 'Déjalas vacías si este documento no caduca.' });
-    if (!cad) return;
-    if (cad.emision) fd.append('emision', cad.emision);
-    if (cad.caduca) fd.append('caduca', cad.caduca);
     await hacer(() => api('/seleccion/api/candidatura/' + d.id + '/documento',
       { method: 'POST', body: fd }));
+  }
+
+  // ── PEGAR EL PANTALLAZO ─────────────────────────────────────────────────
+  // El pegado no se puede enganchar a la fila: el evento `paste` va al elemento
+  // con el foco o al documento, y aquí no hay ninguno enfocado. Así que se
+  // escucha UNA vez en el documento y se mira sobre qué fila está el ratón. Es
+  // lo que hace que «pongo el cursor encima y pego» funcione sin tener que
+  // hacer clic en nada antes.
+  let filaDocumento = null;      // { d, key } de la fila señalada
+  let pegadoPuesto = false;
+
+  function nombreDePegado(key, tipo) {
+    const ext = (tipo || '').split('/')[1] || 'png';
+    return 'pantallazo-' + key + '.' + ext.replace(/[^a-z0-9]/gi, '');
+  }
+
+  /** La imagen de un portapapeles o de un arrastre, si la hay. */
+  function imagenDe(datos, key) {
+    const lista = [...((datos && datos.items) || [])];
+    const it = lista.find(x => x.kind === 'file' && /^image\//.test(x.type || ''));
+    const f = it ? it.getAsFile() : ((datos && datos.files || [])[0] || null);
+    if (!f) return null;
+    // Lo pegado llega sin nombre; el servidor guarda por nombre, así que se le pone uno.
+    return f.name ? f : new File([f], nombreDePegado(key, f.type), { type: f.type || 'image/png' });
+  }
+
+  function engancharPegado() {
+    if (pegadoPuesto) return;
+    pegadoPuesto = true;
+    document.addEventListener('paste', ev => {
+      if (!filaDocumento) return;
+      const f = imagenDe(ev.clipboardData, filaDocumento.key);
+      if (!f) return;
+      ev.preventDefault();
+      subirDocumento(filaDocumento.d, filaDocumento.key, f);
+    });
   }
 
   function pintarDocumentos(d, hueco) {
     hueco.className = 'p-5 space-y-2';
     const puestos = new Map((d.documentos || []).filter(x => x.vigente).map(x => [x.tipo, x]));
 
-    hueco.innerHTML = (d.documentosPedidos || DOCS).map(def => {
+    engancharPegado();
+
+    hueco.innerHTML = '<p class="text-xs text-telecab-muted pb-1">'
+      + 'Cada papel se sube desde el explorador, arrastrándolo encima, o '
+      + '<b>poniendo el ratón sobre su línea y pegando</b> el pantallazo con Ctrl+V.</p>'
+      + (d.documentosPedidos || DOCS).map(def => {
       const doc = puestos.get(def.tipo);
-      return '<div class="flex items-center gap-3 text-sm border-b border-telecab-border/50 pb-2">'
+      return '<div data-fila="' + esc(def.key) + '" '
+        + 'class="flex items-center gap-3 text-sm border-b border-telecab-border/50 pb-2 '
+        + 'rounded px-1 -mx-1 transition">'
         + '<i class="fa-solid ' + (doc ? 'fa-circle-check text-telecab-green' : 'fa-circle text-telecab-muted/40')
         + ' text-xs"></i>'
         + '<span class="flex-1">' + esc(def.label) + '</span>'
@@ -310,7 +383,8 @@
             + '<a href="' + esc(doc.enlace || '#') + '" target="_blank" rel="noopener" '
             + 'class="text-telecab-gold text-xs underline">ver</a>'
             + '<button data-quitar="' + doc.id + '" class="text-telecab-red text-xs">quitar</button>'
-          : '<label class="text-telecab-gold text-xs cursor-pointer">subir'
+          : '<span class="text-telecab-muted text-[11px]" data-pista>o pega aquí</span>'
+            + '<label class="text-telecab-gold text-xs cursor-pointer">subir'
             + '<input type="file" class="hidden" data-subir="' + esc(def.key) + '"></label>')
         + '</div>';
     }).join('');
@@ -319,6 +393,28 @@
       inp.addEventListener('change', () => {
         const f = inp.files && inp.files[0];
         if (f) subirDocumento(d, inp.dataset.subir, f);
+      });
+    });
+
+    // La fila señalada: es la que recibe lo que se pegue. Y de paso acepta que
+    // le suelten el fichero encima, que es el mismo gesto con el ratón.
+    hueco.querySelectorAll('[data-fila]').forEach(fila => {
+      const key = fila.dataset.fila;
+      const puesto = puestos.has((d.documentosPedidos || DOCS).find(x => x.key === key).tipo);
+      if (puesto) return;                         // ya está subido: no admite otro
+      const marcar = on => {
+        fila.classList.toggle('bg-telecab-gold/10', on);
+        filaDocumento = on ? { d, key } : (filaDocumento && filaDocumento.key === key ? null : filaDocumento);
+      };
+      fila.addEventListener('mouseenter', () => marcar(true));
+      fila.addEventListener('mouseleave', () => marcar(false));
+      fila.addEventListener('dragover', ev => { ev.preventDefault(); marcar(true); });
+      fila.addEventListener('dragleave', () => marcar(false));
+      fila.addEventListener('drop', ev => {
+        ev.preventDefault();
+        marcar(false);
+        const f = imagenDe(ev.dataTransfer, key);
+        if (f) subirDocumento(d, key, f);
       });
     });
 
@@ -388,7 +484,7 @@
       titulo: d => d.quien,
       subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
       acciones: [
-        { texto: 'Pasar a RRHH', icono: 'fa-forward', principal: true,
+        { texto: 'Dar de alta', icono: 'fa-user-check', principal: true,
           visible: d => d.en_funnel, onClick: accionRRHH },
         { texto: 'Estado', icono: 'fa-diagram-next', principal: false, onClick: accionEstado },
         { texto: 'Datos', icono: 'fa-pen', principal: false, onClick: accionDatos },

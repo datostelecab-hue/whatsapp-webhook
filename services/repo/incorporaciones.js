@@ -31,17 +31,24 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const fecha = d => (ISO.test(String(d || '')) ? String(d) : null);
 
 /**
- * Crea la alerta al dar de alta con vacante. Toma la foto de la vacante y la
- * marca "en proceso" para que Selección deje de ofrecerla.
- * Sin vacante no hace nada: el alta sin vacante sigue siendo un alta normal.
+ * Crea la alerta al dar de alta. Si viene con vacante, toma su foto y la marca
+ * "en proceso" para que Selección deje de ofrecerla.
+ *
+ * SIN VACANTE TAMBIÉN NACE LA ALERTA (18/09/2026). Antes no: alguien se daba de
+ * alta sin plaza prometida y el planificador no se enteraba de que había una
+ * persona nueva esperando coche. La alerta sin vacante no tiene nada que
+ * aceptar —no hay plazas prometidas— y se va sola en cuanto se le da una plaza
+ * en el cuadrante, que es lo que quería decir.
  *
  * @param {{conductorId, vacanteId, origen, desde, usuarioId}} o
- *        `vacanteId` acepta el código ('V…') o el id numérico.
+ *        `vacanteId` acepta el código ('V…') o el id numérico, o nada.
  */
 async function crear({ conductorId, vacanteId, origen = 'ett', desde, usuarioId } = {}) {
   const ref = String(vacanteId || '').trim();
   const cid = Number(conductorId);
-  if (!ref || !Number.isInteger(cid) || cid <= 0) return null;
+  if (!Number.isInteger(cid) || cid <= 0) return null;
+
+  if (!ref) return crearSinVacante({ conductorId: cid, origen, desde, usuarioId });
 
   const v = await vacantes.ficha(ref);
   if (!v) throw new Error(`No existe la vacante ${ref}`);
@@ -82,6 +89,28 @@ async function crear({ conductorId, vacanteId, origen = 'ett', desde, usuarioId 
   return { id: String(r.rows[0].id), vacanteId: v.codigo, plazas: detalle.plazas.length, detalle };
 }
 
+/**
+ * La alerta de quien entra SIN plaza prometida: «este ha entrado, hay que
+ * colocarlo». No hay foto de vacante que guardar, solo desde cuándo cuenta.
+ *
+ * No se duplica: si ya tiene una pendiente, se devuelve la que hay. Alguien que
+ * cambia de contrato dos veces en una semana no genera dos avisos iguales.
+ */
+async function crearSinVacante({ conductorId, origen, desde, usuarioId }) {
+  const ya = await db.consulta(
+    `SELECT id FROM incorporacion
+      WHERE conductor_id = $1 AND estado = 'pendiente' AND vacante_id IS NULL`, [conductorId]);
+  if (ya.rows.length) return { id: String(ya.rows[0].id), vacanteId: '', plazas: 0, detalle: {} };
+
+  const detalle = { sinVacante: true, desde: fecha(desde) };
+  const r = await db.consulta(
+    `INSERT INTO incorporacion (conductor_id, vacante_id, origen, detalle, usuario_alta)
+     VALUES ($1, NULL, $2, $3::jsonb, $4) RETURNING id`,
+    [conductorId, String(origen || 'seleccion').slice(0, 20), JSON.stringify(detalle),
+     usuarioId || null]);
+  return { id: String(r.rows[0].id), vacanteId: '', plazas: 0, detalle };
+}
+
 /** Las alertas pendientes, con el conductor con nombre de BOLT y teléfono. */
 async function pendientes() {
   const r = await db.consulta(
@@ -103,6 +132,18 @@ async function pendientes() {
           WHERE conductor_id = c.id AND vigente_hasta IS NULL
           ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
       WHERE i.estado = 'pendiente'
+        -- LA ALERTA SIN VACANTE SE VA SOLA AL PLANIFICARLO.
+        --
+        -- Es lo que significa: «hay alguien nuevo sin coche». En cuanto tiene
+        -- una plaza en el cuadrante, ya no hay nada que avisar y nadie tiene
+        -- que acordarse de cerrarla. La que SÍ trae vacante no se toca: esa se
+        -- acepta o se rechaza, porque además hay una vacante que cubrir o que
+        -- volver a abrir.
+        AND (i.vacante_id IS NOT NULL OR NOT EXISTS (
+              SELECT 1 FROM asignacion a
+               WHERE a.conductor_id = i.conductor_id
+                 AND a.retirada_at IS NULL
+                 AND (a.hasta IS NULL OR a.hasta >= CURRENT_DATE)))
       ORDER BY i.creado_at`);
   return r.rows.map(x => ({
     id: String(x.id), conductorId: String(x.conductor_id), nombre: x.nombre,

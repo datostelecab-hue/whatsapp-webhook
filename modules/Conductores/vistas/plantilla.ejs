@@ -837,7 +837,7 @@
           opciones: tipos.map(t => ({ valor: t.codigo, texto: t.etiqueta + (t.obligatorio ? ' (obligatorio)' : '') })) },
         { id: 'fechaEmision', etiqueta: 'Fecha de emisión', tipo: 'fecha' },
         { id: 'fechaCaduca', etiqueta: 'Caduca el', tipo: 'fecha',
-          ayuda: 'Obligatoria en los documentos que caducan; es lo que permite avisar antes.' },
+          ayuda: 'Opcional. Si se pone, el sistema avisa antes de que venza.' },
         { id: 'notas', etiqueta: 'Notas', tipo: 'texto-largo' },
       ], { textoBoton: 'Subir' });
       if (!v) return;

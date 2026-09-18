@@ -33,13 +33,50 @@ const { geocodificar, geocodificarEstructurado } = require('../../services/geoco
  */
 const DOCUMENTOS = [
   { key: 'dni',            tipo: 'dni',             label: 'DNI/NIE (frente)' },
-  { key: 'dni_reverso',    tipo: 'dni_reverso',     label: 'DNI/NIE (reverso)' },
+  { key: 'dni_reverso',    tipo: 'dni_reverso',     label: 'DNI/NIE (reverso)', opcional: true },
   { key: 'carnet',         tipo: 'permiso',         label: 'Carné de conducir (frente)' },
-  { key: 'carnet_reverso', tipo: 'permiso_reverso', label: 'Carné de conducir (reverso)' },
+  { key: 'carnet_reverso', tipo: 'permiso_reverso', label: 'Carné de conducir (reverso)', opcional: true },
   { key: 'bancario',       tipo: 'cuenta',          label: 'Certificado bancario' },
   { key: 'seg_social',     tipo: 'vida_laboral',    label: 'Vida laboral / certificado SS' },
   { key: 'penales',        tipo: 'penales',         label: 'Certificado de delitos sexuales' },
 ];
+
+// LOS REVERSOS SON OPCIONALES Y LOS FRENTES NO.
+//
+// El frente del DNI y del carné llevan lo que la gestoría necesita —número,
+// nombre, fechas—; el reverso a veces no se puede conseguir, y bloquear un alta
+// entera por la cara de atrás de un carné era parar a alguien que ya está listo
+// para trabajar. Se piden igual en la pantalla: lo que cambia es que no impiden.
+
+/**
+ * Lo que le falta a una candidatura para que su ficha de alta se pueda generar.
+ *
+ * La ficha es lo que se manda a la gestoría para dar de alta en la Seguridad
+ * Social: si sale con huecos, no sirve, y el hueco se descubre allí y no aquí.
+ * Por eso se comprueba antes de generarla y no después.
+ *
+ * Se mira lo que la ficha IMPRIME —no la lista general de contratación—, que es
+ * justo lo que el papel necesita para valer.
+ */
+const CAMPOS_FICHA = [
+  ['nombre', 'Nombre'], ['apellidos', 'Apellidos'], ['dni', 'DNI/NIE'],
+  ['direccion', 'Dirección'], ['codigo_postal', 'Código postal'],
+  ['fecha_nacimiento', 'Fecha de nacimiento'], ['estado_civil', 'Estado civil'],
+  ['num_seg_social', 'Nº de Seguridad Social'], ['telefono', 'Teléfono'],
+  ['iban', 'Nº de cuenta bancaria'], ['email', 'Correo'],
+  ['carnet_expedicion', 'Fecha de expedición del carné'],
+  ['carnet_caducidad', 'Fecha de caducidad del carné'],
+  ['fecha_inicio', 'Fecha de inicio'],
+];
+
+function faltaParaLaFicha(datos, ficha) {
+  const vacio = v => !String(v == null ? '' : v).trim();
+  const faltan = CAMPOS_FICHA.filter(([k]) => vacio(datos[k])).map(([, etq]) => etq);
+  const puestos = new Set((ficha.documentos || []).filter(x => x.vigente).map(x => x.tipo));
+  DOCUMENTOS.filter(d => !d.opcional && !puestos.has(d.tipo))
+    .forEach(d => faltan.push('Documento: ' + d.label));
+  return faltan;
+}
 
 // ── Lo que hace falta para pintar la pantalla ──────────────────────────────
 
@@ -147,6 +184,14 @@ async function fichaPDF(id) {
   const n = Number(id);
   const [datos, f] = await Promise.all([cand.paraFicha(n), cand.ficha(n)]);
   if (!f) throw new Error('No existe esa candidatura');
+
+  // La ficha no sale a medias: o está completa o no se genera.
+  const faltan = faltaParaLaFicha(datos, f);
+  if (faltan.length) {
+    const e = new Error('La ficha no está completa: falta ' + faltan.join(', '));
+    e.faltan = faltan;
+    throw e;
+  }
 
   const adjuntos = [];
   for (const def of DOCUMENTOS) {
