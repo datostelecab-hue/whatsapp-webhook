@@ -25,6 +25,22 @@ const db = require('../../services/db');
 const DIAS = 7;
 const LETRAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
+/**
+ * EL SUELO DE UN CORRETURNOS: cuatro días.
+ *
+ * Por debajo de ahí ni cubre lo suyo ni cobra lo suyo, y hay que llamarle para
+ * darle el segundo cuadrante. Por encima, el reparto de la semana es normal
+ * aunque su jornada dé para seis.
+ *
+ * Está aquí arriba y no dentro de cada función porque lo miran TRES sitios —el
+ * banquillo, la tarjeta de «CT sin días» y la lista de avisos— y con tres cifras
+ * sueltas la pantalla se contradecía a sí misma.
+ */
+const CT_SUELO_DIAS = 4;
+
+/** Su suelo, salvo que su jornada pida menos días que el suelo. */
+const sueloCT = debe => (debe == null ? CT_SUELO_DIAS : Math.min(CT_SUELO_DIAS, debe));
+
 /** Como se llama una plaza cuando hay que nombrarla: "Fijo dia", "CT1 noche". */
 const etiquetaPlaza = (rol, ordenCt, turno) =>
   (rol === 'CT' ? 'CT' + (ordenCt || '') : 'Fijo') + ' ' + String(turno || '').toLowerCase();
@@ -343,7 +359,12 @@ async function tablero({ dia } = {}) {
         // correturnos sea de seis. Para saber si a alguien le faltan días hay
         // que mirar su asignación, que no depende de la semana que se esté
         // viendo.
-        (a.dias || []).forEach(d => p.diasDePlaza.add(Number(d)));
+        // Si la plaza no tiene días escritos se cuentan los que le tocarían por
+        // ser el correturnos de ese coche, que es lo que el tablero le pinta.
+        const suyos = (a.dias && a.dias.length)
+          ? a.dias
+          : (sugeridoDe.get(String(a.plaza_id)) || []);
+        suyos.forEach(d => p.diasDePlaza.add(Number(d)));
       }
     }
   });
@@ -502,15 +523,11 @@ async function tablero({ dia } = {}) {
   // días de trabajo y dos días de sueldo. Tenía su aviso arriba, pero no había
   // dónde ir a arreglarlo — la lista de a quién colocar no lo incluía porque
   // "ya tenía plaza".
-  // EL SUELO SON CUATRO DÍAS, no «lo que le falte para su tope».
+  // EL SUELO SON CUATRO DÍAS, no «lo que le falte para su tope». Medido el
+  // 18/09/2026: con el tope por contrato (6 días en un 40 h) entraban 92
+  // personas, y 85 de ellas eran «5 de 6». Eso no es un correturnos a medio
+  // poner, es el reparto normal de la semana. → `CT_SUELO_DIAS`, arriba.
   //
-  // Medido el 18/09/2026: con el tope por contrato (6 días en un 40 h) entraban
-  // 92 personas, y 85 de ellas eran «5 de 6». Eso no es un correturnos a medio
-  // poner, es el reparto normal de la semana, y el banquillo dejaba de servir
-  // para lo que sirve. Cuatro días es donde un CT deja de estar mal puesto —ni
-  // cubre lo suyo ni cobra lo suyo por debajo de ahí—, y es la misma cifra con
-  // la que se avisa arriba.
-  const CT_SUELO_DIAS = 4;
   // El Set era para juntar los días sin repetirlos; hacia fuera va una lista.
   // Un Set cruza el JSON como un objeto vacío, y quien lo recibiera vería `{}`.
   gente.forEach(p => { p.diasDePlaza = [...p.diasDePlaza].sort(); });
@@ -532,7 +549,7 @@ async function tablero({ dia } = {}) {
   const ctIncompleto = p => p.rolCT && !p.rolFijo && !p.ausente
     && p.diasQueDebeCT != null
     && p.diasDePlaza.length > 0
-    && p.diasDePlaza.length < Math.min(CT_SUELO_DIAS, p.diasQueDebeCT);
+    && p.diasDePlaza.length < sueloCT(p.diasQueDebeCT);
 
   const pendientes = sinPlaza.filter(p => !p.ausente)
     .concat(todos.filter(ctIncompleto).map(p => ({
@@ -647,14 +664,16 @@ const LETRA_DIA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
  * de los que 5 están de vacaciones se leen como 61 coches saliendo.
  */
 function plantel(coches, gente) {
-  const MIN_CT = 4, MAX_CT = 6;
+  const MAX_CT = 6;
   // persona → { rol, turnos:Set, plazas:[{matricula, turno, dias}] }
   const puesto = new Map();
 
   coches.forEach(coche => {
     (coche.personas || []).forEach(p => {
       if (!p.id) return;
-      if (!puesto.has(p.id)) puesto.set(p.id, { rolFijo: false, rolCT: false, turnos: new Map(), plazas: [] });
+      if (!puesto.has(p.id)) {
+        puesto.set(p.id, { rolFijo: false, rolCT: false, turnos: new Map(), plazas: [], dias: new Set() });
+      }
       const q = puesto.get(p.id);
       if (p.rol === 'FIJO') q.rolFijo = true; else q.rolCT = true;
       // Los días de ESA plaza: los puestos a mano o, si no, los que le tocan por
@@ -663,6 +682,10 @@ function plantel(coches, gente) {
         ? (p.diasManual || []).map((v, i) => (v ? i : -1)).filter(i => i >= 0)
         : (p.diasSugeridos || []);
       q.turnos.set(p.turnoCodigo, (q.turnos.get(p.turnoCodigo) || 0) + dias.length);
+      // Los días de la PERSONA, sin repetir: dos en un coche y dos en otro son
+      // cuatro. Es el mismo conjunto que se pinta en la columna «Reparto», así
+      // que la cifra y las letras no se pueden contradecir.
+      dias.forEach(i => q.dias.add(i));
       q.plazas.push({ matricula: coche.matricula, turno: p.turno, rol: p.rol,
                       dias: dias.map(i => LETRA_DIA[i]).join('') });
     });
@@ -691,10 +714,19 @@ function plantel(coches, gente) {
     if (q.rolFijo) { suma(turno === 'noche' ? 'fijoNoche' : 'fijoDia', !fuera); return; }
     if (!q.rolCT) return;
 
-    // LOS DÍAS DE LA PERSONA, no los de una plaza: `diasAsignados` ya son los días
-    // distintos que cubre sumando todo lo suyo.
-    const dias = p.diasAsignados || 0;
-    if (dias >= MIN_CT) suma(turno === 'noche' ? 'ctNoche' : 'ctDia', !fuera);
+    // LOS DÍAS ESCRITOS EN SUS CUADRANTES, no los que cubre ESTA semana.
+    //
+    // Aquí se contaba `diasAsignados`, que sale de la cobertura y solo ve lo que
+    // cae dentro de la semana que estás mirando. A Francisco, que entró en sus
+    // dos coches el viernes 18 con L M X J puestos, le salían CERO días: sus
+    // cuatro días ya habían pasado cuando empezó. Estaba perfectamente
+    // planificado y la tarjeta pedía colocarlo. Medido el 18/09/2026: doce
+    // correturnos avisados, once de ellos con sus cuatro días escritos.
+    //
+    // La cobertura sirve para saber quién sale mañana; para saber si un
+    // cuadrante está completo hay que mirar el cuadrante.
+    const dias = q.dias.size;
+    if (dias >= sueloCT(p.diasQueDebeCT)) suma(turno === 'noche' ? 'ctNoche' : 'ctDia', !fuera);
     else {
       suma('ctFlojos', !fuera);
       r.ctFlojosLista.push({
@@ -740,12 +772,16 @@ function avisosDe(coches, gente) {
     if (!p.turnoId) di('sin_turno', `${p.nombre} está colocado y no tiene turno`);
     if (p.boltPendiente) di('bolt', `${p.nombre} no tiene cuenta de BOLT`);
     if (p.ausente) di('ausente', `${p.nombre} está ${p.estado.toLowerCase()} y ocupa plaza`);
-    // Un correturnos con menos días de los que le tocan por contrato. El
-    // estándar son dos por coche: 32 horas son cuatro días, 40 son seis.
-    const soloCT = p.diasQueDebeCT != null && p.trabaja.some(Boolean);
-    if (soloCT && p.plazas > 1 && p.diasAsignados < p.diasQueDebeCT) {
-      di('faltan_dias', `${p.nombre} tiene ${p.diasAsignados} día(s) de los ` +
-        `${p.diasQueDebeCT} que le tocan`);
+    // UN CORRETURNOS A MEDIO PONER, dicho con su nombre. Mismo criterio que la
+    // tarjeta y que el banquillo, a propósito: las tres cosas miran los días
+    // ESCRITOS en sus cuadrantes y el mismo suelo. Antes miraba los días que
+    // cubría ESTA semana y contra su tope de contrato, así que avisaba de diez
+    // personas con sus cuatro días puestos y se callaba con las que entraban a
+    // mitad de semana.
+    const puestos = (p.diasDePlaza || []).length;
+    if (p.rolCT && !p.rolFijo && puestos < sueloCT(p.diasQueDebeCT)) {
+      di('faltan_dias', `${p.nombre} tiene ${puestos} día(s) puesto(s) de los ` +
+        `${p.diasQueDebeCT || CT_SUELO_DIAS} que le tocan`);
     }
   });
 
