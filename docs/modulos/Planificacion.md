@@ -183,6 +183,11 @@ Antes era una sola lista con los de vacaciones dentro y su etiqueta al lado, y h
 
 **Un correturnos a medio poner sí es banquillo.** Con dos días puestos no está colocado: le faltan días de trabajo y de sueldo. Tenía su aviso arriba pero no había dónde ir a arreglarlo, porque la lista de a quién colocar lo daba por puesto.
 
+Dos cosas que hay que mirar bien para no meter a quien no toca:
+
+- **Quién es correturnos lo dice el ROL de su plaza**, no su jornada. `cat_jornada.dias_ct` lo tiene todo el mundo —fijos incluidos—, así que un fijo pasaba el filtro. A un fijo no se le ponen días: libra el descanso de su coche y trabaja el resto.
+- **Se cuentan los días de su ASIGNACIÓN** (`asignacion_dia`), no los que cubre esa semana. Quien entró en el coche un jueves cubre tres días esa semana y no le falta ninguno: es que no estaba.
+
 El corte son **cuatro días**, no «lo que le falte para su tope». Medido el 18/09/2026: con el tope por contrato entraban 92 personas y 85 eran «5 de 6» —el reparto normal de una semana, no un problema—; con el suelo de cuatro son 8, y son los de dos y tres días. El banquillo pasó de 99 nombres a 15.
 
 ## El buscador ve también lo que aún no ha pasado
