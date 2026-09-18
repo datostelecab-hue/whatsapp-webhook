@@ -38,7 +38,14 @@ Lo que cuenta es el **tiempo efectivo** del núcleo de [[Flota viva]]: los tramo
 | **J** | un justificante vivo (`anulado_at IS NULL`), con sus horas y su nota |
 | **L** | asignado a plaza pero sin cubrir ese día (`f_cobertura`), o puesto a mano |
 
-Las horas reales **siempre pisan la L**: si al final trabajó, se ve que trabajó.
+Las horas reales **pisan la L**: si al final trabajó, se ve que trabajó.
+
+> [!warning] Pero CERO horas no pisa nada
+> Cero no es trabajar — es justo lo que la L está explicando—. Dejándolo pisar, la marca desaparecía y el día volvía a salir en rojo como «no salió», y **no había forma de arreglarlo**: se pulsaba «Era libranza», la petición guardaba bien en `bitacora_dia`, la lectura la leía bien, y el renglón de las horas la borraba justo después.
+>
+> Y basta con **muy poco** para llegar a cero: la celda redondea a un decimal, así que cualquier cosa por debajo de **18 segundos** da 0,0. A Abraham Díaz le bastaron **40 segundos** conectado en BOLT el 05/09/2026.
+>
+> Medido el 18/09/2026: **16 días en 15 personas**, y **6 de ellos eran libranzas puestas a mano** — seis veces que alguien pulsó el botón y no pasó nada. Las horas no se pierden: se quedan en `horasBolt`, como ya se hacía con la J y con las ausencias.
 
 **Quién sale:** toda la plantilla, vigentes y de baja. Antes el listado salía de `v_agenda`, que solo tiene a los vigentes, y a las **74 personas** que trabajaron y luego se fueron se les inventaba el nombre `#id`. Ahora sale de la dimensión de conductores (`bi_dim_conductor`). Quien tenga cuenta de BOLT pero ninguna ficha no se pinta como persona: se cuenta y se avisa (`avisos.sinFicha`).
 

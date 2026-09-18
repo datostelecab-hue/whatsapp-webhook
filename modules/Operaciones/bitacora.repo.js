@@ -393,11 +393,30 @@ async function leerBitacora() {
     if (i >= 0 && i < nDias) { const c = de(r.conductor_id); c.dias[i] = 'L'; c.lManual[r.dia] = true; }
   });
   horas.forEach((diasMap, cid) => {
-    const arr = de(cid).dias;
+    const c = de(cid);
+    const arr = c.dias;
     diasMap.forEach((seg, diaKey) => {
       const i = idxDe(diaKey);
       if (i < 0 || i >= nDias) return;
-      arr[i] = Math.round((seg / 360)) / 10;           // segundos → h con 1 decimal
+      const h = Math.round((seg / 360)) / 10;          // segundos → h con 1 decimal
+      // CERO HORAS NO PISA UNA MARCA.
+      //
+      // Las horas van DESPUÉS de la 'L' a propósito: si alguien trabajó el día
+      // que libraba, manda la hora. Pero cero no es trabajar — es justo lo que
+      // la 'L' está explicando—, y dejándolo pisar, la marca desaparecía y el
+      // día volvía a salir en rojo como "no salió".
+      //
+      // Y basta con MUY POCO para llegar a cero: la celda redondea a un
+      // decimal, así que cualquier cosa por debajo de 18 segundos da 0,0. A
+      // Abraham Díaz le bastaron **40 segundos** conectado en BOLT el 05/09
+      // para que su libranza puesta a mano no se viera nunca: se guardaba bien
+      // en `bitacora_dia`, se leía bien, y este renglón la borraba. Se pulsaba
+      // "Era libranza", cargaba, y el día seguía diciendo que no salió.
+      //
+      // Las horas no se pierden: se quedan al lado, como ya se hace con la J y
+      // con las ausencias, para poder decir qué hizo en BOLT ese día.
+      if (!h && arr[i] != null) { c.horasBolt[diaKey] = h; return; }
+      arr[i] = h;
     });
   });
   justis.rows.forEach(r => {

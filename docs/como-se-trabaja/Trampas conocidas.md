@@ -1220,6 +1220,28 @@ Por eso los km de esa pantalla salen de `fv_ruta` (Mapon) y no de BOLT:
 preguntarle a BOLT por un coche que nadie ha fichado devuelve silencio, y el
 silencio se lee como «no se movió».
 
+### Un valor que redondea a CERO borra la marca que tenía debajo
+
+`modules/Operaciones/bitacora.repo.js`
+
+La bitácora aplica las marcas por prioridad: primero la `L`, luego las horas
+—«si trabajó su libranza, manda la hora»—, luego la `J`, y al final la ausencia.
+La regla es buena y el fallo estaba en el borde: **cero horas no es trabajar**,
+es justo lo que la `L` está explicando, y pisándola el día volvía a salir en rojo.
+
+Lo peor era que **no se podía arreglar**: el botón «Era libranza» guardaba bien,
+la lectura lo leía bien, y el renglón siguiente lo borraba. *Cargaba y no
+cambiaba nada.*
+
+Y basta con muy poco para llegar a cero: la celda redondea a un decimal, así que
+**cualquier cosa por debajo de 18 segundos da 0,0**. A Abraham Díaz le bastaron
+**40 segundos** conectados en BOLT. Medido el 18/09/2026: 16 días en 15 personas,
+seis de ellos puestos a mano. → [[Bitacora]]
+
+**La regla que queda:** en una cadena de prioridades, el valor «vacío» de cada
+paso (un 0, una lista sin elementos, una cadena en blanco) **no puede ganarle a
+lo que ya había**. Solo pisa lo que aporta algo.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números
