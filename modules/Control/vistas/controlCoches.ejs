@@ -1,0 +1,132 @@
+<%- include('partials/control-nav', { sub: 'coches' }) %>
+
+<div class="max-w-[1200px] mx-auto px-4 lg:px-6 pb-10">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4 mt-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-car-burst text-telecab-gold"></i> Coches sin cuadrante
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1 max-w-3xl">
+        Coches que <b>se movieron</b> sin que hubiera nadie puesto para llevarlos. El resto de
+        Control mira personas; esta pantalla mira coches, y la pregunta no es «a quién llamo»
+        sino <b>«quién está usando esto»</b>. Los kilómetros salen de Mapon, no de BOLT:
+        un coche que nadie ficha no deja un solo apunte de BOLT.
+      </p>
+    </div>
+    <input id="c-dia" type="date" value="<%= hoy %>"
+      class="px-3 py-2 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+  </div>
+
+  <div id="c-resumen" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"></div>
+  <div id="c-listas" class="space-y-5">
+    <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const n1 = v => String(Math.round(Number(v) * 10) / 10).replace('.', ',');
+
+  // Las cuatro listas, con el tono que les toca. El rojo es para una sola cosa
+  // —nadie detrás— porque si todo grita no grita nada.
+  const LISTAS = [
+    { clave: 'sinNadie', titulo: 'Nadie detrás',
+      pie: 'Rodó, no había nadie planificado y tampoco nadie conectado en BOLT. Eso no es un hueco de cuadrante: es alguien conduciendo sin fichar.',
+      ico: 'fa-triangle-exclamation', tono: 'red' },
+    { clave: 'fueraCobertura', titulo: 'Fuera de cobertura y rodando',
+      pie: 'En taller, siniestro o de baja. No debería moverse en absoluto.',
+      ico: 'fa-screwdriver-wrench', tono: 'warn' },
+    { clave: 'reserva', titulo: 'De reserva',
+      pie: 'Operativo y sin ninguna plaza: no es de nadie. Si se mueve, alguien lo ha cogido.',
+      ico: 'fa-key', tono: 'violet' },
+    { clave: 'sinPlan', titulo: 'Sin plan, pero con alguien fichado',
+      pie: 'Salió alguien que el cuadrante no había puesto ahí. Es un hueco de planificación, no un coche perdido.',
+      ico: 'fa-user-clock', tono: 'muted' },
+  ];
+  const TONO = {
+    red:    { txt: 'text-telecab-red',    bg: 'bg-telecab-red/5',    bd: 'border-telecab-red/40' },
+    warn:   { txt: 'text-telecab-warn',   bg: 'bg-telecab-warn/5',   bd: 'border-telecab-warn/40' },
+    violet: { txt: 'text-telecab-violet', bg: 'bg-telecab-violet/5', bd: 'border-telecab-violet/30' },
+    muted:  { txt: 'text-telecab-muted',  bg: '',                    bd: 'border-telecab-border' },
+  };
+
+  function tarjeta(etq, valor, tono, sufijo) {
+    const t = TONO[tono] || TONO.muted;
+    return `<div class="rounded-2xl border ${t.bd} ${t.bg} p-4">
+      <div class="text-[11px] uppercase tracking-wide text-telecab-muted">${esc(etq)}</div>
+      <div class="text-2xl font-bold ${t.txt} tabular-nums">${esc(String(valor))}${
+        sufijo ? `<span class="text-sm font-normal text-telecab-muted"> ${esc(sufijo)}</span>` : ''}</div>
+    </div>`;
+  }
+
+  function fila(c) {
+    return `<tr class="border-t border-telecab-border/50 hover:bg-telecab-card2/40">
+      <td class="px-3 py-2 font-mono font-semibold">${esc(c.matricula)}
+        ${c.zona ? `<div class="text-[11px] text-telecab-muted font-sans font-normal">${esc(c.zona)}</div>` : ''}</td>
+      <td class="px-3 py-2 text-telecab-muted">${esc(c.turno)}</td>
+      <td class="px-3 py-2 text-right tabular-nums font-semibold">${n1(c.km)}<span class="text-telecab-muted font-normal"> km</span>
+        <div class="text-[11px] text-telecab-muted font-normal">${esc(c.trayectos)} trayecto(s)</div></td>
+      <td class="px-3 py-2 tabular-nums text-telecab-muted">${esc(c.desdeHora)} – ${esc(c.hastaHora)}</td>
+      <td class="px-3 py-2 text-telecab-muted text-xs">${esc(c.estado)}
+        <div class="text-[11px]">${c.planificados} planificado(s)</div></td>
+      <td class="px-3 py-2 text-xs">${c.fichados
+        ? esc(c.fichados)
+        : '<span class="text-telecab-red font-semibold">nadie conectado</span>'}
+        ${c.salidasZona ? `<div class="text-[11px] text-telecab-red mt-0.5">
+          <i class="fa-solid fa-location-crosshairs text-[9px]"></i>
+          ${c.salidasZona} salida(s) de ${esc(c.zonasSalidas)}</div>` : ''}</td>
+    </tr>`;
+  }
+
+  function bloque(def, coches) {
+    if (!coches.length) return '';
+    const t = TONO[def.tono] || TONO.muted;
+    return `<section class="rounded-2xl border ${t.bd} ${t.bg} overflow-hidden">
+      <div class="px-4 py-3 border-b border-telecab-border/60">
+        <h2 class="font-semibold ${t.txt} flex items-center gap-2">
+          <i class="fa-solid ${def.ico}"></i> ${esc(def.titulo)}
+          <span class="text-xs font-normal text-telecab-muted">· ${coches.length}</span>
+        </h2>
+        <p class="text-xs text-telecab-muted mt-1">${esc(def.pie)}</p>
+      </div>
+      <div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wide text-telecab-muted bg-telecab-card2/40">
+          <tr><th class="px-3 py-2 text-left">Coche</th><th class="px-3 py-2 text-left">Turno</th>
+              <th class="px-3 py-2 text-right">Rodó</th><th class="px-3 py-2 text-left">Entre</th>
+              <th class="px-3 py-2 text-left">Estado</th><th class="px-3 py-2 text-left">Quién estaba conectado</th></tr>
+        </thead>
+        <tbody>${coches.map(fila).join('')}</tbody>
+      </table></div>
+    </section>`;
+  }
+
+  async function cargar() {
+    const dia = $('#c-dia').value;
+    $('#c-listas').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>';
+    try {
+      const j = await (await fetch('/control/api/coches?dia=' + encodeURIComponent(dia))).json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se ha podido cargar');
+      const r = j.resumen || {};
+      $('#c-resumen').innerHTML =
+        tarjeta('Nadie detrás', r.sinNadie || 0, 'red', 'coche(s)')
+        + tarjeta('KM sin dueño', n1(r.kmSinNadie || 0), 'red', 'km')
+        + tarjeta('Fuera de cobertura', r.fueraCobertura || 0, 'warn', 'coche(s)')
+        + tarjeta('Sin plan, con alguien', r.sinPlan || 0, 'muted', 'coche(s)');
+      const html = LISTAS.map(d => bloque(d, j[d.clave] || [])).join('');
+      $('#c-listas').innerHTML = html
+        || `<p class="px-4 py-10 text-center text-sm text-telecab-muted">
+             Ningún coche se movió sin cuadrante ese día. Mínimo: ${n1(j.minKm)} km.</p>`;
+    } catch (e) {
+      $('#c-listas').innerHTML =
+        `<p class="px-4 py-10 text-center text-sm text-telecab-red">${esc(e.message)}</p>`;
+    }
+  }
+
+  $('#c-dia').addEventListener('change', cargar);
+  cargar();
+})();
+</script>

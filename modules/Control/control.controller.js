@@ -23,6 +23,7 @@
 const express = require('express');
 const router = express.Router();
 const control = require('./control.service');
+const cochesLibres = require('./cochesLibres.service');
 const actor = require('../../services/repo/actor');   // quién firma (id por email si la cookie es vieja)
 
 /** Envoltorio: recoge el error y lo devuelve legible, sin repetirlo veinte veces. */
@@ -75,6 +76,16 @@ router.get('/historico', (req, res) => {
   });
 });
 
+// EL COCHE COMO SUJETO, y no la persona. El resto de Control contesta "a quien
+// llamo"; esta pantalla contesta "quien esta usando esto", que es otra pregunta
+// y por eso es otra pantalla.
+router.get('/coches', (req, res) => {
+  res.render('controlCoches', {
+    titulo: 'Control · Coches sin cuadrante', seccion: 'control', layout: 'layout-gestion',
+    hoy: cochesLibres.hoyOperativo(),
+  });
+});
+
 router.get('/km', (req, res) => {
   res.render('kmTraza', { titulo: 'Control · KM y traza', seccion: 'control', layout: 'layout-gestion' });
 });
@@ -103,6 +114,8 @@ router.get('/api/trazos/:conductorId', responde(req =>
 // Toda su historia de llamadas, la de Control y la del Call Center juntas.
 router.get('/api/historial-llamadas/:conductorId', responde(req =>
   control.historialLlamadas(req.params.conductorId)));
+
+router.get('/api/coches', responde(req => cochesLibres.delDia(req.query.dia)));
 
 router.get('/api/km-traza', responde(req => control.kmTraza(req.query.dia, req.query.turno)));
 

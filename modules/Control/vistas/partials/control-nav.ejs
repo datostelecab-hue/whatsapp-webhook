@@ -14,6 +14,10 @@
     // se trabaja desde aqui: quien rechaza una J es quien esta mirando el
     // directo, y las rechazadas hay que volver a llamarlas.
     { id: 'justificantes', href: '/justificantes',  texto: 'Justificantes', icono: 'fa-file-circle-check' },
+    // El coche como sujeto. Va aqui y no dentro de "En directo" porque no es un
+    // filtro de aquella pantalla: alli se mira a quien hay que llamar, y aqui a
+    // quien esta usando un coche que nadie tiene puesto.
+    { id: 'coches',    href: '/control/coches',      texto: 'Coches sin cuadrante', icono: 'fa-car-burst' },
     { id: 'km',        href: '/control/km',          texto: 'KM y traza',   icono: 'fa-route' },
     { id: 'reportes',  href: '/control/reportes',    texto: 'Reportes',     icono: 'fa-chart-pie' },
   ];
