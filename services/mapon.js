@@ -302,6 +302,75 @@ async function leerAlertas({ desde, hasta, tipo } = {}) {
 }
 
 /**
+ * ALERTAS CRUDAS DE UNA VENTANA CORTA, con su id de Mapon.
+ *
+ * `leerAlertas` de arriba es para las pantallas: trabaja por DÍAS, normaliza a
+ * la presentación y pide el padrón de unidades entero. Esto es para la ingesta,
+ * que corre cada pocos minutos y necesita otra cosa:
+ *
+ *   · Una ventana de MINUTOS, no de días. Redondear a las 00:00 traería la
+ *     jornada entera cada cinco minutos.
+ *   · El `id` propio de la alerta, que hay que pedir con `include[]=id` y es lo
+ *     que permite no duplicar cuando se consulta con solape. Sin él la clave
+ *     sería unidad+hora+tipo, y dos salidas de zona del mismo coche en el mismo
+ *     minuto se leerían como una.
+ *   · La posición y la dirección, para poder decir DÓNDE se salió.
+ *
+ * `tipos` filtra en casa y no en la API a propósito: `alert_type` solo admite
+ * uno, y pedir dos veces por dos tipos gasta el doble de cuota.
+ */
+async function leerAlertasCrudas({ desde, hasta, tipos = [] } = {}) {
+  if (!KEY) return [];
+  const fin = hasta instanceof Date ? hasta : new Date();
+  const ini = desde instanceof Date ? desde : new Date(fin.getTime() - 3600000);
+  const quiero = new Set(tipos);
+
+  const mapaUnidades = await unidades();
+  const base = `${API}/alert/list.json?key=${KEY}`
+    + `&from=${encodeURIComponent(aUTC(ini))}&till=${encodeURIComponent(aUTC(fin))}`
+    + `&limit=${POR_PAGINA}&include[]=id&include[]=location&include[]=address`;
+
+  const fuera = [];
+  let pagina = 1, totalPaginas = 1;
+  while (pagina <= totalPaginas && pagina <= MAX_PAGINAS) {
+    const r = await fetchMapon(`${base}&page=${pagina}`);
+    const json = await r.json();
+    if (json && json.error) {
+      throw new Error(`Mapon: ${json.error.msg || json.error.text || 'error desconocido'}`);
+    }
+    (json.data || []).forEach(e => {
+      const tipo = txt(e.alert_type);
+      if (quiero.size && !quiero.has(tipo)) return;
+      const val = parseValor(e.alert_val);
+      const unidad = mapaUnidades.get(e.unit_id) || {};
+      // 'location' llega como "40.46479,-3.63922".
+      const [lat, lon] = txt(e.location).split(',').map(v => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      });
+      fuera.push({
+        maponId: e.id == null ? null : Number(e.id),
+        unitId: e.unit_id,
+        matricula: unidad.matricula || '',
+        tipo,
+        // En `not_in_obj` el valor ES el nombre de la zona, sin separador; en
+        // `in_object` viene 'Zona|IN', y `parseValor` ya lo parte.
+        zona: tipo === 'not_in_obj' ? txt(e.alert_val) : (val.zona || ''),
+        sentido: val.sentido || '',
+        iso: e.time,
+        lat: lat == null ? null : lat,
+        lon: lon == null ? null : lon,
+        direccion: txt(e.address),
+        msg: txt(e.msg),
+      });
+    });
+    totalPaginas = Number((json._meta || {}).total_pages) || 1;
+    pagina++;
+  }
+  return fuera;
+}
+
+/**
  * Excesos que llegan al umbral (150 por defecto). Es lo que consumirá el cron
  * del aviso por WhatsApp cuando se monte esa parte.
  */
@@ -1023,7 +1092,7 @@ async function listarSetups() {
 
 module.exports = {
   TIPOS, UMBRAL, MAX_DIAS,
-  leerAlertas, leerExcesosGraves, listarSetups,
+  leerAlertas, leerAlertasCrudas, leerExcesosGraves, listarSetups,
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,

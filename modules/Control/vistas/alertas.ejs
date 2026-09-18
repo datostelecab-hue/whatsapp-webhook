@@ -125,6 +125,10 @@
     sin_respuesta:   { cls: 'bg-telecab-red/15 text-telecab-red border-telecab-red/40', ico: 'fa-phone-slash' },
     rechazo_directo: { cls: 'bg-telecab-warn/15 text-telecab-warn border-telecab-warn/40', ico: 'fa-ban' },
     km_parado:       { cls: 'bg-telecab-violet/15 text-telecab-violet border-telecab-violet/40', ico: 'fa-road' },
+    // Las dos de zona, en rojo las dos: salir de la zona no es un umbral que se
+    // roza, es un sitio donde el coche no debería estar.
+    zona_notificacion: { cls: 'bg-telecab-red/15 text-telecab-red border-telecab-red/40', ico: 'fa-location-crosshairs' },
+    zona_madrid:       { cls: 'bg-telecab-red/15 text-telecab-red border-telecab-red/40', ico: 'fa-map-location-dot' },
   };
   let E = null;
 
@@ -223,11 +227,19 @@
       return `<tr class="border-t border-telecab-border/50 hover:bg-telecab-card2/40">
         <td class="px-3 py-2 tabular-nums">${esc(x.hora)}</td>
         <td class="px-3 py-2 text-telecab-muted">${esc(x.franja === 'noche' ? 'Noche' : 'Mañana')}</td>
-        <td class="px-3 py-2 font-medium">${esc(x.nombre_bolt)}</td>
+        <td class="px-3 py-2 font-medium">${x.nombre_bolt ? esc(x.nombre_bolt)
+            : '<span class="text-telecab-red">SIN CONDUCTOR FICHADO</span>'}
+          ${x.lugar ? `<div class="text-[11px] text-telecab-muted font-normal">
+            <i class="fa-solid fa-location-dot text-[9px]"></i> ${esc(x.lugar)}${
+              x.hora_salida ? ' · ' + esc(x.hora_salida) : ''}</div>` : ''}</td>
         <td class="px-3 py-2 font-mono tabular-nums text-telecab-muted">${esc(x.telefono || '—')}</td>
-        <td class="px-3 py-2">${chipTipo(x.tipo, n1(x.valor) + ' ' + esc(t.unidad || ''))}
+        <td class="px-3 py-2">${chipTipo(x.tipo, x.mapon_alerta_id
+            ? esc(String(x.zona || '').trim() || 'zona')
+            : n1(x.valor) + ' ' + esc(t.unidad || ''))}
           <span class="text-[11px] text-telecab-muted ml-1">${esc(t.etiqueta)}</span></td>
-        <td class="px-3 py-2 text-center text-telecab-muted">${horas(x.horas_efectivas)}</td>
+        <td class="px-3 py-2 text-center text-telecab-muted">${x.mapon_alerta_id
+            ? `<span class="font-mono text-xs">${esc(x.matricula || '—')}</span>`
+            : horas(x.horas_efectivas)}</td>
         <td class="px-3 py-2 text-telecab-muted text-xs">${est}${x.a_quien ? ' ' + esc(x.a_quien) : ''}</td>
       </tr>`;
     }).join('') || '<tr><td colspan="7" class="px-3 py-6 text-center text-telecab-muted text-sm">Sin alertas.</td></tr>';

@@ -26,6 +26,7 @@
 // saber si el tío lleva dos horas o diez, no cuánto lleva desde las ocho.
 
 const db = require('../../services/db');
+const zonasMapon = require('../../services/zonasMapon');
 // El corte de los tramos, tal cual lo usa Control. NO se copia aqui: si la
 // alerta repartiera los km con una regla y la pantalla con otra, se llamaria a
 // la gente con un numero que no sale por ningun lado.
@@ -67,10 +68,47 @@ const MODELO = {
     rechazo_directo: {
       etiqueta: 'Viajes RECHAZADOS por el conductor', corto: 'rechaza',
       umbral: 1, unidad: 'viajes', activo: true, ventana: 'jornada',
+      // PERO SOLO SI NO ESTÁ DANDO SERVICIO.
+      //
+      // Rechazar sigue sin estar permitido, pero un rechazo no significa lo
+      // mismo en los dos casos: quien va al 90 % de utilización está cargado de
+      // trabajo y rechazó uno que le venía mal; quien va al 60 % está eligiendo.
+      // Al primero no se le llama —el aviso no se abre siquiera, ni en pantalla
+      // ni por WhatsApp—, al segundo sí.
+      //
+      // Utilización = horas en VIAJE sobre horas EFECTIVAS (viaje + espera) de
+      // su jornada. Es la misma cifra de la ficha 360 y de la calificación, no
+      // una inventada aquí.
+      maxUtilizacion: 75,
     },
     km_parado: {
       etiqueta: 'KM rodando en descanso o desconectado', corto: 'rueda parado',
       umbral: 20, unidad: 'km', activo: true, ventana: 'franja',
+    },
+    // ── LAS DOS DE ZONA. No van por umbral ni por persona: cada salida de
+    // geocerca que manda Mapon es un aviso, y la clave de "una vez" es el id de
+    // esa alerta. Por eso llevan `fuente: 'zona'` y el bucle de personas las
+    // salta.
+    zona_notificacion: {
+      etiqueta: 'Fuera de la ZONA DE NOTIFICACIÓN sin viaje', corto: 'sale de zona',
+      umbral: 1, unidad: 'salidas', activo: true, ventana: 'franja', fuente: 'zona',
+      // Las tres condiciones, y las tres hacen falta:
+      //   · el coche está en el planificador (los 71 del cuadrante);
+      //   · la salida cae dentro de una franja de vigilancia;
+      //   · y NO iba de viaje.
+      // Esa última es la que hace que la alerta sirva: ir a por el pasajero y
+      // llevarlo son la misma situación en flota viva, y las dos son su
+      // trabajo. Sin ese filtro esto sonaría cada vez que alguien lleva a un
+      // cliente a Alcalá.
+      soloPlanificados: true, soloSinViaje: true,
+    },
+    zona_madrid: {
+      etiqueta: 'Fuera de la ZONA MADRID (aunque vaya de viaje)', corto: 'fuera de Madrid',
+      umbral: 1, unidad: 'salidas', activo: true, ventana: 'siempre', fuente: 'zona',
+      // Esta zona es enorme: de ahí no se sale ni con pasajero. Así que suena
+      // esté de viaje o no, a cualquier hora, y también con coches que no están
+      // en el cuadrante — que son los que más preocupan.
+      soloPlanificados: false, soloSinViaje: false,
     },
   },
   // CORTAFUEGOS. Si un día se disparan cuarenta, algo pasa con los datos o con
@@ -91,6 +129,12 @@ const MODELO = {
     rechazo_directo: (process.env.PLANTILLA_ALERTA_RECHAZO_DIRECTO || '').trim(),
     sin_respuesta: (process.env.PLANTILLA_ALERTA_SIN_RESPUESTA || '').trim(),
     km_parado: (process.env.PLANTILLA_ALERTA_KM_PARADO || '').trim(),
+    // Estas dos SÍ nacen con nombre: son plantillas propias desde el principio
+    // porque un aviso de zona no cabe en el texto de la genérica. Si todavía no
+    // están aprobadas en Meta, el aviso no se pierde: sale por la genérica con
+    // su frase larga, como los demás.
+    zona_notificacion: (process.env.PLANTILLA_ALERTA_ZONA_NOTIFICACION || 'zona_notificacion').trim(),
+    zona_madrid: (process.env.PLANTILLA_ALERTA_ZONA_MADRID || 'zona_madrid').trim(),
   },
 };
 
@@ -176,6 +220,12 @@ async function guardarConfig(patch, { usuarioId } = {}) {
       umbral: Math.max(1, num(p.umbral, def.umbral)),
       activo: p.activo === undefined ? !!def.activo : !!p.activo,
     };
+    // El tope de utilización solo existe en los tipos que lo tienen. Si no se
+    // arrastra, guardar los ajustes lo borraría y la puerta se quedaría abierta
+    // sin que nadie lo hubiera pedido.
+    if (def.maxUtilizacion != null) {
+      tipos[k].maxUtilizacion = Math.min(100, Math.max(0, num(p.maxUtilizacion, def.maxUtilizacion)));
+    }
   }
   const valor = {
     tipos,
@@ -369,7 +419,14 @@ async function candidatos(franja) {
      horas AS (
        SELECT t.conductor_uuid AS uuid,
               sum(EXTRACT(epoch FROM (LEAST(COALESCE(t.hasta, f.jfin), f.jfin)
-                                      - GREATEST(t.desde, f.jini)))) AS seg
+                                      - GREATEST(t.desde, f.jini)))) AS seg,
+              -- LO MISMO, PERO SOLO EN VIAJE. Es el numerador de la
+              -- utilización, y sale de aquí y no de las vistas de BI a
+              -- propósito: la alerta no puede depender de que BI esté
+              -- calculado, tiene que poder contestar ahora mismo.
+              sum(EXTRACT(epoch FROM (LEAST(COALESCE(t.hasta, f.jfin), f.jfin)
+                                      - GREATEST(t.desde, f.jini))))
+                FILTER (WHERE t.situacion = 'viaje')                  AS seg_viaje
          FROM fv_tramo t
          JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
          CROSS JOIN f
@@ -383,6 +440,10 @@ async function candidatos(franja) {
             COALESCE(o.ofertas, 0)                             AS ofertas,
             round(COALESCE(k.km_m, 0) / 1000.0, 1)::float8     AS km_parado,
             round(COALESCE(h.seg, 0) / 3600.0, 2)::float8      AS horas_efectivas,
+            -- NULL cuando no hay horas efectivas: 0 de 0 no es "cero por
+            -- ciento", es "no se sabe", y las dos cosas se deciden distinto.
+            round((COALESCE(h.seg_viaje, 0) / NULLIF(h.seg, 0) * 100)::numeric, 1)::float8
+                                                               AS utilizacion,
             COALESCE(NULLIF(btrim(fc.nombre), ''),
                      NULLIF(btrim(c.nombre_bolt), ''),
                      btrim(c.nombre || ' ' || COALESCE(c.apellidos, '')),
@@ -409,6 +470,9 @@ async function candidatos(franja) {
     nombreBolt: x.nombre_bolt,
     telefono: x.telefono || '',
     horasEfectivas: Number(x.horas_efectivas) || 0,
+    // Puede ser null a propósito: quien no tiene horas efectivas no tiene
+    // utilización que medir.
+    utilizacion: x.utilizacion == null ? null : Number(x.utilizacion),
     valores: {
       sin_respuesta: Number(x.sin_respuesta) || 0,
       rechazo_directo: Number(x.rechazo_directo) || 0,
@@ -421,13 +485,28 @@ async function candidatos(franja) {
 
 // ── El texto que lee el controlador ─────────────────────────────────────────
 const fmtNum = n => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+/** 'HH:MM' en hora de Madrid. La alerta se guarda en UTC; se lee en Madrid. */
+const horaCorta = ts => !ts ? '—' : new Date(ts).toLocaleTimeString('es-ES',
+  { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
 const fmtHoras = h => {
   const t = Math.max(0, Math.round(Number(h) * 60));
   return `${Math.floor(t / 60)} h ${String(t % 60).padStart(2, '0')} min`;
 };
 
 /** La cuarta variable de la plantilla: QUÉ ha hecho y en qué franja. */
-function textoAlerta(tipo, valor, cfgTipo, franja) {
+function textoAlerta(tipo, valor, cfgTipo, franja, extra = {}) {
+  // Las de zona no hablan de cifras: hablan de un sitio y una hora. Y dicen
+  // SIEMPRE si iba de viaje, porque es lo primero que va a preguntar quien
+  // llame — en «Zona Madrid» la alerta salta igual, y entonces hay que saber
+  // si el coche llevaba pasajero.
+  if (tipo === 'zona_notificacion' || tipo === 'zona_madrid') {
+    const s = extra.salida || {};
+    const zona = s.zona ? `«${String(s.zona).trim()}»` : 'la zona';
+    const donde = s.direccion ? ` · ${s.direccion}` : '';
+    const como = s.enViaje ? 'CON viaje en curso'
+      : (s.conductorUuid ? 'SIN viaje' : 'SIN NADIE FICHADO en el coche');
+    return `${s.matricula || ''} fuera de ${zona} a las ${horaCorta(s.ocurrioAt)} (${como})${donde}`.trim();
+  }
   const horas = `${String(franja.ini).padStart(2, '0')}:00-${String(franja.fin).padStart(2, '0')}:00`;
   if (tipo === 'km_parado') {
     return `${fmtNum(valor)} km rodando en descanso o desconectado (franja ${horas})`;
@@ -459,7 +538,15 @@ const esPlantillaQueNoExiste = e =>
  *
  * Los km SÍ se quedan con la franja: sin ella, "24,6 km" no dice de cuándo son.
  */
-function textoCorto(tipo, valor, franja) {
+function textoCorto(tipo, valor, franja, extra = {}) {
+  // Con plantilla propia el texto fijo ya dice de qué zona se trata, así que
+  // aquí va lo que esa frase no puede llevar: cuándo, dónde y si iba de viaje.
+  if (tipo === 'zona_notificacion' || tipo === 'zona_madrid') {
+    const s = extra.salida || {};
+    const como = s.enViaje ? 'con viaje'
+      : (s.conductorUuid ? 'sin viaje' : 'sin nadie fichado');
+    return `${horaCorta(s.ocurrioAt)} · ${como}${s.direccion ? ' · ' + s.direccion : ''}`;
+  }
   if (tipo === 'km_parado') {
     const horas = `${String(franja.ini).padStart(2, '0')}:00-${String(franja.fin).padStart(2, '0')}:00`;
     return `${fmtNum(valor)} km (franja ${horas})`;
@@ -478,12 +565,22 @@ async function revisar({ ahora = new Date(), forzar = false } = {}) {
   const config = await leerConfig();
   if (config.sinTabla) return { activa: false, motivo: 'sin-tabla', nuevas: 0 };
 
-  const franja = franjaDe(config, ahora);
-  if (!franja) return { activa: false, motivo: 'fuera-de-franja', nuevas: 0, enviadas: 0 };
-
-  const lista = await candidatos(franja);
   const gente = await aQuienAviso();
   const simulado = config.modo !== 'live';
+  const franja = franjaDe(config, ahora);
+
+  // LAS DE ZONA NO ESPERAN A LA FRANJA, y por eso van antes del corte de abajo.
+  // «Zona Madrid» tiene que sonar a las cuatro de la mañana igual que a las
+  // once: de esa zona no se sale nunca. La de notificación sí mira la franja,
+  // pero la mira sobre la HORA DE LA SALIDA, no sobre la hora del cron.
+  const zonas = await revisarZonas({ config, gente, simulado, ahora });
+
+  if (!franja) {
+    return { activa: false, motivo: 'fuera-de-franja', nuevas: zonas.nuevas,
+      enviadas: zonas.enviadas, zonas, modo: config.modo };
+  }
+
+  const lista = await candidatos(franja);
 
   // Los que se pasan, peor primero: si hay que cortar por el tope, que se avise
   // de los gordos.
@@ -491,8 +588,19 @@ async function revisar({ ahora = new Date(), forzar = false } = {}) {
   for (const c of lista) {
     for (const [tipo, def] of Object.entries(config.tipos)) {
       if (!def.activo) continue;
+      // Las de zona no son de persona: tienen su propia pasada, arriba.
+      if (def.fuente === 'zona') continue;
       const valor = c.valores[tipo];
       if (valor == null || valor < def.umbral) continue;
+      // LA PUERTA DE LA UTILIZACIÓN. Quien va cargado de trabajo no genera
+      // alerta aunque haya rechazado: ni en pantalla ni por WhatsApp. Rechazar
+      // sigue sin estar permitido, pero un rechazo al 90 % de utilización es
+      // uno que le venía mal, y al 60 % es elegir viajes.
+      //
+      // SIN UTILIZACIÓN (cero horas efectivas) SÍ se avisa: no se sabe que esté
+      // ocupado, y alguien con cero horas que además rechaza es justo el caso.
+      if (def.maxUtilizacion != null && c.utilizacion != null
+          && c.utilizacion >= def.maxUtilizacion) continue;
       pasados.push({ ...c, tipo, valor, umbral: def.umbral, exceso: valor / def.umbral });
     }
   }
@@ -510,12 +618,13 @@ async function revisar({ ahora = new Date(), forzar = false } = {}) {
     const ins = await db.consulta(
       `INSERT INTO alerta_control
          (tipo, franja, franja_dia, driver_uuid, conductor_id, nombre_bolt, telefono,
-          valor, umbral, horas_efectivas, estado)
-       VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,'pendiente')
-       ON CONFLICT (tipo, driver_uuid, franja_dia, franja) DO NOTHING
+          valor, umbral, horas_efectivas, utilizacion, estado)
+       VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,'pendiente')
+       ON CONFLICT (tipo, driver_uuid, franja_dia, franja) WHERE mapon_alerta_id IS NULL
+         DO NOTHING
        RETURNING id`,
       [p.tipo, franja.codigo, franja.dia, p.uuid, p.conductorId, p.nombreBolt,
-       p.telefono || null, p.valor, p.umbral, p.horasEfectivas]);
+       p.telefono || null, p.valor, p.umbral, p.horasEfectivas, p.utilizacion]);
     if (!ins.rowCount) continue;
 
     res.nuevas++;
@@ -530,7 +639,97 @@ async function revisar({ ahora = new Date(), forzar = false } = {}) {
   // aún sin aprobar) se reintenta: la alerta ya existe, así que no se duplica.
   if (gente.length) res.reintentos = await reintentarPendientes(franja, config, gente, simulado);
 
+  res.zonas = zonas;
+  res.nuevas += zonas.nuevas;
+  res.enviadas += zonas.enviadas;
+  res.errores += zonas.errores;
   return res;
+}
+
+/**
+ * LAS SALIDAS DE ZONA. Una pasada aparte porque no se parecen en nada a lo de
+ * arriba: no hay umbral que superar ni persona a la que contarle viajes. Lo que
+ * hay es un aviso de Mapon —«este coche se ha salido»— y una decisión de si
+ * merece llamar a alguien.
+ *
+ * TRES FILTROS, y cada uno tiene su motivo:
+ *
+ *   · LA ZONA. Solo las dos que significan algo. En la cuenta hay más geocercas
+ *     (de diagnóstico, la cochera) y sus alertas se guardan pero no avisan.
+ *   · EL VIAJE, solo en la de notificación. Ir a por el pasajero y llevarlo son
+ *     la misma situación en flota viva, y las dos son su trabajo: sin este
+ *     filtro la alerta sonaría cada vez que alguien lleva un cliente a Alcalá.
+ *   · LA FRANJA, también solo en la de notificación, y medida sobre la HORA DE
+ *     LA SALIDA. Si se midiera sobre la hora del cron, una salida de las 12:58
+ *     dejaría de contar por revisarse a las 13:06 — que es justo el caso para el
+ *     que existen los minutos de cortesía.
+ *
+ * La ventana mira seis horas atrás a propósito. La ingesta trae las alertas con
+ * retraso y el módulo puede haber estado parado; repetir no puede, porque el id
+ * de Mapon es único en la base.
+ */
+async function revisarZonas({ config, gente, simulado, ahora }) {
+  const res = { vistas: 0, pasan: 0, nuevas: 0, enviadas: 0, errores: 0, detalle: [] };
+  const tipoDe = { notificacion: 'zona_notificacion', madrid: 'zona_madrid' };
+
+  let salidas;
+  try {
+    salidas = await zonasMapon.salidasEntre(new Date(ahora.getTime() - 6 * 3600000), ahora);
+  } catch (e) {
+    // Sin la tabla (migración sin aplicar) el resto de la revisión sigue.
+    console.error('⚠️  [ALERTAS] No se han podido leer las salidas de zona:', e.message);
+    return res;
+  }
+  res.vistas = salidas.length;
+
+  for (const sal of salidas) {
+    const tipo = tipoDe[sal.claveZona];
+    if (!tipo) continue;
+    const def = config.tipos[tipo];
+    if (!def || !def.activo) continue;
+    if (def.soloPlanificados && !sal.planificado) continue;
+    if (def.soloSinViaje && sal.enViaje) continue;
+
+    // La franja DE LA SALIDA, no la de ahora.
+    const suFranja = franjaDe(config, new Date(sal.ocurrioAt));
+    if (def.ventana === 'franja' && !suFranja) continue;
+    res.pasan++;
+
+    // Fuera de franja la fila necesita un día y un código igualmente: el día es
+    // el de la JORNADA (05:00 → 05:00), que es como se mira todo aquí.
+    const franja = suFranja || { codigo: 'fuera', dia: jornadaDeMadrid(new Date(sal.ocurrioAt)) };
+
+    const ins = await db.consulta(
+      `INSERT INTO alerta_control
+         (tipo, franja, franja_dia, driver_uuid, conductor_id, nombre_bolt, telefono,
+          matricula, mapon_alerta_id, valor, umbral, estado)
+       VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,1,1,'pendiente')
+       -- El predicado del indice parcial va en el ON CONFLICT: sin el,
+       -- Postgres no sabe a que indice te refieres y contesta 42P10.
+       ON CONFLICT (mapon_alerta_id) WHERE mapon_alerta_id IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [tipo, franja.codigo, franja.dia, sal.conductorUuid, sal.conductorId,
+       sal.nombreBolt || null, sal.telefono || null, sal.matricula, sal.maponId]);
+    if (!ins.rowCount) continue;
+
+    res.nuevas++;
+    const p = {
+      tipo, valor: 1, nombreBolt: sal.nombreBolt, telefono: sal.telefono,
+      horasEfectivas: 0, matricula: sal.matricula, salida: sal,
+    };
+    const r = await mandar(ins.rows[0].id, p, franja, config, gente, simulado);
+    res.enviadas += r.ok;
+    res.errores += r.fallos;
+    res.detalle.push({ tipo, matricula: sal.matricula, conductor: sal.nombreBolt || '(nadie)',
+      zona: sal.zona, enviados: r.ok, estado: r.estado });
+  }
+  return res;
+}
+
+/** El día de la JORNADA (05:00 → 05:00) de un instante, en Madrid. */
+function jornadaDeMadrid(cuando) {
+  const hoy = hoyMadrid(cuando);
+  return horaMadrid(cuando) < 5 ? sumarDias(hoy, -1) : hoy;
 }
 
 /** Manda UNA alerta a todos los destinatarios y apunta el resultado. */
@@ -542,17 +741,27 @@ async function mandar(alertaId, p, franja, config, gente, simulado) {
   // Si este tipo tiene plantilla propia se usa, y entonces la cuarta variable va
   // corta porque el texto fijo de esa plantilla ya explica el motivo.
   const propia = ((config.plantillasPorTipo || {})[p.tipo] || '').trim();
+  // LAS CUATRO VARIABLES SON SIEMPRE LAS MISMAS COSAS: quién, su teléfono, el
+  // contexto y qué ha pasado. Lo único que cambia es el contexto: en una alerta
+  // de persona son sus horas, y en una de zona es la MATRÍCULA — que es el dato
+  // que hay que leer primero cuando puede que no haya nadie fichado.
+  //
+  // Se mantiene así para que la plantilla genérica siga sirviendo de reserva:
+  // si `zona_madrid` aún no está aprobada en Meta, el aviso sale igual.
+  const deZona = p.tipo === 'zona_notificacion' || p.tipo === 'zona_madrid';
+  const extra = { salida: p.salida || null };
   const cabecera = [
-    p.nombreBolt || '—',
+    p.nombreBolt || (deZona ? 'SIN CONDUCTOR FICHADO' : '—'),
     p.telefono || 'sin teléfono',
-    fmtHoras(p.horasEfectivas),
+    deZona ? (p.matricula || '—') : fmtHoras(p.horasEfectivas),
   ];
-  const vars = [...cabecera, propia ? textoCorto(p.tipo, p.valor, franja)
-    : textoAlerta(p.tipo, p.valor, config.tipos[p.tipo], franja)];
+  const vars = [...cabecera, propia ? textoCorto(p.tipo, p.valor, franja, extra)
+    : textoAlerta(p.tipo, p.valor, config.tipos[p.tipo], franja, extra)];
   // La de reserva: si la propia aún no está aprobada en Meta, el aviso NO se
   // pierde — sale por la genérica con su frase larga.
   const reserva = propia
-    ? { plantilla: config.plantilla, vars: [...cabecera, textoAlerta(p.tipo, p.valor, config.tipos[p.tipo], franja)] }
+    ? { plantilla: config.plantilla,
+        vars: [...cabecera, textoAlerta(p.tipo, p.valor, config.tipos[p.tipo], franja, extra)] }
     : null;
 
   let ok = 0, fallos = 0;
@@ -592,6 +801,11 @@ async function reintentarPendientes(franja, config, gente, simulado) {
     const p = {
       tipo: a.tipo, valor: Number(a.valor), nombreBolt: a.nombre_bolt,
       telefono: a.telefono, horasEfectivas: Number(a.horas_efectivas) || 0,
+      matricula: a.matricula || '',
+      // Al reintentar no se vuelve a Mapon: lo que la fila guarda basta para
+      // rehacer el texto, y pedirlo otra vez gastaría cuota por un aviso que
+      // ya se sabe cuál es.
+      salida: a.mapon_alerta_id ? { matricula: a.matricula || '' } : null,
     };
     const res = await mandar(a.id, p, franja, config, gente, simulado);
     if (res.ok) n++;
@@ -604,9 +818,14 @@ async function historial({ dia, limite = 200 } = {}) {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dia || '')) ? dia : hoyMadrid();
   const r = await db.consulta(
     `SELECT a.id, a.tipo, a.franja, to_char(a.franja_dia, 'YYYY-MM-DD') AS franja_dia,
-            a.nombre_bolt, a.telefono, a.conductor_id,
+            a.nombre_bolt, a.telefono, a.conductor_id, a.matricula, a.mapon_alerta_id,
             a.valor::float8 AS valor, a.umbral::float8 AS umbral,
-            a.horas_efectivas::float8 AS horas_efectivas, a.estado,
+            a.horas_efectivas::float8 AS horas_efectivas,
+            a.utilizacion::float8 AS utilizacion, a.estado,
+            -- El sitio donde se salió, para las de zona. Sale de la alerta de
+            -- Mapon y no de la fila: la fila guarda la decisión, no el mapa.
+            z.direccion AS lugar, z.zona,
+            to_char(z.ocurrio_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora_salida,
             to_char(a.detectada_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
             (SELECT count(*) FROM alerta_control_envio e WHERE e.alerta_id = a.id AND e.ok)::int AS enviados,
             (SELECT string_agg(DISTINCT e.usuario, ', ') FROM alerta_control_envio e
@@ -614,6 +833,7 @@ async function historial({ dia, limite = 200 } = {}) {
             (SELECT e.error FROM alerta_control_envio e
               WHERE e.alerta_id = a.id AND NOT e.ok ORDER BY e.id DESC LIMIT 1) AS error
        FROM alerta_control a
+       LEFT JOIN mapon_zona_alerta z ON z.mapon_id = a.mapon_alerta_id
       WHERE a.franja_dia = $1::date
       ORDER BY a.detectada_at DESC
       LIMIT $2`, [d, Math.min(500, Number(limite) || 200)]);
@@ -634,9 +854,17 @@ async function estado({ dia } = {}) {
     enVivo = [];
     for (const c of lista) {
       for (const [tipo, def] of Object.entries(config.tipos)) {
-        if (!def.activo || c.valores[tipo] < def.umbral) continue;
+        // Las de zona no se miden por umbral: no tienen "en vivo" que calcular.
+        if (!def.activo || def.fuente === 'zona') continue;
+        if (c.valores[tipo] < def.umbral) continue;
+        // LA MISMA PUERTA QUE EN EL ENVÍO. Si aquí no se aplicara, la pantalla
+        // diría "esto está pasando" de gente a la que nunca se va a avisar, y
+        // Tráfico llamaría igual: el filtro no habría servido de nada.
+        if (def.maxUtilizacion != null && c.utilizacion != null
+            && c.utilizacion >= def.maxUtilizacion) continue;
         enVivo.push({ tipo, conductor: c.nombreBolt, telefono: c.telefono,
-          valor: c.valores[tipo], umbral: def.umbral, horas: c.horasEfectivas });
+          valor: c.valores[tipo], umbral: def.umbral, horas: c.horasEfectivas,
+          utilizacion: c.utilizacion });
       }
     }
     enVivo.sort((a, b) => (b.valor / b.umbral) - (a.valor / a.umbral));

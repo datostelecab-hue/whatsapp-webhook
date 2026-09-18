@@ -260,11 +260,24 @@ async function pasada() {
       console.error('⚠️  [FLOTA VIVA] La ingesta del odómetro falló:', e.message);
     }
 
+    // Y LAS ALERTAS DE GEOCERCA. Entran por aquí y no por su propio cron por la
+    // regla de la casa: BOLT y Mapon tienen UNA puerta. Con una ventana de una
+    // hora sobre una vuelta de cinco minutos, porque las alertas de Mapon
+    // llegan con retraso y perder una salida de zona es peor que pedirla doce
+    // veces — duplicar no puede, lo impide el id de Mapon.
+    let zonas = null;
+    try {
+      zonas = await require('../zonasMapon').ingestar({ minutos: 60 });
+    } catch (e) {
+      console.error('⚠️  [FLOTA VIVA] La ingesta de alertas de zona falló:', e.message);
+    }
+
     console.log(`🚦 [FLOTA VIVA] ${coches.length} coche(s) · ${conectados} conectado(s) · ` +
                 `${cambios} cambio(s) · ${ms} ms` +
                 (rutas ? ` · ${rutas.trayectos} trayecto(s)` : '') +
-                (odom ? ` · odómetro: ${odom.conCan}/${odom.unidades} coche(s)` : ''));
-    return { vehiculos: coches.length, conectados, cambios, ms, incidencias, rutas, odom };
+                (odom ? ` · odómetro: ${odom.conCan}/${odom.unidades} coche(s)` : '') +
+                (zonas && zonas.nuevas ? ` · ${zonas.nuevas} alerta(s) de zona` : ''));
+    return { vehiculos: coches.length, conectados, cambios, ms, incidencias, rutas, odom, zonas };
   } catch (e) {
     await db.consulta('UPDATE fv_vuelta SET terminada_at = now(), error = $2 WHERE id = $1',
       [vuelta, e.message]).catch(() => {});

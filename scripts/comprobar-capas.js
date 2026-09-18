@@ -244,6 +244,10 @@ const CAPA_DECLARADA = new Map([
   ['services/flotaViva/franjas', 'repositorio'],   // 12 consultas sobre fv_tramo
   ['services/flotaViva/fuentes', 'adaptador'],     // habla con BOLT y con Mapon
   ['services/flotaViva/formato', 'nucleo'],        // 19 líneas de formato, sin base ni red
+  // Mismo caso que `rutas`, y por el mismo motivo: ingiere de Mapon y guarda
+  // en su tabla (`mapon_zona_alerta`). Es un repositorio con un adaptador
+  // delante, no un servicio de dominio — no decide nada, solo trae y lee.
+  ['services/zonasMapon',        'repositorio'],   // 2 consultas sobre mapon_zona_alerta
 ]);
 
 /** Los require() de un fichero, ya clasificados por capa. */
