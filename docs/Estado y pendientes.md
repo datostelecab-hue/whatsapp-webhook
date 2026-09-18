@@ -32,6 +32,14 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
   - `services/bolt.js` lleva el `client_id` y el `client_secret` de OAuth de BOLT **en texto plano**. Es la única credencial del sistema fuera del entorno, y está en el historial de git: sacarla al entorno **y rotarla**, porque quitarla del fichero no la borra del historial.
   - `routes/botPuertas.js` lleva la URL del despliegue de Apps Script que **abre y cierra los coches**. No es una clave, pero un despliegue publicado de Apps Script no pide autenticación: quien tenga la URL acciona puertas.
 - **Rotar la clave de Mapon y la cuenta de servicio de Google.** Están en el entorno, como debe ser, pero han circulado.
+- **Revisión de seguridad (del laboratorio, 18/09/2026).** Puntos a verificar/endurecer que salieron al auditar el sistema en el lab aislado; el detalle y cómo se prueba cada uno están en [[Seguridad]]:
+  - **IDOR en `/documentos/api/doc/:id`** — comprobar la propiedad/ámbito **por registro** en `documentos.service`, no solo el permiso de módulo. Si no, cambiar el número del id lee papeles de otros.
+  - **`SESSION_SECRET` obligatorio y largo** — la sesión es una cookie firmada con el rol dentro; sin un secreto fuerte y estable en el entorno, se puede falsificar. Nunca el efímero por defecto.
+  - **CSRF** — los POST que cambian estado se aceptan solo por la cookie; falta token CSRF por sesión y `SameSite` en la cookie de sesión.
+  - **Firma del webhook del bot de puertas** — verificar `X-Hub-Signature-256` (HMAC con el APP_SECRET de Meta) en cada POST antes de accionar `open_doors`/`close_doors`.
+  - **Punto ciego de `comprobar-sql`** — repasar a mano los SQL con interpolación `${...}` de datos de usuario (el comprobador no los ve); todo valor va como `$1`.
+  - **`/mi-red` sin clave de permiso** — cualquier usuario logueado ve la topología de red interna; ponerle clave de desarrollador.
+  - **Rutas viejas de subida** (`/api/subir`, `/api/archivo/:id`) — arman la carpeta con texto libre (path traversal); retirarlas (ya marcadas «para borrar»).
 - **Promover la CSP de recursos a obligatoria.** Hoy va en `Report-Only` (no bloquea, solo avisa en consola) porque la CDN de Tailwind exige `unsafe-inline`/`unsafe-eval`. El camino: compilar Tailwind en el build, quitar la CDN, y entonces hacer la política obligatoria con `nonce`. → [[Seguridad]]
 - **`/control/historico` va lento**: unos 26 s de base, más 12 s desde que los km salen del odómetro. Es la pantalla lenta de la casa desde antes; se arregla igual que se arregló En directo (mirar el plan de la consulta, no adivinar).
 - **¿Es fija la IP de la oficina?** El reconocimiento de «dentro / fuera de la empresa» usa una IP concreta. Si el operador la cambia, todo el mundo pasa a salir «fuera». Si es dinámica, hay que dejar el prefijo en vez de la IP entera.
