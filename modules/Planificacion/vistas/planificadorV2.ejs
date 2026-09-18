@@ -1199,7 +1199,8 @@
       <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border">
         <div class="text-sm font-medium truncate">${esc(p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''} ${chipRend(p.rendimiento)}</div>
         <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
-        ${p.faltanDias ? `<div class="text-[11px] text-telecab-gold"><i class="fa-solid fa-calendar-day text-[9px]"></i> correturnos a medio poner: ${p.diasAsignados} de ${p.diasQueDebeCT} días</div>` : ''}
+        ${p.faltanDias ? `<div class="text-[11px] text-telecab-gold"><i class="fa-solid fa-calendar-day text-[9px]"></i> correturnos a medio poner: ${p.diasPuestos} de ${p.diasQueDebeCT} días${
+          (p.diasDePlaza || []).length ? ` (lleva ${p.diasDePlaza.map(d => 'LMXJVSD'[d - 1] || '?').join('')})` : ''}</div>` : ''}
         <button data-barrio="${p.id}" class="block text-[11px] text-left ${p.barrio ? 'text-telecab-gold/80' : 'text-telecab-muted/50'} hover:text-telecab-gold transition"><i class="fa-solid fa-house text-[9px]"></i> ${p.barrio ? esc(p.barrio) : 'poner zona'}</button>
         ${p.ausente ? `<div class="text-[11px] text-telecab-warn"><i class="fa-solid fa-plane-departure"></i> ${esc(p.estado)}${p.vuelveEl ? ` · vuelve ${isoAes(p.vuelveEl)}` : ''}</div>` : ''}
       </div>`).join('') : '<p class="text-xs text-telecab-muted text-center py-4">Nadie en el banquillo.</p>';

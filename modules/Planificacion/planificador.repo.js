@@ -86,11 +86,12 @@ async function tablero({ dia } = {}) {
 
     // Lo que hay escrito para esta semana, con sus días si es correturnos.
     db.consulta(
-      `SELECT a.id, a.plaza_id, a.conductor_id, a.desde, a.hasta,
+      `SELECT a.id, a.plaza_id, a.conductor_id, a.desde, a.hasta, s.rol,
               (SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana)
                  FROM asignacion_dia ad WHERE ad.asignacion_id = a.id) AS dias
          FROM asignacion a
          JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+         JOIN cat_slot s ON s.slot = p.slot
         WHERE a.desde <= $2 AND (a.hasta IS NULL OR a.hasta >= $1)
         ORDER BY a.desde`, [lunes, domingo]),
 
@@ -298,6 +299,9 @@ async function tablero({ dia } = {}) {
       trabaja: new Array(DIAS).fill(false),
       diasAsignados: 0,
       plazas: 0,
+      rolFijo: false,
+      rolCT: false,
+      diasDePlaza: new Set(),
     });
   });
 
@@ -325,7 +329,22 @@ async function tablero({ dia } = {}) {
     if (fechaDe(a.desde) <= efectivo && (!a.hasta || fechaDe(a.hasta) >= efectivo)) {
       porPlaza.set(String(a.plaza_id), a);
       const p = gente.get(String(a.conductor_id));
-      if (p) p.plazas++;
+      if (p) {
+        p.plazas++;
+        // QUÉ ES ESTA PERSONA EN EL CUADRANTE, que no es lo mismo que su
+        // contrato: fijo, correturnos, o las dos cosas. Hace falta para no
+        // tratar a un fijo como a un CT a medio poner.
+        if (a.rol === 'FIJO') p.rolFijo = true; else p.rolCT = true;
+        // LOS DÍAS QUE LLEVA ESCRITOS EN SUS PLAZAS, que no es lo mismo que los
+        // días que cubre esta semana.
+        //
+        // `diasAsignados` sale de la cobertura y cuenta lo que cae DENTRO de la
+        // semana mirada: a quien entró el jueves le salen tres días aunque su
+        // correturnos sea de seis. Para saber si a alguien le faltan días hay
+        // que mirar su asignación, que no depende de la semana que se esté
+        // viendo.
+        (a.dias || []).forEach(d => p.diasDePlaza.add(Number(d)));
+      }
     }
   });
 
@@ -492,13 +511,35 @@ async function tablero({ dia } = {}) {
   // cubre lo suyo ni cobra lo suyo por debajo de ahí—, y es la misma cifra con
   // la que se avisa arriba.
   const CT_SUELO_DIAS = 4;
+  // El Set era para juntar los días sin repetirlos; hacia fuera va una lista.
+  // Un Set cruza el JSON como un objeto vacío, y quien lo recibiera vería `{}`.
+  gente.forEach(p => { p.diasDePlaza = [...p.diasDePlaza].sort(); });
   const todos = [...gente.values()];
   const sinPlaza = todos.filter(p => !p.plazas);
-  const ctIncompleto = p => p.plazas > 0 && !p.ausente
-    && p.diasQueDebeCT != null && p.diasAsignados < Math.min(CT_SUELO_DIAS, p.diasQueDebeCT);
+  // SOLO CORRETURNOS DE VERDAD, y solo si llevan la semana entera.
+  //
+  // Dos cosas que hacían aparecer aquí a quien no tocaba:
+  //
+  //   · Un FIJO. Sus días no se le ponen: libra el descanso de su coche y
+  //     trabaja el resto, así que contarle días contra la cuota de un CT no
+  //     significa nada. `dias_ct` está en el catálogo de jornadas y lo tiene
+  //     todo el mundo, fijos incluidos, así que no sirve para distinguir.
+  //   · Contar los días de la SEMANA en vez de los de su asignación. A quien
+  //     entró el jueves le salían tres días aunque su correturnos sea de seis,
+  //     y a quien tiene dos días escritos le salían dos… que sí son dos. Solo
+  //     el segundo caso hay que colocarlo, así que se cuentan los días de la
+  //     plaza, que no cambian según la semana que estés mirando.
+  const ctIncompleto = p => p.rolCT && !p.rolFijo && !p.ausente
+    && p.diasQueDebeCT != null
+    && p.diasDePlaza.length > 0
+    && p.diasDePlaza.length < Math.min(CT_SUELO_DIAS, p.diasQueDebeCT);
 
   const pendientes = sinPlaza.filter(p => !p.ausente)
-    .concat(todos.filter(ctIncompleto).map(p => ({ ...p, faltanDias: p.diasQueDebeCT - p.diasAsignados })));
+    .concat(todos.filter(ctIncompleto).map(p => ({
+      ...p,
+      diasPuestos: p.diasDePlaza.length,
+      faltanDias: p.diasQueDebeCT - p.diasDePlaza.length,
+    })));
   const ausentesConVuelta = sinPlaza.filter(p => p.ausente && p.finPrevisible);
   const ausentesSinFecha = sinPlaza.filter(p => p.ausente && !p.finPrevisible);
   const cuadrantes = await listarCuadrantes();
