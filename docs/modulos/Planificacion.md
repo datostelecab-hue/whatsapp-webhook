@@ -190,6 +190,17 @@ Dos cosas que hay que mirar bien para no meter a quien no toca:
 
 El corte son **cuatro días**, no «lo que le falte para su tope». Medido el 18/09/2026: con el tope por contrato entraban 92 personas y 85 eran «5 de 6» —el reparto normal de una semana, no un problema—; con el suelo de cuatro son 8, y son los de dos y tres días. El banquillo pasó de 99 nombres a 15.
 
+### Los tres sitios que cuentan días cuentan lo mismo
+
+La misma cuenta la miran **tres** pantallas: el banquillo, la tarjeta de «CT sin días» y la lista de avisos. Por eso el suelo es una constante del módulo (`CT_SUELO_DIAS`) y no tres cifras sueltas: con tres, la pantalla se contradecía a sí misma.
+
+Y las tres cuentan lo mismo: **los días escritos en sus cuadrantes**, sumados sin repetir —dos en un coche y dos en otro son cuatro—, con el respaldo de los días que le tocarían por ser el correturnos de ese coche si la plaza no tiene ninguno escrito.
+
+> [!warning] La cobertura no sirve para contar días de cuadrante
+> `f_cobertura` dice **quién sale mañana**, así que solo ve lo que cae dentro de la semana mirada y descuenta a quien está de baja. La tarjeta contaba con ella y avisaba de doce correturnos de los que once tenían sus cuatro días puestos: a quien entró en sus dos coches el viernes 18 con L M X J escritos le salían **cero** días, porque sus cuatro días ya habían pasado cuando llegó. La columna «Reparto» de esa misma tarjeta ya enseñaba las letras buenas, así que la cifra y las letras se contradecían a la vista.
+>
+> Para saber si un cuadrante está completo hay que mirar el cuadrante. Medido el 18/09/2026: la tarjeta bajó de 12 a 1 y los avisos de 10 a 1.
+
 ## El buscador ve también lo que aún no ha pasado
 
 El filtro del tablero mira la matrícula, quien está puesto, **quien está por llegar** (`p.futuro`) y la vacante que tiene prometida la plaza. Una plaza vacía hoy puede tener dueño para el lunes, y buscar su nombre contestaba «no hay nada» justo cuando querías ver dónde cae.
