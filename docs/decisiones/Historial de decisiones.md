@@ -7,6 +7,14 @@ actualizado: 2026-09-17
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-18 · El alta se cierra en Selección, no en RRHH
+
+Quien completa los datos y genera la ficha **ya está dado de alta**: el contrato está abierto, el turno puesto y BOLT enlazado. Las paradas de «Listo para RRHH» y «Pendiente de Ballenoil» no añadían nada que la persona necesitara para trabajar, y Ballenoil sale del recorrido. Lo que le falta a partir de ahí es un coche, así que el planificador recibe el aviso siempre —con vacante para aceptar o rechazar, sin vacante hasta que se le dé una plaza. → [[Seleccion]] · [[Planificacion]]
+
+## 2026-09-18 · Los papeles se pegan, y sus fechas no se teclean
+
+Un documento se sube desde el explorador, arrastrándolo o pegando el pantallazo con el ratón encima de su línea. Y ya no se piden emisión ni caducidad: eran dos fechas por papel tecleadas con la imagen delante y salían mal —en un alta real el carné decía 12/12/2024 donde el papel ponía 12/02/2024—. El reverso del DNI y del carné dejan de ser obligatorios; el frente no. → [[Documentos]] · [[Seleccion]]
+
 ## 2026-09-17 · Los km salen del odómetro del coche
 
 Se deja de medir con la estimación del GPS y se pasa al cuentakilómetros del cuadro. El GPS se quedaba un 4 % corto en la flota y **mucho más** en coches sueltos: el 0454MMZ marcaba 45 km contra 518 reales. Los coches sin CAN siguen con GPS y lo dicen en pantalla. → [[Km por odometro CAN]]

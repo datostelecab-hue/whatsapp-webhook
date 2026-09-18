@@ -14,6 +14,12 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Recaudación y cuentas fantasma.** Si alguien cobró en efectivo con una cuenta prestada, la deuda sigue colgada de la cuenta, no de la persona. Es dinero: lo decide Ricardo.
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
+## Cabos sueltos del alta (18/09/2026)
+
+- **32 fichas en «Listo para RRHH»** de antes del cambio. Su bandeja sigue funcionando; la duda es si se marcan como alta en bloque o se dejan vaciar a mano.
+- **El Excel de altas y el tramo de Ballenoil** (`tramitarAlta`, `avanzarTrasPin`, `services/altasExcel.js`) ya no los usa el recorrido nuevo. No se han borrado porque las 32 de arriba todavía pasan por ahí: cuando esa bandeja quede vacía, se pueden retirar.
+- **El importador de códigos de lavado de Ballenoil** del bot de WhatsApp es otra cosa y sigue vivo: lo que desapareció es el paso del PIN en el alta.
+
 ## Pendientes técnicos
 
 - **Credenciales escritas en el código.** Casi todo está bien puesto en variables de entorno, pero quedan dos cosas:

@@ -32,6 +32,8 @@ Lo de antes eran archivos sueltos en Drive. Dos cosas cambian:
 - **La carpeta se llama con el ID** (`conductor-83`), no con el DNI ni con el nombre. Esa es la corrección de fondo: el nombre cambia y el DNI puede llegar tarde, y cualquiera de las dos cosas partía los documentos de una persona en **dos carpetas** — cuando llegaba el DNI se creaba una segunda y los archivos de la primera quedaban huérfanos.
 - **Cada archivo tiene tipo**, y con el tipo vienen las preguntas que importan: a quién le caduca el permiso, a quién le falta el contrato. El catálogo dice además qué caduca, qué es obligatorio y con cuántos días hay que avisar.
 
+**La fecha de caducidad no se exige** (18/09/2026). Antes, un tipo marcado como `caduca` no dejaba subir el papel sin teclearla; la idea era buena —sin fecha no hay aviso de vencimiento— pero el precio lo pagaba quien sube, y las fechas acababan mal tecleadas. Un papel subido sin fecha vale; un papel que nadie sube porque el formulario no le deja, no.
+
 Al subir, **primero los bytes y después el índice**: si el almacén falla, no queda una fila apuntando a nada. La caducidad se resuelve en la consulta, para que ninguna pantalla la calcule por su cuenta.
 
 ## La puerta

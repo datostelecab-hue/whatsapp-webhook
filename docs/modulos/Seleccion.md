@@ -8,7 +8,7 @@ aliases: [Selección, Contratación, Bolsa ETT]
 Cómo entra alguien a trabajar en Telecab: se abre el hueco, se busca a quien lo llene y se le lleva hasta el alta. Vive en `modules/Seleccion/` y son **cuatro pantallas contando una sola historia**, por eso comparten módulo:
 
 ```
-Generador  →  Vacantes  →  Selección  →  (RRHH)
+Generador  →  Vacantes  →  Selección  →  Planificación
                              ETT
 ```
 
@@ -73,6 +73,12 @@ La fuente es el tablero de PostgreSQL, y se entra por la puerta de Planificació
 
 El catálogo de documentos que pide la ficha de alta vive en `modules/Seleccion/seleccion.service.js` (`DOCUMENTOS`) **y en ningún otro sitio**: DNI y reverso, carné de conducir y reverso, certificado bancario, vida laboral y certificado de delitos sexuales. Cuando esa traducción estaba repartida entre la vista y la ruta, añadir un documento eran dos ficheros, y olvidarse de uno dejaba un papel que se pedía pero no se guardaba.
 
+Se suben de tres maneras, y las tres acaban en el mismo sitio: desde el explorador, **arrastrando** el fichero sobre su línea, o **poniendo el ratón encima y pegando** el pantallazo con Ctrl+V. El pegado no se puede enganchar a la fila —el evento va al elemento con el foco o al documento—, así que se escucha una vez en el documento y se mira sobre qué línea está el ratón.
+
+**No se piden fechas al subir.** Eran dos fechas tecleadas por papel con la imagen delante, y por eso salían mal: en un alta real el carné decía 12/12/2024 donde el papel ponía 12/02/2024. Quien quiera el aviso de caducidad puede ponerla después desde la ficha.
+
+El **reverso** del DNI y del carné se piden pero no son obligatorios (`db/139`): el frente lleva lo que la gestoría necesita, y la cara de atrás a veces no se consigue. La **Tarjeta VTC** dejó de ser obligatoria (`db/138`) por un motivo más tonto: el sistema bloqueaba el alta por un papel que él mismo no ofrecía subir en ninguna pantalla.
+
 Los documentos van colgados del `conductor_id`, no de la candidatura: quien se cae del proceso y vuelve seis meses después **no tiene que traer otra vez el DNI**. Los bytes van a Drive por la puerta de [[Documentos]]; lo que queda en la base es el índice con su tipo y su caducidad.
 
 Selección también genera la **ficha de alta en PDF** con sus adjuntos (`POST /seleccion/api/candidatura/:id/ficha-pdf`, apoyada en `services/fichaAlta.js`) y geocodifica la dirección del candidato.
@@ -82,6 +88,23 @@ Selección también genera la **ficha de alta en PDF** con sus adjuntos (`POST /
 **Descartar deja rastro** porque es una decisión del proceso. **Borrar** es para lo que no debería existir —un teléfono mal tecleado, una fila duplicada, una prueba— y el servicio **se niega si la persona ha trabajado aquí**. Lo mismo con las vacantes: una recién generada se borra, pero si ya tiene candidato o se cubrió se *anula*, que deja rastro.
 
 ## Qué se exige para contratar
+
+## Dar de alta: el final del recorrido (18/09/2026)
+
+El botón que cierra Selección se llama **«Dar de alta»** y deja a la persona dada de alta, no «esperando a RRHH». Cuando se pulsa ya está todo hecho: contrato abierto, turno puesto y cuenta de [[BOLT]] enlazada. Las dos paradas que había después —«Listo para RRHH» y «Pendiente de alta en Ballenoil»— no añadían nada que la persona necesitara para trabajar, y **Ballenoil ya no forma parte del alta**.
+
+Lo que le falta a partir de ahí no es papeleo nuestro: es un coche. Por eso el aviso al planificador nace **siempre** ([[Planificacion]]):
+
+- **Con vacante** → la alerta trae las plazas prometidas y se acepta (coloca todo o nada) o se rechaza (al banquillo, y la vacante vuelve a abrirse).
+- **Sin vacante** → la alerta solo dice «hay alguien nuevo sin coche» y **se va sola** en cuanto se le da una plaza en el cuadrante.
+
+Las 32 fichas que estaban en «Listo para RRHH» el día del cambio se quedaron donde estaban: esa bandeja sigue funcionando hasta que se vacíe sola.
+
+### La ficha no sale a medias
+
+`fichaPDF` comprueba antes de generar que estén **todos los datos que el papel imprime** y los documentos obligatorios; si falta algo, lo dice y no genera nada. Una ficha con huecos no sirve, y el hueco se descubriría en la gestoría.
+
+Las fechas salen de la base ya escritas en **dd/mm/aaaa** (`to_char`), que es como las quiere la gestoría. Antes se formateaban en JS con `String(v).slice(0,10)` y sobre un `Date` de node eso da `"Thu Jul 06 2000 …"`: la ficha se mandaba con «Thu Jul 06» en la fecha de nacimiento ([[Trampas conocidas]]).
 
 `modules/Seleccion/exigencia.repo.js` está fuera de los otros ficheros a propósito: lo necesitan **dos momentos que no se conocen entre sí** — Selección al pasar a RRHH, y los tres meses al convertir a alguien de ETT en plantilla propia (`services/repo/alta.convertirAPropia`). Si la lista viviera en uno de los dos, el otro tendría que copiarla, y en el sentido contrario habría un ciclo de dependencias.
 

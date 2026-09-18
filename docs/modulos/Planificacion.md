@@ -171,7 +171,11 @@ Un fallo que se vio ahí: la columna GRUPO salía en blanco en todas las filas p
 
 ## Incorporaciones: el traspaso desde Selección
 
-Cuando alguien se da de alta con una vacante nace una alerta que no se va hasta aceptarla o rechazarla, y Tráfico la ve en el planificador:
+Cuando alguien se da de alta nace una alerta que Tráfico ve en el planificador. Desde el 18/09/2026 nace **siempre**, con vacante o sin ella, porque el caso que faltaba era justo el peor: alguien entra sin plaza prometida y el cuadrante no se entera de que hay una persona nueva esperando coche.
+
+**Sin vacante** no hay nada que aceptar —no se le prometió ninguna plaza—, así que el aviso solo dice que hay alguien nuevo sin coche y **se va solo** en cuanto se le da una plaza. No hace falta que nadie lo cierre: la consulta de pendientes lo esconde cuando la persona tiene asignación viva.
+
+**Con vacante**, la alerta trae la foto de lo prometido y no se va hasta aceptarla o rechazarla:
 
 - **Aceptar** → se coloca en las plazas prometidas, **todo o nada**, y la vacante queda cubierta.
 - **Rechazar** → el conductor queda en el banquillo para colocarlo a mano y la vacante vuelve a estar **abierta** (a esa vacante nunca llegó a entrar nadie).
