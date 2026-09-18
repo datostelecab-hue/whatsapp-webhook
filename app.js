@@ -4,6 +4,11 @@ const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
 const app = express();
 
+// La cabecera `X-Powered-By: Express` que Express pone sola no ayuda a nadie de
+// dentro y sí a quien audita desde fuera: le dice el framework de un vistazo y
+// le acota los exploits que probar. Se quita.
+app.disable('x-powered-by');
+
 // ── DETRÁS DE UN PROXY: la IP de verdad ─────────────────────────────────────
 // Render pone su proxy delante, así que la IP del socket es siempre la suya y
 // la del cliente viaja en `X-Forwarded-For`. Sin esto, quien quisiera leerla
@@ -57,6 +62,34 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
+
+  // Apaga funciones potentes del navegador que este ERP no usa (cámara, micro,
+  // geolocalización): si un día se cuela un script ajeno, no puede pedirlas.
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+
+  // ── CONTENT-SECURITY-POLICY, EN DOS PARTES A PROPÓSITO ─────────────────────
+  //
+  // OBLIGATORIA: solo las reglas que NO pueden romper una web normal porque no
+  // tocan de dónde se cargan scripts, estilos ni fuentes. `frame-ancestors` es
+  // el anti-clickjacking moderno (mejor que X-Frame-Options); las otras tres
+  // cierran vectores reales (robar la <base>, cargar plugins, mandar el
+  // formulario a otro sitio) sin riesgo de dejar la pantalla en blanco.
+  res.setHeader('Content-Security-Policy',
+    "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'");
+
+  // EN OBSERVACIÓN (Report-Only NO bloquea nada): la política de recursos
+  // completa. El navegador avisa en su consola de lo que incumpliría, para poder
+  // pulirla antes de hacerla obligatoria. Lleva 'unsafe-inline' y 'unsafe-eval'
+  // porque la CDN de Tailwind los exige; el arreglo de fondo es compilar Tailwind
+  // en el build y quitar la CDN, y entonces esto pasa a ser la CSP obligatoria.
+  res.setHeader('Content-Security-Policy-Report-Only',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
+    "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
+    "img-src 'self' data:; media-src 'self'; connect-src 'self'; " +
+    "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'");
+
   next();
 });
 
