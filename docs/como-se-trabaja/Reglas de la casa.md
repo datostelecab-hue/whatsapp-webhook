@@ -259,3 +259,11 @@ Dos consecuencias que son regla:
   llama igual.*
 
 Ver también [[Base de datos]].
+
+## Un formulario no se cierra solo
+
+Los avisos y las confirmaciones se cierran haciendo clic en el fondo: no hay nada que perder. **Un formulario, no.** Ahí se teclean treinta campos —la ficha entera de una persona— y un clic despistado los tiraba todos sin preguntar.
+
+`Dialogo.formulario` tiene una **X** en la cabecera, su botón de cancelar y responde a Escape: tres gestos deliberados. El fondo no cierra (`public/assets/js/dialogo.js`).
+
+La misma idea por la que un sí/no se elige en una lista y no se teclea «true»: la pantalla no puede castigar a quien la usa por un descuido de un segundo.

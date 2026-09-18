@@ -169,6 +169,14 @@ La misma persona se llama de dos maneras y el fichero lo leen dos mundos distint
 
 El de la SS sale de `conductor.nombre_ss` si RRHH lo tiene escrito, y si no se compone como `APELLIDOS, NOMBRES`. **Lo que no se hace es adivinar**: a 63 de las 239 personas de agosto la ficha no les separa apellidos de nombres, y alguno va en el orden contrario. Partirlo a ojo cambiaría el nombre legal de alguien en un papel que va a la gestoría, así que se deja tal cual y el panel dice cuántos son.
 
+## Las extras de quien se va
+
+Quien causa baja a mitad de mes deja **dos** nóminas variables sin pagar: la del mes anterior —que se habría pagado el mes de la baja— y la del propio mes de la baja, que ya no llega por el camino normal. En la ficha de alguien de baja hay un botón **«Extras pendientes»** que baja el Excel con los dos meses (`GET /nominas/finiquito.xlsx?conductor=…`).
+
+No recalcula nada: pide los dos meses al **mismo `calcular`** que pinta la pantalla y coge su fila. Un finiquito que saliera de otra cuenta acabaría diciendo algo distinto de la nómina.
+
+> **El objetivo de horas no se prorratea por la baja.** Se prorratea desde el alta, pero no *hasta* la baja: a quien se va el día 11 se le pide el objetivo del mes entero y su diferencia sale muy negativa, así que no cobra MBO por horas extra. El Excel lo dice en sus notas y enseña los días que de verdad estuvo de alta. Cambiarlo cambia lo que cobra la gente, así que está en [[Estado y pendientes]] esperando decisión.
+
 ## Congelar
 
 Una nómina congelada guarda **los números**, no una forma de recalcularlos, y guarda al lado la configuración con la que se hicieron. A partir de ahí no cambia pase lo que pase con los datos: **es lo que se pagó**, y un mes cerrado tiene que poder explicarse solo.

@@ -14,6 +14,8 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Recaudación y cuentas fantasma.** Si alguien cobró en efectivo con una cuenta prestada, la deuda sigue colgada de la cuenta, no de la persona. Es dinero: lo decide Ricardo.
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
+- **¿El objetivo de horas debe prorratearse también por la baja?** Hoy se prorratea desde el alta pero no hasta la baja, así que a quien se va a mitad de mes se le pide el mes entero y no puede cobrar MBO por horas extra. En el caso que lo destapó (baja el 11/09, 30,5 h trabajadas) no cambia el total, pero a alguien que se vaya habiendo trabajado mucho sí. Tocarlo cambia lo que cobra la gente. → [[Nominas]]
+
 ## Cabos sueltos del alta (18/09/2026)
 
 - **32 fichas en «Listo para RRHH»** de antes del cambio. Su bandeja sigue funcionando; la duda es si se marcan como alta en bloque o se dejan vaciar a mano.
