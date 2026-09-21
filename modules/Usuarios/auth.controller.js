@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const usuarios = require('./usuarios.service');
 const sesion = require('../../services/sesion');
+const sesiones = require('./sesiones.service');
 const limite = require('../../services/limiteIntentos');
 const { enviarCorreo } = require('../../services/correo');
 
@@ -42,7 +43,30 @@ router.post('/login', async (req, res) => {
     limite.limpiar('mail:' + email);
     // "Mantener sesion iniciada": 30 dias en vez de 12 h. Solo es seguro porque
     // se puede cortar desde el servidor (usuarios.cortarSesiones).
-    sesion.ponerSesion(res, u, { recordar: b.recordar === 'si' || b.recordar === 'on' || b.recordar === true });
+    const recordar = b.recordar === 'si' || b.recordar === 'on' || b.recordar === true;
+    // LA SESION SE APUNTA ANTES DE EMITIR EL TOKEN, porque su `sid` va dentro.
+    // Y el dispositivo se reconoce por su propia cookie: es lo que hace que
+    // salir y volver a entrar desde el mismo PC siga siendo el mismo PC, que es
+    // de lo que depende la regla del dispositivo padre.
+    let sid = null;
+    try {
+      const abierta = await sesiones.abrir({
+        usuarioId: u.id,
+        dispositivo: sesion.dispositivoDe(req, res),
+        agente: req.get('user-agent') || '',
+        ip,
+        larga: recordar,
+        duracionMs: recordar ? sesion.DURACION_LARGA_MS : sesion.DURACION_MS,
+      });
+      sid = abierta.sid;
+    } catch (e) {
+      // Si no se puede apuntar, se entra IGUAL. Dejar a alguien fuera porque no
+      // se pudo escribir una fila de auditoria seria cambiar un problema
+      // pequeno por uno grande; lo que se pierde es poder cerrar ESA sesion por
+      // separado, y se dice en el log.
+      console.error('\u26a0\ufe0f  [AUTH] no se pudo registrar la sesion:', e.message);
+    }
+    sesion.ponerSesion(res, u, { recordar, sid });
     usuarios.registrarAcceso(email);
     if (u.debe_cambiar === 'si') return res.redirect('/cambiar-password');
     return res.redirect(rutaSegura(next) ? next : '/');
@@ -52,8 +76,21 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.get('/logout', (req, res) => { sesion.cerrarSesion(res); res.redirect('/login'); });
-router.post('/logout', (req, res) => { sesion.cerrarSesion(res); res.redirect('/login'); });
+// SALIR CIERRA LA FILA, no solo la cookie. Si no, la sesion seguiria saliendo en
+// la lista de "abiertas" de la otra pantalla, y esa lista dejaria de significar
+// nada: quien la mira quiere saber DONDE hay una sesion viva, y una que ya se
+// cerro no lo es.
+async function salir(req, res) {
+  const sid = req.usuario && req.usuario.sid;
+  if (sid) {
+    await sesiones.cerrar(sid, { porUsuarioId: req.usuario.id, motivo: 'logout' }).catch(() => {});
+    sesion.olvidarSesion(sid);
+  }
+  sesion.cerrarSesion(res);
+  res.redirect('/login');
+}
+router.get('/logout', salir);
+router.post('/logout', salir);
 
 // ── Cambio de contraseña (primer acceso forzado y cambio voluntario) ─────────
 router.get('/cambiar-password', (req, res) => {

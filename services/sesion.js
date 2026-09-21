@@ -11,6 +11,16 @@
 const crypto = require('crypto');
 
 const COOKIE = 'telecab_sesion';
+// LA COOKIE DEL DISPOSITIVO. No es la sesión y no se borra al salir: de un PC
+// sales y vuelves a entrar diez veces y sigue siendo el mismo PC. Eso es lo que
+// sostiene la regla del dispositivo padre — el primero desde el que entraste es
+// el único que puede cerrar las sesiones de los demás.
+//
+// Dos años, que es lo que tarda un navegador en dejar de ser el mismo por su
+// cuenta. No lleva nada de la persona: es un número al azar que solo significa
+// algo cruzado con `usuario_dispositivo`.
+const COOKIE_DISP = 'telecab_disp';
+const DURACION_DISP_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 const DURACION_MS = 12 * 60 * 60 * 1000;            // 12 h, lo normal
 // "Mantener sesión iniciada". 30 días: lo bastante para no escribir la
 // contraseña a diario y lo bastante corto para que una sesión olvidada muera
@@ -85,7 +95,7 @@ const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept')
  * era: si alguien marcó "mantener sesión iniciada", cambiar su tema no debería
  * echarle a las 12 h.
  */
-function ponerSesion(res, u, { recordar } = {}) {
+function ponerSesion(res, u, { recordar, sid } = {}) {
   const larga = recordar === undefined ? false : !!recordar;
   const dura = larga ? DURACION_LARGA_MS : DURACION_MS;
   const payload = {
@@ -94,16 +104,79 @@ function ponerSesion(res, u, { recordar } = {}) {
     tema: u.tema || '',
     debe_cambiar: u.debe_cambiar === 'si' || u.debe_cambiar === true,
     larga,
+    // EL SID ES LO QUE PERMITE CERRAR *UNA*. Sin él el token sigue valiendo
+    // —las sesiones de antes de esto no lo llevan— pero esa no se puede cerrar
+    // por separado: para ella solo existe el corte de todas (db/105).
+    sid: sid || null,
     iat: Date.now(), exp: Date.now() + dura
   };
   res.cookie(COOKIE, firmar(payload), { httpOnly: true, sameSite: 'lax', secure: PROD, path: '/', maxAge: dura });
 }
 
+/**
+ * El identificador del navegador: el que ya traía, o uno nuevo.
+ *
+ * Se escribe SIEMPRE que se emite, aunque ya existiera, para que la caducidad se
+ * renueve con el uso: un dispositivo que se usa a diario no debería perder su
+ * antigüedad por el calendario.
+ */
+function dispositivoDe(req, res) {
+  const previo = leerCookie(req, COOKIE_DISP);
+  const id = /^[A-Za-z0-9_-]{16,64}$/.test(previo || '')
+    ? previo : crypto.randomBytes(24).toString('base64url');
+  res.cookie(COOKIE_DISP, id, {
+    httpOnly: true, sameSite: 'lax', secure: PROD, path: '/', maxAge: DURACION_DISP_MS,
+  });
+  return id;
+}
+
 /** Re-emite conservando si era larga. Para cuando cambia el perfil, no el acceso. */
-const renovarSesion = (res, u, anterior) => ponerSesion(res, u, { recordar: !!(anterior && anterior.larga) });
+// Re-emitir CONSERVA el sid: cambiar el tema o el perfil no es volver a entrar,
+// y perderlo dejaría la fila de esa sesión huérfana —abierta en la base y ya sin
+// nadie que la lleve— y a esa pestaña sin forma de cerrarse a sí misma.
+const renovarSesion = (res, u, anterior) => ponerSesion(res, u,
+  { recordar: !!(anterior && anterior.larga), sid: anterior && anterior.sid });
 function cerrarSesion(res) {
   res.clearCookie(COOKIE, { httpOnly: true, sameSite: 'lax', secure: PROD, path: '/' });
 }
+
+// ── ¿Sigue abierta? Con caché corta ─────────────────────────────────────────
+// Se pregunta en cada petición, así que sin caché serían dos o tres consultas
+// por pantalla solo para esto. Cinco segundos es lo que tarda como mucho en
+// notarse un cierre, y a cambio una navegación normal hace una sola consulta.
+//
+// Lo negativo NO se cachea: en cuanto una sesión deja de valer, deja de valer.
+const _vivas = new Map();
+const TTL_VIVA = 5000;
+
+async function sesionAbierta(sid) {
+  const ahora = Date.now();
+  const c = _vivas.get(sid);
+  if (c && c.hasta > ahora) return true;
+  try {
+    const sesiones = require('../modules/Usuarios/sesiones.service');
+    const fila = await sesiones.viva(sid);
+    if (!fila) { _vivas.delete(sid); return false; }
+    _vivas.set(sid, { hasta: ahora + TTL_VIVA });
+    // Apuntar que se ha visto va SIN await: es un dato de cortesía para la
+    // pantalla, y nadie debería esperar por él para ver una página.
+    sesiones.tocar(sid).catch(() => {});
+    // El mapa no puede crecer sin fin. Cuando se pasa de mil entradas se tira lo
+    // caducado: son cinco segundos de vida, así que casi todo sobra.
+    if (_vivas.size > 1000) {
+      for (const [k, v] of _vivas) if (v.hasta <= ahora) _vivas.delete(k);
+    }
+    return true;
+  } catch (e) {
+    // Si la base no contesta NO se echa a nadie, igual que con el corte: sería
+    // dejar la aplicación sin acceso por un fallo de red.
+    console.error('❌ [SESIÓN] no se pudo comprobar si sigue abierta:', e.message);
+    return true;
+  }
+}
+
+/** Olvida lo cacheado de un sid: lo llama quien acaba de cerrar una sesión. */
+const olvidarSesion = sid => { if (sid) _vivas.delete(sid); };
 
 // ── Middlewares ─────────────────────────────────────────────────────────────
 // Decodifica la cookie (si hay) y la deja en req.usuario / res.locals. Nunca corta.
@@ -128,6 +201,24 @@ async function cargarSesion(req, res, next) {
       console.error('❌ [SESIÓN] no se pudo comprobar el corte:', e.message);
     }
   }
+  // ¿SIGUE ABIERTA ESTA SESIÓN? Es lo que hace que "cerrar la del móvil" sea
+  // algo más que un mensaje bonito: el token está firmado y seguiría valiendo
+  // treinta días, así que si nadie mira la fila, cerrarla no echa a nadie.
+  //
+  // Solo se pregunta por los tokens que llevan `sid` — los de antes de esto no
+  // lo tienen y siguen valiendo hasta que caduquen— y se apoya en una caché
+  // corta para no pagar una consulta por clic. Los cinco segundos son el retraso
+  // máximo entre pulsar "cerrar" y que esa pestaña se quede fuera.
+  if (u && u.sid) {
+    const viva = await sesionAbierta(u.sid);
+    if (!viva) {
+      cerrarSesion(res);
+      req.usuario = null; res.locals.usuario = null; res.locals.rol = null;
+      res.locals.tema = null; res.locals.v = ARRANQUE;
+      return next();
+    }
+  }
+
   req.usuario = u || null;
   res.locals.usuario = u || null;
   res.locals.rol = u ? u.rol : null;
@@ -271,7 +362,8 @@ async function sembrarSuperadmin() {
 
 module.exports = {
   COOKIE,
-  ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS,
+  ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS, DURACION_MS,
+  dispositivoDe, olvidarSesion,
   cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,
   requiereSuperadmin, requiereDesarrollador,
   sembrarSuperadmin

@@ -59,6 +59,55 @@ Tres detalles a propósito:
 
 Re-emitir una sesión (cambiar el tema, cambiar la contraseña) **conserva lo que era**: si alguien marcó "mantener sesión iniciada", cambiarle el tema no debería echarle a las 12 h.
 
+## Sesiones abiertas, y el dispositivo padre
+
+En **Configuración → Sesiones abiertas** cada uno ve dónde tiene la cuenta abierta y puede cerrar. Dos tablas nuevas (db/142), y son dos cosas distintas a propósito:
+
+| | qué es | para qué |
+|---|---|---|
+| `usuario_sesion` | una fila por **inicio de sesión**, con su `sid` dentro del token | cerrar **una** |
+| `usuario_dispositivo` | una fila por **navegador**, con su propia cookie que no se borra al salir | decidir **quién manda** |
+
+De un PC sales y vuelves a entrar diez veces y sigue siendo el mismo PC. Por eso el dispositivo va aparte: si el mando dependiera de la sesión en curso, bastaría con que la del padre caducara una noche para que el teléfono lo heredara a la mañana siguiente.
+
+### La regla
+
+**Solo el dispositivo con el primer inicio de sesión más antiguo puede cerrar las sesiones de los demás.** Entraste por primera vez en el PC en abril y en el móvil en mayo: el PC manda, y desde el móvil no se puede echar al PC.
+
+> [!info] Por qué existe la regla
+> Un robo de sesión se parece mucho a esta pantalla. Quien te coge el móvil desbloqueado no puede usarlo para dejarte fuera de tu propio ordenador; lo único que puede hacer desde ahí es cerrar lo que ya tiene.
+
+Dos permisos distintos, y hay que separarlos:
+
+- **La propia siempre se puede cerrar.** No es echar a nadie, es salir — negárselo a quien está en un dispositivo que no manda le dejaría sin forma de cerrar el que tiene delante.
+- **La de otro dispositivo, solo desde el padre.**
+
+Y nunca la de otra persona: el `usuario_id` de la fila tiene que ser el de quien pide. Sin esa comprobación, un `sid` ajeno —que es un texto que alguien puede haber visto— cerraría la sesión de cualquiera.
+
+> [!warning] El mando solo se mueve desde la base de datos
+> `usuario_dispositivo.principal_forzado` gana a las fechas, y **ninguna pantalla lo escribe**. Es a propósito: si se pudiera cambiar desde dentro de la aplicación, la regla no protegería de nada — el que entrase se haría padre y luego echaría al de verdad.
+>
+> ```sql
+> UPDATE usuario_dispositivo SET principal_forzado = TRUE
+>  WHERE usuario_id = <id> AND dispositivo = '<el de la cookie>';
+> ```
+
+### Cerrar una sesión tiene que NOTARSE
+
+El token está firmado y seguiría valiendo treinta días, así que si nadie mira la fila, cerrarla no echa a nadie. `cargarSesion` comprueba que la sesión siga abierta en **cada petición**, con dos cuidados:
+
+- **Solo los tokens que llevan `sid`.** Los de antes de esto no lo tienen y siguen valiendo hasta caducar: desplegar esto no echa a nadie. A cambio, esas no se pueden cerrar por separado — para ellas solo existe el corte de todas.
+- **Caché de 5 segundos, y solo lo positivo.** Sin caché serían dos o tres consultas por pantalla; cinco segundos es lo que tarda como mucho en notarse un cierre. Lo negativo no se cachea: en cuanto deja de valer, deja de valer.
+
+Y como con el corte: **si la base no contesta, no se echa a nadie**.
+
+**Salir cierra la fila**, no solo la cookie. Si no, la sesión seguiría saliendo en la lista de abiertas y esa lista dejaría de significar nada.
+
+**Re-emitir conserva el `sid`** (cambiar el tema, el perfil): no es volver a entrar, y perderlo dejaría la fila huérfana y a esa pestaña sin forma de cerrarse a sí misma.
+
+> [!note] Lo que esto NO puede saber
+> El dispositivo se reconoce por una cookie. Borrar los datos del navegador, usar otro navegador en el mismo PC o entrar en incógnito son **dispositivos nuevos** — y si el padre se pierde así, el mando pasa al siguiente más antiguo. El `user-agent` del que sale la etiqueta («Windows · Chrome») miente con facilidad: es una ayuda para reconocer cuál es cuál, nunca lo que decide nada.
+
 ## Cómo se decide si alguien entra a una ruta
 
 La cadena de `app.js` es: `cargarSesion` (decodifica, nunca corta) → `protegido` (sin sesión, a `/login` o 401 si es API) → `forzarCambio` → **`controlAcceso`** → `cargarPermisos` (deja las claves en `res.locals` para que el menú pinte solo lo que se puede abrir).

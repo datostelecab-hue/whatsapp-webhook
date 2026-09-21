@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const sesion = require('../services/sesion');
 const usuarios = require('../modules/Usuarios/usuarios.service');
+const sesiones = require('../modules/Usuarios/sesiones.service');
 const configApp = require('../services/configApp');
 const cripto = require('../services/cripto');
 const correo = require('../services/correo');
@@ -9,6 +10,39 @@ const correo = require('../services/correo');
 // Página de configuración (tema para todos; usuarios y correo solo superadmin).
 router.get('/', (req, res) => {
   res.render('configuracion', { titulo: 'Configuración', seccion: 'configuracion', layout: 'layout-gestion' });
+});
+
+// ── SESIONES ABIERTAS ───────────────────────────────────────────────────────
+// Cada uno ve las SUYAS: no hay forma de pedir las de otro, porque el usuario
+// sale de la sesión y no de la petición. Quién puede cerrar qué lo decide
+// `sesiones.service`, no estas rutas ni la pantalla.
+
+router.get('/mis-sesiones', async (req, res) => {
+  try {
+    if (!req.usuario) return res.status(401).json({ status: 'error', msg: 'Sesión requerida' });
+    res.json({ status: 'ok', ...await sesiones.mias(req.usuario.id, req.usuario.sid) });
+  } catch (e) { res.status(500).json({ status: 'error', msg: e.message }); }
+});
+
+router.post('/mis-sesiones/cerrar', async (req, res) => {
+  try {
+    if (!req.usuario) return res.status(401).json({ status: 'error', msg: 'Sesión requerida' });
+    const sid = String((req.body || {}).sid || '');
+    const r = await sesiones.cerrarUna({ usuarioId: req.usuario.id, sidActual: req.usuario.sid, sid });
+    sesion.olvidarSesion(sid);
+    // Cerrar la propia es salir: la cookie se va con ella o el navegador seguiría
+    // enseñando una pantalla que ya no responde.
+    if (r.propia) sesion.cerrarSesion(res);
+    res.json({ status: 'ok', ...r, ...await sesiones.mias(req.usuario.id, req.usuario.sid) });
+  } catch (e) { res.status(403).json({ status: 'error', msg: e.message }); }
+});
+
+router.post('/mis-sesiones/cerrar-las-demas', async (req, res) => {
+  try {
+    if (!req.usuario) return res.status(401).json({ status: 'error', msg: 'Sesión requerida' });
+    const r = await sesiones.cerrarLasDemas({ usuarioId: req.usuario.id, sidActual: req.usuario.sid });
+    res.json({ status: 'ok', ...r, ...await sesiones.mias(req.usuario.id, req.usuario.sid) });
+  } catch (e) { res.status(403).json({ status: 'error', msg: e.message }); }
 });
 
 // Cada usuario completa/edita su propia "firma" (nombre, apellidos, teléfono).
