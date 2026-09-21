@@ -1209,6 +1209,32 @@ además llevara un correturnos de noche pesaba **0 contra 2** y se contaba como 
 de noche: la plantilla de día perdía una persona y la de noche se inventaba otra.
 El turno de un fijo lo dice **su plaza de fijo**.
 
+### Dos NULL no chocan en un índice único, y por ahí se cuela el aviso infinito
+
+`db/145-aviso-coche-suelto.sql`
+
+`uq_alerta_control_persona` va por `(tipo, driver_uuid, franja_dia, franja)`, y
+eso dedupea de maravilla… mientras haya conductor. En un coche que rueda **sin
+nadie fichado**, `driver_uuid` es `NULL`, y en PostgreSQL dos `NULL` son
+distintos para un índice único: el INSERT entra SIEMPRE, y con él sale un
+WhatsApp cada treinta segundos, para siempre. Justo el caso que más preocupa.
+
+**Remedio:** la clave de ese aviso es el COCHE. Índice propio por
+`(tipo, matricula, franja_dia, franja)`.
+
+### Cuando una fila puede chocar con DOS índices, el `ON CONFLICT` va sin diana
+
+`modules/Control/alertas.repo.js` · `revisarSueltos`
+
+La fila de un coche suelto cae bajo el índice de coche siempre, y además bajo el
+de persona cuando hay conductor desconectado (mismo tipo, mismo conductor, misma
+franja). Nombrar uno de los dos deja el otro sin atrapar y sale un `23505` crudo
+— el mismo fallo que obligó a escribir db/141.
+
+`ON CONFLICT DO NOTHING` **sin diana** calla ante cualquiera de los dos. Es la
+excepción a la regla de abajo: el predicado se repite cuando apuntas a un índice
+concreto; cuando pueden ser varios, no apuntes a ninguno.
+
 ### `ON CONFLICT` sobre un índice PARCIAL tiene que repetir su predicado
 
 `modules/Control/alertas.repo.js`
@@ -1344,6 +1370,42 @@ de la pantalla.
 
 **Remedio:** que el contenedor del mapa sea un `flex-1 min-h-0` dentro de una
 columna de altura conocida. Así la altura la decide el padre y no hay bucle.
+
+### Un mapa en una pestaña que no pinta se queda negro y no da ni un error
+
+`modules/Mapa/vistas/mapa.ejs`
+
+MapLibre da por cargado el mapa **después del primer pintado**, y ese pintado
+depende de `requestAnimationFrame`. En una pestaña que el navegador no está
+componiendo —minimizada, en segundo plano, o en un panel oculto— esa llamada no
+llega nunca: el lienzo existe, WebGL funciona, el estilo se descarga con un 200,
+los mosaicos también… y no hay ni una línea en la consola.
+
+Lo confirmó un mapa de laboratorio con un estilo mínimo **sin red**: tampoco
+disparaba `load`. Y `document.visibilityState` decía `visible`.
+
+Es la misma trampa que dejó las ayudas invisibles en su día.
+
+**Remedio:** no se puede arreglar desde la página —si el navegador no pinta, no
+pinta— pero sí se puede DECIR. A los 12 segundos sin `load`, la pantalla avisa
+en vez de dejar a alguien mirando un rectángulo negro.
+
+### Un cronómetro propio para «sin señal» miente por los dos lados
+
+`modules/Mapa/mapa.service.js`
+
+Marcar en gris todo lo que lleve más de N minutos callado parece razonable y no
+lo es: un coche **aparcado** tarda de sobra ese rato y no le pasa nada, y un
+equipo **desenchufado hace tres meses** sale exactamente igual. Y lo peor: si la
+vuelta que refresca se para, el mapa entero se va poniendo gris solo sin que
+ningún coche tenga nada.
+
+Mapon ya contesta esa pregunta él mismo — `nodata` (no habla) y `nogps` (habla
+pero no coge satélite) — y esa respuesta no depende de que nuestro cron esté
+vivo.
+
+**La regla:** si el sistema de fuera ya dice «no lo sé», no lo deduzcas tú. Y si
+lo que va con retraso es tu propia vuelta, dilo UNA vez y arriba.
 
 ### La isla nula: un GPS sin cobertura no manda «no sé», manda 0,0
 

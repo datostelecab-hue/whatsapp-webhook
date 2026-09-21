@@ -23,6 +23,9 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 ## El piloto del mapa (21/09/2026)
 
 - **Hay que poner `MAPA_CRON=on` en Render** para que [[Mapa de flota]] refresque cada 30 segundos. Sin esa variable la pantalla funciona igual, pero enseña la última posición que se guardara, no la de ahora. Es lo primero que hay que encender para probarlo, y lo primero que hay que apagar si molesta.
+- **El aviso del coche suelto sale en cuanto se encienda `MAPA_CRON=on`**, porque las alertas están en modo `live` y hay 2 destinatarios. Con los datos del 21/09 serían 5 coches x 2 personas = 10 WhatsApps en la primera vuelta, y después como mucho dos por coche y día. Si se quiere el mapa SIN los avisos, se apaga el tipo «Rueda SIN NADIE conectado en BOLT» en /alertas.
+- **Los 12 equipos de Mapon que no son coches del ERP** —`1159283703`, `7136LGM`, `9037LJR`, `9133KZF`, `6544LVX`, `6584KZV`, `7909LRJ`, `8750LTR`, `9107LWS`, `1159182322` y dos sin matrícula— ya no se pintan. O se dan de alta o se quitan de la cuenta de Mapon.
+- **`6663LCY` lleva 87 días sin hablar y está «Operativo»**; `7603KZY` 9 días y `1204MJY` 3. Son equipos que hay que ir a mirar, no coches perdidos.
 - **Los 11 en rojo del 21/09 no son un fallo del mapa.** Cinco son equipos que no casan con ningún coche del ERP —`1159283703`, `7136LGM`, `9037LJR`, `9133KZF` y la segunda unidad del `3031LTV`— y los otros seis son conductores rodando con la aplicación cerrada. El del `0730MMZ` llevaba **15 h desconectado y 47,4 km**. Decidir qué se hace con cada caso es de Operaciones, no del piloto.
 - **`3031LTV` sigue con DOS unidades de Mapon**, y en el mapa salen las dos con la misma matrícula. Ya estaba apuntado; el mapa lo hace visible.
 

@@ -51,6 +51,38 @@ async function revisar() {
 /** El botón, con el estado detrás: una sola vuelta para la pantalla. */
 const revisarYMirar = async () => ({ resultado: await revisar(), ...(await estado({})) });
 
+/**
+ * EL AVISO DEL COCHE SUELTO, AL MOMENTO.
+ *
+ * Va aparte de `revisar()` porque va a otro ritmo: aquella mira franjas y
+ * umbrales de kilómetros y corre cada cinco minutos dentro de unas horas
+ * concretas; esta cuelga de la vuelta del mapa, cada treinta segundos y a
+ * cualquier hora. Un coche rodando solo a las cuatro de la mañana es MÁS raro,
+ * no menos.
+ *
+ * AQUÍ SE JUNTAN LOS DOS MÓDULOS, y es el único sitio donde pasa: el mapa dice
+ * QUIÉNES están en rojo —la regla vive allí, una sola vez— y las alertas saben
+ * a quién avisar, cómo no repetirse y cómo mandarlo. Ninguno de los dos
+ * repositorios sabe del otro.
+ *
+ * Solo Madrid: el aviso se recorta como la pantalla. Quien mire el mapa y
+ * reciba el mensaje tiene que ver lo mismo.
+ */
+async function avisarSueltos({ sedes = ['madrid'] } = {}) {
+  const mapa = require('../Mapa/mapa.service');
+  const def = repo.MODELO.tipos.rueda_suelto || {};
+  const coches = await mapa.sueltos({ sedes, minSegundos: (def.umbral || 3) * 60 });
+  if (!coches.length) return { vistos: 0, nuevas: 0, enviadas: 0 };
+
+  const r = await repo.revisarSueltos({ coches });
+  if (r.nuevas) {
+    console.log(`🚨 [ALERTAS] ${r.nuevas} coche(s) rodando sin nadie: `
+      + r.detalle.map(d => `${d.matricula} (${d.minutos} min, ${d.conductor})`).join(', ')
+      + ` · ${r.enviadas} envío(s)${r.modo !== 'live' ? ' (PRUEBAS)' : ''}`);
+  }
+  return r;
+}
+
 // ── Ajustes (permiso aparte: '/alertas/config') ────────────────────────────
 // Ver las alertas es una cosa y decidir a quién le llegan es otra. El permiso
 // de configuración nace apagado para todo el mundo y lo reparte el
@@ -70,7 +102,8 @@ async function guardarDestinatarios(ids, quien) {
 }
 
 module.exports = {
-  estado, historial, revisar, revisarYMirar, guardarConfig, guardarDestinatarios,
+  estado, historial, revisar, revisarYMirar, avisarSueltos,
+  guardarConfig, guardarDestinatarios,
   // Para el cockpit y el histórico, que reconstruyen las franjas de un día.
   leerConfig: repo.leerConfig, candidatos: repo.candidatos, franjaDe: repo.franjaDe,
 };

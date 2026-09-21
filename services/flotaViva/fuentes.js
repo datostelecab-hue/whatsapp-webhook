@@ -217,6 +217,9 @@ async function posiciones() {
       // `state` es un OBJETO {name, start, duration}, no una cadena. Tratarlo
       // como texto daba "[object Object]" en las 144 unidades.
       estado: txt(u.state && u.state.name ? u.state.name : u.state) || null,
+      // DESDE CUANDO lleva asi. El mismo objeto `state` trae `start`, y de ahi
+      // sale "rodando desde hace 12 min" sin guardar ninguna historia.
+      estadoDesde: fecha(u.state && u.state.start),
       senalAt: fecha(u.last_update),
     }))
     // Sin hora del equipo no se puede saber si el punto es de ahora o de

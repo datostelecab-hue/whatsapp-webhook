@@ -35,17 +35,37 @@
 
 const repo = require('./mapa.repo');
 
-// Un dato que no ha hablado en este rato deja de ser «dónde está el coche» y
-// pasa a ser «dónde estuvo». Diez minutos: el equipo renueva cada ~67 s
-// conduciendo y cada ~3 min parado, así que llegar a diez es estar callado.
-const SEGUNDOS_PERDIDO = 600;
+// EL «SIN SEÑAL» LO DICE MAPON, NO UN CRONÓMETRO NUESTRO.
+//
+// La primera versión marcaba en gris todo lo que llevara más de diez minutos sin
+// hablar. Estaba mal por los dos lados: un coche aparcado con el contacto
+// quitado tarda de sobra ese rato en volver a decir algo y no le pasa nada, y en
+// cambio un equipo desenchufado hace tres meses salía igual de gris que uno que
+// acaba de callarse. Y peor: en cuanto la vuelta de posiciones se paraba, TODO
+// el mapa se iba poniendo gris solo, sin que ningún coche tuviera nada.
+//
+// Mapon ya contesta esa pregunta él mismo y no hay que adivinarla:
+//   · `nodata`  el equipo NO está hablando. Medido el 21/09: los 18 que estaban
+//               así llevaban 13 días de media callados, y el peor 87.
+//   · `nogps`   el equipo habla pero no coge satélite (un garaje). Son minutos.
+//   · `driving` / `standing`  hay dato y es de hace un minuto o cuatro.
+//
+// Lo que sí es nuestro es si la VUELTA va con retraso, y eso se dice una vez y
+// arriba (`frescura`), no pintando cien coches de gris.
+const PERDIDOS = ['nodata', 'nogps'];
 
+// LA CACHE VA POR SEDES, NO SUELTA.
+//
+// Si fuera una sola, la foto ya filtrada del primero se le serviria durante
+// diez segundos a todos los demas: quien puede ver Barcelona dejaria de verla
+// porque acaba de mirar alguien que no. La clave es la lista de sedes.
 const TTL_CACHE_MS = 10000;
-let cache = { ts: 0, datos: null };
+const cache = new Map();   // 'madrid' | 'madrid,barcelona' → { ts, datos }
+const clave = sedes => (Array.isArray(sedes) && sedes.length ? [...sedes].sort().join(',') : 'todas');
 
 /** De qué color va este coche. La única regla del mapa. */
 function tono(c) {
-  if (c.antiguedad != null && c.antiguedad > SEGUNDOS_PERDIDO) return 'perdido';
+  if (PERDIDOS.includes(c.estado_mapon)) return 'perdido';
   if (c.estado_mapon !== 'driving') return 'parado';
   if (c.situacion === 'viaje' || c.situacion === 'espera') return 'trabajando';
   if (c.situacion === 'descanso') return 'descanso';
@@ -57,7 +77,7 @@ function porQue(c, t) {
   if (t !== 'suelto') return null;
   return c.situacion
     ? `Rueda y ${c.conductor || 'su conductor'} no está conectado en BOLT`
-    : 'Rueda y este equipo no casa con ningún coche de BOLT';
+    : 'Rueda y no hay nadie fichado en BOLT con este coche';
 }
 
 /**
@@ -66,12 +86,14 @@ function porQue(c, t) {
  * `forzar` se salta la caché. Lo usa el botón de recargar a mano, que es el que
  * alguien pulsa justo cuando no se fía de lo que está viendo.
  */
-async function frente({ forzar = false } = {}) {
-  if (!forzar && cache.datos && Date.now() - cache.ts < TTL_CACHE_MS) {
-    return { ...cache.datos, deCache: true };
+async function frente({ forzar = false, sedes = null } = {}) {
+  const k = clave(sedes);
+  const guardado = cache.get(k);
+  if (!forzar && guardado && Date.now() - guardado.ts < TTL_CACHE_MS) {
+    return { ...guardado.datos, deCache: true };
   }
 
-  const [filas, frescura] = await Promise.all([repo.coches(), repo.frescura()]);
+  const [filas, frescura] = await Promise.all([repo.coches(sedes), repo.frescura(sedes)]);
 
   const coches = filas.map(c => {
     const t = tono(c);
@@ -82,7 +104,13 @@ async function frente({ forzar = false } = {}) {
       velocidad: c.velocidad == null ? null : Number(c.velocidad),
       rumbo: c.rumbo == null ? null : Number(c.rumbo),
       antiguedad: c.antiguedad == null ? null : Number(c.antiguedad),
+      // Segundos que lleva en ese estado SEGUN MAPON, no segun una cuenta
+      // nuestra. Es lo que deja decir "rodando desde hace 12 min" y lo que
+      // decide si un rojo ya es de fiar.
+      llevaAsi: c.lleva_asi == null ? null : Number(c.lleva_asi),
       rueda: c.estado_mapon === 'driving',
+      estadoVehiculo: c.estado_vehiculo || null,
+      operativo: c.coche_operativo !== false,
       estadoMapon: c.estado_mapon || null,
       situacion: c.situacion || null,
       situacionEtiqueta: c.situacion_etiqueta || null,
@@ -92,7 +120,6 @@ async function frente({ forzar = false } = {}) {
       // Segundos que lleva en esa situación; la vista lo pinta como "2 h 14".
       desdeHace: c.segundos_situacion == null ? null : Number(c.segundos_situacion),
       km: c.km == null ? null : Number(c.km),
-      deLaFlota: c.de_la_flota === true,
       sede: c.sede || null,
       tono: t,
       motivo: porQue(c, t),
@@ -106,15 +133,36 @@ async function frente({ forzar = false } = {}) {
     // Lo que de verdad importa del resumen: cuántos hay ahora mismo sueltos.
     sueltos: cuenta.suelto || 0,
     frescura: {
-      unidades: frescura.unidades || 0,
+      unidades: Number(frescura.dentro || 0),
       hace: frescura.hace == null ? null : Number(frescura.hace),
+      // Los que NO se pintan, para poder decirlo. Desaparecer a la vista es
+      // limpiar; desaparecer en silencio es que un dia falte un coche y nadie
+      // sepa por que.
+      sinFicha: Number(frescura.sin_ficha || 0),
+      otraSede: Number(frescura.otra_sede || 0),
     },
   };
-  cache = { ts: Date.now(), datos };
+  cache.set(k, { ts: Date.now(), datos });
   return { ...datos, deCache: false };
 }
 
-/** Se llama al escribir posiciones nuevas: la foto de antes ya no vale. */
-const olvidar = () => { cache = { ts: 0, datos: null }; };
+/**
+ * Los que están en rojo AHORA y ya llevan un rato así. Es lo que mira el aviso.
+ *
+ * `minSegundos` es la clave de que esto no sea un timbre: un coche tiene que
+ * llevar rodando ese rato seguido —según el reloj de Mapon, no según una cuenta
+ * nuestra que se perdería en cada despliegue— antes de contar como suelto.
+ * Medido el 21/09/2026 muestreando cada 30 s durante cinco minutos: de cinco
+ * rojos, ninguno parpadeó y tres aguantaron las diez vueltas. El rojo es señal
+ * sólida; el rato de espera es solo por si BOLT llega tarde al conectarse.
+ */
+async function sueltos({ sedes = null, minSegundos = 180 } = {}) {
+  const d = await frente({ forzar: true, sedes });
+  return d.coches.filter(c => c.tono === 'suelto'
+    && c.llevaAsi != null && c.llevaAsi >= minSegundos);
+}
 
-module.exports = { frente, olvidar, SEGUNDOS_PERDIDO };
+/** Se llama al escribir posiciones nuevas: la foto de antes ya no vale. */
+const olvidar = () => { cache.clear(); };
+
+module.exports = { frente, sueltos, olvidar, tono, PERDIDOS };

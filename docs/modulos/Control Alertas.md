@@ -9,6 +9,25 @@ aliases: [Alertas de control]
 
 El servicio es fino a propósito: la regla de cada umbral y el orden del envío viven en el repositorio, que es quien habla con la base y con WhatsApp. Lo que se gana poniéndolo en un servicio es **la puerta**: desde fuera del módulo —el cron de `app.js`, el cockpit, el Histórico— se entra por `alertas.service` y no por el repositorio. Ver [[Reglas de la casa]].
 
+
+## El coche suelto: el único aviso al momento
+
+`rueda_suelto` — **rueda y no hay nadie conectado en BOLT**. Lo deduce el ERP
+cruzando la posición de Mapon con el estado de BOLT; no lo detecta ningún
+sistema de fuera.
+
+Es el único que **no espera al cron de cinco minutos**: cuelga de la vuelta del
+[[Mapa de flota]], cada treinta segundos y a cualquier hora. Un coche rodando
+solo a las cuatro de la mañana es más raro, no menos.
+
+- **Umbral en minutos rodando seguidos** (3 por defecto), no en kilómetros.
+- **Un aviso por coche, franja y día**, por `uq_alerta_control_coche` (db/145),
+  que va por **matrícula**: en un coche suelto muchas veces no hay conductor.
+- La regla de qué es «suelto» vive **una sola vez**, en el servicio del mapa.
+  Quien recibe el mensaje lo primero que hace es abrir el mapa: los dos tienen
+  que decir lo mismo siempre.
+- Se apaga desde esta misma pantalla, como cualquier otro tipo.
+
 ## Qué dispara un aviso
 
 Tres cosas, y cada una tiene su umbral configurable:

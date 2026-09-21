@@ -102,6 +102,23 @@ const MODELO = {
       // cliente a Alcalá.
       soloPlanificados: true, soloSinViaje: true,
     },
+    // EL COCHE RUEDA Y NO HAY NADIE DANDO SERVICIO. Lo deduce el ERP cruzando
+    // la posicion de Mapon con el estado de BOLT; no lo detecta ningun sistema
+    // de fuera. Es de SUCESO como las de zona —tiene su propia pasada— pero va
+    // por COCHE y no por persona: muchas veces no hay conductor al que apuntar.
+    //
+    // `umbral` en MINUTOS RODANDO SEGUIDOS. Tres, y no cero, porque el estado
+    // de BOLT se refresca cada cinco minutos: quien acaba de conectarse puede
+    // figurar desconectado un rato, y un aviso en falso gasta la credibilidad
+    // del resto. Tres minutos de marcha continua no son un salto del GPS.
+    //
+    // `ventana: 'siempre'` a proposito: un coche rodando solo a las cuatro de
+    // la mañana es MAS raro, no menos.
+    rueda_suelto: {
+      etiqueta: 'Rueda SIN NADIE conectado en BOLT', corto: 'rueda suelto',
+      umbral: 3, unidad: 'min rodando', activo: true, ventana: 'siempre', fuente: 'mapa',
+    },
+
     zona_madrid: {
       etiqueta: 'Fuera de la ZONA MADRID (aunque vaya de viaje)', corto: 'fuera de Madrid',
       umbral: 1, unidad: 'salidas', activo: true, ventana: 'siempre', fuente: 'zona',
@@ -507,6 +524,15 @@ function textoAlerta(tipo, valor, cfgTipo, franja, extra = {}) {
       : (s.conductorUuid ? 'SIN viaje' : 'SIN NADIE FICHADO en el coche');
     return `${s.matricula || ''} fuera de ${zona} a las ${horaCorta(s.ocurrioAt)} (${como})${donde}`.trim();
   }
+  // El coche suelto habla de un COCHE y de cuanto lleva rodando, no de cifras.
+  // Y dice si hay alguien detras o no, que es lo primero que se pregunta quien
+  // lo lee: no es lo mismo llamar a alguien que salir a buscar el coche.
+  if (tipo === 'rueda_suelto') {
+    const c = extra.coche || {};
+    const quien = c.conductor ? `${c.conductor} NO está conectado` : 'NADIE fichado en BOLT';
+    const vel = c.velocidad ? ` a ${c.velocidad} km/h` : '';
+    return `${c.matricula || ''} lleva ${fmtNum(valor)} min rodando${vel} y ${quien}`.trim();
+  }
   const horas = `${String(franja.ini).padStart(2, '0')}:00-${String(franja.fin).padStart(2, '0')}:00`;
   if (tipo === 'km_parado') {
     return `${fmtNum(valor)} km rodando en descanso o desconectado (franja ${horas})`;
@@ -546,6 +572,10 @@ function textoCorto(tipo, valor, franja, extra = {}) {
     const como = s.enViaje ? 'con viaje'
       : (s.conductorUuid ? 'sin viaje' : 'sin nadie fichado');
     return `${horaCorta(s.ocurrioAt)} · ${como}${s.direccion ? ' · ' + s.direccion : ''}`;
+  }
+  if (tipo === 'rueda_suelto') {
+    const c = extra.coche || {};
+    return `${fmtNum(valor)} min rodando · ${c.conductor ? 'desconectado' : 'sin nadie fichado'}`;
   }
   if (tipo === 'km_parado') {
     const horas = `${String(franja.ini).padStart(2, '0')}:00-${String(franja.fin).padStart(2, '0')}:00`;
@@ -588,8 +618,8 @@ async function revisar({ ahora = new Date(), forzar = false } = {}) {
   for (const c of lista) {
     for (const [tipo, def] of Object.entries(config.tipos)) {
       if (!def.activo) continue;
-      // Las de zona no son de persona: tienen su propia pasada, arriba.
-      if (def.fuente === 'zona') continue;
+      // Las de zona y la del mapa no son de persona: tienen su propia pasada.
+      if (def.fuente === 'zona' || def.fuente === 'mapa') continue;
       const valor = c.valores[tipo];
       if (valor == null || valor < def.umbral) continue;
       // LA PUERTA DE LA UTILIZACIÓN. Quien va cargado de trabajo no genera
@@ -726,6 +756,76 @@ async function revisarZonas({ config, gente, simulado, ahora }) {
   return res;
 }
 
+/**
+ * EL AVISO DEL COCHE SUELTO: rueda y no hay nadie dando servicio.
+ *
+ * Recibe los coches YA CLASIFICADOS por el mapa y no va a buscarlos. Es a
+ * proposito: la regla de que significa "suelto" vive en un sitio —el servicio
+ * del mapa—, y si este fichero la volviera a escribir habria dos definiciones
+ * que un dia dirian cosas distintas. La pantalla y el aviso tienen que estar
+ * de acuerdo SIEMPRE, porque quien recibe el mensaje lo primero que hace es
+ * abrir el mapa.
+ *
+ * ── POR QUE NO SUENA CADA TREINTA SEGUNDOS ─────────────────────────────────
+ *
+ * Por el indice unico `uq_alerta_control_coche` (db/145), que va por MATRICULA
+ * y no por conductor: en un coche suelto muchas veces no hay conductor, y dos
+ * NULL no chocan en un indice unico de PostgreSQL. Si el INSERT no devuelve
+ * fila, no se manda nada. Un aviso por coche, franja y dia.
+ *
+ * ── EL `ON CONFLICT` VA SIN DIANA, Y ESO ES DELIBERADO ─────────────────────
+ *
+ * Esta fila puede chocar con DOS indices distintos: el de coche siempre, y el
+ * de persona cuando ademas hay conductor desconectado (mismo tipo, mismo
+ * conductor, misma franja). Nombrar uno solo dejaria el otro sin atrapar y
+ * saldria un 23505 crudo — que es exactamente el fallo que obligo a escribir
+ * db/141. Sin diana, PostgreSQL calla ante cualquiera de los dos.
+ */
+async function revisarSueltos({ coches = [], ahora = new Date() } = {}) {
+  const res = { vistos: coches.length, nuevas: 0, enviadas: 0, errores: 0, detalle: [] };
+  const config = await leerConfig();
+  if (config.sinTabla) return { ...res, activa: false, motivo: 'sin-tabla' };
+
+  const def = config.tipos.rueda_suelto;
+  if (!def || !def.activo) return { ...res, activa: false, motivo: 'apagado' };
+
+  const gente = await aQuienAviso();
+  const simulado = config.modo !== 'live';
+  // Fuera de franja la fila necesita dia y codigo igual: el dia es el de la
+  // JORNADA (05:00 → 05:00), que es como se mira todo aqui.
+  const suFranja = franjaDe(config, ahora);
+  const franja = suFranja || { codigo: 'fuera', dia: jornadaDeMadrid(ahora) };
+
+  for (const c of coches) {
+    if (!c.matricula) continue;                 // sin matricula no hay a quien avisar de que
+    const minutos = Math.round((c.llevaAsi || 0) / 60);
+    if (minutos < def.umbral) continue;
+
+    const ins = await db.consulta(
+      `INSERT INTO alerta_control
+         (tipo, franja, franja_dia, driver_uuid, conductor_id, nombre_bolt, telefono,
+          matricula, valor, umbral, estado)
+       VALUES ('rueda_suelto',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,'pendiente')
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [franja.codigo, franja.dia, c.conductorUuid || null, c.conductorId || null,
+       c.conductor || null, c.telefono || null, c.matricula, minutos, def.umbral]);
+    if (!ins.rowCount) continue;
+
+    res.nuevas++;
+    const p = {
+      tipo: 'rueda_suelto', valor: minutos, nombreBolt: c.conductor, telefono: c.telefono,
+      horasEfectivas: 0, matricula: c.matricula, coche: c,
+    };
+    const r = await mandar(ins.rows[0].id, p, franja, config, gente, simulado);
+    res.enviadas += r.ok;
+    res.errores += r.fallos;
+    res.detalle.push({ matricula: c.matricula, minutos,
+      conductor: c.conductor || '(nadie)', enviados: r.ok, estado: r.estado });
+  }
+  return { ...res, activa: true, modo: config.modo };
+}
+
 /** El día de la JORNADA (05:00 → 05:00) de un instante, en Madrid. */
 function jornadaDeMadrid(cuando) {
   const hoy = hoyMadrid(cuando);
@@ -748,8 +848,9 @@ async function mandar(alertaId, p, franja, config, gente, simulado) {
   //
   // Se mantiene así para que la plantilla genérica siga sirviendo de reserva:
   // si `zona_madrid` aún no está aprobada en Meta, el aviso sale igual.
-  const deZona = p.tipo === 'zona_notificacion' || p.tipo === 'zona_madrid';
-  const extra = { salida: p.salida || null };
+  const deZona = p.tipo === 'zona_notificacion' || p.tipo === 'zona_madrid'
+    || p.tipo === 'rueda_suelto';
+  const extra = { salida: p.salida || null, coche: p.coche || null };
   const cabecera = [
     p.nombreBolt || (deZona ? 'SIN CONDUCTOR FICHADO' : '—'),
     p.telefono || 'sin teléfono',
@@ -877,7 +978,7 @@ async function estado({ dia } = {}) {
 }
 
 module.exports = {
-  MODELO, revisar, estado, historial, candidatos,
+  MODELO, revisar, revisarSueltos, estado, historial, candidatos,
   leerConfig, guardarConfig, destinatarios, guardarDestinatarios, aQuienAviso,
   franjaDe, textoAlerta, textoCorto, esPlantillaQueNoExiste,
 };

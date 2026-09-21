@@ -37,7 +37,7 @@ ni por estado de BOLT: por **los dos a la vez**.
 | ámbar | rueda estando en descanso | conectado, pero no da servicio |
 | **rojo** | **rueda y no hay nadie conectado** | **esto es lo que se busca** |
 | apagado | no se mueve | da igual lo que diga BOLT |
-| gris | el equipo lleva >10 min sin hablar | no se sabe dónde está |
+| gris | Mapon dice `nodata` o `nogps` | el equipo no habla, o no coge satélite |
 
 El rojo junta dos casos a propósito: el coche que está en BOLT con el conductor
 desconectado, y el equipo que no casa con ningún coche de BOLT. Los dos son *se
@@ -49,12 +49,34 @@ color.
 > llamado `1159283703` que no es una matrícula. Uno de ellos llevaba **15 h
 > desconectado y 47,4 km** en ese tramo.
 
-## Manda la posición, no el estado
+> [!warning] El «sin señal» lo dice Mapon, no un cronómetro nuestro
+> La primera versión marcaba gris todo lo que llevara más de diez minutos
+> callado. Estaba mal por los dos lados: un coche aparcado tarda de sobra ese
+> rato y no le pasa nada, y un equipo desenchufado hace tres meses salía igual
+> que uno que acaba de callarse. **Y peor: en cuanto la vuelta se paraba, el
+> mapa entero se iba poniendo gris solo.** Eso es lo que producía los ~60 grises.
+>
+> Ahora lo contesta Mapon: `nodata` (no habla — los 18 medidos llevaban 13 días
+> de media, el peor 87) y `nogps` (habla pero no coge satélite, son minutos).
+> Que la VUELTA vaya con retraso se dice una vez y arriba, no pintando cien
+> coches de gris.
 
-`FROM fv_posicion LEFT JOIN fv_ahora`, y no al revés. Si fuera al revés
-desaparecerían justo los que hay que mirar: un equipo que rueda y no casa con
-ningún coche de BOLT **no tiene fila en `fv_ahora`**. De 106 unidades, 14 no son
-coches del ERP y cinco de ellas estaban en marcha.
+## Solo los coches de la casa, y solo de tu sede
+
+`JOIN vehiculo` **INNER**, filtrado por las sedes que puede ver quien mira. De
+las 106 unidades de la cuenta de Mapon quedan **88**: se van 12 que no son
+coches del ERP —equipos de otra cosa, matrículas nunca dadas de alta, un
+`1159283703`— y 6 de Barcelona.
+
+El recorte va por el permiso `/vehiculos/sedes`, el mismo de [[Vehiculos]] y
+Mantenimientos, no por un `'madrid'` escrito a mano: así Óscar sigue viendo los
+suyos. Ante cualquier fallo, Madrid.
+
+> [!note] Lo que se cae, se cuenta
+> Un equipo que rueda y no casa con ningún coche del maestro **deja de salir**.
+> Desaparecer a la vista está bien; desaparecer en silencio es que un día falte
+> un coche y nadie sepa por qué. Por eso la cinta dice «18 equipos fuera del
+> mapa», con el desglose en el tooltip.
 
 ## La vuelta de 30 segundos
 
@@ -115,11 +137,44 @@ coches en Barcelona: encuadrar hasta el último abría el mapa de Madrid al
 Mediterráneo y no se distinguía un punto. Se encuadra lo que cae a menos de medio
 grado de la mediana; los de fuera siguen en el mapa y en la lista.
 
+## El aviso al momento
+
+Cuando un coche lleva **3 minutos seguidos rodando** sin nadie conectado, sale
+un WhatsApp a los controladores. Tipo `rueda_suelto` en [[Control Alertas]], así
+que hereda destinatarios, registro, modo test/live, tope por franja y la
+pantalla de /alertas — no hay una segunda máquina de avisar.
+
+**Suena a cualquier hora** (`ventana: 'siempre'`). Un coche rodando solo a las
+cuatro de la mañana es más raro, no menos.
+
+> [!important] Por qué tres minutos y no cero
+> El estado de BOLT se refresca cada cinco minutos: quien acaba de conectarse
+> puede figurar desconectado un rato, y un aviso en falso gasta la credibilidad
+> de todos los demás. Tres minutos de marcha continua no son un salto del GPS.
+>
+> Y los mide **Mapon**, con el `start` de su propio `state` (guardado en
+> `fv_posicion.estado_desde`), no una cuenta nuestra en memoria: así sobrevive a
+> un despliegue.
+>
+> Medido el 21/09/2026 muestreando cada 30 s durante cinco minutos: de cinco
+> rojos, **ninguno parpadeó** y tres aguantaron las diez vueltas. El rojo es
+> señal sólida.
+
+**Un aviso por coche, franja y día**, y eso lo garantiza el índice único
+`uq_alerta_control_coche` ([[Migraciones|db/145]]), no un `if`. Va por
+**matrícula** y no por conductor porque en un coche suelto muchas veces no hay
+conductor — y en PostgreSQL dos `NULL` no chocan en un índice único, así que el
+caso que más preocupa habría sonado cada treinta segundos para siempre.
+
+El `ON CONFLICT` va **sin diana** a propósito: la fila puede chocar con el
+índice de coche siempre y con el de persona cuando además hay conductor
+desconectado. Nombrar uno dejaría el otro sin atrapar y saldría un `23505`
+crudo — el fallo que obligó a escribir db/141.
+
 ## Pendiente si el piloto convence
 
-- **Aviso al momento** cuando aparece un rojo. Hoy solo se ve si estás mirando.
-  Lo que ya existe —`km_parado` de [[Control Alertas]]— va por franjas y umbral
-  de 20 km, y `rueda_caido` de [[Flota viva]] está apagado desde el 08/09.
 - **Centrar por la sede del que mira**, en vez de por la mediana de la flota.
+- **Los 12 equipos que no son coches del ERP**: o se dan de alta, o se quitan de
+  la cuenta de Mapon. Hoy se cuentan pero no se pintan.
 - **Empujar en vez de preguntar**: Mapon tiene `data_forward/save.json`, que
   quitaría el sondeo entero. → [[API_MAPON]]

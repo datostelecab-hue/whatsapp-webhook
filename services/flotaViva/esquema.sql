@@ -720,6 +720,14 @@ CREATE TABLE IF NOT EXISTS fv_posicion (
   refrescado_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- DESDE CUANDO ESTA ASI, segun Mapon. Su `state` no es solo un nombre: trae
+-- `start`, o sea desde cuando lleva conduciendo o parado. Es lo que permite
+-- decir "rodando desde hace 12 min" sin guardar historia, y sobre todo es lo
+-- que decide el aviso: un coche que lleva TRES MINUTOS rodando no es un salto
+-- del GPS. Y al venir de Mapon, sobrevive a un despliegue; una cuenta nuestra
+-- en memoria se perderia en cada reinicio.
+ALTER TABLE fv_posicion ADD COLUMN IF NOT EXISTS estado_desde TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_fv_posicion_matricula ON fv_posicion (matricula);
 
 COMMENT ON TABLE fv_posicion IS

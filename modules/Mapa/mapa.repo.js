@@ -18,48 +18,73 @@
 const db = require('../../services/db');
 
 /**
- * Todos los coches que el GPS sabe situar, con lo que BOLT dice de cada uno.
+ * Los coches de la flota que el GPS sabe situar, con lo que BOLT dice de cada
+ * uno.
  *
- * MANDA LA POSICIÓN, NO EL ESTADO. El FROM es `fv_posicion` y `fv_ahora` entra
- * por LEFT JOIN, y no al revés. Si fuera al revés desaparecerían justo los que
- * hay que mirar: un equipo que rueda y no casa con ningún coche de BOLT no
- * tiene fila en `fv_ahora`. Medido el 21/09/2026: de 108 unidades, 14 no eran
- * coches del ERP y cinco estaban en marcha.
+ * SOLO LOS COCHES DE LA CASA, Y SOLO DE LAS SEDES QUE SE PIDEN.
  *
- * `antiguedad` son los segundos desde que habló el equipo, calculados por la
- * base y no por el navegador: el reloj del que mira puede ir mal, y de eso
- * depende que un coche se pinte encendido o apagado.
+ * La primera versión pintaba las 108 unidades que devuelve la cuenta de Mapon,
+ * y eso incluía catorce que no son coches del ERP —equipos de otra cosa,
+ * matrículas que nunca se dieron de alta, hasta un `1159283703`— más los de
+ * Barcelona. Con casi treinta puntos que no son tuyos, los que sí lo son dejan
+ * de verse. Por eso el JOIN con `vehiculo` es INNER y no LEFT.
+ *
+ * Lo que se pierde a cambio: un equipo rodando que no casa con ningún coche del
+ * maestro deja de salir. Se cuentan aparte (`fuera`) y se dicen en la cinta,
+ * para que desaparezcan a la vista y no en silencio.
+ *
+ * `antiguedad` y `rodandoDesde` los calcula la BASE y no el navegador: el reloj
+ * del que mira puede ir mal, y de ellos depende que un coche se pinte apagado o
+ * que suene un aviso.
  */
-async function coches() {
+async function coches(sedes) {
+  const filtro = Array.isArray(sedes) && sedes.length ? sedes : null;
   const r = await db.consulta(`
-    SELECT p.mapon_unit,
-           COALESCE(a.matricula, p.matricula)                  AS matricula,
+    SELECT p.mapon_unit, v.matricula,
            p.lat, p.lng, p.velocidad, p.rumbo, p.estado_mapon,
-           EXTRACT(EPOCH FROM (now() - p.visto_at))::int        AS antiguedad,
-           a.situacion, a.situacion_etiqueta, a.conectado, a.color,
+           EXTRACT(EPOCH FROM (now() - p.visto_at))::int             AS antiguedad,
+           EXTRACT(EPOCH FROM (now() - p.estado_desde))::int         AS lleva_asi,
+           a.situacion, a.situacion_etiqueta, a.conectado,
            a.conductor, a.telefono,
-           a.segundos                                          AS segundos_situacion,
+           a.segundos                                                AS segundos_situacion,
            a.km,
-           -- Si no está en el maestro de coches, no es de la flota: o es un
-           -- equipo de otra cosa, o una matrícula que nunca se dio de alta.
-           (v.id IS NOT NULL)                                   AS de_la_flota,
-           v.sede
+           v.sede,
+           -- En qué estado está el coche para la casa. Sirve para leer un gris:
+           -- uno "En taller" lleva días callado y es normal; uno "Operativo"
+           -- callado tres meses es un equipo que hay que ir a mirar.
+           ev.etiqueta                                               AS estado_vehiculo,
+           ev.es_operativo                                           AS coche_operativo
       FROM fv_posicion p
+      JOIN vehiculo v ON v.matricula = p.matricula AND v.baja_at IS NULL
       LEFT JOIN fv_ahora a ON a.mapon_unit = p.mapon_unit
-      LEFT JOIN vehiculo v ON v.matricula = COALESCE(a.matricula, p.matricula)
-                          AND v.baja_at IS NULL
-     ORDER BY COALESCE(a.matricula, p.matricula)`);
+      LEFT JOIN cat_estado_vehiculo ev ON ev.codigo = v.estado_operativo
+     WHERE ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
+     ORDER BY v.matricula`, [filtro]);
   return r.rows;
 }
 
-/** Cuándo se refrescó por última vez, para poder decirlo en pantalla. */
-async function frescura() {
+/**
+ * Cuándo se refrescó por última vez y cuántas unidades se quedan fuera.
+ *
+ * Las de fuera se cuentan para poder DECIRLO. Un mapa que enseña 88 de 106
+ * equipos sin avisar es un mapa en el que un día falta un coche y nadie sabe
+ * por qué.
+ */
+async function frescura(sedes) {
+  const filtro = Array.isArray(sedes) && sedes.length ? sedes : null;
   const r = await db.consulta(`
-    SELECT max(refrescado_at) AS refrescado_at,
-           count(*)::int      AS unidades,
-           EXTRACT(EPOCH FROM (now() - max(refrescado_at)))::int AS hace
-      FROM fv_posicion`);
-  return r.rows[0] || { refrescado_at: null, unidades: 0, hace: null };
+    SELECT max(p.refrescado_at)                                        AS refrescado_at,
+           EXTRACT(EPOCH FROM (now() - max(p.refrescado_at)))::int      AS hace,
+           count(*) FILTER (WHERE v.id IS NOT NULL
+                              AND ($1::varchar[] IS NULL
+                                   OR v.sede = ANY($1::varchar[])))::int AS dentro,
+           count(*) FILTER (WHERE v.id IS NULL)::int                     AS sin_ficha,
+           count(*) FILTER (WHERE v.id IS NOT NULL
+                              AND $1::varchar[] IS NOT NULL
+                              AND NOT (v.sede = ANY($1::varchar[])))::int AS otra_sede
+      FROM fv_posicion p
+      LEFT JOIN vehiculo v ON v.matricula = p.matricula AND v.baja_at IS NULL`, [filtro]);
+  return r.rows[0] || { refrescado_at: null, hace: null, dentro: 0, sin_ficha: 0, otra_sede: 0 };
 }
 
 module.exports = { coches, frescura };

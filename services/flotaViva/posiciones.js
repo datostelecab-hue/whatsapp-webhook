@@ -72,12 +72,14 @@ async function refrescar() {
     // viaje cuesta treinta veces más que el trabajo.
     const v = [];
     const huecos = uds.map((u, i) => {
-      v.push(u.unitId, u.matricula, u.lat, u.lng, u.velocidad, u.rumbo, u.estado, u.senalAt);
-      return '(' + Array.from({ length: 8 }, (_, k) => '$' + (i * 8 + k + 1)).join(',') + ')';
+      v.push(u.unitId, u.matricula, u.lat, u.lng, u.velocidad, u.rumbo,
+        u.estado, u.estadoDesde, u.senalAt);
+      return '(' + Array.from({ length: 9 }, (_, k) => '$' + (i * 9 + k + 1)).join(',') + ')';
     });
     await db.consulta(
       `INSERT INTO fv_posicion
-         (mapon_unit, matricula, lat, lng, velocidad, rumbo, estado_mapon, visto_at)
+         (mapon_unit, matricula, lat, lng, velocidad, rumbo,
+          estado_mapon, estado_desde, visto_at)
        VALUES ${huecos.join(',')}
        ON CONFLICT (mapon_unit) DO UPDATE SET
          matricula     = EXCLUDED.matricula,
@@ -86,6 +88,7 @@ async function refrescar() {
          velocidad     = EXCLUDED.velocidad,
          rumbo         = EXCLUDED.rumbo,
          estado_mapon  = EXCLUDED.estado_mapon,
+         estado_desde  = EXCLUDED.estado_desde,
          visto_at      = EXCLUDED.visto_at,
          refrescado_at = now()`, v);
 

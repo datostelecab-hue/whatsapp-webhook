@@ -165,6 +165,27 @@
     mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
     mapa.on('load', () => { listo = true; pintar(); });
 
+    // SI EL MAPA NO ARRANCA, QUE LO DIGA.
+    //
+    // MapLibre da por cargado el mapa despues del PRIMER PINTADO, y ese pintado
+    // depende de `requestAnimationFrame`. En una pestaña que el navegador no
+    // esta componiendo —minimizada, en segundo plano, o en un panel oculto—
+    // esa llamada no llega nunca: el lienzo existe, no hay ni un error en la
+    // consola, y lo que se ve es un rectangulo negro. Es la misma trampa que
+    // dejo las ayudas invisibles en su dia.
+    //
+    // No se puede arreglar desde aqui —si el navegador no pinta, no pinta— pero
+    // si se puede DECIR, en vez de dejar a alguien mirando un hueco negro sin
+    // saber si es que no hay coches.
+    setTimeout(() => {
+      if (listo) return;
+      const av = $('#m-error');
+      av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i>'
+        + 'El mapa no ha terminado de cargar. Suele pasar si la pestaña estaba en segundo '
+        + 'plano: vuelve a ella y recarga. Los coches de la izquierda sí están al día.';
+      av.classList.remove('hidden');
+    }, 12000);
+
     // MapLibre mide su lienzo UNA vez y no vuelve a mirar. Sin esto, el mapa se
     // queda con el tamaño que tuviera al arrancar: al esconderse la lista en
     // pantalla estrecha, o al cambiar la ventana de tamaño, quedaria una franja
@@ -195,12 +216,18 @@
     }
     lineas.push('<i class="fa-solid fa-gauge-high w-4 text-telecab-muted"></i> '
       + (c.velocidad == null ? '—' : c.velocidad + ' km/h')
+      + (c.rueda && c.llevaAsi != null
+          ? ' <span class="text-telecab-muted">· rodando desde hace ' + hhmm(c.llevaAsi) + '</span>' : '')
       + (c.km != null ? ' <span class="text-telecab-muted">· ' + c.km + ' km en el tramo</span>' : ''));
     lineas.push('<i class="fa-solid fa-satellite-dish w-4 text-telecab-muted"></i> <span class="text-telecab-muted">'
-      + 'hace ' + hace(c.antiguedad) + '</span>');
-    if (!c.deLaFlota) {
-      lineas.push('<i class="fa-solid fa-circle-question w-4 text-telecab-warn"></i> '
-        + '<span class="text-telecab-warn">este equipo no es un coche del ERP</span>');
+      + 'el equipo habló hace ' + hace(c.antiguedad) + '</span>');
+    // EN QUÉ ESTADO ESTÁ EL COCHE PARA LA CASA. Es lo que deja leer un gris: uno
+    // «En taller» lleva semanas callado y es normal; uno «Operativo» callado
+    // tres meses es un equipo que hay que ir a mirar.
+    if (c.estadoVehiculo && (c.tono === 'perdido' || !c.operativo)) {
+      lineas.push('<i class="fa-solid fa-screwdriver-wrench w-4 ' + (c.operativo ? 'text-telecab-warn' : 'text-telecab-muted')
+        + '"></i> <span class="' + (c.operativo ? 'text-telecab-warn' : 'text-telecab-muted') + '">'
+        + esc(c.estadoVehiculo) + (c.operativo ? ' — y su GPS no habla' : '') + '</span>');
     }
     if (c.telefono) {
       lineas.push('<a href="tel:' + esc(c.telefono) + '" class="text-telecab-gold">'
@@ -346,9 +373,34 @@
       pintarLista();
       pintar();
       const f = r.frescura || {};
-      $('#m-frescura').textContent = f.unidades
-        ? f.unidades + ' equipos · última posición hace ' + hace(f.hace)
+      const fuera = (f.sinFicha || 0) + (f.otraSede || 0);
+      // LO QUE NO SE PINTA, DICHO. El mapa enseña solo los coches de la casa de
+      // tu sede; las demás unidades de la cuenta de Mapon se quedan fuera. Que
+      // desaparezcan a la vista está bien; que desaparezcan en silencio es que
+      // un día falte un coche y nadie sepa por qué.
+      const cola = fuera
+        ? ' · ' + fuera + ' equipo' + (fuera === 1 ? '' : 's') + ' fuera del mapa'
+        : '';
+      const el = $('#m-frescura');
+      el.textContent = f.unidades
+        ? f.unidades + ' coches · posición de hace ' + hace(f.hace) + cola
         : 'todavía no hay ninguna posición guardada';
+      el.title = f.unidades
+        ? 'La vuelta pide la posición a Mapon cada 30 segundos, pero el equipo del coche solo habla cada minuto aproximadamente.\n\n'
+          + (fuera ? f.sinFicha + ' equipo(s) de Mapon sin ficha en el ERP y ' + f.otraSede
+              + ' de otra sede: no se pintan.' : 'Todas las unidades de Mapon son coches de tu sede.')
+        : 'Nadie ha guardado todavía una posición. Si acaba de arrancar el sistema, espera media vuelta.';
+
+      // SI LA VUELTA VA CON RETRASO SE DICE UNA VEZ Y ARRIBA, en vez de ir
+      // poniendo coches grises: el dato de cada coche está bien, lo que pasa es
+      // que nadie lo está refrescando.
+      if (f.hace != null && f.hace > 180) {
+        const av = $('#m-error');
+        av.innerHTML = '<i class="fa-solid fa-clock-rotate-left mr-1"></i>'
+          + 'La posición no se refresca desde hace ' + hace(f.hace)
+          + '. Esto es lo último que se guardó, no dónde están ahora.';
+        av.classList.remove('hidden');
+      }
     } catch (e) {
       if (mio !== seq) return;
       // El error se pinta EN la pantalla, no en un aviso que hay que cerrar:
