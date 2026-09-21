@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-09-18
+actualizado: 2026-09-21
 ---
 
 # Estado y pendientes
@@ -25,6 +25,10 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 - **El setup de «fuera de zona» de «Zona Notificación», en Mapon.** La geocerca existe (id 3029835) pero **no hay ningún setup que dispare cuando un coche sale de ella**: del 11 al 18/09 no saltó ni una. El código del ERP ya la trata, así que el aviso empezará a sonar solo en cuanto se cree el setup desde la app de Mapon. El de «Zona Madrid» sí está vivo. → [[Control Alertas]]
 - **Las plantillas `zona_notificacion` y `zona_madrid` en Meta.** Mientras no estén aprobadas, los avisos salen por la plantilla genérica con su frase larga; no se pierde ninguno.
+
+## Pantallas sin ayudas (21/09/2026)
+
+De 53 vistas, **17 no tienen ni un `title`**, así que quien acaba de entrar se queda solo delante de ellas. Por orden de falta que hacen: **Coches sin cuadrante**, **Vehículos**, **Operaciones**, **Selección**, **ETT**, **RRHH pendientes** e **Inicio** — esta última es la primera que se ve al entrar. → [[Componentes de la casa]]
 
 ## Pendientes técnicos
 

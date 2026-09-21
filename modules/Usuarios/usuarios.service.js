@@ -204,7 +204,7 @@ async function crearUsuario({ email, nombre, apellidos, telefono, rol, creado_po
 // Qué campos del objeto "estilo hoja" van a qué columnas.
 const CAMPO_COL = {
   nombre: 'nombre', apellidos: 'apellidos', telefono: 'telefono',
-  hash: 'pass_hash', estado: 'estado', tema: 'tema', token_reset: 'token_reset',
+  hash: 'pass_hash', estado: 'estado', tema: 'tema', ayudas: 'ayudas', token_reset: 'token_reset',
 };
 
 /** Aplica cambios a un usuario existente (por email) y devuelve el actualizado. */

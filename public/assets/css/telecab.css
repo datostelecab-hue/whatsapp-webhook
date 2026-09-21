@@ -495,3 +495,71 @@ body .tc-ojo[aria-pressed="true"] {
 @media (prefers-reduced-motion: reduce) {
   body .tc-secreto, body .tc-ojo, body .tc-ojo i { transition: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   AYUDAS — el globo que explica al pasar el cursor
+   ══════════════════════════════════════════════════════════════════════════
+   Sustituye al globo del navegador, que se pinta con los colores del sistema
+   operativo: fondo amarillo pálido y letra negra en medio de una pantalla
+   oscura. Este va con los tokens, así que cambia de tema con todo lo demás.
+
+   El motor está en `public/assets/js/ayuda.js`; aquí solo vive el aspecto. */
+body .ayuda-globo {
+  position: fixed;
+  z-index: 300;                     /* por encima de los diálogos (120/130) */
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: .5rem .7rem;
+  border-radius: .75rem;
+  background: rgb(var(--tc-card));
+  border: 1px solid rgb(var(--tc-gold) / .35);
+  color: rgb(var(--tc-text));
+  font-size: .78rem;
+  line-height: 1.45;
+  /* Dos sombras: una cercana que lo despega y otra larga que lo levanta.
+     Con una sola parece pegado a la pantalla. */
+  box-shadow: 0 2px 6px rgb(0 0 0 / .25), 0 12px 32px rgb(0 0 0 / .35);
+  pointer-events: none;             /* el ratón lo atraviesa: no estorba */
+  opacity: 0;
+  transform: translateY(-4px) scale(.97);
+  transition: opacity .16s ease, transform .16s cubic-bezier(.34, 1.4, .64, 1);
+}
+/* Cuando sale por debajo, entra desde arriba; y al revés. El movimiento
+   apunta al elemento que explica, no a un lado cualquiera. */
+body .ayuda-globo[data-lado="abajo"] { transform: translateY(-4px) scale(.97); }
+body .ayuda-globo[data-lado="arriba"] { transform: translateY(4px) scale(.97); }
+body .ayuda-globo.ayuda-visible { opacity: 1; transform: translateY(0) scale(1); }
+
+/* Mientras se mide (para saber dónde cabe) tiene que tener tamaño pero no
+   verse: `visibility` lo esconde sin quitarlo del flujo, que es justo lo que
+   `display:none` no permite. */
+body .ayuda-globo.ayuda-midiendo { visibility: hidden; transition: none; }
+
+body .ayuda-globo .ayuda-texto b,
+body .ayuda-globo .ayuda-texto strong { color: rgb(var(--tc-gold)); }
+
+/* El pico. Es un cuadrado girado 45°, con solo dos lados de borde: los otros
+   dos se meten bajo la caja y se verían cruzando el texto. */
+body .ayuda-globo .ayuda-pico {
+  position: absolute;
+  left: var(--ayuda-pico, 50%);
+  width: .55rem; height: .55rem;
+  margin-left: -.275rem;
+  background: rgb(var(--tc-card));
+  transform: rotate(45deg);
+}
+body .ayuda-globo[data-lado="abajo"] .ayuda-pico {
+  top: -.3rem;
+  border-left: 1px solid rgb(var(--tc-gold) / .35);
+  border-top: 1px solid rgb(var(--tc-gold) / .35);
+}
+body .ayuda-globo[data-lado="arriba"] .ayuda-pico {
+  bottom: -.3rem;
+  border-right: 1px solid rgb(var(--tc-gold) / .35);
+  border-bottom: 1px solid rgb(var(--tc-gold) / .35);
+}
+
+/* Quien pide menos movimiento lo recibe igual, solo que aparece sin viajar. */
+@media (prefers-reduced-motion: reduce) {
+  body .ayuda-globo { transition: opacity .01s linear; transform: none; }
+  body .ayuda-globo.ayuda-visible { transform: none; }
+}

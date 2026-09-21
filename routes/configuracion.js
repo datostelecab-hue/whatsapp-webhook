@@ -79,6 +79,18 @@ router.post('/mi-tema', async (req, res) => {
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 
+// Encender o apagar las AYUDAS al pasar el cursor. Va en el perfil, como el
+// tema, para que la decisión siga a la persona y no al navegador.
+router.post('/mis-ayudas', async (req, res) => {
+  try {
+    if (!req.usuario) return res.status(401).json({ status: 'error', msg: 'Sesión requerida' });
+    const ayudas = (req.body || {}).ayudas !== false;
+    const actualizado = await usuarios.actualizarUsuario(req.usuario.email, { ayudas });
+    sesion.renovarSesion(res, actualizado, req.usuario);   // sin acortar la sesión
+    res.json({ status: 'ok', ayudas });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
 // ¿El usuario tiene su contraseña de correo configurada?
 router.get('/mi-correo', async (req, res) => {
   try {

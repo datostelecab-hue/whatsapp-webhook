@@ -102,6 +102,11 @@ function ponerSesion(res, u, { recordar, sid } = {}) {
     id: u.id || null,
     email: u.email, nombre: u.nombre, apellidos: u.apellidos || '', telefono: u.telefono || '', rol: u.rol,
     tema: u.tema || '',
+    // Las ayudas al pasar el cursor. Viaja en la sesión como el tema, por lo
+    // mismo: para poder pintarlas —o no— antes del primer pintado, sin una
+    // consulta a la base en cada página. `undefined` es encendidas: las
+    // sesiones de antes de esto no la traen y no tienen por qué perderlas.
+    ayudas: u.ayudas === false ? false : true,
     debe_cambiar: u.debe_cambiar === 'si' || u.debe_cambiar === true,
     larga,
     // EL SID ES LO QUE PERMITE CERRAR *UNA*. Sin él el token sigue valiendo
@@ -223,6 +228,7 @@ async function cargarSesion(req, res, next) {
   res.locals.usuario = u || null;
   res.locals.rol = u ? u.rol : null;
   res.locals.tema = u ? (u.tema || '') : null;   // tema del perfil (para pintar sin parpadeo)
+  res.locals.ayudas = u ? (u.ayudas !== false) : true;
   res.locals.v = ARRANQUE;                         // versión de assets (cache-bust por despliegue)
   next();
 }

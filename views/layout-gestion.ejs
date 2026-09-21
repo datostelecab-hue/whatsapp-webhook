@@ -20,6 +20,13 @@
           : pref;
         document.documentElement.setAttribute('data-theme', t);
       } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+      // Y si este usuario las ha apagado, las AYUDAS al pasar el cursor. Aquí
+      // arriba por lo mismo que el tema: decidirlo después dejaría un parpadeo
+      // de globos encendiéndose durante la primera pasada del ratón.
+      try {
+        document.documentElement.setAttribute('data-ayudas',
+          '<%= (typeof ayudas !== "undefined" && ayudas === false) ? "0" : "1" %>');
+      } catch (e) { /* por omisión, encendidas */ }
     })();
   </script>
 
@@ -42,6 +49,9 @@
   <script src="<%= typeof est === 'function' ? est('/assets/js/dialogo.js') : '/assets/js/dialogo.js' %>"></script>
   <script src="<%= typeof est === 'function' ? est('/assets/js/listado.js') : '/assets/js/listado.js' %>"></script>
   <script src="<%= typeof est === 'function' ? est('/assets/js/fichaConductor.js') : '/assets/js/fichaConductor.js' %>"></script>
+  <!-- Las ayudas: se quedan con el `title` de cualquier elemento y lo pintan con
+       la cara de la casa. Vale para todo el sistema sin tocar una pantalla. -->
+  <script src="<%= typeof est === 'function' ? est('/assets/js/ayuda.js') : '/assets/js/ayuda.js' %>"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

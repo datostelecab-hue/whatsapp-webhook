@@ -54,9 +54,9 @@
     muted:  { txt: 'text-telecab-muted',  bg: '',                    bd: 'border-telecab-border' },
   };
 
-  function tarjeta(etq, valor, tono, sufijo) {
+  function tarjeta(etq, valor, tono, sufijo, ayuda) {
     const t = TONO[tono] || TONO.muted;
-    return `<div class="rounded-2xl border ${t.bd} ${t.bg} p-4">
+    return `<div class="rounded-2xl border ${t.bd} ${t.bg} p-4"${ayuda ? ` title="${esc(ayuda)}"` : ''}>
       <div class="text-[11px] uppercase tracking-wide text-telecab-muted">${esc(etq)}</div>
       <div class="text-2xl font-bold ${t.txt} tabular-nums">${esc(String(valor))}${
         sufijo ? `<span class="text-sm font-normal text-telecab-muted"> ${esc(sufijo)}</span>` : ''}</div>
@@ -95,9 +95,12 @@
       </div>
       <div class="overflow-x-auto"><table class="w-full text-sm">
         <thead class="text-[11px] uppercase tracking-wide text-telecab-muted bg-telecab-card2/40">
-          <tr><th class="px-3 py-2 text-left">Coche</th><th class="px-3 py-2 text-left">Turno</th>
-              <th class="px-3 py-2 text-right">Rodó</th><th class="px-3 py-2 text-left">Entre</th>
-              <th class="px-3 py-2 text-left">Estado</th><th class="px-3 py-2 text-left">Quién estaba conectado</th></tr>
+          <tr><th class="px-3 py-2 text-left">Coche</th>
+              <th class="px-3 py-2 text-left" title="El turno en que rodó: día 05:00–17:00, noche 17:00–05:00.&#10;La cobertura se mira POR TURNO: un coche con fijo de día siempre parece planificado si se mira entero.">Turno</th>
+              <th class="px-3 py-2 text-right" title="Kilómetros de Mapon en ese turno. El mínimo para salir aquí son 3 km: por debajo es moverlo dentro del parking.">Rodó</th>
+              <th class="px-3 py-2 text-left" title="Del primer trayecto al último, en hora de Madrid.">Entre</th>
+              <th class="px-3 py-2 text-left" title="El estado del coche y cuántas personas tenía planificadas ese turno.">Estado</th>
+              <th class="px-3 py-2 text-left" title="Quién estuvo fichado en BOLT con él.&#10;Vacío es la señal: el coche se movió y para el sistema no había nadie dentro.">Quién estaba conectado</th></tr>
         </thead>
         <tbody>${coches.map(fila).join('')}</tbody>
       </table></div>
@@ -111,11 +114,21 @@
       const j = await (await fetch('/control/api/coches?dia=' + encodeURIComponent(dia))).json();
       if (j.status !== 'ok') throw new Error(j.msg || 'No se ha podido cargar');
       const r = j.resumen || {};
+      // Cada tarjeta dice QUÉ es y QUÉ hacer, en dos frases. El salto de línea
+      // es parte del mensaje: la segunda frase es la que sirve de algo.
       $('#c-resumen').innerHTML =
-        tarjeta('Nadie detrás', r.sinNadie || 0, 'red', 'coche(s)')
-        + tarjeta('KM sin dueño', n1(r.kmSinNadie || 0), 'red', 'km')
-        + tarjeta('Fuera de cobertura', r.fueraCobertura || 0, 'warn', 'coche(s)')
-        + tarjeta('Sin plan, con alguien', r.sinPlan || 0, 'muted', 'coche(s)');
+        tarjeta('Nadie detrás', r.sinNadie || 0, 'red', 'coche(s)',
+          'Coches que rodaron sin nadie planificado Y sin nadie conectado en BOLT.\n'
+          + 'Es lo único rojo de esta pantalla: no es un hueco de cuadrante, es alguien conduciendo sin fichar. Llama y pregunta quién lo tiene.')
+        + tarjeta('KM sin dueño', n1(r.kmSinNadie || 0), 'red', 'km',
+          'Los kilómetros de esos coches, sumados. Salen de Mapon, no de BOLT.\n'
+          + 'Un coche que nadie ficha no deja un solo apunte de BOLT, así que preguntándoselo a BOLT estos km no existirían.')
+        + tarjeta('Fuera de cobertura', r.fueraCobertura || 0, 'warn', 'coche(s)',
+          'En taller, siniestro o de baja, y aun así se movieron.\n'
+          + 'No deberían moverse en absoluto: si lo hacen, no es Tráfico quien los está moviendo.')
+        + tarjeta('Sin plan, con alguien', r.sinPlan || 0, 'muted', 'coche(s)',
+          'Salió alguien a quien el cuadrante no había puesto ahí.\n'
+          + 'Es un hueco de planificación, no un coche perdido: va en gris y aparte para no tapar lo de arriba.');
       const html = LISTAS.map(d => bloque(d, j[d.clave] || [])).join('');
       $('#c-listas').innerHTML = html
         || `<p class="px-4 py-10 text-center text-sm text-telecab-muted">
