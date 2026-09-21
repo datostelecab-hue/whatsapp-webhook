@@ -335,7 +335,7 @@ async function reclasificar(id, subtipoCodigo, quien = {}) {
  * Se aplica ANTES de mover el ticket: si el tramo choca, el ticket se queda como
  * estaba en vez de figurar «Ejecutado» sin haberse ejecutado nada.
  */
-async function aplicar(id, { desde, hasta } = {}, quien = {}) {
+async function aplicar(id, { desde, hasta, estado, motivo } = {}, quien = {}) {
   const t = await repo.una(id);
   if (!t) throw new Error('No existe ese ticket');
   if (!t.estadoAbre) {
@@ -348,12 +348,27 @@ async function aplicar(id, { desde, hasta } = {}, quien = {}) {
   const h = hasta || t.fechaFinIso;
   if (!d) throw new Error('Falta la fecha de inicio');
 
+  // QUÉ AUSENCIA SE ABRE. El subtipo propone —«Vacaciones» abre vacaciones—,
+  // pero la propuesta puede estar mal: el formulario lo rellena el conductor y
+  // «Baja o ausencia» cabe en una baja médica, un permiso o un asunto propio.
+  // Se acepta la corrección, pero solo si es una ausencia de verdad: cualquier
+  // otro código dejaría a la persona en un estado que no la aparta de nadie.
+  let cual = t.estadoAbre;
+  if (estado && String(estado) !== String(t.estadoAbre)) {
+    const { ausencias } = await repo.catalogos();
+    const elegida = (ausencias || []).find(a => a.codigo === String(estado));
+    if (!elegida) throw new Error('Ese estado no es una ausencia');
+    cual = elegida.codigo;
+  }
+
   await plantilla.anadirAusencia(Number(t.conductorId), {
-    estado: t.estadoAbre, desde: d, hasta: h || null,
-    motivo: `Ticket ${t.codigo}`,
+    estado: cual, desde: d, hasta: h || null,
+    motivo: String(motivo || '').trim() || `Ticket ${t.codigo}`,
   }, { usuarioId: quien.usuarioId || null });
 
-  const resolucion = `Aplicado: ${t.subtipo} del ${d}${h ? ' al ' + h : ''}`;
+  const { ausencias: cat } = await repo.catalogos();
+  const nombre = ((cat || []).find(a => a.codigo === cual) || {}).etiqueta || t.subtipo;
+  const resolucion = `Aplicado: ${nombre} del ${d}${h ? ' al ' + h : ''}`;
   await repo.cambiarEstado(id, { estado: 'ejecutado', resolucion, cierra: true });
   await repo.apuntar(id, { antes: t.estado, despues: 'ejecutado', nota: resolucion,
     usuarioId: quien.usuarioId, quien: quien.nombre || '' });

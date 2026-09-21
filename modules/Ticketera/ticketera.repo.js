@@ -21,6 +21,10 @@ const CAMPOS = `
   to_char(t.fecha_fin, 'YYYY-MM-DD')  AS fecha_fin_iso,
   to_char(t.creado_at   AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY HH24:MI') AS creado,
   to_char(t.marca_form  AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY HH24:MI') AS pedido,
+  -- La MISMA fecha en ISO, para poder compararla. La de arriba se lee y esta
+  -- se ordena: 'DD/MM/YYYY' comparado como texto pone el 02/01 antes que el
+  -- 31/12 del ano anterior, y el filtro por fechas dejaria de valer.
+  to_char(COALESCE(t.marca_form, t.creado_at) AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS pedido_iso,
   to_char(t.asignado_at AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY HH24:MI') AS asignado,
   to_char(t.resuelto_at AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY HH24:MI') AS resuelto,
   -- Cuánto lleva abierto (o cuánto tardó). En horas con un decimal, que es como
@@ -68,7 +72,7 @@ function aFila(x) {
     responsable: x.responsable || '',
     fechaIni: x.fecha_ini || '', fechaFin: x.fecha_fin || '',
     fechaIniIso: x.fecha_ini_iso || '', fechaFinIso: x.fecha_fin_iso || '',
-    creado: x.creado || '', pedido: x.pedido || '', asignado: x.asignado || '', resuelto: x.resuelto || '',
+    creado: x.creado || '', pedido: x.pedido || '', pedidoIso: x.pedido_iso || '', asignado: x.asignado || '', resuelto: x.resuelto || '',
     horas: x.horas,
     afectaPlanning: !!x.afecta_planning, estadoAbre: x.estado_abre || null,
   };
@@ -237,13 +241,20 @@ async function historia(ticketId) {
 
 /** Los catálogos que necesita la pantalla para pintar sus desplegables. */
 async function catalogos() {
-  const [areas, subtipos, estados] = await Promise.all([
+  const [areas, subtipos, estados, ausencias] = await Promise.all([
     db.consulta('SELECT codigo, etiqueta, prefijo FROM cat_ticket_area WHERE activa ORDER BY orden'),
     db.consulta(`SELECT codigo, etiqueta, area_codigo, afecta_planning
                    FROM cat_ticket_subtipo ORDER BY orden`),
     db.consulta('SELECT codigo, etiqueta, cierra, color FROM cat_ticket_estado ORDER BY orden'),
+    // LAS AUSENCIAS QUE SE PUEDEN APLICAR. El subtipo del ticket ya propone una
+    // —vacaciones abre vacaciones— pero la propuesta puede estar mal: el
+    // formulario lo rellena el conductor, y "baja o ausencia" cabe en varias.
+    // Quien aplica tiene que poder corregirlo sin salir de la pantalla.
+    db.consulta(`SELECT codigo, etiqueta, fin_previsible, libera_plaza
+                   FROM cat_estado_conductor WHERE es_ausencia ORDER BY orden, etiqueta`),
   ]);
-  return { areas: areas.rows, subtipos: subtipos.rows, estados: estados.rows };
+  return { areas: areas.rows, subtipos: subtipos.rows, estados: estados.rows,
+           ausencias: ausencias.rows };
 }
 
 module.exports = {

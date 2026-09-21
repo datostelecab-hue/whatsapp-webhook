@@ -47,9 +47,46 @@ Ni siquiera el nombre de la pestaña se escribe fijo: el primer intento buscó �
 
 ## La sincronización se puede repetir
 
-La llama la ingesta (ver [[Ingesta]]), y también `POST …/sincronizar` para traer ahora lo que haya sin esperar. Es **idempotente**: el índice único sobre `fila_form` impide que la misma respuesta entre dos veces, así que una pasada cortada a medias se arregla sola en la siguiente. La marca de agua (`config_app.ticketera_ultima_fila`) es una optimización —no releer mil filas—, **no la garantía**.
+La llama **un cron cada dos horas** (`7 */2 * * *`) y también `POST …/sincronizar` para traer ahora lo que haya sin esperar. Es **idempotente**: el índice único sobre `fila_form` impide que la misma respuesta entre dos veces, así que una pasada cortada a medias se arregla sola en la siguiente. La marca de agua (`config_app.ticketera_ultima_fila`) es una optimización —no releer mil filas—, **no la garantía**.
 
 Y **una fila mala no puede tumbar la pasada**. Pasó de verdad: una respuesta con la prioridad larga no cabía en su columna, la excepción subía, y con ella se quedaban fuera **todas** las respuestas posteriores, pasada tras pasada. Ahora cada fila va por su cuenta: la que falle se apunta con su número y su motivo, y las demás siguen entrando.
+
+> [!tip] Ya no hay botón de «Traer del formulario»
+> Ese botón era el problema: una petición de vacaciones entraba en el sistema cuando alguien se acordaba de pulsarlo, así que un conductor que pedía el lunes por la mañana podía no existir para RRHH hasta el miércoles.
+>
+> **Dos horas y no cinco minutos** porque al otro lado hay una hoja de Google, no una base: cada pasada lee el libro entero y no hay prisa ninguna — lo que se arregla es que llegue solo, no que llegue al segundo.
+
+## La pantalla: filtros, y el diálogo de la casa
+
+Con **270 abiertos**, una lista sin filtrar no es una bandeja: es un muro. Se filtra por **conductor, DNI, teléfono, código o matrícula** en una sola caja (varias palabras = todas tienen que aparecer), por **tipo** y por **fechas**.
+
+> [!info] Qué fecha mide el filtro
+> La de la **ausencia** cuando el ticket la tiene, y la de la **petición** cuando no. Es lo que se busca de verdad: «las vacaciones de noviembre» no se encuentran por la fecha en que se pidieron, y «lo que entró la semana pasada» no tiene más fecha que esa. De 270 tickets, 102 traen fechas de ausencia y los 270 traen fecha de petición.
+>
+> Y se mira por **solape**, no por «empieza dentro»: unas vacaciones del 28 de octubre al 10 de noviembre son de noviembre también.
+>
+> Para eso hizo falta `pedido_iso` en el repositorio: el `pedido` que se lee es `DD/MM/YYYY`, y comparado como texto pone el 02/01 antes que el 31/12 del año anterior.
+
+El desplegable de tipos se llena con **lo que hay en la bandeja**, no con el catálogo entero: ofrecer veinte filtros que dan cero no ayuda a nadie.
+
+### Las acciones van por el diálogo de la casa
+
+Eran `prompt()` del navegador, encadenados: «Desde (aaaa-mm-dd)», aceptar, «Hasta», aceptar. Un `prompt` no admite un calendario, ni una lista, ni enseñar de quién es el ticket mientras lo rellenas — y se pinta con los colores del sistema operativo, así que en una pantalla oscura parece de otra aplicación. Enlazar a una persona eran **dos** ventanas para una sola decisión: escribe un trozo del nombre, y luego elige entre los siete que salen.
+
+Ahora todas usan `Dialogo.formulario` y `Dialogo.aviso`. Lo que cambia de verdad:
+
+- **Aplicar** enseña qué ausencia se va a abrir y **deja cambiarla**. El subtipo la propone —«Vacaciones» abre vacaciones—, pero la propuesta puede estar mal: el formulario lo rellena el conductor y «Baja o ausencia» cabe en una baja médica, un permiso o un asunto propio. El servicio acepta la corrección **solo si el código es una ausencia de verdad**; cualquier otro dejaría a la persona en un estado que no la aparta de nadie.
+- **Enlazar** es un selector con buscador dentro, sobre las 427 fichas, con el DNI al lado del nombre.
+- **Historia** es una tabla, no un `alert()` con saltos de línea.
+
+### Los enlaces de los certificados se pinchan
+
+92 de los 270 tickets traen un enlace de Drive dentro de lo que escribió el conductor. Antes había que seleccionar la URL a mano y pegarla en otra pestaña —cada justificante, una vez—, así que **mirar el papel costaba más que aplicar la ausencia**. Ahora son enlaces, y el desplegable «Lo que escribió» nace abierto cuando hay uno.
+
+> [!warning] Escapar primero, enlazar después
+> Se escapa cada trozo de texto y el enlace se construye aparte. Escapar el HTML ya hecho rompería las comillas del `href`; no escaparlo dejaría que un formulario **que rellena cualquiera** metiera etiquetas en esta pantalla.
+>
+> Y la puntuación final no es del enlace: un punto detrás de una URL cierra la frase, y metido dentro del `href` da un 404.
 
 ## El reparto: gana la primera regla que encaja
 
