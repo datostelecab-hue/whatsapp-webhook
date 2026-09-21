@@ -195,6 +195,11 @@ colores propios.**
   `dialogo.js`, `listado.js`, `fichaConductor.js` y el overlay de carga. Una
   pantalla que liste algo usa el componente Listado (lista → ficha → atrás), no
   una tabla nueva.
+- **Y si el navegador trae una versión de algo —`prompt`, `alert`, `confirm`,
+  `<input type="date">`—, la casa tiene la suya y es la que se usa.** El
+  inventario entero, con qué usar en cada caso, está en [[Componentes de la casa]]:
+  **léelo antes de escribir una pantalla**, y apúntalo ahí cuando hagas una pieza
+  nueva.
 
 ## 8. Cómo se mueve un módulo sin romper nada
 

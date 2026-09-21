@@ -32,15 +32,19 @@
       <input id="f-busca" type="search" placeholder="Soufyane, 12345678Z, RH-2026…"
         class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
     </div>
+    <!-- `js-fecha`: el calendario de la casa (vive en layout-gestion). Trabaja en
+         dd/mm/aaaa y se puede teclear o elegir. NADA de `type="date"`: ese pinta
+         el calendario del sistema operativo, que en una pantalla oscura canta
+         como de otra aplicación. -->
     <div>
       <label class="block text-[11px] text-telecab-muted mb-1">Desde</label>
-      <input id="f-desde" type="date"
-        class="px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+      <input id="f-desde" class="js-fecha w-32 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40"
+        placeholder="dd/mm/aaaa" readonly>
     </div>
     <div>
       <label class="block text-[11px] text-telecab-muted mb-1">Hasta</label>
-      <input id="f-hasta" type="date"
-        class="px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+      <input id="f-hasta" class="js-fecha w-32 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40"
+        placeholder="dd/mm/aaaa" readonly>
     </div>
     <div>
       <label class="block text-[11px] text-telecab-muted mb-1">Tipo</label>
@@ -156,10 +160,17 @@
     return true;
   }
 
+  // El calendario de la casa escribe dd/mm/aaaa; las fechas del ticket vienen en
+  // ISO. Se compara en ISO, que es lo único que se ordena solo.
+  const aIso = v => {
+    const m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+  };
+
   const filtros = () => ({
     busca: plano($('#f-busca').value).split(/\s+/).filter(Boolean),
-    desde: $('#f-desde').value || '',
-    hasta: $('#f-hasta').value || '',
+    desde: aIso($('#f-desde').value),
+    hasta: aIso($('#f-hasta').value),
     subtipo: $('#f-subtipo').value || '',
   });
 
@@ -428,8 +439,12 @@
 
   $('#btn-recargar').addEventListener('click', cargar);
   $('#f-cerrados').addEventListener('change', cargar);
-  ['#f-busca', '#f-desde', '#f-hasta', '#f-subtipo'].forEach(s =>
-    $(s).addEventListener('input', pintar));
+  // 'change' además de 'input': el calendario de la casa rellena el campo desde
+  // fuera —pinchando un día—, y eso no dispara 'input' en todos los navegadores.
+  ['#f-busca', '#f-desde', '#f-hasta', '#f-subtipo'].forEach(s => {
+    $(s).addEventListener('input', pintar);
+    $(s).addEventListener('change', pintar);
+  });
   $('#f-limpiar').addEventListener('click', () => {
     ['#f-busca', '#f-desde', '#f-hasta'].forEach(s => { $(s).value = ''; });
     $('#f-subtipo').value = '';

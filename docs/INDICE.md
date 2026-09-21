@@ -74,7 +74,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 
 - **[[Comprobadores]]** — En este proyecto no hay pruebas automáticas, ni linter, ni npm scripts.
 - **[[Glosario]]** — El vocabulario de la casa. Son palabras que en este ERP significan una cosa
-- **[[Reglas de la casa]]** — Lo que se respeta sí o sí en este repositorio.
+- **[[Reglas de la casa]] · [[Componentes de la casa]]** — Lo que se respeta sí o sí en este repositorio.
 - **[[Trampas conocidas]]** — Lo que ya costó tiempo, con su cifra y su remedio.
 - **[[Seguridad]]** — Cómo se prueba la seguridad (laboratorio Kali aislado) y el endurecimiento que lleva puesto.
 

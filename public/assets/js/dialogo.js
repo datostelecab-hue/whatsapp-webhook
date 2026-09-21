@@ -49,10 +49,23 @@
       const fondo = document.createElement('div');
       fondo.className = 'dialogo fixed inset-0 z-[120] flex items-center justify-center p-4 ' +
                         'bg-black/60 backdrop-blur-sm';
+      // LA CAJA NO PUEDE PASAR DE LA PANTALLA.
+      //
+      // Sin tope, un diálogo largo —el historial de llamadas de alguien, con
+      // diecisiete— crecía por debajo del borde y los botones se quedaban fuera:
+      // había que ALEJAR el navegador al 75 % para poder leerlo y darle a
+      // "Entendido". Un aviso que obliga a cambiar el zoom del navegador no es
+      // un aviso, es un problema.
+      //
+      // Se capa al 90 % del alto, la caja pasa a ser una columna y lo que crece
+      // —el contenido— es lo que lleva la barra. Los botones se quedan abajo,
+      // siempre visibles, que es lo que hace que el diálogo se pueda cerrar.
+      // El `min-h-0` hace falta: sin él, un hijo de un flex no se deja encoger
+      // por debajo de su contenido y la barra no aparece nunca.
       fondo.innerHTML = `
         <div class="dialogo-caja bg-telecab-card border border-telecab-border rounded-2xl shadow-soft
-                    w-full ${ancho}" role="alertdialog" aria-modal="true">
-          <div class="p-5 flex gap-4">
+                    w-full ${ancho} max-h-[90vh] flex flex-col" role="alertdialog" aria-modal="true">
+          <div class="p-5 flex gap-4 min-h-0 overflow-y-auto">
             <span class="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center
                          bg-telecab-${t.color}/15 text-telecab-${t.color}">
               <i class="fa-solid ${t.icono}"></i>
@@ -62,7 +75,7 @@
               <div class="text-sm text-telecab-text/85 mt-1 space-y-2">${html || esc(texto || '').replace(/\n/g, '<br>')}</div>
             </div>
           </div>
-          <div class="px-5 pb-5 flex flex-wrap items-center justify-end gap-2" data-botones></div>
+          <div class="px-5 pb-5 pt-2 shrink-0 flex flex-wrap items-center justify-end gap-2" data-botones></div>
         </div>`;
 
       const caja = fondo.querySelector('.dialogo-caja');

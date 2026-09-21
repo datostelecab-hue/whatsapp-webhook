@@ -1242,6 +1242,31 @@ seis de ellos puestos a mano. → [[Bitacora]]
 paso (un 0, una lista sin elementos, una cadena en blanco) **no puede ganarle a
 lo que ya había**. Solo pisa lo que aporta algo.
 
+### Un diálogo sin tope de alto se sale por abajo, con los botones
+
+`public/assets/js/dialogo.js`
+
+La caja crecía con su contenido y no tenía ni `max-h` ni barra. Con el historial
+de llamadas de una persona —diecisiete entradas— el botón de «Entendido»
+quedaba fuera de la pantalla: **había que alejar el navegador al 75 % para poder
+cerrarlo**. Un aviso que obliga a cambiar el zoom no es un aviso.
+
+**El remedio:** caja al 90 % del alto y en columna, el CONTENIDO con la barra, los
+botones `shrink-0` abajo. Y `min-h-0` en el contenido: sin él, un hijo de un flex
+no se deja encoger por debajo de su contenido y la barra no aparece nunca.
+
+### `<input type="date">` se pinta con los colores del sistema operativo
+
+Toda vista
+
+Hay un calendario de la casa —`input.js-fecha`, en `layout-gestion`— que trabaja
+en dd/mm/aaaa, se teclea o se elige, y va con la identidad. El nativo saca el
+calendario de Windows en medio de una pantalla oscura y parece de otra
+aplicación. Lo mismo con `prompt`, `alert`, `confirm` y `<select>`.
+
+**La regla:** si el navegador trae una versión de algo, la casa tiene la suya.
+→ [[Componentes de la casa]]
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números
