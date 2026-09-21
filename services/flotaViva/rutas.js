@@ -1023,6 +1023,191 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
 
 
 /**
+ * LOS KM DE VARIAS VENTANAS, EN UNA SOLA PASADA.
+ *
+ * El cockpit pregunta por cuatro ventanas del mismo día —día, noche, jornada y
+ * la noche de reloj— y hasta ahora eran cuatro consultas iguales con distintas
+ * horas. Cada una volvía a barrer `fv_odometro` (1,5 millones de filas) y
+ * `fv_ruta`, y a resolver el corte de cada tramo otra vez.
+ *
+ * Medido el 21/09/2026: esas cuatro eran 20,9 s de los 31,7 s de SQL que gasta
+ * la pantalla entera. Lo caro no es agrupar cuatro veces —eso son mil filas—,
+ * es LEER cuatro veces.
+ *
+ * Aquí se lee una vez y se reparte: las filas crudas salen acotadas por la
+ * ventana que envuelve a todas (`lim`), y a partir de ahí cada CTE lleva su
+ * `codigo` y agrupa por él. Todo lo demás —el prorrateo, la elección entre CAN
+ * y GPS, el corte del tramo— se hace EXACTAMENTE igual que antes y ventana por
+ * ventana, que es lo que garantiza que los números no se muevan.
+ *
+ * OJO CON LA FUENTE: la elección entre el odómetro y el GPS se decide POR
+ * VENTANA, no una vez para todas. Un coche puede tener CAN suficiente en la
+ * jornada entera y no tenerlo en la franja de noche, y ahí la vara de medir
+ * cambia. Por eso `fuente` agrupa por (codigo, unit_id) y no solo por unit_id.
+ */
+async function kmPorVentanas(dia, ventanas) {
+  if (!ventanas.length) return new Map();
+  const d = String(dia).slice(0, 10);
+
+  // Las horas salen del catálogo TURNOS, no de fuera; aun así se validan antes
+  // de escribirlas en el SQL, que es lo que separa "es interno" de "es seguro".
+  const filas = ventanas.map(({ codigo, hIni, off, hFin }) => {
+    const a = Number(hIni), b = Number(off), c = Number(hFin);
+    if (![a, b, c].every(Number.isFinite)) throw new Error('Ventana con horas que no son números');
+    if (!/^[a-zA-Z0-9_]+$/.test(codigo)) throw new Error('Código de ventana no válido');
+    return `('${codigo}', ($1::date + interval '${a} hours') AT TIME ZONE 'Europe/Madrid',`
+         + ` LEAST((($1::date + ${b}) + interval '${c} hours') AT TIME ZONE 'Europe/Madrid', now()))`;
+  }).join(',\n         ');
+
+  const r = await db.consulta(
+    `WITH w AS (
+       SELECT codigo, ini, fin FROM (VALUES
+         ${filas}
+       ) AS t(codigo, ini, fin)
+       -- Una ventana que todavía no ha empezado no se pregunta: igual que antes,
+       -- donde el guardia era \`w.fin > w.ini\` dentro de cada consulta.
+       WHERE fin > ini
+     ),
+     -- LA VENTANA QUE ENVUELVE A TODAS. Es lo único que se lee de las tablas
+     -- grandes; el reparto por ventana viene después, sobre lo ya leído.
+     lim AS (SELECT min(ini) AS ini0, max(fin) AS fin0 FROM w),
+     can_raw AS (
+       SELECT o.unit_id, o.inicio, o.fin, o.metros
+         FROM fv_odometro o CROSS JOIN lim
+        -- LA COTA EN CONSTANTES NO SOBRA (ver kmFueraEnVentana): sin el recorte
+        -- sobre $1 se lee la tabla entera en cada pregunta.
+        WHERE o.inicio >= $1::date - interval '1 day'
+          AND o.inicio <  $1::date + interval '3 days'
+          AND o.fin > o.inicio AND o.inicio < lim.fin0 AND o.fin > lim.ini0
+     ),
+     gps_raw AS (
+       SELECT r.unit_id, r.inicio, r.fin, r.metros
+         FROM fv_ruta r CROSS JOIN lim
+        WHERE r.inicio >= $1::date - interval '1 day'
+          AND r.inicio <  $1::date + interval '3 days'
+          AND r.fin IS NOT NULL AND r.fin > r.inicio
+          AND r.inicio < lim.fin0 AND r.fin > lim.ini0
+     ),
+     -- Y AHORA SÍ, VENTANA POR VENTANA. El prorrateo es el de siempre.
+     can_v AS (
+       SELECT w.codigo, c.unit_id, c.inicio, c.fin, c.metros,
+              c.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(c.fin, w.fin) - GREATEST(c.inicio, w.ini))))
+                / NULLIF(EXTRACT(EPOCH FROM (c.fin - c.inicio)), 0) AS en_ventana
+         FROM can_raw c JOIN w ON c.inicio < w.fin AND c.fin > w.ini
+     ),
+     gps_v AS (
+       SELECT w.codigo, g.unit_id, g.inicio, g.fin, g.metros,
+              g.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(g.fin, w.fin) - GREATEST(g.inicio, w.ini))))
+                / NULLIF(EXTRACT(EPOCH FROM (g.fin - g.inicio)), 0) AS en_ventana
+         FROM gps_raw g JOIN w ON g.inicio < w.fin AND g.fin > w.ini
+     ),
+     fuente AS (
+       SELECT COALESCE(c.codigo, g.codigo) AS codigo,
+              COALESCE(c.unit_id, g.unit_id) AS unit_id,
+              (c.unit_id IS NOT NULL AND COALESCE(c.m, 0) >= ${UMBRAL_CAN} * COALESCE(g.m, 0)) AS por_can
+         FROM      (SELECT codigo, unit_id, sum(en_ventana) AS m FROM can_v GROUP BY 1, 2) c
+         FULL JOIN (SELECT codigo, unit_id, sum(en_ventana) AS m FROM gps_v GROUP BY 1, 2) g
+                ON g.unit_id = c.unit_id AND g.codigo = c.codigo
+     ),
+     km_src AS (
+       SELECT k.codigo, k.unit_id, k.inicio, k.fin, k.metros, TRUE AS por_can
+         FROM can_v k JOIN fuente f ON f.unit_id = k.unit_id AND f.codigo = k.codigo AND f.por_can
+       UNION ALL
+       SELECT k.codigo, k.unit_id, k.inicio, k.fin, k.metros, FALSE AS por_can
+         FROM gps_v k JOIN fuente f ON f.unit_id = k.unit_id AND f.codigo = k.codigo AND NOT f.por_can
+     ),
+     -- EL CORTE DEL TRAMO, UNA VEZ PARA TODAS LAS VENTANAS. Antes se resolvía
+     -- cuatro veces —y lleva dos subconsultas dentro—; ahora se calcula sobre la
+     -- ventana envolvente y cada una se queda con su trozo. MATERIALIZED por lo
+     -- mismo de siempre: sin él Postgres lo mete en el cruce de abajo y lo
+     -- resuelve una vez por cada pareja (tramo, trozo de km).
+     tramo_base AS MATERIALIZED (
+       SELECT t.conductor_uuid AS uuid, veh.matricula, veh.mapon_unit AS unit_id, t.situacion,
+              t.desde AS d0, ${FIN_KM} AS h0
+         FROM fv_tramo t
+         CROSS JOIN lim
+         JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
+        WHERE t.conductor_uuid IS NOT NULL
+          AND veh.mapon_unit IS NOT NULL
+          AND t.desde < lim.fin0
+          AND t.desde >= lim.ini0 - interval '${TOPE_TRAMO_ABIERTO}'
+     ),
+     tramo_km AS (
+       SELECT w.codigo, tb.uuid, tb.matricula, tb.unit_id, tb.situacion,
+              GREATEST(tb.d0, w.ini) AS d, LEAST(tb.h0, w.fin) AS h
+         FROM tramo_base tb CROSS JOIN w
+        -- Un tramo que empezó antes de \`ini - tope\` no puede aportar un metro:
+        -- su corte cae por debajo del principio de la ventana y el \`h > d\` de
+        -- abajo lo descarta solo. Por eso basta con acotar por la envolvente.
+        WHERE tb.d0 < w.fin
+     ),
+     solape AS (
+       SELECT tk.codigo, tk.uuid, tk.matricula, tk.situacion, r.por_can,
+              r.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(r.fin, tk.h) - GREATEST(r.inicio, tk.d))))
+                / NULLIF(EXTRACT(EPOCH FROM (r.fin - r.inicio)), 0) AS metros_trozo
+         FROM km_src r
+         JOIN tramo_km tk ON tk.unit_id = r.unit_id AND tk.codigo = r.codigo
+                         AND tk.d < r.fin AND tk.h > r.inicio
+        WHERE tk.h > tk.d
+     )
+     SELECT codigo, uuid, matricula,
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion IN ('viaje','espera')), 0)::numeric / 1000.0, 1)     AS km,
+            round(COALESCE(sum(metros_trozo) FILTER (WHERE situacion NOT IN ('viaje','espera')), 0)::numeric / 1000.0, 1) AS km_fuera,
+            bool_or(por_can AND metros_trozo > 0)       AS hay_can,
+            bool_or(NOT por_can AND metros_trozo > 0)   AS hay_gps
+       FROM solape GROUP BY codigo, uuid, matricula`,
+    [d]);
+
+  const por = new Map(ventanas.map(v => [v.codigo, []]));
+  r.rows.forEach(x => { if (por.has(x.codigo)) por.get(x.codigo).push(x); });
+  return por;
+}
+
+/**
+ * LA ACTIVIDAD DE VARIOS TURNOS DEL MISMO DÍA, LEYENDO LOS KM UNA SOLA VEZ.
+ *
+ * El cockpit necesita cuatro ventanas —día, la noche que mide desde mediodía,
+ * la jornada entera y la noche de reloj— y hasta ahora eran cuatro llamadas
+ * independientes. Cada una volvía a barrer `fv_odometro` (1,5 millones de
+ * filas) y `fv_ruta` y a resolver el corte de cada tramo otra vez.
+ *
+ * Medido el 21/09/2026: esas cuatro consultas de km eran **20,9 s de los
+ * 31,7 s** de SQL que gastaba En directo. Lo caro no era agrupar cuatro veces,
+ * era LEER cuatro veces.
+ *
+ * Lo demás —los minutos por situación y los minutos efectivos— sigue yendo por
+ * ventana, y a propósito: son consultas de décimas de segundo sobre `fv_tramo`,
+ * así que fundirlas añadiría riesgo sin ganar tiempo.
+ *
+ * Devuelve un Map de turno → el mismo objeto que devuelve `actividadPorConductor`,
+ * para que quien lo use no tenga que aprender nada nuevo.
+ */
+async function actividadDeVariosTurnos(dia, turnos) {
+  const lista = [...new Set(turnos)].filter(t => TURNOS[t]);
+  if (!lista.length) return new Map();
+
+  // Los km de todas las ventanas, de una vez.
+  const ventanas = lista.map(t => {
+    const [hIni, off, hFin] = TURNOS[t];
+    return { codigo: t, hIni, off, hFin };
+  });
+  const km = await kmPorVentanas(dia, ventanas).catch(e => {
+    // Si la pasada única falla, cada turno se lo pregunta por su cuenta: es más
+    // lento, pero la pantalla sigue en pie. Un atajo que se lleva la pantalla
+    // por delante cuando falla no es un atajo.
+    console.error('⚠️  [FLOTA VIVA] km en una pasada:', e.message);
+    return null;
+  });
+
+  const hechos = await Promise.all(lista.map(t =>
+    actividadPorConductor(dia, t, km ? (km.get(t) || []) : null)));
+  return new Map(lista.map((t, i) => [t, hechos[i]]));
+}
+
+/**
  * ACTIVIDAD REAL DE CADA CONDUCTOR EN LA VENTANA DE SU TURNO.
  *
  * Es la respuesta a "¿este ha salido hoy o no?", y se hace siguiendo a la PERSONA
@@ -1044,7 +1229,7 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
  *
  * Devuelve { dia, turno, ini, fin, finPlan, empezada, porUuid: Map(uuid → actividad) }.
  */
-async function actividadPorConductor(dia, turno = 'dia') {
+async function actividadPorConductor(dia, turno = 'dia', kmYaHechos = null) {
   const [hi, off, hf] = TURNOS[turno] || TURNOS.dia;
   const r = await db.consulta(
     `WITH v AS (
@@ -1104,7 +1289,10 @@ async function actividadPorConductor(dia, turno = 'dia') {
   // Mapon habló — 11,1 km imputados a un descanso de 12 minutos. fv_ruta sí es
   // fiable: es la fuente que cuadró con el informe de BOLT al 0,03 %.
   // Un trayecto cuenta en la ventana donde EMPIEZA, igual que en el resto del ERP.
-  const rk = await db.consulta(
+  // SI LOS KM YA VIENEN HECHOS, no se vuelve a preguntar. Es el caso del
+  // cockpit, que pide cuatro ventanas del mismo día: `kmPorVentanas` las
+  // resuelve todas en una pasada y aquí solo se recogen las de esta.
+  const rk = kmYaHechos ? { rows: kmYaHechos } : await db.consulta(
     `WITH v AS (
        SELECT ($1::date + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'             AS ini,
               (($1::date + $3::int) + ($4 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin_plan
@@ -1287,7 +1475,7 @@ ${SOLAPE_KM},
 module.exports = db.conEsquema({
   ingestarRutas, guardarLote, ingestarOdometro, odometroDeUnidad, kmPorCoche, kmConectadoDesconectado,
   horasEfectivasPorConductor, minutosEfectivos, matriculasBoltPorConductor,
-  bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, kmFueraEnVentana,
+  bucketsTurno, sankeyFlota, diagnosticoKm, actividadPorConductor, actividadDeVariosTurnos, kmPorVentanas, kmFueraEnVentana,
   kmSinDuenio,
 });
 module.exports.TURNOS = TURNOS;

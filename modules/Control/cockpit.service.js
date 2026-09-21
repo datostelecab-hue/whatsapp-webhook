@@ -166,7 +166,7 @@ async function enDirecto({ dia } = {}) {
   // (`kmSinDuenio`) que ahora corre a la vez que las demás y deja de contar.
   // Lo único que sigue después es lo que necesita la franja, porque para saber
   // cuál es hay que haber leído antes la configuración.
-  const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper, actNocheReloj,
+  const [tab, est, incHoy, incAyer, kmHoy, contac, actividades,
          rend, rechazos, rechazosNoche, justificantes, cfgAlertas, sinDuenioTodos] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
@@ -187,16 +187,23 @@ async function enDirecto({ dia } = {}) {
     // dejó el coche rodando hasta las 07:50 aparecía como que había salido de DÍA,
     // porque sus sobras cruzaban el corte de las 05:00. Y la del día operativo
     // entero (05→05) es la que sirve para los NN, que no tienen turno asignado.
-    rutas.actividadPorConductor(hoy, 'dia').catch(e => { console.error('❌ [EN DIRECTO] actividad día:', e.message); return null; }),
-    // La noche se mide desde MEDIODÍA (ver TURNOS.nocheControl): lo que hace un
-    // conductor de noche a las 06:00 es la cola de su turno de ayer, y lo que
-    // empieza a las 13:00 ya es de hoy.
-    rutas.actividadPorConductor(hoy, 'nocheControl').catch(e => { console.error('❌ [EN DIRECTO] actividad noche:', e.message); return null; }),
-    rutas.actividadPorConductor(hoy, 'operativo').catch(e => { console.error('❌ [EN DIRECTO] actividad jornada:', e.message); return null; }),
-    // Y la noche "de reloj" (17:00→05:00), SOLO para repartir a los NN: a ellos
-    // no se les mide por su turno —no tienen— sino por el turno que está en
-    // curso, y ese corta a las 17:00 en punto.
-    rutas.actividadPorConductor(hoy, 'noche').catch(() => null),
+    // LAS CUATRO VENTANAS, EN UNA SOLA PASADA DE KM.
+    //
+    // Una consulta por turno, no una sola del día operativo: el de noche que
+    // terminó a las 03:51 y dejó el coche rodando hasta las 07:50 aparecía como
+    // que había salido de DÍA, porque sus sobras cruzaban el corte de las 05:00.
+    // Y la del día operativo entero (05→05) es la que sirve para los NN, que no
+    // tienen turno asignado. La noche se mide desde MEDIODÍA (TURNOS.nocheControl):
+    // lo que hace un conductor de noche a las 06:00 es la cola de su turno de
+    // ayer, y lo que empieza a las 13:00 ya es de hoy. Y la noche "de reloj"
+    // (17:00→05:00) solo se usa para repartir a los NN, que no se miden por su
+    // turno —no tienen— sino por el que está en curso.
+    //
+    // Las cuatro se piden juntas porque los KILÓMETROS se leen una sola vez:
+    // eran 20,9 s de los 31,7 s de SQL de esta pantalla, y lo caro no era
+    // agrupar cuatro veces sino barrer `fv_odometro` cuatro veces. → rutas.js
+    rutas.actividadDeVariosTurnos(hoy, ['dia', 'nocheControl', 'operativo', 'noche'])
+      .catch(e => { console.error('❌ [EN DIRECTO] actividad:', e.message); return new Map(); }),
 
     // ── Lo que antes iba en fila, detrás ──────────────────────────────────
     // El promedio de horas del mes y su letra, para que quien llama sepa a
@@ -225,6 +232,12 @@ async function enDirecto({ dia } = {}) {
     rutas.kmSinDuenio(hoy, 'operativo')
       .catch(e => { console.error('⚠️  [EN DIRECTO] km sin dueño:', e.message); return []; }),
   ]);
+
+  // Con los mismos nombres de siempre, para que nada de abajo se entere.
+  const actDia = actividades.get('dia') || null;
+  const actNoche = actividades.get('nocheControl') || null;
+  const actOper = actividades.get('operativo') || null;
+  const actNocheReloj = actividades.get('noche') || null;
 
   // ── DESDE CUÁNDO SE PUEDE RECLAMAR CADA TURNO ──────────────────────────────
   // La ventana de la noche se abre a mediodía para MEDIR, pero su hora de entrar

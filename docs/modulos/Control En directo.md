@@ -136,10 +136,30 @@ Lo que se ganó ese día fue quitar un `COALESCE` de ocho filtros —**32 s de S
 > [!info] Medir aquí es difícil, y hay que saberlo
 > La base la comparten la aplicación de producción y el cron de cinco minutos, así que **una sola medida no dice nada**: la misma pantalla, seis veces seguidas, dio entre 3,0 y 7,0 s. Para comparar dos versiones hay que alternarlas y mirar medianas, y para comparar dos consultas hay que congelar el reloj.
 
-> [!tip] Lo siguiente, si alguna vez estorba
-> Quedan **cuatro llamadas a `actividadPorConductor`** —día, noche, jornada y noche de reloj— que leen **las mismas tablas cuatro veces** con ventanas distintas. Son la mayor parte de lo que queda. Se podrían resolver en **una sola pasada** agregando con `FILTER` por ventana, porque las cuatro caben dentro de [05:00, +1 12:00].
->
-> No se ha hecho porque es reescribir la consulta que sostiene la pantalla más usada del ERP, y el riesgo no compensaba sin que nadie se estuviera quejando de los 3 s.
+### Las cuatro ventanas, una sola lectura de los km
+
+El cockpit necesita cuatro ventanas del mismo día —día, la noche que mide desde mediodía, la jornada entera y la noche de reloj— y eran **cuatro consultas idénticas con distintas horas**. Cada una volvía a barrer `fv_odometro` (1,5 millones de filas) y `fv_ruta`, y a resolver el corte de cada tramo otra vez.
+
+**Lo caro no era agrupar cuatro veces —eso son mil filas—, era LEER cuatro veces.** `kmPorVentanas` lee una vez, acotado por la ventana que envuelve a todas, y a partir de ahí cada CTE lleva su `codigo`.
+
+| | antes | ahora |
+|---|---|---|
+| Consultas de la pantalla | 45 | **42** |
+| SQL sumado | 31,7 s | **14,6 s** |
+| Las de km | 20,9 s en 4 consultas | **5,9 s en 1** |
+
+> [!warning] La fuente se elige POR VENTANA, no una vez para todas
+> Un coche puede tener odómetro suficiente en la jornada entera y no tenerlo en la franja de noche, y ahí la vara de medir cambia. Por eso `fuente` agrupa por `(codigo, unit_id)`. Fundirla en una sola elección habría cambiado números sin que se notara.
+
+Lo demás —los minutos por situación y los efectivos— **sigue yendo por ventana a propósito**: son consultas de décimas sobre `fv_tramo`, así que fundirlas añadiría riesgo sin ganar tiempo.
+
+Y si la pasada única falla, cada turno vuelve a preguntárselo por su cuenta: más lento, pero la pantalla sigue en pie.
+
+> [!note] Que dan lo mismo está comprobado
+> Comparadas las dos formas en **cuatro días ya cerrados** —donde `now()` no entra y el resultado es determinista— y en **2.057 filas de persona-turno**: idénticas, campo por campo, incluidos los km, la fuente, las matrículas y la primera y última hora.
+
+> [!warning] El reloj bajó menos que el trabajo
+> De 3,9 s a 3,3 s de mediana, con las vueltas entre 2,8 y 7,2 s. Lo que de verdad cambió es que la base hace **la mitad de trabajo**, y eso lo nota todo lo demás que la comparte —la ingesta de cada cinco minutos, las otras pantallas—, no solo esta.
 
 ## Ver también
 
