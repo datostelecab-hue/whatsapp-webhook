@@ -69,6 +69,7 @@ const CATALOGO = [
       { clave: '/control/reportes', etiqueta: 'Reportes de control' },
     ] },
     { clave: '/visibilidad', etiqueta: 'Visibilidad' },
+    { clave: '/mapa',        etiqueta: 'Mapa de flota' },
     { clave: '/cobertura',   etiqueta: 'Cobertura' },
     { clave: '/generador',   etiqueta: 'Generar vacantes' },
   ] },
@@ -316,7 +317,8 @@ function semillaDeRol(rol) {
 
     // Operaciones es el control de lo que pasa en la calle.
     case 'operaciones': return [...G('General'), ...G('Operaciones'), ...G('Taller'),
-      '/control', '/control/historico', '/control/km', '/control/reportes', '/visibilidad', '/bitacora']
+      '/control', '/control/historico', '/control/km', '/control/reportes', '/visibilidad',
+      '/mapa', '/bitacora']
       .filter(c => c !== '/documentos');
 
     // Dirección lo ve TODO, pero por la matriz y no por `acceso_total`: así se

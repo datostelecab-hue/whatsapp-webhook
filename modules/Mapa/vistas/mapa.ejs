@@ -1,0 +1,394 @@
+<!-- ============================================================
+     MAPA DE FLOTA — piloto
+     ============================================================
+     Dónde está cada coche (Mapon) y si hay alguien dando servicio (BOLT), en la
+     misma pantalla. Lo que se busca es el rojo: un coche que rueda sin que
+     nadie esté conectado.
+
+     SIN `p-4`: el `<main>` del layout no lleva padding, así que el mapa va a
+     sangre simplemente no poniéndolo. La barra de arriba mide h-14 = 3.5rem.
+-->
+<div class="h-[calc(100vh-3.5rem)] flex flex-col">
+
+  <!-- ── La cinta: el recuento es el resumen, y se pincha para filtrar ── -->
+  <div class="flex items-center gap-2 px-4 py-2 border-b border-telecab-border
+              bg-telecab-card/60 backdrop-blur-sm shrink-0 flex-wrap">
+    <div id="m-chips" class="flex items-center gap-1.5 flex-wrap"></div>
+    <div class="flex-1"></div>
+    <p id="m-frescura" class="text-[11px] text-telecab-muted tabular-nums"
+       title="Cuándo se pidió la última posición a Mapon.&#10;La vuelta va cada 30 segundos, pero el equipo del coche solo habla cada minuto aproximadamente: pedir más a menudo no daría un dato más nuevo."></p>
+    <button id="m-recargar" title="Pedir la posición ahora, sin esperar al refresco"
+            class="px-2.5 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted
+                   hover:text-telecab-gold hover:border-telecab-gold transition">
+      <i class="fa-solid fa-rotate"></i>
+    </button>
+  </div>
+
+  <div class="flex-1 flex min-h-0">
+
+    <!-- ── La lista. NO es un Listado de la casa a propósito: no es una
+             pantalla que liste, es el índice del mapa —se pincha para volar a
+             un coche— y el componente trae tabla, paginación, KPIs y ficha,
+             que aquí estorban. Ver el LEEME del módulo. ── -->
+    <aside id="m-panel" class="w-72 shrink-0 border-r border-telecab-border
+                               bg-telecab-card/40 overflow-y-auto hidden md:block">
+      <div id="m-lista" class="p-2 space-y-1"></div>
+    </aside>
+
+    <!-- EL MAPA VA DE `flex-1`, NO DE `absolute inset-0`.
+         MapLibre le pone `position: relative` a su propio contenedor, y su hoja
+         de estilos se carga despues de Tailwind, asi que gana ella: el
+         `absolute` se pierde, el `inset-0` deja de sujetar nada y la altura pasa
+         a depender del lienzo, que a su vez depende de la altura. El bucle
+         acababa en un mapa de 2.756 px que se salia de la pantalla.
+         De `flex-1` la altura la decide el padre y no hay bucle posible. -->
+    <div class="flex-1 flex flex-col min-h-0 relative">
+      <div id="m-mapa" class="flex-1 min-h-0"></div>
+      <div id="m-error"
+           class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-2 rounded-xl
+                  border border-telecab-red/40 bg-telecab-red/10 text-sm text-telecab-red"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LA HOJA DE MAPLIBRE VA ANTES QUE LA NUESTRA, Y NO ES UN DETALLE.
+     Las dos definen `.maplibregl-popup-content` con la misma especificidad, asi
+     que decide el ORDEN: con la suya cargada despues, el globo salia con FONDO
+     BLANCO sobre un tema oscuro —el `color` si se aplicaba, el `background` no—
+     y el texto quedaba ilegible. Poniendola primero, lo nuestro manda. -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.css">
+
+<style>
+  /* El punto del coche. Se mueve con `transform`, así que el navegador lo
+     anima en la tarjeta gráfica y ciento y pico puntos no cuestan nada. */
+  .m-coche {
+    width: 26px; height: 26px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 999px; border: 2px solid rgb(var(--tc-dark));
+    box-shadow: 0 1px 4px rgb(0 0 0 / .45);
+    transition: box-shadow .15s ease, filter .15s ease;
+  }
+  .m-coche:hover { filter: brightness(1.15); box-shadow: 0 0 0 4px rgb(var(--tc-gold) / .30); }
+  .m-coche i { font-size: 11px; color: rgb(var(--tc-dark)); }
+
+  /* EL QUE RUEDA SIN NADIE LATE. Con cien puntos quietos en pantalla, un rojo
+     más entre ellos no se ve; lo que se ve es lo que se mueve. Late solo ese:
+     si latieran todos, no destacaría ninguno. */
+  .m-coche.m-suelto { animation: m-latido 1.6s ease-in-out infinite; }
+  @keyframes m-latido {
+    0%, 100% { box-shadow: 0 0 0 0   rgb(var(--tc-red) / .55); }
+    50%      { box-shadow: 0 0 0 9px rgb(var(--tc-red) / 0); }
+  }
+  /* Quien pidió menos movimiento en su sistema no quiere que una pantalla se
+     lo salte. El rojo ya distingue; el latido solo ayuda a encontrarlo. */
+  @media (prefers-reduced-motion: reduce) { .m-coche.m-suelto { animation: none; } }
+
+  /* El que lleva rato sin hablar se pinta a medias: no es dónde está, es dónde
+     estuvo, y eso tiene que notarse sin leer nada. */
+  .m-coche.m-perdido { opacity: .45; border-style: dashed; }
+
+  .maplibregl-popup-content {
+    background: rgb(var(--tc-card)); color: rgb(var(--tc-text));
+    border: 1px solid rgb(var(--tc-border)); border-radius: 14px;
+    padding: 10px 12px; font-size: 12px; box-shadow: 0 8px 28px rgb(0 0 0 / .45);
+  }
+  .maplibregl-popup-tip { border-top-color: rgb(var(--tc-card)) !important;
+                          border-bottom-color: rgb(var(--tc-card)) !important; }
+  .maplibregl-popup-close-button { color: rgb(var(--tc-muted)); font-size: 16px; padding: 2px 7px; }
+  .maplibregl-ctrl-group { background: rgb(var(--tc-card)) !important;
+                           border: 1px solid rgb(var(--tc-border)) !important; }
+  .maplibregl-ctrl-group button + button { border-top: 1px solid rgb(var(--tc-border)) !important; }
+  .maplibregl-ctrl-attrib { font-size: 10px; }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const esc = (window.Listado && Listado.fmt && Listado.fmt.esc) || (x => String(x == null ? '' : x));
+
+  // ── Los colores salen de los TOKENS, no de una lista de hex ──────────────
+  // Hay quince temas y el oro pasa de #F4963C a #C96C14 al cambiar a claro. Un
+  // marcador con el color escrito a mano se vuelve ilegible en la mitad de
+  // ellos; leyendo el token se adapta solo, también al cambiarlo en caliente.
+  const raiz = document.documentElement;
+  const cv = (n, a) => {
+    const v = getComputedStyle(raiz).getPropertyValue(n).trim();
+    return a == null ? 'rgb(' + v + ')' : 'rgb(' + v + ' / ' + a + ')';
+  };
+
+  const TONOS = {
+    trabajando: { tk: '--tc-green', icono: 'fa-taxi',                 texto: 'Trabajando' },
+    descanso:   { tk: '--tc-warn',  icono: 'fa-mug-hot',              texto: 'Rueda en descanso' },
+    suelto:     { tk: '--tc-red',   icono: 'fa-triangle-exclamation', texto: 'Rueda sin nadie' },
+    parado:     { tk: '--tc-muted', icono: 'fa-circle',               texto: 'Parado' },
+    perdido:    { tk: '--tc-border',icono: 'fa-question',             texto: 'Sin señal' },
+  };
+  const ORDEN = ['suelto', 'descanso', 'trabajando', 'parado', 'perdido'];
+  const CLASES_TONO = ORDEN.map(k => 'm-' + k);
+
+  const hhmm = s => {
+    if (s == null) return '';
+    const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+    return h ? h + ' h ' + String(m).padStart(2, '0') : m + ' min';
+  };
+  const hace = s => (s == null ? 'sin dato' : s < 90 ? s + ' s' : hhmm(s));
+
+  // ── El fondo del mapa, según el tema ─────────────────────────────────────
+  // No hay una lista de "temas claros" que mantener: se mira la LUMINANCIA del
+  // color de fondo de la casa. Sirve para los quince de hoy y para el que se
+  // añada mañana sin tocar esto.
+  function estiloDelTema() {
+    const v = getComputedStyle(raiz).getPropertyValue('--tc-dark').trim().split(/\s+/).map(Number);
+    const luz = v.length === 3 ? (0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]) : 0;
+    return 'https://tiles.openfreemap.org/styles/' + (luz > 128 ? 'positron' : 'dark');
+  }
+
+  let mapa = null, listo = false;
+  const marcas = new Map();          // unidad → { marker, el, datos }
+  let DATOS = [];
+  let filtro = null;                 // tono elegido en la cinta, o null = todos
+  let seq = 0;                       // descarta respuestas que llegan tarde
+  let primera = true;
+
+  // ── Arranque del mapa ────────────────────────────────────────────────────
+  function arrancar() {
+    mapa = new maplibregl.Map({
+      container: 'm-mapa',
+      style: estiloDelTema(),
+      center: [-3.70, 40.42],        // Madrid, hasta que lleguen los coches
+      zoom: 9.5,
+      attributionControl: { compact: true },
+    });
+    mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
+    mapa.on('load', () => { listo = true; pintar(); });
+
+    // MapLibre mide su lienzo UNA vez y no vuelve a mirar. Sin esto, el mapa se
+    // queda con el tamaño que tuviera al arrancar: al esconderse la lista en
+    // pantalla estrecha, o al cambiar la ventana de tamaño, quedaria una franja
+    // gris al lado. `resize` es barato y solo se dispara cuando cambia de
+    // verdad.
+    new ResizeObserver(() => { if (mapa) mapa.resize(); }).observe($('#m-mapa'));
+
+    // El tema se puede cambiar sin recargar, y el mapa tiene que enterarse.
+    // Los marcadores NO se pierden al cambiar de estilo: viven fuera de él.
+    new MutationObserver(() => {
+      const nuevo = estiloDelTema();
+      if (mapa && mapa.__estilo !== nuevo) { mapa.__estilo = nuevo; mapa.setStyle(nuevo); }
+      repintarColores();
+    }).observe(raiz, { attributes: true, attributeFilter: ['data-theme'] });
+    mapa.__estilo = estiloDelTema();
+  }
+
+  /** El globito que sale al pinchar un coche. */
+  function ficha(c) {
+    const t = TONOS[c.tono] || TONOS.parado;
+    const lineas = [];
+    if (c.conductor) lineas.push('<i class="fa-solid fa-user w-4 text-telecab-muted"></i> ' + esc(c.conductor));
+    if (c.situacionEtiqueta) {
+      lineas.push('<i class="fa-solid fa-signal w-4 text-telecab-muted"></i> ' + esc(c.situacionEtiqueta)
+        + (c.desdeHace != null ? ' <span class="text-telecab-muted">· ' + hhmm(c.desdeHace) + '</span>' : ''));
+    } else {
+      lineas.push('<i class="fa-solid fa-signal w-4 text-telecab-muted"></i> <span class="text-telecab-muted">no está en BOLT</span>');
+    }
+    lineas.push('<i class="fa-solid fa-gauge-high w-4 text-telecab-muted"></i> '
+      + (c.velocidad == null ? '—' : c.velocidad + ' km/h')
+      + (c.km != null ? ' <span class="text-telecab-muted">· ' + c.km + ' km en el tramo</span>' : ''));
+    lineas.push('<i class="fa-solid fa-satellite-dish w-4 text-telecab-muted"></i> <span class="text-telecab-muted">'
+      + 'hace ' + hace(c.antiguedad) + '</span>');
+    if (!c.deLaFlota) {
+      lineas.push('<i class="fa-solid fa-circle-question w-4 text-telecab-warn"></i> '
+        + '<span class="text-telecab-warn">este equipo no es un coche del ERP</span>');
+    }
+    if (c.telefono) {
+      lineas.push('<a href="tel:' + esc(c.telefono) + '" class="text-telecab-gold">'
+        + '<i class="fa-solid fa-phone w-4"></i> ' + esc(c.telefono) + '</a>');
+    }
+    return '<p class="font-bold text-sm mb-1">' + esc(c.matricula || '#' + c.unidad)
+      + ' <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded" style="background:' + cv(t.tk, .18)
+      + ';color:' + cv(t.tk) + '">' + esc(t.texto) + '</span></p>'
+      + (c.motivo ? '<p class="text-[11px] text-telecab-red mb-1.5">' + esc(c.motivo) + '</p>' : '')
+      + '<div class="space-y-0.5">' + lineas.map(l => '<p>' + l + '</p>').join('') + '</div>';
+  }
+
+  /** Vuelve a dar color a los puntos ya pintados (al cambiar de tema). */
+  function repintarColores() {
+    marcas.forEach(m => {
+      const t = TONOS[m.datos.tono] || TONOS.parado;
+      m.el.style.background = cv(t.tk);
+    });
+  }
+
+  // ── Pintar: mover lo que ya está, no rehacerlo ───────────────────────────
+  // Se conserva el marcador y solo se le cambia el sitio y el color. Recrear
+  // ciento y pico cada treinta segundos daría un parpadeo en cada refresco y
+  // cerraría el globito que alguien estuviera leyendo justo entonces.
+  function pintar() {
+    if (!listo) return;
+    const vistos = new Set();
+
+    DATOS.forEach(c => {
+      if (filtro && c.tono !== filtro) return;
+      vistos.add(c.unidad);
+      const t = TONOS[c.tono] || TONOS.parado;
+      let m = marcas.get(c.unidad);
+
+      if (!m) {
+        const el = document.createElement('div');
+        el.className = 'm-coche';
+        el.innerHTML = '<i class="fa-solid"></i>';
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([c.lng, c.lat])
+          .setPopup(new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '260px' }))
+          .addTo(mapa);
+        m = { marker, el, datos: c };
+        marcas.set(c.unidad, m);
+      } else {
+        m.marker.setLngLat([c.lng, c.lat]);
+      }
+
+      m.datos = c;
+      m.el.style.background = cv(t.tk);
+      // CON `classList`, NUNCA CON `className`.
+      //
+      // MapLibre le añade al elemento su propia clase `maplibregl-marker`, que
+      // es la que lleva el `position: absolute`. Escribir `className` entera la
+      // borraba: el marcador se quedaba en `static`, el `transform` que lo
+      // coloca dejaba de tener efecto y los ciento y pico puntos se apilaban en
+      // una columna que bajaba de Madrid a Gibraltar. Las coordenadas estaban
+      // bien todo el rato; lo que faltaba era una palabra en el atributo.
+      m.el.classList.remove.apply(m.el.classList, CLASES_TONO);
+      m.el.classList.add('m-coche', 'm-' + c.tono);
+      m.el.title = (c.matricula || '#' + c.unidad) + ' · ' + t.texto;
+      m.el.querySelector('i').className = 'fa-solid ' + t.icono;
+      // El contenido se rehace siempre: los segundos de "hace" corren.
+      m.marker.getPopup().setHTML(ficha(c));
+    });
+
+    // Lo que ya no sale (por el filtro, o porque Mapon dejó de verlo) se quita.
+    marcas.forEach((m, k) => { if (!vistos.has(k)) { m.marker.remove(); marcas.delete(k); } });
+
+    // Solo la PRIMERA vez se encuadra la flota. Después no: alguien puede estar
+    // mirando una calle concreta y que el mapa salte cada treinta segundos
+    // haría la pantalla inservible.
+    //
+    // Y SE ENCUADRA DONDE ESTÁ LA FLOTA, NO DONDE LLEGAN LOS EXTREMOS. Hay
+    // coches en Barcelona: encuadrar hasta el último abría el mapa de Madrid al
+    // Mediterráneo y no se distinguía un punto de otro. Se toma la MEDIANA y se
+    // encuadra lo que cae a menos de medio grado (unos 55 km) de ella. Los de
+    // fuera siguen en el mapa y en la lista, solo que hay que ir a por ellos
+    // —o pinchar su fila, que vuela hasta él—.
+    //
+    // La mediana y no la media: con cien coches en Madrid y cinco en Barcelona,
+    // la media se va hacia Zaragoza. La mediana se queda donde está la gente, y
+    // el día que la mayoría sea de Barcelona se irá sola allí.
+    if (primera && DATOS.length) {
+      const mediana = v => v.slice().sort((a, b) => a - b)[Math.floor(v.length / 2)];
+      const clat = mediana(DATOS.map(c => c.lat));
+      const clng = mediana(DATOS.map(c => c.lng));
+      const cerca = DATOS.filter(c => Math.abs(c.lat - clat) < 0.5 && Math.abs(c.lng - clng) < 0.5);
+      const b = new maplibregl.LngLatBounds();
+      (cerca.length ? cerca : DATOS).forEach(c => b.extend([c.lng, c.lat]));
+      mapa.fitBounds(b, { padding: 60, maxZoom: 13, duration: 0 });
+      primera = false;
+    }
+  }
+
+  function pintarChips(cuenta) {
+    $('#m-chips').innerHTML = ORDEN.map(k => {
+      const t = TONOS[k], n = cuenta[k] || 0;
+      const activo = filtro === k;
+      return '<button data-tono="' + k + '" title="' + esc(t.texto) + '. Pincha para ver solo estos."'
+        + ' class="px-2 py-1 rounded-lg text-[11px] font-semibold border transition tabular-nums'
+        + (activo ? ' ring-2' : '') + '"'
+        + ' style="border-color:' + cv(t.tk, .45) + ';background:' + cv(t.tk, activo ? .28 : .12)
+        + ';color:' + cv(t.tk) + (activo ? ';--tw-ring-color:' + cv(t.tk, .5) : '') + '">'
+        + '<i class="fa-solid ' + t.icono + ' mr-1"></i>' + n + ' ' + esc(t.texto) + '</button>';
+    }).join('');
+  }
+
+  function pintarLista() {
+    // Los que importan primero: sueltos, luego descanso, luego el resto.
+    const vis = DATOS.filter(c => !filtro || c.tono === filtro)
+      .sort((a, b) => ORDEN.indexOf(a.tono) - ORDEN.indexOf(b.tono)
+        || String(a.matricula || '').localeCompare(String(b.matricula || '')));
+    if (!vis.length) {
+      $('#m-lista').innerHTML = '<p class="text-xs text-telecab-muted p-2">Ninguno.</p>';
+      return;
+    }
+    $('#m-lista').innerHTML = vis.map(c => {
+      const t = TONOS[c.tono] || TONOS.parado;
+      return '<button data-unidad="' + c.unidad + '"'
+        + ' class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition flex items-center gap-2">'
+        + '<span class="w-2 h-2 rounded-full shrink-0" style="background:' + cv(t.tk) + '"></span>'
+        + '<span class="min-w-0 flex-1">'
+        + '<span class="block text-xs font-semibold truncate">' + esc(c.matricula || '#' + c.unidad) + '</span>'
+        + '<span class="block text-[10px] text-telecab-muted truncate">'
+        + esc(c.conductor || (c.situacion ? '—' : 'no está en BOLT')) + '</span></span>'
+        + (c.velocidad ? '<span class="text-[10px] text-telecab-muted tabular-nums shrink-0">'
+            + c.velocidad + '</span>' : '') + '</button>';
+    }).join('');
+  }
+
+  // ── Traer el fotograma ───────────────────────────────────────────────────
+  async function cargar(forzar) {
+    const mio = ++seq;
+    try {
+      const r = await (await fetch('/mapa/api/coches' + (forzar ? '?forzar=1' : ''))).json();
+      // Si mientras tanto se pidió otro, este ya es viejo: no pisa al nuevo.
+      if (mio !== seq) return;
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar');
+      $('#m-error').classList.add('hidden');
+      DATOS = r.coches || [];
+      pintarChips(r.cuenta || {});
+      pintarLista();
+      pintar();
+      const f = r.frescura || {};
+      $('#m-frescura').textContent = f.unidades
+        ? f.unidades + ' equipos · última posición hace ' + hace(f.hace)
+        : 'todavía no hay ninguna posición guardada';
+    } catch (e) {
+      if (mio !== seq) return;
+      // El error se pinta EN la pantalla, no en un aviso que hay que cerrar:
+      // esto se refresca solo cada treinta segundos y un modal por cada fallo
+      // de red sería imposible de usar.
+      const av = $('#m-error');
+      av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i>'
+        + esc(e.message) + ' · lo vuelve a intentar en 30 s';
+      av.classList.remove('hidden');
+    }
+  }
+
+  // ── Enganches ────────────────────────────────────────────────────────────
+  $('#m-chips').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tono]');
+    if (!b) return;
+    filtro = filtro === b.dataset.tono ? null : b.dataset.tono;
+    pintarChips(DATOS.reduce((a, c) => { a[c.tono] = (a[c.tono] || 0) + 1; return a; }, {}));
+    pintarLista();
+    pintar();
+  });
+
+  $('#m-lista').addEventListener('click', e => {
+    const b = e.target.closest('button[data-unidad]');
+    if (!b) return;
+    const m = marcas.get(Number(b.dataset.unidad));
+    if (!m) return;
+    mapa.flyTo({ center: m.marker.getLngLat(), zoom: Math.max(mapa.getZoom(), 14), duration: 700 });
+    m.marker.togglePopup();
+  });
+
+  $('#m-recargar').addEventListener('click', () => cargar(true));
+
+  arrancar();
+  cargar(false);
+  // Cada 30 s, igual que la vuelta que pide a Mapon. Más a menudo sería pedir
+  // lo mismo: el equipo del coche habla cada minuto aproximadamente.
+  setInterval(() => { if (!document.hidden) cargar(false); }, 30000);
+  // Al volver a la pestaña, el dato puede llevar rato parado. Se refresca al
+  // momento en vez de esperar hasta treinta segundos con algo viejo delante.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(false); });
+})();
+</script>

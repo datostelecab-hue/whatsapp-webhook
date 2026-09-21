@@ -44,6 +44,27 @@ La ingesta va **de una unidad en una** —la API no deja pedir la flota de un go
 
 > Los dos caminos para decidir «activo» no sobran: con uno solo se cae justo el coche que más falta hace. El **0454MMZ**, con el GPS medio muerto, apenas tiene trayectos — y es precisamente donde el odómetro salva el dato.
 
+### `fv_posicion` — dónde está cada coche AHORA (21/09/2026)
+
+La excepción a la regla de arriba: **no es un tramo, es una foto**, y se
+sobreescribe. Una fila por unidad de Mapon, 88 kB con la flota entera, y no
+crece nunca.
+
+Existe para [[Mapa de flota]]. La posición ya llegaba en cada vuelta —
+`unit/list.json` la trae junto al estado y el odómetro — y el código la leía y
+la tiraba; lo único que faltaba era guardarla.
+
+La clave es `mapon_unit` y **no la matrícula**: hay unidades sin matrícula,
+matrículas repetidas en dos equipos (el `3031LTV` tiene dos) y equipos que no
+son coches de la flota.
+
+La escribe `services/flotaViva/posiciones.js`, con **vuelta propia cada 30
+segundos** —apagada por defecto, `MAPA_CRON=on`— aparte del motor: este corre
+cada 5 minutos porque eso es lo que vale para medir horas y km.
+
+> No guarda rastro. Serían 256.000 filas al día, y el recorrido ya lo tiene
+> Mapon y los km ya están en `fv_ruta` y `fv_odometro`.
+
 ## De dónde salen los km: del cuadro si se puede, del GPS si no
 
 La elección es **por coche y por ventana**, no una configuración. Está en la constante `FUENTE_KM` de `services/flotaViva/rutas.js`.

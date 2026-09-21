@@ -20,6 +20,12 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **El ticket RH-20260918-10618 de Soufyane El Hadri sigue pendiente**, a propósito. Aplicarlo ya funciona (probado de punta a punta con ese mismo ticket, y deshecho sin dejar rastro), pero **una baja médica la cuentan la bitácora y la nómina**: la aplica Ricardo cuando quiera y con las fechas que quiera. Basta con darle a **Aplicar**.
 - **Cristian Jiménez García (id 407) se borró entero de la base** el 21/09, a petición de Ricardo: nunca trabajó y no llegó a estar en BOLT. Se fueron sus 4 días de cuadrante, sus 2 asignaciones (plazas 45 y 471, que quedan libres) y su ficha; en cascada cayeron su empleo, su turno, su teléfono, sus 5 calificaciones, su rendimiento, sus 3 llamadas y **su candidatura ETT de la solicitud 5**, que baja de 4 candidatos a 3. Hay copia de las 20 filas en `Documentos/Claude/Scripts de análisis/copia-conductor-407-cristian-jimenez.json` por si hay que devolver algo.
 
+## El piloto del mapa (21/09/2026)
+
+- **Hay que poner `MAPA_CRON=on` en Render** para que [[Mapa de flota]] refresque cada 30 segundos. Sin esa variable la pantalla funciona igual, pero enseña la última posición que se guardara, no la de ahora. Es lo primero que hay que encender para probarlo, y lo primero que hay que apagar si molesta.
+- **Los 11 en rojo del 21/09 no son un fallo del mapa.** Cinco son equipos que no casan con ningún coche del ERP —`1159283703`, `7136LGM`, `9037LJR`, `9133KZF` y la segunda unidad del `3031LTV`— y los otros seis son conductores rodando con la aplicación cerrada. El del `0730MMZ` llevaba **15 h desconectado y 47,4 km**. Decidir qué se hace con cada caso es de Operaciones, no del piloto.
+- **`3031LTV` sigue con DOS unidades de Mapon**, y en el mapa salen las dos con la misma matrícula. Ya estaba apuntado; el mapa lo hace visible.
+
 ## Cabos sueltos del alta (18/09/2026)
 
 - **32 fichas en «Listo para RRHH»** de antes del cambio. Su bandeja sigue funcionando; la duda es si se marcan como alta en bloque o se dejan vaciar a mano.

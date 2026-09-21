@@ -87,7 +87,13 @@ app.use((req, res, next) => {
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
-    "img-src 'self' data:; media-src 'self'; connect-src 'self'; " +
+    // LOS MOSAICOS DEL MAPA. MapLibre pide los trozos del mapa por `fetch`, asi
+    // que caen en `connect-src`, y los dibuja en un Worker creado desde un
+    // blob. Sin estas dos, el mapa de flota se queda en gris.
+    // OpenFreeMap: sin clave, sin cuenta y sin limite de vistas.
+    "img-src 'self' data: blob:; media-src 'self'; " +
+    "connect-src 'self' https://tiles.openfreemap.org; " +
+    "worker-src 'self' blob:; child-src 'self' blob:; " +
     "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'");
 
   next();
@@ -241,6 +247,7 @@ app.get('/conductores', (req, res) => res.redirect(301, '/plantilla'));
 app.use('/documentos', documentosRoutes);
 app.use('/control', controlRoutes);
 app.use('/visibilidad', require('./routes/visibilidad'));
+app.use('/mapa', require('./modules/Mapa/mapa.controller'));   // piloto: la flota en el mapa
 app.use('/alertas', require('./modules/Control/alertas.controller'));
 app.use('/bi', require('./routes/bi'));   // inteligencia de negocio (solo dirección)
 app.use('/vacantes', vacantesRoutes);
@@ -801,6 +808,46 @@ programar('*/5 8-13,20-23,0-1 * * *', async () => {
     console.error(`❌ [CRON Alertas] ${error.stack || error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
+
+// ============================================================
+// MAPA EN VIVO — la posicion de la flota, cada 30 segundos (PILOTO)
+// ============================================================
+// SEIS CAMPOS, no cinco: el primero son los segundos. Es la tarea mas rapida
+// del sistema, y va aparte del motor de Flota viva a proposito — ese corre cada
+// 5 minutos porque eso es lo que vale para medir horas y km, y arrastrarlo
+// entero cada 30 segundos seria diez veces el trabajo para el mismo resultado.
+// Esta hace UNA llamada a Mapon y UNA escritura.
+//
+// POR QUE 30 Y NO 5 SEGUNDOS: mas rapido no da mas verdad. Medido el 21/09/2026
+// pidiendo dos veces con un minuto de diferencia, el equipo del coche renueva
+// cada ~67 s de media. Preguntar cada 5 s serian 17.280 llamadas al dia para
+// recibir lo mismo.
+//
+// APAGADO POR DEFECTO. Se enciende con MAPA_CRON=on, igual que las sanciones:
+// es un piloto, y lo primero que hay que poder hacer con un piloto es pararlo
+// sin desplegar nada.
+//
+// EL TRY/CATCH NO ES DECORATIVO: node-cron captura el rechazo de la promesa y
+// lo emite como 'task-failed' sobre un EventEmitter que nadie escucha, asi que
+// sin esto un fallo desaparece sin dejar una sola linea en el log.
+if (process.env.MAPA_CRON === 'on') {
+  programar('*/30 * * * * *', async () => {
+    try {
+      const bd = require('./services/db');
+      if (!bd.HAY_BD) return;
+      const r = await require('./services/flotaViva/posiciones').refrescar();
+      // Que se salte una vuelta no es un error: es el anti-solape haciendo su
+      // trabajo cuando Mapon ha tardado mas de 30 s en contestar.
+      if (r.saltado) return;
+      require('./modules/Mapa/mapa.service').olvidar();
+    } catch (error) {
+      console.error(`❌ [CRON Mapa] ${error.stack || error.message}`);
+    }
+  }, { timezone: 'Europe/Madrid' });
+  console.log('🗺️  [Mapa] Posiciones cada 30 s ACTIVADO');
+} else {
+  console.log('⏸️  [Mapa] Sin MAPA_CRON=on: el mapa enseñara la ultima posicion guardada');
+}
 
 // ============================================================
 // INICIAR SERVIDOR

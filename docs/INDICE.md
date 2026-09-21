@@ -41,6 +41,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Calificacion de conductores]]** — Una letra por conductor y periodo. Es lo que Tráfico ve al lado del nombre —*"Juan Manuel Akieme (9,4 h · A)"*— en el planificador, en el cockpit, en las campañas y en el reporte de…
 - **[[Conductores]]** — Quién trabaja aquí y en qué condiciones: la ficha de la persona, su contrato, sus papeles y su cuenta de BOLT.
 - **[[Control Alertas]] · [[Control Coches sin cuadrante]]** — /alertas es la vigilancia de las franjas críticas: cuando un conductor se pasa de la raya, un WhatsApp a los controladores elegidos.
+- **[[Mapa de flota]]** — PILOTO: dónde está cada coche y si hay alguien dando servicio, en la misma pantalla. Lo que se busca es el rojo: rueda y nadie conectado.
 - **[[Control En directo]]** — El cockpit de tráfico: el plan del cuadrante fundido con lo que rueda ahora mismo, para contestar una sola pregunta — a quién hay que llamar.
 - **[[Control Reportes]]** — /control/reportes es solo descargables: cada tarjeta baja un Excel o un PDF y nada se mira en pantalla.
 - **[[Control]]** — Control es el puesto de tráfico del ERP: quién tenía que salir, quién salió, a quién se llamó y qué contestó.

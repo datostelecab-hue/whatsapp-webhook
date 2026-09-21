@@ -1303,6 +1303,61 @@ aplicación. Lo mismo con `prompt`, `alert`, `confirm` y `<select>`.
 **La regla:** si el navegador trae una versión de algo, la casa tiene la suya.
 → [[Componentes de la casa]]
 
+## MapLibre: tres formas de que el mapa no salga
+
+### Escribir `className` entero le borra al marcador su clase de MapLibre
+
+`modules/Mapa/vistas/mapa.ejs`
+
+MapLibre le añade al elemento del marcador su propia clase `maplibregl-marker`,
+que es la que lleva el `position: absolute`. Repintar el estado con
+`el.className = 'm-coche m-' + tono` **la borra**: el marcador se queda en
+`static`, el `transform` que lo coloca deja de tener efecto, y los ciento y pico
+puntos se apilan en una columna vertical.
+
+Lo desconcertante es que **las coordenadas están bien todo el rato** — el
+`transform` del elemento decía `translate(372px, 292px)`, correcto — así que
+mirar los datos no lleva a ninguna parte. Lo que lo delata es mirar el
+`position` computado.
+
+**Remedio:** `classList.add` / `classList.remove`, nunca `className =`.
+
+### La hoja de MapLibre carga DESPUÉS de la tuya y gana ella
+
+`modules/Mapa/vistas/mapa.ejs`
+
+Las dos definen `.maplibregl-popup-content` con la misma especificidad, así que
+decide el orden. Con el `<link>` de MapLibre detrás del `<style>` propio, el
+globo salía con **fondo blanco** sobre un tema oscuro: el `color` sí se aplicaba
+—MapLibre no lo declara— y el `background` no. Texto claro sobre blanco.
+
+**Remedio:** el `<link>` de la librería ANTES del `<style>` propio.
+
+### `absolute inset-0` no sujeta un mapa: MapLibre le pone `position: relative`
+
+`modules/Mapa/vistas/mapa.ejs`
+
+Su clase `.maplibregl-map` declara `position: relative`, que pisa al `absolute`.
+Entonces `inset-0` deja de sujetar nada, la altura pasa a depender del lienzo y
+el lienzo de la altura: el bucle acababa en un mapa de **2.756 px** que se salía
+de la pantalla.
+
+**Remedio:** que el contenedor del mapa sea un `flex-1 min-h-0` dentro de una
+columna de altura conocida. Así la altura la decide el padre y no hay bucle.
+
+### La isla nula: un GPS sin cobertura no manda «no sé», manda 0,0
+
+`services/flotaViva/fuentes.js`
+
+Cero es un punto real en el Atlántico frente a Ghana, y es un número
+perfectamente válido: no lo filtra ninguna comprobación de tipo. Se guarda, se
+pinta, y al encuadrar la flota **el mapa se abre de Madrid a África** y no se ve
+un solo coche.
+
+Pasa de verdad: dos unidades de la cuenta de Mapon, las dos en estado `nodata`.
+
+**Remedio:** descartar `(0, 0)` al ingerir, no al pintar.
+
 ### `lista` y `opciones` se pintan igual y devuelven cosas distintas
 
 `public/assets/js/dialogo.js` · toda vista que pida datos

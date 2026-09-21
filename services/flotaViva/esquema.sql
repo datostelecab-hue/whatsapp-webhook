@@ -687,4 +687,46 @@ COMMENT ON TABLE fv_odometro IS
 COMMENT ON COLUMN fv_odometro.metros IS
   'Diferencia de odometro entre las dos lecturas. Nunca negativa y nunca un salto imposible: eso se filtra al ingerir';
 
+-- ============================================================
+-- DONDE ESTA CADA COCHE, AHORA (piloto del mapa)
+-- ============================================================
+-- UNA FILA POR UNIDAD DE MAPON, QUE SE SOBREESCRIBE. No es un historico: es una
+-- foto que se reemplaza cada vuelta. Por eso la tabla pesa 88 kB con la flota
+-- entera y no crece nunca.
+--
+-- POR QUE NO SE GUARDA EL RASTRO. Guardar cada posicion serian 89 coches x 2.880
+-- vueltas = 256.000 filas al dia, y para que: el recorrido ya lo tiene Mapon en
+-- `route/list` y los km ya estan en `fv_ruta` y `fv_odometro`. Lo unico que aqui
+-- no habia era el AHORA.
+--
+-- LA CLAVE ES `mapon_unit`, NO LA MATRICULA. Hay unidades sin matricula, hay
+-- matriculas repetidas en dos equipos (el 3031LTV tiene dos) y hay equipos que
+-- no son coches de la flota. La unidad es lo unico que identifica de verdad; la
+-- matricula viaja al lado para poder leerla.
+--
+-- `visto_at` ES EL RELOJ DEL EQUIPO, no el nuestro: es el `last_update` que da
+-- Mapon. Es lo que permite pintar apagado al que lleva rato sin hablar en vez de
+-- dibujarlo donde estuvo hace tres horas como si fuera ahora. Medido el
+-- 21/09/2026: conduciendo, la mediana de antiguedad son 17 s; parado, 3 min.
+CREATE TABLE IF NOT EXISTS fv_posicion (
+  mapon_unit    BIGINT PRIMARY KEY,
+  matricula     VARCHAR(16),
+  lat           DOUBLE PRECISION NOT NULL,
+  lng           DOUBLE PRECISION NOT NULL,
+  velocidad     SMALLINT,
+  rumbo         SMALLINT,
+  estado_mapon  VARCHAR(16),
+  visto_at      TIMESTAMPTZ NOT NULL,
+  refrescado_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fv_posicion_matricula ON fv_posicion (matricula);
+
+COMMENT ON TABLE fv_posicion IS
+  'Donde esta cada coche AHORA. Una fila por unidad de Mapon, se sobreescribe cada vuelta. No es historico';
+COMMENT ON COLUMN fv_posicion.visto_at IS
+  'El last_update de Mapon: el reloj del EQUIPO. Si es viejo, el coche se pinta apagado en vez de mentir';
+COMMENT ON COLUMN fv_posicion.estado_mapon IS
+  'driving / standing / nodata / nogps / service, tal cual lo dice Mapon';
+
 COMMIT;

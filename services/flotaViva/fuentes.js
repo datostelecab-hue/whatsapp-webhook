@@ -173,6 +173,59 @@ async function flotaMapon() {
 }
 
 /**
+ * DONDE ESTA CADA COCHE, para el mapa. La misma llamada de arriba, mirando los
+ * dos campos que `flotaMapon` tira: `lat` y `lng`.
+ *
+ * VA POR UNIDAD Y NO POR MATRICULA, al reves que `flotaMapon`. Esa indexa por
+ * matricula normalizada y descarta de entrada al que no tiene una —`if (!mat)
+ * return`—, que es lo correcto cuando lo que buscas son los km de un coche de
+ * la flota. Aqui no: un equipo rodando que no casa con ningun coche es
+ * exactamente lo que hay que ver en el mapa, no lo que hay que esconder.
+ * Medido el 21/09/2026: de 108 unidades, 14 no son coches del ERP y cinco de
+ * ellas estaban en marcha.
+ *
+ * Sin `include[]`: el odometro CAN no hace falta para pintar un punto y encarece
+ * la respuesta. Asi son 74 kB y 236 ms.
+ */
+async function posiciones() {
+  const j = await pedirMapon('unit/list.json');
+  return ((j.data && j.data.units) || [])
+    // Sin coordenadas no hay nada que pintar. Pasa con los equipos recien dados
+    // de alta y con los que nunca han cogido GPS.
+    //
+    // Y OJO CON EL 0,0: un equipo sin enganche de satelite no manda "no se",
+    // manda CERO, que es un punto real en el Atlantico frente a Ghana —la
+    // llamada "isla nula"—. Como es un numero perfectamente valido, no lo
+    // filtra ninguna comprobacion de tipo: se guarda, se pinta, y al encuadrar
+    // la flota el mapa se abre de Madrid a Africa y no se ve un coche. Pasa de
+    // verdad con dos unidades de la cuenta, las dos en estado `nodata`.
+    .filter(u => {
+      const la = Number(u.lat), ln = Number(u.lng);
+      if (!Number.isFinite(la) || !Number.isFinite(ln)) return false;
+      if (la === 0 && ln === 0) return false;
+      return Math.abs(la) <= 90 && Math.abs(ln) <= 180;
+    })
+    .map(u => ({
+      unitId: Number(u.unit_id),
+      matricula: normMat(u.number || u.label) || null,
+      lat: Number(u.lat),
+      lng: Number(u.lng),
+      // Redondeados a entero: son SMALLINT en la base y una decima de km/h o de
+      // grado no significa nada. `speed` viene a null en los equipos parados.
+      velocidad: Number.isFinite(Number(u.speed)) ? Math.round(Number(u.speed)) : null,
+      rumbo: Number.isFinite(Number(u.direction)) ? Math.round(Number(u.direction)) : null,
+      // `state` es un OBJETO {name, start, duration}, no una cadena. Tratarlo
+      // como texto daba "[object Object]" en las 144 unidades.
+      estado: txt(u.state && u.state.name ? u.state.name : u.state) || null,
+      senalAt: fecha(u.last_update),
+    }))
+    // Sin hora del equipo no se puede saber si el punto es de ahora o de
+    // anteayer, y pintar un coche donde estuvo hace tres horas es peor que no
+    // pintarlo.
+    .filter(u => u.senalAt);
+}
+
+/**
  * El objeto de Mapon de UNA unidad, sin interpretar nada.
  *
  * Existe porque los km salieron mal y no había forma de saber si el fallo estaba
@@ -283,4 +336,5 @@ async function trayectosFlota(from, till) {
 }
 
 module.exports = {
-  odometroCan, vehiculos, conductores, estados, flotaMapon, crudoDeUnidad, rutasDeUnidad, trayectosFlota, normMat };
+  odometroCan, vehiculos, conductores, estados, flotaMapon, posiciones,
+  crudoDeUnidad, rutasDeUnidad, trayectosFlota, normMat };
