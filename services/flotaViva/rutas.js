@@ -134,7 +134,9 @@ async function ingestarOdometro({ desde, hasta, ventanaDias = 7, soloActivos = f
              OR EXISTS (SELECT 1 FROM fv_tramo t
                          WHERE t.vehiculo_uuid = v.uuid
                            AND t.situacion IN ('viaje','espera','descanso')
-                           AND t.desde < $3::timestamptz AND COALESCE(t.hasta, now()) > $2::timestamptz))
+                           AND t.desde < $3::timestamptz
+                           AND (t.hasta > $2::timestamptz
+                                OR (t.hasta IS NULL AND now() > $2::timestamptz))))
       ORDER BY v.matricula`,
     [!!soloActivos, ini.toISOString(), fin.toISOString()])).rows;
   if (!unidades.length) return { unidades: 0, conCan: 0, tramos: 0, km: 0, sinCan: [], desde: iso(ini), hasta: iso(fin) };
@@ -716,7 +718,8 @@ async function minutosEfectivos(dia, turno = 'operativo') {
        CROSS JOIN v
        JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
        LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
-      WHERE t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
+      -- Sin COALESCE sobre la columna, para que el índice sirva (ver arriba).
+      WHERE t.desde < v.fin AND (t.hasta > v.ini OR (t.hasta IS NULL AND now() > v.ini))
         AND t.desde >= v.ini - interval '${VENTANA_ATRAS}'
       ORDER BY uuid, conductor, desde`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
 
@@ -786,7 +789,7 @@ async function matriculasBoltPorConductor(dia, turno = 'operativo') {
        JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
        LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
       WHERE t.situacion IN ('viaje', 'espera')
-        AND t.desde < v.fin AND COALESCE(t.hasta, now()) > v.ini
+        AND t.desde < v.fin AND (t.hasta > v.ini OR (t.hasta IS NULL AND now() > v.ini))
       GROUP BY conductor, veh.matricula`, [String(dia).slice(0, 10), String(hi), off, String(hf)]);
 
   const porCond = new Map();
@@ -938,7 +941,7 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
          FROM fv_tramo t
          JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid AND veh.matricula = $1
          LEFT JOIN fv_conductor co ON co.uuid = t.conductor_uuid
-        WHERE t.desde < $3 AND COALESCE(t.hasta, now()) > $2
+        WHERE t.desde < $3 AND (t.hasta > $2 OR (t.hasta IS NULL AND now() > $2))
         GROUP BY 1, 2 ORDER BY n DESC`, [mat, win.ini, win.fin])).rows;
 
     // Bifurcación cuando NO hay trayectos en el núcleo: preguntarle a Mapon por la
@@ -1006,7 +1009,7 @@ async function diagnosticoKm(dia, plates = [], turno = 'operativo', opts = {}) {
            FROM fv_tramo t
            JOIN fv_vehiculo veh ON veh.uuid = t.vehiculo_uuid
            JOIN fv_conductor co ON co.uuid = t.conductor_uuid
-          WHERE t.desde < $2 AND COALESCE(t.hasta, now()) > $1
+          WHERE t.desde < $2 AND (t.hasta > $1 OR (t.hasta IS NULL AND now() > $1))
             AND ${conds.join(' AND ')}
           GROUP BY co.nombre, veh.matricula, t.situacion
           ORDER BY n DESC`, params)).rows;
@@ -1062,7 +1065,12 @@ async function actividadPorConductor(dia, turno = 'dia') {
         WHERE t.conductor_uuid IS NOT NULL
           AND w.fin > w.ini
           AND t.desde < w.fin
-          AND COALESCE(t.hasta, now()) > w.ini
+          -- SE ESCRIBE ASÍ Y NO CON COALESCE. Poner COALESCE(t.hasta, now())
+          -- envuelve la columna, y con la columna envuelta Postgres no puede
+          -- usar índice — barría los 293.000 tramos para quedarse con mil.
+          -- Dice exactamente lo mismo, incluso si la ventana fuera futura.
+          -- Medido el 21/09/2026: 98 ms → 32 ms, y las mismas 117 filas.
+          AND (t.hasta > w.ini OR (t.hasta IS NULL AND now() > w.ini))
           -- AQUÍ NO VA LA COTA. Esta consulta cuenta también el DESCONECTADO, y
           -- un coche parado puede llevar semanas en UN solo tramo abierto: al
           -- acotar, esos minutos desaparecían. Comprobado: a un conductor del

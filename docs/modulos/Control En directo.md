@@ -127,6 +127,20 @@ Antes esos km se le colgaban al último que lo condujo aunque llevara dos días 
 
 Un conductor puede tener tres alertas abiertas a la vez y se le llama **una** vez para preguntarle por las tres: por eso la respuesta va **por alerta**, en su propia fila de `llamada_alerta` (`db/98-llamada-por-alerta.sql`). Una sola nota para las tres no servía: al día siguiente nadie sabía qué contestó sobre cuál.
 
+## Lo que cuesta pintar esta pantalla
+
+Medido el **21/09/2026**: **45 consultas**, unos **21 s de SQL sumado** que caben en **3–4 s de reloj** porque van en paralelo. O sea que **el cuello no es el orden: es el trabajo**. Reordenar no la acelera; hacer menos, sí.
+
+Lo que se ganó ese día fue quitar un `COALESCE` de ocho filtros —**32 s de SQL → 21 s**, y la consulta de tramos de **3,7 s a 0,4 s**— sin tocar un solo número. → [[Trampas conocidas]]
+
+> [!info] Medir aquí es difícil, y hay que saberlo
+> La base la comparten la aplicación de producción y el cron de cinco minutos, así que **una sola medida no dice nada**: la misma pantalla, seis veces seguidas, dio entre 3,0 y 7,0 s. Para comparar dos versiones hay que alternarlas y mirar medianas, y para comparar dos consultas hay que congelar el reloj.
+
+> [!tip] Lo siguiente, si alguna vez estorba
+> Quedan **cuatro llamadas a `actividadPorConductor`** —día, noche, jornada y noche de reloj— que leen **las mismas tablas cuatro veces** con ventanas distintas. Son la mayor parte de lo que queda. Se podrían resolver en **una sola pasada** agregando con `FILTER` por ventana, porque las cuatro caben dentro de [05:00, +1 12:00].
+>
+> No se ha hecho porque es reescribir la consulta que sostiene la pantalla más usada del ERP, y el riesgo no compensaba sin que nadie se estuviera quejando de los 3 s.
+
 ## Ver también
 
 [[Control]] · [[Control Alertas]] · [[Control Reportes]] · [[Flota viva]] · [[BOLT]] · [[Mapon]] · [[Jornada y turnos]] · [[Glosario]]

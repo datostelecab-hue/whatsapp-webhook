@@ -1267,6 +1267,33 @@ aplicación. Lo mismo con `prompt`, `alert`, `confirm` y `<select>`.
 **La regla:** si el navegador trae una versión de algo, la casa tiene la suya.
 → [[Componentes de la casa]]
 
+### `COALESCE(columna, now())` en un WHERE apaga los índices
+
+`services/flotaViva/rutas.js`
+
+`COALESCE(t.hasta, now()) > ventana` es correcto y se lee bien, y por eso estaba
+en ocho filtros. Pero **envuelve la columna en una función**, y una columna
+envuelta no se puede buscar por índice: Postgres barría los **293.000 tramos**
+para quedarse con mil, cada vez.
+
+Escrito así dice exactamente lo mismo —también con ventanas futuras— y el plan
+pasa de *Seq Scan* a *Bitmap Heap Scan*:
+
+```sql
+(t.hasta > X OR (t.hasta IS NULL AND now() > X))
+```
+
+Medido el 21/09/2026: **64 ms → 33 ms** aislada, y **3,7 s → 0,4 s** dentro del
+cockpit, donde corre con otras cinco consultas pesadas a la vez. La pantalla la
+hace cuatro veces. **No hizo falta ningún índice nuevo**: el que hacía falta ya
+estaba, solo que no se podía usar.
+
+> [!warning] Para comparar dos formas hay que congelar el reloj
+> La primera comparación dijo que daban resultados distintos, y era mentira: los
+> tramos abiertos se miden contra `now()`, que avanza entre una consulta y la
+> siguiente. Sustituyendo `now()` por un instante fijo, las dos formas dan lo
+> mismo —en la ventana de hoy, en una ya cerrada y en una futura—.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

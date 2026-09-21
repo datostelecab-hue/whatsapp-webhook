@@ -154,7 +154,20 @@ async function enDirecto({ dia } = {}) {
   // Cada fuente a su pool. Si Flota Viva se cae, el plan se ve igual (y al revés).
   const plani = require('../Planificacion/tablero.service');   // la PUERTA de Planificación   // base principal (Cuadrante)
   const rutas = require('../../services/flotaViva/rutas');
-  const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper, actNocheReloj] = await Promise.all([
+  const repoRech = require('../../services/repo/rechazos');
+  // TODO LO QUE NO DEPENDE DE NADIE VA EN LA MISMA TANDA.
+  //
+  // Antes esto eran dos bloques: esta tanda, y luego media docena de `await`
+  // sueltos uno detrás de otro —rendimiento, rechazos, justificantes, la
+  // configuración de alertas y los km sin dueño—. Ninguno necesitaba el
+  // resultado del anterior, así que la pantalla esperaba en fila por gusto.
+  //
+  // Medido el 21/09/2026: la cola sumaba 2,7 s y 2,3 de ellos eran UNA consulta
+  // (`kmSinDuenio`) que ahora corre a la vez que las demás y deja de contar.
+  // Lo único que sigue después es lo que necesita la franja, porque para saber
+  // cuál es hay que haber leído antes la configuración.
+  const [tab, est, incHoy, incAyer, kmHoy, contac, actDia, actNoche, actOper, actNocheReloj,
+         rend, rechazos, rechazosNoche, justificantes, cfgAlertas, sinDuenioTodos] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
     // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
@@ -184,6 +197,33 @@ async function enDirecto({ dia } = {}) {
     // no se les mide por su turno —no tienen— sino por el turno que está en
     // curso, y ese corta a las 17:00 en punto.
     rutas.actividadPorConductor(hoy, 'noche').catch(() => null),
+
+    // ── Lo que antes iba en fila, detrás ──────────────────────────────────
+    // El promedio de horas del mes y su letra, para que quien llama sepa a
+    // quién tiene al otro lado. Sale del mismo sitio que en el planificador.
+    require('../../services/repo/rendimiento').leer().catch(() => new Map()),
+    // LOS RECHAZOS, EN LA VENTANA DE SU TURNO. Dos lecturas, no una:
+    //   05:00→05:00  para el día, los TodoTurno y los NN de día.
+    //   12:00→12:00  para la NOCHE, por la misma razón que la actividad: a un
+    //                conductor de noche los viajes que dejó pasar a las 06:00
+    //                son de su turno de AYER, y con la jornada 05→05 se le
+    //                pintaban hoy. Le salía el aviso a las dos de la tarde por
+    //                algo que hizo antes de irse a dormir.
+    repoRech.porConductor(hoy).catch(e => {
+      console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
+    }),
+    repoRech.porConductor(hoy, { hora: 12 }).catch(() => new Map()),
+    // Los justificantes de la jornada CON SU ESTADO. Los necesita la
+    // proyección: sin ellos volvería a decirle "no terminará la jornada" a
+    // quien tiene tres horas de taller justificadas.
+    require('../../services/repo/llamadas').justificadosHoy(hoy).catch(e => {
+      console.error('⚠️  [EN DIRECTO] justificantes:', e.message); return {};
+    }),
+    require('./alertas.repo').leerConfig().catch(() => null),
+    // COCHES QUE RUEDAN SIN QUE NADIE ESTÉ CONECTADO. Era la consulta más lenta
+    // de la cola —2,3 s ella sola— y no dependía de nada.
+    rutas.kmSinDuenio(hoy, 'operativo')
+      .catch(e => { console.error('⚠️  [EN DIRECTO] km sin dueño:', e.message); return []; }),
   ]);
 
   // ── DESDE CUÁNDO SE PUEDE RECLAMAR CADA TURNO ──────────────────────────────
@@ -582,36 +622,9 @@ async function enDirecto({ dia } = {}) {
     });
   });
 
-  // El promedio de horas del mes y su letra, para que quien llama sepa a quién
-  // tiene al otro lado. Sale del mismo sitio que en el planificador.
-  const rend = await require('../../services/repo/rendimiento').leer().catch(() => new Map());
-  // Los viajes que ha tirado cada cuenta de BOLT en esta jornada. Va con red:
-  // si bolt_order no responde, el cockpit se ve igual sin esa columna.
-  // LOS RECHAZOS, EN LA VENTANA DE SU TURNO. Dos lecturas, no una:
-  //
-  //   05:00→05:00  para el día, los TodoTurno y los NN de día.
-  //   12:00→12:00  para la NOCHE, por la misma razón que la actividad: a un
-  //                conductor de noche los viajes que dejó pasar a las 06:00 son
-  //                de su turno de AYER, y con la jornada 05→05 se le pintaban
-  //                hoy. Le salía el aviso de rechazos a las dos de la tarde por
-  //                algo que hizo antes de irse a dormir.
-  const repoRech = require('../../services/repo/rechazos');
-  const [rechazos, rechazosNoche] = await Promise.all([
-    repoRech.porConductor(hoy).catch(e => {
-      console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
-    }),
-    repoRech.porConductor(hoy, { hora: 12 }).catch(() => new Map()),
-  ]);
   const fundirRechazos = repoRech.fundir;
   /** El mapa de rechazos que le toca a una fila según su turno. */
   const rechazosDe = turno => (turno === 'noche' ? rechazosNoche : rechazos);
-  // Los justificantes de la jornada CON SU ESTADO. Entran aquí dentro y no en la
-  // ruta porque la proyección los necesita: sin ellos volvería a decirle "no
-  // terminará la jornada" a quien tiene tres horas de taller justificadas.
-  const justificantes = await require('../../services/repo/llamadas').justificadosHoy(hoy).catch(e => {
-    console.error('⚠️  [EN DIRECTO] justificantes:', e.message); return {};
-  });
-
   // ── LOS KM FUERA DE LA APP, PERO SOLO LOS DE LA FRANJA DE VIGILANCIA ────────
   // La columna "Km fuera" cuenta la JORNADA entera (05→05) y eso incluye el
   // relevo, donde rodar fuera de BOLT es normal: ir a por el coche, la entrega,
@@ -622,17 +635,23 @@ async function enDirecto({ dia } = {}) {
   //
   // Cambia el número por completo: con la jornada entera pasaban de 20 km 22
   // personas; con la franja, 6. Y esas 6 son llamadas de verdad.
-  const cfgAlertas = await require('./alertas.repo').leerConfig().catch(() => null);
   const franjaAhora = cfgAlertas
     ? require('./alertas.repo').franjaDe(cfgAlertas, new Date()) : null;
   // Solo tiene sentido en la jornada EN CURSO: mirando un día pasado no hay
   // "franja de ahora" que vigilar.
   const franjaViva = franjaAhora && franjaAhora.dia === hoy ? franjaAhora : null;
-  const kmFranja = franjaViva
-    ? await rutas.kmFueraEnVentana(hoy, String(franjaViva.ini),
-        franjaViva.fin > franjaViva.ini ? 0 : 1, String(franjaViva.fin))
-        .catch(e => { console.error('⚠️  [EN DIRECTO] km de la franja:', e.message); return new Map(); })
-    : new Map();
+  const offFranja = franjaViva && franjaViva.fin > franjaViva.ini ? 0 : 1;
+  // LA SEGUNDA TANDA, y la única que tiene que esperar: las dos miran la franja,
+  // y para saber cuál es hay que haber leído antes la configuración. Entre ellas
+  // no se deben nada, así que van juntas.
+  const [kmFranja, rechFranjaMapa] = franjaViva
+    ? await Promise.all([
+        rutas.kmFueraEnVentana(hoy, String(franjaViva.ini), offFranja, String(franjaViva.fin))
+          .catch(e => { console.error('⚠️  [EN DIRECTO] km de la franja:', e.message); return new Map(); }),
+        repoRech.porVentana(hoy, String(franjaViva.ini), offFranja, String(franjaViva.fin))
+          .catch(e => { console.error('⚠️  [EN DIRECTO] rechazos de la franja:', e.message); return new Map(); }),
+      ])
+    : [new Map(), new Map()];
   const UMBRAL_KM_FRANJA = (cfgAlertas && cfgAlertas.tipos.km_parado.activo)
     ? Number(cfgAlertas.tipos.km_parado.umbral) || 20 : null;
 
@@ -646,20 +665,13 @@ async function enDirecto({ dia } = {}) {
   // días en otro coche. Ya no, y por eso hay que enseñarlos: unos kilómetros que
   // no son de nadie significan que alguien conduce sin fichar.
   const MIN_KM_SIN_DUENIO = Number(process.env.CONTROL_MIN_KM_SIN_DUENIO || 5);
-  const sinDuenio = (await rutas.kmSinDuenio(hoy, 'operativo')
-    .catch(e => { console.error('⚠️  [EN DIRECTO] km sin dueño:', e.message); return []; }))
-    .filter(x => x.kmSinDuenio >= MIN_KM_SIN_DUENIO);
+  const sinDuenio = (sinDuenioTodos || []).filter(x => x.kmSinDuenio >= MIN_KM_SIN_DUENIO);
 
   // Y LOS "SIN CONTESTAR" DE LA FRANJA, por la misma razón que los km: fuera de
   // ella está el cambio de turno. La MISMA ventana que los kilómetros, que es lo
   // que se pidió.
   const UMBRAL_SIN_RESPUESTA = (cfgAlertas && cfgAlertas.tipos.sin_respuesta.activo)
     ? Number(cfgAlertas.tipos.sin_respuesta.umbral) || 5 : null;
-  const rechFranjaMapa = franjaViva
-    ? await repoRech.porVentana(hoy, String(franjaViva.ini),
-        franjaViva.fin > franjaViva.ini ? 0 : 1, String(franjaViva.fin))
-        .catch(e => { console.error('⚠️  [EN DIRECTO] rechazos de la franja:', e.message); return new Map(); })
-    : new Map();
   /** Los "sin contestar" de la franja de una persona, sumando sus cuentas. */
   const rechFranjaDe = cuentas => {
     if (!franjaViva || !UMBRAL_SIN_RESPUESTA) return null;
