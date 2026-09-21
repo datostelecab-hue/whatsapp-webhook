@@ -145,11 +145,15 @@ async function estadosVehiculo() {
 }
 
 async function catalogos() {
-  const [estados, zonas] = await Promise.all([
+  const [estados, zonas, sedes] = await Promise.all([
     estadosVehiculo(),
     db.consulta('SELECT id, nombre FROM base_zona WHERE activa ORDER BY nombre'),
+    // LAS SEDES SALEN DE LA BASE, no de una lista escrita aquí. Hoy son dos,
+    // pero el día que se abra una tercera bastará con una fila en `cat_sede`:
+    // la pantalla, el formulario y el filtro de Mantenimientos se enteran solos.
+    db.consulta('SELECT codigo, etiqueta FROM cat_sede WHERE activa ORDER BY orden, etiqueta'),
   ]);
-  return { estados, zonas: zonas.rows };
+  return { estados, zonas: zonas.rows, sedes: sedes.rows };
 }
 
 /** Alta de un coche. La matrícula se normaliza sola en la base. */
@@ -185,8 +189,20 @@ async function crear({ matricula, estado = 'O', zonaId, ...resto }, usuarioId) {
 async function actualizar(id, campos, usuarioId) {
   return db.transaccion(async cli => {
     const actual = (await cli.query(
-      'SELECT estado_operativo, base_zona_id FROM vehiculo WHERE id = $1', [id])).rows[0];
+      'SELECT estado_operativo, base_zona_id, sede FROM vehiculo WHERE id = $1', [id])).rows[0];
     if (!actual) throw new Error('No existe ese vehículo');
+
+    // LA SEDE, VALIDADA CONTRA EL CATÁLOGO. No va con los demás campos
+    // editables —que se escriben a pelo— porque un valor inventado aquí no
+    // rompe una casilla: saca al coche de Mantenimientos sin decir nada.
+    // Quien solo ve Madrid no manda el campo, y entonces no se toca.
+    if (campos.sede !== undefined && campos.sede !== actual.sede) {
+      const s = String(campos.sede || '').trim();
+      const ok = (await cli.query(
+        'SELECT 1 FROM cat_sede WHERE codigo = $1 AND activa', [s])).rowCount;
+      if (!ok) throw new Error(`«${s}» no es una sede`);
+      await cli.query('UPDATE vehiculo SET sede = $2 WHERE id = $1', [id, s]);
+    }
 
     const editables = {
       marca_modelo: campos.marcaModelo, anio: campos.anio,

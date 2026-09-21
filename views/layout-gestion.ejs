@@ -52,6 +52,9 @@
   <!-- Las ayudas: se quedan con el `title` de cualquier elemento y lo pintan con
        la cara de la casa. Vale para todo el sistema sin tocar una pantalla. -->
   <script src="<%= typeof est === 'function' ? est('/assets/js/ayuda.js') : '/assets/js/ayuda.js' %>"></script>
+  <!-- El selector de la casa para formularios montados a mano: el valor vive en
+       un input oculto, así que quien lo use sigue leyendo `.value` de siempre. -->
+  <script src="<%= typeof est === 'function' ? est('/assets/js/selector.js') : '/assets/js/selector.js' %>"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

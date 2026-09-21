@@ -10,6 +10,19 @@ El maestro de coches —alta, ficha, estados, zonas, plazas y el enlace con [[Ma
 
 Son **tres áreas con las mismas capas cada una**. Comparten módulo porque hablan del mismo objeto —el coche— pero no de lo mismo: una lleva el maestro y otra cuándo le toca revisión. Un solo trío para las dos daría un fichero que no abre nadie entero.
 
+## La sede manda, y ahora se puede cambiar
+
+Cada coche pertenece a una **sede** (`vehiculo.sede`, contra `cat_sede`: hoy Madrid y Barcelona). No es la zona —la zona es la base dentro de la ciudad: Getafe, Usera, Canillejas— sino la delegación.
+
+**Manda de verdad**: [[Taller·mantenimiento|Mantenimientos]], las facturas y el listado enseñan solo las sedes que puede ver quien mira, y esa llave es el permiso `/vehiculos/sedes`. Sin él se ve Madrid y nada más.
+
+Hasta el 21/09/2026 la sede solo se podía cambiar por la base. Ahora está en **Editar datos**, con el selector de la casa — y solo para quien ve las dos: a quien solo ve Madrid no se le enseña un campo que no puede tocar, y como el formulario no lo manda, **el servidor no lo toca**.
+
+> [!warning] Una sede equivocada hace desaparecer un coche
+> No da error ni se ve raro: simplemente deja de salir en Mantenimientos. Por eso el valor se valida contra `cat_sede` antes de guardarlo, y por eso no va con el resto de campos editables —que se escriben a pelo— sino aparte.
+
+De las 94 fichas vivas: **89 en Madrid y 5 en Barcelona**.
+
 ## Las pantallas y sus permisos
 
 | Ruta | Qué es | Permiso |

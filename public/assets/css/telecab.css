@@ -563,3 +563,40 @@ body .ayuda-globo[data-lado="arriba"] .ayuda-pico {
   body .ayuda-globo { transition: opacity .01s linear; transform: none; }
   body .ayuda-globo.ayuda-visible { transform: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SELECTOR — elegir una opción, con la cara de la casa
+   ══════════════════════════════════════════════════════════════════════════
+   Sustituye al `<select>` del navegador, que se pinta con los colores del
+   sistema operativo. El motor está en `public/assets/js/selector.js`; el valor
+   vive en un `<input type="hidden">`, así que el formulario no se entera. */
+body .tc-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .375rem;
+}
+body .tc-selector button {
+  padding: .45rem .8rem;
+  border-radius: .75rem;
+  font-size: .8rem;
+  font-weight: 600;
+  background: rgb(var(--tc-card2));
+  border: 1px solid rgb(var(--tc-border));
+  color: rgb(var(--tc-muted));
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+body .tc-selector button:hover { border-color: rgb(var(--tc-gold) / .5); color: rgb(var(--tc-text)); }
+body .tc-selector button:focus-visible {
+  outline: 2px solid rgb(var(--tc-gold) / .7);
+  outline-offset: 2px;
+}
+/* La elegida en oro sólido: es la única del grupo, así que tiene que leerse
+   sin comparar con las de al lado. */
+body .tc-selector button[aria-pressed="true"] {
+  background: rgb(var(--tc-gold));
+  border-color: rgb(var(--tc-gold));
+  color: rgb(var(--tc-dark));
+}
+@media (prefers-reduced-motion: reduce) {
+  body .tc-selector button { transition: none; }
+}

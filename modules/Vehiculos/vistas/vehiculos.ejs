@@ -29,13 +29,12 @@
         </div>
         <div>
           <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1" title="Operativo, en taller, siniestro, de baja…&#10;Lo que decide si el coche se planifica y si cuenta en Control NO es este texto, sino si su estado está marcado como operativo en el catálogo.">Estado</label>
-          <select id="fm-estado"
-                  class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
-                         focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
+          <input type="hidden" id="fm-estado" value="O">
+          <div class="tc-selector" data-para="fm-estado">
             <% (estadosVehiculo || []).forEach(e => { %>
-              <option value="<%= e.codigo %>"><%= e.etiqueta %></option>
+              <button type="button" data-v="<%= e.codigo %>"><%= e.etiqueta %></button>
             <% }) %>
-          </select>
+          </div>
         </div>
       </div>
 
@@ -83,15 +82,30 @@
 
       <div>
         <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1" title="La base del coche. Es lo que agrupa el cuadrante y lo que se usa para filtrar en el planificador y en Control.">Zona</label>
-        <select id="fm-zonaId"
-                class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm
-                       focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
-          <option value="">Sin zona</option>
+        <input type="hidden" id="fm-zonaId" value="">
+        <div class="tc-selector" data-para="fm-zonaId">
+          <button type="button" data-v="">Sin zona</button>
           <% (zonas || []).forEach(z => { %>
-            <option value="<%= z.id %>"><%= z.nombre %></option>
+            <button type="button" data-v="<%= z.id %>"><%= z.nombre %></button>
           <% }) %>
-        </select>
+        </div>
       </div>
+
+      <% if (verTodasLasSedes) { %>
+      <!-- LA SEDE, solo para quien ve las dos. A quien solo ve Madrid no se le
+           enseña un campo que no puede tocar: el coche se queda donde estaba
+           porque el formulario no lo manda y el servidor no lo toca. -->
+      <div>
+        <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1"
+               title="En qué sede está el coche.&#10;Manda de verdad: Mantenimientos solo enseña los de tu sede, así que un coche con la sede equivocada desaparece de ahí sin avisar.">Sede</label>
+        <input type="hidden" id="fm-sede" value="madrid">
+        <div class="tc-selector" data-para="fm-sede">
+          <% (sedes || []).forEach(x => { %>
+            <button type="button" data-v="<%= x.codigo %>"><%= x.etiqueta %></button>
+          <% }) %>
+        </div>
+      </div>
+      <% } %>
 
       <div>
         <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Notas</label>
@@ -303,8 +317,11 @@
   const error = document.getElementById('fm-error');
   const campo = id => document.getElementById('fm-' + id);
 
+  // `sede` solo está en el formulario de quien ve las dos sedes, así que se
+  // añade solo si existe: si no, el campo NO viaja y el servidor no lo toca.
   const CAMPOS = ['matricula', 'estado', 'marcaModelo', 'anio', 'matriculacion',
-                  'itv', 'aseguradora', 'venceSeguro', 'zonaId', 'notas'];
+                  'itv', 'aseguradora', 'venceSeguro', 'zonaId', 'notas']
+    .concat(document.getElementById('fm-sede') ? ['sede'] : []);
 
   // La ficha guarda las fechas en ISO y el formulario las enseña dd/mm/aaaa.
   const aISO = v => {
@@ -326,7 +343,11 @@
     campo('aseguradora').value  = d ? d.aseguradora || '' : '';
     campo('venceSeguro').value  = d ? fecha(d.seguro_caduca) : '';
     campo('zonaId').value       = d && d.base_zona_id ? String(d.base_zona_id) : '';
+    if (campo('sede')) campo('sede').value = (d && d.sede) || 'madrid';
     campo('notas').value        = d ? d.notas || '' : '';
+    // Los selectores de la casa leen su valor del input oculto, así que se les
+    // dice que repinten después de rellenarlo.
+    if (window.Selector) Selector.montar(modal);
 
     // La matrícula no se cambia desde aquí: es la identidad del coche y hay
     // enlaces externos colgando de ella. Para eso, baja y alta.

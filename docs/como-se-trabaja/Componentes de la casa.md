@@ -21,6 +21,7 @@ actualizado: 2026-09-21
 | Pedir varios datos | `Dialogo.formulario(titulo, campos, opciones)` | `prompt()` encadenados |
 | Confirmación breve | `Dialogo.hecho(texto, {tono, segundos})` | — |
 | **Una fecha** | `<input class="js-fecha">` | **`<input type="date">`** |
+| **Elegir una opción en un formulario propio** | `.tc-selector` + input oculto (`selector.js`) | **`<select>`** |
 | Listar cosas | el componente **Listado** (`listado.js`) | una tabla nueva |
 | **Explicar un dato** | un **`title`** en el elemento (lo pinta `ayuda.js`) | un icono de «?» propio |
 | Tapar mientras carga | `#cargando-overlay` de `layout-gestion` | un spinner propio |
@@ -58,6 +59,23 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 - Devuelve los valores, o **`null` si se cancela** — compruébalo siempre.
 
 **Un formulario no se cierra por un clic fuera**: tiene X, botón de cancelar y Escape. Perder lo escrito por rozar el fondo pasó de verdad. → [[Reglas de la casa]]
+
+## El selector suelto: `.tc-selector`
+
+`Dialogo.formulario` ya traía su selector, pero vivía **dentro** del diálogo y no había forma de usarlo en un formulario montado a mano —que es lo que tienen varias pantallas—. `selector.js` es esa misma idea, suelta.
+
+```html
+<input type="hidden" id="fm-sede" value="madrid">
+<div class="tc-selector" data-para="fm-sede">
+  <button type="button" data-v="madrid">Madrid</button>
+  <button type="button" data-v="barcelona">Barcelona</button>
+</div>
+```
+
+> [!tip] El valor vive en el input oculto, y ese es el truco
+> El formulario sigue leyendo y escribiendo `campo('sede').value` como si fuera un `<select>` de toda la vida. **Cambiar el aspecto no obligó a tocar la lógica de nadie**: en Vehículos, los dos `<select>` que había se cambiaron sin tocar ni el envío ni la validación.
+
+Al elegir dispara **`input` y `change`** sobre el input, como el calendario. Va delegado en el documento, así que vale para lo que se pinte después; si rellenas el input desde fuera, llama a `Selector.montar(raiz)` para que repinte. Y se mueve con las flechas del teclado.
 
 ## El Listado
 

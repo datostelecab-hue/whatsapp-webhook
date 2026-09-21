@@ -26,13 +26,13 @@ const permisos = require('../../services/permisos');
 const facturas = require('./facturas.service');
 
 router.get('/', async (req, res) => {
-  let catalogos = { estados: [], zonas: [] };
+  let catalogos = { estados: [], zonas: [], sedes: [] };
   try { catalogos = await veh.catalogos(); } catch (e) {
     console.error('❌ [VEHICULOS] catálogos:', e.message);
   }
   res.render('vehiculos', {
     titulo: 'Vehículos', seccion: 'vehiculos', layout: 'layout-gestion',
-    estadosVehiculo: catalogos.estados, zonas: catalogos.zonas,
+    estadosVehiculo: catalogos.estados, zonas: catalogos.zonas, sedes: catalogos.sedes,
     // Solo quien ve las DOS sedes necesita una columna que las distinga: a quien
     // ve Madrid entero, una columna con "Madrid" en las 89 filas no le dice nada.
     verTodasLasSedes: (await sedesDe(req)).length > 1,
