@@ -61,8 +61,9 @@
   <%
     /* Una cifra grande con su pie. Es la única forma de tarjeta de esta pantalla:
        sin gráficas, que esto se mira de pasada y de camino a otra cosa. */
-    function cifra(id, etq, unidad, pie, acento) {
-      return `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card p-4">
+    function cifra(id, etq, unidad, pie, acento, ayuda) {
+      return `<div class="rounded-2xl border ${acento ? 'border-telecab-gold/40' : 'border-telecab-border'} bg-telecab-card p-4"${
+        ayuda ? ` title="${ayuda.replace(/"/g, '&quot;')}"` : ''}>
         <p class="text-[11px] text-telecab-muted uppercase tracking-wide">${etq}</p>
         <p class="text-3xl font-bold text-telecab-text mt-1 tabular-nums leading-none">
           <span id="${id}">—</span>${unidad ? `<span class="text-sm text-telecab-muted font-normal ml-1">${unidad}</span>` : ''}
@@ -75,25 +76,32 @@
   <!-- ── EL MES: la cifra con la que se vive ─────────────────────────────── -->
   <div class="grid grid-cols-1 xl:grid-cols-3 gap-3 mb-6">
     <div class="rounded-2xl border border-telecab-gold/40 bg-telecab-card p-5 xl:col-span-1">
-      <p class="text-[11px] text-telecab-muted uppercase tracking-wide">Horas del mes</p>
+      <p class="text-[11px] text-telecab-muted uppercase tracking-wide"
+         title="Horas EFECTIVAS de toda la flota en lo que va de mes: viaje + espera, sin el descanso.&#10;Es la cifra con la que se vive, y la misma que usan el cockpit y los reportes.">Horas del mes</p>
       <p class="text-4xl font-bold text-telecab-gold mt-1 tabular-nums leading-none">
         <span id="k-mes-h">—</span><span class="text-base text-telecab-muted font-normal ml-1">h</span></p>
       <p class="text-xs text-telecab-muted mt-2">
         efectivas acumuladas · <span id="k-mes-cond">—</span> conductores</p>
     </div>
     <div class="xl:col-span-2 grid grid-cols-2 gap-3">
-      <%- cifra('k-mes-neto', 'Neto del mes', '€', '<span id="k-mes-viajes">—</span> viajes') %>
-      <%- cifra('k-mes-util', 'Utilización del mes', '%', 'del tiempo conectado, con pasajero') %>
+      <%- cifra('k-mes-neto', 'Neto del mes', '€', '<span id="k-mes-viajes">—</span> viajes', false,
+        'Lo que queda después de la comisión de BOLT, sumando todos los viajes del mes.\nNo es la facturación: es lo que entra.') %>
+      <%- cifra('k-mes-util', 'Utilización del mes', '%', 'del tiempo conectado, con pasajero', false,
+        'Horas EN VIAJE sobre horas efectivas (viaje + espera).\nMide cuánto del tiempo conectado va cargado. Por debajo del 65 % hay demasiada espera.') %>
     </div>
   </div>
 
   <!-- ── HOY ─────────────────────────────────────────────────────────────── -->
   <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">Hoy, en curso</h2>
   <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
-    <%- cifra('k-hoy-h', 'Horas efectivas', 'h', 'viaje + espera') %>
-    <%- cifra('k-hoy-cond', 'Conductores', '', 'con actividad hoy') %>
-    <%- cifra('k-hoy-neto', 'Neto', '€', '<span id="k-hoy-viajes">—</span> viajes') %>
-    <%- cifra('k-hoy-util', 'Utilización', '%', 'del tiempo conectado, con pasajero') %>
+    <%- cifra('k-hoy-h', 'Horas efectivas', 'h', 'viaje + espera', false,
+      'Lo que lleva rodado la flota en la JORNADA de hoy, que va de 05:00 a 05:00 y no de medianoche a medianoche.\nEl descanso no cuenta: efectivo es viaje + espera.') %>
+    <%- cifra('k-hoy-cond', 'Conductores', '', 'con actividad hoy', false,
+      'Personas distintas con al menos un apunte de BOLT en la jornada.\nNo es la plantilla ni el cuadrante: es quién se ha conectado de verdad.') %>
+    <%- cifra('k-hoy-neto', 'Neto', '€', '<span id="k-hoy-viajes">—</span> viajes', false,
+      'Lo que queda después de la comisión de BOLT, en la jornada de hoy.\nVa subiendo durante el día: a media mañana no se puede comparar con el cierre de ayer.') %>
+    <%- cifra('k-hoy-util', 'Utilización', '%', 'del tiempo conectado, con pasajero', false,
+      'Horas en viaje sobre horas efectivas de hoy.\nA primera hora baila mucho, porque el turno acaba de empezar y cualquier espera pesa el doble.') %>
   </div>
 
   <!-- ── POR TURNO ───────────────────────────────────────────────────────── -->

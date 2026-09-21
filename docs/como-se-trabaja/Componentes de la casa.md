@@ -94,22 +94,35 @@ Lo que hace por su cuenta: se coloca **debajo si cabe y encima si no**, se recor
 > [!warning] El `title` se roba y se devuelve
 > Si el atributo se queda puesto, el navegador pinta **además** su propio globo al segundo y medio: dos cajas con el mismo texto, una con los colores de Windows. Se mueve a `data-ayuda` al entrar y **se devuelve siempre** al salir.
 
+> [!warning] Moverse a un hijo NO es salir
+> `mouseout` salta también al cruzar de un elemento a otro **dentro del mismo**: la celda del calendario lleva el `title` y dentro tiene el número. Sin comprobar `relatedTarget`, pasar el ratón del borde de la celda a la cifra se leía como una salida — se devolvía el `title`, el navegador se ponía a contar y pintaba **su** globo encima. De ahí que al mover el cursor unos centímetros cambiara de aspecto sin salir de la casilla.
+>
+> Y por lo mismo, ocultar por desplazamiento, Escape o clic **no devuelve** el atributo: el cursor sigue encima, así que devolverlo sería invitar al globo del navegador. Se devuelve cuando se sale de verdad.
+
 > [!warning] `requestAnimationFrame` no llega si la pestaña no pinta
 > La primera versión esperaba un fotograma para que arrancara la transición. Con la ventana tapada por otra, ese fotograma **no llega** y el globo se quedaba puesto pero invisible para siempre. Se fuerza el reflujo leyendo `offsetHeight` y se enciende en la misma vuelta: no depende de que nadie pinte nada.
 
-### Dónde merece la pena poner una
+### En el Listado, la ayuda va en la definición
 
-Medido el 21/09/2026. Donde más hay es donde más números raros hay, que es justo la señal:
+Una columna y una tarjeta de KPI aceptan `ayuda`, y el componente la pinta como `title` en la cabecera o en la tarjeta:
 
-| Pantalla | ayudas |
+```js
+{ titulo: 'DNI / NIE', campo: 'dni_nie',
+  ayuda: 'La identidad de la casa: dos fichas con el mismo DNI son la misma persona.' }
+```
+
+La cabecera de la columna es donde mejor cae la explicación de un dato, y así la gana de golpe **cualquier** pantalla que use el Listado.
+
+### Cobertura
+
+El **21/09/2026** se pasó de **227 ayudas en 36 pantallas** a **310 en todas las que enseñan datos**. Las que quedan sin ninguna, a propósito:
+
+| Sin ayudas | Por qué |
 |---|---|
-| Control · En directo | 51 |
-| Recaudación | 20 |
-| Planificador V2 | 18 |
-| Bitácora · Plantilla | 13 cada una |
-| Nóminas | 12 |
-
-Y **17 pantallas no tienen ninguna**. Las que más lo piden, por orden: **Coches sin cuadrante** (las cuatro listas necesitan decir por qué son cuatro), **Vehículos**, **Operaciones**, **Selección**, **ETT**, **RRHH pendientes** e **Inicio** — que es la primera que ve quien acaba de entrar.
+| Cambiar / recuperar contraseña | Van sobre `layout-auth`, que **no carga `ayuda.js`**. Tres campos y nada que explicar. |
+| Sin permiso | Un mensaje y un botón. |
+| `layout.ejs`, `layout-auth.ejs` | Son plantillas, no pantallas. |
+| Boda | No es del ERP. |
 
 **La regla para lo que venga:** cuando una pantalla enseñe un número que no se explique solo —un porcentaje, un color, una cifra recortada por una ventana de tiempo— lleva su `title`. Una frase de qué es, y otra de qué hacer.
 

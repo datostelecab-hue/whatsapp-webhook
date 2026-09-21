@@ -8,10 +8,12 @@
       <p class="text-sm text-telecab-muted mt-0.5" id="m-sub">Comprobando la base…</p>
     </div>
     <div class="ml-auto flex items-center gap-2">
-      <button id="m-simular" class="px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm">
+      <button id="m-simular" class="px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm"
+        title="Enseña qué ficheros se aplicarían y en qué orden, SIN tocar la base.&#10;Es lo que hay que mirar antes de aplicar: si aquí sale algo que no esperabas, ahí está el problema.">
         <i class="fa-solid fa-eye mr-1"></i> Simular
       </button>
-      <button id="m-aplicar" class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold">
+      <button id="m-aplicar" class="px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm shadow-gold"
+        title="Aplica de verdad lo pendiente, en orden y parándose en el primer fallo.&#10;Una migración aplicada NO se vuelve a tocar: si hay que corregir algo, se escribe otra encima.">
         <i class="fa-solid fa-play mr-1"></i> Aplicar lo pendiente
       </button>
     </div>
@@ -28,7 +30,7 @@
   <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden shadow-soft">
     <div class="px-5 py-3 border-b border-telecab-border flex items-center gap-2">
       <i class="fa-solid fa-list-check text-telecab-gold text-sm"></i>
-      <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted">Ficheros</h3>
+      <h3 class="font-semibold text-sm uppercase tracking-wide text-telecab-muted" title="Los db/*.sql del repositorio y en qué estado está cada uno.&#10;«Modificada» es la señal fea: un fichero ya aplicado que ha cambiado de contenido, y eso rompe el registro.">Ficheros</h3>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">

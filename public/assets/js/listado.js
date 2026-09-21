@@ -261,10 +261,15 @@
                     class="w-3.5 h-3.5 accent-telecab-gold cursor-pointer"></th>`
         : '';
 
+      // UNA COLUMNA PUEDE EXPLICARSE: `ayuda` en su definición sale como el globo
+      // de la casa al pasar el cursor por la cabecera. Es donde mejor cae la
+      // explicación de un dato —«¿qué es exactamente esta columna?»— y así la
+      // gana de golpe cualquier pantalla que use el Listado.
       this.el.cabecera.innerHTML = casillaCab + c.columnas.map(col =>
         `<th class="text-left font-semibold px-3 py-2.5 text-[11px] uppercase tracking-wider
                     text-telecab-text/70 border-b-2 border-telecab-border whitespace-nowrap
-                    ${esc(col.claseCabecera || '')}">${esc(col.titulo || '')}</th>`
+                    ${esc(col.claseCabecera || '')}"${
+          col.ayuda ? ` title="${esc(col.ayuda)}"` : ''}>${esc(col.titulo || '')}</th>`
       ).join('') + '<th class="w-8 border-b-2 border-telecab-border"></th>';
 
       if (c.seleccion) {
@@ -385,7 +390,8 @@
       this.el.kpis.innerHTML = '';
       tarjetas.forEach(k => {
         const t = nodo(`
-          <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 shadow-soft ${k.filtro ? 'cursor-pointer hover:border-telecab-gold/40 transition' : ''}">
+          <div class="bg-telecab-card border border-telecab-border rounded-2xl p-4 shadow-soft ${k.filtro ? 'cursor-pointer hover:border-telecab-gold/40 transition' : ''}"${
+            k.ayuda ? ` title="${esc(k.ayuda)}"` : ''}>
             <p class="text-xs text-telecab-muted uppercase tracking-wide">${esc(k.etiqueta || '')}</p>
             <p class="text-2xl font-bold mt-1 text-telecab-${esc(k.tono || 'text')}">${esc(k.valor)}</p>
             ${k.pie ? `<p class="text-xs text-telecab-muted mt-1">${esc(k.pie)}</p>` : ''}

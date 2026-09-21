@@ -118,15 +118,31 @@
     objetivo = el;
   }
 
-  function ocultar() {
-    clearTimeout(tEntrar); clearTimeout(tSalir);
-    if (globo) globo.classList.remove('ayuda-visible');
-    // El `title` se devuelve SIEMPRE, incluso si el elemento ya no está en la
-    // página: quien lo tenga guardado se lo lleva con su ayuda.
+  /** Devuelve el `title` a su sitio. Siempre acaba pasando; la duda es cuándo. */
+  function devolver() {
     if (objetivo && objetivo.dataset && objetivo.dataset.ayuda != null) {
       objetivo.setAttribute('title', objetivo.dataset.ayuda);
       delete objetivo.dataset.ayuda;
     }
+  }
+
+  /**
+   * Esconde el globo.
+   *
+   * `soltar` decide si además se devuelve el `title`, y NO es un detalle: si se
+   * devuelve mientras el cursor sigue encima, el navegador empieza a contar
+   * para pintar el SUYO. Es lo que hacía que al mover el ratón unos centímetros
+   * dentro de la misma celda apareciera de pronto la caja blanca de Windows con
+   * el mismo texto.
+   *
+   * Así que al ocultar por desplazamiento, por Escape o por un clic el atributo
+   * se queda robado; se devuelve cuando el cursor SALE de verdad.
+   */
+  function ocultar(soltar = true) {
+    clearTimeout(tEntrar); clearTimeout(tSalir);
+    if (globo) globo.classList.remove('ayuda-visible');
+    if (!soltar) return;
+    devolver();
     objetivo = null;
   }
 
@@ -156,7 +172,17 @@
   });
   document.addEventListener('mouseout', e => {
     const el = e.target.closest && e.target.closest('[data-ayuda]');
-    if (el && el === objetivo) salir();
+    if (!el || el !== objetivo) return;
+    // MOVERSE A UN HIJO NO ES SALIR.
+    //
+    // `mouseout` salta también al cruzar de un elemento a otro DENTRO del mismo:
+    // la celda del calendario lleva el `title` y dentro tiene el número. Sin
+    // esta comprobación, pasar el ratón del borde de la celda a la cifra se
+    // leía como una salida: se devolvía el `title`, el navegador se ponía a
+    // contar y pintaba su globo. De ahí el cambio de aspecto al moverse unos
+    // centímetros sin salir de la casilla.
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    salir();
   });
   // Con el teclado también: quien navega con el tabulador tiene el mismo
   // derecho a saber qué es ese número.
@@ -165,19 +191,22 @@
     if (el) entrar(el);
   });
   document.addEventListener('focusout', () => { if (objetivo) salir(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') ocultar(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') ocultar(false); });
   // Al moverse la página el globo señalaría a otro sitio: mejor que desaparezca
   // que que mienta.
-  global.addEventListener('scroll', () => { if (objetivo) ocultar(); }, true);
-  global.addEventListener('resize', ocultar);
+  global.addEventListener('scroll', () => { if (objetivo) ocultar(false); }, true);
+  global.addEventListener('resize', () => ocultar(false));
   // Un clic quita el globo: ya has decidido, no hace falta la explicación.
-  document.addEventListener('mousedown', ocultar, true);
+  document.addEventListener('mousedown', () => ocultar(false), true);
 
   global.Ayudas = {
     /** Encenderlas o apagarlas en caliente, sin recargar. */
     activar(si) {
       document.documentElement.setAttribute('data-ayudas', si ? '1' : '0');
-      if (!si) ocultar();
+      // Apagarlas SÍ suelta el atributo: si no, el que estuviera robado en ese
+      // momento se quedaría sin `title` para siempre y ese elemento perdería su
+      // ayuda hasta recargar.
+      if (!si) ocultar(true);
     },
     activas,
     ocultar,

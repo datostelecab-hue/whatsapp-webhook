@@ -471,12 +471,18 @@
 
     columnas: [
       { titulo: 'Candidato', campo: 'quien', principal: true },
-      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm' },
-      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm' },
-      { titulo: 'Estado', valor: d => d.estado_etiqueta },
-      { titulo: 'Canal', valor: d => d.canal_etiqueta || '—' },
-      { titulo: 'Responsable', valor: d => d.responsable || '—' },
-      { titulo: 'Abierta', valor: d => hace(d.creado_at) },
+      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm',
+        ayuda: 'El teléfono es lo que enlaza a esta persona con su cuenta de BOLT cuando entre.\nSi está mal, el alta se hace igual pero sus horas no aparecerán.' },
+      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm',
+        ayuda: 'La identidad de la casa: dos fichas con el mismo DNI son la misma persona.\nEs por lo que se detecta a quien ya estuvo aquí antes.' },
+      { titulo: 'Estado', valor: d => d.estado_etiqueta,
+        ayuda: 'Por dónde va la candidatura. Avanza sola al completar datos y documentos;\nsolo se salta a mano cuando alguien lo decide.' },
+      { titulo: 'Canal', valor: d => d.canal_etiqueta || '—',
+        ayuda: 'De dónde salió: la web, una ETT, alguien que la trajo…\nEs lo que dice qué vía está funcionando y cuál no.' },
+      { titulo: 'Responsable', valor: d => d.responsable || '—',
+        ayuda: 'Quién se hizo cargo. Sin responsable, una candidatura se queda parada sin que nadie lo note.' },
+      { titulo: 'Abierta', valor: d => hace(d.creado_at),
+        ayuda: 'Lo que lleva esperando desde que entró.\nAquí el tiempo cuesta gente: quien lleva dos semanas esperando ya está en otro sitio.' },
     ],
 
     detalle: {

@@ -21,6 +21,7 @@
       <div class="relative">
         <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
         <input id="o-buscar" placeholder="Buscar matrícula…"
+        title="Filtra la tabla de abajo por matrícula. No vuelve a pedir nada al servidor: busca sobre lo ya cargado."
                class="pl-8 pr-3 py-2 w-40 sm:w-52 bg-telecab-card border border-telecab-border rounded-xl text-sm
                       focus:outline-none focus:ring-2 focus:ring-telecab-gold/40 focus:border-telecab-gold/50">
       </div>
@@ -49,11 +50,11 @@
           <tr>
             <th class="text-left font-semibold px-4 py-3">Matrícula</th>
             <th class="text-left font-semibold px-4 py-3">Vehículo</th>
-            <th class="text-left font-semibold px-4 py-3">Alerta</th>
+            <th class="text-left font-semibold px-4 py-3" title="Qué saltó: un coche planificado que rueda cuando debería estar en descanso, o fuera de su turno.&#10;La alerta se abre sola y NO se cierra hasta que alguien la justifica con un motivo.">Alerta</th>
             <th class="text-left font-semibold px-4 py-3">Fecha</th>
             <th class="text-left font-semibold px-4 py-3">Hora</th>
-            <th class="text-left font-semibold px-4 py-3">Detalle</th>
-            <th class="text-left font-semibold px-4 py-3">Gravedad</th>
+            <th class="text-left font-semibold px-4 py-3" title="Lo que dijo Mapon: kilómetros, sitio y hora. Es la prueba de la alerta, y se guarda aunque luego se justifique.">Detalle</th>
+            <th class="text-left font-semibold px-4 py-3" title="Cuánto se ha salido de lo normal. No decide nada por su cuenta: sirve para ordenar a quién llamar primero.">Gravedad</th>
           </tr>
         </thead>
         <tbody id="o-tbody" class="divide-y divide-telecab-border/60"></tbody>

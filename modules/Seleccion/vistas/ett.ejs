@@ -633,8 +633,10 @@
 
     columnas: [
       { titulo: 'Candidato', campo: 'quien', principal: true },
-      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm' },
-      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm' },
+      { titulo: 'Teléfono', campo: 'telefono', clase: 'font-mono text-sm',
+        ayuda: 'Con la ETT el teléfono pesa más todavía: es por donde se reconcilia a la persona\ncuando BOLT le abre cuenta, porque hasta entonces trabaja con un ID provisional.' },
+      { titulo: 'DNI / NIE', campo: 'dni_nie', clase: 'font-mono text-sm',
+        ayuda: 'La identidad de la casa. Es lo que evita dar de alta dos veces a quien ya vino por otra ETT.' },
       { titulo: 'Entrevista', valor: d => fechaHora(d.entrevista_at) },
       { titulo: 'Pide la ETT', valor: d => [d.jornada_ett, d.turno_ett].filter(Boolean).join(' · ') || '—' },
       { titulo: 'Estado', valor: d => d.estado_etiqueta },
