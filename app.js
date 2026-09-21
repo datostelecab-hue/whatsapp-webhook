@@ -840,6 +840,12 @@ if (process.env.MAPA_CRON === 'on') {
       // trabajo cuando Mapon ha tardado mas de 30 s en contestar.
       if (r.saltado) return;
       require('./modules/Mapa/mapa.service').olvidar();
+
+      // Y EL AVISO, EN LA MISMA VUELTA. Aqui es donde "al momento" significa
+      // algo: en cuanto un coche lleva tres minutos rodando sin nadie
+      // conectado, suena. Que no se repita lo garantiza el indice unico de
+      // db/145, no este bucle.
+      await require('./modules/Control/alertas.service').avisarSueltos({ sedes: ['madrid'] });
     } catch (error) {
       console.error(`❌ [CRON Mapa] ${error.stack || error.message}`);
     }
