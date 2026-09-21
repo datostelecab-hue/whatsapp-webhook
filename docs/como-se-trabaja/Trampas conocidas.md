@@ -675,6 +675,42 @@ A quien tenía 13 días en septiembre y 3 en noviembre, **dar de alta el de sept
 le borraba el de noviembre**. Y antes solo se recortaban las vigencias abiertas, así
 que a quien volvía antes de tiempo **sus vacaciones seguían cubriendo esos días**.
 
+### Cerrar un tramo que empieza DESPUÉS revienta contra la base
+
+`modules/Conductores/conductores.repo.js` · `darDeBaja`
+
+Un tramo que arranca el 21 **no se puede "cerrar el 14"**: `ck_asig_rango` exige
+`hasta >= desde` y lo rechaza. Y tiene razón — eso no es un tramo que termine
+antes, es un tramo **que nunca existió**.
+
+Pasó con Cristian Jiménez: alta el 14, planificado para el 21, y al darle de baja
+el mismo 14 la pantalla enseñaba el error crudo de la restricción sin decir qué
+estorbaba. Lo mismo valía para su turno (`ck_cturno_rango`).
+
+**Remedio:** lo que empieza después de la baja **se borra**, y lo que ya estaba en
+marcha se recorta a ese día. La rama de "alta futura cancelada" ya lo hacía bien;
+ahora las dos usan la misma función y hay **una sola definición de dar de baja**.
+
+### Un tramo "Activo" abierto impedía CUALQUIER ausencia
+
+`modules/Conductores/conductores.repo.js` · `anadirAusencia`
+
+Estar trabajando es el estado por defecto y **la mayoría de las fichas no tienen
+ninguna fila que lo diga**. Pero al volver de una baja, `cambiarSituacion` deja
+escrito un tramo `activo` **abierto**, y desde ese momento la comprobación de
+solape lo veía y contestaba:
+
+> *mientras siga así no cabe ningún tramo después*
+
+Eran **once personas** —Soufyane El Hadri la primera— y **la lista crecía sola**:
+una más cada vez que alguien se reincorpora. La ticketera no podía aplicarles una
+baja médica ni unas vacaciones.
+
+**Remedio:** un tramo que **no es ausencia** es el FONDO, no un obstáculo. Se
+parte: se cierra la víspera y se vuelve a abrir al día siguiente de la vuelta, todo
+en una transacción. Lo que **no** se parte es otra ausencia — dos bajas solapadas
+sí son un error, y ahí el aviso sigue saltando.
+
 ### Escribir en una columna GENERADA es un error de PostgreSQL
 
 `scripts/comprobar-sql.js`
@@ -1265,6 +1301,23 @@ calendario de Windows en medio de una pantalla oscura y parece de otra
 aplicación. Lo mismo con `prompt`, `alert`, `confirm` y `<select>`.
 
 **La regla:** si el navegador trae una versión de algo, la casa tiene la suya.
+→ [[Componentes de la casa]]
+
+### `lista` y `opciones` se pintan igual y devuelven cosas distintas
+
+`public/assets/js/dialogo.js` · toda vista que pida datos
+
+`Dialogo.formulario` tiene dos tipos que **en pantalla son idénticos**: `lista`
+devuelve el valor **a secas** y `opciones` devuelve un **objeto**
+`{ valor, grupo, texto }`.
+
+Elegir mal no se ve: se ve en el servidor, que recibe `"[object Object]"`. Tumbó
+**las cuatro acciones de la ticketera** —aplicar, enlazar, resolver y mover— y el
+mensaje que daba, *«Ese estado no es una ausencia»*, señalaba justo a lo que sí
+era una ausencia: el valor que el propio ticket proponía.
+
+**La regla:** `lista` salvo que necesites el `grupo` o el `texto`. Y en la puerta
+del servidor, desenvuelve por si acaso.
 → [[Componentes de la casa]]
 
 ### `COALESCE(columna, now())` en un WHERE apaga los índices

@@ -35,7 +35,7 @@ La bandeja de Operaciones es nueva y arregla un agujero: el Apps Script mandaba 
 
 ## La entrada es lo único que sigue en Google
 
-Y **solo la entrada**: se *lee* la hoja de respuestas del Formulario y no se escribe en ella (`modules/Ticketera/formulario.js`). El Apps Script que clasificaba, numeraba, buscaba el DNI contra otra hoja y mandaba los correos deja de hacer falta, y **hay que apagarlo**: si sigue corriendo, cada ticket existirá dos veces. Ver [[Adiós a las hojas]].
+Y **solo la entrada**: se *lee* la hoja de respuestas del Formulario y no se escribe en ella (`modules/Ticketera/formulario.js`). El Apps Script que clasificaba, numeraba, buscaba el DNI contra otra hoja y mandaba los correos deja de hacer falta, y **hay que apagarlo**: si sigue corriendo, cada ticket existirá dos veces. Ver [[Google Drive y Sheets|Adiós a las hojas]].
 
 Se lee la pestaña de **respuestas crudas**, no la hoja MASTER que montaba el script. Leer MASTER sería más fácil y dejaría vivo justo la pieza que hay que apagar; además, dos programas escribiendo sobre las mismas filas es como se llega a que uno pise al otro. Leyendo las respuestas, el formulario solo **recoge**.
 
@@ -70,6 +70,9 @@ Con **270 abiertos**, una lista sin filtrar no es una bandeja: es un muro. Se fi
 El desplegable de tipos se llena con **lo que hay en la bandeja**, no con el catálogo entero: ofrecer veinte filtros que dan cero no ayuda a nadie.
 
 ### Las acciones van por el diálogo de la casa
+
+> [!danger] Las cuatro estuvieron rotas por el mismo motivo
+> Usaban `tipo: 'opciones'`, que devuelve un **objeto**, y el servidor leía texto: le llegaba `"[object Object]"`. Ahora usan `tipo: 'lista'`, que devuelve el valor a secas. → [[Trampas conocidas]]
 
 Eran `prompt()` del navegador, encadenados: «Desde (aaaa-mm-dd)», aceptar, «Hasta», aceptar. Un `prompt` no admite un calendario, ni una lista, ni enseñar de quién es el ticket mientras lo rellenas — y se pinta con los colores del sistema operativo, así que en una pantalla oscura parece de otra aplicación. Enlazar a una persona eran **dos** ventanas para una sola decisión: escribe un trozo del nombre, y luego elige entre los siete que salen.
 
@@ -117,6 +120,28 @@ El listado enseña los **dos nombres** —el que escribió en el formulario y el
 
 Todo movimiento queda apuntado en el historial del ticket con quién lo hizo.
 
+### La ausencia se acuerda de su ticket
+
+El tramo que se abre guarda el **id del ticket** (`conductor_estado_hist.ticket_id`, [[Migraciones|db/144]]), además del usuario que lo aplicó, que ya estaba.
+
+Con eso, el **Historial de situaciones** de la ficha contesta sin salir de ahí las tres preguntas que se hacen justo después de ver *«Baja médica, del 18 al 20»*:
+
+| Pregunta | De dónde sale |
+|---|---|
+| ¿Quién la puso? | `usuario_id` — de la sesión, no se escribe a mano |
+| ¿Por qué? | el ticket, con lo que escribió el conductor |
+| ¿Y el justificante? | el enlace de Drive del ticket |
+
+> [!info] Un número, no una copia
+> Se guarda el **id**, no el código ni el enlace. Copiar el enlace se leería igual de bien, pero sería una **foto**: el día que el conductor suba el certificado corregido, la ficha seguiría enseñando el viejo. Es la misma regla del [[Control|Call Center]] con las llamadas de Control — se leen de donde viven.
+>
+> Y la clave ajena es `ON DELETE SET NULL`: **borrar un ticket no borra la ausencia**. Ese tramo es lo que explica unas horas en la [[Bitacora]] y en la [[Nominas|nómina]].
+
+> [!warning] El justificante NO está en `adjuntos`
+> Esa columna está **vacía en los 578 tickets**. El formulario de Google no sube el fichero: deja la dirección de Drive **dentro del texto** (`Adjuntar Certificados: https://…`), y así llegan 120 de ellos. Se leen los dos sitios, y el nombre del enlace sale de la etiqueta que el formulario escribió delante.
+
+El código del ticket es un enlace a `/ticketera?ticket=CÓDIGO`, que llega con la búsqueda puesta **y los cerrados encendidos** — un ticket ya aplicado está cerrado, y sin eso el enlace llevaría a una bandeja vacía.
+
 ## Los tickets de IT
 
 Son los mismos tickets, con `area = IT` y `origen = soporte`. Desde el 15/09/2026 viven en la tabla `ticket`, la misma que los del formulario: antes tenían su propia hoja, su propio esquema y su propia pantalla, para acabar contestando a las mismas preguntas.
@@ -152,4 +177,4 @@ Los códigos viejos (`IT-xxxxx`) se conservan **tal cual**, porque están en con
 
 ## Detalles de la base
 
-Las fechas salen como **texto con `to_char`** y nunca como `Date`: una columna DATE leída con `toISOString` desde Madrid devuelve el día anterior — ver [[Fechas sin toISOString]]. El repositorio calcula además **cuánto lleva abierto** (o cuánto tardó) en horas con un decimal, que es como se mira "¿cuánto tardamos en atender?".
+Las fechas salen como **texto con `to_char`** y nunca como `Date`: una columna DATE leída con `toISOString` desde Madrid devuelve el día anterior — ver [[Trampas conocidas|Fechas sin toISOString]]. El repositorio calcula además **cuánto lleva abierto** (o cuánto tardó) en horas con un decimal, que es como se mira "¿cuánto tardamos en atender?".

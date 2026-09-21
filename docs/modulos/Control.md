@@ -67,7 +67,7 @@ Las claves de permiso son prefijos de ruta y **manda el prefijo más largo** (`s
 
 Hay una tabla `RUTA_A_CLAVE` que existe por un fallo real: `/control/reporte/excel` no casa por prefijo con `/control/reportes`, así que caía en `/control`. Resultado: quien solo tenía "Reportes de control" abría la pestaña y cada botón le daba 403, y quien tenía "En directo" sin Reportes se descargaba todo igualmente. Ahí están mapeadas las descargas, `/control/api/km-*` → `/control/km`, las llamadas y trazos → `/control/historico`, y `/flota-viva` → `/control` (sin esa línea las APIs del cockpit quedarían sin dueño en el catálogo, o sea, abiertas a cualquiera con sesión).
 
-Los **backfills** de `/flota-viva/api/*` piden rol de desarrollador o superadmin, y eso se comprueba en el controlador (`soloDev`) porque es autorización, no negocio. Si el rango es largo se van a segundo plano: un mes son minutos y el HTTP se corta a la mitad. Todos son idempotentes. Ver [[Permisos]].
+Los **backfills** de `/flota-viva/api/*` piden rol de desarrollador o superadmin, y eso se comprueba en el controlador (`soloDev`) porque es autorización, no negocio. Si el rango es largo se van a segundo plano: un mes son minutos y el HTTP se corta a la mitad. Todos son idempotentes. Ver [[Usuarios y permisos|Permisos]].
 
 ## Las reglas del módulo
 
@@ -103,4 +103,4 @@ Lo que se quedó fuera y no por descuido: `services/repo/llamadas` y `services/r
 
 ## Ver también
 
-[[Control En directo]] · [[Control Reportes]] · [[Control Alertas]] · [[Control Coches sin cuadrante]] · [[Flota viva]] · [[Jornada y turnos]] · [[Permisos]] · [[Glosario]]
+[[Control En directo]] · [[Control Reportes]] · [[Control Alertas]] · [[Control Coches sin cuadrante]] · [[Flota viva]] · [[Jornada y turnos]] · [[Usuarios y permisos|Permisos]] · [[Glosario]]

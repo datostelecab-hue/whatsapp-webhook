@@ -14,7 +14,7 @@ Son **tres áreas con las mismas capas cada una**. Comparten módulo porque habl
 
 Cada coche pertenece a una **sede** (`vehiculo.sede`, contra `cat_sede`: hoy Madrid y Barcelona). No es la zona —la zona es la base dentro de la ciudad: Getafe, Usera, Canillejas— sino la delegación.
 
-**Manda de verdad**: [[Taller·mantenimiento|Mantenimientos]], las facturas y el listado enseñan solo las sedes que puede ver quien mira, y esa llave es el permiso `/vehiculos/sedes`. Sin él se ve Madrid y nada más.
+**Manda de verdad**: [[Vehiculos#Taller: el mantenimiento por km|Mantenimientos]], las facturas y el listado enseñan solo las sedes que puede ver quien mira, y esa llave es el permiso `/vehiculos/sedes`. Sin él se ve Madrid y nada más.
 
 Hasta el 21/09/2026 la sede solo se podía cambiar por la base. Ahora está en **Editar datos**, con el selector de la casa — y solo para quien ve las dos: a quien solo ve Madrid no se le enseña un campo que no puede tocar, y como el formulario no lo manda, **el servidor no lo toca**.
 

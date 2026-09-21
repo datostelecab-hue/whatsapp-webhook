@@ -305,7 +305,13 @@
    */
   async function aplicar(t) {
     const v = await Dialogo.formulario(`Aplicar a ${t.quien}`, [
-      { id: 'estado', etiqueta: 'Qué se le abre', tipo: 'opciones', valor: t.estadoAbre || '',
+      // 'lista' Y NO 'opciones'. Se ven igual —las dos pintan el selector de la
+      // casa— pero devuelven cosas distintas: 'opciones' da un objeto y 'lista'
+      // el valor a secas. Aquí iba 'opciones' y lo que llegaba al servidor era
+      // "[object Object]", así que NINGUNA aplicación pasaba, ni eligiendo la
+      // ausencia que el propio ticket proponía.
+      { id: 'estado', etiqueta: 'Qué se le abre', tipo: 'lista', obligatorio: true,
+        valor: t.estadoAbre || '',
         opciones: AUSENCIAS.map(a => ({ valor: a.codigo, texto: a.etiqueta })),
         ayuda: 'Lo propone el tipo del ticket. Cámbialo si el conductor lo escribió en otro sitio.' },
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: aEs(t.fechaIniIso), obligatorio: true },
@@ -333,7 +339,7 @@
     // plana no se puede leer, y preguntar "escribe parte del nombre" y luego
     // "¿cuál de los siete?" eran dos ventanas para una sola decisión.
     const v = await Dialogo.formulario('¿Quién es?', [
-      { id: 'conductorId', etiqueta: 'Persona', tipo: 'opciones', obligatorio: true,
+      { id: 'conductorId', etiqueta: 'Persona', tipo: 'lista', obligatorio: true,
         opciones: PERSONAS.map(p => ({ valor: String(p.id),
           texto: p.nombre + (p.vigente ? '' : ' · ya no está') + (p.dni ? ' · ' + p.dni : '') })),
         buscador: { marcador: 'Nombre o DNI…', tope: 12 } },
@@ -348,7 +354,7 @@
   async function resolver(t) {
     const cierres = ESTADOS.filter(e => e.cierra);
     const v = await Dialogo.formulario(`Resolver ${t.codigo}`, [
-      { id: 'estado', etiqueta: '¿Cómo queda?', tipo: 'opciones', obligatorio: true,
+      { id: 'estado', etiqueta: '¿Cómo queda?', tipo: 'lista', obligatorio: true,
         valor: (cierres[0] || {}).codigo || '',
         opciones: cierres.map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
       { id: 'resolucion', etiqueta: '¿En qué quedó?', tipo: 'texto-largo',
@@ -362,7 +368,7 @@
   /** MOVER: a otra bandeja, cuando el formulario lo clasificó mal. */
   async function mover(t) {
     const v = await Dialogo.formulario(`Mover ${t.codigo}`, [
-      { id: 'subtipo', etiqueta: '¿A qué bandeja?', tipo: 'opciones', obligatorio: true,
+      { id: 'subtipo', etiqueta: '¿A qué bandeja?', tipo: 'lista', obligatorio: true,
         valor: t.subtipoCodigo || '',
         opciones: SUBTIPOS.map(s => ({ valor: s.codigo, texto: `${s.etiqueta} · ${s.area_codigo}` })),
         buscador: { marcador: 'Buscar bandeja…', tope: 12 } },
@@ -450,6 +456,16 @@
     $('#f-subtipo').value = '';
     pintar();
   });
+
+  // SE PUEDE LLEGAR AQUI DESDE FUERA. La ficha de un conductor ensena de que
+  // ticket salio cada ausencia; el codigo es un enlace a esta pantalla con la
+  // busqueda ya puesta. Y con los CERRADOS encendidos, porque un ticket ya
+  // aplicado esta cerrado: sin eso el enlace llevaria a una bandeja vacia.
+  const pedido = new URLSearchParams(location.search).get('ticket');
+  if (pedido) {
+    $('#f-busca').value = pedido;
+    $('#f-cerrados').checked = true;
+  }
 
   cargar();
 })();

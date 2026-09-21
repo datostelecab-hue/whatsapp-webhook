@@ -1406,7 +1406,41 @@
                   const dd = Math.round((new Date(f.hasta) - new Date(f.desde)) / 86400000) + 1;
                   return `<span class="text-telecab-muted">${dd}</span>`;
                 } },
-              { titulo: 'Motivo', campo: 'motivo' },
+              // DE DONDE SALIO ESTE TRAMO. Las tres preguntas que se hacen
+              // justo despues de ver "Baja medica, del 18 al 20" son quien la
+              // puso, por que, y donde esta el justificante. Antes habia que
+              // abrir la ticketera y buscar a mano; ahora el tramo se acuerda
+              // del ticket y desde el se llega a las tres.
+              //
+              // El enlace de Drive NO se copia aqui: se lee del ticket cada vez
+              // que se pinta. Si el conductor vuelve a subir el certificado
+              // corregido, esto ensena el bueno sin que nadie lo toque.
+              { titulo: 'Motivo', campo: 'motivo', pinta: (v, f) => {
+                  const t = f.ticket;
+                  // Si el motivo es solo "Ticket RH-…", la pastilla de abajo ya
+                  // lo dice: repetirlo seria el mismo codigo dos veces.
+                  const texto = t && String(v || '').trim() === 'Ticket ' + t.codigo
+                    ? '' : esc(v || '');
+                  if (!t) return texto;
+                  const papeles = (t.enlaces || []).map(e =>
+                    `<a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer"
+                        title="${esc(e.nombre)} · ${esc(e.url)}"
+                        class="px-1.5 py-0.5 rounded-md text-[10px] border border-telecab-border
+                               text-telecab-gold hover:border-telecab-gold transition">
+                       <i class="fa-solid fa-paperclip mr-1"></i>${esc(e.nombre || 'Justificante')}</a>`).join('');
+                  return `${texto}<div class="flex flex-wrap items-center gap-1 ${texto ? 'mt-1' : ''}">
+                      <a href="/ticketera?ticket=${encodeURIComponent(t.codigo)}"
+                         title="Abrir el ticket del que salio esta ausencia"
+                         class="px-1.5 py-0.5 rounded-md text-[10px] border border-telecab-border
+                                text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold transition">
+                        <i class="fa-solid fa-ticket mr-1"></i>${esc(t.codigo)}</a>${papeles}
+                    </div>`;
+                } },
+              // El responsable. Sale de quien tenia la sesion abierta al
+              // aplicarlo, venga de la ficha o de la ticketera: no se escribe a
+              // mano, asi que no se puede poner el nombre de otro.
+              { titulo: 'Quién lo puso', campo: 'quien', clase: 'text-telecab-muted',
+                pinta: v => v ? esc(v) : '<span class="text-telecab-muted">—</span>' },
             ],
             // Corregir aquí y no por base de datos. Las fechas mal puestas son
             // lo que deja a alguien de vacaciones hasta fin de año, y quien lo

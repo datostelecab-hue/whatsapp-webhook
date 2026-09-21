@@ -163,7 +163,7 @@ Mirar las alertas es una cosa; decidir **quién las recibe** y a partir de cuán
 - `/alertas` — ver la pantalla y el histórico, y pulsar "Revisar ahora".
 - `/alertas/config` — cambiar umbrales y destinatarios. Está marcado **`manual`** en el catálogo de `services/permisos.js`: nace apagado **hasta para quien lleva el catálogo entero** y lo reparte el desarrollador usuario a usuario. Era el requisito, literal: *"solo yo elijo a quién le llegan"*.
 
-La vista comprueba el permiso para ni siquiera pintar el botón de Ajustes, y el controlador cuelga las dos rutas de escritura de `/alertas/config/api/*` para que el candado sea el prefijo y no el botón. Ver [[Permisos]].
+La vista comprueba el permiso para ni siquiera pintar el botón de Ajustes, y el controlador cuelga las dos rutas de escritura de `/alertas/config/api/*` para que el candado sea el prefijo y no el botón. Ver [[Usuarios y permisos|Permisos]].
 
 ## Dónde más se usa la franja
 
@@ -174,4 +174,4 @@ La configuración de este módulo la leen dos sitios más, y a propósito, para 
 
 ## Ver también
 
-[[Control]] · [[Control En directo]] · [[Control Reportes]] · [[Permisos]] · [[BOLT]] · [[Mapon]] · [[Base de datos]] · [[Glosario]]
+[[Control]] · [[Control En directo]] · [[Control Reportes]] · [[Usuarios y permisos|Permisos]] · [[BOLT]] · [[Mapon]] · [[Base de datos]] · [[Glosario]]

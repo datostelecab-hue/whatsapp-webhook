@@ -88,7 +88,7 @@ Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las qu
 
 ## Lo que no se mudó, y por qué
 
-**`administracion` (el reparto) se queda donde está**, en `routes/administracion.js`. Es la otra mitad del módulo, pero no está en PostgreSQL: cuelga de `services/tickets.js` y `services/conductoresBolt.js` —los dos sobre hojas— y de `services/planificadorV2.js`. Misma regla que dejó fuera a `rrhh`, `peticiones`, `agenda`, `fichas` y `libranzas`. Ver [[Adiós a las hojas]].
+**`administracion` (el reparto) se queda donde está**, en `routes/administracion.js`. Es la otra mitad del módulo, pero no está en PostgreSQL: cuelga de `services/tickets.js` y `services/conductoresBolt.js` —los dos sobre hojas— y de `services/planificadorV2.js`. Misma regla que dejó fuera a `rrhh`, `peticiones`, `agenda`, `fichas` y `libranzas`. Ver [[Google Drive y Sheets|Adiós a las hojas]].
 
 **`services/codigosBallenoil.js` tampoco**, aunque sí es PostgreSQL puro. Lo usan `administracion` (que se queda) y el bot de las puertas, así que meterlo aquí obligaría al bot a entrar por la puerta de este módulo para repartir códigos de lavado. Entra el día que entre `administracion`.
 

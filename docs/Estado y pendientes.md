@@ -15,6 +15,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## Para mañana (21/09/2026)
+
+- **El ticket RH-20260918-10618 de Soufyane El Hadri sigue pendiente**, a propósito. Aplicarlo ya funciona (probado de punta a punta con ese mismo ticket, y deshecho sin dejar rastro), pero **una baja médica la cuentan la bitácora y la nómina**: la aplica Ricardo cuando quiera y con las fechas que quiera. Basta con darle a **Aplicar**.
+- **Cristian Jiménez García (id 407) se borró entero de la base** el 21/09, a petición de Ricardo: nunca trabajó y no llegó a estar en BOLT. Se fueron sus 4 días de cuadrante, sus 2 asignaciones (plazas 45 y 471, que quedan libres) y su ficha; en cascada cayeron su empleo, su turno, su teléfono, sus 5 calificaciones, su rendimiento, sus 3 llamadas y **su candidatura ETT de la solicitud 5**, que baja de 4 candidatos a 3. Hay copia de las 20 filas en `Documentos/Claude/Scripts de análisis/copia-conductor-407-cristian-jimenez.json` por si hay que devolver algo.
+
 ## Cabos sueltos del alta (18/09/2026)
 
 - **32 fichas en «Listo para RRHH»** de antes del cambio. Su bandeja sigue funcionando; la duda es si se marcan como alta en bloque o se dejan vaciar a mano.

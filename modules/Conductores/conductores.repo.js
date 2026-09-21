@@ -314,6 +314,75 @@ function faltantesDe(c) {
   return f;
 }
 
+// Una URL suelta dentro de un texto. La puntuación final no es del enlace: un
+// punto detrás de una dirección cierra la frase, y metido en el href da un 404.
+const URL_SUELTA = /https?:\/\/[^\s<>"']+/g;
+
+/**
+ * LOS ENLACES QUE TRAE UN TICKET, que es donde está el justificante.
+ *
+ * Hay que mirar en DOS SITIOS, y en la práctica solo el segundo tiene algo: la
+ * columna `adjuntos` está vacía en los 578 tickets que hay, porque el
+ * formulario de Google no sube el fichero — deja una dirección de Drive dentro
+ * del texto ("Adjuntar Certificados: https://…"). Leer solo `adjuntos` habría
+ * dado una ficha que nunca enseña el justificante y nadie sabría por qué.
+ *
+ * El nombre sale de la ETIQUETA que el formulario escribió delante del enlace,
+ * así que cada uno se llama como lo que se pidió en vez de "Adjunto" a todo.
+ */
+function enlacesDelTicket(desc, adjuntos) {
+  const vistos = new Set();
+  const fuera = [];
+  const mete = (url, nombre) => {
+    const u = String(url || '').replace(/[.,;:)\]]+$/, '');
+    if (!/^https?:\/\//.test(u) || vistos.has(u)) return;
+    vistos.add(u);
+    fuera.push({ url: u, nombre: nombre || 'Adjunto' });
+  };
+  (Array.isArray(adjuntos) ? adjuntos : []).forEach(a => (typeof a === 'string'
+    ? mete(a)
+    : mete(a && (a.url || a.enlace), a && a.nombre)));
+  String(desc || '').split(/[\r\n]+/).forEach(linea => {
+    (linea.match(URL_SUELTA) || []).forEach(u => {
+      const etiqueta = linea.slice(0, linea.indexOf(u)).replace(/[\s:·\-]+$/, '').trim();
+      mete(u, etiqueta);
+    });
+  });
+  return fuera;
+}
+
+/**
+ * PONERLE CARA A CADA TRAMO: quién lo puso y de dónde salió.
+ *
+ * La fila del historial guarda dos números —el usuario y el ticket— y nada
+ * más. El nombre del responsable y el justificante viven en su sitio y se leen
+ * de ahí; copiarlos aquí sería una foto que envejece en cuanto el conductor
+ * vuelva a subir el certificado corregido.
+ */
+async function ponerleCara(situaciones) {
+  const ids = situaciones.filter(x => x.usuario_id || x.ticket_id).map(x => x.id);
+  if (!ids.length) return;
+  const r = await db.consulta(`
+    SELECT h.id,
+           NULLIF(TRIM(CONCAT_WS(' ', u.nombre, u.apellidos)), '') AS quien,
+           t.id AS ticket_id, t.codigo AS ticket_codigo,
+           t.descripcion AS ticket_desc, t.adjuntos AS ticket_adjuntos
+      FROM conductor_estado_hist h
+      LEFT JOIN usuario u ON u.id = h.usuario_id
+      LEFT JOIN ticket  t ON t.id = h.ticket_id
+     WHERE h.id = ANY($1)`, [ids]);
+  const porId = new Map(r.rows.map(x => [String(x.id), x]));
+  situaciones.forEach(x => {
+    const d = porId.get(String(x.id));
+    if (!d) return;
+    x.quien = d.quien || null;
+    x.ticket = d.ticket_id
+      ? { id: Number(d.ticket_id), codigo: d.ticket_codigo,
+          enlaces: enlacesDelTicket(d.ticket_desc, d.ticket_adjuntos) }
+      : null;
+  });
+}
+
 /** Un conductor con todo lo suyo: quién es, dónde está y por dónde ha pasado. */
 async function ficha(id, { momento } = {}) {
   const [c] = (await db.consulta(`
@@ -329,6 +398,8 @@ async function ficha(id, { momento } = {}) {
     vig.historial('telefono', id),
     vig.historial('libranza', id),
   ]);
+
+  await ponerleCara(situaciones);
 
   const cuentas = (await db.consulta(
     `SELECT id, sistema, externo_id, externo_nombre, estado_externo, visto_desde, visto_hasta
@@ -716,7 +787,7 @@ async function cambiarSituacion(id, { estado, desde, hastaPrevisto, motivo }, { 
  * Aquí no se cierra ni se recorta nada: o el tramo cabe en un hueco libre, o se
  * dice cuál es el que estorba. Nada se pierde en silencio.
  */
-async function anadirAusencia(id, { estado, desde, hasta, motivo }, { usuarioId } = {}) {
+async function anadirAusencia(id, { estado, desde, hasta, motivo, ticketId }, { usuarioId } = {}) {
   if (!estado) throw new Error('Falta la situación');
   if (!desde) throw new Error('Falta el día en que empieza');
   const cat = (await db.consulta(
@@ -738,15 +809,34 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo }, { usuarioId 
 
   // El hueco se comprueba aquí para poder decir CUÁL estorba. La base también
   // lo impide —hay una restricción de exclusión—, pero su error no dice nada.
-  const choca = (await db.consulta(
-    `SELECT h.desde, h.hasta, COALESCE(c.etiqueta, h.estado) AS etiqueta
+  const pisa = (await db.consulta(
+    `SELECT h.id, h.desde, h.hasta, h.estado, h.motivo, h.usuario_id,
+            COALESCE(c.etiqueta, h.estado) AS etiqueta,
+            COALESCE(c.es_ausencia, true) AS es_ausencia
        FROM conductor_estado_hist h
        LEFT JOIN cat_estado_conductor c ON c.codigo = h.estado
       WHERE h.conductor_id = $1
         AND h.desde <= COALESCE($3::date, 'infinity'::date)
         AND COALESCE(h.hasta, 'infinity'::date) >= $2::date
-      ORDER BY h.desde LIMIT 1`, [id, desde, fin])).rows[0];
-  if (choca) {
+      ORDER BY h.desde`, [id, desde, fin])).rows;
+
+  // UN TRAMO "ACTIVO" ABIERTO NO ESTORBA: ES EL FONDO.
+  //
+  // Estar trabajando es el estado por defecto y la mayoría de las fichas no
+  // tienen ninguna fila que lo diga. Pero al volver de una baja,
+  // `cambiarSituacion` deja escrito un tramo "Activo" ABIERTO, y a partir de
+  // ahí esa persona no admitía ninguna ausencia: la comprobación veía el
+  // "Activo" sin fecha de vuelta y contestaba "mientras siga así no cabe ningún
+  // tramo después". Le pasaba a once personas —Soufyane El Hadri entre ellas— y
+  // la lista crecía sola: uno más cada vez que alguien se reincorpora.
+  //
+  // Así que el fondo SE PARTE para dejar sitio: se cierra la víspera de la
+  // ausencia y se vuelve a abrir al día siguiente de la vuelta. Lo que NO se
+  // parte es otra ausencia: dos bajas solapadas sí son un error de verdad, y
+  // ahí el aviso tiene que seguir saltando.
+  const estorban = pisa.filter(x => x.es_ausencia);
+  if (estorban.length) {
+    const choca = estorban[0];
     throw new Error(`Esas fechas pisan otro tramo suyo: ${choca.etiqueta}, `
       + (choca.hasta
           ? `del ${vig.dia(choca.desde)} al ${vig.dia(choca.hasta)}.`
@@ -756,15 +846,46 @@ async function anadirAusencia(id, { estado, desde, hasta, motivo }, { usuarioId 
           : `abierta desde el ${vig.dia(choca.desde)} y sin fecha de vuelta: mientras siga así `
             + 'no cabe ningún tramo después. Ponle primero cuándo vuelve.'));
   }
+  const fondos = pisa.filter(x => !x.es_ausencia);
 
-  // Quién la abrió queda en `usuario_id`, que es la pregunta que de verdad se
-  // hace: "¿quién le puso estas vacaciones?".
-  const r = await db.consulta(
-    `INSERT INTO conductor_estado_hist
-       (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id)
-     VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7) RETURNING *`,
-    [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null, usuarioId || null]);
-  return { anadida: r.rows[0] };
+  // TODO JUNTO O NADA. Partir el fondo y meter la ausencia son tres escrituras;
+  // a medias quedaría alguien sin ningún tramo —o con dos— y eso lo leen la
+  // bitácora, el cuadrante y la nómina.
+  return db.transaccion(async cli => {
+    for (const f of fondos) {
+      // El trozo de ANTES se recorta a la víspera. Si no hay trozo de antes
+      // —el fondo empezaba el mismo día o después— esa fila sobra entera.
+      if (vig.dia(f.desde) < desde) {
+        await cli.query(
+          `UPDATE conductor_estado_hist SET hasta = ($2::date - 1) WHERE id = $1`, [f.id, desde]);
+      } else {
+        await cli.query('DELETE FROM conductor_estado_hist WHERE id = $1', [f.id]);
+      }
+      // Y el de DESPUÉS vuelve a abrirse al día siguiente de la vuelta, con el
+      // mismo estado: la persona sigue activa cuando se reincorpora. Sin fecha
+      // de vuelta no hay "después" que reabrir.
+      const seguia = !f.hasta || vig.dia(f.hasta) > (fin || '9999-12-31');
+      if (fin && seguia) {
+        await cli.query(
+          `INSERT INTO conductor_estado_hist
+             (conductor_id, estado, desde, hasta, motivo, usuario_id)
+           VALUES ($1, $2, ($3::date + 1), $4::date, $5, $6)`,
+          [id, f.estado, fin, f.hasta || null, f.motivo || null, f.usuario_id || null]);
+      }
+    }
+
+    // Quién la abrió queda en `usuario_id`, que es la pregunta que de verdad se
+    // hace: "¿quién le puso estas vacaciones?". Y si vino de un ticket, se
+    // apunta CUÁL: desde ahí se llega al motivo que escribió el conductor y al
+    // justificante que subió, sin copiar ninguno de los dos.
+    const r = await cli.query(
+      `INSERT INTO conductor_estado_hist
+         (conductor_id, estado, desde, hasta, hasta_previsto, motivo, usuario_id, ticket_id)
+       VALUES ($1, $2, $3::date, $4::date, $5::date, $6, $7, $8) RETURNING *`,
+      [id, estado, desde, fin, cat.fin_previsible ? fin : null, motivo || null,
+       usuarioId || null, ticketId || null]);
+    return { anadida: r.rows[0], fondoPartido: fondos.length };
+  });
 }
 
 /**
@@ -1168,21 +1289,36 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
          FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [id])).rows[0];
     if (!abierto) throw new Error('Esta persona no está de alta');
 
-    // Un alta que aún no ha empezado NO se puede dar de baja antes del alta (lo
-    // prohíbe la base: baja >= alta). Es un contrato que nunca arrancó -típico de una
-    // prueba o un alta cancelada-, así que se CANCELA: se borra lo que empieza en el
-    // futuro (nunca llegó a existir) y se cierra a hoy lo que ya estuviera en marcha.
-    if (abierto.alta > dia) {
-      const limpiar = async tabla => {
-        await cli.query(`DELETE FROM ${tabla} WHERE conductor_id = $1 AND desde > $2`, [id, dia]);
-        await cli.query(
-          `UPDATE ${tabla} SET hasta = $2
-            WHERE conductor_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta > $2)`, [id, dia]);
-      };
+    // CERRAR NO BASTA: HAY QUE BORRAR LO QUE EMPIEZA DESPUÉS.
+    //
+    // Un tramo que arranca el 21 no se puede "cerrar el 14": la base lo prohíbe
+    // (hasta >= desde) y el error que devuelve no lo entiende nadie. Y tiene
+    // razón, porque eso no es un tramo que termine antes, es un tramo QUE NUNCA
+    // EXISTIÓ. Le pasó a Cristian Jiménez: dado de alta el 14, planificado para
+    // el 21, y al darle de baja el mismo 14 la pantalla se quedaba en el error
+    // de la restricción sin decir qué estorbaba.
+    //
+    // Así que lo que empieza después de la baja se borra, y lo que ya estaba en
+    // marcha se recorta a ese día. Vale igual para un alta que nunca arrancó y
+    // para una baja con fecha atrasada: una sola definición de dar de baja.
+    const limpiar = async tabla => {
+      await cli.query(`DELETE FROM ${tabla} WHERE conductor_id = $1 AND desde > $2`, [id, dia]);
+      await cli.query(
+        `UPDATE ${tabla} SET hasta = $2
+          WHERE conductor_id = $1 AND desde <= $2 AND (hasta IS NULL OR hasta > $2)`, [id, dia]);
+    };
+    const suyo = async () => {
       await limpiar('asignacion');            // asignacion_dia cae en cascada
       await limpiar('conductor_estado_hist');
       await limpiar('conductor_turno_hist');
       await limpiar('patron_libranza');
+    };
+
+    // Un alta que aún no ha empezado NO se puede dar de baja antes del alta (lo
+    // prohíbe la base: baja >= alta). Es un contrato que nunca arrancó -típico de
+    // una prueba o un alta cancelada-, así que se CANCELA en vez de cerrarse.
+    if (abierto.alta > dia) {
+      await suyo();
       await cli.query('DELETE FROM conductor_periodo_empleo WHERE id = $1', [abierto.id]);
       await audit.registrar({
         tabla: 'conductor', id, usuarioId, cli,
@@ -1195,12 +1331,7 @@ async function darDeBaja(id, { fecha, motivo }, { usuarioId, cli } = {}) {
     await cli.query(
       `UPDATE conductor_periodo_empleo SET baja = $2, motivo_baja = $3, usuario_id = $4 WHERE id = $1`,
       [abierto.id, dia, motivo || null, usuarioId || null]);
-    await cli.query(
-      `UPDATE asignacion SET hasta = $2 WHERE conductor_id = $1 AND (hasta IS NULL OR hasta > $2)`,
-      [id, dia]);
-    await vig.cerrar('situacion', id, dia, { cli });
-    await vig.cerrar('turnoConductor', id, dia, { cli });
-    await vig.cerrar('libranza', id, dia, { cli });
+    await suyo();
 
     await audit.registrar({
       tabla: 'conductor', id, usuarioId, cli,

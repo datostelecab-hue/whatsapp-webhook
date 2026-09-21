@@ -36,7 +36,7 @@ Desaparecieron `POST /generar` y `GET /estado`: existían porque bajar el mes de
 
 ## De dónde salen las horas
 
-Ni una hoja de cálculo ni una llamada a ninguna API. Todo sale de PostgreSQL — ver [[Adiós a las hojas]] y [[Base de datos]]:
+Ni una hoja de cálculo ni una llamada a ninguna API. Todo sale de PostgreSQL — ver [[Google Drive y Sheets|Adiós a las hojas]] y [[Base de datos]]:
 
 | Dato | Fuente |
 |---|---|

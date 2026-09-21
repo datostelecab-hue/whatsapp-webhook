@@ -353,22 +353,41 @@ async function aplicar(id, { desde, hasta, estado, motivo } = {}, quien = {}) {
   // «Baja o ausencia» cabe en una baja médica, un permiso o un asunto propio.
   // Se acepta la corrección, pero solo si es una ausencia de verdad: cualquier
   // otro código dejaría a la persona en un estado que no la aparta de nadie.
+  //
+  // EL VALOR PUEDE LLEGAR ENVUELTO. El selector de la casa devuelve un objeto
+  // -{ valor, grupo, texto }- cuando el campo es de tipo 'opciones', y a secas
+  // cuando es 'lista'. Aqui llegaba envuelto y se comparaba con `String()`, asi
+  // que salia "[object Object]", no casaba con ningun codigo del catalogo y
+  // TODA aplicacion moria con "Ese estado no es una ausencia" — incluso
+  // eligiendo la que el propio ticket proponia. La pantalla ya manda el valor a
+  // secas; esto lo desenvuelve igual porque la puerta es publica y el error que
+  // daba no señalaba a donde estaba el problema.
+  const codigoDe = x => (x && typeof x === 'object' ? x.valor : x);
+
   let cual = t.estadoAbre;
-  if (estado && String(estado) !== String(t.estadoAbre)) {
+  const pedido = codigoDe(estado);
+  if (pedido && String(pedido) !== String(t.estadoAbre)) {
     const { ausencias } = await repo.catalogos();
-    const elegida = (ausencias || []).find(a => a.codigo === String(estado));
-    if (!elegida) throw new Error('Ese estado no es una ausencia');
+    const elegida = (ausencias || []).find(a => a.codigo === String(pedido));
+    if (!elegida) throw new Error(`«${pedido}» no es una ausencia que se pueda aplicar`);
     cual = elegida.codigo;
   }
 
+  // EL TICKET VIAJA CON LA AUSENCIA. Desde la ficha de la persona se llega asi
+  // a quien la aplico, a lo que escribio el conductor y al justificante que
+  // subio a Drive, sin copiar ninguno de los tres.
   await plantilla.anadirAusencia(Number(t.conductorId), {
     estado: cual, desde: d, hasta: h || null,
     motivo: String(motivo || '').trim() || `Ticket ${t.codigo}`,
+    ticketId: Number(t.id),
   }, { usuarioId: quien.usuarioId || null });
 
   const { ausencias: cat } = await repo.catalogos();
   const nombre = ((cat || []).find(a => a.codigo === cual) || {}).etiqueta || t.subtipo;
-  const resolucion = `Aplicado: ${nombre} del ${d}${h ? ' al ' + h : ''}`;
+  // En dd/mm/aaaa y no en ISO: esta frase la lee una persona en la bandeja y en
+  // la historia del ticket, no una maquina.
+  const enEs = x => (String(x || '').split('-').reverse().join('/') || x);
+  const resolucion = `Aplicado: ${nombre} del ${enEs(d)}${h ? ' al ' + enEs(h) : ''}`;
   await repo.cambiarEstado(id, { estado: 'ejecutado', resolucion, cierra: true });
   await repo.apuntar(id, { antes: t.estado, despues: 'ejecutado', nota: resolucion,
     usuarioId: quien.usuarioId, quien: quien.nombre || '' });

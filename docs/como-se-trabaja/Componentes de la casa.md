@@ -41,7 +41,7 @@ Vive en `layout-gestion.ejs` y engancha **cualquier** `input.js-fecha` de la pá
 Al elegir un día dispara **`input` y `change`**, así que cualquiera de los dos vale para enterarse.
 
 > [!warning] Trabaja en dd/mm/aaaa, y la base en ISO
-> Convierte tú en el borde: `dd/mm/aaaa → aaaa-mm-dd` al mandar, y al revés al rellenar. En `Dialogo.formulario`, el campo `tipo: 'fecha'` **ya devuelve ISO** — pero hay que **darle** dd/mm/aaaa en `valor`, o la casilla enseña el formato de la base. → [[Fechas sin toISOString]]
+> Convierte tú en el borde: `dd/mm/aaaa → aaaa-mm-dd` al mandar, y al revés al rellenar. En `Dialogo.formulario`, el campo `tipo: 'fecha'` **ya devuelve ISO** — pero hay que **darle** dd/mm/aaaa en `valor`, o la casilla enseña el formato de la base. → [[Trampas conocidas|Fechas sin toISOString]]
 
 ## `Dialogo.formulario`
 
@@ -53,12 +53,22 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 
 `tipo` puede ser `texto`, `texto-largo`, `fecha`, `semana`, `lista` u `opciones`.
 
-- **`opciones` es el selector de la casa** y `lista` es el mismo por fuera; lo que cambia es lo que devuelven. Con muchas opciones acepta `buscador: { marcador, tope }`: pinta un filtro, enseña `tope` (10 por defecto) y dice cuántas quedan fuera. Con `grupos` pinta dos niveles.
+- **`opciones` es el selector de la casa** y `lista` es el mismo por fuera; lo que cambia es lo que devuelven (abajo). Los dos aceptan `buscador: { marcador, tope }`: pinta un filtro, enseña `tope` (10 por defecto) y dice cuántas quedan fuera. Con `grupos` pinta dos niveles.
 - `grupo` mete una cabecera cuando cambia: con treinta campos seguidos no se distingue la dirección de la Seguridad Social.
 - `ancho` (`max-w-md` por defecto) y `columnas: 2`.
 - Devuelve los valores, o **`null` si se cancela** — compruébalo siempre.
 
 **Un formulario no se cierra por un clic fuera**: tiene X, botón de cancelar y Escape. Perder lo escrito por rozar el fondo pasó de verdad. → [[Reglas de la casa]]
+
+> [!danger] `lista` y `opciones` se ven IGUAL y devuelven cosas distintas
+> - **`lista`** devuelve el valor **a secas**, como el `<select>` de siempre. Es lo que usan las treinta y tantas pantallas que ya existían, y por eso no hubo que tocar ninguna.
+> - **`opciones`** devuelve un **objeto**: `{ valor, grupo, texto }`. Hay que sacar el `.valor` a mano.
+>
+> Como se pintan idénticos, elegir mal no se ve en pantalla: se ve en el servidor, que recibe `"[object Object]"`. Le pasó a la **ticketera entera** —aplicar, enlazar, resolver y mover, las cuatro— y el error que daba (`Ese estado no es una ausencia`) no señalaba a ningún sitio: era el propio valor que el ticket proponía.
+>
+> **Elige `lista` salvo que necesites el `grupo` o el `texto`.** Y si escribes la puerta del servidor, desenvuelve por si acaso: `const codigo = x && typeof x === 'object' ? x.valor : x`.
+>
+> → [[Trampas conocidas]]
 
 ## El selector suelto: `.tc-selector`
 
@@ -152,4 +162,4 @@ Ninguna vista lleva color propio: todo son **tokens** (`--tc-gold`, `--tc-card`�
 
 Si necesitas una pieza que no está, **hazla en el sitio compartido** (`public/assets/js/`, o `layout-gestion.ejs` si tiene que engancharse sola) y **apúntala aquí**. Una pieza que solo existe dentro de una vista es una pieza que la siguiente pantalla volverá a escribir de otra manera.
 
-Relacionado: [[Reglas de la casa]] · [[Fechas sin toISOString]] · [[Trampas conocidas]]
+Relacionado: [[Reglas de la casa]] · [[Trampas conocidas|Fechas sin toISOString]] · [[Trampas conocidas]]

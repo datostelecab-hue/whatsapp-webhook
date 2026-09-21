@@ -92,6 +92,22 @@ Un solo periodo por persona: el abierto manda; si no, el de alta más reciente d
 
 El detalle de altas, bajas, ausencias y cambios de jornada está en [[RRHH]].
 
+### Dar de baja borra lo que empieza DESPUÉS
+
+Un tramo que arranca el 21 no se puede cerrar el 14 — la base lo prohíbe, y con razón: eso **nunca existió**. Así que al dar de baja, lo posterior a la fecha **se borra** (asignaciones y sus días de cuadrante, situaciones, turnos y libranzas) y lo que ya estaba en marcha se **recorta** a ese día.
+
+Es la misma función que usa la rama de "alta futura cancelada": **una sola definición de dar de baja**, en vez de dos que cierran cosas distintas. → [[Trampas conocidas]]
+
+### Un tramo "Activo" abierto es el fondo, no un obstáculo
+
+Al añadir una ausencia, un tramo abierto que **no sea ausencia** se **parte**: se cierra la víspera y se vuelve a abrir al día siguiente de la vuelta, todo en una transacción.
+
+Sin eso, a quien vuelve de una baja —y se le queda un `activo` abierto— **no se le podía poner ninguna ausencia más**. Dos ausencias solapadas siguen siendo un error y siguen avisando.
+
+### De dónde salió cada tramo
+
+El **Historial de situaciones** enseña, además de las fechas, **quién lo puso** y —si vino de la [[Ticketera]]— el **ticket** y el **justificante de Drive**, los dos leídos del ticket cada vez que se pinta, no copiados. El tramo solo guarda el número: `conductor_estado_hist.ticket_id`.
+
 ## La libranza sale del cuadrante
 
 **Ya no se teclea.** El fijo libra el descanso de su coche; el CT, los días que no le pusieron. La columna "Libra" lo enseña y el tooltip distingue si viene del cuadrante o de un patrón puesto a mano. La regla vive **una sola vez**, en la vista `v_conductor_libranza` (`db/113`), para que Plantilla y la agenda de PostgreSQL no puedan decir cosas distintas de la misma persona.
