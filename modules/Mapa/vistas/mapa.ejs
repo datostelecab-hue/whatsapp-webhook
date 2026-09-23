@@ -86,6 +86,12 @@
   /* El que lleva rato sin hablar se pinta a medias: no es dónde está, es dónde
      estuvo, y eso tiene que notarse sin leer nada. */
   .m-coche.m-perdido { opacity: .45; border-style: dashed; }
+  /* El GPS callado no es un equipo muerto: se ve entero, con el borde punteado
+     para decir que el punto es de hace unos minutos. */
+  .m-coche.m-singps { opacity: .8; border-style: dotted; }
+  /* Un rojo levantado sobre datos de BOLT viejos no puede pintarse igual que
+     uno de verdad: se vacía por dentro. Es un "no se sabe", no una acusación. */
+  .m-coche.m-dudoso { opacity: .55; border-style: dashed; }
 
   .maplibregl-popup-content {
     background: rgb(var(--tc-card)); color: rgb(var(--tc-text));
@@ -123,9 +129,10 @@
     descanso:   { tk: '--tc-warn',  icono: 'fa-mug-hot',              texto: 'Rueda en descanso' },
     suelto:     { tk: '--tc-red',   icono: 'fa-triangle-exclamation', texto: 'Rueda sin nadie' },
     parado:     { tk: '--tc-muted', icono: 'fa-circle',               texto: 'Parado' },
+    singps:     { tk: '--tc-muted', icono: 'fa-satellite-dish',       texto: 'GPS sin fijar' },
     perdido:    { tk: '--tc-border',icono: 'fa-question',             texto: 'Sin señal' },
   };
-  const ORDEN = ['suelto', 'descanso', 'trabajando', 'parado', 'perdido'];
+  const ORDEN = ['suelto', 'descanso', 'trabajando', 'parado', 'singps', 'perdido'];
   const CLASES_TONO = ORDEN.map(k => 'm-' + k);
 
   const hhmm = s => {
@@ -287,7 +294,11 @@
       // una columna que bajaba de Madrid a Gibraltar. Las coordenadas estaban
       // bien todo el rato; lo que faltaba era una palabra en el atributo.
       m.el.classList.remove.apply(m.el.classList, CLASES_TONO);
+      m.el.classList.remove('m-dudoso');
       m.el.classList.add('m-coche', 'm-' + c.tono);
+      // El rojo levantado sobre datos de BOLT viejos se pinta hueco: sigue
+      // estando ahi, pero no acusa a nadie.
+      if (c.dudoso) m.el.classList.add('m-dudoso');
       m.el.title = (c.matricula || '#' + c.unidad) + ' · ' + t.texto;
       m.el.querySelector('i').className = 'fa-solid ' + t.icono;
       // El contenido se rehace siempre: los segundos de "hace" corren.
@@ -394,7 +405,17 @@
       // SI LA VUELTA VA CON RETRASO SE DICE UNA VEZ Y ARRIBA, en vez de ir
       // poniendo coches grises: el dato de cada coche está bien, lo que pasa es
       // que nadie lo está refrescando.
-      if (f.hace != null && f.hace > 180) {
+      // LA MITAD DE BOLT, QUE ES LA QUE MIENTE EN SILENCIO. Los puntos se
+      // mueven cada 30 s; las etiquetas —quién va conectado— las escribe la
+      // vuelta de Flota viva cada 5 min. Si esa se para, el mapa sigue
+      // pareciendo vivo y acusa de "rueda sin nadie" a quien está trabajando.
+      if (f.boltHace != null && !f.boltFiable) {
+        const av = $('#m-error');
+        av.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i>'
+          + '<b>Lo de BOLT es de hace ' + hace(f.boltHace) + '.</b> Los puntos están al día, '
+          + 'pero quién va conectado no: los «rueda sin nadie» de ahora no son de fiar.';
+        av.classList.remove('hidden');
+      } else if (f.hace != null && f.hace > 180) {
         const av = $('#m-error');
         av.innerHTML = '<i class="fa-solid fa-clock-rotate-left mr-1"></i>'
           + 'La posición no se refresca desde hace ' + hace(f.hace)

@@ -35,6 +35,28 @@ const PADRON_CADA_MIN = Number(process.env.FLOTA_VIVA_PADRON_MIN) || 60;
 
 let ultimoPadron = 0;
 
+// ── ANTI-SOLAPE: LO QUE FALTABA ────────────────────────────────────────────
+//
+// node-cron NO espera a la promesa: lanza la vuelta siguiente aunque la
+// anterior siga dentro. Con vueltas de un segundo eso no se nota nunca, y por
+// eso estuvo bien un año. El 23/09/2026 se vio lo que pasa cuando no:
+//
+//   BOLT empezó a contestar 429 (demasiadas peticiones). Cada página reintenta
+//   con espera, así que una vuelta pasó de 1 s a 9 MINUTOS. Mientras corría,
+//   el cron metió otra, y otra: cada una pidiendo a BOLT lo mismo, lo que
+//   provocaba más 429, que alargaban más las vueltas. A las 12:45 dejó de
+//   terminar ninguna y el mapa se quedó congelado en la última foto buena —
+//   enseñando en rojo "rueda sin nadie" a gente que estaba trabajando.
+//
+// Una vuelta cada vez. Si la anterior sigue dentro, esta se salta y se dice.
+let corriendo = false;
+
+// Y un reloj de guardia: si una vuelta pasa de aquí, se ESCRIBE que se quedó
+// colgada. No la mata —no se puede cancelar una petición que ya salió— pero
+// deja de ser un misterio: `fv_vuelta` tenía la columna `error` y estaba
+// siempre vacía porque el fallo era un cuelgue, no una excepción.
+const TOPE_VUELTA_MS = Number(process.env.FLOTA_VIVA_TOPE_MIN || 4) * 60000;
+
 /** Cómo se dice en nuestro vocabulario lo que manda BOLT. */
 async function traducir() {
   const r = await db.consulta('SELECT estado, situacion FROM fv_estado_bolt');
@@ -103,9 +125,32 @@ async function vigiladas() {
   }
 }
 
-/** Refresca el padrón de coches y conductores si toca. */
+/**
+ * Refresca el padrón de coches y conductores si toca.
+ *
+ * EL RELOJ SE PONE AL EMPEZAR, NO AL ACABAR, y esa línea es media avería.
+ * Antes se marcaba al final: si la descarga tardaba quince minutos —que es lo
+ * que tarda cuando BOLT contesta 429—, las tres vueltas siguientes veían el
+ * reloj viejo y lanzaban SU PROPIA descarga del padrón entero. Cuatro veces lo
+ * mismo, justo cuando BOLT estaba diciendo que ya eran demasiadas peticiones.
+ *
+ * Marcándolo al entrar, el que llega tarde se va a casa. Si la descarga falla,
+ * se devuelve el reloj atrás para que el siguiente pueda reintentar.
+ */
 async function padron(desdeTs, hastaTs) {
   if (Date.now() - ultimoPadron < PADRON_CADA_MIN * 60000) return false;
+  const relojPrevio = ultimoPadron;
+  ultimoPadron = Date.now();
+  try {
+    return await padronDeVerdad(desdeTs, hastaTs);
+  } catch (e) {
+    // Que falle no puede dejar el padrón sin refrescar una hora entera.
+    ultimoPadron = relojPrevio;
+    throw e;
+  }
+}
+
+async function padronDeVerdad(desdeTs, hastaTs) {
 
   const [todosLosCoches, gente, lista] = await Promise.all([
     fuentes.vehiculos(desdeTs, hastaTs),
@@ -159,7 +204,6 @@ async function padron(desdeTs, hastaTs) {
     }
   });
 
-  ultimoPadron = Date.now();
   console.log(`👥 [FLOTA VIVA] Padrón: ${coches.length} de ${lista.size} vigilada(s) · ` +
               `${gente.length} conductor(es)`);
   return { coches: coches.length, vigiladas: lista.size, sinCoche };
@@ -172,11 +216,28 @@ async function padron(desdeTs, hastaTs) {
  * `fv_vuelta` y lo que deja ver si esto sigue vivo o lleva horas fallando.
  */
 async function pasada() {
+  // UNA CADA VEZ. Saltarse una vuelta no pierde nada: la siguiente mira la
+  // misma ventana de dos horas y reconstruye lo que haya pasado. Pisarse, en
+  // cambio, multiplica las llamadas a BOLT y acaba con las dos paradas.
+  if (corriendo) {
+    console.warn('⏭️  [FLOTA VIVA] La vuelta anterior sigue dentro: esta se salta');
+    return { saltado: true, motivo: 'la vuelta anterior sigue dentro' };
+  }
+  corriendo = true;
+
   const t0 = Date.now();
   await db.preparar();
 
   const vuelta = (await db.consulta(
     'INSERT INTO fv_vuelta (arrancada_at) VALUES (now()) RETURNING id')).rows[0].id;
+
+  // El reloj de guardia. No corta nada; solo deja escrito que esto se colgó,
+  // para que la próxima vez no haya que deducirlo de una tabla con huecos.
+  const guardia = setTimeout(() => {
+    console.error(`⏰ [FLOTA VIVA] La vuelta ${vuelta} lleva ${TOPE_VUELTA_MS / 60000} min sin terminar`);
+    db.consulta('UPDATE fv_vuelta SET error = $2 WHERE id = $1 AND terminada_at IS NULL',
+      [vuelta, 'Colgada: más de ' + (TOPE_VUELTA_MS / 60000) + ' min sin terminar']).catch(() => {});
+  }, TOPE_VUELTA_MS);
 
   try {
     const hastaTs = Math.floor(Date.now() / 1000);
@@ -282,6 +343,12 @@ async function pasada() {
     await db.consulta('UPDATE fv_vuelta SET terminada_at = now(), error = $2 WHERE id = $1',
       [vuelta, e.message]).catch(() => {});
     throw e;
+  } finally {
+    clearTimeout(guardia);
+    // En el `finally`: si se queda encendida por una excepción, el motor no
+    // vuelve a correr hasta el siguiente despliegue y nadie se entera, porque
+    // el mapa sigue enseñando lo último que supo.
+    corriendo = false;
   }
 }
 

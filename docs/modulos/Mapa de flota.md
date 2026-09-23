@@ -37,7 +37,8 @@ ni por estado de BOLT: por **los dos a la vez**.
 | ámbar | rueda estando en descanso | conectado, pero no da servicio |
 | **rojo** | **rueda y no hay nadie conectado** | **esto es lo que se busca** |
 | apagado | no se mueve | da igual lo que diga BOLT |
-| gris | Mapon dice `nodata` o `nogps` | el equipo no habla, o no coge satélite |
+| gris punteado | Mapon dice `nogps` | el equipo habla, el GPS no fija: **está donde marca el punto** |
+| gris | Mapon dice `nodata` | el equipo no habla: **no se sabe dónde está** |
 
 El rojo junta dos casos a propósito: el coche que está en BOLT con el conductor
 desconectado, y el equipo que no casa con ningún coche de BOLT. Los dos son *se
@@ -60,6 +61,39 @@ color.
 > de media, el peor 87) y `nogps` (habla pero no coge satélite, son minutos).
 > Que la VUELTA vaya con retraso se dice una vez y arriba, no pintando cien
 > coches de gris.
+
+> [!note] Y `nogps` no es «sin señal» — 23/09/2026
+> Estaban los dos en el mismo gris, y no son lo mismo. Medido ese día: los 10
+> `nodata` llevaban **18 días de media** callados (el peor 89); los 5 `nogps`
+> habían hablado hacía **entre 83 y 250 segundos**. De estos últimos tenemos su
+> posición, de hace minutos, y es **la misma que enseña Mapon en su pantalla**
+> —que fue justo la queja: *«dice sin señal y en Mapon sí me dice dónde
+> están»*—. Ahora `nogps` es su propio tono, **«GPS sin fijar»**, con el borde
+> punteado; «Sin señal» queda solo para los que de verdad no hablan.
+
+## Las dos mitades no van al mismo ritmo
+
+Esta pantalla junta **dos vueltas distintas**, y conviene saberlo:
+
+| | Cada cuánto | Qué escribe |
+|---|---|---|
+| `posiciones.refrescar()` | **30 s** | dónde está el punto |
+| el motor de [[Visibilidad\|Flota viva]] | **5 min** | quién va conectado, la etiqueta |
+
+Si se para la segunda, **la pantalla sigue pareciendo viva**: los puntos se
+mueven y las etiquetas mienten. Eso es lo que pasó el 23/09/2026 —ver
+[[Trampas conocidas]]— y el mapa acusó de «rueda sin nadie» a gente que estaba
+de viaje en BOLT.
+
+Desde entonces la cinta dice la edad de **las dos**, y cuando la de BOLT pasa de
+diez minutos:
+
+- sale un aviso arriba diciendo de cuándo es,
+- los rojos se pintan **huecos** y su explicación lleva el *OJO* delante,
+- y **`sueltos()` no devuelve nada**, así que el aviso de [[Control Alertas]] no
+  llama a nadie. Llamar a un conductor que está trabajando para preguntarle por
+  qué no trabaja se paga dos veces: en el ridículo y en que la próxima vez ya
+  nadie se crea el aviso.
 
 ## Solo los coches de la casa, y solo de tu sede
 

@@ -21,6 +21,51 @@ Ver [[Reglas de la casa]], [[Comprobadores]] y [[Glosario]].
 
 ---
 
+## El cron que se pisa a si mismo
+
+### Una vuelta lenta + `cron.schedule` = avalancha que no se recupera sola
+
+`services/flotaViva/motor.js`
+
+**23/09/2026.** BOLT empezo a contestar **429** (demasiadas peticiones) al bajar
+el padron. Cada pagina reintenta con espera, asi que una vuelta de Flota viva
+paso de **1 segundo a 11 minutos**. Y `cron.schedule` **no espera a la promesa**:
+mete la siguiente a los cinco minutos. Cada vuelta nueva pedia a BOLT lo mismo,
+lo que provocaba mas 429, que alargaban mas las vueltas.
+
+A las 12:45 dejo de terminar ninguna. El mapa se quedo con los puntos al dia
+—esos van por otra vuelta, cada 30 s— y las etiquetas congeladas, acusando de
+**«rueda sin nadie»** a conductores que estaban de viaje en BOLT.
+
+Dos cosas lo hacian peor:
+
+- **El reloj del padron se marcaba al TERMINAR.** Mientras una descarga de
+  quince minutos estaba en curso, las tres vueltas siguientes veian el reloj
+  viejo y lanzaban su propia descarga entera.
+- **Dos vueltas a la vez se corrompen**: se vio en vivo un
+  `duplicate key value violates unique constraint "uq_fv_tramo_abierto"` cuando
+  dos coincidieron sobre los mismos tramos.
+
+**Remedio:** bandera `corriendo` en `pasada()` —como la que ya tenia
+`posiciones.js`, cuyo comentario avisaba justo de esto—, el reloj del padron se
+marca **al entrar** (y se devuelve si falla), y un reloj de guardia que ESCRIBE
+en `fv_vuelta.error` cuando una vuelta pasa de cuatro minutos.
+
+> [!warning] Una tabla de vueltas con `error` vacio no significa que fueran bien
+> `fv_vuelta` insertaba la fila al empezar y la cerraba al acabar. Un CUELGUE no
+> es una excepcion: no pasa por el `catch`, asi que la fila se quedaba con
+> `terminada_at` y `error` en NULL. Cuarenta filas vacias y ni un mensaje de
+> error en ninguna parte.
+
+### La mitad viva y la mitad congelada
+
+El [[Mapa de flota]] junta dos vueltas de ritmos distintos: la **posicion** cada
+30 s y **quien va conectado en BOLT** cada 5 min. Si la segunda se para, la
+pantalla **sigue pareciendo viva** —los puntos se mueven— y miente en las
+etiquetas. Desde el 23/09 la cinta dice la edad de las DOS y un rojo levantado
+sobre datos viejos se pinta hueco y no dispara el aviso: llamar a un conductor
+que esta trabajando para preguntarle por que no trabaja se paga dos veces.
+
 ## Fechas, husos y la jornada
 
 ### Una hora escrita a mano y casteada a `timestamptz` se va DOS horas

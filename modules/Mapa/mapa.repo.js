@@ -75,6 +75,13 @@ async function frescura(sedes) {
   const r = await db.consulta(`
     SELECT max(p.refrescado_at)                                        AS refrescado_at,
            EXTRACT(EPOCH FROM (now() - max(p.refrescado_at)))::int      AS hace,
+           -- LA OTRA MITAD DEL MAPA. La posición se refresca cada 30 s, pero
+           -- quién va conectado en BOLT lo escribe la vuelta de Flota viva cada
+           -- 5 min. Si esa se para, los puntos siguen moviéndose y las etiquetas
+           -- se quedan congeladas: el mapa enseña "rueda sin nadie" sobre gente
+           -- que está trabajando. Pasó el 23/09/2026 y no había forma de verlo.
+           (SELECT EXTRACT(EPOCH FROM (now() - max(terminada_at)))::int
+              FROM fv_vuelta WHERE error IS NULL)                        AS bolt_hace,
            count(*) FILTER (WHERE v.id IS NOT NULL
                               AND ($1::varchar[] IS NULL
                                    OR v.sede = ANY($1::varchar[])))::int AS dentro,
@@ -84,7 +91,7 @@ async function frescura(sedes) {
                               AND NOT (v.sede = ANY($1::varchar[])))::int AS otra_sede
       FROM fv_posicion p
       LEFT JOIN vehiculo v ON v.matricula = p.matricula AND v.baja_at IS NULL`, [filtro]);
-  return r.rows[0] || { refrescado_at: null, hace: null, dentro: 0, sin_ficha: 0, otra_sede: 0 };
+  return r.rows[0] || { refrescado_at: null, hace: null, bolt_hace: null, dentro: 0, sin_ficha: 0, otra_sede: 0 };
 }
 
 module.exports = { coches, frescura };

@@ -52,7 +52,28 @@ const repo = require('./mapa.repo');
 //
 // Lo que sí es nuestro es si la VUELTA va con retraso, y eso se dice una vez y
 // arriba (`frescura`), no pintando cien coches de gris.
-const PERDIDOS = ['nodata', 'nogps'];
+// Y NO SON LO MISMO, aunque Mapon los ponga juntos. Lo dijo Camilo el
+// 23/09/2026 mirando el mapa: "dice sin señal y en Mapon sí me dice dónde
+// están". Tenía razón, y la diferencia es grande:
+//
+//   nodata  el equipo NO habla. Medido ese día: los 10 que estaban así
+//           llevaban 18 días de media callados, y el peor 89. Eso sí es
+//           SIN SEÑAL: no se sabe dónde está el coche.
+//   nogps   el equipo habla —los 5 de ese día lo habían hecho hacía entre 83
+//           y 250 segundos— pero no coge satélite: un garaje, un túnel. La
+//           posición que se pinta es la última buena, de hace minutos, y es
+//           la MISMA que enseña Mapon en su pantalla. Llamar a eso "sin
+//           señal" es acusar al equipo de algo que no pasa.
+//
+// Así que cada uno va por su lado: `nodata` es gris de "no se sabe", y `nogps`
+// es un coche que está donde dice, con el GPS callado.
+const PERDIDOS = ['nodata'];
+const SIN_GPS = 'nogps';
+
+// CUÁNDO DEJA DE SER DE FIAR LA MITAD DE BOLT. La vuelta corre cada 5 min; con
+// el doble ya ha fallado algo. A partir de ahí un "rueda sin nadie" no es un
+// hecho, es una foto vieja, y el mapa tiene que decirlo en vez de acusar.
+const BOLT_FIABLE_S = 600;
 
 // LA CACHE VA POR SEDES, NO SUELTA.
 //
@@ -66,18 +87,33 @@ const clave = sedes => (Array.isArray(sedes) && sedes.length ? [...sedes].sort()
 /** De qué color va este coche. La única regla del mapa. */
 function tono(c) {
   if (PERDIDOS.includes(c.estado_mapon)) return 'perdido';
+  if (c.estado_mapon === SIN_GPS) return 'singps';
   if (c.estado_mapon !== 'driving') return 'parado';
   if (c.situacion === 'viaje' || c.situacion === 'espera') return 'trabajando';
   if (c.situacion === 'descanso') return 'descanso';
   return 'suelto';
 }
 
-/** Por qué está en rojo, dicho con palabras. Se enseña al pinchar el coche. */
-function porQue(c, t) {
+/**
+ * Por qué está en rojo, dicho con palabras. Se enseña al pinchar el coche.
+ *
+ * `boltHace` son los segundos desde la última vuelta buena de Flota viva. Si
+ * está vieja, el rojo NO es un hecho: lo que se sabe es que el coche rueda y
+ * que de BOLT no hay noticias recientes. Decirlo cambia lo que hace el que
+ * mira —llamar al conductor o mirar el sistema— y por eso se dice.
+ */
+function porQue(c, t, boltHace) {
+  if (t === 'singps') {
+    return 'El equipo habla pero no coge satélite. Está donde marca el punto, de hace unos minutos';
+  }
   if (t !== 'suelto') return null;
-  return c.situacion
+  const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
+  const base = c.situacion
     ? `Rueda y ${c.conductor || 'su conductor'} no está conectado en BOLT`
     : 'Rueda y no hay nadie fichado en BOLT con este coche';
+  return viejo
+    ? base + ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min, puede estar conectado y no haberse enterado el sistema`
+    : base;
 }
 
 /**
@@ -94,6 +130,9 @@ async function frente({ forzar = false, sedes = null } = {}) {
   }
 
   const [filas, frescura] = await Promise.all([repo.coches(sedes), repo.frescura(sedes)]);
+
+  const boltHace = frescura.bolt_hace == null ? null : Number(frescura.bolt_hace);
+  const boltFiable = boltHace != null && boltHace <= BOLT_FIABLE_S;
 
   const coches = filas.map(c => {
     const t = tono(c);
@@ -122,7 +161,10 @@ async function frente({ forzar = false, sedes = null } = {}) {
       km: c.km == null ? null : Number(c.km),
       sede: c.sede || null,
       tono: t,
-      motivo: porQue(c, t),
+      // Un rojo sobre datos de BOLT viejos no es un rojo: es un "no se sabe".
+      // La vista lo pinta distinto y el aviso no lo llama.
+      dudoso: t === 'suelto' && !boltFiable,
+      motivo: porQue(c, t, boltHace),
     };
   });
 
@@ -135,6 +177,9 @@ async function frente({ forzar = false, sedes = null } = {}) {
     frescura: {
       unidades: Number(frescura.dentro || 0),
       hace: frescura.hace == null ? null : Number(frescura.hace),
+      // Segundos desde la última vuelta BUENA de Flota viva. Es la edad de las
+      // etiquetas (quién va conectado), que no es la de los puntos.
+      boltHace, boltFiable,
       // Los que NO se pintan, para poder decirlo. Desaparecer a la vista es
       // limpiar; desaparecer en silencio es que un dia falte un coche y nadie
       // sepa por que.
@@ -158,6 +203,15 @@ async function frente({ forzar = false, sedes = null } = {}) {
  */
 async function sueltos({ sedes = null, minSegundos = 180 } = {}) {
   const d = await frente({ forzar: true, sedes });
+  // SI LA MITAD DE BOLT ESTÁ VIEJA, NO SE AVISA DE NADA. El aviso mueve a
+  // alguien a llamar por teléfono, y llamar a un conductor que está trabajando
+  // para preguntarle por qué no trabaja se paga dos veces: en el ridículo y en
+  // que la próxima vez ya nadie se crea el aviso.
+  if (!d.frescura.boltFiable) {
+    console.warn(`⏸️  [MAPA] No se avisa de sueltos: lo de BOLT es de hace ${
+      d.frescura.boltHace == null ? '¿?' : Math.round(d.frescura.boltHace / 60) + ' min'}`);
+    return [];
+  }
   return d.coches.filter(c => c.tono === 'suelto'
     && c.llevaAsi != null && c.llevaAsi >= minSegundos);
 }
@@ -165,4 +219,4 @@ async function sueltos({ sedes = null, minSegundos = 180 } = {}) {
 /** Se llama al escribir posiciones nuevas: la foto de antes ya no vale. */
 const olvidar = () => { cache.clear(); };
 
-module.exports = { frente, sueltos, olvidar, tono, PERDIDOS };
+module.exports = { frente, sueltos, olvidar, tono, PERDIDOS, SIN_GPS, BOLT_FIABLE_S };
