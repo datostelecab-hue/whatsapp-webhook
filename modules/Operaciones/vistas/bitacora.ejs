@@ -826,7 +826,7 @@
     const k = soloClase(clase(c, d)), v = val(c, d);
     let contenido = '';
     if (trabajo(k)) contenido = `<span class="cal-val">${nf1.format(v)} h</span>`;
-    else if (k === 'nosalio') contenido = '<span class="cal-val">no salió</span>';
+    else if (k === 'nosalio') contenido = '<span class="cal-val">Ausencia</span>';
     else if (k === 'L') contenido = '<span class="cal-val">libra</span>';
     else if (k === 'J') {
       // El número que vale para la nómina (justificadas APROBADAS + BOLT) y la
