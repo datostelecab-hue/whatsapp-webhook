@@ -21,6 +21,32 @@ Ver [[Reglas de la casa]], [[Comprobadores]] y [[Glosario]].
 
 ---
 
+## Lo que hace que un panel este "en directo" NO es la base de datos
+
+**Medido el 23/09/2026**, con la pregunta encima de la mesa de si haria falta
+pagar mas servidor:
+
+| | Lo que se ensena es de hace | Por que |
+|---|---|---|
+| **Mapon** (la posicion) | **26 s** de media, mediana 14 s | la vuelta pasa cada 30 s y **la caja del coche solo habla cada ~40-67 s** |
+| **BOLT** (quien va conectado) | **7 min 26 s** de media, la peor 15 min | la ingesta pasaba **cada 10 minutos** |
+| la base | 291 ms la consulta entera del mapa | no es el cuello de botella **ni de lejos** |
+
+El techo de Mapon **no es nuestro**: por mucho que se pregunte cada 10 segundos,
+la caja no manda nada nuevo. Pasar de 30 s a 10 s gana unos **diez segundos** de
+media y triplica las llamadas.
+
+El de BOLT si era nuestro, y era de diez minutos. Bajar la ingesta a **un
+minuto** sale casi gratis: la ventana de dos horas cabe en UNA pagina y se
+resuelve en ~650 ms. Lo caro de BOLT nunca fue esto, era el padron (dieciocho
+paginas). Antes hubo que arreglar dos cosas: la escritura era **un INSERT por
+apunte** (~270 idas y vueltas por pasada) y el latido **no tenia anti-solape**.
+
+> [!warning] Ampliar la base no habria arreglado nada
+> Las dos mitades del panel dependen de **APIs ajenas y de una caja GPS**, no de
+> PostgreSQL. La consulta del mapa tarda 291 ms y escribir 108 posiciones tarda
+> 1 ms. Antes de pagar capacidad, medir de donde viene el retraso.
+
 ## El cron que se pisa a si mismo
 
 ### Una vuelta lenta + `cron.schedule` = avalancha que no se recupera sola

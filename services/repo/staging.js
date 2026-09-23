@@ -37,22 +37,37 @@ async function registrarDescarga({ fuente, endpoint, params, payload, filas, ms,
  * Devuelve cuantos eventos NUEVOS entraron.
  */
 async function guardarStateLogs(logs, descargaId = null) {
-  let nuevos = 0;
+  // DE UNA VEZ, NO UNO A UNO. Esto era un INSERT por apunte: con la ventana de
+  // dos horas son ~270 idas y vueltas a Frankfurt cada pasada, y casi todas
+  // para no hacer nada (el apunte ya estaba). A diez minutos se aguantaba; para
+  // pedirlo cada minuto -que es lo que hace que el panel este de verdad en
+  // directo- no.
+  //
+  // Y DEDUPLICADO antes de mandarlo: la misma clave repetida dentro de un mismo
+  // INSERT no es lenta, es un error -"cannot affect row a second time"-, y una
+  // ventana solapada trae repetidos de sobra. El bucle de antes lo absorbia.
+  const vistos = new Map();
   for (const l of logs || []) {
     const driver = l.driver_uuid || null;
     const t = Number(l.created);
     const estado = l.state || null;
     if (!driver || !t || !estado) continue;      // sin driver no hay jornada que derivar
-    const r = await db.consulta(
-      `INSERT INTO bolt_state_log (driver_uuid, vehiculo_uuid, estado, ocurrido_at, descarga_id)
-       VALUES ($1, $2, $3, to_timestamp($4), $5)
-       ON CONFLICT (driver_uuid, ocurrido_at, estado) WHERE driver_uuid IS NOT NULL
-       DO NOTHING
-       RETURNING id`,
-      [driver, l.vehicle_uuid || null, estado, t, descargaId]);
-    if (r.rowCount) nuevos++;
+    vistos.set(driver + '|' + t + '|' + estado,
+      { driver, veh: l.vehicle_uuid || null, estado, t });
   }
-  return nuevos;
+  const filas = [...vistos.values()];
+  if (!filas.length) return 0;
+
+  const r = await db.consulta(
+    `INSERT INTO bolt_state_log (driver_uuid, vehiculo_uuid, estado, ocurrido_at, descarga_id)
+     SELECT x.driver, x.veh, x.estado, to_timestamp(x.t), $5
+       FROM unnest($1::text[], $2::text[], $3::text[], $4::bigint[]) AS x(driver, veh, estado, t)
+     ON CONFLICT (driver_uuid, ocurrido_at, estado) WHERE driver_uuid IS NOT NULL
+     DO NOTHING
+     RETURNING id`,
+    [filas.map(x => x.driver), filas.map(x => x.veh), filas.map(x => x.estado),
+     filas.map(x => x.t), descargaId]);
+  return r.rowCount;
 }
 
 /**

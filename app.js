@@ -390,8 +390,14 @@ if (pruebas.ACTIVO) {
 //
 // Cada tarea decide cada cuanto tiene sentido repetirla (services/ingesta.js):
 // el padron de conductores no cambia cada cinco minutos y pedirlo asi son
-// cientos de paginas por hora. El latido es de 5; la cadencia, de cada tarea.
-programar('*/5 * * * *', async () => {
+// cientos de paginas por hora. El latido es de UNO; la cadencia, de cada tarea.
+//
+// Era de cinco. Se bajo a uno el 23/09/2026 para que los apuntes de estado de
+// BOLT entren cada minuto en vez de cada diez: de ahi sale lo que enseñan el
+// mapa y En directo, y llegaban con 7 min 26 s de retraso de media. Las demas
+// tareas no cambian nada -siguen con su `cadaMin` de 10, 60 o 360-, y el latido
+// lleva anti-solape para que un BOLT lento no apile peticiones.
+programar('* * * * *', async () => {
   try {
     await require('./services/ingesta').latido();
   } catch (error) {

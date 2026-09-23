@@ -62,7 +62,18 @@ const TAREAS = {
     etiqueta: 'Logs de estado de BOLT',
     // Cada 10 min: es la fuente de la jornada y del panel en vivo. La ventana
     // pedida se solapa a proposito con la anterior; el aterrizaje es idempotente.
-    cadaMin: Number(process.env.INGESTA_STATE_LOGS_MIN) || 10,
+    // CADA MINUTO, y es lo que hace que el panel este en directo de verdad.
+    //
+    // Medido el 23/09/2026: un apunte tardaba de media 7 min 26 s en llegar a
+    // nuestra base -mediana 7:27, el peor 15:07- porque esto pasaba cada diez
+    // minutos. Todo lo que mira "que esta haciendo ahora" -el mapa, En directo,
+    // a quien hay que llamar- heredaba ese retraso.
+    //
+    // Y sale barato: la ventana de dos horas cabe en UNA pagina y se resuelve
+    // en ~650 ms, la misma llamada que ya se hacia; lo caro de BOLT era el
+    // padron (dieciocho paginas), y ese ya no se pide por aqui. Lo que si habia
+    // que arreglar antes era la escritura, que era un INSERT por apunte.
+    cadaMin: Number(process.env.INGESTA_STATE_LOGS_MIN) || 1,
     critica: true,
     async ejecutar() {
       const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
@@ -78,9 +89,16 @@ const TAREAS = {
         todos = todos.concat(logs);
       }
       // Se guarda el crudo (para auditar/reprocesar) y de ahi cuelgan los eventos.
+      //
+      // PERO NO CADA MINUTO: la ventana se solapa, asi que serian sesenta copias
+      // por hora de casi lo mismo -cientos de MB al dia que la poda nocturna
+      // viene justo a borrar-. Se queda una copia cada diez minutos, que es el
+      // ritmo al que se guardaba hasta hoy. La fila de descarga SI se crea
+      // siempre, para no dejar apuntes sin `descarga_id`.
+      const guardaCrudo = new Date().getMinutes() % 10 === 0;
       const descargaId = await staging.registrarDescarga({
         fuente: 'bolt', endpoint: 'getFleetStateLogs',
-        params: { start_ts: desde, end_ts: hasta }, payload: todos,
+        params: { start_ts: desde, end_ts: hasta }, payload: guardaCrudo ? todos : null,
         filas: todos.length, ms: Date.now() - t0,
       });
       nuevos = await staging.guardarStateLogs(todos, descargaId);
@@ -360,13 +378,30 @@ async function ejecutar(tarea, { forzar = false } = {}) {
  * Van EN SERIE a propósito: en paralelo, dos tareas de BOLT compiten por la
  * misma cuota y se sacan 429s la una a la otra.
  */
+// ── UNO CADA VEZ ───────────────────────────────────────────────────────────
+// node-cron NO espera a la promesa: lanza el latido siguiente aunque el
+// anterior siga dentro. A cinco minutos casi nunca se notaba; a UNO, basta con
+// que BOLT tarde para que se pisen dos, y dos latidos son el doble de
+// peticiones justo cuando la API esta diciendo que ya son demasiadas. Eso es
+// exactamente lo que tumbó el motor de Flota viva el 23/09/2026.
+let latiendo = false;
+
 async function latido({ forzar = false, soloFuente } = {}) {
   if (!db.HAY_BD) return { saltada: 'sin base de datos' };
+  if (latiendo && !forzar) return { saltada: 'el latido anterior sigue dentro' };
+  latiendo = true;
   const hechas = [];
   for (const [tarea, def] of Object.entries(TAREAS)) {
     if (soloFuente && def.fuente !== soloFuente) continue;
-    hechas.push(await ejecutar(tarea, { forzar }));
+    try {
+      hechas.push(await ejecutar(tarea, { forzar }));
+    } catch (e) {
+      // Que una tarea reviente no puede llevarse por delante a las demas: cada
+      // una ya se apunta su fallo, y el latido sigue con la siguiente.
+      console.error(`❌ [INGESTA] ${tarea} se cayó dentro del latido:`, e.message);
+    }
   }
+  latiendo = false;
   return { hechas };
 }
 
