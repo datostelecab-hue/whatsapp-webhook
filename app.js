@@ -388,6 +388,27 @@ if (pruebas.ACTIVO) {
 // una API para pintarse: leen de PostgreSQL, que es lo que las hace rapidas y
 // lo que hace que una caida de Mapon no se note en RRHH.
 //
+// ── BOLT EN DIRECTO: cada 10 segundos ──────────────────────────────────────
+// Los apuntes de estado de los ultimos cinco minutos, para que el mapa y En
+// directo digan "en viaje, hace 4 s" y no "hace 7 min". Medido: BOLT publica el
+// cambio casi al momento y no protesta a este ritmo. Ver `estadosAlDia` en
+// services/ingesta.js.
+//
+// Se apaga con BOLT_DIRECTO=off sin tocar codigo. Y `programar` lo apaga solo
+// con MODO_PRUEBAS=1, como a todo lo que sale fuera.
+if (process.env.BOLT_DIRECTO !== 'off') {
+  programar('*/10 * * * * *', async () => {
+    try {
+      const r = await require('./services/ingesta').estadosAlDia();
+      // Si ha entrado algo, la foto del mapa ya no vale: que la siguiente
+      // pantalla que pregunte la rehaga en vez de servir la de hace 10 s.
+      if (r && r.nuevos) require('./modules/Mapa/mapa.service').olvidar();
+    } catch (error) {
+      console.error(`❌ [BOLT DIRECTO] ${error.message}`);
+    }
+  }, { timezone: 'Europe/Madrid' });
+}
+
 // Cada tarea decide cada cuanto tiene sentido repetirla (services/ingesta.js):
 // el padron de conductores no cambia cada cinco minutos y pedirlo asi son
 // cientos de paginas por hora. El latido es de UNO; la cadencia, de cada tarea.

@@ -93,9 +93,14 @@ function situacionDe(c) {
   const tCrudo = c.crudo_at ? new Date(c.crudo_at).getTime() : null;
   const tTramo = c.desde_tramo ? new Date(c.desde_tramo).getTime() : null;
   const usaCrudo = tCrudo != null && (tTramo == null || tCrudo >= tTramo);
+  // La ETIQUETA y la HORA van con la situacion que se elige, no sueltas: si la
+  // situacion sale del apunte y la etiqueta del tramo, la ventanita decia
+  // "Desconectado" sobre un coche pintado de verde.
   if (usaCrudo && c.situacion_cruda) {
     return {
       situacion: c.situacion_cruda,
+      etiqueta: c.etiqueta_cruda || c.situacion_etiqueta || null,
+      desde: c.crudo_at,
       conductor: c.conductor_crudo || c.conductor || null,
       telefono: c.telefono_crudo || c.telefono || null,
       fuente: 'apunte',
@@ -103,6 +108,8 @@ function situacionDe(c) {
   }
   return {
     situacion: c.situacion || null,
+    etiqueta: c.situacion_etiqueta || null,
+    desde: c.desde_tramo || null,
     conductor: c.conductor || c.conductor_crudo || null,
     telefono: c.telefono || c.telefono_crudo || null,
     fuente: c.situacion ? 'tramo' : null,
@@ -114,7 +121,7 @@ function situacionDe(c) {
 // Si fuera una sola, la foto ya filtrada del primero se le serviria durante
 // diez segundos a todos los demas: quien puede ver Barcelona dejaria de verla
 // porque acaba de mirar alguien que no. La clave es la lista de sedes.
-const TTL_CACHE_MS = 10000;
+const TTL_CACHE_MS = 5000;
 const cache = new Map();   // 'madrid' | 'madrid,barcelona' → { ts, datos }
 const clave = sedes => (Array.isArray(sedes) && sedes.length ? [...sedes].sort().join(',') : 'todas');
 
@@ -189,7 +196,11 @@ async function frente({ forzar = false, sedes = null } = {}) {
       operativo: c.coche_operativo !== false,
       estadoMapon: c.estado_mapon || null,
       situacion: v.situacion,
-      situacionEtiqueta: c.situacion_etiqueta || null,
+      situacionEtiqueta: v.etiqueta,
+      // DESDE CUANDO esta en esa situacion, como instante y no como segundos:
+      // la pantalla cuenta sola cada segundo ("hace 4 s", "hace 5 s"...) sin
+      // tener que volver a preguntar.
+      situacionDesde: v.desde ? new Date(v.desde).toISOString() : null,
       conectado: v.situacion != null && v.situacion !== 'desconectado',
       conductor: v.conductor,
       telefono: v.telefono,
@@ -197,7 +208,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
       // "¿por qué dice eso?" sin abrir la base.
       fuente: v.fuente,
       // Segundos que lleva en esa situación; la vista lo pinta como "2 h 14".
-      desdeHace: c.segundos_situacion == null ? null : Number(c.segundos_situacion),
+      desdeHace: v.desde ? Math.max(0, Math.round((Date.now() - new Date(v.desde).getTime()) / 1000))
+        : (c.segundos_situacion == null ? null : Number(c.segundos_situacion)),
       km: c.km == null ? null : Number(c.km),
       sede: c.sede || null,
       tono: t,

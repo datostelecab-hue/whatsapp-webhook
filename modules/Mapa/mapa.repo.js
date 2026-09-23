@@ -64,6 +64,7 @@ async function coches(sedes) {
            -- coche?— no hace falta un tramo: basta el ÚLTIMO APUNTE. Así el
            -- semáforo se apoya en la tubería tonta, que es la que aguanta.
            eb.situacion                                              AS situacion_cruda,
+           sc.etiqueta                                               AS etiqueta_cruda,
            cru.ocurrido_at                                           AS crudo_at,
            cc.nombre                                                 AS conductor_crudo,
            cc.telefono                                               AS telefono_crudo,
@@ -87,6 +88,7 @@ async function coches(sedes) {
          ORDER BY l.ocurrido_at DESC
          LIMIT 1) cru ON TRUE
       LEFT JOIN fv_estado_bolt eb ON eb.estado = cru.estado
+      LEFT JOIN fv_cat_situacion sc ON sc.codigo = eb.situacion
       LEFT JOIN fv_conductor cc ON cc.uuid = cru.driver_uuid
      WHERE ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
      ORDER BY v.matricula`, [filtro]);

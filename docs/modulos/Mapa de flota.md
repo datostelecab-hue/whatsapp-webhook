@@ -78,7 +78,29 @@ Esta pantalla junta **dos vueltas distintas**, y conviene saberlo:
 | | Cada cuánto | Qué escribe |
 |---|---|---|
 | `posiciones.refrescar()` | **30 s** | dónde está el punto |
-| la ingesta / el motor | **10 / 5 min** | quién va conectado, la etiqueta |
+| `ingesta.estadosAlDia()` | **10 s** | quién va conectado, la etiqueta |
+| la pantalla | **10 s** | vuelve a preguntar; el «hace X s» corre solo cada segundo |
+
+### En directo de verdad (23/09/2026)
+
+Camilo lo pidió así: *«Matrícula X, conductor Y, en espera, hace 5 segundos»*. La cadena tenía cuatro eslabones y cada uno añadía su retraso:
+
+| Eslabón | Antes | Ahora |
+|---|---|---|
+| BOLT publica el cambio | casi al momento | igual — **medido: lo cazamos 2-11 s después con preguntas cada 10 s** |
+| nosotros se lo preguntamos | cada 10 min → cada **2** (ver abajo) | **cada 10 s**, bucle propio con anti-solape |
+| la foto guardada del mapa | 10 s | 5 s, y se tira en cuanto entra un apunte |
+| la pantalla vuelve a preguntar | 30 s | **10 s** |
+
+Resultado: un cambio en BOLT aparece en el mapa en **~10 s de media, ~20 s el peor caso**. Doce preguntas seguidas a BOLT cada 10 s: **cero 429**, ~500 ms cada una.
+
+El «hace X s» **no espera al servidor**: la ventanita lleva la hora del cambio (`situacionDesde`) y un reloj de la página resta cada segundo.
+
+> [!bug] La etiqueta venía de un sitio y el color de otro
+> Al coger la situación del apunte crudo, la **etiqueta** seguía saliendo del
+> tramo: la ventanita decía «Desconectado» sobre un coche pintado de verde.
+> Ahora situación, etiqueta y hora van juntas, de la misma fuente
+> (`situacionDe()`). Comprobado: cero incoherentes.
 
 ### Y la mitad de BOLT entra por DOS tuberías
 

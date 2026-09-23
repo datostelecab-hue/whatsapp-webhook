@@ -47,6 +47,18 @@ apunte** (~270 idas y vueltas por pasada) y el latido **no tenia anti-solape**.
 > PostgreSQL. La consulta del mapa tarda 291 ms y escribir 108 posiciones tarda
 > 1 ms. Antes de pagar capacidad, medir de donde viene el retraso.
 
+## Una tarea de cada minuto que corre cada dos
+
+`services/ingesta.js`, `toca()`
+
+El latido salta a **:00** de cada minuto, pero la tarea anterior queda apuntada
+uno o dos segundos después —a :01, a :02—. Al minuto siguiente lleva **58 s**
+y `toca()` dice que todavía no: la tarea de cada minuto corría **cada dos**. Se
+vio en producción el 23/09/2026: 17:08, 17:10, 17:12, 17:14…
+
+**Remedio:** una holgura de un cuarto de latido (`HOLGURA_MS`, 15 s). A las
+tareas de una hora no les cambia nada; a las de un minuto, todo.
+
 ## El cron que se pisa a si mismo
 
 ### Una vuelta lenta + `cron.schedule` = avalancha que no se recupera sola

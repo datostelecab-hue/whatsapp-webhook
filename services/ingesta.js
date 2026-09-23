@@ -62,18 +62,17 @@ const TAREAS = {
     etiqueta: 'Logs de estado de BOLT',
     // Cada 10 min: es la fuente de la jornada y del panel en vivo. La ventana
     // pedida se solapa a proposito con la anterior; el aterrizaje es idempotente.
-    // CADA MINUTO, y es lo que hace que el panel este en directo de verdad.
+    // LA RED DE SEGURIDAD, NO EL DIRECTO. El directo es `estadosAlDia()`, mas
+    // abajo, que pregunta cada 10 segundos por los ultimos cinco minutos. Esta
+    // tarea pide DOS HORAS cada cinco minutos: si el bucle rapido se cae un
+    // rato, aqui se recoge lo que se perdio, y es la que deja la copia cruda y
+    // el apunte en `ingesta_ejecucion` para auditar.
     //
-    // Medido el 23/09/2026: un apunte tardaba de media 7 min 26 s en llegar a
-    // nuestra base -mediana 7:27, el peor 15:07- porque esto pasaba cada diez
-    // minutos. Todo lo que mira "que esta haciendo ahora" -el mapa, En directo,
-    // a quien hay que llamar- heredaba ese retraso.
-    //
-    // Y sale barato: la ventana de dos horas cabe en UNA pagina y se resuelve
-    // en ~650 ms, la misma llamada que ya se hacia; lo caro de BOLT era el
-    // padron (dieciocho paginas), y ese ya no se pide por aqui. Lo que si habia
-    // que arreglar antes era la escritura, que era un INSERT por apunte.
-    cadaMin: Number(process.env.INGESTA_STATE_LOGS_MIN) || 1,
+    // Historia, por si alguien la vuelve a bajar: era de 10 min y un apunte
+    // tardaba de media 7 min 26 s en llegar. Se bajo a 1 el 23/09/2026 y paso a
+    // correr cada DOS por la falta de holgura en `toca()`. Con el bucle rapido
+    // encima, cinco minutos es de sobra.
+    cadaMin: Number(process.env.INGESTA_STATE_LOGS_MIN) || 5,
     critica: true,
     async ejecutar() {
       const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
@@ -336,8 +335,15 @@ async function toca(tarea) {
     return false;
   }
   if (!ultimo) return true;
-  return (Date.now() - new Date(ultimo).getTime()) >= def.cadaMin * 60000;
+  // CON HOLGURA. El latido salta a :00 de cada minuto, pero la tarea anterior
+  // quedo apuntada uno o dos segundos DESPUES -a :01, a :02-, asi que al minuto
+  // siguiente llevaba 58 s y "todavia no tocaba". Una tarea de cada minuto
+  // corria cada DOS. Se vio en produccion el 23/09/2026: 17:08, 17:10, 17:12...
+  // Un cuarto de latido de margen y se acabo.
+  return (Date.now() - new Date(ultimo).getTime()) >= def.cadaMin * 60000 - HOLGURA_MS;
 }
+
+const HOLGURA_MS = 15000;
 
 /**
  * Ejecuta UNA tarea y deja constancia. Nunca lanza: la ingesta de una fuente no
@@ -405,4 +411,60 @@ async function latido({ forzar = false, soloFuente } = {}) {
   return { hechas };
 }
 
-module.exports = { TAREAS, latido, ejecutar, estado, toca };
+// ── EN DIRECTO: LOS APUNTES DE BOLT CADA 10 SEGUNDOS ────────────────────────
+//
+// Lo pidio Camilo: "matricula X, conductor Y, en espera, hace 5 segundos". El
+// mapa y En directo ya leen el apunte crudo; lo que faltaba era que el apunte
+// LLEGARA pronto. Medido el 23/09/2026 preguntando cada 10 s durante dos
+// minutos:
+//
+//   · BOLT publica el cambio casi al momento: lo cazamos entre 2 y 11 s
+//     despues de que ocurriera, con 10 s entre preguntas. El retraso es
+//     NUESTRO, no suyo.
+//   · Doce preguntas seguidas, cero 429. Cada una, ~500 ms y una pagina.
+//
+// Por eso va aparte del latido -que es de minuto- y con su propia bandera: si
+// BOLT tarda o protesta, la pasada siguiente se salta sola en vez de apilarse.
+// Es lo que tumbo el motor de Flota viva esa misma tarde.
+//
+// NO deja rastro en `ingesta_ejecucion` ni guarda el crudo: serian 8.640 filas
+// al dia de lo mismo. Eso lo hace `state_logs_bolt` cada cinco minutos con una
+// ventana de dos horas, que ademas recoge lo que este bucle se haya perdido.
+let alDia = false;
+let ultimaAlDia = { at: null, traidos: 0, nuevos: 0, ms: null, error: null };
+
+async function estadosAlDia({ ventanaMin = 5 } = {}) {
+  if (!db.HAY_BD) return { saltado: 'sin base de datos' };
+  if (alDia) return { saltado: 'la pasada anterior sigue dentro' };
+  alDia = true;
+  const t0 = Date.now();
+  try {
+    const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+    const staging = require('./repo/staging');
+    const hasta = Math.floor(Date.now() / 1000);
+    const desde = hasta - ventanaMin * 60;
+    let todos = [];
+    for (const f of CONFIG_BOLT.flotas) {
+      const logs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs',
+        { company_id: f.id, start_ts: desde, end_ts: hasta }, 'state_logs', 1000, `directo ${f.id}`);
+      todos = todos.concat(logs);
+    }
+    // Sin descarga: `descarga_id` admite NULL y la copia cruda ya la deja la
+    // tarea de cinco minutos.
+    const nuevos = await staging.guardarStateLogs(todos, null);
+    ultimaAlDia = { at: new Date(), traidos: todos.length, nuevos, ms: Date.now() - t0, error: null };
+    return ultimaAlDia;
+  } catch (e) {
+    ultimaAlDia = { at: new Date(), traidos: 0, nuevos: 0, ms: Date.now() - t0, error: e.message };
+    throw e;
+  } finally {
+    // En el `finally`: si se queda encendida por una excepcion, el directo se
+    // para hasta el siguiente despliegue sin que nadie lo note.
+    alDia = false;
+  }
+}
+
+/** ¿El directo esta vivo? Para diagnosticar sin abrir la base. */
+const estadoAlDia = () => ({ corriendo: alDia, ultima: ultimaAlDia });
+
+module.exports = { TAREAS, latido, ejecutar, estado, toca, estadosAlDia, estadoAlDia };

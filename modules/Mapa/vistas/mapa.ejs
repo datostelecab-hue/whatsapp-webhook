@@ -142,6 +142,23 @@
   };
   const hace = s => (s == null ? 'sin dato' : s < 90 ? s + ' s' : hhmm(s));
 
+  // "4 s", "2 min 10 s", "1 h 05": los segundos se ven mientras importan, que
+  // es justo al principio -cuando alguien acaba de coger un viaje-.
+  function desdeHaceTxt(iso) {
+    const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return s + ' s';
+    if (s < 600) return Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s';
+    return hhmm(s);
+  }
+  // EL RELOJ DE LA PANTALLA. Cada segundo pone al dia todos los "hace X" que
+  // haya a la vista -la ventanita abierta incluida-. No pregunta nada a nadie:
+  // la hora del cambio ya la tiene, solo resta.
+  setInterval(() => {
+    document.querySelectorAll('[data-desde]').forEach(el => {
+      el.textContent = desdeHaceTxt(el.getAttribute('data-desde'));
+    });
+  }, 1000);
+
   // ── El fondo del mapa, según el tema ─────────────────────────────────────
   // No hay una lista de "temas claros" que mantener: se mira la LUMINANCIA del
   // color de fondo de la casa. Sirve para los quince de hoy y para el que se
@@ -216,8 +233,13 @@
     const lineas = [];
     if (c.conductor) lineas.push('<i class="fa-solid fa-user w-4 text-telecab-muted"></i> ' + esc(c.conductor));
     if (c.situacionEtiqueta) {
-      lineas.push('<i class="fa-solid fa-signal w-4 text-telecab-muted"></i> ' + esc(c.situacionEtiqueta)
-        + (c.desdeHace != null ? ' <span class="text-telecab-muted">· ' + hhmm(c.desdeHace) + '</span>' : ''));
+      // "En espera · hace 5 s", y el numero CORRE solo: lo pone al dia el reloj
+      // de abajo cada segundo, sin volver a preguntar al servidor.
+      lineas.push('<i class="fa-solid fa-signal w-4 text-telecab-muted"></i> <b>' + esc(c.situacionEtiqueta) + '</b>'
+        + (c.situacionDesde
+            ? ' <span class="text-telecab-muted">· hace <span data-desde="' + esc(c.situacionDesde) + '">'
+              + desdeHaceTxt(c.situacionDesde) + '</span></span>'
+            : (c.desdeHace != null ? ' <span class="text-telecab-muted">· ' + hhmm(c.desdeHace) + '</span>' : '')));
     } else {
       lineas.push('<i class="fa-solid fa-signal w-4 text-telecab-muted"></i> <span class="text-telecab-muted">no está en BOLT</span>');
     }
@@ -459,7 +481,10 @@
   cargar(false);
   // Cada 30 s, igual que la vuelta que pide a Mapon. Más a menudo sería pedir
   // lo mismo: el equipo del coche habla cada minuto aproximadamente.
-  setInterval(() => { if (!document.hidden) cargar(false); }, 30000);
+  // Cada 10 s, que es lo que tarda en entrar un cambio de BOLT (ver
+  // `estadosAlDia`). Preguntar mas a menudo no traeria nada nuevo; y el "hace
+  // X s" corre solo entre medias.
+  setInterval(() => { if (!document.hidden) cargar(false); }, 10000);
   // Al volver a la pestaña, el dato puede llevar rato parado. Se refresca al
   // momento en vez de esperar hasta treinta segundos con algo viejo delante.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(false); });
