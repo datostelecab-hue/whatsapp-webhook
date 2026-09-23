@@ -226,7 +226,41 @@ const incorporaciones = async () => ({ incorporaciones: await inc.pendientes() }
  * eso es de aquí: mientras lo hacía aquel, un repositorio compartido por
  * Selección y la ETT tenía dentro el repositorio del planificador.
  */
+/**
+ * COLOCAR sin resolver la alerta. Es lo que llama el alta con vacante para que
+ * la plaza sea suya desde el minuto uno.
+ *
+ * No marca la incorporación como aceptada: sigue pendiente para que Tráfico
+ * pueda rechazarla. Lo que deja escrito es que YA está dentro (`colocada_at`),
+ * que es lo que el rechazo necesita saber para poder sacarla.
+ *
+ * Devuelve lo justo —no el tablero entero—: quien llama a esto es el alta, y
+ * no tiene nada que pintar.
+ */
+async function colocarIncorporacion(id, dia, quien) {
+  const encargo = await inc.encargoDeColocar(id, { desde: dia });
+  if (!encargo.dia) throw new Error('No se sabe desde qué día colocarlo');
+  const r = await plan.guardar([{ slots: encargo.slots }],
+    { dia: encargo.dia, usuarioId: quien.usuarioId });
+  await inc.marcarColocada(encargo.id, { desde: encargo.dia });
+  const relevados = r.hechos.filter(h => h.que === 'coloca' && h.cerrada).length;
+  console.log(`📌 [TABLERO] Incorporación ${id} COLOCADA al dar el alta ` +
+    `(${encargo.slots.length} plaza(s) desde ${encargo.dia}` + (relevados ? `, ${relevados} relevado(s)` : '') + ')');
+  return { ok: true, plazas: encargo.slots.length, desde: encargo.dia, relevados };
+}
+
 async function aceptarIncorporacion(id, dia, quien) {
+  // SI YA ESTÁ DENTRO, ACEPTAR SOLO CONFIRMA. Volver a colocarla escribiría
+  // encima de un cuadrante que a lo mejor ya se ha tocado a mano desde que
+  // entró, y eso es pisar trabajo de Tráfico con una foto vieja.
+  const viva = await inc.viva(id);
+  if (viva.colocada_at) {
+    await inc.marcarAceptada(id, { ...quien, vacanteId: viva.vacante_id });
+    console.log(`✅ [TABLERO] Incorporación ${id} confirmada (ya estaba colocada)`);
+    return conTablero({ ok: true, plazas: 0, desde: viva.colocada_desde || null,
+      relevados: 0, hechos: [], yaEstaba: true }, dia || viva.colocada_desde || null);
+  }
+
   const encargo = await inc.encargoDeColocar(id, { desde: dia });
   const r = await plan.guardar([{ slots: encargo.slots }],
     { dia: encargo.dia, usuarioId: quien.usuarioId });
@@ -247,9 +281,24 @@ async function aceptarIncorporacion(id, dia, quien) {
  * vacante vuelve a estar ABIERTA (a esa vacante nunca llegó a entrar nadie).
  */
 async function rechazarIncorporacion(id, motivo, quien) {
+  // RECHAZAR YA NO ES GRATIS. Si se colocó al dar el alta, esta persona está
+  // dentro del cuadrante: rechazar tiene que SACARLA, o la vacante se reabre
+  // con alguien todavía sentado en ella.
+  //
+  // Se vacían solo las plazas que sigue ocupando ÉL (lo comprueba
+  // `encargoDeQuitar`), y va ANTES de resolver la alerta: si vaciar falla, la
+  // alerta sigue pendiente y se puede reintentar, en vez de quedarse rechazada
+  // con la persona dentro.
+  const quitar = await inc.encargoDeQuitar(id);
+  let sacadas = 0;
+  if (quitar.slots.length) {
+    await plan.guardar([{ slots: quitar.slots }], { dia: quitar.dia, usuarioId: quien.usuarioId });
+    sacadas = quitar.slots.length;
+  }
   const r = await inc.rechazar(id, { ...quien, motivo });
-  console.log(`🚫 [TABLERO] Incorporación ${id} rechazada`);
-  return r;
+  console.log(`🚫 [TABLERO] Incorporación ${id} rechazada` +
+    (sacadas ? ` · ${sacadas} plaza(s) liberada(s)` : ''));
+  return { ...r, sacadas };
 }
 
 // ── El barrio del conductor ────────────────────────────────────────────────
@@ -313,7 +362,7 @@ module.exports = {
   fijarDescanso, cubrirAusencia, libranzaExcepcional, borrarLibranzaExcepcional,
   cuadrantes, crearCuadrante, borrarCuadrante, anadirBloque, meterCoche, asignarCT,
   eventoEstado, crearEvento, editarEvento, cancelarEvento, restaurarEvento, mensajeDeEvento,
-  incorporaciones, aceptarIncorporacion, rechazarIncorporacion,
+  incorporaciones, colocarIncorporacion, aceptarIncorporacion, rechazarIncorporacion,
   guardarBarrio,
   // La puerta
   contactos, salidasHoy, salidasPorCoche, lunesDe, parrilla, GRUPOS_SALIDA,

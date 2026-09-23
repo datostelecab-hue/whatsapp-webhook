@@ -318,6 +318,13 @@
    */
   // Las vacantes abiertas del generador, para elegirla al dar de alta: la
   // persona nace con destino y a Tráfico le llega la alerta de incorporación.
+  // Hoy en dd/mm/aaaa, que es como trabajan los campos de fecha de la casa.
+  function hoyES() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
+  }
+
   async function vacantesAbiertas() {
     try {
       const r = await (await fetch('/ett/api/vacantes-abiertas')).json();
@@ -335,10 +342,16 @@
         ayuda: 'Se enlaza solo con su cuenta de BOLT por este número.' },
       { id: 'barrio', etiqueta: 'Zona (barrio)', tipo: 'texto',
         ayuda: 'La zona del conductor: Aluche, San Blas… Sale en el planificador, debajo del teléfono.' },
+      // MANDA ESTA FECHA, no el día en que se rellena el formulario: es la del
+      // contrato y la del día desde el que ocupa el coche. A quien empieza el
+      // lunes se le abría el contrato el jueves anterior.
+      { id: 'alta', etiqueta: 'Fecha prevista de alta', tipo: 'fecha', valor: hoyES(),
+        ayuda: 'Desde este día cuenta su contrato y ocupa la plaza de la vacante.' },
       { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
-        ayuda: 'Si eliges una, a Tráfico le salta la alerta de incorporación en el planificador: aceptar la coloca en esas plazas.' },
-    ], { textoBoton: 'Dar de alta',
-         nota: 'Crea la ficha ETT y la pasa directa al planificador, como si ya estuviera contratado.' });
+        ayuda: 'Si eliges una, OCUPA esas plazas desde la fecha de arriba, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
+    ], { columnas: 2, textoBoton: 'Dar de alta',
+         nota: 'Crea la ficha ETT y la pasa directa al planificador, como si ya estuviera contratado. '
+             + 'Con vacante elegida, la plaza queda ocupada en el acto.' });
     if (!v || !v.nombre || !v.telefono) return;
     const r = await hacer(() => enviar('/ett/api/alta-rapida', 'POST', v), false);
     if (!r) return;
@@ -346,12 +359,20 @@
     if (r.faltaBolt) bolt = '<p class="text-sm mt-2 text-telecab-warn"><b>Sin cuenta de BOLT</b> con ese número: hay que darle de alta en BOLT.</p>';
     else if (r.boltEnlazada) bolt = '<p class="text-sm mt-2">Su cuenta de BOLT queda <b>enlazada</b> a la ficha.</p>';
     else bolt = '<p class="text-sm mt-2">Cuenta de BOLT localizada.</p>';
+    const puesto = (r.incorporacion && r.incorporacion.colocada && r.incorporacion.colocada.plazas)
+      ? '<p class="text-sm mt-2 text-telecab-green"><b>Ya ocupa '
+        + r.incorporacion.colocada.plazas + ' plaza(s)</b> desde el '
+        + esc(fecha(r.incorporacion.colocada.desde)) + '.'
+        + (r.incorporacion.colocada.relevados
+            ? ' Se cierra la asignación de ' + r.incorporacion.colocada.relevados + ' persona(s) la víspera.' : '')
+        + '</p>'
+      : '';
     const avisos = (r.avisos && r.avisos.length)
       ? '<ul class="text-sm mt-2 text-telecab-warn" style="list-style:disc;padding-left:1.25rem;">'
         + r.avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>' : '';
     await Dialogo.aviso({
       titulo: 'Alta rápida hecha',
-      html: '<p class="text-sm">Ficha nº ' + esc(r.id) + ' creada y en el planificador.</p>' + bolt + avisos,
+      html: '<p class="text-sm">Ficha nº ' + esc(r.id) + ' creada y en el planificador.</p>' + bolt + puesto + avisos,
       tono: (r.faltaBolt || (r.avisos && r.avisos.length)) ? 'aviso' : 'ok',
     });
   }
@@ -467,7 +488,7 @@
       { id: 'ettNombre', etiqueta: 'Nombre de la ETT', valor: 'GiGroup',
         ayuda: 'Cámbialo solo si esta persona viene de otra ETT' },
       { id: 'vacanteId', etiqueta: 'Vacante (opcional)', tipo: 'lista', opciones: vacs,
-        ayuda: 'Al darle de alta, a Tráfico le salta la alerta: aceptar lo coloca en las plazas de la vacante.' },
+        ayuda: 'Al darle de alta OCUPA esas plazas desde la fecha de alta, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
     ], { columnas: 2,
          nota: 'Se le abre el periodo de empleo con contrato de ETT y su turno empieza el día '
              + 'del alta. A los tres meses pasa a plantilla propia.' });

@@ -234,12 +234,16 @@ Cuando alguien se da de alta nace una alerta que Tráfico ve en el planificador.
 
 **Sin vacante** no hay nada que aceptar —no se le prometió ninguna plaza—, así que el aviso solo dice que hay alguien nuevo sin coche y **se va solo** en cuanto se le da una plaza. No hace falta que nadie lo cierre: la consulta de pendientes lo esconde cuando la persona tiene asignación viva.
 
-**Con vacante**, la alerta trae la foto de lo prometido y no se va hasta aceptarla o rechazarla:
+**Con vacante**, la alerta trae la foto de lo prometido —y desde el 23/09/2026 la plaza **ya es suya** cuando la alerta aparece—:
 
-- **Aceptar** → se coloca en las plazas prometidas, **todo o nada**, y la vacante queda cubierta.
-- **Rechazar** → el conductor queda en el banquillo para colocarlo a mano y la vacante vuelve a estar **abierta** (a esa vacante nunca llegó a entrar nadie).
+- **Al dar el alta** se coloca en las plazas prometidas, **todo o nada**, desde su **fecha prevista de alta**. Antes esto esperaba a que alguien aceptara, y mientras tanto la plaza seguía libre a la vista de todos: se la podía llevar otro, y el recién contratado no estaba en ninguna parte.
+- **Aceptar** → solo confirma. **No vuelve a colocar**: el cuadrante puede haberse tocado a mano desde que entró, y escribir encima con la foto vieja sería pisar trabajo de Tráfico. La vacante queda cubierta.
+- **Rechazar** → ahora también lo **SACA** del cuadrante, y después lo deja en el banquillo y reabre la vacante.
 
-El reparto de responsabilidades importa: `services/repo/incorporaciones.js` prepara **qué** plazas y **desde cuándo** (es quien guarda la foto de la vacante) y apunta el resultado; `tablero.service.aceptarIncorporacion()` **coloca**, que es escribir en el cuadrante. Y el orden importa: se marca aceptada **después** de colocar. Como `guardar` es todo o nada, si una plaza ya no existe la alerta sigue pendiente y se puede reintentar, en vez de quedarse cerrada sin haber colocado a nadie.
+> [!warning] Rechazar dejó de ser gratis
+> Cuando la alerta era una propuesta, rechazar no tenía nada que deshacer. Ahora puede haber una persona ya metida en el cuadrante. Por eso existe `incorporacion.colocada_at` (db/135): sin ese dato, el rechazo o no limpia nada, o intenta limpiar lo que nunca se escribió. Y se vacían **solo las plazas que sigue ocupando él** —entre medias pueden haberle movido de coche—, comprobándolo una a una.
+
+El reparto de responsabilidades importa: `services/repo/incorporaciones.js` prepara **qué** plazas y **desde cuándo** (es quien guarda la foto de la vacante) y apunta el resultado; `tablero.service` **coloca**, que es escribir en el cuadrante (`colocarIncorporacion` al dar el alta, `aceptarIncorporacion` cuando todavía no lo estaba, `encargoDeQuitar` + `rechazarIncorporacion` para sacarlo). Y el orden importa: se marca aceptada **después** de colocar. Como `guardar` es todo o nada, si una plaza ya no existe la alerta sigue pendiente y se puede reintentar, en vez de quedarse cerrada sin haber colocado a nadie.
 
 ## Quién más lee de aquí
 

@@ -9,7 +9,18 @@
 //   · ACEPTAR  → se coloca en las plazas prometidas (todo o nada). La vacante
 //                queda CUBIERTA.
 //   · RECHAZAR → el conductor queda en el banquillo para colocarlo a mano y la
-//                vacante vuelve a estar ABIERTA (a esa vacante nunca entró nadie).
+//                vacante vuelve a estar ABIERTA.
+//
+// ── Y DESDE EL 23/09/2026 LA PLAZA SE OCUPA AL DAR EL ALTA ─────────────────
+// Quien entra con una vacante elegida NO espera a que nadie acepte: se mete en
+// el cuadrante en el acto, desde su fecha prevista de alta (`colocada_at`).
+// Mientras esperaba, la plaza seguía libre a la vista de todos y se la podía
+// llevar otro, y el recién contratado no estaba en ninguna parte.
+//
+// La alerta sigue naciendo 'pendiente', pero ya no pregunta: avisa. Aceptar es
+// confirmar lo que ya está —no vuelve a colocar a nadie— y RECHAZAR tiene que
+// SACARLO del cuadrante, que es lo que antes no hacía falta porque no había
+// nada escrito.
 //
 // ── Qué cambió al mover la vacante a PostgreSQL ─────────────────────────────
 // Antes la vacante guardaba MATRÍCULAS, así que aceptar significaba salir a
@@ -154,7 +165,12 @@ async function pendientes() {
 
 async function viva(id) {
   const r = await db.consulta(
-    `SELECT id, conductor_id, vacante_id, detalle FROM incorporacion
+    `SELECT id, conductor_id, vacante_id, detalle, colocada_at,
+            -- EN TEXTO, no como DATE. El driver devuelve un Date a medianoche
+            -- local y "String(fecha).slice(0,10)" da "Mon Sep 28", que la base
+            -- rechaza al volver a entrar. Es la trampa de siempre.
+            colocada_desde::text AS colocada_desde
+       FROM incorporacion
       WHERE id = $1 AND estado = 'pendiente'`, [Number(id)]);
   if (!r.rows.length) throw new Error('Esa incorporación ya no está pendiente');
   return r.rows[0];
@@ -206,6 +222,54 @@ async function encargoDeColocar(id, { desde } = {}) {
 }
 
 /**
+ * Deja constancia de que ya está METIDA EN EL CUADRANTE, sin resolverla.
+ *
+ * Sigue 'pendiente' a propósito: Tráfico la ve y puede rechazarla. Lo que
+ * cambia es que rechazar ya no es gratis —hay que sacarlo—, y esto es lo que
+ * deja saberlo.
+ */
+async function marcarColocada(id, { desde } = {}) {
+  const dia = fecha(desde);
+  if (!dia) throw new Error('Para dar por colocada una incorporación hace falta el día');
+  await db.consulta(
+    `UPDATE incorporacion SET colocada_at = now(), colocada_desde = $2::date
+      WHERE id = $1 AND estado = 'pendiente'`, [Number(id), dia]);
+  return { ok: true, desde: dia };
+}
+
+/**
+ * LO QUE HAY QUE ESCRIBIR PARA SACARLO: las plazas que ocupa POR ESTA
+ * incorporación, en forma de slots vacíos.
+ *
+ * SOLO LAS QUE SIGUE OCUPANDO ÉL. Entre que se colocó y que alguien la rechaza
+ * pueden haber pasado cosas: que le movieran de coche, que otro ocupe ya esa
+ * plaza. Vaciar a ciegas sacaría al que no es, así que se comprueba una a una
+ * quién está dentro AHORA.
+ */
+async function encargoDeQuitar(id) {
+  const inc = await viva(id);
+  if (!inc.colocada_at) return { id: inc.id, dia: null, slots: [] };
+  const dia = fecha(inc.colocada_desde);
+  const det = inc.detalle || {};
+  const plazas = (det.plazas || []).filter(p => p.plazaId).map(p => String(p.plazaId));
+  if (!plazas.length) return { id: inc.id, dia, slots: [] };
+
+  const r = await db.consulta(
+    `SELECT DISTINCT a.plaza_id
+       FROM asignacion a
+      WHERE a.plaza_id = ANY($1::bigint[])
+        AND a.conductor_id = $2
+        AND a.retirada_at IS NULL
+        AND (a.hasta IS NULL OR a.hasta >= CURRENT_DATE)`,
+    [plazas, inc.conductor_id]);
+
+  return {
+    id: inc.id, dia,
+    slots: r.rows.map(x => ({ plazaId: String(x.plaza_id), ...(dia ? { desde: dia } : {}) })),
+  };
+}
+
+/**
  * Darla por ACEPTADA y cerrar su vacante. Se llama DESPUÉS de colocar: si la
  * colocación falla —`plan.guardar` es todo o nada—, la alerta sigue pendiente y
  * se puede reintentar.
@@ -243,4 +307,7 @@ async function rechazar(id, { usuarioId, motivo } = {}) {
   return { ok: true };
 }
 
-module.exports = { crear, pendientes, encargoDeColocar, marcarAceptada, rechazar };
+module.exports = {
+  crear, pendientes, encargoDeColocar, encargoDeQuitar,
+  marcarColocada, marcarAceptada, rechazar, viva,
+};

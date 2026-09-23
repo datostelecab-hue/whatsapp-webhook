@@ -139,25 +139,52 @@ async function descartar(id, { motivoCodigo, detalle }, quien) {
 }
 
 /**
- * Reserva la vacante para quien acaba de entrar: nace la alerta de
- * incorporación, que se resuelve en el planificador (aceptar = colocarlo solo
- * en esas plazas; rechazar = a mano).
+ * AMARRA LA VACANTE de quien acaba de entrar: nace la alerta de incorporación
+ * y, acto seguido, la persona OCUPA las plazas desde `desde`.
+ *
+ * El orden importa y es el de siempre: primero queda escrito qué se le
+ * prometió (la foto de la vacante), y después se escribe en el cuadrante. Si
+ * lo segundo falla, lo primero sigue ahí y se puede colocar a mano.
  *
  * SI FALLA, EL ALTA NO SE CAE. La persona ya está dada de alta y eso es lo que
- * importa; que la vacante no quedara reservada es un aviso, no un motivo para
+ * importa; que la vacante no quedara amarrada es un aviso, no un motivo para
  * deshacerlo todo y dejar a alguien a medio contratar.
  */
-async function reservarVacante(r, conductorId, vacanteId, origen, usuarioId) {
+async function reservarVacante(r, conductorId, vacanteId, origen, usuarioId, desde) {
   if (!vacanteId || !conductorId) return null;
+  let i = null;
   try {
-    const i = await incorporaciones.crear({ conductorId, vacanteId, origen, usuarioId });
+    i = await incorporaciones.crear({ conductorId, vacanteId, origen, desde, usuarioId });
     console.log(`🔔 [ETT] Incorporación ${i.id} · ficha ${conductorId} → vacante ${vacanteId}`);
-    return i;
   } catch (e) {
     console.error('⚠️ [ETT] no se pudo crear la incorporación:', e.message);
     r.avisos = [...(r.avisos || []), 'El alta salió bien, pero la vacante no se pudo reservar: ' + e.message];
     return null;
   }
+
+  // Y SE COLOCA EN EL ACTO, desde su fecha prevista de alta.
+  //
+  // Antes esto dejaba solo una alerta y la plaza seguía libre a la vista de
+  // todos hasta que alguien de Tráfico entraba a aceptarla: se la podía llevar
+  // otro, y el que acababa de firmar no estaba en ningún sitio. Ahora la plaza
+  // es suya desde el minuto uno y la alerta pasa a ser un aviso de lo hecho:
+  // Tráfico solo tiene que tocar algo si NO le vale, y entonces rechaza —lo
+  // que ahora también lo SACA del cuadrante—.
+  //
+  // Por la puerta del módulo de Planificación, y pedido aquí dentro para que
+  // dos servicios que se llaman no se queden a medio cargar.
+  try {
+    const tablero = require('../Planificacion/tablero.service');
+    i.colocada = await tablero.colocarIncorporacion(i.id, desde, { usuarioId });
+  } catch (e) {
+    // El alta NO se cae por esto: la persona ya está contratada. Se dice, y
+    // la alerta se queda pendiente para colocarla a mano.
+    console.error('⚠️ [ETT] no se pudo colocar en la vacante:', e.message);
+    r.avisos = [...(r.avisos || []),
+      'El alta salió bien y la vacante queda reservada, pero no se pudo colocar en el cuadrante: '
+      + e.message + '. Hay que aceptar la incorporación a mano en el planificador.'];
+  }
+  return i;
 }
 
 /** Pasa a RRHH. Por esta vía el contrato es de ETT salvo que se diga otra cosa. */
@@ -168,7 +195,11 @@ async function pasarARRHH(id, datos, quien) {
   console.log(`👤 [ETT] ${r.quien} pasa a RRHH (ficha ${r.conductorId})` +
     (r.boltEnlazada ? ` — BOLT enlazada${r.boltReactivar ? ` (${r.boltEstado}: REACTIVAR)` : ''}`
       : r.faltaBolt ? ' — SIN cuenta de BOLT' : ''));
-  const incorporacion = await reservarVacante(r, r.conductorId, b.vacanteId, 'ett', quien.usuarioId);
+  // Mismo criterio que el alta rápida: si se elige vacante, se ocupa desde la
+  // fecha de alta. Dos campos con el mismo nombre en la misma pantalla no
+  // pueden hacer cosas distintas.
+  const incorporacion = await reservarVacante(
+    r, r.conductorId, b.vacanteId, 'ett', quien.usuarioId, b.alta);
   return { ...r, incorporacion };
 }
 
@@ -190,9 +221,16 @@ async function altaRapida(datos, quien) {
   if (!nombre) throw new Error('Falta el nombre');
   if (telefono.replace(/\D/g, '').length < 9) throw new Error('El teléfono no parece válido');
 
+  // LA FECHA PREVISTA DE ALTA, que es la que manda en todo lo que viene
+  // detrás: el periodo de empleo, la candidatura y —sobre todo— el día desde
+  // el que ocupa la plaza. Antes se forzaba HOY, y a quien empezaba el lunes
+  // se le abría el contrato el jueves anterior y su coche quedaba ocupado
+  // cuatro días de más.
   const hoy = new Date().toISOString().slice(0, 10);
+  const alta_dia = /^\d{4}-\d{2}-\d{2}$/.test(String(b.alta || '')) ? String(b.alta) : hoy;
+
   const r = await alta.realizar({
-    nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: hoy,
+    nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: alta_dia,
     barrio: String(b.barrio || '').trim().slice(0, 60) || undefined,
   }, quien);
 
@@ -209,7 +247,7 @@ async function altaRapida(datos, quien) {
   let candidatura = null;
   try {
     candidatura = await cand.abrirContratada(r.id, {
-      canal: CANAL, alta: hoy, tipoContrato: 'ETT',
+      canal: CANAL, alta: alta_dia, tipoContrato: 'ETT',
       jornadaHoras: b.jornadaHoras ? Number(b.jornadaHoras) : null,
     }, quien);
   } catch (e) {
@@ -222,8 +260,9 @@ async function altaRapida(datos, quien) {
     (candidatura ? ` · candidatura ${candidatura.id}${candidatura.yaExistia ? ' (ya la tenía)' : ''}` : '') +
     (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));
 
-  const incorporacion = await reservarVacante(r, r.id, b.vacanteId, 'ett-rapida', quien.usuarioId);
-  return { ...r, candidatura, incorporacion };
+  const incorporacion = await reservarVacante(
+    r, r.id, b.vacanteId, 'ett-rapida', quien.usuarioId, alta_dia);
+  return { ...r, alta: alta_dia, candidatura, incorporacion };
 }
 
 // ── Lo que se le devuelve a la agencia ─────────────────────────────────────
