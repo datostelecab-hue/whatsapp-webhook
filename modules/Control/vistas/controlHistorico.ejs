@@ -9,7 +9,7 @@
         <i class="fa-solid fa-clock-rotate-left text-telecab-gold"></i> Histórico
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
-        Qué pasó ese día y qué se hizo: quién no salió, qué alertas levantó cada uno,
+        Qué pasó ese día y qué se hizo: quién tuvo ausencia, qué alertas levantó cada uno,
         a quién se llamó y qué contestó.
       </p>
     </div>
@@ -330,7 +330,7 @@
 
   const VISTAS = [
     { id: 'todo', etq: 'Todo lo que pasó', hay: c => c.alertas.length || c.llamadas.length || c.salida === 'no_salio' || c.justificante },
-    { id: 'nosalio', etq: 'No salieron', hay: c => c.salida === 'no_salio' },
+    { id: 'nosalio', etq: 'Ausencias', hay: c => c.salida === 'no_salio' },
     { id: 'sincomentar', etq: 'Alertas sin comentar', hay: c => c.alertas.some(a => a.tono === 'error' && !a.contestada) },
     { id: 'llamados', etq: 'Con llamada', hay: c => c.llamadas.length > 0 },
     { id: 'justificados', etq: 'Con justificante', hay: c => c.justificante || c.jRechazadas.length },

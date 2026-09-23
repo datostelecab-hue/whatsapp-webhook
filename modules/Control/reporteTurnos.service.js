@@ -162,7 +162,7 @@ const VERDE = 'FF16A34A', AMBAR = 'FFB45309', ROJO = 'FFC00000', NEGRO = 'FF1F29
 const CABECERAS = ['Nº', 'Conductor', 'Teléfono', 'Matrícula(s)', 'Horas', 'Estado'];
 const ANCHOS = [5, 30, 15, 20, 9, 12];
 const GRIS = 'FF6B7280';
-const ETIQ_ESTADO = { salio: 'Salió', nn: 'NN (sin plan)', otro_turno: 'Otro turno', no_salio: 'No salió', pendiente: 'Pendiente' };
+const ETIQ_ESTADO = { salio: 'Salió', nn: 'NN (sin plan)', otro_turno: 'Otro turno', no_salio: 'Ausencia', pendiente: 'Pendiente' };
 const COLOR_ESTADO = { salio: VERDE, nn: AMBAR, otro_turno: GRIS, no_salio: ROJO, pendiente: GRIS };
 
 const relleno = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });

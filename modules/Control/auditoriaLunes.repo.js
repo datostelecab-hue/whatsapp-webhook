@@ -206,7 +206,7 @@ async function informe({ lunes = 4 } = {}) {
       };
     }
     if (!conBolt.has(cid)) return { estado: 'sin_bolt', horas: 0, motivo: 'Sin cuenta de BOLT enlazada' };
-    return { estado: 'no_salio', horas: 0, motivo: 'No salió — sin justificar' };
+    return { estado: 'no_salio', horas: 0, motivo: 'Ausencia — sin justificar' };
   }
 
   // ── POR CONDUCTOR ─────────────────────────────────────────────────────────

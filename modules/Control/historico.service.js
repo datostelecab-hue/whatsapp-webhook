@@ -26,7 +26,7 @@ const repo = require('./historico.repo');
 /** Etiquetas de los grupos de salida, para que el informe se lea sin código. */
 const SALIDA = {
   conectado: 'Conectado', salio: 'Salió', descanso: 'En descanso',
-  no_salio: 'NO SALIÓ', pendiente: 'No le tocaba aún',
+  no_salio: 'AUSENCIA', pendiente: 'No le tocaba aún',
 };
 
 /**

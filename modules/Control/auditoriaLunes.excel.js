@@ -142,8 +142,8 @@ async function generar(r) {
   let f = wsR.rowCount + 2;
   f = notas(wsR, f, [
     'Cómo se lee',
-    '· Verde «Sí» salió · rojo «NO» no salió y no hay nada que lo explique · ámbar «J» tiene justificante · ' +
-    'azul «Ausente» vacaciones, baja médica o permiso · violeta «Sin plan» la plaza no tenía a nadie asignado · ' +
+    '· Verde «Sí» salió · rojo «NO» ausencia sin justificar · ámbar «J» tiene justificante · ' +
+    'azul «Ausente» ausencia con parte: vacaciones, baja médica o permiso · violeta «Sin plan» la plaza no tenía a nadie asignado · ' +
     'gris «—» ese lunes aún no estaba de alta.',
     '· Las horas son las EFECTIVAS de BOLT (viaje + espera) de la jornada operativa 05:00 → 05:00, las mismas ' +
     'que sella la bitácora. Un turno de noche que empieza el lunes a las 17:00 y acaba el martes a las 05:00 ' +
