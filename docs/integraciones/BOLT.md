@@ -22,6 +22,8 @@ OAuth de tipo `client_credentials` contra el emisor de BOLT, con scope `fleet-in
 
 ## Los cuatro endpoints
 
+La API tiene **seis** (`open-api.json`): los cuatro de abajo más `test` —un ping— y `getCompanies`, que devuelve las empresas del acuerdo y que no se usa porque las dos flotas están escritas en `CONFIG_BOLT`.
+
 | Endpoint | Clave de datos | Para qué | Quién lo pide |
 |---|---|---|---|
 | `getFleetStateLogs` | `state_logs` | la jornada y el panel en vivo | ingesta cada 10 min (ventana de 2 h, solapada) |
@@ -128,6 +130,26 @@ No sobreviven `partner_uuid`, `flota` ni `veces_visto`: no los leía nadie.
 **El rescate de las fechas, una sola vez.** La hoja llevaba más tiempo que la base, así que casi todos tenían `visto_desde` del día de la migración (21/08/2026) y no del día en que aparecieron. Eso es lo único que la hoja tenía y la base no, y no se recupera de ninguna API. La primera lectura se trae de la hoja los `created_at` **anteriores** a lo que diga la base —nunca hacia adelante— y lo apunta en `config_app` para no repetirlo. Ver [[Google Drive y Sheets]].
 
 **Buscar por teléfono** (`buscarPorTelefono`) va contra `externo_sufijo9`, una columna generada con los 9 últimos dígitos sin signos y con índice. Antes leía el padrón entero de la hoja y lo recorría.
+
+## La nota del cliente: `driver_rating` y `driver_score`
+
+`getDrivers` trae dos números por conductor que **hoy no se guardan** (`conductor_externo` no tiene columna para ellos y `traerDrivers` no los copia). Están en la especificación oficial, los dos como *number* nullable y **sin una línea de descripción**; lo que significan sale de mirar los datos:
+
+| Campo | Qué es | Cuántos lo traen | Rango real |
+|---|---|---|---|
+| `driver_rating` | **la nota de los clientes**, en estrellas | 247 de 1.576 cuentas · 222 de los 421 activos | 3,5 – 5 (mediana 4,89) |
+| `driver_score` | la puntuación de actividad que calcula Bolt | las 1.576 | 58 – 100 (mediana 98) |
+
+Medido el 23/09/2026 contra las dos flotas.
+
+**El rating no lo tiene todo el mundo, y eso es información.** De los que no traen nota, 1.064 están `deactivated` y 66 `suspended` —cuentas viejas—, pero hay **199 activos sin rating**: quien no acumula viajes suficientes no tiene media publicada. Un `null` aquí no es un cero ni un "mal conductor": es "todavía no se sabe", y quien lo guarde tiene que distinguirlo, igual que con `has_cash_payment`.
+
+De los 247 con nota, **190 son gente con contrato abierto aquí**.
+
+> [!note] No hay endpoint de calificaciones
+> Ni en la especificación ni probando a ciegas: `getDriverRatings`, `getFleetDriverRatings`, `getRatings`, `getDriverScore` y `getFleetOrderRatings` devuelven **404**. La nota del cliente solo llega por el padrón, y por conductor —no por viaje—: no se puede saber qué carrera bajó la media.
+
+Nada de esto entra hoy en la [[Calificacion de conductores]], que pondera horas (50 %), utilización (30 %) y excesos de velocidad (20 %) — todo lo que mide es lo que el conductor hace, no lo que el cliente opina.
 
 ## Quién llama a BOLT
 
