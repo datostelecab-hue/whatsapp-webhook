@@ -351,7 +351,8 @@
         ayuda: 'Si eliges una, OCUPA esas plazas desde la fecha de arriba, sin esperar a nadie. A Tráfico le llega el aviso y solo tiene que tocarlo si quiere rechazarlo.' },
     ], { columnas: 2, textoBoton: 'Dar de alta',
          nota: 'Crea la ficha ETT y la pasa directa al planificador, como si ya estuviera contratado. '
-             + 'Con vacante elegida, la plaza queda ocupada en el acto.' });
+             + 'Con vacante, la plaza queda ocupada en el acto; sin ella, a Tráfico le llega igual '
+             + 'el aviso de que hay alguien nuevo esperando coche.' });
     if (!v || !v.nombre || !v.telefono) return;
     const r = await hacer(() => enviar('/ett/api/alta-rapida', 'POST', v), false);
     if (!r) return;

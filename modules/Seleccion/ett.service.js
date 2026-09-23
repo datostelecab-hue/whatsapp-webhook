@@ -139,28 +139,46 @@ async function descartar(id, { motivoCodigo, detalle }, quien) {
 }
 
 /**
- * AMARRA LA VACANTE de quien acaba de entrar: nace la alerta de incorporación
- * y, acto seguido, la persona OCUPA las plazas desde `desde`.
+ * AVISA AL PLANIFICADOR de que ha entrado alguien. Siempre, con vacante o sin
+ * ella —son dos avisos distintos y los dos hacen falta—:
+ *
+ *   CON vacante  nace la alerta con la foto de lo prometido y, acto seguido,
+ *                la persona OCUPA esas plazas desde `desde`.
+ *   SIN vacante  nace la alerta de «hay alguien nuevo y no tiene coche», que no
+ *                hay nada que aceptar y se va sola en cuanto se le da una plaza.
+ *
+ * LO SEGUNDO FALTABA, y es justo lo que le pasó a Óscar Góngora el 23/09/2026:
+ * se le dio el alta rápida sin elegir vacante, se quedó contratado y en la
+ * lista de la ETT —y el cuadrante no se enteró de que había una persona nueva
+ * esperando coche—. `incorporaciones.crear` ya sabía hacerlo desde el
+ * 18/09; lo que pasaba es que esta función se salía antes de llamárselo.
  *
  * El orden importa y es el de siempre: primero queda escrito qué se le
- * prometió (la foto de la vacante), y después se escribe en el cuadrante. Si
- * lo segundo falla, lo primero sigue ahí y se puede colocar a mano.
+ * prometió, y después se escribe en el cuadrante. Si lo segundo falla, lo
+ * primero sigue ahí y se puede colocar a mano.
  *
  * SI FALLA, EL ALTA NO SE CAE. La persona ya está dada de alta y eso es lo que
  * importa; que la vacante no quedara amarrada es un aviso, no un motivo para
  * deshacerlo todo y dejar a alguien a medio contratar.
  */
-async function reservarVacante(r, conductorId, vacanteId, origen, usuarioId, desde) {
-  if (!vacanteId || !conductorId) return null;
+async function avisarAlPlanificador(r, conductorId, vacanteId, origen, usuarioId, desde) {
+  if (!conductorId) return null;
   let i = null;
   try {
     i = await incorporaciones.crear({ conductorId, vacanteId, origen, desde, usuarioId });
-    console.log(`🔔 [ETT] Incorporación ${i.id} · ficha ${conductorId} → vacante ${vacanteId}`);
+    console.log(`🔔 [ETT] Incorporación ${i.id} · ficha ${conductorId}` +
+      (vacanteId ? ` → vacante ${vacanteId}` : ' · SIN vacante: hay que darle coche'));
   } catch (e) {
     console.error('⚠️ [ETT] no se pudo crear la incorporación:', e.message);
-    r.avisos = [...(r.avisos || []), 'El alta salió bien, pero la vacante no se pudo reservar: ' + e.message];
+    r.avisos = [...(r.avisos || []), vacanteId
+      ? 'El alta salió bien, pero la vacante no se pudo reservar: ' + e.message
+      : 'El alta salió bien, pero el planificador no se ha enterado de que entra alguien: ' + e.message];
     return null;
   }
+
+  // Sin vacante no hay plazas que ocupar: la alerta ya dice lo que tenía que
+  // decir y se irá sola en cuanto alguien le dé un coche.
+  if (!i || !i.vacanteId) return i;
 
   // Y SE COLOCA EN EL ACTO, desde su fecha prevista de alta.
   //
@@ -198,7 +216,7 @@ async function pasarARRHH(id, datos, quien) {
   // Mismo criterio que el alta rápida: si se elige vacante, se ocupa desde la
   // fecha de alta. Dos campos con el mismo nombre en la misma pantalla no
   // pueden hacer cosas distintas.
-  const incorporacion = await reservarVacante(
+  const incorporacion = await avisarAlPlanificador(
     r, r.conductorId, b.vacanteId, 'ett', quien.usuarioId, b.alta);
   return { ...r, incorporacion };
 }
@@ -260,7 +278,7 @@ async function altaRapida(datos, quien) {
     (candidatura ? ` · candidatura ${candidatura.id}${candidatura.yaExistia ? ' (ya la tenía)' : ''}` : '') +
     (r.boltEnlazada ? ' — BOLT enlazada' : r.faltaBolt ? ' — SIN BOLT' : ''));
 
-  const incorporacion = await reservarVacante(
+  const incorporacion = await avisarAlPlanificador(
     r, r.id, b.vacanteId, 'ett-rapida', quien.usuarioId, alta_dia);
   return { ...r, alta: alta_dia, candidatura, incorporacion };
 }

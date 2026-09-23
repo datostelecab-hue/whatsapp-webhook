@@ -234,6 +234,9 @@ Cuando alguien se da de alta nace una alerta que Tráfico ve en el planificador.
 
 **Sin vacante** no hay nada que aceptar —no se le prometió ninguna plaza—, así que el aviso solo dice que hay alguien nuevo sin coche y **se va solo** en cuanto se le da una plaza. No hace falta que nadie lo cierre: la consulta de pendientes lo esconde cuando la persona tiene asignación viva.
 
+> [!bug] La ETT no lo estaba mandando — arreglado el 23/09/2026
+> Lo de arriba valía para Selección, pero el alta de la ETT **se salía antes de pedirlo**: si no había vacante elegida, no llamaba a `incorporaciones.crear` y no nacía ninguna alerta. Resultado: alguien entraba por el alta rápida, quedaba contratado y en la lista de la agencia, y el cuadrante no se enteraba. Le pasó a Óscar Góngora y por eso se vio.
+
 **Con vacante**, la alerta trae la foto de lo prometido —y desde el 23/09/2026 la plaza **ya es suya** cuando la alerta aparece—:
 
 - **Al dar el alta** se coloca en las plazas prometidas, **todo o nada**, desde su **fecha prevista de alta**. Antes esto esperaba a que alguien aceptara, y mientras tanto la plaza seguía libre a la vista de todos: se la podía llevar otro, y el recién contratado no estaba en ninguna parte.
