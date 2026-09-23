@@ -1242,6 +1242,9 @@ async function actividadPorConductor(dia, turno = 'dia', kmYaHechos = null) {
               veh.matricula,
               t.situacion,
               t.hasta IS NULL                                    AS abierto,
+              -- Sin recortar a la ventana: es la hora del apunte de BOLT que
+              -- abrio el tramo, y es lo unico comparable con el apunte crudo.
+              t.desde                                            AS desde_real,
               GREATEST(t.desde, w.ini)                           AS d,
               LEAST(COALESCE(t.hasta, now()), w.fin)             AS h
          FROM fv_tramo t
@@ -1264,7 +1267,7 @@ async function actividadPorConductor(dia, turno = 'dia', kmYaHechos = null) {
           -- miran situaciones efectivas y trayectos, que duran horas, no semanas.
      ),
      p AS (
-       SELECT uuid, matricula, situacion, abierto, d, h,
+       SELECT uuid, matricula, situacion, abierto, desde_real, d, h,
               EXTRACT(EPOCH FROM (h - d))                        AS seg
          FROM tr
      )
@@ -1276,7 +1279,12 @@ async function actividadPorConductor(dia, turno = 'dia', kmYaHechos = null) {
             min(p.d) FILTER (WHERE p.situacion IN ('viaje','espera'))                                    AS primera,
             max(p.h) FILTER (WHERE p.situacion IN ('viaje','espera'))                                    AS ultima,
             bool_or(p.abierto AND p.situacion IN ('viaje','espera','descanso'))                          AS conectado_ahora,
-            max(p.situacion) FILTER (WHERE p.abierto)                                                    AS situacion_ahora
+            max(p.situacion) FILTER (WHERE p.abierto)                                                    AS situacion_ahora,
+            -- Desde cuando esta abierto ese tramo, y si la ventana sigue viva.
+            -- Con esas dos cosas se puede decidir si el apunte crudo de BOLT
+            -- es mas nuevo que lo que sabe el motor. Ver el bloque de abajo.
+            max(p.desde_real) FILTER (WHERE p.abierto)                                                   AS abierto_desde,
+            (SELECT fin_plan > now() FROM v)                                                             AS ventana_viva
        FROM p
        LEFT JOIN fv_conductor co ON co.uuid = p.uuid
       GROUP BY p.uuid, p.matricula, co.nombre, co.telefono`,
@@ -1320,6 +1328,9 @@ ${SOLAPE_KM}
         minutos: 0, minDescanso: 0, minDesconectado: 0, km: 0, kmFuera: 0,
         fuenteKm: null,
         primera: null, ultima: null, conectadoAhora: false, situacionAhora: null,
+        // De cual de las dos tuberias sale el AHORA. No se pinta; contesta
+        // "por que dice eso" sin abrir la base.
+        fuenteAhora: null, _abiertoDesde: null, _ventanaViva: false,
         _mats: [],
       });
     }
@@ -1330,6 +1341,11 @@ ${SOLAPE_KM}
     if (x.primera && (!a.primera || x.primera < a.primera)) a.primera = x.primera;
     if (x.ultima && (!a.ultima || x.ultima > a.ultima)) a.ultima = x.ultima;
     if (x.conectado_ahora) { a.conectadoAhora = true; a.situacionAhora = x.situacion_ahora || a.situacionAhora; }
+    if (x.conectado_ahora || x.situacion_ahora) a.fuenteAhora = a.fuenteAhora || 'tramo';
+    if (x.ventana_viva) a._ventanaViva = true;
+    if (x.abierto_desde && (!a._abiertoDesde || x.abierto_desde > a._abiertoDesde)) {
+      a._abiertoDesde = x.abierto_desde;
+    }
     // Solo cuentan como "su coche" los que tienen trabajo o conexión viva: un
     // tramo DESCONECTADO abierto hereda el conductor anterior, y ponía matrícula
     // y "≠ no es el coche del plan" a quien aún no había salido.
@@ -1337,6 +1353,43 @@ ${SOLAPE_KM}
       a._mats.push({ matricula: x.matricula, minutos: Number(x.minutos) || 0 });
     }
   });
+
+  // ── EL AHORA SALE DE LA NOTICIA MAS FRESCA, NO SIEMPRE DEL TRAMO ────────
+  //
+  // Los MINUTOS necesitan tramos: no se puede sumar tiempo de un solo apunte.
+  // Pero "que esta haciendo AHORA" es otra cosa, y ahi el tramo abierto puede
+  // llevar horas sin actualizarse si el motor se atasca — el 23/09/2026 estuvo
+  // dos horas sin terminar una vuelta y el cockpit siguio diciendo "no ha
+  // salido" de gente que estaba de viaje.
+  //
+  // `bolt_state_log` es la otra tuberia: la escribe la ingesta cada 10 min y es
+  // una tabla tonta, un apunte por cambio de estado. Los dos traen la hora del
+  // apunte de BOLT, asi que se comparan y gana el mas reciente. Medido ese dia
+  // en el mapa: 10 de 94 coches discrepaban y en TODOS el crudo iba por delante.
+  //
+  // Solo se toca el AHORA, y solo si la ventana sigue viva: en un dia pasado no
+  // hay ningun "ahora" que corregir.
+  const vivos = [...porUuid.values()].filter(a => a._ventanaViva);
+  if (vivos.length) {
+    const crudos = await db.consulta(
+      `SELECT DISTINCT ON (l.driver_uuid) l.driver_uuid AS uuid, eb.situacion, l.ocurrido_at
+         FROM bolt_state_log l
+         JOIN fv_estado_bolt eb ON eb.estado = l.estado
+        WHERE l.driver_uuid = ANY($1::text[])
+          AND l.ocurrido_at > now() - interval '12 hours'
+        ORDER BY l.driver_uuid, l.ocurrido_at DESC`,
+      [vivos.map(a => a.uuid)]);
+    crudos.rows.forEach(x => {
+      const a = porUuid.get(x.uuid);
+      if (!a) return;
+      // Si el motor sabe algo MAS nuevo, manda el motor. Pasa cuando la ingesta
+      // va con retraso, que tambien ocurre.
+      if (a._abiertoDesde && new Date(a._abiertoDesde) > new Date(x.ocurrido_at)) return;
+      a.situacionAhora = x.situacion;
+      a.conectadoAhora = ['viaje', 'espera', 'descanso'].includes(x.situacion);
+      a.fuenteAhora = 'apunte';
+    });
+  }
 
   // Los km encima de lo ya montado. Si el conductor no tiene ficha (sus tramos
   // caen fuera de la ventana), esos km se descartan: son de otra jornada.

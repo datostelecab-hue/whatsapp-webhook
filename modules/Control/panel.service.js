@@ -58,7 +58,39 @@ const fila = r => ({
   ultimoConductor: r.ultimo_conductor || '',
   ultimoTelefono: r.ultimo_telefono || '',
   ultimoUso: r.ultimo_uso_at,
+  // De cual de las dos tuberias de BOLT sale esta situacion. No se pinta:
+  // contesta "por que dice eso" sin abrir la base.
+  fuenteAhora: r.fuente_ahora || 'tramo',
 });
+
+/**
+ * Se queda con la noticia MAS FRESCA de BOLT: el apunte crudo o el tramo.
+ *
+ * Si los dos dicen lo mismo -que es lo normal- no se toca nada. Solo cuando
+ * discrepan manda el mas reciente, y entonces la cuenta de "lleva asi" se
+ * rehace desde la hora del apunte: decir "en descanso desde hace 2 h" cuando la
+ * persona lleva una hora de viaje es peor que decir un rato de menos.
+ */
+function masFresco(x) {
+  if (!x.situacion_cruda || !x.crudo_at) return x;
+  const tCrudo = new Date(x.crudo_at).getTime();
+  const tTramo = x.desde ? new Date(x.desde).getTime() : null;
+  if (tTramo != null && tTramo > tCrudo) return x;          // el motor sabe algo mas nuevo
+  if (x.situacion_cruda === x.situacion) return x;          // dicen lo mismo: nada que hacer
+  return {
+    ...x,
+    situacion: x.situacion_cruda,
+    situacion_etiqueta: x.etiqueta_cruda || x.situacion_etiqueta,
+    color: x.color_crudo || x.color,
+    conectado: x.conectado_crudo === true,
+    conductor: x.conductor_crudo || x.conductor,
+    telefono: x.telefono_crudo || x.telefono,
+    desde: x.crudo_at,
+    segundos: Math.max(0, Math.round((Date.now() - tCrudo) / 1000)),
+    // Los km y el GPS siguen siendo los del tramo: eso no lo sabe un apunte.
+    fuente_ahora: 'apunte',
+  };
+}
 
 /**
  * El panel entero, en una sola consulta.
@@ -68,10 +100,36 @@ const fila = r => ({
  * lleguen de momentos distintos y el total no cuadre con las partes.
  */
 async function estado() {
+  // EL APUNTE CRUDO AL LADO DEL TRAMO, y gana el mas nuevo.
+  //
+  // `fv_ahora` sale de los tramos, que construye el motor de Flota viva. Si el
+  // motor se atasca -el 23/09/2026 estuvo dos horas sin terminar una vuelta-,
+  // la tarjeta se queda diciendo "En descanso" de alguien que lleva una hora de
+  // viaje. La tabla bolt_state_log es la otra tuberia: la escribe la ingesta
+  // cada 10 min, es tonta y aguanta. Los dos traen la hora del apunte de BOLT,
+  // asi que se comparan.
   const r = await db.consulta(
-    `SELECT * FROM fv_ahora
-      ORDER BY conectado DESC NULLS LAST, situacion_orden, segundos DESC, matricula`);
-  const todas = r.rows.map(fila);
+    `SELECT a.*,
+            eb.situacion  AS situacion_cruda,
+            s2.etiqueta   AS etiqueta_cruda,
+            s2.color      AS color_crudo,
+            s2.conectado  AS conectado_crudo,
+            cru.ocurrido_at AS crudo_at,
+            cc.nombre     AS conductor_crudo,
+            cc.telefono   AS telefono_crudo
+       FROM fv_ahora a
+       LEFT JOIN LATERAL (
+         SELECT l.estado, l.ocurrido_at, l.driver_uuid
+           FROM bolt_state_log l
+          WHERE l.vehiculo_uuid = a.vehiculo_uuid
+            AND l.ocurrido_at > now() - interval '12 hours'
+          ORDER BY l.ocurrido_at DESC
+          LIMIT 1) cru ON TRUE
+       LEFT JOIN fv_estado_bolt eb ON eb.estado = cru.estado
+       LEFT JOIN fv_cat_situacion s2 ON s2.codigo = eb.situacion
+       LEFT JOIN fv_conductor cc ON cc.uuid = cru.driver_uuid
+      ORDER BY a.conectado DESC NULLS LAST, a.situacion_orden, a.segundos DESC, a.matricula`);
+  const todas = r.rows.map(x => fila(masFresco(x)));
 
   const conectados = todas.filter(x => x.situacion && x.situacion !== 'desconectado');
   const caidos = todas.filter(x => x.situacion === 'desconectado');

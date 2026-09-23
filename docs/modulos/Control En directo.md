@@ -17,6 +17,35 @@ El cockpit de tráfico: el plan del cuadrante fundido con lo que rueda ahora mis
 
 **No se hace JOIN en SQL entre los dos mundos.** El Cuadrante vive en la base principal y Flota Viva puede vivir en otra (`FLOTA_VIVA_DB_URL`, variable de entorno). Se piden por separado —cada uno a su pool— y se cruzan aquí en JS por matrícula normalizada, que es lo único que comparten. Y cada fuente va con red: si Flota Viva se cae, el plan se ve igual, y al revés. La respuesta lleva `hayCuadrante`, `hayFlotaViva` y `hayActividad` para que la pantalla lo diga en vez de mentir en verde.
 
+## El AHORA sale de la noticia más fresca de BOLT (23/09/2026)
+
+Hay **dos tuberías** que traen lo mismo desde BOLT, y ninguna es de fiar siempre:
+
+| | Quién la escribe | Cada cuánto | Cómo es |
+|---|---|---|---|
+| `bolt_state_log` (el **apunte crudo**) | la ingesta | 10 min | una tabla tonta: un apunte por cambio de estado. **Aguanta.** |
+| `fv_tramo` → `fv_ahora` (el **tramo**) | el motor de Flota viva | 5 min | además km, franjas, odómetro, rutas. **Más listo y más frágil.** |
+
+Los dos traen la **hora del apunte de BOLT**, así que se comparan y **gana el más reciente**. Afecta a los dos sitios que enseñan el ahora:
+
+- **`salidaDe()`** — `conectadoAhora` y `situacionAhora` en `rutas.actividadPorConductor`. Es lo que decide **«NO HA SALIDO»**, o sea a quién se llama por teléfono.
+- **La tarjeta del coche** — `panel.service.estado()`, que es el `vivo` de cada fila.
+
+> [!warning] Los MINUTOS siguen saliendo de los tramos, y tienen que seguir
+> De un solo apunte no se puede sumar tiempo. Lo que cambia es **en qué está
+> ahora**, no cuánto lleva hecho. Y si la situación la pone el apunte y no
+> coincide con la del tramo, el contador de «lleva así» se rehace desde la hora
+> del apunte: decir *«en descanso desde hace 2 h»* a alguien que lleva una hora
+> de viaje es peor que decir un rato de menos.
+
+**En un día pasado no se toca nada**: no hay ningún «ahora» que corregir, y lo
+garantiza `ventana_viva` en la propia consulta.
+
+Medido el 23/09/2026 a las 14:40, con el motor ya recuperado: **10 de 88 coches**
+se corrigieron. El peor, `0348MMZ` — el tramo decía **desconectado desde las
+11:46** y el apunte decía **viaje a las 14:33**. Ese es exactamente el que salía
+en rojo pidiendo una llamada. Ver [[Trampas conocidas]] y [[Mapa de flota]].
+
 ## La jornada: 05→05, y las cinco horas que nadie veía
 
 El día del cockpit es la jornada operativa, no la fecha del reloj: de madrugada (00:00–05:00) seguimos en la de **ayer**, porque la noche que está rodando empezó la víspera. Es la misma regla del telefonito y de la J (`services/repo/llamadas.diaOperativoHoy()`).

@@ -97,11 +97,11 @@ tenía razón: medido ese día, **10 de 94 coches discrepaban y en todos el apun
 crudo iba por delante**, hasta 55 minutos (1085MJY: el tramo decía «descanso» de
 las 13:45 y el apunte decía «viaje» de las 14:40).
 
-> [!note] Ojo: Control lee los TRAMOS, no el crudo
+> [!note] Control leía los TRAMOS, y ahora hace lo mismo
 > La intuición era buena pero el ejemplo no: `cockpit.service` y `panel.service`
-> leen `fv_ahora` y `fv_tramo` como leía el mapa, así que Control se congeló
-> igual ese día. Lo que cambia ahora es solo el mapa; llevar el mismo criterio a
-> Control está pendiente.
+> leían `fv_ahora` y `fv_tramo` como leía el mapa, así que Control se congeló
+> igual ese día. El mismo criterio está ya en los dos sitios de Control que
+> enseñan el AHORA — ver [[Control En directo]].
 
 Si se para la segunda, **la pantalla sigue pareciendo viva**: los puntos se
 mueven y las etiquetas mienten. Eso es lo que pasó el 23/09/2026 —ver
