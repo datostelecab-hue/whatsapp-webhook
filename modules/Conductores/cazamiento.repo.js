@@ -41,6 +41,11 @@ async function sincronizar(cuentas) {
   // no decir nada.
   const efectivos = filas.map(([, c]) =>
     (c.has_cash_payment === true || c.has_cash_payment === false ? c.has_cash_payment : null));
+  // La nota del cliente y la puntuacion de BOLT. Un numero que no llega es un
+  // hueco, no un cero: se guarda NULL y el UPSERT conserva lo de antes.
+  const num = v => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+  const ratings = filas.map(([, c]) => num(c.rating));
+  const scores = filas.map(([, c]) => num(c.score));
 
   // El estado ANTERIOR se guarda en un CTE aparte porque `EXCLUDED` no se puede
   // mirar desde el RETURNING: allí solo existe la fila tal como queda.
@@ -53,10 +58,12 @@ async function sincronizar(cuentas) {
     guardadas AS (
       INSERT INTO conductor_externo
         (sistema, externo_id, externo_nombre, externo_telefono, externo_email, estado_externo,
-         efectivo_activo, efectivo_at)
-      SELECT 'bolt', u, n, t, e, s, ef, CASE WHEN ef IS NOT NULL THEN now() END
-        FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[])
-             AS x(u, n, t, e, s, ef)
+         efectivo_activo, efectivo_at, bolt_rating, bolt_score, bolt_nota_at)
+      SELECT 'bolt', u, n, t, e, s, ef, CASE WHEN ef IS NOT NULL THEN now() END,
+             ra, sc, CASE WHEN ra IS NOT NULL OR sc IS NOT NULL THEN now() END
+        FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[],
+                    $7::numeric[], $8::numeric[])
+             AS x(u, n, t, e, s, ef, ra, sc)
       ON CONFLICT (sistema, externo_id) DO UPDATE SET
         externo_nombre   = EXCLUDED.externo_nombre,
         externo_telefono = EXCLUDED.externo_telefono,
@@ -66,6 +73,19 @@ async function sincronizar(cuentas) {
         -- borrarlo: un hueco no desmiente lo que ya se sabía.
         efectivo_activo  = COALESCE(EXCLUDED.efectivo_activo, conductor_externo.efectivo_activo),
         efectivo_at      = COALESCE(EXCLUDED.efectivo_at, conductor_externo.efectivo_at),
+        -- La nota y la puntuacion, con el mismo criterio: si esta vuelta no las
+        -- trae, se conserva la de antes. Un hueco no desmiente lo que ya se sabia.
+        bolt_rating      = COALESCE(EXCLUDED.bolt_rating, conductor_externo.bolt_rating),
+        bolt_score       = COALESCE(EXCLUDED.bolt_score, conductor_externo.bolt_score),
+        -- Y la fecha SOLO se mueve cuando el numero es otro. visto_at dice
+        -- cuando se miro; esta dice desde cuando tiene esa nota, que es lo que
+        -- se preguntara en un informe.
+        bolt_nota_at     = CASE
+          WHEN COALESCE(EXCLUDED.bolt_rating, conductor_externo.bolt_rating)
+                 IS DISTINCT FROM conductor_externo.bolt_rating
+            OR COALESCE(EXCLUDED.bolt_score, conductor_externo.bolt_score)
+                 IS DISTINCT FROM conductor_externo.bolt_score
+          THEN now() ELSE conductor_externo.bolt_nota_at END,
         visto_at         = now()
       RETURNING externo_id, (xmax = 0) AS es_nueva, estado_externo
     )
@@ -75,7 +95,7 @@ async function sincronizar(cuentas) {
                AND a.estado_externo IS DISTINCT FROM g.estado_externo)::int AS cambiadas
       FROM guardadas g
       LEFT JOIN antes a ON a.externo_id = g.externo_id`,
-    [uuids, nombres, tels, emails, estados, efectivos]);
+    [uuids, nombres, tels, emails, estados, efectivos, ratings, scores]);
 
   // El nombre de BOLT se copia a la ficha del conductor enlazado. Vive ahí y no
   // se resuelve por subconsulta porque lo leen 29 consultas repartidas por 15

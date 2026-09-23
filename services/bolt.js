@@ -366,6 +366,19 @@ async function traerDrivers() {
           // undefined— para que quien lo guarde distinga "no tiene" de "no se
           // sabe"; convertirlo a booleano aqui perderia esa diferencia.
           has_cash_payment: d.has_cash_payment,
+          // LA NOTA DEL CLIENTE Y LA PUNTUACION DE BOLT.
+          //
+          // Los dos estan en la especificacion como `number` nullable y sin una
+          // linea de descripcion, asi que lo que son sale de medirlos: el
+          // rating es la nota en estrellas (3,5 a 5) y el score la puntuacion
+          // de actividad (58 a 100).
+          //
+          // Se pasan TAL CUAL, sin convertir ni poner a cero: el null significa
+          // "aun no tiene media publicada" —199 conductores activos estan asi—
+          // y un cero diria justo lo contrario. Mismo criterio que
+          // `has_cash_payment`.
+          rating: d.driver_rating == null ? null : Number(d.driver_rating),
+          score: d.driver_score == null ? null : Number(d.driver_score),
           flota: f.nombre || String(f.id)
         };
         const prev = porUuid.get(uuid);

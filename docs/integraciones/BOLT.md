@@ -133,7 +133,9 @@ No sobreviven `partner_uuid`, `flota` ni `veces_visto`: no los leía nadie.
 
 ## La nota del cliente: `driver_rating` y `driver_score`
 
-`getDrivers` trae dos números por conductor que **hoy no se guardan** (`conductor_externo` no tiene columna para ellos y `traerDrivers` no los copia). Están en la especificación oficial, los dos como *number* nullable y **sin una línea de descripción**; lo que significan sale de mirar los datos:
+`getDrivers` trae dos números por conductor que **se guardan en el padrón desde el 23/09/2026** (`conductor_externo.bolt_rating` y `.bolt_score`, db/131). No se pintan en ninguna pantalla ni entran en la [[Calificacion de conductores]]: están para consultas e informes.
+
+Están en la especificación oficial, los dos como *number* nullable y **sin una línea de descripción**; lo que significan sale de mirar los datos:
 
 | Campo | Qué es | Cuántos lo traen | Rango real |
 |---|---|---|---|
@@ -145,6 +147,10 @@ Medido el 23/09/2026 contra las dos flotas.
 **El rating no lo tiene todo el mundo, y eso es información.** De los que no traen nota, 1.064 están `deactivated` y 66 `suspended` —cuentas viejas—, pero hay **199 activos sin rating**: quien no acumula viajes suficientes no tiene media publicada. Un `null` aquí no es un cero ni un "mal conductor": es "todavía no se sabe", y quien lo guarde tiene que distinguirlo, igual que con `has_cash_payment`.
 
 De los 247 con nota, **190 son gente con contrato abierto aquí**.
+
+**`bolt_nota_at` no es `visto_at`.** La segunda se toca en cada vuelta del padrón —cada hora— y solo dice cuándo se miró. La primera se mueve **únicamente cuando el número cambia**, que es lo que permite contestar «¿desde cuándo está en 4,2?» sin montar una tabla de histórico. Comprobado: dos pasadas seguidas mueven `visto_at` y dejan `bolt_nota_at` donde estaba.
+
+Los dos van en `NUMERIC` y no en entero. Hoy el rating llega con cuatro decimales y el score entero, pero la API dice `number` y no documenta nada: un `SMALLINT` redondearía en silencio el día que llegue un 86,5.
 
 > [!note] No hay endpoint de calificaciones
 > Ni en la especificación ni probando a ciegas: `getDriverRatings`, `getFleetDriverRatings`, `getRatings`, `getDriverScore` y `getFleetOrderRatings` devuelven **404**. La nota del cliente solo llega por el padrón, y por conductor —no por viaje—: no se puede saber qué carrera bajó la media.
