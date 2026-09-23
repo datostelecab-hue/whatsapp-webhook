@@ -78,6 +78,13 @@ De esa misma llave son el **parte del día** (quién fichó y quién no), la lis
 > [!tip] El prefijo ES el permiso
 > Las rutas de revisión cuelgan de **`/fichaje/revisar/`** y no de `/fichaje/api/`. Así no hace falta un middleware por ruta: las cierra el control de acceso general por prefijo (`sesion.controlAcceso` → `permisos.claveDeRuta`), y el día que alguien añada un endpoint nuevo ahí dentro **nace cerrado** sin acordarse de nada. Fichar sigue colgando de `/fichaje/api/`, que no casa con ninguna clave del catálogo y por tanto sigue abierto.
 
+> [!bug] La hora que se escribe es de Madrid, y hay que decírselo a la base
+> Corregir a las 11:00 guardaba **las 13:00**. La zona de la sesión de PostgreSQL
+> es UTC, así que un texto sin zona casteado a `timestamptz` se lee como UTC.
+> Ahora se pasa por `::timestamp AT TIME ZONE 'Europe/Madrid'`, y el servicio
+> **rechaza** lo que no venga como `AAAA-MM-DDTHH:MM`. Arreglado el 23/09/2026;
+> ver [[Trampas conocidas]].
+
 ## Por qué corregir no pisa nada
 
 `entrada_original` y `salida_original` guardan lo que se pulsó, y **solo se escriben la primera vez**: una segunda corrección no puede tapar el original. Corregir **exige motivo** —lo comprueba la base con un CHECK, no solo la aplicación— y queda con quién y cuándo. Un registro que se edita sin rastro no vale delante de un inspector, y ese es justo el momento en que hace falta que valga.

@@ -185,6 +185,22 @@ async function aprobar(ids, autor) {
   return { aprobados: hechos.length, ids: hechos };
 }
 
+// Lo que escribe una persona al corregir es HORA DE MADRID y llega sin zona:
+// 'AAAA-MM-DDTHH:MM'. Se exige ese formato exacto y se rechaza cualquier otro
+// —una Z al final, un desfase, un instante ya convertido— porque la base lo va
+// a leer como hora de aquí: colar un UTC ahí dentro mueve el fichaje dos horas
+// sin que nadie se entere. Mejor un error claro que una hora mentirosa.
+const HORA_ESCRITA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+function horaDeMadrid(v, campo) {
+  if (v === null || v === undefined || v === '') return null;
+  const s = String(v).trim();
+  if (s === 'abierta') return s;                    // volver a dejarla sin cerrar
+  if (!HORA_ESCRITA.test(s)) {
+    throw new Error('La ' + campo + ' tiene que venir como AAAA-MM-DDTHH:MM, en hora de Madrid');
+  }
+  return s.length === 16 ? s + ':00' : s;
+}
+
 /**
  * Corrige o crea un fichaje. El candado está en la ruta ('/fichaje/revisar');
  * aquí se exige lo que hace que la corrección valga: un motivo.
@@ -195,9 +211,10 @@ async function aprobar(ids, autor) {
 async function corregir({ id, usuarioId, entrada, salida }, { autor, motivo }) {
   const m = String(motivo || '').trim();
   if (m.length < 4) throw new Error('Hay que escribir el motivo de la corrección');
-  if (id) return repo.corregir(Number(id), { entrada, salida }, { usuarioId: autor, motivo: m });
-  if (!usuarioId || !entrada) throw new Error('Para crear un fichaje hacen falta la persona y la hora de entrada');
-  return repo.crearAMano(Number(usuarioId), { entrada, salida }, { autor, motivo: m });
+  const e = horaDeMadrid(entrada, 'entrada'), sa = horaDeMadrid(salida, 'salida');
+  if (id) return repo.corregir(Number(id), { entrada: e, salida: sa }, { usuarioId: autor, motivo: m });
+  if (!usuarioId || !e) throw new Error('Para crear un fichaje hacen falta la persona y la hora de entrada');
+  return repo.crearAMano(Number(usuarioId), { entrada: e, salida: sa }, { autor, motivo: m });
 }
 
 /** Lo que quedó sin cerrar en días pasados. */

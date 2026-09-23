@@ -23,6 +23,32 @@ Ver [[Reglas de la casa]], [[Comprobadores]] y [[Glosario]].
 
 ## Fechas, husos y la jornada
 
+### Una hora escrita a mano y casteada a `timestamptz` se va DOS horas
+
+`modules/Fichaje/fichaje.repo.js`
+
+La zona de la sesión de PostgreSQL en producción es **UTC** (`SHOW TimeZone`).
+Así que `'2026-09-23T11:00:00'::timestamptz` no son las once de Madrid: son las
+once **UTC**, o sea **las 13:00 de aquí**. Se corrigó un fichaje a las 11:00 y
+quedó a las 13:00; en invierno habría sido una hora y habría costado más verlo.
+
+**Remedio:** pasar primero por `::timestamp` —un instante sin zona, que es lo que
+de verdad es un texto escrito por una persona— y decirle en qué zona se lee:
+
+```sql
+($2::timestamp AT TIME ZONE 'Europe/Madrid')
+```
+
+**No se arregla cambiando la zona de la sesión**: eso movría en silencio todo lo
+demás. Y conviene **rechazar** en el servicio lo que no venga como
+`AAAA-MM-DDTHH:MM`: una `Z` al final se colaría por el mismo sitio y volvería a
+mover la hora sin avisar.
+
+Ojo con la dirección, que son dos operaciones distintas con la misma cara:
+`timestamp AT TIME ZONE zona` → **timestamptz** (lo interpreta), y
+`timestamptz AT TIME ZONE zona` → **timestamp** (lo traduce). Ver también
+[[#`date AT TIME ZONE` no es `timestamp AT TIME ZONE`]] si está apuntada.
+
 ### `toISOString()` sobre un DATE devuelve el día ANTERIOR en Madrid
 
 `services/repo/vigencia.js`, `modules/Conductores/fantasma.repo.js`,

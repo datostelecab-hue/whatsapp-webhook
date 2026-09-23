@@ -44,6 +44,21 @@ function normUbi(u) {
   };
 }
 
+/**
+ * Una hora ESCRITA A MANO, interpretada en Madrid.
+ *
+ * Lo que llega de la pantalla es 'AAAA-MM-DDTHH:MM:00' sin zona: es la hora
+ * que se lee en un reloj de aquí. Un texto así convertido a timestamptz lo
+ * interpreta PostgreSQL con la zona de la SESIÓN, y la de este servidor es
+ * UTC: escribir 11:00 guardaba las 13:00 de Madrid. Dos horas de regalo en un
+ * registro de jornada, y en invierno habría sido una.
+ *
+ * Por eso se pasa primero por ::timestamp (un instante sin zona, que es lo que
+ * de verdad es) y se le dice EN QUÉ zona hay que leerlo. No se arregla
+ * cambiando la zona de la sesión: eso movería en silencio todo lo demás.
+ */
+const MADRID = n => '($' + n + "::timestamp AT TIME ZONE '" + TZ + "')";
+
 // El día natural de Madrid al que pertenece un instante. En SQL y no en
 // JavaScript porque el día lo tiene que decidir la MISMA zona que luego lo
 // consulta; si lo calculara el servidor de Node con su reloj, un despliegue en
@@ -146,11 +161,11 @@ async function corregir(id, { entrada, salida }, { usuarioId, motivo }) {
     UPDATE fichaje SET
       entrada_original = COALESCE(entrada_original, entrada),
       salida_original  = COALESCE(salida_original, salida),
-      entrada = COALESCE($2::timestamptz, entrada),
+      entrada = COALESCE(${MADRID(2)}, entrada),
       salida  = CASE WHEN $3::text = 'abierta' THEN NULL
                      WHEN $3::text IS NULL      THEN salida
-                     ELSE $3::timestamptz END,
-      dia = ((COALESCE($2::timestamptz, entrada) AT TIME ZONE '${TZ}')::date),
+                     ELSE ${MADRID(3)} END,
+      dia = ((COALESCE(${MADRID(2)}, entrada) AT TIME ZONE '${TZ}')::date),
       corregido_at = now(), corregido_por = $4, corregido_motivo = $5,
       -- Tocar las horas TUMBA el visto bueno. Si no, se aprobarian 8 h, se
       -- editarian a 12 y el sello seguiria diciendo que alguien las dio por
@@ -169,7 +184,7 @@ async function crearAMano(usuarioId, { entrada, salida }, { autor, motivo }) {
   const r = await db.consulta(`
     INSERT INTO fichaje (usuario_id, dia, entrada, salida,
                          corregido_at, corregido_por, corregido_motivo)
-    VALUES ($1, (($2::timestamptz AT TIME ZONE '${TZ}')::date), $2, $3, now(), $4, $5)
+    VALUES ($1, ((${MADRID(2)} AT TIME ZONE '${TZ}')::date), ${MADRID(2)}, ${MADRID(3)}, now(), $4, $5)
     RETURNING id, to_char(dia, 'YYYY-MM-DD') AS dia, entrada, salida`,
     [usuarioId, entrada, salida || null, autor, motivo]);
   return r.rows[0];
