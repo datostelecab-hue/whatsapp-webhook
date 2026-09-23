@@ -71,10 +71,23 @@ async function salir(usuarioId, ubi) {
   return f;
 }
 
-/** Su propio mes, con las horas ya sumadas. */
-async function miMes(usuarioId, mes) {
-  const m = /^\d{4}-\d{2}$/.test(String(mes || '')) ? mes : hoyMadrid().slice(0, 7);
-  const filas = (await repo.delMes(usuarioId, m)).map(f => ({
+// ── La semana, que es como se mira una jornada ─────────────────────────────
+// Se cuenta de LUNES a domingo, como el cuadrante y como el convenio. Las
+// cuentas se hacen sobre fechas en ISO montadas a mediodía UTC: así ni el
+// cambio de hora ni la zona del servidor pueden mover un día. Ver la trampa de
+// las fechas en el vault.
+const masDias = (iso, n) => {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const lunesDe = iso => masDias(iso, -((new Date(iso + 'T12:00:00Z').getUTCDay() + 6) % 7));
+
+/** Su propia semana (la del día que se le pase), con las horas ya sumadas. */
+async function miSemana(usuarioId, dia) {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dia || '')) ? dia : hoyMadrid();
+  const desde = lunesDe(d), hasta = masDias(desde, 6);
+  const filas = (await repo.delRango(usuarioId, desde, hasta)).map(f => ({
     ...f,
     id: Number(f.id),
     minutos: minutos(f.entrada, f.salida),
@@ -87,8 +100,32 @@ async function miMes(usuarioId, mes) {
   }));
   const total = filas.reduce((s, f) => s + (f.minutos || 0), 0);
   const cerradas = filas.filter(f => f.salida);
+
+  // LOS SIETE DÍAS, SIEMPRE, aunque no se fichara ninguno. Una semana con tres
+  // renglones no deja ver lo que falta; con siete, el hueco se ve solo.
+  //
+  // Sábado y domingo salen como LIBRA porque aquí se libra el fin de semana.
+  // Pero si ese día hay fichaje, manda el fichaje: quien trabajó un sábado no
+  // libró, y sus horas suman a la semana como las de cualquier otro día.
+  const hoy = hoyMadrid();
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const dia = masDias(desde, i);
+    const suyos = filas.filter(f => f.dia === dia);
+    dias.push({
+      dia, finde: i >= 5, futuro: dia > hoy, pasado: dia < hoy,
+      libra: i >= 5 && !suyos.length,
+      minutos: suyos.reduce((a, f) => a + (f.minutos || 0), 0),
+      fichajes: suyos,
+    });
+  }
+
   return {
-    mes: m, filas, totalMinutos: total, total: comoTexto(total),
+    desde, hasta, dia: d, hoy, dias,
+    filas, totalMinutos: total, total: comoTexto(total),
+    // El fin de semana, aparte: son las horas que alguien echó cuando le tocaba
+    // librar, y es justo lo que se quiere ver de un vistazo.
+    finde: comoTexto(dias.filter(x => x.finde).reduce((a, x) => a + x.minutos, 0)),
     abiertas: filas.filter(f => !f.salida).length,
     // Las horas que ya cuentan de verdad, separadas de las que aún no ha
     // confirmado nadie: es lo primero que se mira al abrir el mes propio.
@@ -170,6 +207,6 @@ const sinCerrar = () => repo.sinCerrar();
 const losQueFichan = () => usuarios.losQueFichan();
 
 module.exports = {
-  estado, entrar, salir, miMes, parteDelDia, corregir, sinCerrar, losQueFichan,
+  estado, entrar, salir, miSemana, parteDelDia, corregir, sinCerrar, losQueFichan,
   pendientes, aprobar, comoTexto, hoyMadrid,
 };

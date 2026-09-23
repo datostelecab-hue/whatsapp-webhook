@@ -70,9 +70,10 @@ router.post('/api/entrar', responde(async req =>
 router.post('/api/salir', responde(async req =>
   ({ fichaje: await fichaje.salir(await quien(req), (req.body || {}).ubicacion) })));
 
-// Su propio mes. Cada uno ve el suyo y solo el suyo: el id sale de la SESIÓN,
-// nunca de la petición, o cualquiera podría pedir el de otro cambiando un número.
-router.get('/api/mi-mes', responde(async req => fichaje.miMes(await quien(req), req.query.mes)));
+// Su propia semana. Cada uno ve la suya y solo la suya: el id sale de la
+// SESIÓN, nunca de la petición, o cualquiera podría pedir la de otro cambiando
+// un número. `?dia=AAAA-MM-DD` elige la semana; por omisión, la de hoy.
+router.get('/api/mi-semana', responde(async req => fichaje.miSemana(await quien(req), req.query.dia)));
 
 // ── Lo que solo puede quien lleva el módulo ────────────────────────────────
 // Cuelgan de '/fichaje/revisar' porque ESE es el nombre del permiso: el prefijo

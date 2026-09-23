@@ -31,7 +31,9 @@ modules/Fichaje/vistas/fichaje.ejs       /fichaje
 
 ## Dónde está el botón
 
-**En la barra de arriba, en todas las pantallas.** No en su página: fichar se olvida, y si hay que ir a buscarlo se olvida más. Verde mientras la jornada corre, ámbar cuando falta fichar la entrada, y en ámbar de aviso si quedó una jornada de **otro día** sin cerrar — que es el error más común y el que menos se nota.
+**En la barra de arriba, en todas las pantallas.** No en su página: fichar se olvida, y si hay que ir a buscarlo se olvida más. Desde el 23/09/2026 hay además una entrada **«Fichar jornada» en el menú lateral**, que es donde la gente la fue a buscar.
+
+La entrada del menú **no se puede filtrar con `puedeVer`**, porque esa función esconde todo lo que no sea una clave del catálogo y `/fichaje` no lo es a propósito. Nace oculta y la enseña el mismo `GET /fichaje/api/estado` que pinta el botón de la barra; quien lleva el registro (`/fichaje/revisar`) la ve siempre, desde el servidor. Verde mientras la jornada corre, ámbar cuando falta fichar la entrada, y en ámbar de aviso si quedó una jornada de **otro día** sin cerrar — que es el error más común y el que menos se nota.
 
 Quién ve el botón **lo dice el servidor, no la sesión**. La cookie se firmó al entrar y puede ser de antes de que le activaran el fichaje; si esto mirara la cookie, a alguien recién marcado no le saldría hasta volver a entrar y parecería que no funciona. Por eso `GET /fichaje/api/estado` lo pregunta en cada pantalla y por eso el servicio cachea el usuario solo unos segundos.
 
@@ -47,7 +49,18 @@ Quién tiene que fichar se elige **persona a persona** en `/usuarios` (`usuario.
 
 Un detalle que sorprende: la geolocalización del navegador **solo funciona sobre HTTPS** (o en localhost). Si algún día se sirviera por HTTP plano, todas las ubicaciones llegarían como `error` sin que nadie tocara nada.
 
-Cada uno ve **su** mes (`GET /fichaje/api/mi-mes`), y el id sale de la **sesión**, nunca de la petición: si no, cualquiera pediría el de otro cambiando un número.
+Cada uno ve **su semana** (`GET /fichaje/api/mi-semana?dia=AAAA-MM-DD`), y el id sale de la **sesión**, nunca de la petición: si no, cualquiera pediría la de otro cambiando un número.
+
+## La semana, y los siete días
+
+Se mira **por semana, de lunes a domingo**, no por mes: lo que se pregunta es qué llevas *esta* semana. El campo es el [[Componentes de la casa|calendario de la casa]] (`js-fecha`, dd/mm/aaaa) con dos flechas al lado; se le pasa **cualquier día** y el servidor devuelve su semana.
+
+Y salen **los siete días siempre**, aunque no se fichara ninguno: una semana con tres renglones no deja ver lo que falta, y con siete el hueco se ve solo. Cada día dice lo que le pasa —`Libra`, `sin fichar`, o sus fichajes, que pueden ser dos.
+
+> [!note] Sábado y domingo son «Libra», salvo que se trabajen
+> Aquí se libra el fin de semana, así que esos dos días salen como **Libra** por omisión. Pero **manda el fichaje**: quien tiene horas un sábado no libró, su fila se pinta como la de cualquier otro día —en dorado, que son las horas de más— y **suman a la semana**. Arriba se dice aparte cuántas fueron en fin de semana.
+
+Las cuentas de fechas se hacen sobre ISO montado a **mediodía UTC** (`+ 'T12:00:00Z'`): así ni el cambio de hora ni la zona del servidor pueden mover un día. Probado con la semana del cambio de hora, la que cruza de mes y la que cruza de año.
 
 ## Los dos candados, que no son iguales
 

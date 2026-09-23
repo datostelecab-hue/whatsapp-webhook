@@ -301,6 +301,23 @@
       </a>
       <% } %>
 
+      <%# Fichar jornada. NO se puede filtrar con `puedeVer`: '/fichaje' no está en
+          el catálogo de permisos a propósito —fichar es de cualquiera— y
+          `puedeVer` esconde todo lo que no sea una clave suya.
+
+          Quien lleva el registro la ve siempre. Al resto se la enseña el mismo
+          /fichaje/api/estado que ya pregunta el botón de la barra: nace oculta y
+          aparece si tiene que fichar. Mirar la COOKIE aquí no vale —se firmó al
+          entrar y puede ser de antes de que le activaran el fichaje—, que es la
+          misma razón por la que el botón de arriba lo pregunta al servidor. %>
+      <a id="nav-fichaje" href="/fichaje"
+         class="nav-item <%= seccionActiva === 'fichaje' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                <%= (!misPermisos || misPermisos.has('/fichaje/revisar')) ? '' : 'hidden' %>
+                <%= seccionActiva === 'fichaje' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+        <i class="fa-solid fa-clock w-5 text-center <%= seccionActiva === 'fichaje' ? '' : 'text-telecab-muted' %>"></i>
+        <span class="text-sm flex-1">Fichar jornada</span>
+      </a>
+
       <% if (puedeVer({ href: '/recaudacion' })) { %>
       <a href="/recaudacion" class="nav-item <%= seccionActiva === 'recaudacion' ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
                 <%= seccionActiva === 'recaudacion' ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
@@ -635,7 +652,16 @@
   async function cargar() {
     try {
       const r = await fetch('/fichaje/api/estado').then(x => x.json());
-      if (r.status === 'ok') { estado = r; pintar(); }
+      if (r.status === 'ok') {
+        estado = r; pintar();
+        // La entrada del menú sale por lo mismo que el botón: porque el SERVIDOR
+        // dice que esta persona ficha. Quien lleva el registro ya la tiene
+        // pintada desde el servidor y esto no se la quita.
+        if (r.debeFichar) {
+          const nav = document.getElementById('nav-fichaje');
+          if (nav) nav.classList.remove('hidden');
+        }
+      }
     } catch (_) { /* si falla, el botón simplemente no sale */ }
   }
 

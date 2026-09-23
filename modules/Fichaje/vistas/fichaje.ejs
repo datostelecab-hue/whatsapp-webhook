@@ -20,14 +20,32 @@
      misma rejilla para las dos dejaba el nombre repetido dos veces. */
   .fi-fila { display: grid; gap: .5rem; align-items: center;
     padding: .55rem .7rem; border-radius: .6rem; font-size: .82rem; }
-  .fi-mio   { grid-template-columns: 5.5rem 1fr 1fr 4.5rem auto; }
-  .fi-parte { grid-template-columns: minmax(6rem, 1.4fr) 1fr 1fr 4.5rem auto; }
-  .fi-pend  { grid-template-columns: 5rem minmax(6rem, 1.3fr) 1fr 1fr 4.5rem auto; }
+  /* Columnas ESTRECHAS Y FIJAS, y el sobrante al final. Repartir el ancho con
+     varios 1fr dejaba las horas nadando a un palmo unas de otras en una
+     pantalla grande: se leía peor cuanto mejor era el monitor. */
+  .fi-mio   { grid-template-columns: 9rem 5.5rem 5.5rem 5.5rem 1fr; }
+  /* El día sin fichaje ("Libra", "sin fichar") ocupa lo que quede: centrado en
+     su propio hueco se lee como lo que es, una fila sin datos. */
+  .fi-vacio { grid-column: 2 / -1; text-align: center; }
+  .fi-parte { grid-template-columns: 13rem 5.5rem 5.5rem 1fr; }
+  .fi-pend  { grid-template-columns: 7.5rem 13rem 5.5rem 5.5rem 5.5rem 1fr; }
+  /* Las horas, centradas en su columna: son números de la misma anchura y
+     alineados se leen de arriba abajo sin buscar. */
+  .fi-c { text-align: center; }
+  /* La cabecera de la tabla usa la MISMA rejilla que las filas, o no cuadran. */
+  .fi-cab { padding-top: 0; padding-bottom: .3rem; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .04em; color: rgb(var(--tc-muted)); font-weight: 700; }
+  .fi-cab:hover { background: none; }
+  .fi-cab + .fi-fila { border-top: 0; }
   /* En un móvil no caben cinco columnas. Se apilan en dos, que es lo que de
      verdad se mira desde el teléfono: quién/cuándo y cuánto. */
   @media (max-width: 640px) {
     .fi-fila { grid-template-columns: 1fr auto; row-gap: .15rem; }
     .fi-fila > :nth-child(1) { grid-column: 1 / -1; font-weight: 600; }
+    /* Apilado no hay columnas que encabezar, y centrar deja el texto flotando. */
+    .fi-cab { display: none; }
+    .fi-c { text-align: left; }
+    .fi-vacio { grid-column: 1 / -1; text-align: left; }
   }
   .fi-fila + .fi-fila { border-top: 1px solid rgb(var(--tc-border) / .5); }
   .fi-fila:hover { background: rgb(var(--tc-card2) / .5); }
@@ -48,13 +66,20 @@
     <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
       <div>
         <h2 class="text-sm font-semibold text-telecab-text">Mis jornadas</h2>
-        <p class="text-xs text-telecab-muted">Lo que has fichado este mes. Es tu registro: puedes pedirlo cuando quieras.</p>
+        <p class="text-xs text-telecab-muted">Lo que has fichado esta semana. Es tu registro: puedes pedirlo cuando quieras.</p>
       </div>
-      <div class="flex items-center gap-2">
-        <input id="fi-mes" type="month"
-               class="px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text">
-        <span id="fi-total" class="text-sm font-bold text-telecab-gold tabular-nums">—</span>
+      <div class="flex items-center gap-1.5">
+        <button id="fi-sem-ant" title="Semana anterior"
+                class="w-7 h-7 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/60 transition">
+          <i class="fa-solid fa-chevron-left text-xs"></i></button>
+        <input id="fi-sem" class="js-fecha w-28 px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text text-center"
+               placeholder="dd/mm/aaaa" title="Cualquier día de la semana que quieras ver" readonly>
+        <button id="fi-sem-sig" title="Semana siguiente"
+                class="w-7 h-7 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/60 transition">
+          <i class="fa-solid fa-chevron-right text-xs"></i></button>
+        <span id="fi-total" class="text-sm font-bold text-telecab-gold tabular-nums ml-1">—</span>
       </div>
+      <p id="fi-rotulo" class="text-[11px] text-telecab-muted w-full"></p>
       <p id="fi-confirm" class="text-[11px] text-telecab-muted w-full"></p>
     </div>
     <div id="fi-mis-dias" class="text-sm text-telecab-muted">—</div>
@@ -94,8 +119,8 @@
         original al lado: un registro que se edita sin rastro no vale ante Inspección.
       </p>
     </div>
-    <input id="fi-dia" type="date"
-           class="px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text">
+    <input id="fi-dia" class="js-fecha w-28 px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text text-center"
+           placeholder="dd/mm/aaaa" title="Qué día se mira" readonly>
   </div>
   <div id="fi-avisos" class="mb-3"></div>
   <div id="fi-parte" class="text-sm text-telecab-muted">—</div>
@@ -223,7 +248,7 @@
           : 'Fichado, pero sin ubicación: no se pudo leer el GPS.';
       }
       await cargarEstado();
-      cargarMiMes();
+      cargarMiSemana();
       if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); }
       // Que la barra de arriba se entere YA. Si no, se ficha la entrada y el
       // botón de la barra sigue diciendo "Fichar entrada": parece que no ha
@@ -263,45 +288,115 @@
     `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener"
         class="text-telecab-gold hover:underline" title="Ver en el mapa"><i class="fa-solid fa-location-dot"></i></a>`);
 
-  async function cargarMiMes() {
-    const mes = $('#fi-mes').value;
-    try {
-      const r = await api('/fichaje/api/mi-mes' + (mes ? '?mes=' + mes : ''));
-      $('#fi-mes').value = r.mes;
-      $('#fi-total').textContent = r.total || '0 h 00';
-      // Lo que de verdad cuenta son las aprobadas. Decirlo aquí ahorra la
-      // pregunta de "¿esto ya está bien?" antes de que se haga.
-      $('#fi-confirm').innerHTML = r.porConfirmar
-        ? '<span class="text-telecab-warn">' + r.porConfirmar + ' jornada(s) por confirmar</span> · ' +
-          esc(r.aprobadas) + ' ya aprobadas'
-        : (r.filas.length ? '<span class="text-telecab-green">Todo confirmado</span>' : '');
-      if (!r.filas.length) { $('#fi-mis-dias').innerHTML = '<p class="text-sm text-telecab-muted py-6 text-center">Nada fichado este mes.</p>'; return; }
-      $('#fi-mis-dias').innerHTML = r.filas.map(f => `
+  // La semana que se está mirando, en ISO. El campo enseña dd/mm/aaaa, que es
+  // como trabaja el calendario de la casa; la conversión se hace en el borde.
+  let SEM = '';
+  const aES = iso => (iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
+  const masDias = (iso, n) => {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // "Semana del 21 al 27 de septiembre de 2026", y bien dicho cuando la semana
+  // se parte entre dos meses o entre dos años, que es cuando chirría.
+  function rotuloSemana(a, b) {
+    const M = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const da = Number(a.slice(8, 10)), db = Number(b.slice(8, 10));
+    const ma = Number(a.slice(5, 7)) - 1, mb = Number(b.slice(5, 7)) - 1;
+    const ya = a.slice(0, 4), yb = b.slice(0, 4);
+    if (ya !== yb) return 'Semana del ' + da + ' de ' + M[ma] + ' de ' + ya + ' al ' + db + ' de ' + M[mb] + ' de ' + yb;
+    if (ma !== mb) return 'Semana del ' + da + ' de ' + M[ma] + ' al ' + db + ' de ' + M[mb] + ' de ' + ya;
+    return 'Semana del ' + da + ' al ' + db + ' de ' + M[ma] + ' de ' + ya;
+  }
+
+  const DIA_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const nombreDia = iso => DIA_SEM[(new Date(iso + 'T12:00:00Z').getUTCDay() + 6) % 7] + ' ' + Number(iso.slice(8, 10));
+
+  /**
+   * Un día de la semana. Si tiene fichajes, uno por fichaje (hay quien ficha
+   * dos veces) y el nombre del día solo en el primero, para que la columna no
+   * se repita. Si no tiene, una sola fila diciendo qué pasa con ese día.
+   */
+  function filaDia(d) {
+    // El fin de semana TRABAJADO se marca en dorado: son las horas de más, y
+    // es lo que se busca al abrir la semana.
+    const tono = d.finde && d.minutos ? 'text-telecab-gold font-semibold' : 'text-telecab-muted';
+    const nombre = esc(nombreDia(d.dia));
+
+    if (!d.fichajes.length) {
+      const dice = d.libra ? 'Libra'
+        : d.futuro ? ''
+        : d.pasado ? 'sin fichar'
+        : 'todavía sin fichar';
+      return `
         <div class="fi-fila fi-mio">
-          <span class="text-telecab-muted capitalize">${esc(fecha(f.dia))}</span>
-          <span class="text-telecab-text">${hora(f.entrada)} ${mapa(f.entrada_lat, f.entrada_lng)}</span>
-          <span class="text-telecab-text">${f.salida ? hora(f.salida) + ' ' + mapa(f.salida_lat, f.salida_lng) : '<span class="text-telecab-warn">sin cerrar</span>'}</span>
-          <span class="font-semibold text-telecab-text tabular-nums">${dur(f.minutos)}</span>
+          <span class="${tono}">${nombre}</span>
+          <span class="fi-vacio text-telecab-muted text-xs">${dice}</span>
+        </div>`;
+    }
+
+    return d.fichajes.map((f, i) => `
+        <div class="fi-fila fi-mio">
+          <span class="${tono}">${i === 0 ? nombre : ''}</span>
+          <span class="text-telecab-text fi-c">${hora(f.entrada)} ${mapa(f.entrada_lat, f.entrada_lng)}</span>
+          <span class="text-telecab-text fi-c">${f.salida ? hora(f.salida) + ' ' + mapa(f.salida_lat, f.salida_lng) : '<span class="text-telecab-warn">sin cerrar</span>'}</span>
+          <span class="font-semibold text-telecab-text tabular-nums fi-c">${dur(f.minutos)}</span>
           <span class="flex items-center gap-1 justify-end">
             ${tagUbi(f.entrada_ubicacion)}
             ${f.corregido ? `<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="${esc(f.corregido_motivo || '')}">corregido</span>` : ''}
             ${tagEstado(f.estado)}
           </span>
         </div>`).join('');
+  }
+
+  async function cargarMiSemana() {
+    try {
+      const r = await api('/fichaje/api/mi-semana' + (SEM ? '?dia=' + SEM : ''));
+      SEM = r.desde;
+      $('#fi-sem').value = aES(r.desde);
+      $('#fi-rotulo').innerHTML = esc(rotuloSemana(r.desde, r.hasta)) +
+        (r.desde <= r.hoy && r.hoy <= r.hasta ? ' · <b class="text-telecab-gold">esta semana</b>' : '');
+      $('#fi-total').textContent = r.total || '0 h 00';
+      // Si echó horas en fin de semana, se dice: son las que no tocaban.
+      $('#fi-rotulo').innerHTML += r.finde && r.finde !== '0 h 00 min'
+        ? ' · <span class="text-telecab-gold">' + esc(r.finde) + ' en fin de semana</span>' : '';
+      // Lo que de verdad cuenta son las aprobadas. Decirlo aquí ahorra la
+      // pregunta de "¿esto ya está bien?" antes de que se haga.
+      $('#fi-confirm').innerHTML = r.porConfirmar
+        ? '<span class="text-telecab-warn">' + r.porConfirmar + ' jornada(s) por confirmar</span> · ' +
+          esc(r.aprobadas) + ' ya aprobadas'
+        : (r.filas.length ? '<span class="text-telecab-green">Todo confirmado</span>' : '');
+      $('#fi-mis-dias').innerHTML = CAB_MIO + r.dias.map(d => filaDia(d)).join('');
     } catch (e) {
       $('#fi-mis-dias').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
     }
   }
 
-  $('#fi-mes').addEventListener('change', cargarMiMes);
+  // Las tres cabeceras. Van en la MISMA rejilla que sus filas o no cuadran.
+  const CAB_MIO = '<div class="fi-fila fi-mio fi-cab"><span>Día</span>' +
+    '<span class="fi-c">Entrada</span><span class="fi-c">Salida</span><span class="fi-c">Horas</span><span></span></div>';
+  const CAB_PARTE = '<div class="fi-fila fi-parte fi-cab"><span>Quién</span>' +
+    '<span class="fi-c">Entrada</span><span class="fi-c">Salida</span><span></span></div>';
+  const CAB_PEND = '<div class="fi-fila fi-pend fi-cab"><span>Día</span><span>Quién</span>' +
+    '<span class="fi-c">Entrada</span><span class="fi-c">Salida</span><span class="fi-c">Horas</span><span></span></div>';
+
+  $('#fi-sem').addEventListener('change', () => {
+    const iso = window.Dialogo ? Dialogo.aISO($('#fi-sem').value) : null;
+    if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) { SEM = iso; cargarMiSemana(); }
+  });
+  $('#fi-sem-ant').addEventListener('click', () => { if (SEM) { SEM = masDias(SEM, -7); cargarMiSemana(); } });
+  $('#fi-sem-sig').addEventListener('click', () => { if (SEM) { SEM = masDias(SEM, 7); cargarMiSemana(); } });
 
   // ── El registro de todos (solo desarrollador) ────────────────────────────
   async function cargarParte() {
     if (!PUEDE_REVISAR) return;
-    const dia = $('#fi-dia').value;
+    const dia = window.Dialogo ? Dialogo.aISO($('#fi-dia').value) : null;
+    const pide = /^\d{4}-\d{2}-\d{2}$/.test(String(dia || '')) ? dia : '';
     try {
-      const r = await api('/fichaje/revisar/parte' + (dia ? '?dia=' + dia : ''));
-      $('#fi-dia').value = r.dia;
+      const r = await api('/fichaje/revisar/parte' + (pide ? '?dia=' + pide : ''));
+      $('#fi-dia').value = aES(r.dia);
       const sc = await api('/fichaje/revisar/sin-cerrar');
 
       const avisos = [];
@@ -312,11 +407,11 @@
         `<span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-${c}/10 text-${c} mr-2">
            <i class="fa-solid ${i}"></i>${esc(t)}</span>`).join('') : '';
 
-      $('#fi-parte').innerHTML = r.filas.map(f => `
+      $('#fi-parte').innerHTML = CAB_PARTE + r.filas.map(f => `
         <div class="fi-fila fi-parte">
           <span class="text-telecab-text truncate" title="${esc(f.quien)}">${esc(f.quien)}</span>
-          <span class="text-telecab-text">${f.entrada ? hora(f.entrada) + ' ' + mapa(f.entrada_lat, f.entrada_lng) : '<span class="text-telecab-red">no fichó</span>'}</span>
-          <span class="text-telecab-text">${f.salida ? hora(f.salida) + ' ' + mapa(f.salida_lat, f.salida_lng) : (f.entrada ? '<span class="text-telecab-warn">abierta</span>' : '')}</span>
+          <span class="text-telecab-text fi-c">${f.entrada ? hora(f.entrada) + ' ' + mapa(f.entrada_lat, f.entrada_lng) : '<span class="text-telecab-red">no fichó</span>'}</span>
+          <span class="text-telecab-text fi-c">${f.salida ? hora(f.salida) + ' ' + mapa(f.salida_lat, f.salida_lng) : (f.entrada ? '<span class="text-telecab-warn">abierta</span>' : '')}</span>
           <span class="flex items-center gap-1.5 justify-end">
             <span class="font-semibold tabular-nums">${dur(f.minutos)}</span>
             ${f.entrada ? tagUbi(f.entrada_ubicacion) : ''}
@@ -354,7 +449,7 @@
           '<i class="fa-solid fa-circle-check mr-1"></i>No queda ninguna jornada por confirmar.</p>';
         return;
       }
-      $('#fi-pendientes').innerHTML = r.filas.map(f => {
+      $('#fi-pendientes').innerHTML = CAB_PEND + r.filas.map(f => {
         // Lo que hay que MIRAR se ve sin buscarlo: una jornada de catorce horas
         // casi nunca es una jornada, es una salida que nadie fichó.
         const h = (f.minutos || 0) / 60;
@@ -363,9 +458,9 @@
         <div class="fi-fila fi-pend">
           <span class="text-telecab-muted capitalize">${esc(fecha(f.dia))}</span>
           <span class="text-telecab-text truncate" title="${esc(f.quien)}">${esc(f.quien)}</span>
-          <span class="text-telecab-text">${hora(f.entrada)}</span>
-          <span class="text-telecab-text">${hora(f.salida)}</span>
-          <span class="font-semibold tabular-nums ${tono}">${dur(f.minutos)}</span>
+          <span class="text-telecab-text fi-c">${hora(f.entrada)}</span>
+          <span class="text-telecab-text fi-c">${hora(f.salida)}</span>
+          <span class="font-semibold tabular-nums fi-c ${tono}">${dur(f.minutos)}</span>
           <span class="flex items-center gap-1.5 justify-end">
             ${f.corregido ? `<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="${esc(f.corregido_motivo || '')}">corregido</span>` : ''}
             <button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
@@ -391,7 +486,7 @@
       if (window.Dialogo && Dialogo.hecho) {
         Dialogo.hecho(r.aprobados ? 'Confirmadas ' + r.aprobados + ' jornada(s)' : 'No quedaba nada por confirmar');
       }
-      cargarPendientes(); cargarMiMes(); cargarParte();
+      cargarPendientes(); cargarMiSemana(); cargarParte();
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo confirmar', texto: e.message, tono: 'error' });
     }
@@ -442,7 +537,7 @@
         id: id || null, usuarioId: id ? null : Number(usuarioId),
         entrada: aIso(r.entrada), salida: aIso(r.salida), motivo: r.motivo,
       });
-      cargarParte(); cargarPendientes(); cargarMiMes(); cargarEstado();
+      cargarParte(); cargarPendientes(); cargarMiSemana(); cargarEstado();
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo corregir', texto: e.message, tono: 'error' });
     }
@@ -452,7 +547,7 @@
 
   // ── Arranque ─────────────────────────────────────────────────────────────
   cargarEstado().catch(e => { $('#fi-panel').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>'; });
-  cargarMiMes();
+  cargarMiSemana();
   if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); }
 })();
 </script>

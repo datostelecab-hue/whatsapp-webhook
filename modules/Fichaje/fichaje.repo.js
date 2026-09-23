@@ -95,8 +95,14 @@ async function salir(usuarioId, ubi) {
   return r.rows[0] || null;
 }
 
-/** Los fichajes de alguien en un mes ('AAAA-MM'). */
-async function delMes(usuarioId, mes) {
+/**
+ * Los fichajes de alguien entre dos días, los dos incluidos.
+ *
+ * Por rango y no por mes: la pantalla va por SEMANA, que es como se mira una
+ * jornada de verdad —lo que hiciste esta semana, no lo que llevas de mes— y un
+ * rango sirve para las dos cosas el día que haga falta.
+ */
+async function delRango(usuarioId, desde, hasta) {
   const r = await db.consulta(`
     SELECT f.id, to_char(f.dia, 'YYYY-MM-DD') AS dia, f.entrada, f.salida,
            f.entrada_lat, f.entrada_lng, f.entrada_precision, f.entrada_ubicacion,
@@ -108,8 +114,8 @@ async function delMes(usuarioId, mes) {
       FROM fichaje f
       LEFT JOIN usuario u ON u.id = f.corregido_por
       LEFT JOIN usuario a ON a.id = f.aprobado_por
-     WHERE f.usuario_id = $1 AND to_char(f.dia, 'YYYY-MM') = $2
-     ORDER BY f.entrada`, [usuarioId, mes]);
+     WHERE f.usuario_id = $1 AND f.dia BETWEEN $2::date AND $3::date
+     ORDER BY f.entrada`, [usuarioId, desde, hasta]);
   return r.rows;
 }
 
@@ -217,6 +223,6 @@ async function sinCerrar() {
 }
 
 module.exports = {
-  abierto, entrar, salir, delMes, delDia, corregir, crearAMano, sinCerrar,
+  abierto, entrar, salir, delRango, delDia, corregir, crearAMano, sinCerrar,
   pendientes, aprobar, normUbi, TZ,
 };
