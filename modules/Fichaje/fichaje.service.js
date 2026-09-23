@@ -155,6 +155,75 @@ async function parteDelDia(dia) {
 }
 
 /**
+ * LA SEMANA DE TODOS: una fila por persona, una columna por día.
+ *
+ * Es la pantalla que contesta las dos preguntas que se hacen de verdad —cuánto
+ * lleva cada uno esta semana y qué día falta— sin tener que abrir siete partes
+ * diarios y sumarlos a mano.
+ *
+ * Cada casilla lleva sus minutos y si queda algo por confirmar en ese día: un
+ * número que todavía puede cambiar no se lee igual que uno cerrado.
+ */
+async function semanaDeTodos(dia) {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dia || '')) ? dia : hoyMadrid();
+  const desde = lunesDe(d), hasta = masDias(desde, 6);
+  const hoy = hoyMadrid();
+  const filas = await repo.semanaDeTodos(desde, hasta);
+
+  const porPersona = new Map();
+  filas.forEach(f => {
+    if (!porPersona.has(f.usuario_id)) {
+      porPersona.set(f.usuario_id, {
+        usuarioId: Number(f.usuario_id), quien: f.quien,
+        // Quien ya no ficha pero fichó esa semana sale marcado: si no, parece
+        // que se le olvidó el resto de la semana y lo que pasa es otra cosa.
+        yaNoFicha: !f.ficha_obligatorio,
+        dias: [], minutos: 0, porConfirmar: 0, abiertas: 0,
+      });
+    }
+    const p = porPersona.get(f.usuario_id);
+    if (!f.id) return;                       // salió por el LEFT JOIN: no fichó nada
+    const min = minutos(f.entrada, f.salida) || 0;
+    p.minutos += min;
+    if (!f.salida) p.abiertas++;
+    else if (!f.aprobado_at) p.porConfirmar++;
+    p.dias.push({ dia: f.dia, minutos: min, abierta: !f.salida, pendiente: !!f.salida && !f.aprobado_at });
+  });
+
+  // La rejilla: siete casillas por persona, estén o no. Una semana con huecos
+  // se lee sola; una lista de solo lo que hay, no.
+  const semana = [];
+  for (let i = 0; i < 7; i++) semana.push({ dia: masDias(desde, i), finde: i >= 5 });
+
+  const personas = [...porPersona.values()].map(p => ({
+    usuarioId: p.usuarioId, quien: p.quien, yaNoFicha: p.yaNoFicha,
+    minutos: p.minutos, total: comoTexto(p.minutos),
+    porConfirmar: p.porConfirmar, abiertas: p.abiertas,
+    casillas: semana.map(c => {
+      const suyos = p.dias.filter(x => x.dia === c.dia);
+      const min = suyos.reduce((a, x) => a + x.minutos, 0);
+      return {
+        dia: c.dia, finde: c.finde, minutos: min, cuantos: suyos.length,
+        // Sábado y domingo se libran, salvo que ese día haya fichaje.
+        libra: c.finde && !suyos.length,
+        futuro: c.dia > hoy,
+        abierta: suyos.some(x => x.abierta),
+        pendiente: suyos.some(x => x.pendiente),
+      };
+    }),
+  }));
+
+  const totalMin = personas.reduce((a, p) => a + p.minutos, 0);
+  return {
+    desde, hasta, dia: d, hoy, semana, personas,
+    // El pie de la tabla: lo que echó la empresa cada día y en toda la semana.
+    porDia: semana.map((c, i) => comoTexto(personas.reduce((a, p) => a + p.casillas[i].minutos, 0))),
+    totalMinutos: totalMin, total: comoTexto(totalMin),
+    porConfirmar: personas.reduce((a, p) => a + p.porConfirmar, 0),
+  };
+}
+
+/**
  * Lo que espera un visto bueno, de todo el mundo.
  *
  * Es la pantalla de quien lleva el módulo: aquí están las jornadas cerradas que
@@ -225,5 +294,5 @@ const losQueFichan = () => usuarios.losQueFichan();
 
 module.exports = {
   estado, entrar, salir, miSemana, parteDelDia, corregir, sinCerrar, losQueFichan,
-  pendientes, aprobar, comoTexto, hoyMadrid,
+  pendientes, aprobar, semanaDeTodos, comoTexto, hoyMadrid,
 };

@@ -29,6 +29,21 @@
   .fi-vacio { grid-column: 2 / -1; text-align: center; }
   .fi-parte { grid-template-columns: 13rem 5.5rem 5.5rem 1fr; }
   .fi-pend  { grid-template-columns: 7.5rem 13rem 5.5rem 5.5rem 5.5rem 1fr; }
+  /* La semana de todos: el nombre se lleva el sobrante y los siete días van
+     en columnas iguales, que es lo que deja comparar una fila con otra. */
+  .fi-sem   { grid-template-columns: minmax(9rem, 1fr) repeat(7, 4.6rem) 5.6rem; }
+  .fi-sem .fi-dia { text-align: center; font-variant-numeric: tabular-nums; }
+  /* El fin de semana, con el fondo más apagado: se libra, y se ve que se libra
+     sin tener que leer la cabecera. */
+  .fi-sem > .fi-finde { background: rgb(var(--tc-muted) / .05); }
+  .fi-pie { border-top: 1px solid rgb(var(--tc-border)); font-weight: 700; }
+  .fi-pie:hover { background: none; }
+  /* En móvil una matriz de nueve columnas no cabe de ninguna manera: se deja
+     rodar a lo ancho en vez de aplastarla. */
+  @media (max-width: 860px) {
+    .fi-scroll { overflow-x: auto; }
+    .fi-scroll > div { min-width: 46rem; }
+  }
   /* Las horas, centradas en su columna: son números de la misma anchura y
      alineados se leen de arriba abajo sin buscar. */
   .fi-c { text-align: center; }
@@ -87,6 +102,33 @@
 </div>
 
 <% if (puedeRevisar) { %>
+<!-- ── Cómo va la gente esta semana ───────────────────────────── -->
+<div class="rounded-2xl border border-telecab-border bg-telecab-card p-5 mt-4">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <div>
+      <h2 class="text-sm font-semibold text-telecab-text">
+        <i class="fa-solid fa-table-cells text-telecab-gold mr-1"></i>La semana de todos
+      </h2>
+      <p class="text-xs text-telecab-muted">
+        Lo que lleva cada uno, día a día, y el total de la semana. En ámbar, lo que
+        aún no ha confirmado nadie.
+      </p>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button id="fi-tsem-ant" title="Semana anterior"
+              class="w-7 h-7 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/60 transition">
+        <i class="fa-solid fa-chevron-left text-xs"></i></button>
+      <input id="fi-tsem" class="js-fecha w-28 px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text text-center"
+             placeholder="dd/mm/aaaa" title="Cualquier día de la semana que quieras ver" readonly>
+      <button id="fi-tsem-sig" title="Semana siguiente"
+              class="w-7 h-7 rounded-lg border border-telecab-border text-telecab-muted hover:text-telecab-gold hover:border-telecab-gold/60 transition">
+        <i class="fa-solid fa-chevron-right text-xs"></i></button>
+    </div>
+    <p id="fi-tsem-rotulo" class="text-[11px] text-telecab-muted w-full"></p>
+  </div>
+  <div class="fi-scroll"><div id="fi-tabla-sem" class="text-sm text-telecab-muted">—</div></div>
+</div>
+
 <!-- La cola: horas que nadie ha dado por buenas todavía -->
 <div class="rounded-2xl border border-telecab-border bg-telecab-card p-5 mt-4">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -249,7 +291,7 @@
       }
       await cargarEstado();
       cargarMiSemana();
-      if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); }
+      if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); cargarTablaSemana(); }
       // Que la barra de arriba se entere YA. Si no, se ficha la entrada y el
       // botón de la barra sigue diciendo "Fichar entrada": parece que no ha
       // funcionado y se vuelve a pulsar.
@@ -429,6 +471,74 @@
     }
   }
 
+  // ── La semana de todos ─────────────────────────────────────
+  // Lleva SU PROPIA semana, aparte de la de "Mis jornadas": quien revisa suele
+  // querer mirar la semana pasada de la gente sin perder de vista la suya.
+  let TSEM = '';
+  const INI = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  // En una matriz, "12 h 44" en cada casilla es ruido: los minutos solo se
+  // escriben cuando los hay.
+  const durC = m => (!m ? '' : (m % 60 ? Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') : Math.floor(m / 60) + ' h'));
+
+  function casilla(c) {
+    const clase = 'fi-dia' + (c.finde ? ' fi-finde' : '');
+    if (c.abierta && !c.minutos) return `<span class="${clase} text-telecab-green text-xs">fichando</span>`;
+    if (!c.minutos) {
+      const dice = c.libra ? 'libra' : c.futuro ? '' : '—';
+      return `<span class="${clase} text-telecab-muted text-xs">${dice}</span>`;
+    }
+    // Ámbar mientras nadie lo haya confirmado: un número que todavía puede
+    // cambiar no se lee igual que uno cerrado.
+    const tono = c.pendiente ? 'text-telecab-warn' : 'text-telecab-text';
+    const dos = c.cuantos > 1 ? ' title="' + c.cuantos + ' fichajes ese día"' : '';
+    return `<span class="${clase} ${tono}"${dos}>${durC(c.minutos)}${c.cuantos > 1 ? '<sup class="text-[9px] text-telecab-muted">' + c.cuantos + '</sup>' : ''}</span>`;
+  }
+
+  async function cargarTablaSemana() {
+    if (!PUEDE_REVISAR) return;
+    try {
+      const r = await api('/fichaje/revisar/semana' + (TSEM ? '?dia=' + TSEM : ''));
+      TSEM = r.desde;
+      $('#fi-tsem').value = aES(r.desde);
+      $('#fi-tsem-rotulo').innerHTML = esc(rotuloSemana(r.desde, r.hasta)) +
+        ' · <b class="text-telecab-gold">' + esc(r.total) + '</b> entre ' + r.personas.length + ' persona(s)' +
+        (r.porConfirmar ? ' · <span class="text-telecab-warn">' + r.porConfirmar + ' jornada(s) por confirmar</span>' : '');
+
+      const cab = '<div class="fi-fila fi-sem fi-cab"><span>Quién</span>' +
+        r.semana.map((c, i) => '<span class="fi-dia' + (c.finde ? ' fi-finde' : '') + '">' +
+          INI[i] + ' ' + Number(c.dia.slice(8, 10)) + '</span>').join('') +
+        '<span class="fi-dia">Total</span></div>';
+
+      const filas = r.personas.map(p => `
+        <div class="fi-fila fi-sem">
+          <span class="text-telecab-text truncate" title="${esc(p.quien)}">${esc(p.quien)}${
+            p.yaNoFicha ? '<span class="fi-tag bg-telecab-muted/15 text-telecab-muted ml-1" title="Ya no tiene el fichaje activado, pero ficho esta semana">baja</span>' : ''}</span>
+          ${p.casillas.map(casilla).join('')}
+          <span class="fi-dia font-bold ${p.porConfirmar ? 'text-telecab-warn' : 'text-telecab-gold'}">${esc(p.total)}</span>
+        </div>`).join('');
+
+      const pie = '<div class="fi-fila fi-sem fi-pie"><span class="text-telecab-muted">Toda la plantilla</span>' +
+        r.porDia.map((t, i) => '<span class="fi-dia text-telecab-muted' + (r.semana[i].finde ? ' fi-finde' : '') +
+          '">' + esc(t === '0 h 00 min' ? '' : t.replace(' min', '')) + '</span>').join('') +
+        '<span class="fi-dia text-telecab-gold">' + esc(r.total.replace(' min', '')) + '</span></div>';
+
+      $('#fi-tabla-sem').innerHTML = r.personas.length
+        ? cab + filas + pie
+        : '<p class="text-sm text-telecab-muted py-6 text-center">Nadie fichó esta semana.</p>';
+    } catch (e) {
+      $('#fi-tabla-sem').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  if (PUEDE_REVISAR) {
+    $('#fi-tsem').addEventListener('change', () => {
+      const iso = window.Dialogo ? Dialogo.aISO($('#fi-tsem').value) : null;
+      if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) { TSEM = iso; cargarTablaSemana(); }
+    });
+    $('#fi-tsem-ant').addEventListener('click', () => { if (TSEM) { TSEM = masDias(TSEM, -7); cargarTablaSemana(); } });
+    $('#fi-tsem-sig').addEventListener('click', () => { if (TSEM) { TSEM = masDias(TSEM, 7); cargarTablaSemana(); } });
+  }
+
   // ── La cola de aprobación ───────────────────────────────────
   let PEND = [];
 
@@ -486,7 +596,7 @@
       if (window.Dialogo && Dialogo.hecho) {
         Dialogo.hecho(r.aprobados ? 'Confirmadas ' + r.aprobados + ' jornada(s)' : 'No quedaba nada por confirmar');
       }
-      cargarPendientes(); cargarMiSemana(); cargarParte();
+      cargarPendientes(); cargarTablaSemana(); cargarMiSemana(); cargarParte();
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo confirmar', texto: e.message, tono: 'error' });
     }
@@ -537,7 +647,7 @@
         id: id || null, usuarioId: id ? null : Number(usuarioId),
         entrada: aIso(r.entrada), salida: aIso(r.salida), motivo: r.motivo,
       });
-      cargarParte(); cargarPendientes(); cargarMiSemana(); cargarEstado();
+      cargarParte(); cargarPendientes(); cargarTablaSemana(); cargarMiSemana(); cargarEstado();
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo corregir', texto: e.message, tono: 'error' });
     }
@@ -548,6 +658,6 @@
   // ── Arranque ─────────────────────────────────────────────────────────────
   cargarEstado().catch(e => { $('#fi-panel').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>'; });
   cargarMiSemana();
-  if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); }
+  if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); cargarTablaSemana(); }
 })();
 </script>

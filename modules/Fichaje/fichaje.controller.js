@@ -84,6 +84,8 @@ router.get('/revisar/sin-cerrar', responde(async () => ({ filas: await fichaje.s
 
 router.get('/revisar/pendientes', responde(async () => fichaje.pendientes()));
 
+router.get('/revisar/semana', responde(async req => fichaje.semanaDeTodos(req.query.dia)));
+
 router.post('/revisar/corregir', responde(async req => {
   const b = req.body || {};
   const f = await fichaje.corregir(

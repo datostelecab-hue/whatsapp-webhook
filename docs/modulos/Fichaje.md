@@ -89,6 +89,16 @@ De esa misma llave son el **parte del día** (quién fichó y quién no), la lis
 
 `entrada_original` y `salida_original` guardan lo que se pulsó, y **solo se escriben la primera vez**: una segunda corrección no puede tapar el original. Corregir **exige motivo** —lo comprueba la base con un CHECK, no solo la aplicación— y queda con quién y cuándo. Un registro que se edita sin rastro no vale delante de un inspector, y ese es justo el momento en que hace falta que valga.
 
+## La semana de todos
+
+La pantalla que contesta las dos preguntas que de verdad se hacen —**cuánto lleva cada uno esta semana** y **qué día falta**— sin abrir siete partes diarios y sumarlos a mano. Una fila por persona, una columna por día, el total a la derecha y el de toda la plantilla en el pie. Lleva **su propio** selector de semana, aparte del de «Mis jornadas»: quien revisa suele querer mirar la semana pasada de la gente sin perder de vista la suya.
+
+En **ámbar** lo que aún no ha confirmado nadie —un número que todavía puede cambiar no se lee igual que uno cerrado— y en verde quien está fichando ahora mismo. El fin de semana lleva el fondo más apagado y dice «libra» cuando no hay nada.
+
+Sale **toda la plantilla que ficha**, aunque no fichara ni un día: el `LEFT JOIN` es a propósito, porque el que falta es justo a quien se busca. Y entra también **quien ya no tiene que fichar pero fichó esa semana**, marcado con una chapa: si a alguien se le quita el fichaje un jueves, sus tres días anteriores no pueden desaparecer del registro.
+
+`GET /fichaje/revisar/semana?dia=AAAA-MM-DD` → va con la llave `/fichaje/revisar`, como todo lo que cuelga de ese prefijo.
+
 ## Las horas hay que confirmarlas (23/09/2026)
 
 Una jornada **cerrada no cuenta hasta que alguien la da por buena**. Si fichas a las 9 y sales a las 18, son nueve horas *propuestas*: quien lleva el módulo las mira, las corrige si hace falta y las sella.

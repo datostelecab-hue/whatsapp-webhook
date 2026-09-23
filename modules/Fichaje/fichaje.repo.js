@@ -226,6 +226,30 @@ async function aprobar(ids, usuarioId) {
   return r.rows.map(x => Number(x.id));
 }
 
+/**
+ * Todos los fichajes de una semana, de toda la plantilla que ficha.
+ *
+ * LEFT JOIN y no INNER: quien no fichó ni un día tiene que salir igual, con la
+ * fila vacía. Es justo a quien se busca al abrir esta pantalla.
+ *
+ * Y entra también quien YA NO tiene que fichar pero fichó esa semana (el
+ * OR de abajo): si a alguien se le quita el fichaje un jueves, sus tres días
+ * anteriores no pueden desaparecer del registro.
+ */
+async function semanaDeTodos(desde, hasta) {
+  const r = await db.consulta(`
+    SELECT u.id AS usuario_id,
+           btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS quien,
+           u.ficha_obligatorio,
+           f.id, to_char(f.dia, 'YYYY-MM-DD') AS dia, f.entrada, f.salida,
+           f.aprobado_at, f.corregido_at
+      FROM usuario u
+      LEFT JOIN fichaje f ON f.usuario_id = u.id AND f.dia BETWEEN $1::date AND $2::date
+     WHERE (u.ficha_obligatorio AND u.estado <> 'bloqueado') OR f.id IS NOT NULL
+     ORDER BY quien, f.entrada`, [desde, hasta]);
+  return r.rows;
+}
+
 /** Las jornadas sin cerrar de días PASADOS: lo que hay que corregir. */
 async function sinCerrar() {
   const r = await db.consulta(`
@@ -238,6 +262,6 @@ async function sinCerrar() {
 }
 
 module.exports = {
-  abierto, entrar, salir, delRango, delDia, corregir, crearAMano, sinCerrar,
+  abierto, entrar, salir, delRango, delDia, semanaDeTodos, corregir, crearAMano, sinCerrar,
   pendientes, aprobar, normUbi, TZ,
 };
