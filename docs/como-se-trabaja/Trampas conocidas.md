@@ -51,6 +51,28 @@ Dos cosas lo hacian peor:
 marca **al entrar** (y se devuelve si falla), y un reloj de guardia que ESCRIBE
 en `fv_vuelta.error` cuando una vuelta pasa de cuatro minutos.
 
+**Y la causa de fondo: se bajaba el padron DOS VECES.** La ingesta
+(`padron_bolt`) y el motor pedian el mismo `getDrivers` —dieciocho paginas por
+flota— cada hora, cada uno por su lado. Desde el 23/09 el motor lo lee de
+`conductor_externo`, que es lo que la ingesta ya dejo escrito, y **no llama a
+BOLT para eso**. Medido: el padron del motor paso de **mas de 90 segundos**
+(colgado en reintentos por 429) a **7**, y `fv_conductor` gano 57 conductores
+porque el padron de la casa es mas completo que lo que devolvia la ventana.
+
+### Mil setecientos INSERT sueltos dentro de una transaccion
+
+El mismo padron escribia `fv_vehiculo` y `fv_conductor` **fila a fila** en un
+bucle dentro de una transaccion. Dos cosas malas a la vez: ~1.750 idas y vueltas
+a Frankfurt, y las filas **bloqueadas** todo ese rato. Dos padrones a la vez
+—el de produccion y uno lanzado a mano— se cruzaron y PostgreSQL mato a uno:
+`deadlock detected`.
+
+**Remedio:** dos sentencias con `unnest`, **ordenadas por uuid** (dos procesos
+que escriben lo mismo cogen las filas en el mismo orden y ya no se cruzan) y
+**deduplicadas**: quien esta en las dos flotas viene dos veces, y un INSERT
+masivo con la clave repetida no es lento, es un error —*cannot affect row a
+second time*—. El bucle de antes lo absorbia sin enterarse.
+
 > [!warning] Una tabla de vueltas con `error` vacio no significa que fueran bien
 > `fv_vuelta` insertaba la fila al empezar y la cerraba al acabar. Un CUELGUE no
 > es una excepcion: no pasa por el `catch`, asi que la fila se quedaba con

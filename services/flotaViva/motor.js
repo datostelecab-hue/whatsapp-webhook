@@ -150,11 +150,58 @@ async function padron(desdeTs, hastaTs) {
   }
 }
 
+/**
+ * Los conductores, DE NUESTRO PROPIO PADRON.
+ *
+ * ── POR QUE NO SE LE PIDEN A BOLT ──────────────────────────────────────────
+ * Porque ya se los ha pedido otro. `conductor_externo` lo llena la ingesta
+ * (`padron_bolt`) cada hora con el MISMO `getDrivers`, y hasta el 23/09/2026
+ * este motor se lo volvia a bajar entero por su cuenta, tambien cada hora. Dos
+ * descargas de lo mismo, y `getDrivers` son dieciocho paginas por flota.
+ *
+ * Eso es lo que hacia que BOLT contestara 429, y los 429 son lo que convirtio
+ * una vuelta de un segundo en once minutos y acabo con el mapa congelado
+ * acusando de "rueda sin nadie" a gente que estaba de viaje. Ver
+ * [[Trampas conocidas]].
+ *
+ * Y no se pierde nada: medido ese dia, el padron tenia 1.653 cuentas y
+ * `fv_conductor` 1.596, con CERO conductores que estuvieran aqui y no alli.
+ * Todas con nombre y telefono, que es lo unico que necesita esta tabla.
+ *
+ * ── SI EL NUCLEO NO SE VE, SE VUELVE A BOLT ────────────────────────────────
+ * El modulo puede vivir en otra base (FLOTA_VIVA_DB_URL) y no alcanzar
+ * `conductor_externo`. En ese caso se baja de BOLT como siempre: es mas caro,
+ * pero quedarse sin nombres deja el panel entero mudo. Mismo criterio que
+ * `vigiladas()`.
+ */
+async function conductoresDeCasa(desdeTs, hastaTs) {
+  try {
+    const r = await db.consulta(
+      `SELECT externo_id                          AS uuid,
+              btrim(COALESCE(externo_nombre, '')) AS nombre,
+              btrim(COALESCE(externo_telefono, '')) AS telefono
+         FROM conductor_externo
+        WHERE sistema = 'bolt' AND externo_id IS NOT NULL`);
+    // Un padron vacio no es un padron: seria borrar los nombres de todos. Si
+    // no hay nadie, se pregunta a BOLT como antes.
+    if (r.rows.length) {
+      return r.rows.map(x => ({ uuid: x.uuid, nombre: x.nombre, telefono: x.telefono, flotaId: null }));
+    }
+    console.warn('⚠️  [FLOTA VIVA] El padron de conductores esta vacio: se pregunta a BOLT');
+  } catch (e) {
+    console.warn('⚠️  [FLOTA VIVA] No pude leer el padron del nucleo, bajo los conductores de BOLT:', e.message);
+  }
+  return fuentes.conductores(desdeTs, hastaTs);
+}
+
 async function padronDeVerdad(desdeTs, hastaTs) {
 
+  // Los COCHES si se le piden a BOLT: son una pagina por flota -noventa y pico
+  // matriculas- y de ahi sale el enlace uuid-matricula del que cuelga todo el
+  // modulo. Lo caro y lo que provocaba los 429 eran los conductores.
   const [todosLosCoches, gente, lista] = await Promise.all([
     fuentes.vehiculos(desdeTs, hastaTs),
-    fuentes.conductores(desdeTs, hastaTs),
+    conductoresDeCasa(desdeTs, hastaTs),
     vigiladas(),
   ]);
 
@@ -182,31 +229,59 @@ async function padronDeVerdad(desdeTs, hastaTs) {
                  (sinVigilar.length > 12 ? '…' : '') + ' — si son nuestros, dales de alta en la flota.');
   }
 
+  // ── DOS SENTENCIAS, NO MIL SETECIENTAS ────────────────────────────────────
+  //
+  // Esto eran dos bucles de INSERT uno a uno dentro de una transaccion: con el
+  // padron entero son ~1.750 idas y vueltas a Frankfurt, donde el viaje cuesta
+  // treinta veces mas que el trabajo. Y mientras duran, la transaccion tiene
+  // cogidas las filas: dos padrones a la vez -el de produccion y uno lanzado a
+  // mano, por ejemplo- se cruzan y PostgreSQL mata a uno por deadlock. Pasó al
+  // probar esto mismo el 23/09/2026.
+  //
+  // De una vez y ORDENADO por uuid: ademas de ser mas rapido, dos procesos que
+  // escriban lo mismo cogen las filas en el mismo orden y ya no pueden cruzarse.
+  //
+  // Y DEDUPLICADO, que no es un detalle: quien esta en las DOS flotas viene dos
+  // veces, y un INSERT masivo con la misma clave repetida no es lento, es un
+  // error -"cannot affect row a second time"-. El bucle de antes lo absorbia
+  // sin enterarse.
+  const unicos = (lista_, clave) => {
+    const m = new Map();
+    lista_.forEach(x => { if (x && x[clave]) m.set(x[clave], x); });
+    return [...m.values()].sort((a, b) => String(a[clave]).localeCompare(String(b[clave])));
+  };
+  const cs = unicos(coches, 'uuid');
+  const gs = unicos(gente, 'uuid');
+
   await db.transaccion(async cli => {
-    for (const v of coches) {
+    if (cs.length) {
       await cli.query(
         `INSERT INTO fv_vehiculo (uuid, matricula, flota_id, visto_at)
-         VALUES ($1, $2, $3, now())
+         SELECT x.uuid, x.matricula, x.flota, now()
+           FROM unnest($1::text[], $2::text[], $3::bigint[]) AS x(uuid, matricula, flota)
          ON CONFLICT (uuid) DO UPDATE SET
            matricula = COALESCE(EXCLUDED.matricula, fv_vehiculo.matricula),
-           flota_id = EXCLUDED.flota_id, visto_at = now()`,
-        [v.uuid, v.matricula || null, v.flotaId]);
+           flota_id = COALESCE(EXCLUDED.flota_id, fv_vehiculo.flota_id), visto_at = now()`,
+        [cs.map(v => v.uuid), cs.map(v => v.matricula || null), cs.map(v => v.flotaId || null)]);
     }
-    for (const c of gente) {
+    if (gs.length) {
       await cli.query(
         `INSERT INTO fv_conductor (uuid, nombre, telefono, flota_id, visto_at)
-         VALUES ($1, $2, $3, $4, now())
+         SELECT x.uuid, NULLIF(x.nombre, ''), NULLIF(x.tel, ''), x.flota, now()
+           FROM unnest($1::text[], $2::text[], $3::text[], $4::bigint[]) AS x(uuid, nombre, tel, flota)
          ON CONFLICT (uuid) DO UPDATE SET
            nombre = COALESCE(NULLIF(EXCLUDED.nombre, ''), fv_conductor.nombre),
            telefono = COALESCE(NULLIF(EXCLUDED.telefono, ''), fv_conductor.telefono),
+           flota_id = COALESCE(EXCLUDED.flota_id, fv_conductor.flota_id),
            visto_at = now()`,
-        [c.uuid, c.nombre || null, c.telefono || null, c.flotaId]);
+        [gs.map(c => c.uuid), gs.map(c => c.nombre || ''), gs.map(c => c.telefono || ''),
+         gs.map(c => c.flotaId || null)]);
     }
   });
 
-  console.log(`👥 [FLOTA VIVA] Padrón: ${coches.length} de ${lista.size} vigilada(s) · ` +
-              `${gente.length} conductor(es)`);
-  return { coches: coches.length, vigiladas: lista.size, sinCoche };
+  console.log(`👥 [FLOTA VIVA] Padrón: ${cs.length} de ${lista.size} vigilada(s) · ` +
+              `${gs.length} conductor(es) del padrón de la casa`);
+  return { coches: cs.length, conductores: gs.length, vigiladas: lista.size, sinCoche };
 }
 
 /**
