@@ -102,9 +102,12 @@ async function delMes(usuarioId, mes) {
            f.entrada_lat, f.entrada_lng, f.entrada_precision, f.entrada_ubicacion,
            f.salida_lat, f.salida_lng, f.salida_precision, f.salida_ubicacion,
            f.entrada_original, f.salida_original, f.corregido_at, f.corregido_motivo,
-           COALESCE(btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')), '') AS corregido_por
+           f.aprobado_at,
+           COALESCE(btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')), '') AS corregido_por,
+           COALESCE(btrim(a.nombre || ' ' || COALESCE(a.apellidos, '')), '') AS aprobado_por
       FROM fichaje f
       LEFT JOIN usuario u ON u.id = f.corregido_por
+      LEFT JOIN usuario a ON a.id = f.aprobado_por
      WHERE f.usuario_id = $1 AND to_char(f.dia, 'YYYY-MM') = $2
      ORDER BY f.entrada`, [usuarioId, mes]);
   return r.rows;
@@ -116,7 +119,7 @@ async function delDia(dia) {
     SELECT u.id AS usuario_id,
            btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS quien,
            u.email, r.codigo AS rol,
-           f.id, f.entrada, f.salida, f.corregido_at, f.corregido_motivo,
+           f.id, f.entrada, f.salida, f.corregido_at, f.corregido_motivo, f.aprobado_at,
            f.entrada_ubicacion, f.entrada_lat, f.entrada_lng, f.entrada_precision,
            f.salida_ubicacion, f.salida_lat, f.salida_lng
       FROM usuario u
@@ -142,10 +145,14 @@ async function corregir(id, { entrada, salida }, { usuarioId, motivo }) {
                      WHEN $3::text IS NULL      THEN salida
                      ELSE $3::timestamptz END,
       dia = ((COALESCE($2::timestamptz, entrada) AT TIME ZONE '${TZ}')::date),
-      corregido_at = now(), corregido_por = $4, corregido_motivo = $5
+      corregido_at = now(), corregido_por = $4, corregido_motivo = $5,
+      -- Tocar las horas TUMBA el visto bueno. Si no, se aprobarian 8 h, se
+      -- editarian a 12 y el sello seguiria diciendo que alguien las dio por
+      -- buenas. Vuelve a la cola y que lo confirme quien corresponda.
+      aprobado_at = NULL, aprobado_por = NULL
      WHERE id = $1
      RETURNING id, to_char(dia, 'YYYY-MM-DD') AS dia, entrada, salida,
-               entrada_original, salida_original`,
+               entrada_original, salida_original, aprobado_at`,
     [id, entrada || null, salida === undefined ? null : salida, usuarioId, motivo]);
   if (!r.rowCount) throw new Error('No existe ese fichaje');
   return r.rows[0];
@@ -162,6 +169,42 @@ async function crearAMano(usuarioId, { entrada, salida }, { autor, motivo }) {
   return r.rows[0];
 }
 
+/**
+ * Lo que espera un visto bueno: jornadas CERRADAS que nadie ha confirmado.
+ *
+ * Las abiertas no entran: todavía no se sabe cuánto duraron, y la base ni
+ * siquiera dejaría aprobarlas (ck_fichaje_aprobado). Las más viejas primero,
+ * que son las que llevan más tiempo esperando.
+ */
+async function pendientes(tope = 400) {
+  const r = await db.consulta(`
+    SELECT f.id, f.usuario_id, to_char(f.dia, 'YYYY-MM-DD') AS dia, f.entrada, f.salida,
+           f.corregido_at, f.corregido_motivo, f.entrada_ubicacion,
+           btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS quien
+      FROM fichaje f JOIN usuario u ON u.id = f.usuario_id
+     WHERE f.salida IS NOT NULL AND f.aprobado_at IS NULL
+     ORDER BY f.dia, quien
+     LIMIT $1`, [tope]);
+  return r.rows;
+}
+
+/**
+ * Da por buenas unas horas. Devuelve los ids que de verdad se sellaron.
+ *
+ * El WHERE repite las condiciones que ya vigila el CHECK a propósito: así una
+ * lista con un id abierto o ya aprobado no revienta la petición entera, solo
+ * se queda fuera. Aprobar en tanda no puede fallar por una fila rara.
+ */
+async function aprobar(ids, usuarioId) {
+  const limpios = (ids || []).map(Number).filter(Number.isInteger);
+  if (!limpios.length) return [];
+  const r = await db.consulta(`
+    UPDATE fichaje SET aprobado_at = now(), aprobado_por = $2
+     WHERE id = ANY($1::bigint[]) AND salida IS NOT NULL AND aprobado_at IS NULL
+     RETURNING id`, [limpios, usuarioId]);
+  return r.rows.map(x => Number(x.id));
+}
+
 /** Las jornadas sin cerrar de días PASADOS: lo que hay que corregir. */
 async function sinCerrar() {
   const r = await db.consulta(`
@@ -173,4 +216,7 @@ async function sinCerrar() {
   return r.rows;
 }
 
-module.exports = { abierto, entrar, salir, delMes, delDia, corregir, crearAMano, sinCerrar, normUbi, TZ };
+module.exports = {
+  abierto, entrar, salir, delMes, delDia, corregir, crearAMano, sinCerrar,
+  pendientes, aprobar, normUbi, TZ,
+};

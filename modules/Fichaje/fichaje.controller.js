@@ -11,15 +11,23 @@
 //            habría que concedérselo a cada uno, y sería una forma más de que
 //            alguien no pueda fichar el día que le toca.
 //
-//   CORREGIR solo el DESARROLLADOR. No se reparte por casilla: la
-//            responsabilidad del registro recae en una sola persona, y
-//            repartirla la diluiría. Mismo candado que las migraciones.
+//   REVISAR  (ver el registro de todos, corregir horas y darlas por buenas) es
+//            de quien tenga la llave '/fichaje/revisar'. Nace SIN DUEÑO y se da
+//            persona a persona desde /usuarios.
+//
+//            No hace falta poner un middleware en cada ruta: TODO lo que cuelga
+//            de '/fichaje/revisar/' lo cierra ya el control de acceso general
+//            (services/sesion.controlAcceso) por prefijo. Por eso estas rutas
+//            viven ahí y no en '/api': el día que alguien añada un endpoint
+//            nuevo bajo ese prefijo, nace cerrado sin acordarse de nada.
 
 const express = require('express');
 const router = express.Router();
 const fichaje = require('./fichaje.service');
 const actor = require('../../services/repo/actor');
-const sesion = require('../../services/sesion');
+const permisos = require('../../services/permisos');
+
+const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
 
 const responde = fn => async (req, res) => {
   try { res.json({ status: 'ok', ...(await fn(req)) }); }
@@ -31,12 +39,24 @@ const responde = fn => async (req, res) => {
 
 const quien = async req => (req.usuario && req.usuario.id) || await actor.idDe(req);
 
+/** Si este usuario lleva el módulo: mirar el registro de todos y aprobarlo. */
+async function puedeRevisar(req) {
+  const u = req.usuario || {};
+  if (ADMIN_TOTAL.includes(u.rol)) return true;
+  try {
+    const id = await quien(req);
+    return id ? (await permisos.clavesDe(id)).has('/fichaje/revisar') : false;
+  } catch (_) { return false; }
+}
+
 // ── La pantalla ────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   res.render('fichaje', {
     titulo: 'Fichar jornada', seccion: 'fichaje', layout: 'layout-gestion',
-    // El panel de control del registro solo lo ve quien puede corregirlo.
-    esDesarrollador: !!(req.usuario && req.usuario.rol === 'desarrollador'),
+    // El panel del registro solo lo ve quien lleva el módulo. Es la misma
+    // llave que cierra las rutas: si se pintara con otra condición, habría
+    // botones que dan 403.
+    puedeRevisar: await puedeRevisar(req),
   });
 });
 
@@ -54,20 +74,29 @@ router.post('/api/salir', responde(async req =>
 // nunca de la petición, o cualquiera podría pedir el de otro cambiando un número.
 router.get('/api/mi-mes', responde(async req => fichaje.miMes(await quien(req), req.query.mes)));
 
-// ── Lo que solo puede el desarrollador ─────────────────────────────────────
-router.get('/api/parte', sesion.requiereDesarrollador,
-  responde(async req => fichaje.parteDelDia(req.query.dia)));
+// ── Lo que solo puede quien lleva el módulo ────────────────────────────────
+// Cuelgan de '/fichaje/revisar' porque ESE es el nombre del permiso: el prefijo
+// las cierra solo (ver la cabecera).
+router.get('/revisar/parte', responde(async req => fichaje.parteDelDia(req.query.dia)));
 
-router.get('/api/sin-cerrar', sesion.requiereDesarrollador,
-  responde(async () => ({ filas: await fichaje.sinCerrar() })));
+router.get('/revisar/sin-cerrar', responde(async () => ({ filas: await fichaje.sinCerrar() })));
 
-router.post('/api/corregir', sesion.requiereDesarrollador, responde(async req => {
+router.get('/revisar/pendientes', responde(async () => fichaje.pendientes()));
+
+router.post('/revisar/corregir', responde(async req => {
   const b = req.body || {};
   const f = await fichaje.corregir(
     { id: b.id, usuarioId: b.usuarioId, entrada: b.entrada, salida: b.salida },
     { autor: await quien(req), motivo: b.motivo });
   console.log(`✏️  [FICHAJE] Corregido el fichaje ${f.id} — por ${req.usuario.email}: ${b.motivo}`);
   return { fichaje: f };
+}));
+
+router.post('/revisar/aprobar', responde(async req => {
+  const ids = Array.isArray((req.body || {}).ids) ? req.body.ids : [];
+  const r = await fichaje.aprobar(ids, await quien(req));
+  console.log(`✅ [FICHAJE] ${r.aprobados} jornada(s) confirmadas por ${req.usuario.email}`);
+  return r;
 }));
 
 module.exports = router;

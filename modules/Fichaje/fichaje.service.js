@@ -80,9 +80,21 @@ async function miMes(usuarioId, mes) {
     minutos: minutos(f.entrada, f.salida),
     // Lo que se pulsó, si luego se corrigió. Es lo que hace auditable el registro.
     corregido: !!f.corregido_at,
+    // Abierta mientras se trabaja, pendiente hasta que alguien la mira,
+    // aprobada cuando la dan por buena. No se guarda: se deduce, y así no
+    // puede contradecir a las horas (ver db/132).
+    estado: !f.salida ? 'abierta' : (f.aprobado_at ? 'aprobada' : 'pendiente'),
   }));
   const total = filas.reduce((s, f) => s + (f.minutos || 0), 0);
-  return { mes: m, filas, totalMinutos: total, total: comoTexto(total), abiertas: filas.filter(f => !f.salida).length };
+  const cerradas = filas.filter(f => f.salida);
+  return {
+    mes: m, filas, totalMinutos: total, total: comoTexto(total),
+    abiertas: filas.filter(f => !f.salida).length,
+    // Las horas que ya cuentan de verdad, separadas de las que aún no ha
+    // confirmado nadie: es lo primero que se mira al abrir el mes propio.
+    aprobadas: comoTexto(cerradas.filter(f => f.estado === 'aprobada').reduce((s, f) => s + (f.minutos || 0), 0)),
+    porConfirmar: cerradas.filter(f => f.estado === 'pendiente').length,
+  };
 }
 
 /** El parte de un día: quién fichó y quién no. Para el desarrollador. */
@@ -94,6 +106,7 @@ async function parteDelDia(dia) {
     id: f.id ? Number(f.id) : null,
     minutos: minutos(f.entrada, f.salida),
     estado: !f.id ? 'sin_fichar' : (!f.salida ? 'abierta' : 'cerrada'),
+    aprobado: !!f.aprobado_at,
   }));
   return {
     dia: d, filas,
@@ -105,8 +118,42 @@ async function parteDelDia(dia) {
 }
 
 /**
- * Corrige o crea un fichaje. SOLO EL DESARROLLADOR — el candado está en el
- * controlador; aquí se exige lo que hace que la corrección valga: un motivo.
+ * Lo que espera un visto bueno, de todo el mundo.
+ *
+ * Es la pantalla de quien lleva el módulo: aquí están las jornadas cerradas que
+ * nadie ha confirmado, con sus horas ya sumadas para poder leerlas de un
+ * vistazo antes de darlas por buenas.
+ */
+async function pendientes() {
+  const filas = (await repo.pendientes()).map(f => ({
+    ...f,
+    id: Number(f.id), usuario_id: Number(f.usuario_id),
+    minutos: minutos(f.entrada, f.salida),
+    corregido: !!f.corregido_at,
+  }));
+  const total = filas.reduce((s, f) => s + (f.minutos || 0), 0);
+  return { filas, cuantas: filas.length, totalMinutos: total, total: comoTexto(total) };
+}
+
+/**
+ * Da por buenas unas horas. Devuelve cuántas se sellaron de verdad.
+ *
+ * No se queja si alguna ya estaba aprobada o sigue abierta: se queda fuera y
+ * ya está. Aprobar en tanda no puede fallar entero por una fila rara — el que
+ * aprueba está mirando una lista que pudo cambiar hace diez segundos.
+ */
+async function aprobar(ids, autor) {
+  if (!autor) throw new Error('No se sabe quién está aprobando');
+  const hechos = await repo.aprobar(ids, autor);
+  return { aprobados: hechos.length, ids: hechos };
+}
+
+/**
+ * Corrige o crea un fichaje. El candado está en la ruta ('/fichaje/revisar');
+ * aquí se exige lo que hace que la corrección valga: un motivo.
+ *
+ * Y ojo: corregir TUMBA la aprobación, la vuelva a pedir quien la tumbó o no.
+ * Lo hace el repositorio en el mismo UPDATE.
  */
 async function corregir({ id, usuarioId, entrada, salida }, { autor, motivo }) {
   const m = String(motivo || '').trim();
@@ -124,5 +171,5 @@ const losQueFichan = () => usuarios.losQueFichan();
 
 module.exports = {
   estado, entrar, salir, miMes, parteDelDia, corregir, sinCerrar, losQueFichan,
-  comoTexto, hoyMadrid,
+  pendientes, aprobar, comoTexto, hoyMadrid,
 };

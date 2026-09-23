@@ -119,6 +119,17 @@ const CATALOGO = [
     // justificar sus propias averías y no había forma de dárselo sin tocar
     // código. Y la API no comprobaba nada: el candado era solo el botón.
     { clave: '/bitacora/justificar', etiqueta: 'Justificar días en la bitácora' },
+    // FICHAR lo hace cualquiera que tenga el fichaje activado en su ficha, y
+    // por eso '/fichaje' NO está en el catálogo (ver db/106): un permiso para
+    // fichar sería una forma más de que alguien no pueda fichar el día que le
+    // toca. Esto es lo otro: ver el registro de TODOS, corregir las horas y
+    // darlas por buenas.
+    //
+    // `manual` de verdad: no la siembra ningún rol y no entra ni en TODO(), así
+    // que ni gerencia ni dirección la reciben por llevar el catálogo entero.
+    // Las horas que aquí se aprueban son las que luego se cobran; quién las
+    // firma no se decide por descarte.
+    { clave: '/fichaje/revisar', etiqueta: 'Fichajes · corregir y aprobar horas', manual: true },
   ] },
   { grupo: 'Caja', items: [
     // Nacen APAGADOS para todo el mundo, hasta para dirección: `manual` los

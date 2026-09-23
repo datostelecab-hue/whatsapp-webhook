@@ -142,7 +142,7 @@ Las claves concedidas se **cachean 60 s** por usuario, porque el control de acce
 Dos marcas importan:
 
 - **`escribir: true`** — el hijo es el permiso de tocar, y se exige para todo lo que no sea `GET`.
-- **`manual: true`** — la clave **nace apagada para todo el mundo**, incluidos los roles que llevan el catálogo entero: no entra en la semilla de ningún rol y se da usuario a usuario. Es lo que protege la caja (`/recaudacion`, `/recaudacion/nomina`), **abrir puertas por WhatsApp** (`/puertas`), la configuración de alertas y los vehículos de otra sede. Una puerta es física y una caja es una caja: quién puede tocarlas no se decide por descarte.
+- **`manual: true`** — la clave **nace apagada para todo el mundo**, incluidos los roles que llevan el catálogo entero: no entra en la semilla de ningún rol y se da usuario a usuario. Es lo que protege la caja (`/recaudacion`, `/recaudacion/nomina`), **abrir puertas por WhatsApp** (`/puertas`), **aprobar las horas del fichaje** (`/fichaje/revisar`, ver [[Fichaje]]), la configuración de alertas y los vehículos de otra sede. Una puerta es física y una caja es una caja: quién puede tocarlas no se decide por descarte.
 
 Las claves que se guardan se filtran contra el catálogo: lo que no sea una clave conocida no se escribe.
 

@@ -22,6 +22,7 @@
     padding: .55rem .7rem; border-radius: .6rem; font-size: .82rem; }
   .fi-mio   { grid-template-columns: 5.5rem 1fr 1fr 4.5rem auto; }
   .fi-parte { grid-template-columns: minmax(6rem, 1.4fr) 1fr 1fr 4.5rem auto; }
+  .fi-pend  { grid-template-columns: 5rem minmax(6rem, 1.3fr) 1fr 1fr 4.5rem auto; }
   /* En un móvil no caben cinco columnas. Se apilan en dos, que es lo que de
      verdad se mira desde el teléfono: quién/cuándo y cuánto. */
   @media (max-width: 640px) {
@@ -54,12 +55,33 @@
                class="px-2 py-1.5 rounded-lg bg-telecab-card2/60 border border-telecab-border text-xs text-telecab-text">
         <span id="fi-total" class="text-sm font-bold text-telecab-gold tabular-nums">—</span>
       </div>
+      <p id="fi-confirm" class="text-[11px] text-telecab-muted w-full"></p>
     </div>
     <div id="fi-mis-dias" class="text-sm text-telecab-muted">—</div>
   </div>
 </div>
 
-<% if (esDesarrollador) { %>
+<% if (puedeRevisar) { %>
+<!-- La cola: horas que nadie ha dado por buenas todavía -->
+<div class="rounded-2xl border border-telecab-border bg-telecab-card p-5 mt-4">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <div>
+      <h2 class="text-sm font-semibold text-telecab-text">
+        <i class="fa-solid fa-stamp text-telecab-gold mr-1"></i>Horas por confirmar
+      </h2>
+      <p class="text-xs text-telecab-muted">
+        Una jornada cerrada no cuenta hasta que alguien la da por buena. Lo que no cuadre,
+        se corrige antes —queda con tu nombre y el motivo— y después se confirma.
+      </p>
+    </div>
+    <button id="fi-aprobar-todo"
+            class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold disabled:opacity-40">
+      <i class="fa-solid fa-check-double mr-1"></i>Confirmar las que se ven
+    </button>
+  </div>
+  <div id="fi-pendientes" class="text-sm text-telecab-muted">—</div>
+</div>
+
 <!-- ── El registro, solo para quien puede corregirlo ────────────────────── -->
 <div class="rounded-2xl border border-telecab-border bg-telecab-card p-5 mt-4">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -68,8 +90,8 @@
         <i class="fa-solid fa-user-shield text-telecab-gold mr-1"></i>El registro de todos
       </h2>
       <p class="text-xs text-telecab-muted">
-        Quién fichó y quién no. Corregir queda con tu nombre, el motivo y la hora original al lado:
-        un registro que se edita sin rastro no vale ante Inspección.
+        Quién fichó y quién no, día a día. Corregir queda con tu nombre, el motivo y la hora
+        original al lado: un registro que se edita sin rastro no vale ante Inspección.
       </p>
     </div>
     <input id="fi-dia" type="date"
@@ -85,7 +107,7 @@
   'use strict';
   const $ = s => document.querySelector(s);
   const esc = t => String(t == null ? '' : t).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
-  const ES_DEV = <%= esDesarrollador ? 'true' : 'false' %>;
+  const PUEDE_REVISAR = <%= puedeRevisar ? 'true' : 'false' %>;
 
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }) : '—';
   const fecha = d => new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
@@ -202,7 +224,7 @@
       }
       await cargarEstado();
       cargarMiMes();
-      if (ES_DEV) cargarParte();
+      if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); }
       // Que la barra de arriba se entere YA. Si no, se ficha la entrada y el
       // botón de la barra sigue diciendo "Fichar entrada": parece que no ha
       // funcionado y se vuelve a pulsar.
@@ -229,6 +251,14 @@
     if (!t) return '';
     return `<span class="fi-tag bg-telecab-${t[1]}/15 text-telecab-${t[1]}">${t[0]}</span>`;
   }
+  // En qué punto está una jornada. 'abierta' no lleva chip: ya lo dice la fila
+  // entera, que está a medias.
+  function tagEstado(e) {
+    if (e === 'aprobada') return '<span class="fi-tag bg-telecab-green/15 text-telecab-green" title="Estas horas ya las ha dado por buenas quien lleva el registro">aprobada</span>';
+    if (e === 'pendiente') return '<span class="fi-tag bg-telecab-warn/15 text-telecab-warn" title="Todavía no las ha confirmado nadie">por confirmar</span>';
+    return '';
+  }
+
   const mapa = (lat, lng) => (lat == null ? '' :
     `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener"
         class="text-telecab-gold hover:underline" title="Ver en el mapa"><i class="fa-solid fa-location-dot"></i></a>`);
@@ -239,6 +269,12 @@
       const r = await api('/fichaje/api/mi-mes' + (mes ? '?mes=' + mes : ''));
       $('#fi-mes').value = r.mes;
       $('#fi-total').textContent = r.total || '0 h 00';
+      // Lo que de verdad cuenta son las aprobadas. Decirlo aquí ahorra la
+      // pregunta de "¿esto ya está bien?" antes de que se haga.
+      $('#fi-confirm').innerHTML = r.porConfirmar
+        ? '<span class="text-telecab-warn">' + r.porConfirmar + ' jornada(s) por confirmar</span> · ' +
+          esc(r.aprobadas) + ' ya aprobadas'
+        : (r.filas.length ? '<span class="text-telecab-green">Todo confirmado</span>' : '');
       if (!r.filas.length) { $('#fi-mis-dias').innerHTML = '<p class="text-sm text-telecab-muted py-6 text-center">Nada fichado este mes.</p>'; return; }
       $('#fi-mis-dias').innerHTML = r.filas.map(f => `
         <div class="fi-fila fi-mio">
@@ -249,6 +285,7 @@
           <span class="flex items-center gap-1 justify-end">
             ${tagUbi(f.entrada_ubicacion)}
             ${f.corregido ? `<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="${esc(f.corregido_motivo || '')}">corregido</span>` : ''}
+            ${tagEstado(f.estado)}
           </span>
         </div>`).join('');
     } catch (e) {
@@ -260,12 +297,12 @@
 
   // ── El registro de todos (solo desarrollador) ────────────────────────────
   async function cargarParte() {
-    if (!ES_DEV) return;
+    if (!PUEDE_REVISAR) return;
     const dia = $('#fi-dia').value;
     try {
-      const r = await api('/fichaje/api/parte' + (dia ? '?dia=' + dia : ''));
+      const r = await api('/fichaje/revisar/parte' + (dia ? '?dia=' + dia : ''));
       $('#fi-dia').value = r.dia;
-      const sc = await api('/fichaje/api/sin-cerrar');
+      const sc = await api('/fichaje/revisar/sin-cerrar');
 
       const avisos = [];
       if (r.sinFichar) avisos.push(['fa-user-slash', 'telecab-red', r.sinFichar + ' sin fichar hoy']);
@@ -283,6 +320,7 @@
           <span class="flex items-center gap-1.5 justify-end">
             <span class="font-semibold tabular-nums">${dur(f.minutos)}</span>
             ${f.entrada ? tagUbi(f.entrada_ubicacion) : ''}
+            ${f.aprobado ? tagEstado('aprobada') : ''}
             <button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
                     data-corregir="${f.id || ''}" data-usuario="${f.usuario_id}" data-quien="${esc(f.quien)}">
               ${f.id ? 'corregir' : 'añadir'}</button>
@@ -294,6 +332,83 @@
     } catch (e) {
       $('#fi-parte').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
     }
+  }
+
+  // ── La cola de aprobación ───────────────────────────────────
+  let PEND = [];
+
+  async function cargarPendientes() {
+    if (!PUEDE_REVISAR) return;
+    const btn = $('#fi-aprobar-todo');
+    try {
+      const r = await api('/fichaje/revisar/pendientes');
+      PEND = r.filas;
+      if (btn) {
+        btn.disabled = !r.cuantas;
+        btn.innerHTML = r.cuantas
+          ? '<i class="fa-solid fa-check-double mr-1"></i>Confirmar las ' + r.cuantas + ' que se ven'
+          : '<i class="fa-solid fa-check-double mr-1"></i>Nada que confirmar';
+      }
+      if (!r.cuantas) {
+        $('#fi-pendientes').innerHTML = '<p class="text-sm text-telecab-green py-6 text-center">' +
+          '<i class="fa-solid fa-circle-check mr-1"></i>No queda ninguna jornada por confirmar.</p>';
+        return;
+      }
+      $('#fi-pendientes').innerHTML = r.filas.map(f => {
+        // Lo que hay que MIRAR se ve sin buscarlo: una jornada de catorce horas
+        // casi nunca es una jornada, es una salida que nadie fichó.
+        const h = (f.minutos || 0) / 60;
+        const tono = h > 14 ? 'text-telecab-red' : (h > 10 || h < 6 ? 'text-telecab-warn' : 'text-telecab-text');
+        return `
+        <div class="fi-fila fi-pend">
+          <span class="text-telecab-muted capitalize">${esc(fecha(f.dia))}</span>
+          <span class="text-telecab-text truncate" title="${esc(f.quien)}">${esc(f.quien)}</span>
+          <span class="text-telecab-text">${hora(f.entrada)}</span>
+          <span class="text-telecab-text">${hora(f.salida)}</span>
+          <span class="font-semibold tabular-nums ${tono}">${dur(f.minutos)}</span>
+          <span class="flex items-center gap-1.5 justify-end">
+            ${f.corregido ? `<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="${esc(f.corregido_motivo || '')}">corregido</span>` : ''}
+            <button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
+                    data-corr="${f.id}" data-usuario="${f.usuario_id}" data-quien="${esc(f.quien)}" data-dia="${f.dia}">corregir</button>
+            <button class="fi-tag bg-telecab-green/15 text-telecab-green hover:bg-telecab-green/25 border border-telecab-green/40"
+                    data-ok="${f.id}"><i class="fa-solid fa-check mr-1"></i>confirmar</button>
+          </span>
+        </div>`;
+      }).join('');
+
+      $('#fi-pendientes').querySelectorAll('[data-corr]').forEach(b =>
+        b.addEventListener('click', () => corregir(b.dataset.corr, b.dataset.usuario, b.dataset.quien, b.dataset.dia)));
+      $('#fi-pendientes').querySelectorAll('[data-ok]').forEach(b =>
+        b.addEventListener('click', () => aprobar([Number(b.dataset.ok)])));
+    } catch (e) {
+      $('#fi-pendientes').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  async function aprobar(ids) {
+    try {
+      const r = await api('/fichaje/revisar/aprobar', { ids });
+      if (window.Dialogo && Dialogo.hecho) {
+        Dialogo.hecho(r.aprobados ? 'Confirmadas ' + r.aprobados + ' jornada(s)' : 'No quedaba nada por confirmar');
+      }
+      cargarPendientes(); cargarMiMes(); cargarParte();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo confirmar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  if (PUEDE_REVISAR) {
+    const todo = $('#fi-aprobar-todo');
+    if (todo) todo.addEventListener('click', async () => {
+      const ids = PEND.map(f => f.id);
+      if (!ids.length) return;
+      const ok = await Dialogo.confirmar({
+        titulo: 'Confirmar ' + ids.length + ' jornada(s)',
+        texto: 'Se dan por buenas tal y como están, con tu nombre. Si alguna no cuadra, corrígela antes.',
+        si: 'Confirmar', no: 'Ahora no',
+      });
+      if (ok) aprobar(ids);
+    });
   }
 
   async function corregir(id, usuarioId, quien, dia) {
@@ -323,21 +438,21 @@
     // su zona, que es la que manda en todo el ERP.
     const aIso = h => (h && h.trim()) ? dia + 'T' + h.trim().padStart(5, '0') + ':00' : null;
     try {
-      await api('/fichaje/api/corregir', {
+      await api('/fichaje/revisar/corregir', {
         id: id || null, usuarioId: id ? null : Number(usuarioId),
         entrada: aIso(r.entrada), salida: aIso(r.salida), motivo: r.motivo,
       });
-      cargarParte(); cargarMiMes(); cargarEstado();
+      cargarParte(); cargarPendientes(); cargarMiMes(); cargarEstado();
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo corregir', texto: e.message, tono: 'error' });
     }
   }
 
-  if (ES_DEV) $('#fi-dia').addEventListener('change', cargarParte);
+  if (PUEDE_REVISAR) $('#fi-dia').addEventListener('change', cargarParte);
 
   // ── Arranque ─────────────────────────────────────────────────────────────
   cargarEstado().catch(e => { $('#fi-panel').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>'; });
   cargarMiMes();
-  if (ES_DEV) cargarParte();
+  if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); }
 })();
 </script>

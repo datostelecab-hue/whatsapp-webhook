@@ -54,15 +54,45 @@ Cada uno ve **su** mes (`GET /fichaje/api/mi-mes`), y el id sale de la **sesión
 | | Quién |
 |---|---|
 | **Fichar** | cualquiera que haya entrado y tenga el fichaje activado en su ficha |
-| **Corregir** | **solo el desarrollador** |
+| **Revisar** (ver el registro de todos, corregir horas y aprobarlas) | quien tenga la llave **`/fichaje/revisar`** |
 
 `/fichaje` **no está en el catálogo de permisos, a propósito**: lo que no está en el catálogo queda abierto a quien haya entrado. Si fichar necesitara un permiso habría que concedérselo a cada uno, y sería una forma más de que alguien no pueda fichar el día que le toca.
 
-Corregir no se reparte por casilla: va por rol de desarrollador (`sesion.requiereDesarrollador`), el mismo candado que las migraciones. La responsabilidad del registro recae en una sola persona y repartirla la diluiría. Del desarrollador son también el **parte del día** (quién fichó y quién no) y la lista de **jornadas sin cerrar**.
+Hasta el 23/09/2026 corregir iba por **rol de desarrollador**. Ahora va por llave, porque quien lleva el registro de la jornada no tiene por qué ser quien toca el código. La llave nace **sin dueño** (`manual` en el catálogo: no la siembra ningún rol y **no entra ni en `TODO()`**, así que gerencia y dirección tampoco la reciben por llevar el catálogo entero) y se da persona a persona desde `/usuarios`. Las horas que aquí se aprueban son las que luego se cobran: quién las firma no se decide por descarte.
+
+De esa misma llave son el **parte del día** (quién fichó y quién no), la lista de **jornadas sin cerrar** y la **cola de aprobación**.
+
+> [!tip] El prefijo ES el permiso
+> Las rutas de revisión cuelgan de **`/fichaje/revisar/`** y no de `/fichaje/api/`. Así no hace falta un middleware por ruta: las cierra el control de acceso general por prefijo (`sesion.controlAcceso` → `permisos.claveDeRuta`), y el día que alguien añada un endpoint nuevo ahí dentro **nace cerrado** sin acordarse de nada. Fichar sigue colgando de `/fichaje/api/`, que no casa con ninguna clave del catálogo y por tanto sigue abierto.
 
 ## Por qué corregir no pisa nada
 
 `entrada_original` y `salida_original` guardan lo que se pulsó, y **solo se escriben la primera vez**: una segunda corrección no puede tapar el original. Corregir **exige motivo** —lo comprueba la base con un CHECK, no solo la aplicación— y queda con quién y cuándo. Un registro que se edita sin rastro no vale delante de un inspector, y ese es justo el momento en que hace falta que valga.
+
+## Las horas hay que confirmarlas (23/09/2026)
+
+Una jornada **cerrada no cuenta hasta que alguien la da por buena**. Si fichas a las 9 y sales a las 18, son nueve horas *propuestas*: quien lleva el módulo las mira, las corrige si hace falta y las sella.
+
+El estado **no se guarda, se deduce** —así no puede contradecir a las horas—:
+
+| | |
+|---|---|
+| `salida IS NULL` | **abierta**, sigue trabajando |
+| cerrada y `aprobado_at IS NULL` | **por confirmar** |
+| `aprobado_at IS NOT NULL` | **aprobada**, y consta por quién |
+
+Dos reglas que viven en la base (`ck_fichaje_aprobado`, db/132) y no en un `if`: no se puede aprobar una jornada **abierta** —todavía no se sabe cuánto duró— ni aprobar **sin decir quién**.
+
+> [!warning] Corregir tumba la aprobación
+> El mismo `UPDATE` que cambia las horas pone `aprobado_at` a NULL. Si no, se aprobarían 8 h, se editarían a 12 y el sello seguiría ahí diciendo que alguien las dio por buenas. **Un sello que sobrevive a lo que sella no es un sello.**
+
+### El ajuste único de arranque
+
+El 23/09/2026, con `db/133`, se normalizó de una vez todo lo recogido desde el 13/09: el fichaje llevaba diez días apuntando sin que nadie hubiera confirmado que estaba en marcha. **El día que no llegaba a ocho horas se completó a ocho** —el día, no cada fichaje: hay quien ficha dos veces y subir cada uno a ocho le daba dieciséis— y se estiró el **último** fichaje del día, que es el que se alargaría en la realidad.
+
+Se cerraron además **tres jornadas olvidadas** de días pasados. No era solo un dato feo: con `uq_fichaje_abierto` solo cabe una abierta por persona, así que **esas tres personas no podían fichar** desde que se dejaron la suya sin cerrar.
+
+Lo que **no** se tocó: los días que ya pasaban de ocho horas. Ahí están las barbaridades —73 h, 56 h, 53 h— y son justo las que hay que mirar una a una; nacen pendientes y se corrigen desde la pantalla, con su motivo. Todo lo ajustado quedó marcado como corregido, con la hora original al lado.
 
 ## El invariante vive en la base
 
@@ -71,7 +101,8 @@ Una persona no puede tener **dos jornadas abiertas a la vez**. Eso **no** se def
 ## Lo que falta
 
 - **Nadie avisa a quien se olvida.** El parte del día dice quién no ha fichado, pero hay que entrar a mirarlo. Un WhatsApp a las 10:00 sería lo natural, y la plantilla de Meta habría que pedirla.
-- **Las horas del fichaje no entran en ningún informe**: están en su pantalla y en el parte, y no se cruzan todavía con nóminas ni con nada.
+- **Las horas del fichaje no entran en ningún informe**: están en su pantalla y en el parte, y no se cruzan todavía con nóminas ni con nada. Ahora que se aprueban, el paso natural es que **solo las aprobadas** viajen a donde sea que vayan.
+- **Nadie avisa a quien tiene horas por confirmar.** La cola se ve entrando a `/fichaje`; si se llena, no se entera nadie.
 
 ---
 
