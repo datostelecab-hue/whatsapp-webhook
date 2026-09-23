@@ -45,10 +45,28 @@ async function coches(sedes) {
            EXTRACT(EPOCH FROM (now() - p.visto_at))::int             AS antiguedad,
            EXTRACT(EPOCH FROM (now() - p.estado_desde))::int         AS lleva_asi,
            a.situacion, a.situacion_etiqueta, a.conectado,
+           -- La hora del apunte de BOLT que abrió el tramo. Es lo que deja
+           -- compararlo con el apunte crudo y quedarse con el más reciente.
+           a.desde                                                   AS desde_tramo,
            a.conductor, a.telefono,
            a.segundos                                                AS segundos_situacion,
            a.km,
            v.sede,
+           -- ── LA SITUACIÓN EN CRUDO, SIN PASAR POR LOS TRAMOS ──────────────
+           -- La tabla bolt_state_log es tonta: un apunte por cambio de
+           -- estado, tal y como lo manda BOLT, y la escribe la ingesta cada 10
+           -- minutos. Los TRAMOS los construye el motor de Flota viva, que hace
+           -- mucho más —km, franjas, odómetro, rutas— y por eso se rompe más:
+           -- el 23/09/2026 estuvo dos horas sin terminar una vuelta y el mapa
+           -- acusó de "rueda sin nadie" a gente que estaba de viaje.
+           --
+           -- Para la pregunta del mapa —¿hay alguien conectado con este
+           -- coche?— no hace falta un tramo: basta el ÚLTIMO APUNTE. Así el
+           -- semáforo se apoya en la tubería tonta, que es la que aguanta.
+           eb.situacion                                              AS situacion_cruda,
+           cru.ocurrido_at                                           AS crudo_at,
+           cc.nombre                                                 AS conductor_crudo,
+           cc.telefono                                               AS telefono_crudo,
            -- En qué estado está el coche para la casa. Sirve para leer un gris:
            -- uno "En taller" lleva días callado y es normal; uno "Operativo"
            -- callado tres meses es un equipo que hay que ir a mirar.
@@ -58,6 +76,18 @@ async function coches(sedes) {
       JOIN vehiculo v ON v.matricula = p.matricula AND v.baja_at IS NULL
       LEFT JOIN fv_ahora a ON a.mapon_unit = p.mapon_unit
       LEFT JOIN cat_estado_vehiculo ev ON ev.codigo = v.estado_operativo
+      LEFT JOIN fv_vehiculo fvv ON fvv.matricula = p.matricula
+      -- Doce horas de ventana: más que un turno largo. Lo que no tenga un
+      -- apunte en doce horas es que no lo lleva nadie, y eso ya lo dice el NULL.
+      LEFT JOIN LATERAL (
+        SELECT l.estado, l.ocurrido_at, l.driver_uuid
+          FROM bolt_state_log l
+         WHERE l.vehiculo_uuid = fvv.uuid
+           AND l.ocurrido_at > now() - interval '12 hours'
+         ORDER BY l.ocurrido_at DESC
+         LIMIT 1) cru ON TRUE
+      LEFT JOIN fv_estado_bolt eb ON eb.estado = cru.estado
+      LEFT JOIN fv_conductor cc ON cc.uuid = cru.driver_uuid
      WHERE ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
      ORDER BY v.matricula`, [filtro]);
   return r.rows;
@@ -75,13 +105,22 @@ async function frescura(sedes) {
   const r = await db.consulta(`
     SELECT max(p.refrescado_at)                                        AS refrescado_at,
            EXTRACT(EPOCH FROM (now() - max(p.refrescado_at)))::int      AS hace,
-           -- LA OTRA MITAD DEL MAPA. La posición se refresca cada 30 s, pero
-           -- quién va conectado en BOLT lo escribe la vuelta de Flota viva cada
-           -- 5 min. Si esa se para, los puntos siguen moviéndose y las etiquetas
-           -- se quedan congeladas: el mapa enseña "rueda sin nadie" sobre gente
-           -- que está trabajando. Pasó el 23/09/2026 y no había forma de verlo.
-           (SELECT EXTRACT(EPOCH FROM (now() - max(terminada_at)))::int
-              FROM fv_vuelta WHERE error IS NULL)                        AS bolt_hace,
+           -- LA OTRA MITAD DEL MAPA, y la que se cae en silencio. La posición se
+           -- refresca cada 30 s; lo de BOLT entra por DOS tuberías distintas y
+           -- basta con que una vaya al día:
+           --
+           --   la ingesta   cada 10 min, escribe bolt_state_log. Tonta y dura.
+           --   el motor     cada  5 min, construye los tramos. Listo y frágil.
+           --
+           -- Se mira la MÁS FRESCA de las dos. Si las dos van viejas, lo que
+           -- sabemos de BOLT es viejo y el mapa tiene que decirlo en vez de
+           -- acusar a nadie: el 23/09/2026 el motor estuvo dos horas parado y la
+           -- pantalla siguió pareciendo viva porque los puntos sí se movían.
+           LEAST(
+             (SELECT EXTRACT(EPOCH FROM (now() - max(empezada_at)))::int
+                FROM ingesta_ejecucion WHERE tarea = 'state_logs_bolt' AND ok),
+             (SELECT EXTRACT(EPOCH FROM (now() - max(terminada_at)))::int
+                FROM fv_vuelta WHERE error IS NULL))                     AS bolt_hace,
            count(*) FILTER (WHERE v.id IS NOT NULL
                               AND ($1::varchar[] IS NULL
                                    OR v.sede = ANY($1::varchar[])))::int AS dentro,

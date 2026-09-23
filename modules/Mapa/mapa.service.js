@@ -70,10 +70,44 @@ const repo = require('./mapa.repo');
 const PERDIDOS = ['nodata'];
 const SIN_GPS = 'nogps';
 
-// CUÁNDO DEJA DE SER DE FIAR LA MITAD DE BOLT. La vuelta corre cada 5 min; con
-// el doble ya ha fallado algo. A partir de ahí un "rueda sin nadie" no es un
-// hecho, es una foto vieja, y el mapa tiene que decirlo en vez de acusar.
-const BOLT_FIABLE_S = 600;
+// CUÁNDO DEJA DE SER DE FIAR LA MITAD DE BOLT. La tubería más lenta de las dos
+// —la ingesta— pasa cada 10 min; con el doble y pico ya ha fallado algo. A
+// partir de ahí un "rueda sin nadie" no es un hecho, es una foto vieja, y el
+// mapa tiene que decirlo en vez de acusar.
+const BOLT_FIABLE_S = 1500;
+
+/**
+ * La situación de BOLT de un coche, cogiendo la noticia MÁS FRESCA.
+ *
+ * Hay dos caminos para lo mismo y ninguno es de fiar siempre:
+ *
+ *   · el APUNTE CRUDO (`bolt_state_log`), que escribe la ingesta cada 10 min;
+ *   · el TRAMO abierto (`fv_ahora`), que construye el motor cada 5 min.
+ *
+ * Los dos salen de los mismos logs de BOLT y traen la hora del apunte, así que
+ * se pueden comparar: gana el que tenga la hora más reciente. Cuando los dos
+ * funcionan dicen lo mismo —comprobado coche a coche—; cuando uno se cae, el
+ * otro sostiene el semáforo en vez de dejarlo mintiendo.
+ */
+function situacionDe(c) {
+  const tCrudo = c.crudo_at ? new Date(c.crudo_at).getTime() : null;
+  const tTramo = c.desde_tramo ? new Date(c.desde_tramo).getTime() : null;
+  const usaCrudo = tCrudo != null && (tTramo == null || tCrudo >= tTramo);
+  if (usaCrudo && c.situacion_cruda) {
+    return {
+      situacion: c.situacion_cruda,
+      conductor: c.conductor_crudo || c.conductor || null,
+      telefono: c.telefono_crudo || c.telefono || null,
+      fuente: 'apunte',
+    };
+  }
+  return {
+    situacion: c.situacion || null,
+    conductor: c.conductor || c.conductor_crudo || null,
+    telefono: c.telefono || c.telefono_crudo || null,
+    fuente: c.situacion ? 'tramo' : null,
+  };
+}
 
 // LA CACHE VA POR SEDES, NO SUELTA.
 //
@@ -85,12 +119,13 @@ const cache = new Map();   // 'madrid' | 'madrid,barcelona' → { ts, datos }
 const clave = sedes => (Array.isArray(sedes) && sedes.length ? [...sedes].sort().join(',') : 'todas');
 
 /** De qué color va este coche. La única regla del mapa. */
-function tono(c) {
+function tono(c, sit) {
+  const s = sit === undefined ? situacionDe(c).situacion : sit;
   if (PERDIDOS.includes(c.estado_mapon)) return 'perdido';
   if (c.estado_mapon === SIN_GPS) return 'singps';
   if (c.estado_mapon !== 'driving') return 'parado';
-  if (c.situacion === 'viaje' || c.situacion === 'espera') return 'trabajando';
-  if (c.situacion === 'descanso') return 'descanso';
+  if (s === 'viaje' || s === 'espera') return 'trabajando';
+  if (s === 'descanso') return 'descanso';
   return 'suelto';
 }
 
@@ -108,8 +143,9 @@ function porQue(c, t, boltHace) {
   }
   if (t !== 'suelto') return null;
   const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
-  const base = c.situacion
-    ? `Rueda y ${c.conductor || 'su conductor'} no está conectado en BOLT`
+  const quien = c.conductor_crudo || c.conductor;
+  const base = quien
+    ? `Rueda y ${quien} no está conectado en BOLT`
     : 'Rueda y no hay nadie fichado en BOLT con este coche';
   return viejo
     ? base + ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min, puede estar conectado y no haberse enterado el sistema`
@@ -135,7 +171,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
   const boltFiable = boltHace != null && boltHace <= BOLT_FIABLE_S;
 
   const coches = filas.map(c => {
-    const t = tono(c);
+    const v = situacionDe(c);
+    const t = tono(c, v.situacion);
     return {
       unidad: Number(c.mapon_unit),
       matricula: c.matricula || null,
@@ -151,11 +188,14 @@ async function frente({ forzar = false, sedes = null } = {}) {
       estadoVehiculo: c.estado_vehiculo || null,
       operativo: c.coche_operativo !== false,
       estadoMapon: c.estado_mapon || null,
-      situacion: c.situacion || null,
+      situacion: v.situacion,
       situacionEtiqueta: c.situacion_etiqueta || null,
-      conectado: c.conectado === true,
-      conductor: c.conductor || null,
-      telefono: c.telefono || null,
+      conectado: v.situacion != null && v.situacion !== 'desconectado',
+      conductor: v.conductor,
+      telefono: v.telefono,
+      // De cuál de las dos tuberías salió esto. No se pinta, pero contesta
+      // "¿por qué dice eso?" sin abrir la base.
+      fuente: v.fuente,
       // Segundos que lleva en esa situación; la vista lo pinta como "2 h 14".
       desdeHace: c.segundos_situacion == null ? null : Number(c.segundos_situacion),
       km: c.km == null ? null : Number(c.km),

@@ -78,7 +78,30 @@ Esta pantalla junta **dos vueltas distintas**, y conviene saberlo:
 | | Cada cuánto | Qué escribe |
 |---|---|---|
 | `posiciones.refrescar()` | **30 s** | dónde está el punto |
-| el motor de [[Visibilidad\|Flota viva]] | **5 min** | quién va conectado, la etiqueta |
+| la ingesta / el motor | **10 / 5 min** | quién va conectado, la etiqueta |
+
+### Y la mitad de BOLT entra por DOS tuberías
+
+La pregunta del semáforo —*¿hay alguien conectado con este coche?*— se puede
+contestar de dos sitios, y el mapa coge **la noticia más fresca de las dos**:
+
+| | Quién la escribe | Cada cuánto | Cómo es |
+|---|---|---|---|
+| `bolt_state_log` (el **apunte crudo**) | la ingesta | 10 min | una tabla tonta: un apunte por cambio de estado. **Aguanta.** |
+| `fv_ahora` → `fv_tramo` (el **tramo**) | el motor de Flota viva | 5 min | construye rachas, km, franjas, odómetro. **Más listo y más frágil.** |
+
+Los dos salen de los mismos logs de BOLT y traen la **hora del apunte**, así que
+se comparan y gana el más reciente. Lo pidió Camilo el 23/09/2026 —*«si en
+Control sale el estado y se actualiza solo, ¿no puedes sacarlo igual?»*— y
+tenía razón: medido ese día, **10 de 94 coches discrepaban y en todos el apunte
+crudo iba por delante**, hasta 55 minutos (1085MJY: el tramo decía «descanso» de
+las 13:45 y el apunte decía «viaje» de las 14:40).
+
+> [!note] Ojo: Control lee los TRAMOS, no el crudo
+> La intuición era buena pero el ejemplo no: `cockpit.service` y `panel.service`
+> leen `fv_ahora` y `fv_tramo` como leía el mapa, así que Control se congeló
+> igual ese día. Lo que cambia ahora es solo el mapa; llevar el mismo criterio a
+> Control está pendiente.
 
 Si se para la segunda, **la pantalla sigue pareciendo viva**: los puntos se
 mueven y las etiquetas mienten. Eso es lo que pasó el 23/09/2026 —ver
