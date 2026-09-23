@@ -437,6 +437,13 @@ El trayecto según el GPS. **Es de donde salen los kilómetros**, nunca de
 no rodó. "Salió" mira **minutos, no kilómetros**: un tramo desconectado suele llevar
 conductor.
 
+**En la [[Bitacora]] ese día se llama «Ausencia»** —celda, leyenda, globo, tarjeta y
+resumen del mes—, a petición de RRHH (23/09/2026). En [[Control]] y en sus reportes
+sigue siendo «no salió». Ojo con el choque: una ausencia **con parte** (vacaciones,
+baja, permiso) no se llama nunca «ausencia» a secas, sino por su tipo; por eso la
+tarjeta azul de la bitácora enumera —«Vacaciones y bajas»— en vez de decir
+«Ausencias», que ya está cogido.
+
 ### Sanción
 
 El registro legal de un exceso de velocidad detectado por [[Mapon]] y atribuido a

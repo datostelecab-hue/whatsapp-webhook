@@ -53,9 +53,17 @@ Las horas reales **pisan la L**: si al final trabajó, se ve que trabajó.
 
 ### Las cifras cortan en hoy, salvo las ausencias
 
-Nadie ha trabajado mañana, así que horas, días trabajados, media y «días sin salir» se cuentan solo hasta hoy. **Una ausencia no es lo mismo**: está firmada, con sus fechas, y por eso el calendario ya la pinta atenuada. Cortándola en hoy, la tarjeta decía «8 ausencias» mientras en pantalla se veían **19 casillas azules** — misma persona, mismo mes, dos cifras distintas.
+Nadie ha trabajado mañana, así que horas, días trabajados, media y «Ausencias» se cuentan solo hasta hoy. **Una ausencia no es lo mismo**: está firmada, con sus fechas, y por eso el calendario ya la pinta atenuada. Cortándola en hoy, la tarjeta decía «8 ausencias» mientras en pantalla se veían **19 casillas azules** — misma persona, mismo mes, dos cifras distintas.
 
-**Y la tarjeta se llama por su nombre.** «8 ausencias» de alguien que está de vacaciones se lee como un reproche, y no lo es: unas vacaciones son un derecho, no una falta. Cuando todas las del periodo son de un tipo, la tarjeta pone «Vacaciones», «Baja médica» o «Permiso»; «Ausencias» se queda solo para cuando hay mezcla, que es cuando la palabra genérica sí dice algo. Debajo, cuántas aún no han pasado.
+**Y la tarjeta se llama por su nombre.** «8 ausencias» de alguien que está de vacaciones se lee como un reproche, y no lo es: unas vacaciones son un derecho, no una falta. Cuando todas las del periodo son de un tipo, la tarjeta pone «Vacaciones», «Baja médica» o «Permiso»; cuando hay mezcla, **las enumera**: «Vacaciones y bajas», «Bajas y permisos». Debajo, cuántas aún no han pasado.
+
+> [!warning] «Ausencias» ya no es esta tarjeta
+> Hasta el 23/09/2026 la mezcla se llamaba «Ausencias». RRHH pidió que el día en
+> que se debía salir y no se salió dejara de poner «no salió» y pusiera
+> **«Ausencia»** —en la celda, la leyenda, el globo, la chapa del panel del día,
+> el KPI rojo y el resumen del mes—, así que la palabra pasó a la **tarjeta roja**
+> y la azul se quedó sin nombre genérico. De ahí la enumeración. Dos cajas
+> llamadas «Ausencias» una al lado de la otra era el error a evitar.
 
 ## El sellado: por qué el pasado no se recalcula solo
 
