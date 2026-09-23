@@ -31,14 +31,14 @@ Volver a un Kali limpio: `VBoxManage snapshot "kali-linux-2026.2-virtualbox-amd6
 
 Todas las respuestas pasan por un middleware en `app.js` que pone las cabeceras. Lo que hay y por qué:
 
-| Cabecera | Para qué |
-|---|---|
-| `X-Content-Type-Options: nosniff` | que el navegador no adivine el tipo de un fichero (anti MIME-sniffing) |
-| `X-Frame-Options: SAMEORIGIN` | anti-clickjacking clásico (navegadores viejos) |
-| `Referrer-Policy` | no filtrar la URL interna al salir a un enlace externo |
-| `Strict-Transport-Security` | forzar HTTPS — **solo en producción** (Render sirve el TLS) |
-| `Permissions-Policy` | apaga cámara, micro, geolocalización y pago: si se cuela un script ajeno, no puede pedirlas |
-| `Content-Security-Policy` | anti-clickjacking moderno + cierra vectores reales |
+| Cabecera                          | Para qué                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `X-Content-Type-Options: nosniff` | que el navegador no adivine el tipo de un fichero (anti MIME-sniffing)                      |
+| `X-Frame-Options: SAMEORIGIN`     | anti-clickjacking clásico (navegadores viejos)                                              |
+| `Referrer-Policy`                 | no filtrar la URL interna al salir a un enlace externo                                      |
+| `Strict-Transport-Security`       | forzar HTTPS — **solo en producción** (Render sirve el TLS)                                 |
+| `Permissions-Policy`              | apaga cámara, micro, geolocalización y pago: si se cuela un script ajeno, no puede pedirlas |
+| `Content-Security-Policy`         | anti-clickjacking moderno + cierra vectores reales                                          |
 
 > [!info] La CSP va en DOS partes a propósito
 > **Obligatoria** (`Content-Security-Policy`): solo `frame-ancestors`, `base-uri`, `object-src 'none'` y `form-action`. No tocan de dónde se cargan scripts ni estilos, así que **no pueden dejar la pantalla en blanco**, y cierran vectores reales (robar la `<base>`, cargar plugins, mandar un formulario a otro sitio).
@@ -46,6 +46,20 @@ Todas las respuestas pasan por un middleware en `app.js` que pone las cabeceras.
 > **En observación** (`Content-Security-Policy-Report-Only`): la política de recursos completa. Report-Only **no bloquea nada** — el navegador solo avisa en su consola de lo que incumpliría. Es el paso profesional para desplegar una CSP sin romper la web: se vigila la consola y, cuando no salta nada, se promueve a obligatoria.
 
 > [!warning] Lo que impide una CSP de scripts de verdad: la CDN de Tailwind
+> [!note] Lo que se abrió para el mapa (21/09/2026)
+> [[Mapa de flota]] necesitó tres permisos más en la parte **en observación**, y
+> ninguno toca `script-src`:
+>
+> - `connect-src https://tiles.openfreemap.org` — MapLibre pide cada trozo de
+>   mapa por `fetch`, así que cae ahí. Sin esto el mapa se queda en gris.
+> - `worker-src 'self' blob:` y `child-src 'self' blob:` — los dibuja en un
+>   Worker creado desde un blob.
+> - `img-src` gana `blob:` por lo mismo.
+>
+> Es un dominio de mosaicos, sin clave y sin cuenta: no puede ejecutar nada
+> nuestro ni leer nada nuestro. Si algún día se cambia de proveedor de mapas,
+> esta línea se cambia con él.
+
 > El ERP carga Tailwind desde `cdn.tailwindcss.com`, que exige `'unsafe-inline'` y `'unsafe-eval'` en `script-src`. Con eso, la CSP casi no protege de XSS por script. **El arreglo de fondo es compilar Tailwind en el build y quitar la CDN**; entonces la política de recursos puede hacerse obligatoria y con `nonce` en vez de `unsafe-inline`. Pendiente. → [[Estado y pendientes]]
 
 Se quitó también la cabecera **`X-Powered-By: Express`** que Express pone sola: no ayuda a nadie de dentro y le dice a quien audita desde fuera el framework de un vistazo (`app.disable('x-powered-by')`).
