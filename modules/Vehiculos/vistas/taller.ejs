@@ -285,7 +285,12 @@
       return '<tr class="fila hover:bg-telecab-card2 cursor-pointer" data-id="' + f.id + '">' +
         '<td class="px-4 py-3 font-semibold text-telecab-text whitespace-nowrap">' +
           '<span class="inline-block w-2 h-2 rounded-full ' + c.barra + ' mr-2 align-middle" title="' + c.etiqueta + '"></span>' +
-          esc(f.matricula) + '</td>' +
+          esc(f.matricula) +
+          // El mismo aviso que en el mapa: de este coche Mapon no da nada, y sin
+          // Mapon no hay odometro que leer.
+          (f.conMapon ? '' : ' <span class="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-telecab-red/15 text-telecab-red"'
+            + ' title="Mapon no da nada de este coche: no se puede situar en el mapa ni leer su odómetro">sin Mapon</span>') +
+          '</td>' +
         '<td class="px-3 py-3 text-telecab-muted">' + esc(f.vehiculo) + '</td>' +
         '<td class="px-3 py-3 text-right tabular-nums text-telecab-text">' + n(f.odometro) +
           (fuente ? ' <span class="text-[10px] text-telecab-muted" title="' +

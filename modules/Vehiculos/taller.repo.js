@@ -146,7 +146,10 @@ async function cuadro({ busca, estado, sedes } = {}) {
            (o.km - u.km) AS desde,
            round(r.km_dia, 1)::float8 AS km_dia, r.dias AS dias_ritmo,
            (SELECT count(*) FROM mantenimiento m2
-             WHERE m2.vehiculo_id = v.id AND m2.anulado_at IS NULL) AS movimientos
+             WHERE m2.vehiculo_id = v.id AND m2.anulado_at IS NULL) AS movimientos,
+           -- Si Mapon da algo de este coche. El mapa avisa de los que no, y
+           -- aqui se marcan igual: sin Mapon no hay odometro que leer.
+           EXISTS (SELECT 1 FROM fv_posicion p WHERE p.matricula = v.matricula) AS con_mapon
       FROM vehiculo v
       LEFT JOIN cat_estado_vehiculo e ON e.codigo = v.estado_operativo
       LEFT JOIN base_zona b           ON b.id = v.base_zona_id
@@ -190,6 +193,7 @@ function pintar(f) {
     // normaliza aquí, ficha() compara "12" con 12 y no encuentra el coche.
     id: Number(f.id),
     matricula: f.matricula,
+    conMapon: f.con_mapon === true,
     vehiculo: f.marca_modelo || '',
     anio: f.anio,
     estadoOperativo: f.estado_etiqueta || f.estado_operativo,

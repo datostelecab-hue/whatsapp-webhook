@@ -24,6 +24,12 @@
     </button>
   </div>
 
+  <!-- ── LA ALERTA: coches de la flota de los que Mapon no da nada ──
+       No tienen punto en el mapa, asi que sin esto desaparecerian a la vista.
+       Se pinta en cuanto hay uno y se va sola cuando Mapon vuelve a verlos. -->
+  <div id="m-sinmapon" class="hidden px-4 py-2 border-b border-telecab-red/40 bg-telecab-red/10
+                              text-sm text-telecab-red shrink-0"></div>
+
   <div class="flex-1 flex min-h-0">
 
     <!-- ── La lista. NO es un Listado de la casa a propósito: no es una
@@ -125,6 +131,9 @@
   };
 
   const TONOS = {
+    // Coches nuestros de los que Mapon no da nada: no tienen punto en el mapa,
+    // van en la lista y en la alerta de arriba.
+    sinmapon:   { tk: '--tc-red',   icono: 'fa-satellite',            texto: 'Sin nada en Mapon' },
     trabajando: { tk: '--tc-green', icono: 'fa-taxi',                 texto: 'Trabajando' },
     descanso:   { tk: '--tc-warn',  icono: 'fa-mug-hot',              texto: 'Rueda en descanso' },
     suelto:     { tk: '--tc-red',   icono: 'fa-triangle-exclamation', texto: 'Rueda sin nadie' },
@@ -132,7 +141,7 @@
     singps:     { tk: '--tc-muted', icono: 'fa-satellite-dish',       texto: 'GPS sin fijar' },
     perdido:    { tk: '--tc-border',icono: 'fa-question',             texto: 'Sin señal' },
   };
-  const ORDEN = ['suelto', 'descanso', 'trabajando', 'parado', 'singps', 'perdido'];
+  const ORDEN = ['sinmapon', 'suelto', 'descanso', 'trabajando', 'parado', 'singps', 'perdido'];
   const CLASES_TONO = ORDEN.map(k => 'm-' + k);
 
   const hhmm = s => {
@@ -287,9 +296,12 @@
 
     DATOS.forEach(c => {
       if (filtro && c.tono !== filtro) return;
-      vistos.add(c.unidad);
+      // Sin posicion no hay punto que poner: ese coche va en la lista y en la
+      // alerta de arriba.
+      if (c.lat == null || c.lng == null) return;
+      vistos.add(c.clave);
       const t = TONOS[c.tono] || TONOS.parado;
-      let m = marcas.get(c.unidad);
+      let m = marcas.get(c.clave);
 
       if (!m) {
         const el = document.createElement('div');
@@ -300,7 +312,7 @@
           .setPopup(new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '260px' }))
           .addTo(mapa);
         m = { marker, el, datos: c };
-        marcas.set(c.unidad, m);
+        marcas.set(c.clave, m);
       } else {
         m.marker.setLngLat([c.lng, c.lat]);
       }
@@ -344,13 +356,16 @@
     // La mediana y no la media: con cien coches en Madrid y cinco en Barcelona,
     // la media se va hacia Zaragoza. La mediana se queda donde está la gente, y
     // el día que la mayoría sea de Barcelona se irá sola allí.
-    if (primera && DATOS.length) {
+    // Solo con los que tienen punto: los de "sin nada en Mapon" traen la
+    // posicion a NULL y romperian la mediana.
+    const conPunto = DATOS.filter(c => c.lat != null && c.lng != null);
+    if (primera && conPunto.length) {
       const mediana = v => v.slice().sort((a, b) => a - b)[Math.floor(v.length / 2)];
-      const clat = mediana(DATOS.map(c => c.lat));
-      const clng = mediana(DATOS.map(c => c.lng));
-      const cerca = DATOS.filter(c => Math.abs(c.lat - clat) < 0.5 && Math.abs(c.lng - clng) < 0.5);
+      const clat = mediana(conPunto.map(c => c.lat));
+      const clng = mediana(conPunto.map(c => c.lng));
+      const cerca = conPunto.filter(c => Math.abs(c.lat - clat) < 0.5 && Math.abs(c.lng - clng) < 0.5);
       const b = new maplibregl.LngLatBounds();
-      (cerca.length ? cerca : DATOS).forEach(c => b.extend([c.lng, c.lat]));
+      (cerca.length ? cerca : conPunto).forEach(c => b.extend([c.lng, c.lat]));
       mapa.fitBounds(b, { padding: 60, maxZoom: 13, duration: 0 });
       primera = false;
     }
@@ -380,13 +395,15 @@
     }
     $('#m-lista').innerHTML = vis.map(c => {
       const t = TONOS[c.tono] || TONOS.parado;
-      return '<button data-unidad="' + c.unidad + '"'
+      return '<button data-clave="' + esc(c.clave) + '"'
         + ' class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition flex items-center gap-2">'
         + '<span class="w-2 h-2 rounded-full shrink-0" style="background:' + cv(t.tk) + '"></span>'
         + '<span class="min-w-0 flex-1">'
         + '<span class="block text-xs font-semibold truncate">' + esc(c.matricula || '#' + c.unidad) + '</span>'
         + '<span class="block text-[10px] text-telecab-muted truncate">'
-        + esc(c.conductor || (c.situacion ? '—' : 'no está en BOLT')) + '</span></span>'
+        + esc(c.tono === 'sinmapon'
+            ? (c.estadoVehiculo || 'sin estado') + ' · sin Mapon'
+            : (c.conductor || (c.situacion ? '—' : 'no está en BOLT'))) + '</span></span>'
         + (c.velocidad ? '<span class="text-[10px] text-telecab-muted tabular-nums shrink-0">'
             + c.velocidad + '</span>' : '') + '</button>';
     }).join('');
@@ -402,6 +419,15 @@
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar');
       $('#m-error').classList.add('hidden');
       DATOS = r.coches || [];
+      const sm = r.sinMapon || [];
+      const caja = $('#m-sinmapon');
+      caja.classList.toggle('hidden', !sm.length);
+      caja.innerHTML = sm.length
+        ? '<i class="fa-solid fa-triangle-exclamation mr-1"></i><b>' + sm.length + ' coche' + (sm.length === 1 ? '' : 's')
+          + ' de la flota sin nada en Mapon:</b> '
+          + sm.map(x => esc(x.matricula) + ' <span class="opacity-75">(' + esc(x.estado || 'sin estado') + ')</span>').join(' · ')
+          + ' <span class="opacity-75">— no se pueden situar en el mapa.</span>'
+        : '';
       pintarChips(r.cuenta || {});
       pintarLista();
       pintar();
@@ -416,7 +442,7 @@
         : '';
       const el = $('#m-frescura');
       el.textContent = f.unidades
-        ? f.unidades + ' coches · posición de hace ' + hace(f.hace) + cola
+        ? DATOS.length + ' coches de Madrid · posición de hace ' + hace(f.hace) + cola
         : 'todavía no hay ninguna posición guardada';
       el.title = f.unidades
         ? 'La vuelta pide la posición a Mapon cada 30 segundos, pero el equipo del coche solo habla cada minuto aproximadamente.\n\n'
@@ -467,10 +493,19 @@
   });
 
   $('#m-lista').addEventListener('click', e => {
-    const b = e.target.closest('button[data-unidad]');
+    const b = e.target.closest('button[data-clave]');
     if (!b) return;
-    const m = marcas.get(Number(b.dataset.unidad));
-    if (!m) return;
+    const m = marcas.get(b.dataset.clave);
+    if (!m) {
+      // Sin punto en el mapa: no hay adonde volar. Se dice que le pasa.
+      const c = DATOS.find(x => x.clave === b.dataset.clave);
+      if (c && c.tono === 'sinmapon') {
+        Dialogo.aviso({ titulo: c.matricula + ' · sin nada en Mapon', tono: 'error',
+          texto: (c.motivo || 'Mapon no da nada de este coche') + '. En la casa figura como «'
+            + (c.estadoVehiculo || 'sin estado') + '». Hay que mirar su equipo con el taller.' });
+      }
+      return;
+    }
     mapa.flyTo({ center: m.marker.getLngLat(), zoom: Math.max(mapa.getZoom(), 14), duration: 700 });
     m.marker.togglePopup();
   });

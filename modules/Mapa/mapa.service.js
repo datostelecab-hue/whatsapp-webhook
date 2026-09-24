@@ -128,6 +128,10 @@ const clave = sedes => (Array.isArray(sedes) && sedes.length ? [...sedes].sort()
 /** De qué color va este coche. La única regla del mapa. */
 function tono(c, sit) {
   const s = sit === undefined ? situacionDe(c).situacion : sit;
+  // Un coche NUESTRO del que Mapon no da ni una posicion: no se puede pintar
+  // en el mapa, y por eso mismo es lo primero que hay que ver. Esta en taller o
+  // siniestrado, o tiene el equipo quitado, o nunca se le puso.
+  if (c.mapon_unit == null) return 'sinmapon';
   if (PERDIDOS.includes(c.estado_mapon)) return 'perdido';
   if (c.estado_mapon === SIN_GPS) return 'singps';
   if (c.estado_mapon !== 'driving') return 'parado';
@@ -145,6 +149,11 @@ function tono(c, sit) {
  * mira —llamar al conductor o mirar el sistema— y por eso se dice.
  */
 function porQue(c, t, boltHace) {
+  if (t === 'sinmapon') {
+    return c.unidad_conocida
+      ? 'Mapon tiene su equipo, pero no da ninguna posición'
+      : 'No hay nada de este coche en Mapon: ni equipo ni posición';
+  }
   if (t === 'singps') {
     return 'El equipo habla pero no coge satélite. Está donde marca el punto, de hace unos minutos';
   }
@@ -181,9 +190,15 @@ async function frente({ forzar = false, sedes = null } = {}) {
     const v = situacionDe(c);
     const t = tono(c, v.situacion);
     return {
-      unidad: Number(c.mapon_unit),
+      unidad: c.mapon_unit == null ? null : Number(c.mapon_unit),
+      // La CLAVE de cada fila en la pantalla. Era la unidad de Mapon, y un coche
+      // sin Mapon no la tiene: se usa su id nuestro en su lugar.
+      clave: c.mapon_unit != null ? 'u' + c.mapon_unit : 'v' + c.vehiculo_id,
       matricula: c.matricula || null,
-      lat: Number(c.lat), lng: Number(c.lng),
+      // Sin posicion, NULL y no cero: Number(null) es 0, y el 0,0 es un punto
+      // real en el Atlantico frente a Ghana.
+      lat: c.lat == null ? null : Number(c.lat),
+      lng: c.lng == null ? null : Number(c.lng),
       velocidad: c.velocidad == null ? null : Number(c.velocidad),
       rumbo: c.rumbo == null ? null : Number(c.rumbo),
       antiguedad: c.antiguedad == null ? null : Number(c.antiguedad),
@@ -226,6 +241,9 @@ async function frente({ forzar = false, sedes = null } = {}) {
     cuenta,
     // Lo que de verdad importa del resumen: cuántos hay ahora mismo sueltos.
     sueltos: cuenta.suelto || 0,
+    // Y los de la flota de los que Mapon no sabe nada: la alerta de arriba.
+    sinMapon: coches.filter(c => c.tono === 'sinmapon')
+      .map(c => ({ matricula: c.matricula, estado: c.estadoVehiculo, motivo: c.motivo })),
     frescura: {
       unidades: Number(frescura.dentro || 0),
       hace: frescura.hace == null ? null : Number(frescura.hace),

@@ -10,29 +10,6 @@ const router = express.Router();
 // salen las sedes, que no se escriben a mano en ningún sitio.
 const mapa = require('./mapa.service');
 const veh = require('../Vehiculos/facturas.service');
-const actor = require('../../services/repo/actor');
-const permisos = require('../../services/permisos');
-
-const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
-
-/**
- * QUÉ SEDES PUEDE VER QUIEN MIRA.
- *
- * El mapa se recorta igual que Vehículos, Mantenimientos y Facturas: quien no
- * tenga la llave `/vehiculos/sedes` ve SOLO Madrid, que es lo que se pidió. Se
- * hace por el permiso y no fijando 'madrid' a secas para no dejar a Óscar sin
- * sus coches de Barcelona el día que abra el mapa.
- *
- * Ante CUALQUIER fallo, Madrid. Fallar hacia cerrado: nunca de más.
- */
-async function todasLasSedes(req) {
-  const u = req.usuario || {};
-  if (ADMIN_TOTAL.includes(u.rol)) return true;
-  try {
-    const id = (u && u.id) || await actor.idDe(req);
-    return id ? (await permisos.clavesDe(id)).has('/vehiculos/sedes') : false;
-  } catch (_) { return false; }
-}
 
 router.get('/', (req, res) => {
   res.render('mapa', { titulo: 'Mapa de flota', seccion: 'mapa', layout: 'layout-gestion' });
@@ -44,7 +21,12 @@ router.get('/', (req, res) => {
  */
 router.get('/api/coches', async (req, res) => {
   try {
-    const sedes = veh.sedesDe({ todasLasSedes: await todasLasSedes(req) });
+    // SOLO MADRID, para todo el mundo (24/09/2026). Lo pidio Camilo: la flota
+    // del mapa es la que tiene a su cargo Oscar, que es la de Madrid, y la
+    // misma que sale en Mantenimientos. Antes dependia de la llave
+    // '/vehiculos/sedes' -quien la tenia veia tambien Barcelona- y por eso el
+    // mapa y Mantenimientos no contaban los mismos coches.
+    const sedes = [veh.SEDE_POR_DEFECTO];
     const d = await mapa.frente({ forzar: req.query.forzar === '1', sedes });
     res.json({ status: 'ok', sedes, ...d });
   } catch (e) {

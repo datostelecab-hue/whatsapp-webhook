@@ -40,7 +40,10 @@ const db = require('../../services/db');
 async function coches(sedes) {
   const filtro = Array.isArray(sedes) && sedes.length ? sedes : null;
   const r = await db.consulta(`
-    SELECT p.mapon_unit, v.matricula,
+    SELECT p.mapon_unit, v.matricula, v.id AS vehiculo_id,
+           -- Si Mapon conoce el equipo del coche aunque no de posicion. Es lo
+           -- que separa "no hay NADA en Mapon" de "Mapon no dice donde esta".
+           fvv.mapon_unit                                            AS unidad_conocida,
            p.lat, p.lng, p.velocidad, p.rumbo, p.estado_mapon,
            EXTRACT(EPOCH FROM (now() - p.visto_at))::int             AS antiguedad,
            EXTRACT(EPOCH FROM (now() - p.estado_desde))::int         AS lleva_asi,
@@ -73,11 +76,16 @@ async function coches(sedes) {
            -- callado tres meses es un equipo que hay que ir a mirar.
            ev.etiqueta                                               AS estado_vehiculo,
            ev.es_operativo                                           AS coche_operativo
-      FROM fv_posicion p
-      JOIN vehiculo v ON v.matricula = p.matricula AND v.baja_at IS NULL
+      -- SE PARTE DE NUESTRA FLOTA, NO DE MAPON (24/09/2026). Antes era al
+      -- reves -de fv_posicion hacia vehiculo- y un coche que Mapon no conoce
+      -- no salia en el mapa ni avisaba de nada: sencillamente no existia. Lo
+      -- pidio Camilo: los coches son los NUESTROS, esten en taller o donde
+      -- esten, y si de alguno no hay nada en Mapon, eso es una alerta.
+      FROM vehiculo v
+      LEFT JOIN fv_posicion p ON p.matricula = v.matricula
       LEFT JOIN fv_ahora a ON a.mapon_unit = p.mapon_unit
       LEFT JOIN cat_estado_vehiculo ev ON ev.codigo = v.estado_operativo
-      LEFT JOIN fv_vehiculo fvv ON fvv.matricula = p.matricula
+      LEFT JOIN fv_vehiculo fvv ON fvv.matricula = v.matricula
       -- Doce horas de ventana: más que un turno largo. Lo que no tenga un
       -- apunte en doce horas es que no lo lleva nadie, y eso ya lo dice el NULL.
       LEFT JOIN LATERAL (
@@ -90,7 +98,8 @@ async function coches(sedes) {
       LEFT JOIN fv_estado_bolt eb ON eb.estado = cru.estado
       LEFT JOIN fv_cat_situacion sc ON sc.codigo = eb.situacion
       LEFT JOIN fv_conductor cc ON cc.uuid = cru.driver_uuid
-     WHERE ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
+     WHERE v.baja_at IS NULL
+       AND ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
      ORDER BY v.matricula`, [filtro]);
   return r.rows;
 }

@@ -140,16 +140,41 @@ diez minutos:
   qué no trabaja se paga dos veces: en el ridículo y en que la próxima vez ya
   nadie se crea el aviso.
 
-## Solo los coches de la casa, y solo de tu sede
+## La flota de Madrid, entera, y la misma que en Mantenimientos (24/09/2026)
 
-`JOIN vehiculo` **INNER**, filtrado por las sedes que puede ver quien mira. De
-las 106 unidades de la cuenta de Mapon quedan **88**: se van 12 que no son
-coches del ERP —equipos de otra cosa, matrículas nunca dadas de alta, un
-`1159283703`— y 6 de Barcelona.
+**Se parte de NUESTRA flota, no de Mapon**: `FROM vehiculo LEFT JOIN
+fv_posicion`. Antes era al revés —de las posiciones hacia los coches— y un coche
+nuestro que Mapon no conoce **no existía** en el mapa: ni punto, ni aviso.
 
-El recorte va por el permiso `/vehiculos/sedes`, el mismo de [[Vehiculos]] y
-Mantenimientos, no por un `'madrid'` escrito a mano: así Óscar sigue viendo los
-suyos. Ante cualquier fallo, Madrid.
+**Solo Madrid, para todo el mundo.** Es la flota que tiene a su cargo Óscar, y
+la misma que sale en [[Taller mantenimiento|Mantenimientos]]. Antes el recorte
+iba por el permiso `/vehiculos/sedes` —quien lo tenía veía también Barcelona—, y
+por eso el mapa y Mantenimientos no contaban los mismos coches. Lo pidió Camilo
+explícitamente; la vieja nota decía que era para no dejar a Óscar sin sus coches
+de Barcelona, y resulta que los suyos son los de Madrid. La pantalla de
+[[Vehiculos]] sigue con su permiso: esto es solo mapa y Mantenimientos.
+
+**Salen todos, estén como estén**: operativos, en taller, siniestrados. Cada uno
+con el estado que da Mapon (el tono) y el suyo en la casa (en la ficha).
+
+Medido ese día: **81 coches**, los mismos 81 en las dos pantallas. **82 filas**
+en el mapa porque un coche lleva dos equipos de Mapon.
+
+### La alerta: coches de los que Mapon no da NADA
+
+Tono propio, **«Sin nada en Mapon»**, en rojo y el primero de la cinta. No tienen
+punto que pintar —la posición va a `NULL`, no a cero, que el 0,0 es un sitio
+real frente a Ghana—, así que van en la lista de la izquierda y en una **franja
+roja arriba del mapa** con la matrícula y su estado en la casa. Pinchar la fila
+dice qué le pasa. La franja se va sola cuando Mapon vuelve a verlos.
+
+Se distingue *«no hay nada: ni equipo ni posición»* de *«Mapon tiene su equipo
+pero no da posición»* (`fv_vehiculo.mapon_unit`): lo primero es un equipo que no
+existe o se quitó; lo segundo, uno que no habla.
+
+El 24/09 eran tres: **0744MMZ** (siniestro), **8475KWG** y **9549LTP** (en
+taller). Mantenimientos los marca igual, con una chapa «sin Mapon»: sin Mapon
+tampoco hay odómetro que leer.
 
 > [!note] Lo que se cae, se cuenta
 > Un equipo que rueda y no casa con ningún coche del maestro **deja de salir**.

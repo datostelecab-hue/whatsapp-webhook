@@ -26,14 +26,13 @@ const facturas = require('./facturas.service');
  * Las sedes que ve quien pregunta. Sin la llave '/vehiculos/sedes', solo Madrid
  * — que es la flota que Óscar mantiene. Ante cualquier fallo, Madrid.
  */
-async function sedesDe(req) {
-  const u = req.usuario || {};
-  if (ADMIN_TOTAL.includes(u.rol)) return facturas.SEDES;
-  try {
-    const id = (u && u.id) || await actor.idDe(req);
-    const claves = id ? await permisos.clavesDe(id) : null;
-    return claves && claves.has('/vehiculos/sedes') ? facturas.SEDES : [facturas.SEDE_POR_DEFECTO];
-  } catch (_) { return [facturas.SEDE_POR_DEFECTO]; }
+//
+// SOLO MADRID, para todo el mundo (24/09/2026): la flota que mantiene Oscar,
+// la misma que sale en el mapa. Antes quien tenia la llave '/vehiculos/sedes'
+// veia tambien Barcelona, y Mantenimientos y el mapa no contaban los mismos
+// coches. `req` se deja en la firma para no tocar a quien la llama.
+async function sedesDe(req) { // eslint-disable-line no-unused-vars
+  return [facturas.SEDE_POR_DEFECTO];
 }
 
 const ADMIN_TOTAL = ['superadmin', 'desarrollador'];
