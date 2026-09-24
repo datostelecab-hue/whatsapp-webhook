@@ -640,6 +640,32 @@
    * «Baja médica», «Permiso»— y solo se queda en «Ausencias» cuando hay mezcla,
    * que es cuando la palabra genérica sí dice algo.
    */
+  /**
+   * LA MEDIA POR DÍA, CON DOS CIFRAS.
+   *
+   * La grande es la media de los días que salió: horas ÷ días trabajados. Dice
+   * cuánto rinde un día en la calle, pero un día de «Ausencia» ni la sube ni
+   * la baja. Nelson Ontiveros hizo en agosto 147 h en 19 días (7,7 h/día) y
+   * tuvo 4 ausencias que no se notaban en ningún número.
+   *
+   * La de debajo cuenta cada «Ausencia» como un día de 0 h: horas ÷ (días
+   * trabajados + ausencias). Es la que dice cuánto rinde un día que le tocaba
+   * trabajar. Vacaciones, bajas, permisos y libranzas no entran en ninguna de
+   * las dos. Lo de antes del alta y después de la baja tampoco (`fuera`).
+   */
+  function mediaKpi(s) {
+    const media = s.trabajados ? s.horas / s.trabajados : null;
+    const dias = s.trabajados + s.nosalio;
+    const conAus = dias ? s.horas / dias : null;
+    const color = media != null && media < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text';
+    if (!s.nosalio) return ['Media por día', media != null ? nf1.format(media) + ' h' : '—', color];
+    return ['Media por día', media != null ? nf1.format(media) + ' h' : '—', color,
+      `${nf1.format(conAus)} h contando ${s.nosalio === 1 ? 'la ausencia' : 'las ' + s.nosalio + ' ausencias'}`,
+      `${media != null ? nf1.format(media) : '—'} h: media de los días que salió (${nf0.format(Math.round(s.horas))} h ÷ ${s.trabajados} días).\n` +
+      `${nf1.format(conAus)} h: contando cada «Ausencia» como un día de 0 h (${nf0.format(Math.round(s.horas))} h ÷ ${dias} días).\n` +
+      'Vacaciones, bajas, permisos y libranzas no cuentan en ninguna.'];
+  }
+
   function ausenciasKpi(s) {
     const tipos = [['V', 'Vacaciones', 'vacaciones'], ['B', 'Baja médica', 'bajas'],
       ['P', 'Permiso', 'permisos']].filter(([k]) => s[k]);
@@ -673,13 +699,13 @@
     const kp = [
       ['Horas', nf0.format(Math.round(s.horas)), 'text-telecab-text'],
       ['Días trabajados', s.trabajados, 'text-telecab-green'],
-      ['Media por día', s.trabajados ? nf1.format(s.horas / s.trabajados) + ' h' : '—', s.trabajados && s.horas / s.trabajados < OBJETIVO ? 'text-telecab-warn' : 'text-telecab-text'],
+      mediaKpi(s),
       ['Ausencias', s.nosalio, s.nosalio ? 'text-telecab-red' : 'text-telecab-text'],
       ausenciasKpi(s),
       ['Justificados', s.J ? `${s.J}${s.horasJ ? ' · ' + nf1.format(s.horasJ) + ' h' : ''}` : 0, s.J ? 'text-telecab-azul' : 'text-telecab-text'],
     ];
     $('#b-kpis').innerHTML = kp.map(k => `<div class="bg-telecab-dark/50 rounded-xl px-3 py-2"${
-      k[3] ? ` title="${esc(k[3])}"` : ''}><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p>${
+      k[4] || k[3] ? ` title="${esc(k[4] || k[3])}"` : ''}><p class="text-[11px] text-telecab-muted">${k[0]}</p><p class="text-lg font-bold tabular-nums ${k[2]}">${k[1]}</p>${
       k[3] ? `<p class="text-[10px] text-telecab-muted truncate">${esc(k[3])}</p>` : ''}</div>`).join('');
     pintarCalendario(c); pintarHoras(c); pintarAusencias(c);
     pintarDiaInfo(c);

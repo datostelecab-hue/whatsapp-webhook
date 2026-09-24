@@ -65,6 +65,17 @@ Nadie ha trabajado mañana, así que horas, días trabajados, media y «Ausencia
 > y la azul se quedó sin nombre genérico. De ahí la enumeración. Dos cajas
 > llamadas «Ausencias» una al lado de la otra era el error a evitar.
 
+### La media por día lleva dos cifras (24/09/2026)
+
+La grande es **la media de los días que salió**: horas ÷ días trabajados (un día con J cuenta como trabajado). Un día de «Ausencia» no entra, así que ni la sube ni la baja. Nelson Ontiveros hizo en agosto 147 h en 19 días, **7,7 h**, con 4 ausencias que no se notaban en ningún número.
+
+Debajo, **cada «Ausencia» cuenta como un día de 0 h**: horas ÷ (días trabajados + ausencias). En el caso de Nelson, 147 ÷ 23 = **6,4 h**, lo que rinde un día que le tocaba trabajar. Solo sale si hay alguna ausencia; si no, las dos cifras son la misma. Vacaciones, bajas, permisos y libranzas no entran en ninguna. Lo de antes del alta y después de la baja tampoco: esos días son `fuera` y no cuentan en ninguna cifra.
+
+Es solo de la ficha de la bitácora (`mediaKpi` en `vistas/bitacora.ejs`). La general ordena por la media de siempre.
+
+> [!warning] Junio no tiene horas de BOLT
+> Las horas de BOLT empiezan el 30/06/2026 y la rejilla el 01/06, así que todo junio sale como «Ausencia» para todo el mundo. En la vista del año, la segunda cifra de Nelson baja a 4,1 h: 30 de sus 37 ausencias son de junio. Mirado desde julio, es 6,4 h.
+
 ## El sellado: por qué el pasado no se recalcula solo
 
 `bitacora_horas` guarda el histórico ya calculado —una fila por conductor y jornada, en segundos— y `bitacora_sello` guarda **qué jornadas están selladas**, tengan filas o no.
