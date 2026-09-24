@@ -5,17 +5,28 @@
 // coche. La base dice dónde está y qué hace; decidir qué significa eso es de
 // aquí, no de una consulta ni de la vista.
 //
-// ── EL SEMÁFORO ────────────────────────────────────────────────────────────
+// ── EL SEMÁFORO (24/09/2026) ───────────────────────────────────────────────
 //
-// La pregunta que hay que contestar de un vistazo es «¿hay algún coche rodando
-// sin que nadie esté dando servicio?». Por eso el reparto no es por estado de
-// BOLT ni por estado de Mapon: es por LOS DOS A LA VEZ.
+// El reparto no es por estado de BOLT ni por estado de Mapon: es por LOS DOS A
+// LA VEZ, y en este orden, que es el que pidió Camilo para los filtros:
 //
-//   trabajando  verde   rueda y está en viaje o en espera. Lo normal.
-//   parado      apagado no se mueve. Da igual lo que diga BOLT: no hay nada que mirar.
-//   descanso    ámbar   rueda estando en descanso. Conectado, pero no da servicio.
-//   suelto      ROJO    RUEDA Y NO HAY NADIE CONECTADO. Esto es lo que se busca.
-//   perdido     gris    el equipo lleva rato sin hablar: no se sabe.
+//   viaje        verde        de viaje en BOLT. Lo normal.
+//   espera       azul         en espera DENTRO de la M-30: donde tiene que estar.
+//   esperafuera  azul que     en espera FUERA de la M-30. No es una falta, pero
+//                parpadea     hay que mirarlo: la espera se hace dentro.
+//   descanso     amarillo     rueda estando en descanso. Conectado, sin dar servicio.
+//   suelto       ROJO         RUEDA Y NO HAY NADIE CONECTADO. Lo que más se busca.
+//   errorgps     morado       de viaje en BOLT y Mapon lo da por parado. No
+//                             puede ser: el GPS no está dando la posición real.
+//
+// Y lo que no es ninguno de esos seis: `parado` (no se mueve y no está
+// trabajando), `singps` y `perdido` (el equipo no fija o no habla) y
+// `sinmapon` (de Mapon no hay nada).
+//
+// Antes «trabajando» juntaba viaje y espera, y solo si el coche rodaba: un
+// coche esperando aparcado —que es como se espera— salía apagado, igual que
+// uno que nadie usa. La espera va ahora por su lado, se mueva o no, y lo que la
+// separa es DÓNDE está.
 //
 // `suelto` incluye dos casos distintos a propósito: el coche que está en BOLT
 // con el conductor desconectado, y el equipo que no casa con ningún coche de
@@ -34,6 +45,7 @@
 // enseña nada más viejo de lo que ya era.
 
 const repo = require('./mapa.repo');
+const { dentroDeM30 } = require('./m30');
 
 // EL «SIN SEÑAL» LO DICE MAPON, NO UN CRONÓMETRO NUESTRO.
 //
@@ -69,6 +81,17 @@ const repo = require('./mapa.repo');
 // es un coche que está donde dice, con el GPS callado.
 const PERDIDOS = ['nodata'];
 const SIN_GPS = 'nogps';
+
+// EL ERROR DE GPS: de viaje en BOLT y Mapon lo da por parado. Lo pidió Camilo
+// el 24/09/2026: «no es posible que un coche esté de viaje en BOLT y Mapon
+// diga que está detenido». Medido ese día, el 9590MMX llevaba DOS HORAS así,
+// con el equipo sin dar señales nuevas desde hacía cinco minutos.
+//
+// Pero parado un rato sí puede estar: un semáforo, un atasco, esperando al
+// pasajero en la recogida. Diez minutos seguidos parado según Mapon —el
+// `start` de su propio estado— ya no es nada de eso. En la muestra de ese día,
+// fuera del 9590MMX no hubo ni uno de viaje y parado.
+const GPS_PARADO_S = 600;
 
 // CUÁNDO DEJA DE SER DE FIAR LA MITAD DE BOLT. La tubería más lenta de las dos
 // —la ingesta— pasa cada 10 min; con el doble y pico ya ha fallado algo. A
@@ -125,17 +148,36 @@ const TTL_CACHE_MS = 5000;
 const cache = new Map();   // 'madrid' | 'madrid,barcelona' → { ts, datos }
 const clave = sedes => (Array.isArray(sedes) && sedes.length ? [...sedes].sort().join(',') : 'todas');
 
-/** De qué color va este coche. La única regla del mapa. */
+/** De qué color va este coche. La única regla del mapa. Ver EL SEMÁFORO arriba. */
 function tono(c, sit) {
   const s = sit === undefined ? situacionDe(c).situacion : sit;
   // Un coche NUESTRO del que Mapon no da ni una posicion: no se puede pintar
-  // en el mapa, y por eso mismo es lo primero que hay que ver. Esta en taller o
-  // siniestrado, o tiene el equipo quitado, o nunca se le puso.
+  // en el mapa. Esta en taller o siniestrado, o tiene el equipo quitado, o
+  // nunca se le puso. Tiene su franja roja arriba.
   if (c.mapon_unit == null) return 'sinmapon';
+  const rueda = c.estado_mapon === 'driving';
+  // De viaje y parado según Mapon, desde hace rato: el GPS miente. Va ANTES
+  // que el `perdido` a propósito: un equipo que no habla en un coche que está
+  // haciendo un viaje es justo este error, no un coche del que no se sabe nada.
+  //
+  // «Desde hace rato» es lo que diga el reloj de Mapon —cuánto lleva en ese
+  // estado— o lo que lleve el equipo sin hablar, lo que sea mayor: un equipo
+  // callado diez minutos en un coche de viaje tampoco está dando la posición.
+  if (s === 'viaje') {
+    const rato = Math.max(c.lleva_asi == null ? 0 : Number(c.lleva_asi), c.antiguedad == null ? 0 : Number(c.antiguedad));
+    return !rueda && rato >= GPS_PARADO_S ? 'errorgps' : 'viaje';
+  }
+  // Un equipo que no habla hace días no dice dónde espera nadie: su punto es
+  // de cuando se calló.
   if (PERDIDOS.includes(c.estado_mapon)) return 'perdido';
+  // La espera, se mueva o no —esperar es estar aparcado—, y por DÓNDE está. El
+  // `nogps` pasa: su punto es de hace minutos, vale para saber la zona.
+  if (s === 'espera') {
+    return dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)) === false
+      ? 'esperafuera' : 'espera';
+  }
   if (c.estado_mapon === SIN_GPS) return 'singps';
-  if (c.estado_mapon !== 'driving') return 'parado';
-  if (s === 'viaje' || s === 'espera') return 'trabajando';
+  if (!rueda) return 'parado';
   if (s === 'descanso') return 'descanso';
   return 'suelto';
 }
@@ -156,6 +198,13 @@ function porQue(c, t, boltHace) {
   }
   if (t === 'singps') {
     return 'El equipo habla pero no coge satélite. Está donde marca el punto, de hace unos minutos';
+  }
+  if (t === 'esperafuera') return 'En espera fuera de la M-30';
+  if (t === 'errorgps') {
+    const parado = c.lleva_asi == null ? '' : ` desde hace ${Math.round(Number(c.lleva_asi) / 60)} min`;
+    const base = `BOLT dice que va de viaje y Mapon que está parado${parado}: el GPS no da la posición real`;
+    const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
+    return viejo ? base + ` — OJO: lo de BOLT es de hace ${Math.round(boltHace / 60)} min` : base;
   }
   if (t !== 'suelto') return null;
   const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
@@ -219,6 +268,13 @@ async function frente({ forzar = false, sedes = null } = {}) {
       conectado: v.situacion != null && v.situacion !== 'desconectado',
       conductor: v.conductor,
       telefono: v.telefono,
+      // EL ÚLTIMO QUE LO LLEVÓ EN BOLT, sin ventana de tiempo. La lista enseña a
+      // la persona y no la matrícula (Camilo, 24/09/2026): con un coche parado
+      // desde ayer, «quién lo tuvo» es lo que se quiere saber.
+      ultimoConductor: c.ultimo_conductor || null,
+      ultimoHace: c.ultimo_hace == null ? null : Number(c.ultimo_hace),
+      // Dentro o fuera de la M-30, para quien lo quiera leer sin repetir la cuenta.
+      dentroM30: dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)),
       // De cuál de las dos tuberías salió esto. No se pinta, pero contesta
       // "¿por qué dice eso?" sin abrir la base.
       fuente: v.fuente,
@@ -229,8 +285,9 @@ async function frente({ forzar = false, sedes = null } = {}) {
       sede: c.sede || null,
       tono: t,
       // Un rojo sobre datos de BOLT viejos no es un rojo: es un "no se sabe".
-      // La vista lo pinta distinto y el aviso no lo llama.
-      dudoso: t === 'suelto' && !boltFiable,
+      // La vista lo pinta distinto y el aviso no lo llama. Lo mismo el error de
+      // GPS: si lo de BOLT es viejo, el «de viaje» puede haber acabado hace rato.
+      dudoso: (t === 'suelto' || t === 'errorgps') && !boltFiable,
       motivo: porQue(c, t, boltHace),
     };
   });
@@ -289,4 +346,6 @@ async function sueltos({ sedes = null, minSegundos = 180 } = {}) {
 /** Se llama al escribir posiciones nuevas: la foto de antes ya no vale. */
 const olvidar = () => { cache.clear(); };
 
-module.exports = { frente, sueltos, olvidar, tono, PERDIDOS, SIN_GPS, BOLT_FIABLE_S };
+module.exports = { frente, sueltos, olvidar, tono, PERDIDOS, SIN_GPS, BOLT_FIABLE_S, GPS_PARADO_S,
+  // El anillo, para que la pantalla lo pinte sin tener que saber de dónde sale.
+  M30: require('./m30').POLIGONO };

@@ -13,6 +13,16 @@
   <!-- ── La cinta: el recuento es el resumen, y se pincha para filtrar ── -->
   <div class="flex items-center gap-2 px-4 py-2 border-b border-telecab-border
               bg-telecab-card/60 backdrop-blur-sm shrink-0 flex-wrap">
+    <!-- El buscador va en la cinta y no en la lista: la lista no sale en el
+         móvil, y el filtro tiene que valer para el mapa también. -->
+    <label class="relative shrink-0" title="Busca por conductor —el de ahora o el último que lo llevó en BOLT— o por matrícula. Intro vuela al primero.">
+      <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-telecab-muted pointer-events-none"></i>
+      <input id="m-buscar" type="search" autocomplete="off" spellcheck="false" placeholder="Conductor o matrícula"
+             aria-label="Buscar por conductor o matrícula"
+             class="w-44 sm:w-52 pl-7 pr-2 py-1.5 rounded-lg bg-telecab-dark/60 border border-telecab-border
+                    text-xs text-telecab-text placeholder:text-telecab-muted
+                    focus:outline-none focus:border-telecab-gold transition">
+    </label>
     <div id="m-chips" class="flex items-center gap-1.5 flex-wrap"></div>
     <div class="flex-1"></div>
     <p id="m-frescura" class="text-[11px] text-telecab-muted tabular-nums"
@@ -85,9 +95,22 @@
     0%, 100% { box-shadow: 0 0 0 0   rgb(var(--tc-red) / .55); }
     50%      { box-shadow: 0 0 0 9px rgb(var(--tc-red) / 0); }
   }
+  /* LA ESPERA FUERA DE LA M-30 PARPADEA (24/09/2026). Es el mismo azul que la
+     de dentro —las dos son espera— y lo que las separa es esto: se enciende y se
+     apaga. Late distinto del rojo a propósito: el rojo pulsa un halo, este se
+     apaga entero, y así no se confunden de reojo. Lo lleva también el punto
+     de la lista. */
+  .m-coche.m-esperafuera, .m-parpadea { animation: m-parpadeo 1.1s ease-in-out infinite; }
+  @keyframes m-parpadeo { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+
   /* Quien pidió menos movimiento en su sistema no quiere que una pantalla se
-     lo salte. El rojo ya distingue; el latido solo ayuda a encontrarlo. */
-  @media (prefers-reduced-motion: reduce) { .m-coche.m-suelto { animation: none; } }
+     lo salte. El rojo ya distingue; el latido solo ayuda a encontrarlo. La
+     espera de fuera, sin parpadeo, lleva un anillo discontinuo: algo tiene que
+     separarla de la de dentro. */
+  @media (prefers-reduced-motion: reduce) {
+    .m-coche.m-suelto, .m-coche.m-esperafuera, .m-parpadea { animation: none; }
+    .m-coche.m-esperafuera { outline: 2px dashed rgb(var(--tc-mapa-espera)); outline-offset: 2px; }
+  }
 
   /* El que lleva rato sin hablar se pinta a medias: no es dónde está, es dónde
      estuvo, y eso tiene que notarse sin leer nada. */
@@ -130,19 +153,49 @@
     return a == null ? 'rgb(' + v + ')' : 'rgb(' + v + ' / ' + a + ')';
   };
 
+  // LOS SEIS DE CAMILO, EN SU ORDEN (24/09/2026): viaje, espera dentro de la
+  // M-30, espera fuera, rodando en descanso, rodando desconectado y error de
+  // GPS. La regla de cada uno vive en mapa.service.js (`tono`); aquí solo el
+  // color, el icono y el nombre. Detrás, separados, los que no son ninguno de
+  // esos seis.
   const TONOS = {
+    viaje:       { tk: '--tc-green',         icono: 'fa-taxi',                 texto: 'En viaje' },
+    espera:      { tk: '--tc-mapa-espera',   icono: 'fa-hourglass-half',       texto: 'En espera en la M-30' },
+    esperafuera: { tk: '--tc-mapa-espera',   icono: 'fa-hourglass-end',        texto: 'En espera fuera de la M-30' },
+    descanso:    { tk: '--tc-mapa-descanso', icono: 'fa-mug-hot',              texto: 'Rodando en descanso' },
+    suelto:      { tk: '--tc-red',           icono: 'fa-triangle-exclamation', texto: 'Rodando desconectado' },
+    errorgps:    { tk: '--tc-violet',        icono: 'fa-location-crosshairs',  texto: 'Error de GPS' },
+    parado:      { tk: '--tc-muted',         icono: 'fa-circle',               texto: 'Parado' },
+    singps:      { tk: '--tc-muted',         icono: 'fa-satellite-dish',       texto: 'GPS sin fijar' },
+    perdido:     { tk: '--tc-border',        icono: 'fa-question',             texto: 'Sin señal' },
     // Coches nuestros de los que Mapon no da nada: no tienen punto en el mapa,
-    // van en la lista y en la alerta de arriba.
-    sinmapon:   { tk: '--tc-red',   icono: 'fa-satellite',            texto: 'Sin nada en Mapon' },
-    trabajando: { tk: '--tc-green', icono: 'fa-taxi',                 texto: 'Trabajando' },
-    descanso:   { tk: '--tc-warn',  icono: 'fa-mug-hot',              texto: 'Rueda en descanso' },
-    suelto:     { tk: '--tc-red',   icono: 'fa-triangle-exclamation', texto: 'Rueda sin nadie' },
-    parado:     { tk: '--tc-muted', icono: 'fa-circle',               texto: 'Parado' },
-    singps:     { tk: '--tc-muted', icono: 'fa-satellite-dish',       texto: 'GPS sin fijar' },
-    perdido:    { tk: '--tc-border',icono: 'fa-question',             texto: 'Sin señal' },
+    // van en la lista y en la franja roja de arriba.
+    sinmapon:    { tk: '--tc-red',           icono: 'fa-satellite',            texto: 'Sin nada en Mapon' },
   };
-  const ORDEN = ['sinmapon', 'suelto', 'descanso', 'trabajando', 'parado', 'singps', 'perdido'];
+  const PRINCIPALES = ['viaje', 'espera', 'esperafuera', 'descanso', 'suelto', 'errorgps'];
+  const ORDEN = PRINCIPALES.concat(['parado', 'singps', 'perdido', 'sinmapon']);
   const CLASES_TONO = ORDEN.map(k => 'm-' + k);
+  // Explicación de cada filtro, para el globo del chip.
+  const AYUDA = {
+    viaje: 'De viaje en BOLT: yendo a por el pasajero o llevándolo.',
+    espera: 'En espera en BOLT y dentro de la M-30 (la línea azul discontinua del mapa).',
+    esperafuera: 'En espera en BOLT, pero FUERA de la M-30.',
+    descanso: 'Rodando con el conductor en descanso: conectado, pero sin dar servicio.',
+    suelto: 'Rodando sin nadie conectado en BOLT.',
+    errorgps: 'De viaje en BOLT y Mapon lo da por parado desde hace 10 min o más: el GPS no está dando la posición real.',
+    parado: 'No se mueve y no está trabajando en BOLT.',
+    singps: 'El equipo habla pero no coge satélite: el punto es de hace unos minutos.',
+    perdido: 'El equipo de Mapon no habla: el punto es de cuando se calló.',
+    sinmapon: 'Coches de la flota de los que Mapon no da nada.',
+  };
+
+  const cvComa = (n, a) => {
+    const v = getComputedStyle(raiz).getPropertyValue(n).trim().split(/\s+/).join(', ');
+    return a == null ? 'rgb(' + v + ')' : 'rgba(' + v + ', ' + a + ')';
+  };
+
+  // EL ANILLO DE LA M-30, del servidor (modules/Mapa/m30.js). Solo números.
+  const M30 = <%- JSON.stringify(typeof m30 !== 'undefined' && m30 ? m30 : []) %>;
 
   const hhmm = s => {
     if (s == null) return '';
@@ -150,6 +203,27 @@
     return h ? h + ' h ' + String(m).padStart(2, '0') : m + ' min';
   };
   const hace = s => (s == null ? 'sin dato' : s < 90 ? s + ' s' : hhmm(s));
+  // Para lo que puede ser de hace días: «hace 3 días» se lee mejor que «hace 74 h 10».
+  const haceLargo = s => (s == null ? '' : s < 172800 ? hace(s) : Math.floor(s / 86400) + ' días');
+
+  // QUIÉN ES EL COCHE EN LA LISTA: la persona, no la matrícula (24/09/2026). El
+  // que lo lleva ahora si está conectado; si no, el último que lo llevó en BOLT.
+  const esAhora = c => !!(c.conectado && c.conductor);
+  const nombreDe = c => (esAhora(c) ? c.conductor : (c.ultimoConductor || c.conductor || null));
+
+  // ── El buscador ──────────────────────────────────────────────────────────
+  // Sin acentos ni mayúsculas, y la matrícula sin espacios ni guiones: «1234 abc»
+  // encuentra el 1234ABC y «jose» encuentra a José.
+  const norm = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  let busca = '';
+  const coincide = c => {
+    if (!busca) return true;
+    const b = norm(busca), bm = b.replace(/[\s-]/g, '');
+    return norm(c.matricula).replace(/[\s-]/g, '').includes(bm)
+      || norm(c.conductor).includes(b) || norm(c.ultimoConductor).includes(b);
+  };
+  // Lo que se ve, en el mapa y en la lista: el chip elegido y lo buscado.
+  const visible = c => (!filtro || c.tono === filtro) && coincide(c);
 
   // "4 s", "2 min 10 s", "1 h 05": los segundos se ven mientras importan, que
   // es justo al principio -cuando alguien acaba de coger un viaje-.
@@ -197,6 +271,10 @@
     mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
     mapa.on('load', () => { listo = true; pintar(); });
+    // `style.load` salta al arrancar y cada vez que el tema cambia el estilo:
+    // setStyle se lleva las capas propias por delante, y el anillo hay que
+    // volver a ponerlo.
+    mapa.on('style.load', pintarM30);
 
     // SI EL MAPA NO ARRANCA, QUE LO DIGA.
     //
@@ -236,11 +314,31 @@
     mapa.__estilo = estiloDelTema();
   }
 
+  /**
+   * LA M-30, como línea discontinua en el azul de la espera. Es la frontera que
+   * separa el azul fijo del que parpadea: sin verla, «fuera de la M-30» es un
+   * acto de fe.
+   */
+  function pintarM30() {
+    if (!mapa || !M30.length || mapa.getSource('m30')) return;
+    mapa.addSource('m30', { type: 'geojson', data: {
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: M30.concat([M30[0]]) } } });
+    mapa.addLayer({ id: 'm30', type: 'line', source: 'm30',
+      paint: { 'line-color': cvComa('--tc-mapa-espera'), 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [2, 2] } });
+  }
+
   /** El globito que sale al pinchar un coche. */
   function ficha(c) {
     const t = TONOS[c.tono] || TONOS.parado;
     const lineas = [];
-    if (c.conductor) lineas.push('<i class="fa-solid fa-user w-4 text-telecab-muted"></i> ' + esc(c.conductor));
+    // El de ahora, o el último que lo llevó en BOLT, dicho como tal.
+    const quien = nombreDe(c);
+    if (quien && esAhora(c)) lineas.push('<i class="fa-solid fa-user w-4 text-telecab-muted"></i> ' + esc(quien));
+    else if (quien) {
+      lineas.push('<i class="fa-solid fa-user w-4 text-telecab-muted"></i> <span class="text-telecab-muted">último:</span> '
+        + esc(quien) + (c.ultimoHace != null ? ' <span class="text-telecab-muted">· hace ' + haceLargo(c.ultimoHace) + '</span>' : ''));
+    }
     if (c.situacionEtiqueta) {
       // "En espera · hace 5 s", y el numero CORRE solo: lo pone al dia el reloj
       // de abajo cada segundo, sin volver a preguntar al servidor.
@@ -274,7 +372,7 @@
     return '<p class="font-bold text-sm mb-1">' + esc(c.matricula || '#' + c.unidad)
       + ' <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded" style="background:' + cv(t.tk, .18)
       + ';color:' + cv(t.tk) + '">' + esc(t.texto) + '</span></p>'
-      + (c.motivo ? '<p class="text-[11px] text-telecab-red mb-1.5">' + esc(c.motivo) + '</p>' : '')
+      + (c.motivo ? '<p class="text-[11px] mb-1.5" style="color:' + cv(t.tk) + '">' + esc(c.motivo) + '</p>' : '')
       + '<div class="space-y-0.5">' + lineas.map(l => '<p>' + l + '</p>').join('') + '</div>';
   }
 
@@ -284,6 +382,9 @@
       const t = TONOS[m.datos.tono] || TONOS.parado;
       m.el.style.background = cv(t.tk);
     });
+    // El anillo, si el estilo no cambió: un tema claro y otro claro comparten
+    // mapa, pero no el azul de la espera.
+    if (mapa && mapa.getLayer && mapa.getLayer('m30')) mapa.setPaintProperty('m30', 'line-color', cvComa('--tc-mapa-espera'));
   }
 
   // ── Pintar: mover lo que ya está, no rehacerlo ───────────────────────────
@@ -295,7 +396,7 @@
     const vistos = new Set();
 
     DATOS.forEach(c => {
-      if (filtro && c.tono !== filtro) return;
+      if (!visible(c)) return;
       // Sin posicion no hay punto que poner: ese coche va en la lista y en la
       // alerta de arriba.
       if (c.lat == null || c.lng == null) return;
@@ -333,7 +434,7 @@
       // El rojo levantado sobre datos de BOLT viejos se pinta hueco: sigue
       // estando ahi, pero no acusa a nadie.
       if (c.dudoso) m.el.classList.add('m-dudoso');
-      m.el.title = (c.matricula || '#' + c.unidad) + ' · ' + t.texto;
+      m.el.title = (c.matricula || '#' + c.unidad) + (nombreDe(c) ? ' · ' + nombreDe(c) : '') + ' · ' + t.texto;
       m.el.querySelector('i').className = 'fa-solid ' + t.icono;
       // El contenido se rehace siempre: los segundos de "hace" corren.
       m.marker.getPopup().setHTML(ficha(c));
@@ -372,10 +473,15 @@
   }
 
   function pintarChips(cuenta) {
-    $('#m-chips').innerHTML = ORDEN.map(k => {
+    // Los seis de siempre salen siempre, aunque estén a cero: un «0 rodando
+    // desconectado» también es una respuesta. Los demás, solo si hay alguno.
+    const ks = ORDEN.filter(k => PRINCIPALES.includes(k) || cuenta[k] || filtro === k);
+    $('#m-chips').innerHTML = ks.map((k, i) => {
       const t = TONOS[k], n = cuenta[k] || 0;
       const activo = filtro === k;
-      return '<button data-tono="' + k + '" title="' + esc(t.texto) + '. Pincha para ver solo estos."'
+      const raya = i > 0 && !PRINCIPALES.includes(k) && PRINCIPALES.includes(ks[i - 1])
+        ? '<span class="w-px h-5 bg-telecab-border mx-1" aria-hidden="true"></span>' : '';
+      return raya + '<button data-tono="' + k + '" title="' + esc(AYUDA[k] || t.texto) + ' Pincha para ver solo estos."'
         + ' class="px-2 py-1 rounded-lg text-[11px] font-semibold border transition tabular-nums'
         + (activo ? ' ring-2' : '') + '"'
         + ' style="border-color:' + cv(t.tk, .45) + ';background:' + cv(t.tk, activo ? .28 : .12)
@@ -385,25 +491,35 @@
   }
 
   function pintarLista() {
-    // Los que importan primero: sueltos, luego descanso, luego el resto.
-    const vis = DATOS.filter(c => !filtro || c.tono === filtro)
+    // En el orden de los filtros, y dentro de cada uno por persona.
+    const vis = DATOS.filter(visible)
       .sort((a, b) => ORDEN.indexOf(a.tono) - ORDEN.indexOf(b.tono)
-        || String(a.matricula || '').localeCompare(String(b.matricula || '')));
+        || String(nombreDe(a) || a.matricula || '').localeCompare(String(nombreDe(b) || b.matricula || ''), 'es'));
     if (!vis.length) {
-      $('#m-lista').innerHTML = '<p class="text-xs text-telecab-muted p-2">Ninguno.</p>';
+      $('#m-lista').innerHTML = '<p class="text-xs text-telecab-muted p-2">'
+        + (busca ? 'Nadie con «' + esc(busca) + '».' : 'Ninguno.') + '</p>';
       return;
     }
+    // LA PERSONA ARRIBA, LA MATRÍCULA DEBAJO (24/09/2026). Se busca a la gente
+    // por su nombre; la matrícula sigue ahí, en pequeño, para quien la tenga.
     $('#m-lista').innerHTML = vis.map(c => {
       const t = TONOS[c.tono] || TONOS.parado;
+      const quien = nombreDe(c);
+      const mat = c.matricula || '#' + c.unidad;
+      const estado = c.tono === 'sinmapon'
+        ? (c.estadoVehiculo || 'sin estado') + ' · sin Mapon'
+        : esAhora(c) ? (c.situacionEtiqueta || t.texto)
+        : quien ? 'último' + (c.ultimoHace != null ? ', hace ' + haceLargo(c.ultimoHace) : '')
+        : 'nadie en BOLT';
       return '<button data-clave="' + esc(c.clave) + '"'
         + ' class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition flex items-center gap-2">'
-        + '<span class="w-2 h-2 rounded-full shrink-0" style="background:' + cv(t.tk) + '"></span>'
+        + '<span class="w-2 h-2 rounded-full shrink-0' + (c.tono === 'esperafuera' ? ' m-parpadea' : '')
+        + '" style="background:' + cv(t.tk) + '"></span>'
         + '<span class="min-w-0 flex-1">'
-        + '<span class="block text-xs font-semibold truncate">' + esc(c.matricula || '#' + c.unidad) + '</span>'
+        + '<span class="block text-xs font-semibold truncate' + (quien && !esAhora(c) ? ' text-telecab-muted' : '') + '">'
+        + esc(quien || mat) + '</span>'
         + '<span class="block text-[10px] text-telecab-muted truncate">'
-        + esc(c.tono === 'sinmapon'
-            ? (c.estadoVehiculo || 'sin estado') + ' · sin Mapon'
-            : (c.conductor || (c.situacion ? '—' : 'no está en BOLT'))) + '</span></span>'
+        + (quien ? '<span class="tabular-nums">' + esc(mat) + '</span> · ' : '') + esc(estado) + '</span></span>'
         + (c.velocidad ? '<span class="text-[10px] text-telecab-muted tabular-nums shrink-0">'
             + c.velocidad + '</span>' : '') + '</button>';
     }).join('');
@@ -511,6 +627,24 @@
   });
 
   $('#m-recargar').addEventListener('click', () => cargar(true));
+
+  // El buscador filtra al escribir, y Intro vuela al primero que tenga punto.
+  $('#m-buscar').addEventListener('input', e => {
+    busca = e.target.value.trim();
+    pintarLista();
+    pintar();
+  });
+  $('#m-buscar').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const c = DATOS.filter(visible)
+      .sort((a, b) => ORDEN.indexOf(a.tono) - ORDEN.indexOf(b.tono))
+      .find(x => marcas.has(x.clave));
+    if (!c) return;
+    const m = marcas.get(c.clave);
+    mapa.flyTo({ center: m.marker.getLngLat(), zoom: Math.max(mapa.getZoom(), 14), duration: 700 });
+    if (!m.marker.getPopup().isOpen()) m.marker.togglePopup();
+  });
 
   arrancar();
   cargar(false);

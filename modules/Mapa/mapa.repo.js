@@ -75,7 +75,13 @@ async function coches(sedes) {
            -- uno "En taller" lleva días callado y es normal; uno "Operativo"
            -- callado tres meses es un equipo que hay que ir a mirar.
            ev.etiqueta                                               AS estado_vehiculo,
-           ev.es_operativo                                           AS coche_operativo
+           ev.es_operativo                                           AS coche_operativo,
+           -- EL ÚLTIMO QUE LO LLEVÓ EN BOLT, sin las doce horas de arriba: la
+           -- lista enseña a la persona, y de un coche parado desde ayer lo que
+           -- se quiere saber es quién lo tuvo. El índice idx_bsl_vehiculo_dia
+           -- lo deja en ~8 ms para toda la flota.
+           ult.nombre                                                AS ultimo_conductor,
+           EXTRACT(EPOCH FROM (now() - ult.ocurrido_at))::int        AS ultimo_hace
       -- SE PARTE DE NUESTRA FLOTA, NO DE MAPON (24/09/2026). Antes era al
       -- reves -de fv_posicion hacia vehiculo- y un coche que Mapon no conoce
       -- no salia en el mapa ni avisaba de nada: sencillamente no existia. Lo
@@ -98,6 +104,14 @@ async function coches(sedes) {
       LEFT JOIN fv_estado_bolt eb ON eb.estado = cru.estado
       LEFT JOIN fv_cat_situacion sc ON sc.codigo = eb.situacion
       LEFT JOIN fv_conductor cc ON cc.uuid = cru.driver_uuid
+      LEFT JOIN LATERAL (
+        SELECT uc.nombre, l.ocurrido_at
+          FROM bolt_state_log l
+          JOIN fv_conductor uc ON uc.uuid = l.driver_uuid
+         WHERE l.vehiculo_uuid = fvv.uuid
+           AND l.driver_uuid IS NOT NULL
+         ORDER BY l.ocurrido_at DESC
+         LIMIT 1) ult ON TRUE
      WHERE v.baja_at IS NULL
        AND ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
      ORDER BY v.matricula`, [filtro]);

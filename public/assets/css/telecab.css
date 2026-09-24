@@ -387,6 +387,15 @@ main > * { animation: tc-fade-in .35s cubic-bezier(.2, .8, .2, 1); }
   --tc-just: 29 78 216;
 }
 
+/* Colores semánticos del MAPA DE FLOTA. El azul de la espera y el amarillo del
+   descanso se pidieron con nombre (24/09/2026), y los del tema no sirven: en
+   varios temas --tc-azul es naranja o rosa, y --tc-warn en claro es marrón.
+   En los temas claros van un punto más oscuros para leerse sobre blanco. */
+:root { --tc-mapa-espera: 59 130 246; --tc-mapa-descanso: 234 179 8; }
+:root[data-theme='light'], :root[data-theme^='claro-'] {
+  --tc-mapa-espera: 37 99 235; --tc-mapa-descanso: 202 138 4;
+}
+
 .fp-pop { animation: fpIn .12s cubic-bezier(.2, .8, .2, 1); }
 @keyframes fpIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
 input.js-fecha { cursor: pointer; }

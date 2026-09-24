@@ -12,7 +12,9 @@ const mapa = require('./mapa.service');
 const veh = require('../Vehiculos/facturas.service');
 
 router.get('/', (req, res) => {
-  res.render('mapa', { titulo: 'Mapa de flota', seccion: 'mapa', layout: 'layout-gestion' });
+  // El anillo de la M-30 va con la página: no cambia, y así se pinta en cuanto
+  // carga el mapa, sin esperar al primer fotograma.
+  res.render('mapa', { titulo: 'Mapa de flota', seccion: 'mapa', layout: 'layout-gestion', m30: mapa.M30 });
 });
 
 /**

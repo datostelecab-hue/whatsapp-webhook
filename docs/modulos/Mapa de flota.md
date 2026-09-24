@@ -26,24 +26,83 @@ La posición **ya llegaba** de Mapon en cada vuelta de [[Flota viva]]:
 odómetro, y el código la leía y **la tiraba**. Todo el proyecto era dejar de
 tirarla.
 
-## El semáforo
+## El semáforo (renovado el 24/09/2026)
 
-La única regla del módulo, en `mapa.service.js`. No reparte por estado de Mapon
-ni por estado de BOLT: por **los dos a la vez**.
+La única regla del módulo, en `mapa.service.js` (`tono`). No reparte por estado
+de Mapon ni por estado de BOLT: por **los dos a la vez**. Los seis primeros, en
+el orden que pidió Camilo, que es también el de los filtros y el de la lista:
 
-| Tono | Cuándo | Qué significa |
+| Tono | Color | Cuándo |
 |---|---|---|
-| verde | rueda y está en viaje o espera | lo normal |
-| ámbar | rueda estando en descanso | conectado, pero no da servicio |
-| **rojo** | **rueda y no hay nadie conectado** | **esto es lo que se busca** |
-| apagado | no se mueve | da igual lo que diga BOLT |
-| gris punteado | Mapon dice `nogps` | el equipo habla, el GPS no fija: **está donde marca el punto** |
-| gris | Mapon dice `nodata` | el equipo no habla: **no se sabe dónde está** |
+| **En viaje** | verde | de viaje en BOLT (yendo a por el pasajero o llevándolo) |
+| **En espera en la M-30** | azul | en espera en BOLT y dentro de la M-30, se mueva o no |
+| **En espera fuera de la M-30** | azul **que parpadea** | en espera en BOLT y fuera de la M-30 |
+| **Rodando en descanso** | amarillo | rueda con el conductor en descanso |
+| **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado** |
+| **Error de GPS** | morado | de viaje en BOLT y Mapon lo da por parado **10 min o más** |
 
-El rojo junta dos casos a propósito: el coche que está en BOLT con el conductor
-desconectado, y el equipo que no casa con ningún coche de BOLT. Los dos son *se
-mueve y nadie responde por él*. Cuál de los dos es se dice al pinchar, no en el
-color.
+Y detrás, separados por una raya en la cinta y solo si hay alguno: **Parado**
+(no se mueve y no está trabajando), **GPS sin fijar** (`nogps`), **Sin señal**
+(`nodata`) y **Sin nada en Mapon**.
+
+> [!note] Antes «Trabajando» juntaba viaje y espera, y solo si rodaba
+> Un coche esperando aparcado —que es como se espera— salía apagado, igual que
+> uno que no usa nadie. La espera va ahora por su lado, se mueva o no, y lo que
+> la separa es **dónde** está.
+
+### La M-30
+
+`modules/Mapa/m30.js`: el anillo como polígono de 176 vértices, sacado del
+trazado de OpenStreetMap (vías `ref=M-30` de autopista o autovía, sin ramales)
+el 24/09/2026. Por cada sector de 2° visto desde Sol se queda el punto más
+lejano, así que la propia calzada cuenta como dentro. Comprobado con sitios
+conocidos: Sol, Atocha, Moncloa, Bernabéu, Ventas y Legazpi, dentro; IFEMA,
+Metropolitano, Casa de Campo, Usera, Plaza Elíptica y Barajas, fuera.
+
+Se pinta en el mapa como **línea azul discontinua**: sin verla, «fuera de la
+M-30» es un acto de fe. Ese día, las cinco esperas de la flota estaban fuera, a
+entre 7 y 19 km de Sol.
+
+Un coche en espera cuyo equipo no habla (`nodata`) va a **Sin señal**, no a
+espera: su punto es de cuando se calló y no dice dónde espera. El `nogps` sí
+cuenta, porque su punto es de hace minutos.
+
+### El error de GPS
+
+Lo pidió Camilo: *«no es posible que un coche esté de viaje en BOLT y Mapon
+diga que está detenido»*. Medido ese día, el **9590MMX llevaba dos horas así**,
+con el equipo sin dar señales nuevas desde hacía cinco minutos.
+
+Pero parado **un rato** sí puede estar: un semáforo, un atasco, la recogida del
+pasajero. Por eso son **10 minutos** (`GPS_PARADO_S`): lo que diga el reloj de
+Mapon —cuánto lleva en ese estado— o lo que lleve el equipo sin hablar, lo que
+sea mayor. Si lo de BOLT es viejo, se pinta hueco, como el rojo: el «de viaje»
+puede haber acabado hace rato.
+
+Va antes que «Sin señal» a propósito: un equipo muerto en un coche que está
+haciendo un viaje es justo este error.
+
+### Colores fijos
+
+El azul y el amarillo se pidieron con nombre, y los del tema no sirven: en
+varios temas `--tc-azul` es naranja o rosa y `--tc-warn` en claro es marrón. Van
+en dos tokens propios, `--tc-mapa-espera` y `--tc-mapa-descanso`
+(`telecab.css`), un punto más oscuros en los temas claros. El morado es
+`--tc-violet`.
+
+## La lista y el buscador
+
+**La lista enseña a la persona, no la matrícula** (la matrícula va debajo, en
+pequeño). La de ahora si está conectada; si no, **el último que llevó el coche en
+BOLT**, en gris y con «último, hace 3 h». Sale del último apunte con conductor en
+`bolt_state_log`, **sin ventana de tiempo** (~8 ms para toda la flota con el
+índice `idx_bsl_vehiculo_dia`). La ficha del coche dice lo mismo.
+
+**El buscador va en la cinta**, no en la lista: la lista no sale en el móvil y
+el filtro vale también para los puntos del mapa. Busca por el conductor de
+ahora, por el último y por la matrícula, sin acentos ni mayúsculas, y la
+matrícula sin espacios ni guiones («0417 mmz» encuentra el 0417MMZ). **Intro**
+vuela al primero que tenga punto y abre su ficha. Se suma al chip elegido.
 
 > Medido el 21/09/2026 a las 19:00 — 33 trabajando, 2 rodando en descanso y
 > **11 rodando sin nadie**, incluidas las dos unidades del 3031LTV y un equipo

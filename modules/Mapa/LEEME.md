@@ -22,16 +22,21 @@ odómetro, y el código la leía y la tiraba. Lo único que faltaba era guardarl
 
 ## El semáforo
 
-Es la única regla del módulo, y vive en `mapa.service.js`. No reparte por
-estado de Mapon ni por estado de BOLT: por **los dos a la vez**.
+Es la única regla del módulo, y vive en `mapa.service.js` (`tono`). No reparte
+por estado de Mapon ni por estado de BOLT: por **los dos a la vez**. Renovado el
+24/09/2026, en este orden:
 
-| Tono | Cuándo | Qué significa |
+| Tono | Color | Cuándo |
 |---|---|---|
-| verde | rueda y está en viaje o espera | lo normal |
-| ámbar | rueda estando en descanso | conectado, pero no da servicio |
-| **rojo** | **rueda y no hay nadie conectado** | **esto es lo que se busca** |
-| apagado | no se mueve | da igual lo que diga BOLT |
-| gris | el equipo lleva >10 min sin hablar | no se sabe dónde está |
+| En viaje | verde | de viaje en BOLT |
+| En espera en la M-30 | azul | en espera en BOLT, dentro de la M-30 (`m30.js`) |
+| En espera fuera de la M-30 | azul que parpadea | en espera en BOLT, fuera de la M-30 |
+| Rodando en descanso | amarillo | rueda con el conductor en descanso |
+| **Rodando desconectado** | **rojo** | **rueda y no hay nadie conectado** |
+| Error de GPS | morado | de viaje en BOLT y Mapon lo da por parado 10 min o más |
+
+Detrás: parado, GPS sin fijar, sin señal y sin nada en Mapon. El detalle, en
+`docs/modulos/Mapa de flota.md`.
 
 El rojo junta dos casos a propósito: el coche que está en BOLT con el conductor
 desconectado, y el equipo que no casa con ningún coche de BOLT. Los dos son *se
