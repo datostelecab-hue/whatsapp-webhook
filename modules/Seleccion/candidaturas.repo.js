@@ -479,8 +479,20 @@ async function engancharVacante(id, vacanteId, quien = {}) {
   const vac = require('./vacantes.repo');
   try {
     const k = (await db.consulta(
-      'SELECT vacante_id, vacante_ref FROM candidatura WHERE id = $1', [Number(id)])).rows[0] || {};
+      'SELECT vacante_id, vacante_ref, estado, conductor_id FROM candidatura WHERE id = $1',
+      [Number(id)])).rows[0] || {};
     const nueva = vacanteId ? String(vacanteId) : null;
+
+    // SI YA SE DIO DE ALTA, LA VACANTE TIENE QUE LLEGAR A SU INCORPORACIÓN.
+    // La incorporación se crea en el alta con la vacante de ese momento; una
+    // puesta después se quedaba en la candidatura y el planificador seguía
+    // diciendo "sin plaza prometida". Solo si aún no ha entrado: ver
+    // `ponerVacante`.
+    const aLaIncorporacion = async ref => {
+      if (k.estado !== 'alta' || !k.conductor_id) return null;
+      return require('../../services/repo/incorporaciones')
+        .ponerVacante(k.conductor_id, ref, { usuarioId: quien.usuarioId });
+    };
 
     // La que tenía antes, si es otra, vuelve a estar disponible.
     if (k.vacante_ref && (!nueva || String(k.vacante_id) !== nueva)) {
@@ -488,6 +500,7 @@ async function engancharVacante(id, vacanteId, quien = {}) {
     }
     if (!nueva) {
       await db.consulta('UPDATE candidatura SET vacante_ref = NULL WHERE id = $1', [Number(id)]);
+      await aLaIncorporacion(null);
       return { vacante: null };
     }
     const v = await vac.ficha(nueva);
@@ -496,7 +509,8 @@ async function engancharVacante(id, vacanteId, quien = {}) {
     // entienden los módulos que todavía hablan el idioma de la hoja.
     await db.consulta('UPDATE candidatura SET vacante_ref = $2 WHERE id = $1', [Number(id), v.codigo]);
     await vac.cambiarEstado(v.id, 'proceso', { usuarioId: quien.usuarioId });
-    return { vacante: v.codigo, puesto: v.puesto };
+    const inc = await aLaIncorporacion(v.codigo);
+    return { vacante: v.codigo, puesto: v.puesto, incorporacion: inc ? inc.id : null };
   } catch (e) {
     console.error(`⚠️  [CANDIDATURA ${id}] vacante ${vacanteId}: ${e.message}`);
     return { vacante: null, aviso: e.message };

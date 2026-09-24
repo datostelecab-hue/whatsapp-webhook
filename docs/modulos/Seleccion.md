@@ -118,6 +118,15 @@ Lo que le falta a partir de ahí no es papeleo nuestro: es un coche. Por eso el 
 
 Las 32 fichas que estaban en «Listo para RRHH» el día del cambio se quedaron donde estaban: esa bandeja sigue funcionando hasta que se vacíe sola.
 
+### La vacante puede llegar DESPUÉS del alta (24/09/2026)
+
+La incorporación —el aviso que ve el planificador— se crea en el alta con la **foto de la vacante que tuviera la candidatura en ese momento**. A Víctor Jiménez le dieron de alta a las 08:02 sin vacante y se la pusieron a las 08:23: la candidatura la aceptó sin quejarse, pero la incorporación nunca se enteró, y el cuadrante siguió diciendo *«Sin plaza prometida»* con una vacante en proceso a su nombre. No estaba prohibido: simplemente no llegaba a ningún sitio.
+
+Ahora `engancharVacante` avisa a la incorporación con `incorporaciones.ponerVacante()`, que rehace la foto con la misma función que el alta (`fotoDe`). Quitar la vacante también se propaga: la incorporación vuelve a quedar sin plaza. Dos límites a propósito:
+
+- **Solo si la candidatura está en `alta` y la incorporación sigue `pendiente`**: la persona se dio de alta pero todavía no ha entrado. Si ya está colocada en el cuadrante, moverla es cosa del planificador, no de un campo de Selección.
+- **Se conserva la fecha de entrada del alta**: que cambie la plaza no cambia cuándo empieza.
+
 ### La ficha no sale a medias
 
 `fichaPDF` comprueba antes de generar que estén **todos los datos que el papel imprime** y los documentos obligatorios; si falta algo, lo dice y no genera nada. Una ficha con huecos no sirve, y el hueco se descubriría en la gestoría.
