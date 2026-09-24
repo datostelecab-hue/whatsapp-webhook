@@ -19,6 +19,7 @@
 // podía hacer.
 
 const db = require('../../services/db');
+const { deLaFlotaVigilada } = require('../../services/nucleo');
 
 const TRAMOS = ['completo', 'dia', 'noche', 'manana', 'tarde'];
 const n2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -192,6 +193,9 @@ async function consultar({ desde, hasta, tramo = 'completo', placa, soloFuera = 
     extra += ` AND k.placa = $${par.length}`;
   }
   if (soloFuera) extra += ' AND k.km_descanso + k.km_fuera > 0';
+  // SOLO LA FLOTA DE MADRID (24/09/2026). Los km de los coches de Barcelona se
+  // siguen calculando y guardando cada noche; lo que no se hace es enseñarlos.
+  extra += ` AND ${deLaFlotaVigilada('k.placa')}`;
 
   const r = await db.consulta(`
     SELECT to_char(k.dia, 'YYYY-MM-DD') AS dia, k.tramo, k.placa, k.vehiculo, k.vehiculo_id,
@@ -226,6 +230,8 @@ async function repostajes({ desde, hasta, placa } = {}) {
     par.push(String(placa).toUpperCase().replace(/[^A-Z0-9]/g, ''));
     extra = ` AND r.placa = $${par.length}`;
   }
+  // Solo la flota de Madrid, como las líneas de km.
+  extra += ` AND ${deLaFlotaVigilada('r.placa')}`;
   const r = await db.consulta(`
     SELECT to_char(r.dia, 'YYYY-MM-DD') AS dia,
            to_char(r.ocurrido_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
@@ -276,6 +282,7 @@ async function porConductor({ desde, hasta, tramo = 'completo', limite = 50 } = 
       JOIN auditoria_km k ON k.dia = c.dia AND k.tramo = c.tramo AND k.placa = c.placa
      WHERE k.dia BETWEEN $1::date AND $2::date AND k.tramo = $3
        AND (k.km_descanso + k.km_fuera) > 0
+       AND ${deLaFlotaVigilada('k.placa')}
      GROUP BY 1, 2
      ORDER BY (sum(k.km_descanso) + sum(k.km_fuera)) DESC
      LIMIT $4`,

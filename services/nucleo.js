@@ -105,7 +105,36 @@ const DIAS_LARGOS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sáb
 // porque la M ya está cogida por el martes.
 const LETRAS_DIA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
+// ── LA FLOTA QUE SE VIGILA ─────────────────────────────────────────────────
+// Hay coches en Madrid y en Barcelona, pero la flota que se VIGILA es la de
+// Madrid, la que lleva Oscar. Los de Barcelona se listan en Vehículos y nada
+// más: ni mapa, ni Mantenimientos, ni facturas de taller, ni alertas de Mapon,
+// ni auditoría de km, ni sanciones de velocidad. En el reporte de horas de
+// Control siguen saliendo —las horas son horas—, pero sus km van rotulados con
+// la sede y no se cuentan. Lo pidió Camilo el 24/09/2026.
+//
+// Una sola constante para todo eso. Con una copia por pantalla basta con que
+// alguien cambie una para que dos sitios dejen de contar los mismos coches, que
+// es justo lo que pasaba entre el mapa y Mantenimientos.
+const SEDE_FLOTA = 'madrid';
+
+/**
+ * Condición SQL: la matrícula de `col` NO es de un coche nuestro de otra sede.
+ *
+ * Va en negativo a propósito. Las matrículas que no casan con ningún coche dado
+ * de alta —en Mapon hay cinco Corollas que no están en Vehículos— se siguen
+ * viendo: de esas no se sabe la sede, y esconder lo que no se sabe es peor que
+ * enseñarlo. Si un día se dan de alta, ya caerán de un lado o del otro.
+ *
+ * `col` es SIEMPRE una columna escrita en el código (`a.matricula`), nunca un
+ * dato que venga de fuera: va pegada al SQL tal cual.
+ */
+const deLaFlotaVigilada = col =>
+  `NOT EXISTS (SELECT 1 FROM vehiculo vsede
+               WHERE vsede.matricula_norm = ${col} AND vsede.sede <> '${SEDE_FLOTA}')`;
+
 module.exports = {
   HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, A, A_HEADERS,
   DIAS_CORTOS, DIAS_LARGOS, LETRAS_DIA,
+  SEDE_FLOTA, deLaFlotaVigilada,
 };

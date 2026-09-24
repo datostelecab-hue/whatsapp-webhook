@@ -1332,6 +1332,8 @@ ${SOLAPE_KM}
         // "por que dice eso" sin abrir la base.
         fuenteAhora: null, _abiertoDesde: null, _ventanaViva: false,
         _mats: [],
+        // Los km de cada coche que llevó, antes de sumarlos. Ver más abajo.
+        kmPorCoche: {},
       });
     }
     const a = porUuid.get(x.uuid);
@@ -1403,6 +1405,16 @@ ${SOLAPE_KM}
     // la misma vara, y quien mire la pantalla tiene derecho a saberlo.
     if (x.hay_can) a._can = true;
     if (x.hay_gps) a._gps = true;
+    // Y EL REPARTO POR COCHE, que la suma se come. El reporte de horas lo
+    // necesita para apartar los km de un coche de Barcelona sin tocar los del
+    // coche de Madrid que esa persona llevó el mismo día (24/09/2026).
+    if (x.matricula) {
+      const k = a.kmPorCoche[x.matricula] || (a.kmPorCoche[x.matricula] = { km: 0, kmFuera: 0, can: false, gps: false });
+      k.km = Math.round((k.km + (Number(x.km) || 0)) * 10) / 10;
+      k.kmFuera = Math.round((k.kmFuera + (Number(x.km_fuera) || 0)) * 10) / 10;
+      if (x.hay_can) k.can = true;
+      if (x.hay_gps) k.gps = true;
+    }
   });
   porUuid.forEach(a => {
     a.fuenteKm = a._can && a._gps ? 'mixta' : (a._gps ? 'gps' : (a._can ? 'can' : null));

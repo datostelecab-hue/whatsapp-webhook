@@ -40,7 +40,8 @@ const { reporteDia, resumirFilas, banda, fechaDeClave } = rep;
 // Los colores de la banda son los de siempre —tráfico ya los tiene interiorizados—;
 // lo que cambia es el envoltorio: cabecera de la casa con el logo, tabla con bordes
 // y, al final, el resumen del día y la leyenda de colores.
-const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9', revisar: 'FFFFC000' };
+const FILL = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B', azul: 'FF5B9BD5', gris: 'FFD9D9D9', revisar: 'FFFFC000',
+  sede: 'FFEDEAF4' };
 // "Prom. mes" va pegada al nombre a propósito: es lo que convierte el dato del
 // día en un juicio. 6 h en alguien que promedia 9 es una caída; en alguien que
 // promedia 6, un martes normal.
@@ -181,6 +182,21 @@ async function excelDia(reporte) {
         kc.alignment = { vertical: 'middle', horizontal: 'center' };
       });
     }
+    // COCHE DE OTRA SEDE. La flota que se vigila es la de Madrid: los km de un
+    // coche de Barcelona no se cuentan y las dos celdas dicen «Barcelona». Si ese
+    // día llevó también uno de Madrid, van sus km y una nota dice qué se apartó.
+    if (f.otraSede) {
+      [9, 10].forEach(cn => {
+        const kc = row.getCell(cn);
+        kc.fill = est.relleno(FILL.sede);
+        kc.font = { size: 11, italic: true, color: { argb: 'FF4B4466' } };
+      });
+      row.getCell(9).note = { texts: [{ text: `Coche de ${f.otraSede}: sus km no se cuentan aquí. La flota que se vigila es la de Madrid.` }] };
+    } else if (f.kmAparte && f.kmAparte.km > 0) {
+      const kc = row.getCell(9);
+      const antes = kc.note && kc.note.texts ? kc.note.texts.map(t => t.text).join('') + '\n\n' : '';
+      kc.note = { texts: [{ text: antes + `No incluye ${String(f.kmAparte.km).replace('.', ',')} km de ${f.kmAparte.matriculas.join(', ')} (${f.kmAparte.sede}): la flota que se vigila es la de Madrid.` }] };
+    }
     row.height = 19;
     fila++;
   });
@@ -232,7 +248,8 @@ async function excelDia(reporte) {
     ['rojo', 'No cumplieron — 6,3 h o menos'],
     ['azul', 'Justificado (J) — sus horas justificadas se SUMAN a las de BOLT'],
     ['gris', 'Sin dato de horas ese día'],
-    ['revisar', 'REVISAR — fichó en BOLT con un coche sin traza de Mapon; lo cuadra Tráfico']
+    ['revisar', 'REVISAR — fichó en BOLT con un coche sin traza de Mapon; lo cuadra Tráfico'],
+    ['sede', 'Barcelona — coche de otra sede: sus km no se cuentan (la flota que se vigila es la de Madrid)']
   ].forEach(([color, texto]) => {
     ws.mergeCells(`B${fila}:${ULTIMA_REPORTE}${fila}`);
     const chip = ws.getCell(`A${fila}`);

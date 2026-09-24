@@ -5,6 +5,14 @@
 // le hacen al módulo: quién acumula avisos, y qué ha pasado.
 
 const db = require('../../services/db');
+const { deLaFlotaVigilada } = require('../../services/nucleo');
+
+// SOLO LA FLOTA DE MADRID (24/09/2026). Un exceso con un coche de Barcelona no
+// entra en la cola —así que ni se avisa por WhatsApp ni se registra— y los que
+// ya estaban registrados no salen en la pantalla. Se decidió sabiendo eso: la
+// flota que se vigila es la de Madrid.
+const FLOTA_ALERTA = deLaFlotaVigilada('a.matricula');
+const FLOTA = deLaFlotaVigilada('e.placa');
 
 const ESTADOS = ['avisado', 'simulado', 'sin_conductor', 'dudoso', 'error'];
 
@@ -107,6 +115,7 @@ async function excesosPendientes({ desde, hasta, limite = 500 } = {}) {
        AND ($1::timestamptz IS NULL OR a.ocurrido_at >= $1::timestamptz)
        AND ($2::timestamptz IS NULL OR a.ocurrido_at <= $2::timestamptz)
        AND NOT EXISTS (SELECT 1 FROM velocidad_exceso e WHERE e.clave = a.clave)
+       AND ${FLOTA_ALERTA}
      ORDER BY a.ocurrido_at
      LIMIT $3`, [desde || null, hasta || null, Math.min(Number(limite) || 500, 5000)]);
   return r.rows.map(x => ({
@@ -287,6 +296,7 @@ async function porConductor({ desde, hasta, limite = 300 } = {}) {
       FROM velocidad_exceso e
      WHERE e.ocurrido_at BETWEEN $1::timestamptz AND $2::timestamptz
        AND e.driver_uuid IS NOT NULL
+       AND ${FLOTA}
      GROUP BY 1, 2, 3
      ORDER BY count(*) FILTER (WHERE e.estado = ANY($3)) DESC, count(*) DESC
      LIMIT $4`, [desde, hasta, AVISADOS, Math.min(Number(limite) || 300, 1000)]);
@@ -312,6 +322,7 @@ async function historico({ desde, hasta, estado, conductorId, driverUuid, limite
            to_char(e.enviado_at AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD HH24:MI') AS enviado
       FROM velocidad_exceso e
      WHERE e.ocurrido_at BETWEEN $1::timestamptz AND $2::timestamptz ${extra}
+       AND ${FLOTA}
      ORDER BY e.ocurrido_at DESC
      LIMIT $${par.length}`, par);
   return r.rows;
@@ -327,8 +338,9 @@ async function resumen({ desde, hasta } = {}) {
            count(*) FILTER (WHERE estado IN ('sin_conductor','dudoso'))::int AS sin_avisar,
            count(DISTINCT driver_uuid) FILTER (WHERE driver_uuid IS NOT NULL)::int AS gente,
            max(velocidad)::float8                                  AS punta
-      FROM velocidad_exceso
-     WHERE ocurrido_at BETWEEN $1::timestamptz AND $2::timestamptz`,
+      FROM velocidad_exceso e
+     WHERE e.ocurrido_at BETWEEN $1::timestamptz AND $2::timestamptz
+       AND ${FLOTA}`,
     [desde, hasta, AVISADOS]);
   return r.rows[0];
 }

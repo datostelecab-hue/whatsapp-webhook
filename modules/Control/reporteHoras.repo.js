@@ -33,6 +33,7 @@
 //               en el Excel.
 
 const db = require('../../services/db');
+const { SEDE_FLOTA } = require('../../services/nucleo');
 const TZ = 'Europe/Madrid';
 
 const r1 = n => Math.round(n * 10) / 10;
@@ -166,6 +167,59 @@ async function padron(iso) {
   return { porId, idDeUuid, fantasmaDe };
 }
 
+// ── LOS COCHES DE OTRA SEDE ─────────────────────────────────────────────────
+// La flota que se vigila es la de Madrid (services/nucleo.js). En el reporte la
+// gente sigue saliendo con sus horas —Control no cambia—, pero los km de un
+// coche de Barcelona no se cuentan: la celda dice «Barcelona» y ya. Lo pidió
+// Camilo el 24/09/2026.
+const normPlaca = m => String(m == null ? '' : m).toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/** matrícula → nombre de su sede ('Barcelona'), solo de los coches de otra sede. */
+async function cochesDeOtraSede() {
+  const r = await db.consulta(
+    `SELECT matricula_norm AS matricula, sede FROM vehiculo WHERE sede <> $1`, [SEDE_FLOTA]);
+  return new Map(r.rows.map(x => [x.matricula, x.sede.charAt(0).toUpperCase() + x.sede.slice(1)]));
+}
+
+/**
+ * Aparta de una fila los km de los coches de otra sede.
+ *
+ *   · Si TODOS sus coches de ese día son de allí, las dos celdas de km dicen el
+ *     nombre de la sede en vez del número. No es un REVISAR: no falta nada.
+ *   · Si llevó uno de Madrid y otro de Barcelona —pasa: el 22/09 hubo tres—, se
+ *     dan los km del de Madrid y se aparta solo lo del otro, que queda en
+ *     `kmAparte` para que el Excel lo diga en una nota. Antes se sumaban.
+ *
+ * La matrícula lleva la sede al lado, para que se vea de dónde sale la cosa sin
+ * tener que saberse las placas.
+ */
+function apartarOtraSede(fila, a, otraSede) {
+  const sedeDe = m => otraSede.get(normPlaca(m));
+  const mats = a.matriculas || [];
+  const deOtra = mats.filter(sedeDe);
+  const kmOtra = Object.entries(a.kmPorCoche || {}).filter(([m]) => sedeDe(m));
+  if (!deOtra.length && !kmOtra.length) return;
+
+  const sede = sedeDe(deOtra[0] || kmOtra[0][0]);
+  if (deOtra.length) fila.matricula = mats.map(m => (sedeDe(m) ? `${m} (${sedeDe(m)})` : m)).join(', ');
+  const suma = campo => r1(kmOtra.reduce((t, [, k]) => t + (k[campo] || 0), 0));
+  fila.kmAparte = { sede, matriculas: [...new Set([...deOtra, ...kmOtra.map(([m]) => m)])], km: r1(suma('km') + suma('kmFuera')) };
+
+  if (!mats.some(m => !sedeDe(m))) {
+    fila.otraSede = sede;
+    fila.kmBolt = sede; fila.kmDesc = sede;
+    fila.fuenteKm = null; fila.revisar = false;
+    return;
+  }
+  fila.kmBolt = Math.max(0, r1((Number(a.km) || 0) - suma('km')));
+  fila.kmDesc = Math.max(0, r1((Number(a.kmFuera) || 0) - suma('kmFuera')));
+  // La vara de medir, solo con los coches que se quedan.
+  const propios = Object.entries(a.kmPorCoche || {}).filter(([m]) => !sedeDe(m)).map(([, k]) => k);
+  const can = propios.some(k => k.can), gps = propios.some(k => k.gps);
+  fila.fuenteKm = can && gps ? 'mixta' : (gps ? 'gps' : (can ? 'can' : null));
+  fila.revisar = !fila.kmBolt && !fila.kmDesc && (a.minutos || 0) > 0;
+}
+
 /**
  * El reporte de un día. `key`: 0=Hoy, 1=Ayer, 2=Hace 2, 3=Hace 3.
  */
@@ -175,7 +229,7 @@ async function reporteDia(key) {
   const repoJust = require('../../services/repo/justificantes');
   await require('../../services/flotaViva/db').preparar();
 
-  const [act, plan, pad, justis, minDia, minNoche, prom] = await Promise.all([
+  const [act, plan, pad, justis, minDia, minNoche, prom, otraSede] = await Promise.all([
     // LA JORNADA ENTERA (05→05), no la ventana del turno: es lo que mide
     // Visibilidad y es lo que la persona trabajó, empiece cuando empiece.
     rutas.actividadPorConductor(iso, 'operativo'),
@@ -193,6 +247,7 @@ async function reporteDia(key) {
     // 9 de media y normales en alguien de 6. Sin la letra: en un Excel que se
     // manda fuera, una nota escolar al lado de un nombre sobra.
     require('../../services/repo/rendimiento').leer().catch(() => new Map()),
+    cochesDeOtraSede(),
   ]);
 
   // Los justificantes, por persona (la clave 'id:<conductor_id>').
@@ -251,6 +306,8 @@ async function reporteDia(key) {
       revisar: !!(a.matriculas && a.matriculas.length) && !a.km && !a.kmFuera && (a.minutos || 0) > 0,
       just: cid ? justPorId.get(cid) : null,
     };
+    // Los km de un coche de Barcelona no cuentan: ver `apartarOtraSede`.
+    apartarOtraSede(fila, a, otraSede);
     if (fila.revisar) { fila.kmBolt = 'REVISAR'; fila.kmDesc = 'REVISAR'; }
     if (!cid) { sueltos.push(fila); continue; }
     if (!filasPorId.has(cid)) { filasPorId.set(cid, fila); continue; }
@@ -262,10 +319,20 @@ async function reporteDia(key) {
     f.matricula = [...new Set([...(f.matricula ? f.matricula.split(', ') : []), ...(fila.matricula ? fila.matricula.split(', ') : [])])].join(', ') || null;
     const num = v => (typeof v === 'number' ? v : 0);
     const revisar = f.revisar || fila.revisar;
+    // Las dos cuentas con coches de otra sede: la celda sigue diciendo cuál.
+    // Si solo una, cuentan los km de la otra (el texto suma cero).
+    const soloOtra = f.otraSede && fila.otraSede ? f.otraSede : null;
     f.fuenteKm = f.fuenteKm === fila.fuenteKm ? f.fuenteKm : (f.fuenteKm && fila.fuenteKm ? 'mixta' : (f.fuenteKm || fila.fuenteKm));
-    f.kmBolt = revisar ? 'REVISAR' : Math.round((num(f.kmBolt) + num(fila.kmBolt)) * 10) / 10;
-    f.kmDesc = revisar ? 'REVISAR' : Math.round((num(f.kmDesc) + num(fila.kmDesc)) * 10) / 10;
+    f.kmBolt = soloOtra || (revisar ? 'REVISAR' : Math.round((num(f.kmBolt) + num(fila.kmBolt)) * 10) / 10);
+    f.kmDesc = soloOtra || (revisar ? 'REVISAR' : Math.round((num(f.kmDesc) + num(fila.kmDesc)) * 10) / 10);
     f.revisar = revisar;
+    f.otraSede = soloOtra;
+    if (fila.kmAparte) {
+      f.kmAparte = f.kmAparte
+        ? { sede: f.kmAparte.sede, matriculas: [...new Set([...f.kmAparte.matriculas, ...fila.kmAparte.matriculas])],
+            km: r1(f.kmAparte.km + fila.kmAparte.km) }
+        : fila.kmAparte;
+    }
   }
 
   // ── 2. Los que DEBÍAN salir y no aparecen en BOLT: 0 h ────────────────────
@@ -317,6 +384,7 @@ async function reporteDia(key) {
       libra: f.libra, debiaSalir: f.debiaSalir, esNN: f.esNN, sinFicha: f.sinFicha,
       enLibranza: f.enLibranza,
       matricula: f.matricula, kmBolt: f.kmBolt, kmDesc: f.kmDesc, fuenteKm: f.fuenteKm || null, revisar: f.revisar,
+      otraSede: f.otraSede || null, kmAparte: f.kmAparte || null,
     };
     if (f.just) {
       const horasTexto = (f.horas != null && f.horas > 0) ? `${r1(f.horas)} (J)` : 'J';

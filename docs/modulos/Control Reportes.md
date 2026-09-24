@@ -52,6 +52,19 @@ Quien libraba y no trabajó no sale: no es una falta.
 | **KM BOLT** | km rodados trabajando |
 | **KM descon.** | km rodados en descanso o desconectado |
 
+**Los km de un coche de Barcelona no se cuentan** (24/09/2026). La flota que se vigila es la de Madrid (ver [[Vehiculos#La sede manda, y ahora se puede cambiar|la sede]]). Las horas no se tocan —Control sigue igual—; lo que cambia es el apartado de km:
+
+- Si **todos** los coches de esa persona ese día son de Barcelona, las dos celdas de km dicen **«Barcelona»**, en malva claro y con una nota. No es un REVISAR: no falta nada.
+- Si llevó **uno de Madrid y otro de Barcelona** —el 22/09 hubo tres—, van los km del de Madrid y una nota dice cuántos se apartaron y de qué matrícula. Antes se sumaban.
+- La matrícula lleva la sede al lado: `1096MJY, 1888LTJ (Barcelona)`.
+
+Para apartar un solo coche hace falta el reparto que la suma se comía: `actividadPorConductor` (`services/flotaViva/rutas.js`) devuelve ahora también `kmPorCoche`. La lógica está en `apartarOtraSede` (`reporteHoras.repo.js`).
+
+> [!note] El 1888LTJ
+> Mapon lo sitúa en Barcelona y en BOLT sale con conductores del cuadrante de Madrid. El 21/09 a uno de ellos se le sumaban 307,8 km de noche de ese coche. O se elige mal el coche en la app de BOLT, o alguien usa esas cuentas allí: el reporte ya no lo suma, pero la pregunta sigue abierta.
+
+La **cascada de KM no se ha tocado**: sigue partiendo de todo lo que rodó la flota, Barcelona incluida.
+
 **El turno lo dice la plaza, no si ese día le tocaba trabajar.** Un fijo de noche sigue siendo de noche el día que libra. Antes el turno salía solo de `f_cobertura` y al librante se le quedaba en blanco; el reporte caía entonces en deducirlo por sus horas y a un fijo de noche que libra lunes y martes le ponía "Día". Solo se deduce por las horas (`turnoDeHecho`) cuando la persona **no tiene plaza**: ahí no hay nada mejor. Y ese cálculo mira dónde cayó el grueso de sus minutos, no la hora de su primera conexión — antes, al de noche que remató la noche anterior a las 05:00 le salía "Día" con sus 11 h de noche.
 
 ### Las bandas de color

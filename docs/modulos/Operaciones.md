@@ -46,6 +46,8 @@ Antes la pantalla llamaba a Mapon en CADA carga. Si Mapon estaba caído, no dec�
 
 El solape entre pasadas no cuesta nada porque las repetidas se descartan por su clave (`unit_id|instante|tipo`), y una alerta ya guardada no se reescribe: una alerta es un hecho.
 
+**Solo la flota de Madrid** (24/09/2026). `listar` y `porTipo` dejan fuera las alertas de los coches de Barcelona con `deLaFlotaVigilada` (`services/nucleo.js`); la ingesta las sigue guardando. En los 30 días anteriores eran 776 de 9.055. Las de matrículas que no están dadas de alta en [[Vehiculos]] —cinco Corollas y unos números de unidad sin matrícula— se siguen viendo: de esas no se sabe la sede, y esconder lo que no se sabe es peor que enseñarlo.
+
 El listado se corta en **1.000** alertas y lo dice (`truncado`). Mil ya son más de las que nadie lee de una sentada; lo que importa es avisar para que quien mire acote el rango.
 
 **El título y el icono de cada tipo son presentación** y se ponen en `operaciones.service.js`, no en la tabla: cambiar cómo se llama un tipo en pantalla no puede exigir una migración ni reescribir el histórico.

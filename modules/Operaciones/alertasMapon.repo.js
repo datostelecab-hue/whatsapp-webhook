@@ -5,6 +5,12 @@
 // de Operaciones ya no habla con la API de Mapon: habla con esto.
 
 const db = require('../../services/db');
+const { deLaFlotaVigilada } = require('../../services/nucleo');
+
+// SOLO LA FLOTA DE MADRID (24/09/2026). Las alertas de los coches de Barcelona
+// se siguen guardando —la ingesta no distingue, y así no se pierde nada si un
+// día se quieren ver—, pero la pantalla no las enseña ni las cuenta.
+const FLOTA = deLaFlotaVigilada('a.matricula');
 
 const n1 = v => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 const txt = (v, n) => (v == null ? null : String(v).trim().slice(0, n) || null);
@@ -66,6 +72,7 @@ async function listar({ desde, hasta, tipo, matricula, severidad, limite = 1000 
            a.zona, a.sentido, a.severidad, a.msg
       FROM mapon_alerta a
      WHERE a.ocurrido_at BETWEEN $1::timestamptz AND $2::timestamptz ${extra}
+       AND ${FLOTA}
      ORDER BY a.ocurrido_at DESC
      LIMIT $${par.length}`, par);
   return r.rows.map(x => ({ ...x, orden: Number(x.orden) }));
@@ -76,8 +83,9 @@ async function porTipo({ desde, hasta } = {}) {
   const r = await db.consulta(`
     SELECT tipo, count(*)::int AS n,
            count(*) FILTER (WHERE severidad = 'grave')::int AS graves
-      FROM mapon_alerta
-     WHERE ocurrido_at BETWEEN $1::timestamptz AND $2::timestamptz
+      FROM mapon_alerta a
+     WHERE a.ocurrido_at BETWEEN $1::timestamptz AND $2::timestamptz
+       AND ${FLOTA}
      GROUP BY 1 ORDER BY 2 DESC`, [desde, hasta]);
   return r.rows;
 }

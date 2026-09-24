@@ -9,9 +9,12 @@
 // se traduce «este usuario» a «estas sedes».
 
 const repo = require('./facturas.repo');
+const { SEDE_FLOTA } = require('../../services/nucleo');
 
 const SEDES = ['madrid', 'barcelona'];
-const SEDE_POR_DEFECTO = 'madrid';
+// La de la flota que se vigila (services/nucleo.js). Era un 'madrid' escrito
+// aquí a mano, y el mapa y Mantenimientos lo leen de este servicio.
+const SEDE_POR_DEFECTO = SEDE_FLOTA;
 
 /**
  * Las sedes que puede ver quien pregunta.

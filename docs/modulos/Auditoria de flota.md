@@ -105,6 +105,8 @@ El fin del día se calcula con el **inicio del día siguiente**, no sumando 86.4
 
 **Los que tuvieron actividad en BOLT ese día.** Mapon tiene coches que no son de esta flota —otras plazas, bajas, reservas sin dar de alta— y auditarlos ensucia los totales. La verdad la manda BOLT: si un coche tuvo un state log o un pedido, se audita; si no, ni se le pregunta a Mapon, lo que además ahorra una llamada por coche.
 
+**Y se enseñan solo los de Madrid** (24/09/2026). Los de Barcelona se siguen calculando y guardando cada noche —no cuesta casi nada y así no queda un hueco si un día se quieren ver—, pero `consultar`, `repostajes` y `porConductor` los dejan fuera con `deLaFlotaVigilada` (`services/nucleo.js`). En los 30 días anteriores eran 516 líneas de 6 coches. Las matrículas que no casan con ningún coche dado de alta se siguen viendo: de esas no se sabe la sede.
+
 ## Cuándo se niega a guardar un día
 
 Un día a medias es peor que un día que falta, porque queda congelado como limpio y nadie lo vuelve a mirar. Por eso se aborta el día entero si:

@@ -14,14 +14,18 @@ Son **tres áreas con las mismas capas cada una**. Comparten módulo porque habl
 
 Cada coche pertenece a una **sede** (`vehiculo.sede`, contra `cat_sede`: hoy Madrid y Barcelona). No es la zona —la zona es la base dentro de la ciudad: Getafe, Usera, Canillejas— sino la delegación.
 
-**Manda de verdad**: [[Vehiculos#Taller: el mantenimiento por km|Mantenimientos]], las facturas y el listado enseñan solo las sedes que puede ver quien mira, y esa llave es el permiso `/vehiculos/sedes`. Sin él se ve Madrid y nada más.
+**Manda de verdad, y desde el 24/09/2026 es fija para todo el mundo.** La flota que se vigila es la de **Madrid**, la que lleva Óscar: el [[Mapa de flota|mapa]], Mantenimientos, las facturas de taller, las [[Operaciones|alertas de Mapon]], la [[Auditoria de flota|auditoría de km]] y las [[Sanciones de velocidad|sanciones]] enseñan solo Madrid. Los de Barcelona **solo se listan aquí**, en la lista de Vehículos, y ahí sigue mandando el permiso `/vehiculos/sedes`. En el [[Control Reportes|reporte de horas]] de Control la gente sigue saliendo, pero los km de un coche de Barcelona van rotulados «Barcelona» y no se cuentan.
+
+La sede que se vigila es **una sola constante**, `SEDE_FLOTA` en `services/nucleo.js`, con la condición SQL `deLaFlotaVigilada(col)` que llevan los repositorios. Con una copia por pantalla bastaba que alguien cambiara una para que dos sitios dejaran de contar los mismos coches — que es justo lo que pasaba entre el mapa y Mantenimientos.
 
 Hasta el 21/09/2026 la sede solo se podía cambiar por la base. Ahora está en **Editar datos**, con el selector de la casa — y solo para quien ve las dos: a quien solo ve Madrid no se le enseña un campo que no puede tocar, y como el formulario no lo manda, **el servidor no lo toca**.
 
 > [!warning] Una sede equivocada hace desaparecer un coche
-> No da error ni se ve raro: simplemente deja de salir en Mantenimientos. Por eso el valor se valida contra `cat_sede` antes de guardarlo, y por eso no va con el resto de campos editables —que se escriben a pelo— sino aparte.
+> No da error ni se ve raro: simplemente deja de salir en el mapa, en Mantenimientos, en las alertas y en las sanciones. Por eso el valor se valida contra `cat_sede` antes de guardarlo, y por eso no va con el resto de campos editables —que se escriben a pelo— sino aparte.
+>
+> Caso real, 24/09/2026: el **3814KYG** estaba marcado como Barcelona y Mapon lo situaba en Alcobendas, llevado por gente del cuadrante de Madrid. El **3035LTX** repostó en Madrid hasta el 21/09 y el 24 ya estaba en Barcelona: los traslados existen, y la sede hay que cambiarla cuando el coche se mueve.
 
-De las 94 fichas vivas: **89 en Madrid y 5 en Barcelona**.
+El 24/09/2026, de las 89 fichas vivas: **81 en Madrid y 8 en Barcelona**.
 
 ## Las pantallas y sus permisos
 
@@ -38,7 +42,7 @@ Y tres llaves que **no abren pantalla, sino acciones**:
 |---|---|
 | `/taller/apuntar` | Apuntar mantenimientos, anclar odómetros y cambiar intervalos |
 | `/facturas/apuntar` | Dar de alta facturas y anularlas |
-| `/vehiculos/sedes` | Ver **también** Barcelona; sin él se ve solo Madrid |
+| `/vehiculos/sedes` | Ver **también** Barcelona en la lista de Vehículos. En el resto de pantallas no cambia nada: ahí es Madrid para todos |
 
 El reparto es siempre el mismo: **mirar lo quiere media empresa, apuntar es del taller**. Tráfico necesita saber qué coche se le va a caer la semana que viene; dirección quiere ver lo que se gasta en la flota. Pero apuntar es lo que mueve los números que deciden qué coche entra a taller, y eso es de Óscar.
 

@@ -19,6 +19,12 @@ La ruta se sigue llamando `/sanciones` porque es la clave del permiso y la que l
 
 > **Este módulo no llama a ninguna API.** Todo sale de PostgreSQL. Lo único que sale fuera es el WhatsApp, que es el trabajo.
 
+## Solo la flota de Madrid (24/09/2026)
+
+Un exceso con un coche de **Barcelona no entra en la cola** (`excesosPendientes`): **ni se avisa por WhatsApp ni se registra**. Los que ya estaban registrados —48 en los 30 días anteriores— no salen en la pantalla: `porConductor`, `historico` y `resumen` llevan el mismo filtro (`deLaFlotaVigilada`, en `services/nucleo.js`). Se decidió sabiendo eso: la flota que se vigila es la de Madrid.
+
+Esos 48 siguen en `velocidad_exceso`, así que la [[Calificacion de conductores|calificación]] —que cuenta los excesos registrados— los arrastra hasta que salen de su ventana. Los nuevos ya no llegan.
+
 ## Por qué ya no se llama a ninguna API
 
 Porque ya lo sabíamos, y para eso se hizo la ingesta.
