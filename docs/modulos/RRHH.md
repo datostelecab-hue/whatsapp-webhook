@@ -195,6 +195,23 @@ Ahora las pide a la Bitácora, y eso tiene dos consecuencias:
 
 Y "de la ETT" no es una etiqueta escrita a mano: es tener un periodo de empleo de tipo `ett` vigente **ese día**. Quien pasó a plantilla propia ayer sigue saliendo en el reporte de anteayer, que es cuando trabajó para ellos.
 
+### La plantilla cuadrada con la lista de la ETT (db/154, 24/09/2026)
+
+GiGroup mandó su lista: 74 personas con NIF y fecha de alta. Cruzada por NIF, y por nombre las que no tenían NIF en el sistema:
+
+- **4 estaban como plantilla propia** (Elena Cánovas, Jonathan San Segundo, Perla Pilatasig y el segundo periodo de Pedro Masó) y pasaron a ETT. Por eso no salían en el reporte de horas de la ETT.
+- **6 fechas de alta** se pusieron las de la ETT, con sus plazas movidas al día del alta, como en [[Planificacion|db/151]].
+- **4 NIF que faltaban**, de las altas rápidas de la bolsa, más el de Antonio Gabriel Zavada: el suyo no era un NIF español. El de antes queda en observaciones.
+- **La regla de las fechas: solo se mueven si esa persona no hizo horas en BOLT antes de la fecha nueva.** Si las hizo, moverla escondería en la bitácora días que sí trabajó. Cuatro se dejaron como estaban para preguntarlo a la ETT:
+  - Daniel Arenas: 8,5 h el 31/08, y la ETT dice 01/09.
+  - Michael Guacollante: **118 h** entre el 14/08 y el 13/09, y la ETT dice 14/09.
+  - Fausto Fernández Radio: 8,1 h el 17/09, y la ETT dice 18/09.
+  - Antonio Gabriel Zavada: la noche del 21 al 22, y la ETT dice 22/09.
+
+  O la ETT se equivoca de fecha, o trabajaron sin estar dados de alta.
+
+Queda también a la vista **Raúl Briz**, con dos periodos de ETT que se pisan: uno del 20/07 cerrado el 14/09 (NSPP) y otro abierto, creado el 20/09 con la misma alta del 20/07. La ETT lo da de alta desde el 20/07 sin corte.
+
 ## La ticketera de RRHH: sigue fuera, y por qué
 
 `/rrhh`, `/peticiones` y `/ticketera` **no se mudaron al módulo**. Las tres cuelgan de Google Sheets:
