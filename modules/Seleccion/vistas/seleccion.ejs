@@ -167,6 +167,9 @@
         ? 'Ya hay uno guardado. Escribe solo si quieres cambiarlo.' : c.ayuda,
       tipo: LISTAS[c.id] ? 'lista' : esBooleano(c) ? 'opciones' : (c.tipo || 'texto'),
       opciones: LISTAS[c.id] || (esBooleano(c) ? SI_NO : c.opciones),
+      // El sexo es una lista en vertical, alta: ocupa tres filas y a su lado se
+      // apilan el estado civil y las dos fechas del carne, sin dejar hueco.
+      filas: c.id === 'sexo' ? 3 : undefined,
       // El IBAN nunca vuelve del servidor: está cifrado. Se deja vacío y solo se
       // manda si se escribe algo, para no borrarlo sin querer al guardar.
       valor: c.id === 'iban' ? ''

@@ -236,7 +236,59 @@ async function descargarDocumento(id, key) {
 const catalogos = () => cand.catalogos();
 const porTelefono = tel => cand.porTelefono(tel);
 const abrir = (telefono, datos, quien) => cand.abrir(telefono, datos, quien);
-const guardar = (id, datos, quien) => cand.guardar(Number(id), datos, quien);
+// ── Las fechas del carne ───────────────────────────────────────────────────
+// No son de la persona sino del DOCUMENTO del permiso: se guardan ahi, por la
+// puerta de Documentos, que es quien deja el rastro de quien cambio que.
+const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+const isoDe = v => {
+  if (!v) return null;
+  if (v instanceof Date) {
+    // Nunca toISOString sobre un DATE: en Madrid da el dia anterior.
+    const p = n => String(n).padStart(2, '0');
+    return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate());
+  }
+  return String(v).slice(0, 10);
+};
+
+/**
+ * Guarda una candidatura. Si trae fechas del carne, las aparta y las escribe en
+ * el documento del permiso.
+ *
+ * SE COMPRUEBA ANTES DE GUARDAR NADA: si no hay carne subido, las fechas no
+ * tienen donde ir, y es mejor decirlo sin haber tocado el resto que guardar
+ * medio formulario y fallar despues.
+ */
+async function guardar(id, datos = {}, quien = {}) {
+  const { carnet_expedicion: exp, carnet_caducidad: cad, ...resto } = datos || {};
+  const hay = v => v !== undefined && v !== null && String(v).trim() !== '';
+  let permiso = null;
+
+  if (hay(exp) || hay(cad)) {
+    [exp, cad].filter(hay).forEach(v => {
+      if (!FECHA_ISO.test(String(v))) throw new Error('Las fechas del carné tienen que ser dd/mm/aaaa');
+    });
+    const f = await cand.ficha(Number(id));
+    if (!f) throw new Error('No existe esa candidatura');
+    permiso = (f.documentos || []).find(x => x.tipo === 'permiso' && x.vigente);
+    if (!permiso) {
+      throw new Error('Las fechas del carné van con el documento del carné, y todavía no está subido. ' +
+                      'Súbelo en Documentos y luego pon las fechas.');
+    }
+    // Caducar antes de expedirse es un error al teclear, casi siempre un año.
+    const e = hay(exp) ? String(exp) : isoDe(permiso.fecha_emision);
+    const c = hay(cad) ? String(cad) : isoDe(permiso.fecha_caduca);
+    if (e && c && c < e) throw new Error('La caducidad del carné no puede ser anterior a su expedición');
+  }
+
+  const r = Object.keys(resto).length ? await cand.guardar(Number(id), resto, quien) : null;
+  if (permiso) {
+    await docs.actualizar(permiso.id, {
+      fechaEmision: hay(exp) ? String(exp) : null,
+      fechaCaduca: hay(cad) ? String(cad) : null,
+    }, { usuarioId: quien.usuarioId });
+  }
+  return r || {};
+}
 const cambiarEstado = (id, estado, motivo, quien) =>
   cand.cambiarEstado(Number(id), estado, { motivo, ...quien });
 const eliminar = (id, quien) => cand.eliminar(Number(id), quien);

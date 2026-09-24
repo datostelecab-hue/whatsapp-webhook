@@ -70,6 +70,12 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 >
 > → [[Trampas conocidas]]
 
+> [!tip] Un campo alto puede ocupar varias filas: `filas`
+> En un formulario de dos columnas, una lista de opciones en vertical deja un
+> hueco en blanco a su lado. Con `filas: 3` el campo ocupa tres filas de la
+> rejilla y los siguientes **se apilan a su lado**. Solo aplica con
+> `columnas: 2`. Lo usa el sexo en el formulario de Datos de Selección.
+
 ## El selector suelto: `.tc-selector`
 
 `Dialogo.formulario` ya traía su selector, pero vivía **dentro** del diálogo y no había forma de usarlo en un formulario montado a mano —que es lo que tienen varias pantallas—. `selector.js` es esa misma idea, suelta.

@@ -122,7 +122,10 @@ async function importar({ texto, solicitudId, referencia, recibida }, quien) {
 
 // ── El proceso ─────────────────────────────────────────────────────────────
 
-const guardar = (id, datos, quien) => cand.guardar(Number(id), datos, quien);
+// Por la MISMA puerta que Seleccion: ahi se apartan las fechas del carne y se
+// guardan en su documento. Si la ETT fuera directa al repositorio, en su
+// formulario las fechas se escribirian y se perderian sin decir nada.
+const guardar = (id, datos, quien) => require('./seleccion.service').guardar(id, datos, quien);
 const cambiarEstado = (id, estado, motivo, quien) =>
   cand.cambiarEstado(Number(id), estado, { motivo, ...quien });
 const eliminar = (id, quien) => cand.eliminar(Number(id), quien);

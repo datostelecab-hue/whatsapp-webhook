@@ -298,7 +298,12 @@
                 campo = `<input id="pd-${c.id}" class="${c.tipo === 'fecha' ? 'js-fecha ' : ''}${base}"
                           value="${esc(c.valor || '')}" placeholder="${esc(c.marcador || (c.tipo === 'fecha' ? 'dd/mm/aaaa' : ''))}">`;
               }
-              return cabecera + `<div class="${c.tipo === 'texto-largo' ? 'col-span-full' : ''}">
+              // `filas`: un campo alto -una lista de opciones en vertical- puede
+              // ocupar varias filas de la rejilla, y entonces los siguientes se
+              // apilan A SU LADO en vez de dejar un hueco en blanco. Solo con
+              // dos columnas: con una, no hay "al lado".
+              const alto = c.filas > 1 && columnas === 2 ? ' style="grid-row: span ' + Number(c.filas) + '"' : '';
+              return cabecera + `<div class="${c.tipo === 'texto-largo' ? 'col-span-full' : ''}"${alto}>
                 <label class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">${esc(c.etiqueta)}</label>
                 ${campo}
                 ${c.ayuda ? `<p class="text-[11px] text-telecab-muted mt-1">${esc(c.ayuda)}</p>` : ''}

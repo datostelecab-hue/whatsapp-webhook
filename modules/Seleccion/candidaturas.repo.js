@@ -81,6 +81,20 @@ async function catalogos() {
   for (const k of PERSONA) {
     const def = con.CAMPOS[k];
     if (def) campos.push({ id: k, grupo: def.grupo || 'Persona', ...def });
+    // LAS FECHAS DEL CARNE, justo detras del estado civil: es el hueco que deja
+    // la lista del sexo a su lado, y ahi las pidio Camilo el 24/09/2026. La
+    // ficha de alta las exige y no habia donde escribirlas: se veia el aviso
+    // "falta Fecha de expedicion del carne" sin forma de arreglarlo.
+    //
+    // No son columnas de la persona: son las fechas del DOCUMENTO del permiso
+    // (tabla documento, tipo 'permiso'). Por eso no estan en CAMPOS y las
+    // guarda el servicio, por la puerta de Documentos.
+    if (k === 'estado_civil') {
+      campos.push({ id: 'carnet_expedicion', grupo: def ? def.grupo : 'Identidad',
+                    etiqueta: 'Fecha de expedición del carné', tipo: 'fecha' });
+      campos.push({ id: 'carnet_caducidad', grupo: def ? def.grupo : 'Identidad',
+                    etiqueta: 'Fecha de caducidad del carné', tipo: 'fecha' });
+    }
   }
   // Los que se escriben de una pieza y la base guarda despiezados. No estan en
   // CAMPOS porque no son columnas: son la forma en que los teclea una persona.
@@ -123,14 +137,41 @@ async function listar({ incluirCerradas = false, etapa, estado, canal } = {}) {
     `SELECT * FROM v_candidatura
       ${donde.length ? 'WHERE ' + donde.join(' AND ') : ''}
       ORDER BY estado_orden, creado_at DESC`, params);
-  return r.rows;
+  return conCarnet(r.rows);
+}
+
+/**
+ * Pega a cada candidatura las fechas del carne, para que el formulario de Datos
+ * salga relleno con lo que ya haya.
+ *
+ * Una sola consulta para toda la lista, no una por fila. Y en dd/mm/aaaa ya
+ * desde la base: un DATE pasado por JS se va al dia anterior en Madrid (ver la
+ * trampa de toISOString en el vault).
+ */
+async function conCarnet(filas) {
+  const ids = [...new Set((filas || []).map(f => f.conductor_id).filter(Boolean).map(String))];
+  if (!ids.length) return filas;
+  const r = await db.consulta(
+    `SELECT DISTINCT ON (conductor_id) conductor_id,
+            to_char(fecha_emision, 'DD/MM/YYYY') AS exp,
+            to_char(fecha_caduca,  'DD/MM/YYYY') AS cad
+       FROM documento
+      WHERE tipo = 'permiso' AND vigente AND conductor_id = ANY($1::bigint[])
+      ORDER BY conductor_id, id DESC`, [ids]);
+  const m = new Map(r.rows.map(x => [String(x.conductor_id), x]));
+  filas.forEach(f => {
+    const x = m.get(String(f.conductor_id));
+    f.carnet_expedicion = x ? x.exp : null;
+    f.carnet_caducidad = x ? x.cad : null;
+  });
+  return filas;
 }
 
 /** Una candidatura por su id, con la persona resuelta. */
 async function ficha(id) {
   const r = await db.consulta('SELECT * FROM v_candidatura WHERE id = $1', [Number(id)]);
   if (!r.rows[0]) return null;
-  const c = r.rows[0];
+  const c = (await conCarnet([r.rows[0]]))[0];
   // Los documentos son de la persona, no del proceso: se leen de su tabla.
   const docs = require('../../services/repo/documentos');
   return { ...c, documentos: await docs.listar({ conductorId: c.conductor_id }) };

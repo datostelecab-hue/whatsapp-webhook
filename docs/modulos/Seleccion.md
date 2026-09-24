@@ -97,6 +97,14 @@ Selección también genera la **ficha de alta en PDF** con sus adjuntos (`POST /
 
 **Descartar deja rastro** porque es una decisión del proceso. **Borrar** es para lo que no debería existir —un teléfono mal tecleado, una fila duplicada, una prueba— y el servicio **se niega si la persona ha trabajado aquí**. Lo mismo con las vacantes: una recién generada se borra, pero si ya tiene candidato o se cubrió se *anula*, que deja rastro.
 
+## Las fechas del carné se escriben en «Datos» (24/09/2026)
+
+La ficha de alta exige **fecha de expedición y de caducidad del carné**, y no había dónde escribirlas: se veía el aviso *«la ficha no está completa: falta Fecha de expedición del carné…»* sin forma de arreglarlo desde Selección. Ahora están en el formulario de **Datos**, en *Identidad*, apiladas bajo el estado civil y al lado de la lista del sexo, que ocupa tres filas (`filas: 3`, opción nueva de `Dialogo.formulario`).
+
+**No son columnas de la persona**: son las fechas del **documento del permiso** (`documento`, tipo `permiso`, vigente). Por eso no están en `CAMPOS` y no las guarda el repositorio: `seleccion.service.guardar` las aparta y las escribe con `documentos.service.actualizar`, que deja su rastro de auditoría. La ETT guarda por esa misma puerta; si fuera directa al repositorio, en su formulario las fechas se escribirían y se perderían sin avisar.
+
+Tres reglas, las tres **antes de guardar nada**: si no hay carné subido se dice (*«súbelo en Documentos y luego pon las fechas»*) en vez de guardar medio formulario; la fecha tiene que ser válida; y la caducidad no puede ser anterior a la expedición.
+
 ## Qué se exige para contratar
 
 ## Dar de alta: el final del recorrido (18/09/2026)
