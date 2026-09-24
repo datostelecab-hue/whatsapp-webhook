@@ -282,8 +282,8 @@
 
   // ---------- alta ----------
 
-  // La matrícula va contra la LISTA DE LA FLOTA (datalist): se escriben dos
-  // dígitos y sale el coche. Pero es una lista, no una jaula — se puede escribir
+  // La matrícula va contra la LISTA DE LA FLOTA, con el selector de la casa
+  // (`engancharPicker`): se escriben dos dígitos y sale el coche. Pero es una lista, no una jaula — se puede escribir
   // una que no esté, porque el taller a veces factura coches que no llevamos, y
   // eso hay que poder apuntarlo tal cual.
   const MINI = 'bg-telecab-card2 border border-telecab-border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40';
@@ -453,10 +453,14 @@
       // La lista de matriculas, con el modelo al lado para no equivocarse entre
       // dos parecidas. Las de baja se marcan: una factura vieja puede ser de un
       // coche que ya se vendio, y hay que poder apuntarla igual.
+      //
+      // El selector de la matrícula lee de FLOTA cada vez que se abre, así que
+      // basta con llenarla. Aquí había una línea que ADEMÁS rellenaba un
+      // <datalist id="flota-lista">: el datalist se quitó al pasar al selector de
+      // la casa (5768533) y la línea se quedó. Al no existir, reventaba con
+      // "Cannot set properties of null" y, como va antes de abrir la ventana, la
+      // factura nueva no llegaba a abrirse nunca.
       FLOTA = new Map(flota.map(v => [v.matricula, v]));
-      $('#flota-lista').innerHTML = flota.map(v =>
-        `<option value="${esc(v.matricula)}">${esc(v.modelo)}${v.deBaja ? ' · de baja' : ''}${
-          v.sede === 'barcelona' ? ' · Barcelona' : ''}</option>`).join('');
     } catch (e) { return Dialogo.aviso({ titulo: 'No se pudo', texto: e.message, tono: 'error' }); }
     $('#fm').classList.remove('hidden');
   }
