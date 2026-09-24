@@ -58,6 +58,16 @@ La regla de reparto del repositorio: **aquí solo vive el proceso**. El nombre, 
 
 Una vacante **viva** es *abierta* o *en proceso*, que no es lo mismo que "no cerrada": una anulada tampoco está cerrada y no hay que reclutar para ella. Y el número que dice cuánto coche está esperando gente es la **suma de plazas**, no el recuento de vacantes: una de correturnos puede valer por seis.
 
+> [!note] La limpieza del 24/09/2026 (db/146)
+> El módulo se estrenó sin que nadie supiera bien cómo usarlo: entre el 10 y el
+> 21/09 se crearon 27 vacantes, casi todas en tandas de un minuto, que no
+> respondían a ninguna plaza real. Se borraron **24** y se quedaron las tres que
+> tienen a alguien contratado colgando (6, 15 y 20). Ojo: la candidatura se
+> enlaza por clave foránea, pero `candidatura.vacante_ref` e
+> `incorporacion.vacante_id` guardan el **código como texto** y sin clave: borrar
+> una vacante no las avisa, las deja apuntando a nada. Lo borrado está copiado en
+> `vacante_archivo_20260924` y sus dos tablas hermanas, por si hay que devolverlo.
+
 ## El generador: hueco y recambio
 
 `modules/Seleccion/generador.service.js` arma el puesto de dos maneras, y la segunda es la que faltaba:
