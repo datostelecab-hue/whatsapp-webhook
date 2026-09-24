@@ -19,7 +19,6 @@ const cand = require('./candidaturas.repo');
 const vacantes = require('./vacantes.service');
 // Por la PUERTA del módulo de Documentos, nunca por su repositorio.
 const docs = require('../Documentos/documentos.service');
-const drive = require('../../services/drive');
 const { generarFichaPDF } = require('../../services/fichaAlta');
 const { geocodificar, geocodificarEstructurado } = require('../../services/geocoding');
 
@@ -186,13 +185,23 @@ const retirarDocumento = (docId, quien) =>
 
 /**
  * La FICHA DE ALTA en PDF, con los documentos ya subidos incrustados detrás, y
- * guardada en la carpeta de Drive de esa persona.
+ * guardada como un DOCUMENTO de la persona (tipo 'ficha_alta', db/149).
+ *
+ * Antes se subía a su carpeta de Drive a pelo, sin apuntarla en el almacén de
+ * documentos: se veía con el enlace del aviso que sale al generarla y, al
+ * cerrarlo, no había forma de volver a ella desde el ERP. Ahora sale en los
+ * documentos de Plantilla y de Selección, y generar otra deja la anterior como
+ * no vigente en vez de pisarla.
+ *
+ * `guardar: false` solo la genera, para verla: es lo que usa RRHH, que la
+ * enseña al momento con los datos de ahora. Guardarla cada vez que alguien la
+ * mira llenaba la carpeta de copias.
  *
  * Un documento que no se puede bajar NO tumba la ficha: se anota y se sigue. La
  * ficha con seis adjuntos de siete sirve para firmar; un error 500 no sirve
  * para nada, y quien está delante del candidato no puede hacer nada con él.
  */
-async function fichaPDF(id) {
+async function fichaPDF(id, { guardar = true } = {}, quien = {}) {
   const n = Number(id);
   const [datos, f] = await Promise.all([cand.paraFicha(n), cand.ficha(n)]);
   if (!f) throw new Error('No existe esa candidatura');
@@ -219,14 +228,18 @@ async function fichaPDF(id) {
 
   const pdf = await generarFichaPDF(datos, adjuntos);
   const nombre = `FICHA DE ALTA - ${(datos.nombre || datos.telefono || n).toString().trim()}.pdf`;
-  const archivo = await drive.subir(String(datos.conductorId), {
-    nombre, mime: 'application/pdf', base64: Buffer.from(pdf).toString('base64'),
-  });
+  let doc = null;
+  if (guardar) {
+    doc = await docs.subir('conductor', Number(datos.conductorId), {
+      tipo: 'ficha_alta', nombre, mime: 'application/pdf',
+      base64: Buffer.from(pdf).toString('base64'),
+    }, quien || {});
+  }
   // Se devuelven TAMBIÉN los bytes. El PDF acaba de generarse aquí; que quien
   // quiere verlo tenga que volver a bajárselo de Drive es un viaje de más para
   // el mismo fichero que ya está en memoria.
-  return { link: archivo.webViewLink, nombre, adjuntos: adjuntos.length,
-           bytes: Buffer.from(pdf), mime: 'application/pdf' };
+  return { link: doc ? doc.enlace : null, docId: doc ? String(doc.id) : null, nombre,
+           adjuntos: adjuntos.length, bytes: Buffer.from(pdf), mime: 'application/pdf' };
 }
 
 /**

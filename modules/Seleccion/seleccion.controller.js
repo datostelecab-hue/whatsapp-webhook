@@ -98,7 +98,13 @@ router.delete('/api/documento/:docId', responde(async req =>
   ({ retirado: await seleccion.retirarDocumento(req.params.docId, await quien(req)) })));
 
 // ── La FICHA DE ALTA en PDF ────────────────────────────────────────────────
-router.post('/api/candidatura/:id/ficha-pdf', responde(req => seleccion.fichaPDF(req.params.id)));
+// Se guarda en los documentos de la persona. La respuesta NO lleva los bytes:
+// iban convertidos a JSON —un array de cientos de miles de números— para una
+// pantalla que solo usa el enlace.
+router.post('/api/candidatura/:id/ficha-pdf', responde(async req => {
+  const r = await seleccion.fichaPDF(req.params.id, { guardar: true }, await quien(req));
+  return { link: r.link, docId: r.docId, nombre: r.nombre, adjuntos: r.adjuntos };
+}));
 
 // ── Geocodificación ────────────────────────────────────────────────────────
 router.post('/api/geocodificar', responde(req => seleccion.direccion(req.body || {})));

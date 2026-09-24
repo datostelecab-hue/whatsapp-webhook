@@ -279,8 +279,9 @@
     await Dialogo.aviso({
       titulo: 'Ficha generada',
       html: '<p class="text-sm">' + esc(r.nombre) + ' · ' + r.adjuntos + ' documento(s) dentro</p>'
-        + '<p class="mt-2"><a href="' + esc(r.link) + '" target="_blank" rel="noopener" '
-        + 'class="text-telecab-gold underline">Abrir en Drive</a></p>',
+        + '<p class="text-sm mt-2 text-telecab-muted">Queda guardada en sus <b>Documentos</b>, aquí y en su ficha de Plantilla.</p>'
+        + (r.link ? '<p class="mt-2"><a href="' + esc(r.link) + '" target="_blank" rel="noopener" '
+        + 'class="text-telecab-gold underline">Abrir la ficha</a></p>' : ''),
       tono: 'ok',
     });
   }
@@ -390,7 +391,30 @@
             + '<label class="text-telecab-gold text-xs cursor-pointer">subir'
             + '<input type="file" class="hidden" data-subir="' + esc(def.key) + '"></label>')
         + '</div>';
-    }).join('');
+    }).join('')
+      // LA FICHA DE ALTA, al final. No se sube: se genera con el botón, y queda
+      // guardada aquí (y en los documentos de Plantilla). Antes solo se podía
+      // abrir desde el aviso que sale al generarla.
+      + (() => {
+        const fa = (d.documentos || []).find(x => x.tipo === 'ficha_alta' && x.vigente);
+        const cuando = fa && fa.subido_at
+          ? new Date(fa.subido_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '';
+        return '<div class="flex items-center gap-3 text-sm pt-1">'
+          + '<i class="fa-solid ' + (fa ? 'fa-file-pdf text-telecab-gold' : 'fa-file-pdf text-telecab-muted/40') + ' text-xs"></i>'
+          + '<span class="flex-1">Ficha de alta'
+          + (fa ? ' <span class="text-[11px] text-telecab-muted">· generada el ' + esc(cuando) + '</span>' : '') + '</span>'
+          + (fa
+            ? '<a href="' + esc(fa.enlace || '#') + '" target="_blank" rel="noopener" class="text-telecab-gold text-xs underline">ver</a>'
+              + '<button data-ficha-rehacer class="text-telecab-muted hover:text-telecab-gold text-xs" '
+              + 'title="Vuelve a generarla con los datos y papeles de ahora. La anterior se conserva como no vigente.">rehacer</button>'
+            : '<span class="text-telecab-muted text-[11px]">sin generar</span>'
+              + '<button data-ficha-rehacer class="text-telecab-gold text-xs underline">generar</button>')
+          + '</div>';
+      })();
+
+    const rehacer = hueco.querySelector('[data-ficha-rehacer]');
+    if (rehacer) rehacer.addEventListener('click', () => accionFichaPDF(d));
 
     hueco.querySelectorAll('[data-subir]').forEach(inp => {
       inp.addEventListener('change', () => {

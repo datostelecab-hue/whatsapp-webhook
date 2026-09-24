@@ -93,6 +93,10 @@ Los documentos van colgados del `conductor_id`, no de la candidatura: quien se c
 
 Selección también genera la **ficha de alta en PDF** con sus adjuntos (`POST /seleccion/api/candidatura/:id/ficha-pdf`, apoyada en `services/fichaAlta.js`) y geocodifica la dirección del candidato.
 
+**La ficha de alta se guarda como un documento más** (24/09/2026, `db/149`, tipo `ficha_alta`). Antes se subía a la carpeta de Drive de la persona sin apuntarla en el almacén de documentos: se veía con el enlace del aviso que sale al generarla y, al cerrarlo, no había forma de volver a ella desde el ERP. Ahora sale al final de **Documentos** en Selección («Ficha de alta · generada el …», con **ver** y **rehacer**) y en los documentos de su ficha de **Plantilla**. Rehacerla deja la anterior como no vigente, como cualquier papel. No es obligatoria: quien entró antes no la tiene. Las fichas generadas antes del 24/09 siguen en su carpeta de Drive pero no en la lista: para que salgan, basta con volver a generarlas.
+
+RRHH la sigue enseñando **al momento**, con los datos de ahora (`/rrhh/doc?tipo=ficha_pdf`), pero **sin guardar otra copia** cada vez que alguien la abre (`fichaPDF(id, { guardar: false })`): antes cada vistazo dejaba un PDF más en la carpeta. Y la ruta de Selección ya no devuelve los bytes del PDF convertidos a JSON, que la pantalla no usaba.
+
 ## Descartar no es borrar
 
 **Descartar deja rastro** porque es una decisión del proceso. **Borrar** es para lo que no debería existir —un teléfono mal tecleado, una fila duplicada, una prueba— y el servicio **se niega si la persona ha trabajado aquí**. Lo mismo con las vacantes: una recién generada se borra, pero si ya tiene candidato o se cubrió se *anula*, que deja rastro.

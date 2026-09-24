@@ -153,7 +153,9 @@ router.get('/doc', async (req, res) => {
     const f = await porTelefono(req.query.tel);
 
     if (tipo === 'ficha_pdf') {
-      const pdf = await seleccion.fichaPDF(f.id);
+      // Para verla, con los datos de ahora: no se guarda otra copia cada vez
+      // que alguien la abre. La guardada es la que se genera en Selección.
+      const pdf = await seleccion.fichaPDF(f.id, { guardar: false });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${pdf.nombre}"`);
       return res.send(pdf.bytes);
