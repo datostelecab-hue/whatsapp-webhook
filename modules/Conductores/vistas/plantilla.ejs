@@ -1164,7 +1164,11 @@
         d.empleo_tipo === 'ett' ? `ETT${d.ett_nombre ? ' · ' + d.ett_nombre : ''}` : 'Plantilla propia',
         d.jornada_horas ? d.jornada_horas + ' h/semana' : null,
         d.alta ? 'alta ' + fecha(d.alta) : null,
-        d.bolt_id ? 'BOLT ' + d.bolt_id : 'sin cuenta de BOLT',
+        // EL ID DE BOLT NO VA AQUI: son 36 caracteres que no lee nadie y
+        // ensanchaban la cabecera hasta tirar los botones a otra fila. Se ve en
+        // el bloque de las cuentas de BOLT. Lo que si se dice es que NO tiene
+        // cuenta, que es corto y es un problema.
+        d.bolt_id ? null : 'sin cuenta de BOLT',
       ].filter(Boolean).join(' · '),
 
       bloques: [
