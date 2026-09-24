@@ -131,6 +131,10 @@ Una libranza puede estar mal puesta, a mano o en el cuadrante. En el panel del d
 
 **Esto no cambia Control ni el reporte de turnos**, que leen el planificador. Si el cuadrante está mal para días que vienen, se corrige allí.
 
+### Las libranzas de finales de agosto (db/155, 24/09/2026)
+
+El planificador está en PostgreSQL desde el 03/09. Antes no hay plazas, así que del 25/08 al 02/09 la bitácora daba por «Ausencia» cualquier día sin horas, también los de descanso. Se marcaron como **libranza a mano** (firmadas por Camilo) los que caen en el **patrón de descanso de septiembre** de cada persona: los días de la semana que libró la mayoría de las veces entre el 03 y el 23/09, y al menos dos. Fueron **223 días en 116 personas**. Las 96 sin patrón (bajas de primeros de septiembre, gente sin plaza) no se tocaron. Una mal puesta se quita con «Quitar la libranza».
+
 ### El permiso de escribir es una llave aparte
 
 Abrir la bitácora es `/bitacora`. Poner la J, quitarla y marcar libranza es **`/bitacora/justificar`**, en el grupo de Aprobaciones del catálogo (`services/permisos.js`).
