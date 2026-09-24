@@ -9,7 +9,8 @@
 //                       por id: fv_conductor.uuid = driver_uuid = conductor_externo.externo_id.
 //   · Ausencias V/B/P → conductor_estado_hist + cat_estado_conductor.marca_bitacora.
 //   · Justificado J   → justificante vivo (anulado_at IS NULL), con sus horas y su nota.
-//   · Libranza L      → asignado a plaza pero sin cubrir ese día (f_cobertura).
+//   · Libranza L      → asignado a plaza pero sin cubrir ese día (f_cobertura),
+//                       más las puestas a mano y menos las quitadas a mano (bitacora_dia).
 //
 // QUIÉN SALE: TODA la plantilla, vigentes y de baja. Antes el listado salía de
 // v_agenda, que solo tiene a los vigentes, y a las 74 personas que trabajaron y
@@ -24,7 +25,8 @@
 //                     ausente, dias: [ <horas|'V'|'B'|'P'|'J'|'L'|null> ],
 //                     justif: { 'YYYY-MM-DD': { horas, obs } },
 //                     horasBolt: { 'YYYY-MM-DD': h },   // lo que hizo en BOLT un día cuya celda es marca
-//                     lManual: { 'YYYY-MM-DD': true },  // libranzas puestas a mano (bitacora_dia)
+//                     lManual: { 'YYYY-MM-DD': { por, el } },  // libranzas puestas a mano (bitacora_dia)
+//                     lQuitada: { 'YYYY-MM-DD': { por, el } }, // libranzas del planificador quitadas a mano
 //                     fantasma: { 'YYYY-MM-DD': 'nombre de la cuenta' }, // trabajó con la cuenta de otro
 //                     ausencias: [{ marca, etiqueta, desde, hasta }] }],
 //     hoyIdx, inicio, avisos: { sinFicha } }
@@ -261,6 +263,35 @@ async function horasDeLaRejilla(hoyIso) {
 const DIAS_FUTURO = 60;
 const DIAS_FUTURO_LIBRANZA = 14;
 
+/**
+ * LA LIBRANZA DEL PLANIFICADOR: asignado a una plaza ese día pero sin cubrirla
+ * (su coche descansa, o es CT y no le toca) — la MISMA regla del planificador,
+ * f_cobertura. Quien ese día está de vacaciones, baja o permiso no libra: está
+ * ausente.
+ *
+ * Una sola consulta para pintar la rejilla y para quitar una libranza: si
+ * fueran dos, el botón podría decir «ese día no tiene libranza» sobre una
+ * casilla que la enseña. `$1`/`$2` son el rango; con `unaPersona`, `$3` es el
+ * conductor.
+ */
+const SQL_LIBRANZAS_PLAN = unaPersona => `
+  WITH asignados AS (
+    SELECT DISTINCT a.conductor_id, g.dia::date AS dia
+      FROM generate_series($1::date, $2::date, interval '1 day') g(dia)
+      JOIN asignacion a ON a.desde <= g.dia::date AND (a.hasta IS NULL OR a.hasta >= g.dia::date)
+      JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
+     ${unaPersona ? 'WHERE a.conductor_id = $3' : ''}
+  ),
+  cubren AS (SELECT DISTINCT conductor_id, dia FROM f_cobertura($1::date, $2::date))
+  SELECT a.conductor_id, to_char(a.dia, 'YYYY-MM-DD') AS dia
+    FROM asignados a
+   WHERE NOT EXISTS (SELECT 1 FROM cubren c WHERE c.conductor_id = a.conductor_id AND c.dia = a.dia)
+     AND NOT EXISTS (
+       SELECT 1 FROM conductor_estado_hist h
+         JOIN cat_estado_conductor ce ON ce.codigo = h.estado
+        WHERE h.conductor_id = a.conductor_id AND ce.es_ausencia
+          AND h.desde <= a.dia AND (h.hasta IS NULL OR h.hasta >= a.dia))`;
+
 async function leerBitacora() {
   const hoyIso = hoyMadridIso();
   const hoyIdx = idxDe(hoyIso);
@@ -319,32 +350,20 @@ async function leerBitacora() {
     // `horasDeLaRejilla` justo debajo: lo cerrado se calculó una vez y no se
     // vuelve a mover; solo la jornada en curso se mira en vivo.
     horasDeLaRejilla(hoyIso),
-    // Libranza 'L': asignado a una plaza ese día pero NO lo cubre (su coche descansa,
-    // o es CT y no le toca) — la MISMA regla del planificador, f_cobertura.
+    // Libranza 'L' del planificador. Ver SQL_LIBRANZAS_PLAN.
+    db.consulta(SQL_LIBRANZAS_PLAN(false), [INICIO_ISO, finLibranzaIso]),
+    // Lo puesto A MANO desde el panel del día (bitacora_dia): las libranzas que
+    // alguien puso y las del planificador que alguien QUITÓ. La 'J' manual NO se
+    // lee de aquí: su verdad es la tabla justificante.
     db.consulta(
-      `WITH asignados AS (
-         SELECT DISTINCT a.conductor_id, g.dia::date AS dia
-           FROM generate_series($1::date, $2::date, interval '1 day') g(dia)
-           JOIN asignacion a ON a.desde <= g.dia::date AND (a.hasta IS NULL OR a.hasta >= g.dia::date)
-           JOIN plaza p ON p.id = a.plaza_id AND p.baja_at IS NULL
-       ),
-       cubren AS (SELECT DISTINCT conductor_id, dia FROM f_cobertura($1::date, $2::date))
-       SELECT a.conductor_id, to_char(a.dia, 'YYYY-MM-DD') AS dia
-         FROM asignados a
-        WHERE NOT EXISTS (SELECT 1 FROM cubren c WHERE c.conductor_id = a.conductor_id AND c.dia = a.dia)
-          AND NOT EXISTS (
-            SELECT 1 FROM conductor_estado_hist h
-              JOIN cat_estado_conductor ce ON ce.codigo = h.estado
-             WHERE h.conductor_id = a.conductor_id AND ce.es_ausencia
-               AND h.desde <= a.dia AND (h.hasta IS NULL OR h.hasta >= a.dia))`,
-      [INICIO_ISO, finLibranzaIso]),
-    // Libranzas puestas A MANO desde el panel del día (bitacora_dia). La 'J'
-    // manual NO se lee de aquí: su verdad es la tabla justificante.
-    db.consulta(
-      `SELECT conductor_id, to_char(dia_operativo, 'YYYY-MM-DD') AS dia
-         FROM bitacora_dia
-        WHERE marca_manual AND marca = 'L'
-          AND dia_operativo BETWEEN $1::date AND $2::date`,
+      `SELECT b.conductor_id, to_char(b.dia_operativo, 'YYYY-MM-DD') AS dia,
+              (b.marca = 'L') AS libra, b.sin_libranza,
+              COALESCE(u.nombre, '') AS por,
+              to_char(b.marcado_at AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY') AS el
+         FROM bitacora_dia b
+         LEFT JOIN usuario u ON u.id = b.marcado_por
+        WHERE b.marca_manual AND (b.marca = 'L' OR b.sin_libranza)
+          AND b.dia_operativo BETWEEN $1::date AND $2::date`,
       [INICIO_ISO, finIso]),
   ]);
 
@@ -363,7 +382,7 @@ async function leerBitacora() {
       altaIdx: c.alta ? Math.max(0, idxDe(c.alta)) : null,
       bajaIdx: c.baja ? clamp(idxDe(c.baja)) : null,
       estado: c.estado_etiqueta || '', ausente: !!c.ausente,
-      dias: nuevos(), justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {},
+      dias: nuevos(), justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {}, lQuitada: {},
       // Dia -> nombre de la cuenta prestada con la que trabajo ese dia.
       fantasma: {},
     });
@@ -377,7 +396,7 @@ async function leerBitacora() {
     const c = porId.get(Number(id));
     if (c) return c;
     huerfanos.add(Number(id));
-    return { dias: basura, justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {}, fantasma: {} };
+    return { dias: basura, justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {}, lQuitada: {}, fantasma: {} };
   };
 
   // Orden de aplicación = prioridad de la celda (de menor a mayor): 'L' de base, luego
@@ -388,9 +407,18 @@ async function leerBitacora() {
     const i = idxDe(r.dia);
     if (i >= 0 && i < nDias) de(r.conductor_id).dias[i] = 'L';
   });
+  // Lo manual va encima del planificador: la libranza puesta a mano pone la 'L';
+  // la QUITADA la borra, y el día queda como cualquier otro —con horas, lo que
+  // hizo; sin ellas, «Ausencia»—. `lQuitada` solo se apunta si de verdad había
+  // una libranza del planificador que quitar: si el cuadrante cambió después,
+  // decir «se quitó la libranza» de un día que ya no la tiene confundiría.
   manualBit.rows.forEach(r => {
     const i = idxDe(r.dia);
-    if (i >= 0 && i < nDias) { const c = de(r.conductor_id); c.dias[i] = 'L'; c.lManual[r.dia] = true; }
+    if (i < 0 || i >= nDias) return;
+    const c = de(r.conductor_id);
+    const quien = { por: r.por || '', el: r.el || '' };
+    if (r.libra) { c.dias[i] = 'L'; c.lManual[r.dia] = quien; }
+    else if (r.sin_libranza && c.dias[i] === 'L') { c.dias[i] = null; c.lQuitada[r.dia] = quien; }
   });
   horas.forEach((diasMap, cid) => {
     const c = de(cid);
@@ -541,10 +569,10 @@ async function leerVacaciones() {
   };
 }
 
-// ── La libranza manual del panel del día ────────────────────────────────────
-// "Ese día le tocaba librar": lo dice una persona desde la bitácora y vive en
-// bitacora_dia (marca 'L', marca_manual). No toca al planificador, y al pintar
-// las horas reales siempre pisan la L (si al final trabajó, se ve que trabajó).
+// ── La libranza a mano, desde el panel del día ──────────────────────────────
+// "Ese día le tocaba librar" o "ese día NO libraba": lo dice una persona desde
+// la bitácora y vive en bitacora_dia. No toca al planificador, y al pintar las
+// horas reales siempre pisan la L (si al final trabajó, se ve que trabajó).
 function validar(conductorId, diaIso) {
   const cid = Number(conductorId);
   if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
@@ -552,22 +580,51 @@ function validar(conductorId, diaIso) {
   return cid;
 }
 
-async function marcarLibranza(conductorId, diaIso) {
+/** «Era libranza»: la 'L' a mano. Si alguien la había quitado, vuelve. */
+async function marcarLibranza(conductorId, diaIso, usuarioId) {
   const cid = validar(conductorId, diaIso);
   await db.consulta(
-    `INSERT INTO bitacora_dia (conductor_id, dia_operativo, marca, marca_manual)
-     VALUES ($1, $2::date, 'L', TRUE)
+    `INSERT INTO bitacora_dia (conductor_id, dia_operativo, marca, marca_manual, marcado_por, marcado_at)
+     VALUES ($1, $2::date, 'L', TRUE, $3, now())
      ON CONFLICT (conductor_id, dia_operativo)
-     DO UPDATE SET marca = 'L', marca_manual = TRUE, justificante_id = NULL`, [cid, diaIso]);
+     DO UPDATE SET marca = 'L', marca_manual = TRUE, justificante_id = NULL, sin_libranza = FALSE,
+                   marcado_por = EXCLUDED.marcado_por, marcado_at = now()`, [cid, diaIso, usuarioId || null]);
   return { ok: true };
 }
 
+/** La libranza que puso una persona, si la hay. Devuelve si había algo que quitar. */
 async function quitarLibranza(conductorId, diaIso) {
   const cid = validar(conductorId, diaIso);
-  await db.consulta(
+  const r = await db.consulta(
     `DELETE FROM bitacora_dia
       WHERE conductor_id = $1 AND dia_operativo = $2::date AND marca_manual AND marca = 'L'`,
     [cid, diaIso]);
+  return r.rowCount > 0;
+}
+
+/** ¿El planificador lo tenía de libranza ese día? La misma cuenta que la rejilla. */
+async function libraPorPlan(conductorId, diaIso) {
+  const cid = validar(conductorId, diaIso);
+  const r = await db.consulta(SQL_LIBRANZAS_PLAN(true), [diaIso, diaIso, cid]);
+  return r.rows.length > 0;
+}
+
+/**
+ * «Ese día NO libraba»: quita la libranza del PLANIFICADOR solo en la bitácora.
+ * Una J puesta encima no se pisa (la casilla es la J), y por eso la condición
+ * del ON CONFLICT: sobre una fila que ya tiene marca no se escribe nada.
+ */
+async function quitarLibranzaDelPlan(conductorId, diaIso, usuarioId) {
+  const cid = validar(conductorId, diaIso);
+  const r = await db.consulta(
+    `INSERT INTO bitacora_dia (conductor_id, dia_operativo, marca, marca_manual, sin_libranza, marcado_por, marcado_at)
+     VALUES ($1, $2::date, NULL, TRUE, TRUE, $3, now())
+     ON CONFLICT (conductor_id, dia_operativo)
+     DO UPDATE SET sin_libranza = TRUE, marca_manual = TRUE,
+                   marcado_por = EXCLUDED.marcado_por, marcado_at = now()
+      WHERE bitacora_dia.marca IS NULL
+     RETURNING 1`, [cid, diaIso, usuarioId || null]);
+  if (!r.rows.length) throw new Error('Ese día ya tiene otra marca puesta a mano: quítala antes.');
   return { ok: true };
 }
 
@@ -596,4 +653,5 @@ async function horasDeJornada(diaIso) {
 module.exports = {
   // El histórico sellado: lo llama el cron al cerrar la jornada y la pantalla de
   // la bitácora si hay que rehacer un tramo a mano.
-  sellarHoras, horasCalculadas, horasDeJornada, leerBitacora, leerVacaciones, marcarLibranza, quitarLibranza, INICIO };
+  sellarHoras, horasCalculadas, horasDeJornada, leerBitacora, leerVacaciones,
+  marcarLibranza, quitarLibranza, libraPorPlan, quitarLibranzaDelPlan, hoyMadridIso, INICIO };

@@ -118,6 +118,25 @@ async function leerPorFecha(diaIso) {
   return m;
 }
 
+/**
+ * QUITAR LA 'J' DE LA BITÁCORA al anular o rechazar su justificante.
+ *
+ * La fila se borra, salvo que alguien hubiera QUITADO la libranza del
+ * planificador ese día (`sin_libranza`): entonces se queda sin marca. Borrarla
+ * devolvería el día a la libranza que se quitó a propósito, y una J rechazada
+ * en un día de trabajo es una «Ausencia», no un descanso.
+ */
+async function quitarMarcaJ(cli, conductorId, dia, justificanteId) {
+  await cli.query(
+    `UPDATE bitacora_dia SET marca = NULL, justificante_id = NULL
+      WHERE conductor_id = $1 AND dia_operativo = $2::date AND justificante_id = $3 AND marca = 'J'
+        AND sin_libranza`, [conductorId, dia, justificanteId]);
+  await cli.query(
+    `DELETE FROM bitacora_dia
+      WHERE conductor_id = $1 AND dia_operativo = $2::date AND justificante_id = $3 AND marca = 'J'
+        AND NOT sin_libranza`, [conductorId, dia, justificanteId]);
+}
+
 /** Anula el justificante VIVO de un día (y quita su 'J' de la bitácora). */
 async function anularPorId({ conductorId, diaIso }) {
   const cid = Number(conductorId);
@@ -129,13 +148,10 @@ async function anularPorId({ conductorId, diaIso }) {
         WHERE conductor_id = $1 AND dia_operativo = $2::date AND anulado_at IS NULL
         RETURNING id`, [cid, diaIso]);
     if (!r.rows.length) throw new Error('Ese día no tiene justificante vivo');
-    // Se quita la J, y solo la J: la fila solo existe por ella (guardarPorId no
-    // pisa una L manual), así que borrarla es lo correcto —pero se exige que
-    // siga siendo una J por si algo la cambió entre medias.
-    await cli.query(
-      `DELETE FROM bitacora_dia
-        WHERE conductor_id = $1 AND dia_operativo = $2::date AND justificante_id = $3 AND marca = 'J'`,
-      [cid, diaIso, r.rows[0].id]);
+    // Se quita la J, y solo la J: la fila existe por ella (guardarPorId no
+    // pisa una L manual) —pero se exige que siga siendo una J por si algo la
+    // cambió entre medias—. Ver `quitarMarcaJ`.
+    await quitarMarcaJ(cli, cid, diaIso, r.rows[0].id);
     return { ok: true, justificanteId: r.rows[0].id };
   });
 }
@@ -268,10 +284,7 @@ async function rechazar(id, { usuarioId, motivo } = {}) {
         RETURNING id, conductor_id, dia_operativo`, [Number(id), usuarioId || null, motivo]);
     if (!r.rows.length) throw new Error('Esa J ya está anulada o no existe');
     const j = r.rows[0];
-    await cli.query(
-      `DELETE FROM bitacora_dia
-        WHERE conductor_id = $1 AND dia_operativo = $2 AND justificante_id = $3 AND marca = 'J'`,
-      [j.conductor_id, j.dia_operativo, j.id]);
+    await quitarMarcaJ(cli, j.conductor_id, j.dia_operativo, j.id);
     return { ok: true, id: String(j.id) };
   });
 }

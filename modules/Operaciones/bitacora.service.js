@@ -87,16 +87,40 @@ async function anularJustificante({ conductorId, dia }) {
 }
 
 /**
- * Marcar (o quitar) una LIBRANZA manual desde el panel del día: "ese día le
- * tocaba librar". Vive en `bitacora_dia`; el planificador NO se toca — el
- * cuadrante dice lo que estaba planificado, y esto lo que de verdad pasó.
+ * Poner o QUITAR una libranza desde el panel del día. Vive en `bitacora_dia`;
+ * el planificador NO se toca — el cuadrante dice lo que estaba planificado, y
+ * esto lo que de verdad pasó.
+ *
+ * Quitar quita las DOS capas: la libranza que puso una persona y la que sale
+ * del planificador. Quien pulsa «Quitar la libranza» dice que ese día no
+ * libraba; no «quita la de arriba y enséñame la de debajo». Sin horas, el día
+ * pasa a «Ausencia», que es lo que es un día de trabajo en que no se salió.
+ *
+ * La del planificador solo se quita de días que ya han llegado: una libranza
+ * futura mal puesta se arregla en el cuadrante, que es de donde sale.
  */
-async function libranza({ conductorId, dia, quitar }) {
-  if (quitar) await repo.quitarLibranza(conductorId, dia);
-  else await repo.marcarLibranza(conductorId, dia);
+async function libranza({ conductorId, dia, quitar }, usuarioId) {
+  if (!quitar) {
+    await repo.marcarLibranza(conductorId, dia, usuarioId);
+    olvidar();
+    console.log(`📓 [Bitácora] Libranza puesta a mano · conductor ${conductorId} · ${dia}`);
+    return { msg: 'Marcado como libranza.' };
+  }
+  // Primero se mira todo y después se escribe: que el error del día futuro no
+  // llegue con la libranza puesta a mano ya borrada.
+  const delPlan = await repo.libraPorPlan(conductorId, dia);
+  if (delPlan && String(dia) > repo.hoyMadridIso()) {
+    throw new Error('Ese día todavía no ha llegado: la libranza del planificador se cambia en el planificador.');
+  }
+  const aMano = await repo.quitarLibranza(conductorId, dia);
+  if (delPlan) await repo.quitarLibranzaDelPlan(conductorId, dia, usuarioId);
+  if (!aMano && !delPlan) throw new Error('Ese día no tiene ninguna libranza que quitar.');
   olvidar();
-  console.log(`📓 [Bitácora] Libranza manual ${quitar ? 'quitada' : 'puesta'} · conductor ${conductorId} · ${dia}`);
-  return {};
+  console.log(`📓 [Bitácora] Libranza quitada (${[aMano && 'a mano', delPlan && 'del planificador'].filter(Boolean).join(' y ')})` +
+    ` · conductor ${conductorId} · ${dia}`);
+  return { msg: delPlan
+    ? 'Libranza quitada. Sin horas, ese día cuenta como «Ausencia». El planificador no se ha tocado.'
+    : 'Libranza quitada.' };
 }
 
 /** REHACER el histórico sellado de un rango. Ver la nota 3. */

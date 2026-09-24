@@ -105,6 +105,21 @@ Pero **al escribir se tira**: al poner una J, anularla o marcar una libranza, la
 - **Anular** una J no la borra: el registro queda **anulado**, no desaparecido.
 - **La libranza manual** ("ese día le tocaba librar") vive en `bitacora_dia` con marca `L` y `marca_manual`. **El planificador no se toca:** el cuadrante dice lo que estaba *planificado* y la bitácora lo que de verdad *pasó*.
 
+### Quitar una libranza (db/153, 24/09/2026)
+
+Una libranza puede estar mal puesta, a mano o en el cuadrante. En el panel del día, **«Quitar la libranza»** sirve para las dos:
+
+- **La puesta a mano** se borra.
+- **La del planificador** (asignado a una plaza y sin cubrirla ese día) se tapa **solo en la bitácora**: una fila en `bitacora_dia` sin marca y con `sin_libranza`. Antes pide confirmación, porque sin horas el día pasa a **«Ausencia»**.
+- **Se quitan las dos a la vez.** Quien pulsa el botón dice que ese día no libraba; no quiere quitar la de arriba y ver aparecer la de debajo.
+- **La del planificador solo se quita de días que ya han llegado.** Una libranza futura mal puesta se arregla en el cuadrante, que es de donde sale.
+- **Queda quién y cuándo** (`marcado_por`, `marcado_at`). Sale como «se quitó a mano por … el …». Se guarda también al poner una libranza. Las 76 anteriores a esto no lo tienen.
+- **«Era libranza» la vuelve a poner.** Queda como libranza a mano, y `sin_libranza` se borra: la base no deja las dos cosas a la vez (`ck_bit_sin_libranza`).
+- **Una J encima de una libranza quitada** va por encima, como siempre. Al anularla o rechazarla, la fila **se queda sin marca en vez de borrarse** (`quitarMarcaJ` en `services/repo/justificantes.js`). Si se borrara, el día volvería a la libranza que alguien quitó a propósito, y una J rechazada en un día de trabajo es una «Ausencia».
+- La rejilla y el botón miran la libranza del planificador con **la misma consulta** (`SQL_LIBRANZAS_PLAN`). Si fueran dos, el botón podría decir «ese día no tiene libranza» sobre una casilla que la enseña.
+
+**Esto no cambia Control ni el reporte de turnos**, que leen el planificador. Si el cuadrante está mal para días que vienen, se corrige allí.
+
 ### El permiso de escribir es una llave aparte
 
 Abrir la bitácora es `/bitacora`. Poner la J, quitarla y marcar libranza es **`/bitacora/justificar`**, en el grupo de Aprobaciones del catálogo (`services/permisos.js`).

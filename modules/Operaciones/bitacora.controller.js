@@ -63,9 +63,9 @@ router.post('/api/justificar', responde(async req => {
 router.post('/api/anular-justificante', responde(req =>
   bitacora.anularJustificante({ conductorId: (req.body || {}).conductorId, dia: (req.body || {}).dia })));
 
-router.post('/api/libranza', responde(req => {
+router.post('/api/libranza', responde(async req => {
   const b = req.body || {};
-  return bitacora.libranza({ conductorId: b.conductorId, dia: b.dia, quitar: b.quitar });
+  return bitacora.libranza({ conductorId: b.conductorId, dia: b.dia, quitar: b.quitar }, await quien(req));
 }));
 
 // REHACER el histórico sellado. Solo el desarrollador: reescribe histórico.
