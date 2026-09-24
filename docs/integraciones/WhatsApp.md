@@ -8,7 +8,7 @@ aliases: [Cloud API, Bot de puertas]
 WhatsApp es **el canal con los conductores**. No usan la app de Mapon ni entran al ERP: lo que se les dice y lo que piden pasa por aquí. Son dos cosas distintas montadas sobre el mismo número:
 
 - **Lo que sale**: avisos de turnos, advertencias de velocidad, alertas a los controladores, bienvenida de Ballenoil. Vive en `services/whatsapp.js`.
-- **Lo que entra**: el bot (abrir/cerrar puertas, PIN y código de lavado, ver turnos, fichar turno). Vive en `routes/botPuertas.js`.
+- **Lo que entra**: el bot (abrir/cerrar puertas, código de lavado, ver turnos, fichar turno). Vive en `routes/botPuertas.js`. El PIN de repostaje de Ballenoil se quitó del bot el 24/09/2026: ya no se usa.
 
 Es la **Cloud API de Meta**, contra `graph.facebook.com`, versión `v25.0`.
 
@@ -70,7 +70,7 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 
 - Una **matrícula** → busca el coche en Mapon y abre el menú de botones. El filtro es `/^(?=.*\d)[A-Za-z0-9]{6,8}$/`: exige al menos un dígito porque con `{4,8}` a secas *"hola"* era una matrícula válida — Ignacio saludó al bot y le contestó «Matrícula "HOLA" no encontrada» sin saludarle siquiera. Lo mismo pasaba con "buenas", "gracias" o "vale".
 - **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio.
-- **Código de lavado** (`codigosBallenoil`) y **PIN de repostaje**, con el instructivo de Ballenoil.
+- **Código de lavado** (`codigosBallenoil`), con el instructivo de Ballenoil. El **PIN de repostaje** se quitó el 24/09/2026 porque ya no se usa: si alguien pulsa el botón «VER PIN» de una bienvenida vieja, se le dice eso y se le deja el menú.
 - **Ver turnos** → el cuadrante de la semana en texto libre. Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
 - **Fichaje de turno** (`services/fichajeBot.js`), que enlaza conductor ↔ coche en Mapon. Va **antes** de la comprobación de acceso porque quien lo prueba puede no estar en la agenda, y solo actúa para los teléfonos de `FICHAJE_TELEFONOS`: para cualquier otro número devuelve `false` y el bot sigue como siempre.
 

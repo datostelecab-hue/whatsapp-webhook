@@ -11,18 +11,6 @@ const fichajeBot = require('../services/fichajeBot');
 
 const sesiones = {};
 
-// Instructivo de repostaje (combustible) que acompaña al PIN de Ballenoil.
-const INSTRUCTIVO_REPOSTAJE =
-`⛽ *Cómo repostar*
-1️⃣ En el surtidor selecciona *DNI&Go*.
-2️⃣ Introduce tu *DNI/NIE* y tu PIN.
-3️⃣ Indica el *kilometraje exacto* y la *matrícula* del vehículo.
-4️⃣ Selecciona *Gasolina 95 (verde)*.
-5️⃣ El sistema autorizará hasta *50 €* de combustible.
-
-⚠️ Es *obligatorio* introducir bien el kilometraje y la matrícula; un dato incorrecto puede acarrear sanción.
-🚗 Al terminar el turno, entrega el vehículo con el *depósito lleno*.`;
-
 // ============================================================
 // RECIBIR MENSAJES
 // ============================================================
@@ -116,12 +104,6 @@ async function handleText(phone, text) {
     esUsuario: acceso.tipo === 'usuario',
   };
   const nombre = conductor.nombre;
-
-  // Palabra clave para pedir el PIN de repostaje (además del botón de la plantilla).
-  if (/^(ver\s+)?pin(\s+ballenoil)?$|^ballenoil$/i.test(text.trim())) {
-    await enviarPinBallenoil(phone);
-    return;
-  }
 
   // Palabra clave para ver los turnos/relevos de la semana (además del botón).
   if (/^(ver\s+)?(mis\s+)?turnos?$|^relevos?$/i.test(text.trim())) {
@@ -299,7 +281,7 @@ async function enviarTurnos(phone, nombreSesion) {
   }
 }
 
-// Botón de una PLANTILLA (quick reply). El de la bienvenida de Ballenoil pide el PIN.
+// Botón de una PLANTILLA (quick reply).
 async function handleTemplateButton(phone, label) {
   const l = (label || '').toUpperCase();
   // Se acepta cualquier etiqueta razonable del botón ("Ver mis turnos", "Ver detalle",
@@ -309,26 +291,12 @@ async function handleTemplateButton(phone, label) {
     console.log(`📅 [Turnos] Botón "ver turnos" de ${phone}`);
     await enviarTurnos(phone);
   } else if (l.includes('PIN') || l.includes('BALLENOIL')) {
-    await enviarPinBallenoil(phone);
+    // EL PIN DE REPOSTAJE DE BALLENOIL YA NO SE USA (24/09/2026). El botón puede
+    // seguir llegando de bienvenidas viejas: se le dice, y se le deja el menú.
+    await sendText(phone, 'ℹ️ El PIN de repostaje de Ballenoil ya no se usa.');
+    await handleText(phone, '');
   } else {
     await handleText(phone, '');   // etiqueta desconocida → saludo/menú normal
-  }
-}
-
-// Entrega al conductor su PIN de repostaje (de su ficha) + el instructivo. Va en texto
-// libre porque su pulsación/mensaje abre la ventana de 24 h (no hace falta plantilla).
-async function enviarPinBallenoil(phone) {
-  // De PostgreSQL, y buscando por PERSONA y no por papeleo: alguien puede haber
-  // tenido dos procesos de selección y el PIN es suyo, no de la candidatura.
-  let t = null;
-  try { t = await require('../modules/Seleccion/seleccion.service').pinPorTelefono(phone); }
-  catch (e) { console.error('❌ [Ballenoil PIN]', e.message); }
-  const pin = (t && (t.pin || '')).toString().trim();
-  const nombre = (t && (t.quien || '')).trim();
-  if (pin) {
-    await sendText(phone, `${nombre ? 'Hola ' + nombre + '. ' : ''}🔑 Tu *PIN de repostaje Ballenoil* es *${pin}*.\nEs personal e intransferible.\n\n${INSTRUCTIVO_REPOSTAJE}`);
-  } else {
-    await sendText(phone, '🔑 Todavía no tengo tu PIN de repostaje registrado. Contacta con tráfico para que te lo generen.');
   }
 }
 
