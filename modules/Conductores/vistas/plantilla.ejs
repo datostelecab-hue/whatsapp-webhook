@@ -22,95 +22,16 @@
     || PERMISOS.includes('/plantilla/fantasma');
 
   // ── LA FOTO DE LA PERSONA ─────────────────────────────────────────────────
-  //
-  // Un cuadrado fijo de 96 px al lado del nombre -eran 64 y se quedaba corto-,
-  // y la foto SE AJUSTA A EL (object-fit:
-  // cover): da igual que sea vertical, apaisada o un selfie, llena el cuadro sin
-  // deformarse y se recorta lo que sobra.
-  //
-  // Sin foto, una SILUETA pintada con los colores del tema -el fondo de las
-  // tarjetas y el gris de los textos apagados-: cambia sola al pasar de claro a
-  // oscuro, sin una imagen para cada tema.
-  const SILUETA = '<svg viewBox="0 0 64 64" class="w-full h-full" aria-hidden="true">'
-    + '<circle cx="32" cy="25" r="12" fill="currentColor"/>'
-    + '<path d="M9 64c1.5-14 11.5-22 23-22s21.5 8 23 22z" fill="currentColor"/></svg>';
-
+  // El cuadro, la silueta y la subida son el componente `FotoPersona`
+  // (public/assets/js/fotoPersona.js), el mismo que usan Seleccion y la ETT.
+  // Tráfico ve la foto pero no la cambia: es dato personal.
   function pintarFoto(d, hueco) {
-    const puede = !SOLO_OPERATIVO;
-    const quien = esc(d.nombre_completo || '');
-    hueco.innerHTML = `
-      <div class="relative w-24 h-24">
-        <div class="w-24 h-24 rounded-3xl overflow-hidden border border-telecab-border bg-telecab-card2 text-telecab-muted/50">
-          ${d.foto_id
-            ? `<img src="/plantilla/api/conductor/${esc(d.id)}/foto?v=${esc(d.foto_id)}" alt="Foto de ${quien}"
-                    class="w-full h-full object-cover" data-foto>`
-            : `<div class="w-full h-full px-2 pt-3" title="Sin foto">${SILUETA}</div>`}
-        </div>
-        ${puede ? `<button type="button" data-cambiar-foto
-                   class="absolute -bottom-2 -right-2 w-9 h-9 rounded-full bg-telecab-gold text-telecab-dark
-                          border-2 border-telecab-card shadow-soft flex items-center justify-center text-sm
-                          hover:scale-105 transition"
-                   title="${d.foto_id ? 'Cambiar la foto' : 'Subir una foto'}"
-                   aria-label="${d.foto_id ? 'Cambiar la foto' : 'Subir una foto'}">
-                 <i class="fa-solid fa-camera"></i></button>` : ''}
-      </div>`;
-
-    // Si el almacen no la da (Drive caido, archivo movido), la silueta: mejor que
-    // el icono de imagen rota del navegador.
-    const img = hueco.querySelector('[data-foto]');
-    if (img) img.addEventListener('error', () => {
-      img.parentElement.innerHTML = '<div class="w-full h-full px-2 pt-3" title="No se pudo cargar la foto">' + SILUETA + '</div>';
-    }, { once: true });
-
-    if (!puede) return;
-    const boton = hueco.querySelector('[data-cambiar-foto]');
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    boton.addEventListener('click', () => input.click());
-    input.addEventListener('change', async () => {
-      const archivo = input.files && input.files[0];
-      if (!archivo) return;
-      boton.disabled = true;
-      boton.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
-      try {
-        const base64 = await reducirFoto(archivo, 640);
-        const r = await enviar(`/plantilla/api/conductor/${d.id}/foto`, 'POST', { base64, mime: 'image/jpeg' });
-        d.foto_id = r.fotoId;
-        pintarFoto(d, hueco);
-        if (Dialogo.hecho) Dialogo.hecho('Foto guardada');
-      } catch (e) {
-        await Dialogo.aviso({ titulo: 'No se pudo guardar la foto', texto: e.message, tono: 'error' });
-        pintarFoto(d, hueco);
-      }
-    });
-  }
-
-  /**
-   * La foto, reducida en el navegador ANTES de subirla: la de un movil pesa 4 o
-   * 5 MB y aqui se va a ver en un cuadro de 64 px. Con el lado largo a 640 px y
-   * en JPEG queda en unos 100 KB, sube al momento y carga igual de rapido.
-   *
-   * Devuelve el base64 sin la cabecera "data:".
-   */
-  function reducirFoto(archivo, lado) {
-    return new Promise((ok, mal) => {
-      const url = URL.createObjectURL(archivo);
-      const im = new Image();
-      im.onload = () => {
-        const k = Math.min(1, lado / Math.max(im.naturalWidth, im.naturalHeight));
-        const cv = document.createElement('canvas');
-        cv.width = Math.max(1, Math.round(im.naturalWidth * k));
-        cv.height = Math.max(1, Math.round(im.naturalHeight * k));
-        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
-        URL.revokeObjectURL(url);
-        ok(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
-      };
-      im.onerror = () => {
-        URL.revokeObjectURL(url);
-        mal(new Error('No se pudo leer esa imagen. Prueba con una foto JPG o PNG.'));
-      };
-      im.src = url;
+    FotoPersona.pintar(hueco, {
+      url: `/plantilla/api/conductor/${d.id}/foto`,
+      fotoId: d.foto_id || null,
+      nombre: d.nombre_completo,
+      puede: !SOLO_OPERATIVO,
+      alGuardar: id => { d.foto_id = id; },
     });
   }
 

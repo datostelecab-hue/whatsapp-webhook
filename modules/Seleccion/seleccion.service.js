@@ -139,6 +139,18 @@ async function ficha(id) {
   return { ...f, faltan: await cand.faltantes(f.id), documentosPedidos: DOCUMENTOS };
 }
 
+// ── La foto de la persona ──────────────────────────────────────────────────
+// La misma que ve Plantilla: es de la PERSONA, no de la candidatura, igual que
+// el DNI. Quien vuelve seis meses despues no tiene que hacerse otra. OPCIONAL:
+// no entra en lo que se le pide para contratar.
+async function conductorDe(id) {
+  const f = await cand.ficha(Number(id));
+  if (!f) throw new Error('No existe esa candidatura');
+  return f.conductor_id;
+}
+const foto = async id => docs.foto(await conductorDe(id));
+const subirFoto = async (id, datos, quien) => docs.subirFoto(await conductorDe(id), datos || {}, quien || {});
+
 // ── Los papeles ────────────────────────────────────────────────────────────
 
 /**
@@ -447,6 +459,6 @@ module.exports = {
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
   abrir, guardar, cambiarEstado, pasarARRHH, eliminar, alContratar,
   tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, guardarPin, pinPorTelefono, pendientesTramo,
-  subirDocumento, retirarDocumento, descargarDocumento, fichaPDF,
+  subirDocumento, retirarDocumento, descargarDocumento, fichaPDF, foto, subirFoto,
   direccion,
 };

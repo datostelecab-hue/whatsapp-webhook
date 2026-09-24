@@ -76,6 +76,16 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 > rejilla y los siguientes **se apilan a su lado**. Solo aplica con
 > `columnas: 2`. Lo usa el sexo en el formulario de Datos de Selección.
 
+## La foto de una persona: `FotoPersona`
+
+`public/assets/js/fotoPersona.js`, cargado en todas las pantallas. Pinta el cuadro de 96 px con la foto ajustada (`object-fit: cover`) o, si no hay, una silueta con los colores del tema; con `puede: true`, el botón de la cámara, y reduce la foto en el navegador antes de subirla.
+
+```js
+FotoPersona.pintar(hueco, { url, fotoId, nombre, puede, alGuardar });
+```
+
+`url` es la misma para las dos cosas: `GET` sirve la foto y `POST` la guarda. Lo usan Plantilla, Selección y la ETT. Encaja en el hueco `avatar` del Listado.
+
 ## El selector suelto: `.tc-selector`
 
 `Dialogo.formulario` ya traía su selector, pero vivía **dentro** del diálogo y no había forma de usarlo en un formulario montado a mano —que es lo que tienen varias pantallas—. `selector.js` es esa misma idea, suelta.

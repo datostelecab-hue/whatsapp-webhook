@@ -248,6 +248,10 @@ Tres detalles que se decidieron a propósito:
 - **La ficha trae el id del documento, no la imagen**, y la pantalla la pide con `?v=<id>`: el navegador la guarda un día y solo la vuelve a bajar cuando alguien sube otra, que es otra URL.
 - **Es dato personal**: la ve quien ve la ficha, y la cambia quien puede cambiar sus datos. Tráfico no ve el botón, y si llamara a la API a pelo, el servicio se lo niega.
 
+**También en Selección y en la ETT** (24/09/2026), en la cabecera de la ficha de la candidatura, y es **la misma foto**: es de la persona, no de la candidatura, igual que el DNI. Se sube en cualquiera de las tres pantallas y se ve en las otras dos. En Selección **es opcional**: no sale en «Falta por completar» ni en la lista de papeles que se piden, y no frena ningún alta.
+
+Para eso la lógica se movió a **Documentos** (`fotoDe`, `foto`, `subirFoto` en `documentos.service`), que es donde se guarda: las reglas —qué archivo, cuánto pesa, quién la cambia— se escriben una vez. Y el cuadro, la silueta y la subida son el componente compartido `FotoPersona` (`public/assets/js/fotoPersona.js`), cargado en todas las pantallas desde `layout-gestion`.
+
 El botón de la cámara va **siempre visible** en la esquina, no al pasar el ratón: en un móvil no hay ratón. El hueco en la cabecera es una opción nueva del [[Componentes de la casa|Listado]], `detalle.avatar(d, hueco)`, que funciona como `pinta` en los bloques.
 
 ## Lo que se borró, y el fallo que apareció al ir a borrarlo

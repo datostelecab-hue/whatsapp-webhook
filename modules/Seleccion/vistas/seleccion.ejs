@@ -492,6 +492,14 @@
       origen: id => '/seleccion/api/ficha/' + id,
       titulo: d => d.quien,
       subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
+      // LA FOTO, al lado del nombre: la misma que en Plantilla, porque es de la
+      // persona. OPCIONAL: nada pide que la haya.
+      avatar: (d, hueco) => FotoPersona.pintar(hueco, {
+        url: '/seleccion/api/candidatura/' + d.id + '/foto',
+        fotoId: ((d.documentos || []).find(x => x.tipo === 'foto' && x.vigente) || {}).id || null,
+        nombre: d.quien,
+        puede: true,
+      }),
       acciones: [
         { texto: 'Dar de alta', icono: 'fa-user-check', principal: true,
           visible: d => d.en_funnel, onClick: accionRRHH },

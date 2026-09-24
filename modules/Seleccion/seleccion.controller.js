@@ -103,4 +103,24 @@ router.post('/api/candidatura/:id/ficha-pdf', responde(req => seleccion.fichaPDF
 // ── Geocodificación ────────────────────────────────────────────────────────
 router.post('/api/geocodificar', responde(req => seleccion.direccion(req.body || {})));
 
+
+// ── La foto de la persona ──────────────────────────────────────────────────
+// OPCIONAL. Se sirve por el ERP con sus permisos, y la pantalla la pide con el
+// id del documento en la URL (?v=): puede guardarse un dia en el navegador sin
+// miedo, porque una foto nueva es otra URL.
+router.get('/api/candidatura/:id/foto', async (req, res) => {
+  try {
+    const f = await seleccion.foto(req.params.id);
+    if (!f) return res.status(404).send('Sin foto');
+    res.setHeader('Content-Type', f.mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(f.bytes);
+  } catch (e) {
+    res.status(404).send('Sin foto');
+  }
+});
+
+router.post('/api/candidatura/:id/foto', express.json({ limit: '6mb' }), responde(async req =>
+  seleccion.subirFoto(req.params.id, req.body || {}, await quien(req))));
+
 module.exports = router;

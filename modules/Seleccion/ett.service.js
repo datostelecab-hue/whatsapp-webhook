@@ -126,6 +126,10 @@ async function importar({ texto, solicitudId, referencia, recibida }, quien) {
 // guardan en su documento. Si la ETT fuera directa al repositorio, en su
 // formulario las fechas se escribirian y se perderian sin decir nada.
 const guardar = (id, datos, quien) => require('./seleccion.service').guardar(id, datos, quien);
+
+// La foto, por la misma puerta que Seleccion: es la misma persona y la misma foto.
+const foto = id => require('./seleccion.service').foto(id);
+const subirFoto = (id, datos, quien) => require('./seleccion.service').subirFoto(id, datos, quien);
 const cambiarEstado = (id, estado, motivo, quien) =>
   cand.cambiarEstado(Number(id), estado, { motivo, ...quien });
 const eliminar = (id, quien) => cand.eliminar(Number(id), quien);
@@ -323,6 +327,7 @@ const excelDeElegidos = async ids =>
   ({ bytes: await excel.generarExcelETT(await cand.paraETTElegidos(ids)), nombre: excel.nombreFichero() });
 
 module.exports = {
+  foto, subirFoto,
   CANAL, POR_DEFECTO,
   paraLaPantalla, lista, ficha, catalogos, vacantesAbiertas,
   importar, guardar, cambiarEstado, descartar, eliminar,

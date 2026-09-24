@@ -672,6 +672,14 @@
       origen: id => '/ett/api/ficha/' + id,
       titulo: d => d.quien,
       subtitulo: d => [d.estado_etiqueta, d.dni_nie, d.telefono].filter(Boolean).join(' · '),
+      // LA FOTO, al lado del nombre: la misma que en Plantilla, porque es de la
+      // persona. OPCIONAL: nada pide que la haya.
+      avatar: (d, hueco) => FotoPersona.pintar(hueco, {
+        url: '/ett/api/candidatura/' + d.id + '/foto',
+        fotoId: ((d.documentos || []).find(x => x.tipo === 'foto' && x.vigente) || {}).id || null,
+        nombre: d.quien,
+        puede: true,
+      }),
       acciones: [
         // LAS TRES SALIDAS DE UNA ENTREVISTA, y no hay una cuarta: se le
         // contrata con fecha, se queda esperando plaza, o no pasa y se dice por
