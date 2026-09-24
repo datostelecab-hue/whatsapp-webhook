@@ -242,6 +242,17 @@ Se pide **por la persona** y no por su candidatura (`paraFichaDeConductor`): de 
 
 Si le faltan datos **no se genera**, y el aviso los enumera uno a uno. **Tráfico no la genera**: lleva el DNI, la cuenta y la dirección.
 
+### Lo que pide la ficha, también en «Datos»
+
+Para que la ficha se pueda completar desde Plantilla, el formulario de **Datos** trae lo que pide y no era una columna de la persona (`plantilla.service.campos`):
+
+- **Fecha de expedición y de caducidad del carné**, detrás del estado civil, como en Selección. Se guardan en el **documento del carné** (`documentos.service.prepararFechasCarne`): sin el carné subido no hay dónde ponerlas, y se dice. Caducar antes de expedirse se rechaza.
+- **IBAN / nº de cuenta**, con la Seguridad Social. Va **cifrado** y **nunca sale a la pantalla**: el campo aparece vacío y su ayuda dice si ya hay uno («Guardado: •••• 1234»); vacío no lo toca. En la auditoría queda que cambió y sus cuatro últimas cifras.
+
+**Se comprueba todo antes de guardar nada**: si las fechas no valen, el formulario entero se queda sin guardar. Tráfico no ve ni cambia ninguno de los tres. La hoja de la persona enseña **Carné** y **Cuenta** en «Datos personales».
+
+Las dos reglas viven en un solo sitio y las usan Selección y Plantilla: las fechas en Documentos (`prepararFechasCarne`, `fechasCarne`) y el IBAN en Conductores (`guardarIban`, `ibanEnmascarado`). Antes solo estaban en Selección. De paso, la ficha de Plantilla **dejó de mandar al navegador el IBAN cifrado**, que viajaba con el resto de la fila.
+
 ## La foto de la persona (24/09/2026)
 
 La ficha lleva la foto de cada persona **en la cabecera, al lado del nombre**: un cuadrado fijo de 96 px en el que la foto **se ajusta** (`object-fit: cover`). Da igual que sea vertical, apaisada o un selfie: llena el cuadro sin deformarse y se recorta lo que sobra.

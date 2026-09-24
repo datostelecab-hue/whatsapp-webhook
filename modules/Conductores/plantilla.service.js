@@ -62,6 +62,14 @@ async function ficha(id, { momento } = {}) {
   // aparte con ese id en la URL, y asi el navegador la guarda y solo la vuelve
   // a bajar cuando alguien sube otra. Sin foto, null: se pinta la silueta.
   f.foto_id = await fotoVigente(id).then(x => (x ? String(x.id) : null)).catch(() => null);
+  // Lo que pide la ficha de alta y no es una columna: las fechas del carné (del
+  // documento del permiso) y si hay cuenta guardada. El IBAN NUNCA sale entero:
+  // solo sus cuatro últimas cifras. Y el cifrado tampoco viaja a la pantalla.
+  const carne = await docs.fechasCarne(id).catch(() => ({}));
+  f.carnet_expedicion = carne.expedicion || null;
+  f.carnet_caducidad = carne.caducidad || null;
+  f.iban_guardado = con.ibanEnmascarado(f.iban_cifrado);
+  delete f.iban_cifrado;
   return f;
 }
 
@@ -104,7 +112,26 @@ const catalogos = () => con.catalogos();
  * antes de mandarlas.
  */
 async function campos(rol) {
-  return { campos: await con.campos(), editables: con.camposDe(rol || '') };
+  // LO QUE PIDE LA FICHA DE ALTA Y NO ES UNA COLUMNA (24/09/2026): las fechas del
+  // carné —van en el documento del permiso— y el IBAN —va cifrado—. Sin ellos no
+  // había forma de completar la ficha desde aquí. Van donde se leen: las fechas
+  // detrás del estado civil, como en Selección, y la cuenta con la Seguridad
+  // Social. Son datos personales: Tráfico no los toca.
+  const base = await con.campos();
+  const out = {};
+  for (const [k, def] of Object.entries(base)) {
+    out[k] = def;
+    if (k === 'estado_civil') {
+      out.carnet_expedicion = { grupo: def.grupo, etiqueta: 'Fecha de expedición del carné', ambito: 'sensible', tipo: 'fecha',
+        ayuda: 'Se guarda en el documento del carné: súbelo antes en Documentos' };
+      out.carnet_caducidad = { grupo: def.grupo, etiqueta: 'Fecha de caducidad del carné', ambito: 'sensible', tipo: 'fecha' };
+    }
+    if (k === 'naf_control') {
+      out.iban = { grupo: def.grupo, etiqueta: 'IBAN / nº de cuenta', ambito: 'sensible' };
+    }
+  }
+  const extra = rol === 'trafico' ? [] : ['carnet_expedicion', 'carnet_caducidad', 'iban'];
+  return { campos: out, editables: [...con.camposDe(rol || ''), ...extra] };
 }
 
 // ── BOLT ───────────────────────────────────────────────────────────────────
@@ -153,7 +180,27 @@ const buscarPersona = pistas => con.buscarPersona(pistas || {});
 // transacción. Lo que NO se hace aquí es escribir fechas "hasta" a mano.
 
 const crear = (datos, quien) => con.crear(datos, quien);
-const actualizar = (id, datos, quien) => con.actualizar(Number(id), datos, quien);
+/**
+ * Guarda los datos de la ficha. Las fechas del carné y el IBAN se apartan: no
+ * son columnas de la persona (ver `campos`). Se COMPRUEBA TODO ANTES DE
+ * GUARDAR NADA: si las fechas no valen o no hay carné subido, se dice sin haber
+ * tocado el resto del formulario.
+ */
+async function actualizar(id, datos = {}, quien = {}) {
+  const { carnet_expedicion: exp, carnet_caducidad: cad, iban, ...resto } = datos || {};
+  const tocaIban = iban !== undefined && String(iban).trim() !== '';
+  if ((exp !== undefined || cad !== undefined || tocaIban) && quien.rol === 'trafico') {
+    throw new Error('Las fechas del carné y la cuenta son datos personales: los cambia RRHH');
+  }
+  if (tocaIban && !require('../../services/cripto').configurada()) {
+    throw new Error('No se puede guardar el IBAN: falta la clave de cifrado en el servidor');
+  }
+  const fechas = await docs.prepararFechasCarne(id, { expedicion: exp, caducidad: cad });
+  const r = Object.keys(resto).length ? await con.actualizar(Number(id), resto, quien) : {};
+  if (fechas) await fechas.aplicar(quien);
+  if (tocaIban) await con.guardarIban(Number(id), iban, quien);
+  return r;
+}
 
 const cambiarSituacion = async (id, datos, quien) =>
   ({ vigencia: await con.cambiarSituacion(Number(id), datos, quien) });

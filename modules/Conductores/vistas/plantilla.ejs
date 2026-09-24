@@ -728,7 +728,12 @@
         grupo: def.grupo,
         tipo: def.tipo || 'texto',
         opciones: def.opciones,
-        ayuda: def.ayuda,
+        // El IBAN no viaja nunca a la pantalla: el campo sale vacío y la ayuda
+        // dice si ya hay uno guardado. Vacío no lo toca.
+        ayuda: k === 'iban'
+          ? (d.iban_guardado ? `Guardado: ${d.iban_guardado}. Escribe otro solo si cambia; vacío, no se toca.`
+                             : 'No tiene ninguno guardado. Se guarda cifrado.')
+          : def.ayuda,
         // Las fechas se enseñan como dd/mm/aaaa y vuelven a ISO al guardar.
         valor: def.tipo === 'fecha' ? fecha(d[k]) : (d[k] == null ? '' : String(d[k])),
       }));

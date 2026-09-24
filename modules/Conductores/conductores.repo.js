@@ -1460,8 +1460,49 @@ async function buscarPersona({ nombreBolt, dni, telefono } = {}) {
 // El PIN de Ballenoil (guardarlo, la lista de a quién ponérselo y leerlo desde
 // el bot) se quitó el 24/09/2026: ya no se trabaja con Ballenoil. Las columnas
 // `pin_ballenoil` y `obs_ballenoil` se quedan en la base por lo ya escrito.
+// ── El IBAN ─────────────────────────────────────────────────────────────────
+// Va CIFRADO y nunca sale en claro hacia la pantalla. Lo escriben Selección y
+// Plantilla —la ficha de alta lo exige—, y por eso la regla está aquí, una vez.
+
+/**
+ * Cómo se enseña uno ya guardado: solo el final. Sin guardar, null.
+ *
+ * Si está guardado pero no se puede leer —sin la clave en ese servidor, o
+ * cifrado con otra—, se dice que HAY uno: contestar null haría creer que no
+ * tiene cuenta, y alguien la volvería a pedir o la pisaría.
+ */
+function ibanEnmascarado(cifrado) {
+  if (!cifrado) return null;
+  let iban = null;
+  try { iban = require('../../services/cripto').descifrar(cifrado); } catch (_) { iban = null; }
+  return iban ? '•••• ' + String(iban).slice(-4) : 'guardada (no se puede leer aquí)';
+}
+
+/**
+ * Guarda el IBAN de alguien. Vacío lo BORRA. Sin clave de cifrado en el
+ * servidor no se guarda: se avisa, en vez de escribirlo en claro «de momento».
+ * En la auditoría queda que cambió y sus cuatro últimas cifras, nunca entero.
+ */
+async function guardarIban(id, valor, { usuarioId } = {}) {
+  const cripto = require('../../services/cripto');
+  const iban = String(valor == null ? '' : valor).replace(/\s+/g, '').toUpperCase();
+  if (iban && !cripto.configurada()) {
+    throw new Error('No se puede guardar el IBAN: falta la clave de cifrado en el servidor');
+  }
+  const antes = (await db.consulta('SELECT iban_cifrado FROM conductor WHERE id = $1', [Number(id)])).rows[0];
+  if (!antes) throw new Error('No existe ese conductor');
+  await db.consulta('UPDATE conductor SET iban_cifrado = $2 WHERE id = $1',
+    [Number(id), iban ? cripto.cifrar(iban) : null]);
+  await audit.registrar({
+    tabla: 'conductor', id: Number(id), usuarioId,
+    cambios: [{ campo: 'iban', antes: antes.iban_cifrado ? 'guardado' : null,
+                ahora: iban ? '•••• ' + iban.slice(-4) : 'borrado' }],
+  }).catch(() => {});
+}
+
 module.exports = {
   paraGestoria, buscarPersona,
+  ibanEnmascarado, guardarIban,
   JORNADAS, TOPE_JORNADA, cambiarJornada,
   campos,
   crearPersona,

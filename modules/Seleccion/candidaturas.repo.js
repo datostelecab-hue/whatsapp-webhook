@@ -452,18 +452,8 @@ async function guardar(id, datos = {}, quien = {}) {
   // con acceso al documento; aquí se guarda cifrado y no se devuelve nunca en
   // los listados. Si no hay clave configurada se avisa y no se guarda, en vez
   // de escribirlo en claro «de momento».
-  if (datos.iban !== undefined) {
-    const cripto = require('../../services/cripto');
-    const iban = String(datos.iban || '').replace(/\s+/g, '').toUpperCase();
-    if (!iban) {
-      await db.consulta('UPDATE conductor SET iban_cifrado = NULL WHERE id = $1', [c.conductor_id]);
-    } else if (!cripto.configurada()) {
-      throw new Error('No se puede guardar el IBAN: falta la clave de cifrado en el servidor');
-    } else {
-      await db.consulta('UPDATE conductor SET iban_cifrado = $1 WHERE id = $2',
-        [cripto.cifrar(iban), c.conductor_id]);
-    }
-  }
+  // La regla es la de Conductores (`guardarIban`), la misma que usa Plantilla.
+  if (datos.iban !== undefined) await con.guardarIban(c.conductor_id, datos.iban, quien);
 
   return { id: Number(id), conductorId: c.conductor_id };
 }

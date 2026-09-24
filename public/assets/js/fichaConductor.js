@@ -199,6 +199,12 @@
         ${linea('Nacimiento', fmt(p.fecha_nacimiento))}
         ${linea('Nacionalidad', esc(p.nacionalidad || '—'))}
         ${linea('NAF', esc(p.naf || '—'))}
+        ${/* Lo que pide la ficha de alta. Solo si la pantalla lo trae: la hoja
+              la usan otras pantallas que no lo piden. */ ''}
+        ${'carnet_caducidad' in p ? linea('Carné', p.carnet_expedicion || p.carnet_caducidad
+          ? `${p.carnet_expedicion ? 'expedido ' + fmt(p.carnet_expedicion) : ''}${p.carnet_expedicion && p.carnet_caducidad ? ' · ' : ''}${p.carnet_caducidad ? 'caduca ' + fmt(p.carnet_caducidad) : ''}`
+          : '<span class="text-telecab-warn">sin fechas</span>') : ''}
+        ${'iban_guardado' in p ? linea('Cuenta', p.iban_guardado ? esc(p.iban_guardado) : '<span class="text-telecab-warn">sin cuenta</span>') : ''}
       </div>
 
       ${epigrafe('Origen y contrato')}

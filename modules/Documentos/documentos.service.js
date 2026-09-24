@@ -128,6 +128,63 @@ async function subirFoto(conductorId, { base64, mime } = {}, quien = {}) {
   return { fotoId: String(d.id) };
 }
 
+// ── Las fechas del carné ────────────────────────────────────────────────────
+// La ficha de alta pide la fecha de expedición y la de caducidad del carné, y
+// no son de la persona sino del DOCUMENTO del permiso: se guardan en él. Las
+// escriben Selección y Plantilla, y por eso la regla vive aquí, una vez. Antes
+// estaba solo en Selección, y en Plantilla no había dónde escribirlas.
+
+const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+const hay = v => v !== undefined && v !== null && String(v).trim() !== '';
+/** Un DATE de la base a AAAA-MM-DD. Nunca toISOString: en Madrid da el día anterior. */
+const isoDe = v => {
+  if (!v) return null;
+  if (v instanceof Date) {
+    const p = n => String(n).padStart(2, '0');
+    return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate());
+  }
+  return String(v).slice(0, 10);
+};
+
+const permisoDe = async conductorId =>
+  (await repo.listar({ conductorId: Number(conductorId) }) || []).find(x => x.tipo === 'permiso' && x.vigente) || null;
+
+/** Las fechas del carné de alguien, en AAAA-MM-DD, para rellenar un formulario. */
+async function fechasCarne(conductorId) {
+  const p = await permisoDe(conductorId);
+  return { expedicion: p ? isoDe(p.fecha_emision) : null, caducidad: p ? isoDe(p.fecha_caduca) : null };
+}
+
+/**
+ * Comprueba unas fechas del carné SIN TOCAR NADA y devuelve cómo aplicarlas, o
+ * null si no llega ninguna. Va en dos pasos a propósito: quien guarda un
+ * formulario entero tiene que poder decir «esto no vale» antes de haber
+ * guardado la otra mitad.
+ *
+ * Sin carné subido no hay dónde ponerlas, y se dice. Caducar antes de expedirse
+ * es un error al teclear —casi siempre el año— y también se dice.
+ */
+async function prepararFechasCarne(conductorId, { expedicion, caducidad } = {}) {
+  if (!hay(expedicion) && !hay(caducidad)) return null;
+  [expedicion, caducidad].filter(hay).forEach(v => {
+    if (!FECHA_ISO.test(String(v))) throw new Error('Las fechas del carné tienen que ser dd/mm/aaaa');
+  });
+  const permiso = await permisoDe(conductorId);
+  if (!permiso) {
+    throw new Error('Las fechas del carné van con el documento del carné, y todavía no está subido. ' +
+                    'Súbelo en Documentos y luego pon las fechas.');
+  }
+  const e = hay(expedicion) ? String(expedicion) : isoDe(permiso.fecha_emision);
+  const c = hay(caducidad) ? String(caducidad) : isoDe(permiso.fecha_caduca);
+  if (e && c && c < e) throw new Error('La caducidad del carné no puede ser anterior a su expedición');
+  return {
+    aplicar: (quien = {}) => repo.actualizar(Number(permiso.id), {
+      fechaEmision: hay(expedicion) ? String(expedicion) : null,
+      fechaCaduca: hay(caducidad) ? String(caducidad) : null,
+    }, { usuarioId: quien.usuarioId }),
+  };
+}
+
 // ── El almacén ─────────────────────────────────────────────────────────────
 // El estado de la conexión con Drive. Lo pregunta la pantalla de ajustes para
 // saber si puede ofrecer el botón de subir o hay que conectar la cuenta antes.
@@ -142,5 +199,6 @@ module.exports = {
   tipos, listar, faltantes, faltantesDeVarios, porVencer, descargar,
   subir, actualizar, retirar,
   fotoDe, foto, subirFoto,
+  fechasCarne, prepararFechasCarne,
   estadoAlmacen,
 };

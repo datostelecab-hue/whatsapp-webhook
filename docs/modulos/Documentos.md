@@ -76,6 +76,10 @@ Las credenciales viven **solo** en variables de entorno: `GOOGLE_OAUTH_CLIENT_ID
 
 `GET /documentos/api/estado` dice si la cuenta está conectada: lo pregunta la pantalla de ajustes para saber si puede ofrecer el botón de subir o hay que conectar antes.
 
+## Las fechas del carné (24/09/2026)
+
+La ficha de alta pide la fecha de expedición y la de caducidad del carné, y son las del **documento del permiso**, no de la persona. La regla vive aquí y la usan Selección y Plantilla: `fechasCarne(conductorId)` las da en AAAA-MM-DD para rellenar un formulario, y `prepararFechasCarne(conductorId, { expedicion, caducidad })` las comprueba **sin tocar nada** —formato, que haya carné subido, que no caduque antes de expedirse— y devuelve cómo aplicarlas. Va en dos pasos para que quien guarda un formulario entero pueda decir «esto no vale» antes de haber guardado la otra mitad.
+
 ## Lo que falta
 
 El módulo está listo; lo que falta es **cargar los papeles**. La tabla tiene 14 filas de 2 conductores de 218, subidas el 3 y 4 de septiembre de 2026: son las pruebas de la migración. Se notó investigando la suspensión de [[BOLT]] del 12/09, donde no se pudo descartar una caducidad de documentos porque ese conductor —como otros 216— no tiene ninguno cargado.
