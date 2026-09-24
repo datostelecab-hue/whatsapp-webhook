@@ -269,6 +269,8 @@ cobertura.service  datos(semana) · conductorPorTelefono(tel)
 
 ## Detalles que muerden
 
+**Nadie entra en una plaza antes de su alta** (24/09/2026). Colocar a alguien «desde hoy» cuando su contrato empieza mañana lo dejaba de titular hoy: el planificador lo pintaba en el coche y Control lo esperaba y lo daba por «no ha salido». Le pasó a Víctor Jiménez Barbero (alta el 25, colocado el 24) y ese mismo día a otros cuatro. Ahora `colocar`, `cubrirAusencia` y la comprobación previa (`comprobarPlan`) empiezan el día del alta (`entraDesde`, que mira el contrato abierto): hasta entonces la plaza sale vacía con «→ llega el …», como cualquier llegada futura, y el que la llevaba se queda hasta que llega el nuevo. Si el «hasta» pedido cae antes del alta, se dice. `db/151` corrigió las cinco que había de gente que aún no había entrado; las de antes, con uno o dos días de diferencia a principios de mes, se dejaron: son historia ya contada.
+
 - **El barrio no es la localidad.** `barrio` es la zona de casa del conductor ("Aluche", "San Blas") y sirve para repartir cuadrantes; `localidad` es el municipio de la gestoría. Se editan en sitios distintos y no se tocan. Ver [[Reglas de la casa]].
 - **Cambiar la matrícula renombra el coche, no mueve a nadie**: la gente cuelga de sus plazas y las plazas del vehículo. Para mover la tripulación está el botón de cambiar de coche.
 - **La zona viaja como texto** desde el front y la columna es una clave ajena: se busca por nombre y, si no existe, se dice cuál es en vez de dejar un error de tipos.

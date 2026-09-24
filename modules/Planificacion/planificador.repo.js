@@ -967,7 +967,9 @@ async function comprobarPlan({ plazaId, conductorId, dias, desde, hasta } = {}, 
       WHERE p.id = $1 AND p.baja_at IS NULL`, [plazaId])).rows[0];
   if (!p) throw new Error('Esa plaza ya no existe');
 
-  const entra = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : hoy();
+  // Desde el día pedido, pero nunca antes de su alta: es cuando de verdad entra,
+  // y los choques que importan son los de a partir de ahí (ver `entraDesde`).
+  const entra = await entraDesde(q, conductorId, /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : hoy());
   // Una semana, o menos si el "hasta" llega antes (un refuerzo de dos días).
   let fin = masDias(entra, 6);
   if (/^\d{4}-\d{2}-\d{2}$/.test(hasta || '') && hasta < fin) fin = hasta;
@@ -1253,8 +1255,39 @@ async function liberar(cli, plazaId, dia, usuarioId, evento) {
  * mismo coche y turno. Es lo que significa un correturnos: cubrir justo los días
  * que el fijo no está.
  */
+/**
+ * NADIE ENTRA EN UNA PLAZA ANTES DE SU ALTA (24/09/2026).
+ *
+ * Colocar a alguien «desde hoy» cuando su contrato empieza mañana lo dejaba de
+ * titular HOY: el planificador lo pintaba ya en el coche y Control lo esperaba
+ * y lo daba por «no ha salido». Le pasó a Víctor Jiménez Barbero (alta el 25,
+ * colocado el 24) y ese mismo día a otros cuatro. Lo que se quería decir era
+ * «este coche es suyo en cuanto entre», que es exactamente lo que hace esto: su
+ * plaza empieza el día de su alta, y hasta entonces sale «→ llega el …», como
+ * cualquier llegada futura.
+ *
+ * Mira su contrato ABIERTO: a quien volvió a entrar le vale su último alta.
+ * Quien no tiene contrato abierto no se toca aquí.
+ *
+ * `q` es con qué se pregunta: el cliente de una transacción (`cli.query`) o el
+ * pool, porque también la usa la comprobación previa, que puede ir sin
+ * transacción.
+ */
+async function entraDesde(q, conductorId, fecha) {
+  const r = (await q(
+    `SELECT to_char(alta, 'YYYY-MM-DD') AS alta FROM conductor_periodo_empleo
+      WHERE conductor_id = $1 AND baja IS NULL ORDER BY alta DESC LIMIT 1`, [Number(conductorId)])).rows[0];
+  return r && r.alta && r.alta > fecha ? r.alta : fecha;
+}
+const ddmmaaaa = iso => String(iso || '').slice(0, 10).split('-').reverse().join('/');
+
 async function colocar(cli, { plazaId, conductorId, desde, hasta, dias, evento }, { dia, usuarioId }) {
-  const entra = desde || dia;
+  // Desde el día que se dice —o el que se está mirando—, pero nunca antes de su alta.
+  const pedido = desde || dia;
+  const entra = await entraDesde((sql, a) => cli.query(sql, a), conductorId, pedido);
+  if (hasta && hasta < entra) {
+    throw new Error(`Esa persona entra el ${ddmmaaaa(entra)} (su alta): no puede llevar la plaza hasta el ${ddmmaaaa(hasta)}.`);
+  }
   const rol = (await cli.query('SELECT rol, turno_id FROM v_plaza WHERE plaza_id = $1', [plazaId])).rows[0];
   if (!rol) throw new Error('Esa plaza ya no existe');
 
@@ -1287,6 +1320,12 @@ async function colocar(cli, { plazaId, conductorId, desde, hasta, dias, evento }
   if (futuro) {
     const tope = vispera(fechaDe(futuro.desde));
     if (!hastaFinal || hastaFinal > tope) hastaFinal = tope;
+  }
+  // Y si con eso se acaba ANTES de que entre —la plaza ya es de otro desde un día
+  // anterior a su alta—, no hay hueco para él: se dice, en vez de dejar que la
+  // base rechace una asignación que termina antes de empezar.
+  if (hastaFinal && hastaFinal < entra) {
+    throw new Error(`Esa plaza ya tiene dueño desde el ${ddmmaaaa(siguiente(hastaFinal))}, y esta persona no entra hasta el ${ddmmaaaa(entra)} (su alta).`);
   }
 
   const actual = await asignacionEn(cli, plazaId, entra);
@@ -1471,7 +1510,9 @@ async function cubrirAusencia({ plazaId, conductorId, desde, hasta, dias }, { di
 
     // Sin fechas puestas a mano: las de la ausencia. Nunca antes del día que se
     // está planificando, que reescribir el pasado no arregla nada.
-    const entra = desde || (aus ? (fechaDe(aus.desde) > base ? fechaDe(aus.desde) : base) : base);
+    // Y nunca antes del alta de quien cubre: no puede cubrir a nadie antes de entrar.
+    const entra = await entraDesde((sql, a) => cli.query(sql, a), conductorId,
+      desde || (aus ? (fechaDe(aus.desde) > base ? fechaDe(aus.desde) : base) : base));
     const sale = hasta !== undefined && hasta !== null && hasta !== ''
       ? hasta
       : (aus && aus.hasta ? fechaDe(aus.hasta) : null);
