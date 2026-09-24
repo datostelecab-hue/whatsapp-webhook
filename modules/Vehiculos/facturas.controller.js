@@ -5,11 +5,16 @@
 //
 //   '/facturas'          entrar y mirar lo que se gasta en la flota
 //   '/facturas/apuntar'  meter facturas y anularlas — lo de Óscar
-//   '/vehiculos/sedes'   ver TAMBIÉN Barcelona; sin él se ve solo Madrid
 //
 // Mirar el gasto lo quiere dirección; meterlo es del taller. Y Barcelona es otra
 // operación: Óscar lleva Madrid, y enseñarle coches que no controla solo sirve
 // para que los confunda con los suyos.
+//
+// SOLO MADRID, PARA TODO EL MUNDO (24/09/2026). Antes la llave
+// '/vehiculos/sedes' dejaba ver también Barcelona. Camilo lo dejó claro: los
+// coches de Barcelona se LISTAN en Vehículos —la sede es lo que los separa—,
+// pero no tienen visibilidad en taller, Mantenimientos, mapa ni el resto de lo
+// operativo. La llave sigue valiendo solo en la pantalla de Vehículos.
 //
 // Quién hace cada cosa sale de la sesión, nunca del cuerpo de la petición.
 
@@ -47,7 +52,9 @@ async function tiene(req, clave) {
 }
 
 const puedeApuntar = req => tiene(req, '/facturas/apuntar');
-const todasLasSedes = req => tiene(req, '/vehiculos/sedes');
+// Barcelona no se ve aquí, tenga quien mire la llave que tenga (ver arriba).
+// Se deja la función para no tocar a quien la llama.
+const todasLasSedes = async req => false; // eslint-disable-line no-unused-vars
 
 /** El contexto de sedes que se le pasa al servicio en CADA petición. */
 const quien = async req => ({

@@ -78,7 +78,12 @@ const CATALOGO = [
       // El sistema se usa en Madrid. Quien no tenga esta llave ve SOLO Madrid,
       // que es lo que Óscar controla; con ella se ven también los de Barcelona.
       // `manual` porque no la reparte ningún rol: se da persona a persona.
-      { clave: '/vehiculos/sedes', etiqueta: 'Ver también los vehículos de Barcelona', manual: true },
+      //
+      // DESDE EL 24/09/2026 VALE SOLO EN LA LISTA DE VEHÍCULOS. Mapa,
+      // Mantenimientos y Facturas de taller enseñan Madrid a todo el mundo:
+      // Barcelona se lista en Vehículos —la sede es lo que los separa— pero no
+      // tiene visibilidad en lo operativo. Lo decidió Camilo.
+      { clave: '/vehiculos/sedes', etiqueta: 'Ver también los vehículos de Barcelona (solo en la lista de Vehículos)', manual: true },
     ] },
     { clave: '/conductores', etiqueta: 'Conductores' },
     // MIRAR el taller lo quiere media empresa: tráfico necesita saber qué coche
