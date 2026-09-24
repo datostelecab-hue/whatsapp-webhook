@@ -23,7 +23,8 @@
 
   // ── LA FOTO DE LA PERSONA ─────────────────────────────────────────────────
   //
-  // Un cuadrado fijo al lado del nombre, y la foto SE AJUSTA A EL (object-fit:
+  // Un cuadrado fijo de 96 px al lado del nombre -eran 64 y se quedaba corto-,
+  // y la foto SE AJUSTA A EL (object-fit:
   // cover): da igual que sea vertical, apaisada o un selfie, llena el cuadro sin
   // deformarse y se recorta lo que sobra.
   //
@@ -38,16 +39,16 @@
     const puede = !SOLO_OPERATIVO;
     const quien = esc(d.nombre_completo || '');
     hueco.innerHTML = `
-      <div class="relative w-16 h-16">
-        <div class="w-16 h-16 rounded-2xl overflow-hidden border border-telecab-border bg-telecab-card2 text-telecab-muted/50">
+      <div class="relative w-24 h-24">
+        <div class="w-24 h-24 rounded-3xl overflow-hidden border border-telecab-border bg-telecab-card2 text-telecab-muted/50">
           ${d.foto_id
             ? `<img src="/plantilla/api/conductor/${esc(d.id)}/foto?v=${esc(d.foto_id)}" alt="Foto de ${quien}"
                     class="w-full h-full object-cover" data-foto>`
-            : `<div class="w-full h-full px-1.5 pt-2" title="Sin foto">${SILUETA}</div>`}
+            : `<div class="w-full h-full px-2 pt-3" title="Sin foto">${SILUETA}</div>`}
         </div>
         ${puede ? `<button type="button" data-cambiar-foto
-                   class="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-full bg-telecab-gold text-telecab-dark
-                          border-2 border-telecab-card shadow-soft flex items-center justify-center text-[11px]
+                   class="absolute -bottom-2 -right-2 w-9 h-9 rounded-full bg-telecab-gold text-telecab-dark
+                          border-2 border-telecab-card shadow-soft flex items-center justify-center text-sm
                           hover:scale-105 transition"
                    title="${d.foto_id ? 'Cambiar la foto' : 'Subir una foto'}"
                    aria-label="${d.foto_id ? 'Cambiar la foto' : 'Subir una foto'}">
@@ -58,7 +59,7 @@
     // el icono de imagen rota del navegador.
     const img = hueco.querySelector('[data-foto]');
     if (img) img.addEventListener('error', () => {
-      img.parentElement.innerHTML = '<div class="w-full h-full px-1.5 pt-2" title="No se pudo cargar la foto">' + SILUETA + '</div>';
+      img.parentElement.innerHTML = '<div class="w-full h-full px-2 pt-3" title="No se pudo cargar la foto">' + SILUETA + '</div>';
     }, { once: true });
 
     if (!puede) return;
