@@ -95,7 +95,7 @@ Selección también genera la **ficha de alta en PDF** con sus adjuntos (`POST /
 
 **La ficha de alta se guarda como un documento más** (24/09/2026, `db/149`, tipo `ficha_alta`). Antes se subía a la carpeta de Drive de la persona sin apuntarla en el almacén de documentos: se veía con el enlace del aviso que sale al generarla y, al cerrarlo, no había forma de volver a ella desde el ERP. Ahora sale al final de **Documentos** en Selección («Ficha de alta · generada el …», con **ver** y **rehacer**) y en los documentos de su ficha de **Plantilla**. Rehacerla deja la anterior como no vigente, como cualquier papel. No es obligatoria: quien entró antes no la tiene. Las fichas generadas antes del 24/09 siguen en su carpeta de Drive pero no en la lista: para que salgan, basta con volver a generarlas.
 
-RRHH la sigue enseñando **al momento**, con los datos de ahora (`/rrhh/doc?tipo=ficha_pdf`), pero **sin guardar otra copia** cada vez que alguien la abre (`fichaPDF(id, { guardar: false })`): antes cada vistazo dejaba un PDF más en la carpeta. Y la ruta de Selección ya no devuelve los bytes del PDF convertidos a JSON, que la pantalla no usaba.
+RRHH la sigue enseñando **al momento**, con los datos de ahora (`/rrhh/doc?tipo=ficha_pdf`), pero **sin guardar otra copia** cada vez que alguien la abre (`fichaPDF(id, { guardar: false })`): antes cada vistazo dejaba un PDF más en la carpeta. Y la ruta de Selección ya no devuelve los bytes del PDF convertidos a JSON, que la pantalla no usaba. Desde Plantilla también se puede generar, por la persona aunque no tenga candidatura: ver [[Conductores#La ficha de alta, también desde Plantilla (24/09/2026)]].
 
 ## Descartar no es borrar
 

@@ -72,6 +72,18 @@ const fotoVigente = conductorId => docs.fotoDe(conductorId);
 const foto = conductorId => docs.foto(conductorId);
 const subirFoto = (conductorId, datos, quien) => docs.subirFoto(conductorId, datos || {}, quien || {});
 
+// ── La ficha de alta ────────────────────────────────────────────────────────
+// La misma que genera Selección, y se guarda igual en sus documentos. Aquí es
+// OPCIONAL: la mayoría de la plantilla entró antes de que existiera y nadie se
+// la exige. La genera quien puede tocar los datos de la persona —Tráfico no—,
+// porque lleva su DNI, su cuenta y su dirección.
+async function fichaDeAlta(conductorId, quien = {}) {
+  if (quien.rol === 'trafico') throw new Error('La ficha de alta lleva datos personales: la genera RRHH');
+  const r = await require('../Seleccion/seleccion.service')
+    .fichaPDFDeConductor(conductorId, { guardar: true }, quien);
+  return { link: r.link, docId: r.docId, nombre: r.nombre, adjuntos: r.adjuntos };
+}
+
 /**
  * LA HOJA DE UNA PERSONA: calificación, mes, papeles, conducción y lo hablado.
  *
@@ -297,6 +309,6 @@ module.exports = {
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, aPropia, cambiarJornada, cambios, conflictos,
   excelGestoria,
-  tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto,
+  tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto, fichaDeAlta,
   retirarDocumento, descargarDocumento, documentosQueVencen,
 };

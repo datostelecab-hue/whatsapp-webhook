@@ -894,6 +894,38 @@
     entrada.click();
   }
 
+  /**
+   * LA FICHA DE ALTA, desde Plantilla. Opcional: la mayoría entró antes de que
+   * existiera. Si le faltan datos no se genera, y se dice cuáles.
+   */
+  async function generarFichaAlta(d, boton) {
+    boton.disabled = true;
+    const antes = boton.innerHTML;
+    boton.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Generando…';
+    try {
+      const r = await enviar(`/plantilla/api/conductor/${d.id}/ficha-alta`, 'POST', {});
+      await Dialogo.aviso({
+        titulo: 'Ficha de alta generada', tono: 'ok',
+        html: `<p class="text-sm">${esc(r.nombre)} · ${r.adjuntos} documento(s) dentro.</p>
+               <p class="text-sm mt-2 text-telecab-muted">Queda guardada en sus documentos.</p>`,
+      });
+      const id = plantilla.abierto;
+      await plantilla.recargar();
+      if (id) await plantilla.abrir(id, { historial: false });
+    } catch (e) {
+      boton.disabled = false;
+      boton.innerHTML = antes;
+      const falta = /no está completa: falta (.*)$/.exec(e.message);
+      await Dialogo.aviso({
+        titulo: falta ? 'Faltan datos para la ficha' : 'No se pudo generar la ficha', tono: falta ? 'aviso' : 'error',
+        html: falta
+          ? `<p class="text-sm">Le falta:</p><ul class="text-sm list-disc pl-5 mt-1">${falta[1].split(', ').map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+             <p class="text-sm mt-2 text-telecab-muted">Complétalo en sus datos y en sus documentos, y vuelve a intentarlo.</p>`
+          : `<p class="text-sm">${esc(e.message)}</p>`,
+      });
+    }
+  }
+
   async function retirarDocumento(doc, d) {
     const ok = await Dialogo.confirmar({
       titulo: 'Retirar el documento',
@@ -1217,6 +1249,10 @@
                   <button data-subir class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold
                           bg-telecab-gold text-telecab-dark shadow-gold">
                     <i class="fa-solid fa-upload"></i> Subir documento</button>
+                  ${SOLO_OPERATIVO ? '' : `<button data-ficha-alta class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm
+                          bg-telecab-card2 border border-telecab-border hover:border-telecab-gold/50"
+                          title="Opcional. La misma ficha que genera Selección, con sus papeles dentro. Queda guardada aquí.">
+                    <i class="fa-solid fa-file-pdf"></i> ${lista.some(x => x.tipo === 'ficha_alta') ? 'Rehacer la ficha de alta' : 'Generar la ficha de alta'}</button>`}
                   <span class="text-xs text-telecab-muted">${lista.length} documento(s)</span>
                 </div>
                 ${lista.length ? `
@@ -1255,6 +1291,8 @@
                 </div>` : '<p class="text-sm text-telecab-muted">Todavía no tiene ningún documento subido.</p>'}`;
 
               hueco.querySelector('[data-subir]').addEventListener('click', () => subirDocumento(d));
+              const botonFicha = hueco.querySelector('[data-ficha-alta]');
+              if (botonFicha) botonFicha.addEventListener('click', () => generarFichaAlta(d, botonFicha));
               hueco.querySelectorAll('[data-retirar]').forEach(b => b.addEventListener('click', () =>
                 retirarDocumento(lista.find(x => String(x.id) === b.dataset.retirar), d)));
             }).catch(e => {

@@ -201,10 +201,26 @@ const retirarDocumento = (docId, quien) =>
  * ficha con seis adjuntos de siete sirve para firmar; un error 500 no sirve
  * para nada, y quien está delante del candidato no puede hacer nada con él.
  */
-async function fichaPDF(id, { guardar = true } = {}, quien = {}) {
+async function fichaPDF(id, opciones, quien) {
   const n = Number(id);
   const [datos, f] = await Promise.all([cand.paraFicha(n), cand.ficha(n)]);
   if (!f) throw new Error('No existe esa candidatura');
+  return generarFicha(datos, f.documentos || [], opciones, quien);
+}
+
+/**
+ * La misma ficha, pedida desde PLANTILLA: por la persona, tenga candidatura o
+ * no. Es OPCIONAL —nadie la exige—, y sale igual de completa o no sale.
+ */
+async function fichaPDFDeConductor(conductorId, opciones, quien) {
+  const cid = Number(conductorId);
+  const [datos, documentos] = await Promise.all([
+    cand.paraFichaDeConductor(cid), docs.listar('conductor', cid)]);
+  return generarFicha(datos, documentos || [], opciones, quien);
+}
+
+async function generarFicha(datos, documentos, { guardar = true } = {}, quien = {}) {
+  const f = { documentos };
 
   // La ficha no sale a medias: o está completa o no se genera.
   const faltan = faltaParaLaFicha(datos, f);
@@ -227,7 +243,7 @@ async function fichaPDF(id, { guardar = true } = {}, quien = {}) {
   }
 
   const pdf = await generarFichaPDF(datos, adjuntos);
-  const nombre = `FICHA DE ALTA - ${(datos.nombre || datos.telefono || n).toString().trim()}.pdf`;
+  const nombre = `FICHA DE ALTA - ${[datos.nombre, datos.apellidos].filter(Boolean).join(' ').trim() || datos.telefono || datos.conductorId}.pdf`;
   let doc = null;
   if (guardar) {
     doc = await docs.subir('conductor', Number(datos.conductorId), {
@@ -444,6 +460,6 @@ module.exports = {
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
   abrir, guardar, cambiarEstado, pasarARRHH, eliminar, alContratar,
   tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, pendientesTramo,
-  subirDocumento, retirarDocumento, descargarDocumento, fichaPDF, foto, subirFoto,
+  subirDocumento, retirarDocumento, descargarDocumento, fichaPDF, fichaPDFDeConductor, foto, subirFoto,
   direccion,
 };

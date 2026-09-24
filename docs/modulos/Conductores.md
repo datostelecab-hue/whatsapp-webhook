@@ -234,6 +234,14 @@ Los archivos llegan en base64 dentro del JSON, y `/api/documento` tiene su propi
 
 La documentación obligatoria que falta sale de `v_documento_falta`, que es **la única definición de "obligatorio"** del sistema.
 
+## La ficha de alta, también desde Plantilla (24/09/2026)
+
+En **Documentos**, al lado de «Subir documento», un botón **Generar la ficha de alta** (o **Rehacer**, si ya la tiene). Es **opcional**: la misma ficha que genera Selección, con sus papeles dentro, y queda guardada en sus documentos (tipo `ficha_alta`, `db/149`).
+
+Se pide **por la persona** y no por su candidatura (`paraFichaDeConductor`): de los 220 de alta el 24/09 solo 30 tenían candidatura, y la ficha es casi entera de la persona. Sin candidatura, la fecha de inicio es la de su alta y el nº de hijos va en blanco. La consulta es **la misma** que la de Selección (`FICHA_COLUMNAS` / `FICHA_UNIONES` en `candidaturas.repo.js`): dos copias serían dos fichas que un día dejan de parecerse.
+
+Si le faltan datos **no se genera**, y el aviso los enumera uno a uno. **Tráfico no la genera**: lleva el DNI, la cuenta y la dirección.
+
 ## La foto de la persona (24/09/2026)
 
 La ficha lleva la foto de cada persona **en la cabecera, al lado del nombre**: un cuadrado fijo de 96 px en el que la foto **se ajusta** (`object-fit: cover`). Da igual que sea vertical, apaisada o un selfie: llena el cuadro sin deformarse y se recorta lo que sobra.

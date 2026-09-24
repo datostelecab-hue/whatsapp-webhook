@@ -808,20 +808,10 @@ async function faltantes(id, tipo) {
   return require('./exigencia.repo').faltaPara(k.conductor_id, via);
 }
 
-/**
- * La candidatura con la forma que espera el generador de la FICHA DE ALTA.
- *
- * El PDF es un consumidor heredado: pide diecisiete claves con nombres suyos. En
- * vez de retorcer el modelo para complacerlo, se traduce aqui — que es lo que
- * es, una traduccion, y se ve de un vistazo.
- *
- * Las fechas del carne salen del DOCUMENTO, no de dos casillas aparte: si el
- * permiso esta subido con su emision y su caducidad, escribirlas otra vez a mano
- * solo sirve para que un dia no coincidan.
- */
-async function paraFicha(id) {
-  const r = await db.consulta(
-    `SELECT k.id, k.num_hijos,
+// Las columnas y las uniones de la ficha, UNA VEZ: se piden por candidatura
+// (Selección) y por persona (Plantilla), y dos copias de esta consulta serían
+// dos fichas que un día dejan de parecerse.
+const FICHA_COLUMNAS = `k.id, k.num_hijos,
             c.id AS conductor_id, c.nombre, c.apellidos, c.dni_nie, c.email,
             c.estado_civil, c.naf, c.direccion, c.codigo_postal,
             c.observaciones, c.iban_cifrado,
@@ -842,10 +832,8 @@ async function paraFicha(id) {
             -- en cuanto se le abre el contrato: si no, la ficha de alguien que
             -- ya entró salía con el hueco en blanco, que es justo el dato que
             -- la gestoría necesita para el alta en la Seguridad Social.
-            to_char(COALESCE(k.inicio_previsto, emp.alta), 'DD/MM/YYYY') AS fecha_inicio
-       FROM candidatura k
-       JOIN conductor c ON c.id = k.conductor_id
-       LEFT JOIN LATERAL (
+            to_char(COALESCE(k.inicio_previsto, emp.alta), 'DD/MM/YYYY') AS fecha_inicio`;
+const FICHA_UNIONES = `       LEFT JOIN LATERAL (
          SELECT e164 FROM conductor_telefono
           WHERE conductor_id = c.id AND vigente_hasta IS NULL
           ORDER BY principal DESC, id LIMIT 1) tel ON TRUE
@@ -855,11 +843,10 @@ async function paraFicha(id) {
           ORDER BY id DESC LIMIT 1) per ON TRUE
        LEFT JOIN LATERAL (
          SELECT alta FROM conductor_periodo_empleo
-          WHERE conductor_id = c.id ORDER BY alta DESC LIMIT 1) emp ON TRUE
-      WHERE k.id = $1`, [Number(id)]);
-  const f = r.rows[0];
-  if (!f) throw new Error('No existe esa candidatura');
+          WHERE conductor_id = c.id ORDER BY alta DESC LIMIT 1) emp ON TRUE`;
 
+/** De la fila a lo que imprime la ficha. El IBAN se descifra aquí. */
+function aDatosFicha(f) {
   let iban = '';
   if (f.iban_cifrado) {
     const cripto = require('../../services/cripto');
@@ -877,6 +864,50 @@ async function paraFicha(id) {
     fecha_inicio: f.fecha_inicio || '',
     iban, observaciones: f.observaciones,
   };
+}
+
+/**
+ * La candidatura con la forma que espera el generador de la FICHA DE ALTA.
+ *
+ * El PDF es un consumidor heredado: pide diecisiete claves con nombres suyos. En
+ * vez de retorcer el modelo para complacerlo, se traduce aqui — que es lo que
+ * es, una traduccion, y se ve de un vistazo.
+ *
+ * Las fechas del carne salen del DOCUMENTO, no de dos casillas aparte: si el
+ * permiso esta subido con su emision y su caducidad, escribirlas otra vez a mano
+ * solo sirve para que un dia no coincidan.
+ */
+async function paraFicha(id) {
+  const r = await db.consulta(
+    `SELECT ${FICHA_COLUMNAS}
+       FROM candidatura k
+       JOIN conductor c ON c.id = k.conductor_id
+${FICHA_UNIONES}
+      WHERE k.id = $1`, [Number(id)]);
+  const f = r.rows[0];
+  if (!f) throw new Error('No existe esa candidatura');
+  return aDatosFicha(f);
+}
+
+/**
+ * Los mismos datos, pedidos por la PERSONA: es lo que usa Plantilla. De los 220
+ * de alta el 24/09/2026 solo 30 tenían candidatura —el resto entró antes de que
+ * Selección existiera—, y la ficha es casi entera de la persona: de la
+ * candidatura solo salen el nº de hijos y la fecha de inicio prevista. Sin
+ * candidatura, la fecha de inicio es la de su alta y el nº de hijos va en blanco.
+ */
+async function paraFichaDeConductor(conductorId) {
+  const r = await db.consulta(
+    `SELECT ${FICHA_COLUMNAS}
+       FROM conductor c
+       LEFT JOIN LATERAL (
+         SELECT id, num_hijos, inicio_previsto FROM candidatura
+          WHERE conductor_id = c.id ORDER BY creado_at DESC LIMIT 1) k ON TRUE
+${FICHA_UNIONES}
+      WHERE c.id = $1`, [Number(conductorId)]);
+  const f = r.rows[0];
+  if (!f) throw new Error('No existe esa persona');
+  return aDatosFicha(f);
 }
 
 // ── La matriz que manda la ETT ──────────────────────────────────────────────
@@ -1619,7 +1650,7 @@ async function pendientes() {
 }
 module.exports = {
   CAMPOS, catalogos, listar, ficha, porTelefono, abrir, abrirContratada, guardar,
-  cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
+  cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, paraFichaDeConductor, importarMatriz, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
   // El tramo final: RRHH y Administración.
   tramoFinal, paraAltasExcel, marcarExcelAlta, tramitarAlta, pendientes,

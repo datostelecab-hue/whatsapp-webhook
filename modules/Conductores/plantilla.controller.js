@@ -259,6 +259,10 @@ router.get('/api/conductor/:id/foto', async (req, res) => {
 router.post('/api/conductor/:id/foto', responde(async req =>
   plantilla.subirFoto(req.params.id, req.body || {}, await quien(req))));
 
+// La ficha de alta, OPCIONAL: se genera y queda en sus documentos.
+router.post('/api/conductor/:id/ficha-alta', responde(async req =>
+  plantilla.fichaDeAlta(req.params.id, await quien(req))));
+
 // Lo que caduca pronto, de personas y de coches. Alimenta los avisos.
 router.get('/api/documentos/vencen', responde(async req =>
   ({ documentos: await plantilla.documentosQueVencen(req.query.dias) })));
