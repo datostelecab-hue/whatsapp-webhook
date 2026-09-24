@@ -207,7 +207,7 @@ async function generarPdfCascada({ titulo, subtitulo, tramos, matriculas }) {
   });
 
   pg.drawText(L('Los km salen de los trayectos de Mapon repartidos entre las situaciones de BOLT, en proporcion al tiempo. '
-    + 'Es la misma cuenta que el cockpit y los reportes.'),
+    + 'Es la misma cuenta que el cockpit y los reportes, solo con los coches de Madrid.'),
   { x: MX, y: 16, size: 7.5, font: reg, color: C.suave });
 
   return Buffer.from(await doc.save());

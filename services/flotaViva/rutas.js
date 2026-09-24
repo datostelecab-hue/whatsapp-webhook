@@ -315,7 +315,7 @@ ${FUENTE_KM}
 // Las horas que parten la jornada vienen del nucleo: estaban repetidas aqui y
 // en auditoriaFlota.js, y dos copias de la constante que parte el dia es la
 // forma mas silenciosa de que dos pantallas dejen de cuadrar.
-const { HORA_DIA, HORA_NOCHE } = require('../nucleo');
+const { HORA_DIA, HORA_NOCHE, deLaFlotaVigilada } = require('../nucleo');
 // [hora_inicio, offset_días_fin, hora_fin]. "completo" es el día natural (00→24),
 // y NO es la suma de día+noche: la madrugada 00:00–05:00 es del turno de noche de
 // la víspera, así que se cuenta aparte.
@@ -816,6 +816,12 @@ async function matriculasBoltPorConductor(dia, turno = 'operativo') {
  * (viaje/espera/descanso/desconectado) de SU coche, y se suma una sola vez. Así el
  * total NO se duplica cuando dos conductores comparten matrícula, y cuadra con el
  * total de Mapon. Es la base del Sankey.
+ *
+ * SOLO LA FLOTA DE MADRID (24/09/2026). Cuenta los coches con los que alguien
+ * fichó en BOLT, y si ese coche es de Barcelona —el 1888LTJ, que algún conductor
+ * de aquí elige mal en la app— sus km no son de esta flota: fuera el coche, y
+ * con él los km de quien lo llevara. Lo pidió Camilo para la cascada; el Sankey
+ * sale del mismo sitio y así los dos siguen dando el mismo número.
  */
 async function bucketsTurno(dia, turno) {
   const [hi, off, hf] = TURNOS[turno] || TURNOS.operativo;
@@ -837,6 +843,7 @@ ${FUENTE_KM}
           AND t.desde < w.fin
           AND t.desde >= w.ini - interval '${VENTANA_ATRAS}'
           AND COALESCE(t.hasta, now()) > w.ini
+          AND ${deLaFlotaVigilada('veh.matricula')}
      ),
      solape AS (
        SELECT tk.matricula, tk.situacion,

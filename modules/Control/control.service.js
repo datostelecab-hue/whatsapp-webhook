@@ -340,7 +340,7 @@ async function cascadaPdf(dia) {
   const s = await rutas.sankeyFlota(f.iso);
   const bytes = await require('./kmCascada.pdf').generarPdfCascada({
     titulo: `${f.diaSemana} ${f.str} · jornada completa`,
-    subtitulo: 'Cada kilómetro que rodó la flota, repartido por lo que estaba haciendo el conductor en ese momento.',
+    subtitulo: 'Cada kilómetro que rodó la flota de Madrid, repartido por lo que estaba haciendo el conductor en ese momento.',
     tramos: s.tramos, matriculas: s.matriculas,
   });
   return { bytes, nombre: `km-cascada-${f.str.replace(/\//g, '-')}.pdf` };
@@ -356,7 +356,7 @@ async function sankeyPdf(dia) {
   const tramos = s.tramos.map((t, i) => ({ ...t, color: i === 0 ? rgb(0.13, 0.70, 0.45) : rgb(0.38, 0.65, 0.98) }));
   const bytes = await generarPdfFlujo({
     titulo: `Flujo de KM · ${f.diaSemana} ${f.str}`,
-    subtitulo: 'En BOLT (viaje + espera) vs desconectado (descanso + apagado). Por coche, sin duplicar.',
+    subtitulo: 'En BOLT (viaje + espera) vs desconectado (descanso + apagado). Por coche, sin duplicar. Solo la flota de Madrid.',
     rango: f.str, tramos, matriculas: s.matriculas,
     // BOLT en vivo marca "en viaje" desde que acepta hasta que deja al pasajero:
     // la ida a recoger va DENTRO de ese km, no separada. Ponía "Con pasajero ·

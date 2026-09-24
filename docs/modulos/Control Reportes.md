@@ -63,7 +63,7 @@ Para apartar un solo coche hace falta el reparto que la suma se comía: `activid
 > [!note] El 1888LTJ
 > Mapon lo sitúa en Barcelona y en BOLT sale con conductores del cuadrante de Madrid. El 21/09 a uno de ellos se le sumaban 307,8 km de noche de ese coche. O se elige mal el coche en la app de BOLT, o alguien usa esas cuentas allí: el reporte ya no lo suma, pero la pregunta sigue abierta.
 
-La **cascada de KM no se ha tocado**: sigue partiendo de todo lo que rodó la flota, Barcelona incluida.
+La **cascada de KM y el Sankey** tampoco cuentan Barcelona (24/09/2026): `bucketsTurno` suma los coches con los que alguien fichó en BOLT, y si el coche es de Barcelona se ignoran el coche, sus km y quien lo llevara. El 23/09 fueron 6 coches y 2.025 km, casi todos de «sin nadie fichado»: el titular pasó de 57 a 62 km con pasajero de cada 100. El cockpit de Control no cambia, así que ahí los totales no cuadran al km con la cascada, y el pie del PDF lo dice.
 
 **El turno lo dice la plaza, no si ese día le tocaba trabajar.** Un fijo de noche sigue siendo de noche el día que libra. Antes el turno salía solo de `f_cobertura` y al librante se le quedaba en blanco; el reporte caía entonces en deducirlo por sus horas y a un fijo de noche que libra lunes y martes le ponía "Día". Solo se deduce por las horas (`turnoDeHecho`) cuando la persona **no tiene plaza**: ahí no hay nada mejor. Y ese cálculo mira dónde cayó el grueso de sus minutos, no la hora de su primera conexión — antes, al de noche que remató la noche anterior a las 05:00 le salía "Día" con sus 11 h de noche.
 
