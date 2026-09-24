@@ -234,6 +234,22 @@ Los archivos llegan en base64 dentro del JSON, y `/api/documento` tiene su propi
 
 La documentación obligatoria que falta sale de `v_documento_falta`, que es **la única definición de "obligatorio"** del sistema.
 
+## La foto de la persona (24/09/2026)
+
+La ficha lleva la foto de cada persona **en la cabecera, al lado del nombre**: un cuadrado fijo de 64 px en el que la foto **se ajusta** (`object-fit: cover`). Da igual que sea vertical, apaisada o un selfie: llena el cuadro sin deformarse y se recorta lo que sobra.
+
+**Sin foto se pinta una silueta** con los colores del tema: el fondo de las tarjetas (`--tc-card2`) y el gris apagado (`--tc-muted`). No hay una imagen por tema: cambia sola al pasar de claro a oscuro o al azul. Si la foto existe pero el almacén no la da, también sale la silueta, y no el icono de imagen rota.
+
+**Es un documento más**, de tipo `foto` (db/147), en el mismo almacén que los papeles. Así se gana sin escribir nada nuevo: subir otra deja la anterior como no vigente en vez de pisarla, se sirve por el ERP con sus permisos (`GET /plantilla/api/conductor/:id/foto`) y queda en la auditoría quién la subió. No es obligatoria para nadie ni entra en lo que se exige para contratar.
+
+Tres detalles que se decidieron a propósito:
+
+- **Se reduce en el navegador antes de subirla**: la foto de un móvil pesa 4-5 MB y aquí se ve en 64 px. Con el lado largo a 640 px y en JPEG queda en ~100 KB. El servidor pone un tope de 3 MB para quien llame a la API sin pasar por la pantalla.
+- **La ficha trae el id del documento, no la imagen**, y la pantalla la pide con `?v=<id>`: el navegador la guarda un día y solo la vuelve a bajar cuando alguien sube otra, que es otra URL.
+- **Es dato personal**: la ve quien ve la ficha, y la cambia quien puede cambiar sus datos. Tráfico no ve el botón, y si llamara a la API a pelo, el servicio se lo niega.
+
+El botón de la cámara va **siempre visible** en la esquina, no al pasar el ratón: en un móvil no hay ratón. El hueco en la cabecera es una opción nueva del [[Componentes de la casa|Listado]], `detalle.avatar(d, hueco)`, que funciona como `pinta` en los bloques.
+
 ## Lo que se borró, y el fallo que apareció al ir a borrarlo
 
 `/fichas`, `/libranzas` y `/agenda` **se borraron** el 15/09/2026. La agenda de tráfico era un segundo sitio para mirar lo que ya está aquí —turno, libranzas, coche, teléfono— y encima era la única pantalla que **escribía** en la hoja `AGENDA_V2`. `/fichas` era un expediente montado sobre un Excel para tapar la falta de información: dos sitios para lo mismo, y el de menos datos era el que tenía los papeles en una hoja.

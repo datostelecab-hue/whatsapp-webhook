@@ -58,7 +58,49 @@ async function ficha(id, { momento } = {}) {
   // El libro solo si tiene enlaces: a la inmensa mayoría de fichas le sobra una
   // consulta más para devolver una lista vacía.
   f.fantasmaLibro = f.fantasmas.length ? await fant.libro(id).catch(() => []) : [];
+  // La foto va como el id de su documento, no como imagen: la pantalla la pide
+  // aparte con ese id en la URL, y asi el navegador la guarda y solo la vuelve
+  // a bajar cuando alguien sube otra. Sin foto, null: se pinta la silueta.
+  f.foto_id = await fotoVigente(id).then(x => (x ? String(x.id) : null)).catch(() => null);
   return f;
+}
+
+// ── La foto de la persona ──────────────────────────────────────────────────
+// Es un documento mas, de tipo 'foto' (db/147): vive en el almacen de
+// Documentos, subir otra deja la anterior como no vigente, y se sirve por el
+// ERP con sus permisos, no por un enlace de Drive.
+const MIME_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
+// La pantalla la reduce antes de mandarla (~100 KB). Este tope es para quien
+// llame a la API a pelo con la foto del movil tal cual.
+const MAX_FOTO = 3 * 1024 * 1024;
+
+async function fotoVigente(conductorId) {
+  const lista = await docs.listar('conductor', Number(conductorId));
+  return (lista || []).find(x => x.tipo === 'foto' && x.vigente) || null;
+}
+
+/** Los bytes de la foto vigente, o null si no tiene. */
+async function foto(conductorId) {
+  const f = await fotoVigente(conductorId);
+  return f ? docs.descargar(Number(f.id)) : null;
+}
+
+/**
+ * Sube la foto de alguien. Es dato personal: la cambia quien puede cambiar sus
+ * datos, y Trafico -que ve la ficha entera- no.
+ */
+async function subirFoto(conductorId, { base64, mime } = {}, quien = {}) {
+  if (quien.rol === 'trafico') throw new Error('La foto es un dato personal: la cambia RRHH');
+  if (!MIME_FOTO.includes(mime)) throw new Error('La foto tiene que ser JPG, PNG o WEBP');
+  const limpio = String(base64 || '').replace(/^data:[^,]*,/, '');
+  const bytes = Math.floor(limpio.length * 3 / 4);
+  if (!bytes) throw new Error('No ha llegado ninguna imagen');
+  if (bytes > MAX_FOTO) throw new Error('La foto pesa demasiado: el tope es de 3 MB');
+  const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+  const d = await docs.subir('conductor', Number(conductorId), {
+    tipo: 'foto', nombre: `foto-${Number(conductorId)}.${ext}`, mime, base64: limpio,
+  }, quien);
+  return { fotoId: String(d.id) };
 }
 
 /**
@@ -297,6 +339,6 @@ module.exports = {
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, aPropia, cambiarJornada, cambios, conflictos,
   excelGestoria,
-  tiposDocumento, documentosDe, subirDocumento, actualizarDocumento,
+  tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto,
   retirarDocumento, descargarDocumento, documentosQueVencen,
 };

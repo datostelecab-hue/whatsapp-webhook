@@ -847,6 +847,7 @@
             <button data-volver class="w-9 h-9 rounded-xl bg-telecab-card border border-telecab-border hover:border-telecab-gold/40 text-telecab-muted transition flex items-center justify-center" title="Volver (Esc)">
               <i class="fa-solid fa-arrow-left"></i>
             </button>
+            ${cfg.avatar ? '<div data-avatar class="shrink-0"></div>' : ''}
             <div>
               <h2 class="text-xl font-bold">${esc(cfg.titulo ? cfg.titulo(d) : '')}</h2>
               <p class="text-sm text-telecab-muted mt-0.5">${esc(cfg.subtitulo ? cfg.subtitulo(d) : '')}</p>
@@ -857,6 +858,12 @@
         </div>`);
 
       cab.querySelector('[data-volver]').addEventListener('click', () => this.volver());
+
+      // `avatar(d, hueco)`: la imagen de lo que se esta viendo, al lado del
+      // nombre. Como `pinta` en los bloques, el modulo hace lo que quiera en su
+      // hueco -una foto, una silueta, un boton para cambiarla-: el Listado solo
+      // le guarda el sitio.
+      if (cfg.avatar) cfg.avatar(d, cab.querySelector('[data-avatar]'));
 
       (cfg.acciones || []).forEach(a => {
         if (a.visible && !a.visible(d)) return;

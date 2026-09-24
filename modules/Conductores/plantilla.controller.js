@@ -17,6 +17,7 @@ const actor = require('../../services/repo/actor');
 // Los archivos llegan en base64 dentro del JSON. El parser global es de 2 MB y
 // un DNI escaneado se pasa de largo, así que aquí va su propio límite.
 router.use('/api/documento', express.json({ limit: '30mb' }));
+router.use('/api/conductor/:id/foto', express.json({ limit: '6mb' }));
 
 /** Quién hace el cambio y con qué rol. Todo lo que escribe pasa por aquí. */
 const quien = async req => ({
@@ -237,6 +238,26 @@ router.get('/api/documento/:id/descargar', async (req, res) => {
     res.status(404).send('No se encontró el documento');
   }
 });
+
+// ── La foto de la persona ──────────────────────────────────────────────────
+// Se sirve por aqui, con los permisos del ERP, y la pantalla la pide con el id
+// del documento en la URL (?v=): por eso puede guardarse un dia en el
+// navegador sin miedo -una foto nueva es otra URL-.
+router.get('/api/conductor/:id/foto', async (req, res) => {
+  try {
+    const f = await plantilla.foto(req.params.id);
+    if (!f) return res.status(404).send('Sin foto');
+    res.setHeader('Content-Type', f.mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(f.bytes);
+  } catch (e) {
+    console.error(`❌ [PLANTILLA] foto: ${e.message}`);
+    res.status(404).send('Sin foto');
+  }
+});
+
+router.post('/api/conductor/:id/foto', responde(async req =>
+  plantilla.subirFoto(req.params.id, req.body || {}, await quien(req))));
 
 // Lo que caduca pronto, de personas y de coches. Alimenta los avisos.
 router.get('/api/documentos/vencen', responde(async req =>
