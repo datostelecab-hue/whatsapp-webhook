@@ -503,10 +503,9 @@ Comprobado contra los cuatro usuarios reales de producción: el guardia coincide
 con la matriz de permisos uno a uno, y dice que no a un id desconocido, a un id
 vacío y a cualquier fallo de la consulta. En caja, la duda se resuelve cerrando.
 
-**`codigosBallenoil` no entra**, aunque también es PostgreSQL puro: lo usan
-`administracion` (que se queda) y el bot de las puertas, y meterlo aquí
-obligaría al bot a entrar por la puerta de este módulo para repartir códigos de
-lavado.
+**`codigosBallenoil` ya no existe** (24/09/2026): los códigos de lavado y el PIN
+de Ballenoil se quitaron del ERP, y con ellos la pantalla `/administracion`, que
+ahora lleva a sus tickets.
 
 ### Hecho: Nóminas (y de paso, fuera de las hojas)
 

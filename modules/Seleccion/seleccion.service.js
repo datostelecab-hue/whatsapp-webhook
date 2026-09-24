@@ -331,7 +331,7 @@ async function tramoFinal() {
     canal: c.canal_etiqueta || '', ett: esETT(c),
     jornadaHoras: c.jornada_horas, tipoContrato: c.tipo_contrato || '',
     estado: c.estado, estadoEtiqueta: c.estado_etiqueta,
-    excelAlta: c.excel_alta || '', pin: c.pin_ballenoil || '', obsPin: c.obs_ballenoil || '',
+    excelAlta: c.excel_alta || '',
     // Qué papeles tiene, en el idioma de la pantalla («carné» y no «permiso»).
     documentos: DOCUMENTOS.map(d => ({ key: d.key, label: d.label,
       tiene: (c.docs || []).includes(d.tipo) })),
@@ -341,8 +341,9 @@ async function tramoFinal() {
   const por = e => filas.filter(c => c.estado === e).map(preparar);
   return {
     porTramitar: por('listo_rrhh'),
-    pendientePin: por('pendiente_pin'),
-    hechas: filas.filter(c => c.estado === 'alta' || c.estado === 'asignado').map(preparar),
+    // `pendiente_pin` era la parada del PIN de Ballenoil, que ya no existe
+    // (24/09/2026): quien se hubiera quedado ahí está de alta a todos los efectos.
+    hechas: filas.filter(c => ['alta', 'asignado', 'pendiente_pin'].includes(c.estado)).map(preparar),
     noAlta: filas.filter(c => c.estado === 'no_alta' || c.estado === 'rechazado_rrhh').map(preparar),
   };
 }
@@ -396,41 +397,12 @@ async function excelDeAltas({ ids, fecha, tipo }) {
   console.log(`📄 [RRHH] Excel de altas «${etiqueta}» con ${fichas.length} ficha(s)`);
   return { buffer: Buffer.from(buffer), nombre };
 }
-/** RRHH tramita el alta: la ficha pasa a esperar el PIN de Ballenoil. */
+/** RRHH tramita el alta: la ficha queda de alta. Ya no hay parada del PIN de Ballenoil. */
 const tramitarAlta = (id, datos, quien) => cand.tramitarAlta(Number(id), datos, quien);
 
 /** Apunta en qué Excel de altas fue cada ficha. */
 const marcarExcelAlta = (ids, referencia) => cand.marcarExcelAlta(ids, referencia);
 
-/**
- * Administración guarda el PIN de Ballenoil. Último paso del alta.
- *
- * Son DOS cosas de dos dueños y por eso se encadenan AQUÍ: el PIN es de la
- * persona y lo escribe Conductores (db/124); mover la candidatura de montón es
- * de este módulo. Un repositorio que llamara al otro módulo dejaría de ser un
- * repositorio —y el verificador de capas lo dice—.
- *
- * Primero el PIN: si eso falla, la candidatura se queda esperando, que es la
- * verdad. Al revés figuraría como resuelta sin PIN que mandar.
- */
-async function guardarPin(id, datos, quien) {
-  const c = await cand.ficha(Number(id));
-  if (!c) throw new Error('No existe esa candidatura');
-  const plantilla = require('../Conductores/plantilla.service');
-  const p = await plantilla.guardarPinBallenoil(c.conductor_id, datos, quien || {});
-  await cand.avanzarTrasPin(Number(id));
-  console.log(`💳 [ADMINISTRACIÓN] PIN de Ballenoil guardado a ${p.quien}`);
-  return cand.ficha(Number(id));
-}
-
-/**
- * El PIN de un teléfono. Lo pide el bot.
- *
- * Se le pregunta a Conductores, que es de quien es el dato; este módulo lo
- * reexporta porque la pantalla que lo pone —Administración— entra por aquí.
- */
-const pinPorTelefono = tel =>
-  require('../Conductores/plantilla.service').pinPorTelefono(tel);
 /** Cuántas fichas esperan en cada sitio. Lo pide la campana. */
 const pendientesTramo = () => cand.pendientes();
 // ── La dirección ───────────────────────────────────────────────────────────
@@ -458,7 +430,7 @@ module.exports = {
   DOCUMENTOS,
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
   abrir, guardar, cambiarEstado, pasarARRHH, eliminar, alContratar,
-  tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, guardarPin, pinPorTelefono, pendientesTramo,
+  tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, pendientesTramo,
   subirDocumento, retirarDocumento, descargarDocumento, fichaPDF, foto, subirFoto,
   direccion,
 };

@@ -1,11 +1,19 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-09-17
+actualizado: 2026-09-24
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-09-24 · Ballenoil sale del ERP entero
+
+Ya no se trabaja con Ballenoil: se reposta en **Petroprix**, que no necesita nada de los conductores. Se quitan el **PIN de repostaje** (del bot, de la pantalla de Administración y de la parada «Pendiente de alta en Ballenoil»: RRHH tramita y la ficha queda de alta) y los **códigos de lavado** (el botón del bot, el importador y su cron). La pantalla `/administracion` se va con ellos y lleva a sus tickets; **la llave `/administracion` se queda**, porque por el prefijo es la que cierra `/administracion/tickets`. Las columnas `pin_ballenoil` / `obs_ballenoil` y la tabla `ballenoil_codigo` se quedan en la base por lo ya escrito. → [[Seleccion]] · [[WhatsApp]]
+
+## 2026-09-24 · El fichaje de coche se enciende persona a persona
+
+Iniciar turno suelta el motor y terminarlo lo bloquea, pero ya no para una lista de teléfonos en una variable de entorno: se enciende a cada conductor desde el planificador y a cada persona de la empresa desde `/usuarios`. Un coche solo se bloquea si todos los que lo llevan fichan; si no, se queda libre. → [[Fichaje]]
 
 ## 2026-09-18 · El alta se cierra en Selección, no en RRHH
 

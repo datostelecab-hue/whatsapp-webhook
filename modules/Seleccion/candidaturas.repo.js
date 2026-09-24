@@ -1489,8 +1489,11 @@ async function eliminar(id, { usuarioId } = {}) {
  * hacen en esas dos pantallas:
  *
  *   porTramitar  esperando a RRHH (listo_rrhh)
- *   pendientePin esperando el PIN de Ballenoil (pendiente_pin)
- *   hechas       ya con PIN, o ya en Tráfico
+ *   hechas       de alta, o ya en Tráfico
+ *   noAlta       las que no siguieron
+ *
+ * `pendiente_pin` se sigue leyendo aunque ya no se entre ahí (24/09/2026): el
+ * servicio lo cuenta como de alta, por si alguien quedó en esa parada.
  */
 async function tramoFinal() {
   // Los papeles vienen EN LA MISMA CONSULTA, como un array de tipos vigentes.
@@ -1571,10 +1574,17 @@ async function marcarExcelAlta(ids, referencia) {
 }
 
 /**
- * RRHH tramita: la ficha pasa a esperar el PIN de Ballenoil.
+ * RRHH tramita: la ficha queda DE ALTA.
  *
- * NO da de alta a nadie: eso ya lo hizo `pasarARRHH`. Aquí solo se apuntan las
- * fechas que decide RRHH y se mueve de montón.
+ * NO da de alta a nadie en el sentido del contrato: eso ya lo hizo
+ * `pasarARRHH`. Aquí solo se apuntan las fechas que decide RRHH y se cierra el
+ * recorrido.
+ *
+ * Hasta el 24/09/2026 pasaba antes por «Pendiente de alta en Ballenoil», a
+ * esperar que Administración le pusiera el PIN de la tarjeta de combustible.
+ * Ballenoil ya no se usa —ahora es Petroprix, que no necesita nada de los
+ * conductores—, así que esa parada sobraba. `asignado_at` lo ponía aquel paso;
+ * ahora se pone aquí.
  */
 async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {}) {
   const c = (await db.consulta(
@@ -1587,9 +1597,10 @@ async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {})
   }
   const r = await db.consulta(
     `UPDATE candidatura
-        SET estado = 'pendiente_pin',
+        SET estado = 'alta',
             alta_at = COALESCE($2::timestamptz, now()),
             habilitado_at = $3::timestamptz,
+            asignado_at = COALESCE(asignado_at, now()),
             actualizado_at = now()
       WHERE id = $1 AND estado = 'listo_rrhh'
       RETURNING id`,
@@ -1598,30 +1609,11 @@ async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {})
   return ficha(id);
 }
 
-/**
- * La candidatura, ya con el PIN puesto, pasa a estar de alta.
- *
- * SOLO mueve la candidatura. El PIN lo escribe Conductores —es de la persona,
- * db/124— y quien encadena las dos cosas es el servicio: un repositorio que
- * llama a otro módulo deja de ser un repositorio.
- */
-async function avanzarTrasPin(id) {
-  const c = (await db.consulta(
-    'SELECT conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
-  if (!c) throw new Error('No existe esa candidatura');
-  await db.consulta(
-    `UPDATE candidatura
-        SET estado = CASE WHEN estado = 'pendiente_pin' THEN 'alta' ELSE estado END,
-            asignado_at = COALESCE(asignado_at, now()),
-            actualizado_at = now()
-      WHERE id = $1`, [Number(id)]);
-  return { conductorId: c.conductor_id };
-}
 /** Cuántas fichas hay esperando en cada sitio. Lo pide la campana. */
 async function pendientes() {
   const r = await db.consulta(
     `SELECT estado, count(*)::int n FROM candidatura
-      WHERE estado IN ('listo_rrhh', 'pendiente_pin', 'rechazado_rrhh')
+      WHERE estado IN ('listo_rrhh', 'rechazado_rrhh')
       GROUP BY 1`);
   return Object.fromEntries(r.rows.map(x => [x.estado, x.n]));
 }
@@ -1630,5 +1622,5 @@ module.exports = {
   cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, importarMatriz, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
   // El tramo final: RRHH y Administración.
-  tramoFinal, paraAltasExcel, marcarExcelAlta, tramitarAlta, avanzarTrasPin, pendientes,
+  tramoFinal, paraAltasExcel, marcarExcelAlta, tramitarAlta, pendientes,
 };

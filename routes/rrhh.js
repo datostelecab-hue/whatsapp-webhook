@@ -2,8 +2,10 @@
 // /rrhh — el tablero de RRHH: verificar la ficha y tramitar el alta
 // ============================================================
 // Recibe lo que Selección deja listo, comprueba que los papeles están, mete a la
-// persona en un Excel de altas para la gestoría y la manda a Administración a
-// por el PIN de Ballenoil.
+// persona en un Excel de altas para la gestoría y la deja de alta.
+//
+// Hasta el 24/09/2026 la mandaba después a Administración a por el PIN de
+// Ballenoil. Ya no se trabaja con Ballenoil, y esa parada se quitó.
 //
 // ── QUÉ CAMBIÓ AL SALIR DE LAS HOJAS (15/09/2026) ───────────────────────────
 // AQUÍ NO SE DA DE ALTA A NADIE, y no es que se haya quitado: es que ya no hacía
@@ -36,7 +38,7 @@ router.get('/', (req, res) => {
  */
 async function porTelefono(tel, monton) {
   const t = await seleccion.tramoFinal();
-  const donde = monton ? t[monton] : [...t.porTramitar, ...t.pendientePin, ...t.hechas, ...t.noAlta];
+  const donde = monton ? t[monton] : [...t.porTramitar, ...t.hechas, ...t.noAlta];
   const f = donde.find(c => tel9(c.telefono) === tel9(tel));
   if (!f) throw new Error('No encuentro esa ficha' + (monton ? ' en ese montón' : ''));
   return f;
@@ -61,7 +63,7 @@ router.get('/api/datos', async (req, res) => {
       ficha_pdf_link: `/rrhh/doc?tel=${encodeURIComponent(c.telefono || '')}&tipo=ficha_pdf`,
     });
     const porTramitar = t.porTramitar.map(map);
-    const altas = [...t.pendientePin, ...t.hechas].map(map);
+    const altas = t.hechas.map(map);
     const noAlta = t.noAlta.map(map);
     res.json({
       status: 'ok', porTramitar, altas, noAlta,
@@ -77,14 +79,14 @@ router.get('/api/datos', async (req, res) => {
   }
 });
 
-/** Tramitar: la ficha pasa a Administración a por el PIN. No da ningún alta. */
+/** Tramitar: la ficha queda de alta y sale de la bandeja. El contrato ya estaba abierto. */
 router.post('/alta', async (req, res) => {
   try {
     const b = req.body || {};
     const f = await porTelefono(b.tel, 'porTramitar');
     const t = await seleccion.tramitarAlta(f.id,
       { fechaAlta: b.fecha_alta, fechaHabilitado: b.fecha_habilitado }, await quien(req));
-    console.log(`👤 [RRHH] ${f.quien} tramitada → a por el PIN de Ballenoil`);
+    console.log(`👤 [RRHH] ${f.quien} tramitada → de alta`);
     res.json({ status: 'ok', ticket: t });
   } catch (error) {
     res.status(400).json({ status: 'error', msg: error.message });
@@ -122,7 +124,7 @@ router.post('/altas-excel', async (req, res) => {
     // La pantalla manda teléfonos; aquí se traducen a candidaturas.
     const t = await seleccion.tramoFinal();
     const pedidos = new Set((b.tels || []).map(tel9));
-    const ids = [...t.porTramitar, ...t.pendientePin]
+    const ids = t.porTramitar
       .filter(c => pedidos.has(tel9(c.telefono))).map(c => c.id);
 
     const { buffer, nombre } = await seleccion.excelDeAltas({

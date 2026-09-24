@@ -32,8 +32,8 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 ## Cabos sueltos del alta (18/09/2026)
 
 - **32 fichas en «Listo para RRHH»** de antes del cambio. Su bandeja sigue funcionando; la duda es si se marcan como alta en bloque o se dejan vaciar a mano.
-- **El Excel de altas y el tramo de Ballenoil** (`tramitarAlta`, `avanzarTrasPin`, `services/altasExcel.js`) ya no los usa el recorrido nuevo. No se han borrado porque las 32 de arriba todavía pasan por ahí: cuando esa bandeja quede vacía, se pueden retirar.
-- **El importador de códigos de lavado de Ballenoil** del bot de WhatsApp es otra cosa y sigue vivo: lo que desapareció es el paso del PIN en el alta.
+- **El tramo de Ballenoil ya no existe** (24/09/2026): RRHH tramita y la ficha queda de alta directamente. El Excel de altas (`services/altasExcel.js`) sigue en la bandeja de RRHH mientras queden fichas viejas (39 el 24/09); cuando se vacíe, se puede retirar.
+- **Los códigos de lavado y el PIN de Ballenoil se quitaron del todo** (24/09/2026): del bot, de Administración y del alta. Ver [[Historial de decisiones]].
 
 ## Fuera del ERP: lo que hay que crear en otro sitio (18/09/2026)
 

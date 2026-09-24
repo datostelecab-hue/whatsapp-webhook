@@ -641,7 +641,7 @@ antes de insertar, **las horas se contarían dos veces**.
 
 ### Dos conductores, un mismo bono de lavado
 
-`services/codigosBallenoil.js`
+`services/codigosBallenoil.js` *(se quitó el 24/09/2026 con los códigos de lavado; la lección vale para repartir cualquier cosa de un solo uso)*
 
 Entre leer el código libre y marcarlo como usado pasa medio segundo: **los dos se
 llevaban el mismo bono y el segundo se lo encontraba gastado en el surtidor**.

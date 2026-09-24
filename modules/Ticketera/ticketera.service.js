@@ -7,7 +7,7 @@
 //   RRHH         vacaciones, bajas, permisos, nóminas, cuentas, domicilio, papeles
 //   TRÁFICO      cambios de libranza
 //   TALLER       incidencias del vehículo          (dentro de Flota)
-//   ADMIN        Ballenoil y reintegros de gastos
+//   ADMIN        combustible y reintegros de gastos
 //   OPERACIONES  «Tickets sin traza»: los que no se sabe clasificar
 //
 // Esa última bandeja es nueva y es la que arregla un agujero: el Apps Script

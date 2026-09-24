@@ -88,8 +88,6 @@ Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las qu
 
 ## Lo que no se mudó, y por qué
 
-**`administracion` (el reparto) se queda donde está**, en `routes/administracion.js`. Es la otra mitad del módulo, pero no está en PostgreSQL: cuelga de `services/tickets.js` y `services/conductoresBolt.js` —los dos sobre hojas— y de `services/planificadorV2.js`. Misma regla que dejó fuera a `rrhh`, `peticiones`, `agenda`, `fichas` y `libranzas`. Ver [[Google Drive y Sheets|Adiós a las hojas]].
-
-**`services/codigosBallenoil.js` tampoco**, aunque sí es PostgreSQL puro. Lo usan `administracion` (que se queda) y el bot de las puertas, así que meterlo aquí obligaría al bot a entrar por la puerta de este módulo para repartir códigos de lavado. Entra el día que entre `administracion`.
+**La pantalla `/administracion` ya no existe** (24/09/2026). Era el PIN de Ballenoil y los códigos de lavado, y los dos se quitaron: ya no se trabaja con Ballenoil. La ruta lleva ahora a `/administracion/tickets`. **La llave `/administracion` se queda**: por el prefijo, es la que cierra esos tickets —sin ella quedarían abiertos a cualquiera—, y en `/usuarios` se llama «Administración (tickets)». Con ella se fue `services/codigosBallenoil.js`; la tabla `ballenoil_codigo` se queda en la base por lo ya repartido.
 
 Por eso este módulo es, hoy, solo recaudación.

@@ -211,24 +211,10 @@ async function handleButton(phone, buttonId) {
     await sendText(phone, '🔄 Indica la nueva matrícula (ej: 1888LTJ):');
 
   } else if (buttonId === 'codigo_lavado') {
-    console.log(`💧 Código de lavado solicitado por ${phone}`);
-    const codigos = require('../services/codigosBallenoil');
-    // El nombre de la sesión YA es el de BOLT: conductorPorTelefono lo saca de
-    // `nombre_bolt` cuando lo hay. Antes esto volvía a preguntarlo al padrón en
-    // hoja de cálculo para obtener exactamente el mismo dato, con un catch que
-    // se tragaba el fallo.
-    const idBolt = sesion.nombre || '';
-
-    let r = null;
-    try { r = await codigos.solicitarCodigo({ telefono: phone, idBolt, conductorId: sesion.conductorId }); }
-    catch (e) { console.error('❌ [Ballenoil] solicitarCodigo:', e.message); }
-
-    if (r && r.codigo) {
-      await sendText(phone, `💧 *Código de lavado Ballenoil*\n\nTu código: *${r.codigo}*${r.fecha_vencimiento ? `\nVálido hasta: ${r.fecha_vencimiento}` : ''}\n\n${codigos.INSTRUCTIVO}\n\n_Este código es de un solo uso; no lo compartas._`);
-    } else {
-      await sendText(phone, '😕 Ahora mismo no hay códigos de lavado disponibles. Avisa a la oficina, por favor.');
-    }
-    // Re-muestra el menú para que pueda seguir operando.
+    // LOS CÓDIGOS DE LAVADO YA NO SE REPARTEN (24/09/2026): ya no se trabaja con
+    // Ballenoil. El botón puede seguir en mensajes viejos del chat: se le dice,
+    // y se le deja el menú.
+    await sendText(phone, 'ℹ️ Los códigos de lavado ya no se reparten por aquí.');
     await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
 
   } else if (buttonId === 'ver_turnos') {
@@ -369,10 +355,6 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
           {
             type: 'reply',
             reply: { id: 'ver_turnos', title: '📅 Ver mis turnos' }
-          },
-          {
-            type: 'reply',
-            reply: { id: 'codigo_lavado', title: '💧 Código lavado' }
           },
           {
             type: 'reply',

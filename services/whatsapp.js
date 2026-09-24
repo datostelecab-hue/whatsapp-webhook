@@ -75,9 +75,8 @@ function enviarPlantillaNombre(telefono, plantilla, nombre) {
 // Plantilla de aviso de horas (ya existente).
 const enviarAtencionHora = (telefono, nombre) => enviarPlantillaNombre(telefono, 'atencion_hora', nombre);
 
-// Bienvenida de Ballenoil: saluda por su nombre y trae el botón "VER PIN BALLENOIL"
-// (el bot entrega el PIN de su ficha al pulsarlo).
-const enviarBallenoil = (telefono, nombre) => enviarPlantillaNombre(telefono, 'ballenoil', nombre);
+// (La bienvenida de Ballenoil, con su botón «VER PIN BALLENOIL», se quitó el
+// 24/09/2026: ya no se trabaja con Ballenoil.)
 
 /**
  * Envía una plantilla con parámetros de cuerpo POSICIONALES ({{1}}, {{2}}…), es decir
@@ -241,4 +240,4 @@ async function enviarBotones(telefono, texto, botones) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
-module.exports = { enviarAtencionHora, enviarBallenoil, enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, PLANTILLA_TURNOS };
+module.exports = { enviarAtencionHora, enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, PLANTILLA_TURNOS };

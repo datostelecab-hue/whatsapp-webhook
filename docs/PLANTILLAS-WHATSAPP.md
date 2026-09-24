@@ -20,7 +20,7 @@ node scripts/crear-plantillas-whatsapp.js --ver
 | Nombre | Variables | Quién la usa |
 |---|---|---|
 | `atencion_hora` | `nombre` (con nombre, no posicional) | Aviso de horas |
-| `ballenoil` | `nombre` (con nombre) | Bienvenida Ballenoil, con botón "VER PIN" |
+| `ballenoil` | `nombre` (con nombre) | **Ya no se usa** (24/09/2026): era la bienvenida con el PIN de Ballenoil |
 | `detalle_turnos` | 1 posicional (nombre) | Aviso de turnos, con botón "Ver mis turnos" |
 | `advertencia_limite` | 2 posicionales (nombre, matrícula) | Sanciones por exceso de velocidad |
 

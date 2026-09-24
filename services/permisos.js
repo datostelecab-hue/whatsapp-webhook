@@ -43,7 +43,10 @@ const CATALOGO = [
   ] },
   { grupo: 'RRHH', items: [
     { clave: '/rrhh',           etiqueta: 'RRHH' },
-    { clave: '/administracion', etiqueta: 'Administración' },
+    // Era la pantalla del PIN de Ballenoil y los códigos de lavado (quitados el
+    // 24/09/2026). La llave SE QUEDA: por el prefijo es la que cierra
+    // /administracion/tickets, y sin ella esos tickets quedarían abiertos.
+    { clave: '/administracion', etiqueta: 'Administración (tickets)' },
     { clave: '/ticketera',      etiqueta: 'Ticketera RRHH' },
     { clave: '/reportes',       etiqueta: 'Reportes RRHH' },
     { clave: '/nominas',        etiqueta: 'Nóminas' },

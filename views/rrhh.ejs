@@ -82,7 +82,7 @@
 
     <div class="flex items-center gap-2 mt-3 text-xs text-telecab-muted">
       <i class="fa-solid fa-circle-arrow-right text-telecab-gold"></i>
-      Al procesar el alta la ficha pasa a <b class="text-telecab-text">Administración</b> para crear el PIN de Ballenoil. Solo entonces se crea en la Agenda como Pendiente Asignar.
+      Al procesar el alta la ficha queda <b class="text-telecab-text">de alta</b> y sale de esta bandeja. El contrato ya estaba abierto desde Selección; lo que le falta es un coche, y de eso avisa el planificador.
     </div>
 
     <div class="flex flex-wrap gap-2 mt-5">
@@ -353,7 +353,7 @@
     if (!$('#chk-verificado').checked) { msg('Marca la casilla de verificación antes de dar el alta.', false); return; }
     const btn = $('#btn-alta'); btn.disabled = true;
     const r = await api('/rrhh/alta', { tel: ticketActual.id, fecha_alta, fecha_habilitado });
-    if (r.status === 'ok') { msg('Alta procesada. Pasa a Administración para crear el PIN de Ballenoil.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); ticketActual = null; cargar(); }, 900); }
+    if (r.status === 'ok') { msg('Alta procesada. Ya está de alta.', true); setTimeout(() => { $('#ficha').classList.add('hidden'); ticketActual = null; cargar(); }, 900); }
     else { btn.disabled = false; msg(r.msg || 'No se pudo procesar el alta', false); }
   });
 

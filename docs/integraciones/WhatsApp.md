@@ -7,8 +7,8 @@ aliases: [Cloud API, Bot de puertas]
 
 WhatsApp es **el canal con los conductores**. No usan la app de Mapon ni entran al ERP: lo que se les dice y lo que piden pasa por aquí. Son dos cosas distintas montadas sobre el mismo número:
 
-- **Lo que sale**: avisos de turnos, advertencias de velocidad, alertas a los controladores, bienvenida de Ballenoil. Vive en `services/whatsapp.js`.
-- **Lo que entra**: el bot (abrir/cerrar puertas, código de lavado, ver turnos, fichar turno). Vive en `routes/botPuertas.js`. El PIN de repostaje de Ballenoil se quitó del bot el 24/09/2026: ya no se usa.
+- **Lo que sale**: avisos de turnos, advertencias de velocidad, alertas a los controladores. Vive en `services/whatsapp.js`. (La bienvenida de Ballenoil se quitó el 24/09/2026.)
+- **Lo que entra**: el bot (abrir/cerrar puertas, ver turnos, fichar turno o viaje). Vive en `routes/botPuertas.js`. El PIN de repostaje y los códigos de lavado de Ballenoil se quitaron el 24/09/2026: ya no se trabaja con Ballenoil.
 
 Es la **Cloud API de Meta**, contra `graph.facebook.com`, versión `v25.0`.
 
@@ -44,7 +44,7 @@ El detalle completo, con los textos exactos y las reglas de Meta, está en [[PLA
 | Plantilla | Variables | Quién la usa |
 |---|---|---|
 | `atencion_hora` | `nombre` (nombrada) | aviso de horas |
-| `ballenoil` | `nombre` (nombrada) | bienvenida Ballenoil, con botón "VER PIN" |
+| `ballenoil` | `nombre` (nombrada) | **ya no se usa** (24/09/2026): era la bienvenida con el PIN de Ballenoil. Se puede borrar en Meta |
 | `detalle_turnos` | 1 posicional | aviso de turnos, con botón "Ver mis turnos" |
 | `advertencia_limite` | 2 posicionales (nombre, matrícula) | sanciones por exceso de velocidad |
 
@@ -70,7 +70,7 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 
 - Una **matrícula** → busca el coche en Mapon y abre el menú de botones. El filtro es `/^(?=.*\d)[A-Za-z0-9]{6,8}$/`: exige al menos un dígito porque con `{4,8}` a secas *"hola"* era una matrícula válida — Ignacio saludó al bot y le contestó «Matrícula "HOLA" no encontrada» sin saludarle siquiera. Lo mismo pasaba con "buenas", "gracias" o "vale".
 - **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio.
-- **Código de lavado** (`codigosBallenoil`), con el instructivo de Ballenoil. El **PIN de repostaje** se quitó el 24/09/2026 porque ya no se usa: si alguien pulsa el botón «VER PIN» de una bienvenida vieja, se le dice eso y se le deja el menú.
+- **Ballenoil, fuera** (24/09/2026): ni **PIN de repostaje** ni **códigos de lavado**. Si alguien pulsa «VER PIN» en una bienvenida vieja o «Código lavado» en un menú viejo del chat, se le dice que ya no se usa y se le deja el menú.
 - **Ver turnos** → el cuadrante de la semana en texto libre. Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
 - **Fichaje de turno o de viaje** (`services/fichajeBot.js`), que enlaza conductor ↔ coche en Mapon y suelta o bloquea el motor. Va **antes** de la comprobación de acceso porque alguien de la empresa puede fichar un coche sin tener el permiso de puertas, y solo actúa para quien lo tenga **encendido en el ERP** (planificador y `/usuarios`, desde el 24/09/2026): para cualquier otro número devuelve `false` y el bot sigue como siempre. Ver [[Fichaje]].
 
@@ -105,7 +105,6 @@ El registro de puertas **no se espera**: que falle apuntarlo no puede dejar a na
 | `modules/Planificacion/cobertura.service.js` | el aviso de turnos de la semana |
 | `modules/Operaciones/sanciones.service.js` | la advertencia por exceso de velocidad |
 | `modules/Control/alertas.repo.js` | las alertas de franja a los controladores |
-| `routes/administracion.js` | la bienvenida de Ballenoil |
 | `services/fichajeBot.js` | la conversación de fichaje de turno |
 
 Ninguno de ellos llama a [[BOLT]] ni a [[Mapon]] para decidir: lo que necesitan ya está en PostgreSQL, puesto por la [[Ingesta]]. Lo único que sale fuera es el WhatsApp, que es el trabajo.

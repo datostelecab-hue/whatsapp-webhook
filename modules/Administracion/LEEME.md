@@ -58,9 +58,9 @@ está en PostgreSQL: cuelga de `services/tickets.js` y `services/conductoresBolt
 (los dos sobre hojas) y de `services/planificadorV2.js`. Misma regla que dejó
 fuera a `rrhh`, `peticiones`, `ticketera`, `agenda`, `fichas` y `libranzas`.
 
-**`services/codigosBallenoil.js` tampoco**, aunque sí es PostgreSQL puro. Lo usan
-`administracion` (que se queda) y el bot de las puertas, así que meterlo aquí
-obligaría al bot a entrar por la puerta de este módulo para repartir códigos de
-lavado. Entra el día que entre `administracion`.
+**`services/codigosBallenoil.js` ya no existe.** Los códigos de lavado y el PIN
+de Ballenoil se quitaron el 24/09/2026: ya no se trabaja con Ballenoil. La
+pantalla `/administracion` se fue con ellos y ahora lleva a sus tickets; la
+tabla `ballenoil_codigo` se queda en la base por lo ya repartido.
 
 Por eso este módulo es, hoy, solo recaudación.

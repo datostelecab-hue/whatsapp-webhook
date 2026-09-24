@@ -13,7 +13,7 @@ const TTL = 60 * 1000;
 
 async function calcular() {
   const [tramo, gente, vacantesAll, ticketsItLista, incPend] = await Promise.all([
-    seleccion.tramoFinal().catch(() => ({ porTramitar: [], pendientePin: [], hechas: [], noAlta: [] })),
+    seleccion.tramoFinal().catch(() => ({ porTramitar: [], hechas: [], noAlta: [] })),
     plantilla.lista({}).then(r => r.filas).catch(() => []),
     vacantes.listar({ incluirCerradas: false }).catch(() => []),
     ticketera.datos('IT', { cerrados: false }).then(r => r.tickets).catch(() => []),
@@ -30,7 +30,6 @@ async function calcular() {
   // catálogo y no de una lista escrita aquí.
   const rechazadosRRHH = tramo.noAlta.filter(c => c.estado === 'rechazado_rrhh');
   const porTramitar = tramo.porTramitar;
-  const pendientesPin = tramo.pendientePin;
   // Incorporaciones pendientes (PostgreSQL): altas con vacante esperando que
   // Tráfico las acepte o rechace EN EL PLANIFICADOR. La alerta no se va sola.
   const incorporaciones = incPend;
@@ -68,21 +67,17 @@ async function calcular() {
         }))
       ]
     },
-    // RRHH: aprobados en BOLT esperando el alta + fichas en Administración
-    // esperando el PIN de Ballenoil (último paso).
+    // RRHH: aprobados en BOLT esperando el alta. (La parada del PIN de
+    // Ballenoil en Administración se quitó el 24/09/2026.)
     // (Las peticiones de Tráfico ya no están: ese circuito se borró el 15/09/2026.
     //  Quien puede tocar la Plantilla cambia la situación en la ficha.)
     rrhh: {
-      total: porTramitar.length + pendientesPin.length,
+      total: porTramitar.length,
       items: [
         ...porTramitar.map(c => ({
           texto: `${c.quien} — listo para RRHH`,
           detalle: c.excelAlta ? `Excel ${c.excelAlta}` : 'aún sin Excel de altas',
           href: `/rrhh?tel=${encodeURIComponent(c.telefono || '')}`
-        })),
-        ...pendientesPin.map(c => ({
-          texto: `${c.quien} — pendiente del PIN de Ballenoil`,
-          detalle: 'Administración', href: `/administracion?tel=${encodeURIComponent(c.telefono || '')}`
         }))
       ]
     },

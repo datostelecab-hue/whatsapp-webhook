@@ -147,12 +147,11 @@ const CATALOGO = [
         acciones: ['Programar revisión en base', 'Abrir parte de taller'] }
     ] },
     { nombre: 'Combustible', motivos: [
+      // Ballenoil ya no se usa (24/09/2026): ni PIN de repostaje ni códigos de
+      // lavado. Se reposta en Petroprix, que no pide nada al conductor.
       { motivo: 'Problemas con la gasolina / repostaje',
         resultados: ['Resuelto en llamada', 'Escalado a tráfico'],
-        acciones: ['Explicar protocolo Ballenoil', 'Verificar saldo y PIN'] },
-      { motivo: 'Credenciales Ballenoil (PIN / código)',
-        resultados: ['PIN reenviado', 'Código nuevo entregado', 'Escalado a tráfico'],
-        acciones: ['Reenviar PIN por el bot', 'Generar código de lavado'] }
+        acciones: ['Explicar protocolo de repostaje (Petroprix)'] }
     ] }
   ] },
 

@@ -175,7 +175,6 @@ const generadorRoutes = require('./routes/generador');
 const seleccionRoutes = require('./routes/seleccion');
 const ettRoutes = require('./routes/ett');
 const rrhhRoutes = require('./routes/rrhh');
-const administracionRoutes = require('./routes/administracion');
 const soporteRoutes = require('./routes/soporte');
 const ticketsTelecabRoutes = require('./routes/ticketsTelecab');
 const reportesRoutes = require('./routes/reportes');
@@ -255,7 +254,11 @@ app.use('/generador', generadorRoutes);
 app.use('/seleccion', seleccionRoutes);
 app.use('/ett', ettRoutes);
 app.use('/rrhh', rrhhRoutes);
-app.use('/administracion', administracionRoutes);
+// /administracion ERA el PIN de Ballenoil y los códigos de lavado. Los dos se
+// quitaron el 24/09/2026 —ya no se trabaja con Ballenoil—, y lo que queda de
+// Administración son sus tickets. La llave `/administracion` se queda: es la que
+// cierra también `/administracion/tickets`, por el prefijo.
+app.get('/administracion', (req, res) => res.redirect('/administracion/tickets'));
 // La exportacion a Excel de la Plantilla vieja no se perdio: se generalizo aqui
 // y ahora la usa cualquier listado.
 app.use('/exportar', require('./routes/exportar'));
@@ -671,18 +674,6 @@ programar('*/10 * * * *', async () => {
     console.error(`❌ [CRON FICHAJE] El repaso de bloqueos falló: ${error.message}`);
   }
 }, { timezone: 'Europe/Madrid' });
-
-// Cada día de madrugada: borra los códigos de lavado Ballenoil NO usados que ya
-// vencieron (los usados se conservan siempre, como histórico).
-programar('20 4 * * *', async () => {
-  try {
-    const { purgarVencidos } = require('./services/codigosBallenoil');
-    const r = await purgarVencidos();
-    if (r.borrados) console.log(`💧 [CRON Ballenoil] Purgados ${r.borrados} código(s) vencidos sin usar`);
-  } catch (error) {
-    console.error(`❌ [CRON Ballenoil] Error: ${error.message}`);
-  }
-});
 
 // ── LA DEUDA DE EFECTIVO, AL DÍA ────────────────────────────────────────────
 // Cada media hora se vuelve a medir lo que BOLT dice que cobró en mano cada

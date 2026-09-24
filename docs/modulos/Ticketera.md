@@ -24,7 +24,7 @@ Cada área tiene su bandeja **colgando del módulo al que pertenece el trabajo**
 | Ruta | Área | Qué lleva |
 |---|---|---|
 | `/ticketera` | RRHH | vacaciones, bajas, permisos, nóminas, cuentas, domicilio, papeles |
-| `/administracion/tickets` | ADMIN | Ballenoil y reintegros de gastos |
+| `/administracion/tickets` | ADMIN | combustible y reintegros de gastos |
 | `/planificador/tickets` | TRAFICO | cambios de libranza |
 | `/taller/tickets` | TALLER | incidencias del vehículo |
 | `/operaciones/sin-traza` | OPERACIONES | los que **no se sabe clasificar** |
