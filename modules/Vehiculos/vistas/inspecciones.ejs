@@ -1,0 +1,480 @@
+<%#
+  INSPECCIÓN DE VEHÍCULOS (db/150) — el primer submódulo de taller.
+
+  La lista es el componente de la casa (Listado): un coche por fila con su
+  última inspección. La ficha enseña esa inspección entera —los dieciséis
+  elementos, los vencimientos, el resultado— y el historial. El formulario de
+  inspección es propio de esta pantalla: una fila por elemento con sus cuatro
+  estados en línea, que es como se recorre un coche con el papel en la mano.
+%>
+
+<div id="modulo"></div>
+
+<!-- ── NUEVA INSPECCIÓN ── -->
+<div id="ins-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
+  <div class="bg-telecab-card border border-telecab-border rounded-2xl shadow-soft w-full max-w-3xl my-8" role="dialog" aria-modal="true" aria-labelledby="ins-titulo">
+    <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-telecab-border">
+      <div>
+        <h3 id="ins-titulo" class="font-bold text-lg">Nueva inspección</h3>
+        <p id="ins-sub" class="text-xs text-telecab-muted mt-0.5"></p>
+      </div>
+      <button type="button" data-cerrar class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted transition" title="Cerrar (Esc)">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <form id="ins-form" class="p-5 space-y-5" autocomplete="off">
+      <div class="grid sm:grid-cols-3 gap-3">
+        <label class="block">
+          <span class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Fecha de la inspección *</span>
+          <input id="ins-fecha" class="js-fecha w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm" placeholder="dd/mm/aaaa" readonly>
+        </label>
+        <label class="block">
+          <span class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Marca</span>
+          <input id="ins-marca" maxlength="60" class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm uppercase">
+        </label>
+        <label class="block">
+          <span class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Modelo</span>
+          <input id="ins-modelo" maxlength="60" class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm uppercase">
+        </label>
+      </div>
+
+      <div>
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <h4 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold">Elementos</h4>
+          <span class="text-[11px] text-telecab-muted">Viene con lo de la última inspección: cambia lo que no esté igual.</span>
+          <button type="button" id="ins-todo-correcto" class="ml-auto px-2.5 py-1 rounded-lg text-xs font-semibold border border-telecab-border bg-telecab-card2 hover:border-telecab-gold/50"
+                  title="Marca como correcto todo lo que no esté en «No se requiere en normativa»">Todo correcto</button>
+        </div>
+        <div id="ins-elementos" class="space-y-4"></div>
+      </div>
+
+      <div>
+        <h4 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mb-2">Vencimientos</h4>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <label class="block">
+            <span class="block text-xs text-telecab-muted mb-1">ITV · caduca</span>
+            <input id="ins-itv" class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm tabular-nums" placeholder="mm/aaaa">
+          </label>
+          <label class="block">
+            <span class="block text-xs text-telecab-muted mb-1">Pegatina VTC delantera · caduca</span>
+            <input id="ins-vtc-d" class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm tabular-nums" placeholder="mm/aaaa">
+          </label>
+          <label class="block">
+            <span class="block text-xs text-telecab-muted mb-1">Pegatina VTC trasera · caduca</span>
+            <input id="ins-vtc-t" class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm tabular-nums" placeholder="mm/aaaa o aaaa">
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <h4 class="text-xs uppercase tracking-wide text-telecab-muted font-semibold mb-2">Resultado final</h4>
+        <input type="hidden" id="ins-resultado" value="">
+        <div class="tc-selector" data-para="ins-resultado" id="ins-resultados"></div>
+      </div>
+
+      <label class="block">
+        <span class="block text-xs text-telecab-muted uppercase tracking-wide mb-1">Observaciones adicionales</span>
+        <textarea id="ins-obs" rows="3" class="w-full px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-xl text-sm resize-y"></textarea>
+      </label>
+
+      <p id="ins-error" class="hidden text-sm text-telecab-red"></p>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" data-cerrar class="px-4 py-2 rounded-xl text-sm font-semibold bg-telecab-card2 border border-telecab-border hover:border-telecab-gold/40">Cancelar</button>
+        <button type="submit" id="ins-guardar" class="px-4 py-2 rounded-xl text-sm font-semibold bg-telecab-gold text-telecab-dark hover:bg-telecab-gold-soft shadow-gold">Guardar inspección</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  const PUEDE = <%- JSON.stringify(!!puedeApuntar) %>;
+  let CAT = <%- JSON.stringify(catalogos || { elementos: [], estados: [], resultados: [] }) %>;
+  const { esc, fecha, etiqueta } = Listado.fmt;
+  const $ = s => document.querySelector(s);
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const AVISO_DIAS = 60;
+
+  const estadoDe = c => CAT.estados.find(e => e.codigo === c) || { etiqueta: c, tono: 'muted' };
+  const elementoDe = c => CAT.elementos.find(e => e.codigo === c) || { etiqueta: c };
+  const fallos = f => (f.elementos || []).filter(x => estadoDe(x.estado).es_fallo);
+  // Los coches que no venían en el Excel se cargaron con todo en «Falta»: es
+  // un pendiente de inspeccionar, no dieciséis averías.
+  const todoEnFalta = f => (f.elementos || []).length >= CAT.elementos.length
+    && (f.elementos || []).every(x => x.estado === 'falta');
+
+  /**
+   * Un vencimiento de MES y AÑO, que es como se lee en la pegatina. Caduca el
+   * último día de ese mes. Con solo el año (la pegatina VTC trasera en el Excel)
+   * se dice el año y se avisa solo si ya pasó.
+   */
+  function vence(mes, anio) {
+    if (!anio) return { texto: '', dias: null };
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    if (!mes) {
+      const pasado = anio < hoy.getFullYear();
+      return { texto: String(anio), dias: pasado ? -1 : null, soloAnio: true };
+    }
+    const fin = new Date(anio, mes, 0);                 // último día del mes
+    return { texto: MESES[mes - 1] + ' ' + anio, dias: Math.round((fin - hoy) / 86400000) };
+  }
+  function pintaVence(v) {
+    if (!v.texto) return '<span class="text-telecab-muted">—</span>';
+    if (v.dias === null) return esc(v.texto);
+    if (v.dias < 0) return `<span class="text-telecab-red font-semibold" title="Caducada">${esc(v.texto)} · caducada</span>`;
+    if (v.dias <= AVISO_DIAS) return `<span class="text-telecab-warn font-semibold" title="Caduca en ${v.dias} días">${esc(v.texto)} · ${v.dias} d</span>`;
+    return esc(v.texto);
+  }
+  const vItv = f => vence(f.itv_mes, f.itv_anio);
+  const vVtcD = f => vence(f.vtc_delantera_mes, f.vtc_delantera_anio);
+  const vVtcT = f => vence(f.vtc_trasera_mes, f.vtc_trasera_anio);
+  const pronto = v => v.dias !== null && v.dias <= AVISO_DIAS;
+  const caducada = v => v.dias !== null && v.dias < 0;
+
+  /** Cuándo es esa inspección, dicho con honestidad: el Excel no trae fecha. */
+  const cuando = f => !f.inspeccion_id ? ''
+    : f.fecha ? fecha(f.fecha)
+    : `del Excel · importado el ${fecha(f.creado_at)}`;
+
+  const chipsFallos = (f, max = 4) => {
+    if (!f.inspeccion_id) return '';
+    if (todoEnFalta(f)) return etiqueta('Pendiente de inspeccionar', 'warn');
+    const xs = fallos(f);
+    if (!xs.length) return '<span class="text-telecab-green text-xs"><i class="fa-solid fa-check"></i> Sin incidencias</span>';
+    const chips = xs.slice(0, max).map(x => etiqueta(`${estadoDe(x.estado).etiqueta} · ${elementoDe(x.elemento).etiqueta}`, estadoDe(x.estado).tono));
+    return `<span class="inline-flex flex-wrap gap-1">${chips.join('')}${xs.length > max ? `<span class="text-xs text-telecab-muted self-center">+${xs.length - max}</span>` : ''}</span>`;
+  };
+
+  const sedeChip = s => (s && s !== 'madrid' ? ' ' + etiqueta(s.charAt(0).toUpperCase() + s.slice(1), 'violet') : '');
+  const vehiculo = f => [f.marca, f.modelo].filter(Boolean).join(' ') || f.marca_modelo || '';
+
+  // ══════════ LA LISTA ══════════
+  const lista = Listado.montar({
+    raiz: '#modulo',
+    titulo: 'Inspección de vehículos',
+    icono: 'fa-clipboard-check',
+    clave: 'id',
+    origen: '/inspecciones/api/lista',
+    vacio: 'No hay coches que coincidan.',
+    buscar: { texto: 'Buscar matrícula, modelo, observaciones…', campos: ['matricula', 'marca', 'modelo', 'marca_modelo', 'observaciones'] },
+
+    subtitulo: (visibles, todas) => visibles.length === todas.length
+      ? `${todas.length} coches` : `${visibles.length} de ${todas.length} coches`,
+
+    cifras: filas => {
+      const con = filas.filter(f => f.inspeccion_id && !todoEnFalta(f));
+      return [
+        { valor: con.length, etiqueta: 'inspeccionados' },
+        { valor: filas.filter(f => !f.inspeccion_id || todoEnFalta(f)).length, etiqueta: 'pendientes', tono: 'warn',
+          filtro: { id: 'estado', valor: 'pendiente' } },
+        { valor: con.filter(f => fallos(f).some(x => x.estado === 'falta')).length, etiqueta: 'con faltas', tono: 'red',
+          filtro: { id: 'estado', valor: 'faltas' } },
+        { valor: con.filter(f => fallos(f).some(x => x.estado === 'deteriorado')).length, etiqueta: 'con algo deteriorado', tono: 'warn',
+          filtro: { id: 'estado', valor: 'deteriorado' } },
+        { valor: filas.filter(f => caducada(vItv(f))).length, etiqueta: 'ITV caducada', tono: 'red',
+          filtro: { id: 'itv', valor: 'caducada' } },
+        { valor: filas.filter(f => pronto(vItv(f)) && !caducada(vItv(f))).length, etiqueta: `ITV en ${AVISO_DIAS} días`, tono: 'warn',
+          filtro: { id: 'itv', valor: 'pronto' } },
+      ];
+    },
+
+    nota: filas => {
+      const n = filas.filter(todoEnFalta).length;
+      return n ? { tono: 'aviso', icono: 'fa-clipboard-list',
+        texto: `${n} coche(s) no venían en el Excel del taller: tienen todo en «Falta» hasta que se inspeccionen.` } : null;
+    },
+
+    filtros: [
+      { id: 'estado', textoTodos: 'Cualquier estado', opciones: [
+          { valor: 'pendiente', texto: 'Pendientes de inspeccionar' },
+          { valor: 'faltas', texto: 'Con algo que falta' },
+          { valor: 'deteriorado', texto: 'Con algo deteriorado' },
+          { valor: 'bien', texto: 'Sin incidencias' },
+        ],
+        pasa: (f, v) => {
+          const pend = !f.inspeccion_id || todoEnFalta(f);
+          if (v === 'pendiente') return pend;
+          if (pend) return false;
+          if (v === 'faltas') return fallos(f).some(x => x.estado === 'falta');
+          if (v === 'deteriorado') return fallos(f).some(x => x.estado === 'deteriorado');
+          if (v === 'bien') return !fallos(f).length;
+          return true;
+        } },
+      { id: 'elemento', textoTodos: 'Cualquier elemento',
+        opciones: () => CAT.elementos.map(e => ({ valor: e.codigo, texto: e.etiqueta + ' con problema' })),
+        pasa: (f, v) => !todoEnFalta(f) && fallos(f).some(x => x.elemento === v) },
+      { id: 'resultado', textoTodos: 'Cualquier resultado',
+        opciones: () => CAT.resultados.map(r => ({ valor: r.codigo, texto: r.etiqueta })).concat([{ valor: '-', texto: 'Sin resultado' }]),
+        pasa: (f, v) => (v === '-' ? !f.resultado : f.resultado === v) },
+      { id: 'itv', textoTodos: 'ITV: todas', opciones: [
+          { valor: 'caducada', texto: 'ITV caducada' }, { valor: 'pronto', texto: `ITV en ${AVISO_DIAS} días` }],
+        pasa: (f, v) => (v === 'caducada' ? caducada(vItv(f)) : pronto(vItv(f)) && !caducada(vItv(f))) },
+      { id: 'vtc', textoTodos: 'Pegatinas VTC: todas', opciones: [
+          { valor: 'caducada', texto: 'Alguna caducada' }, { valor: 'pronto', texto: `Alguna en ${AVISO_DIAS} días` }],
+        pasa: (f, v) => [vVtcD(f), vVtcT(f)].some(x => (v === 'caducada' ? caducada(x) : pronto(x) && !caducada(x))) },
+      { id: 'sede', campo: 'sede', textoTodos: 'Todas las sedes', opciones: [
+          { valor: 'madrid', texto: 'Madrid' }, { valor: 'barcelona', texto: 'Barcelona' }] },
+    ],
+
+    acciones: PUEDE ? [{ texto: 'Importar Excel', icono: 'fa-file-import', principal: false, onClick: () => importarExcel() }] : [],
+
+    columnas: [
+      { titulo: 'Matrícula', campo: 'matricula', clase: 'font-semibold whitespace-nowrap',
+        pinta: (v, f) => esc(v) + sedeChip(f.sede) },
+      { titulo: 'Vehículo', valor: vehiculo, clase: 'whitespace-nowrap' },
+      { titulo: 'Inspección', valor: f => cuando(f), ayuda: 'La fecha de la última inspección. Las del Excel del taller no la traen: se dice cuándo se importó.',
+        pinta: (v, f) => (f.inspeccion_id ? `<span class="whitespace-nowrap ${f.fecha ? '' : 'text-telecab-muted text-xs'}">${esc(v)}</span>`
+          : etiqueta('Sin inspeccionar', 'warn')) },
+      { titulo: 'Resultado', valor: f => f.resultado_etiqueta || '',
+        pinta: (v, f) => (v ? etiqueta(v, f.resultado_tono) : '<span class="text-telecab-muted">—</span>') },
+      { titulo: 'Incidencias', valor: f => fallos(f).map(x => elementoDe(x.elemento).etiqueta).join(', '),
+        ayuda: 'Lo que falta o está deteriorado en la última inspección.', pinta: (v, f) => chipsFallos(f) },
+      { titulo: 'ITV', valor: f => vItv(f).texto, pinta: (v, f) => `<span class="whitespace-nowrap">${pintaVence(vItv(f))}</span>` },
+      { titulo: 'VTC delantera', valor: f => vVtcD(f).texto, ayuda: 'Caducidad de la pegatina VTC delantera',
+        pinta: (v, f) => `<span class="whitespace-nowrap">${pintaVence(vVtcD(f))}</span>` },
+      { titulo: 'VTC trasera', valor: f => vVtcT(f).texto, ayuda: 'Caducidad de la pegatina VTC trasera (en el Excel, solo el año)',
+        pinta: (v, f) => `<span class="whitespace-nowrap">${pintaVence(vVtcT(f))}</span>` },
+      { titulo: 'Observaciones', campo: 'observaciones', clase: 'max-w-[16rem] truncate',
+        pinta: v => (v ? `<span title="${esc(v)}">${esc(v)}</span>` : '') },
+    ],
+
+    // ══════════ LA FICHA ══════════
+    detalle: {
+      origen: id => `/inspecciones/api/ficha/${id}`,
+      titulo: d => d.matricula,
+      subtitulo: d => [d.marca_modelo, d.sede ? d.sede.charAt(0).toUpperCase() + d.sede.slice(1) : '', d.estado_vehiculo].filter(Boolean).join(' · '),
+      acciones: [
+        { texto: 'Nueva inspección', icono: 'fa-clipboard-check', principal: true, visible: () => PUEDE,
+          onClick: (d, lst) => abrirInspeccion(d, lst) },
+      ],
+      bloques: [
+        { titulo: 'Última inspección', icono: 'fa-clipboard-check',
+          pinta: (d, hueco) => pintarInspeccion((d.inspecciones || []).find(i => !i.anulado_at), hueco) },
+        { titulo: 'Historial', icono: 'fa-clock-rotate-left',
+          tabla: {
+            vacio: 'Todavía no tiene ninguna inspección.',
+            datos: d => d.inspecciones || [],
+            columnas: [
+              { titulo: 'Fecha', pinta: (v, i) => (i.anulado_at ? '<s class="text-telecab-muted">' : '') + esc(cuando(i)) + (i.anulado_at ? '</s>' : '') },
+              { titulo: 'Resultado', pinta: (v, i) => (i.resultado_etiqueta ? etiqueta(i.resultado_etiqueta, i.resultado_tono) : '—') },
+              { titulo: 'Incidencias', pinta: (v, i) => (todoEnFalta(i) ? 'Pendiente de inspeccionar' : String(fallos(i).length)) },
+              { titulo: 'Apuntada por', pinta: (v, i) => esc(i.apuntado_nombre || '—') },
+              { titulo: '', pinta: (v, i) => (i.anulado_at
+                ? `<span class="text-xs text-telecab-red" title="${esc(i.anulado_motivo || '')}">anulada${i.anulado_nombre ? ' por ' + esc(i.anulado_nombre) : ''}</span>` : '') },
+            ],
+            acciones: [
+              { icono: 'fa-eye', titulo: 'Ver entera', onClick: i => verInspeccion(i) },
+              { icono: 'fa-ban', titulo: 'Anular', visible: i => PUEDE && !i.anulado_at, onClick: (i, d, lst) => anularInspeccion(i, lst) },
+            ],
+          } },
+      ],
+    },
+  });
+
+  /** Una inspección entera: los elementos por grupo, los vencimientos y lo demás. */
+  function htmlInspeccion(i) {
+    if (!i) return '<p class="text-sm text-telecab-muted">Todavía no tiene ninguna inspección.</p>';
+    const puesto = new Map((i.elementos || []).map(x => [x.elemento, x.estado]));
+    const grupos = [];
+    CAT.elementos.forEach(e => {
+      let g = grupos.find(x => x.nombre === e.grupo);
+      if (!g) grupos.push(g = { nombre: e.grupo, items: [] });
+      g.items.push(e);
+    });
+    return `
+      <div class="flex flex-wrap items-center gap-2 mb-4 text-sm">
+        <span class="font-semibold">${esc(cuando(i))}</span>
+        ${i.resultado_etiqueta ? etiqueta(i.resultado_etiqueta, i.resultado_tono) : '<span class="text-telecab-muted">sin resultado</span>'}
+        ${i.apuntado_nombre ? `<span class="text-telecab-muted">· apuntada por ${esc(i.apuntado_nombre)}</span>` : ''}
+        ${(i.marca || i.modelo) ? `<span class="text-telecab-muted">· ${esc([i.marca, i.modelo].filter(Boolean).join(' '))}</span>` : ''}
+      </div>
+      <div class="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+        ${grupos.map(g => `
+          <div>
+            <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">${esc(g.nombre)}</p>
+            <ul class="space-y-1">${g.items.map(e => {
+              const st = puesto.get(e.codigo);
+              return `<li class="flex items-center justify-between gap-3 text-sm">
+                <span>${esc(e.etiqueta)}</span>
+                ${st ? etiqueta(estadoDe(st).etiqueta, estadoDe(st).tono) : '<span class="text-xs text-telecab-muted">sin revisar</span>'}</li>`;
+            }).join('')}</ul>
+          </div>`).join('')}
+      </div>
+      <div class="grid sm:grid-cols-3 gap-4 mt-5 pt-4 border-t border-telecab-border/60 text-sm">
+        <div><p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">ITV · caduca</p>${pintaVence(vItv(i))}</div>
+        <div><p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Pegatina VTC delantera</p>${pintaVence(vVtcD(i))}</div>
+        <div><p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Pegatina VTC trasera</p>${pintaVence(vVtcT(i))}</div>
+      </div>
+      ${i.observaciones ? `<div class="mt-4 text-sm"><p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1">Observaciones</p>
+        <p class="whitespace-pre-line">${esc(i.observaciones)}</p></div>` : ''}
+      ${i.anulado_at ? `<p class="mt-4 text-sm text-telecab-red">Anulada${i.anulado_nombre ? ' por ' + esc(i.anulado_nombre) : ''}: ${esc(i.anulado_motivo || '')}</p>` : ''}`;
+  }
+  function pintarInspeccion(i, hueco) { hueco.className = 'p-5'; hueco.innerHTML = htmlInspeccion(i); }
+  const verInspeccion = i => Dialogo.aviso({ titulo: 'Inspección · ' + cuando(i), html: htmlInspeccion(i), ancho: 'max-w-3xl' });
+
+  async function post(url, cuerpo) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.status !== 'ok') { const e = new Error(j.msg || 'Error ' + r.status); e.errores = j.errores; throw e; }
+    return j;
+  }
+
+  async function anularInspeccion(i, lst) {
+    const v = await Dialogo.formulario('Anular la inspección · ' + cuando(i), [
+      { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true, marcador: 'Ej.: era de otro coche',
+        ayuda: 'No se borra: queda anulada, con tu nombre y el motivo.' },
+    ], { textoBoton: 'Anular' });
+    if (!v) return;
+    try { await post(`/inspecciones/api/inspeccion/${i.inspeccion_id}/anular`, { motivo: v.motivo }); Dialogo.hecho('Inspección anulada'); await lst.recargar(); }
+    catch (e) { await Dialogo.aviso({ titulo: 'No se pudo anular', texto: e.message, tono: 'error' }); }
+  }
+
+  // ══════════ EL FORMULARIO DE INSPECCIÓN ══════════
+  const modal = $('#ins-modal');
+  let enCurso = null;                    // { ficha, listado }
+  const OPCIONES = () => CAT.estados.map(e => ({ v: e.codigo, t: e.codigo === 'no_aplica' ? 'No se requiere' : e.etiqueta }))
+    .concat([{ v: '', t: 'Sin revisar' }]);
+  const aMesAnio = (mes, anio) => (anio ? (mes ? String(mes).padStart(2, '0') + '/' : '') + anio : '');
+  /** «03/2027», «3-2027» o «2027» → { mes, anio }. Vacío → nada. */
+  function leerMesAnio(txt, que) {
+    const t = String(txt || '').trim();
+    if (!t) return { mes: null, anio: null };
+    let m = t.match(/^(\d{1,2})\s*[\/\-.]\s*(\d{4})$/);
+    if (m) {
+      const mes = Number(m[1]);
+      if (mes < 1 || mes > 12) throw new Error(`${que}: el mes tiene que ir de 01 a 12`);
+      return { mes, anio: Number(m[2]) };
+    }
+    m = t.match(/^(\d{4})$/);
+    if (m) return { mes: null, anio: Number(m[1]) };
+    throw new Error(`${que}: escríbelo como mm/aaaa (por ejemplo 03/2027)`);
+  }
+
+  function abrirInspeccion(d, lst) {
+    enCurso = { ficha: d, listado: lst };
+    const ultima = (d.inspecciones || []).find(i => !i.anulado_at && !todoEnFalta(i)) || {};
+    const puesto = new Map((ultima.elementos || []).map(x => [x.elemento, x.estado]));
+    $('#ins-titulo').textContent = 'Nueva inspección · ' + d.matricula;
+    $('#ins-sub').textContent = ultima.inspeccion_id
+      ? 'Parte de la última (' + cuando(ultima) + ').' : 'No tiene ninguna inspección anterior.';
+    const hoy = new Date();
+    $('#ins-fecha').value = fecha(hoy);
+    const [marcaV, ...resto] = String(d.marca_modelo || '').split(' ');
+    $('#ins-marca').value = ultima.marca || marcaV || '';
+    $('#ins-modelo').value = ultima.modelo || resto.join(' ') || '';
+
+    const grupos = [];
+    CAT.elementos.forEach(e => {
+      let g = grupos.find(x => x.nombre === e.grupo);
+      if (!g) grupos.push(g = { nombre: e.grupo, items: [] });
+      g.items.push(e);
+    });
+    $('#ins-elementos').innerHTML = grupos.map(g => `
+      <div>
+        <p class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">${esc(g.nombre)}</p>
+        <div class="space-y-2">${g.items.map(e => `
+          <div class="grid sm:grid-cols-[minmax(0,15rem)_1fr] items-center gap-x-3 gap-y-1">
+            <span class="text-sm">${esc(e.etiqueta)}</span>
+            <input type="hidden" id="ins-el-${esc(e.codigo)}" data-elemento="${esc(e.codigo)}" value="${esc(puesto.get(e.codigo) || '')}">
+            <div class="tc-selector" data-para="ins-el-${esc(e.codigo)}">
+              ${OPCIONES().map(o => `<button type="button" data-v="${esc(o.v)}">${esc(o.t)}</button>`).join('')}
+            </div>
+          </div>`).join('')}</div>
+      </div>`).join('');
+
+    $('#ins-itv').value = aMesAnio(ultima.itv_mes, ultima.itv_anio);
+    $('#ins-vtc-d').value = aMesAnio(ultima.vtc_delantera_mes, ultima.vtc_delantera_anio);
+    $('#ins-vtc-t').value = aMesAnio(ultima.vtc_trasera_mes, ultima.vtc_trasera_anio);
+    $('#ins-resultados').innerHTML = CAT.resultados.map(r => `<button type="button" data-v="${esc(r.codigo)}">${esc(r.etiqueta)}</button>`).join('')
+      + '<button type="button" data-v="">Sin resultado</button>';
+    $('#ins-resultado').value = '';
+    $('#ins-obs').value = '';
+    $('#ins-error').classList.add('hidden');
+    Selector.montar(modal);
+    modal.classList.remove('hidden');
+    $('#ins-fecha').focus();
+  }
+
+  const cerrar = () => { modal.classList.add('hidden'); enCurso = null; };
+  modal.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', cerrar));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) cerrar(); });
+
+  $('#ins-todo-correcto').addEventListener('click', () => {
+    modal.querySelectorAll('[data-elemento]').forEach(inp => { if (inp.value !== 'no_aplica') inp.value = 'correcto'; });
+    Selector.montar(modal);
+  });
+
+  $('#ins-form').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    if (!enCurso) return;
+    const err = $('#ins-error');
+    err.classList.add('hidden');
+    try {
+      const fechaIso = Dialogo.aISO($('#ins-fecha').value);
+      if (!fechaIso) throw new Error('Pon la fecha de la inspección');
+      const elementos = {};
+      modal.querySelectorAll('[data-elemento]').forEach(inp => { if (inp.value) elementos[inp.dataset.elemento] = inp.value; });
+      const itv = leerMesAnio($('#ins-itv').value, 'ITV');
+      const vd = leerMesAnio($('#ins-vtc-d').value, 'Pegatina VTC delantera');
+      const vt = leerMesAnio($('#ins-vtc-t').value, 'Pegatina VTC trasera');
+      const boton = $('#ins-guardar');
+      boton.disabled = true;
+      try {
+        await post(`/inspecciones/api/vehiculo/${enCurso.ficha.id}/inspeccion`, {
+          fecha: fechaIso, marca: $('#ins-marca').value, modelo: $('#ins-modelo').value, elementos,
+          itvMes: itv.mes, itvAnio: itv.anio, vtcDelanteraMes: vd.mes, vtcDelanteraAnio: vd.anio,
+          vtcTraseraMes: vt.mes, vtcTraseraAnio: vt.anio,
+          resultado: $('#ins-resultado').value, observaciones: $('#ins-obs').value,
+        });
+      } finally { boton.disabled = false; }
+      const lst = enCurso.listado;
+      cerrar();
+      Dialogo.hecho('Inspección guardada');
+      await lst.recargar();
+    } catch (e) {
+      err.textContent = e.message;
+      err.classList.remove('hidden');
+    }
+  });
+
+  // ══════════ IMPORTAR EL EXCEL DEL TALLER ══════════
+  function importarExcel() {
+    const entrada = document.createElement('input');
+    entrada.type = 'file';
+    entrada.accept = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    entrada.onchange = async () => {
+      const f = entrada.files && entrada.files[0];
+      if (!f) return;
+      const v = await Dialogo.formulario(`Importar «${f.name}»`, [
+        { id: 'fecha', etiqueta: 'Fecha de estas inspecciones', tipo: 'fecha',
+          ayuda: 'Opcional. El Excel no dice cuándo se hizo cada una: si lo sabes, se apunta; si no, quedan sin fecha.' },
+      ], { textoBoton: 'Importar', nota: 'Solo se importan los coches que están en Vehículos, de la sede que sean. Las matrículas que no estén se ignoran y se listan al terminar. Reimportar el mismo Excel no duplica nada.' });
+      if (!v) return;
+      const base64 = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
+      try {
+        const r = await post('/inspecciones/api/importar', { base64, fecha: v.fecha || null });
+        const lista_ = (xs, vacio) => (xs && xs.length ? `<p class="text-sm mt-1 font-mono">${xs.map(esc).join(', ')}</p>` : `<p class="text-sm text-telecab-muted mt-1">${vacio}</p>`);
+        await Dialogo.aviso({
+          titulo: 'Excel importado', tono: 'ok', ancho: 'max-w-xl',
+          html: `<p class="text-sm">${r.filas} fila(s) leídas de «${esc(r.hoja)}»: <b>${r.apuntadas}</b> inspección(es) apuntada(s), ${r.sinCambios} sin cambios.</p>
+            <p class="text-sm mt-3 font-semibold">Matrículas que no están en Vehículos (ignoradas)</p>
+            ${lista_(r.ignoradas, 'Ninguna.')}
+            ${r.ignoradas && r.ignoradas.length ? '<p class="text-xs text-telecab-muted mt-1">Dalas de alta en Vehículos y vuelve a importar: solo se apuntarán esas.</p>' : ''}
+            <p class="text-sm mt-3 font-semibold">Coches sin ninguna inspección que no venían en el Excel (todo en «Falta»)</p>
+            ${lista_(r.enFalta, 'Ninguno.')}
+            ${(r.avisos || []).length ? `<p class="text-sm mt-3 font-semibold">Avisos</p><ul class="text-sm list-disc pl-5">${r.avisos.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}`,
+        });
+        await lista.recargar();
+      } catch (e) {
+        await Dialogo.aviso({ titulo: 'No se ha importado nada', tono: 'error', ancho: 'max-w-xl',
+          html: `<p class="text-sm">${esc(e.message.split(' · ')[0])}</p>${(e.errores || []).length
+            ? `<ul class="text-sm list-disc pl-5 mt-2 max-h-72 overflow-y-auto">${e.errores.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}` });
+      }
+    };
+    entrada.click();
+  }
+})();
+</script>

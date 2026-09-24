@@ -206,6 +206,10 @@ No es purismo: si el planificador leyera el repositorio directamente, Vehículos
 
 Por la puerta de **Taller** no entra nadie de fuera todavía: solo su propio controlador. Mejor así — cuanto menos ofrezca una puerta, menos ata.
 
+## Inspección de vehículos
+
+Desde el 24/09/2026 el taller tiene un submódulo más: **[[Inspeccion de vehiculos]]** (`/inspecciones`), la última inspección de cada coche con su historial y el importador del Excel del taller. Vive en este módulo (`inspeccion.*`) porque habla del mismo objeto —el coche—, con su propia llave de permisos.
+
 ## Lo que falta
 
 **Hay reglas de negocio dentro del repositorio.** `crear()` no solo inserta el coche: abre sus 6 plazas y su vigencia de estado y zona. Eso es una decisión de negocio y su sitio es el servicio.

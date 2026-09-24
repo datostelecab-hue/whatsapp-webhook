@@ -96,6 +96,12 @@ const CATALOGO = [
     { clave: '/taller', etiqueta: 'Mantenimientos', hijos: [
       { clave: '/taller/apuntar', etiqueta: 'Mantenimientos · apuntar revisiones y odómetros' },
     ] },
+    // Inspección de vehículos (db/150). Mismo reparto: mirar y apuntar. La de
+    // apuntar va marcada `escribir`, así que cualquier petición que no sea un
+    // GET a /inspecciones la exige sola y un endpoint nuevo nace cerrado.
+    { clave: '/inspecciones', etiqueta: 'Inspección de vehículos', hijos: [
+      { clave: '/inspecciones/apuntar', etiqueta: 'Inspección de vehículos · apuntar, anular e importar el Excel', escribir: true },
+    ] },
     // MIRAR lo que se gasta en la flota lo quiere dirección; METERLO es del
     // taller. Mismo reparto que en mantenimientos, y por el mismo motivo.
     { clave: '/facturas', etiqueta: 'Facturas de taller', hijos: [

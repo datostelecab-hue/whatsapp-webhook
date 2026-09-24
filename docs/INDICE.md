@@ -56,6 +56,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Ticketera]]** — Lo que pide la gente y qué se hace con ello.
 - **[[Usuarios y permisos]]** — Las cuentas del ERP: alta, roles, permisos, contraseñas y entrada al sistema.
 - **[[Vehiculos]]** — El maestro de coches —alta, ficha, estados, zonas, plazas y el enlace con Mapon—, el mantenimiento por kilómetros y las facturas de taller.
+- **[[Inspeccion de vehiculos]]** — Primer submódulo de taller: la última inspección de cada coche (16 elementos, ITV, pegatinas VTC, resultado), su historial y el importador del Excel del taller.
 
 ## Las integraciones — lo que viene de fuera
 

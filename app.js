@@ -47,7 +47,8 @@ const jsonGlobal = express.json({ limit: '2mb' });
 // Rutas que suben archivos en base64 y ponen su PROPIO limite mas alto dentro
 // de su router. Tienen que saltarse este parser: si corre antes, rechaza la
 // peticion por tamano y el limite de dentro no llega a aplicarse nunca.
-const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento', '/facturas/api/pdf'];
+const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento', '/facturas/api/pdf',
+  '/inspecciones/api/importar'];
 app.use((req, res, next) => {
   if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);
@@ -237,6 +238,8 @@ app.use('/planificador-v2', require('./modules/Planificacion/tablero.controller'
 app.use('/cobertura', coberturaRoutes);
 app.use('/vehiculos', vehiculosRoutes);
 app.use('/taller', require('./modules/Vehiculos/taller.controller'));
+// Inspección de vehículos: el primer submódulo de taller (db/150).
+app.use('/inspecciones', require('./modules/Vehiculos/inspeccion.controller'));
 app.use('/facturas', require('./modules/Vehiculos/facturas.controller'));
 app.use('/fichaje', require('./modules/Fichaje/fichaje.controller'));
 app.use('/plantilla', plantillaRoutes);
