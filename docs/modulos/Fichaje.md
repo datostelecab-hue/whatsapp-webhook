@@ -148,17 +148,73 @@ El turno se apunta en un **libro** con conductor, matrícula y horas, y esa es l
 
 El libro era una pestaña y desde el 15/09/2026 es una tabla (`db/125`). Lo que se gana no es velocidad: es que **un turno abierto por persona y por coche** lo garantizan dos índices únicos. En la hoja no había forma de impedirlo — dos personas abriendo turno sobre el mismo coche escribían dos filas y las dos se creían dueñas, que es justo lo que este libro tiene que poder contestar sin dudas.
 
-> **Está en pruebas.** Solo responde a los teléfonos de `FICHAJE_TELEFONOS`; para cualquier otro número el bot se comporta como siempre. Y el fichaje **solo se queda su palabra** (`turno`, `fichaje`, `fichar`) y devuelve el resto al bot de puertas: antes cualquier texto de un teléfono en pruebas abría el panel del turno y el mensaje nunca llegaba a las puertas, así que apuntar a alguien a las pruebas **le quitaba las puertas** sin que nadie lo hubiera decidido.
+## Quién ficha: persona a persona, desde el ERP (24/09/2026)
+
+Hasta el 24/09/2026 el fichaje solo respondía a los teléfonos de una variable de entorno (`FICHAJE_TELEFONOS`), que **ya no se lee**. Ahora se enciende **persona a persona** (`db/148`), para empezar con unos conductores concretos y, cuando sea obligatorio para todos, quitar el interruptor:
+
+| Quién | Dónde se enciende | Qué hace |
+|---|---|---|
+| **Conductor** | Planificador → botón **Fichaje** (`conductor.ficha_coche`) | **Turnos** |
+| **Gente de la empresa** | `/usuarios` → «Puede coger coches por WhatsApp» (`usuario.ficha_coche`) | **Viajes** |
+
+`usuario.ficha_coche` **no es** `usuario.ficha_obligatorio`: el segundo es fichar la jornada de oficina (Parte 1), el primero es coger un coche.
+
+**Cómo se reconoce a quien escribe** (`fichaje.participa`), en el orden que dio Camilo:
+
+1. **Primero, si el número es de un usuario del sistema** activo con el fichaje encendido → hace viajes.
+2. **Si no, si es de un conductor de alta**, con **cualquiera** de sus teléfonos vigentes, con el fichaje encendido → hace turnos.
+3. **De baja en la empresa no ficha**, aunque tenga el interruptor encendido: un ex-conductor no puede soltar el motor de un coche.
+4. Quien tiene un turno **sin cerrar** participa aunque le apaguen el fichaje, pero **solo para cerrarlo**: si no, el coche se quedaría asignado hasta el cierre solo.
+
+La respuesta se guarda **20 segundos** —se pregunta en cada mensaje que llega al bot— y se olvida al momento al encender o apagar a alguien, y al empezar o terminar.
+
+El fichaje **solo se queda sus palabras** (`turno`, `fichar`, `fichaje`, `viaje`, `iniciar/terminar turno/viaje`, `km`) y devuelve el resto al bot de puertas. **No** se queda `turnos` ni `relevo`: esas enseñan la semana de cada uno, y quitárselas dejaría a la gente sin ver sus turnos.
 
 ## Quién ficha, con su nombre de verdad
 
-El nombre no es un adorno de la conversación: **es el que se crea y se asigna en Mapon**, así que es el que Tráfico verá sobre el coche en el mapa y el que queda en el histórico de la plataforma. El orden dice quién manda (`quienFicha`):
+El nombre no es un adorno de la conversación: **es el que se crea y se asigna en Mapon**, así que es el que Tráfico verá sobre el coche en el mapa y el que queda en el histórico de la plataforma. Sale de lo mismo que decide si participa: el nombre de BOLT de su ficha de conductor, o el de su usuario. Además, un turno se ata a su `conductor_id`, que es lo que permite a la auditoría señalar personas.
 
-1. **Su ficha de conductor**, si conduce para nosotros. Además ata el turno a su `conductor_id`, que es lo que permite a la auditoría señalar personas.
-2. **Su usuario del sistema** (por los últimos nueve dígitos del teléfono, como en todo el ERP).
-3. La lista de pruebas, que era lo único que había antes.
+Si no se sabe su nombre, **el turno no se abre**: fichar sin nombre dejaría un coche asignado a nadie en Mapon, que es peor que no fichar.
 
-Si ninguna sabe su nombre, **el turno no se abre**: fichar sin nombre dejaría un coche asignado a nadie en Mapon, que es peor que no fichar.
+## Los dos flujos del WhatsApp
+
+**El conductor (turno).** Escribe `turno` y el bot le propone el coche que le da **hoy** el cuadrante —«Hoy tienes el *8203LTR* (turno de día). ¿Empiezas tu turno en él?»— con un botón **Iniciar 8203LTR** y otro **Otro coche** por si lleva otro. Es un paso menos que escribir la matrícula, y un error menos. «Hoy» es el **día operativo** (05→05): el de noche que escribe a la 01:00 sigue en la jornada de ayer.
+
+**La empresa (viaje).** Es el flujo que pidió Camilo: *«Por favor, indica la matrícula» → empieza el viaje (se suelta el motor) → al terminar se bloquea*. Escribe `viaje` (o `turno`) y el bot le pide la matrícula directamente. La espera de la matrícula **caduca a los 10 minutos**: sin eso, quien la dejaba a medias y escribía «hola» tres horas después recibía «eso no parece una matrícula».
+
+**Desde el panel de puertas.** Tras escribir una matrícula para abrir o cerrar, el tercer botón **empieza el turno o el viaje en ese coche** (`turno_iniciar:MATRÍCULA`), sin volver a pedirla. Con algo abierto, el botón lleva al panel («Mi turno» / «Mi viaje»). Y alguien de la empresa con el fichaje encendido pero **sin** el permiso de puertas ya no recibe «no tienes permiso»: se le lleva a su panel.
+
+## El relevo: «Voy al relevo»
+
+El conductor pulsa **Voy al relevo** **justo antes de arrancar** hacia el sitio donde le da el coche a su compañero. Las palabras están elegidas a propósito: «entregando coche» no decía si era antes o después de dárselo, y lo que importa es el **momento**. El mensaje lo repite: *«Al salir, no al llegar»*. Si lo pulsa sin querer, **Aún no he salido** lo deshace.
+
+- Se apunta la hora (`fichaje_turno.relevo_at`) y, al cerrar, los **km de ese trayecto** (`km_relevo`). Son km de trabajo aunque BOLT esté cerrado, y hasta ahora caían en «sin nadie fichado».
+- **Si el compañero ficha y empieza su turno antes** de que él termine, su turno se cierra solo, como **relevado** (estado nuevo), sin bloquear nada: el coche sigue trabajando.
+- **Sin haber pulsado el relevo**, el compañero no puede coger el coche: se le dice quién lo tiene y que le pida que pulse *Voy al relevo* o *Terminar turno*.
+- Un **viaje** no tiene relevo: no hay compañero. Lo impide también la base (`ck_ft_relevo`).
+
+## Cuándo se bloquea: el compañero que todavía no ficha
+
+El motor se bloquea **por coche**, pero el fichaje se enciende **por persona**, y un coche lo comparten el de día y el de noche. Si al terminar se bloquea y el que lo coge después no ficha, se encuentra el coche cortado y sin forma de arrancarlo. Por eso (`decidirBloqueo`):
+
+| | Se bloquea al terminar… |
+|---|---|
+| **Turno** de un conductor | solo si **todos** los que llevan ese coche **hoy o mañana** (f_cobertura, con eventos) fichan. Si no, **se queda libre** y el mensaje dice quién no ficha. Y como no se va a bloquear, no se le pide que apague el coche para terminar |
+| **Viaje** de la empresa | **siempre**, que es lo que se pidió; si lo lleva alguien que no ficha, se le avisa con su nombre de que Tráfico tendrá que soltárselo |
+
+**El repaso** sigue la misma regla: nunca toca el coche que lleva hoy o mañana alguien que no ficha (`cochesConQuienNoFicha`, una consulta para toda la flota). Si no puede saberlo, esa vuelta no bloquea nada. Y si no se puede saber quién lleva un coche al terminar, un turno **no** se bloquea: la duda no puede dejar a nadie sin coche.
+
+## El panel «Fichaje» del planificador
+
+Botón **Fichaje** en la barra del planificador (quien puede editarlo). Plegado hasta que se pulsa, con tres columnas:
+
+- **Conductores que fichan**, con su casilla, y un buscador para encender a alguien más. Al lado de cada uno, si comparte coche con quien no ficha: *«8203LTR también lo lleva Oswaldo, que no ficha: el motor se quedará libre»*. Es la regla de arriba, contada coche a coche, que es como se entiende.
+- **Ahora mismo**: los turnos y viajes abiertos, y quién va de camino al relevo.
+- **Motores cortados**, preguntados a Mapon aparte para no hacer lento el panel, con un botón **Soltar**.
+
+Y en el tablero, una **llave** junto al nombre de quien ficha.
+
+**Soltar a mano** exige decir **por qué** y queda escrito con quién, cuándo y qué contestó el coche (`fichaje_orden_motor`): soltar un coche a mano es justo lo que alguien haría para dejar a otro usarlo sin fichar. Encender a alguien y soltar un motor son `POST`, así que los cierra la llave de **editar el planificador** sin tocar nada más.
 
 ## El enlace conductor ↔ coche en Mapon
 
@@ -207,7 +263,7 @@ Las dos comprobaciones solo se hacen **si el corte está encendido** —sin él,
 
 Cada diez minutos, `app.js` llama a `repasarBloqueos()`: deja bloqueado todo coche que nadie esté usando. Existe porque sin él quedan dos agujeros, y los dos dejan un coche libre para siempre sin que nadie se entere — el bloqueo al terminar turno **falla a veces** (el coche estaba rodando, o sin cobertura) y no hay quien lo reintente; y un coche que nunca ha tenido un turno **no se bloquearía jamás**. Es idempotente, y no hace nada mientras el corte esté apagado.
 
-**Hasta dónde llega**: el límite lo pone **el libro**, no una lista de matrículas. El repaso solo toca coches que han pasado por el fichaje, y al fichaje solo llegan los teléfonos autorizados, así que el aislamiento por número alcanza también al cron. `FICHAJE_MATRICULAS` queda para el día que esto sea de todos (vacío = solo los conocidos; `*` = toda la flota, y el asterisco se mira **antes** de normalizar, porque normalizado desaparecía).
+**Hasta dónde llega**: dos límites. **El libro**: el repaso solo toca coches que han pasado por el fichaje, y al fichaje solo llega quien lo tiene encendido. Y **el cuadrante**: nunca el coche que lleva hoy o mañana alguien que todavía no ficha. `FICHAJE_MATRICULAS` queda para el día que esto sea de todos (vacío = solo los conocidos; `*` = toda la flota, y el asterisco se mira **antes** de normalizar, porque normalizado desaparecía).
 
 Va cada diez minutos y no cada uno: un coche que acaba de parar tiene que esperar de todas formas a llevar un buen rato quieto, así que correr no sirve de nada y sí gasta cuota de Mapon.
 
@@ -217,7 +273,10 @@ Y existe lo contrario, `liberarConocidos()`: **suelta el motor de todo lo que el
 
 ## Las variables de entorno
 
-Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_TELEFONOS` (quién participa y con qué nombre), `FICHAJE_MAX_HORAS`, `FICHAJE_BLOQUEO_MOTOR`, `FICHAJE_MIN_PARADO`, `FICHAJE_MAX_SIN_SENAL`, `FICHAJE_MATRICULAS` y, por si alguna instalación viniera invertida, `FICHAJE_RELE_LIBRE` / `FICHAJE_RELE_BLOQUEADO` (verificado en el coche real: 0 = libre, 1 = bloqueado).
+Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_MAX_HORAS`, `FICHAJE_BLOQUEO_MOTOR`, `FICHAJE_MIN_PARADO`, `FICHAJE_MAX_SIN_SENAL`, `FICHAJE_MATRICULAS` y, por si alguna instalación viniera invertida, `FICHAJE_RELE_LIBRE` / `FICHAJE_RELE_BLOQUEADO` (verificado en el coche real: 0 = libre, 1 = bloqueado). `FICHAJE_TELEFONOS` **ya no se lee** desde el 24/09/2026: quién participa se decide en el ERP.
+
+> [!warning] Sin `FICHAJE_BLOQUEO_MOTOR=1` en Render no se bloquea nada
+> Se ficha, se apuntan los turnos y los relevos, pero ningún motor se corta. El panel del planificador lo dice arriba a la derecha («Corte de motor apagado en el servidor»).
 
 ## La herramienta de diagnóstico
 

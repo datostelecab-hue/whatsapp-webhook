@@ -91,7 +91,7 @@ const SELECT = `
          COALESCE(u.token_reset, '') AS token_reset, u.token_expira,
          convert_from(COALESCE(u.pass_correo_cifrada, ''::bytea), 'UTF8') AS pass_correo,
          COALESCE(u.tema, '') AS tema,
-         u.ficha_obligatorio, u.sesiones_desde,
+         u.ficha_obligatorio, u.ficha_coche, u.sesiones_desde,
          COALESCE(cp.email, '') AS creado_por,
          u.creado_at, u.ultimo_acceso
     FROM usuario u
@@ -111,6 +111,9 @@ function aObjeto(x) {
     pass_correo: x.pass_correo || '', tema: x.tema || '',
     // Si esta persona tiene que fichar su jornada. Se elige una a una.
     fichaObligatorio: !!x.ficha_obligatorio,
+    // Si puede coger un coche por WhatsApp: un VIAJE que suelta el motor al
+    // empezar y lo bloquea al terminar (db/148). No es fichar la jornada.
+    fichaCoche: !!x.ficha_coche,
     // Corte de sesiones: las emitidas antes de esta marca ya no valen.
     sesionesDesde: x.sesiones_desde ? new Date(x.sesiones_desde).getTime() : null,
     creado_por: x.creado_por || '',
@@ -289,6 +292,25 @@ async function fijarFichaObligatorio(id, debe) {
   return buscarUsuario(r.rows[0].email);
 }
 
+/**
+ * Marca (o desmarca) que esta persona puede coger un coche por WhatsApp.
+ *
+ * Es el fichaje de COCHE, no el de la jornada: escribe al bot, dice la
+ * matrícula, se le suelta el motor y al terminar se bloquea (db/148). Se da
+ * persona a persona, como el otro.
+ */
+async function fijarFichaCoche(id, puede) {
+  const r = await db.consulta(
+    'UPDATE usuario SET ficha_coche = $2 WHERE id = $1 RETURNING email',
+    [Number(id), !!puede]);
+  if (!r.rowCount) throw new Error('No existe ese usuario');
+  olvidarUsuario(id);
+  // El bot guarda unos segundos quién participa: se le dice que lo olvide para
+  // que el cambio valga desde el siguiente mensaje.
+  try { require('../../services/fichaje').olvidar(); } catch (_) { /* caduca solo en 20 s */ }
+  return buscarUsuario(r.rows[0].email);
+}
+
 /** Los que tienen que fichar. Pocos, y con índice propio. */
 async function losQueFichan() {
   const r = await db.consulta(`
@@ -356,6 +378,6 @@ module.exports = {
   guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,
   hashPassword, verificarHash, generarPasswordProvisional,
   normalizarEmail, esEmail,
-  fijarFichaObligatorio, losQueFichan,
+  fijarFichaObligatorio, losQueFichan, fijarFichaCoche,
   cortarSesiones, sesionSigueValiendo, olvidarCorte
 };

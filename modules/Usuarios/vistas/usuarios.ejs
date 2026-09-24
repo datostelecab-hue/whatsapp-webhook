@@ -181,6 +181,16 @@
             </span>
           </span>
         </label>
+        <label class="flex items-start gap-2 cursor-pointer group w-fit mt-2">
+          <input data-ficha-coche type="checkbox" ${u.fichaCoche ? 'checked' : ''}
+                 class="w-4 h-4 mt-0.5 accent-telecab-gold shrink-0">
+          <span class="text-sm text-telecab-text leading-snug">
+            Puede coger coches por WhatsApp
+            <span class="block text-[11px] text-telecab-muted">
+              Escribe al bot, indica la matrícula y empieza un viaje: se le suelta el motor, y al terminar se bloquea.${u.telefono ? '' : ' <b class="text-telecab-warn">Sin teléfono en su ficha no podrá.</b>'}
+            </span>
+          </span>
+        </label>
       </div>
       ${matriz}`;
 
@@ -207,6 +217,14 @@
       try { await api('/usuarios/fichaje', { id: u.id, debe: debe ? 'si' : 'no' }); recargar(); }
       catch (err) {
         e.target.checked = !debe;
+        await Dialogo.aviso({ titulo: 'No se pudo guardar', texto: err.message, tono: 'error' });
+      }
+    });
+    box.querySelector('[data-ficha-coche]').addEventListener('change', async e => {
+      const puede = e.target.checked;
+      try { await api('/usuarios/fichaje-coche', { id: u.id, puede: puede ? 'si' : 'no' }); recargar(); }
+      catch (err) {
+        e.target.checked = !puede;
         await Dialogo.aviso({ titulo: 'No se pudo guardar', texto: err.message, tono: 'error' });
       }
     });

@@ -72,7 +72,7 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 - **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio.
 - **Código de lavado** (`codigosBallenoil`), con el instructivo de Ballenoil. El **PIN de repostaje** se quitó el 24/09/2026 porque ya no se usa: si alguien pulsa el botón «VER PIN» de una bienvenida vieja, se le dice eso y se le deja el menú.
 - **Ver turnos** → el cuadrante de la semana en texto libre. Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
-- **Fichaje de turno** (`services/fichajeBot.js`), que enlaza conductor ↔ coche en Mapon. Va **antes** de la comprobación de acceso porque quien lo prueba puede no estar en la agenda, y solo actúa para los teléfonos de `FICHAJE_TELEFONOS`: para cualquier otro número devuelve `false` y el bot sigue como siempre.
+- **Fichaje de turno o de viaje** (`services/fichajeBot.js`), que enlaza conductor ↔ coche en Mapon y suelta o bloquea el motor. Va **antes** de la comprobación de acceso porque alguien de la empresa puede fichar un coche sin tener el permiso de puertas, y solo actúa para quien lo tenga **encendido en el ERP** (planificador y `/usuarios`, desde el 24/09/2026): para cualquier otro número devuelve `false` y el bot sigue como siempre. Ver [[Fichaje]].
 
 Los botones llegan de dos formas distintas y hay que tratarlas aparte: los de un mensaje interactivo son `type: interactive` con `button_reply.id`, y los de una **plantilla** (quick reply) llegan como `type: button` con `button.text`/`payload`.
 

@@ -350,6 +350,22 @@ const reponer = (...a) => plan.reponer(...a);
  */
 const repasarEventos = () => eventos.repasar();
 
+// ── El fichaje (db/148) ─────────────────────────────────────────────────────
+// Quién ficha su turno por WhatsApp se enciende AQUÍ, persona a persona, porque
+// es donde Tráfico tiene a la gente delante. Las reglas —qué se bloquea, cuándo
+// y a quién no— son del fichaje; aquí solo se pasan.
+const fichaje = () => require('../../services/fichaje');
+const fichajeEstado = () => fichaje().estadoParaPanel();
+const fichajeMotores = () => fichaje().motoresCortados();
+const fichajeConductor = ({ conductorId, activo } = {}, quien) => {
+  if (!conductorId) throw new Error('Falta el conductor');
+  return fichaje().activarConductor(conductorId, activo === true || activo === 'si', quien);
+};
+const fichajeSoltar = ({ matricula, motivo } = {}, quien) => {
+  if (!matricula) throw new Error('Falta la matrícula');
+  return fichaje().soltarCoche({ matricula, motivo }, quien);
+};
+
 /** La parrilla en Excel (formato ANEXO), desde el cuadrante real. */
 const parrilla = async dia => {
   const t = await plan.tablero({ dia });
@@ -364,6 +380,7 @@ module.exports = {
   eventoEstado, crearEvento, editarEvento, cancelarEvento, restaurarEvento, mensajeDeEvento,
   incorporaciones, colocarIncorporacion, aceptarIncorporacion, rechazarIncorporacion,
   guardarBarrio,
+  fichajeEstado, fichajeMotores, fichajeConductor, fichajeSoltar,
   // La puerta
   contactos, salidasHoy, salidasPorCoche, lunesDe, parrilla, GRUPOS_SALIDA,
 

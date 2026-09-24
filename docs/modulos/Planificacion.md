@@ -153,6 +153,10 @@ La **restauración** (a las 05:10 por cron, o a mano desde la pantalla) es solo 
 
 El mensaje de WhatsApp durante un evento es distinto y dice cuatro cosas en este orden: que es **temporal** y por qué, qué hace esos días, **a quién entrega el coche** cuando se acabe —la frase que evita el lío del lunes— y sus turnos ya normales de la semana siguiente. Si no hay nada cargado para la semana siguiente **nunca se dice "no tienes turnos"**: a un conductor al que le acaban de cambiar el fin de semana eso le suena a que se ha quedado sin trabajo.
 
+## El botón «Fichaje»
+
+Desde el 24/09/2026 la barra del planificador tiene un botón **Fichaje**: es donde se enciende, persona a persona, quién ficha su turno por WhatsApp (iniciar suelta el motor del coche y terminar lo bloquea). Está aquí porque es donde Tráfico tiene a la gente delante; las reglas son del fichaje. Una **llave** junto al nombre marca a quien ficha. Cuando sea obligatorio para todos, el botón se quita. Todo en [[Fichaje#El panel «Fichaje» del planificador]].
+
 ## La cobertura y el aviso de turnos
 
 `/cobertura` lee del **tablero**, no de una hoja: lo que se ve ahí es exactamente lo que hay en el cuadrante. Devuelve, por día y turno, quién sale y —sobre todo— **qué coches no salen, cada uno con su motivo**: descansa, titular ausente, plaza vacía, conflicto, vehículo fuera de servicio.

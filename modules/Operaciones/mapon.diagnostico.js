@@ -187,7 +187,8 @@ async function diagnostico(q = {}) {
         matriculas: fj.MATRICULAS,
         todaLaFlota: fj.TODA_LA_FLOTA,
         alcance: fj.TODA_LA_FLOTA ? 'toda la flota' : 'solo los coches que han pasado por el fichaje',
-        telefonos: 'los de FICHAJE_TELEFONOS',
+        telefonos: 'quien tenga el fichaje encendido en el ERP (planificador y /usuarios)',
+        tambien: 'nunca el coche que lleva hoy o mañana alguien que todavía no ficha',
       };
       out.repaso = await fj.repasarBloqueos({ soloMirar: String(q.repaso) !== 'aplicar' });
     } catch (e) { out.errorRepaso = e.message; }

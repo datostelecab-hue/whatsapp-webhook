@@ -79,6 +79,17 @@ router.post('/api/guardar', responde(async req =>
 
 router.post('/api/comprobar', responde(async req => ({ plan: await tablero.comprobar(req.body) })));
 
+// ── El fichaje (db/148): quién ficha su turno por WhatsApp ─────────────────
+// Encender a alguien y soltar un motor son escrituras: como todo POST de aquí,
+// los cierra `controlAcceso` con la llave de editar el planificador. Mirar es
+// un GET, y lo ve quien ve el planificador.
+router.get('/api/fichaje', responde(() => tablero.fichajeEstado()));
+router.get('/api/fichaje/motores', responde(async () => ({ cortados: await tablero.fichajeMotores() })));
+router.post('/api/fichaje/conductor', responde(async req =>
+  tablero.fichajeConductor(req.body || {}, await quien(req))));
+router.post('/api/fichaje/soltar', responde(async req =>
+  tablero.fichajeSoltar(req.body || {}, await quien(req))));
+
 router.post('/api/relevo/:id/quitar', responde(req =>
   tablero.quitarRelevo(req.params.id, (req.body || {}).dia)));
 

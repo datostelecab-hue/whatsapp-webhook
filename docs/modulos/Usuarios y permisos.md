@@ -184,6 +184,10 @@ Se elige **persona a persona** con una casilla en su ficha (`usuario.ficha_oblig
 
 Y **nace apagado para todos**: se elige a quién **sí**. Si se olvida marcar a alguien, el fallo es que no fiche —se arregla marcándolo—, no que le empiece a contar una jornada que nadie pidió. Ver [[Fichaje]].
 
+## Quién coge coches por WhatsApp
+
+Otra casilla en la ficha, debajo de la de fichar la jornada: **Puede coger coches por WhatsApp** (`usuario.ficha_coche`, `db/148`; `POST /usuarios/fichaje-coche`). Es el fichaje de **coche**, no el de la jornada: escribe al bot, dice la matrícula, se le suelta el motor y al terminar se bloquea. Sin teléfono en su ficha no puede, y la casilla lo avisa. A los conductores se les enciende desde el planificador. Ver [[Fichaje]].
+
 ## Lo que falta
 
 `usuarios.service.js` lleva dentro sus consultas SQL: es servicio y repositorio a la vez, y hay que sacarlo a un `usuarios.repo.js`. No se hizo al mudarlo porque la mudanza tenía que ser mecánica y revisable de un vistazo.

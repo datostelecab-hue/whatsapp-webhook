@@ -59,8 +59,9 @@ router.post('/', async (req, res) => {
 // TEXTO RECIBIDO
 // ============================================================
 async function handleText(phone, text) {
-  // Fichaje de turno (EN PRUEBAS): solo actúa para los teléfonos de la lista y va
-  // ANTES de la comprobación de la agenda, porque quien prueba puede no estar en ella.
+  // Fichaje de turno o de viaje: solo actúa para quien lo tenga encendido en el
+  // ERP y va ANTES de la comprobación de puertas, porque alguien de la empresa
+  // puede fichar un coche sin tener el permiso de abrir puertas.
   if (await fichajeBot.manejarTexto(phone, text)) return;
 
   // ── ¿PUEDE ABRIR? ─────────────────────────────────────────────────────────
@@ -76,6 +77,9 @@ async function handleText(phone, text) {
     });
 
   if (!acceso.puede) {
+    // Sin puertas pero con el fichaje encendido: se le lleva a lo suyo en vez
+    // de contestarle «no tienes permiso».
+    if (await fichajeBot.panelSiParticipa(phone).catch(() => false)) return;
     // SE DICE QUÉ FALTA. «No estás autorizado» a secas manda a la persona a
     // preguntar a tráfico, y tráfico a mirar la hoja: cada motivo tiene una
     // salida distinta y la más rápida es decirla.
@@ -162,7 +166,7 @@ async function handleText(phone, text) {
 // BOTÓN PULSADO
 // ============================================================
 async function handleButton(phone, buttonId) {
-  // Botones del fichaje de turno (EN PRUEBAS): no dependen de tener sesión de puertas.
+  // Botones del fichaje: no dependen de tener sesión de puertas.
   if (await fichajeBot.manejarBoton(phone, buttonId)) return;
 
   const sesion = sesiones[phone];
@@ -306,6 +310,13 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
   const textoEstado = puertaAbierta ? 'PUERTA ABIERTA' : 'PUERTA CERRADA';
 
   const url = `https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`;
+  // El botón del fichaje, si esa persona lo tiene encendido. Con la matrícula ya
+  // elegida EMPIEZA el turno o el viaje en este coche: «indica la matrícula →
+  // inicia». Si falla, el panel de puertas sale igual, sin él.
+  const botonFichaje = await fichajeBot.botonDeTurno(to, matricula).catch(e => {
+    console.error('⚠️ [Puertas] botón del fichaje:', e.message);
+    return null;
+  });
   const payload = {
     messaging_product: 'whatsapp',
     to: to,
@@ -316,9 +327,9 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
         text: `🚗 ${nombre}\n🚘 ${vehiculo} (${matricula})\n${emoji} ${textoEstado}`
       },
       action: {
-        // El tercer botón solo sale para quien tenga habilitado el fichaje: así
-        // la misma persona pasa de abrir el coche a fichar sin cambiar de
-        // conversación, y para todos los demás el panel queda como estaba.
+        // El tercer botón solo sale para quien tenga encendido el fichaje: así
+        // la misma persona pasa de abrir el coche a empezar su turno o su viaje
+        // sin cambiar de conversación, y para los demás el panel queda como estaba.
         buttons: [
           {
             type: 'reply',
@@ -328,7 +339,7 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
             type: 'reply',
             reply: { id: 'cerrar_puertas', title: '🔒 Cerrar' }
           },
-          ...(fichajeBot.botonDeTurno(to) ? [fichajeBot.botonDeTurno(to)] : [])
+          ...(botonFichaje ? [botonFichaje] : [])
         ]
       }
     }

@@ -139,7 +139,8 @@ async function tablero({ dia } = {}) {
               (ext.externo_id IS NULL)                   AS bolt_pendiente,
               est.estado, ce.etiqueta AS estado_etiqueta, ce.es_ausencia,
               ce.libera_plaza, ce.fin_previsible, est.hasta AS estado_hasta,
-              prox.estado AS prox_estado, prox.etiqueta AS prox_etiqueta, prox.desde AS prox_desde
+              prox.estado AS prox_estado, prox.etiqueta AS prox_etiqueta, prox.desde AS prox_desde,
+              c.ficha_coche
          FROM conductor c
          JOIN conductor_periodo_empleo e ON e.conductor_id = c.id AND e.baja IS NULL
          LEFT JOIN cat_jornada j  ON j.horas = e.jornada_horas
@@ -314,6 +315,9 @@ async function tablero({ dia } = {}) {
       contrato: c.jornada_horas ? `${Number(c.jornada_horas)}h${c.contrato_tipo === 'ett' ? ' ETT' : ''}` : '',
       esEtt: c.contrato_tipo === 'ett',
       ettNombre: c.ett_nombre || '',
+      // Ficha su turno por WhatsApp (db/148): iniciar suelta el motor y
+      // terminar lo bloquea. Se enciende desde el botón «Fichaje».
+      fichaCoche: !!c.ficha_coche,
       boltPendiente: !!c.bolt_pendiente,
       estado: c.estado_etiqueta || 'Activo',
       ausente: !!c.es_ausencia,

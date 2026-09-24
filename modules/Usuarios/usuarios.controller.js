@@ -35,6 +35,7 @@ router.get('/api/datos', async (req, res) => {
         id: u.id, email: u.email, nombre: u.nombre, apellidos: u.apellidos, telefono: u.telefono,
         rol: u.rol, accesoTotal: u.accesoTotal, estado: u.estado, debe_cambiar: u.debe_cambiar === 'si',
         fichaObligatorio: !!u.fichaObligatorio,
+        fichaCoche: !!u.fichaCoche,
         creado_por: u.creado_por, fecha_creacion: u.fecha_creacion, ultimo_acceso: u.ultimo_acceso,
       })),
       permisos: porUsuario,
@@ -158,6 +159,17 @@ router.post('/fichaje', async (req, res) => {
     const u = await usuarios.fijarFichaObligatorio(Number(b.id), b.debe === true || b.debe === 'si');
     console.log(`⏱️  [Usuarios] ${u.email}: ${u.fichaObligatorio ? 'SI ficha' : 'no ficha'} — por ${req.usuario.email}`);
     res.json({ status: 'ok', fichaObligatorio: u.fichaObligatorio });
+  } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
+});
+
+// Quién puede coger un coche por WhatsApp (el fichaje de coche, db/148): se
+// suelta el motor al empezar el viaje y se bloquea al terminar.
+router.post('/fichaje-coche', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const u = await usuarios.fijarFichaCoche(Number(b.id), b.puede === true || b.puede === 'si');
+    console.log(`🔑 [Usuarios] ${u.email}: ${u.fichaCoche ? 'SI coge coches' : 'no coge coches'} — por ${req.usuario.email}`);
+    res.json({ status: 'ok', fichaCoche: u.fichaCoche });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
 });
 

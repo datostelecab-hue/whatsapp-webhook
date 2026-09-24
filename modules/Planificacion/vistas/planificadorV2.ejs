@@ -43,6 +43,13 @@
                        hover:border-telecab-gold/40 text-sm transition">
           <i class="fa-solid fa-bolt"></i><span id="btn-evento-txt">Modo eventos</span>
         </button>
+        <%# FICHAJE (db/148): quién ficha su turno por WhatsApp. Se enciende aquí
+            persona a persona; cuando sea obligatorio para todos, se quita. %>
+        <button id="btn-fichaje" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border
+                       hover:border-telecab-gold/40 text-sm transition"
+                title="Quién ficha su turno por WhatsApp: al iniciar se le suelta el motor del coche y al terminar se bloquea">
+          <i class="fa-solid fa-key"></i><span>Fichaje</span><span id="btn-fichaje-n" class="text-xs text-telecab-muted"></span>
+        </button>
       <% } %>
     </div>
   </div>
@@ -55,6 +62,9 @@
       por qué. Tiene que verse sin buscarlo — es lo que explica que el cuadrante
       diga una cosa y la calle otra— y poder deshacerse de un clic. %>
   <div id="franja-relevos" class="hidden mb-4"></div>
+
+  <%# El panel del fichaje. Nace plegado: se abre con el botón «Fichaje». %>
+  <div id="panel-fichaje" class="hidden mb-4"></div>
 
   <%# Se cuentan PERSONAS, no celdas. "Huecos día 174" no decía si faltaban tres
       personas o treinta; "fijo día 61" sí. Y el correturnos se cuenta UNA vez
@@ -370,6 +380,8 @@
     pintarKpis();
     pintarEvento();
     pintarRelevos();
+    pintarContadorFichaje();
+    if (fjAbierto) pintarFichaje();
     pintar();
     pintarLaterales();
     pintarPrueba();
@@ -1063,7 +1075,7 @@
       const tel = (persona && persona.telefono) || '';
       wrap.innerHTML = `
         <button class="text-left w-full group" data-asignar>
-          <span class="${nombreCls} transition">${esc(persona ? persona.nombre : p.nombre)}${ett}</span>
+          <span class="${nombreCls} transition">${esc(persona ? persona.nombre : p.nombre)}${ett}${llaveFichaje(persona)}</span>
           ${chipRend(persona && persona.rendimiento)}
           ${tel ? `<span class="block text-[11px] text-telecab-muted font-mono tabular-nums">${esc(tel)}</span>`
                 : `<span class="block text-[11px] text-telecab-warn/80">sin teléfono</span>`}
@@ -2043,6 +2055,249 @@
     });
   }
 
+  // ══════════ FICHAJE (db/148) ══════════
+  //
+  // Quién ficha su turno por WhatsApp: al iniciar se le suelta el motor del coche
+  // y al terminar se bloquea. Se enciende PERSONA A PERSONA, para empezar con
+  // unos conductores concretos; cuando sea obligatorio para todos, esto se quita.
+  //
+  // La regla que hay que tener delante, y por eso el panel la cuenta coche a
+  // coche: el motor se bloquea por COCHE y el fichaje es por PERSONA. Si el
+  // compañero de alguien no ficha, al terminar el motor SE QUEDA LIBRE —si no,
+  // el compañero se encontraría el coche cortado y sin forma de arrancarlo—.
+
+  let FJ = null;        // lo que manda /api/fichaje
+  let MOT = null;       // los motores cortados (va aparte: pregunta a Mapon)
+  let fjAbierto = false;
+  let fjBusca = '';
+
+  const llaveFichaje = persona => (persona && persona.fichaCoche
+    ? ' <i class="fa-solid fa-key text-[10px] text-telecab-gold" title="Ficha su turno por WhatsApp: al iniciar se le suelta el motor y al terminar se bloquea"></i>'
+    : '');
+
+  const fichan = () => (T && T.conductores ? T.conductores.filter(c => c.fichaCoche) : []);
+
+  function pintarContadorFichaje() {
+    const n = $('#btn-fichaje-n');
+    if (n) n.textContent = fichan().length ? `· ${fichan().length}` : '';
+  }
+
+  // Con quién comparte coche esta semana: los que salen en sus coches y NO fichan.
+  function companerosSinFichaje(c) {
+    const out = new Map();
+    (T.coches || []).forEach(coche => {
+      const ps = (coche.personas || []).filter(x => x && x.id);
+      if (!ps.some(x => String(x.id) === String(c.id))) return;
+      ps.forEach(x => {
+        if (String(x.id) === String(c.id)) return;
+        const q = porId.get(String(x.id));
+        if (q && !q.fichaCoche) out.set(String(q.id), { nombre: q.nombre, matricula: coche.matricula });
+      });
+    });
+    return [...out.values()];
+  }
+
+  async function fjPost(url, cuerpo) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.status !== 'ok') throw new Error(j.msg || 'Error ' + r.status);
+    return j;
+  }
+
+  async function abrirFichaje() {
+    fjAbierto = !fjAbierto;
+    $('#panel-fichaje').classList.toggle('hidden', !fjAbierto);
+    if (fjAbierto) await cargarFichaje();
+  }
+
+  async function cargarFichaje() {
+    try {
+      const r = await fetch('/planificador-v2/api/fichaje');
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo leer');
+      FJ = j;
+    } catch (e) { FJ = { error: e.message }; }
+    pintarFichaje();
+    cargarMotores();
+  }
+
+  async function cargarMotores() {
+    MOT = { cargando: true };
+    pintarMotores();
+    try {
+      const r = await fetch('/planificador-v2/api/fichaje/motores');
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo preguntar a Mapon');
+      MOT = { cortados: j.cortados || [] };
+    } catch (e) { MOT = { error: e.message }; }
+    pintarMotores();
+  }
+
+  function filaConductor(c) {
+    const sin = c.fichaCoche ? companerosSinFichaje(c) : [];
+    const aviso = sin.length
+      ? `<span class="block text-[11px] text-telecab-warn" title="El motor se bloquea por coche. Mientras quien comparte coche con él no fiche, al terminar su turno el motor se queda libre.">
+           <i class="fa-solid fa-lock-open text-[9px]"></i> ${esc(sin.map(x => x.matricula).filter((v, i, a) => a.indexOf(v) === i).join(', '))}
+           también lo lleva ${esc(sin.map(x => x.nombre).join(', '))}, que no ficha: el motor se quedará libre</span>`
+      : '';
+    return `
+      <label class="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-telecab-card2/60 cursor-pointer">
+        <input type="checkbox" data-fj-conductor="${esc(c.id)}" ${c.fichaCoche ? 'checked' : ''}
+               class="w-4 h-4 mt-0.5 accent-telecab-gold shrink-0">
+        <span class="min-w-0">
+          <span class="block text-sm font-medium truncate">${esc(c.nombre)}</span>
+          <span class="block text-[11px] text-telecab-muted">${c.telefono
+            ? `<span class="font-mono tabular-nums">${esc(c.telefono)}</span>`
+            : '<span class="text-telecab-red">sin teléfono: no podrá fichar</span>'}${c.turno ? ' · ' + esc(c.turno) : ''}</span>
+          ${aviso}
+        </span>
+      </label>`;
+  }
+
+  function pintarFichaje() {
+    const caja = $('#panel-fichaje');
+    if (!caja || !fjAbierto) return;
+    if (!FJ) { caja.innerHTML = '<div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 text-sm text-telecab-muted">Cargando…</div>'; return; }
+    if (FJ.error) {
+      caja.innerHTML = `<div class="rounded-2xl border border-telecab-red/40 bg-telecab-red/10 p-4 text-sm text-telecab-red">No se pudo leer el fichaje: ${esc(FJ.error)}</div>`;
+      return;
+    }
+    const activos = fichan().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    const q = fjBusca.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const candidatos = q.length < 2 ? [] : (T.conductores || [])
+      .filter(c => !c.fichaCoche)
+      .filter(c => ((c.nombre || '') + ' ' + (c.telefono || '') + ' ' + (c.dni || '')).toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(q))
+      .slice(0, 12);
+    const empresa = (FJ.activados || []).filter(x => x.de === 'usuario');
+    const abiertos = FJ.abiertos || [];
+
+    caja.innerHTML = `
+      <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 space-y-4">
+        <div class="flex flex-wrap items-start gap-3">
+          <div class="flex-1 min-w-[240px]">
+            <div class="font-semibold flex items-center gap-2"><i class="fa-solid fa-key text-telecab-gold"></i> Fichaje por WhatsApp</div>
+            <p class="text-xs text-telecab-muted mt-0.5 max-w-3xl">
+              Quien lo tiene encendido escribe <b class="text-telecab-text">turno</b> al WhatsApp de la empresa: al iniciar se le suelta
+              el motor y al terminar se bloquea. En el cambio de turno pulsa <b class="text-telecab-text">Voy al relevo</b> justo antes
+              de arrancar hacia donde entrega el coche. Un coche solo se bloquea si <b class="text-telecab-text">todos</b> los que lo
+              llevan hoy y mañana fichan.</p>
+          </div>
+          ${FJ.bloqueoActivo
+            ? '<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-500" title="FICHAJE_BLOQUEO_MOTOR está a 1 en el servidor">Corte de motor encendido</span>'
+            : '<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-warn/15 text-telecab-warn" title="FICHAJE_BLOQUEO_MOTOR no está a 1 en Render: se ficha y se apuntan los turnos, pero no se bloquea ningún motor">Corte de motor apagado en el servidor</span>'}
+          <button data-fj-cerrar class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-text" title="Plegar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-4">
+          <section class="min-w-0">
+            <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">Conductores que fichan · ${activos.length}</h3>
+            <div class="space-y-0.5 max-h-80 overflow-y-auto">${activos.length ? activos.map(filaConductor).join('')
+              : '<p class="text-xs text-telecab-muted px-2 py-3">Nadie todavía. Búscalo abajo y márcalo.</p>'}</div>
+            <input data-fj-busca value="${esc(fjBusca)}" placeholder="Buscar a alguien para activarle el fichaje…"
+                   class="mt-2 w-full px-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm">
+            ${candidatos.length ? `<div class="mt-1 space-y-0.5">${candidatos.map(filaConductor).join('')}</div>`
+              : (q.length >= 2 ? '<p class="text-xs text-telecab-muted px-2 py-2">Nadie más con ese nombre en la plantilla.</p>' : '')}
+          </section>
+
+          <section class="min-w-0">
+            <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">Ahora mismo · ${abiertos.length}</h3>
+            ${abiertos.length ? `<ul class="space-y-1">${abiertos.map(a => `
+              <li class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 text-sm">
+                <span class="font-medium">${esc(a.nombre)}</span>
+                <span class="text-telecab-muted"> · ${a.tipo === 'viaje' ? 'viaje' : 'turno'} en <b class="text-telecab-text">${esc(a.matricula)}</b> desde el ${esc(a.desde)}</span>
+                ${a.relevo ? `<span class="block text-[11px] text-sky-400"><i class="fa-solid fa-rotate text-[9px]"></i> de camino al relevo desde el ${esc(a.relevo)}</span>` : ''}
+              </li>`).join('')}</ul>`
+              : '<p class="text-xs text-telecab-muted px-2 py-3">Nadie tiene un turno ni un viaje abierto.</p>'}
+            <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mt-4 mb-1.5">Gente de la empresa · ${empresa.length}</h3>
+            <p class="text-xs text-telecab-muted px-2">${empresa.length ? esc(empresa.map(x => x.nombre).join(', ')) : 'Nadie.'}
+              Hacen <b class="text-telecab-text">viajes</b>, no turnos, y se activan en <a href="/usuarios" class="text-telecab-gold hover:underline">Usuarios</a>.</p>
+          </section>
+
+          <section class="min-w-0" id="fj-motores"></section>
+        </div>
+      </div>`;
+
+    caja.querySelector('[data-fj-cerrar]').addEventListener('click', abrirFichaje);
+    const busca = caja.querySelector('[data-fj-busca]');
+    busca.addEventListener('input', () => {
+      fjBusca = busca.value;
+      const pos = busca.selectionStart;
+      pintarFichaje();
+      const nuevo = $('#panel-fichaje [data-fj-busca]');
+      if (nuevo) { nuevo.focus(); nuevo.setSelectionRange(pos, pos); }
+    });
+    caja.querySelectorAll('[data-fj-conductor]').forEach(chk => chk.addEventListener('change', () =>
+      cambiarFichaje(chk.dataset.fjConductor, chk.checked, chk)));
+    pintarMotores();
+  }
+
+  async function cambiarFichaje(id, activo, chk) {
+    const c = porId.get(String(id));
+    if (!c) return;
+    const abierto = (FJ && FJ.abiertos || []).find(a => String(a.conductorId) === String(id));
+    if (!activo && abierto) {
+      const ok = await Dialogo.confirmar({
+        titulo: 'Apagar el fichaje de ' + c.nombre, tono: 'pregunta', si: 'Apagar', no: 'Cancelar',
+        texto: `Tiene un turno abierto en ${abierto.matricula}. Podrá terminarlo igual; lo que ya no podrá es empezar otro.`,
+      });
+      if (!ok) { chk.checked = true; return; }
+    }
+    try {
+      await fjPost('/planificador-v2/api/fichaje/conductor', { conductorId: id, activo });
+      c.fichaCoche = activo;
+      if (activo) fjBusca = '';
+      Dialogo.hecho(activo ? `${c.nombre} ya ficha por WhatsApp` : `${c.nombre} ya no ficha`);
+      pintarContadorFichaje();
+      pintar();
+      await cargarFichaje();
+    } catch (e) {
+      chk.checked = !activo;
+      await Dialogo.aviso({ titulo: 'No se pudo guardar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  function pintarMotores() {
+    const caja = $('#fj-motores');
+    if (!caja) return;
+    const cab = `<h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5 flex items-center gap-2">Motores cortados
+      <button data-fj-recargar class="ml-auto text-telecab-muted hover:text-telecab-gold normal-case tracking-normal" title="Volver a preguntar a Mapon"><i class="fa-solid fa-rotate-right"></i></button></h3>`;
+    let cuerpo;
+    if (!MOT || MOT.cargando) cuerpo = '<p class="text-xs text-telecab-muted px-2 py-3">Preguntando a Mapon…</p>';
+    else if (MOT.error) cuerpo = `<p class="text-xs text-telecab-red px-2 py-3">No se pudo preguntar a Mapon: ${esc(MOT.error)}</p>`;
+    else if (!MOT.cortados.length) cuerpo = '<p class="text-xs text-telecab-muted px-2 py-3">Ningún coche cortado.</p>';
+    else cuerpo = `<ul class="space-y-1">${MOT.cortados.map(m => `
+      <li class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-telecab-card2/50 text-sm">
+        <i class="fa-solid fa-lock text-telecab-red text-xs"></i>
+        <span class="font-medium font-mono">${esc(m.matricula)}</span>
+        ${m.conTurno ? `<span class="text-[11px] text-telecab-muted truncate">· turno de ${esc(m.conTurno)}</span>` : ''}
+        <button data-fj-soltar="${esc(m.matricula)}" class="ml-auto px-2 py-0.5 rounded-lg border border-telecab-border text-xs hover:border-telecab-gold/50"
+                title="Suelta el motor de este coche. Queda escrito quién y por qué.">Soltar</button>
+      </li>`).join('')}</ul>`;
+    caja.innerHTML = cab + cuerpo +
+      '<p class="text-[11px] text-telecab-muted px-2 mt-2">Si alguien se encuentra su coche cortado y no ficha, se suelta desde aquí.</p>';
+    caja.querySelector('[data-fj-recargar]').addEventListener('click', cargarMotores);
+    caja.querySelectorAll('[data-fj-soltar]').forEach(b => b.addEventListener('click', () => soltarMotor(b.dataset.fjSoltar)));
+  }
+
+  async function soltarMotor(matricula) {
+    const v = await Dialogo.formulario(`Soltar el motor de ${matricula}`, [
+      { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true,
+        marcador: 'Ej.: Oswaldo no ficha y tiene que salir',
+        ayuda: 'Queda escrito con tu nombre: soltar un coche a mano deja que lo use alguien sin fichar.' },
+    ], { textoBoton: 'Soltar el motor' });
+    if (!v) return;
+    try {
+      const r = await fjPost('/planificador-v2/api/fichaje/soltar', { matricula, motivo: v.motivo });
+      if (r.hecho) Dialogo.hecho(r.yaEstaba ? `${matricula} ya estaba libre` : `Motor de ${matricula} suelto`);
+      else await Dialogo.aviso({ titulo: 'El coche no lo ha confirmado', tono: 'aviso',
+        texto: `${r.motivo || 'Sin respuesta'}. Vuelve a intentarlo en un minuto.` });
+    } catch (e) {
+      await Dialogo.aviso({ titulo: 'No se pudo soltar', texto: e.message, tono: 'error' });
+    }
+    cargarMotores();
+  }
+
   // ── Navegación de semana ──────────────────────────────────────────────────
   const irA = async dia => { try { await cargar(dia); } catch (e) { alert(e.message); } };
   $('#sem-prev').addEventListener('click', () => irA(sumarDias(DIA, -7)));
@@ -2060,6 +2315,7 @@
   // Estos dos no existen en modo solo lectura (los quita la plantilla).
   if ($('#btn-nuevo-cua')) $('#btn-nuevo-cua').addEventListener('click', nuevoCuadrante);
   if ($('#btn-evento')) $('#btn-evento').addEventListener('click', abrirEvento);
+  if ($('#btn-fichaje')) $('#btn-fichaje').addEventListener('click', abrirFichaje);
 
   // Arranque.
   irA(hoyISO());
