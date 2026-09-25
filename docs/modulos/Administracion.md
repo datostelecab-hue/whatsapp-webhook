@@ -82,6 +82,23 @@ Lo anterior al corte lo manda el Excel que se importó, y **el repositorio se ni
 
 `GET /recaudacion/api/comprobar` son ocho pruebas que **pueden fallar de verdad**. No escribe nada, así que se puede pulsar cuando se quiera. Las primeras cruzan **la tabla contra la caja** —la deuda, lo entregado en mano, el cambio en la calle y lo que queda por recaudar—, que son dos consultas distintas sobre las mismas tablas: una agrupa por persona y la otra suma en bloque, así que si una fila se queda fuera del listado (un centinela, un cierre huérfano) los dos números dejan de coincidir y ahí se ve. Otra comprueba que, **desde el corte, cada importe guardado sea el que dice BOLT**, y nombra tanto lo que se desvió como lo que BOLT tiene y no tiene cierre.
 
+## Los descuentos de nómina de septiembre 2026 (db/162)
+
+El 25/09/2026 Camilo pasó el Excel **«Recaudación de efectivo nomina septiembre 2026»** con el encargo de dejar como responsable a **Ignacio Cafferata**. Se cargó como **67 movimientos de tipo `nomina`** (20.777,90 €), firmados por Ignacio (usuario 1, que tiene la llave `/recaudacion/nomina`), con fecha del día en que se apuntaron: la recaudación no acepta fechas futuras, y el día de la nómina lo es.
+
+- **Solo la hoja «Cierre».** La otra se llama «Inicial (Desestimado)» y por su nombre no cuenta.
+- **La columna «ID Bolt» trae el NOMBRE**, a veces con una nota pegada al final («ya no está», «SIN FICHA»). Se quitaron las notas y se cruzó contra el nombre de BOLT y el de la ficha, sin acentos y sin importar el orden: 66 casaron con una sola ficha. **Christian Munoz De La Guia no tiene ficha** y va por su cuenta de BOLT (`bolt_uuid`), como ya salía en el cuadro. La nota «ya no está» queda en la observación del movimiento.
+- **52 importes eran exactamente la deuda del cuadro; en 14 el cuadro era mayor**: cobraron efectivo después del cierre del Excel. Esa diferencia —3.071,15 € entre los 14— les sigue quedando pendiente, que es lo correcto.
+- La deuda total del cuadro pasó de 24.454,85 € a 3.676,95 €. La caja no se mueve: un descuento de nómina es *caja =, deuda −*.
+
+Se cargó por migración para que entre una sola vez y quede el rastro. Si alguno está mal, **se anula desde la pantalla con su motivo**, no se borra.
+
+> [!warning] La caja ya estaba en −540,05 € antes de cargarlo
+> Es la comprobación que falla (*«El efectivo de la caja no es negativo»*), y no la
+> causan los descuentos: las salidas de septiembre (apertura 26.394,27 €, banco
+> 12.255 €, adelanto de nómina 1.360 €, gastos 700 €) suman 40.709,27 € y lo
+> entrado en mano, 40.212,67 €. Algo salió de la caja sin haber entrado.
+
 ## El cron
 
 Cada media hora, `app.js` llama a `recalcularReciente`, que rehace **solo las quincenas vivas**: la de ahora y la anterior. Rehacer el histórico entero treinta veces al día sería trabajo tirado, y lo cerrado no cambia.

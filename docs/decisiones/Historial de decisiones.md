@@ -7,6 +7,10 @@ actualizado: 2026-09-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-25 · Recaudación: los descuentos de nómina de septiembre
+
+El Excel de recaudación por nómina de septiembre (hoja «Cierre») entra como 67 movimientos de nómina firmados por Ignacio Cafferata, el responsable. Por migración, una sola vez; lo que esté mal se anula con su motivo. → [[Administracion]]
+
 ## 2026-09-25 · Los tickets cuentan desde el 24/09/2026
 
 Cambio de planes sobre el «solo este mes»: las bandejas y la barra traen solo lo pedido desde el 24/09/2026, un corte fijo (no una ventana que se mueve, para que lo pendiente no desaparezca solo). Se puede mover con el ajuste `ticketera_desde`. → [[Ticketera]]
