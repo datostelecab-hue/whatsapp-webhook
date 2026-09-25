@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-09-24
+actualizado: 2026-09-25
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-09-25 · Cada uno pide corregir su fichaje, y aprueba una sola persona
+
+Quien ficha puede pedir que se corrija lo suyo —una hora, o una jornada que no fichó—, sin llave aparte: viene con el fichaje. Es una **petición**: el fichaje no cambia hasta que se aprueba, y un rechazo lleva su porqué. Aprobar (y también corregir a mano y confirmar horas) es de **una sola persona**, la de la llave `/fichaje/revisar`: la base no deja que la tengan dos, y ni superadmin ni desarrollador aprueban por su rol. Quien aprueba se aprueba también lo suyo. → [[Fichaje]]
 
 ## 2026-09-24 · Ballenoil sale del ERP entero
 

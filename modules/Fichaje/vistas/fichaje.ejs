@@ -62,6 +62,18 @@
     .fi-c { text-align: left; }
     .fi-vacio { grid-column: 1 / -1; text-align: left; }
   }
+  /* La línea que va debajo de una jornada: la corrección pedida o rechazada.
+     Pegada a su jornada, sin raya entre las dos: se lee como parte de ella. */
+  .fi-nota { padding-top: 0; font-size: .72rem; }
+  .fi-nota > .fi-vacio { text-align: left; }
+  .fi-fila + .fi-fila.fi-nota { border-top: 0; }
+  /* Las correcciones pedidas: quién, qué día, cómo está y qué pide. */
+  .fi-corr { grid-template-columns: 11rem 7.5rem 9.5rem minmax(0, 1fr) auto; align-items: start; }
+  /* Lo que cambia, en dorado: es lo único que hay que mirar. */
+  .fi-cambia { color: rgb(var(--tc-gold)); font-weight: 700; }
+  @media (max-width: 640px) {
+    .fi-acc { justify-content: flex-start !important; }
+  }
   .fi-fila + .fi-fila { border-top: 1px solid rgb(var(--tc-border) / .5); }
   .fi-fila:hover { background: rgb(var(--tc-card2) / .5); }
   .fi-tag { font-size: 10px; font-weight: 700; padding: .1rem .4rem; border-radius: .35rem; }
@@ -82,6 +94,7 @@
       <div>
         <h2 class="text-sm font-semibold text-telecab-text">Mis jornadas</h2>
         <p class="text-xs text-telecab-muted">Lo que has fichado esta semana. Es tu registro: puedes pedirlo cuando quieras.</p>
+        <p id="fi-corr-nota" class="text-xs text-telecab-muted mt-0.5"></p>
       </div>
       <div class="flex items-center gap-1.5">
         <button id="fi-sem-ant" title="Semana anterior"
@@ -102,6 +115,31 @@
 </div>
 
 <% if (puedeRevisar) { %>
+<% if (!puedeAprobar) { %>
+<div class="mt-4 px-4 py-2.5 rounded-xl border border-telecab-border bg-telecab-card2/40 text-xs text-telecab-muted">
+  <i class="fa-solid fa-eye mr-1.5"></i>Lo ves todo, pero corregir, confirmar horas y aprobar correcciones
+  es solo de <b class="text-telecab-text"><%= quienAprueba || 'quien tenga la llave de aprobar' %></b>: la llave la
+  tiene una sola persona y no va con el rol.
+</div>
+<% } %>
+
+<!-- ── Lo que pide corregir cada uno (db/159) ─────────────────── -->
+<div class="rounded-2xl border border-telecab-border bg-telecab-card p-5 mt-4">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <div>
+      <h2 class="text-sm font-semibold text-telecab-text">
+        <i class="fa-solid fa-pen-to-square text-telecab-gold mr-1"></i>Correcciones pedidas
+        <span id="fi-corr-cuantas" class="ml-1"></span>
+      </h2>
+      <p class="text-xs text-telecab-muted">
+        Lo que cada uno pide cambiar de su fichaje. No cambia nada hasta que se aprueba; al aprobarlo,
+        la jornada queda corregida con su motivo y confirmada con tu nombre. Rechazar pide decir por qué.
+      </p>
+    </div>
+  </div>
+  <div id="fi-correcciones" class="text-sm text-telecab-muted">—</div>
+</div>
+
 <!-- ── Cómo va la gente esta semana ───────────────────────────── -->
 <div class="rounded-2xl border border-telecab-border bg-telecab-card p-5 mt-4">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -141,10 +179,12 @@
         se corrige antes —queda con tu nombre y el motivo— y después se confirma.
       </p>
     </div>
+    <% if (puedeAprobar) { %>
     <button id="fi-aprobar-todo"
             class="text-xs px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark font-semibold disabled:opacity-40">
       <i class="fa-solid fa-check-double mr-1"></i>Confirmar las que se ven
     </button>
+    <% } %>
   </div>
   <div id="fi-pendientes" class="text-sm text-telecab-muted">—</div>
 </div>
@@ -175,6 +215,12 @@
   const $ = s => document.querySelector(s);
   const esc = t => String(t == null ? '' : t).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
   const PUEDE_REVISAR = <%= puedeRevisar ? 'true' : 'false' %>;
+  // Corregir, confirmar y aprobar: solo quien tiene la llave de verdad. Los
+  // roles de acceso total ven el registro, pero sin esos botones.
+  const PUEDE_APROBAR = <%= puedeAprobar ? 'true' : 'false' %>;
+  const APRUEBA = <%- JSON.stringify(quienAprueba || null).replace(/</g, '\\u003c') %>;
+  // Hoy y desde cuándo se puede pedir una corrección. Los da el servidor.
+  let HOY = '', DESDE_CORR = '';
 
   const hora = t => t ? new Date(t).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' }) : '—';
   const fecha = d => new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
@@ -240,10 +286,13 @@
       ${E.olvidada ? `
         <div class="flex items-start gap-2 mb-3 px-3 py-2 rounded-xl border border-telecab-warn/40 bg-telecab-warn/10">
           <i class="fa-solid fa-triangle-exclamation text-telecab-warn mt-0.5"></i>
-          <p class="text-xs text-telecab-warn leading-snug">
+          <div class="text-xs text-telecab-warn leading-snug">
             Esta jornada es del <b>${esc(fecha(E.abierto.dia))}</b> y sigue abierta: te fuiste sin fichar la salida.
-            Ciérrala y pide que te la corrijan.
-          </p>
+            Di a qué hora saliste: se cierra al momento y esa hora queda pedida.
+            <button id="fi-olvidada" type="button"
+                    class="block mt-1.5 px-2.5 py-1 rounded-lg border border-telecab-warn/50 font-semibold hover:bg-telecab-warn/15">
+              <i class="fa-solid fa-clock-rotate-left mr-1"></i>Poner mi hora de salida</button>
+          </div>
         </div>` : ''}
 
       <button id="fi-btn" class="fi-boton ${abierta ? 'fi-salir' : 'fi-entrar'}">
@@ -257,6 +306,9 @@
       <p id="fi-msg" class="text-xs mt-2"></p>`;
 
     $('#fi-btn').addEventListener('click', () => fichar(abierta ? 'salir' : 'entrar'));
+    const olv = $('#fi-olvidada');
+    if (olv) olv.addEventListener('click', () =>
+      pedirCorreccion({ id: E.abierto.id, dia: E.abierto.dia, entrada: E.abierto.entrada, salida: null }, E.abierto.dia));
     arrancarCron();
   }
 
@@ -291,7 +343,7 @@
       }
       await cargarEstado();
       cargarMiSemana();
-      if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); cargarTablaSemana(); }
+      if (PUEDE_REVISAR) { cargarCorrecciones(); cargarParte(); cargarPendientes(); cargarTablaSemana(); }
       // Que la barra de arriba se entere YA. Si no, se ficha la entrada y el
       // botón de la barra sigue diciendo "Fichar entrada": parece que no ha
       // funcionado y se vuelve a pulsar.
@@ -306,6 +358,7 @@
 
   async function cargarEstado() {
     E = await api('/fichaje/api/estado');
+    if (E.hoy) HOY = E.hoy;
     pintarPanel();
   }
 
@@ -361,6 +414,34 @@
    * dos veces) y el nombre del día solo en el primero, para que la columna no
    * se repita. Si no tiene, una sola fila diciendo qué pasa con ese día.
    */
+  // ── Pedir que se corrija lo propio ──────────────────────────────────────
+  // Se ofrece en lo de los últimos días que deja el servidor, hasta hoy. El
+  // servidor lo vuelve a mirar todo: esto solo evita ofrecer un botón que
+  // luego diría que no.
+  const sePuedeCorregir = dia => !!HOY && dia <= HOY && (!DESDE_CORR || dia >= DESDE_CORR);
+  const boton = (attrs, texto) => `<button type="button" ${attrs}
+    class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border">${texto}</button>`;
+  const franja = (e, s) => hora(e) + ' – ' + (s ? hora(s) : 'sigue abierta');
+  const quienAprueba = () => APRUEBA || 'quien lleva el registro';
+
+  // La línea de debajo de una jornada: lo que pidió y en qué quedó. Se escribe
+  // entera y no en un `title`: el porqué de un rechazo se tiene que leer
+  // también desde el móvil.
+  function notaCorreccion(c) {
+    if (!c) return '';
+    const texto = c.estado === 'pendiente'
+      ? `<span class="text-telecab-azul"><i class="fa-solid fa-hourglass-half mr-1"></i>Pediste
+           <b>${esc(franja(c.entrada, c.salida))}</b> · esperando a ${esc(quienAprueba())}</span>
+         <span class="text-telecab-muted">· «${esc(c.motivo)}»</span> ${boton(`data-retirar="${c.id}"`, 'retirar')}`
+      : `<span class="text-telecab-red"><i class="fa-solid fa-circle-xmark mr-1"></i>${esc(c.resueltaPor || 'Quien lleva el registro')}
+           no aceptó ${esc(franja(c.entrada, c.salida))}: «${esc(c.respuesta || '')}»</span>`;
+    return `
+        <div class="fi-fila fi-mio fi-nota">
+          <span></span>
+          <span class="fi-vacio">${texto}</span>
+        </div>`;
+  }
+
   function filaDia(d) {
     // El fin de semana TRABAJADO se marca en dorado: son las horas de más, y
     // es lo que se busca al abrir la semana.
@@ -368,35 +449,123 @@
     const nombre = esc(nombreDia(d.dia));
 
     if (!d.fichajes.length) {
-      const dice = d.libra ? 'Libra'
+      const p = d.pedida;
+      let dice = d.libra ? 'Libra'
         : d.futuro ? ''
         : d.pasado ? 'sin fichar'
         : 'todavía sin fichar';
+      let accion = '';
+      if (p && p.estado === 'pendiente') {
+        dice = `<span class="text-telecab-azul" title="${esc(p.motivo)}"><i class="fa-solid fa-hourglass-half mr-1"></i>Pediste
+                  ${esc(franja(p.entrada, p.salida))} · esperando a ${esc(quienAprueba())}</span>`;
+        accion = boton(`data-retirar="${p.id}"`, 'retirar');
+      } else if (d.pasado && sePuedeCorregir(d.dia)) {
+        // También en un sábado o un domingo: quien trabajó y no fichó tiene que
+        // poder pedirlo igual.
+        accion = boton(`data-pnueva="${d.dia}"`, '<i class="fa-solid fa-plus mr-1"></i>pedir jornada');
+      }
       return `
         <div class="fi-fila fi-mio">
           <span class="${tono}">${nombre}</span>
-          <span class="fi-vacio text-telecab-muted text-xs">${dice}</span>
-        </div>`;
+          <span class="fi-vacio fi-acc text-telecab-muted text-xs flex flex-wrap items-center justify-center gap-2">${dice}${accion}</span>
+        </div>` + (p && p.estado === 'rechazada' ? notaCorreccion(p) : '');
     }
 
-    return d.fichajes.map((f, i) => `
+    return d.fichajes.map((f, i) => {
+      const pedida = f.correccion && f.correccion.estado === 'pendiente';
+      return `
         <div class="fi-fila fi-mio">
           <span class="${tono}">${i === 0 ? nombre : ''}</span>
           <span class="text-telecab-text fi-c">${hora(f.entrada)} ${mapa(f.entrada_lat, f.entrada_lng)}</span>
           <span class="text-telecab-text fi-c">${f.salida ? hora(f.salida) + ' ' + mapa(f.salida_lat, f.salida_lng) : '<span class="text-telecab-warn">sin cerrar</span>'}</span>
           <span class="font-semibold text-telecab-text tabular-nums fi-c">${dur(f.minutos)}</span>
-          <span class="flex items-center gap-1 justify-end">
+          <span class="flex flex-wrap items-center gap-1 justify-end">
             ${tagUbi(f.entrada_ubicacion)}
             ${f.corregido ? `<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="${esc(f.corregido_motivo || '')}">corregido</span>` : ''}
             ${tagEstado(f.estado)}
+            ${!pedida && sePuedeCorregir(f.dia) ? boton(`data-pcorr="${f.id}"`, '<i class="fa-solid fa-pen mr-1"></i>corregir') : ''}
           </span>
-        </div>`).join('');
+        </div>` + notaCorreccion(f.correccion);
+    }).join('');
+  }
+
+  const HHMM = /^([01]?\d|2[0-3]):[0-5]\d$/;
+
+  /**
+   * Pide corregir una jornada propia (`f`) o una jornada entera que no se
+   * fichó (`f` vacío). Las horas se piden como hh:mm del día de la jornada: si
+   * la salida queda antes que la entrada, es que se salió pasada la medianoche.
+   */
+  async function pedirCorreccion(f, dia) {
+    const abiertaPasada = !!(f && !f.salida && HOY && dia < HOY);
+    const sigueHoy = !!(f && !f.salida && !abiertaPasada);
+    const r = await Dialogo.formulario(
+      (f ? 'Corregir tu jornada del ' : 'Pedir la jornada del ') + nombreDia(dia).toLowerCase(),
+      [
+        { id: 'entrada', etiqueta: 'Entrada (hh:mm)', tipo: 'texto', valor: f ? hora(f.entrada) : '', marcador: '08:30', obligatorio: true },
+        { id: 'salida', etiqueta: sigueHoy ? 'Salida (hh:mm) — déjala vacía si sigues trabajando' : 'Salida (hh:mm)',
+          tipo: 'texto', valor: f && f.salida ? hora(f.salida) : '', marcador: '17:00', obligatorio: !sigueHoy },
+        { id: 'motivo', etiqueta: 'Qué pasó', tipo: 'texto-largo', obligatorio: true,
+          marcador: f ? 'Llegué a las 8:30 y se me olvidó fichar' : 'Vine a trabajar y no fiché' },
+      ],
+      {
+        textoBoton: 'Pedir la corrección',
+        nota: (abiertaPasada ? 'Esta jornada sigue abierta: al pedirlo se cierra ahora, como si pulsaras «Salir», ' +
+            'para que puedas volver a fichar; la hora que pongas es la que queda pedida. ' : '') +
+          'No cambia nada hasta que lo apruebe ' + quienAprueba() + '; lo que fichaste se queda guardado al lado. ' +
+          'Hora de Madrid: si saliste pasada la medianoche, se entiende del día siguiente.',
+      });
+    if (!r) return;
+
+    const e = String(r.entrada || '').trim(), sa = String(r.salida || '').trim();
+    const malas = [['entrada', e], ['salida', sa]].filter(([, v]) => v && !HHMM.test(v)).map(([k]) => k);
+    if (malas.length) {
+      await Dialogo.aviso({ titulo: 'Hora mal escrita', tono: 'error',
+        texto: 'Escribe la hora como hh:mm (por ejemplo 08:30). Revisa: ' + malas.join(' y ') + '.' });
+      return;
+    }
+    const hh = h => h.padStart(5, '0');
+    const entrada = dia + 'T' + hh(e) + ':00';
+    const salida = sa ? (hh(sa) <= hh(e) ? masDias(dia, 1) : dia) + 'T' + hh(sa) + ':00' : null;
+    try {
+      const x = await api('/fichaje/api/correcciones', { fichajeId: f ? f.id : null, entrada, salida, motivo: r.motivo });
+      Dialogo.hecho(x.cerrada ? 'Jornada cerrada y hora de salida pedida' : 'Pedida: la verá ' + quienAprueba());
+      cargarMiSemana();
+      if (x.cerrada) {
+        await cargarEstado();
+        if (typeof window.__refrescarFichaje === 'function') window.__refrescarFichaje();
+      }
+      if (PUEDE_REVISAR) { cargarCorrecciones(); cargarPendientes(); }
+    } catch (err) {
+      await Dialogo.aviso({ titulo: 'No se pudo pedir', texto: err.message, tono: 'error' });
+    }
+  }
+
+  async function retirar(id) {
+    const ok = await Dialogo.confirmar({
+      titulo: 'Retirar la corrección',
+      texto: 'Se anula lo que pediste y la jornada se queda como está. Puedes pedir otra cuando quieras.',
+      si: 'Retirar', no: 'Dejarla',
+    });
+    if (!ok) return;
+    try {
+      await api('/fichaje/api/correcciones/' + id + '/retirar', {});
+      Dialogo.hecho('Retirada');
+      cargarMiSemana();
+      if (PUEDE_REVISAR) { cargarCorrecciones(); cargarPendientes(); }
+    } catch (err) {
+      await Dialogo.aviso({ titulo: 'No se pudo retirar', texto: err.message, tono: 'error' });
+    }
   }
 
   async function cargarMiSemana() {
     try {
       const r = await api('/fichaje/api/mi-semana' + (SEM ? '?dia=' + SEM : ''));
       SEM = r.desde;
+      HOY = r.hoy; DESDE_CORR = r.corregirDesde || '';
+      $('#fi-corr-nota').innerHTML = 'Si algo no cuadra, pulsa <b>corregir</b> en esa jornada (o <b>pedir jornada</b> en un día sin fichar): ' +
+        'lo aprueba <b class="text-telecab-text">' + esc(quienAprueba()) + '</b>.' +
+        (r.correccionesPendientes ? ' <span class="text-telecab-azul">Tienes ' + r.correccionesPendientes + ' pedida(s) esta semana.</span>' : '');
       $('#fi-sem').value = aES(r.desde);
       $('#fi-rotulo').innerHTML = esc(rotuloSemana(r.desde, r.hasta)) +
         (r.desde <= r.hoy && r.hoy <= r.hasta ? ' · <b class="text-telecab-gold">esta semana</b>' : '');
@@ -411,6 +580,14 @@
           esc(r.aprobadas) + ' ya aprobadas'
         : (r.filas.length ? '<span class="text-telecab-green">Todo confirmado</span>' : '');
       $('#fi-mis-dias').innerHTML = CAB_MIO + r.dias.map(d => filaDia(d)).join('');
+      const mias = new Map(r.filas.map(f => [f.id, f]));
+      const cont = $('#fi-mis-dias');
+      cont.querySelectorAll('[data-pcorr]').forEach(b => b.addEventListener('click', () => {
+        const f = mias.get(Number(b.dataset.pcorr));
+        if (f) pedirCorreccion(f, f.dia);
+      }));
+      cont.querySelectorAll('[data-pnueva]').forEach(b => b.addEventListener('click', () => pedirCorreccion(null, b.dataset.pnueva)));
+      cont.querySelectorAll('[data-retirar]').forEach(b => b.addEventListener('click', () => retirar(Number(b.dataset.retirar))));
     } catch (e) {
       $('#fi-mis-dias').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
     }
@@ -458,9 +635,9 @@
             <span class="font-semibold tabular-nums">${dur(f.minutos)}</span>
             ${f.entrada ? tagUbi(f.entrada_ubicacion) : ''}
             ${f.aprobado ? tagEstado('aprobada') : ''}
-            <button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
+            ${PUEDE_APROBAR ? `<button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
                     data-corregir="${f.id || ''}" data-usuario="${f.usuario_id}" data-quien="${esc(f.quien)}">
-              ${f.id ? 'corregir' : 'añadir'}</button>
+              ${f.id ? 'corregir' : 'añadir'}</button>` : ''}
           </span>
         </div>`).join('');
 
@@ -547,11 +724,13 @@
     const btn = $('#fi-aprobar-todo');
     try {
       const r = await api('/fichaje/revisar/pendientes');
-      PEND = r.filas;
+      // Las que tienen una corrección pedida se quedan fuera de la tanda: sería
+      // dar por buenas justo las horas que la persona dice que están mal.
+      PEND = r.filas.filter(f => !f.correccionPedida);
       if (btn) {
-        btn.disabled = !r.cuantas;
-        btn.innerHTML = r.cuantas
-          ? '<i class="fa-solid fa-check-double mr-1"></i>Confirmar las ' + r.cuantas + ' que se ven'
+        btn.disabled = !PEND.length;
+        btn.innerHTML = PEND.length
+          ? '<i class="fa-solid fa-check-double mr-1"></i>Confirmar las ' + PEND.length + ' que se ven'
           : '<i class="fa-solid fa-check-double mr-1"></i>Nada que confirmar';
       }
       if (!r.cuantas) {
@@ -573,10 +752,11 @@
           <span class="font-semibold tabular-nums fi-c ${tono}">${dur(f.minutos)}</span>
           <span class="flex items-center gap-1.5 justify-end">
             ${f.corregido ? `<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="${esc(f.corregido_motivo || '')}">corregido</span>` : ''}
-            <button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
-                    data-corr="${f.id}" data-usuario="${f.usuario_id}" data-quien="${esc(f.quien)}" data-dia="${f.dia}">corregir</button>
-            <button class="fi-tag bg-telecab-green/15 text-telecab-green hover:bg-telecab-green/25 border border-telecab-green/40"
-                    data-ok="${f.id}"><i class="fa-solid fa-check mr-1"></i>confirmar</button>
+            ${f.correccionPedida ? '<span class="fi-tag bg-telecab-azul/15 text-telecab-azul" title="Ha pedido corregirla: resuélvelo arriba, en «Correcciones pedidas»">pide corrección</span>' : ''}
+            ${PUEDE_APROBAR ? `<button class="fi-tag bg-telecab-card2 text-telecab-muted hover:text-telecab-gold border border-telecab-border"
+                    data-corr="${f.id}" data-usuario="${f.usuario_id}" data-quien="${esc(f.quien)}" data-dia="${f.dia}">corregir</button>` : ''}
+            ${PUEDE_APROBAR && !f.correccionPedida ? `<button class="fi-tag bg-telecab-green/15 text-telecab-green hover:bg-telecab-green/25 border border-telecab-green/40"
+                    data-ok="${f.id}"><i class="fa-solid fa-check mr-1"></i>confirmar</button>` : ''}
           </span>
         </div>`;
       }).join('');
@@ -599,6 +779,94 @@
       cargarPendientes(); cargarTablaSemana(); cargarMiSemana(); cargarParte();
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo confirmar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  // ── Las correcciones que pide cada uno ────────────────────────────────
+  const CAB_CORR = '<div class="fi-fila fi-corr fi-cab"><span>Quién</span><span>Día</span>' +
+    '<span>Ahora</span><span>Pide</span><span></span></div>';
+  let CORR = [];
+
+  // Una franja con lo que cambia en dorado: entre dos horarios casi iguales,
+  // lo que hay que mirar es la hora que se mueve.
+  function franjaPedida(c) {
+    const e = hora(c.entrada), s = c.salida ? hora(c.salida) : (c.salidaAhora ? hora(c.salidaAhora) : 'sigue abierta');
+    const eCambia = c.nueva || e !== hora(c.entradaAhora);
+    const sCambia = c.nueva || (c.salida && (!c.salidaAhora || hora(c.salida) !== hora(c.salidaAhora)));
+    return `<span class="${eCambia ? 'fi-cambia' : ''}">${e}</span> – <span class="${sCambia ? 'fi-cambia' : ''}">${s}</span>`;
+  }
+
+  async function cargarCorrecciones() {
+    if (!PUEDE_REVISAR) return;
+    try {
+      const r = await api('/fichaje/revisar/correcciones');
+      CORR = r.filas;
+      $('#fi-corr-cuantas').innerHTML = r.cuantas
+        ? '<span class="fi-tag bg-telecab-azul/15 text-telecab-azul">' + r.cuantas + ' esperando</span>' : '';
+      if (!r.cuantas) {
+        $('#fi-correcciones').innerHTML = '<p class="text-sm text-telecab-green py-6 text-center">' +
+          '<i class="fa-solid fa-circle-check mr-1"></i>Nadie ha pedido corregir nada.</p>';
+        return;
+      }
+      $('#fi-correcciones').innerHTML = CAB_CORR + r.filas.map(c => `
+        <div class="fi-fila fi-corr">
+          <span class="text-telecab-text truncate" title="${esc(c.quien)}">${esc(c.quien)}</span>
+          <span class="text-telecab-muted capitalize">${esc(fecha(c.dia))}</span>
+          <span class="text-telecab-text tabular-nums">${c.nueva ? '<span class="text-telecab-red">no fichó</span>'
+            : esc(franja(c.entradaAhora, c.salidaAhora)) + ' <span class="text-telecab-muted">· ' + dur(c.minutosAhora) + '</span>'}</span>
+          <span class="min-w-0">
+            <span class="text-telecab-text tabular-nums">${franjaPedida(c)}</span>
+            <span class="text-telecab-muted">· ${dur(c.minutosPedidos)}</span>
+            ${c.cambioDespues ? '<span class="fi-tag bg-telecab-warn/15 text-telecab-warn ml-1" title="La jornada se corrigió después de pedirlo: lo que se aprueba es lo que pide">cambió después</span>' : ''}
+            <span class="block text-xs text-telecab-muted mt-0.5">«${esc(c.motivo)}»</span>
+          </span>
+          <span class="flex items-center gap-1.5 justify-end">
+            ${PUEDE_APROBAR ? `
+            <button class="fi-tag bg-telecab-red/10 text-telecab-red hover:bg-telecab-red/20 border border-telecab-red/40"
+                    data-rechazar="${c.id}"><i class="fa-solid fa-xmark mr-1"></i>rechazar</button>
+            <button class="fi-tag bg-telecab-green/15 text-telecab-green hover:bg-telecab-green/25 border border-telecab-green/40"
+                    data-aprobar="${c.id}"><i class="fa-solid fa-check mr-1"></i>aprobar</button>` : ''}
+          </span>
+        </div>`).join('');
+
+      $('#fi-correcciones').querySelectorAll('[data-aprobar]').forEach(b =>
+        b.addEventListener('click', () => resolver(Number(b.dataset.aprobar), true)));
+      $('#fi-correcciones').querySelectorAll('[data-rechazar]').forEach(b =>
+        b.addEventListener('click', () => resolver(Number(b.dataset.rechazar), false)));
+    } catch (e) {
+      $('#fi-correcciones').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>';
+    }
+  }
+
+  async function resolver(id, aprobar) {
+    const c = CORR.find(x => x.id === id);
+    if (!c) return;
+    let respuesta = '';
+    if (aprobar) {
+      const ok = await Dialogo.confirmar({
+        titulo: 'Aprobar la corrección de ' + c.quien,
+        texto: 'Su jornada del ' + fecha(c.dia) + ' queda en ' +
+          franja(c.entrada, c.salida || c.salidaAhora) + ' (' + dur(c.minutosPedidos) + ')' +
+          (c.salida || c.salidaAhora ? ' y confirmada con tu nombre.' : '. Sigue abierta, así que todavía no se confirma.') +
+          ' Lo que había se queda guardado al lado.',
+        si: 'Aprobar', no: 'Ahora no',
+      });
+      if (!ok) return;
+    } else {
+      const r = await Dialogo.formulario('Rechazar la corrección de ' + c.quien,
+        [{ id: 'respuesta', etiqueta: 'Por qué no', tipo: 'texto-largo', obligatorio: true,
+           marcador: 'Según el control de accesos entraste a las 9:10' }],
+        { textoBoton: 'Rechazar', nota: 'Se lo verá tal cual en su semana, así que escríbelo para que sepa qué hacer.' });
+      if (!r) return;
+      respuesta = r.respuesta;
+    }
+    try {
+      await api('/fichaje/revisar/correcciones/' + id, { aprobar, respuesta });
+      Dialogo.hecho(aprobar ? 'Aprobada y confirmada' : 'Rechazada');
+      cargarCorrecciones(); cargarPendientes(); cargarTablaSemana(); cargarParte(); cargarMiSemana();
+      if (typeof window.__refrescarFichaje === 'function') window.__refrescarFichaje();
+    } catch (e) {
+      await Dialogo.aviso({ titulo: aprobar ? 'No se pudo aprobar' : 'No se pudo rechazar', texto: e.message, tono: 'error' });
     }
   }
 
@@ -658,6 +926,6 @@
   // ── Arranque ─────────────────────────────────────────────────────────────
   cargarEstado().catch(e => { $('#fi-panel').innerHTML = '<p class="text-sm text-telecab-red">' + esc(e.message) + '</p>'; });
   cargarMiSemana();
-  if (PUEDE_REVISAR) { cargarParte(); cargarPendientes(); cargarTablaSemana(); }
+  if (PUEDE_REVISAR) { cargarCorrecciones(); cargarParte(); cargarPendientes(); cargarTablaSemana(); }
 })();
 </script>

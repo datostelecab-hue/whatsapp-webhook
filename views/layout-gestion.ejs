@@ -662,6 +662,23 @@
           const nav = document.getElementById('nav-fichaje');
           if (nav) nav.classList.remove('hidden');
         }
+        // A quien aprueba, cuántas correcciones de fichaje le esperan. Solo lo
+        // manda el servidor a quien tiene la llave; al resto no le sale nada.
+        const nav = document.getElementById('nav-fichaje');
+        if (nav) {
+          let chapa = nav.querySelector('[data-corr]');
+          const n = Number(r.correccionesPorAprobar || 0);
+          if (n > 0) {
+            if (!chapa) {
+              chapa = document.createElement('span');
+              chapa.setAttribute('data-corr', '');
+              chapa.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-telecab-azul/20 text-telecab-azul';
+              nav.appendChild(chapa);
+            }
+            chapa.textContent = n;
+            chapa.title = n + ' corrección(es) de fichaje esperando a que las apruebes';
+          } else if (chapa) chapa.remove();
+        }
       }
     } catch (_) { /* si falla, el botón simplemente no sale */ }
   }

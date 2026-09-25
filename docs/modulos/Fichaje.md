@@ -62,12 +62,22 @@ Y salen **los siete días siempre**, aunque no se fichara ninguno: una semana co
 
 Las cuentas de fechas se hacen sobre ISO montado a **mediodía UTC** (`+ 'T12:00:00Z'`): así ni el cambio de hora ni la zona del servidor pueden mover un día. Probado con la semana del cambio de hora, la que cruza de mes y la que cruza de año.
 
-## Los dos candados, que no son iguales
+## Los candados, que no son iguales
 
 | | Quién |
 |---|---|
 | **Fichar** | cualquiera que haya entrado y tenga el fichaje activado en su ficha |
-| **Revisar** (ver el registro de todos, corregir horas y aprobarlas) | quien tenga la llave **`/fichaje/revisar`** |
+| **Pedir que se corrija lo suyo** | lo mismo: viene con el fichaje, sin llave aparte (desde el 25/09/2026) |
+| **Ver el registro de todos** | quien tenga la llave **`/fichaje/revisar`**, y los roles de acceso total |
+| **Corregir a mano, confirmar horas y aprobar correcciones** | **solo** quien tenga esa llave **en su matriz**: una sola persona |
+
+> [!important] La llave de aprobar es de UNA persona, y no va con el rol (25/09/2026)
+> Camilo: *«solo una persona puede aprobar esas correcciones, a la cual solo yo le daré el permiso»*. Por eso:
+> - **La base no deja que la tengan dos** (`uq_permiso_fichaje_revisar`, db/159). Para dársela a otra persona hay que quitársela antes a quien la tenga; si no, `/usuarios` lo dice con su nombre y no guarda nada.
+> - **Ni superadmin ni desarrollador aprueban por su rol.** Ven el registro de todos, pero corregir, confirmar y aprobar lo exige el **servicio** mirando la matriz (`permisos.clavesDe`), no la sesión. En su pantalla sale un aviso con quién es el que aprueba.
+> - El que aprueba **se aprueba también lo suyo**: lo decidió Camilo, a sabiendas de que se pierde el control cruzado.
+>
+> Hoy la tiene **Laura**.
 
 `/fichaje` **no está en el catálogo de permisos, a propósito**: lo que no está en el catálogo queda abierto a quien haya entrado. Si fichar necesitara un permiso habría que concedérselo a cada uno, y sería una forma más de que alguien no pueda fichar el día que le toca.
 
@@ -128,8 +138,44 @@ Lo que **no** se tocó: los días que ya pasaban de ocho horas. Ahí están las 
 
 Una persona no puede tener **dos jornadas abiertas a la vez**. Eso **no** se defiende con un `if`: dos pulsaciones seguidas en un móvil con mala cobertura llegan como dos peticiones y el `if` las deja pasar a las dos. Lo garantiza un índice único parcial, `uq_fichaje_abierto`, que es lo único que no se puede burlar. Ver [[Base de datos]].
 
+## Cada uno pide corregir lo suyo (db/159, 25/09/2026)
+
+Quien ficha puede **pedir** que se corrija su fichaje desde «Mis jornadas»: la hora de entrada, la de salida, o **una jornada entera que no fichó**. Es una **petición, no un cambio**: el fichaje no se toca hasta que lo aprueba quien lleva el registro. Si se rechaza, se queda como estaba y la persona lee en su semana **por qué** (rechazar exige escribirlo). Mientras nadie la resuelve, la puede **retirar**.
+
+| En su semana | Qué sale |
+|---|---|
+| una jornada | el botón **corregir**; con una petición en marcha, debajo: *«Pediste 08:30 – 17:00 · esperando a Laura»* y **retirar** |
+| un día pasado sin fichar | **pedir jornada** (también sábados y domingos: quien trabajó y no fichó tiene que poder pedirlo) |
+| una petición rechazada | debajo de la jornada, en rojo, quién la rechazó y su porqué |
+
+**Las reglas, en el servicio:** hace falta motivo; nada en el futuro; ni más de 16 horas seguidas (eso es una hora mal escrita) ni más de **60 días atrás** (lo viejo ya se cobró: se habla con quien lleva el registro); **no se puede pisar con otra jornada suya**; y pedir lo que ya hay no es pedir nada. La hora se escribe como `hh:mm` del día de la jornada: si la salida queda antes que la entrada, es que se salió pasada la medianoche y va al día siguiente.
+
+**Una sola petición abierta por jornada** (y por día, si es una jornada entera): lo garantiza la base con dos índices únicos parciales, por lo mismo que `uq_fichaje_abierto`.
+
+### La jornada que se quedó abierta
+
+Es el caso más común y el que más estorba: con una jornada abierta de ayer **no se puede fichar hoy** (`uq_fichaje_abierto`). Por eso es **la única petición que toca algo al momento**: al pedir la hora de salida de una jornada abierta de un día pasado, se **cierra ya con la hora de la pulsación** —como si hubiera pulsado «Salir», que es justo lo que habría hecho— y la hora buena queda pedida. Así puede volver a fichar sin esperar a nadie. El aviso ámbar del panel de fichar trae el botón **«Poner mi hora de salida»**.
+
+### Qué hace aprobar
+
+Aplica la corrección **con el mismo rastro que una a mano**: lo que había queda en `entrada_original` / `salida_original` (que solo se escriben la primera vez), la firma **quien la pidió** con su motivo (`corregido_por`) y la jornada queda **confirmada por quien aprueba** (`aprobado_por`): acaba de mirar esas horas exactas. Si lo que se pide es una jornada entera, se crea en ese momento. Todo en una transacción con la petición bloqueada: dos pestañas no pueden aplicar la misma corrección dos veces.
+
+> [!warning] Una jornada con la corrección pedida no se confirma
+> En «Horas por confirmar» sale marcada **«pide corrección»**, sin botón de confirmar, y la tanda «Confirmar las que se ven» se la salta. El servidor también (`aprobar()` la excluye): sería dar por buenas justo las horas que la persona dice que están mal. Se resuelve la corrección, que ya la deja confirmada.
+
+El panel **«Correcciones pedidas»** enseña cómo está la jornada **ahora** y lo que **pide**, con la hora que cambia en dorado, y avisa si la jornada **cambió después** de pedirla (la corrigió alguien a mano). A quien aprueba le sale en el menú, junto a «Fichar jornada», cuántas le esperan.
+
+Probado contra la base real dentro de una transacción deshecha (46 comprobaciones): `Scripts de análisis/probar-correcciones-fichaje.js`.
+
+```
+db/159-fichaje-correcciones.sql     la tabla fichaje_correccion y la llave de una sola persona
+modules/Fichaje/fichaje.service.js  las reglas: qué se puede pedir y quién aprueba
+modules/Fichaje/fichaje.repo.js     pedir, listar, aprobar/rechazar y retirar, en transacción
+```
+
 ## Lo que falta
 
+- **Nadie avisa por WhatsApp de una corrección.** Quien aprueba la ve en el menú y en su pantalla; quien la pidió, en su semana. Un aviso a cada uno sería lo natural, y la plantilla de Meta habría que pedirla.
 - **Nadie avisa a quien se olvida.** El parte del día dice quién no ha fichado, pero hay que entrar a mirarlo. Un WhatsApp a las 10:00 sería lo natural, y la plantilla de Meta habría que pedirla.
 - **Las horas del fichaje no entran en ningún informe**: están en su pantalla y en el parte, y no se cruzan todavía con nóminas ni con nada. Ahora que se aprueban, el paso natural es que **solo las aprobadas** viajen a donde sea que vayan.
 - **Nadie avisa a quien tiene horas por confirmar.** La cola se ve entrando a `/fichaje`; si se llena, no se entera nadie.

@@ -55,21 +55,33 @@ sobre HTTPS** (o en localhost). En Render lo es; si algún día se sirviera por
 HTTP plano, todas las ubicaciones llegarían como `error` sin que nadie tocara
 nada.
 
-## Los dos candados, que no son iguales
+## Los candados, que no son iguales
 
 | | Quién |
 |---|---|
 | **Fichar** | cualquiera que haya entrado y tenga el fichaje activado en su ficha |
-| **Corregir** | **solo el desarrollador** |
+| **Pedir que se corrija lo suyo** | lo mismo: viene con el fichaje (db/159) |
+| **Ver el registro de todos** | la llave `/fichaje/revisar` y los roles de acceso total |
+| **Corregir a mano, confirmar y aprobar correcciones** | **solo** quien tiene `/fichaje/revisar` **en su matriz** |
 
 `/fichaje` **no** está en el catálogo de permisos, a propósito: lo que no está en
 el catálogo queda abierto a quien haya entrado. Si fichar necesitara un permiso,
 habría que concedérselo a cada uno y sería una forma más de que alguien no pueda
 fichar el día que le toca.
 
-Corregir no se reparte por casilla: va por rol de desarrollador, el mismo candado
-que las migraciones. La responsabilidad del registro recae en una sola persona y
-repartirla la diluiría.
+La llave de aprobar la tiene **una sola persona**: lo vigila la base
+(`uq_permiso_fichaje_revisar`), y el servicio exige que esté en la matriz, así
+que ni superadmin ni desarrollador aprueban por su rol. La responsabilidad del
+registro recae en una sola persona y repartirla la diluiría.
+
+## Las correcciones que pide cada uno
+
+Son **peticiones** (`fichaje_correccion`): el fichaje no cambia hasta que se
+aprueban. Aprobar aplica el cambio con su rastro (lo que había, en
+`*_original`), lo firma quien lo pidió y deja la jornada confirmada. La única que
+toca algo al momento es la de una jornada que se quedó **abierta** de un día
+pasado: se cierra con la hora de la pulsación para que pueda volver a fichar.
+Ver la nota Fichaje del vault.
 
 ## Por qué corregir no pisa nada
 

@@ -74,7 +74,7 @@ Tres son **materializadas** (con índice único, para poder refrescarlas en conc
 
 ### El resto, por módulo
 
-Convenio y nómina (`collective_agreement`, `salary_table_row`, `contrato`, `nomina_mes`, `nomina_fila`, `variable_nomina`, `liquidacion`), selección (`candidatura`, `solicitud_ett`, `incorporacion`), taller (`mantenimiento`, `factura_taller`, `odometro_ancla`), ticketera (`ticket`, `ticket_evento`, `ticket_routing`), control (`alerta_control` y sus tres satélites, `llamada_alerta`, `llamada_cc`), fichaje (`fichaje`, `fichaje_turno`, `puerta_comando`), recaudación, documentos y bitácora (`bitacora_horas`, `bitacora_sello`).
+Convenio y nómina (`collective_agreement`, `salary_table_row`, `contrato`, `nomina_mes`, `nomina_fila`, `variable_nomina`, `liquidacion`), selección (`candidatura`, `solicitud_ett`, `incorporacion`), taller (`mantenimiento`, `factura_taller`, `odometro_ancla`), ticketera (`ticket`, `ticket_evento`, `ticket_routing`), control (`alerta_control` y sus tres satélites, `llamada_alerta`, `llamada_cc`), fichaje (`fichaje`, `fichaje_correccion`, `fichaje_turno`, `puerta_comando`), recaudación, documentos y bitácora (`bitacora_horas`, `bitacora_sello`).
 
 ## Cómo mirar el esquema
 

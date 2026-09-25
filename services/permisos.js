@@ -147,7 +147,11 @@ const CATALOGO = [
     // que ni gerencia ni dirección la reciben por llevar el catálogo entero.
     // Las horas que aquí se aprueban son las que luego se cobran; quién las
     // firma no se decide por descarte.
-    { clave: '/fichaje/revisar', etiqueta: 'Fichajes · corregir y aprobar horas', manual: true },
+    //
+    // Y es de UNA sola persona (db/159, uq_permiso_fichaje_revisar): con ella
+    // se aprueban también las correcciones que pide cada uno de su fichaje.
+    // Para dársela a otra hay que quitársela antes a quien la tenga.
+    { clave: '/fichaje/revisar', etiqueta: 'Fichajes · corregir, confirmar horas y aprobar correcciones (una sola persona)', manual: true },
   ] },
   { grupo: 'Caja', items: [
     // Nacen APAGADOS para todo el mundo, hasta para dirección: `manual` los
@@ -383,14 +387,29 @@ async function guardar(usuarioId, claves, { usuarioMod } = {}) {
   const id = Number(usuarioId);
   if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el usuario');
   const limpias = [...new Set((claves || []).filter(c => ES_CLAVE.has(c)))];
-  await db.transaccion(async cli => {
-    await cli.query('DELETE FROM usuario_permiso WHERE usuario_id = $1', [id]);
-    for (const c of limpias) {
-      await cli.query(
-        'INSERT INTO usuario_permiso (usuario_id, clave, usuario_mod) VALUES ($1, $2, $3)',
-        [id, c, usuarioMod || null]);
+  try {
+    await db.transaccion(async cli => {
+      await cli.query('DELETE FROM usuario_permiso WHERE usuario_id = $1', [id]);
+      for (const c of limpias) {
+        await cli.query(
+          'INSERT INTO usuario_permiso (usuario_id, clave, usuario_mod) VALUES ($1, $2, $3)',
+          [id, c, usuarioMod || null]);
+      }
+    });
+  } catch (e) {
+    // Una llave de una sola persona que ya tiene otra (db/159). Se dice quién,
+    // que es lo que hace falta para arreglarlo.
+    if (e.code === '23505' && e.constraint === 'uq_permiso_fichaje_revisar') {
+      const r = await db.consulta(`
+        SELECT btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS quien
+          FROM usuario_permiso p JOIN usuario u ON u.id = p.usuario_id
+         WHERE p.clave = '/fichaje/revisar' LIMIT 1`);
+      const q = r.rows[0] ? r.rows[0].quien : 'otra persona';
+      throw new Error('La llave de aprobar los fichajes solo la puede tener una persona, ' +
+        'y ya la tiene ' + q + '. Quítasela primero y luego dásela a quien quieras. No se ha guardado nada.');
     }
-  });
+    throw e;
+  }
   invalidar(id);
   return { claves: limpias };
 }
