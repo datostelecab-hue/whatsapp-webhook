@@ -276,7 +276,7 @@ async function frente({ forzar = false, sedes = null } = {}) {
       // Dentro o fuera de la M-30, para quien lo quiera leer sin repetir la cuenta.
       dentroM30: dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)),
       // Dónde dejó al último pasajero y si vuelve hacia la M-30. Ver ultimoDestino.
-      ultimoDestino: ultimoDestino(c, dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)) === true),
+      ultimoDestino: ultimoDestino(c, dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)) === true, v.desde),
       // De cuál de las dos tuberías salió esto. No se pinta, pero contesta
       // "¿por qué dice eso?" sin abrir la base.
       fuente: v.fuente,
@@ -359,7 +359,16 @@ async function sueltos({ sedes = null, minSegundos = 180 } = {}) {
 // ella sin acercarse no es volver.
 const KM_MARGEN = 1, KM_VUELTAS = 3;
 
-function ultimoDestino(c, estaDentro) {
+function ultimoDestino(c, estaDentro, desdeSituacion) {
+  // Acaba de dejar a alguien y su pedido aún no ha llegado de BOLT: se dice,
+  // en vez de enseñar el viaje de antes con un veredicto que no es suyo. Solo
+  // los 20 minutos siguientes al fin del viaje: si para entonces no ha llegado
+  // (un viaje reservado con horas de antelación, que la pasada de pedidos no
+  // alcanza), se enseña lo que haya.
+  const reciente = desdeSituacion && Date.now() - new Date(desdeSituacion).getTime() < 20 * 60 * 1000;
+  if (c.viaje_sin_llegar && reciente) {
+    return { pendiente: true, texto: 'Acaba de salir de un viaje (terminado o cancelado): el pedido está llegando de BOLT' };
+  }
   if (!c.destino && c.destino_lat == null) return null;
   const dLat = c.destino_lat == null ? null : Number(c.destino_lat);
   const dLng = c.destino_lng == null ? null : Number(c.destino_lng);

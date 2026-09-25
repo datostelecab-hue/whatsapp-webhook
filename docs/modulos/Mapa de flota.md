@@ -105,7 +105,16 @@ Si el coche está fuera de la M-30, se compara lo lejos que estaba de ella al de
 
 El margen de 1 km es porque la M-30 no es un punto: moverse a lo largo de ella sin acercarse no es volver.
 
-**De dónde sale.** BOLT manda en cada pedido la dirección del destino y, en `order_stops`, las coordenadas de la parada de bajada; la ingesta lo tiraba. Desde `db/156`, `bolt_order` guarda también la matrícula, la hora en que dejó al pasajero (`dejado_ts`) y el destino con sus coordenadas (las reales si BOLT las da). El mapa coge el último de ese coche en las últimas 12 horas. Los pedidos entran cada 10 minutos, así que el último destino puede tardar eso en aparecer.
+**De dónde sale.** BOLT manda en cada pedido la dirección del destino y, en `order_stops`, las coordenadas de la parada de bajada; la ingesta lo tiraba. Desde `db/156`, `bolt_order` guarda también la matrícula, la hora en que dejó al pasajero (`dejado_ts`) y el destino con sus coordenadas (las reales si BOLT las da). El mapa coge el último de ese coche en las últimas 12 horas, **y solo de los que terminó** (`estado = 'finished'`).
+
+> [!bug] Los pedidos que le ofrecieron y no cogió
+> BOLT también manda los pedidos que se le ofrecieron al conductor y no aceptó (`driver_did_not_respond`, `driver_rejected`), y muchos traen la hora de bajada de **quien sí los hizo**. La primera versión los tomaba por suyos: el 1208MJY estaba en Aranjuez y el mapa decía «dejado en Tres Cantos» por un viaje que ni aceptó.
+
+**El viaje que acaba de terminar, al momento (25/09/2026).** BOLT **no da los viajes en curso**: un pedido solo aparece en `getFleetOrders` cuando se cierra. Con la pasada de pedidos recientes cada 10 minutos, el último destino llegaba con hasta ese retraso, y mientras tanto la ficha enseñaba el viaje de antes. Ahora el bucle de estados, que va cada 10 segundos, ve el fin del viaje (el conductor pasa de `has_order` a otra cosa) y pide a BOLT **solo lo creado alrededor de cuando empezó ese viaje**: de 15 minutos antes a 2 después, unas decenas de pedidos de toda la flota, una página. Si BOLT aún no lo da por cerrado, reintenta durante dos minutos. Medido: 12 pedidos en 1,8 s. La pasada de 10 minutos sigue de red. Está en `traerViajesTerminados` (`services/ingesta.js`).
+
+**Y mientras llega, no miente.** Si el último viaje que empezó el coche (según los apuntes de BOLT) es posterior a cualquier pedido suyo que tengamos, la ficha dice «Acaba de salir de un viaje (terminado o cancelado): el pedido está llegando de BOLT» en vez de enseñar el anterior con un veredicto que no es suyo. Solo los 20 minutos siguientes al fin del viaje: pasado eso se enseña lo que haya (un viaje reservado con horas de antelación no lo alcanza ninguna de las dos pasadas).
+
+**No acumula más.** Los pedidos ya se guardaban todos (los usan la nómina y la recaudación). Esto solo les añade el destino y la matrícula, cinco columnas; el mapa lee el último de cada coche con un índice (`db/156` y `db/157`).
 
 ## La lista y el buscador
 

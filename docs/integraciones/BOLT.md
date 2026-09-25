@@ -33,6 +33,8 @@ La API tiene **seis** (`open-api.json`): los cuatro de abajo más `test` —un p
 
 Todos son `POST`, todos piden `company_id` y una ventana `start_ts`/`end_ts` en epoch de segundos. `getFleetOrders` quiere además `company_ids` (array) y `time_range_filter_type: 'created'`.
 
+**`getFleetOrders` no da los viajes en curso.** Un pedido solo aparece cuando se cierra: `finished`, `client_cancelled`, `driver_did_not_respond`, `driver_rejected`, `driver_cancelled_after_accept` o `client_did_not_show` (medido el 25/09/2026 sobre 31.870 pedidos: no hay otro estado). Y trae también los que se le ofrecieron al conductor y **no aceptó**, muchos con la hora de bajada de quien sí los hizo: para saber qué hizo un conductor, solo `finished`. El mapa trae el pedido de un viaje en cuanto los apuntes de estado dicen que terminó (ver [[Mapa de flota]]).
+
 **Por qué dos tareas de órdenes.** La de 48 h es para el dinero: una orden *madura* durante horas y hay que volver a por su precio final. Pero con esa ventana las alertas de [[Control]] llegaban con hasta 60 minutos de retraso — para cuando sonaba el aviso, el conductor ya había hecho el turno entero. La de 2 h son ~2.000 órdenes por pasada en vez de las ~50.000 de la de 48 h: veinticinco veces más barata, y por eso se puede pedir cada diez minutos. Escriben en la misma tabla por la misma puerta idempotente, así que no se estorban. La de 2 h **no guarda el crudo**: repetir ese payload cada diez minutos serían cientos de MB al día de lo mismo.
 
 ## Los estados

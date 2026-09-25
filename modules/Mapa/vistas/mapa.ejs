@@ -392,7 +392,9 @@
     // DÓNDE DEJÓ AL ÚLTIMO PASAJERO. De viaje no se enseña: ese «último» es el
     // de antes y el que importa es el que lleva ahora.
     const ud = c.ultimoDestino;
-    if (ud && c.situacion !== 'viaje') {
+    if (ud && ud.pendiente && c.situacion !== 'viaje') {
+      lineas.push('<i class="fa-solid fa-flag-checkered w-4 text-telecab-muted"></i> <span class="text-telecab-muted">' + esc(ud.texto) + '</span>');
+    } else if (ud && c.situacion !== 'viaje') {
       lineas.push('<i class="fa-solid fa-flag-checkered w-4 text-telecab-muted"></i> <span class="text-telecab-muted">último destino:</span> '
         + esc(ud.direccion || 'sin dirección')
         + (ud.dejadoAt ? ' <span class="text-telecab-muted">· hace <span data-desde="' + esc(ud.dejadoAt) + '">' + desdeHaceTxt(ud.dejadoAt) + '</span></span>' : '')

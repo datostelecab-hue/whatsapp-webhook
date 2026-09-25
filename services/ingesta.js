@@ -433,6 +433,96 @@ async function latido({ forzar = false, soloFuente } = {}) {
 let alDia = false;
 let ultimaAlDia = { at: null, traidos: 0, nuevos: 0, ms: null, error: null };
 
+// ── EL VIAJE QUE ACABA DE TERMINAR, AL MOMENTO (25/09/2026) ────────────────
+//
+// getFleetOrders NO da los viajes en curso: un pedido solo aparece cuando se
+// cierra (terminado, cancelado…). Con la pasada de pedidos recientes cada diez
+// minutos, el mapa tardaba hasta eso en saber dónde había dejado un coche al
+// último pasajero, y mientras tanto enseñaba el viaje de antes. Camilo lo vio
+// con el 1208MJY: BOLT decía «Esperando · 1 min» en Aranjuez y el mapa, Tres
+// Cantos.
+//
+// Pero este bucle ve el fin del viaje a los pocos segundos: un conductor pasa
+// de `has_order` a otra cosa. En ese momento se le pide a BOLT solo lo creado
+// alrededor de cuando empezó ese viaje (un cuarto de hora antes y dos minutos
+// después: unas decenas de pedidos de toda la flota, una página) y se guarda.
+// Si BOLT aún no lo da por cerrado, se reintenta en las pasadas siguientes
+// durante dos minutos; después queda para la pasada de diez minutos, que sigue
+// siendo la red.
+const viajesPorTraer = new Map();          // 'driver|inicioSeg' → { flota, driver, inicio, fin, intentos }
+const INTENTOS_VIAJE = 12;                 // 12 pasadas de 10 s: dos minutos
+const ANTES_DEL_INICIO_S = 15 * 60, DESPUES_DEL_INICIO_S = 2 * 60;
+// Para decir «este viaje ya lo tenemos» basta mirar desde 5 min antes de que
+// empezara: entre que el cliente pide y alguien acepta pasan segundos, o un par
+// de minutos si otros no respondieron. Con los 15 de la ventana de pedir, un
+// viaje cancelado poco antes se tomaría por este.
+const YA_ANTES_S = 5 * 60;
+
+async function traerViajesTerminados(logsPorFlota) {
+  const { fetchAllPaginated } = require('./bolt');
+  const staging = require('./repo/staging');
+  const ahora = Math.floor(Date.now() / 1000);
+
+  // 1. Los fines de viaje: un apunte que NO es has_order justo después de uno
+  //    que sí lo era, para ese conductor. Lo de antes se mira en la base, que
+  //    ya tiene los apuntes recién guardados.
+  const cand = [];
+  logsPorFlota.forEach(({ flota, logs }) => logs.forEach(l => {
+    const t = Number(l.created);
+    if (l.driver_uuid && l.state && l.state !== 'has_order' && t && ahora - t < 15 * 60) {
+      cand.push({ flota, driver: l.driver_uuid, t });
+    }
+  }));
+  if (cand.length) {
+    const r = await db.consulta(
+      `SELECT f.d AS driver, f.t, EXTRACT(EPOCH FROM prev.ocurrido_at)::bigint AS inicio
+         FROM unnest($1::text[], $2::bigint[]) AS f(d, t)
+         CROSS JOIN LATERAL (
+           SELECT l.estado, l.ocurrido_at FROM bolt_state_log l
+            WHERE l.driver_uuid = f.d AND l.ocurrido_at < to_timestamp(f.t)
+            ORDER BY l.ocurrido_at DESC LIMIT 1) prev
+        WHERE prev.estado = 'has_order'`,
+      [cand.map(c => c.driver), cand.map(c => c.t)]);
+    r.rows.forEach(x => {
+      const c = cand.find(y => y.driver === x.driver && y.t === Number(x.t));
+      const k = x.driver + '|' + x.inicio;
+      if (c && !viajesPorTraer.has(k)) {
+        viajesPorTraer.set(k, { flota: c.flota, driver: x.driver, inicio: Number(x.inicio), fin: c.t, intentos: 0 });
+      }
+    });
+  }
+  if (!viajesPorTraer.size) return 0;
+
+  // 2. Los que ya están en la base (con cualquier desenlace aceptado) sobran.
+  const pend = [...viajesPorTraer.entries()];
+  const ya = await db.consulta(
+    `SELECT f.k FROM unnest($1::text[], $2::text[], $3::bigint[]) AS f(k, d, i)
+      WHERE EXISTS (SELECT 1 FROM bolt_order b
+                     WHERE b.driver_uuid = f.d
+                       AND b.creado_ts BETWEEN to_timestamp(f.i - ${YA_ANTES_S}) AND to_timestamp(f.i + ${DESPUES_DEL_INICIO_S})
+                       AND b.estado NOT IN ('driver_did_not_respond', 'driver_rejected'))`,
+    [pend.map(([k]) => k), pend.map(([, v]) => v.driver), pend.map(([, v]) => v.inicio)]);
+  ya.rows.forEach(x => viajesPorTraer.delete(x.k));
+  if (!viajesPorTraer.size) return 0;
+
+  // 3. Una llamada por flota, con la ventana que cubre a todos sus pendientes.
+  let traidos = 0;
+  const porFlota = new Map();
+  viajesPorTraer.forEach(v => { if (!porFlota.has(v.flota)) porFlota.set(v.flota, []); porFlota.get(v.flota).push(v); });
+  for (const [flota, vs] of porFlota) {
+    const desde = Math.min(...vs.map(v => v.inicio)) - ANTES_DEL_INICIO_S;
+    const hasta = Math.min(ahora, Math.max(...vs.map(v => v.inicio)) + DESPUES_DEL_INICIO_S);
+    const ordenes = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders',
+      { company_ids: [flota], company_id: flota, time_range_filter_type: 'created', start_ts: desde, end_ts: hasta },
+      'orders', 1000, `viaje terminado ${flota}`);
+    if (ordenes.length) traidos += await staging.guardarOrders(ordenes, null);
+  }
+
+  // 4. Un intento más para los que sigan; los que agotan, a la pasada de 10 min.
+  viajesPorTraer.forEach((v, k) => { if (++v.intentos >= INTENTOS_VIAJE || ahora - v.fin > 15 * 60) viajesPorTraer.delete(k); });
+  return traidos;
+}
+
 async function estadosAlDia({ ventanaMin = 5 } = {}) {
   if (!db.HAY_BD) return { saltado: 'sin base de datos' };
   if (alDia) return { saltado: 'la pasada anterior sigue dentro' };
@@ -444,15 +534,22 @@ async function estadosAlDia({ ventanaMin = 5 } = {}) {
     const hasta = Math.floor(Date.now() / 1000);
     const desde = hasta - ventanaMin * 60;
     let todos = [];
+    const porFlota = [];
     for (const f of CONFIG_BOLT.flotas) {
       const logs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs',
         { company_id: f.id, start_ts: desde, end_ts: hasta }, 'state_logs', 1000, `directo ${f.id}`);
       todos = todos.concat(logs);
+      porFlota.push({ flota: f.id, logs });
     }
     // Sin descarga: `descarga_id` admite NULL y la copia cruda ya la deja la
     // tarea de cinco minutos.
     const nuevos = await staging.guardarStateLogs(todos, null);
-    ultimaAlDia = { at: new Date(), traidos: todos.length, nuevos, ms: Date.now() - t0, error: null };
+    // El viaje que acaba de terminar, con su destino, sin esperar a la pasada
+    // de pedidos. En su propio try: que falle esto no puede parar el directo.
+    let viajes = 0;
+    try { viajes = await traerViajesTerminados(porFlota); }
+    catch (e) { console.warn('⚠️ [DIRECTO] viajes terminados:', e.message); }
+    ultimaAlDia = { at: new Date(), traidos: todos.length, nuevos, viajes, pendientes: viajesPorTraer.size, ms: Date.now() - t0, error: null };
     return ultimaAlDia;
   } catch (e) {
     ultimaAlDia = { at: new Date(), traidos: 0, nuevos: 0, ms: Date.now() - t0, error: e.message };
@@ -467,4 +564,4 @@ async function estadosAlDia({ ventanaMin = 5 } = {}) {
 /** ¿El directo esta vivo? Para diagnosticar sin abrir la base. */
 const estadoAlDia = () => ({ corriendo: alDia, ultima: ultimaAlDia });
 
-module.exports = { TAREAS, latido, ejecutar, estado, toca, estadosAlDia, estadoAlDia };
+module.exports = { TAREAS, latido, ejecutar, estado, toca, estadosAlDia, estadoAlDia, _traerViajesTerminados: traerViajesTerminados };

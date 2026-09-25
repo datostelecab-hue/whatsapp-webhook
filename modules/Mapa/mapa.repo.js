@@ -89,7 +89,16 @@ async function coches(sedes) {
            ud.destino_lat, ud.destino_lng,
            ud.dejado_ts                                              AS dejado_at,
            EXTRACT(EPOCH FROM (now() - ud.dejado_ts))::int           AS dejado_hace,
-           kd.metros                                                 AS metros_desde_dejado
+           kd.metros                                                 AS metros_desde_dejado,
+           -- UN VIAJE ACABA DE TERMINAR Y SU PEDIDO AÚN NO HA LLEGADO: el último
+           -- has_order del coche empezó después de cualquier pedido suyo que
+           -- tengamos. Sin esto, la ficha enseñaba el viaje de ANTES como si
+           -- fuera el último (el 1208MJY en Aranjuez con «Tres Cantos»).
+           (ho.t IS NOT NULL AND NOT EXISTS (
+              SELECT 1 FROM bolt_order b2
+               WHERE b2.matricula_norm = v.matricula_norm
+                 AND b2.creado_ts BETWEEN ho.t - interval '5 minutes' AND ho.t + interval '2 minutes'
+                 AND b2.estado NOT IN ('driver_did_not_respond', 'driver_rejected')))  AS viaje_sin_llegar
       -- SE PARTE DE NUESTRA FLOTA, NO DE MAPON (24/09/2026). Antes era al
       -- reves -de fv_posicion hacia vehiculo- y un coche que Mapon no conoce
       -- no salia en el mapa ni avisaba de nada: sencillamente no existia. Lo
@@ -126,10 +135,21 @@ async function coches(sedes) {
         SELECT bo.destino, bo.destino_lat, bo.destino_lng, bo.dejado_ts
           FROM bolt_order bo
          WHERE bo.matricula_norm = v.matricula_norm
+           -- SOLO LOS QUE HIZO. BOLT también manda los pedidos que le
+           -- ofrecieron y NO cogió (driver_did_not_respond, driver_rejected), y
+           -- muchos traen la hora de bajada de quien sí los hizo: el 1208MJY
+           -- salía «dejado en Tres Cantos» por uno que ni aceptó.
+           AND bo.estado = 'finished'
            AND bo.dejado_ts IS NOT NULL
            AND bo.dejado_ts > now() - interval '12 hours'
          ORDER BY bo.dejado_ts DESC
          LIMIT 1) ud ON TRUE
+      -- El último viaje que EMPEZÓ, según los apuntes de BOLT (llegan cada 10 s).
+      LEFT JOIN LATERAL (
+        SELECT max(l.ocurrido_at) AS t
+          FROM bolt_state_log l
+         WHERE l.vehiculo_uuid = fvv.uuid AND l.estado = 'has_order'
+           AND l.ocurrido_at > now() - interval '12 hours') ho ON TRUE
       LEFT JOIN LATERAL (
         SELECT sum(o.metros)::int AS metros
           FROM fv_odometro o
