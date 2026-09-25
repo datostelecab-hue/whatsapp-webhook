@@ -19,7 +19,7 @@ y [[BOLT]] (quién está conectado).
 | Qué | De dónde sale | ¿Era nuevo? |
 |---|---|---|
 | Dónde está el coche | `fv_posicion` | **Sí.** Es lo único que se ha añadido |
-| Qué hace en BOLT | `fv_ahora` | No. Ya daba situación, conductor, teléfono y km |
+| Qué hace en BOLT | la [[El ahora de la flota\|foto del ahora]] (desde el 25/09/2026; antes `fv_ahora` y el apunte crudo, calculados aquí) | No. La misma que lee En directo de Control |
 
 La posición **ya llegaba** de Mapon en cada vuelta de [[Flota viva]]:
 `unit/list.json` la trae en el mismo objeto del que se sacan el estado y el
@@ -188,6 +188,12 @@ El «hace X s» **no espera al servidor**: la ventanita lleva la hora del cambio
 > (`situacionDe()`). Comprobado: cero incoherentes.
 
 ### Y la mitad de BOLT entra por DOS tuberías
+
+> [!important] Desde el 25/09/2026 esto ya no se decide aquí
+> La regla de abajo —y el desempate de dos apuntes en el mismo segundo— vive en
+> la **[[El ahora de la flota|foto del ahora]]**, que comparten el mapa y En
+> directo. La consulta del mapa ya solo trae la posición; lo de BOLT lo pide a
+> la foto, que se hace una vez para todas las pantallas.
 
 La pregunta del semáforo —*¿hay alguien conectado con este coche?*— se puede
 contestar de dos sitios, y el mapa coge **la noticia más fresca de las dos**:

@@ -33,18 +33,24 @@
 // BOLT. Los dos son «se mueve y nadie responde por él», que es la pregunta.
 // Cuál de los dos es se dice en el detalle, no en el color.
 //
+// ── LO DE BOLT NO SE CALCULA AQUÍ (25/09/2026) ────────────────────────────
+//
+// Qué hace cada coche en BOLT sale de la FOTO DEL AHORA
+// (services/flotaViva/ahora.js), la misma que lee En directo de Control: una
+// sola cuenta, una sola regla, un solo desempate. Antes el mapa tenía su copia y
+// los dos decían cosas distintas del mismo conductor. Aquí solo se decide el
+// color.
+//
 // ── POR QUÉ HAY CACHÉ ──────────────────────────────────────────────────────
 //
-// La consulta cuesta unos 340 ms, casi todo de `fv_ahora`, que es una vista que
-// trabaja. Con quince pantallas abiertas refrescando cada 30 s serían quince
-// veces ese trabajo para devolver EXACTAMENTE lo mismo: el dato solo cambia
-// cuando corre la vuelta de Mapon.
-//
-// Así que se calcula una vez y se reparte. Diez segundos de caché es menos de
-// lo que tarda el dato en cambiar (~67 s el equipo del coche), así que no se
-// enseña nada más viejo de lo que ya era.
+// Con quince pantallas abiertas refrescando cada 10 s serían quince veces el
+// mismo trabajo para devolver EXACTAMENTE lo mismo. Así que se calcula una vez
+// y se reparte, y se tira en cuanto cambia algo: las posiciones nuevas (la
+// vuelta de Mapon llama a `olvidar`) o lo de BOLT (la foto del ahora avisa).
 
 const repo = require('./mapa.repo');
+const ahora = require('../../services/flotaViva/ahora');
+const { normMat } = require('../../services/flotaViva/fuentes');
 const { dentroDeM30, kmHastaM30 } = require('./m30');
 
 // EL «SIN SEÑAL» LO DICE MAPON, NO UN CRONÓMETRO NUESTRO.
@@ -100,44 +106,32 @@ const GPS_PARADO_S = 600;
 const BOLT_FIABLE_S = 1500;
 
 /**
- * La situación de BOLT de un coche, cogiendo la noticia MÁS FRESCA.
+ * La situación de BOLT de un coche, tal como la dice la foto del ahora.
  *
- * Hay dos caminos para lo mismo y ninguno es de fiar siempre:
- *
- *   · el APUNTE CRUDO (`bolt_state_log`), que escribe la ingesta cada 10 min;
- *   · el TRAMO abierto (`fv_ahora`), que construye el motor cada 5 min.
- *
- * Los dos salen de los mismos logs de BOLT y traen la hora del apunte, así que
- * se pueden comparar: gana el que tenga la hora más reciente. Cuando los dos
- * funcionan dicen lo mismo —comprobado coche a coche—; cuando uno se cae, el
- * otro sostiene el semáforo en vez de dejarlo mintiendo.
+ * La foto ya ha elegido la noticia más fresca (tramo del motor o último apunte)
+ * y ha desempatado; aquí solo se traduce a lo que usa el mapa. La ETIQUETA y la
+ * HORA vienen con la situación elegida, nunca sueltas: si la situación saliera
+ * del apunte y la etiqueta del tramo, la ventanita diría "Desconectado" sobre
+ * un coche pintado de verde.
  */
-function situacionDe(c) {
-  const tCrudo = c.crudo_at ? new Date(c.crudo_at).getTime() : null;
-  const tTramo = c.desde_tramo ? new Date(c.desde_tramo).getTime() : null;
-  const usaCrudo = tCrudo != null && (tTramo == null || tCrudo >= tTramo);
-  // La ETIQUETA y la HORA van con la situacion que se elige, no sueltas: si la
-  // situacion sale del apunte y la etiqueta del tramo, la ventanita decia
-  // "Desconectado" sobre un coche pintado de verde.
-  if (usaCrudo && c.situacion_cruda) {
-    return {
-      situacion: c.situacion_cruda,
-      etiqueta: c.etiqueta_cruda || c.situacion_etiqueta || null,
-      desde: c.crudo_at,
-      conductor: c.conductor_crudo || c.conductor || null,
-      telefono: c.telefono_crudo || c.telefono || null,
-      fuente: 'apunte',
-    };
+function situacionDe(b) {
+  if (!b || !b.situacion) {
+    return { situacion: null, etiqueta: null, desde: null, conductor: null, telefono: null, fuente: null, km: null, segundos: null };
   }
   return {
-    situacion: c.situacion || null,
-    etiqueta: c.situacion_etiqueta || null,
-    desde: c.desde_tramo || null,
-    conductor: c.conductor || c.conductor_crudo || null,
-    telefono: c.telefono || c.telefono_crudo || null,
-    fuente: c.situacion ? 'tramo' : null,
+    situacion: b.situacion,
+    etiqueta: b.situacion_etiqueta || null,
+    desde: b.desde || null,
+    conductor: b.conductor || null,
+    telefono: b.telefono || null,
+    fuente: b.fuente_ahora || null,
+    km: b.km == null ? null : Number(b.km),
+    segundos: b.segundos == null ? null : Number(b.segundos),
   };
 }
+
+// Lo de BOLT ha cambiado: la foto del mapa, hecha con lo de antes, ya no vale.
+ahora.alCambiar(() => cache.clear());
 
 // LA CACHE VA POR SEDES, NO SUELTA.
 //
@@ -150,7 +144,7 @@ const clave = sedes => (Array.isArray(sedes) && sedes.length ? [...sedes].sort()
 
 /** De qué color va este coche. La única regla del mapa. Ver EL SEMÁFORO arriba. */
 function tono(c, sit) {
-  const s = sit === undefined ? situacionDe(c).situacion : sit;
+  const s = sit === undefined ? null : sit;
   // Un coche NUESTRO del que Mapon no da ni una posicion: no se puede pintar
   // en el mapa. Esta en taller o siniestrado, o tiene el equipo quitado, o
   // nunca se le puso. Tiene su franja roja arriba.
@@ -208,7 +202,7 @@ function porQue(c, t, boltHace) {
   }
   if (t !== 'suelto') return null;
   const viejo = boltHace != null && boltHace > BOLT_FIABLE_S;
-  const quien = c.conductor_crudo || c.conductor;
+  const quien = c.conductor;
   const base = quien
     ? `Rueda y ${quien} no está conectado en BOLT`
     : 'Rueda y no hay nadie fichado en BOLT con este coche';
@@ -230,13 +224,18 @@ async function frente({ forzar = false, sedes = null } = {}) {
     return { ...guardado.datos, deCache: true };
   }
 
-  const [filas, frescura] = await Promise.all([repo.coches(sedes), repo.frescura(sedes)]);
+  // La posición es de este módulo; lo de BOLT, de la foto del ahora, que se
+  // hace una vez para todas las pantallas.
+  const [filas, frescura, foto] = await Promise.all([repo.coches(sedes), repo.frescura(sedes), ahora.foto()]);
 
   const boltHace = frescura.bolt_hace == null ? null : Number(frescura.bolt_hace);
   const boltFiable = boltHace != null && boltHace <= BOLT_FIABLE_S;
 
   const coches = filas.map(c => {
-    const v = situacionDe(c);
+    const v = situacionDe((c.matricula && foto.porMatricula.get(normMat(c.matricula)))
+      || (c.mapon_unit != null ? foto.porUnidad.get(Number(c.mapon_unit)) : null));
+    // Quién lo lleva AHORA, para el porqué de un rojo.
+    c.conductor = v.conductor;
     const t = tono(c, v.situacion);
     return {
       unidad: c.mapon_unit == null ? null : Number(c.mapon_unit),
@@ -281,9 +280,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
       // "¿por qué dice eso?" sin abrir la base.
       fuente: v.fuente,
       // Segundos que lleva en esa situación; la vista lo pinta como "2 h 14".
-      desdeHace: v.desde ? Math.max(0, Math.round((Date.now() - new Date(v.desde).getTime()) / 1000))
-        : (c.segundos_situacion == null ? null : Number(c.segundos_situacion)),
-      km: c.km == null ? null : Number(c.km),
+      desdeHace: v.desde ? Math.max(0, Math.round((Date.now() - new Date(v.desde).getTime()) / 1000)) : v.segundos,
+      km: v.km,
       sede: c.sede || null,
       tono: t,
       // Un rojo sobre datos de BOLT viejos no es un rojo: es un "no se sabe".

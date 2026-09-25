@@ -17,7 +17,23 @@ El cockpit de tráfico: el plan del cuadrante fundido con lo que rueda ahora mis
 
 **No se hace JOIN en SQL entre los dos mundos.** El Cuadrante vive en la base principal y Flota Viva puede vivir en otra (`FLOTA_VIVA_DB_URL`, variable de entorno). Se piden por separado —cada uno a su pool— y se cruzan aquí en JS por matrícula normalizada, que es lo único que comparten. Y cada fuente va con red: si Flota Viva se cae, el plan se ve igual, y al revés. La respuesta lleva `hayCuadrante`, `hayFlotaViva` y `hayActividad` para que la pantalla lo diga en vez de mentir en verde.
 
-## El AHORA sale de la noticia más fresca de BOLT (23/09/2026)
+## El AHORA sale de la foto común, y se refresca cada 10 s (25/09/2026)
+
+Lo que hace cada coche y cada persona **ahora mismo** ya no se calcula aquí: sale de la **[[El ahora de la flota|foto del ahora]]**, la misma que lee el [[Mapa de flota]]. Antes Control y el mapa lo calculaban cada uno por su lado y sin desempate, y el 25/09/2026 decían cosas distintas de Duvan con los mismos apuntes delante (dos en el mismo segundo).
+
+Y ya no espera a la carga entera de 45 s. **Cada 10 s**, como el mapa, la pantalla pide `GET /control/api/directo/ahora` —la foto por conductor, ~9 kB, que si el mapa ya la ha pedido ni siquiera toca la base— y lo pone **encima** de lo cargado:
+
+- si alguna de sus cuentas de BOLT está conectada, su «salió» pasa a conectado (o descanso) y el chip dice en qué;
+- si no, su «salió» es el que **el servidor dejó calculado** para ese caso (`salidaSinConexion`): la regla de `salidaDe()` sigue viviendo en un solo sitio;
+- solo en los turnos **vivos** (`vivoAplica`): en uno terminado no hay ningún ahora que poner;
+- con una fila abierta no se repinta la lista (se está trabajando con ella).
+
+Lo demás —horas, km, rechazos, avisos, «no terminará la jornada»— sigue con la carga entera de 45 s.
+
+> [!tip] «Desconectado» y «nadie conectado» son lo mismo
+> La primera versión contaba como cambio pasar de una a otra y repintaba 18 filas cada 10 s por nada. Se igualan antes de comparar: con la foto real, **cero cambios de mentira**.
+
+### Antes: la noticia más fresca, en cada sitio (23/09/2026)
 
 Hay **dos tuberías** que traen lo mismo desde BOLT, y ninguna es de fiar siempre:
 

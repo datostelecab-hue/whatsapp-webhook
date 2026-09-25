@@ -159,6 +159,14 @@ Un estado de BOLT que no sabemos traducir **no se calla**: se apunta en `fv_esta
 Después de los tramos, y en este orden:
 
 1. `franjas.revisar()` — las incidencias que obligan a llamar (ver [[Jornada y turnos]]). Va después a propósito: lee `fv_ahora`, y antes miraría la foto anterior.
+1. Justo al terminar la vuelta, **avisa a la [[El ahora de la flota|foto del ahora]]** (`invalidar('vuelta')`): los tramos son nuevos y la foto que tengan las pantallas ya no vale.
+
+> [!note] Dos apuntes en el mismo segundo (25/09/2026)
+> Antes de reproducir los apuntes, el motor los ordena con `desempate.ordenar()`:
+> empatados, gana el de más rango (espera < viaje < descanso < desconectado). Es
+> la misma regla que la foto del ahora; antes mandaba el orden en que BOLT los
+> devolviera, que no está garantizado, y un tramo podía quedarse en «espera» de
+> quien estaba en descanso.
 2. `rutas.ingestarRutas()` — trayectos de las últimas 3 h.
 3. `rutas.ingestarOdometro()` — odómetro CAN de las últimas 3 h.
 

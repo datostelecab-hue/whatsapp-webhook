@@ -55,7 +55,12 @@ El total de horas efectivas es **`has_order` + `waiting_orders`**: las dos gener
 - La ventana que se pide tiene que ser **generosa**. Un conductor desconectado tres horas no emite ni un log en esas tres horas: con ventana corta ese coche desaparece del mapa en vez de salir como desconectado.
 - Hay un tope de hueco de **12 horas** para no imputar estado a un coche que simplemente dejó de reportar. No puede ser corto: en la muestra real había **21 sesiones de `busy` de más de 2 h y una de 7,5 h**, que son justo las que interesan.
 
-**El empate del mismo segundo.** Cuando dos logs caen en el mismo segundo se ordenan por `RANGO_ESTADO` (`inactive` 0 < `busy` 1 < `waiting_orders` 2 < `has_order` 3) y gana el último: ante un empate se impone el estado que NO acusa. Sin eso, el ganador lo decidía el orden de la respuesta de BOLT y el resultado ni siquiera era reproducible.
+**El empate del mismo segundo.** Cuando dos logs caen en el mismo segundo, hay **dos reglas, distintas a propósito**:
+
+- **La auditoría de km** los ordena por `RANGO_ESTADO` (`inactive` 0 < `busy` 1 < `waiting_orders` 2 < `has_order` 3) y gana el último: ante un empate se impone el estado que **NO acusa**, porque ahí se acusa a alguien.
+- **Las pantallas en vivo y el motor de tramos** (`services/flotaViva/desempate.js`) hacen ganar al de más rango de *espera < viaje < descanso < desconectado*, porque ahí la pregunta es qué hace **ahora** y la contesta el dato: de 1.053 empates «waiting_orders + busy» en 14 días, en los 639 que se pueden comprobar el estado de verdad era **busy**. Ver [[El ahora de la flota]].
+
+Sin una regla, el ganador lo decidía el orden de la respuesta de BOLT (o el plan de la consulta) y el resultado ni siquiera era reproducible: el mapa y Control llegaron a decir cosas distintas del mismo conductor.
 
 **Un coche, dos conductores.** El turno de día y el de noche comparten coche y sus logs llegan mezclados. Si se mira solo "el último log", el `inactive` que emite el saliente al cerrar sesión cae encima de los km del entrante y lo acusa sin motivo. Por eso se mira el último estado de **cada** conductor y manda el que esté más trabajando. Ver [[Auditoria de flota]].
 

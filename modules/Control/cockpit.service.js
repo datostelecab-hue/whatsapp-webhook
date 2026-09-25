@@ -739,7 +739,7 @@ async function enDirecto({ dia } = {}) {
   const sinPlan = ventanasNN.flatMap(({ turno, etq, vent }) =>
     [...((vent && vent.porUuid) || new Map()).values()]
       .filter(esNN)
-      .map(a => ({ ...a, _turno: turno, _turnoEtq: etq })))
+      .map(a => ({ ...a, _turno: turno, _turnoEtq: etq, _vivo: !!(vent && !vent.terminada) })))
     .map(a => ({
       // Una clave propia por FILA (la misma persona puede tener la de día y la
       // de noche): es lo que usan los botones de llamar y justificar para
@@ -755,6 +755,8 @@ async function enDirecto({ dia } = {}) {
       enBolt: a.km, desconectado: a.kmFuera, fuenteKm: a.fuenteKm || null,
       total: Math.round((a.km + a.kmFuera) * 10) / 10,
       minutos: a.minutos, conectadoAhora: a.conectadoAhora,
+      // Para el ahora de cada 10 s, como las filas del plan.
+      cuentas: [a.uuid], vivoAplica: a._vivo,
       primera: a.primera || null,
       // Sus avisos: los provocó él, aunque no esté en el plan. Antes se contaban
       // en la cabecera y no se podían ver en ninguna pestaña.
@@ -948,6 +950,13 @@ async function enDirecto({ dia } = {}) {
         cuadrante: [...f.cuadrantes][0] || '', cuadrantes: [...f.cuadrantes],
         actividad: paraPintar(f.actividad),
         salida,
+        // PARA EL AHORA DE CADA 10 s (la pantalla lo aplica encima, sin volver a
+        // pedir el turno entero): sus cuentas de BOLT, qué sería su «salió» si
+        // se desconectara ahora mismo, y si su turno sigue vivo —en uno
+        // terminado no hay ningún ahora que poner—.
+        cuentas,
+        salidaSinConexion: salidaDe(f.actividad ? { ...f.actividad, conectadoAhora: false } : null, vent),
+        vivoAplica: !!(vent && !vent.terminada),
         incidencias: mios,
         avisosDelCoche: f.incidencias.length,
         cocheCambiado,

@@ -27,6 +27,7 @@
 
 const db = require('./db');
 const fuentes = require('./fuentes');
+const desempate = require('./desempate');
 
 const VENTANA_H = Number(process.env.FLOTA_VIVA_VENTANA_H) || 2;
 // El padrón de coches y conductores cambia de Pascuas a Ramos: no hace falta
@@ -329,6 +330,12 @@ async function pasada() {
       traducir(),
     ]);
 
+    // DOS APUNTES EN EL MISMO SEGUNDO: el de ahora es el de más rango, con la
+    // MISMA regla que la foto del ahora (desempate.js). Antes mandaba el orden
+    // en que BOLT los devolviera, que no está garantizado, y el tramo abierto
+    // podía decir «espera» de quien estaba en descanso.
+    estadosBolt.forEach(arr => desempate.ordenar(arr, e => mapa.get(e)));
+
     // Solo los vigilados, y por si acaso: `fv_vehiculo` ya está filtrado al
     // guardarse, pero si alguien desactiva una matrícula, su coche deja de
     // mirarse en la siguiente vuelta sin tener que borrar nada.
@@ -354,6 +361,9 @@ async function pasada() {
       `UPDATE fv_vuelta SET terminada_at = now(), vehiculos = $2, conectados = $3,
               cambios = $4, ms = $5 WHERE id = $1`,
       [vuelta, coches.length, conectados, cambios, ms]);
+    // Tramos nuevos: la foto del ahora que tengan guardada las pantallas ya no
+    // vale. Se rehace en la siguiente petición.
+    require('./ahora').invalidar('vuelta');
 
     // Con los tramos ya al día, se mira si toca llamar a alguien. Va DESPUÉS
     // a propósito: la revisión lee `fv_ahora`, y si corriera antes miraría la

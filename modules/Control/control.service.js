@@ -112,6 +112,21 @@ async function directo({ dia } = {}) {
   return { ...base, llamadas: llam, justificados: justis };
 }
 
+/**
+ * EL AHORA DE CADA CONDUCTOR, para refrescar En directo cada 10 s.
+ *
+ * Sale de la FOTO DEL AHORA (services/flotaViva/ahora.js), la misma que lee el
+ * mapa: no se calcula nada aquí y, si el mapa ya la ha pedido, ni siquiera se
+ * consulta la base. Va compacto —[situación, desde] por cuenta de BOLT— porque
+ * se pide muy a menudo; la pantalla lo pone encima de lo que ya tiene.
+ */
+async function ahora() {
+  const f = await require('../../services/flotaViva/ahora').foto();
+  const conductores = {};
+  f.porConductor.forEach((x, uuid) => { conductores[uuid] = [x.situacion, x.desde]; });
+  return { at: f.at, conductores };
+}
+
 // Las campañas van POR TURNO (?turno=dia|noche); sin él decide el reloj.
 const turnoDe = q => (q === 'dia' || q === 'noche' ? q : undefined);
 
@@ -400,7 +415,7 @@ async function reporteTurnosExcel(dia) {
 module.exports = {
   hoyMadrid, diaOperativoHoy,
   paraLaPantalla, vistaDeCampanas,
-  directo, campanas, campanasInforme,
+  directo, ahora, campanas, campanasInforme,
   historico, historicoExcel, trazos, historialLlamadas,
   apuntarLlamada, listarLlamadas, justificarEnDirecto,
   kmTraza, kmDiagnostico,

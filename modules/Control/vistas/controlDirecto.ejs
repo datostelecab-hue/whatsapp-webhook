@@ -218,7 +218,9 @@
   function grupoDe(f) {
     if (f.salida === 'no_salio') return 'no_salio';
     if (f.salida === 'pendiente') return 'pendiente';
-    const s = (f.actividad || {}).situacion;
+    // Lo que diga el ahora de cada 10 s (refrescarAhora), si ya ha llegado; si
+    // no, lo que vino con la carga entera.
+    const s = f.ahoraSit !== undefined ? f.ahoraSit : (f.actividad || {}).situacion;
     if (f.salida === 'descanso' || s === 'descanso') return 'descanso';
     if (f.salida === 'conectado') return s === 'espera' ? 'espera' : 'viaje';
     return 'desconectado';           // trabajó en su turno y ahora no está conectado
@@ -1304,5 +1306,66 @@
   // pestaña la fila abierta desaparece pero su clave seguía en el Set, y el
   // refresco se paraba para siempre sin que nada lo dijera.
   setInterval(() => { if (!document.querySelector('#d-lista .ddet:not(.hidden)')) cargar(); }, 45000);
+
+  // ── EL AHORA, CADA 10 SEGUNDOS (25/09/2026) ─────────────────────────────────
+  // Lo que hace cada persona en BOLT AHORA MISMO sale de la MISMA foto que lee
+  // el mapa (services/flotaViva/ahora.js), y se pide al mismo ritmo que el mapa.
+  // Es un dato pequeño y ya hecho: se pone encima de lo cargado sin recalcular
+  // el turno entero, que sigue cada 45 s. Antes Control solo se enteraba cada
+  // 45 s y con su propia cuenta, y el mapa y Control decían cosas distintas del
+  // mismo conductor.
+  //
+  // Solo cambia lo que depende del ahora: si está conectado y en qué, y con eso
+  // su «salió». Si se ha desconectado, su «salió» es el que el servidor ya dejó
+  // calculado para ese caso (salidaSinConexion): la regla vive en un sitio.
+  const CONECTADO = new Set(['viaje', 'espera', 'descanso']);
+  function aplicarAhora(conductores) {
+    let cambios = 0;
+    // De varias cuentas de la misma persona, manda la que esté conectada.
+    const vivo = cuentas => {
+      for (const u of cuentas || []) { const x = conductores[u]; if (x && CONECTADO.has(x[0])) return x[0]; }
+      return null;
+    };
+    ['dia', 'noche', 'todoturno'].forEach(t => (((DATOS && DATOS.porTurno) || {})[t] || []).forEach(f => {
+      if (!f.vivoAplica || !(f.cuentas || []).length) return;
+      const sit = vivo(f.cuentas);
+      const salida = sit ? (sit === 'descanso' ? 'descanso' : 'conectado') : f.salidaSinConexion;
+      if (!salida) return;
+      // «Desconectado» y «nadie conectado» son lo mismo para la pantalla: si no
+      // se igualan, cada 10 s se repintaría todo por nada.
+      const previa = f.ahoraSit !== undefined ? f.ahoraSit : (f.actividad || {}).situacion;
+      const antes = CONECTADO.has(previa) ? previa : null;
+      if (salida !== f.salida || sit !== antes) cambios++;
+      f.salida = salida;
+      f.ahoraSit = sit;
+    }));
+    ((((DATOS && DATOS.porTurno) || {}).nn) || []).forEach(n => {
+      if (!n.vivoAplica || !(n.cuentas || []).length) return;
+      const con = !!vivo(n.cuentas);
+      if (con !== !!n.conectadoAhora) { n.conectadoAhora = con; cambios++; }
+    });
+    return cambios;
+  }
+
+  let pidiendoAhora = false;
+  async function refrescarAhora() {
+    if (!DATOS || pidiendoAhora || document.hidden) return;
+    pidiendoAhora = true;
+    const mio = seq;
+    try {
+      const r = await (await fetch('/control/api/directo/ahora')).json();
+      // Si mientras tanto ha empezado una carga entera, esta ya no aplica.
+      if (r.status !== 'ok' || mio !== seq) return;
+      if (aplicarAhora(r.conductores || {})) {
+        pintarTabs();
+        pintarResumen();
+        // Con una fila abierta no se repinta la lista (se está trabajando con
+        // ella); el cambio sale en cuanto se cierre.
+        if (!document.querySelector('#d-lista .ddet:not(.hidden)')) pintar();
+      }
+    } catch (_) { /* el siguiente lo vuelve a intentar */ }
+    finally { pidiendoAhora = false; }
+  }
+  setInterval(refrescarAhora, 10000);
 })();
 </script>

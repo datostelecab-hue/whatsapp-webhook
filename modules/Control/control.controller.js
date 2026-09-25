@@ -97,6 +97,8 @@ router.get('/reportes', (req, res) => {
 // ── Lectura ────────────────────────────────────────────────────────────────
 
 router.get('/api/directo', responde(req => control.directo({ dia: req.query.dia })));
+// Lo que hace cada conductor AHORA, cada 10 s: la misma foto que el mapa.
+router.get('/api/directo/ahora', responde(() => control.ahora()));
 
 router.get('/api/campanas', responde(req =>
   control.campanas({ dia: req.query.dia, turno: req.query.turno })));

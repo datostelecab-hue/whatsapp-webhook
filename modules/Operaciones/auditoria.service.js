@@ -199,6 +199,10 @@ const MAX_HUECO_ESTADO = 12 * 3600;
 // el orden va de más acusatorio a menos: ante un empate se impone el estado que NO
 // acusa. Sin esto el ganador lo decidía el orden de la respuesta de BOLT y el
 // resultado no era ni reproducible (mismo problema ya documentado en boltHorasCore).
+// OJO: las pantallas EN VIVO (mapa, En directo) desempatan al revés —gana
+// «busy»— porque ahí la pregunta es qué hace AHORA y los datos dicen que en ese
+// empate el estado de verdad es «busy» (services/flotaViva/desempate.js). Aquí
+// se acusa, y ante la duda gana el que no acusa. Distintas a propósito.
 const RANGO_ESTADO = { inactive: 0, busy: 1, waiting_orders: 2, has_order: 3 };
 const rangoEstado = s => (RANGO_ESTADO[s] === undefined ? 2 : RANGO_ESTADO[s]);
 

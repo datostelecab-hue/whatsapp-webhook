@@ -7,6 +7,10 @@ actualizado: 2026-09-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-25 · Una sola foto del ahora para el mapa y Control
+
+Qué hace cada coche y cada conductor en BOLT ahora mismo se calcula **una vez** (`services/flotaViva/ahora.js`) y lo leen todos: el mapa, En directo, el panel de Flota viva y el aviso de sueltos. Se rehace solo cuando la ingesta o el motor avisan de que ha entrado algo, y nunca dos a la vez. Control refresca ese ahora cada 10 s, como el mapa, sin recalcular el cockpit. Y dos apuntes en el mismo segundo se desempatan con una regla sacada de los datos (gana busy sobre waiting_orders), la misma en la foto y en el motor; la auditoría de km sigue con la suya, que no acusa. → [[El ahora de la flota]]
+
 ## 2026-09-25 · Cada uno pide corregir su fichaje, y aprueba una sola persona
 
 Quien ficha puede pedir que se corrija lo suyo —una hora, o una jornada que no fichó—, sin llave aparte: viene con el fichaje. Es una **petición**: el fichaje no cambia hasta que se aprueba, y un rechazo lleva su porqué. Aprobar (y también corregir a mano y confirmar horas) es de **una sola persona**, la de la llave `/fichaje/revisar`: la base no deja que la tengan dos, y ni superadmin ni desarrollador aprueban por su rol. Quien aprueba se aprueba también lo suyo. → [[Fichaje]]

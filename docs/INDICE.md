@@ -29,6 +29,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 
 - **[[Base de datos]]** — Todo el ERP vive en PostgreSQL (15 o superior).
 - **[[Flota viva]]** — El motor que cada cinco minutos pregunta a BOLT quién va en cada coche y en qué estado, y a Mapon dónde está ese coche y cuánto ha rodado.
+- **[[El ahora de la flota]]** — La foto única de qué hace cada coche y cada conductor en BOLT ahora mismo: la leen el mapa y En directo, se hace una vez y se rehace solo cuando entra algo nuevo.
 - **[[Ingesta]]** — La única puerta por la que entran datos externos.
 - **[[Jornada y turnos]]** — El día operativo no es el día natural: va de las 05:00 a las 05:00 del día siguiente.
 - **[[Migraciones]]** — El esquema de la Base de datos no se toca a mano: se cambia añadiendo un fichero a db/.

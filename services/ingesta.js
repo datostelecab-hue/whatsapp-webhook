@@ -101,6 +101,9 @@ const TAREAS = {
         filas: todos.length, ms: Date.now() - t0,
       });
       nuevos = await staging.guardarStateLogs(todos, descargaId);
+      // Si la red de seguridad recoge algo que el directo se perdió, la foto del
+      // ahora que tengan las pantallas ya no vale.
+      if (nuevos) require('./flotaViva/ahora').invalidar('ingesta');
       return { registros: nuevos, detalle: { traidos: todos.length, nuevos } };
     },
   },

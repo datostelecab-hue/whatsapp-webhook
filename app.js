@@ -406,9 +406,10 @@ if (process.env.BOLT_DIRECTO !== 'off') {
   programar('*/10 * * * * *', async () => {
     try {
       const r = await require('./services/ingesta').estadosAlDia();
-      // Si ha entrado algo, la foto del mapa ya no vale: que la siguiente
-      // pantalla que pregunte la rehaga en vez de servir la de hace 10 s.
-      if (r && r.nuevos) require('./modules/Mapa/mapa.service').olvidar();
+      // Si ha entrado algo, la foto del AHORA ya no vale (services/flotaViva/
+      // ahora.js): la siguiente pantalla que pregunte —el mapa, En directo— la
+      // rehace una vez para todas. El mapa se entera solo, está apuntado.
+      if (r && r.nuevos) require('./services/flotaViva/ahora').invalidar('directo');
     } catch (error) {
       console.error(`❌ [BOLT DIRECTO] ${error.message}`);
     }

@@ -1371,32 +1371,27 @@ ${SOLAPE_KM}
   // dos horas sin terminar una vuelta y el cockpit siguio diciendo "no ha
   // salido" de gente que estaba de viaje.
   //
-  // `bolt_state_log` es la otra tuberia: la escribe la ingesta cada 10 min y es
-  // una tabla tonta, un apunte por cambio de estado. Los dos traen la hora del
-  // apunte de BOLT, asi que se comparan y gana el mas reciente. Medido ese dia
-  // en el mapa: 10 de 94 coches discrepaban y en TODOS el crudo iba por delante.
+  // El AHORA de cada conductor sale de la FOTO DEL AHORA
+  // (services/flotaViva/ahora.js), la misma que lee el mapa: el tramo abierto y
+  // el ultimo apunte de BOLT (que entra cada 10 s) ya cruzados, con la noticia
+  // mas fresca elegida y los empates resueltos con la regla de desempate.js.
+  // Hasta el 25/09/2026 esto hacia su propia consulta cruda, sin desempate, y
+  // con dos apuntes en el mismo segundo el mapa y Control decian cosas
+  // distintas de la misma persona.
   //
   // Solo se toca el AHORA, y solo si la ventana sigue viva: en un dia pasado no
   // hay ningun "ahora" que corregir.
   const vivos = [...porUuid.values()].filter(a => a._ventanaViva);
   if (vivos.length) {
-    const crudos = await db.consulta(
-      `SELECT DISTINCT ON (l.driver_uuid) l.driver_uuid AS uuid, eb.situacion, l.ocurrido_at
-         FROM bolt_state_log l
-         JOIN fv_estado_bolt eb ON eb.estado = l.estado
-        WHERE l.driver_uuid = ANY($1::text[])
-          AND l.ocurrido_at > now() - interval '12 hours'
-        ORDER BY l.driver_uuid, l.ocurrido_at DESC`,
-      [vivos.map(a => a.uuid)]);
-    crudos.rows.forEach(x => {
-      const a = porUuid.get(x.uuid);
-      if (!a) return;
-      // Si el motor sabe algo MAS nuevo, manda el motor. Pasa cuando la ingesta
-      // va con retraso, que tambien ocurre.
-      if (a._abiertoDesde && new Date(a._abiertoDesde) > new Date(x.ocurrido_at)) return;
+    const foto = await require('./ahora').foto();
+    vivos.forEach(a => {
+      const x = foto.porConductor.get(a.uuid);
+      if (!x || !x.situacion) return;
+      // Si el motor sabe algo MAS nuevo de sus tramos, manda el motor.
+      if (a._abiertoDesde && new Date(a._abiertoDesde) > new Date(x.desde)) return;
       a.situacionAhora = x.situacion;
-      a.conectadoAhora = ['viaje', 'espera', 'descanso'].includes(x.situacion);
-      a.fuenteAhora = 'apunte';
+      a.conectadoAhora = x.conectado;
+      a.fuenteAhora = x.fuente;
     });
   }
 
