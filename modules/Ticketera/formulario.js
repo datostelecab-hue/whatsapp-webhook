@@ -29,7 +29,7 @@
 // añade a la descripción como «Pregunta: respuesta». Una pregunta nueva aparece
 // en el ticket desde el primer día sin tocar una línea.
 
-const { readSheet, getSheetIds } = require('../../services/sheets');
+const { readSheet, readMany, getSheetIds } = require('../../services/sheets');
 const db = require('../../services/db');
 const { norm } = require('./clasificar');
 
@@ -80,6 +80,8 @@ async function nombreDeLaHoja() {
 // entiende. Y se leen todas las columnas: no se sabe cuántas preguntas tiene el
 // formulario hoy, y poner un tope es la forma de perder la que se añada mañana.
 const rango = hoja => `'${String(hoja).replace(/'/g, "''")}'!A:BZ`;
+// Unas filas concretas: de `desde` a `hasta`, o hasta el final si no se dice.
+const filasDe = (hoja, desde, hasta) => `'${String(hoja).replace(/'/g, "''")}'!A${desde}:BZ${hasta || ''}`;
 
 let campos = null, camposTs = 0;
 const TTL = 60 * 1000;
@@ -182,12 +184,31 @@ function marca(v) {
  * así que el número de fila es una referencia estable — y además queda guardado
  * en el ticket, para poder volver a la respuesta original si algo no cuadra.
  */
-async function respuestasDesde(desde = 0) {
+async function respuestasDesde(desde = 0, { entera = false } = {}) {
   const hoja = await nombreDeLaHoja();
-  const filas = await readSheet(LIBRO, rango(hoja));
-  if (!filas.length) return { cabeceras: [], respuestas: [], ultimaFila: 0, sueltas: [], hoja };
+  const d = Math.max(0, Number(desde) || 0);
 
-  const cabeceras = filas[0];
+  // SOLO LO NUEVO (25/09/2026). Camilo: «que lea los 4 o 5 nuevos que vayan
+  // llegando, que no relea 400 tickets ya leídos». Con la marca de agua ya no se
+  // PROCESABAN otra vez, pero la hoja se DESCARGABA entera en cada pasada. Ahora
+  // se piden dos trozos en un solo viaje: la fila de cabeceras (hacen falta para
+  // saber qué columna es qué) y de la marca para abajo. Sin marca —la primera
+  // vez, o el diagnóstico— se lee entera, como antes.
+  // `entera` es para el diagnóstico, que quiere las cabeceras y cuántas filas hay.
+  let cabeceras, cuerpo, primera;
+  if (d >= 1 && !entera) {
+    const [cab, nuevas] = await readMany(LIBRO, [filasDe(hoja, 1, 1), filasDe(hoja, d + 1)]);
+    cabeceras = cab[0] || [];
+    cuerpo = nuevas;
+    primera = d + 1;
+  } else {
+    const filas = await readSheet(LIBRO, rango(hoja));
+    cabeceras = filas[0] || [];
+    cuerpo = filas.slice(1);
+    primera = 2;
+  }
+  if (!cabeceras.length) return { cabeceras: [], respuestas: [], ultimaFila: d, sueltas: [], hoja };
+
   const { porCampo, sueltas } = await emparejar(cabeceras);
   const dame = (row, campo) => {
     const i = porCampo[campo];
@@ -195,10 +216,10 @@ async function respuestasDesde(desde = 0) {
   };
 
   const respuestas = [];
-  for (let i = 1; i < filas.length; i++) {
-    const nFila = i + 1;                       // 1 = cabecera
-    if (nFila <= desde) continue;
-    const row = filas[i];
+  for (let i = 0; i < cuerpo.length; i++) {
+    const nFila = primera + i;                 // el número de fila de la hoja (1 = cabecera)
+    if (nFila <= d) continue;
+    const row = cuerpo[i];
     // Una fila sin NADA escrito es un hueco de la hoja, no una respuesta.
     if (!row.some(v => String(v == null ? '' : v).trim())) continue;
 
@@ -239,7 +260,8 @@ async function respuestasDesde(desde = 0) {
     hoja,
     cabeceras: cabeceras.map(h => String(h == null ? '' : h).trim()),
     respuestas,
-    ultimaFila: filas.length,
+    // La última fila con algo. Si no ha llegado nada, la marca se queda donde estaba.
+    ultimaFila: cuerpo.length ? primera + cuerpo.length - 1 : d,
     porCampo,
     sueltas: sueltas.map(s => s.titulo),
   };

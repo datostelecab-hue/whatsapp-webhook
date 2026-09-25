@@ -214,10 +214,11 @@
 
           ] },
           { nombre: 'RRHH', icono: 'fa-id-badge', rol: 'oficina', items: [
+            // Las bandejas de tickets (RRHH, Administración, Tráfico, Taller y
+            // Sin traza) ya no están en el menú: son los cuadros de la barra de
+            // arriba, con sus pendientes del mes (25/09/2026).
             { href: '/rrhh',           icono: 'fa-id-badge',        texto: 'RRHH',           id: 'rrhh' },
-            { href: '/administracion/tickets', icono: 'fa-ticket',   texto: 'Tickets Administración', id: 'administracion' },
             { href: '/plantilla',      icono: 'fa-id-card',          texto: 'Plantilla',      id: 'plantilla' },
-            { href: '/ticketera',      icono: 'fa-ticket',          texto: 'Ticketera RRHH', id: 'ticketera' },
             // "Reportes" NO va aquí. Los informes son de Control —horas, turnos,
             // parrilla, asistencia, Sankey: todo de tráfico— y su pestaña está
             // dentro de /control. Esta entrada llevaba a una copia de esa misma
@@ -228,7 +229,6 @@
           ] },
           { nombre: 'Tráfico', icono: 'fa-satellite-dish', rol: 'trafico', items: [
             { href: '/planificador', icono: 'fa-table-cells-large',  texto: 'Planificador',     id: 'planificador' },
-            { href: '/planificador/tickets', icono: 'fa-ticket',     texto: 'Tickets Tráfico',   id: 'planificador' },
             { href: '/control',      icono: 'fa-satellite-dish',     texto: 'Control',          id: 'control' },
             { href: '/visibilidad',  icono: 'fa-chart-line',         texto: 'Visibilidad',      id: 'visibilidad' },
             { href: '/mapa',         icono: 'fa-map-location-dot',   texto: 'Mapa de flota',    id: 'mapa' },
@@ -240,7 +240,6 @@
             { href: '/taller',    icono: 'fa-screwdriver-wrench', texto: 'Mantenimientos', id: 'taller' },
             { href: '/inspecciones', icono: 'fa-clipboard-check', texto: 'Inspección de vehículos', id: 'inspecciones' },
             { href: '/facturas',  icono: 'fa-file-invoice', texto: 'Facturas de taller', id: 'facturas' },
-            { href: '/taller/tickets', icono: 'fa-ticket',     texto: 'Tickets del taller', id: 'taller' },
             // La MISMA pantalla que ve RRHH. Aparece en los dos departamentos
             // porque los dos la necesitan, no porque haya dos pantallas.
             { href: '/plantilla', icono: 'fa-id-card',      texto: 'Plantilla', id: 'plantilla' }
@@ -250,10 +249,7 @@
             { href: '/sanciones',   icono: 'fa-gauge-high',      texto: 'Sanciones velocidad', id: 'sanciones' },
             { href: '/operaciones/auditoria', icono: 'fa-clipboard-check', texto: 'Auditoría flota', id: 'auditoria' },
             { href: '/alertas', icono: 'fa-bell', texto: 'Alertas de control', id: 'alertas' },
-            { href: '/callcenter', icono: 'fa-headset', texto: 'Call Center', id: 'callcenter' },
-            // Los que el reparto no supo clasificar. Antes caían en RRHH y se
-            // perdían entre trescientos; aquí se ven.
-            { href: '/operaciones/sin-traza', icono: 'fa-circle-question', texto: 'Tickets sin traza', id: 'operaciones' }
+            { href: '/callcenter', icono: 'fa-headset', texto: 'Call Center', id: 'callcenter' }
           ] },
           // Solo lo ve la dirección: el layout enseña un grupo si su rol coincide con el de
           // la sesión, y 'direccion' no es el rol de nadie; superadmin y desarrollador lo ven todo.
@@ -388,7 +384,9 @@
   <div class="flex-1 min-w-0 flex flex-col">
 
     <!-- Barra superior -->
-    <header class="sticky top-0 z-20 flex items-center gap-3 px-4 lg:px-6 h-14
+    <%# En el móvil la barra se parte en dos líneas: la de siempre y, debajo, los
+        cuadros de tickets (no caben al lado y ya no están en el menú). %>
+    <header class="sticky top-0 z-20 flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-2 px-4 lg:px-6 py-2.5 md:py-0 md:h-14
                    bg-telecab-dark/70 backdrop-blur-lg border-b border-telecab-border">
       <button id="menu-abrir" class="lg:hidden w-9 h-9 rounded-lg hover:bg-telecab-card2 transition">
         <i class="fa-solid fa-bars"></i>
@@ -398,11 +396,41 @@
               aria-label="Contraer el menú" title="Contraer el menú (Ctrl+B)">
         <i class="fa-solid fa-angles-left"></i>
       </button>
-      <h1 class="font-semibold text-telecab-text"><%= titulo || 'Gestión' %></h1>
+      <h1 class="font-semibold text-telecab-text shrink-0"><%= titulo || 'Gestión' %></h1>
+
+      <%# ── LOS TICKETS DE CADA DEPARTAMENTO (25/09/2026) ──────────────────────
+          Un cuadro por bandeja, con su nombre y sus PENDIENTES DE ESTE MES. Lo
+          pidió Camilo: estaban repartidas por el menú lateral —RRHH,
+          Administración, Tráfico, Taller y los sin traza— y se veían solo al ir
+          a buscarlas. Solo salen las que quien mira puede abrir
+          (ticketera.controller → enLaBarra); el número llega después, como la
+          campana. Si no cabe, la fila se desliza de lado en vez de apretar. %>
+      <% const tkBarra = (typeof bandejasBarra !== 'undefined' && bandejasBarra) || []; %>
+      <% if (tkBarra.length) { %>
+      <style>
+        #tk-barra { scrollbar-width: none; }
+        #tk-barra::-webkit-scrollbar { display: none; }
+        #tk-barra .tk-activo { border-color: rgb(var(--tc-gold) / .7); background: rgb(var(--tc-gold) / .12); }
+      </style>
+      <nav id="tk-barra" aria-label="Tickets por departamento"
+           class="order-last w-full md:order-none md:w-auto md:ml-2 flex items-center gap-1.5 min-w-0 overflow-x-auto">
+        <% tkBarra.forEach(b => { %>
+        <a href="<%= b.href %>" data-tk-area="<%= b.area %>" data-tk-href="<%= b.href %>"
+           title="Tickets de <%= b.etiqueta %>: los pendientes de este mes"
+           class="shrink-0 flex items-center gap-2 h-9 pl-3 pr-1.5 rounded-lg border border-telecab-border bg-telecab-card2/50 text-xs font-semibold text-telecab-text hover:border-telecab-gold/60 transition">
+          <i class="fa-solid <%= b.area === 'OPERACIONES' ? 'fa-circle-question' : 'fa-ticket' %> text-telecab-muted"></i>
+          <span class="whitespace-nowrap"><%= b.etiqueta %></span>
+          <span data-tk-n class="min-w-[22px] h-6 px-1.5 rounded-md text-[11px] font-bold tabular-nums flex items-center justify-center bg-telecab-card2 text-telecab-muted">·</span>
+        </a>
+        <% }) %>
+      </nav>
+      <% } %>
 
       <%# El nombre del rol viene del servidor (services/sesion.js, desde la tabla
           `rol`). Antes era una lista aquí y cada rol nuevo salía en crudo. %>
-      <div class="ml-auto flex items-center gap-2">
+      <%# shrink-0: lo de la derecha no se aprieta nunca. Si falta sitio, lo que
+          cede es la fila de cuadros de tickets, que se desliza de lado. %>
+      <div class="ml-auto flex items-center gap-2 shrink-0 pl-2">
 
         <!-- ── FICHAR ────────────────────────────────────────────────────────
              Vive en la barra y no en su pantalla porque fichar se olvida: si
@@ -413,7 +441,7 @@
         <a id="fichar-btn" href="/fichaje" class="hidden items-center gap-2 h-9 px-3 rounded-lg text-xs font-semibold transition"
            title="Fichar jornada">
           <i class="fa-solid fa-stopwatch"></i>
-          <span id="fichar-txt">Fichar</span>
+          <span id="fichar-txt" class="whitespace-nowrap">Fichar</span>
         </a>
 
         <!-- Buzón de pendientes -->
@@ -428,14 +456,14 @@
           </div>
         </div>
 
-        <span class="text-xs text-telecab-muted hidden lg:flex items-center gap-2">
+        <span class="text-xs text-telecab-muted hidden xl:flex items-center gap-2 whitespace-nowrap">
           <i class="far fa-clock"></i>
           <%= new Date().toLocaleString('es-ES', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) %>
         </span>
 
         <!-- Usuario en sesión + salir -->
         <div class="flex items-center gap-2 pl-2 ml-1 border-l border-telecab-border">
-          <div class="hidden sm:block text-right leading-tight">
+          <div class="hidden sm:block text-right leading-tight whitespace-nowrap">
             <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '' %></span>
             <span class="block text-[10px] uppercase tracking-wide text-telecab-gold"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
           </div>
@@ -695,6 +723,48 @@
   setInterval(cargar, 300000);
   // Al volver a la pestaña sí conviene mirar: es cuando vuelves de fichar en el
   // móvil y esperas verlo reflejado aquí.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(); });
+})();
+
+// ── LOS PENDIENTES DE CADA BANDEJA, EN SU CUADRO ─────────────────────────────
+// Los de ESTE MES y sin cerrar. Se piden al cargar, cada dos minutos y al volver
+// a la pestaña; la bandeja los pide también al tocar un ticket
+// (window.__refrescarBandejas), para que el número baje en el momento.
+(function () {
+  const barra = document.getElementById('tk-barra');
+  if (!barra) return;
+  // El cuadro de la bandeja en la que se está, marcado.
+  barra.querySelectorAll('[data-tk-href]').forEach(a => {
+    const h = a.getAttribute('data-tk-href');
+    if (location.pathname === h || location.pathname.startsWith(h + '/')) {
+      a.classList.add('tk-activo');
+      a.setAttribute('aria-current', 'page');
+    }
+  });
+  const BASE = 'min-w-[22px] h-6 px-1.5 rounded-md text-[11px] font-bold tabular-nums flex items-center justify-center ';
+  let pidiendo = false;
+  async function cargar() {
+    if (pidiendo) return;
+    pidiendo = true;
+    try {
+      const r = await fetch('/bandejas/api/pendientes').then(x => x.json());
+      if (r.status !== 'ok') return;
+      (r.bandejas || []).forEach(b => {
+        const a = barra.querySelector('[data-tk-area="' + b.area + '"]');
+        if (!a) return;
+        const n = a.querySelector('[data-tk-n]');
+        n.textContent = b.pendientes;
+        n.className = BASE + (b.pendientes ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted');
+        a.title = b.etiqueta + ': ' + (b.pendientes
+          ? b.pendientes + (b.pendientes === 1 ? ' ticket pendiente' : ' tickets pendientes') : 'nada pendiente') +
+          ' de ' + r.mes;
+      });
+    } catch (_) { /* si falla, los cuadros siguen sin número */ }
+    finally { pidiendo = false; }
+  }
+  window.__refrescarBandejas = cargar;
+  cargar();
+  setInterval(cargar, 120000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(); });
 })();
 </script>

@@ -78,14 +78,45 @@ function aFila(x) {
   };
 }
 
-/** La bandeja de un área: abiertos primero, y los cerrados por detrás. */
-async function bandeja(areaCodigo, { cerrados = false, limite = 400 } = {}) {
+// EL MES DE LA PETICIÓN, en hora de Madrid. La fecha que cuenta es la del
+// formulario (`marca_form`), no la de alta en el sistema: los 580 primeros se
+// importaron de golpe el 15/09/2026 y con `creado_at` todos serían «de este
+// mes». Un ticket sin marca (los de dentro) va por su fecha de alta.
+const FECHA_PEDIDO = 'COALESCE(t.marca_form, t.creado_at)';
+const INICIO_MES = `(date_trunc('month', now() AT TIME ZONE 'Europe/Madrid') AT TIME ZONE 'Europe/Madrid')`;
+
+/**
+ * La bandeja de un área: abiertos primero, y los cerrados por detrás.
+ *
+ * Con `soloMes`, solo lo pedido este mes (Camilo, 25/09/2026: los de antes son,
+ * casi todos, de la hoja vieja). `codigo` se trae SIEMPRE, sea del mes que sea:
+ * es el enlace directo a un ticket desde la ficha de la persona, y no puede
+ * llevar a una bandeja vacía.
+ */
+async function bandeja(areaCodigo, { cerrados = false, limite = 400, soloMes = false, codigo = null } = {}) {
   const r = await db.consulta(
     `SELECT ${CAMPOS} ${DE}
-      WHERE t.area_codigo = $1 AND ($2::boolean OR NOT e.cierra)
+      WHERE t.area_codigo = $1
+        AND (($2::boolean OR NOT e.cierra)
+             AND (NOT $4::boolean OR ${FECHA_PEDIDO} >= ${INICIO_MES})
+             OR t.codigo = $5)
       ORDER BY e.cierra, t.creado_at DESC
-      LIMIT $3`, [areaCodigo, cerrados, limite]);
+      LIMIT $3`, [areaCodigo, cerrados, limite, !!soloMes, codigo || null]);
   return r.rows.map(aFila);
+}
+
+/**
+ * Los PENDIENTES DE ESTE MES de cada área: lo que enseñan los cuadros de la
+ * barra de arriba. Pendiente = cualquier estado que no cierra.
+ */
+async function pendientesDelMes(areas) {
+  const r = await db.consulta(
+    `SELECT t.area_codigo, count(*)::int AS n
+       FROM ticket t JOIN cat_ticket_estado e ON e.codigo = t.estado
+      WHERE NOT e.cierra AND t.area_codigo = ANY($1::text[])
+        AND ${FECHA_PEDIDO} >= ${INICIO_MES}
+      GROUP BY 1`, [areas]);
+  return Object.fromEntries(r.rows.map(x => [x.area_codigo, x.n]));
 }
 
 async function una(id) {
@@ -258,7 +289,7 @@ async function catalogos() {
 }
 
 module.exports = {
-  bandeja, una, abiertosPorArea, alta, altaInterna, mios, cambiarEstado, asignar,
+  bandeja, pendientesDelMes, una, abiertosPorArea, alta, altaInterna, mios, cambiarEstado, asignar,
   guardarNotas, guardarAdjuntos,
   guardarObservaciones, enlazar, reclasificar, apuntar, historia, catalogos,
 };

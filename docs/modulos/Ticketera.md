@@ -31,6 +31,26 @@ Cada área tiene su bandeja **colgando del módulo al que pertenece el trabajo**
 
 El montaje se hace con `ticketera.para(area, {titulo, seccion, subtitulo})` en `app.js`. Quien puede abrir Administración ve los tickets de Administración: **separar la bandeja es una cosa y separar quién entra es otra**, y lo segundo no lo ha pedido nadie — hacerlo dejaría a todo el mundo fuera hasta que alguien fuera concediendo permisos uno a uno.
 
+### En la barra de arriba, con sus pendientes del mes (25/09/2026)
+
+Las cinco bandejas **ya no están en el menú lateral**: son cinco cuadros en la barra de arriba —**RRHH, Administración, Tráfico, Taller y Sin traza**—, cada uno con su nombre y el número de **pendientes de este mes**. Lo pidió Camilo: estaban repartidas por el menú y solo se veían al ir a buscarlas. Pinchar uno abre su bandeja, y el de la bandeja en la que se está sale marcado en dorado.
+
+- **Cada uno ve solo los cuadros que puede abrir**, con la misma regla que el control de acceso (`permisos.claveDeRuta`): un cuadro que dijera «sin permiso» al pincharlo sería peor que no tenerlo. Lo decide `ticketera.controller → enLaBarra`, y la lista de las cinco (`BANDEJAS`) está en un solo sitio.
+- **El número llega después**, como la campana: `GET /bandejas/api/pendientes`, que solo devuelve los de las bandejas que quien pregunta puede abrir. Se refresca cada dos minutos, al volver a la pestaña y al tocar un ticket en la bandeja.
+- **Si no caben**, la fila se desliza de lado y lo de la derecha (fichar, campana, usuario) no se aprieta. En el móvil van en una segunda línea bajo la barra: sin menú, no había otra forma de llegar.
+
+### Solo los tickets de este mes
+
+Las bandejas y sus cuadros traen **solo lo pedido este mes**. Los 550 y pico pendientes de antes son, casi todos, de cuando se importó la hoja vieja; siguen en la base, sin tocar, pero no salen (decisión de Camilo, 25/09/2026). La bandeja lo dice arriba (*«Solo los pedidos en septiembre de 2026»*).
+
+- **El mes es el de la PETICIÓN** (`marca_form`, la hora del formulario), no el de alta en el sistema: los 580 primeros se dieron de alta de golpe el 15/09 y con `creado_at` todos parecerían de septiembre. Un ticket sin marca (los de dentro) va por su fecha de alta.
+- **El enlace directo sí trae uno viejo.** La ficha de una persona enlaza el ticket del que salió cada ausencia (`?ticket=CÓDIGO`), y ese se trae sea del mes que sea: si no, el enlace llevaría a una bandeja vacía.
+
+> [!warning] El día 1 de cada mes, los pendientes del anterior dejan de verse
+> Es lo que se pidió —«solo los de este mes»— y vale igual para el que se quedó
+> sin atender el 30. Si hace falta arrastrar los pendientes del mes anterior,
+> es cambiar `INICIO_MES` en `ticketera.repo.js`.
+
 La bandeja de Operaciones es nueva y arregla un agujero: el Apps Script mandaba a RRHH todo lo que no encajaba con ninguna regla, y ahí se perdía entre trescientos tickets. Son justo los que hay que mirar — cada uno es **o algo que no habíamos previsto, o una regla de reparto que se quedó corta**. Por eso su pantalla no se llama "Ticketera" sino "Tickets sin traza": explicar qué es eso en su propia cabecera ahorra la pregunta.
 
 ## La entrada es lo único que sigue en Google
@@ -47,7 +67,24 @@ Ni siquiera el nombre de la pestaña se escribe fijo: el primer intento buscó �
 
 ## La sincronización se puede repetir
 
-La llama **un cron cada dos horas** (`7 */2 * * *`) y también `POST …/sincronizar` para traer ahora lo que haya sin esperar. Es **idempotente**: el índice único sobre `fila_form` impide que la misma respuesta entre dos veces, así que una pasada cortada a medias se arregla sola en la siguiente. La marca de agua (`config_app.ticketera_ultima_fila`) es una optimización —no releer mil filas—, **no la garantía**.
+La lanza **la ingesta cada 10 minutos** (tarea `tickets_formulario`, ver [[Ingesta]]) y también `POST …/sincronizar` para traer ahora lo que haya sin esperar. Es **idempotente**: el índice único sobre `fila_form` impide que la misma respuesta entre dos veces, así que una pasada cortada a medias se arregla sola en la siguiente.
+
+> [!bug] Hasta el 25/09/2026 la tarea de la ingesta no corrió nunca
+> Estaba escrita **dentro** de la tarea de Mapon (`unidades_mapon`) por una llave
+> mal cerrada, así que no existía como tarea. Los tickets entraban igual porque
+> había además un cron cada dos horas en `app.js`, y nadie lo notó. Se sacó a su
+> sitio, se quitó el cron —una sola puerta— y la tabla de la ingesta pasó a
+> admitir la fuente `formulario` (db/160): sin eso, cada pasada contaba como
+> fallida y, sin un acierto apuntado, la tarea se habría repetido cada minuto
+> contra Google. Si falla, espera 10 minutos antes de reintentar.
+
+### Se lee solo lo nuevo, y no se escribe nada en su hoja
+
+Camilo: *«que lea los 4 o 5 nuevos que vayan llegando, que no relea 400 tickets ya leídos, y que no edite nada de los campos de ahí»*. El «leído» vive **en nuestra base, no en su hoja**: la **marca de agua** (`config_app.ticketera_ultima_fila`) es la última fila ya convertida en ticket. Las hojas de respuestas solo crecen por abajo, así que el número de fila es una referencia estable, y queda guardado en cada ticket (`fila_form`).
+
+Desde el 25/09/2026 a Google se le piden **dos trozos en un solo viaje** (`readMany`): la fila de cabeceras —hacen falta para saber qué columna es qué— y **de la marca para abajo**. Antes se descargaba la hoja entera en cada pasada y se descartaba lo ya leído. Sin marca —la primera vez— o en el diagnóstico (`GET …/api/formulario`, que quiere saber cuántas filas hay) se lee entera.
+
+Qué hemos atendido nosotros no se apunta en su hoja: es el **estado del ticket** aquí (pendiente, en curso, ejecutado…), con su historial.
 
 Y **una fila mala no puede tumbar la pasada**. Pasó de verdad: una respuesta con la prioridad larga no cabía en su columna, la excepción subía, y con ella se quedaban fuera **todas** las respuestas posteriores, pasada tras pasada. Ahora cada fila va por su cuenta: la que falle se apunta con su número y su motivo, y las demás siguen entrando.
 

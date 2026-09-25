@@ -41,7 +41,7 @@ Cada una declara `cadaMin`, si es `critica` y, las caras, un `reintentoMin`. Tod
 | `alertas_mapon` | Mapon | 15 min | no | `mapon_alerta` (velocidad, zonas, alimentación, batería) |
 | `unidades_mapon` | Mapon | 30 min | no | odómetros de los coches |
 | `auditoria_flota` | Mapon | 1440 min | no | `auditoria_km` y compañía; reintento cada 60 min |
-| `tickets_formulario` | formulario | 10 min | no | tickets del formulario de conductores |
+| `tickets_formulario` | formulario | 10 min | no | tickets del formulario de conductores. **Solo lee lo nuevo** y no escribe en la hoja. No corrió hasta el 25/09/2026: estaba anidada por error dentro de `unidades_mapon` (ver [[Ticketera]]) |
 
 **`critica` no es decoración:** BOLT cayéndose es una alarma (`❌`), Mapon cayéndose es lo normal (`⚠️`). Que Mapon se caiga no puede teñir de rojo la ingesta de la que vive el cuadrante.
 

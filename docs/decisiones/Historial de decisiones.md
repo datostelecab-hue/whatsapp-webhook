@@ -7,6 +7,10 @@ actualizado: 2026-09-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-25 · Los tickets de cada departamento, arriba y solo los del mes
+
+Las cinco bandejas de tickets salen del menú lateral y pasan a la barra de arriba, un cuadro por departamento con sus pendientes del mes. Las bandejas traen solo lo pedido este mes (por la fecha del formulario): lo anterior es, casi todo, de la hoja vieja, y se queda en la base sin salir. El formulario de «Operaciones 1.0» se lee cada 10 min por la ingesta —la tarea estaba mal anidada y no corría; entraban por un cron de 2 h— y solo las filas nuevas, sin escribir nada en su hoja. → [[Ticketera]]
+
 ## 2026-09-25 · Una sola foto del ahora para el mapa y Control
 
 Qué hace cada coche y cada conductor en BOLT ahora mismo se calcula **una vez** (`services/flotaViva/ahora.js`) y lo leen todos: el mapa, En directo, el panel de Flota viva y el aviso de sueltos. Se rehace solo cuando la ingesta o el motor avisan de que ha entrado algo, y nunca dos a la vez. Control refresca ese ahora cada 10 s, como el mapa, sin recalcular el cockpit. Y dos apuntes en el mismo segundo se desempatan con una regla sacada de los datos (gana busy sobre waiting_orders), la misma en la foto y en el motor; la auditoría de km sigue con la suya, que no acusa. → [[El ahora de la flota]]

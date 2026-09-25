@@ -244,12 +244,26 @@ async function adjuntos(id, lista) {
 
 // ── La pantalla ────────────────────────────────────────────────────────────
 
-async function datos(areaCodigo, { cerrados } = {}) {
+/** «septiembre de 2026»: el mes en curso, en Madrid. */
+const mesEnCurso = () => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', month: 'long', year: 'numeric' }).format(new Date());
+
+/**
+ * La bandeja de un área. Con `soloMes` trae solo lo pedido este mes (las cinco
+ * del formulario, desde el 25/09/2026) y dice cuál es, para que la pantalla lo
+ * cuente. `codigo` se trae siempre: es el enlace directo a un ticket.
+ */
+async function datos(areaCodigo, { cerrados, soloMes = false, codigo = null } = {}) {
   const [tickets, cat] = await Promise.all([
-    repo.bandeja(areaCodigo, { cerrados: !!cerrados }),
+    repo.bandeja(areaCodigo, { cerrados: !!cerrados, soloMes, codigo: codigo ? String(codigo).trim().slice(0, 40) : null }),
     repo.catalogos(),
   ]);
-  return { tickets, ...cat };
+  return { tickets, ...cat, mes: soloMes ? mesEnCurso() : null };
+}
+
+/** Los pendientes de este mes de unas áreas: los cuadros de la barra de arriba. */
+async function pendientesDelMes(areas) {
+  const n = await repo.pendientesDelMes(areas);
+  return { mes: mesEnCurso(), pendientes: Object.fromEntries(areas.map(a => [a, n[a] || 0])) };
 }
 
 const ficha = async id => {
@@ -401,7 +415,8 @@ async function aplicar(id, { desde, hasta, estado, motivo } = {}, quien = {}) {
  * columna alimenta qué campo y cuáles van a parar a la descripción.
  */
 async function diagnostico() {
-  const { cabeceras, porCampo, sueltas, ultimaFila, hoja } = await form.respuestasDesde(1e9);
+  // Entera: aquí se quiere saber cuántas filas tiene la hoja, no solo las nuevas.
+  const { cabeceras, porCampo, sueltas, ultimaFila, hoja } = await form.respuestasDesde(1e9, { entera: true });
   const cfg = await configApp.leerConfig().catch(() => ({}));
   return {
     libro: form.LIBRO, hoja,
@@ -419,5 +434,5 @@ module.exports = {
   sincronizar, datos, ficha, asignar, cambiarEstado, observaciones,
   crearSoporte, mios, notas, adjuntos, bandejaIT, estadoIT, TIPOS_IT, PRIORIDADES,
   enlazar, reclasificar, aplicar, diagnostico,
-  abiertosPorArea: repo.abiertosPorArea,
+  abiertosPorArea: repo.abiertosPorArea, pendientesDelMes,
 };

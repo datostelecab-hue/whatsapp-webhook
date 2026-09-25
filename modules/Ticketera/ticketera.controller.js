@@ -18,6 +18,61 @@
 const express = require('express');
 const ticketera = require('./ticketera.service');
 const actor = require('../../services/repo/actor');
+const permisos = require('../../services/permisos');
+
+// ── LAS CINCO BANDEJAS, EN LA BARRA DE ARRIBA (25/09/2026) ─────────────────
+// Camilo: «sobre la barra superior tiene que haber un cuadro por ticket de
+// departamento; quítalos de allá y ponlos arriba». Ya no están en el menú
+// lateral: cada una es un cuadro en la barra, con su nombre y sus PENDIENTES
+// DE ESTE MES. Esta lista es la única que hay: la usan la barra y el recuento.
+const BANDEJAS = [
+  { area: 'RRHH',        href: '/ticketera',               etiqueta: 'RRHH' },
+  { area: 'ADMIN',       href: '/administracion/tickets',  etiqueta: 'Administración' },
+  { area: 'TRAFICO',     href: '/planificador/tickets',    etiqueta: 'Tráfico' },
+  { area: 'TALLER',      href: '/taller/tickets',          etiqueta: 'Taller' },
+  { area: 'OPERACIONES', href: '/operaciones/sin-traza',   etiqueta: 'Sin traza' },
+];
+
+/**
+ * Las bandejas que puede abrir quien mira. Con la MISMA regla que el control de
+ * acceso (la llave de la ruta, `claveDeRuta`): un cuadro que da «sin permiso»
+ * al pincharlo es peor que no tenerlo. `permisos` en null es acceso total.
+ */
+function visibles(res) {
+  const mias = res.locals.permisos;
+  return BANDEJAS.filter(b => {
+    if (mias == null) return true;
+    const clave = permisos.claveDeRuta(b.href, 'GET');
+    return !clave || mias.includes(clave);
+  });
+}
+
+/** Deja en la vista qué cuadros pintar. Va después de sesion.cargarPermisos. */
+function enLaBarra(req, res, next) {
+  res.locals.bandejasBarra = req.usuario ? visibles(res).map(({ area, href, etiqueta }) => ({ area, href, etiqueta })) : [];
+  next();
+}
+
+/**
+ * Los pendientes de este mes de las bandejas que puede ver: lo que pintan los
+ * cuadros. Se monta en `/bandejas`, que no es de ningún módulo, y por eso filtra
+ * aquí: nadie recibe el número de una bandeja que no puede abrir.
+ */
+function resumen() {
+  const router = express.Router();
+  router.get('/api/pendientes', async (req, res) => {
+    try {
+      const mias = visibles(res);
+      const r = await ticketera.pendientesDelMes(mias.map(b => b.area));
+      res.json({ status: 'ok', mes: r.mes,
+        bandejas: mias.map(b => ({ ...b, pendientes: r.pendientes[b.area] || 0 })) });
+    } catch (e) {
+      console.error('❌ [Ticketera] pendientes de la barra:', e.message);
+      res.status(400).json({ status: 'error', msg: e.message });
+    }
+  });
+  return router;
+}
 
 const quien = async req => ({
   usuarioId: await actor.idDe(req),
@@ -38,7 +93,7 @@ const responde = fn => async (req, res) => {
  * Operaciones no se llama «Ticketera» sino «Tickets sin traza», y explicar qué
  * es eso en su propia pantalla ahorra la pregunta.
  */
-function para(areaCodigo, { titulo, seccion, subtitulo } = {}) {
+function para(areaCodigo, { titulo, seccion, subtitulo, soloMes = true } = {}) {
   const router = express.Router();
 
   router.get('/', (req, res) => {
@@ -53,8 +108,10 @@ function para(areaCodigo, { titulo, seccion, subtitulo } = {}) {
     });
   });
 
+  // Solo lo pedido ESTE MES (los de antes son de la hoja vieja), salvo el
+  // ticket del enlace directo (`?ticket=CÓDIGO`), que se trae sea del mes que sea.
   router.get('/api/datos', responde(async req =>
-    await ticketera.datos(areaCodigo, { cerrados: req.query.cerrados === '1' })));
+    await ticketera.datos(areaCodigo, { cerrados: req.query.cerrados === '1', soloMes, codigo: req.query.ticket || null })));
 
   router.get('/api/ticket/:id', responde(async req => await ticketera.ficha(req.params.id)));
 
@@ -98,4 +155,4 @@ function para(areaCodigo, { titulo, seccion, subtitulo } = {}) {
   return router;
 }
 
-module.exports = { para };
+module.exports = { para, resumen, enLaBarra, BANDEJAS };

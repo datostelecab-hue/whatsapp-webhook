@@ -261,28 +261,41 @@ const TAREAS = {
       const r = await require('../modules/Vehiculos/vehiculos.service').diaria();
       return { registros: r.odometros.actualizados, detalle: r };
     },
+  },
 
   // LA ÚNICA PUERTA QUE SIGUE DANDO A GOOGLE, y solo de entrada: se LEEN las
-  // respuestas del formulario con el que los conductores piden cosas, y no se
-  // escribe nada en esa hoja.
+  // respuestas del formulario («Operaciones 1.0») con el que los conductores
+  // piden cosas, y no se escribe NADA en esa hoja.
   //
-  // Se puede repetir sin miedo: el índice único sobre `fila_form` impide que la
-  // misma respuesta entre dos veces, así que una pasada cortada a medias se
-  // arregla sola en la siguiente. La marca de agua es para no releer mil filas,
-  // no es la garantía.
+  // Se lee SOLO LO NUEVO: la cabecera y de la marca de agua para abajo (ver
+  // formulario.respuestasDesde). Y se puede repetir sin miedo: el índice único
+  // sobre `fila_form` impide que la misma respuesta entre dos veces, así que una
+  // pasada cortada a medias se arregla sola en la siguiente.
+  //
+  // HASTA EL 25/09/2026 NO CORRIÓ NUNCA: estaba escrita dentro de la tarea de
+  // Mapon por una llave mal cerrada, y los tickets entraban por un cron aparte
+  // cada dos horas. Ahora es la única puerta (el cron se quitó) y va cada 10 min.
   //
   // NO es crítica: que Google falle un rato no puede teñir de rojo la ingesta de
-  // BOLT y de Mapon, que es de lo que vive el cuadrante.
+  // BOLT y de Mapon, que es de lo que vive el cuadrante. Y si falla, espera diez
+  // minutos antes de volver a intentarlo, en vez de insistir cada latido.
   tickets_formulario: {
     fuente: 'formulario',
     etiqueta: 'Tickets del formulario',
     cadaMin: Number(process.env.INGESTA_TICKETS_MIN) || 10,
+    reintentoMin: 10,
     critica: false,
     async ejecutar() {
       const r = await require('../modules/Ticketera/ticketera.service').sincronizar();
+      // Una respuesta que no entra es una persona esperando una contestación
+      // que no va a llegar: se dice ENTERA, con su fila.
+      const fallos = r.fallos || [];
+      if (fallos.length) {
+        console.warn(`⚠️  [TICKETERA] ${fallos.length} fila(s) del formulario NO entraron: ` +
+          fallos.map(f => `${f.fila} (${f.quien}) — ${f.motivo}`).join(' · '));
+      }
       return { registros: r.nuevas, detalle: r };
     },
-  },
   },
 };
 

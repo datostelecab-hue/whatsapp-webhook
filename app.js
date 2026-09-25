@@ -228,6 +228,9 @@ app.use(sesion.protegido);
 app.use(sesion.forzarCambio);
 app.use(sesion.controlAcceso);
 app.use(sesion.cargarPermisos);
+// Qué cuadros de tickets pinta la barra de arriba (los de las bandejas que puede
+// abrir). Después de los permisos, que es de donde sale.
+app.use(require('./modules/Ticketera/ticketera.controller').enLaBarra);
 app.use('/inicio', require('./routes/inicio'));
 app.use('/justificantes', require('./modules/Control/justificantes.controller'));
 app.use('/recaudacion', require('./modules/Administracion/recaudacion.controller'));
@@ -274,6 +277,8 @@ app.use('/exportar', require('./routes/exportar'));
 // que no encajaba con ninguna regla y ahí se perdía entre trescientos tickets.
 // Son justo los que hay que mirar.
 const ticketera = require('./modules/Ticketera/ticketera.controller');
+// Los pendientes de este mes de cada bandeja, para los cuadros de la barra.
+app.use('/bandejas', ticketera.resumen());
 app.use('/ticketera', ticketera.para('RRHH', {
   titulo: 'Ticketera RRHH', seccion: 'ticketera',
   subtitulo: 'Vacaciones, bajas, permisos, nóminas, cuentas y papeles. Al aplicar una ausencia se abre el tramo en la ficha de la persona.' }));
@@ -750,34 +755,10 @@ app.get('/whatsapp/plantillas', async (req, res) => {
   }
 });
 
-// TICKETERA: lee el formulario cada dos horas.
-//
-// Antes esto era un botón, «Traer del formulario», y ese era el problema: una
-// petición de vacaciones entraba en el sistema cuando alguien se acordaba de
-// pulsarlo. Un conductor que pide el lunes por la mañana podía no existir para
-// RRHH hasta el miércoles.
-//
-// Dos horas y no cinco minutos porque al otro lado hay una hoja de Google, no
-// una base: cada pasada lee el libro entero y no hay prisa ninguna — lo que se
-// arregla es que llegue solo, no que llegue al segundo.
-//
-// Lo que no entra se dice ENTERO en el log, con su fila: una respuesta que no
-// se puede leer es una persona esperando una contestación que no va a llegar, y
-// sin cron nadie está mirando la pantalla cuando pasa.
-programar('7 */2 * * *', async () => {
-  try {
-    const r = await require('./modules/Ticketera/ticketera.service').sincronizar();
-    const fallos = r.fallos || [];
-    if (r.nuevas || fallos.length) {
-      console.log(`🎫 [CRON Ticketera] ${r.nuevas} nuevo(s), ${r.repetidas} ya estaban, ` +
-        `${r.sinIdentificar} sin identificar` +
-        (fallos.length ? ` · ⚠️  ${fallos.length} fila(s) NO entraron: ` +
-          fallos.map(f => `${f.fila} (${f.quien}) — ${f.motivo}`).join(' · ') : ''));
-    }
-  } catch (e) {
-    console.error('❌ [CRON Ticketera] no se ha podido leer el formulario:', e.message);
-  }
-}, { timezone: 'Europe/Madrid' });
+// TICKETERA: YA NO HAY CRON AQUÍ (25/09/2026). Los tickets entran por la ingesta
+// (services/ingesta.js → tickets_formulario), cada 10 min y leyendo solo las
+// filas nuevas. Este cron cada dos horas era el que los traía de verdad,
+// porque la tarea de la ingesta estaba mal anidada y no corría nunca.
 
 // Auditoría de flota: a las 5:00 (poco tráfico) procesa el día de AYER, ya cerrado.
 // Es la tarea más cara que hay —una llamada a Mapon por coche, unos 20 segundos—
