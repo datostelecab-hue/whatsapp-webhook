@@ -132,6 +132,8 @@
 </div>
 
 <script src="<%= typeof est === 'function' ? est('/assets/js/piezasCoche.js') : '/assets/js/piezasCoche.js' %>"></script>
+<%# El resumen en 3D (pestaña «3D»): three.js y el modelo se bajan solo al abrirla. %>
+<script src="<%= typeof est === 'function' ? est('/assets/js/coche3d.js') : '/assets/js/coche3d.js' %>"></script>
 <script>
 (function () {
   const TONO = <%- JSON.stringify(TONO_ESTADO) %>;

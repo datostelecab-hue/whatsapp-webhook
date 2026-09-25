@@ -225,14 +225,41 @@ Al lado, el editor de la pieza elegida (estado, quién y cuándo, observación, 
 
 **Cómo se guarda.** Las piezas y los estados son catálogos (`cat_pieza_vehiculo`, `cat_estado_pieza`): una pieza nueva es una fila, y el dibujo la busca por su código. Cada cambio es una fila de `vehiculo_pieza_estado` (quién, cuándo, qué, observación) y **el estado de ahora es la última de cada pieza**. **Una pieza sin filas está en buen estado**: un coche nuevo no necesita 59 filas para empezar. Volver a «Buen estado» también es una fila, sin observación (lo comprueba la base, `ck_vpe_obs`); apuntar lo mismo que ya hay no añade nada.
 
-**Por qué 2D.** No hay un modelo 3D real de los coches de la flota, y uno hecho a base de cajas parecería de juguete; en 3D, además, pinchar un retrovisor o una escobilla desde el móvil es una pelea. El dibujo es vectorial (`public/assets/js/piezasCoche.js`): nítido a cualquier tamaño y con los colores del tema. Las formas y los datos van por separado, así que un 3D solo tendría que sustituir el dibujo.
+**Se marca en 2D.** En 3D, pinchar un retrovisor o una escobilla desde el móvil es una pelea. El dibujo es vectorial (`public/assets/js/piezasCoche.js`): nítido a cualquier tamaño y con los colores del tema.
+
+### El resumen en 3D (25/09/2026)
+
+La tercera pestaña, **3D**, enseña un **Toyota Corolla sedán** que se gira con el dedo o el ratón, con un **punto rojo encima de cada pieza en mal estado**: fijo si hay que arreglarla, parpadeando si hay que cambiarla. Camilo lo pidió así: *«que el 3D muestre el resumen del 2D, no hay que trocearlo»*. Por eso **no se edita en el 3D**: pinchar un punto abre la pieza en el mismo editor de al lado (y desde ahí sí se puede guardar), y al pasar por encima sale qué pieza es y la observación. Pinchar una pieza de la lista de arriba lleva la cámara hasta ella.
+
+- **Ver por dentro** aclara la carrocería y deja ver asientos, salpicadero, motor, batería, frenos y rueda de repuesto. Si todo lo malo del coche está dentro, el 3D ya empieza así.
+- Los puntos se pintan siempre por encima (una pieza de dentro tiene que verse), pero **si hay chapa entre la cámara y el punto, salen más flojos**: así se distingue la puerta izquierda de la derecha.
+- Gira solo hasta que alguien pone el ratón encima (un punto que se mueve no se acierta). Con «menos movimiento» en el sistema, ni gira ni parpadea: el «Cambio» lleva un aro blanco.
+- En el móvil la cámara se aleja lo que haga falta para que el coche quepa a lo ancho.
+
+**El coche no se dibuja a mano: lo genera un script de Blender**, `scripts/modelo-coche-3d.py`, con las medidas reales del Corolla E210 (4,63 × 1,78 × 1,44 m, batalla 2,70 m, 205/55 R16). La carrocería son tres siluetas —lateral, planta y frontal— cruzadas, con los pasos de rueda restados y las aristas redondeadas; cristales, faros, pilotos, rejillas y juntas de las puertas son láminas finas pegadas encima. Por dentro, bloques simples a propósito. Sale `public/assets/3d/coche.glb` (~600 KB, 33 000 triángulos).
+
+**Cada pieza tiene su ancla en el modelo**: un punto invisible llamado `p_<código>` (el de `cat_pieza_vehiculo`), y los frenos y las suspensiones, que son dos por eje, uno más con `__2`. El visor pone el punto rojo en el ancla, así que las coordenadas viven en un solo sitio. **Una pieza nueva en el catálogo necesita su ancla en el script** (el diccionario `ANCLAS`); si no la tiene, sale en el 2D y en la lista, pero no en el 3D.
+
+```
+"C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" -b --factory-startup \
+    -P scripts/modelo-coche-3d.py -- public/assets/3d/coche.glb [prueba.png]
+```
+
+(con la segunda ruta, además, saca tres fotos de comprobación: de delante, de detrás y de lado).
+
+**three.js va servido por nosotros, no por un CDN**, y **solo se descarga al abrir la pestaña 3D**: `public/assets/vendor/three-coche.min.js` (~630 KB, 160 KB comprimido) lleva únicamente las clases que usa el visor, las que lista `scripts/visor-3d/three-coche.js`; la cabecera de ese fichero dice cómo regenerarlo con esbuild. El visor (`public/assets/js/coche3d.js`) es **uno por página** —el navegador limita los contextos WebGL—: cada ficha que lo enseña se lo lleva a su hueco, y el modelo se carga una sola vez. Por lo mismo, que haya WebGL se mira una sola vez. Sin WebGL, la pestaña lo dice y remite al dibujo.
 
 **Quién.** Mirar va con `/vehiculos`. Cambiar un estado es **`/vehiculos/piezas`**, atada por `RUTA_A_CLAVE` a `POST /vehiculos/api/piezas/:id` y no con `escribir` (que cerraría también editar el coche). La migración se la dio a quien ya apuntaba en el taller o en las inspecciones: William, Fernando y Óscar.
 
 ```
 modules/Vehiculos/piezas.service.js   las reglas (catálogo, sin observación en «bien», sin repetir)
 modules/Vehiculos/piezas.repo.js      el SQL
-public/assets/js/piezasCoche.js       el dibujo y el editor
+public/assets/js/piezasCoche.js       el dibujo, el editor y las pestañas
+public/assets/js/coche3d.js           el resumen en 3D (visor, puntos, «Ver por dentro»)
+public/assets/3d/coche.glb            el Corolla, con un ancla p_<código> por pieza
+scripts/modelo-coche-3d.py            el script de Blender que lo genera
+scripts/visor-3d/three-coche.js       qué partes de three.js van en el paquete
+public/assets/vendor/three-coche.min.js  el paquete de three.js (r186)
 db/158-estado-de-las-piezas.sql       catálogos, historial y la llave
 ```
 

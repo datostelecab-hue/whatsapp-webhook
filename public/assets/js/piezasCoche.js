@@ -13,11 +13,14 @@
 // cristales, luces, espejos, ruedas…) y el INTERIOR CON LA MECÁNICA (asientos,
 // volante, salpicadero, motor, batería, frenos…).
 //
-// POR QUÉ 2D Y NO 3D. No hay un modelo 3D de verdad de los coches de la flota,
-// y uno hecho con cajas parecería un juguete; y en 3D pinchar un retrovisor o
-// una escobilla desde el móvil es una pelea. Un dibujo vectorial visto desde
-// arriba se ve nítido a cualquier tamaño, cabe entero en pantalla y cada pieza
-// es fácil de acertar.
+// SE MARCA EN 2D. En 3D pinchar un retrovisor o una escobilla desde el móvil
+// es una pelea; un dibujo vectorial visto desde arriba se ve nítido a cualquier
+// tamaño, cabe entero en pantalla y cada pieza es fácil de acertar.
+//
+// Y SE RESUME EN 3D. La tercera pestaña, «3D» (coche3d.js), enseña un Corolla
+// que se gira con un punto rojo encima de cada pieza en mal estado —parpadeando
+// las de «Cambio»—. No se trocea por piezas: solo resume lo que dice el 2D.
+// Pinchar un punto abre la pieza en el mismo editor de al lado.
 //
 // Uso (dentro de un bloque de la ficha del Listado):
 //   { titulo: 'Estado de las piezas', pinta: (d, hueco, lista) =>
@@ -231,20 +234,28 @@
     // Lo que se está editando (el estado elegido antes de guardar).
     let borrador = null;
 
+    // La pestaña 3D solo sale si el visor está en la página.
+    const HAY_3D = !!global.Coche3D;
+    if (mem.vista === '3d' && !HAY_3D) mem.vista = 'exterior';
+
     function pintar() {
       const mal = D.piezas.filter(p => estadoDe(p.codigo) !== 'bien');
       const nCambio = mal.filter(p => estadoDe(p.codigo) === 'cambio').length;
+      const en3d = mem.vista === '3d';
       const vistaPiezas = D.piezas.filter(p => p.vista === mem.vista);
       const grupos = [...new Set(vistaPiezas.map(p => p.grupo))];
-      const malOtra = mal.filter(p => p.vista !== mem.vista).length;
+      // En cada pestaña de dibujo, cuántas piezas malas hay en la OTRA.
+      const malEn = v => mal.filter(p => p.vista === v).length;
+      const pestanas = [['exterior', 'Exterior', 'fa-car-side'], ['interior', 'Interior y mecánica', 'fa-gears']];
+      if (HAY_3D) pestanas.push(['3d', '3D', 'fa-cube']);
 
       hueco.innerHTML = `
         <div class="flex flex-wrap items-center gap-2 mb-4">
           <div class="inline-flex rounded-xl border border-telecab-border overflow-hidden text-sm" role="tablist">
-            ${[['exterior', 'Exterior', 'fa-car-side'], ['interior', 'Interior y mecánica', 'fa-gears']].map(([v, t, i]) => `
+            ${pestanas.map(([v, t, i]) => `
               <button data-vista="${v}" role="tab" aria-selected="${mem.vista === v}"
                 class="px-3 py-1.5 ${mem.vista === v ? 'bg-telecab-gold/20 text-telecab-gold font-semibold' : 'text-telecab-muted hover:text-telecab-text'}">
-                <i class="fa-solid ${i} mr-1"></i>${t}${v !== mem.vista && malOtra ? ` <span class="ml-1 text-telecab-red font-semibold">· ${malOtra}</span>` : ''}</button>`).join('')}
+                <i class="fa-solid ${i} mr-1"></i>${t}${v !== mem.vista && v !== '3d' && !en3d && malEn(v) ? ` <span class="ml-1 text-telecab-red font-semibold">· ${malEn(v)}</span>` : ''}</button>`).join('')}
           </div>
           <div class="flex-1"></div>
           <div class="flex flex-wrap items-center gap-3 text-xs text-telecab-muted">
@@ -264,6 +275,11 @@
             : '<i class="fa-solid fa-circle-check text-telecab-green mr-1"></i><b class="text-telecab-green">Todo en buen estado</b>'}
         </div>
 
+        ${en3d ? `
+        <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] items-start">
+          <div data-3d class="rounded-2xl bg-telecab-dark/40 border border-telecab-border overflow-hidden"></div>
+          <div data-editor class="rounded-2xl border border-telecab-border p-4"></div>
+        </div>` : `
         <div class="grid gap-5 lg:grid-cols-[minmax(240px,340px)_1fr] items-start">
           <div class="pc-lienzo rounded-2xl bg-telecab-dark/40 border border-telecab-border p-3">
             ${svgDe(mem.vista, estadoDe, nombreDe, mem.sel)}
@@ -281,9 +297,16 @@
                 }).join('')}`).join('')}
             </div>
           </div>
-        </div>`;
+        </div>`}`;
 
       pintarEditor();
+      if (en3d) {
+        global.Coche3D.montar(hueco.querySelector('[data-3d]'), {
+          clave: id, sel: mem.sel, alElegir: elegir,
+          marcas: mal.map(p => ({ codigo: p.codigo, nombre: p.nombre, vista: p.vista, estado: estadoDe(p.codigo),
+            observacion: (D.ahora.get(p.codigo) || {}).observacion || '' })),
+        });
+      }
 
       // Enganches.
       hueco.querySelectorAll('[data-vista]').forEach(b => b.addEventListener('click', () => {
@@ -300,7 +323,8 @@
       const p = D.porCodigo.get(cod);
       if (!p) return;
       mem.sel = cod;
-      if (p.vista !== mem.vista) mem.vista = p.vista;
+      // En el 3D se queda en el 3D: el punto ya dice dónde está la pieza.
+      if (mem.vista !== '3d' && p.vista !== mem.vista) mem.vista = p.vista;
       borrador = null;
       pintar();
       const g = hueco.querySelector(`.pc-pieza[data-pieza="${cod}"]`);
@@ -310,7 +334,11 @@
     function pintarEditor() {
       const caja = hueco.querySelector('[data-editor]');
       if (!mem.sel) {
-        caja.innerHTML = `<p class="text-sm text-telecab-muted"><i class="fa-solid fa-hand-pointer mr-1.5"></i>
+        caja.innerHTML = mem.vista === '3d'
+          ? `<p class="text-sm text-telecab-muted"><i class="fa-solid fa-hand-pointer mr-1.5"></i>
+          Pincha un punto rojo del coche, o una pieza de la lista de arriba, para ver qué le pasa${puedeEditar ? ' y cambiar su estado' : ''}.
+          Las piezas se marcan en «Exterior» e «Interior y mecánica».</p>`
+          : `<p class="text-sm text-telecab-muted"><i class="fa-solid fa-hand-pointer mr-1.5"></i>
           Pincha una pieza del coche, o de la lista, para ver cómo está${puedeEditar ? ' y cambiar su estado' : ''}.</p>`;
         return;
       }
