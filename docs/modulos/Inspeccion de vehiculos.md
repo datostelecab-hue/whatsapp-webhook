@@ -6,7 +6,7 @@ codigo: modules/Vehiculos/inspeccion.*
 
 # Inspección de vehículos
 
-El **primer submódulo de taller** (24/09/2026). Cada coche con su última inspección: dieciséis elementos revisados, los vencimientos de la ITV y de las pegatinas VTC, unas observaciones y el resultado. La base fue el Excel del taller «Inspección de Vehículos — Taller Telecab · Tibus elementos», y se sigue pudiendo importar desde la pantalla.
+El **primer submódulo de taller** (24/09/2026). Cada coche con su última inspección: diecisiete elementos revisados, los vencimientos de la ITV y de las pegatinas VTC, unas observaciones y el resultado. La base fue el Excel del taller «Inspección de Vehículos — Taller Telecab · Tibus elementos», y se sigue pudiendo importar desde la pantalla.
 
 ```
 modules/Vehiculos/inspeccion.controller.js   /inspecciones — las rutas y el candado
@@ -22,7 +22,7 @@ db/150-inspeccion-de-vehiculos.sql           catálogos, tablas y la llave repar
 |---|---|
 | Matrícula del vehículo | el coche (`vehiculo_id`), por la matrícula normalizada |
 | Marca, Modelo | `marca`, `modelo` de la inspección, tal como se anotaron |
-| Los 16 elementos | una fila por elemento en `inspeccion_elemento` |
+| Los 17 elementos | una fila por elemento en `inspeccion_elemento` |
 | ITV — mes / año | `itv_mes`, `itv_anio` |
 | Pegatina VTC delantera — mes / año | `vtc_delantera_mes`, `vtc_delantera_anio` |
 | Pegatina VTC trasera — año | `vtc_trasera_anio` (y `vtc_trasera_mes`, que el Excel no trae) |
@@ -30,6 +30,17 @@ db/150-inspeccion-de-vehiculos.sql           catálogos, tablas y la llave repar
 | Resultado final de la inspección | `resultado` |
 
 Los **elementos son un catálogo** (`cat_elemento_inspeccion`), no dieciséis columnas: revisar algo más —el extintor, la mampara— es una fila nueva, no una migración. Cada uno lleva el título de su columna en el Excel (`cabecera_excel`), que es con lo que se importa. Están agrupados en Identificación, Documentación, Carteles, Imagen y Seguridad.
+
+### Entran el gato y la llave de ruedas, sale el botiquín (db/161, 25/09/2026)
+
+Lo pidió Camilo. La llave es la **de ruedas**, la que va con el gato para cambiar una rueda; los dos van en Seguridad, justo detrás de *Ruedas*. Su `cabecera_excel` es «Gato» y «Llave de ruedas»: el Excel del taller todavía no trae esas columnas, así que la importación avisa de que faltan y no los toca; el día que las traiga, entran solas.
+
+**El botiquín se apaga (`activo = FALSE`), no se borra**: las 89 inspecciones que había lo tenían apuntado. Apagado deja de salir en el formulario, en la importación, en las fichas y en la cuenta de incidencias —las inspecciones solo se leen con los elementos **activos**, también las de antes: si no, un «Falta» viejo seguiría contando por algo que ya no se mira—.
+
+Dos cosas que un cambio de catálogo rompía y ya no:
+
+- **Las de relleno** (los coches que no venían en el Excel) se reconocían porque tenían *todos* los elementos del catálogo en «Falta». Con dos elementos más, habrían pasado a «15 incidencias». Ahora se reconocen por su **marca** (la observación que les pone el importador).
+- **Reimportar el mismo Excel** habría apuntado otra inspección idéntica a cada coche: la huella guardada incluía el botiquín. Ahora se compara también con la huella **rehecha desde la última inspección guardada, con el catálogo de hoy**. Probado: se rehace idéntica en 89/89, y las 89 se reconocen «sin cambios».
 
 Cada elemento puede estar **Correcto**, **Deteriorado**, **Falta** o **No se requiere en normativa** (`cat_estado_elemento`). Los que cuentan como algo que arreglar son los dos del medio (`es_fallo`). **Un elemento sin fila es que no se revisó**: «sin revisar» no es un estado inventado.
 
@@ -48,7 +59,7 @@ Botón **Importar Excel** (quien puede apuntar). Las columnas se buscan **por su
 Tres reglas, las tres de Camilo:
 
 - **Solo los coches que están en nuestro sistema, de la sede que sean.** Barcelona también: si viene en el Excel, se apunta. Las matrículas que no están **se ignoran y se listan** al terminar, para darlas de alta a mano. En la primera importación fueron **0413MMZ, 5895LBZ, 5900LBZ y 5902JYZ**.
-- **Los coches que no vienen en el Excel y no tienen ninguna inspección se apuntan con TODO EN «FALTA»**, para que salgan como pendientes de inspeccionar en vez de desaparecer. Solo los que no tienen ninguna: a uno que ya tenga inspección no se le pisa. En la primera fueron diez (nueve de Madrid y el 8512LDS de Barcelona). La pantalla no los cuenta como dieciséis averías: salen como «Pendiente de inspeccionar».
+- **Los coches que no vienen en el Excel y no tienen ninguna inspección se apuntan con TODO EN «FALTA»**, para que salgan como pendientes de inspeccionar en vez de desaparecer. Solo los que no tienen ninguna: a uno que ya tenga inspección no se le pisa. En la primera fueron diez (nueve de Madrid y el 8512LDS de Barcelona). La pantalla no los cuenta como averías: salen como «Pendiente de inspeccionar», y se reconocen por su marca, no por contar elementos (ver arriba).
 - **No duplica.** Cada fila deja una huella (`huella`); reimportar el mismo Excel no apunta nada, y uno nuevo solo añade inspección a los coches que cambiaron.
 
 **Se comprueba todo antes de escribir nada**: un valor que no se entiende en cualquier fila para la importación entera y se dice cuál y dónde. La fecha de las inspecciones se puede dar al importar, si se sabe.

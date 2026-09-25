@@ -102,9 +102,12 @@
   const elementoDe = c => CAT.elementos.find(e => e.codigo === c) || { etiqueta: c };
   const fallos = f => (f.elementos || []).filter(x => estadoDe(x.estado).es_fallo);
   // Los coches que no venían en el Excel se cargaron con todo en «Falta»: es
-  // un pendiente de inspeccionar, no dieciséis averías.
-  const todoEnFalta = f => (f.elementos || []).length >= CAT.elementos.length
-    && (f.elementos || []).every(x => x.estado === 'falta');
+  // un pendiente de inspeccionar, no dieciséis averías. Se reconocen por su
+  // MARCA (la observación que les pone el importador), no por contar elementos:
+  // al entrar el gato y la llave (db/161) esas inspecciones dejaron de tener
+  // todos los del catálogo y habrían pasado a «15 incidencias».
+  const todoEnFalta = f => (!!CAT.faltaObs && f.observaciones === CAT.faltaObs)
+    || ((f.elementos || []).length >= CAT.elementos.length && (f.elementos || []).every(x => x.estado === 'falta'));
 
   /**
    * Un vencimiento de MES y AÑO, que es como se lee en la pegatina. Caduca el

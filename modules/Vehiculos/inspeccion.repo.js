@@ -35,12 +35,17 @@ const CAMPOS = `
   COALESCE(el.elementos, '[]'::json) AS elementos`;
 
 // Lo revisado en esa inspección, en el orden del catálogo: [{ elemento, estado }].
+//
+// SOLO LO ACTIVO. Un elemento que se deja de revisar (el botiquín, db/161) se
+// apaga en el catálogo y desaparece también de las inspecciones de antes: si
+// no, un «Falta» viejo seguiría contando como incidencia de un coche por algo
+// que ya no se mira. La fila sigue en la base.
 const ELEMENTOS = `
   LEFT JOIN LATERAL (
     SELECT json_agg(json_build_object('elemento', e.elemento, 'estado', e.estado) ORDER BY c.orden) AS elementos
       FROM inspeccion_elemento e
       JOIN cat_elemento_inspeccion c ON c.codigo = e.elemento
-     WHERE e.inspeccion_id = i.id) el ON TRUE`;
+     WHERE e.inspeccion_id = i.id AND c.activo) el ON TRUE`;
 
 const ORDEN_RECIENTE = 'COALESCE(i.fecha, (i.creado_at AT TIME ZONE \'Europe/Madrid\')::date) DESC, i.creado_at DESC';
 
@@ -103,15 +108,23 @@ async function vehiculosPorMatricula(matriculas) {
   return new Map(r.rows.map(x => [x.matricula_norm, x]));
 }
 
-/** La huella de la última inspección de cada coche: lo que evita duplicar al reimportar. */
+/**
+ * La última inspección de cada coche, para no duplicar al reimportar: su huella
+ * guardada y lo que dice (con los elementos ACTIVOS), para poder rehacer la
+ * huella con el catálogo de hoy.
+ */
 async function ultimasHuellas(vehiculoIds) {
   if (!vehiculoIds.length) return new Map();
   const r = await db.consulta(`
-    SELECT DISTINCT ON (i.vehiculo_id) i.vehiculo_id, i.huella
+    SELECT DISTINCT ON (i.vehiculo_id) i.vehiculo_id, i.huella,
+           i.marca, i.modelo, i.itv_mes, i.itv_anio, i.vtc_delantera_mes, i.vtc_delantera_anio,
+           i.vtc_trasera_mes, i.vtc_trasera_anio, i.observaciones, i.resultado,
+           COALESCE(el.elementos, '[]'::json) AS elementos
       FROM inspeccion_vehiculo i
+      ${ELEMENTOS}
      WHERE i.vehiculo_id = ANY($1::bigint[]) AND i.anulado_at IS NULL
      ORDER BY i.vehiculo_id, ${ORDEN_RECIENTE}`, [vehiculoIds.map(Number)]);
-  return new Map(r.rows.map(x => [String(x.vehiculo_id), x.huella]));
+  return new Map(r.rows.map(x => [String(x.vehiculo_id), x]));
 }
 
 /** Coches vivos, de cualquier sede, que no tienen NINGUNA inspección (ni anulada). */

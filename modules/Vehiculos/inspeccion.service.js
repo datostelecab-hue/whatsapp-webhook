@@ -161,6 +161,16 @@ async function leerExcel(bytes, elementos) {
   return { hoja: ws.name, filas, errores, sinColumna };
 }
 
+/** Una inspección guardada, con la forma de una leída del Excel (para compararlas). */
+const comoLeida = u => ({
+  marca: u.marca, modelo: u.modelo,
+  itvMes: u.itv_mes, itvAnio: u.itv_anio,
+  vtcDelanteraMes: u.vtc_delantera_mes, vtcDelanteraAnio: u.vtc_delantera_anio,
+  vtcTraseraMes: u.vtc_trasera_mes, vtcTraseraAnio: u.vtc_trasera_anio,
+  observaciones: u.observaciones, resultado: u.resultado,
+  elementos: Object.fromEntries((u.elementos || []).map(x => [x.elemento, x.estado])),
+});
+
 /** Lo que identifica una inspección leída: si no cambia, no se vuelve a apuntar. */
 function huellaDe(d) {
   const lo = {
@@ -211,7 +221,7 @@ async function importar({ base64, fecha } = {}, quien = {}) {
 
   const coches = await repo.vehiculosPorMatricula([...porMat.keys()]);
   const ignoradas = [...porMat.keys()].filter(m => !coches.has(m)).sort();
-  const huellas = await repo.ultimasHuellas([...coches.values()].map(c => c.id));
+  const ultimas = await repo.ultimasHuellas([...coches.values()].map(c => c.id));
 
   const apuntadas = [], sinCambios = [];
   for (const f of porMat.values()) {
@@ -219,7 +229,13 @@ async function importar({ base64, fecha } = {}, quien = {}) {
     if (!coche) continue;
     const d = { ...f, vehiculoId: coche.id, fecha: fecha || null, origen: 'excel' };
     d.huella = huellaDe(d);
-    if (huellas.get(String(coche.id)) === d.huella) { sinCambios.push(coche.matricula); continue; }
+    // Sin cambios si coincide con la huella guardada O con la que sale de lo
+    // guardado leído con el catálogo de HOY. Lo segundo es por los cambios de
+    // catálogo: al apagar el botiquín (db/161) todas las huellas viejas lo
+    // incluían, y reimportar el mismo Excel habría apuntado otra inspección,
+    // idéntica, a cada coche.
+    const u = ultimas.get(String(coche.id));
+    if (u && (u.huella === d.huella || huellaDe(comoLeida(u)) === d.huella)) { sinCambios.push(coche.matricula); continue; }
     await repo.crear(d, quien);
     apuntadas.push(coche.matricula);
   }
@@ -296,8 +312,8 @@ async function anular(id, motivo, quien = {}) {
 
 /** La lista: la flota que se vigila y los coches de cualquier sede con inspección. */
 async function lista() {
-  const [filas, catalogos] = await Promise.all([repo.lista({ sede: SEDE_FLOTA }), repo.catalogos()]);
-  return { filas, catalogos };
+  const [filas, cats] = await Promise.all([repo.lista({ sede: SEDE_FLOTA }), catalogos()]);
+  return { filas, catalogos: cats };
 }
 
 async function ficha(vehiculoId) {
@@ -306,7 +322,10 @@ async function ficha(vehiculoId) {
   return f;
 }
 
-const catalogos = () => repo.catalogos();
+// Con la marca de las inspecciones de relleno (los coches que no venían en el
+// Excel): la pantalla las reconoce por ella y no por contar elementos, que
+// cambia cada vez que el catálogo gana o pierde uno.
+const catalogos = async () => ({ ...(await repo.catalogos()), faltaObs: FALTA_OBS });
 
 module.exports = {
   MESES, lista, ficha, catalogos, crear, anular, importar,
