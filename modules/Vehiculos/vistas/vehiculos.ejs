@@ -131,9 +131,12 @@
   </div>
 </div>
 
+<script src="<%= typeof est === 'function' ? est('/assets/js/piezasCoche.js') : '/assets/js/piezasCoche.js' %>"></script>
 <script>
 (function () {
   const TONO = <%- JSON.stringify(TONO_ESTADO) %>;
+  // Quién puede cambiar el estado de las piezas (el servidor lo comprueba igual).
+  const PUEDE_PIEZAS = <%- JSON.stringify(!!(typeof puedePiezas !== 'undefined' && puedePiezas)) %>;
   const { fecha, fechaHora, hace, km, etiqueta, caduca, esc } = Listado.fmt;
   const VER_SEDES = <%- JSON.stringify(!!verTodasLasSedes) %>;
 
@@ -205,6 +208,11 @@
         pinta: (v, f) => v
           ? `${km(v)} <span class="text-telecab-muted text-xs">${esc(hace(f.km_odometro_at))}</span>`
           : '<span class="text-telecab-muted">—</span>' },
+      // Las piezas en mal estado (db/158): de un vistazo, qué coche tiene algo.
+      { titulo: 'Piezas', campo: 'piezas_mal', clase: 'whitespace-nowrap',
+        pinta: (v, f) => Number(v)
+          ? etiqueta(`${v} mal${Number(f.piezas_cambio) ? ` · ${f.piezas_cambio} cambio` : ''}`, 'red')
+          : '<span class="text-telecab-muted text-xs">bien</span>' },
       { titulo: 'Plazas', campo: 'plazas_ocupadas', clase: 'tabular-nums',
         pinta: v => `${v}<span class="text-telecab-muted"> / 6</span>` },
     ],
@@ -240,6 +248,11 @@
             { etiqueta: 'Última lectura', valor: d => d.km_odometro_at ? `${fechaHora(d.km_odometro_at)} (${hace(d.km_odometro_at)})` : '' },
             { etiqueta: 'Notas', valor: d => d.notas, ancho: 'sm:col-span-2 lg:col-span-3' },
           ],
+        },
+        {
+          // El dibujo del coche para marcar el estado de cada pieza (db/158).
+          titulo: 'Estado de las piezas', icono: 'fa-car-burst',
+          pinta: (d, hueco, lista) => PiezasCoche.montar(hueco, { vehiculoId: d.id, puedeEditar: PUEDE_PIEZAS, lista }),
         },
         {
           titulo: 'Plazas y conductores', icono: 'fa-users',

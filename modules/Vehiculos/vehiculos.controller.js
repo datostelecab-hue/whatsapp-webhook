@@ -24,14 +24,20 @@ const veh = require('./vehiculos.service');
 const actor = require('../../services/repo/actor');
 const permisos = require('../../services/permisos');
 const facturas = require('./facturas.service');
+const piezas = require('./piezas.service');
 
 router.get('/', async (req, res) => {
   let catalogos = { estados: [], zonas: [], sedes: [] };
   try { catalogos = await veh.catalogos(); } catch (e) {
     console.error('❌ [VEHICULOS] catálogos:', e.message);
   }
+  // Quién puede cambiar el estado de las piezas: sale de la matriz de permisos.
+  // `permisos` en null es acceso total (superadmin y desarrollador). El servidor
+  // lo comprueba igual; esto solo evita enseñar botones que darían 403.
+  const mias = res.locals.permisos;
   res.render('vehiculos', {
     titulo: 'Vehículos', seccion: 'vehiculos', layout: 'layout-gestion',
+    puedePiezas: !mias || mias.includes('/vehiculos/piezas'),
     estadosVehiculo: catalogos.estados, zonas: catalogos.zonas, sedes: catalogos.sedes,
     // Solo quien ve las DOS sedes necesita una columna que las distinga: a quien
     // ve Madrid entero, una columna con "Madrid" en las 89 filas no le dice nada.
@@ -80,6 +86,25 @@ router.get('/api/ficha/:id', async (req, res) => {
   } catch (error) {
     console.error('❌ [VEHICULOS] /api/ficha:', error.message);
     res.status(500).json({ status: 'error', msg: error.message });
+  }
+});
+
+// ---------- el estado de las piezas (db/158) ----------
+// Mirar cuelga de '/vehiculos'; cambiar va por '/vehiculos/api/piezas', que la
+// matriz de permisos ata a '/vehiculos/piezas'.
+router.get('/api/ficha/:id/piezas', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await piezas.deVehiculo(req.params.id)) }); }
+  catch (error) {
+    console.error('❌ [VEHICULOS] piezas:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
+  }
+});
+
+router.post('/api/piezas/:id', async (req, res) => {
+  try { res.json({ status: 'ok', ...(await piezas.apuntar(req.params.id, req.body || {}, await actor.idDe(req))) }); }
+  catch (error) {
+    console.error('❌ [VEHICULOS] POST piezas:', error.message);
+    res.status(400).json({ status: 'error', msg: error.message });
   }
 });
 

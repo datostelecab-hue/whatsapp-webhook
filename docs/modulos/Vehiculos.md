@@ -206,6 +206,36 @@ No es purismo: si el planificador leyera el repositorio directamente, Vehículos
 
 Por la puerta de **Taller** no entra nadie de fuera todavía: solo su propio controlador. Mejor así — cuanto menos ofrezca una puerta, menos ata.
 
+## El estado de las piezas: el dibujo del coche (db/158, 25/09/2026)
+
+En la ficha del vehículo, un **coche visto desde arriba** donde se pincha una pieza y se dice cómo está. Lo pidió Camilo para el taller:
+
+| Estado | Cómo se ve |
+|---|---|
+| **Buen estado** | verde suave; así está todo al principio |
+| **Mal estado · Arreglar** | rojo |
+| **Mal estado · Cambio** | rojo que parpadea |
+
+Los dos malos llevan una **observación**. Dos dibujos, con **59 piezas**:
+
+- **Exterior**: carrocería (paragolpes, capó, aletas, puertas, techo, portón, tapa del depósito, antena), cristales, luces, retrovisores, limpiaparabrisas, ruedas, matrículas y escape.
+- **Interior y mecánica**: habitáculo (salpicadero, volante, multimedia, climatización, consola, asientos, cinturones, alfombrillas, retrovisor interior), maletero (suelo y rueda de repuesto) y mecánica (motor, batería, radiador, líquidos, frenos y suspensiones).
+
+Al lado, el editor de la pieza elegida (estado, quién y cuándo, observación, historial) y la lista de todas por grupos, que también sirve para elegir las pequeñas. Arriba, cuántas hay en mal estado, con un botón por pieza. En la lista de vehículos, la columna **Piezas** dice de un vistazo qué coche tiene algo.
+
+**Cómo se guarda.** Las piezas y los estados son catálogos (`cat_pieza_vehiculo`, `cat_estado_pieza`): una pieza nueva es una fila, y el dibujo la busca por su código. Cada cambio es una fila de `vehiculo_pieza_estado` (quién, cuándo, qué, observación) y **el estado de ahora es la última de cada pieza**. **Una pieza sin filas está en buen estado**: un coche nuevo no necesita 59 filas para empezar. Volver a «Buen estado» también es una fila, sin observación (lo comprueba la base, `ck_vpe_obs`); apuntar lo mismo que ya hay no añade nada.
+
+**Por qué 2D.** No hay un modelo 3D real de los coches de la flota, y uno hecho a base de cajas parecería de juguete; en 3D, además, pinchar un retrovisor o una escobilla desde el móvil es una pelea. El dibujo es vectorial (`public/assets/js/piezasCoche.js`): nítido a cualquier tamaño y con los colores del tema. Las formas y los datos van por separado, así que un 3D solo tendría que sustituir el dibujo.
+
+**Quién.** Mirar va con `/vehiculos`. Cambiar un estado es **`/vehiculos/piezas`**, atada por `RUTA_A_CLAVE` a `POST /vehiculos/api/piezas/:id` y no con `escribir` (que cerraría también editar el coche). La migración se la dio a quien ya apuntaba en el taller o en las inspecciones: William, Fernando y Óscar.
+
+```
+modules/Vehiculos/piezas.service.js   las reglas (catálogo, sin observación en «bien», sin repetir)
+modules/Vehiculos/piezas.repo.js      el SQL
+public/assets/js/piezasCoche.js       el dibujo y el editor
+db/158-estado-de-las-piezas.sql       catálogos, historial y la llave
+```
+
 ## Inspección de vehículos
 
 Desde el 24/09/2026 el taller tiene un submódulo más: **[[Inspeccion de vehiculos]]** (`/inspecciones`), la última inspección de cada coche con su historial y el importador del Excel del taller. Vive en este módulo (`inspeccion.*`) porque habla del mismo objeto —el coche—, con su propia llave de permisos.

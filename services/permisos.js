@@ -87,6 +87,10 @@ const CATALOGO = [
       // Barcelona se lista en Vehículos —la sede es lo que los separa— pero no
       // tiene visibilidad en lo operativo. Lo decidió Camilo.
       { clave: '/vehiculos/sedes', etiqueta: 'Ver también los vehículos de Barcelona (solo en la lista de Vehículos)', manual: true },
+      // El estado de las piezas en el dibujo del coche (db/158). Mirarlo va con
+      // '/vehiculos'; cambiarlo es del taller. Va por RUTA_A_CLAVE y no con
+      // `escribir`, que cerraría también editar el coche a quien no la tenga.
+      { clave: '/vehiculos/piezas', etiqueta: 'Vehículos · marcar el estado de las piezas del coche' },
     ] },
     { clave: '/conductores', etiqueta: 'Conductores' },
     // MIRAR el taller lo quiere media empresa: tráfico necesita saber qué coche
@@ -229,6 +233,9 @@ const RUTA_A_CLAVE = [
   ['/bitacora/api/justificar',          '/bitacora/justificar'],
   ['/bitacora/api/anular-justificante', '/bitacora/justificar'],
   ['/bitacora/api/libranza',            '/bitacora/justificar'],
+  // Cambiar el estado de una pieza del coche. MIRARLO no pasa por aquí: va por
+  // '/vehiculos/api/ficha/:id/piezas', que cae en '/vehiculos'.
+  ['/vehiculos/api/piezas',             '/vehiculos/piezas'],
 ];
 
 // Los módulos que separan LEER de ESCRIBIR por método: clave base → clave de
@@ -327,7 +334,7 @@ function semillaDeRol(rol) {
 
     // El taller vive en los coches. Nada de personas más allá de saber quién
     // lleva cada uno.
-    case 'taller': return ['/pendientes', '/vehiculos', '/conductores',
+    case 'taller': return ['/pendientes', '/vehiculos', '/vehiculos/piezas', '/conductores',
       '/operaciones', '/operaciones/auditoria', '/control/km'];
 
     // Quien recluta necesita el embudo entero y ver la plantilla para saber

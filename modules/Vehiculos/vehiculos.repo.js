@@ -55,8 +55,18 @@ async function listar({ estado, zona, busca, sedes, incluirBajas = false } = {})
             WHERE p.vehiculo_id = v.id AND p.baja_at IS NULL) AS plazas_ocupadas,
            -- Con qué sistemas externos está enlazado.
            (SELECT count(*) FROM vehiculo_alias al
-             WHERE al.vehiculo_id = v.id AND al.visto_hasta IS NULL) AS enlaces
+             WHERE al.vehiculo_id = v.id AND al.visto_hasta IS NULL) AS enlaces,
+           -- Cuántas piezas están ahora en mal estado, y de ellas cuántas hay
+           -- que cambiar (db/158): la última fila de cada pieza.
+           pz.mal AS piezas_mal, pz.cambio AS piezas_cambio
     FROM vehiculo v
+    LEFT JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE u.estado <> 'bien')::int AS mal,
+             count(*) FILTER (WHERE u.estado = 'cambio')::int AS cambio
+        FROM (SELECT DISTINCT ON (pe.pieza) pe.estado
+                FROM vehiculo_pieza_estado pe
+               WHERE pe.vehiculo_id = v.id
+               ORDER BY pe.pieza, pe.id DESC) u) pz ON TRUE
     LEFT JOIN cat_estado_vehiculo e ON e.codigo = v.estado_operativo
     LEFT JOIN base_zona b ON b.id = v.base_zona_id
     ${donde.length ? 'WHERE ' + donde.join(' AND ') : ''}
