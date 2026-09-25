@@ -7,6 +7,10 @@ actualizado: 2026-09-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-25 · RRHH partido en la barra, solo en pantalla grande
+
+En pantallas de 1.536 px o más, el cuadro de RRHH se parte en Casos de nómina, Casos de baja médica, Vacaciones y Permisos, cada uno abriendo la bandeja filtrada; por debajo sigue siendo uno. Lo que no cae en ninguno va a «Otros de RRHH», que solo aparece si tiene algo. → [[Ticketera]]
+
 ## 2026-09-25 · Inspección: gato y llave de ruedas, sin botiquín
 
 Dos elementos más en la inspección de vehículos y uno menos. El botiquín se apaga en el catálogo en vez de borrarse (la historia lo tiene apuntado) y deja de leerse también en las inspecciones de antes. → [[Inspeccion de vehiculos]]

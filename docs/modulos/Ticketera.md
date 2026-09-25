@@ -39,6 +39,20 @@ Las cinco bandejas **ya no están en el menú lateral**: son cinco cuadros en la
 - **El número llega después**, como la campana: `GET /bandejas/api/pendientes`, que solo devuelve los de las bandejas que quien pregunta puede abrir. Se refresca cada dos minutos, al volver a la pestaña y al tocar un ticket en la bandeja.
 - **Si no caben**, la fila se desliza de lado y lo de la derecha (fichar, campana, usuario) no se aprieta. En el móvil van en una segunda línea bajo la barra: sin menú, no había otra forma de llegar.
 
+#### RRHH, partido en pantalla grande
+
+A partir de **2xl (1.536 px)** el cuadro de RRHH se sustituye por un bloque con el nombre delante y sus partes, que es como lo pidió Camilo: **Casos de nómina · Casos de baja médica · Vacaciones · Permisos**. Por debajo de ese ancho sigue siendo un cuadro. Cada parte abre la bandeja **ya filtrada** (`/ticketera?grupo=nomina`…), y la bandeja lo dice arriba con un «ver todos».
+
+| Parte | Tipos (`subtipo_codigo`) |
+|---|---|
+| Casos de nómina | `INCIDENCIA_NOMINA`, `CAMBIO_CUENTA` (la cuenta es donde se cobra) |
+| Casos de baja médica | `BAJA_AUSENCIA` |
+| Vacaciones | `VACACIONES` |
+| Permisos | `PERMISO_RETRIBUIDO` |
+| **Otros de RRHH** | todo lo demás (domicilio, documentación, recomendaciones…). **Solo sale si tiene algo**: partir no puede esconder un ticket |
+
+Las partes viven en un solo sitio (`PARTES_RRHH` en `ticketera.controller.js`), y el recuento va por tipo en la misma consulta: las partes suman siempre lo mismo que el cuadro único. Para que todo quepa a 1.920 px con el menú desplegado, en pantalla grande los cuadros pierden el icono.
+
 ### Solo los tickets de este mes
 
 Las bandejas y sus cuadros traen **solo lo pedido este mes**. Los 550 y pico pendientes de antes son, casi todos, de cuando se importó la hoja vieja; siguen en la base, sin tocar, pero no salen (decisión de Camilo, 25/09/2026). La bandeja lo dice arriba (*«Solo los pedidos en septiembre de 2026»*).

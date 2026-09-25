@@ -413,15 +413,39 @@
         #tk-barra .tk-activo { border-color: rgb(var(--tc-gold) / .7); background: rgb(var(--tc-gold) / .12); }
       </style>
       <nav id="tk-barra" aria-label="Tickets por departamento"
-           class="order-last w-full md:order-none md:w-auto md:ml-2 flex items-center gap-1.5 min-w-0 overflow-x-auto">
-        <% tkBarra.forEach(b => { %>
+           class="order-last w-full md:order-none md:w-auto md:ml-2 flex items-center gap-1.5 2xl:gap-1 min-w-0 overflow-x-auto">
+        <% tkBarra.forEach(b => { const partido = !!(b.partes && b.partes.length); %>
+        <%# Partido (RRHH): el cuadro único solo por debajo de 2xl; en pantalla
+            grande lo sustituye el grupo de sus partes. %>
         <a href="<%= b.href %>" data-tk-area="<%= b.area %>" data-tk-href="<%= b.href %>"
            title="Tickets de <%= b.etiqueta %>: los pendientes de este mes"
-           class="shrink-0 flex items-center gap-2 h-9 pl-3 pr-1.5 rounded-lg border border-telecab-border bg-telecab-card2/50 text-xs font-semibold text-telecab-text hover:border-telecab-gold/60 transition">
-          <i class="fa-solid <%= b.area === 'OPERACIONES' ? 'fa-circle-question' : 'fa-ticket' %> text-telecab-muted"></i>
+           class="shrink-0 flex <%= partido ? '2xl:hidden' : '' %> items-center gap-2 2xl:gap-1.5 h-9 pl-3 2xl:pl-2.5 pr-1.5 rounded-lg border border-telecab-border bg-telecab-card2/50 text-xs font-semibold text-telecab-text hover:border-telecab-gold/60 transition">
+          <%# El icono sobra en pantalla grande: con RRHH partido, el sitio hace falta. %>
+          <i class="fa-solid <%= b.area === 'OPERACIONES' ? 'fa-circle-question' : 'fa-ticket' %> text-telecab-muted 2xl:hidden"></i>
           <span class="whitespace-nowrap"><%= b.etiqueta %></span>
           <span data-tk-n class="min-w-[22px] h-6 px-1.5 rounded-md text-[11px] font-bold tabular-nums flex items-center justify-center bg-telecab-card2 text-telecab-muted">·</span>
         </a>
+        <% if (partido) { %>
+        <%# EN PANTALLA GRANDE, SUS PARTES (Camilo, 25/09/2026): «casos de nómina,
+            casos de baja médica, vacaciones y permisos». Un solo bloque con el
+            nombre de la bandeja delante —que se lea que son de RRHH— y cada
+            parte abre la bandeja ya filtrada. «Otros» solo sale si tiene algo. %>
+        <div data-tk-grupo="<%= b.area %>" role="group" aria-label="Tickets de <%= b.etiqueta %> por tipo"
+             class="hidden 2xl:flex shrink-0 items-stretch h-9 rounded-lg border border-telecab-border bg-telecab-card2/50 overflow-hidden">
+          <a href="<%= b.href %>" data-tk-todo="<%= b.href %>" title="Toda la bandeja de <%= b.etiqueta %>"
+             class="flex items-center px-2 text-[10px] uppercase tracking-wider font-bold text-telecab-muted hover:text-telecab-gold border-r border-telecab-border transition">
+            <%= b.etiqueta %>
+          </a>
+          <% b.partes.forEach(p => { %>
+          <a href="<%= p.href %>" data-tk-parte="<%= b.area %>|<%= p.clave %>" <%- p.otros ? 'data-tk-otros' : '' %>
+             title="<%= p.etiqueta %>: los pendientes de este mes"
+             class="<%= p.otros ? 'hidden' : 'flex' %> items-center gap-1.5 pl-2 pr-1.5 text-xs font-semibold text-telecab-text whitespace-nowrap border-r border-telecab-border/60 last:border-r-0 hover:bg-telecab-gold/10 transition">
+            <span><%= p.etiqueta %></span>
+            <span data-tk-n class="min-w-[22px] h-6 px-1.5 rounded-md text-[11px] font-bold tabular-nums flex items-center justify-center bg-telecab-card2 text-telecab-muted">·</span>
+          </a>
+          <% }) %>
+        </div>
+        <% } %>
         <% }) %>
       </nav>
       <% } %>
@@ -733,13 +757,16 @@
 (function () {
   const barra = document.getElementById('tk-barra');
   if (!barra) return;
-  // El cuadro de la bandeja en la que se está, marcado.
-  barra.querySelectorAll('[data-tk-href]').forEach(a => {
-    const h = a.getAttribute('data-tk-href');
-    if (location.pathname === h || location.pathname.startsWith(h + '/')) {
-      a.classList.add('tk-activo');
-      a.setAttribute('aria-current', 'page');
-    }
+  // El cuadro de la bandeja en la que se está, marcado. En el grupo partido, la
+  // parte que se está mirando (?grupo=), o el nombre si se mira la bandeja entera.
+  const aqui = h => location.pathname === h || location.pathname.startsWith(h + '/');
+  const grupo = new URLSearchParams(location.search).get('grupo');
+  const marcar = a => { a.classList.add('tk-activo'); a.setAttribute('aria-current', 'page'); };
+  barra.querySelectorAll('[data-tk-href]').forEach(a => { if (aqui(a.getAttribute('data-tk-href'))) marcar(a); });
+  barra.querySelectorAll('[data-tk-todo]').forEach(a => { if (aqui(a.getAttribute('data-tk-todo')) && !grupo) marcar(a); });
+  barra.querySelectorAll('[data-tk-parte]').forEach(a => {
+    const u = new URL(a.href, location.origin);
+    if (aqui(u.pathname) && grupo && u.searchParams.get('grupo') === grupo) marcar(a);
   });
   const BASE = 'min-w-[22px] h-6 px-1.5 rounded-md text-[11px] font-bold tabular-nums flex items-center justify-center ';
   let pidiendo = false;
@@ -752,12 +779,24 @@
       (r.bandejas || []).forEach(b => {
         const a = barra.querySelector('[data-tk-area="' + b.area + '"]');
         if (!a) return;
-        const n = a.querySelector('[data-tk-n]');
-        n.textContent = b.pendientes;
-        n.className = BASE + (b.pendientes ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted');
-        a.title = b.etiqueta + ': ' + (b.pendientes
-          ? b.pendientes + (b.pendientes === 1 ? ' ticket pendiente' : ' tickets pendientes') : 'nada pendiente') +
-          ' de ' + r.mes;
+        const pinta = (el, n, nombre) => {
+          const c = el.querySelector('[data-tk-n]');
+          c.textContent = n;
+          c.className = BASE + (n ? 'bg-telecab-gold/20 text-telecab-gold' : 'bg-telecab-card2 text-telecab-muted');
+          el.title = nombre + ': ' + (n ? n + (n === 1 ? ' ticket pendiente' : ' tickets pendientes') : 'nada pendiente') +
+            ' de ' + r.mes;
+        };
+        pinta(a, b.pendientes, b.etiqueta);
+        // Las partes (RRHH en pantalla grande). «Otros» solo se enseña si tiene algo.
+        (b.partes || []).forEach(p => {
+          const el = barra.querySelector('[data-tk-parte="' + b.area + '|' + p.clave + '"]');
+          if (!el) return;
+          pinta(el, p.pendientes, el.querySelector('span').textContent);
+          if (el.hasAttribute('data-tk-otros')) {
+            el.classList.toggle('hidden', !p.pendientes);
+            el.classList.toggle('flex', !!p.pendientes);
+          }
+        });
       });
     } catch (_) { /* si falla, los cuadros siguen sin número */ }
     finally { pidiendo = false; }

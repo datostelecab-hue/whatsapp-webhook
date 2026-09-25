@@ -73,6 +73,20 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const BASE = <%- JSON.stringify(base) %>;
+  // LA PARTE DE LA BANDEJA (?grupo=), si se ha llegado desde un cuadro partido
+  // de la barra (RRHH en pantalla grande): «Casos de nómina», «Vacaciones»…
+  // «otros» es lo que no cae en ninguna.
+  const PARTES = <%- JSON.stringify(typeof partes !== 'undefined' ? partes : []) %>;
+  const GRUPO = (() => {
+    const g = new URLSearchParams(location.search).get('grupo');
+    if (!g || !PARTES.length) return null;
+    if (g === 'otros') {
+      const todos = new Set(PARTES.flatMap(p => p.subtipos));
+      return { etiqueta: 'Otros de RRHH', pasa: s => !todos.has(s) };
+    }
+    const p = PARTES.find(x => x.clave === g);
+    return p ? { etiqueta: p.etiqueta, pasa: s => p.subtipos.includes(s) } : null;
+  })();
   const YO   = <%- JSON.stringify(yo || '') %>;
 
   let TICKETS = [], SUBTIPOS = [], ESTADOS = [], AUSENCIAS = [], PERSONAS = null;
@@ -145,6 +159,7 @@
    * octubre al 10 de noviembre son de noviembre también.
    */
   function pasa(t, f) {
+    if (GRUPO && !GRUPO.pasa(t.subtipoCodigo)) return false;
     if (f.subtipo && t.subtipoCodigo !== f.subtipo) return false;
 
     if (f.busca) {
@@ -411,7 +426,7 @@
     const visibles = TICKETS.filter(t => pasa(t, f));
     pintarResumen(visibles);
 
-    const hayFiltro = f.busca.length || f.desde || f.hasta || f.subtipo;
+    const hayFiltro = f.busca.length || f.desde || f.hasta || f.subtipo || GRUPO;
     $('#f-cuenta').textContent = hayFiltro
       ? `${visibles.length} de ${TICKETS.length} tickets`
       : `${TICKETS.length} tickets`;
@@ -435,7 +450,8 @@
     if (r.status !== 'ok') return aviso(r.msg, 'error');
     if (r.mes) {
       $('#nota-mes').innerHTML = '<i class="fa-solid fa-calendar-day mr-1"></i>Solo los pedidos en ' + esc(r.mes) +
-        (pedido ? ' · y el ' + esc(pedido) + ', que es el del enlace' : '');
+        (pedido ? ' · y el ' + esc(pedido) + ', que es el del enlace' : '') +
+        (GRUPO ? ' · <b>' + esc(GRUPO.etiqueta) + '</b> · <a href="' + esc(BASE) + '" class="underline hover:text-telecab-text">ver todos</a>' : '');
       $('#nota-mes').classList.remove('hidden');
     }
     // Los cuadros de la barra de arriba, al día con lo que se acaba de hacer.
@@ -446,7 +462,9 @@
     // El desplegable de tipos se llena con lo que HAY en la bandeja, no con el
     // catálogo entero: ofrecer veinte filtros que dan cero no ayuda a nadie.
     const sel = $('#f-subtipo'), previo = sel.value;
-    const presentes = [...new Set(TICKETS.map(t => t.subtipoCodigo))].filter(Boolean);
+    // Y si se mira una parte (?grupo=), solo los tipos de esa parte.
+    const presentes = [...new Set(TICKETS.map(t => t.subtipoCodigo))].filter(Boolean)
+      .filter(c => !GRUPO || GRUPO.pasa(c));
     sel.innerHTML = '<option value="">Todos</option>' + SUBTIPOS
       .filter(s => presentes.includes(s.codigo))
       .map(s => `<option value="${esc(s.codigo)}">${esc(s.etiqueta)}</option>`).join('');

@@ -25,8 +25,22 @@ const permisos = require('../../services/permisos');
 // departamento; quítalos de allá y ponlos arriba». Ya no están en el menú
 // lateral: cada una es un cuadro en la barra, con su nombre y sus PENDIENTES
 // DE ESTE MES. Esta lista es la única que hay: la usan la barra y el recuento.
+// RRHH, PARTIDO EN PANTALLA GRANDE (Camilo, 25/09/2026): «casos de nómina,
+// casos de baja médica, vacaciones y permisos». En pantalla pequeña sigue siendo
+// un cuadro. El cambio de cuenta/IBAN va con la nómina, que es donde se cobra.
+// Lo que no cae en ninguno (domicilio, documentación, recomendaciones…) va a
+// «Otros de RRHH», que solo sale si tiene algo pendiente: partir no puede
+// esconder un ticket.
+const PARTES_RRHH = [
+  { clave: 'nomina',     etiqueta: 'Casos de nómina',      subtipos: ['INCIDENCIA_NOMINA', 'CAMBIO_CUENTA'] },
+  { clave: 'baja',       etiqueta: 'Casos de baja médica', subtipos: ['BAJA_AUSENCIA'] },
+  { clave: 'vacaciones', etiqueta: 'Vacaciones',           subtipos: ['VACACIONES'] },
+  { clave: 'permisos',   etiqueta: 'Permisos',             subtipos: ['PERMISO_RETRIBUIDO'] },
+];
+const OTROS = { clave: 'otros', etiqueta: 'Otros de RRHH' };
+
 const BANDEJAS = [
-  { area: 'RRHH',        href: '/ticketera',               etiqueta: 'RRHH' },
+  { area: 'RRHH',        href: '/ticketera',               etiqueta: 'RRHH', partes: PARTES_RRHH },
   { area: 'ADMIN',       href: '/administracion/tickets',  etiqueta: 'Administración' },
   { area: 'TRAFICO',     href: '/planificador/tickets',    etiqueta: 'Tráfico' },
   { area: 'TALLER',      href: '/taller/tickets',          etiqueta: 'Taller' },
@@ -48,8 +62,14 @@ function visibles(res) {
 }
 
 /** Deja en la vista qué cuadros pintar. Va después de sesion.cargarPermisos. */
+/** Las partes de una bandeja, con su enlace a la bandeja ya filtrada (`?grupo=`). */
+const partesDe = b => (b.partes ? b.partes.concat(OTROS) : [])
+  .map(p => ({ clave: p.clave, etiqueta: p.etiqueta, href: b.href + '?grupo=' + p.clave, otros: p === OTROS }));
+
 function enLaBarra(req, res, next) {
-  res.locals.bandejasBarra = req.usuario ? visibles(res).map(({ area, href, etiqueta }) => ({ area, href, etiqueta })) : [];
+  res.locals.bandejasBarra = req.usuario
+    ? visibles(res).map(b => ({ area: b.area, href: b.href, etiqueta: b.etiqueta, partes: partesDe(b) }))
+    : [];
   next();
 }
 
@@ -65,7 +85,15 @@ function resumen() {
       const mias = visibles(res);
       const r = await ticketera.pendientesDelMes(mias.map(b => b.area));
       res.json({ status: 'ok', mes: r.mes,
-        bandejas: mias.map(b => ({ ...b, pendientes: r.pendientes[b.area] || 0 })) });
+        bandejas: mias.map(b => {
+          const total = r.pendientes[b.area] || 0;
+          const tipos = r.porSubtipo[b.area] || {};
+          const suma = subtipos => subtipos.reduce((s, x) => s + (tipos[x] || 0), 0);
+          const partes = (b.partes || []).map(p => ({ clave: p.clave, pendientes: suma(p.subtipos) }));
+          // «Otros»: lo del área que no ha caído en ninguna parte.
+          if (b.partes) partes.push({ clave: OTROS.clave, pendientes: total - partes.reduce((s, p) => s + p.pendientes, 0) });
+          return { area: b.area, href: b.href, etiqueta: b.etiqueta, pendientes: total, partes };
+        }) });
     } catch (e) {
       console.error('❌ [Ticketera] pendientes de la barra:', e.message);
       res.status(400).json({ status: 'error', msg: e.message });
@@ -96,8 +124,13 @@ const responde = fn => async (req, res) => {
 function para(areaCodigo, { titulo, seccion, subtitulo, soloMes = true } = {}) {
   const router = express.Router();
 
+  // Las partes de la bandeja (RRHH): la pantalla las usa para `?grupo=`.
+  const partes = ((BANDEJAS.find(b => b.area === areaCodigo) || {}).partes || [])
+    .map(p => ({ clave: p.clave, etiqueta: p.etiqueta, subtipos: p.subtipos }));
+
   router.get('/', (req, res) => {
     res.render('ticketera', {
+      partes,
       titulo: titulo || 'Ticketera',
       subtitulo: subtitulo || '',
       seccion: seccion || 'ticketera',

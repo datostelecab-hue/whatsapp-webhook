@@ -260,10 +260,20 @@ async function datos(areaCodigo, { cerrados, soloMes = false, codigo = null } = 
   return { tickets, ...cat, mes: soloMes ? mesEnCurso() : null };
 }
 
-/** Los pendientes de este mes de unas áreas: los cuadros de la barra de arriba. */
+/**
+ * Los pendientes de este mes de unas áreas: los cuadros de la barra de arriba.
+ * `pendientes` por área y `porSubtipo` por área y tipo, para los cuadros que se
+ * parten (RRHH en pantalla grande).
+ */
 async function pendientesDelMes(areas) {
-  const n = await repo.pendientesDelMes(areas);
-  return { mes: mesEnCurso(), pendientes: Object.fromEntries(areas.map(a => [a, n[a] || 0])) };
+  const filas = await repo.pendientesDelMes(areas);
+  const pendientes = Object.fromEntries(areas.map(a => [a, 0]));
+  const porSubtipo = {};
+  filas.forEach(x => {
+    pendientes[x.area] = (pendientes[x.area] || 0) + x.n;
+    (porSubtipo[x.area] = porSubtipo[x.area] || {})[x.subtipo || ''] = x.n;
+  });
+  return { mes: mesEnCurso(), pendientes, porSubtipo };
 }
 
 const ficha = async id => {

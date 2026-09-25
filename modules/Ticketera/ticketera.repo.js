@@ -106,17 +106,20 @@ async function bandeja(areaCodigo, { cerrados = false, limite = 400, soloMes = f
 }
 
 /**
- * Los PENDIENTES DE ESTE MES de cada área: lo que enseñan los cuadros de la
+ * Los PENDIENTES DE ESTE MES de cada área, y dentro de cada una por tipo (el
+ * cuadro de RRHH se parte en pantalla grande). Lo que enseñan los cuadros de la
  * barra de arriba. Pendiente = cualquier estado que no cierra.
+ *
+ * Devuelve [{ area, subtipo, n }].
  */
 async function pendientesDelMes(areas) {
   const r = await db.consulta(
-    `SELECT t.area_codigo, count(*)::int AS n
+    `SELECT t.area_codigo AS area, t.subtipo_codigo AS subtipo, count(*)::int AS n
        FROM ticket t JOIN cat_ticket_estado e ON e.codigo = t.estado
       WHERE NOT e.cierra AND t.area_codigo = ANY($1::text[])
         AND ${FECHA_PEDIDO} >= ${INICIO_MES}
-      GROUP BY 1`, [areas]);
-  return Object.fromEntries(r.rows.map(x => [x.area_codigo, x.n]));
+      GROUP BY 1, 2`, [areas]);
+  return r.rows;
 }
 
 async function una(id) {
