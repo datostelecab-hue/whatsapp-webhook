@@ -81,7 +81,15 @@ async function coches(sedes) {
            -- se quiere saber es quién lo tuvo. El índice idx_bsl_vehiculo_dia
            -- lo deja en ~8 ms para toda la flota.
            ult.nombre                                                AS ultimo_conductor,
-           EXTRACT(EPOCH FROM (now() - ult.ocurrido_at))::int        AS ultimo_hace
+           EXTRACT(EPOCH FROM (now() - ult.ocurrido_at))::int        AS ultimo_hace,
+           -- DÓNDE DEJÓ AL ÚLTIMO PASAJERO (db/156), y cuánto ha rodado desde
+           -- entonces según el odómetro. Con esto el mapa dice si un coche que
+           -- espera fuera de la M-30 está volviendo o dando vueltas.
+           ud.destino                                                AS destino,
+           ud.destino_lat, ud.destino_lng,
+           ud.dejado_ts                                              AS dejado_at,
+           EXTRACT(EPOCH FROM (now() - ud.dejado_ts))::int           AS dejado_hace,
+           kd.metros                                                 AS metros_desde_dejado
       -- SE PARTE DE NUESTRA FLOTA, NO DE MAPON (24/09/2026). Antes era al
       -- reves -de fv_posicion hacia vehiculo- y un coche que Mapon no conoce
       -- no salia en el mapa ni avisaba de nada: sencillamente no existia. Lo
@@ -112,6 +120,21 @@ async function coches(sedes) {
            AND l.driver_uuid IS NOT NULL
          ORDER BY l.ocurrido_at DESC
          LIMIT 1) ult ON TRUE
+      -- Doce horas, como el apunte de arriba: un destino de ayer ya no dice
+      -- nada de hacia dónde va ahora.
+      LEFT JOIN LATERAL (
+        SELECT bo.destino, bo.destino_lat, bo.destino_lng, bo.dejado_ts
+          FROM bolt_order bo
+         WHERE bo.matricula_norm = v.matricula_norm
+           AND bo.dejado_ts IS NOT NULL
+           AND bo.dejado_ts > now() - interval '12 hours'
+         ORDER BY bo.dejado_ts DESC
+         LIMIT 1) ud ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT sum(o.metros)::int AS metros
+          FROM fv_odometro o
+         WHERE o.unit_id = p.mapon_unit AND o.inicio >= ud.dejado_ts
+        HAVING count(*) > 0) kd ON ud.dejado_ts IS NOT NULL
      WHERE v.baja_at IS NULL
        AND ($1::varchar[] IS NULL OR v.sede = ANY($1::varchar[]))
      ORDER BY v.matricula`, [filtro]);

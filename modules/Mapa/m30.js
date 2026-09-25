@@ -68,4 +68,25 @@ function dentroDeM30(lat, lng) {
   return dentro;
 }
 
-module.exports = { POLIGONO, dentroDeM30 };
+/**
+ * A cuántos km de la M-30 está un punto: 0 si está dentro; si no, lo que le
+ * falta hasta el borde más cercano. Plano local alrededor del punto (a esta
+ * escala, unos pocos km, el error es de metros).
+ */
+function kmHastaM30(lat, lng) {
+  const dentro = dentroDeM30(lat, lng);
+  if (dentro == null) return null;
+  if (dentro) return 0;
+  const kx = 111.32 * Math.cos(lat * Math.PI / 180), ky = 110.574;
+  let min = Infinity;
+  for (let i = 0, k = POLIGONO.length - 1; i < POLIGONO.length; k = i++) {
+    const ax = (POLIGONO[k][0] - lng) * kx, ay = (POLIGONO[k][1] - lat) * ky;
+    const bx = (POLIGONO[i][0] - lng) * kx, by = (POLIGONO[i][1] - lat) * ky;
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / ((dx * dx + dy * dy) || 1)));
+    min = Math.min(min, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return min;
+}
+
+module.exports = { POLIGONO, dentroDeM30, kmHastaM30 };

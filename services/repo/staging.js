@@ -93,13 +93,24 @@ async function guardarOrders(ordenes, descargaId = null) {
     // En los pedidos cancelados BOLT manda todo el precio a NULL; se deja NULL
     // y no cero, que "no cobró" y "cobró cero" no son lo mismo.
     const num = v => (v === null || v === undefined ? null : Number(v));
+    // DÓNDE DEJÓ AL PASAJERO (db/156): la dirección, las coordenadas de la
+    // parada de bajada —la real si BOLT la da, si no la pedida— y la matrícula.
+    // Es lo que deja al mapa decir si un coche que espera fuera de la M-30 está
+    // volviendo o dando vueltas.
+    const bajada = (Array.isArray(o.order_stops) ? o.order_stops : []).filter(s => s && s.type === 'dropoff').pop() || {};
+    const coord = v => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+    const destLat = coord(bajada.real_lat) != null ? coord(bajada.real_lat) : coord(bajada.lat);
+    const destLng = coord(bajada.real_lng) != null ? coord(bajada.real_lng) : coord(bajada.lng);
+    const placa = String(o.vehicle_license_plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') || null;
     const r = await db.consulta(
       `INSERT INTO bolt_order
          (order_ref, driver_uuid, estado, creado_ts, finalizado_ts, propina, peaje, neto, descarga_id,
-          metodo_pago, precio, dto_efectivo, tarifa_reserva)
+          metodo_pago, precio, dto_efectivo, tarifa_reserva,
+          matricula_norm, dejado_ts, destino, destino_lat, destino_lng)
        VALUES ($1, $2, $3, to_timestamp($4),
                CASE WHEN $5 > 0 THEN to_timestamp($5) END,
-               $6, $7, $8, $9, $10, $11, $12, $13)
+               $6, $7, $8, $9, $10, $11, $12, $13,
+               $14, CASE WHEN $15 > 0 THEN to_timestamp($15) END, $16, $17, $18)
        ON CONFLICT (driver_uuid, creado_ts) WHERE driver_uuid IS NOT NULL
        DO UPDATE SET
          estado = EXCLUDED.estado,
@@ -109,12 +120,19 @@ async function guardarOrders(ordenes, descargaId = null) {
          metodo_pago = COALESCE(EXCLUDED.metodo_pago, bolt_order.metodo_pago),
          precio = COALESCE(EXCLUDED.precio, bolt_order.precio),
          dto_efectivo = COALESCE(EXCLUDED.dto_efectivo, bolt_order.dto_efectivo),
-         tarifa_reserva = COALESCE(EXCLUDED.tarifa_reserva, bolt_order.tarifa_reserva)
+         tarifa_reserva = COALESCE(EXCLUDED.tarifa_reserva, bolt_order.tarifa_reserva),
+         matricula_norm = COALESCE(EXCLUDED.matricula_norm, bolt_order.matricula_norm),
+         dejado_ts = COALESCE(EXCLUDED.dejado_ts, bolt_order.dejado_ts),
+         destino = COALESCE(EXCLUDED.destino, bolt_order.destino),
+         destino_lat = COALESCE(EXCLUDED.destino_lat, bolt_order.destino_lat),
+         destino_lng = COALESCE(EXCLUDED.destino_lng, bolt_order.destino_lng)
        RETURNING id`,
       [o.id || o.order_id || o.order_reference || null, driver, o.order_status || null,
        creado, Number(o.order_finished_timestamp) || 0,
        Number(p.tip) || 0, Number(p.toll_fee) || 0, Number(p.net_earnings) || 0, descargaId,
-       o.payment_method || null, num(p.ride_price), num(p.cash_discount), num(p.booking_fee)]);
+       o.payment_method || null, num(p.ride_price), num(p.cash_discount), num(p.booking_fee),
+       placa, Number(o.order_drop_off_timestamp) || 0,
+       o.destination_address ? String(o.destination_address).slice(0, 300) : null, destLat, destLng]);
     if (r.rowCount) tocadas++;
   }
   return tocadas;

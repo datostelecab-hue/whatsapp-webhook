@@ -45,7 +45,7 @@
 // enseña nada más viejo de lo que ya era.
 
 const repo = require('./mapa.repo');
-const { dentroDeM30 } = require('./m30');
+const { dentroDeM30, kmHastaM30 } = require('./m30');
 
 // EL «SIN SEÑAL» LO DICE MAPON, NO UN CRONÓMETRO NUESTRO.
 //
@@ -275,6 +275,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
       ultimoHace: c.ultimo_hace == null ? null : Number(c.ultimo_hace),
       // Dentro o fuera de la M-30, para quien lo quiera leer sin repetir la cuenta.
       dentroM30: dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)),
+      // Dónde dejó al último pasajero y si vuelve hacia la M-30. Ver ultimoDestino.
+      ultimoDestino: ultimoDestino(c, dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)) === true),
       // De cuál de las dos tuberías salió esto. No se pinta, pero contesta
       // "¿por qué dice eso?" sin abrir la base.
       fuente: v.fuente,
@@ -341,6 +343,60 @@ async function sueltos({ sedes = null, minSegundos = 180 } = {}) {
   }
   return d.coches.filter(c => c.tono === 'suelto'
     && c.llevaAsi != null && c.llevaAsi >= minSegundos);
+}
+
+// ── EL ÚLTIMO DESTINO: ¿VUELVE A LA M-30 O DA VUELTAS? ─────────────────────
+// Lo pidió Camilo el 25/09/2026 delante de un coche en espera fuera de la M-30.
+// Se compara lo lejos que estaba de la M-30 al dejar al pasajero con lo lejos
+// que está ahora, y lo que ha rodado entre medias (odómetro CAN):
+//
+//   vuelve     ahora está al menos 1 km más cerca que al dejarlo
+//   se aleja   ahora está al menos 1 km más lejos
+//   vueltas    igual de lejos, pero ha rodado más de 3 km desde entonces
+//   quieto     igual de lejos y apenas ha rodado: espera donde lo dejó
+//
+// Un kilómetro de margen porque la M-30 no es un punto: moverse a lo largo de
+// ella sin acercarse no es volver.
+const KM_MARGEN = 1, KM_VUELTAS = 3;
+
+function ultimoDestino(c, estaDentro) {
+  if (!c.destino && c.destino_lat == null) return null;
+  const dLat = c.destino_lat == null ? null : Number(c.destino_lat);
+  const dLng = c.destino_lng == null ? null : Number(c.destino_lng);
+  const lat = c.lat == null ? null : Number(c.lat), lng = c.lng == null ? null : Number(c.lng);
+  const out = {
+    direccion: c.destino || null, lat: dLat, lng: dLng,
+    dejadoAt: c.dejado_at ? new Date(c.dejado_at).toISOString() : null,
+    kmRodados: c.metros_desde_dejado == null ? null : Math.round(Number(c.metros_desde_dejado) / 100) / 10,
+    kmAlDestino: null, kmM30Ahora: null, kmM30Destino: null, tendencia: null, texto: null,
+  };
+  if (dLat == null || lat == null) return out;
+  const kx = 111.32 * Math.cos(lat * Math.PI / 180);
+  out.kmAlDestino = Math.round(Math.hypot((dLng - lng) * kx, (dLat - lat) * 110.574) * 10) / 10;
+  const ahora = kmHastaM30(lat, lng), antes = kmHastaM30(dLat, dLng);
+  out.kmM30Ahora = Math.round(ahora * 10) / 10;
+  out.kmM30Destino = Math.round(antes * 10) / 10;
+  const km = n => String(n).replace('.', ',') + ' km';
+  // «A 0 km» no se lee bien: dentro es dentro, y a menos de 100 m es «junto».
+  // Con la distancia SIN redondear: a 30 m fuera, el número redondeado es 0 y
+  // diría «dentro».
+  const donde = (crudo, n) => (crudo === 0 ? 'dentro de la M-30' : crudo < 0.1 ? 'junto a la M-30' : `a ${km(n)} de la M-30`);
+  if (estaDentro) { out.tendencia = 'dentro'; return out; }
+  const rodado = out.kmRodados == null ? '' : ` y ha rodado ${km(out.kmRodados)}`;
+  if (antes - ahora >= KM_MARGEN) {
+    out.tendencia = 'vuelve';
+    out.texto = `Volviendo a la M-30: lo dejó ${donde(antes, out.kmM30Destino)} y ahora está ${donde(ahora, out.kmM30Ahora)}`;
+  } else if (ahora - antes >= KM_MARGEN) {
+    out.tendencia = 'aleja';
+    out.texto = `Se aleja de la M-30: lo dejó ${donde(antes, out.kmM30Destino)} y ahora está ${donde(ahora, out.kmM30Ahora)}`;
+  } else if (out.kmRodados != null && out.kmRodados > KM_VUELTAS) {
+    out.tendencia = 'vueltas';
+    out.texto = `Dando vueltas: sigue ${donde(ahora, out.kmM30Ahora)}${rodado} desde que dejó al pasajero`;
+  } else {
+    out.tendencia = 'quieto';
+    out.texto = `Espera cerca de donde dejó al pasajero, ${donde(ahora, out.kmM30Ahora)}`;
+  }
+  return out;
 }
 
 /** Se llama al escribir posiciones nuevas: la foto de antes ya no vale. */

@@ -274,7 +274,7 @@
     // `style.load` salta al arrancar y cada vez que el tema cambia el estilo:
     // setStyle se lleva las capas propias por delante, y el anillo hay que
     // volver a ponerlo.
-    mapa.on('style.load', pintarM30);
+    mapa.on('style.load', () => { pintarM30(); pintarDestino(); });
 
     // SI EL MAPA NO ARRANCA, QUE LO DIGA.
     //
@@ -328,6 +328,38 @@
       paint: { 'line-color': cvComa('--tc-mapa-espera'), 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [2, 2] } });
   }
 
+  // ── El trazo al último destino ───────────────────────────────────────────
+  // Solo con la ficha de un coche abierta: una línea discontinua del coche a
+  // donde dejó al último pasajero y una bandera allí. Con cien coches, cien
+  // líneas a la vez no se leerían.
+  let abierto = null, bandera = null;
+  function pintarDestino() {
+    if (!mapa || !listo) return;
+    const m = abierto && marcas.get(abierto);
+    const ud = m && m.datos.ultimoDestino;
+    const hay = !!(ud && ud.lat != null && ud.lng != null && m.datos.situacion !== 'viaje');
+    const datos = { type: 'FeatureCollection', features: hay ? [{ type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: [[m.datos.lng, m.datos.lat], [ud.lng, ud.lat]] } }] : [] };
+    if (!mapa.getSource('destino')) {
+      if (!hay) return;
+      mapa.addSource('destino', { type: 'geojson', data: datos });
+      mapa.addLayer({ id: 'destino', type: 'line', source: 'destino',
+        paint: { 'line-color': cvComa('--tc-text'), 'line-width': 2, 'line-opacity': 0.7, 'line-dasharray': [1, 2] } });
+    } else {
+      mapa.getSource('destino').setData(datos);
+    }
+    if (!hay) { if (bandera) { bandera.remove(); bandera = null; } return; }
+    if (!bandera) {
+      const el = document.createElement('div');
+      el.innerHTML = '<i class="fa-solid fa-flag-checkered"></i>';
+      el.title = 'Donde dejó al último pasajero';
+      el.style.cssText = 'font-size:18px;color:' + cv('--tc-text') + ';text-shadow:0 1px 3px rgb(0 0 0 / .5);pointer-events:none';
+      bandera = new maplibregl.Marker({ element: el, anchor: 'bottom-left' }).setLngLat([ud.lng, ud.lat]).addTo(mapa);
+    } else {
+      bandera.setLngLat([ud.lng, ud.lat]);
+    }
+  }
+
   /** El globito que sale al pinchar un coche. */
   function ficha(c) {
     const t = TONOS[c.tono] || TONOS.parado;
@@ -357,6 +389,20 @@
       + (c.km != null ? ' <span class="text-telecab-muted">· ' + c.km + ' km en el tramo</span>' : ''));
     lineas.push('<i class="fa-solid fa-satellite-dish w-4 text-telecab-muted"></i> <span class="text-telecab-muted">'
       + 'el equipo habló hace ' + hace(c.antiguedad) + '</span>');
+    // DÓNDE DEJÓ AL ÚLTIMO PASAJERO. De viaje no se enseña: ese «último» es el
+    // de antes y el que importa es el que lleva ahora.
+    const ud = c.ultimoDestino;
+    if (ud && c.situacion !== 'viaje') {
+      lineas.push('<i class="fa-solid fa-flag-checkered w-4 text-telecab-muted"></i> <span class="text-telecab-muted">último destino:</span> '
+        + esc(ud.direccion || 'sin dirección')
+        + (ud.dejadoAt ? ' <span class="text-telecab-muted">· hace <span data-desde="' + esc(ud.dejadoAt) + '">' + desdeHaceTxt(ud.dejadoAt) + '</span></span>' : '')
+        + (ud.kmAlDestino != null ? ' <span class="text-telecab-muted">· a ' + String(ud.kmAlDestino).replace('.', ',') + ' km de aquí</span>' : ''));
+      if (ud.texto) {
+        const tk = ud.tendencia === 'vuelve' ? '--tc-green' : ud.tendencia === 'quieto' ? '--tc-mapa-espera' : '--tc-mapa-descanso';
+        lineas.push('<i class="fa-solid ' + (ud.tendencia === 'vuelve' ? 'fa-arrow-trend-down' : ud.tendencia === 'aleja' ? 'fa-arrow-trend-up' : ud.tendencia === 'vueltas' ? 'fa-rotate' : 'fa-location-dot')
+          + ' w-4" style="color:' + cv(tk) + '"></i> <b style="color:' + cv(tk) + '">' + esc(ud.texto) + '</b>');
+      }
+    }
     // EN QUÉ ESTADO ESTÁ EL COCHE PARA LA CASA. Es lo que deja leer un gris: uno
     // «En taller» lleva semanas callado y es normal; uno «Operativo» callado
     // tres meses es un equipo que hay que ir a mirar.
@@ -408,9 +454,14 @@
         const el = document.createElement('div');
         el.className = 'm-coche';
         el.innerHTML = '<i class="fa-solid"></i>';
+        const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '280px' });
+        const clave = c.clave;
+        // Al abrir la ficha, el trazo hasta donde dejó al último pasajero.
+        popup.on('open', () => { abierto = clave; pintarDestino(); });
+        popup.on('close', () => { if (abierto === clave) { abierto = null; pintarDestino(); } });
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([c.lng, c.lat])
-          .setPopup(new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '260px' }))
+          .setPopup(popup)
           .addTo(mapa);
         m = { marker, el, datos: c };
         marcas.set(c.clave, m);
@@ -442,6 +493,8 @@
 
     // Lo que ya no sale (por el filtro, o porque Mapon dejó de verlo) se quita.
     marcas.forEach((m, k) => { if (!vistos.has(k)) { m.marker.remove(); marcas.delete(k); } });
+    // El coche se mueve: el trazo al último destino se mueve con él.
+    pintarDestino();
 
     // Solo la PRIMERA vez se encuadra la flota. Después no: alguien puede estar
     // mirando una calle concreta y que el mapa salte cada treinta segundos

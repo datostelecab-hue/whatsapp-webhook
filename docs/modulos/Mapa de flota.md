@@ -90,6 +90,23 @@ en dos tokens propios, `--tc-mapa-espera` y `--tc-mapa-descanso`
 (`telecab.css`), un punto más oscuros en los temas claros. El morado es
 `--tc-violet`.
 
+### El último destino: ¿vuelve a la M-30 o da vueltas? (25/09/2026)
+
+Al abrir la ficha de un coche que no va de viaje sale **dónde dejó al último pasajero** (dirección, hace cuánto y a cuántos km está de allí), y en el mapa una línea de puntos hasta una bandera en ese sitio. Lo pidió Camilo mirando un coche en espera fuera de la M-30: *«para saber si está regresando a la M30 o simplemente está dando vueltas»*.
+
+Si el coche está fuera de la M-30, se compara lo lejos que estaba de ella al dejar al pasajero con lo lejos que está ahora (`kmHastaM30` en `m30.js`), y lo rodado entre medias según el odómetro CAN:
+
+| Dice | Cuándo |
+|---|---|
+| **Volviendo a la M-30** (verde) | ahora está al menos 1 km más cerca |
+| **Se aleja de la M-30** | al menos 1 km más lejos |
+| **Dando vueltas** | igual de lejos, pero ha rodado más de 3 km desde entonces |
+| **Espera cerca de donde dejó al pasajero** | igual de lejos y apenas se ha movido |
+
+El margen de 1 km es porque la M-30 no es un punto: moverse a lo largo de ella sin acercarse no es volver.
+
+**De dónde sale.** BOLT manda en cada pedido la dirección del destino y, en `order_stops`, las coordenadas de la parada de bajada; la ingesta lo tiraba. Desde `db/156`, `bolt_order` guarda también la matrícula, la hora en que dejó al pasajero (`dejado_ts`) y el destino con sus coordenadas (las reales si BOLT las da). El mapa coge el último de ese coche en las últimas 12 horas. Los pedidos entran cada 10 minutos, así que el último destino puede tardar eso en aparecer.
+
 ## La lista y el buscador
 
 **La lista enseña a la persona, no la matrícula** (la matrícula va debajo, en
