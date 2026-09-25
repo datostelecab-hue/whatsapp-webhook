@@ -110,7 +110,12 @@ No falta dinero: **la apertura resta 884,40 € que ya no están sumados**.
 
 Sin ese descuadre la caja estaría en **+344,35 €**, que es lo entrado desde el 09/09 (14.659,35 €) menos lo salido desde entonces (14.315 €). Encaja con la nota de la salida a Angie del 22/09: «me quedo con las monedas».
 
-**Cómo se arregla (sin hacer todavía):** anular la apertura 146 con su motivo y apuntar otra de **25.509,87 €**, por migración. No se pisa el importe: es dinero y tiene que quedar el rastro.
+### El arreglo: db/163
+
+Camilo dio el visto bueno el mismo 25/09. **`db/163-recaudacion-apertura-corregida.sql` anula la apertura 146** (firmado por Camilo, usuario 7, con el motivo escrito) **y apunta otra de 25.509,87 €** (26.394,27 − 884,40) con la misma fecha, 09/09. No se pisa el importe de la vieja: es dinero y tiene que quedar el rastro de las dos. Con ella la caja queda en **+344,35 €** y la comprobación vuelve a verde.
+
+- **Solo actúa si todo está como se diagnosticó**: la 146 viva y con 26.394,27 €, y las entregas 99 y 138 anuladas. Si algo no cuadra (o en una base sin estos datos) no hace nada, y la comprobación lo seguirá diciendo.
+- **La lección**: una carga por SQL se salta las reglas de la pantalla (aquí, la de no apuntar con fecha futura). Lo que se importe a mano tiene que pasar las mismas comprobaciones que el formulario, o dejar escrito por qué no.
 
 ## El cron
 

@@ -7,6 +7,10 @@ actualizado: 2026-09-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-25 · Recaudación: la apertura se corrige anulando, no pisando
+
+La caja daba −540,05 € sin que faltara dinero: la apertura restaba 884,40 € de dos entregas del Excel con fecha futura que Ignacio anuló después. db/163 anula la apertura vieja y apunta otra de 25.509,87 €; la caja queda en +344,35 €. Un importe de dinero no se sobrescribe: se anula con motivo y se apunta de nuevo. → [[Administracion]]
+
 ## 2026-09-25 · Recaudación: los descuentos de nómina de septiembre
 
 El Excel de recaudación por nómina de septiembre (hoja «Cierre») entra como 67 movimientos de nómina firmados por Ignacio Cafferata, el responsable. Por migración, una sola vez; lo que esté mal se anula con su motivo. → [[Administracion]]
