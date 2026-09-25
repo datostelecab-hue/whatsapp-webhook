@@ -24,7 +24,8 @@ const permisos = require('../../services/permisos');
 // Camilo: «sobre la barra superior tiene que haber un cuadro por ticket de
 // departamento; quítalos de allá y ponlos arriba». Ya no están en el menú
 // lateral: cada una es un cuadro en la barra, con su nombre y sus PENDIENTES
-// DE ESTE MES. Esta lista es la única que hay: la usan la barra y el recuento.
+// (los pedidos desde el corte: ticketera.service → desdeCuando). Esta lista es
+// la única que hay: la usan la barra y el recuento.
 // RRHH, PARTIDO EN PANTALLA GRANDE (Camilo, 25/09/2026): «casos de nómina,
 // casos de baja médica, vacaciones y permisos». En pantalla pequeña sigue siendo
 // un cuadro. El cambio de cuenta/IBAN va con la nómina, que es donde se cobra.
@@ -74,7 +75,7 @@ function enLaBarra(req, res, next) {
 }
 
 /**
- * Los pendientes de este mes de las bandejas que puede ver: lo que pintan los
+ * Los pendientes (desde el corte) de las bandejas que puede ver: lo que pintan los
  * cuadros. Se monta en `/bandejas`, que no es de ningún módulo, y por eso filtra
  * aquí: nadie recibe el número de una bandeja que no puede abrir.
  */
@@ -83,8 +84,8 @@ function resumen() {
   router.get('/api/pendientes', async (req, res) => {
     try {
       const mias = visibles(res);
-      const r = await ticketera.pendientesDelMes(mias.map(b => b.area));
-      res.json({ status: 'ok', mes: r.mes,
+      const r = await ticketera.pendientes(mias.map(b => b.area));
+      res.json({ status: 'ok', desde: r.desde,
         bandejas: mias.map(b => {
           const total = r.pendientes[b.area] || 0;
           const tipos = r.porSubtipo[b.area] || {};
@@ -121,7 +122,7 @@ const responde = fn => async (req, res) => {
  * Operaciones no se llama «Ticketera» sino «Tickets sin traza», y explicar qué
  * es eso en su propia pantalla ahorra la pregunta.
  */
-function para(areaCodigo, { titulo, seccion, subtitulo, soloMes = true } = {}) {
+function para(areaCodigo, { titulo, seccion, subtitulo, recientes = true } = {}) {
   const router = express.Router();
 
   // Las partes de la bandeja (RRHH): la pantalla las usa para `?grupo=`.
@@ -141,10 +142,10 @@ function para(areaCodigo, { titulo, seccion, subtitulo, soloMes = true } = {}) {
     });
   });
 
-  // Solo lo pedido ESTE MES (los de antes son de la hoja vieja), salvo el
-  // ticket del enlace directo (`?ticket=CÓDIGO`), que se trae sea del mes que sea.
+  // Solo lo pedido desde el corte (lo anterior ya no sirve), salvo el ticket
+  // del enlace directo (`?ticket=CÓDIGO`), que se trae sea de cuando sea.
   router.get('/api/datos', responde(async req =>
-    await ticketera.datos(areaCodigo, { cerrados: req.query.cerrados === '1', soloMes, codigo: req.query.ticket || null })));
+    await ticketera.datos(areaCodigo, { cerrados: req.query.cerrados === '1', recientes, codigo: req.query.ticket || null })));
 
   router.get('/api/ticket/:id', responde(async req => await ticketera.ficha(req.params.id)));
 

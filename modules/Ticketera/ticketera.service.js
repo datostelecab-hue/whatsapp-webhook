@@ -244,36 +244,55 @@ async function adjuntos(id, lista) {
 
 // ── La pantalla ────────────────────────────────────────────────────────────
 
-/** «septiembre de 2026»: el mes en curso, en Madrid. */
-const mesEnCurso = () => new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', month: 'long', year: 'numeric' }).format(new Date());
+// ── DESDE CUÁNDO CUENTAN LOS TICKETS ────────────────────────────────────────
+// Camilo, 25/09/2026: «solo tickets a partir de ayer y hoy; los anteriores ya
+// no sirven». Es un CORTE FIJO, no una ventana que se mueve: un ticket de hoy
+// que siga sin atender dentro de una semana tiene que seguir saliendo. Sustituye
+// al «solo este mes» de la mañana, que además escondía el día 1 lo pendiente
+// del mes anterior.
+//
+// Se puede mover sin tocar código con el ajuste `ticketera_desde`
+// (AAAA-MM-DD) de config_app; si no está o no es una fecha, vale este.
+const DESDE_DEFECTO = '2026-09-24';
+
+async function desdeCuando() {
+  const cfg = await configApp.leerConfig().catch(() => ({}));
+  const v = String(cfg.ticketera_desde || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : DESDE_DEFECTO;
+}
+
+/** '24/09/2026' de '2026-09-24'. */
+const diaLegible = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
 
 /**
- * La bandeja de un área. Con `soloMes` trae solo lo pedido este mes (las cinco
- * del formulario, desde el 25/09/2026) y dice cuál es, para que la pantalla lo
- * cuente. `codigo` se trae siempre: es el enlace directo a un ticket.
+ * La bandeja de un área. Con `recientes` trae solo lo pedido desde el corte (las
+ * cinco del formulario) y dice desde cuándo, para que la pantalla lo cuente.
+ * `codigo` se trae siempre: es el enlace directo a un ticket.
  */
-async function datos(areaCodigo, { cerrados, soloMes = false, codigo = null } = {}) {
+async function datos(areaCodigo, { cerrados, recientes = false, codigo = null } = {}) {
+  const desde = recientes ? await desdeCuando() : null;
   const [tickets, cat] = await Promise.all([
-    repo.bandeja(areaCodigo, { cerrados: !!cerrados, soloMes, codigo: codigo ? String(codigo).trim().slice(0, 40) : null }),
+    repo.bandeja(areaCodigo, { cerrados: !!cerrados, desde, codigo: codigo ? String(codigo).trim().slice(0, 40) : null }),
     repo.catalogos(),
   ]);
-  return { tickets, ...cat, mes: soloMes ? mesEnCurso() : null };
+  return { tickets, ...cat, desde: desde ? diaLegible(desde) : null };
 }
 
 /**
- * Los pendientes de este mes de unas áreas: los cuadros de la barra de arriba.
- * `pendientes` por área y `porSubtipo` por área y tipo, para los cuadros que se
- * parten (RRHH en pantalla grande).
+ * Los pendientes pedidos desde el corte, de unas áreas: los cuadros de la barra
+ * de arriba. `pendientes` por área y `porSubtipo` por área y tipo, para los
+ * cuadros que se parten (RRHH en pantalla grande).
  */
-async function pendientesDelMes(areas) {
-  const filas = await repo.pendientesDelMes(areas);
+async function pendientes(areas) {
+  const desde = await desdeCuando();
+  const filas = await repo.pendientesDesde(areas, desde);
   const pendientes = Object.fromEntries(areas.map(a => [a, 0]));
   const porSubtipo = {};
   filas.forEach(x => {
     pendientes[x.area] = (pendientes[x.area] || 0) + x.n;
     (porSubtipo[x.area] = porSubtipo[x.area] || {})[x.subtipo || ''] = x.n;
   });
-  return { mes: mesEnCurso(), pendientes, porSubtipo };
+  return { desde: diaLegible(desde), pendientes, porSubtipo };
 }
 
 const ficha = async id => {
@@ -444,5 +463,5 @@ module.exports = {
   sincronizar, datos, ficha, asignar, cambiarEstado, observaciones,
   crearSoporte, mios, notas, adjuntos, bandejaIT, estadoIT, TIPOS_IT, PRIORIDADES,
   enlazar, reclasificar, aplicar, diagnostico,
-  abiertosPorArea: repo.abiertosPorArea, pendientesDelMes,
+  abiertosPorArea: repo.abiertosPorArea, pendientes,
 };

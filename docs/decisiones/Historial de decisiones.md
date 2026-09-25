@@ -7,6 +7,10 @@ actualizado: 2026-09-25
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-25 · Los tickets cuentan desde el 24/09/2026
+
+Cambio de planes sobre el «solo este mes»: las bandejas y la barra traen solo lo pedido desde el 24/09/2026, un corte fijo (no una ventana que se mueve, para que lo pendiente no desaparezca solo). Se puede mover con el ajuste `ticketera_desde`. → [[Ticketera]]
+
 ## 2026-09-25 · RRHH partido en la barra, solo en pantalla grande
 
 En pantallas de 1.536 px o más, el cuadro de RRHH se parte en Casos de nómina, Casos de baja médica, Vacaciones y Permisos, cada uno abriendo la bandeja filtrada; por debajo sigue siendo uno. Lo que no cae en ninguno va a «Otros de RRHH», que solo aparece si tiene algo. → [[Ticketera]]

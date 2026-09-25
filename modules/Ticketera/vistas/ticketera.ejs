@@ -6,8 +6,8 @@
         <i class="fa-solid fa-ticket text-telecab-gold"></i> <%= titulo %>
       </h1>
       <p class="text-xs text-telecab-muted mt-0.5"><%= subtitulo || 'Lo que piden los conductores por el formulario. Al aplicarlo, la ausencia se abre en la ficha de la persona.' %></p>
-      <%# Solo lo pedido este mes (25/09/2026): se dice cuál, para que nadie busque
-          un ticket de agosto y crea que se ha perdido. %>
+      <%# Solo lo pedido desde el corte (25/09/2026): se dice desde cuándo, para
+          que nadie busque un ticket anterior y crea que se ha perdido. %>
       <p id="nota-mes" class="hidden text-[11px] text-telecab-gold mt-1"></p>
     </div>
     <div class="flex items-center gap-2 shrink-0">
@@ -448,8 +448,8 @@
     const directo = pedido ? '&ticket=' + encodeURIComponent(pedido) : '';
     const r = await (await fetch(`${BASE}/api/datos?cerrados=${cerrados}${directo}`)).json();
     if (r.status !== 'ok') return aviso(r.msg, 'error');
-    if (r.mes) {
-      $('#nota-mes').innerHTML = '<i class="fa-solid fa-calendar-day mr-1"></i>Solo los pedidos en ' + esc(r.mes) +
+    if (r.desde) {
+      $('#nota-mes').innerHTML = '<i class="fa-solid fa-calendar-day mr-1"></i>Solo los pedidos desde el ' + esc(r.desde) +
         (pedido ? ' · y el ' + esc(pedido) + ', que es el del enlace' : '') +
         (GRUPO ? ' · <b>' + esc(GRUPO.etiqueta) + '</b> · <a href="' + esc(BASE) + '" class="underline hover:text-telecab-text">ver todos</a>' : '');
       $('#nota-mes').classList.remove('hidden');

@@ -33,7 +33,7 @@ El montaje se hace con `ticketera.para(area, {titulo, seccion, subtitulo})` en `
 
 ### En la barra de arriba, con sus pendientes del mes (25/09/2026)
 
-Las cinco bandejas **ya no están en el menú lateral**: son cinco cuadros en la barra de arriba —**RRHH, Administración, Tráfico, Taller y Sin traza**—, cada uno con su nombre y el número de **pendientes de este mes**. Lo pidió Camilo: estaban repartidas por el menú y solo se veían al ir a buscarlas. Pinchar uno abre su bandeja, y el de la bandeja en la que se está sale marcado en dorado.
+Las cinco bandejas **ya no están en el menú lateral**: son cinco cuadros en la barra de arriba —**RRHH, Administración, Tráfico, Taller y Sin traza**—, cada uno con su nombre y el número de **pendientes** (los pedidos desde el corte, ver abajo). Lo pidió Camilo: estaban repartidas por el menú y solo se veían al ir a buscarlas. Pinchar uno abre su bandeja, y el de la bandeja en la que se está sale marcado en dorado.
 
 - **Cada uno ve solo los cuadros que puede abrir**, con la misma regla que el control de acceso (`permisos.claveDeRuta`): un cuadro que dijera «sin permiso» al pincharlo sería peor que no tenerlo. Lo decide `ticketera.controller → enLaBarra`, y la lista de las cinco (`BANDEJAS`) está en un solo sitio.
 - **El número llega después**, como la campana: `GET /bandejas/api/pendientes`, que solo devuelve los de las bandejas que quien pregunta puede abrir. Se refresca cada dos minutos, al volver a la pestaña y al tocar un ticket en la bandeja.
@@ -53,17 +53,16 @@ A partir de **2xl (1.536 px)** el cuadro de RRHH se sustituye por un bloque con 
 
 Las partes viven en un solo sitio (`PARTES_RRHH` en `ticketera.controller.js`), y el recuento va por tipo en la misma consulta: las partes suman siempre lo mismo que el cuadro único. Para que todo quepa a 1.920 px con el menú desplegado, en pantalla grande los cuadros pierden el icono.
 
-### Solo los tickets de este mes
+### Solo los tickets desde el 24/09/2026
 
-Las bandejas y sus cuadros traen **solo lo pedido este mes**. Los 550 y pico pendientes de antes son, casi todos, de cuando se importó la hoja vieja; siguen en la base, sin tocar, pero no salen (decisión de Camilo, 25/09/2026). La bandeja lo dice arriba (*«Solo los pedidos en septiembre de 2026»*).
+Camilo, 25/09/2026: *«solo tickets a partir de ayer y hoy; los anteriores ya no sirven»*. Las bandejas y sus cuadros traen **solo lo pedido desde el 24/09/2026**. Lo anterior —casi todo de cuando se importó la hoja vieja— sigue en la base, sin tocar, pero no sale. La bandeja lo dice arriba (*«Solo los pedidos desde el 24/09/2026»*).
 
-- **El mes es el de la PETICIÓN** (`marca_form`, la hora del formulario), no el de alta en el sistema: los 580 primeros se dieron de alta de golpe el 15/09 y con `creado_at` todos parecerían de septiembre. Un ticket sin marca (los de dentro) va por su fecha de alta.
-- **El enlace directo sí trae uno viejo.** La ficha de una persona enlaza el ticket del que salió cada ausencia (`?ticket=CÓDIGO`), y ese se trae sea del mes que sea: si no, el enlace llevaría a una bandeja vacía.
+- **Es un CORTE FIJO, no una ventana que se mueve.** Un ticket de hoy que siga sin atender dentro de una semana tiene que seguir saliendo. Sustituye al «solo este mes» de unas horas antes, que además escondía el día 1 lo pendiente del mes anterior.
+- **Se mueve sin tocar código** con el ajuste `ticketera_desde` (AAAA-MM-DD) de `config_app`. Si no está o no es una fecha, vale el 24/09/2026 (`DESDE_DEFECTO` en `ticketera.service.js`).
+- **La fecha es la de la PETICIÓN** (`marca_form`, la hora del formulario), no la de alta en el sistema: los 580 primeros se dieron de alta de golpe el 15/09 y con `creado_at` todos serían de ese día. Un ticket sin marca (los de dentro) va por su fecha de alta.
+- **El enlace directo sí trae uno viejo.** La ficha de una persona enlaza el ticket del que salió cada ausencia (`?ticket=CÓDIGO`), y ese se trae sea de cuando sea: si no, el enlace llevaría a una bandeja vacía.
 
-> [!warning] El día 1 de cada mes, los pendientes del anterior dejan de verse
-> Es lo que se pidió —«solo los de este mes»— y vale igual para el que se quedó
-> sin atender el 30. Si hace falta arrastrar los pendientes del mes anterior,
-> es cambiar `INICIO_MES` en `ticketera.repo.js`.
+Al ponerlo quedaban 4 pendientes, todos de RRHH (3 de nómina y 1 de vacaciones).
 
 La bandeja de Operaciones es nueva y arregla un agujero: el Apps Script mandaba a RRHH todo lo que no encajaba con ninguna regla, y ahí se perdía entre trescientos tickets. Son justo los que hay que mirar — cada uno es **o algo que no habíamos previsto, o una regla de reparto que se quedó corta**. Por eso su pantalla no se llama "Ticketera" sino "Tickets sin traza": explicar qué es eso en su propia cabecera ahorra la pregunta.
 
