@@ -97,7 +97,20 @@ Se cargó por migración para que entre una sola vez y quede el rastro. Si algun
 > Es la comprobación que falla (*«El efectivo de la caja no es negativo»*), y no la
 > causan los descuentos: las salidas de septiembre (apertura 26.394,27 €, banco
 > 12.255 €, adelanto de nómina 1.360 €, gastos 700 €) suman 40.709,27 € y lo
-> entrado en mano, 40.212,67 €. Algo salió de la caja sin haber entrado.
+> entrado en mano, 40.212,67 €.
+
+### Por qué da negativo (averiguado el 25/09/2026)
+
+No falta dinero: **la apertura resta 884,40 € que ya no están sumados**.
+
+- El traspaso del Excel (09/09) trajo **dos entregas con fecha 15/09**, seis días en el futuro: **Redy Emmeli Pinza Rivadeneira, 500 €** (id 138) y **Enrique Sancristobal Edoko, 384,40 €** (id 99). La carga fue por SQL, así que no pasó por la regla de «no se apunta dinero con fecha futura».
+- La apertura (id 146) se calculó con **todo** lo importado, esas dos incluidas: 26.394,27 € = 25.553,32 de entregas vivas hasta el 08/09 + 884,40 de estas dos − 43,45 de devoluciones. Cuadra al céntimo.
+- El **15/09 Ignacio anuló las dos** (motivo «Ignacio»). Al anularlas dejan de sumar como entrada, pero la apertura las sigue restando: la caja se queda 884,40 € por debajo de lo real.
+- Pista de por qué: los 384,40 € de Enrique salen **exactos** en los descuentos de nómina de septiembre (id 217). Lo del Excel no era efectivo en mano, era deuda para nómina.
+
+Sin ese descuadre la caja estaría en **+344,35 €**, que es lo entrado desde el 09/09 (14.659,35 €) menos lo salido desde entonces (14.315 €). Encaja con la nota de la salida a Angie del 22/09: «me quedo con las monedas».
+
+**Cómo se arregla (sin hacer todavía):** anular la apertura 146 con su motivo y apuntar otra de **25.509,87 €**, por migración. No se pisa el importe: es dinero y tiene que quedar el rastro.
 
 ## El cron
 
