@@ -21,7 +21,8 @@
 //
 // Forma que devuelve (la vista depende de ella):
 //   { conductores: [{ conductorId, id (nombre a mostrar), nombre, nombreBolt, telefono,
-//                     tipo, zona, turno, vigente, alta, baja, altaIdx, bajaIdx, estado,
+//                     tipo, zona, turno, vigente, alta, baja, estado,
+//                     desde, altaIdx, bajaIdx, huecos (de TODOS sus periodos: tramosDeContrato),
 //                     ausente, dias: [ <horas|'V'|'B'|'P'|'J'|'L'|null> ],
 //                     justif: { 'YYYY-MM-DD': { horas, obs } },
 //                     horasBolt: { 'YYYY-MM-DD': h },   // lo que hizo en BOLT un día cuya celda es marca
@@ -292,6 +293,61 @@ const SQL_LIBRANZAS_PLAN = unaPersona => `
         WHERE h.conductor_id = a.conductor_id AND ce.es_ausencia
           AND h.desde <= a.dia AND (h.hasta IS NULL OR h.hasta >= a.dia))`;
 
+/**
+ * DESDE CUÁNDO Y HASTA CUÁNDO ESTUVO EN LA CASA, con todos sus periodos.
+ *
+ * Antes se miraba solo el ÚLTIMO periodo, y a quien volvió o renovó con la ETT
+ * todo lo anterior le salía en blanco, como «antes de su alta». Macilon Dos
+ * Santos (24/09/2026): contrato del 22/09 en la ficha, y detrás otro desde el
+ * 12/08 con antigüedad del 07/08; la bitácora escondía 231 h trabajadas. Eran
+ * nueve personas con varios periodos.
+ *
+ *   · El INICIO es la primera alta o la antigüedad, la más antigua. La
+ *     antigüedad cuenta porque es trabajo de verdad: siete personas tenían
+ *     horas entre su antigüedad y su primera alta (María del Pilar Torres
+ *     Galán, 90,7 h entre el 20/07 y el 01/08).
+ *   · El FIN, ninguno si hay un periodo abierto; si no, la última baja.
+ *   · Los HUECOS, los días entre dos periodos en que no tuvo contrato. Se
+ *     pintan como fuera, salvo que ese día haya horas: entonces se ven, y se
+ *     dice que fueron fuera de contrato.
+ *
+ * Devuelve Map(conductor_id → { desde, altaIdx, bajaIdx, huecos: [[a, b]] }).
+ */
+function tramosDeContrato(filas, clamp) {
+  const porPersona = new Map();
+  filas.forEach(p => {
+    const k = Number(p.conductor_id);
+    if (!porPersona.has(k)) porPersona.set(k, []);
+    porPersona.get(k).push(p);
+  });
+  const out = new Map();
+  porPersona.forEach((ps, cid) => {
+    const antig = ps.map(p => p.antiguedad).filter(Boolean).sort()[0] || null;
+    // Los periodos como tramos [alta, baja], el primero estirado hasta la
+    // antigüedad, y fundidos si se pisan o se tocan.
+    const tramos = ps.map(p => [p.alta, p.baja || '9999-12-31']).sort((a, b) => a[0].localeCompare(b[0]));
+    if (antig && antig < tramos[0][0]) tramos[0][0] = antig;
+    const unidos = [];
+    tramos.forEach(([a, b]) => {
+      const ult = unidos[unidos.length - 1];
+      if (ult && idxDe(a) <= idxDe(ult[1]) + 1) { if (b > ult[1]) ult[1] = b; } else unidos.push([a, b]);
+    });
+    const huecos = [];
+    for (let i = 1; i < unidos.length; i++) {
+      const a = idxDe(unidos[i - 1][1]) + 1, b = idxDe(unidos[i][0]) - 1;
+      if (b >= 0 && b >= a) huecos.push([Math.max(0, a), clamp(b)]);
+    }
+    const fin = unidos[unidos.length - 1][1];
+    out.set(cid, {
+      desde: unidos[0][0],
+      altaIdx: Math.max(0, idxDe(unidos[0][0])),
+      bajaIdx: fin === '9999-12-31' ? null : clamp(idxDe(fin)),
+      huecos,
+    });
+  });
+  return out;
+}
+
 async function leerBitacora() {
   const hoyIso = hoyMadridIso();
   const hoyIdx = idxDe(hoyIso);
@@ -302,7 +358,7 @@ async function leerBitacora() {
 
   // Las fechas se piden como TEXTO ('YYYY-MM-DD'): node-postgres devuelve DATE como
   // Date en zona local y eso desplaza un día según el reloj.
-  const [roster, ausencias, justis, horas, libranzas, manualBit] = await Promise.all([
+  const [roster, ausencias, justis, horas, libranzas, manualBit, periodos] = await Promise.all([
     // TODA la plantilla, con el nombre de BOLT primero. La dimensión ya excluye a
     // los centinelas y resuelve contrato, zona, turno, teléfono y estado de hoy.
     db.consulta(
@@ -365,10 +421,17 @@ async function leerBitacora() {
         WHERE b.marca_manual AND (b.marca = 'L' OR b.sin_libranza)
           AND b.dia_operativo BETWEEN $1::date AND $2::date`,
       [INICIO_ISO, finIso]),
+    // TODOS los periodos de empleo, no solo el último. Ver `tramosDeContrato`.
+    db.consulta(
+      `SELECT conductor_id, to_char(alta, 'YYYY-MM-DD') AS alta, to_char(baja, 'YYYY-MM-DD') AS baja,
+              to_char(fecha_antiguedad, 'YYYY-MM-DD') AS antiguedad
+         FROM conductor_periodo_empleo
+        ORDER BY conductor_id, alta`),
   ]);
 
   const nuevos = () => new Array(nDias).fill(null);
   const clamp = i => (i == null ? null : Math.max(0, Math.min(nDias - 1, i)));
+  const contrato = tramosDeContrato(periodos.rows, clamp);
   const porId = new Map();
   roster.rows.forEach(c => {
     const cid = Number(c.conductor_id);
@@ -378,9 +441,15 @@ async function leerBitacora() {
       nombre: c.nombre || '', nombreBolt: c.bolt_nombre || '',
       telefono: c.telefono || '', tipo: c.tipo_contrato || '', zona: c.zona || '', turno: c.turno || '',
       vigente: !!c.empleo_vigente, alta: c.alta || null, baja: c.baja || null,
-      // Índices para que la pantalla no acuse "no salió" antes del alta ni tras la baja.
-      altaIdx: c.alta ? Math.max(0, idxDe(c.alta)) : null,
-      bajaIdx: c.baja ? clamp(idxDe(c.baja)) : null,
+      // Índices para que la pantalla no acuse "no salió" antes de que entrara
+      // ni tras irse. Salen de TODOS sus periodos (ver `tramosDeContrato`); el
+      // `alta` de arriba es el del contrato de ahora, para la cabecera.
+      ...(contrato.get(cid) || {
+        desde: c.alta || null,
+        altaIdx: c.alta ? Math.max(0, idxDe(c.alta)) : null,
+        bajaIdx: c.baja ? clamp(idxDe(c.baja)) : null,
+        huecos: [],
+      }),
       estado: c.estado_etiqueta || '', ausente: !!c.ausente,
       dias: nuevos(), justif: {}, jRechazadas: {}, ausencias: [], horasBolt: {}, lManual: {}, lQuitada: {},
       // Dia -> nombre de la cuenta prestada con la que trabajo ese dia.

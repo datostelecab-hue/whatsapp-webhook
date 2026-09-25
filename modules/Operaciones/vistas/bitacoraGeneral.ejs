@@ -233,9 +233,20 @@
    * El verde sube con las horas: así, al alejar, una fila floja se ve pálida y
    * una buena se ve maciza sin leer un solo número.
    */
+  /** ¿Fuera de la casa ese día? Con TODOS sus periodos: ver `tramosDeContrato` del repositorio. */
+  function fueraDe(c, d) {
+    if (c.altaIdx != null && d < c.altaIdx) return 'antes';
+    if (c.bajaIdx != null && d > c.bajaIdx) return 'despues';
+    if ((c.huecos || []).some(([a, b]) => d >= a && d <= b)) return 'hueco';
+    return null;
+  }
+
   function colorDe(c, d) {
-    if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return rgb(C.borde, .18);
     const v = val(c, d);
+    if (fueraDe(c, d)) {
+      // Sin contrato ese día pero con horas: se ven, en rojo, que es la rareza.
+      return d <= DATA.hoyIdx && typeof v === 'number' && v > 0 ? rgb(C.rojo, .35) : rgb(C.borde, .18);
+    }
     if (d > DATA.hoyIdx) {
       // El futuro ya decidido se ve, pero apagado: es una promesa, no un hecho.
       if (v === 'V') return rgb(C.vac, .22);
@@ -263,7 +274,7 @@
   /** ¿Cuenta como "rojo" para ordenar por los peores? */
   function esRojo(c, d) {
     if (d > DATA.hoyIdx) return false;
-    if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return false;
+    if (fueraDe(c, d)) return false;
     const v = val(c, d);
     if (esAus(v) || v === 'L') return false;
     if (v === 'J') return desglose(c, d).total < OBJETIVO;
@@ -555,8 +566,13 @@
     const v = val(c, d), iso = isoDe(d);
     const f = fechaDe(d).toLocaleDateString('es-ES', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
     let valor = '', nota = '';
-    if ((c.altaIdx != null && d < c.altaIdx)) { valor = 'Antes del alta'; }
-    else if (c.bajaIdx != null && d > c.bajaIdx) { valor = 'Ya de baja'; }
+    const fuera = fueraDe(c, d);
+    if (fuera && typeof v === 'number' && v > 0 && d <= DATA.hoyIdx) {
+      valor = nf1.format(v) + ' h'; nota = 'Sin contrato ese día en el sistema, y trabajó.';
+    }
+    else if (fuera === 'antes') { valor = 'Antes del alta'; }
+    else if (fuera === 'despues') { valor = 'Ya de baja'; }
+    else if (fuera === 'hueco') { valor = 'Sin contrato'; nota = 'Entre dos periodos.'; }
     else if (d > DATA.hoyIdx) { valor = NOMBRE_MARCA[v] || 'Por venir'; nota = 'Aún no ha pasado.'; }
     else if (NOMBRE_MARCA[v]) { valor = NOMBRE_MARCA[v]; }
     else if (v === 'J') {

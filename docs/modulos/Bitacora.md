@@ -47,6 +47,18 @@ Las horas reales **pisan la L**: si al final trabajó, se ve que trabajó.
 >
 > Medido el 18/09/2026: **16 días en 15 personas**, y **6 de ellos eran libranzas puestas a mano** — seis veces que alguien pulsó el botón y no pasó nada. Las horas no se pierden: se quedan en `horasBolt`, como ya se hacía con la J y con las ausencias.
 
+### Desde cuándo cuenta cada persona: todos sus periodos (25/09/2026)
+
+Antes la bitácora miraba solo el **último** periodo de empleo, y a quien volvió o renovó con la ETT todo lo anterior le salía en blanco, «antes de su alta». Macilon Dos Santos tenía el contrato del 22/09 en la ficha y detrás otro desde el 12/08, con antigüedad del 07/08: se escondían **231 h** trabajadas. Eran nueve personas con varios periodos.
+
+Ahora `tramosDeContrato` (en `bitacora.repo.js`) mira todos:
+
+- **Empieza** en la primera alta o en la **antigüedad**, la más antigua. La antigüedad cuenta porque es trabajo de verdad: siete personas tenían horas entre su antigüedad y su primera alta (María del Pilar Torres Galán, 90,7 h entre el 20/07 y el 01/08).
+- **Termina** en la última baja, o en ninguna si hay un periodo abierto.
+- **Los huecos entre dos contratos** salen en blanco («Sin contrato: entre dos periodos»). Si ese día hay horas, **se ven** con un borde rojo discontinuo y el globo dice «sin contrato ese día en el sistema». Esconderlas era justo lo que dejaba a alguien «sin salir» con semanas de trabajo detrás.
+
+La cabecera sigue enseñando el alta del contrato de ahora y, si la casa empieza antes, «en la casa desde …».
+
 **Quién sale:** toda la plantilla, vigentes y de baja. Antes el listado salía de `v_agenda`, que solo tiene a los vigentes, y a las **74 personas** que trabajaron y luego se fueron se les inventaba el nombre `#id`. Ahora sale de la dimensión de conductores (`bi_dim_conductor`). Quien tenga cuenta de BOLT pero ninguna ficha no se pinta como persona: se cuenta y se avisa (`avisos.sinFicha`).
 
 **Se ven 60 días de futuro.** Sin eso, poner a alguien de vacaciones para mañana no se veía en ninguna parte: su ficha salía en blanco y había que acordarse. Las libranzas futuras solo se calculan **14 días**, porque más allá el cuadrante es una intención y no una promesa: cambia cada semana. Las ausencias y las J van a todo el horizonte, porque son decisiones ya tomadas y con fecha.

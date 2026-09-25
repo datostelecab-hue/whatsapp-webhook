@@ -52,6 +52,8 @@
   .cal-dia.porvenir { opacity: .55; border-style: dashed; }
   .mini > i.porvenir { opacity: .45; }
   .cal-dia.futuro, .cal-dia.fuera { opacity: .28; cursor: default; }
+  /* Horas en un día sin contrato en el sistema: se ven, con el borde de aviso. */
+  .cal-dia.sincontrato { outline: 2px dashed rgb(var(--tc-red) / .7); outline-offset: -3px; }
   .cal-dia.futuro:hover, .cal-dia.fuera:hover { transform: none; border-color: rgb(var(--tc-border) / .6); box-shadow: none; }
   .cal-num { font-size: 11px; color: rgb(var(--tc-muted)); font-weight: 600; line-height: 1; }
   .cal-val { font-size: 12px; font-weight: 700; line-height: 1; letter-spacing: -.01em; }
@@ -207,8 +209,25 @@
   // ── La clase de un día: qué se pinta y qué se dice ────────────────────────
   //   futuro · fuera (antes del alta / tras la baja) · t1/t2/t3 (trabajó, por horas)
   //   · V/B/P (ausencia) · J (justificado) · L (libranza) · nosalio
+  /**
+   * ¿Ese día estaba fuera de la casa? 'antes', 'despues', 'hueco' (entre dos
+   * contratos) o null. Mira TODOS sus periodos: el primero empieza en su
+   * primera alta o en su antigüedad, la más antigua.
+   */
+  function fueraDe(c, d) {
+    if (c.altaIdx != null && d < c.altaIdx) return 'antes';
+    if (c.bajaIdx != null && d > c.bajaIdx) return 'despues';
+    if ((c.huecos || []).some(([a, b]) => d >= a && d <= b)) return 'hueco';
+    return null;
+  }
   function clase(c, d) {
-    if ((c.altaIdx != null && d < c.altaIdx) || (c.bajaIdx != null && d > c.bajaIdx)) return 'fuera';
+    const fuera = fueraDe(c, d);
+    if (fuera) {
+      // Si ese día trabajó, se ve: esconderlo es justo lo que dejaba a alguien
+      // «sin salir» con semanas de trabajo detrás. Con el borde de aviso.
+      const h = val(c, d);
+      return d <= DATA.hoyIdx && typeof h === 'number' && h > 0 ? tramo(h) + ' sincontrato' : 'fuera';
+    }
     const v = val(c, d);
     // EL FUTURO SE VE. Si ya hay algo decidido para mañana —vacaciones, una baja,
     // un permiso, una libranza— se pinta con su color, atenuado. Antes todo el
@@ -244,13 +263,17 @@
     const k = soloClase(clase(c, d)), v = val(c, d);
     const porvenir = d > DATA.hoyIdx ? ' (programado)' : '';
     if (k === 'futuro') return 'Todavía no ha llegado.';
-    if (k === 'fuera') return c.altaIdx != null && d < c.altaIdx ? 'Antes de su alta.' : 'Después de su baja.';
+    if (k === 'fuera') {
+      const f = fueraDe(c, d);
+      return f === 'antes' ? 'Antes de su alta.' : f === 'despues' ? 'Después de su baja.' : 'Sin contrato: entre dos periodos.';
+    }
     // Si ese día trabajó con la cuenta de otro, hay que decirlo: la hora cuenta
     // igual, pero quien mire esto dentro de tres meses tiene que poder entender
     // por qué en BOLT ese día sale el nombre de otra persona.
     const fant = (c.fantasma || {})[isoDe(d)];
     if (trabajo(k)) return nf1.format(v) + ' h efectivas' + (v < OBJETIVO ? ' · por debajo de ' + OBJETIVO : '') +
-      (fant ? ' · HORAS DE CUENTA FANTASMA «' + fant + '»' : '');
+      (fant ? ' · HORAS DE CUENTA FANTASMA «' + fant + '»' : '') +
+      (fueraDe(c, d) ? ' · SIN CONTRATO ese día en el sistema' : '');
     if (k === 'J') {
       const j = c.justif[isoDe(d)] || {}, hb = (c.horasBolt || {})[isoDe(d)] || 0;
       const firme = horasDe(c, d) || 0;
@@ -558,6 +581,7 @@
              ${c.zona ? `<span><i class="fa-solid fa-location-dot mr-1"></i>${esc(c.zona)}</span>` : ''}
              ${c.turno ? `<span>${esc(c.turno)}</span>` : ''}
              ${c.alta ? `<span>alta ${c.alta.split('-').reverse().join('/')}</span>` : ''}
+             ${c.desde && c.alta && c.desde < c.alta ? `<span title="Su primera alta o su antigüedad, la más antigua: la bitácora cuenta desde aquí">en la casa desde ${c.desde.split('-').reverse().join('/')}</span>` : ''}
              ${c.nombreBolt && c.nombre && c.nombreBolt !== c.nombre ? `<span class="text-telecab-muted/70">en plantilla: ${esc(c.nombre)}</span>` : ''}
            </p>
          </div>
