@@ -965,7 +965,7 @@
         + (f.calificacion_tope ? ' · la baja el tope por velocidad' : '');
     return `<span class="inline-flex items-center justify-center min-w-[2rem] px-1.5 py-0.5 rounded-lg border
                  text-[11px] font-bold ${TONO_LETRA[f.calificacion] || TONO_LETRA['N/E']}"
-                 title="${esc(t)}">${esc(f.calificacion)}${f.calificacion_tope ? '⚠' : ''}</span>`;
+                 title="${esc(t)}">${esc(f.calificacion)}${f.calificacion_tope ? '<i class="fa-solid fa-triangle-exclamation text-[8px] ml-0.5 align-middle"></i>' : ''}</span>`;
   }
 
   const plantilla = Listado.montar({

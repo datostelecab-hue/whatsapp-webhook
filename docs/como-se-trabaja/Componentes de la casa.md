@@ -1,7 +1,7 @@
 ---
 tags: [como-se-trabaja, diseño, componentes, interfaz]
 aliases: [Componentes, Diseño de la casa, Componente Listado]
-actualizado: 2026-09-21
+actualizado: 2026-09-27
 ---
 
 # Componentes de la casa
@@ -25,6 +25,8 @@ actualizado: 2026-09-21
 | Listar cosas | el componente **Listado** (`listado.js`) | una tabla nueva |
 | **Explicar un dato** | un **`title`** en el elemento (lo pinta `ayuda.js`) | un icono de «?» propio |
 | Tapar mientras carga | `#cargando-overlay` de `layout-gestion` | un spinner propio |
+| **La marca de Telecab** | `<%- include('partials/marca', { tam, anima }) %>` (SVG con los colores del tema) | el PNG del logo o un vídeo |
+| Un icono | Font Awesome (`<i class="fa-solid …">`), que toma el color del texto | **un emoji** |
 | Un color | los tokens (`text-telecab-gold`, `bg-telecab-red/15`) | un hex a pelo |
 
 Todo se carga solo desde `views/layout-gestion.ejs`: no hay que importar nada.
@@ -172,10 +174,12 @@ El **21/09/2026** se pasó de **227 ayudas en 36 pantallas** a **310 en todas la
 
 ## Los colores
 
-Ninguna vista lleva color propio: todo son **tokens** (`--tc-gold`, `--tc-card`…) escritos como canales RGB para que Tailwind pueda darles opacidad. Los colores crudos de Tailwind están **remapeados**: `text-red-500` ES el rojo de la marca. Tailwind viene por CDN y pinta después de la hoja propia, así que los ajustes se escriben con especificidad subida (`body .clase`). → [[Reglas de la casa]], regla 7.
+Ninguna vista lleva color propio: todo son **tokens** (`--tc-gold`, `--tc-card`…) escritos como canales RGB para que Tailwind pueda darles opacidad. Los colores crudos de Tailwind están **remapeados** en todos sus tonos: `text-red-500` ES el rojo de la marca, y `text-amber-400` es el **aviso**, no el acento. Tailwind viene por CDN y pinta después de la hoja propia, así que los ajustes se escriben con especificidad subida (`body .clase`). → [[Reglas de la casa]], regla 7.
+
+**Un solo acento, superficies lisas, sin emojis** (27/09/2026): el acento marca lo que se pulsa o está elegido; lo demás es gris. Una tarjeta es `bg-telecab-card border border-telecab-border rounded-2xl` y ya queda como las demás. Las reglas, los tokens y la marca animada, en [[Identidad visual]].
 
 ## Cuando falte algo
 
 Si necesitas una pieza que no está, **hazla en el sitio compartido** (`public/assets/js/`, o `layout-gestion.ejs` si tiene que engancharse sola) y **apúntala aquí**. Una pieza que solo existe dentro de una vista es una pieza que la siguiente pantalla volverá a escribir de otra manera.
 
-Relacionado: [[Reglas de la casa]] · [[Trampas conocidas|Fechas sin toISOString]] · [[Trampas conocidas]]
+Relacionado: [[Reglas de la casa]] · [[Identidad visual]] · [[Trampas conocidas|Fechas sin toISOString]] · [[Trampas conocidas]]

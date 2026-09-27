@@ -6,7 +6,7 @@
       enseña por dónde seguir. %>
   <div class="max-w-lg mx-auto text-center pt-16 pb-10 px-4">
     <div class="flex justify-center mb-6">
-      <%- include('partials/logo-video', { tam: 'w-[180px] h-[180px]' }) %>
+      <%- include('partials/marca', { tam: 'w-24 h-24' }) %>
     </div>
     <h1 class="text-2xl font-bold text-telecab-text">Bienvenido a Telecab</h1>
     <p class="text-sm text-telecab-muted mt-2">
@@ -36,7 +36,7 @@
 
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div class="flex items-center gap-3">
-      <%- include('partials/logo-video', { tam: 'w-12 h-12' }) %>
+      <%- include('partials/marca', { tam: 'w-11 h-11' }) %>
       <div>
         <h1 class="text-2xl font-bold text-telecab-text">
           Hola<%= (typeof usuario !== 'undefined' && usuario && usuario.nombre) ? ', ' + usuario.nombre : '' %>

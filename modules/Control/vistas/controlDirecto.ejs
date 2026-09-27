@@ -283,9 +283,9 @@
       + '\n· Horas ' + n(r.horas) + ' h/día en ' + r.dias + ' día(s) → ' + r.ptsHoras + ' pts (50 %)'
       + '\n· Utilización ' + n(r.utilProm) + ' % → ' + r.ptsUtilizacion + ' pts (30 %)'
       + '\n· Excesos de velocidad ' + n(r.excesos) + ' → ' + r.ptsVelocidad + ' pts (20 %)';
-    if (r.topeAplicado) t += '\n⚠ Por puntos sería ' + r.letraPorPuntos + ': la baja el tope por velocidad.';
+    if (r.topeAplicado) t += '\nAviso: por puntos sería ' + r.letraPorPuntos + ': la baja el tope por velocidad.';
     if (r.diasTelemetria != null && r.diasTelemetria < 14) {
-      t += '\n⚠ Solo ' + r.diasTelemetria + ' día(s) de telemetría: faltan excesos por contar.';
+      t += '\nAviso: solo ' + r.diasTelemetria + ' día(s) de telemetría: faltan excesos por contar.';
     }
     return t;
   }
@@ -299,7 +299,7 @@
     const h = String(r.horas).replace('.', ',');
     return '<span class="shrink-0 px-1.5 py-0 rounded text-[10px] font-bold leading-[1.4] ' +
       (REND_TONO[r.letra] || REND_TONO.D) + '" title="' + esc(tituloRend(r)) + '">' +
-      h + ' h·' + esc(r.letra) + (r.topeAplicado ? '⚠' : '') + '</span>';
+      h + ' h·' + esc(r.letra) + (r.topeAplicado ? '<i class="fa-solid fa-triangle-exclamation text-[8px] ml-0.5 align-middle"></i>' : '') + '</span>';
   }
 
   // LOS AVISOS DE LA COLUMNA. Los arma el servidor (directo.js avisosDe) y aquí
@@ -905,7 +905,7 @@
                 n1(hs) + ' h que suman al turno</span></div>' +
               lista.map(filaNN).join('');
           }).join('')
-        : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nadie rodando sin plan. 👌</p>';
+        : '<p class="px-4 py-10 text-center text-sm text-telecab-muted">Nadie rodando sin plan.</p>';
       $('#d-cuenta').textContent = (q ? filas.length + ' de ' + todas.length : todas.length) + ' fila(s)';
       // Los NN ya tienen botones (llamar, justificar) y se despliegan: hay que
       // engancharlos igual que a los del plan. Antes esta rama salía sin pasar
@@ -931,7 +931,7 @@
       const msg = v0 && !v0.empezada
         ? 'Este turno todavía no ha empezado.'
         : soloNoSalieron && todas.length
-          ? 'Nadie por llamar en este turno. 👌'
+          ? 'Nadie por llamar en este turno.'
           : q
             ? 'Nadie con ese nombre o esa matrícula.'
             : 'Nadie en este turno.';

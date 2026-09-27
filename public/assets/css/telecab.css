@@ -10,236 +10,215 @@
    opacidad (bg-telecab-gold/15, border-telecab-red/40) vía rgb(var(--tc-*) /
    <alpha-value>).
 
-   LA IDEA VISUAL (2026-09): un fondo casi negro con un resplandor cálido que
-   entra por la izquierda —ámbar, como una lámpara al otro lado de la sala— y
-   superficies de cristal oscuro que lo dejan pasar. El acento es el ámbar de
-   la marca; el azul suave es el contrapunto frío para lo que tiene que
-   distinguirse del acento (series de gráficos, estados informativos). */
+   LA IDEA VISUAL (27/09/2026, sustituye a la del 05/09): CORPORATIVA. Camilo:
+   «más moderna, elegante y un poco más minimalista, no quiero tanto emoji ni
+   colores combinados». Sale de los colores del logo —negro, oro y plata— y de
+   tres reglas:
+     1. UN SOLO ACENTO. El oro del logo marca lo que se puede pulsar o lo que
+        está elegido, y nada más. El resto es gris: grafito en oscuro, gris
+        claro en claro. Los colores de estado (rojo, verde, naranja) quedan
+        para lo que de verdad es un estado.
+     2. SUPERFICIES LISAS. Sin cristal, sin resplandor de fondo, sin grano, sin
+        degradados, sin sombras de color. Una tarjeta es una superficie con un
+        borde fino; lo que flota (menús, diálogos) lleva una sombra neutra.
+     3. LA TIPOGRAFÍA ORDENA. IBM Plex Sans: sobria, con cifras tabulares,
+        pensada para pantallas de gestión.
+   Las superficies son iguales en todos los temas; lo que cambia de un tema a
+   otro es el acento. Así cada uno conserva su color sin que la pantalla se
+   convierta en un arcoíris. */
 
+/* ===== OSCURO (grafito): el tema por defecto ===== */
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --tc-dark: 13 10 12;         /* el negro cálido del fondo */
-  --tc-card: 27 22 25;         /* superficie: se pinta al 72 % para que pase el resplandor */
-  --tc-card2: 40 33 36;        /* superficie elevada / hover */
-  --tc-border: 62 52 55;       /* línea fina cálida */
-  --tc-gold: 244 150 60;       /* ÁMBAR: el acento de la marca */
-  --tc-gold-soft: 252 196 121;
-  --tc-gold-deep: 214 112 24;
-  --tc-azul: 110 156 250;      /* el contrapunto frío */
-  --tc-red: 240 82 82;
-  --tc-red-hover: 214 60 60;
-  --tc-green: 74 222 128;
-  --tc-warn: 251 191 36;       /* ámbar de aviso: requiere revisión a mano */
-  --tc-violet: 167 139 250;    /* morado: reincidencia / escalado */
-  --tc-text: 244 240 236;      /* blanco cálido */
-  --tc-muted: 160 150 152;
-  --tc-scroll: 62 52 55;
-  --tc-scroll-hover: 244 150 60;
-  /* El resplandor: tres focos. El grande, ámbar, entra por la izquierda; el
-     melocotón lo acompaña abajo; el violeta, muy tenue, equilibra a la derecha. */
-  --tc-halo1: 244 140 50;  --tc-halo1-a: 0.34;
-  --tc-halo2: 120 90 220;  --tc-halo2-a: 0.13;
-  --tc-halo3: 255 200 120; --tc-halo3-a: 0.12;
-  --tc-card-a: 0.72;           /* opacidad de las superficies (cristal) */
-  --tc-brillo: 255 255 255;    /* el filo de luz del borde superior de cada tarjeta */
-}
-
-:root[data-theme='light'] {
-  color-scheme: light;
-  --tc-dark: 250 246 242;      /* papel cálido */
-  --tc-card: 255 255 255;
-  --tc-card2: 246 240 235;
-  --tc-border: 232 222 214;
-  --tc-gold: 201 108 20;       /* ámbar profundo: legible sobre claro */
-  --tc-gold-soft: 232 150 60;
-  --tc-gold-deep: 170 86 10;
-  --tc-azul: 45 100 230;
-  --tc-red: 214 55 62;
-  --tc-red-hover: 185 42 48;
-  --tc-green: 15 128 90;
-  --tc-warn: 180 83 9;
-  --tc-violet: 124 58 237;
-  --tc-text: 38 30 28;
-  --tc-muted: 122 110 106;
-  --tc-scroll: 220 210 202;
-  --tc-scroll-hover: 201 108 20;
-  --tc-halo1: 244 140 50;  --tc-halo1-a: 0.20;
-  --tc-halo2: 120 90 220;  --tc-halo2-a: 0.07;
-  --tc-halo3: 255 200 120; --tc-halo3-a: 0.16;
-  --tc-card-a: 0.86;
+  --tc-dark: 14 16 19;          /* el fondo de la página */
+  --tc-card: 22 24 28;          /* superficie: tarjetas, menú */
+  --tc-card2: 31 34 39;         /* superficie elevada / hover */
+  --tc-border: 44 48 55;        /* la línea fina */
+  --tc-campo: 14 16 19;         /* el interior de un campo: hundido, del color de la página */
+  --tc-gold: 227 178 60;        /* EL ACENTO: el oro del logo */
+  --tc-gold-soft: 238 202 118;
+  --tc-gold-deep: 192 146 34;
+  --tc-on-gold: 20 17 10;       /* el texto sobre el acento */
+  --tc-azul: 112 150 208;       /* informativo: azul acero, apagado */
+  --tc-red: 224 92 84;
+  --tc-red-hover: 198 72 66;
+  --tc-green: 76 178 130;
+  --tc-warn: 222 142 62;        /* naranja de aviso: distinto del acento a propósito */
+  --tc-violet: 146 132 204;     /* reincidencia / escalado */
+  --tc-text: 232 234 237;
+  --tc-muted: 142 148 158;
+  --tc-scroll: 52 56 64;
+  --tc-scroll-hover: 88 94 104;
+  --tc-sombra: 0 1px 2px rgb(0 0 0 / .35);
+  --tc-sombra-alta: 0 16px 40px -12px rgb(0 0 0 / .65), 0 2px 6px rgb(0 0 0 / .3);
+  /* Del diseño anterior, que tenía resplandor y cristal. Se quedan como
+     variables (alguna vista las lee) pero ya no pintan nada. */
+  --tc-halo1: 0 0 0; --tc-halo1-a: 0;
+  --tc-halo2: 0 0 0; --tc-halo2-a: 0;
+  --tc-halo3: 0 0 0; --tc-halo3-a: 0;
+  --tc-card-a: 1;
   --tc-brillo: 255 255 255;
 }
 
-/* ===== Temas oscuros con otro acento (heredan la base del oscuro) ===== */
-:root[data-theme='azul'] {
-  --tc-dark: 9 11 20; --tc-card: 20 24 38; --tc-card2: 30 36 54; --tc-border: 48 56 80;
-  --tc-gold: 96 165 250; --tc-gold-soft: 147 197 253; --tc-gold-deep: 59 130 220; --tc-azul: 244 150 60;
-  --tc-halo1: 80 130 250; --tc-halo2: 62 207 142; --tc-halo3: 140 170 255;
-}
-:root[data-theme='verde'] {
-  --tc-dark: 8 16 13; --tc-card: 16 30 25; --tc-card2: 24 42 35; --tc-border: 40 62 52;
-  --tc-gold: 52 211 153; --tc-gold-soft: 110 231 183; --tc-gold-deep: 16 160 110; --tc-azul: 96 165 250;
-  --tc-halo1: 40 200 140; --tc-halo2: 96 165 250; --tc-halo3: 120 230 180;
-}
-:root[data-theme='purpura'] {
-  --tc-dark: 14 10 20; --tc-card: 27 20 38; --tc-card2: 38 29 54; --tc-border: 58 46 80;
-  --tc-gold: 167 139 250; --tc-gold-soft: 196 181 253; --tc-gold-deep: 124 92 220; --tc-azul: 244 114 182;
-  --tc-halo1: 150 110 250; --tc-halo2: 244 114 182; --tc-halo3: 190 170 255;
-}
-:root[data-theme='rosa'] {
-  --tc-dark: 20 10 15; --tc-card: 36 20 28; --tc-card2: 50 29 40; --tc-border: 74 44 58;
-  --tc-gold: 244 114 182; --tc-gold-soft: 249 168 212; --tc-gold-deep: 214 60 145; --tc-azul: 167 139 250;
-  --tc-halo1: 240 100 170; --tc-halo2: 167 139 250; --tc-halo3: 255 170 210;
-}
-:root[data-theme='cian'] {
-  --tc-dark: 7 16 18; --tc-card: 15 31 34; --tc-card2: 22 45 49; --tc-border: 36 66 72;
-  --tc-gold: 45 212 205; --tc-gold-soft: 103 232 226; --tc-gold-deep: 20 165 160; --tc-azul: 244 150 60;
-  --tc-halo1: 40 200 195; --tc-halo2: 62 207 142; --tc-halo3: 110 235 230;
-}
-:root[data-theme='naranja'] {
-  --tc-dark: 18 11 7; --tc-card: 34 22 14; --tc-card2: 48 32 21; --tc-border: 72 50 34;
-  --tc-gold: 251 146 60; --tc-gold-soft: 253 186 116; --tc-gold-deep: 220 110 30; --tc-azul: 110 156 250;
-  --tc-halo1: 251 130 40; --tc-halo2: 229 72 77; --tc-halo3: 255 190 110; --tc-halo1-a: 0.40;
-}
+/* ===== Temas oscuros con otro acento: las MISMAS superficies, otro acento ===== */
+:root[data-theme='azul']    { --tc-gold: 104 152 228; --tc-gold-soft: 148 184 238; --tc-gold-deep: 70 118 200; --tc-azul: 150 160 176; }
+:root[data-theme='verde']   { --tc-gold: 76 186 138;  --tc-gold-soft: 124 212 174; --tc-gold-deep: 46 150 106; --tc-green: 120 196 150; }
+:root[data-theme='purpura'] { --tc-gold: 152 134 226; --tc-gold-soft: 186 172 240; --tc-gold-deep: 118 98 200; }
+:root[data-theme='rosa']    { --tc-gold: 222 116 162; --tc-gold-soft: 238 162 196; --tc-gold-deep: 190 76 128; }
+:root[data-theme='cian']    { --tc-gold: 64 188 184;  --tc-gold-soft: 122 214 210; --tc-gold-deep: 34 150 146; --tc-azul: 150 160 176; }
+:root[data-theme='naranja'] { --tc-gold: 228 136 62;  --tc-gold-soft: 240 176 118; --tc-gold-deep: 194 102 32; --tc-warn: 220 170 60; }
 :root[data-theme='contraste'] {
   color-scheme: dark;
-  --tc-dark: 0 0 0; --tc-card: 18 18 18; --tc-card2: 32 32 32; --tc-border: 90 90 90;
-  --tc-text: 255 255 255; --tc-muted: 205 205 205;
-  --tc-gold: 255 214 10; --tc-gold-soft: 255 229 92; --tc-gold-deep: 224 179 0; --tc-azul: 120 180 255;
-  --tc-green: 74 222 128; --tc-red: 248 113 113;
-  --tc-halo1-a: 0; --tc-halo2-a: 0; --tc-halo3-a: 0; --tc-card-a: 1;
+  --tc-dark: 0 0 0; --tc-card: 12 12 12; --tc-card2: 28 28 28; --tc-border: 110 110 110; --tc-campo: 0 0 0;
+  --tc-text: 255 255 255; --tc-muted: 210 210 210;
+  --tc-gold: 255 214 10; --tc-gold-soft: 255 229 92; --tc-gold-deep: 224 179 0; --tc-on-gold: 0 0 0;
+  --tc-azul: 120 180 255; --tc-green: 74 222 128; --tc-red: 248 113 113;
 }
 
-/* ===== Temas claros con acento de color ===== */
-:root[data-theme='claro-azul'], :root[data-theme='claro-verde'], :root[data-theme='claro-rosa'],
-:root[data-theme='claro-purpura'], :root[data-theme='claro-naranja'] {
+/* ===== CLARO (y los claros con otro acento) ===== */
+:root[data-theme='light'],
+:root[data-theme^='claro-'] {
   color-scheme: light;
-  --tc-card: 255 255 255; --tc-red: 214 55 62; --tc-red-hover: 185 42 48; --tc-green: 15 128 90;
-  --tc-warn: 180 83 9; --tc-violet: 124 58 237; --tc-scroll: 210 204 200;
-  --tc-halo1-a: 0.16; --tc-halo2-a: 0.06; --tc-halo3-a: 0.10; --tc-card-a: 0.86; --tc-brillo: 255 255 255;
+  --tc-dark: 244 245 247;       /* la página: gris muy claro */
+  --tc-card: 255 255 255;
+  --tc-card2: 241 243 245;
+  --tc-border: 222 226 231;
+  --tc-campo: 255 255 255;
+  --tc-gold: 150 106 0;         /* oro oscurecido: legible como texto sobre blanco (4,8:1) */
+  --tc-gold-soft: 196 145 20;
+  --tc-gold-deep: 120 84 0;
+  --tc-on-gold: 255 255 255;
+  --tc-azul: 44 98 170;
+  --tc-red: 196 50 46;
+  --tc-red-hover: 170 40 38;
+  --tc-green: 22 122 82;
+  --tc-warn: 176 90 10;
+  --tc-violet: 104 76 190;
+  --tc-text: 24 28 34;
+  --tc-muted: 98 106 118;
+  --tc-scroll: 206 211 218;
+  --tc-scroll-hover: 160 166 175;
+  --tc-sombra: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .06);
+  --tc-sombra-alta: 0 16px 40px -12px rgb(16 24 40 / .22), 0 2px 6px rgb(16 24 40 / .08);
 }
-:root[data-theme='claro-azul']    { --tc-dark: 242 246 251; --tc-card2: 235 241 249; --tc-border: 214 224 238; --tc-gold: 37 99 235;  --tc-gold-soft: 96 145 240; --tc-gold-deep: 29 78 200;  --tc-azul: 244 150 60;  --tc-text: 22 31 46; --tc-muted: 90 106 130; --tc-scroll-hover: 37 99 235;  --tc-halo1: 60 120 250; --tc-halo2: 20 155 110; --tc-halo3: 140 180 255; }
-:root[data-theme='claro-verde']   { --tc-dark: 243 248 244; --tc-card2: 236 244 238; --tc-border: 212 229 218; --tc-gold: 21 128 61;  --tc-gold-soft: 34 160 82;  --tc-gold-deep: 15 100 48;  --tc-azul: 37 99 235;   --tc-text: 24 34 28; --tc-muted: 92 112 100; --tc-scroll-hover: 21 128 61;  --tc-halo1: 40 170 100; --tc-halo2: 37 99 235;  --tc-halo3: 120 220 160; }
-:root[data-theme='claro-rosa']    { --tc-dark: 251 244 248; --tc-card2: 249 236 242; --tc-border: 236 214 226; --tc-gold: 200 29 104; --tc-gold-soft: 224 74 142; --tc-gold-deep: 165 22 85;  --tc-azul: 124 58 237;  --tc-text: 40 26 34; --tc-muted: 122 96 108; --tc-scroll-hover: 200 29 104; --tc-halo1: 230 80 150; --tc-halo2: 124 58 237; --tc-halo3: 255 170 210; }
-:root[data-theme='claro-purpura'] { --tc-dark: 247 245 252; --tc-card2: 240 236 249; --tc-border: 224 216 240; --tc-gold: 124 58 237; --tc-gold-soft: 155 100 245; --tc-gold-deep: 100 45 200; --tc-azul: 200 29 104;  --tc-text: 30 26 44; --tc-muted: 104 96 128; --tc-scroll-hover: 124 58 237; --tc-halo1: 140 90 250; --tc-halo2: 200 29 104; --tc-halo3: 190 170 255; }
-:root[data-theme='claro-naranja'] { --tc-dark: 251 246 241; --tc-card2: 249 240 233; --tc-border: 236 222 210; --tc-gold: 194 65 12;  --tc-gold-soft: 224 100 40; --tc-gold-deep: 160 52 8;   --tc-azul: 45 100 230;  --tc-text: 40 30 22; --tc-muted: 120 104 92; --tc-scroll-hover: 194 65 12;  --tc-halo1: 240 120 40; --tc-halo2: 20 155 110; --tc-halo3: 255 190 110; --tc-halo1-a: 0.22; }
+:root[data-theme='claro-azul']    { --tc-gold: 29 78 170;  --tc-gold-soft: 64 112 200; --tc-gold-deep: 20 60 140; --tc-azul: 90 100 115; }
+:root[data-theme='claro-verde']   { --tc-gold: 20 110 70;  --tc-gold-soft: 44 140 96;  --tc-gold-deep: 12 86 54; }
+:root[data-theme='claro-rosa']    { --tc-gold: 170 30 90;  --tc-gold-soft: 200 72 130; --tc-gold-deep: 140 20 72; }
+:root[data-theme='claro-purpura'] { --tc-gold: 100 60 190; --tc-gold-soft: 132 96 216; --tc-gold-deep: 80 44 160; }
+:root[data-theme='claro-naranja'] { --tc-gold: 176 70 12;  --tc-gold-soft: 210 106 46; --tc-gold-deep: 144 54 8; }
 
 /* ============================================================
    BASE
    ============================================================ */
 html { font-size: 15px; }
 body {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.005em;
+  -moz-osx-font-smoothing: grayscale;
 }
-h1, h2, h3, .font-bold, .font-semibold { letter-spacing: -0.02em; }
-.tabular-nums { font-variant-numeric: tabular-nums; }
+h1, h2, h3 { letter-spacing: -0.01em; text-wrap: balance; }
+.tabular-nums, body table { font-variant-numeric: tabular-nums; }
 
-/* EL FONDO. Tres focos de luz sobre negro cálido. Va en una capa fija detrás de
-   todo para que el resplandor no se desplace al hacer scroll y las superficies
-   de cristal lo dejen entrever. */
-.app-bg { background: rgb(var(--tc-dark)); position: relative; }
-.app-bg::before {
-  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background:
-    radial-gradient(75rem 55rem at -14% 18%,  rgb(var(--tc-halo1) / var(--tc-halo1-a)), transparent 62%),
-    radial-gradient(42rem 34rem at 8% 100%,   rgb(var(--tc-halo3) / var(--tc-halo3-a)), transparent 62%),
-    radial-gradient(60rem 48rem at 108% 96%,  rgb(var(--tc-halo2) / var(--tc-halo2-a)), transparent 62%),
-    rgb(var(--tc-dark));
-}
-/* Un grano finísimo sobre el fondo: quita el aspecto de plástico de los degradados. */
-.app-bg::after {
-  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+/* EL FONDO: liso. El resplandor y el grano del diseño anterior se apagan aquí
+   (las pseudocapas se quedan sin contenido) para no tener que tocar el body de
+   ninguna vista. */
+.app-bg { background: rgb(var(--tc-dark)); }
+.app-bg::before, .app-bg::after { content: none; }
+
+/* El foco del teclado se VE siempre, en el color del acento. */
+body a:focus-visible, body button:focus-visible, body [tabindex]:focus-visible, body summary:focus-visible {
+  outline: 2px solid rgb(var(--tc-gold) / .7);
+  outline-offset: 2px;
 }
 
 /* ============================================================
-   SUPERFICIES DE CRISTAL — todas las tarjetas de la app, de golpe
+   SUPERFICIES — todas las tarjetas de la app, de golpe
    ============================================================
    Tailwind (CDN) pinta sus utilidades DESPUÉS de esta hoja, así que para ganarle
    hay que subir la especificidad: por eso "body .clase". Se toca el aspecto de
    la superficie, no su geometría, y las vistas no se enteran. */
-body .bg-telecab-card {
-  background-color: rgb(var(--tc-card) / var(--tc-card-a));
-  box-shadow: inset 0 1px 0 rgb(var(--tc-brillo) / .05), 0 10px 30px -18px rgb(0 0 0 / .6);
+body .bg-telecab-card { background-color: rgb(var(--tc-card)); box-shadow: var(--tc-sombra); }
+body .bg-telecab-card2 { background-color: rgb(var(--tc-card2)); }
+body .border-telecab-border { border-color: rgb(var(--tc-border)); }
+/* Esquinas más contenidas: redondeadas, no blandas. */
+body .rounded-2xl { border-radius: .75rem; }
+body .rounded-xl  { border-radius: .5rem; }
+body .shadow-soft { box-shadow: var(--tc-sombra-alta); }
+body .shadow-lg, body .shadow-xl { box-shadow: var(--tc-sombra-alta); }
+/* Sin cristal: el desenfoque de fondo cuesta en cada fotograma y es justo el
+   efecto que se quita. Los velos de los diálogos se quedan oscuros y quietos. */
+body .backdrop-blur-sm, body .backdrop-blur, body .backdrop-blur-md,
+body .backdrop-blur-lg, body .backdrop-blur-xl {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
-body .bg-telecab-card2 { background-color: rgb(var(--tc-card2) / .85); }
-body .border-telecab-border { border-color: rgb(var(--tc-border) / .75); }
-body .rounded-2xl { border-radius: 1.25rem; }
-body .rounded-xl  { border-radius: .9rem; }
-body .shadow-soft { box-shadow: inset 0 1px 0 rgb(var(--tc-brillo) / .06), 0 20px 50px -24px rgb(0 0 0 / .7); }
 
-/* El menú y la barra superior sí son cristal de verdad: hay poco y se nota. */
+/* El menú y la barra superior: lisos, separados por una línea. */
 #menu-panel {
-  background-color: rgb(var(--tc-dark) / .58) !important;
-  border-right-color: rgb(var(--tc-brillo) / .06) !important;
-  backdrop-filter: blur(22px) saturate(1.15);
+  background-color: rgb(var(--tc-card)) !important;
+  border-right-color: rgb(var(--tc-border)) !important;
 }
 body > div > div > header.sticky {
-  background-color: rgb(var(--tc-dark) / .55) !important;
-  border-bottom-color: rgb(var(--tc-brillo) / .06) !important;
-  backdrop-filter: blur(18px) saturate(1.15);
+  background-color: rgb(var(--tc-dark)) !important;
+  border-bottom-color: rgb(var(--tc-border)) !important;
 }
 
 /* ============================================================
    MENÚ LATERAL
    ============================================================ */
-#menu-panel nav a, #menu-panel nav .grupo-btn { border-radius: .8rem; }
-#menu-panel nav a:hover, #menu-panel nav .grupo-btn:hover { background-color: rgb(var(--tc-brillo) / .05) !important; }
-/* El ítem activo es una pastilla llena con el ámbar de la marca, no una barra. */
+#menu-panel nav a, #menu-panel nav .grupo-btn { border-radius: .5rem; }
+#menu-panel nav a:hover, #menu-panel nav .grupo-btn:hover { background-color: rgb(var(--tc-text) / .05) !important; }
+/* El ítem activo: fondo apenas teñido, texto normal, icono y una raya a la
+   izquierda en el acento. Se lee sin gritar. */
 #menu .nav-item.activo {
-  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep))) !important;
-  color: rgb(var(--tc-dark)) !important;
-  box-shadow: 0 10px 26px -10px rgb(var(--tc-gold) / .75), inset 0 1px 0 rgb(255 255 255 / .25);
+  background-color: rgb(var(--tc-gold) / .12) !important;
+  color: rgb(var(--tc-text)) !important;
+  box-shadow: inset 2px 0 0 rgb(var(--tc-gold));
   font-weight: 600;
 }
-#menu .nav-item.activo i { color: rgb(var(--tc-dark)) !important; opacity: .85; }
-#menu .nav-item.activo::before { display: none; }
-#menu-panel .grupo-items { border-left-color: rgb(var(--tc-brillo) / .08) !important; }
-#menu-panel > a:first-child { border-bottom-color: rgb(var(--tc-brillo) / .06) !important; }
-#menu-panel > div:last-child { border-top-color: rgb(var(--tc-brillo) / .06) !important; }
+#menu .nav-item.activo i { color: rgb(var(--tc-gold)) !important; }
+#menu-panel .grupo-items { border-left-color: rgb(var(--tc-border)) !important; }
+#menu-panel > a:first-child { border-bottom-color: rgb(var(--tc-border)) !important; }
+#menu-panel > div:last-child { border-top-color: rgb(var(--tc-border)) !important; }
 
 /* ============================================================
    BOTONES, CAMPOS, PASTILLAS
    ============================================================ */
-/* Botón principal (ámbar): degradado, brillo arriba, sombra de color. */
+/* Botón principal: el acento, liso. Al pasar el ratón, un punto más hondo. */
 body button.bg-telecab-gold, body a.bg-telecab-gold, body .btn-primario {
-  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)));
-  color: rgb(var(--tc-dark)) !important;
-  box-shadow: 0 10px 24px -10px rgb(var(--tc-gold) / .7), inset 0 1px 0 rgb(255 255 255 / .28);
+  background: rgb(var(--tc-gold));
+  color: rgb(var(--tc-on-gold)) !important;
+  box-shadow: none;
   border: 0;
-  transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
+  transition: background-color .15s ease;
 }
-body button.bg-telecab-gold:hover, body a.bg-telecab-gold:hover { filter: brightness(1.06); transform: translateY(-1px); }
-body button.bg-telecab-gold:active { transform: translateY(0) scale(.985); }
-/* Botón de peligro. */
-body button.bg-telecab-red { box-shadow: 0 10px 24px -12px rgb(var(--tc-red) / .6); }
-/* Botones secundarios (cristal): los que llevan borde y fondo de tarjeta. */
+body button.bg-telecab-gold:hover:not(:disabled), body a.bg-telecab-gold:hover, body .btn-primario:hover { background: rgb(var(--tc-gold-deep)); }
+/* Botones secundarios: los que llevan borde y fondo de tarjeta. */
 body button.border.bg-telecab-card, body a.border.bg-telecab-card, body button.border-telecab-border.bg-telecab-card {
-  background-color: rgb(var(--tc-brillo) / .04);
-  border-color: rgb(var(--tc-brillo) / .09);
-  transition: background-color .15s ease, border-color .15s ease, transform .12s ease;
+  background-color: rgb(var(--tc-card));
+  border-color: rgb(var(--tc-border));
+  box-shadow: none;
+  transition: background-color .15s ease, border-color .15s ease;
 }
 body button.border.bg-telecab-card:hover, body a.border.bg-telecab-card:hover {
-  background-color: rgb(var(--tc-brillo) / .08);
-  border-color: rgb(var(--tc-gold) / .45);
+  background-color: rgb(var(--tc-card2));
+  border-color: rgb(var(--tc-muted) / .45);
 }
-body button:active:not(:disabled) { transform: scale(.985); }
+body button:active:not(:disabled) { transform: scale(.99); }
 
-/* Campos: hundidos en el cristal, con el filo ámbar al enfocar. */
+/* Campos: del color de la página por dentro, borde fino, el acento al enfocar. */
 body input.bg-telecab-dark, body select.bg-telecab-dark, body textarea.bg-telecab-dark, .inp {
-  background-color: rgb(var(--tc-dark) / .55) !important;
-  border-color: rgb(var(--tc-brillo) / .09) !important;
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / .25);
+  background-color: rgb(var(--tc-campo)) !important;
+  border-color: rgb(var(--tc-border)) !important;
+  box-shadow: none;
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 body input.bg-telecab-dark:focus, body select.bg-telecab-dark:focus, body textarea.bg-telecab-dark:focus, .inp:focus {
   outline: none;
-  border-color: rgb(var(--tc-gold) / .7) !important;
-  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18), inset 0 1px 2px rgb(0 0 0 / .25);
+  border-color: rgb(var(--tc-gold) / .75) !important;
+  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .16);
 }
+
 /* ── LOS DESPLEGABLES ──────────────────────────────────────────────────────
    Hay 44 repartidos por las pantallas y cada uno traía sus clases: unos
    `bg-telecab-dark`, otros `bg-telecab-card`, otros `bg-telecab-card2`, otros
@@ -267,11 +246,11 @@ body select {
   cursor: pointer;
   transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
 }
-body select:hover:not(:disabled) { border-color: rgb(var(--tc-gold) / .35) !important; }
+body select:hover:not(:disabled) { border-color: rgb(var(--tc-muted) / .5) !important; }
 body select:focus-visible, body select:focus {
   outline: none;
   border-color: rgb(var(--tc-gold) / .7) !important;
-  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .18);
+  box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .16);
 }
 body select:disabled { cursor: not-allowed; opacity: .55; }
 /* Un desplegable de varias líneas no lleva flecha: no se despliega. */
@@ -288,7 +267,7 @@ body select option {
   padding: .35rem .5rem;
 }
 body select option:checked, body select option:hover {
-  background-color: rgb(var(--tc-gold) / .18);
+  background-color: rgb(var(--tc-card2));
   color: rgb(var(--tc-text));
 }
 body select option:disabled { color: rgb(var(--tc-muted) / .7); }
@@ -307,59 +286,80 @@ body span.rounded-md.text-xs.font-medium { border-radius: .55rem; padding-top: .
 /* ============================================================
    TABLAS
    ============================================================ */
-body thead tr { border-bottom-color: rgb(var(--tc-brillo) / .08) !important; }
-body thead th { font-weight: 600; letter-spacing: .06em; color: rgb(var(--tc-muted)); }
+body thead tr { border-bottom-color: rgb(var(--tc-border)) !important; }
+body thead th { font-weight: 600; letter-spacing: .04em; color: rgb(var(--tc-muted)); }
 body tbody tr { transition: background-color .12s ease; }
-body tbody tr:hover { background-color: rgb(var(--tc-gold) / .05); }
-body tbody tr.border-b { border-bottom-color: rgb(var(--tc-brillo) / .05) !important; }
-/* Cabecera pegajosa de listas largas, con cristal detrás. */
-body thead.sticky th, body th.sticky, body .sticky.top-0.bg-telecab-dark {
-  backdrop-filter: blur(12px);
-}
+body tbody tr:hover { background-color: rgb(var(--tc-text) / .035); }
+body tbody tr.border-b { border-bottom-color: rgb(var(--tc-border) / .7) !important; }
 
 /* ============================================================
-   TARJETAS DE COLOR (KPI destacados)
+   TARJETAS DE KPI (antes, de color)
    ============================================================
-   Cuatro degradados cálidos para los números que mandan. Se aplican a mano en
-   las pantallas de dirección; el texto va siempre en blanco cálido. */
-.tarjeta-grad { color: rgb(255 250 245) !important; border: 0 !important; position: relative; overflow: hidden; }
-.tarjeta-grad::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(28rem 12rem at 100% -20%, rgb(255 255 255 / .22), transparent 60%);
-}
-.tarjeta-grad * { color: inherit !important; }
-.tarjeta-grad .text-telecab-muted, .tarjeta-grad .text-\[11px\] { opacity: .82; }
-.tarjeta-grad-a { background: linear-gradient(135deg, #8a7a3e, #5c5a2a) !important; }   /* oliva */
-.tarjeta-grad-b { background: linear-gradient(135deg, #7c5cf0, #4a34b8) !important; }   /* índigo */
-.tarjeta-grad-c { background: linear-gradient(135deg, #e0559c, #b52c73) !important; }   /* magenta */
-.tarjeta-grad-d { background: linear-gradient(135deg, #f0a34a, #d9702a) !important; }   /* ámbar */
-.tarjeta-grad .bg-telecab-card2 { background-color: rgb(255 255 255 / .22) !important; }
-.tarjeta-grad .bg-telecab-gold, .tarjeta-grad .bg-telecab-green { background: rgb(255 255 255 / .9) !important; }
+   Eran cuatro degradados —oliva, índigo, magenta, ámbar— para los números que
+   mandan en /bi. Ahora son tarjetas como las demás: la cifra ya destaca por
+   tamaño, no le hace falta un color por cabeza. Las clases se quedan para no
+   tocar las vistas que las llevan. */
+.tarjeta-grad { position: relative; }
 
 /* ============================================================
    MARCA
    ============================================================ */
-.brand-ring {
-  background: conic-gradient(from 180deg,
-    rgb(var(--tc-gold-deep)), rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)),
-    rgb(var(--tc-gold)), rgb(var(--tc-gold-deep)));
-  padding: 2px; border-radius: 9999px;
-  box-shadow: 0 0 28px -6px rgb(var(--tc-gold) / .55);
-}
-.gold-text {
-  background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold-deep)));
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
+.gold-text { color: rgb(var(--tc-gold)); }
 .nav-item { position: relative; }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgb(var(--tc-scroll)); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgb(var(--tc-scroll-hover)); }
+/* LA MARCA DIBUJADA (views/partials/marca.ejs): el pin y la carretera del logo,
+   en SVG y con los colores del TEMA. Sustituye al vídeo telecab.mp4 (4,9 MB que
+   se bajaban en cada página, hasta tres veces) y, al contrario que él, cambia
+   con el tema: el pin es el acento y la carretera, el color del texto. */
+.tc-marca { display: block; overflow: visible; }
+.tc-marca-pin path { fill: rgb(var(--tc-gold)); }
+.tc-marca-via { fill: none; stroke: rgb(var(--tc-text) / .8); stroke-width: 3.2; stroke-linecap: round; }
+.tc-marca-carril { fill: none; stroke: rgb(var(--tc-text) / .42); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 3.5 4.5; }
+.tc-marca-sombra { fill: rgb(var(--tc-text) / .2); }
 
-@keyframes tc-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-main > * { animation: tc-fade-in .35s cubic-bezier(.2, .8, .2, 1); }
-@media (prefers-reduced-motion: reduce) { main > *, .dialogo, .dialogo .dialogo-caja, .fp-pop { animation: none !important; } }
+/* LA CARGA. No es un vídeo: es CSS, y va a lo que dé la pantalla. El pin
+   bota sobre la carretera —se aplasta al tocarla, se estira al subir— mientras
+   el carril corre hacia el horizonte. Un ciclo dura 1,4 s: lo bastante lento
+   para no agobiar, lo bastante vivo para que se note que algo pasa.
+   Solo se anima `transform`, `opacity` y el desplazamiento del trazo: nada que
+   obligue a recolocar la página. */
+.tc-marca-anima .tc-marca-pin {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: tc-pin 1.4s infinite;
+}
+.tc-marca-anima .tc-marca-sombra {
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: tc-sombra 1.4s infinite;
+}
+.tc-marca-anima .tc-marca-carril { animation: tc-carril .7s linear infinite; }
+@keyframes tc-pin {
+  0%   { transform: translateY(0) scale(1.08, .92); animation-timing-function: cubic-bezier(.3, .7, .4, 1); }
+  14%  { transform: translateY(0) scale(1, 1);      animation-timing-function: cubic-bezier(.25, .6, .35, 1); }
+  50%  { transform: translateY(-9px) scale(.97, 1.03); animation-timing-function: cubic-bezier(.6, 0, .8, .4); }
+  86%  { transform: translateY(0) scale(1, 1);      animation-timing-function: ease-out; }
+  100% { transform: translateY(0) scale(1.08, .92); }
+}
+@keyframes tc-sombra {
+  0%, 14%, 86%, 100% { transform: scaleX(1); opacity: 1; }
+  50%                { transform: scaleX(.5); opacity: .35; }
+}
+@keyframes tc-carril { to { stroke-dashoffset: -8; } }
+
+/* El telón de carga: casi opaco y quieto, con la marca en el centro. */
+#cargando-overlay { background-color: rgb(var(--tc-dark) / .95); }
+#cargando-overlay .tc-carga-texto { color: rgb(var(--tc-muted)); letter-spacing: .08em; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--tc-scroll)); border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--tc-scroll-hover)); background-clip: padding-box; }
+
+@keyframes tc-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+main > * { animation: tc-fade-in .22s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  main > *, .dialogo, .dialogo .dialogo-caja, .fp-pop { animation: none !important; }
+  .tc-marca-anima .tc-marca-pin, .tc-marca-anima .tc-marca-sombra, .tc-marca-anima .tc-marca-carril { animation: none; }
+}
 
 /* ============================================================
    Componentes compartidos (sustituyen los <style> por vista)
@@ -402,7 +402,7 @@ input.js-fecha { cursor: pointer; }
 input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
 
 .dz.dz-ok { border-style: solid; border-color: rgb(var(--tc-green) / .5); }
-.dz:hover { border-color: rgb(var(--tc-gold) / .5); }
+.dz:hover { border-color: rgb(var(--tc-muted) / .6); }
 
 /* ══════════════════════════════════════════════════════════════
    MENÚ LATERAL COMPACTO (sin cambios de comportamiento)
@@ -417,7 +417,7 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
   :root[data-menu="corto"] #menu:hover #menu-panel,
   :root[data-menu="corto"] #menu:focus-within #menu-panel {
     width: 16rem;
-    box-shadow: 0 24px 60px -16px rgb(0 0 0 / .7);
+    box-shadow: var(--tc-sombra-alta);
   }
   #menu-panel span, #menu-panel p, #menu-panel .grupo-chev { transition: opacity .12s ease; }
   :root[data-menu="corto"] #menu:not(:hover):not(:focus-within) #menu-panel span:not(#nav-pend-badge),
@@ -434,12 +434,12 @@ input.js-fecha::placeholder { color: rgb(var(--tc-muted)); }
 #menu-corto { display: none; }
 @media (min-width: 1024px) { #menu-corto { display: inline-flex; } }
 
-/* Diálogos (public/assets/js/dialogo.js): cristal con más blur. */
-.dialogo { animation: dlgFondo .12s ease-out; backdrop-filter: blur(10px); }
+/* Diálogos (public/assets/js/dialogo.js): velo oscuro y quieto, sin cristal. */
+.dialogo { animation: dlgFondo .12s ease-out; backdrop-filter: none; }
 .dialogo .dialogo-caja { animation: dlgCaja .18s cubic-bezier(.2, .9, .3, 1); }
 .dialogo.dialogo-saliendo { animation: dlgFondo .12s ease-in reverse; }
 @keyframes dlgFondo { from { opacity: 0; } to { opacity: 1; } }
-@keyframes dlgCaja { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes dlgCaja { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
 
 /* ============================================================
    EL OJO — tapar una cifra que no debe leerse por encima del hombro
@@ -520,13 +520,13 @@ body .ayuda-globo {
   padding: .5rem .7rem;
   border-radius: .75rem;
   background: rgb(var(--tc-card));
-  border: 1px solid rgb(var(--tc-gold) / .35);
+  border: 1px solid rgb(var(--tc-border));
   color: rgb(var(--tc-text));
   font-size: .78rem;
   line-height: 1.45;
   /* Dos sombras: una cercana que lo despega y otra larga que lo levanta.
      Con una sola parece pegado a la pantalla. */
-  box-shadow: 0 2px 6px rgb(0 0 0 / .25), 0 12px 32px rgb(0 0 0 / .35);
+  box-shadow: var(--tc-sombra-alta);
   pointer-events: none;             /* el ratón lo atraviesa: no estorba */
   opacity: 0;
   transform: translateY(-4px) scale(.97);
@@ -544,7 +544,7 @@ body .ayuda-globo.ayuda-visible { opacity: 1; transform: translateY(0) scale(1);
 body .ayuda-globo.ayuda-midiendo { visibility: hidden; transition: none; }
 
 body .ayuda-globo .ayuda-texto b,
-body .ayuda-globo .ayuda-texto strong { color: rgb(var(--tc-gold)); }
+body .ayuda-globo .ayuda-texto strong { color: rgb(var(--tc-text)); font-weight: 600; }
 
 /* El pico. Es un cuadrado girado 45°, con solo dos lados de borde: los otros
    dos se meten bajo la caja y se verían cruzando el texto. */
@@ -558,13 +558,13 @@ body .ayuda-globo .ayuda-pico {
 }
 body .ayuda-globo[data-lado="abajo"] .ayuda-pico {
   top: -.3rem;
-  border-left: 1px solid rgb(var(--tc-gold) / .35);
-  border-top: 1px solid rgb(var(--tc-gold) / .35);
+  border-left: 1px solid rgb(var(--tc-border));
+  border-top: 1px solid rgb(var(--tc-border));
 }
 body .ayuda-globo[data-lado="arriba"] .ayuda-pico {
   bottom: -.3rem;
-  border-right: 1px solid rgb(var(--tc-gold) / .35);
-  border-bottom: 1px solid rgb(var(--tc-gold) / .35);
+  border-right: 1px solid rgb(var(--tc-border));
+  border-bottom: 1px solid rgb(var(--tc-border));
 }
 
 /* Quien pide menos movimiento lo recibe igual, solo que aparece sin viajar. */
@@ -594,7 +594,7 @@ body .tc-selector button {
   color: rgb(var(--tc-muted));
   transition: border-color .15s ease, color .15s ease, background .15s ease;
 }
-body .tc-selector button:hover { border-color: rgb(var(--tc-gold) / .5); color: rgb(var(--tc-text)); }
+body .tc-selector button:hover { border-color: rgb(var(--tc-muted) / .5); color: rgb(var(--tc-text)); }
 body .tc-selector button:focus-visible {
   outline: 2px solid rgb(var(--tc-gold) / .7);
   outline-offset: 2px;
@@ -604,7 +604,7 @@ body .tc-selector button:focus-visible {
 body .tc-selector button[aria-pressed="true"] {
   background: rgb(var(--tc-gold));
   border-color: rgb(var(--tc-gold));
-  color: rgb(var(--tc-dark));
+  color: rgb(var(--tc-on-gold));
 }
 @media (prefers-reduced-motion: reduce) {
   body .tc-selector button { transition: none; }

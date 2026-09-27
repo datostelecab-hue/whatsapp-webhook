@@ -184,9 +184,14 @@ colores propios.**
   opacidad: `bg-telecab-gold/15`, `border-telecab-red/40`.
 - Hay un tema por `data-theme` (oscuro, claro, azul, verde, púrpura, rosa, cian,
   naranja, contraste…). Cambiar de tema solo cambia las variables.
-- **Los colores crudos de Tailwind están remapeados** a los tokens: `text-red-500`
-  ES el rojo de la marca, `bg-emerald-500/15` ES el verde de la marca al 15 %. Una
-  vista que use el color crudo sigue quedando dentro de la identidad.
+- **Los colores crudos de Tailwind están remapeados** a los tokens, en todos sus
+  tonos: `text-red-300` ES el rojo de la marca, `bg-emerald-500/15` ES el verde de
+  la marca al 15 %. Una vista que use el color crudo sigue quedando dentro de la
+  identidad. El ámbar, el naranja y el amarillo son **aviso**, no el acento.
+- **Un solo acento** (el oro del logo) para lo que se pulsa o está elegido;
+  superficies lisas, sin cristal ni degradados; y **ningún emoji en pantalla**
+  (el icono de la casa si dice algo, nada si era adorno). Todo, con el porqué, en
+  [[Identidad visual]].
 - Tailwind viene por CDN y pinta sus utilidades **después** de la hoja propia, así
   que los ajustes de aspecto se escriben con especificidad subida: `body .clase`.
 - El tema del perfil se inyecta desde el servidor **antes** de pintar, para que no

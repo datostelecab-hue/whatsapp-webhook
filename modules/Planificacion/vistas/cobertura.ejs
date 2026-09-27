@@ -69,7 +69,7 @@ let D = null;
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const icono = t => t === 'Día' ? '☀️' : '🌙';
+const icono = t => t === 'Día' ? '<i class="fa-solid fa-sun text-[11px] text-telecab-muted"></i>' : '<i class="fa-solid fa-moon text-[11px] text-telecab-muted"></i>';
 
 let SEMANA = 0;
 const fmtDia = v => { const d = new Date(v); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
@@ -259,7 +259,7 @@ function pintarTodoTurno() {
   box.innerHTML = `
     <div class="rounded-xl border border-indigo-500/40 bg-indigo-900/20 p-4">
       <div class="flex items-center gap-2 mb-2 text-indigo-300 font-semibold">
-        <span>☀️🌙</span> TodoTurno — cubren día y noche del mismo coche (${items.length})
+        <i class="fa-solid fa-circle-half-stroke"></i> TodoTurno — cubren día y noche del mismo coche (${items.length})
       </div>
       <ul class="space-y-1 text-sm">
         ${items.map(v => `
@@ -302,7 +302,7 @@ function pintarDias() {
                               : c.tipo === 'titular-pre-alta' ? 'text-sky-400'   // informativo: ya asignado, entra más tarde
                               : c.tipo === 'sin_conductor' ? 'text-telecab-muted'
                               : 'text-amber-400';   // vehículo o motivo de fecha
-                    const pre = c.tipo === 'titular-pre-alta' ? '⏳ ' : '';
+                    const pre = c.tipo === 'titular-pre-alta' ? '<i class="fa-regular fa-hourglass-half mr-1"></i>' : '';
 
                     return `<li class="flex items-baseline gap-2">
                       <span class="font-medium text-telecab-text">${esc(c.matricula)}</span>
@@ -354,7 +354,7 @@ function pintarPersonas() {
         <div class="text-sm border-l-2 border-telecab-gold/40 pl-3 py-1">
           <div class="flex items-baseline gap-2 flex-wrap">
             <span class="w-20 shrink-0 font-semibold text-telecab-text">${esc(d.diaNombre)}</span>
-            <span class="text-xs text-telecab-muted">🕐 ${esc(d.turno)}</span>
+            <span class="text-xs text-telecab-muted"><i class="fa-regular fa-clock mr-1"></i>${esc(d.turno)}</span>
             <span class="text-xs px-1.5 py-0.5 rounded bg-telecab-dark text-telecab-text font-mono">${esc(d.matricula)}</span>
           </div>
           ${rec ? `<div class="text-telecab-muted text-[13px] mt-0.5 ml-1"><i class="fa-solid fa-arrow-right text-telecab-green text-[10px] mr-1"></i>${rec}</div>` : ''}
@@ -429,7 +429,7 @@ async function pollTurnos() {
     const p = d.progreso || {};
     $('#turnos-estado').textContent = p.activo
       ? `Enviando… ${p.enviados}/${p.total}${p.errores ? ' · ' + p.errores + ' err' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin tel' : ''}`
-      : (p.total ? `✅ ${p.enviados}/${p.total} enviados${p.errores ? ' · ' + p.errores + ' con error' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin teléfono' : ''}` : '');
+      : (p.total ? `${p.enviados}/${p.total} enviados${p.errores ? ' · ' + p.errores + ' con error' : ''}${p.sinTel ? ' · ' + p.sinTel + ' sin teléfono' : ''}` : '');
     if (!p.activo) { clearInterval(_pollTurnos); _pollTurnos = null; $('#btn-turnos-todos').disabled = false; cargarAvisos(); }
   } catch (_) {}
 }

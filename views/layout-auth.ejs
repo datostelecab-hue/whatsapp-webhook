@@ -20,12 +20,26 @@
   <link rel="stylesheet" href="<%= typeof est === 'function' ? est('/assets/css/telecab.css') : '/assets/css/telecab.css' %>">
 
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script>
+    window.__tcCrudos = (function () {
+      const tok = n => 'rgb(var(--tc-' + n + ') / <alpha-value>)';
+      const escala = (n, hondo) => {
+        const e = {};
+        [50, 100, 200, 300, 400, 500].forEach(k => { e[k] = tok(n); });
+        [600, 700, 800, 900, 950].forEach(k => { e[k] = tok(hondo || n); });
+        return e;
+      };
+      return {
+        red: escala('red', 'red-hover'), emerald: escala('green'), green: escala('green'),
+        amber: escala('warn'), orange: escala('warn'), yellow: escala('warn'),
+        sky: escala('azul'), blue: escala('azul'),
+      };
+    })();
     tailwind.config = {
       theme: { extend: {
-        fontFamily: { sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'] },
+        fontFamily: { sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
         colors: { 'telecab': {
           'dark': 'rgb(var(--tc-dark) / <alpha-value>)', 'card': 'rgb(var(--tc-card) / <alpha-value>)',
           'card2': 'rgb(var(--tc-card2) / <alpha-value>)', 'border': 'rgb(var(--tc-border) / <alpha-value>)',
@@ -35,72 +49,45 @@
           'muted': 'rgb(var(--tc-muted) / <alpha-value>)', 'azul': 'rgb(var(--tc-azul) / <alpha-value>)',
           'warn': 'rgb(var(--tc-warn) / <alpha-value>)'
         },
-        'red':     { 400: 'rgb(var(--tc-red) / <alpha-value>)',    500: 'rgb(var(--tc-red) / <alpha-value>)',    600: 'rgb(var(--tc-red-hover) / <alpha-value>)' },
-        'emerald': { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
-        'green':   { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
-        'amber':   { 400: 'rgb(var(--tc-gold-soft) / <alpha-value>)', 500: 'rgb(var(--tc-gold) / <alpha-value>)', 600: 'rgb(var(--tc-gold-deep) / <alpha-value>)' },
-        'yellow':  { 400: 'rgb(var(--tc-warn) / <alpha-value>)',   500: 'rgb(var(--tc-warn) / <alpha-value>)' },
-        'blue':    { 400: 'rgb(var(--tc-azul) / <alpha-value>)',   500: 'rgb(var(--tc-azul) / <alpha-value>)',   600: 'rgb(var(--tc-azul) / <alpha-value>)' },
+        // Los crudos, a los tokens en todos sus tonos (igual que layout-gestion).
+        ...window.__tcCrudos,
         },
-        boxShadow: { 'soft': '0 1px 3px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5)', 'gold': '0 4px 20px -6px rgb(var(--tc-gold) / .35)' }
+        boxShadow: { 'soft': 'var(--tc-sombra-alta)', 'gold': 'var(--tc-sombra)' }
       } }
     }
   </script>
 
   <style>
     /* ── LA PANTALLA DE ACCESO ────────────────────────────────────────────────
-       Dos mitades. A la izquierda la marca sobre las estelas; a la derecha, la
-       tarea. En móvil solo queda la tarea: en una pantalla de 6 pulgadas, y a
-       menudo con prisa, lo que hay que ver es el campo del correo. */
-    .acceso { display: grid; grid-template-columns: 1fr; min-height: 100svh; }
-    @media (min-width: 1024px) { .acceso { grid-template-columns: 1.15fr 1fr; } }
+       Dos mitades. A la izquierda la marca; a la derecha, la tarea. En móvil
+       solo queda la tarea: en una pantalla de 6 pulgadas, y a menudo con prisa,
+       lo que hay que ver es el campo del correo.
 
-    .escena { position: relative; overflow: hidden; display: none; isolation: isolate; }
-    /* EN CLARO EL PANEL NO PUEDE SER BLANCO. Una estela ambar sobre blanco no se
-       ve, por mucha opacidad que se le eche: no hay contraste que sacar. Se le
-       pone un fondo templado y profundo —el mismo gesto que en oscuro, del otro
-       lado— y encima las luces si tienen donde posarse. */
-    :root[data-theme='light'] .escena {
-      background: radial-gradient(120% 100% at 85% 0%, #3a2416 0%, #241610 45%, #17100c 100%);
-    }
+       Desde el 27/09/2026 es SOBRIA, como el resto de la casa: sin las estelas
+       de faros animadas (ámbar y azul) ni los velos. El panel de la marca es una
+       superficie del tema —grafito en oscuro, blanco en claro— con la carretera
+       del logo dibujada en trazo fino, quieta. Todo sale de los tokens, así que
+       sigue al tema sin casos especiales. */
+    .acceso { display: grid; grid-template-columns: 1fr; min-height: 100svh; }
+    @media (min-width: 1024px) { .acceso { grid-template-columns: 1.1fr 1fr; } }
+
+    .escena { position: relative; overflow: hidden; display: none; isolation: isolate;
+      background: rgb(var(--tc-card)); border-right: 1px solid rgb(var(--tc-border)); }
     @media (min-width: 1024px) { .escena { display: block; } }
-    /* El lienzo de las estelas va DETRÁS de todo lo demás del panel. */
-    #estelas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-    /* Un degradado hacia la derecha funde el panel con el formulario, para que
-       la línea entre los dos no se lea como un corte. */
-    /* DOS velos, y los dos hacen falta.
-       El primero funde el panel con el formulario para que la juntura no se lea
-       como un corte. El segundo es un halo oscuro sobre la esquina del titular:
-       las estelas son bonitas hasta que te impiden leer, y el texto gana
-       siempre. */
-    .escena::after {
-      content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
-      background:
-        radial-gradient(70% 60% at 22% 72%, rgb(var(--tc-dark) / .88) 0%, rgb(var(--tc-dark) / .55) 45%, transparent 78%),
-        linear-gradient(90deg, transparent 55%, rgb(var(--tc-dark) / .55) 100%);
-    }
-    /* En claro el velo tiene que ser del color del PANEL (oscuro), no del de la
-       pagina (casi blanco): con el de la pagina, el velo aclararia justo donde
-       hace falta oscurecer. */
-    :root[data-theme='light'] .escena::after {
-      background:
-        radial-gradient(70% 60% at 22% 72%, rgb(23 16 12 / .9) 0%, rgb(23 16 12 / .55) 45%, transparent 78%),
-        linear-gradient(90deg, transparent 60%, rgb(var(--tc-dark) / .75) 100%);
-    }
-    .escena-texto { position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column;
+    /* La carretera del logo, en grande y en trazo fino: el único adorno. */
+    .escena .via { position: absolute; right: -4%; bottom: -6%; width: 78%; height: auto; z-index: 0; pointer-events: none; }
+    .escena .via path { fill: none; stroke: rgb(var(--tc-border)); stroke-width: 1.5; stroke-linecap: round; }
+    .escena .via path.carril { stroke-dasharray: 10 14; }
+    .escena-texto { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column;
       justify-content: space-between; padding: 3rem; }
-    /* El panel es oscuro en los DOS temas, asi que su texto tambien: si no, en
-       claro saldria texto oscuro sobre fondo oscuro. */
-    :root[data-theme='light'] .escena-texto { color: #f4f0ec; }
-    :root[data-theme='light'] .escena-texto .text-telecab-muted { color: #a89a92; }
 
     /* El titular. `balance` evita la línea viuda de una sola palabra. */
-    .titular { font-size: clamp(2.2rem, 3.4vw, 3.4rem); line-height: 1.04; font-weight: 800;
-      letter-spacing: -.03em; text-wrap: balance; }
+    .titular { font-size: clamp(2rem, 3vw, 3rem); line-height: 1.08; font-weight: 600;
+      letter-spacing: -.02em; text-wrap: balance; }
 
-    /* Las cifras de abajo: son de verdad, se calculan al pintar. */
-    .dato { display: flex; flex-direction: column; gap: .1rem; }
-    .dato b { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; line-height: 1;
+    /* La hora de Madrid, abajo. */
+    .dato { display: flex; flex-direction: column; gap: .15rem; }
+    .dato b { font-size: 1.5rem; font-weight: 600; letter-spacing: -.01em; line-height: 1;
       font-variant-numeric: tabular-nums; }
     .dato span { font-size: .7rem; color: rgb(var(--tc-muted)); letter-spacing: .06em; text-transform: uppercase; }
 
@@ -113,44 +100,41 @@
     .campo { position: relative; margin-bottom: .9rem; }
     .campo input {
       width: 100%; padding: 1.35rem .9rem .5rem 2.4rem; font-size: .95rem;
-      background: rgb(var(--tc-card2) / .5); color: rgb(var(--tc-text));
-      border: 1px solid rgb(var(--tc-border)); border-radius: .85rem; outline: none;
-      transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+      background: rgb(var(--tc-campo)); color: rgb(var(--tc-text));
+      border: 1px solid rgb(var(--tc-border)); border-radius: .5rem; outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
     }
-    .campo input:focus { border-color: rgb(var(--tc-gold) / .8); background: rgb(var(--tc-card2) / .8);
-      box-shadow: 0 0 0 4px rgb(var(--tc-gold) / .13); }
+    .campo input:focus { border-color: rgb(var(--tc-gold) / .75); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .16); }
     .campo label {
       position: absolute; left: 2.4rem; top: .95rem; font-size: .95rem; color: rgb(var(--tc-muted));
       pointer-events: none; transform-origin: left top;
-      transition: transform .16s ease, color .16s ease;
+      transition: transform .15s ease, color .15s ease;
     }
     /* :placeholder-shown nos dice si está vacío SIN JavaScript. */
     .campo input:focus + label,
     .campo input:not(:placeholder-shown) + label { transform: translateY(-.62rem) scale(.74); }
     .campo input:focus + label { color: rgb(var(--tc-gold)); }
     .campo > i.icono { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%);
-      color: rgb(var(--tc-muted)); font-size: .85rem; transition: color .18s ease; }
+      color: rgb(var(--tc-muted)); font-size: .85rem; transition: color .15s ease; }
     .campo input:focus ~ i.icono { color: rgb(var(--tc-gold)); }
     .campo .ojo { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%);
       background: none; border: 0; color: rgb(var(--tc-muted)); cursor: pointer; padding: .5rem .6rem;
-      border-radius: .5rem; }
-    .campo .ojo:hover { color: rgb(var(--tc-gold)); }
+      border-radius: .375rem; }
+    .campo .ojo:hover { color: rgb(var(--tc-text)); }
 
     .btn-entrar {
-      width: 100%; padding: .8rem 1rem; border: 0; border-radius: .85rem; cursor: pointer;
-      font-weight: 700; font-size: .95rem; color: rgb(var(--tc-dark));
-      background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold)) 55%, rgb(var(--tc-gold-deep)));
-      box-shadow: 0 10px 26px -12px rgb(var(--tc-gold) / .8);
-      transition: transform .14s ease, box-shadow .18s ease, filter .18s ease;
+      width: 100%; padding: .75rem 1rem; border: 0; border-radius: .5rem; cursor: pointer;
+      font-weight: 600; font-size: .95rem; color: rgb(var(--tc-on-gold));
+      background: rgb(var(--tc-gold));
+      transition: background-color .15s ease;
     }
-    .btn-entrar:hover { transform: translateY(-1px); box-shadow: 0 16px 34px -14px rgb(var(--tc-gold) / .95); }
-    .btn-entrar:active { transform: translateY(0); }
-    .btn-entrar[disabled] { filter: saturate(.4); cursor: progress; transform: none; }
+    .btn-entrar:hover { background: rgb(var(--tc-gold-deep)); }
+    .btn-entrar[disabled] { opacity: .6; cursor: progress; }
 
     /* La entrada de cada pieza, escalonada. Una vez, al cargar: es un saludo, no
        una animación que se repita. */
-    @keyframes sube { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-    .sube { animation: sube .5s cubic-bezier(.22,.9,.3,1) both; }
+    @keyframes sube { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .sube { animation: sube .4s ease-out both; }
 
     @media (prefers-reduced-motion: reduce) {
       .sube { animation: none; }
@@ -161,19 +145,23 @@
 <body class="app-bg font-sans text-telecab-text">
   <div class="acceso">
 
-    <!-- ── La escena: estelas de faros ──────────────────────────────────────
-         No es decoración genérica: es lo que hace la empresa. Coches rodando de
-         noche, vistos como una foto de larga exposición. -->
+    <!-- ── La marca ──────────────────────────────────────────────────────────
+         La carretera del logo en trazo fino y quieta: es lo que hace la
+         empresa, dicho en voz baja. -->
     <section class="escena">
-      <canvas id="estelas" aria-hidden="true"></canvas>
+      <svg class="via" viewBox="0 0 600 420" aria-hidden="true" focusable="false">
+        <path d="M0 330 Q300 170 600 190"/>
+        <path class="carril" d="M60 390 Q330 240 600 238"/>
+        <path d="M150 440 Q390 300 600 286"/>
+      </svg>
       <div class="escena-texto">
         <div class="flex items-center gap-3 sube" style="animation-delay:.05s">
-          <%- include('partials/logo-video', { tam: 'w-11 h-11' }) %>
-          <span class="text-xl font-extrabold tracking-tight">tele<span class="gold-text">cab</span></span>
+          <%- include('partials/marca', { tam: 'w-10 h-10' }) %>
+          <span class="text-xl font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
         </div>
 
         <div class="max-w-xl">
-          <p class="text-[11px] uppercase tracking-[.22em] text-telecab-gold/90 font-semibold mb-4 sube" style="animation-delay:.12s">
+          <p class="text-[11px] uppercase tracking-[.2em] text-telecab-muted font-semibold mb-4 sube" style="animation-delay:.12s">
             Gestión de flota VTC
           </p>
           <h1 class="titular sube" style="animation-delay:.2s">
@@ -202,8 +190,8 @@
       <div class="caja">
         <!-- En móvil no hay escena, así que la marca se pone aquí. -->
         <div class="lg:hidden flex flex-col items-center mb-7 sube">
-          <%- include('partials/logo-video', { tam: 'w-16 h-16' }) %>
-          <span class="mt-3 text-xl font-extrabold tracking-tight">tele<span class="gold-text">cab</span></span>
+          <%- include('partials/marca', { tam: 'w-14 h-14' }) %>
+          <span class="mt-3 text-xl font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
         </div>
         <%- body %>
         <p class="text-center text-[11px] text-telecab-muted mt-7">Acceso restringido · plataforma interna</p>
@@ -212,155 +200,6 @@
   </div>
 
   <script>
-  // ── LAS ESTELAS ───────────────────────────────────────────────────────────
-  // Faros alejándose en la noche, como una larga exposición: cada estela nace
-  // cerca del punto de fuga y acelera hacia fuera, alargándose y apagándose.
-  //
-  // Se dibuja con canvas y no con SVG ni con cien divs: son ~90 trazos por
-  // fotograma y el DOM no está para eso.
-  (function () {
-    const lienzo = document.getElementById('estelas');
-    if (!lienzo) return;
-    const ctx = lienzo.getContext('2d', { alpha: true });
-    const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    // Los colores salen del TEMA, no escritos a mano: si alguien cambia a claro
-    // —o al tema azul, o al verde— las estelas cambian con él.
-    const raiz = getComputedStyle(document.documentElement);
-    const tk = n => (raiz.getPropertyValue(n) || '').trim() || '244 150 60';
-    const ORO = tk('--tc-gold'), ORO_S = tk('--tc-gold-soft'), FRIO = tk('--tc-azul');
-    const claro = document.documentElement.getAttribute('data-theme') === 'light';
-    // EL PANEL ES OSCURO EN LOS DOS TEMAS (ver el CSS de .escena), asi que las
-    // estelas se pintan igual en los dos: se suman como luz sobre un fondo
-    // oscuro. Antes esto miraba el tema y en claro salia un panel vacio, porque
-    // ambar al 50 % sobre blanco no se ve por mucha opacidad que se le eche.
-    const FONDO = claro ? '23 16 12' : tk('--tc-dark');
-
-    let an = 0, al = 0, dpr = 1;
-    function medir() {
-      const r = lienzo.getBoundingClientRect();
-      dpr = Math.min(window.devicePixelRatio || 1, 2);   // más de 2 no se nota y cuesta
-      an = Math.max(1, Math.round(r.width));
-      al = Math.max(1, Math.round(r.height));
-      lienzo.width = an * dpr; lienzo.height = al * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = 'rgb(' + FONDO + ')';
-      ctx.fillRect(0, 0, an, al);
-    }
-
-    // El punto de fuga, arriba y a la derecha: la carretera se va hacia el
-    // formulario, no hacia el centro de la pantalla.
-    // El punto de fuga, ARRIBA Y A LA DERECHA. Si se pone en el centro, el
-    // titular queda justo encima del nudo de estelas y no se lee; y ademas la
-    // simetria radial perfecta lee a hiperespacio de ciencia ficcion, que es lo
-    // contrario de lo que se busca. Desplazado, la mitad de abajo a la izquierda
-    // —donde va el texto— recibe estelas largas y casi paralelas, que es como se
-    // ve una carretera de noche en una foto de larga exposicion.
-    // FUERA DEL ENCUADRE, arriba y a la derecha. Dentro se ve el nudo del que
-    // salen todas y la escena lee a fuego artificial; fuera solo entran las
-    // estelas ya largas y casi paralelas, que es como se ve una carretera de
-    // noche en una foto de larga exposicion.
-    const fugaX = () => an * 1.18;
-    const fugaY = () => al * -0.22;
-
-    const estelas = [];
-    const CUANTAS = 76;
-
-    // El sesgo de la carretera: los angulos no se reparten por igual, se
-    // agrupan alrededor de una direccion dominante. Sumar tres numeros al azar
-    // y centrarlos da una campana barata (sin librerias): la mayoria cae cerca
-    // de la direccion principal y unos pocos se van lejos, que es justo la
-    // mezcla que hace que parezca trafico y no un fuego artificial.
-    const campana = () => ((Math.random() + Math.random() + Math.random()) / 3 - 0.5) * 2;
-    // Hacia abajo-izquierda: el sentido en que se aleja la carretera desde el
-    // punto de fuga hasta la esquina del titular.
-    const RUMBO = Math.PI * 0.72;
-    const APERTURA = Math.PI * 0.20;
-
-    function nacer(e, primera) {
-      // Una de cada seis se sale del rumbo: son los coches del otro carril, y
-      // sin ellas la escena se ve peinada y falsa.
-      // Con el origen fuera del lienzo, salirse del rumbo manda la estela a la
-      // nada: todas siguen la carretera y la variedad la da la campana.
-      e.ang = RUMBO + campana() * APERTURA;
-      // Empieza cerca del punto de fuga. En la primera siembra se reparten por
-      // todo el radio, para que al abrir la página ya haya escena y no se vea
-      // "llenarse".
-      // Nacen ya lanzadas: el punto de fuga esta fuera del lienzo, asi que
-      // empezar en cero seria gastar media vida de cada estela donde no se ve.
-      const salida = Math.hypot(an, al) * 0.30;
-      e.r = primera ? salida + Math.random() * Math.hypot(an, al) * 0.8 : salida + Math.random() * 60;
-      e.v = 0.30 + Math.random() * 1.9;      // velocidad base: la variedad es lo que da vida
-      e.ancho = 0.7 + Math.random() * 1.9;
-      // La mayoría ámbar; unas pocas frías, que es lo que da profundidad.
-      e.color = Math.random() < 0.16 ? FRIO : (Math.random() < 0.5 ? ORO : ORO_S);
-      e.brillo = 0.35 + Math.random() * 0.65;
-    }
-    for (let i = 0; i < CUANTAS; i++) { const e = {}; nacer(e, true); estelas.push(e); }
-
-    function pinta() {
-      // El rastro: en vez de borrar, se vela el fotograma anterior. Eso es lo
-      // que deja la cola de luz sin tener que guardar cada posición.
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = 'rgb(' + FONDO + ' / 0.13)';
-      ctx.fillRect(0, 0, an, al);
-
-      // En oscuro las luces se SUMAN, que es como se comporta la luz de verdad y
-      // lo que hace que el cruce de dos estelas brille. En claro eso emborrona,
-      // así que ahí se pintan normales.
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.lineCap = 'round';
-
-      const fx = fugaX(), fy = fugaY();
-      const lejos = Math.hypot(an, al) * 1.45;
-
-      for (const e of estelas) {
-        const antes = e.r;
-        // Acelera con la distancia: es la perspectiva. Lo que está cerca del
-        // punto de fuga apenas se mueve; lo que pasa al lado, vuela.
-        e.r += e.v * (1 + e.r / 90);
-        if (e.r > lejos) { nacer(e); continue; }
-
-        const cos = Math.cos(e.ang), sin = Math.sin(e.ang);
-        const x1 = fx + cos * antes, y1 = fy + sin * antes;
-        const x2 = fx + cos * e.r,   y2 = fy + sin * e.r;
-
-        // Entra desde nada, brilla en medio, se va apagando al salir.
-        const t = e.r / lejos;
-        const alfa = Math.min(1, t * 5) * (1 - t * 0.72) * e.brillo;
-
-        ctx.strokeStyle = 'rgb(' + e.color + ' / ' + alfa.toFixed(3) + ')';
-        ctx.lineWidth = e.ancho * (0.5 + t * 2.2);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-      ctx.globalCompositeOperation = 'source-over';
-    }
-
-    let lazo = 0, visible = true;
-    function tic() { if (visible) pinta(); lazo = requestAnimationFrame(tic); }
-
-    medir();
-    if (quieto) {
-      // Sin movimiento: una sola pasada larga deja una composición fija. Quien
-      // pide menos animación merece ver algo, no un rectángulo vacío.
-      for (let i = 0; i < 160; i++) pinta();
-    } else {
-      tic();
-      // Con la pestaña detrás no se pinta: no tiene sentido gastar batería
-      // dibujando algo que nadie mira.
-      document.addEventListener('visibilitychange', () => { visible = !document.hidden; });
-    }
-
-    let temporizador = 0;
-    window.addEventListener('resize', () => {
-      clearTimeout(temporizador);
-      temporizador = setTimeout(() => { medir(); if (quieto) for (let i = 0; i < 160; i++) pinta(); }, 160);
-    });
-  })();
-
   // ── Las cifras del panel ──────────────────────────────────────────────────
   // La hora es de verdad y de Madrid. Las otras dos las sirve el servidor en la
   // propia página; si no llegan, la fila se queda con su raya y no pasa nada.

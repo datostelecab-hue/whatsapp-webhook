@@ -1,18 +1,19 @@
 <style>
   /* El botón grande. Es lo único que hace la gente aquí, así que ocupa lo que
      tiene que ocupar y se pulsa bien con el pulgar en un móvil. */
-  .fi-boton { width: 100%; padding: 1.4rem 1rem; border: 0; border-radius: 1.1rem; cursor: pointer;
-    font-weight: 800; font-size: 1.15rem; color: rgb(var(--tc-dark));
+  /* Liso, como todos los botones de la casa (27/09/2026): el color ya dice si
+     es entrar (verde) o salir (el acento). */
+  .fi-boton { width: 100%; padding: 1.4rem 1rem; border: 0; border-radius: .75rem; cursor: pointer;
+    font-weight: 700; font-size: 1.15rem; color: rgb(var(--tc-dark));
     display: flex; align-items: center; justify-content: center; gap: .65rem;
-    transition: transform .14s ease, box-shadow .18s ease, filter .2s ease; }
-  .fi-boton:hover { transform: translateY(-1px); }
-  .fi-boton:active { transform: translateY(0); }
-  .fi-boton[disabled] { filter: saturate(.35); cursor: progress; transform: none; }
-  .fi-entrar { background: linear-gradient(135deg, rgb(var(--tc-green) / .95), rgb(var(--tc-green) / .7)); }
-  .fi-salir  { background: linear-gradient(135deg, rgb(var(--tc-gold-soft)), rgb(var(--tc-gold)) 55%, rgb(var(--tc-gold-deep))); }
+    transition: filter .15s ease; }
+  .fi-boton:hover { filter: brightness(.94); }
+  .fi-boton[disabled] { opacity: .6; cursor: progress; }
+  .fi-entrar { background: rgb(var(--tc-green)); }
+  .fi-salir  { background: rgb(var(--tc-gold)); color: rgb(var(--tc-on-gold)); }
 
   /* El cronómetro. Tabular para que no baile al cambiar de minuto. */
-  .fi-reloj { font-size: clamp(2.6rem, 9vw, 4rem); font-weight: 800; letter-spacing: -.03em;
+  .fi-reloj { font-size: clamp(2.6rem, 9vw, 4rem); font-weight: 600; letter-spacing: -.02em;
     line-height: 1; font-variant-numeric: tabular-nums; }
 
   /* Las filas son dos maquetas distintas porque son dos cosas distintas: en MI

@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-09-25
+actualizado: 2026-09-27
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-09-27 · La casa pasa a ser corporativa
+
+Un solo acento (el oro del logo) para lo que se pulsa o está elegido; superficies lisas sin cristal, resplandor ni degradados; IBM Plex Sans; y ningún emoji en pantalla. Los temas comparten superficies y cambian solo el acento. El ámbar de las vistas pasa a ser **aviso**. El vídeo de 4,9 MB de la marca se sustituye por un SVG que sigue al tema, y la carga es esa marca animada en CSS (se descartó HyperFrames: daría otro vídeo, de pago y con colores fijos). → [[Identidad visual]]
 
 ## 2026-09-25 · Recaudación: la apertura se corrige anulando, no pisando
 

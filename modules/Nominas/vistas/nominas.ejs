@@ -162,8 +162,8 @@ async function cargarConfig() {
 }
 $('#btn-guardar-cfg').addEventListener('click', async () => {
   const r = await (await fetch('/nominas/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:recogerConfig()})})).json();
-  if (r.status==='ok') { pintarConfig(r.config); msg('✅ Config guardada. Vuelve a recalcular el mes para verla aplicada.'); }
-  else msg('❌ '+(r.msg||'error'), true);
+  if (r.status==='ok') { pintarConfig(r.config); msg('Config guardada. Vuelve a recalcular el mes para verla aplicada.'); }
+  else msg(''+(r.msg||'error'), true);
 });
 
 // ── Cargar el mes ──
@@ -175,15 +175,15 @@ async function cargar() {
   RESULTADO = null; $('#tabla-wrap').classList.add('hidden'); $('#btn-congelar').disabled = true;
   $('#btn-descargar').classList.add('hidden'); $('#fuente').innerHTML = ''; $('#avisos').innerHTML = '';
   if ($('#btn-descongelar')) $('#btn-descongelar').classList.add('hidden');
-  msg('⏳ Calculando el mes…');
+  msg('Calculando el mes…');
   try {
     const r = await (await fetch(`/nominas/cargar?mes=${mes()}&ano=${ano()}`)).json();
     if (r.status==='ok' && r.resultado) {
       RESULTADO = r.resultado; FUENTE = r.fuente; render();
       msg(r.fuente==='congelada'
-        ? `❄️ Nómina congelada el ${fecha(RESULTADO.congeladaAt)}${RESULTADO.congeladaPor?' por '+RESULTADO.congeladaPor:''}. Es la que se pagó: no se recalcula.`
-        : '✅ Calculada con los datos de la base. Revisa y congela cuando esté conforme.');
-    } else msg('❌ '+(r.msg||'no se pudo calcular'), true);
+        ? `Nómina congelada el ${fecha(RESULTADO.congeladaAt)}${RESULTADO.congeladaPor?' por '+RESULTADO.congeladaPor:''}. Es la que se pagó: no se recalcula.`
+        : 'Calculada con los datos de la base. Revisa y congela cuando esté conforme.');
+    } else msg(''+(r.msg||'no se pudo calcular'), true);
   } catch (e) { msg('No se pudo cargar: ' + e.message, true); }
   cargando = false;
 }
@@ -194,26 +194,26 @@ $('#btn-recargar').addEventListener('click', cargar);
 // ── Probar una config sin guardarla ──
 $('#btn-probar').addEventListener('click', async () => {
   if (FUENTE === 'congelada' && !confirm('Este mes está CONGELADO. Lo que pruebes no cambia lo congelado: es solo para ver qué saldría. ¿Seguir?')) return;
-  msg('⏳ Recalculando con esos valores…');
+  msg('Recalculando con esos valores…');
   const r = await (await fetch('/nominas/calcular',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano(),config:recogerConfig()})})).json();
-  if (r.status==='ok') { RESULTADO = r.resultado; FUENTE = 'prueba'; render(); msg('🧪 Simulación con esos valores. No está guardado ni congelado.'); }
-  else msg('❌ '+(r.msg||'error'), true);
+  if (r.status==='ok') { RESULTADO = r.resultado; FUENTE = 'prueba'; render(); msg('Simulación con esos valores. No está guardado ni congelado.'); }
+  else msg(''+(r.msg||'error'), true);
 });
 
 // ── Congelar / descongelar ──
 $('#btn-congelar').addEventListener('click', async () => {
   const dm = RESULTADO && RESULTADO.mesDatosNombre ? ` (trabajo de ${RESULTADO.mesDatosNombre})` : '';
   if (!confirm(`¿Congelar la nómina de ${MESES[mes()-1]} ${ano()}${dm}?\n\nSe guardan estos números tal cual. A partir de ahí no se recalculan, pase lo que pase con los datos.`)) return;
-  msg('⏳ Congelando…');
+  msg('Congelando…');
   const r = await (await fetch('/nominas/congelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
-  if (r.status==='ok') { msg(`❄️ Congelada · ${r.conductores} conductores · total ${eur(r.total)}`); cargar(); }
-  else msg('❌ '+(r.msg||'error'), true);
+  if (r.status==='ok') { msg(`Congelada · ${r.conductores} conductores · total ${eur(r.total)}`); cargar(); }
+  else msg(''+(r.msg||'error'), true);
 });
 if ($('#btn-descongelar')) $('#btn-descongelar').addEventListener('click', async () => {
   if (!confirm(`¿Descongelar ${MESES[mes()-1]} ${ano()}?\n\nSe BORRA la nómina guardada y vuelve a calcularse desde los datos de hoy. Si ya se pagó, los números pueden salir distintos.`)) return;
   const r = await (await fetch('/nominas/descongelar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mes:mes(),ano:ano()})})).json();
   if (r.status==='ok') { msg(r.borrada?'Descongelada. Vuelve a calcularse en vivo.':'No había ninguna congelada.'); cargar(); }
-  else msg('❌ '+(r.msg||'error'), true);
+  else msg(''+(r.msg||'error'), true);
 });
 
 $('#btn-descargar').addEventListener('click', e => { e.preventDefault(); window.open(`/nominas/nomina.xlsx?mes=${mes()}&ano=${ano()}`,'_blank'); });
@@ -225,7 +225,7 @@ $('#ett-ano').value = CFG.anoActual;
 $('#btn-ett').addEventListener('click', () => {
   const m = parseInt($('#ett-mes').value,10), a = parseInt($('#ett-ano').value,10);
   window.open(`/nominas/ett.xlsx?mes=${m}&ano=${a}`,'_blank');
-  msg(`📄 Bajando el parte de la ETT del trabajo de ${MESES[m-1]} ${a}.`);
+  msg(`Bajando el parte de la ETT del trabajo de ${MESES[m-1]} ${a}.`);
 });
 
 // ── Render ──
@@ -236,9 +236,9 @@ function render() {
   $('#btn-congelar').disabled = false;
   $('#btn-descargar').classList.remove('hidden');
   if ($('#btn-descongelar')) $('#btn-descongelar').classList.toggle('hidden', FUENTE !== 'congelada');
-  const badge = FUENTE==='congelada' ? ['❄️ congelada','bg-telecab-violet/15 text-telecab-violet']
-    : FUENTE==='prueba' ? ['🧪 simulación','bg-telecab-warn/15 text-telecab-warn']
-    : ['⚡ calculada en vivo','bg-telecab-card2 text-telecab-muted'];
+  const badge = FUENTE==='congelada' ? ['congelada','bg-telecab-violet/15 text-telecab-violet']
+    : FUENTE==='prueba' ? ['simulación','bg-telecab-warn/15 text-telecab-warn']
+    : ['calculada en vivo','bg-telecab-card2 text-telecab-muted'];
   $('#fuente').innerHTML = `<span class="px-2 py-0.5 rounded-full ${badge[1]}">${badge[0]}</span>`;
   pintarAvisos(RESULTADO.avisos, RESULTADO.config);
   filtrarYpintar();
@@ -312,17 +312,17 @@ function pintarAvisos(a, cfg) {
   if (!a) { $('#avisos').innerHTML=''; return; }
   const av=[];
   const mesD = RESULTADO ? RESULTADO.mesDatosNombre : 'el mes';
-  if (a.sinDinero) av.push(['red','⚠️ Ninguna persona tiene propinas, peajes ni facturación en ese mes: falta la ingesta de pedidos de BOLT.']);
+  if (a.sinDinero) av.push(['red','Ninguna persona tiene propinas, peajes ni facturación en ese mes: falta la ingesta de pedidos de BOLT.']);
   if (a.sinDni>0) av.push(['amber',`${a.sinDni} conductor(es) sin DNI/NIE en su ficha (aparecen con —). Complétalos en la ficha del conductor.`]);
-  if (a.trabajoIncompleto) av.push(['amber',`⚠️ El mes de trabajo (${mesD}) aún no ha terminado: los datos están incompletos. Esta nómina se cierra el mes siguiente.`]);
+  if (a.trabajoIncompleto) av.push(['amber',`El mes de trabajo (${mesD}) aún no ha terminado: los datos están incompletos. Esta nómina se cierra el mes siguiente.`]);
   const exc = (a.excluidos||[]);
-  if (exc.length) av.push(['red',`⛔ ${exc.length} conductor(es) con horas pero FECHA DE ALTA posterior a ${mesD}: fuera de esta nómina. Revisa su alta si es un error → ${exc.map(e=>`${e.nombre} (alta ${dia(e.alta)||'—'}, ${e.horas} h)`).join(' · ')}`]);
+  if (exc.length) av.push(['red',`${exc.length} conductor(es) con horas pero FECHA DE ALTA posterior a ${mesD}: fuera de esta nómina. Revisa su alta si es un error → ${exc.map(e=>`${e.nombre} (alta ${dia(e.alta)||'—'}, ${e.horas} h)`).join(' · ')}`]);
   if (a.sinAlta>0) av.push(['amber',`${a.sinAlta} conductor(es) SIN fecha de alta (marcados con *): se les prorratea desde su primer día con horas. Rellénales el alta en su periodo de empleo.`]);
   if (a.altaEnMes>0) av.push(['muted',`${a.altaEnMes} conductor(es) se dieron de alta durante ${mesD}: son los únicos con el objetivo prorrateado.`]);
-  if (a.jPendientes>0) av.push(['amber',`⏳ ${a.jPendientes} justificante(s) de ${mesD} siguen PENDIENTES de aprobar: todavía no cuentan. Si se aprueban, las horas justificadas suben y las no justificadas bajan. Se revisan en /justificantes.`]);
+  if (a.jPendientes>0) av.push(['amber',`${a.jPendientes} justificante(s) de ${mesD} siguen PENDIENTES de aprobar: todavía no cuentan. Si se aprueban, las horas justificadas suben y las no justificadas bajan. Se revisan en /justificantes.`]);
   if (a.conJ>0) av.push(['muted',`${a.conJ} conductor(es) tienen días justificados. Cada J vale la jornada entera (${(cfg||{}).horasMetaDia||8} h) sin distinguir el motivo, y nunca suma por encima de lo que falte de ese día. Las justificadas CUENTAN para la diferencia: un día justificado no le resta a nadie sus horas extra.`]);
-  if (a.conRecorte>0) av.push(['amber',`✂️ ${a.conRecorte} conductor(es) no llegan al ${Math.round(((cfg||{}).utilMinima||0.65)*100)} % de utilización: se les retiran ${(RESULTADO?RESULTADO.totales.horasEsperaQuitadas:0).toFixed(1)} h de ESPERA en total para llevarlos al mínimo. Nunca se quita viaje.` + (a.recortadosSinExtra>0?` A ${a.recortadosSinExtra} de ellos el recorte les deja sin las horas extra que tenían.`:'')]);
-  if (a.conHorasSinJustificar>0) av.push(['amber',`⚠️ ${a.conHorasSinJustificar} conductor(es) siguen por debajo de su objetivo después de contarles las J: son las "horas no justificadas" de la columna roja.`]);
+  if (a.conRecorte>0) av.push(['amber',`${a.conRecorte} conductor(es) no llegan al ${Math.round(((cfg||{}).utilMinima||0.65)*100)} % de utilización: se les retiran ${(RESULTADO?RESULTADO.totales.horasEsperaQuitadas:0).toFixed(1)} h de ESPERA en total para llevarlos al mínimo. Nunca se quita viaje.` + (a.recortadosSinExtra>0?` A ${a.recortadosSinExtra} de ellos el recorte les deja sin las horas extra que tenían.`:'')]);
+  if (a.conHorasSinJustificar>0) av.push(['amber',`${a.conHorasSinJustificar} conductor(es) siguen por debajo de su objetivo después de contarles las J: son las "horas no justificadas" de la columna roja.`]);
   const nEtt = RESULTADO ? RESULTADO.filas.filter(f=>f.ett).length : 0;
   if (nEtt>0) av.push(['muted',`${nEtt} conductor(es) son de ETT: cobran nocturnidad, propinas y peajes, pero NINGÚN MBO (ni horas extra ni facturación) porque los contrata y los paga la agencia. Sus cifras salen aparte en el "Parte de trabajo de la ETT".`]);
   if (a.sinNombreBolt>0) av.push(['muted',`${a.sinNombreBolt} conductor(es) sin nombre de BOLT: en el Excel sale el de la ficha en su lugar.`]);

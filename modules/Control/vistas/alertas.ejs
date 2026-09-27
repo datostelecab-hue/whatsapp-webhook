@@ -185,7 +185,7 @@
       'fa-users', 'Reciben los avisos',
       reciben.length ? esc(reciben.map(d => d.nombre.split(' ')[0]).join(', ')) : 'NADIE',
       reciben.length
-        ? (sinTel.length ? `⚠ ${sinTel.length} sin teléfono: no les llega` : `${reciben.length} controlador(es)`)
+        ? (sinTel.length ? `${sinTel.length} sin teléfono: no les llega` : `${reciben.length} controlador(es)`)
         : 'Elige a quién en Ajustes');
 
     $('#a-estado').innerHTML = enVivo + modo + dest;

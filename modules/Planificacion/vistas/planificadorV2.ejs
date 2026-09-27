@@ -1007,9 +1007,9 @@
       + '\n· Horas ' + n(r.horas) + ' h/día en ' + r.dias + ' día(s) → ' + r.ptsHoras + ' pts (50 %)'
       + '\n· Utilización ' + n(r.utilProm) + ' % → ' + r.ptsUtilizacion + ' pts (30 %)'
       + '\n· Excesos de velocidad ' + n(r.excesos) + ' → ' + r.ptsVelocidad + ' pts (20 %)';
-    if (r.topeAplicado) t += '\n⚠ Por puntos sería ' + r.letraPorPuntos + ': la baja el tope por velocidad.';
+    if (r.topeAplicado) t += '\nAviso: por puntos sería ' + r.letraPorPuntos + ': la baja el tope por velocidad.';
     if (r.diasTelemetria != null && r.diasTelemetria < 14) {
-      t += '\n⚠ Solo ' + r.diasTelemetria + ' día(s) de telemetría: faltan excesos por contar.';
+      t += '\nAviso: solo ' + r.diasTelemetria + ' día(s) de telemetría: faltan excesos por contar.';
     }
     return t;
   }
@@ -1023,7 +1023,7 @@
     if (!r.dias) return '';
     const h = String(r.horas).replace('.', ',');
     return `<span class="shrink-0 inline-flex items-center gap-1 px-1.5 py-0 rounded border text-[10px] font-bold leading-[1.4] ${REND_TONO[r.letra] || REND_TONO.D}" title="${esc(tituloRend(r))}">` +
-      `${h} h<span class="opacity-80">·</span>${r.letra}${r.topeAplicado ? '<span class="opacity-70">⚠</span>' : ''}</span>`;
+      `${h} h<span class="opacity-80">·</span>${r.letra}${r.topeAplicado ? '<i class="fa-solid fa-triangle-exclamation text-[8px] ml-0.5 align-middle"></i>' : ''}</span>`;
   }
 
   function celdaPuesto(coche, p, col) {

@@ -109,8 +109,8 @@
           <thead class="bg-telecab-card2 text-telecab-muted text-xs uppercase tracking-wide sticky top-0 z-10">
             <tr>
               <th class="text-left font-semibold px-4 py-3 sticky left-0 bg-telecab-card2" rowspan="2">Matrícula</th>
-              <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="4">☀️ Turno de día</th>
-              <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="4">🌙 Turno de noche</th>
+              <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="4">Turno de día</th>
+              <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="4">Turno de noche</th>
               <th class="text-center font-semibold px-3 py-2 border-l border-telecab-border" colspan="2">Consolidado</th>
             </tr>
             <tr>
@@ -334,15 +334,15 @@ let segmento = 'turnos';
 // separar los relevos (día / noche), y mirar por coche no.
 let segCond = 'dia', condFilas = null, condCargando = false;
 const SEGS_COND = [
-  { id: 'dia', txt: '☀️ Turno de día' },
-  { id: 'noche', txt: '🌙 Turno de noche' },
-  { id: 'completo', txt: '📅 Día natural' }
+  { id: 'dia', txt: 'Turno de día' },
+  { id: 'noche', txt: 'Turno de noche' },
+  { id: 'completo', txt: 'Día natural' }
 ];
 const SEGS = [
-  { id: 'turnos', txt: '☀️🌙 Turnos (día + noche)' },
-  { id: 'dia', txt: '☀️ Solo turno de día' },
-  { id: 'noche', txt: '🌙 Solo turno de noche' },
-  { id: 'completo', txt: '📅 Día natural (00–24)' }
+  { id: 'turnos', txt: 'Turnos (día + noche)' },
+  { id: 'dia', txt: 'Solo turno de día' },
+  { id: 'noche', txt: 'Solo turno de noche' },
+  { id: 'completo', txt: 'Día natural (00–24)' }
 ];
 
 const pad = n => String(n).padStart(2, '0');
@@ -395,11 +395,11 @@ function kpis() {
     kpi(n(total) + ' km', 'KM totales (Mapon)',
       `${k.length} registro(s) · todo lo que rodó la flota`, 'text-telecab-text') +
     kpi(n(enBolt) + ' km', `Trabajando en BOLT · ${pc(enBolt)}`,
-      `🧍 ${n(viaje)} de viaje · 🚕 ${n(camino)} de camino · ⏳ ${n(espera)} en espera`, 'text-telecab-green') +
+      `${n(viaje)} de viaje · ${n(camino)} de camino · ${n(espera)} en espera`, 'text-telecab-green') +
     kpi(n(noDisp) + ' km', `No disponible · ${pc(noDisp)}`,
-      `😴 ${n(desc)} en descanso · 🔒 ${n(cerrada)} con la app cerrada`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
+      `${n(desc)} en descanso · ${n(cerrada)} con la app cerrada`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted') +
     kpi(n(hDesc + hFuera) + ' h', 'Horas sin estar disponible',
-      `😴 ${n(hDesc)} h marcado ocupado · 🔒 ${n(hFuera)} h con la app cerrada`, (hDesc + hFuera) > 0 ? 'text-amber-400' : 'text-telecab-muted');
+      `${n(hDesc)} h marcado ocupado · ${n(hFuera)} h con la app cerrada`, (hDesc + hFuera) > 0 ? 'text-amber-400' : 'text-telecab-muted');
   $('#a-kpi-filtro').classList.toggle('hidden', !busqueda.trim());
 }
 
@@ -776,9 +776,9 @@ function pintarFlujo(cfg) {
     <div class="text-[11px] text-telecab-muted mt-0.5">${sub}</div></div>`;
   $(idKpis).innerHTML =
     tarjeta('Trabajando en BOLT', `${pc(enBolt)} · ${nkm(round1(enBolt))} km`,
-      `🧍 ${nkm(round1(viaje))} de viaje · 🚕 ${nkm(round1(camino))} de camino · ⏳ ${nkm(round1(espera))} en espera`, 'text-telecab-green') +
+      `${nkm(round1(viaje))} de viaje · ${nkm(round1(camino))} de camino · ${nkm(round1(espera))} en espera`, 'text-telecab-green') +
     tarjeta('No disponible', `${pc(noDisp)} · ${nkm(round1(noDisp))} km`,
-      `😴 ${nkm(round1(desc))} en descanso · 🔒 ${nkm(round1(cerrada))} con la app cerrada`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted');
+      `${nkm(round1(desc))} en descanso · ${nkm(round1(cerrada))} con la app cerrada`, noDisp > 0 ? 'text-telecab-red' : 'text-telecab-muted');
 }
 
 /** Los dos flujos: por turno (05–17 / 17–05) y por día natural partido a mediodía. */
@@ -786,15 +786,15 @@ function pintarFlujos() {
   pintarFlujo({
     destino: '#a-sankey', kpis: '#a-flujo-kpis', rango: '#a-flujo-rango', vacio: '#a-flujo-vacio',
     tramos: [
-      { seg: 'dia', id: 'dia', txt: '☀️ Turno de día', color: 'var(--tc-gold)' },
-      { seg: 'noche', id: 'noche', txt: '🌙 Turno de noche', color: '96 165 250' }
+      { seg: 'dia', id: 'dia', txt: 'Turno de día', color: 'var(--tc-gold)' },
+      { seg: 'noche', id: 'noche', txt: 'Turno de noche', color: '96 165 250' }
     ]
   });
   pintarFlujo({
     destino: '#a-sankey2', kpis: null, rango: '#a-flujo2-rango', vacio: '#a-flujo2-vacio',
     tramos: [
-      { seg: 'manana', id: 'manana', txt: '🌅 00:00 – 12:00', color: 'var(--tc-gold)' },
-      { seg: 'tarde', id: 'tarde', txt: '🌆 12:00 – 24:00', color: '96 165 250' }
+      { seg: 'manana', id: 'manana', txt: '00:00 – 12:00', color: 'var(--tc-gold)' },
+      { seg: 'tarde', id: 'tarde', txt: '12:00 – 24:00', color: '96 165 250' }
     ]
   });
 }

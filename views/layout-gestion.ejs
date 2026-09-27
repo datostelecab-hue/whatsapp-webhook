@@ -59,14 +59,32 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
   <script>
+    // Una escala entera de Tailwind (50…950) apuntando a un token: los tonos
+    // claros al token, los oscuros (600+) a su variante honda si la hay.
+    window.__tcCrudos = (function () {
+      const tok = n => 'rgb(var(--tc-' + n + ') / <alpha-value>)';
+      const escala = (n, hondo) => {
+        const e = {};
+        [50, 100, 200, 300, 400, 500].forEach(k => { e[k] = tok(n); });
+        [600, 700, 800, 900, 950].forEach(k => { e[k] = tok(hondo || n); });
+        return e;
+      };
+      return {
+        red: escala('red', 'red-hover'), rose: escala('red', 'red-hover'),
+        emerald: escala('green'), green: escala('green'),
+        amber: escala('warn'), orange: escala('warn'), yellow: escala('warn'),
+        sky: escala('azul'), blue: escala('azul'),
+        violet: escala('violet'), purple: escala('violet'), indigo: escala('violet'),
+      };
+    })();
     tailwind.config = {
       theme: {
         extend: {
-          fontFamily: { sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'] },
+          fontFamily: { sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
           colors: {
             // Apuntan a los tokens CSS (public/assets/css/telecab.css). El
             // <alpha-value> conserva los modificadores de opacidad (bg-…/15,
@@ -89,22 +107,18 @@
               'muted': 'rgb(var(--tc-muted) / <alpha-value>)'
             },
             // Los colores crudos de Tailwind que usan las vistas se redirigen a los
-            // tokens: text-red-500 ES el rojo de la marca, bg-emerald-500/15 ES el
-            // verde de la marca al 15 %. Cambiar el tema los cambia a todos.
-            'red':     { 400: 'rgb(var(--tc-red) / <alpha-value>)',    500: 'rgb(var(--tc-red) / <alpha-value>)',    600: 'rgb(var(--tc-red-hover) / <alpha-value>)' },
-            'emerald': { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
-            'green':   { 400: 'rgb(var(--tc-green) / <alpha-value>)',  500: 'rgb(var(--tc-green) / <alpha-value>)',  600: 'rgb(var(--tc-green) / <alpha-value>)' },
-            'amber':   { 400: 'rgb(var(--tc-gold-soft) / <alpha-value>)', 500: 'rgb(var(--tc-gold) / <alpha-value>)', 600: 'rgb(var(--tc-gold-deep) / <alpha-value>)' },
-            'orange':  { 400: 'rgb(var(--tc-gold-soft) / <alpha-value>)', 500: 'rgb(var(--tc-gold) / <alpha-value>)' },
-            'yellow':  { 400: 'rgb(var(--tc-warn) / <alpha-value>)',   500: 'rgb(var(--tc-warn) / <alpha-value>)' },
-            'sky':     { 400: 'rgb(var(--tc-azul) / <alpha-value>)',   500: 'rgb(var(--tc-azul) / <alpha-value>)' },
-            'blue':    { 400: 'rgb(var(--tc-azul) / <alpha-value>)',   500: 'rgb(var(--tc-azul) / <alpha-value>)',   600: 'rgb(var(--tc-azul) / <alpha-value>)' },
-            'violet':  { 400: 'rgb(var(--tc-violet) / <alpha-value>)', 500: 'rgb(var(--tc-violet) / <alpha-value>)' },
-            'purple':  { 400: 'rgb(var(--tc-violet) / <alpha-value>)', 500: 'rgb(var(--tc-violet) / <alpha-value>)' },
+            // tokens, EN TODOS SUS TONOS: text-red-300 ES el rojo de la marca,
+            // bg-emerald-500/15 ES el verde de la marca al 15 %. Cambiar el tema
+            // los cambia a todos, y ninguna vista puede colar un color suelto.
+            // Desde el 27/09/2026 el ámbar y el naranja son AVISO (--tc-warn), no
+            // el acento: en las vistas marcan «pendiente», «sin contestar»,
+            // «provisional»… y el acento queda para lo que se pulsa o se elige.
+            ...window.__tcCrudos,
           },
+          // Sombras neutras y de los tokens: ya no hay sombras de color.
           boxShadow: {
-            'soft': '0 1px 3px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5)',
-            'gold': '0 10px 26px -10px rgb(var(--tc-gold) / .6)'
+            'soft': 'var(--tc-sombra-alta)',
+            'gold': 'var(--tc-sombra)'
           }
         }
       }
@@ -116,31 +130,27 @@
 
 <!-- ══════════ Overlay de carga (una sola pieza; la heredan TODOS los módulos) ══════════ -->
 <!-- Va al principio del body para envolver window.fetch ANTES de que corran los
-     scripts de cada módulo: así hasta la primera consulta ya muestra el vídeo. -->
-<div id="cargando-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-telecab-dark/70 backdrop-blur-md">
-  <div class="flex flex-col items-center gap-6">
-    <%- include('partials/logo-video', { tam: 'w-[240px] h-[240px]' }) %>
-    <p class="text-telecab-gold text-sm font-medium animate-pulse">Cargando…</p>
+     scripts de cada módulo: así hasta la primera consulta ya se ve la carga.
+     La marca animada es SVG + CSS (partials/marca.ejs): pesa unos pocos KB en vez
+     de los 4,9 MB del vídeo de antes, va fluida a cualquier tamaño y toma los
+     colores del tema de cada usuario. -->
+<div id="cargando-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center" role="status" aria-live="polite">
+  <div class="flex flex-col items-center gap-4">
+    <%- include('partials/marca', { tam: 'w-24 h-24', anima: true }) %>
+    <p class="tc-carga-texto text-[11px] uppercase font-medium">Cargando</p>
   </div>
 </div>
 <script>
 (function () {
   const overlay = document.getElementById('cargando-overlay');
-  const video   = overlay.querySelector('video');
   let activos = 0, ultima = performance.now(), inicial = true;
 
-  const reproducir = () => {
-    if (!video || !video.play) return;
-    try { video.playbackRate = 2; const p = video.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
-  };
-  const mostrar = () => { overlay.classList.remove('hidden'); reproducir(); };
-  const ocultar = () => {
-    overlay.classList.add('hidden');
-    if (video && video.pause) { try { video.pause(); } catch (_) {} }
-  };
+  // La animación es CSS: oculto no se pinta, así que no hay nada que pausar.
+  const mostrar = () => { overlay.classList.remove('hidden'); };
+  const ocultar = () => { overlay.classList.add('hidden'); };
   const ocultarSiLibre = () => { if (activos <= 0) { activos = 0; ocultar(); } };
 
-  // CARGA INICIAL: el logo tapa desde el primer pintado, en lugar de los textos
+  // CARGA INICIAL: la marca tapa desde el primer pintado, en lugar de los textos
   // "Leyendo el tablero…", "Calculando la semana…", etc., y se mantiene hasta que
   // llegan TODOS los datos del módulo. Red de seguridad a los 15 s por si algo cuelga.
   mostrar();
@@ -193,10 +203,12 @@
          class="h-full w-full flex flex-col bg-telecab-card/80 backdrop-blur-xl border-r border-telecab-border">
 
     <!-- Marca -->
-    <a href="/planificador" class="flex items-center gap-3 px-5 py-5 border-b border-telecab-border/70">
-      <%- include('partials/logo-video', { tam: 'w-12 h-12' }) %>
-      <span class="leading-tight">
-        <span class="block text-lg font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
+    <a href="/planificador" class="flex items-center gap-3 px-4 h-16 shrink-0 border-b border-telecab-border/70">
+      <%# Un div y no un span: con el menú contraído el CSS esconde los span del
+          panel (los textos), y la marca tiene que seguir viéndose. %>
+      <div class="w-10 flex justify-center shrink-0"><%- include('partials/marca', { tam: 'w-9 h-9' }) %></div>
+      <span class="leading-tight whitespace-nowrap">
+        <span class="block text-base font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
         <span class="block text-[11px] text-telecab-muted">Gestión de flota</span>
       </span>
     </a>
@@ -490,7 +502,7 @@
         <div class="flex items-center gap-2 pl-2 ml-1 border-l border-telecab-border">
           <div class="hidden sm:block text-right leading-tight whitespace-nowrap">
             <span class="block text-xs text-telecab-text font-medium"><%= (typeof usuario !== 'undefined' && usuario && ((usuario.nombre || '') + ' ' + (usuario.apellidos || '')).trim()) || '' %></span>
-            <span class="block text-[10px] uppercase tracking-wide text-telecab-gold"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
+            <span class="block text-[10px] uppercase tracking-wide text-telecab-muted"><%= (typeof rolNombre !== 'undefined' && rolNombre) || (typeof usuario !== 'undefined' && usuario && usuario.rol) || '' %></span>
           </div>
           <a href="/logout" title="Salir" class="w-9 h-9 rounded-lg hover:bg-telecab-card2 transition flex items-center justify-center text-telecab-muted hover:text-telecab-red">
             <i class="fa-solid fa-arrow-right-from-bracket"></i>
@@ -627,13 +639,13 @@
         a.href = it.href;
         a.className = 'block px-2 py-1.5 rounded-lg hover:bg-telecab-card2 transition';
         a.innerHTML =
-          (deps.length > 1 ? `<span class="block text-[10px] uppercase tracking-wide text-telecab-gold">${NOMBRE[dep]}</span>` : '') +
+          (deps.length > 1 ? `<span class="block text-[10px] uppercase tracking-wide text-telecab-muted">${NOMBRE[dep]}</span>` : '') +
           `<span class="block text-xs text-telecab-text">${it.texto}</span>` +
           (it.detalle ? `<span class="block text-[11px] text-telecab-muted truncate">${it.detalle}</span>` : '');
         lista.appendChild(a);
       });
     });
-    if (!lista.children.length) lista.innerHTML = '<p class="text-xs text-telecab-muted px-2 py-4 text-center">Sin pendientes 🎉</p>';
+    if (!lista.children.length) lista.innerHTML = '<p class="text-xs text-telecab-muted px-2 py-4 text-center">Sin pendientes</p>';
     const txt = total > 99 ? '99+' : String(total);
     [badge, document.getElementById('nav-pend-badge')].forEach(b => {
       if (!b) return;
@@ -1037,45 +1049,32 @@
 </script>
 
 
-<!-- ══════════ Gráficos: barras con degradado (la firma visual) ══════════ -->
-<!-- Se registra una sola vez aquí, después del cuerpo (que es quien carga Chart.js), y
-     vale para todos los módulos: cada barra pasa de su color arriba a casi transparente
-     abajo, como luz que se apaga. No hay que tocar ningún gráfico. -->
+<!-- ══════════ Gráficos: el estilo de la casa, una sola vez ══════════ -->
+<!-- Se aplica aquí, después del cuerpo (que es quien carga Chart.js), y vale para
+     todos los módulos. Antes cada barra se pintaba en degradado —de su color a
+     casi transparente—; desde el 27/09/2026 los gráficos son sobrios: barras
+     lisas con la esquina apenas redondeada, rejilla fina, la tipografía de la
+     casa y el globo con los colores del tema. Lo que un gráfico fija por su
+     cuenta (sus colores de serie) lo sigue mandando él. -->
 <script>
 (function () {
   if (!window.Chart) return;
-  // De "rgb(r g b / a)", "rgb(r, g, b)", "rgba(...)" o "#rrggbb" a [r, g, b, a].
-  const rgba = c => {
-    if (typeof c !== 'string') return null;
-    let m = c.match(/^#([0-9a-f]{6})$/i);
-    if (m) return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16), 1];
-    m = c.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i);
-    if (!m) return null;
-    let a = m[4] == null ? 1 : (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
-    return [+m[1], +m[2], +m[3], a];
-  };
-  const degradado = (ctx, area, col) => {
-    const c = rgba(col); if (!c || !area) return col;
-    const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
-    g.addColorStop(0, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + Math.min(1, c[3] + .15) + ')');
-    g.addColorStop(1, 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (c[3] * .18) + ')');
-    return g;
-  };
-  Chart.register({
-    id: 'barrasDegradadas',
-    beforeDatasetsUpdate(chart) {
-      const area = chart.chartArea; if (!area) return;
-      chart.data.datasets.forEach((ds, i) => {
-        const tipo = ds.type || chart.config.type;
-        if (tipo !== 'bar' || ds._degradadoAplicado === chart.chartArea.bottom) return;
-        if (ds._colorBase === undefined) ds._colorBase = ds.backgroundColor;
-        const base = ds._colorBase;
-        if (Array.isArray(base)) ds.backgroundColor = base.map(b => degradado(chart.ctx, area, b));
-        else if (typeof base === 'string') ds.backgroundColor = degradado(chart.ctx, area, base);
-        else return;
-        ds._degradadoAplicado = chart.chartArea.bottom;
-      });
-    },
+  const css = getComputedStyle(document.documentElement);
+  const tk = (n, a) => 'rgb(' + css.getPropertyValue(n).trim() + (a == null ? '' : ' / ' + a) + ')';
+  const d = Chart.defaults;
+  d.font.family = "'IBM Plex Sans', system-ui, sans-serif";
+  d.font.size = 11;
+  d.color = tk('--tc-muted');
+  d.borderColor = tk('--tc-border', .7);
+  d.elements.bar.borderRadius = 3;
+  d.elements.bar.borderSkipped = 'start';
+  d.elements.line.borderWidth = 2;
+  d.plugins.legend.labels.boxWidth = 10;
+  d.plugins.legend.labels.boxHeight = 10;
+  Object.assign(d.plugins.tooltip, {
+    backgroundColor: tk('--tc-card'), borderColor: tk('--tc-border'), borderWidth: 1,
+    titleColor: tk('--tc-text'), bodyColor: tk('--tc-text'), footerColor: tk('--tc-muted'),
+    padding: 10, cornerRadius: 6, boxPadding: 4, displayColors: true,
   });
 })();
 </script>

@@ -146,7 +146,7 @@
       $('#m-aplicar').disabled = !(m.pendientes || []).length;
       $('#m-aplicar').classList.toggle('opacity-40', !(m.pendientes || []).length);
     } catch (e) {
-      aviso('❌ ' + esc(e.message), 'error');
+      aviso(esc(e.message), 'error');
     }
   }
 
@@ -158,7 +158,7 @@
       aviso(lista.length
         ? `Se aplicarían ${lista.length}: ${esc(lista.map(x => x.fichero).join(', '))}`
         : 'No hay nada pendiente.', 'ok');
-    } catch (e) { aviso('❌ ' + esc(e.message), 'error'); }
+    } catch (e) { aviso(esc(e.message), 'error'); }
   });
 
   $('#m-aplicar').addEventListener('click', async () => {
@@ -190,7 +190,7 @@
           : ''),
         mal.length ? 'error' : 'ok');
     } catch (e) {
-      aviso('❌ ' + esc(e.message), 'error');
+      aviso(esc(e.message), 'error');
     } finally {
       b.disabled = false;
       cargar();

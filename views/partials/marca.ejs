@@ -1,0 +1,26 @@
+<%
+  /* LA MARCA DE TELECAB, DIBUJADA. El pin y la carretera del logo en SVG, con
+     los colores del TEMA: el pin es el acento y la carretera, el color del
+     texto. Sustituye al vídeo telecab.mp4 (4,9 MB que se bajaban en cada
+     página) desde el 27/09/2026. El aspecto y la animación viven en
+     public/assets/css/telecab.css (.tc-marca).
+
+     Params (locals):
+       tam    → clases de tamaño (por defecto w-10 h-10)
+       anima  → true para la de la carga: el pin bota y el carril corre
+       clases → clases extra para el <svg> */
+  var _tam = typeof tam !== 'undefined' ? tam : 'w-10 h-10';
+  var _anima = typeof anima !== 'undefined' && !!anima;
+  var _clases = typeof clases !== 'undefined' ? clases : '';
+%>
+<svg class="tc-marca <%= _anima ? 'tc-marca-anima' : '' %> <%= _tam %> <%= _clases %> shrink-0"
+     viewBox="0 0 64 64" role="img" aria-label="Telecab" focusable="false">
+  <path class="tc-marca-via" d="M5 53 Q31 37 61 39"/>
+  <path class="tc-marca-carril" d="M12 58.5 Q35 45 61 44"/>
+  <path class="tc-marca-via" d="M20 64 Q41 51 61 49"/>
+  <ellipse class="tc-marca-sombra" cx="32" cy="41.2" rx="6" ry="1.5"/>
+  <g class="tc-marca-pin">
+    <path fill-rule="evenodd"
+          d="M32 39.5C28.6 35.2 19 26.2 19 17.5a13 13 0 0 1 26 0c0 8.7-9.6 17.7-13 22Z M32 12.3a5.2 5.2 0 1 0 0 10.4a5.2 5.2 0 1 0 0-10.4Z"/>
+  </g>
+</svg>

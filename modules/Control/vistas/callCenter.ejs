@@ -968,7 +968,7 @@
     const j = await res.json();
     if (j.status !== 'ok') { toast(j.msg || 'No se pudo resolver', true); return; }
     $('modal-resolver').classList.add('hidden');
-    toast('Seguimiento resuelto ✔');
+    toast('Seguimiento resuelto');
     cargaDatos();
   };
 
@@ -993,7 +993,7 @@
       });
       const j = await res.json();
       if (j.status !== 'ok') { toast(j.msg || 'No se pudo registrar', true); return; }
-      toast('Llamada registrada ✔');
+      toast('Llamada registrada');
       ['f-conductor', 'f-telefono', 'f-matricula', 'f-accion', 'f-notas'].forEach(id => $(id).value = '');
       $('f-turno').value = ''; $('f-pendiente').checked = false;
       $('ficha-rapida-cuerpo').innerHTML = 'Elige un conductor y aquí sale de qué se le ha llamado antes.';

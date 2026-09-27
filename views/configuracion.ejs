@@ -153,21 +153,24 @@
   const KEY = 'telecab-tema';
   // Cada tema: clave (= data-theme), nombre, y colores de la mini-vista-previa.
   const TEMAS = [
-    { k: 'dark',       n: 'Oscuro',          bg: '#1b1619', ac: '#f4963c', tx: '#f4f0ec', claro: false },
-    { k: 'azul',       n: 'Azul',            bg: '#131927', ac: '#60a5fa', tx: '#e6e8ec', claro: false },
-    { k: 'verde',      n: 'Verde',           bg: '#101d18', ac: '#34d399', tx: '#e6e8ec', claro: false },
-    { k: 'purpura',    n: 'Púrpura',         bg: '#1a1425', ac: '#a78bfa', tx: '#e6e8ec', claro: false },
-    { k: 'rosa',       n: 'Rosa',            bg: '#21141c', ac: '#f472b6', tx: '#e6e8ec', claro: false },
-    { k: 'cian',       n: 'Cian',            bg: '#0f1e21', ac: '#2dd4cd', tx: '#e6e8ec', claro: false },
-    { k: 'naranja',    n: 'Naranja',         bg: '#22160e', ac: '#fb923c', tx: '#f4f0ec', claro: false },
+    // Desde el 27/09/2026 las superficies son las mismas en todos los temas
+    // (grafito en oscuro, blanco en claro): de un tema a otro cambia el ACENTO.
+    // Los colores son los de public/assets/css/telecab.css.
+    { k: 'dark',       n: 'Oscuro',          bg: '#16181c', ac: '#e3b23c', tx: '#e8eaed', claro: false },
+    { k: 'azul',       n: 'Azul',            bg: '#16181c', ac: '#6898e4', tx: '#e8eaed', claro: false },
+    { k: 'verde',      n: 'Verde',           bg: '#16181c', ac: '#4cba8a', tx: '#e8eaed', claro: false },
+    { k: 'purpura',    n: 'Púrpura',         bg: '#16181c', ac: '#9886e2', tx: '#e8eaed', claro: false },
+    { k: 'rosa',       n: 'Rosa',            bg: '#16181c', ac: '#de74a2', tx: '#e8eaed', claro: false },
+    { k: 'cian',       n: 'Cian',            bg: '#16181c', ac: '#40bcb8', tx: '#e8eaed', claro: false },
+    { k: 'naranja',    n: 'Naranja',         bg: '#16181c', ac: '#e4883e', tx: '#e8eaed', claro: false },
     { k: 'contraste',  n: 'Alto contraste',  bg: '#000000', ac: '#ffd60a', tx: '#ffffff', claro: false },
-    { k: 'light',         n: 'Claro',           bg: '#fbf7f3', ac: '#c96c14', tx: '#261e1c', claro: true },
-    { k: 'claro-azul',    n: 'Claro azul',      bg: '#ffffff', ac: '#2563eb', tx: '#161f2e', claro: true },
-    { k: 'claro-verde',   n: 'Claro verde',     bg: '#ffffff', ac: '#15803d', tx: '#18221c', claro: true },
-    { k: 'claro-rosa',    n: 'Claro rosa',      bg: '#ffffff', ac: '#c81d68', tx: '#281a22', claro: true },
-    { k: 'claro-purpura', n: 'Claro púrpura',   bg: '#ffffff', ac: '#7c3aed', tx: '#1e1a2c', claro: true },
-    { k: 'claro-naranja', n: 'Claro naranja',   bg: '#ffffff', ac: '#c2410c', tx: '#281e16', claro: true },
-    { k: 'auto',          n: 'Automático',      bg: 'auto',    ac: '#8b93a1', tx: '#8b93a1', claro: false }
+    { k: 'light',         n: 'Claro',           bg: '#ffffff', ac: '#966a00', tx: '#181c22', claro: true },
+    { k: 'claro-azul',    n: 'Claro azul',      bg: '#ffffff', ac: '#1d4eaa', tx: '#181c22', claro: true },
+    { k: 'claro-verde',   n: 'Claro verde',     bg: '#ffffff', ac: '#146e46', tx: '#181c22', claro: true },
+    { k: 'claro-rosa',    n: 'Claro rosa',      bg: '#ffffff', ac: '#aa1e5a', tx: '#181c22', claro: true },
+    { k: 'claro-purpura', n: 'Claro púrpura',   bg: '#ffffff', ac: '#643cbe', tx: '#181c22', claro: true },
+    { k: 'claro-naranja', n: 'Claro naranja',   bg: '#ffffff', ac: '#b0460c', tx: '#181c22', claro: true },
+    { k: 'auto',          n: 'Automático',      bg: 'auto',    ac: '#8e949e', tx: '#8e949e', claro: false }
   ];
 
   const resolver = pref => pref === 'auto'
@@ -179,13 +182,13 @@
     if (t.k === 'auto') {
       // Mitad oscuro / mitad claro para representar "automático".
       return `<div style="height:52px;border-radius:8px;overflow:hidden;display:flex;">
-          <div style="flex:1;background:#171b22;display:flex;align-items:center;justify-content:center;">
-            <span style="width:12px;height:12px;border-radius:50%;background:#e8b84b;"></span></div>
+          <div style="flex:1;background:#16181c;display:flex;align-items:center;justify-content:center;">
+            <span style="width:12px;height:12px;border-radius:50%;background:#e3b23c;"></span></div>
           <div style="flex:1;background:#ffffff;display:flex;align-items:center;justify-content:center;">
-            <span style="width:12px;height:12px;border-radius:50%;background:#b78218;"></span></div>
+            <span style="width:12px;height:12px;border-radius:50%;background:#966a00;"></span></div>
         </div>`;
     }
-    return `<div style="height:52px;border-radius:8px;background:${t.bg};border:1px solid ${t.claro ? '#e2e8f0' : '#2a3140'};padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;">
+    return `<div style="height:52px;border-radius:8px;background:${t.bg};border:1px solid ${t.claro ? '#dee2e7' : '#2c3037'};padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;">
         <div style="display:flex;align-items:center;gap:5px;">
           <span style="width:11px;height:11px;border-radius:50%;background:${t.ac};"></span>
           <span style="height:5px;width:38%;border-radius:3px;background:${t.tx};opacity:.85;"></span>

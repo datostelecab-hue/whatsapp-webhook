@@ -78,6 +78,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Comprobadores]]** — En este proyecto no hay pruebas automáticas, ni linter, ni npm scripts.
 - **[[Glosario]]** — El vocabulario de la casa. Son palabras que en este ERP significan una cosa
 - **[[Reglas de la casa]] · [[Componentes de la casa]]** — Lo que se respeta sí o sí en este repositorio.
+- **[[Identidad visual]]** — Corporativa desde el 27/09/2026: un solo acento (el oro del logo), superficies lisas, IBM Plex Sans, sin emojis; la marca en SVG y la carga animada que sigue al tema.
 - **[[Trampas conocidas]]** — Lo que ya costó tiempo, con su cifra y su remedio.
 - **[[Seguridad]]** — Cómo se prueba la seguridad (laboratorio Kali aislado) y el endurecimiento que lleva puesto.
 
