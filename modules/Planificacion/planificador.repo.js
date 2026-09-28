@@ -1682,9 +1682,20 @@ async function ponerDescansoCoche(cli, vehiculoId, dias, dia, usuarioId) {
     else await cli.query('UPDATE vehiculo_descanso SET hasta = $2 WHERE id = $1', [act.id, vispera(dia)]);
   }
   if (!dias || !dias.length) return null;
+  // AUTO-CORTE, como en las plazas (`colocar`): si el coche ya tiene un descanso
+  // ESCRITO PARA MÁS ADELANTE, el nuevo dura hasta la víspera y el futuro se
+  // respeta. Sin esto el nuevo iba «desde hoy y para siempre», pisaba al futuro
+  // y la base lo rechazaba (ex_vehdesc_solape). Pasó con el 8203LTR el
+  // 28/09/2026: tenía uno escrito desde el 05/10 y no se dejaba intercambiar
+  // con ningún coche, ni cambiarle el descanso, ni meterlo en un bloque.
+  const sig = (await cli.query(
+    `SELECT desde FROM vehiculo_descanso
+      WHERE vehiculo_id = $1 AND desde > $2
+      ORDER BY desde LIMIT 1`, [vehiculoId, dia])).rows[0];
+  const hasta = sig ? vispera(fechaDe(sig.desde)) : null;
   const r = await cli.query(
-    'INSERT INTO vehiculo_descanso (vehiculo_id, desde, usuario_id) VALUES ($1, $2, $3) RETURNING id',
-    [vehiculoId, dia, usuarioId || null]);
+    'INSERT INTO vehiculo_descanso (vehiculo_id, desde, hasta, usuario_id) VALUES ($1, $2, $3, $4) RETURNING id',
+    [vehiculoId, dia, hasta, usuarioId || null]);
   for (const d of dias) {
     await cli.query('INSERT INTO vehiculo_descanso_dia (descanso_id, dia_semana) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [r.rows[0].id, d]);

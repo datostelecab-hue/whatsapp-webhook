@@ -1616,6 +1616,19 @@ recibe del domingo **de esta**, y «pasado» era mentira. Los relevos llevan aho
 **fecha** (`recibeDe.fecha`, `entregaA.fecha`) y la ventana dice «lo deja el jueves 01/10».
 Las banderas `semanaPasada`/`semanaSiguiente` siguen ahí para la vista semanal.
 
+### Un descanso escrito a futuro bloqueaba el coche entero
+
+`ponerDescansoCoche` (planificador) cerraba el descanso vigente el día que se
+mira y abría uno nuevo **desde ese día y sin fin**. Si el coche ya tenía otro
+descanso escrito para más adelante, el nuevo lo pisaba y la base lo rechazaba
+con `ex_vehdesc_solape`. Como esa función la usan **poner el descanso**, **añadir
+un bloque** e **intercambiar la tripulación entre dos coches**, el coche no se
+dejaba tocar de ninguna de las tres formas. Pasó con el 8203LTR el 28/09/2026:
+estaba sin descanso del 23/09 al 04/10 y tenía L M escrito desde el 05/10.
+
+> Ahora hace lo mismo que las plazas (`colocar`, «auto-corte»): el descanso nuevo
+> dura hasta la **víspera** del que ya está escrito, y el futuro se respeta.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números
