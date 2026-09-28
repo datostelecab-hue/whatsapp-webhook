@@ -666,6 +666,16 @@
     par('k-ctd', r.ctDia, r.ctDiaNeto);
     par('k-ctn', r.ctNoche, r.ctNocheNeto);
     par('k-flojos', r.ctFlojos, r.ctFlojosNeto);
+    // Quién cuenta sin tener plaza HOY porque llega a una plaza VACÍA (28/09/2026):
+    // en el 1194LCK sin fijo, Jonathan ya cuenta; quien llega a una plaza ocupada,
+    // no (el 0431MMZ son dos fijos aunque salgan cuatro nombres).
+    [['k-fd', 'fijoDia'], ['k-fn', 'fijoNoche'], ['k-ctd', 'ctDia'], ['k-ctn', 'ctNoche']].forEach(([id, k]) => {
+      const xs = (r.llegan || []).filter(x => x.tarjeta === k);
+      const caja = $('#' + id).closest('div, button');
+      if (caja) caja.title = xs.length
+        ? 'Incluye a quien llega a una plaza vacía:\n' + xs.map(x => `· ${x.nombre} → ${x.plazas}, desde el ${isoAes(x.desde)}`).join('\n')
+        : '';
+    });
     // Sin ninguno, la tarjeta deja de gritar: el rojo tiene que significar algo.
     const caja = $('#k-flojos-caja');
     caja.classList.toggle('border-telecab-red/60', (r.ctFlojos || 0) > 0);

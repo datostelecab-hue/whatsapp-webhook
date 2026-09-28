@@ -768,12 +768,22 @@ function plantel(coches, gente) {
   const puesto = new Map();
 
   coches.forEach(coche => {
-    (coche.personas || []).forEach(p => {
+    (coche.personas || []).forEach(p0 => {
+      // LO QUE LLEGA A UNA PLAZA VACÍA CUENTA YA (28/09/2026, lo pidió Camilo).
+      // En el 1194LCK no hay fijo y Jonathan entra el 29/09: es un fijo más desde
+      // hoy. Pero en el 0431MMZ David y Hamid tienen su relevo escrito (Wellim y
+      // Charlie): cuatro nombres, DOS fijos — quien llega a una plaza ocupada no
+      // suma. Y como se cuentan personas, quien cambia de coche sale una vez.
+      const p = p0.id ? p0
+        : (p0.futuro ? { ...p0, id: p0.futuro.conductorId, llega: p0.futuro.desde,
+          diasManual: Array.from({ length: DIAS }, (_, i) => (p0.futuro.dias || []).includes(i + 1)) } : p0);
       if (!p.id) return;
       if (!puesto.has(p.id)) {
         puesto.set(p.id, { rolFijo: false, rolCT: false, turnoFijo: '', turnos: new Map(), plazas: [], dias: new Set() });
       }
       const q = puesto.get(p.id);
+      if (p.llega && (!q.llega || p.llega < q.llega)) q.llega = p.llega;
+      if (p0.id) q.actual = true;         // tiene plaza HOY (si no, solo llega)
       if (p.rol === 'FIJO') {
         q.rolFijo = true;
         // EL TURNO DE UN FIJO LO DICE SU PLAZA DE FIJO, y nada más. Abajo el
@@ -796,7 +806,7 @@ function plantel(coches, gente) {
       // que la cifra y las letras no se pueden contradecir.
       dias.forEach(i => q.dias.add(i));
       q.plazas.push({ matricula: coche.matricula, turno: p.turno, rol: p.rol,
-                      dias: dias.map(i => LETRA_DIA[i]).join('') });
+                      dias: dias.map(i => LETRA_DIA[i]).join(''), llega: p.llega || '' });
     });
   });
 
@@ -805,9 +815,18 @@ function plantel(coches, gente) {
     // Los mismos, descontando a quien está de vacaciones o de baja.
     fijoDiaNeto: 0, fijoNocheNeto: 0, ctDiaNeto: 0, ctNocheNeto: 0, ctFlojosNeto: 0,
     ausentesColocados: 0, ctFlojosLista: [],
+    // Quién se cuenta sin tener plaza hoy, porque llega a una plaza VACÍA: la
+    // tarjeta lo dice al pasar el ratón (`tarjeta` = en qué número cuenta).
+    llegan: [],
   };
   // Suma en el bruto siempre y en el neto solo si esa persona está disponible.
   const suma = (clave, disponible) => { r[clave]++; if (disponible) r[clave + 'Neto']++; };
+  const anota = (clave, id, q) => {
+    if (q.actual) return;
+    const p = gente.get(id) || {};
+    r.llegan.push({ tarjeta: clave, nombre: p.nombre || id, desde: q.llega || '',
+      plazas: q.plazas.map(x => x.matricula).join(' · ') });
+  };
 
   puesto.forEach((q, id) => {
     const p = gente.get(id) || {};
@@ -820,7 +839,11 @@ function plantel(coches, gente) {
     let turno = 'dia', max = -1;
     q.turnos.forEach((n, t) => { if (n > max) { max = n; turno = t || 'dia'; } });
 
-    if (q.rolFijo) { suma(q.turnoFijo === 'noche' ? 'fijoNoche' : 'fijoDia', !fuera); return; }
+    if (q.rolFijo) {
+      const k = q.turnoFijo === 'noche' ? 'fijoNoche' : 'fijoDia';
+      suma(k, !fuera); anota(k, id, q);
+      return;
+    }
     if (!q.rolCT) return;
 
     // LOS DÍAS ESCRITOS EN SUS CUADRANTES, no los que cubre ESTA semana.
@@ -835,20 +858,25 @@ function plantel(coches, gente) {
     // La cobertura sirve para saber quién sale mañana; para saber si un
     // cuadrante está completo hay que mirar el cuadrante.
     const dias = q.dias.size;
-    if (dias >= sueloCT(p.diasQueDebeCT)) suma(turno === 'noche' ? 'ctNoche' : 'ctDia', !fuera);
-    else {
-      suma('ctFlojos', !fuera);
+    if (dias >= sueloCT(p.diasQueDebeCT)) {
+      const k = turno === 'noche' ? 'ctNoche' : 'ctDia';
+      suma(k, !fuera); anota(k, id, q);
+    } else {
+      suma('ctFlojos', !fuera); anota('ctFlojos', id, q);
       r.ctFlojosLista.push({
         id, nombre: p.nombre || id, telefono: p.telefono || '', dias,
         turno: turno === 'noche' ? 'Noche' : 'Día',
         ausente: fuera ? (p.estado || 'Ausente') : '',
-        reparto: q.plazas.map(x => `${x.matricula}${x.dias ? ' ' + x.dias : ' sin días'}`).join(' · '),
+        reparto: q.plazas.map(x => `${x.matricula}${x.dias ? ' ' + x.dias : ' sin días'}` +
+          (x.llega ? ` (desde el ${x.llega.split('-').reverse().join('/')})` : '')).join(' · '),
+        llega: q.llega || '',
       });
     }
     if (dias > MAX_CT) r.ctPasados++;
   });
 
   r.ctFlojosLista.sort((a, b) => a.dias - b.dias || a.nombre.localeCompare(b.nombre));
+  r.llegan.sort((a, b) => a.desde.localeCompare(b.desde) || a.nombre.localeCompare(b.nombre));
   return r;
 }
 

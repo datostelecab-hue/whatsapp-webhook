@@ -114,8 +114,8 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 
 | Tarjeta | Cuenta | Sale de |
 |---|---|---|
-| Fijo día / noche | personas con plaza de fijo, por el turno de esa plaza | `asignacion` vigente |
-| CT día / noche | correturnos con 4 días o más | días escritos en sus cuadrantes |
+| Fijo día / noche | personas con plaza de fijo, por el turno de esa plaza, **más quien llega a una plaza de fijo VACÍA** | `asignacion` vigente, y la futura si la plaza está vacía |
+| CT día / noche | correturnos con 4 días o más, **contando los días de las plazas VACÍAS a las que llegan** | días escritos en sus cuadrantes |
 | Fijos que faltan | plazas de fijo **sin nadie, contando lo ya planificado** en coches operativos | `asignacion` vigente **y futura** |
 | CT que faltan | días que libra un fijo y **nadie tiene escritos** (hoy o desde más adelante), ÷6 | el cuadrante, con las asignaciones futuras |
 | Huérfanos | gente asignada a un coche fuera de cobertura | `v_conductor_huerfano` |
@@ -134,6 +134,8 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 > Sin lo segundo, quien cambia de coche contaba en los dos a la vez: Juan Manuel, del 7222LVG al 8203LTR el 05/10, tapaba las dos plazas. Un suplente con fin y con el titular escrito detrás no cambia nada. En los CT, los días con dueño son los del próximo correturnos si lo hay, y si no los del de hoy mientras no se vaya; y un coche cuyo fijo llega ya cuenta los relevos que necesitará.
 >
 > Efecto el 28/09/2026: salen **7 fijos y 10 CT** mirando esta semana, la del 05/10 o la del 12/10 — la cuenta ya no depende de la semana abierta. Debajo del número la tarjeta dice cuántas «ya planificadas» y cuántas «se quedan vacías», y al pasar el ratón, quién, dónde y cuándo.
+>
+> **Y las tarjetas de personas** (Fijo día/noche, CT día/noche) cuentan a **quien llega a una plaza VACÍA**, y a nadie más. Camilo, con el 0431MMZ delante: David y Hamid tienen su relevo escrito (Wellim el 06/10, Charlie el 04/10) —**cuatro nombres, dos fijos**—; en el 1194LCK, sin fijo, Jonathan entra el 29/09 y **ya cuenta**. Se cuentan personas, así que quien cambia de coche (Juan Manuel) sale una vez. Efecto el 28/09/2026: fijo día 66 → 68 (Jonathan y Abraham, que entra en el 1209MJY, hoy fuera de servicio), CT día 26 → 28 (Iván y Harold), CT noche 20 → 21 (Raúl completa sus días con el 5906LTT). Al pasar el ratón por la tarjeta se ve quién llega (`resumen.llegan`).
 
 > [!tip] El banquillo dice quién ya tiene coche esperándole
 > Estar sin plaza **hoy** no es estar libre: hay quien tiene su coche escrito para el lunes. Sin decirlo, Tráfico lo coloca en otro sitio y esa persona sale en dos cuadrantes a la vez. La ficha lo avisa: «ya entra el 21/09 en 0524MMZ · 8930KVC». Es el reverso de [[#El buscador ve también lo que aún no ha pasado]].
