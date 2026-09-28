@@ -778,14 +778,21 @@
       const filas = this.visibles();
       if (!filas.length) return;
 
+      // LA CLAVE DE CADA COLUMNA ES UN TEXTO PROPIO (c0, c1…), no el campo ni
+      // la función que da el valor. Con la función como clave (columnas con
+      // `valor: f => …`), el JSON la tiraba al enviarla: el servidor recibía
+      // esas columnas sin clave y salían VACÍAS en el Excel. Pasaba en
+      // Inspección de vehículos (28/09/2026): solo salían Matrícula y
+      // Observaciones, las dos que eran `campo`.
       const columnas = this.cfg.columnas
         .filter(c => (c.campo !== undefined || c.valor !== undefined) && c.exportar !== false)
-        .map(c => ({ key: c.campo !== undefined ? c.campo : c.valor, label: c.titulo || String(c.campo || '') }));
+        .map((c, i) => ({ key: 'c' + i, ref: c.campo !== undefined ? c.campo : c.valor,
+          label: c.titulo || String(c.campo || '') }));
 
       const datos = filas.map(f => {
         const fila = {};
         columnas.forEach(c => {
-          const v = valorDe(f, c.key);
+          const v = valorDe(f, c.ref);
           // Los arreglos (los faltantes de una ficha, por ejemplo) se juntan;
           // en una celda de Excel un objeto sale como "[object Object]".
           fila[c.key] = Array.isArray(v) ? v.join(', ')
@@ -798,7 +805,8 @@
       const r = await fetch('/exportar/excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ titulo: this.cfg.titulo || 'datos', columnas, filas: datos }),
+        body: JSON.stringify({ titulo: this.cfg.titulo || 'datos',
+          columnas: columnas.map(c => ({ key: c.key, label: c.label })), filas: datos }),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => null);

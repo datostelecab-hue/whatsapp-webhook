@@ -111,6 +111,8 @@ Lista → ficha → atrás, con buscador, filtros, KPIs, paginación, selección
 
 Lo que hay que saber al filtrar: `visibles()` es un **`.filter()` puro** sobre las filas tal como llegan. No ordena, y el buscador tampoco ordena por relevancia — así que **el orden lo pone la consulta**, una vez, y vale bajo cualquier filtro. → [[Conductores]]
 
+**Exportar** manda lo filtrado a `/exportar/excel` con los valores en crudo (sin el HTML de `pinta`). Cada columna viaja con una clave de texto propia (`c0`, `c1`…): hasta el 28/09/2026 la clave era el `campo` o **la función de `valor`**, y el JSON tira las funciones, así que **toda columna con `valor: f => …` salía vacía** en el Excel. Se vio en Inspección de vehículos (solo salían Matrícula y Observaciones) y afectaba igual a Selección y ETT.
+
 ## El diálogo largo cabe en la pantalla
 
 La caja se capa al **90 % del alto**, es una columna, y lo que lleva la barra de desplazamiento es el **contenido** — los botones se quedan abajo, siempre visibles.
