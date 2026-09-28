@@ -221,6 +221,10 @@ eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
      'David', 'con todo en «nombre» (apellidos delante), manda el orden de BOLT');
   eq(nombreDePila({ nombre: 'LARA VILLEN MARIA DE MAR', nombreBolt: 'Maria Del Mar Lara Villen' }),
      'Maria del Mar', 'un nombre con partícula no se corta');
+  eq(nombreDePila({ nombre: 'DEISY TUKIETH', apellidos: 'CAVADIA LOPEZ', nombreBolt: 'Deisy Yulieth Cavadia Lopez' }),
+     'Deisy Yulieth', 'con errata en la ficha, manda BOLT si empiezan igual (caso real, 28/09)');
+  eq(nombreDePila({ nombre: 'ABRAHAM MOISES', apellidos: 'DIAZ CARRASCO', nombreBolt: 'Juan Madrid' }),
+     'Abraham Moises', 'si BOLT empieza por otro nombre, la ficha');
   eq(nombreDePila({ nombre: 'MOHAMED', apellidos: 'ABOULGHAZI' }), 'Mohamed', 'un nombre simple');
   eq(nombreDePila({ nombre: 'Juan' }), 'Juan', 'sin apellidos ni BOLT, la primera palabra');
   eq(nombreDePila({}), '', 'sin nada, vacío (el saludo se queda en «¡Hola!»)');

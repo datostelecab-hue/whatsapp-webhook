@@ -69,13 +69,23 @@ const capitalizar = txt => txt.split(/\s+/).filter(Boolean).map((p, i) => {
  * TENA DAVID»): ahí la primera palabra es un apellido. El de BOLT va en el
  * orden de siempre («David Polo Tena»), así que en ese caso manda BOLT.
  *
+ * Y aun con la casilla bien, MANDA BOLT si empiezan igual (la regla de la casa:
+ * el nombre de BOLT primero). La ficha de Deisy dice «DEISY TUKIETH» y BOLT
+ * «Deisy Yulieth»: el 28/09/2026 el bot la saludó con la errata. Se cogen de
+ * BOLT tantas palabras como tenga el nombre de la ficha.
+ *
  * Y se escribe como un nombre: la mayoría viene en mayúsculas, y un saludo en
  * mayúsculas parece un grito.
  */
 function nombreDePila({ nombre, apellidos, nombreBolt } = {}) {
   const limpio = s => String(s == null ? '' : s).replace(INVISIBLES, '').replace(/\s+/g, ' ').trim();
   const n = limpio(nombre), a = limpio(apellidos), b = limpio(nombreBolt);
-  if (n && a) return capitalizar(n);
+  if (n && a) {
+    const pn = n.split(' '), pb = b ? b.split(' ') : [];
+    const llano = w => String(w || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    if (pb.length > pn.length && llano(pb[0]) === llano(pn[0])) return capitalizar(pb.slice(0, pn.length).join(' '));
+    return capitalizar(n);
+  }
   const origen = b || n;
   if (!origen) return '';
   // La primera palabra, y si sigue una partícula, lo que la acompaña:
