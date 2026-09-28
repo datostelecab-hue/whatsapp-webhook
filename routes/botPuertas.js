@@ -1,15 +1,36 @@
 const express = require('express');
 const router = express.Router();
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPJUuuWtrR-r_kV3ADry2FyTFQAvGmW94wsYO5MohqTFLOQ1YTusKOdjOjLa5ggv50/exec';
-
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const PHONE_NUMBER_ID = '1256923474160518';
 const WHATSAPP_VERSION = 'v25.0';
 const MAPON_API_KEY = process.env.MAPON_API_KEY || '';
 const fichajeBot = require('../services/fichajeBot');
+const puertas = require('../services/puertasBot');
+const lavado = require('../services/lavadoBallenoil');
+
+// ¿QUIÉN LLEVA CADA CONVERSACIÓN? (28/09/2026)
+//
+//   · Un CONDUCTOR DE ALTA: services/fichajeBot. Saludo → matrícula → su turno
+//     en ese coche, con sus botones de siempre. Todo lo suyo pasa por allí.
+//   · Alguien de la EMPRESA con el fichaje encendido: también allí (viajes).
+//   · Alguien de OFICINA con el permiso /puertas: el panel de puertas de este
+//     fichero — escribe una matrícula y abre o cierra, sin turno.
 
 const sesiones = {};
+
+// Meta REENVÍA un mensaje si no le contestamos a tiempo, y ahora un mensaje
+// puede abrir un turno o dar un código de lavado: procesarlo dos veces no es
+// inocuo. Se contesta 200 al momento y se recuerdan los ids ya vistos.
+const VISTOS_MAX = 500;
+const vistos = new Set();
+function yaVisto(id) {
+  if (!id) return false;
+  if (vistos.has(id)) return true;
+  vistos.add(id);
+  if (vistos.size > VISTOS_MAX) vistos.delete(vistos.values().next().value);
+  return false;
+}
 
 // ============================================================
 // RECIBIR MENSAJES
@@ -17,18 +38,23 @@ const sesiones = {};
 router.post('/', async (req, res) => {
   console.log('\n=== WEBHOOK RECIBIDO ===');
   console.log(JSON.stringify(req.body, null, 2));
+  res.status(200).end();
 
   try {
     const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!message) return res.status(200).end();
+    if (!message) return;
+    if (yaVisto(message.id)) {
+      console.log(`↩️ Mensaje repetido ${message.id}: ya se atendió`);
+      return;
+    }
 
     // Enrutado por número: lo que llega al número de la BODA (favor aparte) va a su
-    // propio módulo. El bot de Telecab (puertas, Ballenoil…) queda intacto.
+    // propio módulo. El bot de Telecab queda intacto.
     const phoneNumberId = req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
     const boda = require('../services/boda');
     if (phoneNumberId === boda.PHONE_NUMBER_ID) {
       await boda.manejarMensaje(message);
-      return res.status(200).end();
+      return;
     }
 
     const from = message.from;
@@ -47,21 +73,18 @@ router.post('/', async (req, res) => {
       console.log(`Texto: "${text}" de ${from}`);
       await handleText(from, text);
     }
-
   } catch (error) {
     console.error('Error:', error);
   }
-
-  res.status(200).end();
 });
 
 // ============================================================
 // TEXTO RECIBIDO
 // ============================================================
 async function handleText(phone, text) {
-  // Fichaje de turno o de viaje: solo actúa para quien lo tenga encendido en el
-  // ERP y va ANTES de la comprobación de puertas, porque alguien de la empresa
-  // puede fichar un coche sin tener el permiso de abrir puertas.
+  // Conductores y viajes de la empresa: va ANTES de la comprobación de puertas,
+  // porque es su conversación entera (y alguien de la empresa puede coger un
+  // coche sin tener el permiso de abrir puertas).
   if (await fichajeBot.manejarTexto(phone, text)) return;
 
   // ── ¿PUEDE ABRIR? ─────────────────────────────────────────────────────────
@@ -97,19 +120,13 @@ async function handleText(phone, text) {
     return;
   }
 
-  // El resto del bot habla de «conductor». Cuando quien escribe es alguien de
-  // oficina con permiso, no hay conductorId y eso está bien: el registro de la
-  // orden guardará su nombre y su número, que es lo que hace falta para saber
-  // quién abrió qué.
-  const conductor = {
-    conductorId: acceso.conductorId || null,
-    nombre: acceso.nombre,
-    activo: true,
-    esUsuario: acceso.tipo === 'usuario',
-  };
-  const nombre = conductor.nombre;
+  // Aquí llega la gente de OFICINA con el permiso de puertas (los conductores
+  // ya se quedaron en su conversación). No hay conductorId y eso está bien: el
+  // registro de la orden guardará su nombre y su número.
+  const nombre = acceso.nombre;
+  const conductorId = acceso.conductorId || null;
 
-  // Palabra clave para ver los turnos/relevos de la semana (además del botón).
+  // Palabra clave para ver los turnos (además del botón).
   if (/^(ver\s+)?(mis\s+)?turnos?$|^relevos?$/i.test(text.trim())) {
     await enviarTurnos(phone, nombre);
     return;
@@ -126,16 +143,17 @@ async function handleText(phone, text) {
   // moderna son 4 numeros y 3 letras; la antigua, provincia + 4 numeros +
   // letras. Exigir un digito basta para que ninguna palabra pase por coche.
   const matriculaRegex = /^(?=.*\d)[A-Za-z0-9]{6,8}$/;
-  
-  if (matriculaRegex.test(text)) {
-    const matricula = text.toUpperCase();
+  const posible = text.replace(/[\s.\-_]/g, '');
+
+  if (matriculaRegex.test(posible)) {
+    const matricula = posible.toUpperCase();
     console.log(`${nombre} busca matrícula: ${matricula}`);
 
     const resultado = await buscarEnMapon(matricula);
     console.log(`📋 Resultado Mapon:`, JSON.stringify(resultado));
 
     if (!resultado || !resultado.encontrado) {
-      await sendText(phone, `❌ Matrícula "${matricula}" no encontrada en Mapon.\n\nIndica otra matrícula (ej: 1234ABC):`);
+      await sendText(phone, `❌ No encuentro la matrícula "${matricula}". Escríbela otra vez, todo junto (ejemplo: 1234ABC).`);
       return;
     }
 
@@ -143,7 +161,7 @@ async function handleText(phone, text) {
       nombre,
       // La ficha viaja en la sesión: es lo que permite que el registro de
       // puertas diga QUIÉN abrió y no solo desde qué número.
-      conductorId: conductor.conductorId || null,
+      conductorId,
       matricula: resultado.matricula,
       unitId: resultado.unit_id,
       vehiculo: resultado.vehiculo,
@@ -152,13 +170,11 @@ async function handleText(phone, text) {
 
     await sendButtonsEstado(phone, nombre, resultado.matricula, resultado.vehiculo, 'cerrada');
 
+  } else if (sesiones[phone]) {
+    const s = sesiones[phone];
+    await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, s.estado || 'cerrada');
   } else {
-    if (sesiones[phone]) {
-      const s = sesiones[phone];
-      await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, s.estado || 'cerrada');
-    } else {
-      await sendText(phone, `👋 Hola ${nombre}, indica la matrícula del vehículo que quieres abrir/cerrar.\n\nEjemplo: 1888LTJ`);
-    }
+    await sendText(phone, `👋 Hola ${nombre}, escribe la matrícula del vehículo que quieres abrir o cerrar, todo junto.\n\nEjemplo: 1888LTJ`);
   }
 }
 
@@ -166,40 +182,29 @@ async function handleText(phone, text) {
 // BOTÓN PULSADO
 // ============================================================
 async function handleButton(phone, buttonId) {
-  // Botones del fichaje: no dependen de tener sesión de puertas.
+  // Los del conductor y los del viaje: no dependen de la sesión de puertas.
   if (await fichajeBot.manejarBoton(phone, buttonId)) return;
 
   const sesion = sesiones[phone];
 
+  if (buttonId === 'ver_turnos') {
+    await enviarTurnos(phone, sesion && sesion.nombre);
+    if (sesion) await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
+    return;
+  }
+
   if (!sesion) {
-    await sendText(phone, '⚠️ Primero indica una matrícula (ej: 1888LTJ).');
+    await sendText(phone, '⚠️ Primero escribe una matrícula (ej: 1888LTJ).');
     return;
   }
 
   if (buttonId === 'abrir_puertas' || buttonId === 'cerrar_puertas') {
-    // Las dos ramas eran la misma escrita dos veces. Ahora una sola, que además
-    // es donde se apunta el registro: si estuviera duplicado, tarde o temprano
-    // una de las dos copias se quedaría sin anotar.
     const abrir = buttonId === 'abrir_puertas';
-    const comando = abrir ? 'open_doors' : 'close_doors';
-    console.log(`${abrir ? '🔓 Abriendo' : '🔒 Cerrando'}: ${sesion.vehiculo} (${sesion.matricula})`);
-
-    const t0 = Date.now();
-    const result = await callAppsScript('ejecutar_comando', {
-      matricula: sesion.matricula, comando
+    const r = await puertas.ejecutar({
+      telefono: phone, conductorId: sesion.conductorId, nombre: sesion.nombre,
+      matricula: sesion.matricula, unitId: sesion.unitId, abrir,
     });
-    const ok = result.status === 'ok';
-
-    // Se apunta SIEMPRE, salga bien o mal, y sin esperar a que termine: que el
-    // registro falle no puede dejar a nadie sin abrir el coche.
-    require('../services/repo/puertas').registrar({
-      telefono: phone, conductorId: sesion.conductorId, conductor: sesion.nombre,
-      matricula: sesion.matricula, unitId: sesion.unitId, comando, ok,
-      respuesta: ok ? null : (result.msg || JSON.stringify(result).slice(0, 500)),
-      ms: Date.now() - t0,
-    });
-
-    if (ok) {
+    if (r.ok) {
       sesion.estado = abrir ? 'abierta' : 'cerrada';
       await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado);
     } else {
@@ -208,63 +213,29 @@ async function handleButton(phone, buttonId) {
 
   } else if (buttonId === 'cambiar_matricula') {
     delete sesiones[phone];
-    await sendText(phone, '🔄 Indica la nueva matrícula (ej: 1888LTJ):');
+    await sendText(phone, '🔄 Escribe la nueva matrícula (ej: 1888LTJ):');
 
   } else if (buttonId === 'codigo_lavado') {
-    // LOS CÓDIGOS DE LAVADO YA NO SE REPARTEN (24/09/2026): ya no se trabaja con
-    // Ballenoil. El botón puede seguir en mensajes viejos del chat: se le dice,
-    // y se le deja el menú.
-    await sendText(phone, 'ℹ️ Los códigos de lavado ya no se reparten por aquí.');
-    await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
-
-  } else if (buttonId === 'ver_turnos') {
-    console.log(`📅 Turnos solicitados por ${phone}`);
-    await enviarTurnos(phone, sesion.nombre);
+    // Los códigos de lavado vuelven hasta el 15/10/2026 (services/lavadoBallenoil).
+    if (!lavado.visible()) {
+      await sendText(phone, 'ℹ️ Los códigos de lavado ya no se reparten por aquí.');
+    } else {
+      let r = null;
+      try { r = await lavado.solicitar({ telefono: phone, conductorId: sesion.conductorId, idBolt: sesion.nombre }); }
+      catch (e) { console.error('❌ [Lavado] solicitar:', e.message); }
+      await sendText(phone, lavado.mensaje(r));
+    }
     await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado || 'cerrada');
   }
 }
 
-// Envía al conductor sus turnos/relevos de la semana (texto libre). El reto es volver
-// del TELÉFONO a la persona: se prueban todas las identidades (agenda del tablero,
-// DB_CONDUCTORES, padrón de BOLT, sesión) comparadas con normClave — antes solo se
-// probaba el padrón con igualdad literal y fallaba con tildes, apellidos cambiados
-// de orden o teléfonos que no estuvieran en BOLT.
+// Sus turnos de hoy a 7 días (o el mensaje del evento, si hay uno en marcha).
 async function enviarTurnos(phone, nombreSesion) {
   try {
-    const cob = require('../modules/Planificacion/cobertura.service');
-    const { mensajeTurnos, resolver, mensajeSiHayEvento } = require('../modules/Planificacion/turnos.service');
-
-    // MODO EVENTOS: durante un evento, sus turnos NO son los suyos. Se le manda
-    // otro mensaje —los días del apaño, a quién entrega el coche al terminar y
-    // su semana normal siguiente— porque recibir el cuadro de siempre y luego
-    // encontrarse otro coche es la llamada garantizada del sábado.
-    const ev = await mensajeSiHayEvento({ phone, nombreSesion }).catch(e => {
-      console.error('⚠️ [Turnos] mensaje de evento:', e.message); return null;
-    });
-    if (ev) {
-      console.log(`📅 [Turnos] …${String(phone).slice(-4)} → turnos de evento "${ev.evento.nombre}"`);
-      await sendText(phone, ev.texto);
-      return;
-    }
-
-    // La semana que se le anunció al mandar el aviso (0 = actual). Si no hay apunte, la actual.
-    const offset = require('../modules/Planificacion/avisoTurnos.service').offsetDe(phone);
-    const { porConductor } = await cob.datos(offset);
-    const { entrada, como, quien } = await resolver(porConductor, { phone, nombreSesion });
-
-    if (entrada) {
-      console.log(`📅 [Turnos] …${String(phone).slice(-4)} → ${entrada.nombre} (por ${como}, semana +${offset})`);
-      await sendText(phone, mensajeTurnos(entrada));
-      return;
-    }
-    // Identificado pero SIN turnos: no es un fallo, es que libra. Se dice así.
-    if (como === 'sin-turnos') {
-      console.log(`📅 [Turnos] …${String(phone).slice(-4)} → ${quien || 'conocido'}: sin turnos (semana +${offset})`);
-      await sendText(phone, `👋 Hola${quien ? ' ' + quien : ''}, esta semana no tienes ningún turno asignado. Si crees que es un error, avisa a la oficina.`);
-      return;
-    }
-    console.warn(`⚠️ [Turnos] Sin identificar …${String(phone).slice(-4)} (semana +${offset})`);
-    await sendText(phone, mensajeTurnos(null));
+    const { textoTurnos } = require('../modules/Planificacion/turnos.service');
+    const r = await textoTurnos({ phone, nombreSesion });
+    console.log(`📅 [Turnos] …${String(phone).slice(-4)} → ${r.nombre || '?'} (por ${r.como})`);
+    await sendText(phone, r.texto);
   } catch (e) {
     console.error('❌ [Turnos] enviarTurnos:', e.message);
     await sendText(phone, 'No pude cargar tus turnos ahora mismo. Inténtalo en un momento, por favor.');
@@ -290,91 +261,41 @@ async function handleTemplateButton(phone, label) {
   }
 }
 
+// El panel de puertas de la gente de OFICINA (los conductores tienen el suyo).
 async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
   const puertaAbierta = estado === 'abierta';
   const emoji = puertaAbierta ? '🔓' : '🔒';
   const textoEstado = puertaAbierta ? 'PUERTA ABIERTA' : 'PUERTA CERRADA';
 
-  const url = `https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`;
-  // El botón del fichaje, si esa persona lo tiene encendido. Con la matrícula ya
-  // elegida EMPIEZA el turno o el viaje en este coche: «indica la matrícula →
-  // inicia». Si falla, el panel de puertas sale igual, sin él.
-  const botonFichaje = await fichajeBot.botonDeTurno(to, matricula).catch(e => {
-    console.error('⚠️ [Puertas] botón del fichaje:', e.message);
+  // El botón del viaje, si esa persona lo tiene encendido. Con la matrícula ya
+  // elegida EMPIEZA el viaje en este coche: «indica la matrícula → inicia». Si
+  // falla, el panel de puertas sale igual, sin él.
+  const botonViaje = await fichajeBot.botonDeTurno(to, matricula).catch(e => {
+    console.error('⚠️ [Puertas] botón del viaje:', e.message);
     return null;
   });
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: to,
-    type: 'interactive',
-    interactive: {
-      type: 'button',
-      body: {
-        text: `🚗 ${nombre}\n🚘 ${vehiculo} (${matricula})\n${emoji} ${textoEstado}`
-      },
-      action: {
-        // El tercer botón solo sale para quien tenga encendido el fichaje: así
-        // la misma persona pasa de abrir el coche a empezar su turno o su viaje
-        // sin cambiar de conversación, y para los demás el panel queda como estaba.
-        buttons: [
-          {
-            type: 'reply',
-            reply: { id: 'abrir_puertas', title: '🔓 Abrir' }
-          },
-          {
-            type: 'reply',
-            reply: { id: 'cerrar_puertas', title: '🔒 Cerrar' }
-          },
-          ...(botonFichaje ? [botonFichaje] : [])
-        ]
-      }
-    }
-  };
-
-  await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
+  await enviarInteractivo(to, `🚗 ${nombre}\n🚘 ${vehiculo} (${matricula})\n${emoji} ${textoEstado}`, [
+    { type: 'reply', reply: { id: 'abrir_puertas', title: '🔓 Abrir' } },
+    { type: 'reply', reply: { id: 'cerrar_puertas', title: '🔒 Cerrar' } },
+    ...(botonViaje ? [botonViaje] : []),
+  ]);
   // Segundo mensaje con las opciones extra (WhatsApp permite hasta 3 botones por mensaje).
-  const payload2 = {
-    messaging_product: 'whatsapp',
-    to: to,
-    type: 'interactive',
-    interactive: {
-      type: 'button',
-      body: {
-        text: `🔧 Otras opciones`
-      },
-      action: {
-        buttons: [
-          {
-            type: 'reply',
-            reply: { id: 'ver_turnos', title: '📅 Ver mis turnos' }
-          },
-          {
-            type: 'reply',
-            reply: { id: 'cambiar_matricula', title: '🔄 Cambiar matrícula' }
-          }
-        ]
-      }
-    }
-  };
-
-  await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload2)
-  });
-
+  await enviarInteractivo(to, '🔧 Otras opciones', [
+    ...(lavado.visible() ? [{ type: 'reply', reply: { id: 'codigo_lavado', title: '🧽 Código de lavado' } }] : []),
+    { type: 'reply', reply: { id: 'cambiar_matricula', title: '🔄 Cambiar matrícula' } },
+  ]);
   console.log(`📱 Botones enviados: ${textoEstado}`);
+}
+
+async function enviarInteractivo(to, texto, buttons) {
+  await fetch(`https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp', to, type: 'interactive',
+      interactive: { type: 'button', body: { text: texto }, action: { buttons } },
+    }),
+  });
 }
 
 // ============================================================
@@ -398,42 +319,20 @@ async function sendText(to, text) {
 }
 
 // ============================================================
-// LLAMAR A APPS SCRIPT
-// ============================================================
-async function callAppsScript(accion, params = {}) {
-  const url = new URL(APPS_SCRIPT_URL);
-  url.searchParams.set('accion', accion);
-  Object.keys(params).forEach(key => url.searchParams.set(key, params[key]));
-
-  console.log(`📞 Apps Script: ${accion}`, params);
-  const response = await fetch(url.toString());
-  const texto = await response.text();
-  try {
-    return JSON.parse(texto);
-  } catch (_) {
-    // El Apps Script devolvió HTML (normalmente una excepción no controlada dentro
-    // de la acción → Google sirve su página de error). No reventamos: lo registramos
-    // y devolvemos un error manejable para que el conductor reciba un aviso claro.
-    console.error(`❌ Apps Script "${accion}" no devolvió JSON (HTTP ${response.status}). Inicio de la respuesta: ${texto.slice(0, 300).replace(/\s+/g, ' ')}`);
-    return { status: 'error', msg: 'El servicio de comandos no respondió (revisa el Apps Script)', _sinJson: true };
-  }
-}
-
-// ============================================================
 // BUSCAR MATRÍCULA EN MAPON DIRECTAMENTE
 // ============================================================
 async function buscarEnMapon(matricula) {
   const url = `https://www.mapon.com/api/v1/unit/list.json?key=${MAPON_API_KEY}`;
-  
+
   try {
     const response = await fetch(url);
     const json = await response.json();
     const units = json.data.units;
     console.log(`📊 Total unidades recibidas: ${units.length}`);
-    
+
     const matriculaLimpia = matricula.replace(/\s/g, '').toUpperCase();
     console.log(`🔍 Buscando "${matriculaLimpia}" entre ${units.length} unidades...`);
-    
+
     // 1. Búsqueda exacta sin espacios
     for (const u of units) {
       const numLimpio = (u.number || '').replace(/\s/g, '').toUpperCase();
@@ -447,7 +346,7 @@ async function buscarEnMapon(matricula) {
         };
       }
     }
-    
+
     // 2. Búsqueda parcial
     for (const u of units) {
       const numLimpio = (u.number || '').replace(/\s/g, '').toUpperCase();
@@ -461,7 +360,7 @@ async function buscarEnMapon(matricula) {
         };
       }
     }
-    
+
     // 3. Búsqueda por label
     for (const u of units) {
       const labelLimpio = (u.label || '').replace(/\s/g, '').toUpperCase();
@@ -475,16 +374,16 @@ async function buscarEnMapon(matricula) {
         };
       }
     }
-    
+
     const similares = units
       .filter(u => (u.number || '').replace(/\s/g, '').toUpperCase().includes(matriculaLimpia.substring(0, 4)))
       .slice(0, 5)
       .map(u => u.number);
-    
+
     console.log(`❌ No encontrado. Similares: ${similares.join(', ')}`);
-    
+
     return { encontrado: false, similares };
-    
+
   } catch (error) {
     console.error('Error buscando en Mapon:', error);
     return { encontrado: false, error: error.message };

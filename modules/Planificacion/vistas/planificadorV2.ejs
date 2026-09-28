@@ -43,12 +43,13 @@
                        hover:border-telecab-gold/40 text-sm transition">
           <i class="fa-solid fa-bolt"></i><span id="btn-evento-txt">Modo eventos</span>
         </button>
-        <%# FICHAJE (db/148): quién ficha su turno por WhatsApp. Se enciende aquí
-            persona a persona; cuando sea obligatorio para todos, se quita. %>
+        <%# TURNOS POR WHATSAPP Y BLOQUEO DE MOTOR (db/148). Desde el 28/09/2026 todo
+            conductor abre turno por WhatsApp; aquí se enciende, persona a persona,
+            a quién se le bloquea el motor al terminar. %>
         <button id="btn-fichaje" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border
                        hover:border-telecab-gold/40 text-sm transition"
-                title="Quién ficha su turno por WhatsApp: al iniciar se le suelta el motor del coche y al terminar se bloquea">
-          <i class="fa-solid fa-key"></i><span>Fichaje</span><span id="btn-fichaje-n" class="text-xs text-telecab-muted"></span>
+                title="Turnos abiertos por WhatsApp y a quién se le bloquea el motor al terminar">
+          <i class="fa-solid fa-key"></i><span>Bloqueo de motor</span><span id="btn-fichaje-n" class="text-xs text-telecab-muted"></span>
         </button>
       <% } %>
     </div>
@@ -1683,11 +1684,11 @@
   }
 
   // ── Enviar los turnos del CUADRANTE por WhatsApp (un botón por cuadrante) ──
-  // Avisa a toda la gente colocada en esos coches de sus turnos de la semana que
-  // se está MIRANDO; el detalle (coche, de quién recibe el lunes —incluido el que
-  // lo dejó el domingo pasado— y a quién entrega) lo sirve el bot cuando el
-  // conductor pulsa su botón. Reusa la maquinaria de Cobertura: manda con ritmo
-  // para no pasarse de los límites de Meta y recuerda qué semana verá cada uno.
+  // Avisa a toda la gente colocada en esos coches que trabaja en la semana que se
+  // está MIRANDO (en la actual, de hoy a 7 días); el detalle (coche, de quién
+  // recibe y a quién entrega) lo sirve el bot cuando el conductor pulsa su
+  // botón, y son sus turnos de ESE día a 7 días (28/09/2026). Reusa la
+  // maquinaria de Cobertura: manda con ritmo para no pasarse de los límites de Meta.
   const lunesDeIso = iso => sumarDias(iso, -((new Date(iso + 'T00:00:00').getDay() + 6) % 7));
   async function enviarTurnosCuadrante(nombre, lista, btn) {
     const ids = [...new Set(lista.flatMap(c => (c.personas || []).filter(p => p && p.id).map(p => String(p.id))))];
@@ -1698,7 +1699,7 @@
     const sinTel = ids.filter(id => !((porId.get(id) || {}).telefono)).length;
     const ok = await Dialogo.confirmar({
       titulo: `Enviar turnos · ${nombre}`, tono: 'pregunta', si: 'Enviar', no: 'Cancelar',
-      html: `<p class="text-sm">Se avisa por WhatsApp a la gente de ${lista.length === 1 ? 'este coche' : `estos ${lista.length} coches`} — ${ids.length} persona(s)${sinTel ? `, ${sinTel} sin teléfono` : ''} — de sus turnos de la semana del <b>${isoAes(T.fechas[0])}</b>${off === 0 ? ' (la actual)' : ''}: su coche de cada día, de quién lo reciben y a quién se lo entregan. Solo a quienes trabajan esa semana.</p>`,
+      html: `<p class="text-sm">Se avisa por WhatsApp a la gente de ${lista.length === 1 ? 'este coche' : `estos ${lista.length} coches`} — ${ids.length} persona(s)${sinTel ? `, ${sinTel} sin teléfono` : ''} — de que tienen sus turnos listos. ${off === 0 ? 'Solo a quienes trabajan de hoy a 7 días.' : `Solo a quienes trabajan la semana del <b>${isoAes(T.fechas[0])}</b>.`}</p><p class="text-sm mt-2 text-telecab-muted">Al pulsar «Ver mis turnos», cada uno ve los suyos de ese día a 7 días: su coche, de quién lo recibe y a quién se lo entrega.</p>`,
     });
     if (!ok) return;
     const previo = btn.innerHTML;
@@ -2057,14 +2058,14 @@
 
   // ══════════ FICHAJE (db/148) ══════════
   //
-  // Quién ficha su turno por WhatsApp: al iniciar se le suelta el motor del coche
-  // y al terminar se bloquea. Se enciende PERSONA A PERSONA, para empezar con
-  // unos conductores concretos; cuando sea obligatorio para todos, esto se quita.
+  // Desde el 28/09/2026 TODO conductor de alta abre su turno por WhatsApp al
+  // escribir la matrícula (se le suelta el motor). Lo que se enciende aquí,
+  // PERSONA A PERSONA, es que al terminar se le BLOQUEE el motor.
   //
   // La regla que hay que tener delante, y por eso el panel la cuenta coche a
-  // coche: el motor se bloquea por COCHE y el fichaje es por PERSONA. Si el
-  // compañero de alguien no ficha, al terminar el motor SE QUEDA LIBRE —si no,
-  // el compañero se encontraría el coche cortado y sin forma de arrancarlo—.
+  // coche: el motor se bloquea por COCHE y el interruptor es por PERSONA. Si el
+  // compañero de alguien no lo tiene, al terminar el motor SE QUEDA LIBRE —si
+  // no, el compañero se encontraría el coche cortado sin saber por qué—.
 
   let FJ = null;        // lo que manda /api/fichaje
   let MOT = null;       // los motores cortados (va aparte: pregunta a Mapon)
@@ -2072,7 +2073,7 @@
   let fjBusca = '';
 
   const llaveFichaje = persona => (persona && persona.fichaCoche
-    ? ' <i class="fa-solid fa-key text-[10px] text-telecab-gold" title="Ficha su turno por WhatsApp: al iniciar se le suelta el motor y al terminar se bloquea"></i>'
+    ? ' <i class="fa-solid fa-key text-[10px] text-telecab-gold" title="Bloqueo de motor encendido: al terminar su turno se le bloquea el coche"></i>'
     : '');
 
   const fichan = () => (T && T.conductores ? T.conductores.filter(c => c.fichaCoche) : []);
@@ -2136,9 +2137,9 @@
   function filaConductor(c) {
     const sin = c.fichaCoche ? companerosSinFichaje(c) : [];
     const aviso = sin.length
-      ? `<span class="block text-[11px] text-telecab-warn" title="El motor se bloquea por coche. Mientras quien comparte coche con él no fiche, al terminar su turno el motor se queda libre.">
+      ? `<span class="block text-[11px] text-telecab-warn" title="El motor se bloquea por coche. Mientras quien comparte coche con él no tenga el bloqueo, al terminar su turno el motor se queda libre.">
            <i class="fa-solid fa-lock-open text-[9px]"></i> ${esc(sin.map(x => x.matricula).filter((v, i, a) => a.indexOf(v) === i).join(', '))}
-           también lo lleva ${esc(sin.map(x => x.nombre).join(', '))}, que no ficha: el motor se quedará libre</span>`
+           también lo lleva ${esc(sin.map(x => x.nombre).join(', '))}, sin bloqueo: el motor se quedará libre</span>`
       : '';
     return `
       <label class="flex items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-telecab-card2/60 cursor-pointer">
@@ -2148,7 +2149,7 @@
           <span class="block text-sm font-medium truncate">${esc(c.nombre)}</span>
           <span class="block text-[11px] text-telecab-muted">${c.telefono
             ? `<span class="font-mono tabular-nums">${esc(c.telefono)}</span>`
-            : '<span class="text-telecab-red">sin teléfono: no podrá fichar</span>'}${c.turno ? ' · ' + esc(c.turno) : ''}</span>
+            : '<span class="text-telecab-red">sin teléfono: no podrá usar el bot</span>'}${c.turno ? ' · ' + esc(c.turno) : ''}</span>
           ${aviso}
         </span>
       </label>`;
@@ -2176,25 +2177,25 @@
       <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 space-y-4">
         <div class="flex flex-wrap items-start gap-3">
           <div class="flex-1 min-w-[240px]">
-            <div class="font-semibold flex items-center gap-2"><i class="fa-solid fa-key text-telecab-gold"></i> Fichaje por WhatsApp</div>
+            <div class="font-semibold flex items-center gap-2"><i class="fa-solid fa-key text-telecab-gold"></i> Turnos por WhatsApp y bloqueo de motor</div>
             <p class="text-xs text-telecab-muted mt-0.5 max-w-3xl">
-              Quien lo tiene encendido escribe <b class="text-telecab-text">turno</b> al WhatsApp de la empresa: al iniciar se le suelta
-              el motor y al terminar se bloquea. En el cambio de turno pulsa <b class="text-telecab-text">Voy al relevo</b> justo antes
-              de arrancar hacia donde entrega el coche. Un coche solo se bloquea si <b class="text-telecab-text">todos</b> los que lo
-              llevan hoy y mañana fichan.</p>
+              Todo conductor de alta abre su turno escribiendo la <b class="text-telecab-text">matrícula</b> al WhatsApp de la
+              empresa: se le suelta el motor. En el cambio de turno pulsa <b class="text-telecab-text">Entregar coche</b> justo antes
+              de salir hacia donde entrega el coche. Al terminar, el motor solo se bloquea a quien está marcado aquí, y solo si
+              <b class="text-telecab-text">todos</b> los que llevan ese coche hoy y mañana lo están.</p>
           </div>
           ${FJ.bloqueoActivo
             ? '<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-500" title="FICHAJE_BLOQUEO_MOTOR está a 1 en el servidor">Corte de motor encendido</span>'
-            : '<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-warn/15 text-telecab-warn" title="FICHAJE_BLOQUEO_MOTOR no está a 1 en Render: se ficha y se apuntan los turnos, pero no se bloquea ningún motor">Corte de motor apagado en el servidor</span>'}
+            : '<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-warn/15 text-telecab-warn" title="FICHAJE_BLOQUEO_MOTOR no está a 1 en Render: se apuntan los turnos, pero no se bloquea ningún motor">Corte de motor apagado en el servidor</span>'}
           <button data-fj-cerrar class="w-8 h-8 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-text" title="Plegar"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
         <div class="grid lg:grid-cols-3 gap-4">
           <section class="min-w-0">
-            <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">Conductores que fichan · ${activos.length}</h3>
+            <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">Con bloqueo de motor · ${activos.length}</h3>
             <div class="space-y-0.5 max-h-80 overflow-y-auto">${activos.length ? activos.map(filaConductor).join('')
               : '<p class="text-xs text-telecab-muted px-2 py-3">Nadie todavía. Búscalo abajo y márcalo.</p>'}</div>
-            <input data-fj-busca value="${esc(fjBusca)}" placeholder="Buscar a alguien para activarle el fichaje…"
+            <input data-fj-busca value="${esc(fjBusca)}" placeholder="Buscar a alguien para activarle el bloqueo…"
                    class="mt-2 w-full px-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm">
             ${candidatos.length ? `<div class="mt-1 space-y-0.5">${candidatos.map(filaConductor).join('')}</div>`
               : (q.length >= 2 ? '<p class="text-xs text-telecab-muted px-2 py-2">Nadie más con ese nombre en la plantilla.</p>' : '')}
@@ -2206,7 +2207,7 @@
               <li class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 text-sm">
                 <span class="font-medium">${esc(a.nombre)}</span>
                 <span class="text-telecab-muted"> · ${a.tipo === 'viaje' ? 'viaje' : 'turno'} en <b class="text-telecab-text">${esc(a.matricula)}</b> desde el ${esc(a.desde)}</span>
-                ${a.relevo ? `<span class="block text-[11px] text-sky-400"><i class="fa-solid fa-rotate text-[9px]"></i> de camino al relevo desde el ${esc(a.relevo)}</span>` : ''}
+                ${a.relevo ? `<span class="block text-[11px] text-sky-400"><i class="fa-solid fa-rotate text-[9px]"></i> salió a entregar el coche el ${esc(a.relevo)}</span>` : ''}
               </li>`).join('')}</ul>`
               : '<p class="text-xs text-telecab-muted px-2 py-3">Nadie tiene un turno ni un viaje abierto.</p>'}
             <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mt-4 mb-1.5">Gente de la empresa · ${empresa.length}</h3>
@@ -2238,8 +2239,8 @@
     const abierto = (FJ && FJ.abiertos || []).find(a => String(a.conductorId) === String(id));
     if (!activo && abierto) {
       const ok = await Dialogo.confirmar({
-        titulo: 'Apagar el fichaje de ' + c.nombre, tono: 'pregunta', si: 'Apagar', no: 'Cancelar',
-        texto: `Tiene un turno abierto en ${abierto.matricula}. Podrá terminarlo igual; lo que ya no podrá es empezar otro.`,
+        titulo: 'Apagar el bloqueo de ' + c.nombre, tono: 'pregunta', si: 'Apagar', no: 'Cancelar',
+        texto: `Tiene un turno abierto en ${abierto.matricula}. Si lo apagas, al terminarlo el motor se quedará libre.`,
       });
       if (!ok) { chk.checked = true; return; }
     }
@@ -2247,7 +2248,7 @@
       await fjPost('/planificador-v2/api/fichaje/conductor', { conductorId: id, activo });
       c.fichaCoche = activo;
       if (activo) fjBusca = '';
-      Dialogo.hecho(activo ? `${c.nombre} ya ficha por WhatsApp` : `${c.nombre} ya no ficha`);
+      Dialogo.hecho(activo ? `${c.nombre}: bloqueo de motor encendido` : `${c.nombre}: bloqueo de motor apagado`);
       pintarContadorFichaje();
       pintar();
       await cargarFichaje();
@@ -2275,7 +2276,7 @@
                 title="Suelta el motor de este coche. Queda escrito quién y por qué.">Soltar</button>
       </li>`).join('')}</ul>`;
     caja.innerHTML = cab + cuerpo +
-      '<p class="text-[11px] text-telecab-muted px-2 mt-2">Si alguien se encuentra su coche cortado y no ficha, se suelta desde aquí.</p>';
+      '<p class="text-[11px] text-telecab-muted px-2 mt-2">Si alguien se encuentra su coche cortado y no puede usar el bot, se suelta desde aquí.</p>';
     caja.querySelector('[data-fj-recargar]').addEventListener('click', cargarMotores);
     caja.querySelectorAll('[data-fj-soltar]').forEach(b => b.addEventListener('click', () => soltarMotor(b.dataset.fjSoltar)));
   }
@@ -2283,8 +2284,8 @@
   async function soltarMotor(matricula) {
     const v = await Dialogo.formulario(`Soltar el motor de ${matricula}`, [
       { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true,
-        marcador: 'Ej.: Oswaldo no ficha y tiene que salir',
-        ayuda: 'Queda escrito con tu nombre: soltar un coche a mano deja que lo use alguien sin fichar.' },
+        marcador: 'Ej.: Oswaldo no puede escribir al bot y tiene que salir',
+        ayuda: 'Queda escrito con tu nombre: soltar un coche a mano deja que lo use alguien sin abrir turno.' },
     ], { textoBoton: 'Soltar el motor' });
     if (!v) return;
     try {

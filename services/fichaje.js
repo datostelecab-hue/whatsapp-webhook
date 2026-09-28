@@ -16,11 +16,16 @@
  *     comprueba si Mapon atribuyó los trayectos (route/list include=driver_id): así
  *     sabremos de verdad si ese enlace queda SELLADO en el histórico o no.
  *
- * QUIÉN FICHA (desde el 24/09/2026): se enciende PERSONA A PERSONA desde el ERP —a los
- * conductores en el planificador, a la gente de la empresa en /usuarios— y no con una
- * lista de teléfonos en una variable de entorno. Un conductor hace TURNOS; alguien de la
- * empresa hace VIAJES (coge un coche para algo y lo devuelve). Para quien no lo tenga
- * encendido el bot se comporta como siempre.
+ * QUIÉN (desde el 28/09/2026): TODO CONDUCTOR DE ALTA abre su turno al escribir la
+ * matrícula en el bot —es la puerta de entrada al coche—. Lo que se sigue encendiendo
+ * persona a persona (el botón «Fichaje» del planificador, `conductor.ficha_coche`) es
+ * el BLOQUEO DE MOTOR al terminar: un coche solo se corta si todos los que lo llevan
+ * lo tienen encendido. La gente de la empresa hace VIAJES (coge un coche para algo y
+ * lo devuelve) y esos siguen encendiéndose uno a uno en /usuarios.
+ *
+ * OJO CON LAS PALABRAS (28/09/2026): al conductor NO se le habla de «fichar» ni de
+ * «fichaje». Esto no es el registro de jornada —ese es /fichaje— sino quién tiene
+ * qué coche y cuántos km hace; llamarlo igual invitaría a tomarlo por lo otro.
  */
 
 const mapon = require('./mapon');
@@ -239,10 +244,14 @@ const olvidar = telefono => (telefono ? _cache.delete(tel9(telefono)) : _cache.c
  * sus números vigentes. De baja en la empresa no ficha.
  *
  *   · Usuario activo con el fichaje encendido → hace viajes.
- *   · Si no, conductor con el fichaje encendido y DE ALTA → hace turnos.
+ *   · Si no, conductor DE ALTA → hace turnos. Desde el 28/09/2026 todos: el
+ *     interruptor del planificador ya solo dice si su coche se BLOQUEA al
+ *     terminar (`motor`).
  *   · Si no, pero tiene un turno o un viaje SIN CERRAR, participa igual: a quien
- *     le apagan el fichaje a mitad de turno hay que dejarle terminarlo. Si no,
- *     el coche se quedaría asignado y el turno abierto hasta el cierre solo.
+ *     causa baja a mitad de turno hay que dejarle terminarlo. Si no, el coche
+ *     se quedaría asignado y el turno abierto hasta el cierre solo.
+ *
+ * `pila` es su nombre de pila, para saludarle: «Hola, David».
  *
  * Si la base falla se contesta null: el mensaje sigue al bot de puertas, que es
  * lo que pasaba antes de que esto existiera.
@@ -257,15 +266,16 @@ async function participa(telefono) {
     const p = await repo.personaPorTelefono(t9);
     const con = p.conductor, usu = p.usuario;
     if (usu && usu.activo && usu.vale) {
-      valor = { tipo: 'viaje', nombre: usu.nombre, conductorId: null, usuarioId: usu.id };
-    } else if (con && con.activo && con.vale) {
-      valor = { tipo: 'turno', nombre: con.nombre, conductorId: con.id, usuarioId: null };
+      valor = { tipo: 'viaje', nombre: usu.nombre, pila: usu.pila, conductorId: null, usuarioId: usu.id, motor: true };
+    } else if (con && con.vale) {
+      valor = { tipo: 'turno', nombre: con.nombre, pila: con.pila, conductorId: con.id, usuarioId: null, motor: con.activo };
     } else if (p.abierto) {
       // Con algo abierto: el tipo lo dice lo que tenga abierto.
       const t = await repo.abiertoDe(t9);
       if (t) {
-        valor = { tipo: t.tipo, nombre: t.nombre || (con && con.nombre) || (usu && usu.nombre) || '',
-          conductorId: t.conductorId, usuarioId: t.usuarioId, soloCerrar: true };
+        const quien = con || usu || {};
+        valor = { tipo: t.tipo, nombre: t.nombre || quien.nombre || '', pila: quien.pila || '',
+          conductorId: t.conductorId, usuarioId: t.usuarioId, soloCerrar: true, motor: !!quien.activo };
       }
     }
   } catch (e) {
@@ -445,14 +455,14 @@ async function cerrarOlvidados() {
     let mot = { hecho: false, motivo: 'no intentado' };
     // Y solo si se puede: si lo lleva luego alguien que no ficha, no se toca.
     const dec = await decidirBloqueo(t);
-    if (!dec.bloquear) mot = { hecho: false, motivo: 'lo lleva alguien que aún no ficha' };
+    if (!dec.bloquear) mot = { hecho: false, motivo: 'lo lleva alguien sin el bloqueo encendido', sinControl: !!dec.sinControl };
     else {
       try { mot = await bloquearMotor(t.unitId); } catch (e) { mot = { hecho: false, motivo: e.message }; }
     }
     t.fin = t.inicio + MAX_HORAS_TURNO * 3600;
     t.estado = 'auto-cerrado';
-    t.notas = `Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar` +
-      (BLOQUEO_ACTIVO && !mot.hecho ? ` · motor NO bloqueado: ${mot.motivo}` : '');
+    t.notas = `${t.notas ? t.notas + ' · ' : ''}Cerrado solo tras ${MAX_HORAS_TURNO} h sin terminar` +
+      (BLOQUEO_ACTIVO && !mot.hecho && !mot.sinControl ? ` · motor NO bloqueado: ${mot.motivo}` : '');
     await repo.actualizar(t);
     console.log(`⏱️ [FICHAJE] Turno de ${t.nombre} (${t.matricula}) auto-cerrado`);
   }
@@ -466,15 +476,23 @@ async function cerrarOlvidados() {
  * que lo coge después todavía no ficha, se encuentra el coche cortado y sin
  * forma de arrancarlo.
  *
- *   · TURNO de un conductor: solo se bloquea si TODOS los que llevan ese coche
- *     hoy o mañana fichan. Si no, se queda libre y se le dice por qué.
+ *   · TURNO de un conductor: solo se bloquea si él tiene el bloqueo encendido
+ *     y TODOS los que llevan ese coche hoy o mañana también. Si no, se queda
+ *     libre. Desde el 28/09/2026 todo conductor abre turno, pero el bloqueo se
+ *     sigue encendiendo persona a persona (`sinControl` = él no lo tiene).
  *   · VIAJE de alguien de la empresa: se bloquea siempre, que es lo que se
- *     pidió; pero si lo lleva alguien que no ficha se le avisa con su nombre,
- *     para que sepa que Tráfico tendrá que soltárselo.
+ *     pidió; pero si lo lleva alguien sin el bloqueo se le avisa con su
+ *     nombre, para que sepa que Tráfico tendrá que soltárselo.
  *
- * Devuelve { bloquear, faltan: [nombres] }.
+ * Devuelve { bloquear, faltan: [nombres], sinControl }.
  */
 async function decidirBloqueo(t) {
+  if (t.tipo === 'turno') {
+    let suyo = false;
+    try { suyo = await repo.controlMotorDe(t.conductorId); }
+    catch (e) { console.error('⚠️ [FICHAJE] no se pudo mirar si tiene el bloqueo:', e.message); }
+    if (!suyo) return { bloquear: false, faltan: [], sinControl: true };
+  }
   let faltan = [];
   try {
     faltan = (await repo.quienesLlevan(t.matricula))
@@ -519,15 +537,26 @@ async function iniciar({ telefono, nombre, matricula }) {
   const unidad = await mapon.unidadPorMatricula(matricula);
   if (!unidad) return { ok: false, motivo: 'sin-matricula' };
 
-  // EL COCHE LO TIENE OTRO. Si ese otro pulsó «Voy al relevo», está entregándolo
+  // EL COCHE LO TIENE OTRO. Si ese otro pulsó «Entregar coche», está dándoselo
   // justo ahora: su turno se cierra aquí, como RELEVADO, y este empieza. Sin esto
   // el de noche tendría que esperar a que el de día se acordase de terminar.
-  // Si no lo pulsó, el coche sigue siendo suyo y se dice quién lo tiene.
+  //
+  // Y si NO lo pulsó pero el cuadrante le da HOY ese coche a quien entra, también
+  // (28/09/2026): con todo el mundo abriendo turno, un olvido del botón dejaría al
+  // de noche en la acera llamando a Tráfico. Queda anotado que no lo pulsó, y sin
+  // la hora de salida no hay km del trayecto de entrega.
+  // Si no es ninguna de las dos, el coche sigue siendo suyo y se dice quién lo tiene.
   let relevoDe = null;
   const ocupado = await abiertoDeCoche(unidad.matricula, telefono);
   if (ocupado) {
-    if (!(ocupado.tipo === 'turno' && ocupado.relevo)) return { ok: false, motivo: 'coche-ocupado', turno: ocupado };
-    relevoDe = await cerrarPorRelevo(ocupado, p.nombre);
+    const entregando = ocupado.tipo === 'turno' && !!ocupado.relevo;
+    let leToca = false;
+    if (!entregando && ocupado.tipo === 'turno' && p.tipo === 'turno' && p.conductorId) {
+      const plan = await repo.cochesDelPlan(p.conductorId).catch(() => []);
+      leToca = plan.some(c => normMat(c.matricula) === normMat(unidad.matricula));
+    }
+    if (!entregando && !leToca) return { ok: false, motivo: 'coche-ocupado', turno: ocupado };
+    relevoDe = await cerrarPorRelevo(ocupado, p.nombre, { sinBoton: !entregando });
   }
 
   // El enlace en Mapon no debe impedir fichar: si falla, el turno se abre igual y se
@@ -588,7 +617,7 @@ async function iniciar({ telefono, nombre, matricula }) {
  * compañero. No se bloquea el motor —el coche sigue trabajando— y se apuntan
  * los km del turno y los del trayecto al relevo.
  */
-async function cerrarPorRelevo(t, quienEntra) {
+async function cerrarPorRelevo(t, quienEntra, { sinBoton = false } = {}) {
   const fin = ahoraSeg();
   const [km, kmRel] = await Promise.all([kmDelTurno(t, fin), t.relevo ? kmDelTurno({ ...t, inicio: t.relevo }, fin) : null]);
   try { await soltarEnMapon(t); } catch (e) { /* se cierra igual */ }
@@ -598,7 +627,8 @@ async function cerrarPorRelevo(t, quienEntra) {
   t.trayectos = km ? km.trayectos : 0;
   t.atribuidos = km ? km.conConductor : 0;
   t.estado = 'relevado';
-  t.notas = `${t.notas ? t.notas + ' · ' : ''}Relevado por ${quienEntra || 'su compañero'}`;
+  t.notas = `${t.notas ? t.notas + ' · ' : ''}Relevado por ${quienEntra || 'su compañero'}` +
+    (sinBoton ? ' (no pulsó «Entregar coche»)' : '');
   await repo.actualizar(t);
   olvidar(t.telefono);
   console.log(`🔄 [FICHAJE] ${t.nombre} entrega ${t.matricula} a ${quienEntra}: ${t.km} km (relevo ${t.kmRelevo} km)`);
@@ -606,8 +636,9 @@ async function cerrarPorRelevo(t, quienEntra) {
 }
 
 /**
- * «VOY AL RELEVO». Se pulsa JUSTO ANTES de arrancar hacia el sitio donde se le
- * da el coche al compañero. `si = false` lo deshace, por si se pulsó sin querer.
+ * «ENTREGAR COCHE» (antes «Voy al relevo»). Se pulsa JUSTO ANTES de arrancar
+ * hacia el sitio donde se le da el coche al compañero: desde esa hora se cuentan
+ * los km del trayecto de entrega. `si = false` lo deshace, por si se pulsó sin querer.
  */
 async function marcarRelevo(telefono, si = true) {
   const t = await abiertoDe(telefono);
@@ -688,10 +719,13 @@ async function terminar(telefono) {
   // `porOrden`: lo ha pedido el conductor, así que basta con que no esté rodando.
   // No hace falta esperar a que lleve veinte minutos quieto — acaba de decir que
   // ha terminado, y eso es mejor información que cualquier sensor.
+  // Sin el bloqueo encendido (`sinControl`) no se intenta nada y no se anota:
+  // no es un fallo, es que a esa persona todavía no se le ha encendido.
   const mot = dec.bloquear
     ? await bloquearMotor(t.unitId, { porOrden: true })
-    : { hecho: false, seQuedaLibre: true, motivo: 'lo lleva alguien que aún no ficha' };
-  if (BLOQUEO_ACTIVO && !mot.hecho) t.notas = `${t.notas ? t.notas + ' · ' : ''}Motor NO bloqueado: ${mot.motivo}`;
+    : { hecho: false, seQuedaLibre: true, sinControl: !!dec.sinControl,
+        motivo: dec.sinControl ? 'sin bloqueo de motor' : 'lo lleva alguien sin el bloqueo encendido' };
+  if (BLOQUEO_ACTIVO && !mot.hecho && !mot.sinControl) t.notas = `${t.notas ? t.notas + ' · ' : ''}Motor NO bloqueado: ${mot.motivo}`;
 
   t.fin = fin;
   t.km = km ? km.km : null;
@@ -701,7 +735,7 @@ async function terminar(telefono) {
   t.estado = 'cerrado';
   await repo.actualizar(t);
   console.log(`🔴 [FICHAJE] ${t.nombre} termina turno en ${t.matricula}: ${t.km} km` +
-    (BLOQUEO_ACTIVO ? ` · motor ${mot.hecho ? 'BLOQUEADO' : 'NO bloqueado: ' + mot.motivo}` : ''));
+    (BLOQUEO_ACTIVO && !mot.sinControl ? ` · motor ${mot.hecho ? 'BLOQUEADO' : 'NO bloqueado: ' + mot.motivo}` : ''));
   // Si le apagaron el fichaje a mitad de turno, al cerrarlo deja de participar ya.
   olvidar(telefono);
   return { ok: true, turno: t, km, motor: mot, bloqueoActivo: BLOQUEO_ACTIVO, faltan: dec.faltan };
@@ -732,8 +766,8 @@ async function terminar(telefono) {
  * no dentro de uno de los dos: si se separaran, uno bloquearía coches que el otro
  * no sabría soltar.
  */
-async function alcanceDelFichaje() {
-  const conocidos = new Set((await repo.unitsConocidos()).map(String));
+async function alcanceDelFichaje({ soloConControl = false } = {}) {
+  const conocidos = new Set((await (soloConControl ? repo.unitsConControl() : repo.unitsConocidos())).map(String));
   return v => TODA_LA_FLOTA
     || conocidos.has(String(v.unitId))
     || MATRICULAS.includes(normMat(v.matricula));
@@ -787,7 +821,11 @@ async function repasarBloqueos({ soloMirar = false } = {}) {
   //
   // Sin esto el cron miraría la flota entera y bloquearía coches de gente que ni
   // sabe que esto existe, con la llave en la mano.
-  const alcanza = await alcanceDelFichaje();
+  //
+  // Desde el 28/09/2026 todo conductor abre turno, así que «ha pasado por el
+  // libro» ya no limita nada: el repaso mira solo los coches de viajes y de
+  // turnos de gente con el bloqueo ENCENDIDO. Liberar sigue mirando todos.
+  const alcanza = await alcanceDelFichaje({ soloConControl: true });
   // Y NUNCA el coche de alguien que no ficha: el fichaje se enciende persona a
   // persona, y bloquear el coche que comparte con quien aún no lo tiene le deja
   // sin poder arrancar. Si no se puede saber, no se bloquea nada esta vuelta.

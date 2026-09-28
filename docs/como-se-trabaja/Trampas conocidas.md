@@ -1595,6 +1595,27 @@ estaba, solo que no se podía usar.
 > siguiente. Sustituyendo `now()` por un instante fijo, las dos formas dan lo
 > mismo —en la ventana de hoy, en una ya cerrada y en una futura—.
 
+### Meta reenvía el mismo mensaje si el webhook tarda en contestar
+
+`routes/botPuertas.js` contestaba el `200` a Meta **después** de atender el mensaje, y
+atender uno puede tardar segundos (Mapon, el relé del motor). Si Meta no ve la respuesta
+a tiempo, **vuelve a mandar el mismo mensaje**. Mientras el bot solo abría puertas daba
+igual —abrir dos veces es abrir—, pero desde el 28/09/2026 un mensaje **abre un turno** o
+**gasta un código de lavado**.
+
+> Por eso el webhook contesta `200` nada más llegar y recuerda los últimos 500
+> `message.id`: el repetido se ignora (`yaVisto`). Y los códigos de lavado, además,
+> repiten el mismo al mismo teléfono durante 30 minutos: un doble toque no gasta dos.
+
+### «La semana pasada» deja de tener sentido en una ventana que cruza semanas
+
+Los relevos del cuadrante llevaban el cuándo en palabras relativas a la semana: el lunes
+se recibe el coche «del domingo **pasado**», el domingo se entrega «al del lunes **que
+viene**». Con la ventana de hoy a 7 días (28/09/2026) el lunes de la semana siguiente
+recibe del domingo **de esta**, y «pasado» era mentira. Los relevos llevan ahora su
+**fecha** (`recibeDe.fecha`, `entregaA.fecha`) y la ventana dice «lo deja el jueves 01/10».
+Las banderas `semanaPasada`/`semanaSiguiente` siguen ahí para la vista semanal.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

@@ -113,16 +113,53 @@ eq(D.resumen.sinCubrir, 2, '2 tramos sin cubrir');
 eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
 
 (async () => {
-  const { mensajeTurnos, resolver } = require('../modules/Planificacion/turnos.service');
+  const { mensajeProximos, resolver } = require('../modules/Planificacion/turnos.service');
+  const { nombreDePila } = require('../services/nucleo');
 
-  console.log('\n=== MENSAJE DE WHATSAPP ===');
-  const msg = mensajeTurnos(maria);
-  ok(msg.includes('María'), 'saluda por su nombre');
-  ok(msg.includes('1888LTJ'), 'nombra el coche');
-  ok(msg.includes('Pedro'), 'dice a quién le entrega el coche');
-  ok(msg.includes('600 333 444') || msg.includes('600333444'), 'con el teléfono del relevo');
-  ok(/libras/.test(msg), 'agrupa los días que libra');
-  ok(mensajeTurnos(null).includes('No encuentro'), 'sin entrada, avisa en vez de romper');
+  // La semana SIGUIENTE (14/09 – 20/09): el mismo coche con la misma rueda.
+  // Encadena con la de arriba: el lunes 14 María recibe de Pedro, que lo dejó
+  // el domingo 13 por la noche.
+  const tabSig = { ...tab, dia: '2026-09-14',
+    fechas: ['2026-09-14', '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18', '2026-09-19', '2026-09-20'] };
+  const bordesSig = {
+    antes: new Map([['A1', { id: '2', nombre: 'Pedro', diaNombre: 'Domingo', turno: 'Noche', fecha: '2026-09-13', ord: 13 }]]),
+    despues: new Map(),
+  };
+  const DS = cob.construir(tabSig, contac, 1, bordesSig);
+
+  console.log('\n=== DE HOY A 7 DÍAS (la ventana) ===');
+  // Hoy = miércoles 09/09: se ignoran el lunes y el martes, y llega al miércoles 16.
+  const V = cob.ventana(D, DS, '2026-09-09');
+  eq(V.desde, '2026-09-09', 'empieza hoy');
+  eq(V.hasta, '2026-09-16', 'y acaba el mismo día de la semana que viene (hoy + 7)');
+  const mV = V.porConductor.find(p => p.nombre === 'María');
+  eq(mV.dias.length, 8, 'ocho días: hoy y los siete siguientes');
+  eq(mV.dias[0].hoy, true, 'el primero es hoy');
+  eq(mV.dias[0].diaNombre, 'Miércoles', 'y es miércoles');
+  eq(mV.dias[5].fecha, '2026-09-14', 'cruza a la semana siguiente sin saltos');
+  eq(mV.dias[5].trabaja, true, 'el lunes 14 María trabaja (sale de la semana siguiente)');
+  eq(mV.dias[5].recibeDe && mV.dias[5].recibeDe.nombre, 'Pedro', 'y recibe el coche de Pedro');
+  eq(mV.dias[2].recibeDe && mV.dias[2].recibeDe.fecha, '2026-09-10', 'el viernes sabe QUÉ DÍA lo dejó Ana (con fecha)');
+
+  const msgV = mensajeProximos(mV, { ...V, pila: 'María' });
+  ok(msgV.startsWith('👋 Hola, María.'), 'saluda por su nombre de pila');
+  ok(msgV.includes('de hoy al miércoles 16/09'), 'dice hasta cuándo llega');
+  ok(!/lunes 07\/09|martes 08\/09/i.test(msgV), 'NO menciona el lunes ni el martes, que ya pasaron');
+  ok(/\*Hoy, miércoles 09\/09 y mañana, jueves 10\/09\*: libras/.test(msgV), 'agrupa hoy y mañana si libra');
+  ok(/lunes 14\/09/i.test(msgV), 'llega a la semana que viene');
+  ok(msgV.includes('1888LTJ'), 'nombra el coche');
+  ok(msgV.includes('600333444'), 'con el teléfono del relevo');
+  ok(/lo deja el jueves 10\/09/.test(msgV), 'el viernes dice que Ana lo dejó el jueves 10/09 (coche parado en medio)');
+  ok(!/lo deja el domingo/.test(msgV), 'en el relevo directo del lunes NO se nombra el día (confunde)');
+  ok(!/pasado|que viene/.test(msgV), 'ni «pasado» ni «que viene»: con la ventana ya no se sabe respecto a qué');
+  ok(mensajeProximos(null).includes('No encuentro'), 'sin entrada, avisa en vez de romper');
+
+  // Quien no trabaja ningún día de la ventana no sale: lo que ya pasó no interesa.
+  const V2 = cob.ventana(D, null, '2026-09-11');
+  ok(!V2.porConductor.find(p => p.nombre === 'Ana'), 'Ana (solo miércoles y jueves ya pasados) no está en la ventana');
+  const mV2 = V2.porConductor.find(p => p.nombre === 'María');
+  eq(mV2.dias[3].sinPlan, true, 'sin la semana siguiente cargada, esos días quedan SIN PLAN');
+  ok(!/lunes 14/i.test(mensajeProximos(mV2, V2)), 'y el mensaje no se los inventa como libres');
 
   // Sin BD, el primer camino (teléfono contra la base) falla y caen los respaldos.
   console.log('\n=== RESOLVER (respaldos, sin BD) ===');
@@ -144,15 +181,16 @@ eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
   eq(maria2.dias[0].sinPlan, true, 'el lunes queda marcado como SIN PLAN');
   eq(maria2.dias[0].trabaja, false, 'y por tanto no figura trabajando');
   eq(maria2.dias[4].sinPlan, false, 'el viernes sí tiene plan');
-  const msg2 = mensajeTurnos(maria2);
-  ok(!/Lunes/.test(msg2), 'el mensaje NO menciona el lunes (no hay dato, no es que libre)');
-  ok(!/Martes/.test(msg2), 'ni el martes');
-  ok(/Viernes/.test(msg2), 'pero sí habla de los días que sí tienen plan');
-  ok(/libras/.test(mensajeTurnos(maria)), 'en una semana normal sigue diciendo cuándo libra');
+  const V3 = cob.ventana(D2, null, '2026-09-07');
+  const msg2 = mensajeProximos(V3.porConductor.find(p => p.nombre === 'María'), V3);
+  ok(!/lunes 07/i.test(msg2), 'el mensaje NO menciona el lunes (no hay dato, no es que libre)');
+  ok(!/martes 08/i.test(msg2), 'ni el martes');
+  ok(/viernes 11\/09/i.test(msg2), 'pero sí habla de los días que sí tienen plan');
+  ok(/libras/.test(msg2), 'y sigue diciendo cuándo libra');
 
-  // Semana entera sin plan: se dice claro, no un saludo huérfano.
-  ok(mensajeTurnos({ nombre: 'Ana', dias: maria2.dias.map(d => ({ ...d, sinPlan: true, trabaja: false })) })
-       .includes('todavía no tengo cargados'), 'una semana entera sin plan se dice claro');
+  // Ventana entera sin plan: se dice claro, no un saludo huérfano.
+  ok(mensajeProximos({ nombre: 'Ana', dias: maria2.dias.map(d => ({ ...d, sinPlan: true, trabaja: false })) })
+       .includes('Todavía no tengo cargados'), 'sin ningún día con plan se dice claro');
 
   // ── Bordes de semana: el lunes recibe del domingo pasado, el domingo entrega ──
   console.log('');
@@ -168,16 +206,24 @@ eq(D.resumen.cochesFueraDeServicio, 1, 'un coche fuera de servicio');
   ok(maria3.dias[0].recibeDe && maria3.dias[0].recibeDe.nombre === 'Sergio', 'el LUNES María recibe de Sergio (semana pasada)');
   eq(maria3.dias[0].recibeDe.semanaPasada, true, 'marcado como de la semana pasada');
   eq(maria3.dias[0].recibeDe.dia, 'Domingo', 'con el día en que lo deja (domingo)');
+  eq(maria3.dias[0].recibeDe.fecha, '2026-09-06', 'y con su fecha');
   eq(maria3.dias[0].recibeDe.directo, true, 'directo: Dom-Noche → Lun-Día van pegados');
   const pedro3 = D3.porConductor.find(p => p.nombre === 'Pedro');
   const dom3 = pedro3.dias[6];
   ok(dom3.entregaA && dom3.entregaA.nombre === 'Ana', 'el DOMINGO Pedro entrega a Ana (semana siguiente)');
   eq(dom3.entregaA.semanaSiguiente, true, 'marcado como de la semana siguiente');
-  const msg3 = mensajeTurnos(maria3);
-  ok(msg3.includes('Sergio') && /lo deja el domingo pasado/.test(msg3), 'el WhatsApp del lunes dice de quién y cuándo lo recibe');
-  ok(/lo coge el lunes que viene/.test(mensajeTurnos(pedro3)), 'y el del domingo dice quién lo coge el lunes');
-  ok(/lo deja el jueves/.test(msg3), 'el viernes dice que Ana lo dejó el jueves (coche parado en medio)');
-  ok(!/Martes[^]*?lo deja el lunes/.test(msg3.split('Miércoles')[0]), 'en el relevo directo NO se nombra el día (confunde)');
+  eq(dom3.entregaA.fecha, '2026-09-14', 'y con la fecha en que lo coge');
+
+  console.log('\n=== NOMBRE DE PILA (el saludo) ===');
+  eq(nombreDePila({ nombre: 'KEVIN JOHAN', apellidos: 'FERREIRA MONTILLA', nombreBolt: 'Kevin Johan Ferreira Montilla' }),
+     'Kevin Johan', 'con los apellidos en su casilla, el nombre entero y sin gritar');
+  eq(nombreDePila({ nombre: 'POLO TENA DAVID', apellidos: null, nombreBolt: 'David Polo Tena' }),
+     'David', 'con todo en «nombre» (apellidos delante), manda el orden de BOLT');
+  eq(nombreDePila({ nombre: 'LARA VILLEN MARIA DE MAR', nombreBolt: 'Maria Del Mar Lara Villen' }),
+     'Maria del Mar', 'un nombre con partícula no se corta');
+  eq(nombreDePila({ nombre: 'MOHAMED', apellidos: 'ABOULGHAZI' }), 'Mohamed', 'un nombre simple');
+  eq(nombreDePila({ nombre: 'Juan' }), 'Juan', 'sin apellidos ni BOLT, la primera palabra');
+  eq(nombreDePila({}), '', 'sin nada, vacío (el saludo se queda en «¡Hola!»)');
 
   // El mismo que lo dejó el domingo NO es un relevo: sigue con su coche.
   const bordesMismo = {

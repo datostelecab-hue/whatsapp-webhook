@@ -5,8 +5,15 @@
 // entrega) la calcula `repo/cobertura.porConductor` desde el tablero de PostgreSQL.
 // Aquí queda solo lo que rodea al mensaje:
 //
-//   · mensajeTurnos(entrada)          → el texto que se le manda por WhatsApp.
+//   · textoTurnos({ phone })          → lo que le contesta el bot al pulsar
+//                                       «Ver mis turnos»: de HOY a 7 días.
+//   · mensajeProximos(entrada, v)     → ese texto, a partir de la ventana.
 //   · resolver(lista, { phone, … })   → de un teléfono a SU entrada de la lista.
+//
+// DE HOY A 7 DÍAS, NO LA SEMANA (28/09/2026). Antes se mandaba la semana de
+// lunes a domingo, y el martes el conductor recibía el lunes que ya había
+// pasado y no veía el lunes siguiente. Camilo: «si hoy es jueves, del jueves al
+// otro jueves; lo que pasó ya no interesa».
 //
 // Cero hojas: antes esto leía el tablero de Sheets y volvía del teléfono a la
 // persona comparando NOMBRES (fallaba con una tilde, con los apellidos en otro
@@ -28,53 +35,92 @@ function unirDias(nombres) {
   return nombres.slice(0, -1).join(', ') + ' y ' + nombres[nombres.length - 1];
 }
 
-/** Mensaje de WhatsApp con los turnos y relevos de la semana de un conductor. */
-function mensajeTurnos(entrada) {
-  if (!entrada) return 'No encuentro tus turnos de esta semana. Avisa a la oficina, por favor.';
-  const L = [`👋 Hola ${entrada.nombre}, estos son tus turnos y relevos de esta semana:`, ''];
+/** Cómo se nombra un día de la ventana: «Hoy, martes 29/09», «Viernes 02/10». */
+function nombreDelDia(d, i) {
+  const f = fechaLarga(d.fecha);
+  if (i === 0) return `Hoy, ${f}`;
+  if (i === 1) return `Mañana, ${f}`;
+  return f.charAt(0).toUpperCase() + f.slice(1);
+}
+
+/**
+ * El mensaje de «Ver mis turnos»: sus turnos de HOY a 7 días, con de quién
+ * recibe el coche y a quién se lo entrega.
+ *
+ * @param {object} entrada  su entrada de `cobertura.proximos()` (días con fecha)
+ * @param {object} v        { desde, hasta, pila } — la ventana y su nombre de pila
+ */
+function mensajeProximos(entrada, v = {}) {
+  if (!entrada) return 'No encuentro tus turnos. Avisa a la oficina, por favor.';
+  const hola = `👋 Hola, ${v.pila || entrada.nombre}.`;
   const dias = entrada.dias || [];
   const tel = x => (x.telefono ? ` (${x.telefono})` : '');
+  // CUÁNDO pasa el coche, solo cuando aporta: si el coche se queda parado en
+  // medio (relevo no directo). En el relevo directo pasa de mano en el momento
+  // y nombrar otro día solo confunde. Con fecha y no con «el domingo pasado»:
+  // la ventana cruza semanas y «pasado» ya no se sabe respecto a qué.
+  const cuando = (x, d, verbo) =>
+    (!x.directo && x.fecha && x.fecha !== d.fecha ? ` (${verbo} el ${fechaLarga(x.fecha)})` : '');
 
+  const L = [];
   let i = 0;
   while (i < dias.length) {
     const d = dias[i];
-    // Un día que NO está cargado en el planificador no se menciona: ni trabaja ni
-    // libra, sencillamente no hay dato. Antes salía como "libras" y era mentira
-    // (los días anteriores a la migración salían todos como libranza).
+    // Un día que NO está cargado en el planificador no se menciona: ni trabaja
+    // ni libra, sencillamente no hay dato. Decir «libras» sería mentirle.
     if (d.sinPlan) { i++; continue; }
     if (!d.trabaja) {
       let j = i; while (j < dias.length && !dias[j].trabaja && !dias[j].sinPlan) j++;
-      L.push(`😴 *${unirDias(dias.slice(i, j).map(x => diaLargo(x.diaNombre)))}*: libras`, '');
+      const nombres = dias.slice(i, j).map((x, k) => {
+        const n = nombreDelDia(x, i + k);
+        return k ? n.charAt(0).toLowerCase() + n.slice(1) : n;
+      });
+      L.push(`😴 *${unirDias(nombres)}*: libras`, '');
       i = j; continue;
     }
-    L.push(`📅 *${diaLargo(d.diaNombre)}* · turno de ${d.turno} · coche *${d.matricula}*`);
-    // De quién viene y a quién va el coche. Se dice CUÁNDO solo cuando aporta:
-    // siempre al cruzar la semana (el lunes se recibe del que lo dejó el domingo
-    // PASADO: la semana no empieza de cero) y cuando el coche queda parado en
-    // medio (relevo no directo). En el relevo directo el coche pasa de mano en el
-    // momento y nombrar el día del turno anterior solo confunde.
+    L.push(`📅 *${nombreDelDia(d, i)}* · turno de ${d.turno} · coche *${d.matricula}*`);
     if (d.recibeDe) {
       const r = d.recibeDe;
-      const cuando = r.semanaPasada ? ` (lo deja el ${diaLargo(r.dia).toLowerCase()} pasado)`
-        : (!r.directo && r.dia && r.dia !== d.diaNombre ? ` (lo deja el ${diaLargo(r.dia).toLowerCase()})` : '');
-      L.push(`   🔑 Recibes el coche de *${r.nombre}*${tel(r)}${cuando}`);
+      L.push(`   🔑 Recibes el coche de *${r.nombre}*${tel(r)}${cuando(r, d, 'lo deja')}`);
     }
     if (d.entregaA) {
       const en = d.entregaA;
-      const cuando = en.semanaSiguiente ? ` (lo coge el ${diaLargo(en.dia).toLowerCase()} que viene)`
-        : (!en.directo && en.dia && en.dia !== d.diaNombre ? ` (lo coge el ${diaLargo(en.dia).toLowerCase()})` : '');
-      L.push(`   🤝 Al terminar tu turno, lo entregas a *${en.nombre}*${tel(en)}${cuando}`);
+      L.push(`   🤝 Al terminar, se lo entregas a *${en.nombre}*${tel(en)}${cuando(en, d, 'lo coge')}`);
     }
     L.push('');
     i++;
   }
-  // Si de toda la semana no salió ni un día (aún sin plan cargado), se dice claro,
-  // en vez de mandar un saludo huérfano que no informa de nada.
-  if (L.length <= 2) {
-    return `👋 Hola ${entrada.nombre}, todavía no tengo cargados tus turnos de esa semana. ` +
-           'En cuanto estén, te aviso.';
+  const hasta = v.hasta ? fechaLarga(v.hasta) : '';
+  // Sin un solo día con plan: se dice claro, no un saludo huérfano.
+  if (!L.length) return `${hola} Todavía no tengo cargados tus turnos de los próximos días. En cuanto estén, te aviso.`;
+  return [`${hola} Estos son tus turnos de hoy${hasta ? ` al ${hasta}` : ''}:`, '', ...L].join('\n').trim();
+}
+
+/**
+ * Lo que contesta el bot a «Ver mis turnos». Durante un EVENTO manda el mensaje
+ * del evento (sus días del apaño, a quién entrega el coche y su semana normal);
+ * si no, sus turnos de hoy a 7 días.
+ *
+ * Devuelve { texto, como } — `como` dice por dónde se identificó, para el log.
+ */
+async function textoTurnos({ phone, nombreSesion } = {}) {
+  const ev = await mensajeSiHayEvento({ phone, nombreSesion }).catch(e => {
+    console.error('⚠️ [Turnos] mensaje de evento:', e.message); return null;
+  });
+  if (ev) return { texto: ev.texto, como: 'evento', evento: ev.evento };
+
+  const v = await cob.proximos();
+  const { entrada, como, quien, pila } = await resolver(v.porConductor, { phone, nombreSesion });
+  if (entrada) return { texto: mensajeProximos(entrada, { ...v, pila }), como, nombre: entrada.nombre };
+  // Identificado pero SIN turnos: no es un fallo, es que libra. Se dice así.
+  if (como === 'sin-turnos') {
+    return {
+      texto: `👋 Hola${pila || quien ? ', ' + (pila || quien) : ''}. No tienes turnos asignados de hoy al ` +
+        `${fechaLarga(v.hasta)}. Si crees que es un error, avisa a la oficina.`,
+      como, nombre: quien,
+    };
   }
-  return L.join('\n').trim();
+  return { texto: mensajeProximos(null), como };
 }
 
 /** "2026-09-13" → "domingo 13/09". */
@@ -277,10 +323,10 @@ async function resolver(lista, { phone, nombreSesion } = {}) {
     const p = await cob.conductorPorTelefono(phone);
     if (p) {
       const e = L.find(x => String(x.id) === p.conductorId);
-      if (e) return { entrada: e, como: 'telefono' };
+      if (e) return { entrada: e, como: 'telefono', pila: p.pila };
       // Está en la base pero no le toca ningún turno esta semana: eso NO es un
       // fallo de identificación, es que libra. Se dice tal cual.
-      return { entrada: null, como: 'sin-turnos', quien: p.nombre };
+      return { entrada: null, como: 'sin-turnos', quien: p.nombre, pila: p.pila };
     }
   } catch (e) {
     console.error('⚠️ [Turnos] conductorPorTelefono:', e.message);
@@ -303,4 +349,6 @@ async function resolver(lista, { phone, nombreSesion } = {}) {
   return { entrada: null, como: 'no-identificado' };
 }
 
-module.exports = { mensajeTurnos, mensajeEvento, mensajeSiHayEvento, resolver, normNombre, tel9, fechaLarga };
+module.exports = {
+  textoTurnos, mensajeProximos, mensajeEvento, mensajeSiHayEvento, resolver, normNombre, tel9, fechaLarga,
+};

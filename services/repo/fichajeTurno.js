@@ -10,7 +10,7 @@
 // sobre el mismo coche a la vez escribían dos filas y las dos se creían dueñas.
 
 const db = require('../db');
-const { HORA_DIA } = require('../nucleo');
+const { HORA_DIA, nombreDePila } = require('../nucleo');
 
 const tel9 = t => String(t == null ? '' : t).replace(/\D/g, '').slice(-9);
 const normMat = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -82,6 +82,33 @@ async function unitsConocidos() {
   const r = await db.consulta(
     `SELECT DISTINCT unit_id FROM fichaje_turno WHERE btrim(unit_id) <> ''`);
   return r.rows.map(x => x.unit_id);
+}
+
+/**
+ * Los coches que el REPASO puede bloquear: los que han pasado por un viaje o
+ * por el turno de alguien con el bloqueo de motor ENCENDIDO.
+ *
+ * Desde el 28/09/2026 todo conductor de alta abre turno por WhatsApp, así que
+ * «ha pasado por el libro» ya es casi toda la flota. Si el repaso siguiera
+ * mirando solo eso, empezaría a cortar coches de gente a la que nadie ha
+ * encendido el bloqueo —y el del taller, que ya no tiene a nadie en el
+ * cuadrante que lo proteja—.
+ */
+async function unitsConControl() {
+  const r = await db.consulta(
+    `SELECT DISTINCT f.unit_id
+       FROM fichaje_turno f
+       LEFT JOIN conductor c ON c.id = f.conductor_id
+      WHERE btrim(f.unit_id) <> ''
+        AND (f.tipo = 'viaje' OR c.ficha_coche)`);
+  return r.rows.map(x => x.unit_id);
+}
+
+/** ¿Tiene este conductor el bloqueo de motor encendido? (el botón «Fichaje» del planificador) */
+async function controlMotorDe(conductorId) {
+  if (!conductorId) return false;
+  const r = await db.consulta(`SELECT ficha_coche FROM conductor WHERE id = $1`, [Number(conductorId)]);
+  return !!(r.rows[0] && r.rows[0].ficha_coche);
 }
 
 // Los dos indices unicos que dicen "esta persona / este coche YA tiene turno
@@ -180,27 +207,31 @@ async function personaPorTelefono(telefono) {
   const r = await db.consulta(
     `SELECT 'conductor' AS de, c.id, c.ficha_coche AS activo, c.empleo_vigente AS vale,
             COALESCE(NULLIF(btrim(c.nombre_bolt), ''),
-                     btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
+                     btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+            c.nombre AS n, c.apellidos AS a, c.nombre_bolt AS b
        FROM conductor_telefono t
        JOIN conductor c ON c.id = t.conductor_id
       WHERE t.vigente_hasta IS NULL AND t.sufijo9 = $1 AND NOT c.es_centinela
      UNION ALL
      SELECT 'usuario', u.id, u.ficha_coche, (u.estado = 'activo'),
-            btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, ''))
+            btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, '')),
+            u.nombre, u.apellidos, NULL
        FROM usuario u
       WHERE right(regexp_replace(COALESCE(u.telefono, ''), '[^0-9]', '', 'g'), 9) = $1
         AND length(regexp_replace(COALESCE(u.telefono, ''), '[^0-9]', '', 'g')) >= 9
      UNION ALL
-     SELECT 'abierto', NULL, TRUE, TRUE, ''
+     SELECT 'abierto', NULL, TRUE, TRUE, '', NULL, NULL, NULL
       WHERE EXISTS (SELECT 1 FROM fichaje_turno f
                      WHERE f.estado = 'abierto'
                        AND right(regexp_replace(f.telefono, '[^0-9]', '', 'g'), 9) = $1)`, [t9]);
   const de = k => r.rows.filter(x => x.de === k).map(x => ({
     id: String(x.id), nombre: (x.nombre || '').trim(), activo: !!x.activo, vale: !!x.vale,
+    // Para saludar: «Hola, David», sin apellidos.
+    pila: nombreDePila({ nombre: x.n, apellidos: x.a, nombreBolt: x.b }),
   }));
   // Si hubiera dos fichas con el mismo número, manda la que tiene el fichaje
-  // encendido y vale: es la que alguien ha elegido a propósito.
-  const elegir = xs => xs.find(x => x.activo && x.vale) || xs[0] || null;
+  // encendido y vale (es la que alguien ha elegido a propósito); si no, la que vale.
+  const elegir = xs => xs.find(x => x.activo && x.vale) || xs.find(x => x.vale) || xs[0] || null;
   return {
     conductor: elegir(de('conductor')),
     usuario: elegir(de('usuario')),
@@ -321,7 +352,7 @@ async function registrarOrdenMotor({ matricula, unitId, accion, motivo, hecho, r
 }
 
 module.exports = {
-  abiertoDe, abiertoDeCoche, abiertos, unitsConocidos,
+  abiertoDe, abiertoDeCoche, abiertos, unitsConocidos, unitsConControl, controlMotorDe,
   crear, actualizar, quienLlevaba,
   personaPorTelefono, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,
   fijarFichaCoche, activados, marcarRelevo, registrarOrdenMotor,

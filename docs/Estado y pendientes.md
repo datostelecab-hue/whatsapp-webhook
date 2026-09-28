@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-09-21
+actualizado: 2026-09-28
 ---
 
 # Estado y pendientes
@@ -14,6 +14,13 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Recaudación y cuentas fantasma.** Si alguien cobró en efectivo con una cuenta prestada, la deuda sigue colgada de la cuenta, no de la persona. Es dinero: lo decide Ricardo.
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
+
+## El bot del conductor, nuevo (28/09/2026)
+
+- **Aplicar `db/164` desde /migraciones** después de desplegar: son los 566 códigos de lavado de la última tanda (entran 515; los otros 51 ya estaban). Sin ella el botón sale y contesta que no quedan códigos. (Y `db/163`, la apertura de la recaudación, sigue esperando lo mismo.)
+- **El 16/10/2026 el botón de lavado desaparece solo** (`LAVADO_HASTA`). Queda quitar el código: `services/lavadoBallenoil.js`, sus dos llamadas en `fichajeBot.js` y `botPuertas.js`, y la migración ya aplicada se queda.
+- **Todo conductor de alta abre turno al escribir la matrícula** desde el despliegue. El bloqueo de motor al terminar sigue siendo **persona a persona** (botón «Bloqueo de motor» del planificador; hoy nadie lo tiene) y además necesita `FICHAJE_BLOQUEO_MOTOR=1` en Render. Encenderlo para todos es una decisión de Camilo.
+- **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores.
 
 ## Para mañana (21/09/2026)
 
@@ -33,7 +40,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 - **32 fichas en «Listo para RRHH»** de antes del cambio. Su bandeja sigue funcionando; la duda es si se marcan como alta en bloque o se dejan vaciar a mano.
 - **El tramo de Ballenoil ya no existe** (24/09/2026): RRHH tramita y la ficha queda de alta directamente. El Excel de altas (`services/altasExcel.js`) sigue en la bandeja de RRHH mientras queden fichas viejas (39 el 24/09); cuando se vacíe, se puede retirar.
-- **Los códigos de lavado y el PIN de Ballenoil se quitaron del todo** (24/09/2026): del bot, de Administración y del alta. Ver [[Historial de decisiones]].
+- **El PIN de Ballenoil se quitó del todo** (24/09/2026): del bot, de Administración y del alta. **Los códigos de lavado vuelven al bot hasta el 15/10/2026** con la última tanda (28/09). Ver [[Historial de decisiones]].
 
 ## Fuera del ERP: lo que hay que crear en otro sitio (18/09/2026)
 
@@ -44,7 +51,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 - **Credenciales escritas en el código.** Casi todo está bien puesto en variables de entorno, pero quedan dos cosas:
   - `services/bolt.js` lleva el `client_id` y el `client_secret` de OAuth de BOLT **en texto plano**. Es la única credencial del sistema fuera del entorno, y está en el historial de git: sacarla al entorno **y rotarla**, porque quitarla del fichero no la borra del historial.
-  - `routes/botPuertas.js` lleva la URL del despliegue de Apps Script que **abre y cierra los coches**. No es una clave, pero un despliegue publicado de Apps Script no pide autenticación: quien tenga la URL acciona puertas.
+  - `services/puertasBot.js` (antes en `routes/botPuertas.js`) lleva la URL del despliegue de Apps Script que **abre y cierra los coches**. No es una clave, pero un despliegue publicado de Apps Script no pide autenticación: quien tenga la URL acciona puertas.
 - **Rotar la clave de Mapon y la cuenta de servicio de Google.** Están en el entorno, como debe ser, pero han circulado.
 - **Revisión de seguridad (del laboratorio, 18/09/2026).** Puntos a verificar/endurecer que salieron al auditar el sistema en el lab aislado; el detalle y cómo se prueba cada uno están en [[Seguridad]]:
   - **IDOR en `/documentos/api/doc/:id`** — comprobar la propiedad/ámbito **por registro** en `documentos.service`, no solo el permiso de módulo. Si no, cambiar el número del id lee papeles de otros.
@@ -69,7 +76,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## Lo que está en marcha y conviene no olvidar
 
-- **Iniciar y terminar turno por WhatsApp.** Es la solución de fondo a la atribución de kilómetros: mientras no exista, un coche que rueda con la app apagada solo se puede colgar de quien lo llevó por última vez ([[Corte de tramos]]).
+- **Iniciar y terminar turno por WhatsApp** — en marcha para todos los conductores desde el 28/09/2026 ([[Fichaje]]). Es la solución de fondo a la atribución de kilómetros; falta que la auditoría de km lea el libro de turnos (y los km de «Entregar coche») para señalar personas en vez de matrículas ([[Corte de tramos]]).
 - **BI** (`/bi`): se pule cuando el sistema tenga más datos. No se toca por ahora.
 
 Relacionado: [[INDICE]] · [[Historial de decisiones]]

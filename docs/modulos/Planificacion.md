@@ -163,10 +163,19 @@ Desde el 24/09/2026 la barra del planificador tiene un botón **Fichaje**: es do
 
 La semana **no empieza de cero**. El lunes el coche se recibe de quien lo dejó el **domingo pasado**, y el último día se entrega a quien lo coge la semana siguiente. Por eso `cobertura.repo` consulta aparte los bordes de la semana.
 
+### De hoy a 7 días (28/09/2026)
+
+Camilo: *«si hoy es martes, que me diga los turnos de hoy a 7 días: ignora el lunes, que ya pasó, y termina el martes»*. Lo que ve el conductor al pulsar **Ver mis turnos**, y la pestaña **Por conductor** de `/cobertura` en la semana actual, son sus turnos **de hoy al mismo día de la semana que viene**: ocho días, hoy incluido.
+
+- `cobertura.repo.proximos()` carga las **dos** semanas que pisa la ventana y `ventana()` (pura, probada en `scripts/comprobar-cobertura.js`) las corta. Solo entra quien trabaja algún día de la ventana.
+- «Hoy» es el **día operativo** (05→05): el de noche que pregunta a la 01:00 todavía ve su turno de ayer, que es donde está a quién entrega el coche a las cinco.
+- Cada día lleva su **fecha**, y los relevos también (`recibeDe.fecha`, `entregaA.fecha`). Con la ventana, «lo deja el domingo pasado» ya no se sabe respecto a qué: se dice «lo deja el jueves 01/10», y solo si el coche se queda parado en medio (relevo no directo).
+- Las **semanas que vienen** se siguen viendo de lunes a domingo en `/cobertura`: sirven para planificar, y ahí el lunes todavía no ha pasado. La pestaña **Por día** tampoco cambia: es la cobertura de la semana.
+
 El aviso por WhatsApp tiene cinco reglas (`modules/Planificacion/cobertura.service.js`):
 
 1. **El apunte nunca tumba el envío.** Si el registro falla, el WhatsApp sale igual. No avisar a nadie porque no se pudo escribir una fila sería cambiar un problema de contabilidad por uno de operación.
-2. **Se manda la PLANTILLA, no el detalle.** El mensaje lleva un botón; el conductor lo pulsa y es el bot quien le cuenta sus turnos. Por eso al enviar se marca la semana (`avisoTurnos.marcar`): cuando pulse, tiene que ver ESA y no la de hoy. El apunte vive en memoria y vale 12 días; si el servidor reinicia, se cae a la semana actual.
+2. **Se manda la PLANTILLA, no el detalle.** El mensaje lleva un botón; el conductor lo pulsa y es el bot quien le cuenta sus turnos: los de **ese día a 7 días**, contados desde que pulsa. Hasta el 28/09/2026 se apuntaba en memoria la semana avisada (`avisoTurnos`) para enseñarle esa; ya no hace falta y se quitó. En la semana actual se avisa a quien trabaja **de hoy a 7 días** (Cobertura y el botón de cada cuadrante del planificador); en las siguientes, a quien trabaja esa semana.
 3. **Un envío a la vez.** Dos masivos a la vez se pisarían el contador y, peor, duplicarían mensajes. El segundo recibe un **409, no una cola**.
 4. **1,2 segundos entre mensajes** (~50/min, por debajo de los límites de Meta). Doscientas personas son cuatro minutos: va en segundo plano y el panel sondea el progreso.
 5. **Solo se avisa a quien trabaja.** Quien libra toda la semana no recibe nada; quien no tiene teléfono se apunta como `sin-telefono` —que es un dato para RRHH— en vez de contarse como error de envío. Y **a quien ya causó baja no se le manda nada**, aunque siga saliendo en la pantalla porque sus turnos de esa semana ocurrieron.

@@ -53,6 +53,40 @@ function normClave(n) {
     .split(/\s+/).filter(Boolean).sort().join(' ');
 }
 
+// Las partículas que van en minúscula dentro de un nombre: «María del Mar».
+const PARTICULAS = new Set(['de', 'del', 'la', 'las', 'los', 'y']);
+const capitalizar = txt => txt.split(/\s+/).filter(Boolean).map((p, i) => {
+  const b = p.toLowerCase();
+  return i > 0 && PARTICULAS.has(b) ? b : b.charAt(0).toUpperCase() + b.slice(1);
+}).join(' ');
+
+/**
+ * EL NOMBRE DE PILA, para saludar: «Hola, Kevin Johan», sin apellidos.
+ *
+ * La ficha no es de fiar para esto. Con los apellidos en su casilla, `nombre`
+ * es el nombre y basta. Pero hay fichas con la casilla de apellidos vacía y el
+ * nombre entero en `nombre`, casi siempre con los apellidos DELANTE («POLO
+ * TENA DAVID»): ahí la primera palabra es un apellido. El de BOLT va en el
+ * orden de siempre («David Polo Tena»), así que en ese caso manda BOLT.
+ *
+ * Y se escribe como un nombre: la mayoría viene en mayúsculas, y un saludo en
+ * mayúsculas parece un grito.
+ */
+function nombreDePila({ nombre, apellidos, nombreBolt } = {}) {
+  const limpio = s => String(s == null ? '' : s).replace(INVISIBLES, '').replace(/\s+/g, ' ').trim();
+  const n = limpio(nombre), a = limpio(apellidos), b = limpio(nombreBolt);
+  if (n && a) return capitalizar(n);
+  const origen = b || n;
+  if (!origen) return '';
+  // La primera palabra, y si sigue una partícula, lo que la acompaña:
+  // «Maria Del Mar Lara» → «Maria del Mar», no «Maria».
+  const p = origen.split(' ');
+  let i = 1;
+  while (i < p.length && PARTICULAS.has(p[i].toLowerCase())) i++;
+  const fin = i > 1 && i < p.length ? i + 1 : 1;
+  return capitalizar(p.slice(0, fin).join(' '));
+}
+
 // ── LAS COLUMNAS DE LA AGENDA ──────────────────────────────────────────────
 // El orden de columnas de la hoja AGENDA_V2. Es un CONTRATO DE DATOS, no una
 // regla: dice dónde está cada cosa, no qué significa.
@@ -134,7 +168,7 @@ const deLaFlotaVigilada = col =>
                WHERE vsede.matricula_norm = ${col} AND vsede.sede <> '${SEDE_FLOTA}')`;
 
 module.exports = {
-  HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, A, A_HEADERS,
+  HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, nombreDePila, A, A_HEADERS,
   DIAS_CORTOS, DIAS_LARGOS, LETRAS_DIA,
   SEDE_FLOTA, deLaFlotaVigilada,
 };

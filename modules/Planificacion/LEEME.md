@@ -23,9 +23,8 @@ planificador.repo.js      el SQL del cuadrante (2.262 líneas)
 eventos.repo.js           las plazas de refuerzo con fecha de caducidad
 cobertura.controller.js   HTTP de la semana y del aviso
 cobertura.service.js      a quién se avisa, a qué ritmo y qué se apunta
-cobertura.repo.js         el SQL de la semana · avisos.repo.js  el registro de avisos
-avisoTurnos.service.js    qué semana verá quien pulse el botón del WhatsApp
-turnos.service.js         el mensaje que lee el conductor en el bot
+cobertura.repo.js         el SQL de la semana, y la ventana de hoy a 7 días · avisos.repo.js  el registro de avisos
+turnos.service.js         el mensaje que lee el conductor en el bot (de hoy a 7 días)
 parrilla.excel.js         el ANEXO que se imprime
 hoja.repo.js              las filas de PLANIFICADOR_V2 y BASES, desde PostgreSQL
 vistas/planificadorV2.ejs · vistas/cobertura.ejs

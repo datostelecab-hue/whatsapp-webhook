@@ -21,7 +21,7 @@
 const plani = require('./planificador.repo');
 const db = require('../../services/db');
 
-const { DIAS_LARGOS: DIAS_SEM } = require('../../services/nucleo');
+const { DIAS_LARGOS: DIAS_SEM, HORA_DIA, nombreDePila } = require('../../services/nucleo');
 const TURNOS = ['Día', 'Noche'];
 const TZ = 'Europe/Madrid';
 
@@ -46,13 +46,78 @@ const corto = iso => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
  * @param {number} offsetSemana 0 = esta semana, 1 = la que viene…
  */
 async function datos({ offsetSemana = 0 } = {}) {
-  const base = sumarDias(hoyMadrid(), Number(offsetSemana || 0) * 7);
+  return semanaDelDia(sumarDias(hoyMadrid(), Number(offsetSemana || 0) * 7), offsetSemana);
+}
+
+/** La semana (de lunes a domingo) que contiene `base`. */
+async function semanaDelDia(base, offsetSemana = 0) {
   const [tab, contac, bordes] = await Promise.all([
     plani.tablero({ dia: base }),
     plani.contactos().catch(() => new Map()),
     bordesDe(plani.lunesDe(base)),
   ]);
   return construir(tab, contac, offsetSemana, bordes);
+}
+
+// ── Los próximos 7 días: de HOY al mismo día de la semana que viene ──────────
+// Camilo, 28/09/2026: «si hoy es martes, que me diga los turnos de hoy a 7
+// días: ignora el lunes, que ya pasó, y termina el martes». Es lo que ve el
+// conductor al pulsar «Ver mis turnos» y lo que enseña Cobertura por conductor.
+// Son OCHO días (hoy + 7), así que la ventana siempre pisa dos semanas del
+// cuadrante: se cargan las dos y se cortan.
+
+/**
+ * HOY, pero el día OPERATIVO (05:00 → 05:00). El de noche que pregunta a la
+ * 01:00 sigue en el turno de ayer, y ese turno —a quién entrega el coche a las
+ * cinco— es justo lo que le interesa ver.
+ */
+const diaOperativo = () => new Intl.DateTimeFormat('en-CA',
+  { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+  .format(new Date(Date.now() - HORA_DIA * 3600 * 1000));
+
+const DIAS_VENTANA = 8;
+
+/** Los próximos días de cada conductor, desde `desde` (hoy operativo). */
+async function proximos({ desde = diaOperativo(), dias = DIAS_VENTANA } = {}) {
+  const [a, b] = await Promise.all([semanaDelDia(desde, 0), semanaDelDia(sumarDias(desde, 7), 1)]);
+  return ventana(a, b, desde, dias);
+}
+
+/**
+ * PURA: corta dos semanas ya construidas (`construir`) en una ventana de `n`
+ * días que empieza en `desde`. Devuelve la misma forma que `porConductor`, con
+ * la fecha en cada día; solo entra quien trabaja algún día de la ventana.
+ */
+function ventana(semA, semB, desde, n = DIAS_VENTANA) {
+  const fechas = Array.from({ length: n }, (_, i) => sumarDias(desde, i));
+  const semanas = [semA, semB].filter(s => s && s.semanaInfo && s.semanaInfo.desde);
+  const semanaDe = f => semanas.find(s => f >= s.semanaInfo.desde && f <= s.semanaInfo.hasta) || null;
+  const dow = f => { const [y, m, d] = f.split('-').map(Number); return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7; };
+
+  const gente = new Map();   // id -> { id, nombre, telefono, deBaja, entradas: Map(semana -> entrada) }
+  semanas.forEach(s => (s.porConductor || []).forEach(e => {
+    const id = String(e.id);
+    if (!gente.has(id)) gente.set(id, { id, nombre: e.nombre, telefono: e.telefono, deBaja: e.deBaja, entradas: new Map() });
+    gente.get(id).entradas.set(s, e);
+  }));
+
+  const porConductor = [];
+  for (const p of gente.values()) {
+    const dias = fechas.map((f, i) => {
+      const s = semanaDe(f);
+      const k = dow(f);
+      const base = { fecha: f, diaNombre: DIAS_SEM[k], hoy: i === 0 };
+      if (!s) return { ...base, trabaja: false, sinPlan: true };
+      const e = p.entradas.get(s);
+      const d = e && e.dias && e.dias[k];
+      if (!d) return { ...base, trabaja: false, sinPlan: ((s.semanaInfo.hayPlan || [])[k]) === false };
+      return { ...d, ...base };
+    });
+    if (!dias.some(d => d.trabaja)) continue;
+    porConductor.push({ id: p.id, nombre: p.nombre, telefono: p.telefono, deBaja: p.deBaja, dias });
+  }
+  porConductor.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  return { desde: fechas[0], hasta: fechas[n - 1], fechas, porConductor };
 }
 
 // ── Los bordes de la semana: el domingo pasado y el lunes que viene ──────────
@@ -181,13 +246,13 @@ function construir(tab, contac, offsetSemana = 0, bordes = null) {
     if (a && String(a.id) !== String(prim.id)) relevosBorde.push({
       matricula: c.matricula, semanaPasada: true,
       entrega: { id: a.id, nombre: a.nombre, dia: a.diaNombre, turno: a.turno, fecha: a.fecha, semanaPasada: true },
-      recibe: { id: prim.id, nombre: prim.nombre, dia: prim.diaNombre, turno: prim.turno },
+      recibe: { id: prim.id, nombre: prim.nombre, dia: prim.diaNombre, turno: prim.turno, fecha: prim.fecha || '' },
       directo: 14 + prim.i - a.ord === 1,
     });
     const s = bordes.despues && bordes.despues.get(c.vehiculoId);
     if (s && String(s.id) !== String(ult.id)) relevosBorde.push({
       matricula: c.matricula, semanaSiguiente: true,
-      entrega: { id: ult.id, nombre: ult.nombre, dia: ult.diaNombre, turno: ult.turno },
+      entrega: { id: ult.id, nombre: ult.nombre, dia: ult.diaNombre, turno: ult.turno, fecha: ult.fecha || '' },
       recibe: { id: s.id, nombre: s.nombre, dia: s.diaNombre, turno: s.turno, fecha: s.fecha, semanaSiguiente: true },
       directo: 14 + s.ord - ult.i === 1,
     });
@@ -202,12 +267,15 @@ function construir(tab, contac, offsetSemana = 0, bordes = null) {
       etiqueta: fechas.length ? `${corto(fechas[0])} – ${corto(fechas[6])}` : '',
       offsetSemana: Number(offsetSemana || 0),
       dia: tab.dia,
+      // Qué días tienen plan cargado: la ventana de los próximos días lo
+      // necesita para quien no aparece en una de las dos semanas.
+      hayPlan,
     },
     cobertura: coberturaPorTurno(coches, gente, fechas),
     ausentesEnPlaza: ausentesEnPlaza(coches, gente),
     relevos,
     relevosBorde,
-    porConductor: porConductor(coches, gente, telDe, hayPlan, relevosBorde, fichaDe),
+    porConductor: porConductor(coches, gente, telDe, hayPlan, relevosBorde, fichaDe, fechas),
     // La pantalla pinta los operativos; los demás salen igual en `cobertura` con
     // su motivo ("en taller"), que es justo lo que hay que ver.
     coches: coches.filter(c => c.operativo).map(c => ({
@@ -232,8 +300,8 @@ function relevosDe(matricula, semana) {
     if (a.id === b.id) continue;               // sigue el mismo: no hay relevo
     out.push({
       matricula,
-      entrega: { id: a.id, nombre: a.nombre, dia: a.diaNombre, turno: a.turno },
-      recibe: { id: b.id, nombre: b.nombre, dia: b.diaNombre, turno: b.turno },
+      entrega: { id: a.id, nombre: a.nombre, dia: a.diaNombre, turno: a.turno, fecha: a.fecha || '' },
+      recibe: { id: b.id, nombre: b.nombre, dia: b.diaNombre, turno: b.turno, fecha: b.fecha || '' },
       directo: b.i - a.i === 1,
     });
   }
@@ -322,7 +390,7 @@ function ausentesEnPlaza(coches, gente) {
  * La semana de CADA conductor: qué día trabaja, en qué coche, de quién lo recibe
  * y a quién se lo entrega. Es lo que se le manda por WhatsApp.
  */
-function porConductor(coches, gente, telDe, hayPlan = [], relevosBorde = [], fichaDe = () => ({})) {
+function porConductor(coches, gente, telDe, hayPlan = [], relevosBorde = [], fichaDe = () => ({}), fechas = []) {
   // id → [{ dia, diaNombre, turno, matricula }]
   const slots = new Map();
   coches.forEach(coche => coche.semana.forEach(tr => {
@@ -348,24 +416,27 @@ function porConductor(coches, gente, telDe, hayPlan = [], relevosBorde = [], fic
     const persona = gente.get(String(id));
     const dias = DIAS_SEM.map((diaNombre, d) => {
       const sinPlan = hayPlan[d] === false;
+      const fecha = fechas[d] || '';
       const delDia = mis.filter(s => s.dia === d).sort((a, b) => ordTurno(a.turno) - ordTurno(b.turno));
-      if (!delDia.length) return { diaNombre, trabaja: false, sinPlan };
+      if (!delDia.length) return { diaNombre, fecha, trabaja: false, sinPlan };
       const primero = delDia[0], ultimo = delDia[delDia.length - 1];
       const rec = buscaRecibe(id, primero);
       const ent = buscaEntrega(id, ultimo);
       return {
-        diaNombre, trabaja: true, sinPlan: false,
+        diaNombre, fecha, trabaja: true, sinPlan: false,
         turno: [...new Set(delDia.map(s => s.turno))].join(' y '),
         matricula: [...new Set(delDia.map(s => s.matricula))].join(' + '),
         // `dia` es CUÁNDO deja/coge el coche la otra persona; con `semanaPasada`/
-        // `semanaSiguiente` cuando ese día cae fuera de esta semana.
+        // `semanaSiguiente` cuando ese día cae fuera de esta semana. `fecha` es
+        // lo mismo con fecha: la ventana de los próximos días cruza semanas y
+        // ahí «el domingo pasado» ya no dice nada.
         recibeDe: rec ? {
           nombre: rec.entrega.nombre, telefono: telDe(rec.entrega.id), directo: !!rec.directo,
-          dia: rec.entrega.dia || '', semanaPasada: !!rec.entrega.semanaPasada,
+          dia: rec.entrega.dia || '', semanaPasada: !!rec.entrega.semanaPasada, fecha: rec.entrega.fecha || '',
         } : null,
         entregaA: ent ? {
           nombre: ent.recibe.nombre, telefono: telDe(ent.recibe.id), directo: !!ent.directo,
-          dia: ent.recibe.dia || '', semanaSiguiente: !!ent.recibe.semanaSiguiente,
+          dia: ent.recibe.dia || '', semanaSiguiente: !!ent.recibe.semanaSiguiente, fecha: ent.recibe.fecha || '',
         } : null,
       };
     });
@@ -424,6 +495,7 @@ async function conductorPorTelefono(phone) {
   const r = await db.consulta(
     `SELECT t.conductor_id,
             COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+            c.nombre AS n, c.apellidos, c.nombre_bolt,
             c.empleo_vigente AS activo
        FROM conductor_telefono t
        JOIN conductor c ON c.id = t.conductor_id
@@ -431,12 +503,14 @@ async function conductorPorTelefono(phone) {
       LIMIT 1`, [t]);
   const x = r.rows[0];
   return x
-    ? { conductorId: String(x.conductor_id), nombre: x.nombre || '', activo: x.activo !== false }
+    ? { conductorId: String(x.conductor_id), nombre: x.nombre || '', activo: x.activo !== false,
+        pila: nombreDePila({ nombre: x.n, apellidos: x.apellidos, nombreBolt: x.nombre_bolt }) }
     : null;
 }
 
 module.exports = {
   datos, construir, conductorPorTelefono, DIAS_SEM, TURNOS,
+  proximos, diaOperativo, DIAS_VENTANA,
   // Expuestas para poder probarlas sueltas, sin base de datos.
-  relevosDe, coberturaPorTurno, ausentesEnPlaza, porConductor, sumarDias,
+  relevosDe, coberturaPorTurno, ausentesEnPlaza, porConductor, sumarDias, ventana,
 };

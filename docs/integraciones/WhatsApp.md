@@ -8,7 +8,7 @@ aliases: [Cloud API, Bot de puertas]
 WhatsApp es **el canal con los conductores**. No usan la app de Mapon ni entran al ERP: lo que se les dice y lo que piden pasa por aquí. Son dos cosas distintas montadas sobre el mismo número:
 
 - **Lo que sale**: avisos de turnos, advertencias de velocidad, alertas a los controladores. Vive en `services/whatsapp.js`. (La bienvenida de Ballenoil se quitó el 24/09/2026.)
-- **Lo que entra**: el bot (abrir/cerrar puertas, ver turnos, fichar turno o viaje). Vive en `routes/botPuertas.js`. El PIN de repostaje y los códigos de lavado de Ballenoil se quitaron el 24/09/2026: ya no se trabaja con Ballenoil.
+- **Lo que entra**: el bot. Desde el 28/09/2026 el **conductor** tiene una conversación propia y ordenada (saludo → matrícula → su turno con botones fijos) en `services/fichajeBot.js`; la gente de oficina con el permiso `/puertas` sigue con el panel de puertas de `routes/botPuertas.js`. El PIN de repostaje de Ballenoil no vuelve; los **códigos de lavado** vuelven solo hasta el 15/10/2026 (la última tanda).
 
 Es la **Cloud API de Meta**, contra `graph.facebook.com`, versión `v25.0`.
 
@@ -66,18 +66,38 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 
 **Quién puede usar el bot.** Lo decide `services/repo/puertas.quienPuedeAbrir()`: un conductor abre **por estar de alta** con el número con el que se le dio de alta, y la gente de oficina **por tener el permiso `/puertas`**, que se reparte uno a uno. BOLT no entra en esa decisión a propósito. Y cuando no se puede, **se dice qué falta** (`sin_numero`, `no_esta`, `sin_alta`, `bloqueado`, `sin_permiso`, `error`): un "no estás autorizado" a secas manda a la persona a preguntar a tráfico y a tráfico a mirar la hoja, y cada motivo tiene una salida distinta.
 
-**Qué entiende:**
+**La conversación del conductor (28/09/2026).** Lo pidió Camilo así, en este orden, y es para **todo conductor de alta**:
+
+1. **Saludo cálido, solo con el nombre de pila** («¡Hola, David! Qué gusto saludarte.»). El nombre sale de `nucleo.nombreDePila`: si la ficha tiene los apellidos en su casilla, `nombre`; si no (hay fichas con «POLO TENA DAVID» entero en `nombre`), la primera palabra del nombre de BOLT. Y en minúsculas, que en mayúsculas parece un grito.
+2. Que escriba la **matrícula** del coche que va a llevar, **todo junto, sin espacios ni guiones** (si los pone, se le entiende igual).
+3. Con la matrícula **empieza su turno** en ese coche —se le desbloquea el motor— y le salen **siempre los mismos botones**, en dos mensajes (WhatsApp no deja más de tres por mensaje):
+
+| Mensaje | Botones |
+|---|---|
+| el coche, desde qué hora, puertas | 🔓 Abrir puertas · 🔒 Cerrar puertas · 🚗 Entregar coche |
+| «Más opciones» | 🧽 Código de lavado (hasta el 15/10) · 📅 Ver mis turnos · 🔴 Terminar turno |
+
+- **Entregar coche** = el antiguo «Voy al relevo» (mismo id de botón, `turno_relevo`). Se pulsa **justo antes de salir** hacia donde está el compañero, no al llegar: desde esa hora se cuentan los km del trayecto de entrega (`fichaje_turno.relevo_at` → `km_relevo`). Cuando el compañero escribe la matrícula, el turno del que entrega se cierra solo y **se le avisa** con sus km.
+- **Terminar turno** cierra el turno y bloquea el motor — solo si esa persona tiene el bloqueo encendido (ver [[Fichaje]]).
+- **Las palabras**: al conductor **no se le dice «fichar» ni «fichaje»**. Esto no es el registro de jornada (ese es `/fichaje`): es quién lleva qué coche y cuántos km hace. Si se llamara igual, un turno abierto por WhatsApp sin trabajar se podría hacer pasar por horas fichadas.
+- Los ids de los botones son los de siempre (`abrir_puertas`, `ver_turnos`, `codigo_lavado`…): un botón de un mensaje viejo del chat sigue funcionando.
+
+**El panel de oficina** (quien tiene `/puertas` y no es conductor) sigue como estaba: escribe una matrícula y abre o cierra, sin turno.
+
+**Meta reenvía** un mensaje si no se le contesta a tiempo, y ahora un mensaje abre un turno o gasta un código de lavado. Por eso el webhook **contesta 200 al momento** y recuerda los últimos 500 ids de mensaje: uno repetido se ignora.
+
+**Qué entiende (el panel de oficina):**
 
 - Una **matrícula** → busca el coche en Mapon y abre el menú de botones. El filtro es `/^(?=.*\d)[A-Za-z0-9]{6,8}$/`: exige al menos un dígito porque con `{4,8}` a secas *"hola"* era una matrícula válida — Ignacio saludó al bot y le contestó «Matrícula "HOLA" no encontrada» sin saludarle siquiera. Lo mismo pasaba con "buenas", "gracias" o "vale".
-- **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio.
-- **Ballenoil, fuera** (24/09/2026): ni **PIN de repostaje** ni **códigos de lavado**. Si alguien pulsa «VER PIN» en una bienvenida vieja o «Código lavado» en un menú viejo del chat, se le dice que ya no se usa y se le deja el menú.
-- **Ver turnos** → el cuadrante de la semana en texto libre. Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
-- **Fichaje de turno o de viaje** (`services/fichajeBot.js`), que enlaza conductor ↔ coche en Mapon y suelta o bloquea el motor. Va **antes** de la comprobación de acceso porque alguien de la empresa puede fichar un coche sin tener el permiso de puertas, y solo actúa para quien lo tenga **encendido en el ERP** (planificador y `/usuarios`, desde el 24/09/2026): para cualquier otro número devuelve `false` y el bot sigue como siempre. Ver [[Fichaje]].
+- **Abrir / cerrar puertas** → ejecuta `open_doors` / `close_doors`. Esto **no va por la API de Mapon**, va por un Apps Script intermedio (`services/puertasBot.js`, que usan las dos conversaciones).
+- **Códigos de lavado Ballenoil**: vuelven del 28/09 al **15/10/2026** con la última tanda (566 códigos, db/164; vencen el 17/10). `services/lavadoBallenoil.js`: `visible()` deja de enseñar el botón solo a partir del 16/10, y un doble toque no gasta dos bonos (en 30 min se repite el mismo). El PIN de repostaje **no** vuelve: si alguien pulsa «VER PIN» en una bienvenida vieja, se le dice que ya no se usa.
+- **Ver turnos** → sus turnos **de hoy a 7 días** en texto libre (`turnos.service.textoTurnos`, ver [[Planificacion]]). Volver del teléfono a la persona es el reto: se prueban todas las identidades conocidas normalizadas, porque con igualdad literal fallaba con tildes, apellidos cambiados de orden o teléfonos que no están en BOLT.
+- **Viajes de la empresa** (`services/fichajeBot.js`): quien tenga el fichaje encendido en `/usuarios` coge un coche y lo devuelve; va **antes** de la comprobación de acceso porque puede no tener el permiso de puertas. Ver [[Fichaje]].
 
 Los botones llegan de dos formas distintas y hay que tratarlas aparte: los de un mensaje interactivo son `type: interactive` con `button_reply.id`, y los de una **plantilla** (quick reply) llegan como `type: button` con `button.text`/`payload`.
 
 > [!danger] Riesgo abierto: la URL del Apps Script
-> La URL de despliegue del Apps Script que abre y cierra los coches está **escrita en `routes/botPuertas.js`**. Un despliegue de Apps Script publicado no lleva autenticación propia: quien tenga esa URL puede accionar puertas. Pendiente de sacar a variable de entorno.
+> La URL de despliegue del Apps Script que abre y cierra los coches está **escrita en `services/puertasBot.js`**. Un despliegue de Apps Script publicado no lleva autenticación propia: quien tenga esa URL puede accionar puertas. Pendiente de sacar a variable de entorno.
 
 ## Qué se registra
 
@@ -102,9 +122,9 @@ El registro de puertas **no se espera**: que falle apuntarlo no puede dejar a na
 
 | Fichero | Qué manda |
 |---|---|
-| `modules/Planificacion/cobertura.service.js` | el aviso de turnos de la semana |
+| `modules/Planificacion/cobertura.service.js` | el aviso de turnos (la plantilla; el detalle, de hoy a 7 días, lo da el bot) |
 | `modules/Operaciones/sanciones.service.js` | la advertencia por exceso de velocidad |
 | `modules/Control/alertas.repo.js` | las alertas de franja a los controladores |
-| `services/fichajeBot.js` | la conversación de fichaje de turno |
+| `services/fichajeBot.js` | la conversación del conductor (su turno) y la de los viajes de la empresa |
 
 Ninguno de ellos llama a [[BOLT]] ni a [[Mapon]] para decidir: lo que necesitan ya está en PostgreSQL, puesto por la [[Ingesta]]. Lo único que sale fuera es el WhatsApp, que es el trabajo.

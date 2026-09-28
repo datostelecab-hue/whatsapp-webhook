@@ -505,7 +505,8 @@ vacío y a cualquier fallo de la consulta. En caja, la duda se resuelve cerrando
 
 **`codigosBallenoil` ya no existe** (24/09/2026): los códigos de lavado y el PIN
 de Ballenoil se quitaron del ERP, y con ellos la pantalla `/administracion`, que
-ahora lleva a sus tickets.
+ahora lleva a sus tickets. Los códigos de lavado vuelven al bot **solo hasta el
+15/10/2026** (`services/lavadoBallenoil.js`, db/164): sin pantalla ni importador.
 
 ### Hecho: Nóminas (y de paso, fuera de las hojas)
 

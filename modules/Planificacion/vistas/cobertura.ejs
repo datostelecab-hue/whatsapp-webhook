@@ -53,6 +53,7 @@
       </button>
       <span id="turnos-estado" class="text-sm text-telecab-muted"></span>
     </div>
+    <p id="personas-ventana" class="text-xs text-telecab-muted mb-3"></p>
     <div id="lista-personas" class="grid gap-3 lg:grid-cols-2"></div>
   </section>
 </div>
@@ -319,26 +320,48 @@ function pintarDias() {
 }
 
 // ════════ Por conductor ════════
+// En la semana ACTUAL, cada conductor de HOY a 7 días (D.proximos): lo mismo que
+// ve él al pulsar «Ver mis turnos». Lo que ya pasó no interesa (28/09/2026). Las
+// semanas que vienen se siguen viendo de lunes a domingo, para planificar.
+const enVentana = () => SEMANA === 0 && !!(D && D.proximos);
+const personas = () => (enVentana() ? D.proximos.porConductor : D.porConductor) || [];
+const DIAS_ABR = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const fechaCorta = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number);
+  return `${DIAS_ABR[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`; };
+
 function pintarPersonas() {
   const texto = $('#f-persona').value.trim().toLowerCase();
+  const v = enVentana() ? D.proximos : null;
+  $('#personas-ventana').textContent = v
+    ? `De hoy, ${fechaCorta(v.desde)}, al ${fechaCorta(v.hasta)}: lo mismo que ve cada conductor al pulsar «Ver mis turnos».`
+    : '';
   // Se busca por nombre/ID/teléfono Y por MATRÍCULA: escribiendo "1208MJY" salen
   // todos los conductores asociados a ese coche esta semana (fijos y correturnos).
-  const lista = (D.porConductor || [])
+  const lista = personas()
     .filter(p => {
       if (!texto) return true;
       const matriculas = p.dias.map(d => d.matricula || '').join(' ');
       return `${p.nombre} ${p.id} ${p.telefono} ${matriculas}`.toLowerCase().includes(texto);
     });
 
-  // Cuándo es el paso del coche, solo cuando aporta: al cruzar la semana ("lo deja
-  // el domingo pasado": la cadena arranca en la anterior) o si el coche queda
-  // parado en medio (no directo). En el relevo directo pasa de mano en el momento.
+  // Cuándo es el paso del coche, solo cuando aporta: si el coche queda parado en
+  // medio (no directo) y, en las semanas de lunes a domingo, al cruzar la semana
+  // ("lo deja el domingo pasado"). En el relevo directo pasa de mano en el momento.
+  // En la ventana de hoy a 7 días va con fecha: «pasado» ya no dice respecto a qué.
+  const suave = t => ` <span class="text-telecab-muted/70">· ${t}</span>`;
   const cuandoRec = d => { const r = d.recibeDe || {}; const dia = (r.dia || '').toLowerCase();
-    if (r.semanaPasada) return ` <span class="text-telecab-muted/70">· lo deja el ${esc(dia || 'domingo')} pasado</span>`;
-    return (!r.directo && r.dia && r.dia !== d.diaNombre) ? ` <span class="text-telecab-muted/70">· lo deja el ${esc(dia)}</span>` : ''; };
+    if (v) return (!r.directo && r.fecha && r.fecha !== d.fecha) ? suave(`lo deja el ${esc(fechaCorta(r.fecha))}`) : '';
+    if (r.semanaPasada) return suave(`lo deja el ${esc(dia || 'domingo')} pasado`);
+    return (!r.directo && r.dia && r.dia !== d.diaNombre) ? suave(`lo deja el ${esc(dia)}`) : ''; };
   const cuandoEnt = d => { const e = d.entregaA || {}; const dia = (e.dia || '').toLowerCase();
-    if (e.semanaSiguiente) return ` <span class="text-telecab-muted/70">· lo coge el ${esc(dia || 'lunes')} que viene</span>`;
-    return (!e.directo && e.dia && e.dia !== d.diaNombre) ? ` <span class="text-telecab-muted/70">· lo coge el ${esc(dia)}</span>` : ''; };
+    if (v) return (!e.directo && e.fecha && e.fecha !== d.fecha) ? suave(`lo coge el ${esc(fechaCorta(e.fecha))}`) : '';
+    if (e.semanaSiguiente) return suave(`lo coge el ${esc(dia || 'lunes')} que viene`);
+    return (!e.directo && e.dia && e.dia !== d.diaNombre) ? suave(`lo coge el ${esc(dia)}`) : ''; };
+  // En la ventana, cada día con su fecha y «hoy» marcado.
+  const etiqueta = d => v
+    ? `${esc(d.diaNombre)} <span class="font-normal text-telecab-muted">${esc(fechaCorta(d.fecha).split(' ')[1])}</span>` +
+      (d.hoy ? ' <span class="text-[10px] uppercase tracking-wide text-telecab-gold">hoy</span>' : '')
+    : esc(d.diaNombre);
   const recibeTxt = d => d.recibeDe ? `Recibe de <span class="font-medium text-telecab-text">${esc(d.recibeDe.nombre)}</span>${d.recibeDe.telefono ? ` <span class="text-telecab-muted">(${esc(d.recibeDe.telefono)})</span>` : ''}${cuandoRec(d)}` : '';
   const entregaTxt = d => d.entregaA ? `Entrega a <span class="font-medium text-telecab-text">${esc(d.entregaA.nombre)}</span>${d.entregaA.telefono ? ` <span class="text-telecab-muted">(${esc(d.entregaA.telefono)})</span>` : ''}${cuandoEnt(d)}` : '';
 
@@ -346,14 +369,14 @@ function pintarPersonas() {
     const dias = p.dias.map(d => {
       if (!d.trabaja) return `
         <div class="flex items-baseline gap-3 text-sm py-1">
-          <span class="w-24 shrink-0 font-medium text-telecab-muted">${esc(d.diaNombre)}</span>
+          <span class="w-28 shrink-0 font-medium text-telecab-muted">${etiqueta(d)}</span>
           <span class="${d.sinPlan ? "text-telecab-muted/40 italic" : "text-telecab-muted/60"}">${d.sinPlan ? "Sin plan cargado" : (p.deBaja ? "—" : "Libra")}</span>
         </div>`;
       const rec = recibeTxt(d), ent = entregaTxt(d);
       return `
         <div class="text-sm border-l-2 border-telecab-gold/40 pl-3 py-1">
           <div class="flex items-baseline gap-2 flex-wrap">
-            <span class="w-20 shrink-0 font-semibold text-telecab-text">${esc(d.diaNombre)}</span>
+            <span class="w-28 shrink-0 font-semibold text-telecab-text">${etiqueta(d)}</span>
             <span class="text-xs text-telecab-muted"><i class="fa-regular fa-clock mr-1"></i>${esc(d.turno)}</span>
             <span class="text-xs px-1.5 py-0.5 rounded bg-telecab-dark text-telecab-text font-mono">${esc(d.matricula)}</span>
           </div>
@@ -399,7 +422,7 @@ $('#sem-hoy').addEventListener('click', () => { if (SEMANA !== 0) { SEMANA = 0; 
 let _pollTurnos = null;
 $('#lista-personas').addEventListener('click', async e => {
   const b = e.target.closest('.btn-turno'); if (!b || b.disabled) return;
-  if (!confirm('¿Enviar sus turnos de esta semana por WhatsApp?')) return;
+  if (!confirm('¿Enviarle el aviso de turnos por WhatsApp? Al pulsar «Ver mis turnos» verá los suyos de ese día a 7 días.')) return;
   const o = b.innerHTML; b.disabled = true; b.innerHTML = 'Enviando…';
   try {
     const r = await fetch('/cobertura/enviar-turnos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idBolt: b.dataset.id, semana: SEMANA }) });
@@ -413,8 +436,8 @@ $('#lista-personas').addEventListener('click', async e => {
 $('#btn-turnos-todos').addEventListener('click', async () => {
   // Los de baja no entran en la cuenta porque tampoco entran en el envío (lo
   // decide el servidor, esto solo es no mentir sobre cuántos van a recibirlo).
-  const n = (D.porConductor || []).filter(p => p.telefono && !p.deBaja && p.dias.some(d => d.trabaja)).length;
-  if (!confirm(`¿Enviar los turnos de esta semana a los ${n} conductores que trabajan y tienen teléfono?`)) return;
+  const n = personas().filter(p => p.telefono && !p.deBaja && p.dias.some(d => d.trabaja)).length;
+  if (!confirm(`¿Enviar el aviso de turnos a los ${n} conductores que trabajan ${enVentana() ? 'de hoy a 7 días' : 'esa semana'} y tienen teléfono?`)) return;
   $('#btn-turnos-todos').disabled = true;
   try {
     const r = await fetch('/cobertura/enviar-turnos-todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semana: SEMANA }) });

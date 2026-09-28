@@ -1,11 +1,23 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-09-27
+actualizado: 2026-09-28
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-09-28 · El bot del conductor, ordenado
+
+Todo conductor de alta sigue el mismo camino: saludo con su nombre de pila → escribe la matrícula → **empieza su turno** (se le desbloquea el motor) → siempre los mismos botones: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Ver mis turnos · Terminar turno*. «Voy al relevo» pasa a llamarse **Entregar coche** (se pulsa al salir hacia el compañero: desde ahí se cuentan los km de la entrega). El bloqueo de motor al terminar sigue encendiéndose persona a persona. **No se usa la palabra «fichaje» con el conductor**: esto es custodia del coche, no registro de jornada, y llamarlo igual invitaría a confundirlos. → [[Fichaje]] · [[WhatsApp]]
+
+## 2026-09-28 · Los turnos, de hoy a 7 días
+
+«Ver mis turnos», la pestaña «Por conductor» de Cobertura (semana actual) y el aviso de los cuadrantes enseñan **de hoy al mismo día de la semana que viene**, no la semana de lunes a domingo: lo que ya pasó no interesa. Los relevos van con fecha. → [[Planificacion]]
+
+## 2026-09-28 · Los códigos de lavado de Ballenoil vuelven, hasta el 15/10
+
+La última tanda de bonos (566, vencen el 17/10) entra por db/164 y el botón vuelve al bot; desde el 16/10 deja de salir solo. El PIN de repostaje no vuelve. → [[WhatsApp]]
 
 ## 2026-09-27 · La casa pasa a ser corporativa
 

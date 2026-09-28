@@ -13,9 +13,9 @@
 //    contabilidad por uno de operación.
 //
 // 2. SE MANDA LA PLANTILLA, NO EL DETALLE. El mensaje lleva un botón; el
-//    conductor lo pulsa y es el BOT quien le cuenta sus turnos. Por eso al
-//    enviar se marca la semana (`avisoTurnos.marcar`): cuando pulse, tiene que
-//    ver ESA semana y no la de hoy.
+//    conductor lo pulsa y es el BOT quien le cuenta sus turnos: los de HOY a 7
+//    días, contados desde el momento en que pulsa (28/09/2026). Antes se
+//    apuntaba la semana avisada para enseñarle esa; ya no hace falta.
 //
 // 3. UN ENVÍO A LA VEZ. El masivo guarda su progreso en memoria y el panel lo
 //    sondea; dos a la vez se pisarían el contador y, peor, duplicarían mensajes.
@@ -31,7 +31,6 @@
 
 const cob = require('./cobertura.repo');
 const avisos = require('./avisos.repo');
-const avisoTurnos = require('./avisoTurnos.service');
 const { enviarAvisoTurnos } = require('../../services/whatsapp');
 
 const TZ = 'Europe/Madrid';
@@ -59,7 +58,26 @@ const RITMO_MS = 1200;   // ~50/min, por debajo de los límites de Meta
 
 const paraLaPantalla = () => ({ diasSem: cob.DIAS_SEM, turnos: cob.TURNOS });
 
-const datos = semana => cob.datos({ offsetSemana: semanaDe(semana) });
+/**
+ * La semana pedida. En la ACTUAL viene además `proximos`: cada conductor de hoy
+ * a 7 días, que es lo que enseña la pestaña «Por conductor» y lo que verá él al
+ * pulsar «Ver mis turnos». Las semanas que vienen se siguen viendo de lunes a
+ * domingo: sirven para planificar, y ahí el lunes todavía no ha pasado.
+ */
+async function datos(semana) {
+  const s = semanaDe(semana);
+  const [d, proximos] = await Promise.all([
+    cob.datos({ offsetSemana: s }),
+    s === 0 ? cob.proximos() : null,
+  ]);
+  return proximos ? { ...d, proximos } : d;
+}
+
+/** A quién se le puede avisar: la ventana de hoy a 7 días en la actual, la semana en las demás. */
+async function listaDeAvisos(s) {
+  if (s === 0) return (await cob.proximos()).porConductor;
+  return (await cob.datos({ offsetSemana: s })).porConductor;
+}
 
 /**
  * QUIÉN ES, por su teléfono. Lo usa el bot de las puertas: el sufijo de 9
@@ -90,9 +108,9 @@ async function enviarAUno({ id, semana }, quienEs) {
   if (!conductorId) throw new Error('Falta el conductor');
   const s = semanaDe(semana);
 
-  const { porConductor } = await cob.datos({ offsetSemana: s });
+  const porConductor = await listaDeAvisos(s);
   const entrada = porConductor.find(e => String(e.id) === conductorId);
-  if (!entrada) throw new Error('Ese conductor no tiene turnos esta semana');
+  if (!entrada) throw new Error(s === 0 ? 'Ese conductor no tiene turnos de hoy a 7 días' : 'Ese conductor no tiene turnos esa semana');
 
   const h = await avisos.huellas({ dia: diaDeSemana(s) });
   const base = {
@@ -121,7 +139,6 @@ async function enviarAUno({ id, semana }, quienEs) {
   await apuntar({ ...base, resultado: r.ok ? 'ok' : 'error', detalle: r.ok ? null : r.error });
   if (!r.ok) throw new Error(r.error);
 
-  avisoTurnos.marcar(entrada.telefono, s);   // al pulsar el botón verá ESTA semana
   console.log(`📅 [Turnos] Aviso enviado a ${entrada.nombre} (semana ${s})`);
   return { enviado: true };
 }
@@ -147,7 +164,7 @@ async function enviarABastantes(semana, soloIds = null, ctx = {}) {
   const s = semanaDe(semana);
   _prog = { activo: true, total: 0, enviados: 0, errores: 0, sinTel: 0, iniciado: sello(), fin: null, detalle: [] };
   try {
-    const { porConductor } = await cob.datos({ offsetSemana: s });
+    const porConductor = await listaDeAvisos(s);
     // La foto de lo que se está avisando, para el registro y el semáforo. Si no
     // puede armarse, el envío sale igual (huella vacía).
     const h = await avisos.huellas({ dia: diaDeSemana(s) })
@@ -174,7 +191,7 @@ async function enviarABastantes(semana, soloIds = null, ctx = {}) {
         continue;
       }
       const r = await enviarAvisoTurnos(e.telefono, e.nombre);
-      if (r.ok) { _prog.enviados++; avisoTurnos.marcar(e.telefono, s); }
+      if (r.ok) _prog.enviados++;
       else { _prog.errores++; _prog.detalle.push(`${e.nombre}: ${r.error}`); }
       await apunte(e, r.ok ? 'ok' : 'error', r.ok ? null : r.error);
       await sleep(RITMO_MS);
