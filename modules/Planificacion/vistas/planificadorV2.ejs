@@ -120,12 +120,12 @@
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Fijos que faltan</p>
       <p id="k-fijofalta" class="text-xl font-bold mt-1 text-telecab-gold">—</p>
-      <p class="text-[10px] text-telecab-muted mt-1">plazas de fijo vacías</p>
+      <p id="k-fijofalta-sub" class="text-[10px] text-telecab-muted mt-1">plazas de fijo vacías</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">CT que faltan</p>
       <p id="k-ct" class="text-xl font-bold mt-1 text-telecab-gold">—</p>
-      <p class="text-[10px] text-telecab-muted mt-1">solo de coches con su fijo</p>
+      <p id="k-ct-sub" class="text-[10px] text-telecab-muted mt-1">solo de coches con su fijo</p>
     </div>
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Huérfanos</p>
@@ -672,17 +672,35 @@
     caja.classList.toggle('bg-telecab-red/5', (r.ctFlojos || 0) > 0);
     $('#k-flojos').classList.toggle('text-telecab-red', (r.ctFlojos || 0) > 0);
     $('#k-flojos').classList.toggle('text-telecab-muted', (r.ctFlojos || 0) === 0);
+    // Las dos tarjetas cuentan CÓMO QUEDA cada plaza con todo lo ya escrito
+    // (28/09/2026): vacía hoy con su próximo dueño planificado no falta, llega;
+    // ocupada hoy por alguien que se va sin relevo, sí falta. Debajo se dice
+    // cuántas de cada; al pasar el ratón, quién, dónde y cuándo.
+    const plan = r.planificados || [], van = r.seVan || [];
+    const de = (xs, rol) => xs.filter(p => p.rol === rol);
+    const lineaPlan = p => `· ${p.matricula} ${String(p.turno || '').toLowerCase()} → ${p.nombre}, desde el ${isoAes(p.desde)}` +
+      (p.dias ? ` (${p.dias} días)` : '');
+    const lineaVa = p => `· ${p.matricula} ${String(p.turno || '').toLowerCase()}: ${p.nombre} hasta el ${isoAes(p.hasta)}`;
+    const detalle = rol => [
+      de(plan, rol).length ? `${de(plan, rol).length} ya planificada(s)` : '',
+      de(van, rol).length ? `${de(van, rol).length} se queda(n) vacía(s)` : '',
+    ].filter(Boolean).join(' · ');
+    const ayuda = rol => (de(plan, rol).length ? '\n\nNo cuentan, porque ya tienen a alguien planificado:\n' + de(plan, rol).map(lineaPlan).join('\n') : '') +
+      (de(van, rol).length ? '\n\nSí cuentan, aunque hoy estén ocupadas, porque se quedan sin nadie:\n' + de(van, rol).map(lineaVa).join('\n') : '');
     const fijoFalta = (r.fijosQueFaltanDia || 0) + (r.fijosQueFaltanNoche || 0);
     $('#k-fijofalta').textContent = fijoFalta;
+    $('#k-fijofalta-sub').textContent = ['plazas de fijo sin nadie', detalle('FIJO')].filter(Boolean).join(' · ');
     $('#k-fijofalta').parentElement.title =
-      `${r.fijosQueFaltanDia || 0} de día y ${r.fijosQueFaltanNoche || 0} de noche`;
+      `${r.fijosQueFaltanDia || 0} de día y ${r.fijosQueFaltanNoche || 0} de noche: plazas de fijo sin nadie, ` +
+      'contando lo que ya está planificado para más adelante.' + ayuda('FIJO');
     const ctFalta = (r.ctQueFaltanDia || 0) + (r.ctQueFaltanNoche || 0);
     $('#k-ct').textContent = ctFalta;
+    $('#k-ct-sub').textContent = ['solo de coches con su fijo', detalle('CT')].filter(Boolean).join(' · ');
     $('#k-ct').parentElement.title =
       `${r.ctQueFaltanDia || 0} de día y ${r.ctQueFaltanNoche || 0} de noche. ` +
-      'Son los días que libra un fijo y NADIE tiene escritos en su cuadrante, a seis días por ' +
-      'correturnos. No mira la semana que tengas abierta: un día ya pasado no es un hueco. ' +
-      'Y solo de coches que YA tienen su fijo: un coche sin fijo necesita un fijo, no un correturnos.';
+      'Son los días que libra un fijo y NADIE tiene escritos en su cuadrante, contando lo que ya está planificado ' +
+      'para más adelante, a seis días por correturnos. No mira la semana que tengas abierta: un día ya pasado no es un hueco. ' +
+      'Y solo de coches que tienen su fijo (o lo tienen planificado): un coche sin fijo necesita un fijo, no un correturnos.' + ayuda('CT');
     $('#k-huerf').textContent = (T.huerfanos || []).length;
     $('#k-banq').textContent = (T.pendientes || []).length;
     const semana = (T.fechas && T.fechas.length) ? `${isoAes(T.fechas[0])} – ${isoAes(T.fechas[6])}` : '';

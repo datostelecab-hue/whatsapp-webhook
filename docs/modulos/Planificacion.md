@@ -116,8 +116,8 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 |---|---|---|
 | Fijo día / noche | personas con plaza de fijo, por el turno de esa plaza | `asignacion` vigente |
 | CT día / noche | correturnos con 4 días o más | días escritos en sus cuadrantes |
-| Fijos que faltan | plazas de fijo vacías en coches operativos | `asignacion` vigente |
-| CT que faltan | días que libra un fijo y **nadie tiene escritos**, ÷6 | el cuadrante |
+| Fijos que faltan | plazas de fijo **sin nadie, contando lo ya planificado** en coches operativos | `asignacion` vigente **y futura** |
+| CT que faltan | días que libra un fijo y **nadie tiene escritos** (hoy o desde más adelante), ÷6 | el cuadrante, con las asignaciones futuras |
 | Huérfanos | gente asignada a un coche fuera de cobertura | `v_conductor_huerfano` |
 | Banquillo | activos sin plaza + correturnos a medio poner | ver más abajo |
 
@@ -125,6 +125,15 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 > Contaba los días que `f_cobertura` no llenó **en la semana abierta**. De los huecos de coches con fijo, **117 eran de días ya pasados** y 47 de hoy en adelante; 24 de ellos ya tenían dueño escrito. Se contrataba por un número que medía el pasado de la semana que tuvieras abierta. Ahora: 264 días de CT que pide el cuadrante, 181 con dueño, **83 sin nadie → 15 personas**.
 >
 > `diasSinCubrir*` **se queda con la cobertura**, y está bien: esa es otra pregunta —quién no va a salir esta semana— y ahí la fuente buena es `f_cobertura`. Lo que no se puede es contratar con ella.
+
+> [!important] Lo planificado a futuro cuenta (28/09/2026)
+> Camilo: *«faltan 7 fijos, pero si pongo a alguien del banquillo en una de esas plazas, ya faltan 6»*, aunque entre la semana que viene. Las dos tarjetas miran **cómo queda cada plaza con todo lo ya escrito**, en las dos direcciones:
+> - **vacía hoy, con su próximo dueño escrito** → no falta: llega (`resumen.planificados`).
+> - **ocupada hoy por alguien que se va** (su asignación tiene fin) **sin nadie detrás** → falta: se queda vacía (`resumen.seVan`).
+>
+> Sin lo segundo, quien cambia de coche contaba en los dos a la vez: Juan Manuel, del 7222LVG al 8203LTR el 05/10, tapaba las dos plazas. Un suplente con fin y con el titular escrito detrás no cambia nada. En los CT, los días con dueño son los del próximo correturnos si lo hay, y si no los del de hoy mientras no se vaya; y un coche cuyo fijo llega ya cuenta los relevos que necesitará.
+>
+> Efecto el 28/09/2026: salen **7 fijos y 10 CT** mirando esta semana, la del 05/10 o la del 12/10 — la cuenta ya no depende de la semana abierta. Debajo del número la tarjeta dice cuántas «ya planificadas» y cuántas «se quedan vacías», y al pasar el ratón, quién, dónde y cuándo.
 
 > [!tip] El banquillo dice quién ya tiene coche esperándole
 > Estar sin plaza **hoy** no es estar libre: hay quien tiene su coche escrito para el lunes. Sin decirlo, Tráfico lo coloca en otro sitio y esa persona sale en dos cuadrantes a la vez. La ficha lo avisa: «ya entra el 21/09 en 0524MMZ · 8930KVC». Es el reverso de [[#El buscador ve también lo que aún no ha pasado]].

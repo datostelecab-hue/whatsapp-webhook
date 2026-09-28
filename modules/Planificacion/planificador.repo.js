@@ -226,7 +226,10 @@ async function tablero({ dia } = {}) {
     db.consulta(
       `SELECT DISTINCT ON (a.plaza_id)
               a.plaza_id, a.conductor_id, a.desde, v.matricula,
-              COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre
+              COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+              -- Sus días, si es correturnos: cuentan ya como cubiertos (28/09/2026).
+              (SELECT array_agg(ad.dia_semana ORDER BY ad.dia_semana)
+                 FROM asignacion_dia ad WHERE ad.asignacion_id = a.id) AS dias
          FROM asignacion a
          JOIN plaza p     ON p.id = a.plaza_id AND p.baja_at IS NULL
          JOIN vehiculo v  ON v.id = p.vehiculo_id
@@ -270,7 +273,8 @@ async function tablero({ dia } = {}) {
 
   // Plaza → su próximo dueño (nombre + fecha en que llega), si hay uno futuro.
   const proximoDe = new Map(proximos.rows.map(r =>
-    [String(r.plaza_id), { conductorId: String(r.conductor_id), nombre: r.nombre, desde: fechaDe(r.desde) }]));
+    [String(r.plaza_id), { conductorId: String(r.conductor_id), nombre: r.nombre, desde: fechaDe(r.desde),
+      dias: (r.dias || []).map(Number) }]));
 
   // Y AL REVÉS: persona → a qué coche entra y qué día.
   //
@@ -485,14 +489,41 @@ async function tablero({ dia } = {}) {
   let diasSinCubrirDia = 0, diasSinCubrirNoche = 0;      // todo lo que no se cubre
   let ctDiasDia = 0, ctDiasNoche = 0;                     // solo en coches CON su fijo
   let fijosFaltanDia = 0, fijosFaltanNoche = 0;           // plazas de fijo vacías
+  // CÓMO QUEDA CADA PLAZA CON TODO LO QUE YA ESTÁ ESCRITO (28/09/2026, lo pidió
+  // Camilo): «faltan 7 fijos, pero si pongo a alguien del banquillo en una de
+  // esas plazas, ya faltan 6», aunque entre el lunes que viene.
+  //
+  // Las dos direcciones, o la cuenta engaña:
+  //   · vacía HOY con su próximo dueño escrito → no falta: llega.
+  //   · ocupada HOY por alguien que se va (su asignación tiene fin) y sin nadie
+  //     escrito detrás → falta: se queda vacía.
+  // Sin lo segundo, quien cambia de coche (Juan Manuel, del 7222LVG al 8203LTR
+  // el 05/10) contaba como fijo en los DOS a la vez.
+  //
+  // Un suplente con fin y con el titular escrito detrás no cambia nada: la
+  // plaza tiene dueño antes y después.
+  const planificados = [];                                // lo que llega: ya no falta
+  const seVan = [];                                       // lo que se va sin relevo: falta
+  const quedaCubierta = x => !!(x && (x.futuro || (x.id && !x.hasta)));
   coches.forEach(coche => {
     ['dia', 'noche'].forEach((codigo, off) => {
       const lista = cubre.get(`${coche.vehiculoId}|${turnoIdDe.get(codigo)}`)
         || Array.from({ length: DIAS }, () => []);
-      // ¿Está puesta la plaza de fijo de ESTE turno? Los slots 0 y 1 son los
-      // fijos de día y de noche.
-      const hayFijo = !!((coche.personas || [])[off] || {}).id;
-      if (coche.operativo && !hayFijo) { if (off === 0) fijosFaltanDia++; else fijosFaltanNoche++; }
+      // La plaza de fijo de ESTE turno (los slots 0 y 1 son los fijos de día y
+      // de noche), mirada con lo que ya está escrito para más adelante.
+      const plazaFijo = (coche.personas || [])[off] || {};
+      const hayFijo = quedaCubierta(plazaFijo);
+      if (coche.operativo) {
+        if (!plazaFijo.id && plazaFijo.futuro) {
+          planificados.push({ rol: 'FIJO', matricula: coche.matricula, turno: plazaFijo.turno,
+            nombre: plazaFijo.futuro.nombre, desde: plazaFijo.futuro.desde });
+        }
+        if (plazaFijo.id && plazaFijo.hasta && !plazaFijo.futuro) {
+          seVan.push({ rol: 'FIJO', matricula: coche.matricula, turno: plazaFijo.turno,
+            nombre: plazaFijo.nombre, hasta: plazaFijo.hasta });
+        }
+        if (!hayFijo) { if (off === 0) fijosFaltanDia++; else fijosFaltanNoche++; }
+      }
 
       // LOS DÍAS DE CORRETURNOS QUE NADIE TIENE ESCRITOS.
       //
@@ -513,9 +544,23 @@ async function tablero({ dia } = {}) {
       plazasCt.forEach(x => (x.diasSugeridos || []).forEach(d => pide.add(d)));
       // Sin fijo del que heredar los días, el descanso del coche dice cuáles son.
       if (!pide.size) (coche.descanso || []).forEach(d => pide.add(d - 1));
+      // Los días con dueño, con lo ya escrito: los del próximo correturnos si
+      // lo hay; si no, los del de hoy mientras no se vaya.
       const conDueno = new Set();
-      plazasCt.forEach(x => { if (x.id) (x.diasManual || []).forEach((v, i) => { if (v) conDueno.add(i); }); });
+      plazasCt.forEach(x => {
+        if (x.futuro && (x.futuro.dias || []).length) {
+          x.futuro.dias.forEach(d => conDueno.add(d - 1));
+          if (!x.id && coche.operativo) planificados.push({ rol: 'CT', matricula: coche.matricula, turno: x.turno,
+            nombre: x.futuro.nombre, desde: x.futuro.desde, dias: x.futuro.dias.length });
+        } else if (x.id && !x.hasta) {
+          (x.diasManual || []).forEach((v, i) => { if (v) conDueno.add(i); });
+        } else if (x.id && x.hasta && coche.operativo) {
+          seVan.push({ rol: 'CT', matricula: coche.matricula, turno: x.turno, nombre: x.nombre, hasta: x.hasta });
+        }
+      });
       let ctSinDueno = 0;
+      // Con el fijo puesto o ya planificado: un coche cuyo fijo llega el lunes
+      // también necesitará quien le releve.
       if (coche.operativo && hayFijo) pide.forEach(d => { if (!conDueno.has(d)) ctSinDueno++; });
       if (off === 0) ctDiasDia += ctSinDueno; else ctDiasNoche += ctSinDueno;
 
@@ -681,6 +726,10 @@ async function tablero({ dia } = {}) {
       ctQueFaltanNoche: Math.ceil(ctDiasNoche / 6),
       fijosQueFaltanDia: fijosFaltanDia,
       fijosQueFaltanNoche: fijosFaltanNoche,
+      // Para la tarjeta: lo que ya NO falta porque tiene dueño escrito a futuro,
+      // y lo que SÍ falta aunque hoy esté ocupado, porque su dueño se va.
+      planificados: planificados.sort((a, b) => a.desde.localeCompare(b.desde) || a.matricula.localeCompare(b.matricula)),
+      seVan: seVan.sort((a, b) => a.hasta.localeCompare(b.hasta) || a.matricula.localeCompare(b.matricula)),
       pendientes: pendientes.length,
       ...plantel(coches, gente),
     },
