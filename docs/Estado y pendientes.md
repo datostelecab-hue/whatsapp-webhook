@@ -17,7 +17,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El bot del conductor, nuevo (28/09/2026)
 
-- **Aplicar `db/164` desde /migraciones** después de desplegar: son los 566 códigos de lavado de la última tanda (entran 515; los otros 51 ya estaban). Sin ella el botón sale y contesta que no quedan códigos. (Y `db/163`, la apertura de la recaudación, sigue esperando lo mismo.)
+- **Aplicar `db/164` desde /migraciones** después de desplegar: son los 566 códigos de lavado de la última tanda (entran 515; los otros 51 ya estaban). Sin ella el botón sale y contesta que no quedan códigos. **El 28/09 el despliegue entró pero la 164 seguía pendiente** en el registro (la última aplicada era la 163, del 25/09 a las 18:35): hay que darle a aplicar en /migraciones con el despliegue nuevo ya arriba.
 - **El 16/10/2026 el botón de lavado desaparece solo** (`LAVADO_HASTA`). Queda quitar el código: `services/lavadoBallenoil.js`, sus dos llamadas en `fichajeBot.js` y `botPuertas.js`, y la migración ya aplicada se queda.
 - **Todo conductor de alta abre turno al escribir la matrícula** desde el despliegue. El bloqueo de motor al terminar sigue siendo **persona a persona** (botón «Bloqueo de motor» del planificador; hoy nadie lo tiene) y además necesita `FICHAJE_BLOQUEO_MOTOR=1` en Render. Encenderlo para todos es una decisión de Camilo.
 - **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores.
