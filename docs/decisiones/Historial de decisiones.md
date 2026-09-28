@@ -7,6 +7,10 @@ actualizado: 2026-09-28
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-28 · Una matrícula, un equipo de Mapon
+
+Los coches con dos equipos en Mapon usan **solo el que da GPS, CAN y corte de motor**, y el mismo en todo el ERP: fichaje, km, odómetro, mapa y Vehículos (`mapon.elegirEquipo`). A igualdad se queda el que ya se usaba, para que no bailen. Antes cada parte cogía uno distinto y el 5886LBZ medía con un equipo sin GPS ni CAN. La unidad vieja se sigue teniendo que dar de baja en Mapon. → [[Mapon]] · [[Trampas conocidas]]
+
 ## 2026-09-28 · El bot del conductor, ordenado
 
 Todo conductor de alta sigue el mismo camino: saludo con su nombre de pila → escribe la matrícula → **empieza su turno** (se le desbloquea el motor) → siempre los mismos botones: *Abrir puertas · Cerrar puertas · Entregar coche* y *Código de lavado · Ver mis turnos · Terminar turno*. «Voy al relevo» pasa a llamarse **Entregar coche** (se pulsa al salir hacia el compañero: desde ahí se cuentan los km de la entrega). El bloqueo de motor al terminar sigue encendiéndose persona a persona. **No se usa la palabra «fichaje» con el conductor**: esto es custodia del coche, no registro de jornada, y llamarlo igual invitaría a confundirlos. → [[Fichaje]] · [[WhatsApp]]

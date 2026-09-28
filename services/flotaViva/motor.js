@@ -28,6 +28,7 @@
 const db = require('./db');
 const fuentes = require('./fuentes');
 const desempate = require('./desempate');
+const { elegirEquipo } = require('../mapon');
 
 const VENTANA_H = Number(process.env.FLOTA_VIVA_VENTANA_H) || 2;
 // El padrón de coches y conductores cambia de Pascuas a Ramos: no hace falta
@@ -347,9 +348,13 @@ async function pasada() {
     let conectados = 0, cambios = 0;
 
     for (const v of coches) {
+      let gps = v.matricula ? mapon.get(v.matricula) : null;
+      // Matrícula con dos equipos: la regla se aplica con el que ya tenía el
+      // coche, para que no se cambie de uno a otro si son igual de buenos.
+      if (gps && gps.candidatos) gps = elegirEquipo(gps.candidatos, { actual: v.mapon_unit });
       const r = await aplicar(v, {
         logs: estadosBolt.get(v.uuid) || [],
-        gps: v.matricula ? mapon.get(v.matricula) : null,
+        gps,
         mapa,
       });
       if (r.cambio) cambios++;
@@ -460,15 +465,33 @@ async function aplicar(vehiculo, { logs, mapa, gps }) {
   const odo = gps && gps.odometroM != null ? gps.odometroM : null;
   const senal = gps && gps.senalAt ? gps.senalAt : null;
 
-  if (gps && gps.unitId && !vehiculo.mapon_unit) {
+  // EL EQUIPO DE MAPON DEL COCHE. Antes se guardaba la primera vez y no se
+  // volvía a mirar, así que un coche con dos equipos se quedaba para siempre con
+  // el que saliera primero: el 5886LBZ con uno sin GPS ni CAN, y sin km ni
+  // odómetro de cuadro desde entonces. Ahora sigue a `elegirEquipo`, que ya se
+  // encarga de no cambiar entre dos equipos igual de buenos.
+  let cambioDeEquipo = false;
+  if (gps && gps.unitId && String(gps.unitId) !== String(vehiculo.mapon_unit || '')) {
     await db.consulta('UPDATE fv_vehiculo SET mapon_unit = $2 WHERE uuid = $1',
       [vehiculo.uuid, gps.unitId]);
+    if (vehiculo.mapon_unit) {
+      cambioDeEquipo = true;
+      console.log(`🛰️  [FLOTA VIVA] ${vehiculo.matricula}: cambia de equipo Mapon ${vehiculo.mapon_unit} → ${gps.unitId}`);
+    }
   }
 
   let abierto = (await db.consulta(
     `SELECT id, situacion, desde, conductor_uuid, odometro_visto_m, senal_at
        FROM fv_tramo WHERE vehiculo_uuid = $1 AND hasta IS NULL`,
     [vehiculo.uuid])).rows[0] || null;
+  // Cada equipo cuenta su propio `mileage` desde que se instaló: restar la
+  // lectura del equipo viejo a la del nuevo no son km, es la diferencia entre
+  // dos contadores. Al cambiar de equipo, esta vuelta no suma nada y deja la
+  // lectura nueva como punto de partida.
+  if (abierto && cambioDeEquipo) {
+    await db.consulta('UPDATE fv_tramo SET odometro_visto_m = NULL WHERE id = $1', [abierto.id]);
+    abierto.odometro_visto_m = null;
+  }
 
   // Solo los apuntes que no hemos reproducido. Sin esto, cada vuelta volvería a
   // procesar las dos horas de ventana y duplicaría tramos.

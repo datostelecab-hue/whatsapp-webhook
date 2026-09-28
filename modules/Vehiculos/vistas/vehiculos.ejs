@@ -448,9 +448,14 @@
         `${o.actualizados || 0} odómetros al día`,
         `${e.nuevos || 0} enlaces nuevos`,
       ];
-      if ((e.ambiguas || []).length) {
-        lineas.push('', 'Matrículas con VARIAS unidades en Mapon (hay que dar de baja la vieja allí):');
-        e.ambiguas.forEach(a => lineas.push(`  ${a.matricula}: ${a.unidades.map(u => u.unitId).join(', ')}`));
+      if ((e.cambios || []).length) {
+        lineas.push('', 'Enlaces corregidos al equipo bueno:');
+        e.cambios.forEach(c => lineas.push(`  ${c.matricula}: ${c.de} → ${c.unitId}` +
+          (c.sinCan ? ' (sin CAN: si tenía ancla en el taller, hay que volver a tomarla)' : '')));
+      }
+      if ((e.dobles || []).length) {
+        lineas.push('', 'Matrículas con VARIAS unidades en Mapon (se usa la primera; conviene dar de baja la otra allí):');
+        e.dobles.forEach(d => lineas.push(`  ${d.matricula}: ${d.elegida} · sobra ${d.dejadas.join(', ')}`));
       }
       if ((e.sinUnidad || []).length) {
         lineas.push('', `Sin GPS: ${e.sinUnidad.join(', ')}`);

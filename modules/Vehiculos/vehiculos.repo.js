@@ -11,6 +11,7 @@
 
 const db = require('../../services/db');
 const vig = require('../../services/repo/vigencia');
+const { elegirEquipo } = require('../../services/mapon');
 
 /**
  * Listado con todo lo que la pantalla necesita, en UNA consulta.
@@ -336,15 +337,20 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
     'SELECT id, matricula_norm, matricula FROM vehiculo WHERE baja_at IS NULL'))
     .rows.map(r => [r.matricula_norm, r]));
 
-  // Coches que YA tienen unidad vigente: no se les toca.
+  // Coches que YA tienen unidad vigente: no se les toca, salvo que sea uno de
+  // los equipos de una matrícula doble y no el bueno (ver abajo).
   const yaTienen = new Map((await db.consulta(
     `SELECT vehiculo_id, externo_id FROM vehiculo_alias
       WHERE sistema = 'mapon' AND visto_hasta IS NULL`))
     .rows.map(r => [r.vehiculo_id, r.externo_id]));
 
   // VARIAS unidades con la misma matricula: pasa cuando se cambia el GPS y la
-  // vieja no se da de baja en Mapon. No se elige por nosotros — el odometro
-  // dependeria de cual se leyera la ultima. Se informa y se deja sin enlazar.
+  // vieja no se da de baja en Mapon. Antes se dejaban SIN enlazar, y el coche
+  // se quedaba sin odometro del cuadro aunque uno de los dos equipos lo diera
+  // (el 5912LBZ, con 523.672 km en el CAN). Desde el 28/09/2026 manda la misma
+  // regla que en el resto del ERP, `mapon.elegirEquipo`: el que da CAN, rele de
+  // corte y GPS. El de 'dobles' es informativo: la unidad vieja sigue habiendo
+  // que darla de baja en Mapon.
   const porMatricula = new Map();
   for (const [unitId, u] of unidades) {
     const k = norm(u.matricula);
@@ -353,19 +359,31 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
     porMatricula.get(k).push({ unitId: String(unitId), ...u });
   }
 
-  const nuevos = [], sinCoche = [], ambiguas = [], yaEnlazados = [];
+  const nuevos = [], cambios = [], sinCoche = [], dobles = [], yaEnlazados = [];
   for (const [k, lista] of porMatricula) {
     const veh = nuestros.get(k);
     if (!veh) { lista.forEach(u => sinCoche.push({ unitId: u.unitId, matricula: u.matricula, vehiculo: u.vehiculo })); continue; }
-    if (yaTienen.has(veh.id)) { yaEnlazados.push(veh.matricula); continue; }
+    const actual = yaTienen.get(veh.id);
+    const elegido = elegirEquipo(lista, { actual });
     if (lista.length > 1) {
-      ambiguas.push({
-        matricula: veh.matricula,
-        unidades: lista.map(u => ({ unitId: u.unitId, vehiculo: u.vehiculo, odometroM: u.odometroM, ultimoDato: u.ultimoDato })),
+      dobles.push({
+        matricula: veh.matricula, elegida: elegido.unitId,
+        dejadas: lista.filter(u => u !== elegido).map(u => u.unitId),
       });
+    }
+    if (actual != null) {
+      // Solo se corrige un enlace que apunta a OTRO equipo de esta misma
+      // matricula. Si apunta a uno que ya no la lleva en Mapon, no se sabe
+      // quien se equivoco, y se deja como estaba.
+      if (String(actual) !== elegido.unitId && lista.some(u => u.unitId === String(actual))) {
+        cambios.push({ vehiculoId: veh.id, matricula: veh.matricula, de: String(actual),
+          unitId: elegido.unitId, enMapon: elegido.matricula, sinCan: elegido.odometroCanM == null });
+      } else {
+        yaEnlazados.push(veh.matricula);
+      }
       continue;
     }
-    nuevos.push({ unitId: lista[0].unitId, vehiculoId: veh.id, matricula: veh.matricula, enMapon: lista[0].matricula });
+    nuevos.push({ unitId: elegido.unitId, vehiculoId: veh.id, matricula: veh.matricula, enMapon: elegido.matricula });
   }
 
   const sinUnidad = (await db.consulta(
@@ -374,13 +392,34 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
                         WHERE a.vehiculo_id = v.id AND a.sistema = 'mapon' AND a.visto_hasta IS NULL)
      ORDER BY v.matricula`)).rows
     .map(v => v.matricula)
-    .filter(m => !nuevos.some(n => n.matricula === m) && !ambiguas.some(a => a.matricula === m));
+    .filter(m => !nuevos.some(n => n.matricula === m));
 
-  if (soloVer) return { nuevos, sinCoche, ambiguas, sinUnidad, yaEnlazados: yaEnlazados.length, aplicado: false };
+  if (soloVer) return { nuevos, cambios, sinCoche, dobles, sinUnidad, yaEnlazados: yaEnlazados.length, aplicado: false };
 
-  let creados = 0;
+  let creados = 0, cambiados = 0;
   const rechazados = [];
   await db.transaccion(async cli => {
+    for (const c of cambios) {
+      await cli.query('SAVEPOINT sp');
+      try {
+        await cli.query(
+          `UPDATE vehiculo_alias SET visto_hasta = now()
+            WHERE vehiculo_id = $1 AND sistema = 'mapon' AND visto_hasta IS NULL`, [c.vehiculoId]);
+        await cli.query(
+          `INSERT INTO vehiculo_alias (vehiculo_id, sistema, externo_id, externo_matricula)
+           VALUES ($1, 'mapon', $2, $3)`, [c.vehiculoId, c.unitId, c.enMapon]);
+        // El contador del GPS es de CADA equipo (km desde que se instalo): el
+        // del viejo no vale para el nuevo. Se vacia y lo rellena el siguiente
+        // volcado; un ancla del taller de un coche sin CAN hay que volver a
+        // tomarla (por eso `sinCan` va en el resultado).
+        await cli.query('UPDATE vehiculo SET km_gps_m = NULL WHERE id = $1', [c.vehiculoId]);
+        await cli.query('RELEASE SAVEPOINT sp');
+        cambiados++;
+      } catch (err) {
+        await cli.query('ROLLBACK TO SAVEPOINT sp');
+        rechazados.push(`${c.matricula} (unidad ${c.de} → ${c.unitId}): ${String(err.message).split(String.fromCharCode(10))[0]}`);
+      }
+    }
     for (const n of nuevos) {
       // Punto de guardado: un choque no puede tumbar los 86 enlaces restantes.
       await cli.query('SAVEPOINT sp');
@@ -397,7 +436,7 @@ async function enlazarMapon(unidades, { soloVer = false } = {}) {
       }
     }
   });
-  return { nuevos: creados, sinCoche, ambiguas, sinUnidad, yaEnlazados: yaEnlazados.length, rechazados, aplicado: true };
+  return { nuevos: creados, cambiados, cambios, sinCoche, dobles, sinUnidad, yaEnlazados: yaEnlazados.length, rechazados, aplicado: true };
 }
 
 module.exports = {

@@ -20,6 +20,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Aplicar `db/164` desde /migraciones** después de desplegar: son los 566 códigos de lavado de la última tanda (entran 515; los otros 51 ya estaban). Sin ella el botón sale y contesta que no quedan códigos. **El 28/09 el despliegue entró pero la 164 seguía pendiente** en el registro (la última aplicada era la 163, del 25/09 a las 18:35): hay que darle a aplicar en /migraciones con el despliegue nuevo ya arriba.
 - **El 16/10/2026 el botón de lavado desaparece solo** (`LAVADO_HASTA`). Queda quitar el código: `services/lavadoBallenoil.js`, sus dos llamadas en `fichajeBot.js` y `botPuertas.js`, y la migración ya aplicada se queda.
 - **Todo conductor de alta abre turno al escribir la matrícula** desde el despliegue. El bloqueo de motor al terminar sigue siendo **persona a persona** (botón «Bloqueo de motor» del planificador; hoy nadie lo tiene) y además necesita `FICHAJE_BLOQUEO_MOTOR=1` en Render. Encenderlo para todos es una decisión de Camilo.
+- **`scripts/probar-corte-motor.js` tiene 9 comprobaciones con las reglas de antes** (que un conductor con el fichaje apagado no participa, el relevo con «Voy al relevo»). Desde el 28/09 todo conductor de alta participa y el relevo es «Entregar coche» + auto-relevo: hay que reescribir los apartados 0, 8 y 10 a las reglas nuevas. El resto pasa.
 - **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores.
 
 ## Para mañana (21/09/2026)
@@ -34,7 +35,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Los 12 equipos de Mapon que no son coches del ERP** —`1159283703`, `7136LGM`, `9037LJR`, `9133KZF`, `6544LVX`, `6584KZV`, `7909LRJ`, `8750LTR`, `9107LWS`, `1159182322` y dos sin matrícula— ya no se pintan. O se dan de alta o se quitan de la cuenta de Mapon.
 - **`6663LCY` lleva 87 días sin hablar y está «Operativo»**; `7603KZY` 9 días y `1204MJY` 3. Son equipos que hay que ir a mirar, no coches perdidos.
 - **Los 11 en rojo del 21/09 no son un fallo del mapa.** Cinco son equipos que no casan con ningún coche del ERP —`1159283703`, `7136LGM`, `9037LJR`, `9133KZF` y la segunda unidad del `3031LTV`— y los otros seis son conductores rodando con la aplicación cerrada. El del `0730MMZ` llevaba **15 h desconectado y 47,4 km**. Decidir qué se hace con cada caso es de Operaciones, no del piloto.
-- **`3031LTV` sigue con DOS unidades de Mapon**, y en el mapa salen las dos con la misma matrícula. Ya estaba apuntado; el mapa lo hace visible.
+- **`3031LTV` sigue con DOS unidades de Mapon**, y en el mapa salen las dos con la misma matrícula. Desde el 28/09 el ERP usa solo una (ver «Coches con algo raro»), pero el mapa pinta unidades, no coches: hasta que la vieja se dé de baja en Mapon, seguirá saliendo.
 
 ## Cabos sueltos del alta (18/09/2026)
 
@@ -69,7 +70,10 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 ## Coches con algo raro
 
 - **Ruedan sin que nadie esté conectado en BOLT**: 7550KYT, 3784LFV (949 km, y en Barcelona), 0970LJJ, 5646MDM. El aviso de Control los saca; falta preguntar qué hacen.
-- **3031LTV** tiene dos unidades en Mapon.
+- **Tres matrículas con dos equipos en Mapon** (28/09/2026). El ERP ya usa solo el bueno ([[Mapon]] → «Una matrícula, un equipo»); lo que queda es **dar de baja en Mapon la unidad que sobra**: **898080** (5886LBZ), **898092** (5912LBZ) y **885388** (3031LTV). Hasta entonces las puertas del bot, que van por el Apps Script, pueden seguir cogiendo la vieja.
+  - Tras desplegar, el motor cambia `fv_vehiculo.mapon_unit` del 5886LBZ y del 5912LBZ en la primera vuelta. El enlace de Vehículos (y con él el odómetro del cuadro: 664.544 y 523.672 km) entra con la sincronización diaria, o antes con **«Sincronizar con Mapon»** en /vehiculos.
+  - El odómetro CAN de esos dos coches no se ingirió nunca (se leía el equipo sin CAN): `fv_odometro` los tiene desde el cambio en adelante. Si hace falta el pasado, es una ingesta de `ingestarOdometro({desde, hasta})` sobre esas dos unidades.
+- **5775KKL no tiene corte de motor configurado**: sus tres relés en Mapon son `basic`, deshabilitados y sin título. Hay que configurar la salida 1 como `engine_block` (o instalar el relé) en Mapon o con el instalador.
 - **0744MMZ** y **8475KWG** no tienen rastro en Mapon: sus km salen de BOLT y las filas van marcadas.
 - **0491KPM** no está dado de alta en la flota.
 - **Factura 1204MJY-13195** sin cargar.

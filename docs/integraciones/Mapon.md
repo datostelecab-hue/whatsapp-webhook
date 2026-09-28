@@ -22,7 +22,16 @@ Fechas siempre **ISO 8601 en UTC** (`2026-08-11T12:00:00Z`); Madrid va +1/+2. Lo
 
 Toda la flota en **una sola llamada, sin paginación**: matrícula (`number`), lat/lng, `speed`, `state`, `last_update`. El padrón de unidades (`unit_id` → matrícula) se cachea **10 minutos**, y si una lectura viene vacía se conserva la anterior en vez de dejar la flota sin nombres.
 
-Lo que se pide con `include`: `can` (odómetro real), `ignition`, `relays`, `fuel`, `device`, `ev_values`. `in_objects` y `saved_values` solo funcionan pidiendo **una única unidad**.
+Lo que se pide con `include`: `can` (odómetro real), `ignition`, `relays`, `fuel`, `device`, `ev_values`. `in_objects` y `saved_values` solo funcionan pidiendo **una única unidad**. El padrón (`mapon.unidades()`) y la vuelta del motor (`fuentes.flotaMapon()`) piden `can` y `relays`: con eso se elige equipo cuando una matrícula tiene dos.
+
+## Una matrícula, un equipo
+
+Hay coches con **dos equipos** dados de alta con la misma matrícula: el viejo, que se quedó en la cuenta al instalar el nuevo, y el bueno. El 28/09/2026 eran tres: **5886LBZ** (se usa 932730, sobra 898080), **5912LBZ** (se usa 893953, sobra 898092) y **3031LTV** (se usa 893946, sobra 885388; ninguno de los dos da CAN ni relé).
+
+Todo el ERP usa **`mapon.elegirEquipo()`**: gana el que da CAN, luego el del relé de corte, luego el que tiene GPS; a igualdad se queda el que ya se usaba y, si no, el de `unit_id` más alto. Lo aplican `unidadPorMatricula` (fichaje, puertas del fichaje, diagnóstico), `flotaMapon` + el motor (`fv_vehiculo.mapon_unit`, del que cuelgan los km, el odómetro CAN y el mapa) y el enlace de Vehículos (`vehiculo_alias`). Por qué hacía falta, en [[Trampas conocidas]].
+
+> [!note] Las puertas del bot van por el Apps Script
+> El bot abre y cierra por matrícula a través de un despliegue de Apps Script que no está en el repo: qué equipo coge ahí no lo decide esta regla. Con la unidad vieja dada de baja en Mapon, deja de haber duda.
 
 ## 🚨 `mileage` NO es el odómetro
 
@@ -89,6 +98,7 @@ Otras cosas que hay que saber:
 
 - **`status: ok` solo confirma que la orden salió.** Para saber si el relé cambió hay que releer `unit/list.json` con `include[]=relays`: eso hace `cambiarReleConfirmado()`, que reintenta hasta 5 veces cada 2 s. `ok:false` con `confirmado:false` significa que la orden salió y el equipo no la aplicó (sin cobertura, por ejemplo).
 - **Solo se acciona `engine_block`.** Antes, si el coche no tenía ese tipo, se devolvía el primer relé que hubiera — o sea, accionar a ciegas un relé desconocido de un coche real. Un coche sin corte de motor tiene que decir que no tiene corte de motor.
+- **Tres relés no son tres cortes.** Cada equipo enseña sus **tres salidas** aunque no haya nada conectado. El 5775KKL (28/09/2026) sale con las tres en `type: basic`, deshabilitadas y sin título: no tiene corte configurado. Un coche con corte tiene la salida 1 como `engine_block`, habilitada y titulada «Bloqueo Motor» (el 7222LVG). Eso se arregla en Mapon o con el instalador, no en el código.
 - Error propio **7**: *"Can not block engine while vehicle is driving"*.
 - **Error 1006 "Method not available"** es falta de permiso sobre la clave, no un fallo de parámetros. Y **el 1006 no distingue "sin permiso" de "esa ruta no existe"**: comprobado el 16/09/2026, una ruta inventada devuelve exactamente el mismo 1006. Un 1006 nunca prueba por sí solo que un método exista.
 

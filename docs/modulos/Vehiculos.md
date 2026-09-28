@@ -102,6 +102,8 @@ Se apunta en `POST /taller/api/ancla` y vive en la tabla `odometro_ancla`, junto
 
 En la sincronización diaria, **el odómetro solo se toca si vino el CAN** (`COALESCE` deja el anterior si esta vez no llegó), mientras que el contador del GPS se guarda siempre. Y el enlace coche ↔ unidad pasa **siempre por `vehiculo_alias`**: la matrícula de Mapon no se usa para casar, solo para diagnosticar descuadres.
 
+**Matrículas con dos equipos** (desde el 28/09/2026): se enlaza el que diga `mapon.elegirEquipo()` —CAN, luego relé de corte, luego GPS— en vez de dejar el coche sin enlazar. Si el enlace vigente apunta al otro equipo de esa misma matrícula, se cierra (`visto_hasta`), se abre el bueno y se vacía `km_gps_m`, porque el contador del GPS es de cada equipo. «Sincronizar con Mapon» lista los enlaces corregidos y qué unidad sobra en cada matrícula, que es la que hay que dar de baja en Mapon. Un enlace que apunta a un equipo que ya no lleva esa matrícula en Mapon **no se toca**: no se sabe quién se equivocó.
+
 ## Taller: el mantenimiento por km
 
 La pregunta del módulo es una sola:

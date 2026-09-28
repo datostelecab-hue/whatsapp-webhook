@@ -103,6 +103,11 @@ const falsoRepo = {
       && tel9(t.telefono) !== tel9(telefono)) || null,
   abiertos: async () => turnos.filter(abierto),
   unitsConocidos: async () => [...new Set(turnos.map(t => t.unitId).filter(Boolean))],
+  // Como el de verdad: un viaje, o el turno de alguien con el bloqueo encendido.
+  unitsConControl: async () => [...new Set(turnos
+    .filter(t => t.tipo === 'viaje' || (conductor(t.conductorId) || {}).activo)
+    .map(t => t.unitId).filter(Boolean))],
+  controlMotorDe: async id => !!(conductor(id) || {}).activo,
   crear: async t => {
     if (turnos.some(x => abierto(x) && tel9(x.telefono) === tel9(t.telefono))) return null;
     if (turnos.some(x => abierto(x) && norm(x.matricula) === norm(t.matricula))) return null;

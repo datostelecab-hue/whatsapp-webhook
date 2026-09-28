@@ -136,7 +136,9 @@ async function unidades() {
   }
   // include[]=can trae el ODOMETRO DE VERDAD (el del cuadro, por CAN bus). Sin
   // el, lo unico que hay es `mileage`, que NO es el odometro del coche.
-  const r = await fetchMapon(`${API}/unit/list.json?key=${KEY}&include[]=can`);
+  // include[]=relays dice que equipo lleva el rele de corte: con los dos hace
+  // falta para elegir equipo cuando una matricula tiene dos (elegirEquipo).
+  const r = await fetchMapon(`${API}/unit/list.json?key=${KEY}&include[]=can&include[]=relays`);
   const json = await r.json();
   const lista = (json && json.data && json.data.units) || [];
   if (!lista.length && cacheUnidades.mapa.size) return cacheUnidades.mapa;   // fallo puntual: se sigue con lo anterior
@@ -163,7 +165,8 @@ async function unidades() {
       estado: txt(u.state && typeof u.state === 'object' ? u.state.name : u.state) || null,
       // driving / standing / nodata / nogps / service
       ultimoDato: txt(u.last_update) || null,
-      lat: Number(u.lat) || null, lng: Number(u.lng) || null
+      lat: Number(u.lat) || null, lng: Number(u.lng) || null,
+      releCorte: tieneReleCorte(u)
     });
   });
   cacheUnidades = { ts: Date.now(), mapa };
@@ -505,15 +508,72 @@ async function ejecutarComandoSeguro({ unitId, command }) {
 
 const normMat = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-/** Busca una unidad por matrícula en el padrón cacheado. Devuelve {unitId,...} o null. */
+// ── Matrículas con DOS equipos ────────────────────────────────────────────────
+//
+// Hay coches con dos equipos dados de alta en Mapon con la misma matrícula: el
+// viejo, que se quedó en la cuenta al instalar el nuevo, y el bueno. Cada parte
+// del ERP cogía uno distinto —el fichaje el PRIMERO de la lista, la ingesta el
+// ÚLTIMO— y el 28/09/2026 el 5886LBZ fichaba y medía km con un equipo sin GPS
+// ni CAN (898080) mientras el bueno (932730) rodaba al lado. Desde aquí todos
+// usan la misma regla.
+
+/** true si el equipo lleva relé de corte de motor; null si no se pidieron los relés. */
+function tieneReleCorte(u) {
+  if (!u || !Array.isArray(u.relays)) return null;
+  return u.relays.some(r => r && r.type === 'engine_block');
+}
+
+/**
+ * Lo que da un equipo, de más a menos importante: el odómetro del cuadro (CAN),
+ * el relé de corte de motor y GPS vivo. Es un peso, no una suma de puntos: el
+ * CAN solo ya gana a los otros dos juntos.
+ */
+function notaEquipo(u) {
+  const gps = u.estado ? !['nogps', 'nodata'].includes(u.estado) : false;
+  return (u.odometroCanM != null ? 4 : 0) + (u.releCorte ? 2 : 0) + (gps ? 1 : 0);
+}
+
+/**
+ * De varios equipos con la misma matrícula, el que se usa. Cada candidato trae
+ * {unitId, odometroCanM, releCorte, estado}.
+ *
+ * ESTABLE A PROPÓSITO: si `actual` (el equipo que ya se estaba usando) es tan
+ * bueno como el mejor, se queda. El GPS es lo único que cambia de un momento a
+ * otro —un parking subterráneo lo pone en 'nogps'— y sin esto dos equipos
+ * iguales se turnarían. A igualdad sin actual, el de unit_id más alto, que es
+ * el que se dio de alta después.
+ */
+function elegirEquipo(candidatos, { actual } = {}) {
+  const lista = (candidatos || []).filter(Boolean);
+  if (lista.length <= 1) return lista[0] || null;
+  const mejorNota = Math.max(...lista.map(notaEquipo));
+  const mejores = lista.filter(u => notaEquipo(u) === mejorNota);
+  if (actual != null) {
+    const sigue = mejores.find(u => String(u.unitId) === String(actual));
+    if (sigue) return sigue;
+  }
+  return mejores.sort((a, b) => Number(b.unitId) - Number(a.unitId))[0];
+}
+
+/**
+ * La unidad de una matrícula en el padrón cacheado. Devuelve {unitId,...} o null.
+ * Si la matrícula tiene varios equipos, el de elegirEquipo, y en `otros` los que
+ * se han dejado de lado.
+ */
 async function unidadPorMatricula(matricula) {
   const buscada = normMat(matricula);
   if (!buscada) return null;
   const mapa = await unidades();
+  const candidatos = [];
   for (const [unitId, info] of mapa) {
-    if (normMat(info.matricula) === buscada) return { unitId, ...info };
+    if (normMat(info.matricula) === buscada) candidatos.push({ unitId, ...info });
   }
-  return null;
+  const elegido = elegirEquipo(candidatos);
+  if (!elegido) return null;
+  if (candidatos.length > 1) {
+    elegido.otros = candidatos.filter(u => u !== elegido).map(u => u.unitId);
+  }
+  return elegido;
 }
 
 /**
@@ -1094,7 +1154,7 @@ module.exports = {
   TIPOS, UMBRAL, MAX_DIAS,
   leerAlertas, leerAlertasCrudas, leerExcesosGraves, listarSetups,
   leerKmPorDia, leerCombustible, leerRecorridoUnidad,
-  unidadPorMatricula, listarConductores, crearConductor,
+  unidadPorMatricula, elegirEquipo, tieneReleCorte, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
   comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,
   relesDeFlota, relesDeUnidad, releDeCorte, contactoPuesto, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,

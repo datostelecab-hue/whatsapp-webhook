@@ -16,6 +16,7 @@
 // duplicación pequeña y consciente, y desaparece cuando las ramas se junten.
 
 const { fetchAllPaginated, CONFIG_BOLT } = require('../bolt');
+const mapon = require('../mapon');
 
 const MAPON_API = 'https://mapon.com/api/v1';
 const MAPON_KEY = process.env.MAPON_API_KEY || '';
@@ -142,19 +143,27 @@ async function pedirMapon(ruta, qs) {
  * UNA llamada para los ochenta coches, no ochenta. El odómetro viene en metros
  * en esa misma respuesta y es lo que permite saber cuántos km lleva un coche en
  * descanso sin pedir sus trayectos uno a uno.
+ *
+ * UNA MATRÍCULA, UN EQUIPO. Si Mapon tiene dos equipos con la misma matrícula,
+ * se queda el de `mapon.elegirEquipo` —el que da CAN, relé de corte y GPS— y el
+ * resto viaja en `candidatos` para que el motor aplique la regla con el equipo
+ * que ya tenía el coche. Antes ganaba el ÚLTIMO de la lista, fuera cual fuera.
+ * Por eso se piden `can` y `relays`: sin ellos no hay con qué elegir.
  */
 async function flotaMapon() {
-  const j = await pedirMapon('unit/list.json');
+  const j = await pedirMapon('unit/list.json', 'include[]=can&include[]=relays');
   const unidades = (j.data && j.data.units) || [];
   const porMatricula = new Map();
   unidades.forEach(u => {
     const mat = normMat(u.number || u.label);
     if (!mat) return;
-    porMatricula.set(mat, {
+    const estado = txt(u.state && u.state.name ? u.state.name : u.state);
+    const odomCan = u.can && u.can.odom ? Number(u.can.odom.value) : NaN;
+    const este = {
       unitId: Number(u.unit_id),
       matricula: mat,
-      estado: txt(u.state && u.state.name ? u.state.name : u.state),
-      enMarcha: txt(u.state && u.state.name ? u.state.name : u.state) === 'driving',
+      estado,
+      enMarcha: estado === 'driving',
       velocidad: Number(u.speed) || 0,
       // En METROS. Puede no venir en algún equipo: entonces ese coche se queda
       // sin km y se dice, en vez de inventarse un cero que parecería "no se ha
@@ -167,7 +176,16 @@ async function flotaMapon() {
       // sin saber a qué periodo corresponden, se le atribuyen al tramo que esté
       // abierto y aparecen 19 km en un coche que lleva tres minutos parado.
       senalAt: fecha(u.last_update),
-    });
+      // Solo para elegir equipo: el odómetro de los km sigue siendo `odometroM`.
+      odometroCanM: Number.isFinite(odomCan) ? Math.round(odomCan * 1000) : null,
+      releCorte: mapon.tieneReleCorte(u),
+    };
+    const previo = porMatricula.get(mat);
+    if (!previo) { porMatricula.set(mat, este); return; }
+    const candidatos = [...(previo.candidatos || [previo]), este];
+    const elegido = { ...mapon.elegirEquipo(candidatos) };
+    elegido.candidatos = candidatos;
+    porMatricula.set(mat, elegido);
   });
   return porMatricula;
 }

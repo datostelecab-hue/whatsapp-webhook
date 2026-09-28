@@ -58,6 +58,13 @@ La clave es `mapon_unit` y **no la matrícula**: hay unidades sin matrícula,
 matrículas repetidas en dos equipos (el `3031LTV` tiene dos) y equipos que no
 son coches de la flota.
 
+`fv_vehiculo.mapon_unit` —el equipo de cada coche, del que cuelgan los km, el
+odómetro CAN y el mapa— ya no se fija la primera vez para siempre: en cada
+vuelta el motor aplica `mapon.elegirEquipo()` (CAN, relé, GPS; a igualdad se
+queda el que había) y, si cambia, lo apunta en el log y **no suma esa vuelta**:
+el `mileage` del equipo nuevo es otro contador. Ver [[Mapon]] y
+[[Trampas conocidas]].
+
 La escribe `services/flotaViva/posiciones.js`, con **vuelta propia cada 30
 segundos** —apagada por defecto, `MAPA_CRON=on`— aparte del motor: este corre
 cada 5 minutos porque eso es lo que vale para medir horas y km.

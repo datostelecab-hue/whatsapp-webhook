@@ -508,12 +508,31 @@ en el papel y un coche normal en la calle. **Le quitaba 16 de 292 km a uno y 30 
 
 ### Dos unidades de Mapon con la misma matrícula
 
-`modules/Vehiculos/vehiculos.repo.js`
+`services/mapon.js` → `elegirEquipo()`
 
-Pasa al cambiar el GPS sin dar de baja el viejo. **No se elige por nosotros:** el
-odómetro dependería de cuál se leyera la última. Se informa y se deja sin enlazar,
-y el descuadre se pinta en pantalla, *"porque es el descuadre que deja a un coche
-sin kilómetros sin que nadie se entere"*.
+Pasa al cambiar el GPS sin dar de baja el viejo. Hasta el 28/09/2026 cada parte
+del ERP cogía uno distinto sin decirlo: el fichaje, el **primero** de la lista
+(`unidadPorMatricula`); la ingesta, el **último** (`flotaMapon` pisaba el `Map`);
+`fv_vehiculo.mapon_unit` se quedaba con el que saliera la primera vez y **no se
+volvía a mirar**; y Vehículos no enlazaba ninguno. Resultado: el **5886LBZ**
+fichaba, medía km y enlazaba el odómetro con el equipo **898080, sin GPS ni
+CAN**, mientras el bueno (932730, con CAN y relé de corte) rodaba al lado; y el
+**5912LBZ** se quedaba sin odómetro del cuadro teniendo 523.672 km en el CAN.
+
+**Remedio: UNA regla para todos** (fichaje, motor de [[Flota viva]] y enlace de
+Vehículos): gana el que da **CAN**, luego el que tiene **relé de corte**, luego
+el que tiene **GPS**; a igualdad, **se queda el que ya se usaba** —el GPS es lo
+único que cambia de un momento a otro y, sin eso, dos equipos iguales se
+turnarían— y si no hay ninguno en uso, el de `unit_id` más alto (el más nuevo).
+
+> [!warning] Cambiar de equipo NO es restar contadores
+> El `mileage` es de cada equipo (km desde que se instaló). Al cambiar de equipo,
+> el motor no suma esa vuelta y parte de la lectura nueva, y Vehículos vacía
+> `km_gps_m`. Un ancla del taller tomada con el equipo viejo en un coche **sin
+> CAN** hay que volver a tomarla.
+
+La solución de fondo sigue siendo **dar de baja la unidad vieja en Mapon**: la
+sincronización de Vehículos lista cuál sobra en cada matrícula.
 
 ---
 
