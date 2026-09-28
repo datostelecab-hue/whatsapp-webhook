@@ -12,6 +12,7 @@ El **primer submódulo de taller** (24/09/2026). Cada coche con su última inspe
 modules/Vehiculos/inspeccion.controller.js   /inspecciones — las rutas y el candado
 modules/Vehiculos/inspeccion.service.js      LA PUERTA: leer el Excel, importar, apuntar, anular
 modules/Vehiculos/inspeccion.repo.js         el SQL
+modules/Vehiculos/inspeccion.excel.js        el Excel que se descarga, en el formato del taller
 modules/Vehiculos/vistas/inspecciones.ejs    la pantalla (Listado + formulario propio)
 db/150-inspeccion-de-vehiculos.sql           catálogos, tablas y la llave repartida
 ```
@@ -65,6 +66,18 @@ Tres reglas, las tres de Camilo:
 **Se comprueba todo antes de escribir nada**: un valor que no se entiende en cualquier fila para la importación entera y se dice cuál y dónde. La fecha de las inspecciones se puede dar al importar, si se sabe.
 
 La primera importación (24/09/2026): 83 filas, 79 apuntadas, 4 ignoradas, 10 en «Falta». Ese día había **15 coches con la ITV caducada** y 4 que caducaban en 60 días.
+
+**La cabecera se busca en las 12 primeras filas**, no solo en la primera (28/09/2026): así se puede volver a importar el Excel que descarga la propia pantalla, que lleva encima la banda con el logo y una fila de grupos.
+
+## La descarga (28/09/2026)
+
+El icono de Excel de la lista ya no da el genérico del Listado (una columna por dato de la pantalla): da el **formato del taller**, lo que pidió Camilo «más moderno y elegante, pero con los datos completos» (`inspeccion.excel.js`, `GET /inspecciones/api/excel?ids=…`). Salen los coches que se están viendo: con filtros, esos; sin filtros, todos. Es un GET a propósito: mirar es de la llave `/inspecciones`, y un POST pediría la de apuntar.
+
+- **Inspección de vehículos**: un coche por fila y una columna por elemento, con los **títulos exactos del Excel del taller** (`cabecera_excel`), agrupados arriba (Identificación, Documentación, Carteles, Imagen, Seguridad, Caducidades, Resultado, Registro). Cada estado va con su signo (✓ Correcto · ! Deteriorado · ✗ Falta · — No se requiere) y su color, en **formato condicional** y con **lista desplegable**: si el taller cambia una celda, se repinta sola. Las caducidades de ITV y pegatinas se pintan en rojo si pasaron y en ámbar si caducan en 60 días, **a fecha de la descarga**. Al final, lo que el taller no trae: fecha de la inspección, sede e incidencias.
+- **Resumen**: las cifras (inspeccionados, pendientes, con faltas, deteriorados, no aptos, caducidades) y, **elemento a elemento**, cuántos coches lo tienen bien, deteriorado o en falta — con fórmulas sobre la primera hoja, así que cuadra aunque se corrija allí.
+- **Qué hay que reponer**: solo los coches con algo que falta o está deteriorado, con la lista de qué.
+
+**Se puede volver a importar**: probado con los datos reales, el importador lo lee con 0 errores y **89/89 coches salen idénticos** a lo guardado (elementos, caducidades, observaciones y resultado).
 
 ## La pantalla
 

@@ -287,12 +287,15 @@
 
       // Exportar: lo tienen todas las listas salvo que se pida lo contrario.
       // Antes esto se programaba pantalla por pantalla y solo lo tenia una.
+      // `exportar` puede ser una FUNCIÓN: la pantalla da su propio Excel (con
+      // su formato) en el mismo botón. La recibe con el listado, para que sepa
+      // qué filas se están viendo (Inspección de vehículos, 28/09/2026).
       if (c.exportar !== false) {
         const b = nodo(`<button class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold
             transition bg-telecab-card border border-telecab-border hover:bg-telecab-card2"
             title="Descargar lo que se está viendo, en Excel">
             <i class="fa-solid fa-file-excel"></i></button>`);
-        b.addEventListener('click', () => this.exportar());
+        b.addEventListener('click', () => (typeof c.exportar === 'function' ? c.exportar(this) : this.exportar()));
         this.el.acciones.appendChild(b);
       }
 

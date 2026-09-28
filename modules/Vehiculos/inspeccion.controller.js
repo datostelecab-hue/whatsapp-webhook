@@ -57,6 +57,23 @@ router.get('/', async (req, res) => {
 router.get('/api/lista', responde(() => inspeccion.lista()));
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await inspeccion.ficha(req.params.id) })));
 
+// El Excel en el formato del taller. Es un GET a propósito: mirar es de la llave
+// '/inspecciones', y un POST pediría la de apuntar. `ids` = los coches que se
+// ven en la pantalla con sus filtros (sin él, todos).
+router.get('/api/excel', async (req, res) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').map(x => x.trim()).filter(x => /^\d+$/.test(x));
+    const buf = await inspeccion.excel({ ids });
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="inspeccion-de-vehiculos-${hoy}.xlsx"`);
+    res.send(buf);
+  } catch (e) {
+    console.error('❌ [Inspección] GET /api/excel:', e.message);
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+});
+
 router.post('/api/vehiculo/:id/inspeccion', responde(exigeApuntar((req, quien) =>
   inspeccion.crear(req.params.id, req.body || {}, quien))));
 

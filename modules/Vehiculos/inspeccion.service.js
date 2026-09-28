@@ -116,18 +116,24 @@ async function leerExcel(bytes, elementos) {
   try { await wb.xlsx.load(bytes); }
   catch (e) { throw new Error('No se pudo abrir el archivo: tiene que ser un Excel (.xlsx)'); }
 
-  // La hoja es la que tenga la columna de la matrícula en la primera fila.
-  const cabeceraDe = ws => {
+  // La hoja es la que tenga la columna de la matrícula en su CABECERA, y la
+  // cabecera se busca en las primeras filas, no solo en la primera: el Excel que
+  // exporta el propio ERP (inspeccion.excel.js) lleva encima la banda con el
+  // logo y una fila de grupos, y tiene que poder volver a importarse.
+  const cabeceraDe = (ws, n) => {
     const m = new Map();
-    ws.getRow(1).eachCell({ includeEmpty: false }, (c, col) => m.set(plano(texto(c.value)), col));
+    ws.getRow(n).eachCell({ includeEmpty: false }, (c, col) => m.set(plano(texto(c.value)), col));
     return m;
   };
-  let ws = null, cab = null;
+  let ws = null, cab = null, filaCab = 1;
   for (const h of wb.worksheets) {
-    const c = cabeceraDe(h);
-    if (COLUMNAS_FIJAS.matricula.some(t => c.has(t))) { ws = h; cab = c; break; }
+    for (let n = 1; n <= Math.min(12, h.rowCount) && !ws; n++) {
+      const c = cabeceraDe(h, n);
+      if (COLUMNAS_FIJAS.matricula.some(t => c.has(t))) { ws = h; cab = c; filaCab = n; }
+    }
+    if (ws) break;
   }
-  if (!ws) throw new Error('No encuentro la hoja: ninguna tiene la columna «Matrícula del vehículo» en la primera fila');
+  if (!ws) throw new Error('No encuentro la hoja: ninguna tiene la columna «Matrícula del vehículo» en su cabecera');
 
   const col = alias => { for (const t of alias) if (cab.has(t)) return cab.get(t); return null; };
   const fijas = Object.fromEntries(Object.entries(COLUMNAS_FIJAS).map(([k, a]) => [k, col(a)]));
@@ -135,7 +141,7 @@ async function leerExcel(bytes, elementos) {
   const sinColumna = deElemento.filter(e => !e.col).map(e => e.etiqueta);
 
   const filas = [], errores = [];
-  for (let n = 2; n <= ws.rowCount; n++) {
+  for (let n = filaCab + 1; n <= ws.rowCount; n++) {
     const row = ws.getRow(n);
     const val = c => (c ? texto(row.getCell(c).value) : '');
     const matricula = normMat(val(fijas.matricula));
@@ -322,13 +328,26 @@ async function ficha(vehiculoId) {
   return f;
 }
 
+/**
+ * EL EXCEL, en el formato del taller (inspeccion.excel.js). `ids` son los coches
+ * que se ven en la pantalla con sus filtros; sin ellos, la lista entera.
+ */
+async function excel({ ids } = {}) {
+  const [filas, cats] = await Promise.all([repo.lista({ sede: SEDE_FLOTA }), catalogos()]);
+  const quiero = ids && ids.length ? new Set(ids.map(String)) : null;
+  const elegidas = quiero ? filas.filter(f => quiero.has(String(f.id))) : filas;
+  return require('./inspeccion.excel').generar({
+    filas: elegidas, cat: cats, faltaObs: FALTA_OBS, filtrado: !!quiero && elegidas.length < filas.length,
+  });
+}
+
 // Con la marca de las inspecciones de relleno (los coches que no venían en el
 // Excel): la pantalla las reconoce por ella y no por contar elementos, que
 // cambia cada vez que el catálogo gana o pierde uno.
 const catalogos = async () => ({ ...(await repo.catalogos()), faltaObs: FALTA_OBS });
 
 module.exports = {
-  MESES, lista, ficha, catalogos, crear, anular, importar,
+  MESES, lista, ficha, catalogos, crear, anular, importar, excel,
   // Sueltas para las pruebas.
   leerExcel, estadoDe, resultadoDe, mesDe, anioDe, huellaDe,
 };
