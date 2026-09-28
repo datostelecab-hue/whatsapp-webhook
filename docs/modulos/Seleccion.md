@@ -118,7 +118,7 @@ El botón que cierra Selección se llama **«Dar de alta»** y deja a la persona
 Lo que le falta a partir de ahí no es papeleo nuestro: es un coche. Por eso el aviso al planificador nace **siempre** ([[Planificacion]]):
 
 - **Con vacante** → la alerta trae las plazas prometidas y se acepta (coloca todo o nada) o se rechaza (al banquillo, y la vacante vuelve a abrirse).
-- **Sin vacante** → la alerta solo dice «hay alguien nuevo sin coche» y **se va sola** en cuanto se le da una plaza en el cuadrante.
+- **Sin vacante** → la alerta solo dice «hay alguien nuevo sin coche» y **se va sola** en cuanto se le da una plaza en el cuadrante **o deja de estar de alta** (28/09/2026: Diana Madeline Álvarez, alta rápida de ETT el 24/09 y baja después, seguía saliendo con «dale una plaza»).
 
 Las 32 fichas que estaban en «Listo para RRHH» el día del cambio se quedaron donde estaban: esa bandeja sigue funcionando hasta que se vacíe sola.
 

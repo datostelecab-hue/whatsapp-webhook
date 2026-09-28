@@ -207,11 +207,16 @@ async function pendientes() {
         -- que acordarse de cerrarla. La que SÍ trae vacante no se toca: esa se
         -- acepta o se rechaza, porque además hay una vacante que cubrir o que
         -- volver a abrir.
-        AND (i.vacante_id IS NOT NULL OR NOT EXISTS (
+        --
+        -- Y TAMBIÉN SE VA SI YA NO ESTÁ DE ALTA (28/09/2026). A Diana Madeline
+        -- Álvarez se le dio el alta rápida de ETT el 24/09 y la baja después, y
+        -- el planificador seguía pidiendo «dale una plaza» a alguien que ya no
+        -- está en la empresa.
+        AND (i.vacante_id IS NOT NULL OR (c.empleo_vigente AND NOT EXISTS (
               SELECT 1 FROM asignacion a
                WHERE a.conductor_id = i.conductor_id
                  AND a.retirada_at IS NULL
-                 AND (a.hasta IS NULL OR a.hasta >= CURRENT_DATE)))
+                 AND (a.hasta IS NULL OR a.hasta >= CURRENT_DATE))))
       ORDER BY i.creado_at`);
   return r.rows.map(x => ({
     id: String(x.id), conductorId: String(x.conductor_id), nombre: x.nombre,
