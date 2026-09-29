@@ -28,6 +28,43 @@ solo a las cuatro de la mañana es más raro, no menos.
   que decir lo mismo siempre.
 - Se apaga desde esta misma pantalla, como cualquier otro tipo.
 
+## «No vuelve a la M-30»: el segundo aviso al momento (29/09/2026)
+
+`no_vuelve_m30` — **dejó al pasajero fuera de la M-30 y no vuelve**. Lo pidió
+Camilo: *«necesito una alerta para saber esa gente que deja a alguien y se queda
+por allá o no se devuelve a la M-30 después de 15 minutos»*.
+
+Cuelga de la misma vuelta del mapa que el coche suelto, justo detrás
+(`alertas.service.avisarNoVuelven`), y la regla vive **en el mapa**
+(`mapa.service` → `sinVolver`), como la del coche suelto. Salta cuando:
+
+- dejó al último pasajero **fuera de la M-30**, hace **15 min o más** (el umbral,
+  editable aquí; cuenta desde que lo dejó);
+- sigue **fuera, a 1 km o más** de la M-30;
+- **no se acerca**: sigue cerca, se aleja o da vueltas (si vuelve, no salta);
+- y está **conectado sin viaje**: en espera o en descanso. Los desconectados no
+  cuentan: medido el 29/09 a las 13:00, los cuatro desconectados que habrían
+  saltado eran gente de noche que había terminado horas antes.
+
+**Un aviso por coche y por pasajero dejado**, no por franja: quien deja lejos a
+dos pasajeros en una mañana y se queda por allá las dos veces ha hecho dos cosas.
+Lo garantiza `uq_alerta_control_suceso` sobre la columna nueva `suceso_at` (la
+hora a la que lo dejó), de [[Migraciones|db/166]]. La fila va **sin
+driver_uuid** a propósito —con él, el índice de persona la cortaría a una por
+franja— y se ata a la ficha por `conductor_id`. Sin db/166 aplicada no avisa:
+lo dice una vez en el log.
+
+El mensaje: *«1073MJY lleva 36 min sin volver a la M-30. Dejó al pasajero a las
+12:30 en Avenida Arribes del Duero 14, San Sebastián de los Reyes; da vueltas sin
+acercarse, a 8,5 km de la M-30 (en descanso)»*. Suena a cualquier hora, y nace
+**encendido**: el 29/09 los avisos iban en `live`.
+
+> [!note] «Está pasando ahora» ya no pinta las del mapa
+> Contaba por persona todos los tipos menos los de zona, y los del mapa no tienen
+> cifra por persona: cada candidato salía con un «rueda suelto» vacío. Ahora se
+> saltan las de `fuente: 'mapa'` igual que las de zona. Y los dos tipos del mapa
+> tienen ya su color en la tabla (el suelto salía con la campana gris).
+
 ## Qué dispara un aviso
 
 Tres cosas, y cada una tiene su umbral configurable:

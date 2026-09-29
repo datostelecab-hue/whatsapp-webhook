@@ -848,7 +848,17 @@ if (process.env.MAPA_CRON === 'on') {
       // algo: en cuanto un coche lleva tres minutos rodando sin nadie
       // conectado, suena. Que no se repita lo garantiza el indice unico de
       // db/145, no este bucle.
-      await require('./modules/Control/alertas.service').avisarSueltos({ sedes: ['madrid'] });
+      const alertas = require('./modules/Control/alertas.service');
+      await alertas.avisarSueltos({ sedes: ['madrid'] });
+      // Y quien dejó al pasajero fuera de la M-30 y no vuelve (29/09/2026). Va
+      // en su propio try: si falla, el aviso del coche suelto ya ha salido y la
+      // vuelta siguiente lo vuelve a intentar. Detrás de `avisarSueltos` a
+      // propósito: la foto del mapa que acaba de hacer le vale.
+      try {
+        await alertas.avisarNoVuelven({ sedes: ['madrid'] });
+      } catch (error) {
+        console.error(`❌ [CRON Mapa · no vuelve] ${error.stack || error.message}`);
+      }
     } catch (error) {
       console.error(`❌ [CRON Mapa] ${error.stack || error.message}`);
     }

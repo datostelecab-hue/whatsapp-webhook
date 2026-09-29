@@ -25,7 +25,8 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## Migraciones por aplicar (29/09/2026)
 
-- **`db/165`**: la baja de **William Azier Benavides Guaman** (ETT GiGroup) pasa del 16/08/2033 —año mal tecleado— al **16/09/2026**, el día siguiente a su último viaje de BOLT (15/09) y al fin de su plaza en el 0524MMZ (14/09). Corta también su turno en esa fecha. Se aplica desde /migraciones con el despliegue arriba.
+- **`db/166`**: la columna `alerta_control.suceso_at` y su índice único, para el aviso **«No vuelve a la M-30»** (una alerta por coche y pasajero dejado). Sin ella el mapa enseña el reloj pero **no sale ningún WhatsApp**: lo dice una vez en el log. Se aplica desde /migraciones con el despliegue arriba. (La 165, la baja de William, ya está aplicada: 29/09 a las 12:52.)
+- El aviso nace **encendido** y los avisos van en `live`: en cuanto estén el despliegue y la 166, empieza a sonar. Se apaga o se cambia el umbral (15 min) en /alertas.
 
 ## Para mañana (21/09/2026)
 

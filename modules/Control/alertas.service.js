@@ -83,6 +83,29 @@ async function avisarSueltos({ sedes = ['madrid'] } = {}) {
   return r;
 }
 
+/**
+ * «NO VUELVE A LA M-30», AL MOMENTO. Mismo ritmo y misma idea que el coche
+ * suelto: el mapa dice QUIÉNES (la regla vive en mapa.service, `sinVolver`) y
+ * las alertas saben a quién avisar y cómo no repetirse (una por pasajero dejado,
+ * db/166). Solo Madrid, como la pantalla.
+ */
+async function avisarNoVuelven({ sedes = ['madrid'] } = {}) {
+  const mapa = require('../Mapa/mapa.service');
+  const def = repo.MODELO.tipos.no_vuelve_m30 || {};
+  const cfg = await repo.leerConfig();
+  const umbral = ((cfg.tipos || {}).no_vuelve_m30 || def).umbral || 15;
+  const coches = await mapa.noVuelven({ sedes, minMinutos: umbral });
+  if (!coches.length) return { vistos: 0, nuevas: 0, enviadas: 0 };
+
+  const r = await repo.revisarNoVuelven({ coches });
+  if (r.nuevas) {
+    console.log(`🧭 [ALERTAS] ${r.nuevas} coche(s) que no vuelven a la M-30: `
+      + r.detalle.map(d => `${d.matricula} (${d.minutos} min, ${d.conductor}, ${d.como})`).join(', ')
+      + ` · ${r.enviadas} envío(s)${r.modo !== 'live' ? ' (PRUEBAS)' : ''}`);
+  }
+  return r;
+}
+
 // ── Ajustes (permiso aparte: '/alertas/config') ────────────────────────────
 // Ver las alertas es una cosa y decidir a quién le llegan es otra. El permiso
 // de configuración nace apagado para todo el mundo y lo reparte el
@@ -102,7 +125,7 @@ async function guardarDestinatarios(ids, quien) {
 }
 
 module.exports = {
-  estado, historial, revisar, revisarYMirar, avisarSueltos,
+  estado, historial, revisar, revisarYMirar, avisarSueltos, avisarNoVuelven,
   guardarConfig, guardarDestinatarios,
   // Para el cockpit y el histórico, que reconstruyen las franjas de un día.
   leerConfig: repo.leerConfig, candidatos: repo.candidatos, franjaDe: repo.franjaDe,

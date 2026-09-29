@@ -116,13 +116,14 @@ const BOLT_FIABLE_S = 1500;
  */
 function situacionDe(b) {
   if (!b || !b.situacion) {
-    return { situacion: null, etiqueta: null, desde: null, conductor: null, telefono: null, fuente: null, km: null, segundos: null };
+    return { situacion: null, etiqueta: null, desde: null, conductor: null, uuid: null, telefono: null, fuente: null, km: null, segundos: null };
   }
   return {
     situacion: b.situacion,
     etiqueta: b.situacion_etiqueta || null,
     desde: b.desde || null,
     conductor: b.conductor || null,
+    uuid: b.conductor_uuid || null,
     telefono: b.telefono || null,
     fuente: b.fuente_ahora || null,
     km: b.km == null ? null : Number(b.km),
@@ -237,6 +238,8 @@ async function frente({ forzar = false, sedes = null } = {}) {
     // Quién lo lleva AHORA, para el porqué de un rojo.
     c.conductor = v.conductor;
     const t = tono(c, v.situacion);
+    const dentro = dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng));
+    const ud = ultimoDestino(c, dentro === true, v.desde);
     return {
       unidad: c.mapon_unit == null ? null : Number(c.mapon_unit),
       // La CLAVE de cada fila en la pantalla. Era la unidad de Mapon, y un coche
@@ -266,6 +269,10 @@ async function frente({ forzar = false, sedes = null } = {}) {
       situacionDesde: v.desde ? new Date(v.desde).toISOString() : null,
       conectado: v.situacion != null && v.situacion !== 'desconectado',
       conductor: v.conductor,
+      // El uuid de BOLT de quien lo lleva: con él el aviso ata la alerta a su
+      // ficha. No se llama `conductorUuid` a propósito: ese nombre lo lee el aviso
+      // del coche suelto, y dárselo ahora le cambiaría cómo cuenta sus avisos.
+      uuidConductor: v.uuid,
       telefono: v.telefono,
       // EL ÚLTIMO QUE LO LLEVÓ EN BOLT, sin ventana de tiempo. La lista enseña a
       // la persona y no la matrícula (Camilo, 24/09/2026): con un coche parado
@@ -273,9 +280,11 @@ async function frente({ forzar = false, sedes = null } = {}) {
       ultimoConductor: c.ultimo_conductor || null,
       ultimoHace: c.ultimo_hace == null ? null : Number(c.ultimo_hace),
       // Dentro o fuera de la M-30, para quien lo quiera leer sin repetir la cuenta.
-      dentroM30: dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)),
+      dentroM30: dentro,
       // Dónde dejó al último pasajero y si vuelve hacia la M-30. Ver ultimoDestino.
-      ultimoDestino: ultimoDestino(c, dentroDeM30(c.lat == null ? null : Number(c.lat), c.lng == null ? null : Number(c.lng)) === true, v.desde),
+      ultimoDestino: ud,
+      // Dejó al pasajero fuera de la M-30 hace 15 min o más y no vuelve. Ver sinVolver.
+      noVuelve: sinVolver(ud, v.situacion, t),
       // De cuál de las dos tuberías salió esto. No se pinta, pero contesta
       // "¿por qué dice eso?" sin abrir la base.
       fuente: v.fuente,
@@ -406,9 +415,67 @@ function ultimoDestino(c, estaDentro, desdeSituacion) {
   return out;
 }
 
+// ── NO VUELVE A LA M-30 (29/09/2026) ──────────────────────────────────────
+// Lo pidió Camilo: «a partir de los 15 minutos, que empiece a contar cuánto
+// tiempo lleva cerca del destino fuera de la M-30 o alejándose; si empieza a
+// acercarse está bien, pero necesito saber quién deja a alguien y se queda por
+// allá o no se devuelve a la M-30».
+//
+// Cuenta cuando se cumplen TODAS:
+//   · dejó al último pasajero FUERA de la M-30, hace 15 minutos o más;
+//   · ahora está fuera, a 1 km o más de ella (el mismo margen de «volviendo»:
+//     a 700 m de la M-30 está en la M-30, no «por allá»);
+//   · no se está acercando: cualquier veredicto de ultimoDestino menos
+//     «volviendo» —se queda cerca, se aleja o da vueltas—;
+//   · y sigue CONECTADO sin viaje: en espera o en descanso.
+//
+// LOS DESCONECTADOS NO CUENTAN, y es medido: el 29/09 a las 13:00 saltaban ocho
+// coches, y los cuatro desconectados eran gente de noche que había terminado
+// hacía horas (el último pasajero, a las cinco de la mañana). Los cuatro
+// conectados eran justo el caso. Un coche que RUEDA desconectado ya tiene su
+// aviso (rueda suelto).
+//
+// El tiempo se cuenta desde que DEJÓ al pasajero, no desde el minuto 15: «lleva
+// 38 min sin volver» dice más que «lleva 23 min pasado de la raya».
+const NO_VUELVE_MIN = 15;
+const NO_VUELVE_SITUACIONES = ['espera', 'descanso'];
+
+function sinVolver(ud, situacion, t) {
+  if (!ud || ud.pendiente || !ud.dejadoAt || ud.lat == null || ud.kmM30Ahora == null) return null;
+  if (!NO_VUELVE_SITUACIONES.includes(situacion)) return null;
+  // Sin posición de verdad no se sabe dónde espera nadie.
+  if (t === 'perdido' || t === 'sinmapon') return null;
+  if (dentroDeM30(ud.lat, ud.lng) !== false) return null;       // lo dejó dentro
+  if (ud.kmM30Ahora < KM_MARGEN) return null;                    // ya está en la M-30
+  if (ud.tendencia === 'vuelve' || ud.tendencia === 'dentro') return null;
+  const minutos = Math.floor((Date.now() - new Date(ud.dejadoAt).getTime()) / 60000);
+  if (minutos < NO_VUELVE_MIN) return null;
+  const como = { quieto: 'sigue cerca de donde lo dejó', aleja: 'se aleja de la M-30', vueltas: 'da vueltas sin acercarse' }[ud.tendencia]
+    || 'no se acerca a la M-30';
+  return {
+    minutos, desde: ud.dejadoAt, tendencia: ud.tendencia, como,
+    kmM30: ud.kmM30Ahora, direccion: ud.direccion || null, situacion,
+  };
+}
+
+/**
+ * Los que no vuelven a la M-30 y ya pasan de `minMinutos`. Es lo que mira el
+ * aviso. Como `sueltos`, calla si lo de BOLT es viejo: la regla depende de que
+ * esté en espera o en descanso, y eso con una foto vieja no se sabe.
+ *
+ * No fuerza la foto: se pide justo después de `sueltos`, que la acaba de hacer,
+ * y así la vuelta de 30 s no calcula el mapa dos veces.
+ */
+async function noVuelven({ sedes = null, minMinutos = NO_VUELVE_MIN } = {}) {
+  const d = await frente({ sedes });
+  if (!d.frescura.boltFiable) return [];
+  return d.coches.filter(c => c.noVuelve && c.noVuelve.minutos >= minMinutos && c.matricula);
+}
+
 /** Se llama al escribir posiciones nuevas: la foto de antes ya no vale. */
 const olvidar = () => { cache.clear(); };
 
-module.exports = { frente, sueltos, olvidar, tono, PERDIDOS, SIN_GPS, BOLT_FIABLE_S, GPS_PARADO_S,
+module.exports = { frente, sueltos, noVuelven, olvidar, tono, PERDIDOS, SIN_GPS, BOLT_FIABLE_S, GPS_PARADO_S,
+  NO_VUELVE_MIN,
   // El anillo, para que la pantalla lo pinte sin tener que saber de dónde sale.
   M30: require('./m30').POLIGONO };

@@ -118,6 +118,17 @@ const MODELO = {
       etiqueta: 'Rueda SIN NADIE conectado en BOLT', corto: 'rueda suelto',
       umbral: 3, unidad: 'min rodando', activo: true, ventana: 'siempre', fuente: 'mapa',
     },
+    // DEJA AL PASAJERO FUERA DE LA M-30 Y NO VUELVE (29/09/2026). También lo
+    // decide el mapa (`mapa.service` → sinVolver): se queda cerca, se aleja o da
+    // vueltas, conectado y sin viaje. `umbral` en minutos desde que lo dejó.
+    //
+    // POR SUCESO, no por franja: un aviso por coche y por pasajero dejado
+    // (db/166, uq_alerta_control_suceso). Quien lo hace dos veces en una mañana
+    // ha hecho dos cosas. Y a cualquier hora, como el coche suelto.
+    no_vuelve_m30: {
+      etiqueta: 'Deja al pasajero fuera de la M-30 y NO VUELVE', corto: 'no vuelve a la M-30',
+      umbral: 15, unidad: 'min sin volver', activo: true, ventana: 'siempre', fuente: 'mapa',
+    },
 
     zona_madrid: {
       etiqueta: 'Fuera de la ZONA MADRID (aunque vaya de viaje)', corto: 'fuera de Madrid',
@@ -533,6 +544,18 @@ function textoAlerta(tipo, valor, cfgTipo, franja, extra = {}) {
     const vel = c.velocidad ? ` a ${c.velocidad} km/h` : '';
     return `${c.matricula || ''} lleva ${fmtNum(valor)} min rodando${vel} y ${quien}`.trim();
   }
+  // Dónde lo dejó, a qué hora, cómo va ahora y a cuánto está de la M-30: lo que
+  // quien llama necesita para no empezar preguntando «¿dónde estás?». Al
+  // reintentar no hay `coche` (la fila no guarda el mapa) y se dice lo básico.
+  if (tipo === 'no_vuelve_m30') {
+    const c = extra.coche || {}, n = c.noVuelve || {};
+    const donde = n.direccion ? ` en ${n.direccion}` : '';
+    const hora = n.desde ? ` a las ${horaCorta(n.desde)}` : '';
+    const ahora = n.como ? `; ${n.como}, a ${fmtNum(n.kmM30)} km de la M-30` : '';
+    const sit = n.situacion === 'descanso' ? ' (en descanso)' : n.situacion === 'espera' ? ' (en espera)' : '';
+    const detalle = hora || donde || ahora ? ` Dejó al pasajero${hora}${donde}${ahora}${sit}` : '';
+    return `${c.matricula || extra.matricula || ''} lleva ${fmtNum(valor)} min sin volver a la M-30.${detalle}`.trim();
+  }
   const horas = `${String(franja.ini).padStart(2, '0')}:00-${String(franja.fin).padStart(2, '0')}:00`;
   if (tipo === 'km_parado') {
     return `${fmtNum(valor)} km rodando en descanso o desconectado (franja ${horas})`;
@@ -576,6 +599,11 @@ function textoCorto(tipo, valor, franja, extra = {}) {
   if (tipo === 'rueda_suelto') {
     const c = extra.coche || {};
     return `${fmtNum(valor)} min rodando · ${c.conductor ? 'desconectado' : 'sin nadie fichado'}`;
+  }
+  if (tipo === 'no_vuelve_m30') {
+    const n = (extra.coche || {}).noVuelve || {};
+    return `${fmtNum(valor)} min sin volver${n.kmM30 != null ? ` · a ${fmtNum(n.kmM30)} km de la M-30` : ''}`
+      + `${n.situacion ? ' · en ' + n.situacion : ''}`;
   }
   if (tipo === 'km_parado') {
     const horas = `${String(franja.ini).padStart(2, '0')}:00-${String(franja.fin).padStart(2, '0')}:00`;
@@ -826,6 +854,74 @@ async function revisarSueltos({ coches = [], ahora = new Date() } = {}) {
   return { ...res, activa: true, modo: config.modo };
 }
 
+/**
+ * EL AVISO DE «NO VUELVE A LA M-30»: dejó al pasajero fuera y se queda por allá.
+ *
+ * Como el coche suelto, recibe los coches YA DECIDIDOS por el mapa: la regla vive
+ * allí (`mapa.service` → sinVolver) y aquí solo se registra y se manda. Quien
+ * reciba el WhatsApp abrirá el mapa, y los dos tienen que decir lo mismo.
+ *
+ * UNA ALERTA POR PASAJERO DEJADO, no por franja: la clave es (coche, hora a la
+ * que lo dejó), `uq_alerta_control_suceso` de db/166. Va sin driver_uuid a
+ * propósito —con él, el índice de persona la cortaría a una por franja— y se ata
+ * a la ficha por conductor_id, que se saca de su uuid de BOLT.
+ *
+ * Si db/166 no está aplicada falta la columna: se dice una vez y no se avisa,
+ * en vez de llenar el log cada 30 segundos.
+ */
+let avisadoSin166 = false;
+async function revisarNoVuelven({ coches = [], ahora = new Date() } = {}) {
+  const res = { vistos: coches.length, nuevas: 0, enviadas: 0, errores: 0, detalle: [] };
+  const config = await leerConfig();
+  if (config.sinTabla) return { ...res, activa: false, motivo: 'sin-tabla' };
+  const def = config.tipos.no_vuelve_m30;
+  if (!def || !def.activo) return { ...res, activa: false, motivo: 'apagado' };
+
+  const gente = await aQuienAviso();
+  const simulado = config.modo !== 'live';
+  const franja = franjaDe(config, ahora) || { codigo: 'fuera', dia: jornadaDeMadrid(ahora) };
+
+  for (const c of coches) {
+    const n = c.noVuelve;
+    if (!c.matricula || !n || !n.desde || n.minutos < def.umbral) continue;
+    let ins;
+    try {
+      ins = await db.consulta(
+        `INSERT INTO alerta_control
+           (tipo, franja, franja_dia, driver_uuid, conductor_id, nombre_bolt, telefono,
+            matricula, suceso_at, valor, umbral, estado)
+         VALUES ('no_vuelve_m30', $1, $2::date, NULL,
+                 (SELECT conductor_id FROM conductor_externo
+                   WHERE sistema = 'bolt' AND externo_id = $3 ORDER BY visto_desde DESC LIMIT 1),
+                 $4, $5, $6, $7::timestamptz, $8, $9, 'pendiente')
+         ON CONFLICT DO NOTHING
+         RETURNING id`,
+        [franja.codigo, franja.dia, c.uuidConductor || null, c.conductor || null,
+         c.telefono || null, c.matricula, n.desde, n.minutos, def.umbral]);
+    } catch (e) {
+      if (e.code === '42703') {                       // falta suceso_at: db/166 sin aplicar
+        if (!avisadoSin166) console.warn('⏸️  [ALERTAS] «No vuelve a la M-30» espera a db/166 (falta alerta_control.suceso_at)');
+        avisadoSin166 = true;
+        return { ...res, activa: false, motivo: 'falta-db166' };
+      }
+      throw e;
+    }
+    if (!ins.rowCount) continue;
+
+    res.nuevas++;
+    const p = {
+      tipo: 'no_vuelve_m30', valor: n.minutos, nombreBolt: c.conductor, telefono: c.telefono,
+      horasEfectivas: 0, matricula: c.matricula, coche: c,
+    };
+    const r = await mandar(ins.rows[0].id, p, franja, config, gente, simulado);
+    res.enviadas += r.ok;
+    res.errores += r.fallos;
+    res.detalle.push({ matricula: c.matricula, minutos: n.minutos, conductor: c.conductor || '(nadie)',
+      como: n.como, enviados: r.ok, estado: r.estado });
+  }
+  return { ...res, activa: true, modo: config.modo };
+}
+
 /** El día de la JORNADA (05:00 → 05:00) de un instante, en Madrid. */
 function jornadaDeMadrid(cuando) {
   const hoy = hoyMadrid(cuando);
@@ -849,8 +945,8 @@ async function mandar(alertaId, p, franja, config, gente, simulado) {
   // Se mantiene así para que la plantilla genérica siga sirviendo de reserva:
   // si `zona_madrid` aún no está aprobada en Meta, el aviso sale igual.
   const deZona = p.tipo === 'zona_notificacion' || p.tipo === 'zona_madrid'
-    || p.tipo === 'rueda_suelto';
-  const extra = { salida: p.salida || null, coche: p.coche || null };
+    || p.tipo === 'rueda_suelto' || p.tipo === 'no_vuelve_m30';
+  const extra = { salida: p.salida || null, coche: p.coche || null, matricula: p.matricula || null };
   const cabecera = [
     p.nombreBolt || (deZona ? 'SIN CONDUCTOR FICHADO' : '—'),
     p.telefono || 'sin teléfono',
@@ -955,8 +1051,10 @@ async function estado({ dia } = {}) {
     enVivo = [];
     for (const c of lista) {
       for (const [tipo, def] of Object.entries(config.tipos)) {
-        // Las de zona no se miden por umbral: no tienen "en vivo" que calcular.
-        if (!def.activo || def.fuente === 'zona') continue;
+        // Las de zona y las del mapa no se miden por persona: no tienen "en
+        // vivo" que calcular aquí. Sin saltar las del mapa, cada candidato salía
+        // en «está pasando ahora» con un «rueda suelto» sin cifra.
+        if (!def.activo || def.fuente === 'zona' || def.fuente === 'mapa') continue;
         if (c.valores[tipo] < def.umbral) continue;
         // LA MISMA PUERTA QUE EN EL ENVÍO. Si aquí no se aplicara, la pantalla
         // diría "esto está pasando" de gente a la que nunca se va a avisar, y
@@ -978,7 +1076,7 @@ async function estado({ dia } = {}) {
 }
 
 module.exports = {
-  MODELO, revisar, revisarSueltos, estado, historial, candidatos,
+  MODELO, revisar, revisarSueltos, revisarNoVuelven, estado, historial, candidatos,
   leerConfig, guardarConfig, destinatarios, guardarDestinatarios, aQuienAviso,
   franjaDe, textoAlerta, textoCorto, esPlantillaQueNoExiste,
 };

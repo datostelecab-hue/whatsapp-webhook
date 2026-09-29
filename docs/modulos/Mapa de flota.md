@@ -105,6 +105,23 @@ Si el coche está fuera de la M-30, se compara lo lejos que estaba de ella al de
 
 El margen de 1 km es porque la M-30 no es un punto: moverse a lo largo de ella sin acercarse no es volver.
 
+### Sin volver a la M-30: el reloj y el aviso (29/09/2026)
+
+Sobre el veredicto de arriba, Camilo pidió contar el tiempo: *«a partir de los 15 minutos, que empiece a contabilizar cuánto tiempo lleva cerca del destino fuera de la M-30 o alejándose; si empieza a acercarse está bien»*. `mapa.service` → `sinVolver` marca el coche (`noVuelve`) cuando:
+
+| Condición | Por qué |
+|---|---|
+| dejó al último pasajero **fuera** de la M-30, hace **15 min o más** | es el caso que se pidió; el tiempo cuenta desde que lo dejó |
+| ahora está fuera, a **1 km o más** | a 700 m de la M-30 está en la M-30, no «por allá» (Isaac, 5886LBZ, el 29/09) |
+| el veredicto **no** es «volviendo» | se queda cerca, se aleja o da vueltas: cualquiera de los tres vale |
+| está **en espera o en descanso** | conectado sin viaje; los desconectados eran finales de turno de horas antes |
+
+En la pantalla: una **etiqueta ámbar con los minutos pegada al punto**, que corre sola cada segundo; el mismo reloj en la fila de la lista y en la ficha («Lleva 39 min sin volver a la M-30»); y un **filtro en la cinta**, «N sin volver a la M-30», detrás de los seis de siempre y siempre visible. No cambia el color del punto: el color sigue diciendo qué hace en BOLT.
+
+Y el **aviso por WhatsApp** (`no_vuelve_m30`) sale de la misma regla, en la misma vuelta de 30 s que el del coche suelto: uno por coche y por pasajero dejado. → [[Control Alertas]]
+
+Medido el 29/09 a las 13:06: 4 coches (Deisy dando vueltas 36 min, Juan Guillermo quieto en Alcobendas 23 min, Mauricio y Rayssa alejándose); de los otros 10 conectados fuera de la M-30, 4 volvían, 3 no llevaban 15 min, 1 estaba a 700 m y 2 habían dejado al pasajero **dentro** (eso no es este caso).
+
 **De dónde sale.** BOLT manda en cada pedido la dirección del destino y, en `order_stops`, las coordenadas de la parada de bajada; la ingesta lo tiraba. Desde `db/156`, `bolt_order` guarda también la matrícula, la hora en que dejó al pasajero (`dejado_ts`) y el destino con sus coordenadas (las reales si BOLT las da). El mapa coge el último de ese coche en las últimas 12 horas, **y solo de los que terminó** (`estado = 'finished'`).
 
 > [!bug] Los pedidos que le ofrecieron y no cogió

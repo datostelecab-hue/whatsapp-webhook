@@ -7,6 +7,10 @@ actualizado: 2026-09-28
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-29 · Aviso: deja al pasajero fuera de la M-30 y no vuelve
+
+Si alguien deja al pasajero **fuera de la M-30** y a los **15 minutos** sigue por allá —cerca, alejándose o dando vueltas, a 1 km o más de la M-30, en espera o en descanso—, el mapa le pone un reloj y sale un WhatsApp a los controladores. Acercarse está bien. Los desconectados no cuentan (eran finales de turno). Un aviso **por pasajero dejado**, no por franja (db/166). → [[Mapa de flota]] · [[Control Alertas]]
+
 ## 2026-09-29 · Quien escribe la matrícula se queda el coche
 
 Si el coche figura con otra persona, su turno se cierra como relevado **aunque no pulsara «Entregar coche» y aunque al que entra no le toque ese coche**: el que empieza en una matrícula es el nuevo responsable. Se anota lo que falte (el botón, el cuadrante) y al otro se le avisa. El motor no se corta en el relevo; si al que lo tenía se le bloquearía, antes el coche tiene que estar parado y apagado. Y abrir turno sigue siendo de **todo conductor de alta**, como se desplegó el 28/09. → [[Fichaje]]

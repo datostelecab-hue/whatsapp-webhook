@@ -112,6 +112,16 @@
     .m-coche.m-esperafuera { outline: 2px dashed rgb(var(--tc-mapa-espera)); outline-offset: 2px; }
   }
 
+  /* NO VUELVE A LA M-30 (29/09/2026): una etiqueta con los minutos pegada al
+     punto. No cambia el color —el color dice qué hace en BOLT—: dice además
+     cuánto lleva por allá desde que dejó al pasajero, y corre sola. */
+  .m-sinvolver {
+    position: absolute; left: 20px; top: -9px; pointer-events: none; white-space: nowrap;
+    padding: 0 4px; border-radius: 6px; font-size: 9px; font-weight: 700; line-height: 14px;
+    background: rgb(var(--tc-warn)); color: rgb(var(--tc-dark));
+    box-shadow: 0 1px 3px rgb(0 0 0 / .45); font-variant-numeric: tabular-nums;
+  }
+
   /* El que lleva rato sin hablar se pinta a medias: no es dónde está, es dónde
      estuvo, y eso tiene que notarse sin leer nada. */
   .m-coche.m-perdido { opacity: .45; border-style: dashed; }
@@ -188,6 +198,19 @@
     perdido: 'El equipo de Mapon no habla: el punto es de cuando se calló.',
     sinmapon: 'Coches de la flota de los que Mapon no da nada.',
   };
+  // NO VUELVE A LA M-30 (29/09/2026). No es un color: es un filtro más de la
+  // cinta, que se suma a lo que haga en BOLT. La regla vive en mapa.service
+  // (`sinVolver`), la misma que manda el aviso por WhatsApp.
+  const NO_VUELVE = { tk: '--tc-warn', icono: 'fa-route', texto: 'Sin volver a la M-30' };
+  const AYUDA_NO_VUELVE = 'Dejó al último pasajero FUERA de la M-30 hace 15 min o más y no vuelve: '
+    + 'sigue cerca, se aleja o da vueltas, a 1 km o más de la M-30, en espera o en descanso. '
+    + 'El tiempo cuenta desde que lo dejó.';
+  // «23 min», «1 h 05»: desde que dejó al pasajero, sin redondear hacia arriba
+  // (a los 14 min 40 s no puede decir 15).
+  const minTxt = iso => {
+    const m = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+    return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0');
+  };
 
   const cvComa = (n, a) => {
     const v = getComputedStyle(raiz).getPropertyValue(n).trim().split(/\s+/).join(', ');
@@ -223,7 +246,7 @@
       || norm(c.conductor).includes(b) || norm(c.ultimoConductor).includes(b);
   };
   // Lo que se ve, en el mapa y en la lista: el chip elegido y lo buscado.
-  const visible = c => (!filtro || c.tono === filtro) && coincide(c);
+  const visible = c => (!filtro || (filtro === 'novuelve' ? !!c.noVuelve : c.tono === filtro)) && coincide(c);
 
   // "4 s", "2 min 10 s", "1 h 05": los segundos se ven mientras importan, que
   // es justo al principio -cuando alguien acaba de coger un viaje-.
@@ -239,6 +262,9 @@
   setInterval(() => {
     document.querySelectorAll('[data-desde]').forEach(el => {
       el.textContent = desdeHaceTxt(el.getAttribute('data-desde'));
+    });
+    document.querySelectorAll('[data-min-desde]').forEach(el => {
+      el.textContent = minTxt(el.getAttribute('data-min-desde'));
     });
   }, 1000);
 
@@ -389,6 +415,12 @@
       + (c.km != null ? ' <span class="text-telecab-muted">· ' + c.km + ' km en el tramo</span>' : ''));
     lineas.push('<i class="fa-solid fa-satellite-dish w-4 text-telecab-muted"></i> <span class="text-telecab-muted">'
       + 'el equipo habló hace ' + hace(c.antiguedad) + '</span>');
+    // NO VUELVE A LA M-30: lo primero de lo del destino, con el reloj corriendo.
+    if (c.noVuelve) {
+      lineas.push('<i class="fa-solid ' + NO_VUELVE.icono + ' w-4" style="color:' + cv(NO_VUELVE.tk) + '"></i> <b style="color:'
+        + cv(NO_VUELVE.tk) + '">Lleva <span data-min-desde="' + esc(c.noVuelve.desde) + '">' + minTxt(c.noVuelve.desde)
+        + '</span> sin volver a la M-30</b>');
+    }
     // DÓNDE DEJÓ AL ÚLTIMO PASAJERO. De viaje no se enseña: ese «último» es el
     // de antes y el que importa es el que lleva ahora.
     const ud = c.ultimoDestino;
@@ -487,8 +519,18 @@
       // El rojo levantado sobre datos de BOLT viejos se pinta hueco: sigue
       // estando ahi, pero no acusa a nadie.
       if (c.dudoso) m.el.classList.add('m-dudoso');
-      m.el.title = (c.matricula || '#' + c.unidad) + (nombreDe(c) ? ' · ' + nombreDe(c) : '') + ' · ' + t.texto;
+      m.el.title = (c.matricula || '#' + c.unidad) + (nombreDe(c) ? ' · ' + nombreDe(c) : '') + ' · ' + t.texto
+        + (c.noVuelve ? ' · ' + minTxt(c.noVuelve.desde) + ' sin volver a la M-30' : '');
       m.el.querySelector('i').className = 'fa-solid ' + t.icono;
+      // La etiqueta de los minutos sin volver: se pone, se mueve o se quita.
+      let et = m.el.querySelector('.m-sinvolver');
+      if (c.noVuelve) {
+        if (!et) { et = document.createElement('span'); et.className = 'm-sinvolver'; m.el.appendChild(et); }
+        et.setAttribute('data-min-desde', c.noVuelve.desde);
+        et.textContent = minTxt(c.noVuelve.desde);
+      } else if (et) {
+        et.remove();
+      }
       // El contenido se rehace siempre: los segundos de "hace" corren.
       m.marker.getPopup().setHTML(ficha(c));
     });
@@ -531,17 +573,24 @@
     // Los seis de siempre salen siempre, aunque estén a cero: un «0 rodando
     // desconectado» también es una respuesta. Los demás, solo si hay alguno.
     const ks = ORDEN.filter(k => PRINCIPALES.includes(k) || cuenta[k] || filtro === k);
-    $('#m-chips').innerHTML = ks.map((k, i) => {
-      const t = TONOS[k], n = cuenta[k] || 0;
+    const chip = (k, t, n, ayuda) => {
       const activo = filtro === k;
-      const raya = i > 0 && !PRINCIPALES.includes(k) && PRINCIPALES.includes(ks[i - 1])
-        ? '<span class="w-px h-5 bg-telecab-border mx-1" aria-hidden="true"></span>' : '';
-      return raya + '<button data-tono="' + k + '" title="' + esc(AYUDA[k] || t.texto) + ' Pincha para ver solo estos."'
+      return '<button data-tono="' + k + '" title="' + esc(ayuda) + ' Pincha para ver solo estos."'
         + ' class="px-2 py-1 rounded-lg text-[11px] font-semibold border transition tabular-nums'
         + (activo ? ' ring-2' : '') + '"'
         + ' style="border-color:' + cv(t.tk, .45) + ';background:' + cv(t.tk, activo ? .28 : .12)
         + ';color:' + cv(t.tk) + (activo ? ';--tw-ring-color:' + cv(t.tk, .5) : '') + '">'
         + '<i class="fa-solid ' + t.icono + ' mr-1"></i>' + n + ' ' + esc(t.texto) + '</button>';
+    };
+    $('#m-chips').innerHTML = ks.map((k, i) => {
+      const t = TONOS[k];
+      const raya = i > 0 && !PRINCIPALES.includes(k) && PRINCIPALES.includes(ks[i - 1])
+        ? '<span class="w-px h-5 bg-telecab-border mx-1" aria-hidden="true"></span>' : '';
+      // Detrás de los seis de siempre, y siempre visible como ellos: un «0 sin
+      // volver» también es una respuesta.
+      const tras = k === PRINCIPALES[PRINCIPALES.length - 1]
+        ? chip('novuelve', NO_VUELVE, DATOS.filter(c => c.noVuelve).length, AYUDA_NO_VUELVE) : '';
+      return raya + chip(k, t, cuenta[k] || 0, AYUDA[k] || t.texto) + tras;
     }).join('');
   }
 
@@ -575,6 +624,10 @@
         + esc(quien || mat) + '</span>'
         + '<span class="block text-[10px] text-telecab-muted truncate">'
         + (quien ? '<span class="tabular-nums">' + esc(mat) + '</span> · ' : '') + esc(estado) + '</span></span>'
+        + (c.noVuelve ? '<span class="text-[10px] font-semibold tabular-nums shrink-0 px-1 rounded" title="Sin volver a la M-30 desde que dejó al pasajero"'
+            + ' style="background:' + cv(NO_VUELVE.tk, .15) + ';color:' + cv(NO_VUELVE.tk) + '">'
+            + '<i class="fa-solid ' + NO_VUELVE.icono + ' mr-0.5"></i><span data-min-desde="' + esc(c.noVuelve.desde) + '">'
+            + minTxt(c.noVuelve.desde) + '</span></span>' : '')
         + (c.velocidad ? '<span class="text-[10px] text-telecab-muted tabular-nums shrink-0">'
             + c.velocidad + '</span>' : '') + '</button>';
     }).join('');
