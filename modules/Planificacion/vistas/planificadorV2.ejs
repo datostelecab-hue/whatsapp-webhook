@@ -135,17 +135,6 @@
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Banquillo</p>
       <p id="k-banq" class="text-xl font-bold mt-1">—</p>
     </div>
-    <%# LAS BAJAS DE LOS ÚLTIMOS 5 DÍAS (29/09/2026): quién se ha ido de la
-        empresa. A lo ancho, porque lo que importa son los NOMBRES; al pinchar
-        uno se despliega el motivo. Cuenta desde hoy, mires la semana que mires. %>
-    <div class="col-span-2 sm:col-span-3 lg:col-span-5 bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
-      <p class="flex items-baseline gap-2">
-        <span id="k-bajas-tit" class="text-xs text-telecab-muted uppercase tracking-wide"
-              title="Conductores que han causado baja en la empresa en los últimos días, contando hoy.&#10;No salen los que tienen otro contrato abierto: quien pasa de ETT a plantilla o vuelve no se ha ido.&#10;Pincha un nombre para ver el motivo.">Bajas · últimos 5 días</span>
-        <span id="k-bajas" class="text-xl font-bold">—</span>
-      </p>
-      <div id="k-bajas-lista" class="mt-2 grid sm:grid-cols-2 lg:grid-cols-4 gap-2 items-start"></div>
-    </div>
   </div>
 
   <!-- Filtro por zona + búsqueda + avisos -->
@@ -197,6 +186,18 @@
           <i class="fa-solid fa-car-burst text-telecab-gold"></i>Coches de emergencia
         </h3>
         <div id="emergencia" class="flex flex-wrap gap-1.5"></div>
+      </section>
+
+      <%# LAS BAJAS DE LOS ÚLTIMOS 5 DÍAS (29/09/2026): quién se ha ido de la
+          empresa. Al pinchar un nombre se despliega el motivo. Cuenta desde hoy,
+          mires la semana que mires; sin nadie, no sale, como los huérfanos. %>
+      <section id="panel-bajas" class="hidden bg-telecab-card border border-telecab-border rounded-2xl p-4">
+        <h3 class="font-semibold text-sm flex items-center gap-2 mb-2"
+            title="Conductores que han causado baja en la empresa en los últimos días, contando hoy.&#10;No salen los que tienen otro contrato abierto: quien pasa de ETT a plantilla o vuelve no se ha ido.&#10;Pincha un nombre para ver el motivo.">
+          <i class="fa-solid fa-user-minus text-telecab-muted"></i><span id="bajas-tit">Bajas · últimos 5 días</span>
+          <span id="bajas-n" class="ml-auto text-xs text-telecab-muted"></span>
+        </h3>
+        <div id="bajas" class="space-y-1.5 max-h-[40vh] overflow-y-auto pr-1"></div>
       </section>
 
       <section class="bg-telecab-card border border-telecab-border rounded-2xl p-4">
@@ -724,7 +725,6 @@
       'Y solo de coches que tienen su fijo (o lo tienen planificado): un coche sin fijo necesita un fijo, no un correturnos.' + ayuda('CT');
     $('#k-huerf').textContent = (T.huerfanos || []).length;
     $('#k-banq').textContent = (T.pendientes || []).length;
-    pintarBajas();
     const semana = (T.fechas && T.fechas.length) ? `${isoAes(T.fechas[0])} – ${isoAes(T.fechas[6])}` : '';
     $('#sub').textContent = `Semana ${semana} · efectivo desde el ${isoAes(T.dia)}`;
   }
@@ -738,31 +738,29 @@
   function pintarBajas() {
     const B = T.bajasRecientes || { dias: 5, lista: [] };
     const lista = B.lista || [];
-    $('#k-bajas-tit').textContent = `Bajas · últimos ${B.dias} días`;
-    $('#k-bajas').textContent = lista.length;
-    const caja = $('#k-bajas-lista');
-    if (!lista.length) {
-      caja.innerHTML = '<p class="text-xs text-telecab-muted">Nadie ha causado baja estos días.</p>';
-      return;
-    }
-    caja.innerHTML = lista.map(b => {
+    $('#panel-bajas').classList.toggle('hidden', lista.length === 0);
+    $('#bajas-tit').textContent = `Bajas · últimos ${B.dias} días`;
+    $('#bajas-n').textContent = lista.length || '';
+    $('#bajas').innerHTML = lista.map(b => {
       const abierta = bajasAbiertas.has(b.conductorId);
       const contrato = b.tipo === 'ett' ? `ETT${b.ett ? ' ' + b.ett : ''}` : 'Plantilla propia';
-      const coche = b.matricula ? ` · último coche ${b.matricula}${b.turno ? ' ' + b.turno.toLowerCase() : ''}` : '';
+      const coche = b.matricula ? `${b.matricula}${b.turno ? ' · ' + b.turno : ''}` : 'sin coche';
       const motivo = b.motivo
         ? `<p><span class="text-telecab-muted">Motivo:</span> <span class="font-medium">${esc(b.motivo)}</span>${esc(glosaMotivo(b.motivo))}</p>`
         : '<p class="text-telecab-warn" title="Al darle de baja no se apuntó el motivo.">Sin motivo apuntado</p>';
       return `
-        <div class="rounded-xl border border-telecab-border">
+        <div class="rounded-lg bg-telecab-card border border-telecab-border">
           <button type="button" data-baja="${esc(b.conductorId)}" aria-expanded="${abierta}"
-                  class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-sm rounded-xl hover:bg-telecab-card2 transition">
-            <i class="fa-solid fa-chevron-right text-[10px] text-telecab-muted transition-transform ${abierta ? 'rotate-90' : ''}"></i>
-            <span class="font-medium truncate flex-1">${esc(b.nombre)}</span>
-            <span class="text-[11px] text-telecab-muted tabular-nums">${esc(isoAes(b.baja).slice(0, 5))}</span>
+                  class="w-full flex items-center gap-2 px-2 py-1.5 text-left rounded-lg hover:bg-telecab-card2 transition">
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium truncate">${esc(b.nombre)}</div>
+              <div class="text-[11px] text-telecab-muted">Baja el ${esc(isoAes(b.baja).slice(0, 5))} · ${esc(coche)}</div>
+            </div>
+            <i class="fa-solid fa-chevron-down text-[10px] text-telecab-muted transition-transform ${abierta ? 'rotate-180' : ''}"></i>
           </button>
-          <div class="px-3 pb-2 pt-0.5 text-xs space-y-0.5 ${abierta ? '' : 'hidden'}">
+          <div class="px-2 pb-2 text-xs space-y-0.5 ${abierta ? '' : 'hidden'}">
             ${motivo}
-            <p class="text-telecab-muted">${esc(contrato)} · baja el ${esc(isoAes(b.baja))}${esc(coche)}</p>
+            <p class="text-telecab-muted">${esc(contrato)} · baja el ${esc(isoAes(b.baja))}</p>
           </div>
         </div>`;
     }).join('');
@@ -1243,6 +1241,7 @@
         <i class="fa-solid fa-car-side"></i>${esc(e.matricula)}${e.zona ? ` <span class="text-telecab-muted">${esc(e.zona)}</span>` : ''}
       </span>`).join('');
 
+    pintarBajas();
     pintarBanquillo();
     pintarAusentes();
   }
@@ -2391,15 +2390,15 @@
   document.querySelectorAll('.banq-tab').forEach(b =>
     b.addEventListener('click', () => { banqTab = b.dataset.banqTab; pintarBanquillo(); }));
   $('#k-flojos-caja').addEventListener('click', verCtFlojos);
-  // Un nombre de la tarjeta de bajas: despliega (o pliega) su motivo.
-  $('#k-bajas-lista').addEventListener('click', e => {
+  // Un nombre del panel de bajas: despliega (o pliega) su motivo.
+  $('#bajas').addEventListener('click', e => {
     const b = e.target.closest('[data-baja]');
     if (!b) return;
     const id = b.dataset.baja;
     const abrir = !bajasAbiertas.has(id);
     if (abrir) bajasAbiertas.add(id); else bajasAbiertas.delete(id);
     b.setAttribute('aria-expanded', String(abrir));
-    b.querySelector('i').classList.toggle('rotate-90', abrir);
+    b.querySelector('i').classList.toggle('rotate-180', abrir);
     b.nextElementSibling.classList.toggle('hidden', !abrir);
   });
   $('#btn-avisos').addEventListener('click', () => $('#avisos').classList.toggle('hidden'));
