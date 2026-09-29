@@ -120,6 +120,14 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 | CT que faltan | días que libra un fijo y **nadie tiene escritos** (hoy o desde más adelante), ÷6 | el cuadrante, con las asignaciones futuras |
 | Huérfanos | gente asignada a un coche fuera de cobertura | `v_conductor_huerfano` |
 | Banquillo | activos sin plaza + correturnos a medio poner | ver más abajo |
+| Bajas · últimos 5 días | quién ha causado baja **de hoy a 4 días atrás** y no tiene otro contrato abierto; al pinchar el nombre, el motivo | `conductor_periodo_empleo.baja` y `motivo_baja` (`tablero().bajasRecientes`) |
+
+> [!note] La tarjeta de bajas (29/09/2026)
+> La pidió Camilo: los nombres de los que se han ido en los últimos cinco días y, al pinchar, **el motivo**. Va a lo ancho, debajo de las demás, porque lo que importa son los nombres. Cada uno se despliega por su cuenta (motivo, ETT o plantilla, día de la baja y **el último coche que llevó**, que es la plaza que deja) y lo abierto sobrevive al repintado del tablero.
+> - Cuenta **desde hoy**, mires la semana que mires: la pregunta es quién se ha ido estos días. Los días están en `DIAS_BAJAS` (`planificador.repo.js`).
+> - **No sale quien tiene otro contrato abierto**: pasar de ETT a plantilla cierra un periodo («Pasa a plantilla propia») y abre otro el mismo día, y quien vuelve tiene uno nuevo. Con dos periodos cerrados en la ventana sale una vez, con el último (Macilon, 24/09, dos veces por la ETT).
+> - Sin motivo apuntado sale **«Sin motivo apuntado»** en ámbar. El 29/09 pasa en casi todas las bajas de ETT: se dan sin motivo. **NSPP** lleva al lado «no superó el periodo de prueba».
+> - El 29/09 salían tres: Marius Cristian Jura (28/09, baja voluntaria, 6663LCY noche), Helmuth Isaac Held (25/09, NSPP, 5912LBZ noche) y Diana Madeline Alvarez (25/09, ETT GiGroup, sin motivo, 1209MJY día).
 
 > [!warning] «CT que faltan» decía 28 y eran 15
 > Contaba los días que `f_cobertura` no llenó **en la semana abierta**. De los huecos de coches con fijo, **117 eran de días ya pasados** y 47 de hoy en adelante; 24 de ellos ya tenían dueño escrito. Se contrataba por un número que medía el pasado de la semana que tuvieras abierta. Ahora: 264 días de CT que pide el cuadrante, 181 con dueño, **83 sin nadie → 15 personas**.
@@ -166,7 +174,9 @@ El mensaje de WhatsApp durante un evento es distinto y dice cuatro cosas en este
 
 ## El botón «Fichaje»
 
-Desde el 24/09/2026 la barra del planificador tiene un botón **Fichaje**: es donde se enciende, persona a persona, quién ficha su turno por WhatsApp (iniciar suelta el motor del coche y terminar lo bloquea). Está aquí porque es donde Tráfico tiene a la gente delante; las reglas son del fichaje. Una **llave** junto al nombre marca a quien ficha. Cuando sea obligatorio para todos, el botón se quita. Todo en [[Fichaje#El panel «Fichaje» del planificador]].
+Desde el 24/09/2026 la barra del planificador tiene un botón **Fichaje**: es donde se enciende, persona a persona, quién ficha su turno por WhatsApp (iniciar suelta el motor del coche y terminar lo bloquea). Está aquí porque es donde Tráfico tiene a la gente delante; las reglas son del fichaje. Una **llave** junto al nombre marca a quien ficha. Todo en [[Fichaje#El panel «Fichaje» del planificador]].
+
+**Desde el 28/09/2026 se llama «Bloqueo de motor»**: abrir turno por WhatsApp es de **todo conductor de alta** (Camilo lo confirmó el 29/09), y el botón ya solo decide a quién se le **bloquea el motor** al terminar.
 
 ## La cobertura y el aviso de turnos
 

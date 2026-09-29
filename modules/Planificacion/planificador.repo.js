@@ -63,6 +63,8 @@ function fechaDe(v) {
 }
 
 const hoy = () => aISO(new Date());
+// Los días hacia atrás de la tarjeta de bajas, contando hoy (el 29/09: del 25 al 29).
+const DIAS_BAJAS = 5;
 
 /** Los siete días de la semana que empieza ese lunes. */
 function semanaDesde(lunes) {
@@ -86,7 +88,7 @@ async function tablero({ dia } = {}) {
   const fechas = semanaDesde(lunes);
   const domingo = fechas[DIAS - 1];
 
-  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos, proximos, comprometidas] = await Promise.all([
+  const [plazas, asignaciones, cobertura, conductores, sugeridos, huerfanos, emergencia, libranzasExc, descansos, proximos, comprometidas, bajas] = await Promise.all([
     // Las plazas de los coches que se planifican. El orden es el de la
     // pantalla: primero la zona, luego la matrícula.
     db.consulta(
@@ -242,6 +244,41 @@ async function tablero({ dia } = {}) {
     // ve vacía puede estar reclutándose desde hace dos semanas, y una que ve
     // ocupada puede tener ya al relevo buscado.
     db.consulta('SELECT * FROM v_plaza_comprometida'),
+
+    // LAS BAJAS DE LOS ÚLTIMOS DÍAS (29/09/2026, lo pidió Camilo): quién se ha
+    // ido de la empresa y por qué. Cuenta desde HOY, no desde el día que se mire:
+    // la pregunta es «quién se nos ha ido estos días», sea cual sea la semana
+    // abierta.
+    //
+    // Solo quien NO tiene ahora un contrato abierto. Quien pasa de ETT a
+    // plantilla cierra un periodo con «Pasa a plantilla propia» y abre otro el
+    // mismo día, y quien vuelve tiene uno nuevo: ninguno de los dos se ha ido.
+    // Con dos periodos cerrados en la ventana (Macilon, 24/09, dos veces por la
+    // ETT) sale una vez, con el último. El nombre, el de BOLT aunque la cuenta
+    // ya esté cerrada; y el último coche que tuvo, que es la plaza que deja.
+    db.consulta(
+      `SELECT DISTINCT ON (e.conductor_id)
+              e.conductor_id, to_char(e.baja, 'YYYY-MM-DD') AS baja, e.tipo, e.ett_nombre,
+              NULLIF(btrim(e.motivo_baja), '') AS motivo,
+              COALESCE(NULLIF(btrim(ext.externo_nombre), ''), NULLIF(btrim(c.nombre_bolt), ''),
+                       btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+              ult.matricula, ult.turno
+         FROM conductor_periodo_empleo e
+         JOIN conductor c ON c.id = e.conductor_id
+         LEFT JOIN LATERAL (
+           SELECT externo_nombre FROM conductor_externo
+            WHERE conductor_id = c.id AND sistema = 'bolt'
+            ORDER BY visto_hasta DESC NULLS FIRST, visto_desde DESC LIMIT 1) ext ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT vp.matricula, vp.turno
+             FROM asignacion a JOIN v_plaza vp ON vp.plaza_id = a.plaza_id
+            WHERE a.conductor_id = c.id
+            ORDER BY a.desde DESC, a.id DESC LIMIT 1) ult ON TRUE
+        WHERE e.baja > $1::date - $2::int AND e.baja <= $1::date
+          AND NOT c.es_centinela
+          AND NOT EXISTS (SELECT 1 FROM conductor_periodo_empleo ab
+                           WHERE ab.conductor_id = c.id AND ab.baja IS NULL)
+        ORDER BY e.conductor_id, e.baja DESC, e.id DESC`, [hoy(), DIAS_BAJAS]),
   ]);
 
   const descansoDe = new Map(descansos.rows.map(r => [String(r.vehiculo_id), (r.dias || []).map(Number)]));
@@ -691,6 +728,20 @@ async function tablero({ dia } = {}) {
       turno: h.turno,
       rol: h.rol,
     })),
+    // Las bajas de los últimos DIAS_BAJAS días, la más reciente primero.
+    bajasRecientes: {
+      dias: DIAS_BAJAS,
+      lista: bajas.rows.map(b => ({
+        conductorId: String(b.conductor_id),
+        nombre: b.nombre,
+        baja: b.baja,
+        motivo: b.motivo || '',
+        tipo: b.tipo,
+        ett: b.ett_nombre || '',
+        matricula: b.matricula || '',
+        turno: b.turno || '',
+      })).sort((a, b) => b.baja.localeCompare(a.baja) || a.nombre.localeCompare(b.nombre, 'es')),
+    },
     // Coches de emergencia disponibles para colocar en un cuadrante.
     emergencia: emergencia.rows.map(e => ({
       vehiculoId: e.vehiculo_id,
