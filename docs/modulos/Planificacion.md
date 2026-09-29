@@ -120,10 +120,10 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 | CT que faltan | días que libra un fijo y **nadie tiene escritos** (hoy o desde más adelante), ÷6 | el cuadrante, con las asignaciones futuras |
 | Huérfanos | gente asignada a un coche fuera de cobertura | `v_conductor_huerfano` |
 | Banquillo | activos sin plaza + correturnos a medio poner | ver más abajo |
-| Bajas · últimos 5 días | quién ha causado baja **de hoy a 4 días atrás** y no tiene otro contrato abierto; al pinchar el nombre, el motivo | `conductor_periodo_empleo.baja` y `motivo_baja` (`tablero().bajasRecientes`) |
+| Bajas · últimos 5 días (panel lateral) | quién ha causado baja **de hoy a 4 días atrás** y no tiene otro contrato abierto; al pinchar el nombre, el motivo | `conductor_periodo_empleo.baja` y `motivo_baja` (`tablero().bajasRecientes`) |
 
 > [!note] La tarjeta de bajas (29/09/2026)
-> La pidió Camilo: los nombres de los que se han ido en los últimos cinco días y, al pinchar, **el motivo**. Va a lo ancho, debajo de las demás, porque lo que importa son los nombres. Cada uno se despliega por su cuenta (motivo, ETT o plantilla, día de la baja y **el último coche que llevó**, que es la plaza que deja) y lo abierto sobrevive al repintado del tablero.
+> La pidió Camilo: los nombres de los que se han ido en los últimos cinco días y, al pinchar, **el motivo**. Vive en la **columna lateral**, entre *Coches de emergencia* y *Banquillo*, con la misma cara que los huérfanos, y sin nadie no sale (así la quiso Camilo; el primer rato estuvo a lo ancho bajo las tarjetas). Cada uno se despliega por su cuenta (motivo, ETT o plantilla, día de la baja y **el último coche que llevó**, que es la plaza que deja) y lo abierto sobrevive al repintado del tablero.
 > - Cuenta **desde hoy**, mires la semana que mires: la pregunta es quién se ha ido estos días. Los días están en `DIAS_BAJAS` (`planificador.repo.js`).
 > - **No sale quien tiene otro contrato abierto**: pasar de ETT a plantilla cierra un periodo («Pasa a plantilla propia») y abre otro el mismo día, y quien vuelve tiene uno nuevo. Con dos periodos cerrados en la ventana sale una vez, con el último (Macilon, 24/09, dos veces por la ETT).
 > - Sin motivo apuntado sale **«Sin motivo apuntado»** en ámbar. El 29/09 pasa en casi todas las bajas de ETT: se dan sin motivo. **NSPP** lleva al lado «no superó el periodo de prueba».
