@@ -23,6 +23,10 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores. Desde el 29/09 el que escribe la matrícula se queda el coche aunque no le toque: las notas «no tenía ese coche en el cuadrante de hoy» son las que hay que mirar.
 - **Se quedó para todos (29/09):** abrir turno con la matrícula es de todo conductor de alta, como se desplegó el 28/09 (Camilo lo confirmó después de preguntar por qué lo tenían todos). El 29/09 por la mañana habían abierto turno 30 personas, y en Mapon queda creada la ficha de conductor de cada uno.
 
+## Migraciones por aplicar (29/09/2026)
+
+- **`db/165`**: la baja de **William Azier Benavides Guaman** (ETT GiGroup) pasa del 16/08/2033 —año mal tecleado— al **16/09/2026**, el día siguiente a su último viaje de BOLT (15/09) y al fin de su plaza en el 0524MMZ (14/09). Corta también su turno en esa fecha. Se aplica desde /migraciones con el despliegue arriba.
+
 ## Para mañana (21/09/2026)
 
 - **El ticket RH-20260918-10618 de Soufyane El Hadri sigue pendiente**, a propósito. Aplicarlo ya funciona (probado de punta a punta con ese mismo ticket, y deshecho sin dejar rastro), pero **una baja médica la cuentan la bitácora y la nómina**: la aplica Ricardo cuando quiera y con las fechas que quiera. Basta con darle a **Aplicar**.
