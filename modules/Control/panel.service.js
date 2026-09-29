@@ -16,6 +16,7 @@
 
 const db = require('../../services/flotaViva/db');
 const ahora = require('../../services/flotaViva/ahora');
+const rutas = require('../../services/flotaViva/rutas');
 
 // El enlace con el Call Center se puede apagar.
 //
@@ -156,8 +157,23 @@ async function historialConductor(conductorId, opciones = 1) {
   // desde ahora) y `{ dia }` para una jornada cerrada (el Histórico mira un día
   // concreto, 05:00 → 05:00, que es la ventana con la que cuenta todo el ERP).
   const o = (opciones && typeof opciones === 'object') ? opciones : { dias: opciones };
-  const dias = String(Number(o.dias) > 0 ? Number(o.dias) : 1);
+  // Como mucho dos días hacia atrás: la elección de fuente de km mira de un día
+  // antes a tres después de `ref`, y con más días el final se quedaría fuera.
+  // En directo pide uno.
+  const dias = String(Math.min(Number(o.dias) > 0 ? Number(o.dias) : 1, 2));
   const dia = o.dia ? String(o.dia).slice(0, 10) : null;
+  const ref = dia || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(Date.now() - Number(dias) * 86400000));
+
+  // LOS KM DE CADA TRAZO, DE LA MISMA FUENTE QUE LA FILA DEL CONDUCTOR (29/09/2026).
+  //
+  // Antes salían solo de los trayectos del GPS (fv_ruta), y Mapon no le pone
+  // km a un trayecto hasta que el coche PARA. Un coche que no apaga en toda la
+  // mañana —el 0870MMZ, con un trayecto abierto desde las 05:34— enseñaba seis
+  // horas de trazos «en curso» mientras la fila del conductor, que va por el
+  // odómetro del cuadro, ya decía 243 km. Ahora es la misma regla que el cockpit
+  // (rutas.FUENTE_KM): el CAN si lo hay y no calla, el GPS si no.
+  const fuenteKm = rutas.FUENTE_KM.replace(/\$1::date/g, '$4::date');
 
   const r = await db.consulta(
     `WITH w AS (
@@ -167,6 +183,7 @@ async function historialConductor(conductorId, opciones = 1) {
                    ELSE LEAST((($3::date + 1) + interval '5 hours') AT TIME ZONE 'Europe/Madrid', now())
               END AS fin
      ),
+${fuenteKm}
      tr AS (
        SELECT t.id, t.vehiculo_uuid, t.situacion, t.desde,
               COALESCE(t.hasta, now()) AS hasta
@@ -176,25 +193,28 @@ async function historialConductor(conductorId, opciones = 1) {
                  WHERE sistema = 'bolt' AND conductor_id = $1 AND externo_id IS NOT NULL)
           AND t.desde >= w.ini AND t.desde < w.fin
      ),
-     -- Los trayectos de Mapon de esa misma ventana, con un margen por detrás:
-     -- uno que empezó antes puede seguir rodando dentro del primer tramo.
-     ru AS (
-       SELECT r.unit_id, r.inicio, r.fin, r.metros
-         FROM fv_ruta r CROSS JOIN w
-        WHERE r.fin IS NOT NULL AND r.fin > r.inicio
-          AND r.inicio >= w.ini - interval '6 hours'
-          AND r.inicio <= w.fin
-     ),
      -- LOS QUE SIGUEN ABIERTOS. Mapon da el trayecto en cuanto arranca, con
      -- fin en NULL y 0 metros, y no le pone los kilómetros hasta que el coche
      -- para. Sin esto, un conductor que lleva media hora rodando aparece con
      -- 0 km y parece que el dato esté mal — y no lo está: aún no ha llegado.
+     --
+     -- Solo importa en los coches que van por GPS: con el CAN los km llegan
+     -- aunque el trayecto siga abierto. Y NO VALE UNO SUSTITUIDO: Mapon a veces
+     -- abre un trayecto y luego lo da cerrado con OTRO número (el 0870MMZ, 28/09
+     -- a las 19:58: abierto el 11875183846 y cerrado el 11875185266, los dos a
+     -- la misma hora). El abierto se queda así para siempre en la base —el
+     -- 29/09 había 202, uno del 03/09— y, como cualquier trazo posterior
+     -- «empieza después», los marcaba todos «en curso». Si ya hay un trayecto
+     -- CERRADO que empezó a la vez o después, ese abierto no está rodando.
      abierta AS (
        SELECT r.unit_id, r.inicio
          FROM fv_ruta r CROSS JOIN w
         WHERE r.fin IS NULL
           AND r.inicio >= w.ini - interval '12 hours'
           AND r.inicio <= w.fin
+          AND NOT EXISTS (SELECT 1 FROM fv_ruta r2
+                           WHERE r2.unit_id = r.unit_id AND r2.fin IS NOT NULL AND r2.inicio >= r.inicio)
+          AND NOT EXISTS (SELECT 1 FROM fuente f WHERE f.unit_id = r.unit_id AND f.por_can)
      ),
      -- LOS KM DE CADA TRAMO SALEN DE fv_ruta, NO DE fv_tramo.km_m.
      --
@@ -206,13 +226,13 @@ async function historialConductor(conductorId, opciones = 1) {
      -- viaje de 10 km que cae mitad en espera y mitad desconectado son 5 y 5.
      km AS (
        SELECT tr.id,
-              sum(ru.metros * GREATEST(0, EXTRACT(EPOCH FROM (
-                    LEAST(ru.fin, tr.hasta) - GREATEST(ru.inicio, tr.desde))))
-                  / NULLIF(EXTRACT(EPOCH FROM (ru.fin - ru.inicio)), 0)) AS metros
+              sum(k.metros * GREATEST(0, EXTRACT(EPOCH FROM (
+                    LEAST(k.fin, tr.hasta) - GREATEST(k.inicio, tr.desde))))
+                  / NULLIF(EXTRACT(EPOCH FROM (k.fin - k.inicio)), 0)) AS metros
          FROM tr
          JOIN fv_vehiculo v ON v.uuid = tr.vehiculo_uuid
-         JOIN ru ON ru.unit_id = v.mapon_unit
-                AND ru.inicio < tr.hasta AND ru.fin > tr.desde
+         JOIN km_src k ON k.unit_id = v.mapon_unit
+                      AND k.inicio < tr.hasta AND k.fin > tr.desde
         GROUP BY tr.id
      )
      SELECT v.matricula, t.situacion, s.etiqueta, t.desde, t.hasta,
@@ -229,7 +249,7 @@ async function historialConductor(conductorId, opciones = 1) {
               SELECT externo_id FROM conductor_externo
                WHERE sistema = 'bolt' AND conductor_id = $1 AND externo_id IS NOT NULL)
         AND t.desde >= w.ini AND t.desde < w.fin
-      ORDER BY t.desde DESC`, [Number(conductorId), dias, dia]);
+      ORDER BY t.desde DESC`, [Number(conductorId), dias, dia, ref]);
   return r.rows.map(x => ({
     matricula: x.matricula || '(sin matrícula)',
     situacion: x.situacion, etiqueta: x.etiqueta,

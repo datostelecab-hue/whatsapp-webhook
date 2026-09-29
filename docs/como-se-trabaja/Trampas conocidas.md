@@ -341,6 +341,30 @@ las 11:41 eran unos 2 km.
 
 **Remedio:** `kmEnVentanaExacto` recorta con haversine sobre `decoded_route`.
 
+### Un trayecto «abierto» en `fv_ruta` puede no existir ya
+
+`modules/Control/panel.service.js` → `historialConductor`
+
+Mapon a veces abre un trayecto y luego lo da **cerrado con otro número**: el
+0870MMZ el 28/09 a las 19:58 tenía el 11875183846 abierto y el 11875185266
+cerrado (19:58 → 20:24). El abierto no vuelve a venir en `route/list` y se
+queda con `fin` en NULL para siempre: el 29/09 había **202** así, uno del 03/09.
+No suman km (todo lo de km exige `fin`), pero los trazos de En directo marcaban
+«en curso» todo lo que viniera después, porque la condición solo miraba que el
+trayecto abierto hubiera empezado antes.
+
+**Remedio:** un abierto solo cuenta si **no hay un trayecto cerrado del mismo
+equipo que empiece a la vez o después**. Y además solo en coches que van por
+GPS: con el CAN los km llegan aunque el trayecto siga abierto.
+
+### Un coche que no apaga tiene UN trayecto de horas
+
+Mapon no le pone km a un trayecto hasta que el coche para, y un VTC que espera
+con el motor en marcha no para: el 0870MMZ llevaba un trayecto abierto desde las
+05:34 hasta pasadas las 11:40. Todo lo que se mida solo con `fv_ruta` se queda
+en cero esas horas. **Remedio:** medir con `rutas.FUENTE_KM` (el odómetro CAN si lo
+hay), como el cockpit; los trazos de En directo lo hacen desde el 29/09/2026.
+
 ### `unit_id[]=a&unit_id[]=b` devuelve solo la PRIMERA
 
 `services/flotaViva/fuentes.js`

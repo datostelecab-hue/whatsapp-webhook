@@ -94,6 +94,7 @@ Por eso hay dos conceptos distintos: `empezada` (la ventana ya mide) y `reclamab
 
 - **Horas efectivas** — `rutas.actividadPorConductor(dia, ventana)` del núcleo, en minutos de viaje + espera. Una consulta por ventana: `dia` (05→17), `nocheControl` (12→12), `operativo` (05→05, la que sirve para los NN y para TodoTurno) y `noche` de reloj (17→05, solo para repartir a los NN).
 - **Km** — del núcleo (`fv_ruta`, Mapon `route/list`), no del `mileage` estancado. Si aún no se ha ingerido, el coche muestra 0. La actividad trae `km` (en BOLT) y `kmFuera` (en descanso o desconectado), y `fuenteKm` dice con qué vara: `can` (odómetro del coche), `gps` (estimación de Mapon uniendo puntos, lo único que hay en los coches cuyo equipo no lee el CAN) o `mixta` cuando llevó más de un coche. Ver [[Mapon]].
+- **Km de cada trazo** (al desplegar la fila) — con la **misma vara que la fila**: `rutas.FUENTE_KM`, el CAN si lo hay y el GPS si no (`panel.historialConductor`). Hasta el 29/09/2026 iban solo por GPS, y un coche que no apaga en toda la mañana (el 0870MMZ) enseñaba horas de trazos «en curso» mientras la fila ya decía 243 km. «En curso» sale ahora solo en coches por GPS con un trayecto abierto de verdad (no uno que Mapon sustituyó por otro). → [[Trampas conocidas]]
 - **Teléfono** — del padrón (`plani.contactos()`), no del trazo vivo: justo al que hay que llamar —el que no ha salido— no le queda ni un tramo del que sacarlo.
 - **Promedio del mes** y su letra, de `services/repo/rendimiento`: quien llama tiene que saber a quién tiene al otro lado.
 

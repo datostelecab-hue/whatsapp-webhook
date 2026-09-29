@@ -1553,4 +1553,9 @@ module.exports.UMBRAL_CAN = UMBRAL_CAN;
 // exporta en vez de copiarse: una alerta que reparta con otra regla acusa a
 // gente con un numero que la pantalla no ensena.
 module.exports.FIN_KM = FIN_KM;
+// La elección de fuente (CAN o GPS), para quien reparta km por tramos fuera de
+// aquí: los trazos de En directo la usan para decir lo mismo que la fila del
+// conductor. Lleva `$1::date` como cota: quien la use con otros parámetros
+// cambia ese `$1` por el suyo.
+module.exports.FUENTE_KM = FUENTE_KM;
 module.exports.TOPE_TRAMO_ABIERTO = TOPE_TRAMO_ABIERTO;
