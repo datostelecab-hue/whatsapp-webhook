@@ -15,6 +15,11 @@
 // la versión anterior aún usaba la lista de teléfonos. Además esperaba bloquear
 // con el contacto puesto, que es justo lo que la regla de oro prohíbe desde el
 // 16/09: llevaba una semana fallando sin que nadie la pasara.
+//
+// Al día el 29/09/2026: todo conductor de alta abre turno (el interruptor solo
+// dice si se le BLOQUEA el motor al terminar) y quien escribe la matrícula de un
+// coche que tiene otro SE LO QUEDA; si al otro se le bloquearía, con el coche
+// parado y apagado.
 
 const path = require('path');
 const RAIZ = path.join(__dirname, '..');
@@ -30,6 +35,8 @@ const coches = {
   77: { unitId: 77, matricula: '1888LTJ', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
   78: { unitId: 78, matricula: '2222BBB', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
   80: { unitId: 80, matricula: '3333CCC', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
+  // Un coche SIN relé de corte (como el de Deisy el 28/09).
+  81: { unitId: 81, matricula: '4444DDD', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600, sinRele: true },
   // Un coche que NADIE ha fichado: el repaso no debe tocarlo jamás.
   99: { unitId: 99, matricula: '0000AAA', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
 };
@@ -54,7 +61,7 @@ const falsoMapon = {
       unitId, matricula: c.matricula, estado: c.enMarcha ? 'driving' : 'standing',
       enMarcha: c.enMarcha, velocidad: c.enMarcha ? 40 : 0, ignicion: c.ignicion,
       segParado: c.segParado, segSinSenal: 60,
-      reles: [{ relay_id: 1, tipo: 'engine_block', titulo: 'Bloqueo Motor', estado: c.rele, habilitado: 1 }],
+      reles: c.sinRele ? [] : [{ relay_id: 1, tipo: 'engine_block', titulo: 'Bloqueo Motor', estado: c.rele, habilitado: 1 }],
     };
   },
   cambiarReleConfirmado: async ({ unitId, estado }) => {
@@ -158,11 +165,12 @@ const limpio = () => { ordenes.length = 0; };
   console.log('\n== 0. Quién participa ==');
   comprobar('Camilo, usuario → hace VIAJES', ((await f.participa(CAMILO)) || {}).tipo === 'viaje');
   comprobar('Ana, conductora de alta → hace TURNOS', ((await f.participa(ANA)) || {}).tipo === 'turno');
-  comprobar('Beto, con el fichaje apagado → no participa', (await f.participa(BETO)) === null);
+  const beto0 = await f.participa(BETO);
+  comprobar('Beto, sin el bloqueo → hace TURNOS igual (desde el 28/09)', (beto0 || {}).tipo === 'turno');
+  comprobar('… pero a él no se le bloquea el motor', beto0 && beto0.motor === false);
   comprobar('Carla, de baja en la empresa → no participa', (await f.participa(CARLA)) === null);
   comprobar('Dani, usuario y conductor → manda el USUARIO', ((await f.participa(DANI)) || {}).tipo === 'viaje');
   comprobar('un número desconocido → no participa', (await f.participa('699999999')) === null);
-  comprobar('Beto no puede abrir turno', (await f.iniciar({ telefono: BETO, matricula: '2222BBB' })).motivo === 'no-participa');
 
   console.log('\n== 1. Coche ya libre: empezar un viaje no manda nada ==');
   let r = await f.iniciar({ telefono: CAMILO, matricula: '1888LTJ' });
@@ -217,26 +225,65 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('2222BBB NO se bloquea', !rep.bloqueados.some(x => x.matricula === '2222BBB'));
   comprobar('y dice por qué', rep.omitidos.some(x => x.matricula === '2222BBB' && /no ficha/.test(x.motivo)));
 
-  console.log('\n== 8. Beto empieza a fichar: el relevo ==');
-  await f.activarConductor('102', true, { usuarioId: 7 });
-  comprobar('Beto ya participa (la caché se olvida al activarle)', ((await f.participa(BETO)) || {}).tipo === 'turno');
+  console.log('\n== 8. El que escribe la matrícula se queda el coche ==');
+  // 8a. Ana (con bloqueo) lo tiene; Beto (sin bloqueo) lo comparte con ella, así
+  // que a Ana no se le bloquearía: Beto lo coge aunque esté encendido.
   limpio();
   r = await f.iniciar({ telefono: ANA, matricula: '2222BBB' });
   comprobar('Ana abre turno', r.ok);
+  coche('2222BBB').ignicion = true;
   r = await f.iniciar({ telefono: BETO, matricula: '2222BBB' });
-  comprobar('Beto NO puede coger el coche si Ana no ha pulsado el relevo', r.ok === false && r.motivo === 'coche-ocupado');
+  comprobar('Beto lo coge aunque Ana no pulsara «Entregar coche»', r.ok && r.turno.tipo === 'turno');
+  comprobar('el turno de Ana queda RELEVADO', r.relevoDe && r.relevoDe.estado === 'relevado');
+  comprobar('anotado que no pulsó el botón', r.relevoDe && r.relevoDe.sinBoton === true && /no pulsó/.test(r.relevoDe.notas));
+  comprobar('a Beto le tocaba ese coche: no se anota más', r.relevoDe && !/cuadrante/.test(r.relevoDe.notas));
+  comprobar('Ana ya no tiene nada abierto', (await f.estado(ANA)).abierto === false);
+  comprobar('no se bloqueó nada en el relevo', !ordenes.some(o => o.endsWith('BLOQUEAR')));
+
+  // 8b. Con los dos con el bloqueo, al que lo tiene SÍ se le bloquearía: antes de
+  // pasar de manos, parado y apagado (la regla de «Terminar turno»).
+  await f.activarConductor('102', true, { usuarioId: 7 });
+  limpio();
+  r = await f.iniciar({ telefono: ANA, matricula: '2222BBB' });
+  comprobar('con el contacto puesto NO pasa de manos', r.ok === false && r.motivo === 'ocupado-encendido' && r.turno.nombre === 'Beto Noche');
+  coche('2222BBB').ignicion = false; coche('2222BBB').enMarcha = true;
+  r = await f.iniciar({ telefono: ANA, matricula: '2222BBB' });
+  comprobar('en marcha tampoco, y da la velocidad', r.ok === false && r.motivo === 'ocupado-en-marcha' && r.velocidad === 40);
+  comprobar('Beto sigue con el coche', (await f.estado(BETO)).abierto === true);
+  comprobar('no se mandó nada al coche', ordenes.length === 0);
+  coche('2222BBB').enMarcha = false;
+  r = await f.iniciar({ telefono: ANA, matricula: '2222BBB' });
+  comprobar('parado y apagado: Ana se lo queda', r.ok && r.relevoDe && r.relevoDe.nombre === 'Beto Noche');
+  comprobar('y tampoco se bloquea en el relevo', !ordenes.some(o => o.endsWith('BLOQUEAR')));
+
+  // 8c. Un viaje de la empresa también pasa de manos; y si al que entra no le
+  // tocaba ese coche, queda anotado.
+  r = await f.iniciar({ telefono: CAMILO, matricula: '3333CCC' });
+  comprobar('un viaje no tiene «Entregar coche»', r.ok && (await f.marcarRelevo(CAMILO, true)).motivo === 'es-viaje');
+  r = await f.iniciar({ telefono: BETO, matricula: '3333CCC' });
+  comprobar('Beto coge el coche del viaje de Camilo', r.ok && r.relevoDe && r.relevoDe.tipo === 'viaje');
+  comprobar('anotado que no lo tenía en el cuadrante', r.relevoDe && /no tenía ese coche en el cuadrante/.test(r.relevoDe.notas));
+  comprobar('Camilo ya no tiene nada abierto', (await f.estado(CAMILO)).abierto === false);
+  await f.terminar(BETO);
+
+  // 8d. «Entregar coche»: el relevo de siempre, con los km del trayecto.
   r = await f.marcarRelevo(ANA, true);
-  comprobar('Ana pulsa «Voy al relevo»', r.ok && r.turno.relevo > 0);
-  comprobar('un viaje no tiene relevo', (await f.iniciar({ telefono: CAMILO, matricula: '3333CCC' })).ok &&
-    (await f.marcarRelevo(CAMILO, true)).motivo === 'es-viaje');
-  await f.terminar(CAMILO);
+  comprobar('Ana pulsa «Entregar coche»', r.ok && r.turno.relevo > 0);
   limpio();
   r = await f.iniciar({ telefono: BETO, matricula: '2222BBB' });
   comprobar('Beto coge el coche', r.ok && r.turno.tipo === 'turno');
-  comprobar('el turno de Ana queda RELEVADO', r.relevoDe && r.relevoDe.estado === 'relevado');
   comprobar('con los km del trayecto al relevo', r.relevoDe && r.relevoDe.kmRelevo === 42);
-  comprobar('Ana ya no tiene nada abierto', (await f.estado(ANA)).abierto === false);
-  comprobar('no se bloqueó nada en el relevo', !ordenes.some(o => o.endsWith('BLOQUEAR')));
+  comprobar('y sin la nota de «no pulsó»', r.relevoDe && r.relevoDe.sinBoton === false);
+
+  // 8e. Coche SIN relé de corte: no hay nada que bloquear, así que se cierra y ya,
+  // aunque esté encendido (el caso de Deisy).
+  r = await f.iniciar({ telefono: ANA, matricula: '4444DDD' });
+  comprobar('Ana abre turno en un coche sin relé', r.ok);
+  coche('4444DDD').ignicion = true;
+  r = await f.iniciar({ telefono: CAMILO, matricula: '4444DDD' });
+  comprobar('sin relé, pasa de manos aunque esté encendido', r.ok && r.relevoDe && r.relevoDe.nombre === 'Ana Día');
+  await f.terminar(CAMILO);
+  coche('4444DDD').ignicion = false;
 
   console.log('\n== 9. Con los dos fichando, al terminar SÍ se bloquea ==');
   limpio();
@@ -244,15 +291,17 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('turno cerrado y motor bloqueado', r.ok && r.motor.hecho);
   comprobar('la orden fue BLOQUEAR', ordenes.join() === '2222BBB:BLOQUEAR');
 
-  console.log('\n== 10. Apagar a alguien a mitad de turno: puede terminarlo igual ==');
+  console.log('\n== 10. Apagarle el bloqueo a alguien a mitad de turno ==');
   await f.iniciar({ telefono: BETO, matricula: '2222BBB' });
   await f.activarConductor('102', false, { usuarioId: 7 });
   const p = await f.participa(BETO);
-  comprobar('sigue participando, solo para cerrar', p && p.soloCerrar === true);
-  comprobar('no puede abrir otro', (await f.iniciar({ telefono: BETO, matricula: '1888LTJ' })).ok === false);
+  comprobar('sigue con sus turnos, ya sin bloqueo', p && p.tipo === 'turno' && p.motor === false);
+  comprobar('no puede abrir otro con uno abierto', (await f.iniciar({ telefono: BETO, matricula: '1888LTJ' })).motivo === 'ya-abierto');
+  limpio(); coche('2222BBB').ignicion = true;
   r = await f.terminar(BETO);
-  comprobar('termina', r.ok);
-  comprobar('y ya no participa', (await f.participa(BETO)) === null);
+  comprobar('termina aunque tenga el contacto puesto: no se le va a bloquear', r.ok);
+  comprobar('y el motor se queda libre, sin tocar el coche', r.motor && r.motor.seQuedaLibre === true && ordenes.length === 0);
+  coche('2222BBB').ignicion = false;
 
   console.log('\n== 11. El repaso recoge lo que quedó suelto, y nada más ==');
   // Bien parado desde hace una hora: el paso 2 lo dejó «parado hace 30 s».

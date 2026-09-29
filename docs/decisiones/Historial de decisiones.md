@@ -7,6 +7,10 @@ actualizado: 2026-09-28
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-29 · Quien escribe la matrícula se queda el coche
+
+Si el coche figura con otra persona, su turno se cierra como relevado **aunque no pulsara «Entregar coche» y aunque al que entra no le toque ese coche**: el que empieza en una matrícula es el nuevo responsable. Se anota lo que falte (el botón, el cuadrante) y al otro se le avisa. El motor no se corta en el relevo; si al que lo tenía se le bloquearía, antes el coche tiene que estar parado y apagado. Y abrir turno sigue siendo de **todo conductor de alta**, como se desplegó el 28/09. → [[Fichaje]]
+
 ## 2026-09-28 · Una matrícula, un equipo de Mapon
 
 Los coches con dos equipos en Mapon usan **solo el que da GPS, CAN y corte de motor**, y el mismo en todo el ERP: fichaje, km, odómetro, mapa y Vehículos (`mapon.elegirEquipo`). A igualdad se queda el que ya se usaba, para que no bailen. Antes cada parte cogía uno distinto y el 5886LBZ medía con un equipo sin GPS ni CAN. La unidad vieja se sigue teniendo que dar de baja en Mapon. → [[Mapon]] · [[Trampas conocidas]]

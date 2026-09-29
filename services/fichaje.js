@@ -537,26 +537,43 @@ async function iniciar({ telefono, nombre, matricula }) {
   const unidad = await mapon.unidadPorMatricula(matricula);
   if (!unidad) return { ok: false, motivo: 'sin-matricula' };
 
-  // EL COCHE LO TIENE OTRO. Si ese otro pulsó «Entregar coche», está dándoselo
-  // justo ahora: su turno se cierra aquí, como RELEVADO, y este empieza. Sin esto
-  // el de noche tendría que esperar a que el de día se acordase de terminar.
+  // EL COCHE LO TIENE OTRO: SE LO QUEDA QUIEN ESCRIBE LA MATRÍCULA (29/09/2026).
   //
-  // Y si NO lo pulsó pero el cuadrante le da HOY ese coche a quien entra, también
-  // (28/09/2026): con todo el mundo abriendo turno, un olvido del botón dejaría al
-  // de noche en la acera llamando a Tráfico. Queda anotado que no lo pulsó, y sin
-  // la hora de salida no hay km del trayecto de entrega.
-  // Si no es ninguna de las dos, el coche sigue siendo suyo y se dice quién lo tiene.
+  // Lo dijo Camilo: si alguien empieza en una matrícula es porque la va a usar, y
+  // desde ese momento el responsable del coche es él. El turno del otro se cierra
+  // aquí como RELEVADO, lo pulsara o no —un olvido de «Entregar coche» no puede
+  // dejar a nadie en la acera—. Antes solo pasaba si el otro había pulsado el
+  // botón o si el cuadrante le daba hoy ese coche al que entra; el resto recibía
+  // «figura todavía con…» y no podía ni abrir las puertas (David Urbano con el
+  // 1205MJY de Rachid Lakraa, 29/09 a las 21:07).
+  //
+  // EL MOTOR NO SE CORTA EN EL RELEVO: el coche sigue trabajando, pasa del uno al
+  // otro. Aun así, si al que lo tenía se le bloquearía al terminar —el coche tiene
+  // relé de corte y él el bloqueo encendido—, se pide lo mismo que en «Terminar
+  // turno»: parado y apagado. Sin relé, o sin bloqueo, se cierra y ya.
+  //
+  // Queda anotado si no pulsó el botón (sin su hora de salida no hay km del
+  // trayecto de entrega) y si al que entra no le tocaba ese coche en el cuadrante,
+  // que es lo que Tráfico querrá mirar si algo no cuadra.
   let relevoDe = null;
   const ocupado = await abiertoDeCoche(unidad.matricula, telefono);
   if (ocupado) {
-    const entregando = ocupado.tipo === 'turno' && !!ocupado.relevo;
-    let leToca = false;
-    if (!entregando && ocupado.tipo === 'turno' && p.tipo === 'turno' && p.conductorId) {
-      const plan = await repo.cochesDelPlan(p.conductorId).catch(() => []);
-      leToca = plan.some(c => normMat(c.matricula) === normMat(unidad.matricula));
+    if (BLOQUEO_ACTIVO && (await decidirBloqueo(ocupado)).bloquear) {
+      const m = await estadoMotor(unidad.unitId);
+      if (m.sabemos && m.enMarcha) {
+        return { ok: false, motivo: 'ocupado-en-marcha', velocidad: m.velocidad, turno: ocupado };
+      }
+      if (m.sabemos && m.ignicion === true && (m.ignicionSeg == null || m.ignicionSeg <= 10 * 60)) {
+        return { ok: false, motivo: 'ocupado-encendido', turno: ocupado };
+      }
     }
-    if (!entregando && !leToca) return { ok: false, motivo: 'coche-ocupado', turno: ocupado };
-    relevoDe = await cerrarPorRelevo(ocupado, p.nombre, { sinBoton: !entregando });
+    const entregando = ocupado.tipo === 'turno' && !!ocupado.relevo;
+    let fueraDelPlan = false;
+    if (!entregando && p.tipo === 'turno' && p.conductorId) {
+      const plan = await repo.cochesDelPlan(p.conductorId).catch(() => null);
+      fueraDelPlan = !!plan && !plan.some(c => normMat(c.matricula) === normMat(unidad.matricula));
+    }
+    relevoDe = await cerrarPorRelevo(ocupado, p.nombre, { sinBoton: !entregando, fueraDelPlan });
   }
 
   // El enlace en Mapon no debe impedir fichar: si falla, el turno se abre igual y se
@@ -613,11 +630,12 @@ async function iniciar({ telefono, nombre, matricula }) {
 }
 
 /**
- * Cierra el turno del que ENTREGA el coche en un relevo: lo ha cogido su
- * compañero. No se bloquea el motor —el coche sigue trabajando— y se apuntan
- * los km del turno y los del trayecto al relevo.
+ * Cierra el turno (o el viaje) del que tenía el coche: lo ha cogido otro. No se
+ * bloquea el motor —el coche sigue trabajando— y se apuntan los km del turno y
+ * los del trayecto al relevo. `sinBoton` y `fueraDelPlan` solo van a las notas
+ * y al aviso: el turno se cierra igual.
  */
-async function cerrarPorRelevo(t, quienEntra, { sinBoton = false } = {}) {
+async function cerrarPorRelevo(t, quienEntra, { sinBoton = false, fueraDelPlan = false } = {}) {
   const fin = ahoraSeg();
   const [km, kmRel] = await Promise.all([kmDelTurno(t, fin), t.relevo ? kmDelTurno({ ...t, inicio: t.relevo }, fin) : null]);
   try { await soltarEnMapon(t); } catch (e) { /* se cierra igual */ }
@@ -628,9 +646,11 @@ async function cerrarPorRelevo(t, quienEntra, { sinBoton = false } = {}) {
   t.atribuidos = km ? km.conConductor : 0;
   t.estado = 'relevado';
   t.notas = `${t.notas ? t.notas + ' · ' : ''}Relevado por ${quienEntra || 'su compañero'}` +
-    (sinBoton ? ' (no pulsó «Entregar coche»)' : '');
+    (sinBoton ? ' (no pulsó «Entregar coche»)' : '') +
+    (fueraDelPlan ? ` · ${quienEntra || 'quien entra'} no tenía ese coche en el cuadrante de hoy` : '');
   await repo.actualizar(t);
   olvidar(t.telefono);
+  t.sinBoton = sinBoton;
   console.log(`🔄 [FICHAJE] ${t.nombre} entrega ${t.matricula} a ${quienEntra}: ${t.km} km (relevo ${t.kmRelevo} km)`);
   return t;
 }

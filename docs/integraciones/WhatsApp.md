@@ -77,7 +77,7 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 | el coche, desde qué hora, puertas | 🔓 Abrir puertas · 🔒 Cerrar puertas · 🚗 Entregar coche |
 | «Más opciones» | 🧽 Código de lavado (hasta el 15/10) · 📅 Ver mis turnos · 🔴 Terminar turno |
 
-- **Entregar coche** = el antiguo «Voy al relevo» (mismo id de botón, `turno_relevo`). Se pulsa **justo antes de salir** hacia donde está el compañero, no al llegar: desde esa hora se cuentan los km del trayecto de entrega (`fichaje_turno.relevo_at` → `km_relevo`). Cuando el compañero escribe la matrícula, el turno del que entrega se cierra solo y **se le avisa** con sus km.
+- **Entregar coche** = el antiguo «Voy al relevo» (mismo id de botón, `turno_relevo`). Se pulsa **justo antes de salir** hacia donde está el compañero, no al llegar: desde esa hora se cuentan los km del trayecto de entrega (`fichaje_turno.relevo_at` → `km_relevo`). Cuando el compañero escribe la matrícula, el turno del que entrega se cierra solo y **se le avisa** con sus km. Desde el 29/09 **lo pulsara o no**: quien escribe la matrícula se queda el coche (si al otro se le bloquearía el motor, con el coche parado y apagado). Ver [[Fichaje]].
 - **Terminar turno** cierra el turno y bloquea el motor — solo si esa persona tiene el bloqueo encendido (ver [[Fichaje]]).
 - **Las palabras**: al conductor **no se le dice «fichar» ni «fichaje»**. Esto no es el registro de jornada (ese es `/fichaje`): es quién lleva qué coche y cuántos km hace. Si se llamara igual, un turno abierto por WhatsApp sin trabajar se podría hacer pasar por horas fichadas.
 - Los ids de los botones son los de siempre (`abrir_puertas`, `ver_turnos`, `codigo_lavado`…): un botón de un mensaje viejo del chat sigue funcionando.
