@@ -245,6 +245,9 @@ app.use('/taller', require('./modules/Vehiculos/taller.controller'));
 app.use('/inspecciones', require('./modules/Vehiculos/inspeccion.controller'));
 app.use('/facturas', require('./modules/Vehiculos/facturas.controller'));
 app.use('/fichaje', require('./modules/Fichaje/fichaje.controller'));
+// El ciclo de bloqueo de motor: lo que bloquean los conductores al terminar y
+// lo que suelta Tráfico (30/09/2026). No es /fichaje, que es la jornada.
+app.use('/bloqueo-motor', require('./modules/BloqueoMotor/bloqueoMotor.controller'));
 app.use('/plantilla', plantillaRoutes);
 // La pantalla se llamo /conductores mientras se construia. Quien tenga ese
 // enlace guardado no se encuentra un 404.
@@ -642,9 +645,8 @@ programar('35 5 * * *', async () => {
 // `programar()` como todo lo demas, y NO es cosmetico: `programar` es lo que los
 // apaga con MODO_PRUEBAS=1.
 //
-// Importa sobre todo para el segundo. El repaso de bloqueos INMOVILIZA COCHES
-// de verdad; un modo pruebas que no lo detuviera seria peor que no tener modo
-// pruebas, porque da falsa confianza.
+// (El segundo era el repaso de bloqueos, que inmovilizaba coches de verdad; se
+// quito el 30/09/2026, ver mas abajo.)
 
 // Flota viva: cada 5 minutos, que dice BOLT del conductor y Mapon del coche.
 //
@@ -662,27 +664,11 @@ if (process.env.FLOTA_VIVA_DB_URL || process.env.DATABASE_URL) {
   console.log('⏸️  [FLOTA VIVA] Sin FLOTA_VIVA_DB_URL: el módulo no arranca');
 }
 
-// Repaso del corte de motor: deja bloqueado todo coche que nadie este usando.
-//
-// No sobra por tener el bloqueo al terminar turno. Ese falla a veces —el coche
-// iba rodando, o estaba sin cobertura— y no hay quien lo reintente; y un coche
-// que nunca ha tenido un turno no se bloquearia jamas. Este repaso cierra los
-// dos agujeros, y no hace NADA mientras FICHAJE_BLOQUEO_MOTOR no este a 1.
-//
-// Cada diez minutos y no cada uno: un coche que acaba de parar tiene que
-// esperar de todas formas a llevar un buen rato quieto, asi que correr no sirve
-// de nada y si gasta cuota de Mapon.
-programar('*/10 * * * *', async () => {
-  try {
-    const r = await require('./services/fichaje').repasarBloqueos();
-    if (r.bloqueados && r.bloqueados.length) {
-      console.log(`🔒 [CRON FICHAJE] ${r.bloqueados.length} coche(s) bloqueado(s): ` +
-        r.bloqueados.map(x => x.matricula).join(', '));
-    }
-  } catch (error) {
-    console.error(`❌ [CRON FICHAJE] El repaso de bloqueos falló: ${error.message}`);
-  }
-}, { timezone: 'Europe/Madrid' });
+// NO HAY REPASO DEL CORTE DE MOTOR (30/09/2026). Hubo un cron que cada diez
+// minutos cortaba todo coche parado de los que habian pasado alguna vez por el
+// fichaje; asi se quedo cortado dias el 1888LTJ, de Barcelona. Camilo: «no
+// quiero ningun repaso; los unicos que bloquearan son los conductores cuando
+// inicien turnos y terminen». El ciclo se ve y se suelta en /bloqueo-motor.
 
 // ── LA DEUDA DE EFECTIVO, AL DÍA ────────────────────────────────────────────
 // Cada media hora se vuelve a medir lo que BOLT dice que cobró en mano cada

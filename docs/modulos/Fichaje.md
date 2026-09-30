@@ -259,7 +259,7 @@ El motor se bloquea **por coche**, pero el fichaje se enciende **por persona**, 
 | **Turno** de un conductor | solo si **él tiene el bloqueo encendido** y también **todos** los que llevan ese coche **hoy o mañana** (f_cobertura, con eventos). Si él no lo tiene (`sinControl`), no se intenta ni se anota nada. Si lo tiene y un compañero no, **se queda libre** y el mensaje dice quién. Y como no se va a bloquear, no se le pide que apague el coche para terminar |
 | **Viaje** de la empresa | **siempre**, que es lo que se pidió; si lo lleva alguien que no ficha, se le avisa con su nombre de que Tráfico tendrá que soltárselo |
 
-**El repaso** sigue la misma regla: nunca toca el coche que lleva hoy o mañana alguien sin el bloqueo (`cochesConQuienNoFicha`, una consulta para toda la flota). Si no puede saberlo, esa vuelta no bloquea nada. Y si no se puede saber quién lleva un coche al terminar, un turno **no** se bloquea: la duda no puede dejar a nadie sin coche.
+Si no se puede saber quién lleva un coche al terminar, un turno **no** se bloquea: la duda no puede dejar a nadie sin coche. (El repaso, que seguía la misma regla, se quitó el 30/09/2026: ver «Sin repaso».)
 
 ## El panel «Bloqueo de motor» del planificador
 
@@ -267,11 +267,11 @@ Botón **Bloqueo de motor** en la barra del planificador (se llamaba «Fichaje»
 
 - **Con bloqueo de motor**, con su casilla, y un buscador para encender a alguien más. Al lado de cada uno, si comparte coche con quien no lo tiene: *«8203LTR también lo lleva Oswaldo, sin bloqueo: el motor se quedará libre»*. Es la regla de arriba, contada coche a coche, que es como se entiende.
 - **Ahora mismo**: los turnos y viajes abiertos, y quién va de camino al relevo.
-- **Motores cortados**, preguntados a Mapon aparte para no hacer lento el panel, con un botón **Soltar**.
+- **Motores bloqueados**: desde el 30/09/2026 es un enlace a [[Ciclo de bloqueo de motor]], que es donde se ven y se sueltan. Antes era una lista preguntada a Mapon con su botón **Soltar**.
 
 Y en el tablero, una **llave** junto al nombre de quien ficha.
 
-**Soltar a mano** exige decir **por qué** y queda escrito con quién, cuándo y qué contestó el coche (`fichaje_orden_motor`): soltar un coche a mano es justo lo que alguien haría para dejar a otro usarlo sin fichar. Un coche **de otra sede** no se suelta desde aquí (se lleva desde Mapon): ver abajo. Encender a alguien y soltar un motor son `POST`, así que los cierra la llave de **editar el planificador** sin tocar nada más.
+**Soltar a mano** (desde el 30/09/2026, en [[Ciclo de bloqueo de motor]]) exige decir **por qué** y queda escrito con quién, cuándo y qué contestó el coche (`fichaje_orden_motor`): soltar un coche a mano es justo lo que alguien haría para dejar a otro usarlo sin fichar. Un coche **de otra sede** no se suelta desde aquí (se lleva desde Mapon): ver abajo. Encender a alguien y soltar un motor son `POST`, así que los cierra la llave de **editar el planificador** sin tocar nada más.
 
 ## El enlace conductor ↔ coche en Mapon
 
@@ -297,7 +297,7 @@ Esa comprobación **para a todo el mundo, también a quien lo pide**. Antes no f
 `puedeInmovilizar` es la función delicada del módulo, y su regla es al revés de lo normal: **ante la duda, NO**.
 
 - **"Velocidad 0" no vale como prueba** de que nadie lo usa: un taxi parado recogiendo a alguien, en un semáforo o esperando en el aeropuerto va a 0 km/h.
-- Sin que nadie lo pida (el **repaso**), hace falta: que no esté en marcha, que **no tenga el contacto puesto**, que lleve un buen rato quieto (`FICHAJE_MIN_PARADO`, 20 min) y que los datos sean **frescos** (`FICHAJE_MAX_SIN_SENAL`, 15 min). Si Mapon no dice cuánto lleva parado, eso **no es una autorización**.
+- Sin que nadie lo pida hacía falta además que llevara un buen rato quieto (`FICHAJE_MIN_PARADO`, 20 min) y datos **frescos** (`FICHAJE_MAX_SIN_SENAL`, 15 min). Era la regla del repaso y del cierre automático; desde el 30/09/2026 **ya no corta nadie sin que lo pida el conductor**, así que esa rama no se usa.
 - **Por orden** del conductor —pulsó "Terminar turno"— basta con que no esté rodando y sin contacto: acaba de decir que ha terminado, y eso es mejor información que cualquier sensor.
 
 Y las asimetrías, que son deliberadas:
@@ -316,17 +316,20 @@ Con el contacto puesto, lo mismo un paso más cerca: el corte entra y el coche y
 
 Las dos comprobaciones solo se hacen **si el corte está encendido** —sin él, terminar no inmoviliza nada— y **solo si sabemos** que va en marcha: si Mapon calla o la medida es vieja se le deja cerrar, porque **no saberlo no puede dejar a nadie atrapado**. El mensaje se lo dice con todas las letras: *"tu turno sigue abierto: no has perdido nada"*.
 
-## El repaso
+## Sin repaso: solo bloquea el conductor (30/09/2026)
 
-Cada diez minutos, `app.js` llama a `repasarBloqueos()`: deja bloqueado todo coche que nadie esté usando. Existe porque sin él quedan dos agujeros, y los dos dejan un coche libre para siempre sin que nadie se entere — el bloqueo al terminar turno **falla a veces** (el coche estaba rodando, o sin cobertura) y no hay quien lo reintente; y un coche que nunca ha tenido un turno **no se bloquearía jamás**. Es idempotente, y no hace nada mientras el corte esté apagado.
+Hasta el 30/09/2026 había un **repaso**: cada diez minutos `app.js` llamaba a `repasarBloqueos()`, que cortaba el motor de todo coche parado de los que habían pasado **alguna vez** por un viaje o por el turno de alguien con el bloqueo. Se pensó para reintentar el corte que falla al terminar, pero guardaba para siempre: un viaje de prueba de 21 segundos dejó dentro al 1888LTJ, de Barcelona, y se lo cortaba cada vez que llevaba veinte minutos aparcado (ver abajo).
 
-**Hasta dónde llega**: tres límites. **La sede**, antes que nada (30/09/2026): nunca un coche que no sea de Madrid, salga donde salga — ver «Los coches de otra sede no se tocan». **El libro**: el repaso solo toca coches que han pasado por un **viaje** o por el turno de alguien **con el bloqueo encendido** (`unitsConControl`, desde el 28/09: como ahora abre turno todo el mundo, «ha pasado por el libro» ya sería casi toda la flota, incluido el coche del taller). Liberar sí sigue mirando todos los del libro. Y **el cuadrante**: nunca el coche que lleva hoy o mañana alguien que todavía no ficha. `FICHAJE_MATRICULAS` queda para el día que esto sea de todos (vacío = solo los conocidos; `*` = toda la flota, y el asterisco se mira **antes** de normalizar, porque normalizado desaparecía).
+Camilo: *«No quiero ningún repaso. Los únicos que bloquearán son los conductores cuando inicien turnos y terminen; el sistema no bloquea nada sino que suelta.»* Así que:
 
-Va cada diez minutos y no cada uno: un coche que acaba de parar tiene que esperar de todas formas a llevar un buen rato quieto, así que correr no sirve de nada y sí gasta cuota de Mapon.
+- **Se quitó el repaso** (el cron, la función y la opción `?repaso=` del diagnóstico).
+- **El cierre automático de las 14 h ya no corta**: cierra el turno y anota «el motor no se toca».
+- **Lo único que corta es *Terminar turno*** (y el final de un viaje de la empresa). Lo que no se pudo bloquear ya no lo reintenta nadie: lo ve Tráfico.
+- **Cada bloqueo y cada suelta del conductor queda apuntado** en `fichaje_orden_motor` sin usuario, junto a lo que suelta Tráfico. Con eso se pinta el ciclo de cada coche en [[Ciclo de bloqueo de motor]], que es donde se ve qué coche está bloqueado y se suelta el que se queda en el taller.
 
-**Un coche bloqueado que se mueve es un corte que no corta.** Si el relé dice 1 y el coche anda igual, lo que ese relé abre no es el circuito que enciende el motor: es un fallo de instalación y no hay orden por API que lo arregle. El repaso lo **nombra** en los logs — en silencio parecería que la flota está cerrada.
+Queda `liberarConocidos()`, la herramienta de deshacer del diagnóstico: **suelta el motor de todo lo que el fichaje haya podido bloquear**. Existe por lo mismo que el freno de mano, y no tiene condiciones: liberar no deja tirado a nadie. Nunca toca un coche de otra sede.
 
-Y existe lo contrario, `liberarConocidos()`: **suelta el motor de todo lo que el fichaje haya podido bloquear**. Existe por lo mismo que existe el freno de mano — porque hay que poder deshacerlo —, sirve para dejar la flota como estaba después de unas pruebas, y no tiene condiciones: liberar no deja tirado a nadie.
+**Un coche bloqueado que se mueve es un corte que no corta.** Si el relé dice 1 y el coche anda igual, lo que ese relé abre no es el circuito que enciende el motor: es un fallo de instalación. Lo nombraba el repaso en los logs; ahora sale el primero en el ciclo, en rojo.
 
 ## Los coches de otra sede no se tocan (30/09/2026)
 
@@ -339,8 +342,8 @@ Desde entonces `services/otraSede.js` dice qué coches son de otra sede (por **m
 
 | Dónde | Qué hace con un coche de otra sede |
 |---|---|
-| `fichaje.motor()` | **No lo corta nunca**, venga de donde venga la orden (repaso, *Terminar turno*, cierre automático). Es la única puerta por la que sale un corte. Si no se puede saber la sede, tampoco corta |
-| El alcance del fichaje | El repaso, **«liberar todos»** y la lista de **motores cortados** ni lo miran: tampoco se le suelta un corte que Barcelona haya puesto a propósito desde Mapon |
+| `fichaje.motor()` | **No lo corta nunca**, venga de donde venga la orden. Es la única puerta por la que sale un corte. Si no se puede saber la sede, tampoco corta |
+| El alcance del fichaje y el ciclo | **«Liberar todos»** y [[Ciclo de bloqueo de motor]] ni lo miran: tampoco se le suelta un corte que Barcelona haya puesto a propósito desde Mapon |
 | `fichaje.iniciar()` | No abre **turno ni viaje** con él (ni se le asigna conductor en Mapon). El bot: *«El 1888LTJ es un coche de Barcelona: por aquí no se lleva»* |
 | Las puertas (`puertasBot.ejecutar` y el bot de oficina) | No se abren ni se cierran; se dice al escribir la matrícula |
 
@@ -355,4 +358,4 @@ Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_MAX_HOR
 
 ## La herramienta de diagnóstico
 
-`modules/Operaciones/mapon.diagnostico.js` es la consola para todo esto: qué relé tiene un coche, a quién enlazaría un teléfono, qué devuelve Mapon tal cual, simular o aplicar el repaso, y soltar la flota. **Es solo lectura por omisión** y las opciones que actúan sobre un coche están marcadas una a una. **No está enlazada en ninguna pantalla, a propósito**: se llama por URL cuando hace falta, y quien la escribe sabe lo que hace. Ver [[Mapon]].
+`modules/Operaciones/mapon.diagnostico.js` es la consola para todo esto: qué relé tiene un coche, a quién enlazaría un teléfono, qué devuelve Mapon tal cual y soltar la flota (lo de simular o aplicar el repaso se fue con él, el 30/09/2026). **Es solo lectura por omisión** y las opciones que actúan sobre un coche están marcadas una a una. **No está enlazada en ninguna pantalla, a propósito**: se llama por URL cuando hace falta, y quien la escribe sabe lo que hace. Ver [[Mapon]].

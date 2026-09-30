@@ -23,10 +23,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores. Desde el 29/09 el que escribe la matrícula se queda el coche aunque no le toque: las notas «no tenía ese coche en el cuadrante de hoy» son las que hay que mirar.
 - **Se quedó para todos (29/09):** abrir turno con la matrícula es de todo conductor de alta, como se desplegó el 28/09 (Camilo lo confirmó después de preguntar por qué lo tenían todos). El 29/09 por la mañana habían abierto turno 30 personas, y en Mapon queda creada la ficha de conductor de cada uno.
 
-## El repaso del corte de motor, por decidir (30/09/2026)
+## El ciclo de bloqueo de motor (30/09/2026)
 
-- **Desplegar el arreglo de los coches de otra sede** ([[Fichaje]], «Los coches de otra sede no se tocan»). Hasta que esté arriba, el 1888LTJ se vuelve a cortar cada vez que pase 20 minutos aparcado, porque sigue en el alcance del repaso por el viaje de prueba del 24/09. Camilo lo soltó desde Mapon el 30/09.
-- **Camilo no esperaba un corte automático**: para él el motor se corta cuando alguien **termina** su turno por WhatsApp, y nada más. El repaso hace más: guarda **para siempre** todo coche que haya salido en un viaje o en el turno de alguien con el bloqueo, y lo corta cada vez que lleva 20 minutos parado. Falta que decida si el repaso se queda solo en **reintentar el corte que falló al terminar** (el último turno de ese coche) o se quita.
+- **Desplegar y aplicar `db/167` desde /migraciones.** La migración solo da las llaves del módulo nuevo ([[Ciclo de bloqueo de motor]]) a quien podía editar el planificador; sin ella, solo lo ven superadmin y desarrollador. Con el despliegue se van el repaso y el corte del cierre automático, y los coches de otra sede dejan de recibir órdenes.
+- **Hoy nadie tiene el bloqueo encendido.** A Deisy se lo apagó Camilo el 29/09 a las 10:39 y a Lionar William el 28/09 a las 21:22. Para que el ciclo empiece hay que volver a encenderlo persona a persona en el planificador (botón «Bloqueo de motor»), y `FICHAJE_BLOQUEO_MOTOR=1` en Render.
+- **El 1888LTJ** (Barcelona) lo soltó Camilo desde Mapon el 30/09. Con el despliegue ya no lo toca nada; hasta entonces el repaso lo puede volver a cortar si se queda veinte minutos aparcado.
 
 ## Migraciones por aplicar (29/09/2026)
 

@@ -64,7 +64,7 @@ async function abiertoDeCoche(matricula, telefono) {
   return r.rows.length ? aTurno(r.rows[0]) : null;
 }
 
-/** Todos los turnos abiertos. Los pide el cierre automático y el repaso. */
+/** Todos los turnos abiertos. Los piden el cierre automático y el módulo del ciclo. */
 async function abiertos() {
   const r = await db.consulta(
     `SELECT ${CAMPOS} FROM fichaje_turno WHERE estado = 'abierto' ORDER BY inicio`);
@@ -342,7 +342,11 @@ async function marcarRelevo(referencia, si = true) {
   return r.rows.length ? aTurno(r.rows[0]) : null;
 }
 
-/** Apunta una orden de motor dada a mano desde el ERP. */
+/**
+ * Apunta una orden de motor en el libro del ciclo. Desde el 30/09/2026 no solo
+ * las de Tráfico a mano: también las del conductor (bloquear al terminar, soltar
+ * al empezar), con `usuarioId` vacío (db/167).
+ */
 async function registrarOrdenMotor({ matricula, unitId, accion, motivo, hecho, respuesta, usuarioId }) {
   await db.consulta(
     `INSERT INTO fichaje_orden_motor (matricula, unit_id, accion, motivo, hecho, respuesta, usuario_id)
@@ -351,7 +355,55 @@ async function registrarOrdenMotor({ matricula, unitId, accion, motivo, hecho, r
      String(respuesta || '').slice(0, 1000), usuarioId || null]);
 }
 
+// ── EL LIBRO DEL CICLO DE BLOQUEO DE MOTOR (30/09/2026) ─────────────────────
+// Lo que lee el módulo «Ciclo de bloqueo de motor». `deTrafico` = la dio una
+// persona desde el ERP; sin usuario, el conductor desde el bot.
+const aOrden = x => ({
+  matricula: x.matricula, unitId: x.unit_id || '',
+  accion: x.accion, motivo: x.motivo || '', hecho: !!x.hecho, respuesta: x.respuesta || '',
+  usuarioId: x.usuario_id ? String(x.usuario_id) : null,
+  usuario: x.usuario || '',
+  deTrafico: !!x.usuario_id,
+  cuando: x.creado_at ? new Date(x.creado_at).toISOString() : null,
+});
+const CAMPOS_ORDEN = `o.matricula, o.unit_id, o.accion, o.motivo, o.hecho, o.respuesta, o.usuario_id,
+  NULLIF(btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, '')), '') AS usuario, o.creado_at`;
+const MAT_SQL = `upper(regexp_replace(matricula, '[^A-Za-z0-9]', '', 'g'))`;
+
+/** La ÚLTIMA orden de motor de cada coche: es lo que dice en qué punto del ciclo está. */
+async function ultimaOrdenPorCoche() {
+  const r = await db.consulta(
+    `SELECT DISTINCT ON (o.matricula) ${CAMPOS_ORDEN}
+       FROM fichaje_orden_motor o
+       LEFT JOIN usuario u ON u.id = o.usuario_id
+      ORDER BY o.matricula, o.creado_at DESC, o.id DESC`);
+  return r.rows.map(aOrden);
+}
+
+/** El último turno o viaje CERRADO de cada coche: quién lo dejó y cuándo. */
+async function ultimoTurnoPorCoche() {
+  const r = await db.consulta(
+    `SELECT DISTINCT ON (${MAT_SQL}) ${CAMPOS} FROM fichaje_turno
+      WHERE estado <> 'abierto'
+      ORDER BY ${MAT_SQL}, fin DESC NULLS LAST, id DESC`);
+  return r.rows.map(aTurno);
+}
+
+/** Lo que ha pasado con UN coche: sus órdenes de motor y sus turnos, lo último primero. */
+async function historiaDelCoche(matricula, limite = 40) {
+  const m = normMat(matricula);
+  const [o, t] = await Promise.all([
+    db.consulta(
+      `SELECT ${CAMPOS_ORDEN} FROM fichaje_orden_motor o LEFT JOIN usuario u ON u.id = o.usuario_id
+        WHERE o.matricula = $1 ORDER BY o.creado_at DESC, o.id DESC LIMIT $2`, [m, limite]),
+    db.consulta(
+      `SELECT ${CAMPOS} FROM fichaje_turno WHERE ${MAT_SQL} = $1 ORDER BY inicio DESC LIMIT $2`, [m, limite]),
+  ]);
+  return { ordenes: o.rows.map(aOrden), turnos: t.rows.map(aTurno) };
+}
+
 module.exports = {
+  ultimaOrdenPorCoche, ultimoTurnoPorCoche, historiaDelCoche,
   abiertoDe, abiertoDeCoche, abiertos, unitsConocidos, unitsConControl, controlMotorDe,
   crear, actualizar, quienLlevaba,
   personaPorTelefono, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,

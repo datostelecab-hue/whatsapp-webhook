@@ -1677,8 +1677,9 @@ estaba sin descanso del 23/09 al 04/10 y tenía L M escrito desde el 05/10.
 El bot de puertas decía **«Ejemplo: 1888LTJ»**, y la gente la escribía tal cual:
 tres conductores de Madrid le abrieron las puertas el 17 y el 18/09, y un viaje
 de prueba de 21 segundos el 24/09 le dejó el motor cortado en Barcelona durante
-días, porque el repaso guarda **para siempre** todo coche que haya salido en un
-viaje y el cuadrante de Madrid no protegía a uno de Barcelona. El ejemplo es ahora
+días, porque el repaso guardaba **para siempre** todo coche que hubiera salido en
+un viaje y el cuadrante de Madrid no protegía a uno de Barcelona (el repaso se
+quitó ese mismo día: [[Ciclo de bloqueo de motor]]). El ejemplo es ahora
 `1234ABC`, y nada que mande órdenes toca un coche de otra sede
 (`services/otraSede.js`, ver [[Fichaje]]).
 

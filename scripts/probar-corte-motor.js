@@ -21,7 +21,10 @@
 // coche que tiene otro SE LO QUEDA; si al otro se le bloquearía, con el coche
 // parado y apagado.
 //
-// 30/09/2026: un coche de OTRA SEDE no se toca nunca (services/otraSede.js), y
+// 30/09/2026: NO HAY REPASO. Solo bloquea el conductor al terminar; el cierre
+// automático no corta, y el ciclo de cada coche lo cuenta el módulo «Ciclo de
+// bloqueo de motor» (modules/BloqueoMotor), que también se prueba aquí.
+// Y un coche de OTRA SEDE no se toca nunca (services/otraSede.js), y
 // el coche de mentira deja de llamarse 1888LTJ, que es un coche real de
 // Barcelona: con esa matrícula de ejemplo empezó el lío.
 
@@ -78,7 +81,7 @@ const falsoMapon = {
   relesDeFlota: async () => ({ vehiculos: Object.values(coches).map(c => ({
     unitId: c.unitId, matricula: c.matricula, estado: c.enMarcha ? 'driving' : 'standing',
     velocidad: c.enMarcha ? 40 : 0, ignicion: c.ignicion,
-    reles: [{ relay_id: 1, tipo: 'engine_block', activo: c.rele, habilitado: 1 }],
+    reles: c.sinRele ? [] : [{ relay_id: 1, tipo: 'engine_block', activo: c.rele, habilitado: 1 }],
   })) }),
 };
 
@@ -106,7 +109,10 @@ const gente = {
 const conductor = id => Object.values(gente).map(g => g.conductor).find(c => c && c.id === String(id));
 // El cuadrante: quién lleva cada coche hoy o mañana.
 const plan = { '2222BBB': ['101', '102'] };
-const ordenesManuales = [];
+// El libro del ciclo (fichaje_orden_motor): lo del conductor va sin usuario.
+const libroMotor = [];
+const USUARIOS = { 7: 'Camilo Bedoya' };
+const T0 = Date.now();
 
 const falsoRepo = {
   abiertoDe: async telefono =>
@@ -124,7 +130,11 @@ const falsoRepo = {
   crear: async t => {
     if (turnos.some(x => abierto(x) && tel9(x.telefono) === tel9(t.telefono))) return null;
     if (turnos.some(x => abierto(x) && norm(x.matricula) === norm(t.matricula))) return null;
-    const g = { ...t, relevo: 0, estado: 'abierto', filaId: turnos.length + 1 };
+    // La referencia es única en la base de verdad. Aquí dos turnos de la misma
+    // persona pueden nacer en el mismo milisegundo (la prueba va muy deprisa) y
+    // `actualizar`, que busca por referencia, pisaría el que no es.
+    const id = turnos.some(x => x.id === t.id) ? `${t.id}-${turnos.length}` : t.id;
+    const g = { ...t, id, relevo: 0, estado: 'abierto', filaId: turnos.length + 1 };
     turnos.push(g);
     return g;
   },
@@ -154,7 +164,24 @@ const falsoRepo = {
   },
   fijarFichaCoche: async (id, activo) => { conductor(id).activo = !!activo; return { conductorId: String(id), fichaCoche: !!activo }; },
   activados: async () => [],
-  registrarOrdenMotor: async o => { ordenesManuales.push(o); },
+  registrarOrdenMotor: async o => {
+    libroMotor.push({ ...o, matricula: norm(o.matricula), unitId: String(o.unitId || ''),
+      deTrafico: !!o.usuarioId, usuario: o.usuarioId ? USUARIOS[o.usuarioId] || '' : '',
+      cuando: new Date(T0 + libroMotor.length * 1000).toISOString() });
+  },
+  ultimaOrdenPorCoche: async () => { const m = new Map(); libroMotor.forEach(o => m.set(o.matricula, o)); return [...m.values()]; },
+  ultimoTurnoPorCoche: async () => {
+    const m = new Map();
+    turnos.filter(t => !abierto(t)).forEach(t => {
+      const k = norm(t.matricula), a = m.get(k);
+      if (!a || (t.fin || 0) >= (a.fin || 0)) m.set(k, t);
+    });
+    return [...m.values()];
+  },
+  historiaDelCoche: async mat => ({
+    ordenes: libroMotor.filter(o => o.matricula === norm(mat)).slice().reverse(),
+    turnos: turnos.filter(t => norm(t.matricula) === norm(mat)).slice().reverse(),
+  }),
 };
 
 require.cache[require.resolve(path.join(RAIZ, 'services/mapon.js'))] = { exports: falsoMapon, loaded: true, id: 'falso-mapon' };
@@ -166,6 +193,7 @@ require.cache[require.resolve(path.join(RAIZ, 'services/db.js'))] = { loaded: tr
   consulta: async () => { consultasSede++; return { rows: [{ matricula_norm: '5555BCN', sede: 'barcelona', unit_id: '88' }] }; },
 } };
 const f = require(path.join(RAIZ, 'services/fichaje.js'));
+const ciclo = require(path.join(RAIZ, 'modules/BloqueoMotor/bloqueoMotor.service.js'));
 
 let mal = 0;
 const comprobar = (t, ok) => { if (!ok) mal++; console.log((ok ? '  ok  ' : '  MAL ') + t); };
@@ -204,12 +232,16 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('viaje cerrado', r.ok);
   comprobar('motor bloqueado por orden de quien terminó', r.motor.hecho && !r.motor.yaEstaba);
   comprobar('la orden fue BLOQUEAR', ordenes.join() === '1111AAA:BLOQUEAR');
+  const ultimo = () => libroMotor[libroMotor.length - 1];
+  comprobar('queda en el libro del ciclo, sin usuario (lo hizo quien terminó)',
+    ultimo().accion === 'bloquear' && ultimo().hecho && ultimo().usuarioId === null && /Termina el viaje/.test(ultimo().motivo));
 
   console.log('\n== 4. Coche bloqueado: empezar lo libera ==');
   limpio();
   r = await f.iniciar({ telefono: CAMILO, matricula: '1111AAA' });
   comprobar('motor liberado', r.motor.hecho && !r.motor.yaEstaba);
   comprobar('la orden fue LIBERAR', ordenes.join() === '1111AAA:LIBERAR');
+  comprobar('y queda en el libro del ciclo', ultimo().accion === 'soltar' && ultimo().hecho && ultimo().usuarioId === null);
 
   console.log('\n== 5. Terminar EN MARCHA: no se cierra ==');
   limpio(); coche('1111AAA').enMarcha = true;
@@ -232,10 +264,20 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('no se mandó nada al coche', ordenes.length === 0);
   coche('2222BBB').ignicion = false;
 
-  console.log('\n== 7. El repaso no toca el coche de quien no ficha ==');
-  let rep = await f.repasarBloqueos();
-  comprobar('2222BBB NO se bloquea', !rep.bloqueados.some(x => x.matricula === '2222BBB'));
-  comprobar('y dice por qué', rep.omitidos.some(x => x.matricula === '2222BBB' && /no ficha/.test(x.motivo)));
+  console.log('\n== 7. Sin repaso: el sistema no corta nada por su cuenta ==');
+  comprobar('el repaso ya no existe', f.repasarBloqueos === undefined);
+  // Un turno olvidado de alguien CON el bloqueo: el reloj lo cierra a las 14 h
+  // y el motor no se toca (antes se intentaba bloquear aquí).
+  limpio();
+  r = await f.iniciar({ telefono: ANA, matricula: '3333CCC' });
+  comprobar('Ana abre turno en el 3333CCC', r.ok);
+  const libroAntes = libroMotor.length;
+  turnos.find(t => abierto(t) && tel9(t.telefono) === ANA).inicio -= 15 * 3600;
+  await f.estado(ANA);
+  const olvidado = turnos.filter(t => norm(t.matricula) === '3333CCC').pop();
+  comprobar('el reloj lo cierra', olvidado.estado === 'auto-cerrado' && /el motor no se toca/.test(olvidado.notas));
+  comprobar('y NO bloquea: ni orden al coche ni apunte en el libro',
+    ordenes.length === 0 && coche('3333CCC').rele === LIBRE && libroMotor.length === libroAntes);
 
   console.log('\n== 8. El que escribe la matrícula se queda el coche ==');
   // 8a. Ana (con bloqueo) lo tiene; Beto (sin bloqueo) lo comparte con ella, así
@@ -315,15 +357,35 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('y el motor se queda libre, sin tocar el coche', r.motor && r.motor.seQuedaLibre === true && ordenes.length === 0);
   coche('2222BBB').ignicion = false;
 
-  console.log('\n== 11. El repaso recoge lo que quedó suelto, y nada más ==');
-  // Bien parado desde hace una hora: el paso 2 lo dejó «parado hace 30 s».
-  coche('1111AAA').rele = LIBRE; coche('1111AAA').segParado = 3600; coche('2222BBB').rele = LIBRE; limpio();
-  rep = await f.repasarBloqueos();
-  comprobar('bloquea el que pasó por el fichaje', rep.bloqueados.some(x => x.matricula === '1111AAA'));
-  comprobar('NO toca el que nadie fichó', !rep.bloqueados.some(x => x.matricula === '0000AAA')
-    && !rep.omitidos.some(x => x.matricula === '0000AAA'));
-  comprobar('NO toca el 2222BBB: Beto ya no ficha', !rep.bloqueados.some(x => x.matricula === '2222BBB'));
-  comprobar('idempotente: otra pasada no bloquea nada', (await f.repasarBloqueos()).bloqueados.length === 0);
+  console.log('\n== 11. El módulo «Ciclo de bloqueo de motor» ==');
+  let l = await ciclo.lista();
+  const fila = m => l.filas.find(x => x.matricula === m);
+  comprobar('1111AAA BLOQUEADO: lo dejó Camilo al terminar, y se puede soltar',
+    fila('1111AAA') && fila('1111AAA').estado === 'bloqueado' && fila('1111AAA').quien === 'Camilo Bedoya'
+    && fila('1111AAA').puedeSoltar && fila('1111AAA').rele === 'cortado');
+  comprobar('3333CCC BLOQUEADO por Beto (8c)', fila('3333CCC') && fila('3333CCC').estado === 'bloqueado' && fila('3333CCC').quien === 'Beto Noche');
+  comprobar('4444DDD: al terminar no se pudo bloquear, no tiene relé',
+    fila('4444DDD') && fila('4444DDD').estado === 'no-bloqueado' && /sin relé/.test(fila('4444DDD').detalle));
+  comprobar('2222BBB no está: Beto terminó sin el bloqueo', !fila('2222BBB'));
+  comprobar('0000AAA no está: nadie lo ha usado', !fila('0000AAA'));
+  comprobar('ordenados: los bloqueados antes que los avisos de menos peso',
+    l.filas.findIndex(x => x.estado === 'bloqueado') < l.filas.findIndex(x => x.estado === 'no-bloqueado'));
+  // En turno: Ana, con el bloqueo, en el coche que comparte con Beto (ya sin él).
+  r = await f.iniciar({ telefono: ANA, matricula: '2222BBB' });
+  l = await ciclo.lista();
+  comprobar('2222BBB EN TURNO con Ana: al terminar se quedará libre por Beto',
+    fila('2222BBB') && fila('2222BBB').estado === 'en-turno' && fila('2222BBB').quien === 'Ana Día'
+    && /quedará libre/.test(fila('2222BBB').detalle) && /Beto Noche/.test(fila('2222BBB').detalle) && !fila('2222BBB').puedeSoltar);
+  await f.terminar(ANA);
+  const fi = await ciclo.ficha('1111AAA');
+  comprobar('la ficha cuenta lo que ha pasado', fi.estado === 'bloqueado'
+    && fi.historia.some(e => e.que === 'Motor bloqueado' && e.quien === 'el conductor')
+    && fi.historia.some(e => e.que === 'Termina el viaje'));
+  // Un corte que no corta: Mapon lo da cortado y el coche se mueve sin turno.
+  coche('1111AAA').enMarcha = true;
+  l = await ciclo.lista();
+  comprobar('«el corte no corta», el primero de la lista', fila('1111AAA').estado === 'no-corta' && l.filas[0].matricula === '1111AAA');
+  coche('1111AAA').enMarcha = false;
 
   console.log('\n== 12. Soltar a mano desde el ERP ==');
   let error = '';
@@ -331,30 +393,41 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('sin motivo NO se suelta', /por qué/.test(error) && coche('1111AAA').rele === BLOQ);
   r = await f.soltarCoche({ matricula: '1111AAA', motivo: 'Oswaldo no ficha y tiene que salir' }, { usuarioId: 7 });
   comprobar('con motivo, suelto', r.hecho && coche('1111AAA').rele === LIBRE);
-  comprobar('y queda escrito quién y por qué', ordenesManuales.length === 1 &&
-    ordenesManuales[0].usuarioId === 7 && /Oswaldo/.test(ordenesManuales[0].motivo));
+  comprobar('y queda escrito quién y por qué', ultimo().usuarioId === 7 && ultimo().accion === 'soltar'
+    && /Oswaldo/.test(ultimo().motivo));
+  error = '';
+  try { await f.soltarCoche({ matricula: '1111AAA', motivo: 'sin saber quién' }, {}); } catch (e) { error = e.message; }
+  comprobar('sin saber quién suelta, NO se suelta (el libro lo leería como del conductor)', /quién eres/.test(error));
+  l = await ciclo.lista();
+  comprobar('sale FUERA DEL CICLO, con quién lo soltó y por qué',
+    fila('1111AAA') && fila('1111AAA').estado === 'fuera' && fila('1111AAA').quien === 'Camilo Bedoya' && /Oswaldo/.test(fila('1111AAA').detalle));
+  // «Hasta que nos lo entreguen de nuevo, un conductor inicie turno y termine».
+  limpio();
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  comprobar('Ana lo coge: ya estaba libre, no se manda nada', r.ok && r.motor.yaEstaba && ordenes.length === 0);
+  r = await f.terminar(ANA);
+  l = await ciclo.lista();
+  comprobar('al terminar se vuelve a bloquear: el ciclo empieza otra vez',
+    r.motor.hecho && fila('1111AAA').estado === 'bloqueado' && fila('1111AAA').quien === 'Ana Día');
 
   console.log('\n== 13. Un coche de otra sede (Barcelona) no se toca nunca ==');
   limpio();
   r = await f.iniciar({ telefono: CAMILO, matricula: '5555BCN' });
   comprobar('no abre un viaje con él', r.ok === false && r.motivo === 'otra-sede' && r.sede === 'Barcelona');
   comprobar('ni le manda nada', ordenes.length === 0 && !turnos.some(t => t.matricula === '5555BCN'));
-  // Como el 1888LTJ el 24/09: un viaje viejo en el libro lo metía en el repaso.
-  turnos.push({ id: 'viejo-bcn', tipo: 'viaje', estado: 'cerrado', telefono: CAMILO, matricula: '5555BCN', unitId: '88', relevo: 0 });
-  rep = await f.repasarBloqueos();
-  comprobar('el repaso NO lo corta aunque salga en el libro', !rep.bloqueados.some(x => x.matricula === '5555BCN') && coche('5555BCN').rele === LIBRE);
-  comprobar('ni lo mira: está fuera de su alcance', !rep.omitidos.some(x => x.matricula === '5555BCN'));
+  // Como el 1888LTJ el 24/09: un viaje viejo con él en el libro.
+  turnos.push({ id: 'viejo-bcn', tipo: 'viaje', estado: 'cerrado', telefono: CAMILO, matricula: '5555BCN', unitId: '88', relevo: 0, fin: 1 });
   r = await f.bloquearMotor('88', { porOrden: true });
-  // (El repaso de arriba sí vuelve a cortar el 1111AAA, de Madrid y del libro:
-  // aquí solo cuenta que al de Barcelona no le llegue nada.)
   comprobar('una orden de corte directa se niega', !r.hecho && r.otraSede === 'barcelona'
-    && !ordenes.some(o => o.startsWith('5555BCN')));
-  comprobar('y el repaso sigue haciendo lo suyo con los de Madrid', ordenes.includes('1111AAA:BLOQUEAR'));
-  // Barcelona lo corta a propósito desde Mapon: nada de aquí se lo suelta.
+    && !ordenes.some(o => o.startsWith('5555BCN')) && coche('5555BCN').rele === LIBRE);
+  // Barcelona lo corta a propósito desde Mapon: nada de aquí lo toca ni lo enseña.
   coche('5555BCN').rele = BLOQ;
   const lib = await f.liberarConocidos();
   comprobar('«liberar todos» no se lo suelta', !lib.liberados.some(x => x.matricula === '5555BCN') && coche('5555BCN').rele === BLOQ);
-  comprobar('no sale en la lista de motores cortados de Tráfico', !(await f.motoresCortados()).some(x => x.matricula === '5555BCN'));
+  comprobar('no sale en el ciclo aunque Mapon lo dé cortado', !(await ciclo.lista()).filas.some(x => x.matricula === '5555BCN'));
+  error = '';
+  try { await ciclo.ficha('5555BCN'); } catch (e) { error = e.message; }
+  comprobar('ni tiene ficha en el ciclo', /Barcelona/.test(error));
   error = '';
   try { await f.soltarCoche({ matricula: '5555BCN', motivo: 'prueba' }, { usuarioId: 7 }); } catch (e) { error = e.message; }
   comprobar('ni a mano desde el ERP', /Barcelona/.test(error) && coche('5555BCN').rele === BLOQ);

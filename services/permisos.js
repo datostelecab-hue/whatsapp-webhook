@@ -74,6 +74,13 @@ const CATALOGO = [
     { clave: '/visibilidad', etiqueta: 'Visibilidad' },
     { clave: '/mapa',        etiqueta: 'Mapa de flota' },
     { clave: '/cobertura',   etiqueta: 'Cobertura' },
+    // El ciclo de bloqueo de motor (30/09/2026): mirar qué coches estamos
+    // bloqueando, y soltarlos. Soltar va marcada `escribir`: cualquier petición
+    // que no sea un GET a /bloqueo-motor la exige sola. db/167 se las dio a
+    // quien podía editar el planificador, que es donde se soltaba hasta ese día.
+    { clave: '/bloqueo-motor', etiqueta: 'Ciclo de bloqueo de motor', hijos: [
+      { clave: '/bloqueo-motor/soltar', etiqueta: 'Ciclo de bloqueo de motor · soltar un coche', escribir: true },
+    ] },
     { clave: '/generador',   etiqueta: 'Generar vacantes' },
   ] },
   { grupo: 'Taller', items: [

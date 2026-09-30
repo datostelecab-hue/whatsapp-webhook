@@ -48,6 +48,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Control]]** — Control es el puesto de tráfico del ERP: quién tenía que salir, quién salió, a quién se llamó y qué contestó.
 - **[[Documentos]]** — El archivo documental de la empresa. Sustituye a tener los papeles en el ordenador de alguien: el índice vive en PostgreSQL y los bytes en Drive. Está en modules/Documentos/.
 - **[[Fichaje]]** — Bajo el mismo nombre hay dos cosas distintas, y conviene no mezclarlas:
+- **[[Ciclo de bloqueo de motor]]** — /bloqueo-motor: los coches que bloquean los conductores al terminar, en qué punto está cada uno y el botón de soltar el que se queda en el taller. El sistema no bloquea nada por su cuenta.
 - **[[Nominas]]** — La compensación variable del mes: lo que se suma al recibo por encima del sueldo base — nocturnas, propinas, peajes y el MBO (por horas extra o por facturación).
 - **[[Operaciones]]** — Qué hace la flota cuando nadie mira: los avisos del coche, los kilómetros que no cuadran, quién corre de más y el calendario de lo que de verdad pasó cada día.
 - **[[Planificacion]]** — Quién conduce qué coche, qué día y en qué turno.

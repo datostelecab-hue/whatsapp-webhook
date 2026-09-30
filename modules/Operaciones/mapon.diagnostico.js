@@ -35,7 +35,6 @@ const mapon = require('../../services/mapon');
  *   ?ejecutar=<nombre>      EJECUTA ese comando  ← ACTÚA SOBRE EL COCHE
  *   ?probarrele=0|1         prueba el corte por POST y por GET  ← ACTÚA
  *   ?rele=0|1               corta o libera el motor             ← ACTÚA
- *   ?repaso=1|aplicar       simula (o aplica) el repaso de bloqueos
  *   ?liberar=1|aplicar      SUELTA el motor de todo lo que el fichaje bloqueó
  *   ?crear=NOMBRE           crea el conductor si no existe      ← ESCRIBE
  *   ?asignar=1  ?soltar=1   le pone o le quita el coche         ← ESCRIBE
@@ -174,25 +173,8 @@ async function diagnostico(q = {}) {
     } catch (e) { out.errorLiberar = e.message; }
   }
 
-  // ?repaso=1 SIMULA: dice a qué coches se les cortaría el motor y por qué se
-  // deja fuera a los demás, sin tocar ninguno. Es lo que hay que mirar ANTES de
-  // encender FICHAJE_BLOQUEO_MOTOR: si aquí aparece un coche que está
-  // trabajando, la regla está mal y no se enciende nada.
-  // ?repaso=aplicar lo ejecuta de verdad (lo mismo que hace el cron).
-  if (q.repaso) {
-    try {
-      const fj = require('../../services/fichaje');
-      out.alcance = {
-        bloqueoActivo: fj.BLOQUEO_ACTIVO,
-        matriculas: fj.MATRICULAS,
-        todaLaFlota: fj.TODA_LA_FLOTA,
-        alcance: fj.TODA_LA_FLOTA ? 'toda la flota' : 'solo los coches que han pasado por el fichaje',
-        telefonos: 'quien tenga el fichaje encendido en el ERP (planificador y /usuarios)',
-        tambien: 'nunca el coche que lleva hoy o mañana alguien que todavía no ficha',
-      };
-      out.repaso = await fj.repasarBloqueos({ soloMirar: String(q.repaso) !== 'aplicar' });
-    } catch (e) { out.errorRepaso = e.message; }
-  }
+  // (?repaso= se quitó el 30/09/2026 con el repaso: ya no hay cron que corte.
+  // El ciclo de cada coche se ve en /bloqueo-motor.)
 
   // Lo crea si no existe, o reutiliza el que ya haya con ese nombre.
   const nombre = (q.crear || '').toString().trim();

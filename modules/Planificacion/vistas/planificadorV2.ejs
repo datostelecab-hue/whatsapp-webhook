@@ -2146,7 +2146,6 @@
   // no, el compañero se encontraría el coche cortado sin saber por qué—.
 
   let FJ = null;        // lo que manda /api/fichaje
-  let MOT = null;       // los motores cortados (va aparte: pregunta a Mapon)
   let fjAbierto = false;
   let fjBusca = '';
 
@@ -2197,19 +2196,6 @@
       FJ = j;
     } catch (e) { FJ = { error: e.message }; }
     pintarFichaje();
-    cargarMotores();
-  }
-
-  async function cargarMotores() {
-    MOT = { cargando: true };
-    pintarMotores();
-    try {
-      const r = await fetch('/planificador-v2/api/fichaje/motores');
-      const j = await r.json();
-      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo preguntar a Mapon');
-      MOT = { cortados: j.cortados || [] };
-    } catch (e) { MOT = { error: e.message }; }
-    pintarMotores();
   }
 
   function filaConductor(c) {
@@ -2336,45 +2322,20 @@
     }
   }
 
+  // LOS MOTORES CORTADOS YA NO SE MIRAN AQUÍ (30/09/2026): viven en su módulo,
+  // «Ciclo de bloqueo de motor», con quién bloqueó cada coche, quién lo coge
+  // después y el botón de soltarlo. Aquí queda el enlace, para no tener dos
+  // sitios desde los que soltar un motor.
   function pintarMotores() {
     const caja = $('#fj-motores');
     if (!caja) return;
-    const cab = `<h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5 flex items-center gap-2">Motores cortados
-      <button data-fj-recargar class="ml-auto text-telecab-muted hover:text-telecab-gold normal-case tracking-normal" title="Volver a preguntar a Mapon"><i class="fa-solid fa-rotate-right"></i></button></h3>`;
-    let cuerpo;
-    if (!MOT || MOT.cargando) cuerpo = '<p class="text-xs text-telecab-muted px-2 py-3">Preguntando a Mapon…</p>';
-    else if (MOT.error) cuerpo = `<p class="text-xs text-telecab-red px-2 py-3">No se pudo preguntar a Mapon: ${esc(MOT.error)}</p>`;
-    else if (!MOT.cortados.length) cuerpo = '<p class="text-xs text-telecab-muted px-2 py-3">Ningún coche cortado.</p>';
-    else cuerpo = `<ul class="space-y-1">${MOT.cortados.map(m => `
-      <li class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-telecab-card2/50 text-sm">
-        <i class="fa-solid fa-lock text-telecab-red text-xs"></i>
-        <span class="font-medium font-mono">${esc(m.matricula)}</span>
-        ${m.conTurno ? `<span class="text-[11px] text-telecab-muted truncate">· turno de ${esc(m.conTurno)}</span>` : ''}
-        <button data-fj-soltar="${esc(m.matricula)}" class="ml-auto px-2 py-0.5 rounded-lg border border-telecab-border text-xs hover:border-telecab-gold/50"
-                title="Suelta el motor de este coche. Queda escrito quién y por qué.">Soltar</button>
-      </li>`).join('')}</ul>`;
-    caja.innerHTML = cab + cuerpo +
-      '<p class="text-[11px] text-telecab-muted px-2 mt-2">Si alguien se encuentra su coche cortado y no puede usar el bot, se suelta desde aquí.</p>';
-    caja.querySelector('[data-fj-recargar]').addEventListener('click', cargarMotores);
-    caja.querySelectorAll('[data-fj-soltar]').forEach(b => b.addEventListener('click', () => soltarMotor(b.dataset.fjSoltar)));
-  }
-
-  async function soltarMotor(matricula) {
-    const v = await Dialogo.formulario(`Soltar el motor de ${matricula}`, [
-      { id: 'motivo', etiqueta: 'Por qué', tipo: 'texto', obligatorio: true,
-        marcador: 'Ej.: Oswaldo no puede escribir al bot y tiene que salir',
-        ayuda: 'Queda escrito con tu nombre: soltar un coche a mano deja que lo use alguien sin abrir turno.' },
-    ], { textoBoton: 'Soltar el motor' });
-    if (!v) return;
-    try {
-      const r = await fjPost('/planificador-v2/api/fichaje/soltar', { matricula, motivo: v.motivo });
-      if (r.hecho) Dialogo.hecho(r.yaEstaba ? `${matricula} ya estaba libre` : `Motor de ${matricula} suelto`);
-      else await Dialogo.aviso({ titulo: 'El coche no lo ha confirmado', tono: 'aviso',
-        texto: `${r.motivo || 'Sin respuesta'}. Vuelve a intentarlo en un minuto.` });
-    } catch (e) {
-      await Dialogo.aviso({ titulo: 'No se pudo soltar', texto: e.message, tono: 'error' });
-    }
-    cargarMotores();
+    caja.innerHTML = `
+      <h3 class="text-[11px] uppercase tracking-wide text-telecab-muted mb-1.5">Motores bloqueados</h3>
+      <p class="text-xs text-telecab-muted px-2">Los bloquea el conductor al <b class="text-telecab-text">terminar</b> su turno y
+        los suelta el siguiente al <b class="text-telecab-text">empezar</b>. El sistema no bloquea nada por su cuenta.</p>
+      <a href="/bloqueo-motor" class="mt-2 mx-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-telecab-border text-sm hover:border-telecab-gold/50">
+        <i class="fa-solid fa-lock text-xs"></i> Ciclo de bloqueo de motor</a>
+      <p class="text-[11px] text-telecab-muted px-2 mt-2">Ahí se ve qué coche está bloqueado, quién lo coge después, y se suelta el que se queda en el taller.</p>`;
   }
 
   // ── Navegación de semana ──────────────────────────────────────────────────

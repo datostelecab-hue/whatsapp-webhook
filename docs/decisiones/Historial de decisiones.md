@@ -7,6 +7,10 @@ actualizado: 2026-09-30
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-30 · Sin repaso: el motor solo lo bloquea el conductor al terminar
+
+Se quitó el repaso, que cada diez minutos cortaba todo coche parado de los que habían pasado alguna vez por el fichaje, y el corte del cierre automático. Camilo: «los únicos que bloquearán son los conductores cuando inicien turnos y terminen; el sistema no bloquea nada sino que suelta». El ciclo de cada coche —bloqueado al terminar, suelto al empezar, fuera del ciclo si Tráfico lo suelta para el taller— se ve en un módulo nuevo (db/167, solo permisos). → [[Ciclo de bloqueo de motor]] · [[Fichaje]]
+
 ## 2026-09-30 · Nada de lo que manda órdenes toca un coche de Barcelona
 
 El corte de motor, las puertas y el turno ya no tocan un coche de otra sede, pase lo que pase en el libro: el 1888LTJ, de Barcelona, se quedó cortado varios días porque la matrícula de **ejemplo** del bot era la suya y un viaje de prueba lo metió en el repaso. Camilo: «que no toque coches de Barcelona». La sede se mira en la misma puerta por la que sale todo corte (`fichaje.motor`), no solo en el repaso. → [[Fichaje]]

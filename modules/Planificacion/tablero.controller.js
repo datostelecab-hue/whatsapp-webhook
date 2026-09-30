@@ -84,11 +84,10 @@ router.post('/api/comprobar', responde(async req => ({ plan: await tablero.compr
 // los cierra `controlAcceso` con la llave de editar el planificador. Mirar es
 // un GET, y lo ve quien ve el planificador.
 router.get('/api/fichaje', responde(() => tablero.fichajeEstado()));
-router.get('/api/fichaje/motores', responde(async () => ({ cortados: await tablero.fichajeMotores() })));
 router.post('/api/fichaje/conductor', responde(async req =>
   tablero.fichajeConductor(req.body || {}, await quien(req))));
-router.post('/api/fichaje/soltar', responde(async req =>
-  tablero.fichajeSoltar(req.body || {}, await quien(req))));
+// Los motores cortados y el botón de soltar se fueron a /bloqueo-motor
+// (30/09/2026): un solo sitio desde el que soltar un motor.
 
 router.post('/api/relevo/:id/quitar', responde(req =>
   tablero.quitarRelevo(req.params.id, (req.body || {}).dia)));
