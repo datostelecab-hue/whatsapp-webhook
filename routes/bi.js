@@ -36,7 +36,7 @@ router.get('/api/heatmap',     api('heatmap',     q => bi.heatmap(q)));
 router.get('/api/catalogo',    api('catalogo',    () => bi.catalogo()));
 router.get('/api/meta',        api('meta',        () => bi.meta()));
 
-// Refresco a mano de los hechos materializados (el cron lo hace cada hora).
+// Refresco a mano de los hechos materializados (el cron lo hace a las 04:30).
 router.post('/api/refrescar', requiereSuperadmin, api('refrescar', () => bi.refrescar()));
 
 // Cómo conectar Power BI: el host y la base salen de la URL de conexión, la

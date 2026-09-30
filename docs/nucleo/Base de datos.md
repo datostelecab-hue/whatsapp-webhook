@@ -72,6 +72,9 @@ Dos cosas distintas con el mismo nombre:
 
 Tres son **materializadas** (con índice único, para poder refrescarlas en concurrente): `bi_hecho_horas_dia`, `bi_hecho_ingresos_dia`, `bi_hecho_km_dia`. Más `bi_meta`, que es la única tabla de verdad de la familia.
 
+> [!warning] Se refrescan UNA vez al día, a las 04:30 (30/09/2026)
+> Iban cada hora, en el minuto 15, y `bi_hecho_km_dia` sola tarda 27 s de media y hasta 63 s: con una base de **1 CPU** eso la ponía al 100 % cada hora, y quien abría cualquier pantalla a y cuarto la veía colgada. Las tres cuentan por día natural, así que de madrugada el día anterior ya está entero. Para lo de hoy, el botón de refrescar de `/bi`.
+
 ### El resto, por módulo
 
 Convenio y nómina (`collective_agreement`, `salary_table_row`, `contrato`, `nomina_mes`, `nomina_fila`, `variable_nomina`, `liquidacion`), selección (`candidatura`, `solicitud_ett`, `incorporacion`), taller (`mantenimiento`, `factura_taller`, `odometro_ancla`), ticketera (`ticket`, `ticket_evento`, `ticket_routing`), control (`alerta_control` y sus tres satélites, `llamada_alerta`, `llamada_cc`), fichaje (`fichaje`, `fichaje_correccion`, `fichaje_turno`, `puerta_comando`), recaudación, documentos y bitácora (`bitacora_horas`, `bitacora_sello`).

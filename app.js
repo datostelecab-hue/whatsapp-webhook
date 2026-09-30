@@ -486,10 +486,22 @@ programar('8,28,48 * * * *', async () => {
 }, { timezone: 'Europe/Madrid' });
 
 // ── BI ──────────────────────────────────────────────────────────────────────
-// Los hechos del cuadro de mando (horas, ingresos, km) son vistas materializadas:
-// se refrescan cada hora, en el minuto 15 para no pisarse con la captura de
-// Visibilidad. Tarda unos segundos y no bloquea a nadie (CONCURRENTLY).
-programar('15 * * * *', async () => {
+// Los hechos del cuadro de mando (horas, ingresos, km) son vistas materializadas.
+//
+// UNA VEZ AL DÍA, A LAS 04:30 (30/09/2026). Se refrescaban cada hora, en el
+// minuto 15, y no tardaba «unos segundos»: `bi_hecho_km_dia` sola se lleva 27 s
+// de media y hasta 63 (pg_stat_statements, 121 veces desde el 25/09). En una
+// base de 1 CPU eso ponía la CPU al 100 % cada hora y todo lo demás esperaba:
+// quien abría una pantalla a y cuarto la veía colgada. CONCURRENTLY no bloquea
+// las lecturas, pero la CPU es la misma. Camilo: «que el BI se refresque de
+// madrugada».
+//
+// Las tres cuentan por DÍA NATURAL, así que a las 04:30 el día anterior ya está
+// entero; y como se recalculan enteras, lo que BOLT entregue tarde entra en la
+// de la noche siguiente. A esa hora no se pisa con las tareas de las 00:00 ni
+// con las de las 05:00-05:50. Quien necesite lo de hoy tiene el botón de
+// refrescar en /bi.
+programar('30 4 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;

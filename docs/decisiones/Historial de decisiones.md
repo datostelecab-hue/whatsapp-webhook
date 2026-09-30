@@ -7,6 +7,10 @@ actualizado: 2026-09-30
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-30 · El BI se refresca de madrugada, no cada hora
+
+El refresco de los hechos del BI (horas, ingresos, km) pasa de cada hora a una vez al día, a las 04:30. `bi_hecho_km_dia` tardaba 27 s de media y hasta 63 s, y en una base de 1 CPU ponía la CPU al 100 % cada hora a y cuarto: lo notó Camilo al abrir el ciclo de bloqueo de motor justo a las 12:15. El BI enseña hasta ayer; lo de hoy, con el botón de refrescar. → [[Base de datos]]
+
 ## 2026-09-30 · Sin repaso: el motor solo lo bloquea el conductor al terminar
 
 Se quitó el repaso, que cada diez minutos cortaba todo coche parado de los que habían pasado alguna vez por el fichaje, y el corte del cierre automático. Camilo: «los únicos que bloquearán son los conductores cuando inicien turnos y terminen; el sistema no bloquea nada sino que suelta». El ciclo de cada coche —bloqueado al terminar, suelto al empezar, fuera del ciclo si Tráfico lo suelta para el taller— se ve en un módulo nuevo (db/167, solo permisos). → [[Ciclo de bloqueo de motor]] · [[Fichaje]]

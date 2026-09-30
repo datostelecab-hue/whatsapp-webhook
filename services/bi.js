@@ -8,7 +8,8 @@
 // Power BI no pueden contradecirse: son el mismo número.
 //
 // Los hechos gordos son vistas MATERIALIZADAS y se refrescan con refrescar()
-// (cron cada hora en app.js + botón en la pantalla). meta() dice de cuándo son.
+// (cron a las 04:30 en app.js —cada hora ponía la base al 100 %— + botón en la
+// pantalla). meta() dice de cuándo son.
 
 const db = require('./db');
 
