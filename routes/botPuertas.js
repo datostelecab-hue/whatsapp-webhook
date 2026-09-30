@@ -156,6 +156,15 @@ async function handleText(phone, text) {
       await sendText(phone, `❌ No encuentro la matrícula "${matricula}". Escríbela otra vez, todo junto (ejemplo: 1234ABC).`);
       return;
     }
+    // Un coche de otra sede no se abre desde aquí (services/otraSede.js). Se
+    // dice al momento, no al pulsar «Abrir».
+    const sede = require('../services/otraSede');
+    const ajena = await sede.sedeAjena({ matricula: resultado.matricula, unitId: resultado.unit_id }).catch(() => null);
+    if (ajena) {
+      await sendText(phone, `❌ El ${resultado.matricula} es un coche de ${sede.nombreSede(ajena)}: por aquí no se abre ni se cierra. ` +
+        'Revisa la matrícula y escríbela otra vez, todo junto (ejemplo: 1234ABC).');
+      return;
+    }
 
     sesiones[phone] = {
       nombre,
@@ -174,7 +183,9 @@ async function handleText(phone, text) {
     const s = sesiones[phone];
     await sendButtonsEstado(phone, s.nombre, s.matricula, s.vehiculo, s.estado || 'cerrada');
   } else {
-    await sendText(phone, `👋 Hola ${nombre}, escribe la matrícula del vehículo que quieres abrir o cerrar, todo junto.\n\nEjemplo: 1888LTJ`);
+    // El ejemplo NO puede ser un coche de verdad: era el 1888LTJ, de Barcelona,
+    // y la gente lo escribía tal cual (30/09/2026, ver services/otraSede.js).
+    await sendText(phone, `👋 Hola ${nombre}, escribe la matrícula del vehículo que quieres abrir o cerrar, todo junto.\n\nEjemplo: 1234ABC`);
   }
 }
 
@@ -194,7 +205,7 @@ async function handleButton(phone, buttonId) {
   }
 
   if (!sesion) {
-    await sendText(phone, '⚠️ Primero escribe una matrícula (ej: 1888LTJ).');
+    await sendText(phone, '⚠️ Primero escribe una matrícula (ej: 1234ABC).');
     return;
   }
 
@@ -208,12 +219,14 @@ async function handleButton(phone, buttonId) {
       sesion.estado = abrir ? 'abierta' : 'cerrada';
       await sendButtonsEstado(phone, sesion.nombre, sesion.matricula, sesion.vehiculo, sesion.estado);
     } else {
-      await sendText(phone, `❌ Error al ${abrir ? 'abrir' : 'cerrar'} puertas. Inténtalo de nuevo.`);
+      await sendText(phone, r.otraSede
+        ? `❌ El ${sesion.matricula} es un coche de ${require('../services/otraSede').nombreSede(r.otraSede)}: por aquí no se abre ni se cierra.`
+        : `❌ Error al ${abrir ? 'abrir' : 'cerrar'} puertas. Inténtalo de nuevo.`);
     }
 
   } else if (buttonId === 'cambiar_matricula') {
     delete sesiones[phone];
-    await sendText(phone, '🔄 Escribe la nueva matrícula (ej: 1888LTJ):');
+    await sendText(phone, '🔄 Escribe la nueva matrícula (ej: 1234ABC):');
 
   } else if (buttonId === 'codigo_lavado') {
     // Los códigos de lavado vuelven hasta el 15/10/2026 (services/lavadoBallenoil).

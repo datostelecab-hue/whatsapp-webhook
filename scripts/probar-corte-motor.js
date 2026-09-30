@@ -20,6 +20,10 @@
 // dice si se le BLOQUEA el motor al terminar) y quien escribe la matrícula de un
 // coche que tiene otro SE LO QUEDA; si al otro se le bloquearía, con el coche
 // parado y apagado.
+//
+// 30/09/2026: un coche de OTRA SEDE no se toca nunca (services/otraSede.js), y
+// el coche de mentira deja de llamarse 1888LTJ, que es un coche real de
+// Barcelona: con esa matrícula de ejemplo empezó el lío.
 
 const path = require('path');
 const RAIZ = path.join(__dirname, '..');
@@ -32,13 +36,15 @@ const LIBRE = 0, BLOQ = 1;
 // ── Los coches de mentira ──────────────────────────────────────────────────
 // Se toquetean desde las pruebas para provocar cada caso.
 const coches = {
-  77: { unitId: 77, matricula: '1888LTJ', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
+  77: { unitId: 77, matricula: '1111AAA', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
   78: { unitId: 78, matricula: '2222BBB', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
   80: { unitId: 80, matricula: '3333CCC', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
   // Un coche SIN relé de corte (como el de Deisy el 28/09).
   81: { unitId: 81, matricula: '4444DDD', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600, sinRele: true },
   // Un coche que NADIE ha fichado: el repaso no debe tocarlo jamás.
   99: { unitId: 99, matricula: '0000AAA', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
+  // Un coche de BARCELONA: no se toca pase lo que pase en el libro.
+  88: { unitId: 88, matricula: '5555BCN', rele: LIBRE, enMarcha: false, ignicion: false, segParado: 3600 },
 };
 const porMat = m => Object.values(coches).find(c => c.matricula === String(m).toUpperCase().replace(/[^A-Z0-9]/g, ''));
 const ordenes = [];               // qué se le ha mandado de verdad a los coches
@@ -153,6 +159,12 @@ const falsoRepo = {
 
 require.cache[require.resolve(path.join(RAIZ, 'services/mapon.js'))] = { exports: falsoMapon, loaded: true, id: 'falso-mapon' };
 require.cache[require.resolve(path.join(RAIZ, 'services/repo/fichajeTurno.js'))] = { exports: falsoRepo, loaded: true, id: 'falso-repo' };
+// La sede sale de la base: aquí, una base de mentira con un solo coche de
+// Barcelona. `services/otraSede.js` es el DE VERDAD, así que también se prueba.
+let consultasSede = 0;
+require.cache[require.resolve(path.join(RAIZ, 'services/db.js'))] = { loaded: true, id: 'falsa-db', exports: {
+  consulta: async () => { consultasSede++; return { rows: [{ matricula_norm: '5555BCN', sede: 'barcelona', unit_id: '88' }] }; },
+} };
 const f = require(path.join(RAIZ, 'services/fichaje.js'));
 
 let mal = 0;
@@ -173,39 +185,39 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('un número desconocido → no participa', (await f.participa('699999999')) === null);
 
   console.log('\n== 1. Coche ya libre: empezar un viaje no manda nada ==');
-  let r = await f.iniciar({ telefono: CAMILO, matricula: '1888LTJ' });
+  let r = await f.iniciar({ telefono: CAMILO, matricula: '1111AAA' });
   comprobar('viaje abierto', r.ok && r.turno.tipo === 'viaje');
   comprobar('motor dado por bueno', r.motor.hecho);
   comprobar('dice que YA ESTABA (sin esperar 10 s)', r.motor.yaEstaba === true);
   comprobar('no se mandó ninguna orden', ordenes.length === 0);
 
   console.log('\n== 2. Terminar con el contacto puesto: NO se cierra (regla de oro) ==');
-  coche('1888LTJ').ignicion = true; coche('1888LTJ').segParado = 30;
+  coche('1111AAA').ignicion = true; coche('1111AAA').segParado = 30;
   r = await f.terminar(CAMILO);
   comprobar('se NIEGA a terminar', r.ok === false && r.motivo === 'coche-encendido');
   comprobar('no se mandó nada al coche', ordenes.length === 0);
   comprobar('el viaje SIGUE abierto', (await f.estado(CAMILO)).abierto === true);
 
   console.log('\n== 3. Apaga, y entonces sí: termina y bloquea ==');
-  coche('1888LTJ').ignicion = false;
+  coche('1111AAA').ignicion = false;
   r = await f.terminar(CAMILO);
   comprobar('viaje cerrado', r.ok);
   comprobar('motor bloqueado por orden de quien terminó', r.motor.hecho && !r.motor.yaEstaba);
-  comprobar('la orden fue BLOQUEAR', ordenes.join() === '1888LTJ:BLOQUEAR');
+  comprobar('la orden fue BLOQUEAR', ordenes.join() === '1111AAA:BLOQUEAR');
 
   console.log('\n== 4. Coche bloqueado: empezar lo libera ==');
   limpio();
-  r = await f.iniciar({ telefono: CAMILO, matricula: '1888LTJ' });
+  r = await f.iniciar({ telefono: CAMILO, matricula: '1111AAA' });
   comprobar('motor liberado', r.motor.hecho && !r.motor.yaEstaba);
-  comprobar('la orden fue LIBERAR', ordenes.join() === '1888LTJ:LIBERAR');
+  comprobar('la orden fue LIBERAR', ordenes.join() === '1111AAA:LIBERAR');
 
   console.log('\n== 5. Terminar EN MARCHA: no se cierra ==');
-  limpio(); coche('1888LTJ').enMarcha = true;
+  limpio(); coche('1111AAA').enMarcha = true;
   r = await f.terminar(CAMILO);
   comprobar('se NIEGA a terminar', r.ok === false && r.motivo === 'coche-en-marcha');
   comprobar('da la velocidad para el aviso', r.velocidad === 40);
   comprobar('no se mandó nada al coche', ordenes.length === 0);
-  coche('1888LTJ').enMarcha = false;
+  coche('1111AAA').enMarcha = false;
   r = await f.terminar(CAMILO);
   comprobar('aparcado y apagado, ya termina', r.ok && r.motor.hecho);
 
@@ -296,7 +308,7 @@ const limpio = () => { ordenes.length = 0; };
   await f.activarConductor('102', false, { usuarioId: 7 });
   const p = await f.participa(BETO);
   comprobar('sigue con sus turnos, ya sin bloqueo', p && p.tipo === 'turno' && p.motor === false);
-  comprobar('no puede abrir otro con uno abierto', (await f.iniciar({ telefono: BETO, matricula: '1888LTJ' })).motivo === 'ya-abierto');
+  comprobar('no puede abrir otro con uno abierto', (await f.iniciar({ telefono: BETO, matricula: '1111AAA' })).motivo === 'ya-abierto');
   limpio(); coche('2222BBB').ignicion = true;
   r = await f.terminar(BETO);
   comprobar('termina aunque tenga el contacto puesto: no se le va a bloquear', r.ok);
@@ -305,9 +317,9 @@ const limpio = () => { ordenes.length = 0; };
 
   console.log('\n== 11. El repaso recoge lo que quedó suelto, y nada más ==');
   // Bien parado desde hace una hora: el paso 2 lo dejó «parado hace 30 s».
-  coche('1888LTJ').rele = LIBRE; coche('1888LTJ').segParado = 3600; coche('2222BBB').rele = LIBRE; limpio();
+  coche('1111AAA').rele = LIBRE; coche('1111AAA').segParado = 3600; coche('2222BBB').rele = LIBRE; limpio();
   rep = await f.repasarBloqueos();
-  comprobar('bloquea el que pasó por el fichaje', rep.bloqueados.some(x => x.matricula === '1888LTJ'));
+  comprobar('bloquea el que pasó por el fichaje', rep.bloqueados.some(x => x.matricula === '1111AAA'));
   comprobar('NO toca el que nadie fichó', !rep.bloqueados.some(x => x.matricula === '0000AAA')
     && !rep.omitidos.some(x => x.matricula === '0000AAA'));
   comprobar('NO toca el 2222BBB: Beto ya no ficha', !rep.bloqueados.some(x => x.matricula === '2222BBB'));
@@ -315,12 +327,38 @@ const limpio = () => { ordenes.length = 0; };
 
   console.log('\n== 12. Soltar a mano desde el ERP ==');
   let error = '';
-  try { await f.soltarCoche({ matricula: '1888LTJ', motivo: '  ' }, { usuarioId: 7 }); } catch (e) { error = e.message; }
-  comprobar('sin motivo NO se suelta', /por qué/.test(error) && coche('1888LTJ').rele === BLOQ);
-  r = await f.soltarCoche({ matricula: '1888LTJ', motivo: 'Oswaldo no ficha y tiene que salir' }, { usuarioId: 7 });
-  comprobar('con motivo, suelto', r.hecho && coche('1888LTJ').rele === LIBRE);
+  try { await f.soltarCoche({ matricula: '1111AAA', motivo: '  ' }, { usuarioId: 7 }); } catch (e) { error = e.message; }
+  comprobar('sin motivo NO se suelta', /por qué/.test(error) && coche('1111AAA').rele === BLOQ);
+  r = await f.soltarCoche({ matricula: '1111AAA', motivo: 'Oswaldo no ficha y tiene que salir' }, { usuarioId: 7 });
+  comprobar('con motivo, suelto', r.hecho && coche('1111AAA').rele === LIBRE);
   comprobar('y queda escrito quién y por qué', ordenesManuales.length === 1 &&
     ordenesManuales[0].usuarioId === 7 && /Oswaldo/.test(ordenesManuales[0].motivo));
+
+  console.log('\n== 13. Un coche de otra sede (Barcelona) no se toca nunca ==');
+  limpio();
+  r = await f.iniciar({ telefono: CAMILO, matricula: '5555BCN' });
+  comprobar('no abre un viaje con él', r.ok === false && r.motivo === 'otra-sede' && r.sede === 'Barcelona');
+  comprobar('ni le manda nada', ordenes.length === 0 && !turnos.some(t => t.matricula === '5555BCN'));
+  // Como el 1888LTJ el 24/09: un viaje viejo en el libro lo metía en el repaso.
+  turnos.push({ id: 'viejo-bcn', tipo: 'viaje', estado: 'cerrado', telefono: CAMILO, matricula: '5555BCN', unitId: '88', relevo: 0 });
+  rep = await f.repasarBloqueos();
+  comprobar('el repaso NO lo corta aunque salga en el libro', !rep.bloqueados.some(x => x.matricula === '5555BCN') && coche('5555BCN').rele === LIBRE);
+  comprobar('ni lo mira: está fuera de su alcance', !rep.omitidos.some(x => x.matricula === '5555BCN'));
+  r = await f.bloquearMotor('88', { porOrden: true });
+  // (El repaso de arriba sí vuelve a cortar el 1111AAA, de Madrid y del libro:
+  // aquí solo cuenta que al de Barcelona no le llegue nada.)
+  comprobar('una orden de corte directa se niega', !r.hecho && r.otraSede === 'barcelona'
+    && !ordenes.some(o => o.startsWith('5555BCN')));
+  comprobar('y el repaso sigue haciendo lo suyo con los de Madrid', ordenes.includes('1111AAA:BLOQUEAR'));
+  // Barcelona lo corta a propósito desde Mapon: nada de aquí se lo suelta.
+  coche('5555BCN').rele = BLOQ;
+  const lib = await f.liberarConocidos();
+  comprobar('«liberar todos» no se lo suelta', !lib.liberados.some(x => x.matricula === '5555BCN') && coche('5555BCN').rele === BLOQ);
+  comprobar('no sale en la lista de motores cortados de Tráfico', !(await f.motoresCortados()).some(x => x.matricula === '5555BCN'));
+  error = '';
+  try { await f.soltarCoche({ matricula: '5555BCN', motivo: 'prueba' }, { usuarioId: 7 }); } catch (e) { error = e.message; }
+  comprobar('ni a mano desde el ERP', /Barcelona/.test(error) && coche('5555BCN').rele === BLOQ);
+  comprobar('la sede se lee de la base una vez y se guarda', consultasSede === 1);
 
   console.log(mal ? `\n${mal} COMPROBACION(ES) MAL` : '\nTodo el ciclo cuadra');
   process.exitCode = mal ? 1 : 0;

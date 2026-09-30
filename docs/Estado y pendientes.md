@@ -23,6 +23,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores. Desde el 29/09 el que escribe la matrícula se queda el coche aunque no le toque: las notas «no tenía ese coche en el cuadrante de hoy» son las que hay que mirar.
 - **Se quedó para todos (29/09):** abrir turno con la matrícula es de todo conductor de alta, como se desplegó el 28/09 (Camilo lo confirmó después de preguntar por qué lo tenían todos). El 29/09 por la mañana habían abierto turno 30 personas, y en Mapon queda creada la ficha de conductor de cada uno.
 
+## El repaso del corte de motor, por decidir (30/09/2026)
+
+- **Desplegar el arreglo de los coches de otra sede** ([[Fichaje]], «Los coches de otra sede no se tocan»). Hasta que esté arriba, el 1888LTJ se vuelve a cortar cada vez que pase 20 minutos aparcado, porque sigue en el alcance del repaso por el viaje de prueba del 24/09. Camilo lo soltó desde Mapon el 30/09.
+- **Camilo no esperaba un corte automático**: para él el motor se corta cuando alguien **termina** su turno por WhatsApp, y nada más. El repaso hace más: guarda **para siempre** todo coche que haya salido en un viaje o en el turno de alguien con el bloqueo, y lo corta cada vez que lleva 20 minutos parado. Falta que decida si el repaso se queda solo en **reintentar el corte que falló al terminar** (el último turno de ese coche) o se quita.
+
 ## Migraciones por aplicar (29/09/2026)
 
 - **`db/166`**: la columna `alerta_control.suceso_at` y su índice único, para el aviso **«No vuelve a la M-30»** (una alerta por coche y pasajero dejado). Sin ella el mapa enseña el reloj pero **no sale ningún WhatsApp**: lo dice una vez en el log. Se aplica desde /migraciones con el despliegue arriba. (La 165, la baja de William, ya está aplicada: 29/09 a las 12:52.)

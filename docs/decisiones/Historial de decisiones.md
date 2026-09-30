@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-09-28
+actualizado: 2026-09-30
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-09-30 · Nada de lo que manda órdenes toca un coche de Barcelona
+
+El corte de motor, las puertas y el turno ya no tocan un coche de otra sede, pase lo que pase en el libro: el 1888LTJ, de Barcelona, se quedó cortado varios días porque la matrícula de **ejemplo** del bot era la suya y un viaje de prueba lo metió en el repaso. Camilo: «que no toque coches de Barcelona». La sede se mira en la misma puerta por la que sale todo corte (`fichaje.motor`), no solo en el repaso. → [[Fichaje]]
 
 ## 2026-09-29 · Aviso: deja al pasajero fuera de la M-30 y no vuelve
 

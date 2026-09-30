@@ -1672,6 +1672,19 @@ estaba sin descanso del 23/09 al 04/10 y tenía L M escrito desde el 05/10.
 > Ahora hace lo mismo que las plazas (`colocar`, «auto-corte»): el descanso nuevo
 > dura hasta la **víspera** del que ya está escrito, y el futuro se respeta.
 
+### La matrícula de ejemplo era un coche de verdad, y de Barcelona
+
+El bot de puertas decía **«Ejemplo: 1888LTJ»**, y la gente la escribía tal cual:
+tres conductores de Madrid le abrieron las puertas el 17 y el 18/09, y un viaje
+de prueba de 21 segundos el 24/09 le dejó el motor cortado en Barcelona durante
+días, porque el repaso guarda **para siempre** todo coche que haya salido en un
+viaje y el cuadrante de Madrid no protegía a uno de Barcelona. El ejemplo es ahora
+`1234ABC`, y nada que mande órdenes toca un coche de otra sede
+(`services/otraSede.js`, ver [[Fichaje]]).
+
+> Un ejemplo, un dato de prueba o un valor por defecto **nunca** es un dato real:
+> ni una matrícula, ni un teléfono, ni un DNI. Alguien lo va a copiar.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

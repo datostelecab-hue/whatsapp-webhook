@@ -271,7 +271,7 @@ Botón **Bloqueo de motor** en la barra del planificador (se llamaba «Fichaje»
 
 Y en el tablero, una **llave** junto al nombre de quien ficha.
 
-**Soltar a mano** exige decir **por qué** y queda escrito con quién, cuándo y qué contestó el coche (`fichaje_orden_motor`): soltar un coche a mano es justo lo que alguien haría para dejar a otro usarlo sin fichar. Encender a alguien y soltar un motor son `POST`, así que los cierra la llave de **editar el planificador** sin tocar nada más.
+**Soltar a mano** exige decir **por qué** y queda escrito con quién, cuándo y qué contestó el coche (`fichaje_orden_motor`): soltar un coche a mano es justo lo que alguien haría para dejar a otro usarlo sin fichar. Un coche **de otra sede** no se suelta desde aquí (se lleva desde Mapon): ver abajo. Encender a alguien y soltar un motor son `POST`, así que los cierra la llave de **editar el planificador** sin tocar nada más.
 
 ## El enlace conductor ↔ coche en Mapon
 
@@ -320,13 +320,31 @@ Las dos comprobaciones solo se hacen **si el corte está encendido** —sin él,
 
 Cada diez minutos, `app.js` llama a `repasarBloqueos()`: deja bloqueado todo coche que nadie esté usando. Existe porque sin él quedan dos agujeros, y los dos dejan un coche libre para siempre sin que nadie se entere — el bloqueo al terminar turno **falla a veces** (el coche estaba rodando, o sin cobertura) y no hay quien lo reintente; y un coche que nunca ha tenido un turno **no se bloquearía jamás**. Es idempotente, y no hace nada mientras el corte esté apagado.
 
-**Hasta dónde llega**: dos límites. **El libro**: el repaso solo toca coches que han pasado por un **viaje** o por el turno de alguien **con el bloqueo encendido** (`unitsConControl`, desde el 28/09: como ahora abre turno todo el mundo, «ha pasado por el libro» ya sería casi toda la flota, incluido el coche del taller). Liberar sí sigue mirando todos los del libro. Y **el cuadrante**: nunca el coche que lleva hoy o mañana alguien que todavía no ficha. `FICHAJE_MATRICULAS` queda para el día que esto sea de todos (vacío = solo los conocidos; `*` = toda la flota, y el asterisco se mira **antes** de normalizar, porque normalizado desaparecía).
+**Hasta dónde llega**: tres límites. **La sede**, antes que nada (30/09/2026): nunca un coche que no sea de Madrid, salga donde salga — ver «Los coches de otra sede no se tocan». **El libro**: el repaso solo toca coches que han pasado por un **viaje** o por el turno de alguien **con el bloqueo encendido** (`unitsConControl`, desde el 28/09: como ahora abre turno todo el mundo, «ha pasado por el libro» ya sería casi toda la flota, incluido el coche del taller). Liberar sí sigue mirando todos los del libro. Y **el cuadrante**: nunca el coche que lleva hoy o mañana alguien que todavía no ficha. `FICHAJE_MATRICULAS` queda para el día que esto sea de todos (vacío = solo los conocidos; `*` = toda la flota, y el asterisco se mira **antes** de normalizar, porque normalizado desaparecía).
 
 Va cada diez minutos y no cada uno: un coche que acaba de parar tiene que esperar de todas formas a llevar un buen rato quieto, así que correr no sirve de nada y sí gasta cuota de Mapon.
 
 **Un coche bloqueado que se mueve es un corte que no corta.** Si el relé dice 1 y el coche anda igual, lo que ese relé abre no es el circuito que enciende el motor: es un fallo de instalación y no hay orden por API que lo arregle. El repaso lo **nombra** en los logs — en silencio parecería que la flota está cerrada.
 
 Y existe lo contrario, `liberarConocidos()`: **suelta el motor de todo lo que el fichaje haya podido bloquear**. Existe por lo mismo que existe el freno de mano — porque hay que poder deshacerlo —, sirve para dejar la flota como estaba después de unas pruebas, y no tiene condiciones: liberar no deja tirado a nadie.
+
+## Los coches de otra sede no se tocan (30/09/2026)
+
+Lo que manda órdenes a un coche —el corte de motor, las puertas, el conductor que se le pone en Mapon— **no miraba la sede**, y Mapon obedece esté el coche donde esté. Las pantallas sí apartaban Barcelona (`deLaFlotaVigilada` en `nucleo.js`, ver [[Vehiculos]]); el fichaje confiaba en otro límite, que solo entra el coche en el que alguien ficha, y daba por hecho que nadie fichaba uno de Barcelona.
+
+> [!bug] El 1888LTJ, de Barcelona, cortado varios días
+> El bot de puertas ponía **«Ejemplo: 1888LTJ»**, y esa matrícula es un coche real de Barcelona. El 17 y el 18/09 tres conductores de Madrid le abrieron y cerraron las puertas escribiéndola. El **24/09 a las 16:44** se abrió y cerró con ella un **viaje de 21 segundos** desde el WhatsApp de Camilo (usuario 7) — una prueba del botón de viaje —: al cerrarlo se le cortó el motor, y como un viaje deja el coche **para siempre** en el alcance del repaso (`unitsConControl`) y el cuadrante de Madrid no lo protegía, el repaso se lo volvía a cortar cada vez que llevaba 20 minutos aparcado. Tráfico lo soltó el 28/09 a las 13:16 y se volvió a cortar; alguien lo soltó desde Mapon el 29 por la mañana, rodó hasta las 15:31 y se volvió a cortar; Camilo lo soltó desde Mapon el 30. Ese día **era el único coche** del alcance del repaso: nadie tenía el bloqueo encendido.
+
+Desde entonces `services/otraSede.js` dice qué coches son de otra sede (por **matrícula** y por **equipo** de Mapon; lista en memoria 5 minutos, y si la base falla se usa la última buena), y lo usan cuatro sitios:
+
+| Dónde | Qué hace con un coche de otra sede |
+|---|---|
+| `fichaje.motor()` | **No lo corta nunca**, venga de donde venga la orden (repaso, *Terminar turno*, cierre automático). Es la única puerta por la que sale un corte. Si no se puede saber la sede, tampoco corta |
+| El alcance del fichaje | El repaso, **«liberar todos»** y la lista de **motores cortados** ni lo miran: tampoco se le suelta un corte que Barcelona haya puesto a propósito desde Mapon |
+| `fichaje.iniciar()` | No abre **turno ni viaje** con él (ni se le asigna conductor en Mapon). El bot: *«El 1888LTJ es un coche de Barcelona: por aquí no se lleva»* |
+| Las puertas (`puertasBot.ejecutar` y el bot de oficina) | No se abren ni se cierran; se dice al escribir la matrícula |
+
+**Soltar a mano** desde el planificador tampoco lo toca. Y el ejemplo del bot pasó a `1234ABC`, que no es de nadie. Lo prueba la sección 13 de `scripts/probar-corte-motor.js`.
 
 ## Las variables de entorno
 

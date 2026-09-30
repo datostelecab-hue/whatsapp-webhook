@@ -30,6 +30,8 @@
 
 const mapon = require('./mapon');
 const repo = require('./repo/fichajeTurno');
+// Los coches de otra sede (Barcelona) no se tocan: ni motor, ni turno, ni puertas.
+const otraSede = require('./otraSede');
 
 // Si alguien olvida cerrar, el turno se cierra solo pasadas estas horas: así no queda
 // un coche asignado indefinidamente en Mapon ni un turno abierto eterno en el libro.
@@ -108,8 +110,22 @@ async function motor(unitId, bloquear, { porOrden = false } = {}) {
   // dejaría encerrados para siempre a los coches que ya estuvieran cortados, y el
   // interruptor de seguridad sería justo lo que impide arreglarlo.
   if (bloquear && !BLOQUEO_ACTIVO) return { hecho: false, motivo: 'desactivado' };
+  // UN COCHE DE OTRA SEDE NO SE CORTA NUNCA (30/09/2026, ver otraSede.js). Va
+  // aquí, por donde sale TODA orden de corte, y no solo en el repaso: da igual
+  // quién la pida. Si no se puede saber la sede, tampoco: ante la duda, no.
+  let sedes = null;
+  if (bloquear) {
+    try { sedes = await otraSede.cochesDeOtraSede(); }
+    catch (e) { return { hecho: false, motivo: 'no se puede comprobar de qué sede es el coche', reintentable: true }; }
+    const ajena = otraSede.sedeAjenaEn(sedes, { unitId });
+    if (ajena) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajena)}: no se toca`, otraSede: ajena };
+  }
   try {
     const info = await mapon.relesDeUnidad(unitId);
+    // Y por su matrícula, que es lo que está seguro en Vehículos aunque el
+    // equipo de Mapon cambie.
+    const ajena = bloquear && info && otraSede.sedeAjenaEn(sedes, { matricula: info.matricula });
+    if (ajena) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajena)}: no se toca`, otraSede: ajena };
     const rele = mapon.releDeCorte(info);
     if (!rele || !rele.habilitado) return { hecho: false, motivo: 'sin relé de corte' };
     // CON EL COCHE EN MARCHA NO SE CORTA. Pero SOLTAR sí se intenta siempre.
@@ -204,10 +220,13 @@ const normMat = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]
 //   · El CUADRANTE (24/09/2026): nunca el coche que lleva hoy o mañana alguien
 //     que todavía no ficha (`cochesConQuienNoFicha`). El fichaje se enciende
 //     persona a persona y un coche lo comparten dos.
+//   · La SEDE (30/09/2026): nunca un coche de otra sede, pase lo que pase en
+//     el libro (`otraSede.js`). El cuadrante no protegía a los de Barcelona,
+//     que no salen en él: justo por eso quedaban al descubierto.
 //
 // FICHAJE_MATRICULAS queda para el día que esto sea de todos:
 //   vacío             = solo los coches que han pasado por el fichaje
-//   '1888LTJ,0417MMZ' = además, esos
+//   '1204MJY,0417MMZ' = además, esos (nunca uno de otra sede: ver arriba)
 //   '*'               = toda la flota
 //
 // El '*' se mira ANTES de normalizar: `normMat` quita todo lo que no sea letra o
@@ -536,6 +555,11 @@ async function iniciar({ telefono, nombre, matricula }) {
   if (!nom) return { ok: false, motivo: 'sin-nombre' };
   const unidad = await mapon.unidadPorMatricula(matricula);
   if (!unidad) return { ok: false, motivo: 'sin-matricula' };
+  // UN COCHE DE OTRA SEDE NO ENTRA (30/09/2026). Ni turno, ni viaje, ni su
+  // conductor en Mapon: un viaje de prueba con el 1888LTJ, de Barcelona, le dejó
+  // el motor cortado allí durante días (ver otraSede.js).
+  const ajena = await otraSede.sedeAjena({ matricula: unidad.matricula, unitId: unidad.unitId });
+  if (ajena) return { ok: false, motivo: 'otra-sede', matricula: unidad.matricula, sede: otraSede.nombreSede(ajena) };
 
   // EL COCHE LO TIENE OTRO: SE LO QUEDA QUIEN ESCRIBE LA MATRÍCULA (29/09/2026).
   //
@@ -787,10 +811,16 @@ async function terminar(telefono) {
  * no sabría soltar.
  */
 async function alcanceDelFichaje({ soloConControl = false } = {}) {
-  const conocidos = new Set((await (soloConControl ? repo.unitsConControl() : repo.unitsConocidos())).map(String));
-  return v => TODA_LA_FLOTA
+  const [conocidos, sedes] = await Promise.all([
+    (soloConControl ? repo.unitsConControl() : repo.unitsConocidos()).then(l => new Set(l.map(String))),
+    otraSede.cochesDeOtraSede(),
+  ]);
+  // La sede PRIMERO, también antes que el '*': un coche de Barcelona no entra ni
+  // aunque salga en el libro. Y así «liberar todos» tampoco le suelta un motor
+  // que Barcelona haya cortado a propósito desde Mapon.
+  return v => !otraSede.sedeAjenaEn(sedes, v) && (TODA_LA_FLOTA
     || conocidos.has(String(v.unitId))
-    || MATRICULAS.includes(normMat(v.matricula));
+    || MATRICULAS.includes(normMat(v.matricula)));
 }
 
 /**
@@ -969,6 +999,9 @@ async function soltarCoche({ matricula, motivo }, quien = {}) {
   if (!String(motivo || '').trim()) throw new Error('Di por qué se suelta el motor: queda escrito');
   const unidad = await mapon.unidadPorMatricula(matricula);
   if (!unidad) throw new Error(`La matrícula ${matricula} no está en Mapon`);
+  // De otra sede, tampoco a mano: su motor es cosa suya y se lleva desde Mapon.
+  const ajena = await otraSede.sedeAjena({ matricula: unidad.matricula, unitId: unidad.unitId });
+  if (ajena) throw new Error(`El ${unidad.matricula} es de ${otraSede.nombreSede(ajena)}: su motor no se toca desde aquí. Si hace falta, desde Mapon.`);
   const r = await motor(unidad.unitId, false);
   await repo.registrarOrdenMotor({
     matricula: unidad.matricula, unitId: unidad.unitId, accion: 'soltar', motivo,

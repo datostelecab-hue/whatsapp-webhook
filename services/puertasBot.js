@@ -39,11 +39,20 @@ async function callAppsScript(accion, params = {}) {
  */
 async function ejecutar({ telefono, conductorId = null, nombre = '', matricula, unitId = '', abrir }) {
   const comando = abrir ? 'open_doors' : 'close_doors';
-  console.log(`${abrir ? '🔓 Abriendo' : '🔒 Cerrando'}: ${matricula} (${nombre || telefono})`);
   const t0 = Date.now();
-  let result;
-  try { result = await callAppsScript('ejecutar_comando', { matricula, comando }); }
-  catch (e) { result = { status: 'error', msg: e.message }; }
+  // UN COCHE DE OTRA SEDE NO SE ABRE NI SE CIERRA DESDE AQUÍ (30/09/2026, ver
+  // otraSede.js): el 17 y el 18/09 tres conductores de Madrid le abrieron las
+  // puertas al 1888LTJ, en Barcelona, escribiendo la matrícula del ejemplo. Si
+  // no se puede saber la sede, tampoco se manda. Se apunta igual.
+  let ajena = null, result;
+  try { ajena = await require('./otraSede').sedeAjena({ matricula, unitId }); }
+  catch (e) { result = { status: 'error', msg: 'No se puede comprobar de qué sede es el coche' }; }
+  if (ajena) result = { status: 'error', msg: `Coche de ${require('./otraSede').nombreSede(ajena)}: no se toca`, otraSede: ajena };
+  if (!result) {
+    console.log(`${abrir ? '🔓 Abriendo' : '🔒 Cerrando'}: ${matricula} (${nombre || telefono})`);
+    try { result = await callAppsScript('ejecutar_comando', { matricula, comando }); }
+    catch (e) { result = { status: 'error', msg: e.message }; }
+  }
   const ok = result.status === 'ok';
 
   require('./repo/puertas').registrar({
@@ -52,7 +61,7 @@ async function ejecutar({ telefono, conductorId = null, nombre = '', matricula, 
     respuesta: ok ? null : (result.msg || JSON.stringify(result).slice(0, 500)),
     ms: Date.now() - t0,
   });
-  return { ok, msg: ok ? '' : (result.msg || 'sin respuesta') };
+  return { ok, msg: ok ? '' : (result.msg || 'sin respuesta'), otraSede: result.otraSede || null };
 }
 
 module.exports = { ejecutar, callAppsScript };

@@ -195,6 +195,11 @@ async function abrir(telefono, matricula) {
       await enviarTexto(telefono, 'ℹ️ No tienes activado el uso de coches por aquí. Si crees que es un error, avisa a Tráfico.');
       return;
     }
+    if (r.motivo === 'otra-sede') {
+      await enviarTexto(telefono, `❌ El *${r.matricula}* es un coche de ${r.sede}: por aquí no se lleva. ` +
+        'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*).');
+      return;
+    }
     if (r.motivo === 'sin-matricula') {
       await enviarTexto(telefono, `❌ No encuentro la matrícula *${matricula}*. Revísala y escríbemela otra vez, ` +
         'todo junto (ejemplo: *1234ABC*).');
