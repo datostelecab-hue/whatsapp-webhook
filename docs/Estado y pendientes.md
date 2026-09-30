@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-09-28
+actualizado: 2026-09-30
 ---
 
 # Estado y pendientes
@@ -17,23 +17,20 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El bot del conductor, nuevo (28/09/2026)
 
-- **Aplicar `db/164` desde /migraciones** después de desplegar: son los 566 códigos de lavado de la última tanda (entran 515; los otros 51 ya estaban). Sin ella el botón sale y contesta que no quedan códigos. **El 28/09 el despliegue entró pero la 164 seguía pendiente** en el registro (la última aplicada era la 163, del 25/09 a las 18:35): hay que darle a aplicar en /migraciones con el despliegue nuevo ya arriba.
 - **El 16/10/2026 el botón de lavado desaparece solo** (`LAVADO_HASTA`). Queda quitar el código: `services/lavadoBallenoil.js`, sus dos llamadas en `fichajeBot.js` y `botPuertas.js`, y la migración ya aplicada se queda.
-- **Todo conductor de alta abre turno al escribir la matrícula** desde el despliegue. El bloqueo de motor al terminar sigue siendo **persona a persona** (botón «Bloqueo de motor» del planificador; hoy nadie lo tiene) y además necesita `FICHAJE_BLOQUEO_MOTOR=1` en Render. Encenderlo para todos es una decisión de Camilo.
 - **Primeros días: mirar el libro** (`fichaje_turno`) — cuántos turnos se cierran como «relevado (no pulsó Entregar coche)» y cuántos se auto-cierran a las 14 h. Si son muchos, hay que insistir con el botón en la comunicación a los conductores. Desde el 29/09 el que escribe la matrícula se queda el coche aunque no le toque: las notas «no tenía ese coche en el cuadrante de hoy» son las que hay que mirar.
 - **Se quedó para todos (29/09):** abrir turno con la matrícula es de todo conductor de alta, como se desplegó el 28/09 (Camilo lo confirmó después de preguntar por qué lo tenían todos). El 29/09 por la mañana habían abierto turno 30 personas, y en Mapon queda creada la ficha de conductor de cada uno.
 
 ## El ciclo de bloqueo de motor (30/09/2026)
 
-- **Desplegar y aplicar `db/167` desde /migraciones.** La migración solo da las llaves del módulo nuevo ([[Ciclo de bloqueo de motor]]) a quien podía editar el planificador; sin ella, solo lo ven superadmin y desarrollador. Con el despliegue se van el repaso y el corte del cierre automático, y los coches de otra sede dejan de recibir órdenes.
-- **Hoy nadie tiene el bloqueo encendido.** A Deisy se lo apagó Camilo el 29/09 a las 10:39 y a Lionar William el 28/09 a las 21:22. Para que el ciclo empiece hay que volver a encenderlo persona a persona en el planificador (botón «Bloqueo de motor»), y `FICHAJE_BLOQUEO_MOTOR=1` en Render.
-- **`db/168`**: la llave de Usuarios y permisos para Ignacio (y el índice que impide que la tengan dos). Sin ella, `/usuarios` sigue siendo solo del desarrollador.
-- **El 1888LTJ** (Barcelona) lo soltó Camilo desde Mapon el 30/09. Con el despliegue ya no lo toca nada; hasta entonces el repaso lo puede volver a cortar si se queda veinte minutos aparcado.
+- **Desplegado y con `db/167` aplicada** (30/09, 12:37). El módulo ([[Ciclo de bloqueo de motor]]) lo ven William, Cristopher, Karen, Lorenzo y Angel (los que editan el planificador), además del desarrollador. Esa noche los dos turnos que se cerraron solos a las 14 h (0400MMZ y 9523MMX) llevan ya la nota «el motor no se toca», y desde el 29/09 a las 18:00 no ha salido **ninguna** orden de motor.
+- **Hoy nadie tiene el bloqueo encendido.** A Deisy se lo apagó Camilo el 29/09 a las 10:39 y a Lionar William el 28/09 a las 21:22. Para que el ciclo empiece basta con volver a encenderlo persona a persona en el planificador (botón «Bloqueo de motor»): `FICHAJE_BLOQUEO_MOTOR=1` ya está en Render (el turno del 5775KKL del 28/09 dejó la nota «Motor NO bloqueado: sin relé de corte», que solo se escribe con el interruptor puesto).
+- **Decisión abierta: los viajes de empresa.** Con el interruptor puesto, un viaje (usuario del ERP con el fichaje encendido) bloquea el coche **siempre** al terminar, sin mirar a nadie. Hay 14 usuarios con viajes encendidos; en la última semana solo hubo uno, la prueba de Camilo con el 1888LTJ. Camilo dijo «los únicos que bloquearán son los conductores»: falta que diga si los viajes dejan de bloquear.
+- **El 1888LTJ** (Barcelona): con el despliegue ya no lo toca nada; su última orden es la de William soltándolo el 28/09 a las 13:16.
 
-## Migraciones por aplicar (29/09/2026)
+## «No vuelve a la M-30» (30/09/2026)
 
-- **`db/166`**: la columna `alerta_control.suceso_at` y su índice único, para el aviso **«No vuelve a la M-30»** (una alerta por coche y pasajero dejado). Sin ella el mapa enseña el reloj pero **no sale ningún WhatsApp**: lo dice una vez en el log. Se aplica desde /migraciones con el despliegue arriba. (La 165, la baja de William, ya está aplicada: 29/09 a las 12:52.)
-- El aviso nace **encendido** y los avisos van en `live`: en cuanto estén el despliegue y la 166, empieza a sonar. Se apaga o se cambia el umbral (15 min) en /alertas.
+- **Sonando desde el 30/09 a las 12:38**, cuando se aplicó `db/166`. Hasta las 17:01 salieron **30 avisos** (22 coches, 22 conductores): unos 7 por hora. Si a los controladores les parecen muchos, el umbral (15 min) se cambia o el aviso se apaga en /alertas.
 
 ## Para mañana (21/09/2026)
 
