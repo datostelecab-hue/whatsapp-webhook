@@ -181,6 +181,15 @@ const CATALOGO = [
   { grupo: 'Dirección', items: [
     { clave: '/bi', etiqueta: 'Inteligencia de negocio' },
   ] },
+  { grupo: 'Sistema', items: [
+    // USUARIOS Y PERMISOS, ADEMÁS DEL DESARROLLADOR (30/09/2026). Camilo: «dale
+    // acceso solo a Ignacio al módulo de usuarios y permisos». Es de UNA sola
+    // persona, como la de aprobar fichajes: lo vigila la base
+    // (db/168, uq_permiso_usuarios) y no la pantalla. `manual`: no la reparte
+    // ningún rol, ni siquiera los que llevan todo el catálogo. El superadmin NO
+    // entra por serlo: o eres el desarrollador o tienes esta llave.
+    { clave: '/usuarios', etiqueta: 'Usuarios y permisos (una sola persona, además del desarrollador)', manual: true },
+  ] },
 ];
 
 // Rutas que son el MISMO módulo con otro nombre (el front del planificador
@@ -406,13 +415,18 @@ async function guardar(usuarioId, claves, { usuarioMod } = {}) {
   } catch (e) {
     // Una llave de una sola persona que ya tiene otra (db/159). Se dice quién,
     // que es lo que hace falta para arreglarlo.
-    if (e.code === '23505' && e.constraint === 'uq_permiso_fichaje_revisar') {
+    const UNA_PERSONA = {
+      uq_permiso_fichaje_revisar: { clave: '/fichaje/revisar', que: 'La llave de aprobar los fichajes' },
+      uq_permiso_usuarios: { clave: '/usuarios', que: 'La llave de Usuarios y permisos' },
+    };
+    const una = e.code === '23505' && UNA_PERSONA[e.constraint];
+    if (una) {
       const r = await db.consulta(`
         SELECT btrim(u.nombre || ' ' || COALESCE(u.apellidos, '')) AS quien
           FROM usuario_permiso p JOIN usuario u ON u.id = p.usuario_id
-         WHERE p.clave = '/fichaje/revisar' LIMIT 1`);
+         WHERE p.clave = $1 LIMIT 1`, [una.clave]);
       const q = r.rows[0] ? r.rows[0].quien : 'otra persona';
-      throw new Error('La llave de aprobar los fichajes solo la puede tener una persona, ' +
+      throw new Error(una.que + ' solo la puede tener una persona, ' +
         'y ya la tiene ' + q + '. Quítasela primero y luego dásela a quien quieras. No se ha guardado nada.');
     }
     throw e;

@@ -163,13 +163,14 @@ Dos candados por rol, además del catálogo:
 
 ## La pantalla `/usuarios`
 
-Es **solo del desarrollador**: `router.use(sesion.requiereDesarrollador)` en la primera línea del controlador; un superadmin ni la ve. Desde ahí se crea la cuenta, se cambia el rol, se bloquea o se activa, se resetea la contraseña, se cierran sus sesiones, se marca quién ficha y se marca **casilla a casilla** qué módulos abre.
+Es **del desarrollador y de Ignacio** (desde el 30/09/2026): `router.use(sesion.requiereGestorUsuarios)` en la primera línea del controlador deja pasar al rol desarrollador o a quien tenga la llave **`/usuarios`**, que es de **una sola persona** —la base no deja que la tengan dos (`db/168`, `uq_permiso_usuarios`), igual que la de aprobar fichajes— y que `db/168` le dio a Ignacio Cafferata (usuario 1). Darle el rol de desarrollador no valía: le abría también la base de datos y las migraciones. Un superadmin sigue sin verla: la llave se mira en sus filas de verdad, no en el acceso total de su rol. Desde ahí se crea la cuenta, se cambia el rol, se bloquea o se activa, se resetea la contraseña, se cierran sus sesiones, se marca quién ficha y se marca **casilla a casilla** qué módulos abre.
 
 Nunca se devuelve el hash. A los de acceso total no se les pinta matriz, y guardar permisos sobre uno de ellos da error explicando por qué.
 
-Cuatro reglas que el controlador defiende:
+Las reglas que el controlador defiende:
 
 - No puedes quitarte a ti mismo el rol de desarrollador.
+- **Quien entra por la llave (no es el desarrollador)** no da el rol de desarrollador (ni al crear una cuenta ni al cambiar un rol), no toca la cuenta del desarrollador (rol, estado, contraseña, sesiones, permisos, fichaje) y no se quita a sí mismo la llave: si la desmarca en su matriz, se le mantiene.
 - No puedes desactivarte a ti mismo.
 - **Debe quedar al menos un administrador activo**: no se puede dejar el sistema sin nadie con acceso total.
 - Si alguien **baja** de un rol con acceso total a uno normal y no tiene matriz, se le siembra la de su rol nuevo para que no se quede mirando una pantalla vacía.

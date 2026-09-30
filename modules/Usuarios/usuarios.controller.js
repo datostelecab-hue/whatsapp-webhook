@@ -11,9 +11,30 @@ const { enviarCorreo } = require('../../services/correo');
 // Aquí se crean las cuentas y se elige, USUARIO A USUARIO, qué módulos y
 // submódulos puede abrir cada uno (usuario_permiso). Los roles con acceso
 // total (Admin, Desarrollador) no llevan matriz: entran a todo; y el control
-// de los usuarios es SOLO del desarrollador — un Admin ni ve esta pantalla.
+// de los usuarios es del desarrollador — un Admin ni ve esta pantalla.
+//
+// Y DE IGNACIO (30/09/2026): desde db/168 entra también quien tenga la llave
+// '/usuarios', que solo puede tener una persona. Quien entra así NO es el
+// desarrollador, y hay tres cosas que no hace:
+//   · dar el rol de desarrollador (abre la base de datos y las migraciones);
+//   · tocar la cuenta del desarrollador (rol, estado, contraseña, sesiones,
+//     permisos): no puede dejar el sistema sin quien lo mantiene;
+//   · quitarse a sí mismo la llave (se quedaría fuera sin poder volver).
 
-router.use(sesion.requiereDesarrollador);
+router.use(sesion.requiereGestorUsuarios);
+
+const esDev = req => !!(req.usuario && req.usuario.rol === 'desarrollador');
+/** Quien no es el desarrollador no toca la cuenta del desarrollador. */
+async function noEsDelDesarrollador(req, { email, id } = {}) {
+  if (esDev(req)) return;
+  let u = null;
+  if (email) u = await usuarios.buscarUsuario(usuarios.normalizarEmail(email));
+  else if (id) u = (await usuarios.leerUsuarios()).lista.find(x => x.id === Number(id));
+  if (u && u.rol === 'desarrollador') throw new Error('Esa es la cuenta del desarrollador: solo la toca él.');
+}
+const noDaDesarrollador = (req, rol) => {
+  if (!esDev(req) && rol === 'desarrollador') throw new Error('El rol de desarrollador solo lo da el desarrollador.');
+};
 
 router.get('/', (req, res) => {
   res.render('usuarios', {
@@ -53,6 +74,7 @@ router.post('/crear', async (req, res) => {
     const b = req.body || {};
     if (!String(b.apellidos || '').trim()) throw new Error('Faltan los apellidos');
     if (!String(b.telefono || '').trim()) throw new Error('Falta el teléfono');
+    noDaDesarrollador(req, b.rol);
     const { usuario, passwordProvisional } = await usuarios.crearUsuario({
       email: b.email, nombre: b.nombre, apellidos: b.apellidos, telefono: b.telefono, rol: b.rol,
       creado_por: req.usuario.email,
@@ -74,8 +96,12 @@ router.post('/permisos', async (req, res) => {
     const u = lista.find(x => x.id === Number(b.usuarioId));
     if (!u) throw new Error('No existe ese usuario');
     if (u.accesoTotal) throw new Error(`${u.nombre} tiene acceso total por su rol: no lleva matriz`);
+    await noEsDelDesarrollador(req, { id: u.id });
     const yo = lista.find(x => usuarios.normalizarEmail(x.email) === usuarios.normalizarEmail(req.usuario.email));
-    const r = await permisos.guardar(u.id, b.claves || [], { usuarioMod: yo ? yo.id : null });
+    let claves = b.claves || [];
+    // Quien entra por la llave no se la quita a sí mismo: se quedaría fuera.
+    if (!esDev(req) && yo && yo.id === u.id && !claves.includes('/usuarios')) claves = [...claves, '/usuarios'];
+    const r = await permisos.guardar(u.id, claves, { usuarioMod: yo ? yo.id : null });
     console.log(`🔐 [Usuarios] Permisos de ${u.email}: ${r.claves.length} módulo(s) — por ${req.usuario.email}`);
     res.json({ status: 'ok', claves: r.claves });
   } catch (e) { res.status(400).json({ status: 'error', msg: e.message }); }
@@ -86,7 +112,9 @@ router.post('/rol', async (req, res) => {
     const b = req.body || {};
     const email = usuarios.normalizarEmail(b.email);
     if (!await usuarios.esRol(b.rol)) throw new Error(`Rol no válido: "${b.rol}"`);
-    if (email === usuarios.normalizarEmail(req.usuario.email) && b.rol !== 'desarrollador') {
+    noDaDesarrollador(req, b.rol);
+    await noEsDelDesarrollador(req, { email });
+    if (esDev(req) && email === usuarios.normalizarEmail(req.usuario.email) && b.rol !== 'desarrollador') {
       throw new Error('No puedes quitarte a ti mismo el rol de desarrollador');
     }
     const antes = await usuarios.buscarUsuario(email);
@@ -107,6 +135,7 @@ router.post('/estado', async (req, res) => {
     const b = req.body || {};
     const email = usuarios.normalizarEmail(b.email);
     const estado = b.estado === 'bloqueado' ? usuarios.ESTADOS_U.BLOQUEADO : usuarios.ESTADOS_U.ACTIVO;
+    await noEsDelDesarrollador(req, { email });
     if (email === usuarios.normalizarEmail(req.usuario.email) && estado === usuarios.ESTADOS_U.BLOQUEADO) {
       throw new Error('No puedes desactivarte a ti mismo');
     }
@@ -138,6 +167,7 @@ router.post('/reset', async (req, res) => {
     const email = usuarios.normalizarEmail((req.body || {}).email);
     const u = await usuarios.buscarUsuario(email);
     if (!u) throw new Error('No existe ese usuario');
+    await noEsDelDesarrollador(req, { email });
     const prov = usuarios.generarPasswordProvisional();
     await usuarios.actualizarUsuario(email, { hash: usuarios.hashPassword(prov), debe_cambiar: 'si' });
     const r = await enviarCorreo({
@@ -156,6 +186,7 @@ router.post('/reset', async (req, res) => {
 router.post('/fichaje', async (req, res) => {
   try {
     const b = req.body || {};
+    await noEsDelDesarrollador(req, { id: b.id });
     const u = await usuarios.fijarFichaObligatorio(Number(b.id), b.debe === true || b.debe === 'si');
     console.log(`⏱️  [Usuarios] ${u.email}: ${u.fichaObligatorio ? 'SI ficha' : 'no ficha'} — por ${req.usuario.email}`);
     res.json({ status: 'ok', fichaObligatorio: u.fichaObligatorio });
@@ -167,6 +198,7 @@ router.post('/fichaje', async (req, res) => {
 router.post('/fichaje-coche', async (req, res) => {
   try {
     const b = req.body || {};
+    await noEsDelDesarrollador(req, { id: b.id });
     const u = await usuarios.fijarFichaCoche(Number(b.id), b.puede === true || b.puede === 'si');
     console.log(`🔑 [Usuarios] ${u.email}: ${u.fichaCoche ? 'SI coge coches' : 'no coge coches'} — por ${req.usuario.email}`);
     res.json({ status: 'ok', fichaCoche: u.fichaCoche });
@@ -180,6 +212,7 @@ router.post('/cerrar-sesiones', async (req, res) => {
     const email = usuarios.normalizarEmail((req.body || {}).email);
     const u = await usuarios.buscarUsuario(email);
     if (!u) throw new Error('No existe ese usuario');
+    await noEsDelDesarrollador(req, { email });
     const r = await usuarios.cortarSesiones(u.id);
     usuarios.olvidarCorte(u.id);
     console.log(`🔒 [Usuarios] Sesiones de ${email} cerradas — por ${req.usuario.email}`);

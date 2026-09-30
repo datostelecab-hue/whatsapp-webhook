@@ -336,6 +336,22 @@ function requiereSuperadmin(req, res, next) {
   return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
 }
 
+// USUARIOS Y PERMISOS: el desarrollador, o quien tenga la llave '/usuarios'
+// (una sola persona: Ignacio, db/168). El superadmin NO entra por serlo: la
+// llave se mira en sus filas de verdad, no en el «acceso total» de su rol.
+async function requiereGestorUsuarios(req, res, next) {
+  const u = req.usuario;
+  if (u && u.rol === 'desarrollador') return next();
+  try {
+    const id = u ? await idDeSesion(u) : null;
+    if (id && (await permisos.clavesDe(id)).has('/usuarios')) return next();
+  } catch (e) {
+    console.error('❌ [SESIÓN] gestor de usuarios:', e.message);
+  }
+  if (esApi(req)) return res.status(403).json({ status: 'error', msg: 'Sin permiso para Usuarios y permisos' });
+  return res.status(403).render('sin-permiso', { titulo: 'Sin permiso', seccion: '', layout: 'layout-gestion' });
+}
+
 // Solo el desarrollador (excluye incluso al superadmin): para "Tickets Telecab".
 function requiereDesarrollador(req, res, next) {
   if (req.usuario && req.usuario.rol === 'desarrollador') return next();
@@ -371,6 +387,6 @@ module.exports = {
   ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS, DURACION_MS,
   dispositivoDe, olvidarSesion,
   cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,
-  requiereSuperadmin, requiereDesarrollador,
+  requiereSuperadmin, requiereDesarrollador, requiereGestorUsuarios,
   sembrarSuperadmin
 };

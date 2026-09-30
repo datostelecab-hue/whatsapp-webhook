@@ -270,7 +270,10 @@
             { href: '/bi', icono: 'fa-chart-pie', texto: 'Inteligencia de negocio', id: 'bi' }
           ] },
           { nombre: 'Sistema', icono: 'fa-database', rol: 'desarrollador', items: [
-            { href: '/usuarios',    icono: 'fa-users-gear',  texto: 'Usuarios y permisos', id: 'usuarios', solo: 'desarrollador' },
+            // Del desarrollador y de quien tenga la llave '/usuarios' (una sola
+            // persona: Ignacio, db/168). `oLlave` NO vale para el acceso total:
+            // el superadmin no tiene esa fila y no la ve.
+            { href: '/usuarios',    icono: 'fa-users-gear',  texto: 'Usuarios y permisos', id: 'usuarios', solo: 'desarrollador', oLlave: '/usuarios' },
             { href: '/explorador',  icono: 'fa-database',    texto: 'Base de datos', id: 'explorador', solo: 'desarrollador' },
             { href: '/migraciones', icono: 'fa-code-branch', texto: 'Migraciones', id: 'migraciones', solo: 'desarrollador' }
           ] }
@@ -280,7 +283,9 @@
         // (Admin, Desarrollador). Lo marcado `solo` es de ese rol y de nadie más.
         const misPermisos = (typeof permisos !== 'undefined' && permisos) ? new Set(permisos) : null;
         const rolSesion = typeof rol !== 'undefined' ? rol : '';
-        const puedeVer = it => it.solo ? rolSesion === it.solo : (!misPermisos || misPermisos.has(it.href));
+        const puedeVer = it => it.solo
+          ? (rolSesion === it.solo || !!(it.oLlave && misPermisos && misPermisos.has(it.oLlave)))
+          : (!misPermisos || misPermisos.has(it.href));
         const gruposVisibles = grupos
           .map(g => ({ nombre: g.nombre, icono: g.icono, rol: g.rol, items: g.items.filter(puedeVer) }))
           .filter(g => g.items.length);

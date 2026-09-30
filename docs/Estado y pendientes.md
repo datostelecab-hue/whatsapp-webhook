@@ -27,6 +27,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 - **Desplegar y aplicar `db/167` desde /migraciones.** La migración solo da las llaves del módulo nuevo ([[Ciclo de bloqueo de motor]]) a quien podía editar el planificador; sin ella, solo lo ven superadmin y desarrollador. Con el despliegue se van el repaso y el corte del cierre automático, y los coches de otra sede dejan de recibir órdenes.
 - **Hoy nadie tiene el bloqueo encendido.** A Deisy se lo apagó Camilo el 29/09 a las 10:39 y a Lionar William el 28/09 a las 21:22. Para que el ciclo empiece hay que volver a encenderlo persona a persona en el planificador (botón «Bloqueo de motor»), y `FICHAJE_BLOQUEO_MOTOR=1` en Render.
+- **`db/168`**: la llave de Usuarios y permisos para Ignacio (y el índice que impide que la tengan dos). Sin ella, `/usuarios` sigue siendo solo del desarrollador.
 - **El 1888LTJ** (Barcelona) lo soltó Camilo desde Mapon el 30/09. Con el despliegue ya no lo toca nada; hasta entonces el repaso lo puede volver a cortar si se queda veinte minutos aparcado.
 
 ## Migraciones por aplicar (29/09/2026)

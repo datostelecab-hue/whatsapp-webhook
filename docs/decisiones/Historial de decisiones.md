@@ -7,6 +7,10 @@ actualizado: 2026-09-30
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-09-30 · Usuarios y permisos, también para Ignacio
+
+El módulo `/usuarios` deja de ser solo del desarrollador: entra también quien tenga la llave `/usuarios`, que es de una sola persona (db/168) y tiene Ignacio. No se le dio el rol de desarrollador porque abre la base de datos y las migraciones. Quien entra por la llave no da el rol de desarrollador ni toca la cuenta del desarrollador. → [[Usuarios y permisos]]
+
 ## 2026-09-30 · El BI se refresca de madrugada, no cada hora
 
 El refresco de los hechos del BI (horas, ingresos, km) pasa de cada hora a una vez al día, a las 04:30. `bi_hecho_km_dia` tardaba 27 s de media y hasta 63 s, y en una base de 1 CPU ponía la CPU al 100 % cada hora a y cuarto: lo notó Camilo al abrir el ciclo de bloqueo de motor justo a las 12:15. El BI enseña hasta ayer; lo de hoy, con el botón de refrescar. → [[Base de datos]]
