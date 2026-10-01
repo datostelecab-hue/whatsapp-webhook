@@ -37,8 +37,8 @@ Quién entra hoy:
 
 | Quién | A qué |
 |---|---|
-| Plantilla (`routes/plantilla.js`) | los documentos de la ficha del conductor |
-| Selección (`routes/seleccion.js`) | los papeles del candidato y su ficha en PDF |
+| Plantilla (`modules/Conductores/plantilla.service.js`) | los documentos de la ficha del conductor |
+| Selección (`modules/Seleccion/seleccion.service.js`) | los papeles del candidato y su ficha en PDF |
 | su propio controlador | la API genérica |
 
 ## La API
@@ -81,10 +81,16 @@ sin aviso es peor que una ruta vieja. **Se borran en cuanto se confirme.**
 cuenta de Google y devuelven el `refresh_token` para guardarlo en Render como
 `GOOGLE_OAUTH_REFRESH_TOKEN`. Después no hacen falta.
 
+## Carga masiva
+
+**Antes de subir papeles de muchos de una vez, leer «Carga masiva» en
+`docs/modulos/Documentos.md`.** Lo corto: se sube por `documentos.service.subir`;
+la persona se reconoce por el DNI, nunca por el nombre; subir un tipo que ya
+tiene REEMPLAZA al vigente (hay 125 subidos a 01/10/2026); `foto` es la cara de
+la persona, no un escaneo; y `MODO_PRUEBAS` NO frena Drive: el ensayo se hace sin
+llamar a `subir`.
+
 ## Lo que falta
 
-La tabla tiene **14 filas de 2 conductores** (de 218), subidas el 3 y 4 de
-septiembre: son las pruebas de la migración. El módulo está listo; lo que falta
-es cargar los papeles. Se notó investigando la suspensión de BOLT del 12/09,
-donde no se pudo descartar una caducidad de documentos porque ese conductor
-—como otros 216— no tiene ninguno cargado.
+Cargar los papeles de la plantilla: a 01/10/2026 hay 125 documentos para 219
+personas de alta, y la carga desde la carpeta de RRHH está en marcha.
