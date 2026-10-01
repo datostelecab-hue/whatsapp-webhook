@@ -15,11 +15,14 @@
 const path = require('path');
 const Modulo = require('module');
 
-// Se intercepta `require('./db')` ANTES de cargar el servicio.
+// Se intercepta su `require('../../services/db')` ANTES de cargarlo. Desde la
+// Fase 2 el cazamiento vive en modules/Conductores/cazamiento.repo.js; antes era
+// services/cazamientoBolt.js y pedía './db' (01/10/2026: la prueba se había
+// quedado interceptando al puente y caía en la base de verdad).
 const cargarOriginal = Modulo._load;
 const llamadas = [];
 Modulo._load = function (peticion, padre, esPrincipal) {
-  if (peticion === './db' && padre && padre.filename.endsWith('cazamientoBolt.js')) {
+  if (peticion === '../../services/db' && padre && padre.filename.endsWith('cazamiento.repo.js')) {
     return {
       consulta: async (sql, params) => {
         llamadas.push({ sql, params });
@@ -36,7 +39,7 @@ Modulo._load = function (peticion, padre, esPrincipal) {
   return cargarOriginal.apply(this, arguments);
 };
 
-const bolt = require(path.join(__dirname, '..', 'services', 'cazamientoBolt.js'));
+const bolt = require(path.join(__dirname, '..', 'modules', 'Conductores', 'cazamiento.repo.js'));
 Modulo._load = cargarOriginal;
 
 let ok = 0, mal = 0;
@@ -49,18 +52,27 @@ const comprobar = (que, cond, detalle) => {
   console.log('\n1. Los arreglos que van a unnest');
   llamadas.length = 0;
   const cuentas = [
-    { driver_uuid: 'aaa', nombre: 'Ana García', phone: '+34600111222', email: 'ana@x.es', state: 'ACTIVE' },
+    { driver_uuid: 'aaa', nombre: 'Ana García', phone: '+34600111222', email: 'ana@x.es', state: 'ACTIVE',
+      has_cash_payment: false, rating: 4.93, score: '87' },
     { driver_uuid: 'bbb', nombre: 'Luis Pérez', phone: '', email: '', state: 'deactivated' },
     { driver_uuid: 'ccc', nombre: 'Marta Ruiz', phone: '600333444', email: 'm@x.es', state: 'active' },
   ];
   const r = await bolt.sincronizar(cuentas);
 
   const ins = llamadas[0];
-  const [uuids, nombres, tels, emails, estados] = ins.params;
-  comprobar('cinco arreglos', ins.params.length === 5, `llegaron ${ins.params.length}`);
+  // OCHO desde que se guardan el efectivo, la nota y la puntuación de BOLT (las
+  // cinco del principio más esas tres). La prueba esperaba cinco y se quedó atrás.
+  const [uuids, nombres, tels, emails, estados, efectivos, ratings, scores] = ins.params;
+  comprobar('ocho arreglos', ins.params.length === 8, `llegaron ${ins.params.length}`);
   comprobar('todos con la misma longitud',
-    [nombres, tels, emails, estados].every(a => a.length === uuids.length),
-    `uuids=${uuids.length} nombres=${nombres.length} tels=${tels.length} emails=${emails.length} estados=${estados.length}`);
+    [nombres, tels, emails, estados, efectivos, ratings, scores].every(a => a.length === uuids.length),
+    `uuids=${uuids.length} nombres=${nombres.length} tels=${tels.length} emails=${emails.length} estados=${estados.length} ` +
+    `efectivos=${efectivos.length} ratings=${ratings.length} scores=${scores.length}`);
+  comprobar('el efectivo: false es un dato y lo que no viene es un hueco (null)',
+    efectivos[0] === false && efectivos[1] === null, JSON.stringify(efectivos));
+  comprobar('la nota y la puntuación, como número; lo que no viene, null',
+    ratings[0] === 4.93 && scores[0] === 87 && ratings[1] === null && scores[2] === null,
+    JSON.stringify({ ratings, scores }));
   comprobar('el orden se conserva', uuids.join(',') === 'aaa,bbb,ccc', uuids.join(','));
   comprobar('cada dato con su cuenta',
     nombres[0] === 'Ana García' && tels[0] === '+34600111222' && tels[2] === '600333444',

@@ -8,7 +8,7 @@
 // Las funciones SQL hacen la misma cuenta; si estos numeros salen, salen alli.
 
 const path = require('path');
-const j = require(path.join(__dirname, '..', 'services', 'repo', 'jornada'));
+const j = require(path.join(__dirname, '..', 'modules', 'RRHH', 'jornada.repo'));
 
 let mal = 0;
 const ok = (t, c, extra) => { if (!c) mal++; console.log((c ? '  ok  ' : '  MAL ') + t + (extra ? '  ' + extra : '')); };

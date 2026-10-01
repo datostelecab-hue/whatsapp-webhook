@@ -16,7 +16,13 @@ const eq = (a, b, msg) => {
   else { console.log('  ✗ ' + msg + '  (esperaba "' + b + '", salió "' + a + '")'); fallos++; }
 };
 
-const corriendo = { empezada: true };
+// `reclamable` (11/09/2026): la ventana de la noche se abre a mediodía para MEDIR,
+// pero a quien entra a las 17:00 no se le reclama nada antes de su hora. Una
+// ventana «en marcha» de las de siempre es medible Y reclamable; `abiertaSinHora`
+// es la de la noche a las 13:00. (La prueba se quedó sin esto el 11/09 y daba
+// cinco fallos que no eran de la regla, sino suyos.)
+const corriendo = { empezada: true, reclamable: true };
+const abiertaSinHora = { empezada: true, reclamable: false };
 const sinEmpezar = { empezada: false };
 
 // Una actividad vacía por defecto; cada caso cambia solo lo suyo.
@@ -43,6 +49,16 @@ eq(salidaDe(null, sinEmpezar), 'pendiente',
 eq(salidaDe(darwin, sinEmpezar), 'pendiente',
   'ni siquiera con actividad arrastrada: si no ha empezado, pendiente');
 eq(salidaDe(null, null), 'pendiente', 'sin ventana (la fuente falló) no se acusa a nadie');
+
+console.log('\n=== MEDIR NO ES RECLAMAR (la noche, a mediodía) ===');
+eq(salidaDe(null, abiertaSinHora), 'pendiente',
+  'antes de su hora no se reclama a nadie: el que aún no ha aparecido está pendiente');
+eq(salidaDe(act({ minDescanso: 95 }), abiertaSinHora), 'pendiente',
+  'tampoco por estar en descanso antes de su hora');
+eq(salidaDe(act({ minutos: 30, km: 12, conectadoAhora: true }), abiertaSinHora), 'conectado',
+  'pero si ya está rodando, se dice: ha salido');
+eq(salidaDe(act({ minutos: 45, km: 20 }), abiertaSinHora), 'salio',
+  'y si trabajó antes de su hora y se desconectó, salió');
 
 console.log('\n=== QUIÉN HAY QUE LLAMAR ===');
 eq(salidaDe(null, corriendo), 'no_salio', 'su turno corre y no hay ni rastro de él: a llamar');

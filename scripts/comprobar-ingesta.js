@@ -25,6 +25,25 @@ const SENALES = [
   { patron: /require\(['"][^'"]*\/bolt['"]\)|require\(['"]\.\/bolt['"]\)/, api: 'BOLT' },
 ];
 
+// LO QUE NO ES LLAMAR. `services/mapon.js` también guarda reglas puras —qué
+// equipo vale cuando un coche lleva dos—, y quien solo se trae ESO no habla con
+// la API. Se reconoce porque lo desestructura y nada más:
+//   const { elegirEquipo } = require('../mapon');
+// (01/10/2026: el motor del mapa y el repositorio de Vehículos salían como
+// infracción por esto, sin haber llamado nunca a Mapon.)
+const PURAS = { Mapon: ['elegirEquipo', 'notaEquipo'] };
+const soloPuras = (txt, api) => {
+  const rx = api === 'Mapon'
+    ? /const\s*\{([^}]*)\}\s*=\s*require\(['"][^'"]*\/?mapon['"]\)/g : null;
+  if (!rx) return false;
+  const usos = [...txt.matchAll(rx)];
+  // Y ningún otro require de mapon que no sea desestructurado.
+  const todos = (txt.match(/require\(['"][^'"]*\/?mapon['"]\)/g) || []).length;
+  if (!usos.length || usos.length !== todos) return false;
+  return usos.every(m => m[1].split(',').map(x => x.trim().split(':')[0].trim()).filter(Boolean)
+    .every(n => PURAS[api].includes(n)));
+};
+
 // La única puerta.
 const PUERTA = ['services/ingesta.js'];
 
@@ -51,7 +70,13 @@ const PERMITIDOS = {
                                  'No tiene pantalla y no la llama nadie: se pide por URL cuando hace falta',
   // (La tubería de horas sobre hojas —boltHorasCore, boltResumen, boltHistorico—
   //  se borró el 15/09/2026. Ya no hay excepción que apuntar.)
-  'services/conductores.js':     'Módulo viejo sobre hojas: muere cuando la agenda pase a PostgreSQL',
+  // (services/conductores.js, el módulo viejo sobre hojas, ya no existe: fuera, 01/10/2026.)
+  'services/zonasMapon.js':      'Ingesta de las alertas de geocerca de Mapon (las guarda crudas y alertas.repo las ' +
+                                 'lee de la base). La lanza el motor del mapa, no services/ingesta: se unifica con ' +
+                                 'la de flota viva',
+  'modules/BloqueoMotor/bloqueoMotor.service.js':
+                                 'Ciclo de bloqueo de motor: el relé de cada coche tiene que ser el de AHORA, porque ' +
+                                 'con él se decide si se suelta un motor, y la ingesta no guarda el estado del relé',
   'services/fichaje.js':         'Fichaje: ESCRIBE en Mapon (enlaza conductor y coche), no lee',
   // Nacio en `main`, donde esta regla no existia, y con su PROPIA base de datos
   // (`fv_*`). Entra por la puerta grande el dia que su padron se funda con el
@@ -93,7 +118,7 @@ for (const f of ficheros) {
   const txt = fs.readFileSync(path.join(RAIZ, f), 'utf8').replace(/\/\/[^\n]*/g, '');
 
   const apis = new Set();
-  for (const s of SENALES) if (s.patron.test(txt)) apis.add(s.api);
+  for (const s of SENALES) if (s.patron.test(txt) && !soloPuras(txt, s.api)) apis.add(s.api);
   if (!apis.size) continue;
 
   const lista = [...apis].join(' y ');

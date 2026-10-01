@@ -325,7 +325,11 @@ No son de los seis, pero forman parte de la misma red:
 - **`comprobar-ingesta.js`** — nadie llama a [[BOLT]] o a [[Mapon]] por su cuenta
   sin apuntar el motivo. Su lista `PERMITIDOS` solo puede encoger, y avisa también
   de los permisos que ya no hacen falta. Marca con `X` mayúscula lo que es una ruta
-  o una vista, que nunca debe.
+  o una vista, que nunca debe. **Importar una regla pura de `services/mapon.js` no es
+  llamar** (`PURAS`, 01/10/2026): `const { elegirEquipo } = require('../mapon')` no
+  habla con la API, y el motor del mapa y el repositorio de Vehículos salían como
+  infracción solo por eso. Se saboteó con tres ficheros: solo la regla pura pasa; la
+  regla más una llamada, o el módulo entero, saltan.
 - **`inventario-muerto.js`** — qué ficheros ya no alcanza nadie. Es la lista que se
   usa para borrar de verdad al final de la Fase 2, así que un falso positivo ahí no
   es ruido: **es un despliegue roto**.
@@ -344,6 +348,15 @@ reglas sin que nadie lo decidiera**. Una herramienta que deja de mirar no avisa 
 que ha dejado de mirar: sigue diciendo "todo bien", con menos ficheros dentro. Al
 arreglarlo aparecieron dos ficheros llamando a BOLT/Mapon sin permiso, tres
 huérfanos falsos y una cuenta que había bajado de 259 llamadas comprobadas a 117.
+
+**1 bis. Las pruebas también se quedan atrás** (encontrado el 01/10/2026 al buscar
+huérfanos). `probar-jornada`, `probar-registro` y `probar-variables` pedían un
+fichero que se mudó el 15/09 y no arrancaban; `probar-bolt` interceptaba la base del
+puente y no la del código de verdad; `comprobar-directo` daba cinco fallos desde el
+11/09 porque sus ventanas de turno no traían `reclamable`. Ninguno era un fallo del
+código: eran pruebas que nadie volvió a pasar después de cambiarlo. **Al mover un
+fichero o cambiar una regla, se pasan también las pruebas que lo tocan**, no solo
+los seis comprobadores.
 
 **2. Gritaron en falso.** Un comprobador que se equivoca enseña a ignorarlo, así
 que cada falso positivo se arregló y se dejó anotado en el propio fichero: la coma

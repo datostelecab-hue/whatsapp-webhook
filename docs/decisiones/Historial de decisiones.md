@@ -7,6 +7,10 @@ actualizado: 2026-10-01
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-01 · Organización, tanda 1: lo que estaba roto sin que se viera
+
+Del análisis de huérfanos salieron cosas rotas sin avisar: tres PDF sin logo desde la mudanza a `modules/`, cuatro pruebas que no arrancaban o fallaban por haberse quedado atrás (no por el código) y `comprobar-ingesta` acusando a dos ficheros que solo importaban una regla pura de Mapon. Arreglado todo; las dos llamadas reales a Mapon que faltaban (zonas y ciclo de bloqueo) quedan apuntadas con su motivo. Las 26 pruebas y comprobadores sin base pasan. → [[Comprobadores]] · [[Trampas conocidas]]
+
 ## 2026-10-01 · La traza por Slack, en varios canales
 
 La marca de Slack de cada conductor pasa a llevar una lista de canales (db/171) en vez de uno, y `Dialogo.formulario` gana la selección múltiple (`multiple: true`) para todas las pantallas. → [[Control En directo]] · [[Componentes de la casa]]

@@ -12,7 +12,10 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const path = require('path');
 const fs = require('fs');
 
-const LOGO = path.join(__dirname, '..', 'public', 'assets', 'logo-128.png');
+// Dos niveles: desde modules/<Módulo>/ hasta la raíz. Con uno solo (como se
+// quedó al mudar el fichero desde services/, 14-15/09) el PDF salía sin logo y
+// sin avisar: el `if (existe)` de abajo lo tapaba.
+const LOGO = path.join(__dirname, '..', '..', 'public', 'assets', 'logo-128.png');
 const EMPRESA = 'TIBUS LUXURY';
 
 const C = {

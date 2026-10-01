@@ -1695,6 +1695,19 @@ mismo cálculo, a nombre de la misma persona. Para quitarle un exceso a alguien 
 **desatribuye** (sin conductor, uuid ni teléfono, `sin_conductor` y una nota),
 como en `db/169`. Ver [[Sanciones de velocidad]].
 
+### Mover un fichero cambia sus rutas relativas, y un `if (existe)` lo tapa
+
+Al mudar los PDF de asistencia, cascada de km y taller de `services/` a
+`modules/<Módulo>/` (14-15/09), su `path.join(__dirname, '..', 'public', …)` siguió
+subiendo un nivel, que desde la carpeta nueva ya no es la raíz. El logo dejó de
+encontrarse y los tres PDF salieron **sin logo durante dos semanas**, sin un error:
+`if (fs.existsSync(LOGO))` lo saltaba. Se arregló el 01/10/2026 (dos niveles) y se
+comprobó generando el PDF: de 0 imágenes a 2. `caminos-rotos-erp.js`, en Scripts de
+análisis, busca todos los `path.join(__dirname, 'literal'…)` que no existen.
+
+> Un recurso opcional que «si no está, no pasa nada» es un recurso que puede faltar
+> semanas sin que nadie lo vea. Al mover un fichero, se buscan sus `__dirname`.
+
 ### Una lista con `valor` devolvía vacío si nadie la tocaba (17/09 → 01/10/2026)
 
 Cuando las listas de `Dialogo.formulario` dejaron de ser el `<select>` del

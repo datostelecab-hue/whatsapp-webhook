@@ -3,7 +3,7 @@
 // ============================================================
 //   node scripts/probar-jornada.js
 //
-// Las funciones puras de services/repo/jornada.js no tocan la base, asi que se
+// Las funciones puras de modules/RRHH/jornada.repo.js no tocan la base, asi que se
 // prueban con logs de mentira. Lo que se comprueba es EL CAMBIO del Hito 2:
 //
 //   · has_order cuenta como trabajo (TE_A3), siempre.
@@ -13,7 +13,7 @@
 //   · si hubo actividad, se anaden los 20 min auxiliares (TE_C).
 
 const path = require('path');
-const j = require(path.join(__dirname, '..', 'services', 'repo', 'jornada'));
+const j = require(path.join(__dirname, '..', 'modules', 'RRHH', 'jornada.repo'));
 
 let mal = 0;
 const ok = (t, c, extra) => { if (!c) mal++; console.log((c ? '  ok  ' : '  MAL ') + t + (extra ? '  ' + extra : '')); };
