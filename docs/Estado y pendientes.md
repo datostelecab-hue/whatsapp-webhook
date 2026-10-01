@@ -15,6 +15,13 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## Organización del código (01/10/2026)
+
+- **Hechas las tandas 1 y 2** (arreglos y cierre de la Fase 2). Ver [[ARQUITECTURA]].
+- **Siguiente, si se quiere**: sacar el traspaso Selección → Conductores a la capa de servicio y borrar los 4 puentes que quedan (`services/repo/conductores`, `documentos`, `exigencia`, `vacantes`). Toca el alta, así que va con pruebas propias.
+- **Decisiones de Camilo**: qué hacer con `services/repo/notificaciones.js` (Hito 6 del convenio, sin enchufar y con un SQL que pide una columna que no existe) y si los scripts de la migración de agosto (`cargar-*`, `migrar-*`, `reset`, `vaciar-conductores`) se archivan.
+- `inventario-exports` lista 28 funciones exportadas que nadie llama de fuera: para otra pasada, mirando una a una que no las llame una ruta por cadena ni un cron.
+
 ## «No saldrá» y «Traza por Slack» en Control (01/10/2026)
 
 - **Desplegar y aplicar `db/171`** desde /migraciones: la traza por Slack con varios canales. Hasta aplicarla se siguen viendo las trazas que hay, pero marcar una nueva da error. (`db/170` ya está aplicada: 01/10 a las 12:45.)

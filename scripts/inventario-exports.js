@@ -28,7 +28,11 @@ const fs = require('fs');
 const path = require('path');
 const RAIZ = path.join(__dirname, '..');
 
-const CARPETAS = ['services', 'routes'];
+// `modules/` ENTRA (01/10/2026). Sin él, toda función que solo llama un módulo
+// mudado salía como muerta —`sesion.requiereGestorUsuarios`, que usa Usuarios;
+// `historiaDelCoche`, que usa el ciclo de bloqueo— y los exports de los módulos
+// no se miraban nunca. Es la misma avería que tuvo inventario-muerto.
+const CARPETAS = ['services', 'routes', 'modules'];
 
 function ficherosDe(dir) {
   const out = [];
@@ -45,7 +49,7 @@ function ficherosDe(dir) {
 // scripts/ ENTRA en la busqueda de usos, aunque no se barra: un export que solo
 // llama un test de scripts/ NO esta muerto, esta probado. Olvidar esto marcaba
 // como muertas media docena de funciones de flota viva que cubre su suite.
-const TODOS = ficherosDe('services').concat(ficherosDe('routes'), ficherosDe('scripts'), ['app.js']);
+const TODOS = ficherosDe('services').concat(ficherosDe('routes'), ficherosDe('modules'), ficherosDe('scripts'), ['app.js']);
 const texto = new Map(TODOS.map(f => [f, fs.readFileSync(path.join(RAIZ, f), 'utf8')]));
 
 // ── Qué exporta cada fichero ────────────────────────────────────────────────
@@ -119,7 +123,9 @@ const sobreExport = [];    // vivo dentro, exportado de mas: quitar solo el expo
 const ambiguos = [];       // nombre demasiado comun para afirmar nada
 
 for (const f of TODOS) {
-  if (f.startsWith('routes/')) continue;   // los routers exportan `router`, no funciones
+  // Los routers exportan `router`, no funciones; los scripts no se barren (sí
+  // cuentan como uso, arriba).
+  if (f.startsWith('routes/') || f.startsWith('scripts/') || /\.controller\.js$/.test(f)) continue;
   const exps = exportsDe(texto.get(f));
   for (const nombre of exps) {
     if (usadoFuera(nombre, f)) continue;             // alguien de fuera lo usa: vivo
@@ -130,7 +136,7 @@ for (const f of TODOS) {
 
 // ── Salida ──────────────────────────────────────────────────────────────────
 console.log('\n═══ EXPORTS QUE NADIE LLAMA DESDE FUERA ═══');
-console.log(`${TODOS.length} ficheros · se listan solo services/ (los routers exportan el router entero)\n`);
+console.log(`${TODOS.length} ficheros · se listan services/ y modules/ (no los controladores ni los scripts)\n`);
 
 const porFichero = {};
 for (const { f, nombre } of muertos) (porFichero[f] ||= []).push(nombre);

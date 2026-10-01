@@ -307,6 +307,33 @@ posible es mínimo, y dejando para el final los que más gente toca:
 ~~**Seleccion**~~ ~~**Conductores**~~ ~~**Control**~~ ~~**Planificacion**~~
 ~~**Operaciones**~~ ~~**RRHH**~~ ~~**Administracion**~~ (hechos) → lo que queda en hojas.
 
+### Cerrada: los puentes, fuera (01/10/2026)
+
+El paso 3 de la mecánica dejaba un reexportador en la ruta vieja «hasta que no lo
+apunte nadie». El 01/10/2026 se cerró:
+
+- **22 puentes borrados**: los 16 que ya no apuntaba nadie y 6 cuyos usos se
+  pasaron a la ruta nueva (`app.js` con `ett`, `generador`, `plantilla`,
+  `seleccion` y `vacantes`; `services/ingesta.js` con el cazamiento). Antes de
+  borrarlos se cargó cada uno y se vio que era **el mismo objeto** que su destino:
+  cambiar el `require` no podía cambiar nada.
+- **Muertos fuera**: `services/conductoresBolt.js` (el padrón sobre la hoja, sin uso
+  desde el 15/09), `views/layout.ejs` (el oscuro de julio; ninguna pantalla lo pedía
+  y el layout por defecto de `app.set` pasa a ser `layout-gestion`), `config/bolt.js`
+  (vacío) y dos lienzos vacíos de Obsidian subidos por error.
+- **Quedan 4 a propósito**: `services/repo/conductores`, `documentos`, `exigencia` y
+  `vacantes`. No son un nombre viejo: **tapan que un repositorio entra en el de otro
+  módulo** —el traspaso Selección → Conductores (`candidaturas.repo`,
+  `services/repo/alta`, `services/repo/incorporaciones`)—. Al quitarlos,
+  `comprobar-capas` da 5 incumplimientos, y con razón. Un repositorio no puede llamar
+  a un servicio (la flecha al revés), así que el arreglo de verdad es **sacar ese
+  traspaso a la capa de servicio**; hasta entonces se quedan, listados en
+  `comprobar-capas` como deuda.
+- `logo-64.png` se queda: no lo pide nadie del repositorio, pero `/assets` es público.
+- Las herramientas de inventario mentían por la misma avería de siempre (no miraban
+  `modules/`): `inventario-muerto` daba por muertas tres piezas vivas y
+  `inventario-exports` 19 funciones que sí se usan. Arregladas.
+
 ### Hecho: Documentos
 
 **Sí es un módulo**, y de los importantes: es el archivo documental de la

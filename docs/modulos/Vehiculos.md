@@ -277,7 +277,7 @@ No se ha movido a propósito: este módulo fue **el primero en mudarse** y la mu
 
 ## Los puentes
 
-`routes/vehiculos.js`, `services/repo/vehiculos.js`, `services/sincroMapon.js`, `routes/taller.js`, `services/repo/taller.js`, `services/tallerExcel.js` y `services/tallerPdf.js` siguen existiendo con una línea que reexporta lo de aquí. **Están vivos a propósito**: si se escapó una referencia, sigue funcionando en vez de dar un 500 en producción. Se borran cuando `node scripts/inventario-muerto.js` diga que no los apunta nadie.
+`routes/vehiculos.js`, `services/repo/vehiculos.js`, `services/sincroMapon.js`, `routes/taller.js`, `services/repo/taller.js`, `services/tallerExcel.js` y `services/tallerPdf.js` fueron una línea que reexportaba lo de aquí, viva a propósito mientras durara la mudanza. **Se borraron el 01/10/2026**, al cerrar la [[ARQUITECTURA|Fase 2]]: ya no los apuntaba nadie (comprobado cargando cada uno y viendo que era el mismo objeto que su destino).
 
 ## Ver también
 

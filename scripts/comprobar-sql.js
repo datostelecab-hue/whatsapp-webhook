@@ -399,7 +399,7 @@ console.log(malVig ? `${malVig} problema(s) en el mapa de vigencias` : 'El mapa 
 // Y que los campos que la ficha declara editables sean COLUMNAS DE VERDAD y no
 // generadas. Escribir en una columna generada es un error de PostgreSQL, y un
 // campo mal escrito se descubre cuando alguien intenta guardar.
-const cond = require(path.join(__dirname, '..', 'services', 'repo', 'conductores.js'));
+const cond = require(path.join(__dirname, '..', 'modules', 'Conductores', 'conductores.repo.js'));
 const colsConductor = tablas.get('conductor') || new Set();
 // Las generadas se sacan del propio .sql: llevan GENERATED ALWAYS AS.
 const sqlNucleo = fs.readFileSync(path.join(DIR, '01-nucleo.sql'), 'utf8');

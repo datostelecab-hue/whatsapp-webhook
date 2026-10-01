@@ -50,7 +50,6 @@ const PUERTA = ['services/ingesta.js'];
 // Lo que la ingesta usa por debajo: son sus brazos, no puertas nuevas.
 const BRAZOS = [
   'modules/Conductores/cazamiento.repo.js',   // era services/cazamientoBolt.js
-  'services/conductoresBolt.js',
   'modules/Vehiculos/vehiculos.service.js',
   'modules/Operaciones/operaciones.service.js',
   'services/mapon.js',

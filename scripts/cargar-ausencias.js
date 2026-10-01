@@ -14,7 +14,7 @@
 const path = require('path');
 const ExcelJS = require('exceljs');
 const db = require('../services/db');
-const con = require('../services/repo/conductores');
+const con = require('../modules/Conductores/conductores.repo');
 const { normClave } = require('../services/nucleo');
 
 const NL = String.fromCharCode(10);

@@ -7,6 +7,10 @@ actualizado: 2026-10-01
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-01 · Organización, tanda 2: se cierra la Fase 2
+
+Fuera 22 de los 26 puentes y los ficheros muertos (padrón de BOLT sobre la hoja, el layout oscuro de julio, `config/bolt.js` vacío y dos lienzos de Obsidian). Los 4 que quedan tapan que el traspaso Selección → Conductores entra en repositorios de otro módulo: se quitarán cuando ese traspaso pase a la capa de servicio. El layout por defecto pasa a ser el de gestión. → [[ARQUITECTURA]]
+
 ## 2026-10-01 · Organización, tanda 1: lo que estaba roto sin que se viera
 
 Del análisis de huérfanos salieron cosas rotas sin avisar: tres PDF sin logo desde la mudanza a `modules/`, cuatro pruebas que no arrancaban o fallaban por haberse quedado atrás (no por el código) y `comprobar-ingesta` acusando a dos ficheros que solo importaban una regla pura de Mapon. Arreglado todo; las dos llamadas reales a Mapon que faltaban (zonas y ciclo de bloqueo) quedan apuntadas con su motivo. Las 26 pruebas y comprobadores sin base pasan. → [[Comprobadores]] · [[Trampas conocidas]]

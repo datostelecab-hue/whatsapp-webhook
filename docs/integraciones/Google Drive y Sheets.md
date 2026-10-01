@@ -94,7 +94,7 @@ Cinco ficheros, y solo dos de verdad:
 | `modules/Ticketera/formulario.js` | **las respuestas del Google Form** de la ticketera de RRHH | no: el formulario *es* Google |
 | `services/boda.js` | la lista de invitados del módulo de la boda (favor aparte del ERP) | no |
 | `services/configApp.js` | rescate único de `CONFIG` | sí, ya hecho |
-| `services/conductoresBolt.js` | rescate único de las fechas de alta en BOLT | sí, ya hecho |
+| ~~`services/conductoresBolt.js`~~ | rescate único de las fechas de alta en BOLT | sí, ya hecho; el fichero se borró el 01/10/2026 |
 | `modules/Ticketera/rescateIT.js` | rescate único de `TICKETS_IT` | sí, ya hecho |
 
 **El Google Form merece una nota.** Las cabeceras de la hoja de respuestas **son las preguntas**, y las preguntas se reescriben: "DNI" se convierte en "Indica tu DNI o NIE (con la letra)" el día que alguien la aclara. El Apps Script las tenía clavadas en una constante, así que retocar el formulario dejaba una columna sin leer **en silencio**. Ahora se buscan por trozo de texto y —esto es lo que de verdad lo arregla— **lo que no case con ningún campo conocido no se pierde**: se añade a la descripción como «Pregunta: respuesta», así que una pregunta nueva aparece en el ticket desde el primer día sin tocar una línea.

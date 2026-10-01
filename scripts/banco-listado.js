@@ -185,7 +185,7 @@ for (let i = 0; i < 120; i++) {
 
 // Los faltantes se calculan con la MISMA funcion del repositorio: si cambia la
 // regla, el banco cambia con ella y no miente.
-const { faltantesDe } = require('../services/repo/conductores');
+const { faltantesDe } = require('../modules/Conductores/conductores.repo');
 const conFaltan = GENTE.map(p => {
   const vigente = p.empleo_vigente !== false;
   return {

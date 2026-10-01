@@ -471,7 +471,9 @@ if (!SOLO_MEDIR) {
 const puentes = todos.filter(x => x.puente);
 if (!SOLO_MEDIR && puentes.length) {
   console.log('\n═══ REEXPORTADORES (la ruta vieja, viva a propósito) ═══');
-  console.log('  Se borran cuando inventario-muerto.js diga que no los apunta nadie.');
+  console.log('  Los que solo eran el nombre viejo se borraron el 01/10/2026. Los que quedan tapan que');
+  console.log('  un repositorio entra en el de OTRO módulo (el traspaso Selección → Conductores):');
+  console.log('  se borran cuando eso pase por un servicio, no antes; si no, salen como incumplimiento.');
   for (const x of puentes) console.log(`  · ${x.fichero}  →  ${x.apuntaA}`);
 }
 

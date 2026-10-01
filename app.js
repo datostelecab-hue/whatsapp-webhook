@@ -118,7 +118,10 @@ for (const m of require('fs').readdirSync(path.join(__dirname, 'modules'), { wit
   if (require('fs').existsSync(v)) RAICES_VISTAS.push(v);
 }
 app.set('views', RAICES_VISTAS);
-app.set('layout', 'layout');
+// El layout por defecto es el de gestión (01/10/2026). Todas las pantallas dicen el
+// suyo; el viejo `views/layout.ejs` (oscuro, de julio) ya no lo usaba ninguna y se
+// borró. Así, una que se olvide de decirlo sale con el de la casa y no sin ninguno.
+app.set('layout', 'layout-gestion');
 
 // Marca de version para los estaticos. Los archivos de /assets se cachean un
 // dia; sin esto, un despliegue que cambia el CSS o un script deja a la gente
@@ -168,13 +171,13 @@ const botPuertas = require('./routes/botPuertas');
 // tablero PostgreSQL (modules/Planificacion), el mismo que /planificador-v2.
 const coberturaRoutes = require('./modules/Planificacion/cobertura.controller');
 const vehiculosRoutes = require('./modules/Vehiculos/vehiculos.controller');
-const plantillaRoutes = require('./routes/plantilla');
+const plantillaRoutes = require('./modules/Conductores/plantilla.controller');
 const documentosRoutes = require('./modules/Documentos/documentos.controller');
 const controlRoutes = require('./modules/Control/control.controller');
-const vacantesRoutes = require('./routes/vacantes');
-const generadorRoutes = require('./routes/generador');
-const seleccionRoutes = require('./routes/seleccion');
-const ettRoutes = require('./routes/ett');
+const vacantesRoutes = require('./modules/Seleccion/vacantes.controller');
+const generadorRoutes = require('./modules/Seleccion/generador.controller');
+const seleccionRoutes = require('./modules/Seleccion/seleccion.controller');
+const ettRoutes = require('./modules/Seleccion/ett.controller');
 const rrhhRoutes = require('./routes/rrhh');
 const soporteRoutes = require('./routes/soporte');
 const ticketsTelecabRoutes = require('./routes/ticketsTelecab');

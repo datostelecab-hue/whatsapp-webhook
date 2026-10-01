@@ -55,7 +55,7 @@ y lo cerrado no cambia.
 
 **`administracion` se queda donde está.** Es la otra mitad del reparto, pero no
 está en PostgreSQL: cuelga de `services/tickets.js` y `services/conductoresBolt.js`
-(los dos sobre hojas) y de `services/planificadorV2.js`. Misma regla que dejó
+(los dos sobre hojas; el segundo se borró el 01/10/2026) y de `services/planificadorV2.js`. Misma regla que dejó
 fuera a `rrhh`, `peticiones`, `ticketera`, `agenda`, `fichas` y `libranzas`.
 
 **`services/codigosBallenoil.js` ya no existe.** Los códigos de lavado y el PIN

@@ -113,7 +113,5 @@ mueva, el destino ya existe y no hay que tocar a nadie más.
 
 `routes/vehiculos.js`, `services/repo/vehiculos.js`, `services/sincroMapon.js`,
 `routes/taller.js`, `services/repo/taller.js`, `services/tallerExcel.js` y
-`services/tallerPdf.js` siguen existiendo con una línea que reexporta lo de
-aquí. Están vivos a propósito: si se me escapó una referencia, sigue funcionando en vez de dar un
-500 en producción. Se borran cuando `node scripts/inventario-muerto.js` diga que
-no los apunta nadie.
+`services/tallerPdf.js` fueron una línea que reexportaba lo de aquí. Se borraron
+el 01/10/2026, al cerrar la Fase 2: ya no los apuntaba nadie.

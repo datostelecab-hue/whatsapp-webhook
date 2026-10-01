@@ -7,7 +7,7 @@ aliases: [Fleet Integration Gateway, API de Bolt]
 
 BOLT es el operador con el que trabaja la flota, y su API —el *Fleet Integration Gateway*— es la que dice **quién conduce, en qué estado está y cuánto ha facturado**. De aquí salen tres cosas de las que depende medio ERP: la identidad externa del conductor (`driver_uuid`), la jornada laboral (de los cambios de estado) y el dinero (de los pedidos).
 
-El adaptador vive en `services/bolt.js` —"cómo se le pregunta a BOLT" y nada más— y el padrón de conductores en `services/conductoresBolt.js`. Ninguna pantalla llama a BOLT: lo trae la [[Ingesta]] y todo lo demás lee de PostgreSQL.
+El adaptador vive en `services/bolt.js` —"cómo se le pregunta a BOLT" y nada más— y el padrón de conductores en `conductor_externo`, que llena `modules/Conductores/cazamiento.repo.js` desde la [[Ingesta]] (el viejo `services/conductoresBolt.js`, sobre la hoja, se borró el 01/10/2026: no lo usaba nadie desde el 15/09). Ninguna pantalla llama a BOLT: lo trae la [[Ingesta]] y todo lo demás lee de PostgreSQL.
 
 ## Cómo se entra
 
@@ -172,6 +172,6 @@ Nada de esto entra hoy en la [[Calificacion de conductores]], que pondera horas 
 | `services/repo/vehiculosBolt.js` | catálogo de coches; casa por matrícula normalizada y **no pisa lo que ha escrito una persona** (`datos_origen = 'manual'`) |
 | `modules/Operaciones/auditoria.service.js` | la [[Auditoria de flota]] forense, con `comprobarCompleto` |
 | `services/flotaViva/fuentes.js` | [[Flota viva]]: quién lleva el coche y en qué está |
-| `services/conductoresBolt.js` | el padrón |
+| `modules/Conductores/cazamiento.repo.js` | el padrón, cuando lo lanza la ingesta (tarea `padron_bolt`) |
 
 Nadie más. Una respuesta se interpreta **una vez** y se deja en PostgreSQL; si BOLT se cae, las pantallas siguen leyendo lo último que entró y pueden decir de cuándo es.

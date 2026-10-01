@@ -41,7 +41,7 @@ const TAREAS = {
     cadaMin: Number(process.env.INGESTA_PADRON_BOLT_MIN) || 60,
     critica: true,
     async ejecutar() {
-      const r = await require('./cazamientoBolt').sincronizarDesdeBolt();
+      const r = await require('../modules/Conductores/cazamiento.repo').sincronizarDesdeBolt();
       return { registros: r.vistas, detalle: r };
     },
   },

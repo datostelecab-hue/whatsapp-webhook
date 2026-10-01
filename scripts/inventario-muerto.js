@@ -80,6 +80,21 @@ function resolver(desde, spec) {
   return null;
 }
 
+// ── Dónde se buscan las vistas ─────────────────────────────────────────────
+// En las MISMAS raíces que app.js: views/ y cada modules/<Módulo>/vistas/. Hasta
+// el 01/10/2026 se buscaban solo en views/, y desde la Fase 2 casi todas viven en
+// un módulo: la pantalla no se alcanzaba, y con ella tampoco lo que pide. Salían
+// por HUÉRFANOS el historial de llamadas de Control, flotaVivaGestion.js y
+// piezasCoche.js, que se usan a diario: borrar por esta lista habría roto tres
+// pantallas.
+const RAICES_VISTAS = ['views', ...fs.readdirSync(path.join(RAIZ, 'modules'), { withFileTypes: true })
+  .filter(d => d.isDirectory() && fs.existsSync(path.join(RAIZ, 'modules', d.name, 'vistas')))
+  .map(d => `modules/${d.name}/vistas`)];
+const vista = nombre => {
+  for (const r of RAICES_VISTAS) { const v = `${r}/${nombre}.ejs`; if (texto.has(v)) return v; }
+  return null;
+};
+
 // ── Las aristas ─────────────────────────────────────────────────────────────
 // De cada fichero salen tres tipos de referencia y hay que buscar las tres.
 const aristas = new Map();   // fichero -> Set de ficheros a los que llama
@@ -107,15 +122,14 @@ for (const f of TODOS) {
     const p = m[1].replace(/^\.\.\//, '');
     for (const cand of [p, p + '.js']) if (texto.has(cand)) enlazar(f, cand);
   }
-  // 3. Vistas: render('x') y layout: 'x'.
-  for (const m of src.matchAll(/(?:render|layout)\s*[(:]\s*['"]([\w\-\/]+)['"]/g)) {
-    const v = 'views/' + m[1] + '.ejs';
-    if (texto.has(v)) enlazar(f, v);
-  }
-  // 4. include('partials/x') dentro de una vista.
+  // 3. Vistas: render('x'), layout: 'x' y el layout por defecto de app.set.
+  for (const m of src.matchAll(/(?:render|layout)\s*[(:]\s*['"]([\w\-\/]+)['"]/g)) enlazar(f, vista(m[1]));
+  for (const m of src.matchAll(/set\(\s*['"]layout['"]\s*,\s*['"]([\w\-\/]+)['"]/g)) enlazar(f, vista(m[1]));
+  // 4. include('partials/x') dentro de una vista: primero junto a la vista que
+  //    incluye (es como lo resuelve EJS) y, si no, en las raíces.
   for (const m of src.matchAll(/include\(\s*['"]([\w\-\/]+)['"]/g)) {
-    const v = 'views/' + m[1] + '.ejs';
-    if (texto.has(v)) enlazar(f, v);
+    const junto = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1] + '.ejs'));
+    enlazar(f, texto.has(junto) ? junto : vista(m[1]));
   }
   // 5. Assets citados por URL.
   for (const m of src.matchAll(/\/assets\/([\w\-\/\.]+)/g)) {
