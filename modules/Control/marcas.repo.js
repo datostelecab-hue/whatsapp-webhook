@@ -46,6 +46,7 @@ const CANALES_SLACK = [
   '12-gestion-de-flota',
   '13-insidencias-coches-conductores',
   '14-taller-soporte',
+  'control-de-trafico',   // 01/10/2026, sin número delante
 ];
 
 // Antes de aplicar db/170 las tablas no existen: el cockpit sigue saliendo,
