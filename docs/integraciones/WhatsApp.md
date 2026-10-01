@@ -62,7 +62,7 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 
 `app.js` verifica el webhook con `VERIFY_TOKEN` (en el entorno) y `routes/botPuertas.js` recibe los mensajes.
 
-**Enrutado por número.** Lo primero que se mira es el `phone_number_id` del mensaje: lo que llega al número de la boda va a `services/boda.js` (un favor aparte, con su propio módulo de confirmaciones) y el bot de Telecab queda intacto. Un mismo webhook, dos productos.
+**Solo se contesta lo que llega a nuestro número.** Lo primero que se mira es el `phone_number_id` del mensaje: si no es el de Telecab, se apunta en el log (`📵 Mensaje a otro número`) y no se contesta. La app de WhatsApp tiene colgado también el número de la boda, cuyo módulo de confirmaciones se quitó el 01/10/2026; Meta sigue mandando aquí sus mensajes, y sin este filtro un invitado recibiría el saludo del bot de conductores.
 
 **Quién puede usar el bot.** Lo decide `services/repo/puertas.quienPuedeAbrir()`: un conductor abre **por estar de alta** con el número con el que se le dio de alta, y la gente de oficina **por tener el permiso `/puertas`**, que se reparte uno a uno. BOLT no entra en esa decisión a propósito. Y cuando no se puede, **se dice qué falta** (`sin_numero`, `no_esta`, `sin_alta`, `bloqueado`, `sin_permiso`, `error`): un "no estás autorizado" a secas manda a la persona a preguntar a tráfico y a tráfico a mirar la hoja, y cada motivo tiene una salida distinta.
 

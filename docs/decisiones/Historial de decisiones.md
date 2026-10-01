@@ -7,6 +7,10 @@ actualizado: 2026-10-01
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-01 · Fuera el módulo de la boda
+
+El favor aparte (confirmaciones de la boda por WhatsApp, panel oculto `/boda-igna-cruz`) sale del ERP entero: servicio, rutas, pantalla e imagen. No tenía tablas: la lista de invitados vive en una hoja de Google, que no se toca. El webhook pasa a contestar **solo** lo que llega al número de Telecab, porque el de la boda sigue colgado de la misma app de WhatsApp y sus mensajes caerían en el bot de conductores. → [[WhatsApp]]
+
 ## 2026-10-01 · El traspaso Selección → Conductores, por la capa de servicio
 
 Selección creaba y daba de alta a la persona entrando en los repositorios de Conductores, Documentos y la propia Selección por los 4 últimos puentes. Ahora lo que coordina está en servicios (`candidaturas.service`, `conductores.service` con `realizarAlta`), las incorporaciones son de Selección, y el paso a propia recibe la comprobación de papeles de quien llama. Sin puentes y con 0 incumplimientos de capas. Una traza de 42 casos contra el código de antes salió idéntica. → [[ARQUITECTURA]]

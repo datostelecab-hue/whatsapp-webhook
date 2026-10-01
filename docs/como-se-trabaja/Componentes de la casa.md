@@ -178,7 +178,6 @@ El **21/09/2026** se pasó de **227 ayudas en 36 pantallas** a **310 en todas la
 | Cambiar / recuperar contraseña | Van sobre `layout-auth`, que **no carga `ayuda.js`**. Tres campos y nada que explicar. |
 | Sin permiso | Un mensaje y un botón. |
 | `layout.ejs`, `layout-auth.ejs` | Son plantillas, no pantallas. |
-| Boda | No es del ERP. |
 
 **La regla para lo que venga:** cuando una pantalla enseñe un número que no se explique solo —un porcentaje, un color, una cifra recortada por una ventana de tiempo— lleva su `title`. Una frase de qué es, y otra de qué hacer.
 

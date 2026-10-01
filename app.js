@@ -190,7 +190,6 @@ const notificacionesRoutes = require('./routes/notificaciones');
 const pendientesRoutes = require('./modules/RRHH/pendientes.controller');
 const operacionesRoutes = require('./modules/Operaciones/operaciones.controller');
 const sancionesRoutes = require('./modules/Operaciones/sanciones.controller');
-const bodaRoutes = require('./routes/boda');
 const authRoutes = require('./modules/Usuarios/auth.controller');
 const usuariosRoutes = require('./modules/Usuarios/usuarios.controller');
 const sesion = require('./services/sesion');
@@ -359,11 +358,6 @@ app.get('/mi-red', (req, res) => {
 // empiezan por `fv_` y su conexión es propia (FLOTA_VIVA_DB_URL). Aquí solo se
 // engancha.
 app.use('/flota-viva', require('./modules/Control/flota.controller'));
-
-// ── BODA (favor aparte, módulo OCULTO): panel solo-superadmin para enviar las
-//    invitaciones por WhatsApp. No está en el menú ni en ACCESO. El webhook (POST /)
-//    ya enruta por phone_number_id lo que llega al número de la boda. ──────────────
-app.use('/boda-igna-cruz', bodaRoutes);
 
 // ============================================================
 // CRON

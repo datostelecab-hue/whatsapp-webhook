@@ -274,7 +274,7 @@ decidirlo antes de mover nada.
 | **Bolt** | `boltHoras` |
 | **Soporte** | `soporte`, `ticketsTelecab` |
 | **Configuracion** | `configuracion`, `migraciones`, `explorador`, `inicio` |
-| **Boda** | `boda` (favor aparte, oculto, se queda como está) |
+| ~~**Boda**~~ | `boda` — **quitado el 01/10/2026** (era un favor aparte, oculto). El webhook ya solo contesta a lo que llega al número de Telecab |
 
 `Mapon` no aparece: no tiene pantalla, es un adaptador. `Vacaciones` de la lista
 original cae dentro de **Conductores** (las ausencias son estado del conductor,

@@ -48,12 +48,13 @@ router.post('/', async (req, res) => {
       return;
     }
 
-    // Enrutado por número: lo que llega al número de la BODA (favor aparte) va a su
-    // propio módulo. El bot de Telecab queda intacto.
+    // SOLO SE CONTESTA LO QUE LLEGA A NUESTRO NÚMERO. La app de WhatsApp tiene más
+    // de un número colgado (el de la boda, cuyo módulo se quitó el 01/10/2026) y
+    // Meta manda aquí los mensajes de todos. Sin esto, un invitado que escribiera
+    // a aquel número recibiría el saludo del bot de conductores.
     const phoneNumberId = req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-    const boda = require('../services/boda');
-    if (phoneNumberId === boda.PHONE_NUMBER_ID) {
-      await boda.manejarMensaje(message);
+    if (phoneNumberId && phoneNumberId !== PHONE_NUMBER_ID) {
+      console.log(`📵 Mensaje a otro número (${phoneNumberId}): no es del bot de Telecab, no se contesta`);
       return;
     }
 
