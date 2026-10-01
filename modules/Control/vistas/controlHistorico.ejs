@@ -41,7 +41,7 @@
     las <span class="text-sky-400">presuntas</span> están pendientes de aprobar.
   </p>
 
-  <div id="h-resumen" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-4"></div>
+  <div id="h-resumen" class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2 mb-4"></div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
     <div class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden">
@@ -150,6 +150,10 @@
       tarjeta('No salieron', r.noSalieron,
         r.noSalieron ? 'border-red-500/30 bg-red-500/10 text-red-300' : null,
         'Nadie de su cuenta de BOLT rodó en la ventana de su turno') +
+      // «NO SALDRÁ», con el desglose por motivo al pasar el ratón (db/170).
+      tarjeta('No saldrá', r.noSaldra || 0, null,
+        (r.noSaldraPorMotivo || []).filter(m => m.n).map(m => m.etiqueta + ': ' + m.n).join(' · ') ||
+          'Nadie marcado como «No saldrá» con su motivo') +
       tarjeta('Con alertas', r.conAlerta,
         r.conAlerta ? 'border-amber-500/25 bg-amber-500/10 text-amber-300' : null) +
       tarjeta('Sin comentar', r.sinAtender,
@@ -227,6 +231,15 @@
         (a.contestada ? '<i class="fa-solid fa-check mr-1 opacity-70"></i>' : '') +
         esc(a.etiqueta) + '</span>').join(' ');
 
+    // Las marcas del día (db/170): el motivo de «No saldrá» y el canal de Slack.
+    const marcas =
+      (c.noSale ? '<span class="text-[11px] px-1.5 py-0.5 rounded border border-telecab-border text-telecab-text" title="' +
+          esc(c.noSale.comentario + ' — ' + (c.noSale.quien || '—') + ', ' + c.noSale.hora) + '">' +
+          '<i class="fa-solid fa-ban mr-1 text-telecab-muted"></i>No saldrá · ' + esc(c.noSale.etiqueta) + '</span>' : '') +
+      (c.slack ? '<span class="text-[11px] px-1.5 py-0.5 rounded border border-telecab-border text-telecab-muted" title="' +
+          esc('Traza por Slack · ' + (c.slack.quien || '—') + ', ' + c.slack.hora) + '">' +
+          '<i class="fa-brands fa-slack mr-1"></i>#' + esc(c.slack.canal) + '</span>' : '');
+
     return '<details class="hfila ' + barra + ' border-b border-telecab-border/60" ' +
       'data-cid="' + esc(c.conductorId || '') + '">' +
       '<summary class="px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 hover:bg-telecab-dark/30">' +
@@ -243,7 +256,7 @@
         '</span>' +
         (jEstado ? '<span class="text-[11px] px-1.5 py-0.5 rounded border ' + TONO_J[jEstado] + '">J ' +
           esc(J_ETQ[jEstado]) + '</span>' : '') +
-        '<span class="flex flex-wrap gap-1 justify-end">' + chips + '</span>' +
+        '<span class="flex flex-wrap gap-1 justify-end">' + marcas + chips + '</span>' +
         '<span class="text-xs text-telecab-muted w-20 text-right">' +
           (c.llamadas.length
             ? '<i class="fa-solid fa-phone mr-1"></i>' + c.llamadas.length
@@ -295,6 +308,18 @@
                 '<i class="fa-solid fa-clock-rotate-left mr-1"></i>Historial completo</button>'
               : '') +
           '</div>' +
+          (c.noSale
+            ? '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 px-3 py-2 text-xs">' +
+                '<strong class="text-telecab-text"><i class="fa-solid fa-ban mr-1 text-telecab-muted"></i>No saldrá · ' +
+                  esc(c.noSale.etiqueta) + '</strong>' +
+                '<p class="mt-0.5 text-telecab-text">' + esc(c.noSale.comentario) + '</p>' +
+                '<p class="mt-0.5 text-telecab-muted">' + (esc(c.noSale.quien) || '—') + ', ' + esc(c.noSale.hora) + '</p>' +
+              '</div>'
+            : '') +
+          (c.slack
+            ? '<p class="text-xs text-telecab-muted"><i class="fa-brands fa-slack mr-1"></i>Traza por Slack en <strong class="text-telecab-text">#' +
+                esc(c.slack.canal) + '</strong> · ' + (esc(c.slack.quien) || '—') + ', ' + esc(c.slack.hora) + '</p>'
+            : '') +
           (c.llamadas.length
             ? '<div class="space-y-1.5">' + pintaLlamadas(c.llamadas) + '</div>'
             : '<p class="text-xs text-telecab-muted">No se apuntó ninguna llamada.</p>') +
@@ -329,8 +354,9 @@
   }
 
   const VISTAS = [
-    { id: 'todo', etq: 'Todo lo que pasó', hay: c => c.alertas.length || c.llamadas.length || c.salida === 'no_salio' || c.justificante },
+    { id: 'todo', etq: 'Todo lo que pasó', hay: c => c.alertas.length || c.llamadas.length || c.salida === 'no_salio' || c.justificante || c.noSale || c.slack },
     { id: 'nosalio', etq: 'Ausencias', hay: c => c.salida === 'no_salio' },
+    { id: 'nosaldra', etq: 'No saldrá', hay: c => !!c.noSale },
     { id: 'sincomentar', etq: 'Alertas sin comentar', hay: c => c.alertas.some(a => a.tono === 'error' && !a.contestada) },
     { id: 'llamados', etq: 'Con llamada', hay: c => c.llamadas.length > 0 },
     { id: 'justificados', etq: 'Con justificante', hay: c => c.justificante || c.jRechazadas.length },

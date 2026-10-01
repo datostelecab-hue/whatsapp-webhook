@@ -194,6 +194,13 @@ async function parte(dia) {
           detalle: av.detalle || '', respuestas: dicha, contestada: dicha.length > 0 };
       }),
       llamadas: suyas,
+      // Las marcas del día (db/170): por qué no salió, dicho por Control con su
+      // motivo, y en qué canal de Slack quedó la traza.
+      noSale: f.noSale ? {
+        motivo: f.noSale.motivo, etiqueta: f.noSale.etiqueta, comentario: f.noSale.comentario,
+        quien: f.noSale.quien || '', hora: f.noSale.hora || '',
+      } : null,
+      slack: f.slack ? { canal: f.slack.canal, quien: f.slack.quien || '', hora: f.slack.hora || '' } : null,
       justificante: j ? {
         horas: j.horas, estado: j.estado, obs: j.obs, quien: j.quien, tipo: j.tipo,
         aprobadaPor: j.aprobadaPor || '',
@@ -241,11 +248,22 @@ async function parte(dia) {
   }));
 
   const js = Object.values(justis);
+  // LOS «NO SALDRÁ», POR MOTIVO: es para lo que se pidieron los motivos —poder
+  // contar cuántas veces no sale alguien por asuntos propios o por un error de
+  // planificación nuestro—. En el orden del catálogo, también los que están a 0.
+  const { MOTIVOS_NO_SALE } = require('./marcas.repo');
+  const conNoSale = conductores.filter(c => c.noSale);
+  const noSaldraPorMotivo = MOTIVOS_NO_SALE.map(m => ({
+    motivo: m.codigo, etiqueta: m.etiqueta, n: conNoSale.filter(c => c.noSale.motivo === m.codigo).length,
+  }));
   return {
     dia: d,
     resumen: {
       conductores: conductores.length,
       noSalieron: noSalieron.length,
+      noSaldra: conNoSale.length,
+      noSaldraPorMotivo,
+      trazasSlack: conductores.filter(c => c.slack).length,
       conAlerta: conAlerta.length,
       sinAtender: sinAtender.length,
       llamadas: llamadas.length,

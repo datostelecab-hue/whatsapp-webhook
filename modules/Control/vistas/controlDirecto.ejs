@@ -146,7 +146,8 @@
   // y contaba los km rodados estando desconectado, así que daba por salido a quien
   // había terminado su noche a las 03:51 y dejó el coche rodando pasadas las 05:00.
   const salio = f => ['conectado', 'salio', 'descanso'].includes(f.salida);
-  const falta = f => f.salida === 'no_salio';
+  // Con «No saldrá» apuntado ya no falta nadie por llamar: se sabe por qué no sale.
+  const falta = f => f.salida === 'no_salio' && !f.noSale;
 
   const TONO = {
     ok:    'bg-emerald-500/15 text-emerald-500',
@@ -204,6 +205,7 @@
   // chip y en el resumen de arriba. Así el ojo aprende el código una vez.
   const ESTADO = {
     no_salio:     { barra: 'bg-red-500',        etq: 'NO HA SALIDO',   tono: 'error', fila: 'bg-red-500/[0.05]' },
+    no_saldra:    { barra: 'bg-telecab-border', etq: 'NO SALDRÁ',      tono: 'muted', fila: '' },
     pendiente:    { barra: 'bg-transparent',    etq: 'Aún no le toca', tono: 'muted', fila: '' },
     desconectado: { barra: 'bg-telecab-border', etq: 'Desconectado',   tono: 'muted', fila: '' },
     descanso:     { barra: 'bg-amber-500',      etq: 'En descanso',    tono: 'aviso', fila: '' },
@@ -216,6 +218,10 @@
   // es lo que Tráfico necesita separar: no es lo mismo uno parado esperando
   // pedido que uno con pasajero dentro.
   function grupoDe(f) {
+    // «NO SALDRÁ» (db/170): no ha salido —o su turno aún no empieza— y ya se sabe
+    // por qué. Va aparte de los que hay que llamar. Si aun así sale, manda lo que
+    // esté haciendo: el chip del motivo se queda en su fila.
+    if (f.noSale && (f.salida === 'no_salio' || f.salida === 'pendiente')) return 'no_saldra';
     if (f.salida === 'no_salio') return 'no_salio';
     if (f.salida === 'pendiente') return 'pendiente';
     // Lo que diga el ahora de cada 10 s (refrescarAhora), si ya ha llegado; si
@@ -228,6 +234,7 @@
   // El orden de la lista, de lo que hay que mirar a lo que ya está rodando.
   const GRUPOS = [
     { id: 'no_salio',     etq: 'No han salido · hay que llamar', icono: 'fa-phone-volume' },
+    { id: 'no_saldra',    etq: 'No saldrán · con su motivo',     icono: 'fa-ban' },
     { id: 'pendiente',    etq: 'Todavía no les toca',            icono: 'fa-hourglass-half' },
     { id: 'desconectado', etq: 'Desconectados · ya no están',    icono: 'fa-plug-circle-xmark' },
     { id: 'descanso',     etq: 'En descanso',                    icono: 'fa-mug-hot' },
@@ -407,10 +414,14 @@
   function avisosHTML(f) {
     const av = f.avisos || [];
     const nInc = (f.incidencias || []).length;
-    if (!av.length && !nInc) return '<span class="text-telecab-border text-xs">—</span>';
-    const chips = av.map(a =>
+    // «No saldrá» va el primero: es la respuesta, y por eso ya no hay «No llegará».
+    const ns = f.noSale ? chipNoSale(f.noSale) : '';
+    if (!av.length && !nInc) return ns
+      ? '<span class="flex flex-wrap justify-end gap-1">' + ns + '</span>'
+      : '<span class="text-telecab-border text-xs">—</span>';
+    const chips = (ns ? [ns] : []).concat(av.map(a =>
       '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] ' +
-      (AV_TONO[a.tono] || AV_TONO.aviso) + '" title="' + esc(a.detalle || '') + '">' + esc(a.etq) + '</span>');
+      (AV_TONO[a.tono] || AV_TONO.aviso) + '" title="' + esc(a.detalle || '') + '">' + esc(a.etq) + '</span>'));
     // Ya se llamó o ya se justificó: la alerta sigue ahí, pero atendida. El chip
     // dice QUÉ pasó (el resultado de la llamada, o las horas justificadas), y al
     // pasar el ratón, QUIÉN lo hizo, a qué hora y la nota que dejó. Sin eso el
@@ -751,12 +762,28 @@
 
     // Y lo que se puede hacer con ello: llamar y dejar traza, o justificar las
     // horas que faltan si el motivo es nuestro (dos horas de taller, p. ej.).
+    // «No saldrá» y «Traza por Slack» (db/170), con quién y cuándo.
+    const marcasHTML = (f.noSale || f.slack)
+      ? '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 p-2 mb-3 space-y-1">' +
+          (f.noSale ? '<div class="text-xs text-telecab-text"><i class="fa-solid fa-ban text-telecab-muted mr-1"></i>' +
+              '<b>No saldrá · ' + esc(f.noSale.etiqueta) + '</b>' +
+              ' · ' + esc(f.noSale.hora || '') + (f.noSale.quien ? ' · por ' + esc(f.noSale.quien) : '') +
+              '<div class="text-telecab-muted mt-0.5">«' + esc(f.noSale.comentario) + '»</div></div>' : '') +
+          (f.slack ? '<div class="text-xs text-telecab-text"><i class="fa-brands fa-slack text-telecab-muted mr-1"></i>' +
+              'Traza por Slack en <b>#' + esc(f.slack.canal) + '</b>' +
+              ' · ' + esc(f.slack.hora || '') + (f.slack.quien ? ' · por ' + esc(f.slack.quien) : '') + '</div>' : '') +
+        '</div>'
+      : '';
     const acciones = f.conductorId
-      ? '<div class="flex flex-wrap items-center gap-2 mb-3">' +
+      ? marcasHTML + '<div class="flex flex-wrap items-center gap-2 mb-3">' +
           '<button data-tellog="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
             '<i class="fa-solid fa-phone-flip mr-1"></i> He llamado</button>' +
           '<button data-justdir="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-sky-500 hover:text-sky-500">' +
             '<i class="fa-solid fa-file-circle-check mr-1"></i> Justificar horas</button>' +
+          '<button data-nosale="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-solid fa-ban mr-1"></i> ' + (f.noSale ? 'Cambiar «No saldrá»' : 'No saldrá') + '</button>' +
+          '<button data-slack="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
+            '<i class="fa-brands fa-slack mr-1"></i> ' + (f.slack ? 'Traza en #' + esc(f.slack.canal) : 'Traza por Slack') + '</button>' +
           // Arriba se ve lo de HOY. Esto abre todo lo demás, y se abre en una
           // ventana encima a propósito: la ficha del directo se mira para
           // decidir en dos segundos si hay que llamar, y meterle aquí dentro
@@ -1010,7 +1037,29 @@
           'title="Justificar la jornada: horas que se justifican + motivo. Queda registrado tu usuario." ' +
           'class="px-1.5 py-0.5 rounded-md border border-telecab-border text-[11px] leading-none font-semibold ' +
           'text-telecab-muted hover:border-sky-500 hover:text-sky-500">J</button>';
-    return btnTel + btnJ;
+    // «NO SALDRÁ»: gris lleno si ya está apuntado (con el motivo al pasar el ratón).
+    const ns = f.noSale;
+    const btnNo = '<button data-nosale="' + esc(f.clave) + '" ' +
+      'title="' + esc(ns
+        ? 'No saldrá · ' + ns.etiqueta + ': «' + ns.comentario + '» — ' + (ns.quien || '—') + ', ' + (ns.hora || '') + '. Pulsa para cambiarlo o quitarlo.'
+        : 'No saldrá: apunta por qué (motivo y comentario). Le quita la alerta de «No llegará» y las campañas dejan de llamarle.') + '" ' +
+      'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (ns
+        ? 'border-telecab-border bg-telecab-border/50 text-telecab-text'
+        : 'border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold') + '">' +
+      '<i class="fa-solid fa-ban"></i></button>';
+    // «TRAZA POR SLACK»: el check. Verde con su canal al pasar el ratón.
+    const sl = f.slack;
+    const btnSlack = '<button data-slack="' + esc(f.clave) + '" ' +
+      'title="' + esc(sl
+        ? 'Traza por Slack en #' + sl.canal + ' — ' + (sl.quien || '—') + ', ' + (sl.hora || '') + '. Pulsa para cambiar de canal o quitarla.'
+        : 'Traza por Slack: marca en qué canal de la empresa quedó constancia') + '" ' +
+      'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (sl
+        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
+        : 'border-telecab-border text-telecab-muted hover:border-telecab-gold hover:text-telecab-gold') + '">' +
+      '<i class="fa-brands fa-slack"></i>' + (sl ? ' <i class="fa-solid fa-check"></i>' : '') + '</button>';
+    // Los dos nuevos van JUNTOS: en una pantalla estrecha, si no caben, bajan los
+    // dos a la vez en vez de dejar uno suelto debajo del teléfono.
+    return btnTel + btnJ + '<span class="inline-flex items-center gap-1">' + btnNo + btnSlack + '</span>';
   }
 
   function filaPorClave(clave) {
@@ -1029,6 +1078,107 @@
   const RESULTADOS_LLAMADA = <%- JSON.stringify(resultadosLlamada || []) %>;
   const CATALOGO_LLAMADA = <%- JSON.stringify(catalogoLlamada || []) %>;
   const TIPOS_J = <%- JSON.stringify(tiposJ || []) %>;
+  // «No saldrá» y «Traza por Slack» (db/170): los catálogos vienen del servidor
+  // (modules/Control/marcas.repo.js), como el buzón de resultados.
+  const MOTIVOS_NO_SALE = <%- JSON.stringify(typeof motivosNoSale !== 'undefined' ? motivosNoSale : []) %>;
+  const CANALES_SLACK = <%- JSON.stringify(typeof canalesSlack !== 'undefined' ? canalesSlack : []) %>;
+
+  function chipNoSale(ns) {
+    return '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-telecab-border/50 text-telecab-text" ' +
+      'title="' + esc('«' + ns.comentario + '» — ' + (ns.quien || '—') + ', ' + (ns.hora || '')) + '">' +
+      '<i class="fa-solid fa-ban"></i> No saldrá · ' + esc(ns.etiqueta) + '</span>';
+  }
+
+  /** Manda una marca y repinta. Devuelve si salió bien. */
+  async function postMarca(url, cuerpo, tituloError) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+      const j = await r.json();
+      if (j.status !== 'ok') throw new Error(j.msg || 'No se pudo guardar');
+      cargar();
+      return true;
+    } catch (e) {
+      await Dialogo.aviso({ titulo: tituloError, texto: e.message, tono: 'error' });
+      return false;
+    }
+  }
+
+  /**
+   * «NO SALDRÁ»: por qué no va a salir, con motivo y comentario obligatorio.
+   * Con eso la fila deja de tener «No llegará», se va al grupo de los que no
+   * saldrán y las campañas no le vuelven a llamar. Si ya estaba, se cambia o se
+   * quita.
+   */
+  async function noSaldra(f) {
+    const ya = f.noSale;
+    if (ya) {
+      const que = await Dialogo.elegir({
+        titulo: 'No saldrá · ' + ya.etiqueta,
+        html: '<p>«' + esc(ya.comentario) + '»</p>' +
+          '<p class="text-telecab-muted text-sm mt-1">Lo apuntó ' + esc(ya.quien || '—') + ' a las ' + esc(ya.hora || '') + '.</p>',
+        opciones: [
+          { texto: 'Quitar «No saldrá»', valor: 'quitar', tono: 'peligro' },
+          { texto: 'Cambiar el motivo', valor: 'cambiar', principal: true },
+        ],
+      });
+      if (!que) return;
+      if (que === 'quitar') {
+        await postMarca('/control/api/no-saldra/quitar',
+          { conductorId: f.conductorId, dia: DATOS && DATOS.dia }, 'No se pudo quitar «No saldrá»');
+        return;
+      }
+    }
+    let v = ya ? { motivo: ya.motivo, comentario: ya.comentario } : {};
+    for (;;) {
+      v = await Dialogo.formulario(f.conductor + ' no saldrá', [
+        { id: 'motivo', etiqueta: 'Por qué no saldrá', tipo: 'lista', obligatorio: true, valor: v.motivo || '',
+          opciones: MOTIVOS_NO_SALE.map(m => ({ valor: m.codigo, texto: m.etiqueta })) },
+        { id: 'comentario', etiqueta: 'Comentario', tipo: 'texto-largo', obligatorio: true, valor: v.comentario || '',
+          marcador: 'p. ej. tiene cita en el médico y trae el justificante mañana' },
+      ], { textoBoton: ya ? 'Guardar el cambio' : 'Apuntar «No saldrá»',
+           nota: 'Le quita la alerta de «No llegará» y las campañas dejan de llamarle. Queda tu usuario.' });
+      if (!v) return;
+      if (String(v.comentario || '').trim().length >= 5) break;
+      await Dialogo.aviso({ titulo: 'El comentario se queda corto',
+        texto: 'Cuéntalo en una frase (cinco letras como mínimo): es lo que leerá el siguiente controlador.', tono: 'aviso' });
+    }
+    await postMarca('/control/api/no-saldra', {
+      conductorId: f.conductorId, dia: DATOS && DATOS.dia, turno: f.turno,
+      motivo: v.motivo, comentario: v.comentario,
+      matricula: (((f.actividad || {}).matriculas || [])[0]) || (f.matriculas || [])[0] || '',
+    }, 'No se pudo apuntar «No saldrá»');
+  }
+
+  /** «TRAZA POR SLACK»: en qué canal de la empresa quedó constancia. Solo la marca. */
+  async function trazaSlack(f) {
+    const ya = f.slack;
+    if (ya) {
+      const que = await Dialogo.elegir({
+        titulo: 'Traza por Slack',
+        html: '<p>En <b>#' + esc(ya.canal) + '</b>.</p>' +
+          '<p class="text-telecab-muted text-sm mt-1">La marcó ' + esc(ya.quien || '—') + ' a las ' + esc(ya.hora || '') + '.</p>',
+        opciones: [
+          { texto: 'Quitar la marca', valor: 'quitar', tono: 'peligro' },
+          { texto: 'Cambiar de canal', valor: 'cambiar', principal: true },
+        ],
+      });
+      if (!que) return;
+      if (que === 'quitar') {
+        await postMarca('/control/api/traza-slack/quitar',
+          { conductorId: f.conductorId, dia: DATOS && DATOS.dia }, 'No se pudo quitar la traza');
+        return;
+      }
+    }
+    const v = await Dialogo.formulario('Traza por Slack · ' + f.conductor, [
+      { id: 'canal', etiqueta: 'En qué canal', tipo: 'lista', obligatorio: true, valor: ya ? ya.canal : '',
+        buscador: { tope: 20, marcador: 'Busca el canal…' },
+        opciones: CANALES_SLACK.map(c => ({ valor: c, texto: '#' + c })) },
+    ], { textoBoton: 'Marcar', nota: 'Solo deja la marca de que quedó constancia en ese canal: el ERP no escribe en Slack.' });
+    if (!v) return;
+    await postMarca('/control/api/traza-slack',
+      { conductorId: f.conductorId, dia: DATOS && DATOS.dia, canal: v.canal }, 'No se pudo marcar la traza');
+  }
 
   /**
    * TODO lo que este conductor tiene abierto ahora mismo: los avisos de su
@@ -1123,7 +1273,11 @@
       // Call Center la lee de ahí. Antes se copiaba, y la copia podía fallar.
     } catch (e) {
       await Dialogo.aviso({ titulo: 'No se pudo apuntar la llamada', texto: e.message, tono: 'error' });
+      return;
     }
+    // «No asistirá» es justo cuando hay que decir POR QUÉ no saldrá: se pregunta
+    // aquí mismo, sin tener que buscar el botón. Se puede cancelar.
+    if (resultado === 'No asistirá' && !f.noSale) await noSaldra(f);
   }
 
   async function justificarDirecto(f) {
@@ -1181,6 +1335,10 @@
       b.addEventListener('click', () => { const f = filaPorClave(b.dataset.tellog); if (f) apuntarLlamada(f); }));
     $('#d-lista').querySelectorAll('[data-justdir]').forEach(b =>
       b.addEventListener('click', () => { const f = filaPorClave(b.dataset.justdir); if (f) justificarDirecto(f); }));
+    $('#d-lista').querySelectorAll('[data-nosale]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.nosale); if (f) noSaldra(f); }));
+    $('#d-lista').querySelectorAll('[data-slack]').forEach(b =>
+      b.addEventListener('click', () => { const f = filaPorClave(b.dataset.slack); if (f) trazaSlack(f); }));
     $('#d-lista').querySelectorAll('[data-histllam]').forEach(b =>
       b.addEventListener('click', () => HistorialLlamadas.abrir(b.dataset.histllam)));
     GestionIncidencia.enganchar($('#d-lista'),

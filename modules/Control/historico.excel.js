@@ -136,12 +136,15 @@ async function generar(partes) {
   };
 
   const T = partes.reduce((a, p) => {
-    Object.entries(p.resumen).forEach(([k, v]) => { a[k] = (a[k] || 0) + v; });
+    // Solo los números: el desglose por motivo es una lista y va aparte.
+    Object.entries(p.resumen).forEach(([k, v]) => { if (typeof v === 'number') a[k] = (a[k] || 0) + v; });
     return a;
   }, {});
   titulo('EL DÍA');
   linea('Conductores con plaza en el cuadrante', T.conductores);
   linea('NO SALIÓ', T.noSalieron, T.noSalieron ? SI_NO.no : null);
+  linea('«No saldrá» con su motivo apuntado', T.noSaldra || 0);
+  linea('Con traza por Slack', T.trazasSlack || 0);
   linea('Con alguna alerta', T.conAlerta);
   linea('Con alertas SIN comentario de llamada', T.sinAtender, T.sinAtender ? SI_NO.no : SI_NO.si);
   linea('Rodaron sin estar en el plan (NN)', sinPlan.length);
@@ -157,6 +160,28 @@ async function generar(partes) {
   linea('J pendientes (horas presuntas)', T.jPendientes, TONO_J.pendiente);
   linea('Horas presuntas', Math.round(T.horasJPendientes * 10) / 10, TONO_J.pendiente);
   linea('J rechazadas', T.jRechazadas, T.jRechazadas ? TONO_J.rechazada : null);
+  f += 2;
+
+  // Los «No saldrá», por motivo, sumando todos los días del informe (db/170).
+  const porMotivo = {};
+  partes.forEach(p => ((p.resumen || {}).noSaldraPorMotivo || []).forEach(m => {
+    const x = porMotivo[m.motivo] || (porMotivo[m.motivo] = { etiqueta: m.etiqueta, n: 0 });
+    x.n += m.n;
+  }));
+  const totalNoSale = Object.values(porMotivo).reduce((n, m) => n + m.n, 0);
+  titulo('NO SALDRÁ, POR MOTIVO');
+  f = E.cabeceraTabla(ws, f, ['Motivo', 'Veces', '% del total', '', '']);
+  Object.values(porMotivo).forEach(m => {
+    const r = ws.getRow(f++);
+    [m.etiqueta, m.n, totalNoSale ? m.n / totalNoSale : 0, '', ''].forEach((v, i) => {
+      const c = r.getCell(i + 1);
+      c.value = v;
+      c.border = E.TODOS_BORDES;
+      c.font = { size: 10, color: { argb: E.TEXTO } };
+      c.alignment = { vertical: 'middle', horizontal: i ? 'center' : 'left' };
+      if (i === 2) c.numFmt = '0%';
+    });
+  });
   f += 2;
 
   // Alertas por tipo, sumando todos los días del informe.
@@ -209,6 +234,12 @@ async function generar(partes) {
     { titulo: 'Coche', ancho: 16, al: 'center', valor: d => (d.matriculas || []).join(', ') },
     { titulo: '¿Salió?', ancho: 15, al: 'center', fuerte: true,
       valor: d => d.salidaEtiqueta, tono: d => TONO_SALIDA[d.salida] },
+    // «No saldrá» (db/170): el motivo que apuntó Control y su comentario.
+    { titulo: 'No saldrá · motivo', ancho: 24, al: 'center',
+      valor: d => (d.noSale ? d.noSale.etiqueta : ''), tono: d => (d.noSale ? TONO_SALIDA.descanso : null) },
+    { titulo: 'Por qué no saldrá', ancho: 40, parrafo: true,
+      valor: d => (d.noSale ? `${d.noSale.comentario} (${d.noSale.quien || '—'}, ${d.noSale.hora})` : '') },
+    { titulo: 'Traza por Slack', ancho: 26, al: 'center', valor: d => (d.slack ? '#' + d.slack.canal : '') },
     { titulo: '1.ª conexión', ancho: 12, al: 'center', valor: d => d.primera || '' },
     { titulo: 'h BOLT', ancho: 9, al: 'center', formato: '0.0', valor: d => d.horasBolt },
     { titulo: 'h que cuentan', ancho: 13, al: 'center', formato: '0.0', fuerte: true,

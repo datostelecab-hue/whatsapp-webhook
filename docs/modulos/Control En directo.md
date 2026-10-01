@@ -139,7 +139,7 @@ Y no todas valen igual. Una **aprobada** es una hora; una **pendiente** es una h
 | `km_parado` | ha rodado km fuera de la app **dentro de la franja** (ver abajo) |
 | `j_rechazada` | alguien miró el caso y dijo que no: esas horas vuelven a faltar, hay que volver a llamar con el motivo delante |
 | `j_presunta` | llega, pero solo contando una J pendiente de aprobar |
-| `no_llego` / `no_llegara` / `se_fue_pronto` | la proyección no alcanza la jornada, según si el turno ya cerró, no ha salido, sigue conectado o se desconectó antes de tiempo |
+| `no_llego` / `no_llegara` / `se_fue_pronto` | la proyección no alcanza la jornada, según si el turno ya cerró, no ha salido, sigue conectado o se desconectó antes de tiempo. **No salen si tiene «No saldrá» apuntado** (abajo) |
 | `rechazo_directo` | **al primero**: los rechazó él, con el dedo |
 | `sin_respuesta` | dejó pasar ofertas sin contestar dentro de la franja |
 | `aceptacion_baja` | ámbar, no rojo: es para mirar, no para llamar |
@@ -170,6 +170,24 @@ Antes esos km se le colgaban al último que lo condujo aunque llevara dos días 
 
 - **Llamada** (`POST /control/api/llamada`) — se escribe una sola vez, en `llamada_seguimiento`, con el `origen` que dice en qué pasada se etiquetó (`control` o `campana1|2|3`) y con la jornada que está mirando quien llama, para que caiga en la misma carta donde se apuntó. El buzón de resultados y el catálogo por tipo (seguimiento / taller / rrhh / tráfico / alerta) viven en `services/repo/llamadas.js`.
 - **Justificar** (`POST /control/api/justificar-directo`) — por `conductor_id` y para la jornada en curso. La carta enseña luego "J · X h · quién", que es lo que le dice al segundo operador que no hace falta volver a llamar.
+
+- **«No saldrá»** (`POST /control/api/no-saldra`, y `/quitar`) y **«Traza por Slack»** (`POST /control/api/traza-slack`, y `/quitar`) — ver abajo.
+
+## «No saldrá» y «Traza por Slack» (01/10/2026)
+
+Dos marcas de la jornada de un conductor que no son una llamada (`db/170`, `modules/Control/marcas.repo.js`). Cada fila lleva sus dos botones pequeños junto al teléfono y la J (un círculo tachado y el logo de Slack), y los mismos, con texto, al desplegarla.
+
+**«No saldrá»** — Camilo: *«necesito los siguientes clusters cuando le dé en "No saldrá" en control (…) todos con el comentario obligatorio, eso le quitará también la alerta de "No llegará" ya que resolvimos el por qué no va a salir»*. Seis motivos, en este orden: **Error de planificación, Asuntos propios, Baja médica sin justificar, Baja médica justificada, Herramientas auxiliares, Caso específico**, y un comentario de cinco letras como mínimo. Con eso:
+
+- `avisosDe` **no genera las alertas de horas** (`no_llego`, `no_llegara`, `se_fue_pronto`) para esa persona y jornada. Las demás (rechazos, km fuera de la app) siguen saliendo si pasan. Va en el servidor, dentro de `enDirecto`, así que el Histórico y las campañas lo ven igual que la pantalla.
+- La fila se va del grupo «No han salido · hay que llamar» al de **«No saldrán · con su motivo»**, y deja de contar en «Sin salir · a llamar». Si aun así sale a trabajar, manda lo que esté haciendo; el chip del motivo se queda.
+- Las **campañas** la sacan de las colas, como a un «No asistirá» (`campanas.service`, `noAsiste`).
+- Al apuntar una llamada con **«No asistirá»**, la pantalla pregunta en seguida por qué no saldrá (se puede cancelar).
+- El **Histórico** la enseña en la fila, tiene la vista «No saldrá», una tarjeta con el desglose por motivo, y su Excel lleva las columnas «No saldrá · motivo», «Por qué no saldrá» y «Traza por Slack» y el apartado «No saldrá, por motivo». Para eso se pidieron los motivos: poder contarlos.
+
+**«Traza por Slack»** — *«un check para cada uno de los conductores en control, que pueda poner "Traza por slack" y pueda elegir uno de estos canales que tenemos en la empresa (menos datos, ese es privado mío)»*. Es **solo la marca**: el ERP no escribe en Slack. Los trece canales, con su nombre exacto (también `13-insidencias-coches-conductores`, que se escribe así en Slack), están en `CANALES_SLACK`; sin `datos`. Sin CHECK de lista en la base a propósito: un canal nuevo es una línea en el repositorio, no una migración.
+
+Las dos: **una vigente por conductor y jornada** (índice único parcial). Marcar otra vez anula la anterior y escribe la nueva; quitar es anular. No se borra nada, y queda quién y cuándo. Antes de aplicar `db/170` las tablas no existen y el cockpit sale igual, sin marcas.
 
 Un conductor puede tener tres alertas abiertas a la vez y se le llama **una** vez para preguntarle por las tres: por eso la respuesta va **por alerta**, en su propia fila de `llamada_alerta` (`db/98-llamada-por-alerta.sql`). Una sola nota para las tres no servía: al día siguiente nadie sabía qué contestó sobre cuál.
 

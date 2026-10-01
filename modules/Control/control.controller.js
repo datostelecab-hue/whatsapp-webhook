@@ -142,6 +142,16 @@ router.post('/api/llamada', responde(async req =>
 router.post('/api/justificar-directo', responde(async req =>
   control.justificarEnDirecto(req.body || {}, req.usuario, await actor.idDe(req)), 400));
 
+// «No saldrá» (motivo + comentario) y «Traza por Slack» (canal): db/170.
+router.post('/api/no-saldra', responde(async req =>
+  control.marcarNoSale(req.body || {}, req.usuario, await actor.idDe(req)), 400));
+router.post('/api/no-saldra/quitar', responde(async req =>
+  control.quitarNoSale(req.body || {}, req.usuario, await actor.idDe(req)), 400));
+router.post('/api/traza-slack', responde(async req =>
+  control.marcarSlack(req.body || {}, req.usuario, await actor.idDe(req)), 400));
+router.post('/api/traza-slack/quitar', responde(async req =>
+  control.quitarSlack(req.body || {}, req.usuario, await actor.idDe(req)), 400));
+
 // ── Los descargables ───────────────────────────────────────────────────────
 
 router.get('/historico/excel', descarga(req =>

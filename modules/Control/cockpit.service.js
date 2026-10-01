@@ -167,7 +167,7 @@ async function enDirecto({ dia } = {}) {
   // Lo único que sigue después es lo que necesita la franja, porque para saber
   // cuál es hay que haber leído antes la configuración.
   const [tab, est, incHoy, incAyer, kmHoy, contac, actividades,
-         rend, rechazos, rechazosNoche, justificantes, cfgAlertas, sinDuenioTodos] = await Promise.all([
+         rend, rechazos, rechazosNoche, justificantes, cfgAlertas, sinDuenioTodos, marcasDia] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
     // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
@@ -231,7 +231,15 @@ async function enDirecto({ dia } = {}) {
     // de la cola —2,3 s ella sola— y no dependía de nada.
     rutas.kmSinDuenio(hoy, 'operativo')
       .catch(e => { console.error('⚠️  [EN DIRECTO] km sin dueño:', e.message); return []; }),
+    // «NO SALDRÁ» Y «TRAZA POR SLACK» de la jornada (db/170). El «No saldrá»
+    // decide avisos —quien ya tiene su porqué apuntado no tiene «No llegará»—,
+    // así que tiene que estar antes de armarlos, no pegarse después.
+    require('./marcas.repo').delDia(hoy).catch(e => {
+      console.error('⚠️  [EN DIRECTO] marcas:', e.message); return { noSale: new Map(), slack: new Map() };
+    }),
   ]);
+  const noSaleDe = cid => (cid ? marcasDia.noSale.get(String(cid)) || null : null);
+  const slackDe = cid => (cid ? marcasDia.slack.get(String(cid)) || null : null);
 
   // Con los mismos nombres de siempre, para que nada de abajo se entere.
   const actDia = actividades.get('dia') || null;
@@ -486,7 +494,7 @@ async function enDirecto({ dia } = {}) {
    * y estas son de la PERSONA y de su jornada, que es lo que se llama por
    * teléfono. Cada uno trae ya su texto y su tono: la pantalla solo pinta.
    */
-  function avisosDe({ proy, rech, rechFranja, salida, just, kmFuera }) {
+  function avisosDe({ proy, rech, rechFranja, salida, just, kmFuera, noSale }) {
     const out = [];
 
     // RUEDA CON LA APP APAGADA (o en descanso) DENTRO DE LA FRANJA. Es la
@@ -530,7 +538,11 @@ async function enDirecto({ dia } = {}) {
       });
     }
 
-    if (proy && !proy.alcanza && salida !== 'pendiente') {
+    // CON «NO SALDRÁ» NO HAY ALERTA DE HORAS. Camilo, 01/10/2026: «eso le
+    // quitará también la alerta de "No llegará", ya que resolvimos el por qué no
+    // va a salir». No llegar es justo lo que ya se sabe y está explicado; lo
+    // demás (rechazos, km fuera de la app) sigue saliendo si pasa.
+    if (proy && !proy.alcanza && salida !== 'pendiente' && !noSale) {
       const faltan = String(proy.faltan).replace('.', ',');
       if (proy.cerrado) {
         out.push({ codigo: 'no_llego', tono: 'error', etq: 'No llegó · faltan ' + faltan + ' h',
@@ -770,6 +782,8 @@ async function enDirecto({ dia } = {}) {
       kmFranja: kmFranjaDe([a.uuid]),
       avisos: avisosDe({ proy: null, rech: rechazosDe(a._turno).get(a.uuid) || null,
         rechFranja: rechFranjaDe([a.uuid]), salida: 'salio', kmFuera: kmFranjaDe([a.uuid]) }),
+      noSale: noSaleDe(idDeUuid.get(a.uuid)),
+      slack: slackDe(idDeUuid.get(a.uuid)),
     }))
     .sort((a, b) =>
       (a.turno === b.turno ? 0 : a.turno === 'dia' ? -1 : 1) ||
@@ -929,6 +943,7 @@ async function enDirecto({ dia } = {}) {
       // por turno la escondía. Y repetirlo no molesta: la llamada se apunta por
       // conductor, así que contestar una vez apaga todas sus filas a la vez.
       const kmF = kmFranjaDe(cuentas);
+      const noSale = noSaleDe(f.conductorId);
       return {
         clave: f.clave, conductorId: f.conductorId, conductor: f.conductor, uuid: f.uuid, telefono: f.telefono || '',
         // Sale con SU nombre, pero hay que decir que está rodando con la cuenta
@@ -943,7 +958,10 @@ async function enDirecto({ dia } = {}) {
         kmFranja: kmF,
         rechazos: rech.ofertas ? rech : null,
         avisos: avisosDe({ proy, rech: rech.ofertas ? rech : null, rechFranja: rechFranjaDe(cuentas),
-          salida, just, kmFuera: kmF }),
+          salida, just, kmFuera: kmF, noSale }),
+        // Las marcas del día (db/170): por qué no saldrá, y si quedó traza en Slack.
+        noSale,
+        slack: slackDe(f.conductorId),
         turno: f.turno,
         rol: f.roles.has('FIJO') ? 'FIJO' : (f.roles.has('CT') ? 'CT' : ''),
         matriculas: f.matriculas, trazoMat, matriculaNorm: trazoMat ? normMat(trazoMat) : '',

@@ -1695,6 +1695,22 @@ mismo cálculo, a nombre de la misma persona. Para quitarle un exceso a alguien 
 **desatribuye** (sin conductor, uuid ni teléfono, `sin_conductor` y una nota),
 como en `db/169`. Ver [[Sanciones de velocidad]].
 
+### Una lista con `valor` devolvía vacío si nadie la tocaba (17/09 → 01/10/2026)
+
+Cuando las listas de `Dialogo.formulario` dejaron de ser el `<select>` del
+navegador (17/09, «Todos los selectores con la cara de la casa»), el `valor`
+inicial se siguió pintando resaltado, pero no se escribía en la caja de la que se
+lee al enviar. Resultado: si nadie lo volvía a pulsar, la ventana devolvía `''`
+(o `null` en `opciones`) con la opción marcada delante, y una lista obligatoria
+decía «Elige…». Lo destapó el «No saldrá» de Control al reabrir el formulario. Se
+arregló en el componente (`public/assets/js/dialogo.js`). **Pendiente de mirar**
+si algún formulario guardó un vacío en esas dos semanas: los que dan `valor` a una
+lista son, sobre todo, los de [[Conductores|Plantilla]] (situación, tipo de
+contrato, jornada) y el de salidas de [[Administracion|Recaudación]].
+
+> Lo que se ve marcado tiene que ser lo que se envía. Una prueba de un formulario
+> que no lo envíe sin tocar nada no prueba el formulario.
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números

@@ -329,6 +329,30 @@
         const TOPE = (c._buscador && c._buscador.tope) || 10;
         let grupoSel = grupos[0], elegido = c.valor || null;
         const norm = o => (typeof o === 'string' ? { valor: o, texto: o } : o);
+        // LO QUE VIENE ELEGIDO DE ENTRADA SE DEVUELVE (01/10/2026). Desde que la
+        // lista dejó de ser el <select> (17/09) el `valor` inicial se pintaba
+        // resaltado pero no se escribía en la caja, que es de donde se lee al
+        // enviar: si nadie lo tocaba, la ventana devolvía '' (o null en
+        // 'opciones') con la opción marcada delante, y una lista obligatoria
+        // decía «Elige…». Se escribe aquí, y si está en otro grupo se abre ese.
+        if (elegido != null && elegido !== '') {
+          const g0 = grupos.find(g => (g.opciones || []).map(norm).some(o => String(o.valor) === String(elegido)));
+          if (g0 && g0 !== grupoSel) {
+            grupoSel = g0;
+            caja.querySelectorAll('[data-g]').forEach(x => {
+              x.className = 'px-2.5 py-1 rounded-lg text-xs font-semibold border transition ' +
+                (x.dataset.g === String(g0.codigo)
+                  ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
+                  : 'bg-telecab-card2 border-telecab-border text-telecab-muted hover:border-telecab-gold/50');
+            });
+          }
+          const o0 = (grupoSel.opciones || []).map(norm).find(o => String(o.valor) === String(elegido));
+          if (o0) {
+            caja.dataset.valor = String(o0.valor);
+            caja.dataset.grupo = grupoSel.codigo || '';
+            caja.dataset.texto = o0.texto || String(o0.valor);
+          }
+        }
         // Sin tildes y en minúsculas: quien busca "Ocana" tiene que encontrar a
         // "Ocaña", y nadie teclea la ñ para filtrar.
         const plano = s => String(s == null ? '' : s)
@@ -496,6 +520,13 @@
             if ((salida[c.id] || []).some(x => !x.comentario)) {
               fallos.push('Escribe qué te ha dicho en cada una de las que marcas.');
             }
+          } else if (c.obligatorio && c.tipo !== 'semana' && c.tipo !== 'items'
+                     && !String(salida[c.id] == null ? '' : salida[c.id]).trim()) {
+            // EL TEXTO OBLIGATORIO TAMBIÉN (01/10/2026). Hasta aquí `obligatorio`
+            // solo se miraba en las listas: un motivo en blanco cerraba la ventana
+            // y cada pantalla tenía que comprobarlo después, a mano y con su propio
+            // aviso —o no lo comprobaba—. Ahora se queda abierta y lo dice.
+            fallos.push(`Rellena «${c.etiqueta}».`);
           }
         });
 

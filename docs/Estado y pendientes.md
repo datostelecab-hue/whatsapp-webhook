@@ -15,6 +15,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## «No saldrá» y «Traza por Slack» en Control (01/10/2026)
+
+- **Desplegar y aplicar `db/170`** desde /migraciones: las tablas `control_no_sale` y `control_traza_slack`. Hasta entonces el cockpit sale igual, sin los botones guardando (dan error al marcar).
+- **Mirar si `Dialogo.formulario` guardó vacíos entre el 17/09 y el 01/10**: una lista con valor inicial devolvía `''` si nadie la tocaba (ver [[Trampas conocidas]]). Sobre todo los formularios de Plantilla (situación, tipo de contrato, jornada) y el de salidas de Recaudación.
+
 ## Calificación 2.1 y los excesos de Edison (01/10/2026)
 
 - **Desplegar y aplicar `db/169`** desde /migraciones: le quita a Edison Roman Vera Farfan los cinco excesos dudosos del 3784LFV del 11/09 (no eran suyos). La letra no espera a la migración: con el despliegue, la siguiente pasada del cron (05:40 o 12:00) rehace septiembre con el modelo 2.1 y suben 12 letras, la suya de C a A.

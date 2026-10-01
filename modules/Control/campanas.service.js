@@ -132,13 +132,18 @@ async function estado({ dia, turno, ahora } = {}) {
       // haberse conectado a un turno que no ha arrancado.
       leToca: f.salida !== 'pendiente',
       llamadas: ll ? ll.n : 0,
-      etiqueta: u.resultado || '',
-      etiquetadoPor: u.quien || '',
-      etiquetadoA: u.at || null,
-      nota: u.nota || '',
+      // Sin llamada pero con «No saldrá» apuntado (db/170), la etiqueta es esa:
+      // es lo que se sabe de él.
+      etiqueta: u.resultado || (f.noSale ? 'No saldrá · ' + f.noSale.etiqueta : ''),
+      etiquetadoPor: u.quien || (f.noSale ? f.noSale.quien : ''),
+      etiquetadoA: u.at || (f.noSale ? f.noSale.at : null),
+      nota: u.nota || (f.noSale ? f.noSale.comentario : ''),
       verificacion: DICE_QUE_SALE(u.resultado) ? (conectado ? 'cumplio' : 'sigue_sin') : null,
       j: j ? { horas: j.horas, obs: j.obs, quien: j.quien, tipo: j.tipo || 'trafico' } : null,
-      noAsiste: NO_ASISTE(u.resultado),
+      // «No asistirá» en una llamada, o un «No saldrá» con su motivo: en los dos
+      // casos ya se sabe qué pasa y no hay que volver a llamarle.
+      noAsiste: NO_ASISTE(u.resultado) || !!f.noSale,
+      noSale: f.noSale || null,
     };
   });
 

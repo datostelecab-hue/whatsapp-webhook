@@ -31,6 +31,7 @@ callcenter.controller.js    /callcenter · callcenter.service.js
 justificantes.controller.js /justificantes · justificantes.service.js
 reporteHoras.service.js     el reporte del día con bandas · reporteHoras.repo.js
 asistencia.repo.js          quién faltó · auditoriaLunes.repo.js  los lunes
+marcas.repo.js              «No saldrá» (6 motivos) y «Traza por Slack» (db/170)
 reporteTurnos.service.js    el reporte 5-5 (datos + Excel)
 *.excel.js  *.pdf.js        los descargables
 vistas/                     controlDirecto · controlCampanas(+Informe) ·

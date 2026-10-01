@@ -40,6 +40,7 @@ const { enDirecto } = require('./cockpit.service');
 const rutas = require('../../services/flotaViva/rutas');
 const llamadas = require('../../services/repo/llamadas');       // el "telefonito"
 const repoJust = require('../../services/repo/justificantes');  // justificar: PostgreSQL
+const marcas = require('./marcas.repo');                         // «No saldrá» y «Traza por Slack»
 const campanasSrv = require('./campanas.service');
 const historicoSrv = require('./historico.service');
 const asistencia = require('./asistencia.repo');
@@ -77,6 +78,8 @@ const paraLaPantalla = () => ({
   resultadosLlamada: llamadas.RESULTADOS,
   catalogoLlamada: llamadas.CATALOGO,
   tiposJ: repoJust.TIPOS_J,
+  motivosNoSale: marcas.MOTIVOS_NO_SALE,
+  canalesSlack: marcas.CANALES_SLACK,
 });
 
 /**
@@ -241,6 +244,67 @@ async function apuntarLlamada(b, usuario, usuarioId) {
   console.log(`📞 [Control] Llamada apuntada · conductor ${b.conductorId} · ` +
     `${b.resultado || 'sin resultado'} · ${u.nombre || ''}`);
   return r;
+}
+
+// ── «No saldrá» y «Traza por Slack» ─────────────────────────────────────────
+// Dos marcas de la jornada de un conductor (marcas.repo, db/170). Quien firma
+// sale de la sesión, nunca del cuerpo de la petición.
+
+const idConductor = v => {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n <= 0) throw new Error('Falta el conductor');
+  return n;
+};
+// `lista` devuelve el valor a secas y `opciones` un objeto: se desenvuelve por
+// si acaso (Componentes de la casa).
+const valorDe = x => String(x && typeof x === 'object' ? x.valor : (x || '')).trim();
+
+/**
+ * «NO SALDRÁ»: por qué no va a salir, con motivo y comentario. Desde ese
+ * momento el cockpit no le pone alertas de horas («No llegará») y las campañas
+ * no le vuelven a llamar: ya se sabe lo que pasa.
+ */
+async function marcarNoSale(b, usuario, usuarioId) {
+  const conductorId = idConductor(b.conductorId);
+  const motivo = valorDe(b.motivo);
+  if (!marcas.ETQ_MOTIVO[motivo]) throw new Error('Elige por qué no saldrá.');
+  const comentario = String(b.comentario || '').trim();
+  if (comentario.length < 5) throw new Error('El comentario es obligatorio: cuenta en una frase por qué no sale.');
+  const dia = diaDe(b.dia);
+  const r = await marcas.marcarNoSale({
+    conductorId, dia, motivo, comentario: comentario.slice(0, 500),
+    turno: ['dia', 'noche', 'todoturno'].includes(b.turno) ? b.turno : null,
+    matricula: String(b.matricula || '').trim().toUpperCase().slice(0, 16) || null,
+    usuarioId: (usuario && usuario.id) || usuarioId,
+  });
+  console.log(`🚫 [Control] No saldrá · ${dia} · conductor ${conductorId} · ${marcas.ETQ_MOTIVO[motivo]} · ${(usuario || {}).nombre || ''}`);
+  return { dia, motivo, etiqueta: marcas.ETQ_MOTIVO[motivo], ...r };
+}
+
+async function quitarNoSale(b, usuario, usuarioId) {
+  const conductorId = idConductor(b.conductorId);
+  const dia = diaDe(b.dia);
+  const n = await marcas.anularNoSale({ conductorId, dia, usuarioId: (usuario && usuario.id) || usuarioId });
+  console.log(`↩️  [Control] Quitado «No saldrá» · ${dia} · conductor ${conductorId} · ${(usuario || {}).nombre || ''}`);
+  return { dia, quitados: n };
+}
+
+/** «TRAZA POR SLACK»: en qué canal de la empresa se dejó constancia. Solo la marca. */
+async function marcarSlack(b, usuario, usuarioId) {
+  const conductorId = idConductor(b.conductorId);
+  const canal = valorDe(b.canal);
+  if (!marcas.CANALES_SLACK.includes(canal)) throw new Error('Elige uno de los canales de Slack de la empresa.');
+  const dia = diaDe(b.dia);
+  const r = await marcas.marcarSlack({ conductorId, dia, canal, usuarioId: (usuario && usuario.id) || usuarioId });
+  console.log(`💬 [Control] Traza por Slack · ${dia} · conductor ${conductorId} · #${canal} · ${(usuario || {}).nombre || ''}`);
+  return { dia, canal, ...r };
+}
+
+async function quitarSlack(b, usuario, usuarioId) {
+  const conductorId = idConductor(b.conductorId);
+  const dia = diaDe(b.dia);
+  const n = await marcas.quitarSlack({ conductorId, dia, usuarioId: (usuario && usuario.id) || usuarioId });
+  return { dia, quitados: n };
 }
 
 /** Las llamadas de un rango de días (la lista del Histórico). */
@@ -418,6 +482,7 @@ module.exports = {
   directo, ahora, campanas, campanasInforme,
   historico, historicoExcel, trazos, historialLlamadas,
   apuntarLlamada, listarLlamadas, justificarEnDirecto,
+  marcarNoSale, quitarNoSale, marcarSlack, quitarSlack,
   kmTraza, kmDiagnostico,
   asistenciaPdf, asistenciaExcel, asistenciaPeriodo, auditoriaLunesExcel,
   reporteHorasExcel, cascadaPdf, sankeyPdf,

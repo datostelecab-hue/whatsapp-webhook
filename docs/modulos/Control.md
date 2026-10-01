@@ -15,7 +15,7 @@ No es un módulo de consulta: existe para decidir a quién se llama en los próx
 |---|---|---|
 | `/control` | el cockpit [[Control En directo|En directo]] | `modules/Control/vistas/controlDirecto.ejs` |
 | `/control/campanas` | las tres pasadas de llamadas del turno | `controlCampanas.ejs` / `controlCampanasInforme.ejs` |
-| `/control/historico` | qué pasó ese día y qué se hizo | `controlHistorico.ejs` |
+| `/control/historico` | qué pasó ese día y qué se hizo (también los «No saldrá» por motivo y las trazas por Slack) | `controlHistorico.ejs` |
 | `/control/km` | km conectado vs desconectado | `kmTraza.ejs` |
 | `/control/reportes` | [[Control Reportes|solo descargables]] | `reportes.ejs` |
 | `/alertas` | [[Control Alertas|qué se vigila y a quién se avisa]] | `alertas.ejs` |
