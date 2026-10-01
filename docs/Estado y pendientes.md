@@ -19,8 +19,9 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 - **Hechas las tandas 1 y 2** (arreglos y cierre de la Fase 2) **y el traspaso Selección → Conductores**: ya no queda ningún puente y `comprobar-capas` da 0 incumplimientos. Ver [[ARQUITECTURA]].
 - **Desplegar**: el traspaso no lleva migración. Lo que cambia es por dónde entra el código (alta, candidatura, incorporaciones); la traza de 42 casos contra el código de antes salió idéntica.
-- **Decisiones de Camilo**: qué hacer con `services/repo/notificaciones.js` (Hito 6 del convenio, sin enchufar y con un SQL que pide una columna que no existe) y si los scripts de la migración de agosto (`cargar-*`, `migrar-*`, `reset`, `vaciar-conductores`) se archivan.
-- `inventario-exports` lista 28 funciones exportadas que nadie llama de fuera: para otra pasada, mirando una a una que no las llame una ruta por cadena ni un cron.
+- **Hecha la tanda 3**: el motor de notificaciones (Hito 6) arreglado y sin enchufar a propósito ([[RRHH]]), los scripts de un solo uso en `scripts/archivo/` y `inventario-exports` en cero.
+- **Desplegar**: `services/sheets.js` pide ahora a Google el permiso de **solo lectura**. Tras desplegar, comprobar que la ticketera de RRHH sigue leyendo el formulario (es la única que lee hojas a diario).
+- Queda, de prioridad baja: 103 funciones «vivas pero exportadas de más» (se usan dentro de su fichero; quitarlas del `module.exports` solo estrecha la puerta) y los 10 avisos de `comprobar-sql`, que son del comprobador (alias `h` de una subconsulta) o de la migración 44, ya aplicada.
 
 ## «No saldrá» y «Traza por Slack» en Control (01/10/2026)
 

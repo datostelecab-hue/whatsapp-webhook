@@ -99,6 +99,36 @@ const AMBIGUOS = new Set([
   'total', 'nombre', 'tipo', 'id', 'fecha', 'valor', 'datos',
 ]);
 
+// ── Lo que se deja exportado A PROPÓSITO ────────────────────────────────────
+// Sin esta lista, cada pasada vuelve a sacar lo mismo y hay que volver a
+// decidir lo ya decidido. Cada entrada lleva el porqué; si un día alguien la
+// usa o desaparece, la salida avisa de que sobra aquí. Revisado el 01/10/2026.
+const A_PROPOSITO = {
+  'services/repo/notificaciones.js': {
+    generarDefectoMes: 'el motor del Hito 6 del convenio: se enchufa cuando la asesoría valide las plantillas',
+  },
+  'modules/RRHH/contratos.repo.js': {
+    vigentesEnMes: 'convenio en construcción (Hito 2): lecturas para la pantalla de objetivos',
+    objetivosDe: 'convenio en construcción (Hito 2): lecturas para la pantalla de objetivos',
+  },
+  'services/repo/fichajeTurno.js': {
+    quienLlevaba: 'quién llevaba un coche según el fichaje; candidata para atribuir excesos ahora que todos abren turno',
+  },
+  'services/repo/vigencia.js': {
+    vigenteDeVarias: 'biblioteca de vigencias: la consulta de muchos a la vez, para no volver al bucle',
+    contarVigentes: 'biblioteca de vigencias: el contador para paneles',
+  },
+  'services/whatsapp.js': {
+    enviarPlantillaNombre: 'adaptador: plantillas con parámetro con nombre, el formato nuevo de Meta',
+  },
+};
+
+// Los que empiezan por `_` son GANCHOS DE PRUEBA: una función interna que se
+// exporta con otro nombre para probarla sin base (`_situarAlta: situarAlta`).
+// No son puertas del módulo y que nadie los use hoy no los hace muertos: se
+// listan aparte para que no se confundan con lo que sí sobra.
+const esGancho = nombre => nombre.startsWith('_');
+
 // ── Se usa DENTRO de su propio fichero? ─────────────────────────────────────
 // Esta es la pregunta que de verdad separa el grano de la paja. Una funcion
 // exportada y usada por otra del mismo fichero NO esta muerta: esta viva y
@@ -121,6 +151,8 @@ function usadoDentro(nombre, propio) {
 const muertos = [];        // ni dentro ni fuera: candidato de verdad
 const sobreExport = [];    // vivo dentro, exportado de mas: quitar solo el export
 const ambiguos = [];       // nombre demasiado comun para afirmar nada
+const aProposito = [];     // decidido: se queda (A_PROPOSITO)
+const ganchos = [];        // exportado para probar (`_nombre`)
 
 for (const f of TODOS) {
   // Los routers exportan `router`, no funciones; los scripts no se barren (sí
@@ -129,6 +161,8 @@ for (const f of TODOS) {
   const exps = exportsDe(texto.get(f));
   for (const nombre of exps) {
     if (usadoFuera(nombre, f)) continue;             // alguien de fuera lo usa: vivo
+    if (esGancho(nombre)) { ganchos.push({ f, nombre }); continue; }
+    if ((A_PROPOSITO[f] || {})[nombre]) { aProposito.push({ f, nombre, motivo: A_PROPOSITO[f][nombre] }); continue; }
     if (AMBIGUOS.has(nombre)) { ambiguos.push({ f, nombre }); continue; }
     (usadoDentro(nombre, f) ? sobreExport : muertos).push({ f, nombre });
   }
@@ -173,6 +207,36 @@ if (ambiguos.length) {
   const pa = {};
   for (const { f, nombre } of ambiguos) (pa[f] ||= []).push(nombre);
   for (const f of Object.keys(pa).sort()) console.log(`   ${f.padEnd(40)} ${pa[f].join(', ')}`);
+  console.log();
+}
+
+if (aProposito.length) {
+  console.log(`── SE QUEDAN A PROPÓSITO (${aProposito.length}) ` + '─'.repeat(28));
+  console.log('   Sin uso hoy, pero decidido que se quedan (A_PROPOSITO, arriba).\n');
+  for (const { f, nombre, motivo } of aProposito) console.log(`   ${(f + ' ' + nombre).padEnd(58)} ${motivo}`);
+  console.log();
+}
+
+// Lo que dice la lista y ya no es verdad: o alguien lo usa, o ya no existe.
+const sobran = [];
+for (const [f, nombres] of Object.entries(A_PROPOSITO)) {
+  for (const nombre of Object.keys(nombres)) {
+    if (!aProposito.some(x => x.f === f && x.nombre === nombre)) sobran.push(`${f} ${nombre}`);
+  }
+}
+if (sobran.length) {
+  console.log(`── SOBRAN EN A_PROPOSITO (${sobran.length}) ` + '─'.repeat(28));
+  console.log('   Ya los usa alguien o ya no se exportan: quitarlos de la lista.\n');
+  sobran.forEach(x => console.log(`   ${x}`));
+  console.log();
+}
+
+if (ganchos.length) {
+  const pg = {};
+  for (const { f, nombre } of ganchos) (pg[f] ||= []).push(nombre);
+  console.log(`── GANCHOS DE PRUEBA (${ganchos.length}) ` + '─'.repeat(32));
+  console.log('   Exportados con `_` para probar sin base. No son puertas del módulo.\n');
+  for (const f of Object.keys(pg).sort()) console.log(`   ${f.padEnd(40)} ${pg[f].join(', ')}`);
   console.log();
 }
 

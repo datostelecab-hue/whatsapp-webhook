@@ -186,16 +186,10 @@ async function logsDeConductorDia(conductorId, dia) {
   return r.rows.map(x => ({ t: Number(x.t), estado: x.estado, veh: x.veh }));
 }
 
-/** Si un coche de BOLT estaba dentro de una zona de Mapon en un momento. */
-async function enArea(vehiculoUuidBolt, momentoEpochSeg) {
-  if (!vehiculoUuidBolt) return false;
-  const r = await db.consulta('SELECT f_en_area($1, to_timestamp($2)) AS dentro',
-    [vehiculoUuidBolt, momentoEpochSeg]);
-  return !!(r.rows[0] && r.rows[0].dentro);
-}
-
 /**
- * LO MISMO, PERO DE MUCHOS DE UNA VEZ. Devuelve un Map de índice → dentro.
+ * Si cada coche de BOLT estaba dentro de una zona de Mapon en su momento, todos
+ * DE UNA VEZ. Devuelve un Map de índice → dentro. (Hubo una versión de uno en
+ * uno, `enArea`, que se quitó el 01/10/2026: ya no la llamaba nadie.)
  *
  * No es una optimización prematura: la derivación de la jornada del convenio
  * pregunta esto por CADA tramo de espera, y hay ~1.700 al día. De uno en uno
@@ -231,5 +225,5 @@ async function conductoresConLogs(dia) {
 
 module.exports = {
   registrarDescarga, guardarStateLogs, guardarOrders, guardarZonas,
-  logsDeConductorDia, conductoresConLogs, enArea, enAreaVarios,
+  logsDeConductorDia, conductoresConLogs, enAreaVarios,
 };

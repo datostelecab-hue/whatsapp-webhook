@@ -59,9 +59,15 @@ function calificacionInasistencia(dias) {
 }
 
 // ── La plantilla vigente, de la base ────────────────────────────────────────
+// En `notification_template` la columna es `code`; `template_code` es el nombre
+// que lleva en `notificacion`. Hasta el 01/10/2026 se pedía la segunda aquí y la
+// consulta fallaba siempre: no se notó porque nadie llama todavía a este motor.
+// NO mira `active`: las siete plantillas están desactivadas hasta que la
+// asesoría valide la redacción, y decidir qué pasa con una desactivada es parte
+// de enchufar el motor (Hito 6), no de esta consulta.
 async function plantillaVigente(code) {
   const r = await db.consulta(
-    `SELECT template_code AS code, version, channel, requires_human_approval, active,
+    `SELECT code, version, channel, requires_human_approval, active,
             requires_ack, applies_to_jornada_mode
        FROM notification_template
       WHERE code = $1

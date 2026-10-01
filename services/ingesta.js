@@ -577,7 +577,4 @@ async function estadosAlDia({ ventanaMin = 5 } = {}) {
   }
 }
 
-/** ¿El directo esta vivo? Para diagnosticar sin abrir la base. */
-const estadoAlDia = () => ({ corriendo: alDia, ultima: ultimaAlDia });
-
-module.exports = { TAREAS, latido, ejecutar, estado, toca, estadosAlDia, estadoAlDia, _traerViajesTerminados: traerViajesTerminados };
+module.exports = { TAREAS, latido, ejecutar, estado, toca, estadosAlDia, _traerViajesTerminados: traerViajesTerminados };

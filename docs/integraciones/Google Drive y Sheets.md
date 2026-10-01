@@ -54,15 +54,11 @@ Se autentica con una **cuenta de servicio** cuyo JSON completo vive en la variab
 **La cuota es el problema.** Google permite **60 peticiones por minuto y usuario**, y al agotarse falla *todo* lo que lee Sheets — hasta el login, cuando el login vivía ahí. Por eso:
 
 - Toda llamada pasa por `conReintento()`, con espera creciente de 1,5 s · 3 s · 6 s. Un pico puntual (un backfill, varios paneles a la vez) se absorbe en vez de tumbar el ERP.
-- `readMany` / `writeMany` agrupan varios rangos en **un solo viaje**. Es lo que sustituyó a los ~1.000 `setValue` del Apps Script.
-- `ensureGrid` **cachea el tamaño de cada pestaña**: pedir los metadatos en cada escritura multiplicaba las llamadas.
+- `readMany` agrupa varios rangos en **un solo viaje**.
+- Al leer, `valueRenderOption: UNFORMATTED_VALUE` devuelve los números como números, sin depender del idioma de la hoja.
 
-Dos trampas propias de Sheets que están resueltas en el código:
-
-- **`values.update` no amplía la rejilla.** Escribir más filas de las que tiene la hoja (1.000 por defecto) falla con *"exceeds grid limits"*: hay que crecerla antes con `ensureGrid`.
-- **`USER_ENTERED` interpreta lo que escribes.** `'2026-09-17'` se convierte en fecha con formato local y ya no vuelve como texto. Para las cabeceras que son claves existe `writeSheetRaw`, que manda `RAW` y sobrevive al ida y vuelta. Al leer pasa lo mismo al revés: `valueRenderOption: UNFORMATTED_VALUE` devuelve los números como números, sin depender del idioma de la hoja.
-
-Todas las **escrituras** pasan además por `services/modoPruebas.js`: en modo pruebas se bloquean y se devuelve la misma forma que devolvería una escritura real (con ceros y una marca), porque devolver `undefined` hacía que los llamantes escribieran "undefined celdas" en el log y pareciera un fallo.
+> [!note] Solo lectura desde el 01/10/2026
+> El ERP ya no escribe en ninguna hoja. La última que lo hacía era la boda, y con ella se fueron las diez funciones de escribir de `services/sheets.js` (`writeSheet`, `writeMany`, `appendRows`, `deleteRows`, `ensureGrid`…) y su paso por `services/modoPruebas.js`. El permiso que se le pide a Google pasó a `spreadsheets.readonly`: aunque alguien volviera a llamar a una escritura, la cuenta de servicio no podría hacerla. Las trampas que tenían resueltas —`values.update` no amplía la rejilla; `USER_ENTERED` convierte `'2026-09-17'` en fecha y para las claves hacía falta `RAW`— están en el historial de git con su código.
 
 ## Qué ya salió de las hojas
 

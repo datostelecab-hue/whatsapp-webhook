@@ -23,11 +23,18 @@ const alta = require('../../services/repo/alta');
 
 // ── Lo que hace falta para pintar la pantalla ──────────────────────────────
 
-/** Los catálogos al abrir. Si fallan, la plantilla se ve igual. */
+/**
+ * Los catálogos al abrir. Si fallan, la plantilla se ve igual.
+ *
+ * `jornadas` son las que ofrece el desplegable de horas (`conductores.repo`
+ * JORNADAS). No es la lista de lo que vale —eso lo dice la base, 1 a 40—, y no
+ * es `cat_jornada`, que son las dos de contratar (32 y 40): aquí hay contratos
+ * de la ETT de 18, 21 o 29 horas que hay que poder volver a elegir.
+ */
 async function paraLaPantalla() {
   const catalogos = await con.catalogos()
     .catch(e => { console.error('❌ [PLANTILLA] catálogos:', e.message); return { situaciones: [], turnos: [], tipos: [] }; });
-  return { catalogos };
+  return { catalogos, jornadas: con.JORNADAS };
 }
 
 /**

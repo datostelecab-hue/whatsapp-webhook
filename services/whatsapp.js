@@ -72,9 +72,6 @@ function enviarPlantillaNombre(telefono, plantilla, nombre) {
   }]);
 }
 
-// Plantilla de aviso de horas (ya existente).
-const enviarAtencionHora = (telefono, nombre) => enviarPlantillaNombre(telefono, 'atencion_hora', nombre);
-
 // (La bienvenida de Ballenoil, con su botón «VER PIN BALLENOIL», se quitó el
 // 24/09/2026: ya no se trabaja con Ballenoil.)
 
@@ -240,4 +237,4 @@ async function enviarBotones(telefono, texto, botones) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
-module.exports = { enviarAtencionHora, enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, PLANTILLA_TURNOS };
+module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, PLANTILLA_TURNOS };

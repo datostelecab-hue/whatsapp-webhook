@@ -606,7 +606,7 @@ dos veces*, bastaría para que un conductor apareciera en la agenda y no en su c
 
 ### Las cabeceras de la hoja no corresponden con el contenido
 
-`scripts/cargar-conductores.js`
+`scripts/archivo/cargar-conductores.js`
 
 La columna rotulada "Telefono" trae la fecha de ingreso, y la rotulada
 "Fecha Ingreso" trae un estado.

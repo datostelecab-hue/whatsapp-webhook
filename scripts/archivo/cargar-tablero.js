@@ -1,7 +1,7 @@
 // ============================================================
 // CARGA DEL TABLERO: plazas, asignaciones, turnos y libranzas
 // ============================================================
-//   node scripts/cargar-tablero.js [carpeta]
+//   node scripts/archivo/cargar-tablero.js [carpeta]
 //
 // Convierte las ~12.800 filas de PLANIFICADOR_V2 en el modelo relacional:
 // cada coche tiene 6 PLAZAS (Día, Noche, CT1 Día, CT1 Noche, CT2 Día, CT2 Noche)
@@ -17,8 +17,8 @@
 
 const path = require('path');
 const ExcelJS = require('exceljs');
-const db = require('../services/db');
-const { normClave } = require('../services/nucleo');
+const db = require('../../services/db');
+const { normClave } = require('../../services/nucleo');
 
 const NL = String.fromCharCode(10);
 const DIR = process.argv[2] || 'C:/Users/ricar/Downloads';

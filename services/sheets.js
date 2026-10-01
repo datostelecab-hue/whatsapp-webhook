@@ -1,5 +1,18 @@
+// ============================================================
+// GOOGLE SHEETS — solo LECTURA
+// ============================================================
+// El ERP ya no escribe en ninguna hoja (01/10/2026). Lo que queda de Google
+// Sheets son lecturas: las respuestas del formulario de la ticketera
+// (`Ticketera/formulario.js`) y los rescates únicos de `configApp` y de
+// `TICKETS_IT`. La última escritora fue la boda, y con ella se fueron las diez
+// funciones de escribir (writeSheet, appendRows, deleteRows…): están en el
+// historial de git si algún día hicieran falta.
+//
+// Por eso el permiso que se le pide a Google es `spreadsheets.readonly`: aunque
+// alguien volviera a llamar a una escritura, la cuenta de servicio no podría
+// hacerla. Ver docs/integraciones/Google Drive y Sheets.md.
+
 const { google } = require('googleapis');
-const pruebas = require('./modoPruebas');
 
 let sheetsClient = null;
 
@@ -9,7 +22,7 @@ function getSheetsClient() {
   const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new google.auth.GoogleAuth({
     credentials,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
   });
 
   sheetsClient = google.sheets({ version: 'v4', auth });
@@ -54,60 +67,6 @@ async function readSheet(spreadsheetId, range, options = {}) {
   return response.data.values || [];
 }
 
-async function writeSheet(spreadsheetId, range, values) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range} (${values.length} filas)`)) return;
-  const sheets = getSheetsClient();
-  await conReintento('write', () => sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values }
-  }));
-}
-
-// Como writeSheet pero SIN que Sheets interprete los valores: 'YYYY-MM-DD' se
-// queda como texto y no se convierte a fecha con formato local. Se usa para
-// cabeceras que son claves (L_Acumuladas), donde el texto debe sobrevivir al
-// ida y vuelta.
-async function writeSheetRaw(spreadsheetId, range, values) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range} (${values.length} filas)`)) return;
-  const sheets = getSheetsClient();
-  await conReintento('write', () => sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range,
-    valueInputOption: 'RAW',
-    requestBody: { values }
-  }));
-}
-
-async function clearSheet(spreadsheetId, range) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range}`)) return;
-  const sheets = getSheetsClient();
-  await conReintento('clear', () => sheets.spreadsheets.values.clear({
-    spreadsheetId,
-    range
-  }));
-}
-
-async function ensureSheet(spreadsheetId, sheetName) {
-  const sheets = getSheetsClient();
-  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
-  const exists = spreadsheet.data.sheets.some(s => s.properties.title === sheetName);
-
-  if (!exists) {
-    // La comprobación es una LECTURA y pasa siempre; lo que se frena en modo
-    // pruebas es crear la pestaña, que sí modificaría el libro de producción.
-    if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… crear hoja ${sheetName}`)) return;
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: sheetName } } }]
-      }
-    });
-    console.log(`📄 Hoja "${sheetName}" creada`);
-  }
-}
-
 /**
  * Lee varios rangos en UNA sola petición.
  * Devuelve un array paralelo a `ranges` con los valores de cada uno.
@@ -120,105 +79,9 @@ async function readMany(spreadsheetId, ranges) {
 }
 
 /**
- * Escribe varios rangos en UNA sola petición.
- * @param {Array<{range: string, values: Array[]}>} datos
- *
- * Esto es lo que sustituye a los ~1000 setValue del Apps Script: aunque se
- * manden 250 rangos distintos (las celdas combinadas obligan a ir una a una),
- * sigue siendo un único viaje a Google.
+ * Mapa nombre de pestaña → id numérico. Lo usa el formulario para saber qué
+ * pestañas tiene el libro antes de elegir de cuál leer.
  */
-async function writeMany(spreadsheetId, datos) {
-  // Bloqueado en modo pruebas: se devuelve la MISMA forma que en una escritura
-  // real, con ceros y una marca. Devolver `undefined` hacia que los llamantes
-  // que hacen `{ ...res }` se quedaran sin campos y los logs escribieran
-  // "undefined celdas", que parece un fallo cuando no lo es.
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${datos.length} rango(s)`)) {
-    return { updatedCells: 0, updatedRanges: 0, bloqueado: true };
-  }
-  if (!datos.length) return { updatedCells: 0, updatedRanges: 0 };
-  const sheets = getSheetsClient();
-  const response = await conReintento('writeMany', () => sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    requestBody: { valueInputOption: 'USER_ENTERED', data: datos }
-  }));
-  return {
-    updatedCells: response.data.totalUpdatedCells || 0,
-    updatedRanges: response.data.totalUpdatedRanges || 0
-  };
-}
-
-/** Envía requests crudas a spreadsheets.batchUpdate (formato, visibilidad…). */
-async function batchUpdate(spreadsheetId, requests) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${requests.length} petición(es)`)) return {};
-  const reqs = (requests || []).filter(Boolean);
-  if (!reqs.length) return;
-  const sheets = getSheetsClient();
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: reqs } });
-}
-
-/**
- * Oculta / muestra tramos de filas (hiddenByUser). Un tramo es
- * { startIndex, endIndex, hidden } con índices 0-based y endIndex exclusivo.
- * Todo en una sola petición.
- */
-async function setRowVisibility(spreadsheetId, sheetId, tramos) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… visibilidad de filas`)) return;
-  const reqs = (tramos || []).filter(t => t.endIndex > t.startIndex);
-  if (!reqs.length) return;
-  const sheets = getSheetsClient();
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: reqs.map(t => ({
-        updateDimensionProperties: {
-          range: { sheetId, dimension: 'ROWS', startIndex: t.startIndex, endIndex: t.endIndex },
-          properties: { hiddenByUser: !!t.hidden },
-          fields: 'hiddenByUser'
-        }
-      }))
-    }
-  });
-}
-
-/**
- * Se asegura de que la hoja tenga AL MENOS `filas` filas y `columnas` columnas.
- * values.update NO amplía la rejilla: escribir más filas de las que tiene la hoja
- * (1000 por defecto) falla con "exceeds grid limits", así que hay que crecerla antes.
- */
-// Tamaño conocido de cada pestaña: pedir los metadatos en CADA escritura multiplicaba
-// las llamadas a la API y agotaba la cuota (60/min por usuario). Solo se consulta si no
-// se conoce o si hace falta crecer de verdad.
-const _grid = new Map();   // 'spreadsheetId|hoja' -> { filas, columnas }
-
-async function ensureGrid(spreadsheetId, sheetName, filas, columnas) {
-  const clave = `${spreadsheetId}|${sheetName}`;
-  const conocido = _grid.get(clave);
-  if (conocido && (!filas || conocido.filas >= filas) && (!columnas || conocido.columnas >= columnas)) return;
-
-  const sheets = getSheetsClient();
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const hoja = (meta.data.sheets || []).find(s => s.properties.title === sheetName);
-  if (!hoja) throw new Error(`No existe la hoja "${sheetName}"`);
-  const g = hoja.properties.gridProperties || {};
-  const reqs = [];
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ampliar ${sheetName} a ${filas}x${columnas}`)) return;
-  if (filas && (g.rowCount || 0) < filas) {
-    reqs.push({ appendDimension: { sheetId: hoja.properties.sheetId, dimension: 'ROWS', length: filas - (g.rowCount || 0) } });
-  }
-  if (columnas && (g.columnCount || 0) < columnas) {
-    reqs.push({ appendDimension: { sheetId: hoja.properties.sheetId, dimension: 'COLUMNS', length: columnas - (g.columnCount || 0) } });
-  }
-  if (reqs.length) {
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: reqs } });
-    console.log(`📐 Hoja "${sheetName}" ampliada a ${Math.max(filas || 0, g.rowCount || 0)} filas`);
-  }
-  _grid.set(clave, {
-    filas: Math.max(filas || 0, g.rowCount || 0),
-    columnas: Math.max(columnas || 0, g.columnCount || 0)
-  });
-}
-
-/** Mapa nombre de hoja → id numérico (necesario para borrar filas). */
 async function getSheetIds(spreadsheetId) {
   const sheets = getSheetsClient();
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
@@ -229,47 +92,4 @@ async function getSheetIds(spreadsheetId) {
   return mapa;
 }
 
-/** Añade filas al final de una hoja. */
-async function appendRows(spreadsheetId, range, values) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${range} (+${values.length})`)) return { updatedRows: 0 };
-  if (!values.length) return { updatedRows: 0 };
-  const sheets = getSheetsClient();
-  const response = await conReintento('append', () => sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range,
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values }
-  }));
-  return { updatedRows: (response.data.updates || {}).updatedRows || 0 };
-}
-
-/**
- * Borra filas por número de fila (1-based, como se ven en la hoja).
- * Se ordenan de mayor a menor: borrar de abajo arriba evita que el borrado de
- * una fila desplace a las siguientes y se acabe eliminando la equivocada.
- */
-async function deleteRows(spreadsheetId, sheetId, filas) {
-  if (!pruebas.permite('Sheets', `${spreadsheetId.slice(0,8)}… ${filas.length} fila(s)`)) return { borradas: 0 };
-  if (!filas.length) return { borradas: 0 };
-  const sheets = getSheetsClient();
-  const ordenadas = [...new Set(filas)].sort((a, b) => b - a);
-
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: ordenadas.map(fila => ({
-        deleteDimension: {
-          range: { sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila }
-        }
-      }))
-    }
-  });
-  return { borradas: ordenadas.length, filas: ordenadas };
-}
-
-module.exports = {
-  readSheet, writeSheet, writeSheetRaw, clearSheet, ensureSheet, ensureGrid,
-  readMany, writeMany, getSheetIds, appendRows, deleteRows, setRowVisibility,
-  batchUpdate
-};
+module.exports = { readSheet, readMany, getSheetIds };

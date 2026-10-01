@@ -7,8 +7,8 @@
 // los datos sucios. Cero conexión: solo lee migracion.xlsx (+ el TSV de justificantes
 // si está). Es el "qué va a pasar" que el --dry real confirmará contra la base.
 //
-//   node scripts/migrar-preflight.js
-//   node scripts/migrar-preflight.js --xlsx <ruta> --just <ruta.tsv>
+//   node scripts/archivo/migrar-preflight.js
+//   node scripts/archivo/migrar-preflight.js --xlsx <ruta> --just <ruta.tsv>
 
 const path = require('path');
 const fs = require('fs');
@@ -16,7 +16,7 @@ const L = require('./migrar-plantilla');   // reusa leerXlsx + los parsers (no m
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
-const JUST = opt('--just', path.join(__dirname, 'datos', 'justificantes.tsv'));
+const JUST = opt('--just', path.join(__dirname, '..', 'datos', 'justificantes.tsv'));
 
 const txt = v => { if (v == null) return ''; if (typeof v === 'object') v = v.text ?? v.result ?? v; return String(v).trim(); };
 const up = s => txt(s).toUpperCase();
@@ -64,7 +64,7 @@ const pct = (a, b) => b ? ` (${Math.round(a / b * 100)}%)` : '';
 
   // Nombres para el FALLBACK de justificantes: normClave -> cuántas fichas únicas lo
   // llevan (>1 = ambiguo, no se usa). Mismo criterio que el cargador.
-  const { normClave } = require('../services/nucleo');
+  const { normClave } = require('../../services/nucleo');
   const nomCount = new Map();
   const meterNom = (nom, esEtt, fila) => {
     if (skip.has((esEtt ? 'E' : 'P') + fila)) return;

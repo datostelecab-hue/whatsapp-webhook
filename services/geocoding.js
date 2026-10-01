@@ -3,8 +3,7 @@
  *
  * Es gratis y sin clave, pero su política de uso exige:
  *   · un User-Agent identificativo,
- *   · como mucho 1 petición por segundo.
- * Por eso las llamadas en lote van serializadas con pausa; nunca en paralelo.
+ *   · como mucho 1 petición por segundo: nada de lanzarlas en paralelo.
  *
  * Hay dos modos:
  *   · geocodificar(direccion, cp)        → búsqueda libre (una sola cadena).
@@ -15,10 +14,6 @@
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'TelecabFleet/1.0 (gestión interna de flota)';
-const PAUSA_MS = 1100;
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
 /** Lanza la consulta a Nominatim (params ya montados) y normaliza el resultado. */
 async function consultar(params) {
   params.set('format', 'jsonv2');
@@ -97,17 +92,4 @@ async function geocodificarEstructurado(comp = {}) {
   return geocodificar(libre, cp);
 }
 
-/** Geocodifica una lista respetando el límite de 1/seg. */
-async function geocodificarLote(items, onProgreso) {
-  const resultados = [];
-  for (let i = 0; i < items.length; i++) {
-    const { direccion, codigoPostal } = items[i];
-    const r = await geocodificar(direccion, codigoPostal);
-    resultados.push(r);
-    if (onProgreso) onProgreso(i + 1, items.length, r);
-    if (i < items.length - 1) await sleep(PAUSA_MS);
-  }
-  return resultados;
-}
-
-module.exports = { geocodificar, geocodificarEstructurado, geocodificarLote };
+module.exports = { geocodificar, geocodificarEstructurado };

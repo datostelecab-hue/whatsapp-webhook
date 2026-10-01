@@ -8,8 +8,9 @@
   const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
   // Lo habitual, para no escribir a mano lo de siempre. La base admite
   // cualquier entero de 1 a 40 (db/130): estas jornadas raras —18, 21, 24, 27,
-  // 29— son contratos de verdad de la ETT, no erratas.
-  const JORNADAS = [18, 20, 21, 24, 25, 27, 29, 30, 32, 35, 40];
+  // 29— son contratos de verdad de la ETT, no erratas. La lista es la de
+  // `conductores.repo` (JORNADAS): aquí no se escribe otra.
+  const JORNADAS = <%- JSON.stringify(typeof jornadas !== 'undefined' ? jornadas : []) %>;
   const ROL = '<%= typeof rol !== "undefined" ? rol : "" %>';
   // Tráfico ve la ficha entera pero solo cambia lo suyo: turno y libranzas.
   const SOLO_OPERATIVO = ROL === 'trafico';

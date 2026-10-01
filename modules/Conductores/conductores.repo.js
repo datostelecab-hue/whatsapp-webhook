@@ -1228,7 +1228,9 @@ async function darDeAlta(id, { tipo = 'propia', ettNombre, alta, antiguedad,
 // manda es el CHECK de la base (db/130): un entero de 1 a 40.
 //
 // Esta lista se queda porque un desplegable tiene que ofrecer algo, y ofrece lo
-// habitual — pero ya no decide que es valido.
+// habitual — pero ya no decide que es valido. La pinta la ficha de Plantilla
+// (`plantilla.service.paraLaPantalla`); hasta el 01/10/2026 la vista llevaba su
+// propia copia escrita a mano.
 const JORNADAS = [18, 20, 21, 24, 25, 27, 29, 30, 32, 35, 40];
 const TOPE_JORNADA = 40;   // el maximo legal de la jornada ordinaria
 

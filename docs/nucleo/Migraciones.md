@@ -45,7 +45,7 @@ node services/migraciones.js --ver    # solo dice qué haría, no escribe nada
 node services/migraciones.js          # aplica lo pendiente
 ```
 
-`--ver` es `aplicar({ soloVer: true })`: devuelve aplicadas, pendientes y modificadas sin tocar la base. **Aplicar es la orden sin bandera.** El `--go` de otros comandos del repo (`scripts/cargar-datos-gestoria.js`, `scripts/migrar-plantilla.js`…) es la convención de los *scripts sueltos*, que ensayan por defecto y solo escriben si se lo pides; el corredor no lo usa.
+`--ver` es `aplicar({ soloVer: true })`: devuelve aplicadas, pendientes y modificadas sin tocar la base. **Aplicar es la orden sin bandera.** El `--go` de otros comandos del repo (`scripts/archivo/cargar-datos-gestoria.js`, `scripts/archivo/migrar-plantilla.js`…) es la convención de los *scripts sueltos*, que ensayan por defecto y solo escriben si se lo pides; el corredor no lo usa.
 
 **Desde el panel `/migraciones`** (`routes/migraciones.js`), detrás de `requiereDesarrollador` porque cambiar el esquema queda tras el rol más alto:
 
@@ -59,7 +59,7 @@ node services/migraciones.js          # aplica lo pendiente
 
 Quien lanza una aplicación queda en el log con su correo.
 
-**El día de una migración grande** está `scripts/migrar-todo.js`, que aplica lo pendiente y luego corre los cargadores en el orden obligatorio (conductores → vehículos → tablero → ausencias), parándose si uno falla.
+**El día de una migración grande** estaba `scripts/migrar-todo.js`, que aplica lo pendiente y luego corre los cargadores en el orden obligatorio (conductores → vehículos → tablero → ausencias), parándose si uno falla. La migración ya se hizo: desde el 01/10/2026 está con los demás scripts de un solo uso en `scripts/archivo/` (ver su LEEME), y sigue funcionando desde ahí.
 
 ## La regla de oro
 

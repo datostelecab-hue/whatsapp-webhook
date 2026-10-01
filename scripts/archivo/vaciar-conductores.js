@@ -1,8 +1,8 @@
 // ============================================================
 // VACIAR LA PLANTILLA para volver a cargarla
 // ============================================================
-//   node scripts/vaciar-conductores.js          -> solo dice qué borraría
-//   node scripts/vaciar-conductores.js --si     -> lo borra de verdad
+//   node scripts/archivo/vaciar-conductores.js          -> solo dice qué borraría
+//   node scripts/archivo/vaciar-conductores.js --si     -> lo borra de verdad
 //
 // `cargar-conductores.js` no vacía nada antes de insertar: correrlo dos veces
 // deja a todo el mundo duplicado. Mientras se prueba hay que poder repetir la
@@ -16,7 +16,7 @@
 // tiene conductor conocido, y borrarla rompe cosas que no tienen que ver con
 // esto.
 
-const db = require('../services/db');
+const db = require('../../services/db');
 
 // El orden importa. `asignacion.conductor_id` NO borra en cascada, y está bien
 // que no lo haga: una asignación es un hecho y no debe evaporarse porque
@@ -60,7 +60,7 @@ const n = async (t, donde) => {
 
   if (!deVerdad) {
     console.log('\nEsto NO ha borrado nada. Para hacerlo de verdad:');
-    console.log('  node scripts/vaciar-conductores.js --si\n');
+    console.log('  node scripts/archivo/vaciar-conductores.js --si\n');
     return;
   }
 
@@ -78,5 +78,5 @@ const n = async (t, donde) => {
   }
 
   console.log(`\nQuedan ${await n('conductor', 'NOT es_centinela')} persona(s).`);
-  console.log('Ahora: node scripts/cargar-conductores.js\n');
+  console.log('Ahora: node scripts/archivo/cargar-conductores.js\n');
 })().catch(e => { console.error('ERROR:', e.stack); process.exit(1); });

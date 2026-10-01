@@ -7,6 +7,10 @@ actualizado: 2026-10-01
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-01 · Organización, tanda 3: lo que se deja, lo que se archiva y lo que sobra
+
+El motor de notificaciones del convenio (Hito 6) se queda sin enchufar, pero ya no falla: pedía `template_code` a una tabla que lo llama `code`. Los 13 scripts de un solo uso de la migración (y el SQL del reset) van a `scripts/archivo/`, y siguen funcionando. De los 30 exports sin uso, 15 se quitan, uno se enchufa (la lista de jornadas que la ficha de Plantilla llevaba copiada a mano), 7 se quedan con su porqué en la lista nueva de `inventario-exports` y 8 son ganchos de prueba. El ERP deja de poder escribir en Google Sheets: `sheets.js` queda en tres lecturas y con permiso de solo lectura. → [[Comprobadores]] · [[RRHH]]
+
 ## 2026-10-01 · Fuera el módulo de la boda
 
 El favor aparte (confirmaciones de la boda por WhatsApp, panel oculto `/boda-igna-cruz`) sale del ERP entero: servicio, rutas, pantalla e imagen. No tenía tablas: la lista de invitados vive en una hoja de Google, que no se toca. El webhook pasa a contestar **solo** lo que llega al número de Telecab, porque el de la boda sigue colgado de la misma app de WhatsApp y sus mensajes caerían en el bot de conductores. → [[WhatsApp]]

@@ -656,5 +656,4 @@ module.exports = {
   tramoFinal: (...a) => repo.tramoFinal(...a),
   paraAltasExcel: (...a) => repo.paraAltasExcel(...a),
   marcarExcelAlta: (...a) => repo.marcarExcelAlta(...a),
-  pendientes: (...a) => repo.pendientes(...a),
 };

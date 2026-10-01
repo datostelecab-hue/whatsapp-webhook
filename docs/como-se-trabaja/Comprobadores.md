@@ -333,6 +333,13 @@ No son de los seis, pero forman parte de la misma red:
 - **`inventario-muerto.js`** — qué ficheros ya no alcanza nadie. Es la lista que se
   usa para borrar de verdad al final de la Fase 2, así que un falso positivo ahí no
   es ruido: **es un despliegue roto**.
+- **`inventario-exports.js`** — un escalón más abajo: funciones exportadas que no llama
+  nadie de fuera. Lo que se decide dejar sin uso va a su lista `A_PROPOSITO`, **con el
+  porqué**, y deja de salir como muerto; si un día alguien lo usa o desaparece, la
+  salida dice que sobra en la lista. Los exports que empiezan por `_` son **ganchos de
+  prueba** (`_situarAlta: situarAlta`) y se listan aparte. El 01/10/2026 quedó en
+  **cero** sin uso: de 30, 15 quitados, uno enchufado (`JORNADAS`, que ahora pinta la
+  ficha de Plantilla), 7 a propósito y 8 ganchos de prueba.
 - **`comprobar-convenio.js`, `comprobar-cobertura.js`, `comprobar-directo.js`** —
   comprobaciones de dominio de sus módulos.
 

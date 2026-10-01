@@ -1,7 +1,7 @@
 // ============================================================
 // CARGA DE CONDUCTORES desde los Excel al núcleo de PostgreSQL
 // ============================================================
-//   node scripts/cargar-conductores.js [carpeta]
+//   node scripts/archivo/cargar-conductores.js [carpeta]
 // Necesita DATABASE_URL. Carpeta por defecto: C:/Users/ricar/Downloads.
 //
 // ORDEN Y REGLAS (acordadas con el cliente, agosto 2026):
@@ -24,8 +24,8 @@
 
 const path = require('path');
 const ExcelJS = require('exceljs');
-const db = require('../services/db');
-const { normClave } = require('../services/nucleo');
+const db = require('../../services/db');
+const { normClave } = require('../../services/nucleo');
 
 const NL = String.fromCharCode(10);
 const primeraLinea = e => String(e.message).split(NL)[0];

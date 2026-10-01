@@ -65,7 +65,7 @@ Viajes y paradas por unidad: inicio/fin, `distance` en metros, duración, direcc
 > [!warning] `route/list` devuelve el trayecto ENTERO aunque solo toque la ventana
 > Un tramo de conducción que venía de antes se contaba completo. Caso real **0348MMZ**: "60,7 km en descanso" que en realidad eran de toda la mañana — después de las 11:41 Mapon daba ~2 km. Por eso existe `kmEnVentanaExacto()`, que recorta: trayecto entero dentro → su distancia Mapon; trayecto que cruza el borde → suma haversine de los segmentos interiores; sin traza → solo cuenta si **empezó** dentro.
 
-Para la flota entera (`leerKmPorDia`), el rango se trocea en ventanas de **5 días pedidas en serie** y los trayectos que caen justo en el corte se deduplican por `route_id`. Un trayecto que cruza la medianoche cuenta entero en su día de inicio.
+Hubo también una lectura de la flota entera por día (`leerKmPorDia`, para la auditoría): troceaba el rango en ventanas de **5 días pedidas en serie** y deduplicaba por `route_id` los trayectos del corte. Ya no la pedía nadie y se quitó el 01/10/2026, igual que `leerExcesosGraves` (los excesos llegan por la ingesta, ver [[Sanciones de velocidad]]). Si vuelve a hacer falta, está en el historial de git.
 
 ## Alertas — `alert/list.json`
 

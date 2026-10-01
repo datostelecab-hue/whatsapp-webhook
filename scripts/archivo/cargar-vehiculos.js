@@ -1,7 +1,7 @@
 // ============================================================
 // CARGA DE VEHÍCULOS desde los Excel al núcleo de PostgreSQL
 // ============================================================
-//   node scripts/cargar-vehiculos.js [carpeta]
+//   node scripts/archivo/cargar-vehiculos.js [carpeta]
 //
 // La hoja VEHICULOS de Trafico 2.0 está VACÍA (una sola fila), así que el
 // maestro de coches se reconstruye desde PLANIFICADOR_V2, que es lo único que
@@ -17,7 +17,7 @@
 
 const path = require('path');
 const ExcelJS = require('exceljs');
-const db = require('../services/db');
+const db = require('../../services/db');
 
 const NL = String.fromCharCode(10);
 const DIR = process.argv[2] || 'C:/Users/ricar/Downloads';

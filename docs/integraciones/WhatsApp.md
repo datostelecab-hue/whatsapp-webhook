@@ -43,7 +43,7 @@ El detalle completo, con los textos exactos y las reglas de Meta, está en [[PLA
 
 | Plantilla | Variables | Quién la usa |
 |---|---|---|
-| `atencion_hora` | `nombre` (nombrada) | aviso de horas |
+| `atencion_hora` | `nombre` (nombrada) | **ya no se manda** desde el 08/09/2026; su función se quitó el 01/10/2026. Queda como ejemplo del formato nombrado (`enviarPlantillaNombre`) |
 | `ballenoil` | `nombre` (nombrada) | **ya no se usa** (24/09/2026): era la bienvenida con el PIN de Ballenoil. Se puede borrar en Meta |
 | `detalle_turnos` | 1 posicional | aviso de turnos, con botón "Ver mis turnos" |
 | `advertencia_limite` | 2 posicionales (nombre, matrícula) | sanciones por exceso de velocidad |

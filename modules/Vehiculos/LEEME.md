@@ -76,9 +76,9 @@ Quién entra hoy por la puerta:
 | Quién | A qué |
 |---|---|
 | su propio controlador | todo |
-| `routes/tablero.js` (planificador) | `estadosVehiculo()` |
+| `modules/Planificacion/tablero.controller.js` | `estadosVehiculo()` |
 | `services/ingesta.js` | `diaria()` (el cron de Mapon) |
-| `scripts/migrar-plantilla.js` | alta de coches |
+| `scripts/archivo/migrar-plantilla.js` | alta de coches (la migración de septiembre, ya archivada) |
 
 Por la puerta de **Taller** no entra nadie de fuera todavía: solo su propio
 controlador. Mejor así — cuanto menos ofrezca una puerta, menos ata.

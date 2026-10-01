@@ -1,7 +1,7 @@
 // ============================================================
 // CARGA DE LA PLANTILLA desde el fichero de RRHH
 // ============================================================
-//   node scripts/cargar-plantilla.js ["ruta/al/PLANTILLA TRABAJADORES.xlsx"]
+//   node scripts/archivo/cargar-plantilla.js ["ruta/al/PLANTILLA TRABAJADORES.xlsx"]
 //
 //   --simular                hacerlo todo y deshacerlo: ensena los numeros y
 //                            los avisos sin dejar nada escrito
@@ -34,8 +34,8 @@
 // Turnos y libranzas no se cargan a proposito: se asignan a mano.
 
 const ExcelJS = require('exceljs');
-const db = require('../services/db');
-const { normClave } = require('../services/nucleo');
+const db = require('../../services/db');
+const { normClave } = require('../../services/nucleo');
 
 const arg = n => (process.argv.find(a => a.startsWith('--' + n + '=')) || '').split('=')[1] || '';
 const RUTA = process.argv.slice(2).find(a => !a.startsWith('--')) ||
@@ -158,7 +158,7 @@ function jornada(r, avisa) {
   const ya = await db.consulta(`SELECT count(*)::int n FROM conductor WHERE NOT es_centinela`);
   if (ya.rows[0].n && !FORZAR) {
     console.log('Ya hay ' + ya.rows[0].n + ' persona(s) en la base. Vacia primero:');
-    console.log('  node scripts/vaciar-conductores.js --si');
+    console.log('  node scripts/archivo/vaciar-conductores.js --si');
     console.log('...o pasa --forzar si de verdad quieres añadir encima.' + NL);
     return;
   }

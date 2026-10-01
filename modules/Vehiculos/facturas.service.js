@@ -92,7 +92,6 @@ async function asignarCoche(facturaId, lineaId, datos, quien = {}) {
   if (String(r.facturaId) !== String(facturaId)) throw new Error('Esa línea no es de esa factura');
   return r;
 }
-const adjuntar = (id, adjunto) => repo.guardarAdjunto(id, adjunto);
 
 /**
  * Guarda el PDF de la factura en Drive y apunta DÓNDE quedó.
@@ -155,7 +154,7 @@ const gastoDeCoche = vehiculoId => repo.gastoDe(vehiculoId);
 const flota = (quien = {}) => repo.flota(sedesDe(quien));
 
 module.exports = {
-  listar, ver, alta, anular, adjuntar, subirPdf, asignarCoche,
+  listar, ver, alta, anular, subirPdf, asignarCoche,
   proveedores, nuevoProveedor,
   gasto, gastoDeCoche, flota,
   sedesDe, SEDES, SEDE_POR_DEFECTO,

@@ -1,8 +1,8 @@
 // ============================================================
 // MIGRACIÓN COMPLETA — de los Excel a PostgreSQL, de una vez
 // ============================================================
-//   node scripts/migrar-todo.js [carpeta]           aplica y carga
-//   node scripts/migrar-todo.js [carpeta] --desde-cero   vacía primero
+//   node scripts/archivo/migrar-todo.js [carpeta]           aplica y carga
+//   node scripts/archivo/migrar-todo.js [carpeta] --desde-cero   vacía primero
 //
 // Necesita DATABASE_URL. `--desde-cero` exige además MODO_PRUEBAS=1: vaciar la
 // base es irreversible y no puede depender de acordarse de mirar a qué apunta
@@ -13,8 +13,8 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const db = require('../services/db');
-const migra = require('../services/migraciones');
+const db = require('../../services/db');
+const migra = require('../../services/migraciones');
 
 const DIR = process.argv.find(a => !a.startsWith('--') && a !== process.argv[0] && a !== process.argv[1])
   || 'C:/Users/ricar/Downloads';

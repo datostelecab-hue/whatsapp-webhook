@@ -10,13 +10,13 @@
 // entran, cuántos no casan, filas con fechas basura, solapes...). Así se valida el
 // resultado ANTES de tocar producción.
 //
-//   node scripts/migrar-plantilla.js                 # DRY: solo informe
-//   node scripts/migrar-plantilla.js --go            # ESCRIBE de verdad
-//   node scripts/migrar-plantilla.js --xlsx <ruta> --just <ruta.tsv>
+//   node scripts/archivo/migrar-plantilla.js                 # DRY: solo informe
+//   node scripts/archivo/migrar-plantilla.js --go            # ESCRIBE de verdad
+//   node scripts/archivo/migrar-plantilla.js --xlsx <ruta> --just <ruta.tsv>
 //
 // El reset (borrar dominio, conservar el núcleo) va aparte: NO lo hace este script.
 //
-// La URL de la BD puede ir como ARGUMENTO (node scripts/migrar-plantilla.js
+// La URL de la BD puede ir como ARGUMENTO (node scripts/archivo/migrar-plantilla.js
 // "postgresql://...") para no pelear con las comillas de cmd/PowerShell. Se fija en el
 // entorno AQUÍ, antes de requerir services/db, que lee DATABASE_URL al cargarse.
 
@@ -26,19 +26,19 @@ if (_urlArg) process.env.DATABASE_URL = _urlArg;
 const path = require('path');
 const fs = require('fs');
 const ExcelJS = require('exceljs');
-const db = require('../services/db');
-const con = require('../modules/Conductores/conductores.repo');
-const veh = require('../modules/Vehiculos/vehiculos.service');
-const alta = require('../services/repo/alta');
-const repoJust = require('../services/repo/justificantes');
-const { normClave } = require('../services/nucleo');
+const db = require('../../services/db');
+const con = require('../../modules/Conductores/conductores.repo');
+const veh = require('../../modules/Vehiculos/vehiculos.service');
+const alta = require('../../services/repo/alta');
+const repoJust = require('../../services/repo/justificantes');
+const { normClave } = require('../../services/nucleo');
 
 // ── Argumentos ───────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const GO = args.includes('--go');
 const opt = (n, def) => { const i = args.indexOf(n); return i >= 0 && args[i + 1] ? args[i + 1] : def; };
 const XLSX = opt('--xlsx', 'C:/Users/ricar/Downloads/migracion.xlsx');
-const JUST = opt('--just', path.join(__dirname, 'datos', 'justificantes.tsv'));
+const JUST = opt('--just', path.join(__dirname, '..', 'datos', 'justificantes.tsv'));
 const QUIEN = { usuarioId: null, rol: 'superadmin' };   // la migración corre con permisos totales
 
 // ── Parsers robustos (los datos vienen sucios) ───────────────────────────────

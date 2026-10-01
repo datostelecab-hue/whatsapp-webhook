@@ -1165,20 +1165,12 @@ async function tramitar(id, fechaAlta, fechaHabilitado) {
   return r.rowCount;
 }
 
-/** Cuántas fichas hay esperando en cada sitio. Lo pide la campana. */
-async function pendientes() {
-  const r = await db.consulta(
-    `SELECT estado, count(*)::int n FROM candidatura
-      WHERE estado IN ('listo_rrhh', 'rechazado_rrhh')
-      GROUP BY 1`);
-  return Object.fromEntries(r.rows.map(x => [x.estado, x.n]));
-}
 module.exports = {
   CAMPOS, listar, porTelefono, cambiarEstado, descartar, eliminar, faltantes,
   paraFicha, paraFichaDeConductor, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
   // El tramo final: RRHH y Administración.
-  tramoFinal, paraAltasExcel, marcarExcelAlta, pendientes,
+  tramoFinal, paraAltasExcel, marcarExcelAlta,
   // Las consultas de lo que coordina `candidaturas.service.js`.
   catalogosBase, filaFicha, personaCruda, insertarPreseleccion, vivaDe, adelantarAListo,
   insertarContratada, conductorDe, guardarProceso, engancharVacante,

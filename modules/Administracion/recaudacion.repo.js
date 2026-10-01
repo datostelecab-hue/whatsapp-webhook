@@ -63,7 +63,6 @@ const TIPOS = [
   { codigo: 'salida_apertura',   etiqueta: 'Traspaso de apertura',  caja: -1, deuda:  0, conductor: false, interno: true },
 ];
 const TIPO = c => TIPOS.find(x => x.codigo === c) || null;
-const ES_SALIDA = c => /^salida_/.test(String(c || ''));
 // Las cuatro bocas por las que sale el dinero de la caja, para el desplegable.
 // El traspaso de apertura no está: no se elige, se hizo una vez.
 const SALIDAS = TIPOS.filter(t => !t.conductor && !t.interno);
@@ -1130,7 +1129,7 @@ async function importarCierre({ anio, mes, quincena, texto, usuarioId } = {}) {
 module.exports = {
   DIAS_REZAGADO,
   recalcularReciente, quincenasVivas,
-  DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, TODAS_SALIDAS, ES_SALIDA,
+  DENOMINACIONES, ETIQUETA_DEN, TIPOS, TIPO, SALIDAS, TODAS_SALIDAS,
   CORTE, cuadre, salidas,
   quincenaDe, quincenaHoy, quincenaValida, rangoQuincena, mueveQuincena,
   etiquetaQuincena, cortaQuincena, quincenasDesdeCorte, antesDelCorte,

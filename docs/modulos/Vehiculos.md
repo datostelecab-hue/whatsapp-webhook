@@ -204,7 +204,7 @@ No es purismo: si el planificador leyera el repositorio directamente, Vehículos
 | su propio controlador | todo |
 | `modules/Planificacion/tablero.controller.js` | `estadosVehiculo()` |
 | `services/ingesta.js` | `diaria()` — el cron de Mapon |
-| `scripts/migrar-plantilla.js` | alta de coches |
+| `scripts/archivo/migrar-plantilla.js` | alta de coches (la migración de septiembre, ya archivada) |
 
 Por la puerta de **Taller** no entra nadie de fuera todavía: solo su propio controlador. Mejor así — cuanto menos ofrezca una puerta, menos ata.
 

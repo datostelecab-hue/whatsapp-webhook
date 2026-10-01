@@ -373,27 +373,9 @@ async function leerAlertasCrudas({ desde, hasta, tipos = [] } = {}) {
   return fuera;
 }
 
-/**
- * Excesos que llegan al umbral (150 por defecto). Es lo que consumirá el cron
- * del aviso por WhatsApp cuando se monte esa parte.
- */
-async function leerExcesosGraves(rango = {}) {
-  const r = await leerAlertas({ ...rango, tipo: 'speeding' });
-  return { ...r, alertas: r.alertas.filter(a => a.velocidad >= UMBRAL) };
-}
-
 // ============================================================
-// AUDITORÍA DE FLOTA (Operaciones): km diarios y combustible
+// AUDITORÍA DE FLOTA (Operaciones): combustible
 // ============================================================
-
-/** ISO UTC → clave de día en hora peninsular ('aaaa-mm-dd', ordena bien como texto). */
-function diaLocal(iso) {
-  const d = new Date(iso);
-  if (isNaN(d)) return '';
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(d);
-}
 
 /** Resuelve el rango desde/hasta igual que leerAlertas (día final completo, tope 31 días). */
 function resolverRango({ desde, hasta } = {}, porDefectoDias = 7) {
@@ -998,76 +980,6 @@ async function leerRecorridoUnidad({ unitId, fromTs, tillTs }) {
 }
 
 /**
- * Km recorridos por vehículo y día natural (hora peninsular), sumando la
- * distancia GPS de los trayectos de route/list.json de TODA la flota.
- *
- * route/list no pagina: para que la respuesta no sea un mamotreto, el rango se
- * trocea en ventanas de pocos días que se piden EN SERIE (la cuenta admite 5
- * peticiones concurrentes y el cron de sanciones ya consume). Un trayecto que
- * cruza la medianoche cuenta entero en su día de INICIO; los que caen justo en
- * el corte de dos ventanas se deduplican por route_id.
- */
-const DIAS_POR_VENTANA = 5;
-
-async function leerKmPorDia({ desde, hasta } = {}) {
-  const { ini, fin } = resolverRango({ desde, hasta });
-  const mapaUnidades = await unidades();
-
-  // Eje de días del rango (en local): la vista pinta una columna por día, con
-  // dato o sin él.
-  const dias = [];
-  for (let d = new Date(ini); d <= fin; d.setDate(d.getDate() + 1)) {
-    dias.push(diaLocal(d.toISOString()));
-  }
-
-  const porUnidad = new Map();   // unit_id -> { km: Map(dia -> metros), viajes }
-  const vistos = new Set();      // unit_id|route_id (dedupe entre ventanas)
-
-  for (let v = new Date(ini); v < fin;) {
-    const vFin = new Date(v); vFin.setDate(vFin.getDate() + DIAS_POR_VENTANA);
-    const hastaV = vFin < fin ? vFin : fin;
-    const json = await pedir('route/list.json',
-      `from=${encodeURIComponent(aUTC(v))}&till=${encodeURIComponent(aUTC(hastaV))}`);
-    ((json.data && json.data.units) || []).forEach(u => {
-      (u.routes || []).forEach(ruta => {
-        if (ruta.type !== 'route') return;                    // las paradas no suman km
-        const clave = `${u.unit_id}|${ruta.route_id}`;
-        if (vistos.has(clave)) return;
-        vistos.add(clave);
-        const dia = diaLocal(ruta.start && ruta.start.time);
-        if (!dia) return;
-        const reg = porUnidad.get(u.unit_id) || { km: new Map(), viajes: 0 };
-        reg.km.set(dia, (reg.km.get(dia) || 0) + (Number(ruta.distance) || 0));
-        reg.viajes++;
-        porUnidad.set(u.unit_id, reg);
-      });
-    });
-    v = vFin;
-  }
-
-  const filas = [...porUnidad.entries()].map(([unitId, reg]) => {
-    const unidad = mapaUnidades.get(unitId) || {};
-    const km = {};
-    let total = 0;
-    reg.km.forEach((metros, dia) => {
-      const k = Math.round(metros / 100) / 10;   // metros → km con 1 decimal
-      km[dia] = k;
-      total += k;
-    });
-    return {
-      unitId,
-      matricula: unidad.matricula || `#${unitId}`,
-      vehiculo: unidad.vehiculo || '—',
-      km,
-      total: Math.round(total * 10) / 10,
-      viajes: reg.viajes
-    };
-  }).sort((a, b) => a.matricula.localeCompare(b.matricula));
-
-  return { dias, filas, desde: aUTC(ini), hasta: aUTC(fin) };
-}
-
-/**
  * Auditoría de combustible de toda la flota en una pasada:
  *   eventos  repostajes (subida de nivel) y caídas (bajada brusca: posible robo)
  *            de fuel/changes.json, con lugar y nivel previo.
@@ -1152,8 +1064,8 @@ async function listarSetups() {
 
 module.exports = {
   TIPOS, UMBRAL, MAX_DIAS,
-  leerAlertas, leerAlertasCrudas, leerExcesosGraves, listarSetups,
-  leerKmPorDia, leerCombustible, leerRecorridoUnidad,
+  leerAlertas, leerAlertasCrudas, listarSetups,
+  leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, elegirEquipo, tieneReleCorte, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
   comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,

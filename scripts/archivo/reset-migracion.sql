@@ -126,7 +126,7 @@ ALTER TABLE conductor_externo
 --
 -- DESPUÉS DEL COMMIT (orden recomendado):
 --   1. Aplica las migraciones (incluida db/59) si no lo has hecho ya.
---   2. Corre el cargador de plantilla: `node scripts/migrar-plantilla.js --dry` (revisa)
+--   2. Corre el cargador de plantilla: `node scripts/archivo/migrar-plantilla.js --dry` (revisa)
 --      y luego `--go`. El padrón de BOLT (conductor_externo) SE CONSERVÓ suelto, así
 --      que su fase de re-enlace por teléfono ata cada conductor a su cuenta AL MOMENTO;
 --      no hay que esperar a ninguna sincronización previa.

@@ -1,7 +1,7 @@
 // ============================================================
 // PERFILAR EL FICHERO DE RRHH antes de cargarlo
 // ============================================================
-//   node scripts/perfilar-plantilla.js ["ruta/al/PLANTILLA TRABAJADORES.xlsx"]
+//   node scripts/archivo/perfilar-plantilla.js ["ruta/al/PLANTILLA TRABAJADORES.xlsx"]
 //
 // Mirar cuatro filas de un Excel y decidir no es medir. Esto cuenta: cuántas
 // filas de verdad hay en cada pestaña, qué porcentaje de cada columna viene

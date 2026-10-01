@@ -1,9 +1,9 @@
 // ============================================================
 // RELLENAR LO QUE FALTA DEL FICHERO DE LA GESTORÍA
 // ============================================================
-//   node scripts/cargar-datos-gestoria.js            dice qué haría
-//   node scripts/cargar-datos-gestoria.js --go       lo escribe
-//   node scripts/cargar-datos-gestoria.js --go "ruta/al.xlsx"
+//   node scripts/archivo/cargar-datos-gestoria.js            dice qué haría
+//   node scripts/archivo/cargar-datos-gestoria.js --go       lo escribe
+//   node scripts/archivo/cargar-datos-gestoria.js --go "ruta/al.xlsx"
 //
 // La migración inicial cargó la plantilla desde "PLANTILLA TRABAJADORES.xlsx"
 // pero se dejó seis campos por el camino. No se notaba en ninguna pantalla
@@ -30,7 +30,7 @@
 
 const path = require('path');
 const ExcelJS = require('exceljs');
-const db = require('../services/db');
+const db = require('../../services/db');
 
 const GO = process.argv.includes('--go');
 const RUTA = process.argv.slice(2).find(a => !a.startsWith('--')) ||

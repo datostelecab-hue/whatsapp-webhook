@@ -1,8 +1,8 @@
 // ============================================================
 // SEMBRAR EL PUNTO DE PARTIDA DEL RITMO
 // ============================================================
-//   node scripts/sembrar-km-dia.js            (ensayo)
-//   node scripts/sembrar-km-dia.js --aplicar
+//   node scripts/archivo/sembrar-km-dia.js            (ensayo)
+//   node scripts/archivo/sembrar-km-dia.js --aplicar
 //
 // El ritmo (km/día) del módulo de taller sale de `vehiculo_km_dia`, y esa tabla
 // empieza vacía: harían falta 30 días de fotos para que la columna "le quedan X
@@ -19,8 +19,8 @@
 
 const path = require('path');
 
-const mapon = require(path.join(__dirname, '..', 'services', 'mapon'));
-const db = require(path.join(__dirname, '..', 'services', 'db'));
+const mapon = require(path.join(__dirname, '..', '..', 'services', 'mapon'));
+const db = require(path.join(__dirname, '..', '..', 'services', 'db'));
 
 const APLICAR = process.argv.includes('--aplicar');
 const DIAS = 30;

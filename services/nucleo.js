@@ -121,17 +121,6 @@ const A = {
   BOLT_PENDIENTE: 35,
 };
 
-// Las cabeceras REALES de la hoja. Son 33: `REINCORPORACION` y `BOLT_PENDIENTE`
-// van más allá de la última cabecera escrita, y por eso no aparecen aquí.
-const A_HEADERS = [
-  'ACTIVO', 'ESTADO', 'NOMBRE_APELLIDOS', 'ID_BOLT', 'DNI_NIE', 'NAF', 'FECHA_ALTA',
-  'FIN_PERIODO_PRUEBA', 'EN_PRUEBA', 'RECOMENDADOR', 'TURNO', 'CONTRATO',
-  'LIB_LUN', 'LIB_MAR', 'LIB_MIE', 'LIB_JUE', 'LIB_VIE', 'LIB_SAB', 'LIB_DOM',
-  'MATRICULA', 'BINOMIO', 'COORDENADAS', 'DIRECCION_COMPLETA', 'TELEFONO',
-  'TEL_EMERGENCIA', 'OBSERVACIONES',
-  'ASG_LUN', 'ASG_MAR', 'ASG_MIE', 'ASG_JUE', 'ASG_VIE', 'ASG_SAB', 'ASG_DOM',
-];
-
 // ── LOS DÍAS DE LA SEMANA ──────────────────────────────────────────────────
 // Empiezan en LUNES (índice 0), como el cuadrante y como `getDay()` NO hace.
 // Esa es la única razón por la que esto merece estar aquí: el orden europeo no
@@ -178,7 +167,7 @@ const deLaFlotaVigilada = col =>
                WHERE vsede.matricula_norm = ${col} AND vsede.sede <> '${SEDE_FLOTA}')`;
 
 module.exports = {
-  HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, nombreDePila, A, A_HEADERS,
+  HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, nombreDePila, A,
   DIAS_CORTOS, DIAS_LARGOS, LETRAS_DIA,
   SEDE_FLOTA, deLaFlotaVigilada,
 };

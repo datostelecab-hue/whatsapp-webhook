@@ -242,6 +242,6 @@ async function panelCacheado({ forzar = false } = {}) {
 }
 
 module.exports = {
-  panel: panelCacheado, panelSinCache: panel,
+  panel: panelCacheado,
   noEfectivas, kilometros, jornadaDe, diaMenos, JORNADA_DEFECTO,
 };

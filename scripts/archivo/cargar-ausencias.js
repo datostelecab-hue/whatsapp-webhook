@@ -1,7 +1,7 @@
 // ============================================================
 // CARGA DE AUSENCIAS desde la columna ESTADO de AGENDA_V2
 // ============================================================
-//   node scripts/cargar-ausencias.js [carpeta]
+//   node scripts/archivo/cargar-ausencias.js [carpeta]
 //
 // La agenda solo dice en qué situación está cada uno HOY, no desde cuándo.
 // Igual que con las asignaciones, las ausencias abiertas arrancan hoy: poner
@@ -13,9 +13,9 @@
 
 const path = require('path');
 const ExcelJS = require('exceljs');
-const db = require('../services/db');
-const con = require('../modules/Conductores/conductores.repo');
-const { normClave } = require('../services/nucleo');
+const db = require('../../services/db');
+const con = require('../../modules/Conductores/conductores.repo');
+const { normClave } = require('../../services/nucleo');
 
 const NL = String.fromCharCode(10);
 const DIR = process.argv[2] || 'C:/Users/ricar/Downloads';

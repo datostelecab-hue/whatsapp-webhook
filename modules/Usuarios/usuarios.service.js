@@ -244,17 +244,10 @@ async function fijarPassword(email, nueva) {
   });
 }
 
-/** Genera y guarda un token de reseteo (olvidé mi contraseña). Devuelve el token. */
-async function generarTokenReset(email, minutos = 60) {
-  const token = crypto.randomBytes(24).toString('hex');
-  await actualizarUsuario(email, { token_reset: token, token_expira: String(Date.now() + minutos * 60 * 1000) });
-  return token;
-}
-function tokenResetValido(u, token) {
-  if (!u || !u.token_reset || !token) return false;
-  if (u.token_reset !== token) return false;
-  return Date.now() < Number(u.token_expira || 0);
-}
+// «Olvidé mi contraseña» manda una contraseña PROVISIONAL por correo y obliga a
+// cambiarla al entrar (`auth.controller`). El token de reseteo que había aquí
+// (generarTokenReset / tokenResetValido) no lo usaba nadie y se quitó el
+// 01/10/2026; `fijarPassword` sigue vaciando `token_reset` por si queda alguno.
 
 async function registrarAcceso(email) {
   try { await actualizarUsuario(email, { ultimo_acceso: true }); } catch (_) {}
@@ -374,7 +367,7 @@ module.exports = {
   roles, esRol, ESTADOS_U,
   leerUsuarios, buscarUsuario, buscarUsuarioPorId, buscarUsuarioPorTelefono,
   olvidarUsuario, crearUsuario, actualizarUsuario,
-  fijarPassword, generarTokenReset, tokenResetValido, registrarAcceso,
+  fijarPassword, registrarAcceso,
   guardarPassCorreo, descifrarPassCorreo, tienePassCorreo,
   hashPassword, verificarHash, generarPasswordProvisional,
   normalizarEmail, esEmail,

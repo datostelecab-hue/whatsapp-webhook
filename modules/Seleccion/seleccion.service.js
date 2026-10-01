@@ -406,8 +406,6 @@ const tramitarAlta = (id, datos, quien) => cand.tramitarAlta(Number(id), datos, 
 /** Apunta en qué Excel de altas fue cada ficha. */
 const marcarExcelAlta = (ids, referencia) => cand.marcarExcelAlta(ids, referencia);
 
-/** Cuántas fichas esperan en cada sitio. Lo pide la campana. */
-const pendientesTramo = () => cand.pendientes();
 // ── La dirección ───────────────────────────────────────────────────────────
 // Se queda como estaba: es un servicio externo que no tiene que ver con dónde
 // se guarden los datos. Con la vía puesta se pregunta por campos, que acierta
@@ -440,7 +438,7 @@ module.exports = {
   DOCUMENTOS, faltaPara,
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
   abrir, guardar, cambiarEstado, pasarARRHH, eliminar, alContratar,
-  tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, pendientesTramo,
+  tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas,
   subirDocumento, retirarDocumento, descargarDocumento, fichaPDF, fichaPDFDeConductor, foto, subirFoto,
   direccion,
 };
