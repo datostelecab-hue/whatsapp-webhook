@@ -131,6 +131,15 @@
   }
 
   /**
+   * Las columnas que se PINTAN. Una con `soloExcel: true` no sale en la tabla,
+   * pero sí en lo que se descarga: es el dato que se quiere tener en la hoja de
+   * cálculo y que en pantalla ya se ve de otra forma (Plantilla, 01/10/2026: si
+   * es propia o ETT, que en la tabla es la etiqueta junto al nombre). Es lo
+   * contrario de `exportar: false`, que se pinta y no se descarga.
+   */
+  const enTabla = col => !col.soloExcel;
+
+  /**
    * Trae los datos de un `origen`, que puede ser de tres formas:
    *   · una URL                          → se pide
    *   · una función que DEVUELVE una URL → se pide la que devuelva (la ficha:
@@ -265,7 +274,7 @@
       // de la casa al pasar el cursor por la cabecera. Es donde mejor cae la
       // explicación de un dato —«¿qué es exactamente esta columna?»— y así la
       // gana de golpe cualquier pantalla que use el Listado.
-      this.el.cabecera.innerHTML = casillaCab + c.columnas.map(col =>
+      this.el.cabecera.innerHTML = casillaCab + c.columnas.filter(enTabla).map(col =>
         `<th class="text-left font-semibold px-3 py-2.5 text-[11px] uppercase tracking-wider
                     text-telecab-text/70 border-b-2 border-telecab-border whitespace-nowrap
                     ${esc(col.claseCabecera || '')}"${
@@ -571,7 +580,7 @@
       this.el.rejilla.classList.toggle('hidden', todas.length === 0);
       this.pintarPaginador(todas.length, paginas, desde, filas.length);
       this.el.cuerpo.innerHTML = filas.map(f => {
-        const celdas = c.columnas.map(col => {
+        const celdas = c.columnas.filter(enTabla).map(col => {
           // `valor` y `campo` son lo mismo. Los bloques de la ficha usan `valor` y
           // las columnas usaban solo `campo`, y esa diferencia no la recuerda
           // nadie: se escribe `valor` en una columna, sale la celda vacia y no

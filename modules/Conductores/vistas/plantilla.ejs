@@ -1107,6 +1107,13 @@
       { titulo: 'Conductor', campo: 'nombre_completo', clase: 'font-semibold whitespace-nowrap',
         pinta: (v, f) => esc(v) + (f.empleo_tipo === 'ett'
           ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-telecab-violet/15 text-telecab-violet border border-telecab-violet/30">ETT</span>' : '') },
+      // PROPIA O ETT, SOLO EN EL EXCEL (01/10/2026). En la tabla ya lo dice la
+      // etiqueta junto al nombre, pero esa etiqueta no viaja a la hoja de
+      // cálculo y allí no había forma de filtrar por contrato. A quien ya no
+      // está no se le atribuye ninguno, igual que en «SS / ETT».
+      { titulo: 'Contrato', soloExcel: true,
+        valor: f => (f.empleo_vigente === false ? ''
+          : f.empleo_tipo === 'ett' ? 'ETT' : f.empleo_tipo === 'propia' ? 'Propia' : '') },
       // El DNI ya no se pinta: identifica pero no se mira, y ocupaba el sitio
       // de lo que sí se mira. Se sigue pudiendo BUSCAR por él.
       { titulo: 'Letra', campo: 'calificacion', clase: 'text-center whitespace-nowrap',

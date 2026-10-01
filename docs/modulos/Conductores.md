@@ -36,6 +36,10 @@ La ficha de un vistazo **no calcula nada nuevo**: la letra la pone `calificacion
 
 **`momento` deja mirar una fecha pasada**: quién estaba de alta, en qué turno y en qué coche. Con las hojas esto no se podía preguntar.
 
+## El Excel de la lista lleva el contrato
+
+El botón de Excel junto al buscador descarga lo que se está viendo. Desde el 01/10/2026 lleva, detrás del nombre, la columna **«Contrato»: Propia o ETT**. En la tabla no hay columna nueva —ya lo dice la etiqueta ETT junto al nombre—, porque es una columna `soloExcel` del Listado ([[Componentes de la casa]]). A quien ya no está no se le atribuye contrato: sale en blanco, igual que «SS / ETT» en pantalla.
+
 ## La lista va por la fecha que enseña, de la más reciente a la más antigua
 
 Alfabético ordena una guía de teléfonos, no una plantilla. En una lista de más de doscientas personas, **las recién incorporadas son las que hay que mirar** —les falta documentación, no tienen cuenta de BOLT, están en periodo de prueba— y estaban repartidas por toda la lista según su apellido.
