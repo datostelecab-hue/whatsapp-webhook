@@ -14,11 +14,11 @@
 //   · Las dos altas —la de una candidatura y la rápida— con su reserva de
 //     vacante, que puede fallar sin tumbar el alta.
 
-const cand = require('./candidaturas.repo');
+const cand = require('./candidaturas.service');
 const vacantes = require('./vacantes.service');
 const excel = require('./ett.excel');
-const alta = require('../../services/repo/alta');
-const incorporaciones = require('../../services/repo/incorporaciones');
+const conductores = require('../Conductores/conductores.service');   // la puerta de Conductores
+const incorporaciones = require('./incorporaciones.repo');
 
 /** Las candidaturas que vienen de la agencia. */
 const CANAL = 'bolsa_ett';
@@ -233,8 +233,9 @@ async function pasarARRHH(id, datos, quien) {
  * candidatura, y enlace AUTOMÁTICO a BOLT por teléfono —incluidas las cuentas
  * desactivadas, con aviso de reactivarlas—.
  *
- * Reutiliza `alta.realizar`: crea la ficha, abre el periodo de empleo (así pasa
- * directo al planificador, como si ya estuviera contratado) y engancha su BOLT.
+ * Reutiliza `conductores.realizarAlta`, la puerta de Conductores: crea la ficha,
+ * abre el periodo de empleo (así pasa directo al planificador, como si ya
+ * estuviera contratado) y engancha su BOLT.
  * Y le abre su candidatura YA TERMINADA, para que la agencia lo vea: sin ella
  * esta persona trabaja pero no sale ni en esta pantalla ni en el Excel que se
  * le manda a la ETT.
@@ -254,7 +255,7 @@ async function altaRapida(datos, quien) {
   const hoy = new Date().toISOString().slice(0, 10);
   const alta_dia = /^\d{4}-\d{2}-\d{2}$/.test(String(b.alta || '')) ? String(b.alta) : hoy;
 
-  const r = await alta.realizar({
+  const r = await conductores.realizarAlta({
     nombre, telefono, tipo: 'ett', ettNombre: ettNombre(b.ettNombre), alta: alta_dia,
     barrio: String(b.barrio || '').trim().slice(0, 60) || undefined,
   }, quien);

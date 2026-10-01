@@ -15,7 +15,7 @@
 //   · y las dos orquestaciones largas, la de subir un documento y la de armar
 //     la ficha de alta en PDF con sus adjuntos.
 
-const cand = require('./candidaturas.repo');
+const cand = require('./candidaturas.service');
 const vacantes = require('./vacantes.service');
 // Por la PUERTA del módulo de Documentos, nunca por su repositorio.
 const docs = require('../Documentos/documentos.service');
@@ -429,8 +429,15 @@ const direccion = b => ((b.via && b.via.trim())
 const alContratar = (conductorId, { alta } = {}, quien = {}) =>
   cand.abrirContratada(Number(conductorId), { alta, soloSiExiste: true }, quien);
 
+/**
+ * Qué le falta a una persona para un tipo de contrato (`propia` o `ett`). Es el
+ * listón de Selección (`exigencia.repo`), y Conductores lo pide al pasar a
+ * alguien de la ETT a plantilla propia: por aquí, no por el repositorio.
+ */
+const faltaPara = (conductorId, via) => require('./exigencia.repo').faltaPara(conductorId, via);
+
 module.exports = {
-  DOCUMENTOS,
+  DOCUMENTOS, faltaPara,
   paraLaPantalla, lista, ficha, catalogos, porTelefono,
   abrir, guardar, cambiarEstado, pasarARRHH, eliminar, alContratar,
   tramoFinal, tramitarAlta, marcarExcelAlta, excelDeAltas, pendientesTramo,

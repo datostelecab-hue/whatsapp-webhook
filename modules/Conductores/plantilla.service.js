@@ -297,7 +297,9 @@ const darDeBaja = async (id, datos, quien) =>
  * de un alta: la persona sigue en su coche y en su turno, y la antigüedad de la
  * ETT se arrastra al contrato nuevo.
  */
-const aPropia = (id, datos, quien) => alta.convertirAPropia(Number(id), datos, quien);
+// El expediente lo dice Selección: se le pasa su `faltaPara` (01/10/2026).
+const aPropia = (id, datos, quien) => alta.convertirAPropia(Number(id), datos, quien,
+  { faltaPara: (cid, via) => require('../Seleccion/seleccion.service').faltaPara(cid, via) });
 
 /** Las horas del contrato abierto (32, 40…). No abre periodo: es una novación. */
 const cambiarJornada = (id, datos, quien) => con.cambiarJornada(Number(id), datos, quien);

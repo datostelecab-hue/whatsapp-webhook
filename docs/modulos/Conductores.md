@@ -11,7 +11,7 @@ tags:
 
 # Conductores
 
-Quién trabaja aquí y en qué condiciones: la ficha de la persona, su contrato, sus papeles y su cuenta de [[BOLT]]. El módulo está en `modules/Conductores/` y se entra por `modules/Conductores/plantilla.service.js`, nunca por un `.repo`.
+Quién trabaja aquí y en qué condiciones: la ficha de la persona, su contrato, sus papeles y su cuenta de [[BOLT]]. El módulo está en `modules/Conductores/` y se entra por un servicio, nunca por un `.repo`: `plantilla.service.js` para la pantalla y `conductores.service.js` para los módulos que escriben en la persona (Selección y la ETT, desde el 01/10/2026).
 
 ```
 /plantilla                    la pantalla
@@ -289,4 +289,4 @@ Pero no se fueron de balde. Al mirarlas apareció un fallo que llevaba **desde q
 
 `modules/Conductores/conductores.repo.js` son ~1.236 líneas con reglas dentro que son de servicio: qué campos puede tocar cada rol, qué pasa al dar de baja. Se movió el módulo primero porque mover y partir a la vez es cómo se pierde una ruta sin enterarse.
 
-`services/repo/alta.js` sigue fuera del módulo: es el traspaso desde Selección y lo usan también `tickets`, `candidaturas.repo` y `ett.service`. Si entrara aquí, Selección estaría entrando al repositorio de otro módulo.
+`services/repo/alta.js` sigue fuera del módulo, pero ya solo lee (`porTelefono`, `partirNombre`) y hace el paso a propia. **Dar de alta** se mudó a `conductores.service.realizarAlta` el 01/10/2026 —el mismo código—, y el paso a propia recibe de quien llama la comprobación de papeles de Selección (`faltaPara`) en vez de ir a buscarla a su repositorio. Ver [[ARQUITECTURA]].

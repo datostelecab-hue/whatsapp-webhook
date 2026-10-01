@@ -321,18 +321,46 @@ apunte nadie». El 01/10/2026 se cerró:
   desde el 15/09), `views/layout.ejs` (el oscuro de julio; ninguna pantalla lo pedía
   y el layout por defecto de `app.set` pasa a ser `layout-gestion`), `config/bolt.js`
   (vacío) y dos lienzos vacíos de Obsidian subidos por error.
-- **Quedan 4 a propósito**: `services/repo/conductores`, `documentos`, `exigencia` y
-  `vacantes`. No son un nombre viejo: **tapan que un repositorio entra en el de otro
-  módulo** —el traspaso Selección → Conductores (`candidaturas.repo`,
-  `services/repo/alta`, `services/repo/incorporaciones`)—. Al quitarlos,
-  `comprobar-capas` da 5 incumplimientos, y con razón. Un repositorio no puede llamar
-  a un servicio (la flecha al revés), así que el arreglo de verdad es **sacar ese
-  traspaso a la capa de servicio**; hasta entonces se quedan, listados en
-  `comprobar-capas` como deuda.
+- **Los 4 últimos cayeron el mismo día**: `services/repo/conductores`, `documentos`,
+  `exigencia` y `vacantes`. No eran un nombre viejo: **tapaban que un repositorio
+  entraba en el de otro módulo** —el traspaso Selección → Conductores—, y sin ellos
+  `comprobar-capas` daba 5 incumplimientos. Se arreglaron de verdad, sacando ese
+  traspaso a la capa de servicio (la sección siguiente). **No queda ningún
+  reexportador.**
 - `logo-64.png` se queda: no lo pide nadie del repositorio, pero `/assets` es público.
 - Las herramientas de inventario mentían por la misma avería de siempre (no miraban
   `modules/`): `inventario-muerto` daba por muertas tres piezas vivas y
   `inventario-exports` 19 funciones que sí se usan. Arregladas.
+
+### Cerrada: el traspaso Selección → Conductores (01/10/2026)
+
+Selección crea a la persona, la completa mientras dura el proceso y la da de alta
+al contratarla. Todo eso lo hacía **desde repositorios**, entrando en los de
+Conductores, Documentos y la propia Selección por los 4 puentes. Eran 5
+incumplimientos, y cada uno se cerró con la pieza que le tocaba:
+
+| Quién entraba | Dónde | Ahora |
+|---|---|---|
+| `candidaturas.repo` | `conductores.repo`, `documentos.repo` | Lo que coordina —`catalogos`, `ficha`, `abrir`, `abrirContratada`, `guardar`, `pasarARRHH`, `importarMatriz`, `tramitarAlta`— pasa a **`Seleccion/candidaturas.service.js`** y entra por las puertas de Conductores y Documentos. Su SQL **se queda** en el repositorio, en funciones pequeñas con el mismo texto. |
+| `services/repo/alta.realizar` | `conductores.repo` | Es **`Conductores/conductores.service.realizarAlta`**, el mismo código. `alta.js` se queda con lo que solo lee (`porTelefono`, `partirNombre`) y el paso a propia. |
+| `alta.convertirAPropia` | `exigencia.repo` | Recibe **`faltaPara`** de quien llama: `plantilla.service` se la pide a `seleccion.service`. Se llama en el mismo punto, dentro de la transacción, y sin ella no convierte. |
+| `services/repo/incorporaciones` | `vacantes.repo` | Se muda a **`Seleccion/incorporaciones.repo.js`**: nace de una vacante cumplida y las vacantes son de Selección. Planificación y las notificaciones entran por `incorporaciones.service`. |
+
+`Conductores/conductores.service.js` es nueva: **la puerta de Conductores para quien no
+es Conductores** (crear, actualizar, teléfono, IBAN, alta, turno, BOLT). Casi todo es
+delegar; lo único que vive en ella es `realizarAlta`, que es coordinación.
+
+**Cómo se comprobó que nada cambia.** No basta con que carguen: el alta es de lo que más
+duele si se rompe. `Scripts de análisis/traza-traspaso.js` ejecuta 42 casos —abrir
+(nueva, conocida, con proceso vivo), guardar (con vacante que entra, cambia o se suelta),
+pasar a RRHH (bien, con papeles que faltan, con fallos que se toleran), importar una matriz
+con todos sus casos, tramitar, el alta (nueva, restauración, ya trabaja), el paso a propia
+y el alta rápida— contra **el código de antes y el nuevo**, con una base falsa, y
+`comparar-traspaso.js` compara cada consulta con sus parámetros, cada llamada a otro
+módulo, lo que sale por consola y lo que devuelve. **255 pasos y 172 consultas,
+idénticos.** Y para saber que el arnés ve algo, se le pasó una copia con dos cambios
+adrede —un `null` que pasaba a `undefined` y una llamada a Conductores quitada—, y cazó
+los dos.
 
 ### Hecho: Documentos
 

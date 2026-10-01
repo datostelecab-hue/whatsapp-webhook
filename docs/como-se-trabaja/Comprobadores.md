@@ -243,7 +243,7 @@ vistas, y luego contrasta contra él todo el SQL que encuentra en `db/*.sql`,
   delante.
 - Que el **mapa de vigencias** de `services/repo/vigencia.js` cuadre con las tablas
   de verdad. Ese fallo ya costó una pantalla vacía.
-- Que los **campos editables** declarados en `services/repo/conductores.js` existan
+- Que los **campos editables** declarados en `modules/Conductores/conductores.repo.js` existan
   en la tabla `conductor`, **no sean columnas GENERADAS** (escribir en una es un
   error de PostgreSQL, y se descubre cuando alguien intenta guardar) y tengan
   etiqueta y grupo.

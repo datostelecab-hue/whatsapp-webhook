@@ -15,8 +15,10 @@
 // Sin cuenta de BOLT no se puede trabajar: está prohibido. Por eso "hay ficha
 // pero no hay cuenta" es un caso propio y no un detalle.
 //
-// Aquí NO se escribe nada. Escribir es de `conductores.crear` (alta nueva),
-// `conductores.darDeAlta` (restauración) y `cazamientoBolt.enlazar` (la cuenta).
+// Aquí no se da de alta a nadie: lo único que escribe este fichero es el paso de
+// ETT a plantilla propia (`convertirAPropia`). Dar de alta es de `conductores.crear` (alta nueva),
+// `conductores.darDeAlta` (restauración) y `conductores.enlazarBolt` (la cuenta),
+// y quien lo coordina es `Conductores/conductores.service.realizarAlta`.
 
 const db = require('../db');
 
@@ -191,79 +193,9 @@ async function porTelefono(telefono) {
 
 // ── Dar de alta de verdad ───────────────────────────────────────────────────
 
-/**
- * Da de alta a alguien con lo que sepamos de él, decidiendo solo si es un alta
- * nueva o una restauración.
- *
- * Es el ÚNICO sitio por el que entra gente al sistema, lo llame Selección con
- * un candidato de TIBUS o el módulo de ETT con una tabla pegada. La diferencia
- * entre esos dos no es cómo se crea la ficha: es cuántos datos traen. Por eso no
- * hay dos funciones.
- *
- * `datos` lleva el teléfono, las columnas de la ficha que se sepan, y las del
- * contrato (`alta`, `tipo`, `jornadaHoras`…). Lo que no venga, no se toca.
- */
-async function realizar(datos, quien = {}) {
-  const d = datos || {};
-  const con = require('./conductores');
-  const s = await porTelefono(d.telefono);
-
-  if (s.caso === 'ya_trabaja') {
-    const e = new Error(`${s.ficha.quien} ya tiene contrato abierto. No hay nada que dar de alta.`);
-    e.situacion = s;
-    throw e;
-  }
-
-  // Los campos de la ficha son los declarados en CAMPOS; el resto (alta, tipo,
-  // jornada…) son del contrato y van por otro camino. Separarlos aquí evita que
-  // `actualizar` rechace la llamada entera por un campo que no le toca.
-  const ficha = {};
-  for (const [k, v] of Object.entries(d)) {
-    if (con.CAMPOS[k] && v !== '' && v !== null && v !== undefined) ficha[k] = v;
-  }
-  const contrato = {
-    tipo: d.tipo === 'ett' ? 'ett' : 'propia',
-    ettNombre: d.ettNombre,
-    alta: d.alta,
-    antiguedad: d.antiguedad,
-    jornadaHoras: d.jornadaHoras,
-    finPrueba: d.finPrueba,
-  };
-
-  let id, restaurado = false;
-  if (s.ficha) {
-    // Restauración: la ficha se queda, con su historial. Se actualiza lo que
-    // venga nuevo (puede haber cambiado de dirección en un año) y se le abre un
-    // periodo de empleo más.
-    id = s.ficha.id;
-    restaurado = true;
-    if (Object.keys(ficha).length) await con.actualizar(id, ficha, quien);
-    await con.darDeAlta(id, contrato, quien);
-    // Si vuelve con un número que no era el suyo, se le añade.
-    if (!s.ficha.telefonoVigente) await con.guardarTelefono(id, d.telefono, quien);
-  } else {
-    const r = await con.crear({ ...ficha, ...contrato, telefono: d.telefono,
-                                turnoId: d.turnoId, libranzas: d.libranzas }, quien);
-    id = r.id;
-  }
-
-  // La cuenta de BOLT: si existe con ese número y no es de nadie, se enlaza
-  // sola. Es el caso que describe `alta_con_bolt`, y hacerlo a mano después solo
-  // sirve para que se olvide.
-  let boltEnlazada = false;
-  if (s.bolt && !s.bolt.enlazadaCon) {
-    try { await con.enlazarBolt(id, s.bolt.cuentaId, quien); boltEnlazada = true; }
-    catch (e) { console.error(`❌ [ALTA] no se pudo enlazar la cuenta de BOLT: ${e.message}`); }
-  }
-
-  return {
-    id, restaurado, caso: s.caso, boltEnlazada,
-    // Sin cuenta de BOLT no puede conducir. Se devuelve para que la pantalla lo
-    // diga en el momento y no se descubra el día que tiene que salir.
-    faltaBolt: !s.bolt,
-    avisos: s.avisos,
-  };
-}
+// `realizar` —dar de alta con lo que sepamos, nueva o restauración— vivía aquí
+// hasta el 01/10/2026. Es coordinación de Conductores, no datos, y ahora es
+// `modules/Conductores/conductores.service.realizarAlta`, con el mismo código.
 
 /**
  * El paso de ETT a plantilla propia, a los tres meses.
@@ -276,7 +208,17 @@ async function realizar(datos, quien = {}) {
  * propio. Y la antigüedad se ARRASTRA: llevaba tres meses aquí y esos tres meses
  * cuentan, así que `fecha_antiguedad` del periodo nuevo apunta al alta de la ETT.
  */
-async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, motivo } = {}, { usuarioId } = {}) {
+/*
+ * EL EXPEDIENTE LO DICE SELECCIÓN, Y LO PASA QUIEN LLAMA (01/10/2026). Antes se
+ * preguntaba aquí mismo al repositorio de exigencias de Selección, y un
+ * repositorio no puede entrar en el de otro módulo. `faltaPara(conductorId,
+ * via)` es la de `Seleccion/seleccion.service`; se llama en el MISMO punto que
+ * antes (dentro de la transacción, después de leer el contrato), así que los
+ * errores salen en el mismo orden. Sin ella no se convierte: es la comprobación
+ * legal del paso, y saltársela en silencio no puede ser un caso.
+ */
+async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, motivo } = {}, { usuarioId } = {}, { faltaPara } = {}) {
+  if (typeof faltaPara !== 'function') throw new Error('Falta quién compruebe el expediente (faltaPara, de Selección)');
   const id = Number(conductorId);
   const dia = desde || new Date().toISOString().slice(0, 10);
   const audit = require('./auditoria');
@@ -294,7 +236,7 @@ async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, m
     // relación laboral era con la agencia y ellos solo nos daban lo justo; al
     // pasar a plantilla propia la relación pasa a ser nuestra, y con ella la
     // obligación de tener sus papeles.
-    const faltan = await require('./exigencia').faltaPara(id, 'propia');
+    const faltan = await faltaPara(id, 'propia');
     if (faltan.length) {
       const e = new Error('Antes de pasarle a plantilla propia falta: ' + faltan.join(', '));
       e.faltan = faltan;
@@ -329,4 +271,4 @@ async function convertirAPropia(conductorId, { desde, jornadaHoras, finPrueba, m
   });
 }
 
-module.exports = { porTelefono, realizar, convertirAPropia, partirNombre, sufijo9, CASOS };
+module.exports = { porTelefono, convertirAPropia, partirNombre, sufijo9, CASOS };

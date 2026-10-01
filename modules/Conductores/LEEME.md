@@ -16,6 +16,7 @@ su cuenta de BOLT.
 ```
 plantilla.controller.js   HTTP. No decide nada.
 plantilla.service.js      La lista, los campos por rol, los papeles, el Excel.
+conductores.service.js    La puerta para otros módulos (Selección, ETT) y el alta.
 conductores.repo.js       SQL de la persona y su contrato (1.236 líneas)
 ficha360.repo.js          SQL de la hoja de un vistazo
 cazamiento.repo.js        SQL del enlace conductor ↔ cuenta de BOLT
@@ -23,7 +24,9 @@ gestoria.excel.js         el fichero que se le manda a la gestoría
 vistas/plantilla.ejs      la pantalla
 ```
 
-Desde fuera del módulo se entra por `plantilla.service`, nunca por un `.repo`.
+Desde fuera del módulo se entra por un servicio, nunca por un `.repo`: `plantilla.service`
+para la pantalla y `conductores.service` para quien escribe en la persona (Selección y la
+ETT). En esa puerta vive `realizarAlta`, que era `services/repo/alta.realizar`.
 
 ## Lo que hay que saber
 
@@ -68,9 +71,10 @@ la usan de ahí. `conductoresBolt` la reexporta con su nombre de siempre.
 
 ## Lo que se quedó fuera, y por qué
 
-**`repo/alta` sigue en `services/repo/`.** Es el traspaso desde Selección y lo usan también
-`tickets`, `candidaturas.repo` y `ett.service`. Si entrara aquí, Selección estaría entrando
-al repositorio de otro módulo. Se coloca cuando se decida dónde vive la frontera.
+**`repo/alta` sigue en `services/repo/`, pero ya no escribe por su cuenta.** Dar de alta es
+`conductores.service.realizarAlta` (01/10/2026, mismo código). Le quedan `porTelefono`, que
+solo lee, y el paso a propia, que recibe de quien llama la comprobación de papeles de
+Selección (`faltaPara`): un repositorio no puede ir a buscarla al de otro módulo.
 
 **`agenda` SE BORRÓ (15/09/2026).** Esta pantalla ES la agenda: el turno, las
 libranzas, el coche y el teléfono de cada persona. Había dos sitios donde mirar

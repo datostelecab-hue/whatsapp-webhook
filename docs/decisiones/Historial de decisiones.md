@@ -7,6 +7,10 @@ actualizado: 2026-10-01
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-01 · El traspaso Selección → Conductores, por la capa de servicio
+
+Selección creaba y daba de alta a la persona entrando en los repositorios de Conductores, Documentos y la propia Selección por los 4 últimos puentes. Ahora lo que coordina está en servicios (`candidaturas.service`, `conductores.service` con `realizarAlta`), las incorporaciones son de Selección, y el paso a propia recibe la comprobación de papeles de quien llama. Sin puentes y con 0 incumplimientos de capas. Una traza de 42 casos contra el código de antes salió idéntica. → [[ARQUITECTURA]]
+
 ## 2026-10-01 · Organización, tanda 2: se cierra la Fase 2
 
 Fuera 22 de los 26 puentes y los ficheros muertos (padrón de BOLT sobre la hoja, el layout oscuro de julio, `config/bolt.js` vacío y dos lienzos de Obsidian). Los 4 que quedan tapan que el traspaso Selección → Conductores entra en repositorios de otro módulo: se quitarán cuando ese traspaso pase a la capa de servicio. El layout por defecto pasa a ser el de gestión. → [[ARQUITECTURA]]

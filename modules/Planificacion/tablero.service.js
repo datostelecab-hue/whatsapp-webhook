@@ -32,7 +32,7 @@
 
 const plan = require('./planificador.repo');
 const eventos = require('./eventos.repo');
-const inc = require('../../services/repo/incorporaciones');
+const inc = require('../Seleccion/incorporaciones.service');   // la puerta de Selección
 // Por la PUERTA de los otros módulos, no por su repositorio.
 const veh = require('../Vehiculos/vehiculos.service');
 const conductores = require('../Conductores/plantilla.service');
@@ -221,7 +221,7 @@ const incorporaciones = async () => ({ incorporaciones: await inc.pendientes() }
  * existe no se escribe ninguna. Por eso la alerta se marca aceptada DESPUÉS de
  * colocar y no antes: si la colocación falla, sigue pendiente y se reintenta.
  *
- * El encargo —qué plazas, desde qué día— lo prepara `repo/incorporaciones`, que
+ * El encargo —qué plazas, desde qué día— lo prepara `Seleccion/incorporaciones.repo`, que
  * es quien guarda la foto de la vacante. Colocar es escribir en el cuadrante, y
  * eso es de aquí: mientras lo hacía aquel, un repositorio compartido por
  * Selección y la ETT tenía dentro el repositorio del planificador.

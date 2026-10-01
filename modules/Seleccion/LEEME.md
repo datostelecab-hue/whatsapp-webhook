@@ -36,8 +36,11 @@ vacantes.controller.js   vacantes.service.js       HTTP / el tablero
 seleccion.controller.js  seleccion.service.js      HTTP / el proceso
 ett.controller.js        ett.service.js            HTTP / la bolsa
                          ett.excel.js              el fichero que se le manda a la agencia
-                         candidaturas.repo.js      SQL de la candidatura (1.300 líneas)
+                         candidaturas.service.js   la candidatura con la persona (abrir, guardar, contratar)
+                         candidaturas.repo.js      SQL de la candidatura (1.200 líneas)
                          exigencia.repo.js         qué le falta a alguien para poder entrar
+                         incorporaciones.service.js  la puerta para Planificación y notificaciones
+                         incorporaciones.repo.js   quien entra a cubrir una vacante
 vistas/                  las cuatro pantallas
 ```
 
@@ -86,9 +89,13 @@ configurado y el alta se caía por falta de nombre.
 
 ## Lo que se quedó fuera, y por qué
 
-`repo/alta` e `repo/incorporaciones` siguen en `services/repo/`: son el **traspaso** a
-Conductores y a Planificación, y los usan también `plantilla`, `tablero` y `notificaciones`.
-Se colocan cuando se muden esos módulos.
+`repo/alta` sigue en `services/repo/`, pero ya solo lee (`porTelefono`) y hace el paso a
+propia. Dar de alta es de Conductores: `Conductores/conductores.service.realizarAlta`.
+
+**Las incorporaciones entraron aquí (01/10/2026).** Nacen de una vacante cumplida, y las
+vacantes son de Selección: `incorporaciones.repo.js` entraba en el repositorio de vacantes
+desde `services/repo/`. Planificación (el tablero) y las notificaciones entran por
+`incorporaciones.service.js`; dentro del módulo se usa el repositorio.
 
 `services/vacantes.js` es una capa de compatibilidad que traduce la vacante al idioma de la
 hoja vieja. Ya solo la usa `routes/notificaciones.js`: muere con ese módulo.
@@ -98,6 +105,11 @@ Planificación.
 
 ## Lo que aún no está bien
 
-`candidaturas.repo.js` son 1.300 líneas y tiene dentro reglas que son de servicio —el
-recorrido del embudo, qué pasa al pasar a RRHH—. Se partió el módulo primero porque mover y
-partir a la vez es cómo se pierde una ruta sin enterarse; lo segundo viene después.
+**Partida el 01/10/2026.** Lo que la candidatura hace con la persona —abrir, guardar,
+contratar, importar la matriz, tramitar— está en `candidaturas.service.js` y entra por la
+puerta de Conductores; el SQL se quedó en `candidaturas.repo.js`, cada consulta con el texto
+que tenía. Se comprobó con una traza de 42 casos contra el código de antes: idéntica. Ver
+`docs/ARQUITECTURA.md`.
+
+Lo que queda en el repositorio y huele a regla: qué estado se adelanta en `abrirContratada`
+lo dice el orden del catálogo dentro del SQL, y `cambiarEstado` suelta la vacante.

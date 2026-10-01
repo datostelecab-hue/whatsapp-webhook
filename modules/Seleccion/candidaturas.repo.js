@@ -7,16 +7,19 @@
 // dirección, el NAF y los documentos son de la persona, y la persona ya tiene
 // tablas. Cuando llega un dato de esos, se guarda donde le toca — no se copia.
 //
-// Por eso `guardar()` reparte: lo que es un campo de `conductor` va por
-// `conductores.actualizar`, y solo lo que es del embudo se escribe aquí.
-//
 // Un candidato es una fila de `conductor` SIN periodo de empleo. Eso no es un
 // apaño: es literalmente lo que significa "todavía no trabaja aquí". Y le da
 // desde el primer día lo que la hoja nunca tuvo — que su DNI no se repita y que
 // su teléfono no sea el de otro.
+//
+// AQUÍ SOLO HAY DATOS (01/10/2026). Lo que coordina con Conductores —abrir,
+// guardar, pasar a RRHH, importar la matriz, tramitar— vive en
+// `candidaturas.service.js` y entra por la puerta de Conductores; hasta ese día
+// vivía aquí y entraba en su repositorio por la puerta de atrás. Sus consultas
+// se han quedado en este fichero, cada una con el texto que tenía. Desde fuera
+// se entra por el servicio.
 
 const db = require('../../services/db');
-const con = require('../../services/repo/conductores');
 const alta = require('../../services/repo/alta');
 const audit = require('../../services/repo/auditoria');
 
@@ -52,8 +55,14 @@ const CAMPOS = {
   tipo_carnet:       { etiqueta: 'Tipo de carné' },
 };
 
-/** Los catálogos que la pantalla necesita para pintar sus desplegables. */
-async function catalogos() {
+/**
+ * Las tablas de los desplegables, tal cual.
+ *
+ * Lo que recibe la pantalla —con los campos editables y el recorrido— lo arma
+ * `candidaturas.service.catalogos`: para eso hay que saber qué campos son de la
+ * persona, y eso lo dice Conductores.
+ */
+async function catalogosBase() {
   const [estados, etapas, canales, turnos, zonas, jornadas, motivos] = await Promise.all([
     db.consulta(`SELECT codigo, etiqueta, etapa, orden, en_funnel, es_salida, etiqueta_ett
                    FROM cat_estado_candidatura WHERE NOT obsoleto ORDER BY orden`),
@@ -70,51 +79,9 @@ async function catalogos() {
     db.consulta(`SELECT codigo, etiqueta, estado, pide_texto
                    FROM cat_motivo_descarte WHERE activo ORDER BY orden`),
   ]);
-  // Los campos que la pantalla puede editar, con su etiqueta y su tipo. Salen de
-  // aqui y no de una lista escrita en la vista: son los mismos que valida
-  // `guardar`, asi que no pueden discrepar.
-  const campos = [];
-  const PERSONA = ['nombre', 'apellidos', 'dni_nie', 'fecha_nacimiento', 'sexo',
-    'estado_civil', 'nacionalidad', 'email', 'tel_emergencia', 'centro_codigo',
-    'via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta',
-    'codigo_postal', 'localidad', 'provincia', 'observaciones'];
-  for (const k of PERSONA) {
-    const def = con.CAMPOS[k];
-    if (def) campos.push({ id: k, grupo: def.grupo || 'Persona', ...def });
-    // LAS FECHAS DEL CARNE, justo detras del estado civil: es el hueco que deja
-    // la lista del sexo a su lado, y ahi las pidio Camilo el 24/09/2026. La
-    // ficha de alta las exige y no habia donde escribirlas: se veia el aviso
-    // "falta Fecha de expedicion del carne" sin forma de arreglarlo.
-    //
-    // No son columnas de la persona: son las fechas del DOCUMENTO del permiso
-    // (tabla documento, tipo 'permiso'). Por eso no estan en CAMPOS y las
-    // guarda el servicio, por la puerta de Documentos.
-    if (k === 'estado_civil') {
-      campos.push({ id: 'carnet_expedicion', grupo: def ? def.grupo : 'Identidad',
-                    etiqueta: 'Fecha de expedición del carné', tipo: 'fecha' });
-      campos.push({ id: 'carnet_caducidad', grupo: def ? def.grupo : 'Identidad',
-                    etiqueta: 'Fecha de caducidad del carné', tipo: 'fecha' });
-    }
-  }
-  // Los que se escriben de una pieza y la base guarda despiezados. No estan en
-  // CAMPOS porque no son columnas: son la forma en que los teclea una persona.
-  campos.push({ id: 'naf', grupo: 'Seguridad Social', etiqueta: 'Nº Seguridad Social',
-                ayuda: 'Los doce dígitos, con separadores o sin ellos' });
-  campos.push({ id: 'iban', grupo: 'Seguridad Social', etiqueta: 'IBAN / nº de cuenta',
-                ayuda: 'Se guarda cifrado. Si se deja vacío, no se toca el que hubiera' });
-  campos.push({ id: 'coordenadas', grupo: 'Dirección', etiqueta: 'Coordenadas',
-                ayuda: 'lat, lng — se obtienen del botón de geocodificar' });
-  for (const [id, def] of Object.entries(CAMPOS)) {
-    campos.push({ id, grupo: 'Proceso', ...def });
-  }
-
   return {
-    estados: estados.rows, etapas: etapas.rows, canales: canales.rows,
-    turnos: turnos.rows,
-    jornadas: jornadas.rows, zonas: zonas.rows, motivos: motivos.rows, campos,
-    // El recorrido de Selección, en orden. La pantalla pinta los pasos con esto
-    // en vez de llevar su propia lista, que es como se desincronizan.
-    funnel: estados.rows.filter(e => e.en_funnel).map(e => e.codigo),
+    estados: estados.rows, etapas: etapas.rows, canales: canales.rows, turnos: turnos.rows,
+    zonas: zonas.rows, jornadas: jornadas.rows, motivos: motivos.rows,
   };
 }
 
@@ -167,14 +134,14 @@ async function conCarnet(filas) {
   return filas;
 }
 
-/** Una candidatura por su id, con la persona resuelta. */
-async function ficha(id) {
+/**
+ * La fila de una candidatura, con las fechas del carné. Los documentos no: son
+ * de la persona, y los pone `candidaturas.service.ficha` desde Documentos.
+ */
+async function filaFicha(id) {
   const r = await db.consulta('SELECT * FROM v_candidatura WHERE id = $1', [Number(id)]);
   if (!r.rows[0]) return null;
-  const c = (await conCarnet([r.rows[0]]))[0];
-  // Los documentos son de la persona, no del proceso: se leen de su tabla.
-  const docs = require('../../services/repo/documentos');
-  return { ...c, documentos: await docs.listar({ conductorId: c.conductor_id }) };
+  return (await conCarnet([r.rows[0]]))[0];
 }
 
 /**
@@ -196,202 +163,75 @@ async function porTelefono(telefono) {
   return { situacion, candidatura };
 }
 
-/**
- * Rellena de una ficha SOLO lo que está vacío.
- *
- * Antes, cuando la persona ya existía, todo lo que traía la fila —DNI, correo,
- * dirección, fecha de nacimiento— se perdía sin decir nada: aparecía en la lista
- * con las casillas en blanco y sin explicar por qué.
- *
- * Se rellena, no se pisa. Lo que trae la agencia es información nueva donde no
- * teníamos nada; no es autoridad para reemplazar lo que alguien ya escribió a
- * mano, que casi siempre estará mejor comprobado.
- */
-async function rellenarHuecos(conductorId, datos, quien) {
-  const actual = (await db.consulta(
-    'SELECT * FROM conductor WHERE id = $1', [conductorId])).rows[0];
-  if (!actual) return {};
+// ── Las consultas de lo que coordina el servicio ────────────────────────────
+//
+// `abrir`, `abrirContratada`, `guardar`, `pasarARRHH`, `importarMatriz` y
+// `tramitarAlta` viven en `candidaturas.service.js` desde el 01/10/2026. El
+// porqué de cada paso está allí; aquí, lo que escriben y leen.
 
-  const huecos = {};
-  for (const [k, v] of Object.entries({ ...datos, ...despiezar(datos) })) {
-    if (!con.CAMPOS[k] || v === '' || v === null || v === undefined) continue;
-    const tiene = actual[k];
-    if (tiene === null || tiene === undefined || String(tiene).trim() === '') huecos[k] = v;
-  }
-  if (Object.keys(huecos).length) await con.actualizar(conductorId, huecos, quien);
-  return huecos;
+/** Una persona tal cual está en su tabla: para ver qué huecos tiene. */
+async function personaCruda(conductorId) {
+  return (await db.consulta(
+    'SELECT * FROM conductor WHERE id = $1', [conductorId])).rows[0];
 }
 
-/**
- * Abre una candidatura: crea a la persona si no la conocíamos y le arranca el
- * proceso en Preselección.
- *
- * Si ya tenemos ficha suya NO se crea otra — se le abre el proceso sobre la que
- * hay. Es el caso de quien ya trabajó aquí y vuelve a presentarse, y en la hoja
- * acababa siendo una segunda ficha con el mismo DNI.
- */
-async function abrir(telefono, datos = {}, quien = {}) {
-  const { situacion, candidatura } = await porTelefono(telefono);
-
-  // Ya hay un proceso vivo con ese número. No se abre otro, pero SÍ se aprovecha
-  // lo que venga: la agencia manda una fila más completa a la semana siguiente, y
-  // repegar la tabla tiene que servir para algo más que decir "ya estaba".
-  if (candidatura) {
-    await rellenarHuecos(candidatura.conductor_id, datos, quien);
-    return { id: candidatura.id, conductorId: candidatura.conductor_id, yaExistia: true };
-  }
-
-  let conductorId = situacion.ficha ? situacion.ficha.id : null;
-  if (!conductorId) {
-    const entero = String(datos.nombre || situacion.nombreSugerido || '').trim();
-    if (!entero) throw new Error('Falta el nombre para abrir la candidatura');
-    // Si vienen los apellidos aparte, se respetan. Si no y el nombre lleva coma
-    // —"Bedoya Corrales, Andres Camilo", que es como lo escriben la gestoria y
-    // la ETT—, se parte. Sin coma va entero al nombre: partir "Andres Camilo
-    // Bedoya Corrales" por el primer espacio acierta a veces y falla siempre que
-    // hay un nombre compuesto.
-    const partes = String(datos.apellidos || '').trim()
-      ? { nombre: entero, apellidos: String(datos.apellidos).trim() }
-      : alta.partirNombre(entero);
-    const r = await con.crearPersona({ ...datos, ...partes, telefono }, quien);
-    conductorId = r.id;
-  } else {
-    await rellenarHuecos(conductorId, datos, quien);
-  }
-
+/** Arranca el proceso en Preselección sobre una persona que ya existe. Devuelve el id. */
+async function insertarPreseleccion(conductorId, datos = {}) {
   const r = await db.consulta(
     `INSERT INTO candidatura (conductor_id, estado, canal, responsable)
      VALUES ($1,'preseleccion',$2,$3) RETURNING id`,
     [conductorId, datos.canal || null, datos.responsable || null]);
+  return r.rows[0].id;
+}
 
-  return { id: r.rows[0].id, conductorId, yaExistia: false, situacion };
+/** La candidatura viva de alguien, si la tiene. */
+async function vivaDe(conductorId) {
+  return (await db.consulta(
+    `SELECT id, inicio_previsto FROM candidatura
+      WHERE conductor_id = $1 AND cerrado_at IS NULL
+      ORDER BY id DESC LIMIT 1`, [conductorId])).rows[0];
 }
 
 /**
- * La candidatura de quien YA ESTA CONTRATADO, abierta al final del proceso.
+ * Lleva una candidatura viva hasta el final del embudo. Dice si se ha movido.
  *
- * El alta rapida de la ETT crea la ficha y abre el contrato sin pasar por
- * seleccion: dos campos y a trabajar. Pero la pantalla de la ETT y el Excel que
- * se le manda a la agencia leen CANDIDATURAS, asi que quien entra por esa puerta
- * no existe para la agencia — y es justo a quien hay que facturarle.
+ * Es el caso que se veia raro en la pantalla: alguien que entro por la matriz de
+ * la agencia, se le dio de alta desde otro sitio, y la ETT lo seguia viendo en
+ * «Coordinacion de entrevista» tres dias despues de estar conduciendo.
  *
- * Por eso aqui no se abre un proceso: se abre YA TERMINADO. Mismo estado en el
- * que lo deja `pasarARRHH` (`listo_rrhh`, que es "contratado, papeles en RRHH")
- * y con la fecha de alta escrita, que es lo que hace que el Excel diga
- * «Contratado» en vez de «Pendiente» (ver `mapearParaETT`).
- *
- * Si ya tenia una candidatura viva no se abre otra: se le completa lo que le
- * falte. Dos candidaturas de la misma persona son dos filas en el Excel de la
- * agencia, y la agencia cobra por fila.
+ * Solo hacia adelante y solo desde el embudo: lo dice el ORDEN del catalogo,
+ * no una lista escrita aqui. Quien ya esta en `pendiente_pin` o mas alla no
+ * retrocede, y a una salida —descartado, no se presento— no se la pisa:
+ * esas son decisiones de una persona y tienen orden 89 para arriba.
  */
-async function abrirContratada(conductorId, datos = {}, quien = {}) {
-  const id = Number(conductorId);
-  if (!Number.isInteger(id) || id <= 0) throw new Error('Falta el conductor');
+async function adelantarAListo(id, fechaAlta) {
+  const r = await db.consulta(
+    `UPDATE candidatura k
+        SET estado = 'listo_rrhh',
+            inicio_previsto = COALESCE(k.inicio_previsto, $2::date),
+            apto_at = COALESCE(k.apto_at, now()),
+            actualizado_at = now()
+       FROM cat_estado_candidatura e
+      WHERE k.id = $1 AND e.codigo = k.estado
+        AND e.orden < (SELECT orden FROM cat_estado_candidatura WHERE codigo = 'listo_rrhh')
+      RETURNING k.id`,
+    [id, fechaAlta || null]);
+  return !!r.rows.length;
+}
 
-  const viva = (await db.consulta(
-    `SELECT id, inicio_previsto FROM candidatura
-      WHERE conductor_id = $1 AND cerrado_at IS NULL
-      ORDER BY id DESC LIMIT 1`, [id])).rows[0];
-
-  if (viva) {
-    // LA QUE YA EXISTE SE ADELANTA HASTA EL FINAL, que es el caso que se veia
-    // raro en la pantalla: alguien que entro por la matriz de la agencia, se le
-    // dio de alta desde otro sitio, y la ETT lo seguia viendo en «Coordinacion
-    // de entrevista» tres dias despues de estar conduciendo.
-    //
-    // Solo hacia adelante y solo desde el embudo: lo dice el ORDEN del catalogo,
-    // no una lista escrita aqui. Quien ya esta en `pendiente_pin` o mas alla no
-    // retrocede, y a una salida —descartado, no se presento— no se la pisa:
-    // esas son decisiones de una persona y tienen orden 89 para arriba.
-    const r = await db.consulta(
-      `UPDATE candidatura k
-          SET estado = 'listo_rrhh',
-              inicio_previsto = COALESCE(k.inicio_previsto, $2::date),
-              apto_at = COALESCE(k.apto_at, now()),
-              actualizado_at = now()
-         FROM cat_estado_candidatura e
-        WHERE k.id = $1 AND e.codigo = k.estado
-          AND e.orden < (SELECT orden FROM cat_estado_candidatura WHERE codigo = 'listo_rrhh')
-        RETURNING k.id`,
-      [Number(viva.id), datos.alta || null]);
-    if (!r.rows.length && datos.alta && !viva.inicio_previsto) {
-      // No se ha movido de estado (ya estaba al final, o es una salida), pero la
-      // fecha de alta si le falta y sin ella el Excel la cuenta como "sin decidir".
-      await guardar(Number(viva.id), { inicio_previsto: datos.alta }, quien);
-    }
-    return { id: Number(viva.id), conductorId: id, yaExistia: true, adelantada: !!r.rows.length };
-  }
-
-  // `soloSiExiste`: al dar de alta desde la ficha no se inventa un candidato.
-  // Quien no traia proceso —una alta de plantilla propia, un traspaso— no tiene
-  // por que aparecer en la bolsa de la agencia.
-  if (datos.soloSiExiste) return { id: null, conductorId: id, yaExistia: false, creada: false };
-
+/** La candidatura de quien ya está contratado, abierta ya terminada. Devuelve el id. */
+async function insertarContratada(conductorId, datos = {}) {
   const r = await db.consulta(
     `INSERT INTO candidatura
        (conductor_id, estado, canal, inicio_previsto, jornada_horas, tipo_contrato,
         responsable, apto_at)
      VALUES ($1, 'listo_rrhh', $2, $3, $4, $5, $6, now())
      RETURNING id`,
-    [id, datos.canal || null, datos.alta || null, datos.jornadaHoras || null,
+    [conductorId, datos.canal || null, datos.alta || null, datos.jornadaHoras || null,
      datos.tipoContrato || null, datos.responsable || null]);
-  return { id: Number(r.rows[0].id), conductorId: id, yaExistia: false };
+  return r.rows[0].id;
 }
 
-/**
- * Convierte lo que se escribe de una pieza en lo que la base guarda separado.
- *
- * Tres casos, y los tres por la misma razon: la gestoria pide la direccion
- * despiezada y el NAF en tres trozos, pero nadie los teclea asi. Y las
- * coordenadas se pegan como "lat, lng" porque es como las da un mapa.
- *
- * Lo que no venga, no se toca: devolver un objeto solo con lo que ha llegado
- * evita borrar la mitad de una direccion al guardar la otra mitad.
- */
-function despiezar(datos) {
-  const fuera = {};
-
-  // "28/1234567/89", "28 1234567 89" o los doce digitos seguidos.
-  const naf = datos.naf || datos.num_seg_social;
-  if (naf !== undefined) {
-    const n = String(naf || '').replace(/[^0-9]/g, '');
-    if (n.length >= 8) {
-      fuera.naf_provincia = n.slice(0, 2);
-      fuera.naf_numero = n.slice(2, -2);
-      fuera.naf_control = n.slice(-2);
-    }
-  }
-
-  // "40.23578, -3.76983". Fuera de España se descarta: una coma mal puesta manda
-  // a alguien al Atlantico, y esto lo usa el planificador para las recogidas.
-  if (datos.coordenadas !== undefined) {
-    const m = String(datos.coordenadas || '').match(/^\s*(-?\d+[.,]?\d*)\s*,\s*(-?\d+[.,]?\d*)\s*$/);
-    if (m) {
-      const lat = Number(m[1].replace(',', '.')), lng = Number(m[2].replace(',', '.'));
-      if (isFinite(lat) && isFinite(lng) && lat >= 27 && lat <= 44 && lng >= -19 && lng <= 5) {
-        fuera.lat = lat; fuera.lng = lng;
-      }
-    } else if (!String(datos.coordenadas || '').trim()) {
-      fuera.lat = null; fuera.lng = null;
-    }
-  }
-
-  // Una direccion pegada entera, cuando no vienen las partes por separado. Va
-  // al nombre de la via: partirla a ojo inventaria portales y pisos.
-  if (datos.direccion !== undefined && datos.via_nombre === undefined) {
-    fuera.via_nombre = String(datos.direccion || '').slice(0, 120) || null;
-  }
-
-  return fuera;
-}
-
-/**
- * Guarda lo que venga, mandando cada dato a su tabla.
- *
- * Este reparto es el módulo entero en una función: los campos de la persona
- * a `conductor`, los del proceso a `candidatura`. Sin él volveríamos a tener
- * dos copias del nombre y del DNI, que es de lo que veníamos huyendo.
- */
 /**
  * El valor tal y como va a la columna. Vaciar es vaciar: `''`, `null` y
  * `undefined` son lo mismo.
@@ -408,54 +248,28 @@ function valorDe(def, v) {
   return Number.isFinite(n) ? n : null;
 }
 
-async function guardar(id, datos = {}, quien = {}) {
-  const c = (await db.consulta('SELECT conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
-  if (!c) throw new Error('No existe esa candidatura');
+/** De quién es una candidatura. Nada si no existe. */
+async function conductorDe(id) {
+  return (await db.consulta('SELECT conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
+}
 
-  // Lo que una persona teclea de una pieza y la base guarda despiezado. Se
-  // normaliza AQUI y no en la pantalla: si lo hiciera la pantalla, cada
-  // formulario que quisiera guardar una direccion tendria que repetirlo.
-  const d = { ...datos, ...despiezar(datos) };
-
-  const dePersona = {}, deProceso = {};
-  for (const [k, v] of Object.entries(d)) {
-    if (con.CAMPOS[k]) dePersona[k] = v;
-    else if (CAMPOS[k]) deProceso[k] = v;
+/**
+ * Escribe las columnas del embudo que vengan.
+ *
+ * Solo las de CAMPOS, y se comprueba aquí porque el nombre va dentro del SQL. El
+ * reparto entre lo de la persona y lo del proceso lo hace
+ * `candidaturas.service.guardar`.
+ */
+async function guardarProceso(id, deProceso) {
+  const cols = [], vals = [];
+  for (const [k, v] of Object.entries(deProceso)) {
+    if (!CAMPOS[k]) throw new Error(`"${k}" no es un campo del proceso`);
+    cols.push(`${k} = $${cols.length + 1}`);
+    vals.push(valorDe(CAMPOS[k], v));
   }
-
-  if (Object.keys(dePersona).length) await con.actualizar(c.conductor_id, dePersona, quien);
-
-  if (Object.keys(deProceso).length) {
-    const cols = [], vals = [];
-    for (const [k, v] of Object.entries(deProceso)) {
-      cols.push(`${k} = $${cols.length + 1}`);
-      vals.push(valorDe(CAMPOS[k], v));
-    }
-    vals.push(Number(id));
-    await db.consulta(
-      `UPDATE candidatura SET ${cols.join(', ')}, actualizado_at = now() WHERE id = $${vals.length}`, vals);
-  }
-
-  // LA VACANTE SE RESERVA AL ENGANCHARLA, Y SE SUELTA AL SOLTARLA.
-  //
-  // Una vacante con candidato deja de ofrecerse: si no, dos reclutadores
-  // trabajan la misma plaza y el segundo se entera el día del alta. Y si a este
-  // candidato se le quita, vuelve a estar disponible — a esa vacante nunca
-  // llegó a entrar nadie.
-  if (deProceso.vacante_id !== undefined) await engancharVacante(Number(id), deProceso.vacante_id, quien);
-
-  // El teléfono no es un campo de la ficha: tiene su propia tabla y su propia
-  // vigencia, así que va por su función.
-  if (datos.telefono) await con.guardarTelefono(c.conductor_id, datos.telefono, quien);
-
-  // El IBAN va CIFRADO. En la hoja viajaba en claro, a la vista de cualquiera
-  // con acceso al documento; aquí se guarda cifrado y no se devuelve nunca en
-  // los listados. Si no hay clave configurada se avisa y no se guarda, en vez
-  // de escribirlo en claro «de momento».
-  // La regla es la de Conductores (`guardarIban`), la misma que usa Plantilla.
-  if (datos.iban !== undefined) await con.guardarIban(c.conductor_id, datos.iban, quien);
-
-  return { id: Number(id), conductorId: c.conductor_id };
+  vals.push(Number(id));
+  await db.consulta(
+    `UPDATE candidatura SET ${cols.join(', ')}, actualizado_at = now() WHERE id = $${vals.length}`, vals);
 }
 
 /**
@@ -480,7 +294,7 @@ async function engancharVacante(id, vacanteId, quien = {}) {
     // `ponerVacante`.
     const aLaIncorporacion = async ref => {
       if (k.estado !== 'alta' || !k.conductor_id) return null;
-      return require('../../services/repo/incorporaciones')
+      return require('./incorporaciones.repo')
         .ponerVacante(k.conductor_id, ref, { usuarioId: quien.usuarioId });
     };
 
@@ -599,15 +413,9 @@ async function descartar(id, { motivoCodigo, detalle, usuarioId } = {}) {
   });
 }
 
-/**
- * Selección termina: la persona pasa a RRHH con su contrato abierto.
- *
- * Aquí se ve lo que gana el modelo nuevo. En la hoja esto era "convertir un
- * ticket de 60 columnas en una ficha"; aquí la ficha ya existe desde
- * Preselección y lo único que falta es abrirle el periodo de empleo.
- */
-async function pasarARRHH(id, contrato = {}, quien = {}) {
-  const c = (await db.consulta(
+/** Lo que hay que saber de la persona antes de contratarla. */
+async function paraContratar(id) {
+  return (await db.consulta(
     `SELECT k.conductor_id, k.estado, c.empleo_vigente,
             btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
             (SELECT e164 FROM conductor_telefono
@@ -615,80 +423,17 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
               ORDER BY principal DESC, id DESC LIMIT 1) AS telefono
        FROM candidatura k JOIN conductor c ON c.id = k.conductor_id
       WHERE k.id = $1`, [Number(id)])).rows[0];
-  if (!c) throw new Error('No existe esa candidatura');
-  if (c.empleo_vigente) throw new Error(`${c.quien} ya tiene un contrato abierto`);
+}
 
-  // LO QUE SE DECIDE AL CONTRATAR SE GUARDA ANTES DE ABRIR NADA.
-  //
-  // Contratar es el momento en que se deciden fecha, jornada, turno y zona, asi
-  // que se decide y se escribe aqui mismo. Antes habia que pasar por otro boton
-  // a rellenarlo y luego volver a este, y lo que pasaba de verdad es que la
-  // gente contrataba sin turno: la persona llegaba al planificador sin poder
-  // colocarse, con el dato en la cabeza de quien la entrevisto.
-  //
-  // Se escribe en la candidatura y no solo en el contrato porque es SU decision:
-  // queda dicha aunque el alta falle mas adelante.
-  const decidido = {};
-  if (contrato.alta) decidido.inicio_previsto = contrato.alta;
-  if (contrato.jornadaHoras) decidido.jornada_horas = contrato.jornadaHoras;
-  if (contrato.turnoId) decidido.turno_id = contrato.turnoId;
-  if (contrato.zonaId) decidido.base_zona_id = contrato.zonaId;
-  if (Object.keys(decidido).length) await guardar(id, decidido, quien);
-
-  // Lo pactado durante la seleccion vale como contrato, salvo que al pasar a
-  // RRHH se diga otra cosa. Asi no hay que reescribir lo que ya se acordo.
-  const k = (await db.consulta(
+/** Lo pactado durante la selección: vale como contrato si no se dice otra cosa. */
+async function pactado(id) {
+  return (await db.consulta(
     'SELECT inicio_previsto, jornada_horas, tipo_contrato, turno_id FROM candidatura WHERE id = $1',
-    [Number(id)])).rows[0] || {};
-  contrato = {
-    alta: contrato.alta || (k.inicio_previsto ? String(k.inicio_previsto).slice(0, 10) : null),
-    jornadaHoras: contrato.jornadaHoras || k.jornada_horas || null,
-    tipo: contrato.tipo || (/ETT/i.test(k.tipo_contrato || '') ? 'ett' : 'propia'),
-    ettNombre: contrato.ettNombre,
-    finPrueba: contrato.finPrueba,
-  };
-  if (!contrato.alta) throw new Error('Falta la fecha de inicio del contrato');
+    [Number(id)])).rows[0];
+}
 
-  const faltan = await faltantes(Number(id), contrato.tipo);
-  if (faltan.length) throw new Error('Antes de pasar a RRHH faltan datos: ' + faltan.join(', '));
-
-  await con.darDeAlta(c.conductor_id, {
-    tipo: contrato.tipo === 'ett' ? 'ett' : 'propia',
-    ettNombre: contrato.ettNombre,
-    alta: contrato.alta,
-    jornadaHoras: contrato.jornadaHoras,
-    finPrueba: contrato.finPrueba,
-  }, quien);
-
-  // EL TURNO TIENE QUE VIAJAR CON LA PERSONA.
-  //
-  // Se decide en Selección —viene hasta en la tabla de la agencia— pero vivía
-  // solo en la candidatura. El planificador no la mira: mira el historial de
-  // turnos del conductor, y sin turno nadie es planificable
-  // (`listoParaPlanificar = idBolt && turno`).
-  //
-  // Así que la persona llegaba al planificador sin turno y no se podía colocar,
-  // con el dato escrito dos pantallas atrás.
-  //
-  // Desde la fecha de alta, no desde hoy: su turno empieza cuando empieza él.
-  if (k.turno_id) {
-    try {
-      await con.cambiarTurno(c.conductor_id, { turnoId: k.turno_id, desde: contrato.alta }, quien);
-    } catch (e) {
-      console.error(`⚠️  [CANDIDATURA] turno no aplicado a ${c.quien}: ${e.message}`);
-    }
-  }
-
-  // QUEDA DADO DE ALTA, NO «ESPERANDO A RRHH» (18/09/2026).
-  //
-  // El recorrido tenía dos paradas más —«Listo para RRHH» y «Pendiente de alta
-  // en Ballenoil»— y ninguna de las dos hacía nada que no estuviera ya hecho
-  // aquí: el contrato está abierto, el turno puesto y la cuenta de BOLT
-  // enlazada. Lo que le falta a esta persona no es papeleo nuestro, es un coche
-  // en el cuadrante, y de eso avisa la incorporación que nace abajo.
-  //
-  // Las 32 fichas que estaban en «Listo para RRHH» el día del cambio se quedan
-  // donde están: su bandeja sigue funcionando hasta que se vacíe sola.
+/** La candidatura queda en `alta`: el contrato ya está abierto (ver `pasarARRHH`). */
+async function marcarDadoDeAlta(id) {
   await db.consulta(
     `UPDATE candidatura
         SET estado = 'alta',
@@ -696,95 +441,25 @@ async function pasarARRHH(id, contrato = {}, quien = {}) {
             alta_at = COALESCE(alta_at, now()),
             actualizado_at = now()
       WHERE id = $1`, [Number(id)]);
+}
 
-  // ENLACE AUTOMÁTICO A BOLT por teléfono — mismo criterio que alta.realizar: si
-  // existe una cuenta de BOLT con ese número y no es de nadie, se enlaza SOLA,
-  // INCLUIDAS las desactivadas (se enlazan igual y se avisa de que hay que
-  // reactivarlas). Antes esto quedaba como sugerencia de 1 clic; ahora es automático.
-  let boltEnlazada = false, boltEstado = null, boltAvisos = [];
-  try {
-    const alta = require('../../services/repo/alta');
-    const info = c.telefono ? await alta.porTelefono(c.telefono) : null;
-    if (info && info.bolt) {
-      boltEstado = info.bolt.estado;          // 'active' / 'deactivated' / …
-      boltAvisos = info.avisos || [];
-      // No es de nadie → se enlaza (aunque esté desactivada). Si ya es de otro, el
-      // aviso de porTelefono lo dice y NO se pisa el enlace ajeno.
-      if (!info.bolt.enlazadaCon) {
-        await con.enlazarBolt(c.conductor_id, info.bolt.cuentaId, quien);
-        boltEnlazada = true;
-      }
-    }
-  } catch (e) {
-    console.error(`⚠️  [CANDIDATURA] auto-enlace BOLT de ${c.quien}: ${e.message}`);
-  }
-
-  // Sin cuenta de BOLT no puede conducir. Se devuelve para decirlo ahora y no
-  // el día que tiene que salir.
-  const s = await db.consulta(
+/** Si la persona está en BOLT, y con qué número. */
+async function situacionBolt(conductorId) {
+  return (await db.consulta(
     'SELECT situacion_bolt, telefono_bolt FROM v_conductor_alta_bolt WHERE conductor_id = $1',
-    [c.conductor_id]);
+    [conductorId])).rows[0];
+}
 
-  // LA VACANTE TIENE QUE LLEGAR AL PLANIFICADOR.
-  //
-  // Contratar a alguien para una vacante y que Tráfico no se entere es el
-  // agujero que quedaba: la alerta de incorporación solo nacía por la vía de la
-  // ETT, así que a quien venía por Selección se le abría el contrato y su plaza
-  // seguía figurando vacía. Alguien tenía que acordarse de colocarlo, mirando
-  // una pantalla distinta.
-  //
-  // Ahora nace aquí también, con la foto de las plazas prometidas y la fecha de
-  // alta: en el planificador sale "entra Fulano el día X" antes de que llegue, y
-  // si era un RECAMBIO, sale al lado de quien se va.
-  // Y SIN VACANTE TAMBIÉN AVISA. Quien entra sin plaza prometida necesita una
-  // igual; la alerta se queda en el planificador hasta que alguien le dé una.
-  let incorporacion = null, avisoVacante = null;
-  const vref = (await db.consulta('SELECT vacante_ref FROM candidatura WHERE id = $1', [Number(id)]))
+/** El código de la vacante que viene a cubrir, si tiene. */
+async function vacanteRefDe(id) {
+  return (await db.consulta('SELECT vacante_ref FROM candidatura WHERE id = $1', [Number(id)]))
     .rows.map(x => x.vacante_ref)[0];
-  try {
-    incorporacion = await require('../../services/repo/incorporaciones').crear({
-      conductorId: c.conductor_id, vacanteId: vref || null, origen: 'seleccion',
-      desde: contrato.alta, usuarioId: quien.usuarioId,
-    });
-    if (incorporacion) {
-      console.log(`🔔 [CANDIDATURA] Incorporación ${incorporacion.id} · ${c.quien} → ` +
-        (vref ? `${vref} (${incorporacion.plazas} plaza(s), desde ${contrato.alta})`
-              : `sin vacante, desde ${contrato.alta}`));
-    }
-  } catch (e) {
-    avisoVacante = vref
-      ? `El alta salió bien, pero la vacante ${vref} no se pudo reservar: ${e.message}`
-      : `El alta salió bien, pero no se pudo avisar al planificador: ${e.message}`;
-    console.error(`⚠️  [CANDIDATURA] ${avisoVacante}`);
-  }
-
-  return {
-    id: Number(id), conductorId: c.conductor_id, quien: c.quien,
-    bolt: s.rows[0] || null,
-    // Dónde y cuándo cae en el planificador. Es lo que Selección tiene que poder
-    // contestar sin llamar a Tráfico.
-    vacante: vref || null,
-    incorporacion: incorporacion ? {
-      id: incorporacion.id, plazas: incorporacion.plazas,
-      puesto: (incorporacion.detalle || {}).puesto || '',
-      matriculas: ((incorporacion.detalle || {}).plazas || []).map(x => x.matricula).join(' · '),
-      libranzas: (incorporacion.detalle || {}).libranzas || '',
-      sustituye: (incorporacion.detalle || {}).sustituye || '',
-      desde: contrato.alta,
-    } : null,
-    avisoVacante,
-    // Resultado del auto-enlace: si se enganchó, en qué estado está la cuenta, y los
-    // avisos (p.ej. "está desactivada, reactívala en BOLT").
-    boltEnlazada, boltEstado, boltAvisos,
-    boltReactivar: boltEstado != null && boltEstado !== 'active',
-    faltaBolt: !s.rows[0] || s.rows[0].situacion_bolt === 'no_esta_en_bolt',
-  };
 }
 
 /**
  * Qué le falta a esta candidatura para poder contratarla.
  *
- * El listón lo pone `repo/exigencia`, que es el mismo que se aplica a los tres
+ * El listón lo pone `exigencia.repo`, que es el mismo que se aplica a los tres
  * meses al pasar de ETT a propia. `tipo` decide cuál; si no se dice, se deduce
  * del canal: quien viene por la bolsa de la ETT se contrata por ETT.
  */
@@ -924,7 +599,6 @@ function citaDe(dia, hora) {
 }
 
 const soloDigitos = v => String(v == null ? '' : v).replace(/\D/g, '');
-const horasDe = v => { const m = String(v == null ? '' : v).match(/(\d{1,2})/); return m ? Number(m[1]) : null; };
 
 /**
  * Que hay de verdad en la columna que la agencia titula "CODIGO POSTAL".
@@ -988,187 +662,60 @@ function parsearMatriz(texto) {
   return filas;
 }
 
-/**
- * Crea las candidaturas de una matriz pegada, y DICE qué ha pasado con cada una.
- *
- * Contar "creados y ya estaban" no basta. Lo que de verdad interesa de una tabla
- * de la agencia es a quién de esa lista YA CONOCEMOS, y por qué: gente que ya
- * pasó por aquí, o —lo importante— gente que ya está trabajando con nosotros.
- * Eso solo se puede saber teniendo una base con el DNI y el teléfono de todos, y
- * si se sabe hay que decirlo.
- *
- * Se busca por TELÉFONO y por DNI. Por los dos, porque la agencia manda a veces
- * a alguien con un número nuevo: sin mirar el DNI, esa fila reventaba con un
- * error de clave duplicada en vez de decir de quién se trata.
- *
- * Idempotente: repegar la tabla no duplica a nadie, y de paso rellena los huecos
- * de quien ya estaba.
- */
-async function importarMatriz(texto, quien = {}, { solicitudId, referencia, recibida } = {}) {
-  const filas = parsearMatriz(texto);
-  if (!filas.length) {
-    throw new Error('No he reconocido ninguna fila. Copia la tabla del correo con sus columnas, ' +
-                    'incluyendo la del teléfono.');
-  }
+// Las consultas de `candidaturas.service.importarMatriz`, que es quien decide
+// qué se hace con cada fila.
 
-  const [{ turnos, zonas }, ] = await Promise.all([catalogos()]);
-  const sinTildes = s => String(s == null ? '' : s).normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-  const turnoDe = v => (turnos.find(x => sinTildes(x.etiqueta) === sinTildes(v)
-    || sinTildes(x.codigo) === sinTildes(v)) || {}).id || null;
-  const zonaDe = v => (zonas.find(x => sinTildes(x.nombre) === sinTildes(v)) || {}).id || null;
+/** ¿Conocemos a esta persona? Por el DNI, aunque venga con otro número. */
+async function personaPorDni(dni) {
+  if (!dni) return null;
+  const r = await db.consulta(
+    `SELECT c.id, c.empleo_vigente,
+            btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
+            (SELECT e164 FROM conductor_telefono
+              WHERE conductor_id = c.id AND vigente_hasta IS NULL
+              ORDER BY principal DESC, id LIMIT 1) AS telefono
+       FROM conductor c
+      WHERE upper(btrim(c.dni_nie)) = $1 AND NOT c.es_centinela`,
+    [String(dni).trim().toUpperCase()]);
+  return r.rows[0] || null;
+}
 
-  // Lo que la agencia da de cada persona. Se arma una vez y se usa en los dos
-  // caminos: al crear la candidatura y al rellenar huecos de una que ya existe.
-  const dePersona = f => ({
-    dni_nie: f.dni || undefined,
-    email: f.correo || undefined,
-    via_nombre: f.direccion || undefined,
-    codigo_postal: f.cp || f.cpDeDireccion || undefined,
-    fecha_nacimiento: f.nacimiento || undefined,
-  });
+/** Una tabla pegada es una solicitud: se abre y se devuelve su id. */
+async function abrirSolicitud(recibida, referencia, usuarioId) {
+  const r = await db.consulta(
+    `INSERT INTO solicitud_ett (recibida_at, referencia, usuario_id)
+     VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3) RETURNING id`,
+    [recibida || null, referencia || null, usuarioId || null]);
+  return r.rows[0].id;
+}
 
-  /** ¿Conocemos a esta persona? Por el DNI, aunque venga con otro número. */
-  async function porDni(dni) {
-    if (!dni) return null;
-    const r = await db.consulta(
-      `SELECT c.id, c.empleo_vigente,
-              btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
-              (SELECT e164 FROM conductor_telefono
-                WHERE conductor_id = c.id AND vigente_hasta IS NULL
-                ORDER BY principal DESC, id LIMIT 1) AS telefono
-         FROM conductor c
-        WHERE upper(btrim(c.dni_nie)) = $1 AND NOT c.es_centinela`,
-      [String(dni).trim().toUpperCase()]);
-    return r.rows[0] || null;
-  }
+/** Ata la candidatura a la solicitud, si no tenía ninguna. */
+async function atarASolicitud(candidaturaId, solicitudId) {
+  await db.consulta(
+    'UPDATE candidatura SET solicitud_id = COALESCE(solicitud_id, $1) WHERE id = $2',
+    [solicitudId, candidaturaId]);
+}
 
-  // LA SOLICITUD. Una tabla pegada es una solicitud, y esa es la unidad con la
-  // que se le responde a la agencia. Si se pasa un `solicitudId` se añade a una
-  // que ya existe —la agencia reenvía la misma tabla ampliada—; si no, se abre
-  // una nueva.
-  let solicitud = Number(solicitudId) || null;
-  if (!solicitud) {
-    const r = await db.consulta(
-      `INSERT INTO solicitud_ett (recibida_at, referencia, usuario_id)
-       VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3) RETURNING id`,
-      [recibida || null, referencia || null, quien.usuarioId || null]);
-    solicitud = r.rows[0].id;
-  }
+/** ¿Esta misma cita de la bolsa ya se importó? Sin cita, vale cualquiera de la bolsa. */
+async function yaImportada(conductorId, entrevista) {
+  const ya = await db.consulta(
+    `SELECT 1 FROM candidatura
+      WHERE conductor_id = $1 AND canal = 'bolsa_ett'
+        AND ($2::timestamptz IS NULL OR entrevista_at = $2)
+      LIMIT 1`, [conductorId, entrevista]);
+  return ya.rows.length > 0;
+}
 
-  const detalle = [];
-  const anota = (f, que, nota) => detalle.push({
-    nombre: f.nombre || '(sin nombre)', telefono: f.telefono, dni: f.dni || null, que, nota: nota || null,
-  });
-
-  for (const f of filas) {
-    try {
-      const { situacion, candidatura } = await porTelefono(f.telefono);
-      const porElDni = situacion.ficha ? null : await porDni(f.dni);
-      const conocida = situacion.ficha || porElDni;
-
-      // ── Ya trabaja aquí ──
-      // Es el aviso que importa. La agencia lo manda como candidato nuevo y
-      // resulta que es alguien de la plantilla. No se abre nada.
-      if (conocida && (conocida.empleoVigente || conocida.empleo_vigente)) {
-        anota(f, 'ya_trabaja',
-          `${conocida.quien} ya tiene contrato abierto con nosotros` +
-          (porElDni ? ` (le hemos reconocido por el DNI; su número aquí es ${porElDni.telefono || 'otro'})` : ''));
-        continue;
-      }
-
-      // ── Ya tiene un proceso vivo ──
-      // No se abre otro, pero se aprovecha la fila: la agencia manda una versión
-      // más completa a la semana siguiente, y repegar la tabla tiene que servir
-      // para algo más que decir "ya estaba".
-      if (candidatura) {
-        // Aunque ya estuviera, se le ata a esta solicitud si no tenía ninguna:
-        // así una tabla reenviada no deja filas huérfanas.
-        await db.consulta(
-          'UPDATE candidatura SET solicitud_id = COALESCE(solicitud_id, $1) WHERE id = $2',
-          [solicitud, candidatura.id]);
-        const puestos = await rellenarHuecos(candidatura.conductor_id, dePersona(f), quien);
-        const n = Object.keys(puestos).length;
-        anota(f, 'ya_estaba', n ? `Ya estaba en el proceso. Se han rellenado ${n} dato(s) que faltaban.`
-                                : 'Ya estaba en el proceso, sin nada nuevo que añadir.');
-        continue;
-      }
-
-      // ── Esta misma cita ya se importó ──
-      // `porTelefono` solo devuelve la candidatura VIVA, así que sin esto pasaba
-      // lo siguiente: se pega la tabla, se descarta a alguien, se vuelve a pegar
-      // —que es lo normal— y reaparecía con una candidatura nueva, dejando dos.
-      //
-      // Se compara por la CITA: si vuelve a presentarse dentro de unos meses la
-      // fecha será otra, y entonces sí son dos procesos distintos y las dos son
-      // historia legítima. Sin cita no se puede distinguir, y ante la duda no se
-      // duplica.
-      if (situacion.ficha) {
-        const ya = await db.consulta(
-          `SELECT 1 FROM candidatura
-            WHERE conductor_id = $1 AND canal = 'bolsa_ett'
-              AND ($2::timestamptz IS NULL OR entrevista_at = $2)
-            LIMIT 1`, [situacion.ficha.id, f.entrevista]);
-        if (ya.rows.length) {
-          const puestos = await rellenarHuecos(situacion.ficha.id, dePersona(f), quien);
-          const n = Object.keys(puestos).length;
-          anota(f, 'ya_estaba', 'Esta entrevista ya se importó' +
-            (n ? `. Se han rellenado ${n} dato(s) que faltaban.` : '.'));
-          continue;
-        }
-      }
-
-      // ── Le conocemos, pero no está en ningún proceso ──
-      // Ya pasó por aquí antes. Se le abre uno nuevo sobre SU ficha, no otra.
-      const vuelve = Boolean(conocida);
-
-      const r = await abrir(porElDni ? porElDni.telefono || f.telefono : f.telefono, {
-        nombre: f.nombre,
-        canal: 'bolsa_ett',
-        ...dePersona(f),
-      }, quien);
-
-      // El resto va en una segunda pasada: `abrir` crea a la persona y arranca
-      // el proceso, y esto es lo que la agencia añade encima.
-      await db.consulta(
-        `UPDATE candidatura
-            SET estado = $1, entrevista_at = $2, jornada_ett = $3, turno_ett = $4,
-                jornada_horas = $5, turno_id = $6, base_zona_id = $7,
-                inicio_previsto = $8, solicitud_id = $10, actualizado_at = now()
-          WHERE id = $9`,
-        [
-          // Con cita puesta ya no esta en preseleccion: hay entrevista acordada.
-          f.noSePresento ? 'no_presentado' : (f.entrevista ? 'coord_entrevista' : 'preseleccion'),
-          f.entrevista, f.jornada_ett, f.turno_ett,
-          horasDe(f.jornada), turnoDe(f.turno), zonaDe(f.zona),
-          f.alta && /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}$/.test(f.alta)
-            ? f.alta.split(/[\/\-.]/).reverse().join('-') : null,
-          r.id, solicitud,
-        ]);
-
-      anota(f, vuelve ? 'vuelve' : 'creada',
-        vuelve ? `Ya teníamos ficha de ${conocida.quien}: no se ha creado otra, se le abre un proceso nuevo` +
-                 (porElDni ? ' (reconocido por el DNI, viene con otro número)' : '')
-               : null);
-    } catch (e) {
-      anota(f, 'error', String(e.message).split('\n')[0]);
-    }
-  }
-
-  const cuantos = q => detalle.filter(d => d.que === q).length;
-  return {
-    solicitudId: solicitud,
-    leidas: filas.length,
-    creados: cuantos('creada'),
-    vuelven: cuantos('vuelve'),
-    yaEstaban: cuantos('ya_estaba'),
-    yaTrabajan: cuantos('ya_trabaja'),
-    errores: cuantos('error'),
-    detalle,
-    // Se mantiene para quien lo leía antes: los avisos son las filas que no
-    // acabaron en una candidatura nueva.
-    avisos: detalle.filter(d => d.que === 'error').map(d => `${d.nombre}: ${d.nota}`),
-  };
+/** Lo que la agencia añade al abrir: la cita, lo que pide y lo que decidimos. */
+async function completarDeMatriz(id, solicitudId, m) {
+  await db.consulta(
+    `UPDATE candidatura
+        SET estado = $1, entrevista_at = $2, jornada_ett = $3, turno_ett = $4,
+            jornada_horas = $5, turno_id = $6, base_zona_id = $7,
+            inicio_previsto = $8, solicitud_id = $10, actualizado_at = now()
+      WHERE id = $9`,
+    [m.estado, m.entrevista, m.jornadaEtt, m.turnoEtt, m.jornadaHoras, m.turnoId, m.zonaId,
+     m.inicioPrevisto, id, solicitudId]);
 }
 
 // ── Lo que se le devuelve a la agencia ──────────────────────────────────────
@@ -1594,28 +1141,17 @@ async function marcarExcelAlta(ids, referencia) {
   return r.rowCount;
 }
 
-/**
- * RRHH tramita: la ficha queda DE ALTA.
- *
- * NO da de alta a nadie en el sentido del contrato: eso ya lo hizo
- * `pasarARRHH`. Aquí solo se apuntan las fechas que decide RRHH y se cierra el
- * recorrido.
- *
- * Hasta el 24/09/2026 pasaba antes por «Pendiente de alta en Ballenoil», a
- * esperar que Administración le pusiera el PIN de la tarjeta de combustible.
- * Ballenoil ya no se usa —ahora es Petroprix, que no necesita nada de los
- * conductores—, así que esa parada sobraba. `asignado_at` lo ponía aquel paso;
- * ahora se pone aquí.
- */
-async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {}) {
-  const c = (await db.consulta(
+/** Dónde está una candidatura del tramo final (lo mira `tramitarAlta`). */
+async function paraTramitar(id) {
+  return (await db.consulta(
     'SELECT estado, excel_alta, conductor_id FROM candidatura WHERE id = $1', [Number(id)])).rows[0];
-  if (!c) throw new Error('No existe esa candidatura');
-  if (c.estado !== 'listo_rrhh') throw new Error('Esta ficha no está esperando a RRHH');
-  if (!c.excel_alta) {
-    throw new Error('Esta ficha aún no ha ido en ningún Excel de altas. ' +
-      'Inclúyela primero en un Excel y luego tramítala.');
-  }
+}
+
+/**
+ * RRHH apunta sus fechas y la cierra. Devuelve cuántas filas tocó: 0 es que
+ * alguien la tramitó mientras tanto.
+ */
+async function tramitar(id, fechaAlta, fechaHabilitado) {
   const r = await db.consulta(
     `UPDATE candidatura
         SET estado = 'alta',
@@ -1626,8 +1162,7 @@ async function tramitarAlta(id, { fechaAlta, fechaHabilitado } = {}, quien = {})
       WHERE id = $1 AND estado = 'listo_rrhh'
       RETURNING id`,
     [Number(id), fechaAlta || null, fechaHabilitado || null]);
-  if (!r.rowCount) throw new Error('Alguien la tramitó mientras tanto: vuelve a cargar');
-  return ficha(id);
+  return r.rowCount;
 }
 
 /** Cuántas fichas hay esperando en cada sitio. Lo pide la campana. */
@@ -1639,9 +1174,15 @@ async function pendientes() {
   return Object.fromEntries(r.rows.map(x => [x.estado, x.n]));
 }
 module.exports = {
-  CAMPOS, catalogos, listar, ficha, porTelefono, abrir, abrirContratada, guardar,
-  cambiarEstado, descartar, pasarARRHH, eliminar, faltantes, paraFicha, paraFichaDeConductor, importarMatriz, parsearMatriz,
+  CAMPOS, listar, porTelefono, cambiarEstado, descartar, eliminar, faltantes,
+  paraFicha, paraFichaDeConductor, parsearMatriz,
   paraETT, paraETTElegidos, solicitudesETT, registrarEnvio,
   // El tramo final: RRHH y Administración.
-  tramoFinal, paraAltasExcel, marcarExcelAlta, tramitarAlta, pendientes,
+  tramoFinal, paraAltasExcel, marcarExcelAlta, pendientes,
+  // Las consultas de lo que coordina `candidaturas.service.js`.
+  catalogosBase, filaFicha, personaCruda, insertarPreseleccion, vivaDe, adelantarAListo,
+  insertarContratada, conductorDe, guardarProceso, engancharVacante,
+  paraContratar, pactado, marcarDadoDeAlta, situacionBolt, vacanteRefDe,
+  personaPorDni, abrirSolicitud, atarASolicitud, yaImportada, completarDeMatriz,
+  paraTramitar, tramitar,
 };

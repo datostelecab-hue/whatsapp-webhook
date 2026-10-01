@@ -172,10 +172,10 @@ Tres traducciones que importan, y la primera es la que podía romperlo todo:
 planificador del módulo dicen lo mismo en las **480 plazas de los 80 coches**,
 sin una sola diferencia.
 
-**`repo/incorporaciones` y `repo/alta` siguen en `services/repo/`.** Son la
-frontera entre Selección, Conductores y este módulo, y los tres las usan. Un
-repositorio puede llamar a otro repositorio; si entraran aquí, Selección estaría
-entrando al repositorio de Planificación.
+**Las incorporaciones son de Selección (01/10/2026).** Nacen de una vacante
+cumplida, así que su repositorio se mudó a `modules/Seleccion/incorporaciones.repo.js`.
+El tablero entra por `Seleccion/incorporaciones.service`, nunca por el repositorio.
+`repo/alta` sigue en `services/repo/` (ver el LEEME de Conductores).
 
 ## Lo que aún no está bien
 

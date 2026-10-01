@@ -33,11 +33,11 @@
 // cierra su asignación la víspera (lo hace `colocar`, no esto), así que el
 // relevo queda encadenado sin un solo día de coche parado.
 
-const db = require('../db');
-const vacantes = require('./vacantes');
+const db = require('../../services/db');
+const vacantes = require('./vacantes.repo');
 
 // Las letras de la semana, para traducir los días de un CT. Del núcleo.
-const { LETRAS_DIA: LETRAS } = require('../nucleo');
+const { LETRAS_DIA: LETRAS } = require('../../services/nucleo');
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const fecha = d => (ISO.test(String(d || '')) ? String(d) : null);
 

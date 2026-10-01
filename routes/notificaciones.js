@@ -3,7 +3,7 @@ const router = express.Router();
 const seleccion = require('../modules/Seleccion/seleccion.service');
 const plantilla = require('../modules/Conductores/plantilla.service');
 const vacantes = require('../modules/Seleccion/vacantes.service');
-const repoInc = require('../services/repo/incorporaciones');
+const repoInc = require('../modules/Seleccion/incorporaciones.service');
 const ticketera = require('../modules/Ticketera/ticketera.service');
 
 // El tablero es caro de recalcular, así que se cachea un minuto: aunque cada

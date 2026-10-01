@@ -30,8 +30,11 @@ vacantes.controller.js   vacantes.service.js      el tablero
 seleccion.controller.js  seleccion.service.js     el proceso del candidato
 ett.controller.js        ett.service.js           la bolsa de la agencia
                          ett.excel.js             el fichero que se manda a la agencia
-                         candidaturas.repo.js     SQL de la candidatura (1.500 líneas)
+                         candidaturas.service.js  la candidatura con la persona: abrir, guardar, contratar
+                         candidaturas.repo.js     SQL de la candidatura (1.200 líneas)
                          exigencia.repo.js        qué le falta a alguien para poder entrar
+                         incorporaciones.service.js  la puerta de las incorporaciones (Planificación)
+                         incorporaciones.repo.js  quien entra a cubrir una vacante
 ```
 
 Desde fuera del módulo se entra por un `.service`, nunca por un `.repo` — ver [[Reglas de la casa]].
@@ -42,9 +45,11 @@ Desde fuera del módulo se entra por un `.service`, nunca por un `.repo` — ver
 
 Antes de abrir nada, `/seleccion/api/telefono/:tel` contesta qué hay detrás de ese número: si tiene proceso vivo, si ya existe su ficha y si está en [[BOLT]]. Con eso se decide entre continuar, restaurar o empezar de cero.
 
-Un candidato es **una fila de `conductor` sin periodo de empleo** (`modules/Seleccion/candidaturas.repo.js`). No es un apaño: es literalmente lo que significa "todavía no trabaja aquí", y desde el primer día le da lo que la hoja nunca tuvo — que su DNI no se repita y que su teléfono no sea el de otro. Ver [[Base de datos]].
+Un candidato es **una fila de `conductor` sin periodo de empleo** (`modules/Seleccion/candidaturas.service.js` y su repositorio). No es un apaño: es literalmente lo que significa "todavía no trabaja aquí", y desde el primer día le da lo que la hoja nunca tuvo — que su DNI no se repita y que su teléfono no sea el de otro. Ver [[Base de datos]].
 
-La regla de reparto del repositorio: **aquí solo vive el proceso**. El nombre, el DNI, la dirección y el NAF son de la persona y ya tienen tablas, así que `guardar()` reparte — lo que es campo de `conductor` va por `conductores.actualizar`, y solo lo del embudo se escribe en la candidatura. No se copia nada.
+La regla de reparto: **en la candidatura solo vive el proceso**. El nombre, el DNI, la dirección y el NAF son de la persona y ya tienen tablas, así que `guardar()` reparte — lo que es campo de `conductor` va por la puerta de Conductores (`conductores.service.actualizar`), y solo lo del embudo se escribe en la candidatura. No se copia nada.
+
+Desde el 01/10/2026 eso se ve también en los ficheros: lo que toca a la persona está en `candidaturas.service.js`, que entra por `Conductores/conductores.service` y `Documentos/documentos.service`; el SQL de la candidatura está en `candidaturas.repo.js`, en funciones pequeñas. Antes el repositorio entraba en el de Conductores por un puente. Ver [[ARQUITECTURA]].
 
 ## La vacante cuesta plazas, no unidades
 
@@ -167,8 +172,8 @@ Son tres claves separadas del catálogo (`services/permisos.js`), en el grupo *C
 
 ## Lo que aún no está bien
 
-`candidaturas.repo.js` pasa de 1.500 líneas y tiene dentro reglas que son de servicio —el recorrido del embudo, qué pasa al pasar a RRHH—. Se partió el módulo primero porque mover y partir a la vez es cómo se pierde una ruta sin enterarse; lo segundo viene después.
+`candidaturas.repo.js` todavía guarda alguna regla: qué estado se adelanta en `abrirContratada` lo dice el orden del catálogo dentro del SQL, y `cambiarEstado` suelta la vacante. Lo que coordinaba con otros módulos ya salió al servicio (01/10/2026).
 
-`services/repo/alta` e `services/repo/incorporaciones` siguen fuera: son el **traspaso** a Conductores y a Planificación y los usan también otros módulos. `services/vacantes.js` es una capa de compatibilidad que traduce la vacante al idioma de la hoja vieja y ya solo la usa `routes/notificaciones.js`: muere con ese módulo.
+`services/repo/alta` sigue fuera, pero ya solo lee (`porTelefono`) y hace el paso a propia; dar de alta es `Conductores/conductores.service.realizarAlta`. Las incorporaciones **entraron aquí** el 01/10/2026 (`incorporaciones.repo.js`, con su puerta `incorporaciones.service.js` para Planificación y las notificaciones): nacen de una vacante, y las vacantes son de Selección. `services/vacantes.js` es una capa de compatibilidad que traduce la vacante al idioma de la hoja vieja y ya solo la usa `routes/notificaciones.js`: muere con ese módulo.
 
 Y `matching` **no es de aquí** pese al nombre: solo usa el tablero del planificador, así que es de Planificación.

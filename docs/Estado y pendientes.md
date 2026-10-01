@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-09-30
+actualizado: 2026-10-01
 ---
 
 # Estado y pendientes
@@ -17,8 +17,8 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## Organización del código (01/10/2026)
 
-- **Hechas las tandas 1 y 2** (arreglos y cierre de la Fase 2). Ver [[ARQUITECTURA]].
-- **Siguiente, si se quiere**: sacar el traspaso Selección → Conductores a la capa de servicio y borrar los 4 puentes que quedan (`services/repo/conductores`, `documentos`, `exigencia`, `vacantes`). Toca el alta, así que va con pruebas propias.
+- **Hechas las tandas 1 y 2** (arreglos y cierre de la Fase 2) **y el traspaso Selección → Conductores**: ya no queda ningún puente y `comprobar-capas` da 0 incumplimientos. Ver [[ARQUITECTURA]].
+- **Desplegar**: el traspaso no lleva migración. Lo que cambia es por dónde entra el código (alta, candidatura, incorporaciones); la traza de 42 casos contra el código de antes salió idéntica.
 - **Decisiones de Camilo**: qué hacer con `services/repo/notificaciones.js` (Hito 6 del convenio, sin enchufar y con un SQL que pide una columna que no existe) y si los scripts de la migración de agosto (`cargar-*`, `migrar-*`, `reset`, `vaciar-conductores`) se archivan.
 - `inventario-exports` lista 28 funciones exportadas que nadie llama de fuera: para otra pasada, mirando una a una que no las llame una ruta por cadena ni un cron.
 
