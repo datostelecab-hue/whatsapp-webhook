@@ -770,7 +770,7 @@
               ' · ' + esc(f.noSale.hora || '') + (f.noSale.quien ? ' · por ' + esc(f.noSale.quien) : '') +
               '<div class="text-telecab-muted mt-0.5">«' + esc(f.noSale.comentario) + '»</div></div>' : '') +
           (f.slack ? '<div class="text-xs text-telecab-text"><i class="fa-brands fa-slack text-telecab-muted mr-1"></i>' +
-              'Traza por Slack en <b>#' + esc(f.slack.canal) + '</b>' +
+              'Traza por Slack en <b>' + esc(canalesTexto(f.slack)) + '</b>' +
               ' · ' + esc(f.slack.hora || '') + (f.slack.quien ? ' · por ' + esc(f.slack.quien) : '') + '</div>' : '') +
         '</div>'
       : '';
@@ -783,7 +783,9 @@
           '<button data-nosale="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
             '<i class="fa-solid fa-ban mr-1"></i> ' + (f.noSale ? 'Cambiar «No saldrá»' : 'No saldrá') + '</button>' +
           '<button data-slack="' + esc(f.clave) + '" class="px-2.5 py-1 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold hover:text-telecab-gold">' +
-            '<i class="fa-brands fa-slack mr-1"></i> ' + (f.slack ? 'Traza en #' + esc(f.slack.canal) : 'Traza por Slack') + '</button>' +
+            '<i class="fa-brands fa-slack mr-1"></i> ' + (f.slack
+              ? 'Traza en ' + ((f.slack.canales || []).length === 1 ? esc(canalesTexto(f.slack)) : (f.slack.canales || []).length + ' canales')
+              : 'Traza por Slack') + '</button>' +
           // Arriba se ve lo de HOY. Esto abre todo lo demás, y se abre en una
           // ventana encima a propósito: la ficha del directo se mira para
           // decidir en dos segundos si hay que llamar, y meterle aquí dentro
@@ -1051,7 +1053,7 @@
     const sl = f.slack;
     const btnSlack = '<button data-slack="' + esc(f.clave) + '" ' +
       'title="' + esc(sl
-        ? 'Traza por Slack en #' + sl.canal + ' — ' + (sl.quien || '—') + ', ' + (sl.hora || '') + '. Pulsa para cambiar de canal o quitarla.'
+        ? 'Traza por Slack en ' + canalesTexto(sl) + ' — ' + (sl.quien || '—') + ', ' + (sl.hora || '') + '. Pulsa para cambiar los canales o quitarla.'
         : 'Traza por Slack: marca en qué canal de la empresa quedó constancia') + '" ' +
       'class="px-1.5 py-0.5 rounded-md border text-[11px] leading-none ' + (sl
         ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500'
@@ -1082,6 +1084,9 @@
   // (modules/Control/marcas.repo.js), como el buzón de resultados.
   const MOTIVOS_NO_SALE = <%- JSON.stringify(typeof motivosNoSale !== 'undefined' ? motivosNoSale : []) %>;
   const CANALES_SLACK = <%- JSON.stringify(typeof canalesSlack !== 'undefined' ? canalesSlack : []) %>;
+
+  /** Los canales de una traza, como se escriben en Slack: «#9-rrhh, #4-bajas-medicas». */
+  const canalesTexto = sl => ((sl && sl.canales) || []).map(c => '#' + c).join(', ');
 
   function chipNoSale(ns) {
     return '<span class="px-1.5 py-0 rounded text-[10px] font-semibold leading-[1.5] bg-telecab-border/50 text-telecab-text" ' +
@@ -1150,17 +1155,17 @@
     }, 'No se pudo apuntar «No saldrá»');
   }
 
-  /** «TRAZA POR SLACK»: en qué canal de la empresa quedó constancia. Solo la marca. */
+  /** «TRAZA POR SLACK»: en qué canales de la empresa quedó constancia (varios). Solo la marca. */
   async function trazaSlack(f) {
     const ya = f.slack;
     if (ya) {
       const que = await Dialogo.elegir({
         titulo: 'Traza por Slack',
-        html: '<p>En <b>#' + esc(ya.canal) + '</b>.</p>' +
+        html: '<p>En <b>' + esc(canalesTexto(ya)) + '</b>.</p>' +
           '<p class="text-telecab-muted text-sm mt-1">La marcó ' + esc(ya.quien || '—') + ' a las ' + esc(ya.hora || '') + '.</p>',
         opciones: [
           { texto: 'Quitar la marca', valor: 'quitar', tono: 'peligro' },
-          { texto: 'Cambiar de canal', valor: 'cambiar', principal: true },
+          { texto: 'Cambiar los canales', valor: 'cambiar', principal: true },
         ],
       });
       if (!que) return;
@@ -1171,13 +1176,17 @@
       }
     }
     const v = await Dialogo.formulario('Traza por Slack · ' + f.conductor, [
-      { id: 'canal', etiqueta: 'En qué canal', tipo: 'lista', obligatorio: true, valor: ya ? ya.canal : '',
+      // VARIOS A LA VEZ (01/10/2026): la misma traza puede estar en #9-rrhh y en
+      // #4-bajas-medicas. Cada pulsación marca o desmarca.
+      { id: 'canales', etiqueta: 'En qué canales', tipo: 'lista', multiple: true, obligatorio: true,
+        valor: ya ? (ya.canales || []) : [],
+        ayuda: 'Puedes marcar varios.',
         buscador: { tope: 20, marcador: 'Busca el canal…' },
         opciones: CANALES_SLACK.map(c => ({ valor: c, texto: '#' + c })) },
-    ], { textoBoton: 'Marcar', nota: 'Solo deja la marca de que quedó constancia en ese canal: el ERP no escribe en Slack.' });
+    ], { textoBoton: 'Marcar', nota: 'Solo deja la marca de que quedó constancia en esos canales: el ERP no escribe en Slack.' });
     if (!v) return;
     await postMarca('/control/api/traza-slack',
-      { conductorId: f.conductorId, dia: DATOS && DATOS.dia, canal: v.canal }, 'No se pudo marcar la traza');
+      { conductorId: f.conductorId, dia: DATOS && DATOS.dia, canales: v.canales }, 'No se pudo marcar la traza');
   }
 
   /**

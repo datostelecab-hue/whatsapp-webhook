@@ -289,15 +289,23 @@ async function quitarNoSale(b, usuario, usuarioId) {
   return { dia, quitados: n };
 }
 
-/** «TRAZA POR SLACK»: en qué canal de la empresa se dejó constancia. Solo la marca. */
+/**
+ * «TRAZA POR SLACK»: en qué canales de la empresa se dejó constancia —uno o
+ * varios (db/171)—. Solo la marca. Se guardan en el orden del catálogo y sin
+ * repetir; `canal` suelto sigue valiendo para quien mande uno solo.
+ */
 async function marcarSlack(b, usuario, usuarioId) {
   const conductorId = idConductor(b.conductorId);
-  const canal = valorDe(b.canal);
-  if (!marcas.CANALES_SLACK.includes(canal)) throw new Error('Elige uno de los canales de Slack de la empresa.');
+  const pedidos = (Array.isArray(b.canales) ? b.canales : (b.canal != null ? [b.canal] : []))
+    .map(valorDe).filter(Boolean);
+  if (!pedidos.length) throw new Error('Elige al menos un canal de Slack.');
+  const ajenos = pedidos.filter(c => !marcas.CANALES_SLACK.includes(c));
+  if (ajenos.length) throw new Error(`No es un canal de Slack de la empresa: ${ajenos.map(c => '#' + c).join(', ')}.`);
+  const canales = marcas.CANALES_SLACK.filter(c => pedidos.includes(c));
   const dia = diaDe(b.dia);
-  const r = await marcas.marcarSlack({ conductorId, dia, canal, usuarioId: (usuario && usuario.id) || usuarioId });
-  console.log(`💬 [Control] Traza por Slack · ${dia} · conductor ${conductorId} · #${canal} · ${(usuario || {}).nombre || ''}`);
-  return { dia, canal, ...r };
+  const r = await marcas.marcarSlack({ conductorId, dia, canales, usuarioId: (usuario && usuario.id) || usuarioId });
+  console.log(`💬 [Control] Traza por Slack · ${dia} · conductor ${conductorId} · ${canales.map(c => '#' + c).join(' ')} · ${(usuario || {}).nombre || ''}`);
+  return { dia, canales, ...r };
 }
 
 async function quitarSlack(b, usuario, usuarioId) {

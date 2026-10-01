@@ -17,7 +17,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## «No saldrá» y «Traza por Slack» en Control (01/10/2026)
 
-- **Desplegar y aplicar `db/170`** desde /migraciones: las tablas `control_no_sale` y `control_traza_slack`. Hasta entonces el cockpit sale igual, sin los botones guardando (dan error al marcar).
+- **Desplegar y aplicar `db/171`** desde /migraciones: la traza por Slack con varios canales. Hasta aplicarla se siguen viendo las trazas que hay, pero marcar una nueva da error. (`db/170` ya está aplicada: 01/10 a las 12:45.)
 - **Mirar si `Dialogo.formulario` guardó vacíos entre el 17/09 y el 01/10**: una lista con valor inicial devolvía `''` si nadie la tocaba (ver [[Trampas conocidas]]). Sobre todo los formularios de Plantilla (situación, tipo de contrato, jornada) y el de salidas de Recaudación.
 
 ## Calificación 2.1 y los excesos de Edison (01/10/2026)

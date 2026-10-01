@@ -8,8 +8,8 @@
 //     obligatorio. Con eso ya se sabe lo que pasa, así que el cockpit le quita
 //     las alertas de horas («No llegará») y las campañas dejan de llamarle.
 //
-//   · TRAZA POR SLACK — en qué canal de Slack de la empresa se dejó constancia.
-//     Es solo la marca: el ERP no escribe en Slack.
+//   · TRAZA POR SLACK — en qué canales de Slack de la empresa se dejó constancia
+//     (uno o varios, db/171). Es solo la marca: el ERP no escribe en Slack.
 //
 // UNA vigente por conductor y jornada (lo vigila el índice). Marcar otra vez
 // anula la anterior y escribe la nueva; quitar es anular. No se borra nada.
@@ -57,37 +57,39 @@ const sinTabla = e => e && e.code === '42P01';
  * Las marcas VIGENTES de una jornada: { noSale: Map(cid → {...}), slack: Map(cid → {...}) }.
  */
 async function delDia(dia) {
-  const vacio = { noSale: new Map(), slack: new Map() };
-  try {
-    const [n, s] = await Promise.all([
-      db.consulta(
-        `SELECT n.id, n.conductor_id, n.motivo, n.comentario, n.turno, n.creado_at,
-                to_char(n.creado_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
-                COALESCE(u.nombre, '') AS quien
-           FROM control_no_sale n
-           LEFT JOIN usuario u ON u.id = n.usuario_id
-          WHERE n.dia_operativo = $1::date AND n.anulado_at IS NULL`, [dia]),
-      db.consulta(
-        `SELECT s.id, s.conductor_id, s.canal, s.creado_at,
-                to_char(s.creado_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
-                COALESCE(u.nombre, '') AS quien
-           FROM control_traza_slack s
-           LEFT JOIN usuario u ON u.id = s.usuario_id
-          WHERE s.dia_operativo = $1::date AND s.quitado_at IS NULL`, [dia]),
-    ]);
-    return {
-      noSale: new Map(n.rows.map(x => [String(x.conductor_id), {
-        id: String(x.id), motivo: x.motivo, etiqueta: ETQ_MOTIVO[x.motivo] || x.motivo,
-        comentario: x.comentario, turno: x.turno || '', at: x.creado_at, hora: x.hora, quien: x.quien,
-      }])),
-      slack: new Map(s.rows.map(x => [String(x.conductor_id), {
-        id: String(x.id), canal: x.canal, at: x.creado_at, hora: x.hora, quien: x.quien,
-      }])),
-    };
-  } catch (e) {
-    if (sinTabla(e)) return vacio;
-    throw e;
-  }
+  // Las dos por separado: si una falla, la otra sale igual. El «No saldrá»
+  // decide alertas, y no puede desaparecer porque la de Slack no se lea.
+  const sinNada = e => { if (sinTabla(e)) return { rows: [] }; throw e; };
+  const slackSql = col =>
+    `SELECT s.id, s.conductor_id, ${col} AS canales, s.creado_at,
+            to_char(s.creado_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
+            COALESCE(u.nombre, '') AS quien
+       FROM control_traza_slack s
+       LEFT JOIN usuario u ON u.id = s.usuario_id
+      WHERE s.dia_operativo = $1::date AND s.quitado_at IS NULL`;
+  const [n, s] = await Promise.all([
+    db.consulta(
+      `SELECT n.id, n.conductor_id, n.motivo, n.comentario, n.turno, n.creado_at,
+              to_char(n.creado_at AT TIME ZONE 'Europe/Madrid', 'HH24:MI') AS hora,
+              COALESCE(u.nombre, '') AS quien
+         FROM control_no_sale n
+         LEFT JOIN usuario u ON u.id = n.usuario_id
+        WHERE n.dia_operativo = $1::date AND n.anulado_at IS NULL`, [dia]).catch(sinNada),
+    // Entre desplegar y aplicar db/171 la columna es todavía `canal`, de uno:
+    // se lee como una lista de uno en vez de dejar la traza sin pintar.
+    db.consulta(slackSql('s.canales'), [dia])
+      .catch(e => (e && e.code === '42703' ? db.consulta(slackSql('ARRAY[s.canal]'), [dia]) : Promise.reject(e)))
+      .catch(sinNada),
+  ]);
+  return {
+    noSale: new Map(n.rows.map(x => [String(x.conductor_id), {
+      id: String(x.id), motivo: x.motivo, etiqueta: ETQ_MOTIVO[x.motivo] || x.motivo,
+      comentario: x.comentario, turno: x.turno || '', at: x.creado_at, hora: x.hora, quien: x.quien,
+    }])),
+    slack: new Map(s.rows.map(x => [String(x.conductor_id), {
+      id: String(x.id), canales: x.canales || [], at: x.creado_at, hora: x.hora, quien: x.quien,
+    }])),
+  };
 }
 
 /** Escribe un «No saldrá». Si ya había uno vigente esa jornada, lo anula y lo sustituye. */
@@ -115,18 +117,18 @@ async function anularNoSale({ conductorId, dia, usuarioId }) {
   return r.rowCount;
 }
 
-/** Marca la traza por Slack. Si ya había una vigente esa jornada, la sustituye. */
-async function marcarSlack({ conductorId, dia, canal, usuarioId }) {
+/** Marca la traza por Slack con sus canales. Si ya había una vigente esa jornada, la sustituye. */
+async function marcarSlack({ conductorId, dia, canales, usuarioId }) {
   return db.transaccion(async cli => {
     await cli.query(
       `UPDATE control_traza_slack SET quitado_at = now(), quitado_por = $3
         WHERE conductor_id = $1 AND dia_operativo = $2::date AND quitado_at IS NULL`,
       [conductorId, dia, usuarioId || null]);
     const r = await cli.query(
-      `INSERT INTO control_traza_slack (conductor_id, dia_operativo, canal, usuario_id)
-       VALUES ($1, $2::date, $3, $4)
+      `INSERT INTO control_traza_slack (conductor_id, dia_operativo, canales, usuario_id)
+       VALUES ($1, $2::date, $3::text[], $4)
        RETURNING id, creado_at`,
-      [conductorId, dia, canal, usuarioId || null]);
+      [conductorId, dia, canales, usuarioId || null]);
     return { id: String(r.rows[0].id), at: r.rows[0].creado_at };
   });
 }

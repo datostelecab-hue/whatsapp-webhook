@@ -238,7 +238,7 @@
           '<i class="fa-solid fa-ban mr-1 text-telecab-muted"></i>No saldrá · ' + esc(c.noSale.etiqueta) + '</span>' : '') +
       (c.slack ? '<span class="text-[11px] px-1.5 py-0.5 rounded border border-telecab-border text-telecab-muted" title="' +
           esc('Traza por Slack · ' + (c.slack.quien || '—') + ', ' + c.slack.hora) + '">' +
-          '<i class="fa-brands fa-slack mr-1"></i>#' + esc(c.slack.canal) + '</span>' : '');
+          '<i class="fa-brands fa-slack mr-1"></i>' + esc((c.slack.canales || []).map(x => '#' + x).join(' · ')) + '</span>' : '');
 
     return '<details class="hfila ' + barra + ' border-b border-telecab-border/60" ' +
       'data-cid="' + esc(c.conductorId || '') + '">' +
@@ -317,8 +317,8 @@
               '</div>'
             : '') +
           (c.slack
-            ? '<p class="text-xs text-telecab-muted"><i class="fa-brands fa-slack mr-1"></i>Traza por Slack en <strong class="text-telecab-text">#' +
-                esc(c.slack.canal) + '</strong> · ' + (esc(c.slack.quien) || '—') + ', ' + esc(c.slack.hora) + '</p>'
+            ? '<p class="text-xs text-telecab-muted"><i class="fa-brands fa-slack mr-1"></i>Traza por Slack en <strong class="text-telecab-text">' +
+                esc((c.slack.canales || []).map(x => '#' + x).join(', ')) + '</strong> · ' + (esc(c.slack.quien) || '—') + ', ' + esc(c.slack.hora) + '</p>'
             : '') +
           (c.llamadas.length
             ? '<div class="space-y-1.5">' + pintaLlamadas(c.llamadas) + '</div>'

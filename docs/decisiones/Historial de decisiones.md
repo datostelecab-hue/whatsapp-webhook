@@ -7,6 +7,10 @@ actualizado: 2026-10-01
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-01 · La traza por Slack, en varios canales
+
+La marca de Slack de cada conductor pasa a llevar una lista de canales (db/171) en vez de uno, y `Dialogo.formulario` gana la selección múltiple (`multiple: true`) para todas las pantallas. → [[Control En directo]] · [[Componentes de la casa]]
+
 ## 2026-10-01 · «No saldrá» con motivo y «Traza por Slack», en Control
 
 Seis motivos para el que no va a salir (error de planificación, asuntos propios, baja médica sin justificar, baja médica justificada, herramientas auxiliares, caso específico), con comentario obligatorio. Le quita las alertas de horas porque ya se sabe por qué no sale, lo saca de las campañas y se cuenta por motivo en el Histórico. Y una marca de en qué canal de Slack quedó la traza (todos menos `datos`); el ERP no escribe en Slack. Una vigente de cada por conductor y jornada (db/170). De paso, `Dialogo.formulario` obliga también en los textos y devuelve el valor inicial de una lista, que desde el 17/09 se perdía. → [[Control En directo]] · [[Componentes de la casa]]

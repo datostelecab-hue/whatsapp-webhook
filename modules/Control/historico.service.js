@@ -200,7 +200,7 @@ async function parte(dia) {
         motivo: f.noSale.motivo, etiqueta: f.noSale.etiqueta, comentario: f.noSale.comentario,
         quien: f.noSale.quien || '', hora: f.noSale.hora || '',
       } : null,
-      slack: f.slack ? { canal: f.slack.canal, quien: f.slack.quien || '', hora: f.slack.hora || '' } : null,
+      slack: f.slack ? { canales: f.slack.canales || [], quien: f.slack.quien || '', hora: f.slack.hora || '' } : null,
       justificante: j ? {
         horas: j.horas, estado: j.estado, obs: j.obs, quien: j.quien, tipo: j.tipo,
         aprobadaPor: j.aprobadaPor || '',

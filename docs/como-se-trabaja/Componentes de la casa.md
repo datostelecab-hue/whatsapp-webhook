@@ -62,6 +62,8 @@ Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. 
 
 **`obligatorio` vale en todos los campos** (01/10/2026). Antes solo se miraba en las listas: un texto obligatorio en blanco cerraba la ventana y cada pantalla lo comprobaba después a mano, o no. Ahora se queda abierta y dice «Rellena «…»».
 
+**`multiple: true` en una `lista`** (01/10/2026): cada pulsación marca o desmarca, lo elegido lleva su casilla y la ventana devuelve la **lista** de valores, en el orden de las opciones. `valor` puede traer las que ya estaban (las que no existan se ignoran) y `obligatorio` exige al menos una. Lo estrenó la «Traza por Slack» de Control.
+
 **El `valor` de una lista se devuelve aunque nadie la toque** (01/10/2026). Desde el 17/09 se pintaba resaltado pero la ventana devolvía `''` (o `null` en `opciones`): ver [[Trampas conocidas]]. Si el valor está en otro grupo, se abre ese grupo.
 
 **Un formulario no se cierra por un clic fuera**: tiene X, botón de cancelar y Escape. Perder lo escrito por rozar el fondo pasó de verdad. → [[Reglas de la casa]]

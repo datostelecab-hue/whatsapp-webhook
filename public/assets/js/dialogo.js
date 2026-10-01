@@ -231,7 +231,7 @@
                 // «Sin dato» solo en 'lista' y solo si no es obligatoria: es lo
                 // que hacía la opción en blanco del <select>, y sin ella no
                 // habría forma de DESELEGIR lo que ya viene puesto.
-                const conVacio = (c.tipo === 'lista' && !c.obligatorio)
+                const conVacio = (c.tipo === 'lista' && !c.obligatorio && !c.multiple)
                   ? [{ valor: '', texto: '— Sin dato —' }].concat(opsBase)
                   : opsBase;
                 // Se guardan para que el enganche de más abajo use EXACTAMENTE
@@ -327,8 +327,24 @@
         const hayMas = caja.querySelector('[data-hay-mas]');
         const buscar = caja.querySelector('[data-buscar]');
         const TOPE = (c._buscador && c._buscador.tope) || 10;
-        let grupoSel = grupos[0], elegido = c.valor || null;
+        let grupoSel = grupos[0], elegido = c.multiple ? null : (c.valor || null);
         const norm = o => (typeof o === 'string' ? { valor: o, texto: o } : o);
+        // VARIAS A LA VEZ (`multiple: true`, solo en 'lista'; 01/10/2026). Cada
+        // pulsación pone o quita, lo elegido lleva su casilla marcada y la ventana
+        // devuelve la LISTA de valores, en el orden de las opciones (no en el de
+        // los clics). `valor` puede traer las que ya estaban.
+        const multi = !!c.multiple && c.tipo === 'lista';
+        const elegidos = new Set();
+        const guardarElegidos = () => {
+          caja.dataset.valores = JSON.stringify((grupos[0].opciones || []).map(norm)
+            .map(o => String(o.valor)).filter(v => elegidos.has(v)));
+        };
+        if (multi) {
+          const validos = new Set((grupos[0].opciones || []).map(norm).map(o => String(o.valor)));
+          [].concat(c.valor || []).map(String).filter(v => validos.has(v)).forEach(v => elegidos.add(v));
+          guardarElegidos();
+        }
+        const marcado = o => (multi ? elegidos.has(String(o.valor)) : String(o.valor) === String(elegido));
         // LO QUE VIENE ELEGIDO DE ENTRADA SE DEVUELVE (01/10/2026). Desde que la
         // lista dejó de ser el <select> (17/09) el `valor` inicial se pintaba
         // resaltado pero no se escribía en la caja, que es de donde se lee al
@@ -373,6 +389,9 @@
             const yaEsta = todas.find(o => String(o.valor) === String(elegido));
             if (yaEsta) ops.unshift(yaEsta);
           }
+          if (buscar && multi) {
+            todas.filter(o => elegidos.has(String(o.valor)) && !ops.includes(o)).reverse().forEach(o => ops.unshift(o));
+          }
           if (hayMas) {
             const fuera = filtradas.length - ops.length;
             hayMas.classList.toggle('hidden', fuera <= 0);
@@ -383,10 +402,10 @@
           lista.innerHTML = ops.map(o => `
             <button type="button" data-o="${esc(o.valor)}" data-texto="${esc(o.texto)}"
               class="w-full text-left px-3 py-2 rounded-lg border text-sm transition
-                ${String(o.valor) === String(elegido)
+                ${marcado(o)
                   ? 'bg-telecab-gold/15 border-telecab-gold text-telecab-text font-medium'
                   : 'bg-telecab-card2/40 border-telecab-border text-telecab-text hover:border-telecab-gold/50'}">
-              ${esc(o.texto)}${o.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(o.detalle)}</span>` : ''}
+              ${multi ? `<i class="${marcado(o) ? 'fa-solid fa-square-check text-telecab-gold' : 'fa-regular fa-square text-telecab-muted'} mr-2"></i>` : ''}${esc(o.texto)}${o.detalle ? `<span class="block text-[11px] text-telecab-muted">${esc(o.detalle)}</span>` : ''}
             </button>`).join('');
           vacio.classList.toggle('hidden', ops.length > 0);
           // Decir "no hay casos" cuando lo que pasa es que el filtro no encuentra
@@ -395,6 +414,12 @@
             ? `Nada que coincida con «${buscar.value.trim()}».`
             : (grupoSel.vacio || 'No hay casos para este tipo.');
           lista.querySelectorAll('[data-o]').forEach(b => b.addEventListener('click', () => {
+            if (multi) {
+              if (elegidos.has(b.dataset.o)) elegidos.delete(b.dataset.o); else elegidos.add(b.dataset.o);
+              guardarElegidos();
+              pintaCasos();
+              return;
+            }
             elegido = b.dataset.o;
             caja.dataset.valor = elegido;
             caja.dataset.grupo = grupoSel.codigo || '';
@@ -486,7 +511,7 @@
             // funcionando sin tocar ni una: cambiar todas a un objeto era
             // treinta oportunidades de olvidar un desenvuelto y mandar
             // "[object Object]" a la base sin que nadie se entere.
-            salida[c.id] = el.dataset.valor || '';
+            salida[c.id] = c.multiple ? JSON.parse(el.dataset.valores || '[]') : (el.dataset.valor || '');
           } else if (c.tipo === 'opciones') {
             const v = el.dataset.valor || '';
             salida[c.id] = v ? { valor: v, grupo: el.dataset.grupo || '', texto: el.dataset.texto || v } : null;
@@ -512,7 +537,8 @@
             // mismo, y el "elige qué ha pasado" saltaba con la respuesta escrita
             // ahí delante.
             const cubierto = c.obligatorioSalvo && (salida[c.obligatorioSalvo] || []).length > 0;
-            if (c.obligatorio && !salida[c.id] && !cubierto) fallos.push(`Elige ${c.etiqueta.toLowerCase()}.`);
+            const vacio = Array.isArray(salida[c.id]) ? salida[c.id].length === 0 : !salida[c.id];
+            if (c.obligatorio && vacio && !cubierto) fallos.push(`Elige ${c.etiqueta.toLowerCase()}.`);
           } else if (c.tipo === 'items' && c.comentarioObligatorio) {
             // UN COMENTARIO POR CADA UNA. Marcar sin escribir nada es decir "ya
             // pregunté" sin dejar la respuesta, y eso es justo lo que hace que
