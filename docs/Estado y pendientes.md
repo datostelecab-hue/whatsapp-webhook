@@ -15,6 +15,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## Calificación 2.1 y los excesos de Edison (01/10/2026)
+
+- **Desplegar y aplicar `db/169`** desde /migraciones: le quita a Edison Roman Vera Farfan los cinco excesos dudosos del 3784LFV del 11/09 (no eran suyos). La letra no espera a la migración: con el despliegue, la siguiente pasada del cron (05:40 o 12:00) rehace septiembre con el modelo 2.1 y suben 12 letras, la suya de C a A.
+- **WhatsApp está suspendido por un pago** (01/10). Mientras dure, los excesos nuevos quedan en `error`: no avisan, no bajan la letra y no se reenvían solos al volver. Tampoco salen los avisos de /alertas ni los del bot.
+
 ## El bot del conductor, nuevo (28/09/2026)
 
 - **El 16/10/2026 el botón de lavado desaparece solo** (`LAVADO_HASTA`). Queda quitar el código: `services/lavadoBallenoil.js`, sus dos llamadas en `fichajeBot.js` y `botPuertas.js`, y la migración ya aplicada se queda.

@@ -14,7 +14,7 @@ Una letra por conductor y periodo. Es lo que Tráfico ve al lado del nombre —*
 
 Dos ficheros, y **dos medias distintas** que conviene no confundir:
 
-- `services/repo/calificacion.js` — el modelo **ABCD 2.0**, la letra de verdad.
+- `services/repo/calificacion.js` — el modelo **ABCD 2.1**, la letra de verdad.
 - `services/repo/rendimiento.js` — el **promedio de horas del mes corrido** (escala S/A/B/C) y, hoy, la puerta por la que las pantallas piden la letra.
 
 ## El modelo: tres métricas ponderadas
@@ -35,7 +35,17 @@ Todos los umbrales viven en la constante `MODELO`, en un solo sitio. Recalibrar 
 
 **UTILIZACIÓN** = tiempo en viaje / tiempo efectivo, de `fv_tramo`. Es la definición que ya usan el BI y la nómina variable, así que no aparece un tercer número distinto en la casa. La jornada operativa empieza a las **05:00**, igual que las horas, para que los dos promedios hablen del mismo día. Ver [[Jornada y turnos]].
 
-**EXCESOS** = `velocidad_exceso`, que ya solo cuenta los **atribuidos con certeza**.
+**EXCESOS** = los de `velocidad_exceso` en estado **`avisado`**, y solo esos (desde el modelo 2.1). Ver abajo.
+
+### 2.1 — la velocidad solo baja la letra con un aviso fiable y enviado (01/10/2026)
+
+Camilo: *«que se haga efectiva la reducción de la letra si el aviso de velocidad es fiable al 100 y fue avisado»*. Hasta el 2.0 contaban **todos** los excesos con conductor, también los `dudoso` —el candidato había soltado el coche horas antes y el coche pudo cambiar de manos—, aunque el comentario del código decía que solo contaban los atribuidos con certeza. A **Edison Roman Vera Farfan** cinco excesos del 3784LFV del 11/09 que no eran suyos le pusieron el **tope de C** teniendo una **A por puntos**.
+
+Ahora `excesosDe` cuenta solo `estado = 'avisado'`, que es a la vez *fiable* (el log con el que se atribuye está dentro de la media hora de [[Sanciones de velocidad]]) y *dicho* (el WhatsApp salió). **No cuentan** `dudoso`, `simulado` (modo pruebas o relleno hacia atrás) ni `error` (el envío falló: tampoco se enteró). Los umbrales no cambian: cambia qué se cuenta.
+
+Efecto en septiembre (simulado sobre las letras guardadas, que reproduce exactas): de 220 calificados, 22 tenían algún exceso no avisado y **12 suben de letra**, ninguno baja.
+
+> **Mientras WhatsApp no pueda mandar** (el 01/10/2026 estaba suspendido por un pago), los excesos nuevos quedan en `error` y **no bajan la letra de nadie**. Y no se reenvían solos al volver: un `error` es un hecho registrado.
 
 ### Las J suman a las horas pero NO entran en la utilización
 
@@ -166,6 +176,8 @@ Las dos cosas van juntas porque dependen de lo mismo (`app.js`):
 
 En los dos casos se calcula **hasta la última jornada cerrada** (ayer): la de hoy va a medias y hundiría a quien esté trabajando ahora mismo.
 
+**El mes anterior, si se cerró con otro modelo, se rehace una vez** (`mesAnteriorAlDia`, solo en la pasada del cron). El cron solo calcula el mes corrido, así que un cambio de modelo los primeros días del mes dejaría la letra del mes cerrado —la que se pinta hasta que el nuevo tiene datos— con la regla vieja: es lo que habría pasado con el 2.1, que llegó con septiembre ya cerrado. Mira solo un mes atrás y solo si ese cierre era un mes entero (empieza el 1); en cuanto hay filas de la versión actual, no hace nada. El log del cron lo dice: *«rehecho 2026-09-01 → 2026-09-30 con el modelo nuevo»*.
+
 Guardar es un `ON CONFLICT (conductor_id, periodo_inicio, periodo_fin, version_modelo) DO UPDATE`: **repetirlo sobre el mismo periodo reescribe, no duplica**. `conductor_rendimiento`, en cambio, limpia lo del mes anterior al cambiar de mes, porque el promedio es del corrido.
 
 Las cuentas fantasma tocan esto de cerca: cuando se enlaza, cambia o anula un enlace, el servicio vuelve a sellar los días afectados **y rehace el promedio del mes**, porque si no la media sigue siendo la de antes hasta que pase el cron de la noche. Ver [[Conductores]].
@@ -175,6 +187,6 @@ Las cuentas fantasma tocan esto de cerca: cuando se enlaza, cambia o anula un en
 - **Si la tabla no se puede leer, las pantallas van igual, sin la letra.** Ni `leer()` de calificación ni el de rendimiento tumban nada: se quejan en consola y devuelven un mapa vacío.
 - La letra se pinta **y se filtra** en el listado de plantilla: *"a quién tengo en D"* es la pregunta con la que se abre la pantalla, y sin la letra en la lista habría que abrir a la gente de una en una.
 - Sólo se califica a gente con periodo de empleo abierto y que no sea centinela.
-- El comentario del cron en `app.js` todavía habla de *"la calificación A-D de 14 días"* y registra `cal.MODELO.dias`, que **no existe en el modelo 2.0** (el periodo es el mes). Es una línea de log heredada de la versión 1.0, no una segunda definición del periodo.
+- El comentario del cron en `app.js` todavía habla de *"la calificación A-D de 14 días"* y registra `cal.MODELO.dias`, que **no existe desde el modelo 2.0** (el periodo es el mes). Es una línea de log heredada de la versión 1.0, no una segunda definición del periodo.
 
 Ver también [[Glosario]] y [[Reglas de la casa]].

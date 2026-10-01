@@ -23,7 +23,7 @@ La ruta se sigue llamando `/sanciones` porque es la clave del permiso y la que l
 
 Un exceso con un coche de **Barcelona no entra en la cola** (`excesosPendientes`): **ni se avisa por WhatsApp ni se registra**. Los que ya estaban registrados —48 en los 30 días anteriores— no salen en la pantalla: `porConductor`, `historico` y `resumen` llevan el mismo filtro (`deLaFlotaVigilada`, en `services/nucleo.js`). Se decidió sabiendo eso: la flota que se vigila es la de Madrid.
 
-Esos 48 siguen en `velocidad_exceso`, así que la [[Calificacion de conductores|calificación]] —que cuenta los excesos registrados— los arrastra hasta que salen de su ventana. Los nuevos ya no llegan.
+Esos 48 siguen en `velocidad_exceso`; los que estaban `avisado` cuentan en la [[Calificacion de conductores|calificación]] del mes en que pasaron. Los nuevos ya no llegan.
 
 ## Por qué ya no se llama a ninguna API
 
@@ -73,6 +73,12 @@ Por encima de media hora el caso **se registra pero no se avisa a nadie**: queda
 
 Viven también en el `CHECK` de la tabla: si se añade uno aquí, hay que añadirlo allí.
 
+**Solo `avisado` baja la letra** (modelo 2.1 de la [[Calificacion de conductores|calificación]], 01/10/2026): es el único estado que es a la vez fiable y conocido por el conductor. Un `dudoso`, un `simulado` o un `error` queda en el libro y en la ficha, pero no le cuesta nada.
+
+### Quitarle un exceso a quien no era: se desatribuye, no se borra
+
+La fila de `velocidad_exceso` es también la marca de *ya procesado*: `excesosPendientes` busca los avisos de Mapon que **no** tienen fila. Borrada, un reproceso desde /sanciones que mire tantos días atrás la vuelve a crear con el mismo cálculo y a la misma persona. Por eso cuando un exceso no era de alguien se le quita: sin conductor, uuid, teléfono ni ventana, en `sin_conductor` y con la nota de por qué. Así se hizo con los cinco del 3784LFV que se le habían atribuido a Edison Roman Vera Farfan (`db/169`, 01/10/2026). El coche sigue constando a esa velocidad ese día: eso pasó.
+
 > **"Avisado" es solo `avisado`.** Los tuve juntos con `simulado` y estaba mal. La lista de "quién no hace caso" es lo que alguien lleva delante cuando se sienta a hablar con un conductor, y decirle *"te hemos avisado cinco veces"* cuando no ha recibido ni uno es **la peor manera posible de empezar esa conversación**. Los simulados se cuentan aparte y se ven aparte.
 
 ## El aviso
@@ -83,7 +89,7 @@ Siempre el mismo: la plantilla **`advertencia_limite`**, ya aprobada en Meta, co
 
 ### Relleno hacia atrás
 
-Al procesar días viejos (`sinAvisar`) **se registra el exceso pero no se manda el WhatsApp**. Un aviso por algo que pasó hace diez días no avisa de nada —el conductor ya no se acuerda de ese trayecto— y además llegarían treinta de golpe. Pero el exceso sí tiene que quedar contado: es lo que alimenta la calificación del conductor, y para eso da igual que se avisara o no. **Un exceso es un exceso.**
+Al procesar días viejos (`sinAvisar`) **se registra el exceso pero no se manda el WhatsApp**. Un aviso por algo que pasó hace diez días no avisa de nada —el conductor ya no se acuerda de ese trayecto— y además llegarían treinta de golpe. El exceso queda en el libro como `simulado`. **Hasta el 01/10/2026 se decía «un exceso es un exceso»** y contaba igual para la calificación; desde el modelo 2.1 no cuenta, porque solo baja la letra lo que se le avisó.
 
 ### Cuentas prestadas
 

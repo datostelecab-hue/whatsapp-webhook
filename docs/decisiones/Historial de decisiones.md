@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-09-30
+actualizado: 2026-10-01
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-01 · La velocidad solo baja la letra si el aviso fue fiable y se mandó
+
+Calificación 2.1: de los excesos solo cuentan los `avisado`. Los dudosos, simulados y fallidos ya no bajan la letra; en septiembre suben 12 personas, entre ellas Edison Roman Vera Farfan, de C a A, que llevaba cinco excesos dudosos del 3784LFV que no eran suyos. A él se le quitan de su expediente (db/169) sin borrar las filas, que son la marca de «ya procesado». El cron rehace una vez el mes cerrado si se cerró con otro modelo. → [[Calificacion de conductores]] · [[Sanciones de velocidad]]
 
 ## 2026-09-30 · Usuarios y permisos, también para Ignacio
 

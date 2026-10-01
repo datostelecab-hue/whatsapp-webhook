@@ -193,9 +193,10 @@ async function enviar(telefono, nombre, matricula, sinAvisar) {
   // RELLENO HACIA ATRÁS: se registra el exceso, no se manda el WhatsApp.
   //
   // Un aviso por algo que pasó hace diez días no avisa de nada —el conductor ya
-  // no se acuerda de ese trayecto— y además llegarían treinta de golpe. Pero el
-  // exceso sí tiene que quedar contado: es lo que alimenta la calificación, y
-  // para eso da igual que se avisara o no. Un exceso es un exceso.
+  // no se acuerda de ese trayecto— y además llegarían treinta de golpe. El
+  // exceso queda en el libro como `simulado`, pero NO baja la calificación:
+  // desde el modelo 2.1 (01/10/2026) solo la baja un exceso `avisado`, fiable y
+  // con el WhatsApp enviado. Antes aquí se decía «un exceso es un exceso».
   if (sinAvisar) return { ok: true, simulado: true, relleno: true };
   if (!esLive()) return { ok: true, simulado: true };
   if (!telefono) return { ok: false, error: 'sin-telefono' };

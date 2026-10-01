@@ -562,7 +562,8 @@ programar('40 5 * * *', async () => {
     const cal = require('./services/repo/calificacion');
     const c = await cal.recalcular();
     console.log(`⚖️  [Calificación] ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}` +
-      (c.telemetria.completa ? '' : ` · OJO: telemetría incompleta, ${c.telemetria.dias} día(s) con datos`));
+      (c.telemetria.completa ? '' : ` · OJO: telemetría incompleta, ${c.telemetria.dias} día(s) con datos`) +
+      (c.mesAnterior ? ` · rehecho ${c.mesAnterior.periodoInicio} → ${c.mesAnterior.periodoFin} con el modelo nuevo` : ''));
   } catch (error) {
     console.error(`⚠️  [Rendimiento] recálculo diario: ${error.message}`);
   }
@@ -586,7 +587,8 @@ programar('0 12 * * *', async () => {
     const r = await require('./services/repo/rendimiento').recalcular();
     console.log(`⭐ [Rendimiento] mediodía (todos): ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
     const c = await require('./services/repo/calificacion').recalcular();
-    console.log(`⚖️  [Calificación] mediodía: ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}`);
+    console.log(`⚖️  [Calificación] mediodía: ${c.guardadas} persona(s) · ${c.periodoInicio} → ${c.periodoFin}` +
+      (c.mesAnterior ? ` · rehecho ${c.mesAnterior.periodoInicio} → ${c.mesAnterior.periodoFin} con el modelo nuevo` : ''));
   } catch (error) {
     console.error(`⚠️  [Rendimiento] recálculo del mediodía: ${error.message}`);
   }

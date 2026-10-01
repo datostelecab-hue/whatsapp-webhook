@@ -1,5 +1,5 @@
 // ============================================================
-// CALIFICACIÓN DE CONDUCTORES A–D — modelo "ABCD" 2.0
+// CALIFICACIÓN DE CONDUCTORES A–D — modelo "ABCD" 2.1
 // ============================================================
 // Una letra por conductor y periodo, de tres métricas ponderadas:
 //
@@ -30,7 +30,8 @@
 // veces por algo que no decidió él. Un día sin horas de Bolt no tiene
 // utilización que medir y se excluye de ese promedio (§9.2), no del de horas.
 //
-// EXCESOS = `velocidad_exceso`, que ya solo cuenta los atribuidos con certeza.
+// EXCESOS = los de `velocidad_exceso` en estado `avisado`, y SOLO esos (2.1):
+// atribuidos con certeza y con el WhatsApp mandado. Ver `excesosDe`.
 //
 // ── Los umbrales viven aquí y en un solo sitio ──────────────────────────────
 // Todo el modelo es MODELO, la constante de abajo. Recalibrar es cambiarla y
@@ -57,7 +58,19 @@ const MODELO = {
   //     baja o permiso     → 8 h, para que no le baje la media por descansar
   //   · no salió, sin nada
   //     que lo justifique  → 0, y eso sí baja
-  version: '2.0',
+  //
+  // 2.1 — LA VELOCIDAD SOLO BAJA LA LETRA CON UN AVISO FIABLE Y ENVIADO.
+  //
+  // Camilo, 01/10/2026: «que se haga efectiva la reducción de la letra si el
+  // aviso de velocidad es fiable al 100 y fue avisado». Hasta aquí contaban
+  // todos los excesos con conductor, también los DUDOSOS —el candidato había
+  // soltado el coche horas antes y el coche pudo cambiar de manos—. A Edison
+  // Roman Vera Farfan cinco excesos del 3784LFV que no eran suyos le pusieron el
+  // tope de C teniendo una A por puntos, y en septiembre les pasaba lo mismo a
+  // otras once personas. Ahora solo cuenta `avisado`; no cuentan `dudoso`,
+  // `simulado` (modo pruebas) ni `error` (el WhatsApp no salió: tampoco se
+  // enteró). Los umbrales no cambian: cambia qué se cuenta.
+  version: '2.1',
   periodo: 'mes',              // del día 1 (o su alta) al último día cerrado
   minDiasTrabajados: 5,        // por debajo → N/E, nunca D
   minHorasDiaTrabajado: 1,     // qué cuenta como día CON HORAS de Bolt (§9.1)
@@ -329,12 +342,20 @@ async function metricas(desde, hasta) {
   return r.rows;
 }
 
-/** Los excesos ATRIBUIDOS de cada conductor en el periodo. Suma, no promedio. */
+/**
+ * Los excesos AVISADOS de cada conductor en el periodo. Suma, no promedio.
+ *
+ * `avisado` es a la vez «fiable» y «se le dijo»: sanciones solo manda el
+ * WhatsApp si el log con el que se atribuye está dentro de la ventana fiable
+ * (media hora), y solo marca `avisado` si el envío salió. Un exceso del que la
+ * persona no sabe nada, o que quizá ni era suyo, no le baja la letra (2.1).
+ */
 async function excesosDe(desde, hasta) {
   const r = await db.consulta(
     `SELECT conductor_id, count(*)::int AS n
        FROM velocidad_exceso
       WHERE conductor_id IS NOT NULL
+        AND estado = 'avisado'
         AND ocurrido_at >= $1::date
         AND ocurrido_at < ($2::date + 1)
       GROUP BY conductor_id`, [desde, hasta]);
@@ -463,7 +484,37 @@ async function recalcular({ hasta } = {}) {
         ]));
     }
   });
-  return { ...r, guardadas: r.filas.length };
+  const res = { ...r, guardadas: r.filas.length };
+  // Solo en la pasada del cron (sin `hasta`): la que pide un periodo concreto
+  // hace eso y nada más.
+  if (!hasta) res.mesAnterior = await mesAnteriorAlDia(r.periodoInicio);
+  return res;
+}
+
+/**
+ * EL MES ANTERIOR, OTRA VEZ, SI SE CERRÓ CON OTRO MODELO.
+ *
+ * El cron solo calcula el mes corrido, así que la letra de un mes cerrado se
+ * queda con el modelo con el que se cerró. Si el modelo cambia los primeros días
+ * del mes siguiente —2.1 llegó el 1 de octubre, con septiembre ya cerrado—, la
+ * letra de ese mes, que es la que se pinta hasta que el nuevo tenga datos,
+ * seguiría con la regla vieja. Esto la rehace UNA vez: en cuanto hay filas de la
+ * versión actual, no vuelve a hacer nada.
+ *
+ * Solo un mes hacia atrás y solo si ese cierre era un mes entero (empieza el 1),
+ * para no reescribir periodos viejos de otra forma (los de 14 días de 1.0).
+ */
+async function mesAnteriorAlDia(periodoInicio) {
+  const fin = new Date(Date.parse(periodoInicio + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  const r = await db.consulta(
+    `SELECT count(*)::int AS n, bool_or(version_modelo = $3) AS al_dia
+       FROM conductor_calificacion
+      WHERE periodo_fin = $1::date AND periodo_inicio = $2::date`,
+    [fin, inicioDe(fin), MODELO.version]);
+  const x = r.rows[0] || {};
+  if (!x.n || x.al_dia) return null;
+  const re = await recalcular({ hasta: fin });
+  return { periodoInicio: re.periodoInicio, periodoFin: re.periodoFin, guardadas: re.guardadas };
 }
 
 /** La última calificación de cada uno: Map(conductor_id -> {...}). Lo que pintan las pantallas. */

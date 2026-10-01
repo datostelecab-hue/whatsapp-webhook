@@ -1686,6 +1686,15 @@ quitó ese mismo día: [[Ciclo de bloqueo de motor]]). El ejemplo es ahora
 > Un ejemplo, un dato de prueba o un valor por defecto **nunca** es un dato real:
 > ni una matrícula, ni un teléfono, ni un DNI. Alguien lo va a copiar.
 
+### Borrar un exceso de velocidad lo resucita
+
+`velocidad_exceso` no es solo el libro: su fila es la marca de que el aviso de
+Mapon ya se procesó (`excesosPendientes` busca los que **no** la tienen). Si se
+borra, un reproceso desde /sanciones con días suficientes la vuelve a crear con el
+mismo cálculo, a nombre de la misma persona. Para quitarle un exceso a alguien se
+**desatribuye** (sin conductor, uuid ni teléfono, `sin_conductor` y una nota),
+como en `db/169`. Ver [[Sanciones de velocidad]].
+
 ---
 
 ## Dos simplificaciones deliberadas que hay que saber al leer los números
