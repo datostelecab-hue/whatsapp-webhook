@@ -21,8 +21,9 @@
 // y quien lo coordina es `Conductores/conductores.service.realizarAlta`.
 
 const db = require('../db');
+const { cuentaDeLaSedeVigilada } = require('../nucleo');
 
-const NOMBRE = `btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)`;
+const NOMBRE =`btrim(COALESCE(c.apellidos || ', ', '') || c.nombre)`;
 
 /**
  * "RUIZ CANO, JUAN FRANCISCO" -> apellidos + nombre.
@@ -93,7 +94,9 @@ async function porTelefono(telefono) {
   const s9 = sufijo9(telefono);
   if (!s9) throw new Error('El teléfono debe tener al menos 9 dígitos');
 
-  const r = await db.consulta(
+  // La cuenta de BOLT, solo de una empresa de Madrid: una de Barcelona (db/174)
+  // no deja trabajar aquí, y para un alta de Madrid es como no tenerla.
+  const sql = filtroSede =>
     `SELECT f.conductor_id, f.quien, f.dni_nie, f.empleo_vigente, f.situacion,
             f.tel_vigente, f.tel_e164,
             f.baja, f.motivo_baja,
@@ -128,9 +131,12 @@ async function porTelefono(telefono) {
                 (SELECT ${NOMBRE} FROM conductor c WHERE c.id = x.conductor_id) AS enlazada_quien
            FROM conductor_externo x
           WHERE x.sistema = 'bolt' AND x.externo_sufijo9 = t.s9
+            AND ${filtroSede}
           ORDER BY (x.estado_externo = 'active') DESC, x.visto_desde DESC
-          LIMIT 1) b ON TRUE`,
-    [s9]);
+          LIMIT 1) b ON TRUE`;
+  // Sin db/174 todavía no hay cuentas de otra sede: se pregunta sin el filtro.
+  const r = await db.consulta(sql(cuentaDeLaSedeVigilada('x')), [s9])
+    .catch(e => (e && e.code === '42703' ? db.consulta(sql('TRUE'), [s9]) : Promise.reject(e)));
 
   const f = r.rows[0] || {};
   const hayFicha = Boolean(f.conductor_id);

@@ -20,9 +20,11 @@ OAuth de tipo `client_credentials` contra el emisor de BOLT, con scope `fleet-in
 
 `CONFIG_BOLT.flotas` tiene dos empresas y **toda llamada recorre las dos y concatena**. Una de ellas ya no está operativa, pero conserva el histórico de horas hasta junio: se mantiene en la lista para que los meses antiguos salgan completos. Que una flota cerrada devuelva cero registros **no es un aviso**, es lo esperado.
 
+Las dos son de **Madrid**. La de **Barcelona** (company 329430) está aparte, en `CONFIG_BOLT.flotasOtrasSedes`, desde el 02/10/2026: solo la lee el padrón de cuentas, para saber quién es cada teléfono. Ni horas ni viajes ni coches de Barcelona entran por la ingesta. Ver [[Sedes]].
+
 ## Los cuatro endpoints
 
-La API tiene **seis** (`open-api.json`): los cuatro de abajo más `test` —un ping— y `getCompanies`, que devuelve las empresas del acuerdo y que no se usa porque las dos flotas están escritas en `CONFIG_BOLT`.
+La API tiene **seis** (`open-api.json`): los cuatro de abajo más `test` —un ping— y `getCompanies`, que devuelve las empresas del acuerdo y que no se usa porque las flotas están escritas en `CONFIG_BOLT`. El 02/10/2026 devolvía **cuatro**: las dos de Madrid, la de Barcelona y la 364138, sin conductores ni coches (`Scripts de análisis/bolt-companias.js`).
 
 | Endpoint | Clave de datos | Para qué | Quién lo pide |
 |---|---|---|---|
@@ -118,7 +120,9 @@ Y se parte también por **timeout**: si el servidor contesta `998`/`999` con cer
 
 `traerDrivers()` pide `getDrivers` en **dos ventanas de 30 días** (la API no admite más), lo que cubre ~60 días: de sobra para ver a todo el que sigue vivo. Devuelve `Map(driver_uuid → registro)`.
 
-Si alguien está en **varias flotas**, gana el registro más vivo (`state === 'active'`): si no, dar de baja en una flota marcaría de baja a quien sigue trabajando en la otra. `has_cash_payment` se pasa tal cual —`true`, `false` o `undefined`— para que quien lo guarde distinga "no tiene" de "no se sabe".
+Pregunta a las flotas que se le pasen; de salida, las de Madrid. El padrón (`cazamiento.sincronizarDesdeBolt`) le pasa **las de Madrid y la de Barcelona juntas**, y cada registro lleva `companyId`, que se guarda en `conductor_externo.bolt_company_id` (db/174). Juntas porque las cuentas activas que no vuelven se marcan `no_vista`: en dos vueltas, cada una se comería las de la otra. Ver [[Sedes]].
+
+Si alguien está en **varias flotas**, gana el registro más vivo (`state === 'active'`): si no, dar de baja en una flota marcaría de baja a quien sigue trabajando en la otra. Entre dos activas gana la primera de la lista, y las de Madrid van delante. `has_cash_payment` se pasa tal cual —`true`, `false` o `undefined`— para que quien lo guarde distinga "no tiene" de "no se sabe".
 
 **BOLT no dice cuándo se creó un conductor.** La fecha nos la fabricamos: la primera vez que se ve un `driver_uuid` se sella `visto_desde` en `conductor_externo` y no se vuelve a tocar nunca. Con ella se sabe que alguien ha aparecido en BOLT sin esperar a que nos avisen — es la señal del puente Selección → RRHH.
 

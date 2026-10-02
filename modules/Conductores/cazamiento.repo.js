@@ -12,12 +12,16 @@
 // las horas a otro. Más vale una lista de pendientes que un dato falso.
 
 const db = require('../../services/db');
+const { cuentaDeLaSedeVigilada } = require('../../services/nucleo');
 
 /**
  * Sincroniza el inventario con lo que devuelve BOLT. NO enlaza a nadie.
- * `cuentas` = [{ driver_uuid, nombre, phone, email, state, has_cash_payment }]
+ * `cuentas` = [{ driver_uuid, nombre, phone, email, state, has_cash_payment, companyId }]
+ *
+ * `conEmpresa: false` es para cuando aún no está db/174 (no existe
+ * `bolt_company_id`): se guarda todo menos la empresa, como antes.
  */
-async function sincronizar(cuentas) {
+async function sincronizar(cuentas, { conEmpresa = true } = {}) {
   if (!Array.isArray(cuentas) || !cuentas.length) return { vistas: 0, nuevas: 0, cambiadas: 0, desaparecidas: 0 };
 
   // Una sola fila por cuenta. Si BOLT devolviera la misma dos veces, el
@@ -46,6 +50,13 @@ async function sincronizar(cuentas) {
   const num = v => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
   const ratings = filas.map(([, c]) => num(c.rating));
   const scores = filas.map(([, c]) => num(c.score));
+  // La empresa de BOLT en la que se ha visto: de ella sale la sede de la cuenta.
+  const empresas = filas.map(([, c]) => num(c.companyId));
+  // Sin db/174 no hay columna: las cuatro piezas que la nombran se quedan fuera.
+  const emp = conEmpresa
+    ? { col: ', bolt_company_id', val: ', co', arr: ', $9::int[]', as: ', co',
+        set: 'bolt_company_id = COALESCE(EXCLUDED.bolt_company_id, conductor_externo.bolt_company_id),' }
+    : { col: '', val: '', arr: '', as: '', set: '' };
 
   // El estado ANTERIOR se guarda en un CTE aparte porque `EXCLUDED` no se puede
   // mirar desde el RETURNING: allí solo existe la fila tal como queda.
@@ -58,13 +69,16 @@ async function sincronizar(cuentas) {
     guardadas AS (
       INSERT INTO conductor_externo
         (sistema, externo_id, externo_nombre, externo_telefono, externo_email, estado_externo,
-         efectivo_activo, efectivo_at, bolt_rating, bolt_score, bolt_nota_at)
+         efectivo_activo, efectivo_at, bolt_rating, bolt_score, bolt_nota_at${emp.col})
       SELECT 'bolt', u, n, t, e, s, ef, CASE WHEN ef IS NOT NULL THEN now() END,
-             ra, sc, CASE WHEN ra IS NOT NULL OR sc IS NOT NULL THEN now() END
+             ra, sc, CASE WHEN ra IS NOT NULL OR sc IS NOT NULL THEN now() END${emp.val}
         FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[],
-                    $7::numeric[], $8::numeric[])
-             AS x(u, n, t, e, s, ef, ra, sc)
+                    $7::numeric[], $8::numeric[]${emp.arr})
+             AS x(u, n, t, e, s, ef, ra, sc${emp.as})
       ON CONFLICT (sistema, externo_id) DO UPDATE SET
+        -- La empresa, igual que el efectivo: si esta vuelta no la trae, se
+        -- conserva la que se sabía.
+        ${emp.set}
         externo_nombre   = EXCLUDED.externo_nombre,
         externo_telefono = EXCLUDED.externo_telefono,
         externo_email    = EXCLUDED.externo_email,
@@ -95,7 +109,7 @@ async function sincronizar(cuentas) {
                AND a.estado_externo IS DISTINCT FROM g.estado_externo)::int AS cambiadas
       FROM guardadas g
       LEFT JOIN antes a ON a.externo_id = g.externo_id`,
-    [uuids, nombres, tels, emails, estados, efectivos, ratings, scores]);
+    [uuids, nombres, tels, emails, estados, efectivos, ratings, scores, ...(conEmpresa ? [empresas] : [])]);
 
   // El nombre de BOLT se copia a la ficha del conductor enlazado. Vive ahí y no
   // se resuelve por subconsulta porque lo leen 29 consultas repartidas por 15
@@ -212,7 +226,10 @@ async function autoEnlazar({ soloEmpleados = true, usuarioId } = {}) {
   // (pasa de verdad) y esos se devuelven como `dudosas` para decidir a mano.
   // Va DESPUÉS del bucle de sugerencias adrede: si a alguien se le acaba de
   // enlazar su primera cuenta, esta pasada ya le ve las hermanas.
-  const herm = await db.consulta(
+  //
+  // Las cuentas de otra sede (Barcelona, db/174) no entran: no son de Madrid
+  // aunque el teléfono sea el de alguien de aquí.
+  const sqlHermanas = filtroSede =>
     `SELECT ce.id AS cuenta_id, ce.externo_nombre AS nombre_en_bolt,
             ce.estado_externo, ct.conductor_id,
             btrim(COALESCE(c.apellidos || ', ', '') || c.nombre) AS quien,
@@ -234,7 +251,11 @@ async function autoEnlazar({ soloEmpleados = true, usuarioId } = {}) {
         AND length(regexp_replace(ce.externo_telefono, '[^0-9]', '', 'g')) >= 9
         AND EXISTS (SELECT 1 FROM conductor_externo x
                      WHERE x.conductor_id = ct.conductor_id AND x.sistema = 'bolt')
-      ORDER BY quien`);
+        AND ${filtroSede}
+      ORDER BY quien`;
+  // Sin db/174 todavía no hay cuentas de otra sede: se pregunta sin el filtro.
+  const herm = await db.consulta(sqlHermanas(cuentaDeLaSedeVigilada('ce')))
+    .catch(e => (e && e.code === '42703' ? db.consulta(sqlHermanas('TRUE')) : Promise.reject(e)));
   let hermanas = 0;
   const dudosas = [];
   for (const h of herm.rows) {
@@ -315,18 +336,38 @@ async function estado() {
  * está vacía y no hay nada que enlazar.
  *
  * NO enlaza a nadie. Solo actualiza qué cuentas existen y en qué estado.
+ *
+ * Desde db/174 pregunta también a las empresas de OTRAS SEDES (Barcelona), en
+ * la MISMA vuelta que a las de Madrid: las cuentas activas que no vuelven se
+ * marcan 'no_vista', y si Barcelona fuera en otra vuelta, cada una marcaría
+ * como desaparecidas las de la otra.
  */
 async function sincronizarDesdeBolt() {
   // Al ADAPTADOR de BOLT directamente. Antes se pedía a `conductoresBolt`,
   // que es un padrón sobre hojas de cálculo con la llamada a la API dentro:
   // así este repositorio arrastraba una dependencia de Sheets sin necesitarla.
-  const { traerDrivers } = require('../../services/bolt');
-  const porUuid = await traerDrivers();
+  const { traerDrivers, CONFIG_BOLT } = require('../../services/bolt');
+  const otras = CONFIG_BOLT.flotasOtrasSedes || [];
+  const deOtraSede = new Set(otras.map(f => f.id));
+  const porUuid = await traerDrivers([...CONFIG_BOLT.flotas, ...otras]);
   const cuentas = [...porUuid.values()];
-  const r = await sincronizar(cuentas);
+  let r;
+  let sinEmpresa = false;
+  try {
+    r = await sincronizar(cuentas);
+  } catch (e) {
+    if (!e || e.code !== '42703') throw e;
+    // db/174 sin aplicar: no hay dónde decir de qué empresa es cada cuenta, y
+    // una de Barcelona sin empresa se vería como libre en Madrid. Se guardan
+    // solo las de Madrid, como antes; las otras entran en cuanto esté.
+    sinEmpresa = true;
+    r = await sincronizar(cuentas.filter(c => !deOtraSede.has(c.companyId)), { conEmpresa: false });
+  }
+  const ajenas = cuentas.filter(c => deOtraSede.has(c.companyId)).length;
   console.log(`🔗 [BOLT] Inventario: ${r.vistas} cuentas · ${r.nuevas} nuevas · ` +
-              `${r.cambiadas} con otro estado · ${r.desaparecidas} ya no están`);
-  return r;
+              `${r.cambiadas} con otro estado · ${r.desaparecidas} ya no están` +
+              (ajenas ? ` · ${ajenas} de otras sedes${sinEmpresa ? ' sin guardar (falta db/174)' : ''}` : ''));
+  return { ...r, otrasSedes: sinEmpresa ? 0 : ajenas };
 }
 
 module.exports = {

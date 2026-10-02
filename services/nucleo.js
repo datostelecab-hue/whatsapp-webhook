@@ -166,8 +166,26 @@ const deLaFlotaVigilada = col =>
   `NOT EXISTS (SELECT 1 FROM vehiculo vsede
                WHERE vsede.matricula_norm = ${col} AND vsede.sede <> '${SEDE_FLOTA}')`;
 
+/**
+ * Condición SQL: la cuenta de BOLT `alias` (una fila de `conductor_externo`) NO
+ * es de una empresa de BOLT de otra sede. Lo mismo que `deLaFlotaVigilada`, para
+ * personas en vez de coches.
+ *
+ * Las cuentas de Barcelona están en la base desde db/174 pero sin ficha: en
+ * ninguna pantalla de Madrid se ofrecen para enlazar ni se sugieren por
+ * teléfono. Las dos vistas que alimentan «IDs de BOLT libres» ya lo filtran;
+ * esto es para las consultas escritas a mano que miran las mismas cuentas.
+ *
+ * En negativo, como la de los coches: una cuenta sin empresa (no se ha visto
+ * desde db/174) se sigue tratando como de Madrid, que es lo que era todo.
+ * `alias` va pegado al SQL tal cual: SIEMPRE un alias escrito en el código.
+ */
+const cuentaDeLaSedeVigilada = alias =>
+  `NOT EXISTS (SELECT 1 FROM flota fsede
+               WHERE fsede.company_id = ${alias}.bolt_company_id AND fsede.sede <> '${SEDE_FLOTA}')`;
+
 module.exports = {
   HORA_DIA, HORA_NOCHE, INVISIBLES, normClave, nombreDePila, A,
   DIAS_CORTOS, DIAS_LARGOS, LETRAS_DIA,
-  SEDE_FLOTA, deLaFlotaVigilada,
+  SEDE_FLOTA, deLaFlotaVigilada, cuentaDeLaSedeVigilada,
 };

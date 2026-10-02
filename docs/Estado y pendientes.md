@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-10-01
+actualizado: 2026-10-02
 ---
 
 # Estado y pendientes
@@ -14,6 +14,13 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Recaudación y cuentas fantasma.** Si alguien cobró en efectivo con una cuenta prestada, la deuda sigue colgada de la cuenta, no de la persona. Es dinero: lo decide Ricardo.
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
+
+## Barcelona: coches y cuentas de BOLT (02/10/2026)
+
+- **Desplegar y aplicar `db/173` y `db/174`** desde /migraciones, en ese orden (no dependen la una de la otra). La 173 deja bien los coches de Barcelona ([[Vehiculos]]); la 174 da de alta la empresa de BOLT de Barcelona y la columna de la empresa de cada cuenta ([[Sedes]]). Hasta aplicar la 174, el padrón sigue guardando solo Madrid, como antes.
+- **Después de aplicar**: a la hora siguiente el padrón mete las 28 cuentas de Barcelona. Comprobar que llevan la empresa 329430, que no hubo una oleada de `no_vista` y que «IDs de BOLT libres» sigue igual.
+- **Cinco coches para decidir a mano**: 1685KTC, 9549LTP, 6287LBG, 3035LTX y 8512LDS (el porqué de cada uno, en [[Vehiculos]]).
+- **Etapa 2: el bot para Barcelona**. Pendiente de hacer, y de que Camilo diga si los usuarios con `/puertas` abren coches de las dos sedes ([[Sedes]]).
 
 ## Organización del código (01/10/2026)
 

@@ -9,6 +9,15 @@ const CONFIG_BOLT = {
     { id: 63530, nombre: 'Flota 63530' },
     { id: 143626, nombre: 'Flota 143626' }
   ],
+  // Las empresas de OTRAS SEDES. Van aparte porque solo las lee el padrón de
+  // cuentas (`traerDrivers` desde cazamiento): `flotas` lo recorren la ingesta
+  // de horas, los coches, el mapa y la auditoría, y todo eso es de Madrid. La
+  // de Barcelona entró el 02/10/2026 (db/174), sin fichas y sin horas: solo
+  // para saber quién es cada teléfono. La 364138 también sale en getCompanies,
+  // pero no tiene ni conductores ni coches.
+  flotasOtrasSedes: [
+    { id: 329430, nombre: 'Flota 329430 (Barcelona)', sede: 'barcelona' }
+  ],
   metaDiariaHoras: 8
 };
 
@@ -323,19 +332,20 @@ const PADRON_VENTANA_SEG = 30 * 86400;
 const PADRON_VENTANAS = 2;
 
 /**
- * Los drivers actuales de todas las flotas, con sus campos completos.
- * Devuelve Map(driver_uuid -> registro).
+ * Los drivers actuales de las flotas que se le pasen (de salida, las de Madrid),
+ * con sus campos completos. Devuelve Map(driver_uuid -> registro).
  *
  * Si alguien esta en VARIAS FLOTAS nos quedamos con el registro mas vivo (state
  * active): si no, dar de baja en una flota marcaria de baja a quien sigue
- * trabajando en otra.
+ * trabajando en otra. Con las dos vivas gana la primera de la lista, y por eso
+ * las de Madrid van delante.
  *
  * Vive AQUI y no en quien la usa porque es "como se le pregunta a BOLT", que es
  * justo lo que este fichero es. Estaba metida en `conductoresBolt.js`, que
  * ademas escribe en una hoja de calculo, y eso convertia cualquier repositorio
  * que la llamara en un repositorio que depende de las hojas.
  */
-async function traerDrivers() {
+async function traerDrivers(flotas = CONFIG_BOLT.flotas) {
   const ahoraSeg = Math.floor(Date.now() / 1000);
   const ventanas = [];
   for (let k = 0; k < PADRON_VENTANAS; k++) {
@@ -344,7 +354,7 @@ async function traerDrivers() {
   }
 
   const porUuid = new Map();
-  for (const f of CONFIG_BOLT.flotas) {
+  for (const f of flotas) {
     const antes = porUuid.size;
     for (const [startTs, endTs] of ventanas) {
       const drivers = await fetchAllPaginated(
@@ -379,7 +389,9 @@ async function traerDrivers() {
           // `has_cash_payment`.
           rating: d.driver_rating == null ? null : Number(d.driver_rating),
           score: d.driver_score == null ? null : Number(d.driver_score),
-          flota: f.nombre || String(f.id)
+          flota: f.nombre || String(f.id),
+          // La empresa de BOLT, que es lo que dice de qué sede es la cuenta.
+          companyId: f.id
         };
         const prev = porUuid.get(uuid);
         if (!prev) porUuid.set(uuid, rec);

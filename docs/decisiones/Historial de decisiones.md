@@ -1,11 +1,23 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-01
+actualizado: 2026-10-02
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-02 · Las cuentas de BOLT de Barcelona, solo en la base
+
+El bot de WhatsApp va a tener que reconocer a los conductores de Barcelona, y de ellos no hay fichas. La empresa de BOLT de Barcelona entra en `flota` con su sede y el padrón la lee **en la misma vuelta** que las de Madrid, guardando de qué empresa es cada cuenta (db/174). Las horas no se traen, y ninguna pantalla de Madrid ofrece esas cuentas para enlazar: las vistas y las tres consultas que enseñan cuentas sin dueño las dejan fuera. Son dos listas en `CONFIG_BOLT`, porque la de siempre la recorren las horas, los coches y el mapa. → [[Sedes]] · [[BOLT]]
+
+## 2026-10-02 · Los coches de Barcelona, cruzados con BOLT y Mapon
+
+Primero BOLT, luego el sistema y por último Mapon. Vuelven tres «bajas» que eran traslados, entran ocho coches de BOLT Barcelona que no estaban y el 3814KYG pasa a Madrid (db/173). Cinco se quedan para una persona: las fuentes no se ponen de acuerdo. Un coche de Barcelona va en estado «B» para no entrar en el cuadrante de Madrid. → [[Vehiculos]]
+
+## 2026-10-02 · El desarrollador abre puertas por serlo
+
+`/puertas` es una llave manual que no trae ningún rol, y el bot le contestaba a Camilo «tu usuario no tiene permiso». Como con «Usuarios y permisos», el desarrollador entra por su rol; el superadmin, no. → [[WhatsApp]] · [[Usuarios y permisos]]
 
 ## 2026-10-01 · Organización, tanda 3: lo que se deja, lo que se archiva y lo que sobra
 

@@ -33,6 +33,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Ingesta]]** — La única puerta por la que entran datos externos.
 - **[[Jornada y turnos]]** — El día operativo no es el día natural: va de las 05:00 a las 05:00 del día siguiente.
 - **[[Migraciones]]** — El esquema de la Base de datos no se toca a mano: se cambia añadiendo un fichero a db/.
+- **[[Sedes]]** — Madrid y Barcelona: qué hay de Barcelona en la base (coches, la empresa de BOLT y sus cuentas) y por qué ninguna pantalla de Madrid lo enseña.
 
 ## Los módulos — lo que se ve y se usa
 

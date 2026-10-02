@@ -12,6 +12,7 @@
 // pantalla.
 
 const db = require('../../services/db');
+const { cuentaDeLaSedeVigilada } = require('../../services/nucleo');
 
 // Las fechas se piden ya formateadas a PostgreSQL (to_char) y NO se convierten
 // aquí. Un DATE llega como objeto Date y `String(fecha).slice(0,10)` devuelve
@@ -116,7 +117,8 @@ async function prestables(q, limite = 3000) {
   const params = busca
     ? [limite, '%' + busca + '%', '%' + busca.replace(/\D/g, '') + '%']
     : [limite];
-  const r = await db.consulta(
+  // Las cuentas de otra sede (Barcelona, db/174) no se prestan en Madrid.
+  const sql = filtroSede =>
     `SELECT ce.id, ce.externo_nombre AS nombre,
             ce.externo_telefono AS telefono, ce.estado_externo AS estado,
             -- Si ya está prestada y sin cerrar, la pantalla tiene que decirlo
@@ -128,8 +130,12 @@ async function prestables(q, limite = 3000) {
               WHERE f.cuenta_id = ce.id AND f.anulado_at IS NULL)      AS ocupada_hasta
        FROM conductor_externo ce
       WHERE ce.sistema = 'bolt' AND ce.conductor_id IS NULL ${filtro}
+        AND ${filtroSede}
       ORDER BY ce.externo_nombre
-      LIMIT $1`, params);
+      LIMIT $1`;
+  // Sin db/174 todavía no hay cuentas de otra sede: se pregunta sin el filtro.
+  const r = await db.consulta(sql(cuentaDeLaSedeVigilada('ce')), params)
+    .catch(e => (e && e.code === '42703' ? db.consulta(sql('TRUE'), params) : Promise.reject(e)));
   // SIN el uuid: son 36 caracteres por fila que la pantalla no usa para nada y
   // que en mil doscientas cuentas son 60 KB de los 219 que viajan al abrir.
   return r.rows.map(x => ({

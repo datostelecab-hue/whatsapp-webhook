@@ -21,10 +21,29 @@ const Modulo = require('module');
 // quedado interceptando al puente y caía en la base de verdad).
 const cargarOriginal = Modulo._load;
 const llamadas = [];
+// Una base SIN db/174: la columna de la empresa no existe y PostgreSQL contesta
+// 42703 a cualquier consulta que la nombre.
+let falta174 = false;
+// Lo que «devuelve BOLT» en la prueba de sincronizarDesdeBolt, y las empresas a
+// las que se le preguntó.
+let padronFalso = new Map();
+let flotasPedidas = null;
 Modulo._load = function (peticion, padre, esPrincipal) {
+  if (peticion === '../../services/bolt' && padre && padre.filename.endsWith('cazamiento.repo.js')) {
+    return {
+      CONFIG_BOLT: {
+        flotas: [{ id: 63530 }, { id: 143626 }],
+        flotasOtrasSedes: [{ id: 329430, sede: 'barcelona' }],
+      },
+      traerDrivers: async flotas => { flotasPedidas = flotas; return padronFalso; },
+    };
+  }
   if (peticion === '../../services/db' && padre && padre.filename.endsWith('cazamiento.repo.js')) {
     return {
       consulta: async (sql, params) => {
+        if (falta174 && /bolt_company_id/.test(sql)) {
+          throw Object.assign(new Error('column "bolt_company_id" does not exist'), { code: '42703' });
+        }
         llamadas.push({ sql, params });
         // Lo justo para que el servicio siga: la primera consulta devuelve los
         // contadores, la segunda (el UPDATE) devuelve filas afectadas.
@@ -40,7 +59,9 @@ Modulo._load = function (peticion, padre, esPrincipal) {
 };
 
 const bolt = require(path.join(__dirname, '..', 'modules', 'Conductores', 'cazamiento.repo.js'));
-Modulo._load = cargarOriginal;
+// La intercepción se queda puesta hasta el final: `sincronizarDesdeBolt` pide
+// services/bolt al LLAMARLA, no al cargar, y si se quitara aquí la prueba
+// preguntaría a la BOLT de verdad.
 
 let ok = 0, mal = 0;
 const comprobar = (que, cond, detalle) => {
@@ -53,21 +74,25 @@ const comprobar = (que, cond, detalle) => {
   llamadas.length = 0;
   const cuentas = [
     { driver_uuid: 'aaa', nombre: 'Ana García', phone: '+34600111222', email: 'ana@x.es', state: 'ACTIVE',
-      has_cash_payment: false, rating: 4.93, score: '87' },
+      has_cash_payment: false, rating: 4.93, score: '87', companyId: 143626 },
     { driver_uuid: 'bbb', nombre: 'Luis Pérez', phone: '', email: '', state: 'deactivated' },
-    { driver_uuid: 'ccc', nombre: 'Marta Ruiz', phone: '600333444', email: 'm@x.es', state: 'active' },
+    { driver_uuid: 'ccc', nombre: 'Marta Ruiz', phone: '600333444', email: 'm@x.es', state: 'active', companyId: 329430 },
   ];
   const r = await bolt.sincronizar(cuentas);
 
   const ins = llamadas[0];
-  // OCHO desde que se guardan el efectivo, la nota y la puntuación de BOLT (las
-  // cinco del principio más esas tres). La prueba esperaba cinco y se quedó atrás.
-  const [uuids, nombres, tels, emails, estados, efectivos, ratings, scores] = ins.params;
-  comprobar('ocho arreglos', ins.params.length === 8, `llegaron ${ins.params.length}`);
+  // NUEVE: las cinco del principio, el efectivo, la nota y la puntuación de
+  // BOLT, y desde db/174 la empresa en la que se vio la cuenta.
+  const [uuids, nombres, tels, emails, estados, efectivos, ratings, scores, empresas] = ins.params;
+  comprobar('nueve arreglos', ins.params.length === 9, `llegaron ${ins.params.length}`);
   comprobar('todos con la misma longitud',
-    [nombres, tels, emails, estados, efectivos, ratings, scores].every(a => a.length === uuids.length),
+    [nombres, tels, emails, estados, efectivos, ratings, scores, empresas].every(a => a.length === uuids.length),
     `uuids=${uuids.length} nombres=${nombres.length} tels=${tels.length} emails=${emails.length} estados=${estados.length} ` +
-    `efectivos=${efectivos.length} ratings=${ratings.length} scores=${scores.length}`);
+    `efectivos=${efectivos.length} ratings=${ratings.length} scores=${scores.length} empresas=${empresas.length}`);
+  comprobar('la empresa de cada cuenta; la que no la trae, null',
+    empresas[0] === 143626 && empresas[1] === null && empresas[2] === 329430, JSON.stringify(empresas));
+  comprobar('la empresa se guarda y, si no viene, se conserva la de antes',
+    /bolt_company_id\s*=\s*COALESCE\(EXCLUDED\.bolt_company_id, conductor_externo\.bolt_company_id\)/.test(ins.sql));
   comprobar('el efectivo: false es un dato y lo que no viene es un hueco (null)',
     efectivos[0] === false && efectivos[1] === null, JSON.stringify(efectivos));
   comprobar('la nota y la puntuación, como número; lo que no viene, null',
@@ -114,6 +139,40 @@ const comprobar = (que, cond, detalle) => {
   comprobar('una cuenta sin uuid no dispara el marcado de desaparecidas',
     llamadas.length === 0 && sinUuid.vistas === 0, `consultas=${llamadas.length}`);
 
+  console.log('\n5. Madrid y Barcelona, en la misma vuelta');
+  // Si Barcelona fuera en otra vuelta, el marcado de desaparecidas de cada una
+  // se comería las cuentas activas de la otra.
+  padronFalso = new Map([
+    ['mad1', { driver_uuid: 'mad1', nombre: 'De Madrid', state: 'active', companyId: 143626 }],
+    ['bcn1', { driver_uuid: 'bcn1', nombre: 'De Barcelona', state: 'active', companyId: 329430 }],
+  ]);
+  llamadas.length = 0;
+  const juntas = await bolt.sincronizarDesdeBolt();
+  comprobar('se pregunta a las de Madrid y a la de Barcelona',
+    JSON.stringify((flotasPedidas || []).map(f => f.id)) === '[63530,143626,329430]',
+    JSON.stringify(flotasPedidas));
+  const desap = llamadas.find(l => /'no_vista'/.test(l.sql));
+  comprobar('el marcado de desaparecidas conoce las dos',
+    desap && desap.params[0].includes('mad1') && desap.params[0].includes('bcn1'),
+    desap && JSON.stringify(desap.params[0]));
+  comprobar('cuenta las de otras sedes', juntas.otrasSedes === 1, JSON.stringify(juntas));
+
+  console.log('\n6. Sin db/174, como antes');
+  // Entre desplegar y aplicar la migración: no hay dónde guardar la empresa, y
+  // una cuenta de Barcelona sin empresa se vería como libre en Madrid.
+  falta174 = true;
+  llamadas.length = 0;
+  const sin = await bolt.sincronizarDesdeBolt();
+  falta174 = false;
+  const ins6 = llamadas[0];
+  comprobar('no falla: reintenta sin la columna', Boolean(ins6) && !/bolt_company_id/.test(ins6.sql),
+    ins6 && ins6.sql.slice(0, 80));
+  comprobar('ocho arreglos, como antes', ins6 && ins6.params.length === 8, ins6 && `llegaron ${ins6.params.length}`);
+  comprobar('las de Barcelona no se guardan', ins6 && JSON.stringify(ins6.params[0]) === '["mad1"]',
+    ins6 && JSON.stringify(ins6.params[0]));
+  comprobar('y no se cuentan como guardadas', sin.otrasSedes === 0, JSON.stringify(sin));
+
+  Modulo._load = cargarOriginal;
   console.log(`\n${ok} bien · ${mal} mal`);
   process.exitCode = mal ? 1 : 0;
 })();

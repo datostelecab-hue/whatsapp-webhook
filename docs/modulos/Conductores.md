@@ -134,6 +134,7 @@ Detalles del inventario que son decisiones:
 - **Una sola fila por cuenta** antes de escribir: si BOLT devolviera la misma dos veces, el `ON CONFLICT` fallaría con *"cannot affect row a second time"*.
 - **`has_cash_payment` distingue el `false` del hueco.** Lo primero es un dato y lo segundo es que no vino en la respuesta; decir "no tiene efectivo" cuando no lo sabemos sería peor que no decir nada. Si una vuelta no trae el dato, se conserva el anterior.
 - Las cuentas que hoy **no ha devuelto BOLT** y seguían activas han desaparecido sin pasar por `deactivated`: se marcan `no_vista` para que no ensucien el desplegable.
+- **Las cuentas de Barcelona están, pero no se ofrecen** (02/10/2026, db/174). El padrón trae también la empresa de BOLT de Barcelona y guarda de qué empresa es cada cuenta (`bolt_company_id`). Esas cuentas no tienen ficha y no salen como libres, ni como sugerencia por teléfono, ni como hermanas en el enlace automático, ni para prestar, ni en el alta por teléfono. Ver [[Sedes]].
 
 ### Enlazar una cuenta no basta: hay que rehacer sus días
 
