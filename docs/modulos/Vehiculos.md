@@ -27,6 +27,18 @@ Hasta el 21/09/2026 la sede solo se podía cambiar por la base. Ahora está en *
 
 El 24/09/2026, de las 89 fichas vivas: **81 en Madrid y 8 en Barcelona**.
 
+### Los coches de Barcelona, cruzados con BOLT y Mapon (02/10/2026)
+
+Camilo pidió dejar de una vez la traza de los coches de Barcelona: primero BOLT, luego el sistema y por último Mapon. Se cruzaron las tres (`Scripts de análisis/auditoria-coches-barcelona.js`): los coches de la **empresa de BOLT de Barcelona (company 329430)**, `vehiculo` y la última posición de cada equipo de Mapon. Cinco cuadraban en las tres. **db/173** arregla el resto:
+
+- **Tres «bajas» que eran traslados**: 6544LVX, 9037LJR y 9107LWS se dieron de baja el 09/09 con la nota «pasa a Barcelona», porque la sede aún no existía. Vuelven, con sede Barcelona.
+- **Ocho altas**: coches de BOLT Barcelona que no estaban en Vehículos (6584KZV, 7136LGM, 7909LRJ, 8750LTR y 9133KZF con equipo de Mapon en Barcelona; 2928KGL, 8074LXG y 8477LTR sin equipo).
+- **El 3814KYG pasa a Madrid**: en BOLT es de la empresa de Madrid y Mapon lo tiene en Madrid. Es el mismo caso del 24/09, que seguía sin arreglar.
+
+**La convención de un coche de Barcelona**: sede `barcelona`, **estado «B»** y sin fecha de baja. El estado «B» no es que esté dado de baja: es lo que lo deja fuera del cuadrante y del pool de emergencia de Madrid, que solo enseñan coches operativos o visibles en cobertura. Un coche de Barcelona en «O» saldría en el tablero de Madrid.
+
+**Sin decidir, para una persona** (las fuentes no se ponen de acuerdo): 1685KTC (de baja el 23/09; en BOLT es de Barcelona y Mapon lo tiene en Madrid), 9549LTP (dos fichas: una de baja «pasa a Barcelona» y otra viva de Madrid en taller; en BOLT está en las dos empresas), 6287LBG (de baja «pasa a Barcelona», ni en BOLT Barcelona ni en Mapon), 3035LTX (Barcelona aquí y en Mapon, pero en BOLT sigue en la empresa de Madrid) y 8512LDS (Barcelona aquí y en Mapon; no sale en BOLT en 30 días).
+
 ## Las pantallas y sus permisos
 
 | Ruta | Qué es | Permiso |
