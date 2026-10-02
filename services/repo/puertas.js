@@ -45,7 +45,11 @@ async function registrar(o) {
  *   2. UNA PERSONA DEL SISTEMA con el permiso `/puertas`. Se da una a una en
  *      /usuarios y no lo trae ningún rol —ni los que llevan el catálogo
  *      entero—: una puerta es física, y quién la abre no se decide por
- *      descarte.
+ *      descarte. La única excepción es el DESARROLLADOR (02/10/2026), igual
+ *      que con la otra llave manual de una persona, «Usuarios y permisos»
+ *      (`sesion.requiereGestorUsuarios`): el desarrollador entra por serlo; el
+ *      superadmin, no. Camilo escribió al bot y le contestó «tu usuario no
+ *      tiene permiso», porque el acceso total de su rol no deja filas.
  *
  * ── LO QUE AQUÍ NO SE MIRA: BOLT ────────────────────────────────────────────
  * Durante unas horas del 15/09/2026 esto exigió también tener la cuenta de
@@ -87,9 +91,11 @@ async function quienPuedeAbrir(phone) {
   const u = (await db.consulta(
     `SELECT u.id, u.estado,
             btrim(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellidos, '')) AS nombre,
-            EXISTS (SELECT 1 FROM usuario_permiso p
-                     WHERE p.usuario_id = u.id AND p.clave = '/puertas') AS tiene
+            (r.codigo = 'desarrollador'
+             OR EXISTS (SELECT 1 FROM usuario_permiso p
+                         WHERE p.usuario_id = u.id AND p.clave = '/puertas')) AS tiene
        FROM usuario u
+       JOIN rol r ON r.id = u.rol_id
       WHERE right(regexp_replace(COALESCE(u.telefono, ''), '[^0-9]', '', 'g'), 9) = $1
         AND length(regexp_replace(COALESCE(u.telefono, ''), '[^0-9]', '', 'g')) >= 9
       ORDER BY (u.estado = 'activo') DESC, u.id
