@@ -1,7 +1,7 @@
 ---
 tags: [nucleo, sedes, barcelona, bolt, mapon]
 fecha: 2026-10-02
-estado: hecho (etapas 1 y 2), pendiente de aplicar db/174
+estado: en producción (etapas 1 y 2, db/173 y db/174 aplicadas el 02/10/2026)
 ---
 
 # Sedes
@@ -70,7 +70,12 @@ Pedido por Camilo el 02/10/2026: que los conductores de Barcelona abran turno y 
 - **«Ver mis turnos» y «Código de lavado»** no les salen: Barcelona aún no tiene planificador ni Ballenoil. Si lo escriben, se les dice que por el momento no está disponible.
 - Sus turnos quedan en el mismo libro (`fichaje_turno`, sin `conductor_id`) y no salen en el panel del planificador de Madrid.
 
-**Hasta aplicar db/174 el bot no reconoce a nadie de Barcelona**: sin la empresa de cada cuenta no se sabe cuáles son de allí. Para Madrid no cambia nada.
+**Sin db/174 el bot no reconocía a nadie de Barcelona**: sin la empresa de cada cuenta no se sabe cuáles son de allí. Se aplicó el 02/10 a las 20:14 y la pasada del padrón de las 20:28 metió las 28 cuentas, con 0 cambiadas y 0 desaparecidas.
+
+Comprobado ese día (`Scripts de análisis/verificar-174-barcelona.js`):
+- Los 22 números activos de Barcelona entran en el bot como conductores de Barcelona y abren puertas de su sede.
+- Ninguno sale como libre, sugerido, para prestar ni en el alta de Madrid.
+- Quedan 70 cuentas viejas sin empresa, que BOLT ya no devuelve en 60 días y ninguna está activa. Cuentan como de Madrid.
 
 **Escalar a otra sede** pide tres cosas, y ninguna es código del bot:
 1. su empresa de BOLT en `flota` con su sede;

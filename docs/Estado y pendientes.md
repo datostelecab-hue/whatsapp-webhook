@@ -17,14 +17,9 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## Barcelona: coches y cuentas de BOLT (02/10/2026)
 
-- **`db/173` ya está aplicada**: los coches de Barcelona están bien en Vehículos (18, en estado «B») y el 3814KYG es de Madrid.
-- **Desplegar y aplicar `db/174`** desde /migraciones. Da de alta la empresa de BOLT de Barcelona y la columna de la empresa de cada cuenta ([[Sedes]]). Hasta aplicarla, el padrón guarda solo Madrid, como antes, y **el bot no reconoce a nadie de Barcelona**.
-- **Después de aplicar**: a la hora siguiente el padrón mete las 28 cuentas de Barcelona. Comprobar:
-  - que llevan la empresa 329430;
-  - que no hubo una oleada de `no_vista`;
-  - que «IDs de BOLT libres» sigue igual;
-  - que un número de Barcelona ya entra en el bot.
-- **El bot para Barcelona (etapa 2) está hecho** ([[Fichaje]], «Los conductores de Barcelona en el bot»). Avisar a los conductores de Barcelona de que escriban al bot desde el número que tienen en BOLT.
+- **`db/173` y `db/174` aplicadas** (02/10, 20:00 y 20:14). Los coches de Barcelona están bien en Vehículos: 18, en estado «B». El 3814KYG es de Madrid.
+- **Las 28 cuentas de BOLT de Barcelona entraron** con la pasada del padrón de las 20:28, lanzada a mano con el visto bueno de Camilo. Sin cambios en Madrid y sin pantallas tocadas ([[Sedes]]).
+- **El bot ya reconoce a los 22 conductores activos de Barcelona** (comprobado número a número). Falta avisarles de que escriban desde el número que tienen en BOLT ([[Fichaje]], «Los conductores de Barcelona en el bot»).
 - **Cinco coches para decidir a mano**: 1685KTC, 9549LTP, 6287LBG, 3035LTX y 8512LDS (el porqué de cada uno, en [[Vehiculos]]). Mientras tanto, el 3035LTX y el 8512LDS son de Barcelona en Vehículos, así que los llevan los conductores de Barcelona.
 
 ## Organización del código (01/10/2026)
