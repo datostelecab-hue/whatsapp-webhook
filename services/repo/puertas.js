@@ -9,6 +9,8 @@
 // que hay que poder mirar cuando alguien dice "le di y no se abrió".
 
 const db = require('../db');
+const { SEDE_FLOTA } = require('../nucleo');
+const { cuentaDeOtraSede } = require('./fichajeTurno');
 
 const normPlaca = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
 const txt = (v, n) => (v == null ? null : String(v).trim().slice(0, n) || null);
@@ -51,6 +53,15 @@ async function registrar(o) {
  *      superadmin, no. Camilo escribió al bot y le contestó «tu usuario no
  *      tiene permiso», porque el acceso total de su rol no deja filas.
  *
+ *   3. UN CONDUCTOR DE BARCELONA (02/10/2026): sin ficha, por su cuenta ACTIVA
+ *      de BOLT de la empresa de Barcelona (db/174). Se mira solo cuando lo de
+ *      arriba no ha dado acceso: el número no es de nadie de aquí, o es de una
+ *      ficha de Madrid sin contrato vigente.
+ *
+ * `sede` dice de qué sede son los coches que puede tocar: la suya un conductor
+ * (Madrid o Barcelona) y TODAS (`null`) la gente de oficina con el permiso —«las
+ * dos sedes», Camilo, 02/10/2026—.
+ *
  * ── LO QUE AQUÍ NO SE MIRA: BOLT ────────────────────────────────────────────
  * Durante unas horas del 15/09/2026 esto exigió también tener la cuenta de
  * BOLT activa, y se echó atrás el mismo día por una razón que no se ve desde el
@@ -82,9 +93,19 @@ async function quienPuedeAbrir(phone) {
       WHERE t.vigente_hasta IS NULL AND t.sufijo9 = $1
       LIMIT 1`, [s9])).rows[0];
 
+  // El conductor de Barcelona, para cuando lo de Madrid no da acceso. Si esa
+  // consulta falla, se contesta lo de Madrid: el motivo de siempre, no un error.
+  const deOtraSede = async () => {
+    const b = await cuentaDeOtraSede(s9).catch(e => {
+      console.error('⚠️  [Puertas] no se pudo mirar si es una cuenta de otra sede:', e.message);
+      return null;
+    });
+    return b ? { puede: true, tipo: 'conductor', conductorId: null, nombre: b.nombre, sede: b.sede } : null;
+  };
+
   if (c) {
-    if (!c.empleo_vigente) return { puede: false, motivo: 'sin_alta', nombre: c.nombre };
-    return { puede: true, tipo: 'conductor', conductorId: String(c.id), nombre: c.nombre };
+    if (!c.empleo_vigente) return (await deOtraSede()) || { puede: false, motivo: 'sin_alta', nombre: c.nombre };
+    return { puede: true, tipo: 'conductor', conductorId: String(c.id), nombre: c.nombre, sede: SEDE_FLOTA };
   }
 
   // No es conductor: ¿es alguien del sistema con el permiso?
@@ -101,10 +122,14 @@ async function quienPuedeAbrir(phone) {
       ORDER BY (u.estado = 'activo') DESC, u.id
       LIMIT 1`, [s9])).rows[0];
 
+  if (u && u.estado === 'activo' && u.tiene) {
+    return { puede: true, tipo: 'usuario', usuarioId: u.id, nombre: u.nombre || 'Usuario ' + u.id, sede: null };
+  }
+  const bcn = await deOtraSede();
+  if (bcn) return bcn;
   if (!u)                    return { puede: false, motivo: 'no_esta' };
   if (u.estado !== 'activo') return { puede: false, motivo: 'bloqueado', nombre: u.nombre };
-  if (!u.tiene)              return { puede: false, motivo: 'sin_permiso', nombre: u.nombre };
-  return { puede: true, tipo: 'usuario', usuarioId: u.id, nombre: u.nombre || 'Usuario ' + u.id };
+  return { puede: false, motivo: 'sin_permiso', nombre: u.nombre };
 }
 /** El histórico, lo último primero. Con filtros porque son tres preguntas. */
 async function historial({ desde, hasta, matricula, conductorId, soloFallos = false, limite = 500 } = {}) {

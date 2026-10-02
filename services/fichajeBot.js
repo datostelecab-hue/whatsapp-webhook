@@ -20,6 +20,11 @@
  *
  * LA EMPRESA (quien tenga el fichaje encendido en /usuarios) hace VIAJES, como
  * hasta ahora: «indica la matrícula» → empieza el viaje → al terminar se bloquea.
+ * Solo con coches de Madrid.
+ *
+ * BARCELONA (02/10/2026): sus conductores, sin ficha y reconocidos por su cuenta
+ * activa de BOLT de Barcelona, hacen turnos como los de Madrid con coches de
+ * Barcelona (ver `deOtraSede` abajo y services/fichaje.participa).
  *
  * PALABRAS: al conductor no se le dice «fichar» ni «fichaje». Esto no es el
  * registro de jornada (ese es /fichaje): es quién lleva qué coche y cuántos km
@@ -31,6 +36,17 @@ const fichaje = require('./fichaje');
 const { enviarTexto, enviarBotones } = require('./whatsapp');
 const puertas = require('./puertasBot');
 const lavado = require('./lavadoBallenoil');
+const otraSede = require('./otraSede');
+const { SEDE_FLOTA } = require('./nucleo');
+
+// LOS CONDUCTORES DE BARCELONA (02/10/2026) hacen lo mismo que los de Madrid
+// —matrícula, turno, puertas, entregar, terminar—. Lo que cambia: no se les
+// promete el motor (el de Barcelona no se toca), y no ven «Ver mis turnos» ni
+// «Código de lavado», porque Barcelona aún no tiene planificador ni Ballenoil.
+// Si escriben «turnos» o «lavado», se les dice que por el momento no está
+// disponible (Camilo, 02/10/2026).
+const deOtraSede = p => !!(p && p.sede && p.sede !== SEDE_FLOTA);
+const NO_DISPONIBLE = falta => `ℹ️ Por el momento esta opción no está disponible: Barcelona aún no tiene ${falta}.`;
 
 // Los botones del panel del conductor llevan LOS MISMOS ids que el panel de
 // puertas de siempre: un botón de un mensaje viejo del chat sigue valiendo.
@@ -106,7 +122,7 @@ const AYUDA_ENTREGAR = '🚗 *Entregar coche*: púlsalo justo *antes de salir* h
 async function bienvenida(telefono, p, cabecera) {
   const hola = p.pila ? `👋 ¡Hola, ${p.pila}! Qué gusto saludarte.` : '👋 ¡Hola! Qué gusto saludarte.';
   await enviarTexto(telefono, conCabecera(cabecera, `${hola}\n\n` +
-    'Para empezar, escríbeme la *matrícula* del coche que vas a llevar y te desbloqueo el motor.\n\n' +
+    `Para empezar, escríbeme la *matrícula* del coche que vas a llevar${deOtraSede(p) ? '' : ' y te desbloqueo el motor'}.\n\n` +
     '✍️ Escríbela todo junto, *sin espacios ni guiones*. Ejemplo: *1234ABC*'));
 }
 
@@ -125,11 +141,15 @@ async function mensajePuertas(telefono, t, cabecera, vehiculo) {
      { id: BTN_ENTREGAR, titulo: '🚗 Entregar coche' }]);
 }
 
-/** Segundo mensaje del panel. El lavado solo mientras queden días (hasta el 15/10). */
+/**
+ * Segundo mensaje del panel. El lavado solo mientras queden días (hasta el
+ * 15/10). A uno de Barcelona, solo «Terminar turno»: ni lavado ni turnos.
+ */
 async function mensajeOpciones(telefono, texto = '📋 Más opciones:') {
+  const bcn = deOtraSede(await fichaje.participa(telefono));
   await enviarBotones(telefono, texto, [
-    ...(lavado.visible() ? [{ id: BTN_LAVADO, titulo: '🧽 Código de lavado' }] : []),
-    { id: BTN_TURNOS, titulo: '📅 Ver mis turnos' },
+    ...(lavado.visible() && !bcn ? [{ id: BTN_LAVADO, titulo: '🧽 Código de lavado' }] : []),
+    ...(bcn ? [] : [{ id: BTN_TURNOS, titulo: '📅 Ver mis turnos' }]),
     { id: BTN_TERMINAR, titulo: '🔴 Terminar turno' },
   ]);
 }
@@ -198,6 +218,13 @@ async function abrir(telefono, matricula) {
     if (r.motivo === 'otra-sede') {
       await enviarTexto(telefono, `❌ El *${r.matricula}* es un coche de ${r.sede}: por aquí no se lleva. ` +
         'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*).');
+      return;
+    }
+    // Un conductor de Barcelona con un coche que no está en Vehículos: no se
+    // sabe de dónde es, y eso es lo que se le dice.
+    if (r.motivo === 'coche-sin-sede') {
+      await enviarTexto(telefono, `❌ El *${r.matricula}* no lo tengo como coche de ${r.sedePersona}. ` +
+        'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*). Si es de allí, avisa a Tráfico.');
       return;
     }
     if (r.motivo === 'sin-matricula') {
@@ -294,9 +321,12 @@ async function puertasConductor(telefono, p, abrirlas) {
     await bienvenida(telefono, p, 'Primero dime qué coche llevas.');
     return;
   }
+  // Las de un coche de SU sede. Con un turno a medio cerrar (`soloCerrar`), el
+  // coche de ese turno, que ya se miró al empezarlo.
   const r = await puertas.ejecutar({
     telefono, conductorId: turno.conductorId, nombre: turno.nombre,
     matricula: turno.matricula, unitId: turno.unitId, abrir: abrirlas,
+    sede: p && p.soloCerrar ? null : ((p && p.sede) || SEDE_FLOTA),
   });
   if (!r.ok) {
     await enviarTexto(telefono, `❌ No he podido ${abrirlas ? 'abrir' : 'cerrar'} las puertas. Inténtalo de nuevo.`);
@@ -336,6 +366,11 @@ async function entregar(telefono, si) {
 
 /** Sus turnos de hoy a 7 días. */
 async function verTurnos(telefono, p, conTurno) {
+  if (deOtraSede(p)) {
+    await enviarTexto(telefono, NO_DISPONIBLE('planificador'));
+    if (conTurno) await mensajeOpciones(telefono);
+    return;
+  }
   try {
     const { textoTurnos } = require('../modules/Planificacion/turnos.service');
     const r = await textoTurnos({ phone: telefono, nombreSesion: p && p.nombre });
@@ -350,7 +385,9 @@ async function verTurnos(telefono, p, conTurno) {
 
 /** Un código de lavado Ballenoil (hasta el 15/10/2026). */
 async function codigoLavado(telefono, p, conTurno) {
-  if (!lavado.visible()) {
+  if (deOtraSede(p)) {
+    await enviarTexto(telefono, NO_DISPONIBLE('Ballenoil'));
+  } else if (!lavado.visible()) {
     await enviarTexto(telefono, 'ℹ️ Los códigos de lavado ya no se reparten por aquí.');
   } else {
     let r = null;
@@ -505,6 +542,9 @@ async function botonDeTurno(telefono, matricula) {
   if (abierto) return boton(BTN_PANEL, W(turno.tipo).mi);
   if (p.soloCerrar) return null;
   const w = W(p.tipo);
+  // Los viajes son de coches de Madrid: con uno de Barcelona, la oficina abre
+  // y cierra las puertas, pero no se le ofrece empezar un viaje.
+  if (matricula && (await otraSede.sedeAjena({ matricula }).catch(() => null))) return null;
   return matricula ? boton(BTN_INICIAR_EN + normMat(matricula), w.iniciar) : boton(BTN_PANEL, w.mi);
 }
 
@@ -554,6 +594,12 @@ async function manejarBoton(telefono, buttonId) {
 async function desbloquear(telefono) {
   const { abierto, turno } = await fichaje.estado(telefono);
   if (!abierto) return panel(telefono, 'No tienes nada abierto.');
+  // El de otra sede no se toca desde aquí (02/10/2026): se dice, en vez de
+  // un «sigue sin desbloquearse» que invita a insistir.
+  const ajena = await otraSede.sedeAjena({ matricula: turno.matricula, unitId: turno.unitId }).catch(() => null);
+  if (ajena) {
+    return panel(telefono, `🔑 El motor de los coches de ${otraSede.nombreSede(ajena)} no se lleva por aquí. Si no arranca, avisa a Tráfico.`);
+  }
 
   const antes = await fichaje.estadoMotor(turno.unitId);
   if (!fichaje.BLOQUEO_ACTIVO) {

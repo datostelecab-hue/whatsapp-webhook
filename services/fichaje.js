@@ -23,6 +23,12 @@
  * lo tienen encendido. La gente de la empresa hace VIAJES (coge un coche para algo y
  * lo devuelve) y esos siguen encendiéndose uno a uno en /usuarios.
  *
+ * BARCELONA (02/10/2026): sus conductores no tienen ficha; el bot los reconoce
+ * por su cuenta activa de BOLT de la empresa de Barcelona (`participa`) y abren
+ * turno en coches de Barcelona, nunca en uno de Madrid (ni al revés). Su motor
+ * no se toca: ni se suelta al empezar ni se corta al terminar. Ver
+ * docs/nucleo/Sedes.md.
+ *
  * QUIÉN BLOQUEA (30/09/2026): SOLO EL CONDUCTOR, AL TERMINAR. Camilo: «no quiero
  * ningún repaso; los únicos que bloquearán son los conductores cuando inicien
  * turnos y terminen; el sistema no bloquea nada sino que suelta». Se quitó el
@@ -39,8 +45,10 @@
 
 const mapon = require('./mapon');
 const repo = require('./repo/fichajeTurno');
-// Los coches de otra sede (Barcelona) no se tocan: ni motor, ni turno, ni puertas.
+// La sede de cada coche: el turno, solo en uno de la sede de la persona; y el
+// motor de otra sede (Barcelona) no se corta nunca.
 const otraSede = require('./otraSede');
+const { SEDE_FLOTA } = require('./nucleo');
 
 // Si alguien olvida cerrar, el turno se cierra solo pasadas estas horas: así no queda
 // un coche asignado indefinidamente en Mapon ni un turno abierto eterno en el libro.
@@ -122,18 +130,23 @@ async function motor(unitId, bloquear, { porOrden = false } = {}) {
   // UN COCHE DE OTRA SEDE NO SE CORTA NUNCA (30/09/2026, ver otraSede.js). Va
   // aquí, por donde sale TODA orden de corte: da igual quién la pida. Si no se
   // puede saber la sede, tampoco: ante la duda, no.
+  //
+  // Y DESDE EL 02/10/2026 TAMPOCO SE SUELTA: con los conductores de Barcelona en
+  // el bot, uno de allí puede pulsar «Desbloquear» en su coche. Su motor se lleva
+  // desde Mapon, y si está cortado es que Barcelona lo ha querido. Soltar sin
+  // saber la sede sí: soltar no deja tirado a nadie, y negarse sí.
   let sedes = null;
-  if (bloquear) {
-    try { sedes = await otraSede.cochesDeOtraSede(); }
-    catch (e) { return { hecho: false, motivo: 'no se puede comprobar de qué sede es el coche', reintentable: true }; }
-    const ajena = otraSede.sedeAjenaEn(sedes, { unitId });
-    if (ajena) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajena)}: no se toca`, otraSede: ajena };
+  try { sedes = await otraSede.cochesDeOtraSede(); }
+  catch (e) {
+    if (bloquear) return { hecho: false, motivo: 'no se puede comprobar de qué sede es el coche', reintentable: true };
   }
+  const ajenaUnit = otraSede.sedeAjenaEn(sedes, { unitId });
+  if (ajenaUnit) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajenaUnit)}: no se toca`, otraSede: ajenaUnit };
   try {
     const info = await mapon.relesDeUnidad(unitId);
     // Y por su matrícula, que es lo que está seguro en Vehículos aunque el
     // equipo de Mapon cambie.
-    const ajena = bloquear && info && otraSede.sedeAjenaEn(sedes, { matricula: info.matricula });
+    const ajena = info && otraSede.sedeAjenaEn(sedes, { matricula: info.matricula });
     if (ajena) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajena)}: no se toca`, otraSede: ajena };
     const rele = mapon.releDeCorte(info);
     if (!rele || !rele.habilitado) return { hecho: false, motivo: 'sin relé de corte' };
@@ -277,11 +290,15 @@ const olvidar = telefono => (telefono ? _cache.delete(tel9(telefono)) : _cache.c
  *   · Si no, conductor DE ALTA → hace turnos. Desde el 28/09/2026 todos: el
  *     interruptor del planificador ya solo dice si su coche se BLOQUEA al
  *     terminar (`motor`).
+ *   · Si no, una CUENTA ACTIVA DE BOLT DE OTRA SEDE (Barcelona, 02/10/2026) →
+ *     hace turnos, sin ficha: con el nombre de BOLT, sin cuadrante y sin que se
+ *     le toque nunca el motor (`motor: false`).
  *   · Si no, pero tiene un turno o un viaje SIN CERRAR, participa igual: a quien
  *     causa baja a mitad de turno hay que dejarle terminarlo. Si no, el coche
  *     se quedaría asignado y el turno abierto hasta el cierre solo.
  *
- * `pila` es su nombre de pila, para saludarle: «Hola, David».
+ * `pila` es su nombre de pila, para saludarle: «Hola, David». `sede` es la de
+ * los coches que puede llevar: la de Madrid para todos menos los de Barcelona.
  *
  * Si la base falla se contesta null: el mensaje sigue al bot de puertas, que es
  * lo que pasaba antes de que esto existiera.
@@ -295,10 +312,23 @@ async function participa(telefono) {
   try {
     const p = await repo.personaPorTelefono(t9);
     const con = p.conductor, usu = p.usuario;
+    // Solo si el número no es de nadie de aquí: es una consulta más por mensaje.
+    // Y si falla, se sigue sin ella: no puede impedir que alguien de aquí cierre
+    // lo que tiene abierto.
+    const otra = (usu && usu.activo && usu.vale) || (con && con.vale) ? null
+      : await repo.cuentaDeOtraSede(t9).catch(e => {
+        console.error('⚠️ [FICHAJE] no se pudo mirar si es una cuenta de otra sede:', e.message);
+        return null;
+      });
     if (usu && usu.activo && usu.vale) {
-      valor = { tipo: 'viaje', nombre: usu.nombre, pila: usu.pila, conductorId: null, usuarioId: usu.id, motor: true };
+      valor = { tipo: 'viaje', nombre: usu.nombre, pila: usu.pila, conductorId: null, usuarioId: usu.id, motor: true,
+        sede: SEDE_FLOTA };
     } else if (con && con.vale) {
-      valor = { tipo: 'turno', nombre: con.nombre, pila: con.pila, conductorId: con.id, usuarioId: null, motor: con.activo };
+      valor = { tipo: 'turno', nombre: con.nombre, pila: con.pila, conductorId: con.id, usuarioId: null, motor: con.activo,
+        sede: SEDE_FLOTA };
+    } else if (otra) {
+      valor = { tipo: 'turno', nombre: otra.nombre, pila: otra.pila, conductorId: null, usuarioId: null, motor: false,
+        sede: otra.sede, cuentaBolt: otra.id };
     } else if (p.abierto) {
       // Con algo abierto: el tipo lo dice lo que tenga abierto.
       const t = await repo.abiertoDe(t9);
@@ -344,7 +374,8 @@ async function quienFicha(telefono) {
   const p = await participa(telefono);
   if (!p || !p.nombre) return { nombre: '', conductorId: null, usuarioId: null, origen: 'desconocido' };
   return { nombre: p.nombre, conductorId: p.conductorId || null, usuarioId: p.usuarioId || null,
-    origen: p.tipo === 'turno' ? 'conductor' : 'usuario', tipo: p.tipo };
+    origen: p.cuentaBolt ? `cuenta de BOLT de ${otraSede.nombreSede(p.sede)}` : p.tipo === 'turno' ? 'conductor' : 'usuario',
+    tipo: p.tipo };
 }
 
 /** Con quién se habla en el WhatsApp. El mismo nombre que verá Mapon. */
@@ -557,11 +588,24 @@ async function iniciar({ telefono, nombre, matricula }) {
   if (!nom) return { ok: false, motivo: 'sin-nombre' };
   const unidad = await mapon.unidadPorMatricula(matricula);
   if (!unidad) return { ok: false, motivo: 'sin-matricula' };
-  // UN COCHE DE OTRA SEDE NO ENTRA (30/09/2026). Ni turno, ni viaje, ni su
-  // conductor en Mapon: un viaje de prueba con el 1888LTJ, de Barcelona, le dejó
-  // el motor cortado allí durante días (ver otraSede.js).
-  const ajena = await otraSede.sedeAjena({ matricula: unidad.matricula, unitId: unidad.unitId });
-  if (ajena) return { ok: false, motivo: 'otra-sede', matricula: unidad.matricula, sede: otraSede.nombreSede(ajena) };
+  // EL COCHE TIENE QUE SER DE LA SEDE DE QUIEN LO COGE. Hasta el 30/09/2026 un
+  // coche de Barcelona entraba como cualquiera, y un viaje de prueba con el
+  // 1888LTJ le dejó el motor cortado allí durante días (ver otraSede.js). Desde
+  // el 02/10 el bot lo usan también los de Barcelona: cada uno, los de su sede.
+  // Los viajes de la empresa, solo Madrid. Un coche que no está en Vehículos
+  // cuenta como de Madrid; a uno de Barcelona se le dice que no lo conocemos,
+  // que es la verdad, y no que es de Madrid.
+  const sedePersona = p.sede || SEDE_FLOTA;
+  const sedeConocida = await otraSede.sedeDe({ matricula: unidad.matricula, unitId: unidad.unitId });
+  const sedeCoche = sedeConocida || SEDE_FLOTA;
+  if (sedeCoche !== sedePersona) {
+    return { ok: false, motivo: sedeConocida ? 'otra-sede' : 'coche-sin-sede', matricula: unidad.matricula,
+      sede: otraSede.nombreSede(sedeCoche), sedePersona: otraSede.nombreSede(sedePersona) };
+  }
+  // El motor, solo el de Madrid. Uno de otra sede no se corta nunca (`motor`) y
+  // al empezar tampoco se suelta: si Barcelona lo ha cortado, ha sido desde
+  // Mapon y a propósito.
+  const motorNuestro = sedeCoche === SEDE_FLOTA;
 
   // EL COCHE LO TIENE OTRO: SE LO QUEDA QUIEN ESCRIBE LA MATRÍCULA (29/09/2026).
   //
@@ -645,19 +689,23 @@ async function iniciar({ telefono, nombre, matricula }) {
   }
   // Con el turno YA registrado se libera el motor: si algo fallara, el turno consta
   // igual y el coche se puede desbloquear a mano desde el panel.
-  const mot = await liberarMotor(unidad.unitId);
+  const mot = motorNuestro ? await liberarMotor(unidad.unitId)
+    : { hecho: false, sinControl: true, motivo: `coche de ${otraSede.nombreSede(sedeCoche)}: el motor se lleva desde Mapon` };
   // Al libro del ciclo, si se soltó de verdad (o no se pudo): un coche que ya
   // estaba libre no cambia nada y no se apunta.
-  if (!mot.yaEstaba && mot.motivo !== 'sin relé de corte') {
+  if (motorNuestro && !mot.yaEstaba && mot.motivo !== 'sin relé de corte') {
     await apuntarCiclo(turno, 'soltar', mot, `Empieza ${p.tipo === 'viaje' ? 'un viaje' : 'su turno'}: ${nom}`);
   }
   console.log(`🟢 [FICHAJE] ${nom} (${quien.origen}) inicia ${p.tipo} en ${unidad.matricula} (unit ${unidad.unitId})` +
     (driverId ? ` · Mapon driver ${driverId}` : ' · SIN enlace en Mapon') +
-    (BLOQUEO_ACTIVO ? ` · motor ${mot.hecho ? 'LIBRE' : 'NO liberado: ' + mot.motivo}` : ''));
+    (BLOQUEO_ACTIVO && motorNuestro ? ` · motor ${mot.hecho ? 'LIBRE' : 'NO liberado: ' + mot.motivo}` : '') +
+    (motorNuestro ? '' : ` · ${otraSede.nombreSede(sedeCoche)}: el motor no se toca`));
   // Lo que sabe la caché de esta persona ha cambiado: ahora tiene algo abierto.
   olvidar(telefono);
+  // `bloqueoActivo` dice si al conductor se le habla del motor: en un coche de
+  // otra sede, nunca.
   return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId, errorMapon,
-    motor: mot, bloqueoActivo: BLOQUEO_ACTIVO, quien, relevoDe };
+    motor: mot, bloqueoActivo: BLOQUEO_ACTIVO && motorNuestro, quien, relevoDe };
 }
 
 /**
@@ -894,11 +942,14 @@ async function activarConductor(conductorId, activo, quien = {}) {
 /** Lo que pinta el panel: quién ficha, qué hay abierto ahora y si el corte está encendido. */
 async function estadoParaPanel() {
   await cerrarOlvidados().catch(() => {});
-  const [activos, abiertosAhora] = await Promise.all([repo.activados(), repo.abiertos()]);
+  // El panel es el del planificador de MADRID: los turnos de Barcelona
+  // (02/10/2026) no salen. Sin saber la sede se enseñan todos.
+  const [activos, abiertosAhora, sedes] = await Promise.all([repo.activados(), repo.abiertos(),
+    otraSede.cochesDeOtraSede().catch(() => null)]);
   return {
     bloqueoActivo: BLOQUEO_ACTIVO,
     activados: activos,
-    abiertos: abiertosAhora.map(t => ({
+    abiertos: abiertosAhora.filter(t => !otraSede.sedeAjenaEn(sedes, t)).map(t => ({
       tipo: t.tipo, nombre: t.nombre, conductorId: t.conductorId, matricula: t.matricula,
       desde: horaES(t.inicio), relevo: t.relevo ? horaES(t.relevo) : null,
     })),

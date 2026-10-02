@@ -344,10 +344,37 @@ Desde entonces `services/otraSede.js` dice qué coches son de otra sede (por **m
 |---|---|
 | `fichaje.motor()` | **No lo corta nunca**, venga de donde venga la orden. Es la única puerta por la que sale un corte. Si no se puede saber la sede, tampoco corta |
 | El alcance del fichaje y el ciclo | **«Liberar todos»** y [[Ciclo de bloqueo de motor]] ni lo miran: tampoco se le suelta un corte que Barcelona haya puesto a propósito desde Mapon |
-| `fichaje.iniciar()` | No abre **turno ni viaje** con él (ni se le asigna conductor en Mapon). El bot: *«El 1888LTJ es un coche de Barcelona: por aquí no se lleva»* |
-| Las puertas (`puertasBot.ejecutar` y el bot de oficina) | No se abren ni se cierran; se dice al escribir la matrícula |
+| `fichaje.iniciar()` | No abre **turno ni viaje** con él (ni se le asigna conductor en Mapon). El bot: *«El 1888LTJ es un coche de Barcelona: por aquí no se lleva»*. Desde el 02/10, salvo a un conductor de Barcelona (abajo) |
+| Las puertas (`puertasBot.ejecutar` y el bot de oficina) | No se abren ni se cierran; se dice al escribir la matrícula. Desde el 02/10, la oficina con `/puertas` sí (abajo) |
 
 **Soltar a mano** desde el planificador tampoco lo toca. Y el ejemplo del bot pasó a `1234ABC`, que no es de nadie. Lo prueba la sección 13 de `scripts/probar-corte-motor.js`.
+
+## Los conductores de Barcelona en el bot (02/10/2026)
+
+Camilo: los de Barcelona tienen que poder abrir turno y abrir y cerrar coches por el bot, como los de Madrid, aunque todavía no tengan ficha ni datos. La regla de arriba deja de ser «un coche de otra sede no se toca» y pasa a ser **«el coche tiene que ser de la sede de quien lo coge»**. Ver [[Sedes]].
+
+**Quién es de Barcelona.** `fichaje.participa` mira, en este orden: usuario con viajes encendidos, conductor de Madrid de alta y, **solo si el número no es de nadie de aquí**, una **cuenta ACTIVA de BOLT de la empresa de Barcelona** con ese teléfono (`repo/fichajeTurno.cuentaDeOtraSede`, sobre `conductor_externo.bolt_company_id` de db/174). Hace turnos con el nombre de BOLT, sin ficha (`conductor_id` vacío en el libro) y con `sede: 'barcelona'`. Una ficha de Madrid **sin contrato** con una cuenta activa de Barcelona cuenta como de Barcelona. Sin db/174 aplicada, la consulta contesta «nadie» y todo sigue como antes.
+
+**La sede de cada coche** sale de Vehículos (`otraSede.sedeDe`, que ahora conoce las de todos). Un coche que no está en Vehículos cuenta como de Madrid.
+
+| | Conductor de Madrid | Conductor de Barcelona | Oficina con `/puertas` | Viaje de la empresa |
+|---|---|---|---|---|
+| Abrir turno o viaje | coches de Madrid (y los que no están en Vehículos) | **solo coches de Barcelona**; con uno que no está en Vehículos, *«no lo tengo como coche de Barcelona»* | — | solo coches de Madrid |
+| Puertas | las de su coche | las de su coche | **las de las dos sedes** | — |
+| Motor | se suelta al empezar y se corta al terminar si toca | **ni se suelta ni se corta**: se lleva desde Mapon | — | como siempre |
+
+Lo que cambia para el conductor de Barcelona en la conversación:
+- El saludo no le promete desbloquear el motor.
+- No ve «Ver mis turnos» ni «Código de lavado»: Barcelona aún no tiene planificador ni Ballenoil. Si escribe «turnos» o «lavado», se le contesta *«Por el momento esta opción no está disponible»*.
+- «Desbloquear» le dice que el motor de su coche no se lleva por aquí.
+
+Lo demás es igual: entregar coche, relevo, terminar, km y conductor en Mapon.
+
+**El motor de otra sede tampoco se SUELTA** desde el 02/10: `fichaje.motor()` lo rechaza en los dos sentidos. Antes solo hacía falta para el corte, porque ningún turno podía estar en un coche de Barcelona. Si no se puede saber la sede, se suelta igual (soltar no deja tirado a nadie) y no se corta.
+
+Los turnos de Barcelona **no salen en el panel «Fichaje» del planificador de Madrid**, ni en [[Ciclo de bloqueo de motor]].
+
+Lo prueban las secciones 14 y 15 de `scripts/probar-corte-motor.js`. La conversación entera se simula en `Scripts de análisis/simular-bot-conductor.js` (escenas 8 a 10), y el panel de oficina en `simular-puertas-oficina.js`.
 
 ## Las variables de entorno
 

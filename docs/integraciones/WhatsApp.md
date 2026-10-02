@@ -64,7 +64,7 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 
 **Solo se contesta lo que llega a nuestro número.** Lo primero que se mira es el `phone_number_id` del mensaje: si no es el de Telecab, se apunta en el log (`📵 Mensaje a otro número`) y no se contesta. La app de WhatsApp tiene colgado también el número de la boda, cuyo módulo de confirmaciones se quitó el 01/10/2026; Meta sigue mandando aquí sus mensajes, y sin este filtro un invitado recibiría el saludo del bot de conductores.
 
-**Quién puede usar el bot.** Lo decide `services/repo/puertas.quienPuedeAbrir()`: un conductor abre **por estar de alta** con el número con el que se le dio de alta, y la gente de oficina **por tener el permiso `/puertas`**, que se reparte uno a uno. La única excepción es el **desarrollador**, que abre por serlo (02/10/2026), igual que entra en «Usuarios y permisos» sin la llave: su rol tiene acceso total y por eso no tiene filas de permiso, y el bot le contestaba «tu usuario no tiene permiso». El superadmin sigue necesitando la llave. BOLT no entra en esa decisión a propósito. Y cuando no se puede, **se dice qué falta** (`sin_numero`, `no_esta`, `sin_alta`, `bloqueado`, `sin_permiso`, `error`): un "no estás autorizado" a secas manda a la persona a preguntar a tráfico y a tráfico a mirar la hoja, y cada motivo tiene una salida distinta.
+**Quién puede usar el bot.** Lo decide `services/repo/puertas.quienPuedeAbrir()`: un conductor abre **por estar de alta** con el número con el que se le dio de alta, y la gente de oficina **por tener el permiso `/puertas`**, que se reparte uno a uno. La única excepción es el **desarrollador**, que abre por serlo (02/10/2026), igual que entra en «Usuarios y permisos» sin la llave: su rol tiene acceso total y por eso no tiene filas de permiso, y el bot le contestaba «tu usuario no tiene permiso». El superadmin sigue necesitando la llave. BOLT no entra en esa decisión a propósito, salvo para Barcelona (02/10/2026): allí no hay fichas, y quien abre es quien tiene **cuenta activa de BOLT de la empresa de Barcelona**. Eso solo se mira cuando el número no da acceso por lo de Madrid. Y cuando no se puede, **se dice qué falta** (`sin_numero`, `no_esta`, `sin_alta`, `bloqueado`, `sin_permiso`, `error`): un "no estás autorizado" a secas manda a la persona a preguntar a tráfico y a tráfico a mirar la hoja, y cada motivo tiene una salida distinta.
 
 **La conversación del conductor (28/09/2026).** Lo pidió Camilo así, en este orden, y es para **todo conductor de alta**:
 
@@ -82,7 +82,9 @@ El nombre de cada plantilla se puede cambiar sin tocar código: `PLANTILLA_TURNO
 - **Las palabras**: al conductor **no se le dice «fichar» ni «fichaje»**. Esto no es el registro de jornada (ese es `/fichaje`): es quién lleva qué coche y cuántos km hace. Si se llamara igual, un turno abierto por WhatsApp sin trabajar se podría hacer pasar por horas fichadas.
 - Los ids de los botones son los de siempre (`abrir_puertas`, `ver_turnos`, `codigo_lavado`…): un botón de un mensaje viejo del chat sigue funcionando.
 
-**El panel de oficina** (quien tiene `/puertas` y no es conductor) sigue como estaba: escribe una matrícula y abre o cierra, sin turno.
+**El panel de oficina** (quien tiene `/puertas` y no es conductor) sigue como estaba: escribe una matrícula y abre o cierra, sin turno. Desde el 02/10/2026, coches de **Madrid y de Barcelona**.
+
+**Los conductores de Barcelona** (02/10/2026) no tienen ficha: el bot los reconoce por su **cuenta activa de BOLT de la empresa de Barcelona** y les da la misma conversación que a los de Madrid, con coches de Barcelona y sin tocar el motor. No les salen «Ver mis turnos» ni «Código de lavado». Ver [[Fichaje]] y [[Sedes]].
 
 **Meta reenvía** un mensaje si no se le contesta a tiempo, y ahora un mensaje abre un turno o gasta un código de lavado. Por eso el webhook **contesta 200 al momento** y recuerda los últimos 500 ids de mensaje: uno repetido se ignora.
 

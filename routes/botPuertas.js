@@ -8,6 +8,7 @@ const MAPON_API_KEY = process.env.MAPON_API_KEY || '';
 const fichajeBot = require('../services/fichajeBot');
 const puertas = require('../services/puertasBot');
 const lavado = require('../services/lavadoBallenoil');
+const { SEDE_FLOTA } = require('../services/nucleo');
 
 // ¿QUIÉN LLEVA CADA CONVERSACIÓN? (28/09/2026)
 //
@@ -15,7 +16,10 @@ const lavado = require('../services/lavadoBallenoil');
 //     en ese coche, con sus botones de siempre. Todo lo suyo pasa por allí.
 //   · Alguien de la EMPRESA con el fichaje encendido: también allí (viajes).
 //   · Alguien de OFICINA con el permiso /puertas: el panel de puertas de este
-//     fichero — escribe una matrícula y abre o cierra, sin turno.
+//     fichero — escribe una matrícula y abre o cierra, sin turno. Coches de
+//     Madrid y de Barcelona (02/10/2026).
+//   · Un CONDUCTOR DE BARCELONA (02/10/2026, sin ficha: por su cuenta de BOLT):
+//     como uno de Madrid, en services/fichajeBot, con coches de Barcelona.
 
 const sesiones = {};
 
@@ -157,18 +161,26 @@ async function handleText(phone, text) {
       await sendText(phone, `❌ No encuentro la matrícula "${matricula}". Escríbela otra vez, todo junto (ejemplo: 1234ABC).`);
       return;
     }
-    // Un coche de otra sede no se abre desde aquí (services/otraSede.js). Se
-    // dice al momento, no al pulsar «Abrir».
-    const sede = require('../services/otraSede');
-    const ajena = await sede.sedeAjena({ matricula: resultado.matricula, unitId: resultado.unit_id }).catch(() => null);
-    if (ajena) {
-      await sendText(phone, `❌ El ${resultado.matricula} es un coche de ${sede.nombreSede(ajena)}: por aquí no se abre ni se cierra. ` +
-        'Revisa la matrícula y escríbela otra vez, todo junto (ejemplo: 1234ABC).');
-      return;
+    // Un coche de otra sede que la suya no se abre desde aquí (services/otraSede.js).
+    // Se dice al momento, no al pulsar «Abrir». La oficina con el permiso abre
+    // los de todas las sedes (`acceso.sede` vacío, Camilo 02/10/2026). Si no se
+    // puede saber la sede, sigue: lo para `puertas.ejecutar` al pulsar.
+    if (acceso.sede !== null) {
+      const sede = require('../services/otraSede');
+      const suya = acceso.sede || SEDE_FLOTA;
+      const delCoche = await sede.sedeDe({ matricula: resultado.matricula, unitId: resultado.unit_id })
+        .then(s => s || SEDE_FLOTA, () => suya);
+      if (delCoche !== suya) {
+        await sendText(phone, `❌ El ${resultado.matricula} es un coche de ${sede.nombreSede(delCoche)}: por aquí no se abre ni se cierra. ` +
+          'Revisa la matrícula y escríbela otra vez, todo junto (ejemplo: 1234ABC).');
+        return;
+      }
     }
 
     sesiones[phone] = {
       nombre,
+      // De qué sede son los coches que puede tocar (null = todas).
+      sede: acceso.sede === null ? null : (acceso.sede || SEDE_FLOTA),
       // La ficha viaja en la sesión: es lo que permite que el registro de
       // puertas diga QUIÉN abrió y no solo desde qué número.
       conductorId,
@@ -214,7 +226,7 @@ async function handleButton(phone, buttonId) {
     const abrir = buttonId === 'abrir_puertas';
     const r = await puertas.ejecutar({
       telefono: phone, conductorId: sesion.conductorId, nombre: sesion.nombre,
-      matricula: sesion.matricula, unitId: sesion.unitId, abrir,
+      matricula: sesion.matricula, unitId: sesion.unitId, abrir, sede: sesion.sede,
     });
     if (r.ok) {
       sesion.estado = abrir ? 'abierta' : 'cerrada';

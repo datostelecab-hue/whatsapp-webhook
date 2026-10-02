@@ -10,7 +10,7 @@
 // sobre el mismo coche a la vez escribían dos filas y las dos se creían dueñas.
 
 const db = require('../db');
-const { HORA_DIA, nombreDePila } = require('../nucleo');
+const { HORA_DIA, nombreDePila, SEDE_FLOTA } = require('../nucleo');
 
 const tel9 = t => String(t == null ? '' : t).replace(/\D/g, '').slice(-9);
 const normMat = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -239,6 +239,43 @@ async function personaPorTelefono(telefono) {
   };
 }
 
+/**
+ * UNA CUENTA ACTIVA DE BOLT DE OTRA SEDE con ese teléfono, o null.
+ *
+ * Es como se reconoce a un conductor de BARCELONA (02/10/2026): no tienen ficha
+ * —Camilo no tiene sus datos todavía—, pero sus cuentas de BOLT están en la base
+ * desde db/174 con la empresa en la que se vieron. Solo las ACTIVAS: «si escribe
+ * un número que no es de nuestra ficha, que busque a ver si coincide con algún
+ * conductor activo de Barcelona». Con dos cuentas con el mismo número, la vista
+ * más recientemente.
+ *
+ * Va aparte de `personaPorTelefono` porque solo se mira cuando el número no es
+ * de nadie de aquí, y porque sin db/174 (falta la columna) contesta null en vez
+ * de llevarse por delante el bot entero.
+ *
+ * Devuelve { id (la fila de conductor_externo), nombre (el de BOLT), pila, sede }.
+ */
+async function cuentaDeOtraSede(telefono) {
+  const t9 = tel9(telefono);
+  if (t9.length < 9) return null;
+  let r;
+  try {
+    r = await db.consulta(
+      `SELECT ce.id, btrim(COALESCE(ce.externo_nombre, '')) AS nombre, fs.sede
+         FROM conductor_externo ce
+         JOIN flota fs ON fs.company_id = ce.bolt_company_id AND fs.sede <> $2
+        WHERE ce.sistema = 'bolt' AND ce.externo_sufijo9 = $1 AND ce.estado_externo = 'active'
+        ORDER BY ce.visto_at DESC NULLS LAST, ce.id DESC
+        LIMIT 1`, [t9, SEDE_FLOTA]);
+  } catch (e) {
+    if (e.code === '42703') return null;   // db/174 sin aplicar: Barcelona aún no ha entrado
+    throw e;
+  }
+  const x = r.rows[0];
+  if (!x) return null;
+  return { id: String(x.id), nombre: x.nombre, pila: nombreDePila({ nombreBolt: x.nombre }), sede: x.sede };
+}
+
 // EL DÍA OPERATIVO, en la base: de 05:00 a 05:00. El de noche que pregunta a
 // la 01:00 sigue en la jornada de ayer, y su coche es el de ayer. `n` es el
 // número del parámetro que lleva la hora de corte (HORA_DIA).
@@ -406,6 +443,6 @@ module.exports = {
   ultimaOrdenPorCoche, ultimoTurnoPorCoche, historiaDelCoche,
   abiertoDe, abiertoDeCoche, abiertos, unitsConocidos, unitsConControl, controlMotorDe,
   crear, actualizar, quienLlevaba,
-  personaPorTelefono, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,
+  personaPorTelefono, cuentaDeOtraSede, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,
   fijarFichaCoche, activados, marcarRelevo, registrarOrdenMotor,
 };

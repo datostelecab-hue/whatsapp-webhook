@@ -7,6 +7,16 @@ actualizado: 2026-10-02
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-02 · Barcelona en el bot: cada uno, los coches de su sede
+
+Los conductores de Barcelona abren turno y abren y cierran coches por el bot sin tener ficha: los reconoce su cuenta activa de BOLT de la empresa de Barcelona. La regla de las sedes pasa de «un coche de otra sede no se toca» a «el coche tiene que ser de la sede de quien lo coge».
+- Su motor ni se corta ni se suelta: se lleva desde Mapon.
+- No les salen «Ver mis turnos» ni «Código de lavado»: allí aún no hay planificador ni Ballenoil.
+- La oficina con `/puertas` abre los coches de las dos sedes (lo eligió Camilo).
+- Los viajes de la empresa siguen siendo de Madrid.
+
+→ [[Fichaje]] · [[Sedes]]
+
 ## 2026-10-02 · Las cuentas de BOLT de Barcelona, solo en la base
 
 El bot de WhatsApp va a tener que reconocer a los conductores de Barcelona, y de ellos no hay fichas. La empresa de BOLT de Barcelona entra en `flota` con su sede y el padrón la lee **en la misma vuelta** que las de Madrid, guardando de qué empresa es cada cuenta (db/174). Las horas no se traen, y ninguna pantalla de Madrid ofrece esas cuentas para enlazar: las vistas y las tres consultas que enseñan cuentas sin dueño las dejan fuera. Son dos listas en `CONFIG_BOLT`, porque la de siempre la recorren las horas, los coches y el mapa. → [[Sedes]] · [[BOLT]]

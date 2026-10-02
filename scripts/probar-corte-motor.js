@@ -27,6 +27,11 @@
 // Y un coche de OTRA SEDE no se toca nunca (services/otraSede.js), y
 // el coche de mentira deja de llamarse 1888LTJ, que es un coche real de
 // Barcelona: con esa matrícula de ejemplo empezó el lío.
+//
+// 02/10/2026: los conductores de BARCELONA entran en el bot (sin ficha, por su
+// cuenta de BOLT). Cada uno coge coches de su sede; el motor de Barcelona no
+// se corta ni se suelta; y las puertas, las de su sede, salvo la oficina con
+// /puertas, que abre las de todas (secciones 14 y 15).
 
 const path = require('path');
 const RAIZ = path.join(__dirname, '..');
@@ -107,6 +112,9 @@ const gente = {
                  conductor: { id: '104', nombre: 'Dani Conductor', activo: true, vale: true } },
 };
 const conductor = id => Object.values(gente).map(g => g.conductor).find(c => c && c.id === String(id));
+// Marta conduce en BARCELONA: no tiene ficha, solo su cuenta activa de BOLT de
+// la empresa de Barcelona (02/10/2026).
+const cuentasBcn = { '600000005': { id: '5001', nombre: 'Marta Vidal Soler', pila: 'Marta', sede: 'barcelona' } };
 // El cuadrante: quién lleva cada coche hoy o mañana.
 const plan = { '2222BBB': ['101', '102'] };
 // El libro del ciclo (fichaje_orden_motor): lo del conductor va sin usuario.
@@ -150,6 +158,8 @@ const falsoRepo = {
     return { conductor: g.conductor || null, usuario: g.usuario || null,
       abierto: turnos.some(t => abierto(t) && tel9(t.telefono) === tel9(telefono)) };
   },
+  // Los conductores de Barcelona: sin ficha, por su cuenta activa de BOLT (02/10/2026).
+  cuentaDeOtraSede: async telefono => cuentasBcn[tel9(telefono)] || null,
   cochesDelPlan: async id => Object.entries(plan).filter(([, ids]) => ids.includes(String(id)))
     .map(([matricula]) => ({ matricula, turno: 'Día' })),
   quienesLlevan: async matricula => (plan[norm(matricula)] || [])
@@ -186,11 +196,18 @@ const falsoRepo = {
 
 require.cache[require.resolve(path.join(RAIZ, 'services/mapon.js'))] = { exports: falsoMapon, loaded: true, id: 'falso-mapon' };
 require.cache[require.resolve(path.join(RAIZ, 'services/repo/fichajeTurno.js'))] = { exports: falsoRepo, loaded: true, id: 'falso-repo' };
-// La sede sale de la base: aquí, una base de mentira con un solo coche de
-// Barcelona. `services/otraSede.js` es el DE VERDAD, así que también se prueba.
+// La sede sale de la base: aquí, una base de mentira con un coche de Barcelona
+// y uno de Madrid; los demás no están en Vehículos (cuentan como de Madrid).
+// `services/otraSede.js` es el DE VERDAD, así que también se prueba. La misma
+// base recibe el apunte de las puertas (`repo/puertas.registrar`).
 let consultasSede = 0;
 require.cache[require.resolve(path.join(RAIZ, 'services/db.js'))] = { loaded: true, id: 'falsa-db', exports: {
-  consulta: async () => { consultasSede++; return { rows: [{ matricula_norm: '5555BCN', sede: 'barcelona', unit_id: '88' }] }; },
+  consulta: async sql => {
+    if (/puerta_comando/.test(sql)) return { rows: [], rowCount: 1 };
+    consultasSede++;
+    return { rows: [{ matricula_norm: '1111AAA', sede: 'madrid', unit_id: '77' },
+                    { matricula_norm: '5555BCN', sede: 'barcelona', unit_id: '88' }] };
+  },
 } };
 const f = require(path.join(RAIZ, 'services/fichaje.js'));
 const ciclo = require(path.join(RAIZ, 'modules/BloqueoMotor/bloqueoMotor.service.js'));
@@ -432,6 +449,58 @@ const limpio = () => { ordenes.length = 0; };
   try { await f.soltarCoche({ matricula: '5555BCN', motivo: 'prueba' }, { usuarioId: 7 }); } catch (e) { error = e.message; }
   comprobar('ni a mano desde el ERP', /Barcelona/.test(error) && coche('5555BCN').rele === BLOQ);
   comprobar('la sede se lee de la base una vez y se guarda', consultasSede === 1);
+
+  console.log('\n== 14. Un conductor de Barcelona (02/10/2026): sus coches, y el motor ni se toca ==');
+  limpio();
+  const MARTA = '600000005';
+  const pm = await f.participa(MARTA);
+  comprobar('Marta, sin ficha y con cuenta de BOLT de Barcelona → hace TURNOS',
+    pm && pm.tipo === 'turno' && pm.sede === 'barcelona' && pm.conductorId === null && pm.nombre === 'Marta Vidal Soler');
+  comprobar('… y a ella nunca se le bloquea el motor', pm && pm.motor === false);
+  comprobar('los de Madrid son de Madrid', ((await f.participa(ANA)) || {}).sede === 'madrid'
+    && ((await f.participa(CAMILO)) || {}).sede === 'madrid');
+  r = await f.iniciar({ telefono: ANA, matricula: '5555BCN' });
+  comprobar('Ana (Madrid) no abre turno en uno de Barcelona', !r.ok && r.motivo === 'otra-sede' && r.sede === 'Barcelona');
+  r = await f.iniciar({ telefono: MARTA, matricula: '1111AAA' });
+  comprobar('Marta no abre turno en uno de Madrid', !r.ok && r.motivo === 'otra-sede' && r.sede === 'Madrid');
+  r = await f.iniciar({ telefono: MARTA, matricula: '0000AAA' });
+  comprobar('ni en uno que no está en Vehículos: se le dice que no lo conocemos',
+    !r.ok && r.motivo === 'coche-sin-sede' && r.sedePersona === 'Barcelona');
+  // Sigue cortado desde Mapon (lo dejó así la sección 13): Barcelona lo quiso.
+  const ciclosAntes = libroMotor.length;
+  r = await f.iniciar({ telefono: MARTA, matricula: '5555BCN' });
+  comprobar('en uno de Barcelona, sí', r.ok && r.turno.matricula === '5555BCN' && r.turno.conductorId === null
+    && r.turno.nombre === 'Marta Vidal Soler' && r.turno.tipo === 'turno');
+  comprobar('… sin soltarle el motor ni hablarle de él', !r.bloqueoActivo && ordenes.length === 0
+    && coche('5555BCN').rele === BLOQ && libroMotor.length === ciclosAntes);
+  comprobar('su turno no sale en el panel del planificador de Madrid',
+    !(await f.estadoParaPanel()).abiertos.some(t => t.matricula === '5555BCN'));
+  r = await f.liberarMotor('88');
+  comprobar('«Desbloquear» tampoco lo suelta', !r.hecho && r.otraSede === 'barcelona' && coche('5555BCN').rele === BLOQ);
+  coche('5555BCN').rele = LIBRE;
+  r = await f.terminar(MARTA);
+  comprobar('termina, y el motor no se corta', r.ok && r.motor.sinControl && ordenes.length === 0
+    && coche('5555BCN').rele === LIBRE && libroMotor.length === ciclosAntes);
+  const pa = await f.participa('699999999');
+  comprobar('un número que no es de nadie sigue sin participar', pa === null);
+
+  console.log('\n== 15. Las puertas, por sede ==');
+  const apps = [];
+  global.fetch = async url => { apps.push(String(url)); return { status: 200, text: async () => '{"status":"ok"}' }; };
+  const puertas = require(path.join(RAIZ, 'services/puertasBot.js'));
+  const abre = (matricula, extra) => puertas.ejecutar({ telefono: MARTA, nombre: 'prueba', matricula, abrir: true, ...extra });
+  r = await abre('5555BCN', { sede: 'barcelona' });
+  comprobar('Marta abre uno de Barcelona', r.ok && apps.length === 1);
+  r = await abre('1111AAA', { sede: 'barcelona' });
+  comprobar('… y no uno de Madrid', !r.ok && r.otraSede === 'madrid' && apps.length === 1);
+  r = await abre('0000AAA', { sede: 'barcelona' });
+  comprobar('… ni uno que no está en Vehículos (cuenta como de Madrid)', !r.ok && apps.length === 1);
+  r = await abre('5555BCN', {});
+  comprobar('sin decir sede, como hasta ahora: uno de Barcelona no se abre', !r.ok && r.otraSede === 'barcelona' && apps.length === 1);
+  r = await abre('1111AAA', { sede: 'madrid' });
+  comprobar('un conductor de Madrid, uno de Madrid sí', r.ok && apps.length === 2);
+  r = await abre('5555BCN', { sede: null });
+  comprobar('la oficina con /puertas (sede vacía) abre el de Barcelona', r.ok && apps.length === 3);
 
   console.log(mal ? `\n${mal} COMPROBACION(ES) MAL` : '\nTodo el ciclo cuadra');
   process.exitCode = mal ? 1 : 0;

@@ -1,7 +1,7 @@
 ---
 tags: [nucleo, sedes, barcelona, bolt, mapon]
 fecha: 2026-10-02
-estado: en producción (etapa 1); el bot de Barcelona, pendiente
+estado: hecho (etapas 1 y 2), pendiente de aplicar db/174
 ---
 
 # Sedes
@@ -59,13 +59,22 @@ Medido el 02/10/2026 antes de aplicar: de las 28 cuentas de Barcelona **ninguna 
 
 El código nombra columnas que crea la migración. Mientras no se aplica, el padrón guarda **solo las cuentas de Madrid, como antes** (las de Barcelona sin empresa se verían como libres), y las tres consultas a mano preguntan sin el filtro: todavía no hay cuentas de otra sede que esconder. En cuanto se aplica, la siguiente vuelta del padrón (cada hora) mete las 28.
 
-## Lo que falta: el bot de WhatsApp para Barcelona (etapa 2)
+## El bot de WhatsApp para Barcelona (etapa 2, 02/10/2026)
 
-Pedido por Camilo el 02/10/2026: que los conductores de Barcelona abran turno y abran y cierren coches con el bot, como en Madrid.
+Pedido por Camilo el 02/10/2026: que los conductores de Barcelona abran turno y abran y cierren coches con el bot, como en Madrid. El detalle está en [[Fichaje]] («Los conductores de Barcelona en el bot»).
 
-- **Quién escribe.** Si el teléfono no es de una ficha ni de un usuario, buscar una **cuenta activa de BOLT de Barcelona** con ese teléfono (`externo_sufijo9`).
-- **Qué coche.** En Barcelona no se comprueba la matrícula contra BOLT ni contra el cuadrante: solo que sea un coche de Barcelona con equipo en Mapon (en Mapon ya están separados en «VTC Madrid» y «VTC Barcelona»).
-- **La regla de la sede** pasa de «un coche de otra sede no se toca» a «**el coche tiene que ser de la sede de la persona**». El motor de Barcelona no se corta nunca.
-- **Los usuarios con `/puertas`**: falta decidir si abren coches de las dos sedes.
+- **Quién escribe.** Si el teléfono no es de un usuario ni de un conductor de alta, se busca una **cuenta activa de BOLT de Barcelona** con ese teléfono (`externo_sufijo9`). Hace turnos con el nombre de BOLT y sin ficha.
+- **Qué coche.** No se comprueba la matrícula contra BOLT ni contra el cuadrante: basta con que esté en Mapon y sea un coche de Barcelona en Vehículos, que se cruzó con BOLT y Mapon en db/173.
+- **La regla de la sede** pasa de «un coche de otra sede no se toca» a «**el coche tiene que ser de la sede de la persona**». El motor de Barcelona no se corta ni se suelta nunca: se lleva desde Mapon.
+- **La oficina con `/puertas`** (y el desarrollador) abre y cierra los coches de las **dos sedes** (Camilo, 02/10/2026). Los viajes de la empresa siguen siendo solo con coches de Madrid.
+- **«Ver mis turnos» y «Código de lavado»** no les salen: Barcelona aún no tiene planificador ni Ballenoil. Si lo escriben, se les dice que por el momento no está disponible.
+- Sus turnos quedan en el mismo libro (`fichaje_turno`, sin `conductor_id`) y no salen en el panel del planificador de Madrid.
+
+**Hasta aplicar db/174 el bot no reconoce a nadie de Barcelona**: sin la empresa de cada cuenta no se sabe cuáles son de allí. Para Madrid no cambia nada.
+
+**Escalar a otra sede** pide tres cosas, y ninguna es código del bot:
+1. su empresa de BOLT en `flota` con su sede;
+2. la empresa en `CONFIG_BOLT.flotasOtrasSedes`;
+3. sus coches en Vehículos con esa sede.
 
 Ver [[Fichaje]], [[WhatsApp]], [[BOLT]], [[Vehiculos]].

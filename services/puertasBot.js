@@ -9,7 +9,10 @@
 // La orden va a Mapon a través del Apps Script (`ejecutar_comando`), que hace de
 // relé: no es una hoja, es el único sitio con las credenciales de comandos.
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPJUuuWtrR-r_kV3ADry2FyTFQAvGmW94wsYO5MohqTFLOQ1YTusKOdjOjLa5ggv50/exec';
+const otraSede = require('./otraSede');
+const { SEDE_FLOTA } = require('./nucleo');
+
+const APPS_SCRIPT_URL ='https://script.google.com/macros/s/AKfycbzPJUuuWtrR-r_kV3ADry2FyTFQAvGmW94wsYO5MohqTFLOQ1YTusKOdjOjLa5ggv50/exec';
 
 async function callAppsScript(accion, params = {}) {
   const url = new URL(APPS_SCRIPT_URL);
@@ -34,20 +37,28 @@ async function callAppsScript(accion, params = {}) {
  * Abre o cierra las puertas de un coche y lo apunta en el registro de puertas.
  * Devuelve { ok, msg }.
  *
+ * `sede` es la de los coches que puede tocar quien lo pide: la de Madrid si no
+ * se dice; la suya, un conductor de Barcelona; y `null`, todas, que es la gente
+ * de oficina con el permiso /puertas (Camilo, 02/10/2026).
+ *
  * Se apunta SIEMPRE, salga bien o mal, y sin esperar a que termine: que el
  * registro falle no puede dejar a nadie sin abrir el coche.
  */
-async function ejecutar({ telefono, conductorId = null, nombre = '', matricula, unitId = '', abrir }) {
+async function ejecutar({ telefono, conductorId = null, nombre = '', matricula, unitId = '', abrir, sede = SEDE_FLOTA }) {
   const comando = abrir ? 'open_doors' : 'close_doors';
   const t0 = Date.now();
-  // UN COCHE DE OTRA SEDE NO SE ABRE NI SE CIERRA DESDE AQUÍ (30/09/2026, ver
-  // otraSede.js): el 17 y el 18/09 tres conductores de Madrid le abrieron las
-  // puertas al 1888LTJ, en Barcelona, escribiendo la matrícula del ejemplo. Si
-  // no se puede saber la sede, tampoco se manda. Se apunta igual.
-  let ajena = null, result;
-  try { ajena = await require('./otraSede').sedeAjena({ matricula, unitId }); }
-  catch (e) { result = { status: 'error', msg: 'No se puede comprobar de qué sede es el coche' }; }
-  if (ajena) result = { status: 'error', msg: `Coche de ${require('./otraSede').nombreSede(ajena)}: no se toca`, otraSede: ajena };
+  // UN COCHE DE OTRA SEDE QUE LA DE QUIEN LO PIDE NO SE ABRE NI SE CIERRA
+  // (30/09/2026, ver otraSede.js): el 17 y el 18/09 tres conductores de Madrid
+  // le abrieron las puertas al 1888LTJ, en Barcelona, escribiendo la matrícula
+  // del ejemplo. Si no se puede saber la sede, tampoco se manda. Se apunta igual.
+  // Un coche que no está en Vehículos cuenta como de Madrid.
+  let result;
+  if (sede) {
+    try {
+      const deCoche = (await otraSede.sedeDe({ matricula, unitId })) || SEDE_FLOTA;
+      if (deCoche !== sede) result = { status: 'error', msg: `Coche de ${otraSede.nombreSede(deCoche)}: no se toca`, otraSede: deCoche };
+    } catch (e) { result = { status: 'error', msg: 'No se puede comprobar de qué sede es el coche' }; }
+  }
   if (!result) {
     console.log(`${abrir ? '🔓 Abriendo' : '🔒 Cerrando'}: ${matricula} (${nombre || telefono})`);
     try { result = await callAppsScript('ejecutar_comando', { matricula, comando }); }
