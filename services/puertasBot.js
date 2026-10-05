@@ -47,6 +47,15 @@ async function callAppsScript(accion, params = {}) {
 async function ejecutar({ telefono, conductorId = null, nombre = '', matricula, unitId = '', abrir, sede = SEDE_FLOTA }) {
   const comando = abrir ? 'open_doors' : 'close_doors';
   const t0 = Date.now();
+  // CON MAPON CAÍDO NO SE MANDA NADA (05/10/2026): la orden va a Mapon por el
+  // Apps Script y no llegaría. Se apunta igual, y quien llama dice SIN_SERVICIO.
+  if (!require('./fichaje').maponDisponible()) {
+    require('./repo/puertas').registrar({
+      telefono, conductorId, conductor: nombre, matricula, unitId, comando, ok: false,
+      respuesta: 'Mapon no está disponible: no se mandó la orden', ms: Date.now() - t0,
+    });
+    return { ok: false, msg: 'Mapon no está disponible', sinMapon: true, otraSede: null };
+  }
   // UN COCHE DE OTRA SEDE QUE LA DE QUIEN LO PIDE NO SE ABRE NI SE CIERRA
   // (30/09/2026, ver otraSede.js): el 17 y el 18/09 tres conductores de Madrid
   // le abrieron las puertas al 1888LTJ, en Barcelona, escribiendo la matrícula
@@ -75,4 +84,10 @@ async function ejecutar({ telefono, conductorId = null, nombre = '', matricula, 
   return { ok, msg: ok ? '' : (result.msg || 'sin respuesta'), otraSede: result.otraSede || null };
 }
 
-module.exports = { ejecutar, callAppsScript };
+// Lo que se le dice a quien quiere abrir o cerrar con Mapon caído (Camilo,
+// 05/10/2026: «que por el momento no está disponible por temas de terceros
+// ajenos a nosotros», y que con cada error se comunique con Tráfico).
+const SIN_SERVICIO = '🔧 Por el momento no se pueden abrir ni cerrar las puertas desde aquí: hay un problema con un ' +
+  'proveedor externo, ajeno a Telecab. Comunícate con Tráfico.';
+
+module.exports = { ejecutar, callAppsScript, SIN_SERVICIO };

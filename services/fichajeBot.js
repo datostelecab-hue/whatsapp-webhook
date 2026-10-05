@@ -46,6 +46,12 @@ const { SEDE_FLOTA } = require('./nucleo');
 // Si escriben «turnos» o «lavado», se les dice que por el momento no está
 // disponible (Camilo, 02/10/2026).
 const deOtraSede = p => !!(p && p.sede && p.sede !== SEDE_FLOTA);
+
+// CON MAPON CAÍDO (05/10/2026, la cuenta suspendida por un pago) el turno se
+// apunta solo en nuestra base: ni motor ni puertas. Se dice al empezar, sin
+// tecnicismos, y con cada error se manda a Tráfico (Camilo).
+const AVISO_SIN_MAPON = '\n🔧 Ahora mismo no puedo tocar el motor ni las puertas por un problema con un proveedor externo, ' +
+  'ajeno a Telecab. Tu turno queda apuntado igual. Si el coche no arranca o no puedes entrar, comunícate con Tráfico.';
 const NO_DISPONIBLE = falta => `ℹ️ Por el momento esta opción no está disponible: Barcelona aún no tiene ${falta}.`;
 
 // Los botones del panel del conductor llevan LOS MISMOS ids que el panel de
@@ -207,7 +213,7 @@ async function abrir(telefono, matricula) {
     r = await fichaje.iniciar({ telefono, matricula });
   } catch (e) {
     console.error('❌ [FICHAJE] iniciar:', e.message);
-    await enviarTexto(telefono, '❌ Ahora mismo no he podido empezar tu turno. Vuelve a escribirme la matrícula en un momento.');
+    await enviarTexto(telefono, '❌ Ahora mismo no he podido empezar tu turno. Vuelve a escribirme la matrícula en un momento; si sigue igual, comunícate con Tráfico.');
     return;
   }
   if (!r.ok) {
@@ -217,19 +223,19 @@ async function abrir(telefono, matricula) {
     }
     if (r.motivo === 'otra-sede') {
       await enviarTexto(telefono, `❌ El *${r.matricula}* es un coche de ${r.sede}: por aquí no se lleva. ` +
-        'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*).');
+        'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*). Si es correcta, comunícate con Tráfico.');
       return;
     }
     // Un conductor de Barcelona con un coche que no está en Vehículos: no se
     // sabe de dónde es, y eso es lo que se le dice.
     if (r.motivo === 'coche-sin-sede') {
       await enviarTexto(telefono, `❌ El *${r.matricula}* no lo tengo como coche de ${r.sedePersona}. ` +
-        'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*). Si es de allí, avisa a Tráfico.');
+        'Revisa la matrícula y escríbemela otra vez, todo junto (ejemplo: *1234ABC*). Si es de allí, comunícate con Tráfico.');
       return;
     }
     if (r.motivo === 'sin-matricula') {
       await enviarTexto(telefono, `❌ No encuentro la matrícula *${matricula}*. Revísala y escríbemela otra vez, ` +
-        'todo junto (ejemplo: *1234ABC*).');
+        'todo junto (ejemplo: *1234ABC*). Si es correcta, comunícate con Tráfico.');
       return;
     }
     // El coche tiene corte y al que lo tenía se le bloquearía: la misma regla
@@ -255,7 +261,7 @@ async function abrir(telefono, matricula) {
       return;
     }
     if (r.motivo === 'ya-abierto') { await panel(telefono, '⚠️ Ya tenías algo abierto.'); return; }
-    await enviarTexto(telefono, '❌ No he podido empezar tu turno.');
+    await enviarTexto(telefono, '❌ No he podido empezar tu turno. Comunícate con Tráfico.');
     return;
   }
 
@@ -281,7 +287,9 @@ async function abrir(telefono, matricula) {
       ? `\n🔄 El coche figuraba con *${r.relevoDe.nombre}*: su turno queda cerrado y desde ahora el responsable eres tú.`
       : `\n🔄 *${r.relevoDe.nombre}* te ha dado el coche: su turno queda cerrado.`;
   const p = await fichaje.participa(telefono);
-  const cabecera = `✅ *Turno iniciado*${p && p.pila ? ` — ¡buen turno, ${p.pila}!` : ''}${motor}${relevo}`;
+  // MAPON CAÍDO (05/10/2026): el turno queda apuntado, pero ni motor ni puertas.
+  const sinMapon = r.sinMapon ? `${AVISO_SIN_MAPON}` : '';
+  const cabecera = `✅ *Turno iniciado*${p && p.pila ? ` — ¡buen turno, ${p.pila}!` : ''}${motor}${sinMapon}${relevo}`;
 
   puertasDe.delete(tel9(telefono));
   if (sinMotor) {
@@ -329,7 +337,8 @@ async function puertasConductor(telefono, p, abrirlas) {
     sede: p && p.soloCerrar ? null : ((p && p.sede) || SEDE_FLOTA),
   });
   if (!r.ok) {
-    await enviarTexto(telefono, `❌ No he podido ${abrirlas ? 'abrir' : 'cerrar'} las puertas. Inténtalo de nuevo.`);
+    await enviarTexto(telefono, r.sinMapon ? puertas.SIN_SERVICIO
+      : `❌ No he podido ${abrirlas ? 'abrir' : 'cerrar'} las puertas. Inténtalo de nuevo; si sigue igual, comunícate con Tráfico.`);
     return;
   }
   puertasDe.set(tel9(telefono), { matricula: turno.matricula, abierta: abrirlas });
@@ -598,7 +607,12 @@ async function desbloquear(telefono) {
   // un «sigue sin desbloquearse» que invita a insistir.
   const ajena = await otraSede.sedeAjena({ matricula: turno.matricula, unitId: turno.unitId }).catch(() => null);
   if (ajena) {
-    return panel(telefono, `🔑 El motor de los coches de ${otraSede.nombreSede(ajena)} no se lleva por aquí. Si no arranca, avisa a Tráfico.`);
+    return panel(telefono, `🔑 El motor de los coches de ${otraSede.nombreSede(ajena)} no se lleva por aquí. Si no arranca, comunícate con Tráfico.`);
+  }
+  // Con Mapon caído no hay motor que tocar (05/10/2026).
+  if (!fichaje.maponDisponible()) {
+    return panel(telefono, '🔧 Ahora mismo no puedo tocar el motor: hay un problema con un proveedor externo, ajeno a Telecab. ' +
+      'Comunícate con Tráfico.');
   }
 
   const antes = await fichaje.estadoMotor(turno.unitId);
@@ -637,7 +651,7 @@ async function cerrar(telefono) {
     r = await fichaje.terminar(telefono);
   } catch (e) {
     console.error('❌ [FICHAJE] terminar:', e.message);
-    await enviarTexto(telefono, '❌ Ahora mismo no he podido terminar. Inténtalo de nuevo en un momento.');
+    await enviarTexto(telefono, '❌ Ahora mismo no he podido terminar. Inténtalo de nuevo en un momento; si sigue igual, comunícate con Tráfico.');
     return;
   }
   const abiertoAhora = r.turno || {};
@@ -680,6 +694,8 @@ async function cerrar(telefono) {
   const motor = !r.bloqueoActivo || m.sinControl ? ''
     : m.seQuedaLibre
       ? `\n🔓 El motor se queda *libre*: este coche también lo lleva ${faltan || 'otra persona'}.`
+      : m.sinMapon
+        ? '\n🔧 El motor no se ha podido bloquear: hay un problema con un proveedor externo, ajeno a Telecab. Comunícate con Tráfico.'
       : m.hecho
         ? (m.yaEstaba ? '\n🔒 El motor ya estaba bloqueado' : `\n🔒 Motor bloqueado hasta el próximo ${w.cosa}`) +
           (faltan ? `\n⚠️ Ojo: este coche lo lleva ${faltan}, sin el bloqueo encendido. Si lo necesita, Tráfico se lo suelta desde el planificador.` : '')

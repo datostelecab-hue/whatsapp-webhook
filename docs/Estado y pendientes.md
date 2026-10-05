@@ -15,6 +15,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## Mapon suspendido por un pago (05/10/2026)
+
+- **Mapon contesta «Company suspended» desde el 05/10 a las 11:06.** Hay que pagarlo. Mientras tanto, desplegado esto, el bot ficha solo en la base y deshabilita puertas y motor ([[Fichaje]], «Con Mapon caído»). No hace falta tocar nada al volver: se levanta solo con la primera respuesta buena.
+- **Los turnos abiertos sin Mapon** se quedan sin conductor en Mapon y sin km. Si se quieren los km de esos turnos, hay que pedirlos a Mapon a mano cuando vuelva.
+
 ## WhatsApp: los mensajes que Meta no entrega (05/10/2026)
 
 - **Desplegar y aplicar `db/176`** desde /migraciones: la tabla `whatsapp_envio`. Con el despliegue, el webhook ya pasa a `error` los avisos de velocidad que Meta no entregue, aunque la 176 aún no esté. La tabla solo hace falta para apuntar todos los estados.

@@ -376,6 +376,37 @@ Los turnos de Barcelona **no salen en el panel «Fichaje» del planificador de M
 
 Lo prueban las secciones 14 y 15 de `scripts/probar-corte-motor.js`. La conversación entera se simula en `Scripts de análisis/simular-bot-conductor.js` (escenas 8 a 10), y el panel de oficina en `simular-puertas-oficina.js`.
 
+## Con Mapon caído, se ficha solo en la base (05/10/2026)
+
+El 05/10 a las 11:06, Mapon suspendió la cuenta por un pago pendiente y empezó a contestar a todo **«Company suspended»**. Con eso nadie podía abrir turno: el padrón de unidades se quedaba **vacío y en caché**, y el bot contestaba «No encuentro la matrícula» a cualquiera.
+
+Camilo pidió que, mientras Mapon falle, se fiche solo en nuestra base y se deshabiliten las puertas, diciendo que es un problema de terceros. Y que, con cada error, se comuniquen con Tráfico.
+
+**Cómo se sabe que está caído.** `services/mapon.js` mira **cada respuesta** de Mapon en `fetchMapon`, por donde pasan todas.
+- Un error de cuenta (*suspend*, *payment*, *blocked*… o HTTP 401/402/403) lo da por caído.
+- La siguiente respuesta buena lo levanta.
+- Los errores de negocio, como «ese conductor ya existe», no cuentan.
+- La ingesta le pregunta cada minuto (alertas y zonas), así que el aviso está siempre al día.
+- Pasados 5 minutos sin noticias, se deja intentarlo otra vez.
+- En el log sale `🚫 [MAPON] No disponible: …` al caer y `✅ [MAPON] Vuelve a responder` al volver.
+- Fuera de `mapon.js` se pregunta con `fichaje.maponDisponible()`.
+
+Además, `unidades()` ya **no guarda un padrón vacío**: si Mapon no da unidades y no hay nada anterior, lanza el error.
+
+**Qué hace cada cosa mientras tanto:**
+
+| | Con Mapon caído |
+|---|---|
+| Abrir turno | La matrícula se busca en **Vehículos** (`repo.cocheDeLaBase`: coche vivo, con su equipo de Mapon si lo tiene). El turno se apunta en el libro **sin conductor en Mapon y sin tocar el motor**, con la nota «Abierto solo en la base…». Al conductor se le dice que el motor y las puertas no están por un proveedor externo, y que si el coche no arranca o no puede entrar, se comunique con Tráfico |
+| Puertas | No se manda la orden. Se apunta en `puerta_comando` y se contesta `puertasBot.SIN_SERVICIO`: «no se pueden abrir ni cerrar… proveedor externo, ajeno a Telecab. Comunícate con Tráfico». Vale para el conductor y para la oficina |
+| Motor | `fichaje.motor()` no manda nada: ni soltar al empezar, ni «Desbloquear», ni bloquear al terminar. Quien tiene el bloqueo ve «El motor no se ha podido bloquear… Comunícate con Tráfico», y el ciclo lo apunta como no bloqueado |
+| Km del turno | No se piden: el turno se cierra con «— km» |
+| Entregar coche, relevo y terminar | Como siempre: todo eso es nuestra base |
+
+Cuando Mapon vuelve, el siguiente turno se abre como siempre. Los que se abrieron sin Mapon se quedan sin conductor en Mapon y sin km. Lo prueban la sección 16 de `scripts/probar-corte-motor.js`, `scripts/probar-mapon-caido.js` y la escena 11 de `Scripts de análisis/simular-bot-conductor.js`.
+
+**Los errores del bot mandan a Tráfico.** Desde el 05/10, cada mensaje de error del conductor termina en *«comunícate con Tráfico»*: matrícula que no se encuentra, coche de otra sede, no se pudo empezar o terminar, puertas. Lo pidió Camilo.
+
 ## Las variables de entorno
 
 Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_MAX_HORAS`, `FICHAJE_BLOQUEO_MOTOR`, `FICHAJE_MIN_PARADO`, `FICHAJE_MAX_SIN_SENAL`, `FICHAJE_MATRICULAS` y, por si alguna instalación viniera invertida, `FICHAJE_RELE_LIBRE` / `FICHAJE_RELE_BLOQUEADO` (verificado en el coche real: 0 = libre, 1 = bloqueado). `FICHAJE_TELEFONOS` **ya no se lee** desde el 24/09/2026: quién participa se decide en el ERP.

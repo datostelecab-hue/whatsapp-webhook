@@ -122,6 +122,7 @@ Conclusión: para bloqueo de motor vale `unit/change_relay` y nada más.
 > - **5 peticiones concurrentes por cuenta** (error 1011). El poller de sanciones ya consume, así que cualquier barrido de flota va con cola ≤4 (la auditoría usa 3 para dejar hueco) o directamente en serie.
 > - **Ventana máxima de 31 días** en casi todos los históricos: `route/list`, `alert/list`, `fuel/*`, `can_period`, informes. Se valida antes de llamar y se avisa con el número de días pedidos.
 > - **`driver/list.json` no pagina**: `limit`/`offset`/`page` se ignoran y siempre devuelve la lista entera.
+> - **Con la cuenta suspendida, Mapon contesta a TODO con un error** (`{"error":{"msg":"Company suspended"}}`, 05/10/2026, por un pago pendiente). `fetchMapon` lo detecta en cada respuesta y `disponible()` lo dice: el bot ficha solo en la base y no toca puertas ni motores. Ver [[Fichaje]], «Con Mapon caído». Un error así **no es un padrón vacío**: `unidades()` ya no lo guarda en caché como si no hubiera coches.
 > - **El teléfono es único entre CONDUCTORES Y USUARIOS a la vez.** `driver/create` con un teléfono que ya usa un *usuario* de la plataforma devuelve `error 1002: The phone has already been taken`, y ese usuario **no aparece en `driver/list`**, así que buscarlo allí no lo encuentra nunca (los usuarios se listan con `user/list.json`). Dejó cuatro turnos sin enlazar el 16/09/2026. El fichaje, al chocar con el 1002, crea el conductor **sin teléfono**: el nombre sobre el coche vale más que la ficha completa.
 >
 > Más en [[Trampas conocidas]].

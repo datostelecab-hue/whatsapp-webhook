@@ -240,6 +240,28 @@ async function personaPorTelefono(telefono) {
 }
 
 /**
+ * EL COCHE DE ESA MATRÍCULA SEGÚN NUESTRA BASE, para cuando Mapon no contesta
+ * (05/10/2026: la cuenta suspendida por un pago). Con la misma forma que
+ * `mapon.unidadPorMatricula` —{ unitId, matricula, vehiculo }— para que el turno
+ * se abra igual; el `unitId` es el equipo de Mapon que tenemos apuntado, por si
+ * Mapon vuelve con el turno abierto. Solo coches vivos. null si no está.
+ */
+async function cocheDeLaBase(matricula) {
+  const m = normMat(matricula);
+  if (!m) return null;
+  const r = await db.consulta(
+    `SELECT v.matricula, COALESCE(NULLIF(btrim(v.marca_modelo), ''), 'Vehículo') AS vehiculo,
+            (SELECT a.externo_id FROM vehiculo_alias a
+              WHERE a.vehiculo_id = v.id AND a.sistema = 'mapon' AND a.visto_hasta IS NULL
+              ORDER BY a.id DESC LIMIT 1) AS unit_id
+       FROM vehiculo v
+      WHERE v.matricula_norm = $1 AND v.baja_at IS NULL
+      LIMIT 1`, [m]);
+  const x = r.rows[0];
+  return x ? { unitId: x.unit_id ? String(x.unit_id) : '', matricula: x.matricula, vehiculo: x.vehiculo, deLaBase: true } : null;
+}
+
+/**
  * UNA CUENTA ACTIVA DE BOLT DE OTRA SEDE con ese teléfono, o null.
  *
  * Es como se reconoce a un conductor de BARCELONA (02/10/2026): no tienen ficha
@@ -443,6 +465,6 @@ module.exports = {
   ultimaOrdenPorCoche, ultimoTurnoPorCoche, historiaDelCoche,
   abiertoDe, abiertoDeCoche, abiertos, unitsConocidos, unitsConControl, controlMotorDe,
   crear, actualizar, quienLlevaba,
-  personaPorTelefono, cuentaDeOtraSede, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,
+  personaPorTelefono, cuentaDeOtraSede, cocheDeLaBase, cochesDelPlan, quienesLlevan, cochesConQuienNoFicha,
   fijarFichaCoche, activados, marcarRelevo, registrarOrdenMotor,
 };

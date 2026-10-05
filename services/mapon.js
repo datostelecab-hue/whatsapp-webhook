@@ -113,11 +113,55 @@ let cacheUnidades = { ts: 0, mapa: new Map() };
 // paso una vez con el enlace de unidades.
 const TIMEOUT_MAPON = Number(process.env.MAPON_TIMEOUT_MS) || 20000;
 
+// ── ¿MAPON ESTÁ DISPONIBLE? (05/10/2026) ───────────────────────────────────
+// Mapon suspende la cuenta si hay un pago pendiente: contesta a TODO con un
+// error («Company suspended»). Ese día el bot respondía «No encuentro la
+// matrícula» a cualquiera —el padrón de unidades se quedaba vacío y en caché— y
+// nadie podía abrir turno. Camilo: «mientras Mapon esté fallando, que solo fiche
+// en nuestra base de datos y deshabilitar lo de abrir y cerrar puertas».
+//
+// Se mira CADA respuesta de Mapon, aquí, por donde pasan todas: un error de
+// cuenta la da por caída y la siguiente respuesta buena la levanta. La ingesta le
+// pregunta cada minuto (alertas y zonas), así que el aviso está siempre al día.
+// Solo cuentan los errores de cuenta: un «ese conductor ya existe» es un error de
+// negocio y no dice nada de si Mapon funciona.
+//
+// `disponible()` se fía de la caída 5 minutos sin noticias; pasado eso deja
+// intentarlo otra vez, por si la ingesta se ha parado y Mapon ya ha vuelto.
+const ERROR_DE_CUENTA = /suspend|payment|unpaid|not paid|blocked|disabled|expired/i;
+const REPROBAR_MS = 5 * 60 * 1000;
+let caida = null;   // { desde, visto, motivo } mientras Mapon conteste con un error de cuenta
+
+function apuntarCaida(motivo) {
+  const ahora = Date.now();
+  if (!caida) console.error(`🚫 [MAPON] No disponible: ${motivo}. El bot ficha solo en la base y no toca puertas ni motores`);
+  caida = { desde: caida ? caida.desde : ahora, visto: ahora, motivo };
+}
+function apuntarVuelta() {
+  if (!caida) return;
+  console.log(`✅ [MAPON] Vuelve a responder (estuvo caído ${Math.round((Date.now() - caida.desde) / 60000)} min: ${caida.motivo})`);
+  caida = null;
+}
+const disponible = () => !caida || Date.now() - caida.visto > REPROBAR_MS;
+const estadoCaida = () => (caida ? { ...caida } : null);
+
 async function fetchMapon(url, opciones) {
   const ac = new AbortController();
   const reloj = setTimeout(() => ac.abort(), TIMEOUT_MAPON);
   try {
-    return await fetch(url, { ...(opciones || {}), signal: ac.signal });
+    const r = await fetch(url, { ...(opciones || {}), signal: ac.signal });
+    // Se mira la respuesta sin gastarla: quien llama la lee entera después.
+    try {
+      const t = await r.clone().text();
+      if (/^\s*\{\s*"error"/.test(t)) {
+        const err = (JSON.parse(t) || {}).error || {};
+        const motivo = String(err.msg || err.text || err.code || `HTTP ${r.status}`);
+        if (ERROR_DE_CUENTA.test(motivo) || [401, 402, 403].includes(r.status)) apuntarCaida(motivo);
+      } else if (r.ok) {
+        apuntarVuelta();
+      }
+    } catch (_) { /* una respuesta rara no decide nada */ }
+    return r;
   } catch (e) {
     if (e.name === 'AbortError') {
       throw new Error(`Mapon no respondio en ${TIMEOUT_MAPON / 1000}s (${String(url).split('?')[0]})`);
@@ -142,6 +186,14 @@ async function unidades() {
   const json = await r.json();
   const lista = (json && json.data && json.data.units) || [];
   if (!lista.length && cacheUnidades.mapa.size) return cacheUnidades.mapa;   // fallo puntual: se sigue con lo anterior
+  // SIN UNIDADES Y SIN NADA ANTERIOR, ES UN ERROR, NO UN PADRÓN VACÍO. Antes se
+  // guardaba el mapa vacío diez minutos y todas las matrículas «no existían»: el
+  // 05/10/2026, con la cuenta suspendida, el bot contestaba «No encuentro la
+  // matrícula» a todo el mundo.
+  if (!lista.length) {
+    const e = json && json.error;
+    throw new Error(`Mapon (unit/list): ${(e && (e.msg || e.text || e.code)) || 'no devolvió ninguna unidad'}`);
+  }
 
   const mapa = new Map();
   lista.forEach(u => {
@@ -1070,5 +1122,6 @@ module.exports = {
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
   comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,
   relesDeFlota, relesDeUnidad, releDeCorte, contactoPuesto, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
-  unidades, parseFecha, parseValor, normalizar
+  unidades, parseFecha, parseValor, normalizar,
+  disponible, estadoCaida
 };

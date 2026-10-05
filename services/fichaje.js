@@ -45,6 +45,10 @@
 
 const mapon = require('./mapon');
 const repo = require('./repo/fichajeTurno');
+// ¿Contesta Mapon? Si no (la cuenta suspendida por un pago, 05/10/2026), el turno
+// se abre solo en nuestra base y no se tocan ni motores ni puertas. Las pruebas
+// usan un Mapon de mentira sin esta función: para ellas, Mapon funciona.
+const maponDisponible = () => typeof mapon.disponible !== 'function' || mapon.disponible();
 // La sede de cada coche: el turno, solo en uno de la sede de la persona; y el
 // motor de otra sede (Barcelona) no se corta nunca.
 const otraSede = require('./otraSede');
@@ -127,6 +131,10 @@ async function motor(unitId, bloquear, { porOrden = false } = {}) {
   // dejaría encerrados para siempre a los coches que ya estuvieran cortados, y el
   // interruptor de seguridad sería justo lo que impide arreglarlo.
   if (bloquear && !BLOQUEO_ACTIVO) return { hecho: false, motivo: 'desactivado' };
+  // CON MAPON CAÍDO NO SE MANDA NADA (05/10/2026): la orden no llegaría, y
+  // esperar diez segundos a una confirmación imposible deja al conductor mirando
+  // el móvil. Se dice tal cual.
+  if (!maponDisponible()) return { hecho: false, motivo: 'Mapon no está disponible ahora mismo', sinMapon: true, reintentable: true };
   // UN COCHE DE OTRA SEDE NO SE CORTA NUNCA (30/09/2026, ver otraSede.js). Va
   // aquí, por donde sale TODA orden de corte: da igual quién la pida. Si no se
   // puede saber la sede, tampoco: ante la duda, no.
@@ -205,6 +213,7 @@ const liberarMotor = unitId => motor(unitId, false);
  * volver a intentarlo sin cerrar y reabrir el turno.
  */
 async function estadoMotor(unitId) {
+  if (!maponDisponible()) return { sabemos: false, motivo: 'Mapon no está disponible ahora mismo' };
   try {
     const info = await mapon.relesDeUnidad(unitId);
     const rele = mapon.releDeCorte(info);
@@ -497,7 +506,9 @@ async function conductorMapon(nombre, telefono, { crear = true } = {}) {
  * de un conductor real de lo que estaba.
  */
 async function soltarEnMapon(t) {
-  if (!t.driverId) return;
+  // Sin Mapon no se intenta: fallaría igual, y el conductor no se queda colgado
+  // de nada que importe (05/10/2026).
+  if (!t.driverId || !maponDisponible()) return;
   if (t.unitPrevia) await mapon.asignarConductor(t.driverId, t.unitPrevia);
   else await mapon.desasignarConductor(t.driverId);
 }
@@ -586,7 +597,17 @@ async function iniciar({ telefono, nombre, matricula }) {
   const quien = await quienFicha(telefono);
   const nom = quien.nombre || String(nombre || '').trim();
   if (!nom) return { ok: false, motivo: 'sin-nombre' };
-  const unidad = await mapon.unidadPorMatricula(matricula);
+  // EL COCHE, EN MAPON; Y SI MAPON NO CONTESTA, EN NUESTRA BASE (05/10/2026).
+  // Con la cuenta de Mapon suspendida nadie podía abrir turno. Camilo: «que
+  // busque en la base de datos la matrícula y que solo fiche en nuestra base».
+  // El turno se abre igual, pero sin conductor en Mapon y sin tocar el motor.
+  let unidad = null;
+  if (maponDisponible()) {
+    try { unidad = await mapon.unidadPorMatricula(matricula); }
+    catch (e) { if (maponDisponible()) throw e; }   // si ha sido la caída, se sigue por la base
+  }
+  const sinMapon = !maponDisponible();
+  if (!unidad && sinMapon) unidad = await repo.cocheDeLaBase(matricula);
   if (!unidad) return { ok: false, motivo: 'sin-matricula' };
   // EL COCHE TIENE QUE SER DE LA SEDE DE QUIEN LO COGE. Hasta el 30/09/2026 un
   // coche de Barcelona entraba como cualquiera, y un viaje de prueba con el
@@ -652,7 +673,12 @@ async function iniciar({ telefono, nombre, matricula }) {
   // (caso normal si es un conductor real que ya existía en Mapon), se apunta cuál era
   // para devolvérselo al terminar y no dejarle la ficha tocada.
   let driverId = '', notas = '', unitPrevia = '', errorMapon = '';
-  try {
+  if (sinMapon) {
+    const caida = typeof mapon.estadoCaida === 'function' ? mapon.estadoCaida() : null;
+    notas = `Abierto solo en la base: Mapon no estaba disponible${caida ? ` (${caida.motivo})` : ''}. ` +
+      'Sin conductor en Mapon ni motor.';
+    errorMapon = 'Mapon no está disponible ahora mismo';
+  } else try {
     driverId = await conductorMapon(nom, telefono);
     if (driverId) {
       const previa = await mapon.unidadDeConductor(driverId).catch(() => null);
@@ -689,23 +715,25 @@ async function iniciar({ telefono, nombre, matricula }) {
   }
   // Con el turno YA registrado se libera el motor: si algo fallara, el turno consta
   // igual y el coche se puede desbloquear a mano desde el panel.
-  const mot = motorNuestro ? await liberarMotor(unidad.unitId)
+  const mot = sinMapon ? { hecho: false, sinControl: true, sinMapon: true, motivo: 'Mapon no está disponible ahora mismo' }
+    : motorNuestro ? await liberarMotor(unidad.unitId)
     : { hecho: false, sinControl: true, motivo: `coche de ${otraSede.nombreSede(sedeCoche)}: el motor se lleva desde Mapon` };
   // Al libro del ciclo, si se soltó de verdad (o no se pudo): un coche que ya
   // estaba libre no cambia nada y no se apunta.
-  if (motorNuestro && !mot.yaEstaba && mot.motivo !== 'sin relé de corte') {
+  if (motorNuestro && !sinMapon && !mot.yaEstaba && mot.motivo !== 'sin relé de corte') {
     await apuntarCiclo(turno, 'soltar', mot, `Empieza ${p.tipo === 'viaje' ? 'un viaje' : 'su turno'}: ${nom}`);
   }
   console.log(`🟢 [FICHAJE] ${nom} (${quien.origen}) inicia ${p.tipo} en ${unidad.matricula} (unit ${unidad.unitId})` +
-    (driverId ? ` · Mapon driver ${driverId}` : ' · SIN enlace en Mapon') +
-    (BLOQUEO_ACTIVO && motorNuestro ? ` · motor ${mot.hecho ? 'LIBRE' : 'NO liberado: ' + mot.motivo}` : '') +
-    (motorNuestro ? '' : ` · ${otraSede.nombreSede(sedeCoche)}: el motor no se toca`));
+    (sinMapon ? ' · SOLO EN LA BASE: Mapon no está disponible'
+      : (driverId ? ` · Mapon driver ${driverId}` : ' · SIN enlace en Mapon') +
+        (BLOQUEO_ACTIVO && motorNuestro ? ` · motor ${mot.hecho ? 'LIBRE' : 'NO liberado: ' + mot.motivo}` : '') +
+        (motorNuestro ? '' : ` · ${otraSede.nombreSede(sedeCoche)}: el motor no se toca`)));
   // Lo que sabe la caché de esta persona ha cambiado: ahora tiene algo abierto.
   olvidar(telefono);
   // `bloqueoActivo` dice si al conductor se le habla del motor: en un coche de
-  // otra sede, nunca.
+  // otra sede, nunca; sin Mapon, tampoco (se le dice `sinMapon`).
   return { ok: true, turno, vehiculo: unidad.vehiculo, enlazado: !!driverId, errorMapon,
-    motor: mot, bloqueoActivo: BLOQUEO_ACTIVO && motorNuestro, quien, relevoDe };
+    motor: mot, bloqueoActivo: BLOQUEO_ACTIVO && motorNuestro && !sinMapon, sinMapon, quien, relevoDe };
 }
 
 /**
@@ -759,6 +787,7 @@ async function cochesDelPlan(telefono) {
 
 /** Km recorridos por el coche desde que empezó el turno hasta ahora. */
 async function kmDelTurno(turno, hasta) {
+  if (!turno.unitId || !maponDisponible()) return null;   // sin Mapon no hay km que leer
   try {
     return await mapon.kmEnVentana({ unitId: turno.unitId, fromTs: turno.inicio, tillTs: hasta || ahoraSeg() });
   } catch (e) {
@@ -991,7 +1020,7 @@ module.exports = {
   activarConductor, estadoParaPanel, soltarCoche,
   quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
   conductorMapon,
-  liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, liberarConocidos,
+  liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, liberarConocidos, maponDisponible,
   RELE_BLOQUEADO,
   horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO, MIN_PARADO,
   MATRICULAS, TODA_LA_FLOTA

@@ -57,8 +57,13 @@ const coches = {
 const porMat = m => Object.values(coches).find(c => c.matricula === String(m).toUpperCase().replace(/[^A-Z0-9]/g, ''));
 const ordenes = [];               // qué se le ha mandado de verdad a los coches
 
+// ¿Contesta Mapon? La sección 16 lo apaga (la cuenta suspendida, 05/10/2026).
+let maponVivo = true;
 const falsoMapon = {
+  disponible: () => maponVivo,
+  estadoCaida: () => (maponVivo ? null : { motivo: 'Company suspended' }),
   unidadPorMatricula: async m => {
+    if (!maponVivo) throw new Error('Mapon (unit/list): Company suspended');
     const c = porMat(m);
     return c ? { unitId: c.unitId, matricula: c.matricula, vehiculo: 'Toyota Corolla' } : null;
   },
@@ -160,6 +165,11 @@ const falsoRepo = {
   },
   // Los conductores de Barcelona: sin ficha, por su cuenta activa de BOLT (02/10/2026).
   cuentaDeOtraSede: async telefono => cuentasBcn[tel9(telefono)] || null,
+  // El coche según NUESTRA base, para cuando Mapon no contesta (05/10/2026).
+  cocheDeLaBase: async m => {
+    const c = porMat(m);
+    return c ? { unitId: String(c.unitId), matricula: c.matricula, vehiculo: 'Toyota Corolla', deLaBase: true } : null;
+  },
   cochesDelPlan: async id => Object.entries(plan).filter(([, ids]) => ids.includes(String(id)))
     .map(([matricula]) => ({ matricula, turno: 'Día' })),
   quienesLlevan: async matricula => (plan[norm(matricula)] || [])
@@ -501,6 +511,28 @@ const limpio = () => { ordenes.length = 0; };
   comprobar('un conductor de Madrid, uno de Madrid sí', r.ok && apps.length === 2);
   r = await abre('5555BCN', { sede: null });
   comprobar('la oficina con /puertas (sede vacía) abre el de Barcelona', r.ok && apps.length === 3);
+
+  console.log('\n== 16. Mapon caído (05/10/2026): se ficha solo en la base, ni motor ni puertas ==');
+  maponVivo = false;
+  limpio();
+  const cicloAntes = libroMotor.length;
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  comprobar('Ana abre turno igual: el coche sale de NUESTRA base', r.ok && r.sinMapon && r.turno.matricula === '1111AAA');
+  comprobar('… sin conductor en Mapon y con su nota', r.turno.driverId === '' && /solo en la base/i.test(r.turno.notas), r.turno.notas);
+  comprobar('… sin tocar el motor ni hablarle de él', ordenes.length === 0 && !r.bloqueoActivo && libroMotor.length === cicloAntes);
+  r = await abre('1111AAA', { sede: 'madrid' });
+  comprobar('las puertas no se mandan: «no disponible»', !r.ok && r.sinMapon && apps.length === 3 && /Tráfico/.test(puertas.SIN_SERVICIO));
+  r = await f.liberarMotor('77');
+  comprobar('«Desbloquear» tampoco manda nada', !r.hecho && r.sinMapon && ordenes.length === 0);
+  r = await f.terminar(ANA);
+  comprobar('termina su turno, sin km y sin tocar el motor', r.ok && r.turno.km == null && r.motor.sinMapon && ordenes.length === 0,
+    JSON.stringify({ ok: r.ok, km: r.turno && r.turno.km, motor: r.motor }));
+  r = await f.iniciar({ telefono: ANA, matricula: '9999ZZZ' });
+  comprobar('una matrícula que tampoco está en la base: «no la encuentro»', !r.ok && r.motivo === 'sin-matricula');
+  maponVivo = true;
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  comprobar('vuelve Mapon: el turno se abre como siempre', r.ok && !r.sinMapon && r.turno.driverId === '991');
+  await f.terminar(ANA);
 
   console.log(mal ? `\n${mal} COMPROBACION(ES) MAL` : '\nTodo el ciclo cuadra');
   process.exitCode = mal ? 1 : 0;

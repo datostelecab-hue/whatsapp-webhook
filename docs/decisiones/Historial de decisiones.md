@@ -7,6 +7,15 @@ actualizado: 2026-10-05
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-05 · Con Mapon caído, el turno se ficha en nuestra base
+
+Mapon suspendió la cuenta por un pago pendiente y el bot dejó de abrir turnos: el padrón de unidades se quedaba vacío y en caché, y todo eran «No encuentro la matrícula». Ahora `mapon.js` sabe si Mapon está caído, porque mira cada respuesta y lo levanta con la primera buena. Mientras lo esté:
+- el turno se abre con el coche de Vehículos y solo en nuestro libro;
+- las puertas y el motor no se tocan;
+- al conductor se le dice que es un proveedor externo.
+
+Cada mensaje de error del bot termina en «comunícate con Tráfico». → [[Fichaje]] · [[Mapon]]
+
 ## 2026-10-05 · Aceptado no es entregado
 
 El bot dejó de contestar porque Meta bloqueó la cuenta por un pago pendiente (131042). Meta aceptaba los mensajes y los daba por fallidos después, en un aviso que el webhook tiraba. Por eso los avisos de velocidad seguían como `avisado` y bajaban la letra a quien no se enteró. Ahora el webhook apunta cada estado que manda Meta (`whatsapp_envio`, db/176) y pasa a `error` el aviso de velocidad cuyo mensaje falló. → [[WhatsApp]]

@@ -174,11 +174,16 @@ async function handleText(phone, text) {
     const matricula = posible.toUpperCase();
     console.log(`${nombre} busca matrícula: ${matricula}`);
 
+    // Con Mapon caído (05/10/2026) ni se busca el coche: abrir y cerrar no está.
+    if (!require('../services/fichaje').maponDisponible()) {
+      await sendText(phone, puertas.SIN_SERVICIO);
+      return;
+    }
     const resultado = await buscarEnMapon(matricula);
     console.log(`📋 Resultado Mapon:`, JSON.stringify(resultado));
 
     if (!resultado || !resultado.encontrado) {
-      await sendText(phone, `❌ No encuentro la matrícula "${matricula}". Escríbela otra vez, todo junto (ejemplo: 1234ABC).`);
+      await sendText(phone, `❌ No encuentro la matrícula "${matricula}". Escríbela otra vez, todo junto (ejemplo: 1234ABC). Si es correcta, comunícate con Tráfico.`);
       return;
     }
     // Un coche de otra sede que la suya no se abre desde aquí (services/otraSede.js).
@@ -254,7 +259,8 @@ async function handleButton(phone, buttonId) {
     } else {
       await sendText(phone, r.otraSede
         ? `❌ El ${sesion.matricula} es un coche de ${require('../services/otraSede').nombreSede(r.otraSede)}: por aquí no se abre ni se cierra.`
-        : `❌ Error al ${abrir ? 'abrir' : 'cerrar'} puertas. Inténtalo de nuevo.`);
+        : r.sinMapon ? puertas.SIN_SERVICIO
+        : `❌ Error al ${abrir ? 'abrir' : 'cerrar'} puertas. Inténtalo de nuevo; si sigue igual, comunícate con Tráfico.`);
     }
 
   } else if (buttonId === 'cambiar_matricula') {
