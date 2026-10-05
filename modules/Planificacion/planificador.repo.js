@@ -543,6 +543,10 @@ async function tablero({ dia } = {}) {
   const seVan = [];                                       // lo que se va sin relevo: falta
   const quedaCubierta = x => !!(x && (x.futuro || (x.id && !x.hasta)));
   coches.forEach(coche => {
+    // LO QUE LE FALTA A ESTE COCHE, con la misma regla que las tarjetas pero sin
+    // mirar si rueda: el iceberg (iceberg.js) lo necesita para decir en qué
+    // escalón va también el coche que está en el taller.
+    coche.falta = { fijo: {}, ct: {} };
     ['dia', 'noche'].forEach((codigo, off) => {
       const lista = cubre.get(`${coche.vehiculoId}|${turnoIdDe.get(codigo)}`)
         || Array.from({ length: DIAS }, () => []);
@@ -550,13 +554,15 @@ async function tablero({ dia } = {}) {
       // de noche), mirada con lo que ya está escrito para más adelante.
       const plazaFijo = (coche.personas || [])[off] || {};
       const hayFijo = quedaCubierta(plazaFijo);
+      coche.falta.fijo[codigo] = !hayFijo;
       if (coche.operativo) {
+        // `vehiculoId` va para poder contarlo por base (iceberg.js).
         if (!plazaFijo.id && plazaFijo.futuro) {
-          planificados.push({ rol: 'FIJO', matricula: coche.matricula, turno: plazaFijo.turno,
+          planificados.push({ rol: 'FIJO', matricula: coche.matricula, vehiculoId: coche.vehiculoId, turno: plazaFijo.turno,
             nombre: plazaFijo.futuro.nombre, desde: plazaFijo.futuro.desde });
         }
         if (plazaFijo.id && plazaFijo.hasta && !plazaFijo.futuro) {
-          seVan.push({ rol: 'FIJO', matricula: coche.matricula, turno: plazaFijo.turno,
+          seVan.push({ rol: 'FIJO', matricula: coche.matricula, vehiculoId: coche.vehiculoId, turno: plazaFijo.turno,
             nombre: plazaFijo.nombre, hasta: plazaFijo.hasta });
         }
         if (!hayFijo) { if (off === 0) fijosFaltanDia++; else fijosFaltanNoche++; }
@@ -587,18 +593,22 @@ async function tablero({ dia } = {}) {
       plazasCt.forEach(x => {
         if (x.futuro && (x.futuro.dias || []).length) {
           x.futuro.dias.forEach(d => conDueno.add(d - 1));
-          if (!x.id && coche.operativo) planificados.push({ rol: 'CT', matricula: coche.matricula, turno: x.turno,
-            nombre: x.futuro.nombre, desde: x.futuro.desde, dias: x.futuro.dias.length });
+          if (!x.id && coche.operativo) planificados.push({ rol: 'CT', matricula: coche.matricula, vehiculoId: coche.vehiculoId,
+            turno: x.turno, nombre: x.futuro.nombre, desde: x.futuro.desde, dias: x.futuro.dias.length });
         } else if (x.id && !x.hasta) {
           (x.diasManual || []).forEach((v, i) => { if (v) conDueno.add(i); });
         } else if (x.id && x.hasta && coche.operativo) {
-          seVan.push({ rol: 'CT', matricula: coche.matricula, turno: x.turno, nombre: x.nombre, hasta: x.hasta });
+          seVan.push({ rol: 'CT', matricula: coche.matricula, vehiculoId: coche.vehiculoId,
+            turno: x.turno, nombre: x.nombre, hasta: x.hasta });
         }
       });
-      let ctSinDueno = 0;
+      // Los días que piden correturnos y nadie tiene escritos, rueda o no.
+      let ctSinDuenoBruto = 0;
+      pide.forEach(d => { if (!conDueno.has(d)) ctSinDuenoBruto++; });
+      coche.falta.ct[codigo] = ctSinDuenoBruto;
       // Con el fijo puesto o ya planificado: un coche cuyo fijo llega el lunes
       // también necesitará quien le releve.
-      if (coche.operativo && hayFijo) pide.forEach(d => { if (!conDueno.has(d)) ctSinDueno++; });
+      const ctSinDueno = (coche.operativo && hayFijo) ? ctSinDuenoBruto : 0;
       if (off === 0) ctDiasDia += ctSinDueno; else ctDiasNoche += ctSinDueno;
 
       let sinCubrir = 0;
@@ -688,8 +698,19 @@ async function tablero({ dia } = {}) {
   const ausentesConVuelta = sinPlaza.filter(p => p.ausente && p.finPrevisible);
   const ausentesSinFecha = sinPlaza.filter(p => p.ausente && !p.finPrevisible);
   const cuadrantes = await listarCuadrantes();
-  const zonas = (await db.consulta('SELECT id, nombre FROM base_zona WHERE activa ORDER BY nombre')).rows
-    .map(z => ({ id: z.id, nombre: z.nombre }));
+  // `SELECT *` a propósito: `orden` (el orden de Tráfico, db/178) puede no estar
+  // en una base sin esa migración, y el tablero no puede caerse por eso.
+  const zonasBase = (await db.consulta('SELECT * FROM base_zona WHERE activa')).rows
+    .map(z => ({ id: z.id, nombre: z.nombre, orden: z.orden == null ? null : Number(z.orden) }));
+
+  // EL ICEBERG (05/10/2026): las bases, el escalón y las horas instaladas de
+  // cada coche y cuadrante, y las tarjetas de cada base. Ver iceberg.js.
+  const ice = require('./iceberg').decorar({
+    coches, cuadrantes, zonas: zonasBase, gente,
+    huerfanos: huerfanos.rows, planificados, seVan,
+    plantelDe: lista => plantel(lista, gente),
+  });
+  const zonas = ice.zonas;
 
   return {
     dia: efectivo,
@@ -725,6 +746,8 @@ async function tablero({ dia } = {}) {
       estadoVeh: h.estado_operativo,
       estado: h.estado_etiqueta,
       zona: h.zona || '',
+      // La clave de su base en `resumen.porZona` (iceberg.js), para filtrarlo.
+      zonaClave: h.zonaClave || 'sin',
       turno: h.turno,
       rol: h.rol,
     })),
@@ -783,6 +806,10 @@ async function tablero({ dia } = {}) {
       seVan: seVan.sort((a, b) => a.hasta.localeCompare(b.hasta) || a.matricula.localeCompare(b.matricula)),
       pendientes: pendientes.length,
       ...plantel(coches, gente),
+      // Las mismas tarjetas, base a base, más su iceberg (iceberg.js).
+      porZona: ice.porZona,
+      // Lo que vale un turno de quien aún no tiene calificación (la mediana).
+      horasEstimadas: ice.estimada,
     },
     avisos: avisosDe(coches, gente),
   };

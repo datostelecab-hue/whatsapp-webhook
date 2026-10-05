@@ -67,10 +67,42 @@
   <%# El panel del fichaje. Nace plegado: se abre con el botón «Fichaje». %>
   <div id="panel-fichaje" class="hidden mb-4"></div>
 
+  <%# LAS BASES (05/10/2026, Camilo). El planificador empieza por las cinco bases
+      —en el orden de Tráfico, db/178— y al pinchar una se abren sus cuadrantes,
+      de mejor a peor (iceberg.js). Cada una dice de un vistazo cómo está: la
+      barra es su iceberg (completos, con plazas vacías, sin nadie) y debajo, lo
+      que le falta. %>
+  <style>
+    /* Lo que se pulsa nota el dedo: solo transform, rápido y con salida suave.
+       Elegir base es de todos los días, así que el cambio de contenido NO se
+       anima. Y nada de esto con «menos movimiento». */
+    .tc-pulsable { transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease,
+                   transform 120ms cubic-bezier(0.23, 1, 0.32, 1); }
+    .tc-pulsable:active { transform: scale(0.98); }
+    @media (prefers-reduced-motion: reduce) {
+      .tc-pulsable { transition: none; }
+      .tc-pulsable:active { transform: none; }
+    }
+  </style>
+  <nav id="bases" aria-label="Bases" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4"></nav>
+
+  <%# De qué son los números de abajo: de toda la flota o de la base abierta. %>
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+    <h3 id="k-ambito" class="text-sm font-semibold">Todas las bases</h3>
+    <span id="k-ambito-sub" class="text-xs text-telecab-muted tabular-nums"></span>
+    <span class="ml-auto"></span>
+    <button id="b-sinbase" type="button" class="tc-pulsable hidden items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border border-telecab-border text-telecab-muted hover:border-telecab-gold/40"
+            title="Coches que no están en ningún cuadrante y no tienen base. Para que salgan en una base, mételos en un cuadrante de esa base.">
+      <i class="fa-solid fa-circle-question"></i><span></span></button>
+    <button id="b-todas" type="button" class="tc-pulsable hidden items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border border-telecab-border hover:border-telecab-gold/40">
+      <i class="fa-solid fa-arrow-left text-[10px]"></i>Todas las bases</button>
+  </div>
+
   <%# Se cuentan PERSONAS, no celdas. "Huecos día 174" no decía si faltaban tres
       personas o treinta; "fijo día 61" sí. Y el correturnos se cuenta UNA vez
       aunque esté repartido entre cuadrantes: L y M con una matrícula y X y J con
-      otra son UN correturnos de cuatro días, no dos de dos. %>
+      otra son UN correturnos de cuatro días, no dos de dos. Con una base abierta,
+      las mismas tarjetas cuentan solo esa base. %>
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
     <div class="bg-telecab-card border border-telecab-border rounded-2xl p-3 shadow-soft">
       <p class="text-xs text-telecab-muted uppercase tracking-wide">Coches</p>
@@ -137,16 +169,30 @@
     </div>
   </div>
 
-  <!-- Filtro por zona + búsqueda + avisos -->
+  <!-- Búsqueda + vista + avisos. La base se elige arriba, en sus tarjetas. -->
   <div class="flex flex-wrap items-center gap-2 mb-3">
     <div class="relative">
       <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-telecab-muted text-xs"></i>
       <input id="f-busca" type="search" placeholder="Buscar conductor o matrícula…"
+             title="Sin base abierta, busca en todas."
              class="pl-8 pr-3 py-2 w-56 bg-telecab-card border border-telecab-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-telecab-gold/40">
     </div>
-    <select id="f-zona" class="px-3 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm">
-      <option value="">Todas las zonas</option>
-    </select>
+    <%# DOS VISTAS. Horizontal: una fila por coche y las plazas en columnas, con
+        todo el detalle (teléfono, zona de casa, libranza excepcional). Vertical:
+        cada coche es una tarjeta con sus plazas apiladas —día a la izquierda,
+        noche a la derecha—, para ver más coches de un golpe. La elección se
+        recuerda en el navegador. %>
+    <div id="f-vista" role="group" aria-label="Vista del cuadrante"
+         class="inline-flex p-0.5 rounded-xl bg-telecab-card border border-telecab-border">
+      <button type="button" data-vista="horizontal" aria-pressed="true"
+              title="Horizontal: una fila por coche y sus plazas en columnas, con todo el detalle."
+              class="tc-pulsable flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-sm">
+        <i class="fa-solid fa-grip-lines text-xs"></i><span>Horizontal</span></button>
+      <button type="button" data-vista="vertical" aria-pressed="false"
+              title="Vertical: cada coche en una tarjeta, con sus plazas apiladas (día a la izquierda, noche a la derecha). Caben más coches a la vista."
+              class="tc-pulsable flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-sm">
+        <i class="fa-solid fa-grip-lines-vertical text-xs"></i><span>Vertical</span></button>
+    </div>
     <label class="flex items-center gap-2 text-sm text-telecab-muted ml-1">
       <input type="checkbox" id="f-huecos" class="accent-telecab-gold"> Solo con huecos
     </label>
@@ -166,6 +212,13 @@
     <div class="flex-1 min-w-0">
       <div id="incorporaciones" class="hidden mb-3 space-y-2"></div>
       <div id="avisos" class="hidden mb-3"></div>
+      <%# Sin base abierta no se pinta ningún cuadrante: la entrada son las bases. %>
+      <div id="elige-base" class="hidden px-6 py-10 text-center border border-dashed border-telecab-border rounded-2xl">
+        <i class="fa-solid fa-arrow-up text-telecab-muted"></i>
+        <p class="mt-2 text-sm font-semibold">Elige una base para ver sus cuadrantes</p>
+        <p class="mt-1 text-xs text-telecab-muted">Salen de mejor a peor: primero los completos con más horas, luego los que tienen plazas vacías y al final los que no tienen a nadie.<br>
+          Para encontrar a alguien en todas las bases, escribe su nombre o la matrícula en el buscador.</p>
+      </div>
       <div id="cuadrante" class="space-y-6"></div>
       <div id="vacio" class="hidden p-10 text-center text-telecab-muted border border-telecab-border rounded-2xl">
         No hay coches que coincidan.
@@ -296,6 +349,17 @@
   let DIA = null;                     // fecha efectiva (AAAA-MM-DD)
   const porId = new Map();            // conductor id -> conductor
 
+  // LA BASE ABIERTA ('' = ninguna: se ven las bases y las tarjetas de toda la
+  // flota). Es la `clave` de `resumen.porZona`: el id de la base, o 'sin' para
+  // los coches que no tienen ninguna. Viaja en la dirección (#base=getafe) para
+  // que recargar o pasar el enlace abra la misma base, y «atrás» vuelva a las bases.
+  let ZONA = '';
+  let ZONA_PEDIDA = null;             // la de la dirección, hasta que llegue el tablero
+  // LA VISTA: 'horizontal' (una fila por coche) o 'vertical' (una tarjeta por
+  // coche). Se recuerda en este navegador; si no se puede, se queda en horizontal.
+  let VISTA = 'horizontal';
+  try { if (localStorage.getItem('planificador-vista') === 'vertical') VISTA = 'vertical'; } catch (_) {}
+
   const $ = s => document.querySelector(s);
   const pad = n => String(n).padStart(2, '0');
   const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -389,7 +453,11 @@
     porId.clear();
     (j.conductores || []).forEach(c => { if (c.id) porId.set(String(c.id), c); });
     $('#f-dia').value = isoAes(j.dia);
-    pintarZonas();
+    // La base de la dirección se resuelve cuando ya se sabe qué bases hay; y si
+    // la abierta desaparece (los coches sin base se colocaron), se vuelve a todas.
+    if (ZONA_PEDIDA != null) { ZONA = claveDeNombre(ZONA_PEDIDA); ZONA_PEDIDA = null; }
+    if (ZONA && !baseActual()) ZONA = '';
+    pintarBases();
     pintarKpis();
     pintarEvento();
     pintarRelevos();
@@ -662,7 +730,20 @@
 
   // ── KPIs y subtítulo ────────────────────────────────────────────────────────
   function pintarKpis() {
-    const r = T.resumen || {};
+    // Con una base abierta, las MISMAS tarjetas con los números de esa base
+    // (`resumen.porZona`, iceberg.js), contados con la misma regla que el total.
+    const r = resumenActual();
+    const b = baseActual();
+    $('#k-ambito').textContent = b ? b.zona : 'Todas las bases';
+    $('#k-ambito-sub').textContent = b
+      ? `${b.cochesTotal} coche${b.cochesTotal === 1 ? '' : 's'} · ${b.cuadrantes} cuadrante${b.cuadrantes === 1 ? '' : 's'}` +
+        (b.cochesTotal ? ` · ${fmtH(b.iceberg.horas)} h instaladas esta semana` : '')
+      : 'Las tarjetas cuentan toda la flota. Elige una base para ver solo la suya.';
+    $('#k-ambito-sub').title = b && b.cochesTotal
+      ? 'Horas instaladas: por cada día y turno de la semana, el promedio de horas por día trabajado de quien lo cubre (su calificación), sumado en los coches que ruedan.'
+      : '';
+    $('#b-todas').classList.toggle('hidden', !ZONA);
+    $('#b-todas').classList.toggle('inline-flex', !!ZONA);
     $('#k-coches').textContent = r.coches ?? '—';
     // El bruto grande, el neto al lado. El neto SOLO se pinta si difiere: cuando
     // no hay nadie de vacaciones, repetir el mismo número dos veces es ruido.
@@ -723,8 +804,10 @@
       'Son los días que libra un fijo y NADIE tiene escritos en su cuadrante, contando lo que ya está planificado ' +
       'para más adelante, a seis días por correturnos. No mira la semana que tengas abierta: un día ya pasado no es un hueco. ' +
       'Y solo de coches que tienen su fijo (o lo tienen planificado): un coche sin fijo necesita un fijo, no un correturnos.' + ayuda('CT');
-    $('#k-huerf').textContent = (T.huerfanos || []).length;
+    $('#k-huerf').textContent = b ? (r.huerfanos || 0) : (T.huerfanos || []).length;
     $('#k-banq').textContent = (T.pendientes || []).length;
+    // La gente no tiene base hasta que se le da coche: el banquillo es de todas.
+    $('#k-banq').parentElement.title = b ? 'El banquillo es de todas las bases: la gente no tiene base hasta que se le da un coche.' : '';
     const semana = (T.fechas && T.fechas.length) ? `${isoAes(T.fechas[0])} – ${isoAes(T.fechas[6])}` : '';
     $('#sub').textContent = `Semana ${semana} · efectivo desde el ${isoAes(T.dia)}`;
   }
@@ -766,20 +849,123 @@
     }).join('');
   }
 
-  function pintarZonas() {
-    const sel = $('#f-zona');
-    const previa = sel.value;
-    // Las zonas del filtro salen de los CUADRANTES (que es como filtra el tablero) y
-    // de los coches sueltos. La zona del coche a pelo suele venir vacía; la del
-    // cuadrante, no: antes el desplegable salía casi vacío o con zonas que no son.
-    const zonas = [...new Set([
-      ...(T.cuadrantes || []).map(cu => cu.zona),
-      ...(T.coches || []).filter(c => !c.cuadranteId).map(c => c.zona),
-    ].filter(Boolean))].sort();
-    sel.innerHTML = '<option value="">Todas las zonas</option>' +
-      zonas.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join('');
-    sel.value = previa;
+  // ══════════ LAS BASES (05/10/2026) ══════════
+  //
+  // Las cinco bases son la entrada al cuadrante. Cada tarjeta es su iceberg:
+  // cuántos coches están completos, cuántos tienen plazas vacías y cuántos no
+  // tienen a nadie, y lo que le falta. Al pincharla se abren sus cuadrantes y las
+  // tarjetas de arriba pasan a contar solo esa base. Las cuentas vienen hechas
+  // del servidor (`resumen.porZona`, iceberg.js): aquí solo se pintan.
+
+  const SIN_BASE = 'sin';
+  const bases = () => (T && T.resumen && T.resumen.porZona) || [];
+  const baseActual = () => (ZONA ? bases().find(b => b.clave === ZONA) || null : null);
+  const resumenActual = () => baseActual() || (T && T.resumen) || {};
+  const nombreEnUrl = s => plano(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const claveDeNombre = nombre => {
+    const b = bases().find(x => nombreEnUrl(x.zona) === nombreEnUrl(nombre));
+    return b ? b.clave : '';
+  };
+  const fmtH = n => Number(n || 0).toLocaleString('es-ES', { maximumFractionDigits: 0 });
+  const fmtH1 = n => Number(n || 0).toLocaleString('es-ES', { maximumFractionDigits: 1 });
+
+  // LA BARRA DE HORAS: llena son 14 turnos a 9 h, la S de la calificación. Es la
+  // misma escala para un coche y para la media por coche de un cuadrante.
+  const HORAS_LLENO = 14 * 9;
+  const medidor = h => `<span class="relative inline-block w-10 h-1 shrink-0 rounded-full bg-telecab-card2 overflow-hidden" aria-hidden="true">
+      <span class="absolute inset-y-0 left-0 rounded-full bg-telecab-muted" style="width:${Math.min(100, Math.round((Number(h) || 0) / HORAS_LLENO * 100))}%"></span></span>`;
+
+  // Los escalones del iceberg, de arriba abajo. Rojo, naranja y verde son
+  // ESTADOS (Identidad visual): aquí lo son.
+  const ESCALON = {
+    completo:  { tit: 'Completos', punto: 'bg-telecab-green',
+                 txt: 'Todas sus plazas tienen dueño, hoy o ya escrito. De más a menos horas instaladas.' },
+    vacante:   { tit: 'Con plazas vacías', punto: 'bg-telecab-warn',
+                 txt: 'Les falta un fijo o días de correturnos. De más a menos horas instaladas.' },
+    vacio:     { tit: 'Sin nadie', punto: 'bg-telecab-red',
+                 txt: 'Ni una persona puesta ni por llegar.' },
+    sinCoches: { tit: 'Sin coches', punto: 'bg-telecab-muted',
+                 txt: 'Cuadrantes creados sin ningún bloque todavía.' },
+  };
+  const escalonDe = x => (x && x.iceberg && ESCALON[x.iceberg.escalon]) ? x.iceberg.escalon : 'vacante';
+
+  function tarjetaBase(b) {
+    const on = ZONA === b.clave;
+    const ic = b.iceberg || {};
+    const total = b.cochesTotal || 0;
+    const fijos = (b.fijosQueFaltanDia || 0) + (b.fijosQueFaltanNoche || 0);
+    const cts = (b.ctQueFaltanDia || 0) + (b.ctQueFaltanNoche || 0);
+    const falta = !total ? 'Sin coches todavía'
+      : (fijos || cts) ? 'Faltan ' + [fijos ? `${fijos} fijo${fijos === 1 ? '' : 's'}` : '', cts ? `${cts} CT` : ''].filter(Boolean).join(' · ')
+      : 'Nada por cubrir';
+    const tramo = (n, cls) => (n ? `<span class="${cls}" style="flex:${n} 1 0%"></span>` : '');
+    const titulo = !total
+      ? `${b.zona} todavía no tiene coches. Pincha para crear su primer cuadrante.`
+      : `${b.zona}: ${total} coches en ${b.cuadrantes} cuadrantes.\n` +
+        `${ic.completo} completos · ${ic.vacante} con plazas vacías · ${ic.vacio} sin nadie` +
+        (ic.parados ? ` · ${ic.parados} parado(s) en taller o siniestro` : '') + '.\n' +
+        `Faltan ${b.fijosQueFaltanDia || 0} fijo(s) de día y ${b.fijosQueFaltanNoche || 0} de noche, ` +
+        `y ${b.ctQueFaltanDia || 0} CT de día y ${b.ctQueFaltanNoche || 0} de noche.\n` +
+        'Pincha para ver sus cuadrantes, de mejor a peor.';
+    return `
+      <button type="button" data-base="${esc(b.clave)}" aria-pressed="${on}" title="${esc(titulo)}"
+              class="tc-pulsable text-left rounded-2xl border p-3 min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-telecab-gold/50
+                     ${on ? 'border-telecab-gold bg-telecab-gold/5' : 'border-telecab-border bg-telecab-card hover:border-telecab-gold/40'}">
+        <span class="flex items-baseline gap-2 min-w-0">
+          <span class="font-semibold truncate ${on ? 'text-telecab-gold' : ''}">${esc(b.zona)}</span>
+          <span class="ml-auto text-xs text-telecab-muted tabular-nums whitespace-nowrap">${total} coche${total === 1 ? '' : 's'}</span>
+        </span>
+        <span class="mt-2 flex h-1.5 gap-px rounded-full overflow-hidden bg-telecab-card2" aria-hidden="true">
+          ${tramo(ic.completo, 'bg-telecab-green')}${tramo(ic.vacante, 'bg-telecab-warn')}${tramo(ic.vacio, 'bg-telecab-red')}
+        </span>
+        <span class="mt-2 block text-[11px] text-telecab-muted tabular-nums truncate">${total
+          ? `${ic.completo} completo${ic.completo === 1 ? '' : 's'} · ${ic.vacante} con vacías${ic.vacio ? ` · ${ic.vacio} sin nadie` : ''}`
+          : 'Ningún cuadrante'}</span>
+        <span class="block text-xs font-semibold mt-0.5 truncate ${total && (fijos || cts) ? 'text-telecab-warn' : 'text-telecab-muted'}">${falta}</span>
+      </button>`;
   }
+
+  function pintarBases() {
+    const todas = bases();
+    const visibles = todas.filter(b => b.clave !== SIN_BASE);
+    $('#bases').innerHTML = visibles.map(tarjetaBase).join('');
+    // Los coches sin base no son una sexta base: son coches por colocar. Salen
+    // como un aviso pequeño, y solo si los hay.
+    const sin = todas.find(b => b.clave === SIN_BASE);
+    const bSin = $('#b-sinbase');
+    bSin.classList.toggle('hidden', !sin);
+    bSin.classList.toggle('inline-flex', !!sin);
+    if (sin) {
+      bSin.querySelector('span').textContent = `${sin.cochesTotal} coche${sin.cochesTotal === 1 ? '' : 's'} sin base`;
+      bSin.setAttribute('aria-pressed', String(ZONA === SIN_BASE));
+      bSin.classList.toggle('border-telecab-gold', ZONA === SIN_BASE);
+      bSin.classList.toggle('text-telecab-gold', ZONA === SIN_BASE);
+    }
+  }
+
+  /**
+   * Abrir una base ('' = volver a todas). Con `apilar`, el navegador lo apunta
+   * como un paso: «atrás» vuelve a las bases en vez de salir del planificador.
+   */
+  function elegirBase(clave, { apilar = true } = {}) {
+    ZONA = clave || '';
+    const b = baseActual();
+    const destino = location.pathname + location.search + (b ? '#base=' + nombreEnUrl(b.zona) : '');
+    try {
+      if (apilar) history.pushState({ base: ZONA }, '', destino);
+      else history.replaceState({ base: ZONA }, '', destino);
+    } catch (_) { /* sin historial, la base se elige igual */ }
+    pintarBases();
+    pintarKpis();
+    pintar();
+    pintarLaterales();
+    if (b) window.scrollTo({ top: Math.min(window.scrollY, $('#bases').offsetTop), behavior: 'auto' });
+  }
+
+  const baseDeLaUrl = () => {
+    const m = String(location.hash || '').match(/base=([^&]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  };
 
   // ── El cuadrante, por zona ───────────────────────────────────────────────────
   const plano = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -788,16 +974,17 @@
   // cuenta "días sin cubrir": casi todo coche tiene el finde sin CT y eso mostraba a
   // todos con "solo con huecos".)
   const tieneHueco = c => [0, 1, 2, 3].some(s => !((c.personas || [])[s] || {}).id);
-  // La zona por la que filtrar es la del CUADRANTE del coche (la del coche a pelo
-  // suele estar vacía); los sueltos, por la suya.
-  const zonaDeCoche = (c, zc) => (c.cuadranteId && zc.get(String(c.cuadranteId))) || c.zona || '';
+  // LA BASE de un coche o de un cuadrante la dice el servidor (iceberg.js): la
+  // del CUADRANTE si el coche está en uno, y si no, la suya. Así lo que se ve y
+  // lo que cuentan las tarjetas no se pueden separar.
+  const zonaDe = x => (x && x.iceberg && x.iceberg.zona) || SIN_BASE;
+  const ordenIce = x => (x && x.iceberg && x.iceberg.orden != null ? x.iceberg.orden : 1e6);
+  const ordenBase = clave => { const i = bases().findIndex(b => b.clave === clave); return i < 0 ? 1e3 : i; };
   function cochesVisibles() {
-    const zona = $('#f-zona').value;
     const soloHuecos = $('#f-huecos').checked;
     const q = plano($('#f-busca').value).trim();
-    const zc = new Map((T.cuadrantes || []).map(cu => [String(cu.id), cu.zona]));
     return (T.coches || []).filter(c => {
-      if (zona && zonaDeCoche(c, zc) !== zona) return false;
+      if (ZONA && zonaDe(c) !== ZONA) return false;
       if (soloHuecos && !tieneHueco(c)) return false;
       if (q) {
         // TAMBIÉN LOS QUE ESTÁN POR LLEGAR. Una plaza puede estar vacía hoy y
@@ -814,7 +1001,7 @@
         if (!txt.includes(q)) return false;
       }
       return true;
-    });
+    }).sort((a, b) => ordenIce(a) - ordenIce(b));
   }
 
   // Las 4 columnas del Excel: Fijo día/noche, CT día/noche (slots 0,1,2,3).
@@ -876,8 +1063,29 @@
     return wrap;
   }
 
+  /** El cuerpo de un grupo de coches, en la vista elegida. */
+  const cochesEnVista = (lista, enCuadrante) =>
+    (VISTA === 'vertical' ? tarjetasCoches(lista, enCuadrante) : tablaCoches(lista, enCuadrante));
+
+  /**
+   * Las horas instaladas de un cuadrante, para su cabecera. Se ordena por la
+   * MEDIA por coche: con la suma, uno de tres coches flojos pasaba delante de
+   * uno de dos muy buenos solo por tener más coches.
+   */
+  function horasDelCuadrante(cu) {
+    const ic = cu.iceberg;
+    if (!ic || !ic.coches) return '';
+    const tit = `Horas instaladas esta semana: ${fmtH1(ic.horas)} h entre sus ${ic.coches} coches, ${fmtH1(ic.media)} h de media por coche.\n` +
+      'Cada turno suma el promedio de horas por día trabajado de quien lo cubre. El cuadrante se ordena por la media, ' +
+      'para que uno de tres coches no pase delante solo por tener más. La barra llena son 14 turnos a 9 h.';
+    return `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted tabular-nums" title="${esc(tit)}">
+      ${medidor(ic.media)}<b class="text-telecab-text font-semibold">${fmtH(ic.horas)} h</b>
+      <span>· ${fmtH(ic.media)} h por coche</span></span>`;
+  }
+
   function seccionCuadrante(cu, lista) {
     const sec = document.createElement('section');
+    sec.dataset.cuadrante = cu.id;
     const ctDia = ctDelCuadrante(lista, 2), ctNoche = ctDelCuadrante(lista, 3);
     const chipCT = (persona, turno) => {
       const nombre = persona === 'varios' ? 'Varios' : (persona ? persona.nombre : null);
@@ -890,9 +1098,11 @@
     cab.className = 'flex flex-wrap items-center gap-2 mb-2';
     cab.innerHTML = `
       <h3 class="text-sm font-semibold uppercase tracking-wide text-telecab-gold flex items-center gap-2">
-        <i class="fa-solid fa-object-group"></i>${esc(cu.nombre)}
+        <span class="w-2 h-2 rounded-full ${ESCALON[escalonDe(cu)].punto}" title="${esc(ESCALON[escalonDe(cu)].tit)}"></span>
+        ${esc(cu.nombre)}
         <span class="text-telecab-muted font-normal normal-case">${cu.zona ? esc(cu.zona) + ' · ' : ''}${lista.length} bloque(s)</span>
       </h3>
+      ${horasDelCuadrante(cu)}
       <button data-bloque class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-telecab-card border border-telecab-border hover:border-telecab-gold/50 transition"><i class="fa-solid fa-plus"></i> Bloque</button>
       <div class="flex items-center gap-2 ml-1">${chipCT(ctDia, 'día')}${chipCT(ctNoche, 'noche')}</div>
       ${lista.length ? `<span class="ml-auto"></span>${chipAvisoCuadrante(lista)}<button data-waturnos class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-600/15 text-green-400 hover:bg-green-600/25 transition"
@@ -909,7 +1119,7 @@
     cab.querySelector('[data-borrar-cua]').addEventListener('click', () => borrarCuadranteUI(cu.id, cu.nombre));
     sec.appendChild(cab);
     if (lista.length) {
-      sec.appendChild(tablaCoches(lista, true));
+      sec.appendChild(cochesEnVista(lista, true));
     } else {
       const vac = document.createElement('p');
       vac.className = 'text-xs text-telecab-muted px-3 py-4 border border-dashed border-telecab-border rounded-2xl text-center';
@@ -932,13 +1142,73 @@
         <i class="fa-brands fa-whatsapp"></i> Enviar turnos</button>`;
     cab.querySelector('[data-waturnos]').addEventListener('click', e => enviarTurnosCuadrante('coches sueltos', lista, e.currentTarget));
     sec.appendChild(cab);
-    sec.appendChild(tablaCoches(lista, false));
+    sec.appendChild(cochesEnVista(lista, false));
     return sec;
   }
 
+  /**
+   * La franja que abre cada escalón del iceberg: qué es, cuántos cuadrantes y
+   * coches caen en él, y en qué orden van.
+   */
+  function franjaEscalon(escalon, cuadrantes, porCua) {
+    const e = ESCALON[escalon];
+    const coches = cuadrantes.reduce((s, cu) => s + (porCua.get(String(cu.id)) || []).length, 0);
+    const div = document.createElement('div');
+    div.className = 'flex items-center gap-3 pt-1';
+    div.innerHTML = `
+      <span class="w-2.5 h-2.5 rounded-full shrink-0 ${e.punto}"></span>
+      <h3 class="text-xs font-semibold uppercase tracking-wider whitespace-nowrap">${esc(e.tit)}</h3>
+      <span class="text-xs text-telecab-muted tabular-nums whitespace-nowrap" title="${esc(e.txt)}">${cuadrantes.length} cuadrante${cuadrantes.length === 1 ? '' : 's'}${
+        coches ? ` · ${coches} coche${coches === 1 ? '' : 's'}` : ''}</span>
+      <span class="flex-1 h-px bg-telecab-border"></span>`;
+    return div;
+  }
+
+  /** Con el buscador y sin base abierta, cada base lleva su encabezado. */
+  function cabeceraBase(clave) {
+    const b = bases().find(x => x.clave === clave);
+    const div = document.createElement('div');
+    div.className = 'flex items-center gap-3 pt-1';
+    div.innerHTML = `
+      <h3 class="text-sm font-semibold whitespace-nowrap">${esc(b ? b.zona : 'Sin base')}</h3>
+      <span class="flex-1 h-px bg-telecab-border"></span>`;
+    return div;
+  }
+
+  /** Una base abierta sin cuadrantes (Aravaca el día que se abrió). */
+  function baseVacia(b) {
+    const div = document.createElement('div');
+    div.className = 'px-6 py-10 text-center border border-dashed border-telecab-border rounded-2xl';
+    div.innerHTML = `
+      <p class="text-sm font-semibold">${esc(b.zona)} todavía no tiene cuadrantes</p>
+      ${PUEDE_EDITAR ? '<p class="mt-1 text-xs text-telecab-muted">Crea uno y añádele bloques (días + matrícula).</p>' : ''}
+      ${PUEDE_EDITAR && b.clave !== SIN_BASE ? `<button type="button" data-crear class="tc-pulsable mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-telecab-gold text-telecab-dark font-semibold text-sm">
+        <i class="fa-solid fa-plus"></i>Nuevo cuadrante en ${esc(b.zona)}</button>` : ''}`;
+    const btn = div.querySelector('[data-crear]');
+    if (btn) btn.addEventListener('click', nuevoCuadrante);
+    return div;
+  }
+
+  // EL ICEBERG. Con una base abierta, sus cuadrantes de mejor a peor: primero
+  // los completos, luego los que tienen plazas vacías y al final los que no
+  // tienen a nadie; dentro de cada escalón, los que ruedan antes que los del
+  // taller, y más horas instaladas primero. El ORDEN lo pone el servidor
+  // (`iceberg.orden`): aquí solo se agrupa. Ya no se ordena por número.
   function pintar() {
     const cont = $('#cuadrante');
-    const zona = $('#f-zona').value;
+    const buscando = !!plano($('#f-busca').value).trim();
+    const filtrando = buscando || $('#f-huecos').checked;
+
+    // Sin base abierta y sin buscar, la entrada son las bases de arriba.
+    const enEspera = !ZONA && !buscando;
+    $('#elige-base').classList.toggle('hidden', !enEspera);
+    if (enEspera) {
+      cont.innerHTML = '';
+      cont.classList.add('hidden');
+      $('#vacio').classList.add('hidden');
+      return;
+    }
+
     const coches = cochesVisibles();
 
     // Coches por cuadrante; los sueltos aparte.
@@ -948,22 +1218,38 @@
       else sueltos.push(c);
     });
 
-    // TODOS los cuadrantes (incluidos los vacíos, recién creados), filtrados por
-    // zona. Al buscar, solo los que tengan coches que coincidan (los vacíos se ocultan).
-    // Al FILTRAR (buscando o solo-huecos), un cuadrante sin coches que pasen el filtro
-    // se oculta: si no, salía como "vacío" y parecía que el filtro no hacía nada. Con
-    // solo el filtro de zona, los vacíos de esa zona siguen (para poder añadir bloques).
-    const buscando = !!plano($('#f-busca').value).trim();
-    const filtrando = buscando || $('#f-huecos').checked;
-    const cuadrantes = (T.cuadrantes || []).filter(cu =>
-      (!zona || cu.zona === zona) && (!filtrando || (porCua.get(String(cu.id)) || []).length));
+    // Los cuadrantes de la base (incluidos los vacíos, recién creados). Al
+    // FILTRAR (buscando o solo-huecos), un cuadrante sin coches que pasen el
+    // filtro se oculta: si no, salía como "vacío" y parecía que el filtro no
+    // hacía nada. Sin filtro, los vacíos siguen (para poder añadir bloques).
+    const cuadrantes = (T.cuadrantes || [])
+      .filter(cu => (!ZONA || zonaDe(cu) === ZONA) && (!filtrando || (porCua.get(String(cu.id)) || []).length))
+      .sort((a, b) => (ZONA ? 0 : ordenBase(zonaDe(a)) - ordenBase(zonaDe(b))) || ordenIce(a) - ordenIce(b));
 
     const hayAlgo = cuadrantes.length || sueltos.length;
+    const b = baseActual();
+    cont.innerHTML = '';
+    if (!hayAlgo && b && !filtrando) {
+      cont.classList.remove('hidden');
+      $('#vacio').classList.add('hidden');
+      cont.appendChild(baseVacia(b));
+      return;
+    }
     $('#vacio').classList.toggle('hidden', hayAlgo > 0);
     cont.classList.toggle('hidden', !hayAlgo);
 
-    cont.innerHTML = '';
-    cuadrantes.forEach(cu => cont.appendChild(seccionCuadrante(cu, porCua.get(String(cu.id)) || [])));
+    let tramo = null;
+    cuadrantes.forEach(cu => {
+      // Con base: una franja por escalón. Buscando en todas: una por base.
+      const clave = ZONA ? escalonDe(cu) : zonaDe(cu);
+      if (clave !== tramo) {
+        tramo = clave;
+        cont.appendChild(ZONA
+          ? franjaEscalon(clave, cuadrantes.filter(x => escalonDe(x) === clave), porCua)
+          : cabeceraBase(clave));
+      }
+      cont.appendChild(seccionCuadrante(cu, porCua.get(String(cu.id)) || []));
+    });
     if (sueltos.length) cont.appendChild(seccionSueltos(sueltos));
   }
 
@@ -981,6 +1267,7 @@
                      bg-telecab-${tono}/15 text-telecab-${tono} border border-telecab-${tono}/30 hover:bg-telecab-${tono}/25 transition"
               data-estado>${esc(ESTADO_ETQ.get(coche.estadoVeh) || coche.estadoVeh)}<i class="fa-solid fa-chevron-down text-[9px]"></i></button>`;
     tdMat.querySelector('[data-estado]').addEventListener('click', () => cambiarEstado(coche));
+    tdMat.insertAdjacentHTML('beforeend', lineaHoras(coche));
     // Taller/siniestro: el coche se queda en su bloque, pero avisa de que hay que
     // cambiar la matrícula ahí (sus conductores quedan "huérfanos imaginarios").
     if (!coche.visibleCobertura) {
@@ -1040,6 +1327,174 @@
     tr.appendChild(tdAcc);
 
     return tr;
+  }
+
+  // ── Las horas instaladas de un coche, y lo que le falta ─────────────────────
+  // Por cada día y turno de la semana, el promedio de horas por día trabajado
+  // de quien lo cubre (su calificación). Un turno sin nadie suma 0, y quien aún
+  // no tiene calificación cuenta con la mediana de la flota (iceberg.js).
+  function tituloHoras(coche) {
+    const ic = coche.iceberg || {};
+    return `Horas instaladas esta semana: ${fmtH1(ic.horas)} h en ${ic.turnos} de 14 turnos.\n` +
+      'Cada turno suma el promedio de horas por día trabajado de quien lo cubre (su calificación); un turno sin nadie suma 0.' +
+      (ic.estimados ? `\n${ic.estimados} turno(s) con alguien sin calificación todavía: cuentan ${fmtH1((T.resumen || {}).horasEstimadas)} h, la mediana de la flota.` : '') +
+      '\nLa barra llena son 14 turnos a 9 h.';
+  }
+
+  /** «falta fijo noche · 2 días de CT de día», o nada si está completo. */
+  function textoFalta(coche) {
+    const f = (coche.iceberg || {}).falta;
+    if (!f) return '';
+    const dias = n => `${n} día${n === 1 ? '' : 's'}`;
+    return [
+      f.fijoDia ? 'fijo de día' : '', f.fijoNoche ? 'fijo de noche' : '',
+      f.ctDiasDia ? `${dias(f.ctDiasDia)} de CT de día` : '', f.ctDiasNoche ? `${dias(f.ctDiasNoche)} de CT de noche` : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  function lineaHoras(coche) {
+    const ic = coche.iceberg;
+    if (!ic) return '';
+    const falta = textoFalta(coche);
+    return `
+      <div class="mt-1 flex items-center gap-1.5 text-[11px] text-telecab-muted tabular-nums" title="${esc(tituloHoras(coche))}">
+        ${medidor(ic.horas)}<span><b class="text-telecab-text font-semibold">${fmtH(ic.horas)} h</b>${ic.huecos ? ` · ${ic.huecos} sin nadie` : ''}</span>
+      </div>
+      ${falta ? `<div class="mt-0.5 text-[11px] text-telecab-warn max-w-[11rem] whitespace-normal leading-tight">Falta ${esc(falta)}</div>` : ''}`;
+  }
+
+  // ── LA VISTA VERTICAL: una tarjeta por coche ────────────────────────────────
+  // Lo mismo que la fila de la tabla, apilado: arriba la matrícula, su estado y
+  // sus horas; debajo las plazas, el DÍA a la izquierda y la NOCHE a la derecha.
+  // El teléfono y la zona de casa van en la ayuda del nombre para que quepan más
+  // coches a la vista; la libranza excepcional y la zona de casa se editan en la
+  // vista horizontal.
+  function tarjetasCoches(lista, enCuadrante) {
+    const wrap = document.createElement('div');
+    wrap.className = 'grid gap-2 grid-cols-1 md:grid-cols-2 2xl:grid-cols-3';
+    lista.forEach(coche => wrap.appendChild(tarjetaCoche(coche, enCuadrante)));
+    return wrap;
+  }
+
+  function tarjetaCoche(coche, enCuadrante) {
+    const art = document.createElement('article');
+    const tono = tonoEstado(coche.estadoVeh);
+    const parado = !coche.visibleCobertura;
+    const ic = coche.iceberg || {};
+    const falta = textoFalta(coche);
+    const descTxt = (coche.descanso && coche.descanso.length) ? diasTexto(coche.descanso) : '';
+    art.className = `rounded-2xl border p-3 flex flex-col gap-2 min-w-0 ${parado ? 'border-telecab-red/40 bg-telecab-red/5' : 'border-telecab-border bg-telecab-card'}`;
+    const accion = (data, icono, titulo) =>
+      `<button type="button" ${data} title="${esc(titulo)}" class="w-7 h-7 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition-colors"><i class="fa-solid ${icono} text-xs"></i></button>`;
+    art.innerHTML = `
+      <header class="flex items-center gap-2 min-w-0">
+        <span class="w-2 h-2 rounded-full shrink-0 ${ESCALON[escalonDe(coche)].punto}" title="${esc(ESCALON[escalonDe(coche)].tit)}"></span>
+        <span class="font-semibold tabular-nums">${esc(coche.matricula)}</span>
+        <button type="button" data-estado class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-semibold
+                       bg-telecab-${tono}/15 text-telecab-${tono} border border-telecab-${tono}/30 hover:bg-telecab-${tono}/25 transition-colors">
+          ${esc(ESTADO_ETQ.get(coche.estadoVeh) || coche.estadoVeh)}<i class="fa-solid fa-chevron-down text-[8px]"></i></button>
+        <span class="ml-auto flex items-center gap-1.5 text-[11px] text-telecab-muted tabular-nums whitespace-nowrap" title="${esc(tituloHoras(coche))}">
+          ${medidor(ic.horas)}<b class="text-telecab-text font-semibold">${fmtH(ic.horas)} h</b></span>
+      </header>
+      <div class="flex items-center gap-1 -mt-1">
+        <button type="button" data-desc title="Editar el descanso del coche (día y noche)"
+                class="px-1.5 py-0.5 rounded-md text-[11px] font-semibold border transition-colors hover:border-telecab-gold/50
+                       ${descTxt ? 'bg-telecab-gold/10 text-telecab-gold border-telecab-gold/30' : 'border-dashed border-telecab-border text-telecab-muted'}">
+          ${descTxt ? 'libra ' + esc(descTxt) : 'sin descanso'}</button>
+        ${falta ? `<span class="min-w-0 truncate text-[11px] text-telecab-warn" title="${esc('Falta ' + falta)}">Falta ${esc(falta)}</span>` : ''}
+        <span class="ml-auto flex items-center shrink-0">
+          ${accion('data-cua', enCuadrante ? 'fa-object-ungroup' : 'fa-object-group', enCuadrante ? 'Sacar del cuadrante' : 'Meter en un cuadrante')}
+          ${accion('data-swap', 'fa-shuffle', 'Intercambiar coche por otro (cada tripulación se queda en su cuadrante y días; solo cambia la matrícula)')}
+          ${accion('data-cambiar', 'fa-right-left', 'Cambiar de coche (llevarse la tripulación a una matrícula libre)')}
+        </span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1" data-plazas>
+        <div class="px-2 text-[10px] font-semibold uppercase tracking-wider text-telecab-muted"><i class="fa-solid fa-sun mr-1"></i>Día</div>
+        <div class="px-2 text-[10px] font-semibold uppercase tracking-wider text-telecab-muted"><i class="fa-solid fa-moon mr-1"></i>Noche</div>
+      </div>`;
+    art.querySelector('[data-estado]').addEventListener('click', () => cambiarEstado(coche));
+    art.querySelector('[data-desc]').addEventListener('click', () => fijarDescansoCoche(coche));
+    art.querySelector('[data-cua]').addEventListener('click', () => enCuadrante ? sacarDeCuadrante(coche) : meterEnCuadrante(coche));
+    art.querySelector('[data-swap]').addEventListener('click', () => reemplazarMatriculaUI(coche));
+    art.querySelector('[data-cambiar]').addEventListener('click', () => cambiarCoche(coche));
+    // Las plazas van por orden de slot (0 fijo día, 1 fijo noche, 2 CT día…):
+    // en una rejilla de dos columnas eso deja el día a la izquierda.
+    const rejilla = art.querySelector('[data-plazas]');
+    cols().forEach(col => rejilla.appendChild(plazaCompacta(coche, (coche.personas || [])[col.slot] || {}, col)));
+    if (parado) {
+      const tieneGente = (coche.personas || []).some(p => p && p.id);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'self-start text-[11px] text-telecab-red font-semibold ' + (tieneGente ? 'hover:underline' : 'cursor-default');
+      b.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${tieneGente ? 'cambiar matrícula aquí' : 'fuera de cobertura'}`;
+      if (tieneGente) {
+        b.title = 'Intercambia el coche por otro (libre o con bloque): las tripulaciones se quedan en su cuadrante y días, cambia la matrícula';
+        b.addEventListener('click', () => reemplazarMatriculaUI(coche));
+      }
+      art.appendChild(b);
+    }
+    return art;
+  }
+
+  /** Una plaza en una línea: quién, su chip de horas y, debajo, lo que hay que saber. */
+  function plazaCompacta(coche, p, col) {
+    const esFijo = col.slot < 2;
+    const rol = esFijo ? 'Fijo' : (col.refuerzo ? 'CT2' : 'CT');
+    const persona = p.id ? porId.get(String(p.id)) : null;
+    const div = document.createElement('div');
+    div.className = 'min-w-0';
+    const notas = [];
+    if (p.futuro) notas.push(`<span class="text-telecab-gold"><i class="fa-solid fa-arrow-right-long"></i> ${esc((p.futuro.nombre || '').split(' ')[0])} llega ${esc(isoAes(p.futuro.desde).slice(0, 5))}</span>`);
+    if (p.vacante) notas.push(`<span class="${p.vacante.estado === 'proceso' ? 'text-telecab-violet' : 'text-sky-400'}" title="${esc('Vacante ' + p.vacante.codigo + (p.vacante.candidato ? ' · ' + p.vacante.candidato : ' · sin candidato todavía'))}"><i class="fa-solid fa-briefcase text-[9px]"></i> ${esc(p.vacante.codigo)}</span>`);
+
+    if (p.id) {
+      const av = avisoAusencia(persona);
+      const dias = esFijo ? '' : ((p.diasManual || []).some(Boolean)
+        ? (p.diasManual || []).map((v, i) => (v ? DIAS_LETRA[i] : null)).filter(Boolean).join(' ')
+        : diasTexto((p.diasSugeridos || []).map(d => d + 1)));
+      if (!esFijo) notas.unshift(`<span>${dias ? esc(dias) : 'sin días'}</span>`);
+      if (av) notas.unshift(`<span class="text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}</span>`);
+      const nombre = persona ? persona.nombre : p.nombre;
+      const ayuda = [nombre, (persona && persona.telefono) ? 'Tel. ' + persona.telefono : 'Sin teléfono',
+        persona && persona.barrio ? 'Vive en ' + persona.barrio : '', 'Pincha para cambiar o quitar.'].filter(Boolean).join('\n');
+      // El nombre se queda con todo el ancho de la línea; el chip de horas y lo
+      // demás van debajo. Con el chip al lado, en una tarjeta estrecha el nombre
+      // se quedaba en «Carl…».
+      const rend = chipRend(persona && persona.rendimiento);
+      div.innerHTML = `
+        <button type="button" data-asignar title="${esc(ayuda)}" class="group w-full text-left px-2 py-1 rounded-lg hover:bg-telecab-card2 transition-colors">
+          <span class="flex items-center gap-1.5 min-w-0">
+            <span class="text-[10px] font-semibold text-telecab-muted w-7 shrink-0">${rol}</span>
+            <span class="min-w-0 truncate text-[13px] ${av && av.tachado ? 'line-through text-telecab-muted' : 'font-medium group-hover:text-telecab-gold'}">${esc(nombre)}</span>
+            ${llaveFichaje(persona)}
+          </span>
+          ${(rend || notas.length) ? `<span class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 pl-[2.125rem] text-[10px] leading-tight text-telecab-muted">${rend}${notas.join('')}</span>` : ''}
+        </button>`;
+    } else {
+      // Un hueco salta a la vista: el de fijo en rojo, el de CT en naranja, el que
+      // ya está prometido en una vacante en azul (hay que esperarlo, no buscarlo).
+      const cls = p.vacante ? 'border-sky-500/60 bg-sky-500/10 text-sky-400'
+        : esFijo ? 'border-telecab-red/60 bg-telecab-red/10 text-telecab-red'
+          : 'border-telecab-warn/60 bg-telecab-warn/10 text-telecab-warn';
+      div.innerHTML = `
+        <button type="button" data-asignar class="w-full text-left px-2 py-1 rounded-lg border border-dashed text-xs font-semibold transition hover:brightness-110 ${cls}">
+          <span class="text-[10px] w-7 inline-block">${rol}</span>${p.vacante ? 'En vacante' : 'Hueco'}
+        </button>
+        ${notas.length ? `<span class="flex flex-wrap gap-x-2 pl-[2.125rem] mt-0.5 text-[10px] leading-tight text-telecab-muted">${notas.join('')}</span>` : ''}`;
+    }
+    div.querySelector('[data-asignar]').addEventListener('click', () => asignar(coche, p, col));
+    // Ausente y ocupando plaza: el atajo para poner a quien lo cubre.
+    if (p.id && persona && persona.ausente) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ml-[2.125rem] mt-0.5 text-[10px] font-semibold text-telecab-gold hover:underline';
+      b.innerHTML = '<i class="fa-solid fa-user-plus"></i> Cubrir';
+      b.title = `Poner a alguien mientras ${persona.nombre.split(' ')[0]} no está.` +
+        (persona.vuelveEl ? ` La plaza vuelve a ser suya el ${isoAes(persona.vuelveEl)}.` : ' Su ausencia no tiene fecha de vuelta.');
+      b.addEventListener('click', e => { e.stopPropagation(); cubrirUI(coche, p, col, persona); });
+      div.appendChild(b);
+    }
+    return div;
   }
 
   // El aviso de ausencia de un conductor: vacaciones (libera la plaza -> hueco),
@@ -1224,8 +1679,8 @@
 
   // ── Paneles laterales ─────────────────────────────────────────────────────
   function pintarLaterales() {
-    // Huérfanos
-    const huerf = T.huerfanos || [];
+    // Huérfanos: con una base abierta, los de esa base (lo mismo que su tarjeta).
+    const huerf = (T.huerfanos || []).filter(h => !ZONA || (h.zonaClave || SIN_BASE) === ZONA);
     $('#panel-huerfanos').classList.toggle('hidden', huerf.length === 0);
     $('#huerfanos').innerHTML = huerf.map(h => `
       <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-telecab-card border border-telecab-border">
@@ -1593,7 +2048,7 @@
    * el segundo cuadrante, no que sobre él.
    */
   async function verCtFlojos() {
-    const lista = ((T.resumen || {}).ctFlojosLista) || [];
+    const lista = resumenActual().ctFlojosLista || [];
     if (!lista.length) {
       await Dialogo.aviso({ titulo: 'Ningún correturnos corto', tono: 'ok',
         texto: 'Todos los correturnos colocados llegan a 4 días o más entre todos sus cuadrantes.' });
@@ -1860,8 +2315,10 @@
   async function nuevoCuadrante() {
     const zonas = (T.zonas || []).map(z => ({ valor: String(z.id), texto: z.nombre }));
     if (!zonas.length) { await Dialogo.aviso({ titulo: 'Sin zonas', texto: 'No hay zonas dadas de alta.', tono: 'aviso' }); return null; }
+    // Con una base abierta, el cuadrante nuevo nace en ella.
     const datos = await Dialogo.formulario('Nuevo cuadrante',
-      [{ id: 'zona', etiqueta: 'Zona', tipo: 'lista', opciones: zonas, obligatorio: true }],
+      [{ id: 'zona', etiqueta: 'Base', tipo: 'lista', opciones: zonas, obligatorio: true,
+         valor: (ZONA && ZONA !== SIN_BASE) ? ZONA : '' }],
       { nota: 'El número se asigna solo. Después le añades los bloques (días + matrícula).' });
     if (!datos || !datos.zona) return null;
     try {
@@ -1871,7 +2328,15 @@
       });
       const j = await r.json();
       if (!r.ok || j.status === 'error') throw new Error(j.msg || 'No se pudo crear');
+      // Se abre su base y se lleva la vista hasta él: un cuadrante vacío va al
+      // fondo del iceberg, y sin esto había que bajar a buscarlo.
+      const otraBase = String(datos.zona) !== ZONA;
       await cargar(DIA);   // refresca cuadrantes/zonas en el payload
+      if (otraBase) elegirBase(String(datos.zona), { apilar: false });
+      if (j.id) {
+        const sec = document.querySelector(`[data-cuadrante="${CSS.escape(String(j.id))}"]`);
+        if (sec) sec.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
       return j.id ? String(j.id) : null;
     } catch (e) { alert(e.message); return null; }
   }
@@ -2346,7 +2811,37 @@
   $('#sem-next').addEventListener('click', () => irA(sumarDias(DIA, 7)));
   $('#hoy').addEventListener('click', () => irA(hoyISO()));
   $('#f-dia').addEventListener('change', e => { const iso = esAiso(e.target.value); if (iso) irA(iso); });
-  $('#f-zona').addEventListener('change', pintar);
+  // Las bases: pinchar una la abre; pinchar la abierta vuelve a todas.
+  $('#bases').addEventListener('click', e => {
+    const b = e.target.closest('[data-base]');
+    if (b) elegirBase(b.dataset.base === ZONA ? '' : b.dataset.base);
+  });
+  $('#b-todas').addEventListener('click', () => elegirBase(''));
+  $('#b-sinbase').addEventListener('click', () => elegirBase(ZONA === SIN_BASE ? '' : SIN_BASE));
+  // «Atrás» y «adelante» del navegador recorren las bases abiertas.
+  window.addEventListener('popstate', () => {
+    if (!T) return;
+    elegirBase(claveDeNombre(baseDeLaUrl()), { apilar: false });
+  });
+  // La vista. Cambiarla no recarga nada: se repinta con lo que ya hay.
+  function pintarVista() {
+    document.querySelectorAll('#f-vista [data-vista]').forEach(b => {
+      const on = b.dataset.vista === VISTA;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('bg-telecab-gold/15', on);
+      b.classList.toggle('text-telecab-gold', on);
+      b.classList.toggle('font-semibold', on);
+      b.classList.toggle('text-telecab-muted', !on);
+    });
+  }
+  document.querySelectorAll('#f-vista [data-vista]').forEach(b => b.addEventListener('click', () => {
+    if (VISTA === b.dataset.vista) return;
+    VISTA = b.dataset.vista;
+    try { localStorage.setItem('planificador-vista', VISTA); } catch (_) {}
+    pintarVista();
+    if (T) pintar();
+  }));
+  pintarVista();
   $('#f-huecos').addEventListener('change', pintar);
   { let t; $('#f-busca').addEventListener('input', () => { clearTimeout(t); t = setTimeout(pintar, 150); }); }
   $('#banq-busca').addEventListener('input', pintarBanquillo);
@@ -2370,7 +2865,9 @@
   if ($('#btn-evento')) $('#btn-evento').addEventListener('click', abrirEvento);
   if ($('#btn-fichaje')) $('#btn-fichaje').addEventListener('click', abrirFichaje);
 
-  // Arranque.
+  // Arranque. La base de la dirección (#base=getafe) se abre en cuanto llegue
+  // el tablero, que es quien sabe qué bases hay.
+  ZONA_PEDIDA = baseDeLaUrl() || null;
   irA(hoyISO());
 })();
 </script>

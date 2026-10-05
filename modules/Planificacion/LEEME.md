@@ -20,6 +20,7 @@ trabaja y la parrilla que se imprime.
 tablero.controller.js     HTTP. No decide nada.
 tablero.service.js        el cuadrante, y LA PUERTA del módulo
 planificador.repo.js      el SQL del cuadrante (2.262 líneas)
+iceberg.js                las bases y el orden de mejor a peor (puro, sin base)
 eventos.repo.js           las plazas de refuerzo con fecha de caducidad
 cobertura.controller.js   HTTP de la semana y del aviso
 cobertura.service.js      a quién se avisa, a qué ritmo y qué se apunta
@@ -34,6 +35,13 @@ Desde fuera del módulo se entra por `tablero.service` o por `cobertura.service`
 nunca por un `.repo`.
 
 ## Lo que hay que saber
+
+**El planificador empieza por las bases, y cada base es un iceberg** (05/10/2026).
+Al abrir una, las tarjetas cuentan solo esa base y sus cuadrantes salen de mejor
+a peor: completos, con plazas vacías, sin nadie; dentro, los que ruedan antes que
+los del taller, y más horas instaladas primero. Lo calcula `iceberg.js` sobre el
+tablero ya montado —no lee la base— y la pantalla solo agrupa. Probado en
+`scripts/probar-iceberg.js`. Todo en docs/modulos/Planificacion.md.
 
 **Lo que se guarda vale DESDE el día que se está mirando**, y lo que hubiera
 antes se cierra la víspera. Así se puede poner a uno el 25 y a otro el 28 en la

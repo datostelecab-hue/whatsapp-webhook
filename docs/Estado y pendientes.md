@@ -15,6 +15,12 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## El planificador por bases (05/10/2026)
+
+- **`db/178` no está en el repositorio.** Se aplicó en producción el 05/10 a las 16:32 desde otra copia del código y deja `base_zona.orden` (Alcobendas, Aravaca, Canillejas, Alcorcón, Getafe) y Usera apagada. El planificador lee el orden con `SELECT *` para no caerse sin ella, pero el fichero tiene que subirlo quien lo escribió. Es el mismo caso que la `db/172`. **No hay que reescribirlo**: el corredor lo compara por su huella y otro fichero con ese nombre saldría como modificado.
+- **Desplegar** para que salgan las bases. No hay migración nueva.
+- **Aravaca no tiene cuadrantes todavía**: su tarjeta sale a cero hasta que se le cree el primero.
+
 ## Mapon suspendido por un pago (05/10/2026)
 
 - **Mapon contesta «Company suspended» desde el 05/10 a las 11:06.** Hay que pagarlo. Mientras tanto, desplegado esto, el bot ficha solo en la base y deshabilita puertas y motor ([[Fichaje]], «Con Mapon caído»). No hace falta tocar nada al volver: se levanta solo con la primera respuesta buena.

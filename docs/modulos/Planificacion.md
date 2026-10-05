@@ -29,6 +29,42 @@ El módulo vive en `modules/Planificacion/`. Se entra por dos puertas y nunca po
 /cobertura/enviar-turnos         POST   el aviso por WhatsApp
 ```
 
+## Las bases y el iceberg (05/10/2026)
+
+Camilo: *«lo que necesitamos resolver del planificador es que no tenemos ordenada la información de forma ejecutiva para poder asignar los conductores a cada uno de los coches»*. Hasta ese día los cuadrantes salían por su **número**, que es el orden en que se crearon y no dice nada de cómo van.
+
+**El planificador empieza por las cinco bases**: Alcobendas, Aravaca, Canillejas, Alcorcón y Getafe, en el orden de Tráfico (`base_zona.orden`, db/178). Cada base es una tarjeta que dice de un vistazo cómo está: una barra con su iceberg (verde completos, naranja con plazas vacías, rojo sin nadie) y debajo lo que le falta («Faltan 2 fijos · 10 CT»). Sin base abierta **no se pinta ningún cuadrante**: la entrada son las bases, y el buscador busca en todas.
+
+Al pinchar una base:
+
+- **Las mismas tarjetas de siempre cuentan solo esa base** (`resumen.porZona`): coches, fijos y CT de día y de noche, CT sin días, fijos y CT que faltan, huérfanos. El banquillo sigue siendo de todas: la gente no tiene base hasta que se le da coche. La columna de huérfanos también se filtra.
+- **Sus cuadrantes salen de mejor a peor**, en tres escalones con su franja:
+  1. **Completos**: todas sus plazas tienen dueño, hoy o ya escrito.
+  2. **Con plazas vacías**: les falta un fijo o días de correturnos.
+  3. **Sin nadie**: ni una persona puesta ni por llegar.
+
+  Debajo de todo, los cuadrantes **sin coches** (recién creados).
+
+Dentro de cada escalón, primero los coches que **ruedan**, luego los que están en cobertura sin rodar (reservado, transporte) y al fondo los del taller o el siniestro (Camilo eligió «al fondo de su escalón»: un coche parado no da horas aunque tenga la tripulación entera). Entre iguales, **más horas instaladas** primero.
+
+> [!important] Las horas instaladas
+> Las de la semana que se mira: por cada día y turno (14), el **promedio de horas por día trabajado de quien lo cubre** —su calificación, la del chip «9,4 h · A»—. Un turno sin nadie suma 0, y quien está de vacaciones no cubre (sale de `f_cobertura`). Así pesan a la vez estar completo y tener buenos conductores, que es lo que pidió Camilo: *«los mejores conductores: la capacidad instalada de la matrícula en horas los días que se trabajan»*. Quien aún no tiene calificación (N/E) cuenta con la **mediana de la flota** y se dice en la ayuda: contarlo como 0 hundiría el coche que se acaba de completar. Quien trabajó y no hizo horas cuenta 0 de verdad. La barra llena son 14 turnos a 9 h (la S).
+
+Un **cuadrante** va en el escalón de sus coches —completo si lo están todos, sin nadie si no hay nadie en ninguno, si no con plazas vacías— y se ordena por la **media de horas por coche**, no por la suma: con la suma, uno de tres coches flojos pasaba delante de uno de dos muy buenos solo por tener más coches. La cabecera enseña las dos («227 h · 114 h por coche»).
+
+**El orden lo pone el servidor** (`modules/Planificacion/iceberg.js`, puro y probado en `scripts/probar-iceberg.js`): le añade `iceberg` a cada coche y cuadrante (escalón, horas, lo que le falta, su base y su `orden`) y calcula `resumen.porZona`. La pantalla solo agrupa. Lo que le falta a cada coche lo apunta `planificador.repo` en `coche.falta` con **la misma regla que las tarjetas**, así que las bases suman lo mismo que el total: fijos, coches, personas y huérfanos cuadran al uno. Los **CT que faltan** se redondean base a base (días ÷ 6 hacia arriba), y por eso las bases pueden sumar uno o dos más que la tarjeta general: el 05/10/2026, 25 + 51 días daban 5 + 9 en total y 6 + 10 sumando bases. Un correturnos no se reparte entre bases, así que el de la base es el número para contratar en ella.
+
+**La base de un coche** es la de su cuadrante y, si no está en ninguno, la suya. Los coches sin base activa no son una sexta base: salen como un aviso pequeño, «5 coches sin base», que los abre igual que una base.
+
+**Dos vistas**, con un conmutador en la barra que se recuerda en el navegador:
+
+- **Horizontal**: la tabla de siempre, una fila por coche y las plazas en columnas, con todo el detalle (teléfono, zona de casa, libranza excepcional). Bajo la matrícula, sus horas y lo que le falta.
+- **Vertical**: cada coche es una tarjeta con sus plazas apiladas, **el día a la izquierda y la noche a la derecha**, para ver más coches de un golpe. El nombre se queda con toda la línea y el chip de horas va debajo (al lado, en una tarjeta estrecha el nombre se quedaba en «Carl…»). El teléfono y la zona de casa van en la ayuda del nombre; la libranza excepcional y la zona de casa se editan en la horizontal.
+
+**La base abierta viaja en la dirección** (`/planificador#base=getafe`): recargar o pasar el enlace abre la misma base, y «atrás» vuelve a las bases en vez de salir del planificador. Crear un cuadrante con una base abierta lo crea en ella y lleva la vista hasta él (un cuadrante vacío va al fondo del iceberg).
+
+Lo que **no** cambió: crear y editar cuadrantes, bloques, CT, eventos y fichaje funcionan igual. La **parrilla impresa** sigue por número de cuadrante: es papel colgado en la pared y ahí se busca por número.
+
 ## El clásico y el V2: ya no son dos
 
 El planificador viejo corría sobre la hoja `PLANIFICADOR_V2` y el V2 nació al lado, sobre PostgreSQL, en vez de compartir API. La razón de peso no era técnica sino de idioma: **el viejo se entendía por el NOMBRE de BOLT y el nuevo por el id del conductor**. Compartir la API habría obligado a los dos a hablar el mismo idioma, y eso era arrastrar justo la limitación que se venía a quitar (`modules/Planificacion/tablero.controller.js`).
@@ -110,7 +146,7 @@ Un correturnos se da por bien puesto con **4 días o más** y con **6 como tope*
 
 ### Qué cuenta cada tarjeta, y de dónde lo saca
 
-Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no era.
+Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no era. Desde el 05/10/2026, con una base abierta, las mismas tarjetas cuentan solo esa base (ver [[#Las bases y el iceberg (05/10/2026)]]).
 
 | Tarjeta | Cuenta | Sale de |
 |---|---|---|

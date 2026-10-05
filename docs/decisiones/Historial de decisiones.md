@@ -7,6 +7,12 @@ actualizado: 2026-10-05
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-05 · El planificador por bases, ordenado como un iceberg
+
+Los cuadrantes salían por número, y eso no ayudaba a decidir a quién poner en cada coche. Ahora el planificador empieza por las cinco bases (Alcobendas, Aravaca, Canillejas, Alcorcón, Getafe). Al abrir una, las tarjetas cuentan solo esa base y sus cuadrantes salen de mejor a peor: completos, luego con plazas vacías, luego sin nadie. Dentro de cada escalón, los que ruedan antes que los del taller, y más horas instaladas primero.
+
+Las horas instaladas son, turno a turno, la calificación de quien cubre el turno; el N/E cuenta la mediana de la flota. Camilo eligió esa medida y lo del taller al fondo de su escalón. Hay dos vistas: horizontal (la tabla) y vertical (una tarjeta por coche). → [[Planificacion#Las bases y el iceberg (05/10/2026)]]
+
 ## 2026-10-05 · Con Mapon caído, el turno se ficha en nuestra base
 
 Mapon suspendió la cuenta por un pago pendiente y el bot dejó de abrir turnos: el padrón de unidades se quedaba vacío y en caché, y todo eran «No encuentro la matrícula». Ahora `mapon.js` sabe si Mapon está caído, porque mira cada respuesta y lo levanta con la primera buena. Mientras lo esté:
