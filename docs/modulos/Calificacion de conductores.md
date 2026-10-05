@@ -90,6 +90,22 @@ N/E no es una nota mala: es *"no se puede decir nada todavía"*. Hay tres puerta
 - **Ningún día con actividad que medir.** Quien pasó el mes entero de baja tiene sus días a 8 h —así lo quiere la regla, y con razón— pero cero días con actividad. Metiendo su utilización como 0 % se lleva 0 de los 30 puntos de esa mitad y **sale con una C por estar enfermo**. Es el mismo principio de las J: no se puede puntuar lo que no se ha podido medir.
 - **Sin telemetría en el periodo.** Si Mapon estuvo caído **no se asume cero excesos**: asumirlo premiaría un fallo del sistema (§9.3). Y se guarda `dias_telemetria`, porque si son menos que el periodo los excesos están infravalorados y **la letra sale mejor de lo que es** — hay que poder decirlo al mirar la fila, no al mirar el log.
 
+### Los primeros días del mes se ve la letra del mes cerrado (05/10/2026, db/175)
+
+El periodo es el mes natural, del día 1 al último día cerrado. Así que **del día 1 al 5 de cada mes el mes en curso no llega a 5 días**, y todo el mundo es N/E.
+
+Hasta db/175, la vista `v_conductor_calificacion` daba siempre el periodo **más reciente**. En cuanto el cron calculaba el mes nuevo, el día 2, su N/E tapaba la letra del mes cerrado. Toda la flota se quedaba sin letra ni promedio en el planificador, En directo, Plantilla y la ficha. El 05/10 eran 214 personas con *«lleva menos de 5 días en el periodo (4)»*, con septiembre ya cerrado y calificado. Camilo lo vio así: *«¿por qué aún todos tienen N/E?»*.
+
+Ahora la vista elige la letra del mes cerrado justo anterior cuando se cumplen dos cosas:
+- el periodo más reciente de la persona es N/E **porque el mes es demasiado joven**: empieza el día 1 y tiene menos de 5 días;
+- esa persona **tiene letra del mes cerrado** (del 1 al último día, y no N/E).
+
+Quien no tenga letra de ese mes cerrado sigue con el N/E del mes en curso. Quien entra a mitad de mes tampoco cambia: su N/E es por él, no por el mes. El 05/10 pasaron a ver su letra de septiembre **190 personas**; quedaron 28 en N/E.
+
+**Se rotula**: el texto de ayuda del chip dice *«Es la letra de septiembre: la de octubre sale cuando el mes lleve 5 días»*. Lo hace `FichaConductor.mesCerrado(hasta)`, en `public/assets/js/fichaConductor.js`, que reconoce el caso porque el periodo acaba el último día del mes pasado. Lo usan el planificador, En directo, Plantilla y la ficha. El **5 de la vista tiene que ir a la par** que `minDiasTrabajados`.
+
+El cálculo no cambia: el cron sigue guardando el mes en curso cada día, y en cuanto llega a 5 días es esa la que se ve.
+
 ## Las tablas, las bandas y los topes
 
 Cada tabla se lee *"el primero cuyo umbral se alcanza"*.
@@ -176,7 +192,7 @@ Las dos cosas van juntas porque dependen de lo mismo (`app.js`):
 
 En los dos casos se calcula **hasta la última jornada cerrada** (ayer): la de hoy va a medias y hundiría a quien esté trabajando ahora mismo.
 
-**El mes anterior, si se cerró con otro modelo, se rehace una vez** (`mesAnteriorAlDia`, solo en la pasada del cron). El cron solo calcula el mes corrido, así que un cambio de modelo los primeros días del mes dejaría la letra del mes cerrado —la que se pinta hasta que el nuevo tiene datos— con la regla vieja: es lo que habría pasado con el 2.1, que llegó con septiembre ya cerrado. Mira solo un mes atrás y solo si ese cierre era un mes entero (empieza el 1); en cuanto hay filas de la versión actual, no hace nada. El log del cron lo dice: *«rehecho 2026-09-01 → 2026-09-30 con el modelo nuevo»*.
+**El mes anterior, si se cerró con otro modelo, se rehace una vez** (`mesAnteriorAlDia`, solo en la pasada del cron). El cron solo calcula el mes corrido, así que un cambio de modelo los primeros días del mes dejaría la letra del mes cerrado —la que se pinta hasta que el mes nuevo llega a 5 días (db/175)— con la regla vieja: es lo que habría pasado con el 2.1, que llegó con septiembre ya cerrado. Mira solo un mes atrás y solo si ese cierre era un mes entero (empieza el 1); en cuanto hay filas de la versión actual, no hace nada. El log del cron lo dice: *«rehecho 2026-09-01 → 2026-09-30 con el modelo nuevo»*.
 
 Guardar es un `ON CONFLICT (conductor_id, periodo_inicio, periodo_fin, version_modelo) DO UPDATE`: **repetirlo sobre el mismo periodo reescribe, no duplica**. `conductor_rendimiento`, en cambio, limpia lo del mes anterior al cambiar de mes, porque el promedio es del corrido.
 

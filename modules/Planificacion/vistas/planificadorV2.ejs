@@ -1082,6 +1082,8 @@
     let t = 'Calificación ' + r.letra + ' · ' + n(r.total) + ' puntos'
       + (r.desde ? ' (' + r.desde.slice(8, 10) + '/' + r.desde.slice(5, 7)
                  + ' – ' + r.hasta.slice(8, 10) + '/' + r.hasta.slice(5, 7) + ')' : '')
+      // Los primeros días del mes es la letra del mes CERRADO (db/175): se dice.
+      + (window.FichaConductor && FichaConductor.mesCerrado(r.hasta) ? '\n' + FichaConductor.mesCerrado(r.hasta) : '')
       + '\n· Horas ' + n(r.horas) + ' h/día en ' + r.dias + ' día(s) → ' + r.ptsHoras + ' pts (50 %)'
       + '\n· Utilización ' + n(r.utilProm) + ' % → ' + r.ptsUtilizacion + ' pts (30 %)'
       + '\n· Excesos de velocidad ' + n(r.excesos) + ' → ' + r.ptsVelocidad + ' pts (20 %)';

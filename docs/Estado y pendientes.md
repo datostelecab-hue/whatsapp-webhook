@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-10-02
+actualizado: 2026-10-05
 ---
 
 # Estado y pendientes
@@ -14,6 +14,10 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Recaudación y cuentas fantasma.** Si alguien cobró en efectivo con una cuenta prestada, la deuda sigue colgada de la cuenta, no de la persona. Es dinero: lo decide Ricardo.
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
+
+## La letra los primeros días del mes (05/10/2026)
+
+- **Desplegar y aplicar `db/175`** desde /migraciones. Mientras el mes en curso no llega a 5 días, la vista da la letra del mes cerrado ([[Calificacion de conductores]]). Hasta aplicarla, todo sigue en N/E, como antes. Este mes deja de hacer falta el **06/10 a las 05:40**, cuando octubre llega a 5 días; pero vale para todos los meses siguientes.
 
 ## Barcelona: coches y cuentas de BOLT (02/10/2026)
 

@@ -963,7 +963,9 @@
       ? 'Sin calificar todavía'
       : `${n(f.calificacion_total)} puntos · ${n(f.calificacion_horas)} h/día · `
         + `${n(f.calificacion_util)} % de utilización · ${n(f.calificacion_excesos)} exceso(s)`
-        + (f.calificacion_tope ? ' · la baja el tope por velocidad' : '');
+        + (f.calificacion_tope ? ' · la baja el tope por velocidad' : '')
+        + (window.FichaConductor && FichaConductor.mesCerrado(f.calificacion_hasta)
+          ? ' · ' + FichaConductor.mesCerrado(f.calificacion_hasta) : '');
     return `<span class="inline-flex items-center justify-center min-w-[2rem] px-1.5 py-0.5 rounded-lg border
                  text-[11px] font-bold ${TONO_LETRA[f.calificacion] || TONO_LETRA['N/E']}"
                  title="${esc(t)}">${esc(f.calificacion)}${f.calificacion_tope ? '<i class="fa-solid fa-triangle-exclamation text-[8px] ml-0.5 align-middle"></i>' : ''}</span>`;

@@ -117,7 +117,7 @@
 
     const letra = c ? c.letra : 'N/E';
     const chipLetra = `<span class="inline-flex items-center justify-center w-8 h-8 rounded-full border text-[15px] font-bold shrink-0 ${TONO_LETRA[letra] || TONO_LETRA['N/E']}"
-        title="${esc(c && c.total != null ? `${num(c.total, 2)} puntos · ${c.desde ? fecha(c.desde) + ' – ' + fecha(c.hasta) : ''}` : (c && c.motivo) || 'sin calificar')}">${esc(letra)}</span>`;
+        title="${esc(c && c.total != null ? `${num(c.total, 2)} puntos · ${c.desde ? fecha(c.desde) + ' – ' + fecha(c.hasta) : ''}${mesCerrado(c.hasta) ? ' · ' + mesCerrado(c.hasta) : ''}` : (c && c.motivo) || 'sin calificar')}">${esc(letra)}</span>`;
 
     // ── La barra de arriba ──────────────────────────────────────
     // NO lleva el nombre ni la línea de identidad: eso ya está en la cabecera de
@@ -295,6 +295,7 @@
            <div class="flex flex-wrap items-center justify-between gap-2 mt-1.5 pt-1.5 border-t border-telecab-border/50">
              <p class="text-[11px] text-telecab-muted">
                Periodo ${fecha(c.desde)} – ${fecha(c.hasta)} · modelo ${esc(c.version_modelo)}
+               ${mesCerrado(c.hasta) ? ` · <span class="text-telecab-gold">${esc(mesCerrado(c.hasta))}</span>` : ''}
                ${c.dias_telemetria != null && c.dias_telemetria < 14
           ? ` · <span class="text-telecab-warn">solo ${c.dias_telemetria} día(s) de telemetría: faltan excesos por contar</span>` : ''}</p>
              <p class="text-[12px] font-bold">${num(c.total, 2)} puntos → ${esc(c.letra)}
@@ -385,5 +386,20 @@
     boton('[data-libranzas]', cab.onLibranzas);
   }
 
-  global.FichaConductor = { pintar };
+  // LOS PRIMEROS DÍAS DEL MES, LA LETRA ES LA DEL MES CERRADO (db/175). El mes en
+  // curso no lleva aún los 5 días que pide la calificación y, en vez de N/E, se
+  // enseña la del anterior. Se reconoce por la fecha —su periodo acaba el último
+  // día del mes pasado— y se dice, para que nadie la tome por la de este mes. Lo
+  // usan también el planificador, En directo y Plantilla, que cargan este fichero.
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  function mesCerrado(hasta, hoy = new Date()) {
+    if (!hasta) return '';
+    const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0);   // el último día del mes pasado
+    const iso = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}`;
+    if (String(hasta).slice(0, 10) !== iso) return '';
+    return `Es la letra de ${MESES[fin.getMonth()]}: la de ${MESES[hoy.getMonth()]} sale cuando el mes lleve 5 días.`;
+  }
+
+  global.FichaConductor = { pintar, mesCerrado };
 })(window);

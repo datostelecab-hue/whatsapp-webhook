@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-02
+actualizado: 2026-10-05
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-05 · Los primeros días del mes, la letra del mes cerrado
+
+La calificación va por mes natural y pide 5 días, así que del 1 al 5 de cada mes toda la flota salía N/E: la vista daba el periodo más reciente y el N/E del mes nuevo tapaba la letra del mes cerrado. Ahora, mientras el mes en curso no llega a 5 días, la vista da la del mes cerrado (db/175), y los chips lo rotulan («Es la letra de septiembre…»). Es lo que la documentación ya decía que pasaba. El 05/10 recuperaron su letra 190 personas. → [[Calificacion de conductores]]
 
 ## 2026-10-02 · Barcelona en el bot: cada uno, los coches de su sede
 

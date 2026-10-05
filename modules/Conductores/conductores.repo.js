@@ -124,7 +124,10 @@ async function listar({ id, momento, soloVigentes = false, tipo, situacion, turn
            cal.tope_aplicado  AS calificacion_tope,
            cal.horas_prom     AS calificacion_horas,
            cal.util_prom      AS calificacion_util,
-           cal.excesos_total  AS calificacion_excesos
+           cal.excesos_total  AS calificacion_excesos,
+           -- Hasta cuándo: los primeros días del mes la letra es la del mes
+           -- cerrado (db/175), y el chip lo dice.
+           cal.periodo_fin::text AS calificacion_hasta
     FROM conductor c
     CROSS JOIN ref
     LEFT JOIN v_conductor_calificacion cal ON cal.conductor_id = c.id
