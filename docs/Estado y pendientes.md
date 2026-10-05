@@ -15,6 +15,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## WhatsApp: los mensajes que Meta no entrega (05/10/2026)
+
+- **Desplegar y aplicar `db/176`** desde /migraciones: la tabla `whatsapp_envio`. Con el despliegue, el webhook ya pasa a `error` los avisos de velocidad que Meta no entregue, aunque la 176 aún no esté. La tabla solo hace falta para apuntar todos los estados.
+- **Falta corregir los avisos del bloqueo**, del 02/10 por la tarde al 05/10 a mediodía: hasta 15 avisos de velocidad que quedaron como `avisado` sin haber llegado. Hace falta saber desde cuándo: buscar en los registros de Render la **primera** aparición de `131042`. Con esa hora sale una migración que los pasa a `error`.
+
 ## La letra los primeros días del mes (05/10/2026)
 
 - **Desplegar y aplicar `db/175`** desde /migraciones. Mientras el mes en curso no llega a 5 días, la vista da la letra del mes cerrado ([[Calificacion de conductores]]). Hasta aplicarla, todo sigue en N/E, como antes. Este mes deja de hacer falta el **06/10 a las 05:40**, cuando octubre llega a 5 días; pero vale para todos los meses siguientes.
@@ -42,7 +47,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 ## Calificación 2.1 y los excesos de Edison (01/10/2026)
 
 - **Desplegar y aplicar `db/169`** desde /migraciones: le quita a Edison Roman Vera Farfan los cinco excesos dudosos del 3784LFV del 11/09 (no eran suyos). La letra no espera a la migración: con el despliegue, la siguiente pasada del cron (05:40 o 12:00) rehace septiembre con el modelo 2.1 y suben 12 letras, la suya de C a A.
-- **WhatsApp está suspendido por un pago** (01/10). Mientras dure, los excesos nuevos quedan en `error`: no avisan, no bajan la letra y no se reenvían solos al volver. Tampoco salen los avisos de /alertas ni los del bot.
+- **WhatsApp estuvo bloqueado por un pago** (01/10, y otra vez hasta el 05/10 a mediodía, cuando Camilo pagó). Meta aceptaba los mensajes y los daba por fallidos después (error 131042). Ahora el ERP se entera ([[WhatsApp]], «Aceptado no es entregado»).
 
 ## El bot del conductor, nuevo (28/09/2026)
 

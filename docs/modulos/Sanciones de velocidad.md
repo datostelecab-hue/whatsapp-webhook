@@ -69,7 +69,7 @@ Por encima de media hora el caso **se registra pero no se avisa a nadie**: queda
 | `simulado` | modo pruebas: se **habría** mandado |
 | `sin_conductor` | el coche no tenía a nadie identificable |
 | `dudoso` | hay candidato, pero el log es demasiado viejo |
-| `error` | se intentó mandar y falló |
+| `error` | se intentó mandar y falló; o Meta lo aceptó y **después** dijo que no lo entregó (desde el 05/10/2026, ver [[WhatsApp]], «Aceptado no es entregado») |
 
 Viven también en el `CHECK` de la tabla: si se añade uno aquí, hay que añadirlo allí.
 

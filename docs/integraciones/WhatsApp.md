@@ -111,8 +111,34 @@ Nada sale sin dejar rastro, y el rastro se escribe **salga bien o mal**:
 | `alerta_control_envio` | una fila por destinatario y alerta: usuario, teléfono, ok, si era simulado y el error recortado a 300 caracteres |
 | avisos de turnos (`avisos.repo`) | a quién, cuándo y con qué resultado; `sin-telefono` se apunta como dato para RRHH, **no** como error de envío |
 | libro de sanciones | estados `avisado`, `simulado`, `sin_conductor`, `dudoso`, `error` |
+| `whatsapp_envio` (db/176) | lo que **Meta** dice después de cada mensaje: enviado, entregado, leído o **fallido**, con el código de error |
 
 El registro de puertas **no se espera**: que falle apuntarlo no puede dejar a nadie sin abrir el coche.
+
+### Aceptado no es entregado (05/10/2026)
+
+Meta contesta a un envío con el id del mensaje (`wamid`), y **eso no quiere decir que haya llegado**. Lo que pasa después llega al webhook en otro aviso, `value.statuses`, con cuatro estados posibles: `sent`, `delivered`, `read` o `failed`.
+
+Hasta el 05/10 el webhook tiraba esos avisos. Ese día la cuenta estaba bloqueada por un **pago pendiente**: error **131042**, *«Business eligibility payment issue»*, el mismo que el 01/10. Meta aceptaba cada mensaje y lo daba por fallido segundos después, y el ERP no se enteraba de nada:
+- el bot no contestaba a nadie;
+- los avisos de velocidad quedaban como `avisado` y, desde la calificación 2.1, **bajaban la letra** de gente que no había recibido nada.
+
+Ahora, `services/repo/whatsappEnvios.registrarEstados` hace dos cosas:
+- **Apunta cada estado** en `whatsapp_envio`: una fila por mensaje, que avanza de estado y no retrocede. Así se sabe qué no llegó y desde cuándo.
+- **Si un mensaje falla y era un aviso de velocidad** (`velocidad_exceso.envio_id`), lo pasa de `avisado` a `error` con una nota. Ese exceso deja de bajar la letra.
+
+En el log del servidor sale `❌ [WhatsApp] Meta NO entregó un mensaje a …1234: 131042 …`. Si aparece en muchos mensajes seguidos, es la cuenta: hay que mirar la facturación en Meta Business.
+
+Para ver los fallos:
+
+```sql
+SELECT estado_at, telefono, error_codigo, error_texto
+  FROM whatsapp_envio
+ WHERE estado = 'fallido'
+ ORDER BY estado_at DESC;
+```
+
+Las alertas a controladores (`alerta_control_envio`) todavía no se cruzan con estos estados. Quedan registradas como enviadas, pero ahora el fallo también consta en `whatsapp_envio`.
 
 **La regla de las alertas: un mensaje por alerta.** El mismo conductor puede levantar las tres en la misma franja —son tres avisos distintos— pero cada una suena una vez. Eso **no se resuelve con un `if`**, se resuelve con el índice único de la tabla: aunque dos revisiones se crucen, la base solo deja entrar la primera y solo se manda WhatsApp por la fila que de verdad se insertó. Ver [[Trampas conocidas]].
 

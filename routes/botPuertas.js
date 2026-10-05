@@ -45,20 +45,14 @@ router.post('/', async (req, res) => {
   res.status(200).end();
 
   try {
-    const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+    if (deOtroNumero(value)) return;
+    if (value?.statuses?.length) await apuntarEstados(value.statuses);
+
+    const message = value?.messages?.[0];
     if (!message) return;
     if (yaVisto(message.id)) {
       console.log(`↩️ Mensaje repetido ${message.id}: ya se atendió`);
-      return;
-    }
-
-    // SOLO SE CONTESTA LO QUE LLEGA A NUESTRO NÚMERO. La app de WhatsApp tiene más
-    // de un número colgado (el de la boda, cuyo módulo se quitó el 01/10/2026) y
-    // Meta manda aquí los mensajes de todos. Sin esto, un invitado que escribiera
-    // a aquel número recibiría el saludo del bot de conductores.
-    const phoneNumberId = req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-    if (phoneNumberId && phoneNumberId !== PHONE_NUMBER_ID) {
-      console.log(`📵 Mensaje a otro número (${phoneNumberId}): no es del bot de Telecab, no se contesta`);
       return;
     }
 
@@ -82,6 +76,32 @@ router.post('/', async (req, res) => {
     console.error('Error:', error);
   }
 });
+
+// ============================================================
+// SOLO SE ATIENDE LO QUE LLEGA A NUESTRO NÚMERO
+// ============================================================
+// La app de WhatsApp tiene más de un número colgado (el de la boda, cuyo módulo
+// se quitó el 01/10/2026) y Meta manda aquí los mensajes de todos. Sin esto, un
+// invitado que escribiera a aquel número recibiría el saludo del bot de
+// conductores. Vale también para los avisos de estado: los de otro número no son
+// nuestros.
+function deOtroNumero(value) {
+  const phoneNumberId = value?.metadata?.phone_number_id;
+  if (!phoneNumberId || phoneNumberId === PHONE_NUMBER_ID) return false;
+  if (value?.messages) console.log(`📵 Mensaje a otro número (${phoneNumberId}): no es del bot de Telecab, no se contesta`);
+  return true;
+}
+
+// ============================================================
+// LO QUE META DICE DE NUESTROS ENVÍOS (05/10/2026)
+// ============================================================
+// Un envío aceptado no es un envío entregado: si la cuenta está bloqueada (un
+// pago pendiente, error 131042), Meta acepta el mensaje y lo da por FALLIDO
+// después, en estos avisos. Antes se tiraban y el ERP daba por avisado a quien no
+// recibió nada. Ver services/repo/whatsappEnvios.js.
+async function apuntarEstados(statuses) {
+  await require('../services/whatsapp').registrarEstados(statuses);
+}
 
 // ============================================================
 // TEXTO RECIBIDO

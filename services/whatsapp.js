@@ -237,4 +237,11 @@ async function enviarBotones(telefono, texto, botones) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
-module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, PLANTILLA_TURNOS };
+/**
+ * Lo que Meta dice DESPUÉS de cada envío (webhook `statuses`): enviado,
+ * entregado, leído o fallido. Aceptado no es entregado: ver
+ * services/repo/whatsappEnvios.js (05/10/2026).
+ */
+const registrarEstados = statuses => require('./repo/whatsappEnvios').registrarEstados(statuses);
+
+module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };

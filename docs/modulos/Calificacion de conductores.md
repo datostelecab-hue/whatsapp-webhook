@@ -45,7 +45,9 @@ Ahora `excesosDe` cuenta solo `estado = 'avisado'`, que es a la vez *fiable* (el
 
 Efecto en septiembre (simulado sobre las letras guardadas, que reproduce exactas): de 220 calificados, 22 tenían algún exceso no avisado y **12 suben de letra**, ninguno baja.
 
-> **Mientras WhatsApp no pueda mandar** (el 01/10/2026 estaba suspendido por un pago), los excesos nuevos quedan en `error` y **no bajan la letra de nadie**. Y no se reenvían solos al volver: un `error` es un hecho registrado.
+> **Mientras WhatsApp no pueda mandar**, los excesos nuevos quedan en `error` y **no bajan la letra de nadie**. Y no se reenvían solos al volver: un `error` es un hecho registrado.
+>
+> **Ojo: Meta puede aceptar un mensaje y no entregarlo.** Con la cuenta bloqueada por un pago pendiente, el 01/10 y el 05/10/2026, Meta aceptaba los avisos y los daba por fallidos después. El ERP los dejaba como `avisado`, y bajaban la letra de gente que no se había enterado. Desde el 05/10, el webhook recoge ese «fallido» y pasa el exceso a `error`. Ver [[WhatsApp]], «Aceptado no es entregado».
 
 ### Las J suman a las horas pero NO entran en la utilización
 
