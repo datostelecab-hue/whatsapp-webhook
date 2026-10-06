@@ -558,9 +558,16 @@ async function enDirecto({ dia } = {}) {
           detalle: 'Lleva ' + String(proy.hechas).replace('.', ',') + ' h y le quedan ' + String(proy.restantes).replace('.', ',') +
             ': aunque siga hasta el final se queda en ' + String(proy.maximo).replace('.', ',') + ' h. Llámalo y averigua qué pasó.' });
       } else {
-        // Se desconectó antes de tiempo: es el caso que más se escapa.
-        out.push({ codigo: 'se_fue_pronto', tono: 'error', etq: 'Se fue con ' + String(proy.hechas).replace('.', ',') + ' h',
-          detalle: 'Le quedaban ' + String(proy.restantes).replace('.', ',') + ' h de turno y ya no está conectado. Llámalo.' });
+        // Se desconectó antes de tiempo: es el caso que más se escapa. Y es UN
+        // «NO TERMINARÁ LA JORNADA» MÁS (06/10/2026, Camilo, con Abdeslam: 0,1 h
+        // a las 14:14 y salía «Se fue con 0,1 h», fuera del filtro): la cuenta ya
+        // suma lo que le queda hasta el final de SU turno (17:00 de día, 05:00 de
+        // noche), así que ni volviendo ahora llega a las 8 h. El código se queda
+        // —el call center y el histórico lo separan así—; cambia lo que se lee.
+        out.push({ codigo: 'se_fue_pronto', variante: 'no_terminara', tono: 'error', etq: 'No terminará la jornada',
+          detalle: 'Se fue con ' + String(proy.hechas).replace('.', ',') + ' h y le quedan ' +
+            String(proy.restantes).replace('.', ',') + ' h de turno: aunque vuelva ahora se queda en ' +
+            String(proy.maximo).replace('.', ',') + ' h. Llámalo y averigua qué pasó.' });
       }
     }
     // LOS DOS RECHAZOS NO SON LA MISMA FALTA, y hasta ahora iban en un chip

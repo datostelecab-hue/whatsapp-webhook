@@ -139,7 +139,7 @@ Y no todas valen igual. Una **aprobada** es una hora; una **pendiente** es una h
 | `km_parado` | ha rodado km fuera de la app **dentro de la franja** (ver abajo) |
 | `j_rechazada` | alguien miró el caso y dijo que no: esas horas vuelven a faltar, hay que volver a llamar con el motivo delante |
 | `j_presunta` | llega, pero solo contando una J pendiente de aprobar |
-| `no_llego` / `no_llegara` / `se_fue_pronto` | la proyección no alcanza la jornada, según si el turno ya cerró, no ha salido, sigue conectado o se desconectó antes de tiempo. **No salen si tiene «No saldrá» apuntado** (abajo) |
+| `no_llego` / `no_llegara` / `se_fue_pronto` | la proyección no alcanza la jornada, según si el turno ya cerró, no ha salido, sigue conectado o se desconectó antes de tiempo. Los dos últimos se leen «No terminará la jornada» (`variante: 'no_terminara'`). **No salen si tiene «No saldrá» apuntado** (abajo) |
 | `rechazo_directo` | **al primero**: los rechazó él, con el dedo |
 | `sin_respuesta` | dejó pasar ofertas sin contestar dentro de la franja |
 | `aceptacion_baja` | ámbar, no rojo: es para mirar, no para llamar |
@@ -149,6 +149,8 @@ Y no todas valen igual. Una **aprobada** es una hora; una **pendiente** es una h
 Camilo lo pidió: un filtro que deje **solo a quien no terminará la jornada**. Es el botón **«Solo "No terminará la jornada"»**, al lado de «Solo los que no han salido», con el número del turno al lado («· 2»). Sale quien **está conectado o en descanso** y, aunque siga hasta el final de su turno, se queda corto. Es otra lista de llamadas: no la de quien no ha salido, sino la de quien salió y no le va a dar. Los dos filtros se **excluyen** (a la vez darían siempre una lista vacía), y en la pestaña NN no cuenta, porque sin plan no hay jornada que terminar.
 
 Ese aviso comparte código con «No llegará» (`no_llegara`), que es el de quien aún no ha salido. El call center y el histórico los agrupan así, y por eso **no se cambió el código**: el aviso lleva además `variante: 'no_terminara'` (`cockpit.service.avisosDe`), y la pantalla filtra por esa marca. El 06/10/2026 por la mañana salían 2 de 62 en el turno de día.
+
+**Quien se desconectó también es un «No terminará la jornada»** (el mismo día, Camilo, con Abdeslam Rais: 0,1 h a las 14:14 y salía «Se fue con 0,1 h», fuera del filtro). La proyección ya suma lo que le queda hasta el final de **su** turno (17:00 de día, 05:00 de noche) más lo justificado, así que ese aviso solo salta cuando ni volviendo ahora llega a las 8 h. Ahora se lee «No terminará la jornada», con «Se fue con X h…» en el detalle, y entra en el filtro. El código sigue siendo `se_fue_pronto` (el call center lo llama «Se fue antes de terminar»). Con eso, esa tarde eran 3 de 62. Quien **no ha salido** sigue con «No llegará · faltan X h» y su propio filtro.
 
 **Los dos rechazos no son la misma falta** y hasta ahora iban en un chip común ("14 rechazos") que los sumaba. Se separaron porque se miden distinto y se llaman distinto: rechazar a dedo no está permitido nunca —ni antes ni después de ver el viaje—, así que basta uno y cuenta en toda la jornada; no responder aguanta hasta cinco y solo dentro de la franja, porque fuera está el cambio de turno y ahí que se escape alguna oferta es lo normal.
 
