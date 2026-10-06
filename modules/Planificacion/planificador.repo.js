@@ -713,10 +713,16 @@ async function tablero({ dia } = {}) {
   });
   const zonas = ice.zonas;
 
+  // LAS PRÓXIMAS INCORPORACIONES (06/10/2026). Con red, como los relevos: si la
+  // consulta falla, el tablero sale igual y la tarjeta no.
+  const llegadas = await proximasIncorporaciones({ gente, cuadrantes, coches })
+    .catch(e => { console.error('⚠️  [PLAN] próximas incorporaciones:', e.message); return []; });
+
   return {
     dia: efectivo,
     lunes,
     fechas,
+    proximasIncorporaciones: llegadas,
     cuadrantes,
     zonas,
     dias: LETRAS,
@@ -814,6 +820,138 @@ async function tablero({ dia } = {}) {
     },
     avisos: avisosDe(coches, gente),
   };
+}
+
+/**
+ * LAS PRÓXIMAS INCORPORACIONES (06/10/2026, Camilo): quién va a entrar en un
+ * coche de hoy en adelante, siendo
+ *
+ *   · GENTE NUEVA: es la primera plaza de su contrato abierto (una re-alta
+ *     también cuenta: vuelve a empezar);
+ *   · o alguien que VUELVE DE VACACIONES O DE BAJA MÉDICA, pero solo si le han
+ *     cambiado de cuadrante mientras estaba fuera. Quien vuelve a su plaza de
+ *     siempre —lo normal, y lo que deja escrito «Cubrir esta plaza»— no es
+ *     noticia: sus compañeros son los mismos.
+ *
+ * Una vuelta es la plaza que empieza dentro de su ausencia o hasta 7 días
+ * después de acabarla. Lo de «antes» es su ÚLTIMA plaza anterior a esta, no la
+ * que tenía la víspera de irse: el cuadrante empieza el 03/09/2026 y hay
+ * ausencias anotadas a toro pasado, así que la víspera muchas veces no tiene
+ * nada escrito (Wellim se fue el 03/09; Rodrigo tiene un hueco justo el 09/09) y
+ * los dos, que vuelven a su coche de siempre, salían como cambiados. Si no tenía
+ * ninguna plaza antes, también cuenta como cambio. Y quien ya trabaja aquí y
+ * solo cambia de coche no sale: no es una incorporación.
+ *
+ * Cuenta desde HOY, mires la semana que mires, como la tarjeta de bajas. Una
+ * persona sale UNA vez con todas sus plazas (un correturnos entra en dos coches).
+ */
+const DIAS_TRAS_LA_VUELTA = 7;
+const AUSENCIAS_DE_VUELTA = ['vacaciones', 'baja_medica'];
+
+async function proximasIncorporaciones({ gente, cuadrantes, coches, desde = hoy() }) {
+  const r = await db.consulta(
+    `SELECT a.conductor_id, to_char(a.desde, 'YYYY-MM-DD') AS desde,
+            vp.vehiculo_id, vp.matricula, vp.rol, vp.orden_ct, vp.turno, vp.cuadrante_id,
+            to_char(pe.alta, 'YYYY-MM-DD') AS alta,
+            COALESCE(NULLIF(btrim(c.nombre_bolt), ''), btrim(c.nombre || ' ' || COALESCE(c.apellidos, ''))) AS nombre,
+            -- ¿Su primera plaza en este contrato?
+            NOT EXISTS (
+              SELECT 1 FROM asignacion x
+               WHERE x.conductor_id = a.conductor_id AND x.retirada_at IS NULL
+                 AND x.desde < a.desde AND x.desde >= pe.alta) AS primera,
+            aus.estado AS aus_estado,
+            to_char(aus.desde, 'YYYY-MM-DD') AS aus_desde,
+            to_char(aus.hasta, 'YYYY-MM-DD') AS aus_hasta,
+            antes.cuadrantes AS antes_cuadrantes,
+            antes.matriculas AS antes_matriculas,
+            antes.claves AS antes_claves
+       FROM asignacion a
+       JOIN v_plaza vp  ON vp.plaza_id = a.plaza_id
+       JOIN conductor c ON c.id = a.conductor_id AND NOT c.es_centinela
+       JOIN conductor_periodo_empleo pe ON pe.conductor_id = c.id AND pe.baja IS NULL
+       -- La ausencia de la que vuelve: empezó antes de esta plaza y acabó como
+       -- mucho una semana antes (o sigue abierta).
+       LEFT JOIN LATERAL (
+         SELECT h.estado, h.desde, h.hasta
+           FROM conductor_estado_hist h
+          WHERE h.conductor_id = a.conductor_id
+            AND h.estado = ANY($2::text[])
+            AND h.desde < a.desde
+            AND (h.hasta IS NULL OR h.hasta >= a.desde - $3::int)
+          ORDER BY h.desde DESC LIMIT 1) aus ON TRUE
+       -- Su ÚLTIMA plaza antes de esta (todas las que empezaron ese mismo día:
+       -- un correturnos lleva dos coches).
+       LEFT JOIN LATERAL (
+         SELECT array_agg(DISTINCT vp2.cuadrante_id) FILTER (WHERE vp2.cuadrante_id IS NOT NULL) AS cuadrantes,
+                array_agg(DISTINCT vp2.matricula) AS matriculas,
+                -- Con qué se compara: el cuadrante, y si el coche no está en
+                -- ninguno, el propio coche (volver al mismo suelto no es cambio).
+                array_agg(DISTINCT CASE WHEN vp2.cuadrante_id IS NOT NULL THEN 'c' || vp2.cuadrante_id
+                                        ELSE 'v' || vp2.vehiculo_id END) AS claves
+           FROM asignacion a2
+           JOIN v_plaza vp2 ON vp2.plaza_id = a2.plaza_id
+          WHERE aus.desde IS NOT NULL
+            AND a2.conductor_id = a.conductor_id AND a2.retirada_at IS NULL
+            AND a2.desde = (SELECT max(a3.desde) FROM asignacion a3
+                             WHERE a3.conductor_id = a.conductor_id AND a3.retirada_at IS NULL
+                               AND a3.desde < a.desde)) antes ON TRUE
+      WHERE a.desde >= $1::date AND a.retirada_at IS NULL
+      ORDER BY a.desde, a.conductor_id, vp.matricula`,
+    [desde, AUSENCIAS_DE_VUELTA, DIAS_TRAS_LA_VUELTA]);
+
+  const cuadranteDe = new Map((cuadrantes || []).map(cu => [String(cu.id), cu]));
+  const cocheDe = new Map((coches || []).map(co => [String(co.vehiculoId), co]));
+  const porPersona = new Map();
+  for (const x of r.rows) {
+    const antes = (x.antes_cuadrantes || []).map(String);
+    // Quien vuelve de una ausencia ya estaba de alta: no es «nuevo» aunque no
+    // tuviera plaza, y solo sale si le han cambiado de cuadrante (o de coche,
+    // si el suyo no está en ninguno).
+    const vuelve = !!x.aus_estado;
+    const clave = x.cuadrante_id ? 'c' + x.cuadrante_id : 'v' + x.vehiculo_id;
+    const cambio = vuelve && !(x.antes_claves || []).includes(clave);
+    const nuevo = !vuelve && !!x.primera;
+    if (!nuevo && !cambio) continue;
+    const k = String(x.conductor_id);
+    const persona = gente.get(k) || {};
+    if (!porPersona.has(k)) {
+      porPersona.set(k, {
+        conductorId: k,
+        nombre: persona.nombre || x.nombre,
+        telefono: persona.telefono || '',
+        desde: x.desde,
+        motivo: nuevo ? 'nuevo' : x.aus_estado,
+        alta: x.alta || '',
+        ausencia: x.aus_estado ? { estado: x.aus_estado, desde: x.aus_desde, hasta: x.aus_hasta || '' } : null,
+        antes: nuevo ? null : {
+          cuadrantes: antes.map(id => (cuadranteDe.get(id) || {}).nombre).filter(Boolean),
+          matriculas: x.antes_matriculas || [],
+        },
+        plazas: [],
+      });
+    }
+    const p = porPersona.get(k);
+    if (x.desde < p.desde) p.desde = x.desde;
+    const puesto = etiquetaPlaza(x.rol, x.orden_ct, x.turno);
+    // El mismo coche y puesto escrito en dos tramos sale una vez, el primero.
+    if (p.plazas.some(y => y.vehiculoId === String(x.vehiculo_id) && y.puesto === puesto)) continue;
+    const cu = x.cuadrante_id ? cuadranteDe.get(String(x.cuadrante_id)) : null;
+    const coche = cocheDe.get(String(x.vehiculo_id));
+    p.plazas.push({
+      vehiculoId: String(x.vehiculo_id),
+      matricula: x.matricula,
+      desde: x.desde,
+      puesto,
+      esFijo: x.rol === 'FIJO',
+      cuadranteId: cu ? String(cu.id) : '',
+      cuadrante: cu ? cu.nombre : '',
+      zona: (cu && cu.zona) || (coche && coche.zona) || '',
+      // La clave de su base en el tablero (iceberg.js), para poder ir a ella.
+      zonaClave: (cu && cu.iceberg && cu.iceberg.zona) || (coche && coche.iceberg && coche.iceberg.zona) || '',
+    });
+  }
+  return [...porPersona.values()]
+    .sort((a, b) => a.desde.localeCompare(b.desde) || String(a.nombre).localeCompare(String(b.nombre), 'es'));
 }
 
 /** Días de la semana en letras, para nombrar un reparto sin mirar el tablero. */

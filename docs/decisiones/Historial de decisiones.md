@@ -7,6 +7,10 @@ actualizado: 2026-10-05
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-06 · Próximas incorporaciones en el planificador
+
+Una tarjeta en la columna lateral con quien va a entrar en un coche de hoy en adelante. Salen la gente nueva y quien vuelve de vacaciones o de baja médica, esta solo si le cambiaron de cuadrante mientras estaba fuera. Cada nombre dice si es nuevo o vuelve; al pincharlo, su número, puesto, cuadrante, base y fecha, y «Ver su cuadrante» lleva hasta él. «Antes» es su última plaza anterior a la nueva, no la de la víspera de irse: con la víspera, quien volvía a lo suyo salía como cambiado. → [[Planificacion#Qué cuenta cada tarjeta, y de dónde lo saca]]
+
 ## 2026-10-06 · «Extras» para los activos, y la jornada dentro de «Editar datos»
 
 En la ficha de quien sigue de alta, el botón «Jornada» se fue dentro de «Editar datos» (apartado Contrato, guardado como novación por su camino de siempre). En su sitio está **«Extras»**: se eligen uno o varios meses, de julio de 2026 al mes en curso, y se baja un solo Excel con el mismo formato día a día que el finiquito. → [[Conductores#Extras (06/10/2026)]] · [[Nominas#Día a día (06/10/2026)]]

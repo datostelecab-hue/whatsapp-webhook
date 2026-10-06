@@ -83,6 +83,12 @@
       .tc-pulsable { transition: none; }
       .tc-pulsable:active { transform: none; }
     }
+    /* «Ver su cuadrante»: el sitio al que se salta se marca un momento con el
+       acento, para que el ojo lo encuentre. Se apaga solo. */
+    .tc-resalte { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 4px; border-radius: 1rem;
+                  transition: outline-color 600ms ease; }
+    tr.tc-resalte { outline: none; }
+    tr.tc-resalte > td { background: rgb(var(--tc-gold) / 0.12); }
   </style>
   <nav id="bases" aria-label="Bases" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4"></nav>
 
@@ -232,6 +238,20 @@
           <i class="fa-solid fa-car-burst text-telecab-gold"></i>Coches de emergencia
         </h3>
         <div id="emergencia" class="flex flex-wrap gap-1.5"></div>
+      </section>
+
+      <%# LAS PRÓXIMAS INCORPORACIONES (06/10/2026): quién entra en un coche de hoy
+          en adelante siendo NUEVO, o volviendo de vacaciones o de baja médica a
+          OTRO cuadrante (quien vuelve a lo suyo no sale). Al pinchar un nombre, su
+          número, cuadrante, base, puesto y fecha, y «Ver su cuadrante». Con una
+          base abierta, solo los de esa base; sin nadie, no sale. %>
+      <section id="panel-llegadas" class="hidden bg-telecab-card border border-telecab-border rounded-2xl p-4">
+        <h3 class="font-semibold text-sm flex items-center gap-2 mb-2"
+            title="Quién entra en un coche de hoy en adelante:&#10;· gente nueva (su primera plaza en este contrato);&#10;· quien vuelve de vacaciones o de baja médica, solo si le han cambiado de cuadrante mientras estaba fuera.&#10;Pincha un nombre para ver su número, su cuadrante y cuándo entra.">
+          <i class="fa-solid fa-user-plus text-telecab-gold"></i>Próximas incorporaciones
+          <span id="llegadas-n" class="ml-auto text-xs text-telecab-muted"></span>
+        </h3>
+        <div id="llegadas" class="space-y-1.5 max-h-[40vh] overflow-y-auto pr-1"></div>
       </section>
 
       <%# LAS BAJAS DE LOS ÚLTIMOS 5 DÍAS (29/09/2026): quién se ha ido de la
@@ -811,6 +831,105 @@
   const bajasAbiertas = new Set();
   // «NSPP» es jerga de RRHH: se dice al lado qué significa.
   const glosaMotivo = m => (/\bNSPP\b/i.test(m) ? ' (no superó el periodo de prueba)' : '');
+  // ── Las próximas incorporaciones (06/10/2026) ──────────────────────────────
+  // Gente nueva y quien vuelve de vacaciones o de baja médica a OTRO cuadrante
+  // (la lista la decide el servidor: planificador.repo.proximasIncorporaciones).
+  // Cada nombre se despliega por su cuenta, y lo abierto sobrevive al repintado.
+  const llegadasAbiertas = new Set();
+  const MOTIVO_LLEGADA = {
+    nuevo:       { texto: 'Nuevo',                 cls: 'bg-telecab-green/15 text-telecab-green border-telecab-green/30' },
+    vacaciones:  { texto: 'Vuelve de vacaciones',  cls: 'bg-sky-500/15 text-sky-400 border-sky-500/30' },
+    baja_medica: { texto: 'Vuelve de baja médica', cls: 'bg-telecab-violet/15 text-telecab-violet border-telecab-violet/30' },
+  };
+  const diaYMes = iso => isoAes(iso).slice(0, 5);
+
+  function pintarLlegadas() {
+    // Con una base abierta, solo quien entra en un coche de esa base.
+    const lista = (T.proximasIncorporaciones || [])
+      .filter(p => !ZONA || (p.plazas || []).some(x => (x.zonaClave || SIN_BASE) === ZONA));
+    $('#panel-llegadas').classList.toggle('hidden', lista.length === 0);
+    $('#llegadas-n').textContent = lista.length || '';
+    $('#llegadas').innerHTML = lista.map(p => {
+      const abierta = llegadasAbiertas.has(p.conductorId);
+      const m = MOTIVO_LLEGADA[p.motivo] || MOTIVO_LLEGADA.nuevo;
+      const coches = [...new Set((p.plazas || []).map(x => x.matricula))].join(' · ');
+      // Un botón por cuadrante distinto; sin cuadrante, se va a su coche.
+      const destinos = [];
+      (p.plazas || []).forEach(x => {
+        const k = x.cuadranteId || ('v' + x.vehiculoId);
+        if (!destinos.some(d => d.k === k)) destinos.push({ k, ...x });
+      });
+      const botones = destinos.map(d => `
+        <button type="button" data-ir-cuadrante="${esc(d.cuadranteId)}" data-ir-vehiculo="${esc(d.vehiculoId)}" data-ir-zona="${esc(d.zonaClave)}"
+                class="tc-pulsable inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/10">
+          <i class="fa-solid fa-arrow-right text-[10px]"></i>${destinos.length > 1
+            ? 'Ver ' + esc(d.cuadrante || d.matricula)
+            : (d.cuadranteId ? 'Ver su cuadrante' : 'Ver su coche')}</button>`).join('');
+      const fila = (etq, valor) => `<p><span class="text-telecab-muted">${etq}:</span> <span class="font-medium">${valor}</span></p>`;
+      const plazas = (p.plazas || []).map(x => `
+        <div class="rounded-md bg-telecab-card2/60 px-2 py-1">
+          <p class="font-medium">${esc(x.matricula)} · ${esc(x.esFijo ? 'Fijo' : 'CT')} ${esc(String(x.puesto || '').replace(/^\S+\s/, ''))}</p>
+          <p class="text-telecab-muted">${esc(x.cuadrante || 'Sin cuadrante')}${x.zona ? ' · ' + esc(x.zona) : ''}${
+            x.desde !== p.desde ? ' · desde el ' + esc(diaYMes(x.desde)) : ''}</p>
+        </div>`).join('');
+      const detalle = p.motivo === 'nuevo'
+        ? (p.alta ? fila('Alta', esc(isoAes(p.alta))) : '')
+        : fila('Fuera', `${esc((m.texto.replace('Vuelve de ', '')))} del ${esc(diaYMes(p.ausencia.desde))}` +
+                        `${p.ausencia.hasta ? ' al ' + esc(diaYMes(p.ausencia.hasta)) : ', sin fecha de vuelta'}`) +
+          fila('Antes', (p.antes && p.antes.cuadrantes.length)
+            ? esc(p.antes.cuadrantes.join(', ')) + (p.antes.matriculas.length ? ` <span class="text-telecab-muted">(${esc(p.antes.matriculas.join(', '))})</span>` : '')
+            : (p.antes && p.antes.matriculas.length ? esc(p.antes.matriculas.join(', ')) + ' <span class="text-telecab-muted">(sin cuadrante)</span>' : 'sin coche'));
+      return `
+        <div class="rounded-lg bg-telecab-card border border-telecab-border">
+          <button type="button" data-llegada="${esc(p.conductorId)}" aria-expanded="${abierta}"
+                  class="w-full flex items-center gap-2 px-2 py-1.5 text-left rounded-lg hover:bg-telecab-card2 transition-colors">
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium truncate">${esc(p.nombre)}</div>
+              <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
+                <span class="inline-flex px-1.5 rounded border text-[10px] font-semibold ${m.cls}">${esc(m.texto)}</span>
+                <span class="text-[11px] text-telecab-muted">entra el ${esc(diaYMes(p.desde))} · ${esc(coches)}</span>
+              </div>
+            </div>
+            <i class="fa-solid fa-chevron-down text-[10px] text-telecab-muted transition-transform ${abierta ? 'rotate-180' : ''}"></i>
+          </button>
+          <div class="px-2 pb-2 text-xs space-y-1 ${abierta ? '' : 'hidden'}">
+            ${fila('Teléfono', p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span>` : '<span class="text-telecab-warn">sin teléfono</span>')}
+            ${fila('Incorporación', esc(isoAes(p.desde)))}
+            ${detalle}
+            <div class="space-y-1">${plazas}</div>
+            <div class="flex flex-wrap gap-1.5 pt-1">${botones}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  /**
+   * «Ver su cuadrante»: lleva la vista a su cuadrante (o a su coche, si no está
+   * en ninguno) y lo marca un momento. Si el buscador o «solo con huecos» lo
+   * esconderían, se quitan; si hay otra base abierta, se abre la suya.
+   */
+  function irAlCuadrante({ cuadranteId, vehiculoId, zonaClave }) {
+    let repintar = false;
+    if (plano($('#f-busca').value).trim()) { $('#f-busca').value = ''; repintar = true; }
+    if ($('#f-huecos').checked) { $('#f-huecos').checked = false; repintar = true; }
+    if (ZONA && ZONA !== (zonaClave || SIN_BASE)) elegirBase(zonaClave || SIN_BASE);
+    else if (repintar) pintar();
+    const destino = document.querySelector(cuadranteId
+      ? `[data-cuadrante="${CSS.escape(cuadranteId)}"]` : `[data-vehiculo="${CSS.escape(vehiculoId)}"]`);
+    if (!destino) {
+      Dialogo.aviso({ titulo: 'No está a la vista', tono: 'aviso',
+        texto: 'Ese cuadrante no sale en la semana que estás mirando. Prueba con «Hoy».' });
+      return;
+    }
+    const suave = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    destino.scrollIntoView({ block: 'start', behavior: suave ? 'smooth' : 'auto' });
+    const coche = cuadranteId && vehiculoId ? destino.querySelector(`[data-vehiculo="${CSS.escape(vehiculoId)}"]`) : null;
+    [destino, coche].filter(Boolean).forEach(el => {
+      el.classList.add('tc-resalte');
+      setTimeout(() => el.classList.remove('tc-resalte'), 2600);
+    });
+  }
+
   function pintarBajas() {
     const B = T.bajasRecientes || { dias: 5, lista: [] };
     const lista = B.lista || [];
@@ -1079,6 +1198,7 @@
   function seccionCuadrante(cu, lista) {
     const sec = document.createElement('section');
     sec.dataset.cuadrante = cu.id;
+    sec.className = 'scroll-mt-24';   // que la barra de arriba no tape la cabecera al saltar aquí
     const ctDia = ctDelCuadrante(lista, 2), ctNoche = ctDelCuadrante(lista, 3);
     const chipCT = (persona, turno) => {
       const nombre = persona === 'varios' ? 'Varios' : (persona ? persona.nombre : null);
@@ -1262,7 +1382,8 @@
 
   function filaCoche(coche, enCuadrante) {
     const tr = document.createElement('tr');
-    tr.className = 'border-t border-telecab-border/70 align-top';
+    tr.className = 'border-t border-telecab-border/70 align-top scroll-mt-24';
+    tr.dataset.vehiculo = coche.vehiculoId;   // para «Ver su cuadrante»
     const tono = tonoEstado(coche.estadoVeh);
 
     // Celda de matrícula + estado.
@@ -1385,12 +1506,13 @@
 
   function tarjetaCoche(coche, enCuadrante) {
     const art = document.createElement('article');
+    art.dataset.vehiculo = coche.vehiculoId;  // para «Ver su cuadrante»
     const tono = tonoEstado(coche.estadoVeh);
     const parado = !coche.visibleCobertura;
     const ic = coche.iceberg || {};
     const falta = textoFalta(coche);
     const descTxt = (coche.descanso && coche.descanso.length) ? diasTexto(coche.descanso) : '';
-    art.className = `rounded-2xl border p-3 flex flex-col gap-2 min-w-0 ${parado ? 'border-telecab-red/40 bg-telecab-red/5' : 'border-telecab-border bg-telecab-card'}`;
+    art.className = `rounded-2xl border p-3 flex flex-col gap-2 min-w-0 scroll-mt-24 ${parado ? 'border-telecab-red/40 bg-telecab-red/5' : 'border-telecab-border bg-telecab-card'}`;
     const accion = (data, icono, titulo) =>
       `<button type="button" ${data} title="${esc(titulo)}" class="w-7 h-7 rounded-lg text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-gold transition-colors"><i class="fa-solid ${icono} text-xs"></i></button>`;
     art.innerHTML = `
@@ -1705,6 +1827,7 @@
         <i class="fa-solid fa-car-side"></i>${esc(e.matricula)}${e.zona ? ` <span class="text-telecab-muted">${esc(e.zona)}</span>` : ''}
       </span>`).join('');
 
+    pintarLlegadas();
     pintarBajas();
     pintarBanquillo();
     pintarAusentes();
@@ -2855,6 +2978,23 @@
   document.querySelectorAll('.banq-tab').forEach(b =>
     b.addEventListener('click', () => { banqTab = b.dataset.banqTab; pintarBanquillo(); }));
   $('#k-flojos-caja').addEventListener('click', verCtFlojos);
+  // Un nombre de las próximas incorporaciones: despliega (o pliega) su ficha; y
+  // «Ver su cuadrante» lleva hasta él.
+  $('#llegadas').addEventListener('click', e => {
+    const ir = e.target.closest('[data-ir-vehiculo]');
+    if (ir) {
+      irAlCuadrante({ cuadranteId: ir.dataset.irCuadrante, vehiculoId: ir.dataset.irVehiculo, zonaClave: ir.dataset.irZona });
+      return;
+    }
+    const b = e.target.closest('[data-llegada]');
+    if (!b) return;
+    const id = b.dataset.llegada;
+    const abrir = !llegadasAbiertas.has(id);
+    if (abrir) llegadasAbiertas.add(id); else llegadasAbiertas.delete(id);
+    b.setAttribute('aria-expanded', String(abrir));
+    b.querySelector('i').classList.toggle('rotate-180', abrir);
+    b.nextElementSibling.classList.toggle('hidden', !abrir);
+  });
   // Un nombre del panel de bajas: despliega (o pliega) su motivo.
   $('#bajas').addEventListener('click', e => {
     const b = e.target.closest('[data-baja]');

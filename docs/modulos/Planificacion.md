@@ -161,6 +161,7 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 | CT que faltan | días que libra un fijo y **nadie tiene escritos** (hoy o desde más adelante), ÷6 | el cuadrante, con las asignaciones futuras |
 | Huérfanos | gente asignada a un coche fuera de cobertura | `v_conductor_huerfano` |
 | Banquillo | activos sin plaza + correturnos a medio poner | ver más abajo |
+| Próximas incorporaciones (panel lateral) | gente nueva y quien vuelve de vacaciones o baja médica **a otro cuadrante**, de hoy en adelante | `asignacion` futura, `conductor_estado_hist` (`proximasIncorporaciones`) |
 | Bajas · últimos 5 días (panel lateral) | quién ha causado baja **de hoy a 4 días atrás** y no tiene otro contrato abierto; al pinchar el nombre, el motivo | `conductor_periodo_empleo.baja` y `motivo_baja` (`tablero().bajasRecientes`) |
 
 > [!note] La tarjeta de bajas (29/09/2026)
@@ -169,6 +170,18 @@ Auditadas todas contra la base el **18/09/2026**. Dos daban un número que no er
 > - **No sale quien tiene otro contrato abierto**: pasar de ETT a plantilla cierra un periodo («Pasa a plantilla propia») y abre otro el mismo día, y quien vuelve tiene uno nuevo. Con dos periodos cerrados en la ventana sale una vez, con el último (Macilon, 24/09, dos veces por la ETT).
 > - Sin motivo apuntado sale **«Sin motivo apuntado»** en ámbar. El 29/09 pasa en casi todas las bajas de ETT: se dan sin motivo. **NSPP** lleva al lado «no superó el periodo de prueba».
 > - El 29/09 salían tres: Marius Cristian Jura (28/09, baja voluntaria, 6663LCY noche), Helmuth Isaac Held (25/09, NSPP, 5912LBZ noche) y Diana Madeline Alvarez (25/09, ETT GiGroup, sin motivo, 1209MJY día).
+
+> [!note] Próximas incorporaciones (06/10/2026)
+> La pidió Camilo: quién va a entrar en un coche **de hoy en adelante**, en la columna lateral, encima de *Bajas*. Cada nombre lleva su etiqueta a la vista: **Nuevo**, **Vuelve de vacaciones** o **Vuelve de baja médica**. Al pincharlo se despliegan su **número**, la fecha de incorporación y cada plaza (matrícula, **Fijo o CT** con su turno, **cuadrante** y **base**). Para quien vuelve, además, dónde estaba y cuánto estuvo fuera. Debajo, **«Ver su cuadrante»**: lleva la vista a su cuadrante y lo marca un momento con el acento, junto con la fila de su coche, para ver a sus compañeros. Si el buscador o «solo con huecos» lo esconderían, se quitan, y si hay otra base abierta, se abre la suya. Sin cuadrante, el botón es «Ver su coche».
+>
+> Quién entra (`planificador.repo.proximasIncorporaciones`):
+> - **Nuevo**: es la primera plaza de su contrato abierto. Una re-alta también cuenta.
+> - **Vuelve de vacaciones o de baja médica**: la plaza empieza dentro de la ausencia o hasta 7 días después de acabarla, y **solo si le han cambiado de cuadrante**. Si su coche no está en ningún cuadrante, se compara el coche. Quien vuelve a lo suyo —lo normal, y lo que deja «Cubrir esta plaza»— no sale.
+> - Quien ya trabaja aquí y solo cambia de coche no sale: no es una incorporación. Una persona sale una vez con todas sus plazas, y el mismo coche y puesto en dos tramos sale una vez.
+>
+> **«Antes» es su ÚLTIMA plaza anterior a la nueva**, no la que tenía la víspera de irse. Con la víspera, Wellim (se fue el 03/09, el día que arranca el cuadrante) y Rodrigo (con un hueco justo el 09/09) salían «sin coche» y, por tanto, como cambiados, aunque los dos vuelven a su coche de siempre. Cuenta **desde hoy**, mires la semana que mires, como la tarjeta de bajas. Con una base abierta, solo salen los que entran en un coche de esa base.
+>
+> El 06/10/2026 salían dos nuevos: Juan Francisco De la Fuente (06/10, 3110KSM) y José Amador López (10/10, CT en el 8203LTR y el 8930KVC). Probado con fechas de septiembre: salen las vueltas con cambio (Rachid Lakraa, Juan Carlos Vierma, Harold Torres…) y no las de quien vuelve a lo suyo.
 
 > [!warning] «CT que faltan» decía 28 y eran 15
 > Contaba los días que `f_cobertura` no llenó **en la semana abierta**. De los huecos de coches con fijo, **117 eran de días ya pasados** y 47 de hoy en adelante; 24 de ellos ya tenían dueño escrito. Se contrataba por un número que medía el pasado de la semana que tuvieras abierta. Ahora: 264 días de CT que pide el cuadrante, 181 con dueño, **83 sin nadie → 15 personas**.
