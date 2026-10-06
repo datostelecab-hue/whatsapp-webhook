@@ -69,7 +69,7 @@
       <span class="text-right" title="Horas efectivas: viaje + espera">Efectivas</span>
       <span class="dopc text-right" title="Km rodados trabajando">Km</span>
       <span class="dopc text-right" title="Km rodados fuera de BOLT (descanso o desconectado)">Km fuera</span>
-      <span class="dopc text-right" title="Viajes aceptados sobre los que le ha ofrecido BOLT en su jornada (05:00 → 05:00)">Aceptados</span>
+      <span class="dopc text-right" title="Viajes aceptados sobre los que le ha ofrecido BOLT en su turno (día de 00:00 a 24:00, noche de 12:00 a 12:00)">Aceptados</span>
       <span class="text-right">Avisos</span>
       <span></span>
     </div>
@@ -392,7 +392,7 @@
     if (!alertaDe(f).length) return 0;
     return atendida(f) ? 1 : 2;
   }
-  // ── % DE VIAJES ACEPTADOS, siempre por JORNADA (05:00 → 05:00) ──────────────
+  // ── % DE VIAJES ACEPTADOS, por la VENTANA DE SU TURNO (día 00→24, noche 12→12) ─
   // Hasta ahora este número solo existía escondido en el tooltip del aviso de
   // rechazos, así que solo se veía cuando ya iba mal. Es al revés: es la cifra
   // con la que se mira a alguien ANTES de que vaya mal.
@@ -756,7 +756,7 @@
     const rr = f.rechazos;
     const acept = (rr && rr.ofertas)
       ? '<div class="rounded-lg border border-telecab-border bg-telecab-dark/40 p-2 mb-3">' +
-          '<div class="text-xs text-telecab-muted mb-1">Viajes de su jornada (05:00 → 05:00)</div>' +
+          '<div class="text-xs text-telecab-muted mb-1">Viajes de su turno (' + (f.turno === 'noche' ? 'de 12:00 a 12:00' : f.turno === 'dia' ? 'de 00:00 a 24:00' : '05:00 → 05:00') + ')</div>' +
           '<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">' +
             '<span class="text-base font-bold tabular-nums ' +
               (rr.tasa < ACEPT_ROJO ? 'text-red-500' : rr.tasa < ACEPT_AMBAR ? 'text-amber-500' : 'text-emerald-500') +
@@ -978,13 +978,13 @@
       const filas = todas.filter(s => !q ||
         (s.conductor || '').toLowerCase().includes(q) ||
         (s.matriculas || []).join(' ').toLowerCase().includes(q));
-      // PARTIDOS POR TURNO. Sus horas son del turno en que las hicieron, y quien
-      // sigue rodando pasadas las 17:00 sale en los dos: arriba lo que hizo de
-      // día, abajo lo de la noche. Antes iban todos en un montón con las horas
-      // de la jornada entera, que no eran de ningún turno.
+      // PARTIDOS POR TURNO, POR SU HORA DE INICIO (06/10/2026): quien empieza
+      // antes de las 12:00 es de día y quien empieza desde las 12:00, de noche.
+      // Solo sale en los dos quien hizo dos ratos, uno de cada. Antes el corte
+      // era el reloj de las 17:00, y antes aún iban todos en un montón.
       const porT = [
-        { id: 'dia', etq: 'Día', icono: 'fa-sun', desc: 'Lo que hicieron entre las 05:00 y las 17:00' },
-        { id: 'noche', etq: 'Noche', icono: 'fa-moon', desc: 'Desde las 17:00' },
+        { id: 'dia', etq: 'Día', icono: 'fa-sun', desc: 'Empezaron antes de las 12:00 · cuenta de 00:00 a 24:00' },
+        { id: 'noche', etq: 'Noche', icono: 'fa-moon', desc: 'Empezaron desde las 12:00 · cuenta de 12:00 a 12:00 del día siguiente' },
       ];
       $('#d-lista').innerHTML = filas.length
         ? porT.map(t => {

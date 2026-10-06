@@ -100,7 +100,10 @@
     <div>
       <div class="mb-2 flex items-center gap-2">
         <span class="text-xs font-semibold text-telecab-text uppercase tracking-wider">Por turno</span>
-        <span class="text-[11px] text-telecab-muted">día 05–17 · noche 17–05 · jornada 05→05</span>
+        <%# Desde el 06/10/2026 el turno es su GENTE, no un reloj: el día cuenta de
+            00:00 a 24:00 y la noche de 12:00 a 12:00, según el turno de cada
+            conductor; los NN, por su hora de inicio. La misma regla que Control. %>
+        <span class="text-[11px] text-telecab-muted" title="Las horas de cada turno son las de su gente según el cuadrante: el día cuenta de 00:00 a 24:00 y la noche de 12:00 a 12:00 del día siguiente. Quien no está en el plan (NN) va por su hora de inicio: antes de las 12:00, día. La jornada sigue siendo 05:00 → 05:00.">día 00–24 · noche 12–12, por conductor · jornada 05→05</span>
         <div class="flex-1 h-px bg-telecab-border/50"></div>
       </div>
       <div class="grid grid-cols-3 gap-3">
@@ -324,6 +327,13 @@
       setTxt(id + '-h', nf1.format(s.horasEfectivas));
       setTxt(id + '-util', s.utilizacion == null ? '—' : nf1.format(s.utilizacion));
       setTxt(id + '-cond', (s.conductores || 0) + ' cond.');
+      // En las de turno, cuánto es de gente sin plan (va por su hora de inicio).
+      const cond = document.getElementById(id + '-cond');
+      if (cond && s.horasNN != null) {
+        cond.title = s.conductoresNN
+          ? 'De ellos, ' + s.conductoresNN + ' sin plan (NN) con ' + nf1.format(s.horasNN) + ' h'
+          : 'Ninguno sin plan (NN)';
+      }
 
       const meta = META[id] || 0;
       const bar = document.getElementById(id + '-bar');

@@ -76,44 +76,6 @@ async function horasVentana(dia, hIni, offDias, hFin) {
   };
 }
 
-// ── Cuánta gente hizo CADA TURNO de una jornada ──────────────────────────────
-// No es lo mismo "pasó por la franja" que "hizo ese turno", y la tarjeta decía
-// lo primero llamándolo lo segundo: el domingo salía "turno día · 80 cond"
-// cuando de día solo hubo 49. La causa es que el de noche que ficha a las 16:40
-// toca la ventana de día, y el de día que alarga hasta las 17:30 toca la de
-// noche, así que cada uno se contaba DOS veces y día + noche (82 + 71) se iba
-// muy por encima de la jornada (100).
-//
-// Aquí cada persona cuenta UNA sola vez, en el turno donde hizo el grueso de
-// sus horas efectivas. Así día + noche = la jornada, siempre.
-async function conductoresPorTurno(diaJornada) {
-  if (!fv.HAY_BD) return { dia: 0, noche: 0, total: 0 };
-  await fv.preparar();
-  const T = require('./flotaViva/rutas').TURNOS;
-  const r = await fv.consulta(
-    `WITH j AS (
-       SELECT ($1::date + ($2 || ' hours')::interval)       AT TIME ZONE 'Europe/Madrid' AS ini,
-              ($1::date + ($3 || ' hours')::interval)       AT TIME ZONE 'Europe/Madrid' AS corte,
-              (($1::date + 1) + ($2 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid' AS fin
-     ),
-     tr AS (
-       SELECT t.conductor_uuid AS uuid,
-              GREATEST(0, EXTRACT(EPOCH FROM (LEAST(COALESCE(t.hasta, now()), j.corte) - GREATEST(t.desde, j.ini))))   AS sd,
-              GREATEST(0, EXTRACT(EPOCH FROM (LEAST(COALESCE(t.hasta, now()), j.fin)   - GREATEST(t.desde, j.corte)))) AS sn
-         FROM fv_tramo t CROSS JOIN j
-         JOIN fv_cat_situacion s ON s.codigo = t.situacion AND s.efectivo
-        WHERE t.desde < j.fin AND COALESCE(t.hasta, now()) > j.ini
-     ),
-     p AS (SELECT uuid, sum(sd) AS d, sum(sn) AS n FROM tr GROUP BY uuid)
-     SELECT count(*) FILTER (WHERE d + n > 0)::int      AS total,
-            count(*) FILTER (WHERE d >= n AND d > 0)::int AS dia,
-            count(*) FILTER (WHERE n > d)::int            AS noche
-       FROM p`,
-    [String(diaJornada).slice(0, 10), String(T.dia[0]), String(T.dia[2])]);
-  const x = r.rows[0] || {};
-  return { dia: Number(x.dia) || 0, noche: Number(x.noche) || 0, total: Number(x.total) || 0 };
-}
-
 // Dinero (neto) y viajes terminados de la MISMA ventana, desde bolt_order.
 async function dineroVentana(dia, hIni, offDias, hFin) {
   if (!db.HAY_BD) return { neto: 0, viajes: 0 };
@@ -184,12 +146,43 @@ async function guardarConfig(patch) {
   return limpio;
 }
 
+// ── LAS HORAS DE UN TURNO, POR LA GENTE DE ESE TURNO ─────────────────────────
+// Desde el 06/10/2026 (Camilo) un turno no es un reloj: son las horas de SU
+// GENTE. El de día cuenta de 00:00 a 24:00 y el de noche de 12:00 a 12:00 del
+// día siguiente, siempre según el turno de cada conductor en el cuadrante; los
+// NN, por su hora de inicio (antes de las 12:00, día). Es la regla de Control
+// (services/flotaViva/repartoTurnos.js): las dos pantallas cuentan igual.
+//
+// Antes era el reloj (05→17 y 17→05) y se perdía, por ejemplo, lo que hace
+// quien es de día y entra a las 04:00, y lo que hace a las 16:00 el de noche
+// se le daba al día.
+function sliceDeTurno(x) {
+  const efectivasSeg = x.viajeSeg + x.esperaSeg;
+  const r1 = v => Math.round(v * 10) / 10;
+  return {
+    horasEfectivas: r1(efectivasSeg / 3600),
+    viajeH: r1(x.viajeSeg / 3600),
+    esperaH: r1(x.esperaSeg / 3600),
+    utilizacion: efectivasSeg > 0 ? Math.round((x.viajeSeg / efectivasSeg) * 1000) / 10 : null,
+    // Cada persona una vez por turno. Solo sale en los dos quien de verdad hizo
+    // los dos: quien dobla, o un NN con un rato de mañana y otro de noche.
+    conductores: x.personas.size,
+    // Lo que va por la hora de inicio (sin turno en el cuadrante), aparte.
+    horasNN: r1(x.nnSeg / 3600),
+    conductoresNN: x.nnPersonas.size,
+  };
+}
+
 // ── KPIs "en vivo" (mes, hoy, semana, turno actual, turno anterior) ──────────
-// Los turnos siguen la regla de tráfico: día = 05:00→17:00, noche = 17:00→05:00.
 // "Turno actual" es el que corre AHORA; "anterior", el inmediatamente previo.
-// POR TURNO es OTRA COSA que por día: el turno de noche va 17:00→05:00 y CRUZA
-// MEDIANOCHE, así que no cuadra con ningún día natural. Aquí se devuelven las dos
-// ventanas de turno relevantes "ahora": el día de hoy y la noche que toca.
+// POR TURNO es OTRA COSA que por día: el turno de noche CRUZA MEDIANOCHE, así
+// que no cuadra con ningún día natural. Aquí se devuelven los dos turnos
+// relevantes "ahora": el día de hoy y la noche que toca. Se cambia de tarjeta a
+// la hora estándar de entrar (05:00 y 17:00).
+//
+// `v` sigue siendo la ventana de RELOJ del turno (05→17, 17→05): la usa el panel
+// de inicio para los km. Las HORAS de las tarjetas ya no salen de ahí, sino del
+// reparto por conductor (sliceDeTurno).
 function ventanaTurnos() {
   const H = horaMadrid();
   const hoy = hoyISO(), ayer = diaISOhace(1);
@@ -243,20 +236,19 @@ async function resumen() {
   // Se probó a poner las dos filas por jornada y fue peor: a media mañana "HOY"
   // y "TURNO DÍA" daban el mismo número (la jornada en curso ES el turno de día
   // hasta las 17:00) y la tarjeta no decía nada.
-  const [mes, dia, ayerDia, ayerJor, semana, turnoDia, turnoNoche, cuentaDia, cuentaNoche, config] = await Promise.all([
+  const fechaDia = t.dia.v[0], fechaNoche = t.noche.v[0];
+  const [mes, dia, ayerDia, ayerJor, semana, porTurno, config] = await Promise.all([
     slice(primeroMes, 0, dm, 0),           // todo el mes, días naturales (los futuros no suman)
     slice(hoy, 0, 1, 0),                   // HOY, día natural 00:00 → 24:00 (parcial)
     slice(ayer, 0, 1, 0),                  // AYER, día natural completo
     slice(ayerJornada, H0, 1, H0),         // AYER, jornada 05:00 → 05:00 (= turno día + turno noche)
     slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
-    slice(...t.dia.v),                     // turno DÍA (05→17)
-    slice(...t.noche.v),                   // turno NOCHE (17→05, cruza medianoche)
-    // Cada persona en UN solo turno: el de la jornada a la que pertenece cada
-    // ventana (la de noche empieza el mismo día que su jornada).
-    conductoresPorTurno(t.dia.v[0]),
-    conductoresPorTurno(t.noche.v[0]),
+    // Los DOS TURNOS de una vez, por la gente de cada uno (sliceDeTurno).
+    require('./flotaViva/repartoTurnos').porTurno([fechaDia, fechaNoche]),
     leerConfig(),
   ]);
+  const turnoDia = sliceDeTurno(porTurno.get(fechaDia + '|dia'));
+  const turnoNoche = sliceDeTurno(porTurno.get(fechaNoche + '|noche'));
   return {
     hoyISO: hoy,
     // POR DÍA (día natural 00:00→24:00)
@@ -264,11 +256,10 @@ async function resumen() {
     dia: { ...dia, etq: 'Hoy' },
     ayer: { ...ayerDia, etq: 'Ayer' },
     semana: { ...semana, etq: 'Esta semana' },
-    // POR TURNO (ventana del turno; la noche cruza medianoche). Las HORAS son
-    // las de la ventana; los CONDUCTORES, los que hicieron ese turno — que no
-    // es lo mismo que los que pisaron la franja (ver conductoresPorTurno).
-    turnoDia: { ...turnoDia, conductores: cuentaDia.dia, etq: t.dia.etq },
-    turnoNoche: { ...turnoNoche, conductores: cuentaNoche.noche, etq: t.noche.etq },
+    // POR TURNO: las horas y la gente de cada turno, por el turno de cada
+    // conductor (día 00→24, noche 12→12; los NN por su hora de inicio).
+    turnoDia: { ...turnoDia, etq: t.dia.etq, dia: fechaDia },
+    turnoNoche: { ...turnoNoche, etq: t.noche.etq, dia: fechaNoche },
     ayerJornada: { ...ayerJor, etq: 'Ayer · jornada completa', dia: ayerJornada },
     config,
   };
@@ -478,7 +469,7 @@ module.exports = {
   resumen, serieMes, ultimosDias, leerConfig, guardarConfig,
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
-  slice, horasVentana, dineroVentana, conductoresPorTurno,
+  slice, horasVentana, dineroVentana,
   // La usa el panel de inicio para pedir los KM de las MISMAS ventanas que las
   // horas: si cada pantalla eligiera su turno, las dos cifras no se podrian comparar.
   ventanaTurnos,

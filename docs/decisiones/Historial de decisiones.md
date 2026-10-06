@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-06 · Las horas de cada turno, por conductor (Control y Visibilidad)
+
+Había gente de día que entraba antes de las 05:00 y esas horas no contaban. Ahora, en Control y en Visibilidad, el turno de día cuenta de 00:00 a 24:00 y el de noche de 12:00 a 12:00 del día siguiente, siempre según el turno de cada conductor en el cuadrante. Los NN van por su hora de inicio: antes de las 12:00, día. Como las dos ventanas se solapan, cada minuto se le da a un solo turno: el planificado si cae en su ventana, y lo demás por sesiones (`services/flotaViva/repartoTurnos.js`, con su comprobador). «No terminará» y «En riesgo» siguen cerrando a las 17:00 y a las 05:00: es el estándar. La jornada (05→05), la Bitácora y el Reporte de horas no cambian. → [[Jornada y turnos#Las horas de cada turno, por conductor (06/10/2026)]]
+
 ## 2026-10-06 · Control: filtro «En riesgo», sin alerta
 
 Un tercer filtro en Control · En directo con quien está parado (desconectado o en descanso) sin sus 8 h y aún llega si vuelve ya. Arriba van los de menos margen. No añade ningún aviso a la fila: Camilo lo pidió «sin alerta, solo un filtro». Cuando a alguien se le acaba el margen, pasa solo a «No terminará la jornada». → [[Control En directo#El filtro «En riesgo» (06/10/2026)]]

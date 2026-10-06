@@ -348,7 +348,18 @@ const TURNOS = {
   // OJO: medir no es reclamar. Que la ventana esté abierta a las 12:30 no
   // significa que a quien entra a las 17:00 haya que llamarle por no estar; eso
   // lo decide `reclamable` en el cockpit (directo.js).
-  nocheControl: [12, 1, HORA_DIA],
+  //
+  // DESDE EL 06/10/2026 LA NOCHE CUENTA HASTA LAS 12:00 del día siguiente, no
+  // hasta las 05:00 (Camilo): quien remata pasadas las 05:00 sigue en su turno.
+  // Y el DÍA cuenta de 00:00 a 24:00, porque hay gente de día que entra antes de
+  // las 05:00 y esas horas no salían. Es la regla de `repartoTurnos.js`, la
+  // misma que usa Visibilidad. Lo que NO cambia es cuándo acaba el turno para
+  // «No terminará la jornada»: las 17:00 y las 05:00 (eso va en el cockpit).
+  nocheControl: [12, 1, 12],
+  diaControl: [0, 1, 0],
+  // Quien dobla día y noche del mismo coche: de las 00:00 a las 12:00 del día
+  // siguiente, que es lo que cubren sus dos turnos juntos.
+  todoturnoControl: [0, 1, 12],
 };
 
 /**

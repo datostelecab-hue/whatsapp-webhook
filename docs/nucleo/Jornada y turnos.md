@@ -30,7 +30,9 @@ En `services/flotaViva/rutas.js`, como `[hora_inicio, offset_días_fin, hora_fin
 | `operativo` | 05:00 → 05:00 (+1) | **la jornada**: día ∪ noche, sin saber de qué turno es nadie |
 | `completo` | 00:00 → 24:00 | el día natural |
 | `noche12` | 12:00 → 12:00 (+1) | la regla de Tráfico para el reporte |
-| `nocheControl` | 12:00 → 05:00 (+1) | la noche como la mira el cockpit |
+| `nocheControl` | 12:00 → 12:00 (+1) | la noche como la mira el cockpit (hasta el 06/10/2026, 12:00 → 05:00) |
+| `diaControl` | 00:00 → 24:00 | el día como lo mira el cockpit (desde el 06/10/2026) |
+| `todoturnoControl` | 00:00 → 12:00 (+1) | quien dobla día y noche del mismo coche |
 
 Dos avisos que están escritos en el propio código:
 
@@ -51,12 +53,33 @@ Y antes de eso, la propia pantalla de flota cortaba por día natural: «Flota ho
 
 Para el reporte, el turno de noche se mide **12:00 → 12:00 del día siguiente** (`noche12`). Así un turno de noche entero cae en **un** día y la madrugada va con la noche que la trajo, no con el día siguiente. El turno de día usa el día natural.
 
-El cockpit usa la misma idea recortada al final real del turno (`nocheControl`, 12:00 → 05:00). Por qué no vale 17→05 ahí:
+El cockpit usaba la misma idea recortada al final real del turno (`nocheControl`, 12:00 → 05:00); desde el 06/10/2026 la mide entera, hasta las 12:00 (abajo). Por qué no vale 17→05 ahí:
 
 - Lo que un conductor de noche hace a las 06:00 es **la cola de su turno de ayer**, y con la ventana de 05:00 se le contaba como actividad de hoy: **le salían alertas de rechazos por viajes de la noche anterior**.
 - Al revés, el que empieza a las 13:00 **no aparecía por ninguna parte hasta las 17:00**.
 
 > **Medir no es reclamar.** Que la ventana esté abierta a las 12:30 no significa que a quien entra a las 17:00 haya que llamarle por no estar; eso lo decide `reclamable` en el cockpit.
+
+## Las horas de cada turno, por conductor (06/10/2026)
+
+Camilo: «hay gente de día que empieza desde antes de las 5am y no cuentan algunas horas». Desde entonces, **en Control y en Visibilidad, un turno no es un reloj: son las horas de su gente.**
+
+| Quién | Qué cuenta |
+|---|---|
+| De **día** en el cuadrante | de **00:00 a 24:00** de ese día |
+| De **noche** en el cuadrante | de **12:00 a 12:00** del día siguiente |
+| **NN** (sin plan) | por su **hora de inicio**: antes de las 12:00, día; desde las 12:00, noche |
+
+Siempre según el **turno de cada conductor** en el cuadrante (`f_cobertura`), no según la hora: a las 15:00 rueda gente de día y gente de noche a la vez.
+
+Vive en `services/flotaViva/repartoTurnos.js`. Las dos ventanas **se solapan** (de 12:00 a 24:00 caben las dos), así que hay que decidir de **quién** es cada minuto:
+
+1. Lo que cae en la ventana de un turno que esa persona **tiene planificado** es de ese turno. Si caben dos suyos (quien dobla, o dos noches seguidas), es del que más recientemente ha empezado a su hora estándar: quien dobla pasa de día a noche a las 17:00.
+2. Lo demás —los NN, y lo que alguien hace fuera de sus ventanas— va por **sesiones**: un rato de trabajo seguido que se corta tras **2 h sin trabajar** (`TURNO_HUECO_SESION_MIN`). La sesión es del turno de su hora de inicio; si se sale de su ventana, lo que sobra se reparte desde el borde.
+
+Así **cada segundo es de un solo turno** y día + noche es todo lo trabajado. La prueba es `scripts/comprobar-reparto-turnos.js` (pura, sin base), con los casos que pidió Camilo y los bordes: el NN que trabaja de 13:00 a 02:00 y vuelve a las 09:00 no se cuenta dos veces, y el cambio de hora del 25/10 da 13 h reales en una noche de 17:00 a 05:00.
+
+**Lo que no cambia:** el **final del turno** para «No terminará la jornada» y «En riesgo» sigue siendo las **17:00 y las 05:00**, y se sigue reclamando desde las 05:00 y las 17:00. Se amplía qué horas cuentan, no cuándo acaba el turno. Tampoco cambian la **jornada** (05→05), la Bitácora ni el Reporte de horas.
 
 ## Las franjas de vigilancia
 
@@ -99,7 +122,7 @@ Y las horas que se enseñan en el aviso son las **efectivas** (viaje + espera) d
 
 ## Qué lee estas constantes
 
-`services/visibilidad.js` (que a propósito mantiene **dos vistas**, día natural y jornada), `modules/Operaciones/bitacora.repo.js`, `modules/Operaciones/auditoria.service.js`, el reporte de horas y el cockpit de [[Control]], y `services/inicio.js` para el panel de inicio.
+`services/visibilidad.js` (que a propósito mantiene **dos vistas**, día natural y jornada, y desde el 06/10/2026 saca las tarjetas de turno de `repartoTurnos.js`), `modules/Operaciones/bitacora.repo.js`, `modules/Operaciones/auditoria.service.js`, el reporte de horas y el cockpit de [[Control]], y `services/inicio.js` para el panel de inicio.
 
 Ninguno escribe las horas: las pide. Tenerlas a mano en un fichero suelto era la forma segura de que el día que cambien los turnos esa pantalla se quedara sola diciendo otra cosa.
 

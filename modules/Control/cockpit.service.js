@@ -29,6 +29,8 @@ const TZ = 'Europe/Madrid';
 // las llamadas y las J se grababan en la jornada anterior. Cinco horas cada
 // noche sin ver a quien estaba trabajando.
 const { diaOperativoHoy } = require('../../services/repo/llamadas');
+// De quién es cada hora: el turno del conductor, y los NN por su hora de inicio.
+const reparto = require('../../services/flotaViva/repartoTurnos');
 
 /** El día anterior a una fecha 'YYYY-MM-DD'. */
 function ayerDe(iso) {
@@ -119,7 +121,8 @@ function salidaDe(a, vent) {
   // que empiece antes de las 17:00 cuente, pero a quien entra a las 17:00 no se
   // le llama a las 12:30 por no estar: eso serían sesenta y dos falsas alarmas
   // cada tarde. Antes de su hora solo se dice algo de él si YA está rodando —y
-  // entonces la respuesta es que sí, ha salido—.
+  // entonces la respuesta es que sí, ha salido—. Lo mismo con el día desde el
+  // 06/10/2026: se mide desde las 00:00, pero se reclama desde las 05:00.
   if (!vent.reclamable) {
     if (!a) return 'pendiente';
     if (a.conectadoAhora) return a.situacionAhora === 'descanso' ? 'descanso' : 'conectado';
@@ -166,8 +169,8 @@ async function enDirecto({ dia } = {}) {
   // (`kmSinDuenio`) que ahora corre a la vez que las demás y deja de contar.
   // Lo único que sigue después es lo que necesita la franja, porque para saber
   // cuál es hay que haber leído antes la configuración.
-  const [tab, est, incHoy, incAyer, kmHoy, contac, actividades,
-         rend, rechazos, rechazosNoche, justificantes, cfgAlertas, sinDuenioTodos, marcasDia] = await Promise.all([
+  const [tab, est, incHoy, incAyer, kmHoy, contac, actividades, tramosNN,
+         rend, rechazos, rechazosNoche, rechazosDia, justificantes, cfgAlertas, sinDuenioTodos, marcasDia] = await Promise.all([
     plani.tablero({ dia: hoy }).catch(e => { console.error('❌ [EN DIRECTO] Cuadrante:', e.message); return null; }),
     panel.estado().catch(e => { console.error('❌ [EN DIRECTO] Flota viva:', e.message); return null; }),
     // Las incidencias abiertas de hoy y de ayer: la franja de noche empieza hoy y
@@ -182,28 +185,35 @@ async function enDirecto({ dia } = {}) {
     // existe para llamar. Y no puede venir del trazo vivo, porque justo al que hay que
     // llamar —el que no ha salido— no le queda ni un tramo del que sacarlo.
     plani.contactos().catch(() => new Map()),
-    // LA ACTIVIDAD DE CADA PERSONA, EN LA VENTANA DE SU TURNO. Una consulta por
-    // turno, no una sola del día operativo: el de noche que terminó a las 03:51 y
-    // dejó el coche rodando hasta las 07:50 aparecía como que había salido de DÍA,
-    // porque sus sobras cruzaban el corte de las 05:00. Y la del día operativo
-    // entero (05→05) es la que sirve para los NN, que no tienen turno asignado.
-    // LAS CUATRO VENTANAS, EN UNA SOLA PASADA DE KM.
+    // LA ACTIVIDAD DE CADA PERSONA, EN LA VENTANA DE SU TURNO. LAS CUATRO
+    // VENTANAS, EN UNA SOLA PASADA DE KM.
     //
     // Una consulta por turno, no una sola del día operativo: el de noche que
     // terminó a las 03:51 y dejó el coche rodando hasta las 07:50 aparecía como
     // que había salido de DÍA, porque sus sobras cruzaban el corte de las 05:00.
-    // Y la del día operativo entero (05→05) es la que sirve para los NN, que no
-    // tienen turno asignado. La noche se mide desde MEDIODÍA (TURNOS.nocheControl):
-    // lo que hace un conductor de noche a las 06:00 es la cola de su turno de
-    // ayer, y lo que empieza a las 13:00 ya es de hoy. Y la noche "de reloj"
-    // (17:00→05:00) solo se usa para repartir a los NN, que no se miden por su
-    // turno —no tienen— sino por el que está en curso.
+    // La noche se mide desde MEDIODÍA (TURNOS.nocheControl): lo que hace un
+    // conductor de noche a las 06:00 es la cola de su turno de ayer, y lo que
+    // empieza a las 13:00 ya es de hoy. La jornada entera (05→05) es la del
+    // resumen («personas que salieron»).
     //
     // Las cuatro se piden juntas porque los KILÓMETROS se leen una sola vez:
     // eran 20,9 s de los 31,7 s de SQL de esta pantalla, y lo caro no era
     // agrupar cuatro veces sino barrer `fv_odometro` cuatro veces. → rutas.js
-    rutas.actividadDeVariosTurnos(hoy, ['dia', 'nocheControl', 'operativo', 'noche'])
+    //
+    // DESDE EL 06/10/2026 (Camilo): el DÍA cuenta de 00:00 a 24:00 —hay gente
+    // de día que entra antes de las 05:00 y esas horas no salían— y la NOCHE de
+    // 12:00 a 12:00 del día siguiente. Quien dobla, de 00:00 a 12:00 del
+    // siguiente. La jornada (05→05) sigue para el resumen. Los NN ya no se
+    // parten por el reloj: van por su hora de inicio (más abajo).
+    rutas.actividadDeVariosTurnos(hoy, ['diaControl', 'nocheControl', 'operativo', 'todoturnoControl'])
       .catch(e => { console.error('❌ [EN DIRECTO] actividad:', e.message); return new Map(); }),
+    // LOS TRAMOS DE TRABAJO, para repartir a los NN por su hora de inicio
+    // (repartoTurnos.js, la misma regla que Visibilidad). Desde el mediodía de
+    // la víspera, para saber si lo que hacen de madrugada es la cola de una
+    // sesión que empezó la tarde anterior.
+    reparto.intervalosEfectivos(reparto.instante(ayer, reparto.INICIO.noche),
+      Math.min(Date.now(), reparto.instante(reparto.sumarDias(hoy, 1), reparto.INICIO.noche)))
+      .catch(e => { console.error('⚠️  [EN DIRECTO] tramos de los NN:', e.message); return []; }),
 
     // ── Lo que antes iba en fila, detrás ──────────────────────────────────
     // El promedio de horas del mes y su letra, para que quien llama sepa a
@@ -220,6 +230,9 @@ async function enDirecto({ dia } = {}) {
       console.error('⚠️  [EN DIRECTO] rechazos:', e.message); return new Map();
     }),
     repoRech.porConductor(hoy, { hora: 12 }).catch(() => new Map()),
+    //   00:00→24:00  para el DÍA, desde el 06/10/2026: es la ventana de su turno.
+    //                La de 05→05 se queda para la aceptación de la jornada.
+    repoRech.porConductor(hoy, { hora: 0 }).catch(() => new Map()),
     // Los justificantes de la jornada CON SU ESTADO. Los necesita la
     // proyección: sin ellos volvería a decirle "no terminará la jornada" a
     // quien tiene tres horas de taller justificadas.
@@ -242,28 +255,38 @@ async function enDirecto({ dia } = {}) {
   const slackDe = cid => (cid ? marcasDia.slack.get(String(cid)) || null : null);
 
   // Con los mismos nombres de siempre, para que nada de abajo se entere.
-  const actDia = actividades.get('dia') || null;
+  const actDia = actividades.get('diaControl') || null;
   const actNoche = actividades.get('nocheControl') || null;
   const actOper = actividades.get('operativo') || null;
-  const actNocheReloj = actividades.get('noche') || null;
+  const actTodo = actividades.get('todoturnoControl') || null;
 
-  // ── DESDE CUÁNDO SE PUEDE RECLAMAR CADA TURNO ──────────────────────────────
-  // La ventana de la noche se abre a mediodía para MEDIR, pero su hora de entrar
-  // sigue siendo las 17:00. `reclamable` es lo que dice si ya toca llamar al que
-  // no está; `empezada` sigue diciendo si la ventana mide. En un día pasado, todo
-  // terminó, así que todo es reclamable.
-  const RECLAMA_TRAS = { dia: 0, noche: (17 - 12) * 3600000, operativo: 0 };
-  const marcarReclamable = (vent, clave) => {
+  // ── CUÁNDO SE PUEDE RECLAMAR CADA TURNO, Y CUÁNDO ACABA ────────────────────
+  // MEDIR NO ES RECLAMAR NI ACABAR. Las ventanas se abren antes (el día a las
+  // 00:00, la noche a mediodía) y cierran después (24:00 y 12:00) para que las
+  // horas de quien entra antes o remata tarde CUENTEN. Pero las horas del
+  // turno siguen siendo las estándar, 05:00→17:00 y 17:00→05:00:
+  //   · `reclamable`: desde su hora de entrar se llama al que no está. Antes
+  //     de eso solo se dice algo de quien ya está rodando.
+  //   · `finTurno`: hasta dónde llega la proyección de «No terminará la
+  //     jornada» y «En riesgo». Camilo, 06/10/2026: «esa sí es un estándar».
+  // En un día pasado todo terminó, así que todo es reclamable.
+  const manana = reparto.sumarDias(hoy, 1);
+  const HORARIO = {
+    dia:       { entra: reparto.instante(hoy, reparto.ENTRA.dia),   acaba: reparto.instante(hoy, reparto.ENTRA.noche) },
+    noche:     { entra: reparto.instante(hoy, reparto.ENTRA.noche), acaba: reparto.instante(manana, reparto.ENTRA.dia) },
+    todoturno: { entra: reparto.instante(hoy, reparto.ENTRA.dia),   acaba: reparto.instante(manana, reparto.ENTRA.dia) },
+  };
+  const marcarHorario = (vent, h) => {
     if (!vent) return vent;
-    const desfase = RECLAMA_TRAS[clave] || 0;
-    vent.reclamaAt = vent.ini ? new Date(vent.ini).getTime() + desfase : null;
-    vent.reclamable = !!vent.terminada || (vent.reclamaAt != null && Date.now() >= vent.reclamaAt);
+    vent.reclamaAt = h.entra;
+    vent.finTurno = new Date(h.acaba);
+    vent.reclamable = !!vent.terminada || Date.now() >= h.entra;
     return vent;
   };
-  marcarReclamable(actDia, 'dia');
-  marcarReclamable(actNoche, 'noche');
-  marcarReclamable(actOper, 'operativo');
-  marcarReclamable(actNocheReloj, 'dia');   // 17→05: su inicio YA es su hora
+  marcarHorario(actDia, HORARIO.dia);
+  marcarHorario(actNoche, HORARIO.noche);
+  marcarHorario(actOper, HORARIO.todoturno);   // 05→05: su inicio YA es su hora
+  marcarHorario(actTodo, HORARIO.todoturno);
 
   // ── Realidad viva: matrícula normalizada → su fila de fv_ahora ──────────────
   const vivos = new Map();
@@ -450,7 +473,11 @@ async function enDirecto({ dia } = {}) {
   function proyectar(act, vent, just) {
     if (!vent || !vent.empezada) return null;
     const hechas = Math.round(((act && act.minutos) || 0) / 6) / 10;
-    const finVentana = vent.finPlan ? new Date(vent.finPlan).getTime() : null;
+    // Lo que queda es hasta el final ESTÁNDAR de su turno (17:00 o 05:00), no
+    // hasta que cierra la ventana que mide (24:00 o 12:00): las horas de antes
+    // y de después cuentan, pero el turno acaba a su hora.
+    const fin = vent.finTurno || vent.finPlan;
+    const finVentana = fin ? new Date(fin).getTime() : null;
     const restantes = finVentana
       ? Math.max(0, Math.round(((finVentana - Date.now()) / 3600000) * 10) / 10)
       : 0;
@@ -658,8 +685,9 @@ async function enDirecto({ dia } = {}) {
   });
 
   const fundirRechazos = repoRech.fundir;
-  /** El mapa de rechazos que le toca a una fila según su turno. */
-  const rechazosDe = turno => (turno === 'noche' ? rechazosNoche : rechazos);
+  /** El mapa de rechazos que le toca a una fila según su turno: la ventana de
+   *  su turno (día 00→24, noche 12→12); quien dobla, la jornada 05→05. */
+  const rechazosDe = turno => (turno === 'noche' ? rechazosNoche : turno === 'dia' ? rechazosDia : rechazos);
   // ── LOS KM FUERA DE LA APP, PERO SOLO LOS DE LA FRANJA DE VIGILANCIA ────────
   // La columna "Km fuera" cuenta la JORNADA entera (05→05) y eso incluye el
   // relevo, donde rodar fuera de BOLT es normal: ir a por el coche, la entrega,
@@ -739,29 +767,54 @@ async function enDirecto({ dia } = {}) {
     return { codigo: 'sin_plaza', etiqueta: 'En plantilla · sin plaza hoy' };
   };
 
-  // LOS NN, PARTIDOS EN DÍA Y NOCHE.
+  // LOS NN, PARTIDOS EN DÍA Y NOCHE POR SU HORA DE INICIO.
   //
   // Antes salían de la jornada entera (05→05) en una sola lista, así que sus
   // horas no eran de ningún turno: iban a un saco aparte. Y a estas personas
   // hay que llamarlas igual que a las del plan, así que sus horas tienen que
   // sumar donde de verdad las hicieron.
   //
-  // El corte es el del RELOJ, 17:00 en punto (no el de mediodía de los de
-  // noche): un NN no tiene turno propio, se le imputa el que está en curso. Por
-  // eso quien sigue rodando a las 17:00 aparece DOS VECES en la pestaña: una
-  // fila con lo que hizo hasta las 16:59 y otra con lo de después. No es un
-  // duplicado, son dos turnos distintos del mismo señor.
+  // Hasta el 06/10/2026 el corte era el del reloj, las 17:00 en punto, y quien
+  // seguía rodando a esa hora salía dos veces. Ahora (Camilo) manda la HORA DE
+  // INICIO: quien empieza antes de las 12:00 es de día (8:00→15:00) y quien
+  // empieza a partir de las 12:00 es de noche (12:30→20:00), con las ventanas
+  // del turno (día 00→24, noche 12→12). Se cuenta por SESIONES —un rato de
+  // trabajo seguido— con `repartoTurnos.js`, la misma regla que Visibilidad:
+  // solo sale dos veces quien de verdad hizo dos ratos, uno de cada.
   const esNN = a => !idsPlan.has(idDeUuid.get(a.uuid))
     && !nombresPlan.has(normNombre(a.nombre))
     && (a.minutos > 0 || a.km > 0 || a.conectadoAhora);
+  // Los segundos de cada cuenta en cada turno de hoy, por su hora de inicio.
+  // Sin plan a propósito: solo se leen los de quien ya es NN.
+  const SIN_PLAN = new Set();
+  const segNN = reparto.repartir(
+    (tramosNN || []).filter(iv => iv.uuid).map(iv => ({ ...iv, persona: iv.uuid })),
+    () => SIN_PLAN).porPersona;
+  const turnoAhoraNN = reparto.etiquetaNN(Date.now());
+  /** Cuánto trabajó un NN en un turno de hoy; null si ese turno no es suyo. */
+  const minutosNN = (a, turno) => {
+    const suyos = segNN.get(a.uuid) || new Map();
+    const x = suyos.get(reparto.clave(hoy, turno));
+    if (x && x.seg > 0) return Math.floor(x.seg / 60);
+    // Conectado pero aún sin un minuto de trabajo HOY (en descanso): es del
+    // turno de ahora, por la misma regla. Si ya trabajó hoy, su rato de ahora
+    // es el que ya tiene: no se le abre otra fila vacía en el otro turno.
+    const trabajoHoy = ['dia', 'noche'].some(t => (suyos.get(reparto.clave(hoy, t)) || {}).seg > 0);
+    if (a.conectadoAhora && !trabajoHoy && turnoAhoraNN.fecha === hoy && turnoAhoraNN.turno === turno) return 0;
+    return null;
+  };
   const ventanasNN = [
     { turno: 'dia', etq: 'Día', vent: actDia },
-    { turno: 'noche', etq: 'Noche', vent: actNocheReloj },
+    { turno: 'noche', etq: 'Noche', vent: actNoche },
   ];
   const sinPlan = ventanasNN.flatMap(({ turno, etq, vent }) =>
     [...((vent && vent.porUuid) || new Map()).values()]
       .filter(esNN)
-      .map(a => ({ ...a, _turno: turno, _turnoEtq: etq, _vivo: !!(vent && !vent.terminada) })))
+      .map(a => ({ a, min: minutosNN(a, turno) }))
+      .filter(x => x.min != null)
+      // Las horas, las del reparto: la ventana del turno puede traer también un
+      // rato del otro turno (la noche y el día se solapan de 12:00 a 24:00).
+      .map(({ a, min }) => ({ ...a, minutos: min, _turno: turno, _turnoEtq: etq, _vivo: !!(vent && !vent.terminada) })))
     .map(a => ({
       // Una clave propia por FILA (la misma persona puede tener la de día y la
       // de noche): es lo que usan los botones de llamar y justificar para
@@ -843,9 +896,10 @@ async function enDirecto({ dia } = {}) {
   // ── POR TURNO, POR CONDUCTOR (pestañas Día / Noche / TodoTurno / NN) ─────────
   // Cada fila es una PERSONA del cuadrante de hoy (la celda día/noche del tablero,
   // que trae conductor_id + nombre), con su trazo VIVO medido en LA VENTANA DE SU
-  // TURNO: el de día contra 05→17, el de noche contra 17→05. Antes los dos se
-  // medían contra el día operativo entero y se pisaban el uno al otro.
-  const ventanaDe = { dia: actDia, noche: actNoche, todoturno: actOper };
+  // TURNO: el de día contra 00→24, el de noche contra 12→12 (desde el
+  // 06/10/2026; antes 05→17 y 17→05). Antes aún los dos se medían contra el día
+  // operativo entero y se pisaban el uno al otro.
+  const ventanaDe = { dia: actDia, noche: actNoche, todoturno: actTodo };
   const crudo = { dia: [], noche: [], todoturno: [] };
   coches.forEach(c => {
     const rolDe = new Map();
@@ -883,10 +937,11 @@ async function enDirecto({ dia } = {}) {
     add(cd, 'dia'); add(cn, 'noche');
     // TODOTURNO = quien hoy cubre el día Y la noche del mismo coche: está doblando.
     // Esta pestaña llevaba siempre 0/0 porque nadie la rellenaba nunca. Se mide
-    // contra la jornada entera (05→05), que es lo que de verdad va a hacer.
+    // contra sus dos turnos juntos (00:00 → 12:00 del día siguiente), que es lo
+    // que de verdad va a hacer.
     const mismoId = cd.id && cn.id && String(cd.id) === String(cn.id);
     if (mismoId) {
-      const act = actividadDe(actOper, cd.id, cd.nombre);
+      const act = actividadDe(actTodo, cd.id, cd.nombre);
       crudo.todoturno.push({
         conductorId: cd.id, conductor: cd.nombre || '', turno: 'todoturno',
         telefono: (contac.get(String(cd.id)) || {}).telefono || (act && act.telefono) || '',
@@ -998,7 +1053,7 @@ async function enDirecto({ dia } = {}) {
   const porTurno = {
     dia: agrupaConductor(crudo.dia, actDia),
     noche: agrupaConductor(crudo.noche, actNoche),
-    todoturno: agrupaConductor(crudo.todoturno, actOper),
+    todoturno: agrupaConductor(crudo.todoturno, actTodo),
     nn: sinPlan,
   };
   const PESO_SALIDA = { no_salio: 0, pendiente: 1, descanso: 2, conectado: 3, salio: 4 };
@@ -1038,9 +1093,11 @@ async function enDirecto({ dia } = {}) {
     ventanas: {
       // `empezada` es lo que la pantalla lee para decir "este turno todavía no
       // ha empezado", y eso es la hora de ENTRAR, no la de empezar a medir: la
-      // noche se mide desde mediodía pero su turno empieza a las 17:00.
-      dia:   actDia   ? { ini: actDia.ini,   fin: actDia.finPlan,   empezada: !!actDia.reclamable,   terminada: actDia.terminada }   : null,
-      noche: actNoche ? { ini: actNoche.ini, fin: actNoche.finPlan, empezada: !!actNoche.reclamable, terminada: actNoche.terminada } : null,
+      // noche se mide desde mediodía pero su turno empieza a las 17:00, y el
+      // día se mide desde las 00:00 pero empieza a las 05:00. `fin` es cuando
+      // ACABA el turno (17:00 y 05:00), no cuando deja de medir.
+      dia:   actDia   ? { ini: actDia.ini,   fin: actDia.finTurno,   empezada: !!actDia.reclamable,   terminada: actDia.terminada }   : null,
+      noche: actNoche ? { ini: actNoche.ini, fin: actNoche.finTurno, empezada: !!actNoche.reclamable, terminada: actNoche.terminada } : null,
     },
   };
 }

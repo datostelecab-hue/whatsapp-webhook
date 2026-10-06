@@ -86,13 +86,13 @@ El descanso se dice aparte y no se pinta de verde, y sus minutos nunca cuentan c
 
 ## Medir no es reclamar
 
-La ventana de la noche **se mide desde mediodía** (`nocheControl`, 12:00→12:00), porque lo que hace un conductor de noche a las 06:00 es la cola de su turno de ayer y lo que empieza a las 13:00 ya es de hoy. Pero su hora de entrar siguen siendo las 17:00.
+La ventana de la noche **se mide desde mediodía** (`nocheControl`, 12:00→12:00), porque lo que hace un conductor de noche a las 06:00 es la cola de su turno de ayer y lo que empieza a las 13:00 ya es de hoy. Pero su hora de entrar siguen siendo las 17:00. Desde el 06/10/2026 el **día** se mide de 00:00 a 24:00 (`diaControl`) y se reclama desde las 05:00: ver [[#Las horas de cada turno (06/10/2026)]].
 
-Por eso hay dos conceptos distintos: `empezada` (la ventana ya mide) y `reclamable` (ya toca llamar al que no está, `RECLAMA_TRAS`). Sin esa separación, a quien entra a las 17:00 se le llamaba a las 12:30 por no estar: **sesenta y dos falsas alarmas cada tarde**. Antes de su hora solo se dice algo de alguien si YA está rodando, y entonces la respuesta es que sí, ha salido.
+Por eso hay dos conceptos distintos: `empezada` (la ventana ya mide) y `reclamable` (ya toca llamar al que no está: desde su hora de entrar, `HORARIO` en el cockpit). Y un tercero desde el 06/10/2026: `finTurno`, la hora a la que ACABA el turno (17:00 y 05:00), que es hasta donde llega la proyección aunque la ventana siga midiendo. Sin esa separación, a quien entra a las 17:00 se le llamaba a las 12:30 por no estar: **sesenta y dos falsas alarmas cada tarde**. Antes de su hora solo se dice algo de alguien si YA está rodando, y entonces la respuesta es que sí, ha salido.
 
 ## De dónde salen las horas y los km
 
-- **Horas efectivas** — `rutas.actividadPorConductor(dia, ventana)` del núcleo, en minutos de viaje + espera. Una consulta por ventana: `dia` (05→17), `nocheControl` (12→12), `operativo` (05→05, la que sirve para los NN y para TodoTurno) y `noche` de reloj (17→05, solo para repartir a los NN).
+- **Horas efectivas** — `rutas.actividadPorConductor(dia, ventana)` del núcleo, en minutos de viaje + espera. Una consulta por ventana: `diaControl` (00→24), `nocheControl` (12→12), `todoturnoControl` (00→12 del día siguiente, quien dobla) y `operativo` (05→05, para «personas que salieron»). Hasta el 06/10/2026 eran `dia` (05→17), `nocheControl` (12→05), `operativo` para TodoTurno y la `noche` de reloj (17→05) para repartir a los NN.
 - **Km** — del núcleo (`fv_ruta`, Mapon `route/list`), no del `mileage` estancado. Si aún no se ha ingerido, el coche muestra 0. La actividad trae `km` (en BOLT) y `kmFuera` (en descanso o desconectado), y `fuenteKm` dice con qué vara: `can` (odómetro del coche), `gps` (estimación de Mapon uniendo puntos, lo único que hay en los coches cuyo equipo no lee el CAN) o `mixta` cuando llevó más de un coche. Ver [[Mapon]].
 - **Km de cada trazo** (al desplegar la fila) — con la **misma vara que la fila**: `rutas.FUENTE_KM`, el CAN si lo hay y el GPS si no (`panel.historialConductor`). Hasta el 29/09/2026 iban solo por GPS, y un coche que no apaga en toda la mañana (el 0870MMZ) enseñaba horas de trazos «en curso» mientras la fila ya decía 243 km. «En curso» sale ahora solo en coches por GPS con un trayecto abierto de verdad (no uno que Mapon sustituyó por otro). → [[Trampas conocidas]]
 - **Teléfono** — del padrón (`plani.contactos()`), no del trazo vivo: justo al que hay que llamar —el que no ha salido— no le queda ni un tramo del que sacarlo.
@@ -120,7 +120,7 @@ Dos correcciones que explican qué es exactamente un NN:
 - Antes se excluía a **toda la plantilla** (`tab.conductores`), así que el de vacaciones que sí trabajó no salía en ninguna pestaña: invisible. Ahora el filtro son solo las **celdas del cuadrante de hoy**.
 - Y solo las de **hoy**, más la noche de ayer (que remata pasadas las 05:00). Antes se recorría la semana entera y quien libraba hoy pero estaba pintado otro día —y salía a hacer un doble— no aparecía en Día, ni en Noche, ni en NN: invisible otra vez.
 
-Los NN se parten en día y noche con el corte del **reloj, 17:00 en punto**, no con el de mediodía: un NN no tiene turno propio, se le imputa el que está en curso. Por eso quien sigue rodando a las 17:00 aparece **dos veces** en la pestaña —una fila con lo que hizo hasta las 16:59 y otra con lo de después—. No es un duplicado: son dos turnos distintos del mismo señor.
+Los NN se parten en día y noche **por su hora de inicio** (desde el 06/10/2026): quien empieza antes de las 12:00 es de día y quien empieza desde las 12:00, de noche, con las ventanas del turno. Se cuenta por sesiones con `repartoTurnos.js`, así que solo sale dos veces quien hizo dos ratos de verdad, uno de cada. Hasta ese día el corte era el **reloj de las 17:00** y quien seguía rodando a esa hora salía en las dos. → [[#Las horas de cada turno (06/10/2026)]]
 
 ## La proyección: ¿va a terminar su jornada?
 
@@ -151,6 +151,19 @@ Camilo lo pidió: un filtro que deje **solo a quien no terminará la jornada**. 
 Ese aviso comparte código con «No llegará» (`no_llegara`), que es el de quien aún no ha salido. El call center y el histórico los agrupan así, y por eso **no se cambió el código**: el aviso lleva además `variante: 'no_terminara'` (`cockpit.service.avisosDe`), y la pantalla filtra por esa marca. El 06/10/2026 por la mañana salían 2 de 62 en el turno de día.
 
 **Quien se desconectó también es un «No terminará la jornada»** (el mismo día, Camilo, con Abdeslam Rais: 0,1 h a las 14:14 y salía «Se fue con 0,1 h», fuera del filtro). La proyección ya suma lo que le queda hasta el final de **su** turno (17:00 de día, 05:00 de noche) más lo justificado, así que ese aviso solo salta cuando ni volviendo ahora llega a las 8 h. Ahora se lee «No terminará la jornada», con «Se fue con X h…» en el detalle, y entra en el filtro. El código sigue siendo `se_fue_pronto` (el call center lo llama «Se fue antes de terminar»). Con eso, esa tarde eran 3 de 62. Quien **no ha salido** sigue con «No llegará · faltan X h» y su propio filtro.
+
+### Las horas de cada turno (06/10/2026)
+
+Camilo: «hay gente de día que empieza desde antes de las 5am y no cuentan algunas horas». Desde ese día:
+
+- **Día: cuenta de 00:00 a 24:00** (`diaControl`). Quien es de día y entra a las 04:00 ya está en su turno. Ese día, a las 15:00, Iván Parra (entró a las 03:11) pasó de 6,4 h a 8,2 h, y John Jaime Posada (04:09) de 6 a 6,8 h; nueve personas de día tenían horas antes de las 05:00.
+- **Noche: cuenta de 12:00 a 12:00** del día siguiente (`nocheControl`). Ya se medía desde mediodía; ahora tampoco se corta a las 05:00, así que quien remata a las 06:00 sigue en su turno.
+- **Quien dobla** (TodoTurno): de 00:00 a 12:00 del día siguiente.
+- **Los NN, por su hora de inicio**: antes de las 12:00, día (8:00→15:00); desde las 12:00, noche (12:30→20:00).
+
+**Lo que NO cambia** (Camilo, el mismo día: «esa sí es un estándar»): «No terminará la jornada» y «En riesgo» siguen midiendo contra las **17:00 y las 05:00**. La proyección suma lo hecho (con las horas de antes) más lo que queda **hasta las 17:00 o las 05:00**, no hasta que cierra la ventana. Y se sigue reclamando desde las 05:00 y las 17:00: a las 03:00 no se llama a nadie de día por no estar.
+
+La regla vive en `services/flotaViva/repartoTurnos.js` y es **la misma que Visibilidad** (las tarjetas «Turno día» y «Turno noche»). Con la foto de ese día a las 15:05, Visibilidad daba 417,5 h en el turno de día y Control 391,1 h del plan + 26 h de NN. Los rechazos y la aceptación de cada fila también van por la ventana de su turno (día 00→24, noche 12→12); la aceptación de la flota, arriba, sigue por jornada (05→05). Detalle de la regla en [[Jornada y turnos#Las horas de cada turno, por conductor (06/10/2026)]].
 
 ### El filtro «En riesgo» (06/10/2026)
 

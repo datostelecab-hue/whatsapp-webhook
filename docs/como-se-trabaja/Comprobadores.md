@@ -340,8 +340,10 @@ No son de los seis, pero forman parte de la misma red:
   prueba** (`_situarAlta: situarAlta`) y se listan aparte. El 01/10/2026 quedó en
   **cero** sin uso: de 30, 15 quitados, uno enchufado (`JORNADAS`, que ahora pinta la
   ficha de Plantilla), 7 a propósito y 8 ganchos de prueba.
-- **`comprobar-convenio.js`, `comprobar-cobertura.js`, `comprobar-directo.js`** —
-  comprobaciones de dominio de sus módulos.
+- **`comprobar-convenio.js`, `comprobar-cobertura.js`, `comprobar-directo.js`,
+  `comprobar-reparto-turnos.js`** — comprobaciones de dominio de sus módulos. La última
+  (06/10/2026) guarda de quién es cada hora: día 00→24, noche 12→12, NN por su hora de
+  inicio, sin contar nada dos veces.
 
 ---
 
