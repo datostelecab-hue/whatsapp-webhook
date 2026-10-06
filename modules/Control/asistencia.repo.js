@@ -67,7 +67,12 @@ SELECT c.id,
        (SELECT string_agg(DISTINCT CASE l.dia_semana WHEN 1 THEN 'L' WHEN 2 THEN 'M' WHEN 3 THEN 'X'
                WHEN 4 THEN 'J' WHEN 5 THEN 'V' WHEN 6 THEN 'S' ELSE 'D' END, '')
           FROM libra_hoy l WHERE l.conductor_id = c.id)                      AS libra,
-       r.horas_prom, r.letra, r.dias_cero,
+       -- LA NOTA Y EL PROMEDIO, DE LA CALIFICACIÓN (A–D y N/E), la que se ve al
+       -- lado del nombre en el planificador y en Control. Hasta el 06/10/2026
+       -- salían de conductor_rendimiento, que guarda la escala vieja (S, A, B, C,
+       -- N) y el reporte seguía poniendo «S», que ya no existe. De ahí solo
+       -- queda «Días a 0», que la calificación no cuenta.
+       cal.horas_prom, cal.letra, r.dias_cero,
        e.alta::text AS alta, e.tipo, COALESCE(e.ett_nombre, '') AS ett,
        (SELECT count(*) FROM conductor_externo ce
          WHERE ce.conductor_id = c.id AND ce.sistema = 'bolt')::int          AS cuentas_bolt,
@@ -90,6 +95,7 @@ SELECT c.id,
        WHERE a.conductor_id = c.id AND a.desde <= CURRENT_DATE
          AND (a.hasta IS NULL OR a.hasta >= CURRENT_DATE) LIMIT 1) veh ON TRUE
   LEFT JOIN turno tur ON tur.id = veh.turno_id
+  LEFT JOIN v_conductor_calificacion cal ON cal.conductor_id = c.id
   LEFT JOIN conductor_rendimiento r ON r.conductor_id = c.id
  WHERE c.empleo_vigente AND NOT c.es_centinela`;
 

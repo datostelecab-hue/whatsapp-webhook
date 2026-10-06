@@ -20,7 +20,7 @@
         <i class="fa-solid fa-clock text-telecab-gold text-lg mt-0.5"></i>
         <div class="flex-1">
           <div class="font-semibold text-telecab-text">Reporte de horas del día</div>
-          <p class="text-sm text-telecab-muted mt-0.5">De un clic: el <b>Excel</b> (horas efectivas de la jornada 05→05, KM y matrícula por conductor, con quien salió fuera del cuadrante) y el <b>PDF de la cascada de KM</b>. Cuadra con Visibilidad.</p>
+          <p class="text-sm text-telecab-muted mt-0.5">De un clic: el <b>Excel</b> (horas efectivas de cada conductor por su turno —el de día de 00:00 a 24:00, el de noche de 12:00 a 12:00—, KM y matrícula, con quien salió fuera del cuadrante) y el <b>PDF de la cascada de KM</b>. Cuadra con Control y Visibilidad.</p>
           <p class="text-xs text-telecab-muted mt-2">
             <i class="fa-solid fa-circle-info mr-1"></i>
             La cascada es el gráfico para enseñar arriba: parte de todo lo que rodó la flota y va restando
@@ -47,13 +47,13 @@
       </div>
     </div>
 
-    <!-- Reporte por turnos (5-5) -->
+    <!-- Reporte por turnos (antes «5-5»; desde el 06/10/2026, por el turno de cada conductor) -->
     <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4">
       <div class="flex items-start gap-3">
         <i class="fa-solid fa-clock-rotate-left text-telecab-gold text-lg mt-0.5"></i>
         <div class="flex-1">
-          <div class="font-semibold text-telecab-text">Reporte por turnos (5-5)</div>
-          <p class="text-sm text-telecab-muted mt-0.5">Quién rodó de <b>05→17</b> (día) y de <b>17→05</b> (noche), con horas, matrícula y los <b>NN</b> incluidos.</p>
+          <div class="font-semibold text-telecab-text">Reporte por turnos</div>
+          <p class="text-sm text-telecab-muted mt-0.5">Quién rodó en el turno de <b>día</b> (de 00:00 a 24:00) y en el de <b>noche</b> (de 12:00 a 12:00), cada uno por el turno de su cuadrante, con horas, matrícula y los <b>NN</b> incluidos (por su hora de inicio: antes de las 12:00, día).</p>
           <div class="flex items-center gap-2 mt-3">
             <input id="rt-dia" type="date" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
             <a id="rt-excel" href="/control/reporte-turnos/excel"

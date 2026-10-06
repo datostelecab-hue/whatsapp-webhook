@@ -18,13 +18,15 @@ const sello = () => new Intl.DateTimeFormat('es-ES', {
   hour: '2-digit', minute: '2-digit', hour12: false,
 }).format(new Date());
 
-// Los mismos colores que la nota en pantalla, para no tener que aprenderse otros.
+// Los mismos colores que la nota en pantalla (la calificación A–D): A verde, B
+// oro, C naranja, D rojo y N/E gris. Hasta el 06/10/2026 eran los de la escala
+// vieja (S, A, B, C, N), que ya no existe.
 const TONO = {
-  S: { bg: 'FFD1FAE5', fg: 'FF065F46' }, A: { bg: 'FFFEF3C7', fg: 'FF92400E' },
-  B: { bg: 'FFFFEDD5', fg: 'FF9A3412' }, C: { bg: 'FFFEE2E2', fg: 'FF991B1B' },
-  N: { bg: 'FFDBEAFE', fg: 'FF1E40AF' },
+  A: { bg: 'FFD1FAE5', fg: 'FF065F46' }, B: { bg: 'FFFEF3C7', fg: 'FF92400E' },
+  C: { bg: 'FFFFEDD5', fg: 'FF9A3412' }, D: { bg: 'FFFEE2E2', fg: 'FF991B1B' },
+  'N/E': { bg: 'FFF3F4F6', fg: 'FF4B5563' },
 };
-const tonoFaltas = d => (d.faltas >= 3 ? TONO.C : d.faltas === 2 ? TONO.B : null);
+const tonoFaltas = d => (d.faltas >= 3 ? TONO.D : d.faltas === 2 ? TONO.C : null);
 
 /** Una hoja con su banda, su cabecera, sus filas y el filtro puesto. */
 function hoja(wb, idLogo, nombre, titulo, subtitulo, cols, filas) {
@@ -99,7 +101,7 @@ async function generar({ desde, hasta, reincidentes, porPromedio }) {
   hoja(wb, logo, 'Plantilla por promedio',
     'Plantilla entera por promedio',
     `Mes corrido · ${porPromedio.length} personas en activo · de menor a mayor promedio · ` +
-    `S ≥9 h · A 8-9 · B 6-8 · C <6 · N recién incorporado · generado el ${sello()}`,
+    `Nota de la calificación (horas, utilización y velocidad): A ≥85 puntos · B 70-85 · C 55-70 · D <55 · N/E sin datos suficientes · generado el ${sello()}`,
     [
       { titulo: '#', ancho: 5, al: 'center', valor: numDe(porPromedio) },
       { titulo: 'Nombre', ancho: 34, valor: d => d.nombre },

@@ -219,36 +219,48 @@ async function resumen() {
 
   // DOS FORMAS DE MIRAR EL MISMO DÍA, Y LAS DOS VALEN. El DÍA NATURAL (00:00→24:00)
   // es lo que cuadra con el informe de BOLT y con el histórico del mes; la JORNADA
-  // (05:00→05:00) es la que embaldosan los dos turnos sin hueco ni solape y la que
-  // cuadra con el Reporte de horas. No son el mismo número —la noche cruza la
-  // medianoche— y por eso se enseñan las dos, cada una con su etiqueta.
+  // es la de los dos turnos de ese día y la que cuadra con el Reporte de horas.
+  // No son el mismo número —la noche cruza la medianoche— y por eso se enseñan
+  // las dos, cada una con su etiqueta.
   const T = require('./flotaViva/rutas').TURNOS;
-  const H0 = T.dia[0];                                     // el corte de la jornada: 05:00
-  // Antes de las 05:00 la jornada que acaba de cerrarse es la de ANTEAYER.
+  const H0 = T.dia[0];                                     // la hora de entrar del día: 05:00
+  // Antes de las 05:00 la jornada que se mira es la de ANTEAYER.
   const ayerJornada = horaMadrid() < H0 ? diaISOhace(2) : ayer;
+  const reparto = require('./flotaViva/repartoTurnos');
   const t = ventanaTurnos();
   // DOS FORMAS DE MIRAR EL MISMO DÍA, Y LAS DOS VALEN. Son la gracia de esta
   // pantalla, no un descuido:
   //   · DÍA NATURAL (00:00→24:00): lo que cuadra con los informes de BOLT y con
   //     el acumulado del mes. Es la fila de la izquierda.
-  //   · JORNADA (05:00→05:00): la que embaldosan los dos turnos sin hueco ni
-  //     solape y la que cuadra con el Reporte de horas y con la Bitácora.
+  //   · JORNADA: el turno de día de ese día más su turno de noche, por la gente
+  //     de cada uno (desde el 06/10/2026; antes, de 05:00 a 05:00). Cuadra con
+  //     el Reporte de horas y con la Bitácora.
   // Se probó a poner las dos filas por jornada y fue peor: a media mañana "HOY"
   // y "TURNO DÍA" daban el mismo número (la jornada en curso ES el turno de día
   // hasta las 17:00) y la tarjeta no decía nada.
   const fechaDia = t.dia.v[0], fechaNoche = t.noche.v[0];
-  const [mes, dia, ayerDia, ayerJor, semana, porTurno, config] = await Promise.all([
+  const [mes, dia, ayerDia, semana, porTurno, config] = await Promise.all([
     slice(primeroMes, 0, dm, 0),           // todo el mes, días naturales (los futuros no suman)
     slice(hoy, 0, 1, 0),                   // HOY, día natural 00:00 → 24:00 (parcial)
     slice(ayer, 0, 1, 0),                  // AYER, día natural completo
-    slice(ayerJornada, H0, 1, H0),         // AYER, jornada 05:00 → 05:00 (= turno día + turno noche)
     slice(lunes, 0, 7, 0),                 // lunes → lunes (parcial)
-    // Los DOS TURNOS de una vez, por la gente de cada uno (sliceDeTurno).
-    require('./flotaViva/repartoTurnos').porTurno([fechaDia, fechaNoche]),
+    // Los TURNOS de una vez, por la gente de cada uno (sliceDeTurno): el día y
+    // la noche que tocan ahora, y los dos de la jornada de ayer.
+    reparto.porTurno([fechaDia, fechaNoche, ayerJornada]),
     leerConfig(),
   ]);
   const turnoDia = sliceDeTurno(porTurno.get(fechaDia + '|dia'));
   const turnoNoche = sliceDeTurno(porTurno.get(fechaNoche + '|noche'));
+  // LA JORNADA DE AYER = su turno de día + su turno de noche. La gente se cuenta
+  // una vez aunque hiciera los dos.
+  const jD = porTurno.get(ayerJornada + '|dia'), jN = porTurno.get(ayerJornada + '|noche');
+  const ayerJor = sliceDeTurno({
+    viajeSeg: jD.viajeSeg + jN.viajeSeg, esperaSeg: jD.esperaSeg + jN.esperaSeg,
+    personas: new Set([...jD.personas, ...jN.personas]),
+    nnSeg: jD.nnSeg + jN.nnSeg, nnPersonas: new Set([...jD.nnPersonas, ...jN.nnPersonas]),
+  });
+  // Su noche cuenta hasta las 12:00 de hoy: antes de eso, todavía crece.
+  const jornadaAbierta = Date.now() < reparto.cierreDe(ayerJornada);
   return {
     hoyISO: hoy,
     // POR DÍA (día natural 00:00→24:00)
@@ -260,7 +272,8 @@ async function resumen() {
     // conductor (día 00→24, noche 12→12; los NN por su hora de inicio).
     turnoDia: { ...turnoDia, etq: t.dia.etq, dia: fechaDia },
     turnoNoche: { ...turnoNoche, etq: t.noche.etq, dia: fechaNoche },
-    ayerJornada: { ...ayerJor, etq: 'Ayer · jornada completa', dia: ayerJornada },
+    ayerJornada: { ...ayerJor, dia: ayerJornada, parcial: jornadaAbierta,
+      etq: jornadaAbierta ? 'Ayer · jornada (se cierra a las 12:00)' : 'Ayer · jornada completa' },
     config,
   };
 }

@@ -24,6 +24,7 @@ const C = {
   linea: rgb(0.85, 0.87, 0.90), franja: rgb(0.97, 0.97, 0.98), blanco: rgb(1, 1, 1),
   rojo: rgb(0.90, 0.28, 0.30), rojoBg: rgb(0.996, 0.886, 0.886),
   ambarBg: rgb(0.996, 0.953, 0.831), verdeBg: rgb(0.82, 0.98, 0.90), azulBg: rgb(0.86, 0.92, 1.0),
+  naranjaBg: rgb(1.0, 0.929, 0.835), grisBg: rgb(0.953, 0.957, 0.965),
   cabTexto: rgb(0.78, 0.80, 0.84),
 };
 
@@ -33,7 +34,9 @@ const SUST = { '→': '->', '–': '-', '—': '-', '·': '-', '…': '...', '�
 const L = s => String(s == null ? '' : s)
   .replace(/[→–—·…“”‘’€]/g, c => SUST[c]).replace(/[^\x00-\xFF]/g, '').trim();
 
-const TONO = { S: C.verdeBg, A: C.ambarBg, B: C.ambarBg, C: C.rojoBg, N: C.azulBg };
+// La nota de la calificación (A–D), con los colores de la pantalla. Hasta el
+// 06/10/2026 era la escala vieja (S, A, B, C, N), que ya no existe.
+const TONO = { A: C.verdeBg, B: C.ambarBg, C: C.naranjaBg, D: C.rojoBg, 'N/E': C.grisBg };
 const n1 = v => (v == null ? '-' : Number(v).toFixed(1).replace('.', ','));
 const esFecha = iso => (iso ? iso.split('-').reverse().join('/') : '');
 const sello = () => new Intl.DateTimeFormat('es-ES', {
@@ -134,7 +137,7 @@ async function generar({ desde, hasta, reincidentes, porPromedio }) {
 
   tabla('Plantilla por promedio',
     `Mes corrido - ${porPromedio.length} personas en activo - de menor a mayor promedio - ` +
-    `S >=9h  A 8-9  B 6-8  C <6  N recien incorporado - ${sello()}`,
+    `Nota de la calificacion: A >=85 pts  B 70-85  C 55-70  D <55  N/E sin datos suficientes - ${sello()}`,
     [
       { titulo: 'Nº', w: 26, al: 'c', bold: true, valor: numDe(porPromedio) },
       { titulo: 'Nombre', w: 192, bold: true, valor: d => d.nombre },

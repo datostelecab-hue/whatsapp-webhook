@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-06 · Todos los reportes con la regla del turno, y la nota de las faltas
+
+«Todos los reportes que usen la misma regla a partir de ahora.» El Reporte de horas, el Reporte por turnos (deja de ser «5-5»), la Bitácora y la tarjeta «Ayer · jornada» cuentan ya por el turno de cada conductor. La jornada de una persona el día D es su turno de día más su turno de noche, y el día no se cierra hasta las 12:00 del siguiente. Por eso la Bitácora se vuelve a sellar a las 12:00, antes del promedio y la calificación. De la Bitácora cuelgan las faltas, la auditoría de lunes y el reporte de la ETT, así que la siguen sin tocarlos. Lo sellado antes del 06/10 no se reescribe: esos días siguen con la jornada 05→05. De paso, el reporte de faltas («los más reincidentes») ya no pone la nota de la escala vieja («S», que ya no existe): saca la nota y el promedio de la calificación A–D. → [[Jornada y turnos#Las horas de cada turno, por conductor (06/10/2026)]] · [[Control Reportes]]
+
 ## 2026-10-06 · Las horas de cada turno, por conductor (Control y Visibilidad)
 
 Había gente de día que entraba antes de las 05:00 y esas horas no contaban. Ahora, en Control y en Visibilidad, el turno de día cuenta de 00:00 a 24:00 y el de noche de 12:00 a 12:00 del día siguiente, siempre según el turno de cada conductor en el cuadrante. Los NN van por su hora de inicio: antes de las 12:00, día. Como las dos ventanas se solapan, cada minuto se le da a un solo turno: el planificado si cae en su ventana, y lo demás por sesiones (`services/flotaViva/repartoTurnos.js`, con su comprobador). «No terminará» y «En riesgo» siguen cerrando a las 17:00 y a las 05:00: es el estándar. La jornada (05→05), la Bitácora y el Reporte de horas no cambian. → [[Jornada y turnos#Las horas de cada turno, por conductor (06/10/2026)]]

@@ -21,11 +21,13 @@ El reporte del domingo 06/09 decía **752 h** y Visibilidad, del mismo día, **8
 
 Ahora la lista y las horas salen del mismo sitio y se cruzan por el `conductor_uuid` de [[BOLT]], que es un identificador y no un nombre.
 
-### La jornada 05→05, y con qué tiene que cuadrar
+### Las horas de cada uno, por su turno, y con qué tiene que cuadrar
 
-Las horas son `actividadPorConductor(iso, 'operativo')`: la jornada operativa entera, **viaje + espera**, con los solapes fundidos. Es la misma ventana y la misma definición que la tarjeta "AYER · JORNADA" de Visibilidad, **así que los dos números tienen que coincidir**. Ver [[Jornada y turnos]].
+Desde el 06/10/2026 (Camilo: «todos los reportes que usen la misma regla a partir de ahora») las horas de una persona el día D son **su turno de día** de D (de 00:00 a 24:00) **más su turno de noche** de D (de 12:00 a 12:00 del día siguiente), según el cuadrante; los NN, por su hora de inicio (antes de las 12:00, día). **Viaje + espera**, cada segundo una vez aunque tenga dos cuentas. Es la regla de Control, Visibilidad y la Bitácora (`services/flotaViva/repartoTurnos.js`), así que el total tiene que coincidir con la tarjeta «Ayer · jornada» de Visibilidad y con el Reporte por turnos. Los km y los coches salen de la ventana del turno de cada uno (`diaControl`, `nocheControl` o, si hizo los dos, `todoturnoControl`). Hasta ese día era la jornada 05→05 entera (`operativo`). Ver [[Jornada y turnos]].
 
-Descargado entre las 00:00 y las 05:00, "ayer" es una jornada que sigue abierta (los de noche siguen rodando): el Excel lo dice en la cabecera (`PARCIAL`), no lo esconde.
+Con datos del 05/10: Reporte de horas 801,2 h, Reporte por turnos 801,2 h y Visibilidad 801,3 h. Con la jornada 05→05 eran 802,2 h.
+
+**Un día no se cierra hasta las 12:00 del siguiente**, porque la noche cuenta hasta esa hora. Descargado antes, el Excel lo dice en la cabecera (`PARCIAL`), no lo esconde.
 
 ### Quién sale en el reporte
 
@@ -65,7 +67,7 @@ Para apartar un solo coche hace falta el reparto que la suma se comía: `activid
 
 La **cascada de KM y el Sankey** tampoco cuentan Barcelona (24/09/2026): `bucketsTurno` suma los coches con los que alguien fichó en BOLT, y si el coche es de Barcelona se ignoran el coche, sus km y quien lo llevara. El 23/09 fueron 6 coches y 2.025 km, casi todos de «sin nadie fichado»: el titular pasó de 57 a 62 km con pasajero de cada 100. El cockpit de Control no cambia, así que ahí los totales no cuadran al km con la cascada, y el pie del PDF lo dice.
 
-**El turno lo dice la plaza, no si ese día le tocaba trabajar.** Un fijo de noche sigue siendo de noche el día que libra. Antes el turno salía solo de `f_cobertura` y al librante se le quedaba en blanco; el reporte caía entonces en deducirlo por sus horas y a un fijo de noche que libra lunes y martes le ponía "Día". Solo se deduce por las horas (`turnoDeHecho`) cuando la persona **no tiene plaza**: ahí no hay nada mejor. Y ese cálculo mira dónde cayó el grueso de sus minutos, no la hora de su primera conexión — antes, al de noche que remató la noche anterior a las 05:00 le salía "Día" con sus 11 h de noche.
+**El turno lo dice la plaza, no si ese día le tocaba trabajar.** Un fijo de noche sigue siendo de noche el día que libra. Antes el turno salía solo de `f_cobertura` y al librante se le quedaba en blanco; el reporte caía entonces en deducirlo por sus horas y a un fijo de noche que libra lunes y martes le ponía "Día". Solo se deduce por las horas (`turnoDeHecho`) cuando la persona **no tiene plaza**: ahí no hay nada mejor. Y ese cálculo va por la misma regla que las horas: el turno al que fueron sus horas (un NN, por su hora de inicio). Antes miraba dónde caía el grueso de sus minutos por el reloj (05→17 y 17→05), y antes aún la hora de su primera conexión — al de noche que remató la noche anterior a las 05:00 le salía "Día" con sus 11 h de noche.
 
 ### Las bandas de color
 
@@ -91,7 +93,7 @@ Por turno, con su título antes de cada bloque: primero **Día**, luego **Noche*
 
 ### El resumen del día
 
-Se calcula **sobre las filas que se imprimen**, para que quien lea el Excel pueda sumar a mano y le cuadre: personas que salieron, no salieron (sin contar libranzas), cumplieron las 8 h, salieron con menos de 4 h, justificados y horas justificadas, **salieron fuera del cuadrante** con sus horas (el número que antes no existía), de ellos los que **trabajaron en su libranza**, y las horas por turno (jornada completa: el de día que alargó hasta las 20:00 suma todo en "DÍA").
+Se calcula **sobre las filas que se imprimen**, para que quien lea el Excel pueda sumar a mano y le cuadre: personas que salieron, no salieron (sin contar libranzas), cumplieron las 8 h, salieron con menos de 4 h, justificados y horas justificadas, **salieron fuera del cuadrante** con sus horas (el número que antes no existía), de ellos los que **trabajaron en su libranza**, y las horas por turno (las de la gente de cada turno: el de día de 00:00 a 24:00, así que el que entró a las 04:00 o alargó hasta las 20:00 suma todo en "DÍA"; el de noche de 12:00 a 12:00).
 
 ## El Sankey y la cascada
 
@@ -114,24 +116,27 @@ Una etiqueta del Sankey está corregida a mano: BOLT marca "en viaje" desde que 
 
 El botón "Excel + cascada" baja **los dos ficheros de un clic**, con un pequeño desfase porque algunos navegadores frenan dos descargas seguidas.
 
-## Reporte por turnos (5-5)
+## Reporte por turnos
 
-`GET /control/reporte-turnos/excel?dia=` — `modules/Control/reporteTurnos.service.js`. Es el reporte que sacaba el control antiguo, con ventana horaria fija:
+`GET /control/reporte-turnos/excel?dia=` — `modules/Control/reporteTurnos.service.js`. Es el reporte que sacaba el control antiguo. Hasta el 06/10/2026 iba con ventana horaria fija («5-5»: día 05:00 → 17:00, noche 17:00 → 05:00). Desde entonces cada bloque es **la gente de ese turno**, con la misma regla que el Reporte de horas:
 
-- **Día** 05:00 → 17:00
-- **Noche** 17:00 → 05:00 del día siguiente
+- **Día** de 00:00 a 24:00, para la gente de día del cuadrante
+- **Noche** de 12:00 a 12:00 del día siguiente, para la de noche
+- Los **NN**, por su hora de inicio: antes de las 12:00, día
+
+Cada segundo de cada persona va a un solo turno, así que los dos bloques suman lo mismo que el Reporte de horas.
 
 Columnas: **Nº · Conductor · Teléfono · Matrícula(s) · Horas · Estado**. Los cinco estados:
 
 | Estado | Qué significa |
 |---|---|
 | **Salió** | trabajó en su turno y estaba previsto |
-| **Otro turno** | trabajó en esta ventana pero estaba previsto en la otra — el de noche que ficha a las 16:40, el de día que apura pasadas las 17:00, el de la noche de ayer que remata a las 05:30. **No es un NN** |
+| **Otro turno** | trabajó en este turno pero estaba previsto en el otro. Con la regla del turno es raro: el de noche que empieza antes de las 12:00, cuyo rato de antes del mediodía es de día por su hora de inicio. **No es un NN** |
 | **NN (sin plan)** | trabajó y no estaba en el plan de ninguno de los dos turnos |
-| **No salió** | estaba previsto, la ventana ya cerró y no rodó |
-| **Pendiente** | estaba previsto y la ventana aún no ha cerrado (o no ha empezado) |
+| **No salió** | estaba previsto, su turno ya acabó (17:00 o 05:00) y no rodó |
+| **Pendiente** | estaba previsto y su turno aún no ha acabado |
 
-Si la ventana no ha cerrado se dice en el título del bloque (`SIN EMPEZAR` / `EN CURSO`): los "pendientes" no son faltas.
+Si la ventana no ha cerrado (24:00 o 12:00) se dice en el título del bloque (`SIN EMPEZAR` / `EN CURSO`): las horas aún pueden crecer, y los "pendientes" no son faltas.
 
 Dos decisiones de fondo: el puente uuid → `conductor_id` se hace **por identificador**, porque cruzando por nombre una persona con dos cuentas salía dos veces (o ninguna); y lo esencial va **sin red** — si el núcleo o el plan no responden, la ruta contesta 500. Antes se tragaba el error y salía un Excel plausible con todos "No salió" (o todos NN) que alguien se podía creer. Menos de un minuto sin estar previsto se descarta: es el ruido de un login, no una fila.
 
@@ -166,6 +171,8 @@ Dos advertencias que el propio reporte escribe en su cabecera:
 
 - **La libranza que se usa es la de HOY, proyectada hacia atrás.** Si su coche descansa hoy los miércoles, se da por librado el miércoles pasado. Es una simplificación deliberada: el descanso de un coche cambia poco y pedirle a Tráfico que reconstruya el cuadrante de hace tres semanas no es razonable. Si el cuadrante cambió mucho en el periodo, el número se queda **corto** (marca menos faltas), que es el lado bueno por el que equivocarse en algo que se usa para llamar a la gente.
 - **Quien no tiene cuenta de BOLT enlazada va al final:** su 0 no significa que faltara, significa que no se puede leer.
+
+**La nota es la de la calificación (A–D y N/E)**, la misma que sale al lado del nombre en el planificador y en Control, con sus colores: A verde, B oro, C naranja, D rojo y N/E gris. El «Promedio» también sale de ahí. Hasta el 06/10/2026 se leían de `conductor_rendimiento`, que guarda la escala vieja (S ≥9 h · A · B · C · N), y el reporte seguía poniendo «S» a 26 personas cuando esa letra ya no existe (Camilo lo vio en el último que descargó). De aquella tabla solo queda «Días a 0». Las faltas salen de la Bitácora, así que desde ese día van también por la regla del turno.
 
 El periodo por defecto lo decide **el servidor** (día 1 del mes → ayer, en hora de Madrid) y no el navegador: a las 00:30 el reloj del cliente daría un mes distinto. Y llega hasta ayer porque la jornada de hoy no ha terminado y quien entra a las 17:00 aún no ha faltado a nada.
 

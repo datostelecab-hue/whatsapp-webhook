@@ -17,10 +17,12 @@
 // Ahora la lista y las horas salen del MISMO sitio y se cruzan por el
 // conductor_uuid de BOLT, que es un identificador y no un nombre:
 //
-//   · Horas   → actividadPorConductor(iso, 'operativo'): la jornada 05→05
-//               entera, viaje + espera, con los solapes fundidos. Es la MISMA
-//               ventana y la misma definición que la tarjeta "AYER · JORNADA"
-//               de Visibilidad, así que los dos números tienen que coincidir.
+//   · Horas   → desde el 06/10/2026, POR EL TURNO DE CADA UNO
+//               (repartoTurnos.js): su turno de día de ese día (00:00 → 24:00)
+//               más su turno de noche (12:00 → 12:00 del día siguiente); los NN
+//               por su hora de inicio. Viaje + espera, cada segundo una vez. Es
+//               la misma regla que Control, Visibilidad y la Bitácora. Antes era
+//               la jornada 05→05 entera.
 //   · Quién   → todo el que trabajó (aunque no estuviera planificado y aunque
 //               no tenga ficha nuestra: esos son los NN) + todo el que estaba
 //               en el cuadrante (aunque no saliera) + todo el que tenga una J.
@@ -229,19 +231,18 @@ async function reporteDia(key) {
   const repoJust = require('../../services/repo/justificantes');
   await require('../../services/flotaViva/db').preparar();
 
-  const [act, plan, pad, justis, minDia, minNoche, prom, otraSede] = await Promise.all([
-    // LA JORNADA ENTERA (05→05), no la ventana del turno: es lo que mide
-    // Visibilidad y es lo que la persona trabajó, empiece cuando empiece.
-    rutas.actividadPorConductor(iso, 'operativo'),
+  const reparto = require('../../services/flotaViva/repartoTurnos');
+  const [vent, horasRep, plan, pad, justis, prom, otraSede] = await Promise.all([
+    // LAS VENTANAS DE LOS TURNOS (las de Control): de ahí salen los km, los
+    // coches y quién se conectó. Quien dobla, la de sus dos turnos juntos.
+    rutas.actividadDeVariosTurnos(iso, ['diaControl', 'nocheControl', 'todoturnoControl']),
+    // LAS HORAS, POR EL TURNO DE CADA UNO (06/10/2026): su día más su noche.
+    reparto.porPersonaYDia([iso]),
     planDelDia(iso),
     padron(iso),
     // Sin red: si las J no se pueden leer, el Excel no sale (antes salía sin
     // ninguna J y nadie lo sabía).
     repoJust.leerPorFecha(iso),
-    // Los minutos por ventana de turno, para saber de hecho en qué turno
-    // trabajó quien no estaba en el cuadrante.
-    rutas.minutosEfectivos(iso, 'dia').then(m => m.porUuid),
-    rutas.minutosEfectivos(iso, 'noche').then(m => m.porUuid),
     // El promedio de horas del MES CORRIDO de cada uno. Va al lado del nombre
     // para poder leer el día contra su costumbre: 6 h son pocas en alguien de
     // 9 de media y normales en alguien de 6. Sin la letra: en un Excel que se
@@ -254,24 +255,47 @@ async function reporteDia(key) {
   const justPorId = new Map();
   for (const [k, j] of justis.entries()) if (k.startsWith('id:')) justPorId.set(Number(j.conductorId), j);
 
+  // Las horas de cada persona ese día: su turno de día más su turno de noche.
+  const horasDe = clave => (horasRep.get(clave) || new Map()).get(iso) || { dia: 0, noche: 0 };
+  const claveDe = uuid => { const cid = pad.idDeUuid.get(uuid); return cid ? 'c' + cid : 'u' + uuid; };
   /**
-   * El turno DE HECHO de quien trabajó sin estar en el cuadrante: donde cayó el
-   * grueso de sus horas efectivas (día 05→17 o noche 17→05). Antes se miraba la
-   * hora de su primera conexión, y al de noche que remató la noche anterior a
-   * las 05:00 le salía "Día" con sus 11 h de noche.
+   * El turno DE HECHO de quien trabajó sin estar en el cuadrante: el de sus
+   * horas, por la misma regla (los NN, por su hora de inicio). Antes era donde
+   * caía el grueso de sus horas por el reloj (05→17 y 17→05), y antes aún la
+   * hora de su primera conexión.
    */
-  const turnoDeHecho = uuids => {
-    let d = 0, n = 0;
-    (uuids || []).forEach(u => { d += minDia.get(u) || 0; n += minNoche.get(u) || 0; });
-    if (!d && !n) return '';
-    return n > d ? 'Noche' : 'Día';
+  const turnoDeHecho = clave => {
+    const x = horasDe(clave);
+    if (!x.dia && !x.noche) return '';
+    return x.noche > x.dia ? 'Noche' : 'Día';
+  };
+  // Cada cuenta, con la actividad de la ventana del turno de su dueño: de día,
+  // la del día; de noche, la de la noche; si hizo los dos, la de los dos. Así
+  // los km y los coches son los de las mismas horas que se cuentan.
+  const ventanaDe = { dia: vent.get('diaControl'), noche: vent.get('nocheControl'), todo: vent.get('todoturnoControl') };
+  const cuentas = new Set();
+  Object.values(ventanaDe).forEach(v => v && v.porUuid.forEach((_, u) => cuentas.add(u)));
+  const actividadDe = uuid => {
+    const x = horasDe(claveDe(uuid));
+    const v = x.dia > 0 && x.noche > 0 ? ventanaDe.todo : x.noche > 0 ? ventanaDe.noche : ventanaDe.dia;
+    return (v && v.porUuid.get(uuid))
+      || (ventanaDe.dia && ventanaDe.dia.porUuid.get(uuid))
+      || (ventanaDe.noche && ventanaDe.noche.porUuid.get(uuid));
   };
 
   // ── 1. Todo el que TRABAJÓ (o al menos se conectó) ────────────────────────
   const filasPorId = new Map();   // conductor_id → fila
   const sueltos = [];             // los que ni ficha tienen: NN puros
-  for (const a of act.porUuid.values()) {
-    const horas = r1((a.minutos || 0) / 60);
+  const conHoras = new Set();     // personas a las que ya se les pusieron sus horas
+  for (const uuid of cuentas) {
+    const a = actividadDe(uuid);
+    if (!a) continue;
+    // Las horas son de la PERSONA (todas sus cuentas ya juntas, cada segundo
+    // una vez): se ponen en su primera cuenta y las demás suman cero.
+    const clave = claveDe(uuid);
+    const x = horasDe(clave);
+    const horas = conHoras.has(clave) ? 0 : r1((x.dia + x.noche) / 3600);
+    conHoras.add(clave);
     const cid = pad.idDeUuid.get(a.uuid);
     const p = cid ? pad.porId.get(cid) : null;
     const pl = cid ? plan.get(cid) : null;
@@ -281,7 +305,7 @@ async function reporteDia(key) {
       telefono: (p && p.telefono) || a.telefono || '',
       // EL TURNO DE SU PLAZA MANDA, libre o no. Solo se deduce por las horas
       // (día vs noche) cuando la persona no tiene plaza: ahí no hay nada mejor.
-      turno: (pl && pl.turno) || turnoDeHecho([a.uuid]),
+      turno: (pl && pl.turno) || turnoDeHecho(clave),
       uuids: [a.uuid],
       horas,
       libra: !!(pl && pl.libra),
@@ -315,7 +339,7 @@ async function reporteDia(key) {
     const f = filasPorId.get(cid);
     f.horas = r1(f.horas + fila.horas);
     f.uuids.push(a.uuid);
-    if (!pl || !pl.turno) f.turno = turnoDeHecho(f.uuids);
+    if (!pl || !pl.turno) f.turno = turnoDeHecho(clave);
     f.matricula = [...new Set([...(f.matricula ? f.matricula.split(', ') : []), ...(fila.matricula ? fila.matricula.split(', ') : [])])].join(', ') || null;
     const num = v => (typeof v === 'number' ? v : 0);
     const revisar = f.revisar || fila.revisar;
@@ -412,9 +436,9 @@ async function reporteDia(key) {
 
   return {
     fecha, diaSemana: DIAS[idx], dia: Number(key), iso,
-    // Descargado entre las 00:00 y las 05:00, "ayer" es una jornada que sigue
-    // abierta (los de noche siguen rodando): el Excel lo dice, no lo esconde.
-    parcial: act.terminada === false,
+    // Antes de las 12:00 del día siguiente, el día sigue abierto: la noche
+    // cuenta hasta esa hora (06/10/2026). El Excel lo dice, no lo esconde.
+    parcial: Date.now() < reparto.cierreDe(iso),
     filas, resumen: resumirFilas(filas),
   };
 }

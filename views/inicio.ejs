@@ -106,12 +106,12 @@
 
   <!-- ── POR TURNO ───────────────────────────────────────────────────────── -->
   <h2 class="text-xs font-semibold text-telecab-text uppercase tracking-wider mb-2">
-    Por turno <span class="font-normal text-telecab-muted normal-case tracking-normal">· día 05–17 · noche 17–05</span>
+    Por turno <span class="font-normal text-telecab-muted normal-case tracking-normal">· día 00–24 · noche 12–12, por el turno de cada conductor</span>
   </h2>
   <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
     <%- cifra('k-tdia-h', 'Turno día', 'h', '<span id="k-tdia-cond">—</span> conductores') %>
     <%- cifra('k-tnoche-h', 'Turno noche', 'h', '<span id="k-tnoche-cond">—</span> conductores') %>
-    <%- cifra('k-ayer-h', 'Ayer · jornada', 'h', 'día + noche, 05→05', true) %>
+    <%- cifra('k-ayer-h', 'Ayer · jornada', 'h', 'su turno de día + su turno de noche', true) %>
     <%- cifra('k-sem-h', 'Esta semana', 'h', 'desde el lunes') %>
   </div>
 

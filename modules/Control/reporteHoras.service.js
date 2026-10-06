@@ -101,7 +101,7 @@ async function excelDia(reporte) {
   let fila = est.bandaCabecera(ws, est.registrarLogo(wb),
     `Reporte de horas · ${reporte.diaSemana} ${reporte.fecha}`,
     `${r.personas} conductor(es) en el reporte   ·   ${String(r.horasTotal).replace('.', ',')} h en total   ·   generado el ${ahora()}` +
-      (reporte.parcial ? '   ·   PARCIAL: la jornada 05→05 sigue en curso' : '') +
+      (reporte.parcial ? '   ·   PARCIAL: el día no se cierra hasta las 12:00 del siguiente (la noche cuenta hasta entonces)' : '') +
       (nGps ? `   ·   ${nGps} fila(s) en ámbar: KM POR GPS (ese coche no da odómetro)` : ''),
     N_REPORTE);
 
@@ -229,10 +229,12 @@ async function excelDia(reporte) {
     fila = lineaResumen(ws, fila, 'Horas trabajadas en libranza', r.horasEnLibranza, { horas: true, tenue: true });
   }
   fila++;
-  // Son las horas de la JORNADA ENTERA de la gente de cada turno, no las de la
-  // franja horaria: el de día que alargó hasta las 20:00 suma todo en "DÍA".
-  fila = lineaResumen(ws, fila, 'Horas de los conductores del turno de DÍA  ·  jornada completa', r.horasDia, { horas: true });
-  fila = lineaResumen(ws, fila, 'Horas de los conductores del turno de NOCHE  ·  jornada completa', r.horasNoche, { horas: true });
+  // Son las horas de la GENTE de cada turno, no las de una franja horaria
+  // (06/10/2026): el de día cuenta de 00:00 a 24:00 y el de noche de 12:00 a
+  // 12:00 del día siguiente, así que el de día que entra a las 04:00 o alarga
+  // hasta las 20:00 suma todo en "DÍA".
+  fila = lineaResumen(ws, fila, 'Horas de los conductores del turno de DÍA  ·  de 00:00 a 24:00', r.horasDia, { horas: true });
+  fila = lineaResumen(ws, fila, 'Horas de los conductores del turno de NOCHE  ·  de 12:00 a 12:00', r.horasNoche, { horas: true });
   // Solo se listan si aportan horas: si no, son ruido en el papel.
   if (r.horasTodoTurno) fila = lineaResumen(ws, fila, 'Horas hechas en TodoTurno', r.horasTodoTurno, { horas: true, tenue: true });
   if (r.horasSinTurno) fila = lineaResumen(ws, fila, 'Horas de conductores sin turno en la agenda', r.horasSinTurno, { horas: true, tenue: true });

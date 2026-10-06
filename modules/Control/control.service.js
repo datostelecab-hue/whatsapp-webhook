@@ -475,7 +475,8 @@ async function parrillaExcel(dia) {
 }
 
 /**
- * REPORTE POR TURNOS (5-5): quién rodó de 05:00→17:00 y de 17:00→05:00, con
+ * REPORTE POR TURNOS: quién rodó en el turno de día (00:00→24:00) y en el de
+ * noche (12:00→12:00), por el turno de cada conductor (06/10/2026), con
  * horas, matrícula y los NN incluidos. Del núcleo (fv_*), no de las hojas.
  */
 async function reporteTurnosExcel(dia) {

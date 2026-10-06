@@ -17,9 +17,17 @@ Son dos formas de mirar la misma rejilla, ya resuelta para toda la plantilla y t
 
 La rejilla empieza el **1 de junio de 2026** y son 365 días. Los índices de día se calculan en UTC a propósito, para que no dependan de la zona de quien ejecuta el proceso.
 
-## Las horas van por JORNADA 05→05
+## Las horas de cada día, por el turno de cada conductor (desde el 06/10/2026)
 
-La jornada operativa va de las **05:00 a las 05:00** de Madrid, y el tramo **se recorta por ella** — igual que en el Reporte de horas de Control (ver [[Jornada y turnos]]).
+Camilo: «todos los reportes que usen la misma regla a partir de ahora». Desde el **06/10/2026** las horas de una persona el día D son **su turno de día** de D (de 00:00 a 24:00) **más su turno de noche** de D (de 12:00 a 12:00 del día siguiente), según el cuadrante; los NN, por su hora de inicio. Es la regla de Control, Visibilidad y los reportes (`services/flotaViva/repartoTurnos.js`), así que lo que sella la bitácora es lo mismo que enseñan ellos. Ver [[Jornada y turnos#Las horas de cada turno, por conductor (06/10/2026)]].
+
+**Lo de antes se queda con la regla de antes.** Los días anteriores al 06/10 se siguen calculando con la jornada de 05:00 a 05:00 (`horasPorJornada05`), así que el sellado de las 05:35, que repasa los tres últimos días, no reescribe nada viejo. El día del cambio tiene un borde: lo que alguien de día hizo antes de las 05:00 del 06/10 cuenta en el 05 (jornada vieja) y también en el 06 (regla nueva). Es una vez y son minutos.
+
+**Un día no se cierra hasta las 12:00 del siguiente**, porque la noche cuenta hasta esa hora. Por eso, además del sellado de las 05:35, a las 12:00 se vuelven a sellar ayer y anteayer, justo antes de recalcular el promedio y la calificación (ver el cron).
+
+### Hasta el 05/10/2026: la jornada 05→05
+
+La jornada operativa iba de las **05:00 a las 05:00** de Madrid, y el tramo **se recortaba por ella** — igual que en el Reporte de horas de Control.
 
 > Un tramo que empieza a las **04:22** y acaba a las **05:36** deja **38 minutos en la jornada que cierra y 36 en la que abre**. Antes se le daba entero al día en que empezaba, y la bitácora discrepaba del reporte en unos minutos por persona.
 
@@ -107,6 +115,8 @@ Sellar borra el rango y lo reescribe, para que un día que se quedó a cero —o
 ### El cron
 
 `35 5 * * *` (Madrid), en `app.js`: al cerrar la jornada se sellan los **tres últimos días cerrados**, no solo uno, **porque BOLT entrega tramos con retraso y el de anteayer puede haber crecido**. Entra por `bitacora.service.sellarHoras()`, no por el repositorio.
+
+Y desde el 06/10/2026, **otra vez a las 12:00** (`0 12 * * *`) para ayer y anteayer: a las 05:35 a ayer le falta la cola de su noche, que cuenta hasta el mediodía. Va dentro del mismo cron que recalcula el promedio y la calificación, y antes que ellos. Si falla, el promedio se calcula igual con lo de las 05:35.
 
 ### Resellar
 

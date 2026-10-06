@@ -244,6 +244,11 @@ const CAPA_DECLARADA = new Map([
   ['services/flotaViva/franjas', 'repositorio'],   // 12 consultas sobre fv_tramo
   ['services/flotaViva/fuentes', 'adaptador'],     // habla con BOLT y con Mapon
   ['services/flotaViva/formato', 'nucleo'],        // 19 líneas de formato, sin base ni red
+  // De quién es cada hora (06/10/2026): una regla PURA (`repartir`) y las tres
+  // lecturas que necesita (fv_tramo, las cuentas y f_cobertura). No llama a
+  // ningún servicio y la usan repositorios —Bitácora, Reporte de horas— igual
+  // que usan `rutas`: si fuera "servicio", ellos saldrían llamando hacia arriba.
+  ['services/flotaViva/repartoTurnos', 'repositorio'],
   // Mismo caso que `rutas`, y por el mismo motivo: ingiere de Mapon y guarda
   // en su tabla (`mapon_zona_alerta`). Es un repositorio con un adaptador
   // delante, no un servicio de dominio — no decide nada, solo trae y lee.

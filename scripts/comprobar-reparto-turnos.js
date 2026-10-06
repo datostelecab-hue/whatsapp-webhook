@@ -51,6 +51,11 @@ caso('De noche que empieza a las 10:00 sin noche ayer → NN de día hasta que..
 caso('Cambio de hora (25/10, se atrasa el reloj): de noche 17:00 → 05:00 son 13 h reales',
   [iv('H', '2026-10-24', 17, '2026-10-25', 5)], { H: { '2026-10-24': ['noche'] } }, { ['H 2026-10-24|noche']: 13 });
 
+caso('Dos cuentas de la misma persona que se pisan (08–12 y 10–14) → 6 h, no 8',
+  [iv('P', D, 8, D, 12), iv('P', D, 10, D, 14)], { P: { [D]: ['dia'] } }, { ['P ' + D + '|dia']: 6 });
+caso('Un tramo dentro de otro no suma nada',
+  [iv('P', D, 8, D, 16), iv('P', D, 9, D, 10)], { P: { [D]: ['dia'] } }, { ['P ' + D + '|dia']: 8 });
+
 // La suma de los turnos tiene que ser todo lo trabajado.
 const ivs = [iv('A', D, 4, D, 12), iv('N', D, 13, MAN, 2), iv('N', MAN, 9, MAN, 15), iv('T', D, 5, MAN, 3)];
 const { porClave } = R.repartir(ivs, plan({ A: { [D]: ['dia'] }, T: { [D]: ['dia', 'noche'] } }));

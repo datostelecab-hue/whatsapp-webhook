@@ -63,8 +63,47 @@ function hoyMadridIso() {
     { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
-// ── HORAS POR JORNADA, RECORTADAS POR LA VENTANA ────────────────────────────
+// ── LAS HORAS DE CADA DÍA, POR EL TURNO DE CADA CONDUCTOR (06/10/2026) ──────
 // Devuelve Map(conductor_id -> Map('YYYY-MM-DD' -> segundos efectivos)).
+//
+// Desde el 06/10/2026 (Camilo: «todos los reportes con la misma regla a partir
+// de ahora») el día D de una persona es SU TURNO DE DÍA de D (00:00 → 24:00)
+// más SU TURNO DE NOCHE de D (12:00 → 12:00 del día siguiente), según el
+// cuadrante; los NN, por su hora de inicio. Es la regla de Control y de
+// Visibilidad, y vive en `services/flotaViva/repartoTurnos.js`.
+//
+// LO DE ANTES SE QUEDA CON LA REGLA DE ANTES. Los días anteriores a esa fecha
+// se siguen calculando con la jornada de 05:00 a 05:00 (abajo), así que volver a
+// sellarlos da lo mismo que ya había: el histórico no se reescribe.
+async function horasCalculadas(desdeIso, hastaIso) {
+  const reparto = require('../../services/flotaViva/repartoTurnos');
+  const out = new Map();
+  const mete = (cid, dia, seg) => {
+    if (!(seg > 0)) return;
+    if (!out.has(cid)) out.set(cid, new Map());
+    out.get(cid).set(dia, seg);
+  };
+  // Lo anterior al cambio, con la jornada 05→05.
+  if (desdeIso < reparto.DESDE) {
+    const hasta = hastaIso < reparto.DESDE ? hastaIso : reparto.sumarDias(reparto.DESDE, -1);
+    (await horasPorJornada05(desdeIso, hasta)).forEach((dias, cid) => dias.forEach((seg, dia) => mete(cid, dia, seg)));
+  }
+  // Lo de desde el cambio, por el turno de cada uno. Solo la gente con ficha:
+  // una cuenta de BOLT sin dueño no es de nadie de la bitácora.
+  if (hastaIso >= reparto.DESDE) {
+    const fechas = [];
+    for (let f = desdeIso < reparto.DESDE ? reparto.DESDE : desdeIso; f <= hastaIso; f = reparto.sumarDias(f, 1)) fechas.push(f);
+    (await reparto.porPersonaYDia(fechas)).forEach((dias, persona) => {
+      if (!persona.startsWith('c')) return;
+      const cid = Number(persona.slice(1));
+      dias.forEach((x, dia) => mete(cid, dia, Math.round(x.dia + x.noche)));
+    });
+  }
+  return out;
+}
+
+// ── HORAS POR JORNADA 05→05, RECORTADAS POR LA VENTANA (hasta el 05/10/2026) ─
+// La regla de antes, que se queda para los días anteriores al cambio.
 //
 // La jornada operativa va de 05:00 a 05:00 (Madrid) y el tramo SE RECORTA por
 // ella, igual que en el Reporte de horas: uno que empieza a las 04:22 y acaba a
@@ -74,7 +113,7 @@ function hoyMadridIso() {
 //
 // Los solapes se funden en JS: si una persona tiene dos cuentas de BOLT que se
 // pisan, ese rato cuenta UNA vez.
-async function horasCalculadas(desdeIso, hastaIso) {
+async function horasPorJornada05(desdeIso, hastaIso) {
   const r = await db.consulta(
     // LAS CUENTAS QUE CUENTAN: las que tienen dueño y las que están prestadas.
     // Se filtra aquí y no al final para no meter en el troceado los tramos de

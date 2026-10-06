@@ -62,7 +62,7 @@ El cockpit usaba la misma idea recortada al final real del turno (`nocheControl`
 
 ## Las horas de cada turno, por conductor (06/10/2026)
 
-Camilo: «hay gente de día que empieza desde antes de las 5am y no cuentan algunas horas». Desde entonces, **en Control y en Visibilidad, un turno no es un reloj: son las horas de su gente.**
+Camilo: «hay gente de día que empieza desde antes de las 5am y no cuentan algunas horas». Desde entonces, **en Control y en Visibilidad, un turno no es un reloj: son las horas de su gente.** Y el mismo día, «todos los reportes que usen la misma regla a partir de ahora»: el Reporte de horas, el Reporte por turnos, la Bitácora (y con ella las faltas, la auditoría de lunes, el reporte de la ETT, el promedio y la calificación) y la tarjeta «Ayer · jornada». **La jornada de una persona el día D es su turno de día de D más su turno de noche de D**, y no se cierra hasta las 12:00 del día siguiente.
 
 | Quién | Qué cuenta |
 |---|---|
@@ -79,7 +79,20 @@ Vive en `services/flotaViva/repartoTurnos.js`. Las dos ventanas **se solapan** (
 
 Así **cada segundo es de un solo turno** y día + noche es todo lo trabajado. La prueba es `scripts/comprobar-reparto-turnos.js` (pura, sin base), con los casos que pidió Camilo y los bordes: el NN que trabaja de 13:00 a 02:00 y vuelve a las 09:00 no se cuenta dos veces, y el cambio de hora del 25/10 da 13 h reales en una noche de 17:00 a 05:00.
 
-**Lo que no cambia:** el **final del turno** para «No terminará la jornada» y «En riesgo» sigue siendo las **17:00 y las 05:00**, y se sigue reclamando desde las 05:00 y las 17:00. Se amplía qué horas cuentan, no cuándo acaba el turno. Tampoco cambian la **jornada** (05→05), la Bitácora ni el Reporte de horas.
+**Lo que no cambia:** el **final del turno** para «No terminará la jornada» y «En riesgo» sigue siendo las **17:00 y las 05:00**, y se sigue reclamando desde las 05:00 y las 17:00. Se amplía qué horas cuentan, no cuándo acaba el turno.
+
+**«A partir de ahora» (06/10/2026).** Lo ya sellado no se reescribe: la Bitácora calcula los días anteriores al 06/10 con la jornada 05→05 (`repartoTurnos.DESDE`). Lo que se calcula en vivo (los reportes del día, Visibilidad) ya va con la regla nueva aunque se pida un día anterior.
+
+**Lo que sigue con otra ventana, a propósito:**
+
+| Qué | Ventana | Por qué |
+|---|---|---|
+| El **día operativo** de Control (qué día enseña, a qué día van las llamadas, las J y el «No saldrá») | 05:00 → 05:00 | es cuándo cambia la pantalla de día, no qué horas cuentan |
+| La **aceptación de la flota** (arriba en Control) | 05:00 → 05:00 | es de la flota, no de una persona |
+| La **cascada de km**, el **Sankey** y los km por turno del **panel de inicio** | reloj (05→17, 17→05) | son km POR COCHE; repartirlos por conductor es otro trabajo |
+| La **nómina** | día natural (00→24) | paga lo que pasó en el mes; ver [[Nominas]] |
+| El **BI** | día natural | es la capa para Power BI, por fecha de calendario |
+| La **utilización** de la calificación | corte a las 05:00 por el inicio del tramo | es un promedio de porcentajes y apenas se mueve; las HORAS de la calificación sí van por la Bitácora |
 
 ## Las franjas de vigilancia
 

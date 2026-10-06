@@ -188,9 +188,20 @@ function repartir(intervalos, planDe) {
     r.get(k).seg += seg;
   };
 
-  porPersona.forEach((ivs, persona) => {
+  porPersona.forEach((todos, persona) => {
     const plan = f => planDe(persona, f);
-    ivs.sort((a, b) => a.ini - b.ini);
+    todos.sort((a, b) => a.ini - b.ini);
+    // CADA SEGUNDO DE UNA PERSONA, UNA VEZ. Dos cuentas suyas que se pisan, o
+    // dos tramos del mismo rato, no hacen el doble de horas: el primero se queda
+    // el rato y del siguiente cuenta solo lo que sobra. Es lo que hacían ya la
+    // Bitácora y el Reporte de horas («los solapes se funden»).
+    const ivs = [];
+    let hastaYa = -Infinity;
+    todos.forEach(iv => {
+      const ini = Math.max(iv.ini, hastaYa);
+      if (iv.fin > ini) ivs.push({ ...iv, ini });
+      if (iv.fin > hastaYa) hastaYa = iv.fin;
+    });
 
     // 1. LO PLANIFICADO. Cada tramo se parte por los cortes del reloj y cada
     //    trozo va al turno planificado que le toca; lo que no cae en ninguno se
@@ -263,15 +274,17 @@ async function intervalosEfectivos(iniMs, finMs) {
 }
 
 /**
- * Las HORAS DE CADA TURNO de unas fechas, con la gente de cada turno. Es lo que
- * pintan las tarjetas «Turno día» y «Turno noche» de Visibilidad.
+ * EL REPARTO DE UNAS FECHAS, LEÍDO DE LA BASE: los tramos de trabajo, de quién
+ * es cada cuenta ese día (con las prestadas) y el plan de `f_cobertura`.
  *
- * Devuelve Map('fecha|turno' → { viajeSeg, esperaSeg, personas: Set, nnSeg,
- * nnPersonas: Set }) para las fechas pedidas.
+ * Las personas son 'c<conductor_id>' o, sin ficha, 'u<uuid de BOLT>'.
+ *
+ * Devuelve { porClave, porPersona } como `repartir`, con las claves de las
+ * fechas pedidas (y alguna vecina, que se ignora).
  */
-async function porTurno(fechas) {
+async function cargar(fechas) {
   const lista = [...new Set(fechas.map(f => String(f).slice(0, 10)))].sort();
-  if (!lista.length) return new Map();
+  if (!lista.length) return { porClave: new Map(), porPersona: new Map() };
   const db = require('../db');
   const desdeF = sumarDias(lista[0], -1), hastaF = sumarDias(lista[lista.length - 1], 1);
   // Desde el mediodía de la víspera: una sesión que empezó la tarde anterior y
@@ -327,16 +340,64 @@ async function porTurno(fechas) {
   const VACIO = new Set();
   const planDe = (persona, fecha) => ((planes.get(persona) || new Map()).get(fecha)) || VACIO;
 
-  const { porClave } = repartir(ivs.map(iv => ({ ...iv, persona: personaDe(iv.uuid, iv.ini) })), planDe);
+  return repartir(ivs.map(iv => ({ ...iv, persona: personaDe(iv.uuid, iv.ini) })), planDe);
+}
+
+/**
+ * Las HORAS DE CADA TURNO de unas fechas, con la gente de cada turno. Es lo que
+ * pintan las tarjetas «Turno día» y «Turno noche» de Visibilidad.
+ *
+ * Devuelve Map('fecha|turno' → { viajeSeg, esperaSeg, personas: Set, nnSeg,
+ * nnPersonas: Set }) para las fechas pedidas.
+ */
+async function porTurno(fechas) {
+  const { porClave } = await cargar(fechas);
   const out = new Map();
-  lista.forEach(f => ['dia', 'noche'].forEach(t => {
+  [...new Set(fechas.map(f => String(f).slice(0, 10)))].forEach(f => ['dia', 'noche'].forEach(t => {
     const k = clave(f, t);
     out.set(k, porClave.get(k) || { viajeSeg: 0, esperaSeg: 0, personas: new Set(), nnSeg: 0, nnPersonas: new Set() });
   }));
   return out;
 }
 
+/**
+ * Las horas de CADA PERSONA en el día y en la noche de unas fechas. Es lo que
+ * usan los reportes y la Bitácora: la «jornada» de una persona el día D es su
+ * turno de día de D más su turno de noche de D.
+ *
+ * Devuelve Map(persona → Map(fecha → { dia, noche, nnDia, nnNoche })), con los
+ * segundos de cada turno y si fueron sin plan (NN).
+ */
+async function porPersonaYDia(fechas) {
+  const lista = [...new Set(fechas.map(f => String(f).slice(0, 10)))];
+  const quiero = new Set(lista);
+  const { porPersona } = await cargar(lista);
+  const out = new Map();
+  porPersona.forEach((claves, persona) => claves.forEach((v, k) => {
+    const [fecha, turno] = k.split('|');
+    if (!quiero.has(fecha) || !(v.seg > 0)) return;
+    if (!out.has(persona)) out.set(persona, new Map());
+    const m = out.get(persona);
+    if (!m.has(fecha)) m.set(fecha, { dia: 0, noche: 0, nnDia: false, nnNoche: false });
+    const x = m.get(fecha);
+    x[turno] += v.seg;
+    if (v.nn) x[turno === 'dia' ? 'nnDia' : 'nnNoche'] = true;
+  }));
+  return out;
+}
+
+/**
+ * CUÁNDO SE CIERRA DEL TODO UN DÍA: cuando acaba la ventana de su noche, a las
+ * 12:00 del día siguiente. Antes de eso sus horas aún pueden crecer.
+ */
+const cierreDe = fecha => instante(sumarDias(fecha, 1), INICIO.noche);
+
+// DESDE CUÁNDO MANDA ESTA REGLA EN LO QUE SE GUARDA (Camilo, 06/10/2026: «a
+// partir de ahora»). Lo sellado antes con la jornada de 05:00 a 05:00 no se
+// reescribe: la Bitácora no vuelve a sellar días anteriores a esta fecha.
+const DESDE = '2026-10-06';
+
 module.exports = {
-  repartir, etiquetaNN, porTurno, intervalosEfectivos,
-  instante, sumarDias, clave, INICIO, ENTRA,
+  repartir, etiquetaNN, porTurno, porPersonaYDia, intervalosEfectivos,
+  instante, sumarDias, clave, cierreDe, INICIO, ENTRA, DESDE,
 };

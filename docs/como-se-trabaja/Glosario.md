@@ -508,7 +508,7 @@ afloja.
 
 ### Turno
 
-La ventana de trabajo de **una persona**: día 05→17, noche 17→05(+1). Desde el 06/10/2026, en Control y Visibilidad, las **horas** de un turno se cuentan más anchas —día 00→24, noche 12→12, según el turno de cada conductor; los NN por su hora de inicio— pero el turno sigue **acabando** a las 17:00 y a las 05:00 ([[Jornada y turnos]]). No confundir
+La ventana de trabajo de **una persona**: día 05→17, noche 17→05(+1). Desde el 06/10/2026, en Control, Visibilidad, la Bitácora y los reportes, las **horas** de un turno se cuentan más anchas —día 00→24, noche 12→12, según el turno de cada conductor; los NN por su hora de inicio— pero el turno sigue **acabando** a las 17:00 y a las 05:00 ([[Jornada y turnos]]). No confundir
 con [[#Franja|franja]] (que es del coche) ni con [[#Jornada operativa|jornada
 operativa]] (que es el día entero, 05→05). El "completo" **no** es día + noche: la
 madrugada de 00:00 a 05:00 es del turno de noche de la víspera y se cuenta aparte.

@@ -577,10 +577,23 @@ programar('40 5 * * *', async () => {
 // La de las 05:40 se queda: da una cifra utilizable a primera hora, cuando
 // Tráfico empieza a colocar gente. Esta la corrige. Son 200 filas sobre
 // histórico ya sellado: no le cuesta nada al servidor y es idempotente.
+//
+// Y ANTES DE ESO SE VUELVE A SELLAR AYER (06/10/2026). Desde que la noche cuenta
+// de 12:00 a 12:00 (repartoTurnos.js), el día de ayer no está cerrado del todo
+// hasta ahora: el sellado de las 05:35 lo deja a falta de la cola de la noche.
 programar('0 12 * * *', async () => {
   try {
     const bd = require('./services/db');
     if (!bd.HAY_BD) return;
+    try {
+      const enCurso = require('./services/repo/llamadas').diaOperativoHoy();
+      const menos = n => new Date(Date.parse(enCurso + 'T12:00:00Z') - n * 86400000).toISOString().slice(0, 10);
+      const s = await require('./modules/Operaciones/bitacora.service').sellarHoras(menos(2), menos(1));
+      console.log(`📒 [Bitácora] Resellado del mediodía: ${s.filas} fila(s) · ${s.desde} → ${s.hasta}`);
+    } catch (e) {
+      // Si el sellado falla, el promedio se calcula igual con lo de las 05:35.
+      console.error(`⚠️  [Bitácora] resellado del mediodía: ${e.message}`);
+    }
     const r = await require('./services/repo/rendimiento').recalcular();
     console.log(`⭐ [Rendimiento] mediodía (todos): ${r.filas} persona(s) · mes ${r.mes} hasta ${r.hasta}`);
     const c = await require('./services/repo/calificacion').recalcular();

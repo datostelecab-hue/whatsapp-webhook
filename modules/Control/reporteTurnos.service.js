@@ -1,11 +1,19 @@
 // ============================================================
-// REPORTE DE HORAS POR TURNO (5-5) — Excel, con NN
+// REPORTE DE HORAS POR TURNO — Excel, con NN
 // ============================================================
-// El reporte que sacaba el control antiguo: por TURNO con ventana horaria fija
-//   · Día   05:00 → 17:00
-//   · Noche 17:00 → 05:00 del día siguiente
-// y con TODO el que trabajó en esa ventana, incluidos los NN (los que rodaron sin
-// estar planificados). Sale del núcleo (fv_tramo/fv_ruta), no de las hojas.
+// El reporte que sacaba el control antiguo: por TURNO, con TODO el que trabajó
+// en él, incluidos los NN (los que rodaron sin estar planificados). Sale del
+// núcleo (fv_tramo/fv_ruta), no de las hojas.
+//
+// DESDE EL 06/10/2026 EL TURNO ES SU GENTE, NO UN RELOJ (Camilo: «todos los
+// reportes con la misma regla»). Antes era «5-5»: día de 05:00 a 17:00 y noche
+// de 17:00 a 05:00. Ahora, la regla de Control y Visibilidad
+// (services/flotaViva/repartoTurnos.js):
+//   · Día   de 00:00 a 24:00, para la gente de día del cuadrante
+//   · Noche de 12:00 a 12:00 del día siguiente, para la de noche
+//   · Los NN, por su hora de inicio: antes de las 12:00, día
+// Cada segundo de cada persona va a UN turno, así que nadie sale en los dos con
+// las mismas horas.
 //
 //   Salió     = trabajó en su turno y estaba previsto
 //   NN        = trabajó pero no estaba en el plan de ese turno
@@ -16,6 +24,7 @@
 
 const ExcelJS = require('exceljs');
 const rutas = require('../../services/flotaViva/rutas');
+const reparto = require('../../services/flotaViva/repartoTurnos');
 const { salidasHoy, contactos } = require('../Planificacion/tablero.service');
 const db = require('../../services/db');
 
@@ -31,12 +40,21 @@ const fmtTel = t => {
 // Puente cuenta de BOLT (uuid) → conductor_id: TODAS las cuentas de cada persona.
 // Antes se cruzaba por NOMBRE y una persona con dos cuentas con nombres distintos
 // salía dos veces (o ninguna, si el nombre de BOLT no casaba con el de la ficha).
-async function puenteUuidId() {
+// Y LAS PRESTADAS DE ESE DÍA, después: lo que hizo una cuenta prestada es de
+// quien la llevaba, igual que en el reparto de horas.
+async function puenteUuidId(dia) {
   const m = new Map();
   const r = await db.consulta(
     `SELECT conductor_id, externo_id FROM conductor_externo
       WHERE sistema = 'bolt' AND conductor_id IS NOT NULL AND externo_id IS NOT NULL`);
   r.rows.forEach(x => m.set(String(x.externo_id), Number(x.conductor_id)));
+  const p = await db.consulta(
+    `SELECT ce.externo_id, f.conductor_id
+       FROM cuenta_fantasma f
+       JOIN conductor_externo ce ON ce.id = f.cuenta_id
+      WHERE f.anulado_at IS NULL AND ce.externo_id IS NOT NULL
+        AND f.desde <= $1::date AND (f.hasta IS NULL OR f.hasta >= $1::date)`, [dia]).catch(() => ({ rows: [] }));
+  p.rows.forEach(x => m.set(String(x.externo_id), Number(x.conductor_id)));
   return m;
 }
 
@@ -50,12 +68,12 @@ const ayerDe = iso => {
  * Estructura del reporte (pura, sin Excel).
  *
  *   Salió       trabajó en su turno y estaba previsto
- *   Otro turno  trabajó en esta ventana pero estaba previsto en la OTRA (el de
- *               noche que ficha a las 16:40, el de día que apura pasadas las 17:00,
- *               el de la noche de ayer que remata a las 05:30). No es un NN.
+ *   Otro turno  trabajó en este turno pero estaba previsto en el OTRO (el de
+ *               noche que empezó antes de las 12:00, que es de día por su hora
+ *               de inicio). No es un NN.
  *   NN          trabajó y no estaba en el plan de ninguno de los dos turnos
- *   No salió    estaba previsto, la ventana ya cerró y no rodó
- *   Pendiente   estaba previsto y la ventana aún no ha cerrado (o no ha empezado)
+ *   No salió    estaba previsto y su turno ya acabó (17:00 o 05:00) sin rodar
+ *   Pendiente   estaba previsto y su turno aún no ha acabado
  */
 async function datos(dia) {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoyMadrid();
@@ -64,12 +82,12 @@ async function datos(dia) {
   // Lo esencial va SIN red: si el núcleo o el plan no responden, la ruta
   // contesta 500. Antes se tragaba el error y salía un Excel plausible con todos
   // "No salió" (o todos NN) que alguien se podía creer.
-  const [aDia, aNoche, plan, planAyer, puente, contac] = await Promise.all([
-    rutas.actividadPorConductor(d, 'dia'),
-    rutas.actividadPorConductor(d, 'noche'),
+  const [vent, horasRep, plan, planAyer, puente, contac] = await Promise.all([
+    rutas.actividadDeVariosTurnos(d, ['diaControl', 'nocheControl']),
+    reparto.porPersonaYDia([d]),
     salidasHoy(d),
     salidasHoy(ayerDe(d)).catch(() => ({ turnos: [] })),
-    puenteUuidId(),
+    puenteUuidId(d),
     contactos().catch(() => new Map()),
   ]);
 
@@ -83,17 +101,34 @@ async function datos(dia) {
   (plan.turnos || []).forEach(t => (t.conductores || []).forEach(c =>
     planInfo.set(String(c.conductorId), { nombre: c.conductor, telefono: c.telefono })));
 
-  const construir = (act, espSet, otroSet) => {
-    // Por PERSONA (conductor_id), fundiendo sus cuentas de BOLT; sin ficha, por uuid.
+  // Cuándo empieza a contar cada turno, cuándo deja de contar y cuándo ACABA.
+  // Lo último es la hora estándar (17:00 y 05:00): a partir de ahí quien no
+  // salió es una ausencia, aunque las horas sigan contando hasta las 24:00 o las
+  // 12:00 por si alguien remata tarde.
+  const manana = reparto.sumarDias(d, 1);
+  const horario = {
+    dia:   { cuenta: reparto.instante(d, reparto.INICIO.dia), cierra: reparto.instante(manana, reparto.INICIO.dia),
+             acaba: reparto.instante(d, reparto.ENTRA.noche) },
+    noche: { cuenta: reparto.instante(d, reparto.INICIO.noche), cierra: reparto.cierreDe(d),
+             acaba: reparto.instante(manana, reparto.ENTRA.dia) },
+  };
+
+  const construir = (turno, act, espSet, otroSet) => {
+    const ahora = Date.now();
+    const h = horario[turno];
+    const acabado = ahora >= h.acaba;
+    // Por PERSONA (conductor_id), fundiendo sus cuentas de BOLT; sin ficha, por
+    // uuid. Las horas, las del reparto de ese turno.
     const porPersona = new Map();
-    act.porUuid.forEach(a => {
+    ((act && act.porUuid) || new Map()).forEach(a => {
       const cid = puente.get(a.uuid);
-      const k = cid ? 'id:' + cid : 'uuid:' + a.uuid;
+      const k = cid ? 'c' + cid : 'u' + a.uuid;
       if (!porPersona.has(k)) {
-        porPersona.set(k, { id: cid ? String(cid) : null, nombre: a.nombre || '', telefono: a.telefono || '', minutos: 0, matriculas: [] });
+        const x = (horasRep.get(k) || new Map()).get(d) || { dia: 0, noche: 0 };
+        porPersona.set(k, { id: cid ? String(cid) : null, nombre: a.nombre || '', telefono: a.telefono || '',
+          minutos: Math.floor((x[turno] || 0) / 60), matriculas: [] });
       }
       const p = porPersona.get(k);
-      p.minutos += a.minutos || 0;
       if (!p.nombre) p.nombre = a.nombre || '';
       if (!p.telefono) p.telefono = a.telefono || '';
       (a.matriculas || []).forEach(m => { if (!p.matriculas.includes(m)) p.matriculas.push(m); });
@@ -101,33 +136,34 @@ async function datos(dia) {
 
     const filas = [];
     const vistosId = new Set();
-    // 1) TODO el que rodó en la ventana.
+    // 1) TODO el que rodó en el turno.
     porPersona.forEach(p => {
       const esperado = p.id != null && espSet.has(p.id);
       const deOtroTurno = !esperado && p.id != null && otroSet.has(p.id);
-      // Menos de un minuto sin estar previsto es el ruido de un login, no una fila.
+      // Menos de un minuto sin estar previsto es el ruido de un login, no una
+      // fila. Y quien pisó la ventana con horas que son del otro turno, tampoco.
       if (p.minutos < 1 && !esperado) return;
       const rodo = p.minutos >= 1;
       const info = (p.id && planInfo.get(p.id)) || {};
       filas.push({
         nombre: p.nombre || info.nombre || ('#' + (p.id || '?')),
         telefono: (p.id && contac.get(p.id) && contac.get(p.id).telefono) || info.telefono || p.telefono || '',
-        matriculas: p.matriculas,
+        matriculas: rodo ? p.matriculas : [],
         horas: Math.round(p.minutos / 6) / 10,
         estado: rodo
           ? (esperado ? 'salio' : deOtroTurno ? 'otro_turno' : 'nn')
-          : (act.terminada ? 'no_salio' : 'pendiente'),
+          : (acabado ? 'no_salio' : 'pendiente'),
         esperado,
       });
       if (p.id != null) vistosId.add(p.id);
     });
-    // 2) Previstos que NO rodaron: "No salió" si la ventana cerró; si no, pendiente.
+    // 2) Previstos que NO rodaron: "No salió" si su turno acabó; si no, pendiente.
     espSet.forEach(id => {
       if (vistosId.has(id)) return;
       const p = planInfo.get(id) || {};
       filas.push({
         nombre: p.nombre || ('#' + id), telefono: p.telefono || '',
-        matriculas: [], horas: 0, estado: act.terminada ? 'no_salio' : 'pendiente', esperado: true,
+        matriculas: [], horas: 0, estado: acabado ? 'no_salio' : 'pendiente', esperado: true,
       });
     });
     // Los que rodaron primero (más horas arriba); los que no salieron, al final.
@@ -142,16 +178,16 @@ async function datos(dia) {
       previstos: espSet.size,
       horas: Math.round(filas.reduce((s, f) => s + (f.horas || 0), 0) * 10) / 10,
     };
-    return { filas, resumen, empezada: !!act.empezada, terminada: !!act.terminada };
+    return { filas, resumen, empezada: ahora >= h.cuenta, terminada: ahora >= h.cierra };
   };
 
-  const dDia = construir(aDia, esp.dia, otro.dia);
-  const dNoche = construir(aNoche, esp.noche, otro.noche);
+  const dDia = construir('dia', vent.get('diaControl'), esp.dia, otro.dia);
+  const dNoche = construir('noche', vent.get('nocheControl'), esp.noche, otro.noche);
   return {
     dia: d, fecha: d.split('-').reverse().join('/'),
     turnos: [
-      { codigo: 'dia', etiqueta: 'DÍA', ventana: '05:00 → 17:00', ...dDia },
-      { codigo: 'noche', etiqueta: 'NOCHE', ventana: '17:00 → 05:00', ...dNoche },
+      { codigo: 'dia', etiqueta: 'DÍA', ventana: '00:00 → 24:00', ...dDia },
+      { codigo: 'noche', etiqueta: 'NOCHE', ventana: '12:00 → 12:00', ...dNoche },
     ],
   };
 }
@@ -241,7 +277,7 @@ async function excelTurnos(reporte) {
 
   ws.mergeCells('A1:F1');
   const tit = ws.getCell('A1');
-  tit.value = `Reporte por turnos (5-5)  ·  ${reporte.fecha}`;
+  tit.value = `Reporte por turnos  ·  ${reporte.fecha}  ·  día de 00:00 a 24:00 y noche de 12:00 a 12:00, por el turno de cada conductor`;
   tit.font = { size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
   tit.fill = relleno(AZUL); tit.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
   ws.getRow(1).height = 26;
