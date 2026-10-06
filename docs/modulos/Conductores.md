@@ -258,6 +258,16 @@ Para que la ficha se pueda completar desde Plantilla, el formulario de **Datos**
 
 Las dos reglas viven en un solo sitio y las usan Selección y Plantilla: las fechas en Documentos (`prepararFechasCarne`, `fechasCarne`) y el IBAN en Conductores (`guardarIban`, `ibanEnmascarado`). Antes solo estaban en Selección. De paso, la ficha de Plantilla **dejó de mandar al navegador el IBAN cifrado**, que viajaba con el resto de la fila.
 
+### La jornada, dentro de «Editar datos» (06/10/2026)
+
+Camilo: *«en Editar datos mete el botón de la jornada, que se edite allá adentro»*. El formulario lleva al final un apartado **Contrato** con la **Jornada**, solo si la persona tiene contrato abierto. No es un campo de la ficha: son las horas del contrato abierto, una **novación** con su historial ([[RRHH]]), así que se guarda por su camino (`POST /plantilla/api/conductor/:id/jornada`) y solo si cambió. Si en el mismo formulario cambian otros campos, van primero por el `PUT` de siempre y después la jornada. El botón «Jornada» de la cabecera se fue.
+
+### Extras (06/10/2026)
+
+En su sitio está **«Extras»**, para quien sigue de alta. Pregunta **de qué meses** (uno o varios, con casillas). Se ofrecen desde **julio de 2026**, que es desde cuando hay datos en la base, hasta el **mes en curso**, y por defecto viene marcado el último mes cerrado. Baja un solo Excel con el mismo formato que «Extras pendientes» de quien se va: el resumen de cada mes y una pestaña por mes, **día a día** (`GET /nominas/extras.xlsx?conductor=…&meses=2026-08,2026-09`). Todo el detalle, en [[Nominas#Día a día (06/10/2026)]].
+
+El mes en curso va con lo trabajado hasta hoy. Los días que aún no han llegado salen en gris con «Aún no ha llegado», y el de hoy con «el día va a medias». Su MBO por horas extra sale bajo, porque se mide contra el objetivo del mes entero: el Excel lo avisa.
+
 ## La foto de la persona (24/09/2026)
 
 La ficha lleva la foto de cada persona **en la cabecera, al lado del nombre**: un cuadrado fijo de 96 px en el que la foto **se ajusta** (`object-fit: cover`). Da igual que sea vertical, apaisada o un selfie: llena el cuadro sin deformarse y se recorta lo que sobra.

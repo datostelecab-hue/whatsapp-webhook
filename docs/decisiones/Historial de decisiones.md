@@ -7,6 +7,10 @@ actualizado: 2026-10-05
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-06 · «Extras» para los activos, y la jornada dentro de «Editar datos»
+
+En la ficha de quien sigue de alta, el botón «Jornada» se fue dentro de «Editar datos» (apartado Contrato, guardado como novación por su camino de siempre). En su sitio está **«Extras»**: se eligen uno o varios meses, de julio de 2026 al mes en curso, y se baja un solo Excel con el mismo formato día a día que el finiquito. → [[Conductores#Extras (06/10/2026)]] · [[Nominas#Día a día (06/10/2026)]]
+
 ## 2026-10-06 · Las extras de quien se va, día a día
 
 El Excel «Extras pendientes» de la ficha de alguien de baja lleva una pestaña por mes con cada día: horas, J, nocturnidad, propinas, peajes y facturación. Sale de las mismas consultas que la nómina, pedidas para esa persona, y debajo del total va la fila de la nómina para comprobar que coinciden. El MBO y el descuento por utilización no se reparten por días: se deciden con el mes entero. De paso se corrigieron dos líneas del resumen: el MBO que salía 0 cuando ganaba el de facturación, y unas horas que decían estar descontadas sin estarlo. → [[Nominas#Día a día (06/10/2026)]]

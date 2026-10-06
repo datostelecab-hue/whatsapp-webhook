@@ -511,23 +511,74 @@ const enDiaMesAno = iso => (/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))
  * no comparar a nadie con nadie. Quien lo abre está a punto de pagar.
  */
 async function generarExcelFiniquito(r) {
+  const p = r.persona;
+  const avisos = [
+    'Estas son las dos nóminas variables que quedan por pagar: la del mes anterior a la baja ' +
+      '—que se habría pagado el mes de la baja— y la del propio mes de la baja.',
+  ];
+  const mesBaja = r.meses.find(m => m.esMesDeLaBaja);
+  if (mesBaja && mesBaja.diasDeAlta < mesBaja.diasDelMes) {
+    avisos.push('OJO CON EL OBJETIVO DE HORAS DEL MES DE LA BAJA: se prorratea desde la fecha de alta, ' +
+      `pero NO hasta la de baja. A esta persona se le pide el objetivo del mes entero ` +
+      `(${mesBaja.fila ? mesBaja.fila.horasObjetivo : '—'} h) habiendo estado de alta ${mesBaja.diasDeAlta} ` +
+      `de ${mesBaja.diasDelMes} días, así que su diferencia sale negativa y no cobra MBO por horas extra.`);
+  }
+  return libroDeMeses(r, {
+    hoja: 'Finiquito variable',
+    titulo: `COMPENSACIÓN VARIABLE PENDIENTE · ${p.nombre}`,
+    subtitulo: `DNI ${p.dni || '—'} · alta ${enDiaMesAno(p.alta)} · baja ${enDiaMesAno(p.baja)}` +
+      (p.motivoBaja ? ` (${p.motivoBaja.toLowerCase()})` : '') +
+      ` · jornada ${p.jornada || '—'} h · generado ${sello()}`,
+    etiquetaTotal: 'TOTAL A PAGAR',
+    avisos,
+  });
+}
+
+/**
+ * LAS EXTRAS DE QUIEN SIGUE DE ALTA, de los meses elegidos (06/10/2026). El
+ * mismo libro que el finiquito: el resumen de cada mes y una pestaña por mes,
+ * día a día.
+ */
+async function generarExcelExtras(r) {
+  const p = r.persona;
+  const enCurso = r.meses.find(m => m.enCurso);
+  const avisos = [
+    `Las extras de ${r.meses.length === 1 ? 'un mes' : r.meses.length + ' meses'}, tal y como las calcula la nómina de cada uno. ` +
+      'Son meses TRABAJADOS: la nómina de cada uno se paga el mes siguiente.',
+  ];
+  if (enCurso) {
+    avisos.push(`${enCurso.etiqueta.toUpperCase()} AÚN NO HA TERMINADO: va con lo trabajado hasta hoy y contra el objetivo ` +
+      'del mes entero, así que su diferencia de horas sale baja y el MBO por horas extra todavía no se ha ganado. ' +
+      'La nocturnidad, las propinas y los peajes de los días que ya han pasado sí son los buenos.');
+  }
+  return libroDeMeses(r, {
+    hoja: 'Extras',
+    titulo: `EXTRAS · ${p.nombre}`,
+    subtitulo: `DNI ${p.dni || '—'} · alta ${enDiaMesAno(p.alta)}` +
+      (p.baja ? ` · baja ${enDiaMesAno(p.baja)}` : '') +
+      ` · jornada ${p.jornada || '—'} h · ${r.meses.map(m => m.etiqueta).join(', ')} · generado ${sello()}`,
+    etiquetaTotal: r.meses.length > 1 ? 'TOTAL DE LOS MESES ELEGIDOS' : 'TOTAL',
+    avisos,
+  });
+}
+
+/**
+ * El libro de uno o varios meses de UNA persona: la hoja resumen (un bloque por
+ * mes, con lo que se paga y por qué) y una pestaña por mes, día a día.
+ */
+async function libroDeMeses(r, { hoja, titulo, subtitulo, etiquetaTotal, avisos }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Telecab';
   const idLogo = E.registrarLogo(wb);
   const p = r.persona;
-  const ws = wb.addWorksheet('Finiquito variable');
+  const ws = wb.addWorksheet(hoja);
 
   const COLS = [
     ['Concepto', 42], ['Cantidad', 14], ['Importe', 14],
   ];
   COLS.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
 
-  let fila = E.bandaCabecera(ws, idLogo,
-    `COMPENSACIÓN VARIABLE PENDIENTE · ${p.nombre}`,
-    `DNI ${p.dni || '—'} · alta ${enDiaMesAno(p.alta)} · baja ${enDiaMesAno(p.baja)}` +
-      (p.motivoBaja ? ` (${p.motivoBaja.toLowerCase()})` : '') +
-      ` · jornada ${p.jornada || '—'} h · generado ${sello()}`,
-    COLS.length);
+  let fila = E.bandaCabecera(ws, idLogo, titulo, subtitulo, COLS.length);
 
   const linea = (texto, cantidad, importe, { fuerte = false, tono = null } = {}) => {
     const row = ws.getRow(fila++);
@@ -550,9 +601,10 @@ async function generarExcelFiniquito(r) {
     ws.mergeCells(`A${cab.number}:C${cab.number}`);
     const c = cab.getCell(1);
     c.value = `${m.etiqueta.toUpperCase()}${m.esMesDeLaBaja ? '  ·  MES DE LA BAJA' : ''}` +
+      `${m.enCurso ? '  ·  EN CURSO, HASTA HOY' : ''}` +
       `   —   ${m.diasDeAlta} de ${m.diasDelMes} días de alta`;
     c.font = { size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
-    c.fill = E.relleno(m.esMesDeLaBaja ? 'FF7C2D12' : 'FF374151');
+    c.fill = E.relleno(m.esMesDeLaBaja ? 'FF7C2D12' : m.enCurso ? 'FF92400E' : 'FF374151');
     c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
     c.border = E.TODOS_BORDES;
     cab.height = 20;
@@ -579,28 +631,19 @@ async function generarExcelFiniquito(r) {
     fila++;
   });
 
-  const tot = linea('TOTAL A PAGAR', null, r.total, { fuerte: true });
+  const tot = linea(etiquetaTotal, null, r.total, { fuerte: true });
   tot.getCell(3).font = { size: 12, bold: true, color: { argb: 'FF065F46' } };
   tot.height = 22;
 
-  const avisos = [
-    'Estas son las dos nóminas variables que quedan por pagar: la del mes anterior a la baja ' +
-      '—que se habría pagado el mes de la baja— y la del propio mes de la baja.',
+  nota(ws, fila + 1, [
+    ...avisos,
     'El desglose de cada mes, día a día (horas, J, nocturnidad, propinas, peajes y facturación), ' +
       'está en las pestañas «Día a día».',
     'Las cifras son las MISMAS que enseña la pantalla de Nóminas para esos meses: este documento ' +
       'no recalcula nada por su cuenta.',
     'Las horas van por día natural (del 1 a las 00:00 al último a las 23:59) y las nocturnas son ' +
       'el trozo entre las 22:00 y las 06:00.',
-  ];
-  const mesBaja = r.meses.find(m => m.esMesDeLaBaja);
-  if (mesBaja && mesBaja.diasDeAlta < mesBaja.diasDelMes) {
-    avisos.push('OJO CON EL OBJETIVO DE HORAS DEL MES DE LA BAJA: se prorratea desde la fecha de alta, ' +
-      `pero NO hasta la de baja. A esta persona se le pide el objetivo del mes entero ` +
-      `(${mesBaja.fila ? mesBaja.fila.horasObjetivo : '—'} h) habiendo estado de alta ${mesBaja.diasDeAlta} ` +
-      `de ${mesBaja.diasDelMes} días, así que su diferencia sale negativa y no cobra MBO por horas extra.`);
-  }
-  nota(ws, fila + 1, avisos);
+  ]);
 
   // ── Una pestaña por mes, día a día (06/10/2026) ──────────────────────────
   r.meses.forEach(m => hojaDiaADia(wb, idLogo, p, m, r.config || {}));
@@ -618,6 +661,8 @@ function notaDelDia(d) {
   if (d.jAprobada && !d.jAntesDelArranque) n.push('J aprobada');
   if (d.jAntesDelArranque) n.push('J aprobada antes de su alta: no cuenta');
   if (d.jPendiente) n.push('J pendiente de aprobar: no cuenta');
+  if (d.hoy) n.push('Hoy: el día va a medias');
+  if (d.futuro) n.push('Aún no ha llegado');
   return n.join(' · ');
 }
 
@@ -653,13 +698,14 @@ function hojaDiaADia(wb, idLogo, p, m, cfg) {
   const ws = wb.addWorksheet(`Día a día · ${m.etiqueta}`.slice(0, 31));
   const f = m.fila;
   const sub = `${p.nombre} · DNI ${p.dni || '—'} · ${m.esMesDeLaBaja ? 'mes de la baja · ' : ''}` +
+    `${m.enCurso ? 'EN CURSO, con los datos hasta hoy · ' : ''}` +
     `${m.diasDeAlta} de ${m.diasDelMes} días de alta · día natural (00:00 a 23:59) · ` +
     `nocturnidad = horas de 22:00 a 06:00 × ${String(cfg.eurHoraNoc).replace('.', ',')} € × ` +
     String(cfg.factorNoc).replace('.', ',');
   const ultima = tabla(ws, idLogo, `DÍA A DÍA · ${m.etiqueta.toUpperCase()}`, sub, COL_DIA, m.dias || [], {}, {
     etiquetaTotal: 'TOTAL DEL MES',
     realce: (row, d) => {
-      if (d.despuesDeLaBaja || d.antesDelAlta) {
+      if (d.despuesDeLaBaja || d.antesDelAlta || d.futuro) {
         for (let i = 1; i <= COL_DIA.length; i++) row.getCell(i).font = { color: { argb: E.TENUE } };
       }
       if (d.esLaBaja) {
@@ -736,5 +782,17 @@ const nombreFicheroFiniquito = r => 'finiquito-variable-' +
 /** parte-ett-agosto-2026.xlsx */
 const nombreFicheroETT = r => `parte-ett-${(r.mesNombre || '').toLowerCase()}-${r.ano}.xlsx`;
 
+/**
+ * extras-samir-hadriya-agosto-2026-septiembre-2026.xlsx, y con más de tres
+ * meses, el primero y el último: extras-…-julio-2026-a-octubre-2026.xlsx
+ */
+const plano = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const nombreFicheroExtras = r => {
+  const ms = r.meses.map(m => plano(m.etiqueta));
+  return `extras-${plano(r.persona.nombre || 'conductor').slice(0, 50)}-` +
+    (ms.length > 3 ? `${ms[0]}-a-${ms[ms.length - 1]}` : ms.join('-') || 'sin-mes') + '.xlsx';
+};
+
 module.exports = { generarExcelNomina, nombreFichero, generarExcelETT, nombreFicheroETT,
-  generarExcelFiniquito, nombreFicheroFiniquito };
+  generarExcelFiniquito, nombreFicheroFiniquito, generarExcelExtras, nombreFicheroExtras };

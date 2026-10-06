@@ -142,6 +142,25 @@ router.get('/finiquito.xlsx', async (req, res) => {
   }
 });
 
+// LAS EXTRAS DE QUIEN SIGUE DE ALTA (06/10/2026): el mes o los meses que se
+// elijan, con el mismo formato que el finiquito (resumen + día a día). Los
+// meses son de TRABAJO, como en el finiquito: se pide septiembre y salen los
+// días de septiembre. Se piden desde el botón «Extras» de la ficha.
+router.get('/api/extras/meses', responde(async () => ({ meses: nominas.mesesDeExtras() })));
+
+router.get('/extras.xlsx', async (req, res) => {
+  try {
+    const r = await nominas.extras(req.query.conductor, req.query.meses);
+    const bytes = await excel.generarExcelExtras(r);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${excel.nombreFicheroExtras(r)}"`);
+    res.end(Buffer.from(bytes));
+  } catch (e) {
+    console.error('❌ [NÓMINAS] extras:', e.message);
+    res.status(400).send('Error: ' + e.message);
+  }
+});
+
 // El parte de la ETT. OJO: el mes de esta ruta es el TRABAJADO, no el de pago.
 // Se pide agosto y salen los datos de agosto; la nómina, en cambio, va a mes
 // vencido. Son dos documentos distintos y por eso son dos rutas distintas.

@@ -190,6 +190,8 @@ Camilo lo pidió *«desglosado por días: día a día del mes pasado y el cursan
 
 **Los días salen de las mismas consultas que la nómina**, pedidas solo para esa persona (`horasDelMes`, `justificantesDelMes` con `conductorId`, y `dineroPorDia`). Los totales del mes son la suma de los días, así que el desglose no puede contradecir a la nómina. Por eso debajo del total va la fila **«Según la nómina»**, con la fila de ese mes: tienen que coincidir. Se comprobó con seis bajas reales (agosto, septiembre y octubre): todas cuadran al céntimo. La nómina entera de agosto y septiembre (485 filas) salió idéntica antes y después del cambio.
 
+**El mismo libro para quien sigue de alta**: el botón **«Extras»** de la ficha ([[Conductores#Extras (06/10/2026)]]) pide uno o varios meses, de julio de 2026 al mes en curso (`mesesDeExtras`), y baja `GET /nominas/extras.xlsx?conductor=…&meses=AAAA-MM,…`. El finiquito y las extras comparten `mesesDeTrabajo` en el servicio y `libroDeMeses` en el Excel: solo cambian el título, el total y los avisos. Un mes fuera de ese rango se rechaza con su motivo: lo de antes de julio no está en la base y saldría a cero, que no es lo mismo que «no hizo nada».
+
 **Lo que no se reparte por días**, porque se decide con el mes entero, va aparte con su porqué: el **MBO** (horas del mes contra el objetivo, o facturación contra el umbral) y las **horas de espera descontadas** por baja utilización (la utilización es la del mes).
 
 > [!bug] Dos cosas mal en el resumen, corregidas el mismo día

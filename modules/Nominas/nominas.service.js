@@ -654,10 +654,22 @@ async function finiquito(conductorId) {
   const [ab, mb] = [Number(persona.baja.slice(0, 4)), Number(persona.baja.slice(5, 7))];
   const anterior = mesVencido(mb, ab);
 
-  // Los dos meses de TRABAJO: el de la baja y el de antes. El `calcular` va por
-  // mes de PAGO, que es el siguiente al trabajado.
-  const trabajos = [anterior, { mes: mb, ano: ab }];
+  // Los dos meses de TRABAJO: el de la baja y el de antes.
   const cfg = await leerConfig();
+  const meses = await mesesDeTrabajo(cid, persona, [anterior, { mes: mb, ano: ab }], cfg);
+  const total = meses.reduce((n, m) => n + (m.fila ? Number(m.fila.total) || 0 : 0), 0);
+  return { persona, meses, total: r2(total), config: cfg };
+}
+
+/**
+ * Cada mes de TRABAJO pedido, con su fila de la nómina y su día a día. Es lo
+ * que comparten el finiquito y las extras de quien sigue de alta: el mismo
+ * `calcular` que pinta la pantalla (que va por mes de PAGO, el siguiente al
+ * trabajado) y su fila, más los días.
+ */
+async function mesesDeTrabajo(cid, persona, trabajos, cfg) {
+  const baja = persona.baja ? { mes: Number(persona.baja.slice(5, 7)), ano: Number(persona.baja.slice(0, 4)) } : null;
+  const hoy = hoyMadrid();
   const meses = [];
   for (const t of trabajos) {
     const pago = mesSiguiente(t.mes, t.ano);
@@ -667,14 +679,70 @@ async function finiquito(conductorId) {
     meses.push({
       mes: t.mes, ano: t.ano,
       etiqueta: `${MESES_NOM[t.mes - 1]} ${t.ano}`,
-      esMesDeLaBaja: t.mes === mb && t.ano === ab,
+      esMesDeLaBaja: !!baja && t.mes === baja.mes && t.ano === baja.ano,
+      // El mes que aún no ha terminado: van los datos hasta hoy.
+      enCurso: `${t.ano}-${pad(t.mes)}` === hoy.slice(0, 7),
       diasDelMes,
       diasDeAlta: diasDeAltaEnMes(persona, t.mes, t.ano, diasDelMes),
       fila,
       dias: await diaADia(cid, t.mes, t.ano, fila, persona, cfg),
     });
   }
+  return meses;
+}
 
+/** 'AAAA-MM-DD' de hoy en Madrid: el servidor va en UTC. */
+const hoyMadrid = () => new Intl.DateTimeFormat('en-CA',
+  { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
+/**
+ * DESDE CUÁNDO HAY EXTRAS QUE SACAR: julio de 2026. Antes de eso los tramos de
+ * BOLT no estaban en PostgreSQL y un mes anterior saldría a cero, que no es lo
+ * mismo que «no hizo nada».
+ */
+const PRIMER_MES_EXTRAS = { mes: 7, ano: 2026 };
+
+/**
+ * Los meses que se pueden pedir en «Extras»: de julio de 2026 al mes en curso,
+ * el más reciente primero. `clave` es 'AAAA-MM'.
+ */
+function mesesDeExtras() {
+  const hoy = hoyMadrid();
+  const fin = { mes: Number(hoy.slice(5, 7)), ano: Number(hoy.slice(0, 4)) };
+  const out = [];
+  for (let t = { ...PRIMER_MES_EXTRAS };
+    t.ano < fin.ano || (t.ano === fin.ano && t.mes <= fin.mes);
+    t = mesSiguiente(t.mes, t.ano)) {
+    out.push({ clave: `${t.ano}-${pad(t.mes)}`, etiqueta: `${MESES_NOM[t.mes - 1]} ${t.ano}`,
+      enCurso: t.mes === fin.mes && t.ano === fin.ano });
+  }
+  return out.reverse();
+}
+
+/**
+ * LAS EXTRAS DE QUIEN SIGUE DE ALTA, del mes o los meses que se elijan
+ * (06/10/2026, Camilo: «por el momento solo tenemos julio, agosto y
+ * septiembre, pero también podré elegir el mes cursante, o varios meses para
+ * sacarlo todo en un Excel»). El mismo formato que el finiquito: resumen y una
+ * pestaña por mes, día a día.
+ *
+ * `claves` son 'AAAA-MM'. Solo valen las de `mesesDeExtras`: lo de antes de
+ * julio de 2026 no está en la base, y lo futuro no ha pasado.
+ */
+async function extras(conductorId, claves) {
+  const cid = Number(conductorId);
+  if (!Number.isInteger(cid) || cid <= 0) throw new Error('Falta el conductor');
+  const validas = new Set(mesesDeExtras().map(m => m.clave));
+  const pedidas = [...new Set(String(claves || '').split(',').map(s => s.trim()).filter(Boolean))];
+  if (!pedidas.length) throw new Error('Elige al menos un mes');
+  const malas = pedidas.filter(k => !validas.has(k));
+  if (malas.length) throw new Error(`Esos meses no se pueden sacar: ${malas.join(', ')}. Hay datos desde julio de 2026 hasta el mes en curso.`);
+
+  const persona = await repo.personaConBaja(cid);
+  if (!persona) throw new Error('No encuentro a esa persona');
+  const trabajos = pedidas.sort().map(k => ({ ano: Number(k.slice(0, 4)), mes: Number(k.slice(5, 7)) }));
+  const cfg = await leerConfig();
+  const meses = await mesesDeTrabajo(cid, persona, trabajos, cfg);
   const total = meses.reduce((n, m) => n + (m.fila ? Number(m.fila.total) || 0 : 0), 0);
   return { persona, meses, total: r2(total), config: cfg };
 }
@@ -706,6 +774,7 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
   const j = jus.get(cid) || { aprobados: [], pendientesDias: [] };
   const primerDia = fila ? fila.primerDia : 1;
   const vacio = { seg: 0, viajeSeg: 0, esperaSeg: 0, nocSeg: 0 };
+  const hoy = hoyMadrid();
 
   return Array.from({ length: diasDelMes }, (_, i) => {
     const d = i + 1;
@@ -730,6 +799,9 @@ async function diaADia(cid, mes, ano, fila, persona, cfg) {
       antesDelAlta: !!(persona.alta && fecha < persona.alta),
       despuesDeLaBaja: !!(persona.baja && fecha > persona.baja),
       esLaBaja: persona.baja === fecha,
+      // En el mes en curso, los días que aún no han llegado.
+      futuro: fecha > hoy,
+      hoy: fecha === hoy,
     };
   });
 }
@@ -772,7 +844,7 @@ const mesesCongelados = () => repo.mesesCongelados();
 module.exports = {
   DEFAULTS, CONFIG_CAMPOS, MESES_NOM,
   leerConfig, guardarConfig,
-  calcular, cargar, congelar, descongelar, mesesCongelados, paraETT, finiquito,
+  calcular, cargar, congelar, descongelar, mesesCongelados, paraETT, finiquito, extras, mesesDeExtras,
   leerCongelada: (mes, ano) => repo.leerCongelada(mes, ano),
   // Expuestos para poder probar el prorrateo y el cálculo sin base de datos.
   _situarAlta: situarAlta, _calcularFila: calcularFila, _mesVencido: mesVencido,

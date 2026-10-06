@@ -739,6 +739,23 @@
         valor: def.tipo === 'fecha' ? fecha(d[k]) : (d[k] == null ? '' : String(d[k])),
       }));
 
+    // LA JORNADA, DENTRO DEL MISMO FORMULARIO (06/10/2026, Camilo: antes tenía
+    // su propio botón). No es un campo de la ficha: son las horas del contrato
+    // ABIERTO, una novación con su propio historial, así que se guarda por su
+    // camino (`/jornada`) y solo sale si hay contrato abierto.
+    const JORNADA = '__jornada';
+    const jornadaAntes = String(d.jornada_horas || 40);
+    const conJornada = !SOLO_OPERATIVO && d.empleo_vigente
+      && (!soloGrupo || soloGrupo === '*' || soloGrupo === 'Contrato');
+    if (conJornada) {
+      campos.push({
+        id: JORNADA, etiqueta: 'Jornada', grupo: 'Contrato', tipo: 'lista', valor: jornadaAntes, obligatorio: true,
+        opciones: JORNADAS.map(h => ({ valor: String(h), texto: h + ' horas' })),
+        ayuda: 'Las horas del contrato que tiene abierto. Cambiarlas no abre uno nuevo ni le toca la '
+             + 'antigüedad, y queda en su historial quién lo cambió y de cuánto a cuánto.',
+      });
+    }
+
     if (!campos.length) {
       return alert(soloGrupo && soloGrupo !== '*'
         ? `Tu rol no puede editar los campos de "${soloGrupo}".`
@@ -758,31 +775,30 @@
     // llena de campos que nadie ha tocado.
     const cambios = {};
     campos.forEach(c => {
+      if (c.id === JORNADA) return;
       const antes = c.valor || '';
       const ahora = v[c.id] == null ? '' : String(v[c.id]);
       const comparable = c.tipo === 'fecha' ? (aISO(antes) || '') : antes;
       if (ahora !== comparable && !(ahora === '' && comparable === '')) cambios[c.id] = v[c.id];
     });
-    if (!Object.keys(cambios).length) return;
+    const jornadaNueva = conJornada && v[JORNADA] && String(v[JORNADA]) !== jornadaAntes ? String(v[JORNADA]) : null;
+    if (!Object.keys(cambios).length && !jornadaNueva) return;
 
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}`, 'PUT', cambios));
+    await hacer(async () => {
+      if (Object.keys(cambios).length) await enviar(`/plantilla/api/conductor/${d.id}`, 'PUT', cambios);
+      if (jornadaNueva) await enviar(`/plantilla/api/conductor/${d.id}/jornada`, 'POST', { jornadaHoras: jornadaNueva });
+    });
   }
 
-  /**
-   * El Excel de lo que se le debe a quien se va: las dos nóminas variables que
-   * quedan por pagar. Se descarga; no se guarda en ningún sitio, porque quien
-   * lo pide lo va a mandar a la gestoría y ahí se acaba su vida.
-   */
-  async function accionFiniquito(d) {
-    const url = '/nominas/finiquito.xlsx?conductor=' + encodeURIComponent(d.id);
+  /** Baja un Excel que genera el servidor, con su nombre; los errores, a la vista. */
+  async function descargarExcel(url, nombre) {
     try {
       const r = await fetch(url);
       if (!r.ok) throw new Error((await r.text()) || 'No se pudo generar');
       const blob = await r.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'extras-pendientes-' + String(d.nombre_completo || d.id).toLowerCase()
-        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-') + '.xlsx';
+      a.download = nombre;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     } catch (e) {
@@ -792,6 +808,47 @@
         tono: 'error',
       });
     }
+  }
+
+  const nombreEnFichero = d => String(d.nombre_completo || d.id).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-');
+
+  /**
+   * LAS EXTRAS DE UN MES, O DE VARIOS (06/10/2026, Camilo). El mismo Excel que
+   * «Extras pendientes» de quien se va —el resumen de cada mes y una pestaña
+   * por mes, día a día—, para quien sigue de alta y con los meses que se
+   * elijan. Los meses que se pueden pedir los dice el servidor: desde julio de
+   * 2026, que es desde cuando hay datos, hasta el mes en curso.
+   */
+  async function accionExtras(d) {
+    let meses;
+    try { meses = (await api('/nominas/api/extras/meses')).meses || []; }
+    catch (e) { return Dialogo.aviso({ titulo: 'No se pudo consultar', texto: e.message, tono: 'error' }); }
+    if (!meses.length) return Dialogo.aviso({ titulo: 'Sin meses', texto: 'Todavía no hay ningún mes con datos.', tono: 'aviso' });
+    // Por defecto, el último mes CERRADO: es el que se suele preguntar.
+    const cerrado = meses.find(m => !m.enCurso) || meses[0];
+    const v = await pedirDatos(`Extras de ${d.nombre_completo}`, [
+      { id: 'meses', etiqueta: '¿De qué meses?', tipo: 'lista', multiple: true, obligatorio: true,
+        valor: [cerrado.clave],
+        opciones: meses.map(m => ({ valor: m.clave, texto: m.etiqueta + (m.enCurso ? ' · en curso, hasta hoy' : '') })) },
+    ], { textoBoton: 'Descargar',
+         nota: 'Un solo Excel con el resumen de cada mes y una pestaña por mes, día a día: horas, J, '
+             + 'nocturnidad, propinas, peajes y facturación. El mes en curso va con lo trabajado hasta hoy.' });
+    const elegidos = v && Array.isArray(v.meses) ? v.meses : [];
+    if (!elegidos.length) return;
+    await descargarExcel(
+      `/nominas/extras.xlsx?conductor=${encodeURIComponent(d.id)}&meses=${encodeURIComponent(elegidos.join(','))}`,
+      `extras-${nombreEnFichero(d)}.xlsx`);
+  }
+
+  /**
+   * El Excel de lo que se le debe a quien se va: las dos nóminas variables que
+   * quedan por pagar. Se descarga; no se guarda en ningún sitio, porque quien
+   * lo pide lo va a mandar a la gestoría y ahí se acaba su vida.
+   */
+  function accionFiniquito(d) {
+    return descargarExcel('/nominas/finiquito.xlsx?conductor=' + encodeURIComponent(d.id),
+      `extras-pendientes-${nombreEnFichero(d)}.xlsx`);
   }
 
   /**
@@ -838,18 +895,6 @@
              + (d.ett_nombre || 'la ETT') + '. Si le falta algún documento, el sistema lo dirá y no dejará.' });
     if (!v || !v.desde) return;
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/a-propia`, 'POST', v));
-  }
-
-  /** Las horas del contrato abierto. Es una novación: no abre periodo nuevo. */
-  async function accionJornada(d) {
-    const v = await pedirDatos(`Jornada de ${d.nombre_completo}`, [
-      { id: 'jornadaHoras', etiqueta: 'Horas de contrato', tipo: 'lista', obligatorio: true,
-        valor: String(d.jornada_horas || 40),
-        opciones: JORNADAS.map(h => ({ valor: String(h), texto: h + ' horas' })) },
-    ], { nota: 'Cambia las horas del contrato que tiene abierto; no abre uno nuevo ni le toca la '
-             + 'antigüedad. Queda apuntado en su historial quién lo cambió y de cuánto a cuánto.' });
-    if (!v || !v.jornadaHoras) return;
-    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/jornada`, 'POST', v));
   }
 
   async function accionBaja(d) {
@@ -1190,8 +1235,10 @@
         { texto: 'Pasar a propia', icono: 'fa-building-user',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente && d.empleo_tipo === 'ett',
           onClick: accionAPropia },
-        { texto: 'Jornada', icono: 'fa-business-time',
-          visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionJornada },
+        // LAS EXTRAS (06/10/2026). Ocupa el sitio del botón «Jornada», que se
+        // fue dentro de «Editar datos»: uno o varios meses, día a día.
+        { texto: 'Extras', icono: 'fa-file-invoice-dollar',
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionExtras },
         { texto: 'Dar de baja', icono: 'fa-user-minus', peligro: true,
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: accionBaja },
         // Solo aparece si está de baja: es la vuelta, no un alta nueva.
