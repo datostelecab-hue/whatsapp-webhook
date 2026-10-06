@@ -175,6 +175,27 @@ Quien causa baja a mitad de mes deja **dos** nóminas variables sin pagar: la de
 
 No recalcula nada: pide los dos meses al **mismo `calcular`** que pinta la pantalla y coge su fila. Un finiquito que saliera de otra cuenta acabaría diciendo algo distinto de la nómina.
 
+### Día a día (06/10/2026)
+
+Camilo lo pidió *«desglosado por días: día a día del mes pasado y el cursante, cuánto hizo de nocturnidad, de peajes, propinas…»*. El Excel lleva ahora, además del resumen, **una pestaña por mes** («Día a día · Septiembre 2026») con una fila por día del mes:
+
+| Columna | De dónde sale |
+|---|---|
+| Horas rodadas, en viaje, esperando | los tramos efectivos de BOLT del día natural, con los solapes fundidos |
+| Horas justificadas (J) | la J aprobada vale la jornada del día menos lo rodado, solo desde el día en que arranca su mes |
+| Horas nocturnas y Nocturnidad | el trozo de 22:00 a 06:00 de esas horas, y × € hora × factor |
+| Propinas, Peajes, Facturación neta | `v_ordenes_conductor` del día |
+| Extras del día | nocturnidad + propinas + peajes |
+| Nota | día de la baja, de baja, J aprobada, J pendiente (no cuenta)… |
+
+**Los días salen de las mismas consultas que la nómina**, pedidas solo para esa persona (`horasDelMes`, `justificantesDelMes` con `conductorId`, y `dineroPorDia`). Los totales del mes son la suma de los días, así que el desglose no puede contradecir a la nómina. Por eso debajo del total va la fila **«Según la nómina»**, con la fila de ese mes: tienen que coincidir. Se comprobó con seis bajas reales (agosto, septiembre y octubre): todas cuadran al céntimo. La nómina entera de agosto y septiembre (485 filas) salió idéntica antes y después del cambio.
+
+**Lo que no se reparte por días**, porque se decide con el mes entero, va aparte con su porqué: el **MBO** (horas del mes contra el objetivo, o facturación contra el umbral) y las **horas de espera descontadas** por baja utilización (la utilización es la del mes).
+
+> [!bug] Dos cosas mal en el resumen, corregidas el mismo día
+> - La línea **«MBO (el mayor de horas extra y facturación)»** enseñaba `compensacion`, que es solo lo que puso el MBO de **horas extra**: cuando ganaba el de facturación salía 0, aunque el total sí lo sumaba. Ahora enseña el mayor de los dos.
+> - **«Horas rodadas (… ya descontada la baja utilización)»** no estaba descontada: `fila.horas` es lo rodado tal cual. La etiqueta ya no lo dice, y el descuento va en su propia línea.
+
 > **El objetivo de horas no se prorratea por la baja, y así se queda.** Se prorratea desde el alta, pero no *hasta* la baja: a quien se va el día 11 se le pide el objetivo del mes entero y su diferencia sale muy negativa, así que no cobra MBO por horas extra. El Excel lo dice en sus notas y enseña los días que de verdad estuvo de alta.
 >
 > **Decidido el 18/09/2026:** no se prorratea. Lo que se paga al que se va son sus **horas**, que se calculan aparte y se cobran enteras; el objetivo mensual es otra cosa y no se toca. → «Extras pendientes» en [[Conductores]].

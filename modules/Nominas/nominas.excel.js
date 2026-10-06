@@ -384,7 +384,7 @@ const COL_DESCUENTO = [
 ];
 
 /** Pinta una tabla con la banda de la casa, su cabecera, su pie y su filtro. */
-function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce } = {}) {
+function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce, etiquetaTotal } = {}) {
   columnas.forEach(([, ancho], i) => { ws.getColumn(i + 1).width = ancho; });
   let fila = E.bandaCabecera(ws, idLogo, titulo, subtitulo, columnas.length);
   const filaCab = fila;
@@ -405,7 +405,7 @@ function tabla(ws, idLogo, titulo, subtitulo, columnas, filas, r, { realce } = {
 
   const ultima = fila - 1;
   const pie = ws.getRow(fila);
-  pie.getCell(1).value = `TOTAL (${filas.length})`;
+  pie.getCell(1).value = etiquetaTotal || `TOTAL (${filas.length})`;
   pie.getCell(1).font = { bold: true };
   columnas.forEach(([, , , fmt], i) => {
     const c = pie.getCell(i + 1);
@@ -496,6 +496,9 @@ async function generarExcelETT(r) {
   return wb.xlsx.writeBuffer();
 }
 
+/** El MBO que se paga: el mayor de los dos, como en `calcularFila`. */
+const mboDe = f => Math.max(Number(f.mboHsExt) || 0, Number(f.mboFAS) || 0);
+
 /** '2026-09-11' → '11/09/2026'. Un finiquito lo lee una persona, no una máquina. */
 const enDiaMesAno = iso => (/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))
   ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—');
@@ -559,11 +562,17 @@ async function generarExcelFiniquito(r) {
     linea('Horas nocturnas', f.nocturnasHoras, f.nocturnas);
     linea('Propinas', null, f.propinas);
     linea('Peajes', null, f.peajes);
-    linea('MBO (el mayor de horas extra y facturación)', null, f.compensacion);
+    // El MBO que se paga es el MAYOR de los dos. `compensacion` es solo lo que
+    // puso el de horas extra, y cuando ganaba el de facturación esta línea salía
+    // a 0 aunque el total sí lo llevaba (corregido el 06/10/2026).
+    linea('MBO (el mayor de horas extra y facturación)', null, mboDe(f));
     linea(`Total de ${m.etiqueta}`, null, f.total, { fuerte: true });
 
-    // El detalle que explica por qué el MBO es el que es.
-    linea('   Horas rodadas (viaje + espera, ya descontada la baja utilización)', f.horas, null);
+    // El detalle que explica por qué el MBO es el que es. `f.horas` es lo
+    // rodado TAL CUAL: el descuento por baja utilización va en su línea (hasta
+    // el 06/10/2026 la etiqueta decía «ya descontada» y no lo estaba).
+    linea('   Horas rodadas (viaje + espera)', f.horas, null);
+    if (f.horasEsperaQuitadas > 0) linea('   Horas de espera descontadas por baja utilización', -f.horasEsperaQuitadas, null);
     linea('   Horas justificadas', f.horasJustificadas, null);
     linea('   Objetivo del mes según su jornada', f.horasObjetivo, null);
     linea('   Diferencia sobre el objetivo', f.deltaHoras, null);
@@ -577,6 +586,8 @@ async function generarExcelFiniquito(r) {
   const avisos = [
     'Estas son las dos nóminas variables que quedan por pagar: la del mes anterior a la baja ' +
       '—que se habría pagado el mes de la baja— y la del propio mes de la baja.',
+    'El desglose de cada mes, día a día (horas, J, nocturnidad, propinas, peajes y facturación), ' +
+      'está en las pestañas «Día a día».',
     'Las cifras son las MISMAS que enseña la pantalla de Nóminas para esos meses: este documento ' +
       'no recalcula nada por su cuenta.',
     'Las horas van por día natural (del 1 a las 00:00 al último a las 23:59) y las nocturnas son ' +
@@ -590,7 +601,130 @@ async function generarExcelFiniquito(r) {
       `de ${mesBaja.diasDelMes} días, así que su diferencia sale negativa y no cobra MBO por horas extra.`);
   }
   nota(ws, fila + 1, avisos);
+
+  // ── Una pestaña por mes, día a día (06/10/2026) ──────────────────────────
+  r.meses.forEach(m => hojaDiaADia(wb, idLogo, p, m, r.config || {}));
   return wb.xlsx.writeBuffer();
+}
+
+const DIA_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/** Lo que hay que saber de un día, en palabras. Vacío si fue un día normal. */
+function notaDelDia(d) {
+  const n = [];
+  if (d.esLaBaja) n.push('Día de la baja');
+  else if (d.despuesDeLaBaja) n.push('De baja');
+  if (d.antesDelAlta) n.push('Aún sin alta');
+  if (d.jAprobada && !d.jAntesDelArranque) n.push('J aprobada');
+  if (d.jAntesDelArranque) n.push('J aprobada antes de su alta: no cuenta');
+  if (d.jPendiente) n.push('J pendiente de aprobar: no cuenta');
+  return n.join(' · ');
+}
+
+// Cero se deja en blanco: en un mes de treinta días, una columna llena de
+// ceros esconde los días que sí tienen algo.
+const o = v => (v ? v : null);
+
+const COL_DIA = [
+  ['Fecha', 11, d => fechaUTC(d.fecha), FECHA],
+  ['Día', 11, d => DIA_SEMANA[fechaUTC(d.fecha).getUTCDay()], null],
+  ['Horas rodadas', 12, d => o(d.horas), DOS],
+  ['En viaje', 10, d => o(d.viaje), DOS],
+  ['Esperando', 11, d => o(d.espera), DOS],
+  ['Horas justificadas (J)', 14, d => o(d.horasJustificadas), DOS],
+  ['Horas nocturnas', 12, d => o(d.nocturnasHoras), DOS],
+  ['Nocturnidad', 13, d => o(d.nocturnas), CONTA],
+  ['Propinas', 12, d => o(d.propinas), CONTA],
+  ['Peajes', 11, d => o(d.peajes), CONTA],
+  ['Extras del día', 14, d => o(d.extras), CONTA],
+  ['Facturación neta', 15, d => o(d.neto), CONTA],
+  ['Nota', 40, d => notaDelDia(d) || null, null],
+];
+
+/**
+ * UN MES DÍA A DÍA: lo que hizo cada día de nocturnidad, propinas, peajes…
+ *
+ * Debajo del total va la fila «Según la nómina» con las cifras de su fila del
+ * mes: tienen que salir iguales, porque los días salen de las mismas consultas.
+ * Y lo que no se reparte por días —el descuento por baja utilización y el
+ * MBO— va aparte, con su porqué.
+ */
+function hojaDiaADia(wb, idLogo, p, m, cfg) {
+  const ws = wb.addWorksheet(`Día a día · ${m.etiqueta}`.slice(0, 31));
+  const f = m.fila;
+  const sub = `${p.nombre} · DNI ${p.dni || '—'} · ${m.esMesDeLaBaja ? 'mes de la baja · ' : ''}` +
+    `${m.diasDeAlta} de ${m.diasDelMes} días de alta · día natural (00:00 a 23:59) · ` +
+    `nocturnidad = horas de 22:00 a 06:00 × ${String(cfg.eurHoraNoc).replace('.', ',')} € × ` +
+    String(cfg.factorNoc).replace('.', ',');
+  const ultima = tabla(ws, idLogo, `DÍA A DÍA · ${m.etiqueta.toUpperCase()}`, sub, COL_DIA, m.dias || [], {}, {
+    etiquetaTotal: 'TOTAL DEL MES',
+    realce: (row, d) => {
+      if (d.despuesDeLaBaja || d.antesDelAlta) {
+        for (let i = 1; i <= COL_DIA.length; i++) row.getCell(i).font = { color: { argb: E.TENUE } };
+      }
+      if (d.esLaBaja) {
+        [1, 2, COL_DIA.length].forEach(i => {
+          row.getCell(i).fill = E.relleno('FFFEE2E2');
+          row.getCell(i).font = { bold: true, color: { argb: 'FF991B1B' } };
+        });
+      }
+      if (d.horasJustificadas > 0) row.getCell(6).fill = E.relleno('FFFEF3C7');
+    },
+  });
+
+  // «Según la nómina»: la fila del mes, columna a columna.
+  let fila = ultima + 1;
+  const seg = ws.getRow(fila++);
+  const pon = (col, v, fmt) => {
+    const c = seg.getCell(col);
+    c.value = v;
+    if (fmt) c.numFmt = fmt;
+    c.font = { italic: true, color: { argb: E.TENUE } };
+    c.border = E.TODOS_BORDES;
+  };
+  pon(1, 'Según la nómina');
+  if (f) {
+    pon(3, f.horas, DOS); pon(4, f.horasViaje, DOS); pon(5, f.horasEspera, DOS);
+    pon(6, f.horasJustificadas, DOS); pon(7, f.nocturnasHoras, DOS); pon(8, f.nocturnas, CONTA);
+    pon(9, f.propinas, CONTA); pon(10, f.peajes, CONTA);
+    pon(11, Math.round((f.nocturnas + f.propinas + f.peajes) * 100) / 100, CONTA);
+  } else {
+    pon(3, 'sin fila en la nómina: no trabajó ese mes');
+  }
+
+  // Lo que se decide con el mes entero, y el total a pagar.
+  const COL_EUROS = 11;
+  const resumen = (texto, valor, fmt, { fuerte = false } = {}) => {
+    const row = ws.getRow(fila++);
+    ws.mergeCells(row.number, 1, row.number, COL_EUROS - 1);
+    row.getCell(1).value = texto;
+    row.getCell(1).font = { bold: fuerte, color: { argb: E.TEXTO } };
+    row.getCell(1).alignment = { horizontal: 'right' };
+    const c = row.getCell(COL_EUROS);
+    c.value = valor;
+    c.numFmt = fmt;
+    c.font = { bold: fuerte };
+    c.border = E.TODOS_BORDES;
+    if (fuerte) c.fill = E.relleno('FFF3F4F6');
+  };
+  fila++;
+  if (f) {
+    if (f.horasEsperaQuitadas > 0) {
+      resumen('Horas de espera descontadas por baja utilización (se mide con el mes entero, no por días)',
+        -f.horasEsperaQuitadas, DOS);
+    }
+    resumen('MBO del mes, el mayor de horas extra y facturación (se gana con el mes entero, no por días)',
+      mboDe(f), CONTA);
+    resumen(`TOTAL A PAGAR DE ${m.etiqueta.toUpperCase()}`, f.total, CONTA, { fuerte: true });
+  }
+
+  nota(ws, fila, [
+    'Cada día es un día natural, de 00:00 a 23:59: un turno de noche reparte sus horas entre los dos días que toca.',
+    'Horas rodadas = viaje + espera, con los ratos que se pisan entre dos cuentas contados una sola vez.',
+    `Una J aprobada vale la jornada del día (${cfg.horasMetaDia} h) menos lo que se rodó ese día; las pendientes no cuentan hasta que se aprueben.`,
+    'Extras del día = nocturnidad + propinas + peajes. La facturación neta solo cuenta para el MBO de facturación.',
+    'La fila «Según la nómina» es la de la pantalla de Nóminas para ese mes: tiene que coincidir con el total de los días.',
+  ]);
 }
 
 /** finiquito-variable-arcos-alcivar-genesis.xlsx */

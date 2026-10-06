@@ -108,6 +108,9 @@ const SQL_TROZOS = `
       JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.efectivo
       JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = t.conductor_uuid
      WHERE ce.conductor_id IS NOT NULL
+       -- Una sola persona si se pide ($4): el día a día del finiquito. La
+       -- nómina pasa NULL y sigue sacando a todo el mundo con la misma cuenta.
+       AND ($4::bigint IS NULL OR ce.conductor_id = $4::bigint)
        -- Amplio por los dos lados: un tramo puede empezar la víspera y morir
        -- dentro del rango, o empezar dentro y acabar al día siguiente.
        AND t.desde < (($2::date + 1) + ($3 || ' hours')::interval) AT TIME ZONE 'Europe/Madrid'
@@ -182,14 +185,20 @@ function segundosNocturnos(ini, fin) {
 /**
  * Horas, nocturnas y utilización de cada persona en el mes de trabajo, por DÍA
  * NATURAL (ver la nota de HORA_CORTE arriba).
- * Devuelve Map(conductor_id → { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia }).
+ * Devuelve Map(conductor_id → { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia, dias }).
+ *
+ * `dias` es el mismo cálculo día a día (día del mes → { seg, viajeSeg,
+ * esperaSeg, nocSeg }): los totales del mes SON su suma, así que el día a día
+ * del finiquito no puede decir otra cosa que la nómina. Con `conductorId` se
+ * pide solo esa persona.
  *
  * El plegado de intervalos se hace en JS, como en la bitácora: si alguien tiene
  * dos cuentas de BOLT que se pisan, ese rato cuenta UNA vez. En SQL saldría, pero
  * con window functions que nadie va a poder leer dentro de un año.
  */
-async function horasDelMes(desdeIso, hastaIso) {
-  const r = await db.consulta(SQL_TROZOS, [desdeIso, hastaIso, String(HORA_CORTE)]);
+async function horasDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
+  const r = await db.consulta(SQL_TROZOS,
+    [desdeIso, hastaIso, String(HORA_CORTE), conductorId == null ? null : Number(conductorId)]);
 
   // cid → dia → { todo: [], viaje: [], espera: [] }
   const acc = new Map();
@@ -210,19 +219,24 @@ async function horasDelMes(desdeIso, hastaIso) {
     // Los segundos de cada dia sueltos. Hacen falta para las J: una J cubre lo
     // que falte de ESE dia, asi que hay que saber que se rodo en el.
     const porDia = new Map();
+    const detalle = new Map();
     dias.forEach((c, dia) => {
       const efectivo = fundir(c.todo);
       const seg = segundosDe(efectivo);
       if (seg <= 0) return;
+      const noc = efectivo.reduce((a, [i, f]) => a + segundosNocturnos(i, f), 0);
+      const vSeg = segundosDe(fundir(c.viaje));
+      const eSeg = segundosDe(fundir(c.espera));
       horasSeg += seg;
-      nocSeg += efectivo.reduce((a, [i, f]) => a + segundosNocturnos(i, f), 0);
-      viajeSeg += segundosDe(fundir(c.viaje));
-      esperaSeg += segundosDe(fundir(c.espera));
+      nocSeg += noc;
+      viajeSeg += vSeg;
+      esperaSeg += eSeg;
       const d = Number(dia.slice(8));
       porDia.set(d, seg);
+      detalle.set(d, { seg, viajeSeg: vSeg, esperaSeg: eSeg, nocSeg: noc });
       if (!primerDia || d < primerDia) primerDia = d;
     });
-    if (horasSeg > 0) out.set(cid, { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia });
+    if (horasSeg > 0) out.set(cid, { horasSeg, nocSeg, viajeSeg, esperaSeg, primerDia, porDia, dias: detalle });
   });
   return out;
 }
@@ -242,8 +256,12 @@ async function horasDelMes(desdeIso, hastaIso) {
  * NO se leen las horas de la J. La columna existe, pero en agosto de 2026 no
  * dice nada: 114 de 182 traen un "8" puesto a ojo y 13 traen las horas que esa
  * persona ya habia rodado ese dia. Cuanto vale una J lo decide el servicio.
+ *
+ * `pendientesDias` dice QUE dias estan en la cola, para el dia a dia del
+ * finiquito: ahi se ensenan, aunque no cuenten. Con `conductorId`, solo esa
+ * persona.
  */
-async function justificantesDelMes(desdeIso, hastaIso) {
+async function justificantesDelMes(desdeIso, hastaIso, { conductorId = null } = {}) {
   const r = await db.consulta(
     `SELECT conductor_id,
             EXTRACT(DAY FROM dia_operativo)::int AS dia,
@@ -251,17 +269,39 @@ async function justificantesDelMes(desdeIso, hastaIso) {
        FROM justificante
       WHERE dia_operativo BETWEEN $1::date AND $2::date
         AND anulado_at IS NULL
+        AND ($3::bigint IS NULL OR conductor_id = $3::bigint)
       ORDER BY conductor_id, dia_operativo`,
-    [desdeIso, hastaIso]);
+    [desdeIso, hastaIso, conductorId == null ? null : Number(conductorId)]);
 
   const out = new Map();
   for (const x of r.rows) {
     const cid = Number(x.conductor_id);
-    if (!out.has(cid)) out.set(cid, { aprobados: [], pendientes: 0 });
+    if (!out.has(cid)) out.set(cid, { aprobados: [], pendientes: 0, pendientesDias: [] });
     if (x.aprobada) out.get(cid).aprobados.push(Number(x.dia));
-    else out.get(cid).pendientes++;
+    else { out.get(cid).pendientes++; out.get(cid).pendientesDias.push(Number(x.dia)); }
   }
   return out;
+}
+
+/**
+ * El dinero de UNA persona, día a día: Map(día del mes → { neto, propinas, peajes }).
+ *
+ * La misma vista y la misma ventana que `dineroDelMes`, solo que sin sumar el
+ * mes: la suma de sus días es lo que la nómina le paga.
+ */
+async function dineroPorDia(conductorId, desdeIso, hastaIso) {
+  const r = await db.consulta(
+    `SELECT EXTRACT(DAY FROM dia)::int AS dia,
+            COALESCE(sum(neto),    0)::float8 AS neto,
+            COALESCE(sum(propina), 0)::float8 AS propinas,
+            COALESCE(sum(peaje),   0)::float8 AS peajes
+       FROM v_ordenes_conductor
+      WHERE conductor_id = $1 AND dia BETWEEN $2::date AND $3::date
+      GROUP BY 1`,
+    [Number(conductorId), desdeIso, hastaIso]);
+  return new Map(r.rows.map(x => [Number(x.dia), {
+    neto: Number(x.neto), propinas: Number(x.propinas), peajes: Number(x.peajes),
+  }]));
 }
 
 /** Dinero del mes por persona: Map(conductor_id → { neto, propinas, peajes }). */
@@ -539,7 +579,7 @@ async function personaConBaja(conductorId) {
 module.exports = {
   personaConBaja,
   leerConfig, guardarConfig,
-  horasDelMes, dineroDelMes, fichasDelMes, justificantesDelMes, sinSellarEnBitacora,
+  horasDelMes, dineroDelMes, dineroPorDia, fichasDelMes, justificantesDelMes, sinSellarEnBitacora,
   congelar, leerCongelada, mesesCongelados, descongelar,
   // Expuestos para poder probarlos sin base de datos.
   _fundir: fundir, _segundosNocturnos: segundosNocturnos,

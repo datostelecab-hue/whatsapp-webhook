@@ -671,11 +671,67 @@ async function finiquito(conductorId) {
       diasDelMes,
       diasDeAlta: diasDeAltaEnMes(persona, t.mes, t.ano, diasDelMes),
       fila,
+      dias: await diaADia(cid, t.mes, t.ano, fila, persona, cfg),
     });
   }
 
   const total = meses.reduce((n, m) => n + (m.fila ? Number(m.fila.total) || 0 : 0), 0);
   return { persona, meses, total: r2(total), config: cfg };
+}
+
+/**
+ * EL DÍA A DÍA de un mes de una persona (06/10/2026, Camilo: «desglosado por
+ * días, cuánto hizo de nocturnidad, de peajes, propinas…»).
+ *
+ * Sale de las MISMAS consultas que la nómina, pedidas solo para esa persona: los
+ * totales del mes son la suma de estos días, así que el desglose cuadra con su
+ * fila al céntimo. Las J valen lo mismo que allí: la jornada del día menos lo
+ * rodado, y solo desde el día en que arranca su mes.
+ *
+ * Lo que NO se reparte por días, porque se decide con el mes entero:
+ *   · el MBO (las horas del mes contra el objetivo, o la facturación contra el
+ *     umbral);
+ *   · el descuento de espera por baja utilización (la utilización es la del mes).
+ */
+async function diaADia(cid, mes, ano, fila, persona, cfg) {
+  const diasDelMes = new Date(ano, mes, 0).getDate();
+  const desde = `${ano}-${pad(mes)}-01`;
+  const hasta = `${ano}-${pad(mes)}-${pad(diasDelMes)}`;
+  const [horas, dinero, jus] = await Promise.all([
+    repo.horasDelMes(desde, hasta, { conductorId: cid }),
+    repo.dineroPorDia(cid, desde, hasta),
+    repo.justificantesDelMes(desde, hasta, { conductorId: cid }),
+  ]);
+  const h = horas.get(cid) || { dias: new Map() };
+  const j = jus.get(cid) || { aprobados: [], pendientesDias: [] };
+  const primerDia = fila ? fila.primerDia : 1;
+  const vacio = { seg: 0, viajeSeg: 0, esperaSeg: 0, nocSeg: 0 };
+
+  return Array.from({ length: diasDelMes }, (_, i) => {
+    const d = i + 1;
+    const fecha = `${ano}-${pad(mes)}-${pad(d)}`;
+    const x = h.dias.get(d) || vacio;
+    const din = dinero.get(d) || { neto: 0, propinas: 0, peajes: 0 };
+    const jAprobada = j.aprobados.includes(d);
+    const cuentaJ = jAprobada && d >= primerDia;
+    const nocturnasHoras = x.nocSeg / 3600;
+    const nocturnas = cfg.eurHoraNoc * nocturnasHoras * cfg.factorNoc;
+    return {
+      dia: d, fecha,
+      horas: x.seg / 3600,
+      viaje: x.viajeSeg / 3600,
+      espera: x.esperaSeg / 3600,
+      horasJustificadas: cuentaJ ? Math.max(0, cfg.horasMetaDia - x.seg / 3600) : 0,
+      jAprobada, jAntesDelArranque: jAprobada && !cuentaJ,
+      jPendiente: (j.pendientesDias || []).includes(d),
+      nocturnasHoras, nocturnas,
+      propinas: din.propinas, peajes: din.peajes, neto: din.neto,
+      extras: nocturnas + din.propinas + din.peajes,
+      antesDelAlta: !!(persona.alta && fecha < persona.alta),
+      despuesDeLaBaja: !!(persona.baja && fecha > persona.baja),
+      esLaBaja: persona.baja === fecha,
+    };
+  });
 }
 
 /** Cuántos días de ese mes estuvo la persona de alta. */

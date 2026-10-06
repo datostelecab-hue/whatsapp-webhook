@@ -7,6 +7,10 @@ actualizado: 2026-10-05
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-06 · Las extras de quien se va, día a día
+
+El Excel «Extras pendientes» de la ficha de alguien de baja lleva una pestaña por mes con cada día: horas, J, nocturnidad, propinas, peajes y facturación. Sale de las mismas consultas que la nómina, pedidas para esa persona, y debajo del total va la fila de la nómina para comprobar que coinciden. El MBO y el descuento por utilización no se reparten por días: se deciden con el mes entero. De paso se corrigieron dos líneas del resumen: el MBO que salía 0 cuando ganaba el de facturación, y unas horas que decían estar descontadas sin estarlo. → [[Nominas#Día a día (06/10/2026)]]
+
 ## 2026-10-05 · El planificador por bases, ordenado como un iceberg
 
 Los cuadrantes salían por número, y eso no ayudaba a decidir a quién poner en cada coche. Ahora el planificador empieza por las cinco bases (Alcobendas, Alcorcón, Canillejas, Getafe, Usera) y enseña todos los cuadrantes base a base (desde el 06/10; el primer día había que pinchar una base). Dentro de cada base van de mejor a peor: completos, luego con plazas vacías, luego sin nadie. Dentro de cada escalón, los que ruedan antes que los del taller, y más horas instaladas primero. Al abrir una base, las tarjetas cuentan solo esa.

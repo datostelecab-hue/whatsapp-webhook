@@ -271,9 +271,14 @@ salir distintos.
 nominas.controller.js   HTTP. No decide nada.
 nominas.service.js      El cálculo y el prorrateo. Aquí está lo que cobra la gente.
 nominas.repo.js         SQL y nada más.
-nominas.excel.js        El fichero para la gestoría.
+nominas.excel.js        El fichero para la gestoría, el parte de la ETT y el finiquito.
 vistas/nominas.ejs      La pantalla.
 ```
+
+El finiquito («Extras pendientes») lleva desde el 06/10/2026 una pestaña por mes
+día a día (`diaADia` en el servicio). Sale de las mismas consultas que la
+nómina, pedidas solo para esa persona (`conductorId`), así que la suma de los
+días es la fila del mes; el MBO y el descuento por utilización no se reparten.
 
 Desde fuera del módulo se entra por `nominas.service`, nunca por `nominas.repo`.
 
