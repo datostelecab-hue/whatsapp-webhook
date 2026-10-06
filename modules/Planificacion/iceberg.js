@@ -6,7 +6,7 @@
 // conductores a cada uno de los coches». Hasta hoy los cuadrantes salían por su
 // NÚMERO, que es el orden en que se crearon y no dice nada de cómo van.
 //
-// Ahora cada base (Alcobendas, Aravaca, Canillejas, Alcorcón, Getafe) se lee
+// Ahora cada base (Alcobendas, Alcorcón, Canillejas, Getafe, Usera) se lee
 // como un iceberg: arriba lo que mejor anda y, bajando, lo que hay que mirar.
 //
 //   1. COMPLETOS        todas sus plazas tienen dueño (hoy o ya escrito).
@@ -184,8 +184,9 @@ function compararGrupos(a, b) {
 }
 
 /**
- * Las bases activas en el orden de Tráfico (`base_zona.orden`, db/178) y, si
- * no lo tienen, por nombre.
+ * Las bases activas por `base_zona.orden` si la columna existe y, si no, por
+ * nombre. La columna la puso db/178 y la quitó db/179 el mismo 05/10/2026: hoy
+ * van por nombre, de Alcobendas a Usera, que es como las quiere Camilo.
  */
 function ordenarZonas(zonas) {
   return [...(zonas || [])].sort((a, b) =>

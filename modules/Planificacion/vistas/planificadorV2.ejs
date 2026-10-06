@@ -67,11 +67,11 @@
   <%# El panel del fichaje. Nace plegado: se abre con el botón «Fichaje». %>
   <div id="panel-fichaje" class="hidden mb-4"></div>
 
-  <%# LAS BASES (05/10/2026, Camilo). El planificador empieza por las cinco bases
-      —en el orden de Tráfico, db/178— y al pinchar una se abren sus cuadrantes,
-      de mejor a peor (iceberg.js). Cada una dice de un vistazo cómo está: la
-      barra es su iceberg (completos, con plazas vacías, sin nadie) y debajo, lo
-      que le falta. %>
+  <%# LAS BASES (05/10/2026, Camilo). El planificador empieza por las cinco bases,
+      por nombre (de Alcobendas a Usera), y debajo todos sus cuadrantes, base a
+      base y cada una de mejor a peor (iceberg.js). Cada tarjeta dice de un
+      vistazo cómo está su base: la barra es su iceberg (completos, con plazas
+      vacías, sin nadie) y debajo, lo que le falta. Pincharla deja solo esa. %>
   <style>
     /* Lo que se pulsa nota el dedo: solo transform, rápido y con salida suave.
        Elegir base es de todos los días, así que el cambio de contenido NO se
@@ -212,13 +212,6 @@
     <div class="flex-1 min-w-0">
       <div id="incorporaciones" class="hidden mb-3 space-y-2"></div>
       <div id="avisos" class="hidden mb-3"></div>
-      <%# Sin base abierta no se pinta ningún cuadrante: la entrada son las bases. %>
-      <div id="elige-base" class="hidden px-6 py-10 text-center border border-dashed border-telecab-border rounded-2xl">
-        <i class="fa-solid fa-arrow-up text-telecab-muted"></i>
-        <p class="mt-2 text-sm font-semibold">Elige una base para ver sus cuadrantes</p>
-        <p class="mt-1 text-xs text-telecab-muted">Salen de mejor a peor: primero los completos con más horas, luego los que tienen plazas vacías y al final los que no tienen a nadie.<br>
-          Para encontrar a alguien en todas las bases, escribe su nombre o la matrícula en el buscador.</p>
-      </div>
       <div id="cuadrante" class="space-y-6"></div>
       <div id="vacio" class="hidden p-10 text-center text-telecab-muted border border-telecab-border rounded-2xl">
         No hay coches que coincidan.
@@ -1164,18 +1157,28 @@
     return div;
   }
 
-  /** Con el buscador y sin base abierta, cada base lleva su encabezado. */
+  /**
+   * Sin base abierta, cada base abre su tramo con su nombre, lo que tiene y lo
+   * que le falta: lo mismo que su tarjeta de arriba. Pincharla deja solo esa.
+   */
   function cabeceraBase(clave) {
     const b = bases().find(x => x.clave === clave);
+    const fijos = b ? (b.fijosQueFaltanDia || 0) + (b.fijosQueFaltanNoche || 0) : 0;
+    const cts = b ? (b.ctQueFaltanDia || 0) + (b.ctQueFaltanNoche || 0) : 0;
+    const falta = (fijos || cts) ? 'Faltan ' + [fijos ? `${fijos} fijo${fijos === 1 ? '' : 's'}` : '', cts ? `${cts} CT` : ''].filter(Boolean).join(' · ') : '';
     const div = document.createElement('div');
-    div.className = 'flex items-center gap-3 pt-1';
+    div.className = 'flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-4 border-t border-telecab-border first:pt-0 first:border-t-0';
     div.innerHTML = `
-      <h3 class="text-sm font-semibold whitespace-nowrap">${esc(b ? b.zona : 'Sin base')}</h3>
-      <span class="flex-1 h-px bg-telecab-border"></span>`;
+      <h3 class="text-base font-semibold whitespace-nowrap">${esc(b ? b.zona : 'Sin base')}</h3>
+      ${b ? `<span class="text-xs text-telecab-muted tabular-nums">${b.cochesTotal} coche${b.cochesTotal === 1 ? '' : 's'} · ${b.cuadrantes} cuadrante${b.cuadrantes === 1 ? '' : 's'}</span>` : ''}
+      ${falta ? `<span class="text-xs font-semibold text-telecab-warn">${esc(falta)}</span>` : ''}
+      ${b ? `<button type="button" data-solo-base class="tc-pulsable ml-auto text-xs text-telecab-muted hover:text-telecab-gold">Ver solo ${b.clave === SIN_BASE ? 'estos' : esc(b.zona)} <i class="fa-solid fa-arrow-right text-[10px]"></i></button>` : ''}`;
+    const btn = div.querySelector('[data-solo-base]');
+    if (btn) btn.addEventListener('click', () => elegirBase(b.clave));
     return div;
   }
 
-  /** Una base abierta sin cuadrantes (Aravaca el día que se abrió). */
+  /** Una base abierta sin cuadrantes todavía. */
   function baseVacia(b) {
     const div = document.createElement('div');
     div.className = 'px-6 py-10 text-center border border-dashed border-telecab-border rounded-2xl';
@@ -1189,25 +1192,19 @@
     return div;
   }
 
-  // EL ICEBERG. Con una base abierta, sus cuadrantes de mejor a peor: primero
-  // los completos, luego los que tienen plazas vacías y al final los que no
-  // tienen a nadie; dentro de cada escalón, los que ruedan antes que los del
-  // taller, y más horas instaladas primero. El ORDEN lo pone el servidor
-  // (`iceberg.orden`): aquí solo se agrupa. Ya no se ordena por número.
+  // EL ICEBERG. Los cuadrantes de cada base de mejor a peor: primero los
+  // completos, luego los que tienen plazas vacías y al final los que no tienen
+  // a nadie; dentro de cada escalón, los que ruedan antes que los del taller, y
+  // más horas instaladas primero. El ORDEN lo pone el servidor (`iceberg.orden`):
+  // aquí solo se agrupa. Ya no se ordena por número.
+  //
+  // SIN PULSAR NADA SE VEN TODOS (06/10/2026, Camilo): base a base, en el orden
+  // de las tarjetas de arriba, y dentro de cada una su iceberg. Al pinchar una
+  // base queda solo la suya.
   function pintar() {
     const cont = $('#cuadrante');
     const buscando = !!plano($('#f-busca').value).trim();
     const filtrando = buscando || $('#f-huecos').checked;
-
-    // Sin base abierta y sin buscar, la entrada son las bases de arriba.
-    const enEspera = !ZONA && !buscando;
-    $('#elige-base').classList.toggle('hidden', !enEspera);
-    if (enEspera) {
-      cont.innerHTML = '';
-      cont.classList.add('hidden');
-      $('#vacio').classList.add('hidden');
-      return;
-    }
 
     const coches = cochesVisibles();
 
@@ -1238,19 +1235,29 @@
     $('#vacio').classList.toggle('hidden', hayAlgo > 0);
     cont.classList.toggle('hidden', !hayAlgo);
 
-    let tramo = null;
+    // Sin base abierta, cada base lleva su cabecera; dentro de cada base, una
+    // franja por escalón. Buscando, solo la cabecera de base: con pocos
+    // resultados, las franjas serían más ruido que ayuda.
+    let base = null, escalon = null;
     cuadrantes.forEach(cu => {
-      // Con base: una franja por escalón. Buscando en todas: una por base.
-      const clave = ZONA ? escalonDe(cu) : zonaDe(cu);
-      if (clave !== tramo) {
-        tramo = clave;
-        cont.appendChild(ZONA
-          ? franjaEscalon(clave, cuadrantes.filter(x => escalonDe(x) === clave), porCua)
-          : cabeceraBase(clave));
+      const z = zonaDe(cu);
+      if (!ZONA && z !== base) {
+        base = z; escalon = null;
+        cont.appendChild(cabeceraBase(z));
+      }
+      const e = escalonDe(cu);
+      if (!buscando && e !== escalon) {
+        escalon = e;
+        cont.appendChild(franjaEscalon(e, cuadrantes.filter(x => zonaDe(x) === z && escalonDe(x) === e), porCua));
       }
       cont.appendChild(seccionCuadrante(cu, porCua.get(String(cu.id)) || []));
     });
-    if (sueltos.length) cont.appendChild(seccionSueltos(sueltos));
+    // Los coches sin cuadrante, al final: con todas las bases a la vista, bajo
+    // su propia cabecera para que no parezcan de la última base.
+    if (sueltos.length) {
+      if (!ZONA) cont.appendChild(cabeceraBase(SIN_BASE));
+      cont.appendChild(seccionSueltos(sueltos));
+    }
   }
 
   function filaCoche(coche, enCuadrante) {

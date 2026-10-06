@@ -698,8 +698,9 @@ async function tablero({ dia } = {}) {
   const ausentesConVuelta = sinPlaza.filter(p => p.ausente && p.finPrevisible);
   const ausentesSinFecha = sinPlaza.filter(p => p.ausente && !p.finPrevisible);
   const cuadrantes = await listarCuadrantes();
-  // `SELECT *` a propósito: `orden` (el orden de Tráfico, db/178) puede no estar
-  // en una base sin esa migración, y el tablero no puede caerse por eso.
+  // `SELECT *` a propósito: `orden` lo puso db/178 y lo quitó db/179 el mismo
+  // día, y el tablero no puede caerse por una columna que va y viene. Sin ella,
+  // las bases van por nombre (iceberg.js).
   const zonasBase = (await db.consulta('SELECT * FROM base_zona WHERE activa')).rows
     .map(z => ({ id: z.id, nombre: z.nombre, orden: z.orden == null ? null : Number(z.orden) }));
 

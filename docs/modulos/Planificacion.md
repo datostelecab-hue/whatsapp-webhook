@@ -33,9 +33,14 @@ El módulo vive en `modules/Planificacion/`. Se entra por dos puertas y nunca po
 
 Camilo: *«lo que necesitamos resolver del planificador es que no tenemos ordenada la información de forma ejecutiva para poder asignar los conductores a cada uno de los coches»*. Hasta ese día los cuadrantes salían por su **número**, que es el orden en que se crearon y no dice nada de cómo van.
 
-**El planificador empieza por las cinco bases**: Alcobendas, Aravaca, Canillejas, Alcorcón y Getafe, en el orden de Tráfico (`base_zona.orden`, db/178). Cada base es una tarjeta que dice de un vistazo cómo está: una barra con su iceberg (verde completos, naranja con plazas vacías, rojo sin nadie) y debajo lo que le falta («Faltan 2 fijos · 10 CT»). Sin base abierta **no se pinta ningún cuadrante**: la entrada son las bases, y el buscador busca en todas.
+**El planificador empieza por las cinco bases**: Alcobendas, Alcorcón, Canillejas, Getafe y Usera, por nombre. Cada base es una tarjeta que dice de un vistazo cómo está: una barra con su iceberg (verde completos, naranja con plazas vacías, rojo sin nadie) y debajo lo que le falta («Faltan 2 fijos · 10 CT»).
 
-Al pinchar una base:
+**Sin pulsar nada se ven todos los cuadrantes** (Camilo, 06/10/2026): base a base en el orden de las tarjetas, cada base con su cabecera (coches, cuadrantes, lo que le falta y «Ver solo …»), y dentro de cada una su iceberg. Los coches sin cuadrante van al final, bajo «Sin base». El primer día (05/10) sin base abierta no se pintaba ningún cuadrante; a Camilo le servía más verlo todo de un golpe.
+
+> [!note] El orden de las bases, y Aravaca
+> El 05/10/2026 a las 16:32 se aplicó `db/178` desde otra copia del código: `base_zona.orden` (Alcobendas, Aravaca, Canillejas, Alcorcón, Getafe), Aravaca nueva y Usera apagada. A las 18:18 `db/179` la deshizo: sin `orden`, sin Aravaca, y Usera activa otra vez con 12 cuadrantes. Ninguno de los dos ficheros está en el repositorio. El tablero lee las bases con `SELECT *` y sin `orden` las ordena por nombre, que es justo como las quiere Camilo; por eso no se cayó con la columna yendo y viniendo.
+
+Al pinchar una base queda solo la suya, y además:
 
 - **Las mismas tarjetas de siempre cuentan solo esa base** (`resumen.porZona`): coches, fijos y CT de día y de noche, CT sin días, fijos y CT que faltan, huérfanos. El banquillo sigue siendo de todas: la gente no tiene base hasta que se le da coche. La columna de huérfanos también se filtra.
 - **Sus cuadrantes salen de mejor a peor**, en tres escalones con su franja:

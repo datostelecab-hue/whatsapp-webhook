@@ -9,7 +9,7 @@ Las decisiones que explican por qué el sistema es como es. En orden, de la más
 
 ## 2026-10-05 · El planificador por bases, ordenado como un iceberg
 
-Los cuadrantes salían por número, y eso no ayudaba a decidir a quién poner en cada coche. Ahora el planificador empieza por las cinco bases (Alcobendas, Aravaca, Canillejas, Alcorcón, Getafe). Al abrir una, las tarjetas cuentan solo esa base y sus cuadrantes salen de mejor a peor: completos, luego con plazas vacías, luego sin nadie. Dentro de cada escalón, los que ruedan antes que los del taller, y más horas instaladas primero.
+Los cuadrantes salían por número, y eso no ayudaba a decidir a quién poner en cada coche. Ahora el planificador empieza por las cinco bases (Alcobendas, Alcorcón, Canillejas, Getafe, Usera) y enseña todos los cuadrantes base a base (desde el 06/10; el primer día había que pinchar una base). Dentro de cada base van de mejor a peor: completos, luego con plazas vacías, luego sin nadie. Dentro de cada escalón, los que ruedan antes que los del taller, y más horas instaladas primero. Al abrir una base, las tarjetas cuentan solo esa.
 
 Las horas instaladas son, turno a turno, la calificación de quien cubre el turno; el N/E cuenta la mediana de la flota. Camilo eligió esa medida y lo del taller al fondo de su escalón. Hay dos vistas: horizontal (la tabla) y vertical (una tarjeta por coche). → [[Planificacion#Las bases y el iceberg (05/10/2026)]]
 

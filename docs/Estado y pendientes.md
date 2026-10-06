@@ -17,9 +17,7 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 
 ## El planificador por bases (05/10/2026)
 
-- **`db/178` no está en el repositorio.** Se aplicó en producción el 05/10 a las 16:32 desde otra copia del código y deja `base_zona.orden` (Alcobendas, Aravaca, Canillejas, Alcorcón, Getafe) y Usera apagada. El planificador lee el orden con `SELECT *` para no caerse sin ella, pero el fichero tiene que subirlo quien lo escribió. Es el mismo caso que la `db/172`. **No hay que reescribirlo**: el corredor lo compara por su huella y otro fichero con ese nombre saldría como modificado.
-- **Desplegar** para que salgan las bases. No hay migración nueva.
-- **Aravaca no tiene cuadrantes todavía**: su tarjeta sale a cero hasta que se le cree el primero.
+- **`db/178` y `db/179` no están en el repositorio.** Se aplicaron en producción el 05/10 (16:32 y 18:18) desde otra copia del código. La 178 puso `base_zona.orden` y Aravaca y apagó Usera; la 179 lo deshizo todo. Hoy hay cinco bases activas (Alcobendas, Alcorcón, Canillejas, Getafe, Usera) y el planificador las ordena por nombre. Los dos ficheros los tiene que subir quien los escribió, como la `db/172`. **No hay que reescribirlos**: el corredor los compara por su huella y otro fichero con ese nombre saldría como modificado.
 
 ## Mapon suspendido por un pago (05/10/2026)
 
