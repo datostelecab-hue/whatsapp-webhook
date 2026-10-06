@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-05
+actualizado: 2026-10-06
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-06 · Control: filtro «En riesgo», sin alerta
+
+Un tercer filtro en Control · En directo con quien está parado (desconectado o en descanso) sin sus 8 h y aún llega si vuelve ya. Arriba van los de menos margen. No añade ningún aviso a la fila: Camilo lo pidió «sin alerta, solo un filtro». Cuando a alguien se le acaba el margen, pasa solo a «No terminará la jornada». → [[Control En directo#El filtro «En riesgo» (06/10/2026)]]
 
 ## 2026-10-06 · Control: filtro «No terminará la jornada»
 

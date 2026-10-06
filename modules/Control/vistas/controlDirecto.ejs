@@ -47,6 +47,13 @@
             title="Solo quien está conectado (o en descanso) y, aunque siga hasta el final de su turno, no llega a su jornada. Pincha otra vez para verlos a todos.">
       <i class="fa-solid fa-hourglass-end mr-1"></i> Solo «No terminará la jornada» <span id="d-noterminara-n" class="tabular-nums"></span>
     </button>
+    <%# Los que están parados sin sus horas y todavía llegan si vuelven ya
+        (06/10/2026). Camilo: «filtro aparte, "En riesgo", pero sin alerta, solo
+        un filtro». No pinta ningún aviso en la fila: solo los junta. %>
+    <button id="d-solo-enriesgo" class="px-3 py-1.5 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted hover:text-telecab-text"
+            title="Solo quien está desconectado o en descanso sin sus horas y aún llega si vuelve ya. Arriba los que antes se quedan sin margen; cuando ya no les da el tiempo pasan a «No terminará la jornada». Pincha otra vez para verlos a todos.">
+      <i class="fa-solid fa-stopwatch mr-1"></i> En riesgo <span id="d-enriesgo-n" class="tabular-nums"></span>
+    </button>
     <span id="d-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
   </div>
 
@@ -183,6 +190,18 @@
   // Conectado (o en descanso) y no le da el tiempo: el aviso lo marca el servidor
   // con su `variante` (cockpit.service), porque comparte código con «No llegará».
   const noTerminara = f => (f.avisos || []).some(a => a.variante === 'no_terminara');
+  let soloEnRiesgo = false;     // filtro: «En riesgo», sin aviso (06/10/2026)
+  // Parado —desconectado o en descanso— sin sus horas, y todavía le da el tiempo
+  // si vuelve ya. Las presuntas cuentan como en la proyección: con ellas llega,
+  // sin ellas no se sabe. Cuando se le acaba el margen pasa a «No terminará».
+  const enRiesgo = f => {
+    const p = f.proyeccion;
+    return !!p && !p.cerrado && p.alcanza && !f.noSale && !noTerminara(f) &&
+      ['desconectado', 'descanso'].includes(grupoDe(f)) &&
+      p.hechas + p.justificadas + p.presuntas < p.objetivo;
+  };
+  // Horas de margen: lo que puede seguir parado antes de no llegar.
+  const margen = f => f.proyeccion ? f.proyeccion.maximo - f.proyeccion.objetivo : Infinity;
 
   // ── Pestañas ────────────────────────────────────────────────────────────────
   function pintarTabs() {
@@ -676,29 +695,39 @@
   // el estado por su cuenta y el botón se quedaba pintado al revés.
   function ponerFiltro(v) {
     soloNoSalieron = !!v;
-    // Los dos filtros de llamadas se excluyen: a la vez darían siempre una lista
-    // vacía (quien no ha salido no puede «no terminar»).
-    if (soloNoSalieron) soloNoTerminara = false;
+    // Los filtros de llamadas se excluyen: a la vez darían siempre una lista
+    // vacía (quien no ha salido no puede «no terminar» ni estar en riesgo).
+    if (soloNoSalieron) soloNoTerminara = soloEnRiesgo = false;
     pintarFiltros();
     pintarResumen(); pintar(); pintarSinDuenio();
   }
 
   function ponerFiltroNoTerminara(v) {
     soloNoTerminara = !!v;
-    if (soloNoTerminara) soloNoSalieron = false;
+    if (soloNoTerminara) soloNoSalieron = soloEnRiesgo = false;
     pintarFiltros();
     pintarResumen(); pintar(); pintarSinDuenio();
   }
 
-  /** Los dos botones de filtro, pintados según lo que está puesto. */
+  function ponerFiltroEnRiesgo(v) {
+    soloEnRiesgo = !!v;
+    if (soloEnRiesgo) soloNoSalieron = soloNoTerminara = false;
+    pintarFiltros();
+    pintarResumen(); pintar(); pintarSinDuenio();
+  }
+
+  /** Los botones de filtro, pintados según lo que está puesto. «En riesgo» en
+   *  ámbar: no es una alerta, es un aviso de que puede llegar a serlo. */
   function pintarFiltros() {
-    const estilo = on => 'px-3 py-1.5 rounded-lg border text-xs ' + (on
-      ? 'border-telecab-red bg-telecab-red/10 text-telecab-red'
+    const estilo = (on, encendido) => 'px-3 py-1.5 rounded-lg border text-xs ' + (on
+      ? (encendido || 'border-telecab-red bg-telecab-red/10 text-telecab-red')
       : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text');
     $('#d-solo-nosalieron').className = estilo(soloNoSalieron);
     $('#d-solo-noterminara').className = estilo(soloNoTerminara);
+    $('#d-solo-enriesgo').className = estilo(soloEnRiesgo, 'border-amber-500/40 bg-amber-500/10 text-amber-600');
     $('#d-solo-nosalieron').setAttribute('aria-pressed', String(soloNoSalieron));
     $('#d-solo-noterminara').setAttribute('aria-pressed', String(soloNoTerminara));
+    $('#d-solo-enriesgo').setAttribute('aria-pressed', String(soloEnRiesgo));
   }
 
   function incidenciaHTML(i) {
@@ -944,6 +973,7 @@
     if (turnoActivo === 'nn') {
       // Los que ruedan sin plan no tienen jornada que terminar: sin número.
       $('#d-noterminara-n').textContent = '';
+      $('#d-enriesgo-n').textContent = '';
       const todas = p.nn || [];
       const filas = todas.filter(s => !q ||
         (s.conductor || '').toLowerCase().includes(q) ||
@@ -981,9 +1011,12 @@
     // Cuántos no terminarán la jornada en este turno, al lado del botón.
     const nNoTermina = todas.filter(noTerminara).length;
     $('#d-noterminara-n').textContent = nNoTermina ? '· ' + nNoTermina : '';
+    const nEnRiesgo = todas.filter(enRiesgo).length;
+    $('#d-enriesgo-n').textContent = nEnRiesgo ? '· ' + nEnRiesgo : '';
     const filas = todas.filter(f =>
       (!soloNoSalieron || falta(f)) &&
       (!soloNoTerminara || noTerminara(f)) &&
+      (!soloEnRiesgo || enRiesgo(f)) &&
       (!q ||
         (f.conductor || '').toLowerCase().includes(q) ||
         (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
@@ -1001,6 +1034,8 @@
           ? 'Nadie por llamar en este turno.'
           : soloNoTerminara && todas.length
             ? 'Nadie en este turno se va a quedar corto de jornada.'
+            : soloEnRiesgo && todas.length
+            ? 'Nadie parado sin sus horas en este turno.'
             : q
             ? 'Nadie con ese nombre o esa matrícula.'
             : 'Nadie en este turno.';
@@ -1020,8 +1055,10 @@
       const lista = grupos.get(g.id) || [];
       if (!lista.length) return '';
       // Dentro de cada grupo: por cuadrante y luego por nombre, para que la gente
-      // del mismo correturno siga saliendo junta.
+      // del mismo correturno siga saliendo junta. En «En riesgo», antes que nada
+      // el margen: arriba a quien antes se le acaba el tiempo.
       lista.sort((a, b) =>
+        (soloEnRiesgo ? margen(a) - margen(b) : 0) ||
         (a.cuadrante || '').localeCompare(b.cuadrante || '', undefined, { numeric: true }) ||
         (a.conductor || '').localeCompare(b.conductor || ''));
       const e = ESTADO[g.id];
@@ -1044,8 +1081,10 @@
         ? filas.length + ' por llamar'
         : soloNoTerminara
           ? filas.length + ' no terminará(n) la jornada'
-          : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '');
-    $('#d-cuenta').textContent = pie + (q || soloNoSalieron || soloNoTerminara ? ' · de ' + todas.length + ' del turno' : '');
+          : soloEnRiesgo
+            ? filas.length + ' en riesgo'
+            : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '');
+    $('#d-cuenta').textContent = pie + (q || soloNoSalieron || soloNoTerminara || soloEnRiesgo ? ' · de ' + todas.length + ' del turno' : '');
 
     // Reabrir lo que estaba abierto + enganchar acordeón y botones.
     $('#d-lista').querySelectorAll('.dfila').forEach(fila => { if (abiertos.has(fila.dataset.mat)) abrirFila(fila); });
@@ -1510,6 +1549,7 @@
   $('#d-refrescar').addEventListener('click', cargar);
   $('#d-solo-nosalieron').addEventListener('click', () => ponerFiltro(!soloNoSalieron));
   $('#d-solo-noterminara').addEventListener('click', () => ponerFiltroNoTerminara(!soloNoTerminara));
+  $('#d-solo-enriesgo').addEventListener('click', () => ponerFiltroEnRiesgo(!soloEnRiesgo));
 
   // Auto-refresco cada 45 s, salvo con una fila abierta EN PANTALLA (se estaría
   // trabajando con ella). Se mira el DOM y no el Set de claves: al cambiar de

@@ -152,6 +152,21 @@ Ese aviso comparte código con «No llegará» (`no_llegara`), que es el de quie
 
 **Quien se desconectó también es un «No terminará la jornada»** (el mismo día, Camilo, con Abdeslam Rais: 0,1 h a las 14:14 y salía «Se fue con 0,1 h», fuera del filtro). La proyección ya suma lo que le queda hasta el final de **su** turno (17:00 de día, 05:00 de noche) más lo justificado, así que ese aviso solo salta cuando ni volviendo ahora llega a las 8 h. Ahora se lee «No terminará la jornada», con «Se fue con X h…» en el detalle, y entra en el filtro. El código sigue siendo `se_fue_pronto` (el call center lo llama «Se fue antes de terminar»). Con eso, esa tarde eran 3 de 62. Quien **no ha salido** sigue con «No llegará · faltan X h» y su propio filtro.
 
+### El filtro «En riesgo» (06/10/2026)
+
+A las 14:24 de ese día Camilo preguntó si solo había 3 que no terminarían. Había 3 a los que ya no les daba el tiempo, pero **otros 17 estaban parados sin sus 8 h**: desconectados o en descanso, y solo llegaban si volvían ya. Cada uno entraba solo en «No terminará la jornada» cuando lo que quedaba de turno dejaba de alcanzarle (fin del turno menos lo que le falta), entre las 14:36 y las 16:54. Pidió **un filtro aparte, «En riesgo», sin alerta: solo un filtro**.
+
+Es el botón **«En riesgo»**, después de los otros dos, con su número («· 18»). Sale quien:
+
+- está en el grupo «Desconectados» o «En descanso» de la lista (`grupoDe`);
+- no tiene sus horas todavía: hechas + justificadas + presuntas por debajo de las 8 h;
+- aún llega si vuelve ya: `proyeccion.alcanza` y el turno no ha cerrado;
+- no está ya en «No terminará la jornada» ni tiene «No saldrá».
+
+Las presuntas cuentan, como en la proyección. **No pinta ningún aviso** en la fila (ni en el servidor ni en la pantalla): solo junta a esa gente. Con el filtro puesto, dentro de cada grupo van **primero los de menos margen** (`maximo − objetivo`), que son a los que antes se les acaba el tiempo. Encendido va en ámbar, no en rojo, porque todavía no es una alerta. Los tres filtros se excluyen entre sí, y en NN no cuenta. Todo vive en `controlDirecto.ejs`; el servidor no cambió.
+
+Para ver el reparto entero de un turno a cualquier hora, y a qué hora entrará cada uno en «No terminará», está `no-terminara-desglose.js` en «Scripts de análisis» (solo lectura).
+
 **Los dos rechazos no son la misma falta** y hasta ahora iban en un chip común ("14 rechazos") que los sumaba. Se separaron porque se miden distinto y se llaman distinto: rechazar a dedo no está permitido nunca —ni antes ni después de ver el viaje—, así que basta uno y cuenta en toda la jornada; no responder aguanta hasta cinco y solo dentro de la franja, porque fuera está el cambio de turno y ahí que se escape alguna oferta es lo normal.
 
 Los avisos son **de quien los provocó, no de la plaza del cuadrante**: la incidencia guarda el `conductor_uuid` del que iba al volante, así que si hoy se han cambiado el coche —pasa a diario— el aviso viaja con la persona y no se queda colgado donde lo veía quien no tuvo nada que ver. Los que no tienen dueño (nadie conectado en ese momento) se quedan a la vista en la fila del coche, y lo que aun así no se puede atribuir se cuenta aparte en `resumen.alertasSinDueno` — la cabecera decía "3 avisos" y no había forma de llegar a ellos.
