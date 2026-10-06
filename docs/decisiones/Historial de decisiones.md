@@ -7,6 +7,10 @@ actualizado: 2026-10-05
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-06 · Control: filtro «No terminará la jornada»
+
+Un botón en Control · En directo que deja solo a quien está conectado y, aunque siga hasta el final, no llega a su jornada, con el número al lado. El aviso conserva su código (`no_llegara`, que comparte con «No llegará» y usan el call center y el histórico) y lleva una `variante` para poder filtrarlo. → [[Control En directo#El filtro «No terminará la jornada» (06/10/2026)]]
+
 ## 2026-10-06 · Próximas incorporaciones en el planificador
 
 Una tarjeta en la columna lateral con quien va a entrar en un coche de hoy en adelante. Salen la gente nueva y quien vuelve de vacaciones o de baja médica, esta solo si le cambiaron de cuadrante mientras estaba fuera. Cada nombre dice si es nuevo o vuelve; al pincharlo, su número, puesto, cuadrante, base y fecha, y «Ver su cuadrante» lleva hasta él. «Antes» es su última plaza anterior a la nueva, no la de la víspera de irse: con la víspera, quien volvía a lo suyo salía como cambiado. → [[Planificacion#Qué cuenta cada tarjeta, y de dónde lo saca]]

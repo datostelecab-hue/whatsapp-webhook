@@ -144,6 +144,12 @@ Y no todas valen igual. Una **aprobada** es una hora; una **pendiente** es una h
 | `sin_respuesta` | dejó pasar ofertas sin contestar dentro de la franja |
 | `aceptacion_baja` | ámbar, no rojo: es para mirar, no para llamar |
 
+### El filtro «No terminará la jornada» (06/10/2026)
+
+Camilo lo pidió: un filtro que deje **solo a quien no terminará la jornada**. Es el botón **«Solo "No terminará la jornada"»**, al lado de «Solo los que no han salido», con el número del turno al lado («· 2»). Sale quien **está conectado o en descanso** y, aunque siga hasta el final de su turno, se queda corto. Es otra lista de llamadas: no la de quien no ha salido, sino la de quien salió y no le va a dar. Los dos filtros se **excluyen** (a la vez darían siempre una lista vacía), y en la pestaña NN no cuenta, porque sin plan no hay jornada que terminar.
+
+Ese aviso comparte código con «No llegará» (`no_llegara`), que es el de quien aún no ha salido. El call center y el histórico los agrupan así, y por eso **no se cambió el código**: el aviso lleva además `variante: 'no_terminara'` (`cockpit.service.avisosDe`), y la pantalla filtra por esa marca. El 06/10/2026 por la mañana salían 2 de 62 en el turno de día.
+
 **Los dos rechazos no son la misma falta** y hasta ahora iban en un chip común ("14 rechazos") que los sumaba. Se separaron porque se miden distinto y se llaman distinto: rechazar a dedo no está permitido nunca —ni antes ni después de ver el viaje—, así que basta uno y cuenta en toda la jornada; no responder aguanta hasta cinco y solo dentro de la franja, porque fuera está el cambio de turno y ahí que se escape alguna oferta es lo normal.
 
 Los avisos son **de quien los provocó, no de la plaza del cuadrante**: la incidencia guarda el `conductor_uuid` del que iba al volante, así que si hoy se han cambiado el coche —pasa a diario— el aviso viaja con la persona y no se queda colgado donde lo veía quien no tuvo nada que ver. Los que no tienen dueño (nadie conectado en ese momento) se quedan a la vista en la fila del coche, y lo que aun así no se puede atribuir se cuenta aparte en `resumen.alertasSinDueno` — la cabecera decía "3 avisos" y no había forma de llegar a ellos.

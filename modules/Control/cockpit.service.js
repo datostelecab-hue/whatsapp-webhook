@@ -551,7 +551,10 @@ async function enDirecto({ dia } = {}) {
         out.push({ codigo: 'no_llegara', tono: 'error', etq: 'No llegará · faltan ' + faltan + ' h',
           detalle: 'Aunque saliera ahora mismo solo le da tiempo a ' + String(proy.maximo).replace('.', ',') + ' h. Llámalo.' });
       } else if (salida === 'conectado' || salida === 'descanso') {
-        out.push({ codigo: 'no_llegara', tono: 'error', etq: 'No terminará la jornada',
+        // `variante`: el mismo código que «No llegará» (el call center y el
+        // histórico lo agrupan así), pero la pantalla tiene que poder filtrar
+        // SOLO este caso: conectado y no le da el tiempo (06/10/2026).
+        out.push({ codigo: 'no_llegara', variante: 'no_terminara', tono: 'error', etq: 'No terminará la jornada',
           detalle: 'Lleva ' + String(proy.hechas).replace('.', ',') + ' h y le quedan ' + String(proy.restantes).replace('.', ',') +
             ': aunque siga hasta el final se queda en ' + String(proy.maximo).replace('.', ',') + ' h. Llámalo y averigua qué pasó.' });
       } else {

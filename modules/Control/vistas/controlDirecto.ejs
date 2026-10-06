@@ -40,6 +40,13 @@
     <button id="d-solo-nosalieron" class="px-3 py-1.5 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted hover:text-telecab-text">
       <i class="fa-solid fa-phone-volume mr-1"></i> Solo los que no han salido
     </button>
+    <%# Los que están conectados y aunque sigan hasta el final del turno no llegan
+        a su jornada (06/10/2026). Es otra lista de llamadas: no la de quien no ha
+        salido, sino la de quien salió y se va a quedar corto. %>
+    <button id="d-solo-noterminara" class="px-3 py-1.5 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted hover:text-telecab-text"
+            title="Solo quien está conectado (o en descanso) y, aunque siga hasta el final de su turno, no llega a su jornada. Pincha otra vez para verlos a todos.">
+      <i class="fa-solid fa-hourglass-end mr-1"></i> Solo «No terminará la jornada» <span id="d-noterminara-n" class="tabular-nums"></span>
+    </button>
     <span id="d-cuenta" class="text-xs text-telecab-muted ml-auto"></span>
   </div>
 
@@ -172,6 +179,10 @@
   const horaAhora = new Date().getHours();
   let turnoActivo = (horaAhora >= 5 && horaAhora < 17) ? 'dia' : 'noche';
   let soloNoSalieron = false;   // filtro: solo los que NO han salido (a llamar)
+  let soloNoTerminara = false;  // filtro: solo «No terminará la jornada» (06/10/2026)
+  // Conectado (o en descanso) y no le da el tiempo: el aviso lo marca el servidor
+  // con su `variante` (cockpit.service), porque comparte código con «No llegará».
+  const noTerminara = f => (f.avisos || []).some(a => a.variante === 'no_terminara');
 
   // ── Pestañas ────────────────────────────────────────────────────────────────
   function pintarTabs() {
@@ -665,10 +676,29 @@
   // el estado por su cuenta y el botón se quedaba pintado al revés.
   function ponerFiltro(v) {
     soloNoSalieron = !!v;
-    $('#d-solo-nosalieron').className = 'px-3 py-1.5 rounded-lg border text-xs ' + (soloNoSalieron
+    // Los dos filtros de llamadas se excluyen: a la vez darían siempre una lista
+    // vacía (quien no ha salido no puede «no terminar»).
+    if (soloNoSalieron) soloNoTerminara = false;
+    pintarFiltros();
+    pintarResumen(); pintar(); pintarSinDuenio();
+  }
+
+  function ponerFiltroNoTerminara(v) {
+    soloNoTerminara = !!v;
+    if (soloNoTerminara) soloNoSalieron = false;
+    pintarFiltros();
+    pintarResumen(); pintar(); pintarSinDuenio();
+  }
+
+  /** Los dos botones de filtro, pintados según lo que está puesto. */
+  function pintarFiltros() {
+    const estilo = on => 'px-3 py-1.5 rounded-lg border text-xs ' + (on
       ? 'border-telecab-red bg-telecab-red/10 text-telecab-red'
       : 'border-telecab-border bg-telecab-card text-telecab-muted hover:text-telecab-text');
-    pintarResumen(); pintar(); pintarSinDuenio();
+    $('#d-solo-nosalieron').className = estilo(soloNoSalieron);
+    $('#d-solo-noterminara').className = estilo(soloNoTerminara);
+    $('#d-solo-nosalieron').setAttribute('aria-pressed', String(soloNoSalieron));
+    $('#d-solo-noterminara').setAttribute('aria-pressed', String(soloNoTerminara));
   }
 
   function incidenciaHTML(i) {
@@ -912,6 +942,8 @@
     const p = DATOS.porTurno || {};
 
     if (turnoActivo === 'nn') {
+      // Los que ruedan sin plan no tienen jornada que terminar: sin número.
+      $('#d-noterminara-n').textContent = '';
       const todas = p.nn || [];
       const filas = todas.filter(s => !q ||
         (s.conductor || '').toLowerCase().includes(q) ||
@@ -946,8 +978,12 @@
     }
 
     const todas = p[turnoActivo] || [];
+    // Cuántos no terminarán la jornada en este turno, al lado del botón.
+    const nNoTermina = todas.filter(noTerminara).length;
+    $('#d-noterminara-n').textContent = nNoTermina ? '· ' + nNoTermina : '';
     const filas = todas.filter(f =>
       (!soloNoSalieron || falta(f)) &&
+      (!soloNoTerminara || noTerminara(f)) &&
       (!q ||
         (f.conductor || '').toLowerCase().includes(q) ||
         (f.matriculas || []).join(' ').toLowerCase().includes(q) ||
@@ -963,7 +999,9 @@
         ? 'Este turno todavía no ha empezado.'
         : soloNoSalieron && todas.length
           ? 'Nadie por llamar en este turno.'
-          : q
+          : soloNoTerminara && todas.length
+            ? 'Nadie en este turno se va a quedar corto de jornada.'
+            : q
             ? 'Nadie con ese nombre o esa matrícula.'
             : 'Nadie en este turno.';
       $('#d-lista').innerHTML = '<p class="px-4 py-10 text-center text-sm text-telecab-muted">' + msg + '</p>';
@@ -1004,8 +1042,10 @@
       ? 'Turno sin empezar · ' + filas.length + ' planificados'
       : soloNoSalieron
         ? filas.length + ' por llamar'
-        : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '');
-    $('#d-cuenta').textContent = pie + (q || soloNoSalieron ? ' · de ' + todas.length + ' del turno' : '');
+        : soloNoTerminara
+          ? filas.length + ' no terminará(n) la jornada'
+          : 'Salieron ' + salieron + ' de ' + filas.length + (faltan ? ' · faltan ' + faltan : '');
+    $('#d-cuenta').textContent = pie + (q || soloNoSalieron || soloNoTerminara ? ' · de ' + todas.length + ' del turno' : '');
 
     // Reabrir lo que estaba abierto + enganchar acordeón y botones.
     $('#d-lista').querySelectorAll('.dfila').forEach(fila => { if (abiertos.has(fila.dataset.mat)) abrirFila(fila); });
@@ -1469,6 +1509,7 @@
   $('#d-filtro').addEventListener('input', pintar);
   $('#d-refrescar').addEventListener('click', cargar);
   $('#d-solo-nosalieron').addEventListener('click', () => ponerFiltro(!soloNoSalieron));
+  $('#d-solo-noterminara').addEventListener('click', () => ponerFiltroNoTerminara(!soloNoTerminara));
 
   // Auto-refresco cada 45 s, salvo con una fila abierta EN PANTALLA (se estaría
   // trabajando con ella). Se mira el DOM y no el Set de claves: al cambiar de
