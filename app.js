@@ -213,6 +213,8 @@ app.get('/', (req, res) => {
   // Antes iba a /pendientes tuviera uno permiso o no, y quien no lo tenía se
   // comía un "Sin permiso" nada más entrar: más de uno creyó que la web se había
   // caído. /inicio no se bloquea nunca; ya decide él qué enseñar.
+  // Con la sede de Barcelona (el selector del login), su portada: el planificador.
+  if (req.usuario && req.usuario.sede === 'barcelona') return res.redirect('/barcelona');
   return res.redirect(req.usuario ? '/inicio' : '/login');
 });
 
@@ -257,6 +259,9 @@ app.get('/conductores', (req, res) => res.redirect(301, '/plantilla'));
 app.use('/documentos', documentosRoutes);
 app.use('/control', controlRoutes);
 app.use('/visibilidad', require('./routes/visibilidad'));
+// Barcelona: su planificador, su reporte de horas y su Visibilidad (07/10/2026).
+// Se entra eligiendo la sede en el login; ver modules/Barcelona.
+app.use('/barcelona', require('./modules/Barcelona/barcelona.controller'));
 app.use('/mapa', require('./modules/Mapa/mapa.controller'));   // piloto: la flota en el mapa
 app.use('/alertas', require('./modules/Control/alertas.controller'));
 app.use('/bi', require('./routes/bi'));   // inteligencia de negocio (solo dirección)

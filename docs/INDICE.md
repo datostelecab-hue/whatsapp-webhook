@@ -52,6 +52,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Ciclo de bloqueo de motor]]** — /bloqueo-motor: los coches que bloquean los conductores al terminar, en qué punto está cada uno y el botón de soltar el que se queda en el taller. El sistema no bloquea nada por su cuenta.
 - **[[Nominas]]** — La compensación variable del mes: lo que se suma al recibo por encima del sueldo base — nocturnas, propinas, peajes y el MBO (por horas extra o por facturación).
 - **[[Operaciones]]** — Qué hace la flota cuando nadie mira: los avisos del coche, los kilómetros que no cuadran, quién corre de más y el calendario de lo que de verdad pasó cada día.
+- **[[Barcelona]]** — La sede de Barcelona: se elige en el login. Su planificador (conductores de BOLT en matrículas de BOLT, de día o de noche, fijo hasta que se cambia), su reporte de horas y su Visibilidad, con sus datos aparte de Madrid.
 - **[[Planificacion]]** — Quién conduce qué coche, qué día y en qué turno. Empieza por las cinco bases, y los cuadrantes de cada una salen de mejor a peor (el iceberg).
 - **[[RRHH]]** — Lo que el convenio VTC obliga a llevar: la jornada de cada trabajador contra su objetivo, el cierre del periodo, la nómina que se manda a la gestoría y el cuadro de absentismo.
 - **[[Sanciones de velocidad]]** — Del exceso que detecta Mapon al aviso de WhatsApp al conductor, y de ahí a un registro que queda.
