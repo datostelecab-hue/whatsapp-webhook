@@ -36,6 +36,8 @@ El login (`auth.controller.js`) tiene un freno anti fuerza bruta **por IP y por 
 
 Dentro del token viajan el id, el correo, el nombre, el rol, el tema y si hay que cambiar la contraseña. **El rol se lee de la sesión y se valida en el servidor**, no en el navegador.
 
+Y desde el 07/10/2026, la **sede** elegida en el login (Madrid o Barcelona): decide el menú y adónde se cae al entrar, y se conserva al re-emitir la sesión. `POST /sede` la cambia sin volver a entrar. Ver [[Barcelona]].
+
 ### "Mantener sesión iniciada"
 
 Marcándola, la sesión dura **30 días** en vez de 12 h.

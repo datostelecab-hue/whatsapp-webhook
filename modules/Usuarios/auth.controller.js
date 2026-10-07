@@ -66,9 +66,14 @@ router.post('/login', async (req, res) => {
       // separado, y se dice en el log.
       console.error('\u26a0\ufe0f  [AUTH] no se pudo registrar la sesion:', e.message);
     }
-    sesion.ponerSesion(res, u, { recordar, sid });
+    // LA SEDE con la que entra (el selector del login). Barcelona cae en su
+    // planificador; un `next` de Madrid no le sirve, así que solo se respeta si
+    // es de Barcelona.
+    const sede = sesion.sedeValida(b.sede);
+    sesion.ponerSesion(res, u, { recordar, sid, sede });
     usuarios.registrarAcceso(email);
     if (u.debe_cambiar === 'si') return res.redirect('/cambiar-password');
+    if (sede === 'barcelona') return res.redirect(rutaSegura(next) && next.startsWith('/barcelona') ? next : '/barcelona');
     return res.redirect(rutaSegura(next) ? next : '/');
   } catch (e) {
     console.error('❌ [AUTH] login:', e.message);
@@ -119,11 +124,21 @@ router.post('/cambiar-password', async (req, res) => {
     try {
       if (actualizado.id) { await usuarios.cortarSesiones(actualizado.id); usuarios.olvidarCorte(actualizado.id); }
     } catch (e) { console.error('❌ [AUTH] no se pudieron cortar las sesiones:', e.message); }
-    sesion.ponerSesion(res, actualizado, { recordar: !!(req.usuario && req.usuario.larga) });
+    sesion.ponerSesion(res, actualizado, { recordar: !!(req.usuario && req.usuario.larga), sede: req.usuario.sede });
     return res.redirect('/');
   } catch (e) {
     return fallo(e.message || 'No se pudo cambiar la contraseña.');
   }
+});
+
+// ── Cambiar de sede sin volver a entrar ─────────────────────────────────────
+// El botón «Ir a Madrid / Ir a Barcelona» del menú. Re-emite la sesión con la
+// otra sede (conservando si era larga y su sid) y lleva a su portada.
+router.post('/sede', (req, res) => {
+  if (!req.usuario) return res.redirect('/login');
+  const sede = sesion.sedeValida((req.body || {}).sede);
+  sesion.ponerSesion(res, req.usuario, { recordar: !!req.usuario.larga, sid: req.usuario.sid, sede });
+  res.redirect(sede === 'barcelona' ? '/barcelona' : '/inicio');
 });
 
 // ── Olvidé mi contraseña → nueva provisional por correo + cambio forzado ─────

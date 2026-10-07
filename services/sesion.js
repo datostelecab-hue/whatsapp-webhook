@@ -84,6 +84,14 @@ function leerCookie(req, nombre) {
 
 const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept') || '').includes('application/json');
 
+// LA SEDE CON LA QUE SE ENTRA (07/10/2026). En el login se elige Madrid o
+// Barcelona, y viaja en la sesión como el tema: decide qué menú se ve y adónde se
+// cae al entrar. Madrid es el ERP de siempre; Barcelona, su planificador, su
+// reporte de horas y su Visibilidad (modules/Barcelona). Cualquier usuario puede
+// elegir cualquiera (Camilo); los permisos de cada pantalla siguen mandando.
+const SEDES = ['madrid', 'barcelona'];
+const sedeValida = s => (SEDES.includes(s) ? s : 'madrid');
+
 /**
  * Emite la cookie de sesión para un usuario.
  *
@@ -95,7 +103,7 @@ const esApi = req => req.path.includes('/api/') || req.xhr || (req.get('accept')
  * era: si alguien marcó "mantener sesión iniciada", cambiar su tema no debería
  * echarle a las 12 h.
  */
-function ponerSesion(res, u, { recordar, sid } = {}) {
+function ponerSesion(res, u, { recordar, sid, sede } = {}) {
   const larga = recordar === undefined ? false : !!recordar;
   const dura = larga ? DURACION_LARGA_MS : DURACION_MS;
   const payload = {
@@ -109,6 +117,8 @@ function ponerSesion(res, u, { recordar, sid } = {}) {
     ayudas: u.ayudas === false ? false : true,
     debe_cambiar: u.debe_cambiar === 'si' || u.debe_cambiar === true,
     larga,
+    // La sede elegida al entrar. Las sesiones de antes de esto no la traen: Madrid.
+    sede: sedeValida(sede || u.sede),
     // EL SID ES LO QUE PERMITE CERRAR *UNA*. Sin él el token sigue valiendo
     // —las sesiones de antes de esto no lo llevan— pero esa no se puede cerrar
     // por separado: para ella solo existe el corte de todas (db/105).
@@ -139,8 +149,9 @@ function dispositivoDe(req, res) {
 // Re-emitir CONSERVA el sid: cambiar el tema o el perfil no es volver a entrar,
 // y perderlo dejaría la fila de esa sesión huérfana —abierta en la base y ya sin
 // nadie que la lleve— y a esa pestaña sin forma de cerrarse a sí misma.
+// Y la SEDE: cambiar el tema estando en Barcelona no te devuelve a Madrid.
 const renovarSesion = (res, u, anterior) => ponerSesion(res, u,
-  { recordar: !!(anterior && anterior.larga), sid: anterior && anterior.sid });
+  { recordar: !!(anterior && anterior.larga), sid: anterior && anterior.sid, sede: anterior && anterior.sede });
 function cerrarSesion(res) {
   res.clearCookie(COOKIE, { httpOnly: true, sameSite: 'lax', secure: PROD, path: '/' });
 }
@@ -229,6 +240,7 @@ async function cargarSesion(req, res, next) {
   res.locals.rol = u ? u.rol : null;
   res.locals.tema = u ? (u.tema || '') : null;   // tema del perfil (para pintar sin parpadeo)
   res.locals.ayudas = u ? (u.ayudas !== false) : true;
+  res.locals.sede = u ? sedeValida(u.sede) : null; // Madrid o Barcelona: el menú y la portada
   res.locals.v = ARRANQUE;                         // versión de assets (cache-bust por despliegue)
   next();
 }
@@ -383,7 +395,7 @@ async function sembrarSuperadmin() {
 }
 
 module.exports = {
-  COOKIE,
+  COOKIE, SEDES, sedeValida,
   ponerSesion, renovarSesion, cerrarSesion, DURACION_LARGA_MS, DURACION_MS,
   dispositivoDe, olvidarSesion,
   cargarSesion, protegido, forzarCambio, controlAcceso, cargarPermisos,

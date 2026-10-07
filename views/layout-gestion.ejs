@@ -202,21 +202,47 @@
     <div id="menu-panel"
          class="h-full w-full flex flex-col bg-telecab-card/80 backdrop-blur-xl border-r border-telecab-border">
 
+    <%# LA SEDE de la sesión (el selector del login, 07/10/2026). Barcelona tiene
+        su propio menú: planificador, reporte de horas y Visibilidad. %>
+    <% const sedeSesion = (typeof sede !== 'undefined' && sede) ? sede : 'madrid';
+       // Fuera de los dos menús: el pie también la usa.
+       const seccionActiva = typeof seccion !== 'undefined' ? seccion : ''; %>
+
     <!-- Marca -->
-    <a href="/planificador" class="flex items-center gap-3 px-4 h-16 shrink-0 border-b border-telecab-border/70">
+    <a href="<%= sedeSesion === 'barcelona' ? '/barcelona' : '/planificador' %>" class="flex items-center gap-3 px-4 h-16 shrink-0 border-b border-telecab-border/70">
       <%# Un div y no un span: con el menú contraído el CSS esconde los span del
           panel (los textos), y la marca tiene que seguir viéndose. %>
       <div class="w-10 flex justify-center shrink-0"><%- include('partials/marca', { tam: 'w-9 h-9' }) %></div>
       <span class="leading-tight whitespace-nowrap">
         <span class="block text-base font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
-        <span class="block text-[11px] text-telecab-muted">Gestión de flota</span>
+        <span class="block text-[11px] text-telecab-muted"><%= sedeSesion === 'barcelona' ? 'Barcelona' : 'Gestión de flota' %></span>
       </span>
     </a>
 
     <!-- Navegación -->
     <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <%# Cambiar de sede sin volver a entrar. Re-emite la sesión con la otra. %>
+      <form method="POST" action="/sede" class="mb-2">
+        <input type="hidden" name="sede" value="<%= sedeSesion === 'barcelona' ? 'madrid' : 'barcelona' %>">
+        <button type="submit" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-xl transition text-telecab-muted hover:bg-telecab-card2 hover:text-telecab-text"
+                title="Cambiar a la sede de <%= sedeSesion === 'barcelona' ? 'Madrid' : 'Barcelona' %>">
+          <i class="fa-solid fa-right-left w-5 text-center"></i>
+          <span class="text-xs flex-1 text-left">Ir a <%= sedeSesion === 'barcelona' ? 'Madrid' : 'Barcelona' %></span>
+        </button>
+      </form>
+      <% if (sedeSesion === 'barcelona') { %>
+        <% [{ href: '/barcelona', icono: 'fa-table-cells-large', texto: 'Planificador', id: 'bcn-planificador' },
+            { href: '/barcelona/reportes', icono: 'fa-file-excel', texto: 'Reporte de horas', id: 'bcn-reportes' },
+            { href: '/barcelona/visibilidad', icono: 'fa-chart-line', texto: 'Visibilidad', id: 'bcn-visibilidad' }]
+           .forEach(function (e) { const on = seccionActiva === e.id; %>
+          <a href="<%= e.href %>" class="nav-item <%= on ? 'activo' : '' %> flex items-center gap-3 px-3 py-2.5 rounded-xl transition mb-1
+                    <%= on ? 'bg-telecab-gold/10 text-telecab-gold font-semibold' : 'text-telecab-text hover:bg-telecab-card2' %>">
+            <i class="fa-solid <%= e.icono %> w-5 text-center <%= on ? '' : 'text-telecab-muted' %>"></i>
+            <span class="text-sm flex-1"><%= e.texto %></span>
+          </a>
+        <% }); %>
+      <% } else { %>
       <%
-        const seccionActiva = typeof seccion !== 'undefined' ? seccion : '';
         // Módulos agrupados por departamento. El menú se filtra por el rol de la sesión.
         const grupos = [
           { nombre: 'Contratación', icono: 'fa-user-tie', rol: 'oficina', items: [
@@ -368,6 +394,7 @@
           </div>
         </div>
       <% }); %>
+      <% } /* fin del menú de Madrid */ %>
     </nav>
 
     <!-- Pie -->

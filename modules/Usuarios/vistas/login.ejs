@@ -11,6 +11,31 @@
 
   <input type="hidden" name="next" value="<%= next || '' %>">
 
+  <!-- LA SEDE (07/10/2026). Madrid es el ERP de siempre; Barcelona, su
+       planificador, su reporte de horas y su Visibilidad. Se recuerda la última
+       elegida en este navegador. -->
+  <fieldset class="mb-4">
+    <legend class="text-xs font-semibold text-telecab-muted mb-2">Sede</legend>
+    <div class="grid grid-cols-2 gap-2" role="radiogroup">
+      <label class="sede-opcion">
+        <input type="radio" name="sede" value="madrid" class="sr-only" checked>
+        <span><i class="fa-solid fa-location-dot mr-1.5"></i>Madrid</span>
+      </label>
+      <label class="sede-opcion">
+        <input type="radio" name="sede" value="barcelona" class="sr-only">
+        <span><i class="fa-solid fa-location-dot mr-1.5"></i>Barcelona</span>
+      </label>
+    </div>
+  </fieldset>
+  <style>
+    .sede-opcion span { display: flex; align-items: center; justify-content: center; height: 42px; border-radius: 12px;
+      border: 1px solid var(--borde, rgba(255,255,255,.12)); font-size: .875rem; font-weight: 600; cursor: pointer;
+      color: inherit; opacity: .75; transition: border-color .15s, background-color .15s, opacity .15s; }
+    .sede-opcion input:checked + span { opacity: 1; border-color: #E8B84B; background: rgba(232,184,75,.12); color: #E8B84B; }
+    .sede-opcion input:focus-visible + span { outline: 2px solid #E8B84B; outline-offset: 2px; }
+    @media (hover: hover) and (pointer: fine) { .sede-opcion span:hover { opacity: 1; } }
+  </style>
+
   <!-- El placeholder de un espacio NO es un descuido: `:placeholder-shown` es lo
        que deja saber en CSS si el campo está vacío, y así la etiqueta flota sin
        una línea de JavaScript. -->
@@ -85,6 +110,17 @@
         pass.focus();
       });
     }
+
+    // La sede: la última que se eligió en este navegador. Es una comodidad: si el
+    // navegador no deja guardar, sale Madrid y ya.
+    try {
+      const guardada = localStorage.getItem('telecab-sede');
+      const radio = guardada && document.querySelector('input[name="sede"][value="' + guardada + '"]');
+      if (radio) radio.checked = true;
+    } catch (e) { /* sin almacenamiento: Madrid */ }
+    document.querySelectorAll('input[name="sede"]').forEach(r => r.addEventListener('change', () => {
+      try { localStorage.setItem('telecab-sede', r.value); } catch (e) { /* nada */ }
+    }));
 
     // Al enviar, el botón dice que está trabajando. El login va contra la base y
     // puede tardar un segundo; sin esto la gente pulsa dos y tres veces, y cada
