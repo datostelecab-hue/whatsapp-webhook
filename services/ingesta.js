@@ -297,6 +297,71 @@ const TAREAS = {
       return { registros: r.nuevas, detalle: r };
     },
   },
+
+  // ── OTRAS SEDES (Barcelona, db/181) ─────────────────────────────────────────
+  // Sus horas y sus coches, de su empresa de BOLT (CONFIG_BOLT.flotasOtrasSedes),
+  // a TABLAS SUYAS: nada de esto lo lee Madrid. Ver services/repo/otrasSedes.js.
+  //
+  // No es crítica: Barcelona sin horas un rato no puede teñir de rojo la ingesta
+  // de la que vive Madrid. Y la ventana se estira sola: si la tarea estuvo parada,
+  // pide desde el último cambio que tiene (con dos horas de solape), y la primera
+  // vez se trae siete días, en trozos de un día, para que el reporte nazca con
+  // historia.
+  state_logs_otras_sedes: {
+    fuente: 'bolt',
+    etiqueta: 'Logs de estado de BOLT · otras sedes',
+    cadaMin: Number(process.env.INGESTA_OTRAS_SEDES_MIN) || 10,
+    critica: false,
+    async ejecutar() {
+      const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+      const repo = require('./repo/otrasSedes');
+      const ahora = Math.floor(Date.now() / 1000);
+      const DIA = 86400, SOLAPE = 2 * 3600, PRIMERA_VEZ = 7 * DIA;
+      const detalle = {};
+      let nuevos = 0;
+      for (const f of CONFIG_BOLT.flotasOtrasSedes || []) {
+        const ultimo = await repo.ultimoLog(f.sede);
+        let desde = ultimo ? Math.max(ultimo - SOLAPE, ahora - PRIMERA_VEZ) : ahora - PRIMERA_VEZ;
+        if (ahora - desde < SOLAPE) desde = ahora - SOLAPE;
+        let traidos = 0, deEsta = 0, sinTablas = false;
+        while (desde < ahora && !sinTablas) {
+          const hasta = Math.min(desde + DIA, ahora);
+          const logs = await fetchAllPaginated('/fleetIntegration/v1/getFleetStateLogs',
+            { company_id: f.id, start_ts: desde, end_ts: hasta }, 'state_logs', 1000, `ingesta log ${f.id}`);
+          traidos += logs.length;
+          const n = await repo.guardarStateLogs(f.sede, f.id, logs);
+          if (n == null) sinTablas = true; else deEsta += n;
+          desde = hasta;
+        }
+        nuevos += deEsta;
+        detalle[f.sede] = sinTablas ? 'falta db/181' : { traidos, nuevos: deEsta };
+      }
+      return { registros: nuevos, detalle };
+    },
+  },
+
+  vehiculos_otras_sedes: {
+    fuente: 'bolt',
+    etiqueta: 'Vehículos de BOLT · otras sedes',
+    cadaMin: Number(process.env.INGESTA_VEHICULOS_OTRAS_SEDES_MIN) || 360,
+    critica: false,
+    async ejecutar() {
+      const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+      const repo = require('./repo/otrasSedes');
+      const ahora = Math.floor(Date.now() / 1000);
+      const detalle = {};
+      let vistos = 0;
+      for (const f of CONFIG_BOLT.flotasOtrasSedes || []) {
+        // La misma llamada que Flota viva hace para Madrid, con una ventana de 30 días.
+        const v = await fetchAllPaginated('/fleetIntegration/v1/getVehicles',
+          { company_id: f.id, start_ts: ahora - 30 * 86400, end_ts: ahora }, 'vehicles', 100, `ingesta veh ${f.id}`);
+        const r = await repo.guardarVehiculos(f.sede, f.id, v);
+        detalle[f.sede] = r == null ? 'falta db/181' : { traidos: v.length, ...r };
+        if (r) vistos += r.nuevos + r.vistos;
+      }
+      return { registros: vistos, detalle };
+    },
+  },
 };
 
 /** Cuándo se ejecutó por última vez cada tarea, con acierto o sin él. */

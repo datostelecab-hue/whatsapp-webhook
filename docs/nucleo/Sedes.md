@@ -17,8 +17,23 @@ Una sola constante dice cuál es la sede que se vigila: `SEDE_FLOTA = 'madrid'` 
 | Los **coches** | `vehiculo.sede = 'barcelona'`, estado «B», sin baja | db/132; repasados con BOLT y Mapon en db/173 | Solo en Vehículos, con el permiso `/vehiculos/sedes` |
 | La **empresa de BOLT** | `flota` con `sede = 'barcelona'` (company **329430**) | db/174 | Ninguna pantalla |
 | Las **cuentas de BOLT** de sus conductores | `conductor_externo` con `bolt_company_id = 329430`, **sin ficha** (`conductor_id` vacío) | db/174 + el padrón de cada hora | Ninguna pantalla |
-| Las **horas** de BOLT | — | no se traen | — |
-| Las **fichas** de las personas | — | no hay: Camilo no tiene sus datos todavía | — |
+| Las **horas** de BOLT | `sede_bolt_state_log` (los cambios de estado, tal cual) | db/181, 07/10/2026 | Planificador, reporte y Visibilidad de Barcelona |
+| Los **coches de BOLT** | `sede_bolt_vehiculo` (matrícula, modelo, estado en BOLT) | db/181, 07/10/2026 | Planificador de Barcelona |
+| El **planificador** | `sede_asignacion`: matrícula + turno + cuenta de BOLT, fija hasta que se cambia | db/181, 07/10/2026 | Barcelona |
+| Las **fichas** de las personas | — | no hay ni hacen falta: Barcelona trabaja con el nombre y el teléfono de BOLT | — |
+
+## Barcelona en el ERP (07/10/2026)
+
+Camilo: «en el login ahora va a aparecer Barcelona o Madrid». Barcelona no necesita fichas, altas ni libranzas: un **planificador** (sus conductores de BOLT en sus matrículas, de día o de noche, fijo hasta que se cambia), un **reporte de horas** con la misma regla que Madrid («No salió» si no hizo horas) y su **Visibilidad**. Lo cuenta [[Barcelona]].
+
+**Sus horas van aparte, a propósito.** Madrid lee las horas de Flota viva (`fv_tramo`) y de `bolt_state_log` en Control, Visibilidad, la Bitácora, el mapa y la foto del ahora. Si las de Barcelona entraran ahí, sus conductores (sin ficha) saldrían como NN en todas esas pantallas. Así que la ingesta trae lo de `CONFIG_BOLT.flotasOtrasSedes` a **tablas suyas** (`services/repo/otrasSedes.js`), con dos tareas propias ([[Ingesta]]):
+
+- `state_logs_otras_sedes`, cada 10 min: los cambios de estado. Pide desde el último que tiene (con 2 h de solape) y, la primera vez, **siete días**, en trozos de un día.
+- `vehiculos_otras_sedes`, cada 6 h: los coches de su empresa de BOLT.
+
+Las dos **no son críticas**: Barcelona sin horas un rato no tiñe de rojo la ingesta de Madrid. Sin db/181 aplicada lo dicen («falta db/181») y no fallan.
+
+El 07/10 BOLT daba, para Barcelona, 586 cambios de estado en 24 h de 18 conductores y 18 coches (15 activos, 3 desactivados).
 
 ## Los coches
 
