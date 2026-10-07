@@ -145,10 +145,10 @@
         throw new Error(j.msg || 'No se pudo preparar el Excel.');
       }
       const nombre = (decodeURIComponent((r.headers.get('Content-Disposition') || '').split('filename="')[1] || '').replace(/"$/, '')) || porDefecto;
-      const url = URL.createObjectURL(await r.blob());
-      const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
+      const fichero = URL.createObjectURL(await r.blob());
+      const a = Object.assign(document.createElement('a'), { href: fichero, download: nombre });
       document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setTimeout(() => URL.revokeObjectURL(fichero), 5000);
     } catch (e) {
       Dialogo.aviso({ titulo: 'No se pudo descargar', texto: e.message, tono: 'error' });
     } finally {
