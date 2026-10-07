@@ -57,15 +57,23 @@ function cabecera(c, ahora = Date.now()) {
   };
 }
 
-/** La lista de conversaciones, la más reciente primero. `filtro`: '', 'mias' o 'libres'. */
-function conversaciones({ buscar, filtro } = {}, usuarioId) {
+/**
+ * La lista de conversaciones, la más reciente primero, y cuántas hay en cada
+ * filtro. `filtro`: '', 'noleidas', 'mias' o 'libres'; `abierta`, la que se
+ * está mirando, que no se cae de «No leídas» al leerla.
+ */
+function conversaciones({ buscar, filtro, abierta } = {}, usuarioId) {
   return conTablas(async () => {
-    const filas = await chat.conversaciones({ buscar, filtro, usuarioId });
+    const [filas, n] = await Promise.all([
+      chat.conversaciones({ buscar, filtro, usuarioId, mantener: abierta }),
+      chat.cuentas(usuarioId),
+    ]);
     return {
       conversaciones: filas.map(c => ({
         ...cabecera(c),
         ultimoAt: c.ultimo_at, ultimoTexto: c.ultimo_texto, ultimoSentido: c.ultimo_sentido, sinLeer: c.sin_leer,
       })),
+      cuentas: { todas: n.todas, noleidas: n.noleidas, mias: n.mias, libres: n.libres },
       pausaMin: W.PAUSA_MIN,
       yo: usuarioId ? Number(usuarioId) : null,
     };

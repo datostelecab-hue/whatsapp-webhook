@@ -118,25 +118,47 @@ const QUIEN = `
  * nombre o teléfono; `filtro`: 'mias' (las que lleva `usuarioId`), 'libres' (las
  * que no lleva nadie) o nada (todas).
  */
-async function conversaciones({ buscar = '', filtro = '', usuarioId = null, limite = 200 } = {}) {
+async function conversaciones({ buscar = '', filtro = '', usuarioId = null, mantener = null, limite = 200 } = {}) {
   const q = String(buscar || '').trim();
-  const f = ['mias', 'libres'].includes(filtro) ? filtro : '';
+  const f = ['mias', 'libres', 'noleidas'].includes(filtro) ? filtro : '';
+  // «No leídas» filtra por lo que queda sin leer, que se calcula en la propia
+  // fila: por eso va fuera, sobre la subconsulta. La conversación abierta
+  // (`mantener`) no se cae de la lista al leerla, como en WhatsApp.
   const r = await db.consulta(
-    `SELECT c.telefono, c.nombre_perfil, c.ultimo_at, c.ultimo_texto, c.ultimo_sentido, c.ultima_entrante_at,
-            c.bot_pausado_hasta, q.nombre, q.que, q.conductor_id, ${FOTO},
-            c.asignado_a, btrim(concat_ws(' ', ua.nombre, ua.apellidos)) AS asignado,
-            (SELECT count(*) FROM whatsapp_mensaje m
-              WHERE m.telefono = c.telefono AND m.sentido = 'entrante'
-                AND m.ocurrido_at > COALESCE(c.leido_at, '-infinity'::timestamptz))::int AS sin_leer
-       FROM whatsapp_chat c
-       LEFT JOIN usuario ua ON ua.id = c.asignado_a
-       ${QUIEN}
-      WHERE ($1::text = '' OR c.telefono LIKE '%' || regexp_replace($1::text, '[^0-9]', '', 'g') || '%' AND regexp_replace($1::text, '[^0-9]', '', 'g') <> ''
-             OR q.nombre ILIKE '%' || $1::text || '%' OR c.nombre_perfil ILIKE '%' || $1::text || '%')
-        AND ($3::text = '' OR ($3::text = 'mias' AND c.asignado_a = $4::bigint) OR ($3::text = 'libres' AND c.asignado_a IS NULL))
-      ORDER BY c.ultimo_at DESC
-      LIMIT $2`, [q, limite, f, usuarioId == null ? null : Number(usuarioId)]);
+    `SELECT * FROM (
+       SELECT c.telefono, c.nombre_perfil, c.ultimo_at, c.ultimo_texto, c.ultimo_sentido, c.ultima_entrante_at,
+              c.bot_pausado_hasta, q.nombre, q.que, q.conductor_id, ${FOTO},
+              c.asignado_a, btrim(concat_ws(' ', ua.nombre, ua.apellidos)) AS asignado,
+              (SELECT count(*) FROM whatsapp_mensaje m
+                WHERE m.telefono = c.telefono AND m.sentido = 'entrante'
+                  AND m.ocurrido_at > COALESCE(c.leido_at, '-infinity'::timestamptz))::int AS sin_leer
+         FROM whatsapp_chat c
+         LEFT JOIN usuario ua ON ua.id = c.asignado_a
+         ${QUIEN}
+        WHERE ($1::text = '' OR c.telefono LIKE '%' || regexp_replace($1::text, '[^0-9]', '', 'g') || '%' AND regexp_replace($1::text, '[^0-9]', '', 'g') <> ''
+               OR q.nombre ILIKE '%' || $1::text || '%' OR c.nombre_perfil ILIKE '%' || $1::text || '%')
+          AND ($3::text IN ('', 'noleidas') OR ($3::text = 'mias' AND c.asignado_a = $4::bigint) OR ($3::text = 'libres' AND c.asignado_a IS NULL))
+     ) x
+     WHERE $3::text <> 'noleidas' OR x.sin_leer > 0 OR x.telefono = $5::varchar
+     ORDER BY x.ultimo_at DESC
+     LIMIT $2`, [q, limite, f, usuarioId == null ? null : Number(usuarioId), mantener ? W.soloDigitos(mantener) : null]);
   return r.rows;
+}
+
+/**
+ * Cuántas hay en cada filtro de la lista (todas, sin leer, las de `usuarioId` y
+ * las que no lleva nadie), sin mirar el buscador: son los números de los botones.
+ */
+async function cuentas(usuarioId) {
+  const r = await db.consulta(
+    `SELECT count(*)::int AS todas,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM whatsapp_mensaje m
+                                            WHERE m.telefono = c.telefono AND m.sentido = 'entrante'
+                                              AND m.ocurrido_at > COALESCE(c.leido_at, '-infinity'::timestamptz)))::int AS noleidas,
+            count(*) FILTER (WHERE c.asignado_a = $1::bigint)::int AS mias,
+            count(*) FILTER (WHERE c.asignado_a IS NULL)::int AS libres
+       FROM whatsapp_chat c`, [usuarioId == null ? null : Number(usuarioId)]);
+  return r.rows[0];
 }
 
 /**
@@ -304,7 +326,7 @@ async function purgar(dias) {
 }
 
 module.exports = {
-  guardar, pausaDe, pausar, reanudar, marcarLeido, conversaciones, chat, mensajes, purgar,
+  guardar, pausaDe, pausar, reanudar, marcarLeido, conversaciones, cuentas, chat, mensajes, purgar,
   adjunto, guardarAdjunto, asignar, asignarSiLibre, asignables,
   respuestas, crearRespuesta, cambiarRespuesta, borrarRespuesta,
   conductoresConTelefono, telefonoDeConductor,

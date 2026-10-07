@@ -32,7 +32,7 @@ Salió de un caso concreto: aquel día la cuenta estuvo bloqueada por un pago de
 - **Arriba del chat**: el teléfono, los enlaces a su ficha y a **sus llamadas** si es conductor, hasta cuándo está abierta la ventana, el estado del bot (con **Pausar el bot** o **Devolver al bot**) y **quién la lleva** (con **Me la quedo** o **Cambiar**).
 - **Abajo, la caja para escribir**, con la ventana abierta. Intro envía; Mayús + Intro hace un salto de línea. El **rayo** (o «/» al empezar a escribir) abre las **respuestas rápidas**.
 - **Con la ventana cerrada, una plantilla**: «Mandar una plantilla» enseña las aprobadas por Meta; al elegir una sale su texto con el nombre de pila ya puesto, una casilla por variable y cómo le va a llegar. Antes de mandarla se confirma, porque **se paga**.
-- **Arriba de la lista**: «Todas», «Mías» (las que lleva quien mira) y «Sin asignar». El lápiz abre una conversación con **cualquier conductor de alta** con teléfono en su ficha, aunque nunca haya escrito: la primera vez es con plantilla.
+- **Arriba de la lista**: «Todas», «No leídas» (las que tienen algo sin leer; la que está abierta no se cae al leerla, como en WhatsApp), «Mías» (las que lleva quien mira) y «Sin asignar», cada una con su número. Los números cuentan todas las conversaciones, sin mirar el buscador. El lápiz abre una conversación con **cualquier conductor de alta** con teléfono en su ficha, aunque nunca haya escrito: la primera vez es con plantilla.
 
 Abrir una conversación la da por leída. La pantalla se refresca sola: el chat abierto cada 4 segundos y la lista cada 10.
 

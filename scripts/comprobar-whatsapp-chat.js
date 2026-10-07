@@ -216,6 +216,14 @@ function igual(nombre, real, esperado) {
   documentos.foto = async id => (id === 9 ? { bytes: Buffer.from('jpg'), mime: 'image/jpeg' } : id === 10 ? { bytes: Buffer.from('<svg>'), mime: 'image/svg+xml' } : null);
   igual('La foto: la de la ficha; un SVG o nada, no', [(await svc.foto(9)).mime, await svc.foto(10), await svc.foto(11), await svc.foto('x')], ['image/jpeg', null, null, null]);
 
+  // Los filtros de la lista: «No leídas» y el número de cada uno.
+  let pedida = null;
+  repo.conversaciones = async o => { pedida = o; return []; };
+  repo.cuentas = async u => ({ todas: 26, noleidas: 9, mias: u === 7 ? 2 : 0, libres: 24 });
+  const lst = await svc.conversaciones({ filtro: 'noleidas', abierta: '34600111222' }, 7);
+  igual('No leídas: se pide el filtro y se mantiene la conversación abierta', [pedida.filtro, pedida.mantener, pedida.usuarioId], ['noleidas', '34600111222', 7]);
+  igual('Cada filtro con su número', lst.cuentas, { todas: 26, noleidas: 9, mias: 2, libres: 24 });
+
   // Sin db/186, la pantalla lo dice en vez de romperse.
   repo.conversaciones = async () => { throw Object.assign(new Error('column c.asignado_a does not exist'), { code: '42703' }); };
   igual('Sin db/186: lo dice', await svc.conversaciones({}, 7), { faltaMigracion: 'db/186' });

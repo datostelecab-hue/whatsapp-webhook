@@ -1,3 +1,9 @@
+<style>
+  body .tc-selector.w-filtros { gap: .25rem; flex-wrap: nowrap; }
+  body .tc-selector.w-filtros button { padding: .35rem .55rem; font-size: .75rem; white-space: nowrap; }
+  body .tc-selector.w-filtros [data-cuenta] { font-weight: 500; opacity: .75; font-variant-numeric: tabular-nums; }
+  body .tc-selector.w-filtros [data-cuenta]:empty { display: none; }
+</style>
 <div class="max-w-[1400px] mx-auto">
 
   <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -34,10 +40,11 @@
           <% } %>
         </div>
         <input type="hidden" id="w-filtro" value="">
-        <div class="tc-selector" data-para="w-filtro" aria-label="Qué conversaciones ver">
-          <button type="button" data-v="">Todas</button>
-          <button type="button" data-v="mias" title="Las que llevas tú">Mías</button>
-          <button type="button" data-v="libres" title="Las que no lleva nadie">Sin asignar</button>
+        <div class="tc-selector w-filtros" data-para="w-filtro" aria-label="Qué conversaciones ver">
+          <button type="button" data-v="">Todas <span data-cuenta="todas"></span></button>
+          <button type="button" data-v="noleidas" title="Las que tienen mensajes sin leer">No leídas <span data-cuenta="noleidas"></span></button>
+          <button type="button" data-v="mias" title="Las que llevas tú">Mías <span data-cuenta="mias"></span></button>
+          <button type="button" data-v="libres" title="Las que no lleva nadie">Sin asignar <span data-cuenta="libres"></span></button>
         </div>
       </div>
       <ul id="w-lista" class="flex-1 overflow-y-auto min-h-0" aria-label="Conversaciones">
@@ -130,7 +137,7 @@
     try {
       const q = $('#w-buscar').value.trim();
       const f = $('#w-filtro').value;
-      const r = await fetch('/whatsapp/api/conversaciones?' + new URLSearchParams({ q, filtro: f })).then(x => x.json());
+      const r = await fetch('/whatsapp/api/conversaciones?' + new URLSearchParams({ q, filtro: f, abierta: actual || '' })).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar');
       if (r.faltaMigracion) return avisar(r.faltaMigracion === 'db/185'
         ? 'Falta aplicar la migración <b>db/185</b> (en Migraciones): hasta entonces no se guarda ningún mensaje.'
@@ -138,6 +145,11 @@
       pausaMin = r.pausaMin || pausaMin;
       yo = r.yo || yo;
       lista = r.conversaciones;
+      // El número de cada filtro, en su botón.
+      Object.entries(r.cuentas || {}).forEach(([k, n]) => {
+        const el = document.querySelector(`.w-filtros [data-cuenta="${k}"]`);
+        if (el) el.textContent = n > 999 ? '999+' : String(n);
+      });
       pintarLista();
     } catch (e) {
       $('#w-lista').innerHTML = `<li class="px-4 py-6 text-sm text-telecab-red">${esc(e.message)}</li>`;
@@ -157,6 +169,7 @@
         ? 'Nadie con ese nombre o teléfono.'
         : f === 'mias' ? 'No llevas ninguna conversación. Se te asigna la que contestas, o la que te quedas desde arriba del chat.'
         : f === 'libres' ? 'Todas las conversaciones tienen a alguien que las lleva.'
+        : f === 'noleidas' ? 'No hay nada sin leer.'
         : 'Todavía no hay mensajes. El chat se guarda desde que se aplicó db/185: Meta no da los anteriores.'}</li>`;
       return;
     }
