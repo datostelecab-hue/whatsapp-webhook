@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-07 · Barcelona en el ERP: se elige en el login, con su planificador y sus horas
+
+«En el login ahora va a aparecer Barcelona o Madrid.» Barcelona no tiene fichas, altas ni libranzas: sus conductores son sus cuentas de BOLT y sus matrículas, los coches de su empresa de BOLT. Tiene un **planificador** (cada uno en una matrícula, de día o de noche, **fijo hasta que se cambia**, que es lo que eligió Camilo), un **reporte de horas** y su **Visibilidad**. Cualquier usuario puede entrar a Barcelona. Sus horas, sus coches y sus pedidos van en **tablas suyas** (db/181, db/182), no en las de Madrid: si entraran en Flota viva o en `bolt_order`, sus conductores saldrían como NN en Control y en la Bitácora, y su dinero se sumaría a la Visibilidad de Madrid. Las horas se cuentan con **la misma regla que Madrid** (`repartoTurnos`, con el plan de Barcelona): la plaza de día cuenta de 00:00 a 24:00 y la de noche de 12:00 a 12:00. Quien tenía plaza y no hizo ni un minuto, **No salió**. → [[Barcelona]] · [[Sedes]]
+
 ## 2026-10-07 · Las alertas de Control dejan de mandar WhatsApp
 
 «Desactiva completamente esos avisos, no los necesitamos ya.» Cada alerta era una plantilla de WhatsApp a los dos controladores, y Meta cobra cada plantilla entregada desde el 01/07/2025. Eran unas 600-700 al día, casi todas de «no vuelve a la M-30» y de «rueda suelto»: unos 30 € en dos días. Ese día la cuenta se bloqueó por el pago. `db/180` pasa el modo a `test`: las alertas se siguen viendo en pantalla, pero no sale ningún WhatsApp. Se vuelven a encender desde *Ajustes*, sin migración. Los avisos de velocidad y el de turnos a los conductores no se tocan. → [[Control Alertas]]

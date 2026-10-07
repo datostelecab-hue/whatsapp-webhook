@@ -162,7 +162,7 @@ function cortes(ini, fin) {
  * Devuelve:
  *   porClave    Map('fecha|turno' → { viajeSeg, esperaSeg, personas: Set,
  *               nnSeg, nnPersonas: Set })
- *   porPersona  Map(persona → Map('fecha|turno' → { seg, nn }))
+ *   porPersona  Map(persona → Map('fecha|turno' → { seg, nn, viajeSeg, esperaSeg }))
  */
 function repartir(intervalos, planDe) {
   const porPersona = new Map();
@@ -184,8 +184,10 @@ function repartir(intervalos, planDe) {
     if (et.nn) { c.nnSeg += seg; c.nnPersonas.add(persona); }
     if (!resultado.has(persona)) resultado.set(persona, new Map());
     const r = resultado.get(persona);
-    if (!r.has(k)) r.set(k, { seg: 0, nn: et.nn });
-    r.get(k).seg += seg;
+    if (!r.has(k)) r.set(k, { seg: 0, nn: et.nn, viajeSeg: 0, esperaSeg: 0 });
+    const x = r.get(k);
+    x.seg += seg;
+    if (situacion === 'viaje') x.viajeSeg += seg; else x.esperaSeg += seg;
   };
 
   porPersona.forEach((todos, persona) => {

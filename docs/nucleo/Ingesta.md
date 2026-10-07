@@ -43,6 +43,7 @@ Cada una declara `cadaMin`, si es `critica` y, las caras, un `reintentoMin`. Tod
 | `auditoria_flota` | Mapon | 1440 min | no | `auditoria_km` y compañía; reintento cada 60 min |
 | `state_logs_otras_sedes` | BOLT | 10 min | no | `sede_bolt_state_log`: los cambios de estado de las empresas de **otras sedes** (Barcelona), aparte de los de Madrid. La primera vez, 7 días ([[Sedes]]) |
 | `vehiculos_otras_sedes` | BOLT | 360 min | no | `sede_bolt_vehiculo`: los coches de BOLT de otras sedes, para el planificador de Barcelona |
+| `pedidos_otras_sedes` | BOLT | 60 min | no | `sede_bolt_order` (db/182): los pedidos de otras sedes, 48 h de ventana como `orders_bolt`; el neto y los viajes de la Visibilidad de Barcelona |
 | `tickets_formulario` | formulario | 10 min | no | tickets del formulario de conductores. **Solo lee lo nuevo** y no escribe en la hoja. No corrió hasta el 25/09/2026: estaba anidada por error dentro de `unidades_mapon` (ver [[Ticketera]]) |
 
 **`critica` no es decoración:** BOLT cayéndose es una alarma (`❌`), Mapon cayéndose es lo normal (`⚠️`). Que Mapon se caiga no puede teñir de rojo la ingesta de la que vive el cuadrante.

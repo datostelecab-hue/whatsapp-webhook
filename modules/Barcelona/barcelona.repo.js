@@ -111,4 +111,76 @@ async function asignar({ sede, matricula, turno, driverUuid, desde, usuarioId })
   });
 }
 
-module.exports = { faltaMigracion, conductores, coches, asignacionesEn, asignacionesEntre, asignar };
+/**
+ * Los cambios de estado de BOLT de la sede en [iniMs, finMs). `veh` sale ya
+ * como matrícula cuando se conoce el coche (si no, su uuid de BOLT).
+ */
+async function apuntesEntre(sede, iniMs, finMs) {
+  const r = await db.consulta(
+    `SELECT l.driver_uuid AS uuid, COALESCE(v.matricula, l.vehiculo_uuid) AS veh, l.estado,
+            (extract(epoch FROM l.ocurrido_at) * 1000)::bigint AS t
+       FROM sede_bolt_state_log l
+       LEFT JOIN sede_bolt_vehiculo v ON v.uuid = l.vehiculo_uuid
+      WHERE l.sede = $1 AND l.ocurrido_at >= $2::timestamptz AND l.ocurrido_at < $3::timestamptz`,
+    [sede, new Date(iniMs).toISOString(), new Date(finMs).toISOString()]);
+  return r.rows.map(x => ({ uuid: x.uuid, veh: x.veh, estado: x.estado, t: Number(x.t) }));
+}
+
+/**
+ * Cómo se traduce cada estado de BOLT al nuestro, y si es trabajo: el MISMO
+ * catálogo que Madrid (fv_estado_bolt + fv_cat_situacion, de Flota viva). Si
+ * mañana BOLT estrena un estado y se clasifica allí, Barcelona lo hereda.
+ */
+async function situaciones() {
+  const r = await db.consulta(`SELECT estado, situacion FROM fv_estado_bolt`);
+  return new Map(r.rows.map(x => [x.estado, x.situacion]));
+}
+
+/**
+ * El neto y los pedidos terminados de la sede en [iniMs, finMs) (db/182), por
+ * la hora en que se pidieron, como en Madrid.
+ */
+async function dineroEntre(sede, iniMs, finMs) {
+  const r = await db.consulta(
+    `SELECT COALESCE(round(sum(neto) FILTER (WHERE estado = 'finished'), 2), 0)::float AS neto,
+            count(*) FILTER (WHERE estado = 'finished')::int AS viajes
+       FROM sede_bolt_order
+      WHERE sede = $1 AND creado_ts >= $2::timestamptz AND creado_ts < $3::timestamptz`,
+    [sede, new Date(iniMs).toISOString(), new Date(finMs).toISOString()]);
+  return { neto: Number(r.rows[0].neto) || 0, viajes: Number(r.rows[0].viajes) || 0 };
+}
+
+/**
+ * El neto y los pedidos terminados de cada día natural (en Madrid) entre dos
+ * fechas, para la serie del mes: Map('AAAA-MM-DD' → { neto, viajes }).
+ */
+async function dineroPorDia(sede, desde, hasta) {
+  const r = await db.consulta(
+    `SELECT to_char((creado_ts AT TIME ZONE 'Europe/Madrid')::date, 'YYYY-MM-DD') AS dia,
+            COALESCE(round(sum(neto) FILTER (WHERE estado = 'finished'), 2), 0)::float AS neto,
+            count(*) FILTER (WHERE estado = 'finished')::int AS viajes
+       FROM sede_bolt_order
+      WHERE sede = $1
+        AND creado_ts >= ($2::date)::timestamp AT TIME ZONE 'Europe/Madrid'
+        AND creado_ts < ($3::date + 1)::timestamp AT TIME ZONE 'Europe/Madrid'
+      GROUP BY 1`, [sede, desde, hasta]);
+  return new Map(r.rows.map(x => [x.dia, { neto: Number(x.neto) || 0, viajes: Number(x.viajes) || 0 }]));
+}
+
+/** La configuración de la Visibilidad de la sede (capacidad, meta, coches), o null. */
+async function leerConfigVisibilidad(sede) {
+  const r = await db.consulta(`SELECT valor FROM visibilidad_config WHERE clave = $1`, ['parametros_' + sede]);
+  return r.rows[0] ? r.rows[0].valor : null;
+}
+
+async function guardarConfigVisibilidad(sede, valor) {
+  await db.consulta(
+    `INSERT INTO visibilidad_config (clave, valor, actualizado_at) VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_at = now()`,
+    ['parametros_' + sede, JSON.stringify(valor)]);
+}
+
+module.exports = {
+  faltaMigracion, conductores, coches, asignacionesEn, asignacionesEntre, asignar,
+  apuntesEntre, situaciones, dineroEntre, dineroPorDia, leerConfigVisibilidad, guardarConfigVisibilidad,
+};

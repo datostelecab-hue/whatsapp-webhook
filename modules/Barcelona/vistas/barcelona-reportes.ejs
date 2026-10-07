@@ -1,0 +1,97 @@
+<div class="max-w-[1100px] mx-auto">
+
+  <div class="mb-5">
+    <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+      <i class="fa-solid fa-chart-pie text-telecab-gold"></i> Reportes · Barcelona
+    </h1>
+    <p class="text-sm text-telecab-muted mt-1 max-w-[75ch]">
+      Lo que se descarga. Las horas salen de BOLT Barcelona y de su planificador; lo que se mira en pantalla
+      vive en <a href="/barcelona/visibilidad" class="text-telecab-gold hover:underline">Visibilidad</a>.
+    </p>
+  </div>
+
+  <div class="grid sm:grid-cols-2 gap-3">
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 sm:col-span-2">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-clock text-telecab-gold text-lg mt-0.5"></i>
+        <div class="flex-1">
+          <div class="font-semibold text-telecab-text">Reporte de horas</div>
+          <p class="text-sm text-telecab-muted mt-0.5 max-w-[80ch]">
+            Un Excel con las horas de cada conductor en <b>su turno</b>: quien tiene plaza de <b>día</b> cuenta de 00:00 a 24:00
+            y quien la tiene de <b>noche</b>, de 12:00 a 12:00 del día siguiente, como en Madrid. Si tenía plaza y no hizo
+            ni un minuto, <b>No salió</b>. Trae también el resumen por conductor y quién trabajó sin plaza.
+          </p>
+          <p class="text-xs text-telecab-muted mt-2">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            Cuenta el trabajo (viaje y espera), no el descanso. Hasta 31 días de una vez. La noche del último día
+            sigue creciendo hasta las 12:00 del día siguiente: hasta entonces el Excel lo marca como parcial.
+          </p>
+          <div class="flex flex-wrap items-end gap-3 mt-3">
+            <label class="text-xs text-telecab-muted">Desde
+              <input id="r-desde" class="js-fecha block mt-1 w-32 px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-lg text-sm text-telecab-text"
+                     placeholder="dd/mm/aaaa" readonly>
+            </label>
+            <label class="text-xs text-telecab-muted">Hasta
+              <input id="r-hasta" class="js-fecha block mt-1 w-32 px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-lg text-sm text-telecab-text"
+                     placeholder="dd/mm/aaaa" readonly>
+            </label>
+            <div class="flex gap-1.5">
+              <button type="button" data-rapido="ayer" class="px-2.5 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text">Ayer</button>
+              <button type="button" data-rapido="semana" class="px-2.5 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text">Últimos 7 días</button>
+              <button type="button" data-rapido="mes" class="px-2.5 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text">Este mes</button>
+            </div>
+            <button id="r-excel" type="button" class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+              <i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const HOY = '<%= hoy %>';
+  const aDdmm = iso => iso.split('-').reverse().join('/');
+  const aIso = v => { const m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
+  // Sumar días a mediodía UTC: nunca cae en el día equivocado por el cambio de hora.
+  const sumar = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+
+  const poner = (d, h) => { $('#r-desde').value = aDdmm(d); $('#r-hasta').value = aDdmm(h); };
+  const RAPIDO = {
+    ayer: () => poner(sumar(HOY, -1), sumar(HOY, -1)),
+    semana: () => poner(sumar(HOY, -7), sumar(HOY, -1)),
+    mes: () => poner(HOY.slice(0, 8) + '01', HOY),
+  };
+  document.querySelectorAll('[data-rapido]').forEach(b => b.addEventListener('click', () => RAPIDO[b.dataset.rapido]()));
+  RAPIDO.ayer();
+
+  $('#r-excel').addEventListener('click', async () => {
+    const d = aIso($('#r-desde').value), h = aIso($('#r-hasta').value) || d;
+    if (!d) return Dialogo.aviso({ titulo: 'Falta la fecha', texto: 'Elige desde qué día quieres el reporte.', tono: 'aviso' });
+    const boton = $('#r-excel');
+    const antes = boton.innerHTML;
+    boton.disabled = true;
+    boton.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Preparando…';
+    try {
+      const r = await fetch(`/barcelona/reporte/excel?desde=${d}&hasta=${h}`);
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.msg || 'No se pudo preparar el Excel.');
+      }
+      const nombre = (decodeURIComponent((r.headers.get('Content-Disposition') || '').split('filename="')[1] || '').replace(/"$/, '')) || 'Horas Barcelona.xlsx';
+      const url = URL.createObjectURL(await r.blob());
+      const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo descargar', texto: e.message, tono: 'error' });
+    } finally {
+      boton.disabled = false;
+      boton.innerHTML = antes;
+    }
+  });
+})();
+</script>

@@ -11,6 +11,8 @@
 // barcelona.horas.js. Ver docs/modulos/Barcelona.md.
 
 const repo = require('./barcelona.repo');
+const H = require('./barcelona.horas');
+const R = require('../../services/flotaViva/repartoTurnos');
 
 const SEDE = 'barcelona';
 const TURNOS = ['dia', 'noche'];
@@ -118,4 +120,64 @@ async function asignar({ matricula, turno, conductor, desde } = {}, usuarioId) {
   return { ...r, ...(await tablero({ fecha: d })) };
 }
 
-module.exports = { SEDE, tablero, asignar, hoyMadrid };
+// ── EL REPORTE DE HORAS ──────────────────────────────────────────────────────
+
+const MAX_DIAS_REPORTE = 31;
+
+/**
+ * Los ratos de trabajo de la sede en [iniMs, finMs), con el catálogo de estados
+ * de Madrid. Se leen los apuntes desde un día antes: el último de antes de la
+ * ventana dice en qué estado estaba cada uno al empezar.
+ */
+async function ratos(iniMs, finMs, opciones) {
+  const [apuntes, mapa] = await Promise.all([
+    repo.apuntesEntre(SEDE, iniMs - MS_DIA, finMs),
+    repo.situaciones(),
+  ]);
+  return H.intervalos(apuntes, e => mapa.get(e) || 'otro', iniMs, finMs, opciones);
+}
+
+/**
+ * EL REPORTE DE HORAS de unas fechas (hasta 31 días). Sin fechas, ayer.
+ * Cada fecha lleva su turno de día (00:00→24:00) y su noche (12:00→12:00 del
+ * día siguiente): por eso se leen los ratos desde el mediodía de la víspera
+ * hasta el mediodía del día después.
+ */
+async function reporte({ desde, hasta } = {}) {
+  const hoy = hoyMadrid();
+  let d1 = esFecha(desde) ? desde : sumar(hoy, -1);
+  let d2 = esFecha(hasta) ? hasta : d1;
+  if (d2 < d1) [d1, d2] = [d2, d1];
+  if (d2 > hoy) d2 = hoy;
+  if (d1 > d2) d1 = d2;
+  if (H.fechasEntre(d1, d2).length > MAX_DIAS_REPORTE) throw new Error(`El reporte va de un día a ${MAX_DIAS_REPORTE}: elige un rango más corto.`);
+
+  const iniMs = R.instante(R.sumarDias(d1, -1), R.INICIO.noche);
+  const finMs = Math.min(Date.now(), R.instante(R.sumarDias(d2, 1), R.INICIO.noche));
+  try {
+    const [ivs, asignaciones, conductores, coches] = await Promise.all([
+      ratos(iniMs, finMs),
+      repo.asignacionesEntre(SEDE, R.sumarDias(d1, -1), R.sumarDias(d2, 1)),
+      repo.conductores(SEDE),
+      repo.coches(SEDE),
+    ]);
+    return H.informe({ desde: d1, hasta: d2, ivs, asignaciones, conductores, coches });
+  } catch (e) {
+    if (repo.faltaMigracion(e)) return { faltaMigracion: true, desde: d1, hasta: d2 };
+    throw e;
+  }
+}
+
+/** El Excel del reporte: { bytes, nombre }. */
+async function reporteExcel(q = {}) {
+  const datos = await reporte(q);
+  if (datos.faltaMigracion) throw new Error('Falta aplicar la migración db/181 (en Migraciones): Barcelona aún no tiene horas.');
+  const bytes = await require('./barcelona.excel').generar(datos);
+  const dm = iso => iso.split('-').reverse().join('-');
+  const nombre = datos.desde === datos.hasta
+    ? `Horas Barcelona ${dm(datos.desde)}.xlsx`
+    : `Horas Barcelona ${dm(datos.desde)} a ${dm(datos.hasta)}.xlsx`;
+  return { bytes, nombre };
+}
+
+module.exports = { SEDE, tablero, asignar, hoyMadrid, ratos, reporte, reporteExcel };

@@ -19,6 +19,7 @@ Una sola constante dice cuál es la sede que se vigila: `SEDE_FLOTA = 'madrid'` 
 | Las **cuentas de BOLT** de sus conductores | `conductor_externo` con `bolt_company_id = 329430`, **sin ficha** (`conductor_id` vacío) | db/174 + el padrón de cada hora | Ninguna pantalla |
 | Las **horas** de BOLT | `sede_bolt_state_log` (los cambios de estado, tal cual) | db/181, 07/10/2026 | Planificador, reporte y Visibilidad de Barcelona |
 | Los **coches de BOLT** | `sede_bolt_vehiculo` (matrícula, modelo, estado en BOLT) | db/181, 07/10/2026 | Planificador de Barcelona |
+| Los **pedidos** de BOLT | `sede_bolt_order` (quién, cuándo, estado y neto) | db/182, 07/10/2026 | Visibilidad de Barcelona (neto, viajes, €·hora) |
 | El **planificador** | `sede_asignacion`: matrícula + turno + cuenta de BOLT, fija hasta que se cambia | db/181, 07/10/2026 | Barcelona |
 | Las **fichas** de las personas | — | no hay ni hacen falta: Barcelona trabaja con el nombre y el teléfono de BOLT | — |
 
@@ -30,8 +31,9 @@ Camilo: «en el login ahora va a aparecer Barcelona o Madrid». Barcelona no nec
 
 - `state_logs_otras_sedes`, cada 10 min: los cambios de estado. Pide desde el último que tiene (con 2 h de solape) y, la primera vez, **siete días**, en trozos de un día.
 - `vehiculos_otras_sedes`, cada 6 h: los coches de su empresa de BOLT.
+- `pedidos_otras_sedes`, cada hora: sus pedidos, con 48 h de ventana como los de Madrid (un pedido madura durante horas). La primera vez, siete días. Van a `sede_bolt_order` (db/182) y no a `bolt_order`, que no sabe de empresas: lo que entra ahí lo suman la Visibilidad, la recaudación y las nóminas de Madrid.
 
-Las dos **no son críticas**: Barcelona sin horas un rato no tiñe de rojo la ingesta de Madrid. Sin db/181 aplicada lo dicen («falta db/181») y no fallan.
+Las tres **no son críticas**: Barcelona sin horas un rato no tiñe de rojo la ingesta de Madrid. Sin db/181 (o db/182, los pedidos) aplicada lo dicen («falta db/181») y no fallan.
 
 El 07/10 BOLT daba, para Barcelona, 586 cambios de estado en 24 h de 18 conductores y 18 coches (15 activos, 3 desactivados).
 

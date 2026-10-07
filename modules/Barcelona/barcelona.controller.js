@@ -28,10 +28,28 @@ const responde = (fn, codigo = 500) => async (req, res) => {
   }
 };
 
+/** Envoltorio de las descargas: el fichero, o el error legible. */
+const descarga = (fn, mime) => async (req, res) => {
+  try {
+    const { bytes, nombre } = await fn(req);
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(bytes);
+  } catch (e) {
+    console.error(`❌ [Barcelona] ${req.path}: ${e.stack || e.message}`);
+    res.status(400).json({ status: 'error', msg: e.message });
+  }
+};
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 // ── Las pantallas ──────────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {
   res.render('barcelona-planificador', { titulo: 'Barcelona · Planificador', seccion: 'bcn-planificador', layout: LAYOUT });
+});
+
+router.get('/reportes', (req, res) => {
+  res.render('barcelona-reportes', { titulo: 'Barcelona · Reportes', seccion: 'bcn-reportes', layout: LAYOUT, hoy: barcelona.hoyMadrid() });
 });
 
 // ── El planificador ────────────────────────────────────────────────────────
@@ -39,5 +57,11 @@ router.get('/', (req, res) => {
 router.get('/api/tablero', responde(req => barcelona.tablero({ fecha: req.query.fecha })));
 
 router.post('/api/asignar', responde(async req => barcelona.asignar(req.body || {}, await actor.idDe(req)), 400));
+
+// ── El reporte de horas ────────────────────────────────────────────────────
+//   /barcelona/reporte/excel                          → ayer
+//   /barcelona/reporte/excel?desde=2026-10-01&hasta=2026-10-07
+
+router.get('/reporte/excel', descarga(req => barcelona.reporteExcel({ desde: req.query.desde, hasta: req.query.hasta }), XLSX));
 
 module.exports = router;

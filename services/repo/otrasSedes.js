@@ -97,4 +97,65 @@ async function guardarVehiculos(sede, companyId, vehiculos) {
   }
 }
 
-module.exports = { guardarStateLogs, ultimoLog, guardarVehiculos };
+/**
+ * Guarda los pedidos de una empresa de otra sede (db/182). Un pedido madura
+ * durante horas: si ya estaba, se actualiza su estado y su dinero. Devuelve
+ * cuántos ha tocado, o null sin db/182.
+ */
+async function guardarPedidos(sede, companyId, pedidos) {
+  const porClave = new Map();
+  for (const o of pedidos || []) {
+    const driver = o.driver_uuid || null;
+    const creado = Number(o.order_created_timestamp);
+    if (!driver || !creado) continue;
+    const p = o.order_price || {};
+    porClave.set(`${driver}|${creado}`, {
+      ref: String(o.id || o.order_id || o.order_reference || '').slice(0, 64) || null,
+      driver, creado,
+      fin: Number(o.order_finished_timestamp) || 0,
+      estado: o.order_status ? String(o.order_status).slice(0, 24) : null,
+      mat: String(o.vehicle_license_plate || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 16) || null,
+      neto: Number(p.net_earnings) || 0, propina: Number(p.tip) || 0, peaje: Number(p.toll_fee) || 0,
+    });
+  }
+  const filas = [...porClave.values()];
+  if (!filas.length) return 0;
+  try {
+    const r = await db.consulta(
+      `INSERT INTO sede_bolt_order
+         (sede, company_id, order_ref, driver_uuid, matricula, estado, creado_ts, finalizado_ts, neto, propina, peaje)
+       SELECT $10, $11, x.ref, x.driver, x.mat, x.estado, to_timestamp(x.creado),
+              CASE WHEN x.fin > 0 THEN to_timestamp(x.fin) END, x.neto, x.propina, x.peaje
+         FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::bigint[], $6::bigint[],
+                     $7::numeric[], $8::numeric[], $9::numeric[])
+              AS x(ref, driver, mat, estado, creado, fin, neto, propina, peaje)
+       ON CONFLICT (driver_uuid, creado_ts) DO UPDATE SET
+         estado = EXCLUDED.estado,
+         finalizado_ts = COALESCE(EXCLUDED.finalizado_ts, sede_bolt_order.finalizado_ts),
+         matricula = COALESCE(EXCLUDED.matricula, sede_bolt_order.matricula),
+         neto = EXCLUDED.neto, propina = EXCLUDED.propina, peaje = EXCLUDED.peaje,
+         actualizado_at = now()
+       RETURNING id`,
+      [filas.map(x => x.ref), filas.map(x => x.driver), filas.map(x => x.mat), filas.map(x => x.estado),
+       filas.map(x => x.creado), filas.map(x => x.fin), filas.map(x => x.neto), filas.map(x => x.propina),
+       filas.map(x => x.peaje), sede, companyId]);
+    return r.rowCount;
+  } catch (e) {
+    if (sinTablas(e)) return null;
+    throw e;
+  }
+}
+
+/** El pedido más reciente guardado de una sede (epoch en segundos), o null si no hay o falta db/182. */
+async function ultimoPedido(sede) {
+  try {
+    const r = await db.consulta(
+      `SELECT extract(epoch FROM max(creado_ts))::bigint AS t FROM sede_bolt_order WHERE sede = $1`, [sede]);
+    return r.rows[0] && r.rows[0].t != null ? Number(r.rows[0].t) : null;
+  } catch (e) {
+    if (sinTablas(e)) return null;
+    throw e;
+  }
+}
+
+module.exports = { guardarStateLogs, ultimoLog, guardarVehiculos, guardarPedidos, ultimoPedido };

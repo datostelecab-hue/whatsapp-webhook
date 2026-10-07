@@ -362,6 +362,42 @@ const TAREAS = {
       return { registros: vistos, detalle };
     },
   },
+
+  // Sus pedidos (db/182): el neto y los viajes de la Visibilidad de Barcelona.
+  // Como `orders_bolt`: cada hora y 48 horas de ventana, porque un pedido madura
+  // durante horas. La primera vez, siete días en trozos de uno.
+  pedidos_otras_sedes: {
+    fuente: 'bolt',
+    etiqueta: 'Órdenes de BOLT · otras sedes',
+    cadaMin: Number(process.env.INGESTA_PEDIDOS_OTRAS_SEDES_MIN) || 60,
+    critica: false,
+    async ejecutar() {
+      const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
+      const repo = require('./repo/otrasSedes');
+      const ahora = Math.floor(Date.now() / 1000);
+      const DIA = 86400, VENTANA = 48 * 3600, PRIMERA_VEZ = 7 * DIA;
+      const detalle = {};
+      let tocados = 0;
+      for (const f of CONFIG_BOLT.flotasOtrasSedes || []) {
+        const ultimo = await repo.ultimoPedido(f.sede);
+        let desde = ultimo ? Math.max(Math.min(ultimo, ahora) - VENTANA, ahora - PRIMERA_VEZ) : ahora - PRIMERA_VEZ;
+        let traidos = 0, deEsta = 0, sinTablas = false;
+        while (desde < ahora && !sinTablas) {
+          const hasta = Math.min(desde + DIA, ahora);
+          const pedidos = await fetchAllPaginated('/fleetIntegration/v1/getFleetOrders',
+            { company_ids: [f.id], company_id: f.id, time_range_filter_type: 'created', start_ts: desde, end_ts: hasta },
+            'orders', 1000, `ingesta orders ${f.id}`);
+          traidos += pedidos.length;
+          const n = await repo.guardarPedidos(f.sede, f.id, pedidos);
+          if (n == null) sinTablas = true; else deEsta += n;
+          desde = hasta;
+        }
+        tocados += deEsta;
+        detalle[f.sede] = sinTablas ? 'falta db/182' : { traidos, tocados: deEsta };
+      }
+      return { registros: tocados, detalle };
+    },
+  },
 };
 
 /** Cuándo se ejecutó por última vez cada tarea, con acierto o sin él. */
