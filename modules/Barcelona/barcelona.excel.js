@@ -166,4 +166,97 @@ async function generar(datos) {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-module.exports = { generar };
+// ── LA SEMANA ────────────────────────────────────────────────────────────────
+// Una fila por conductor y de lunes a domingo sus horas efectivas en BOLT (su
+// turno de día más su turno de noche). Cada día con algo que contar lleva su
+// NOTA (el globo de Excel): cuánto fue de día y cuánto de noche, en qué plaza
+// estaba, o que tenía plaza y no salió. De menor a mayor.
+const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const h1t = n => String(Math.round(n * 10) / 10).replace('.', ',');
+const TONO_SEMANA = {
+  rojo: { bg: 'FFFEE2E2', fg: 'FF991B1B' },
+  futuro: { bg: 'FFF3F4F6', fg: 'FF9CA3AF' },
+  curso: { bg: 'FFEFF6FF', fg: 'FF1E40AF' },
+  nada: { bg: null, fg: 'FFB0B5BD' },
+};
+
+/** Lo que se escribe en la celda de un día, su color y su nota. */
+function celdaSemana(x) {
+  const plaza = x.plazas.length ? x.plazas.map(p => `${p.matricula} (${TURNO[p.turno].toLowerCase()})`).join(', ') : '';
+  if (x.estado === 'futuro') return { valor: '', tono: TONO_SEMANA.futuro };
+  const partes = [];
+  if (x.dia && x.noche) partes.push(`Día ${h1t(x.dia)} h · Noche ${h1t(x.noche)} h`);
+  else if (x.noche) partes.push(`De noche: ${h1t(x.noche)} h`);
+  if (plaza) partes.push(`Plaza: ${plaza}`);
+  else if (x.horas) partes.push('Sin plaza en el planificador');
+  if (x.estado === 'abierto') partes.push('El día aún no ha terminado: su noche cuenta hasta las 12:00 del día siguiente.');
+  if (x.noSalio) return { valor: 0, num: true, tono: TONO_SEMANA.rojo, nota: `Tenía plaza (${plaza}) y no salió.` };
+  if (!x.horas) return { valor: x.estado === 'abierto' ? '' : '—', tono: x.estado === 'abierto' ? TONO_SEMANA.curso : TONO_SEMANA.nada, nota: partes.join('\n') || null };
+  return { valor: x.horas, num: true, tono: x.estado === 'abierto' ? TONO_SEMANA.curso : null, nota: partes.join('\n') || null };
+}
+
+/**
+ * @param {Object} datos  lo que devuelve barcelona.service.reporteSemanal()
+ * @returns {Promise<Buffer>}
+ */
+async function generarSemana(datos) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Telecab';
+  wb.created = new Date();
+  const logo = E.registrarLogo(wb);
+  const ws = wb.addWorksheet('Semana');
+  const r = datos.resumen;
+  const cols = [
+    { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
+    ...datos.fechas.map((f, i) => ({ titulo: `${DIAS_CORTOS[i]} ${f.slice(8, 10)}/${f.slice(5, 7)}`, ancho: 10 })),
+    { titulo: 'Total', ancho: 9 }, { titulo: 'Días', ancho: 7 }, { titulo: 'Media', ancho: 8 },
+  ];
+  ws.columns = cols.map(c => ({ width: c.ancho }));
+  let fila = E.bandaCabecera(ws, logo, `Horas semanales · Barcelona${r.cerrada ? '' : ' · EN CURSO'}`,
+    `Del lunes ${esFecha(datos.lunes)} al domingo ${esFecha(datos.domingo)} · ${r.conductores} conductores · ${h1t(r.horas)} h · ` +
+    `${r.noSalio ? r.noSalio + ' día(s) con plaza sin salir · ' : ''}de menor a mayor · generado el ${sello()}` +
+    (r.cerrada ? '' : ' · LA SEMANA NO HA TERMINADO: los días en azul aún suman y los grises están por venir'), cols.length);
+  ws.mergeCells(3, 1, 3, cols.length);
+  const ley = ws.getCell(3, 1);
+  ley.value = 'Horas efectivas en BOLT (viaje + espera; el descanso no cuenta) de cada día: su turno de día (00:00 a 24:00) más su turno ' +
+    'de noche (12:00 a 12:00 del día siguiente), como el reporte diario · 0 en rojo = tenía plaza y no salió · — = ese día no trabajó ' +
+    '· pasa el ratón por un día para ver el detalle';
+  ley.font = { size: 9, italic: true, color: { argb: E.TENUE } };
+  ley.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
+  ws.getRow(3).height = 26;
+  const filaCab = fila;
+  fila = E.cabeceraTabla(ws, fila, cols.map(c => c.titulo));
+  ws.views = [{ state: 'frozen', ySplit: filaCab, xSplit: 1 }];
+
+  datos.filas.forEach(p => {
+    const rr = ws.getRow(fila++);
+    const celda = (n, valor, { num, tono, nota, negrita } = {}) => {
+      const c = rr.getCell(n);
+      c.value = valor;
+      c.border = E.TODOS_BORDES;
+      c.alignment = { vertical: 'middle', horizontal: cols[n - 1].izq ? 'left' : 'center' };
+      c.font = { size: 10, bold: !!negrita, color: { argb: E.TEXTO } };
+      if (num) c.numFmt = '0.0';
+      if (tono) {
+        if (tono.bg) c.fill = E.relleno(tono.bg);
+        c.font = { size: 10, bold: !!negrita || tono === TONO_SEMANA.rojo, color: { argb: tono.fg } };
+      }
+      if (nota) c.note = nota;
+    };
+    celda(1, p.nombre + (p.activa ? '' : ' (ya no activa en BOLT)'));
+    celda(2, p.telefono);
+    p.celdas.forEach((x, i) => { const d = celdaSemana(x); celda(3 + i, d.valor, d); });
+    celda(10, p.total, { num: true, negrita: true });
+    celda(11, p.dias);
+    celda(12, p.media, { num: true });
+    rr.height = 18;
+  });
+  if (!datos.filas.length) {
+    ws.getRow(fila).getCell(1).value = 'Ningún conductor activo ni con horas esa semana.';
+    ws.getRow(fila).getCell(1).font = { size: 10, italic: true, color: { argb: E.TENUE } };
+  }
+  ws.autoFilter = { from: { row: filaCab, column: 1 }, to: { row: filaCab, column: cols.length } };
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+module.exports = { generar, generarSemana };

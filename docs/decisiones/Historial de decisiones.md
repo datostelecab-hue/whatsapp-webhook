@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-07 · Barcelona: las horas semanales de cada conductor
+
+En los reportes de Barcelona hay un Excel semanal: cada conductor, de lunes a domingo, con sus horas efectivas en BOLT (su turno de día más su turno de noche, la regla del reporte diario), el total, los días trabajados y la media. Va de menor a mayor, un 0 en rojo marca que tenía plaza y no salió, y se puede sacar la semana en curso. La semana se elige con el calendario de la casa: primero puse una lista de semanas y Camilo pidió el selector de fechas. → [[Barcelona]]
+
 ## 2026-10-07 · El chat de WhatsApp: todo guardado, y escribir gratis con la ventana abierta
 
 Lo que escribían los conductores al bot no se guardaba en ningún sitio. Tras el bloqueo por pago de ese día hubo que cruzar a mano los fallos de Meta con los turnos para saber a quién no le había llegado nada, y no había forma de escribirles. Desde db/185 cada mensaje que entra o sale por el número queda guardado, con su origen: el bot, la oficina, una alerta, un aviso de velocidad o de turnos. El módulo /whatsapp lo enseña como un chat y deja escribir **solo con la ventana de 24 h abierta**, que es gratis. Al escribir, **el bot se pausa** 30 minutos con esa persona para no contestar por encima de la oficina, pero **los botones del turno los sigue atendiendo**. Se borra a los 180 días. Fotos, audios, plantillas de pago y asignar conversaciones quedan para una segunda fase. → [[WhatsApp chat]] · [[WhatsApp]]

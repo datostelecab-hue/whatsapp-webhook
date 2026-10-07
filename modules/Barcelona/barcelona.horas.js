@@ -242,4 +242,80 @@ function sumaVentana(ivs, iniMs, finMs) {
   return out;
 }
 
-module.exports = { EFECTIVAS, TOPE_H, intervalos, planDesde, fechasEntre, ventana, informe, sumaVentana };
+/** El lunes de la semana de una fecha 'AAAA-MM-DD'. */
+function lunesDe(fecha) {
+  const dow = (new Date(String(fecha).slice(0, 10) + 'T12:00:00Z').getUTCDay() + 6) % 7;   // 0 = lunes
+  return R.sumarDias(fecha, -dow);
+}
+
+/**
+ * LAS HORAS DE LA SEMANA de cada conductor (Camilo, 07/10/2026: «las horas
+ * semanales también en los reportes de Barcelona, solo de conductores, de horas
+ * efectivas en BOLT; también la semana en curso»).
+ *
+ * Las horas de un día son las de su turno de DÍA más las de su turno de NOCHE,
+ * con la misma regla que el reporte diario (repartoTurnos con el plan del
+ * planificador; sin plaza, por su hora de inicio). Un día no se cierra hasta las
+ * 12:00 del siguiente, cuando acaba su noche.
+ *
+ *   ivs           los ratos de trabajo desde el mediodía del domingo anterior
+ *                 hasta el mediodía del lunes siguiente
+ *   asignaciones  las de sede_asignacion que tocan la semana (y la víspera)
+ *   conductores   las cuentas de la sede, con su estado en BOLT
+ *
+ * Salen las cuentas ACTIVAS y cualquiera que haya trabajado esa semana. De
+ * menor a mayor: arriba, quien menos horas ha hecho (como la semanal de Madrid).
+ */
+function semana({ lunes, ivs, asignaciones, conductores, ahoraMs = Date.now() }) {
+  const l = lunesDe(lunes);
+  const fechas = fechasEntre(l, R.sumarDias(l, 6));
+  const planDe = planDesde(asignaciones);
+  const { porPersona } = R.repartir((ivs || []).map(x => ({ ...x, persona: x.uuid })), planDe);
+  const cuenta = new Map((conductores || []).map(c => [c.uuid, c]));
+  const segDe = (uuid, f, t) => { const x = (porPersona.get(uuid) || new Map()).get(R.clave(f, t)); return x ? x.seg : 0; };
+  const plazasDe = (uuid, f) => (asignaciones || [])
+    .filter(a => a.uuid === uuid && a.desde <= f && (!a.hasta || a.hasta >= f))
+    .map(a => ({ matricula: a.matricula, turno: a.turno }));
+
+  const quienes = new Set((conductores || []).filter(c => String(c.estado || '').toLowerCase() === 'active').map(c => c.uuid));
+  porPersona.forEach((claves, uuid) => {
+    if (fechas.some(f => segDe(uuid, f, 'dia') + segDe(uuid, f, 'noche') > 0)) quienes.add(uuid);
+  });
+
+  const filas = [...quienes].map(uuid => {
+    let totalSeg = 0, dias = 0;
+    const celdas = fechas.map(f => {
+      const d = segDe(uuid, f, 'dia'), n = segDe(uuid, f, 'noche');
+      const estado = ahoraMs < R.instante(f, 0) ? 'futuro' : ahoraMs < R.cierreDe(f) ? 'abierto' : 'cerrado';
+      const plazas = plazasDe(uuid, f);
+      totalSeg += d + n;
+      if (d + n > 0) dias++;
+      return {
+        fecha: f, horas: h1(d + n), dia: h1(d), noche: h1(n), estado, plazas,
+        noSalio: estado === 'cerrado' && plazas.length > 0 && d + n === 0,
+      };
+    });
+    const c = cuenta.get(uuid) || {};
+    return {
+      uuid, nombre: c.nombre || `Cuenta ${String(uuid).slice(0, 8)}`, telefono: c.telefono || '',
+      activa: String(c.estado || '').toLowerCase() === 'active',
+      celdas, total: h1(totalSeg), dias, media: dias ? Math.round((totalSeg / dias) / 360) / 10 : null,
+      noSalio: celdas.filter(x => x.noSalio).length,
+    };
+  }).sort((a, b) => a.total - b.total || a.nombre.localeCompare(b.nombre));
+
+  const domingo = fechas[6];
+  return {
+    lunes: l, domingo, fechas, filas,
+    resumen: {
+      conductores: filas.length,
+      horas: Math.round(filas.reduce((s, f) => s + f.total, 0) * 10) / 10,
+      conHoras: filas.filter(f => f.total > 0).length,
+      noSalio: filas.reduce((s, f) => s + f.noSalio, 0),
+      cerrada: ahoraMs >= R.cierreDe(domingo),
+      enCurso: ahoraMs >= R.instante(l, 0) && ahoraMs < R.cierreDe(domingo),
+    },
+  };
+}
+
+module.exports = { EFECTIVAS, TOPE_H, intervalos, planDesde, fechasEntre, ventana, informe, sumaVentana, lunesDe, semana };

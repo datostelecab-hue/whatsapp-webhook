@@ -81,4 +81,8 @@ router.post('/api/visibilidad/config', responde(async req => ({ config: await vi
 
 router.get('/reporte/excel', descarga(req => barcelona.reporteExcel({ desde: req.query.desde, hasta: req.query.hasta }), XLSX));
 
+// Las horas de una semana, por conductor (la que corre si no se dice).
+//   /barcelona/reporte-semanal/excel?lunes=2026-10-05
+router.get('/reporte-semanal/excel', descarga(req => barcelona.reporteSemanalExcel({ dia: req.query.lunes }), XLSX));
+
 module.exports = router;

@@ -151,6 +151,27 @@ const S = require('../modules/Barcelona/barcelona.service');
   const xls = await require('../modules/Barcelona/barcelona.excel').generar(inf);
   igual('El Excel sale (un .xlsx: empieza por PK)', xls.slice(0, 2).toString(), 'PK');
 
+  // ── La semana ─────────────────────────────────────────────────────────────
+  const ivsSemana = H.intervalos(apuntes, sit, en('2026-10-04', 12), en('2026-10-12', 12));
+  const sem = H.semana({ lunes: '2026-10-07', ivs: ivsSemana, asignaciones: ASIGS, conductores: CONDUCTORES, ahoraMs: en('2026-10-13', 13) });
+  igual('Cualquier día vale: la semana empieza el lunes', [sem.lunes, sem.domingo, sem.fechas.length], ['2026-10-05', '2026-10-11', 7]);
+  igual('De menor a mayor; Dani (desactivada y sin horas) no sale', sem.filas.map(f => `${f.nombre} ${f.total}`), ['Caro 3', 'Ana 7.5', 'Beto 11']);
+  const beto = sem.filas.find(f => f.nombre === 'Beto');
+  const martes = beto.celdas[1];
+  igual('Beto el martes: su noche (9 h) más lo de la mañana (2 h)', [martes.horas, martes.dia, martes.noche], [11, 2, 9]);
+  igual('Beto: tenía plaza de noche del miércoles al domingo y no salió', [beto.noSalio, beto.celdas[0].noSalio, beto.celdas[2].noSalio], [5, false, true]);
+  const ana = sem.filas.find(f => f.nombre === 'Ana');
+  igual('Ana: un día trabajado, media de ese día', [ana.dias, ana.media], [1, 7.5]);
+  igual('Caro trabajó sin plaza: sus horas cuentan, sin «no salió»', [sem.filas[0].celdas[1].horas, sem.filas[0].noSalio, sem.filas[0].celdas[1].plazas.length], [3, 0, 0]);
+  igual('Semana cerrada', [sem.resumen.cerrada, sem.resumen.enCurso, sem.resumen.horas], [true, false, 21.5]);
+  const curso = H.semana({ lunes: '2026-10-05', ivs: H.intervalos(apuntes, sit, en('2026-10-04', 12), en('2026-10-07', 10)), asignaciones: ASIGS, conductores: CONDUCTORES, ahoraMs: en('2026-10-07', 10) });
+  const anaCurso = curso.filas.find(f => f.nombre === 'Ana');
+  igual('La semana en curso: el martes aún abierto (su noche acaba el miércoles a las 12), el jueves por venir',
+    [anaCurso.celdas[1].estado, anaCurso.celdas[3].estado, curso.resumen.enCurso, curso.resumen.cerrada], ['abierto', 'futuro', true, false]);
+  igual('En curso, un día abierto sin horas no es «no salió»', anaCurso.celdas[2].noSalio, false);
+  const xlsSem = await require('../modules/Barcelona/barcelona.excel').generarSemana(sem);
+  igual('El Excel de la semana sale', xlsSem.slice(0, 2).toString(), 'PK');
+
   // ── La Visibilidad: las cuentas de Madrid con los datos de Barcelona ───────
   // Ana, con plaza de día, trabajó ayer de 08:00 a 16:00 (2 h de viaje) y
   // descansó de 16:00 a 17:00. Cada ventana pedida devuelve 100 € y 5 viajes.

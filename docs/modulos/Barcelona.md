@@ -66,6 +66,19 @@ En las observaciones se dice si trabajó **en otro coche** que el de su plaza, y
 
 **De los apuntes a las horas** (`barcelona.horas.js`). BOLT apunta cambios: cada apunte dura hasta el siguiente del mismo conductor. Dos en el mismo segundo se desempatan como en Madrid (`desempate.js`). Para saber cómo estaba cada uno al empezar la ventana se lee un día más de apuntes por detrás. Y **un estado de trabajo no dura más de 6 h sin otro apunte** (`BARCELONA_TOPE_ESTADO_H`): si el móvil se apaga en espera, BOLT no avisa y la espera duraría días. Con los datos reales del 04 al 07/10 (1.704 apuntes, 1.368 ratos de trabajo) el rato más largo fue de 3 h: el tope no recorta nada normal.
 
+## Las horas semanales (en `/barcelona/reportes`)
+
+Camilo, 07/10/2026: *«las horas semanales también en los reportes de Barcelona, solo de conductores, semanal de horas efectivas en BOLT; también se podrá la semana cursante»*.
+
+- **Un Excel por semana**: cada conductor, de lunes a domingo, con sus horas efectivas en BOLT, el total, los días que trabajó y la media de esos días. Va de menor a mayor, así que arriba queda quien menos ha hecho, como la semanal de Madrid.
+- **Las horas de un día** son las de su turno de día más las de su turno de noche, con la misma regla que el reporte diario (`barcelona.horas.semana`). Un día no se cierra hasta las 12:00 del siguiente.
+- **Salen** las cuentas activas de BOLT Barcelona y cualquiera que haya trabajado esa semana. Las que ya no están activas llevan «(ya no activa en BOLT)».
+- **Cada día lleva su nota** con cuánto fue de día y cuánto de noche y en qué plaza estaba (o «Sin plaza»). Un **0 en rojo** significa que tenía plaza y no salió.
+- **La semana en curso** también se puede sacar. Los días que aún no han terminado van en azul y los que faltan, en blanco.
+- **La semana se elige con el calendario de la casa** (`js-fecha`): cualquier día vale por su semana. Debajo se dice cuál es, y hay atajos para «Esta semana» y «La pasada».
+
+Con datos reales (07/10), la semana del 28/09 da 565,6 h entre 26 conductores, 19 de ellos con horas. **La historia de Barcelona empieza el 30/09 a mediodía**, los 7 días que trajo la ingesta al aplicar db/181: por eso ese lunes y ese martes salen a cero.
+
 ## La Visibilidad (`/barcelona/visibilidad`)
 
 Camilo: «con las mismas métricas». Por eso **es la misma pantalla y son las mismas cuentas** que la Visibilidad de Madrid, no una copia: `views/visibilidad.ejs` recibe `api` (dónde preguntar) y `sedeNombre`, y las fórmulas salieron de `services/visibilidad.js` a funciones puras que usan las dos sedes:

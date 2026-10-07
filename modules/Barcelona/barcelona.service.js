@@ -185,4 +185,39 @@ async function reporteExcel(q = {}) {
   return { bytes, nombre };
 }
 
-module.exports = { SEDE, tablero, asignar, hoyMadrid, ratos, reporte, reporteExcel, cocheActivo };
+// ── LAS HORAS SEMANALES ──────────────────────────────────────────────────────
+
+/**
+ * LAS HORAS DE UNA SEMANA (la de `dia`, o la que corre). Se leen los ratos desde
+ * el mediodía del domingo anterior (una noche que empezó entonces sigue el lunes)
+ * hasta el mediodía del lunes siguiente (la noche del domingo acaba ahí).
+ */
+async function reporteSemanal({ dia } = {}) {
+  const lunes = H.lunesDe(esFecha(dia) ? dia : hoyMadrid());
+  const domingo = R.sumarDias(lunes, 6);
+  if (lunes > hoyMadrid()) throw new Error('Esa semana todavía no ha empezado.');
+  const iniMs = R.instante(R.sumarDias(lunes, -1), R.INICIO.noche);
+  const finMs = Math.min(Date.now(), R.instante(R.sumarDias(domingo, 1), R.INICIO.noche));
+  try {
+    const [ivs, asignaciones, conductores] = await Promise.all([
+      ratos(iniMs, finMs),
+      repo.asignacionesEntre(SEDE, R.sumarDias(lunes, -1), R.sumarDias(domingo, 1)),
+      repo.conductores(SEDE),
+    ]);
+    return H.semana({ lunes, ivs, asignaciones, conductores });
+  } catch (e) {
+    if (repo.faltaMigracion(e)) return { faltaMigracion: true, lunes, domingo };
+    throw e;
+  }
+}
+
+/** El Excel de la semana: { bytes, nombre }. */
+async function reporteSemanalExcel(q = {}) {
+  const datos = await reporteSemanal(q);
+  if (datos.faltaMigracion) throw new Error('Falta aplicar la migración db/181 (en Migraciones): Barcelona aún no tiene horas.');
+  const bytes = await require('./barcelona.excel').generarSemana(datos);
+  const d = iso => iso.split('-').reverse().join('-');
+  return { bytes, nombre: `Horas semanales Barcelona ${d(datos.lunes)} a ${d(datos.domingo)}${datos.resumen.cerrada ? '' : ' (en curso)'}.xlsx` };
+}
+
+module.exports = { SEDE, tablero, asignar, hoyMadrid, ratos, reporte, reporteExcel, cocheActivo, reporteSemanal, reporteSemanalExcel };

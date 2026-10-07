@@ -47,6 +47,40 @@
         </div>
       </div>
     </div>
+
+    <!-- Las horas de la semana, por conductor (07/10/2026). -->
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 sm:col-span-2">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-calendar-week text-telecab-gold text-lg mt-0.5"></i>
+        <div class="flex-1">
+          <div class="font-semibold text-telecab-text">Horas semanales</div>
+          <p class="text-sm text-telecab-muted mt-0.5 max-w-[80ch]">
+            Un Excel con cada conductor y sus horas efectivas en BOLT de <b>lunes a domingo</b>, el total, los días que
+            trabajó y su media. Las horas de un día son las de su turno de día más las de su turno de noche, con la misma
+            regla que el reporte de horas. De menor a mayor: arriba, quien menos ha hecho.
+          </p>
+          <p class="text-xs text-telecab-muted mt-2">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            Salen las cuentas activas de BOLT Barcelona y cualquiera que haya trabajado esa semana. Un <b>0 en rojo</b> es
+            que tenía plaza y no salió. Se puede sacar <b>la semana en curso</b>: los días que aún no han terminado van aparte.
+          </p>
+          <div class="flex flex-wrap items-end gap-3 mt-3">
+            <label class="text-xs text-telecab-muted">Cualquier día de la semana
+              <input id="s-dia" class="js-fecha block mt-1 w-32 px-3 py-1.5 bg-telecab-card2 border border-telecab-border rounded-lg text-sm text-telecab-text"
+                     placeholder="dd/mm/aaaa" readonly>
+            </label>
+            <div class="flex gap-1.5">
+              <button type="button" data-semana="0" class="px-2.5 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text">Esta semana</button>
+              <button type="button" data-semana="-1" class="px-2.5 py-1.5 rounded-lg bg-telecab-card2 border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text">La pasada</button>
+            </div>
+            <button id="s-excel" type="button" class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+              <i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel
+            </button>
+          </div>
+          <p id="s-rango" class="text-xs text-telecab-muted mt-2"></p>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -68,20 +102,49 @@
   document.querySelectorAll('[data-rapido]').forEach(b => b.addEventListener('click', () => RAPIDO[b.dataset.rapido]()));
   RAPIDO.ayer();
 
-  $('#r-excel').addEventListener('click', async () => {
+  $('#r-excel').addEventListener('click', () => {
     const d = aIso($('#r-desde').value), h = aIso($('#r-hasta').value) || d;
     if (!d) return Dialogo.aviso({ titulo: 'Falta la fecha', texto: 'Elige desde qué día quieres el reporte.', tono: 'aviso' });
-    const boton = $('#r-excel');
+    descargar('#r-excel', `/barcelona/reporte/excel?desde=${d}&hasta=${h}`, 'Horas Barcelona.xlsx');
+  });
+  // LA SEMANA: se elige cualquier día en el calendario de la casa y vale su
+  // semana, de lunes a domingo. Debajo se dice cuál es, para no equivocarse.
+  const lunesDe = iso => sumar(iso, -((new Date(iso + 'T12:00:00Z').getUTCDay() + 6) % 7));
+  const corta = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+  function pintarSemana() {
+    const iso = aIso($('#s-dia').value);
+    if (!iso) { $('#s-rango').textContent = 'Elige un día: el reporte sale de su semana.'; return; }
+    const l = lunesDe(iso), d = sumar(l, 6);
+    const estado = l > HOY ? ' · todavía no ha empezado' : d >= HOY ? ' · en curso: los días que faltan van en blanco' : '';
+    $('#s-rango').textContent = `Semana del lunes ${corta(l)} al domingo ${corta(d)}${estado}.`;
+  }
+  $('#s-dia').addEventListener('change', pintarSemana);
+  document.querySelectorAll('[data-semana]').forEach(b => b.addEventListener('click', () => {
+    $('#s-dia').value = aDdmm(sumar(HOY, 7 * Number(b.dataset.semana)));
+    pintarSemana();
+  }));
+  $('#s-dia').value = aDdmm(HOY);
+  pintarSemana();
+
+  $('#s-excel').addEventListener('click', () => {
+    const iso = aIso($('#s-dia').value);
+    if (!iso) return Dialogo.aviso({ titulo: 'Falta el día', texto: 'Elige un día de la semana que quieres.', tono: 'aviso' });
+    descargar('#s-excel', '/barcelona/reporte-semanal/excel?lunes=' + lunesDe(iso), 'Horas semanales Barcelona.xlsx');
+  });
+
+  // Bajar un Excel: el botón dice que está preparándolo y, si falla, se explica por qué.
+  async function descargar(selBoton, url, porDefecto) {
+    const boton = $(selBoton);
     const antes = boton.innerHTML;
     boton.disabled = true;
     boton.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Preparando…';
     try {
-      const r = await fetch(`/barcelona/reporte/excel?desde=${d}&hasta=${h}`);
+      const r = await fetch(url);
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.msg || 'No se pudo preparar el Excel.');
       }
-      const nombre = (decodeURIComponent((r.headers.get('Content-Disposition') || '').split('filename="')[1] || '').replace(/"$/, '')) || 'Horas Barcelona.xlsx';
+      const nombre = (decodeURIComponent((r.headers.get('Content-Disposition') || '').split('filename="')[1] || '').replace(/"$/, '')) || porDefecto;
       const url = URL.createObjectURL(await r.blob());
       const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
       document.body.appendChild(a); a.click(); a.remove();
@@ -92,6 +155,6 @@
       boton.disabled = false;
       boton.innerHTML = antes;
     }
-  });
+  }
 })();
 </script>
