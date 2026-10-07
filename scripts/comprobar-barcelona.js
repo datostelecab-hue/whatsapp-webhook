@@ -172,6 +172,28 @@ const S = require('../modules/Barcelona/barcelona.service');
   const xlsSem = await require('../modules/Barcelona/barcelona.excel').generarSemana(sem);
   igual('El Excel de la semana sale', xlsSem.slice(0, 2).toString(), 'PK');
 
+  // ── El turno asignado de cada conductor ───────────────────────────────────
+  igual('Semana: el turno asignado de cada uno (Caro, sin plaza)',
+    sem.filas.map(f => `${f.nombre}:${f.asignadas.map(p => p.turno + ' ' + p.matricula).join('/') || 'sin plaza'}`),
+    ['Caro:sin plaza', 'Ana:dia 1111AAA', 'Beto:noche 1111AAA']);
+  igual('Si cambió de turno en el periodo, salen los dos', H.plazasDistintas([
+    { turno: 'dia', matricula: '1111AAA' }, { turno: 'dia', matricula: '1111AAA' }, { turno: 'noche', matricula: '2222BBB' }]),
+    [{ turno: 'dia', matricula: '1111AAA' }, { turno: 'noche', matricula: '2222BBB' }]);
+  igual('Reporte diario, «Por conductor»: también con su turno',
+    inf.porConductor.map(c => `${c.nombre}:${c.asignadas.map(p => p.turno).join('/')}`), ['Dani:dia', 'Ana:dia', 'Beto:noche']);
+  const ExcelJS = require('exceljs');
+  const libro = new ExcelJS.Workbook();
+  await libro.xlsx.load(xlsSem);
+  const hoja = libro.getWorksheet('Semana');
+  const cab = hoja.getRow(4).values.slice(1, 6);
+  const fBeto = [...Array(hoja.rowCount).keys()].map(i => hoja.getRow(i + 1)).find(r => r.getCell(1).value === 'Beto');
+  igual('Excel semanal: Turno y Matrícula detrás del teléfono', cab, ['Conductor', 'Teléfono', 'Turno', 'Matrícula', 'Lun 05/10']);
+  igual('Excel semanal: la fila de Beto', [fBeto.getCell(3).value, fBeto.getCell(4).value, fBeto.getCell(6).value, fBeto.getCell(12).value], ['Noche', '1111AAA', 11, 11]);
+  const libroDia = new ExcelJS.Workbook();
+  await libroDia.xlsx.load(xls);
+  const porCond = libroDia.getWorksheet('Por conductor');
+  igual('Excel diario, «Por conductor»: Turno y Matrícula', porCond.getRow(4).values.slice(1, 5), ['Conductor', 'Teléfono', 'Turno', 'Matrícula']);
+
   // ── La Visibilidad: las cuentas de Madrid con los datos de Barcelona ───────
   // Ana, con plaza de día, trabajó ayer de 08:00 a 16:00 (2 h de viaje) y
   // descansó de 16:00 a 17:00. Cada ventana pedida devuelve 100 € y 5 viajes.

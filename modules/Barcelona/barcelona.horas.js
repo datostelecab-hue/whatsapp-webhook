@@ -91,6 +91,17 @@ function planDesde(asignaciones) {
   };
 }
 
+/**
+ * Las plazas distintas (turno + matrícula) de una lista, en el orden en que
+ * aparecen: el TURNO ASIGNADO de alguien en un periodo. Si cambió de turno o de
+ * coche, salen las dos.
+ */
+function plazasDistintas(lista) {
+  const out = [];
+  (lista || []).forEach(p => { if (p && !out.some(q => q.turno === p.turno && q.matricula === p.matricula)) out.push({ turno: p.turno, matricula: p.matricula }); });
+  return out;
+}
+
 /** Las fechas 'AAAA-MM-DD' de `desde` a `hasta`, las dos incluidas. */
 function fechasEntre(desde, hasta) {
   const out = [];
@@ -190,10 +201,11 @@ function informe({ desde, hasta, ivs, asignaciones, conductores, coches, ahoraMs
   filas.forEach(f => {
     if (f.estado === 'pendiente') return;
     if (!resumenDe.has(f.uuid)) {
-      resumenDe.set(f.uuid, { uuid: f.uuid, nombre: f.nombre, telefono: f.telefono, plazas: 0, salio: 0, noSalio: 0, horas: 0, fuera: 0 });
+      resumenDe.set(f.uuid, { uuid: f.uuid, nombre: f.nombre, telefono: f.telefono, plazas: 0, salio: 0, noSalio: 0, horas: 0, fuera: 0, asignadas: [] });
     }
     const r = resumenDe.get(f.uuid);
     r.plazas++;
+    r.asignadas = plazasDistintas([...r.asignadas, { turno: f.turno, matricula: f.matricula }]);
     if (f.estado === 'salio' || f.estado === 'en_curso') r.salio++;
     if (f.estado === 'no_salio') r.noSalio++;
     r.horas += f.horas;
@@ -301,6 +313,7 @@ function semana({ lunes, ivs, asignaciones, conductores, ahoraMs = Date.now() })
       activa: String(c.estado || '').toLowerCase() === 'active',
       celdas, total: h1(totalSeg), dias, media: dias ? Math.round((totalSeg / dias) / 360) / 10 : null,
       noSalio: celdas.filter(x => x.noSalio).length,
+      asignadas: plazasDistintas(celdas.flatMap(x => x.plazas)),
     };
   }).sort((a, b) => a.total - b.total || a.nombre.localeCompare(b.nombre));
 
@@ -318,4 +331,4 @@ function semana({ lunes, ivs, asignaciones, conductores, ahoraMs = Date.now() })
   };
 }
 
-module.exports = { EFECTIVAS, TOPE_H, intervalos, planDesde, fechasEntre, ventana, informe, sumaVentana, lunesDe, semana };
+module.exports = { EFECTIVAS, TOPE_H, intervalos, planDesde, fechasEntre, ventana, informe, sumaVentana, lunesDe, semana, plazasDistintas };

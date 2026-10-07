@@ -22,6 +22,10 @@ const sello = () => new Intl.DateTimeFormat('es-ES', {
 }).format(new Date());
 const esFecha = iso => iso.split('-').reverse().join('/');
 const TURNO = { dia: 'Día', noche: 'Noche' };
+// El turno asignado en el planificador (y su matrícula). Si cambió en el
+// periodo, los dos: «Día / Noche», «1234ABC, 5678DEF».
+const turnoAsignado = ps => (ps && ps.length ? [...new Set(ps.map(p => TURNO[p.turno]))].join(' / ') : 'Sin plaza');
+const matriculaAsignada = ps => (ps && ps.length ? [...new Set(ps.map(p => p.matricula))].join(', ') : '');
 
 // Los colores de las horas: los del reporte de Madrid (reporteHoras.service.js).
 const BANDA = { verde: 'FF63BE7B', amarillo: 'FFFFEB84', rojo: 'FFF8696B' };
@@ -121,6 +125,7 @@ async function generar(datos) {
     subtitulo: `${periodo[0].toUpperCase() + periodo.slice(1)} · ${datos.porConductor.length} conductores con plaza · primero quien más días no salió · generado el ${sello()}`,
     cols: [
       { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
+      { titulo: 'Turno', ancho: 12 }, { titulo: 'Matrícula', ancho: 14 },
       { titulo: 'Le tocaba', ancho: 11 }, { titulo: 'Salió', ancho: 9 }, { titulo: 'No salió', ancho: 10 },
       { titulo: 'Horas en su turno', ancho: 17 }, { titulo: 'Media al salir', ancho: 14 }, { titulo: 'Fuera de su turno', ancho: 17 },
     ],
@@ -129,12 +134,14 @@ async function generar(datos) {
     pintar: (x, celda) => {
       celda(1, x.nombre);
       celda(2, x.telefono);
-      celda(3, x.plazas);
-      celda(4, x.salio);
-      celda(5, x.noSalio, { tono: x.noSalio ? ESTADO.no_salio : null });
-      celda(6, x.horas, { num: true, negrita: true });
-      celda(7, x.media, { num: true });
-      celda(8, x.fuera || null, { num: true });
+      celda(3, turnoAsignado(x.asignadas));
+      celda(4, matriculaAsignada(x.asignadas), { negrita: true });
+      celda(5, x.plazas);
+      celda(6, x.salio);
+      celda(7, x.noSalio, { tono: x.noSalio ? ESTADO.no_salio : null });
+      celda(8, x.horas, { num: true, negrita: true });
+      celda(9, x.media, { num: true });
+      celda(10, x.fuera || null, { num: true });
     },
   });
 
@@ -208,6 +215,7 @@ async function generarSemana(datos) {
   const r = datos.resumen;
   const cols = [
     { titulo: 'Conductor', ancho: 32, izq: true }, { titulo: 'Teléfono', ancho: 15 },
+    { titulo: 'Turno', ancho: 12 }, { titulo: 'Matrícula', ancho: 14 },
     ...datos.fechas.map((f, i) => ({ titulo: `${DIAS_CORTOS[i]} ${f.slice(8, 10)}/${f.slice(5, 7)}`, ancho: 10 })),
     { titulo: 'Total', ancho: 9 }, { titulo: 'Días', ancho: 7 }, { titulo: 'Media', ancho: 8 },
   ];
@@ -245,10 +253,12 @@ async function generarSemana(datos) {
     };
     celda(1, p.nombre + (p.activa ? '' : ' (ya no activa en BOLT)'));
     celda(2, p.telefono);
-    p.celdas.forEach((x, i) => { const d = celdaSemana(x); celda(3 + i, d.valor, d); });
-    celda(10, p.total, { num: true, negrita: true });
-    celda(11, p.dias);
-    celda(12, p.media, { num: true });
+    celda(3, turnoAsignado(p.asignadas), { tono: p.asignadas && p.asignadas.length ? null : TONO_SEMANA.nada });
+    celda(4, matriculaAsignada(p.asignadas), { negrita: true });
+    p.celdas.forEach((x, i) => { const d = celdaSemana(x); celda(5 + i, d.valor, d); });
+    celda(12, p.total, { num: true, negrita: true });
+    celda(13, p.dias);
+    celda(14, p.media, { num: true });
     rr.height = 18;
   });
   if (!datos.filas.length) {

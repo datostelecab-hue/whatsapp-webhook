@@ -47,7 +47,7 @@ Sin db/181 la pantalla lo dice («Falta aplicar la migración db/181») en vez d
 Solo descargable, como los reportes de Madrid ([[Control Reportes]]): se eligen las fechas (hasta **31 días**; atajos Ayer, Últimos 7 días y Este mes) y baja un Excel con tres pestañas:
 
 - **Por día**: una fila por día y plaza con conductor. Sus horas en **su turno**, viaje y espera, el coche de BOLT en que trabajó y si salió. Las horas llevan los colores del reporte de Madrid (verde desde 7,6 h, amarillo de 6,4 a 7,5, rojo menos).
-- **Por conductor**: los días que le tocaba, los que salió y los que no, sus horas y la media de los días que salió. Arriba, quien más días no salió.
+- **Por conductor**: su **turno asignado y la matrícula** de su plaza, los días que le tocaba, los que salió y los que no, sus horas y la media de los días que salió. Arriba, quien más días no salió.
 - **Sin plaza**: quien trabajó un día sin tener plaza ninguna ese día.
 
 **La regla de las horas es la de Madrid, no una copia**: `repartoTurnos.repartir` ([[Jornada y turnos]]) con el plan del planificador de Barcelona. Quien tiene plaza de **día** cuenta de 00:00 a 24:00; quien la tiene de **noche**, de 12:00 a 12:00 del día siguiente (Camilo: «de 00:00 a 23:59… desde las 12 PM hasta el día Y hasta las 12 PM»). Quien trabaja sin plaza va por su hora de inicio, como los NN. Cuenta el trabajo (viaje y espera), no el descanso; el catálogo de estados es el de Madrid (`fv_estado_bolt`).
@@ -71,6 +71,7 @@ En las observaciones se dice si trabajó **en otro coche** que el de su plaza, y
 Camilo, 07/10/2026: *«las horas semanales también en los reportes de Barcelona, solo de conductores, semanal de horas efectivas en BOLT; también se podrá la semana cursante»*.
 
 - **Un Excel por semana**: cada conductor, de lunes a domingo, con sus horas efectivas en BOLT, el total, los días que trabajó y la media de esos días. Va de menor a mayor, así que arriba queda quien menos ha hecho, como la semanal de Madrid.
+- **El turno asignado va al lado del nombre** (Camilo, 07/10: *«faltó la columna del turno asignado»*): columnas **Turno** (Día / Noche) y **Matrícula** detrás del teléfono. Si en la semana cambió de turno o de coche salen los dos («Día / Noche», «1111AAA, 2222BBB»); quien no tuvo plaza ningún día pone **Sin plaza**. Sale de las plazas de cada día (`plazasDistintas` en `barcelona.horas.js`), no de la de hoy.
 - **Las horas de un día** son las de su turno de día más las de su turno de noche, con la misma regla que el reporte diario (`barcelona.horas.semana`). Un día no se cierra hasta las 12:00 del siguiente.
 - **Salen** las cuentas activas de BOLT Barcelona y cualquiera que haya trabajado esa semana. Las que ya no están activas llevan «(ya no activa en BOLT)».
 - **Cada día lleva su nota** con cuánto fue de día y cuánto de noche y en qué plaza estaba (o «Sin plaza»). Un **0 en rojo** significa que tenía plaza y no salió.
