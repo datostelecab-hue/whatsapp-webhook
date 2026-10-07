@@ -24,8 +24,39 @@ const IDIOMAS = ['es', 'es_ES', 'es_MX', 'es_AR'];
 const idiomaOk = new Map();   // plantilla → código de idioma que aceptó Meta
 const esErrorDeIdioma = e => /132001|does not exist in the translation|translation|language/i.test(e || '');
 
+// ── EL CHAT (db/185) ─────────────────────────────────────────────────────────
+// Cada envío se apunta en el chat del módulo /whatsapp con su ORIGEN: el bot (lo
+// que contesta), la oficina (lo que escribe alguien del ERP), una alerta de
+// Control, un aviso de velocidad o de turnos. Apuntarlo nunca lanza: el envío ya
+// está hecho y su resultado es lo que se devuelve.
+async function apuntar(to, payload, r, { origen = 'bot', usuarioId = null } = {}) {
+  const d = require('./whatsappChat').describirSaliente(payload);
+  await require('./repo/whatsappChat').guardar({
+    wamid: r && r.ok ? r.id : null, telefono: to, sentido: 'saliente', ...d, origen, usuarioId,
+    error: r && r.ok ? null : String((r && r.error) || 'sin respuesta').slice(0, 1000),
+  });
+  return r;
+}
+
+// De qué es cada plantilla, si quien la manda no lo dice.
+function origenDePlantilla(plantilla) {
+  if (plantilla === PLANTILLA_TURNOS) return 'turnos';
+  if (plantilla === 'advertencia_limite') return 'velocidad';
+  return 'plantilla';
+}
+
 /** Envío de plantilla con reintento por idioma. `components` ya montado. */
-async function enviarTemplate(telefono, plantilla, components) {
+async function enviarTemplate(telefono, plantilla, components, opciones = {}) {
+  const r = await enviarTemplateSinApuntar(telefono, plantilla, components);
+  const to = limpiarTelefono(telefono);
+  if (to) {
+    await apuntar(to, { type: 'template', template: { name: plantilla, language: { code: r.idioma || idiomaOk.get(plantilla) || IDIOMAS[0] }, components } },
+      r, { origen: opciones.origen || origenDePlantilla(plantilla), usuarioId: opciones.usuarioId });
+  }
+  return r;
+}
+
+async function enviarTemplateSinApuntar(telefono, plantilla, components) {
   const to = limpiarTelefono(telefono);
   if (!to) return { ok: false, error: 'sin teléfono' };
   const memo = idiomaOk.get(plantilla);
@@ -80,10 +111,10 @@ function enviarPlantillaNombre(telefono, plantilla, nombre) {
  * SIN parameter_name (a diferencia de enviarPlantillaNombre). Devuelve { ok, id } o
  * { ok:false, error }.
  */
-function enviarPlantillaPosicional(telefono, plantilla, valores) {
+function enviarPlantillaPosicional(telefono, plantilla, valores, opciones = {}) {
   // Una plantilla SIN variables no lleva componente de cuerpo: mandarlo vacío da error.
   const params = (valores || []).map(t => ({ type: 'text', text: (t == null ? '' : String(t)) }));
-  return enviarTemplate(telefono, plantilla, params.length ? [{ type: 'body', parameters: params }] : []);
+  return enviarTemplate(telefono, plantilla, params.length ? [{ type: 'body', parameters: params }] : [], opciones);
 }
 
 // Aviso de turnos: plantilla con BOTÓN de respuesta rápida. El mensaje solo avisa de que
@@ -196,36 +227,19 @@ async function estadoCuenta() {
   return out;
 }
 
-/** Mensaje de texto suelto (dentro de la ventana de 24 h). */
-async function enviarTexto(telefono, texto) {
+/**
+ * Mensaje de texto suelto (dentro de la ventana de 24 h). `opciones.origen` dice
+ * de quién es para el chat: el bot si no se dice; 'oficina' con su `usuarioId`.
+ */
+async function enviarTexto(telefono, texto, opciones = {}) {
   const to = limpiarTelefono(telefono);
   if (!to) return { ok: false, error: 'sin teléfono' };
-  try {
-    const r = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}/messages`, {
-      method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: texto } })
-    });
-    const d = await r.json();
-    if (d.messages && d.messages[0]) return { ok: true, id: d.messages[0].id };
-    return { ok: false, error: (d.error && d.error.message) || JSON.stringify(d) };
-  } catch (e) { return { ok: false, error: e.message }; }
+  const payload = { messaging_product: 'whatsapp', to, type: 'text', text: { body: texto } };
+  return apuntar(to, payload, await mandar(payload), opciones);
 }
 
-/**
- * Mensaje con botones de respuesta rápida. `botones` = [{ id, titulo }] (máx. 3, y
- * WhatsApp corta los títulos a 20 caracteres).
- */
-async function enviarBotones(telefono, texto, botones) {
-  const to = limpiarTelefono(telefono);
-  if (!to) return { ok: false, error: 'sin teléfono' };
-  const payload = {
-    messaging_product: 'whatsapp', to, type: 'interactive',
-    interactive: {
-      type: 'button',
-      body: { text: texto },
-      action: { buttons: (botones || []).slice(0, 3).map(b => ({ type: 'reply', reply: { id: b.id, title: String(b.titulo).slice(0, 20) } })) }
-    }
-  };
+/** Manda un mensaje ya montado a /messages. Devuelve { ok, id } o { ok:false, error }. */
+async function mandar(payload) {
   try {
     const r = await fetch(`https://graph.facebook.com/${VERSION}/${PHONE_NUMBER_ID}/messages`, {
       method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
@@ -238,10 +252,33 @@ async function enviarBotones(telefono, texto, botones) {
 }
 
 /**
+ * Mensaje con botones de respuesta rápida. `botones` = [{ id, titulo }] (máx. 3, y
+ * WhatsApp corta los títulos a 20 caracteres).
+ */
+async function enviarBotones(telefono, texto, botones, opciones = {}) {
+  return enviarBotonesCrudos(telefono, texto,
+    (botones || []).slice(0, 3).map(b => ({ type: 'reply', reply: { id: b.id, title: String(b.titulo).slice(0, 20) } })), opciones);
+}
+
+/**
+ * Los botones TAL CUAL ([{ type:'reply', reply:{ id, title } }]), sin recortar.
+ * Es como los manda el bot de puertas (routes/botPuertas.js) desde siempre.
+ */
+async function enviarBotonesCrudos(telefono, texto, buttons, opciones = {}) {
+  const to = limpiarTelefono(telefono);
+  if (!to) return { ok: false, error: 'sin teléfono' };
+  const payload = {
+    messaging_product: 'whatsapp', to, type: 'interactive',
+    interactive: { type: 'button', body: { text: texto }, action: { buttons } },
+  };
+  return apuntar(to, payload, await mandar(payload), opciones);
+}
+
+/**
  * Lo que Meta dice DESPUÉS de cada envío (webhook `statuses`): enviado,
  * entregado, leído o fallido. Aceptado no es entregado: ver
  * services/repo/whatsappEnvios.js (05/10/2026).
  */
 const registrarEstados = statuses => require('./repo/whatsappEnvios').registrarEstados(statuses);
 
-module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, listarPlantillas, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };
+module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, enviarBotonesCrudos, listarPlantillas, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };

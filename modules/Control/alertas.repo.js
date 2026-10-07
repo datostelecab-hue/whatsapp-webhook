@@ -966,10 +966,10 @@ async function mandar(alertaId, p, franja, config, gente, simulado) {
     let r;
     if (simulado) r = { ok: true };
     else {
-      r = await whatsapp.enviarPlantillaPosicional(d.telefono, propia || config.plantilla, vars);
+      r = await whatsapp.enviarPlantillaPosicional(d.telefono, propia || config.plantilla, vars, { origen: 'alerta' });
       if (!r.ok && reserva && esPlantillaQueNoExiste(r.error)) {
         console.log(`📩 [ALERTAS] "${propia}" no está disponible en Meta: este aviso sale por "${reserva.plantilla}"`);
-        r = await whatsapp.enviarPlantillaPosicional(d.telefono, reserva.plantilla, reserva.vars);
+        r = await whatsapp.enviarPlantillaPosicional(d.telefono, reserva.plantilla, reserva.vars, { origen: 'alerta' });
       }
     }
     if (r.ok) ok++; else fallos++;

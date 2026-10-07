@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-07 · El chat de WhatsApp: todo guardado, y escribir gratis con la ventana abierta
+
+Lo que escribían los conductores al bot no se guardaba en ningún sitio. Tras el bloqueo por pago de ese día hubo que cruzar a mano los fallos de Meta con los turnos para saber a quién no le había llegado nada, y no había forma de escribirles. Desde db/185 cada mensaje que entra o sale por el número queda guardado, con su origen: el bot, la oficina, una alerta, un aviso de velocidad o de turnos. El módulo /whatsapp lo enseña como un chat y deja escribir **solo con la ventana de 24 h abierta**, que es gratis. Al escribir, **el bot se pausa** 30 minutos con esa persona para no contestar por encima de la oficina, pero **los botones del turno los sigue atendiendo**. Se borra a los 180 días. Fotos, audios, plantillas de pago y asignar conversaciones quedan para una segunda fase. → [[WhatsApp chat]] · [[WhatsApp]]
+
 ## 2026-10-07 · Un estado más del coche: Policía
 
 En la ficha del coche (Vehículos → Editar), además de Operativo, En taller, Siniestro…, ya se puede poner **Policía**: el coche lo tiene la policía y no se puede usar. Es una fila del catálogo (db/184, código `P`). Se comporta como En taller o Siniestro: no operativo y fuera de la cobertura, así que el planificador avisa de que sus conductores se han quedado sin coche y Control lo señala si se mueve. Sale en azul. → [[Vehiculos]]

@@ -1,9 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || '';
 const PHONE_NUMBER_ID = '1256923474160518';
-const WHATSAPP_VERSION = 'v25.0';
 const MAPON_API_KEY = process.env.MAPON_API_KEY || '';
 const fichajeBot = require('../services/fichajeBot');
 const puertas = require('../services/puertasBot');
@@ -58,6 +56,15 @@ router.post('/', async (req, res) => {
 
     const from = message.from;
 
+    // EL CHAT (db/185): todo lo que entra se guarda, también fotos, audios y
+    // ubicaciones, que el bot no atiende. Y si la oficina está hablando con esta
+    // persona (pausa del bot), lo que escriba solo va al chat: el bot no le
+    // contesta. Los botones (los del turno) los atiende siempre.
+    if (!(await guardarYVerSiAtiende(message, value))) {
+      console.log(`🤫 Bot en pausa con ${from}: el mensaje queda en el chat de /whatsapp`);
+      return;
+    }
+
     if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
       const buttonId = message.interactive.button_reply.id;
       console.log(`Botón: ${buttonId} de ${from}`);
@@ -76,6 +83,28 @@ router.post('/', async (req, res) => {
     console.error('Error:', error);
   }
 });
+
+/**
+ * Guarda el mensaje en el chat y dice si lo atiende el bot. Nunca lanza: si el
+ * chat falla, el bot contesta como siempre.
+ */
+async function guardarYVerSiAtiende(message, value) {
+  try {
+    const W = require('../services/whatsappChat');
+    const chat = require('../services/repo/whatsappChat');
+    const perfil = (value?.contacts || []).find(c => c.wa_id === message.from) || (value?.contacts || [])[0];
+    await chat.guardar({
+      wamid: message.id, telefono: message.from, sentido: 'entrante', origen: 'conductor',
+      ...W.describirEntrante(message),
+      ocurridoAt: Number(message.timestamp) > 0 ? new Date(Number(message.timestamp) * 1000) : null,
+      nombrePerfil: perfil?.profile?.name || null,
+    });
+    return W.botAtiende(message.type, await chat.pausaDe(message.from));
+  } catch (e) {
+    console.error('⚠️ [WhatsApp] El chat no pudo guardar el mensaje:', e.message);
+    return true;
+  }
+}
 
 // ============================================================
 // SOLO SE ATIENDE LO QUE LLEGA A NUESTRO NÚMERO
@@ -339,35 +368,17 @@ async function sendButtonsEstado(to, nombre, matricula, vehiculo, estado) {
   console.log(`📱 Botones enviados: ${textoEstado}`);
 }
 
+// Los dos envíos del bot de puertas pasan por services/whatsapp (07/10/2026):
+// mandan exactamente lo mismo que antes y, además, quedan en el chat (db/185).
 async function enviarInteractivo(to, texto, buttons) {
-  await fetch(`https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp', to, type: 'interactive',
-      interactive: { type: 'button', body: { text: texto }, action: { buttons } },
-    }),
-  });
+  await require('../services/whatsapp').enviarBotonesCrudos(to, texto, buttons);
 }
 
 // ============================================================
 // ENVIAR TEXTO
 // ============================================================
 async function sendText(to, text) {
-  const url = `https://graph.facebook.com/${WHATSAPP_VERSION}/${PHONE_NUMBER_ID}/messages`;
-  await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: to,
-      type: 'text',
-      text: { body: text }
-    })
-  });
+  await require('../services/whatsapp').enviarTexto(to, text);
 }
 
 // ============================================================

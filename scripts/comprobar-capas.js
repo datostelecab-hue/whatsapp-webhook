@@ -253,6 +253,11 @@ const CAPA_DECLARADA = new Map([
   // en su tabla (`mapon_zona_alerta`). Es un repositorio con un adaptador
   // delante, no un servicio de dominio — no decide nada, solo trae y lee.
   ['services/zonasMapon',        'repositorio'],   // 2 consultas sobre mapon_zona_alerta
+  // Las reglas del chat de WhatsApp (db/185, 07/10/2026): puras, sin base ni
+  // red —qué es cada mensaje, la ventana de 24 h, la pausa del bot—. Las usan el
+  // repositorio del chat, el webhook y el envío: es suelo, no un servicio que
+  // decida, igual que `formato`.
+  ['services/whatsappChat',      'nucleo'],
 ]);
 
 /** Los require() de un fichero, ya clasificados por capa. */

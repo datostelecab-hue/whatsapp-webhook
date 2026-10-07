@@ -82,6 +82,12 @@ const CATALOGO = [
       { clave: '/bloqueo-motor/soltar', etiqueta: 'Ciclo de bloqueo de motor · soltar un coche', escribir: true },
     ] },
     { clave: '/generador',   etiqueta: 'Generar vacantes' },
+    // El chat de WhatsApp del bot (db/185, 07/10/2026). Leerlo es saber qué se
+    // les dice a los conductores y qué contestan; ESCRIBIRLES (y pausar el bot
+    // con alguien) va aparte: cualquier petición que no sea un GET la exige.
+    { clave: '/whatsapp', etiqueta: 'WhatsApp · el chat del bot', hijos: [
+      { clave: '/whatsapp/escribir', etiqueta: 'WhatsApp · escribir a los conductores y pausar el bot', escribir: true },
+    ] },
   ] },
   { grupo: 'Taller', items: [
     { clave: '/vehiculos',   etiqueta: 'Vehículos', hijos: [

@@ -200,7 +200,7 @@ async function enviar(telefono, nombre, matricula, sinAvisar) {
   if (sinAvisar) return { ok: true, simulado: true, relleno: true };
   if (!esLive()) return { ok: true, simulado: true };
   if (!telefono) return { ok: false, error: 'sin-telefono' };
-  return whatsapp.enviarPlantillaPosicional(telefono, PLANTILLA_ADVERTENCIA, [nombre, matricula]);
+  return whatsapp.enviarPlantillaPosicional(telefono, PLANTILLA_ADVERTENCIA, [nombre, matricula], { origen: 'velocidad' });
 }
 
 // ── Procesar (lo llama el cron) ─────────────────────────────────────────────

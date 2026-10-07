@@ -348,6 +348,10 @@ No son de los seis, pero forman parte de la misma red:
   Control: la J suma a BOLT solo aprobada, la baja médica deja su B y no suma, lo que cae
   fuera del contrato no cuenta, la semana abierta dice «En curso» y el orden va de menor
   a mayor.
+- **`comprobar-whatsapp-chat.js`** (07/10/2026) — el chat de WhatsApp sin base ni Meta:
+  qué es cada mensaje que entra o sale, la ventana de 24 h, la pausa del bot (los botones
+  pasan siempre) y que cada envío de `services/whatsapp.js` quede apuntado con su origen,
+  también el rechazado por Meta.
 - **`comprobar-barcelona.js`** (07/10/2026) — Barcelona sin base: el tablero del
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día

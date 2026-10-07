@@ -1,0 +1,407 @@
+<div class="max-w-[1400px] mx-auto">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+    <div>
+      <h1 class="text-2xl font-semibold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-comments text-telecab-gold"></i> WhatsApp
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1 max-w-[80ch]">
+        Lo que el bot les manda a los conductores y lo que escriben ellos. Se puede contestar gratis mientras
+        la ventana de 24 h esté abierta (desde su último mensaje); al escribir, el bot deja de contestarle un rato.
+      </p>
+    </div>
+  </div>
+
+  <div id="w-aviso" class="hidden mb-4 rounded-2xl border border-telecab-warn/40 bg-telecab-warn/10 p-4 text-sm text-telecab-warn"></div>
+
+  <div id="w-marco" class="rounded-2xl border border-telecab-border bg-telecab-card overflow-hidden grid grid-cols-1 md:grid-cols-[340px_minmax(0,1fr)] h-[calc(100svh-11rem)] min-h-[440px]">
+
+    <!-- ── Las conversaciones ─────────────────────────────────────────────── -->
+    <aside id="w-lado" class="flex flex-col min-h-0 border-r border-telecab-border">
+      <div class="p-3 border-b border-telecab-border">
+        <label class="relative block">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-telecab-muted"></i>
+          <input id="w-buscar" type="search" autocomplete="off" placeholder="Busca por nombre o teléfono"
+                 class="w-full pl-8 pr-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70">
+        </label>
+      </div>
+      <ul id="w-lista" class="flex-1 overflow-y-auto min-h-0" aria-label="Conversaciones">
+        <li class="px-4 py-6 text-sm text-telecab-muted">Cargando…</li>
+      </ul>
+    </aside>
+
+    <!-- ── El chat ────────────────────────────────────────────────────────── -->
+    <section id="w-chat" class="hidden md:flex flex-col min-h-0">
+      <div id="w-vacio" class="flex-1 flex flex-col items-center justify-center text-center p-8 text-telecab-muted">
+        <i class="fa-solid fa-comments text-4xl mb-3 opacity-40"></i>
+        <p class="text-sm max-w-[44ch]">Elige una conversación para ver qué le ha mandado el bot y qué ha escrito.</p>
+      </div>
+
+      <div id="w-abierto" class="hidden flex-1 flex-col min-h-0">
+        <header id="w-cabecera" class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-telecab-border"></header>
+        <div id="w-mensajes" class="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-1.5 bg-telecab-dark/40"></div>
+        <footer id="w-pie" class="border-t border-telecab-border p-3"></footer>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const PUEDE_ESCRIBIR = <%- JSON.stringify(!!puedeEscribir) %>;
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  // El *negrita* de WhatsApp, que el bot usa para las matrículas.
+  const formato = s => esc(s).replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
+  const TZ = 'Europe/Madrid';
+  const fmtHora = d => new Intl.DateTimeFormat('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(d));
+  const diaDe = d => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
+  const hoy = () => diaDe(Date.now());
+  const ayer = () => diaDe(Date.now() - 86400000);
+  const cuandoCorto = d => {
+    const k = diaDe(d);
+    if (k === hoy()) return fmtHora(d);
+    if (k === ayer()) return 'ayer';
+    return new Intl.DateTimeFormat('es-ES', { timeZone: TZ, day: '2-digit', month: '2-digit' }).format(new Date(d));
+  };
+  const diaLargo = d => {
+    const k = diaDe(d);
+    if (k === hoy()) return 'Hoy';
+    if (k === ayer()) return 'Ayer';
+    return new Intl.DateTimeFormat('es-ES', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(d));
+  };
+  const manana = () => diaDe(Date.now() + 86400000);
+  // «hasta las 17:28» hoy, «hasta mañana a las 17:28» mañana.
+  const hasta = d => {
+    const k = diaDe(d);
+    if (k === hoy()) return 'las ' + fmtHora(d);
+    return (k === manana() ? 'mañana' : cuandoCorto(d)) + ' a las ' + fmtHora(d);
+  };
+  const iniciales = n => String(n || '?').replace(/^\+/, '').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || '?';
+  // Los nombres de la ficha vienen en MAYÚSCULAS: se leen mejor como se escriben.
+  const MENORES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'da', 'do', 'dos']);
+  const bonito = n => {
+    const s = String(n || '');
+    if (!s || s !== s.toUpperCase() || !/[A-ZÁÉÍÓÚÑ]/.test(s)) return s;
+    return s.toLowerCase().split(/\s+/).map((p, i) => (i && MENORES.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1))).join(' ');
+  };
+
+  let lista = [];
+  let actual = null;         // teléfono abierto
+  let cab = null;            // su cabecera
+  let ultimoId = null;       // el último mensaje pintado
+  let ultimoDia = null;      // para los separadores
+  let pausaMin = 30;
+  let enviando = false;
+
+  // ── La lista ────────────────────────────────────────────────────────────
+  async function cargarLista() {
+    try {
+      const q = $('#w-buscar').value.trim();
+      const r = await fetch('/whatsapp/api/conversaciones' + (q ? '?q=' + encodeURIComponent(q) : '')).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar');
+      if (r.faltaMigracion) return avisar('Falta aplicar la migración <b>db/185</b> (en Migraciones): hasta entonces no se guarda ningún mensaje.');
+      pausaMin = r.pausaMin || pausaMin;
+      lista = r.conversaciones;
+      pintarLista();
+    } catch (e) {
+      $('#w-lista').innerHTML = `<li class="px-4 py-6 text-sm text-telecab-red">${esc(e.message)}</li>`;
+    }
+  }
+  function avisar(html) {
+    const a = $('#w-aviso');
+    a.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> ' + html;
+    a.classList.remove('hidden');
+    $('#w-lista').innerHTML = '';
+  }
+
+  function pintarLista() {
+    if (!lista.length) {
+      $('#w-lista').innerHTML = `<li class="px-4 py-6 text-sm text-telecab-muted">${$('#w-buscar').value.trim()
+        ? 'Nadie con ese nombre o teléfono.'
+        : 'Todavía no hay mensajes. El chat se guarda desde que se aplicó db/185: Meta no da los anteriores.'}</li>`;
+      return;
+    }
+    $('#w-lista').innerHTML = lista.map(c => {
+      const on = c.telefono === actual;
+      const prefijo = c.ultimoSentido === 'saliente' ? '<i class="fa-solid fa-reply text-[10px] mr-1 opacity-60"></i>' : '';
+      return `<li>
+        <button type="button" data-tel="${esc(c.telefono)}"
+          class="w-full text-left flex gap-3 px-3 py-2.5 border-b border-telecab-border/60 transition ${on ? 'bg-telecab-card2' : 'hover:bg-telecab-card2/60'}">
+          <span class="relative shrink-0 w-10 h-10 rounded-full bg-telecab-card2 border border-telecab-border flex items-center justify-center text-xs font-semibold text-telecab-muted">
+            ${esc(iniciales(bonito(c.nombre)))}
+            ${c.ventana.abierta ? '<span class="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full bg-telecab-green border-2 border-telecab-card" title="Ventana de 24 h abierta: se le puede escribir"></span>' : ''}
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="flex items-baseline gap-2">
+              <span class="truncate font-medium text-sm text-telecab-text">${esc(bonito(c.nombre))}</span>
+              <span class="ml-auto shrink-0 text-[11px] ${c.sinLeer ? 'text-telecab-gold font-semibold' : 'text-telecab-muted'}">${esc(cuandoCorto(c.ultimoAt))}</span>
+            </span>
+            <span class="flex items-center gap-2 mt-0.5">
+              <span class="truncate text-xs text-telecab-muted">${prefijo}${esc(c.ultimoTexto || '')}</span>
+              ${c.botPausadoHasta ? '<i class="fa-solid fa-hand ml-auto shrink-0 text-[11px] text-telecab-warn" title="El bot está en pausa con esta persona"></i>' : ''}
+              ${c.sinLeer ? `<span class="${c.botPausadoHasta ? '' : 'ml-auto '}shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-telecab-gold text-[11px] font-semibold flex items-center justify-center" style="color: rgb(var(--tc-on-gold))">${c.sinLeer > 99 ? '99+' : c.sinLeer}</span>` : ''}
+            </span>
+          </span>
+        </button></li>`;
+    }).join('');
+  }
+
+  $('#w-lista').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-tel]');
+    if (b) abrir(b.dataset.tel);
+  });
+  let tBuscar = null;
+  $('#w-buscar').addEventListener('input', () => { clearTimeout(tBuscar); tBuscar = setTimeout(cargarLista, 250); });
+
+  // ── El chat ─────────────────────────────────────────────────────────────
+  const ETIQUETA = { bot: 'Bot', alerta: 'Alerta de Control', velocidad: 'Aviso de velocidad', turnos: 'Aviso de turnos', plantilla: 'Plantilla' };
+  const ICONO_MEDIA = { imagen: 'fa-image', video: 'fa-film', audio: 'fa-microphone', documento: 'fa-file-lines', sticker: 'fa-note-sticky', contacto: 'fa-address-card' };
+  const NOMBRE_MEDIA = { imagen: 'Foto', video: 'Vídeo', audio: 'Audio', documento: 'Documento', sticker: 'Sticker', contacto: 'Contacto' };
+
+  function marca(m) {
+    if (m.sentido !== 'saliente') return '';
+    if (m.error || m.estado === 'fallido') {
+      const porque = m.error || [m.error_codigo, m.error_texto].filter(Boolean).join(' · ') || 'Meta no dio motivo';
+      return `<i class="fa-solid fa-circle-exclamation text-telecab-red" title="No llegó: ${esc(porque)}"></i>`;
+    }
+    if (m.estado === 'leido') return '<i class="fa-solid fa-check-double text-telecab-azul" title="Leído"></i>';
+    if (m.estado === 'entregado') return '<i class="fa-solid fa-check-double" title="Entregado"></i>';
+    if (m.estado === 'enviado') return '<i class="fa-solid fa-check" title="Enviado"></i>';
+    return '<i class="fa-regular fa-clock" title="Esperando a que Meta diga si llegó"></i>';
+  }
+
+  function cuerpo(m) {
+    const d = m.detalle || {};
+    const texto = m.texto ? `<div class="whitespace-pre-wrap break-words">${formato(m.texto)}</div>` : '';
+    switch (m.tipo) {
+      case 'botones':
+        return texto + `<div class="flex flex-wrap gap-1.5 mt-2">${(d.botones || []).map(b =>
+          `<span class="px-2 py-1 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted">${esc(b)}</span>`).join('')}</div>`;
+      case 'boton':
+        return `<div class="flex items-center gap-1.5 text-sm"><i class="fa-solid fa-hand-pointer text-xs text-telecab-muted"></i> Pulsó <b>${esc(m.texto)}</b></div>`;
+      case 'ubicacion':
+        return `<div class="flex items-center gap-1.5"><i class="fa-solid fa-location-dot text-telecab-gold"></i>
+          <a class="underline underline-offset-2 hover:text-telecab-gold" target="_blank" rel="noopener"
+             href="https://www.google.com/maps?q=${encodeURIComponent(d.lat + ',' + d.lng)}">${esc(m.texto || 'Ver la ubicación en el mapa')}</a></div>`;
+      case 'reaccion':
+        return `<div class="text-sm text-telecab-muted">Reaccionó con ${esc(m.texto)}</div>`;
+      case 'imagen': case 'video': case 'audio': case 'documento': case 'sticker': case 'contacto':
+        return `<div class="flex items-center gap-2 text-sm font-medium"><i class="fa-solid ${ICONO_MEDIA[m.tipo]} text-telecab-muted"></i>
+          ${NOMBRE_MEDIA[m.tipo]}${d.voz ? ' · nota de voz' : ''}</div>` + texto +
+          '<div class="text-[11px] text-telecab-muted mt-0.5">Se podrá ver aquí más adelante.</div>';
+      case 'otro':
+        return `<div class="text-sm text-telecab-muted italic">Un mensaje que esta pantalla aún no sabe enseñar.</div>`;
+      default:
+        return texto || '<div class="text-sm text-telecab-muted italic">(vacío)</div>';
+    }
+  }
+
+  function burbuja(m) {
+    const sale = m.sentido === 'saliente';
+    let clase, quien = '';
+    if (!sale) clase = 'bg-telecab-card border-telecab-border';
+    else if (m.origen === 'oficina') { clase = 'bg-telecab-gold/10 border-telecab-gold/30'; quien = m.usuario || 'Oficina'; }
+    else if (m.origen === 'bot') { clase = 'bg-telecab-card2 border-telecab-border'; quien = 'Bot'; }
+    else { clase = 'bg-telecab-azul/10 border-telecab-azul/30'; quien = ETIQUETA[m.origen] || 'Plantilla'; }
+    let sep = '';
+    const dia = diaDe(m.ocurrido_at);
+    if (dia !== ultimoDia) {
+      ultimoDia = dia;
+      sep = `<div class="flex justify-center py-2"><span class="px-3 py-0.5 rounded-full bg-telecab-card border border-telecab-border text-[11px] text-telecab-muted first-letter:uppercase">${esc(diaLargo(m.ocurrido_at))}</span></div>`;
+    }
+    return sep + `<div class="flex ${sale ? 'justify-end' : 'justify-start'}" data-id="${m.id}">
+      <div class="max-w-[78%] md:max-w-[64%] rounded-2xl border px-3 py-2 text-sm text-telecab-text ${clase} ${sale ? 'rounded-br-md' : 'rounded-bl-md'}">
+        ${quien ? `<div class="text-[11px] font-semibold mb-0.5 ${m.origen === 'oficina' ? 'text-telecab-gold' : 'text-telecab-muted'}">${esc(quien)}</div>` : ''}
+        ${cuerpo(m)}
+        <div class="w-marca flex items-center justify-end gap-1.5 mt-1 text-[10px] text-telecab-muted">${esc(fmtHora(m.ocurrido_at))} ${marca(m)}</div>
+      </div></div>`;
+  }
+
+  function pintarCabecera() {
+    const c = cab;
+    const v = c.ventana;
+    const ventana = v.abierta
+      ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-green"><span class="w-2 h-2 rounded-full bg-telecab-green"></span>Ventana abierta hasta ${esc(hasta(v.cierraAt))}</span>`
+      : `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><span class="w-2 h-2 rounded-full bg-telecab-muted/60"></span>Ventana cerrada</span>`;
+    const bot = c.botPausadoHasta
+      ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-warn"><i class="fa-solid fa-hand"></i>Bot en pausa hasta las ${esc(fmtHora(c.botPausadoHasta))}${c.pausadoPor ? ' (' + esc(c.pausadoPor) + ')' : ''}</span>`
+      : `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><i class="fa-solid fa-robot"></i>Bot activo</span>`;
+    const botonBot = !PUEDE_ESCRIBIR ? '' : c.botPausadoHasta
+      ? `<button type="button" id="w-bot" data-pausar="0" class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold/60">Devolver al bot</button>`
+      : `<button type="button" id="w-bot" data-pausar="1" class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60" title="Que el bot no le conteste durante ${pausaMin} minutos">Pausar el bot</button>`;
+    $('#w-cabecera').innerHTML = `
+      <button type="button" id="w-atras" class="md:hidden w-8 h-8 -ml-1 rounded-lg text-telecab-muted hover:text-telecab-text" aria-label="Volver a las conversaciones"><i class="fa-solid fa-arrow-left"></i></button>
+      <span class="shrink-0 w-10 h-10 rounded-full bg-telecab-card2 border border-telecab-border flex items-center justify-center text-xs font-semibold text-telecab-muted">${esc(iniciales(bonito(c.nombre)))}</span>
+      <div class="min-w-0 mr-auto">
+        <div class="font-semibold text-telecab-text truncate">${esc(bonito(c.nombre))}</div>
+        <div class="text-xs text-telecab-muted truncate">+${esc(c.telefono)}${c.que ? ' · ' + esc(c.que) : ''}${c.perfil ? ' · en WhatsApp «' + esc(c.perfil) + '»' : ''}
+          ${c.conductorId ? ` · <a href="/plantilla#${encodeURIComponent(c.conductorId)}" class="underline underline-offset-2 hover:text-telecab-gold">Ver su ficha</a>` : ''}</div>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">${ventana}${bot}${botonBot}</div>`;
+    const atras = $('#w-atras');
+    if (atras) atras.addEventListener('click', cerrarEnMovil);
+    const b = $('#w-bot');
+    if (b) b.addEventListener('click', () => cambiarBot(b.dataset.pausar === '1'));
+    pintarPie();
+  }
+
+  function pintarPie() {
+    const c = cab;
+    if (!PUEDE_ESCRIBIR) {
+      $('#w-pie').innerHTML = '<p class="text-xs text-telecab-muted px-1">Puedes leer las conversaciones; para escribir hace falta el permiso «WhatsApp · escribir».</p>';
+      return;
+    }
+    if (!c.ventana.abierta) {
+      $('#w-pie').innerHTML = `<p class="text-xs text-telecab-muted px-1 leading-relaxed"><i class="fa-solid fa-lock mr-1"></i>
+        La ventana de 24 h está cerrada: solo se le puede escribir gratis cuando mande algo (un mensaje o un botón del bot).
+        Fuera de ella, Meta solo deja mandar plantillas, que se pagan.</p>`;
+      return;
+    }
+    if ($('#w-texto')) return;   // ya está la caja: no se pierde lo escrito
+    $('#w-pie').innerHTML = `
+      <form id="w-form" class="flex items-end gap-2">
+        <textarea id="w-texto" rows="1" maxlength="4096" placeholder="Escribe un mensaje"
+          class="flex-1 resize-none max-h-40 px-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70"></textarea>
+        <button type="submit" id="w-enviar" class="shrink-0 h-10 px-4 rounded-xl bg-telecab-gold text-sm font-semibold hover:brightness-95 disabled:opacity-60" style="color: rgb(var(--tc-on-gold))">
+          <i class="fa-solid fa-paper-plane mr-1"></i> Enviar</button>
+      </form>
+      <p class="text-[11px] text-telecab-muted mt-1.5 px-1">Intro envía; Mayús + Intro, salto de línea. Al escribir, el bot deja de contestarle ${pausaMin} minutos.</p>`;
+    const ta = $('#w-texto');
+    const crecer = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; };
+    ta.addEventListener('input', crecer);
+    ta.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); enviar(); } });
+    $('#w-form').addEventListener('submit', ev => { ev.preventDefault(); enviar(); });
+  }
+
+  async function abrir(tel) {
+    actual = tel; ultimoId = null; ultimoDia = null;
+    $('#w-vacio').classList.add('hidden');
+    $('#w-abierto').classList.remove('hidden');
+    $('#w-abierto').classList.add('flex');
+    abrirEnMovil();
+    $('#w-mensajes').innerHTML = '<div class="text-sm text-telecab-muted">Cargando…</div>';
+    $('#w-pie').innerHTML = '';
+    try { history.replaceState(null, '', '/whatsapp?tel=' + encodeURIComponent(tel)); } catch (_) { /* nada */ }
+    pintarLista();
+    try {
+      const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel)).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo abrir');
+      if (actual !== tel) return;
+      cab = r.chat; pausaMin = r.pausaMin || pausaMin;
+      pintarCabecera();
+      $('#w-mensajes').innerHTML = r.mensajes.length ? r.mensajes.map(burbuja).join('')
+        : '<div class="text-sm text-telecab-muted">Sin mensajes guardados.</div>';
+      if (r.mensajes.length) ultimoId = r.mensajes[r.mensajes.length - 1].id;
+      abajo(true);
+      const c = lista.find(x => x.telefono === tel);
+      if (c) { c.sinLeer = 0; pintarLista(); }
+    } catch (e) {
+      $('#w-mensajes').innerHTML = `<div class="text-sm text-telecab-red">${esc(e.message)}</div>`;
+    }
+  }
+
+  const cercaDeAbajo = () => { const el = $('#w-mensajes'); return el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
+  const abajo = (siempre) => { const el = $('#w-mensajes'); if (siempre || cercaDeAbajo()) el.scrollTop = el.scrollHeight; };
+
+  // Lo nuevo de la conversación abierta, cada pocos segundos.
+  async function refrescarChat() {
+    if (!actual) return;
+    const tel = actual;
+    try {
+      const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel) + (ultimoId ? '&despues=' + ultimoId : '')).then(x => x.json());
+      if (r.status !== 'ok' || actual !== tel) return;
+      const antes = JSON.stringify(cab);
+      cab = r.chat;
+      if (JSON.stringify(cab) !== antes) pintarCabecera();
+      if (r.mensajes.length) {
+        const ibaAbajo = cercaDeAbajo();
+        const caja = $('#w-mensajes');
+        if (!ultimoId) caja.innerHTML = '';
+        caja.insertAdjacentHTML('beforeend', r.mensajes.map(burbuja).join(''));
+        ultimoId = r.mensajes[r.mensajes.length - 1].id;
+        if (ibaAbajo) abajo(true);
+      }
+      // Las marcas de entregado y leído de lo que ya estaba pintado.
+      if (!r.mensajes.length) refrescarMarcas(tel);
+    } catch (_) { /* el siguiente refresco lo intenta otra vez */ }
+  }
+  let marcasCada = 0;
+  async function refrescarMarcas(tel) {
+    if (++marcasCada % 3) return;   // cada tres vueltas basta
+    try {
+      const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel)).then(x => x.json());
+      if (r.status !== 'ok' || actual !== tel) return;
+      r.mensajes.forEach(m => {
+        if (m.sentido !== 'saliente') return;
+        const el = document.querySelector(`#w-mensajes [data-id="${m.id}"] .w-marca`);
+        if (el) el.innerHTML = `${esc(fmtHora(m.ocurrido_at))} ${marca(m)}`;
+      });
+    } catch (_) { /* nada */ }
+  }
+
+  async function enviar() {
+    const ta = $('#w-texto');
+    if (!ta || enviando) return;
+    const texto = ta.value.trim();
+    if (!texto) return;
+    enviando = true;
+    $('#w-enviar').disabled = true;
+    try {
+      const r = await fetch('/whatsapp/api/enviar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tel: actual, texto }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo enviar');
+      ta.value = ''; ta.style.height = 'auto';
+      await refrescarChat();
+      abajo(true);
+      cargarLista();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo enviar', texto: e.message, tono: 'error' });
+    } finally {
+      enviando = false;
+      const b = $('#w-enviar'); if (b) b.disabled = false;
+      const t = $('#w-texto'); if (t) t.focus();
+    }
+  }
+
+  async function cambiarBot(pausar) {
+    try {
+      const r = await fetch('/whatsapp/api/bot', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tel: actual, pausar }),
+      }).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cambiar');
+      await refrescarChat();
+      cargarLista();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo cambiar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  // En el móvil se ve una cosa cada vez: la lista o el chat.
+  function abrirEnMovil() {
+    if (window.matchMedia('(min-width: 768px)').matches) return;
+    $('#w-lado').classList.add('hidden');
+    $('#w-chat').classList.remove('hidden');
+    $('#w-chat').classList.add('flex');
+  }
+  function cerrarEnMovil() {
+    $('#w-lado').classList.remove('hidden');
+    $('#w-chat').classList.add('hidden');
+    $('#w-chat').classList.remove('flex');
+    actual = null;
+    try { history.replaceState(null, '', '/whatsapp'); } catch (_) { /* nada */ }
+    pintarLista();
+  }
+
+  // ── Arranque y refresco ─────────────────────────────────────────────────
+  cargarLista().then(() => {
+    const tel = new URLSearchParams(location.search).get('tel');
+    if (tel) abrir(tel.replace(/\D/g, ''));
+  });
+  setInterval(() => { if (!document.hidden) refrescarChat(); }, 4000);
+  setInterval(() => { if (!document.hidden) cargarLista(); }, 10000);
+})();
+</script>

@@ -112,6 +112,7 @@ Nada sale sin dejar rastro, y el rastro se escribe **salga bien o mal**:
 | avisos de turnos (`avisos.repo`) | a quién, cuándo y con qué resultado; `sin-telefono` se apunta como dato para RRHH, **no** como error de envío |
 | libro de sanciones | estados `avisado`, `simulado`, `sin_conductor`, `dudoso`, `error` |
 | `whatsapp_envio` (db/176) | lo que **Meta** dice después de cada mensaje: enviado, entregado, leído o **fallido**, con el código de error |
+| `whatsapp_mensaje` · `whatsapp_chat` (db/185) | **el chat**: cada mensaje que entra o sale por el número, con su contenido y su origen, y una fila por conversación. Lo enseña el módulo [[WhatsApp chat]] |
 
 El registro de puertas **no se espera**: que falle apuntarlo no puede dejar a nadie sin abrir el coche.
 
@@ -146,6 +147,20 @@ Las alertas a controladores (`alerta_control_envio`) todavía no se cruzan con e
 
 **Modos test/live.** Sanciones (`SANCIONES_MODO`) y alertas de control tienen modo de pruebas: se registra todo y no sale nada. En sanciones hay además una regla de silencio: un aviso por algo que pasó hace diez días no avisa de nada —el conductor ya no se acuerda de ese trayecto— así que no se manda, pero el exceso **sí queda contado**, que es lo que alimenta la calificación.
 
+## El chat: todo lo que entra y sale, guardado (db/185, 07/10/2026)
+
+Hasta el 07/10 lo que escribían los conductores solo se veía en el log del servidor y se perdía. Desde db/185:
+
+- **Lo que entra** lo guarda el webhook (`routes/botPuertas.js`, `guardarYVerSiAtiende`) antes de dárselo al bot: textos, botones, fotos, audios, ubicaciones… (`services/whatsappChat.describirEntrante`). Guarda también el nombre que la persona tiene puesto en WhatsApp.
+- **Lo que sale** lo apunta `services/whatsapp.js` en cada envío (`apuntar`), con su **origen**: `bot`, `oficina` (con quién lo escribió), `alerta`, `velocidad`, `turnos` o `plantilla`. Los dos envíos que el bot de puertas hacía por su cuenta pasan desde entonces por aquí (`enviarTexto`, `enviarBotonesCrudos`): mandan lo mismo y quedan apuntados.
+- **Guardar nunca lanza**: si el chat falla, el bot contesta como siempre.
+
+**La pausa del bot.** Cuando la oficina escribe a alguien desde el módulo, el bot deja de contestarle **30 minutos** (`WHATSAPP_PAUSA_BOT_MIN`), y la pausa se alarga con cada mensaje de la oficina. Mientras dura, lo que esa persona escriba solo va al chat. **Los botones los atiende siempre** (`botAtiende`): son los del turno, y nadie puede quedarse sin abrirlo por estar hablando con la oficina. También se puede pausar o devolver al bot a mano.
+
+**La ventana de 24 h.** Meta deja escribir texto libre, gratis, durante las 24 horas siguientes al último mensaje de la persona (un texto o un botón). Fuera de ella solo se pueden mandar plantillas, que se pagan. El módulo solo deja escribir con la ventana abierta. El 07/10 escribían al bot entre 46 y 66 personas al día: casi todos los conductores activos la tienen abierta.
+
+**Meta no da el historial**: el chat empieza el día que se aplicó db/185. Los mensajes se borran a los **180 días** (`WHATSAPP_RETENCION_DIAS`, en la poda diaria de las 00:00): son conversaciones de personas.
+
 ## Quién manda WhatsApp
 
 | Fichero | Qué manda |
@@ -154,5 +169,7 @@ Las alertas a controladores (`alerta_control_envio`) todavía no se cruzan con e
 | `modules/Operaciones/sanciones.service.js` | la advertencia por exceso de velocidad |
 | `modules/Control/alertas.repo.js` | las alertas de franja a los controladores |
 | `services/fichajeBot.js` | la conversación del conductor (su turno) y la de los viajes de la empresa |
+| `routes/botPuertas.js` | el panel de puertas de la oficina (por `services/whatsapp` desde el 07/10/2026) |
+| `modules/WhatsApp/whatsapp.service.js` | lo que escribe la oficina desde el chat (solo con la ventana de 24 h abierta) |
 
 Ninguno de ellos llama a [[BOLT]] ni a [[Mapon]] para decidir: lo que necesitan ya está en PostgreSQL, puesto por la [[Ingesta]]. Lo único que sale fuera es el WhatsApp, que es el trabajo.

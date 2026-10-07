@@ -1,0 +1,67 @@
+---
+tags: [modulo, whatsapp, chat, conductores, comunicacion]
+ruta: /whatsapp
+codigo: modules/WhatsApp
+fecha: 2026-10-07
+---
+
+# WhatsApp chat
+
+Camilo, 07/10/2026: *«un chat de WhatsApp del bot donde guarde los mensajes enviados y recibidos, como módulo WhatsApp, para saber qué les envía el WhatsApp y qué nos envían ellos; y si podemos enviarles mensajes de forma libre, lo hacemos, ya que se abren las ventanas gratis de 24 horas»*.
+
+Salió de un caso concreto: aquel día la cuenta estuvo bloqueada por un pago de 12:51 a 17:03. Para saber a quién no le había llegado nada hubo que cruzar a mano los fallos de Meta con los turnos, y para escribirles no había por dónde.
+
+## Qué se ve
+
+- **A la izquierda, las conversaciones**, la más reciente primero:
+  - **quién es**: el conductor con su ficha, un usuario del ERP, una cuenta de BOLT (también de Barcelona) o, si nada casa, el nombre que tiene puesto en WhatsApp;
+  - el último mensaje y su hora;
+  - lo que la oficina **no ha leído**;
+  - un punto verde si **la ventana de 24 h está abierta**;
+  - una mano si **el bot está en pausa** con esa persona.
+
+  Se busca por nombre o por un trozo del teléfono.
+- **A la derecha, el chat**:
+  - Lo que manda la persona va a la izquierda.
+  - A la derecha, lo que le llega, distinguiendo el **bot**, la **oficina** (en el acento, con el nombre de quien escribió) y los avisos (**alerta de Control**, **aviso de velocidad**, **aviso de turnos**, en azul).
+  - Cada mensaje enviado lleva su marca: enviado, entregado, leído (en azul) o **no llegó** (en rojo, con el motivo que dio Meta).
+  - Los botones que mandó el bot se ven debajo del texto; lo que pulsó la persona, como «Pulsó …».
+  - Las ubicaciones se abren en el mapa. Fotos, audios y documentos, de momento, solo se anuncian (segunda fase).
+- **Arriba del chat**: el teléfono, el enlace a su ficha si es conductor, hasta cuándo está abierta la ventana y el estado del bot, con **Pausar el bot** o **Devolver al bot**.
+- **Abajo, la caja para escribir**. Solo sale con la ventana abierta; si está cerrada, se explica por qué. Intro envía; Mayús + Intro hace un salto de línea.
+
+Abrir una conversación la da por leída. La pantalla se refresca sola: el chat abierto cada 4 segundos y la lista cada 10.
+
+## Las reglas
+
+- **Escribir solo con la ventana abierta** (gratis). Fuera de ella Meta solo admite plantillas, que se pagan; mandarlas desde aquí queda para la segunda fase.
+- **Al escribir, el bot se pausa** con esa persona **30 minutos** (`WHATSAPP_PAUSA_BOT_MIN`), y cada mensaje de la oficina alarga la pausa. Así lo que conteste llega aquí y no le salta el bot. **Los botones del turno los atiende siempre.**
+- **Dos llaves** (grupo Tráfico): `/whatsapp` para leer y `/whatsapp/escribir` para escribir y pausar el bot. Desde el principio lo ven el desarrollador y los superadministradores; a los demás se les da en Usuarios.
+- **Se borra a los 180 días** (`WHATSAPP_RETENCION_DIAS`).
+- **El historial empieza con db/185**: Meta no da los mensajes anteriores.
+
+## Las piezas
+
+```
+modules/WhatsApp/whatsapp.controller.js   las rutas (y si quien entra puede escribir)
+modules/WhatsApp/whatsapp.service.js      la lista, abrir una conversación, escribir, la pausa
+modules/WhatsApp/vistas/whatsapp.ejs      la pantalla
+services/repo/whatsappChat.js             guardar y leer (whatsapp_mensaje, whatsapp_chat)
+services/whatsappChat.js                  las reglas puras: qué es cada mensaje, la ventana, la pausa
+services/whatsapp.js                      los envíos, que apuntan cada mensaje en el chat
+routes/botPuertas.js                      el webhook, que guarda lo que entra y respeta la pausa
+```
+
+Comprobador: `scripts/comprobar-whatsapp-chat.js`, sin base ni Meta: las reglas y que cada envío quede apuntado con su origen.
+
+## Segunda fase (pendiente)
+
+- Ver aquí las fotos, audios y documentos que mandan.
+- Mandar plantillas cuando la ventana esté cerrada, avisando de que se pagan.
+- Respuestas rápidas.
+- Asignar una conversación a un controlador.
+- Enlazar con el Call Center.
+
+## Ver también
+
+[[WhatsApp]] · [[Control]] · [[Usuarios y permisos]]

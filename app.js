@@ -318,6 +318,8 @@ app.use('/pendientes', pendientesRoutes);
 app.use('/operaciones', operacionesRoutes);
 app.use('/sanciones', sancionesRoutes);
 app.use('/callcenter', require('./modules/Control/callcenter.controller'));
+// El chat del número del bot (db/185): qué les manda y qué escriben, y escribirles.
+app.use('/whatsapp', require('./modules/WhatsApp/whatsapp.controller'));
 app.use('/migraciones', require('./routes/migraciones'));
 app.use('/explorador', require('./routes/explorador'));
 
@@ -463,6 +465,13 @@ programar('0 0 * * *', async () => {
     // disco: se conservan 7 días (28 los fallos). Sin agresividad aquí.
     const r = await bd.consulta('SELECT purgar_ingesta(7) AS n');
     if (r.rows[0].n) console.log(`🧹 [INGESTA] Purgadas ${r.rows[0].n} filas del registro`);
+    // El chat de WhatsApp (db/185): son mensajes de personas y no se guardan
+    // para siempre. WHATSAPP_RETENCION_DIAS, 180 por defecto.
+    try {
+      const diasChat = Number(process.env.WHATSAPP_RETENCION_DIAS) || 180;
+      const nChat = await require('./services/repo/whatsappChat').purgar(diasChat);
+      if (nChat) console.log(`🧹 [WhatsApp] Borrados ${nChat} mensajes del chat (>${diasChat}d)`);
+    } catch (e) { /* sin db/185 todavía: nada que borrar */ }
     // VACUUM normal (NO bloquea lecturas/escrituras, al contrario que VACUUM FULL):
     // acelera reutilizar el hueco muerto del TOAST que deja el vaciado, para que la
     // marca de agua de la tabla no suba en un plan pequeño. Encoger el fichero de
