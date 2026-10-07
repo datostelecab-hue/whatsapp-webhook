@@ -57,7 +57,7 @@ function descansoCoche(coche) {
 
 // Estado del vehículo, para anotar (mini) los coches no operativos que se mantienen
 // en el anexo por tener conductores. El bueno ('✓') no se anota.
-const MOTIVO_VEH = { S: 'Siniestro', T: 'Transporte', X: 'En taller', R: 'Reservado', B: 'Baja' };
+const MOTIVO_VEH = { S: 'Siniestro', T: 'Transporte', X: 'En taller', R: 'Reservado', B: 'Baja', P: 'Policía' };
 
 // "08/08/2026" → "8/8" (anotación compacta de Desde/Hasta).
 function cortoFecha(s) {

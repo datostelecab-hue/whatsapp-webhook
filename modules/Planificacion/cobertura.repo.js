@@ -27,7 +27,7 @@ const TZ = 'Europe/Madrid';
 
 // Estado del vehículo → por qué no sale. El código va en la base; esto es el texto.
 const ESTADO_VEH = {
-  T: 'en taller', S: 'siniestrado', R: 'reservado', B: 'de baja', X: 'en taller',
+  T: 'en taller', S: 'siniestrado', R: 'reservado', B: 'de baja', X: 'en taller', P: 'retenido por la policía',
 };
 
 const hoyMadrid = () => new Intl.DateTimeFormat('en-CA',

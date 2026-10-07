@@ -79,6 +79,21 @@ Con un solo campo habría que elegir entre saber que un coche está en Barcelona
 
 El estado y la zona **no se escriben a pelo**: pasan por `vigencia`, que cierra la anterior y abre la nueva en una sola transacción y deja constancia de cuándo cambió y quién lo hizo.
 
+**Los estados del coche** son un catálogo (`cat_estado_vehiculo`). La ficha los ofrece tal cual, y cada uno lleva dos marcas que son las que leen el planificador y Control: si es **operativo** (se puede conducir) y si sale **en la cobertura** (el cuadrante).
+
+| Código | Estado | ¿Operativo? | ¿En cobertura? |
+|---|---|---|---|
+| O | Operativo | sí | sí |
+| R | Reservado | no | sí |
+| T | Transporte | no | sí |
+| X | En taller | no | no |
+| S | Siniestro | no | no |
+| B | Baja (y la convención de Barcelona, ver arriba) | no | no |
+| E | Emergencia (db/54) | no | no |
+| P | **Policía** (db/184, 07/10/2026: el coche lo tiene la policía) | no | no |
+
+Un estado nuevo es una fila del catálogo (una migración). Solo hay que tocar el código en los sitios donde está escrito **su color o su texto**: `TONO_ESTADO` en `vistas/vehiculos.ejs` y en el planificador, `ESTADO_VEH` en `cobertura.repo.js` y `MOTIVO_VEH` en `parrilla.excel.js`. Sin eso, el estado funciona igual pero sale en gris.
+
 **Las 6 plazas se crean con el coche**, en la misma transacción del alta: un coche sin plazas no se puede planificar.
 
 ## El odómetro bueno de Mapon es `can.odom`, no `mileage`

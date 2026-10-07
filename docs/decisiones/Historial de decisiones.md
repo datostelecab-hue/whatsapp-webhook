@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-07 · Un estado más del coche: Policía
+
+En la ficha del coche (Vehículos → Editar), además de Operativo, En taller, Siniestro…, ya se puede poner **Policía**: el coche lo tiene la policía y no se puede usar. Es una fila del catálogo (db/184, código `P`). Se comporta como En taller o Siniestro: no operativo y fuera de la cobertura, así que el planificador avisa de que sus conductores se han quedado sin coche y Control lo señala si se mueve. Sale en azul. → [[Vehiculos]]
+
 ## 2026-10-07 · La pantalla de acceso, sobre Madrid o Barcelona
 
 Camilo quería un acceso «más corporativo» y «como una landing», y trajo una referencia («login así»): una foto a toda la pantalla, un saludo grande a la izquierda y el formulario a la derecha, encima de la foto. La imagen la hicimos nosotros en SVG y va con la sede: Madrid con las Cuatro Torres y la autovía, y Barcelona con la Sagrada Família, la Torre Glòries y el mar. Al elegir la sede en el formulario, la imagen cambia con un fundido. La pantalla va siempre en oscuro y conserva el acento del tema de cada uno. Ese mismo día hubo, durante unas horas, una versión sin foto (la carretera del logo con el pin como punto de fuga), que esta sustituyó. → [[Identidad visual#La pantalla de acceso]]
