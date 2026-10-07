@@ -46,6 +46,7 @@ const historicoSrv = require('./historico.service');
 const asistencia = require('./asistencia.repo');
 const auditoriaLunes = require('./auditoriaLunes.repo');
 const reporteTurnos = require('./reporteTurnos.service');
+const jornadaSemanal = require('./jornadaSemanal.service');
 // El reporte de horas del día, con sus bandas de color (los datos, en
 // `reporteHoras.repo`).
 const justificantes = require('./reporteHoras.service');
@@ -395,6 +396,24 @@ async function auditoriaLunesExcel(lunes) {
   return { bytes, nombre: `auditoria-lunes-${datos.dias[0]}-a-${datos.dias[datos.dias.length - 1]}.xlsx` };
 }
 
+// ── Jornada semanal ────────────────────────────────────────────────────────
+
+/**
+ * ¿CUMPLIÓ CADA UNO SU JORNADA DE LA SEMANA? Plantilla propia, una pestaña por
+ * jornada. Las reglas viven en jornadaSemanal.service.js.
+ */
+async function jornadaSemanalExcel(lunes) {
+  const datos = await jornadaSemanal.informe({ lunes });
+  const bytes = await require('./jornadaSemanal.excel').generar(datos);
+  console.log(`📊 [Control] jornada semanal ${datos.lunes}→${datos.domingo}${datos.cerrada ? '' : ' (parcial)'}: ` +
+    datos.grupos.map(g => `${g.jornada == null ? 'sin jornada' : g.jornada + ' h'} ${g.cumplen}/${g.filas.length}`).join(' · ') +
+    (datos.avisos.sinFila ? ` · ${datos.avisos.sinFila} sin fila en la Bitácora` : ''));
+  return { bytes, nombre: `jornada-semanal-${datos.lunes}-a-${datos.domingo}.xlsx` };
+}
+
+/** Las semanas que ofrece la tarjeta, decididas aquí en hora de Madrid. */
+const semanasJornada = () => jornadaSemanal.semanas();
+
 // ── Los descargables del día ───────────────────────────────────────────────
 // `dia` aquí NO es una fecha: es la clave 1|2|3 del reporte de horas (hoy, ayer,
 // anteayer), que es como lo pide la pantalla desde que existe.
@@ -494,6 +513,7 @@ module.exports = {
   marcarNoSale, quitarNoSale, marcarSlack, quitarSlack,
   kmTraza, kmDiagnostico,
   asistenciaPdf, asistenciaExcel, asistenciaPeriodo, auditoriaLunesExcel,
+  jornadaSemanalExcel, semanasJornada,
   reporteHorasExcel, cascadaPdf, sankeyPdf,
   turnosExcel, parrillaExcel, reporteTurnosExcel,
 };

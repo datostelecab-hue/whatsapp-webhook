@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-07 · Informe de jornada semanal (Control · Reportes)
+
+Un Excel de semana en semana, **solo de la plantilla propia**, con una pestaña por jornada de contrato (40 h, 32 h…). Lleva el nombre, de lunes a domingo, el total y si cumplió. Va de menor a mayor, así que los que no cumplieron quedan arriba. Las horas salen de la rejilla de la Bitácora, para que cuadren con ella. La J suma sus horas a las de BOLT, pero solo aprobada, que es la regla de la Bitácora. La baja médica no suma, pero deja su «B» en el día; las vacaciones (V) y los permisos (P), igual. La jornada a cumplir no se rebaja por esos días. Quien no tiene la jornada en el contrato va a una pestaña aparte, sin juzgar. → [[Control Reportes#Jornada semanal · ¿cumplió sus horas? (07/10/2026)]]
+
 ## 2026-10-06 · Todos los reportes con la regla del turno, y la nota de las faltas
 
 «Todos los reportes que usen la misma regla a partir de ahora.» El Reporte de horas, el Reporte por turnos (deja de ser «5-5»), la Bitácora y la tarjeta «Ayer · jornada» cuentan ya por el turno de cada conductor. La jornada de una persona el día D es su turno de día más su turno de noche, y el día no se cierra hasta las 12:00 del siguiente. Por eso la Bitácora se vuelve a sellar a las 12:00, antes del promedio y la calificación. De la Bitácora cuelgan las faltas, la auditoría de lunes y el reporte de la ETT, así que la siguen sin tocarlos. Lo sellado antes del 06/10 no se reescribe: esos días siguen con la jornada 05→05. De paso, el reporte de faltas («los más reincidentes») ya no pone la nota de la escala vieja («S», que ya no existe): saca la nota y el promedio de la calificación A–D. → [[Jornada y turnos#Las horas de cada turno, por conductor (06/10/2026)]] · [[Control Reportes]]

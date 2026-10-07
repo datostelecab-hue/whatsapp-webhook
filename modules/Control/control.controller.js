@@ -91,7 +91,10 @@ router.get('/km', (req, res) => {
 });
 
 router.get('/reportes', (req, res) => {
-  res.render('reportes', { titulo: 'Control · Reportes', seccion: 'control', layout: 'layout-gestion' });
+  res.render('reportes', {
+    titulo: 'Control · Reportes', seccion: 'control', layout: 'layout-gestion',
+    semanas: control.semanasJornada(),
+  });
 });
 
 // ── Lectura ────────────────────────────────────────────────────────────────
@@ -167,6 +170,10 @@ router.get('/asistencia/excel', descarga(req =>
 //   /control/auditoria-lunes/excel?lunes=8    → los 8 últimos (máximo 12)
 router.get('/auditoria-lunes/excel', descarga(req =>
   control.auditoriaLunesExcel(req.query.lunes), XLSX));
+
+//   /control/jornada-semanal/excel                    → la última semana cerrada
+//   /control/jornada-semanal/excel?lunes=2026-09-29   → la semana de ese día
+router.get('/jornada-semanal/excel', descarga(req => control.jornadaSemanalExcel(req.query.lunes), XLSX));
 
 router.get('/reporte/excel', descarga(req => control.reporteHorasExcel(req.query.dia), XLSX));
 router.get('/cascada/pdf', descarga(req => control.cascadaPdf(req.query.dia), PDF));

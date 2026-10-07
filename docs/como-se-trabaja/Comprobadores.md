@@ -344,6 +344,10 @@ No son de los seis, pero forman parte de la misma red:
   `comprobar-reparto-turnos.js`** — comprobaciones de dominio de sus módulos. La última
   (06/10/2026) guarda de quién es cada hora: día 00→24, noche 12→12, NN por su hora de
   inicio, sin contar nada dos veces.
+- **`comprobar-jornada-semanal.js`** (07/10/2026) — las reglas del informe semanal de
+  Control: la J suma a BOLT solo aprobada, la baja médica deja su B y no suma, lo que cae
+  fuera del contrato no cuenta, la semana abierta dice «En curso» y el orden va de menor
+  a mayor.
 
 ---
 

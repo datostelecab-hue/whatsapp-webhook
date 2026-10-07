@@ -153,6 +153,38 @@
         </div>
       </div>
     </div>
+
+    <!-- Jornada semanal: ¿cumplió cada uno sus horas de la semana? (plantilla propia) -->
+    <div class="rounded-2xl border border-telecab-border bg-telecab-card p-4 sm:col-span-2">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-calendar-week text-telecab-gold text-lg mt-0.5"></i>
+        <div class="flex-1">
+          <div class="font-semibold text-telecab-text">Jornada semanal · ¿cumplió sus horas?</div>
+          <p class="text-sm text-telecab-muted mt-0.5">
+            La <b>plantilla propia</b>, una pestaña por <b>jornada</b> (40 h, 32 h…): cada persona con sus horas
+            de lunes a domingo, el total y si <b>cumplió</b> o no. De menor a mayor, así que los que no
+            cumplieron quedan arriba.
+          </p>
+          <p class="text-xs text-telecab-muted mt-2">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            Las horas son las de la <b>Bitácora</b> (BOLT por la regla del turno). Una <b>J</b> suma sus horas a
+            las de BOLT si está aprobada. La <b>baja médica</b> no suma, pero el día queda con su <b>B</b>; igual
+            las vacaciones (V) y los permisos (P).
+          </p>
+          <div class="flex flex-wrap items-center gap-2 mt-3">
+            <select id="js-semana" class="px-2 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text">
+              <% (typeof semanas !== 'undefined' ? semanas : []).forEach(function (s) { %>
+                <option value="<%= s.lunes %>" <%= s.porDefecto ? 'selected' : '' %>><%= s.etiqueta %></option>
+              <% }) %>
+            </select>
+            <a id="js-excel" href="/control/jornada-semanal/excel"
+               class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+              <i class="fa-solid fa-file-excel mr-1"></i> Excel
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -179,6 +211,8 @@
   sinc('#rt-dia', '#rt-excel', 'dia');
   $('#pl-dia').value = isoDia(0);
   sinc('#pl-dia', '#pl-excel', 'dia');
+  // La semana: las opciones (y cuál va marcada) las pone el servidor en hora de Madrid.
+  if ($('#js-semana')) sinc('#js-semana', '#js-excel', 'lunes');
 
   // El reporte del día baja DOS ficheros de un clic: el Excel de horas+KM y el PDF
   // del Sankey. Con un pequeño desfase, porque algunos navegadores frenan dos

@@ -176,6 +176,38 @@ Dos advertencias que el propio reporte escribe en su cabecera:
 
 El periodo por defecto lo decide **el servidor** (día 1 del mes → ayer, en hora de Madrid) y no el navegador: a las 00:30 el reloj del cliente daría un mes distinto. Y llega hasta ayer porque la jornada de hoy no ha terminado y quien entra a las 17:00 aún no ha faltado a nada.
 
+## Jornada semanal · ¿cumplió sus horas? (07/10/2026)
+
+`GET /control/jornada-semanal/excel?lunes=` — `modules/Control/jornadaSemanal.service.js` (las reglas), `jornadaSemanal.repo.js` (los contratos de esa semana) y `jornadaSemanal.excel.js`. Pedido por Camilo: «un informe de semana a semana, solo de la plantilla propia, separado en pestañas según su jornada».
+
+- **Quién**: la **plantilla propia** de esa semana: el periodo de empleo que la toca, con `tipo = 'propia'`; si hay dos (se fue y volvió, o pasó de la ETT a propia a mitad de semana), el más reciente. La ETT no sale.
+- **Una pestaña por jornada**, la de ese contrato (`conductor_periodo_empleo.jornada_horas`): «40 horas», «32 horas»… de la más larga a la más corta. Al final, **«Sin jornada»**: plantilla propia con el contrato sin la jornada puesta. Ahí no se juzga quién cumple; la pestaña sirve para que RRHH la rellene. Eran 7 personas la semana del 28/09.
+- **Columnas**: Nombre (el de BOLT primero, como la Bitácora), de **lunes a domingo**, Total, Diferencia con la jornada, ¿Cumple? y Observaciones.
+- **De menor a mayor**: en una pestaña todos tienen la misma jornada, así que los que no cumplieron quedan arriba solos.
+- **La semana** se elige en la tarjeta: la en curso y las 8 anteriores. Por defecto, **la última cerrada**. Las opciones las pone el servidor, en hora de Madrid. La semana no cierra hasta las **12:00 del lunes**, porque la noche del domingo cuenta hasta entonces. Antes de esa hora el Excel lo dice (`PARCIAL`), y quien aún no llega sale «En curso», no «No».
+
+### Qué vale cada día
+
+Las horas son las de la **Bitácora**: se lee su rejilla (`bitacora.datos()`), con la regla del turno y el histórico sellado. Así una semana cerrada dice lo mismo hoy que dentro de un mes y cuadra con la Bitácora casilla a casilla.
+
+| En la celda | Qué es | ¿Suma? |
+|---|---|---|
+| un número | horas de BOLT | sí |
+| número en **azul** | día con **J**: horas de BOLT **+** horas de la J | sí, **si la J está aprobada** |
+| número en azul claro | J **pendiente**: solo cuentan las de BOLT; la nota dice cuánto sumaría | lo de la J, no |
+| **B** | baja médica | no, pero se ve el día |
+| **V** / **P** | vacaciones / permiso | no |
+| **L** | libranza | no |
+| **0** en rojo | le tocaba y no salió (ni horas ni J) | — |
+| **—** | antes de su alta o después de su baja en la empresa | no |
+
+Cada día con algo que contar lleva su **nota** de Excel («J aprobada: 3 h + 5,2 h en BOLT = 8,2 h», «Baja médica: no suma horas»). Por eso la celda puede llevar solo un número y la explicación queda a un clic.
+
+> [!warning] La jornada no se rebaja por las bajas ni por las vacaciones
+> Es lo pedido: la baja médica «no suma a las horas semanales». Quien estuvo de baja toda la semana sale arriba con 0 h y «No», y la observación dice por qué («7 días de baja médica»). La semana del 28/09 hubo **103 «No»**, y 28 de ellos estuvieron fuera la semana entera (baja, vacaciones o permiso). Si se quiere descontar la jornada por esos días, es un cambio en `semanaDe`.
+
+Comprobador: `scripts/comprobar-jornada-semanal.js` (25 casos: la J aprobada y la pendiente, la B, el alta a mitad de semana, la semana abierta, el orden). Datos reales: `jornada-semanal-real.js` en Scripts de análisis.
+
 ## Informe del Histórico
 
 `GET /control/historico/excel?desde=&hasta=` — no está en la pantalla de Reportes sino en `/control/historico`, pero es un descargable más. Un día por defecto; con rango, apila varios en las mismas hojas con la fecha delante, para la tabla dinámica. **Tope de 7 días** y el calendario se camina día a día: ver [[Control]].
