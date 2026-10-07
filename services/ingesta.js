@@ -307,10 +307,17 @@ const TAREAS = {
   // pide desde el último cambio que tiene (con dos horas de solape), y la primera
   // vez se trae siete días, en trozos de un día, para que el reporte nazca con
   // historia.
+  //
+  // SIN SUS TABLAS, LA PASADA FALLA (y se reintenta a los diez minutos). El
+  // 07/10/2026 la de los coches corrió dos minutos antes de aplicar db/181,
+  // apuntó «falta db/181» como pasada BUENA y no le tocaba volver hasta seis
+  // horas después: Barcelona se quedó sin matrículas que planificar. Una pasada
+  // que no ha podido guardar nada no puede contar como hecha.
   state_logs_otras_sedes: {
     fuente: 'bolt',
     etiqueta: 'Logs de estado de BOLT · otras sedes',
     cadaMin: Number(process.env.INGESTA_OTRAS_SEDES_MIN) || 10,
+    reintentoMin: 10,
     critica: false,
     async ejecutar() {
       const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
@@ -333,8 +340,9 @@ const TAREAS = {
           if (n == null) sinTablas = true; else deEsta += n;
           desde = hasta;
         }
+        if (sinTablas) throw new Error(`Falta aplicar db/181 (${f.sede}): sus cambios de estado no tienen dónde guardarse.`);
         nuevos += deEsta;
-        detalle[f.sede] = sinTablas ? 'falta db/181' : { traidos, nuevos: deEsta };
+        detalle[f.sede] = { traidos, nuevos: deEsta };
       }
       return { registros: nuevos, detalle };
     },
@@ -344,6 +352,7 @@ const TAREAS = {
     fuente: 'bolt',
     etiqueta: 'Vehículos de BOLT · otras sedes',
     cadaMin: Number(process.env.INGESTA_VEHICULOS_OTRAS_SEDES_MIN) || 360,
+    reintentoMin: 10,
     critica: false,
     async ejecutar() {
       const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
@@ -356,8 +365,9 @@ const TAREAS = {
         const v = await fetchAllPaginated('/fleetIntegration/v1/getVehicles',
           { company_id: f.id, start_ts: ahora - 30 * 86400, end_ts: ahora }, 'vehicles', 100, `ingesta veh ${f.id}`);
         const r = await repo.guardarVehiculos(f.sede, f.id, v);
-        detalle[f.sede] = r == null ? 'falta db/181' : { traidos: v.length, ...r };
-        if (r) vistos += r.nuevos + r.vistos;
+        if (r == null) throw new Error(`Falta aplicar db/181 (${f.sede}): sus coches no tienen dónde guardarse.`);
+        detalle[f.sede] = { traidos: v.length, ...r };
+        vistos += r.nuevos + r.vistos;
       }
       return { registros: vistos, detalle };
     },
@@ -370,6 +380,7 @@ const TAREAS = {
     fuente: 'bolt',
     etiqueta: 'Órdenes de BOLT · otras sedes',
     cadaMin: Number(process.env.INGESTA_PEDIDOS_OTRAS_SEDES_MIN) || 60,
+    reintentoMin: 10,
     critica: false,
     async ejecutar() {
       const { fetchAllPaginated, CONFIG_BOLT } = require('./bolt');
@@ -392,8 +403,9 @@ const TAREAS = {
           if (n == null) sinTablas = true; else deEsta += n;
           desde = hasta;
         }
+        if (sinTablas) throw new Error(`Falta aplicar db/182 (${f.sede}): sus pedidos no tienen dónde guardarse.`);
         tocados += deEsta;
-        detalle[f.sede] = sinTablas ? 'falta db/182' : { traidos, tocados: deEsta };
+        detalle[f.sede] = { traidos, tocados: deEsta };
       }
       return { registros: tocados, detalle };
     },

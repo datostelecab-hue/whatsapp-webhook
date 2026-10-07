@@ -33,7 +33,7 @@ Camilo: «en el login ahora va a aparecer Barcelona o Madrid». Barcelona no nec
 - `vehiculos_otras_sedes`, cada 6 h: los coches de su empresa de BOLT.
 - `pedidos_otras_sedes`, cada hora: sus pedidos, con 48 h de ventana como los de Madrid (un pedido madura durante horas). La primera vez, siete días. Van a `sede_bolt_order` (db/182) y no a `bolt_order`, que no sabe de empresas: lo que entra ahí lo suman la Visibilidad, la recaudación y las nóminas de Madrid.
 
-Las tres **no son críticas**: Barcelona sin horas un rato no tiñe de rojo la ingesta de Madrid. Sin db/181 (o db/182, los pedidos) aplicada lo dicen («falta db/181») y no fallan.
+Las tres **no son críticas**: Barcelona sin horas un rato no tiñe de rojo la ingesta de Madrid. **Sin sus tablas** (db/181, o db/182 para los pedidos) **la pasada falla** («Falta aplicar db/181…») y se reintenta a los diez minutos (`reintentoMin`). Antes se apuntaba como pasada buena. El 07/10/2026 la de los coches corrió dos minutos antes de aplicar db/181 y, al contar como hecha, no le tocaba volver hasta seis horas después: Barcelona se quedó sin matrículas que planificar. Lo arregló db/183, que borró esas pasadas falsas para que corriera en el siguiente minuto.
 
 El 07/10 BOLT daba, para Barcelona, 586 cambios de estado en 24 h de 18 conductores y 18 coches (15 activos, 3 desactivados).
 
