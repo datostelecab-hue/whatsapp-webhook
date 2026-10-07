@@ -15,7 +15,7 @@ Salió de un caso concreto: aquel día la cuenta estuvo bloqueada por un pago de
 
 - **A la izquierda, las conversaciones**, la más reciente primero:
   - **quién es**: el conductor con su ficha, un usuario del ERP, una cuenta de BOLT (también de Barcelona) o, si nada casa, el nombre que tiene puesto en WhatsApp;
-  - **su foto**, la de su ficha (Documentos), si es un conductor y la tiene; si no, sus iniciales. Se sirve desde el módulo (`/whatsapp/api/foto/:id?v=`), así que la ve quien entra en WhatsApp aunque no tenga la llave de Plantilla, y se guarda una semana en el navegador porque una foto nueva es otra dirección. El 07/10 tenían foto 64 de los 215 conductores de alta;
+  - **su foto**, la de su ficha (Documentos), si es un conductor y la tiene; si no, sus iniciales. Se sirve desde el módulo (`/whatsapp/api/foto/:id?v=`), así que la ve quien entra en WhatsApp aunque no tenga la llave de Plantilla, y se guarda una semana en el navegador porque una foto nueva es otra dirección. El 07/10 tenían foto 64 de los 215 conductores de alta. **Pulsando la foto de la cabecera se ve en grande** ([[Componentes de la casa|VisorFoto]]), sin ir a su ficha;
   - el último mensaje y su hora;
   - lo que la oficina **no ha leído**;
   - un punto verde si **la ventana de 24 h está abierta**;
@@ -27,7 +27,7 @@ Salió de un caso concreto: aquel día la cuenta estuvo bloqueada por un pago de
   - A la derecha, lo que le llega, distinguiendo el **bot**, la **oficina** (en el acento, con el nombre de quien escribió) y los avisos (**alerta de Control**, **aviso de velocidad**, **aviso de turnos**, en azul).
   - Cada mensaje enviado lleva su marca: enviado, entregado, leído (en azul) o **no llegó** (en rojo, con el motivo que dio Meta).
   - Los botones que mandó el bot se ven debajo del texto; lo que pulsó la persona, como «Pulsó …».
-  - Las ubicaciones se abren en el mapa. Las **fotos** se ven en el chat (y se abren a tamaño completo), los **audios** y **vídeos** se escuchan ahí mismo y los **documentos** se descargan.
+  - Las ubicaciones se abren en el mapa. Las **fotos** se ven en el chat y, pulsándolas, en grande sin salir de la pantalla, los **audios** y **vídeos** se escuchan ahí mismo y los **documentos** se descargan.
   - Si es un conductor, **sus llamadas** del Call Center y de Control salen entre los mensajes, a su hora, con quién llamó, de qué y qué contestó. Llevan al Call Center.
 - **Arriba del chat**: el teléfono, los enlaces a su ficha y a **sus llamadas** si es conductor, hasta cuándo está abierta la ventana, el estado del bot (con **Pausar el bot** o **Devolver al bot**) y **quién la lleva** (con **Me la quedo** o **Cambiar**).
 - **Abajo, la caja para escribir**, con la ventana abierta. Intro envía; Mayús + Intro hace un salto de línea. El **rayo** (o «/» al empezar a escribir) abre las **respuestas rápidas**.

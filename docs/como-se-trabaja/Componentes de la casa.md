@@ -1,7 +1,7 @@
 ---
 tags: [como-se-trabaja, diseño, componentes, interfaz]
 aliases: [Componentes, Diseño de la casa, Componente Listado]
-actualizado: 2026-09-27
+actualizado: 2026-10-07
 ---
 
 # Componentes de la casa
@@ -25,6 +25,7 @@ actualizado: 2026-09-27
 | Listar cosas | el componente **Listado** (`listado.js`) | una tabla nueva |
 | **Explicar un dato** | un **`title`** en el elemento (lo pinta `ayuda.js`) | un icono de «?» propio |
 | Tapar mientras carga | `#cargando-overlay` de `layout-gestion` | un spinner propio |
+| **Ver una foto en grande** | `VisorFoto.abrir({ src, titulo, pie, original })` (`visorFoto.js`) | abrirla en otra pestaña |
 | **La marca de Telecab** | `<%- include('partials/marca', { tam, anima }) %>` (SVG con los colores del tema) | el PNG del logo o un vídeo |
 | Un icono | Font Awesome (`<i class="fa-solid …">`), que toma el color del texto | **un emoji** |
 | Un color | los tokens (`text-telecab-gold`, `bg-telecab-red/15`) | un hex a pelo |
@@ -93,6 +94,16 @@ FotoPersona.pintar(hueco, { url, fotoId, nombre, puede, alGuardar });
 ```
 
 `url` es la misma para las dos cosas: `GET` sirve la foto y `POST` la guarda. Lo usan Plantilla, Selección y la ETT. Encaja en el hueco `avatar` del Listado.
+
+## Ver una foto en grande: `VisorFoto`
+
+`public/assets/js/visorFoto.js` (07/10/2026), cargado en todas las pantallas. Una capa encima de todo con la foto a lo grande, su título y una línea debajo; se cierra con la X, con Escape o pinchando fuera, y devuelve el foco a donde estaba. Con `original: true` añade «Abrir el original» en otra pestaña.
+
+```js
+VisorFoto.abrir({ src: '/whatsapp/api/foto/96?v=501', titulo: 'Andrés Garrido', pie: '+34 604 268 811 · Conductor' });
+```
+
+Lo estrenó el [[WhatsApp chat]]: la foto de la ficha de la cabecera y las fotos que mandan los conductores. Abrirlas en otra pestaña sacaba de la conversación para mirar una foto. En un enlace, deja pasar Ctrl, Mayús y la rueda: quien quiera la pestaña nueva la sigue teniendo.
 
 ## El selector suelto: `.tc-selector`
 
