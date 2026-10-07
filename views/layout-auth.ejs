@@ -58,61 +58,99 @@
   </script>
 
   <style>
-    /* ── LA PANTALLA DE ACCESO ────────────────────────────────────────────────
-       Dos mitades. A la izquierda la marca; a la derecha, la tarea. En móvil
-       solo queda la tarea: en una pantalla de 6 pulgadas, y a menudo con prisa,
-       lo que hay que ver es el campo del correo.
+    /* ── LA PANTALLA DE ACCESO (07/10/2026) ──────────────────────────────────
+       Camilo: «más corporativo, con un diseño excelente, como si fuera una
+       landing page para el login entero, minimalista y bien formado».
 
-       Desde el 27/09/2026 es SOBRIA, como el resto de la casa: sin las estelas
-       de faros animadas (ámbar y azul) ni los velos. El panel de la marca es una
-       superficie del tema —grafito en oscuro, blanco en claro— con la carretera
-       del logo dibujada en trazo fino, quieta. Todo sale de los tokens, así que
-       sigue al tema sin casos especiales. */
-    .acceso { display: grid; grid-template-columns: 1fr; min-height: 100svh; }
-    @media (min-width: 1024px) { .acceso { grid-template-columns: 1.1fr 1fr; } }
+       UN SOLO EJE. La carretera del logo se abre en perspectiva por toda la
+       pantalla y el pin del logo es su punto de fuga, en el horizonte: el
+       formulario está en la carretera, camino del pin. Antes eran dos mitades
+       (la marca a un lado y el formulario al otro), que es el acceso de
+       cualquier programa.
 
-    .escena { position: relative; overflow: hidden; display: none; isolation: isolate;
-      background: rgb(var(--tc-card)); border-right: 1px solid rgb(var(--tc-border)); }
-    @media (min-width: 1024px) { .escena { display: block; } }
-    /* La carretera del logo, en grande y en trazo fino: el único adorno. */
-    .escena .via { position: absolute; right: -4%; bottom: -6%; width: 78%; height: auto; z-index: 0; pointer-events: none; }
-    .escena .via path { fill: none; stroke: rgb(var(--tc-border)); stroke-width: 1.5; stroke-linecap: round; }
-    .escena .via path.carril { stroke-dasharray: 10 14; }
-    .escena-texto { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column;
-      justify-content: space-between; padding: 3rem; }
+       La carretera se dibuja con JavaScript a partir de dónde ha quedado el pin
+       (cambia con la pantalla), en trazo fino y en el color de las líneas del
+       tema. El oro solo está en lo que importa: el pin, la sede elegida y el
+       botón. Un único movimiento al cargar —la carretera se traza hacia el
+       horizonte y el pin se posa— y después todo queda quieto. */
 
-    /* El titular. `balance` evita la línea viuda de una sola palabra. */
-    .titular { font-size: clamp(2rem, 3vw, 3rem); line-height: 1.08; font-weight: 600;
-      letter-spacing: -.02em; text-wrap: balance; }
+    html, body { min-height: 100%; }
+    body { background: rgb(var(--tc-dark)); }
+    ::selection { background: rgb(var(--tc-gold) / .3); color: rgb(var(--tc-text)); }
 
-    /* La hora de Madrid, abajo. */
-    .dato { display: flex; flex-direction: column; gap: .15rem; }
-    .dato b { font-size: 1.5rem; font-weight: 600; letter-spacing: -.01em; line-height: 1;
-      font-variant-numeric: tabular-nums; }
-    .dato span { font-size: .7rem; color: rgb(var(--tc-muted)); letter-spacing: .06em; text-transform: uppercase; }
+    .puerta { position: relative; isolation: isolate; min-height: 100svh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: clamp(1.25rem, 4vh, 2.5rem) 1rem 4.25rem; overflow: hidden; }
 
-    /* ── El formulario ─────────────────────────────────────────────────────── */
-    .panel { display: flex; align-items: center; justify-content: center; padding: 2rem 1.5rem; position: relative; }
-    .caja { width: 100%; max-width: 23rem; }
+    /* La carretera: detrás de todo, sin capturar el ratón. */
+    .via { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+    /* Del gris de los textos secundarios, rebajado: el color de las líneas del
+       tema (--tc-border) casi no se distingue del fondo a 1 px. */
+    .via line { stroke: rgb(var(--tc-muted) / .6); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    .via .arcen { stroke: rgb(var(--tc-muted) / .3); stroke-width: 1; }
+    .via .horizonte { stroke: rgb(var(--tc-muted) / .35); stroke-width: 1; }
+    .via .carril { stroke: rgb(var(--tc-muted) / .75); stroke-width: 2; stroke-dasharray: 16 20; }
+    /* La calzada: una superficie lisa, un escalón más clara que la página. Es lo
+       que hace que la carretera se lea como un plano y no como cuatro rayas. En
+       oscuro, la superficie elevada; en claro, el blanco de las tarjetas (la
+       elevada casi no se distingue del fondo claro). */
+    .via .calzada { fill: rgb(var(--tc-card2)); stroke: none; }
+    :root[data-theme='light'] .via .calzada, :root[data-theme^='claro-'] .via .calzada { fill: rgb(var(--tc-card)); }
+
+    /* La marca: el nombre, grande, solo y centrado. */
+    .nombre { font-size: clamp(2.25rem, 5.2vw, 3.25rem); line-height: 1; font-weight: 600; letter-spacing: -.035em; }
+    .nombre .cab { color: rgb(var(--tc-gold)); }
+    .lema { margin-top: .6rem; font-size: .875rem; color: rgb(var(--tc-muted)); }
+
+    /* El pin, de pie en el horizonte. Su punta es el punto de fuga. */
+    .pin { width: 46px; margin: clamp(.9rem, 2.6vh, 1.6rem) 0 0; }
+    .pin svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .pin .tc-marca-pin path { fill: rgb(var(--tc-gold)); }
+    .pin .tc-marca-sombra { fill: rgb(var(--tc-text) / .22); }
+
+    /* La superficie del formulario: lisa, con su borde fino y la sombra
+       neutra de lo que flota (aquí flota sobre la carretera). */
+    .panel-acceso { width: 100%; max-width: 24rem; margin-top: clamp(1.25rem, 3.2vh, 2rem);
+      background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 14px;
+      box-shadow: var(--tc-sombra-alta); padding: 1.5rem 1.75rem 1.4rem; }
+    .panel-acceso h1 { font-size: 1.3rem; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; }
+    .panel-acceso .bajada { margin: .25rem 0 1.25rem; font-size: .875rem; color: rgb(var(--tc-muted)); }
+
+    /* La sede: un control segmentado. Elegir es lo primero que se hace. */
+    .sedes { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 10px;
+      background: rgb(var(--tc-campo)); border: 1px solid rgb(var(--tc-border)); }
+    .sedes label { position: relative; }
+    .sedes span { display: flex; align-items: center; justify-content: center; height: 34px; border-radius: 7px;
+      font-size: .875rem; font-weight: 500; color: rgb(var(--tc-muted)); cursor: pointer; border: 1px solid transparent;
+      transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
+    .sedes input:checked + span { color: rgb(var(--tc-gold)); background: rgb(var(--tc-gold) / .1); border-color: rgb(var(--tc-gold) / .45); font-weight: 600; }
+    .sedes input:focus-visible + span { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 1px; }
+    @media (hover: hover) and (pointer: fine) { .sedes span:hover { color: rgb(var(--tc-text)); } }
 
     /* Campo con etiqueta flotante: la etiqueta VIVE dentro del campo y sube al
        escribir. Se ahorra una línea por campo y el formulario respira. */
-    .campo { position: relative; margin-bottom: .9rem; }
+    .campo { position: relative; margin-bottom: .7rem; }
     .campo input {
-      width: 100%; padding: 1.35rem .9rem .5rem 2.4rem; font-size: .95rem;
-      background: rgb(var(--tc-campo)); color: rgb(var(--tc-text));
+      width: 100%; padding: 1.3rem .9rem .45rem 2.4rem; font-size: .95rem;
+      background: rgb(var(--tc-campo)); color: rgb(var(--tc-text)); caret-color: rgb(var(--tc-gold));
       border: 1px solid rgb(var(--tc-border)); border-radius: .5rem; outline: none;
       transition: border-color .15s ease, box-shadow .15s ease;
     }
     .campo input:focus { border-color: rgb(var(--tc-gold) / .75); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .16); }
+    /* El autorrelleno del navegador pinta el campo de amarillo: se le devuelve
+       el color del campo y el del texto. */
+    .campo input:-webkit-autofill, .campo input:-webkit-autofill:hover, .campo input:-webkit-autofill:focus {
+      -webkit-text-fill-color: rgb(var(--tc-text)); caret-color: rgb(var(--tc-gold));
+      -webkit-box-shadow: 0 0 0 40px rgb(var(--tc-campo)) inset; transition: background-color 9999s ease 0s;
+    }
     .campo label {
-      position: absolute; left: 2.4rem; top: .95rem; font-size: .95rem; color: rgb(var(--tc-muted));
+      position: absolute; left: 2.4rem; top: .92rem; font-size: .95rem; color: rgb(var(--tc-muted));
       pointer-events: none; transform-origin: left top;
       transition: transform .15s ease, color .15s ease;
     }
     /* :placeholder-shown nos dice si está vacío SIN JavaScript. */
     .campo input:focus + label,
-    .campo input:not(:placeholder-shown) + label { transform: translateY(-.62rem) scale(.74); }
+    .campo input:not(:placeholder-shown) + label,
+    .campo input:-webkit-autofill + label { transform: translateY(-.6rem) scale(.74); }
     .campo input:focus + label { color: rgb(var(--tc-gold)); }
     .campo > i.icono { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%);
       color: rgb(var(--tc-muted)); font-size: .85rem; transition: color .15s ease; }
@@ -121,105 +159,174 @@
       background: none; border: 0; color: rgb(var(--tc-muted)); cursor: pointer; padding: .5rem .6rem;
       border-radius: .375rem; }
     .campo .ojo:hover { color: rgb(var(--tc-text)); }
+    .campo .ojo:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 0; }
 
     .btn-entrar {
-      width: 100%; padding: .75rem 1rem; border: 0; border-radius: .5rem; cursor: pointer;
+      width: 100%; padding: .72rem 1rem; border: 0; border-radius: .5rem; cursor: pointer;
       font-weight: 600; font-size: .95rem; color: rgb(var(--tc-on-gold));
       background: rgb(var(--tc-gold));
-      transition: background-color .15s ease;
+      transition: background-color .15s ease, transform .12s ease;
     }
     .btn-entrar:hover { background: rgb(var(--tc-gold-deep)); }
+    .btn-entrar:active { transform: scale(.985); }
+    .btn-entrar:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 3px; }
     .btn-entrar[disabled] { opacity: .6; cursor: progress; }
 
-    /* La entrada de cada pieza, escalonada. Una vez, al cargar: es un saludo, no
-       una animación que se repita. */
-    @keyframes sube { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-    .sube { animation: sube .4s ease-out both; }
+    .enlace { font-size: .8rem; color: rgb(var(--tc-muted)); text-underline-offset: 3px; }
+    .enlace:hover { color: rgb(var(--tc-gold)); text-decoration: underline; }
+    .enlace:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 2px; border-radius: 3px; }
 
+    /* El pie: quién puede entrar, y la hora con la que funciona todo el ERP. */
+    .pie { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center;
+      gap: 1rem; padding: .9rem 1.5rem; font-size: .75rem; color: rgb(var(--tc-muted)); }
+    .pie b { color: rgb(var(--tc-text)); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    /* ── El único movimiento, al cargar. CSS: si el JavaScript tarda, la página
+          ya está entera. ─────────────────────────────────────────────────── */
+    @keyframes aparece { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @keyframes posa { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+    @keyframes funde { from { opacity: 0; } to { opacity: 1; } }
+    .entra-nombre { animation: funde .5s cubic-bezier(.23, 1, .32, 1) both; }
+    .entra-pin { animation: posa .55s cubic-bezier(.23, 1, .32, 1) .45s both; }
+    .entra-panel { animation: aparece .5s cubic-bezier(.23, 1, .32, 1) .12s both; }
+    .via line.traza { transition: stroke-dashoffset .95s cubic-bezier(.23, 1, .32, 1); }
+    .via .carril, .via .horizonte, .via .calzada { animation: funde .8s ease-out .35s both; }
+
+    /* PANTALLAS BAJAS (un portátil al 125 %: 1280 × 593). Todo cabe sin
+       desplazarse: el nombre más pequeño, sin el lema, el pin más corto y el
+       formulario más apretado. */
+    @media (max-height: 700px) {
+      .puerta { padding-top: .9rem; padding-bottom: 3rem; }
+      .nombre { font-size: 2.1rem; }
+      .lema { display: none; }
+      .pin { width: 32px; margin-top: .55rem; }
+      .panel-acceso { margin-top: .9rem; padding: 1.1rem 1.5rem 1rem; }
+      .panel-acceso .bajada { margin-bottom: .9rem; }
+      .campo { margin-bottom: .5rem; }
+      .campo input { padding-top: 1.2rem; padding-bottom: .38rem; }
+      .campo label { top: .85rem; }
+      .pie { padding: .6rem 1.5rem; }
+    }
+    @media (max-width: 640px) {
+      .panel-acceso { padding: 1.25rem 1.1rem 1.15rem; }
+      .pie { flex-direction: column; gap: .2rem; padding: .75rem 1rem; text-align: center; }
+    }
     @media (prefers-reduced-motion: reduce) {
-      .sube { animation: none; }
-      .btn-entrar, .campo input, .campo label { transition: none; }
+      .entra-nombre, .entra-pin, .entra-panel, .via .carril, .via .horizonte, .via .calzada { animation: none; }
+      .via line.traza { transition: none; }
+      .btn-entrar, .campo input, .campo label, .sedes span { transition: none; }
     }
   </style>
 </head>
-<body class="app-bg font-sans text-telecab-text">
-  <div class="acceso">
+<body class="font-sans text-telecab-text">
+  <div class="puerta">
+    <svg class="via" id="via" aria-hidden="true" focusable="false"></svg>
 
-    <!-- ── La marca ──────────────────────────────────────────────────────────
-         La carretera del logo en trazo fino y quieta: es lo que hace la
-         empresa, dicho en voz baja. -->
-    <section class="escena">
-      <svg class="via" viewBox="0 0 600 420" aria-hidden="true" focusable="false">
-        <path d="M0 330 Q300 170 600 190"/>
-        <path class="carril" d="M60 390 Q330 240 600 238"/>
-        <path d="M150 440 Q390 300 600 286"/>
+    <header class="text-center entra-nombre">
+      <p class="nombre">tele<span class="cab">cab</span></p>
+      <p class="lema">Gestión de flota VTC</p>
+    </header>
+
+    <!-- El pin del logo (partials/marca), sin su carretera: aquí la carretera es
+         la de toda la pantalla, y el pin está al final de ella. -->
+    <!-- Se mide la caja, que no se mueve; el que entra moviéndose es el dibujo. -->
+    <div class="pin" id="pin">
+      <svg class="tc-marca entra-pin" viewBox="18 3.5 28 40" aria-hidden="true" focusable="false">
+        <ellipse class="tc-marca-sombra" cx="32" cy="41.2" rx="6" ry="1.5"/>
+        <g class="tc-marca-pin">
+          <path fill-rule="evenodd"
+                d="M32 39.5C28.6 35.2 19 26.2 19 17.5a13 13 0 0 1 26 0c0 8.7-9.6 17.7-13 22Z M32 12.3a5.2 5.2 0 1 0 0 10.4a5.2 5.2 0 1 0 0-10.4Z"/>
+        </g>
       </svg>
-      <div class="escena-texto">
-        <div class="flex items-center gap-3 sube" style="animation-delay:.05s">
-          <%- include('partials/marca', { tam: 'w-10 h-10' }) %>
-          <span class="text-xl font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
-        </div>
+    </div>
 
-        <div class="max-w-xl">
-          <p class="text-[11px] uppercase tracking-[.2em] text-telecab-muted font-semibold mb-4 sube" style="animation-delay:.12s">
-            Gestión de flota VTC
-          </p>
-          <h1 class="titular sube" style="animation-delay:.2s">
-            La flota entera,<br><span class="gold-text">en una pantalla.</span>
-          </h1>
-          <p class="mt-5 text-sm text-telecab-muted leading-relaxed max-w-md sube" style="animation-delay:.3s">
-            Turnos, horas, mantenimiento y documentación. Lo que pasa en la calle,
-            aquí dentro y al día.
-          </p>
-        </div>
-
-        <!-- AQUI NO VA NINGUNA CIFRA DE LA EMPRESA. Esta pagina se ve SIN haber
-             entrado: cuantos coches hay o cuantos turnos salen hoy es
-             informacion de dentro, y ponerla de adorno la publica a cualquiera
-             que abra la direccion. Lo que si vale es la hora de Madrid, que es
-             el reloj con el que funciona todo el ERP —la jornada va de 05:00 a
-             05:00— y ayuda a quien entra desde otro huso. -->
-        <div class="flex items-end gap-10 sube" style="animation-delay:.4s">
-          <div class="dato"><b id="d-hora">—</b><span id="d-fecha">Hora de Madrid</span></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── El formulario ───────────────────────────────────────────────────── -->
-    <main class="panel">
-      <div class="caja">
-        <!-- En móvil no hay escena, así que la marca se pone aquí. -->
-        <div class="lg:hidden flex flex-col items-center mb-7 sube">
-          <%- include('partials/marca', { tam: 'w-14 h-14' }) %>
-          <span class="mt-3 text-xl font-bold tracking-tight">tele<span class="gold-text">cab</span></span>
-        </div>
-        <%- body %>
-        <p class="text-center text-[11px] text-telecab-muted mt-7">Acceso restringido · plataforma interna</p>
-      </div>
+    <main class="w-full flex justify-center entra-panel">
+      <%- body %>
     </main>
+
+    <!-- AQUÍ NO VA NINGUNA CIFRA DE LA EMPRESA. Esta página se ve SIN haber
+         entrado: cuántos coches hay o cuántos turnos salen hoy es información
+         de dentro. Lo que sí vale es la hora de Madrid, que es el reloj con el
+         que funciona todo el ERP y ayuda a quien entra desde otro huso. -->
+    <footer class="pie">
+      <span>Acceso restringido al personal de Telecab</span>
+      <span><b id="d-hora">—</b> <span id="d-fecha">hora de Madrid</span></span>
+    </footer>
   </div>
 
   <script>
-  // ── Las cifras del panel ──────────────────────────────────────────────────
-  // La hora es de verdad y de Madrid. Las otras dos las sirve el servidor en la
-  // propia página; si no llegan, la fila se queda con su raya y no pasa nada.
   (function () {
+    // ── La carretera ────────────────────────────────────────────────────────
+    // Se dibuja desde abajo hasta la punta del pin (el punto de fuga), y se
+    // rehace si cambia el tamaño de la ventana. Las líneas salen del borde de
+    // abajo: el arcén por fuera de la pantalla, el borde de la calzada por
+    // dentro, y el carril central discontinuo.
+    const svg = document.getElementById('via');
+    const pin = document.getElementById('pin');
+    const puerta = svg && svg.parentElement;
+    const NS = 'http://www.w3.org/2000/svg';
+    const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let primera = true;
+
+    function linea(x1, y1, x2, y2, clase) {
+      const l = document.createElementNS(NS, 'line');
+      l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+      if (clase) l.setAttribute('class', clase);
+      svg.appendChild(l);
+      return l;
+    }
+
+    function dibujar() {
+      if (!svg || !pin || !puerta) return;
+      const caja = puerta.getBoundingClientRect();
+      const p = pin.getBoundingClientRect();
+      const W = caja.width, H = caja.height;
+      // La punta del pin: el 90 % de su alto (ver su viewBox).
+      const fx = p.left - caja.left + p.width / 2;
+      const fy = p.top - caja.top + p.height * 0.9;
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      svg.textContent = '';
+      // A qué distancia del centro llegan abajo: la calzada, y el arcén por fuera.
+      const calzada = Math.max(W * 0.5, 300), arcen = Math.max(W * 1.6, 700);
+      const plano = document.createElementNS(NS, 'polygon');
+      plano.setAttribute('points', `${fx},${fy} ${fx - calzada},${H} ${fx + calzada},${H}`);
+      plano.setAttribute('class', 'calzada');
+      svg.appendChild(plano);
+      linea(0, fy, W, fy, 'horizonte');
+      const trazos = [
+        linea(fx - calzada, H, fx, fy, 'traza'), linea(fx + calzada, H, fx, fy, 'traza'),
+        linea(fx - arcen, H, fx, fy, 'traza arcen'), linea(fx + arcen, H, fx, fy, 'traza arcen'),
+      ];
+      // El carril se para antes del pie: en el móvil el pie va centrado, encima.
+      const pie = puerta.querySelector('.pie');
+      linea(fx, H - (pie ? pie.offsetHeight : 0), fx, fy, 'carril');
+      // El trazo avanza desde abajo hacia el horizonte, una sola vez.
+      if (primera && !quieto) {
+        trazos.forEach(l => {
+          const largo = Math.hypot(l.x2.baseVal.value - l.x1.baseVal.value, l.y2.baseVal.value - l.y1.baseVal.value);
+          l.style.strokeDasharray = largo;
+          l.style.strokeDashoffset = largo;
+        });
+        svg.getBoundingClientRect();   // que el navegador vea el punto de partida
+        requestAnimationFrame(() => trazos.forEach(l => { l.style.strokeDashoffset = 0; }));
+      }
+      primera = false;
+    }
+    // Se dibuja cuando la letra ya está puesta: cambia dónde queda el pin.
+    const medir = () => requestAnimationFrame(dibujar);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(medir); else medir();
+    let t = null;
+    addEventListener('resize', () => { clearTimeout(t); t = setTimeout(dibujar, 60); });
+
+    // ── La hora de Madrid ──────────────────────────────────────────────────
     const hora = document.getElementById('d-hora');
-    if (hora) {
-      const pinta = () => {
-        hora.textContent = new Intl.DateTimeFormat('es-ES', {
-          timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false,
-        }).format(new Date());
-      };
-      pinta(); setInterval(pinta, 20000);
-    }
     const fecha = document.getElementById('d-fecha');
-    if (fecha) {
-      const f = new Intl.DateTimeFormat('es-ES', {
-        timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long',
-      }).format(new Date());
-      fecha.textContent = f + ' · hora de Madrid';
-    }
+    const pinta = () => {
+      const ahora = new Date();
+      if (hora) hora.textContent = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(ahora);
+      if (fecha) fecha.textContent = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' }).format(ahora) + ', hora de Madrid';
+    };
+    pinta(); setInterval(pinta, 20000);
   })();
   </script>
 </body>

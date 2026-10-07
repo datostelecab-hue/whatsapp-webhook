@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-07 · La pantalla de acceso, en un solo eje
+
+Camilo pidió un acceso «más corporativo», con un diseño excelente, «como si fuera una landing page para el login entero, minimalista y bien formado». Las dos mitades (la marca a un lado y el formulario al otro) eran el acceso de cualquier programa. Ahora la carretera del logo se abre en perspectiva por toda la pantalla, con el pin en el horizonte como punto de fuga, y el formulario va sobre ella. Hay un solo movimiento al cargar y el oro solo marca el pin, la sede y el botón. Cambiar y recuperar la contraseña usan la misma superficie. Se probó sin imagen de fondo: Camilo la pidió y la retiró al momento. → [[Identidad visual#La pantalla de acceso]]
+
 ## 2026-10-07 · Barcelona en el ERP: se elige en el login, con su planificador y sus horas
 
 «En el login ahora va a aparecer Barcelona o Madrid.» Barcelona no tiene fichas, altas ni libranzas: sus conductores son sus cuentas de BOLT y sus matrículas, los coches de su empresa de BOLT. Tiene un **planificador** (cada uno en una matrícula, de día o de noche, **fijo hasta que se cambia**, que es lo que eligió Camilo), un **reporte de horas** y su **Visibilidad**. Cualquier usuario puede entrar a Barcelona. Sus horas, sus coches y sus pedidos van en **tablas suyas** (db/181, db/182), no en las de Madrid: si entraran en Flota viva o en `bolt_order`, sus conductores saldrían como NN en Control y en la Bitácora, y su dinero se sumaría a la Visibilidad de Madrid. Las horas se cuentan con **la misma regla que Madrid** (`repartoTurnos`, con el plan de Barcelona): la plaza de día cuenta de 00:00 a 24:00 y la de noche de 12:00 a 12:00. Quien tenía plaza y no hizo ni un minuto, **No salió**. → [[Barcelona]] · [[Sedes]]

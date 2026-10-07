@@ -71,7 +71,17 @@ El script del final de `layout-gestion.ejs` fija el estilo de Chart.js para todo
 
 ## La pantalla de acceso
 
-Dos mitades: la marca a la izquierda sobre una superficie del tema, con la carretera del logo en trazo fino y quieta; el formulario a la derecha. Sin las estelas animadas de antes.
+**Desde el 07/10/2026, un solo eje** (Camilo: «más corporativo… como si fuera una landing page para el login entero, minimalista y bien formado»). Antes eran dos mitades, la marca a un lado y el formulario al otro: el acceso de cualquier programa.
+
+- **La carretera del logo, en perspectiva y a pantalla completa.** El pin del logo está en el horizonte y es su **punto de fuga**. El formulario va sobre la carretera, camino del pin. La calzada es una superficie lisa un escalón más clara que la página (`--tc-card2` en oscuro, `--tc-card` en claro); los bordes y el carril central van en el gris de los textos secundarios, rebajado. El color de las líneas del tema (`--tc-border`) no se distingue del fondo a 1 px.
+- **El nombre, grande y solo arriba**, con «Gestión de flota VTC» debajo. El oro solo está en el pin, la sede elegida y el botón.
+- **La carretera la dibuja el JavaScript** (`views/layout-auth.ejs`) a partir de dónde ha quedado el pin, y se rehace al cambiar el tamaño de la ventana. Se mide la caja del pin, que no se mueve, y no el dibujo, que entra moviéndose.
+- **Un único movimiento, al cargar.** La carretera se traza hacia el horizonte y el pin se posa (menos de un segundo). Después todo queda quieto. Quien pide menos movimiento la ve ya dibujada.
+- **La sede es un control segmentado** (Madrid / Barcelona). Los campos llevan la etiqueta flotante de siempre. El autorrelleno del navegador ya no pinta los campos de amarillo. La selección y el cursor van en el acento.
+- **Pantallas bajas** (`max-height: 700px`, el portátil al 125 %, 1280 × 593): todo cabe sin desplazarse. El nombre es más pequeño, se quita el lema y el pin y el formulario se aprietan.
+- **Cambiar y recuperar la contraseña usan la misma superficie** (`.panel-acceso`), con los mismos campos y botón. Antes eran una tarjeta dentro de otra.
+
+Se probó con una muestra que pinta el layout real con EJS, sin arrancar el ERP. Se vio en oscuro y en claro, a 1529 × 729, a 1280 × 593 y en móvil (375 × 812, sin desbordes), con el error y en las tres pantallas.
 
 ## Cómo se probó
 

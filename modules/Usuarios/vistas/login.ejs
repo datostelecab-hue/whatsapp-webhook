@@ -1,9 +1,9 @@
-<form method="POST" action="/login" id="f-login" class="sube" style="animation-delay:.1s">
-  <h1 class="text-2xl font-extrabold tracking-tight mb-1">Entrar</h1>
-  <p class="text-sm text-telecab-muted mb-6">Con tu correo de la empresa.</p>
+<form method="POST" action="/login" id="f-login" class="panel-acceso" novalidate>
+  <h1>Entrar</h1>
+  <p class="bajada">Con tu correo de la empresa.</p>
 
   <% if (error) { %>
-    <div role="alert" class="flex items-start gap-2.5 mb-4 px-3 py-2.5 rounded-xl border border-telecab-red/40 bg-telecab-red/10">
+    <div role="alert" class="flex items-start gap-2.5 mb-4 px-3 py-2.5 rounded-lg border border-telecab-red/40 bg-telecab-red/10">
       <i class="fa-solid fa-circle-exclamation text-telecab-red mt-0.5"></i>
       <p class="text-sm text-telecab-red leading-snug"><%= error %></p>
     </div>
@@ -15,26 +15,18 @@
        planificador, su reporte de horas y su Visibilidad. Se recuerda la última
        elegida en este navegador. -->
   <fieldset class="mb-4">
-    <legend class="text-xs font-semibold text-telecab-muted mb-2">Sede</legend>
-    <div class="grid grid-cols-2 gap-2" role="radiogroup">
-      <label class="sede-opcion">
+    <legend class="text-xs font-medium text-telecab-muted mb-1.5">Sede</legend>
+    <div class="sedes" role="radiogroup" aria-label="Sede">
+      <label>
         <input type="radio" name="sede" value="madrid" class="sr-only" checked>
-        <span><i class="fa-solid fa-location-dot mr-1.5"></i>Madrid</span>
+        <span>Madrid</span>
       </label>
-      <label class="sede-opcion">
+      <label>
         <input type="radio" name="sede" value="barcelona" class="sr-only">
-        <span><i class="fa-solid fa-location-dot mr-1.5"></i>Barcelona</span>
+        <span>Barcelona</span>
       </label>
     </div>
   </fieldset>
-  <style>
-    .sede-opcion span { display: flex; align-items: center; justify-content: center; height: 42px; border-radius: 12px;
-      border: 1px solid var(--borde, rgba(255,255,255,.12)); font-size: .875rem; font-weight: 600; cursor: pointer;
-      color: inherit; opacity: .75; transition: border-color .15s, background-color .15s, opacity .15s; }
-    .sede-opcion input:checked + span { opacity: 1; border-color: #E8B84B; background: rgba(232,184,75,.12); color: #E8B84B; }
-    .sede-opcion input:focus-visible + span { outline: 2px solid #E8B84B; outline-offset: 2px; }
-    @media (hover: hover) and (pointer: fine) { .sede-opcion span:hover { opacity: 1; } }
-  </style>
 
   <!-- El placeholder de un espacio NO es un descuido: `:placeholder-shown` es lo
        que deja saber en CSS si el campo está vacío, y así la etiqueta flota sin
@@ -56,18 +48,17 @@
     </button>
   </div>
 
-  <label class="flex items-start gap-2.5 mt-3 mb-4 cursor-pointer group">
+  <label class="flex items-center gap-2.5 mt-1 mb-4 cursor-pointer group w-fit">
     <input id="recordar" name="recordar" type="checkbox" value="si"
-           class="w-4 h-4 mt-0.5 accent-telecab-gold shrink-0">
-    <span class="text-xs text-telecab-muted leading-snug group-hover:text-telecab-text transition">
-      Mantener la sesión iniciada
-      <span class="block text-[11px] text-telecab-muted/70">30 días sin volver a escribir la contraseña.</span>
+           class="w-4 h-4 accent-telecab-gold shrink-0">
+    <span class="text-[13px] text-telecab-muted group-hover:text-telecab-text transition">
+      Mantener la sesión iniciada <span class="text-telecab-muted/70">· 30 días</span>
     </span>
   </label>
 
   <!-- El aviso sale SOLO al marcar la casilla: puesto siempre, se lee una vez y
        deja de verse. Y va aquí porque la decisión se toma justo en este momento. -->
-  <p id="aviso-recordar" class="hidden text-[11px] leading-snug text-telecab-warn bg-telecab-warn/10 border border-telecab-warn/30 rounded-xl px-3 py-2 mb-4">
+  <p id="aviso-recordar" class="hidden text-xs leading-snug text-telecab-warn bg-telecab-warn/10 border border-telecab-warn/30 rounded-lg px-3 py-2 mb-4">
     <b>Solo en tu equipo personal.</b> En un ordenador compartido, cualquiera que
     lo abra entrará con tu nombre y lo que haga quedará a tu nombre. Si te pasa,
     cambia tu contraseña: eso cierra la sesión en todos los dispositivos.
@@ -77,10 +68,8 @@
     <span id="btn-txt">Entrar</span>
   </button>
 
-  <div class="text-center mt-5">
-    <a href="/olvide-password" class="text-xs text-telecab-muted hover:text-telecab-gold transition">
-      ¿Olvidaste tu contraseña?
-    </a>
+  <div class="text-center mt-4">
+    <a href="/olvide-password" class="enlace">¿Olvidaste tu contraseña?</a>
   </div>
 </form>
 
@@ -107,6 +96,7 @@
         pass.type = ver ? 'text' : 'password';
         ojo.innerHTML = '<i class="fa-solid fa-eye' + (ver ? '-slash' : '') + '"></i>';
         ojo.setAttribute('aria-label', ver ? 'Ocultar la contraseña' : 'Mostrar la contraseña');
+        ojo.title = ver ? 'Ocultar la contraseña' : 'Mostrar la contraseña';
         pass.focus();
       });
     }
@@ -129,10 +119,15 @@
     const b = document.getElementById('btn-entrar');
     const t = document.getElementById('btn-txt');
     if (f && b && t) {
-      f.addEventListener('submit', () => {
+      f.addEventListener('submit', ev => {
+        // Sin `novalidate` el navegador pondría su globo; con él, se dice aquí
+        // qué falta, en el campo que falta.
+        const vacio = [...f.querySelectorAll('input[required]')].find(i => !i.value.trim());
+        if (vacio) { ev.preventDefault(); vacio.focus(); vacio.style.borderColor = 'rgb(var(--tc-red))'; return; }
         b.disabled = true;
         t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Entrando…';
       });
+      f.querySelectorAll('input[required]').forEach(i => i.addEventListener('input', () => { i.style.borderColor = ''; }));
     }
   })();
 </script>
