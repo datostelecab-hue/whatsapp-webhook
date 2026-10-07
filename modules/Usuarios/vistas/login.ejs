@@ -1,11 +1,10 @@
-<form method="POST" action="/login" id="f-login" class="panel-acceso" novalidate>
+<form method="POST" action="/login" id="f-login" class="form-acceso" novalidate>
   <h1>Entrar</h1>
   <p class="bajada">Con tu correo de la empresa.</p>
 
   <% if (error) { %>
-    <div role="alert" class="flex items-start gap-2.5 mb-4 px-3 py-2.5 rounded-lg border border-telecab-red/40 bg-telecab-red/10">
-      <i class="fa-solid fa-circle-exclamation text-telecab-red mt-0.5"></i>
-      <p class="text-sm text-telecab-red leading-snug"><%= error %></p>
+    <div role="alert" class="aviso error">
+      <i class="fa-solid fa-circle-exclamation mt-0.5"></i><span><%= error %></span>
     </div>
   <% } %>
 
@@ -14,8 +13,8 @@
   <!-- LA SEDE (07/10/2026). Madrid es el ERP de siempre; Barcelona, su
        planificador, su reporte de horas y su Visibilidad. Se recuerda la última
        elegida en este navegador. -->
-  <fieldset class="mb-4">
-    <legend class="text-xs font-medium text-telecab-muted mb-1.5">Sede</legend>
+  <fieldset class="grupo">
+    <legend class="etiqueta">Sede</legend>
     <div class="sedes" role="radiogroup" aria-label="Sede">
       <label>
         <input type="radio" name="sede" value="madrid" class="sr-only" checked>
@@ -28,49 +27,39 @@
     </div>
   </fieldset>
 
-  <!-- El placeholder de un espacio NO es un descuido: `:placeholder-shown` es lo
-       que deja saber en CSS si el campo está vacío, y así la etiqueta flota sin
-       una línea de JavaScript. -->
-  <div class="campo">
-    <input id="email" name="email" type="email" required autofocus autocomplete="username"
-           placeholder=" " spellcheck="false">
-    <label for="email">Correo</label>
-    <i class="icono fa-solid fa-envelope"></i>
+  <div class="grupo">
+    <label class="etiqueta" for="email">Correo</label>
+    <input class="entrada" id="email" name="email" type="email" required autofocus autocomplete="username"
+           spellcheck="false" placeholder="nombre@telecab.es">
   </div>
 
-  <div class="campo">
-    <input id="password" name="password" type="password" required autocomplete="current-password"
-           placeholder=" ">
-    <label for="password">Contraseña</label>
-    <i class="icono fa-solid fa-lock"></i>
+  <div class="grupo con-ojo">
+    <label class="etiqueta" for="password">Contraseña</label>
+    <input class="entrada" id="password" name="password" type="password" required autocomplete="current-password">
     <button type="button" class="ojo" id="ver-pass" aria-label="Mostrar la contraseña" title="Mostrar la contraseña">
       <i class="fa-solid fa-eye"></i>
     </button>
   </div>
 
-  <label class="flex items-center gap-2.5 mt-1 mb-4 cursor-pointer group w-fit">
-    <input id="recordar" name="recordar" type="checkbox" value="si"
-           class="w-4 h-4 accent-telecab-gold shrink-0">
-    <span class="text-[13px] text-telecab-muted group-hover:text-telecab-text transition">
-      Mantener la sesión iniciada <span class="text-telecab-muted/70">· 30 días</span>
-    </span>
+  <label class="casilla mb-4">
+    <input id="recordar" name="recordar" type="checkbox" value="si">
+    Mantener la sesión iniciada (30 días)
   </label>
 
   <!-- El aviso sale SOLO al marcar la casilla: puesto siempre, se lee una vez y
        deja de verse. Y va aquí porque la decisión se toma justo en este momento. -->
-  <p id="aviso-recordar" class="hidden text-xs leading-snug text-telecab-warn bg-telecab-warn/10 border border-telecab-warn/30 rounded-lg px-3 py-2 mb-4">
-    <b>Solo en tu equipo personal.</b> En un ordenador compartido, cualquiera que
-    lo abra entrará con tu nombre y lo que haga quedará a tu nombre. Si te pasa,
-    cambia tu contraseña: eso cierra la sesión en todos los dispositivos.
+  <p id="aviso-recordar" class="aviso cuidado hidden">
+    <span><b>Solo en tu equipo personal.</b> En un ordenador compartido, cualquiera que
+    lo abra entrará con tu nombre. Si te pasa, cambia tu contraseña: eso cierra la
+    sesión en todos los dispositivos.</span>
   </p>
 
-  <button type="submit" class="btn-entrar" id="btn-entrar">
-    <span id="btn-txt">Entrar</span>
-  </button>
-
-  <div class="text-center mt-4">
+  <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+    <button type="submit" class="btn-entrar" id="btn-entrar"><span id="btn-txt">Entrar</span></button>
     <a href="/olvide-password" class="enlace">¿Olvidaste tu contraseña?</a>
   </div>
+
+  <p class="nota">Acceso restringido al personal de Telecab.<br>Lo que hagas dentro queda a tu nombre.</p>
 </form>
 
 <script>
@@ -108,7 +97,12 @@
       const radio = guardada && document.querySelector('input[name="sede"][value="' + guardada + '"]');
       if (radio) radio.checked = true;
     } catch (e) { /* sin almacenamiento: Madrid */ }
+    // Y la imagen de fondo es la de la sede: al cambiarla, se cruzan (layout-auth).
+    const ponSede = v => document.documentElement.setAttribute('data-sede', v === 'barcelona' ? 'barcelona' : 'madrid');
+    const marcada = document.querySelector('input[name="sede"]:checked');
+    if (marcada) ponSede(marcada.value);
     document.querySelectorAll('input[name="sede"]').forEach(r => r.addEventListener('change', () => {
+      ponSede(r.value);
       try { localStorage.setItem('telecab-sede', r.value); } catch (e) { /* nada */ }
     }));
 
@@ -120,14 +114,14 @@
     const t = document.getElementById('btn-txt');
     if (f && b && t) {
       f.addEventListener('submit', ev => {
-        // Sin `novalidate` el navegador pondría su globo; con él, se dice aquí
-        // qué falta, en el campo que falta.
+        // Con `novalidate` el navegador no pone su globo: se marca aquí el
+        // campo que falta y se le da el foco.
         const vacio = [...f.querySelectorAll('input[required]')].find(i => !i.value.trim());
-        if (vacio) { ev.preventDefault(); vacio.focus(); vacio.style.borderColor = 'rgb(var(--tc-red))'; return; }
+        if (vacio) { ev.preventDefault(); vacio.focus(); vacio.classList.add('falta'); return; }
         b.disabled = true;
         t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Entrando…';
       });
-      f.querySelectorAll('input[required]').forEach(i => i.addEventListener('input', () => { i.style.borderColor = ''; }));
+      f.querySelectorAll('input[required]').forEach(i => i.addEventListener('input', () => i.classList.remove('falta')));
     }
   })();
 </script>

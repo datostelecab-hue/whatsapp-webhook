@@ -7,9 +7,9 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
-## 2026-10-07 · La pantalla de acceso, en un solo eje
+## 2026-10-07 · La pantalla de acceso, sobre Madrid o Barcelona
 
-Camilo pidió un acceso «más corporativo», con un diseño excelente, «como si fuera una landing page para el login entero, minimalista y bien formado». Las dos mitades (la marca a un lado y el formulario al otro) eran el acceso de cualquier programa. Ahora la carretera del logo se abre en perspectiva por toda la pantalla, con el pin en el horizonte como punto de fuga, y el formulario va sobre ella. Hay un solo movimiento al cargar y el oro solo marca el pin, la sede y el botón. Cambiar y recuperar la contraseña usan la misma superficie. Se probó sin imagen de fondo: Camilo la pidió y la retiró al momento. → [[Identidad visual#La pantalla de acceso]]
+Camilo quería un acceso «más corporativo» y «como una landing», y trajo una referencia («login así»): una foto a toda la pantalla, un saludo grande a la izquierda y el formulario a la derecha, encima de la foto. La imagen la hicimos nosotros en SVG y va con la sede: Madrid con las Cuatro Torres y la autovía, y Barcelona con la Sagrada Família, la Torre Glòries y el mar. Al elegir la sede en el formulario, la imagen cambia con un fundido. La pantalla va siempre en oscuro y conserva el acento del tema de cada uno. Ese mismo día hubo, durante unas horas, una versión sin foto (la carretera del logo con el pin como punto de fuga), que esta sustituyó. → [[Identidad visual#La pantalla de acceso]]
 
 ## 2026-10-07 · Barcelona en el ERP: se elige en el login, con su planificador y sus horas
 

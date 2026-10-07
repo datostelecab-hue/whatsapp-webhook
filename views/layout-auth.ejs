@@ -6,18 +6,37 @@
   <title>Telecab · <%= titulo || 'Acceso' %></title>
   <link rel="icon" type="image/png" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
   <link rel="apple-touch-icon" href="<%= typeof est === 'function' ? est('/assets/logo-sinfondo-256.png') : '/assets/logo-sinfondo-256.png' %>">
+  <%
+    const _est = p => (typeof est === 'function' ? est(p) : p);
+    // Una imagen por sede (scripts/fondo-acceso/), la grande y la del móvil.
+    const FONDOS = ['madrid', 'barcelona'].map(sede => ({
+      sede, grande: _est('/assets/acceso/' + sede + '.webp'), movil: _est('/assets/acceso/' + sede + '-1280.webp'),
+    }));
+    // Quien entra por primera vez (crea su contraseña) no vuelve: se le da la bienvenida.
+    const PRIMERA_VEZ = typeof primerAcceso !== 'undefined' && primerAcceso;
+  %>
 
-  <!-- Tema antes de pintar, para que no parpadee. -->
+  <!-- EL TEMA, SIEMPRE EN SU VERSIÓN OSCURA. El acceso va sobre una foto de
+       noche: los textos son claros y el fondo oscuro en todos los temas. Del
+       tema de cada uno se conserva el ACENTO (el oro, o su azul, su verde...),
+       que es lo que lo hace suyo: «claro-azul» se pinta como «azul» y «light»
+       como «dark». -->
   <script>
     (function () {
       try {
         var pref = localStorage.getItem('telecab-tema') || 'dark';
-        var tema = pref === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : pref;
-        document.documentElement.setAttribute('data-theme', tema);
+        if (pref === 'auto' || pref === 'light') pref = 'dark';
+        if (pref.indexOf('claro-') === 0) pref = pref.slice(6);
+        document.documentElement.setAttribute('data-theme', pref);
       } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+      // LA SEDE DE LA IMAGEN: la última elegida en este navegador, antes de
+      // pintar, para que quien entra a Barcelona no vea primero Madrid.
+      try {
+        document.documentElement.setAttribute('data-sede', localStorage.getItem('telecab-sede') === 'barcelona' ? 'barcelona' : 'madrid');
+      } catch (e) { document.documentElement.setAttribute('data-sede', 'madrid'); }
     })();
   </script>
-  <link rel="stylesheet" href="<%= typeof est === 'function' ? est('/assets/css/telecab.css') : '/assets/css/telecab.css' %>">
+  <link rel="stylesheet" href="<%= _est('/assets/css/telecab.css') %>">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -59,275 +78,186 @@
 
   <style>
     /* ── LA PANTALLA DE ACCESO (07/10/2026) ──────────────────────────────────
-       Camilo: «más corporativo, con un diseño excelente, como si fuera una
-       landing page para el login entero, minimalista y bien formado».
+       Camilo: «login así» (con una referencia): una foto a toda la pantalla,
+       el saludo grande a la izquierda y el formulario a la derecha, encima de
+       la foto, con los campos blancos y la etiqueta encima de cada uno.
 
-       UN SOLO EJE. La carretera del logo se abre en perspectiva por toda la
-       pantalla y el pin del logo es su punto de fuga, en el horizonte: el
-       formulario está en la carretera, camino del pin. Antes eran dos mitades
-       (la marca a un lado y el formulario al otro), que es el acceso de
-       cualquier programa.
+       LA FOTO es nuestra y va con la SEDE que se elige. Madrid al anochecer
+       (la sierra de Guadarrama con el sol recién puesto, las Cuatro Torres y
+       una autovía con las estelas de los coches) o Barcelona (Collserola, la
+       Sagrada Família, la Torre Glòries y el mar). Las genera en SVG
+       scripts/fondo-acceso/ y se sirven en WebP: unos 100 KB cada una, 42 KB
+       las del móvil. El sol cae detrás del saludo y los edificios conocidos,
+       en el hueco entre las dos columnas.
 
-       La carretera se dibuja con JavaScript a partir de dónde ha quedado el pin
-       (cambia con la pantalla), en trazo fino y en el color de las líneas del
-       tema. El oro solo está en lo que importa: el pin, la sede elegida y el
-       botón. Un único movimiento al cargar —la carretera se traza hacia el
-       horizonte y el pin se posa— y después todo queda quieto. */
+       Encima, un velo: más oscuro a los lados, donde van los textos, para que
+       el blanco se lea sobre cualquier parte de la ciudad. */
 
     html, body { min-height: 100%; }
-    body { background: rgb(var(--tc-dark)); }
-    ::selection { background: rgb(var(--tc-gold) / .3); color: rgb(var(--tc-text)); }
+    body { background: #070912; color: #F4F5F8; }
+    ::selection { background: rgb(var(--tc-gold) / .4); color: #fff; }
 
-    .puerta { position: relative; isolation: isolate; min-height: 100svh; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; padding: clamp(1.25rem, 4vh, 2.5rem) 1rem 4.25rem; overflow: hidden; }
+    .acceso { position: relative; isolation: isolate; min-height: 100svh; display: flex; flex-direction: column;
+      background: #070912; overflow: hidden; }
+    /* UNA CAPA POR SEDE. Se ve la de la sede elegida y, al cambiarla en el
+       formulario, se cruzan con un fundido: la imagen contesta a lo que se ha
+       pulsado. La foto, además, entra un poco más cerca y se asienta. */
+    /* EL CAMBIO, SUAVE (Camilo: «muy abrupto»). La imagen nueva sube ENCIMA
+       de la que había y aparece despacio, algo desenfocada y un poco más
+       cerca, hasta asentarse; la de antes se queda quieta debajo y solo se
+       retira cuando ya está tapada. Si las dos se fundieran a la vez, a mitad
+       del cambio se vería un bajón oscuro. */
+    .fondo { position: absolute; inset: 0; z-index: -3; background: center 62% / cover no-repeat;
+      opacity: 0; filter: blur(10px);
+      transition: opacity 0s linear 1.7s, filter 0s linear 1.7s; }
+<% FONDOS.forEach(f => { %>    .fondo-<%= f.sede %> { background-image: url('<%= f.movil %>'); }
+    @media (min-width: 900px) { .fondo-<%= f.sede %> { background-image: url('<%= f.grande %>'); background-position: center 58%; } }
+    html[data-sede="<%= f.sede %>"] .fondo-<%= f.sede %> { z-index: -2; opacity: 1; filter: none;
+      transition: opacity 1.6s cubic-bezier(.45, 0, .25, 1), filter 1.6s cubic-bezier(.45, 0, .25, 1);
+      animation: asienta 2.4s cubic-bezier(.22, 1, .36, 1) backwards; }
+<% }) %>
+    .acceso::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        linear-gradient(90deg, rgb(5 7 16 / .5) 0%, rgb(5 7 16 / .16) 34%, rgb(5 7 16 / .08) 50%, rgb(5 7 16 / .5) 64%, rgb(5 7 16 / .72) 100%),
+        linear-gradient(180deg, rgb(5 7 16 / .35) 0%, rgb(5 7 16 / 0) 30%, rgb(5 7 16 / 0) 70%, rgb(5 7 16 / .45) 100%); }
+    @media (max-width: 899px) {
+      .acceso::after { background: linear-gradient(180deg, rgb(5 7 16 / .5) 0%, rgb(5 7 16 / .58) 40%, rgb(5 7 16 / .8) 100%); }
+    }
 
-    /* La carretera: detrás de todo, sin capturar el ratón. */
-    .via { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
-    /* Del gris de los textos secundarios, rebajado: el color de las líneas del
-       tema (--tc-border) casi no se distingue del fondo a 1 px. */
-    .via line { stroke: rgb(var(--tc-muted) / .6); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-    .via .arcen { stroke: rgb(var(--tc-muted) / .3); stroke-width: 1; }
-    .via .horizonte { stroke: rgb(var(--tc-muted) / .35); stroke-width: 1; }
-    .via .carril { stroke: rgb(var(--tc-muted) / .75); stroke-width: 2; stroke-dasharray: 16 20; }
-    /* La calzada: una superficie lisa, un escalón más clara que la página. Es lo
-       que hace que la carretera se lea como un plano y no como cuatro rayas. En
-       oscuro, la superficie elevada; en claro, el blanco de las tarjetas (la
-       elevada casi no se distingue del fondo claro). */
-    .via .calzada { fill: rgb(var(--tc-card2)); stroke: none; }
-    :root[data-theme='light'] .via .calzada, :root[data-theme^='claro-'] .via .calzada { fill: rgb(var(--tc-card)); }
+    /* La marca, arriba a la izquierda. */
+    .cabecera { display: flex; align-items: center; gap: .65rem; padding: 1.6rem clamp(1.25rem, 5vw, 4.5rem) 0; }
+    .cabecera .tc-marca-pin path { fill: rgb(var(--tc-gold)); }
+    .cabecera .tc-marca-via { stroke: rgb(255 255 255 / .85); }
+    .cabecera .tc-marca-carril { stroke: rgb(255 255 255 / .5); }
+    .cabecera .tc-marca-sombra { fill: rgb(255 255 255 / .2); }
+    .cabecera b { font-size: 1.25rem; font-weight: 600; letter-spacing: -.02em; }
+    .cabecera b span { color: rgb(var(--tc-gold)); }
 
-    /* La marca: el nombre, grande, solo y centrado. */
-    .nombre { font-size: clamp(2.25rem, 5.2vw, 3.25rem); line-height: 1; font-weight: 600; letter-spacing: -.035em; }
-    .nombre .cab { color: rgb(var(--tc-gold)); }
-    .lema { margin-top: .6rem; font-size: .875rem; color: rgb(var(--tc-muted)); }
+    /* Las dos columnas. */
+    .rejilla { flex: 1; display: grid; align-items: center; gap: 2.5rem;
+      padding: 1.5rem clamp(1.25rem, 5vw, 4.5rem) 2rem; grid-template-columns: 1fr; }
+    @media (min-width: 900px) { .rejilla { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(2rem, 8vw, 9rem); } }
 
-    /* El pin, de pie en el horizonte. Su punta es el punto de fuga. */
-    .pin { width: 46px; margin: clamp(.9rem, 2.6vh, 1.6rem) 0 0; }
-    .pin svg { display: block; width: 100%; height: auto; overflow: visible; }
-    .pin .tc-marca-pin path { fill: rgb(var(--tc-gold)); }
-    .pin .tc-marca-sombra { fill: rgb(var(--tc-text) / .22); }
+    /* El saludo. */
+    .saludo h2 { font-size: clamp(2.6rem, 5.6vw, 5rem); line-height: .98; font-weight: 700; letter-spacing: -.035em;
+      text-wrap: balance; text-shadow: 0 2px 24px rgb(0 0 0 / .35); }
+    .saludo p { margin-top: 1.25rem; max-width: 34ch; font-size: 1rem; line-height: 1.6; color: rgb(255 255 255 / .82); }
+    .saludo .web { display: inline-flex; align-items: center; gap: .55rem; margin-top: 1.6rem; font-size: .9rem; font-weight: 500;
+      color: #fff; text-decoration: none; padding: .45rem .1rem; border-bottom: 1px solid rgb(255 255 255 / .35);
+      transition: border-color .15s ease, color .15s ease; }
+    .saludo .web:hover { color: rgb(var(--tc-gold)); border-color: rgb(var(--tc-gold)); }
+    .saludo .web:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 3px; }
+    @media (max-width: 899px) {
+      .saludo { text-align: center; }
+      .saludo h2 { font-size: 2.4rem; }
+      .saludo p, .saludo .web { display: none; }
+    }
 
-    /* La superficie del formulario: lisa, con su borde fino y la sombra
-       neutra de lo que flota (aquí flota sobre la carretera). */
-    .panel-acceso { width: 100%; max-width: 24rem; margin-top: clamp(1.25rem, 3.2vh, 2rem);
-      background: rgb(var(--tc-card)); border: 1px solid rgb(var(--tc-border)); border-radius: 14px;
-      box-shadow: var(--tc-sombra-alta); padding: 1.5rem 1.75rem 1.4rem; }
-    .panel-acceso h1 { font-size: 1.3rem; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; }
-    .panel-acceso .bajada { margin: .25rem 0 1.25rem; font-size: .875rem; color: rgb(var(--tc-muted)); }
+    /* El formulario: sobre la foto, sin tarjeta. */
+    .lado-form { display: flex; justify-content: center; }
+    .form-acceso { width: 100%; max-width: 23rem; }
+    .form-acceso h1 { font-size: 2rem; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; text-align: center; margin-bottom: .4rem; }
+    .form-acceso .bajada { text-align: center; font-size: .9rem; color: rgb(255 255 255 / .75); margin-bottom: 1.6rem; }
 
-    /* La sede: un control segmentado. Elegir es lo primero que se hace. */
-    .sedes { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 10px;
-      background: rgb(var(--tc-campo)); border: 1px solid rgb(var(--tc-border)); }
+    .etiqueta { display: block; font-size: .8rem; font-weight: 500; color: rgb(255 255 255 / .92); margin-bottom: .35rem; }
+    .grupo { margin-bottom: 1rem; position: relative; }
+    .entrada { width: 100%; height: 2.75rem; padding: 0 .85rem; font-size: .95rem; color: #12141B; caret-color: #12141B;
+      background: #fff; border: 1px solid transparent; border-radius: 6px; outline: none;
+      transition: box-shadow .15s ease, border-color .15s ease; }
+    .entrada::placeholder { color: #8A90A0; }
+    .entrada:focus { border-color: rgb(var(--tc-gold)); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .45); }
+    .entrada.falta { border-color: rgb(var(--tc-red)); box-shadow: 0 0 0 3px rgb(var(--tc-red) / .35); }
+    /* El autorrelleno del navegador pinta el campo de amarillo: se le devuelve el blanco. */
+    .entrada:-webkit-autofill, .entrada:-webkit-autofill:hover, .entrada:-webkit-autofill:focus {
+      -webkit-text-fill-color: #12141B; -webkit-box-shadow: 0 0 0 40px #fff inset; transition: background-color 9999s ease 0s; }
+    .con-ojo .entrada { padding-right: 2.75rem; }
+    .ojo { position: absolute; right: .25rem; bottom: .25rem; height: 2.25rem; width: 2.25rem; border: 0; border-radius: 5px;
+      background: none; color: #5D6375; cursor: pointer; }
+    .ojo:hover { color: #12141B; }
+    .ojo:focus-visible { outline: 2px solid rgb(var(--tc-gold)); }
+
+    /* La sede: dos botones sobre la foto. */
+    .sedes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     .sedes label { position: relative; }
-    .sedes span { display: flex; align-items: center; justify-content: center; height: 34px; border-radius: 7px;
-      font-size: .875rem; font-weight: 500; color: rgb(var(--tc-muted)); cursor: pointer; border: 1px solid transparent;
+    .sedes span { display: flex; align-items: center; justify-content: center; gap: .45rem; height: 2.5rem; border-radius: 6px;
+      font-size: .9rem; font-weight: 500; color: rgb(255 255 255 / .8); cursor: pointer;
+      background: rgb(8 10 20 / .45); border: 1px solid rgb(255 255 255 / .28);
       transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
-    .sedes input:checked + span { color: rgb(var(--tc-gold)); background: rgb(var(--tc-gold) / .1); border-color: rgb(var(--tc-gold) / .45); font-weight: 600; }
-    .sedes input:focus-visible + span { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 1px; }
-    @media (hover: hover) and (pointer: fine) { .sedes span:hover { color: rgb(var(--tc-text)); } }
+    .sedes input:checked + span { color: #fff; font-weight: 600; background: rgb(var(--tc-gold) / .28); border-color: rgb(var(--tc-gold)); }
+    .sedes input:focus-visible + span { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 2px; }
+    @media (hover: hover) and (pointer: fine) { .sedes span:hover { color: #fff; border-color: rgb(255 255 255 / .55); } }
 
-    /* Campo con etiqueta flotante: la etiqueta VIVE dentro del campo y sube al
-       escribir. Se ahorra una línea por campo y el formulario respira. */
-    .campo { position: relative; margin-bottom: .7rem; }
-    .campo input {
-      width: 100%; padding: 1.3rem .9rem .45rem 2.4rem; font-size: .95rem;
-      background: rgb(var(--tc-campo)); color: rgb(var(--tc-text)); caret-color: rgb(var(--tc-gold));
-      border: 1px solid rgb(var(--tc-border)); border-radius: .5rem; outline: none;
-      transition: border-color .15s ease, box-shadow .15s ease;
-    }
-    .campo input:focus { border-color: rgb(var(--tc-gold) / .75); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .16); }
-    /* El autorrelleno del navegador pinta el campo de amarillo: se le devuelve
-       el color del campo y el del texto. */
-    .campo input:-webkit-autofill, .campo input:-webkit-autofill:hover, .campo input:-webkit-autofill:focus {
-      -webkit-text-fill-color: rgb(var(--tc-text)); caret-color: rgb(var(--tc-gold));
-      -webkit-box-shadow: 0 0 0 40px rgb(var(--tc-campo)) inset; transition: background-color 9999s ease 0s;
-    }
-    .campo label {
-      position: absolute; left: 2.4rem; top: .92rem; font-size: .95rem; color: rgb(var(--tc-muted));
-      pointer-events: none; transform-origin: left top;
-      transition: transform .15s ease, color .15s ease;
-    }
-    /* :placeholder-shown nos dice si está vacío SIN JavaScript. */
-    .campo input:focus + label,
-    .campo input:not(:placeholder-shown) + label,
-    .campo input:-webkit-autofill + label { transform: translateY(-.6rem) scale(.74); }
-    .campo input:focus + label { color: rgb(var(--tc-gold)); }
-    .campo > i.icono { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%);
-      color: rgb(var(--tc-muted)); font-size: .85rem; transition: color .15s ease; }
-    .campo input:focus ~ i.icono { color: rgb(var(--tc-gold)); }
-    .campo .ojo { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%);
-      background: none; border: 0; color: rgb(var(--tc-muted)); cursor: pointer; padding: .5rem .6rem;
-      border-radius: .375rem; }
-    .campo .ojo:hover { color: rgb(var(--tc-text)); }
-    .campo .ojo:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 0; }
+    .casilla { display: inline-flex; align-items: center; gap: .55rem; font-size: .85rem; color: rgb(255 255 255 / .88); cursor: pointer; }
+    .casilla input { width: 1rem; height: 1rem; accent-color: rgb(var(--tc-gold)); }
 
-    .btn-entrar {
-      width: 100%; padding: .72rem 1rem; border: 0; border-radius: .5rem; cursor: pointer;
-      font-weight: 600; font-size: .95rem; color: rgb(var(--tc-on-gold));
-      background: rgb(var(--tc-gold));
-      transition: background-color .15s ease, transform .12s ease;
-    }
-    .btn-entrar:hover { background: rgb(var(--tc-gold-deep)); }
-    .btn-entrar:active { transform: scale(.985); }
-    .btn-entrar:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 3px; }
-    .btn-entrar[disabled] { opacity: .6; cursor: progress; }
+    .btn-entrar { min-width: 9rem; height: 2.75rem; padding: 0 1.6rem; border: 0; border-radius: 6px; cursor: pointer;
+      font-weight: 600; font-size: .95rem; color: rgb(var(--tc-on-gold)); background: rgb(var(--tc-gold));
+      transition: background-color .15s ease, transform .12s ease; }
+    .btn-entrar:hover { background: rgb(var(--tc-gold-soft)); }
+    .btn-entrar:active { transform: scale(.98); }
+    .btn-entrar:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+    .btn-entrar[disabled] { opacity: .7; cursor: progress; }
 
-    .enlace { font-size: .8rem; color: rgb(var(--tc-muted)); text-underline-offset: 3px; }
-    .enlace:hover { color: rgb(var(--tc-gold)); text-decoration: underline; }
+    .enlace { font-size: .85rem; color: rgb(255 255 255 / .85); text-decoration: none; text-underline-offset: 3px; }
+    .enlace:hover { color: #fff; text-decoration: underline; }
     .enlace:focus-visible { outline: 2px solid rgb(var(--tc-gold)); outline-offset: 2px; border-radius: 3px; }
+    .nota { margin-top: 1.75rem; text-align: center; font-size: .75rem; line-height: 1.5; color: rgb(255 255 255 / .62); }
 
-    /* El pie: quién puede entrar, y la hora con la que funciona todo el ERP. */
-    .pie { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center;
-      gap: 1rem; padding: .9rem 1.5rem; font-size: .75rem; color: rgb(var(--tc-muted)); }
-    .pie b { color: rgb(var(--tc-text)); font-weight: 600; font-variant-numeric: tabular-nums; }
+    /* Los avisos, legibles sobre la foto. */
+    .aviso { display: flex; align-items: flex-start; gap: .6rem; margin-bottom: 1rem; padding: .65rem .8rem; border-radius: 6px;
+      font-size: .85rem; line-height: 1.4; }
+    .aviso.error { background: rgb(190 30 45 / .32); border: 1px solid rgb(255 120 120 / .6); color: #FFE1E1; }
+    .aviso.ok { background: rgb(20 140 90 / .3); border: 1px solid rgb(120 230 170 / .55); color: #E2FFF0; }
+    .aviso.cuidado { background: rgb(150 100 10 / .35); border: 1px solid rgb(255 200 90 / .55); color: #FFF1D6; }
 
-    /* ── El único movimiento, al cargar. CSS: si el JavaScript tarda, la página
-          ya está entera. ─────────────────────────────────────────────────── */
-    @keyframes aparece { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-    @keyframes posa { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
-    @keyframes funde { from { opacity: 0; } to { opacity: 1; } }
-    .entra-nombre { animation: funde .5s cubic-bezier(.23, 1, .32, 1) both; }
-    .entra-pin { animation: posa .55s cubic-bezier(.23, 1, .32, 1) .45s both; }
-    .entra-panel { animation: aparece .5s cubic-bezier(.23, 1, .32, 1) .12s both; }
-    .via line.traza { transition: stroke-dashoffset .95s cubic-bezier(.23, 1, .32, 1); }
-    .via .carril, .via .horizonte, .via .calzada { animation: funde .8s ease-out .35s both; }
-
-    /* PANTALLAS BAJAS (un portátil al 125 %: 1280 × 593). Todo cabe sin
-       desplazarse: el nombre más pequeño, sin el lema, el pin más corto y el
-       formulario más apretado. */
-    @media (max-height: 700px) {
-      .puerta { padding-top: .9rem; padding-bottom: 3rem; }
-      .nombre { font-size: 2.1rem; }
-      .lema { display: none; }
-      .pin { width: 32px; margin-top: .55rem; }
-      .panel-acceso { margin-top: .9rem; padding: 1.1rem 1.5rem 1rem; }
-      .panel-acceso .bajada { margin-bottom: .9rem; }
-      .campo { margin-bottom: .5rem; }
-      .campo input { padding-top: 1.2rem; padding-bottom: .38rem; }
-      .campo label { top: .85rem; }
-      .pie { padding: .6rem 1.5rem; }
+    /* PANTALLAS BAJAS (un portátil al 125 %: 1280 × 593). Todo cabe sin desplazarse. */
+    @media (min-width: 900px) and (max-height: 700px) {
+      .cabecera { padding-top: 1rem; }
+      .rejilla { padding-top: .5rem; padding-bottom: 1rem; }
+      .form-acceso h1 { font-size: 1.65rem; }
+      .form-acceso .bajada { margin-bottom: 1rem; }
+      .grupo { margin-bottom: .7rem; }
+      .entrada { height: 2.5rem; }
+      .sedes span { height: 2.3rem; }
+      .nota { margin-top: 1rem; }
     }
-    @media (max-width: 640px) {
-      .panel-acceso { padding: 1.25rem 1.1rem 1.15rem; }
-      .pie { flex-direction: column; gap: .2rem; padding: .75rem 1rem; text-align: center; }
-    }
+
+    /* ── La entrada: la foto se asienta y los textos aparecen. Una vez. ── */
+    @keyframes asienta { from { transform: scale(1.06); } to { transform: none; } }
+    @keyframes aparece { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .entra-1 { animation: aparece .7s cubic-bezier(.23, 1, .32, 1) .15s both; }
+    .entra-2 { animation: aparece .7s cubic-bezier(.23, 1, .32, 1) .3s both; }
     @media (prefers-reduced-motion: reduce) {
-      .entra-nombre, .entra-pin, .entra-panel, .via .carril, .via .horizonte, .via .calzada { animation: none; }
-      .via line.traza { transition: none; }
-      .btn-entrar, .campo input, .campo label, .sedes span { transition: none; }
+      .fondo, .fondo[class], .entra-1, .entra-2 { animation: none !important; }
+      /* Con menos movimiento, solo un fundido corto, sin desenfoque ni acercamiento. */
+      .fondo { filter: none; }
+      html[data-sede] .fondo { transition: opacity .4s ease !important; }
+      .entrada, .sedes span, .btn-entrar { transition: none; }
     }
   </style>
 </head>
-<body class="font-sans text-telecab-text">
-  <div class="puerta">
-    <svg class="via" id="via" aria-hidden="true" focusable="false"></svg>
-
-    <header class="text-center entra-nombre">
-      <p class="nombre">tele<span class="cab">cab</span></p>
-      <p class="lema">Gestión de flota VTC</p>
+<body class="font-sans">
+  <div class="acceso">
+    <% FONDOS.forEach(f => { %><div class="fondo fondo-<%= f.sede %>" aria-hidden="true"></div>
+    <% }) %>
+    <header class="cabecera entra-1">
+      <%- include('partials/marca', { tam: 'w-9 h-9' }) %>
+      <b>tele<span>cab</span></b>
     </header>
 
-    <!-- El pin del logo (partials/marca), sin su carretera: aquí la carretera es
-         la de toda la pantalla, y el pin está al final de ella. -->
-    <!-- Se mide la caja, que no se mueve; el que entra moviéndose es el dibujo. -->
-    <div class="pin" id="pin">
-      <svg class="tc-marca entra-pin" viewBox="18 3.5 28 40" aria-hidden="true" focusable="false">
-        <ellipse class="tc-marca-sombra" cx="32" cy="41.2" rx="6" ry="1.5"/>
-        <g class="tc-marca-pin">
-          <path fill-rule="evenodd"
-                d="M32 39.5C28.6 35.2 19 26.2 19 17.5a13 13 0 0 1 26 0c0 8.7-9.6 17.7-13 22Z M32 12.3a5.2 5.2 0 1 0 0 10.4a5.2 5.2 0 1 0 0-10.4Z"/>
-        </g>
-      </svg>
+    <div class="rejilla">
+      <section class="saludo entra-1" aria-label="Telecab">
+        <h2><%- PRIMERA_VEZ ? 'Te damos<br>la bienvenida' : 'Hola<br>de nuevo' %></h2>
+        <p>Turnos, horas, coches y documentación de la flota de Telecab, en un solo sitio.</p>
+        <a class="web" href="https://www.telecab.es" target="_blank" rel="noopener">
+          <i class="fa-solid fa-globe" aria-hidden="true"></i> telecab.es
+        </a>
+      </section>
+
+      <main class="lado-form entra-2">
+        <%- body %>
+      </main>
     </div>
-
-    <main class="w-full flex justify-center entra-panel">
-      <%- body %>
-    </main>
-
-    <!-- AQUÍ NO VA NINGUNA CIFRA DE LA EMPRESA. Esta página se ve SIN haber
-         entrado: cuántos coches hay o cuántos turnos salen hoy es información
-         de dentro. Lo que sí vale es la hora de Madrid, que es el reloj con el
-         que funciona todo el ERP y ayuda a quien entra desde otro huso. -->
-    <footer class="pie">
-      <span>Acceso restringido al personal de Telecab</span>
-      <span><b id="d-hora">—</b> <span id="d-fecha">hora de Madrid</span></span>
-    </footer>
   </div>
-
-  <script>
-  (function () {
-    // ── La carretera ────────────────────────────────────────────────────────
-    // Se dibuja desde abajo hasta la punta del pin (el punto de fuga), y se
-    // rehace si cambia el tamaño de la ventana. Las líneas salen del borde de
-    // abajo: el arcén por fuera de la pantalla, el borde de la calzada por
-    // dentro, y el carril central discontinuo.
-    const svg = document.getElementById('via');
-    const pin = document.getElementById('pin');
-    const puerta = svg && svg.parentElement;
-    const NS = 'http://www.w3.org/2000/svg';
-    const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let primera = true;
-
-    function linea(x1, y1, x2, y2, clase) {
-      const l = document.createElementNS(NS, 'line');
-      l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2);
-      if (clase) l.setAttribute('class', clase);
-      svg.appendChild(l);
-      return l;
-    }
-
-    function dibujar() {
-      if (!svg || !pin || !puerta) return;
-      const caja = puerta.getBoundingClientRect();
-      const p = pin.getBoundingClientRect();
-      const W = caja.width, H = caja.height;
-      // La punta del pin: el 90 % de su alto (ver su viewBox).
-      const fx = p.left - caja.left + p.width / 2;
-      const fy = p.top - caja.top + p.height * 0.9;
-      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-      svg.textContent = '';
-      // A qué distancia del centro llegan abajo: la calzada, y el arcén por fuera.
-      const calzada = Math.max(W * 0.5, 300), arcen = Math.max(W * 1.6, 700);
-      const plano = document.createElementNS(NS, 'polygon');
-      plano.setAttribute('points', `${fx},${fy} ${fx - calzada},${H} ${fx + calzada},${H}`);
-      plano.setAttribute('class', 'calzada');
-      svg.appendChild(plano);
-      linea(0, fy, W, fy, 'horizonte');
-      const trazos = [
-        linea(fx - calzada, H, fx, fy, 'traza'), linea(fx + calzada, H, fx, fy, 'traza'),
-        linea(fx - arcen, H, fx, fy, 'traza arcen'), linea(fx + arcen, H, fx, fy, 'traza arcen'),
-      ];
-      // El carril se para antes del pie: en el móvil el pie va centrado, encima.
-      const pie = puerta.querySelector('.pie');
-      linea(fx, H - (pie ? pie.offsetHeight : 0), fx, fy, 'carril');
-      // El trazo avanza desde abajo hacia el horizonte, una sola vez.
-      if (primera && !quieto) {
-        trazos.forEach(l => {
-          const largo = Math.hypot(l.x2.baseVal.value - l.x1.baseVal.value, l.y2.baseVal.value - l.y1.baseVal.value);
-          l.style.strokeDasharray = largo;
-          l.style.strokeDashoffset = largo;
-        });
-        svg.getBoundingClientRect();   // que el navegador vea el punto de partida
-        requestAnimationFrame(() => trazos.forEach(l => { l.style.strokeDashoffset = 0; }));
-      }
-      primera = false;
-    }
-    // Se dibuja cuando la letra ya está puesta: cambia dónde queda el pin.
-    const medir = () => requestAnimationFrame(dibujar);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(medir); else medir();
-    let t = null;
-    addEventListener('resize', () => { clearTimeout(t); t = setTimeout(dibujar, 60); });
-
-    // ── La hora de Madrid ──────────────────────────────────────────────────
-    const hora = document.getElementById('d-hora');
-    const fecha = document.getElementById('d-fecha');
-    const pinta = () => {
-      const ahora = new Date();
-      if (hora) hora.textContent = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(ahora);
-      if (fecha) fecha.textContent = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' }).format(ahora) + ', hora de Madrid';
-    };
-    pinta(); setInterval(pinta, 20000);
-  })();
-  </script>
 </body>
 </html>

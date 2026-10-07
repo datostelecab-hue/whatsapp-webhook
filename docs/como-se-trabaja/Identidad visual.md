@@ -71,17 +71,18 @@ El script del final de `layout-gestion.ejs` fija el estilo de Chart.js para todo
 
 ## La pantalla de acceso
 
-**Desde el 07/10/2026, un solo eje** (Camilo: «más corporativo… como si fuera una landing page para el login entero, minimalista y bien formado»). Antes eran dos mitades, la marca a un lado y el formulario al otro: el acceso de cualquier programa.
+**Desde el 07/10/2026, una foto a toda la pantalla y el formulario encima.** Camilo trajo una referencia («login así»): la imagen de fondo, un saludo grande a la izquierda y el formulario a la derecha, sobre la foto, con los campos blancos y la etiqueta encima de cada uno. La imagen la hicimos nosotros. Esa misma mañana hubo una versión intermedia: la carretera del logo en perspectiva, con el pin como punto de fuga. Duró unas horas y la sustituyó esta.
 
-- **La carretera del logo, en perspectiva y a pantalla completa.** El pin del logo está en el horizonte y es su **punto de fuga**. El formulario va sobre la carretera, camino del pin. La calzada es una superficie lisa un escalón más clara que la página (`--tc-card2` en oscuro, `--tc-card` en claro); los bordes y el carril central van en el gris de los textos secundarios, rebajado. El color de las líneas del tema (`--tc-border`) no se distingue del fondo a 1 px.
-- **El nombre, grande y solo arriba**, con «Gestión de flota VTC» debajo. El oro solo está en el pin, la sede elegida y el botón.
-- **La carretera la dibuja el JavaScript** (`views/layout-auth.ejs`) a partir de dónde ha quedado el pin, y se rehace al cambiar el tamaño de la ventana. Se mide la caja del pin, que no se mueve, y no el dibujo, que entra moviéndose.
-- **Un único movimiento, al cargar.** La carretera se traza hacia el horizonte y el pin se posa (menos de un segundo). Después todo queda quieto. Quien pide menos movimiento la ve ya dibujada.
-- **La sede es un control segmentado** (Madrid / Barcelona). Los campos llevan la etiqueta flotante de siempre. El autorrelleno del navegador ya no pinta los campos de amarillo. La selección y el cursor van en el acento.
-- **Pantallas bajas** (`max-height: 700px`, el portátil al 125 %, 1280 × 593): todo cabe sin desplazarse. El nombre es más pequeño, se quita el lema y el pin y el formulario se aprietan.
-- **Cambiar y recuperar la contraseña usan la misma superficie** (`.panel-acceso`), con los mismos campos y botón. Antes eran una tarjeta dentro de otra.
+- **La imagen va con la sede.** Madrid al anochecer: la sierra de Guadarrama con el sol recién puesto, las Cuatro Torres y una autovía con las estelas de los coches. Barcelona: Collserola con su torre y el Tibidabo, la Sagrada Família, la Torre Glòries, las torres del puerto y el mar con los reflejos. Al cambiar la sede en el formulario, la imagen nueva sube encima de la anterior y aparece en 1,6 s, con un fundido que empieza y acaba despacio. Entra algo desenfocada y un poco más cerca, y se asienta. La anterior se queda entera debajo y solo se retira cuando ya está tapada: si las dos se fundieran a la vez, a mitad del cambio se vería un bajón oscuro. El primer cambio, a 0,7 s y con las dos capas fundiéndose a la vez, Camilo lo vio «muy abrupto». La última sede elegida se aplica antes de pintar (`data-sede` en `<html>`), así que nadie ve primero la otra.
+- **Las imágenes salen de código** (`scripts/fondo-acceso/`): `comun.js` (el cielo, la sierra y la ciudad, iguales en las dos), `madrid.js` y `barcelona.js` (lo de cada una), con semilla fija. `generar.js` escribe los SVG y `rasterizar.js` los pinta con Edge y los comprime con Pillow a `public/assets/acceso/<sede>.webp` (unos 100 KB) y `<sede>-1280.webp` (unos 42 KB, para el móvil). Rehacerlas da los mismos bytes.
+- **La pantalla va siempre en oscuro**: la foto es de noche. Del tema de cada uno se conserva el acento (el oro, o su azul, su verde…): «claro-azul» se pinta como «azul» y «light» como «dark».
+- **El saludo** dice «Hola de nuevo», o «Te damos la bienvenida» a quien crea su primera contraseña. Debajo va el enlace a telecab.es; los iconos de redes de la referencia no, porque no hay cuentas que poner.
+- **Un velo sobre la foto**, más oscuro a los lados donde van los textos, para que el blanco se lea sobre cualquier parte de la ciudad. Los edificios conocidos quedan en el hueco entre las dos columnas.
+- **Un solo movimiento al cargar**: la foto entra un poco más cerca y se asienta, y los textos aparecen. Con menos movimiento, nada se mueve.
+- **Pantallas bajas** (1280 × 593, el portátil al 125 %): todo cabe sin desplazarse. En el móvil, una columna: el saludo corto y el formulario.
+- **Cambiar y recuperar la contraseña** usan el mismo formulario (`.form-acceso`, `.entrada`, `.btn-entrar`). Antes eran una tarjeta dentro de otra.
 
-Se probó con una muestra que pinta el layout real con EJS, sin arrancar el ERP. Se vio en oscuro y en claro, a 1529 × 729, a 1280 × 593 y en móvil (375 × 812, sin desbordes), con el error y en las tres pantallas.
+Se probó con una muestra que pinta el layout real con EJS, sin arrancar el ERP. Se vio a 1529 × 729, 1280 × 593 y 375 × 812, en las dos sedes, con el error y en las tres pantallas. También se probó el cambio de sede y que la elección se recuerda al recargar.
 
 ## Cómo se probó
 
