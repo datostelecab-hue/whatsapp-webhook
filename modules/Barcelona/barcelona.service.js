@@ -25,8 +25,13 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * MS_DIA).
 
 /** ¿Está activa en BOLT? Solo a esas se las ofrece para planificar. */
 const activa = c => String(c.estado || '').toLowerCase() === 'active';
-/** ¿El coche está dado de alta en BOLT? (los desactivados no se ofrecen) */
-const cocheActivo = c => String(c.estado || '').toLowerCase() === 'active';
+/**
+ * ¿SE PUEDE PLANIFICAR EL COCHE? Si BOLT lo conoce, manda BOLT: activo sí,
+ * desactivado no (no podría trabajar). Si BOLT no lo conoce pero Vehículos lo
+ * tiene de alta en la sede, sí: aún no está dado de alta en BOLT (Camilo,
+ * 07/10/2026, la 3035LTX), y la pantalla lo avisa.
+ */
+const cocheActivo = c => (c.enBolt ? String(c.estado || '').toLowerCase() === 'active' : !!c.enErp);
 
 /**
  * EL TABLERO DE UN DÍA: cada matrícula con su conductor de día y de noche ese
@@ -55,13 +60,13 @@ async function tablero({ fecha } = {}) {
   const filas = coches
     .filter(c => cocheActivo(c) || conAsig.has(c.matricula))
     .map(c => ({
-      matricula: c.matricula, modelo: c.modelo, estado: c.estado, activo: cocheActivo(c),
+      matricula: c.matricula, modelo: c.modelo, estado: c.estado, activo: cocheActivo(c), enBolt: !!c.enBolt,
       dia: plaza.get(`${c.matricula}|dia`) || null, noche: plaza.get(`${c.matricula}|noche`) || null,
     }));
-  // Una asignación a una matrícula que BOLT ya no devuelve no se esconde.
+  // Una asignación a una matrícula que ya no está ni en BOLT ni en Vehículos no se esconde.
   asig.filter(a => !coches.some(c => c.matricula === a.matricula)).forEach(a => {
     if (filas.some(f => f.matricula === a.matricula)) return;
-    filas.push({ matricula: a.matricula, modelo: '', estado: 'fuera de BOLT', activo: false,
+    filas.push({ matricula: a.matricula, modelo: '', estado: 'ya no es de la sede', activo: false, enBolt: false,
       dia: plaza.get(`${a.matricula}|dia`) || null, noche: plaza.get(`${a.matricula}|noche`) || null });
   });
   filas.sort((a, b) => (Number(b.activo) - Number(a.activo)) || a.matricula.localeCompare(b.matricula));
@@ -106,7 +111,7 @@ async function asignar({ matricula, turno, conductor, desde } = {}, usuarioId) {
   if (d < sumar(hoy, -31) || d > sumar(hoy, 60)) throw new Error('La fecha tiene que estar entre un mes atrás y dos meses adelante.');
 
   const [coches, conductores] = await Promise.all([repo.coches(SEDE), repo.conductores(SEDE)]);
-  if (!coches.some(c => c.matricula === mat)) throw new Error(`La matrícula ${mat || '(vacía)'} no es de un coche de Barcelona en BOLT.`);
+  if (!coches.some(c => c.matricula === mat)) throw new Error(`La matrícula ${mat || '(vacía)'} no es de un coche de Barcelona (ni en BOLT ni en Vehículos).`);
   if (uuid) {
     const c = conductores.find(x => x.uuid === uuid);
     if (!c) throw new Error('Esa persona no es una cuenta de BOLT de Barcelona.');
@@ -180,4 +185,4 @@ async function reporteExcel(q = {}) {
   return { bytes, nombre };
 }
 
-module.exports = { SEDE, tablero, asignar, hoyMadrid, ratos, reporte, reporteExcel };
+module.exports = { SEDE, tablero, asignar, hoyMadrid, ratos, reporte, reporteExcel, cocheActivo };

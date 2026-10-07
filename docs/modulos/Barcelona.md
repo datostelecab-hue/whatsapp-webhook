@@ -33,7 +33,11 @@ Una fila por **matrícula** y dos plazas: **día** y **noche**. Al pulsar una pl
 - **Una persona por plaza, y una plaza por persona y turno**: lo garantiza la base (`uq_sede_asig_plaza`, `uq_sede_asig_conductor`). Si eliges a alguien que ya estaba en otra matrícula del mismo turno, **se mueve** y la pantalla lo dice.
 - «Sin dato» deja la plaza libre.
 - La fecha va de **un mes atrás** (para corregir lo que se olvidó) a **dos meses adelante**.
-- Salen los coches **activos** en BOLT; uno desactivado solo si alguien lo lleva, atenuado y con su estado. Una cuenta desactivada en una plaza sale tachada.
+- **Los coches salen de dos sitios**: los de la empresa de BOLT de Barcelona y los de **Vehículos con sede Barcelona** que no están de baja (`barcelona.repo.coches`). Camilo, 07/10/2026: hay coches de Barcelona que aún no están dados de alta en BOLT (la 3035LTX) y hay que poder planificarlos. Vehículos dice de qué sede es cada coche y BOLT, si puede trabajar.
+  - Si BOLT conoce el coche, manda BOLT: activo, se ofrece; desactivado, solo sale si alguien lo lleva, atenuado y con su estado.
+  - Si BOLT no lo conoce pero Vehículos lo tiene en Barcelona, se ofrece con el aviso **«No está dado de alta en BOLT»**: hasta que se dé de alta, nadie puede trabajar con él en BOLT.
+  - El 07/10 eran 18: los 15 activos de BOLT y tres que solo están en Vehículos (3035LTX, 3814KYG y 8512LDS). Un coche que no sea de Barcelona se quita cambiándole la sede en Vehículos.
+- Una cuenta desactivada en una plaza sale tachada.
 - Abajo, **Sin plaza**: los activos que ese día no están en ninguna matrícula.
 
 Sin db/181 la pantalla lo dice («Falta aplicar la migración db/181») en vez de dar un error.

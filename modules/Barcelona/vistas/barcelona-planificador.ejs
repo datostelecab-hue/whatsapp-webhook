@@ -85,7 +85,7 @@
     }
     const r = d.resumen;
     $('#b-kpis').innerHTML =
-      kpi('Coches activos', r.coches, 'Los coches dados de alta en la empresa de BOLT de Barcelona.') +
+      kpi('Coches', r.coches, 'Los de la empresa de BOLT de Barcelona y los de Vehículos con sede Barcelona que aún no están en BOLT.') +
       kpi('Plazas cubiertas', `${r.cubiertas} / ${r.plazas}`, 'Cada coche tiene dos plazas: día y noche.') +
       kpi('Conductores activos', r.conductores, 'Las cuentas activas en BOLT Barcelona.') +
       kpi('Sin plaza', r.sinPlaza, 'Conductores activos que ese día no están en ninguna matrícula.');
@@ -93,12 +93,14 @@
       <tr class="border-b border-telecab-border/60 last:border-0 ${f.activo ? '' : 'opacity-70'}">
         <td class="px-4 py-3 align-top">
           <div class="font-mono font-semibold text-telecab-text">${esc(f.matricula)}</div>
-          <div class="text-xs text-telecab-muted">${esc(f.modelo || '')}${f.activo ? '' : ` · <span class="text-telecab-warn">${esc(f.estado || 'desactivado')} en BOLT</span>`}</div>
+          <div class="text-xs text-telecab-muted">${esc(f.modelo || '')}${!f.enBolt && f.activo
+            ? ` · <span class="text-telecab-warn" title="Está en Vehículos con sede Barcelona, pero no en la empresa de BOLT de Barcelona: hasta que se dé de alta, nadie puede trabajar con él en BOLT.">No está dado de alta en BOLT</span>`
+            : f.activo ? '' : ` · <span class="text-telecab-warn">${esc(f.estado || 'desactivado')}${f.enBolt ? ' en BOLT' : ''}</span>`}</div>
         </td>
         <td class="px-4 py-3 align-top">${celda(f, 'dia')}</td>
         <td class="px-4 py-3 align-top">${celda(f, 'noche')}</td>
       </tr>`).join('')
-      : '<tr><td colspan="3" class="px-4 py-6 text-telecab-muted">Todavía no hay coches de Barcelona: la ingesta los trae de BOLT cada seis horas.</td></tr>';
+      : '<tr><td colspan="3" class="px-4 py-6 text-telecab-muted">Todavía no hay coches de Barcelona: la ingesta los trae de BOLT cada seis horas, y los de Vehículos salen si tienen la sede Barcelona.</td></tr>';
     $('#b-sinplaza').innerHTML = d.sinPlaza.length
       ? d.sinPlaza.map(c => `<span class="px-3 py-1.5 rounded-xl bg-telecab-card2 border border-telecab-border text-xs">
           <b class="text-telecab-text">${esc(c.nombre)}</b> <span class="text-telecab-muted">${esc(c.telefono || '')}</span></span>`).join('')

@@ -33,14 +33,35 @@ async function conductores(sede) {
   return r.rows;
 }
 
-/** Los coches de BOLT de la sede, uno por matrícula (el último que BOLT devolvió). */
+/**
+ * LOS COCHES DE LA SEDE, uno por matrícula: los de su empresa de BOLT (el
+ * último que BOLT devolvió) MÁS los del maestro de Vehículos con esa sede que
+ * no están de baja. Camilo, 07/10/2026: hay coches de Barcelona que aún no
+ * están dados de alta en BOLT (la 3035LTX) y hay que poder planificarlos.
+ * Vehículos es quien dice de qué sede es cada coche; BOLT, si puede trabajar.
+ *
+ * Cada fila dice de dónde sale: `enBolt` (con su `estado` de BOLT) y `enErp`.
+ */
 async function coches(sede) {
   const r = await db.consulta(
-    `SELECT DISTINCT ON (matricula) uuid, matricula, COALESCE(modelo, '') AS modelo,
-            COALESCE(estado_bolt, '') AS estado, visto_at
-       FROM sede_bolt_vehiculo
-      WHERE sede = $1
-      ORDER BY matricula, visto_at DESC`, [sede]);
+    `WITH bolt AS (
+       SELECT DISTINCT ON (matricula) uuid, matricula, modelo, estado_bolt, visto_at
+         FROM sede_bolt_vehiculo
+        WHERE sede = $1
+        ORDER BY matricula, visto_at DESC
+     ), erp AS (
+       SELECT DISTINCT ON (matricula_norm) matricula_norm AS matricula, marca_modelo AS modelo
+         FROM vehiculo
+        WHERE sede = $1 AND baja_at IS NULL AND matricula_norm IS NOT NULL
+        ORDER BY matricula_norm, id DESC
+     )
+     SELECT b.uuid, COALESCE(b.matricula, e.matricula) AS matricula,
+            COALESCE(NULLIF(b.modelo, ''), e.modelo, '') AS modelo,
+            COALESCE(b.estado_bolt, '') AS estado,
+            (b.matricula IS NOT NULL) AS "enBolt", (e.matricula IS NOT NULL) AS "enErp", b.visto_at
+       FROM bolt b
+       FULL JOIN erp e ON e.matricula = b.matricula
+      ORDER BY 2`, [sede]);
   return r.rows;
 }
 

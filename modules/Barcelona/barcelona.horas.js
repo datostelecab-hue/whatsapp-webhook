@@ -124,7 +124,7 @@ function informe({ desde, hasta, ivs, asignaciones, conductores, coches, ahoraMs
   const planDe = planDesde(asignaciones);
   const { porPersona } = R.repartir((ivs || []).map(x => ({ ...x, persona: x.uuid })), planDe);
   const cuenta = new Map((conductores || []).map(c => [c.uuid, c]));
-  const matDe = new Map((coches || []).map(c => [c.uuid, c.matricula]));
+  const matDe = new Map((coches || []).filter(c => c.uuid).map(c => [c.uuid, c.matricula]));
   const nombreDe = uuid => (cuenta.get(uuid) || {}).nombre || `Cuenta ${String(uuid).slice(0, 8)}`;
   const telDe = uuid => (cuenta.get(uuid) || {}).telefono || '';
   const horasDe = (uuid, fecha, turno) => ((porPersona.get(uuid) || new Map()).get(R.clave(fecha, turno))) || null;

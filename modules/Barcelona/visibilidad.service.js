@@ -38,7 +38,7 @@ const inicioDe = fecha => R.instante(fecha, 0);
 // Sin meta de partida: no hay una meta de Barcelona que copiar, y una inventada
 // pintaría un ideal y una brecha que no significan nada. Hasta que se ponga en
 // Config, la pantalla enseña las horas sin objetivo. Los coches, si no se dicen,
-// son los activos en BOLT.
+// son los que se pueden planificar (activos en BOLT, o en Vehículos y aún no en BOLT).
 const CLAVES = ['capacidad_diaria_h', 'meta', 'vehiculos', 'dias_del_mes', 'meta_turno_dia_h', 'meta_turno_noche_h'];
 const DEFECTO = { capacidad_diaria_h: 16, meta: null, vehiculos: null, dias_del_mes: null, meta_turno_dia_h: null, meta_turno_noche_h: null };
 
@@ -48,7 +48,7 @@ async function leerConfig() {
     repo.coches(SEDE).catch(() => []),
   ]);
   const c = { ...DEFECTO, ...(guardada || {}) };
-  if (c.vehiculos == null) c.vehiculos = coches.filter(x => String(x.estado || '').toLowerCase() === 'active').length || null;
+  if (c.vehiculos == null) c.vehiculos = coches.filter(require('./barcelona.service').cocheActivo).length || null;
   return c;
 }
 

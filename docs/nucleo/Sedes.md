@@ -18,7 +18,7 @@ Una sola constante dice cuál es la sede que se vigila: `SEDE_FLOTA = 'madrid'` 
 | La **empresa de BOLT** | `flota` con `sede = 'barcelona'` (company **329430**) | db/174 | Ninguna pantalla |
 | Las **cuentas de BOLT** de sus conductores | `conductor_externo` con `bolt_company_id = 329430`, **sin ficha** (`conductor_id` vacío) | db/174 + el padrón de cada hora | Ninguna pantalla |
 | Las **horas** de BOLT | `sede_bolt_state_log` (los cambios de estado, tal cual) | db/181, 07/10/2026 | Planificador, reporte y Visibilidad de Barcelona |
-| Los **coches de BOLT** | `sede_bolt_vehiculo` (matrícula, modelo, estado en BOLT) | db/181, 07/10/2026 | Planificador de Barcelona |
+| Los **coches de BOLT** | `sede_bolt_vehiculo` (matrícula, modelo, estado en BOLT) | db/181, 07/10/2026 | Planificador de Barcelona, junto con los de `vehiculo` con sede Barcelona que aún no están en BOLT |
 | Los **pedidos** de BOLT | `sede_bolt_order` (quién, cuándo, estado y neto) | db/182, 07/10/2026 | Visibilidad de Barcelona (neto, viajes, €·hora) |
 | El **planificador** | `sede_asignacion`: matrícula + turno + cuenta de BOLT, fija hasta que se cambia | db/181, 07/10/2026 | Barcelona |
 | Las **fichas** de las personas | — | no hay ni hacen falta: Barcelona trabaja con el nombre y el teléfono de BOLT | — |

@@ -30,9 +30,11 @@ const CONDUCTORES = [
   { uuid: 'u-dani', nombre: 'Dani', telefono: '600000004', estado: 'deactivated' },
 ];
 const COCHES = [
-  { uuid: 'v1', matricula: '1111AAA', modelo: 'Corolla', estado: 'active' },
-  { uuid: 'v2', matricula: '2222BBB', modelo: 'Corolla', estado: 'active' },
-  { uuid: 'v3', matricula: '3333CCC', modelo: 'Prius', estado: 'deactivated' },
+  { uuid: 'v1', matricula: '1111AAA', modelo: 'Corolla', estado: 'active', enBolt: true, enErp: true },
+  { uuid: 'v2', matricula: '2222BBB', modelo: 'Corolla', estado: 'active', enBolt: true, enErp: true },
+  { uuid: 'v3', matricula: '3333CCC', modelo: 'Prius', estado: 'deactivated', enBolt: true, enErp: false },
+  // En Vehículos con sede Barcelona, pero aún no dado de alta en BOLT (como la 3035LTX).
+  { uuid: null, matricula: '4444DDD', modelo: 'Corolla', estado: '', enBolt: false, enErp: true },
 ];
 let ASIG = [];
 let ultimaAsignacion = null;
@@ -51,12 +53,15 @@ const S = require('../modules/Barcelona/barcelona.service');
     { matricula: '3333CCC', turno: 'noche', uuid: 'u-dani', desde: '2026-09-01', hasta: null },
   ];
   const t = await S.tablero({ fecha: '2026-10-07' });
-  igual('Filas: los activos y el desactivado que alguien lleva', t.filas.map(f => f.matricula), ['1111AAA', '2222BBB', '3333CCC']);
+  igual('Filas: los activos (también el que no está en BOLT) y el desactivado que alguien lleva', t.filas.map(f => f.matricula), ['1111AAA', '2222BBB', '4444DDD', '3333CCC']);
+  const sinBolt = t.filas.find(f => f.matricula === '4444DDD');
+  igual('El de Vehículos que no está en BOLT se puede planificar, y se avisa', [sinBolt.activo, sinBolt.enBolt], [true, false]);
   igual('La plaza de día de 1111AAA es de Ana', t.filas[0].dia && t.filas[0].dia.nombre, 'Ana');
   igual('La noche de 1111AAA terminó el 05/10: libre el 07', t.filas[0].noche, null);
-  igual('Dani ya no está activo en BOLT y se marca', t.filas[2].noche && t.filas[2].noche.activa, false);
+  const f3 = t.filas.find(f => f.matricula === '3333CCC');
+  igual('Dani ya no está activo en BOLT y se marca', f3.noche && f3.noche.activa, false);
   igual('Sin plaza: Beto y Caro (Dani no cuenta: no está activo)', t.sinPlaza.map(c => c.nombre), ['Beto', 'Caro']);
-  igual('Resumen', t.resumen, { coches: 2, plazas: 4, cubiertas: 2, conductores: 3, sinPlaza: 2 });
+  igual('Resumen', t.resumen, { coches: 3, plazas: 6, cubiertas: 2, conductores: 3, sinPlaza: 2 });
   const t5 = await S.tablero({ fecha: '2026-10-05' });
   igual('El 05/10 la noche de 1111AAA aún era de Beto', t5.filas[0].noche && t5.filas[0].noche.nombre, 'Beto');
 
@@ -64,6 +69,8 @@ const S = require('../modules/Barcelona/barcelona.service');
   const hoy = S.hoyMadrid();
   await lanza('Un turno que no es día ni noche', () => S.asignar({ matricula: '1111AAA', turno: 'tarde', conductor: 'u-caro' }), 'día o de noche');
   await lanza('Una matrícula que no es de Barcelona', () => S.asignar({ matricula: '9999ZZZ', turno: 'dia', conductor: 'u-caro' }), 'no es de un coche de Barcelona');
+  await S.asignar({ matricula: '4444DDD', turno: 'dia', conductor: 'u-caro', desde: hoy }, 7);
+  igual('Se puede asignar un coche que aún no está en BOLT', ultimaAsignacion && ultimaAsignacion.matricula, '4444DDD');
   await lanza('Una cuenta que no es de Barcelona', () => S.asignar({ matricula: '1111AAA', turno: 'dia', conductor: 'u-otro' }), 'no es una cuenta de BOLT de Barcelona');
   await lanza('Una cuenta desactivada', () => S.asignar({ matricula: '1111AAA', turno: 'dia', conductor: 'u-dani' }), 'no está activa');
   await lanza('Una fecha de hace dos meses', () => S.asignar({ matricula: '1111AAA', turno: 'dia', conductor: 'u-caro', desde: '2020-01-01' }), 'un mes atrás');
@@ -161,7 +168,7 @@ const S = require('../modules/Barcelona/barcelona.service');
   const rv = await VS.resumen();
   igual('Ayer (día natural): 8 h, 2 de viaje, 1 de descanso', [rv.ayer.horasEfectivas, rv.ayer.viajeH, rv.ayer.descansoH, rv.ayer.conductores], [8, 2, 1, 1]);
   igual('Las métricas de Madrid: utilización y €·hora', [rv.ayer.utilizacion, rv.ayer.eurosHora, rv.ayer.viajesHora], [25, 12.5, 0.6]);
-  igual('Sin meta guardada y los coches, los activos en BOLT', [rv.config.meta, rv.config.vehiculos], [null, 2]);
+  igual('Sin meta guardada y los coches, los que se pueden planificar', [rv.config.meta, rv.config.vehiculos], [null, 3]);
   const ul = await VS.ultimosDias(5);
   igual('Últimos días: ayer 8 h (6 de espera), y hoy al final', [ul.dias.length, ul.dias[4].total, ul.dias[4].waiting, ul.dias[5].esHoy], [6, 8, 6, true]);
   const [ya, ym, yd] = ayerV.split('-').map(Number);
