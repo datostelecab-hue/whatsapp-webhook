@@ -204,7 +204,9 @@ Las horas son las de la **Bitácora**: se lee su rejilla (`bitacora.datos()`), c
 Cada día con algo que contar lleva su **nota** de Excel («J aprobada: 3 h + 5,2 h en BOLT = 8,2 h», «Baja médica: no suma horas»). Por eso la celda puede llevar solo un número y la explicación queda a un clic.
 
 > [!warning] La jornada no se rebaja por las bajas ni por las vacaciones
-> Es lo pedido: la baja médica «no suma a las horas semanales». Quien estuvo de baja toda la semana sale arriba con 0 h y «No», y la observación dice por qué («7 días de baja médica»). La semana del 28/09 hubo **103 «No»**, y 28 de ellos estuvieron fuera la semana entera (baja, vacaciones o permiso). Si se quiere descontar la jornada por esos días, es un cambio en `semanaDe`.
+> Es lo pedido: la baja médica «no suma a las horas semanales». Quien estuvo de baja toda la semana sale arriba con 0 h y «No», y la observación dice por qué («7 días de baja médica»). La semana del 28/09 hubo **103 «No»**, y 28 de ellos estuvieron fuera la semana entera (baja, vacaciones o permiso).
+>
+> **Y se queda así, a propósito** (Camilo, 07/10/2026): el informe solo tiene que enseñar el estado. Si alguien está de baja, eso lo sabe RRHH, que comprueba el informe a mano. No descontar la jornada por esos días.
 
 Comprobador: `scripts/comprobar-jornada-semanal.js` (25 casos: la J aprobada y la pendiente, la B, el alta a mitad de semana, la semana abierta, el orden). Datos reales: `jornada-semanal-real.js` en Scripts de análisis.
 
