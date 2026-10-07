@@ -48,6 +48,7 @@ function cabecera(c, ahora = Date.now()) {
     que: c.nombre ? (QUE[c.que] || '') : (c.nombre_perfil ? 'Nombre en WhatsApp' : 'Sin identificar'),
     perfil: c.nombre && c.nombre_perfil && c.nombre_perfil !== c.nombre ? c.nombre_perfil : null,
     conductorId: c.conductor_id || null,
+    fotoId: c.conductor_id && c.foto_id ? String(c.foto_id) : null,
     ventana: W.ventana(c.ultima_entrante_at, ahora),
     botPausadoHasta: pausa,
     pausadoPor: pausa ? (c.pausado_por || null) : null,
@@ -313,6 +314,22 @@ async function borrarRespuesta(id) {
   return { borrada: true };
 }
 
+// ── LA FOTO DE SU FICHA ──────────────────────────────────────────────────────
+
+/**
+ * La foto vigente de un conductor (la de su ficha, en Documentos), para el
+ * avatar del chat: { bytes, mime } o null. Se sirve desde aquí y no desde
+ * /plantilla para que la vea quien entra en WhatsApp aunque no lleve la llave
+ * de Plantilla. Solo imágenes.
+ */
+async function foto(conductorId) {
+  const id = Number(conductorId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const f = await require('../Documentos/documentos.service').foto(id);
+  if (!f || !f.bytes || !/^image\/(jpeg|png|webp)$/.test(String(f.mime || ''))) return null;
+  return { bytes: f.bytes, mime: f.mime };
+}
+
 // ── EMPEZAR UNA CONVERSACIÓN ─────────────────────────────────────────────────
 
 /** Los conductores a los que se puede escribir, aunque nunca hayan escrito. */
@@ -333,5 +350,5 @@ module.exports = {
   plantillas, enviarPlantilla,
   asignables, asignar,
   respuestas, guardarRespuesta, borrarRespuesta,
-  conductores, telefonoDeConductor,
+  conductores, telefonoDeConductor, foto,
 };

@@ -89,6 +89,11 @@ async function marcarLeido(telefono) {
 // conductor con ficha (su teléfono vigente), luego un usuario del ERP y por último
 // una cuenta de BOLT (también las de Barcelona). Si nada casa, el nombre que
 // tenga puesto en WhatsApp.
+// Y SU FOTO: la vigente de su ficha (documento tipo 'foto'), solo el id. La
+// pantalla la pide aparte, con el id en la URL para poder guardarla en caché.
+const FOTO = `(SELECT max(dc.id) FROM documento dc
+                WHERE dc.conductor_id = q.conductor_id AND dc.tipo = 'foto' AND dc.vigente) AS foto_id`;
+
 const QUIEN = `
   LEFT JOIN LATERAL (
     SELECT x.nombre, x.que, x.conductor_id FROM (
@@ -118,7 +123,7 @@ async function conversaciones({ buscar = '', filtro = '', usuarioId = null, limi
   const f = ['mias', 'libres'].includes(filtro) ? filtro : '';
   const r = await db.consulta(
     `SELECT c.telefono, c.nombre_perfil, c.ultimo_at, c.ultimo_texto, c.ultimo_sentido, c.ultima_entrante_at,
-            c.bot_pausado_hasta, q.nombre, q.que, q.conductor_id,
+            c.bot_pausado_hasta, q.nombre, q.que, q.conductor_id, ${FOTO},
             c.asignado_a, btrim(concat_ws(' ', ua.nombre, ua.apellidos)) AS asignado,
             (SELECT count(*) FROM whatsapp_mensaje m
               WHERE m.telefono = c.telefono AND m.sentido = 'entrante'
@@ -144,7 +149,7 @@ async function chat(telefono) {
   const r = await db.consulta(
     `SELECT c.telefono, (w.telefono IS NOT NULL) AS existe,
             w.nombre_perfil, w.ultima_entrante_at, w.bot_pausado_hasta,
-            btrim(concat_ws(' ', u.nombre, u.apellidos)) AS pausado_por, q.nombre, q.que, q.conductor_id,
+            btrim(concat_ws(' ', u.nombre, u.apellidos)) AS pausado_por, q.nombre, q.que, q.conductor_id, ${FOTO},
             w.asignado_a, btrim(concat_ws(' ', ua.nombre, ua.apellidos)) AS asignado
        FROM (SELECT $1::varchar AS telefono) c
        LEFT JOIN whatsapp_chat w ON w.telefono = c.telefono

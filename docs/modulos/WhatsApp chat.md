@@ -15,6 +15,7 @@ Salió de un caso concreto: aquel día la cuenta estuvo bloqueada por un pago de
 
 - **A la izquierda, las conversaciones**, la más reciente primero:
   - **quién es**: el conductor con su ficha, un usuario del ERP, una cuenta de BOLT (también de Barcelona) o, si nada casa, el nombre que tiene puesto en WhatsApp;
+  - **su foto**, la de su ficha (Documentos), si es un conductor y la tiene; si no, sus iniciales. Se sirve desde el módulo (`/whatsapp/api/foto/:id?v=`), así que la ve quien entra en WhatsApp aunque no tenga la llave de Plantilla, y se guarda una semana en el navegador porque una foto nueva es otra dirección. El 07/10 tenían foto 64 de los 215 conductores de alta;
   - el último mensaje y su hora;
   - lo que la oficina **no ha leído**;
   - un punto verde si **la ventana de 24 h está abierta**;

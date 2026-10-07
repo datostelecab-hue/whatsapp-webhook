@@ -208,6 +208,14 @@ function igual(nombre, real, esperado) {
   repo.respuestas = async () => [{ id: '1', titulo: 'Recibido', texto: 'Recibido, gracias {nombre}.' }];
   igual('Las respuestas llegan con {nombre} ya puesto', (await svc.respuestas({ telefono: ANA.telefono })).respuestas[0].listo, 'Recibido, gracias Ana.');
 
+  // La foto de su ficha, para el avatar: solo de un conductor, y solo si es una imagen.
+  igual('La cabecera lleva la foto si es un conductor con foto',
+    [svc.cabecera({ telefono: '1', conductor_id: 9, foto_id: 795 }).fotoId, svc.cabecera({ telefono: '1', conductor_id: null, foto_id: 795 }).fotoId,
+      svc.cabecera({ telefono: '1', conductor_id: 9, foto_id: null }).fotoId], ['795', null, null]);
+  const documentos = require('../modules/Documentos/documentos.service');
+  documentos.foto = async id => (id === 9 ? { bytes: Buffer.from('jpg'), mime: 'image/jpeg' } : id === 10 ? { bytes: Buffer.from('<svg>'), mime: 'image/svg+xml' } : null);
+  igual('La foto: la de la ficha; un SVG o nada, no', [(await svc.foto(9)).mime, await svc.foto(10), await svc.foto(11), await svc.foto('x')], ['image/jpeg', null, null, null]);
+
   // Sin db/186, la pantalla lo dice en vez de romperse.
   repo.conversaciones = async () => { throw Object.assign(new Error('column c.asignado_a does not exist'), { code: '42703' }); };
   igual('Sin db/186: lo dice', await svc.conversaciones({}, 7), { faltaMigracion: 'db/186' });

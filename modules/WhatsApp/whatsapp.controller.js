@@ -7,6 +7,7 @@
 //   GET  /whatsapp/api/conversaciones?q=&filtro=    filtro: '' | mias | libres
 //   GET  /whatsapp/api/chat?tel=&despues=&antes=&llamadas=1   (abrirla la da por leída)
 //   GET  /whatsapp/api/adjunto/:id                  la foto, el audio o el documento
+//   GET  /whatsapp/api/foto/:conductorId?v=         la foto de su ficha, para el avatar
 //   GET  /whatsapp/api/plantillas?tel=              las de Meta, para escribir con la ventana cerrada
 //   GET  /whatsapp/api/asignables                   a quién se le puede dar una conversación
 //   GET  /whatsapp/api/respuestas?tel=              las respuestas rápidas, con su {nombre} ya puesto
@@ -92,6 +93,21 @@ router.get('/api/adjunto/:id', async (req, res) => {
   } catch (e) {
     if (!e.status) console.error(`❌ [WhatsApp] adjunto ${req.params.id}: ${e.stack || e.message}`);
     res.status(e.status || 500).json({ status: 'error', msg: e.message });
+  }
+});
+
+// LA FOTO DE SU FICHA. La URL lleva el id del documento (?v=): una foto nueva
+// es otra URL, así que se puede guardar una semana en el navegador.
+router.get('/api/foto/:conductorId', async (req, res) => {
+  try {
+    const f = await svc.foto(req.params.conductorId);
+    // Sin foto, un rato en caché: la lista se repinta cada 10 s y no tiene por qué volver a preguntar.
+    if (!f) return res.set('Cache-Control', 'private, max-age=300').status(404).end();
+    res.set({ 'Content-Type': f.mime, 'Cache-Control': 'private, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' });
+    res.end(f.bytes);
+  } catch (e) {
+    console.error(`❌ [WhatsApp] foto ${req.params.conductorId}: ${e.message}`);
+    res.status(404).end();
   }
 });
 
