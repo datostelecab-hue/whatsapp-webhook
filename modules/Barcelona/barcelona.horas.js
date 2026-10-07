@@ -220,4 +220,26 @@ function informe({ desde, hasta, ivs, asignaciones, conductores, coches, ahoraMs
   };
 }
 
-module.exports = { EFECTIVAS, TOPE_H, intervalos, planDesde, fechasEntre, ventana, informe };
+/**
+ * Lo que suman unos ratos dentro de [iniMs, finMs): segundos de viaje, espera y
+ * descanso, y cuántos conductores trabajaron (viaje o espera). Es la forma de
+ * `horasVentana` de la Visibilidad de Madrid, para usar sus mismas métricas.
+ */
+function sumaVentana(ivs, iniMs, finMs) {
+  const out = { viajeSeg: 0, esperaSeg: 0, descansoSeg: 0, conductores: 0 };
+  const quien = new Set();
+  (ivs || []).forEach(x => {
+    const a = Math.max(x.ini, iniMs), b = Math.min(x.fin, finMs);
+    if (!(b > a)) return;
+    const seg = (b - a) / 1000;
+    if (x.situacion === 'viaje') out.viajeSeg += seg;
+    else if (x.situacion === 'espera') out.esperaSeg += seg;
+    else if (x.situacion === 'descanso') out.descansoSeg += seg;
+    else return;
+    if (EFECTIVAS.has(x.situacion)) quien.add(x.uuid);
+  });
+  out.conductores = quien.size;
+  return out;
+}
+
+module.exports = { EFECTIVAS, TOPE_H, intervalos, planDesde, fechasEntre, ventana, informe, sumaVentana };

@@ -1,13 +1,21 @@
+<%
+  /* LA MISMA PANTALLA PARA LAS DOS SEDES. Madrid la pinta sin más; Barcelona
+     (modules/Barcelona) le pasa `api` (dónde preguntar) y `sedeNombre`. Las
+     métricas son las mismas porque las cuentas son las mismas
+     (services/visibilidad.js: metricas, sliceDeTurno, armarSerie). */
+  const SEDE_NOMBRE = typeof sedeNombre !== 'undefined' && sedeNombre ? sedeNombre : '';
+  const API = typeof api !== 'undefined' && api ? api : '/visibilidad/api';
+%>
 <div class="max-w-[1500px] mx-auto">
 
   <!-- ── Cabecera: título + selector de mes + config ─────────────────────────── -->
   <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div>
       <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
-        <i class="fa-solid fa-chart-line text-telecab-gold"></i> Visibilidad
+        <i class="fa-solid fa-chart-line text-telecab-gold"></i> Visibilidad<%= SEDE_NOMBRE ? ' · ' + SEDE_NOMBRE : '' %>
       </h1>
       <p class="text-sm text-telecab-muted mt-1">
-        Horas de flota en vivo desde el núcleo de BOLT. Sin hojas.
+        <%= SEDE_NOMBRE ? 'Horas de la flota de ' + SEDE_NOMBRE + ', de su empresa de BOLT, con las mismas cuentas que Madrid.' : 'Horas de flota en vivo desde el núcleo de BOLT. Sin hojas.' %>
         <span id="v-actualizado" class="ml-1 text-telecab-muted/70"></span>
       </p>
     </div>
@@ -25,6 +33,8 @@
       </button>
     </div>
   </div>
+
+  <div id="v-aviso" class="hidden mb-4 rounded-2xl border border-telecab-warn/40 bg-telecab-warn/10 p-4 text-sm text-telecab-warn"></div>
 
   <!-- ── KPIs del mes elegido ─────────────────────────────────────────────────── -->
   <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-5">
@@ -103,7 +113,7 @@
         <%# Desde el 06/10/2026 el turno es su GENTE, no un reloj: el día cuenta de
             00:00 a 24:00 y la noche de 12:00 a 12:00, según el turno de cada
             conductor; los NN, por su hora de inicio. La misma regla que Control. %>
-        <span class="text-[11px] text-telecab-muted" title="Las horas de cada turno son las de su gente según el cuadrante: el día cuenta de 00:00 a 24:00 y la noche de 12:00 a 12:00 del día siguiente. Quien no está en el plan (NN) va por su hora de inicio: antes de las 12:00, día. La jornada de un día es su turno de día más su turno de noche, y no se cierra hasta las 12:00 del día siguiente.">día 00–24 · noche 12–12, por conductor · jornada = día + noche</span>
+        <span class="text-[11px] text-telecab-muted" title="Las horas de cada turno son las de su gente según <%= SEDE_NOMBRE ? 'el planificador' : 'el cuadrante' %>: el día cuenta de 00:00 a 24:00 y la noche de 12:00 a 12:00 del día siguiente. Quien no está en el plan (<%= SEDE_NOMBRE ? 'sin plaza' : 'NN' %>) va por su hora de inicio: antes de las 12:00, día. La jornada de un día es su turno de día más su turno de noche, y no se cierra hasta las 12:00 del día siguiente.">día 00–24 · noche 12–12, por conductor · jornada = día + noche</span>
         <div class="flex-1 h-px bg-telecab-border/50"></div>
       </div>
       <div class="grid grid-cols-3 gap-3">
@@ -240,6 +250,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script>
 (function () {
+  // Dónde preguntar: Madrid, /visibilidad/api; Barcelona, la suya.
+  const API = '<%= API %>';
+  const SIN_PLAN = '<%= SEDE_NOMBRE ? "sin plaza" : "sin plan (NN)" %>';
+  // Sin las tablas de la sede (una migración sin aplicar), se dice en vez de pintar ceros.
+  const avisarFalta = r => {
+    const caja = document.getElementById('v-aviso');
+    if (!r || !r.faltaMigracion || !caja) return false;
+    caja.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Falta aplicar la migración <b>db/181</b> (en Migraciones): esta sede aún no tiene horas.';
+    caja.classList.remove('hidden');
+    return true;
+  };
   // Color desde los tokens del tema (respeta claro/oscuro y el cambio en caliente).
   const raiz = document.documentElement;
   const cv  = (n, a) => { const v = getComputedStyle(raiz).getPropertyValue(n).trim(); return a == null ? `rgb(${v})` : `rgb(${v} / ${a})`; };
@@ -307,8 +328,8 @@
 
   // ── KPIs en vivo ──────────────────────────────────────────────────────────
   async function cargarResumen() {
-    const r = await fetch('/visibilidad/api/resumen').then(x => x.json()).catch(() => null);
-    if (!r || r.status !== 'ok') return;
+    const r = await fetch(API + '/resumen').then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok' || avisarFalta(r)) return;
     // La etiqueta corta se pinta; la larga de la API ("Turno noche · anoche") va al
     // title, que es donde cabe. Seis tarjetas en fila no perdonan un texto largo.
     const CORTA = { 'm-hoy': 'Hoy', 'm-ayer': 'Ayer', 'm-semana': 'Semana', 'm-tdia': 'Turno día', 'm-tnoche': 'Turno noche', 'm-ajor': 'Ayer · jornada' };
@@ -331,8 +352,8 @@
       const cond = document.getElementById(id + '-cond');
       if (cond && s.horasNN != null) {
         cond.title = s.conductoresNN
-          ? 'De ellos, ' + s.conductoresNN + ' sin plan (NN) con ' + nf1.format(s.horasNN) + ' h'
-          : 'Ninguno sin plan (NN)';
+          ? 'De ellos, ' + s.conductoresNN + ' ' + SIN_PLAN + ' con ' + nf1.format(s.horasNN) + ' h'
+          : 'Ninguno ' + SIN_PLAN;
       }
 
       const meta = META[id] || 0;
@@ -364,8 +385,8 @@
 
   // ── Últimos 15 días + hoy ─────────────────────────────────────────────────
   async function cargarUltimos(idealDiario) {
-    const r = await fetch('/visibilidad/api/ultimos?n=15').then(x => x.json()).catch(() => null);
-    if (!r || r.status !== 'ok') return;
+    const r = await fetch(API + '/ultimos?n=15').then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok' || avisarFalta(r)) return;
     const dias = r.dias || [];
     const labels = dias.map(d => {
       const f = new Date(d.dia + 'T12:00:00');
@@ -400,11 +421,11 @@
   async function cargarSerie() {
     setTxt('v-mes-lbl', MESES[mes - 1] + ' ' + anio);
     const mm = String(mes).padStart(2, '0');
-    const r = await fetch('/visibilidad/api/serie?mes=' + anio + '-' + mm).then(x => x.json()).catch(() => null);
-    if (!r || r.status !== 'ok') return;
+    const r = await fetch(API + '/serie?mes=' + anio + '-' + mm).then(x => x.json()).catch(() => null);
+    if (!r || r.status !== 'ok' || avisarFalta(r)) return;
     pintarKpis(r.totales || {}, r.config || {});
     setTxt('k-sub-mes', MESES[mes - 1] + ' ' + anio);
-    rellenarTabla(r.dias, r.ultimoConDatos);
+    rellenarTabla(r.dias, r.ultimoConDatos, sinMeta(r));
     pintarGraficos(r);
     rellenarConfig(r.config);
     cargarUltimos(r.idealDiario);
@@ -426,7 +447,11 @@
     if (bar) bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
   }
 
-  function rellenarTabla(dias, ultimo) {
+  // SIN META (Barcelona, hasta que se ponga en Config) no hay ideal, crítico ni
+  // brecha que enseñar: serían rayas a cero y una brecha que no mide nada.
+  const sinMeta = r => !(Number((r.config || {}).meta) > 0);
+
+  function rellenarTabla(dias, ultimo, noMeta) {
     const tb = document.getElementById('v-tabla');
     tb.innerHTML = dias.map(d => {
       const futuro = d.dia > ultimo;
@@ -440,16 +465,17 @@
         <td class="text-right px-3 py-1.5 text-telecab-muted">${d.waiting ? nf1.format(d.waiting) : '·'}</td>
         <td class="text-right px-3 py-1.5 text-telecab-muted">${d.utilizacion == null ? '·' : nf1.format(d.utilizacion)}</td>
         <td class="text-right px-3 py-1.5 text-telecab-text">${futuro ? '·' : nf0.format(d.acumulado)}</td>
-        <td class="text-right px-3 py-1.5 text-telecab-muted">${nf0.format(d.ideal)}</td>
-        <td class="text-right px-3 py-1.5 text-telecab-muted">${nf0.format(d.critico)}</td>
-        <td class="text-right px-3 py-1.5 ${futuro ? 'text-telecab-muted' : bClass}">${futuro ? '·' : s1(d.brecha)}</td>
-        <td class="text-right px-4 py-1.5 ${futuro ? 'text-telecab-muted' : sClass}">${futuro ? '·' : s1(d.sobreCritico)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${noMeta ? '·' : nf0.format(d.ideal)}</td>
+        <td class="text-right px-3 py-1.5 text-telecab-muted">${noMeta ? '·' : nf0.format(d.critico)}</td>
+        <td class="text-right px-3 py-1.5 ${futuro || noMeta ? 'text-telecab-muted' : bClass}">${futuro || noMeta ? '·' : s1(d.brecha)}</td>
+        <td class="text-right px-4 py-1.5 ${futuro || noMeta ? 'text-telecab-muted' : sClass}">${futuro || noMeta ? '·' : s1(d.sobreCritico)}</td>
       </tr>`;
     }).join('');
   }
 
   function pintarGraficos(r) {
     const dias = r.dias, ultimo = r.ultimoConDatos;
+    const noMeta = sinMeta(r);
     const labels = dias.map(d => d.dia);
     // Estos tres gráficos solo miran días CERRADOS. Hoy va a medias: su barra siempre
     // sale hundida y, al entrar en el acumulado, hunde también la brecha. Aquí la
@@ -468,7 +494,11 @@
     const ultimoReal = cierre > 0 ? (dias[Math.min(dias.length, cierre) - 1] || {}) : {};
     const est = document.getElementById('g-acum-estado');
     if (est && !ultimoReal.dia) est.innerHTML = '<span class="text-telecab-muted">Sin días cerrados todavía este mes</span>';
-    if (est && ultimoReal.dia) {
+    if (est && ultimoReal.dia && noMeta) {
+      est.innerHTML = '<span class="text-telecab-muted">Día ' + ultimoReal.dia + ':</span> ' +
+        '<span class="font-semibold text-telecab-text">' + nf0.format(ultimoReal.acumulado) + ' h</span>' +
+        ' <span class="text-telecab-muted">· sin meta: ponla en Config para ver el ideal y el crítico</span>';
+    } else if (est && ultimoReal.dia) {
       const ok = ultimoReal.sobreCritico >= 0;
       est.innerHTML = '<span class="text-telecab-muted">Día ' + ultimoReal.dia + ':</span> ' +
         '<span class="font-semibold text-telecab-text">' + nf0.format(ultimoReal.acumulado) + ' h</span>' +
@@ -482,11 +512,11 @@
       data: { labels, datasets: [
         { label: 'Acumulado', data: real(d => d.acumulado), borderColor: cv('--tc-gold'), backgroundColor: cv('--tc-gold', 0.15),
           fill: true, tension: 0.25, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 4, spanGaps: false, order: 1 },
-        { label: 'Ideal', data: dias.map(d => d.ideal), borderColor: cv('--tc-muted', 0.9), borderDash: [6, 4],
+        { label: 'Ideal', data: dias.map(d => (noMeta ? null : d.ideal)), borderColor: cv('--tc-muted', 0.9), borderDash: [6, 4],
           borderWidth: 1.5, pointRadius: 0, fill: false, order: 2 },
         // El crítico rellena hasta el suelo: todo lo que quede por debajo es la zona en
         // la que ya no hay capacidad para llegar a la meta. Rojo al 40 %.
-        { label: 'Crítico', data: dias.map(d => d.critico), borderColor: cv('--tc-red', 0.9), borderDash: [3, 3],
+        { label: 'Crítico', data: dias.map(d => (noMeta ? null : d.critico)), borderColor: cv('--tc-red', 0.9), borderDash: [3, 3],
           borderWidth: 1.5, pointRadius: 0, fill: 'origin', backgroundColor: cv('--tc-red', 0.4), order: 3 },
       ] },
       options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
@@ -515,13 +545,13 @@
     // ── Brecha: barras hasta hoy, con el número de hoy en grande arriba.
     const num = document.getElementById('g-brecha-num');
     if (num) {
-      const b = ultimoReal.brecha;
+      const b = noMeta ? null : ultimoReal.brecha;
       num.textContent = b == null ? '—' : sig(b) + ' h';
       num.className = 'text-2xl font-bold tabular-nums leading-none ' +
         (b == null ? 'text-telecab-muted' : b >= 0 ? 'text-telecab-green' : 'text-telecab-red');
     }
-    setTxt('g-brecha-sub', ultimoReal.dia ? 'al cierre del día ' + ultimoReal.dia : 'sin días cerrados');
-    const brechas = real(d => d.brecha);
+    setTxt('g-brecha-sub', noMeta ? 'sin meta en Config' : ultimoReal.dia ? 'al cierre del día ' + ultimoReal.dia : 'sin días cerrados');
+    const brechas = real(d => (noMeta ? null : d.brecha));
     charts.brecha = new Chart(document.getElementById('g-brecha'), {
       type: 'bar',
       data: { labels, datasets: [
@@ -573,7 +603,7 @@
       meta_turno_dia_h: document.getElementById('cfg-mtd').value,
       meta_turno_noche_h: document.getElementById('cfg-mtn').value,
     };
-    const r = await fetch('/visibilidad/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) }).then(x => x.json()).catch(() => null);
+    const r = await fetch(API + '/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) }).then(x => x.json()).catch(() => null);
     // Se recarga TAMBIÉN el resumen: las metas de turno viven en las tarjetas de
     // arriba, y sin esto había que refrescar la página para verlas cambiadas.
     if (r && r.status === 'ok') { cerrarCfg(); cargarSerie(); cargarResumen(); }

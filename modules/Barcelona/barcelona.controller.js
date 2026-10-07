@@ -13,6 +13,7 @@
 const express = require('express');
 const router = express.Router();
 const barcelona = require('./barcelona.service');
+const visibilidad = require('./visibilidad.service');
 const actor = require('../../services/repo/actor');   // quién firma
 
 const LAYOUT = 'layout-gestion';
@@ -52,11 +53,27 @@ router.get('/reportes', (req, res) => {
   res.render('barcelona-reportes', { titulo: 'Barcelona · Reportes', seccion: 'bcn-reportes', layout: LAYOUT, hoy: barcelona.hoyMadrid() });
 });
 
+// LA VISIBILIDAD ES LA PANTALLA DE MADRID con sus datos: la misma vista, que
+// pregunta a `api` en vez de a /visibilidad/api (ver visibilidad.service.js).
+router.get('/visibilidad', (req, res) => {
+  res.render('visibilidad', {
+    titulo: 'Barcelona · Visibilidad', seccion: 'bcn-visibilidad', layout: LAYOUT,
+    api: '/barcelona/api/visibilidad', sedeNombre: 'Barcelona',
+  });
+});
+
 // ── El planificador ────────────────────────────────────────────────────────
 
 router.get('/api/tablero', responde(req => barcelona.tablero({ fecha: req.query.fecha })));
 
 router.post('/api/asignar', responde(async req => barcelona.asignar(req.body || {}, await actor.idDe(req)), 400));
+
+// ── La Visibilidad ─────────────────────────────────────────────────────────
+
+router.get('/api/visibilidad/resumen', responde(() => visibilidad.resumen()));
+router.get('/api/visibilidad/serie', responde(req => visibilidad.serie(req.query.mes)));
+router.get('/api/visibilidad/ultimos', responde(req => visibilidad.ultimosDias(Math.max(5, Math.min(60, Number(req.query.n) || 15)))));
+router.post('/api/visibilidad/config', responde(async req => ({ config: await visibilidad.guardarConfig(req.body || {}) }), 400));
 
 // ── El reporte de horas ────────────────────────────────────────────────────
 //   /barcelona/reporte/excel                          → ayer

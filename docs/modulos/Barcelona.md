@@ -62,10 +62,35 @@ En las observaciones se dice si trabajó **en otro coche** que el de su plaza, y
 
 **De los apuntes a las horas** (`barcelona.horas.js`). BOLT apunta cambios: cada apunte dura hasta el siguiente del mismo conductor. Dos en el mismo segundo se desempatan como en Madrid (`desempate.js`). Para saber cómo estaba cada uno al empezar la ventana se lee un día más de apuntes por detrás. Y **un estado de trabajo no dura más de 6 h sin otro apunte** (`BARCELONA_TOPE_ESTADO_H`): si el móvil se apaga en espera, BOLT no avisa y la espera duraría días. Con los datos reales del 04 al 07/10 (1.704 apuntes, 1.368 ratos de trabajo) el rato más largo fue de 3 h: el tope no recorta nada normal.
 
+## La Visibilidad (`/barcelona/visibilidad`)
+
+Camilo: «con las mismas métricas». Por eso **es la misma pantalla y son las mismas cuentas** que la Visibilidad de Madrid, no una copia: `views/visibilidad.ejs` recibe `api` (dónde preguntar) y `sedeNombre`, y las fórmulas salieron de `services/visibilidad.js` a funciones puras que usan las dos sedes:
+
+- `metricas(h, d)`: horas efectivas, viaje, espera, descanso, utilización, conductores, neto, viajes, €·hora y viajes·hora de una ventana.
+- `sliceDeTurno(x)`: las tarjetas de turno (día, noche y la jornada de ayer).
+- `armarSerie({ fotos, dm, config, dinero })`: el acumulado, el ideal, el crítico y la brecha del mes, y sus totales.
+
+Al separarlas se comprobó contra producción (solo lectura) que la Visibilidad de Madrid daba **lo mismo antes y después**: agosto, septiembre, octubre sin hoy y el resumen.
+
+Lo que cambia es de dónde salen los datos (`modules/Barcelona/visibilidad.service.js`):
+
+| | Madrid | Barcelona |
+|---|---|---|
+| Horas | Flota viva (`fv_tramo`) | sus apuntes de BOLT (`sede_bolt_state_log`), pasados a ratos como en el reporte |
+| Neto y viajes | `bolt_order` | sus pedidos (`sede_bolt_order`, db/182) |
+| Turnos | el cuadrante (`f_cobertura`) | su planificador; quien no tiene plaza, por su hora de inicio |
+| Configuración | `visibilidad_config` · `parametros` | `visibilidad_config` · `parametros_barcelona` |
+| La serie del mes | fotos diarias (`visibilidad_dia`) | al vuelo: son una veintena de conductores |
+
+**Sin meta de partida.** No hay una meta de Barcelona que copiar, y una inventada pintaría un ideal y una brecha que no miden nada. Hasta que se ponga en *Config*, la pantalla enseña las horas sin el ideal, el crítico ni la brecha (en la tabla, «·»). Los coches, si no se dicen, son los activos en BOLT.
+
+Con datos reales de BOLT (07/10, script `barcelona-visibilidad-prueba.js` de los análisis): el 06/10, 121,9 h efectivas, 78,2 % de utilización, 18 conductores, 2.810,98 € y 23,05 €/h.
+
 ## Las piezas
 
 ```
 barcelona.controller.js   las rutas (sin lógica)
+visibilidad.service.js    la Visibilidad: los datos de Barcelona con las cuentas de Madrid
 barcelona.service.js      el planificador (el tablero de un día, las comprobaciones al asignar) y el reporte
 barcelona.horas.js        puro: de los apuntes de BOLT a los ratos de trabajo, y el reporte con el plan
 barcelona.excel.js        el Excel del reporte

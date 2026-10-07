@@ -135,7 +135,7 @@ Y las horas que se enseñan en el aviso son las **efectivas** (viaje + espera) d
 
 ## Qué lee estas constantes
 
-`services/visibilidad.js` (que a propósito mantiene **dos vistas**, día natural y jornada, y desde el 06/10/2026 saca las tarjetas de turno de `repartoTurnos.js`), `modules/Operaciones/bitacora.repo.js`, `modules/Operaciones/auditoria.service.js`, el reporte de horas y el cockpit de [[Control]], y `services/inicio.js` para el panel de inicio.
+`services/visibilidad.js` (que a propósito mantiene **dos vistas**, día natural y jornada, y desde el 06/10/2026 saca las tarjetas de turno de `repartoTurnos.js`), Barcelona (`modules/Barcelona`: su reporte de horas y su Visibilidad, con el plan de su planificador; ver [[Barcelona]]), `modules/Operaciones/bitacora.repo.js`, `modules/Operaciones/auditoria.service.js`, el reporte de horas y el cockpit de [[Control]], y `services/inicio.js` para el panel de inicio.
 
 Ninguno escribe las horas: las pide. Tenerlas a mano en un fichero suelto era la forma segura de que el día que cambien los turnos esa pantalla se quedara sola diciendo otra cosa.
 

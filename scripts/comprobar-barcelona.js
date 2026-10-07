@@ -144,6 +144,31 @@ const S = require('../modules/Barcelona/barcelona.service');
   const xls = await require('../modules/Barcelona/barcelona.excel').generar(inf);
   igual('El Excel sale (un .xlsx: empieza por PK)', xls.slice(0, 2).toString(), 'PK');
 
+  // ── La Visibilidad: las cuentas de Madrid con los datos de Barcelona ───────
+  // Ana, con plaza de día, trabajó ayer de 08:00 a 16:00 (2 h de viaje) y
+  // descansó de 16:00 a 17:00. Cada ventana pedida devuelve 100 € y 5 viajes.
+  const VS = require('../modules/Barcelona/visibilidad.service');
+  const hoyV = S.hoyMadrid(), ayerV = R.sumarDias(hoyV, -1);
+  const apV = [
+    ap('u-ana', ayerV, 8, 'waiting_orders'), ap('u-ana', ayerV, 9, 'has_order'), ap('u-ana', ayerV, 11, 'waiting_orders'),
+    ap('u-ana', ayerV, 16, 'busy'), ap('u-ana', ayerV, 17, 'inactive'),
+  ];
+  repo.apuntesEntre = async (sede, ini, fin) => apV.filter(a => a.t >= ini && a.t < fin);
+  repo.situaciones = async () => new Map(Object.entries(SIT));
+  repo.dineroEntre = async () => ({ neto: 100, viajes: 5 });
+  repo.asignacionesEntre = async () => [{ matricula: '1111AAA', turno: 'dia', uuid: 'u-ana', desde: '2026-01-01', hasta: null }];
+  repo.leerConfigVisibilidad = async () => null;
+  const rv = await VS.resumen();
+  igual('Ayer (día natural): 8 h, 2 de viaje, 1 de descanso', [rv.ayer.horasEfectivas, rv.ayer.viajeH, rv.ayer.descansoH, rv.ayer.conductores], [8, 2, 1, 1]);
+  igual('Las métricas de Madrid: utilización y €·hora', [rv.ayer.utilizacion, rv.ayer.eurosHora, rv.ayer.viajesHora], [25, 12.5, 0.6]);
+  igual('Sin meta guardada y los coches, los activos en BOLT', [rv.config.meta, rv.config.vehiculos], [null, 2]);
+  const ul = await VS.ultimosDias(5);
+  igual('Últimos días: ayer 8 h (6 de espera), y hoy al final', [ul.dias.length, ul.dias[4].total, ul.dias[4].waiting, ul.dias[5].esHoy], [6, 8, 6, true]);
+  const [ya, ym, yd] = ayerV.split('-').map(Number);
+  const sv = await VS.serieMes(ya, ym);
+  igual('La serie del mes: el día de ayer con sus 8 h', sv.dias[yd - 1].total, 8);
+  igual('Sin meta, el ideal es cero (la pantalla no lo pinta)', sv.idealDiario, 0);
+
   // Sin db/181.
   repo.conductores = async () => { const e = new Error('no existe'); e.code = '42P01'; throw e; };
   igual('Sin db/181 la pantalla lo dice', (await S.tablero({ fecha: '2026-10-07' })).faltaMigracion, true);

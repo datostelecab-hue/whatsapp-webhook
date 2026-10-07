@@ -99,6 +99,17 @@ async function slice(dia, hIni, offDias, hFin) {
     horasVentana(dia, hIni, offDias, hFin),
     dineroVentana(dia, hIni, offDias, hFin),
   ]);
+  return metricas(h, d);
+}
+
+/**
+ * LAS MÉTRICAS DE UNA VENTANA, de sus segundos y su dinero. Pura: la usa también
+ * la Visibilidad de Barcelona (modules/Barcelona), para que las dos sedes se midan
+ * con las mismas cuentas.
+ *   h  { viajeSeg, esperaSeg, descansoSeg, conductores }
+ *   d  { neto, viajes }
+ */
+function metricas(h, d) {
   const efectivasSeg = h.viajeSeg + h.esperaSeg;
   const horas = efectivasSeg / 3600;
   return {
@@ -354,6 +365,27 @@ async function serieMes(anio, mes) {
     fotos.set(Dh, { viajeSeg: h.viajeSeg, esperaSeg: h.esperaSeg });
   }
 
+  const dinero = await dineroVentana(primero, 0, dm, 0);
+  return {
+    anio, mes, diasMes: dm, config,
+    // Hasta qué día hay datos de verdad: en el mes en curso, hoy; en uno pasado, todos.
+    // Los gráficos cortan ahí las series reales; el ideal y el crítico siguen hasta
+    // fin de mes porque son el objetivo, no un dato.
+    ultimoConDatos, esMesActual, hoyDia: esMesActual ? Dh : null,
+    ...armarSerie({ fotos, dm, config, dinero }),
+  };
+}
+
+/**
+ * LA SERIE DEL MES, de las horas de cada día: el acumulado, el ideal, el crítico
+ * y la brecha, y los totales del mes. Pura: la usa también la Visibilidad de
+ * Barcelona.
+ *   fotos   Map(díaDelMes → { viajeSeg, esperaSeg })
+ *   dm      los días del mes
+ *   config  { meta, capacidad_diaria_h, vehiculos }
+ *   dinero  { neto, viajes } del mes
+ */
+function armarSerie({ fotos, dm, config, dinero }) {
   const meta = Number(config.meta) || 0;
   const cap = Number(config.capacidad_diaria_h) || 0;
   const veh = Number(config.vehiculos) || 0;
@@ -390,7 +422,6 @@ async function serieMes(anio, mes) {
   const totalMes = dias.length ? dias[dias.length - 1].acumulado : 0;   // horas efectivas
   const waitingMes = dias.reduce((a, d) => a + (d.waiting || 0), 0);
   const viajeMes = totalMes - waitingMes;
-  const dinero = await dineroVentana(primero, 0, dm, 0);
   const totales = {
     horasEfectivas: Math.round(totalMes * 10) / 10,
     utilizacion: totalMes > 0 ? Math.round((viajeMes / totalMes) * 1000) / 10 : null,
@@ -399,15 +430,7 @@ async function serieMes(anio, mes) {
     eurosHora: totalMes > 0 ? Math.round((dinero.neto / totalMes) * 100) / 100 : null,
     viajesHora: totalMes > 0 ? Math.round((dinero.viajes / totalMes) * 10) / 10 : null,
   };
-  return {
-    anio, mes, diasMes: dm, config,
-    // Hasta qué día hay datos de verdad: en el mes en curso, hoy; en uno pasado, todos.
-    // Los gráficos cortan ahí las series reales; el ideal y el crítico siguen hasta
-    // fin de mes porque son el objetivo, no un dato.
-    ultimoConDatos, esMesActual, hoyDia: esMesActual ? Dh : null,
-    idealDiario: Math.round(idealDiario),
-    dias, total: totalMes, totales,
-  };
+  return { idealDiario: Math.round(idealDiario), dias, total: totalMes, totales };
 }
 
 // Foto diaria del mes → Map(díaDelMes -> {viajeSeg, esperaSeg}).
@@ -483,6 +506,8 @@ module.exports = {
   capturarDia, backfillMes, backfillMesActual, capturaCorriente,
   // internos expuestos por si hacen falta en pruebas
   slice, horasVentana, dineroVentana,
+  // Las cuentas, puras: las comparte la Visibilidad de Barcelona (modules/Barcelona).
+  metricas, sliceDeTurno, armarSerie, CONFIG_DEFECTO,
   // La usa el panel de inicio para pedir los KM de las MISMAS ventanas que las
   // horas: si cada pantalla eligiera su turno, las dos cifras no se podrian comparar.
   ventanaTurnos,
