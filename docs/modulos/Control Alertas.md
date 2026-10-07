@@ -9,6 +9,9 @@ aliases: [Alertas de control]
 
 El servicio es fino a propósito: la regla de cada umbral y el orden del envío viven en el repositorio, que es quien habla con la base y con WhatsApp. Lo que se gana poniéndolo en un servicio es **la puerta**: desde fuera del módulo —el cron de `app.js`, el cockpit, el Histórico— se entra por `alertas.service` y no por el repositorio. Ver [[Reglas de la casa]].
 
+> [!warning] Desde el 07/10/2026 no se manda ningún WhatsApp (db/180)
+> Camilo: «Desactiva completamente esos avisos, no los necesitamos ya». Cada alerta era una **plantilla** de WhatsApp a los dos controladores. Meta cobra cada plantilla entregada desde el 01/07/2025: no hay ventana de 24 h que abra la empresa, solo la abre quien escribe. Eran unas **600-700 al día**, casi todas de «no vuelve a la M-30» (~160 alertas al día) y «rueda suelto» (~110), y llegaron unos 30 € en dos días. La migración pasa el **modo** a `test`. Las alertas se siguen detectando y se ven aquí y en Control, apuntadas como `simulada`, pero no sale nada: las tres vías de envío (las de franja, el coche suelto y la M-30) miran ese modo. Para volver a encenderlas, *Ajustes → modo real*. El recuento sale con `whatsapp-gasto.js` (Scripts de análisis).
+
 
 ## El coche suelto: el único aviso al momento
 

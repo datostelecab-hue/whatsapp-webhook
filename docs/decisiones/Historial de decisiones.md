@@ -7,6 +7,10 @@ actualizado: 2026-10-06
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-07 · Las alertas de Control dejan de mandar WhatsApp
+
+«Desactiva completamente esos avisos, no los necesitamos ya.» Cada alerta era una plantilla de WhatsApp a los dos controladores, y Meta cobra cada plantilla entregada desde el 01/07/2025. Eran unas 600-700 al día, casi todas de «no vuelve a la M-30» y de «rueda suelto»: unos 30 € en dos días. Ese día la cuenta se bloqueó por el pago. `db/180` pasa el modo a `test`: las alertas se siguen viendo en pantalla, pero no sale ningún WhatsApp. Se vuelven a encender desde *Ajustes*, sin migración. Los avisos de velocidad y el de turnos a los conductores no se tocan. → [[Control Alertas]]
+
 ## 2026-10-07 · Informe de jornada semanal (Control · Reportes)
 
 Un Excel de semana en semana, **solo de la plantilla propia**, con una pestaña por jornada de contrato (40 h, 32 h…). Lleva el nombre, de lunes a domingo, el total y si cumplió. Va de menor a mayor, así que los que no cumplieron quedan arriba. Las horas salen de la rejilla de la Bitácora, para que cuadren con ella. La J suma sus horas a las de BOLT, pero solo aprobada, que es la regla de la Bitácora. La baja médica no suma, pero deja su «B» en el día; las vacaciones (V) y los permisos (P), igual. La jornada a cumplir no se rebaja por esos días. Quien no tiene la jornada en el contrato va a una pestaña aparte, sin juzgar. → [[Control Reportes#Jornada semanal · ¿cumplió sus horas? (07/10/2026)]]
