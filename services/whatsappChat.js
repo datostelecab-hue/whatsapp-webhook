@@ -116,7 +116,146 @@ function textoDeOficina(texto) {
   return t;
 }
 
+// ── SEGUNDA FASE (db/186) ────────────────────────────────────────────────────
+
+// LOS ADJUNTOS. Meta guarda 30 días lo que mandan; se baja al llegar y se guarda
+// hasta este tamaño. Lo que pase se pide a Meta al abrirlo, mientras lo tenga.
+const MAX_ADJUNTO = (Number(process.env.WHATSAPP_ADJUNTO_MAX_MB) || 16) * 1024 * 1024;
+const CON_ADJUNTO = new Set(['imagen', 'video', 'audio', 'documento', 'sticker']);
+
+const mimeBase = m => String(m || '').toLowerCase().split(';')[0].trim();
+
+/**
+ * ¿SE ENSEÑA EN LA PÁGINA O SOLO SE DESCARGA? Solo fotos, audio y vídeo. Un
+ * documento puede ser un HTML o un SVG, y abierto desde nuestro dominio
+ * ejecutaría lo que lleve dentro con la sesión de quien lo abre: va siempre como
+ * descarga.
+ */
+function adjuntoEnLinea(mime) {
+  return /^(image\/(jpeg|png|webp|gif)|audio\/[a-z0-9.+-]+|video\/(mp4|3gpp|webm|quicktime))$/.test(mimeBase(mime));
+}
+
+const EXTENSION = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+  'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/amr': 'amr',
+  'video/mp4': 'mp4', 'video/3gpp': '3gp', 'application/pdf': 'pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/msword': 'doc', 'application/vnd.ms-excel': 'xls', 'text/plain': 'txt',
+};
+const NOMBRE_TIPO = { imagen: 'Foto', video: 'Vídeo', audio: 'Audio', documento: 'Documento', sticker: 'Sticker' };
+
+/** El nombre con que se descarga: el del documento, o «WhatsApp Foto 123.jpg». */
+function nombreAdjunto({ nombre, mime, tipo, id }) {
+  const limpio = String(nombre || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
+  if (limpio) return limpio;
+  const m = mimeBase(mime);
+  const ext = EXTENSION[m] || (m.split('/')[1] || 'bin').replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin';
+  return `WhatsApp ${NOMBRE_TIPO[tipo] || 'Adjunto'} ${id}.${ext}`;
+}
+
+/** La cabecera Content-Disposition, con el nombre también en UTF-8 (tildes y eñes). */
+function disposicion(nombre, enLinea) {
+  const ascii = String(nombre || 'adjunto').normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\x20-\x7e]|"/g, '_');
+  return `${enLinea ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nombre || 'adjunto')}`;
+}
+
+// LAS PLANTILLAS. Fuera de la ventana de 24 h solo se puede escribir con una
+// plantilla aprobada, y se paga. Desde el chat se mandan las que solo piden
+// TEXTO en el cuerpo: las que llevan una foto en la cabecera o un botón con un
+// enlace variable piden datos que aquí no hay de dónde sacar.
+const VARIABLE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+const MAX_CUERPO = 1024;
+
+/** Una plantilla tal como la da Meta → lo que necesita el chat. */
+function plantillaDeMeta(t) {
+  const x = t || {};
+  const comps = x.components || [];
+  const de = tipo => comps.find(c => String(c.type || '').toUpperCase() === tipo) || null;
+  const cuerpoC = de('BODY'), cab = de('HEADER'), pie = de('FOOTER'), bots = de('BUTTONS');
+  const cuerpo = (cuerpoC && cuerpoC.text) || '';
+  const vistas = [];
+  cuerpo.replace(VARIABLE, (_, v) => { if (!vistas.includes(v)) vistas.push(v); return _; });
+  const nombrado = String(x.parameter_format || '').toUpperCase() === 'NAMED' || vistas.some(v => !/^\d+$/.test(v));
+  const variables = nombrado ? vistas : vistas.slice().sort((a, b) => Number(a) - Number(b));
+  const botones = ((bots && bots.buttons) || []);
+  let motivo = null;
+  if (String(x.status || '').toUpperCase() !== 'APPROVED') motivo = 'Meta todavía no la ha aprobado';
+  else if (cab && (String(cab.format || 'TEXT').toUpperCase() !== 'TEXT' || /{{[^{}]+}}/.test(cab.text || ''))) motivo = 'Lleva en la cabecera una foto, un documento o una variable';
+  else if (botones.some(b => !['QUICK_REPLY', 'URL', 'PHONE_NUMBER'].includes(String(b.type || '').toUpperCase()) || /\{\{/.test(b.url || ''))) motivo = 'Lleva un botón que pide datos';
+  return {
+    nombre: x.name || '', idioma: x.language || '', categoria: String(x.category || '').toUpperCase(),
+    formato: nombrado ? 'nombrado' : 'posicional', cuerpo,
+    cabecera: (cab && String(cab.format || 'TEXT').toUpperCase() === 'TEXT' && cab.text) || '',
+    pie: (pie && pie.text) || '', botones: botones.map(b => b.text || ''),
+    variables, usable: !motivo, motivo,
+  };
+}
+
+// Meta no admite en un parámetro saltos de línea, tabuladores ni más de cuatro
+// espacios seguidos (error 132018): se aplanan.
+const aplanar = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+
+/** El cuerpo con los valores puestos, como lo va a leer la persona. */
+function rellenarPlantilla(cuerpo, valores = {}) {
+  return String(cuerpo || '').replace(VARIABLE, (m, v) => {
+    const x = aplanar(valores[v]);
+    return x ? x : m;
+  });
+}
+
+/** Comprueba los valores; lanza con lo que falta. Devuelve los valores aplanados. */
+function validarValores(p, valores = {}) {
+  const out = {};
+  for (const v of p.variables) {
+    const x = aplanar(valores[v]);
+    if (!x) throw new Error(`Rellena {{${v}}}.`);
+    out[v] = x;
+  }
+  if (rellenarPlantilla(p.cuerpo, out).length > MAX_CUERPO) throw new Error(`El mensaje pasa de ${MAX_CUERPO} caracteres: acorta lo que has puesto.`);
+  return out;
+}
+
+/** Los parámetros del cuerpo para Meta, por nombre o por posición. */
+function parametrosDePlantilla(p, valores = {}) {
+  return p.variables.map(v => (p.formato === 'nombrado'
+    ? { type: 'text', parameter_name: v, text: aplanar(valores[v]) }
+    : { type: 'text', text: aplanar(valores[v]) }));
+}
+
+// EL NOMBRE DE PILA, para el saludo de una plantilla o de una respuesta rápida.
+// La ficha lo trae en mayúsculas («ANDRÉS JOSÉ GARRIDO»): «Andrés».
+function primerNombre(nombre) {
+  const p = String(nombre || '').replace(/^\+?\d[\d\s]*$/, '').trim().split(/\s+/)[0] || '';
+  return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : '';
+}
+
+/** Lo que se le propone a una variable: el nombre de pila a la de «nombre» o a la primera. */
+function valorSugerido(variable, nombre) {
+  return /nombre|name/i.test(String(variable)) || String(variable) === '1' ? primerNombre(nombre) : '';
+}
+
+// LAS RESPUESTAS RÁPIDAS: {nombre} es el nombre de pila de la persona.
+function respuestaPara(texto, nombre) {
+  return String(texto || '')
+    .replace(/\{nombre\}/gi, primerNombre(nombre))
+    .replace(/[ \t]+([,.;:!?])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+/** Una respuesta rápida, limpia; lanza si no vale. */
+function validarRespuesta({ titulo, texto } = {}) {
+  const t = String(titulo == null ? '' : titulo).replace(/\s+/g, ' ').trim();
+  if (!t) throw new Error('Ponle un título corto, para encontrarla.');
+  if (t.length > 60) throw new Error('El título es demasiado largo (máximo 60 caracteres).');
+  return { titulo: t, texto: textoDeOficina(texto) };
+}
+
 module.exports = {
   VENTANA_MS, PAUSA_MIN, MAX_TEXTO, soloDigitos,
   describirEntrante, describirSaliente, resumen, ventana, botAtiende, textoDeOficina,
+  MAX_ADJUNTO, CON_ADJUNTO, adjuntoEnLinea, nombreAdjunto, disposicion,
+  MAX_CUERPO, plantillaDeMeta, rellenarPlantilla, validarValores, parametrosDePlantilla,
+  primerNombre, valorSugerido, respuestaPara, validarRespuesta,
 };

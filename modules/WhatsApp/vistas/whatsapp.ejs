@@ -7,7 +7,8 @@
       </h1>
       <p class="text-sm text-telecab-muted mt-1 max-w-[80ch]">
         Lo que el bot les manda a los conductores y lo que escriben ellos. Se puede contestar gratis mientras
-        la ventana de 24 h esté abierta (desde su último mensaje); al escribir, el bot deja de contestarle un rato.
+        la ventana de 24 h esté abierta (desde su último mensaje); fuera de ella, con una plantilla, que se paga.
+        Al escribir, el bot deja de contestarle un rato.
       </p>
     </div>
   </div>
@@ -18,12 +19,26 @@
 
     <!-- ── Las conversaciones ─────────────────────────────────────────────── -->
     <aside id="w-lado" class="flex flex-col min-h-0 border-r border-telecab-border">
-      <div class="p-3 border-b border-telecab-border">
-        <label class="relative block">
-          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-telecab-muted"></i>
-          <input id="w-buscar" type="search" autocomplete="off" placeholder="Busca por nombre o teléfono"
-                 class="w-full pl-8 pr-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70">
-        </label>
+      <div class="p-3 border-b border-telecab-border space-y-2">
+        <div class="flex items-center gap-2">
+          <label class="relative block flex-1">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-telecab-muted"></i>
+            <input id="w-buscar" type="search" autocomplete="off" placeholder="Busca por nombre o teléfono"
+                   class="w-full pl-8 pr-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70">
+          </label>
+          <% if (puedeEscribir) { %>
+          <button type="button" id="w-nueva" class="shrink-0 w-9 h-9 rounded-xl border border-telecab-border text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60"
+                  title="Escribir a un conductor que no está en la lista.&#10;Si nunca ha escrito, la primera vez es con una plantilla (se paga)." aria-label="Escribir a un conductor">
+            <i class="fa-solid fa-pen-to-square"></i>
+          </button>
+          <% } %>
+        </div>
+        <input type="hidden" id="w-filtro" value="">
+        <div class="tc-selector" data-para="w-filtro" aria-label="Qué conversaciones ver">
+          <button type="button" data-v="">Todas</button>
+          <button type="button" data-v="mias" title="Las que llevas tú">Mías</button>
+          <button type="button" data-v="libres" title="Las que no lleva nadie">Sin asignar</button>
+        </div>
       </div>
       <ul id="w-lista" class="flex-1 overflow-y-auto min-h-0" aria-label="Conversaciones">
         <li class="px-4 py-6 text-sm text-telecab-muted">Cargando…</li>
@@ -40,7 +55,7 @@
       <div id="w-abierto" class="hidden flex-1 flex-col min-h-0">
         <header id="w-cabecera" class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-telecab-border"></header>
         <div id="w-mensajes" class="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-1.5 bg-telecab-dark/40"></div>
-        <footer id="w-pie" class="border-t border-telecab-border p-3"></footer>
+        <footer id="w-pie" class="relative border-t border-telecab-border p-3"></footer>
       </div>
     </section>
   </div>
@@ -49,6 +64,9 @@
 <script>
 (function () {
   const PUEDE_ESCRIBIR = <%- JSON.stringify(!!puedeEscribir) %>;
+  const VER_LLAMADAS = <%- JSON.stringify(!!verLlamadas) %>;
+  const ABRIR_TEL = <%- JSON.stringify(abrirTel || '') %>;
+  const SIN_TELEFONO = <%- JSON.stringify(!!sinTelefono) %>;
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   // El *negrita* de WhatsApp, que el bot usa para las matrículas.
@@ -85,23 +103,34 @@
     if (!s || s !== s.toUpperCase() || !/[A-ZÁÉÍÓÚÑ]/.test(s)) return s;
     return s.toLowerCase().split(/\s+/).map((p, i) => (i && MENORES.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1))).join(' ');
   };
+  const kb = n => (n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+  const json = (url, datos) => fetch(url, datos === undefined ? undefined : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos),
+  }).then(x => x.json());
 
   let lista = [];
+  let yo = null;             // quién soy (para «Mías» y «Me la quedo»)
   let actual = null;         // teléfono abierto
   let cab = null;            // su cabecera
   let ultimoId = null;       // el último mensaje pintado
   let ultimoDia = null;      // para los separadores
   let pausaMin = 30;
   let enviando = false;
+  let pieModo = null;        // lo que enseña el pie: leer, texto o plantilla
+  let plantilla = null;      // la plantilla elegida para esta conversación, con sus valores
 
   // ── La lista ────────────────────────────────────────────────────────────
   async function cargarLista() {
     try {
       const q = $('#w-buscar').value.trim();
-      const r = await fetch('/whatsapp/api/conversaciones' + (q ? '?q=' + encodeURIComponent(q) : '')).then(x => x.json());
+      const f = $('#w-filtro').value;
+      const r = await fetch('/whatsapp/api/conversaciones?' + new URLSearchParams({ q, filtro: f })).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar');
-      if (r.faltaMigracion) return avisar('Falta aplicar la migración <b>db/185</b> (en Migraciones): hasta entonces no se guarda ningún mensaje.');
+      if (r.faltaMigracion) return avisar(r.faltaMigracion === 'db/185'
+        ? 'Falta aplicar la migración <b>db/185</b> (en Migraciones): hasta entonces no se guarda ningún mensaje.'
+        : 'Falta aplicar la migración <b>db/186</b> (en Migraciones): hasta entonces no se ven las conversaciones. Los mensajes se siguen guardando.');
       pausaMin = r.pausaMin || pausaMin;
+      yo = r.yo || yo;
       lista = r.conversaciones;
       pintarLista();
     } catch (e) {
@@ -117,20 +146,27 @@
 
   function pintarLista() {
     if (!lista.length) {
+      const f = $('#w-filtro').value;
       $('#w-lista').innerHTML = `<li class="px-4 py-6 text-sm text-telecab-muted">${$('#w-buscar').value.trim()
         ? 'Nadie con ese nombre o teléfono.'
+        : f === 'mias' ? 'No llevas ninguna conversación. Se te asigna la que contestas, o la que te quedas desde arriba del chat.'
+        : f === 'libres' ? 'Todas las conversaciones tienen a alguien que las lleva.'
         : 'Todavía no hay mensajes. El chat se guarda desde que se aplicó db/185: Meta no da los anteriores.'}</li>`;
       return;
     }
     $('#w-lista').innerHTML = lista.map(c => {
       const on = c.telefono === actual;
       const prefijo = c.ultimoSentido === 'saliente' ? '<i class="fa-solid fa-reply text-[10px] mr-1 opacity-60"></i>' : '';
+      const mia = c.asignadoA && c.asignadoA === yo;
+      const lleva = c.asignadoA
+        ? `<i class="fa-solid fa-user-check shrink-0 text-[11px] ${mia ? 'text-telecab-gold' : 'text-telecab-muted'}" title="${mia ? 'La llevas tú' : 'La lleva ' + esc(bonito(c.asignado || ''))}"></i>`
+        : '';
       return `<li>
         <button type="button" data-tel="${esc(c.telefono)}"
           class="w-full text-left flex gap-3 px-3 py-2.5 border-b border-telecab-border/60 transition ${on ? 'bg-telecab-card2' : 'hover:bg-telecab-card2/60'}">
           <span class="relative shrink-0 w-10 h-10 rounded-full bg-telecab-card2 border border-telecab-border flex items-center justify-center text-xs font-semibold text-telecab-muted">
             ${esc(iniciales(bonito(c.nombre)))}
-            ${c.ventana.abierta ? '<span class="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full bg-telecab-green border-2 border-telecab-card" title="Ventana de 24 h abierta: se le puede escribir"></span>' : ''}
+            ${c.ventana.abierta ? '<span class="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full bg-telecab-green border-2 border-telecab-card" title="Ventana de 24 h abierta: se le puede escribir gratis"></span>' : ''}
           </span>
           <span class="min-w-0 flex-1">
             <span class="flex items-baseline gap-2">
@@ -138,9 +174,10 @@
               <span class="ml-auto shrink-0 text-[11px] ${c.sinLeer ? 'text-telecab-gold font-semibold' : 'text-telecab-muted'}">${esc(cuandoCorto(c.ultimoAt))}</span>
             </span>
             <span class="flex items-center gap-2 mt-0.5">
-              <span class="truncate text-xs text-telecab-muted">${prefijo}${esc(c.ultimoTexto || '')}</span>
-              ${c.botPausadoHasta ? '<i class="fa-solid fa-hand ml-auto shrink-0 text-[11px] text-telecab-warn" title="El bot está en pausa con esta persona"></i>' : ''}
-              ${c.sinLeer ? `<span class="${c.botPausadoHasta ? '' : 'ml-auto '}shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-telecab-gold text-[11px] font-semibold flex items-center justify-center" style="color: rgb(var(--tc-on-gold))">${c.sinLeer > 99 ? '99+' : c.sinLeer}</span>` : ''}
+              <span class="truncate text-xs text-telecab-muted mr-auto">${prefijo}${esc(c.ultimoTexto || '')}</span>
+              ${lleva}
+              ${c.botPausadoHasta ? '<i class="fa-solid fa-hand shrink-0 text-[11px] text-telecab-warn" title="El bot está en pausa con esta persona"></i>' : ''}
+              ${c.sinLeer ? `<span class="shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-telecab-gold text-[11px] font-semibold flex items-center justify-center" style="color: rgb(var(--tc-on-gold))">${c.sinLeer > 99 ? '99+' : c.sinLeer}</span>` : ''}
             </span>
           </span>
         </button></li>`;
@@ -153,11 +190,31 @@
   });
   let tBuscar = null;
   $('#w-buscar').addEventListener('input', () => { clearTimeout(tBuscar); tBuscar = setTimeout(cargarLista, 250); });
+  $('#w-filtro').addEventListener('change', cargarLista);
+  if (window.Selector) Selector.montar($('#w-lado'));
+
+  // EMPEZAR UNA CONVERSACIÓN con un conductor que no está en la lista (o que
+  // nunca ha escrito): se elige y se abre; si no hay ventana, toca plantilla.
+  const nueva = $('#w-nueva');
+  if (nueva) nueva.addEventListener('click', async () => {
+    try {
+      const r = await fetch('/whatsapp/api/conductores').then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar la lista');
+      const v = await Dialogo.formulario('Escribir a un conductor', [{
+        id: 'tel', etiqueta: 'Conductor', tipo: 'lista', obligatorio: true,
+        buscador: { marcador: 'Busca por nombre o teléfono', tope: 12 },
+        opciones: r.conductores.map(c => ({ valor: c.telefono, texto: bonito(c.nombre), detalle: '+' + c.telefono })),
+      }], { textoBoton: 'Abrir la conversación', nota: 'Los de alta con un teléfono en su ficha. Si no ha escrito en las últimas 24 h, la primera vez es con una plantilla (se paga).' });
+      if (v && v.tel) abrir(String(v.tel));
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo abrir', texto: e.message, tono: 'error' });
+    }
+  });
 
   // ── El chat ─────────────────────────────────────────────────────────────
   const ETIQUETA = { bot: 'Bot', alerta: 'Alerta de Control', velocidad: 'Aviso de velocidad', turnos: 'Aviso de turnos', plantilla: 'Plantilla' };
-  const ICONO_MEDIA = { imagen: 'fa-image', video: 'fa-film', audio: 'fa-microphone', documento: 'fa-file-lines', sticker: 'fa-note-sticky', contacto: 'fa-address-card' };
   const NOMBRE_MEDIA = { imagen: 'Foto', video: 'Vídeo', audio: 'Audio', documento: 'Documento', sticker: 'Sticker', contacto: 'Contacto' };
+  const CATEGORIA = { UTILITY: 'Utilidad', MARKETING: 'Marketing', AUTHENTICATION: 'Autenticación' };
 
   function marca(m) {
     if (m.sentido !== 'saliente') return '';
@@ -169,6 +226,34 @@
     if (m.estado === 'entregado') return '<i class="fa-solid fa-check-double" title="Entregado"></i>';
     if (m.estado === 'enviado') return '<i class="fa-solid fa-check" title="Enviado"></i>';
     return '<i class="fa-regular fa-clock" title="Esperando a que Meta diga si llegó"></i>';
+  }
+
+  // LOS ADJUNTOS se piden al servidor, que los tiene guardados (o se los pide a
+  // Meta mientras los tenga). Si no carga, se dice y se deja el enlace al motivo.
+  function adjunto(m) {
+    const d = m.detalle || {};
+    const url = '/whatsapp/api/adjunto/' + encodeURIComponent(m.id);
+    const pie = m.texto && m.tipo !== 'documento' ? `<div class="whitespace-pre-wrap break-words mt-1.5">${formato(m.texto)}</div>` : '';
+    switch (m.tipo) {
+      case 'imagen': case 'sticker':
+        return `<a href="${url}" target="_blank" rel="noopener" class="block" title="Abrir a tamaño completo">
+            <img src="${url}" alt="${m.tipo === 'sticker' ? 'Sticker' : 'Foto'}" loading="lazy" data-adjunto="${esc(url)}"
+                 class="${m.tipo === 'sticker' ? 'w-32 h-32 object-contain' : 'max-h-72 max-w-full'} rounded-lg bg-telecab-dark/40"></a>` + pie;
+      case 'audio':
+        return `<div class="flex items-center gap-2 text-xs text-telecab-muted mb-1"><i class="fa-solid fa-microphone"></i>${d.voz ? 'Nota de voz' : 'Audio'}</div>
+          <audio controls preload="none" src="${url}" data-adjunto="${esc(url)}" class="w-64 max-w-full"></audio>` + pie;
+      case 'video':
+        return `<video controls preload="metadata" src="${url}" data-adjunto="${esc(url)}" class="max-h-72 max-w-full rounded-lg bg-black"></video>` + pie;
+      case 'documento': {
+        const nombre = d.nombre || m.texto || 'Documento';
+        return `<a href="${url}" download class="flex items-center gap-3 px-3 py-2 rounded-xl border border-telecab-border bg-telecab-card hover:border-telecab-gold/60" title="Descargar">
+            <i class="fa-solid fa-file-lines text-xl text-telecab-muted"></i>
+            <span class="min-w-0"><span class="block truncate text-sm font-medium">${esc(nombre)}</span>
+              <span class="block text-[11px] text-telecab-muted">${m.adjunto_tamano ? esc(kb(m.adjunto_tamano)) + ' · ' : ''}Descargar</span></span>
+            <i class="fa-solid fa-download ml-auto text-telecab-muted"></i></a>`;
+      }
+      default: return '';
+    }
   }
 
   function cuerpo(m) {
@@ -186,10 +271,10 @@
              href="https://www.google.com/maps?q=${encodeURIComponent(d.lat + ',' + d.lng)}">${esc(m.texto || 'Ver la ubicación en el mapa')}</a></div>`;
       case 'reaccion':
         return `<div class="text-sm text-telecab-muted">Reaccionó con ${esc(m.texto)}</div>`;
-      case 'imagen': case 'video': case 'audio': case 'documento': case 'sticker': case 'contacto':
-        return `<div class="flex items-center gap-2 text-sm font-medium"><i class="fa-solid ${ICONO_MEDIA[m.tipo]} text-telecab-muted"></i>
-          ${NOMBRE_MEDIA[m.tipo]}${d.voz ? ' · nota de voz' : ''}</div>` + texto +
-          '<div class="text-[11px] text-telecab-muted mt-0.5">Se podrá ver aquí más adelante.</div>';
+      case 'imagen': case 'video': case 'audio': case 'documento': case 'sticker':
+        return d.media_id ? adjunto(m) : `<div class="text-sm text-telecab-muted italic">${NOMBRE_MEDIA[m.tipo]} sin fichero.</div>`;
+      case 'contacto':
+        return `<div class="flex items-center gap-2 text-sm"><i class="fa-solid fa-address-card text-telecab-muted"></i> Contacto: ${esc(m.texto || '')}</div>`;
       case 'otro':
         return `<div class="text-sm text-telecab-muted italic">Un mensaje que esta pantalla aún no sabe enseñar.</div>`;
       default:
@@ -197,20 +282,22 @@
     }
   }
 
+  // El separador de día, cuando cambia (vale para mensajes y llamadas).
+  function separador(fecha) {
+    const dia = diaDe(fecha);
+    if (dia === ultimoDia) return '';
+    ultimoDia = dia;
+    return `<div class="flex justify-center py-2"><span class="px-3 py-0.5 rounded-full bg-telecab-card border border-telecab-border text-[11px] text-telecab-muted first-letter:uppercase">${esc(diaLargo(fecha))}</span></div>`;
+  }
+
   function burbuja(m) {
     const sale = m.sentido === 'saliente';
     let clase, quien = '';
     if (!sale) clase = 'bg-telecab-card border-telecab-border';
-    else if (m.origen === 'oficina') { clase = 'bg-telecab-gold/10 border-telecab-gold/30'; quien = m.usuario || 'Oficina'; }
+    else if (m.origen === 'oficina') { clase = 'bg-telecab-gold/10 border-telecab-gold/30'; quien = (m.usuario || 'Oficina') + (m.tipo === 'plantilla' ? ' · plantilla' : ''); }
     else if (m.origen === 'bot') { clase = 'bg-telecab-card2 border-telecab-border'; quien = 'Bot'; }
     else { clase = 'bg-telecab-azul/10 border-telecab-azul/30'; quien = ETIQUETA[m.origen] || 'Plantilla'; }
-    let sep = '';
-    const dia = diaDe(m.ocurrido_at);
-    if (dia !== ultimoDia) {
-      ultimoDia = dia;
-      sep = `<div class="flex justify-center py-2"><span class="px-3 py-0.5 rounded-full bg-telecab-card border border-telecab-border text-[11px] text-telecab-muted first-letter:uppercase">${esc(diaLargo(m.ocurrido_at))}</span></div>`;
-    }
-    return sep + `<div class="flex ${sale ? 'justify-end' : 'justify-start'}" data-id="${m.id}">
+    return separador(m.ocurrido_at) + `<div class="flex ${sale ? 'justify-end' : 'justify-start'}" data-id="${m.id}">
       <div class="max-w-[78%] md:max-w-[64%] rounded-2xl border px-3 py-2 text-sm text-telecab-text ${clase} ${sale ? 'rounded-br-md' : 'rounded-bl-md'}">
         ${quien ? `<div class="text-[11px] font-semibold mb-0.5 ${m.origen === 'oficina' ? 'text-telecab-gold' : 'text-telecab-muted'}">${esc(quien)}</div>` : ''}
         ${cuerpo(m)}
@@ -218,64 +305,348 @@
       </div></div>`;
   }
 
+  // UNA LLAMADA del Call Center o de Control, entre los mensajes: lo que se le
+  // dijo por teléfono también es parte de la conversación.
+  function llamada(l) {
+    const de = l.direccion === 'entrante' ? 'Llamada recibida' : l.fuente === 'control' ? 'Llamada de Control' : 'Llamada del Call Center';
+    const que = [l.motivo, l.resultado].filter(Boolean).join(' — ');
+    return separador(l.ts) + `<div class="flex justify-center">
+      <a href="/callcenter?conductor=${encodeURIComponent(cab.conductorId)}" title="Verla en el Call Center, con toda su historia"
+         class="max-w-[85%] inline-flex items-start gap-2 px-3 py-1.5 rounded-xl border border-dashed border-telecab-border bg-telecab-card/60 text-xs text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/50">
+        <i class="fa-solid fa-phone mt-0.5"></i>
+        <span class="min-w-0"><span class="text-telecab-text font-medium">${esc(de)}</span>${l.agente ? ' · ' + esc(l.agente) : ''} · ${esc(fmtHora(l.ts))}
+          ${que ? `<span class="block">${esc(que)}</span>` : ''}${l.notas ? `<span class="block italic">${esc(l.notas)}</span>` : ''}</span>
+      </a></div>`;
+  }
+
+  // Si una foto o un audio no carga, se dice dónde mirar el motivo.
+  $('#w-mensajes').addEventListener('error', ev => {
+    const el = ev.target;
+    if (!el || !el.dataset || !el.dataset.adjunto || el.dataset.fallo) return;
+    el.dataset.fallo = '1';
+    const caja = document.createElement('div');
+    caja.className = 'text-xs text-telecab-muted italic';
+    caja.innerHTML = `No se pudo cargar. <a href="${esc(el.dataset.adjunto)}" target="_blank" rel="noopener" class="underline underline-offset-2 not-italic hover:text-telecab-gold">Ver el motivo</a>`;
+    (el.closest('a') || el).replaceWith(caja);
+  }, true);
+
   function pintarCabecera() {
     const c = cab;
     const v = c.ventana;
-    const ventana = v.abierta
-      ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-green"><span class="w-2 h-2 rounded-full bg-telecab-green"></span>Ventana abierta hasta ${esc(hasta(v.cierraAt))}</span>`
-      : `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><span class="w-2 h-2 rounded-full bg-telecab-muted/60"></span>Ventana cerrada</span>`;
-    const bot = c.botPausadoHasta
+    const ventana = !c.existe
+      ? '<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><i class="fa-regular fa-comment"></i>Todavía no os habéis escrito</span>'
+      : v.abierta
+        ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-green"><span class="w-2 h-2 rounded-full bg-telecab-green"></span>Ventana abierta hasta ${esc(hasta(v.cierraAt))}</span>`
+        : `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><span class="w-2 h-2 rounded-full bg-telecab-muted/60"></span>Ventana cerrada</span>`;
+    const bot = !c.existe ? '' : c.botPausadoHasta
       ? `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-warn"><i class="fa-solid fa-hand"></i>Bot en pausa hasta las ${esc(fmtHora(c.botPausadoHasta))}${c.pausadoPor ? ' (' + esc(c.pausadoPor) + ')' : ''}</span>`
       : `<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><i class="fa-solid fa-robot"></i>Bot activo</span>`;
-    const botonBot = !PUEDE_ESCRIBIR ? '' : c.botPausadoHasta
+    const botonBot = !PUEDE_ESCRIBIR || !c.existe ? '' : c.botPausadoHasta
       ? `<button type="button" id="w-bot" data-pausar="0" class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-text hover:border-telecab-gold/60">Devolver al bot</button>`
       : `<button type="button" id="w-bot" data-pausar="1" class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60" title="Que el bot no le conteste durante ${pausaMin} minutos">Pausar el bot</button>`;
+    // QUIÉN LA LLEVA: se ve siempre; se cambia con permiso de escribir.
+    const mia = c.asignadoA && c.asignadoA === yo;
+    const lleva = !c.existe ? '' : c.asignadoA
+      ? `<span class="inline-flex items-center gap-1.5 text-xs ${mia ? 'text-telecab-gold' : 'text-telecab-muted'}"><i class="fa-solid fa-user-check"></i>${mia ? 'La llevas tú' : 'La lleva ' + esc(bonito(c.asignado || ''))}</span>`
+      : '<span class="inline-flex items-center gap-1.5 text-xs text-telecab-muted"><i class="fa-regular fa-user"></i>Sin asignar</span>';
+    const asignar = !PUEDE_ESCRIBIR || !c.existe ? '' : (!c.asignadoA && yo)
+      ? `<button type="button" id="w-quedar" class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60" title="La llevas tú: sale en «Mías»">Me la quedo</button>
+         <button type="button" id="w-asignar" class="w-8 h-8 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60" title="Dársela a otra persona" aria-label="Dársela a otra persona"><i class="fa-solid fa-user-pen"></i></button>`
+      : `<button type="button" id="w-asignar" class="px-3 py-1.5 rounded-lg border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60" title="Dársela a otra persona, o a nadie">Cambiar</button>`;
+    const enlaces = [
+      c.conductorId ? `<a href="/plantilla#${encodeURIComponent(c.conductorId)}" class="underline underline-offset-2 hover:text-telecab-gold">Su ficha</a>` : '',
+      c.conductorId && VER_LLAMADAS ? `<a href="/callcenter?conductor=${encodeURIComponent(c.conductorId)}" class="underline underline-offset-2 hover:text-telecab-gold" title="Su historia de llamadas en el Call Center">Sus llamadas</a>` : '',
+    ].filter(Boolean).join(' · ');
     $('#w-cabecera').innerHTML = `
       <button type="button" id="w-atras" class="md:hidden w-8 h-8 -ml-1 rounded-lg text-telecab-muted hover:text-telecab-text" aria-label="Volver a las conversaciones"><i class="fa-solid fa-arrow-left"></i></button>
       <span class="shrink-0 w-10 h-10 rounded-full bg-telecab-card2 border border-telecab-border flex items-center justify-center text-xs font-semibold text-telecab-muted">${esc(iniciales(bonito(c.nombre)))}</span>
       <div class="min-w-0 mr-auto">
         <div class="font-semibold text-telecab-text truncate">${esc(bonito(c.nombre))}</div>
-        <div class="text-xs text-telecab-muted truncate">+${esc(c.telefono)}${c.que ? ' · ' + esc(c.que) : ''}${c.perfil ? ' · en WhatsApp «' + esc(c.perfil) + '»' : ''}
-          ${c.conductorId ? ` · <a href="/plantilla#${encodeURIComponent(c.conductorId)}" class="underline underline-offset-2 hover:text-telecab-gold">Ver su ficha</a>` : ''}</div>
+        <div class="text-xs text-telecab-muted truncate">+${esc(c.telefono)}${c.que ? ' · ' + esc(c.que) : ''}${c.perfil ? ' · en WhatsApp «' + esc(c.perfil) + '»' : ''}${enlaces ? ' · ' + enlaces : ''}</div>
       </div>
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">${ventana}${bot}${botonBot}</div>`;
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">${ventana}${bot}${botonBot}</div>
+      ${lleva || asignar ? `<div class="basis-full md:basis-auto flex items-center gap-2">${lleva}${asignar}</div>` : ''}`;
     const atras = $('#w-atras');
     if (atras) atras.addEventListener('click', cerrarEnMovil);
     const b = $('#w-bot');
     if (b) b.addEventListener('click', () => cambiarBot(b.dataset.pausar === '1'));
+    const q = $('#w-quedar');
+    if (q) q.addEventListener('click', () => asignarA(yo));
+    const a = $('#w-asignar');
+    if (a) a.addEventListener('click', elegirQuienLaLleva);
     pintarPie();
   }
 
-  function pintarPie() {
+  // ── El pie: escribir, o una plantilla si la ventana está cerrada ────────
+  function pintarPie(forzar) {
     const c = cab;
-    if (!PUEDE_ESCRIBIR) {
+    const modo = !PUEDE_ESCRIBIR ? 'leer' : c.existe && c.ventana.abierta ? 'texto' : 'plantilla';
+    if (modo === pieModo && !forzar) return;   // no se pierde lo escrito
+    pieModo = modo;
+    if (modo === 'leer') {
       $('#w-pie').innerHTML = '<p class="text-xs text-telecab-muted px-1">Puedes leer las conversaciones; para escribir hace falta el permiso «WhatsApp · escribir».</p>';
       return;
     }
-    if (!c.ventana.abierta) {
-      $('#w-pie').innerHTML = `<p class="text-xs text-telecab-muted px-1 leading-relaxed"><i class="fa-solid fa-lock mr-1"></i>
-        La ventana de 24 h está cerrada: solo se le puede escribir gratis cuando mande algo (un mensaje o un botón del bot).
-        Fuera de ella, Meta solo deja mandar plantillas, que se pagan.</p>`;
-      return;
-    }
-    if ($('#w-texto')) return;   // ya está la caja: no se pierde lo escrito
+    if (modo === 'plantilla') return pintarPlantilla();
     $('#w-pie').innerHTML = `
+      <div id="w-rapidas-panel" class="hidden absolute left-3 right-3 bottom-full mb-2 z-10 rounded-2xl border border-telecab-border bg-telecab-card shadow-soft overflow-hidden"></div>
       <form id="w-form" class="flex items-end gap-2">
+        <button type="button" id="w-rapidas" class="shrink-0 w-10 h-10 rounded-xl border border-telecab-border text-telecab-muted hover:text-telecab-text hover:border-telecab-gold/60"
+                title="Respuestas rápidas (o escribe «/» al empezar)" aria-label="Respuestas rápidas"><i class="fa-solid fa-bolt"></i></button>
         <textarea id="w-texto" rows="1" maxlength="4096" placeholder="Escribe un mensaje"
           class="flex-1 resize-none max-h-40 px-3 py-2 rounded-xl bg-telecab-dark border border-telecab-border text-sm text-telecab-text placeholder:text-telecab-muted focus:outline-none focus:border-telecab-gold/70"></textarea>
         <button type="submit" id="w-enviar" class="shrink-0 h-10 px-4 rounded-xl bg-telecab-gold text-sm font-semibold hover:brightness-95 disabled:opacity-60" style="color: rgb(var(--tc-on-gold))">
           <i class="fa-solid fa-paper-plane mr-1"></i> Enviar</button>
       </form>
-      <p class="text-[11px] text-telecab-muted mt-1.5 px-1">Intro envía; Mayús + Intro, salto de línea. Al escribir, el bot deja de contestarle ${pausaMin} minutos.</p>`;
+      <p class="text-[11px] text-telecab-muted mt-1.5 px-1">Intro envía; Mayús + Intro, salto de línea; «/» al empezar busca una respuesta rápida. Al escribir, el bot deja de contestarle ${pausaMin} minutos.</p>`;
     const ta = $('#w-texto');
     const crecer = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; };
-    ta.addEventListener('input', crecer);
-    ta.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); enviar(); } });
+    ta.addEventListener('input', () => {
+      crecer();
+      // «/» al empezar busca entre las respuestas rápidas.
+      if (ta.value.startsWith('/')) abrirRapidas(ta.value.slice(1));
+      else if (rapidas.porBarra) cerrarRapidas();
+    });
+    ta.addEventListener('keydown', ev => {
+      if (rapidas.abierto) {
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); moverRapida(ev.key === 'ArrowDown' ? 1 : -1); return; }
+        if (ev.key === 'Escape') { ev.preventDefault(); cerrarRapidas(); return; }
+        if (ev.key === 'Enter' && !ev.shiftKey && rapidas.visibles.length) { ev.preventDefault(); usarRapida(rapidas.visibles[rapidas.marcada]); return; }
+      }
+      if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); enviar(); }
+    });
     $('#w-form').addEventListener('submit', ev => { ev.preventDefault(); enviar(); });
+    $('#w-rapidas').addEventListener('click', () => (rapidas.abierto ? cerrarRapidas() : abrirRapidas('')));
   }
 
+  // ── Las respuestas rápidas ──────────────────────────────────────────────
+  // Las de todos, con {nombre} ya cambiado por el de esta persona. Se eligen con
+  // el rayo o escribiendo «/»; elegir una la pone en la caja, no la envía.
+  const rapidas = { lista: null, tel: null, abierto: false, porBarra: false, filtro: '', visibles: [], marcada: 0 };
+  const plano = s => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+  async function cargarRapidas() {
+    const r = await fetch('/whatsapp/api/respuestas?tel=' + encodeURIComponent(actual)).then(x => x.json());
+    if (r.status !== 'ok') throw new Error(r.msg || 'No se pudieron cargar');
+    if (r.faltaMigracion) throw new Error('Falta aplicar db/186 (en Migraciones) para tener respuestas rápidas.');
+    rapidas.lista = r.respuestas; rapidas.tel = actual;
+  }
+  async function abrirRapidas(filtro) {
+    rapidas.abierto = true; rapidas.porBarra = $('#w-texto') && $('#w-texto').value.startsWith('/');
+    rapidas.filtro = filtro || '';
+    if (!rapidas.lista || rapidas.tel !== actual) {
+      try { await cargarRapidas(); } catch (e) { pintarRapidasError(e.message); return; }
+    }
+    pintarRapidas();
+  }
+  function cerrarRapidas() {
+    rapidas.abierto = false; rapidas.porBarra = false;
+    const p = $('#w-rapidas-panel'); if (p) p.classList.add('hidden');
+  }
+  function pintarRapidasError(msg) {
+    const p = $('#w-rapidas-panel'); if (!p) return;
+    p.innerHTML = `<p class="p-4 text-sm text-telecab-red">${esc(msg)}</p>`;
+    p.classList.remove('hidden');
+  }
+  function pintarRapidas() {
+    const p = $('#w-rapidas-panel'); if (!p || !rapidas.abierto) return;
+    const q = plano(rapidas.filtro);
+    rapidas.visibles = rapidas.lista.filter(r => !q || plano(r.titulo).includes(q) || plano(r.texto).includes(q));
+    rapidas.marcada = Math.min(rapidas.marcada, Math.max(0, rapidas.visibles.length - 1));
+    p.innerHTML = `
+      <div class="flex items-center gap-2 px-3 py-2 border-b border-telecab-border">
+        <i class="fa-solid fa-bolt text-telecab-gold text-xs"></i>
+        <span class="text-xs font-semibold text-telecab-text">Respuestas rápidas</span>
+        <span class="text-[11px] text-telecab-muted truncate">${rapidas.filtro ? '· «' + esc(rapidas.filtro) + '»' : '· {nombre} es su nombre de pila'}</span>
+        <button type="button" data-nueva class="ml-auto text-xs text-telecab-muted hover:text-telecab-gold"><i class="fa-solid fa-plus mr-1"></i>Nueva</button>
+        <button type="button" data-cerrar class="w-6 h-6 rounded text-telecab-muted hover:text-telecab-text" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <ul class="max-h-64 overflow-y-auto">${rapidas.visibles.map((r, i) => `
+        <li class="group flex items-start gap-2 px-3 py-2 cursor-pointer ${i === rapidas.marcada ? 'bg-telecab-card2' : 'hover:bg-telecab-card2/60'}" data-i="${i}">
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-medium text-telecab-text">${esc(r.titulo)}</span>
+            <span class="block text-xs text-telecab-muted truncate">${esc(r.listo)}</span>
+          </span>
+          <button type="button" data-editar="${r.id}" class="opacity-0 group-hover:opacity-100 focus:opacity-100 w-7 h-7 rounded text-telecab-muted hover:text-telecab-text" title="Cambiarla" aria-label="Cambiar «${esc(r.titulo)}»"><i class="fa-solid fa-pen text-xs"></i></button>
+          <button type="button" data-borrar="${r.id}" class="opacity-0 group-hover:opacity-100 focus:opacity-100 w-7 h-7 rounded text-telecab-muted hover:text-telecab-red" title="Borrarla" aria-label="Borrar «${esc(r.titulo)}»"><i class="fa-solid fa-trash text-xs"></i></button>
+        </li>`).join('') || `<li class="px-3 py-3 text-xs text-telecab-muted">${rapidas.lista.length ? 'Ninguna con eso.' : 'Todavía no hay ninguna: crea la primera con «Nueva».'}</li>`}</ul>`;
+    p.classList.remove('hidden');
+  }
+  function moverRapida(paso) {
+    if (!rapidas.visibles.length) return;
+    rapidas.marcada = (rapidas.marcada + paso + rapidas.visibles.length) % rapidas.visibles.length;
+    pintarRapidas();
+  }
+  function usarRapida(r) {
+    const ta = $('#w-texto'); if (!ta || !r) return;
+    if (!ta.value.trim() || ta.value.startsWith('/')) ta.value = r.listo;
+    else {
+      const i = ta.selectionStart || ta.value.length;
+      ta.value = ta.value.slice(0, i) + r.listo + ta.value.slice(ta.selectionEnd || i);
+    }
+    cerrarRapidas();
+    ta.dispatchEvent(new Event('input'));
+    ta.focus();
+  }
+  async function editarRapida(r) {
+    const v = await Dialogo.formulario(r ? 'Cambiar la respuesta rápida' : 'Nueva respuesta rápida', [
+      { id: 'titulo', etiqueta: 'Título', tipo: 'texto', valor: r ? r.titulo : '', obligatorio: true, marcador: 'Te llamamos', ayuda: 'Corto: es lo que se busca con «/».' },
+      { id: 'texto', etiqueta: 'Texto', tipo: 'texto-largo', valor: r ? r.texto : '', obligatorio: true,
+        ayuda: '{nombre} se cambia por el nombre de pila de cada persona. La ven y la usan todos los de la oficina.' },
+    ], { textoBoton: 'Guardar' });
+    if (!v) return;
+    try {
+      const x = await json('/whatsapp/api/respuestas', { id: r ? r.id : null, titulo: v.titulo, texto: v.texto });
+      if (x.status !== 'ok') throw new Error(x.msg || 'No se pudo guardar');
+      rapidas.lista = null;
+      Dialogo.hecho(r ? 'Respuesta cambiada' : 'Respuesta guardada');
+      abrirRapidas(rapidas.filtro);
+    } catch (e) { Dialogo.aviso({ titulo: 'No se pudo guardar', texto: e.message, tono: 'error' }); }
+  }
+  async function borrarRapida(r) {
+    const ok = await Dialogo.confirmar({ titulo: 'Borrar la respuesta rápida', texto: `«${r.titulo}» deja de estar para todos.`, si: 'Borrar', tono: 'peligro' });
+    if (!ok) return;
+    try {
+      const x = await json('/whatsapp/api/respuestas/borrar', { id: r.id });
+      if (x.status !== 'ok') throw new Error(x.msg || 'No se pudo borrar');
+      rapidas.lista = null;
+      abrirRapidas(rapidas.filtro);
+    } catch (e) { Dialogo.aviso({ titulo: 'No se pudo borrar', texto: e.message, tono: 'error' }); }
+  }
+  $('#w-pie').addEventListener('click', ev => {
+    const panel = ev.target.closest('#w-rapidas-panel');
+    if (!panel) return;
+    const porId = id => (rapidas.lista || []).find(r => String(r.id) === String(id));
+    const ed = ev.target.closest('[data-editar]'), bo = ev.target.closest('[data-borrar]');
+    if (ed) return editarRapida(porId(ed.dataset.editar));
+    if (bo) return borrarRapida(porId(bo.dataset.borrar));
+    if (ev.target.closest('[data-nueva]')) return editarRapida(null);
+    if (ev.target.closest('[data-cerrar]')) return cerrarRapidas();
+    const li = ev.target.closest('[data-i]');
+    if (li) usarRapida(rapidas.visibles[Number(li.dataset.i)]);
+  });
+  // Un clic fuera del panel lo cierra.
+  document.addEventListener('mousedown', ev => {
+    if (rapidas.abierto && !ev.target.closest('#w-rapidas-panel') && !ev.target.closest('#w-rapidas') && !ev.target.closest('.dialogo-caja')) cerrarRapidas();
+  });
+
+  // ── Las plantillas (ventana cerrada) ────────────────────────────────────
+  const rellenar = (cuerpo, valores) => String(cuerpo || '').replace(/\{\{\s*([^{}]+?)\s*\}\}/g,
+    (m, v) => { const x = String(valores[v] == null ? '' : valores[v]).replace(/\s+/g, ' ').trim(); return x ? x : m; });
+
+  function pintarPlantilla() {
+    const c = cab;
+    const porque = !c.existe
+      ? 'Todavía no os habéis escrito. La primera vez solo se le puede escribir con una plantilla aprobada por Meta, y se paga.'
+      : 'La ventana de 24 h está cerrada: gratis solo se le puede escribir cuando mande algo. Ahora, solo con una plantilla, que se paga.';
+    if (!plantilla) {
+      $('#w-pie').innerHTML = `<div class="flex flex-wrap items-center gap-3">
+          <p class="flex-1 min-w-[16rem] text-xs text-telecab-muted leading-relaxed"><i class="fa-solid fa-lock mr-1"></i>${esc(porque)}</p>
+          <button type="button" id="w-elegir-plantilla" class="shrink-0 px-3 py-2 rounded-xl border border-telecab-border text-sm text-telecab-text hover:border-telecab-gold/60">
+            <i class="fa-solid fa-file-lines mr-1 text-telecab-muted"></i> Mandar una plantilla</button>
+        </div>`;
+      $('#w-elegir-plantilla').addEventListener('click', elegirPlantilla);
+      return;
+    }
+    const p = plantilla.p;
+    $('#w-pie').innerHTML = `<div id="w-plantilla-form" class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <i class="fa-solid fa-file-lines text-telecab-muted"></i>
+          <span class="font-semibold text-telecab-text">Plantilla «${esc(p.nombre)}»</span>
+          <span class="px-2 py-0.5 rounded-full border border-telecab-border text-telecab-muted">${esc(CATEGORIA[p.categoria] || p.categoria || 'Sin categoría')}</span>
+          <span class="text-telecab-warn" title="Meta cobra cada plantilla entregada (unos céntimos), con o sin respuesta.">se paga</span>
+          ${p.delSistema ? `<span class="text-telecab-muted">· la usa el sistema para ${esc(p.delSistema)}</span>` : ''}
+          <button type="button" id="w-pl-cambiar" class="ml-auto text-telecab-muted underline underline-offset-2 hover:text-telecab-text">Otra plantilla</button>
+          <button type="button" id="w-pl-quitar" class="w-7 h-7 rounded-lg text-telecab-muted hover:text-telecab-text" aria-label="No mandar plantilla"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="grid gap-3 ${p.variables.length ? 'sm:grid-cols-2' : ''}">
+          ${p.variables.length ? `<div class="space-y-2">${p.variables.map(v => `
+            <label class="block text-[11px] text-telecab-muted">{{${esc(v)}}}
+              <input data-var="${esc(v)}" value="${esc(plantilla.valores[v] || '')}" maxlength="400" autocomplete="off"
+                class="mt-0.5 w-full px-3 py-1.5 rounded-lg bg-telecab-dark border border-telecab-border text-sm text-telecab-text focus:outline-none focus:border-telecab-gold/70"></label>`).join('')}</div>` : ''}
+          <div class="rounded-2xl border border-telecab-gold/30 bg-telecab-gold/10 px-3 py-2 text-sm text-telecab-text max-h-40 overflow-y-auto" title="Así le llega">
+            ${p.cabecera ? `<div class="font-semibold mb-1">${esc(p.cabecera)}</div>` : ''}
+            <div id="w-pl-vista" class="whitespace-pre-wrap break-words"></div>
+            ${p.pie ? `<div class="text-[11px] text-telecab-muted mt-1">${esc(p.pie)}</div>` : ''}
+            ${p.botones.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${p.botones.map(b => `<span class="px-2 py-1 rounded-lg border border-telecab-border bg-telecab-card text-xs text-telecab-muted">${esc(b)}</span>`).join('')}</div>` : ''}
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <p class="flex-1 min-w-[14rem] text-[11px] text-telecab-muted">Cuando conteste se abre la ventana y ya se le escribe gratis. Al mandarla, el bot deja de contestarle ${pausaMin} minutos.</p>
+          <button type="button" id="w-pl-enviar" class="shrink-0 h-10 px-4 rounded-xl bg-telecab-gold text-sm font-semibold hover:brightness-95 disabled:opacity-60" style="color: rgb(var(--tc-on-gold))">
+            <i class="fa-solid fa-paper-plane mr-1"></i> Mandar plantilla</button>
+        </div>
+      </div>`;
+    const vista = () => { $('#w-pl-vista').innerHTML = formato(rellenar(p.cuerpo, plantilla.valores)); };
+    vista();
+    $('#w-plantilla-form').querySelectorAll('input[data-var]').forEach(inp => inp.addEventListener('input', () => {
+      plantilla.valores[inp.dataset.var] = inp.value; vista();
+    }));
+    $('#w-pl-cambiar').addEventListener('click', elegirPlantilla);
+    $('#w-pl-quitar').addEventListener('click', () => { plantilla = null; pintarPie(true); });
+    $('#w-pl-enviar').addEventListener('click', enviarPlantilla);
+  }
+
+  async function elegirPlantilla() {
+    try {
+      const r = await fetch('/whatsapp/api/plantillas?tel=' + encodeURIComponent(actual)).then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo leer la lista de plantillas');
+      const usables = r.plantillas.filter(p => p.usable);
+      const fuera = r.plantillas.length - usables.length;
+      if (!usables.length) {
+        return Dialogo.aviso({ titulo: 'No hay plantillas para mandar desde aquí', tono: 'aviso',
+          texto: 'Hace falta una plantilla aprobada por Meta que solo lleve texto. Créala en el WhatsApp Manager de Meta (por ejemplo «Hola {{1}}, te escribimos desde la oficina de Telecab: contéstanos por aquí») y, cuando la aprueben, saldrá en esta lista.'
+            + (fuera ? '\n\n' + (fuera === 1 ? 'Hay 1 que no se puede usar desde aquí: lleva' : `Hay ${fuera} que no se pueden usar desde aquí: llevan`) + ' foto, documento o botones que piden datos.' : '') });
+      }
+      const v = await Dialogo.formulario('Mandar una plantilla', [{
+        id: 'p', etiqueta: 'Plantilla', tipo: 'lista', obligatorio: true,
+        valor: plantilla ? String(usables.findIndex(p => p.nombre === plantilla.p.nombre && p.idioma === plantilla.p.idioma)) : '',
+        opciones: usables.map((p, i) => ({
+          valor: String(i), texto: p.nombre + (p.delSistema ? ' · la usa el sistema' : ''),
+          detalle: (CATEGORIA[p.categoria] || p.categoria) + ' · ' + p.cuerpo.replace(/\s+/g, ' ').slice(0, 110),
+        })),
+      }], { textoBoton: 'Elegir', nota: 'Meta cobra cada una que se entrega (unos céntimos).' + (fuera ? (fuera === 1 ? ' No sale 1 que lleva' : ` No salen ${fuera} que llevan`) + ' foto, documento o botones que piden datos.' : '') });
+      if (!v || v.p === '' || v.p == null) return;
+      const p = usables[Number(v.p)];
+      plantilla = { p, valores: { ...(p.sugeridos || {}) } };
+      pintarPie(true);
+      const primero = $('#w-plantilla-form input[data-var]');
+      if (primero) primero.focus();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo cargar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  async function enviarPlantilla() {
+    if (!plantilla || enviando) return;
+    const p = plantilla.p;
+    const falta = p.variables.find(v => !String(plantilla.valores[v] || '').trim());
+    if (falta) return Dialogo.aviso({ titulo: 'Falta un dato', texto: `Rellena {{${falta}}} antes de mandarla.`, tono: 'aviso' });
+    const ok = await Dialogo.confirmar({ titulo: 'Mandar la plantilla', tono: 'aviso', si: 'Mandarla',
+      texto: `A ${bonito(cab.nombre)}:\n\n${rellenar(p.cuerpo, plantilla.valores)}\n\nMeta la cobra aunque no conteste.` });
+    if (!ok) return;
+    enviando = true;
+    $('#w-pl-enviar').disabled = true;
+    try {
+      const r = await json('/whatsapp/api/plantilla', { tel: actual, nombre: p.nombre, idioma: p.idioma, valores: plantilla.valores });
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo mandar');
+      plantilla = null;
+      Dialogo.hecho('Plantilla enviada');
+      await refrescarChat();
+      pintarPie(true);
+      abajo(true);
+      cargarLista();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo mandar', texto: e.message, tono: 'error' });
+    } finally {
+      enviando = false;
+      const b = $('#w-pl-enviar'); if (b) b.disabled = false;
+    }
+  }
+
+  // ── Abrir, refrescar, escribir ──────────────────────────────────────────
   async function abrir(tel) {
-    actual = tel; ultimoId = null; ultimoDia = null;
+    actual = tel; ultimoId = null; ultimoDia = null; pieModo = null; plantilla = null; cerrarRapidas();
     $('#w-vacio').classList.add('hidden');
     $('#w-abierto').classList.remove('hidden');
     $('#w-abierto').classList.add('flex');
@@ -285,13 +656,18 @@
     try { history.replaceState(null, '', '/whatsapp?tel=' + encodeURIComponent(tel)); } catch (_) { /* nada */ }
     pintarLista();
     try {
-      const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel)).then(x => x.json());
+      const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel) + (VER_LLAMADAS ? '&llamadas=1' : '')).then(x => x.json());
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo abrir');
+      if (r.faltaMigracion) throw new Error('Falta aplicar ' + r.faltaMigracion + ' (en Migraciones).');
       if (actual !== tel) return;
       cab = r.chat; pausaMin = r.pausaMin || pausaMin;
       pintarCabecera();
-      $('#w-mensajes').innerHTML = r.mensajes.length ? r.mensajes.map(burbuja).join('')
-        : '<div class="text-sm text-telecab-muted">Sin mensajes guardados.</div>';
+      // Los mensajes y, entre ellos, sus llamadas, por hora.
+      const cosas = r.mensajes.map(m => ({ t: new Date(m.ocurrido_at).getTime(), m }))
+        .concat((r.llamadas || []).map(l => ({ t: l.ts, l })))
+        .sort((a, b) => a.t - b.t);
+      $('#w-mensajes').innerHTML = cosas.length ? cosas.map(x => (x.m ? burbuja(x.m) : llamada(x.l))).join('')
+        : `<div class="text-sm text-telecab-muted">${cab.existe ? 'Sin mensajes guardados.' : 'Todavía no hay mensajes con esta persona.'}</div>`;
       if (r.mensajes.length) ultimoId = r.mensajes[r.mensajes.length - 1].id;
       abajo(true);
       const c = lista.find(x => x.telefono === tel);
@@ -306,18 +682,18 @@
 
   // Lo nuevo de la conversación abierta, cada pocos segundos.
   async function refrescarChat() {
-    if (!actual) return;
+    if (!actual || !cab) return;
     const tel = actual;
     try {
-      const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel) + (ultimoId ? '&despues=' + ultimoId : '')).then(x => x.json());
-      if (r.status !== 'ok' || actual !== tel) return;
+      const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel) + (ultimoId ? '&despues=' + ultimoId : '&despues=0')).then(x => x.json());
+      if (r.status !== 'ok' || actual !== tel || r.faltaMigracion) return;
       const antes = JSON.stringify(cab);
       cab = r.chat;
       if (JSON.stringify(cab) !== antes) pintarCabecera();
       if (r.mensajes.length) {
         const ibaAbajo = cercaDeAbajo();
         const caja = $('#w-mensajes');
-        if (!ultimoId) caja.innerHTML = '';
+        if (!caja.querySelector('[data-id]') && !caja.querySelector('a[href^="/callcenter"]')) caja.innerHTML = '';
         caja.insertAdjacentHTML('beforeend', r.mensajes.map(burbuja).join(''));
         ultimoId = r.mensajes[r.mensajes.length - 1].id;
         if (ibaAbajo) abajo(true);
@@ -332,7 +708,7 @@
     try {
       const r = await fetch('/whatsapp/api/chat?tel=' + encodeURIComponent(tel)).then(x => x.json());
       if (r.status !== 'ok' || actual !== tel) return;
-      r.mensajes.forEach(m => {
+      (r.mensajes || []).forEach(m => {
         if (m.sentido !== 'saliente') return;
         const el = document.querySelector(`#w-mensajes [data-id="${m.id}"] .w-marca`);
         if (el) el.innerHTML = `${esc(fmtHora(m.ocurrido_at))} ${marca(m)}`;
@@ -348,10 +724,7 @@
     enviando = true;
     $('#w-enviar').disabled = true;
     try {
-      const r = await fetch('/whatsapp/api/enviar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tel: actual, texto }),
-      }).then(x => x.json());
+      const r = await json('/whatsapp/api/enviar', { tel: actual, texto });
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo enviar');
       ta.value = ''; ta.style.height = 'auto';
       await refrescarChat();
@@ -368,15 +741,40 @@
 
   async function cambiarBot(pausar) {
     try {
-      const r = await fetch('/whatsapp/api/bot', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tel: actual, pausar }),
-      }).then(x => x.json());
+      const r = await json('/whatsapp/api/bot', { tel: actual, pausar });
       if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cambiar');
       await refrescarChat();
       cargarLista();
     } catch (e) {
       Dialogo.aviso({ titulo: 'No se pudo cambiar', texto: e.message, tono: 'error' });
+    }
+  }
+
+  // ── Quién la lleva ──────────────────────────────────────────────────────
+  async function asignarA(usuario) {
+    try {
+      const r = await json('/whatsapp/api/asignar', { tel: actual, usuario: usuario == null ? '' : usuario });
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo asignar');
+      await refrescarChat();
+      cargarLista();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo asignar', texto: e.message, tono: 'error' });
+    }
+  }
+  async function elegirQuienLaLleva() {
+    try {
+      const r = await fetch('/whatsapp/api/asignables').then(x => x.json());
+      if (r.status !== 'ok') throw new Error(r.msg || 'No se pudo cargar la lista');
+      const opciones = [{ valor: 'nadie', texto: 'Nadie', detalle: 'Vuelve a «Sin asignar»' }]
+        .concat(r.usuarios.map(u => ({ valor: String(u.id), texto: bonito(u.nombre) + (u.id === yo ? ' (tú)' : '') })));
+      const v = await Dialogo.formulario('¿Quién lleva esta conversación?', [{
+        id: 'u', etiqueta: 'Persona', tipo: 'lista', obligatorio: true, opciones,
+        valor: cab.asignadoA ? String(cab.asignadoA) : 'nadie',
+      }], { textoBoton: 'Guardar', nota: 'Solo salen quienes entran en WhatsApp. Al escribirle a alguien que no lleva nadie, se la queda quien escribe.' });
+      if (!v || !v.u) return;
+      asignarA(v.u === 'nadie' ? null : Number(v.u));
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo cargar', texto: e.message, tono: 'error' });
     }
   }
 
@@ -391,15 +789,16 @@
     $('#w-lado').classList.remove('hidden');
     $('#w-chat').classList.add('hidden');
     $('#w-chat').classList.remove('flex');
-    actual = null;
+    actual = null; cab = null;
     try { history.replaceState(null, '', '/whatsapp'); } catch (_) { /* nada */ }
     pintarLista();
   }
 
   // ── Arranque y refresco ─────────────────────────────────────────────────
   cargarLista().then(() => {
-    const tel = new URLSearchParams(location.search).get('tel');
-    if (tel) abrir(tel.replace(/\D/g, ''));
+    const tel = ABRIR_TEL || new URLSearchParams(location.search).get('tel');
+    if (tel) abrir(String(tel).replace(/\D/g, ''));
+    if (SIN_TELEFONO) Dialogo.aviso({ titulo: 'Sin teléfono', texto: 'Ese conductor no tiene un teléfono vigente en su ficha: no se le puede escribir por WhatsApp.', tono: 'aviso' });
   });
   setInterval(() => { if (!document.hidden) refrescarChat(); }, 4000);
   setInterval(() => { if (!document.hidden) cargarLista(); }, 10000);

@@ -388,6 +388,8 @@
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);
+  const VER_WHATSAPP = <%- JSON.stringify(typeof verWhatsapp !== 'undefined' && !!verWhatsapp) %>;
+  const ABRIR_CONDUCTOR = <%- JSON.stringify(typeof abrirConductor !== 'undefined' ? abrirConductor : '') %>;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   let CAT = [], UNIV = [], CONDUCTORES = [], DATOS = null, PORCOND = null, HISTORIA = null;
@@ -848,7 +850,10 @@
           <h2 class="text-xl font-bold text-telecab-text truncate">${esc(h.conductor || 'Conductor ' + h.conductorId)}</h2>
           <p class="text-sm text-telecab-muted tabular-nums">${esc(h.telefono || 'sin teléfono')}</p>
         </div>
-        ${h.telefono ? `<a href="tel:${esc(h.telefono)}" class="ml-auto px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark text-sm font-semibold hover:bg-telecab-gold-soft transition">
+        ${VER_WHATSAPP ? `<a href="/whatsapp?conductor=${encodeURIComponent(h.conductorId)}" class="ml-auto px-4 py-2 rounded-xl bg-telecab-card border border-telecab-border text-sm font-semibold text-telecab-text hover:border-telecab-gold/50 transition"
+            title="Su conversación con el bot y la oficina; desde allí se le puede escribir">
+          <i class="fa-brands fa-whatsapp mr-1.5"></i>WhatsApp</a>` : ''}
+        ${h.telefono ? `<a href="tel:${esc(h.telefono)}" class="${VER_WHATSAPP ? '' : 'ml-auto '}px-4 py-2 rounded-xl bg-telecab-gold text-telecab-dark text-sm font-semibold hover:bg-telecab-gold-soft transition">
           <i class="fa-solid fa-phone mr-1.5"></i>Llamar</a>` : ''}
       </div>
 
@@ -1042,6 +1047,8 @@
     $('fil-cluster').innerHTML += CAT.map(c => `<option>${esc(c.cluster)}</option>`).join('');
     pintaClusters(); pintaDireccion(); verTab('panel');
     document.querySelector('.chip-p[data-p="7"]').click();
+    // Desde el chat de WhatsApp («Sus llamadas») se llega con su historia abierta.
+    if (ABRIR_CONDUCTOR) abreConductor(ABRIR_CONDUCTOR);
   })();
 })();
 </script>

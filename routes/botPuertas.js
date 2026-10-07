@@ -93,12 +93,17 @@ async function guardarYVerSiAtiende(message, value) {
     const W = require('../services/whatsappChat');
     const chat = require('../services/repo/whatsappChat');
     const perfil = (value?.contacts || []).find(c => c.wa_id === message.from) || (value?.contacts || [])[0];
-    await chat.guardar({
-      wamid: message.id, telefono: message.from, sentido: 'entrante', origen: 'conductor',
-      ...W.describirEntrante(message),
+    const d = W.describirEntrante(message);
+    const id = await chat.guardar({
+      wamid: message.id, telefono: message.from, sentido: 'entrante', origen: 'conductor', ...d,
       ocurridoAt: Number(message.timestamp) > 0 ? new Date(Number(message.timestamp) * 1000) : null,
       nombrePerfil: perfil?.profile?.name || null,
     });
+    // Una foto, un audio, un documento: Meta solo lo guarda 30 días, así que se
+    // baja ya (db/186). Aparte, sin esperar: el bot no tiene por qué tardar más.
+    if (id && d.detalle && d.detalle.media_id) {
+      setImmediate(() => require('../modules/WhatsApp/whatsapp.service').bajarAdjunto(id, d.detalle).catch(() => {}));
+    }
     return W.botAtiende(message.type, await chat.pausaDe(message.from));
   } catch (e) {
     console.error('⚠️ [WhatsApp] El chat no pudo guardar el mensaje:', e.message);

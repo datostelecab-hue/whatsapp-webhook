@@ -161,6 +161,13 @@ Hasta el 07/10 lo que escribían los conductores solo se veía en el log del ser
 
 **Meta no da el historial**: el chat empieza el día que se aplicó db/185. Los mensajes se borran a los **180 días** (`WHATSAPP_RETENCION_DIAS`, en la poda diaria de las 00:00): son conversaciones de personas.
 
+> [!bug] Del 07/10 al despliegue de db/186, los mensajes sin su conversación
+> La consulta que pone al día `whatsapp_chat` usaba `$5` en una columna varchar **y** en `$5 = 'entrante'`, y Postgres la rechazaba entera: «inconsistent types deduced for parameter $5». Los mensajes se guardaban, pero la lista de /whatsapp salía vacía. Se arregló con `$5::varchar` y db/186 rehízo las conversaciones desde los mensajes. **Un parámetro que va a una columna y además se compara con un literal necesita su cast.** Las consultas nuevas se validan contra producción en solo lectura: si Postgres contesta `25006` («cannot execute … in a read-only transaction») es que la ha analizado entera y es válida.
+
+**Fotos, audios y documentos (db/186).** Llega un id; con él se pide a Meta un enlace que dura 5 minutos y, con el enlace, el fichero (`descargarMedia`, con un User-Agent propio). **Meta solo lo guarda 30 días**, así que el webhook lo baja al llegar, aparte y sin hacer esperar al bot, y queda en `whatsapp_adjunto` hasta que se borra su mensaje. Lo que pasa de `WHATSAPP_ADJUNTO_MAX_MB` (16) no se guarda: se pide a Meta al abrirlo, mientras lo tenga. Solo fotos, audio y vídeo se enseñan en la página; lo demás se descarga como fichero sin tipo (un HTML o un SVG abierto desde el dominio del ERP ejecutaría lo que lleve con la sesión de quien lo abre).
+
+**Plantillas desde el chat (db/186).** La lista sale de la cuenta (`plantillasCrudas`, recordada 10 minutos) y se mandan con su **idioma exacto**, sin tantear. Solo las que piden texto en el cuerpo: una cabecera con foto o un botón con enlace variable piden datos que el chat no tiene. Los parámetros se aplanan: Meta no admite saltos de línea ni más de cuatro espacios seguidos (error 132018). En el chat se apunta el texto ya relleno, no «Plantilla «x»: a · b».
+
 ## Quién manda WhatsApp
 
 | Fichero | Qué manda |
@@ -170,6 +177,6 @@ Hasta el 07/10 lo que escribían los conductores solo se veía en el log del ser
 | `modules/Control/alertas.repo.js` | las alertas de franja a los controladores |
 | `services/fichajeBot.js` | la conversación del conductor (su turno) y la de los viajes de la empresa |
 | `routes/botPuertas.js` | el panel de puertas de la oficina (por `services/whatsapp` desde el 07/10/2026) |
-| `modules/WhatsApp/whatsapp.service.js` | lo que escribe la oficina desde el chat (solo con la ventana de 24 h abierta) |
+| `modules/WhatsApp/whatsapp.service.js` | lo que escribe la oficina desde el chat: texto con la ventana de 24 h abierta, plantillas (de pago) con ella cerrada |
 
 Ninguno de ellos llama a [[BOLT]] ni a [[Mapon]] para decidir: lo que necesitan ya está en PostgreSQL, puesto por la [[Ingesta]]. Lo único que sale fuera es el WhatsApp, que es el trabajo.

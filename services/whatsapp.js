@@ -29,8 +29,11 @@ const esErrorDeIdioma = e => /132001|does not exist in the translation|translati
 // que contesta), la oficina (lo que escribe alguien del ERP), una alerta de
 // Control, un aviso de velocidad o de turnos. Apuntarlo nunca lanza: el envío ya
 // está hecho y su resultado es lo que se devuelve.
-async function apuntar(to, payload, r, { origen = 'bot', usuarioId = null } = {}) {
+async function apuntar(to, payload, r, { origen = 'bot', usuarioId = null, texto = null } = {}) {
   const d = require('./whatsappChat').describirSaliente(payload);
+  // Una plantilla mandada desde el chat se apunta con el texto que lee la persona,
+  // no con «Plantilla «x»: a · b».
+  if (texto) d.texto = texto;
   await require('./repo/whatsappChat').guardar({
     wamid: r && r.ok ? r.id : null, telefono: to, sentido: 'saliente', ...d, origen, usuarioId,
     error: r && r.ok ? null : String((r && r.error) || 'sin respuesta').slice(0, 1000),
@@ -47,20 +50,21 @@ function origenDePlantilla(plantilla) {
 
 /** Envío de plantilla con reintento por idioma. `components` ya montado. */
 async function enviarTemplate(telefono, plantilla, components, opciones = {}) {
-  const r = await enviarTemplateSinApuntar(telefono, plantilla, components);
+  const r = await enviarTemplateSinApuntar(telefono, plantilla, components, opciones.idioma);
   const to = limpiarTelefono(telefono);
   if (to) {
-    await apuntar(to, { type: 'template', template: { name: plantilla, language: { code: r.idioma || idiomaOk.get(plantilla) || IDIOMAS[0] }, components } },
-      r, { origen: opciones.origen || origenDePlantilla(plantilla), usuarioId: opciones.usuarioId });
+    await apuntar(to, { type: 'template', template: { name: plantilla, language: { code: r.idioma || opciones.idioma || idiomaOk.get(plantilla) || IDIOMAS[0] }, components } },
+      r, { origen: opciones.origen || origenDePlantilla(plantilla), usuarioId: opciones.usuarioId, texto: opciones.texto });
   }
   return r;
 }
 
-async function enviarTemplateSinApuntar(telefono, plantilla, components) {
+// Con el idioma sabido (la lista de plantillas lo dice) no se tantea.
+async function enviarTemplateSinApuntar(telefono, plantilla, components, idioma = null) {
   const to = limpiarTelefono(telefono);
   if (!to) return { ok: false, error: 'sin teléfono' };
   const memo = idiomaOk.get(plantilla);
-  const codigos = memo ? [memo, ...IDIOMAS.filter(c => c !== memo)] : IDIOMAS;
+  const codigos = idioma ? [idioma] : memo ? [memo, ...IDIOMAS.filter(c => c !== memo)] : IDIOMAS;
 
   let ultimo = { ok: false, error: 'sin intentos' };
   for (const code of codigos) {
@@ -117,6 +121,15 @@ function enviarPlantillaPosicional(telefono, plantilla, valores, opciones = {}) 
   return enviarTemplate(telefono, plantilla, params.length ? [{ type: 'body', parameters: params }] : [], opciones);
 }
 
+/**
+ * Una plantilla con los parámetros de cuerpo YA MONTADOS (por posición o por
+ * nombre) y su idioma exacto: la que manda la oficina desde el chat (/whatsapp).
+ * `opciones.texto` es lo que se apunta en el chat: el cuerpo ya relleno.
+ */
+function enviarPlantillaCuerpo(telefono, plantilla, parametros, opciones = {}) {
+  return enviarTemplate(telefono, plantilla, (parametros || []).length ? [{ type: 'body', parameters: parametros }] : [], opciones);
+}
+
 // Aviso de turnos: plantilla con BOTÓN de respuesta rápida. El mensaje solo avisa de que
 // los turnos ya están; el detalle ordenado se manda en TEXTO LIBRE cuando el conductor
 // pulsa el botón (lo maneja el webhook de botPuertas). Sustituye a la antigua
@@ -166,15 +179,25 @@ async function descubrirWaba() {
   return _waba;
 }
 
-async function listarPlantillas(nombre) {
+/** Las plantillas de la cuenta TAL CUAL las da Meta: { ok, waba, data } o { ok:false, error }. */
+async function plantillasCrudas(nombre) {
   const waba = await descubrirWaba();
   if (!waba) return { ok: false, error: 'No se pudo determinar la cuenta de WhatsApp (WABA) desde el token. Puedes fijarla en la variable WHATSAPP_WABA_ID.' };
-  const url = `https://graph.facebook.com/${VERSION}/${waba}/message_templates?limit=200` +
-    (nombre ? `&name=${encodeURIComponent(nombre)}` : '') + `&access_token=${encodeURIComponent(TOKEN)}`;
-  const r = await fetch(url);
-  const d = await r.json();
-  if (d.error) return { ok: false, waba, error: d.error.message };
-  const plantillas = (d.data || []).map(t => ({
+  try {
+    const url = `https://graph.facebook.com/${VERSION}/${waba}/message_templates?limit=200` +
+      (nombre ? `&name=${encodeURIComponent(nombre)}` : '') + `&access_token=${encodeURIComponent(TOKEN)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) return { ok: false, waba, error: d.error.message };
+    return { ok: true, waba, data: d.data || [] };
+  } catch (e) { return { ok: false, waba, error: e.message }; }
+}
+
+async function listarPlantillas(nombre) {
+  const c = await plantillasCrudas(nombre);
+  if (!c.ok) return c;
+  const waba = c.waba;
+  const plantillas = c.data.map(t => ({
     nombre: t.name, idioma: t.language, estado: t.status,
     categoria: t.category, formato: t.parameter_format || null,
     variables: ((t.components || []).find(c => (c.type || '').toUpperCase() === 'BODY')?.text || '')
@@ -275,10 +298,38 @@ async function enviarBotonesCrudos(telefono, texto, buttons, opciones = {}) {
 }
 
 /**
+ * BAJAR UN ADJUNTO (una foto, un audio…) que alguien ha mandado. Meta da un id;
+ * con él se pide un enlace que dura 5 minutos y con el enlace, el fichero. Meta
+ * lo guarda 30 días: después contesta que el id no existe (`caducado`). Con
+ * `maxBytes`, lo que pase no se baja (`grande`). Nunca lanza.
+ */
+async function descargarMedia(mediaId, { maxBytes = null } = {}) {
+  if (!mediaId) return { ok: false, error: 'sin id de Meta' };
+  // Con un User-Agent propio: el servidor de ficheros de Meta rechaza a veces las
+  // peticiones que no lo traen.
+  const auth = { Authorization: `Bearer ${TOKEN}`, 'User-Agent': 'Telecab-ERP/1.0' };
+  try {
+    const r = await fetch(`https://graph.facebook.com/${VERSION}/${encodeURIComponent(mediaId)}`, { headers: auth });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.url) {
+      const msg = (d.error && d.error.message) || `HTTP ${r.status}`;
+      return { ok: false, caducado: r.status === 404 || (d.error && d.error.code === 100), error: msg };
+    }
+    const tamano = Number(d.file_size) || null;
+    if (maxBytes && tamano && tamano > maxBytes) return { ok: false, grande: true, tamano, mime: d.mime_type || null, error: 'demasiado grande' };
+    const f = await fetch(d.url, { headers: auth });
+    if (!f.ok) return { ok: false, error: `HTTP ${f.status} al bajar el fichero` };
+    const bytes = Buffer.from(await f.arrayBuffer());
+    if (maxBytes && bytes.length > maxBytes) return { ok: false, grande: true, tamano: bytes.length, mime: d.mime_type || null, error: 'demasiado grande' };
+    return { ok: true, bytes, tamano: bytes.length, mime: d.mime_type || f.headers.get('content-type') || 'application/octet-stream', sha256: d.sha256 || null };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/**
  * Lo que Meta dice DESPUÉS de cada envío (webhook `statuses`): enviado,
  * entregado, leído o fallido. Aceptado no es entregado: ver
  * services/repo/whatsappEnvios.js (05/10/2026).
  */
 const registrarEstados = statuses => require('./repo/whatsappEnvios').registrarEstados(statuses);
 
-module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarAvisoTurnos, enviarTexto, enviarBotones, enviarBotonesCrudos, listarPlantillas, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };
+module.exports = { enviarPlantillaNombre, enviarPlantillaPosicional, enviarPlantillaCuerpo, enviarAvisoTurnos, enviarTexto, enviarBotones, enviarBotonesCrudos, listarPlantillas, plantillasCrudas, descargarMedia, estadoCuenta, limpiarTelefono, registrarEstados, PLANTILLA_TURNOS };

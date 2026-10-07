@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const cc = require('./callcenter.service');
 const actor = require('../../services/repo/actor');
+const permisos = require('../../services/permisos');
 
 // Quién atiende. El nombre se sigue guardando porque es lo que se lee en la
 // pantalla; el id se añade ahora que hay tabla, para poder contar por persona
@@ -30,8 +31,21 @@ const agenteDe = req => {
 
 const rango = req => ({ desde: (req.query || {}).desde, hasta: (req.query || {}).hasta });
 
-router.get('/', (req, res) => {
-  res.render('callCenter', { titulo: 'Call Center', seccion: 'callcenter', layout: 'layout-gestion' });
+// Desde el chat de WhatsApp se llega con ?conductor=, para abrir su historia; y
+// desde su historia se va a su WhatsApp, si quien mira entra allí.
+async function veWhatsapp(req) {
+  const u = req.usuario || {};
+  if (['superadmin', 'desarrollador'].includes(u.rol)) return true;
+  try {
+    const id = await actor.idDe(req);
+    return id ? (await permisos.clavesDe(id)).has('/whatsapp') : false;
+  } catch (_) { return false; }
+}
+
+router.get('/', async (req, res) => {
+  const conductor = /^\d+$/.test(String(req.query.conductor || '')) ? String(req.query.conductor) : '';
+  res.render('callCenter', { titulo: 'Call Center', seccion: 'callcenter', layout: 'layout-gestion',
+    abrirConductor: conductor, verWhatsapp: await veWhatsapp(req) });
 });
 
 // El catálogo de clasificación: clusters → subclusters → motivos → resultados/acciones.
