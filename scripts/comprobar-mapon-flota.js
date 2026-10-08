@@ -50,5 +50,23 @@ igual('Un equipo sobrante de una matrícula con dos', [sobra.enUso, /SOBRA/.test
 const fallidas = diagnosticar(BUENA, TODAS, { ahora: AHORA, coche: { sede: 'barcelona' }, puertas: { aperturas_ok: 0, cierres_ok: 0, fallos: 4 } });
 igual('El bot lo intentó y nunca funcionó', [fallidas.puertasProbadas, fallidas.sede, /nunca ha funcionado/.test(fallidas.observaciones)], [false, 'Barcelona', true]);
 
+// ── Lo que enseñaron los datos reales (08/10/2026) ───────────────────────
+const vacio = diagnosticar({ ...BUENA, can: { odom: { value: 1000 } }, fuel: [{ type: 'CAN', metrics: null, value: null, last_update: null }] }, TODAS, { ahora: AHORA });
+igual('El bloque de combustible viene vacío en todas: sin valor, ✗', vacio.combustible, false);
+const conLitros = diagnosticar({ ...BUENA, can: { odom: { value: 1000 } }, fuel: [{ type: 'CAN', metrics: 'L', value: 40 }] }, TODAS, { ahora: AHORA });
+igual('Con litros, ✓', conLitros.combustible, true);
+const apagado = diagnosticar({ ...BUENA, relays: [{ relay_id: 1, type: 'engine_block', title: 'Bloqueo Motor', enabled: 0 }] }, TODAS, { ahora: AHORA });
+igual('Corte configurado pero desactivado: ✗ y se dice', [apagado.corteMotor, /DESACTIVADO/.test(apagado.observaciones)], [false, true]);
+const activo = diagnosticar({ ...BUENA, relays: [{ relay_id: 1, type: 'engine_block', enabled: 1 }, { relay_id: 2, type: 'basic', enabled: 0 }] }, TODAS, { ahora: AHORA });
+igual('Corte activado: ✓', activo.corteMotor, true);
+const hibrido = diagnosticar({ ...BUENA, ev_values: { ev_charging: { value: 0 }, can_ev_battery_rel: { value: 61.4 } } }, TODAS, { ahora: AHORA });
+igual('Batería del híbrido con su %', [hibrido.bateriaHibrida, hibrido.bateriaPct, BUENA.ev_values === undefined && diagnosticar(BUENA, TODAS, { ahora: AHORA }).bateriaHibrida], [true, 61, false]);
+const equipos = [{ model: 'TELTONIKA', model_ver: 'FMC880', unit_id: 893922 }];
+igual('El equipo, por la lista de dispositivos; sin cámara', [diagnosticar(BUENA, TODAS, { ahora: AHORA, equipos }).equipo, diagnosticar(BUENA, TODAS, { ahora: AHORA, equipos }).camara], ['TELTONIKA FMC880', false]);
+const conCam = diagnosticar(BUENA, TODAS, { ahora: AHORA, equipos: [...equipos, { model: 'TELTONIKA', model_ver: 'DualCam', unit_id: 893922 }] });
+igual('Una cámara registrada: ✓ y no se mezcla con el localizador', [conCam.camara, conCam.camaraModelo, conCam.equipo], [true, 'TELTONIKA DualCam', 'TELTONIKA FMC880']);
+const guion = diagnosticar({ ...BUENA, number: '-', label: '' }, TODAS, { ahora: AHORA });
+igual('Una unidad con matrícula «-»', [guion.matricula, /no tiene matrícula/.test(guion.observaciones)], ['(sin matrícula) #893922', true]);
+
 console.log(fallos ? '\n' + fallos + ' FALLO(S)' : '\nTodo bien');
 process.exit(fallos ? 1 : 0);

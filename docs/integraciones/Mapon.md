@@ -24,6 +24,22 @@ Toda la flota en **una sola llamada, sin paginación**: matrícula (`number`), l
 
 Lo que se pide con `include`: `can` (odómetro real), `ignition`, `relays`, `fuel`, `device`, `ev_values`. `in_objects` y `saved_values` solo funcionan pidiendo **una única unidad**. El padrón (`mapon.unidades()`) y la vuelta del motor (`fuentes.flotaMapon()`) piden `can` y `relays`: con eso se elige equipo cuando una matrícula tiene dos.
 
+### Lo que da `unit/list` de verdad (08/10/2026, la flota entera)
+
+Mirado con la clave sobre las **109 unidades** de la cuenta, pidiendo todos los `include` que admite (`io_din`, `fuel`, `fuel_tank`, `can`, `reefer`, `drivers`, `temperature`, `ambienttemp`, `humidity`, `device`, `depot`, `supply_voltage`, `battery_voltage`, `battery_level_percentage`, `relays`, `weights`, `ignition`, `tachograph`, `altitude`, `technical_details`, `trailer_connections`, `ev_values`; `in_objects` solo con una unidad):
+
+- **`can`** en 94: `odom` (94), `engine_rpm_avg` (92), `fuel_total` (38) y `can_fuel` (9).
+- **`fuel` viene en las 109, aunque esté vacío**: `[{ type: 'CAN', value: null }]`. Solo 88 traen litros. Contar el bloque como «tiene combustible» daría la flota entera.
+- **`ev_values`** (los híbridos): `can_ev_battery_rel` es el % de la batería y `ev_charging` si carga.
+- **`relays`**: cada equipo enseña sus tres salidas, y **el corte cuenta solo con `enabled: 1`**. Hay corte configurado pero desactivado (`engine_block` con `enabled: 0`) en unidades que tienen otro activo; el título varía a mano («Bloqueo motor», «Bloque Motor», «Blqueo Motor»), así que se mira el `type`, nunca el título.
+- **`device`** solo trae `id`, `serial_number`, `imei` y `sim`: el modelo está en **`device/list.json`** (`model` + `model_ver`): 97 TELTONIKA FMC130 y 11 FMC880. `device/supported_models.json` da 1006 (sin permiso).
+- **No hay cámaras.** Ningún campo de vídeo en `unit/list`, ningún equipo de cámara en `device/list` y ningún método de vídeo en la documentación de la API: lo de cámaras de Mapon vive en su web (directo, eventos, tarjeta de memoria), no en esta API.
+- Nada de `tachograph`, `io_din` ni `temperature` en esta flota. Dos unidades tienen la matrícula «-».
+
+El catálogo de órdenes (`unit_commands/get_available`) de **97 unidades** es el mismo: `open_doors`, `close_doors`, `open_trunk`, `hazard_lights`, `open_windows`, `close_windows`. Las otras no tienen ninguna (o dan 1006). Preguntarlo para las 109 tarda unos 4 segundos.
+
+El inventario completo, con un ✓/✗ por función y unidad, es `/operaciones/mapon/flota.xlsx` (ver [[Operaciones]]).
+
 ## Una matrícula, un equipo
 
 Hay coches con **dos equipos** dados de alta con la misma matrícula: el viejo, que se quedó en la cuenta al instalar el nuevo, y el bueno. El 28/09/2026 eran tres: **5886LBZ** (se usa 932730, sobra 898080), **5912LBZ** (se usa 893953, sobra 898092) y **3031LTV** (se usa 893946, sobra 885388; ninguno de los dos da CAN ni relé).

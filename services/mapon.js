@@ -506,6 +506,16 @@ async function inventario() {
   return (j && j.data && j.data.units) || [];
 }
 
+/**
+ * Los dispositivos de la cuenta (device/list): el modelo de cada equipo
+ * (TELTONIKA FMC880…), a qué unidad está montado y si está instalado. Es lo que
+ * diría si hay una cámara: saldría como un equipo más. Solo lectura.
+ */
+async function dispositivos() {
+  const j = await pedir('device/list.json', '');
+  return (j && j.data && j.data.devices) || [];
+}
+
 /** Comandos que admite esa unidad. Devuelve la lista tal cual la da Mapon. */
 async function comandosDisponibles(unitId) {
   const j = await pedir('unit_commands/get_available.json', `unit_id=${encodeURIComponent(unitId)}`);
@@ -1132,7 +1142,7 @@ module.exports = {
   leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, elegirEquipo, tieneReleCorte, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
-  comandosDisponibles, ejecutarComando, ejecutarComandoSeguro, inventario,
+  comandosDisponibles, ejecutarComando, ejecutarComandoSeguro, inventario, dispositivos,
   relesDeFlota, relesDeUnidad, releDeCorte, contactoPuesto, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar,
   disponible, estadoCaida

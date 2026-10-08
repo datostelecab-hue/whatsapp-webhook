@@ -48,13 +48,21 @@ function msDe(v) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** El equipo, en una línea, con lo que traiga el bloque `device`. */
-function equipoDe(d) {
+// Un equipo de vídeo, por su modelo en la lista de dispositivos de Mapon. El
+// 08/10/2026 la cuenta no tenía ninguno: solo localizadores Teltonika (FMC880…).
+const ES_CAMARA = /cam|video|mdvr|dvr|adas|dsm|streamax|howen|jimi|dashcam/i;
+const modeloDe = e => [e.model, e.model_ver].filter(Boolean).join(' ');
+
+/** El equipo, en una línea: modelo de la lista de dispositivos y, si no, el número de serie. */
+function equipoDe(d, equipos) {
+  const modelos = (equipos || []).filter(e => !ES_CAMARA.test(modeloDe(e))).map(modeloDe).filter(Boolean);
+  if (modelos.length) return [...new Set(modelos)].join(' + ');
   if (!d || typeof d !== 'object') return '';
-  const partes = [d.model, d.name, d.type, d.device_type].filter(x => x && typeof x !== 'object');
-  const id = d.imei || d.serial_number || d.serial;
-  return [...new Set(partes.map(String))].join(' · ') + (id ? `${partes.length ? ' · ' : ''}${id}` : '');
+  return d.serial_number ? `Serie ${d.serial_number}` : '';
 }
+
+// El valor de un dato de Mapon que viene como { gmt, value } (o suelto).
+const valor = v => (v && typeof v === 'object' ? v.value : v);
 
 /**
  * EL DIAGNÓSTICO DE UNA UNIDAD. Puro: recibe lo que dijo Mapon de ella, su
@@ -62,7 +70,7 @@ function equipoDe(d) {
  * Telecab, y devuelve una fila con cada función a true, false o null (no se
  * sabe).
  */
-function diagnosticar(u, comandos, { ahora = Date.now(), coche = null, puertas = null, duplicado = null } = {}) {
+function diagnosticar(u, comandos, { ahora = Date.now(), coche = null, puertas = null, duplicado = null, equipos = [] } = {}) {
   const estadoCod = u.state && typeof u.state === 'object' ? u.state.name : u.state;
   const ultimo = msDe(u.last_update);
   const hayPosicion = Number(u.lat) !== 0 && Number.isFinite(Number(u.lat)) && Number.isFinite(Number(u.lng)) && u.lat != null;
@@ -70,16 +78,30 @@ function diagnosticar(u, comandos, { ahora = Date.now(), coche = null, puertas =
   const senal = !!estadoCod && !['nogps', 'nodata'].includes(estadoCod) && hayPosicion;
   const odom = u.can && u.can.odom ? Number(u.can.odom.value) : NaN;
   const can = u.can && typeof u.can === 'object' ? Object.keys(u.can) : [];
-  const fuelCan = can.some(k => /fuel/i.test(k));
+  // El combustible viene SIEMPRE como bloque, aunque esté vacío ({type:'CAN', value:null}):
+  // cuenta solo si trae un valor, o si el CAN da combustible.
+  const fuelValor = Array.isArray(u.fuel) ? u.fuel.some(x => x && x.value != null) : lleno(u.fuel) && valor(u.fuel) != null;
+  const fuelCan = can.some(k => /fuel/i.test(k) && valor(u.can[k]) != null);
+  // EL CORTE DE MOTOR: un relé de tipo engine_block Y ACTIVADO. Hay coches con el
+  // corte configurado pero desactivado en Mapon (enabled: 0): esos no cortan.
+  const reles = Array.isArray(u.relays) ? u.relays : [];
+  const releCorte = reles.filter(r => r && r.type === 'engine_block');
+  const corteActivo = releCorte.some(r => r.enabled == null || Number(r.enabled) === 1);
+  // La batería de los híbridos y eléctricos (ev_values): el % viene en can_ev_battery_rel.
+  const ev = u.ev_values && typeof u.ev_values === 'object' ? u.ev_values : {};
+  const bateria = valor(ev.can_ev_battery_rel) == null ? NaN : Number(valor(ev.can_ev_battery_rel));
+  const camaras = (equipos || []).filter(e => ES_CAMARA.test(modeloDe(e)));
   const errorComandos = comandos && comandos.error ? comandos.error : null;
   const nombres = errorComandos ? null : (comandos || []).map(c => String(c).toLowerCase());
   const tiene = lista => (nombres ? lista.some(n => nombres.includes(n)) : null);
-  const corte = mapon.tieneReleCorte(u);
-  const matricula = String(u.number || u.label || `#${u.unit_id}`).trim();
+  const sinMatricula = !u.number || !String(u.number).replace(/[-\s]/g, '');
+  const matricula = sinMatricula ? (String(u.label || '').trim() || `(sin matrícula) #${u.unit_id}`) : String(u.number).trim();
   const obs = [];
   if (errorComandos) obs.push(`No se pudo leer su catálogo de órdenes: ${errorComandos}`);
   if (duplicado) obs.push(duplicado.enUso ? `Esta matrícula tiene ${duplicado.total} equipos en Mapon: este es el que usa el ERP`
     : `Esta matrícula tiene ${duplicado.total} equipos en Mapon: este SOBRA (el ERP usa el ${duplicado.usado}); conviene darlo de baja en Mapon`);
+  if (releCorte.length && !corteActivo) obs.push('Tiene el corte de motor configurado pero DESACTIVADO en Mapon: no cortaría');
+  if (sinMatricula) obs.push('La unidad no tiene matrícula en Mapon');
   if (!coche) obs.push('No está enlazada a ningún coche de Telecab');
   else if (coche.baja) obs.push('El coche está dado de baja en Telecab');
   if (puertas && puertas.fallos && !(puertas.aperturas_ok || puertas.cierres_ok)) obs.push(`El bot lo ha intentado ${puertas.fallos} vez/veces y nunca ha funcionado`);
@@ -89,7 +111,7 @@ function diagnosticar(u, comandos, { ahora = Date.now(), coche = null, puertas =
     matricula,
     matriculaNorm: normMat(matricula),
     vehiculo: [u.make, u.model].filter(Boolean).join(' ') || u.vehicle_title || u.label || '',
-    equipo: equipoDe(u.device),
+    equipo: equipoDe(u.device, equipos),
     sede: coche ? (coche.sede === 'barcelona' ? 'Barcelona' : 'Madrid') : 'Sin enlazar',
     estadoTelecab: coche ? (coche.baja ? 'Baja' : (coche.estado_operativo || '')) : '',
     enUso: duplicado ? duplicado.enUso : true,
@@ -103,10 +125,13 @@ function diagnosticar(u, comandos, { ahora = Date.now(), coche = null, puertas =
     can: Number.isFinite(odom) && odom > 0,
     kmCan: Number.isFinite(odom) && odom > 0 ? Math.round(odom) : null,
     datosCan: can.join(', '),
-    combustible: lleno(u.fuel) || fuelCan,
+    combustible: fuelValor || fuelCan,
     contacto: !!(u.ignition && typeof u.ignition === 'object' && u.ignition.value != null),
-    corteMotor: corte === true,
-    electrico: lleno(u.ev_values),
+    corteMotor: corteActivo,
+    bateriaHibrida: Number.isFinite(bateria),
+    bateriaPct: Number.isFinite(bateria) ? Math.round(bateria) : null,
+    camara: camaras.length > 0,
+    camaraModelo: camaras.map(modeloDe).join(', '),
     // ── Lo que admite (su catálogo de órdenes) ──
     abrirPuertas: tiene(ORDENES.abrirPuertas),
     cerrarPuertas: tiene(ORDENES.cerrarPuertas),
@@ -135,8 +160,21 @@ async function enTandas(lista, n, fn) {
 
 /** El inventario entero: una fila por unidad, Madrid primero, por matrícula. */
 async function inventario({ ahora = Date.now() } = {}) {
-  const [unidades, coches, historial] = await Promise.all([mapon.inventario(), repo.coches(), repo.historialPuertas()]);
+  const [unidades, coches, historial, dispositivos] = await Promise.all([
+    mapon.inventario(), repo.coches(), repo.historialPuertas(),
+    // La lista de equipos solo pone el modelo y diría si hay cámaras: si falla, se sigue sin ella.
+    mapon.dispositivos().catch(e => { console.warn('⚠️ [MAPON] device/list:', e.message); return []; }),
+  ]);
   if (!unidades.length) throw new Error('Mapon no ha devuelto ninguna unidad');
+
+  // Los equipos montados en cada unidad (por unidad o por la caja que la lleva).
+  const equiposU = new Map();
+  dispositivos.forEach(e => {
+    const k = e.unit_id != null ? `u${e.unit_id}` : e.box_id != null ? `b${e.box_id}` : null;
+    if (!k) return;
+    if (!equiposU.has(k)) equiposU.set(k, []);
+    equiposU.get(k).push(e);
+  });
 
   // A qué coche va cada unidad: por el enlace y, si no lo tiene, por la matrícula.
   const porUnidad = new Map(), porMatricula = new Map();
@@ -160,7 +198,7 @@ async function inventario({ ahora = Date.now() } = {}) {
   const grupos = new Map();
   unidades.forEach(u => {
     const k = normMat(u.number || u.label);
-    if (!k) return;
+    if (!k || k.length < 4) return;
     if (!grupos.has(k)) grupos.set(k, []);
     grupos.get(k).push(u);
   });
@@ -186,7 +224,8 @@ async function inventario({ ahora = Date.now() } = {}) {
     const id = String(u.unit_id);
     const coche = porUnidad.get(id) || porMatricula.get(normMat(u.number || u.label)) || null;
     const puertas = puertasU.get(id) || (!duplicados.has(id) || duplicados.get(id).enUso ? puertasM.get(normMat(u.number || u.label)) : null) || null;
-    return diagnosticar(u, comandos[i], { ahora, coche, puertas, duplicado: duplicados.get(id) || null });
+    const equipos = [...(equiposU.get(`u${id}`) || []), ...((equiposU.get(`b${u.box_id}`) || []).filter(e => e.unit_id == null))];
+    return diagnosticar(u, comandos[i], { ahora, coche, puertas, duplicado: duplicados.get(id) || null, equipos });
   });
   const ORDEN = { Madrid: 0, Barcelona: 1, 'Sin enlazar': 2 };
   filas.sort((a, b) => ORDEN[a.sede] - ORDEN[b.sede] || a.matricula.localeCompare(b.matricula) || (b.enUso - a.enUso));

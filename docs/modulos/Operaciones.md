@@ -72,11 +72,14 @@ Camilo: *«un Excel de toda la flota que aparezca en Mapon, Madrid y Barcelona, 
 
 `/operaciones/mapon/flota.xlsx` (llave `/operaciones`, sin botón, como el diagnóstico) baja un Excel con **una fila por unidad de Mapon** y un **✓ verde o una ✗ roja por función**; **?** cuando Mapon no contestó por esa unidad. Pestañas: *Flota*, *Resumen* (cuántas tienen cada función por sede) y *Leyenda* (de dónde sale cada columna).
 
-- **Lo que cuenta la unidad** sale de `unit/list` con todos sus bloques (`mapon.inventario()`): envía datos en 24 h, GPS con señal, **GPS bueno** (las dos), **CAN** (odómetro del cuadro, con los km), combustible, contacto, **corte de motor** (relé `engine_block`, no basta con tener relés) y datos de eléctrico.
+- **Lo que cuenta la unidad** sale de `unit/list` con todos sus bloques (`mapon.inventario()`): envía datos en 24 h, GPS con señal, **GPS bueno** (las dos), **CAN** (odómetro del cuadro, con los km), combustible (solo si trae un valor: el bloque viene vacío en todas), contacto, **corte de motor** (relé `engine_block` **activado**; configurado pero desactivado no cuenta y se dice) y la batería del híbrido con su %.
+- **El equipo y las cámaras** salen de `device/list` (`mapon.dispositivos()`): el modelo del localizador (TELTONIKA FMC130 / FMC880) y, si hubiera un equipo de vídeo registrado para la unidad, «Cámara» ✓. El 08/10/2026 no había ninguno.
 - **Lo que admite** sale de su catálogo de órdenes (`unit_commands/get_available`, unidad a unidad, de 4 en 4): **abrir y cerrar puertas**, maletero, warnings, ventanillas y «otros comandos» con su nombre.
 - **Puertas probadas** no lo da Mapon: es que el bot las ha abierto o cerrado alguna vez con éxito (`puerta_comando`), con la última vez. Estar en el catálogo no garantiza que la orden llegue (ver [[Mapon]], las ventanillas).
 - **Una matrícula con dos equipos sale dos veces**, y «Equipo en uso» dice cuál usa el ERP (`mapon.elegirEquipo`); el otro sobra y se dice que conviene darlo de baja en Mapon.
 - La sede y el estado salen del coche enlazado (`vehiculo_alias`, o por matrícula); lo que no casa con ningún coche va como «Sin enlazar».
+
+**Lo que dijo el primero de verdad (08/10/2026)**: 109 unidades (Madrid 85, Barcelona 17, sin enlazar 7); GPS bueno 83, CAN 94, corte de motor 95, abren y cierran puertas 97, probadas por el bot 69, cámaras 0. Dos matrículas con dos equipos (5912LBZ y 3031LTV): en el **3031LTV el equipo que usa el ERP (el del CAN) no abre puertas y el sobrante sí**.
 
 **Solo lectura**: no ejecuta ningún comando ni toca ningún relé. Tarda unos segundos (unas 170 preguntas a Mapon). Comprobador: `scripts/comprobar-mapon-flota.js`. Piezas: `maponFlota.service.js` (las reglas y el inventario), `maponFlota.repo.js` (coches e historial de puertas) y `maponFlota.excel.js`.
 

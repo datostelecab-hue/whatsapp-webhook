@@ -31,14 +31,15 @@ const FUNCIONES = [
   { campo: 'can', titulo: 'CAN', explica: 'Lee el bus CAN del coche: da el odómetro del cuadro (can.odom). Sin CAN, los km solo salen del GPS.' },
   { campo: 'combustible', titulo: 'Combustible', explica: 'Da el nivel de combustible, por sensor o por el CAN.' },
   { campo: 'contacto', titulo: 'Contacto', explica: 'Dice si el contacto está puesto (ignición). Lo necesita el corte de motor para no cortar con el coche en marcha.' },
-  { campo: 'corteMotor', titulo: 'Corte de motor', explica: 'Tiene un relé configurado como «Bloqueo Motor» (engine_block). Tener relés no basta: tiene que estar configurado como corte.' },
+  { campo: 'corteMotor', titulo: 'Corte de motor', explica: 'Tiene un relé configurado como «Bloqueo Motor» (engine_block) y ACTIVADO. Tener relés no basta, y un corte configurado pero desactivado en Mapon tampoco: no cortaría (sale en Observaciones).' },
   { campo: 'abrirPuertas', titulo: 'Abrir puertas', explica: 'Su catálogo de órdenes en Mapon admite abrir las puertas (open_doors).' },
   { campo: 'cerrarPuertas', titulo: 'Cerrar puertas', explica: 'Su catálogo de órdenes en Mapon admite cerrar las puertas (close_doors).' },
   { campo: 'puertasProbadas', titulo: 'Puertas probadas', explica: 'El bot de WhatsApp ha abierto o cerrado ese coche alguna vez y Mapon dijo que sí. Es la prueba de que la orden llega: estar en el catálogo no lo garantiza.' },
   { campo: 'maletero', titulo: 'Maletero', explica: 'Admite abrir el maletero (open_trunk).' },
   { campo: 'warnings', titulo: 'Warnings', explica: 'Admite encender las luces de emergencia (hazard_lights).' },
   { campo: 'ventanillas', titulo: 'Ventanillas', explica: 'Admite abrir o cerrar las ventanillas. Probado en agosto: Mapon dice que sí, pero no llegan al coche.' },
-  { campo: 'electrico', titulo: 'Datos de eléctrico', explica: 'Manda datos de coche eléctrico (batería, autonomía…).' },
+  { campo: 'bateriaHibrida', titulo: 'Batería híbrida', explica: 'Manda el nivel de la batería del híbrido o eléctrico (can_ev_battery_rel), con su % en la columna de al lado.' },
+  { campo: 'camara', titulo: 'Cámara', explica: 'Hay un equipo de vídeo (cámara, DVR, ADAS…) registrado en Mapon para esa unidad, según su lista de dispositivos. El 08/10/2026 la cuenta no tenía ninguno: solo localizadores.' },
 ];
 
 function cabecera(ws, logo, titulo, subtitulo, leyenda, cols) {
@@ -84,13 +85,15 @@ async function generar(datos) {
   const cols = [
     { titulo: 'Matrícula', ancho: 12, negrita: true }, { titulo: 'Sede', ancho: 11 },
     { titulo: 'Vehículo', ancho: 22, izq: true }, { titulo: 'Unidad Mapon', ancho: 12 },
-    { titulo: 'Equipo', ancho: 18, izq: true }, { titulo: 'Equipo en uso', ancho: 10 },
+    { titulo: 'Equipo', ancho: 20, izq: true }, { titulo: 'Equipo en uso', ancho: 10 },
     { titulo: 'Estado en Telecab', ancho: 14 }, { titulo: 'Último dato', ancho: 16 }, { titulo: 'Estado en Mapon', ancho: 14 },
     ...FUNCIONES.slice(0, 4).map(c => ({ titulo: c.titulo, ancho: 10, f: c.campo })),
     { titulo: 'Km del cuadro', ancho: 12 },
     ...FUNCIONES.slice(4, 10).map(c => ({ titulo: c.titulo, ancho: 10, f: c.campo })),
     { titulo: 'Última vez que el bot abrió o cerró', ancho: 16 },
-    ...FUNCIONES.slice(10).map(c => ({ titulo: c.titulo, ancho: 10, f: c.campo })),
+    ...FUNCIONES.slice(10, 13).map(c => ({ titulo: c.titulo, ancho: 10, f: c.campo })),
+    { titulo: FUNCIONES[13].titulo, ancho: 10, f: FUNCIONES[13].campo }, { titulo: 'Batería %', ancho: 9 },
+    { titulo: FUNCIONES[14].titulo, ancho: 10, f: FUNCIONES[14].campo },
     { titulo: 'Otros comandos', ancho: 26, izq: true, ajustar: true },
     { titulo: 'Datos que da por CAN', ancho: 26, izq: true, ajustar: true },
     { titulo: 'Observaciones', ancho: 48, izq: true, ajustar: true },
@@ -125,6 +128,7 @@ async function generar(datos) {
         case 'Último dato': return celda(k, x.ultimoDato ? fecha(x.ultimoDato) : 'Nunca');
         case 'Estado en Mapon': return celda(k, x.estado);
         case 'Km del cuadro': return celda(k, x.kmCan, { num: '#,##0' });
+        case 'Batería %': return celda(k, x.bateriaPct);
         case 'Última vez que el bot abrió o cerró': return celda(k, x.ultimaPuertaOk ? fecha(x.ultimaPuertaOk) : '');
         case 'Otros comandos': return celda(k, x.otrosComandos);
         case 'Datos que da por CAN': return celda(k, x.datosCan);
@@ -164,7 +168,9 @@ async function generar(datos) {
     ['Equipo en uso', 'Si una matrícula tiene varios equipos en Mapon, el que usa el ERP (el que da CAN, luego el del corte de motor, luego el que tiene GPS). Los demás sobran y conviene darlos de baja en Mapon.'],
     ['Estado en Mapon', 'Circulando, Parado, Sin GPS, Sin datos o En servicio técnico: el último estado que da Mapon.'],
     ...FUNCIONES.map(f => [f.titulo, f.explica]),
+    ['Equipo', 'El modelo del localizador según la lista de dispositivos de Mapon (TELTONIKA FMC880…).'],
     ['Km del cuadro', 'El odómetro del coche leído por el CAN, en km. Vacío si la unidad no lee el CAN.'],
+    ['Batería %', 'El nivel de la batería del híbrido o eléctrico en su último dato.'],
     ['Última vez que el bot abrió o cerró', 'La última orden de puertas del bot de WhatsApp que salió bien para ese coche.'],
     ['Otros comandos', 'Las órdenes de su catálogo en Mapon que no son ninguna de las de arriba, tal como las nombra Mapon.'],
     ['Datos que da por CAN', 'Los datos que manda del bus CAN (odómetro, combustible, revoluciones…), tal como los nombra Mapon.'],
