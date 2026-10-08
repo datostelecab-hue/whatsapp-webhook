@@ -897,6 +897,21 @@
     await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/a-propia`, 'POST', v));
   }
 
+  /**
+   * LA FECHA DE ALTA (08/10/2026): corregirla a quien ya se dio de alta y todavía
+   * no ha trabajado, de plantilla propia o de la ETT. El servidor lo comprueba con
+   * sus horas de BOLT y, si ya ha trabajado, dice desde cuándo y no la cambia.
+   */
+  async function accionFechaAlta(d) {
+    const v = await pedirDatos(`Fecha de alta de ${d.nombre_completo}`, [
+      { id: 'alta', etiqueta: 'Fecha de alta', tipo: 'fecha', obligatorio: true, valor: d.alta ? fecha(d.alta) : '' },
+    ], { textoBoton: 'Cambiar la fecha',
+         nota: 'Solo se puede si todavía no ha trabajado. Queda en su historial quién la cambió y de qué a qué. '
+             + 'Si ya tiene ficha de alta, vuelve a generarla para que salga con la nueva.' });
+    if (!v || !v.alta) return;
+    await hacer(() => enviar(`/plantilla/api/conductor/${d.id}/fecha-alta`, 'POST', { alta: v.alta }));
+  }
+
   async function accionBaja(d) {
     const v = await pedirDatos(`Dar de baja a ${d.nombre_completo}`, [
       { id: 'fecha', etiqueta: 'Fecha de baja', tipo: 'fecha', valor: fecha(new Date()) },
@@ -950,14 +965,34 @@
    * existiera. Si le faltan datos no se genera, y se dice cuáles.
    */
   async function generarFichaAlta(d, boton) {
+    // LA FECHA DE ALTA SE ELIGE (08/10/2026). De plantilla propia es la de su
+    // contrato, y cambiarla la cambia también allí (solo si aún no ha trabajado).
+    // De la ETT, la ficha es la de su paso a plantilla propia: la fecha es el
+    // primer día de su contrato propio, y el paso se hace aparte.
+    const ett = d.empleo_vigente && d.empleo_tipo === 'ett';
+    const propia = d.empleo_vigente && d.empleo_tipo === 'propia';
+    const v = await pedirDatos('Ficha de alta', [{
+      id: 'fecha', tipo: 'fecha', obligatorio: true,
+      etiqueta: ett ? 'Primer día de su contrato propio' : 'Fecha de alta',
+      valor: ett ? fecha(new Date().toISOString()) : (d.alta ? fecha(d.alta) : fecha(new Date().toISOString())),
+      ayuda: ett
+        ? 'Viene por la ETT: la ficha es la de su paso a plantilla propia. La fecha solo va en la ficha; el paso se hace con «Pasar a propia», con esta misma fecha.'
+        : propia
+          ? 'Es la fecha de alta de su contrato. Si la cambias, se cambia también en su contrato: solo se puede si todavía no ha trabajado.'
+          : 'No tiene contrato abierto: la fecha solo va en la ficha.',
+    }], { textoBoton: 'Generar la ficha' });
+    if (!v || !v.fecha) return;
+
     boton.disabled = true;
     const antes = boton.innerHTML;
     boton.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Generando…';
     try {
-      const r = await enviar(`/plantilla/api/conductor/${d.id}/ficha-alta`, 'POST', {});
+      const r = await enviar(`/plantilla/api/conductor/${d.id}/ficha-alta`, 'POST', { fechaInicio: v.fecha });
       await Dialogo.aviso({
         titulo: 'Ficha de alta generada', tono: 'ok',
         html: `<p class="text-sm">${esc(r.nombre)} · ${r.adjuntos} documento(s) dentro.</p>
+               ${r.altaCambiada ? `<p class="text-sm mt-2">La fecha de alta de su contrato pasa del <b>${esc(fecha(r.altaCambiada.antes))}</b>
+                 al <b>${esc(fecha(r.altaCambiada.alta))}</b>${r.altaCambiada.seguido ? ', y su contrato de la ETT acaba el día antes' : ''}.</p>` : ''}
                <p class="text-sm mt-2 text-telecab-muted">Queda guardada en sus documentos.</p>`,
       });
       const id = plantilla.abierto;
@@ -1232,6 +1267,9 @@
           onClick: d => accionDatos(d) },
         // Solo a quien está de alta POR UNA ETT: al de plantilla propia no hay
         // nada que convertirle.
+        // Corregir la fecha de alta a quien aún no ha trabajado (08/10/2026).
+        { texto: 'Fecha de alta', icono: 'fa-calendar-day',
+          visible: d => !SOLO_OPERATIVO && d.empleo_vigente, onClick: d => accionFechaAlta(d) },
         { texto: 'Pasar a propia', icono: 'fa-building-user',
           visible: d => !SOLO_OPERATIVO && d.empleo_vigente && d.empleo_tipo === 'ett',
           onClick: accionAPropia },

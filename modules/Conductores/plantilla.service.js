@@ -92,11 +92,32 @@ const subirFoto = (conductorId, datos, quien) => docs.subirFoto(conductorId, dat
 // OPCIONAL: la mayoría de la plantilla entró antes de que existiera y nadie se
 // la exige. La genera quien puede tocar los datos de la persona —Tráfico no—,
 // porque lleva su DNI, su cuenta y su dirección.
-async function fichaDeAlta(conductorId, quien = {}) {
+//
+// LA FECHA DE ALTA SE ELIGE AL GENERARLA (Camilo, 08/10/2026):
+//   · Plantilla propia: es la de su contrato. Si se cambia, se cambia en el
+//     contrato (con.cambiarAlta, solo si aún no ha trabajado) y la ficha sale
+//     con la nueva: ficha y sistema dicen lo mismo.
+//   · ETT: la ficha es la de su paso a plantilla propia, así que la fecha es el
+//     primer día de su contrato propio. Solo va en la ficha: el paso se hace
+//     aparte, con «Pasar a propia» y esa misma fecha.
+async function fichaDeAlta(conductorId, quien = {}, { fechaInicio } = {}) {
   if (quien.rol === 'trafico') throw new Error('La ficha de alta lleva datos personales: la genera RRHH');
+  const id = Number(conductorId);
+  let soloFicha = null, altaCambiada = null;
+  if (fechaInicio) {
+    const dia = String(fechaInicio).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) throw new Error('La fecha de alta no vale.');
+    const contrato = await con.contratoAbierto(id);
+    if (contrato && contrato.tipo === 'propia') {
+      if (contrato.alta !== dia) altaCambiada = await con.cambiarAlta(id, { alta: dia }, quien);
+    } else {
+      soloFicha = dia;
+    }
+  }
   const r = await require('../Seleccion/seleccion.service')
-    .fichaPDFDeConductor(conductorId, { guardar: true }, quien);
-  return { link: r.link, docId: r.docId, nombre: r.nombre, adjuntos: r.adjuntos };
+    .fichaPDFDeConductor(id, { guardar: true, fechaInicio: soloFicha }, quien);
+  return { link: r.link, docId: r.docId, nombre: r.nombre, adjuntos: r.adjuntos,
+           altaCambiada: altaCambiada && !altaCambiada.sinCambios ? altaCambiada : null };
 }
 
 /**
@@ -310,6 +331,12 @@ const aPropia = (id, datos, quien) => alta.convertirAPropia(Number(id), datos, q
 
 /** Las horas del contrato abierto (32, 40…). No abre periodo: es una novación. */
 const cambiarJornada = (id, datos, quien) => con.cambiarJornada(Number(id), datos, quien);
+// La fecha de alta de su contrato, solo a quien aún no ha trabajado (ver
+// con.cambiarAlta). Es dato de RRHH, como la ficha de alta: Tráfico no la toca.
+const cambiarAlta = (id, datos, quien = {}) => {
+  if (quien.rol === 'trafico') throw new Error('La fecha de alta es cosa de RRHH');
+  return con.cambiarAlta(Number(id), { alta: (datos || {}).alta }, quien);
+};
 
 /** Quién tocó qué y cuándo en una ficha. */
 const cambios = async id => ({ cambios: await audit.historial('conductor', Number(id)) });
@@ -363,7 +390,7 @@ module.exports = {
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
   crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
-  darDeAlta, darDeBaja, aPropia, cambiarJornada, cambios, conflictos,
+  darDeAlta, darDeBaja, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
   excelGestoria,
   tiposDocumento, documentosDe, subirDocumento, actualizarDocumento, foto, subirFoto, fichaDeAlta,
   retirarDocumento, descargarDocumento, documentosQueVencen,

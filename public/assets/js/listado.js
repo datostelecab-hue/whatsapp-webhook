@@ -714,7 +714,15 @@
 
     /** Pone la lista o la ficha según lo que diga la URL. */
     async sincronizarConUrl() {
-      const id = (global.location.hash || '').replace(/^#/, '');
+      // La ficha va en el hash (#123). Desde otras pantallas se llega también con
+      // ?id=123 (Sanciones, Auditoría): se abre igual
+      // y la dirección se queda con su hash, como si se hubiera pinchado aquí.
+      let id = (global.location.hash || '').replace(/^#/, '');
+      const porParametro = new URLSearchParams(global.location.search).get('id');
+      if (!id && porParametro) {
+        id = encodeURIComponent(porParametro);
+        global.history.replaceState(null, '', global.location.pathname + '#' + id);
+      }
       if (id) await this.abrir(decodeURIComponent(id), { historial: false });
       else this.volver({ historial: false });
     }

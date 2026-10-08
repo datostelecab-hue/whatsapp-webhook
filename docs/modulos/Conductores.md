@@ -243,9 +243,28 @@ La documentación obligatoria que falta sale de `v_documento_falta`, que es **la
 
 En **Documentos**, al lado de «Subir documento», un botón **Generar la ficha de alta** (o **Rehacer**, si ya la tiene). Es **opcional**: la misma ficha que genera Selección, con sus papeles dentro, y queda guardada en sus documentos (tipo `ficha_alta`, `db/149`).
 
-Se pide **por la persona** y no por su candidatura (`paraFichaDeConductor`): de los 220 de alta el 24/09 solo 30 tenían candidatura, y la ficha es casi entera de la persona. Sin candidatura, la fecha de inicio es la de su alta y el nº de hijos va en blanco. La consulta es **la misma** que la de Selección (`FICHA_COLUMNAS` / `FICHA_UNIONES` en `candidaturas.repo.js`): dos copias serían dos fichas que un día dejan de parecerse.
+Se pide **por la persona** y no por su candidatura (`paraFichaDeConductor`): de los 220 de alta el 24/09 solo 30 tenían candidatura, y la ficha es casi entera de la persona. La fecha de inicio es la del alta de su **contrato abierto** (la prevista en la candidatura solo cuenta mientras no tiene contrato) y la jornada, la de su contrato; sin candidatura, el nº de hijos va en blanco. La consulta es **la misma** que la de Selección (`FICHA_COLUMNAS` / `FICHA_UNIONES` en `candidaturas.repo.js`): dos copias serían dos fichas que un día dejan de parecerse.
 
 Si le faltan datos **no se genera**, y el aviso los enumera uno a uno. **Tráfico no la genera**: lleva el DNI, la cuenta y la dirección.
+
+### La fecha de alta se elige al generarla (08/10/2026)
+
+Camilo: *«a Deisy la pasaron de la ETT a propia y la ficha sale con la fecha de alta de la ETT, de julio; la idea es generarla con la fecha que queramos darle. Y a los que ya dimos de alta y no han trabajado, que se pueda editar su fecha de alta para regenerar la ficha»*.
+
+Al pulsar el botón, primero se pide la fecha:
+
+- **Plantilla propia**: es la fecha de alta de su contrato. Si se cambia, **se cambia también en el contrato** (`conductores.repo.cambiarAlta`) y la ficha sale con la nueva: ficha y sistema dicen lo mismo. Solo si todavía no ha trabajado.
+- **ETT**: la ficha es la de su **paso a plantilla propia**, así que la fecha es el primer día de su contrato propio. **Solo va en la ficha**; el paso se hace aparte con «Pasar a propia» y esa misma fecha.
+- Sin contrato abierto: solo va en la ficha.
+
+**«Fecha de alta»**, en las acciones de la ficha, cambia la del contrato abierto (propia o ETT) sin generar nada. Las reglas de `cambiarAlta`:
+
+- **«Ha trabajado» es lo mismo que en la nómina**: tiempo efectivo en BOLT (viaje o espera) con alguna de sus cuentas. Si ha trabajado desde la fecha más temprana de las dos, no se cambia y se dice desde cuándo. El 08/10, a los dos de alta del 26/09 que salían en el planificador ya no se les puede mover: trabajaron ese mismo día.
+- **Si viene de la ETT** (su contrato anterior acaba justo el día antes), la frontera se mueve con ella: la ETT acaba el día antes del nuevo alta, y lo único que no puede haber es trabajo en los días que cambiarían de contrato. Nunca antes del alta en la ETT. La antigüedad sigue siendo la de la ETT.
+- Un alta suelta no puede caer dentro de un contrato anterior, y su antigüedad se mueve con ella si era la misma fecha.
+- Queda en el historial de la ficha quién lo cambió y de qué a qué (también la baja de la ETT). Tráfico no lo cambia: es de RRHH, como la ficha.
+
+**La jornada, que la ficha no recibía.** A todo el mundo le salían «40 HORAS» y el salario de 40, también a quien tiene 32: ahora va la de su contrato, o la de su candidatura si aún no lo tiene.
 
 ### Lo que pide la ficha, también en «Datos»
 

@@ -1274,6 +1274,96 @@ async function cambiarJornada(id, { jornadaHoras }, { usuarioId } = {}) {
   });
 }
 
+/** El contrato abierto de una persona: { id, tipo, alta, jornadaHoras }, o null. */
+async function contratoAbierto(id) {
+  const r = await db.consulta(
+    `SELECT id, tipo, to_char(alta, 'YYYY-MM-DD') AS alta, jornada_horas
+       FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [Number(id)]);
+  const e = r.rows[0];
+  return e ? { id: Number(e.id), tipo: e.tipo, alta: e.alta, jornadaHoras: e.jornada_horas } : null;
+}
+
+// «HA TRABAJADO» quiere decir lo mismo que en la nómina: tiempo efectivo en
+// BOLT (viaje o espera, `fv_cat_situacion.efectivo`) con alguna de sus cuentas.
+// Devuelve el primer día (dd/mm/aaaa en Madrid) desde $2 y, con $3, antes de $3.
+const SQL_PRIMER_TRABAJO = `
+  SELECT to_char(min(t.desde) AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY') AS dia
+    FROM fv_tramo t
+    JOIN fv_cat_situacion s   ON s.codigo = t.situacion AND s.efectivo
+    JOIN conductor_externo ce ON ce.sistema = 'bolt' AND ce.externo_id = t.conductor_uuid
+   WHERE ce.conductor_id = $1::bigint
+     AND COALESCE(t.hasta, now()) > ($2::date)::timestamp AT TIME ZONE 'Europe/Madrid'
+     AND ($3::date IS NULL OR t.desde < ($3::date)::timestamp AT TIME ZONE 'Europe/Madrid')`;
+
+const aEs = iso => String(iso || '').slice(0, 10).split('-').reverse().join('/');
+
+/**
+ * Cambia la FECHA DE ALTA del contrato abierto (Camilo, 08/10/2026: «a los que
+ * ya les dimos de alta y no han trabajado, que se pueda editar su fecha de alta
+ * para regenerar la ficha»).
+ *
+ * Es corregir un dato, no un contrato nuevo: se toca la misma fila, como la
+ * jornada. Y solo si NO HA TRABAJADO: moverle el alta a quien ya ha rodado
+ * dejaría días trabajados fuera de su contrato, o un contrato que empieza
+ * después de su primer día. Dos casos:
+ *
+ *   · Un alta suelta: no puede haber trabajado desde la fecha más temprana de
+ *     las dos. Si tenía un contrato anterior, la nueva no puede caer dentro.
+ *   · El paso de la ETT a plantilla propia (el contrato anterior acaba justo el
+ *     día antes): la frontera se mueve con él —el de la ETT acaba el día antes
+ *     del nuevo alta— y lo que no puede tener es trabajo en los días que
+ *     cambiarían de contrato. Su antigüedad sigue siendo la de la ETT.
+ *
+ * La antigüedad de un alta suelta se mueve con ella si era la misma fecha. Queda
+ * en el historial de la ficha quién lo cambió y de qué a qué.
+ */
+async function cambiarAlta(id, { alta }, { usuarioId } = {}) {
+  const dia = String(alta == null ? '' : alta).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) throw new Error('Falta la nueva fecha de alta.');
+  return db.transaccion(async cli => {
+    const e = (await cli.query(
+      `SELECT id, to_char(alta, 'YYYY-MM-DD') AS alta, to_char(fecha_antiguedad, 'YYYY-MM-DD') AS antiguedad
+         FROM conductor_periodo_empleo WHERE conductor_id = $1 AND baja IS NULL`, [id])).rows[0];
+    if (!e) throw new Error('Esta persona no tiene ningún contrato abierto');
+    if (e.alta === dia) return { sinCambios: true, alta: dia };
+
+    const prev = (await cli.query(
+      `SELECT id, to_char(alta, 'YYYY-MM-DD') AS alta, to_char(baja, 'YYYY-MM-DD') AS baja,
+              (baja = $2::date - 1) AS seguido
+         FROM conductor_periodo_empleo
+        WHERE conductor_id = $1 AND baja IS NOT NULL AND id <> $3
+        ORDER BY baja DESC LIMIT 1`, [id, e.alta, e.id])).rows[0] || null;
+    const seguido = !!(prev && prev.seguido);
+    const [menor, mayor] = e.alta < dia ? [e.alta, dia] : [dia, e.alta];
+
+    if (seguido) {
+      if (dia <= prev.alta) throw new Error(`No puede ser el ${aEs(prev.alta)} ni antes: ese día empezó su contrato anterior.`);
+      const w = (await cli.query(SQL_PRIMER_TRABAJO, [id, menor, mayor])).rows[0];
+      if (w && w.dia) throw new Error(`Trabajó el ${w.dia}, entre una fecha y otra: ese día cambiaría de contrato. No se puede mover el alta.`);
+    } else {
+      if (prev && dia <= prev.baja) throw new Error(`No puede ser el ${aEs(prev.baja)} ni antes: ese día aún seguía su contrato anterior.`);
+      const w = (await cli.query(SQL_PRIMER_TRABAJO, [id, menor, null])).rows[0];
+      if (w && w.dia) throw new Error(`Ya ha trabajado (el ${w.dia}): la fecha de alta solo se puede cambiar a quien todavía no ha trabajado.`);
+    }
+
+    const conAntiguedad = !seguido && e.antiguedad != null && e.antiguedad === e.alta;
+    await cli.query(
+      `UPDATE conductor_periodo_empleo
+          SET alta = $2::date,
+              fecha_antiguedad = CASE WHEN $3::boolean THEN $2::date ELSE fecha_antiguedad END
+        WHERE id = $1`, [e.id, dia, conAntiguedad]);
+    const cambios = [{ campo: 'alta', antes: aEs(e.alta), ahora: aEs(dia) }];
+    if (seguido) {
+      const r = await cli.query(
+        `UPDATE conductor_periodo_empleo SET baja = ($2::date - 1) WHERE id = $1 RETURNING to_char(baja, 'YYYY-MM-DD') AS baja`,
+        [prev.id, dia]);
+      cambios.push({ campo: 'baja del contrato anterior', antes: aEs(prev.baja), ahora: aEs(r.rows[0].baja) });
+    }
+    await audit.registrar({ tabla: 'conductor', id, usuarioId, cli, cambios });
+    return { alta: dia, antes: e.alta, seguido };
+  });
+}
+
 /**
  * Da de baja: cierra el empleo, la situación, el turno y las asignaciones.
  *
@@ -1508,7 +1598,7 @@ async function guardarIban(id, valor, { usuarioId } = {}) {
 module.exports = {
   paraGestoria, buscarPersona,
   ibanEnmascarado, guardarIban,
-  JORNADAS, TOPE_JORNADA, cambiarJornada,
+  JORNADAS, TOPE_JORNADA, cambiarJornada, contratoAbierto, cambiarAlta,
   campos,
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,

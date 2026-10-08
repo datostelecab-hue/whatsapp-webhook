@@ -497,7 +497,15 @@ const FICHA_COLUMNAS = `k.id, k.num_hijos,
             -- en cuanto se le abre el contrato: si no, la ficha de alguien que
             -- ya entró salía con el hueco en blanco, que es justo el dato que
             -- la gestoría necesita para el alta en la Seguridad Social.
-            to_char(COALESCE(k.inicio_previsto, emp.alta), 'DD/MM/YYYY') AS fecha_inicio`;
+            --
+            -- CON CONTRATO ABIERTO MANDA SU ALTA (08/10/2026). Antes iba primero
+            -- la prevista, y la ficha de quien ya tenía contrato salía con la
+            -- fecha que se previó al seleccionarle, no con la de su alta.
+            to_char(CASE WHEN emp.abierto THEN emp.alta ELSE COALESCE(k.inicio_previsto, emp.alta) END, 'DD/MM/YYYY') AS fecha_inicio,
+            -- LA JORNADA, que la ficha no recibía: a todo el mundo le salían
+            -- 40 horas y el salario de 40, también a quien tiene 32. La del
+            -- contrato abierto y, si aún no lo tiene, la de su candidatura.
+            CASE WHEN emp.abierto THEN emp.jornada_horas ELSE COALESCE(k.jornada_horas, emp.jornada_horas) END AS jornada_horas`;
 const FICHA_UNIONES = `       LEFT JOIN LATERAL (
          SELECT e164 FROM conductor_telefono
           WHERE conductor_id = c.id AND vigente_hasta IS NULL
@@ -507,8 +515,8 @@ const FICHA_UNIONES = `       LEFT JOIN LATERAL (
           WHERE conductor_id = c.id AND tipo = 'permiso' AND vigente
           ORDER BY id DESC LIMIT 1) per ON TRUE
        LEFT JOIN LATERAL (
-         SELECT alta FROM conductor_periodo_empleo
-          WHERE conductor_id = c.id ORDER BY alta DESC LIMIT 1) emp ON TRUE`;
+         SELECT alta, jornada_horas, (baja IS NULL) AS abierto FROM conductor_periodo_empleo
+          WHERE conductor_id = c.id ORDER BY (baja IS NULL) DESC, alta DESC LIMIT 1) emp ON TRUE`;
 
 /** De la fila a lo que imprime la ficha. El IBAN se descifra aquí. */
 function aDatosFicha(f) {
@@ -527,6 +535,8 @@ function aDatosFicha(f) {
     direccion: f.direccion, codigo_postal: f.codigo_postal,
     carnet_expedicion: f.carnet_expedicion || '', carnet_caducidad: f.carnet_caducidad || '',
     fecha_inicio: f.fecha_inicio || '',
+    // Sin jornada, la ficha pone la de por defecto (40 horas).
+    ...(f.jornada_horas ? { jornada: `${f.jornada_horas} HORAS` } : {}),
     iban, observaciones: f.observaciones,
   };
 }
@@ -566,7 +576,7 @@ async function paraFichaDeConductor(conductorId) {
     `SELECT ${FICHA_COLUMNAS}
        FROM conductor c
        LEFT JOIN LATERAL (
-         SELECT id, num_hijos, inicio_previsto FROM candidatura
+         SELECT id, num_hijos, inicio_previsto, jornada_horas FROM candidatura
           WHERE conductor_id = c.id ORDER BY creado_at DESC LIMIT 1) k ON TRUE
 ${FICHA_UNIONES}
       WHERE c.id = $1`, [Number(conductorId)]);

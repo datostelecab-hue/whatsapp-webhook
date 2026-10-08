@@ -128,6 +128,8 @@ Lista → ficha → atrás, con buscador, filtros, KPIs, paginación, selección
 
 Lo que hay que saber al filtrar: `visibles()` es un **`.filter()` puro** sobre las filas tal como llegan. No ordena, y el buscador tampoco ordena por relevancia — así que **el orden lo pone la consulta**, una vez, y vale bajo cualquier filtro. → [[Conductores]]
 
+**Abrir una ficha desde otra pantalla**: `/plantilla#123` o `/plantilla?id=123`. El Listado abre la ficha con las dos, y con `?id=` deja la dirección con su hash, como si se hubiera pinchado allí (08/10/2026: los enlaces de Sanciones y de la Auditoría usaban `?id=` y abrían la lista, no la ficha).
+
 **Exportar** manda lo filtrado a `/exportar/excel` con los valores en crudo (sin el HTML de `pinta`). Cada columna viaja con una clave de texto propia (`c0`, `c1`…): hasta el 28/09/2026 la clave era el `campo` o **la función de `valor`**, y el JSON tira las funciones, así que **toda columna con `valor: f => …` salía vacía** en el Excel. Se vio en Inspección de vehículos (solo salían Matrícula y Observaciones) y afectaba igual a Selección y ETT.
 
 Una columna con **`soloExcel: true`** no se pinta en la tabla pero sí va en lo que se descarga; es lo contrario de `exportar: false`, que se pinta y no se descarga. Sirve para el dato que en pantalla ya se ve de otra forma: en [[Conductores|Plantilla]], «Contrato» (Propia / ETT), que en la tabla es la etiqueta junto al nombre y no viajaba al Excel (01/10/2026).

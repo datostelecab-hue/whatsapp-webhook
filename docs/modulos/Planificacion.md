@@ -318,6 +318,9 @@ El filtro del tablero mira la matrícula, quien está puesto, **quien está por 
 
 ## Incorporaciones: el traspaso desde Selección
 
+**El nombre lleva a su ficha** (08/10/2026): en los avisos de quien acaba de entrar («se dio de alta · Sin plaza prometida» y las incorporaciones con vacante), pinchar el nombre abre su ficha en Plantilla (`/plantilla#id`).
+
+
 Cuando alguien se da de alta nace una alerta que Tráfico ve en el planificador. Desde el 18/09/2026 nace **siempre**, con vacante o sin ella, porque el caso que faltaba era justo el peor: alguien entra sin plaza prometida y el cuadrante no se entera de que hay una persona nueva esperando coche.
 
 **Sin vacante** no hay nada que aceptar —no se le prometió ninguna plaza—, así que el aviso solo dice que hay alguien nuevo sin coche y **se va solo** en cuanto se le da una plaza. No hace falta que nadie lo cierre: la consulta de pendientes lo esconde cuando la persona tiene asignación viva.

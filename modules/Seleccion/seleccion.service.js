@@ -219,8 +219,14 @@ async function fichaPDFDeConductor(conductorId, opciones, quien) {
   return generarFicha(datos, documentos || [], opciones, quien);
 }
 
-async function generarFicha(datos, documentos, { guardar = true } = {}, quien = {}) {
+async function generarFicha(datos, documentos, { guardar = true, fechaInicio = null } = {}, quien = {}) {
   const f = { documentos };
+  // LA FECHA QUE SE ELIGE AL GENERARLA (08/10/2026): la de alguien de la ETT que
+  // pasa a plantilla propia —el primer día de su contrato propio— cuando la ficha
+  // se hace antes del paso. Llega en ISO y la ficha la escribe en dd/mm/aaaa.
+  if (fechaInicio && /^\d{4}-\d{2}-\d{2}$/.test(String(fechaInicio))) {
+    datos = { ...datos, fecha_inicio: String(fechaInicio).split('-').reverse().join('/') };
+  }
 
   // La ficha no sale a medias: o está completa o no se genera.
   const faltan = faltaParaLaFicha(datos, f);
