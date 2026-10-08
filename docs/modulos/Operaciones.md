@@ -66,6 +66,20 @@ Es **solo lectura por omisión**. Sin parámetros no toca nada. Lo que sí actú
 
 La clave de la API vive en la variable de entorno `MAPON_API_KEY`; el diagnóstico solo dice si está puesta, no la enseña.
 
+## La flota en Mapon: qué sabe hacer cada unidad (08/10/2026)
+
+Camilo: *«un Excel de toda la flota que aparezca en Mapon, Madrid y Barcelona, para dar un diagnóstico por matrícula de qué funciones tiene: abrir puertas, cerrar puertas, CAN, GPS bueno…»*.
+
+`/operaciones/mapon/flota.xlsx` (llave `/operaciones`, sin botón, como el diagnóstico) baja un Excel con **una fila por unidad de Mapon** y un **✓ verde o una ✗ roja por función**; **?** cuando Mapon no contestó por esa unidad. Pestañas: *Flota*, *Resumen* (cuántas tienen cada función por sede) y *Leyenda* (de dónde sale cada columna).
+
+- **Lo que cuenta la unidad** sale de `unit/list` con todos sus bloques (`mapon.inventario()`): envía datos en 24 h, GPS con señal, **GPS bueno** (las dos), **CAN** (odómetro del cuadro, con los km), combustible, contacto, **corte de motor** (relé `engine_block`, no basta con tener relés) y datos de eléctrico.
+- **Lo que admite** sale de su catálogo de órdenes (`unit_commands/get_available`, unidad a unidad, de 4 en 4): **abrir y cerrar puertas**, maletero, warnings, ventanillas y «otros comandos» con su nombre.
+- **Puertas probadas** no lo da Mapon: es que el bot las ha abierto o cerrado alguna vez con éxito (`puerta_comando`), con la última vez. Estar en el catálogo no garantiza que la orden llegue (ver [[Mapon]], las ventanillas).
+- **Una matrícula con dos equipos sale dos veces**, y «Equipo en uso» dice cuál usa el ERP (`mapon.elegirEquipo`); el otro sobra y se dice que conviene darlo de baja en Mapon.
+- La sede y el estado salen del coche enlazado (`vehiculo_alias`, o por matrícula); lo que no casa con ningún coche va como «Sin enlazar».
+
+**Solo lectura**: no ejecuta ningún comando ni toca ningún relé. Tarda unos segundos (unas 170 preguntas a Mapon). Comprobador: `scripts/comprobar-mapon-flota.js`. Piezas: `maponFlota.service.js` (las reglas y el inventario), `maponFlota.repo.js` (coches e historial de puertas) y `maponFlota.excel.js`.
+
 ## Las dos pasadas de la ingesta
 
 Entran por `operaciones.service.js` y no por los repositorios, porque `services/ingesta.js` está fuera del módulo y la puerta es lo único que permite cambiar esto por dentro.

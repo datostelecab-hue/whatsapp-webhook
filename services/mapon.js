@@ -494,6 +494,18 @@ async function pedirPost(ruta, params) {
 // El catálogo de comandos lo define cada instalación: NO se adivinan los nombres,
 // se preguntan con comandosDisponibles() y se ejecuta uno de esos exactamente.
 
+/**
+ * TODAS las unidades de la cuenta con todo lo que cuentan de sí mismas —CAN,
+ * relés, contacto, combustible, el equipo y los datos de eléctrico—, TAL CUAL.
+ * Es para el inventario de qué sabe hacer cada coche (Operaciones → flota de
+ * Mapon, 08/10/2026). Solo lectura y sin caché: se pide cuando alguien lo
+ * descarga, no en cada vuelta de la ingesta.
+ */
+async function inventario() {
+  const j = await pedir('unit/list.json', incluir('can', 'relays', 'ignition', 'fuel', 'device', 'ev_values'));
+  return (j && j.data && j.data.units) || [];
+}
+
 /** Comandos que admite esa unidad. Devuelve la lista tal cual la da Mapon. */
 async function comandosDisponibles(unitId) {
   const j = await pedir('unit_commands/get_available.json', `unit_id=${encodeURIComponent(unitId)}`);
@@ -1120,7 +1132,7 @@ module.exports = {
   leerCombustible, leerRecorridoUnidad,
   unidadPorMatricula, elegirEquipo, tieneReleCorte, listarConductores, crearConductor,
   asignarConductor, desasignarConductor, conductoresDeUnidad, unidadDeConductor, kmEnVentana, kmEnVentanaExacto,
-  comandosDisponibles, ejecutarComando, ejecutarComandoSeguro,
+  comandosDisponibles, ejecutarComando, ejecutarComandoSeguro, inventario,
   relesDeFlota, relesDeUnidad, releDeCorte, contactoPuesto, cambiarRele, cambiarReleConfirmado, crudoUnidad, probarRele,
   unidades, parseFecha, parseValor, normalizar,
   disponible, estadoCaida

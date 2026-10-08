@@ -4,6 +4,7 @@
 //   /operaciones                     las alertas de Mapon
 //   /operaciones/auditoria           KM del GPS vs KM facturado, y repostajes
 //   /operaciones/fichaje/diagnostico la herramienta de Mapon (por URL, sin botón)
+//   /operaciones/mapon/flota.xlsx    qué sabe hacer cada unidad de Mapon, en Excel
 
 const express = require('express');
 const router = express.Router();
@@ -95,6 +96,13 @@ router.get('/auditoria/excel', descarga(req => operaciones.excelDeAuditoria({
 router.get('/auditoria/pdf', descarga(req => operaciones.pdfDeFlujo({
   desde: req.query.desde, hasta: req.query.hasta, flujo: req.query.flujo,
 }), 'application/pdf'));
+
+// ── La flota en Mapon: qué sabe hacer cada unidad ──────────────────────────
+// Una fila por unidad con ✓/✗ por función (GPS, CAN, puertas, corte de motor…).
+// Solo lectura: pregunta a Mapon el catálogo de cada unidad, no ejecuta nada.
+// Tarda unos segundos: son unas 170 preguntas.
+
+router.get('/mapon/flota.xlsx', descarga(() => operaciones.excelFlotaMapon(), XLSX));
 
 // ── La herramienta de Mapon ────────────────────────────────────────────────
 // Solo lectura por omisión; las opciones que actúan sobre un coche están

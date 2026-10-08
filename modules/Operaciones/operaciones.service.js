@@ -121,6 +121,14 @@ async function excelDeAuditoria({ desde, hasta, tabla } = {}) {
   return require('./auditoria.excel').generar(r, tabla || 'dia');
 }
 
+/**
+ * El inventario de la flota en Mapon: qué sabe hacer cada unidad (GPS, CAN,
+ * puertas, corte de motor…), en Excel. Solo lectura. Ver maponFlota.service.
+ */
+function excelFlotaMapon() {
+  return require('./maponFlota.service').excel();
+}
+
 /** El Sankey en PDF. ?flujo=turnos (05-17/17-05) o ?flujo=mitades (00-12/12-24). */
 async function pdfDeFlujo({ desde, hasta, flujo } = {}) {
   const r = await auditoria.cargarAuditoria({ desde, hasta });
@@ -224,6 +232,6 @@ module.exports = {
   paraLaPantalla, listarAlertas, setups,
   datosDeAuditoria, porConductor,
   lanzarProcesado, hayProcesadoEnMarcha, progreso, detener,
-  excelDeAuditoria, pdfDeFlujo,
+  excelDeAuditoria, pdfDeFlujo, excelFlotaMapon,
   pasadaDeAlertas, pasadaDiaria,
 };

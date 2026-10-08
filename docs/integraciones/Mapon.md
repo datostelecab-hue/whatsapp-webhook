@@ -136,6 +136,7 @@ Solo la [[Ingesta]] y los trabajos de fondo; ninguna pantalla pregunta a Mapon e
 | zonas (`in_object`) | 15 min | decide si la espera cuenta como área (TE_A1) |
 | alertas | 15 min | velocidad, zonas, alimentación, batería |
 | [[Auditoria de flota]] | 1 vez al día, de madrugada | una llamada `route/list` **por coche** — la tarea más cara con diferencia |
+| Inventario de la flota ([[Operaciones]]) | cuando alguien lo descarga | `unit/list` con `can`, `relays`, `ignition`, `fuel`, `device` y `ev_values`, y `unit_commands/get_available` **por unidad** (de 4 en 4). Solo lectura |
 
 Cada tarea declara además `reintentoMin`: sin eso, una tarea que falla se reintenta en cada latido de 5 minutos, y para la auditoría —144 llamadas por vuelta— sería gastarse la cuota del día en una hora repitiendo el mismo error.
 
