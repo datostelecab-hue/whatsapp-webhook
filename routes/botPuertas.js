@@ -114,11 +114,10 @@ async function guardarYVerSiAtiende(message, value) {
 // ============================================================
 // SOLO SE ATIENDE LO QUE LLEGA A NUESTRO NÚMERO
 // ============================================================
-// La app de WhatsApp tiene más de un número colgado (el de la boda, cuyo módulo
-// se quitó el 01/10/2026) y Meta manda aquí los mensajes de todos. Sin esto, un
-// invitado que escribiera a aquel número recibiría el saludo del bot de
-// conductores. Vale también para los avisos de estado: los de otro número no son
-// nuestros.
+// La app de WhatsApp tiene más de un número colgado y Meta manda aquí los
+// mensajes de todos. Sin esto, quien escribiera a otro número recibiría el
+// saludo del bot de conductores. Vale también para los avisos de estado: los de
+// otro número no son nuestros.
 function deOtroNumero(value) {
   const phoneNumberId = value?.metadata?.phone_number_id;
   if (!phoneNumberId || phoneNumberId === PHONE_NUMBER_ID) return false;

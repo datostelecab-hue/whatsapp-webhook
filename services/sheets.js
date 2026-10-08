@@ -4,9 +4,9 @@
 // El ERP ya no escribe en ninguna hoja (01/10/2026). Lo que queda de Google
 // Sheets son lecturas: las respuestas del formulario de la ticketera
 // (`Ticketera/formulario.js`) y los rescates únicos de `configApp` y de
-// `TICKETS_IT`. La última escritora fue la boda, y con ella se fueron las diez
-// funciones de escribir (writeSheet, appendRows, deleteRows…): están en el
-// historial de git si algún día hicieran falta.
+// `TICKETS_IT`. Las diez funciones de escribir (writeSheet, appendRows,
+// deleteRows…) se quitaron: están en el historial de git si algún día hicieran
+// falta.
 //
 // Por eso el permiso que se le pide a Google es `spreadsheets.readonly`: aunque
 // alguien volviera a llamar a una escritura, la cuenta de servicio no podría

@@ -58,7 +58,7 @@ Se autentica con una **cuenta de servicio** cuyo JSON completo vive en la variab
 - Al leer, `valueRenderOption: UNFORMATTED_VALUE` devuelve los números como números, sin depender del idioma de la hoja.
 
 > [!note] Solo lectura desde el 01/10/2026
-> El ERP ya no escribe en ninguna hoja. La última que lo hacía era la boda, y con ella se fueron las diez funciones de escribir de `services/sheets.js` (`writeSheet`, `writeMany`, `appendRows`, `deleteRows`, `ensureGrid`…) y su paso por `services/modoPruebas.js`. El permiso que se le pide a Google pasó a `spreadsheets.readonly`: aunque alguien volviera a llamar a una escritura, la cuenta de servicio no podría hacerla. Las trampas que tenían resueltas —`values.update` no amplía la rejilla; `USER_ENTERED` convierte `'2026-09-17'` en fecha y para las claves hacía falta `RAW`— están en el historial de git con su código.
+> El ERP ya no escribe en ninguna hoja. Se fueron las diez funciones de escribir de `services/sheets.js` (`writeSheet`, `writeMany`, `appendRows`, `deleteRows`, `ensureGrid`…) y su paso por `services/modoPruebas.js`. El permiso que se le pide a Google pasó a `spreadsheets.readonly`: aunque alguien volviera a llamar a una escritura, la cuenta de servicio no podría hacerla. Las trampas que tenían resueltas —`values.update` no amplía la rejilla; `USER_ENTERED` convierte `'2026-09-17'` en fecha y para las claves hacía falta `RAW`— están en el historial de git con su código.
 
 ## Qué ya salió de las hojas
 
@@ -88,7 +88,6 @@ Cuatro ficheros, y solo uno de verdad:
 | Fichero | Para qué | ¿Se va? |
 |---|---|---|
 | `modules/Ticketera/formulario.js` | **las respuestas del Google Form** de la ticketera de RRHH | no: el formulario *es* Google |
-| ~~`services/boda.js`~~ | la lista de invitados del módulo de la boda (favor aparte del ERP) | se quitó el módulo entero el 01/10/2026; la hoja de invitados sigue en Google, sin tocar |
 | `services/configApp.js` | rescate único de `CONFIG` | sí, ya hecho |
 | ~~`services/conductoresBolt.js`~~ | rescate único de las fechas de alta en BOLT | sí, ya hecho; el fichero se borró el 01/10/2026 |
 | `modules/Ticketera/rescateIT.js` | rescate único de `TICKETS_IT` | sí, ya hecho |

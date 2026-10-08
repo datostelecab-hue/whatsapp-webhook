@@ -26,7 +26,7 @@ Lo que se pide con `include`: `can` (odómetro real), `ignition`, `relays`, `fue
 
 ### Lo que da `unit/list` de verdad (08/10/2026, la flota entera)
 
-Mirado con la clave sobre las **109 unidades** de la cuenta, pidiendo todos los `include` que admite (`io_din`, `fuel`, `fuel_tank`, `can`, `reefer`, `drivers`, `temperature`, `ambienttemp`, `humidity`, `device`, `depot`, `supply_voltage`, `battery_voltage`, `battery_level_percentage`, `relays`, `weights`, `ignition`, `tachograph`, `altitude`, `technical_details`, `trailer_connections`, `ev_values`; `in_objects` solo con una unidad):
+Mirado con un script de análisis (fuera del repo) sobre las **109 unidades** de la cuenta, pidiendo todos los `include` que admite (`io_din`, `fuel`, `fuel_tank`, `can`, `reefer`, `drivers`, `temperature`, `ambienttemp`, `humidity`, `device`, `depot`, `supply_voltage`, `battery_voltage`, `battery_level_percentage`, `relays`, `weights`, `ignition`, `tachograph`, `altitude`, `technical_details`, `trailer_connections`, `ev_values`; `in_objects` solo con una unidad):
 
 - **`can`** en 94: `odom` (94), `engine_rpm_avg` (92), `fuel_total` (38) y `can_fuel` (9).
 - **`fuel` viene en las 109, aunque esté vacío**: `[{ type: 'CAN', value: null }]`. Solo 88 traen litros. Contar el bloque como «tiene combustible» daría la flota entera.
@@ -37,8 +37,6 @@ Mirado con la clave sobre las **109 unidades** de la cuenta, pidiendo todos los 
 - Nada de `tachograph`, `io_din` ni `temperature` en esta flota. Dos unidades tienen la matrícula «-».
 
 El catálogo de órdenes (`unit_commands/get_available`) de **97 unidades** es el mismo: `open_doors`, `close_doors`, `open_trunk`, `hazard_lights`, `open_windows`, `close_windows`. Las otras no tienen ninguna (o dan 1006). Preguntarlo para las 109 tarda unos 4 segundos.
-
-El inventario completo, con un ✓/✗ por función y unidad, es `/operaciones/mapon/flota.xlsx` (ver [[Operaciones]]).
 
 ## Una matrícula, un equipo
 
@@ -152,7 +150,6 @@ Solo la [[Ingesta]] y los trabajos de fondo; ninguna pantalla pregunta a Mapon e
 | zonas (`in_object`) | 15 min | decide si la espera cuenta como área (TE_A1) |
 | alertas | 15 min | velocidad, zonas, alimentación, batería |
 | [[Auditoria de flota]] | 1 vez al día, de madrugada | una llamada `route/list` **por coche** — la tarea más cara con diferencia |
-| Inventario de la flota ([[Operaciones]]) | cuando alguien lo descarga | `unit/list` con `can`, `relays`, `ignition`, `fuel`, `device` y `ev_values`, y `unit_commands/get_available` **por unidad** (de 4 en 4). Solo lectura |
 
 Cada tarea declara además `reintentoMin`: sin eso, una tarea que falla se reintenta en cada latido de 5 minutos, y para la auditoría —144 llamadas por vuelta— sería gastarse la cuota del día en una hora repitiendo el mismo error.
 
