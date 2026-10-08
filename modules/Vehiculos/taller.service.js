@@ -61,10 +61,43 @@ async function informe(formato) {
 
 const FORMATOS_INFORME = Object.keys(FORMATOS);
 
+// ── LAS CITAS DEL TALLER, EN EL ESTADO DE CADA COCHE (08/10/2026) ──────────
+// Camilo: en el estado de la flota tiene que verse la cita puesta para cada
+// coche, con quien debe llevarlo, el día y la hora: «Cita puesta para
+// revisión». Salen de `citas.service` (db/187), con el responsable que dice el
+// planificador. Si las citas fallan, el estado sale igual, sin ellas: un
+// añadido no puede tumbar la pantalla del taller.
+const citas = require('./citas.service');
+
+async function sinTumbar(fn, que) {
+  try { return await fn(); }
+  catch (e) { console.error(`⚠️  [Taller] ${que}: ${e.message}`); return null; }
+}
+
+/**
+ * EL ESTADO DE LA FLOTA: las filas (con el filtro de la pantalla), cada una con
+ * su próxima cita, y las cifras de la cabecera. Las citas se buscan una vez.
+ */
+async function estadoDeLaFlota(filtros) {
+  const porCoche = await sinTumbar(() => citas.proximaPorCoche(), 'citas del estado de la flota');
+  const [filas, resumen] = await Promise.all([
+    repo.cuadro(filtros),
+    // Las cifras, sobre los mismos coches que la tabla (sus sedes) pero sin la
+    // búsqueda ni el estado elegidos.
+    repo.resumen({ conCita: porCoche ? new Set(porCoche.keys()) : null, sedes: (filtros || {}).sedes }),
+  ]);
+  return { filas: filas.map(f => ({ ...f, cita: (porCoche && porCoche.get(String(f.id))) || null })), resumen };
+}
+
+/** La ficha de un coche con sus citas pendientes del taller. */
+async function ficha(id) {
+  const f = await repo.ficha(id);
+  return { ...f, citas: (await sinTumbar(() => citas.deCoche(f.id), 'citas de la ficha')) || [] };
+}
+
 // ── LO QUE EL MÓDULO OFRECE ────────────────────────────────────────────────
 const cuadro = filtros => repo.cuadro(filtros);
 const resumen = () => repo.resumen();
-const ficha = id => repo.ficha(id);
 const registrar = (datos, quien) => repo.registrar(datos, quien);
 const anular = (id, motivo, quien) => repo.anular(id, motivo, quien);
 const anclar = (datos, quien) => repo.anclar(datos, quien);
@@ -73,6 +106,6 @@ const intervalo = datos => repo.intervalo(datos);
 module.exports = {
   // Los catálogos que la pantalla necesita para pintarse.
   INTERVALO: repo.INTERVALO, TIPOS: repo.TIPOS, ESTADOS: repo.ESTADOS,
-  cuadro, resumen, ficha, registrar, anular, anclar, intervalo,
+  cuadro, resumen, estadoDeLaFlota, ficha, registrar, anular, anclar, intervalo,
   informe, FORMATOS_INFORME,
 };

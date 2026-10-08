@@ -78,10 +78,9 @@ router.get('/', async (req, res) => {
   });
 });
 
-router.get('/api/cuadro', responde(async req => ({
-  filas: await taller.cuadro({ busca: req.query.busca, estado: req.query.estado, sedes: await sedesDe(req) }),
-  resumen: await taller.resumen(),
-})));
+// Cada fila con su próxima cita del taller (db/187), y las cifras de arriba.
+router.get('/api/cuadro', responde(async req =>
+  taller.estadoDeLaFlota({ busca: req.query.busca, estado: req.query.estado, sedes: await sedesDe(req) })));
 
 router.get('/api/ficha/:id', responde(async req => ({ ficha: await taller.ficha(req.params.id) })));
 

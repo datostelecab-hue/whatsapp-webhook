@@ -13,7 +13,7 @@ Lo pidió Camilo el 08/10/2026 para usarlo ese mismo día con el Excel real (`MO
 |---|---|
 | Reglas: Excel, responsable, aviso, botones, llamadas | `modules/Vehiculos/citas.service.js` |
 | Datos | `modules/Vehiculos/citas.repo.js` · tablas `taller_cita` y `taller_cita_seguimiento` (db/187) |
-| Pantalla de Mantenimientos | pestaña en `modules/Vehiculos/vistas/taller.ejs` · rutas `/taller/api/citas…` |
+| Pantalla de Mantenimientos | pestaña en `modules/Vehiculos/vistas/taller.ejs` · rutas `/taller/api/citas…` · y en el estado de la flota (`/taller/api/cuadro`, `taller.service.estadoDeLaFlota`) |
 | Pantalla de Control | `modules/Control/vistas/controlCitasTaller.ejs` · rutas `/control/citas-taller` y `/control/api/citas-taller…` |
 | Lo que pintan igual las dos | `public/assets/js/citasTaller.js` |
 | El aviso de dos días antes | cron `0 10-20 * * *` en `app.js` (se apaga con `CITAS_TALLER_AVISOS=off`) |
@@ -51,6 +51,17 @@ En Mantenimientos, cada cita pendiente tiene:
 - **Estado**: hecha, no se presentó o anulada. Anular y «no se presentó» piden el porqué.
 
 La plantilla `cita_taller` lleva dos botones: **«Confirmo»** y **«No puedo ir»**. Lo que pulse llega al webhook como un botón de plantilla. La cita se encuentra por el mensaje al que contesta (`context.id` = el `aviso_wamid`) o, si no, por la próxima pendiente avisada a ese teléfono. Queda en la cita y se le contesta en el momento. Si el botón no es de ninguna cita, el bot sigue como siempre. Con el bot en pausa por la oficina, los botones se atienden igual.
+
+## En el estado de la flota: «Cita puesta para revisión»
+
+Camilo, el mismo 08/10: *«en el estado, necesito ligar también las citas puestas para el vehículo, la persona que debe llevarlo, el día y la hora»*.
+
+En la pestaña **Estado de la flota**, cada coche con una cita pendiente lleva, en la columna «Le queda» y debajo de los km, la etiqueta **«Cita puesta para revisión»**. Debajo van el día y la hora («Mañana a las 12:00», «Mar 13/10 a las 09:00») y quién lo lleva. Si tiene más citas detrás, sale «(+1)».
+
+- Va en ámbar si **nadie lo lleva en ese turno** o si se avisó a otro, y en rojo si **dijo que no puede ir**. Si la confirmó, sale «· confirmada».
+- Las tarjetas de arriba dicen cuántos de los que **tocan** y de los que están **a punto** ya tienen cita: «Pasan del intervalo · 14 con cita puesta».
+- **La ficha del coche** (al pinchar la fila) enseña sus citas pendientes: el responsable con su teléfono y su chat, el aviso y la confirmación. Al final está el enlace «Ver en Citas del taller».
+- Lo arma `taller.service.estadoDeLaFlota` con `citas.service.proximaPorCoche` (la primera pendiente de cada coche, hasta 120 días). El responsable se busca en una sola consulta para todas. **Si las citas fallan, el estado de la flota sale igual, sin ellas.**
 
 ## Control: llamar y apuntar
 

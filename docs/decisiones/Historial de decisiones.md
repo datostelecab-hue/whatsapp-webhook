@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-08 · «Cita puesta para revisión» en el estado de la flota
+
+En Mantenimientos, cada coche con cita del taller pendiente lo dice en su fila, con el día, la hora y quién lo lleva según el planificador. Las tarjetas «Tocan revisión» y «A punto» cuentan cuántos ya tienen cita. Al cruzarlo salió que las tarjetas contaban también los coches de Barcelona y la tabla no (17 frente a 15). Ahora cuentan los mismos coches que la tabla, solo los de Madrid, como el resto de Mantenimientos desde el 24/09. → [[Citas del taller#En el estado de la flota: «Cita puesta para revisión»]]
+
 ## 2026-10-08 · Las citas del taller: el responsable lo dice el planificador, y el aviso sale dos días antes
 
 El taller manda un Excel con las citas de mantenimiento (matrícula, día y hora) y había que usarlo ese mismo día. Se sube en Mantenimientos. **El responsable de cada cita no se guarda**: es quien lleva el coche ese día y a esa hora en `f_cobertura`, la misma regla que el cuadrante. Se pregunta cada vez porque el cuadrante cambia hasta el último momento. Lo que sí se guarda es a quién se avisó, y si después lo lleva otro, la cita lo dice. **El sistema avisa solo dos días antes**, con la plantilla `cita_taller` y sus botones «Confirmo» / «No puedo ir». Lo de mañana y hoy, a mano, como pidió Camilo. Control llama desde `/control/citas-taller`, y la llamada entra en el historial del conductor como «Taller». **Solo se citan coches de Madrid vivos en Vehículos**: el resto se lista con su motivo (el 1888LTJ, de Barcelona, «el sistema debe decir que no está registrado en Madrid o en el sistema»). Una cita es un coche y un día. Si el taller cambia la hora, cambia la misma cita, y si ya se había avisado de la otra hora, toca volver a avisar. → [[Citas del taller]]

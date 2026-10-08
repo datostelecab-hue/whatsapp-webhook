@@ -368,6 +368,40 @@ function proximas({ dias } = {}) {
   return lista({ desde: hoy, hasta: sumarDias(hoy, n) });
 }
 
+// Hasta dónde se mira para decir «Cita puesta para revisión»: lo que manda el
+// taller llega con semanas, no con meses.
+const DIAS_CITA_ESTADO = 120;
+
+/**
+ * LA PRÓXIMA CITA DE CADA COCHE, para el estado de la flota de Mantenimientos
+ * (08/10/2026): la primera pendiente desde hoy, con quien lo lleva ese día.
+ * Map vehiculoId (texto) → cita, con `otras` = cuántas más tiene detrás.
+ * El responsable se busca solo para esas, en una consulta.
+ */
+async function proximaPorCoche() {
+  const hoy = hoyMadrid();
+  const pendientes = (await repo.lista({ desde: hoy, hasta: sumarDias(hoy, DIAS_CITA_ESTADO) }))
+    .filter(c => c.estado === 'pendiente');
+  const primera = new Map();
+  pendientes.forEach(c => {
+    const k = String(c.vehiculo_id);
+    if (primera.has(k)) primera.get(k).otras++;
+    else primera.set(k, { cita: c, otras: 0 });
+  });
+  const conR = await conResponsable([...primera.values()].map(x => x.cita));
+  return new Map(conR.map(c => [String(c.vehiculo_id), { ...c, otras: primera.get(String(c.vehiculo_id)).otras }]));
+}
+
+/** Las citas pendientes de un coche desde hoy, con su responsable: la ficha del taller. */
+async function deCoche(vehiculoId) {
+  const id = Number(vehiculoId);
+  if (!Number.isInteger(id) || id <= 0) return [];
+  const hoy = hoyMadrid();
+  const citas = (await repo.lista({ desde: hoy, hasta: sumarDias(hoy, DIAS_CITA_ESTADO), vehiculoId: id }))
+    .filter(c => c.estado === 'pendiente');
+  return conResponsable(citas);
+}
+
 /** Una cita con todo lo que ha pasado con ella. */
 async function ficha(id) {
   const c = await repo.una(id);
@@ -521,7 +555,7 @@ async function cambiarEstado(id, { estado, nota } = {}, quien = {}) {
 
 module.exports = {
   PLANTILLA, DIAS_ANTES, ESTADOS, CONFIRMACIONES, RESULTADOS_LLAMADA,
-  importar, lista, proximas, ficha, avisar, marcarAvisado, avisarLasDeDentroDeDos,
+  importar, lista, proximas, proximaPorCoche, deCoche, ficha, avisar, marcarAvisado, avisarLasDeDentroDeDos,
   respuestaDelConductor, apuntarLlamada, cambiarEstado,
   // Sueltas para las pruebas.
   leerExcel, fechaDe, horaDe, turnoDeLaCita, motivoIgnorada, fechaLarga, textoAviso, valoresAviso,

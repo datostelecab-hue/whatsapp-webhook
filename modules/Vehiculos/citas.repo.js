@@ -87,7 +87,7 @@ async function guardarImportacion({ nuevas, cambios, fichero }, { usuarioId } = 
  * LAS CITAS entre dos fechas, con a quién se avisó, qué contestó y su última
  * llamada. El responsable de hoy lo añade el servicio con `cobertura`.
  */
-async function lista({ desde, hasta, id } = {}) {
+async function lista({ desde, hasta, id, vehiculoId } = {}) {
   const r = await db.consulta(
     `SELECT c.id, c.vehiculo_id, c.matricula, COALESCE(v.marca_modelo, c.marca) AS vehiculo, c.marca,
             v.sede, (v.baja_at IS NOT NULL) AS de_baja,
@@ -114,7 +114,8 @@ async function lista({ desde, hasta, id } = {}) {
           WHERE s.cita_id = c.id AND s.tipo = 'llamada'
           ORDER BY s.creado_at DESC LIMIT 1) ul ON TRUE
       WHERE ${id ? 'c.id = $1' : 'c.fecha BETWEEN $1::date AND $2::date'}
-      ORDER BY c.fecha, c.hora, c.matricula`, id ? [id] : [desde, hasta]);
+            ${!id && vehiculoId ? 'AND c.vehiculo_id = $3' : ''}
+      ORDER BY c.fecha, c.hora, c.matricula`, id ? [id] : vehiculoId ? [desde, hasta, vehiculoId] : [desde, hasta]);
   return r.rows;
 }
 

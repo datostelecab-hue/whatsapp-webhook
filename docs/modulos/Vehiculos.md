@@ -294,6 +294,8 @@ db/158-estado-de-las-piezas.sql       catálogos, historial y la llave
 
 ## Citas del taller
 
+**En el estado de la flota**, cada coche con cita pendiente lleva «Cita puesta para revisión» con el día, la hora y quién lo lleva. Las tarjetas dicen cuántos de los que tocan o están a punto ya la tienen. Ese mismo día, **las tarjetas pasaron a contar los mismos coches que la tabla** (solo Madrid): antes contaban también Barcelona y decían «17 tocan revisión» con 15 coches debajo.
+
 Desde el 08/10/2026, Mantenimientos tiene una segunda pestaña: **[[Citas del taller]]**. Se sube el Excel de citas del taller, cada una sale con quien lleva el coche ese día según el planificador, el sistema le avisa por WhatsApp dos días antes y Control le llama para confirmarla. Vive aquí (`citas.*`) por lo mismo que la inspección: habla del coche. Usa las llaves de Mantenimientos (`/taller` para mirar, `/taller/apuntar` para subir, avisar y cambiar el estado).
 
 ## Inspección de vehículos

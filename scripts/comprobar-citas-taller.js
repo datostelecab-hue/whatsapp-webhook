@@ -204,6 +204,29 @@ const dia = n => S.sumarDias(hoy, n);
   await lanza('Un estado que no existe', () => S.cambiarEstado('5', { estado: 'perdida' }, {}), 'Estado desconocido');
   igual('Hecha, sin nota', (await S.cambiarEstado('5', { estado: { valor: 'hecha' } }, {})).ok, true);
 
+  // ── «Cita puesta para revisión» en el estado de la flota ───────────────
+  const base = { aviso_conductor_id: null, confirmacion: null, estado: 'pendiente' };
+  repo.lista = async () => [
+    { ...base, id: '1', vehiculo_id: '10', matricula: '5736LGK', fecha: dia(2), hora: '10:00' },
+    { ...base, id: '2', vehiculo_id: '10', matricula: '5736LGK', fecha: dia(9), hora: '11:00' },
+    { ...base, id: '3', vehiculo_id: '12', matricula: '9528MMX', fecha: dia(3), hora: '13:00', estado: 'anulada' },
+  ];
+  repo.cobertura = async () => cob;
+  const pc = await S.proximaPorCoche();
+  igual('Una por coche: la primera pendiente, con las que tiene detrás', [...pc.entries()].map(([k, c]) => [k, c.id, c.otras, c.responsable && c.responsable.nombre]),
+    [['10', '1', 1, 'Pedro Pérez']]);
+  const T = require('../modules/Vehiculos/taller.service');
+  const trepo = require('../modules/Vehiculos/taller.repo');
+  let pedido = null;
+  trepo.cuadro = async () => [{ id: 10, matricula: '5736LGK', estado: 'toca' }, { id: 11, matricula: '0802MJY', estado: 'ok' }];
+  trepo.resumen = async ({ conCita }) => { pedido = conCita ? [...conCita] : null; return { toca: 1 }; };
+  const ef = await T.estadoDeLaFlota({});
+  igual('Cada fila lleva su cita (o null)', ef.filas.map(f => [f.matricula, f.cita ? f.cita.hora : null]), [['5736LGK', '10:00'], ['0802MJY', null]]);
+  igual('El resumen sabe qué coches tienen cita', pedido, ['10']);
+  repo.lista = async () => { throw new Error('relation "taller_cita" does not exist'); };
+  const sinCitas = await T.estadoDeLaFlota({});
+  igual('Si las citas fallan, el estado sale igual, sin ellas', [sinCitas.filas.length, sinCitas.filas[0].cita, pedido], [2, undefined, null]);
+
   console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTodo bien');
   process.exit(fallos ? 1 : 0);
 })().catch(e => { console.error(e.stack || e.message); process.exit(1); });

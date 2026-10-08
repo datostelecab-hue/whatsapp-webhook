@@ -217,11 +217,22 @@ function pintar(f) {
   };
 }
 
-/** Las cifras de la cabecera. Se cuentan sobre TODO, no sobre lo filtrado. */
-async function resumen() {
-  const filas = await cuadro();
+/**
+ * Las cifras de la cabecera. Se cuentan sobre TODO, no sobre lo filtrado.
+ * `conCita` (los id de los coches con cita del taller puesta) da además cuántos
+ * de los que tocan o están a punto ya tienen cita.
+ *
+ * `sedes`, las mismas que la tabla (08/10/2026). Sin ellas las tarjetas
+ * contaban también Barcelona y no cuadraban con la lista, que es solo Madrid:
+ * «17 tocan revisión» arriba y 15 coches debajo.
+ */
+async function resumen({ conCita, sedes } = {}) {
+  const filas = await cuadro({ sedes });
   const cuenta = c => filas.filter(f => f.estado === c).length;
+  const citados = c => (conCita ? filas.filter(f => f.estado === c && conCita.has(String(f.id))).length : null);
   return {
+    tocaConCita: citados('toca'),
+    prontoConCita: citados('pronto'),
     total: filas.length,
     toca: cuenta('toca'),
     pronto: cuenta('pronto'),

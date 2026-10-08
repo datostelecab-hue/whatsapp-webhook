@@ -10,6 +10,7 @@
 //   CitasTaller.aviso(cita, hoy)      si se le avisó, cuándo y cómo, o cuándo se le avisará
 //   CitasTaller.confirmacion(cita)    la pastilla de lo que contestó
 //   CitasTaller.porDia(citas, hoy)    las citas agrupadas por día, con «Hoy», «Mañana»…
+//   CitasTaller.diaCorto(iso)         «Vie 9/10», para una celda de tabla (el estado de la flota)
 //   CitasTaller.verSeguimiento(url)   todo lo que ha pasado con una cita, en un diálogo
 
 (function (global) {
@@ -30,6 +31,13 @@
     const d = fecha(iso);
     const t = `${DIAS[d.getUTCDay()]} ${d.getUTCDate()} de ${MESES[d.getUTCMonth()]}`;
     return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  /** 'Vie 9/10': para una celda de tabla, donde el largo no cabe. */
+  function diaCorto(iso) {
+    const d = fecha(iso);
+    const t = DIAS[d.getUTCDay()].slice(0, 3);
+    return `${t.charAt(0).toUpperCase() + t.slice(1)} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
   }
 
   /** 'Hoy', 'Mañana', 'Pasado mañana' o nada. */
@@ -159,5 +167,5 @@
     }
   }
 
-  global.CitasTaller = { esc, diaLargo, cercania, telefono, responsable, aviso, confirmacion, ultimaLlamada, porDia, verSeguimiento, sumar };
+  global.CitasTaller = { esc, diaLargo, diaCorto, cercania, telefono, responsable, aviso, confirmacion, ultimaLlamada, porDia, verSeguimiento, sumar };
 })(window);
