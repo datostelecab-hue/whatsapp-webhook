@@ -21,6 +21,7 @@ const taller = require('./taller.service');
 const actor = require('../../services/repo/actor');
 const permisos = require('../../services/permisos');
 const facturas = require('./facturas.service');
+const citas = require('./citas.service');
 
 /**
  * Las sedes que ve quien pregunta. Sin la llave '/vehiculos/sedes', solo Madrid
@@ -72,6 +73,8 @@ router.get('/', async (req, res) => {
     estados: taller.ESTADOS,
     intervaloGeneral: taller.INTERVALO,
     puedeApuntar: await puedeApuntar(req),
+    citasEstados: citas.ESTADOS,
+    citasDiasAntes: citas.DIAS_ANTES,
   });
 });
 
@@ -114,5 +117,26 @@ router.post('/api/ancla', responde(exigeApuntar((req, usuarioId) =>
   taller.anclar(req.body, { usuarioId }))));
 
 router.post('/api/intervalo', responde(exigeApuntar(req => taller.intervalo(req.body))));
+
+// ── LAS CITAS DEL TALLER (db/187) ───────────────────────────────────────────
+// Mirarlas es de '/taller'; subir el Excel, avisar y cambiar su estado, de
+// '/taller/apuntar'. Las llamadas para confirmarlas son de Control
+// (/control/citas-taller).
+router.get('/api/citas', responde(req => citas.lista({ desde: req.query.desde, hasta: req.query.hasta })));
+router.get('/api/citas/:id', responde(async req => ({ cita: await citas.ficha(req.params.id) })));
+
+// El Excel viaja en base64 dentro del JSON: esta ruta está en SUBEN_ARCHIVOS de
+// app.js, se salta el parser global de 2 MB y pone el suyo.
+router.post('/api/citas/importar', express.json({ limit: '15mb' }), responde(exigeApuntar((req, usuarioId) =>
+  citas.importar(req.body || {}, { usuarioId }))));
+
+router.post('/api/citas/:id/avisar', responde(exigeApuntar((req, usuarioId) =>
+  citas.avisar(req.params.id, { usuarioId }))));
+
+router.post('/api/citas/:id/avisado', responde(exigeApuntar((req, usuarioId) =>
+  citas.marcarAvisado(req.params.id, req.body || {}, { usuarioId }))));
+
+router.post('/api/citas/:id/estado', responde(exigeApuntar((req, usuarioId) =>
+  citas.cambiarEstado(req.params.id, req.body || {}, { usuarioId }))));
 
 module.exports = router;

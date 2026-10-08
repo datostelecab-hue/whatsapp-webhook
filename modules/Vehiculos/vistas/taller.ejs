@@ -32,6 +32,18 @@
     </div>
   </div>
 
+  <!-- ── Las dos vistas: el estado de la flota y las citas del taller ──── -->
+  <div id="t-pestanas" class="flex flex-wrap items-center gap-2 mb-4">
+    <button data-pestana="flota" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-gauge-high"></i> Estado de la flota
+    </button>
+    <button data-pestana="citas" class="pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition">
+      <i class="fa-solid fa-calendar-check"></i> Citas del taller
+      <span id="ct-cuenta" class="hidden"></span>
+    </button>
+  </div>
+
+  <div id="v-flota">
   <!-- ── Los cuatro estados ───────────────────────────────────────────── -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
     <button data-estado="toca" class="tarjeta-estado bg-telecab-card border-2 border-telecab-red/40 rounded-2xl p-4 text-left">
@@ -110,6 +122,34 @@
     El ritmo se calcula con las fotos diarias del odómetro de los últimos 30 días: un coche recién
     dado de alta todavía no tiene ritmo, y eso no es un cero, es un “no se sabe”.
   </p>
+  </div>
+
+  <!-- ══ LAS CITAS DEL TALLER (db/187) ══════════════════════════════════
+       El Excel del taller (MATRICULA · VEHICULO · CITA TALLER · HORA). Quién
+       lleva cada coche lo dice el planificador; el sistema le avisa por WhatsApp
+       dos días antes y Control le llama para confirmarla. -->
+  <div id="v-citas" class="hidden">
+    <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+      <p class="text-sm text-telecab-muted max-w-3xl">
+        Sube el Excel del taller y cada cita sale con <b>quien lleva el coche ese día</b> según el
+        planificador. <b><%= citasDiasAntes %> días antes</b> el sistema le avisa por WhatsApp (a las 10:00)
+        y Control le llama para que la confirme. Las de mañana y hoy se avisan a mano: copia el
+        mensaje y mándalo desde el chat.
+      </p>
+      <div class="flex flex-wrap items-center gap-2">
+        <div id="ct-tramos" class="flex items-center gap-1 p-1 rounded-xl bg-telecab-card border border-telecab-border"></div>
+        <% if (puedeApuntar) { %>
+        <button id="ct-importar" class="px-3 py-2 rounded-lg bg-telecab-gold text-telecab-dark text-sm font-semibold">
+          <i class="fa-solid fa-file-import mr-1"></i> Importar Excel del taller
+        </button>
+        <% } %>
+      </div>
+    </div>
+    <div id="ct-resumen" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"></div>
+    <div id="ct-lista" class="space-y-5">
+      <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+    </div>
+  </div>
 </div>
 
 <!-- ══ Panel de ficha ═══════════════════════════════════════════════════ -->
@@ -218,6 +258,7 @@
   </div>
 </div>
 
+<script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
 <script>
 (function () {
   const PUEDE = <%- JSON.stringify(!!puedeApuntar) %>;
@@ -529,5 +570,212 @@
   });
 
   cargar().catch(e => alert('No se pudo cargar el taller: ' + e.message));
+
+  // ══════════ LAS CITAS DEL TALLER ══════════
+  const C = window.CitasTaller;
+  const ESTADOS_CITA = <%- JSON.stringify(citasEstados) %>;
+  const DIAS_ANTES = <%- JSON.stringify(citasDiasAntes) %>;
+  const TRAMOS = [
+    { id: 'proximas', texto: 'Próximas' },
+    { id: 'pasadas', texto: 'Últimos 30 días' },
+  ];
+  let tramo = 'proximas', CITAS = null;
+
+  // ── Las pestañas. `#citas` en la dirección abre la de las citas. ──
+  function verPestana(p) {
+    document.querySelectorAll('.pestana').forEach(b => {
+      const on = b.dataset.pestana === p;
+      b.className = 'pestana flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition ' +
+        (on ? 'bg-telecab-gold text-telecab-dark shadow-gold'
+            : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:border-telecab-gold/40 hover:text-telecab-text');
+    });
+    $('#v-flota').classList.toggle('hidden', p !== 'flota');
+    $('#v-citas').classList.toggle('hidden', p !== 'citas');
+    try { history.replaceState(null, '', p === 'citas' ? '#citas' : location.pathname); } catch (_) { /* nada */ }
+  }
+  document.querySelectorAll('.pestana').forEach(b => b.addEventListener('click', () => verPestana(b.dataset.pestana)));
+  verPestana(location.hash === '#citas' ? 'citas' : 'flota');
+
+  async function cargarCitas() {
+    const hoy = CITAS ? CITAS.hoy : new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    const q = tramo === 'pasadas'
+      ? { desde: C.sumar(hoy, -30), hasta: C.sumar(hoy, -1) }
+      : { desde: hoy, hasta: C.sumar(hoy, 60) };
+    CITAS = await api('/taller/api/citas?' + new URLSearchParams(q).toString());
+    pintarCitas();
+  }
+
+  function tarjetaCitas(etq, valor, tono, ayuda) {
+    const t = { red: ['border-telecab-red/40', 'text-telecab-red'], warn: ['border-telecab-warn/40', 'text-telecab-warn'],
+      green: ['border-telecab-green/40', 'text-telecab-green'], muted: ['border-telecab-border', 'text-telecab-text'] }[tono];
+    return `<div class="bg-telecab-card border-2 ${t[0]} rounded-2xl p-4" title="${esc(ayuda || '')}">
+      <p class="text-xs text-telecab-muted uppercase tracking-wide">${esc(etq)}</p>
+      <p class="text-3xl font-bold mt-1 tabular-nums ${t[1]}">${esc(String(valor))}</p></div>`;
+  }
+
+  function pintarCitas() {
+    const r = CITAS.resumen;
+    // El número en la pestaña: las pendientes. En rojo si alguna pide algo ya.
+    const cuenta = $('#ct-cuenta');
+    cuenta.textContent = r.pendientes;
+    cuenta.className = (tramo !== 'proximas' || !r.pendientes ? 'hidden ' : '') +
+      'px-1.5 py-0.5 rounded-md text-[11px] tabular-nums ' + (r.noPueden || r.sinResponsable ? 'bg-telecab-red text-white' : 'bg-telecab-dark/30');
+
+    $('#ct-tramos').innerHTML = TRAMOS.map(t => `<button data-tramo="${t.id}" class="px-3 py-1 rounded-lg text-xs font-semibold ${
+      t.id === tramo ? 'bg-telecab-gold text-telecab-dark' : 'text-telecab-muted hover:text-telecab-text'}">${esc(t.texto)}</button>`).join('');
+    document.querySelectorAll('#ct-tramos [data-tramo]').forEach(b => b.addEventListener('click', () => {
+      tramo = b.dataset.tramo;
+      cargarCitas().catch(e => Dialogo.aviso({ titulo: 'No se pudieron cargar las citas', texto: e.message, tono: 'error' }));
+    }));
+
+    $('#ct-resumen').innerHTML = tramo === 'pasadas' ? '' :
+      tarjetaCitas('Pendientes', r.pendientes, 'muted', 'Citas por hacer desde hoy') +
+      tarjetaCitas(`Próximos ${DIAS_ANTES + 1} días sin avisar`, r.sinAvisar, r.sinAvisar ? 'warn' : 'green', 'Hoy, mañana y pasado mañana: a quién no le ha llegado el aviso') +
+      tarjetaCitas('No pueden ir', r.noPueden, r.noPueden ? 'red' : 'muted', 'Dijeron que no: hay que buscar quién lleva el coche') +
+      tarjetaCitas('Sin conductor', r.sinResponsable, r.sinResponsable ? 'warn' : 'muted', 'A esa hora nadie lleva el coche según el planificador');
+
+    if (!CITAS.citas.length) {
+      $('#ct-lista').innerHTML = `<div class="rounded-2xl border border-telecab-border bg-telecab-card px-4 py-10 text-center text-sm text-telecab-muted">
+        ${tramo === 'pasadas' ? 'No hubo citas en los últimos 30 días.' : 'No hay citas próximas.' + (PUEDE ? ' Sube el Excel del taller con «Importar Excel del taller».' : '')}</div>`;
+      return;
+    }
+    $('#ct-lista').innerHTML = C.porDia(CITAS.citas, CITAS.hoy).map(g => `
+      <section>
+        <h2 class="text-sm font-semibold text-telecab-text mb-2 flex items-center gap-2">
+          ${g.cerca ? `<span class="px-2 py-0.5 rounded-full text-[11px] ${g.cerca === 'Hoy' ? 'bg-telecab-gold text-telecab-dark' : 'bg-telecab-card2 text-telecab-text border border-telecab-border'}">${esc(g.cerca)}</span>` : ''}
+          ${esc(g.titulo)} <span class="text-telecab-muted font-normal">· ${g.citas.length} cita(s)</span>
+        </h2>
+        <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[980px]">
+              <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
+                <tr>
+                  <th class="text-left px-4 py-2 w-16">Hora</th>
+                  <th class="text-left px-3 py-2">Coche</th>
+                  <th class="text-left px-3 py-2">Lo lleva</th>
+                  <th class="text-left px-3 py-2">Aviso</th>
+                  <th class="text-left px-3 py-2">Confirmación</th>
+                  <th class="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-telecab-border">${g.citas.map(filaCita).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>`).join('');
+    document.querySelectorAll('#ct-lista [data-accion]').forEach(b => b.addEventListener('click', () => accionCita(b.dataset.accion, b.dataset.id)));
+  }
+
+  const botonCita = (accion, id, icono, texto, titulo, principal) =>
+    `<button data-accion="${accion}" data-id="${id}" title="${esc(titulo)}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold ${principal
+      ? 'bg-telecab-gold text-telecab-dark' : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text'}">` +
+    `<i class="${icono}${texto ? ' mr-1' : ''}"></i>${esc(texto)}</button>`;
+
+  function filaCita(c) {
+    const pendiente = c.estado === 'pendiente';
+    const atencion = pendiente && (c.confirmacion === 'no_puede' || !c.responsable || c.cambioDeConductor);
+    // Falta avisar: nadie lo hizo, o se avisó a otro y ahora lo lleva este.
+    const falta = pendiente && c.responsable && (!c.aviso_at || c.cambioDeConductor);
+    const acciones = [];
+    if (PUEDE && falta) acciones.push(botonCita('avisar', c.id, 'fa-brands fa-whatsapp', 'Avisar', 'Mandarle ahora el aviso con la plantilla de la cita', true));
+    if (pendiente && c.responsable) acciones.push(botonCita('copiar', c.id, 'fa-regular fa-copy', 'Copiar', 'Copiar el mensaje para mandarlo a mano desde el chat', false));
+    if (PUEDE && falta) acciones.push(botonCita('avisado', c.id, 'fa-solid fa-check', 'Avisado', 'Ya se le avisó a mano: apuntarlo', false));
+    if (PUEDE) acciones.push(botonCita('estado', c.id, 'fa-solid fa-flag', 'Estado', 'Hecha, no se presentó o anulada', false));
+    acciones.push(botonCita('seguimiento', c.id, 'fa-solid fa-clock-rotate-left', '', 'Todo lo que ha pasado con esta cita', false));
+    return `<tr class="${atencion ? 'bg-telecab-red/5' : ''} ${pendiente ? '' : 'opacity-70'} align-top">
+      <td class="px-4 py-3 font-semibold tabular-nums text-telecab-text">${esc(c.hora)}</td>
+      <td class="px-3 py-3"><span class="font-mono font-semibold text-telecab-text">${esc(c.matricula)}</span>
+        <div class="text-[11px] text-telecab-muted">${esc(c.vehiculo || '')}</div></td>
+      <td class="px-3 py-3">${C.responsable(c)}</td>
+      <td class="px-3 py-3 text-xs">${C.aviso(c, CITAS.hoy, DIAS_ANTES)}</td>
+      <td class="px-3 py-3">${C.confirmacion(c)}${c.ultima_llamada ? `<div class="mt-1">${C.ultimaLlamada(c)}</div>` : ''}</td>
+      <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-1">${acciones.join('')}</div></td>
+    </tr>`;
+  }
+
+  const postCita = (url, cuerpo) => api(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo || {}),
+  });
+
+  async function accionCita(accion, id) {
+    const c = CITAS.citas.find(x => String(x.id) === String(id));
+    if (!c) return;
+    try {
+      if (accion === 'seguimiento') return C.verSeguimiento('/taller/api/citas/' + c.id);
+      if (accion === 'copiar') {
+        await navigator.clipboard.writeText(c.mensaje);
+        return Dialogo.hecho('Mensaje copiado: pégalo en su chat');
+      }
+      if (accion === 'avisar') {
+        const ok = await Dialogo.confirmar({ titulo: 'Avisar por WhatsApp',
+          texto: `Se le manda a ${c.responsable.nombre} el aviso de la cita del ${c.matricula} (${C.diaLargo(c.fecha).toLowerCase()} a las ${c.hora}), con los botones «Confirmo» y «No puedo ir».`,
+          si: 'Mandar el aviso', no: 'Cancelar' });
+        if (!ok) return;
+        const r = await postCita(`/taller/api/citas/${c.id}/avisar`);
+        if (!r.ok) { await Dialogo.aviso({ titulo: 'No salió el aviso', texto: r.error, tono: 'error' }); return cargarCitas(); }
+        Dialogo.hecho('Aviso mandado a ' + r.conductor);
+      } else if (accion === 'avisado') {
+        const v = await Dialogo.formulario(`Avisado a mano · ${c.matricula}`, [
+          { id: 'nota', etiqueta: 'Cómo', tipo: 'texto-largo', marcador: 'Por el chat, por teléfono…' },
+        ], { textoBoton: 'Apuntar el aviso', nota: `Queda apuntado que se avisó a ${c.responsable.nombre}, con tu nombre y la hora.` });
+        if (!v) return;
+        await postCita(`/taller/api/citas/${c.id}/avisado`, { conductorId: c.responsable.conductorId, nota: v.nota });
+        Dialogo.hecho('Aviso apuntado');
+      } else if (accion === 'estado') {
+        const v = await Dialogo.formulario(`Estado · ${c.matricula}, ${C.diaLargo(c.fecha).toLowerCase()}`, [
+          { id: 'estado', etiqueta: 'Estado', tipo: 'lista', obligatorio: true, valor: c.estado,
+            opciones: ESTADOS_CITA.map(e => ({ valor: e.codigo, texto: e.etiqueta })) },
+          { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', marcador: 'Obligatoria si se anula o no se presentó' },
+        ], { textoBoton: 'Guardar' });
+        if (!v) return;
+        await postCita(`/taller/api/citas/${c.id}/estado`, { estado: v.estado, nota: v.nota });
+        Dialogo.hecho('Estado guardado');
+      }
+      await cargarCitas();
+    } catch (e) {
+      Dialogo.aviso({ titulo: 'No se pudo', texto: e.message, tono: 'error' });
+    }
+  }
+
+  // ── IMPORTAR EL EXCEL DEL TALLER ──
+  // Sin preguntar nada antes: el Excel trae todo lo que hace falta. El informe
+  // dice qué entró, qué cambió de hora y qué matrículas no se citan y por qué.
+  function importarCitas() {
+    const entrada = document.createElement('input');
+    entrada.type = 'file';
+    entrada.accept = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    entrada.onchange = async () => {
+      const f = entrada.files && entrada.files[0];
+      if (!f) return;
+      const base64 = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
+      try {
+        const r = await postCita('/taller/api/citas/importar', { base64, nombre: f.name });
+        const lista_ = xs => `<ul class="text-sm list-disc pl-5 mt-1">${xs.map(x => `<li>${x}</li>`).join('')}</ul>`;
+        await Dialogo.aviso({
+          titulo: 'Citas importadas', tono: 'ok', ancho: 'max-w-xl',
+          html: `<p class="text-sm">${r.filas} fila(s) leídas de «${esc(r.hoja)}»: <b>${r.nuevas}</b> cita(s) nueva(s), ${r.cambiadas.length} con otra hora, ${r.iguales} igual(es).</p>
+            ${r.ignoradas.length ? `<p class="text-sm mt-3 font-semibold">No se citan (${r.ignoradas.length})</p>
+              ${lista_(r.ignoradas.map(x => `<span class="font-mono">${esc(x.matricula)}</span> — ${esc(x.motivo)}${x.citas > 1 ? ` (${x.citas} citas)` : ''}`))}
+              <p class="text-xs text-telecab-muted mt-1">Aquí solo entran los coches de Madrid dados de alta en Vehículos.</p>` : ''}
+            ${r.cambiadas.length ? `<p class="text-sm mt-3 font-semibold">Cambian de hora</p>${lista_(r.cambiadas.map(esc))}` : ''}
+            ${r.noVienen.length ? `<p class="text-sm mt-3 font-semibold">Estaban y no vienen en este Excel</p>${lista_(r.noVienen.map(esc))}
+              <p class="text-xs text-telecab-muted mt-1">No se anulan solas: si el taller las ha quitado, anúlalas con «Estado».</p>` : ''}
+            ${r.pasadas ? `<p class="text-sm mt-3 text-telecab-muted">${r.pasadas} cita(s) de días que ya pasaron: no se importan.</p>` : ''}
+            ${(r.avisos || []).length ? `<p class="text-sm mt-3 font-semibold">Avisos</p>${lista_(r.avisos.map(esc))}` : ''}`,
+        });
+        tramo = 'proximas';
+        await cargarCitas();
+      } catch (e) {
+        await Dialogo.aviso({ titulo: 'No se ha importado nada', tono: 'error', ancho: 'max-w-xl',
+          // El servidor junta el titular y las filas malas con « · »: se separan.
+          html: (([cab, ...filas]) => `<p class="text-sm">${esc(cab)}</p>${filas.length
+            ? `<ul class="text-sm list-disc pl-5 mt-2 max-h-72 overflow-y-auto">${filas.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`)(e.message.split(' · ')) });
+      }
+    };
+    entrada.click();
+  }
+  if ($('#ct-importar')) $('#ct-importar').addEventListener('click', importarCitas);
+
+  cargarCitas().catch(e => { $('#ct-lista').innerHTML = `<p class="px-4 py-10 text-center text-sm text-telecab-red">No se pudieron cargar las citas: ${esc(e.message)}</p>`; });
 })();
 </script>

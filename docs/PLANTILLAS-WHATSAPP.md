@@ -24,6 +24,47 @@ node scripts/crear-plantillas-whatsapp.js --ver
 | `detalle_turnos` | 1 posicional (nombre) | Aviso de turnos, con botón "Ver mis turnos" |
 | `advertencia_limite` | 2 posicionales (nombre, matrícula) | Sanciones por exceso de velocidad |
 
+## La que falta — LA CITA DEL TALLER (08/10/2026)
+
+`cita_taller`: el aviso al **conductor** dos días antes de una cita del taller,
+a quien lleva el coche ese día según el planificador → [[Citas del taller]].
+Lleva **dos botones de respuesta rápida**, y lo que pulse queda en la cita.
+
+Para mandarla a revisión, en la consola de Render (donde está `WHATSAPP_TOKEN`),
+después de desplegar:
+
+```bash
+node scripts/crear-plantillas-whatsapp.js --go cita_taller
+```
+
+O a mano en WhatsApp Manager, copiando esto tal cual:
+
+| Campo | Valor |
+|---|---|
+| Nombre | `cita_taller` |
+| Categoría | Utilidad (UTILITY) |
+| Idioma | Español (`es`) |
+| Encabezado (texto) | `Cita en el taller` |
+| Pie | `Telecab · Taller` |
+| Botones | Respuesta rápida: `Confirmo` · `No puedo ir` |
+
+Cuerpo:
+
+```
+Hola {{1}}, el coche {{2}} tiene cita en el taller el {{3}} a las {{4}}, y ese día lo llevas tú.
+
+Llévalo a esa hora, por favor. Si no puedes, pulsa «No puedo ir» y te llamamos.
+```
+
+Ejemplos: `{{1}}` Andrés · `{{2}}` 1194LCK · `{{3}}` viernes 10 de octubre · `{{4}}` 10:00.
+
+- `{{1}}` es su nombre de pila; sin nombre, «compañero».
+- Los botones **no se renombran a la ligera**: el webhook los reconoce por cómo
+  empiezan («Confirm…» y «No puedo…», `citas.service.botonDeCita`).
+- El nombre se puede cambiar sin tocar código con `PLANTILLA_CITA_TALLER`.
+- El texto es el mismo que se copia con «Copiar» para mandarlo a mano
+  (`citas.service.textoAviso`). `scripts/comprobar-citas-taller.js` falla si se separan.
+
 ## Las que faltan — ALERTAS DE CONTROL
 
 Sin estas, el módulo `/alertas` detecta pero no avisa: a día de hoy hay **338

@@ -356,6 +356,13 @@ No son de los seis, pero forman parte de la misma red:
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día
   00→24, noche 12→12, «No salió», sin plaza, otro coche, fuera de su turno, el Excel).
+- **`comprobar-citas-taller.js`** (08/10/2026) — las [[Citas del taller]] sin base ni
+  Meta: cómo se lee el Excel (fechas y horas de Excel o escritas, la fila mala con su
+  número), qué no se cita y por qué (Barcelona, fuera del sistema, de baja), el turno
+  que tiene el coche a esa hora, que el mensaje para copiar sea la plantilla rellena,
+  la importación (nuevas, otra hora, iguales, pasadas, las que ya no vienen), el aviso,
+  los botones «Confirmo» / «No puedo ir», las llamadas de Control y dónde las clasifica
+  el Call Center.
 
 ---
 

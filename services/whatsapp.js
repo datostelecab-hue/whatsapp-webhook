@@ -45,6 +45,7 @@ async function apuntar(to, payload, r, { origen = 'bot', usuarioId = null, texto
 function origenDePlantilla(plantilla) {
   if (plantilla === PLANTILLA_TURNOS) return 'turnos';
   if (plantilla === 'advertencia_limite') return 'velocidad';
+  if (plantilla === 'cita_taller') return 'taller';
   return 'plantilla';
 }
 

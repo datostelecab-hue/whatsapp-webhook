@@ -292,6 +292,10 @@ public/assets/vendor/three-coche.min.js  el paquete de three.js (r186)
 db/158-estado-de-las-piezas.sql       catálogos, historial y la llave
 ```
 
+## Citas del taller
+
+Desde el 08/10/2026, Mantenimientos tiene una segunda pestaña: **[[Citas del taller]]**. Se sube el Excel de citas del taller, cada una sale con quien lleva el coche ese día según el planificador, el sistema le avisa por WhatsApp dos días antes y Control le llama para confirmarla. Vive aquí (`citas.*`) por lo mismo que la inspección: habla del coche. Usa las llaves de Mantenimientos (`/taller` para mirar, `/taller/apuntar` para subir, avisar y cambiar el estado).
+
 ## Inspección de vehículos
 
 Desde el 24/09/2026 el taller tiene un submódulo más: **[[Inspeccion de vehiculos]]** (`/inspecciones`), la última inspección de cada coche con su historial y el importador del Excel del taller. Vive en este módulo (`inspeccion.*`) porque habla del mismo objeto —el coche—, con su propia llave de permisos.

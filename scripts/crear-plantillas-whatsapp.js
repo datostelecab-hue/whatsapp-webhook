@@ -4,6 +4,7 @@
 //   node scripts/crear-plantillas-whatsapp.js --ver     qué hay y qué se mandaría
 //   node scripts/crear-plantillas-whatsapp.js --go      las manda a revisión
 //   node scripts/crear-plantillas-whatsapp.js --go alerta_control    solo una
+//   node scripts/crear-plantillas-whatsapp.js --go cita_taller       la de la cita del taller
 //
 // Teclear una plantilla en el formulario de Meta es donde se cometen los errores
 // que luego cuestan un rechazo y otra espera: una variable pegada a otra, un
@@ -22,10 +23,14 @@ const VERSION = 'v25.0';
 const IDIOMA = 'es';
 
 // ── LAS PLANTILLAS ──────────────────────────────────────────────────────────
-// Las cuatro comparten las MISMAS cuatro variables y en el mismo orden, que es
-// el que arma `mandar()` en services/repo/alertasControl.js:
+// Las cuatro de ALERTAS comparten las MISMAS cuatro variables y en el mismo
+// orden, que es el que arma `mandar()` en services/repo/alertasControl.js:
 //   {{1}} conductor · {{2}} teléfono · {{3}} horas de jornada · {{4}} el hecho
 // Así se puede cambiar de la genérica a la de cada tipo sin tocar los parámetros.
+//
+// Cada plantilla puede traer su propio `pie` (si no, el de las alertas) y
+// `botones` de respuesta rápida: lo que pulse el conductor llega al webhook
+// como un botón (routes/botPuertas.js → handleTemplateButton).
 const PIE = 'Telecab · Alertas de control';
 
 const PLANTILLAS = [
@@ -83,6 +88,22 @@ const PLANTILLAS = [
       'Llámale para saber quién lo lleva y anótalo en el panel.',
     ejemplos: ['Dylan Hernández García', '+34 600 11 22 33', '9 h 05 min', '24,6 km (franja 20:00-01:00)'],
   },
+  {
+    // LA CITA DEL TALLER (db/187). Va al CONDUCTOR, no a Control: dos días antes
+    // de la cita, a quien lleva el coche ese día según el planificador. El texto
+    // es el mismo que arma `citas.service.textoAviso` (lo que se copia para
+    // mandarlo a mano), y lo comprueba scripts/comprobar-citas-taller.js.
+    //   {{1}} su nombre de pila · {{2}} matrícula · {{3}} «viernes 10 de octubre» · {{4}} «10:00»
+    name: 'cita_taller',
+    para: 'Aviso al conductor dos días antes de una cita del taller. Botones «Confirmo» y «No puedo ir».',
+    header: 'Cita en el taller',
+    body:
+      'Hola {{1}}, el coche {{2}} tiene cita en el taller el {{3}} a las {{4}}, y ese día lo llevas tú.\n\n' +
+      'Llévalo a esa hora, por favor. Si no puedes, pulsa «No puedo ir» y te llamamos.',
+    ejemplos: ['Andrés', '1194LCK', 'viernes 10 de octubre', '10:00'],
+    pie: 'Telecab · Taller',
+    botones: ['Confirmo', 'No puedo ir'],
+  },
 ];
 
 // ── LAS REGLAS DE META, COMPROBADAS AQUÍ ────────────────────────────────────
@@ -100,7 +121,12 @@ function revisar(p) {
   vars.forEach((n, i) => { if (n !== i + 1) fallos.push(`las variables no van seguidas desde 1 (aparece {{${n}}} en la posición ${i + 1})`); });
   if (vars.length !== p.ejemplos.length) fallos.push(`hay ${vars.length} variable(s) y ${p.ejemplos.length} ejemplo(s)`);
   if (p.ejemplos.some(e => !String(e).trim())) fallos.push('algún ejemplo está vacío');
-  if (PIE.length > 60) fallos.push(`el pie pasa de 60 caracteres (${PIE.length})`);
+  const pie = p.pie || PIE;
+  if (pie.length > 60) fallos.push(`el pie pasa de 60 caracteres (${pie.length})`);
+  const botones = p.botones || [];
+  if (botones.length > 3) fallos.push(`más de 3 botones de respuesta rápida (${botones.length})`);
+  botones.forEach(b => { if (!String(b).trim() || String(b).length > 25) fallos.push(`el botón «${b}» tiene que tener entre 1 y 25 caracteres`); });
+  if (new Set(botones).size !== botones.length) fallos.push('hay dos botones con el mismo texto');
   if (p.header && p.header.length > 60) fallos.push(`el encabezado pasa de 60 caracteres (${p.header.length})`);
   if (/\{\{/.test(p.header || '')) fallos.push('el encabezado lleva variables (aquí no las queremos)');
   return fallos;
@@ -111,7 +137,9 @@ function componentes(p) {
   return [
     { type: 'HEADER', format: 'TEXT', text: p.header },
     { type: 'BODY', text: p.body, example: { body_text: [p.ejemplos] } },
-    { type: 'FOOTER', text: PIE },
+    { type: 'FOOTER', text: p.pie || PIE },
+    ...((p.botones || []).length
+      ? [{ type: 'BUTTONS', buttons: p.botones.map(text => ({ type: 'QUICK_REPLY', text })) }] : []),
   ];
 }
 

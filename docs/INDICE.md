@@ -61,6 +61,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Usuarios y permisos]]** — Las cuentas del ERP: alta, roles, permisos, contraseñas y entrada al sistema.
 - **[[WhatsApp chat]]** — /whatsapp: lo que el bot manda a los conductores y lo que escriben ellos, guardado, con sus fotos, audios y documentos; escribirles gratis con la ventana de 24 h abierta o con una plantilla (de pago) fuera de ella; respuestas rápidas, quién lleva cada conversación y sus llamadas del Call Center en la misma línea.
 - **[[Vehiculos]]** — El maestro de coches —alta, ficha, estados, zonas, plazas y el enlace con Mapon—, el mantenimiento por kilómetros y las facturas de taller.
+- **[[Citas del taller]]** — El Excel de citas del taller, en Mantenimientos: cada cita con quien lleva el coche ese día según el planificador, el aviso por WhatsApp dos días antes (con «Confirmo» / «No puedo ir») y la llamada de Control para confirmarla (/control/citas-taller). Solo coches de Madrid.
 - **[[Inspeccion de vehiculos]]** — Primer submódulo de taller: la última inspección de cada coche (16 elementos, ITV, pegatinas VTC, resultado), su historial y el importador del Excel del taller.
 
 ## Las integraciones — lo que viene de fuera

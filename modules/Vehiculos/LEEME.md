@@ -18,7 +18,10 @@ taller.service.js         LA PUERTA del mantenimiento
 taller.repo.js            su SQL
 taller.excel.js           el informe en Excel
 taller.pdf.js             el mismo, para imprimir
-vistas/taller.ejs         la pantalla (/taller)
+vistas/taller.ejs         la pantalla (/taller), con la pestaña de las citas
+citas.service.js          LA PUERTA de las citas del taller (Excel, responsable,
+                          aviso de WhatsApp, botones, llamadas de Control)
+citas.repo.js             su SQL (taller_cita, db/187)
 
 facturas.controller.js    idem para /facturas
 facturas.service.js       LA PUERTA de las facturas de taller

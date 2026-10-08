@@ -73,7 +73,9 @@ router.post('/', async (req, res) => {
       // Botón de una PLANTILLA (quick reply) → llega como type:button con button.text/payload.
       const label = (message.button?.payload || message.button?.text || '').trim();
       console.log(`Botón plantilla: "${label}" de ${from}`);
-      await handleTemplateButton(from, label);
+      // `context.id` es el mensaje al que contesta: con él se sabe de qué cita
+      // del taller es el «Confirmo» sin adivinarlo por el teléfono.
+      await handleTemplateButton(from, label, message.context?.id || null);
     } else {
       const text = message.text?.body?.trim() || '';
       console.log(`Texto: "${text}" de ${from}`);
@@ -328,7 +330,17 @@ async function enviarTurnos(phone, nombreSesion) {
 }
 
 // Botón de una PLANTILLA (quick reply).
-async function handleTemplateButton(phone, label) {
+async function handleTemplateButton(phone, label, contextoId = null) {
+  // LA CITA DEL TALLER (db/187): «Confirmo» o «No puedo ir» del aviso de dos
+  // días antes. Queda en la cita y se le contesta. Si no hay cita para ese
+  // botón, sigue como cualquier otro.
+  try {
+    const cita = await require('../modules/Vehiculos/citas.service')
+      .respuestaDelConductor({ telefono: phone, etiqueta: label, wamid: contextoId });
+    if (cita) { await sendText(phone, cita.texto); return; }
+  } catch (e) {
+    console.error('❌ [Citas taller] respuesta del conductor:', e.message);
+  }
   const l = (label || '').toUpperCase();
   // Se acepta cualquier etiqueta razonable del botón ("Ver mis turnos", "Ver detalle",
   // "Ver horario"…) para no depender del texto exacto con el que se aprobó la plantilla.

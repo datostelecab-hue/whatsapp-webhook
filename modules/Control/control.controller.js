@@ -8,6 +8,7 @@
 //   /control/campanas     las tres pasadas de llamadas de la mañana
 //   /control/historico    lo que pasó un día y lo que se hizo con ello
 //   /control/km           km conectado vs desconectado
+//   /control/citas-taller las citas del taller: quién lleva el coche y si la confirmó
 //   /control/reportes     solo descargables
 //
 // El "Tablero clásico" (leía las horas de la hoja Datos_API) se RETIRÓ: manda el
@@ -24,6 +25,7 @@ const express = require('express');
 const router = express.Router();
 const control = require('./control.service');
 const cochesLibres = require('./cochesLibres.service');
+const citasTaller = require('../Vehiculos/citas.service');
 const actor = require('../../services/repo/actor');   // quién firma (id por email si la cookie es vieja)
 
 /** Envoltorio: recoge el error y lo devuelve legible, sin repetirlo veinte veces. */
@@ -86,6 +88,15 @@ router.get('/coches', (req, res) => {
   });
 });
 
+// LAS CITAS DEL TALLER (db/187): las sube Mantenimientos desde el Excel del
+// taller; aquí se llama a quien lleva el coche para que la confirme.
+router.get('/citas-taller', (req, res) => {
+  res.render('controlCitasTaller', {
+    titulo: 'Control · Citas del taller', seccion: 'control', layout: 'layout-gestion',
+    resultados: citasTaller.RESULTADOS_LLAMADA.map(({ valor, texto }) => ({ valor, texto })),
+  });
+});
+
 router.get('/km', (req, res) => {
   res.render('kmTraza', { titulo: 'Control · KM y traza', seccion: 'control', layout: 'layout-gestion' });
 });
@@ -122,6 +133,9 @@ router.get('/api/historial-llamadas/:conductorId', responde(req =>
 
 router.get('/api/coches', responde(req => cochesLibres.delDia(req.query.dia)));
 
+router.get('/api/citas-taller', responde(req => citasTaller.proximas({ dias: req.query.dias })));
+router.get('/api/citas-taller/:id', responde(async req => ({ cita: await citasTaller.ficha(req.params.id) })));
+
 router.get('/api/km-traza', responde(req => control.kmTraza(req.query.dia, req.query.turno)));
 
 // Ej: /control/api/km-diagnostico?dia=2026-09-01&mats=9521MMX,6663LCY&mapon=1
@@ -144,6 +158,11 @@ router.post('/api/llamada', responde(async req =>
 
 router.post('/api/justificar-directo', responde(async req =>
   control.justificarEnDirecto(req.body || {}, req.usuario, await actor.idDe(req)), 400));
+
+// Una llamada para confirmar una cita del taller: queda en la cita y en su
+// historial de llamadas (tipo «Taller»).
+router.post('/api/citas-taller/:id/llamada', responde(async req =>
+  citasTaller.apuntarLlamada(req.params.id, req.body || {}, { usuarioId: (req.usuario || {}).id || await actor.idDe(req) }), 400));
 
 // «No saldrá» (motivo + comentario) y «Traza por Slack» (canal): db/170.
 router.post('/api/no-saldra', responde(async req =>

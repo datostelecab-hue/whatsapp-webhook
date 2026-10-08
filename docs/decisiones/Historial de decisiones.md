@@ -1,11 +1,15 @@
 ---
 tags: [decision, historia]
-actualizado: 2026-10-06
+actualizado: 2026-10-08
 ---
 
 # Historial de decisiones
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
+
+## 2026-10-08 · Las citas del taller: el responsable lo dice el planificador, y el aviso sale dos días antes
+
+El taller manda un Excel con las citas de mantenimiento (matrícula, día y hora) y había que usarlo ese mismo día. Se sube en Mantenimientos. **El responsable de cada cita no se guarda**: es quien lleva el coche ese día y a esa hora en `f_cobertura`, la misma regla que el cuadrante. Se pregunta cada vez porque el cuadrante cambia hasta el último momento. Lo que sí se guarda es a quién se avisó, y si después lo lleva otro, la cita lo dice. **El sistema avisa solo dos días antes**, con la plantilla `cita_taller` y sus botones «Confirmo» / «No puedo ir». Lo de mañana y hoy, a mano, como pidió Camilo. Control llama desde `/control/citas-taller`, y la llamada entra en el historial del conductor como «Taller». **Solo se citan coches de Madrid vivos en Vehículos**: el resto se lista con su motivo (el 1888LTJ, de Barcelona, «el sistema debe decir que no está registrado en Madrid o en el sistema»). Una cita es un coche y un día. Si el taller cambia la hora, cambia la misma cita, y si ya se había avisado de la otra hora, toca volver a avisar. → [[Citas del taller]]
 
 ## 2026-10-07 · Barcelona: las horas semanales de cada conductor
 

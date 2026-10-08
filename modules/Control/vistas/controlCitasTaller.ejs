@@ -1,0 +1,186 @@
+<%- include('partials/control-nav', { sub: 'citas' }) %>
+
+<div class="max-w-[1400px] mx-auto px-4 lg:px-6 pb-10">
+
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4 mt-4">
+    <div>
+      <h1 class="text-2xl font-bold text-telecab-text flex items-center gap-2">
+        <i class="fa-solid fa-screwdriver-wrench text-telecab-gold"></i> Citas del taller
+      </h1>
+      <p class="text-sm text-telecab-muted mt-1 max-w-3xl">
+        Quién lleva cada coche el día de su cita, según el planificador. Llámale para que la
+        confirme y apunta lo que te diga: queda en la cita, la ve Mantenimientos y entra en su
+        historial de llamadas. Dos días antes el sistema le avisa por WhatsApp, y si pulsa
+        «Confirmo» o «No puedo ir» sale aquí solo.
+      </p>
+    </div>
+    <button id="c-recargar" class="px-3 py-2 rounded-lg bg-telecab-card border border-telecab-border text-sm text-telecab-muted hover:text-telecab-text">
+      <i class="fa-solid fa-rotate mr-1"></i> Recargar
+    </button>
+  </div>
+
+  <div id="c-resumen" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4"></div>
+
+  <div id="c-tramos" class="flex flex-wrap items-center gap-2 mb-4"></div>
+
+  <div id="c-lista" class="space-y-5">
+    <p class="px-4 py-10 text-center text-sm text-telecab-muted">Cargando…</p>
+  </div>
+</div>
+
+<script src="<%= typeof est === 'function' ? est('/assets/js/citasTaller.js') : '/assets/js/citasTaller.js' %>"></script>
+<script>
+(function () {
+  const RESULTADOS = <%- JSON.stringify(resultados) %>;
+  const C = window.CitasTaller;
+  const esc = C.esc;
+  const $ = s => document.querySelector(s);
+
+  // Los tramos: lo que hay que llamar ya, y lo que viene.
+  const TRAMOS = [
+    { id: 'tres', texto: 'Hoy y los dos próximos días', dias: 2 },
+    { id: 'semana', texto: 'Próximos 7 días', dias: 6 },
+    { id: 'todas', texto: 'Todas las pendientes', dias: 45 },
+  ];
+  let tramo = 'tres', DATOS = null;
+  try { tramo = localStorage.getItem('citasTaller.tramo') || 'tres'; } catch (_) { /* nada */ }
+
+  async function api(url, opciones) {
+    const r = await fetch(url, opciones);
+    const j = await r.json().catch(() => ({ status: 'error', msg: 'respuesta ilegible' }));
+    if (j.status !== 'ok') throw new Error(j.msg || 'Error');
+    return j;
+  }
+
+  async function cargar() {
+    const t = TRAMOS.find(x => x.id === tramo) || TRAMOS[0];
+    DATOS = await api('/control/api/citas-taller?' + new URLSearchParams({ dias: t.dias }).toString());
+    pintar();
+  }
+
+  function tarjeta(etq, valor, tono, ayuda) {
+    const T = { red: 'border-telecab-red/40 text-telecab-red', warn: 'border-telecab-warn/40 text-telecab-warn',
+      green: 'border-telecab-green/40 text-telecab-green', muted: 'border-telecab-border text-telecab-text' }[tono];
+    return `<div class="rounded-2xl border bg-telecab-card p-4 ${T.split(' ')[0]}" title="${esc(ayuda || '')}">
+      <div class="text-[11px] uppercase tracking-wide text-telecab-muted">${esc(etq)}</div>
+      <div class="text-2xl font-bold tabular-nums ${T.split(' ')[1]}">${esc(String(valor))}</div>
+    </div>`;
+  }
+
+  function pintar() {
+    const pend = DATOS.citas.filter(c => c.estado === 'pendiente');
+    const r = {
+      citas: pend.length,
+      sinConfirmar: pend.filter(c => c.confirmacion !== 'confirmada').length,
+      noPueden: pend.filter(c => c.confirmacion === 'no_puede').length,
+      sinResp: pend.filter(c => !c.responsable || c.cambioDeConductor).length,
+    };
+    $('#c-resumen').innerHTML =
+      tarjeta('Citas', r.citas, 'muted', 'Pendientes en el tramo elegido') +
+      tarjeta('Sin confirmar', r.sinConfirmar, r.sinConfirmar ? 'warn' : 'green', 'Hay que llamarles') +
+      tarjeta('No pueden ir', r.noPueden, r.noPueden ? 'red' : 'muted', 'Dijeron que no: hay que buscar quién lo lleva') +
+      tarjeta('Sin conductor claro', r.sinResp, r.sinResp ? 'warn' : 'muted', 'Nadie en ese turno, o se avisó a uno y ahora lo lleva otro');
+
+    $('#c-tramos').innerHTML = TRAMOS.map(t => `<button data-tramo="${t.id}" class="px-3.5 py-1.5 rounded-xl text-sm font-semibold transition ${
+      t.id === tramo ? 'bg-telecab-gold text-telecab-dark' : 'bg-telecab-card border border-telecab-border text-telecab-muted hover:text-telecab-text'}">${esc(t.texto)}</button>`).join('');
+    document.querySelectorAll('#c-tramos [data-tramo]').forEach(b => b.addEventListener('click', () => {
+      tramo = b.dataset.tramo;
+      try { localStorage.setItem('citasTaller.tramo', tramo); } catch (_) { /* nada */ }
+      cargar().catch(e => Dialogo.aviso({ titulo: 'No se pudo cargar', texto: e.message, tono: 'error' }));
+    }));
+
+    if (!pend.length) {
+      $('#c-lista').innerHTML = `<div class="rounded-2xl border border-telecab-border bg-telecab-card px-4 py-10 text-center text-sm text-telecab-muted">
+        No hay citas pendientes en estos días. Las sube Mantenimientos desde el Excel del taller.</div>`;
+      return;
+    }
+    $('#c-lista').innerHTML = C.porDia(pend, DATOS.hoy).map(g => `
+      <section>
+        <h2 class="text-sm font-semibold text-telecab-text mb-2 flex items-center gap-2">
+          ${g.cerca ? `<span class="px-2 py-0.5 rounded-full text-[11px] ${g.cerca === 'Hoy' ? 'bg-telecab-gold text-telecab-dark' : 'bg-telecab-card2 text-telecab-text border border-telecab-border'}">${esc(g.cerca)}</span>` : ''}
+          ${esc(g.titulo)} <span class="text-telecab-muted font-normal">· ${g.citas.length} cita(s)</span>
+        </h2>
+        <div class="bg-telecab-card border border-telecab-border rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[920px]">
+              <thead class="bg-telecab-card2 text-telecab-muted text-[11px] uppercase tracking-wide">
+                <tr>
+                  <th class="text-left px-4 py-2 w-20">Hora</th>
+                  <th class="text-left px-3 py-2">Coche</th>
+                  <th class="text-left px-3 py-2">Lo lleva</th>
+                  <th class="text-left px-3 py-2">Aviso</th>
+                  <th class="text-left px-3 py-2">Confirmación</th>
+                  <th class="text-left px-3 py-2">Última llamada</th>
+                  <th class="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-telecab-border">${g.citas.map(fila).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>`).join('');
+
+    document.querySelectorAll('#c-lista [data-llamar]').forEach(b => b.addEventListener('click', () => llamar(b.dataset.llamar)));
+    document.querySelectorAll('#c-lista [data-seguimiento]').forEach(b => b.addEventListener('click', () =>
+      C.verSeguimiento('/control/api/citas-taller/' + b.dataset.seguimiento)));
+  }
+
+  function fila(c) {
+    const atencion = c.confirmacion === 'no_puede' || !c.responsable || c.cambioDeConductor;
+    return `<tr class="${atencion ? 'bg-telecab-red/5' : ''} align-top">
+      <td class="px-4 py-3 font-semibold tabular-nums text-telecab-text">${esc(c.hora)}</td>
+      <td class="px-3 py-3"><span class="font-mono font-semibold text-telecab-text">${esc(c.matricula)}</span>
+        <div class="text-[11px] text-telecab-muted">${esc(c.vehiculo || '')}</div></td>
+      <td class="px-3 py-3">${C.responsable(c)}</td>
+      <td class="px-3 py-3 text-xs">${C.aviso(c, DATOS.hoy)}</td>
+      <td class="px-3 py-3">${C.confirmacion(c)}</td>
+      <td class="px-3 py-3">${C.ultimaLlamada(c)}</td>
+      <td class="px-4 py-3 text-right whitespace-nowrap">
+        <button data-llamar="${c.id}" class="px-3 py-1.5 rounded-lg bg-telecab-gold text-telecab-dark text-xs font-semibold"${c.responsable || (c.otros || []).length ? '' : ' disabled title="Nadie lo lleva ese día"'}>
+          <i class="fa-solid fa-phone mr-1"></i> Apuntar llamada</button>
+        <button data-seguimiento="${c.id}" class="ml-1 px-2.5 py-1.5 rounded-lg bg-telecab-card border border-telecab-border text-xs text-telecab-muted hover:text-telecab-text" title="Todo lo que ha pasado con esta cita">
+          <i class="fa-solid fa-clock-rotate-left"></i></button>
+      </td>
+    </tr>`;
+  }
+
+  /** APUNTAR UNA LLAMADA: a quién, qué dijo y una nota. */
+  async function llamar(id) {
+    const c = DATOS.citas.find(x => String(x.id) === String(id));
+    if (!c) return;
+    const gente = [c.responsable, ...(c.otros || [])].filter(Boolean);
+    const vistos = new Set();
+    const opcionesGente = gente.filter(p => !vistos.has(p.conductorId) && vistos.add(p.conductorId))
+      .map(p => ({ valor: p.conductorId, texto: `${p.nombre} · ${p.turno === 'noche' ? 'noche' : 'día'}${p.telefono ? ' · ' + C.telefono(p.telefono) : ''}` }));
+    // Si el servidor dice que falta algo (el porqué de «No puede ir»), se vuelve
+    // a abrir con lo que ya estaba escrito: no se pierde la llamada.
+    let previo = { conductorId: opcionesGente[0] ? opcionesGente[0].valor : '', resultado: '', nota: '' };
+    for (;;) {
+      const v = await Dialogo.formulario(`Llamada · ${c.matricula}, ${C.diaLargo(c.fecha).toLowerCase()} a las ${c.hora}`, [
+        { id: 'conductorId', etiqueta: 'A quién has llamado', tipo: 'lista', obligatorio: true,
+          opciones: opcionesGente, valor: previo.conductorId },
+        { id: 'resultado', etiqueta: 'Qué ha dicho', tipo: 'lista', obligatorio: true, valor: previo.resultado,
+          opciones: RESULTADOS.map(r => ({ valor: r.valor, texto: r.texto })) },
+        { id: 'nota', etiqueta: 'Nota', tipo: 'texto-largo', valor: previo.nota, marcador: 'Si no puede ir, por qué; si lo lleva otro, quién.' },
+      ], { textoBoton: 'Apuntar la llamada',
+           nota: c.responsable && c.responsable.telefono ? `Llámale al ${C.telefono(c.responsable.telefono)}.` : '' });
+      if (!v) return;
+      previo = v;
+      try {
+        await api(`/control/api/citas-taller/${c.id}/llamada`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conductorId: v.conductorId, resultado: v.resultado, nota: v.nota }),
+        });
+        Dialogo.hecho('Llamada apuntada');
+        return cargar();
+      } catch (e) {
+        await Dialogo.aviso({ titulo: 'Falta algo', texto: e.message, tono: 'aviso' });
+      }
+    }
+  }
+
+  $('#c-recargar').addEventListener('click', () => cargar().catch(e => Dialogo.aviso({ titulo: 'No se pudo cargar', texto: e.message, tono: 'error' })));
+  cargar().catch(e => { $('#c-lista').innerHTML = `<p class="px-4 py-10 text-center text-sm text-telecab-red">No se pudieron cargar las citas: ${esc(e.message)}</p>`; });
+  setInterval(() => { if (!document.hidden) cargar().catch(() => {}); }, 60000);
+})();
+</script>

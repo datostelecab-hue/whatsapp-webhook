@@ -48,6 +48,8 @@ El detalle completo, con los textos exactos y las reglas de Meta, está en [[PLA
 | `detalle_turnos` | 1 posicional | aviso de turnos, con botón "Ver mis turnos" |
 | `advertencia_limite` | 2 posicionales (nombre, matrícula) | sanciones por exceso de velocidad |
 
+**Pendiente de aprobación — la cita del taller (08/10/2026):** `cita_taller`, 4 posicionales (nombre de pila, matrícula, «viernes 10 de octubre», «10:00»), con los botones de respuesta rápida «Confirmo» y «No puedo ir». Va al conductor dos días antes de la cita → [[Citas del taller]]. Lo que pulsa entra por el webhook como botón de plantilla y `handleTemplateButton` lo apunta en la cita antes de mirar si es el de los turnos.
+
 **Pendientes de aprobación — las alertas de [[Control]]:** `alerta_control` (la genérica, sirve para los tres tipos porque el hecho concreto viaja en `{{4}}`) y las tres por tipo: `alerta_rechazo_directo`, `alerta_sin_respuesta`, `alerta_km_parado`. Sin ellas el módulo detecta pero no avisa: había **338 alertas en `sin_destinatarios` desde el 11/09**.
 
 Las cuatro llevan **las mismas cuatro variables posicionales en el mismo orden**: nombre en BOLT, teléfono, horas efectivas de su jornada (05:00 → ahora) y el hecho concreto. Es deliberado: cambiar de la genérica a una por tipo no toca cómo se arman los parámetros. Y si la propia aún no está aprobada, el aviso **no se pierde**: sale por la genérica con su frase larga.
@@ -178,5 +180,6 @@ Hasta el 07/10 lo que escribían los conductores solo se veía en el log del ser
 | `services/fichajeBot.js` | la conversación del conductor (su turno) y la de los viajes de la empresa |
 | `routes/botPuertas.js` | el panel de puertas de la oficina (por `services/whatsapp` desde el 07/10/2026) |
 | `modules/WhatsApp/whatsapp.service.js` | lo que escribe la oficina desde el chat: texto con la ventana de 24 h abierta, plantillas (de pago) con ella cerrada |
+| `modules/Vehiculos/citas.service.js` | el aviso de la cita del taller (`cita_taller`, origen «taller» en el chat): solo dos días antes, o con el botón «Avisar» de Mantenimientos → [[Citas del taller]] |
 
 Ninguno de ellos llama a [[BOLT]] ni a [[Mapon]] para decidir: lo que necesitan ya está en PostgreSQL, puesto por la [[Ingesta]]. Lo único que sale fuera es el WhatsApp, que es el trabajo.

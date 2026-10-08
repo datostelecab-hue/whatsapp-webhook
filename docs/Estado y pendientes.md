@@ -1,6 +1,6 @@
 ---
 tags: [estado, pendientes]
-actualizado: 2026-10-05
+actualizado: 2026-10-08
 ---
 
 # Estado y pendientes
@@ -14,6 +14,14 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **Recaudación y cuentas fantasma.** Si alguien cobró en efectivo con una cuenta prestada, la deuda sigue colgada de la cuenta, no de la persona. Es dinero: lo decide Ricardo.
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
+
+## Las citas del taller (08/10/2026)
+
+- **Aplicar `db/187`** desde [[Migraciones]] después de desplegar. Sin ella, la pestaña de citas y la pantalla de Control dan error al cargar.
+- **Mandar a revisión la plantilla `cita_taller`**: `node scripts/crear-plantillas-whatsapp.js --go cita_taller` en la consola de Render, o a mano en WhatsApp Manager con el texto de [[PLANTILLAS-WHATSAPP]]. Hasta que Meta la apruebe, el aviso de dos días antes falla y queda apuntado en la cita («No salió…»). Se avisa a mano con «Copiar» y el chat.
+- **Las de mañana (09/10) se avisan a mano**: 5736LGK (Andrés José Garrido), 0802MJY (Daniel Heredia) y 9528MMX (Alejandro Rivera), según el planificador del 08/10.
+- **Tres matrículas del Excel no se citan**: 1888LTJ y 0970LJJ (de Barcelona) y 7750KYT (no está en Vehículos). Camilo lo está mirando.
+- **6 de las 37 citas caen en un turno de día sin nadie** en el planificador: que las coloque Tráfico.
 
 ## El planificador por bases (05/10/2026)
 

@@ -48,7 +48,7 @@ const jsonGlobal = express.json({ limit: '2mb' });
 // de su router. Tienen que saltarse este parser: si corre antes, rechaza la
 // peticion por tamano y el limite de dentro no llega a aplicarse nunca.
 const SUBEN_ARCHIVOS = ['/documentos', '/soporte', '/plantilla/api/documento', '/facturas/api/pdf',
-  '/inspecciones/api/importar'];
+  '/inspecciones/api/importar', '/taller/api/citas/importar'];
 app.use((req, res, next) => {
   if (SUBEN_ARCHIVOS.some(p => req.path.startsWith(p))) return next();
   return jsonGlobal(req, res, next);
@@ -798,6 +798,29 @@ programar('0 5 * * *', async () => {
   console.log('⏰ [CRON Auditoría] lanzando la tarea de ingesta...');
   await require('./services/ingesta').ejecutar('auditoria_flota', { forzar: true });
 }, { timezone: 'Europe/Madrid' });
+
+// CITAS DEL TALLER (db/187): DOS DÍAS ANTES se avisa por WhatsApp a quien lleva
+// el coche ese día según el planificador, con la plantilla de la cita. Empieza a
+// las 10:00 y, si a alguno no le sale (sin teléfono, nadie en el turno, Meta
+// dice que no), lo reintenta cada hora hasta las 20:00. Lo de mañana y lo de hoy
+// NO lo manda solo: se avisa a mano desde Mantenimientos o el chat.
+//
+// Se apaga con CITAS_TALLER_AVISOS=off sin tocar código.
+if (process.env.CITAS_TALLER_AVISOS !== 'off') {
+  programar('0 10-20 * * *', async () => {
+    try {
+      const bd = require('./services/db');
+      if (!bd.HAY_BD) return;
+      const r = await require('./modules/Vehiculos/citas.service').avisarLasDeDentroDeDos();
+      if (r.avisadas || r.fallos.length) {
+        console.log(`🔧 [CRON Citas taller] ${r.fecha}: ${r.avisadas} avisada(s)` +
+          (r.fallos.length ? ` · sin avisar ${r.fallos.length}: ${r.fallos.slice(0, 5).join(' · ')}` : ''));
+      }
+    } catch (error) {
+      console.error(`❌ [CRON Citas taller] ${error.message}`);
+    }
+  }, { timezone: 'Europe/Madrid' });
+}
 
 // SANCIONES DE VELOCIDAD: cada 15 min (con desfase) busca excesos en Mapon, resuelve el
 // conductor y registra/avisa. APAGADO por defecto: se activa con SANCIONES_CRON=on cuando

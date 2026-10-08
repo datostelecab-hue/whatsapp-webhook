@@ -329,6 +329,13 @@ const DESDE_CONTROL = {
     'Golpe o siniestro': ['Vehículo', 'Siniestro', 'Siniestro / accidente'],
     'Sin luz de puerta / mampara / taxímetro':
       ['Vehículo', 'Equipamiento', 'Equipamiento del coche (luz, mampara, taxímetro)'],
+    // Las llamadas para confirmar una CITA DEL TALLER (db/187). No salen del
+    // telefonito sino de /control/citas-taller (`citas.service.RESULTADOS_LLAMADA`).
+    'Cita de taller: confirma': ['Vehículo', 'Taller y revisiones', 'Limpieza, ITV o revisión programada'],
+    'Cita de taller: no puede ir': ['Vehículo', 'Taller y revisiones', 'Limpieza, ITV o revisión programada'],
+    'Cita de taller: no contesta': ['Vehículo', 'Taller y revisiones', 'Limpieza, ITV o revisión programada'],
+    'Cita de taller: buzón de voz': ['Vehículo', 'Taller y revisiones', 'Limpieza, ITV o revisión programada'],
+    'Cita de taller: ya no lleva el coche': ['Vehículo', 'Taller y revisiones', 'Limpieza, ITV o revisión programada'],
   },
 
   rrhh: {
