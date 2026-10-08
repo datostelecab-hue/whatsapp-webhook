@@ -69,6 +69,17 @@ Con un solo campo habría que elegir entre saber que un coche está en Barcelona
 
 > ⚠️ En `modules/Vehiculos/facturas.repo.js` el filtro de sedes es **obligatorio** —se niega a listar sin él— y en `vehiculos.repo.js` y `taller.repo.js` es **opcional**. No es una incoherencia: por esos dos también entran el cron de Mapon y el planificador, y **a un coche de Barcelona hay que seguir apuntándole los kilómetros aunque Óscar no lo vea**. Quien filtra es la pantalla.
 
+## El estado del coche vive en dos sitios, y van juntos
+
+`vehiculo.estado_operativo` dice **el estado de ahora**, y es el que leen el planificador, la cobertura, el mapa y Mantenimientos. `vehiculo_estado_hist` dice **desde cuándo y hasta cuándo**, y es el «Historial de estado» de la ficha. Con la zona pasa igual: `base_zona_id` y `vehiculo_base_hist`.
+
+**Quien cambia uno cambia el otro**, siempre por `services/repo/vigencia` (`reemplazar('estadoVehiculo', …)`). Lo hacen la ficha de Vehículos (`vehiculos.repo.actualizar`) y, desde el 08/10/2026, el desplegable de estado y la zona del planificador (`planificador.repo.guardar`).
+
+> [!bug] El 0715MMZ «En taller» con el historial en «Operativo» (08/10/2026)
+> El planificador cambiaba solo la columna. Su ficha decía «En taller» arriba y, en el historial, «Operativo desde el 10/09, hasta ahora». Había **20 coches** así: 10 de Madrid en taller, el 4799LBG en Policía con el historial en Siniestro, el 9001LWJ en Operativo con el historial en Reservado, y 8 de Barcelona en «Baja» (como los dejó db/76) con el historial en Operativo o Transporte.
+>
+> **db/188** los cuadra. Manda el estado del coche, y su vigencia empieza **el día en que se aplica**: no se sabe desde cuándo estaba cada uno así, porque esa fecha no quedó en ningún sitio. `scripts/comprobar-estado-coche.js` ensaya el planificador y falla si algún fichero escribe `estado_operativo` sin abrir su historial.
+
 ## La ficha del coche
 
 `GET /vehiculos/api/ficha/:id` devuelve, además de los datos propios (matrícula, marca y modelo, año, matriculación, ITV, aseguradora y vencimiento del seguro, notas):

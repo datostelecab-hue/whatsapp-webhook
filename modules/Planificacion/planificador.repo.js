@@ -20,6 +20,8 @@
 // que significa un correturnos, se cambia en un sitio.
 
 const db = require('../../services/db');
+// El estado y la zona del coche se cambian con historial, como en Vehículos.
+const vig = require('../../services/repo/vigencia');
 
 // Lunes = 1, como ISODOW. El tablero pinta de lunes a domingo.
 const DIAS = 7;
@@ -1964,6 +1966,10 @@ async function guardar(cambios = [], { dia, usuarioId } = {}) {
       const tocaCoche = c.zona !== undefined || c.estadoVeh !== undefined || c.matricula !== undefined;
       if (c.vehiculoId && tocaCoche) {
         const sets = [], vals = [];
+        // Lo que tiene ahora, para abrir historial solo si de verdad cambia.
+        const actual = (await cli.query(
+          'SELECT estado_operativo, base_zona_id FROM vehiculo WHERE id = $1', [c.vehiculoId])).rows[0];
+        if (!actual) throw new Error('Ese coche ya no existe: recarga el tablero');
 
         // LA ZONA VIAJA COMO TEXTO y la columna es una clave ajena.
         //
@@ -1981,9 +1987,28 @@ async function guardar(cambios = [], { dia, usuarioId } = {}) {
             zonaId = z.rows[0].id;
           }
           vals.push(zonaId); sets.push(`base_zona_id = $${vals.length}`);
+          // Y su historial, como en la ficha de Vehículos (vehiculos.repo.actualizar).
+          if (String(zonaId || '') !== String(actual.base_zona_id || '')) {
+            if (zonaId) {
+              await vig.reemplazar('baseVehiculo', c.vehiculoId,
+                { base_zona_id: zonaId, usuario_id: usuarioId || null }, { desde: hoy(), cli });
+            } else {
+              await vig.cerrar('baseVehiculo', c.vehiculoId, hoy(), { cli });
+            }
+          }
         }
 
-        if (c.estadoVeh !== undefined) { vals.push(c.estadoVeh); sets.push(`estado_operativo = $${vals.length}`); }
+        // EL ESTADO DEL COCHE, CON SU HISTORIAL (08/10/2026). Antes se escribía
+        // solo la columna: el coche decía «En taller» y su historial seguía en
+        // «Operativo» desde septiembre (el 0715MMZ y 19 más). La ficha de
+        // Vehículos enseña ese historial, y en él no quedaba ni cuándo ni quién.
+        if (c.estadoVeh !== undefined) {
+          vals.push(c.estadoVeh); sets.push(`estado_operativo = $${vals.length}`);
+          if (c.estadoVeh !== actual.estado_operativo) {
+            await vig.reemplazar('estadoVehiculo', c.vehiculoId,
+              { estado_codigo: c.estadoVeh, usuario_id: usuarioId || null }, { desde: hoy(), cli });
+          }
+        }
 
         // Cambiar la matrícula RENOMBRA el coche, no mueve a nadie: la gente
         // cuelga de sus plazas y las plazas del vehículo. Para mover a la

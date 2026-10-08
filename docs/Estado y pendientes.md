@@ -15,6 +15,10 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## El historial de estado de los coches (08/10/2026)
+
+- **Aplicar `db/188`** desde [[Migraciones]] después de desplegar: cuadra el historial de estado de los 20 coches que el planificador dejó descuadrados (el 0715MMZ entre ellos). Su estado actual vale desde el día en que se aplique: la fecha real del cambio no se guardó.
+
 ## Las citas del taller (08/10/2026)
 
 - **Aplicar `db/187`** desde [[Migraciones]] después de desplegar. Sin ella, la pestaña de citas y la pantalla de Control dan error al cargar.
