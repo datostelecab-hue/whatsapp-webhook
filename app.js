@@ -194,6 +194,19 @@ const authRoutes = require('./modules/Usuarios/auth.controller');
 const usuariosRoutes = require('./modules/Usuarios/usuarios.controller');
 const sesion = require('./services/sesion');
 
+// ── EL DOMINIO DECIDE QUÉ APLICACIÓN SE VE (09/10/2026) ─────────────────────
+// Por el dominio de los conductores (DOMINIO_CONDUCTORES) solo existe su portal:
+// lo atiende entero y lo demás da 404, sin llegar nunca a la sesión de la
+// oficina, al webhook ni a ninguna ruta del ERP. Va antes que todo eso a
+// propósito. Por cualquier otro dominio, el ERP de siempre; y si DOMINIO_GESTION
+// está puesta, quien abra el ERP por otra dirección se va a la suya (solo
+// navegando: el webhook y las API siguen donde estaban). services/dominios.js
+app.use(require('./modules/PortalConductor/portal.controller').porDominio);
+app.use((req, res, next) => {
+  const a = require('./services/dominios').redireccionAGestion(req);
+  return a ? res.redirect(302, a) : next();
+});
+
 // Carga la sesión (si hay cookie) en req.usuario / res.locals para todas las peticiones.
 app.use(sesion.cargarSesion);
 

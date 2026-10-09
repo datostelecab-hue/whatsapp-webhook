@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#070912">
+  <title>Telecab · <%= typeof titulo !== 'undefined' && titulo ? titulo : 'Conductores' %></title>
+  <%
+    // EL PORTAL DEL CONDUCTOR (09/10/2026). Lo abren los conductores desde el
+    // móvil, por su propio dominio: va pensado para una pantalla de teléfono y
+    // con la misma cara que el acceso de la oficina (la foto de Madrid, el oro
+    // de la casa, IBM Plex Sans), pero en una sola columna y sin nada del ERP.
+    const _est = p => (typeof est === 'function' ? est(p) : p);
+  %>
+  <link rel="icon" type="image/png" href="<%= _est('/assets/logo-sinfondo-256.png') %>">
+  <link rel="apple-touch-icon" href="<%= _est('/assets/logo-sinfondo-256.png') %>">
+  <link rel="stylesheet" href="<%= _est('/assets/css/telecab.css') %>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script>
+    tailwind.config = { theme: { extend: {
+      fontFamily: { sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
+    } } };
+  </script>
+  <style>
+    html, body { min-height: 100%; }
+    body { background: #070912; color: #F4F5F8; -webkit-tap-highlight-color: transparent; }
+    ::selection { background: rgb(var(--tc-gold) / .4); color: #fff; }
+
+    /* La foto de Madrid de noche, la misma del acceso de la oficina, con un velo
+       para que el blanco se lea encima. En el móvil va la versión ligera. */
+    .portal { position: relative; isolation: isolate; min-height: 100svh; display: flex; flex-direction: column;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    .portal::before { content: ''; position: fixed; inset: 0; z-index: -2;
+      background: #070912 url('<%= _est('/assets/acceso/madrid-1280.webp') %>') center 60% / cover no-repeat; }
+    @media (min-width: 900px) { .portal::before { background-image: url('<%= _est('/assets/acceso/madrid.webp') %>'); } }
+    .portal::after { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background: linear-gradient(180deg, rgb(5 7 16 / .55) 0%, rgb(5 7 16 / .62) 40%, rgb(5 7 16 / .86) 100%); }
+
+    .cabecera { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+      width: 100%; max-width: 28rem; margin: 0 auto; padding: 1.25rem 1rem 0; }
+    .cabecera .marca { display: flex; align-items: center; gap: .55rem; }
+    .cabecera .tc-marca-pin path { fill: rgb(var(--tc-gold)); }
+    .cabecera .tc-marca-via { stroke: rgb(255 255 255 / .85); }
+    .cabecera .tc-marca-carril { stroke: rgb(255 255 255 / .5); }
+    .cabecera .tc-marca-sombra { fill: rgb(255 255 255 / .2); }
+    .cabecera b { font-size: 1.15rem; font-weight: 600; letter-spacing: -.02em; }
+    .cabecera b span { color: rgb(var(--tc-gold)); }
+
+    .cuerpo { flex: 1; width: 100%; max-width: 28rem; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
+
+    .etiqueta { display: block; font-size: .85rem; font-weight: 500; color: rgb(255 255 255 / .92); margin-bottom: .35rem; }
+    .grupo { margin-bottom: 1rem; position: relative; }
+    /* 16 px de letra: con menos, el iPhone hace zoom al tocar el campo. */
+    .entrada { width: 100%; height: 3rem; padding: 0 .9rem; font-size: 16px; color: #12141B; caret-color: #12141B;
+      background: #fff; border: 1px solid transparent; border-radius: 8px; outline: none;
+      transition: box-shadow .15s ease, border-color .15s ease; }
+    .entrada::placeholder { color: #8A90A0; }
+    .entrada:focus { border-color: rgb(var(--tc-gold)); box-shadow: 0 0 0 3px rgb(var(--tc-gold) / .45); }
+    .entrada:-webkit-autofill, .entrada:-webkit-autofill:hover, .entrada:-webkit-autofill:focus {
+      -webkit-text-fill-color: #12141B; -webkit-box-shadow: 0 0 0 40px #fff inset; transition: background-color 9999s ease 0s; }
+    .con-ojo .entrada { padding-right: 3rem; }
+    .ojo { position: absolute; right: .25rem; bottom: .25rem; height: 2.5rem; width: 2.5rem; border: 0; border-radius: 6px;
+      background: none; color: #5D6375; cursor: pointer; }
+    .ojo:focus-visible { outline: 2px solid rgb(var(--tc-gold)); }
+
+    .casilla { display: flex; align-items: center; gap: .6rem; font-size: .9rem; color: rgb(255 255 255 / .9); cursor: pointer; min-height: 2.75rem; }
+    .casilla input { width: 1.15rem; height: 1.15rem; accent-color: rgb(var(--tc-gold)); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; width: 100%; height: 3rem;
+      border: 0; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;
+      color: rgb(var(--tc-on-gold)); background: rgb(var(--tc-gold)); transition: background-color .15s ease, transform .12s ease; }
+    .btn:active { transform: scale(.98); }
+    .btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+    .btn[disabled] { opacity: .7; cursor: progress; }
+    @media (hover: hover) and (pointer: fine) { .btn:hover { background: rgb(var(--tc-gold-soft)); } }
+    .btn-sec { color: #fff; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .28); }
+    @media (hover: hover) and (pointer: fine) { .btn-sec:hover { background: rgb(255 255 255 / .14); } }
+
+    .aviso { display: flex; align-items: flex-start; gap: .6rem; margin-bottom: 1rem; padding: .7rem .85rem; border-radius: 8px;
+      font-size: .9rem; line-height: 1.4; }
+    .aviso.error { background: rgb(190 30 45 / .32); border: 1px solid rgb(255 120 120 / .6); color: #FFE1E1; }
+
+    .tarjeta { background: rgb(12 14 24 / .72); border: 1px solid rgb(255 255 255 / .14); border-radius: 12px; padding: 1.1rem 1.15rem; }
+    .dato { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem 0; border-top: 1px solid rgb(255 255 255 / .1); font-size: .95rem; }
+    .dato:first-of-type { border-top: 0; }
+    .dato span { color: rgb(255 255 255 / .65); }
+    .dato b { font-weight: 500; text-align: right; }
+
+    .nota { margin-top: 1.5rem; text-align: center; font-size: .8rem; line-height: 1.5; color: rgb(255 255 255 / .62); }
+
+    @keyframes aparece { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .entra { animation: aparece .6s cubic-bezier(.23, 1, .32, 1) .1s both; }
+    @media (prefers-reduced-motion: reduce) { .entra { animation: none; } .entrada, .btn { transition: none; } }
+  </style>
+</head>
+<body class="font-sans">
+  <div class="portal">
+    <header class="cabecera">
+      <span class="marca">
+        <%- include('../../../views/partials/marca', { tam: 'w-8 h-8' }) %>
+        <b>tele<span>cab</span></b>
+      </span>
+      <% if (typeof c !== 'undefined' && c) { %>
+        <form method="POST" action="/salir">
+          <button type="submit" class="text-sm text-white/80 hover:text-white px-2 py-2">
+            <i class="fa-solid fa-arrow-right-from-bracket mr-1" aria-hidden="true"></i>Salir
+          </button>
+        </form>
+      <% } %>
+    </header>
+    <main class="cuerpo entra">
+      <%- body %>
+    </main>
+  </div>
+</body>
+</html>

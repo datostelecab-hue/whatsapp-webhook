@@ -15,6 +15,13 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## El portal del conductor (09/10/2026)
+
+- **Aplicar `db/189`** (el registro de accesos). Sin ella se entra igual, pero los intentos no quedan apuntados.
+- **Los dominios**: el de los conductores y el de la oficina, dados de alta en Render (Custom Domains) con su DNS, y las variables `DOMINIO_CONDUCTORES` y `DOMINIO_GESTION`. Sin ellas, el portal no se ve por ningún sitio y el ERP sigue igual.
+- **17 conductores en activo sin DNI/NIE en su ficha** no podrán entrar hasta que RRHH lo ponga.
+- **Siguiente**: qué información básica ve cada uno (turnos, horas…), y un segundo paso de acceso antes de enseñar nada sensible.
+
 ## El historial de estado de los coches (08/10/2026)
 
 - **Aplicar `db/188`** desde [[Migraciones]] después de desplegar: cuadra el historial de estado de los 20 coches que el planificador dejó descuadrados (el 0715MMZ entre ellos). Su estado actual vale desde el día en que se aplique: la fecha real del cambio no se guardó.

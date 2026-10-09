@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-09 · El portal del conductor: su dominio, su teléfono y su DNI
+
+Los conductores van a poder entrar a ver su información básica, por un dominio solo para ellos. Por ese dominio no existe nada del ERP, y la oficina tendrá el suyo. Es la misma aplicación, y el dominio de la petición decide qué se ve (`DOMINIO_CONDUCTORES`, `DOMINIO_GESTION`); sin ellos puestos, todo sigue como estaba. Se entra con el teléfono y el DNI/NIE, como pidió Camilo. Como un DNI no es un secreto, el portal solo enseña lo suyo y no deja cambiar nada. Además, su sesión es otra cookie con otra clave, ocho fallos frenan quince minutos y cada intento queda apuntado (db/189). Antes de enseñar algo sensible hará falta un segundo paso. Primera parte: entrar y salir. → [[Portal del conductor]]
+
 ## 2026-10-09 · Lo que no cabe en una casilla se dice antes de guardar
 
 Mercedes vio en Selección el error de PostgreSQL en inglés, sin saber qué casilla era: una pieza de la dirección (número, escalera, piso, puerta o código postal) admite 10 caracteres. No se amplían las columnas, porque `direccion` es una columna calculada con ellas. Lo que se hace es comprobar el largo antes de guardar, con el nombre de la casilla y lo que cabe, y poner el tope en el formulario para que no deje escribir más. → [[Conductores#Lo que cabe en cada casilla (09/10/2026)]]

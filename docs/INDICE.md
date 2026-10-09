@@ -59,6 +59,7 @@ Dos documentos anteriores al vault, que siguen siendo la referencia buena y los 
 - **[[Seleccion]]** — Cómo entra alguien a trabajar en Telecab: se abre el hueco, se busca a quien lo llene y se le lleva hasta el alta.
 - **[[Ticketera]]** — Lo que pide la gente y qué se hace con ello.
 - **[[Usuarios y permisos]]** — Las cuentas del ERP: alta, roles, permisos, contraseñas y entrada al sistema.
+- **[[Portal del conductor]]** — Lo que ven los conductores, por SU dominio: entran con su teléfono y su DNI/NIE y ven lo suyo. Por ese dominio no existe nada del ERP. Primera parte (09/10): entrar y salir.
 - **[[WhatsApp chat]]** — /whatsapp: lo que el bot manda a los conductores y lo que escriben ellos, guardado, con sus fotos, audios y documentos; escribirles gratis con la ventana de 24 h abierta o con una plantilla (de pago) fuera de ella; respuestas rápidas, quién lleva cada conversación y sus llamadas del Call Center en la misma línea.
 - **[[Vehiculos]]** — El maestro de coches —alta, ficha, estados, zonas, plazas y el enlace con Mapon—, el mantenimiento por kilómetros y las facturas de taller.
 - **[[Citas del taller]]** — El Excel de citas del taller, en Mantenimientos: cada cita con quien lleva el coche ese día según el planificador, el aviso por WhatsApp dos días antes (con «Confirmo» / «No puedo ir») y la llamada de Control para confirmarla (/control/citas-taller). Solo coches de Madrid.

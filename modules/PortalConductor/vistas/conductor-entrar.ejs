@@ -1,0 +1,56 @@
+<form method="POST" action="/entrar" id="f-entrar" novalidate>
+  <h1 class="text-[1.9rem] font-semibold tracking-tight leading-tight mb-1">Entra en Telecab</h1>
+  <p class="text-white/75 mb-6">Con tu teléfono y tu DNI o NIE.</p>
+
+  <% if (error) { %>
+    <div role="alert" class="aviso error">
+      <i class="fa-solid fa-circle-exclamation mt-0.5" aria-hidden="true"></i><span><%= error %></span>
+    </div>
+  <% } %>
+
+  <div class="grupo">
+    <label class="etiqueta" for="telefono">Teléfono</label>
+    <input class="entrada" id="telefono" name="telefono" type="tel" inputmode="tel" autocomplete="tel-national"
+           required <%= telefono ? '' : 'autofocus' %> value="<%= telefono %>" placeholder="600 12 34 56" maxlength="20">
+  </div>
+
+  <div class="grupo con-ojo">
+    <label class="etiqueta" for="documento">DNI o NIE</label>
+    <input class="entrada" id="documento" name="documento" type="password" autocomplete="current-password"
+           autocapitalize="characters" spellcheck="false" required <%= telefono ? 'autofocus' : '' %>
+           placeholder="12345678A" maxlength="20">
+    <button type="button" class="ojo" id="ver-doc" aria-label="Mostrar el documento" title="Mostrar el documento">
+      <i class="fa-solid fa-eye" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <label class="casilla mb-4">
+    <input name="recordar" type="checkbox" value="si" <%= recordar ? 'checked' : '' %>>
+    Recordarme en este móvil
+  </label>
+
+  <button type="submit" class="btn" id="btn-entrar">Entrar</button>
+
+  <p class="nota">Con la letra, como en tu documento.<br>Si no puedes entrar, avisa a la oficina.</p>
+</form>
+
+<script>
+  (function () {
+    // Ver el documento: con prisa y el teclado tapando media pantalla, es la
+    // diferencia entre entrar y equivocarse tres veces.
+    const ojo = document.getElementById('ver-doc');
+    const doc = document.getElementById('documento');
+    ojo.addEventListener('click', () => {
+      const ver = doc.type === 'password';
+      doc.type = ver ? 'text' : 'password';
+      ojo.setAttribute('aria-label', ver ? 'Ocultar el documento' : 'Mostrar el documento');
+      ojo.querySelector('i').className = ver ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+      doc.focus();
+    });
+    // Un solo envío: el botón se apaga al pulsarlo.
+    document.getElementById('f-entrar').addEventListener('submit', () => {
+      const b = document.getElementById('btn-entrar');
+      b.disabled = true; b.textContent = 'Entrando…';
+    });
+  })();
+</script>

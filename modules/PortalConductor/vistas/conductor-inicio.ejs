@@ -1,0 +1,18 @@
+<%
+  // La portada del conductor. De momento, quién es: lo demás llega en las
+  // siguientes partes del portal.
+  const tel = String(c.telefono || '').replace(/\D/g, '').slice(-9);
+  const telBonito = tel.length === 9 ? `${tel.slice(0, 3)} ${tel.slice(3, 5)} ${tel.slice(5, 7)} ${tel.slice(7)}` : (c.telefono || '—');
+%>
+<h1 class="text-[1.9rem] font-semibold tracking-tight leading-tight mb-6">Hola, <%= c.pila || c.nombre %></h1>
+
+<section class="tarjeta" aria-label="Tus datos">
+  <div class="dato"><span>Nombre</span><b><%= c.nombre %></b></div>
+  <div class="dato"><span>Teléfono</span><b class="tabular-nums"><%= telBonito %></b></div>
+</section>
+
+<form method="POST" action="/salir" class="mt-6">
+  <button type="submit" class="btn btn-sec">
+    <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Salir
+  </button>
+</form>
