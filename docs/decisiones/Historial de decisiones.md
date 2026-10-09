@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-09 · En el planificador, pinchar a alguien deja ver su ficha
+
+«En las tarjetas y en los cuadrantes, al darle clic, quiero tener siempre la opción de ver su perfil». No se añade un paso más al clic, que es el gesto más repetido del cuadrante: el selector que ya se abría lleva arriba el nombre de esa persona con «Ver su ficha», que abre su ficha de Plantilla en otra pestaña para no perder el cuadrante. Vale para la plaza en las dos vistas, el CT del cuadrante y «Cubrir», y solo se ofrece a quien puede abrir Plantilla. → [[Planificacion#Pinchar a alguien deja ver su ficha (09/10/2026)]]
+
 ## 2026-10-09 · Las vacaciones las aprueba una sola persona: Laura Blanco
 
 «El departamento de Laura será el único que apruebe vacaciones; el resto puede verlas pero no aprobarlas». Aprobar unas vacaciones es ponerlas en la ficha por cualquier camino, y hay siete: aplicar, cerrar o sacar de su bandeja un ticket de vacaciones, y en Plantilla cambiar la situación a vacaciones o añadir, corregir o borrar un tramo. En todas, el servidor exige la llave `/vacaciones/aprobar`. Es de una sola persona, como la de los fichajes (db/189), y no se da por rol: ni el superadmin ni el desarrollador aprueban. El resto ve todo y puede apuntar la vuelta al trabajo. → [[Ticketera#Las vacaciones las aprueba una sola persona (09/10/2026)]]

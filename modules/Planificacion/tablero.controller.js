@@ -41,6 +41,19 @@ async function puedeEditar(req) {
   } catch (_) { return false; }
 }
 
+/**
+ * Si quien mira puede abrir la ficha de un conductor en Plantilla. Con la misma
+ * regla que el control de acceso (la llave de la ruta): un «Ver su ficha» que
+ * contesta «sin permiso» es peor que no tenerlo. `permisos` en null es acceso
+ * total (lo deja `sesion.cargarPermisos`).
+ */
+function puedeVerFichas(res) {
+  const mias = res.locals.permisos;
+  if (mias == null) return true;
+  const clave = permisos.claveDeRuta('/plantilla', 'GET');
+  return !clave || mias.includes(clave);
+}
+
 const responde = fn => async (req, res) => {
   try {
     const r = await fn(req, res);
@@ -64,6 +77,7 @@ router.get('/', async (req, res) => {
   res.render('planificadorV2', {
     titulo: 'Planificador', seccion: 'planificador', layout: 'layout-gestion',
     puedeEditar: await puedeEditar(req),
+    verFichas: puedeVerFichas(res),
     ...(await tablero.paraLaPantalla()),
   });
 });

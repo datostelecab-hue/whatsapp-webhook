@@ -126,6 +126,14 @@ Sin fechas se cogen las de la ausencia: la vuelta prevista de las vacaciones **e
 
 Los días del sustituto, si no se dicen, son **los mismos que tenía el titular**: un correturnos que cubre a otro cubre sus días, no unos nuevos.
 
+### Pinchar a alguien deja ver su ficha (09/10/2026)
+
+Camilo: *«en las tarjetas y en los cuadrantes, al darle clic, quiero tener siempre la opción de ver su perfil»*. Pinchar a una persona abre el selector de siempre (cambiarla, quitarla), y arriba del todo ahora sale **su nombre con «Ver su ficha»**, que abre su ficha de Plantilla (`/plantilla#id`) **en otra pestaña**: el cuadrante se queda como estaba, con su base, su vista y su scroll, y el diálogo se cierra.
+
+- Sale en los cuatro sitios donde un clic va de una persona: una plaza en la vista horizontal (los cuadrantes) y en la vertical (las tarjetas), el **CT del cuadrante** en su cabecera («CT de día del cuadrante») y **«Cubrir»** («Titular de la plaza · baja médica»). En un hueco no sale nada, porque no hay nadie.
+- Sale también en **solo lectura**: mirar una ficha no escribe.
+- Solo se ofrece a quien **puede abrir Plantilla**, con la misma regla que el control de acceso (`puedeVerFichas` en `tablero.controller.js`, la llave de la ruta). Sin ese permiso sale el nombre, sin el botón: un «Ver su ficha» que contesta «sin permiso» es peor que no tenerlo.
+
 ## Los turnos
 
 Un conductor no "tiene turno" escrito aparte: **lo dice el conjunto de sus plazas**. La regla la puso Tráfico: quien cubre las DOS plazas fijas de un coche es **TodoTurno**, porque lleva ese coche de punta a punta. No basta con "dos plazas fijas" a secas —dos plazas de día en dos coches distintos es un doble apunte que hay que mirar—, así que se cuentan **turnos distintos**, no plazas. Y los fijos mandan sobre los correturnos: quien es fijo de noche y además hace de CT de día sigue siendo de noche, que es donde está su coche.

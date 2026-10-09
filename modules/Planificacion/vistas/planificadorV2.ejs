@@ -346,6 +346,8 @@
     };
   }
 
+  // Si quien mira puede abrir Plantilla: sin el permiso no se le ofrece «Ver su ficha».
+  const VER_FICHAS = <%- JSON.stringify(!!verFichas) %>;
   const DIAS_LETRA = <%- JSON.stringify(letrasDia) %>;              // ['L','M','X','J','V','S','D']
   const ESTADOS = <%- JSON.stringify(estadosVehiculo) %>;           // catálogo de estados del coche
   const ESTADO_ETQ = new Map(ESTADOS.map(e => [e.codigo, e.etiqueta]));
@@ -1586,7 +1588,8 @@
       if (av) notas.unshift(`<span class="text-telecab-${av.tono} font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(av.texto)}</span>`);
       const nombre = persona ? persona.nombre : p.nombre;
       const ayuda = [nombre, (persona && persona.telefono) ? 'Tel. ' + persona.telefono : 'Sin teléfono',
-        persona && persona.barrio ? 'Vive en ' + persona.barrio : '', 'Pincha para cambiar o quitar.'].filter(Boolean).join('\n');
+        persona && persona.barrio ? 'Vive en ' + persona.barrio : '',
+        VER_FICHAS ? 'Pincha para ver su ficha, cambiarlo o quitarlo.' : 'Pincha para cambiar o quitar.'].filter(Boolean).join('\n');
       // El nombre se queda con todo el ancho de la línea; el chip de horas y lo
       // demás van debajo. Con el chip al lado, en una tarjeta estrecha el nombre
       // se quedaba en «Carl…».
@@ -1968,7 +1971,9 @@
     // "mientras llega él".
     const tit = `${col.tit} · ${coche.matricula}` +
       (p.futuro ? ` · llega ${(p.futuro.nombre || '').split(' ')[0]} el ${isoAes(p.futuro.desde)}` : '');
-    const id = await pickConductor({ titulo: tit, turno: col.turno, actual: p.id ? String(p.id) : null });
+    const enPlaza = p.id ? (porId.get(String(p.id)) || { id: p.id, nombre: p.nombre }) : null;
+    const id = await pickConductor({ titulo: tit, turno: col.turno, actual: p.id ? String(p.id) : null,
+      ficha: enPlaza && { id: String(enPlaza.id), nombre: enPlaza.nombre } });
     if (id === undefined) return;   // cancelado
 
     // QUITAR A ALGUIEN. No necesita comprobación, pero CON EVENTO hay que
@@ -2134,6 +2139,8 @@
     const id = await pickConductor({
       titulo: `Cubrir a ${nom} · ${coche.matricula} · ${col.tit}`,
       turno: col.turno, actual: null,
+      ficha: { id: String(titular.id || p.id), nombre: titular.nombre,
+        nota: 'Titular de la plaza' + (titular.estado ? ' · ' + String(titular.estado).toLowerCase() : '') },
     });
     if (!id) return;   // cancelado o "dejar vacía": aquí no aplica
 
@@ -2524,7 +2531,9 @@
     // ofrece "Dejar la plaza vacía", que es el ÚNICO camino para quitar un CT de
     // todos los bloques de golpe — el servidor lo admite desde siempre
     // (conductorId vacío) pero la pantalla no daba forma de pedirlo.
-    const id = await pickConductor({ titulo: `CT ${turno} del cuadrante`, turno, actual: actual || null });
+    const ct = actual ? porId.get(String(actual)) : null;
+    const id = await pickConductor({ titulo: `CT ${turno} del cuadrante`, turno, actual: actual || null,
+      ficha: ct && { id: String(ct.id), nombre: ct.nombre, nota: `CT de ${turno === 'dia' ? 'día' : turno} del cuadrante` } });
     if (id === undefined) return;   // cancelado
     let vehiculos = [];
     if (id) {
@@ -2648,7 +2657,11 @@
   }
 
   // ── Selector de conductor (modal con búsqueda) ────────────────────────────
-  function pickConductor({ titulo, turno, actual }) {
+  // `ficha` es la persona de la que va el clic (la de la plaza, o a quien se
+  // cubre): arriba del todo sale su nombre con «Ver su ficha», que abre su
+  // ficha de Plantilla en otra pestaña para que el cuadrante se quede como
+  // estaba. Así, pinchar a alguien en el cuadrante siempre deja ver su perfil.
+  function pickConductor({ titulo, turno, actual, ficha }) {
     return new Promise(resolve => {
       const fondo = document.createElement('div');
       fondo.className = 'fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto';
@@ -2663,6 +2676,17 @@
             <button data-x class="w-8 h-8 rounded-lg hover:bg-telecab-card2 text-telecab-muted"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="p-3">
+            ${ficha && ficha.id ? `
+            <div data-persona class="flex items-center gap-3 mb-3 px-3 py-2 rounded-xl bg-telecab-card2/60 border border-telecab-border">
+              <div class="min-w-0 flex-1">
+                <div class="text-[11px] text-telecab-muted">${esc(ficha.nota || 'En esta plaza')}</div>
+                <div class="text-sm font-semibold truncate">${esc(ficha.nombre || '')}</div>
+              </div>
+              ${VER_FICHAS ? `<a data-ficha href="/plantilla#${encodeURIComponent(ficha.id)}" target="_blank" rel="noopener"
+                 title="Abre su ficha de Plantilla en otra pestaña: el cuadrante se queda como está."
+                 class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-telecab-gold/40 text-telecab-gold text-sm font-semibold hover:bg-telecab-gold/10 transition-colors">
+                <i class="fa-solid fa-id-card text-xs"></i>Ver su ficha</a>` : ''}
+            </div>` : ''}
             <input data-busca type="search" placeholder="Buscar nombre, DNI, teléfono…" class="w-full mb-2 px-3 py-2 bg-telecab-card2 border border-telecab-border rounded-lg text-sm">
             ${actual ? '<button data-quitar class="w-full mb-2 px-3 py-2 rounded-lg border border-telecab-red/40 text-telecab-red text-sm hover:bg-telecab-red/10"><i class="fa-solid fa-user-minus"></i> Dejar la plaza vacía</button>' : ''}
             <div data-lista class="space-y-1 max-h-[50vh] overflow-y-auto"></div>
@@ -2673,6 +2697,12 @@
       fondo.querySelector('[data-x]').addEventListener('click', () => cerrar(undefined));
       const q = fondo.querySelector('[data-quitar]');
       if (q) q.addEventListener('click', () => cerrar(''));
+      // La ficha se abre en otra pestaña y este diálogo se cierra: al volver, el
+      // cuadrante está como se dejó. Se cierra un instante después y no en el
+      // propio clic, porque un enlace que se quita de la página mientras se
+      // pulsa ya no navega.
+      const fi = fondo.querySelector('[data-ficha]');
+      if (fi) fi.addEventListener('click', () => setTimeout(() => cerrar(undefined), 0));
 
       const cont = fondo.querySelector('[data-lista]');
       const pinta = () => {
