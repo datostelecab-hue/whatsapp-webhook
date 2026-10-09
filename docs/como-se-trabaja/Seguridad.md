@@ -66,19 +66,6 @@ Se quitó también la cabecera **`X-Powered-By: Express`** que Express pone sola
 
 Verificado el 18/09/2026 contra el ERP arreglado: la huella desaparece, las cabeceras nuevas salen, y la pantalla se pinta igual (la CSP obligatoria no rompe la UI).
 
-## El portal del conductor: un DNI no es un secreto (09/10/2026)
-
-Los conductores entran con su teléfono y su DNI/NIE (decisión de Camilo). El DNI está en el contrato y en papeles que pasan por la oficina, así que no protege como una contraseña. Lo que se ha puesto alrededor:
-
-- **Solo lo suyo y solo mirar**: el portal no enseña nada de otros ni deja cambiar nada.
-- **Su dominio, sin el ERP**: por `DOMINIO_CONDUCTORES` solo existe el portal y lo demás da 404 (`services/dominios.js`).
-- **Otra sesión**: otra cookie con otra clave; no vale en la oficina, ni al revés.
-- **Freno**: 8 fallos frenan 15 min ese teléfono y esa IP. El error no dice si el teléfono existe.
-- **Cada intento apuntado** en `conductor_acceso` (db/189), con IP y navegador, para ver si alguien entra con el DNI de otro.
-- **Se corta sola** si deja de tener contrato.
-
-Antes de enseñar algo más sensible (nóminas, documentos), un segundo paso: un código por WhatsApp o una contraseña propia la primera vez. → [[Portal del conductor]]
-
 ## Fugas de menor riesgo, anotadas
 
 - **Los comentarios del HTML se sirven tal cual.** La página de login lleva comentarios que explican la lógica interna (que hay un freno anti fuerza bruta, la sesión de 30 días). Es información para el que audita. No se tocan porque [[Reglas de la casa|los comentarios son el porqué de la casa]] y valen más de lo que cuestan; el arreglo, si algún día pesa, es minificar el HTML servido en producción (quita comentarios sin tocar el fuente).

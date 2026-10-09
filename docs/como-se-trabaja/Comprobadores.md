@@ -356,13 +356,6 @@ No son de los seis, pero forman parte de la misma red:
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día
   00→24, noche 12→12, «No salió», sin plaza, otro coche, fuera de su turno, el Excel).
-- **`comprobar-portal-conductor.js`** (09/10/2026) — el [[Portal del conductor]]: las
-  reglas del login (teléfono por sus 9 cifras, documento sin mayúsculas ni guiones,
-  contrato en vigor, el mismo error falle lo que falle, el freno tras 8 fallos), que su
-  sesión no se falsifique ni abra el ERP, y EL DOMINIO con peticiones de verdad a un
-  servidor de prueba: por el de los conductores el ERP y el webhook dan 404, por otro
-  el ERP de siempre, y la redirección a `DOMINIO_GESTION` respeta el webhook, las API y
-  la salud de Render.
 - **`comprobar-largos.js`** (09/10/2026) — lo que no cabe en su columna se dice antes de
   guardar, con el nombre de la casilla, sin abrir la transacción: la ficha de la persona
   (un piso «Entreplanta») y el proceso de Selección (el tipo de carné).
