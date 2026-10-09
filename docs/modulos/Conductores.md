@@ -88,6 +88,9 @@ Todo lo que tiene historial —empleo, situación, turno, teléfono, coche, libr
 
 ## Situación, altas y bajas
 
+> [!important] Las vacaciones las pone una sola persona (09/10/2026)
+> Poner, corregir o borrar un tramo de vacaciones es aprobarlas, y desde db/189 solo lo hace quien tiene la llave `/vacaciones/aprobar`: Laura Blanco. Ni el superadmin ni el desarrollador por su rol. El resto las ve y puede apuntar la vuelta al trabajo. → [[Ticketera#Las vacaciones las aprueba una sola persona (09/10/2026)]]
+
 La situación de la ficha se decide así: **quien no tiene el empleo vigente está de baja, diga lo que diga su historial**. El contrato manda sobre el estado. Antes esto miraba la fecha de alta, y el día de una baja la persona seguía saliendo "Activo".
 
 Al revés también: **contratado pero aún sin empezar no es una baja**. Quien tiene alta para dentro de dos días está contratado, y sale como `Entra el 18/09` — se distingue por la **etiqueta** y no por el código, para que los filtros por situación sigan funcionando. Antes esa gente salía como "Baja en la empresa", que es lo contrario de lo que pasa, y además el planificador —que nunca miró esa fecha— la daba por planificable: **dos pantallas contradiciéndose sobre alguien que empieza el jueves**.

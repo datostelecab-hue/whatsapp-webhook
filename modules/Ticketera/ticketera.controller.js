@@ -129,8 +129,10 @@ function para(areaCodigo, { titulo, seccion, subtitulo, recientes = true } = {})
   const partes = ((BANDEJAS.find(b => b.area === areaCodigo) || {}).partes || [])
     .map(p => ({ clave: p.clave, etiqueta: p.etiqueta, subtipos: p.subtipos }));
 
-  router.get('/', (req, res) => {
+  router.get('/', async (req, res) => {
     res.render('ticketera', {
+      // Si quien mira aprueba vacaciones, y quién lo hace (db/189).
+      vacaciones: await ticketera.vacacionesParaLaPantalla(await actor.idDe(req)),
       partes,
       titulo: titulo || 'Ticketera',
       subtitulo: subtitulo || '',

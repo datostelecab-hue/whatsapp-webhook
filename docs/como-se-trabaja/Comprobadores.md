@@ -356,6 +356,12 @@ No son de los seis, pero forman parte de la misma red:
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día
   00→24, noche 12→12, «No salió», sin plaza, otro coche, fuera de su turno, el Excel).
+- **`comprobar-vacaciones.js`** (09/10/2026) — las vacaciones las aprueba una sola
+  persona: las siete puertas (aplicar, cerrar y mover un ticket de vacaciones; cambiar
+  la situación, añadir, corregir y borrar un tramo en Plantilla) se cierran sin la llave
+  `/vacaciones/aprobar`, también al superadmin, sin escribir nada. Bajas, permisos, la
+  vuelta al trabajo y poner un ticket «en curso» siguen abiertos. Ningún rol recibe la
+  llave al crearse.
 - **`comprobar-largos.js`** (09/10/2026) — lo que no cabe en su columna se dice antes de
   guardar, con el nombre de la casilla, sin abrir la transacción: la ficha de la persona
   (un piso «Entreplanta») y el proceso de Selección (el tipo de carné).

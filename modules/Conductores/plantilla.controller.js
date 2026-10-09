@@ -60,6 +60,8 @@ router.get('/', async (req, res) => {
   res.render('plantilla', {
     titulo: 'Plantilla', seccion: 'plantilla', layout: 'layout-gestion',
     ...(await plantilla.paraLaPantalla()),
+    // Si quien mira aprueba vacaciones, y quién lo hace (db/189).
+    vacaciones: await plantilla.vacacionesParaLaPantalla(await quien(req)),
   });
 });
 

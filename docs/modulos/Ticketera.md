@@ -170,6 +170,28 @@ El listado enseña los **dos nombres** —el que escribió en el formulario y el
 
 Todo movimiento queda apuntado en el historial del ticket con quién lo hizo.
 
+### Las vacaciones las aprueba una sola persona (09/10/2026)
+
+Camilo: *«el departamento de Laura será el único que apruebe vacaciones; el resto puede verlas pero no aprobarlas. Laura Blanco será la única»*.
+
+**Aprobar unas vacaciones es ponerlas en la ficha, por cualquier camino.** Hay siete puertas y en todas el servidor exige la llave **`/vacaciones/aprobar`** (`services/aprobarVacaciones.js`):
+
+| Dónde | Qué |
+|---|---|
+| Ticketera | **Aplicar** un ticket de vacaciones, o abrir unas vacaciones desde otro ticket |
+| Ticketera | **Cerrar** un ticket de vacaciones: Ejecutado, Aprobado, Rechazado o No procede |
+| Ticketera | **Mover** un ticket fuera de la bandeja de vacaciones (si no, se movería a «Permiso» y se aplicaría desde ahí) |
+| Plantilla | **Cambiar la situación** a Vacaciones |
+| Plantilla | **Añadir un tramo** de vacaciones |
+| Plantilla | **Corregir** o **borrar** un tramo de vacaciones |
+
+- La llave la tiene **una sola persona**: la base no deja que la tengan dos (`uq_permiso_vacaciones_aprobar`, db/189). db/189 se la da a Laura Blanco (usuario 4). Para dársela a otra, en Usuarios y permisos, primero hay que quitársela a ella.
+- Se mira **en la matriz de cada uno**: **ni el superadmin ni el desarrollador** aprueban por su rol. Está en el grupo «Aprobaciones», que no siembra ningún rol, igual que la de los fichajes.
+- **El resto ve las vacaciones de todo el mundo**: los tickets (y puede quedárselos, enlazarlos, escribir en ellos o ponerlos «en curso») y los tramos en la ficha. En la bandeja, un ticket de vacaciones no les ofrece Aplicar, Resolver ni Mover: dice «Las vacaciones las aprueba Laura Blanco». En Plantilla, «Vacaciones» no sale en las listas de situación, y los tramos de vacaciones no tienen lápiz ni papelera.
+- **Volver al trabajo lo apunta cualquiera** («Cambiar situación» → Activo): es un hecho, no una aprobación. Las bajas y los permisos siguen como estaban.
+- Si alguien sin la llave lo intenta por la API, el servidor contesta: «Las vacaciones solo las aprueba Laura Blanco. Puedes verlas, pero no aprobarlas, rechazarlas ni cambiarlas.»
+- Comprobador: `node scripts/comprobar-vacaciones.js` (32 casos).
+
 ### La ausencia se acuerda de su ticket
 
 El tramo que se abre guarda el **id del ticket** (`conductor_estado_hist.ticket_id`, [[Migraciones|db/144]]), además del usuario que lo aplicó, que ya estaba.

@@ -944,6 +944,13 @@ async function editarAusencia(id, filaId, { desde, hasta, motivo }, { usuarioId 
   return { editada: r.despues || r };
 }
 
+/** De qué es un tramo del historial de situaciones (o null si no es de esta persona). */
+async function situacionDe(id, filaId) {
+  const r = await db.consulta(
+    'SELECT estado FROM conductor_estado_hist WHERE id = $1 AND conductor_id = $2', [filaId, id]);
+  return r.rows[0] ? r.rows[0].estado : null;
+}
+
 /** Borra una ausencia entera. Para lo que se metió por error y NO pasó. */
 async function borrarAusencia(id, filaId, { usuarioId } = {}) {
   const fila = await vig.borrar('situacion', filaId, id);
@@ -1614,7 +1621,7 @@ module.exports = {
   crearPersona,
   listar, ficha, resumen, catalogos, boltLibres, faltantesDe,
   CAMPOS, camposDe, GENERADAS,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, situacionDe,
   cambiarTurno, guardarLibranza,
   enlazarBolt, soltarBolt, primerDiaDeCuenta, guardarTelefono,
   darDeAlta, darDeBaja, doblePlaza,

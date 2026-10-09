@@ -15,6 +15,10 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## Las vacaciones, solo Laura (09/10/2026)
+
+- **Aplicar `db/189`** después de desplegar: le da a Laura Blanco la llave de aprobar vacaciones. Hasta entonces el candado ya está en el código y **nadie puede aprobar vacaciones**, ni ella: hay que desplegar y aplicar a la vez.
+
 ## El historial de estado de los coches (08/10/2026)
 
 - **Aplicar `db/188`** desde [[Migraciones]] después de desplegar: cuadra el historial de estado de los 20 coches que el planificador dejó descuadrados (el 0715MMZ entre ellos). Su estado actual vale desde el día en que se aplique: la fecha real del cambio no se guardó.

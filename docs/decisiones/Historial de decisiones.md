@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-09 · Las vacaciones las aprueba una sola persona: Laura Blanco
+
+«El departamento de Laura será el único que apruebe vacaciones; el resto puede verlas pero no aprobarlas». Aprobar unas vacaciones es ponerlas en la ficha por cualquier camino, y hay siete: aplicar, cerrar o sacar de su bandeja un ticket de vacaciones, y en Plantilla cambiar la situación a vacaciones o añadir, corregir o borrar un tramo. En todas, el servidor exige la llave `/vacaciones/aprobar`. Es de una sola persona, como la de los fichajes (db/189), y no se da por rol: ni el superadmin ni el desarrollador aprueban. El resto ve todo y puede apuntar la vuelta al trabajo. → [[Ticketera#Las vacaciones las aprueba una sola persona (09/10/2026)]]
+
 ## 2026-10-09 · Lo que no cabe en una casilla se dice antes de guardar
 
 Mercedes vio en Selección el error de PostgreSQL en inglés, sin saber qué casilla era: una pieza de la dirección (número, escalera, piso, puerta o código postal) admite 10 caracteres. No se amplían las columnas, porque `direccion` es una columna calculada con ellas. Lo que se hace es comprobar el largo antes de guardar, con el nombre de la casilla y lo que cabe, y poner el tope en el formulario para que no deje escribir más. → [[Conductores#Lo que cabe en cada casilla (09/10/2026)]]

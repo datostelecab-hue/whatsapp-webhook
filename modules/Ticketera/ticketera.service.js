@@ -25,6 +25,8 @@ const repo = require('./ticketera.repo');
 const form = require('./formulario');
 const { clasificar } = require('./clasificar');
 const plantilla = require('../Conductores/plantilla.service');
+// Las vacaciones las aprueba una sola persona (db/189).
+const aprobarVac = require('../../services/aprobarVacaciones');
 const configApp = require('../../services/configApp');
 
 const CLAVE_MARCA = 'ticketera_ultima_fila';
@@ -320,6 +322,9 @@ async function cambiarEstado(id, { estado, resolucion }, quien = {}) {
   const { estados } = await repo.catalogos();
   const e = estados.find(x => x.codigo === estado);
   if (!e) throw new Error(`Estado desconocido: ${estado}`);
+  // Cerrar un ticket de vacaciones (aprobado, rechazado, no procede…) es
+  // decidirlas: solo quien tiene la llave. Ponerlo «en curso», cualquiera.
+  if (e.cierra && antes.subtipoCodigo === aprobarVac.SUBTIPO) await aprobarVac.exigir(quien.usuarioId);
   // Cerrar un ticket es la acción que no se puede deshacer sola: se exige decir
   // en qué quedó. "Rechazado" sin motivo es lo que obliga a llamar a alguien un
   // mes después para preguntarle qué pasó.
@@ -358,6 +363,12 @@ async function enlazar(id, conductorId, quien = {}) {
 async function reclasificar(id, subtipoCodigo, quien = {}) {
   const antes = await repo.una(id);
   if (!antes) throw new Error('No existe ese ticket');
+  // Sacarlo de la bandeja de vacaciones también es decidir qué es: si no, se
+  // movería a «Permiso» y se aplicaría desde allí. Meterlo SÍ lo puede
+  // cualquiera: así le llega a quien las aprueba.
+  if (antes.subtipoCodigo === aprobarVac.SUBTIPO && subtipoCodigo !== aprobarVac.SUBTIPO) {
+    await aprobarVac.exigir(quien.usuarioId);
+  }
   const r = await repo.reclasificar(id, subtipoCodigo);
   if (!r) throw new Error('Ese tipo de gestión no existe');
   const nuevo = await repo.una(id);
@@ -416,6 +427,12 @@ async function aplicar(id, { desde, hasta, estado, motivo } = {}, quien = {}) {
     cual = elegida.codigo;
   }
 
+  // LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (db/189): aplicar un ticket de
+  // vacaciones, o abrir unas vacaciones desde otro ticket, es aprobarlas.
+  if (cual === aprobarVac.ESTADO || t.subtipoCodigo === aprobarVac.SUBTIPO) {
+    await aprobarVac.exigir(quien.usuarioId);
+  }
+
   // EL TICKET VIAJA CON LA AUSENCIA. Desde la ficha de la persona se llega asi
   // a quien la aplico, a lo que escribio el conductor y al justificante que
   // subio a Drive, sin copiar ninguno de los tres.
@@ -459,7 +476,11 @@ async function diagnostico() {
   };
 }
 
+/** Si quien mira aprueba vacaciones, y quién lo hace: para la bandeja. */
+const vacacionesParaLaPantalla = usuarioId => aprobarVac.paraLaPantalla(usuarioId);
+
 module.exports = {
+  vacacionesParaLaPantalla,
   sincronizar, datos, ficha, asignar, cambiarEstado, observaciones,
   crearSoporte, mios, notas, adjuntos, bandejaIT, estadoIT, TIPOS_IT, PRIORIDADES,
   enlazar, reclasificar, aplicar, diagnostico,

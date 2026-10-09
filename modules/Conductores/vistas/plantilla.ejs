@@ -21,6 +21,12 @@
   const PERMISOS = <%- JSON.stringify(typeof permisos !== 'undefined' ? permisos : []) %>;
   const PUEDE_FANTASMA = ['superadmin', 'desarrollador'].includes(ROL)
     || PERMISOS.includes('/plantilla/fantasma');
+  // LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (09/10/2026, db/189): Laura
+  // Blanco. Quien no tiene la llave las ve, pero no las pone, ni las corrige ni
+  // las borra. El candado de verdad está en el servidor; aquí solo no se ofrece.
+  const VAC = <%- JSON.stringify(typeof vacaciones !== 'undefined' && vacaciones ? vacaciones : { puede: false, quien: null }) %>;
+  const sinVacaciones = lista => (VAC.puede ? lista : lista.filter(x => x.codigo !== 'vacaciones'));
+  const notaVacaciones = VAC.puede ? '' : ` Las vacaciones solo las pone ${VAC.quien || 'quien tiene la llave de aprobarlas'}.`;
 
   // ── LA FOTO DE LA PERSONA ─────────────────────────────────────────────────
   // El cuadro, la silueta y la subida son el componente `FotoPersona`
@@ -139,7 +145,7 @@
   async function accionSituacion(d) {
     const v = await pedirDatos(`Cambiar la situación de ${d.nombre_completo}`, [
       { id: 'estado', etiqueta: 'Situación', tipo: 'lista', valor: d.situacion,
-        opciones: (CAT.situaciones || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })) },
+        opciones: sinVacaciones(CAT.situaciones || []).map(x => ({ valor: x.codigo, texto: x.etiqueta })) },
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: fecha(new Date()),
         ayuda: 'Se cierra la situación anterior el día antes.' },
       { id: 'hastaPrevisto', etiqueta: 'Último día fuera', tipo: 'fecha',
@@ -149,7 +155,7 @@
              + 'déjalo vacío y sigue abierta hasta el alta.' },
       { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
     ], { nota: 'Una ausencia NO le quita su plaza: el coche sigue siendo suyo. '
-         + '"Baja en la empresa" sí: esa cierra su contrato.' });
+         + '"Baja en la empresa" sí: esa cierra su contrato.' + notaVacaciones });
     if (!v) return;
 
     // Se avisa AQUÍ y no después del viaje al servidor: el que la pone es quien
@@ -189,7 +195,7 @@
    * partidas: 13 días este mes y 3 en noviembre.
    */
   async function anadirAusencia(d) {
-    const aus = (CAT.situaciones || []).filter(x => x.es_ausencia && !x.es_fin_contrato);
+    const aus = sinVacaciones((CAT.situaciones || []).filter(x => x.es_ausencia && !x.es_fin_contrato));
     const v = await pedirDatos(`Añadir un tramo a ${d.nombre_completo}`, [
       { id: 'estado', etiqueta: 'Situación', tipo: 'lista', valor: (aus[0] || {}).codigo,
         opciones: aus.map(x => ({ valor: x.codigo, texto: x.etiqueta })) },
@@ -198,7 +204,7 @@
         ayuda: 'El último día fuera. Al siguiente vuelve al cuadrante solo.' },
       { id: 'motivo', etiqueta: 'Motivo', tipo: 'texto-largo' },
     ], { nota: 'Esto NO cambia su situación de hoy: solo apunta ese tramo en su historial. '
-             + 'Es lo que se usa para las vacaciones partidas.' });
+             + (VAC.puede ? 'Es lo que se usa para las vacaciones partidas.' : notaVacaciones.trim()) });
     if (!v) return;
     const cat = (CAT.situaciones || []).find(x => x.codigo === v.estado);
     if (cat && cat.fin_previsible && !v.hasta) {
@@ -1605,8 +1611,11 @@
             // lo que deja a alguien de vacaciones hasta fin de año, y quien lo
             // sabe es quien está mirando esta tabla.
             acciones: [
-              { icono: 'fa-pen', titulo: 'Corregir las fechas', onClick: editarAusencia },
-              { icono: 'fa-trash', titulo: 'Borrar (solo si se metió por error)', onClick: borrarAusencia },
+              // Las de vacaciones, solo quien las aprueba (db/189).
+              { icono: 'fa-pen', titulo: 'Corregir las fechas', onClick: editarAusencia,
+                visible: f => VAC.puede || f.estado !== 'vacaciones' },
+              { icono: 'fa-trash', titulo: 'Borrar (solo si se metió por error)', onClick: borrarAusencia,
+                visible: f => VAC.puede || f.estado !== 'vacaciones' },
             ],
           },
         },

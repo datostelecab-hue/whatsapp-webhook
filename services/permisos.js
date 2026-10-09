@@ -165,6 +165,13 @@ const CATALOGO = [
     // se aprueban también las correcciones que pide cada uno de su fichaje.
     // Para dársela a otra hay que quitársela antes a quien la tenga.
     { clave: '/fichaje/revisar', etiqueta: 'Fichajes · corregir, confirmar horas y aprobar correcciones (una sola persona)', manual: true },
+    // LAS VACACIONES (09/10/2026): las aprueba una sola persona, Laura Blanco
+    // (db/189, uq_permiso_vacaciones_aprobar). No es el prefijo de ninguna
+    // ruta: la miran Ticketera y Plantilla al aplicar, cerrar, mover, poner,
+    // corregir o borrar unas vacaciones (services/aprobarVacaciones.js). Aquí,
+    // en «Aprobaciones», y no en «RRHH», porque ese grupo lo siembra el rol de
+    // oficina y esta no la reparte ningún rol.
+    { clave: '/vacaciones/aprobar', etiqueta: 'Vacaciones · aprobarlas (una sola persona)', manual: true },
   ] },
   { grupo: 'Caja', items: [
     // Nacen APAGADOS para todo el mundo, hasta para dirección: `manual` los
@@ -424,6 +431,7 @@ async function guardar(usuarioId, claves, { usuarioMod } = {}) {
     const UNA_PERSONA = {
       uq_permiso_fichaje_revisar: { clave: '/fichaje/revisar', que: 'La llave de aprobar los fichajes' },
       uq_permiso_usuarios: { clave: '/usuarios', que: 'La llave de Usuarios y permisos' },
+      uq_permiso_vacaciones_aprobar: { clave: '/vacaciones/aprobar', que: 'La llave de aprobar las vacaciones' },
     };
     const una = e.code === '23505' && UNA_PERSONA[e.constraint];
     if (una) {

@@ -88,6 +88,11 @@
     return p ? { etiqueta: p.etiqueta, pasa: s => p.subtipos.includes(s) } : null;
   })();
   const YO   = <%- JSON.stringify(yo || '') %>;
+  // LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (09/10/2026, db/189): Laura
+  // Blanco. El resto ve sus tickets, se los queda, los enlaza y escribe en
+  // ellos, pero no los aplica, ni los cierra ni los saca de la bandeja. El
+  // candado de verdad está en el servidor; aquí solo no se ofrecen.
+  const VAC  = <%- JSON.stringify(typeof vacaciones !== 'undefined' && vacaciones ? vacaciones : { puede: false, quien: null }) %>;
 
   let TICKETS = [], SUBTIPOS = [], ESTADOS = [], AUSENCIAS = [], PERSONAS = null;
 
@@ -294,12 +299,20 @@
         boton('Enlazar persona', 'fa-link', 'red', () => enlazar(t));
       }
 
-      if (t.afectaPlanning && t.conductorId) {
-        boton('Aplicar', 'fa-wand-magic-sparkles', 'green', () => aplicar(t));
-      }
+      const deVacaciones = t.subtipoCodigo === 'VACACIONES';
+      if (deVacaciones && !VAC.puede) {
+        const n = document.createElement('span');
+        n.className = 'text-xs text-telecab-muted';
+        n.innerHTML = `<i class="fa-solid fa-lock mr-1"></i>Las vacaciones las aprueba ${esc(VAC.quien || 'quien tiene la llave')}`;
+        acc.appendChild(n);
+      } else {
+        if (t.afectaPlanning && t.conductorId) {
+          boton('Aplicar', 'fa-wand-magic-sparkles', 'green', () => aplicar(t));
+        }
 
-      boton('Resolver', 'fa-flag-checkered', 'green', () => resolver(t));
-      boton('Mover', 'fa-arrows-turn-to-dots', 'text', () => mover(t));
+        boton('Resolver', 'fa-flag-checkered', 'green', () => resolver(t));
+        boton('Mover', 'fa-arrows-turn-to-dots', 'text', () => mover(t));
+      }
     }
 
     boton('Historia', 'fa-clock-rotate-left', 'text', () => historia(t));
@@ -330,7 +343,8 @@
       // ausencia que el propio ticket proponía.
       { id: 'estado', etiqueta: 'Qué se le abre', tipo: 'lista', obligatorio: true,
         valor: t.estadoAbre || '',
-        opciones: AUSENCIAS.map(a => ({ valor: a.codigo, texto: a.etiqueta })),
+        // Sin la llave, de aquí no salen unas vacaciones (db/189).
+        opciones: AUSENCIAS.filter(a => VAC.puede || a.codigo !== 'vacaciones').map(a => ({ valor: a.codigo, texto: a.etiqueta })),
         ayuda: 'Lo propone el tipo del ticket. Cámbialo si el conductor lo escribió en otro sitio.' },
       { id: 'desde', etiqueta: 'Desde', tipo: 'fecha', valor: aEs(t.fechaIniIso), obligatorio: true },
       { id: 'hasta', etiqueta: 'Hasta', tipo: 'fecha', valor: aEs(t.fechaFinIso),

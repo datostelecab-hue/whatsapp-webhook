@@ -230,24 +230,47 @@ async function actualizar(id, datos = {}, quien = {}) {
   return r;
 }
 
-const cambiarSituacion = async (id, datos, quien) =>
-  ({ vigencia: await con.cambiarSituacion(Number(id), datos, quien) });
+// ── LAS VACACIONES LAS APRUEBA UNA SOLA PERSONA (09/10/2026) ──────────────
+// Poner, corregir o borrar un tramo de vacaciones es aprobarlas, y eso solo lo
+// hace quien tiene la llave (Laura Blanco): services/aprobarVacaciones.js. El
+// resto ve las vacaciones de todo el mundo, pero no las toca. Volver al trabajo
+// («Cambiar situación» → Activo) sí lo puede apuntar cualquiera: es un hecho,
+// no una aprobación.
+const aprobarVac = require('../../services/aprobarVacaciones');
+const codigo = x => String(x && typeof x === 'object' ? x.valor : (x || ''));
+const sonVacaciones = x => codigo(x) === aprobarVac.ESTADO;
+const vacacionesParaLaPantalla = quien => aprobarVac.paraLaPantalla((quien || {}).usuarioId);
+
+const cambiarSituacion = async (id, datos, quien) => {
+  if (sonVacaciones((datos || {}).estado)) await aprobarVac.exigir((quien || {}).usuarioId);
+  return { vigencia: await con.cambiarSituacion(Number(id), datos, quien) };
+};
 
 /**
  * AÑADIR un tramo de ausencia suelto: las vacaciones partidas, 13 días este mes
  * y 3 en noviembre. No reemplaza nada; si pisa otro tramo, lo dice.
  */
-const anadirAusencia = (id, datos, quien) => con.anadirAusencia(Number(id), datos, quien);
+const anadirAusencia = async (id, datos, quien) => {
+  if (sonVacaciones((datos || {}).estado)) await aprobarVac.exigir((quien || {}).usuarioId);
+  return con.anadirAusencia(Number(id), datos, quien);
+};
 
 /**
  * CORREGIR una ausencia ya puesta, o borrarla. No es lo mismo que cambiar la
  * situación: esa abre un tramo nuevo desde una fecha; estas dos tocan la fila
  * que ya hay, que es lo que hace falta cuando lo que se metió está mal.
  */
-const editarAusencia = (id, filaId, datos, quien) =>
-  con.editarAusencia(Number(id), Number(filaId), datos, quien);
-const borrarAusencia = (id, filaId, quien) =>
-  con.borrarAusencia(Number(id), Number(filaId), quien);
+const exigirSiSonVacaciones = async (id, filaId, quien) => {
+  if (sonVacaciones(await con.situacionDe(Number(id), Number(filaId)))) await aprobarVac.exigir((quien || {}).usuarioId);
+};
+const editarAusencia = async (id, filaId, datos, quien) => {
+  await exigirSiSonVacaciones(id, filaId, quien);
+  return con.editarAusencia(Number(id), Number(filaId), datos, quien);
+};
+const borrarAusencia = async (id, filaId, quien) => {
+  await exigirSiSonVacaciones(id, filaId, quien);
+  return con.borrarAusencia(Number(id), Number(filaId), quien);
+};
 
 const cambiarTurno = async (id, datos, quien) =>
   ({ vigencia: await con.cambiarTurno(Number(id), datos, quien) });
@@ -388,7 +411,7 @@ const documentosQueVencen = dias => docs.porVencer({ dias });
 module.exports = {
   paraLaPantalla, lista, ficha, hoja, catalogos, campos, buscarPersona,
   boltLibres, boltSugerencias, boltAuto, altaEnBolt, boltEstado, frescura,
-  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia,
+  crear, actualizar, cambiarSituacion, anadirAusencia, editarAusencia, borrarAusencia, vacacionesParaLaPantalla,
   cambiarTurno, guardarLibranza, guardarTelefono, enlazarBolt, soltarBolt,
   darDeAlta, darDeBaja, aPropia, cambiarJornada, cambiarAlta, cambios, conflictos,
   excelGestoria,
