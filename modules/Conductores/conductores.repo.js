@@ -17,6 +17,8 @@
 const db = require('../../services/db');
 const vig = require('../../services/repo/vigencia');
 const audit = require('../../services/repo/auditoria');
+// Lo que cabe en cada columna de texto, para decirlo antes de que falle (09/10/2026).
+const largos = require('../../services/repo/largos');
 
 // Nombre para mostrar. Se arma en SQL para poder ordenar y buscar por él.
 const NOMBRE = `btrim(COALESCE(NULLIF(btrim(c.nombre_bolt), ''), COALESCE(c.apellidos || ', ', '') || c.nombre))`;
@@ -545,9 +547,13 @@ async function catalogos() {
  * sitio que sabe consultar, y la pantalla recibe las opciones ya hechas.
  */
 async function campos() {
-  const cat = await catalogos();
+  const [cat, max] = await Promise.all([catalogos(), largos.de('conductor')]);
+  // Cada campo con su tope (`max`): el formulario no deja escribir más de lo
+  // que cabe en la columna (el piso, la puerta, el código postal: 10).
+  const conTope = Object.fromEntries(Object.entries(CAMPOS).map(([k, def]) =>
+    [k, max.has(k) && !def.opciones && !def.tipo ? { ...def, max: max.get(k) } : def]));
   return {
-    ...CAMPOS,
+    ...conTope,
     centro_codigo: {
       ...CAMPOS.centro_codigo,
       opciones: (cat.centros || []).map(c => ({ valor: c.codigo, texto: c.nombre })),
@@ -683,6 +689,11 @@ async function actualizar(id, campos, { usuarioId, rol } = {}) {
       throw new Error(`"${v}" no vale para ${def.etiqueta}. Opciones: ${def.opciones.join(', ')}`);
     }
   }
+
+  // Y que quepa. Sin esto, un piso o una puerta largos daban el error de
+  // PostgreSQL en inglés, sin decir qué casilla era (Selección, 09/10/2026).
+  await largos.comprobar('conductor', Object.fromEntries(entradas),
+    k => (CAMPOS[k] && CAMPOS[k].etiqueta) || k);
 
   return db.transaccion(async cli => {
     const antes = (await cli.query('SELECT * FROM conductor WHERE id = $1', [id])).rows[0];

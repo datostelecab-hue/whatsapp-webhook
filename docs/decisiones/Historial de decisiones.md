@@ -7,6 +7,10 @@ actualizado: 2026-10-08
 
 Las decisiones que explican por qué el sistema es como es. En orden, de la más reciente a la más antigua. Cada una tiene su nota cuando da para más.
 
+## 2026-10-09 · Lo que no cabe en una casilla se dice antes de guardar
+
+Mercedes vio en Selección el error de PostgreSQL en inglés, sin saber qué casilla era: una pieza de la dirección (número, escalera, piso, puerta o código postal) admite 10 caracteres. No se amplían las columnas, porque `direccion` es una columna calculada con ellas. Lo que se hace es comprobar el largo antes de guardar, con el nombre de la casilla y lo que cabe, y poner el tope en el formulario para que no deje escribir más. → [[Conductores#Lo que cabe en cada casilla (09/10/2026)]]
+
 ## 2026-10-08 · El estado del coche, siempre con su historial
 
 El 0715MMZ estaba «En taller», pero su ficha decía en el historial «Operativo desde el 10/09, hasta ahora». El desplegable de estado del planificador cambiaba solo `vehiculo.estado_operativo` y no `vehiculo_estado_hist`. Había 20 coches descuadrados (11 de Madrid y 8 de Barcelona que db/76 dejó en «Baja»). El planificador ahora pasa por `vigencia`, como la ficha de Vehículos, también para la zona. **db/188** cuadra los 20, con el estado del coche vigente **desde el día en que se aplica**: la fecha real del cambio no quedó en ningún sitio y no se inventa. Un comprobador vigila que nadie vuelva a escribir el estado sin su historial. → [[Vehiculos#El estado del coche vive en dos sitios, y van juntos]]

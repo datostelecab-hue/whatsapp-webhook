@@ -432,6 +432,7 @@
       // El sexo es una lista en vertical, alta: ocupa tres filas y a su lado se
       // apilan el estado civil y las dos fechas del carne, sin dejar hueco.
       filas: c.id === 'sexo' ? 3 : undefined,
+      max: c.max,   // lo que cabe en su columna
       valor: c.id === 'iban' ? ''
         : c.tipo === 'fecha' ? fecha(d[c.id])
           : (d[c.id] == null ? '' : String(d[c.id])),

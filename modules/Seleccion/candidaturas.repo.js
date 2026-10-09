@@ -22,6 +22,7 @@
 const db = require('../../services/db');
 const alta = require('../../services/repo/alta');
 const audit = require('../../services/repo/auditoria');
+const largos = require('../../services/repo/largos');
 
 // Las columnas del embudo que se pueden escribir desde la pantalla. Lo que no
 // esté aquí, o es de la persona o no se toca.
@@ -261,6 +262,8 @@ async function conductorDe(id) {
  * `candidaturas.service.guardar`.
  */
 async function guardarProceso(id, deProceso) {
+  // Que quepa en su columna, dicho con el nombre de la casilla (09/10/2026).
+  await largos.comprobar('candidatura', deProceso, k => (CAMPOS[k] && CAMPOS[k].etiqueta) || k);
   const cols = [], vals = [];
   for (const [k, v] of Object.entries(deProceso)) {
     if (!CAMPOS[k]) throw new Error(`"${k}" no es un campo del proceso`);

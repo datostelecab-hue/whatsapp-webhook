@@ -277,6 +277,14 @@ Para que la ficha se pueda completar desde Plantilla, el formulario de **Datos**
 
 Las dos reglas viven en un solo sitio y las usan Selección y Plantilla: las fechas en Documentos (`prepararFechasCarne`, `fechasCarne`) y el IBAN en Conductores (`guardarIban`, `ibanEnmascarado`). Antes solo estaban en Selección. De paso, la ficha de Plantilla **dejó de mandar al navegador el IBAN cifrado**, que viajaba con el resto de la fila.
 
+### Lo que cabe en cada casilla (09/10/2026)
+
+Mercedes, rellenando los datos de una candidata en Selección: *«value too long for type character varying(10)»*. Era una casilla de la dirección: **número, escalera, piso, puerta y código postal admiten 10 caracteres**, y «Entreplanta» o «Centro izquierda» no caben. PostgreSQL no dice cuál es.
+
+- **Antes de guardar** se comprueba el largo de cada campo contra la propia base (`services/repo/largos.js`, que lo lee de `information_schema` una vez por proceso). El aviso dice qué casilla es: «Piso» admite como mucho 10 caracteres y «Bajo izquierda» tiene 14: abrévialo. Vale para Plantilla, Selección y la ETT, que guardan por `conductores.repo.actualizar`, y para los campos del proceso de Selección (`candidaturas.repo.guardarProceso`).
+- **En el formulario** cada casilla de texto lleva su tope (`max` → `maxlength`) y no deja escribir más.
+- **No se amplían las columnas**: `direccion` es una columna calculada con esas piezas, y PostgreSQL no deja cambiar el tipo de una columna que usa otra calculada. Ampliarlas pediría rehacerla.
+
 ### La jornada, dentro de «Editar datos» (06/10/2026)
 
 Camilo: *«en Editar datos mete el botón de la jornada, que se edite allá adentro»*. El formulario lleva al final un apartado **Contrato** con la **Jornada**, solo si la persona tiene contrato abierto. No es un campo de la ficha: son las horas del contrato abierto, una **novación** con su historial ([[RRHH]]), así que se guarda por su camino (`POST /plantilla/api/conductor/:id/jornada`) y solo si cambió. Si en el mismo formulario cambian otros campos, van primero por el `PUT` de siempre y después la jornada. El botón «Jornada» de la cabecera se fue.

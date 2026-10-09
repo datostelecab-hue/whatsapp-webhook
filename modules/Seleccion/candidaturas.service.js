@@ -31,12 +31,16 @@ async function catalogos() {
   // aqui y no de una lista escrita en la vista: son los mismos que valida
   // `guardar`, asi que no pueden discrepar.
   const campos = [];
+  // Con el tope de cada columna (`max`), que el formulario no deja pasar.
+  const largos = require('../../services/repo/largos');
+  const [maxPersona, deProceso] = await Promise.all([largos.de('conductor'), largos.de('candidatura')]);
+  const conTope = (k, def) => (def && maxPersona.has(k) && !def.opciones && !def.tipo ? { ...def, max: maxPersona.get(k) } : def);
   const PERSONA = ['nombre', 'apellidos', 'dni_nie', 'fecha_nacimiento', 'sexo',
     'estado_civil', 'nacionalidad', 'email', 'tel_emergencia', 'centro_codigo',
     'via_tipo', 'via_nombre', 'via_numero', 'escalera', 'piso', 'puerta',
     'codigo_postal', 'localidad', 'provincia', 'observaciones'];
   for (const k of PERSONA) {
-    const def = conductores.CAMPOS[k];
+    const def = conTope(k, conductores.CAMPOS[k]);
     if (def) campos.push({ id: k, grupo: def.grupo || 'Persona', ...def });
     // LAS FECHAS DEL CARNE, justo detras del estado civil: es el hueco que deja
     // la lista del sexo a su lado, y ahi las pidio Camilo el 24/09/2026. La
@@ -62,7 +66,8 @@ async function catalogos() {
   campos.push({ id: 'coordenadas', grupo: 'Dirección', etiqueta: 'Coordenadas',
                 ayuda: 'lat, lng — se obtienen del botón de geocodificar' });
   for (const [id, def] of Object.entries(repo.CAMPOS)) {
-    campos.push({ id, grupo: 'Proceso', ...def });
+    campos.push({ id, grupo: 'Proceso', ...def,
+      ...(deProceso.has(id) && !def.tipo ? { max: deProceso.get(id) } : {}) });
   }
 
   return {

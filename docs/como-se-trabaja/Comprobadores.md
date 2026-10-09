@@ -356,6 +356,9 @@ No son de los seis, pero forman parte de la misma red:
   planificador, lo que se comprueba al asignar, de los apuntes de BOLT a los ratos de
   trabajo (desempate, tope, el apunte de antes de la ventana) y el reporte de horas (día
   00→24, noche 12→12, «No salió», sin plaza, otro coche, fuera de su turno, el Excel).
+- **`comprobar-largos.js`** (09/10/2026) — lo que no cabe en su columna se dice antes de
+  guardar, con el nombre de la casilla, sin abrir la transacción: la ficha de la persona
+  (un piso «Entreplanta») y el proceso de Selección (el tipo de carné).
 - **`comprobar-estado-coche.js`** (08/10/2026) — el estado del coche y su historial van
   juntos: ensaya `planificador.repo.guardar` con una transacción de mentira (cambiar el
   estado abre historial, el mismo estado no, la zona con el suyo) y falla si algún

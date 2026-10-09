@@ -51,11 +51,12 @@ Al elegir un día dispara **`input` y `change`**, así que cualquiera de los dos
 Una ventana para pedir unos datos, en vez de repetir el mismo modal seis veces. Los campos:
 
 ```js
-{ id, etiqueta, tipo, valor, ayuda, grupo, obligatorio, marcador, opciones }
+{ id, etiqueta, tipo, valor, ayuda, grupo, obligatorio, marcador, opciones, max }
 ```
 
 `tipo` puede ser `texto`, `texto-largo`, `fecha`, `semana`, `lista` u `opciones`.
 
+- **`max`** es lo que cabe en la columna: las casillas de texto llevan `maxlength` y no dejan escribir más (09/10/2026). Los campos de la persona y de la candidatura ya lo traen de su catálogo (`conductores.repo.campos`, `candidaturas.service.catalogos`), leído de la base.
 - **`opciones` es el selector de la casa** y `lista` es el mismo por fuera; lo que cambia es lo que devuelven (abajo). Los dos aceptan `buscador: { marcador, tope }`: pinta un filtro, enseña `tope` (10 por defecto) y dice cuántas quedan fuera. Con `grupos` pinta dos niveles.
 - `grupo` mete una cabecera cuando cambia: con treinta campos seguidos no se distingue la dirección de la Seguridad Social.
 - `ancho` (`max-w-md` por defecto) y `columnas: 2`.

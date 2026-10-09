@@ -293,10 +293,12 @@
                          ? 'bg-telecab-gold text-telecab-dark border-telecab-gold'
                          : 'bg-telecab-card2 text-telecab-muted border-telecab-border'}">${DIAS[n]}</button>`).join('')}</div>`;
               } else if (c.tipo === 'texto-largo') {
-                campo = `<textarea id="pd-${c.id}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`;
+                campo = `<textarea id="pd-${c.id}" rows="2" class="${base}"${c.max ? ` maxlength="${Number(c.max)}"` : ''}>${esc(c.valor || '')}</textarea>`;
               } else {
+                // `max`: lo que cabe en la columna. Más no se deja escribir.
                 campo = `<input id="pd-${c.id}" class="${c.tipo === 'fecha' ? 'js-fecha ' : ''}${base}"
-                          value="${esc(c.valor || '')}" placeholder="${esc(c.marcador || (c.tipo === 'fecha' ? 'dd/mm/aaaa' : ''))}">`;
+                          value="${esc(c.valor || '')}" placeholder="${esc(c.marcador || (c.tipo === 'fecha' ? 'dd/mm/aaaa' : ''))}"${
+                          c.max && c.tipo !== 'fecha' ? ` maxlength="${Number(c.max)}"` : ''}>`;
               }
               // `filas`: un campo alto -una lista de opciones en vertical- puede
               // ocupar varias filas de la rejilla, y entonces los siguientes se

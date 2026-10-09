@@ -170,6 +170,8 @@
       // El sexo es una lista en vertical, alta: ocupa tres filas y a su lado se
       // apilan el estado civil y las dos fechas del carne, sin dejar hueco.
       filas: c.id === 'sexo' ? 3 : undefined,
+      // Lo que cabe en su columna: más no se deja escribir (09/10/2026).
+      max: c.max,
       // El IBAN nunca vuelve del servidor: está cifrado. Se deja vacío y solo se
       // manda si se escribe algo, para no borrarlo sin querer al guardar.
       valor: c.id === 'iban' ? ''
