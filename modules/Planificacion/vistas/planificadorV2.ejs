@@ -348,6 +348,22 @@
 
   // Si quien mira puede abrir Plantilla: sin el permiso no se le ofrece «Ver su ficha».
   const VER_FICHAS = <%- JSON.stringify(!!verFichas) %>;
+  // La ficha de Plantilla se abre siempre en OTRA pestaña: el cuadrante se queda
+  // como estaba (su base, su vista, su scroll).
+  const hrefFicha = id => '/plantilla#' + encodeURIComponent(id);
+  // En las tarjetas del lateral (banquillo, quién vuelve, huérfanos) el nombre
+  // lleva a su ficha. Sin permiso de Plantilla, el nombre a secas.
+  function nombreConFicha(id, nombre) {
+    if (!VER_FICHAS || !id) return esc(nombre);
+    return `<a href="${hrefFicha(id)}" target="_blank" rel="noopener" title="Abrir su ficha en Plantilla (otra pestaña)"
+              class="hover:text-telecab-gold hover:underline underline-offset-2">${esc(nombre)}</a>`;
+  }
+  // En las que se despliegan al pincharlas (llegadas, bajas), un botón dentro.
+  const botonFicha = id => (VER_FICHAS && id
+    ? `<a href="${hrefFicha(id)}" target="_blank" rel="noopener" title="Abre su ficha de Plantilla en otra pestaña"
+          class="tc-pulsable inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border border-telecab-gold/40 text-telecab-gold hover:bg-telecab-gold/10">
+         <i class="fa-solid fa-id-card text-[10px]"></i>Ver su ficha</a>`
+    : '');
   const DIAS_LETRA = <%- JSON.stringify(letrasDia) %>;              // ['L','M','X','J','V','S','D']
   const ESTADOS = <%- JSON.stringify(estadosVehiculo) %>;           // catálogo de estados del coche
   const ESTADO_ETQ = new Map(ESTADOS.map(e => [e.codigo, e.etiqueta]));
@@ -418,7 +434,7 @@
       return `<div class="px-4 py-3 rounded-2xl border ${sinVacante ? 'border-telecab-border' : 'border-telecab-gold/50'} ${sinVacante ? 'bg-telecab-card2/60' : 'bg-telecab-gold/10'} flex flex-wrap items-center gap-3">
         <i class="fa-solid ${sinVacante ? 'fa-user-plus text-telecab-muted' : 'fa-bell text-telecab-gold'}"></i>
         <div class="min-w-0 flex-1">
-          <div class="text-sm font-semibold text-telecab-text"><a href="/plantilla#${encodeURIComponent(i.conductorId)}" title="Abrir su ficha en Plantilla"
+          <div class="text-sm font-semibold text-telecab-text"><a href="${hrefFicha(i.conductorId)}" target="_blank" rel="noopener" title="Abrir su ficha en Plantilla (otra pestaña)"
               class="hover:text-telecab-gold hover:underline underline-offset-2">${esc(i.nombre)}<i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-1.5 text-telecab-muted"></i></a>
             ${i.telefono ? `<span class="font-mono font-normal text-xs text-telecab-muted ml-1">${esc(i.telefono)}</span>` : ''}
             <span class="font-normal text-telecab-muted">— ${sinVacante ? 'se dio de alta' : 'incorporación'}${i.alta ? ' · alta ' + isoAes(i.alta) : ''}</span></div>
@@ -900,7 +916,7 @@
             ${fila('Incorporación', esc(isoAes(p.desde)))}
             ${detalle}
             <div class="space-y-1">${plazas}</div>
-            <div class="flex flex-wrap gap-1.5 pt-1">${botones}</div>
+            <div class="flex flex-wrap gap-1.5 pt-1">${botones}${botonFicha(p.conductorId)}</div>
           </div>
         </div>`;
     }).join('');
@@ -959,6 +975,7 @@
           <div class="px-2 pb-2 text-xs space-y-0.5 ${abierta ? '' : 'hidden'}">
             ${motivo}
             <p class="text-telecab-muted">${esc(contrato)} · baja el ${esc(isoAes(b.baja))}</p>
+            ${VER_FICHAS ? `<div class="pt-1">${botonFicha(b.conductorId)}</div>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -1818,7 +1835,7 @@
     $('#huerfanos').innerHTML = huerf.map(h => `
       <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-telecab-card border border-telecab-border">
         <div class="min-w-0 flex-1">
-          <div class="text-sm font-medium truncate">${esc(h.conductor)}</div>
+          <div class="text-sm font-medium truncate">${nombreConFicha(h.conductorId, h.conductor)}</div>
           <div class="text-[11px] text-telecab-muted">${esc(h.matricula)} · ${esc(h.estado)} · ${esc(h.turno)}</div>
         </div>
       </div>`).join('');
@@ -1852,7 +1869,7 @@
       $('#' + idNum).textContent = l.length;
       $('#' + idLista).innerHTML = l.map(p => `
         <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/40 border border-telecab-border/70">
-          <div class="text-sm truncate">${esc(p.nombre)}</div>
+          <div class="text-sm truncate">${nombreConFicha(p.id, p.nombre)}</div>
           <div class="text-[11px] text-telecab-muted">${esc(p.estado || '')}${
             conFecha && p.vuelveEl ? ` · vuelve <span class="text-telecab-gold">${isoAes(p.vuelveEl)}</span>` : ''
           }${p.turno ? ' · ' + esc(p.turno) : ''}</div>
@@ -1880,7 +1897,7 @@
     $('#banq-n').textContent = `${gente.length}/${(T.pendientes || []).length}`;
     $('#banquillo').innerHTML = gente.length ? gente.map(p => `
       <div class="px-2 py-1.5 rounded-lg bg-telecab-card2/50 border border-telecab-border">
-        <div class="text-sm font-medium truncate">${esc(p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''} ${chipRend(p.rendimiento)}</div>
+        <div class="text-sm font-medium truncate">${nombreConFicha(p.id, p.nombre)}${p.esEtt ? ` <span class="text-telecab-violet text-xs">ETT${p.ettNombre ? ' ' + esc(p.ettNombre) : ''}</span>` : ''} ${chipRend(p.rendimiento)}</div>
         <div class="text-[11px] text-telecab-muted">${p.telefono ? `<span class="font-mono tabular-nums">${esc(p.telefono)}</span> · ` : ''}${esc(p.turno || 'sin turno')}${p.contrato ? ' · ' + esc(p.contrato) : ''}${p.boltPendiente ? ' · <span class="text-telecab-warn">sin BOLT</span>' : ''}</div>
         ${p.faltanDias ? `<div class="text-[11px] text-telecab-gold"><i class="fa-solid fa-calendar-day text-[9px]"></i> correturnos a medio poner: ${p.diasPuestos} de ${p.diasQueDebeCT} días${
           (p.diasDePlaza || []).length ? ` (lleva ${p.diasDePlaza.map(d => 'LMXJVSD'[d - 1] || '?').join('')})` : ''}</div>` : ''}
@@ -2682,7 +2699,7 @@
                 <div class="text-[11px] text-telecab-muted">${esc(ficha.nota || 'En esta plaza')}</div>
                 <div class="text-sm font-semibold truncate">${esc(ficha.nombre || '')}</div>
               </div>
-              ${VER_FICHAS ? `<a data-ficha href="/plantilla#${encodeURIComponent(ficha.id)}" target="_blank" rel="noopener"
+              ${VER_FICHAS ? `<a data-ficha href="${hrefFicha(ficha.id)}" target="_blank" rel="noopener"
                  title="Abre su ficha de Plantilla en otra pestaña: el cuadrante se queda como está."
                  class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-telecab-gold/40 text-telecab-gold text-sm font-semibold hover:bg-telecab-gold/10 transition-colors">
                 <i class="fa-solid fa-id-card text-xs"></i>Ver su ficha</a>` : ''}

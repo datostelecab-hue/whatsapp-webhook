@@ -9,7 +9,7 @@ Las decisiones que explican por qué el sistema es como es. En orden, de la más
 
 ## 2026-10-09 · En el planificador, pinchar a alguien deja ver su ficha
 
-«En las tarjetas y en los cuadrantes, al darle clic, quiero tener siempre la opción de ver su perfil». No se añade un paso más al clic, que es el gesto más repetido del cuadrante: el selector que ya se abría lleva arriba el nombre de esa persona con «Ver su ficha», que abre su ficha de Plantilla en otra pestaña para no perder el cuadrante. Vale para la plaza en las dos vistas, el CT del cuadrante y «Cubrir», y solo se ofrece a quien puede abrir Plantilla. → [[Planificacion#Pinchar a alguien deja ver su ficha (09/10/2026)]]
+«En las tarjetas y en los cuadrantes, al darle clic, quiero tener siempre la opción de ver su perfil». No se añade un paso más al clic, que es el gesto más repetido del cuadrante: el selector que ya se abría lleva arriba el nombre de esa persona con «Ver su ficha», que abre su ficha de Plantilla en otra pestaña para no perder el cuadrante. Vale para la plaza en las dos vistas, el CT del cuadrante y «Cubrir», y solo se ofrece a quien puede abrir Plantilla. Después, también las tarjetas del lateral: en banquillo, quién vuelve, sin fecha y huérfanos el nombre es el enlace; en llegadas y bajas, que ya se despliegan al pinchar, va un botón dentro. → [[Planificacion#Pinchar a alguien deja ver su ficha (09/10/2026)]]
 
 ## 2026-10-09 · Las vacaciones las aprueba una sola persona: Laura Blanco
 
