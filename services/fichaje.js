@@ -119,14 +119,108 @@ function puedeInmovilizar(info, { porOrden = false } = {}) {
   return null;
 }
 
+// ── Una orden de motor por coche a la vez (11/10/2026) ───────────────────────
+//
+// El 11/10 a las 07:56:55 Hamid pulsó «Terminar turno» en el 1067MJY y Javier
+// escribió la matrícula nueve segundos después. Bloquear tarda unos 14 s (los
+// km, la orden y esperar a que el coche la confirme). El «soltar» de Javier
+// miró el relé en medio, lo vio todavía libre y no mandó nada; tres segundos
+// después entró el corte de Hamid. Javier trabajó el día entero con un coche
+// que al final no se dejaba apagar.
+//
+// Ahora las órdenes de un mismo coche van EN FILA: la segunda espera a que
+// acabe la primera y decide con el relé ya como lo dejó. En memoria y no en la
+// base a propósito: el backend es UN solo proceso (services/db.js), y un
+// candado de la base tendría una conexión cogida los ~15 s de cada orden —al
+// cambio de turno, con varios coches a la vez, eso se come el pool—. Lo que se
+// escapara (dos procesos un instante, en un despliegue) lo recoge la
+// comprobación de después de bloquear (`peligroTrasBloquear`).
+//
+// Si la de delante no acaba (Mapon colgado), no se espera para siempre:
+// bloquear se rinde —ya lo verá Tráfico en el ciclo— y soltar se manda igual,
+// porque soltar no deja tirado a nadie y negarse sí.
+const esperaFilaMs = () => Number(process.env.FICHAJE_ESPERA_FILA_MS || 45000);
+const filaMotor = new Map();   // unitId → la última orden en la fila (una promesa que nunca falla)
+
+async function enFilaDelCoche(unitId, fn) {
+  const clave = String(unitId);
+  const anterior = filaMotor.get(clave) || Promise.resolve();
+  let acabar;
+  const mia = new Promise(r => { acabar = r; });
+  const cola = anterior.then(() => mia);
+  filaMotor.set(clave, cola);
+  try {
+    let plazo;
+    const aTiempo = await Promise.race([
+      anterior.then(() => true),
+      new Promise(r => { plazo = setTimeout(() => r(false), esperaFilaMs()); }),
+    ]);
+    clearTimeout(plazo);
+    return await fn({ aTiempo });
+  } finally {
+    acabar();
+    if (filaMotor.get(clave) === cola) filaMotor.delete(clave);
+  }
+}
+
+// ── Y después de bloquear, se mira otra vez (11/10/2026) ─────────────────────
+//
+// Lo que se comprueba antes de cortar (`puedeInmovilizar`) vale para ESE
+// instante, y la orden tarda unos segundos en entrar. Si en medio alguien pone
+// el contacto, el corte entra con el coche encendido y ya no se deja apagar; y
+// si alguien abre turno en ese coche, se le corta a él. Así que con el corte ya
+// confirmado se vuelve a mirar —lo que leyó la confirmación y, un momento
+// después, el coche otra vez— y, si pasa cualquiera de las dos cosas, se suelta
+// en el acto.
+const comprobarTrasBloqueoMs = () => Number(process.env.FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS ?? 3000);
+
+/** Quién más tiene abierto ese coche, sin contar a quien termina. Si no se puede mirar, nadie. */
+async function otroEnElCoche(matricula, excepto) {
+  if (!matricula || excepto == null) return null;
+  try { return await repo.abiertoDeCoche(matricula, excepto); }
+  catch (e) { console.error('⚠️ [FICHAJE] ¿Quién lleva el coche?:', e.message); return null; }
+}
+
+async function peligroTrasBloquear({ unitId, matricula, excepto, info }) {
+  const encendido = i => (!i ? null
+    : i.enMarcha ? 'el coche se puso en marcha mientras se bloqueaba'
+      : i.ignicion === true ? 'el coche se encendió mientras se bloqueaba' : null);
+  let motivo = encendido(info);
+  if (!motivo) {
+    const ms = comprobarTrasBloqueoMs();
+    if (ms > 0) await new Promise(r => setTimeout(r, ms));
+    motivo = encendido(await mapon.relesDeUnidad(unitId).catch(() => null));
+  }
+  if (motivo) return { motivo };
+  const otro = await otroEnElCoche(matricula, excepto);
+  return otro ? { motivo: `${otro.nombre} ha cogido el coche mientras se bloqueaba`, cogidoPor: otro.nombre } : null;
+}
+
+/** Suelta lo que se acaba de bloquear y dice cómo ha ido. Va dentro de la fila del coche. */
+async function deshacerBloqueo(unitId, relayId, peligro) {
+  let suelto = false;
+  try {
+    suelto = !!(await mapon.cambiarReleConfirmado({ unitId, relayId, estado: RELE_LIBRE })).confirmado;
+  } catch (e) { console.error('⚠️ [FICHAJE] deshacer el bloqueo:', e.message); }
+  console.error(`⚠️ [FICHAJE] unit ${unitId}: ${peligro.motivo} → ${suelto ? 'SOLTADO otra vez' : 'NO SE HA PODIDO SOLTAR'}`);
+  return {
+    hecho: false, deshecho: true, suelto, cogidoPor: peligro.cogidoPor || null,
+    motivo: `${peligro.motivo}: ` +
+      (suelto ? 'se ha vuelto a soltar' : 'se mandó soltar y el coche no lo ha confirmado, avisa a Tráfico'),
+  };
+}
+
 /**
  * Pone el motor libre o bloqueado y CONFIRMA el estado real (change_relay solo dice que
  * la orden salió). Devuelve { hecho, motivo } — `hecho:false` con su motivo si no se pudo.
  *
  * Liberar es seguro y se hace siempre que se pueda. Bloquear pasa por
  * `puedeInmovilizar`, salvo que lo haya pedido el conductor.
+ *
+ * `excepto` y `matricula` (al terminar): el teléfono de quien termina y su
+ * coche, para saber si OTRO lo ha cogido. Sin ellos no se mira.
  */
-async function motor(unitId, bloquear, { porOrden = false } = {}) {
+async function motor(unitId, bloquear, { porOrden = false, excepto = null, matricula = '' } = {}) {
   // El interruptor apaga el BLOQUEO, no el desbloqueo. Si no, apagar la función
   // dejaría encerrados para siempre a los coches que ya estuvieran cortados, y el
   // interruptor de seguridad sería justo lo que impide arreglarlo.
@@ -150,58 +244,74 @@ async function motor(unitId, bloquear, { porOrden = false } = {}) {
   }
   const ajenaUnit = otraSede.sedeAjenaEn(sedes, { unitId });
   if (ajenaUnit) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajenaUnit)}: no se toca`, otraSede: ajenaUnit };
-  try {
-    const info = await mapon.relesDeUnidad(unitId);
-    // Y por su matrícula, que es lo que está seguro en Vehículos aunque el
-    // equipo de Mapon cambie.
-    const ajena = info && otraSede.sedeAjenaEn(sedes, { matricula: info.matricula });
-    if (ajena) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajena)}: no se toca`, otraSede: ajena };
-    const rele = mapon.releDeCorte(info);
-    if (!rele || !rele.habilitado) return { hecho: false, motivo: 'sin relé de corte' };
-    // CON EL COCHE EN MARCHA NO SE CORTA. Pero SOLTAR sí se intenta siempre.
-    //
-    // Antes esta regla valía para las dos cosas, y eso cerraba una trampa: el
-    // 5646MDM (16/09/2026) se quedó parado con el corte puesto y, como Mapon lo
-    // daba por "Conduciendo" a 0 km/h, no había forma de soltarlo —y sin soltarlo
-    // no se podía apagar, y sin apagarlo no dejaba de estar "conduciendo"—. Para
-    // salir hubo que mandar la orden a mano, saltando esta comprobación.
-    //
-    // Soltar no deja tirado a nadie nunca; negarse a soltar, sí. Si el equipo lo
-    // rechaza de verdad (control_while_moving=0), lo dirá Mapon y se verá en el
-    // motivo — pero la decisión es suya, no nuestra.
-    //
-    // `reintentable`: el conductor puede volver a pulsar cuando pare. Sin esta
-    // marca el mensaje se quedaba en "no se ha bloqueado" a secas, y quien lo
-    // leía no sabía si tenía que hacer algo o no. (Hasta el 30/09/2026 lo
-    // recogía además el repaso; ya no existe: lo que no se bloquea lo ve
-    // Tráfico en el ciclo de bloqueo de motor.)
-    if (bloquear && info.enMarcha) {
-      return { hecho: false, motivo: `coche en marcha (${info.velocidad} km/h)`, reintentable: true };
+  // De aquí en adelante, en la fila del coche: leer el relé, decidir y mandar
+  // van juntos, sin que otra orden del mismo coche se meta en medio.
+  return enFilaDelCoche(unitId, async ({ aTiempo }) => {
+    if (!aTiempo) {
+      if (bloquear) return { hecho: false, motivo: 'había otra orden de motor en curso en este coche', reintentable: true };
+      console.error(`⚠️ [FICHAJE] unit ${unitId}: la orden anterior no acaba; se suelta igual`);
     }
-    // YA ESTÁ COMO SE QUIERE: no se manda nada.
-    //
-    // No es solo ahorrarse una llamada. `cambiarReleConfirmado` espera hasta
-    // diez segundos a que el coche confirme, y eso son diez segundos de silencio
-    // en una conversación de WhatsApp — el conductor pulsa "Iniciar turno" y no
-    // pasa nada. Al principio casi ningún coche estará bloqueado, así que este
-    // es el caso NORMAL, no la excepción.
-    const objetivo = bloquear ? RELE_BLOQUEADO : RELE_LIBRE;
-    if (Number(rele.estado) === objetivo) {
-      return { hecho: true, motivo: '', yaEstaba: true };
+    try {
+      const info = await mapon.relesDeUnidad(unitId);
+      // Y por su matrícula, que es lo que está seguro en Vehículos aunque el
+      // equipo de Mapon cambie.
+      const ajena = info && otraSede.sedeAjenaEn(sedes, { matricula: info.matricula });
+      if (ajena) return { hecho: false, motivo: `coche de ${otraSede.nombreSede(ajena)}: no se toca`, otraSede: ajena };
+      const rele = mapon.releDeCorte(info);
+      if (!rele || !rele.habilitado) return { hecho: false, motivo: 'sin relé de corte' };
+      // CON EL COCHE EN MARCHA NO SE CORTA. Pero SOLTAR sí se intenta siempre.
+      //
+      // Antes esta regla valía para las dos cosas, y eso cerraba una trampa: el
+      // 5646MDM (16/09/2026) se quedó parado con el corte puesto y, como Mapon lo
+      // daba por "Conduciendo" a 0 km/h, no había forma de soltarlo —y sin soltarlo
+      // no se podía apagar, y sin apagarlo no dejaba de estar "conduciendo"—. Para
+      // salir hubo que mandar la orden a mano, saltando esta comprobación.
+      //
+      // Soltar no deja tirado a nadie nunca; negarse a soltar, sí. Si el equipo lo
+      // rechaza de verdad (control_while_moving=0), lo dirá Mapon y se verá en el
+      // motivo — pero la decisión es suya, no nuestra.
+      //
+      // `reintentable`: el conductor puede volver a pulsar cuando pare. Sin esta
+      // marca el mensaje se quedaba en "no se ha bloqueado" a secas, y quien lo
+      // leía no sabía si tenía que hacer algo o no. (Hasta el 30/09/2026 lo
+      // recogía además el repaso; ya no existe: lo que no se bloquea lo ve
+      // Tráfico en el ciclo de bloqueo de motor.)
+      if (bloquear && info.enMarcha) {
+        return { hecho: false, motivo: `coche en marcha (${info.velocidad} km/h)`, reintentable: true };
+      }
+      // YA ESTÁ COMO SE QUIERE: no se manda nada.
+      //
+      // No es solo ahorrarse una llamada. `cambiarReleConfirmado` espera hasta
+      // diez segundos a que el coche confirme, y eso son diez segundos de silencio
+      // en una conversación de WhatsApp — el conductor pulsa "Iniciar turno" y no
+      // pasa nada. Al principio casi ningún coche estará bloqueado, así que este
+      // es el caso NORMAL, no la excepción.
+      const objetivo = bloquear ? RELE_BLOQUEADO : RELE_LIBRE;
+      if (Number(rele.estado) === objetivo) {
+        return { hecho: true, motivo: '', yaEstaba: true };
+      }
+      const delCoche = matricula || info.matricula;
+      if (bloquear) {
+        const no = puedeInmovilizar(info, { porOrden });
+        if (no) return { hecho: false, motivo: no, reintentable: true };
+        // Si otro ya ha abierto turno en este coche, el coche es suyo: no se corta.
+        const otro = await otroEnElCoche(delCoche, excepto);
+        if (otro) return { hecho: false, motivo: `el coche ya lo lleva ${otro.nombre}`, cogidoPor: otro.nombre };
+      }
+      const r = await mapon.cambiarReleConfirmado({
+        unitId, relayId: rele.relay_id, estado: bloquear ? RELE_BLOQUEADO : RELE_LIBRE
+      });
+      if (!r.confirmado) return { hecho: false, motivo: 'la orden salió pero el coche no la confirmó (¿sin cobertura?)', reintentable: true };
+      if (bloquear) {
+        const peligro = await peligroTrasBloquear({ unitId, matricula: delCoche, excepto, info: r.info });
+        if (peligro) return deshacerBloqueo(unitId, rele.relay_id, peligro);
+      }
+      return { hecho: true, motivo: '' };
+    } catch (e) {
+      console.error('⚠️ [FICHAJE] motor:', e.message);
+      return { hecho: false, motivo: e.message, reintentable: true };
     }
-    if (bloquear) {
-      const no = puedeInmovilizar(info, { porOrden });
-      if (no) return { hecho: false, motivo: no, reintentable: true };
-    }
-    const r = await mapon.cambiarReleConfirmado({
-      unitId, relayId: rele.relay_id, estado: bloquear ? RELE_BLOQUEADO : RELE_LIBRE
-    });
-    if (r.confirmado) return { hecho: true, motivo: '' };
-    return { hecho: false, motivo: 'la orden salió pero el coche no la confirmó (¿sin cobertura?)', reintentable: true };
-  } catch (e) {
-    console.error('⚠️ [FICHAJE] motor:', e.message);
-    return { hecho: false, motivo: e.message, reintentable: true };
-  }
+  });
 }
 const liberarMotor = unitId => motor(unitId, false);
 
@@ -849,8 +959,10 @@ async function terminar(telefono) {
   // ha terminado, y eso es mejor información que cualquier sensor.
   // Sin el bloqueo encendido (`sinControl`) no se intenta nada y no se anota:
   // no es un fallo, es que a esa persona todavía no se le ha encendido.
+  // `excepto`/`matricula`: para que, si su compañero ya ha abierto turno en el
+  // coche mientras esto se bloquea, se le deje libre a él (11/10/2026).
   const mot = dec.bloquear
-    ? await bloquearMotor(t.unitId, { porOrden: true })
+    ? await bloquearMotor(t.unitId, { porOrden: true, excepto: t.telefono, matricula: t.matricula })
     : { hecho: false, seQuedaLibre: true, sinControl: !!dec.sinControl,
         motivo: dec.sinControl ? 'sin bloqueo de motor' : 'lo lleva alguien sin el bloqueo encendido' };
   if (BLOQUEO_ACTIVO && !mot.hecho && !mot.sinControl) t.notas = `${t.notas ? t.notas + ' · ' : ''}Motor NO bloqueado: ${mot.motivo}`;
@@ -1021,6 +1133,7 @@ module.exports = {
   quienFicha, nombreParaSaludar, estado, iniciar, terminar, kmDelTurno,
   conductorMapon,
   liberarMotor, bloquearMotor, estadoMotor, puedeInmovilizar, liberarConocidos, maponDisponible,
+  enFilaDelCoche,
   RELE_BLOQUEADO,
   horaES, duracion, MAX_HORAS_TURNO, BLOQUEO_ACTIVO, MIN_PARADO,
   MATRICULAS, TODA_LA_FLOTA

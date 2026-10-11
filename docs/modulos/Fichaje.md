@@ -316,6 +316,23 @@ Con el contacto puesto, lo mismo un paso más cerca: el corte entra y el coche y
 
 Las dos comprobaciones solo se hacen **si el corte está encendido** —sin él, terminar no inmoviliza nada— y **solo si sabemos** que va en marcha: si Mapon calla o la medida es vieja se le deja cerrar, porque **no saberlo no puede dejar a nadie atrapado**. El mensaje se lo dice con todas las letras: *"tu turno sigue abierto: no has perdido nada"*.
 
+## Una orden de motor por coche, y mirar después de cortar (11/10/2026)
+
+**Lo que pasó con el 1067MJY.** A las 07:56:55 Hamid pulsó «Terminar turno» y a las 07:57:04 Javier escribió la matrícula. Bloquear tarda unos 14 s: los km, la orden y esperar a que el coche la confirme. Mientras tanto el turno de Hamid seguía abierto. El «soltar» de Javier miró el relé en medio, lo vio **todavía libre** y no mandó nada; a Javier le llegó «el motor ya está libre». Tres segundos después entró el corte de Hamid, con Javier ya en turno. Según `fv_ruta`, Javier empezó a rodar a las 07:57:51, con el corte puesto. Trabajó todo el día, y a las 19:13 el coche no se dejaba apagar para terminar: el bot le contestaba «estás en marcha (6 km/h)», como al 5646MDM. Camilo lo soltó desde Mapon y a las 19:56 Javier pudo terminar. Era la primera vez: de las 105 órdenes apuntadas desde el 28/09, es el único corte que entró con otro conductor ya en turno.
+
+Lo arreglan dos cosas, en `motor()` de `services/fichaje.js`:
+
+- **Las órdenes de un mismo coche van en fila** (`enFilaDelCoche`). Leer el relé, decidir y mandar van juntos; la orden siguiente espera a que acabe la anterior y decide con el relé ya como lo dejó. Aquel «soltar» habría esperado al corte de Hamid y lo habría soltado. La fila está **en memoria y no en la base**, a propósito: el backend es un solo proceso, y un candado de la base tendría una conexión cogida los ~15 s de cada orden, lo que al cambio de turno se comería el pool. Si la de delante no acaba (`FICHAJE_ESPERA_FILA_MS`, 45 s), **bloquear se rinde** («había otra orden de motor en curso en este coche») y **soltar se manda igual**: soltar no deja tirado a nadie. Dos coches distintos no se esperan entre sí. El diagnóstico manual (`?rele=`) también pasa por la fila.
+- **Antes y después de cortar se mira si el coche es de otro.** Antes de mandar el corte: si otra persona ya tiene un turno abierto en ese coche, no se corta («el coche ya lo lleva X»). Con el corte ya confirmado, se vuelve a mirar: lo que leyó la confirmación y, un momento después (`FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS`, 3 s), el coche otra vez. **Si el contacto se ha puesto o el coche se ha movido**, el corte entró con el coche encendido, que es justo lo que prohíbe la regla de oro. **Si alguien ha abierto turno en el coche**, el coche es suyo. En cualquiera de los tres casos **se suelta en el acto** y se dice por qué. Lo del turno abierto no depende de lo que tarde Mapon en enterarse del contacto: se mira en nuestra base.
+
+Lo que ve cada uno:
+
+- **Quien termina** recibe «El motor se queda *libre*: el coche ya lo tiene X» o, si fue el contacto, «El motor NO se ha bloqueado (el coche se encendió mientras se bloqueaba: se ha vuelto a soltar)».
+- **En el ciclo** de [[Ciclo de bloqueo de motor]] queda como «No se pudo bloquear», con ese mismo motivo.
+- **Si soltar tampoco se confirma**, el motivo lo dice y pide avisar a Tráfico.
+
+Lo prueba la sección 17 de `scripts/probar-corte-motor.js`, que reproduce la carrera con un corte que tarda en confirmarse. Con el código anterior falla en once comprobaciones.
+
 ## Sin repaso: solo bloquea el conductor (30/09/2026)
 
 Hasta el 30/09/2026 había un **repaso**: cada diez minutos `app.js` llamaba a `repasarBloqueos()`, que cortaba el motor de todo coche parado de los que habían pasado **alguna vez** por un viaje o por el turno de alguien con el bloqueo. Se pensó para reintentar el corte que falla al terminar, pero guardaba para siempre: un viaje de prueba de 21 segundos dejó dentro al 1888LTJ, de Barcelona, y se lo cortaba cada vez que llevaba veinte minutos aparcado (ver abajo).
@@ -409,7 +426,7 @@ Cuando Mapon vuelve, el siguiente turno se abre como siempre. Los que se abriero
 
 ## Las variables de entorno
 
-Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_MAX_HORAS`, `FICHAJE_BLOQUEO_MOTOR`, `FICHAJE_MIN_PARADO`, `FICHAJE_MAX_SIN_SENAL`, `FICHAJE_MATRICULAS` y, por si alguna instalación viniera invertida, `FICHAJE_RELE_LIBRE` / `FICHAJE_RELE_BLOQUEADO` (verificado en el coche real: 0 = libre, 1 = bloqueado). `FICHAJE_TELEFONOS` **ya no se lee** desde el 24/09/2026: quién participa se decide en el ERP.
+Ninguna lleva credenciales; son los interruptores de seguridad. `FICHAJE_MAX_HORAS`, `FICHAJE_BLOQUEO_MOTOR`, `FICHAJE_MIN_PARADO`, `FICHAJE_MAX_SIN_SENAL`, `FICHAJE_MATRICULAS`, `FICHAJE_ESPERA_FILA_MS` y `FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS` (la fila de órdenes de cada coche y la segunda lectura tras cortar, desde el 11/10/2026) y, por si alguna instalación viniera invertida, `FICHAJE_RELE_LIBRE` / `FICHAJE_RELE_BLOQUEADO` (verificado en el coche real: 0 = libre, 1 = bloqueado). `FICHAJE_TELEFONOS` **ya no se lee** desde el 24/09/2026: quién participa se decide en el ERP.
 
 > [!warning] Sin `FICHAJE_BLOQUEO_MOTOR=1` en Render no se bloquea nada
 > Se ficha, se apuntan los turnos y los relevos, pero ningún motor se corta. El panel del planificador lo dice arriba a la derecha («Corte de motor apagado en el servidor»).

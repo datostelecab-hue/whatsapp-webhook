@@ -953,6 +953,21 @@ ignición se leía siempre como `false` (ver la trampa de `{gmt,value}`).
 
 **Regla:** el contacto puesto para a todo el mundo, también a quien lo pide.
 
+### Dos órdenes del mismo coche a la vez: la segunda decide con el relé a medio cambiar
+
+`services/fichaje.js` (`enFilaDelCoche`, `peligroTrasBloquear`)
+
+Bloquear tarda unos 14 s: los km, la orden y esperar a que el coche la confirme.
+El **11/10/2026** Javier escribió la matrícula del 1067MJY nueve segundos después de
+que Hamid pulsara «Terminar turno». Su «soltar» leyó el relé **antes** de que entrara
+el corte, lo vio libre y no mandó nada. El corte llegó tres segundos después, con
+Javier en turno, y por la tarde el coche no se dejaba apagar.
+
+Comprobar el relé y actuar no son atómicos si otra orden del mismo coche está en
+vuelo. **Remedio:** las órdenes de un coche van en fila, y con el corte confirmado
+se mira otra vez (contacto, marcha y si alguien ha abierto turno en el coche). Si
+pasa algo, se suelta en el acto.
+
 ### Negarse a SOLTAR el motor crea un bucle sin salida
 
 `services/fichaje.js`

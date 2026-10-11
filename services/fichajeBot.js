@@ -696,6 +696,10 @@ async function cerrar(telefono) {
       ? `\n🔓 El motor se queda *libre*: este coche también lo lleva ${faltan || 'otra persona'}.`
       : m.sinMapon
         ? '\n🔧 El motor no se ha podido bloquear: hay un problema con un proveedor externo, ajeno a Telecab. Comunícate con Tráfico.'
+      // Su compañero ya ha abierto turno en el coche (11/10/2026): es suyo, y se
+      // le deja libre. Si el corte llegó a entrar y no se pudo soltar, que avise.
+      : m.cogidoPor && (!m.deshecho || m.suelto)
+        ? `\n🔓 El motor se queda *libre*: el coche ya lo tiene *${m.cogidoPor}*.`
       : m.hecho
         ? (m.yaEstaba ? '\n🔒 El motor ya estaba bloqueado' : `\n🔒 Motor bloqueado hasta el próximo ${w.cosa}`) +
           (faltan ? `\n⚠️ Ojo: este coche lo lleva ${faltan}, sin el bloqueo encendido. Si lo necesita, Tráfico se lo suelta desde el planificador.` : '')

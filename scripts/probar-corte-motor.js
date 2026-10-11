@@ -32,12 +32,20 @@
 // cuenta de BOLT). Cada uno coge coches de su sede; el motor de Barcelona no
 // se corta ni se suelta; y las puertas, las de su sede, salvo la oficina con
 // /puertas, que abre las de todas (secciones 14 y 15).
+//
+// 11/10/2026: el 1067MJY. Hamid terminó y Javier abrió turno nueve segundos
+// después; el «soltar» de Javier vio el relé todavía libre y el corte de Hamid
+// entró después, con Javier ya en turno. Ahora las órdenes de un coche van en
+// fila y, con el corte confirmado, se mira otra vez (sección 17).
 
 const path = require('path');
 const RAIZ = path.join(__dirname, '..');
 
 process.env.FICHAJE_BLOQUEO_MOTOR = '1';
 process.env.FICHAJE_MATRICULAS = '';
+// La segunda lectura tras bloquear espera 3 s en producción; aquí no hace
+// falta, salvo en la sección 17, que la sube para probarla.
+process.env.FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS = '0';
 
 const LIBRE = 0, BLOQ = 1;
 
@@ -59,6 +67,11 @@ const ordenes = [];               // qué se le ha mandado de verdad a los coche
 
 // ¿Contesta Mapon? La sección 16 lo apaga (la cuenta suspendida, 05/10/2026).
 let maponVivo = true;
+// Sección 17: lo que tarda el coche en confirmar el relé (el corte de verdad
+// tarda segundos) y lo que pasa en el coche mientras entra el corte.
+let retrasoRele = 0;
+let alCortar = null;
+const espera = ms => new Promise(r => setTimeout(r, ms));
 const falsoMapon = {
   disponible: () => maponVivo,
   estadoCaida: () => (maponVivo ? null : { motivo: 'Company suspended' }),
@@ -85,8 +98,11 @@ const falsoMapon = {
   },
   cambiarReleConfirmado: async ({ unitId, estado }) => {
     ordenes.push(`${coches[unitId].matricula}:${estado ? 'BLOQUEAR' : 'LIBERAR'}`);
+    if (retrasoRele) await espera(retrasoRele);
     coches[unitId].rele = estado ? BLOQ : LIBRE;
-    return { ok: true, confirmado: true, intentos: 1 };
+    if (estado && alCortar) alCortar(coches[unitId]);
+    // Como el de verdad: con lo que leyó al confirmar (contacto, marcha).
+    return { ok: true, confirmado: true, intentos: 1, info: await falsoMapon.relesDeUnidad(unitId) };
   },
   relesDeFlota: async () => ({ vehiculos: Object.values(coches).map(c => ({
     unitId: c.unitId, matricula: c.matricula, estado: c.enMarcha ? 'driving' : 'standing',
@@ -533,6 +549,93 @@ const limpio = () => { ordenes.length = 0; };
   r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
   comprobar('vuelve Mapon: el turno se abre como siempre', r.ok && !r.sinMapon && r.turno.driverId === '991');
   await f.terminar(ANA);
+
+  console.log('\n== 17. El 1067MJY (11/10/2026): una orden de motor por coche, y mirar después de cortar ==');
+  // 17a. Lo que pasó: Ana termina (el corte tarda en confirmarse) y, en medio,
+  // Camilo escribe la matrícula. Antes el «soltar» de Camilo veía el relé libre,
+  // no mandaba nada, y el corte de Ana entraba después con Camilo en el coche.
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  comprobar('Ana abre turno en el 1111AAA', r.ok);
+  limpio(); retrasoRele = 150;
+  const terminaAna = f.terminar(ANA);
+  await espera(40);
+  const entraCamilo = f.iniciar({ telefono: CAMILO, matricula: '1111AAA' });
+  const [rAna, rCamilo] = await Promise.all([terminaAna, entraCamilo]);
+  comprobar('Camilo se queda el coche', rCamilo.ok && rCamilo.turno.matricula === '1111AAA');
+  comprobar('… y el motor le queda LIBRE de verdad', coche('1111AAA').rele === LIBRE && rCamilo.motor.hecho,
+    JSON.stringify({ rele: coche('1111AAA').rele, motor: rCamilo.motor }));
+  comprobar('el corte de Ana entró y se deshizo en el acto', ordenes.join() === '1111AAA:BLOQUEAR,1111AAA:LIBERAR', ordenes.join());
+  comprobar('a Ana se le dice que el coche ya lo tiene Camilo', !rAna.motor.hecho && rAna.motor.cogidoPor === 'Camilo Bedoya'
+    && rAna.motor.suelto === true, JSON.stringify(rAna.motor));
+  comprobar('queda en el libro del ciclo: no bloqueado, y por qué', ultimo().accion === 'bloquear' && !ultimo().hecho
+    && /ha cogido el coche/.test(ultimo().respuesta), JSON.stringify(ultimo()));
+  retrasoRele = 0;
+  await f.terminar(CAMILO);
+
+  // 17b. Si cuando va a cortar otro ya tiene el coche, ni se manda la orden.
+  r = await f.iniciar({ telefono: CAMILO, matricula: '1111AAA' });
+  limpio();
+  r = await f.bloquearMotor('77', { porOrden: true, excepto: ANA, matricula: '1111AAA' });
+  comprobar('con Camilo en turno, no se corta: ni una orden al coche', !r.hecho && r.cogidoPor === 'Camilo Bedoya'
+    && ordenes.length === 0 && coche('1111AAA').rele === LIBRE, JSON.stringify(r));
+  await f.terminar(CAMILO);
+
+  // 17c. El contacto se pone justo mientras entra el corte (la regla de oro):
+  // lo dice ya la lectura que confirma el corte.
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  limpio(); alCortar = c => { c.ignicion = true; };
+  r = await f.terminar(ANA);
+  comprobar('termina su turno', r.ok);
+  comprobar('el corte entró con el contacto puesto y se suelta en el acto',
+    ordenes.join() === '1111AAA:BLOQUEAR,1111AAA:LIBERAR' && coche('1111AAA').rele === LIBRE, ordenes.join());
+  comprobar('… y se dice por qué', !r.motor.hecho && /se encendió mientras se bloqueaba/.test(r.motor.motivo)
+    && /se ha vuelto a soltar/.test(r.motor.motivo), r.motor.motivo);
+  comprobar('… sin el «se reintentará» de cuando había repaso', !r.motor.reintentable);
+  alCortar = null; coche('1111AAA').ignicion = false;
+
+  // 17d. Y si el contacto llega un instante DESPUÉS de confirmar: lo ve la
+  // segunda lectura.
+  process.env.FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS = '60';
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  limpio(); alCortar = c => { setTimeout(() => { c.ignicion = true; }, 10); };
+  r = await f.terminar(ANA);
+  comprobar('la segunda lectura lo ve y lo suelta', !r.motor.hecho && coche('1111AAA').rele === LIBRE
+    && ordenes.join() === '1111AAA:BLOQUEAR,1111AAA:LIBERAR', ordenes.join());
+  alCortar = null; coche('1111AAA').ignicion = false;
+  process.env.FICHAJE_COMPROBAR_TRAS_BLOQUEO_MS = '0';
+
+  // 17e. Lo normal sigue igual: apagado y nadie más, se bloquea y se queda.
+  r = await f.iniciar({ telefono: ANA, matricula: '1111AAA' });
+  limpio();
+  r = await f.terminar(ANA);
+  comprobar('apagado y sin nadie más: bloqueado y se queda', r.motor.hecho && coche('1111AAA').rele === BLOQ
+    && ordenes.join() === '1111AAA:BLOQUEAR');
+
+  // 17f. La fila: un bloquear y un soltar del mismo coche a la vez. El soltar
+  // espera y decide con el relé como lo deja el bloquear.
+  coche('2222BBB').rele = LIBRE;
+  limpio(); retrasoRele = 100;
+  const [rb, rl] = await Promise.all([f.bloquearMotor('78', { porOrden: true }), f.liberarMotor('78')]);
+  comprobar('van en orden: primero se corta, luego se suelta', ordenes.join() === '2222BBB:BLOQUEAR,2222BBB:LIBERAR', ordenes.join());
+  comprobar('y el coche acaba LIBRE, como pidió el último', rb.hecho && rl.hecho && !rl.yaEstaba && coche('2222BBB').rele === LIBRE);
+  // Dos coches distintos no se esperan entre sí.
+  limpio();
+  const t0 = Date.now();
+  await Promise.all([f.bloquearMotor('78', { porOrden: true }), f.bloquearMotor('80', { porOrden: true })]);
+  comprobar('dos coches distintos van a la vez', Date.now() - t0 < 180, `${Date.now() - t0} ms`);
+
+  // 17g. Si la de delante no acaba, no se espera para siempre: bloquear se
+  // rinde, y soltar se manda igual.
+  process.env.FICHAJE_ESPERA_FILA_MS = '30';
+  coche('3333CCC').rele = LIBRE; retrasoRele = 200;
+  const primero = f.bloquearMotor('80', { porOrden: true });
+  await espera(10);
+  const [otroCorte, soltar] = await Promise.all([f.bloquearMotor('80', { porOrden: true }), f.liberarMotor('80')]);
+  comprobar('el segundo corte se rinde y lo dice', !otroCorte.hecho && /otra orden de motor en curso/.test(otroCorte.motivo));
+  comprobar('el soltar no se queda esperando', soltar && typeof soltar.hecho === 'boolean');
+  await primero;
+  delete process.env.FICHAJE_ESPERA_FILA_MS; retrasoRele = 0;
+  coche('2222BBB').rele = LIBRE; coche('3333CCC').rele = LIBRE;
 
   console.log(mal ? `\n${mal} COMPROBACION(ES) MAL` : '\nTodo el ciclo cuadra');
   process.exitCode = mal ? 1 : 0;

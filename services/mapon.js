@@ -916,10 +916,12 @@ async function cambiarReleConfirmado({ unitId, relayId, estado, intentos = 5, es
     await new Promise(r => setTimeout(r, esperaMs));
     const ahora = await relesDeUnidad(unitId);
     const rAhora = (ahora && ahora.reles.find(x => String(x.relay_id) === String(relayId))) || null;
+    // `info`: cómo estaba el coche al confirmarse (contacto, marcha). El fichaje
+    // lo mira para no dejar un corte que ha entrado con el coche encendido.
     if (rAhora && !!rAhora.estado === !!estado) {
-      return { ok: true, confirmado: true, intentos: i, antes: rPrev, despues: rAhora };
+      return { ok: true, confirmado: true, intentos: i, antes: rPrev, despues: rAhora, info: ahora };
     }
-    if (i === intentos) return { ok: false, confirmado: false, intentos: i, antes: rPrev, despues: rAhora };
+    if (i === intentos) return { ok: false, confirmado: false, intentos: i, antes: rPrev, despues: rAhora, info: ahora };
   }
 }
 

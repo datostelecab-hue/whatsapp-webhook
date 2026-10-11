@@ -45,6 +45,8 @@ Salen en este orden, lo que pide acción primero:
 
 Un coche cuyo último turno lo cerró alguien **sin** el bloqueo no está en el ciclo: no se bloqueó y no hay nada que mirar.
 
+**«No se pudo bloquear» también cuando el corte entró y se deshizo al momento** (11/10/2026). Puede ser que el compañero hubiera abierto turno en esos segundos («X ha cogido el coche mientras se bloqueaba») o que el coche se encendiera mientras entraba el corte. En los dos casos el coche está libre y es lo que tiene que estar. Ver [[Fichaje#Una orden de motor por coche, y mirar después de cortar (11/10/2026)]].
+
 ## De dónde sale
 
 - **El libro del ciclo es `fichaje_orden_motor`** (db/148, comentado de nuevo en db/167). Hasta el 30/09 solo guardaba lo que soltaba Tráfico a mano; desde entonces apunta también lo del conductor: `bloquear` al terminar (salga bien o mal) y `soltar` al empezar (solo si de verdad estaba cortado). **`usuario_id` vacío = el conductor; con usuario = Tráfico.** Por eso soltar a mano exige saber quién es: una orden de Tráfico sin usuario el ciclo la leería al revés.
@@ -59,6 +61,6 @@ Un coche cuyo último turno lo cerró alguien **sin** el bloqueo no está en el 
 
 ## Cómo se prueba
 
-`scripts/probar-corte-motor.js`, con Mapon y la base de mentira: secciones 7 (sin repaso, el cierre automático no corta), 11 (los estados del módulo), 12 (soltar saca del ciclo y el ciclo vuelve a empezar) y 13 (Barcelona).
+`scripts/probar-corte-motor.js`, con Mapon y la base de mentira: secciones 7 (sin repaso, el cierre automático no corta), 11 (los estados del módulo), 12 (soltar saca del ciclo y el ciclo vuelve a empezar), 13 (Barcelona) y 17 (la fila de órdenes de cada coche y lo que se mira después de cortar, el caso del 1067MJY).
 
 Relacionado: [[Fichaje]] · [[Planificacion]] · [[Mapon]] · [[Historial de decisiones]]

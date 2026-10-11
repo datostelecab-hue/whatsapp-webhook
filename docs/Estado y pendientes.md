@@ -15,6 +15,11 @@ Lo que está abierto **hoy**. Esta nota se actualiza; si algo de aquí ya está 
 - **15,5 h fuera de las ventanas de cuenta fantasma de William**, sobre todo el 11/09 (6,8 h) y el 14/09 (6,5 h) en la cuenta de Óscar Javier Alvarez. Caen en el hueco entre sus dos enlaces.
 
 
+## El corte de motor del 1067MJY (11/10/2026)
+
+- **Desplegar** la fila de órdenes de motor y la comprobación de después de cortar. No lleva migración. Ver [[Fichaje#Una orden de motor por coche, y mirar después de cortar (11/10/2026)]].
+- **Falta confirmar con la API de Mapon** si el contacto del 1067MJY se puso antes o después de que entrara el corte (07:57:09). Hay una consulta de solo lectura preparada que solo necesita la clave en el entorno. En nuestra base se ve que empezó a rodar a las 07:57:51.
+
 ## Las vacaciones, solo Laura (09/10/2026)
 
 - **Aplicar `db/189`** después de desplegar: le da a Laura Blanco la llave de aprobar vacaciones. Hasta entonces el candado ya está en el código y **nadie puede aprobar vacaciones**, ni ella: hay que desplegar y aplicar a la vez.
